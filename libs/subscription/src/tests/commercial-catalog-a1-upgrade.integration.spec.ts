@@ -27,6 +27,8 @@ const MIGRATIONS = [
 const A1 = resolve(__dirname, '../../prisma/migrations/20261019140000_sign_commercial_catalog_a1/migration.sql');
 // Sign naming unification — the A1 keys esign.* are renamed sign.* by this later migration.
 const SIGN_NAMING = resolve(__dirname, '../../prisma/migrations/20261020130300_sign_naming_keys/migration.sql');
+// Personal Free v1.1 — the day-window table the allowance read now joins.
+const PERSONAL_FREE = resolve(__dirname, '../../prisma/migrations/20261023100000_sign_personal_free/migration.sql');
 const CURRENT_M2 = resolve(__dirname, '../../prisma/migrations/20261019100000_subscription_lifecycle_billing/migration.sql');
 const TENANT = '0190dddd-0000-7000-8000-000000000001';
 const SUB = '0190dddd-0000-7000-8000-0000000000aa';
@@ -65,6 +67,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     );
     await pg.query(readFileSync(A1, 'utf8'));
     await pg.query(readFileSync(SIGN_NAMING, 'utf8'));
+    await pg.query(readFileSync(PERSONAL_FREE, 'utf8'));
     prisma = new PrismaService(container.getConnectionUri());
     await prisma.$connect();
   }, 180_000);

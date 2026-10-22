@@ -2,6 +2,7 @@ import { type DynamicModule, Module, type ModuleMetadata, type Provider } from '
 
 import { AllowanceService } from './allowance.service.js';
 import { CapacityService } from './capacity.service.js';
+import { FreePersonalSubscriptionService } from './free-personal-subscription.js';
 import { LegalAcceptanceService } from './legal/legal-acceptance.service.js';
 import { BILLING_PROVIDER_PORT } from './billing/billing-provider.port.js';
 import { StripeBillingProvider } from './billing/stripe-billing.provider.js';
@@ -19,8 +20,9 @@ import { PrismaService } from './prisma/prisma.service.js';
     LegalAcceptanceService,
     { provide: BILLING_PROVIDER_PORT, useClass: StripeBillingProvider },
     SubscriptionLifecycleService,
+    FreePersonalSubscriptionService,
   ],
-  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, BILLING_PROVIDER_PORT],
+  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT],
 })
 export class SubscriptionModule {
   /**
@@ -38,9 +40,10 @@ export class SubscriptionModule {
         LegalAcceptanceService,
         { provide: BILLING_PROVIDER_PORT, useClass: StripeBillingProvider },
         SubscriptionLifecycleService,
+        FreePersonalSubscriptionService,
         ...(opts.providers ?? []),
       ],
-      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, BILLING_PROVIDER_PORT],
+      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT],
     };
   }
 }

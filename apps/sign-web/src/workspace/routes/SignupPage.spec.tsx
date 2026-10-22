@@ -343,6 +343,32 @@ describe('signup pages', () => {
     expect(await screen.findByTestId('signup-unavailable')).toBeInTheDocument();
   });
 
+  // Aramo Sign Personal (Free) — the Personal link appears only while the Personal
+  // mode is not off (its public terms route answers 404 when off).
+  it('offers the free personal account only when the Personal terms route does not 404', async () => {
+    const withPersonal = (personalStatus: number) =>
+      vi.fn(async (input: RequestInfo | URL) => {
+        const url = String(input);
+        if (url.endsWith('/v1/signup/sign/personal/terms')) return json(personalStatus === 404 ? { error: { code: 'NOT_FOUND' } } : { documents: null }, personalStatus);
+        if (url.endsWith('/v1/signup/sign/terms')) return json({ terms: null });
+        return json({}, 401);
+      });
+    vi.stubGlobal('fetch', withPersonal(200));
+    const { unmount } = at('/signup');
+    const link = await screen.findByTestId('signup-personal-link');
+    expect(link).toHaveTextContent('Signing up for yourself? Create a free personal account');
+    expect(within(link).getByRole('link')).toHaveAttribute('href', '/signup/personal');
+    unmount();
+    const off = withPersonal(404);
+    vi.stubGlobal('fetch', off);
+    at('/signup');
+    await screen.findByTestId('signup-form');
+    await waitFor(() => expect(off.mock.calls.some(([u]) => String(u).endsWith('/personal/terms'))).toBe(true));
+    // Let the 404 settle, then the link is still absent.
+    await new Promise((r) => setTimeout(r, 0));
+    expect(screen.queryByTestId('signup-personal-link')).toBeNull();
+  });
+
   it('tokenFromHash accepts only a plausible token', () => {
     expect(tokenFromHash(`#token=${TOKEN}`)).toBe(TOKEN);
     expect(tokenFromHash('#token=short')).toBeNull();

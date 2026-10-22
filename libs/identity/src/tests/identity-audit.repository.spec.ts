@@ -86,8 +86,8 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
   // DOC-TEMPLATE-ADMIN-RTR-1 A1 §1: +1 document_template.draft_discarded (43 -> 44).
   // ROLES-1 PR-2 §5.3: +2 ROLES1_RECONCILE_GRANT + ROLES1_RECONCILE_REVOKE (44 -> 46).
   // DOC-TEMPLATE-LIB-1 T-6: +2 GLOBAL document_template.withdrawal_published/_cancelled (46 -> 48).
-  it('EVENT_TYPES contains 57 values (32 + 9 PC-Inc2 tenant-lifecycle + 1 IC-1 cross-tenant refusal + 1 IC-3 PR-7 enable + 1 A1 template draft discard + 2 ROLES-1 reconciliation + 2 T-6 withdrawal + 9 Domain-Enforcement P3 claim/exception/delegation) and rejects unlisted', async () => {
-    expect(EVENT_TYPES).toHaveLength(57);
+  it('EVENT_TYPES contains 67 values (32 + 9 PC-Inc2 tenant-lifecycle + 1 IC-1 cross-tenant refusal + 1 IC-3 PR-7 enable + 1 A1 template draft discard + 2 ROLES-1 reconciliation + 2 T-6 withdrawal + 9 Domain-Enforcement P3 claim/exception/delegation + 10 Sign Personal signup/risk/invite) and rejects unlisted', async () => {
+    expect(EVENT_TYPES).toHaveLength(67);
     expect(TENANT_SCOPED_EVENT_TYPES.has('identity.domain.claim.authoritative')).toBe(true);
     expect(TENANT_SCOPED_EVENT_TYPES.has('ROLES1_RECONCILE_GRANT')).toBe(true);
     expect(TENANT_SCOPED_EVENT_TYPES.has('ROLES1_RECONCILE_REVOKE')).toBe(true);
@@ -97,6 +97,9 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
     expect(TENANT_SCOPED_EVENT_TYPES.has('identity.document_template.draft_discarded')).toBe(true);
     expect(TENANT_SCOPED_EVENT_TYPES.has('identity.tenant_user.enabled')).toBe(true);
     expect(TENANT_SCOPED_EVENT_TYPES.has('identity.invitation.rejected_cross_tenant')).toBe(true);
+    // Sign Personal (Free) v1.1 — risk events are tenant-scoped; the pilot invite issue is GLOBAL.
+    expect(TENANT_SCOPED_EVENT_TYPES.has('identity.personal.risk.restricted')).toBe(true);
+    expect(TENANT_SCOPED_EVENT_TYPES.has('identity.personal.invite.issued')).toBe(false);
     const create = vi.fn().mockResolvedValue({ id: 'r' });
     const repo = new IdentityAuditRepository(makePrisma(create));
 
@@ -178,8 +181,18 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
       // ROLES-1 PR-2 §5.3 — the reconciliation migration's grant / removal rows.
       'ROLES1_RECONCILE_GRANT',
       'ROLES1_RECONCILE_REVOKE',
+      // Sign Personal (Free) v1.1 — signup + risk-state events.
+      'identity.personal.signup.provisioned',
+      'identity.personal.signup.lapsed',
+      'identity.personal.risk.review_flagged',
+      'identity.personal.risk.step_up_required',
+      'identity.personal.risk.phone_verified',
+      'identity.personal.risk.restricted',
+      'identity.personal.risk.review_cleared',
+      'identity.personal.risk.reinstated',
+      'identity.personal.risk.closed',
     ];
-    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(50); // IC-3 PR-7 +1 tenant_user.enabled; A1 +1 draft_discarded; ROLES-1 PR-2 +2; P3 +9
+    expect(TENANT_SCOPED_EVENT_TYPES.size).toBe(59); // IC-3 PR-7 +1 tenant_user.enabled; A1 +1 draft_discarded; ROLES-1 PR-2 +2; P3 +9; Personal +9
     for (const t of expected) {
       expect(TENANT_SCOPED_EVENT_TYPES.has(t as never)).toBe(true);
     }

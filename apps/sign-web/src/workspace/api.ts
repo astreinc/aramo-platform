@@ -37,7 +37,9 @@ export interface SenderContext {
   // DOC-TEMPLATE-LIB-1 T-5 — plan capabilities by launch availability (absent = not available).
   features?: { templates?: boolean };
   can_send: boolean;
-  personal_sending_enabled: false;
+  // Aramo Sign Personal (Free) — true only while Personal sending is switched on for this
+  // deployment; whether THIS account may send is still `can_send` (backend-decided).
+  personal_sending_enabled: boolean;
   organization_url: string | null;
   app_home_url: string | null;
 }
@@ -288,7 +290,7 @@ export interface BillingAccount {
   subscription: {
     plan_key: string;
     plan_name: string;
-    source: 'MANUAL' | 'DEVELOPMENT' | 'SELF_SERVICE';
+    source: 'MANUAL' | 'DEVELOPMENT' | 'SELF_SERVICE' | 'FREE';
     status: SubscriptionStatus;
     sending: boolean;
     started_at: string;
@@ -306,7 +308,21 @@ export interface BillingAccount {
     export_access_until?: string | null;
   } | null;
   allowance:
-    | { subscribed: true; plan_key: string; allowance_key: string; limit: number | null; unlimited?: boolean; used: number; remaining: number | null; period_start: string; period_end: string; threshold: 'OK' | 'WARNING' | 'EXHAUSTED' }
+    | {
+        subscribed: true;
+        plan_key: string;
+        allowance_key: string;
+        limit: number | null;
+        unlimited?: boolean;
+        used: number;
+        remaining: number | null;
+        period_start: string;
+        period_end: string;
+        threshold: 'OK' | 'WARNING' | 'EXHAUSTED';
+        // Aramo Sign Personal (Free) — the daily window on top of the monthly allowance.
+        // The window is any 24 hours; next_available_at is when the oldest counted send leaves it.
+        daily?: { window?: 'DAY'; limit: number; used: number; remaining?: number | null; next_available_at?: string | null } | null;
+      }
     | { subscribed: false; allowance_key: string; state?: 'NONE' | 'PAST_DUE' | 'INCOMPLETE' | 'CANCELED' };
   storage?: { capacity_key: string; limit: number | null; unlimited: boolean; used: number } | null;
   billing_available: boolean;
@@ -426,6 +442,10 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
     // Plan / allowance refusals (Aramo Sign subscription gate) — never shown as a
     // permission problem.
     if (e.code === 'ESIGN_NOT_SUBSCRIBED') return 'Your organization doesn’t have an active Aramo Sign plan, so envelopes can’t be sent. An admin can choose a plan in Settings → Plan & billing.';
+    if (e.code === 'ESIGN_ALLOWANCE_EXHAUSTED' && isDailyLimit(e)) {
+      const limit = e.details?.['limit'];
+      return `You’ve sent ${typeof limit === 'number' ? `${limit} envelopes` : 'the most envelopes allowed'} today. You can send again tomorrow.`;
+    }
     if (e.code === 'ESIGN_ALLOWANCE_EXHAUSTED') {
       const limit = e.details?.['limit'];
       const end = typeof e.details?.['period_end'] === 'string' ? new Date(String(e.details['period_end'])).toLocaleDateString() : null;
@@ -446,6 +466,9 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
     if (e.code === 'TEMPLATE_SELECTION_REQUIRED') return 'Your organization needs to choose a template for this document type. An admin can do this in Org Home.';
     if (e.code === 'ESIGN_STORAGE_QUOTA_EXCEEDED') return 'Your organization’s storage is full. Remove draft documents you no longer need, or an admin can change the plan in Settings → Plan & billing.';
     if (e.status === 403 && e.details?.['reason'] === 'personal_sending_not_enabled') return 'Sending from a personal account isn’t enabled yet.';
+    // Aramo Sign Personal (Free) §6 — the Personal sending gate's refusals.
+    const personal = personalRefusalMessage(e.details?.['reason']);
+    if (personal !== null) return personal;
     if (e.status === 403) return 'You don’t have permission to do that.';
     if (e.code === 'ENVELOPE_ILLEGAL_TRANSITION') return 'This envelope can’t be changed in its current state.';
     return e.message.length > 0 ? e.message : fallback;
@@ -484,4 +507,40 @@ export function tokenFromSigningLink(input: string): string | null {
   const m = /\/s\/([A-Za-z0-9_-]{20,})/.exec(v);
   if (m !== null && m[1] !== undefined) return m[1];
   return /^[A-Za-z0-9_-]{20,}$/.test(v) ? v : null;
+}
+
+// Aramo Sign Personal (Free) §6.3–§6.6 — the Personal sending gate's refusal reasons.
+const PERSONAL_REFUSALS: Record<string, string> = {
+  phone_verification_required:
+    'Sending from this account needs a verified mobile phone number. Phone verification isn’t available for your account yet — contact Aramo support.',
+  personal_review_pending: 'We’re reviewing your account. You can send envelopes once the review is complete.',
+  personal_restricted:
+    'Sending is paused on your account while we review it. Envelopes you already sent aren’t affected. Contact Aramo support if you think this is a mistake.',
+  personal_location_not_supported: 'Aramo Sign Personal is currently available in the United States and India.',
+};
+
+export function personalRefusalMessage(reason: unknown): string | null {
+  return typeof reason === 'string' ? (PERSONAL_REFUSALS[reason] ?? null) : null;
+}
+
+/** A send refused by the daily window (Personal Free: 2 a day) rather than the monthly allowance. */
+export function isDailyLimit(e: ApiError): boolean {
+  const d = e.details ?? {};
+  const tag = [d['reason'], d['window'], d['period']].filter((v): v is string => typeof v === 'string').join(' ').toUpperCase();
+  return /DAY|DAILY/.test(tag);
+}
+
+/** An allowance refusal (daily or monthly) — a Personal account is offered the Business route. */
+export function isAllowanceLimit(e: unknown): boolean {
+  return e instanceof ApiError && e.code === 'ESIGN_ALLOWANCE_EXHAUSTED';
+}
+
+/** The send-refusal text, worded for a Personal account where it differs from an organization's. */
+export function sendRefusalMessage(e: unknown, personal: boolean): string {
+  if (personal && e instanceof ApiError && e.code === 'ESIGN_ALLOWANCE_EXHAUSTED' && !isDailyLimit(e)) {
+    const limit = e.details?.['limit'];
+    const end = typeof e.details?.['period_end'] === 'string' ? new Date(String(e.details['period_end'])).toLocaleDateString() : null;
+    return `You’ve used all ${typeof limit === 'number' ? `${limit} ` : ''}envelopes this month on your Free personal account${end ? `; it renews on ${end}` : ''}.`;
+  }
+  return errorMessage(e);
 }

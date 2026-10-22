@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto';
 
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
 import { ESIGN_SCOPE, IdentityRepository } from '@aramo/identity';
@@ -18,6 +18,7 @@ import { PDFDocument } from 'pdf-lib';
 
 import { AramoSignStorageGate } from '../billing/aramo-sign-storage.gate.js';
 import { NativeAramoSignatureProvider } from '../native-aramo-signature.provider.js';
+import { PersonalSendGate } from '../personal/personal-send.gate.js';
 
 import { SenderContextService } from './sender-context.service.js';
 
@@ -85,6 +86,8 @@ export class SenderEnvelopeService {
     @Inject(DOCUMENT_SOURCE_PROVIDER_PORT) private readonly sources: DocumentSourceProviderPort,
     // A1 — the plan's storage allocation.
     private readonly storageGate: AramoSignStorageGate,
+    // Personal Free v1.1 §6 — the Personal sending gate (PERSONAL tenants only).
+    @Optional() private readonly personal?: PersonalSendGate,
   ) {}
 
   // Sign Unified Product S-1 (directive §4.3.5) — visibility. A member reads the
@@ -599,8 +602,8 @@ export class SenderEnvelopeService {
     return { ok: problems.length === 0, problems };
   }
 
-  async send(auth: AuthContextType, envelope_id: string, body: { subject?: unknown }, requestId: string) {
-    await this.context.assertCanAuthor(auth, requestId);
+  async send(auth: AuthContextType, envelope_id: string, body: { subject?: unknown }, requestId: string, meta: { ip?: string | null } = {}) {
+    const tenant = await this.context.assertCanAuthorTenant(auth, requestId);
     await this.assertMayChange(auth, envelope_id, requestId);
     let d = await this.detail(auth, envelope_id, requestId);
     if (d.status !== 'DRAFT') throw new AramoError('ENVELOPE_ILLEGAL_TRANSITION', `envelope is ${d.status}`, 409, { requestId });
@@ -610,6 +613,23 @@ export class SenderEnvelopeService {
     }
     const ready = this.readiness(d);
     if (!ready.ok) throw bad(requestId, 'This envelope is not ready to send', { reason: 'not_ready', problems: ready.problems });
+    // Personal Free v1.1 §4 / §6 — FREE subscription, risk gate, young-account checks.
+    if (tenant.kind === 'PERSONAL') {
+      if (this.personal === undefined) throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Sending from a personal account is not enabled', 403, { requestId, details: { reason: 'personal_sending_not_enabled' } });
+      const detail = d;
+      await this.personal.assertMaySend(
+        tenant,
+        meta.ip ?? null,
+        {
+          subject: detail.subject,
+          document_titles: detail.documents.map((x) => x.title),
+          sender_name: detail.sender.name,
+          recipient_count: detail.recipients.length,
+          pdfs: async () => Promise.all(detail.documents.map((x) => this.source(auth, envelope_id, x.id, requestId))),
+        },
+        requestId,
+      );
+    }
     await this.repo.updateDraft({
       tenant_id: auth.tenant_id,
       envelope_id,
@@ -619,9 +639,11 @@ export class SenderEnvelopeService {
     return this.detail(auth, envelope_id, requestId);
   }
 
-  async remind(auth: AuthContextType, envelope_id: string, body: { signer_id?: unknown }, requestId: string) {
-    await this.context.assertCanAuthor(auth, requestId);
+  async remind(auth: AuthContextType, envelope_id: string, body: { signer_id?: unknown }, requestId: string, meta: { ip?: string | null } = {}) {
+    const tenant = await this.context.assertCanAuthorTenant(auth, requestId);
     await this.assertMayChange(auth, envelope_id, requestId);
+    // Personal Free v1.1 §6.3 / §6.6 — a reminder is a new email: the risk gate applies.
+    if (tenant?.kind === 'PERSONAL' && this.personal !== undefined) await this.personal.assertRiskGate(tenant.id, meta.ip ?? null, requestId);
     await this.detail(auth, envelope_id, requestId);
     // Multi-Signer M-3a — remind one signer, or (omitted) everyone who may sign now.
     const signer_id = body?.signer_id;

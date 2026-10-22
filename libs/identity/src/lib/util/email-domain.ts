@@ -61,8 +61,46 @@ export function extractEmailDomain(email: string): string {
 // creation (§2); the invite path relies transitively on the domain-lock
 // equality and never calls this.
 export function isPersonalOrDisposableDomain(domain: string): boolean {
+  const c = classifyEmailDomain(domain);
+  return c === 'personal' || c === 'disposable';
+}
+
+// Aramo-Sign-Personal-Free-Launch-Directive-v1_1 (LOCKED) §2 — the ONE email-domain
+// classification, built from the same two maintained datasets (no second list).
+//   disposable — a throwaway provider (checked first: a domain on both lists is
+//                disposable, so Personal signup refuses it);
+//   personal   — a free / consumer provider (Personal signup accepts only this);
+//   business   — anything else that looks like a domain;
+//   invalid    — empty or not a dotted host name.
+// isPersonalOrDisposableDomain above is a thin wrapper (personal ∪ disposable),
+// so every existing caller keeps its behaviour.
+export type EmailDomainClass = 'business' | 'personal' | 'disposable' | 'invalid';
+
+const DOMAIN_SHAPE = /^[a-z0-9]([a-z0-9-]*[a-z0-9])?(\.[a-z0-9]([a-z0-9-]*[a-z0-9])?)+$/;
+
+export function classifyEmailDomain(domain: string): EmailDomainClass {
+  // Lowercased only (no trim) — byte-identical to the pre-v1.1 membership test.
   const d = domain.toLowerCase();
-  return FREE_EMAIL_DOMAINS.has(d) || isDisposableEmailDomain(d);
+  if (d.length === 0) return 'invalid';
+  if (isDisposableEmailDomain(d)) return 'disposable';
+  if (FREE_EMAIL_DOMAINS.has(d)) return 'personal';
+  return DOMAIN_SHAPE.test(d) ? 'business' : 'invalid';
+}
+
+// Directive v1.1 §3.8 — Gmail normalization for DUPLICATE DETECTION ONLY (mail is
+// always sent to the address as typed). gmail.com / googlemail.com: dots and a
+// `+tag` are removed from the local part and the domain folds to gmail.com. Every
+// other address is only trimmed + lowercased.
+const GMAIL_DOMAINS = new Set(['gmail.com', 'googlemail.com']);
+
+export function canonicalEmailForDuplicates(email: string): string {
+  const normalized = normalizeEmail(email);
+  const at = normalized.lastIndexOf('@');
+  if (at <= 0) return normalized;
+  const domain = normalized.slice(at + 1);
+  if (!GMAIL_DOMAINS.has(domain)) return normalized;
+  const local = normalized.slice(0, at).split('+')[0]!.replace(/\./g, '');
+  return `${local}@gmail.com`;
 }
 
 // Domain-Enforcement P1 — the SINGLE-SOURCE reject-personal gate at tenant

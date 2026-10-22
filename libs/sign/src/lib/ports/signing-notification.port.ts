@@ -25,6 +25,9 @@ export interface SigningNotification {
   to_email: string;
   to_name: string;
   envelope_subject: string;
+  // Personal Free v1.1 §6.4 — the sending tenant, so the composition root can add
+  // "Report this email" to a Personal sender's signing request / reminder.
+  tenant_id?: string;
   // The signing link (contains the raw capability token) — NEVER logged.
   signing_url?: string;
   // Signer's signed-copy download link (contains a raw access token) — NEVER logged.

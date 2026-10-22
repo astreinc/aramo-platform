@@ -7,6 +7,7 @@ import {
   HttpCode,
   HttpStatus,
   Logger,
+  Optional,
   Post,
   type RawBodyRequest,
   Req,
@@ -33,6 +34,7 @@ import {
 import { Inject } from '@nestjs/common';
 import type { Request } from 'express';
 
+import { PersonalSendGate } from '../personal/personal-send.gate.js';
 import { ESIGN_READ_SCOPE, SenderContextService } from '../sender/sender-context.service.js';
 
 import { EsignOwnerActivationService } from './esign-owner-activation.service.js';
@@ -148,6 +150,8 @@ export class EsignBillingController {
     private readonly owners: EsignOwnerActivationService,
     private readonly ctx: SenderContextService,
     private readonly identity: IdentityRepository,
+    // Personal Free v1.1 §4 — opens the FREE subscription lazily on account read.
+    @Optional() private readonly personal?: PersonalSendGate,
   ) {}
 
   private async run<T>(requestId: string, fn: () => Promise<T>): Promise<T> {
@@ -185,7 +189,10 @@ export class EsignBillingController {
           details: { reason: 'billing_read_scope_missing' },
         });
       }
-      const kind = await this.ctx.tenantKind(auth.tenant_id, requestId);
+      const tenant = await this.ctx.tenantOf(auth.tenant_id, requestId);
+      const kind = tenant.kind;
+      // Personal Free v1.1 §4 — a bound PERSONAL tenant's FREE subscription (mode not off).
+      if (kind === 'PERSONAL' && this.ctx.personalAuthoringOpen(tenant)) await this.personal?.ensureFreeSubscription(tenant);
       const view = await this.lifecycle.account(auth.tenant_id, ESIGN_ENVELOPE_ALLOWANCE);
       // Heal path: the subscribing owner whose role grant did not land at the
       // webhook (e.g. a transient identity failure) receives it on their next read.
@@ -207,7 +214,8 @@ export class EsignBillingController {
   checkout(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Body() body: { plan_key?: unknown; accept_terms?: unknown }) {
     return this.run(requestId, async () => {
       assertCanManageBilling(auth, requestId);
-      await this.ctx.assertCanAuthor(auth, requestId);
+      // Paid checkout is Business-only whatever the Personal mode (no Stripe for Free Personal).
+      await this.ctx.assertBusiness(auth, requestId);
       if (typeof body?.plan_key !== 'string' || body.plan_key.length === 0 || body.plan_key.length > 100) {
         throw new AramoError('VALIDATION_ERROR', 'plan_key is required', 400, { requestId });
       }

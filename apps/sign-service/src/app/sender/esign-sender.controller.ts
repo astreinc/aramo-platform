@@ -10,14 +10,17 @@ import {
   Post,
   Put,
   Query,
+  Req,
   StreamableFile,
   UseFilters,
 } from '@nestjs/common';
 import { AramoExceptionFilter, RequestId } from '@aramo/common';
 import { AuthContext, type AuthContextType } from '@aramo/auth';
 import { ESIGN_SCOPE, EsignSenderBoundary } from '@aramo/identity';
+import type { Request } from 'express';
 
 import { toHttp } from '../esign-http.controller.js';
+import { clientIp } from '../personal/personal-send.gate.js';
 
 import { ESIGN_CREATE_SCOPE, ESIGN_READ_SCOPE, ESIGN_SEND_SCOPE, SenderContextService } from './sender-context.service.js';
 import { SenderEnvelopeService, type UploadDocumentBody } from './sender-envelope.service.js';
@@ -33,7 +36,8 @@ import { SenderMembersService } from './sender-members.service.js';
 // administration sign:member:manage. Sign Unified Product S-1: the service then
 // applies own-vs-organization visibility (sign:envelope:read:all) and envelope
 // ownership (sign:envelope:manage:all) on every read and change. A PERSONAL tenant is refused every write
-// in the service (Lead Host & Workspace Ruling v1.0: Personal sending not enabled).
+// in the service (Lead Host & Workspace Ruling v1.0: Personal sending not enabled) — lifted only per
+// Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED (mode not off, bound tenant, sending gate).
 // tenant_id and the acting user come only from the verified auth context.
 @Controller('v1/sign/sender')
 @UseFilters(AramoExceptionFilter)
@@ -166,15 +170,15 @@ export class EsignSenderController {
   @Post('envelopes/:id/send')
   @HttpCode(HttpStatus.OK)
   @EsignSenderBoundary(ESIGN_SEND_SCOPE)
-  send(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string, @Body() body: { subject?: unknown }) {
-    return this.run(requestId, () => this.envelopes.send(auth, id, body, requestId));
+  send(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string, @Body() body: { subject?: unknown }, @Req() req: Request) {
+    return this.run(requestId, () => this.envelopes.send(auth, id, body, requestId, { ip: clientIp(req) }));
   }
 
   @Post('envelopes/:id/remind')
   @HttpCode(HttpStatus.OK)
   @EsignSenderBoundary(ESIGN_SEND_SCOPE)
-  remind(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string, @Body() body: { signer_id?: unknown } = {}) {
-    return this.run(requestId, () => this.envelopes.remind(auth, id, body ?? {}, requestId));
+  remind(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string, @Req() req: Request, @Body() body: { signer_id?: unknown } = {}) {
+    return this.run(requestId, () => this.envelopes.remind(auth, id, body ?? {}, requestId, { ip: clientIp(req) }));
   }
 
   @Post('envelopes/:id/void')

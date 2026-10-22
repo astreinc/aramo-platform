@@ -61,6 +61,8 @@ model Plan {
   activation_note               String?
   display_order                 Int     @default(100)
   allowances    PlanAllowance[]
+  // Personal Free v1.1 — short-window caps (e.g. 2 envelopes per day).
+  allowance_windows PlanAllowanceWindow[]
   capacities    PlanCapacity[]
   features      PlanFeature[]
   subscriptions TenantSubscription[]
@@ -85,6 +87,21 @@ model PlanAllowance {
   @@schema("subscription")
 }
 
+// Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED §4 — a plan's short-window
+// cap on a metered allowance, beside the monthly PlanAllowance (e.g. Free Personal:
+// at most 2 envelopes in any 24 hours). Counted from the AllowanceUsage ledger, so
+// one envelope counts once. CHECK window_kind: DAY. No row = no window cap.
+model PlanAllowanceWindow {
+  plan_id        String @db.Uuid
+  allowance_key  String
+  window_kind    String
+  limit_quantity Int
+  plan           Plan   @relation(fields: [plan_id], references: [id])
+
+  @@id([plan_id, allowance_key, window_kind])
+  @@schema("subscription")
+}
+
 model TenantSubscription {
   id            String    @id @db.Uuid
   tenant_id     String    @db.Uuid
@@ -92,8 +109,10 @@ model TenantSubscription {
   // Billing periods start at this instant and every calendar month after it
   // (day clamped to the month's length).
   period_anchor DateTime  @db.Timestamptz(6)
-  // CHECK: MANUAL | DEVELOPMENT | SELF_SERVICE. DEVELOPMENT rows come only from
-  // the governed local/test seed, which refuses to run in production.
+  // CHECK: MANUAL | DEVELOPMENT | SELF_SERVICE | FREE. DEVELOPMENT rows come only
+  // from the governed local/test seed, which refuses to run in production. FREE
+  // (Personal Free v1.1) is system-opened for an active PERSONAL tenant, never
+  // provider-billed (CHECK: no billing linkage).
   source        String
   started_at    DateTime  @default(now()) @db.Timestamptz(6)
   ended_at      DateTime? @db.Timestamptz(6)
@@ -147,6 +166,7 @@ model AllowanceUsage {
 
   @@unique([tenant_id, allowance_key, send_key])
   @@index([tenant_id, allowance_key, period_start])
+  @@index([tenant_id, allowance_key, reserved_at])
   @@schema("subscription")
 }
 

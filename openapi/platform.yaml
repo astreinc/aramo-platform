@@ -44,6 +44,16 @@ tags:
       provisions a BUSINESS tenant with capabilities [core, esign] and an
       owner holding the organization roles tenant_owner + tenant_admin
       (ROLES-1 §6; sending still needs a paid subscription to open).
+  - name: Sign Personal Signup
+    description: |
+      Sign Personal (Free) Launch v1.1 (LOCKED) — the PUBLIC Personal signup on
+      sign.aramo.ai under `/v1/signup/sign/personal/*`. Dark (404) unless
+      SIGN_PERSONAL_SIGNUP_MODE is `invite` or `open` (ships `off`).
+  - name: Platform Personal
+    description: |
+      Sign Personal (Free) Launch v1.1 — the operator review queue, the audited
+      clear-review / restrict / reinstate / close actions and pilot invites.
+      `platform:tenant:lifecycle:manage`, platform tier only.
   - name: Platform Skill Governance
     description: |
       SKILL-TAX-1F-B2 — the canonical skills-taxonomy administration surface and
@@ -2340,6 +2350,644 @@ paths:
         '404':
           $ref: '#/components/responses/PlatformTemplateNotFound'
 
+  # Aramo-Sign-Personal-Free-Launch-Directive-v1_1 (LOCKED) — the PUBLIC Personal
+  # (Free) signup. Every route answers 404 unless SIGN_PERSONAL_SIGNUP_MODE is
+  # `invite` or `open` (ships `off`).
+  /v1/signup/sign/personal/terms:
+    get:
+      operationId: getPersonalSignupTerms
+      tags: [Sign Personal Signup]
+      summary: The exact APPROVED Personal documents a signup must accept.
+      description: |
+        The Personal Terms of Service, Privacy Notice and Acceptable Use Policy
+        (`sign.personal_terms_of_service`, `aramo.privacy_notice`,
+        `aramo.acceptable_use_policy`) at their APPROVED versions, or `documents:
+        null` while any of them is not APPROVED (then `complete` is refused with
+        `legal_documents_not_approved`). A 404 means Personal signup is off.
+      security: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [documents]
+                properties:
+                  documents:
+                    type: [array, 'null']
+                    items:
+                      $ref: '#/components/schemas/PersonalTermsDocument'
+        '404':
+          $ref: '#/components/responses/SignupNotFound'
+  /v1/signup/sign/personal/start:
+    post:
+      operationId: startPersonalSignup
+      tags: [Sign Personal Signup]
+      summary: Start a Personal (Free) signup and email a 6-digit code.
+      description: |
+        Validates the email class (personal only), the three location signals
+        (phone region, network country, declared residence — US or IN; fail
+        closed), the invite (invite mode) and the robot check, rates the signup
+        (every signal and the decision are stored) and emails a 6-digit code
+        valid for 10 minutes. An address that already has an Aramo account gets
+        the same 202 (with a signup_id that never verifies) and an "already
+        have an account" email — non-enumerating.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, phone, residence]
+              properties:
+                name:
+                  type: string
+                  minLength: 2
+                  maxLength: 100
+                email:
+                  type: string
+                  format: email
+                  maxLength: 254
+                phone:
+                  type: string
+                  description: Mobile number (E.164 or a formattable number).
+                residence:
+                  type: string
+                  enum: [US, IN]
+                robot_token:
+                  type: [string, 'null']
+                  description: The Cloudflare Turnstile token.
+                invite_code:
+                  type: string
+                  description: Required in invite mode.
+                hp:
+                  type: string
+                  description: Honeypot; must be empty.
+                elapsed_ms:
+                  type: number
+                  description: Milliseconds the form was open before submitting.
+      responses:
+        '202':
+          description: Accepted (a code was emailed, or the address already has an account).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [signup_id]
+                properties:
+                  signup_id:
+                    type: string
+                    format: uuid
+        '400':
+          description: |
+            `VALIDATION_ERROR` — malformed input, or details.reason one of
+            `business_email_use_business_signup`, `personal_email_not_allowed`,
+            `personal_location_not_supported`, `invite_required`, `invite_invalid`,
+            `personal_pilot_full`, `personal_signup_refused`.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/SignupNotFound'
+  /v1/signup/sign/personal/resend-email:
+    post:
+      operationId: resendPersonalSignupEmailCode
+      tags: [Sign Personal Signup]
+      summary: Email a fresh code (after 60 seconds; at most 5 a day).
+      description: Always 202; nothing is sent inside the 60-second gap, over the daily limit or for an unknown signup.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PersonalSignupRef'
+      responses:
+        '202':
+          description: Accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accepted]
+                properties:
+                  accepted:
+                    type: boolean
+        '404':
+          $ref: '#/components/responses/SignupNotFound'
+  /v1/signup/sign/personal/verify-email:
+    post:
+      operationId: verifyPersonalSignupEmail
+      tags: [Sign Personal Signup]
+      summary: Prove the email address with its 6-digit code.
+      description: |
+        `next` is the UI hint from the decision made at start: `terms` (allow),
+        `phone` (step-up) or `review`. A held signup (phone / review) still
+        continues to terms and complete.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PersonalSignupCode'
+      responses:
+        '200':
+          description: Verified.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [next]
+                properties:
+                  next:
+                    type: string
+                    enum: [phone, terms, review]
+        '400':
+          $ref: '#/components/responses/PersonalCodeError'
+        '404':
+          $ref: '#/components/responses/SignupNotFound'
+  /v1/signup/sign/personal/phone/send:
+    post:
+      operationId: sendPersonalSignupPhoneCode
+      tags: [Sign Personal Signup]
+      summary: Text a 6-digit code to the signup's phone (step-up).
+      description: '`sent: false` when phone verification is unavailable (no SMS provider configured) — the account will stay held until a phone code is verified.'
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PersonalSignupRef'
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [sent]
+                properties:
+                  sent:
+                    type: boolean
+        '400':
+          description: '`VALIDATION_ERROR` — details.reason `personal_code_rate_limited` (60-second gap / 5 a day).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/SignupNotFound'
+  /v1/signup/sign/personal/phone/verify:
+    post:
+      operationId: verifyPersonalSignupPhone
+      tags: [Sign Personal Signup]
+      summary: Verify the phone code (phone assurance).
+      description: |
+        Checks the 6-digit SMS code (10 minutes, 5 tries). A match records phone
+        verification on the signup; it is the only path that does. An account held
+        for review is never treated as phone-verified.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PersonalSignupCode'
+      responses:
+        '200':
+          description: Verified.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [next]
+                properties:
+                  next:
+                    type: string
+                    enum: [terms]
+        '400':
+          $ref: '#/components/responses/PersonalCodeError'
+        '404':
+          $ref: '#/components/responses/SignupNotFound'
+  /v1/signup/sign/personal/complete:
+    post:
+      operationId: completePersonalSignup
+      tags: [Sign Personal Signup]
+      summary: Accept the APPROVED documents and create the Personal account.
+      description: |
+        Creates a PROVISIONED PERSONAL tenant ([core, sign]) and its owner with
+        `tenant_owner` only (system provisioning authority), without a Cognito
+        user or an ExternalIdentity, enrolled for Google sign-in. No subscription
+        and no billing provider are created. The account activates only when the
+        owner signs in with the Google account for exactly the verified email.
+        `held` reports a review hold or an unmet phone step-up. Idempotent.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [signup_id, accept]
+              properties:
+                signup_id:
+                  type: string
+                  format: uuid
+                accept:
+                  type: array
+                  items:
+                    type: object
+                    required: [key, version]
+                    properties:
+                      key:
+                        type: string
+                      version:
+                        type: string
+      responses:
+        '200':
+          description: Provisioned (or provisioning in a concurrent request).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, email, sign_in, held]
+                properties:
+                  status:
+                    type: string
+                    enum: [PROVISIONED, PROVISIONING]
+                  email:
+                    type: string
+                  sign_in:
+                    type: object
+                    required: [google]
+                    properties:
+                      google:
+                        type: string
+                        format: uri
+                  held:
+                    type: [string, 'null']
+                    enum: [review, phone_verification_required, null]
+        '400':
+          description: |
+            `VALIDATION_ERROR` — details.reason `legal_documents_not_approved`,
+            `terms_not_accepted`, `invite_invalid`, `personal_pilot_full` or
+            `personal_signup_refused`.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          $ref: '#/components/responses/SignupNotFound'
+        '409':
+          description: '`EMAIL_UNAVAILABLE` — the address already belongs to an Aramo account.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '500':
+          description: '`INTERNAL_ERROR` — retryable (details.retryable true).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
+  # Directive v1.1 §6.5 / §10 — the operator's Personal surface.
+  /platform/personal-review:
+    get:
+      operationId: listPersonalReviewQueue
+      tags: [Platform Personal]
+      summary: Personal accounts held for review or restricted, with their signals.
+      description: Requires scope `platform:tenant:lifecycle:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PersonalReviewItem'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+  /platform/personal-invites:
+    post:
+      operationId: issuePersonalInvite
+      tags: [Platform Personal]
+      summary: Issue a one-time pilot invite code bound to one personal email (7 days).
+      description: |
+        The code is returned ONCE (only its hash is stored). Refused while the
+        pilot is at SIGN_PERSONAL_PILOT_CAP. Requires scope
+        `platform:tenant:lifecycle:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email]
+              properties:
+                email:
+                  type: string
+                  format: email
+                  maxLength: 254
+      responses:
+        '201':
+          description: Issued.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [code, email, expires_at]
+                properties:
+                  code:
+                    type: string
+                  email:
+                    type: string
+                  expires_at:
+                    type: string
+                    format: date-time
+        '400':
+          description: '`VALIDATION_ERROR` — details.reason `personal_email_required` or `personal_pilot_full`.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+  /platform/tenants/{tenant_id}/personal/clear-review:
+    post:
+      operationId: clearPersonalReview
+      tags: [Platform Personal]
+      summary: Approve — clear the review hold (never sets phone assurance).
+      description: Audited with the operator and reason. Requires scope `platform:tenant:lifecycle:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PersonalRiskAction'
+      responses:
+        '200':
+          description: The risk state after the action.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonalRiskState'
+        '400':
+          description: '`VALIDATION_ERROR` — a missing reason, a past `until`, or details.reason `illegal_risk_transition`.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          description: '`NOT_FOUND` — the tenant is not a personal account (details.reason no_personal_risk_state).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+  /platform/tenants/{tenant_id}/personal/restrict:
+    post:
+      operationId: restrictPersonalAccount
+      tags: [Platform Personal]
+      summary: Restrict sending (until a time, or until reinstated).
+      description: Audited with the operator and reason. Requires scope `platform:tenant:lifecycle:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PersonalRiskAction'
+      responses:
+        '200':
+          description: The risk state after the action.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonalRiskState'
+        '400':
+          description: '`VALIDATION_ERROR` — a missing reason, a past `until`, or details.reason `illegal_risk_transition`.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          description: '`NOT_FOUND` — the tenant is not a personal account (details.reason no_personal_risk_state).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+  /platform/tenants/{tenant_id}/personal/reinstate:
+    post:
+      operationId: reinstatePersonalAccount
+      tags: [Platform Personal]
+      summary: Reinstate a restricted or held account.
+      description: Audited with the operator and reason. Requires scope `platform:tenant:lifecycle:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PersonalRiskAction'
+      responses:
+        '200':
+          description: The risk state after the action.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonalRiskState'
+        '400':
+          description: '`VALIDATION_ERROR` — a missing reason, a past `until`, or details.reason `illegal_risk_transition`.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          description: '`NOT_FOUND` — the tenant is not a personal account (details.reason no_personal_risk_state).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+  /platform/tenants/{tenant_id}/personal/close:
+    post:
+      operationId: closePersonalAccount
+      tags: [Platform Personal]
+      summary: Close the personal account for sending.
+      description: Audited with the operator and reason. Requires scope `platform:tenant:lifecycle:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PersonalRiskAction'
+      responses:
+        '200':
+          description: The risk state after the action.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonalRiskState'
+        '400':
+          description: '`VALIDATION_ERROR` — a missing reason, a past `until`, or details.reason `illegal_risk_transition`.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          description: '`NOT_FOUND` — the tenant is not a personal account (details.reason no_personal_risk_state).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
+  /platform/tenants/{tenant_id}/personal/reports:
+    get:
+      operationId: listPersonalAbuseReports
+      tags: [Platform Personal]
+      summary: The abuse reports received for a personal account (newest first).
+      description: |
+        Sign Personal (Free) v1.1 §6.4. The reporter's address is never stored or
+        returned (only its domain). Requires scope `platform:tenant:lifecycle:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/TenantIdParam'
+      responses:
+        '200':
+          description: Reports.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PersonalAbuseReport'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          description: '`NOT_FOUND` — the tenant is not a personal account.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+  /platform/personal-reports/{report_id}/decide:
+    post:
+      operationId: decidePersonalAbuseReport
+      tags: [Platform Personal]
+      summary: Record an operator's outcome for one abuse report.
+      description: |
+        `FALSE_REPORT` lowers that reporter's weight in future reports; `CONFIRMED`
+        and `DISMISSED` close the report. A person decides; the reason is stored.
+        Restricting or reinstating the account is a separate action.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: report_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [outcome, reason]
+              properties:
+                outcome:
+                  type: string
+                  enum: [CONFIRMED, FALSE_REPORT, DISMISSED]
+                reason:
+                  type: string
+                  minLength: 1
+                  maxLength: 500
+      responses:
+        '200':
+          description: The report after the decision.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PersonalAbuseReport'
+        '400':
+          description: '`VALIDATION_ERROR` — an unknown outcome or a missing reason.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          description: '`NOT_FOUND` — no such report.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
 components:
   securitySchemes:
     # Duplicated byte-for-byte from openapi/common.yaml per locked invariant 4
@@ -2405,6 +3053,15 @@ components:
         format: uuid
 
   responses:
+    PersonalCodeError:
+      description: |
+        `VALIDATION_ERROR` — details.reason `code_invalid` (with
+        details.attempts_remaining), `code_expired` or `code_attempts_exceeded`.
+        An unknown signup answers `code_invalid`.
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
     SignupNotFound:
       description: '`NOT_FOUND` — signup is not enabled, or the link is invalid, expired, superseded or over the rate budget (one answer for all).'
       content:
@@ -2543,6 +3200,21 @@ components:
             $ref: 'common.yaml#/components/schemas/ErrorResponse'
 
   schemas:
+    PersonalAbuseReport:
+      type: object
+      required: [id, envelope_id, reason, note, reporter_domain, weight, triggered_restriction, outcome, outcome_reason, decided_at, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        envelope_id: { type: string, format: uuid }
+        reason: { type: [string, 'null'], enum: [phishing, impersonation, spam, unknown_sender, other, null] }
+        note: { type: [string, 'null'] }
+        reporter_domain: { type: string }
+        weight: { type: number }
+        triggered_restriction: { type: boolean }
+        outcome: { type: string, enum: [OPEN, CONFIRMED, FALSE_REPORT, DISMISSED] }
+        outcome_reason: { type: [string, 'null'] }
+        decided_at: { type: [string, 'null'], format: date-time }
+        created_at: { type: string, format: date-time }
     SignSignupOrganization:
       type: object
       description: Sign Signup Amendment A1 (LOCKED) — the organization details collected after email confirmation (United States only).
@@ -3758,3 +4430,126 @@ components:
           maxLength: 2000
         active:
           type: boolean
+    PersonalTermsDocument:
+      type: object
+      required: [key, version, url, sha256]
+      properties:
+        key:
+          type: string
+          enum: [sign.personal_terms_of_service, aramo.privacy_notice, aramo.acceptable_use_policy]
+        version:
+          type: string
+        url:
+          type: string
+          format: uri
+        sha256:
+          type: string
+    PersonalSignupRef:
+      type: object
+      required: [signup_id]
+      properties:
+        signup_id:
+          type: string
+          format: uuid
+    PersonalSignupCode:
+      type: object
+      required: [signup_id, code]
+      properties:
+        signup_id:
+          type: string
+          format: uuid
+        code:
+          type: string
+          pattern: '^[0-9]{6}$'
+    PersonalRiskAction:
+      type: object
+      required: [reason]
+      properties:
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 500
+        until:
+          type: string
+          format: date-time
+          description: restrict only — when the restriction ends (omitted = until reinstated).
+    PersonalRiskState:
+      type: object
+      required: [tenant_id, state, step_up_required, phone_verified_at, restricted_until, reason, decided_by, updated_at]
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        state:
+          type: string
+          enum: [clear, review, restricted, closed]
+        step_up_required:
+          type: boolean
+        phone_verified_at:
+          type: [string, 'null']
+          format: date-time
+        restricted_until:
+          type: [string, 'null']
+          format: date-time
+        reason:
+          type: [string, 'null']
+        decided_by:
+          type: [string, 'null']
+          format: uuid
+        updated_at:
+          type: string
+          format: date-time
+    PersonalReviewItem:
+      type: object
+      required: [tenant_id, tenant_name, owner_email, state, reason, step_up_required, risk_points, decision, signals, phone_verified_at, restricted_until, created_at, updated_at]
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        tenant_name:
+          type: [string, 'null']
+        tenant_status:
+          type: [string, 'null']
+        owner_email:
+          type: [string, 'null']
+        state:
+          type: string
+          enum: [review, restricted]
+        reason:
+          type: [string, 'null']
+        step_up_required:
+          type: boolean
+        risk_points:
+          type: [integer, 'null']
+        decision:
+          type: [string, 'null']
+          enum: [allow, step_up, review, null]
+        signals:
+          type: array
+          items:
+            type: object
+            required: [key, points]
+            properties:
+              key:
+                type: string
+              points:
+                type: integer
+              refuse:
+                type: boolean
+              detail:
+                type: string
+        phone_verified_at:
+          type: [string, 'null']
+          format: date-time
+        restricted_until:
+          type: [string, 'null']
+          format: date-time
+        decided_by:
+          type: [string, 'null']
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time

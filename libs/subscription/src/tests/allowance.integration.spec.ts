@@ -22,6 +22,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20261020130300_sign_naming_keys/migration.sql',
   '../../prisma/migrations/20261022100100_billing_account_country_guard/migration.sql',
   '../../prisma/migrations/20261022110100_billing_flag_domain_reason/migration.sql',
+  '../../prisma/migrations/20261023100000_sign_personal_free/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 const KEY = 'sign.envelopes';

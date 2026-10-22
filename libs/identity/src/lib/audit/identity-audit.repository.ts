@@ -171,6 +171,21 @@ export const EVENT_TYPES = [
   'identity.domain.verification.delegation.issued',
   'identity.domain.verification.delegation.used',
   'identity.domain.verification.delegation.revoked',
+  // Sign Personal (Free) Launch v1.1 (LOCKED) §6.2–§6.5 / §10 — the Personal signup and
+  // risk-state lifecycle. Inserted IN THE SAME transaction as the state write
+  // (PersonalRiskService / PersonalSignupRepository). Tenant-scoped (subject_id = the
+  // tenant), except the pilot invite issue, which is GLOBAL (no tenant exists yet;
+  // subject_id = the invite id; the payload never carries the code).
+  'identity.personal.signup.provisioned',
+  'identity.personal.signup.lapsed',
+  'identity.personal.risk.review_flagged',
+  'identity.personal.risk.step_up_required',
+  'identity.personal.risk.phone_verified',
+  'identity.personal.risk.restricted',
+  'identity.personal.risk.review_cleared',
+  'identity.personal.risk.reinstated',
+  'identity.personal.risk.closed',
+  'identity.personal.invite.issued',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -254,6 +269,17 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   'identity.domain.verification.delegation.issued',
   'identity.domain.verification.delegation.used',
   'identity.domain.verification.delegation.revoked',
+  // Sign Personal (Free) Launch v1.1 — signup / risk-state rows carry the tenant id
+  // (identity.personal.invite.issued is global).
+  'identity.personal.signup.provisioned',
+  'identity.personal.signup.lapsed',
+  'identity.personal.risk.review_flagged',
+  'identity.personal.risk.step_up_required',
+  'identity.personal.risk.phone_verified',
+  'identity.personal.risk.restricted',
+  'identity.personal.risk.review_cleared',
+  'identity.personal.risk.reinstated',
+  'identity.personal.risk.closed',
 ]);
 
 export interface WriteAuditEventInput {

@@ -42,6 +42,12 @@ function crumbsFor(pathname: string): BreadcrumbItem[] {
     if (/^\/document-templates\/[^/]+/.exec(pathname)) crumbs.push({ label: 'Detail' });
     return crumbs;
   }
+  if (pathname.startsWith('/personal-review')) {
+    return [{ label: 'Dashboard', href: '/' }, { label: 'Personal review queue' }];
+  }
+  if (pathname.startsWith('/personal-invites')) {
+    return [{ label: 'Dashboard', href: '/' }, { label: 'Pilot invites' }];
+  }
   if (pathname.startsWith('/template-variables')) {
     return [{ label: 'Dashboard', href: '/' }, { label: 'Template variables' }];
   }
@@ -88,6 +94,10 @@ export function PlatformShell({ children }: { readonly children: ReactNode }) {
   const canReadDocTemplates =
     sessionState.status === 'authenticated' &&
     hasScope(sessionState.session, 'platform:document_template:read');
+  // Aramo Sign Personal (Free) — the review queue + pilot invites need lifecycle management.
+  const canManageLifecycle =
+    sessionState.status === 'authenticated' &&
+    hasScope(sessionState.session, 'platform:tenant:lifecycle:manage');
   const handleSignOut = (): void => {
     void logout();
   };
@@ -104,6 +114,12 @@ export function PlatformShell({ children }: { readonly children: ReactNode }) {
         label="Tenants"
         icon={<Icons.IconBuilding />}
       />
+      {canManageLifecycle ? (
+        <RailNavSection label="Sign Personal">
+          <RailNavItem to="/personal-review" label="Review queue" icon={<Icons.IconShield />} />
+          <RailNavItem to="/personal-invites" label="Pilot invites" icon={<Icons.IconUserPlus />} />
+        </RailNavSection>
+      ) : null}
       {canReadSkills ? (
         <RailNavSection label="Skills">
           <RailNavItem to="/skills" end label="Registry" icon={<Icons.IconTag />} />

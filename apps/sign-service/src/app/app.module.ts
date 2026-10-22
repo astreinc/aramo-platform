@@ -64,6 +64,9 @@ import { DOCUMENT_TEMPLATES_PORT, DocumentTemplatesHttpAdapter } from './documen
 import { SignFeatureGate } from './sign-feature.gate.js';
 import { EsignSenderTemplatesController } from './sender/esign-sender-templates.controller.js';
 import { SenderTemplatesService } from './sender/sender-templates.service.js';
+import { PersonalSendGate } from './personal/personal-send.gate.js';
+import { SignReportController } from './personal/sign-report.controller.js';
+import { ReportBudget, SignReportService } from './personal/sign-report.service.js';
 
 // DOC-3/DOC-4 — apps/sign-service composition root. Composes the ATS-neutral
 // E-Sign domain (EsignModule.forRoot) and binds the full DOC-4 executed-document
@@ -146,7 +149,7 @@ import { SenderTemplatesService } from './sender/sender-templates.service.js';
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
   // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController],
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,
@@ -166,6 +169,11 @@ import { SenderTemplatesService } from './sender/sender-templates.service.js';
     SignFeatureGate,
     { provide: DOCUMENT_TEMPLATES_PORT, useClass: DocumentTemplatesHttpAdapter },
     SenderTemplatesService,
+    // Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED — the Personal sending
+    // gate (inert while SIGN_PERSONAL_SIGNUP_MODE is off) and "Report this email".
+    PersonalSendGate,
+    ReportBudget,
+    SignReportService,
   ],
 })
 export class AppModule implements NestModule {

@@ -65,6 +65,15 @@ export function SignupPage() {
   const [sentTo, setSentTo] = useState<string | null>(null);
   const [termsDoc, setTermsDoc] = useState<Terms>(null);
   const [unavailable, setUnavailable] = useState(false);
+  // Aramo Sign Personal (Free) — offered only while the Personal mode is not off
+  // (its public terms route answers 404 when off).
+  const [personalOpen, setPersonalOpen] = useState(false);
+
+  useEffect(() => {
+    fetch(`${API}/personal/terms`)
+      .then((r) => setPersonalOpen(r.status !== 404))
+      .catch(() => undefined);
+  }, []);
 
   useEffect(() => {
     fetch(`${API}/terms`)
@@ -144,6 +153,11 @@ export function SignupPage() {
         <p className="sg-help" data-testid="signup-eligibility">
           Sign in with a Google or Microsoft work account. If your organization uses another sign-in provider, contact sales.
         </p>
+        {personalOpen ? (
+          <p className="sg-help" data-testid="signup-personal-link">
+            Signing up for yourself? <a href="/signup/personal">Create a free personal account</a>
+          </p>
+        ) : null}
         <p className="sg-help">
           Already have an account? <a href="/login">Sign in</a>
         </p>

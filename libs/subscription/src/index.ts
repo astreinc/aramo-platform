@@ -6,6 +6,8 @@ export {
   type AllowanceStatus,
   type AllowanceThreshold,
   type AllowanceUnavailableReason,
+  type AllowanceWindowStatus,
+  DAY_WINDOW_MS,
   type ReserveResult,
   type UnsubscribedState,
   subscriptionSends,
@@ -68,3 +70,13 @@ export {
   type OrganizationBillingProfilePort,
   type OrganizationProfileRefusal,
 } from './lib/billing/organization-billing-profile.port.js';
+// Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED §4 — the FREE subscription.
+export {
+  FreePersonalSubscriptionService,
+  FreePersonalPlanKey,
+  FREE_SUBSCRIPTION_SOURCE,
+  personalSignupMode,
+  type EnsureFreeResult,
+  type FreeSubscriptionRefusal,
+  type PersonalSignupMode,
+} from './lib/free-personal-subscription.js';

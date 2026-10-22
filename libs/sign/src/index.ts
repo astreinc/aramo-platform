@@ -146,3 +146,23 @@ export {
 export { RecipientInboxRepository, RECIPIENT_SESSION_TTL_MS, RECIPIENT_COPY_TTL_MS, type RecipientInboxRow } from './lib/recipient-inbox.repository.js';
 export { canonicalSignEventType } from './lib/event-type.js';
 export { SigningInvitationService, SIGNING_INVITATION_MAX_ATTEMPTS } from './lib/signing-invitation.service.js';
+// Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED §6.4 — abuse reports.
+export {
+  AbuseReportService,
+  ABUSE_REPORT_NOTE_MAX,
+  ABUSE_REPORT_OUTCOMES,
+  ABUSE_REPORT_REASONS,
+  DEFAULT_ABUSE_REPORT_CONFIG,
+  abuseReportConfig,
+  abuseReporterKey,
+  emailDomainOf,
+  isAbuseReportReason,
+  weighReport,
+  type AbuseReportConfig,
+  type AbuseReportContext,
+  type AbuseReportOutcome,
+  type AbuseReportReason,
+  type AbuseReportView,
+  type AbuseReportWeight,
+  type RecordAbuseReportResult,
+} from './lib/abuse-report.service.js';

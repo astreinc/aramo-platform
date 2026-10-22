@@ -62,6 +62,9 @@ services:
     build:
       context: .
       dockerfile: deploy/nginx/Dockerfile
+      args:
+        # Public (not a secret) — the Personal signup robot-check widget key.
+        VITE_SIGN_TURNSTILE_SITE_KEY: ${SIGN_TURNSTILE_SITE_KEY:-}
     image: aramo/nginx:local
     container_name: aramo-prod-nginx
     restart: unless-stopped
@@ -526,6 +529,26 @@ services:
       # (unset ⇒ off; an expired claim still lapses on the next claim attempt).
       - DOMAIN_CLAIM_SWEEP_ENABLED
       - DOMAIN_CLAIM_SWEEP_INTERVAL_MS
+      # Sign Personal (Free) Launch v1.1 (LOCKED) — public Personal signup + operator
+      # review. Dark unless SIGN_PERSONAL_SIGNUP_MODE is invite|open (ships off).
+      # GeoLite2 databases are files on the box (unset / missing ⇒ every signup is
+      # refused: fail closed). SMS unset ⇒ disabled. Turnstile secret unset ⇒ every
+      # signup is refused. SIGN_TURNSTILE_MODE (test-only) is deliberately NOT passed.
+      - SIGN_PERSONAL_SIGNUP_MODE
+      - SIGN_PERSONAL_PILOT_CAP
+      - SIGN_PERSONAL_ALLOWED_COUNTRIES
+      - SIGN_PERSONAL_RISK_CONFIG
+      # The GeoLite2 files live on the box in /opt/aramo/geoip (mounted read-only below).
+      - SIGN_GEOIP_DB_PATH=${SIGN_GEOIP_DB_PATH:-/geoip/GeoLite2-Country.mmdb}
+      - SIGN_GEOIP_ASN_DB_PATH=${SIGN_GEOIP_ASN_DB_PATH:-/geoip/GeoLite2-ASN.mmdb}
+      - SIGN_SMS_PROVIDER
+      - SIGN_TURNSTILE_SECRET
+      - SIGN_PERSONAL_LAPSE_SWEEP_ENABLED
+      - SIGN_PERSONAL_LAPSE_SWEEP_INTERVAL_MS
+    # Sign Personal (Free) — offline MaxMind GeoLite2 databases, read-only. A missing
+    # directory / file ⇒ network country unknown ⇒ Personal signup refused (fail closed).
+    volumes:
+      - /opt/aramo/geoip:/geoip:ro
     depends_on:
       postgres:
         condition: service_healthy

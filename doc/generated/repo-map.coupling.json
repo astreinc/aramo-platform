@@ -10993,6 +10993,36 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/prisma/migrations/20261018120000_init_subscription_allowance/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/prisma/migrations/20261019100000_subscription_lifecycle_billing/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/prisma/migrations/20261019140000_sign_commercial_catalog_a1/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/prisma/migrations/20261020130300_sign_naming_keys/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/platform-admin/src/tests/platform-negative-control.spec.ts",
       "status": "excluded",
       "to": "apps/platform-admin/src/platform-negative-control/platform-imports-ats.fixture.ts"
@@ -11446,12 +11476,22 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-personal.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform-sign.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/signup/personal-signup.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -11482,6 +11522,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/sign-service/src/app/integrations/sign-api.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/personal/sign-report.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -20076,6 +20121,11 @@
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
       "status": "production",
       "to": "libs/identity/prisma/migrations/20261022110000_domain_enforcement_p3/migration.sql"
+    },
+    {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261022120000_sign_personal_free/migration.sql"
     },
     {
       "from": "libs/common/src/lib/testing/talent-trust-migrations.ts",

@@ -2124,6 +2124,65 @@ paths:
           $ref: '#/components/responses/SenderUnauthorized'
         '403':
           $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/report:
+    post:
+      operationId: reportSigningEmail
+      summary: Report a signing email from a Personal sender ("Report this email").
+      description: >
+        Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED §6.4. Public (no session): the
+        recipient's own signing token (carried in the report link's URL fragment) is the only
+        authority. One report per recipient per envelope; taken only for envelopes from a
+        PERSONAL sender. Each report is weighted (severity × independence × credibility);
+        when the sender's weighted total reaches the configured threshold, new sends from that
+        account pause for 72 hours (existing envelopes and guest signing are unaffected) and
+        the account is queued for review; the pause lapses unless an operator confirms it.
+        Bounded per client address (edge and service); over the service budget the answer is
+        the same 202 and nothing is recorded.
+      tags: [sender]
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token:
+                  type: string
+                  description: The recipient's signing token from the report link.
+                reason:
+                  type: [string, 'null']
+                  enum: [phishing, impersonation, spam, unknown_sender, other, null]
+                note:
+                  type: [string, 'null']
+                  maxLength: 1000
+      responses:
+        '202':
+          description: The report was received.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [received]
+                properties:
+                  received:
+                    type: boolean
+                    enum: [true]
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '404':
+          description: The report link cannot be used (unknown or expired token, or not a Personal sender's envelope).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: This recipient already reported this envelope (details.reason = already_reported).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /v1/sign/billing/plans:
     get:
       operationId: listBillingPlans
@@ -2507,7 +2566,8 @@ components:
               type: string
             source:
               type: string
-              enum: [MANUAL, DEVELOPMENT, SELF_SERVICE]
+              enum: [MANUAL, DEVELOPMENT, SELF_SERVICE, FREE]
+              description: FREE — the system-opened Free Personal subscription (no billing provider).
             status:
               type: string
               enum: [TRIALING, ACTIVE, PAST_DUE, CANCELED, INCOMPLETE]
@@ -2550,7 +2610,29 @@ components:
               format: date-time
         allowance:
           type: object
-          description: Subscribed allowance status (limit — null when unlimited, unlimited, used, remaining — null when unlimited, period_start, period_end, threshold) or { subscribed false, state }.
+          description: >
+            Subscribed allowance status (limit — null when unlimited, unlimited, used, remaining — null when unlimited,
+            period_start, period_end, threshold, and — only when the plan has a day window, e.g. Free Personal — daily)
+            or { subscribed false, state }.
+          properties:
+            daily:
+              type: object
+              description: Personal Free v1.1 §4 — the day window (any 24 hours) on top of the monthly allowance. Absent for plans without one.
+              required: [window, limit, used, remaining, next_available_at]
+              properties:
+                window:
+                  type: string
+                  enum: [DAY]
+                limit:
+                  type: integer
+                used:
+                  type: integer
+                remaining:
+                  type: integer
+                next_available_at:
+                  type: [string, 'null']
+                  format: date-time
+                  description: When the oldest counted send leaves the window (null while under the cap).
         storage:
           type: [object, 'null']
           description: Storage used against the plan (capacity_key, limit — null when not limited, unlimited, used); null without a subscription.
@@ -2625,6 +2707,7 @@ components:
           type: boolean
         personal_sending_enabled:
           type: boolean
+          description: True only for a bound (ACTIVE) PERSONAL tenant while Personal sending is switched on (SIGN_PERSONAL_SIGNUP_MODE not off).
         organization_url:
           type: [string, 'null']
         app_home_url:

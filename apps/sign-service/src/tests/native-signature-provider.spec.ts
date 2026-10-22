@@ -47,6 +47,7 @@ describe('NativeAramoSignatureProvider.sendEnvelope — OC-1 signer delivery', (
       to_email: 'talent@example.com',
       to_name: 'Talent X',
       envelope_subject: 'Right to Represent',
+      tenant_id: 'tenant-1',
       // trailing slash on the base is normalized; token is the raw capability.
       signing_url: 'https://sign.aramo.ai/s/RAW-TOKEN-123',
     });

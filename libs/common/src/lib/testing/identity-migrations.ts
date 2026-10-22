@@ -110,6 +110,10 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   // backfill), TenantDomainException, DomainVerificationDelegation. New tables only; no
   // existing table or response shape changes.
   'libs/identity/prisma/migrations/20261022110000_domain_enforcement_p3/migration.sql',
+  // Sign Personal (Free) Launch v1.1 (LOCKED) §7 — PersonalSignupRequest, TenantRiskState,
+  // PersonalSignupInvite. New tables only (FKs to Tenant / User); no existing table or
+  // response shape changes.
+  'libs/identity/prisma/migrations/20261022120000_sign_personal_free/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each
