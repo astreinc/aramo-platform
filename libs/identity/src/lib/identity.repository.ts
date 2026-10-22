@@ -203,7 +203,22 @@ export class IdentityRepository {
       },
       orderBy: [{ joined_at: 'asc' }, { user_id: 'asc' }],
     });
-    return rows.map(toTenantUserView);
+    const invited = await this.latestInvitationAt(tenant_id);
+    return rows.map((r) => toTenantUserView(r, invited.get(r.user_id) ?? null));
+  }
+
+  // ORG-UX-1 (Directive v1.0 LOCKED §8.3, G4) — the most recent invitation time per user
+  // in the tenant ("Invited {date}" on Users & invitations). One grouped read; a user with
+  // no invitation row (seeded / owner-provisioned) maps to null.
+  private async latestInvitationAt(tenant_id: string, user_id?: string): Promise<Map<string, Date>> {
+    const rows = await this.prisma.invitation.groupBy({
+      by: ['user_id'],
+      where: { tenant_id, ...(user_id !== undefined ? { user_id } : {}) },
+      _max: { created_at: true },
+    });
+    const out = new Map<string, Date>();
+    for (const r of rows) if (r._max.created_at !== null) out.set(r.user_id, r._max.created_at);
+    return out;
   }
 
   // Platform-Console Increment-2 PR-1.5 (A2) — resolve a tenant's OWNER (the
@@ -355,7 +370,9 @@ export class IdentityRepository {
         },
       },
     });
-    return row === null ? null : toTenantUserView(row);
+    if (row === null) return null;
+    const invited = await this.latestInvitationAt(args.tenant_id, args.user_id);
+    return toTenantUserView(row, invited.get(args.user_id) ?? null);
   }
 
   async findRoleIdsForMembership(membership_id: string): Promise<string[]> {
@@ -1028,6 +1045,9 @@ export interface TenantUserView {
   deactivated_at: string | null;
   site_id: string | null;
   role_keys: string[];
+  // ORG-UX-1 (§8.3, G4) — ISO time of the user's latest invitation in this tenant, or
+  // null (never invited through the invitation flow). Additive field.
+  invited_at: string | null;
 }
 
 // §5 Auth-Hardening D4 — the minimal assignable-roster row. DELIBERATELY a
@@ -1079,7 +1099,7 @@ type TenantUserRow = {
   role_assignments: { role: { key: string } }[];
 };
 
-function toTenantUserView(row: TenantUserRow): TenantUserView {
+function toTenantUserView(row: TenantUserRow, invited_at: Date | null): TenantUserView {
   return {
     user_id: row.user_id,
     email: row.user.email,
@@ -1090,5 +1110,6 @@ function toTenantUserView(row: TenantUserRow): TenantUserView {
       row.deactivated_at !== null ? row.deactivated_at.toISOString() : null,
     site_id: row.site_id,
     role_keys: row.role_assignments.map((ra) => ra.role.key).sort(),
+    invited_at: invited_at === null ? null : invited_at.toISOString(),
   };
 }

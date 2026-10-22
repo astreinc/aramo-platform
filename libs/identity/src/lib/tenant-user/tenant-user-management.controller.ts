@@ -274,6 +274,15 @@ export class TenantUserManagementController {
     already_disabled: boolean;
   }> {
     const reason = parseOptionalReason(body, requestId);
+    // ORG-UX-1 (Directive v1.0 LOCKED §4.4, G15) — an administrator cannot disable their
+    // own access (the server-side guard behind the Org UI's "skip yourself"). Reported
+    // like this module's other lifecycle refusals (400 VALIDATION_ERROR + reason).
+    if (userId === authContext.sub) {
+      throw new AramoError('VALIDATION_ERROR', 'You cannot disable your own access', 400, {
+        requestId,
+        details: { reason: 'self_disable_forbidden' },
+      });
+    }
     const result = await this.lifecycle.disableTenantUser({
       tenant_id: authContext.tenant_id,
       user_id: userId,
@@ -448,13 +457,23 @@ export class TenantUserManagementController {
     @Param('user_id') userId: string,
     @RequestId() requestId: string,
   ): Promise<{ revoked: boolean; displayed_status: string }> {
-    return this.lifecycle.revokeTenantInvite({
+    const result = await this.lifecycle.revokeTenantInvite({
       tenant_id: authContext.tenant_id,
       user_id: userId,
       // ROLES-1 PR-1 (§4.2) — revoking a pending tenant_owner needs an owner caller.
       actor_user_id: authContext.sub,
       request_id: requestId,
     });
+    // ORG-UX-1 §8.3 (G9) — audited (best-effort seam, the disable precedent).
+    await this.audit.writeEvent({
+      event_type: 'identity.tenant_user.invitation_revoked',
+      actor_type: 'user',
+      actor_id: authContext.sub,
+      tenant_id: authContext.tenant_id,
+      subject_id: userId,
+      payload: { invitation_revoked: result.revoked },
+    });
+    return result;
   }
 
   // Invite-S3 (§4.3) — POST /v1/tenant/users/:user_id/resend.
@@ -470,11 +489,21 @@ export class TenantUserManagementController {
     @Param('user_id') userId: string,
     @RequestId() requestId: string,
   ): Promise<{ sent: 'invitation' | 'confirmation' }> {
-    return this.lifecycle.resendInvitation({
+    const result = await this.lifecycle.resendInvitation({
       tenant_id: authContext.tenant_id,
       user_id: userId,
       request_id: requestId,
     });
+    // ORG-UX-1 §8.3 (G9) — audited (best-effort seam, the disable precedent).
+    await this.audit.writeEvent({
+      event_type: 'identity.tenant_user.invitation_resent',
+      actor_type: 'user',
+      actor_id: authContext.sub,
+      tenant_id: authContext.tenant_id,
+      subject_id: userId,
+      payload: { sent: result.sent },
+    });
+    return result;
   }
 
   // Invite-S3 (§4.4) — PATCH /v1/tenant/users/:user_id/email.
@@ -496,12 +525,22 @@ export class TenantUserManagementController {
     @RequestId() requestId: string,
   ): Promise<{ sent: 'invitation' }> {
     const email = parseEmailBody(body, requestId);
-    return this.lifecycle.editInvitedUserEmail({
+    const result = await this.lifecycle.editInvitedUserEmail({
       tenant_id: authContext.tenant_id,
       user_id: userId,
       new_email: email,
       request_id: requestId,
     });
+    // ORG-UX-1 §8.3 (G9) — audited; the new address is not echoed into the payload.
+    await this.audit.writeEvent({
+      event_type: 'identity.tenant_user.email_changed',
+      actor_type: 'user',
+      actor_id: authContext.sub,
+      tenant_id: authContext.tenant_id,
+      subject_id: userId,
+      payload: {},
+    });
+    return result;
   }
 }
 
