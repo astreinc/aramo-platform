@@ -2386,11 +2386,15 @@ paths:
       tags: [Sign Personal Signup]
       summary: Start a Personal (Free) signup and email a 6-digit code.
       description: |
-        Validates the email class (personal only), the three location signals
-        (phone region, network country, declared residence — US or IN; fail
-        closed), the invite (invite mode) and the robot check, rates the signup
-        (every signal and the decision are stored) and emails a 6-digit code
-        valid for 10 minutes. An address that already has an Aramo account gets
+        Validates the email class (personal only), the phone region and the
+        declared residence (US or IN; hard checks), the invite (invite mode) and
+        the robot check, rates the signup (every signal, the decision and the
+        GeoLite2 evidence — country, lookup time, database version — are stored)
+        and emails a 6-digit code
+        valid for 10 minutes. The network country (offline GeoLite2) is a risk
+        signal only, never a refusal by itself: outside the allowed countries adds
+        `ip_country_outside` risk points, and an UNKNOWN country (no database, no
+        answer or a lookup error) adds `ip_country_unknown`. An address that already has an Aramo account gets
         the same 202 (with a signup_id that never verifies) and an "already
         have an account" email — non-enumerating.
       security: []
@@ -2515,7 +2519,7 @@ paths:
       operationId: sendPersonalSignupPhoneCode
       tags: [Sign Personal Signup]
       summary: Text a 6-digit code to the signup's phone (step-up).
-      description: '`sent: false` when phone verification is unavailable (no SMS provider configured) — the account will stay held until a phone code is verified.'
+      description: '`sent: false` when phone verification is unavailable (no SMS provider configured). verify-email then answers `next: review` for a step-up signup, and the account is held for review; an operator clearing that review lifts the phone step without recording phone verification.'
       security: []
       requestBody:
         required: true
@@ -2673,12 +2677,15 @@ paths:
             application/json:
               schema:
                 type: object
-                required: [items]
+                required: [items, phone_verification_available]
                 properties:
                   items:
                     type: array
                     items:
                       $ref: '#/components/schemas/PersonalReviewItem'
+                  phone_verification_available:
+                    type: boolean
+                    description: Whether an SMS provider is configured (phone codes can be sent).
         '401':
           $ref: 'common.yaml#/components/responses/Unauthorized'
         '403':
@@ -2738,7 +2745,11 @@ paths:
       operationId: clearPersonalReview
       tags: [Platform Personal]
       summary: Approve — clear the review hold (never sets phone assurance).
-      description: Audited with the operator and reason. Requires scope `platform:tenant:lifecycle:manage`.
+      description: |
+        Audited with the operator and reason. While phone verification is
+        unavailable (no SMS provider), clearing review also lifts an outstanding
+        phone step (`step_up_required` false, `step_up_cleared_by: review`);
+        `phone_verified_at` stays null. Requires scope `platform:tenant:lifecycle:manage`.
       security:
         - BearerAuth: []
         - CookieAccessAuth: []
@@ -4475,7 +4486,7 @@ components:
           description: restrict only — when the restriction ends (omitted = until reinstated).
     PersonalRiskState:
       type: object
-      required: [tenant_id, state, step_up_required, phone_verified_at, restricted_until, reason, decided_by, updated_at]
+      required: [tenant_id, state, step_up_required, phone_verified_at, restricted_until, reason, decided_by, step_up_cleared_by, updated_at]
       properties:
         tenant_id:
           type: string
@@ -4496,9 +4507,27 @@ components:
         decided_by:
           type: [string, 'null']
           format: uuid
+        step_up_cleared_by:
+          type: [string, 'null']
+          enum: [review, null]
+          description: '`review` = an operator review lifted the phone step while SMS was unavailable (not phone verification).'
         updated_at:
           type: string
           format: date-time
+    PersonalGeoEvidence:
+      type: object
+      description: GeoLite2 evidence behind a risk decision — a risk signal, never proof of residence.
+      required: [country, looked_up_at, db_version]
+      properties:
+        country:
+          type: [string, 'null']
+          description: ISO 3166-1 alpha-2; null = UNKNOWN.
+        looked_up_at:
+          type: string
+          format: date-time
+        db_version:
+          type: [string, 'null']
+          description: The database type and build time, or null when no database was readable.
     PersonalReviewItem:
       type: object
       required: [tenant_id, tenant_name, owner_email, state, reason, step_up_required, risk_points, decision, signals, phone_verified_at, restricted_until, created_at, updated_at]
@@ -4547,6 +4576,18 @@ components:
         decided_by:
           type: [string, 'null']
           format: uuid
+        review_pending:
+          type: boolean
+        step_up_cleared_by:
+          type: [string, 'null']
+          enum: [review, null]
+        review_clears_phone_step:
+          type: boolean
+          description: True when clearing this review would also lift the phone step (SMS unavailable).
+        geo:
+          oneOf:
+            - $ref: '#/components/schemas/PersonalGeoEvidence'
+            - type: 'null'
         created_at:
           type: string
           format: date-time

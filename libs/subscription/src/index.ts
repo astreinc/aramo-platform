@@ -55,12 +55,14 @@ export { PLAN_ELIGIBILITY_PORT, type PlanEligibilityPort, type PlanEligibilityRu
 export {
   LEGAL_DOCUMENTS,
   LEGAL_DOCUMENT_REGISTRY,
+  LEGAL_DOCUMENT_TITLES,
+  PERSONAL_LEGAL_DOCUMENT_KEYS,
   approvedLegalDocument,
   legalRef,
   type LegalDocumentKey,
   type LegalDocumentVersion,
 } from './lib/legal/legal-documents.js';
-export { LegalAcceptanceService } from './lib/legal/legal-acceptance.service.js';
+export { LegalAcceptanceService, inAppContextRef } from './lib/legal/legal-acceptance.service.js';
 export { FEATURE_AVAILABILITY, isFeatureAvailable, type FeatureAvailability } from './lib/feature-availability.js';
 // Sign Signup Amendment A1 (Organization Details, US only) §2.6 — the organization billing profile port.
 export {

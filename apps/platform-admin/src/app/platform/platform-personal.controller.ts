@@ -23,6 +23,9 @@ import { DecideAbuseReportRequestDto, IssuePersonalInviteRequestDto, PersonalRis
 // with a reason) and pilot invite issue (the code is shown ONCE; only its hash is
 // stored). Lifecycle power (platform:tenant:lifecycle:manage), platform consumer
 // only (the DDR §13.1 tripwire). Clearing review NEVER sets phone assurance.
+// While SMS is unavailable it lifts an outstanding phone step instead (PO
+// 2026-10-21 "Review replaces phone"; step_up_cleared_by 'review'); each queue
+// item says whether clearing it would (review_clears_phone_step).
 
 @Controller('platform')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -37,9 +40,16 @@ export class PlatformPersonalController {
 
   @Get('personal-review')
   @RequireScopes('platform:tenant:lifecycle:manage')
-  async reviewQueue(@AuthContext() auth: AuthContextType, @RequestId() requestId: string): Promise<{ items: PersonalReviewItem[] }> {
+  async reviewQueue(
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<{ items: (PersonalReviewItem & { review_clears_phone_step: boolean })[]; phone_verification_available: boolean }> {
     assertPlatform(auth, requestId);
-    return { items: await this.signups.reviewQueue() };
+    const items = await this.signups.reviewQueue();
+    return {
+      items: items.map((i) => ({ ...i, review_clears_phone_step: this.risk.reviewClearsStepUp(i) })),
+      phone_verification_available: this.risk.phoneVerificationAvailable(),
+    };
   }
 
   @Post('personal-invites')
@@ -147,6 +157,7 @@ function view(v: TenantRiskStateView) {
     restricted_until: v.restricted_until?.toISOString() ?? null,
     reason: v.reason,
     decided_by: v.decided_by,
+    step_up_cleared_by: v.step_up_cleared_by,
     updated_at: v.updated_at.toISOString(),
   };
 }

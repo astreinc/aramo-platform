@@ -617,6 +617,7 @@ export class SenderEnvelopeService {
     if (tenant.kind === 'PERSONAL') {
       if (this.personal === undefined) throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Sending from a personal account is not enabled', 403, { requestId, details: { reason: 'personal_sending_not_enabled' } });
       const detail = d;
+      await this.personal.assertLegalAccepted(tenant, auth.sub, requestId);
       await this.personal.assertMaySend(
         tenant,
         meta.ip ?? null,

@@ -20,6 +20,11 @@ export interface PersonalRiskConfig {
     fast_form: number;
     random_looking: number;
     phone_reused: number;
+    // Architect ruling 2026-10-21 — the network country is a risk signal, never a
+    // block by itself: outside the allowed set (alone → review) and UNKNOWN
+    // (no database / no answer / lookup error; alone → step-up).
+    ip_country_outside: number;
+    ip_country_unknown: number;
   };
   // More than `ip_signups_points_over` signups from one IP in 24 h adds points;
   // more than `ip_signups_refuse_over` refuses.
@@ -39,6 +44,8 @@ export const DEFAULT_PERSONAL_RISK_CONFIG: PersonalRiskConfig = {
     fast_form: 40,
     random_looking: 10,
     phone_reused: 30,
+    ip_country_outside: 60,
+    ip_country_unknown: 30,
   },
   ip_signups_points_over: 2,
   ip_signups_refuse_over: 5,
@@ -75,6 +82,8 @@ export function personalRiskConfig(env: NodeJS.ProcessEnv = process.env): Person
       fast_form: num(p['fast_form'], d.points.fast_form),
       random_looking: num(p['random_looking'], d.points.random_looking),
       phone_reused: num(p['phone_reused'], d.points.phone_reused),
+      ip_country_outside: num(p['ip_country_outside'], d.points.ip_country_outside),
+      ip_country_unknown: num(p['ip_country_unknown'], d.points.ip_country_unknown),
     },
     ip_signups_points_over: num(o['ip_signups_points_over'], d.ip_signups_points_over),
     ip_signups_refuse_over: num(o['ip_signups_refuse_over'], d.ip_signups_refuse_over),
@@ -97,7 +106,11 @@ export interface PersonalSignupSignalsInput {
   // Signups from this IP in the last 24 h, INCLUDING this one.
   ip_signups_24h: number;
   phone_region: string | null;
+  // null = UNKNOWN (never treated as inside or outside).
   ip_country: string | null;
+  // The allowed network countries (SIGN_PERSONAL_ALLOWED_COUNTRIES); omitted = no
+  // network-country signal (callers that predate the ruling).
+  allowed_countries?: readonly string[];
   gmail_alias_of_existing: boolean;
   elapsed_ms: number | null;
   honeypot_filled: boolean;
@@ -157,6 +170,12 @@ export function ratePersonalSignup(input: PersonalSignupSignalsInput, cfg: Perso
   }
   if (input.ip_signups_24h > cfg.ip_signups_refuse_over) refuse('ip_signups_24h', String(input.ip_signups_24h));
   else if (input.ip_signups_24h > cfg.ip_signups_points_over) add('ip_signups_24h', cfg.points.ip_signups, String(input.ip_signups_24h));
+  if (input.allowed_countries !== undefined) {
+    if (input.ip_country === null) add('ip_country_unknown', cfg.points.ip_country_unknown);
+    else if (!input.allowed_countries.includes(input.ip_country.toUpperCase())) {
+      add('ip_country_outside', cfg.points.ip_country_outside, input.ip_country.toUpperCase());
+    }
+  }
   if (input.phone_region !== null && input.ip_country !== null && input.phone_region !== input.ip_country) {
     add('phone_ip_country_mismatch', cfg.points.phone_ip_country_mismatch, `${input.phone_region}/${input.ip_country}`);
   }

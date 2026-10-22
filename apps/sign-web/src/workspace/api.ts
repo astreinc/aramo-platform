@@ -339,6 +339,21 @@ export const billingApi = {
   portal: () => apiClient.post<{ url: string }>(`${BILLING}/portal`, {}),
 };
 
+// Aramo Sign Personal (Free) — the current legal documents the signed-in user still
+// has to accept (/v1/sign/legal). Business accounts always get `pending: []`.
+export interface PendingLegalDocument {
+  key: string;
+  version: string;
+  url: string;
+  title: string;
+}
+
+export const legalApi = {
+  status: () => apiClient.get<{ pending: PendingLegalDocument[] }>('/v1/sign/legal/status'),
+  accept: (docs: readonly { key: string; version: string }[]) =>
+    apiClient.post<{ pending: PendingLegalDocument[] }>('/v1/sign/legal/accept', { accept: docs.map((d) => ({ key: d.key, version: d.version })) }),
+};
+
 // ROLES-1 PR-3 — the Sign roles (the Sign Owner role is retired; ownership and billing
 // belong to the organization owner, tenant_owner).
 export type SignRoleKey = 'sign_admin' | 'sign_sender' | 'sign_viewer';
@@ -444,7 +459,10 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
     if (e.code === 'ESIGN_NOT_SUBSCRIBED') return 'Your organization doesn’t have an active Aramo Sign plan, so envelopes can’t be sent. An admin can choose a plan in Settings → Plan & billing.';
     if (e.code === 'ESIGN_ALLOWANCE_EXHAUSTED' && isDailyLimit(e)) {
       const limit = e.details?.['limit'];
-      return `You’ve sent ${typeof limit === 'number' ? `${limit} envelopes` : 'the most envelopes allowed'} today. You can send again tomorrow.`;
+      const sent = `You’ve sent ${typeof limit === 'number' ? `${limit} envelopes` : 'the most envelopes allowed'} in the last 24 hours.`;
+      // Personal Free — the window is any 24 hours; the backend says when the next send is possible.
+      const next = nextSendTime(e.details?.['next_available_at']);
+      return next !== null ? `${sent} Your next send is available at ${next}.` : `${sent} You can send again later.`;
     }
     if (e.code === 'ESIGN_ALLOWANCE_EXHAUSTED') {
       const limit = e.details?.['limit'];
@@ -517,10 +535,19 @@ const PERSONAL_REFUSALS: Record<string, string> = {
   personal_restricted:
     'Sending is paused on your account while we review it. Envelopes you already sent aren’t affected. Contact Aramo support if you think this is a mistake.',
   personal_location_not_supported: 'Aramo Sign Personal is currently available in the United States and India.',
+  legal_acceptance_required: 'Review and accept the updated terms to send. Reload the page to see them.',
 };
 
 export function personalRefusalMessage(reason: unknown): string | null {
   return typeof reason === 'string' ? (PERSONAL_REFUSALS[reason] ?? null) : null;
+}
+
+/** "Oct 22, 9:14 AM" in the viewer's locale and time zone, or null for a missing/invalid time. */
+export function nextSendTime(iso: unknown): string | null {
+  if (typeof iso !== 'string') return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 /** A send refused by the daily window (Personal Free: 2 a day) rather than the monthly allowance. */

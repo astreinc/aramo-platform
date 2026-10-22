@@ -67,6 +67,8 @@ import { SenderTemplatesService } from './sender/sender-templates.service.js';
 import { PersonalSendGate } from './personal/personal-send.gate.js';
 import { SignReportController } from './personal/sign-report.controller.js';
 import { ReportBudget, SignReportService } from './personal/sign-report.service.js';
+import { SignLegalController } from './legal/sign-legal.controller.js';
+import { PersonalLegalStatusService } from './legal/personal-legal-status.service.js';
 
 // DOC-3/DOC-4 — apps/sign-service composition root. Composes the ATS-neutral
 // E-Sign domain (EsignModule.forRoot) and binds the full DOC-4 executed-document
@@ -149,7 +151,7 @@ import { ReportBudget, SignReportService } from './personal/sign-report.service.
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
   // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController],
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,
@@ -174,6 +176,9 @@ import { ReportBudget, SignReportService } from './personal/sign-report.service.
     PersonalSendGate,
     ReportBudget,
     SignReportService,
+    // Aramo Sign Personal (Free) — the Personal legal documents still to accept
+    // (v1/sign/legal; consulted by the Personal send gate).
+    PersonalLegalStatusService,
   ],
 })
 export class AppModule implements NestModule {

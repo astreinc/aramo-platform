@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-import { billingApi, type BillingAccount } from '../api';
+import { billingApi, nextSendTime, type BillingAccount } from '../api';
 import { fmtDate } from '../ui';
 
 // Aramo Sign Personal (Free) §4 — the Personal account's usage: the daily window
@@ -83,9 +83,9 @@ export function PersonalAllowance({ loader = billingApi.account }: { loader?: ()
           <p className="sg-help" style={{ margin: 0 }}>
             {atMonthly
               ? 'You’ve used all your envelopes for this month.'
-              : daily?.next_available_at
-                ? `You’ve reached the daily limit. You can send again after ${fmtDate(daily.next_available_at, true)}.`
-                : 'You’ve reached today’s limit. You can send again tomorrow.'}
+              : nextSendTime(daily?.next_available_at) !== null
+                ? `You’ve reached the limit for 24 hours. Your next send is available at ${nextSendTime(daily?.next_available_at)}.`
+                : 'You’ve reached the limit for 24 hours. You can send again later.'}
           </p>
           <PersonalUpgradeLink />
         </div>

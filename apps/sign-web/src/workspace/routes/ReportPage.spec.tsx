@@ -7,7 +7,7 @@ import { App } from '../App';
 import { REPORT_REASONS, reportTokenFromHash } from './ReportPage';
 
 // Aramo Sign Personal §6.4 — "Report this email": no sign-in, token from the URL
-// fragment (dropped from the address bar), a reason, an optional note.
+// fragment (dropped from the address bar), an optional reason, an optional note.
 
 vi.mock('../pdf', () => ({ loadPdf: vi.fn() }));
 
@@ -48,12 +48,15 @@ describe('/report', () => {
     expect((call[1] as RequestInit).credentials).toBeUndefined();
   });
 
-  it('asks for a reason before sending', async () => {
+  it('the reason is optional (Acceptable Use Policy §8.1): a report without one sends the token only; the policy is linked', async () => {
     const fetch = reportFetch(202);
     open(fetch);
-    fireEvent.click(await screen.findByTestId('report-submit'));
-    expect(await screen.findByText('Choose a reason.')).toBeInTheDocument();
-    expect(fetch.mock.calls.some(([u]) => String(u).endsWith('/v1/sign/report'))).toBe(false);
+    expect(await screen.findByRole('link', { name: 'Acceptable Use Policy' })).toHaveAttribute('href', '/legal/acceptable-use/1.0');
+    fireEvent.click(screen.getByTestId('report-submit'));
+    expect(await screen.findByTestId('report-thanks')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Acceptable Use Policy' })).toHaveAttribute('target', '_blank');
+    const call = fetch.mock.calls.find(([u]) => String(u).endsWith('/v1/sign/report'))!;
+    expect(JSON.parse(String((call[1] as RequestInit).body))).toEqual({ token: TOKEN });
   });
 
   it('a second report for the same email is acknowledged (409)', async () => {

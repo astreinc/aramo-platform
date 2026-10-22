@@ -5,6 +5,7 @@ import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaService } from '../prisma/prisma.service.js';
 
+import type { GeoEvidence } from './geo-ip.port.js';
 import type { PersonalRiskDecision, PersonalRiskSignal } from './personal-risk-rating.js';
 import { writePersonalAudit, type TenantRiskStateValue } from './personal-risk.service.js';
 
@@ -32,6 +33,7 @@ export interface PersonalSignupRow {
   ip_country: string | null;
   phone_region: string | null;
   network_kind: string | null;
+  geo_evidence: unknown;
   email_otp_hash: string | null;
   email_otp_expires_at: Date | null;
   email_otp_attempts: number;
@@ -71,6 +73,10 @@ export interface PersonalReviewItem {
   step_up_required: boolean;
   // A review still owed under a (temporary) restriction.
   review_pending: boolean;
+  // 'review' = an operator's review lifted the phone step while SMS was unavailable.
+  step_up_cleared_by: string | null;
+  // The signup's GeoLite2 evidence (country null = UNKNOWN), when recorded.
+  geo: GeoEvidence | null;
   risk_points: number | null;
   decision: string | null;
   signals: { key: string; points: number; detail?: string }[];
@@ -95,15 +101,25 @@ export function hashPersonalInviteCode(code: string): string {
   return createHash('sha256').update(`personal-invite:${normalized}`, 'utf8').digest('hex');
 }
 
-/** The initial risk state a completed signup opens with (§6.2 / §6.3). */
-export function initialRiskState(decision: PersonalRiskDecision, phone_verified: boolean): { state: TenantRiskStateValue; step_up_required: boolean; reason: string | null } {
+/**
+ * The initial risk state a completed signup opens with (§6.2 / §6.3).
+ * `sms_available` (the SMS port is configured): with SMS, a step-up without phone
+ * assurance waits in the review queue and only a phone code satisfies it. Without
+ * SMS (PO 2026-10-21 "Review replaces phone"), the step-up is routed to review
+ * (reason step_up_phone_unavailable); an operator clearing that review lifts the
+ * phone step but NEVER records phone assurance (correction C).
+ */
+export function initialRiskState(
+  decision: PersonalRiskDecision,
+  phone_verified: boolean,
+  sms_available = true,
+): { state: TenantRiskStateValue; step_up_required: boolean; reason: string | null } {
   if (decision === 'review') return { state: 'review', step_up_required: false, reason: 'signup_review' };
   if (decision === 'step_up') {
-    // Step-up without phone assurance waits in the review queue; review clearance
-    // does NOT satisfy it (correction C) — only a phone code check does.
-    return phone_verified
-      ? { state: 'clear', step_up_required: true, reason: 'signup_step_up' }
-      : { state: 'review', step_up_required: true, reason: 'signup_step_up_unverified' };
+    if (phone_verified) return { state: 'clear', step_up_required: true, reason: 'signup_step_up' };
+    return sms_available
+      ? { state: 'review', step_up_required: true, reason: 'signup_step_up_unverified' }
+      : { state: 'review', step_up_required: true, reason: 'step_up_phone_unavailable' };
   }
   return { state: 'clear', step_up_required: false, reason: null };
 }
@@ -122,6 +138,7 @@ export class PersonalSignupRepository {
     ip_country: string | null;
     phone_region: string | null;
     network_kind: string | null;
+    geo_evidence: GeoEvidence;
     risk_points: number;
     risk_signals: PersonalRiskSignal[];
     decision: PersonalRiskDecision;
@@ -129,12 +146,13 @@ export class PersonalSignupRepository {
     status: 'PENDING' | 'REFUSED';
     now: Date;
   }): Promise<PersonalSignupRow> {
-    const { now, risk_signals, ...rest } = input;
+    const { now, risk_signals, geo_evidence, ...rest } = input;
     return this.prisma.personalSignupRequest.create({
       data: {
         id: uuidv7(),
         ...rest,
         risk_signals: risk_signals as never,
+        geo_evidence: geo_evidence as never,
         expires_at: new Date(now.getTime() + PERSONAL_SIGNUP_TTL_MS),
         created_at: now,
         updated_at: now,
@@ -313,11 +331,11 @@ export class PersonalSignupRepository {
    * (from the signup decision; phone assurance only if the phone code was
    * verified), the invite consumed, and the audit event.
    */
-  async completeProvisioning(args: { id: string; tenant_id: string; owner_user_id: string; now: Date; resumed_from?: string }): Promise<void> {
+  async completeProvisioning(args: { id: string; tenant_id: string; owner_user_id: string; now: Date; resumed_from?: string; sms_available?: boolean }): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
       const row = await tx.personalSignupRequest.findUnique({ where: { id: args.id } });
       if (row === null || row.status !== 'PROVISIONING') throw new Error(`personal signup ${args.id} is not provisioning`);
-      const risk = initialRiskState(row.decision as PersonalRiskDecision, row.phone_verified_at !== null);
+      const risk = initialRiskState(row.decision as PersonalRiskDecision, row.phone_verified_at !== null, args.sms_available ?? true);
       const fresh = {
         state: risk.state,
         step_up_required: risk.step_up_required,
@@ -326,6 +344,7 @@ export class PersonalSignupRepository {
         restricted_until: null,
         reason: risk.reason,
         decided_by: null,
+        step_up_cleared_by: null,
         updated_at: args.now,
       };
       if (args.resumed_from !== undefined) {
@@ -369,6 +388,8 @@ export class PersonalSignupRepository {
           state: risk.state,
           step_up_required: risk.step_up_required,
           phone_verified: row.phone_verified_at !== null,
+          reason: risk.reason,
+          geo: row.geo_evidence ?? null,
           invite: row.invite_id !== null,
           ...(args.resumed_from === undefined ? {} : { resumed_from_signup_id: args.resumed_from }),
         },
@@ -452,6 +473,8 @@ export class PersonalSignupRepository {
         reason: s.reason,
         step_up_required: s.step_up_required,
         review_pending: s.review_pending,
+        step_up_cleared_by: s.step_up_cleared_by,
+        geo: geoEvidenceFromJson(r?.geo_evidence),
         risk_points: r?.risk_points ?? null,
         decision: r?.decision ?? null,
         signals,
@@ -511,3 +534,15 @@ export class PersonalSignupRepository {
 }
 
 class LapseRaced extends Error {}
+
+/** A stored geo_evidence JSON value as GeoEvidence (null when absent or malformed). */
+export function geoEvidenceFromJson(v: unknown): GeoEvidence | null {
+  if (v === null || typeof v !== 'object') return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o['looked_up_at'] !== 'string') return null;
+  return {
+    country: typeof o['country'] === 'string' ? o['country'] : null,
+    looked_up_at: o['looked_up_at'],
+    db_version: typeof o['db_version'] === 'string' ? o['db_version'] : null,
+  };
+}

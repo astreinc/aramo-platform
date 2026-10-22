@@ -969,6 +969,7 @@
       "EsignSenderBoundary",
       "EsignSenderConsumerGuard",
       "FEDERATED_IDPS",
+      "GEOIP_RECHECK_MS",
       "GEO_IP_PORT",
       "HOSTING_ASN_KEYWORDS",
       "INVITE_STATUSES",
@@ -1024,6 +1025,7 @@
       "SEED_ROLE_KEYS",
       "SEED_SCOPE_KEYS",
       "SEE_ALL_ROLE_KEYS",
+      "SEND_LOCATION_YOUNG_ACCOUNT_DAYS",
       "SIGNUP_PROVISIONING_STALE_MS",
       "SIGN_ORGANIZATION_ROLE_DISPLAY",
       "SIGN_ORGANIZATION_ROLE_KEYS",
@@ -1072,6 +1074,8 @@
       "generateDomainVerificationToken",
       "generatePersonalInviteCode",
       "generatePersonalOtp",
+      "geoEvidenceFromJson",
+      "geoEvidenceOf",
       "hashPersonalInviteCode",
       "hashPersonalOtp",
       "initialRiskState",
@@ -1086,6 +1090,7 @@
       "isTenantStatus",
       "looksRandom",
       "mayResendPersonalOtp",
+      "mmdbVersion",
       "normalizeClaimDomain",
       "normalizeE164",
       "normalizeEmail",
@@ -1101,9 +1106,12 @@
       "restrictionInForce",
       "rethrowTenantLastOwner",
       "robotCheckAdapterFromEnv",
+      "safeGeoLookup",
+      "sendLocation",
       "signEntryActivated",
       "signEntryUrl",
       "smsVerificationAdapterFromEnv",
+      "unknownGeoEvidence",
       "usProfileIneligibility",
       "validateUsOrganizationDetails"
     ],
@@ -1865,9 +1873,11 @@
       "FreePersonalSubscriptionService",
       "LEGAL_DOCUMENTS",
       "LEGAL_DOCUMENT_REGISTRY",
+      "LEGAL_DOCUMENT_TITLES",
       "LegalAcceptanceService",
       "ORGANIZATION_BILLING_PROFILE_PORT",
       "PAST_DUE_GRACE_DAYS_DEFAULT",
+      "PERSONAL_LEGAL_DOCUMENT_KEYS",
       "PLAN_ELIGIBILITY_PORT",
       "STORAGE_CAPACITY_KEY",
       "STRIPE_API_VERSION",
@@ -1880,6 +1890,7 @@
       "assertNotProduction",
       "billingCountrySupported",
       "billingPeriodAt",
+      "inAppContextRef",
       "isFeatureAvailable",
       "legalRef",
       "mapProviderStatus",
@@ -6211,6 +6222,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/personal-legal-status.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/recipient-inbox.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -6224,6 +6241,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-event-grant.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-legal.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -8560,6 +8583,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/personal-legal-status.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/recipient-inbox.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -8573,6 +8602,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-integrations.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-legal.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -10310,6 +10345,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/billing.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/personal-legal-status.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-legal.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

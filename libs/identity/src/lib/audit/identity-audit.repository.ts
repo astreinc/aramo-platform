@@ -185,6 +185,7 @@ export const EVENT_TYPES = [
   'identity.personal.risk.review_cleared',
   'identity.personal.risk.reinstated',
   'identity.personal.risk.closed',
+  'identity.personal.risk.send_location_signal',
   'identity.personal.invite.issued',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
@@ -280,6 +281,7 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   'identity.personal.risk.review_cleared',
   'identity.personal.risk.reinstated',
   'identity.personal.risk.closed',
+  'identity.personal.risk.send_location_signal',
 ]);
 
 export interface WriteAuditEventInput {

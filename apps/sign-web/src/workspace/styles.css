@@ -1231,3 +1231,113 @@ a.sg-row:hover {
     grid-template-columns: minmax(0, 1fr);
   }
 }
+
+/* ── Legal pages (/legal/*) and legal links (Aramo Sign Personal) ───────── */
+.sg-legal {
+  display: flex;
+  flex-direction: column;
+}
+.sg-legal__top {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+.sg-legal__brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  color: var(--ink);
+  text-decoration: none;
+}
+.sg-legal__main {
+  flex: 1;
+  width: 100%;
+  max-width: 820px;
+  margin: 0 auto;
+  padding: 24px 16px 40px;
+  box-sizing: border-box;
+}
+.sg-legal__meta {
+  font-size: 13px;
+  color: var(--muted);
+  margin: 0 0 16px;
+  overflow-wrap: anywhere;
+}
+.sg-legal__doc {
+  overflow-wrap: anywhere;
+}
+.sg-legal__doc h1 {
+  font-size: 24px;
+  margin: 0 0 12px;
+}
+.sg-legal__doc h2 {
+  font-size: 18px;
+  margin: 28px 0 8px;
+}
+.sg-legal__doc h3 {
+  font-size: 15px;
+  margin: 20px 0 6px;
+}
+.sg-legal__doc p,
+.sg-legal__doc ul {
+  margin: 0 0 10px;
+}
+.sg-legal__doc blockquote {
+  margin: 0 0 10px;
+  padding: 8px 12px;
+  border-left: 3px solid var(--line);
+  color: var(--muted);
+}
+.sg-legal__doc hr {
+  border: 0;
+  border-top: 1px solid var(--line);
+  margin: 20px 0;
+}
+.sg-legal__doc code {
+  font-family: var(--mono);
+  font-size: 12.5px;
+}
+.sg-legal__table {
+  overflow-x: auto;
+  margin: 0 0 12px;
+}
+.sg-legal__table table {
+  border-collapse: collapse;
+  width: 100%;
+  font-size: 13px;
+}
+.sg-legal__table th,
+.sg-legal__table td {
+  border: 1px solid var(--line);
+  padding: 6px 8px;
+  text-align: left;
+  vertical-align: top;
+}
+.sg-legal__table th {
+  background: var(--bg);
+}
+.sg-legal__foot,
+.sg-legal-links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 16px;
+  font-size: 12px;
+  color: var(--faint);
+}
+.sg-legal__foot {
+  justify-content: center;
+  padding: 16px;
+  border-top: 1px solid var(--line);
+}
+.sg-legal-links {
+  padding: 14px 24px 18px;
+}
+.sg-legal-links a,
+.sg-legal__foot a {
+  color: var(--muted);
+}
+.sg-legal-accept__list {
+  margin: 0 0 12px;
+  padding-left: 18px;
+}

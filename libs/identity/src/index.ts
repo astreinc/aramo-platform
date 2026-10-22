@@ -370,7 +370,19 @@ export {
   type PersonalOtpChannel,
   type PersonalOtpCheck,
 } from './lib/personal/personal-otp.js';
-export { GEO_IP_PORT, MaxmindGeoIpAdapter, HOSTING_ASN_KEYWORDS, type GeoIpPort } from './lib/personal/geo-ip.port.js';
+export {
+  GEO_IP_PORT,
+  GEOIP_RECHECK_MS,
+  MaxmindGeoIpAdapter,
+  HOSTING_ASN_KEYWORDS,
+  geoEvidenceOf,
+  mmdbVersion,
+  safeGeoLookup,
+  unknownGeoEvidence,
+  type GeoEvidence,
+  type GeoIpLookup,
+  type GeoIpPort,
+} from './lib/personal/geo-ip.port.js';
 export {
   SMS_VERIFICATION_PORT,
   LogSmsAdapter,
@@ -392,6 +404,9 @@ export {
   TENANT_RISK_STATES,
   evaluatePersonalSend,
   restrictionInForce,
+  sendLocation,
+  SEND_LOCATION_YOUNG_ACCOUNT_DAYS,
+  type SendLocation,
   type TenantRiskStateValue,
   type TenantRiskStateView,
   type PersonalSendRefusal,
@@ -405,6 +420,7 @@ export {
   generatePersonalInviteCode,
   hashPersonalInviteCode,
   initialRiskState,
+  geoEvidenceFromJson,
   type PersonalSignupRow,
   type PersonalSignupStatus,
   type PersonalReviewItem,

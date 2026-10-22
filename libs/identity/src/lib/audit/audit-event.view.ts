@@ -236,6 +236,8 @@ export function summarizeDetail(
       return 'Reinstated sending';
     case 'identity.personal.risk.closed':
       return 'Closed the personal account';
+    case 'identity.personal.risk.send_location_signal':
+      return 'Recorded a send from outside the supported countries or an unknown location';
     case 'identity.personal.invite.issued':
       return 'Issued a personal pilot invite';
     default:

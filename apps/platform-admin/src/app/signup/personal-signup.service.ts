@@ -32,6 +32,8 @@ import {
   personalSignupMode,
   phoneRegion,
   ratePersonalSignup,
+  safeGeoLookup,
+  geoEvidenceOf,
   type GeoIpPort,
   type PersonalRiskDecision,
   type PersonalSignupRow,
@@ -52,13 +54,18 @@ import { SignupBudget, federatedSignInLinks } from './sign-signup.service.js';
 // (Free) signup. Dark unless SIGN_PERSONAL_SIGNUP_MODE is `invite` or `open` (the
 // controller answers 404 otherwise; ships `off`).
 //
-//   start         eligibility (personal email only; US / IN phone, residence and
-//                 network country — fail closed), robot check, risk rating
-//                 (§6.2; every signal + the decision stored), email code. Always
+//   start         eligibility (personal email only; US / IN phone region and
+//                 declared residence — hard checks), robot check, risk rating
+//                 (§6.2; every signal + the decision + the GeoLite2 evidence
+//                 stored). The network country is a risk signal only (Architect
+//                 ruling 2026-10-21): outside the allowed set or UNKNOWN adds risk
+//                 points, never a refusal by itself. Email code. Always
 //                 the same 202 for an address that already has an account
 //                 (plus a "you already have an account" email) — non-enumerating.
 //   verify-email  the code proves the address; reveals the next step from the
 //                 decision made at start (allow → terms, step_up → phone, review).
+//                 While SMS is unavailable a step-up goes to review instead (PO
+//                 2026-10-21 "Review replaces phone"): next = review.
 //   phone/*       step-up phone code (SMS port; `disabled` in production → sent:false).
 //   terms         the exact APPROVED Personal Terms, Privacy Notice and AUP — null
 //                 while any is not approved (complete is refused).
@@ -130,18 +137,21 @@ function remaining(attemptsBefore: number): number {
   return Math.max(0, PERSONAL_OTP_MAX_ATTEMPTS - attemptsBefore - 1);
 }
 
-/** What a completed account is held for (§6.3): review, unmet phone step-up, or nothing. */
-export function heldFor(decision: string, phone_verified: boolean): PersonalHold {
-  const r = initialRiskState(decision as PersonalRiskDecision, phone_verified);
+/**
+ * What a completed account is held for (§6.3): review, unmet phone step-up, or
+ * nothing. Without SMS a step-up is held for review (an operator's review lifts it).
+ */
+export function heldFor(decision: string, phone_verified: boolean, sms_available = true): PersonalHold {
+  const r = initialRiskState(decision as PersonalRiskDecision, phone_verified, sms_available);
   if (r.state !== 'review') return null;
-  return r.step_up_required ? 'phone_verification_required' : 'review';
+  return r.step_up_required && sms_available ? 'phone_verification_required' : 'review';
 }
 
 export type PersonalHold = 'review' | 'phone_verification_required' | null;
 
-function nextFor(decision: string): PersonalNextStep {
+function nextFor(decision: string, sms_available = true): PersonalNextStep {
   if (decision === 'review') return 'review';
-  if (decision === 'step_up') return 'phone';
+  if (decision === 'step_up') return sms_available ? 'phone' : 'review';
   return 'terms';
 }
 
@@ -235,12 +245,13 @@ export class PersonalSignupService {
     }
     const residence = typeof input.residence === 'string' ? input.residence.trim().toUpperCase() : '';
 
-    // §6.6 — three signals, all must be in the allowed set; fail closed.
+    // §6.6 — declared residence and phone region stay hard US / IN eligibility
+    // (PO decision). The network country is NOT checked here: per the Architect
+    // ruling of 2026-10-21 GeoLite2 is a risk signal, never proof of residence and
+    // never a block by itself — it is rated below (outside / UNKNOWN add points).
     const allowed = PERSONAL_ALLOWED_COUNTRIES();
     const region = phoneRegion(phone);
     if (!allowed.includes(residence) || region === null || region !== residence) throw locationRefusal(rid);
-    const ipCountry = await this.geo.countryOf(input.ip);
-    if (ipCountry === null || !allowed.includes(ipCountry.toUpperCase())) throw locationRefusal(rid);
 
     // §10 — invite mode: a valid, unexpired, unused code bound to this address,
     // and room under the pilot cap.
@@ -292,12 +303,16 @@ export class PersonalSignupService {
     }
 
     // §6.2 — the risk rating; every signal and the decision are stored.
-    const [ipCount, alias, phoneReused, network] = await Promise.all([
+    // The GeoLite2 lookup never throws: a missing / unreadable database or a lookup
+    // error is UNKNOWN (country null) — never evidence of any country.
+    const [ipCount, alias, phoneReused, geo] = await Promise.all([
       this.requests.countByIpSince(input.ip, since),
       this.requests.gmailAliasOfExisting(canonical, email),
       this.requests.phoneUsedByAnother(phone, canonical, resumable?.tenant_id ?? null),
-      this.geo.networkKind(input.ip),
+      safeGeoLookup(this.geo, input.ip, now),
     ]);
+    const network = geo.network_kind;
+    const ipCountry = geo.country;
     const elapsed = typeof input.elapsed_ms === 'number' && Number.isFinite(input.elapsed_ms) ? input.elapsed_ms : null;
     const rating = ratePersonalSignup(
       {
@@ -305,7 +320,8 @@ export class PersonalSignupService {
         network,
         ip_signups_24h: ipCount + 1,
         phone_region: region,
-        ip_country: ipCountry.toUpperCase(),
+        ip_country: ipCountry,
+        allowed_countries: allowed,
         gmail_alias_of_existing: alias,
         elapsed_ms: elapsed,
         honeypot_filled: typeof input.hp === 'string' ? input.hp.trim() !== '' : input.hp !== undefined && input.hp !== null && input.hp !== false,
@@ -322,9 +338,10 @@ export class PersonalSignupService {
       phone_e164: phone,
       declared_residence: residence,
       ip: input.ip === 'unknown' ? null : input.ip,
-      ip_country: ipCountry.toUpperCase(),
+      ip_country: ipCountry,
       phone_region: region,
       network_kind: network,
+      geo_evidence: geoEvidenceOf(geo),
       risk_points: rating.points,
       risk_signals: rating.signals,
       decision: rating.decision,
@@ -367,7 +384,7 @@ export class PersonalSignupService {
       throw codeError(input.request_id, outcome, outcome === 'mismatch' ? remaining(row.email_otp_attempts) : undefined);
     }
     if (!(await this.requests.markEmailVerified(row.id, now))) throw codeError(input.request_id, 'mismatch');
-    return { next: nextFor(row.decision) };
+    return { next: nextFor(row.decision, this.sms.configured) };
   }
 
   // ── phone (§6.3) ───────────────────────────────────────────────────────────
@@ -418,9 +435,9 @@ export class PersonalSignupService {
     const sign_in = { google: federatedSignInLinks().google };
     const row = typeof input.signup_id === 'string' ? await this.requests.findById(input.signup_id).catch(() => null) : null;
     if (row === null) throw this.notFound(rid);
-    if (row.status === 'PROVISIONED') return { status: 'PROVISIONED', email: row.email, sign_in, held: heldFor(row.decision, row.phone_verified_at !== null) };
+    if (row.status === 'PROVISIONED') return { status: 'PROVISIONED', email: row.email, sign_in, held: heldFor(row.decision, row.phone_verified_at !== null, this.sms.configured) };
     if (row.status === 'PROVISIONING' && now.getTime() - row.updated_at.getTime() < PROVISIONING_STALE_MS) {
-      return { status: 'PROVISIONING', email: row.email, sign_in, held: heldFor(row.decision, row.phone_verified_at !== null) };
+      return { status: 'PROVISIONING', email: row.email, sign_in, held: heldFor(row.decision, row.phone_verified_at !== null, this.sms.configured) };
     }
     if (!['EMAIL_VERIFIED', 'FAILED', 'PROVISIONING'].includes(row.status) || row.expires_at.getTime() <= now.getTime()) throw this.notFound(rid);
     if (row.decision === 'refuse') throw neutralRefusal(rid);
@@ -461,7 +478,7 @@ export class PersonalSignupService {
         : 'busy';
     if (claim === 'full') throw refusal(rid, 'personal_pilot_full', 'Personal accounts are not open to more people yet.');
     if (claim === 'busy') {
-      return { status: 'PROVISIONING', email: row.email, sign_in, held: heldFor(row.decision, row.phone_verified_at !== null) };
+      return { status: 'PROVISIONING', email: row.email, sign_in, held: heldFor(row.decision, row.phone_verified_at !== null, this.sms.configured) };
     }
 
     try {
@@ -482,6 +499,7 @@ export class PersonalSignupService {
         tenant_id: res.tenant_id,
         owner_user_id: res.owner_user_id,
         now: new Date(),
+        sms_available: this.sms.configured,
         ...(resumable === null ? {} : { resumed_from: resumable.prior_signup_id }),
       });
       this.log.log(`personal signup provisioned tenant ${res.tenant_id}`);
@@ -489,7 +507,7 @@ export class PersonalSignupService {
         `Sign in with the Google account for ${row.email}.`,
         'If you don’t have one, you can create a Google Account with this email address.',
       ], { label: 'Continue with Google', href: sign_in.google });
-      return { status: 'PROVISIONED', email: row.email, sign_in, held: heldFor(row.decision, row.phone_verified_at !== null) };
+      return { status: 'PROVISIONED', email: row.email, sign_in, held: heldFor(row.decision, row.phone_verified_at !== null, this.sms.configured) };
     } catch (err) {
       const code = err instanceof AramoError ? err.code : 'INTERNAL_ERROR';
       await this.requests.markFailed(row.id, code, new Date());

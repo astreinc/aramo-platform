@@ -92,6 +92,14 @@ describe('/signup/personal', () => {
     expect(phoneOpts).toEqual(['United States (+1)', 'India (+91)']);
     const resOpts = within(screen.getByLabelText('Where do you live?')).getAllByRole('option').map((o) => (o as HTMLOptionElement).value);
     expect(resOpts).toEqual(['', 'US', 'IN']);
+    // The Privacy Notice at the point of collection, and the GeoLite2 attribution.
+    expect(screen.getByTestId('personal-privacy-notice')).toHaveTextContent('We use your details as described in our Privacy Notice.');
+    const privacy = within(screen.getByTestId('personal-privacy-notice')).getByRole('link', { name: 'Privacy Notice' });
+    expect(privacy).toHaveAttribute('href', '/legal/privacy/1.0');
+    expect(privacy).toHaveAttribute('target', '_blank');
+    expect(screen.getByTestId('personal-maxmind')).toHaveTextContent('This product includes GeoLite2 data created by MaxMind, available from https://www.maxmind.com.');
+    expect(within(screen.getByTestId('personal-maxmind')).getByRole('link', { name: 'https://www.maxmind.com' })).toHaveAttribute('href', 'https://www.maxmind.com');
+    expect(within(screen.getByTestId('personal-maxmind')).getByRole('link', { name: 'Third-party notices' })).toHaveAttribute('href', '/legal/third-party-notices');
     // No Turnstile without a site key, and no script from Cloudflare.
     expect(screen.queryByTestId('turnstile')).toBeNull();
     expect(document.querySelector('script[src*="challenges.cloudflare.com"]')).toBeNull();
@@ -189,6 +197,10 @@ describe('/signup/personal', () => {
     expect(bodyOf(fetch, 'verify-email')).toEqual({ signup_id: 'su-1', code: '111111' });
     const docs = within(screen.getByTestId('personal-terms-docs')).getAllByRole('link');
     expect(docs.map((a) => a.getAttribute('href'))).toEqual(DOCS.map((d) => d.url));
+    // Title, version and a link that opens in a new tab, for each of the three.
+    expect(docs.map((a) => a.textContent)).toEqual(['Aramo Sign Personal Terms of Service', 'Aramo Privacy Notice', 'Aramo Acceptable Use Policy']);
+    for (const a of docs) expect(a).toHaveAttribute('target', '_blank');
+    expect(screen.getByTestId('personal-terms-docs')).toHaveTextContent('(version 1.0)');
     const box = screen.getByTestId('personal-accept') as HTMLInputElement;
     expect(box.checked).toBe(false);
     expect(screen.getByTestId('personal-complete')).toBeDisabled();

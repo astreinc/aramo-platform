@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, type FormEvent } from 'react';
 import { Input } from '@aramo/fe-foundation';
 
 import { Area, Btn, ErrorBox, Loading } from '../ui';
+import { legalPath } from '../legal/catalog';
 
 // Aramo Sign Personal §6.4 — "Report this email". Every signing email from a
 // Personal sender links here with a token in the URL FRAGMENT (#token=…, never
@@ -22,6 +23,19 @@ export function reportTokenFromHash(hash: string = window.location.hash): string
 }
 
 type State = 'form' | 'sent' | 'already' | 'invalid';
+
+/** What Aramo Sign does not allow (Aramo Acceptable Use Policy). */
+function AupLink() {
+  return (
+    <p className="sg-help" data-testid="report-aup">
+      What isn’t allowed on Aramo Sign is set out in our{' '}
+      <a href={legalPath('acceptable-use')} target="_blank" rel="noopener noreferrer">
+        Acceptable Use Policy
+      </a>
+      .
+    </p>
+  );
+}
 
 function Frame({ title, children, testId }: { title: string; children: React.ReactNode; testId: string }) {
   const h = useRef<HTMLHeadingElement | null>(null);
@@ -60,16 +74,13 @@ export function ReportPage() {
   const submit = (e: FormEvent) => {
     e.preventDefault();
     if (token === null) return;
-    if (reason === '') {
-      setError('Choose a reason.');
-      return;
-    }
+    // The reason is optional (Acceptable Use Policy §8.1); the backend accepts none.
     setBusy(true);
     setError(null);
     fetch('/v1/sign/report', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ token, reason, ...(note.trim() !== '' ? { note: note.trim() } : {}) }),
+      body: JSON.stringify({ token, ...(reason !== '' ? { reason } : {}), ...(note.trim() !== '' ? { note: note.trim() } : {}) }),
     })
       .then((res) => {
         if (res.ok) return setState('sent');
@@ -98,6 +109,7 @@ export function ReportPage() {
           that misuses Aramo Sign.
         </p>
         <p className="sg-help">You don’t need to do anything else. Don’t sign a document you don’t trust.</p>
+        <AupLink />
       </Frame>
     );
   }
@@ -106,7 +118,7 @@ export function ReportPage() {
       <p className="sg-lede">Tell us what’s wrong with the signing request you received. You don’t need an account.</p>
       <form className="sg-grid" style={{ gap: 12, marginTop: 12 }} onSubmit={submit} noValidate>
         <fieldset style={{ border: 0, padding: 0, margin: 0 }} aria-describedby={error !== null ? 'report-error' : undefined}>
-          <legend className="sg-label">Why are you reporting it?</legend>
+          <legend className="sg-label">Why are you reporting it? (optional)</legend>
           {REPORT_REASONS.map((r) => (
             <label key={r.key} className="sg-settings-row" htmlFor={`report-${r.key}`}>
               <Input unstyled type="radio" id={`report-${r.key}`} name="report-reason" value={r.key} checked={reason === r.key} onChange={() => setReason(r.key)} />
@@ -128,6 +140,7 @@ export function ReportPage() {
         <Btn variant="primary" type="submit" disabled={busy} data-testid="report-submit">
           {busy ? 'Sending…' : 'Send report'}
         </Btn>
+        <AupLink />
       </form>
     </Frame>
   );

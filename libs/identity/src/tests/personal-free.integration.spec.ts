@@ -9,6 +9,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { PersonalRiskService } from '../lib/personal/personal-risk.service.js';
 import { PersonalSignupRepository } from '../lib/personal/personal-signup.repository.js';
+import { DisabledSmsAdapter, LogSmsAdapter } from '../lib/personal/sms-verification.port.js';
 import { IdentityProviderPolicyService } from '../lib/identity-provider-policy.service.js';
 
 // Aramo-Sign-Personal-Free-Launch-Directive-v1_1 (LOCKED) — the identity-side
@@ -26,7 +27,10 @@ const OPERATOR = '01900000-0000-7000-8000-00000000e0aa';
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign Personal (Free) — identity rows (real Postgres 17)', () => {
   let container: StartedPostgreSqlContainer;
   let prisma: PrismaService;
+  // `risk` = SMS configured (phone codes can be sent); `riskNoSms` = SMS unavailable
+  // (the production default until a provider is approved).
   let risk: PersonalRiskService;
+  let riskNoSms: PersonalRiskService;
   let signups: PersonalSignupRepository;
   let n = 0;
 
@@ -37,7 +41,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign Personal (Fr
     for (const p of resolveIdentityMigrations(ROOT)) {
       for (const stmt of splitDdl(readFileSync(p, 'utf8'))) if (stmt.trim().length > 0) await prisma.$executeRawUnsafe(stmt.trim());
     }
-    risk = new PersonalRiskService(prisma);
+    risk = new PersonalRiskService(prisma, new LogSmsAdapter());
+    riskNoSms = new PersonalRiskService(prisma, new DisabledSmsAdapter());
     signups = new PersonalSignupRepository(prisma);
   }, 180_000);
 
@@ -48,15 +53,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign Personal (Fr
 
   const events = (tenant_id: string | null, event_type: string) => prisma.identityAuditEvent.findMany({ where: { tenant_id, event_type } });
 
-  async function personalTenant(opts: { state?: string; step_up?: boolean } = {}): Promise<string> {
+  async function personalTenant(opts: { state?: string; step_up?: boolean; created_at?: Date } = {}): Promise<string> {
     n += 1;
     const id = uuidv7();
     await prisma.tenant.create({ data: { id, name: `Person ${n} (Personal)`, kind: 'PERSONAL' } });
     if (opts.state !== undefined) {
-      await prisma.tenantRiskState.create({ data: { tenant_id: id, state: opts.state, step_up_required: opts.step_up ?? false } });
+      await prisma.tenantRiskState.create({
+        data: { tenant_id: id, state: opts.state, step_up_required: opts.step_up ?? false, ...(opts.created_at === undefined ? {} : { created_at: opts.created_at }) },
+      });
     }
     return id;
   }
+  const GEO = { country: 'US', looked_up_at: '2026-10-21T12:00:00.000Z', db_version: 'GeoLite2-Country 2026-10-20T00:00:00.000Z' };
 
   async function signupRow(overrides: { email?: string; phone?: string; decision?: 'allow' | 'step_up' | 'review'; ip?: string; now?: Date } = {}) {
     n += 1;
@@ -71,6 +79,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign Personal (Fr
       ip_country: 'US',
       phone_region: 'US',
       network_kind: 'residential',
+      geo_evidence: GEO,
       risk_points: 0,
       risk_signals: [],
       decision: overrides.decision ?? 'allow',
@@ -93,18 +102,66 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign Personal (Fr
     const v = await risk.clearReview(t, OPERATOR, 'looks fine');
     expect(v).toMatchObject({ state: 'clear', step_up_required: true, phone_verified_at: null, decided_by: OPERATOR });
     expect(await risk.phoneVerified(t)).toBe(false);
-    expect((await risk.assertPersonalSendAllowed(t, { ip_country: 'US', now: new Date() }))).toEqual({ ok: false, reason: 'phone_verification_required' });
+    expect((await risk.assertPersonalSendAllowed(t, { ip_country: 'US', now: new Date() }))).toEqual({ ok: false, reason: 'phone_verification_required', location: 'inside' });
+    expect(v.step_up_cleared_by).toBeNull();
     const ev = await events(t, 'identity.personal.risk.review_cleared');
     expect(ev).toHaveLength(1);
-    expect(ev[0]).toMatchObject({ actor_id: OPERATOR, actor_type: 'user', subject_id: t });
+    expect(ev[0]).toMatchObject({ actor_id: OPERATOR, actor_type: 'user', subject_id: t, event_payload: expect.objectContaining({ step_up_cleared: false }) });
     await expect(risk.clearReview(t, OPERATOR)).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
+  });
+
+  it('SMS unavailable: clearing review lifts the phone step (step_up_cleared_by review, audited) — phone_verified_at stays NULL', async () => {
+    const t = await personalTenant({ state: 'review', step_up: true, created_at: new Date(Date.now() - 30 * DAY) });
+    const v = await riskNoSms.clearReview(t, OPERATOR, 'reviewed; SMS unavailable');
+    expect(v).toMatchObject({ state: 'clear', step_up_required: false, step_up_cleared_by: 'review', phone_verified_at: null, decided_by: OPERATOR });
+    expect(await riskNoSms.phoneVerified(t)).toBe(false);
+    expect(await riskNoSms.assertPersonalSendAllowed(t, { ip_country: 'US', now: new Date() })).toEqual({ ok: true, location: 'inside' });
+    const ev = await events(t, 'identity.personal.risk.review_cleared');
+    expect(ev).toHaveLength(1);
+    expect(ev[0]!.event_payload).toMatchObject({ step_up_cleared: true, step_up_cleared_by: 'review', phone_verified: false, sms_available: false });
+    // The column only ever holds 'review'.
+    await expect(prisma.tenantRiskState.update({ where: { tenant_id: t }, data: { step_up_cleared_by: 'phone' } })).rejects.toThrow();
+  });
+
+  it('SMS unavailable: a send-time step-up routes the account to review (step_up_phone_unavailable)', async () => {
+    const t = await personalTenant({ state: 'clear' });
+    const v = await riskNoSms.requireStepUp(t, 'young_account_pdf_links');
+    expect(v).toMatchObject({ state: 'review', step_up_required: true, reason: 'step_up_phone_unavailable', phone_verified_at: null });
+    expect(await events(t, 'identity.personal.risk.step_up_required')).toHaveLength(1);
+    const flagged = await events(t, 'identity.personal.risk.review_flagged');
+    expect(flagged).toHaveLength(1);
+    expect(flagged[0]!.event_payload).toMatchObject({ reason: 'step_up_phone_unavailable', step_up_reason: 'young_account_pdf_links' });
+  });
+
+  it('send location: outside / UNKNOWN is allowed + audited with geo evidence on an established account; flagged for review on a young one', async () => {
+    const now = new Date();
+    const geoGB = { country: 'GB', looked_up_at: now.toISOString(), db_version: 'GeoLite2-Country 2026-10-20T00:00:00.000Z' };
+    const established = await personalTenant({ state: 'clear', created_at: new Date(now.getTime() - 30 * DAY) });
+    expect(await risk.assertPersonalSendAllowed(established, { ip_country: 'GB', now, geo: geoGB })).toEqual({ ok: true, location: 'outside' });
+    expect(await risk.assertPersonalSendAllowed(established, { ip_country: null, now })).toEqual({ ok: true, location: 'unknown' });
+    const sig = await prisma.identityAuditEvent.findMany({ where: { tenant_id: established, event_type: 'identity.personal.risk.send_location_signal' }, orderBy: { created_at: 'asc' } });
+    expect(sig.map((e) => e.event_payload)).toEqual([
+      expect.objectContaining({ location: 'outside', outcome: 'allowed', geo: geoGB }),
+      expect.objectContaining({ location: 'unknown', outcome: 'allowed', geo: expect.objectContaining({ country: null, db_version: null }) }),
+    ]);
+    expect((await risk.riskStateOf(established))?.state).toBe('clear');
+    // Inside: no location signal is written.
+    await risk.assertPersonalSendAllowed(established, { ip_country: 'US', now });
+    expect(await events(established, 'identity.personal.risk.send_location_signal')).toHaveLength(2);
+
+    const young = await personalTenant({ state: 'clear' });
+    expect(await risk.assertPersonalSendAllowed(young, { ip_country: 'GB', now, geo: geoGB })).toMatchObject({ ok: false, reason: 'personal_review_pending', flag_review: 'send_location_outside' });
+    expect(await risk.riskStateOf(young)).toMatchObject({ state: 'review', reason: 'send_location_outside' });
+    const flagged = await events(young, 'identity.personal.risk.review_flagged');
+    expect(flagged[0]!.event_payload).toMatchObject({ reason: 'send_location_outside', geo: geoGB, location: 'outside' });
+    expect((await events(young, 'identity.personal.risk.send_location_signal'))[0]!.event_payload).toMatchObject({ outcome: 'flagged_for_review', refusal: 'personal_review_pending', geo: geoGB });
   });
 
   it('only a phone code check sets phone assurance; it satisfies the step-up', async () => {
     const t = await personalTenant({ state: 'clear', step_up: true });
     await risk.markPhoneVerified(t, '+12025550111');
     expect(await risk.phoneVerified(t)).toBe(true);
-    expect(await risk.assertPersonalSendAllowed(t, { ip_country: 'US', now: new Date() })).toEqual({ ok: true });
+    expect(await risk.assertPersonalSendAllowed(t, { ip_country: 'US', now: new Date() })).toEqual({ ok: true, location: 'inside' });
     expect(await events(t, 'identity.personal.risk.phone_verified')).toHaveLength(1);
   });
 
@@ -113,7 +170,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign Personal (Fr
     const t = await personalTenant({ state: 'clear' });
     await risk.restrict(t, 'abuse_reports', new Date(now.getTime() + 72 * 3600_000), null, now);
     expect(await risk.assertPersonalSendAllowed(t, { ip_country: 'US', now })).toEqual({ ok: false, reason: 'personal_restricted' });
-    expect(await risk.assertPersonalSendAllowed(t, { ip_country: 'US', now: new Date(now.getTime() + 73 * 3600_000) })).toEqual({ ok: true });
+    expect(await risk.assertPersonalSendAllowed(t, { ip_country: 'US', now: new Date(now.getTime() + 73 * 3600_000) })).toEqual({ ok: true, location: 'inside' });
     // Operator confirms (indefinite); a later automatic pause does not shorten it.
     await risk.restrict(t, 'confirmed', null, OPERATOR, now);
     const after = await risk.restrict(t, 'abuse_reports', new Date(now.getTime() + 3600_000), null, now);
@@ -139,7 +196,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign Personal (Fr
     const cleared = await risk.clearReview(t, OPERATOR, 'reviewed');
     expect(cleared).toMatchObject({ state: 'restricted', review_pending: false });
     expect(cleared.phone_verified_at).toBeNull();
-    expect(await risk.assertPersonalSendAllowed(t, { ip_country: 'US', now: later })).toEqual({ ok: true });
+    expect(await risk.assertPersonalSendAllowed(t, { ip_country: 'US', now: later })).toEqual({ ok: true, location: 'inside' });
   });
 
   it('close is final for sends; restrict leaves a closed account closed', async () => {
@@ -182,11 +239,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign Personal (Fr
     const t = await personalTenant();
     const user = uuidv7();
     await prisma.user.create({ data: { id: user, email, tenant_id: t } });
-    await signups.completeProvisioning({ id: row.id, tenant_id: t, owner_user_id: user, now });
-    expect(await risk.riskStateOf(t)).toMatchObject({ state: 'review', step_up_required: true, phone_verified_at: null });
+    await signups.completeProvisioning({ id: row.id, tenant_id: t, owner_user_id: user, now, sms_available: false });
+    expect(await risk.riskStateOf(t)).toMatchObject({ state: 'review', step_up_required: true, phone_verified_at: null, reason: 'step_up_phone_unavailable' });
     expect(await signups.findValidInvite(invite.code, email, now)).toBeNull();
-    expect(await events(t, 'identity.personal.signup.provisioned')).toHaveLength(1);
-    expect((await signups.reviewQueue()).find((i) => i.tenant_id === t)).toMatchObject({ owner_email: email, state: 'review', decision: 'step_up', signals: [] });
+    const prov = await events(t, 'identity.personal.signup.provisioned');
+    expect(prov).toHaveLength(1);
+    expect(prov[0]!.event_payload).toMatchObject({ reason: 'step_up_phone_unavailable', geo: { country: 'IN', looked_up_at: GEO.looked_up_at, db_version: GEO.db_version } });
+    expect((await signups.reviewQueue()).find((i) => i.tenant_id === t)).toMatchObject({
+      owner_email: email,
+      state: 'review',
+      decision: 'step_up',
+      signals: [],
+      step_up_cleared_by: null,
+      geo: { country: 'IN', looked_up_at: GEO.looked_up_at, db_version: GEO.db_version },
+    });
     expect(await signups.activePersonalTenantCount()).toBeGreaterThanOrEqual(1);
   });
 
@@ -201,6 +267,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign Personal (Fr
       ip_country: 'IN',
       phone_region: 'IN',
       network_kind: 'residential',
+      geo_evidence: { ...GEO, country: 'IN' },
       risk_points: 30,
       risk_signals: [],
     };

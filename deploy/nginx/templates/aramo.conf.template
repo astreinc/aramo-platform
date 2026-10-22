@@ -257,7 +257,9 @@ limit_req_status 429;
 #   guest signing   /s/:token, /d/:token + /v1/sign/signing/  (capability token)
 #                   + /v1/sign/report ("Report this email", the same token)
 #   public entry    /login, /signed-out, /signup + /v1/signup/sign/  (no session)
-#   workspace       everything else + /v1/sign/sender/, /v1/sign/billing/, /auth/
+#   workspace       everything else + /v1/sign/sender/, /v1/sign/billing/,
+#                   /v1/sign/legal/, /auth/
+#   public pages    /legal/<slug>[/<version>] (published legal texts, in the SPA)
 # Wildcard *.aramo.ai cert covers the host. Only the Sign surfaces are proxied:
 # never apps/api, never the internal envelopes surface; a stray /v1/<other>
 # falls through to the SPA, never to tenant data. PDF uploads travel as base64
@@ -309,6 +311,12 @@ server {
   # trailing slash so the bare list path matches too.
   location /v1/sign/inbox {
     client_max_body_size 16k;
+    proxy_pass http://sign-service:3003;
+  }
+  # Workspace — Personal legal re-acceptance (GET status, POST accept).
+  # Authenticated (Aramo SSO `sign` session); small JSON bodies only.
+  location /v1/sign/legal/ {
+    client_max_body_size 8k;
     proxy_pass http://sign-service:3003;
   }
   # Public — "Report this email" (Personal Free v1.1 §6.4). Session-less: the
