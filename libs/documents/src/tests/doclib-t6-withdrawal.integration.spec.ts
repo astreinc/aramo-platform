@@ -98,6 +98,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return { templateId: tpl.id, versionId: ver.id };
     }
 
+    // ORG-UX-1 §5.3 (T-A) — a GRANDFATHERED selection of an Aramo default (raw: the
+    // repository refuses new PLATFORM selections). Replaces any choice for (type, client).
+    async function legacySelect(tenant: string, typeId: string, clientId: string | null, templateId: string): Promise<void> {
+      await db.query(
+        `INSERT INTO "documents"."TenantTemplateSelection" (id, tenant_id, document_type_id, client_id, template_id, selected_by, updated_at, legacy_platform)
+         VALUES ($1,$2,$3,$4,$5,$6,now(),true)
+         ON CONFLICT (tenant_id, document_type_id, client_id) DO UPDATE SET template_id = EXCLUDED.template_id, legacy_platform = true`,
+        [randomUUID(), tenant, typeId, clientId, templateId, ACTOR],
+      );
+    }
+
     async function conflictReason(p: Promise<unknown>): Promise<string> {
       try {
         await p;
@@ -201,13 +212,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const def = await publishDefault(type);
       const tenant = randomUUID();
       const own = await tenantTemplate(tenant, type);
-      // The tenant switches back to the Aramo default (removes its tenant-wide choice).
-      await templates.deleteSelection(tenant, type, null);
+      // The tenant's tenant-wide choice is a grandfathered selection of the Aramo default.
+      await legacySelect(tenant, type, null, def.templateId);
       const now = new Date();
       await templates.withdrawPlatformTemplate({ id: def.templateId, notice_days: 7, now });
 
       const before = await resolverAt(new Date(now.getTime() + 6 * DAY)).resolve({ tenant_id: tenant, document_type_id: type });
-      expect(before).toMatchObject({ outcome: 'RESOLVED', source: 'PLATFORM_DEFAULT', owner_scope: 'PLATFORM' });
+      expect(before).toMatchObject({ outcome: 'RESOLVED', source: 'TENANT_SELECTION', owner_scope: 'PLATFORM' });
       if (before.outcome === 'RESOLVED') expect(before.version.id).toBe(def.versionId);
 
       const after = await resolverAt(new Date(now.getTime() + 7 * DAY + 1)).resolve({ tenant_id: tenant, document_type_id: type });
@@ -222,8 +233,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const client = randomUUID();
       const wide = await tenantTemplate(tenant, type);
       const forClient = await tenantTemplate(tenant, type, client);
-      await templates.upsertSelection({ tenant_id: tenant, document_type_id: type, client_id: null, template_id: def.templateId, selected_by: ACTOR });
-      await templates.upsertSelection({ tenant_id: tenant, document_type_id: type, client_id: client, template_id: def.templateId, selected_by: ACTOR });
+      await legacySelect(tenant, type, null, def.templateId);
+      await legacySelect(tenant, type, client, def.templateId);
       const now = new Date();
       await templates.withdrawPlatformTemplate({ id: def.templateId, notice_days: 7, now });
       const later = resolverAt(new Date(now.getTime() + 8 * DAY));
@@ -242,7 +253,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const type = await newDocumentType();
       const old = await publishDefault(type);
       const tenant = randomUUID();
-      await templates.upsertSelection({ tenant_id: tenant, document_type_id: type, client_id: null, template_id: old.templateId, selected_by: ACTOR });
+      await legacySelect(tenant, type, null, old.templateId);
       const now = new Date();
       await templates.withdrawPlatformTemplate({ id: old.templateId, notice_days: 7, now });
       // A replacement default is published during the notice window.
@@ -252,20 +263,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         outcome: 'SELECTION_REQUIRED',
         withdrawn_template_ids: [old.templateId],
       });
-      // A tenant with NO selection uses the replacement (the current Aramo default)…
-      const fresh = await later.resolve({ tenant_id: randomUUID(), document_type_id: type });
-      expect(fresh).toMatchObject({ outcome: 'RESOLVED', source: 'PLATFORM_DEFAULT' });
-      if (fresh.outcome === 'RESOLVED') expect(fresh.template.id).toBe(replacement.templateId);
-      // …and already prefers it during the notice window (the old one is being withdrawn).
+      // ORG-UX-1 §5.3 — a tenant with NO selection never resolves any Aramo default (the
+      // replacement is a gallery starting point to adopt), during or after the notice window.
+      expect(replacement.templateId).not.toBe(old.templateId);
+      expect(await later.resolve({ tenant_id: randomUUID(), document_type_id: type })).toEqual({ outcome: 'SELECTION_REQUIRED', withdrawn_template_ids: [] });
       const during = await resolverAt(new Date(now.getTime() + DAY)).resolve({ tenant_id: randomUUID(), document_type_id: type });
-      if (during.outcome === 'RESOLVED') expect(during.template.id).toBe(replacement.templateId);
-      expect(during.outcome).toBe('RESOLVED');
+      expect(during).toEqual({ outcome: 'SELECTION_REQUIRED', withdrawn_template_ids: [] });
     });
 
     it('a generated document keeps its pinned version after the withdrawal takes effect', async () => {
       const type = await newDocumentType();
       const def = await publishDefault(type);
       const tenant = randomUUID();
+      await legacySelect(tenant, type, null, def.templateId); // ORG-UX-1 T-A: grandfathered
       const pinned = await resolverAt(new Date()).resolve({ tenant_id: tenant, document_type_id: type });
       expect(pinned.outcome).toBe('RESOLVED');
       const docId = randomUUID();
@@ -321,45 +331,52 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const def = await publishDefault(type, ['SIGN']);
       const selector = randomUUID();
       const client = randomUUID();
-      const fallbackOnly = randomUUID();
+      const fallbackOnly = randomUUID(); // grandfathered tenant-wide selection of the default
+      const noSelection = randomUUID();
       const ownChoice = randomUUID();
-      await templates.upsertSelection({ tenant_id: selector, document_type_id: type, client_id: client, template_id: def.templateId, selected_by: ACTOR });
+      await legacySelect(selector, type, client, def.templateId);
+      await legacySelect(fallbackOnly, type, null, def.templateId);
       await templateSelectedOwn(ownChoice, type);
       await templates.withdrawPlatformTemplate({ id: def.templateId, notice_days: 7 });
 
       const forType = async (tenant: string) =>
         (await templates.listWithdrawalNoticesForTenant({ tenant_id: tenant, grace_days: 30 })).filter((n) => n.document_type_id === type);
 
-      // The selecting tenant: its client selection names the default; it has no
-      // tenant-wide selection, so it also falls back to it.
+      // The selecting tenant: its (grandfathered) client selection names the default. ORG-UX-1
+      // §5.3: with no tenant-wide selection there is no fallback, so it does not rely on it
+      // tenant-wide.
       const sel = await forType(selector);
       expect(sel).toHaveLength(1);
       expect(sel[0]).toMatchObject({
         template_id: def.templateId,
         selected_for_client_ids: [client],
-        relies_on_default: true,
+        relies_on_default: false,
         has_own_template: false,
         in_effect: false,
         // D9 — product tags are informational: a SIGN-tagged default is listed for every tenant.
         products: ['SIGN'],
       });
-      // A tenant with no selection relies on the fallback; it never sees another tenant's client ids.
+      // A grandfathered tenant-wide selection relies on the default; it never sees another
+      // tenant's client ids.
       const fb = await forType(fallbackOnly);
       expect(fb).toHaveLength(1);
-      expect(fb[0]).toMatchObject({ selected_for_client_ids: [], relies_on_default: true });
+      expect(fb[0]).toMatchObject({ selected_for_client_ids: [null], relies_on_default: true });
+      // ORG-UX-1 §5.3 — a tenant with no selection never relied on any default.
+      expect(await forType(noSelection)).toHaveLength(0);
       // A tenant whose tenant-wide choice is its own template is not affected.
       expect(await forType(ownChoice)).toHaveLength(0);
 
-      // A live replacement means a no-selection tenant no longer relies on the old default.
+      // A live replacement does not re-point a grandfathered selection: both still name the old one.
       await publishDefault(type);
-      expect(await forType(fallbackOnly)).toHaveLength(0);
-      expect(await forType(selector)).toHaveLength(1); // its client selection still names it
+      expect(await forType(fallbackOnly)).toHaveLength(1);
+      expect(await forType(selector)).toHaveLength(1);
     });
 
     it('notices: in effect within the grace window, gone after it; cancelled withdrawals disappear', async () => {
       const type = await newDocumentType();
       const def = await publishDefault(type);
       const tenant = randomUUID();
+      await legacySelect(tenant, type, null, def.templateId);
       const forType = async (now: Date) =>
         (await templates.listWithdrawalNoticesForTenant({ tenant_id: tenant, grace_days: 30, now })).filter((n) => n.document_type_id === type);
       await templates.withdrawPlatformTemplate({ id: def.templateId, notice_days: 7 });
@@ -376,9 +393,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const def = await publishDefault(type, ['SIGN']);
       expect((await templates.updatePlatformTemplate(def.templateId, { products: ['ATS', 'SIGN'] })).products).toEqual(['ATS', 'SIGN']);
       await templates.updatePlatformTemplate(def.templateId, { products: [] });
-      // Any tenant resolves the default whatever its tags (no subscription filtering).
-      const r = await resolverAt(new Date()).resolve({ tenant_id: randomUUID(), document_type_id: type });
-      expect(r).toMatchObject({ outcome: 'RESOLVED', source: 'PLATFORM_DEFAULT' });
+      // A grandfathered tenant resolves the default whatever its tags (no subscription filtering).
+      const tenant = randomUUID();
+      await legacySelect(tenant, type, null, def.templateId);
+      const r = await resolverAt(new Date()).resolve({ tenant_id: tenant, document_type_id: type });
+      expect(r).toMatchObject({ outcome: 'RESOLVED', owner_scope: 'PLATFORM' });
       expect((await templates.listPlatformTemplates()).find((t) => t.id === def.templateId)?.products).toEqual([]);
     });
 

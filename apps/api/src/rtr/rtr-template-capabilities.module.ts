@@ -64,6 +64,18 @@ export function templateAuditFromIdentity(repo: IdentityAuditRepository): Templa
         requestId: e.requestId,
       });
     },
+    // ORG-UX-1 §5.4 — Org template governance (adopt / create / approve / select / clear).
+    async recordGovernance(e) {
+      await repo.writeEvent({
+        event_type: `identity.document_template.${e.action}`,
+        actor_type: 'user',
+        actor_id: e.actor_id,
+        tenant_id: e.tenant_id,
+        subject_id: e.subject_id,
+        event_payload: { ...e.payload },
+        requestId: e.requestId,
+      });
+    },
   };
 }
 

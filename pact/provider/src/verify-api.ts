@@ -549,6 +549,14 @@ const DOCUMENTS_R2_DECLINED_MIGRATION = resolve(
   ROOT,
   'libs/documents/prisma/migrations/20261021170000_r2_document_status_declined/migration.sql',
 );
+// ORG-UX-1 (LOCKED §5.1/§5.3) — DocumentTemplate.adopted_from_{template,version}_id +
+// TenantTemplateSelection.legacy_platform (ADD-not-rename). Changes the returned
+// DocumentTemplate / selection shapes (the regenerated client SELECTs the new columns) →
+// registered (CLAUDE.md law); after R2. Its T-A data block skips without identity.Tenant.
+const DOCUMENTS_ORG_UX_1_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20261022130000_org_ux_1_template_adoption_and_legacy_selection/migration.sql',
+);
 // R2 (DEF-12) — the signature-routing store (SignatureRequestRoute) the Sign lifecycle receiver
 // reads to resolve an ended envelope's Document; without it the receiver cannot answer.
 const SIGNATURE_ROUTING_INIT_MIGRATION = resolve(
@@ -3815,6 +3823,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         DOCUMENTS_DOCLIB_T3_VARIABLES_MIGRATION,
         // R2 (DEF-12) — DECLINED status + the signature-routing store.
         DOCUMENTS_R2_DECLINED_MIGRATION,
+        DOCUMENTS_ORG_UX_1_MIGRATION,
         SIGNATURE_ROUTING_INIT_MIGRATION,
         SIGNATURE_ROUTING_OAUTH_STATE_MIGRATION,
         TALENT_EVIDENCE_INIT_MIGRATION,

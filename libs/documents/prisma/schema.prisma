@@ -242,6 +242,12 @@ model DocumentTemplate {
   products              String[]
   withdraw_notice_at    DateTime? @db.Timestamptz // PLATFORM only (CHECK, migration)
   withdraw_effective_at DateTime? @db.Timestamptz // PLATFORM only (CHECK, migration)
+  // ORG-UX-1 (LOCKED §5.1, Lead Correction B) — provenance of an ADOPTED tenant template:
+  // the Aramo default (and its version) the draft was copied from. AUDIT/PROVENANCE ONLY —
+  // never read by resolution, rendering or any update path, no FK, no cascade: later
+  // changes to the Aramo default never reach the tenant's independent copy.
+  adopted_from_template_id String? @db.Uuid
+  adopted_from_version_id  String? @db.Uuid
   created_by            String    @db.Uuid
   created_at            DateTime  @default(now()) @db.Timestamptz
   updated_at            DateTime  @updatedAt @db.Timestamptz
@@ -317,6 +323,11 @@ model TenantTemplateSelection {
   template_id      String   @db.Uuid
   selected_by      String   @db.Uuid
   selected_at      DateTime @default(now()) @db.Timestamptz
+  // ORG-UX-1 (LOCKED §5.3, P2 T-A) — a GRANDFATHERED selection of an Aramo (PLATFORM)
+  // default, written once by 20261022130000 for tenants that resolved to the default
+  // before the gallery-first rule. The resolver honours a PLATFORM selection ONLY when
+  // this is true; new selections name approved TENANT templates (NULL here).
+  legacy_platform  Boolean?
   created_at       DateTime @default(now()) @db.Timestamptz
   updated_at       DateTime @updatedAt @db.Timestamptz
 
