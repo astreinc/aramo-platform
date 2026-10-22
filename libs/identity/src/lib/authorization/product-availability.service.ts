@@ -1,10 +1,14 @@
 import { Injectable } from '@nestjs/common';
 
-import { ORG_ADMIN_SCOPE_KEYS } from '../dto/role.dto.js';
+import { ORG_ADMIN_SCOPE_KEYS, ORG_ROLE_KEYS } from '../dto/role.dto.js';
 import { RoleService } from '../role.service.js';
 import { TenantEntitlementReader } from '../tenant-entitlement-reader.service.js';
 
-import { ESIGN_SCOPE_PREFIX, filterScopesForConsumer } from './consumer-scope-policy.js';
+import {
+  ESIGN_SCOPE_PREFIX,
+  ORG_SESSION_DOCUMENT_TEMPLATE_SCOPE_KEYS,
+  filterScopesForConsumer,
+} from './consumer-scope-policy.js';
 
 // D-ORG (Lead disposition 2026-10-17, R5 / §3.D) — the backend-AUTHORITATIVE
 // product-availability projection App Home renders from. For the calling
@@ -32,6 +36,17 @@ export type ProductKey = (typeof PRODUCT_KEYS)[number];
 
 export type ProductUnavailableReason = 'not_subscribed' | 'not_authorized' | 'not_activated';
 
+// ORG-UX-1 (Directive v1.0 LOCKED §4.3, Lead Correction A) — what the Organization
+// workspace shows this principal. Server-evaluated from the ADR-0035 role model:
+//   admin     — holds tenant_owner or tenant_admin (the authoritative organization roles)
+//   templates — not admin, but authors or approves templates (document_template:author /
+//               :manage as the org session resolves them): Our templates + Template gallery
+//   none      — App Home only
+// Holding some tenant:admin:* scope (or the directory read) never confers organization
+// administration. Navigation only: every organization command keeps its own scope guard.
+export type OrgAccess = 'admin' | 'templates' | 'none';
+export const ORG_TEMPLATES_ENTRY_PATH = '/org/document-templates';
+
 export interface ProductAvailability {
   readonly key: ProductKey;
   readonly subscribed: boolean;
@@ -42,6 +57,8 @@ export interface ProductAvailability {
   // host (Sign: https://esign.aramo.ai/ — Lead Host & Workspace Ruling v1.0).
   readonly entry_path: string | null;
   readonly reason: ProductUnavailableReason | null;
+  // ORG-UX-1 §4.3 — present on the `org` entry only (additive field).
+  readonly org_access?: OrgAccess;
 }
 
 export interface ProductAvailabilityView {
@@ -74,10 +91,6 @@ export function signEntryUrl(env: NodeJS.ProcessEnv = process.env): string {
   return DEFAULT_SIGN_ENTRY_URL;
 }
 
-// The organization scope(s) every tenant role carries as a session marker; holding
-// ONLY these does not make a member an organization administrator.
-const ORG_BASELINE_SCOPES: ReadonlySet<string> = new Set(['auth:session:read']);
-
 @Injectable()
 export class ProductAvailabilityService {
   constructor(
@@ -90,9 +103,10 @@ export class ProductAvailabilityService {
   }
 
   async forPrincipal(args: { user_id: string; tenant_id: string }): Promise<ProductAvailabilityView> {
-    const [capabilities, held] = await Promise.all([
+    const [capabilities, held, roleKeys] = await Promise.all([
       this.entitlements.getCapabilities(args.tenant_id),
       this.heldScopesAsSessionWouldResolve(args),
+      heldRoleKeys(this.roles, args),
     ]);
     const tenantHasEsign = capabilities.has('sign');
     const orgSubset = ORG_ADMIN_SCOPE_KEYS as readonly string[];
@@ -105,14 +119,16 @@ export class ProductAvailabilityService {
     // Sign — the esign consumer's view restricted to the esign namespace (read from
     // the HELD scopes; the capability half of "authorized" is applied below).
     const signScopes = held.filter((s) => s.startsWith(ESIGN_SCOPE_PREFIX));
-    // Organization — the org consumer's view minus the baseline session marker.
-    // DOC-TEMPLATE-LIB-1 T-4: the org session also carries document_template:* (Org Home
-    // template administration, §6.2). Holding only those (e.g. a recruiter's
-    // document_template:read) does not make a member an organization administrator, so
-    // "authorized" for the org tile stays the organization-administration subset.
-    const orgScopes = filterScopesForConsumer({ consumer: 'org', scopes: held, tenantHasEsign }).filter(
-      (s) => !ORG_BASELINE_SCOPES.has(s) && orgSubset.includes(s),
-    );
+    // Organization — ORG-UX-1 §4.3 (Lead Correction A): admin from the ROLE model
+    // (tenant_owner / tenant_admin), templates from the template-authoring scopes the org
+    // session would carry. A tenant:admin:* scope or the directory read alone is neither.
+    const orgSession = filterScopesForConsumer({ consumer: 'org', scopes: held, tenantHasEsign });
+    const orgAccess: OrgAccess = roleKeys.some((k) => (ORG_ROLE_KEYS as readonly string[]).includes(k))
+      ? 'admin'
+      : orgSession.some((s) => (ORG_SESSION_DOCUMENT_TEMPLATE_SCOPE_KEYS as readonly string[]).includes(s))
+        ? 'templates'
+        : 'none';
+    const orgEntry = orgAccess === 'templates' ? ORG_TEMPLATES_ENTRY_PATH : ORG_ENTRY_PATH;
 
     const signActivated = signEntryActivated();
     const products: ProductAvailability[] = [
@@ -125,7 +141,7 @@ export class ProductAvailabilityService {
         signActivated,
         signActivated ? signEntryUrl() : null,
       ),
-      product('org', capabilities.has('core'), capabilities.has('core') && orgScopes.length > 0, true, ORG_ENTRY_PATH),
+      { ...product('org', capabilities.has('core'), capabilities.has('core') && orgAccess !== 'none', true, orgEntry), org_access: capabilities.has('core') ? orgAccess : 'none' },
     ];
     return { tenant_id: args.tenant_id, products };
   }
@@ -139,6 +155,12 @@ export class ProductAvailabilityService {
 // resolver applies the same union under the token's site claim, so "authorized"
 // here can never differ from the access the product session actually receives.
 // Not a second authorization authority: the readers are the RoleService's own.
+// ORG-UX-1 §4.3 — the held ROLE KEYS under the same membership rule as heldScopes.
+async function heldRoleKeys(roles: RoleService, args: { user_id: string; tenant_id: string }): Promise<string[]> {
+  const site_id = await roles.findActiveMembershipSite(args);
+  return roles.getRoleKeysByUserTenantAndSite(site_id === null ? args : { ...args, site_id });
+}
+
 async function heldScopes(roles: RoleService, args: { user_id: string; tenant_id: string }): Promise<string[]> {
   const site_id = await roles.findActiveMembershipSite(args);
   return site_id === null

@@ -7,13 +7,12 @@ import {
   Input,
   Select,
   SettingsSection,
-  hasScope,
   safeErrorMessage,
   useSession,
   type Session,
 } from '@aramo/fe-foundation';
 import {
-  DOC_TEMPLATE_MANAGE_SCOPE,
+  canAuthorTemplates,
   createOwnTemplate,
   fetchTemplateLibrary,
   useDocTemplateRoutes,
@@ -26,6 +25,8 @@ import {
 // option: the organization's own template is its own work (no copy, no link, no
 // "new Aramo version" prompts). The draft opens in the editor; approving it (after a
 // preview) makes it the template in use for its document type.
+// ORG-UX-1 §4.1 — creating is authoring (document_template:author or :manage); approving
+// stays manage-only.
 
 const NAME_MAX = 120;
 
@@ -40,7 +41,7 @@ export function CreateOwnTemplate({
 }) {
   const sessionState = useSession();
   const session = sessionOverride ?? (sessionState.status === 'authenticated' ? sessionState.session : null);
-  const canManage = session != null && hasScope(session, DOC_TEMPLATE_MANAGE_SCOPE);
+  const canAuthor = canAuthorTemplates(session);
   const navigate = useNavigate();
   const routes = useDocTemplateRoutes();
   const [types, setTypes] = useState<readonly TemplateDocumentType[] | null>(null);
@@ -50,7 +51,7 @@ export function CreateOwnTemplate({
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
-    if (!canManage) return;
+    if (!canAuthor) return;
     libraryFn().then(
       (lib) => {
         const configurable = lib.document_types.filter((t) => t.configurable);
@@ -59,13 +60,13 @@ export function CreateOwnTemplate({
       },
       (err: unknown) => setError(safeErrorMessage(err, 'Could not load the document types.')),
     );
-  }, [canManage, libraryFn]);
+  }, [canAuthor, libraryFn]);
 
-  if (!canManage) {
+  if (!canAuthor) {
     return (
       <SettingsSection title="Create your own document template">
         <p className="org-muted" data-testid="dt-create-noaccess">
-          Only your organization’s owners and administrators can create document templates.
+          You don’t have permission to create document templates.
         </p>
       </SettingsSection>
     );
@@ -89,7 +90,7 @@ export function CreateOwnTemplate({
   return (
     <SettingsSection
       title="Create your own document template"
-      description="Write your organization’s own wording from a blank document. Aramo defaults stay available alongside it."
+      description="Write your organization’s own wording from a blank document. Nothing is used until it’s approved."
     >
       <form className="org-dt-form" onSubmit={(e) => void onSubmit(e)} data-testid="dt-create-form">
         {error !== '' ? <InlineAlert variant="error">{error}</InlineAlert> : null}

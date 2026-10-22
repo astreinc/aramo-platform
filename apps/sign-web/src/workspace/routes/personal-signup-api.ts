@@ -87,7 +87,7 @@ export function toE164(country: Country, national: string): string | null {
 }
 
 export const LOCATION_MESSAGE = 'Aramo Sign Personal is currently available in the United States and India.';
-export const NOT_OPEN_MESSAGE = 'Personal accounts aren’t open yet.';
+export const NOT_OPEN_MESSAGE = 'Personal accounts aren’t open yet';
 
 export type StartFailure =
   | { kind: 'business_email' }

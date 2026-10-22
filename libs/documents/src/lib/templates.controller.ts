@@ -112,6 +112,12 @@ interface CreateTemplateBody {
   client_id?: string;
 }
 
+// ORG-UX-1 (Directive v1.0 LOCKED §5.1) — adopt an Aramo (PLATFORM) default from the
+// gallery as an independent tenant draft.
+interface AdoptTemplateBody {
+  library_template_id: string;
+}
+
 // Document Templates slice 1 (PO ruling 2) — rename a template (DocumentTemplate.name).
 interface RenameTemplateBody {
   name: string;
@@ -168,6 +174,20 @@ export class DocumentTemplatesController {
     @Optional() @Inject(TEMPLATE_TENANT_LOGO) private readonly tenantLogo?: TemplateTenantLogoPort,
   ) {}
 
+  // ORG-UX-1 §5.4 — Org template governance audit (adopt / create / approve). Written
+  // after the change; the seam is non-swallowing, so a failed write is an error, never
+  // silent. Absent only where no audit seam is wired (generic CRUD outside apps/api).
+  private async governance(
+    auth: AuthContextType,
+    action: 'adopted' | 'created' | 'version_activated',
+    subject_id: string,
+    payload: Record<string, string | number | null>,
+    requestId: string,
+  ): Promise<void> {
+    if (this.audit === undefined) return;
+    await this.audit.recordGovernance({ action, tenant_id: auth.tenant_id, actor_id: auth.sub, subject_id, payload, requestId });
+  }
+
   // A1 / editor v2 — the version read view: the stored row + `logo` ({asset_id, mime} of
   // the frozen letterhead asset, or null). The content (incl. html) is field_schema.
   private versionView<V extends { field_schema: unknown }>(v: V): V & { logo: { asset_id: string; mime: string } | null } {
@@ -184,16 +204,62 @@ export class DocumentTemplatesController {
 
   @Post()
   @HttpCode(HttpStatus.CREATED)
-  @RequireScopes('document_template:manage')
+  @RequireScopes('document_template:author')
   async create(@AuthContext() auth: AuthContextType, @Body() body: CreateTemplateBody, @RequestId() requestId: string) {
     validate(typeof body?.document_type_id === 'string', 'document_type_id is required', requestId);
     validate(typeof body?.name === 'string' && body.name.length > 0, 'name is required', requestId);
     validate(TEMPLATE_KINDS.has(body.template_kind), 'invalid template_kind', requestId);
+    let created: Awaited<ReturnType<TemplatesRepository['createTemplate']>>;
     try {
-      return await this.repo.createTemplate({ tenant_id: auth.tenant_id, created_by: auth.sub, ...body });
+      created = await this.repo.createTemplate({ tenant_id: auth.tenant_id, created_by: auth.sub, ...body });
     } catch (e) {
       throw toHttp(e, requestId);
     }
+    await this.governance(auth, 'created', created.id, { document_type_id: created.document_type_id }, requestId);
+    return created;
+  }
+
+  // ORG-UX-1 (Directive v1.0 LOCKED §5.1, Lead Correction B) — ADOPT: Aramo gallery →
+  // an independent TENANT-owned template + DRAFT v1 (a full copy of the default's current
+  // content), authored by document_template:author and approved later by
+  // document_template:manage. Nothing is usable until approved. adopted_from_* is
+  // provenance only. A non-adoptable default (not published, withdrawn) → 409
+  // TEMPLATE_SELECTION_INVALID; unknown → 404.
+  @Post('adopt')
+  @HttpCode(HttpStatus.CREATED)
+  @RequireScopes('document_template:author')
+  async adopt(@AuthContext() auth: AuthContextType, @Body() body: AdoptTemplateBody, @RequestId() requestId: string) {
+    validate(typeof body?.library_template_id === 'string' && body.library_template_id.length > 0, 'library_template_id is required', requestId);
+    let adopted: Awaited<ReturnType<TemplatesRepository['adoptPlatformTemplate']>>;
+    try {
+      const source = await this.repo.findTemplateByIdOwnerAware(auth.tenant_id, body.library_template_id);
+      if (source === null || source.owner_scope !== 'PLATFORM') throw new TemplateNotFoundError(body.library_template_id);
+      const caps = this.caps;
+      const transform =
+        caps !== undefined && caps.isConfigurable(source.document_type_id)
+          ? (c: { render_schema_version: string; field_schema: unknown }) => caps.draftContentFrom({ document_type_id: source.document_type_id, ...c })
+          : undefined;
+      adopted = await this.repo.adoptPlatformTemplate({
+        tenant_id: auth.tenant_id,
+        library_template_id: body.library_template_id,
+        created_by: auth.sub,
+        ...(transform !== undefined ? { transform } : {}),
+      });
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+    await this.governance(
+      auth,
+      'adopted',
+      adopted.template.id,
+      {
+        document_type_id: adopted.template.document_type_id,
+        adopted_from_template_id: adopted.template.adopted_from_template_id,
+        adopted_from_version_id: adopted.template.adopted_from_version_id,
+      },
+      requestId,
+    );
+    return { template: adopted.template, version: this.versionView(adopted.version) };
   }
 
   @Get()
@@ -248,7 +314,7 @@ export class DocumentTemplatesController {
   // TEMPLATE_NOT_FOUND). Returns the same template view GET :id returns.
   @Patch(':id')
   @HttpCode(HttpStatus.OK)
-  @RequireScopes('document_template:manage')
+  @RequireScopes('document_template:author')
   async rename(
     @AuthContext() auth: AuthContextType,
     @Param('id') id: string,
@@ -267,7 +333,7 @@ export class DocumentTemplatesController {
 
   @Post(':id/versions')
   @HttpCode(HttpStatus.CREATED)
-  @RequireScopes('document_template:manage')
+  @RequireScopes('document_template:author')
   async createVersion(
     @AuthContext() auth: AuthContextType,
     @Param('id') templateId: string,
@@ -295,7 +361,7 @@ export class DocumentTemplatesController {
   // One-DRAFT guarded (§41): if a DRAFT is already open, 409 TEMPLATE_DRAFT_ALREADY_EXISTS.
   @Post(':id/draft')
   @HttpCode(HttpStatus.CREATED)
-  @RequireScopes('document_template:manage')
+  @RequireScopes('document_template:author')
   async createDraft(@AuthContext() auth: AuthContextType, @Param('id') templateId: string, @RequestId() requestId: string) {
     try {
       const t = await this.repo.getTemplate(auth.tenant_id, templateId);
@@ -342,7 +408,7 @@ export class DocumentTemplatesController {
   // port, T2); this route owns the generic content write.
   @Patch('versions/:versionId')
   @HttpCode(HttpStatus.OK)
-  @RequireScopes('document_template:manage')
+  @RequireScopes('document_template:author')
   async updateVersion(
     @AuthContext() auth: AuthContextType,
     @Param('versionId') versionId: string,
@@ -401,7 +467,7 @@ export class DocumentTemplatesController {
   // request that did not complete — the only non-atomic edge of a cross-schema write.)
   @Delete('versions/:versionId')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequireScopes('document_template:manage')
+  @RequireScopes('document_template:author')
   async deleteDraft(@AuthContext() auth: AuthContextType, @Param('versionId') versionId: string, @RequestId() requestId: string): Promise<void> {
     try {
       const v = await this.repo.getVersion(auth.tenant_id, versionId);
@@ -428,7 +494,7 @@ export class DocumentTemplatesController {
   // Recording the preview arms the §18 activation gate for exactly this content.
   @Post('versions/:versionId/preview')
   @HttpCode(HttpStatus.OK)
-  @RequireScopes('document_template:manage')
+  @RequireScopes('document_template:author')
   async previewVersion(@AuthContext() auth: AuthContextType, @Param('versionId') versionId: string, @RequestId() requestId: string) {
     try {
       const ctx = await this.documentTypeForVersion(auth.tenant_id, versionId);
@@ -466,7 +532,7 @@ export class DocumentTemplatesController {
   // placed as the first content node. Editing content re-arms the preview gate.
   @Post('versions/:versionId/logo')
   @HttpCode(HttpStatus.CREATED)
-  @RequireScopes('document_template:manage')
+  @RequireScopes('document_template:author')
   async captureLogo(@AuthContext() auth: AuthContextType, @Param('versionId') versionId: string, @RequestId() requestId: string) {
     try {
       const { v, caps } = await this.logoContext(auth.tenant_id, versionId, requestId);
@@ -496,7 +562,7 @@ export class DocumentTemplatesController {
   // row is kept (an ACTIVE/RETIRED version may still reference it). 204.
   @Delete('versions/:versionId/logo')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @RequireScopes('document_template:manage')
+  @RequireScopes('document_template:author')
   async removeLogo(@AuthContext() auth: AuthContextType, @Param('versionId') versionId: string, @RequestId() requestId: string): Promise<void> {
     try {
       const { v, caps } = await this.logoContext(auth.tenant_id, versionId, requestId);
@@ -548,7 +614,15 @@ export class DocumentTemplatesController {
         const ctx = await this.documentTypeForVersion(auth.tenant_id, versionId);
         await this.caps.validateDraftContent({ ...ctx, requestId });
       }
-      return await this.repo.activateVersion({ tenant_id: auth.tenant_id, version_id: versionId, actor_id: auth.sub });
+      const activated = await this.repo.activateVersion({ tenant_id: auth.tenant_id, version_id: versionId, actor_id: auth.sub });
+      await this.governance(
+        auth,
+        'version_activated',
+        versionId,
+        { template_id: activated.template_id, version_number: activated.version_number },
+        requestId,
+      );
+      return activated;
     } catch (e) {
       throw toHttp(e, requestId);
     }
@@ -556,7 +630,7 @@ export class DocumentTemplatesController {
 
   @Post('versions/:versionId/fields')
   @HttpCode(HttpStatus.CREATED)
-  @RequireScopes('document_template:manage')
+  @RequireScopes('document_template:author')
   async addField(
     @AuthContext() auth: AuthContextType,
     @Param('versionId') versionId: string,

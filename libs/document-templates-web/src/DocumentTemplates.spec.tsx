@@ -23,6 +23,7 @@ function makeSession(scopes: readonly string[]): Session {
 }
 const READER = makeSession(['document_template:read']);
 const MANAGER = makeSession(['document_template:read', 'document_template:manage']);
+const AUTHOR = makeSession(['document_template:read', 'document_template:author']);
 
 const BINDINGS: readonly TemplateBinding[] = [
   { key: 'talent.full_name', label: 'Talent full name', group: 'Talent' },
@@ -144,6 +145,12 @@ describe('RtrTemplateDetail — version history (§7)', () => {
     await waitFor(() => expect(discardFn).toHaveBeenCalledWith('v3'));
     await waitFor(() => expect(screen.queryByTestId('rtr-version-3')).toBeNull());
     expect(screen.queryByTestId('rtr-detail-discard')).toBeNull();
+  });
+
+  it('an author (no manage) gets the draft action and Discard on the open DRAFT (ORG-UX-1 §4.1)', async () => {
+    renderDetail({ sessionOverride: AUTHOR, ...base, listVersionsFn: () => Promise.resolve([version('v2', 2, 'ACTIVE'), version('v3', 3, 'DRAFT')]) });
+    expect(await screen.findByTestId('rtr-detail-draft')).toHaveTextContent('Continue draft v3');
+    expect(screen.getAllByTestId('rtr-detail-discard')).toHaveLength(1);
   });
 
   it('a reader never sees Discard', async () => {

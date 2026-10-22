@@ -49,8 +49,8 @@ async function fillForm({ email = 'pat@gmail.com', phone = '(415) 555-0134', cou
   fireEvent.change(await screen.findByLabelText('Full name'), { target: { value: 'Pat Lee' } });
   fireEvent.change(screen.getByLabelText('Personal email'), { target: { value: email } });
   fireEvent.change(screen.getByLabelText('Phone country'), { target: { value: country } });
-  fireEvent.change(screen.getByLabelText('Mobile phone'), { target: { value: phone } });
-  fireEvent.change(screen.getByLabelText('Where do you live?'), { target: { value: residence } });
+  fireEvent.change(screen.getByLabelText('Mobile number'), { target: { value: phone } });
+  fireEvent.change(screen.getByLabelText('Country of residence'), { target: { value: residence } });
 }
 
 const bodyOf = (fetch: ReturnType<typeof api>, path: string) => {
@@ -81,17 +81,24 @@ describe('/signup/personal', () => {
 
   it('is dark while the Personal mode is off (terms 404)', async () => {
     at(api({ terms: json({}, 404) }));
-    expect(await screen.findByTestId('personal-not-open')).toHaveTextContent('Personal accounts aren’t open yet.');
+    const page = await screen.findByTestId('personal-not-open');
+    expect(page).toHaveTextContent('Personal accounts aren’t open yet');
+    expect(within(page).getByRole('link', { name: 'Create a Business account' })).toHaveAttribute('href', '/signup');
     expect(screen.queryByTestId('personal-form')).toBeNull();
   });
 
-  it('shows the Free plan and offers only the United States and India', async () => {
+  it('details step in the activation layout; phone and residence offer only the United States and India', async () => {
     at(api({}));
-    expect(await screen.findByTestId('personal-plan')).toHaveTextContent('5 E-Signs a month, 2 a day, single user. Available in the United States and India.');
-    const phoneOpts = within(screen.getByLabelText('Phone country')).getAllByRole('option').map((o) => o.textContent);
-    expect(phoneOpts).toEqual(['United States (+1)', 'India (+91)']);
-    const resOpts = within(screen.getByLabelText('Where do you live?')).getAllByRole('option').map((o) => (o as HTMLOptionElement).value);
-    expect(resOpts).toEqual(['', 'US', 'IN']);
+    expect(await screen.findByRole('heading', { name: 'Tell us about you' })).toBeInTheDocument();
+    expect(screen.getByTestId('personal-form')).toHaveTextContent('For your free personal account. 5 documents a month.');
+    const nav = screen.getByRole('navigation', { name: 'Setup steps' });
+    expect(within(nav).getByTestId('step-form')).toHaveAttribute('aria-current', 'step');
+    // Verify phone is listed only once the backend asks for it.
+    expect(within(nav).queryByTestId('step-phone')).toBeNull();
+    const phoneOpts = within(screen.getByLabelText('Phone country')).getAllByRole('option').map((o) => (o as HTMLOptionElement).value);
+    expect(phoneOpts).toEqual(['US', 'IN']);
+    const resOpts = within(screen.getByLabelText('Country of residence')).getAllByRole('option').map((o) => (o as HTMLOptionElement).value);
+    expect(resOpts).toEqual(['', 'US', 'IN', 'OTHER']);
     // No Turnstile without a site key, and no script from Cloudflare.
     expect(screen.queryByTestId('turnstile')).toBeNull();
     expect(document.querySelector('script[src*="challenges.cloudflare.com"]')).toBeNull();
@@ -109,6 +116,16 @@ describe('/signup/personal', () => {
     expect(body).not.toHaveProperty('invite_code');
   });
 
+  it('another country of residence is refused here, with the Business route, and never sent', async () => {
+    const fetch = api({});
+    at(fetch);
+    await fillForm({ residence: 'OTHER' });
+    fireEvent.click(screen.getByTestId('personal-submit'));
+    expect(await screen.findByText('Personal accounts are available in the US and India only.')).toBeInTheDocument();
+    expect(within(screen.getByTestId('personal-region')).getByRole('link', { name: 'create a Business account' })).toHaveAttribute('href', '/signup');
+    expect(bodyOf(fetch, 'start')).toBeUndefined();
+  });
+
   it('validates the form before sending anything', async () => {
     const fetch = api({});
     at(fetch);
@@ -122,7 +139,7 @@ describe('/signup/personal', () => {
 
   it.each([
     ['business_email_use_business_signup', 'personal-error-business', 'work email'],
-    ['personal_email_not_allowed', 'personal-error-disposable', 'disposable'],
+    ['personal_email_not_allowed', 'personal-error-disposable', 'Disposable email addresses aren’t allowed'],
     ['personal_location_not_supported', 'personal-error-location', 'currently available in the United States and India'],
   ])('renders the %s refusal', async (reason, testId, text) => {
     at(api({ start: refusal(400, reason) }));
@@ -181,7 +198,10 @@ describe('/signup/personal', () => {
     await toEmailCode(fetch);
     const resend = screen.getByTestId('code-resend');
     expect(resend).toBeDisabled();
-    expect(resend).toHaveTextContent('Send a new code in 60s');
+    expect(resend).toHaveTextContent('Resend in 1:00');
+    // One labelled input carries the code; the six boxes are hidden from screen readers.
+    expect(screen.getByLabelText('6-digit code')).toBe(screen.getByTestId('code-input'));
+    expect(screen.getByTestId('code-input')).toHaveAttribute('autocomplete', 'one-time-code');
     enterCode('111111');
     expect(await screen.findByText('That code isn’t right. 4 tries left.')).toBeInTheDocument();
     enterCode('654321');
@@ -189,6 +209,8 @@ describe('/signup/personal', () => {
     expect(bodyOf(fetch, 'verify-email')).toEqual({ signup_id: 'su-1', code: '111111' });
     const docs = within(screen.getByTestId('personal-terms-docs')).getAllByRole('link');
     expect(docs.map((a) => a.getAttribute('href'))).toEqual(DOCS.map((d) => d.url));
+    expect(screen.getByTestId('personal-terms-docs')).toHaveTextContent('v1.0');
+    expect(screen.getByTestId('personal-plan')).toHaveTextContent('5 documents a month · up to 2 a day');
     const box = screen.getByTestId('personal-accept') as HTMLInputElement;
     expect(box.checked).toBe(false);
     expect(screen.getByTestId('personal-complete')).toBeDisabled();
@@ -207,6 +229,7 @@ describe('/signup/personal', () => {
     await toEmailCode(api({ start: json({ signup_id: 'su-1' }, 202), 'verify-email': refusal(400, 'otp_attempts_exceeded') }));
     enterCode();
     expect(await screen.findByTestId('code-restart')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Too many tries' })).toBeInTheDocument();
     fireEvent.click(screen.getByTestId('code-restart'));
     expect(await screen.findByTestId('personal-form')).toBeInTheDocument();
   });
@@ -282,7 +305,8 @@ describe('/signup/personal', () => {
     });
     await toEmailCode(fetch);
     enterCode();
-    expect(await screen.findByTestId('personal-phone-code')).toBeInTheDocument();
+    expect(await screen.findByTestId('personal-phone-code')).toHaveTextContent('We texted a 6-digit code to +1 ••• ••• 0134.');
+    expect(screen.getByTestId('step-phone')).toHaveAttribute('aria-current', 'step');
     expect(fetch.mock.calls.filter(([u]) => String(u).endsWith('/phone/send'))).toHaveLength(1);
     enterCode('222222');
     expect(await screen.findByTestId('personal-terms')).toBeInTheDocument();
@@ -311,7 +335,7 @@ describe('/signup/personal', () => {
     fireEvent.click(screen.getByTestId('personal-submit'));
     await screen.findByTestId('personal-email-code');
     enterCode();
-    expect(await screen.findByTestId('personal-terms-unavailable')).toHaveTextContent('Personal accounts aren’t open yet.');
+    expect(await screen.findByTestId('personal-terms-unavailable')).toHaveTextContent('Personal accounts aren’t open yet');
   });
 
   it('complete refused with legal_documents_not_approved shows not open', async () => {

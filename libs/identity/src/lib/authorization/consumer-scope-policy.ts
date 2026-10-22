@@ -35,10 +35,15 @@ import { ORG_ADMIN_SCOPE_KEYS } from '../dto/role.dto.js';
 // administration lives in Org Home (the `org` consumer: read + manage); Sign starts
 // envelopes from templates (the `sign` consumer: read only). Never platform:* — the
 // platform tier is `platform:document_template:*`, a different namespace.
+//
+// ORG-UX-1 (Directive v1.0 LOCKED §4.1; conforming amendment row 9) — the org session
+// carries document_template:author + :manage, and document_template:read ONLY alongside
+// one of them (a recruiter's read-for-sending never opens the Org template pages).
 export const ORG_SESSION_DOCUMENT_TEMPLATE_SCOPE_KEYS = [
-  'document_template:read',
+  'document_template:author',
   'document_template:manage',
 ] as const;
+export const ORG_SESSION_TEMPLATE_READ_SCOPE_KEY = 'document_template:read';
 export const SIGN_SESSION_DOCUMENT_TEMPLATE_SCOPE_KEYS = ['document_template:read'] as const;
 
 const ORG_SESSION_SCOPES: ReadonlySet<string> = new Set<string>([
@@ -106,10 +111,18 @@ export function filterScopesForConsumer(args: {
     // Possession of `core` is NOT organization administration — an ordinary member
     // resolves only the baseline marker(s) its roles carry (e.g. auth:session:read),
     // which is enough for App Home (/v1/me needs no scope) and nothing else.
-    // DOC-TEMPLATE-LIB-1 T-4 (§6.2) — plus document_template:{read,manage} (Org Home
-    // template administration), still only what the principal holds.
-    case 'org':
-      return args.scopes.filter((s) => ORG_SESSION_SCOPES.has(s));
+    // DOC-TEMPLATE-LIB-1 T-4 (§6.2) — plus the template scopes (Org Home template
+    // administration), still only what the principal holds. ORG-UX-1 §4.1: author +
+    // manage, and read only alongside one of them.
+    case 'org': {
+      const org = args.scopes.filter((s) => ORG_SESSION_SCOPES.has(s));
+      const authorsTemplates = org.some((s) =>
+        (ORG_SESSION_DOCUMENT_TEMPLATE_SCOPE_KEYS as readonly string[]).includes(s),
+      );
+      return authorsTemplates && args.scopes.includes(ORG_SESSION_TEMPLATE_READ_SCOPE_KEY)
+        ? [...org, ORG_SESSION_TEMPLATE_READ_SCOPE_KEY]
+        : org;
+    }
     default:
       // portal (fixed set, handled upstream) and unknown consumers: nothing.
       return [];

@@ -14,13 +14,41 @@
   margin: 0;
   font-size: 0.86rem;
 }
-.home-topbar-title {
-  font-size: 0.95rem;
+/* Top bar (ORG-UX-1 handoff §2): the breadcrumb takes the free width and is cut
+ * short with "…" only when space runs out; then switcher, org name, avatar. */
+.home-crumb {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 13.5px;
   font-weight: 600;
   color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
-.home-topbar-spacer {
-  flex: 1;
+.home-crumb__root,
+.home-crumb__sep {
+  color: #93a0a8;
+  font-weight: 500;
+  text-decoration: none;
+}
+a.home-crumb__root:hover {
+  color: #022ac0;
+}
+a.home-crumb__root:focus-visible {
+  outline: 2px solid #022ac0;
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+.home-orgname {
+  font-size: 0.84rem;
+  font-weight: 600;
+  color: var(--ink);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 220px;
+  padding-left: 4px;
 }
 
 /* Hero: greeting + organization · host, start page on the right */
@@ -87,12 +115,13 @@
   font-size: 0.8rem;
 }
 .home-admin {
-  background: var(--warn-tint);
-  color: var(--warn);
-  border-radius: 4px;
-  padding: 1px 6px;
-  font-size: 10px;
-  letter-spacing: 0.06em;
+  background: #faefd8;
+  color: #946011;
+  border-radius: 10px;
+  padding: 1.5px 7px;
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
 }
 
 /* App cards */
@@ -281,50 +310,220 @@
   color: var(--muted);
 }
 
-/* Organization administration tiles */
-.home-orgtiles {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 4px;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  padding: 6px;
-}
-.home-orgtile {
+/* App card attention line (handoff §5) — rendered only with an authorized count
+ * source (none today: G7/G8). */
+.home-attn {
   display: flex;
-  gap: 12px;
-  align-items: flex-start;
-  padding: 12px;
-  border-radius: var(--r-md);
-  color: var(--ink);
+  align-items: center;
+  gap: 8px;
+  background: #f4f6fa;
+  border-radius: 8px;
+  padding: 7px 10px;
+  font-size: 12.5px;
+  color: #3a454e;
   text-decoration: none;
 }
-.home-orgtile:hover {
-  background: var(--surface-2);
+.home-attn:hover {
+  background: #e8edfb;
+  color: #011f8d;
 }
-.home-orgtile svg {
-  width: 17px;
-  height: 17px;
-  color: var(--muted);
-  margin-top: 2px;
+.home-attn__dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
   flex: none;
 }
-.home-orgtile > span {
+
+/* Your organization (ORG-UX-1 handoff §5; prototype values) */
+.home-yourorg {
   display: flex;
   flex-direction: column;
+  gap: 10px;
+}
+.home-orggrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+  gap: 14px;
+  align-items: start;
+}
+.home-orgcard {
+  background: #fff;
+  border: 1px solid #e5e9ed;
+  border-radius: 13px;
+  box-shadow: 0 1px 2px rgba(20, 35, 48, 0.05), 0 4px 16px rgba(20, 35, 48, 0.04);
   min-width: 0;
 }
-.home-orgtile__name {
-  font-weight: 600;
-  font-size: 0.88rem;
+.home-setup {
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
 }
-.home-orgtile__sub {
-  font-size: 0.78rem;
-  color: var(--muted);
+.home-setup__head {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.home-setup__tile {
+  width: 40px;
+  height: 40px;
+  border-radius: 10px;
+  background: #e8edfb;
+  color: #022ac0;
+  display: grid;
+  place-items: center;
+  flex: none;
+  font-size: 13px;
+  font-weight: 700;
+}
+.home-setup__who {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.home-setup__name {
+  font-size: 15px;
+  font-weight: 700;
+  color: #1b2730;
+}
+.home-setup__sub {
+  font-size: 12.5px;
+  color: #5c6770;
+}
+.home-setup__bar {
+  height: 6px;
+  border-radius: 4px;
+  background: #eef1f4;
   overflow: hidden;
-  text-overflow: ellipsis;
+}
+.home-setup__fill {
+  height: 100%;
+  background: #1f7a4d;
+  border-radius: 4px;
+}
+.home-setup__items {
+  display: flex;
+  flex-direction: column;
+}
+.home-setup__item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-top: 1px solid #f2f4f6;
+  padding: 10px 2px;
+  text-align: left;
+  color: #1b2730;
+  text-decoration: none;
+}
+.home-setup__item:hover {
+  background: #fafbfc;
+}
+.home-setup__circle {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  border: 1.5px solid #c6cdd4;
+  flex: none;
+  box-sizing: border-box;
+}
+.home-setup__text,
+.home-shortcut__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.home-setup__label,
+.home-shortcut__label {
+  font-size: 13.5px;
+  font-weight: 600;
+}
+.home-setup__hint {
+  font-size: 12px;
+  color: #946011;
+}
+.home-secondary {
+  align-self: flex-start;
+  border: 1px solid #d5dbe1;
+  background: #fff;
+  color: #1b2730;
+  border-radius: 9px;
+  padding: 9px 14px;
+  font-size: 13px;
+  font-weight: 600;
   white-space: nowrap;
+  text-decoration: none;
+}
+.home-secondary:hover {
+  background: #f4f6fa;
+}
+.home-shortcuts {
+  padding: 8px;
+}
+.home-shortcuts__title {
+  padding: 10px 12px 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: #93a0a8;
+}
+.home-shortcut {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  text-align: left;
+  border: none;
+  background: transparent;
+  border-radius: 9px;
+  padding: 10px 12px;
+  cursor: pointer;
+  color: #1b2730;
+  text-decoration: none;
+  font: inherit;
+  box-sizing: border-box;
+}
+.home-shortcut:hover {
+  background: #f4f6fa;
+}
+.home-shortcut__icon {
+  width: 32px;
+  height: 32px;
+  border-radius: 8px;
+  background: #f4f6fa;
+  color: #5c6770;
+  display: grid;
+  place-items: center;
+  flex: none;
+}
+.home-shortcut__sub {
+  font-size: 12px;
+  color: #93a0a8;
+}
+.home-chev {
+  display: inline-flex;
+  flex: none;
+  color: #c6cdd4;
+}
+.home-setup__item:focus-visible,
+.home-shortcut:focus-visible,
+.home-secondary:focus-visible,
+.home-attn:focus-visible {
+  outline: 2px solid #022ac0;
+  outline-offset: 2px;
+}
+.home-skeleton {
+  background: #eef1f4;
+  border-radius: 4px;
+}
+.home-skeleton--line {
+  display: block;
+  width: 120px;
+  height: 12px;
+  margin-top: 4px;
 }
 
 /* My preferences */
@@ -415,8 +614,9 @@
 }
 
 @media (max-width: 900px) {
-  .home-orgtiles {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
+  /* Prototype: the organization name leaves the top bar on narrow windows. */
+  .home-orgname {
+    display: none;
   }
   .home-hero {
     flex-direction: column;

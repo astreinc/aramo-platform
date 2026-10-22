@@ -35,7 +35,7 @@ export type { FederatedIdp, LoginOptions, Session, SessionState } from './auth/s
 // AUTH-SIGNIN-1 §3.2 — the shared Aramo sign-in screen.
 export { SignInPage, allowedConsumer, providersFrom, safeReturnTo } from './auth/SignInPage';
 export { AUTH_PRODUCTS, AuthShell } from './auth/AuthShell';
-export type { AuthProduct } from './auth/AuthShell';
+export type { AuthProduct, AuthShellProps } from './auth/AuthShell';
 export type { SignInErrorCopy, SignInPageProps } from './auth/SignInPage';
 // Inc-2 PR-2 — single auth-consumer bootstrap point (default 'recruiter';
 // platform-web calls this with 'platform'). Parameterizes the /auth/:consumer/*
@@ -120,6 +120,7 @@ export {
   fetchMyProducts,
   productByKey,
   productEntryHref,
+  orgAccessOf,
   ssoEntryHref,
   PRODUCT_CONSUMER,
   useMyProducts,
@@ -128,6 +129,7 @@ export {
   type ProductKey,
   type ProductUnavailableReason,
   type ProductsState,
+  type OrgAccess,
 } from './platform/products';
 export { buildAppSwitcherItems, type AramoAppKey } from './platform/app-switcher-items';
 export {
@@ -138,7 +140,10 @@ export {
   readRememberedReturnContext,
   rememberReturnContext,
   validReturnPath,
+  trustedSignOrigin,
+  SIGN_SETTINGS_PATH_PREFIX,
   type ReturnApp,
   type ReturnContext,
+  type ReturnValidationOptions,
 } from './navigation/return-context';
 

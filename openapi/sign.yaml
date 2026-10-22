@@ -1287,72 +1287,6 @@ paths:
           $ref: '#/components/responses/SenderForbidden'
         '404':
           $ref: '#/components/responses/NotFound'
-  /v1/sign/sender/members:
-    get:
-      operationId: listSignMembers
-      summary: Organization members and their Sign role.
-      description: >
-        Requires sign:member:manage (Sign Admin, Tenant Admin, Tenant Owner). BUSINESS tenants only (PERSONAL → 403 personal_account). Lists every member of the caller's organization with the Sign role they hold (or null) and their organization role (tenant_owner over tenant_admin, or null — ROLES-1 PR-3: the Sign Owner role is retired; organization-role holders hold the Sign authority of that role), plus the assignable Sign roles.
-      tags: [sender]
-      security:
-        - senderSession: []
-        - senderBearer: []
-      responses:
-        '200':
-          description: OK.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SignMemberList'
-        '401':
-          $ref: '#/components/responses/SenderUnauthorized'
-        '403':
-          $ref: '#/components/responses/SenderForbidden'
-  /v1/sign/sender/members/{userId}/sign-role:
-    put:
-      operationId: setSignMemberRole
-      summary: Assign, change or remove a member's Sign role.
-      description: >
-        Requires sign:member:manage. Changes ONLY the member's Sign role (sign_admin, sign_sender, sign_viewer, or null); every other role is kept — organization roles (tenant_owner, tenant_admin) are never granted or removed here, so an organization owner cannot be demoted through this operation (ROLES-1 PR-3; the Sign Owner role is retired and sign_owner is refused with 400). The last organization owner cannot be removed or demoted (409 ESIGN_LAST_OWNER — the database last-owner invariant is the backstop). The identity owner-only and organization-admin rules apply unchanged (403 owner_role_requires_owner / org_role_requires_org_admin). A user outside the caller's organization → 404.
-      tags: [sender]
-      security:
-        - senderSession: []
-        - senderBearer: []
-      parameters:
-        - name: userId
-          in: path
-          required: true
-          schema:
-            type: string
-            format: uuid
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              type: object
-              required: [sign_role]
-              properties:
-                sign_role:
-                  type: [string, 'null']
-                  enum: [sign_admin, sign_sender, sign_viewer, null]
-      responses:
-        '200':
-          description: The member after the change.
-          content:
-            application/json:
-              schema:
-                $ref: '#/components/schemas/SignMember'
-        '400':
-          $ref: '#/components/responses/BadRequest'
-        '401':
-          $ref: '#/components/responses/SenderUnauthorized'
-        '403':
-          $ref: '#/components/responses/SenderForbidden'
-        '404':
-          $ref: '#/components/responses/NotFound'
-        '409':
-          $ref: '#/components/responses/Conflict'
   /v1/sign/oauth/token:
     post:
       operationId: issueSignAccessToken
@@ -2712,6 +2646,14 @@ components:
           type: [string, 'null']
         app_home_url:
           type: [string, 'null']
+        org_admin:
+          type: boolean
+          description: >-
+            ORG-UX-1 (LOCKED §4.3/§6) — the caller holds an organization role (tenant_owner or
+            tenant_admin) in this BUSINESS tenant. Role-based; navigation only.
+        organization_roles_url:
+          type: [string, 'null']
+          description: ORG-UX-1 §6 — Organization → Users & product access (the single role-assignment surface), or null.
     SenderTemplateList:
       type: object
       required: [items, unavailable]
@@ -2843,47 +2785,6 @@ components:
             type: object
         send:
           type: boolean
-    SignMember:
-      type: object
-      required: [user_id, email, active, sign_role]
-      properties:
-        user_id:
-          type: string
-          format: uuid
-        email:
-          type: string
-        display_name:
-          type: [string, 'null']
-        active:
-          type: boolean
-        sign_role:
-          type: [string, 'null']
-          enum: [sign_admin, sign_sender, sign_viewer, null]
-        sign_role_display:
-          type: [string, 'null']
-        organization_role:
-          type: [string, 'null']
-          enum: [tenant_owner, tenant_admin, null]
-          description: ROLES-1 PR-3 — the member's organization role (tenant_owner over tenant_admin), or null. Read-only here; its holder holds the Sign authority of that role (tenant_owner incl. billing).
-        organization_role_display:
-          type: [string, 'null']
-    SignMemberList:
-      type: object
-      required: [items, roles]
-      properties:
-        items:
-          type: array
-          items:
-            $ref: '#/components/schemas/SignMember'
-        roles:
-          type: array
-          items:
-            type: object
-            properties:
-              key:
-                type: string
-              display:
-                type: string
     SenderEnvelopeList:
       type: object
       required: [items, counts]

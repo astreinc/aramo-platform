@@ -117,7 +117,10 @@ describe('Placement role matrix — recruiting_manager is intentionally excluded
 
   it('recruiting_manager is a real, actively-granted role (holds management scopes) — so absence is not an inactive-role artifact', () => {
     expect(rmAuthz1.length).toBeGreaterThan(0);
-    expect(rmAuthz1).toContain('tenant:admin:user-manage');
+    // ORG-UX-1 §4.2 (P1 Option A) — tenant:admin:user-manage left the ATS management tier;
+    // recruiting_manager's management scope is the Axis-1 hierarchy (org:manage).
+    expect(rmAuthz1).toContain('org:manage');
+    expect(rmAuthz1).not.toContain('tenant:admin:user-manage');
   });
 
   it('recruiting_manager receives ZERO placement scopes and is absent from PLACEMENT_SEED_BUNDLES by design', () => {

@@ -654,6 +654,7 @@
     ],
     "@aramo/document-templates-web": [
       "CheckIcon",
+      "DOC_TEMPLATE_AUTHOR_SCOPE",
       "DOC_TEMPLATE_MANAGE_SCOPE",
       "DOC_TEMPLATE_READ_SCOPE",
       "DocIcon",
@@ -674,7 +675,11 @@
       "SafeDoc",
       "SampleValues",
       "activateTemplateVersion",
+      "adoptTemplate",
       "bindingMapFrom",
+      "canApproveTemplates",
+      "canAuthorTemplates",
+      "canReadTemplates",
       "clearTemplateSelection",
       "contentFromVersion",
       "createOwnTemplate",
@@ -856,6 +861,7 @@
       "RadioGroup",
       "RouteGuard",
       "SESSION_PATH",
+      "SIGN_SETTINGS_PATH_PREFIX",
       "Select",
       "Shell",
       "SignInPage",
@@ -886,6 +892,7 @@
       "hasScope",
       "loginUrl",
       "logout",
+      "orgAccessOf",
       "orgEntryHref",
       "orgHref",
       "parseReturnContext",
@@ -900,6 +907,7 @@
       "safeReturnTo",
       "signInPageUrl",
       "ssoEntryHref",
+      "trustedSignOrigin",
       "useCompactRailPage",
       "useMyProducts",
       "useNavCollapse",
@@ -994,6 +1002,7 @@
       "ORG_ENTRY_PATH",
       "ORG_ROLE_KEYS",
       "ORG_SESSION_DOCUMENT_TEMPLATE_SCOPE_KEYS",
+      "ORG_TEMPLATES_ENTRY_PATH",
       "OrganizationRegionService",
       "PERSONAL_ALLOWED_COUNTRIES",
       "PERSONAL_INVITE_TTL_MS",
@@ -1326,21 +1335,30 @@
     ],
     "@aramo/org-admin-web": [
       "AuditLogView",
-      "DOC_TEMPLATE_READ_SCOPE",
+      "InviteUserModal",
       "ME_PATH",
-      "ORG_ADMIN_SCOPE_PREFIX",
+      "ORGANIZATION_HEADING",
       "ORG_DENIED_NOTICE",
       "ORG_SECTIONS",
+      "ORG_SECTION_INTRO",
       "OrgAdminRoutes",
       "OrgAdminShell",
+      "OrgAvatar",
+      "OrgCheck",
+      "OrgModal",
+      "OrgPageHeader",
       "RolesMatrixView",
-      "canEnterOrg",
+      "SHARED_SETUP_HEADING",
+      "canApproveTemplates",
+      "canAuthorTemplates",
       "fetchMe",
-      "hasOrgAdminScope",
-      "hasOrgTemplateScope",
+      "orgSectionByKey",
+      "orgSectionForPath",
       "orgSectionLabel",
       "orgSectionsFor",
-      "useMe"
+      "useMe",
+      "useOrgAccess",
+      "useSetupChecklist"
     ],
     "@aramo/outbox-publisher": [
       "EventBridgeOutboxPublisher",
@@ -5293,6 +5311,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/org-ux-1-template-adoption.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/documents/src/tests/template-admin-slice1.spec.ts",
         "project": "documents",
         "status": "excluded"
@@ -5485,6 +5509,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/invite-s3-actions.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/org-ux-1-template-author-grants-migration.integration.spec.ts",
         "project": "identity",
         "status": "excluded"
       },
@@ -6229,12 +6259,6 @@
       },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "apps/sign-service/src/tests/sign-members-roles1.integration.spec.ts",
-        "project": "sign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-permission-contract.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -6887,6 +6911,7 @@
     ],
     "@aramo/document-templates-web": [
       { "project": "aramo-ats-web", "status": "production" },
+      { "project": "aramo-home-web", "status": "production" },
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "libs/org-admin-web/src/document-templates/DocumentTemplates.spec.tsx",
@@ -8108,6 +8133,12 @@
         "project": "aramo-home-web",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/home-web/src/shell/HomeShell.spec.tsx",
+        "project": "aramo-home-web",
+        "status": "excluded"
+      },
       { "project": "aramo-home-web", "status": "production" },
       {
         "excludedBy": "src/**/*.spec.tsx",
@@ -8229,7 +8260,13 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
-        "from": "libs/org-admin-web/src/domain/DomainVerificationPanel.spec.tsx",
+        "from": "libs/org-admin-web/src/domain/DomainPage.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/overview/OverviewPage.spec.tsx",
         "project": "org-admin-web",
         "status": "excluded"
       },
@@ -8241,43 +8278,31 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
-        "from": "libs/org-admin-web/src/sites/SiteDialog.spec.tsx",
+        "from": "libs/org-admin-web/src/sites/SitesPage.spec.tsx",
         "project": "org-admin-web",
         "status": "excluded"
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
-        "from": "libs/org-admin-web/src/sites/SitesPanel.spec.tsx",
+        "from": "libs/org-admin-web/src/tests/org-routes.spec.tsx",
         "project": "org-admin-web",
         "status": "excluded"
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
-        "from": "libs/org-admin-web/src/tests/org-users-route.spec.tsx",
+        "from": "libs/org-admin-web/src/users/EditAccessModal.spec.tsx",
         "project": "org-admin-web",
         "status": "excluded"
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
-        "from": "libs/org-admin-web/src/users/DisableConfirmDialog.spec.tsx",
+        "from": "libs/org-admin-web/src/users/RolesAccessPage.spec.tsx",
         "project": "org-admin-web",
         "status": "excluded"
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
-        "from": "libs/org-admin-web/src/users/InviteDialog.spec.tsx",
-        "project": "org-admin-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
-        "from": "libs/org-admin-web/src/users/RoleAssignEditor.spec.tsx",
-        "project": "org-admin-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
-        "from": "libs/org-admin-web/src/users/UsersListView.spec.tsx",
+        "from": "libs/org-admin-web/src/users/UsersInvitationsPage.spec.tsx",
         "project": "org-admin-web",
         "status": "excluded"
       },
@@ -8573,12 +8598,6 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-integrations.spec.ts",
-        "project": "sign-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/sign-service/src/tests/sign-members-roles1.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -9070,6 +9089,18 @@
     ],
     "@aramo/org-admin-web": [
       { "project": "aramo-ats-web", "status": "production" },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/home-web/src/home/AppHomeView.spec.tsx",
+        "project": "aramo-home-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/home-web/src/shell/HomeShell.spec.tsx",
+        "project": "aramo-home-web",
+        "status": "excluded"
+      },
       { "project": "aramo-home-web", "status": "production" }
     ],
     "@aramo/outbox-publisher": [

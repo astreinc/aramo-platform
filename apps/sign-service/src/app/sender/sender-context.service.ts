@@ -58,6 +58,13 @@ export interface SenderContextView {
   // The tenant host's Organization administration (shared authority for the
   // tenant profile and users), or null when the tenant has no host label.
   organization_url: string | null;
+  // ORG-UX-1 (Directive v1.0 LOCKED §4.3/§6, Lead Correction A) — the caller holds an
+  // organization role (tenant_owner / tenant_admin) in this BUSINESS tenant: the ONLY
+  // principals Organization → Users & product access lets assign roles. Role-based,
+  // never derived from scope possession. Navigation only (Org enforces every command).
+  org_admin: boolean;
+  // ORG-UX-1 §6 — Organization → Users & product access, or null (no host label / personal).
+  organization_roles_url: string | null;
   // The tenant host's App Home (account preferences live there), or null.
   app_home_url: string | null;
 }
@@ -139,6 +146,9 @@ export class SenderContextService {
       templates: scopes.has(DOCUMENT_TEMPLATE_READ_SCOPE),
     };
     const tenantBase = tenantHostBase(slug);
+    const membership = business ? await this.identity.findMembership({ user_id: auth.sub, tenant_id: auth.tenant_id }) : null;
+    const roleKeys = membership !== null && membership.is_active ? await this.identity.findRoleKeysForMembership(membership.id) : [];
+    const org_admin = business && roleKeys.some((k) => k === 'tenant_owner' || k === 'tenant_admin');
     return {
       user: { id: auth.sub, email: user?.email ?? null, display_name: user?.display_name ?? null },
       tenant: { id: tenant.id, name: (await this.tenants.findOrganizationNameById(tenant.id)) ?? tenant.name, kind: tenant.kind },
@@ -148,6 +158,8 @@ export class SenderContextService {
       can_send: (business || personalOpen) && permissions.create && permissions.send,
       personal_sending_enabled: personalOpen,
       organization_url: business && tenantBase !== null ? `${tenantBase}/org/profile` : null,
+      org_admin,
+      organization_roles_url: business && tenantBase !== null ? `${tenantBase}/org/roles` : null,
       app_home_url: tenantBase !== null ? `${tenantBase}/` : null,
     };
   }

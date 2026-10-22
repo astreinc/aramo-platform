@@ -29,6 +29,9 @@ export interface TenantUserView {
   readonly deactivated_at: string | null;
   readonly site_id: string | null;
   readonly role_keys: readonly string[];
+  // ORG-UX-1 §8.3 (G4) — ADD-only: the latest invitation's issue time (ISO), or null
+  // when the membership has no invitation row. Optional for older payloads.
+  readonly invited_at?: string | null;
 }
 
 export interface TenantUserListView {

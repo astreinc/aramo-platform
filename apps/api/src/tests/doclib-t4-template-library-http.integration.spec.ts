@@ -130,9 +130,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       savedEnv = { DATABASE_URL: process.env['DATABASE_URL'], AUTH_AUDIENCE: process.env['AUTH_AUDIENCE'], AUTH_PUBLIC_KEY: process.env['AUTH_PUBLIC_KEY'], ARAMO_ENV: process.env['ARAMO_ENV'] };
       process.env['DATABASE_URL'] = dburl; process.env['AUTH_AUDIENCE'] = AUDIENCE; process.env['AUTH_PUBLIC_KEY'] = publicPem; process.env['ARAMO_ENV'] = 'itest';
       // The org session carries the organization set + document_template:{read,manage} (§6.2).
-      adminA = await signJwt(kp.privateKey, { sub: ADMIN_A, tenant: TENANT_A, scopes: ['auth:session:read', 'tenant:admin:profile', 'document_template:read', 'document_template:manage'] });
+      adminA = await signJwt(kp.privateKey, { sub: ADMIN_A, tenant: TENANT_A, scopes: ['auth:session:read', 'tenant:admin:profile', 'document_template:read', 'document_template:author', 'document_template:manage'] });
       readerA = await signJwt(kp.privateKey, { sub: READER_A, tenant: TENANT_A, scopes: ['auth:session:read', 'document_template:read'] });
-      adminB = await signJwt(kp.privateKey, { sub: ADMIN_B, tenant: TENANT_B, scopes: ['auth:session:read', 'document_template:read', 'document_template:manage'] });
+      adminB = await signJwt(kp.privateKey, { sub: ADMIN_B, tenant: TENANT_B, scopes: ['auth:session:read', 'document_template:read', 'document_template:author', 'document_template:manage'] });
 
       module = await Test.createTestingModule({ imports: [AppModule] })
         .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
@@ -234,7 +234,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await platformSnapshot()).toBe(before);
     });
 
-    it('selection — an unapproved own template is refused; approval switches it; set to the default; clear reverts', async () => {
+    // ORG-UX-1 §5.3 — an Aramo default is never selected directly (adopt it instead).
+    it('selection — an unapproved own template is refused; approval switches it; the default is not selectable; clear empties', async () => {
       const draftSel = await fetch(url('/v1/document-templates/selections'), {
         method: 'PUT',
         ...auth(adminA),
@@ -260,14 +261,32 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ...auth(adminA),
         body: JSON.stringify({ document_type_id: RTR, client_id: null, template_id: defaultId }),
       });
-      expect(toDefault.status).toBe(200);
-      expect(((await toDefault.json()) as { template_id: string }).template_id).toBe(defaultId);
+      expect(toDefault.status).toBe(422);
+      expect(((await toDefault.json()) as { error: { details: { reason: string } } }).error.details.reason).toBe('platform_template_not_selectable');
 
       expect((await fetch(url(`/v1/document-templates/selections?document_type_id=${RTR}`), { method: 'DELETE', ...auth(adminA) })).status).toBe(204);
       sel = (await (await fetch(url('/v1/document-templates/selections'), auth(adminA))).json()) as { items: Array<{ template_id: string; client_id: string | null }> };
       expect(sel.items).toEqual([]);
       // Idempotent clear.
       expect((await fetch(url(`/v1/document-templates/selections?document_type_id=${RTR}`), { method: 'DELETE', ...auth(adminA) })).status).toBe(204);
+    });
+
+    // ORG-UX-1 §5.1 (Lead Correction B) — adopt over HTTP: an independent tenant draft with
+    // audit-only provenance; nothing resolves until approved; a reader cannot adopt.
+    it('adopt — POST /v1/document-templates/adopt creates an independent tenant DRAFT with provenance; readers are refused', async () => {
+      const res = await fetch(url('/v1/document-templates/adopt'), {
+        method: 'POST',
+        ...auth(adminB),
+        body: JSON.stringify({ library_template_id: defaultId }),
+      });
+      expect(res.status).toBe(201);
+      const body = (await res.json()) as { template: Record<string, unknown>; version: Record<string, unknown> };
+      expect(body.template).toMatchObject({ owner_scope: 'TENANT', status: 'DRAFT', document_type_id: RTR, adopted_from_template_id: defaultId });
+      expect(body.version).toMatchObject({ status: 'DRAFT', version_number: 1 });
+      expect((await fetch(url('/v1/document-templates/adopt'), { method: 'POST', ...auth(readerA), body: JSON.stringify({ library_template_id: defaultId }) })).status).toBe(403);
+      expect(
+        (await fetch(url('/v1/document-templates/adopt'), { method: 'POST', ...auth(adminB), body: JSON.stringify({ library_template_id: ownId }) })).status,
+      ).toBe(404);
     });
 
     it('read-only holders read the gallery but cannot change a selection (403)', async () => {

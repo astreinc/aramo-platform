@@ -1,0 +1,187 @@
+/* ORG-UX-1 — shared Organization page kit. Values are the App Home & Organization handoff
+ * (rev. Oct 21, 2026) §4 "Shared visual tokens", normative with zero drift. Every
+ * Organization page builds from these classes; page-specific layout lives next to the page.
+ * Prefix: `ox-` (Organization experience). */
+
+/* Tokens on :root (prefixed) so portalled modals and toasts read them too. */
+:root {
+  --ox-bg: #f4f6fa;
+  --ox-card: #ffffff;
+  --ox-line: #e5e9ed;
+  --ox-line-soft: #f2f4f6;
+  --ox-ink: #142330;
+  --ox-ink-2: #3a454e;
+  --ox-muted: #5c6770;
+  --ox-faint: #93a0a8;
+  --ox-input-line: #d5dbe1;
+  --ox-blue: #022ac0;
+  --ox-blue-ink: #011f8d;
+  --ox-blue-tint: #e8edfb;
+  --ox-blue-wash: #f5f7fe;
+  --ox-blue-line: #c9d4f2;
+  --ox-green: #1f7a4d;
+  --ox-green-tint: #e6f2ea;
+  --ox-amber: #946011;
+  --ox-amber-tint: #faefd8;
+  --ox-amber-line: #e0b44e;
+  --ox-red: #b3402a;
+  --ox-red-tint: #fbe9e7;
+  --ox-grey-tint: #eef1f4;
+  --ox-shadow: 0 1px 2px rgba(20, 35, 48, 0.05), 0 4px 16px rgba(20, 35, 48, 0.04);
+}
+
+.ox-page {
+  background: var(--ox-bg);
+  color: var(--ox-ink);
+  min-width: 0;
+  padding: 24px 28px 40px;
+}
+
+@media (max-width: 899px) {
+  .ox-page { padding: 18px 16px 32px; }
+}
+
+/* Return marker — above the page title. */
+.ox-back { display: inline-block; margin-bottom: 10px; color: var(--ox-blue); font-weight: 600; font-size: 13.5px; text-decoration: none; }
+.ox-back:hover { text-decoration: underline; }
+
+/* Page header — H1 24/700 -.02em; intro 14px #5C6770 max 720px; actions on the right. */
+.ox-head { display: flex; align-items: flex-start; gap: 16px; margin-bottom: 20px; }
+.ox-head__text { flex: 1 1 auto; min-width: 0; }
+.ox-head h1 { margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.02em; color: var(--ox-ink); }
+.ox-head p { margin: 6px 0 0; max-width: 720px; font-size: 14px; color: var(--ox-muted); line-height: 1.45; }
+.ox-head__actions { display: flex; gap: 8px; flex: none; }
+
+/* Card — white; 1px #E5E9ED; 13px radius; shadow. */
+.ox-card { background: var(--ox-card); border: 1px solid var(--ox-line); border-radius: 13px; box-shadow: var(--ox-shadow); min-width: 0; }
+.ox-card__head { padding: 15px 20px; border-bottom: 1px solid var(--ox-line-soft); display: flex; align-items: center; gap: 12px; }
+.ox-card__head > div { flex: 1 1 auto; min-width: 0; }
+.ox-card__title { margin: 0; font-size: 15px; font-weight: 700; }
+.ox-card__sub { margin: 2px 0 0; font-size: 12.5px; color: var(--ox-muted); }
+.ox-card__body { padding: 16px 20px; }
+.ox-card__foot { padding: 12px 20px; border-top: 1px solid var(--ox-line-soft); display: flex; align-items: center; gap: 10px; }
+
+/* Tables sit in a card with overflow-x:auto and a minimum width. */
+.ox-table-wrap { overflow-x: auto; }
+.ox-table { width: 100%; }
+.ox-tr { display: grid; align-items: center; border-bottom: 1px solid var(--ox-line-soft); font-size: 13.5px; }
+.ox-tr:last-child { border-bottom: 0; }
+.ox-tr > * { padding: 11px 16px; min-width: 0; }
+.ox-tr--head { background: #fafbfc; font-size: 11px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ox-faint); }
+.ox-tr--head > * { padding: 10px 16px; }
+.ox-tr--selected { background: var(--ox-blue-wash); }
+.ox-ellipsis { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ox-empty { padding: 28px 16px; text-align: center; color: var(--ox-muted); font-size: 13.5px; }
+
+/* Inputs / selects — 38px; 1px #D5DBE1; 8px radius; 13.5px; focus ring. Label 12/600 #3A454E. */
+.ox-field { display: flex; flex-direction: column; gap: 5px; min-width: 0; }
+.ox-label { font-size: 12px; font-weight: 600; color: var(--ox-ink-2); }
+.ox-hint { font-size: 12px; color: var(--ox-faint); }
+.ox-hint--warn { color: var(--ox-amber); }
+.ox-input,
+.ox-select {
+  height: 38px; padding: 0 11px; border: 1px solid var(--ox-input-line); border-radius: 8px; font-size: 13.5px;
+  background: #fff; color: var(--ox-ink); font-family: inherit; width: 100%; box-sizing: border-box;
+}
+.ox-input:focus,
+.ox-select:focus { outline: none; border-color: var(--ox-blue); box-shadow: 0 0 0 3px #022ac01f; }
+.ox-input[readonly],
+.ox-input:disabled,
+.ox-select:disabled { background: var(--ox-bg); color: var(--ox-muted); }
+.ox-input--warn { border-color: var(--ox-amber-line); }
+.ox-input--error { border-color: var(--ox-red); }
+.ox-error { font-size: 12.5px; color: var(--ox-red); }
+.ox-form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 280px), 1fr)); gap: 14px 18px; }
+
+/* Buttons — primary #022AC0 9px radius 9/16 13.5/600; secondary white 1px #D5DBE1. */
+.ox-btn {
+  display: inline-flex; align-items: center; justify-content: center; gap: 6px; padding: 9px 16px; border-radius: 9px;
+  font-size: 13.5px; font-weight: 600; font-family: inherit; cursor: pointer; border: 1px solid transparent; line-height: 1.2; white-space: nowrap;
+}
+.ox-btn:focus-visible { outline: 2px solid var(--ox-blue); outline-offset: 2px; }
+.ox-btn--primary { background: var(--ox-blue); color: #fff; }
+.ox-btn--primary:hover { background: var(--ox-blue-ink); }
+.ox-btn--secondary { background: #fff; color: var(--ox-ink); border-color: var(--ox-input-line); }
+.ox-btn--secondary:hover { background: var(--ox-bg); }
+.ox-btn--danger { background: #fff; color: var(--ox-red); border-color: var(--ox-input-line); }
+.ox-btn--sm { padding: 6px 12px; font-size: 12.5px; border-radius: 8px; }
+.ox-btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.ox-link { color: var(--ox-blue); font-weight: 600; background: none; border: 0; padding: 0; font: inherit; font-weight: 600; cursor: pointer; text-decoration: none; }
+.ox-link:hover { text-decoration: underline; }
+.ox-link:focus-visible { outline: 2px solid var(--ox-blue); outline-offset: 2px; border-radius: 3px; }
+.ox-link--danger { color: var(--ox-red); }
+.ox-link--muted { color: var(--ox-muted); }
+
+/* Status pills — radius 12, padding 2px 9px, 11.5/600. */
+.ox-pill { display: inline-flex; align-items: center; border-radius: 12px; padding: 2px 9px; font-size: 11.5px; font-weight: 600; white-space: nowrap; }
+.ox-pill--active { background: var(--ox-green-tint); color: var(--ox-green); }
+.ox-pill--invited { background: var(--ox-blue-tint); color: var(--ox-blue-ink); }
+.ox-pill--disabled { background: var(--ox-grey-tint); color: var(--ox-muted); }
+.ox-pill--warn { background: var(--ox-amber-tint); color: var(--ox-amber); }
+/* H9 — Failed (danger). */
+.ox-pill--failed { background: var(--ox-red-tint); color: var(--ox-red); }
+
+/* Role chips — #F4F6FA bg; 1px #E5E9ED; #3A454E; 11.5/500. App chip — #E8EDFB/#011F8D. */
+.ox-chip { display: inline-flex; align-items: center; gap: 4px; max-width: 100%; background: var(--ox-bg); border: 1px solid var(--ox-line); color: var(--ox-ink-2); border-radius: 6px; padding: 1px 7px; font-size: 11.5px; font-weight: 500; }
+.ox-chip--app { background: var(--ox-blue-tint); border-color: transparent; color: var(--ox-blue-ink); }
+
+/* Tabs with count badge (#EEF1F4/#5C6770 11/700); active = 2px #022AC0 underline + 700. */
+.ox-tabs { display: flex; gap: 18px; border-bottom: 1px solid var(--ox-line); margin-bottom: 14px; overflow-x: auto; }
+.ox-tab { background: none; border: 0; border-bottom: 2px solid transparent; padding: 8px 0 9px; font: inherit; font-size: 13.5px; font-weight: 500; color: var(--ox-muted); cursor: pointer; display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+.ox-tab[aria-selected='true'] { border-bottom-color: var(--ox-blue); color: var(--ox-ink); font-weight: 700; }
+.ox-tab:focus-visible { outline: 2px solid var(--ox-blue); outline-offset: 2px; }
+.ox-count { background: var(--ox-grey-tint); color: var(--ox-muted); font-size: 11px; font-weight: 700; border-radius: 10px; padding: 0 7px; line-height: 18px; }
+
+/* Segmented control — #EEF1F4 track; selected white, 700, #011F8D, small shadow. */
+.ox-seg { display: inline-flex; background: var(--ox-grey-tint); border-radius: 9px; padding: 3px; gap: 2px; flex-wrap: wrap; }
+.ox-seg button { border: 0; background: transparent; padding: 6px 12px; border-radius: 7px; font: inherit; font-size: 13px; color: var(--ox-muted); cursor: pointer; }
+.ox-seg button[aria-pressed='true'] { background: #fff; font-weight: 700; color: var(--ox-blue-ink); box-shadow: 0 1px 2px rgba(15, 25, 40, 0.12); }
+.ox-seg button:focus-visible { outline: 2px solid var(--ox-blue); outline-offset: 2px; }
+
+/* Checkbox — 18px, radius 5; selected #022AC0 with ✓. */
+.ox-check { width: 18px; height: 18px; border-radius: 5px; border: 1.5px solid #93a0a8; background: #fff; display: inline-flex; align-items: center; justify-content: center; padding: 0; cursor: pointer; flex: none; color: #fff; }
+.ox-check[aria-checked='true'] { background: var(--ox-blue); border-color: var(--ox-blue); }
+.ox-check[aria-checked='mixed'] { background: var(--ox-blue); border-color: var(--ox-blue); }
+.ox-check:focus-visible { outline: 2px solid var(--ox-blue); outline-offset: 2px; }
+.ox-check:disabled { opacity: 0.45; cursor: not-allowed; }
+
+/* Avatar with initials (4 tints in rotation). */
+.ox-avatar { width: 30px; height: 30px; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 11.5px; font-weight: 700; flex: none; }
+.ox-avatar--0 { background: #e8edfb; color: #011f8d; }
+.ox-avatar--1 { background: #e6f2ea; color: #1f7a4d; }
+.ox-avatar--2 { background: #faefd8; color: #946011; }
+.ox-avatar--3 { background: #f3e8fb; color: #6b2fa0; }
+
+/* Toolbar */
+.ox-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; margin-bottom: 12px; }
+.ox-search { position: relative; flex: 1 1 220px; max-width: 340px; }
+.ox-search svg { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--ox-faint); pointer-events: none; }
+.ox-search .ox-input { padding-left: 34px; }
+
+/* Modal — centred, min(580px,94vw), max-height 88vh scroll, 14px radius, overlay rgba(15,25,40,.45). */
+.ox-modal__overlay { position: fixed; inset: 0; background: rgba(15, 25, 40, 0.45); z-index: 1000; }
+.ox-modal {
+  position: fixed; left: 50%; top: 50%; transform: translate(-50%, -50%); width: min(580px, 94vw); max-height: 88vh;
+  display: flex; flex-direction: column; background: #fff; border-radius: 14px; box-shadow: 0 24px 60px rgba(15, 25, 40, 0.25); z-index: 1001; color: var(--ox-ink);
+}
+.ox-modal:focus { outline: none; }
+.ox-modal__head { padding: 18px 22px; border-bottom: 1px solid var(--ox-line-soft); display: flex; align-items: flex-start; gap: 12px; }
+.ox-modal__head > div { flex: 1 1 auto; min-width: 0; }
+.ox-modal__title { margin: 0; font-size: 17px; font-weight: 700; }
+.ox-modal__sub { margin: 4px 0 0; font-size: 13px; color: var(--ox-muted); }
+.ox-modal__close { background: none; border: 0; font-size: 20px; line-height: 1; color: var(--ox-muted); cursor: pointer; padding: 2px 6px; border-radius: 6px; }
+.ox-modal__close:focus-visible { outline: 2px solid var(--ox-blue); }
+.ox-modal__body { padding: 16px 22px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+.ox-modal__foot { padding: 12px 22px 18px; display: flex; justify-content: flex-end; gap: 8px; border-top: 1px solid var(--ox-line-soft); }
+
+/* Small helpers */
+.ox-row { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.ox-muted { color: var(--ox-muted); }
+.ox-faint { color: var(--ox-faint); }
+.ox-mono { font-family: 'IBM Plex Mono', ui-monospace, SFMono-Regular, Menlo, monospace; }
+.ox-sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; border: 0; }
+.ox-alert { padding: 10px 13px; border-radius: 10px; font-size: 13px; }
+.ox-alert--error { background: var(--ox-red-tint); color: #8a2e1e; border: 1px solid #f3c9c1; }
+.ox-alert--info { background: var(--ox-blue-tint); color: var(--ox-blue-ink); border: 1px solid var(--ox-blue-line); }
+.ox-alert--warn { background: var(--ox-amber-tint); color: var(--ox-amber); border: 1px solid #f0d9a8; }
+.ox-badge { display: inline-flex; align-items: center; padding: 1px 7px; border-radius: 6px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; background: var(--ox-grey-tint); color: var(--ox-ink-2); }

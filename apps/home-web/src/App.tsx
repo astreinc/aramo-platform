@@ -1,5 +1,5 @@
 import { AUTH_PRODUCTS, RouteGuard, SignedOut, ToastProvider, useSession } from '@aramo/fe-foundation';
-import { OrgAdminRoutes, hasOrgAdminScope } from '@aramo/org-admin-web';
+import { OrgAdminRoutes } from '@aramo/org-admin-web';
 import { Route, Routes } from 'react-router-dom';
 
 import { AppHomeView } from './home/AppHomeView';
@@ -10,7 +10,8 @@ import { HomeShell } from './shell/HomeShell';
 
 // D-ORG-2/3 — the Aramo App Home (apps/home-web): the permanent, product-neutral
 // tenant entry on `<slug>.aramo.ai` (§3.A), topology T1 (§3.B):
-//   /            App Home — the product tiles (backend-authoritative availability)
+//   /            App Home — the app cards + (org admins) Your organization; who is an
+//                organization admin is the SERVER's org_access (ORG-UX-1 §4.3)
 //   /preferences My preferences (shared account, default landing page)
 //   /org/*       Organization Administration (libs/org-admin-web)
 //   /login       the session-less login landing (?error=<CODE> pages)
@@ -32,8 +33,8 @@ export function App() {
           element={
             <RouteGuard sessionStateOverride={state}>
               {state.status === 'authenticated' ? (
-                <HomeShell session={state.session}>
-                  <AppHomeView isOrgAdmin={hasOrgAdminScope(state.session)} />
+                <HomeShell>
+                  <AppHomeView />
                 </HomeShell>
               ) : null}
             </RouteGuard>
@@ -44,7 +45,7 @@ export function App() {
           element={
             <RouteGuard sessionStateOverride={state}>
               {state.status === 'authenticated' ? (
-                <HomeShell session={state.session}>
+                <HomeShell>
                   <PreferencesView />
                 </HomeShell>
               ) : null}
@@ -56,7 +57,7 @@ export function App() {
           element={
             <RouteGuard sessionStateOverride={state}>
               {state.status === 'authenticated' ? (
-                <HomeShell session={state.session}>
+                <HomeShell>
                   <OrgAdminRoutes session={state.session} />
                 </HomeShell>
               ) : null}

@@ -17,6 +17,7 @@ import { AppModule } from '../app.module.js';
 
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+import { grantLegacyPlatformSelection } from './helpers/legacy-template-selection.js';
 
 // HF-AUTH-1 — compact tokens carry no scopes; the guard resolves via this resolver.
 const __authzTestResolver = new ConfigurableTestResolver();
@@ -128,6 +129,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [versionId, templateId, OPERATOR],
       );
       await db.query(`UPDATE "documents"."DocumentTemplate" SET current_version_id = $1 WHERE id = $2`, [versionId, templateId]);
+      // ORG-UX-1 §5.3 (T-A) — the relying tenant is on the default through a grandfathered selection.
+      await grantLegacyPlatformSelection((q, p) => db.query(q, p), { tenant_id: RELYING_TENANT, document_type_id: typeId, template_id: templateId });
       // OWN_CHOICE_TENANT: its tenant-wide choice is its own approved template.
       const ownTpl = randomUUID();
       const ownVer = randomUUID();
@@ -216,7 +219,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         template_id: templateId,
         status: 'PENDING',
         relies_on_default: true,
-        selected_for_client_ids: [],
+        selected_for_client_ids: [null],
         has_own_template: false,
         products: ['SIGN'],
       });

@@ -34,6 +34,8 @@ export {
   TEMPLATE_AUDIT,
   type TemplateAuditPort,
   type TemplateDraftDiscardedAudit,
+  type TemplateGovernanceAudit,
+  type TemplateGovernanceAction,
   type TemplatePlatformWithdrawalAudit,
 } from './lib/template-audit.port.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';

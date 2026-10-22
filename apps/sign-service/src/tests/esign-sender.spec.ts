@@ -19,14 +19,14 @@ import { SenderEnvelopeService } from '../app/sender/sender-envelope.service.js'
 const READ = ['context', 'summary', 'list', 'detail', 'events', 'source', 'executed', 'evidence', 'documents', 'activity'] as const;
 // Sign Unified Product S-1 — contacts and member administration carry their own Sign permissions.
 const CONTACTS = ['contacts'] as const;
-const MEMBERS = ['listMembers', 'setMemberRole'] as const;
+// ORG-UX-1 §6 — the Sign member routes are retired (no MEMBERS group).
 const CREATE = ['create', 'update', 'upload', 'reorder', 'rename', 'remove', 'recipients', 'fields'] as const;
 const SEND = ['send', 'remind', 'void'] as const;
 
 const handler = (name: string): object => (EsignSenderController.prototype as unknown as Record<string, object>)[name] ?? {};
 
 describe('EsignSenderController — every route mounts the sender boundary', () => {
-  it.each([...READ, ...CREATE, ...SEND, ...CONTACTS, ...MEMBERS])('%s: JwtAuthGuard → esign consumer → entitlement → roles, capability esign', (name) => {
+  it.each([...READ, ...CREATE, ...SEND, ...CONTACTS])('%s: JwtAuthGuard → esign consumer → entitlement → roles, capability esign', (name) => {
     expect(Reflect.getMetadata(GUARDS_METADATA, handler(name))).toEqual([JwtAuthGuard, EsignSenderConsumerGuard, EntitlementGuard, RolesGuard]);
     expect(Reflect.getMetadata(REQUIRED_CAPABILITIES_KEY, handler(name))).toEqual(['sign']);
   });
@@ -42,12 +42,9 @@ describe('EsignSenderController — every route mounts the sender boundary', () 
   it('contacts requires sign:contact:read', () => {
     expect(Reflect.getMetadata(REQUIRED_SCOPES_KEY, handler('contacts'))).toEqual(['sign:contact:read']);
   });
-  it.each(MEMBERS)('%s requires sign:member:manage', (name) => {
-    expect(Reflect.getMetadata(REQUIRED_SCOPES_KEY, handler(name))).toEqual(['sign:member:manage']);
-  });
   it('covers every route handler on the controller', () => {
     const own = Object.getOwnPropertyNames(EsignSenderController.prototype).filter((n) => n !== 'constructor' && n !== 'run');
-    expect(own.sort()).toEqual([...READ, ...CREATE, ...SEND, ...CONTACTS, ...MEMBERS].sort());
+    expect(own.sort()).toEqual([...READ, ...CREATE, ...SEND, ...CONTACTS].sort());
   });
 });
 
@@ -67,7 +64,12 @@ function contextService(kind: string, slug: string | null = 'astre') {
     findSlugById: vi.fn(async () => slug),
     findOrganizationNameById: vi.fn(async () => 'Astre Consulting Services Inc'),
   };
-  const identity = { findUserById: vi.fn(async () => ({ id: AUTH.sub, email: 'p@astre.test', display_name: 'Priya Nair' })) };
+  const identity = {
+    findUserById: vi.fn(async () => ({ id: AUTH.sub, email: 'p@astre.test', display_name: 'Priya Nair' })),
+    // ORG-UX-1 §6 — role-based org_admin.
+    findMembership: vi.fn(async () => ({ id: 'm1', is_active: true })),
+    findRoleKeysForMembership: vi.fn(async () => ['sign_sender', 'tenant_admin']),
+  };
   return new SenderContextService(tenants as never, identity as never);
 }
 
@@ -78,13 +80,16 @@ describe('SenderContextService — workspace and Personal rule from the backend 
     // The organization's display (or legal) name, as the ATS shows it — never the short tenant handle.
     expect(view.tenant.name).toBe('Astre Consulting Services Inc');
     expect(view.organization_url).toBe('https://astre.aramo.ai/org/profile');
+    // ORG-UX-1 §6 — org_admin is ROLE-based (tenant_admin here); roles link → /org/roles.
+    expect(view.org_admin).toBe(true);
+    expect(view.organization_roles_url).toBe('https://astre.aramo.ai/org/roles');
     const viewer = await contextService('BUSINESS').context({ ...AUTH, scopes: ['sign:envelope:read'] }, 'r');
     expect(viewer).toMatchObject({ can_send: false, permissions: { read: true, create: false, send: false, read_all: false, members: false } });
   });
 
   it('PERSONAL → personal workspace; never can_send, even with every scope; no organization link', async () => {
     const view = await contextService('PERSONAL').context(AUTH, 'r');
-    expect(view).toMatchObject({ workspace: 'personal', can_send: false, organization_url: null });
+    expect(view).toMatchObject({ workspace: 'personal', can_send: false, organization_url: null, org_admin: false, organization_roles_url: null });
   });
 
   it('assertCanAuthor refuses a PERSONAL tenant with personal_sending_not_enabled', async () => {
@@ -117,7 +122,7 @@ function envelopeService(kind = 'BUSINESS') {
     getDocument: vi.fn(async () => ({ source_mode: 'OWNED', document_ref: null, document_revision_ref: null, source_object_key: 'k' })),
   };
   const provider = { voidEnvelope: vi.fn(), sendEnvelope: vi.fn() };
-  const identity = { findUserById: vi.fn(async () => null) };
+  const identity = { findUserById: vi.fn(async () => null), findMembership: vi.fn(async () => null), findRoleKeysForMembership: vi.fn(async () => []) };
   const storage = { putOwnedSource: vi.fn() };
   const sources = { getSourcePdf: vi.fn() };
   const storageGate = { reserveUpload: vi.fn(async () => undefined), release: vi.fn(async () => undefined) };

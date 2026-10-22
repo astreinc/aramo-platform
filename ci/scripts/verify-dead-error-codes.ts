@@ -35,6 +35,8 @@ const REGISTRY_SITES = [
 // Each MUST carry a reason. This is the machine-detectable exemption the Architect
 // requires (not a prose comment the guard would have to interpret).
 export const RESERVED_CODES: Record<string, string> = {
+  ESIGN_LAST_OWNER:
+    'RESERVED (ORG-UX-1 Directive v1.0 LOCKED §6, P7; conforming amendment row 10): its only throw-site was the retired Sign member role route (PUT /v1/sign/sender/members/:userId/sign-role, SenderMembersService). Role assignment is Organization-owned; the last-owner refusal is now 409 TENANT_LAST_OWNER from PATCH /v1/tenant/users/:id/roles. Kept because the error-code registry is APPEND-ONLY; classified reserved with no throw-site.',
   TENANT_SELECTION_REQUIRED:
     'RESERVED (IC-2 PR-4, Auth-Decoupling PR-4 Amendment A1 §2 item 3): the /callback 409 tenant-selection response was retired because a User belongs to exactly one tenant (IC-1 PR-3 database cardinality); a defensive multi-tenant resolution is now 403 TENANT_ACCESS_DENIED (reason tenant_resolution_ambiguous). Kept because the error-code registry is APPEND-ONLY; classified deprecated/reserved with no throw-site.',
   DOCUMENT_TYPE_NOT_FOUND:

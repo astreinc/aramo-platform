@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Button, hasScope, Input, safeErrorMessage, TextArea, useSession, useToast, type Session } from '@aramo/fe-foundation';
+import { Button, Input, safeErrorMessage, TextArea, useSession, useToast, type Session } from '@aramo/fe-foundation';
 
 import {
   activateTemplateVersion,
@@ -16,7 +16,8 @@ import {
   updateDocumentTemplate,
   updateDraftVersion,
   versionLogoUrl,
-  DOC_TEMPLATE_MANAGE_SCOPE,
+  canApproveTemplates,
+  canAuthorTemplates,
   RIGHT_TO_REPRESENT_TYPE_ID,
   RTR_GENERATED_SCHEMA_V1,
   RTR_HTML_SCHEMA_V1,
@@ -258,7 +259,10 @@ export function RtrDraftEditor({
   const routes = useDocTemplateRoutes();
   const sessionState = useSession();
   const session = sessionOverride ?? (sessionState.status === 'authenticated' ? sessionState.session : null);
-  const canManage = session != null && hasScope(session, DOC_TEMPLATE_MANAGE_SCOPE);
+  // ORG-UX-1 §4.1 — editing, preview, discard, logo and fields are authoring
+  // (author-or-manage); Approve & activate is manage-only (an author never sees it).
+  const canAuthor = canAuthorTemplates(session);
+  const canApprove = canApproveTemplates(session);
   const toast = useToast();
   const navigate = useNavigate();
 
@@ -335,7 +339,7 @@ export function RtrDraftEditor({
     }
   }, [templateId, listTemplatesFn, listVersionsFn, listBindingsFn, catalogFn, resolveNamesFn]);
 
-  useEffect(() => { if (canManage) void refetch(); }, [canManage, refetch]);
+  useEffect(() => { if (canAuthor) void refetch(); }, [canAuthor, refetch]);
 
   // Focus a just-added block and put the caret at its end.
   useEffect(() => {
@@ -637,7 +641,7 @@ export function RtrDraftEditor({
     }
   }
 
-  if (!canManage) {
+  if (!canAuthor) {
     return (
       <div className="dt-root">
         <div className="set-content">
@@ -1228,27 +1232,29 @@ export function RtrDraftEditor({
         <span className="dt-pill dt-pill--draft dt-nowrap">Draft</span>
         <span className="dt-footer__save" data-testid="rtr-footer-save-state">{saveState}</span>
         <span className={`dt-footer__gate ${blockReason !== '' ? 'dt-footer__note--block' : 'dt-footer__note--ok'}`} data-testid="rtr-footer-gate">
-          · {blockReason !== '' ? blockReason : 'Ready to approve'}
+          · {blockReason !== '' ? blockReason : canApprove ? 'Ready to approve' : 'Ready for approval by an owner or administrator'}
         </span>
         <span className="dt-footer__acts">
           <Button unstyled className="dt-link dt-link--danger dt-nowrap" onClick={() => setDiscardOpen(true)} disabled={busy} data-testid="rtr-editor-discard">Discard draft</Button>
           <Button unstyled className="dt-btn dt-btn--neutral dt-btn--ic dt-nowrap" onClick={() => void openPreviewModal()} disabled={busy} data-testid="rtr-editor-preview"><EyeIcon />Preview</Button>
           <Button unstyled className="dt-btn dt-btn--neutral dt-btn--ic dt-nowrap" onClick={() => void save()} disabled={busy || !dirty} data-testid="rtr-editor-save"><SaveIcon />Save draft</Button>
-          <Button
-            unstyled
-            className={`dt-btn dt-btn--ic dt-nowrap ${approveDisabled ? 'dt-btn--disabled' : 'dt-btn--primary'}`}
-            onClick={() => { if (!approveDisabled) setApproveOpen(true); }}
-            disabled={approveDisabled || busy}
-            title={blockReason !== '' ? blockReason : 'Approve and make this the active version'}
-            data-testid="rtr-editor-approve"
-          >
-            <CheckCircleIcon size={15} />Approve &amp; activate
-          </Button>
+          {canApprove ? (
+            <Button
+              unstyled
+              className={`dt-btn dt-btn--ic dt-nowrap ${approveDisabled ? 'dt-btn--disabled' : 'dt-btn--primary'}`}
+              onClick={() => { if (!approveDisabled) setApproveOpen(true); }}
+              disabled={approveDisabled || busy}
+              title={blockReason !== '' ? blockReason : 'Approve and make this the active version'}
+              data-testid="rtr-editor-approve"
+            >
+              <CheckCircleIcon size={15} />Approve &amp; activate
+            </Button>
+          ) : null}
         </span>
       </div>
 
       {modal != null ? <PreviewModal content={modal} map={map} onClose={() => setModal(null)} /> : null}
-      {approveOpen ? (
+      {approveOpen && canApprove ? (
         <ApproveModal draftVersion={draft.n} activeVersion={activeN} busy={busy} onCancel={() => setApproveOpen(false)} onApprove={() => void approve()} />
       ) : null}
       {discardOpen ? (

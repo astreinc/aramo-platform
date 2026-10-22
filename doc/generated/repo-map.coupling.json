@@ -19400,16 +19400,6 @@
       "status": "unscoped",
       "to": "libs/matching/src/tests/i15-negative-control.spec.ts"
     },
-    {
-      "from": "eslint.config.mjs",
-      "status": "unscoped",
-      "to": "libs/org-admin-web/src/users/RolePicker.spec.tsx"
-    },
-    {
-      "from": "eslint.config.mjs",
-      "status": "unscoped",
-      "to": "libs/org-admin-web/src/users/roles.fixture.ts"
-    },
     { "from": "eslint.config.mjs", "status": "unscoped", "to": "libs/selection/src/index.ts" },
     {
       "from": "eslint.config.mjs",
@@ -20128,6 +20118,11 @@
       "to": "libs/identity/prisma/migrations/20261022120000_sign_personal_free/migration.sql"
     },
     {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261022140000_org_ux_1_template_author_grants/migration.sql"
+    },
+    {
       "from": "libs/common/src/lib/testing/talent-trust-migrations.ts",
       "status": "production",
       "to": "libs/talent-trust/prisma/migrations/20260628000000_init_talent_trust/migration.sql"
@@ -20578,6 +20573,12 @@
       "to": "libs/documents/tsconfig.lib.json"
     },
     {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/documents/src/tests/org-ux-1-template-adoption.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/documents/prisma/migrations/20261022130000_org_ux_1_template_adoption_and_legacy_selection/migration.sql"
+    },
+    {
       "from": "libs/engagement/project.json",
       "status": "unscoped",
       "to": "libs/engagement/src/index.ts"
@@ -20778,6 +20779,11 @@
       "to": "apps/ats-web/src/format/date.ts"
     },
     {
+      "from": "libs/fe-foundation/src/navigation/return-context.ts",
+      "status": "production",
+      "to": "doc/10-multi-product-app-home-and-org-consumer.md"
+    },
+    {
       "from": "libs/fe-foundation/src/ui/SettingsPrimitives.tsx",
       "status": "production",
       "to": "apps/ats-web/src/settings/components.tsx"
@@ -20860,6 +20866,11 @@
     },
     {
       "from": "libs/identity/prisma/migrations/20261021150000_doclib_t4_document_template_grants/migration.sql",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "from": "libs/identity/prisma/migrations/20261022140000_org_ux_1_template_author_grants/migration.sql",
       "status": "unscoped",
       "to": "libs/identity/prisma/seed.ts"
     },
@@ -21004,6 +21015,24 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/org-ux-1-template-author-grants-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261021130000_roles1_role_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/org-ux-1-template-author-grants-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261021150000_doclib_t4_document_template_grants/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/org-ux-1-template-author-grants-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261022140000_org_ux_1_template_author_grants/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/identity/src/tests/roles1-last-owner-invariant.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261021120100_roles1_last_owner_invariant/migration.sql"
@@ -21025,6 +21054,12 @@
       "from": "libs/identity/src/tests/roles1-role-model-migration.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261021130000_roles1_role_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/roles1-role-model-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261022140000_org_ux_1_template_author_grants/migration.sql"
     },
     {
       "from": "libs/import/prisma/schema.prisma",
@@ -23136,6 +23171,11 @@
     {
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
+      "to": "libs/documents/prisma/migrations/20261022130000_org_ux_1_template_adoption_and_legacy_selection/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
       "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
     },
     {
@@ -24590,16 +24630,6 @@
       "from": "scripts/verify-vocabulary.sh",
       "status": "unscoped",
       "to": "libs/import/src/tests/mapping-suggestion.service.spec.ts"
-    },
-    {
-      "from": "scripts/verify-vocabulary.sh",
-      "status": "unscoped",
-      "to": "libs/org-admin-web/src/users/RolePicker.spec.tsx"
-    },
-    {
-      "from": "scripts/verify-vocabulary.sh",
-      "status": "unscoped",
-      "to": "libs/org-admin-web/src/users/roles.fixture.ts"
     },
     {
       "from": "scripts/verify-vocabulary.sh",

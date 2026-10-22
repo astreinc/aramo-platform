@@ -83,6 +83,12 @@ export const EVENT_TYPES = [
   // Cognito AdminEnableUser confirmed. Emitted by the controller on a true
   // INACTIVE→ACTIVE flip only (idempotent re-enable does not emit).
   'identity.tenant_user.enabled',
+  // ORG-UX-1 (Directive v1.0 LOCKED §8.3, G9) — Users & invitations actions that wrote no
+  // audit before: resend (state-dependent invitation / confirmation email), revoke of a
+  // pending invite, and a FAILED invite's email change. subject_id = the user.
+  'identity.tenant_user.invitation_resent',
+  'identity.tenant_user.invitation_revoked',
+  'identity.tenant_user.email_changed',
   // Settings S3b — tenant-user role-assign. Emitted by
   // TenantUserManagementController.assignRoles (PATCH /v1/tenant/users/
   // :user_id/roles) AFTER the merged replaceMembershipRoles reconcile
@@ -155,6 +161,16 @@ export const EVENT_TYPES = [
   // reason? }. Written through the non-swallowing repository BEFORE the state change.
   'identity.document_template.withdrawal_published',
   'identity.document_template.withdrawal_cancelled',
+  // ORG-UX-1 (Directive v1.0 LOCKED §5.4) — Org template governance. Tenant-scoped.
+  //   adopted          subject = the new tenant template; payload { adopted_from_template_id, adopted_from_version_id, document_type_id }
+  //   created          subject = the new tenant template ("Create your own")
+  //   version_activated subject = the approved version; payload { template_id, version_number }
+  //   selection_set / selection_cleared subject = the template (set) / document type (cleared)
+  'identity.document_template.adopted',
+  'identity.document_template.created',
+  'identity.document_template.version_activated',
+  'identity.document_template.selection_set',
+  'identity.document_template.selection_cleared',
   // Domain-Enforcement P3 (LOCKED) §6 — the domain-claim lifecycle. Every one of these
   // is inserted IN THE SAME database transaction as the claim / exception write
   // (DomainClaimService), never through the best-effort audit service. All tenant-scoped
@@ -229,6 +245,12 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   // Cognito AdminEnableUser confirmed. Emitted by the controller on a true
   // INACTIVE→ACTIVE flip only (idempotent re-enable does not emit).
   'identity.tenant_user.enabled',
+  // ORG-UX-1 (Directive v1.0 LOCKED §8.3, G9) — Users & invitations actions that wrote no
+  // audit before: resend (state-dependent invitation / confirmation email), revoke of a
+  // pending invite, and a FAILED invite's email change. subject_id = the user.
+  'identity.tenant_user.invitation_resent',
+  'identity.tenant_user.invitation_revoked',
+  'identity.tenant_user.email_changed',
   // Settings S3b — tenant-user role-assign is per-tenant (the
   // membership's roles live in one tenant). Same subject_id +
   // tenant_id discipline as disable.
@@ -256,6 +278,12 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   'tenant.lifecycle_transition_rejected',
   // A1 §1 — template draft discard carries the writing tenant's id.
   'identity.document_template.draft_discarded',
+  // ORG-UX-1 §5.4 — template governance rows carry the writing tenant's id.
+  'identity.document_template.adopted',
+  'identity.document_template.created',
+  'identity.document_template.version_activated',
+  'identity.document_template.selection_set',
+  'identity.document_template.selection_cleared',
   // ROLES-1 PR-2 — the reconciliation rows carry the membership's tenant id.
   'ROLES1_RECONCILE_GRANT',
   'ROLES1_RECONCILE_REVOKE',

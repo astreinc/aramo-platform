@@ -106,6 +106,7 @@ function build() {
   const audit = {
     recordDraftDiscarded: vi.fn(async () => undefined),
     recordPlatformWithdrawal: vi.fn(async () => undefined),
+    recordGovernance: vi.fn(async () => undefined),
   };
   const variables = {
     listAll: vi.fn(async () => []),

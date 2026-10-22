@@ -1,10 +1,9 @@
 import { useState, type ReactNode } from 'react';
-import { useLocation } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import {
   AppSwitcher,
   AramoAppShell,
   AramoRail,
-  Breadcrumb,
   IconSliders,
   IconColumns,
   TopBar,
@@ -12,60 +11,104 @@ import {
   buildAppSwitcherItems,
   initialsOf,
   logout,
-  useMyProducts,
-  type Session,
+  type AramoRailSection,
+  type ProductAvailabilityView,
 } from '@aramo/fe-foundation';
-import { hasOrgAdminScope, orgSectionLabel, useMe } from '@aramo/org-admin-web';
+import {
+  ORGANIZATION_HEADING,
+  SHARED_SETUP_HEADING,
+  orgSectionForPath,
+  orgSectionsFor,
+  useMe,
+  useOrgAccess,
+  type OrgAccessTier,
+  type OrgSection,
+} from '@aramo/org-admin-web';
 
-// The App Home + Organization administration chrome — the SAME shared Aramo
-// shell as the ATS (AramoAppShell + AramoRail, one collapse preference), per the
-// accepted App Home handoff §3:
-//   rail     PLATFORM · App Home, Organization (organization admins only)
-//   top bar  page title (or Organization / <section>) · app switcher ·
-//            organization name · account menu
-// Product-neutral: no product navigation lives here; products open from the App
-// Home cards or the app switcher, and each product checks access itself.
+// The App Home + Organization chrome — the SAME shared Aramo shell as the ATS
+// (AramoAppShell + AramoRail, one collapse preference). ORG-UX-1 (Directive v1.0
+// LOCKED §1, §4.3, §7.1; App Home & Organization handoff rev. Oct 21 §2):
+//   rail     PLATFORM · App Home
+//            ORGANIZATION (org admins)  Overview · Profile · Users & invitations ·
+//                                       Roles & access · Sites · Domain
+//            SHARED SETUP (org admins)  Settings · Our templates · Template gallery · Audit
+//            — a template author (org_access "templates") sees PLATFORM + SHARED SETUP
+//              with Our templates + Template gallery only; "none" sees App Home only.
+//   top bar  breadcrumb (Organization / {Section}) · app switcher · organization
+//            name · account menu
+// Who sees what is the SERVER's org_access projection (GET /v1/me/products) — never
+// derived from session scopes. Navigation only: every Organization API keeps its own
+// server-side guard.
 
 const ICON_HOME = 'M3 9.5 12 3l9 6.5V20a1 1 0 0 1-1 1h-5v-7H9v7H4a1 1 0 0 1-1-1z';
-const ICON_ORG = 'M4 21V6a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v15M14 10h5a1 1 0 0 1 1 1v10M2 21h20';
 
 interface HomeShellProps {
-  readonly session: Session;
   readonly children: ReactNode;
+  /** Test seam — replaces the GET /v1/me/products read. */
+  readonly fetchProducts?: () => Promise<ProductAvailabilityView>;
 }
 
-function TitleFor({ pathname }: { readonly pathname: string }) {
-  if (pathname.startsWith('/org')) {
-    const key = pathname.replace(/^\/org\/?/, '').split('/')[0] ?? '';
-    const label = orgSectionLabel(key);
-    return <Breadcrumb items={label === null ? [{ label: 'Organization' }] : [{ label: 'Organization', href: '/org/profile' }, { label }]} />;
+function railItem(s: OrgSection) {
+  return { key: s.key, to: s.path, label: s.label, iconPath: s.iconPath, gear: s.gear, testId: `org-nav-${s.key}` };
+}
+
+/** The rail sections for an Organization access tier (handoff §2 table). */
+export function homeRailSections(access: OrgAccessTier): AramoRailSection[] {
+  const sections = orgSectionsFor(access);
+  return [
+    { label: 'Platform', kind: 'primary', items: [{ key: 'home', to: '/', label: 'App Home', iconPath: ICON_HOME, testId: 'home-nav-home' }] },
+    { label: ORGANIZATION_HEADING, kind: 'work', items: sections.filter((s) => s.group === 'organization').map(railItem) },
+    { label: SHARED_SETUP_HEADING, kind: 'work', items: sections.filter((s) => s.group === 'shared').map(railItem) },
+  ];
+}
+
+function Crumb({ pathname, access }: { readonly pathname: string; readonly access: OrgAccessTier }) {
+  if (pathname === '/org' || pathname.startsWith('/org/')) {
+    const section = orgSectionForPath(pathname);
+    return (
+      <nav aria-label="Breadcrumb" className="home-crumb" data-testid="home-crumb">
+        {access === 'admin' ? (
+          <Link to="/org/overview" className="home-crumb__root">
+            Organization
+          </Link>
+        ) : (
+          <span className="home-crumb__root">Organization</span>
+        )}
+        {section !== null ? (
+          <>
+            <span className="home-crumb__sep" aria-hidden="true">
+              {' / '}
+            </span>
+            <span aria-current="page">{section.label}</span>
+          </>
+        ) : null}
+      </nav>
+    );
   }
-  return <span className="home-topbar-title">{pathname.startsWith('/preferences') ? 'My preferences' : 'App Home'}</span>;
+  return (
+    <span className="home-crumb" data-testid="home-crumb">
+      {pathname.startsWith('/preferences') ? 'My preferences' : 'App Home'}
+    </span>
+  );
 }
 
-export function HomeShell({ session, children }: HomeShellProps) {
+export function HomeShell({ children, fetchProducts }: HomeShellProps) {
   const me = useMe();
-  const products = useMyProducts();
+  const orgAccess = useOrgAccess(fetchProducts);
   const { pathname } = useLocation();
   const [switcherSignal, setSwitcherSignal] = useState(0);
-  const isOrgAdmin = hasOrgAdminScope(session);
+  // While the availability read is loading (or failed) the rail shows App Home only.
+  const access: OrgAccessTier = orgAccess.status === 'ready' ? orgAccess.access : 'none';
+  const products = orgAccess.status === 'ready' ? orgAccess.products : null;
   const displayName = me?.user.display_name ?? me?.user.email ?? '';
   const tenantName = me?.tenant.display_name ?? null;
-  const current = pathname.startsWith('/org') ? 'org' : 'home';
+  const inOrg = pathname === '/org' || pathname.startsWith('/org/');
+  const activeKey = pathname === '/' ? 'home' : inOrg ? (orgSectionForPath(pathname)?.key ?? null) : null;
 
   const rail = (
     <AramoRail
-      sections={[
-        {
-          label: 'Platform',
-          kind: 'primary',
-          items: [
-            { key: 'home', to: '/', label: 'App Home', iconPath: ICON_HOME },
-            ...(isOrgAdmin ? [{ key: 'org', to: '/org/profile', label: 'Organization', iconPath: ICON_ORG }] : []),
-          ],
-        },
-      ]}
-      activeKey={pathname.startsWith('/org') ? 'org' : pathname === '/' ? 'home' : null}
+      sections={homeRailSections(access)}
+      activeKey={activeKey}
       userInitials={initialsOf(displayName || '?')}
       userName={displayName}
       tenantName={tenantName}
@@ -76,15 +119,14 @@ export function HomeShell({ session, children }: HomeShellProps) {
 
   const topBar = (
     <TopBar>
-      <TitleFor pathname={pathname} />
-      <div className="home-topbar-spacer" />
+      <Crumb pathname={pathname} access={access} />
       <AppSwitcher
         organizationName={tenantName}
-        items={buildAppSwitcherItems({ current, products: products.status === 'ready' ? products.view : null })}
+        items={buildAppSwitcherItems({ current: inOrg ? 'org' : 'home', products })}
         openSignal={switcherSignal}
       />
       {tenantName !== null ? (
-        <span className="rc-orglabel" title={tenantName}>
+        <span className="home-orgname" title={tenantName}>
           {tenantName}
         </span>
       ) : null}
@@ -92,7 +134,7 @@ export function HomeShell({ session, children }: HomeShellProps) {
         name={displayName}
         email={me?.user.email ?? ''}
         roleLine={null}
-        roleBadge={isOrgAdmin ? 'ADMIN' : 'MEMBER'}
+        roleBadge={access === 'admin' ? 'ADMIN' : 'MEMBER'}
         onSignOut={() => void logout()}
         items={[
           { key: 'prefs', label: 'My preferences', sub: 'Start page · App Home', icon: <IconSliders />, to: '/preferences' },
@@ -108,4 +150,3 @@ export function HomeShell({ session, children }: HomeShellProps) {
     </AramoAppShell>
   );
 }
-

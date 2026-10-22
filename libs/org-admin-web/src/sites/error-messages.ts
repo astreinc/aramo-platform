@@ -17,29 +17,29 @@ export function messageForSiteError(err: unknown): string {
       : '';
   switch (reason) {
     case 'name_required':
-      return 'A branch name is required.';
+      return 'A site name is required.';
     case 'name_taken':
-      return 'A branch with this name already exists in this tenant.';
+      return 'A site with this name already exists in this tenant.';
     case 'too_long':
       return 'That value is too long.';
     case 'invalid_parent_id':
-      return 'The selected parent branch is not valid.';
+      return 'The selected parent site is not valid.';
     case 'parent_not_found':
-      return 'The selected parent branch does not exist in this tenant.';
+      return 'The selected parent site does not exist in this tenant.';
     case 'parent_inactive':
-      return 'The selected parent branch is deactivated — reactivate it first.';
+      return 'The selected parent site is deactivated — reactivate it first.';
     case 'parent_self':
-      return 'A branch cannot be its own parent.';
+      return 'A site cannot be its own parent.';
     case 'parent_cycle':
-      return 'That parent would create a loop in the branch hierarchy.';
+      return 'That parent would create a loop in the site hierarchy.';
     case 'too_deep':
-      return 'That move would nest the branch hierarchy too deeply.';
+      return 'That move would nest the site hierarchy too deeply.';
     case 'site_in_use':
-      return 'This branch is in use (it has members or child branches) — deactivate it instead of deleting.';
+      return 'This site is in use (it has members or child sites) — deactivate it instead of deleting.';
     case 'unknown_field':
       return 'That field cannot be edited here.';
     default:
-      return safeErrorMessage(err, 'Failed to save the branch.');
+      return safeErrorMessage(err, 'Failed to save the site.');
   }
 }
 

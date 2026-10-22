@@ -1,4 +1,4 @@
-import { fireEvent, render, screen } from '@testing-library/react';
+import { fireEvent, render, screen, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
@@ -38,34 +38,49 @@ describe('/report', () => {
     open(fetch);
     expect(await screen.findByTestId('report-form')).toBeInTheDocument();
     expect(window.location.hash).toBe('');
-    expect(screen.getAllByRole('radio')).toHaveLength(REPORT_REASONS.length);
-    fireEvent.click(screen.getByLabelText('It looks like phishing or a scam'));
+    const group = screen.getByRole('radiogroup', { name: 'What’s wrong with this email?' });
+    expect(within(group).getAllByRole('radio').map((r) => r.textContent)).toEqual([
+      'PhishingIt asks for passwords, payment or personal details',
+      'ImpersonationIt pretends to be a person or company it isn’t',
+      'SpamI didn’t expect or want this document',
+      'Something elseTell us below',
+    ]);
+    expect(REPORT_REASONS.map((r) => r.key)).toEqual(['phishing', 'impersonation', 'spam', 'other']);
+    fireEvent.click(screen.getByRole('radio', { name: /^Phishing/ }));
+    expect(screen.getByRole('radio', { name: /^Phishing/ })).toHaveAttribute('aria-checked', 'true');
     fireEvent.change(screen.getByLabelText('Anything else? (optional)'), { target: { value: ' Asked for my bank login ' } });
     fireEvent.click(screen.getByTestId('report-submit'));
-    expect(await screen.findByTestId('report-thanks')).toHaveTextContent('Your report was sent.');
+    const thanks = await screen.findByTestId('report-thanks');
+    expect(thanks).toHaveTextContent('Thanks — we’ll look into it');
+    expect(thanks).toHaveTextContent('Your report was sent.');
     const call = fetch.mock.calls.find(([u]) => String(u).endsWith('/v1/sign/report'))!;
     expect(JSON.parse(String((call[1] as RequestInit).body))).toEqual({ token: TOKEN, reason: 'phishing', note: 'Asked for my bank login' });
     expect((call[1] as RequestInit).credentials).toBeUndefined();
   });
 
-  it('asks for a reason before sending', async () => {
+  it('Send report stays disabled until a reason is picked; arrow keys move the choice', async () => {
     const fetch = reportFetch(202);
     open(fetch);
-    fireEvent.click(await screen.findByTestId('report-submit'));
-    expect(await screen.findByText('Choose a reason.')).toBeInTheDocument();
+    const send = await screen.findByTestId('report-submit');
+    expect(send).toBeDisabled();
+    fireEvent.click(send);
     expect(fetch.mock.calls.some(([u]) => String(u).endsWith('/v1/sign/report'))).toBe(false);
+    fireEvent.click(screen.getByRole('radio', { name: /^Spam/ }));
+    fireEvent.keyDown(screen.getByRole('radio', { name: /^Spam/ }), { key: 'ArrowDown' });
+    expect(screen.getByRole('radio', { name: /^Something else/ })).toHaveAttribute('aria-checked', 'true');
+    expect(send).not.toBeDisabled();
   });
 
   it('a second report for the same email is acknowledged (409)', async () => {
     open(reportFetch(409));
-    fireEvent.click(await screen.findByLabelText('I don’t know the sender'));
+    fireEvent.click(await screen.findByRole('radio', { name: /^Impersonation/ }));
     fireEvent.click(screen.getByTestId('report-submit'));
     expect(await screen.findByTestId('report-thanks')).toHaveTextContent('We already have your report');
   });
 
   it('an invalid token or a missing one shows the link-can’t-be-used page', async () => {
     const first = open(reportFetch(404));
-    fireEvent.click(await screen.findByLabelText('It’s unwanted or spam'));
+    fireEvent.click(await screen.findByRole('radio', { name: /^Spam/ }));
     fireEvent.click(screen.getByTestId('report-submit'));
     expect(await screen.findByTestId('report-invalid')).toBeInTheDocument();
     first.unmount();
@@ -75,7 +90,7 @@ describe('/report', () => {
 
   it('rate limiting keeps the form with a message', async () => {
     open(reportFetch(429));
-    fireEvent.click(await screen.findByLabelText('Something else'));
+    fireEvent.click(await screen.findByRole('radio', { name: /^Something else/ }));
     fireEvent.click(screen.getByTestId('report-submit'));
     expect(await screen.findByText('Too many reports from this connection. Try again later.')).toBeInTheDocument();
     expect(screen.getByTestId('report-form')).toBeInTheDocument();

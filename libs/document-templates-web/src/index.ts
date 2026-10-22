@@ -39,6 +39,11 @@ export {
 export {
   DOC_TEMPLATE_READ_SCOPE,
   DOC_TEMPLATE_MANAGE_SCOPE,
+  DOC_TEMPLATE_AUTHOR_SCOPE,
+  canAuthorTemplates,
+  canApproveTemplates,
+  canReadTemplates,
+  adoptTemplate,
   RIGHT_TO_REPRESENT_TYPE_ID,
   RTR_HTML_SCHEMA_V1,
   RTR_GENERATED_SCHEMA_V1,

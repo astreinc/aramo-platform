@@ -37,7 +37,23 @@ export interface TemplatePlatformWithdrawalAudit {
   readonly requestId: string;
 }
 
+// ORG-UX-1 (Directive v1.0 LOCKED §5.4) — Org template governance. Tenant-scoped. Written
+// through the same non-swallowing seam AFTER the state change succeeds (the change is
+// already committed; a failed write surfaces as an error to the caller, never silently).
+export type TemplateGovernanceAction = 'adopted' | 'created' | 'version_activated' | 'selection_set' | 'selection_cleared';
+export interface TemplateGovernanceAudit {
+  readonly action: TemplateGovernanceAction;
+  readonly tenant_id: string;
+  readonly actor_id: string;
+  // The template (adopted / created / selection_set), the version (version_activated) or
+  // the document type (selection_cleared).
+  readonly subject_id: string;
+  readonly payload: Readonly<Record<string, string | number | null>>;
+  readonly requestId: string;
+}
+
 export interface TemplateAuditPort {
   recordDraftDiscarded(event: TemplateDraftDiscardedAudit): Promise<void>;
   recordPlatformWithdrawal(event: TemplatePlatformWithdrawalAudit): Promise<void>;
+  recordGovernance(event: TemplateGovernanceAudit): Promise<void>;
 }

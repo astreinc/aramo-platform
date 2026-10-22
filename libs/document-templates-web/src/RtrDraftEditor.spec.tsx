@@ -207,6 +207,28 @@ describe('RtrDraftEditor (§11)', () => {
     expect(await screen.findByTestId('rtr-detail-landing')).toBeInTheDocument();
   });
 
+  // ORG-UX-1 §4.1 — authoring is author-or-manage; Approve is manage-only.
+  it('an author (document_template:author, no manage) edits, previews and discards but never sees Approve', async () => {
+    harness({ sessionOverride: makeSession(['document_template:read', 'document_template:author']) });
+    expect(await screen.findByTestId('rtr-editor-footer')).toBeInTheDocument();
+    expect(screen.getByTestId('rtr-editor-preview')).toBeInTheDocument();
+    expect(screen.getByTestId('rtr-editor-save')).toBeInTheDocument();
+    expect(screen.getByTestId('rtr-editor-discard')).toBeInTheDocument();
+    expect(screen.queryByTestId('rtr-editor-approve')).toBeNull();
+    expect(screen.queryByText(/Approve & activate/)).toBeNull();
+  });
+
+  it('an author without read still opens the editor (org session carries author + manage)', async () => {
+    harness({ sessionOverride: makeSession(['document_template:author']) });
+    expect(await screen.findByTestId('rtr-editor-footer')).toBeInTheDocument();
+    expect(screen.queryByTestId('rtr-editor-approve')).toBeNull();
+  });
+
+  it('a manage holder sees Approve & activate', async () => {
+    harness();
+    expect(await screen.findByTestId('rtr-editor-approve')).toHaveTextContent('Approve & activate');
+  });
+
   it('a non-manager is refused the editor', async () => {
     harness({ sessionOverride: makeSession(['document_template:read']) });
     expect(await screen.findByText(/don’t have permission/i)).toBeInTheDocument();
