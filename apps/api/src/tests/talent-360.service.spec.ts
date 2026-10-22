@@ -137,12 +137,14 @@ function fakePort(overrides: Partial<Talent360ReadPort> = {}): Talent360ReadPort
     loadCommunicationPreview: async () => null,
     loadDocumentContent: async () => null,
     listRecentActivity: async () => [],
+    listPipelineActivity: async () => [],
     listTasks: async () => [],
     listDocuments: async () => [],
     loadConsentSummary: async () => 'do_not_contact' as ConsentSummaryValue,
     loadIdentityOutcomes: async () =>
       ({ primary_email_confirmed: false, mobile_confirmed: false, advisory: null }) as IdentityOutcomeRow,
     listWorkHistory: async () => [],
+    listEducation: async () => [],
   };
   return { ...base, ...overrides };
 }
@@ -327,6 +329,63 @@ describe('Talent360Service — composes authorized truth, is not the authority',
       expect(v.relationship_strip.active_opportunities).toBe(0);
       expect(v.relationship_strip.submittals).toBe(0);
       expect(v.attention).toEqual([]);
+    });
+  });
+
+  describe('ATS-QA-1 I-4 — education is composed from its one authority, never invented', () => {
+    const entry = {
+      id: 'edu-1',
+      institution_name: 'State University',
+      degree_name: 'BS',
+      field_of_study: 'Computer Science',
+      conferred_date: '2012-05-15',
+      source: 'resume' as const,
+      source_document_id: 'doc-1',
+      source_refs: ['b3'],
+      corrects_entry_id: null,
+      recorded_at: '2026-09-01T00:00:00.000Z',
+    };
+
+    it('passes the current education entries through with source and provenance refs', async () => {
+      const service = svc(fakePort({ listEducation: async () => [entry] }));
+      const v = await service.compose(ctx(), 'tal-1', NOW, TZ);
+      expect(v.profile.education).toEqual([entry]);
+    });
+
+    it('a Talent with no education yields [] (never a placeholder entry)', async () => {
+      const v = await svc(fakePort()).compose(ctx(), 'tal-1', NOW, TZ);
+      expect(v.profile.education).toEqual([]);
+    });
+
+    it('a superseded record never reads or returns education', async () => {
+      let read = false;
+      const service = svc(
+        fakePort({
+          loadTalent: async () => core({ record_status: 'superseded', superseded_by_record_id: 'tal-2' }),
+          listEducation: async () => {
+            read = true;
+            return [entry];
+          },
+        }),
+      );
+      const v = await service.compose(ctx(), 'tal-1', NOW, TZ);
+      expect(v.profile.education).toEqual([]);
+      expect(read).toBe(false);
+    });
+
+    it('a missing or cross-tenant Talent is NOT_FOUND before any education read', async () => {
+      let read = false;
+      const service = svc(
+        fakePort({
+          loadTalent: async () => null,
+          listEducation: async () => {
+            read = true;
+            return [entry];
+          },
+        }),
+      );
+      await expect(service.compose(ctx(), 'tal-x', NOW, TZ)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      expect(read).toBe(false);
     });
   });
 
@@ -664,6 +723,73 @@ describe('Talent360Service — recent activity shows what was communicated (stor
     );
     const item = (await service.compose(ctx(), 'tal-1', NOW, TZ)).recent_activity!.items[0]!;
     expect(item.actor_label).toBe('Sanjay Kumar');
+  });
+});
+
+describe('Talent360Service — pipeline milestones (ATS-QA-1 D1/D2) are scoped to visible requisitions', () => {
+  const milestone = (id: string, pipeline_id: string, requisition_id: string, notes: string, at: string) => ({
+    id,
+    pipeline_id,
+    requisition_id,
+    notes,
+    created_by_id: 'u-2',
+    created_at: at,
+  });
+
+  it('a Qualified milestone carries its episode requisition, label and verbatim note', async () => {
+    const service = svc(
+      fakePort({
+        listEpisodes: async () => [episode('p-1', 'req-1', 'qualified')],
+        resolveRequisitions: async () => new Map([['req-1', req('req-1', 1001)]]),
+        listPipelineActivity: async (_c, eps) =>
+          eps.map((e) => milestone('m-1', e.id, e.requisition_id, 'pipeline qualifying -> qualified', '2026-09-28T00:00:00Z')),
+        resolveUserNames: async () => new Map([['u-2', 'Sanjay Kumar']]),
+      }),
+    );
+    const ra = (await service.compose(ctx(), 'tal-1', NOW, TZ)).recent_activity!;
+    const item = ra.items.find((i) => i.id === 'activity:m-1')!;
+    expect(item).toMatchObject({
+      category: 'requisitions',
+      title: 'Stage changed',
+      body: 'pipeline qualifying -> qualified',
+      requisition_id: 'req-1',
+      requisition_label: 'REQ-1001',
+      actor_label: 'Sanjay Kumar',
+    });
+    expect(ra.category_counts['requisitions']).toBe(1);
+  });
+
+  it('only episodes on requisitions the viewer may see are read (hidden requisition never passed)', async () => {
+    let asked: readonly string[] = [];
+    const service = svc(
+      fakePort({
+        listEpisodes: async () => [episode('p-1', 'req-1', 'qualified'), episode('p-h', 'req-hidden', 'qualified')],
+        resolveRequisitions: async () => new Map([['req-1', req('req-1', 1001)]]),
+        listPipelineActivity: async (_c, eps) => {
+          asked = eps.map((e) => e.id);
+          return [];
+        },
+      }),
+    );
+    await service.compose(ctx(), 'tal-1', NOW, TZ);
+    expect(asked).toEqual(['p-1']);
+  });
+
+  it('without pipeline:read no milestone is read (composition never broadens)', async () => {
+    let called = false;
+    const service = svc(
+      fakePort({
+        listEpisodes: async () => [episode('p-1', 'req-1', 'qualified')],
+        resolveRequisitions: async () => new Map([['req-1', req('req-1', 1001)]]),
+        listPipelineActivity: async () => {
+          called = true;
+          return [];
+        },
+      }),
+    );
+    const v = await service.compose(ctx(['talent:read', 'activity:read']), 'tal-1', NOW, TZ);
+    expect(called).toBe(false);
+    expect(v.recent_activity!.items).toEqual([]);
   });
 });
 

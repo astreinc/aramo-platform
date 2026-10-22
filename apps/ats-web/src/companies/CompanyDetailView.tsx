@@ -11,6 +11,8 @@ import {
 import { Tabs, type TabItem, Button } from '@aramo/fe-foundation';
 
 import { listActivities } from '../activity/activity-api';
+import { describeActivity } from '../activity/ActivityTimeline';
+import { formatInstant } from '../format/date';
 import type { ActivityView } from '../activity/types';
 import { listRequisitions } from '../requisitions/requisitions-api';
 import { isClosedStatus, RECRUITING_STATUS_LABELS, type RequisitionView } from '../requisitions/types';
@@ -1051,16 +1053,23 @@ function ActivityPanel({
           <p className="rc-empty">No activity recorded for this company yet.</p>
         ) : (
           <ul className="rc-detail-list rc-detail-list--flush">
-            {activities.map((a) => (
-              <li key={a.id} className="rc-tmrow rc-tmrow--row">
-                <div className="rc-tmrow__body">
-                  <div className="rc-tmrow__nm">{a.notes ?? a.type}</div>
-                  <div className="rc-tmrow__rl">
-                    <time dateTime={a.created_at}>{a.created_at}</time>
+            {activities.map((a) => {
+              // ATS-QA-1 I-1 A4 — the same humanised presentation as the activity timeline
+              // (system transition notes reworded via activity-note-format, redaction honoured,
+              // no raw type enum) and a formatted instant instead of raw ISO.
+              const row = describeActivity(a, {}, {});
+              return (
+                <li key={a.id} className="rc-tmrow rc-tmrow--row" data-testid={`company-activity-${a.id}`}>
+                  <div className="rc-tmrow__body">
+                    <div className="rc-tmrow__nm">{row.what}</div>
+                    {row.detail !== '' ? <div className="rc-tmrow__rl">{row.detail}</div> : null}
+                    <div className="rc-tmrow__rl">
+                      <time dateTime={a.created_at}>{formatInstant(a.created_at)}</time>
+                    </div>
                   </div>
-                </div>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
         )}
       </Card>

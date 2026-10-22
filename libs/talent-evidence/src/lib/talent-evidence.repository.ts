@@ -1197,6 +1197,10 @@ export class TalentEvidenceRepository {
   // TR-7 B1 — the education/certification ledger-routing reads (the WorkHistory
   // precedent): row `id` (→ ledger source_ref) + exactly the fields the pure DEGREE/
   // CERTIFICATION mappers need. Tenant-scoped, id-ordered (stable dual-write order).
+  // ATS-QA-1 I-4 (A3) — education rows with source `manual` are EXCLUDED: a
+  // recruiter-entered entry is not LLM-structured, so its claim is written (with
+  // ai_derived false) only by the education edit service, never by this
+  // extraction routing (which writes ai_derived true).
   async listEducationForLedger(args: {
     tenant_id: string;
     talent_id: string;
@@ -1210,7 +1214,7 @@ export class TalentEvidenceRepository {
     }>
   > {
     return this.prisma.talentEducationEntry.findMany({
-      where: { tenant_id: args.tenant_id, talent_id: args.talent_id },
+      where: { tenant_id: args.tenant_id, talent_id: args.talent_id, source: { not: 'manual' } },
       select: {
         id: true,
         institution_name: true,

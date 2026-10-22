@@ -464,7 +464,9 @@ describe('RequisitionDetailView workspace — load model (no first-paint fan-out
     fireEvent.click(screen.getByRole('tab', { name: /Offers/ }));
     await waitFor(() => expect(selectedTabName()).toMatch(/Offers/));
     // §11 (ruling B) — the tab IS the board-sourced Offers & Starts list; empty when no offer+ cards.
-    expect(await screen.findByText(/No offers or starts on this requisition/)).toBeInTheDocument();
+    expect(await screen.findByText(/No offers on this requisition/)).toBeInTheDocument();
+    // ATS-QA-1 23e — the prototype v2 body copy.
+    expect(screen.getByText(/Create offer becomes available when a Talent reaches/)).toBeInTheDocument();
   });
 
   it('§11 (ruling B) — Offers & Starts list renders board offer+ rows, each Continuing into /offer-start/:pipelineId', async () => {

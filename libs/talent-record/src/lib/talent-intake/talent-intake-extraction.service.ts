@@ -159,14 +159,18 @@ export class TalentIntakeExtractionService implements TalentIntakeProcessingPort
       });
     }
 
-    const mergedReview = mergeExtractionIntoReview(intake.review_payload, result);
     const isFailed = outcome.processing_status === 'FAILED';
+    // Review merge (I7 / §8.5) — against the LATEST persisted review, under CAS,
+    // so a recruiter save made while the extraction ran is never overwritten. A
+    // failed extraction leaves the review untouched (nothing disappears).
+    if (!isFailed) {
+      await this.mergeIntoLatestReview(intake, result);
+    }
     await this.talentExtraction.markTalentIntakeDraftProcessed({
       tenant_id: intake.tenant_id,
       id: intake.id,
       processing_status: outcome.processing_status,
       structured_payload: result,
-      review_payload: mergedReview,
       // warning_code / failure_detail carry RECRUITER-SAFE prose (from the shared
       // orchestrator). The internal error code lives ONLY on the child
       // (last_error_code) and is never projected onto the recruiter contract.
@@ -189,6 +193,40 @@ export class TalentIntakeExtractionService implements TalentIntakeProcessingPort
       resume_extraction_draft_id: child.id,
       processing_status: outcome.processing_status,
       correlation_id: correlationId,
+    });
+  }
+
+  // Merge the extraction result into the draft's CURRENT review payload with a
+  // version CAS, re-reading and re-merging when a recruiter save lands in
+  // between. Bounded: after the attempts the latest recruiter state stands and
+  // the result stays on structured_payload (still promotable evidence).
+  private async mergeIntoLatestReview(
+    intake: TalentIntakeDraftRow,
+    result: Parameters<typeof mergeExtractionIntoReview>[1],
+  ): Promise<void> {
+    const MAX_ATTEMPTS = 5;
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+      const latest = await this.talentExtraction.findTalentIntakeDraftById({
+        tenant_id: intake.tenant_id,
+        id: intake.id,
+      });
+      if (latest === null || latest.promoted_talent_record_id !== null) {
+        return;
+      }
+      const saved = await this.talentExtraction.saveTalentIntakeDraftReview({
+        tenant_id: intake.tenant_id,
+        id: intake.id,
+        expected_version: latest.version,
+        review_payload: mergeExtractionIntoReview(latest.review_payload, result),
+      });
+      if (saved === 1) {
+        return;
+      }
+    }
+    this.logger.warn({
+      event: 'talent_intake_review_merge_contended',
+      draft_id: intake.id,
+      tenant_id: intake.tenant_id,
     });
   }
 }

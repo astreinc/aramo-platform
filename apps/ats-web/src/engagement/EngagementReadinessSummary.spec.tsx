@@ -80,4 +80,90 @@ describe('EngagementReadinessSummary', () => {
     await waitFor(() => expect(screen.getByTestId('engagement-readiness-verdict')).toBeInTheDocument());
     expect(screen.getByTestId('engagement-readiness-verdict')).toHaveTextContent('blocked');
   });
+
+  // ---- ATS-QA-1 I-1 UX — plain copy + a next step; fail-closed kept; no raw enums ----
+  it('governed but no effective policy → plain blocked copy with a next step (still fail-closed)', async () => {
+    render(
+      <EngagementReadinessSummary
+        talentId="t1"
+        requisitionId="r1"
+        loadFn={load(readiness({ governed: true, policy_present: false, satisfied: false }))}
+      />,
+    );
+    const el = await screen.findByTestId('engagement-readiness-nopolicy');
+    expect(el).toHaveTextContent('Client submittal is blocked');
+    expect(el).toHaveTextContent('Next step: ask your Aramo admin to publish one.');
+    expect(el.textContent).not.toMatch(/resolves/);
+  });
+
+  it('missing voice → plain status label and a channel-specific next step', async () => {
+    render(
+      <EngagementReadinessSummary
+        talentId="t1"
+        requisitionId="r1"
+        loadFn={load(
+          readiness({
+            satisfied: false,
+            missing: ['voice'],
+            results: [{ channel: 'voice', required: true, status: 'missing' }],
+          }),
+        )}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId('engagement-readiness')).toBeInTheDocument());
+    expect(screen.getByText('Voice conversation — not recorded yet')).toBeInTheDocument();
+    expect(screen.getByTestId('engagement-readiness-next-step')).toHaveTextContent(
+      'Next step: log a voice conversation with the Talent.',
+    );
+  });
+
+  it('unavailable → next step says to check again (verdict stays blocked)', async () => {
+    render(
+      <EngagementReadinessSummary
+        talentId="t1"
+        requisitionId="r1"
+        loadFn={load(
+          readiness({
+            satisfied: false,
+            unavailable: true,
+            results: [{ channel: 'email', required: true, status: 'unavailable' }],
+          }),
+        )}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId('engagement-readiness-verdict')).toHaveTextContent('blocked'));
+    expect(screen.getByTestId('engagement-readiness-next-step')).toHaveTextContent(/couldn’t be checked right now/);
+  });
+
+  it('an unknown status or channel never renders the raw enum value', async () => {
+    render(
+      <EngagementReadinessSummary
+        talentId="t1"
+        requisitionId="r1"
+        loadFn={load(
+          readiness({
+            satisfied: false,
+            results: [
+              { channel: 'sms_future' as never, required: true, status: 'weird_new_status' as never },
+            ],
+          }),
+        )}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId('engagement-readiness')).toBeInTheDocument());
+    expect(screen.getByText('Engagement requirement — status unknown')).toBeInTheDocument();
+    expect(document.body.innerHTML).not.toMatch(/sms_future|weird_new_status/);
+  });
+
+  it('satisfied → no next-step line', async () => {
+    render(
+      <EngagementReadinessSummary
+        talentId="t1"
+        requisitionId="r1"
+        loadFn={load(readiness({ satisfied: true, results: [{ channel: 'email', required: true, status: 'satisfied' }] }))}
+      />,
+    );
+    await waitFor(() => expect(screen.getByTestId('engagement-readiness-verdict')).toBeInTheDocument());
+    expect(screen.queryByTestId('engagement-readiness-next-step')).toBeNull();
+  });
 });

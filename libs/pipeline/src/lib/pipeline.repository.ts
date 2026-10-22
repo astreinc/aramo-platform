@@ -2171,6 +2171,9 @@ export class PipelineRepository {
 
   // The CURRENT working selection for (tenant, talent, requisition) = the latest
   // selected_at row. Null when the recruiter has never selected an edition for it.
+  // ATS-QA-1 I-5 — two concurrent selections can share a selected_at (now() is the
+  // transaction start time); `id DESC` is the deterministic tie-break, shared by
+  // with the raw-SQL readers in apps/api (submit-talent, submittal-workspace).
   async getCurrentRequisitionResume(args: {
     tenant_id: string;
     talent_record_id: string;
@@ -2182,7 +2185,7 @@ export class PipelineRepository {
         talent_record_id: args.talent_record_id,
         requisition_id: args.requisition_id,
       },
-      orderBy: { selected_at: 'desc' },
+      orderBy: [{ selected_at: 'desc' }, { id: 'desc' }],
     });
     return (row as TalentRequisitionResumeRow | null) ?? null;
   }
@@ -2206,7 +2209,8 @@ export class PipelineRepository {
         requisition_id: args.requisition_id,
         talent_record_id: { in: Array.from(new Set(args.talent_record_ids)) },
       },
-      orderBy: { selected_at: 'desc' },
+      // ATS-QA-1 I-5 — same deterministic tie-break as getCurrentRequisitionResume.
+      orderBy: [{ selected_at: 'desc' }, { id: 'desc' }],
     })) as TalentRequisitionResumeRow[];
     // `desc` → the first row seen per talent is the current (MAX selected_at) one.
     for (const row of rows) {

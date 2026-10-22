@@ -1,5 +1,5 @@
 import { ApiError } from '@aramo/fe-foundation';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { ScheduleMeetingDialog } from './ScheduleMeetingDialog';
@@ -19,6 +19,12 @@ const VIEW: ScheduledMeetingView = {
   scheduled_end: '2026-11-03T15:30:00.000Z',
   idempotent_replay: false,
 };
+
+// ATS-QA-1 I-1 UX — the time zone is a searchable list: open it and click the option.
+function pickZone(zone: string): void {
+  fireEvent.focus(screen.getByTestId('schedule-timezone'));
+  fireEvent.click(screen.getByTestId(`schedule-timezone-option-${zone}`));
+}
 
 function fillValidForm(): void {
   fireEvent.change(screen.getByTestId('schedule-date'), { target: { value: '2026-11-03' } });
@@ -88,11 +94,35 @@ describe('ScheduleMeetingDialog', () => {
     expect(scheduleFn.mock.calls[0][0].idempotency_key).toBe(scheduleFn.mock.calls[1][0].idempotency_key);
   });
 
-  it('timezone is a validated selection (a <select>), never a free-text input', () => {
+  it('timezone is a validated, searchable selection — typing filters, it never becomes the value (ATS-QA-1 UX)', () => {
     render(<ScheduleMeetingDialog open onOpenChange={vi.fn()} talentId="tal-1" requisitionId="req-1" scheduleFn={vi.fn()} onDone={vi.fn()} />);
     const tz = screen.getByTestId('schedule-timezone');
-    expect(tz.tagName).toBe('SELECT');
-    expect((tz as HTMLSelectElement).value.length).toBeGreaterThan(0); // a concrete default IANA zone
+    expect(tz.getAttribute('role')).toBe('combobox');
+    expect((tz as HTMLInputElement).value.length).toBeGreaterThan(0); // a concrete default IANA zone
+    fireEvent.focus(tz);
+    expect(screen.getByTestId('schedule-timezone-list')).toBeInTheDocument();
+    fireEvent.change(tz, { target: { value: 'los ang' } });
+    const options = within(screen.getByTestId('schedule-timezone-list')).getAllByRole('option');
+    expect(options).toHaveLength(1);
+    expect(options[0]).toHaveTextContent('America/Los Angeles');
+    // Free text that matches nothing is not selectable.
+    fireEvent.change(tz, { target: { value: 'Atlantis/Nowhere' } });
+    expect(within(screen.getByTestId('schedule-timezone-list')).queryAllByRole('option')).toHaveLength(0);
+    expect(screen.getByText('No matching time zone.')).toBeInTheDocument();
+  });
+
+  it('time-zone list supports keyboard selection and closes on blur without changing the value', () => {
+    render(<ScheduleMeetingDialog open onOpenChange={vi.fn()} talentId="tal-1" requisitionId="req-1" scheduleFn={vi.fn()} onDone={vi.fn()} />);
+    const tz = screen.getByTestId('schedule-timezone') as HTMLInputElement;
+    fireEvent.focus(tz);
+    fireEvent.change(tz, { target: { value: 'tokyo' } });
+    fireEvent.keyDown(tz, { key: 'Enter' });
+    expect(screen.queryByTestId('schedule-timezone-list')).toBeNull();
+    expect(tz.value).toContain('Asia/Tokyo');
+    fireEvent.focus(tz);
+    fireEvent.change(tz, { target: { value: 'zzz' } });
+    fireEvent.blur(tz);
+    expect(tz.value).toContain('Asia/Tokyo');
   });
 
   it('edit mode calls rescheduleFn with expected_version from the meeting', async () => {
@@ -115,7 +145,7 @@ describe('ScheduleMeetingDialog', () => {
     fireEvent.change(screen.getByTestId('schedule-time'), { target: { value: '10:00' } });
     fireEvent.change(screen.getByTestId('schedule-subject'), { target: { value: 'Recruiter screen' } });
     // force a known zone so the offset is deterministic
-    fireEvent.change(screen.getByTestId('schedule-timezone'), { target: { value: 'America/New_York' } });
+    pickZone('America/New_York');
     fireEvent.click(screen.getByTestId('schedule-review'));
     fireEvent.click(await screen.findByTestId('schedule-confirm'));
     await waitFor(() => expect(scheduleFn).toHaveBeenCalledTimes(1));
@@ -125,7 +155,7 @@ describe('ScheduleMeetingDialog', () => {
 
   it('FIX_NOW-1: a DST-nonexistent local time blocks review (not silently shifted)', () => {
     render(<ScheduleMeetingDialog open onOpenChange={vi.fn()} talentId="tal-1" requisitionId="req-1" scheduleFn={vi.fn()} onDone={vi.fn()} />);
-    fireEvent.change(screen.getByTestId('schedule-timezone'), { target: { value: 'America/New_York' } });
+    pickZone('America/New_York');
     fireEvent.change(screen.getByTestId('schedule-date'), { target: { value: '2026-03-08' } });
     fireEvent.change(screen.getByTestId('schedule-time'), { target: { value: '02:30' } });
     fireEvent.change(screen.getByTestId('schedule-subject'), { target: { value: 'Recruiter screen' } });

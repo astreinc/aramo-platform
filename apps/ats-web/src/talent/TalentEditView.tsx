@@ -2,9 +2,11 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Button } from '@aramo/fe-foundation';
 
-import { getTalent360DocumentContent } from '../talent-360/talent-360-api';
+import { getTalent360, getTalent360DocumentContent } from '../talent-360/talent-360-api';
+import type { EducationEntryView } from '../talent-360/talent-360-types';
 import { Icons, InlineAlert, PageHeader } from '../ui';
 
+import { EducationEditor } from './EducationEditor';
 import { IntakeForm, TALENT_SECTION_DOM_ID } from './IntakeForm';
 import { ResumePreview } from './ResumePreview';
 import {
@@ -78,6 +80,11 @@ export function TalentEditView() {
   // section — otherwise the PATCH omits work_history and the BE leaves it alone.
   const [workHistoryDirty, setWorkHistoryDirty] = useState(false);
 
+  // ATS-QA-1 I-4 — current education, read through the Talent 360 response (the
+  // one education read). null = still loading; 'unavailable' = the read failed.
+  const [education, setEducation] = useState<readonly EducationEntryView[] | 'unavailable' | null>(null);
+  const [educationNote, setEducationNote] = useState<string | null>(null);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -100,6 +107,22 @@ export function TalentEditView() {
         if (cancelled) return;
         setError(detailErrorMessage(err));
         setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [talentId]);
+
+  // ATS-QA-1 I-4 — education loads on its own so a failed read never blocks the edit.
+  useEffect(() => {
+    if (talentId === undefined) return;
+    let cancelled = false;
+    getTalent360(talentId)
+      .then((v) => {
+        if (!cancelled) setEducation(v.profile.education ?? []);
+      })
+      .catch(() => {
+        if (!cancelled) setEducation('unavailable');
       });
     return () => {
       cancelled = true;
@@ -192,6 +215,41 @@ export function TalentEditView() {
             onAddWorkHistory={onAddWorkHistory}
             onRemoveWorkHistory={onRemoveWorkHistory}
           />
+          {/* ATS-QA-1 I-4 — structured education: add / correct / remove save
+              right away (not with "Save changes"); earlier entries stay in history. */}
+          <section id={TALENT_SECTION_DOM_ID('education-entries')} className="rc-seccard rc-seccard--full" aria-label="Education">
+            <div className="rc-seccard__hd">
+              <span className="rc-seccard__lb">Education</span>
+              <span className="rc-seccard__tag">SAVES RIGHT AWAY</span>
+            </div>
+            <div className="rc-secfields">
+              <div className="rc-secfield rc-secfield--full">
+                {education === null ? (
+                  <p className="rc-secnote">Loading education…</p>
+                ) : education === 'unavailable' ? (
+                  <p className="rc-secnote">Education could not be loaded. Reload the page to try again.</p>
+                ) : (
+                  <EducationEditor
+                    talentId={talent.id}
+                    entries={education}
+                    canEdit={!submitting}
+                    onChange={setEducation}
+                    notify={setEducationNote}
+                    variant="form"
+                  />
+                )}
+                {educationNote !== null ? (
+                  <p className="rc-secnote" role="status">
+                    {educationNote}
+                  </p>
+                ) : null}
+                <p className="rc-secnote">
+                  A correction is saved as a new entry; the earlier entry and where it came from are kept in history.
+                  Certifications are kept separately.
+                </p>
+              </div>
+            </div>
+          </section>
         </div>
         <aside className="rc-editgrid__rail">
           <EditResumePanel talentId={talent.id} disabled={submitting} />

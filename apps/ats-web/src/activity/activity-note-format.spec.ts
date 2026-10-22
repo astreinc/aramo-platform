@@ -4,7 +4,7 @@ import { formatActivityNote } from './activity-note-format';
 
 describe('formatActivityNote — system transition notes read as recruiter-facing stages', () => {
   it.each([
-    ['pipeline no_contact -> contacted', 'No contact → Contacted'],
+    ['pipeline no_contact -> contacted', 'Not contacted → Contacted'],
     ['pipeline contacted -> talent_responded', 'Contacted → Talent responded'],
     ['pipeline talent_responded -> qualifying', 'Talent responded → Qualifying'],
     ['pipeline qualifying -> qualified', 'Qualifying → Qualified'],
@@ -16,7 +16,7 @@ describe('formatActivityNote — system transition notes read as recruiter-facin
   it('the VOID correction reads as a removal, without the internal reason code', () => {
     expect(
       formatActivityNote('pipeline no_contact -> voided (accidental-add correction: ADDED_BY_MISTAKE)'),
-    ).toBe('No contact → Removed (added by mistake)');
+    ).toBe('Not contacted → Removed (added by mistake)');
   });
 
   it('keeps the recruiter note and drops the internal evidence provenance ids', () => {

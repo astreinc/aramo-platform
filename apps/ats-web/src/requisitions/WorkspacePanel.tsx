@@ -12,7 +12,7 @@ import { TASK_ACTIVE_STATUS_VALUES } from '../task/types';
 import { formatActivityNote } from '../activity/activity-note-format';
 import { RTR_UNAVAILABLE, rtrUnavailable, useSignState, type RtrUnavailableReason } from '../rtr/rtr-access';
 
-import { AddTalentDialog } from './AddTalentDialog';
+import { AddTalentDialog, addTalentDisabledReason } from './AddTalentDialog';
 import { RequisitionTalentBoard } from './RequisitionTalentBoard';
 import { TalentViewToggle } from './TalentViewToggle';
 import {
@@ -99,7 +99,7 @@ const UPCOMING_INTERVIEW_STATES = new Set(['SCHEDULED', 'RESCHEDULED']);
 // owner==='pipeline' (backend Rule D — never re-derived). Pipeline owns these
 // recruiting stages ONLY; downstream journey stages live on the Talent board.
 const PIPELINE_STAGES: readonly { readonly key: string; readonly label: string }[] = [
-  { key: 'no_contact', label: 'No contact' },
+  { key: 'no_contact', label: 'Not contacted' },
   { key: 'contacted', label: 'Contacted' },
   { key: 'talent_responded', label: 'Talent responded' },
   { key: 'qualifying', label: 'Qualifying' },
@@ -168,6 +168,8 @@ export function WorkspacePanel({
     userNames,
     onPipelineRemoved,
     onBeforeOpenTalent,
+    // ATS-QA-1 I-1 (D5) — Not in consideration from the Workspace board refreshes counts.
+    onPipelinesChanged: onRefresh,
   });
 
   // Board-derived attention: a talent in a Qualified-band 'needs_action' card
@@ -361,6 +363,8 @@ export function WorkspacePanel({
                           existingTalentIds={existingTalentIds}
                           endedTalentIds={endedTalentIds}
                           canReAdd={canReAdd}
+                          canSearch={scopes.includes('talent:search')}
+                          disabledReason={addTalentDisabledReason(req.status)}
                           onAdded={() => {
                             setFindOpen(false);
                             onRefresh();
@@ -465,6 +469,8 @@ export function WorkspacePanel({
                     existingTalentIds={existingTalentIds}
                     endedTalentIds={endedTalentIds}
                     canReAdd={canReAdd}
+                    canSearch={scopes.includes('talent:search')}
+                    disabledReason={addTalentDisabledReason(req.status)}
                     onAdded={onRefresh}
                   />
                 </div>

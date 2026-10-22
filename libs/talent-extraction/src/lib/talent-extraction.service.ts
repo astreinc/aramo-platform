@@ -47,6 +47,7 @@ import type {
   ResumeDraftLocation,
   ResumeDraftProfessional,
   ResumeDraftProposal,
+  ResumeDraftRejectedWorkHistory,
   ResumeDraftResult,
   ResumeDraftSkill,
   ResumeDraftSkillFact,
@@ -129,7 +130,10 @@ const SYSTEM_MESSAGE =
 // HF2 Talent-Experience-Intelligence extraction. v3 = the nested experience
 // contract (skill_usage/version/activity/basis + projects + assertions +
 // education + certifications), bumped from the HF1 v2 flat-fact contract.
-const RESUME_DRAFT_PROMPT_VERSION = 'resume-draft/v3';
+// ATS-QA-1 I-3: v4 = the v3 schema unchanged + the prompt now asks for the
+// top-level explicitly stated skills from ANY section (HF1 §8) and states the
+// accepted date formats. The schema name stays v3 (the shape did not change).
+const RESUME_DRAFT_PROMPT_VERSION = 'resume-draft/v4';
 const RESUME_DRAFT_SCHEMA_NAME = 'resume-draft-extraction/v3';
 // HF2 P4 ruling (b) — the v3 draft path's SINGLE-CALL output ceiling. Raised
 // 8192→16384 for THIS path ONLY (not a global bump): v3's richer Talent-
@@ -192,8 +196,18 @@ const DRAFT_SYSTEM_MESSAGE =
   'atomic activities/accomplishments, each a short "statement" with a "type" from ' +
   'the allowed set and a "metric" ONLY if a measurable outcome is explicitly ' +
   'stated (never invent a number). Also return top-level "education" and ' +
-  '"certifications" that are explicitly stated. Structured facts + refs only — no ' +
-  'copied resume prose.';
+  '"certifications" that are explicitly stated. Top-level "skills": every skill, ' +
+  'tool, technology, language, platform or method the resume EXPLICITLY names in ' +
+  'ANY section — a Skills or Technical Skills section, a Technical or Professional ' +
+  'Summary, or the text of a role — one item per named skill, "surface_form" ' +
+  'exactly as written, listed ONCE with "source_refs" naming EVERY block that ' +
+  'names it. List only skills the resume names; never add one it does not ' +
+  'name. Dates (start_date, end_date, usage_start, usage_end, conferred_date, ' +
+  'issued_date, expiry_date): when a date is stated, write it in exactly one of ' +
+  'these formats, keeping ONLY the precision the resume states (never add a month ' +
+  'or a day): "YYYY-MM-DD", "YYYY-MM", "MM/YYYY", "Mon YYYY" (e.g. "Mar 2021"), or ' +
+  '"YYYY". For a role or period that is still ongoing, end_date is "Present". ' +
+  'Structured facts + refs only — no copied resume prose.';
 
 // Transport enums include '' so a REQUIRED property can still say "not stated"
 // without the model inventing a value — '' normalizes to absent (stripTransport-
@@ -887,7 +901,8 @@ export class TalentExtractionService {
     // required presence never becomes domain-required data — the semantic v3
     // contract (genuinely-optional facts) is unchanged, and an '' field never
     // grounds, persists, or demands source evidence.
-    const parsed = parseDraftStructured(stripTransportEmpties(outcome.parsed));
+    const stripped = stripTransportEmpties(outcome.parsed);
+    const parsed = parseDraftStructured(stripped);
     // Block index for ref resolution (§5): id → RAW block text (grounding corpus).
     const blockIndex = new Map<string, string>(
       source_map.blocks.map((b) => [b.block_id, b.text] as const),
@@ -980,16 +995,36 @@ export class TalentExtractionService {
     // (§5). Nested intelligence (summary/skill_usage/projects/assertions) is
     // grounded INDEPENDENTLY per item so one bad nested fact never destroys the
     // WorkExperience or its siblings (R-boundary). Declared, NOT verified.
+    // ATS-QA-1 I-3: the title also grounds when it is a NORMALISED substring of
+    // the cited blocks (common abbreviations such as "Sr." / "Senior", "Mgr" /
+    // "Manager", punctuation and "&" / "and"); the employer must ground strictly.
+    // A rejected entry is reported (rejected_work_history → draft warning), never
+    // dropped silently.
+    const rejectedWork: ResumeDraftRejectedWorkHistory[] = [];
     for (const wh of cap(parsed.work_history, MAX_WORK_HISTORY)) {
       const employer = wh.employer_name.trim();
       const role = wh.role_title.trim();
+      if (employer === '' || role === '') {
+        rejected += 1;
+        rejectedWork.push({
+          ...(employer !== '' && groundValue(employer, wh.source_refs, blockIndex)
+            ? { employer_name: employer }
+            : {}),
+          reason: 'incomplete_entry',
+        });
+        continue;
+      }
+      if (!groundValue(employer, wh.source_refs, blockIndex)) {
+        rejected += 1;
+        rejectedWork.push({ reason: 'employer_not_found' });
+        continue;
+      }
       if (
-        employer === '' ||
-        role === '' ||
-        !groundValue(employer, wh.source_refs, blockIndex) ||
-        !groundValue(role, wh.source_refs, blockIndex)
+        !groundValue(role, wh.source_refs, blockIndex) &&
+        !groundTitleNormalised(role, wh.source_refs, blockIndex)
       ) {
         rejected += 1;
+        rejectedWork.push({ employer_name: employer, reason: 'title_not_found' });
         continue;
       }
       const refs = dedupeRefs(wh.source_refs);
@@ -1185,7 +1220,30 @@ export class TalentExtractionService {
       });
     }
 
+    // Work-history entries the model returned WITHOUT an employer or a title
+    // (the '' "not stated" transport empties strip to absent, so they fail the
+    // shape check above) are reported too — never dropped silently.
+    const rawWorkHistory =
+      stripped !== null && typeof stripped === 'object'
+        ? (stripped as Record<string, unknown>)['work_history']
+        : undefined;
+    if (Array.isArray(rawWorkHistory)) {
+      for (const raw of rawWorkHistory.slice(0, MAX_WORK_HISTORY)) {
+        if (raw === null || typeof raw !== 'object' || isWorkHistoryFactShape(raw)) continue;
+        const o = raw as Record<string, unknown>;
+        const employer = typeof o['employer_name'] === 'string' ? o['employer_name'].trim() : '';
+        rejected += 1;
+        rejectedWork.push({
+          ...(employer !== '' && groundValue(employer, o['source_refs'], blockIndex)
+            ? { employer_name: employer }
+            : {}),
+          reason: 'incomplete_entry',
+        });
+      }
+    }
+
     proposal.rejected_count = rejected;
+    if (rejectedWork.length > 0) proposal.rejected_work_history = rejectedWork;
     proposal.overflow = overflow;
 
     const factCount = countFacts(proposal);
@@ -1213,6 +1271,7 @@ export class TalentExtractionService {
       source_ref_count: sourceRefCount,
       skills_count: proposal.skills.length,
       work_history_count: proposal.work_history.length,
+      work_history_rejected_count: rejectedWork.length,
       skill_usage_count: proposal.work_history.reduce((n, w) => n + (w.skill_usage?.length ?? 0), 0),
       project_count: proposal.work_history.reduce((n, w) => n + (w.projects?.length ?? 0), 0),
       assertion_count: proposal.work_history.reduce((n, w) => n + (w.assertions?.length ?? 0), 0),
@@ -1252,7 +1311,7 @@ export class TalentExtractionService {
       const role = e.role_title.trim();
       if (employer === '' || role === '') continue;
       const start = parseWorkHistoryDate(e.start_date);
-      const end = parseWorkHistoryDate(e.end_date);
+      const end = parseWorkHistoryEndDate(e.end_date);
       const workExperienceId = uuidv7();
       const summary =
         typeof e.experience_summary === 'string' ? capWorkSummary(e.experience_summary) : '';
@@ -1817,7 +1876,7 @@ export class TalentExtractionService {
       const role = e.role_title.trim();
       if (employer === '' || role === '') continue;
       const start = parseWorkHistoryDate(e.start_date);
-      const end = parseWorkHistoryDate(e.end_date);
+      const end = parseWorkHistoryEndDate(e.end_date);
       const workExperienceId = uuidv7();
       const summary =
         typeof e.experience_summary === 'string' ? capWorkSummary(e.experience_summary) : '';
@@ -2074,7 +2133,7 @@ export class TalentExtractionService {
       const role = e.role_title.trim();
       if (employer === '' || role === '') continue;
       const start = parseWorkHistoryDate(e.start_date);
-      const end = parseWorkHistoryDate(e.end_date);
+      const end = parseWorkHistoryEndDate(e.end_date);
       const workExperienceId = uuidv7();
       const summary =
         typeof e.experience_summary === 'string' ? capWorkSummary(e.experience_summary) : '';
@@ -2446,7 +2505,7 @@ export class TalentExtractionService {
       const role = e.role_title.trim();
       if (employer === '' || role === '') continue;
       const start = parseWorkHistoryDate(e.start_date);
-      const end = parseWorkHistoryDate(e.end_date);
+      const end = parseWorkHistoryEndDate(e.end_date);
       rows.push({
         id: uuidv7(),
         talent_id: input.talent_id,
@@ -2534,6 +2593,14 @@ function provenanceFields(
 // takes the precision-carrying ResumeDate directly (deriveResumeSkillYears).
 function parseWorkHistoryDate(value: string | undefined): Date | null {
   return resumeDateToDbDate(value, 'start');
+}
+
+// ATS-QA-1 I-3 — an END date anchors a coarse value to its END edge: a
+// year-only "2021" end → 2021-12-01 (December, the edge convention of
+// resumeDateToDbDate), not January 1 — a role that ended "2021" no longer
+// appears to end eleven months early. Precise dates are unchanged.
+function parseWorkHistoryEndDate(value: string | undefined): Date | null {
+  return resumeDateToDbDate(value, 'end');
 }
 
 // Strict freeform → @db.Date. Ongoing tokens ('present') and unparseable text
@@ -2990,6 +3057,68 @@ function groundValue(
     texts.push(normalizeForMatch(blockText));
   }
   return texts.join(' ').includes(normalizeForMatch(v));
+}
+
+// Common job-title abbreviations → their written-out form. Applied to BOTH the
+// title and the source text, so "Sr. Software Engr." in the résumé grounds a
+// "Senior Software Engineer" title and vice versa. Closed list; anything else
+// must match literally (after case/punctuation/whitespace normalisation).
+const TITLE_ABBREVIATIONS: Readonly<Record<string, string>> = {
+  sr: 'senior',
+  snr: 'senior',
+  jr: 'junior',
+  mgr: 'manager',
+  mngr: 'manager',
+  eng: 'engineer',
+  engr: 'engineer',
+  dev: 'developer',
+  assoc: 'associate',
+  asst: 'assistant',
+  dir: 'director',
+  admin: 'administrator',
+  arch: 'architect',
+  spec: 'specialist',
+  coord: 'coordinator',
+  exec: 'executive',
+  mgmt: 'management',
+  ops: 'operations',
+  sw: 'software',
+  vp: 'vice president',
+  svp: 'senior vice president',
+  avp: 'assistant vice president',
+  evp: 'executive vice president',
+};
+
+function normalizeTitleText(s: string): string {
+  return s
+    .toLowerCase()
+    .replace(/&/g, ' and ')
+    .replace(/[^a-z0-9+#]+/g, ' ')
+    .trim()
+    .split(' ')
+    .filter((t) => t !== '')
+    .map((t) => TITLE_ABBREVIATIONS[t] ?? t)
+    .join(' ');
+}
+
+// ATS-QA-1 I-3 — title grounding tolerant of abbreviations: the refs must all
+// resolve (as groundValue), and the normalised title must occur as a whole-word
+// run inside the normalised text of the cited blocks.
+function groundTitleNormalised(
+  title: string,
+  refs: unknown,
+  blockIndex: Map<string, string>,
+): boolean {
+  const t = normalizeTitleText(title);
+  if (t === '') return false;
+  if (!isStringArray(refs) || refs.length === 0) return false;
+  const texts: string[] = [];
+  for (const id of refs) {
+    const blockText = blockIndex.get(id);
+    if (blockText === undefined) return false;
+    texts.push(normalizeTitleText(blockText));
+  }
+  return ` ${texts.join(' ')} `.includes(` ${t} `);
 }
 
 // HF2 R5 — REF-VALIDITY only (for paraphrase facts like project context /

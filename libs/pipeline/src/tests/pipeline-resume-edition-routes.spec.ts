@@ -1,5 +1,9 @@
+import 'reflect-metadata';
 import { describe, expect, it, vi } from 'vitest';
+import type { ExecutionContext } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import type { AuthContextType } from '@aramo/auth';
+import { REQUIRED_SCOPES_KEY, RolesGuard } from '@aramo/authorization';
 
 import { PipelineController } from '../lib/pipeline.controller.js';
 
@@ -132,5 +136,83 @@ describe('TI-1D-D — PUT /v1/pipelines/:id/resume-edition', () => {
     });
     await expect(ctl.setResumeEdition(AUTH, 'pl-1', { resume_edition_id: 'ed-x' } as never, 'rq-1', req)).rejects.toMatchObject({ statusCode: 422 });
     expect(createRequisitionResumeSelection).not.toHaveBeenCalled();
+  });
+});
+
+// ATS-QA-1 I-5 (amendment A4) — the server checks the add-time résumé picker relies
+// on. Each check already existed on the PUT; these pin them as negatives.
+describe('ATS-QA-1 I-5 — PUT /v1/pipelines/:id/resume-edition server checks', () => {
+  it('hidden requisition → 404 and nothing is written (visibility predicate is applied first)', async () => {
+    const { ctl, createRequisitionResumeSelection, listResumeEditions, findByIdForActor } = make({ view: null });
+    const hiddenReq = { resolveVisibleRequisitionIds: async () => [] } as never;
+    await expect(
+      ctl.setResumeEdition(AUTH, 'pl-1', { resume_edition_id: 'ed-a' } as never, 'rq-1', hiddenReq),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+    expect(findByIdForActor).toHaveBeenCalledWith(expect.objectContaining({ tenant_id: TENANT, visible_requisition_ids: [] }));
+    expect(listResumeEditions).not.toHaveBeenCalled();
+    expect(createRequisitionResumeSelection).not.toHaveBeenCalled();
+  });
+
+  it('edition lookup is scoped to the caller tenant + the pipeline Talent (never a body-supplied Talent)', async () => {
+    const { ctl, req, listResumeEditions } = make();
+    await ctl.setResumeEdition(AUTH, 'pl-1', { resume_edition_id: 'ed-a' } as never, 'rq-1', req);
+    expect(listResumeEditions).toHaveBeenCalledWith({ tenant_id: TENANT, talent_id: TALENT });
+  });
+
+  it('cross-tenant edition (absent from this tenant’s read) → 404, nothing written', async () => {
+    const { ctl, req, createRequisitionResumeSelection } = make({ editions: [] });
+    await expect(
+      ctl.setResumeEdition(AUTH, 'pl-1', { resume_edition_id: 'ed-other-tenant' } as never, 'rq-1', req),
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
+    expect(createRequisitionResumeSelection).not.toHaveBeenCalled();
+  });
+
+  it('archived edition → 422, nothing written', async () => {
+    const { ctl, req, createRequisitionResumeSelection } = make({
+      editions: [edition('ed-arch', { lifecycle_status: 'archived' })],
+    });
+    await expect(
+      ctl.setResumeEdition(AUTH, 'pl-1', { resume_edition_id: 'ed-arch' } as never, 'rq-1', req),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 422 });
+    expect(createRequisitionResumeSelection).not.toHaveBeenCalled();
+  });
+
+  it('writes only the pipeline’s own (talent, requisition) — never another requisition', async () => {
+    const { ctl, req, createRequisitionResumeSelection } = make();
+    await ctl.setResumeEdition(AUTH, 'pl-1', { resume_edition_id: 'ed-b' } as never, 'rq-1', req);
+    expect(createRequisitionResumeSelection).toHaveBeenCalledTimes(1);
+    expect(createRequisitionResumeSelection.mock.calls[0][0]).toMatchObject({ talent_record_id: TALENT, requisition_id: REQ });
+  });
+
+  describe('scope gate (RolesGuard over the real handler metadata)', () => {
+    const guard = new RolesGuard(new Reflector());
+    const handler = PipelineController.prototype.setResumeEdition as (...a: unknown[]) => unknown;
+    function ctxFor(scopes: string[]): ExecutionContext {
+      const request = {
+        authContext: { sub: 'me', consumer_type: 'recruiter', actor_kind: 'user', tenant_id: TENANT, scopes, iat: 0, exp: 0 },
+        requestId: 'rq-1',
+        params: {},
+        query: {},
+      };
+      return {
+        getHandler: () => handler,
+        getClass: () => PipelineController,
+        switchToHttp: () => ({ getRequest: () => request, getResponse: () => ({}), getNext: () => ({}) }),
+      } as unknown as ExecutionContext;
+    }
+
+    it('the PUT requires exactly pipeline:resume:set', () => {
+      expect(Reflect.getMetadata(REQUIRED_SCOPES_KEY, handler)).toEqual(['pipeline:resume:set']);
+    });
+
+    it('admits a caller holding pipeline:resume:set', () => {
+      expect(guard.canActivate(ctxFor(['pipeline:read', 'pipeline:resume:set']))).toBe(true);
+    });
+
+    it('refuses a caller with pipeline:add / pipeline:read but no pipeline:resume:set (403)', () => {
+      expect(() => guard.canActivate(ctxFor(['pipeline:read', 'pipeline:add', 'pipeline:change-status']))).toThrow(
+        expect.objectContaining({ code: 'INSUFFICIENT_PERMISSIONS' }),
+      );
+    });
   });
 });

@@ -21,7 +21,7 @@ export function journeyOwnerLabel(code: string): string {
 // The BE-composed UI funnel stage (apps/api talent-journey.view JourneyStageName). Typed as a
 // string on the wire mirror (the FE never branches on it); these are its display labels.
 export const JOURNEY_STAGE_LABELS: Readonly<Record<string, string>> = {
-  SOURCED: 'No contact',
+  SOURCED: 'Not contacted',
   CONTACTED: 'Contacted',
   ENGAGED: 'Talent responded',
   QUALIFYING: 'Qualifying',

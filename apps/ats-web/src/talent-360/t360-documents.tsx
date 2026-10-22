@@ -49,6 +49,9 @@ interface DocRowModel {
   readonly reqLabel: string | null;
   readonly current: boolean;
   readonly justUploaded: boolean;
+  // ATS-QA-1 I-1 UX — the résumé revision ordinal (revision_number), shown so
+  // revisions are told apart; null for governed documents or an un-numbered edition.
+  readonly revision: number | null;
   readonly line2: string;
   readonly action: 'Preview' | 'View';
   readonly source: RowSource;
@@ -147,6 +150,7 @@ export function DocumentsSection({
       reqLabel: req?.code ?? null,
       current: e.is_default,
       justUploaded: justUploaded.has(e.edition_id),
+      revision: typeof e.revision_number === 'number' && e.revision_number > 0 ? e.revision_number : null,
       line2: [e.filename, e.is_default ? 'current' : null, when !== null ? `uploaded ${when}` : null].filter(Boolean).join(' · '),
       action: 'Preview',
       source: { kind: 'edition', ed: e },
@@ -163,6 +167,7 @@ export function DocumentsSection({
       reqLabel: d.requisition_label,
       current: false,
       justUploaded: false,
+      revision: null,
       line2: signedAt !== null ? `Signed ${signedAt}` : (d.meta ?? ''),
       action: d.signed ? 'View' : 'Preview',
       source: { kind: 'doc', d },
@@ -215,6 +220,7 @@ export function DocumentsSection({
           <span className="t360-min0 t360-grow">
             <span className="t360-drow__head">
               <b>{r.kind}</b>
+              {r.revision !== null ? <span className="t360-drow__rev">Revision {r.revision}</span> : null}
               {r.reqLabel !== null ? <span className="t360-reqtag">{r.reqLabel}</span> : null}
               {r.current ? <span className="t360-pill t360-tone--blue t360-pill--xs">Current</span> : null}
               {r.justUploaded ? <span className="t360-justtag">JUST UPLOADED</span> : null}

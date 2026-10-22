@@ -2054,6 +2054,67 @@ export class RequisitionRepository {
     );
   }
 
+  // ATS-QA-1 I-1 (D4; Directive v1.0 LOCKED §4 I-1) — the PICKER read: server-side,
+  // keyset-paginated (created_at desc, id desc), optional status filter, and a quick
+  // search over title OR the requisition number ("REQ-1015", "1015"). Same visibility
+  // predicate as listForActor (buildVisibilityWhere) — the search/status/cursor clauses
+  // are nested under AND so they never collide with its top-level OR. Never widens
+  // visibility; tenant-scoped. Returns ONE page plus an opaque next_cursor.
+  async listForActorPaged(args: {
+    tenant_id: string;
+    visibility: VisibilityContextShape;
+    site_id?: string;
+    company_id?: string;
+    q?: string;
+    statuses?: readonly RecruitingStatusValue[];
+    cursor?: string;
+    page_size?: number;
+  }): Promise<{ items: RequisitionView[]; next_cursor: string | null }> {
+    const pageSize = Math.min(Math.max(args.page_size ?? 25, 1), 100);
+    const and: Prisma.RequisitionWhereInput[] = [];
+    if (args.q !== undefined) {
+      const num = parseRequisitionNumber(args.q);
+      and.push({
+        OR: [
+          { title: { contains: args.q, mode: 'insensitive' } },
+          ...(num === null ? [] : [{ requisition_number: num }]),
+        ],
+      });
+    }
+    if (args.statuses !== undefined && args.statuses.length > 0) and.push({ status: { in: [...args.statuses] } });
+    const after = args.cursor === undefined ? null : decodeRequisitionCursor(args.cursor);
+    if (after !== null) {
+      and.push({
+        OR: [{ created_at: { lt: after.created_at } }, { created_at: after.created_at, id: { lt: after.id } }],
+      });
+    }
+    const rows = (await this.prisma.requisition.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        ...(args.site_id === undefined ? {} : { site_id: args.site_id }),
+        ...(args.company_id === undefined ? {} : { company_id: args.company_id }),
+        ...(and.length === 0 ? {} : { AND: and }),
+        ...buildVisibilityWhere(args.visibility),
+      },
+      orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
+      take: pageSize + 1,
+    })) as RequisitionRow[];
+    const page = rows.slice(0, pageSize);
+    const last = page[page.length - 1];
+    const next_cursor = rows.length > pageSize && last !== undefined ? encodeRequisitionCursor(last.created_at, last.id) : null;
+    const activeByReq = await this.capacity.countActiveByRequisitionIds(
+      args.tenant_id,
+      page.map((r) => r.id),
+    );
+    const views = page.map((r) => {
+      const capacity = deriveCapacity({ openings: r.openings, consuming_count: activeByReq.get(r.id) ?? 0 });
+      return projectView(r, capacity.openings_available, capacity.capacity_balance);
+    });
+    const withClientStatus = await this.enrichClientStatus(args.tenant_id, views);
+    const items = await this.enrichBookmarked(args.tenant_id, args.visibility.actor_user_id, withClientStatus);
+    return { items, next_cursor };
+  }
+
   // Enterprise Search (GS-1) — lean, VISIBILITY-AWARE lexical leg for the search adapter.
   // Reuses buildVisibilityWhere (the SAME A3/D4b predicate the list/detail reads use) — it
   // does NOT recreate visibility. Matches title OR description (ILIKE-contains) within the
@@ -2648,4 +2709,44 @@ async function lockRequisitionStatusForUpdate(
     tenant_id,
   );
   return rows[0]?.status ?? null;
+}
+
+// ATS-QA-1 I-1 (D4) — picker helpers.
+export const RECRUITING_STATUS_VALUES = [
+  'lead',
+  'draft',
+  'pending_approval',
+  'open',
+  'on_hold',
+  'submittals_closed',
+  'canceled',
+  'closed',
+  'archived',
+] as const;
+export type RecruitingStatusValue = (typeof RECRUITING_STATUS_VALUES)[number];
+
+// "REQ-1015", "req 1015", "#1015" or "1015" → 1015; anything else → null.
+export function parseRequisitionNumber(q: string): number | null {
+  const m = /^\s*(?:req[\s-]*|#)?(\d{1,9})\s*$/i.exec(q);
+  if (m === null || m[1] === undefined) return null;
+  const n = Number(m[1]);
+  return Number.isSafeInteger(n) && n > 0 ? n : null;
+}
+
+export function encodeRequisitionCursor(created_at: Date, id: string): string {
+  return Buffer.from(`${created_at.toISOString()}|${id}`, 'utf8').toString('base64url');
+}
+
+// Opaque, untrusted input: anything malformed decodes to null (first page) — never throws.
+export function decodeRequisitionCursor(cursor: string): { created_at: Date; id: string } | null {
+  let raw: string;
+  try {
+    raw = Buffer.from(cursor, 'base64url').toString('utf8');
+  } catch {
+    return null;
+  }
+  const [iso, id] = raw.split('|');
+  if (iso === undefined || id === undefined || !/^[0-9a-f-]{36}$/i.test(id)) return null;
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? null : { created_at: d, id };
 }

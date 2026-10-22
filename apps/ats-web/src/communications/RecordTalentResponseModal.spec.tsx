@@ -135,22 +135,46 @@ describe('RecordTalentResponseModal', () => {
     expect(onRecorded).not.toHaveBeenCalled();
   });
 
-  it('422 §-rule (response time precedes contact) → surfaces the server reason inline, NOT the generic banner', async () => {
+  it('422 §-rule (response time precedes contact) → recruiter copy with the formatted first-contact time; raw server message NOT echoed (ATS-QA-1 D7)', async () => {
     const { onRecorded } = renderModal();
+    const firstContact = '2026-10-18T09:30:00.000Z';
     recordMock.mockRejectedValueOnce(
       new ApiError(
         422,
         'occurred_at cannot precede the first recorded contact for this talent and requisition',
         'VALIDATION_ERROR',
+        { field: 'occurred_at', first_contact_at: firstContact },
       ),
     );
     fillValid('Email');
     fireEvent.click(recordBtn());
-    // The specific server reason is shown so the recruiter can correct the time…
-    expect(await screen.findByText(/cannot precede the first recorded contact/i)).toBeTruthy();
+    const expected = `Response time can’t be earlier than the first recorded contact (${new Date(firstContact).toLocaleString()}).`;
+    expect(await screen.findByText(expected)).toBeTruthy();
+    // The wire field name / raw server message is never shown…
+    expect(screen.queryByText(/occurred_at/)).toBeNull();
     // …and the generic "couldn’t record" banner is NOT shown.
     expect(screen.queryByText(/Couldn’t record the response/i)).toBeNull();
     expect(onRecorded).not.toHaveBeenCalled();
+  });
+
+  it('422 future response time → plain copy, raw server message NOT echoed (ATS-QA-1 D7)', async () => {
+    renderModal();
+    recordMock.mockRejectedValueOnce(
+      new ApiError(422, 'occurred_at cannot be in the future', 'VALIDATION_ERROR', { field: 'occurred_at' }),
+    );
+    fillValid('Email');
+    fireEvent.click(recordBtn());
+    expect(await screen.findByText('Response time can’t be in the future.')).toBeTruthy();
+    expect(screen.queryByText(/occurred_at/)).toBeNull();
+  });
+
+  it('400 without a field → generic plain copy, raw server message NOT echoed (ATS-QA-1 D7)', async () => {
+    renderModal();
+    recordMock.mockRejectedValueOnce(new ApiError(400, 'occurred_at must be an ISO 8601 date string', 'VALIDATION_ERROR'));
+    fillValid('Email');
+    fireEvent.click(recordBtn());
+    expect(await screen.findByText(/Some details weren’t accepted/)).toBeTruthy();
+    expect(screen.queryByText(/occurred_at/)).toBeNull();
   });
 
   // ---- Talent Lifecycle R1–R5 v1.2 §7.6 (S4) ----

@@ -169,8 +169,10 @@ export function ResumeSelectionSection({
 
       {requiresAttention ? (
         <p className="rc-cdp__err" data-testid="resume-requires-attention">
-          Resume requires attention — the selected resume has been archived. Choose an
-          active resume below before submitting to the client.
+          {/* ATS-QA-1 D14 — the copy names the control only when the viewer has it. */}
+          {canSetSelection
+            ? 'Resume requires attention — the selected resume has been archived. Choose “Use this resume” on an active resume below before submitting to the client.'
+            : 'Resume requires attention — the selected resume has been archived. An active resume must be chosen before submitting to the client.'}
         </p>
       ) : selected !== null ? (
         <p className="rc-cdp__note" data-testid="resume-current-selection">
@@ -183,8 +185,11 @@ export function ResumeSelectionSection({
         // The default is a SUGGESTION only — explicitly labelled, never bound.
         <p className="rc-cdp__note" data-testid="resume-default-suggestion">
           No resume selected yet. Suggested default:{' '}
-          <strong>{defaultEdition.filename}</strong> — select one below to use it for
-          this requisition.
+          <strong>{defaultEdition.filename}</strong>
+          {/* ATS-QA-1 D14 — "select one below" named a control that was not there. */}
+          {canSetSelection
+            ? ' — choose “Use this resume” below to use it for this requisition.'
+            : '.'}
         </p>
       ) : (
         <p className="rc-cdp__note">No resume selected yet.</p>

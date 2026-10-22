@@ -1,6 +1,7 @@
 import { Button } from '@aramo/fe-foundation';
 import type { ReactNode } from 'react';
 
+import { formatActivityNote } from '../../activity/activity-note-format';
 import { channelLabel } from '../../talent-360/t360-vocab';
 import type { AttentionItemView, RecentActivityItemView } from '../../talent-360/talent-360-types';
 
@@ -42,6 +43,36 @@ export interface Tr360OverviewProps {
   readonly facts: readonly RecruiterFact[];
   readonly m365: ReactNode;
   readonly skills: readonly SkillChip[];
+}
+
+// The requisition-scoped activity rows (Overview card + the Activity section).
+// A pipeline stage change carries the stored system note; formatActivityNote
+// renders it with the recruiter-facing stage labels (historical keys preserved).
+export function Tr360ActivityFeed({
+  activity,
+}: {
+  readonly activity: readonly RecentActivityItemView[];
+}): JSX.Element {
+  if (activity.length === 0) {
+    return <div className="tr360-empty">No activity on this requisition yet.</div>;
+  }
+  return (
+    <>
+      {activity.map((a) => (
+        <div key={a.id} className="tr360-act__row">
+          <span className="tr360-act__t">{formatActivityTime(a.occurred_at)}</span>
+          <span>
+            <b className="tr360-act__e">{a.title}</b>
+            {a.actor_label !== null ? <span className="tr360-act__who"> · {a.actor_label}</span> : null}
+            {a.body !== null && a.body.trim() !== '' ? (
+              <span className="tr360-act__body">{formatActivityNote(a.body)}</span>
+            ) : null}
+          </span>
+          {a.channel !== null ? <span className="tr360-act__tag">{channelLabel(a.channel)}</span> : <span />}
+        </div>
+      ))}
+    </>
+  );
 }
 
 export function Tr360Overview({
@@ -119,20 +150,7 @@ export function Tr360Overview({
 
           <div className="tr360-card tr360-card--pad" data-testid="tr360-activity">
             <div className="tr360-act__title">Activity on this requisition</div>
-            {activity.length === 0 ? (
-              <div className="tr360-empty">No activity on this requisition yet.</div>
-            ) : (
-              activity.map((a) => (
-                <div key={a.id} className="tr360-act__row">
-                  <span className="tr360-act__t">{formatActivityTime(a.occurred_at)}</span>
-                  <span>
-                    <b className="tr360-act__e">{a.title}</b>
-                    {a.actor_label !== null ? <span className="tr360-act__who"> · {a.actor_label}</span> : null}
-                  </span>
-                  {a.channel !== null ? <span className="tr360-act__tag">{channelLabel(a.channel)}</span> : <span />}
-                </div>
-              ))
-            )}
+            <Tr360ActivityFeed activity={activity} />
           </div>
         </div>
 

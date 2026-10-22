@@ -1,5 +1,5 @@
 import { Input, Select, TextArea } from '@aramo/fe-foundation';
-import { useState, type ReactNode } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 
 import { updateErrorMessage } from '../talent/error-messages';
@@ -15,6 +15,7 @@ import {
   withCurrency,
 } from '../talent/stated-fields';
 import { getTalentWorkHistory, updateTalent } from '../talent/talent-api';
+import { EducationEditor } from '../talent/EducationEditor';
 import type { ProfileHydrationItem } from '../talent/profile-hydration';
 import type { TalentRecordView, WorkAuthorizationStateView, WorkHistoryDraft, WorkHistoryView } from '../talent/types';
 import { Button } from '../ui';
@@ -256,6 +257,10 @@ export function ProfileSection({ model, data, talentId, canEdit, canSeePay, go, 
   const [errors, setErrors] = useState<Record<string, string>>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [updated, setUpdated] = useState<ReadonlySet<string>>(new Set());
+  // ATS-QA-1 I-4 — current education; seeded from the Talent 360 read and replaced
+  // by each education write's response.
+  const [education, setEducation] = useState(model.profile.education ?? []);
+  useEffect(() => setEducation(model.profile.education ?? []), [model.profile.education]);
 
   const startEdit = (k: CardKey): void => {
     if (rec === null) return;
@@ -743,11 +748,23 @@ export function ProfileSection({ model, data, talentId, canEdit, canSeePay, go, 
       <div className="t360-card t360-pwide t360-pwide--rows" data-testid="t360-pblock-10">
         <div className="t360-pblock__hd t360-pblock__hd--rows">
           <span className="t360-pblock__n">10</span>
-          <span className="t360-card__title">Education &amp; certifications</span>
-          <span className="t360-caption t360-caption--inline">Read-only · edit in Edit talent</span>
+          <span className="t360-card__title">Education</span>
+          <span className="t360-caption t360-caption--inline">
+            {canEdit ? 'Declared · changes save right away · earlier entries are kept in history' : 'Declared · read-only'}
+          </span>
         </div>
-        {/* GAP — written at creation, no read API yet (§8A.5). "None on record" would be untrue. */}
-        <div className="t360-hrow t360-pempty">Saved when the talent was created — not readable yet.</div>
+        {/* ATS-QA-1 I-4 — read from the Talent 360 response (TalentEducationEntry,
+            the only education authority); add / correct / remove need talent:edit. */}
+        <EducationEditor
+          talentId={talentId}
+          entries={education}
+          canEdit={canEdit && h.record_status === 'live'}
+          onChange={setEducation}
+          notify={notify}
+          variant="t360"
+        />
+        {/* Certifications are stored separately and have no read yet — say so rather than imply none. */}
+        <div className="t360-note t360-note--flat">Certifications are kept separately and are not shown here yet.</div>
       </div>
     </div>
   );

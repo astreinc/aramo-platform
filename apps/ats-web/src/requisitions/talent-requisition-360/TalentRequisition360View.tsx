@@ -42,18 +42,22 @@ import type { RequisitionProfileView } from '../golden-profile';
 import { RECRUITING_STATUS_TONE } from '../status-tone';
 import { RECRUITING_STATUS_LABELS, type RequisitionView } from '../types';
 
-import { Tr360Overview, type QualRow, type RecruiterFact } from './Tr360Overview';
+import { Tr360ActivityFeed, Tr360Overview, type QualRow, type RecruiterFact } from './Tr360Overview';
 import { talentRequisition360Path, type Tr360NavState } from './route';
 import { Tr360TechScreening } from './Tr360TechScreening';
 import {
   PRIMARY_ACTION_COPY,
+  STAGE_CONFLICT_MESSAGE,
   STEPS,
   currentStepIndex,
+  disabledPrimaryReason,
   findCard,
   firstName,
   formatLongDate,
   formatShortDate,
+  hasMustHaveSkills,
   initials,
+  isStageConflict,
   isViewKey,
   pipelineOrder,
   rateLabel,
@@ -62,6 +66,7 @@ import {
   sectionForView,
   stepState,
   tabForView,
+  tr360Notes,
   type PillTone,
   type SectionKey,
   type StepKey,
@@ -190,6 +195,8 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
   const [moreOpen, setMoreOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const [actionError, setActionError] = useState<string | null>(null);
+  // ATS-QA-1 5.2 — a click on the unavailable primary explains itself inline.
+  const [primaryReasonShown, setPrimaryReasonShown] = useState(false);
   const [composerOpen, setComposerOpen] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [meetingsReload, setMeetingsReload] = useState(0);
@@ -260,7 +267,11 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
   }, [loadError]);
   useEffect(() => {
     window.scrollTo(0, 0);
+    setActionError(null);
   }, [reqId, talentId]);
+  useEffect(() => {
+    setPrimaryReasonShown(false);
+  }, [reqId, talentId, reload]);
 
   // ── Load (requisition × talent) ──
   useEffect(() => {
@@ -353,7 +364,7 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
   const reqActivity = (t360?.recent_activity?.items ?? []).filter((a) => a.requisition_id === reqId);
   const reqTasks = (t360?.tasks ?? []).filter((t) => t.requisition_id === reqId);
   const reqDocs = (t360?.documents?.key_documents ?? []).filter((d) => d.requisition_id === reqId);
-  const reqNotes = reqActivity.filter((a) => a.category === 'note');
+  const reqNotes = tr360Notes(t360?.recent_activity?.items ?? [], reqId);
   const activeOpps = t360?.opportunities?.active.length ?? null;
   const voidAction = card?.next_actions.find((a) => a.key === 'pipeline.void' && scopes.includes(a.required_scope));
   const selectionState = journey?.sub_states['selection_state'] ?? null;
@@ -364,23 +375,36 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
   const offered = journey?.recruiting_available_actions[0];
   const primaryCopy = offered !== undefined ? PRIMARY_ACTION_COPY[offered] : null;
   const pendingLabel = pipeline !== null ? NEXT_RECRUITING_LABEL[pipeline.status] : undefined;
-  let primary: { label: string; enabled: boolean; tip: string } | null = null;
+  // `blocked` = why the action is unavailable (null when available or merely busy).
+  let primary: { label: string; enabled: boolean; tip: string; blocked: string | null } | null = null;
   if (primaryCopy !== null) {
     const blocked = !canAdvance
       ? "Your role can't change this Talent's stage"
       : primaryCopy.dispatch === 'contact' && !canSendEmail
         ? "Sending email isn't enabled for your account"
         : null;
-    primary = { label: primaryCopy.label, enabled: blocked === null && !busy, tip: blocked ?? primaryCopy.tip };
+    primary = { label: primaryCopy.label, enabled: blocked === null && !busy, tip: blocked ?? primaryCopy.tip, blocked };
   } else if (pendingLabel !== undefined && journey !== null) {
-    primary = {
-      label: pendingLabel,
-      enabled: false,
-      tip: 'Not available yet — the recruiting workflow has not offered this step',
-    };
+    // ATS-QA-1 5.1 — name the real reason (the RTR status is already on the client).
+    const reason = disabledPrimaryReason(pipeline?.status ?? null, card?.rtr_status ?? null);
+    primary = { label: pendingLabel, enabled: false, tip: reason, blocked: reason };
   }
 
+  // ATS-QA-1 D8 — the server refused a stale action (someone else moved this
+  // episode). Drop the stale episode/journey so no stale action stays offered,
+  // reload the latest state and say so visibly.
+  const onStageConflict = (): void => {
+    setActionError(STAGE_CONFLICT_MESSAGE);
+    setJourney(null);
+    setPipeline(null);
+    setReload((n) => n + 1);
+  };
+
   const runPrimary = (): void => {
+    if (primary !== null && !primary.enabled && primary.blocked !== null) {
+      setPrimaryReasonShown(true);
+      return;
+    }
     if (primaryCopy === null || primary === null || !primary.enabled || pipeline === null) return;
     if (primaryCopy.dispatch === 'contact') {
       setComposerOpen(true);
@@ -401,7 +425,10 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
       })
       // v1.2 §2.4 — typed refusals (RTR required / RTR policy unresolved / retryable
       // conflict) surface their specific copy instead of a generic rejection.
-      .catch((err: unknown) => setActionError(transitionErrorMessage(err)))
+      .catch((err: unknown) => {
+        if (isStageConflict(err)) onStageConflict();
+        else setActionError(transitionErrorMessage(err));
+      })
       .finally(() => setBusy(false));
   };
 
@@ -461,7 +488,13 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
     ['no_contact', 'contacted', 'talent_responded', 'qualifying', 'qualified'].includes(pipeline.status);
   const confirmNotInConsideration = async (choice: NotInConsiderationChoice): Promise<void> => {
     if (pipeline === null) return;
-    await dispositionPipelineEpisode(pipeline.id, { ...choice, expected_version: pipeline.version });
+    try {
+      await dispositionPipelineEpisode(pipeline.id, { ...choice, expected_version: pipeline.version });
+    } catch (err) {
+      if (!isStageConflict(err)) throw err;
+      onStageConflict();
+      return;
+    }
     toast.show(`${talentName} marked Not in consideration`);
     setReload((n) => n + 1);
   };
@@ -470,7 +503,13 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
   const canMoveBack = canAdvance && pipeline !== null && BACKWARD_TARGET[pipeline.status as PipelineStatus] !== undefined;
   const confirmMoveBack = async (to: PipelineStatus, note: string): Promise<void> => {
     if (pipeline === null) return;
-    await transitionPipeline(pipeline.id, { to_status: to, note, expected_version: pipeline.version });
+    try {
+      await transitionPipeline(pipeline.id, { to_status: to, note, expected_version: pipeline.version });
+    } catch (err) {
+      if (!isStageConflict(err)) throw err;
+      onStageConflict();
+      return;
+    }
     toast.show(`${talentName} moved back`);
     setReload((n) => n + 1);
   };
@@ -708,7 +747,7 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
           'Skills',
           sk.length === 0
             ? 'No skills on record.'
-            : `${sk.map((s) => s.label).join(', ')}. Client must-haves for ${reqCode} are highlighted on Overview.`,
+            : `${sk.map((s) => s.label).join(', ')}.${hasMustHaveSkills(profile) ? ` Client must-haves for ${reqCode} are highlighted on Overview.` : ''}`,
         );
       }
       case 'auth':
@@ -726,10 +765,19 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
             : `${first} is in play on ${activeOpps} requisition${activeOpps === 1 ? '' : 's'}. This page is scoped to ${reqCode}; switch opportunities from Talent 360.`,
           { label: 'Open Talent 360', to: `/talent/${talentId}` },
         );
+      // ATS-QA-1 2.4 — the requisition-scoped feed itself, not a pointer to Overview.
       case 'act':
         return summary(
           'Activity',
-          `The activity feed for ${reqCode} is shown on Overview. Cross-requisition activity lives on the Talent record.`,
+          t360?.recent_activity == null
+            ? 'Activity is not available for your role.'
+            : `Activity for ${first} on ${reqCode}, newest first. Activity on other requisitions is on Talent 360.`,
+          { label: 'Open Talent 360', to: `/talent/${talentId}` },
+          t360?.recent_activity == null ? undefined : (
+            <div className="tr360-act" data-testid="tr360-activity-section">
+              <Tr360ActivityFeed activity={reqActivity} />
+            </div>
+          ),
         );
       case 'docs':
         return summary(
@@ -768,7 +816,7 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
       case 'notes':
         return summary(
           'Notes',
-          reqNotes.length === 0 ? 'No notes on this opportunity yet.' : reqNotes.map((n) => n.body ?? n.title).join(' · '),
+          reqNotes.length === 0 ? `No notes for ${first} yet.` : reqNotes.map((n) => n.body ?? n.title).join(' · '),
         );
       case 'tasks':
         return summary(
@@ -1027,8 +1075,13 @@ export function TalentRequisition360View({ sessionOverride }: TalentRequisition3
             </div>
           </div>
           {actionError !== null ? (
-            <p className="tr360-empty" role="alert">
+            <p className="tr360-alert" role="alert" data-testid="tr360-action-error">
               {actionError}
+            </p>
+          ) : null}
+          {primaryReasonShown && primary !== null && !primary.enabled && primary.blocked !== null ? (
+            <p className="tr360-reason" role="status" data-testid="tr360-primary-reason-inline">
+              {primary.blocked}
             </p>
           ) : null}
 

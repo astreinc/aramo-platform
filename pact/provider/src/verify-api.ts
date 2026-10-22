@@ -604,6 +604,14 @@ const TALENT_EVIDENCE_RESUME_SHA256_MIGRATION = resolve(
   ROOT,
   'libs/talent-evidence/prisma/migrations/20261006120000_resume_revision_lifecycle_artifact_sha256/migration.sql',
 );
+// ATS-QA-1 I-4 (L2) — the education edit lineage: EducationEntryRetirement +
+// EducationEntryAuditEvent (additive side tables). The Talent 360 read
+// (profile.education) and the education write responses read them, so the
+// returned shape depends on this migration.
+const TALENT_EVIDENCE_ATS_QA_1_EDUCATION_MIGRATION = resolve(
+  ROOT,
+  'libs/talent-evidence/prisma/migrations/20261022160000_ats_qa_1_education_edit_lineage/migration.sql',
+);
 // SKILL-TAX-1F-B2 — the canonical skills-taxonomy schema (Skill + Alias + Version +
 // Relationship + AuditEvent) and the 1F governance substrate (merged_into +
 // append-only audit trigger + SkillGovernanceProposal + SkillCorrectionTask). Applied
@@ -1661,6 +1669,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // interaction starts from a known-empty floor. The Pact verifier runs
     // interactions in sequence; without a reset a prior interaction's
     // rows would shadow the next.
+    // ATS-QA-1 I-4 — education entries + their edit lineage, cleared so the
+    // Talent 360 read pins education: [] regardless of interaction order.
+    async function resetEducationRows(c: Client): Promise<void> {
+      await c.query('TRUNCATE TABLE talent_evidence."TalentEducationEntry" CASCADE');
+      await c.query('TRUNCATE TABLE talent_evidence."EducationEntryRetirement" CASCADE');
+      await c.query('TRUNCATE TABLE talent_evidence."EducationEntryAuditEvent" CASCADE');
+    }
+
     async function resetAllRows(c: Client): Promise<void> {
       await c.query('TRUNCATE TABLE ingestion."RawPayloadReference" CASCADE');
       await c.query('TRUNCATE TABLE consent."TalentConsentEvent" CASCADE');
@@ -3839,6 +3855,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         TALENT_EVIDENCE_INTAKE_MIGRATION,
         TALENT_EVIDENCE_INTAKE_ENVELOPE_LEASE_MIGRATION,
         TALENT_EVIDENCE_INTAKE_LAST_TOUCHED_MIGRATION,
+        TALENT_EVIDENCE_ATS_QA_1_EDUCATION_MIGRATION,
         // SKILL-TAX-1F-B2 — canonical skills-taxonomy schema + 1F governance substrate
         // (platform-governance-consumer state handlers seed these tables).
         SKILLS_TAXONOMY_INIT_MIGRATION,
@@ -5217,6 +5234,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       'an ats-web recruiter and a Talent 360 record with no downstream activity exist':
         async () => {
           await withClient(async (c) => {
+            await resetEducationRows(c);
             await seedAtsWebTalentRecord(c, {
               id: PACT_TALENT_ID,
               firstName: 'Divya',
@@ -8277,6 +8295,20 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             id: PACT_TALENT_ID,
             firstName: 'Ada',
             lastName: 'Lovelace',
+          });
+        });
+      },
+
+      // ATS-QA-1 I-4 — a live TalentRecord with no education yet; the consumer
+      // adds a manual entry (POST /v1/talent-records/:id/education).
+      'an ats-web recruiter and a live talent record for education edit': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await resetEducationRows(c);
+          await seedAtsWebTalentRecord(c, {
+            id: PACT_TALENT_ID,
+            firstName: 'Divya',
+            lastName: 'Vasudevan',
           });
         });
       },

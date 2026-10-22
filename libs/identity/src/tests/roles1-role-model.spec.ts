@@ -175,8 +175,8 @@ describe('ROLES-1 PR-2 §3.2 — the seeded bundles', () => {
     // recruiting_manager, tenant_owner + tenant_admin derived) → 931.
     // ORG-UX-1 (§4.1/§4.2): +5 document_template:author (tenant_owner, tenant_admin,
     // account_manager, recruiting_manager, lead_recruiter) −2 tenant:admin:user-manage
-    // (account_manager, recruiting_manager) → 934.
-    expect(pairs).toBe(934);
+    // (account_manager, recruiting_manager) → 934. ATS-QA-1 A4 +3 pipeline:resume:set (lead_recruiter, recruiting_manager, sourcer) → 937.
+    expect(pairs).toBe(937);
   });
 
   it('the ROLES-1 RoleScope rows carry the migration-identical deterministic id', async () => {

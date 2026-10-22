@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 
 import { PrismaService } from './prisma/prisma.service.js';
+import { TalentEducationRepository } from './talent-education.repository.js';
 import { TalentEvidenceRepository } from './talent-evidence.repository.js';
 
 // libs/talent-evidence module — M3 PR-5 Talent-evidence entity foundation
@@ -16,8 +17,11 @@ import { TalentEvidenceRepository } from './talent-evidence.repository.js';
 // (forward-reference UUIDs only), any FK constraint, any controller /
 // endpoint / OpenAPI path, EvidenceReference emission/resolution
 // (PR-6), and any change to libs/examination or libs/matching.
+//
+// ATS-QA-1 I-4 — TalentEducationRepository: the read and recruiter-edit lineage
+// for TalentEducationEntry (retire, never overwrite).
 @Module({
-  providers: [PrismaService, TalentEvidenceRepository],
-  exports: [TalentEvidenceRepository],
+  providers: [PrismaService, TalentEvidenceRepository, TalentEducationRepository],
+  exports: [TalentEvidenceRepository, TalentEducationRepository],
 })
 export class TalentEvidenceModule {}

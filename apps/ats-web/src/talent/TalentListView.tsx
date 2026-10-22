@@ -5,7 +5,7 @@ import {
   InlineAlert,
   hasScope,
   useSession,
-  type Session, Checkbox, Select, IconSearch, Input,
+  type Session, Checkbox, IconSearch, Input,
 } from '@aramo/fe-foundation';
 import {
   useCallback,
@@ -18,13 +18,14 @@ import {
 } from 'react';
 import { Link, useNavigate, useSearchParams } from 'react-router-dom';
 
+import { addTalentErrorMessage } from '../pipeline/error-messages';
 import { addTalentToPipeline } from '../pipeline/pipeline-api';
-import { listRequisitions } from '../requisitions/requisitions-api';
 import type { RequisitionView } from '../requisitions/types';
 import { resolveUserNames } from '../users/users-api';
 import { Avatar, Card, Icons, StagePill, StatusPill, type PillTone } from '../ui';
 import type { PipelineStatus } from '../pipeline/types';
 
+import { RequisitionPicker } from './AddToRequisitionDialog';
 import { AddToListDialog } from './components/AddToListDialog';
 import { LastContactCell } from './components/LastContactCell';
 import { ListsPanel } from './components/ListsPanel';
@@ -265,11 +266,16 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
     sessionOverride ??
     (sessionState.status === 'authenticated' ? sessionState.session : null);
   const myId = session?.sub ?? null;
+  const canSearchReqs =
+    session !== null && Array.isArray(session.scopes) && hasScope(session, 'requisition:search');
   const canCreate =
     session !== null && Array.isArray(session.scopes) && hasScope(session, 'talent:create');
   // CRM-2 — "Add to list" bulk action requires saved-list:edit (CRM-1 seeded).
   const canManageLists =
     session !== null && Array.isArray(session.scopes) && hasScope(session, 'saved-list:edit');
+  // ATS-QA-1 I-5 — bulk add uses each talent's default resume; the summary says so.
+  const canChooseResume =
+    session !== null && Array.isArray(session.scopes) && hasScope(session, 'pipeline:resume:set');
 
   // Roster probe (Owner column resolution) — one-shot, independent of search.
   useEffect(() => {
@@ -521,27 +527,31 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
     setBusy(true);
     setNotice(null);
     let ok = 0;
-    let skipped = 0;
+    let alreadyOn = 0;
+    // ATS-QA-1 D6 — every refusal is the server's typed reason through the one shared
+    // mapper (addTalentErrorMessage); only PIPELINE_EPISODE_ALREADY_LIVE is "already on".
+    // A 409 conflict or a policy refusal is never reported as already being there.
+    const refused = new Map<string, number>();
+    const failedIds = new Set<string>();
     for (const t of targets) {
       try {
         await addTalentToPipeline(t.id, req.id);
         ok += 1;
       } catch (err) {
-        if (err instanceof ApiError && (err.status === 409 || err.status === 422)) {
-          skipped += 1;
+        if (err instanceof ApiError && err.code === 'PIPELINE_EPISODE_ALREADY_LIVE') {
+          alreadyOn += 1;
         } else {
-          setNotice('Add to req failed — please try again.');
-          setBusy(false);
-          return;
+          const msg = addTalentErrorMessage(err);
+          refused.set(msg, (refused.get(msg) ?? 0) + 1);
+          failedIds.add(t.id);
         }
       }
     }
     setBusy(false);
     setReqDialogOpen(false);
-    setNotice(
-      `Added ${ok} to ${req.title}${skipped > 0 ? ` (${skipped} already in pipeline)` : ''}.`,
-    );
-    setSelected(new Set());
+    setNotice(bulkAddSummary(req.title, ok, alreadyOn, refused, canChooseResume));
+    // Keep the refused talent selected so the recruiter can act on them; clear the rest.
+    setSelected(failedIds);
   };
 
   // ── active filter chips ──
@@ -1103,52 +1113,55 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
         onPick={addSelectedToReq}
         count={selectedTalent.length}
         busy={busy}
+        canSearch={canSearchReqs}
       />
     </section>
   );
 }
 
-// ── Add-to-req picker (real reqs via listRequisitions; pipeline:add per talent) ──
+// ATS-QA-1 D6 — the bulk Add-to-requisition result line: added, already on, and each
+// distinct refusal reason with its count (never folded into "already in pipeline").
+export function bulkAddSummary(
+  reqTitle: string,
+  ok: number,
+  alreadyOn: number,
+  refused: ReadonlyMap<string, number>,
+  // ATS-QA-1 I-5 — the caller holds pipeline:resume:set: bulk add never prompts and
+  // never binds a resume (A4: never auto-bound), so say that each talent's default is
+  // only suggested and where it is confirmed or changed.
+  mayChooseResume = false,
+): string {
+  const parts = [`Added ${ok} to ${reqTitle}.`];
+  if (alreadyOn > 0) parts.push(`${alreadyOn} already on this requisition.`);
+  for (const [msg, n] of refused) parts.push(`${n} not added: ${msg}`);
+  if (mayChooseResume && ok > 0) {
+    parts.push(
+      `${ok} added with their default resume suggested — confirm or change it for this requisition on each talent’s requisition page.`,
+    );
+  }
+  return parts.join(' ');
+}
+
+// ── Add-to-req picker (ATS-QA-1 D4 — the shared server-search RequisitionPicker; pipeline:add per talent) ──
 function AddToReqDialog({
   open,
   onClose,
   onPick,
   count,
   busy,
+  canSearch,
 }: {
   readonly open: boolean;
   readonly onClose: () => void;
   readonly onPick: (req: RequisitionView) => void;
   readonly count: number;
   readonly busy: boolean;
+  readonly canSearch: boolean;
 }) {
-  const [reqs, setReqs] = useState<readonly RequisitionView[]>([]);
-  const [reqId, setReqId] = useState('');
-  const [loading, setLoading] = useState(false);
-  const [loadErr, setLoadErr] = useState(false);
-
+  const [chosen, setChosen] = useState<RequisitionView | null>(null);
   useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    setLoading(true);
-    setLoadErr(false);
-    void listRequisitions()
-      .then((r) => {
-        if (cancelled) return;
-        setReqs(r.items.filter((x) => x.status === 'open'));
-        setLoading(false);
-      })
-      .catch(() => {
-        if (cancelled) return;
-        setLoadErr(true);
-        setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+    if (!open) setChosen(null);
   }, [open]);
-
-  const chosen = reqs.find((r) => r.id === reqId) ?? null;
 
   return (
     <Dialog
@@ -1176,26 +1189,7 @@ function AddToReqDialog({
         </>
       }
     >
-      {loading ? (
-        <p className="rc-empty">Loading requisitions…</p>
-      ) : loadErr ? (
-        <p className="rc-empty">Couldn’t load requisitions. Please try again.</p>
-      ) : reqs.length === 0 ? (
-        <p className="rc-empty">No active requisitions visible to you.</p>
-      ) : (
-        <label className="rc-field">
-          <span className="rc-field__label">Requisition</span>
-          <Select unstyled className="rc-select" value={reqId} onChange={(e) => setReqId(e.target.value)}>
-            <option value="">Select a requisition…</option>
-            {reqs.map((r) => (
-              <option key={r.id} value={r.id}>
-                {r.title}
-                {r.external_req_id ? ` · ${r.external_req_id}` : ''}
-              </option>
-            ))}
-          </Select>
-        </label>
-      )}
+      <RequisitionPicker open={open} value={chosen} onChange={setChosen} canSearch={canSearch} />
     </Dialog>
   );
 }

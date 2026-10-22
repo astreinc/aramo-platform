@@ -318,6 +318,11 @@ export interface TalentWorkHistoryView {
 // was resolved against the source-map (ref exists AND the block text supports
 // the value); ungrounded items were dropped and counted. Maps onto the
 // Add-Talent intake fields the recruiter then reviews/edits.
+export interface ResumeDraftRejectedWorkHistory {
+  employer_name?: string;
+  reason: 'employer_not_found' | 'title_not_found' | 'incomplete_entry';
+}
+
 export interface ResumeDraftProposal {
   first_name?: string;
   last_name?: string;
@@ -339,6 +344,12 @@ export interface ResumeDraftProposal {
   education: ResumeDraftEducation[];
   certifications: ResumeDraftCertification[];
   rejected_count: number;
+  // ATS-QA-1 I-3 — work-history entries the model proposed that did not ground
+  // (reported to the recruiter as a draft warning, never dropped silently).
+  // `employer_name` is present ONLY when the employer itself grounded against
+  // the source (so no ungrounded text is ever surfaced). Optional for callers
+  // that build proposals by hand.
+  rejected_work_history?: ResumeDraftRejectedWorkHistory[];
   // HF2 R12 — TRUE when any array hit its cardinality ceiling and overflow was
   // truncated. Overflow is never silent: the caller surfaces it (status→partial +
   // this flag). The WorkExperience source_refs still span all blocks, so the

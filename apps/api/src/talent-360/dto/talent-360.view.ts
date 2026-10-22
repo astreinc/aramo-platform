@@ -323,6 +323,29 @@ export interface WorkHistoryEntryView {
   readonly source: string | null;
 }
 
+// ATS-QA-1 I-4 (L2) — one CURRENT declared education entry. The only authority is
+// talent_evidence.TalentEducationEntry; corrected and removed entries are retired
+// (kept as history) and never listed here. Certifications are separate.
+export type EducationSourceView = 'resume' | 'manual' | 'import';
+
+export interface EducationEntryView {
+  // The entry id (the target of a correction or removal).
+  readonly id: string;
+  readonly institution_name: string;
+  readonly degree_name: string;
+  readonly field_of_study: string | null;
+  // ISO calendar date (YYYY-MM-DD); null when not stated (never guessed).
+  readonly conferred_date: string | null;
+  readonly source: EducationSourceView;
+  // Provenance refs. A resume entry carries its source document and the source-map
+  // block refs it was grounded on. A recruiter correction carries the entry it
+  // replaced (corrects_entry_id), whose own provenance stays as history.
+  readonly source_document_id: string | null;
+  readonly source_refs: readonly string[];
+  readonly corrects_entry_id: string | null;
+  readonly recorded_at: string;
+}
+
 export interface ProfileView {
   // Professional summary paragraph; null when no authoritative source supplies
   // one (never fabricated to fill the layout — directive §24).
@@ -333,6 +356,17 @@ export interface ProfileView {
   // Overview does not render the entire record (directive §12). Provided here so
   // the Profile tab can render it without a second round-trip.
   readonly work_history: readonly WorkHistoryEntryView[];
+  // ATS-QA-1 I-4 — current declared education (additive). Empty when none.
+  readonly education: readonly EducationEntryView[];
+}
+
+// ATS-QA-1 I-4 — the education write response: the changed entry and the Talent's
+// current education after the change.
+export interface TalentEducationChangeView {
+  // The entry written by the change (the new entry for add / correct, the retired
+  // entry for remove).
+  readonly entry_id: string;
+  readonly education: readonly EducationEntryView[];
 }
 
 // ---------------------------------------------------------------------------

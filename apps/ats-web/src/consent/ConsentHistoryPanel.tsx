@@ -70,7 +70,8 @@ const CONSENT_ACTION_LABELS: Record<ConsentDecisionAction, string> = {
 // key + test hook. Read order: when → what scope → what happened → expiry.
 const EVENT_COLUMNS: ReadonlyArray<TableColumn<ConsentHistoryEvent>> = [
   // T10-B4/F-025/F-026 — created_at is an event instant (shared formatter, was
-  // raw ISO); expires_at preserved (ambiguous date/instant — §3 rule C).
+  // raw ISO). ATS-QA-1 I-1 D11 — expires_at is a Timestamptz instant too, so it
+  // uses the same formatter (overturns the earlier rule-C preserve note).
   {
     key: 'created_at',
     header: 'Date',
@@ -88,7 +89,7 @@ const EVENT_COLUMNS: ReadonlyArray<TableColumn<ConsentHistoryEvent>> = [
       </StatusPill>
     ),
   },
-  { key: 'expires_at', header: 'Expires', render: (e) => e.expires_at ?? '—' },
+  { key: 'expires_at', header: 'Expires', render: (e) => formatInstant(e.expires_at) || '—' },
 ];
 
 export function ConsentHistoryPanel({ talentId, showTitle = true }: ConsentHistoryPanelProps) {

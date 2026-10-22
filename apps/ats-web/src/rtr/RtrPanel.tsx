@@ -27,7 +27,7 @@ import {
 const STATUS_LABEL: Record<string, string> = {
   REQUESTED: 'Requested',
   AWAITING_SIGNATURE: 'Awaiting signature',
-  EXECUTED: 'Executed',
+  EXECUTED: 'Signed',
   // Pipeline & RTR Recon Remediation Directive v1.0 R2 (DEF-12) — ended unsigned.
   DECLINED: 'Declined by the talent',
   EXPIRED: 'Expired unsigned',

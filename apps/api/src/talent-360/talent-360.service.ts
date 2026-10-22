@@ -13,6 +13,7 @@ import {
   type ActivityRow,
   type CommunicationRow,
   type EpisodeRow,
+  type PipelineActivityRow,
   type RequisitionSummaryRow,
   type Talent360ActorContext,
   type Talent360ReadPort,
@@ -116,6 +117,9 @@ export class Talent360Service {
     // ---- Opportunities + KPI-strip counts + attention (pipeline:read) --------
     let bundles: JourneyBundle[] = [];
     let closedEpisodes: EpisodeRow[] = [];
+    // ATS-QA-1 D1/D2 — the episodes whose requisition the viewer may see (the
+    // same predicate the opportunities use); their milestones feed the activity.
+    let visibleEpisodes: readonly EpisodeRow[] = [];
     let reqMap: ReadonlyMap<string, RequisitionSummaryRow> = new Map();
     let companyNames: ReadonlyMap<string, string> = new Map();
     let userNames: ReadonlyMap<string, string> = new Map();
@@ -130,6 +134,7 @@ export class Talent360Service {
       );
       const reqIds = dedupe(episodes.map((e) => e.requisition_id));
       reqMap = await this.port.resolveRequisitions(ctx, reqIds);
+      visibleEpisodes = episodes.filter((e) => reqMap.has(e.requisition_id));
       const companyIds = dedupe(
         [...reqMap.values()].map((r) => r.company_id),
       );
@@ -206,7 +211,7 @@ export class Talent360Service {
 
     // ---- Recent activity (activity:read ∪ communication:read) ----------------
     const recent_activity = authorized.activity
-      ? await this.composeRecentActivity(ctx, talent_id, authorized, reqMap, timeZone)
+      ? await this.composeRecentActivity(ctx, talent_id, authorized, reqMap, visibleEpisodes, timeZone)
       : null;
 
     // ---- Documents (document:read) -------------------------------------------
@@ -224,8 +229,12 @@ export class Talent360Service {
     const recruitingPermitted = consentSummary === 'contactable';
 
     // ---- Profile + relationship (talent:read, always present) ----------------
-    const workHistory = await this.port.listWorkHistory(ctx, talent_id);
-    const profile = this.toProfile(core, workHistory);
+    const [workHistory, education] = await Promise.all([
+      this.port.listWorkHistory(ctx, talent_id),
+      // ATS-QA-1 I-4 — current declared education (same talent:read + tenant scope).
+      this.port.listEducation(ctx, talent_id),
+    ]);
+    const profile = this.toProfile(core, workHistory, education);
     const relationship = this.toRelationship(
       core,
       bundles,
@@ -549,12 +558,20 @@ export class Talent360Service {
     talent_id: string,
     authorized: Talent360AuthorizedSections,
     reqMap: ReadonlyMap<string, RequisitionSummaryRow>,
+    visibleEpisodes: readonly EpisodeRow[],
     timeZone: string,
   ): Promise<Talent360View['recent_activity']> {
-    const [acts, comms] = await Promise.all([
+    // Pipeline milestones need BOTH activity:read and pipeline:read (the episode
+    // set is only composed under pipeline:read) — composition never broadens.
+    const readMilestones =
+      ctx.scopes.has(SCOPE.activity) && authorized.opportunities && visibleEpisodes.length > 0;
+    const [acts, milestones, comms] = await Promise.all([
       ctx.scopes.has(SCOPE.activity)
         ? this.port.listRecentActivity(ctx, talent_id, TALENT_360_RECENT_ACTIVITY_LIMIT)
         : Promise.resolve([] as readonly ActivityRow[]),
+      readMilestones
+        ? this.port.listPipelineActivity(ctx, visibleEpisodes, TALENT_360_RECENT_ACTIVITY_LIMIT)
+        : Promise.resolve([] as readonly PipelineActivityRow[]),
       authorized.communications
         ? this.port.listRecentCommunications(ctx, talent_id, TALENT_360_RECENT_ACTIVITY_LIMIT)
         : Promise.resolve([] as readonly CommunicationRow[]),
@@ -568,7 +585,11 @@ export class Talent360Service {
       (id) => !reqMap.has(id),
     );
     const actorIds = dedupe(
-      [...acts.map((a) => a.created_by_id), ...comms.map((c) => c.initiated_by_id)].filter(
+      [
+        ...acts.map((a) => a.created_by_id),
+        ...milestones.map((m) => m.created_by_id),
+        ...comms.map((c) => c.initiated_by_id),
+      ].filter(
         (x): x is string => x !== null,
       ),
     );
@@ -580,6 +601,7 @@ export class Talent360Service {
 
     const merged: RecentActivityItemView[] = [
       ...acts.map((a) => activityToItem(a, actorNames)),
+      ...milestones.map((m) => milestoneToItem(m, reqMap, actorNames)),
       ...comms.map((c) => commToItem(c, visibleReqs, actorNames, timeZone)),
     ].sort((x, y) => Date.parse(y.occurred_at) - Date.parse(x.occurred_at));
 
@@ -625,6 +647,7 @@ export class Talent360Service {
   private toProfile(
     core: TalentCoreRow,
     workHistory: Awaited<ReturnType<Talent360ReadPort['listWorkHistory']>>,
+    education: Awaited<ReturnType<Talent360ReadPort['listEducation']>>,
   ): Talent360View['profile'] {
     const facts: ProfileFactView[] = [];
     if (core.availability_status !== null) {
@@ -657,6 +680,7 @@ export class Talent360Service {
         span: spanLabel(w.start_date, w.end_date),
         source: w.source,
       })),
+      education: education.map((e) => ({ ...e, source_refs: [...e.source_refs] })),
     };
   }
 
@@ -806,7 +830,7 @@ export class Talent360Service {
       recent_activity: null,
       documents: null,
       identity: null,
-      profile: { summary: null, facts: [], skills: [], work_history: [] },
+      profile: { summary: null, facts: [], skills: [], work_history: [], education: [] },
       relationship: {
         history: { known_since: core.created_at, requisitions: 0, submittals: 0, interviews: 0, placements: 0 },
         ownership: { owner_provenance: null, also_working_with: [], worked_with_before: [], source: core.source, source_channel: null },
@@ -953,6 +977,29 @@ function activityToItem(
   };
 }
 
+// ATS-QA-1 D1/D2 — a pipeline milestone on a visible requisition. The body is the
+// durable system note verbatim (historical stage keys preserved); ats-web's
+// formatActivityNote renders it with the recruiter-facing stage labels.
+function milestoneToItem(
+  m: PipelineActivityRow,
+  reqMap: ReadonlyMap<string, RequisitionSummaryRow>,
+  actorNames: ReadonlyMap<string, string>,
+): RecentActivityItemView {
+  const req = reqMap.get(m.requisition_id) ?? null;
+  return {
+    id: `activity:${m.id}`,
+    occurred_at: m.created_at,
+    category: activityCategory('pipeline_status_change'),
+    title: activityTitle('pipeline_status_change'),
+    body: m.notes,
+    requisition_id: m.requisition_id,
+    requisition_label: req !== null ? `REQ-${req.requisition_number}` : null,
+    actor_label: m.created_by_id !== null ? (actorNames.get(m.created_by_id) ?? null) : null,
+    channel: null,
+    preview_id: null,
+  };
+}
+
 function commToItem(
   c: CommunicationRow,
   visibleReqs: ReadonlyMap<string, RequisitionSummaryRow>,
@@ -1064,7 +1111,7 @@ function activityCategory(type: string): string {
 function activityTitle(type: string): string {
   switch (type) {
     case 'pipeline_status_change':
-      return 'Pipeline updated';
+      return 'Stage changed';
     case 'call':
       return 'Call logged';
     case 'email_logged':

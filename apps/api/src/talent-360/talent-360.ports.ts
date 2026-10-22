@@ -144,6 +144,21 @@ export interface ActivityRow {
   readonly created_at: string;
 }
 
+// ATS-QA-1 D1/D2 — a pipeline milestone (Activity type `pipeline_status_change`,
+// subject_type 'pipeline', subject_id = the episode id) for one of the Talent's
+// VISIBLE episodes. Carries the episode's requisition so the item can be scoped to
+// that requisition (Talent × Requisition 360). `notes` is the durable system text
+// (`pipeline <from> -> <to>[: note]…`) exactly as written — historical stage keys
+// are preserved; the recruiter-facing wording is applied at display time.
+export interface PipelineActivityRow {
+  readonly id: string;
+  readonly pipeline_id: string;
+  readonly requisition_id: string;
+  readonly notes: string | null;
+  readonly created_by_id: string | null;
+  readonly created_at: string;
+}
+
 // A human-created task owned by this Talent (from TaskRepository.listForOwner).
 export interface TaskRow {
   readonly id: string;
@@ -186,6 +201,20 @@ export interface WorkHistoryRow {
   readonly end_date: string | null;
   readonly employment_type: string | null;
   readonly source: string;
+}
+
+// ATS-QA-1 I-4 — one CURRENT declared education entry (TalentEducationRepository).
+export interface EducationRow {
+  readonly id: string;
+  readonly institution_name: string;
+  readonly degree_name: string;
+  readonly field_of_study: string | null;
+  readonly conferred_date: string | null;
+  readonly source: 'resume' | 'manual' | 'import';
+  readonly source_document_id: string | null;
+  readonly source_refs: readonly string[];
+  readonly corrects_entry_id: string | null;
+  readonly recorded_at: string;
 }
 
 // A Talent document's file for the read-only preview: the bytes of its content
@@ -290,6 +319,16 @@ export interface Talent360ReadPort {
     limit: number,
   ): Promise<readonly ActivityRow[]>;
 
+  // ATS-QA-1 D1/D2 — pipeline milestones for the given episodes ONLY. The caller
+  // passes episodes already scoped to requisitions the viewer may see (listEpisodes
+  // + resolveRequisitions); the adapter additionally applies the activity
+  // repository's pipeline-visibility predicate over exactly those episode ids.
+  listPipelineActivity(
+    ctx: Talent360ActorContext,
+    episodes: readonly EpisodeRow[],
+    limit: number,
+  ): Promise<readonly PipelineActivityRow[]>;
+
   listTasks(
     ctx: Talent360ActorContext,
     talent_id: string,
@@ -314,6 +353,12 @@ export interface Talent360ReadPort {
     ctx: Talent360ActorContext,
     talent_id: string,
   ): Promise<readonly WorkHistoryRow[]>;
+
+  // ATS-QA-1 I-4 — the Talent's CURRENT declared education, tenant-scoped.
+  listEducation(
+    ctx: Talent360ActorContext,
+    talent_id: string,
+  ): Promise<readonly EducationRow[]>;
 }
 
 export const TALENT_360_READ_PORT = 'TALENT_360_READ_PORT';

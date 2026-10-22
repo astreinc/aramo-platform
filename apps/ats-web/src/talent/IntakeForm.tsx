@@ -210,8 +210,10 @@ export function IntakeForm({
         </div>
         {field('address', 'Street address', { full: true })}
         {field('address2', 'Address line 2', { full: true })}
-        {field('city', 'City', { required: true })}
-        {field('state', 'State', { required: true })}
+        {/* ATS-QA-1 row A1 — City and State are optional completeness
+            guidance in recruiter Add Talent, never a required field. */}
+        {field('city', 'City')}
+        {field('state', 'State')}
         {field('zip', 'Postal code')}
         {field('country', 'Country')}
         {toggle('can_relocate', 'Can relocate')}

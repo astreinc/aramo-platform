@@ -230,3 +230,39 @@ describe('ResumeSelectionSection', () => {
     expect(screen.queryByTestId('resume-upload-tailored')).not.toBeInTheDocument();
   });
 });
+
+// ATS-QA-1 D14 — the copy names the control that is actually on screen ("Use this
+// resume"), and never points at a control the viewer does not have.
+describe('ResumeSelectionSection — copy matches the control (ATS-QA-1 D14)', () => {
+  beforeEach(() => {
+    vi.mocked(getPipelineResumeEdition).mockReset();
+    vi.mocked(getPipelineResumeEdition).mockResolvedValue(NO_SELECTION);
+  });
+
+  it('with pipeline:resume:set the suggestion names the “Use this resume” button that is shown', async () => {
+    render(<ResumeSelectionSection pipelineId={PIPE_ID} canSetSelection />);
+    const note = await screen.findByTestId('resume-default-suggestion');
+    expect(note).toHaveTextContent('choose “Use this resume” below to use it for this requisition');
+    expect(note).not.toHaveTextContent(/select one below/);
+    expect(screen.getAllByRole('button', { name: 'Use this resume' }).length).toBeGreaterThan(0);
+  });
+
+  it('without pipeline:resume:set the suggestion names no control', async () => {
+    render(<ResumeSelectionSection pipelineId={PIPE_ID} canSetSelection={false} />);
+    const note = await screen.findByTestId('resume-default-suggestion');
+    expect(note).toHaveTextContent('No resume selected yet. Suggested default: grace-general.pdf.');
+    expect(note).not.toHaveTextContent(/below/);
+    expect(screen.queryByRole('button', { name: 'Use this resume' })).toBeNull();
+  });
+
+  it('the requires-attention line names the control only when the viewer has it', async () => {
+    vi.mocked(getPipelineResumeEdition).mockResolvedValue(ARCHIVED_SELECTION);
+    const { unmount } = render(<ResumeSelectionSection pipelineId={PIPE_ID} canSetSelection />);
+    expect(await screen.findByTestId('resume-requires-attention')).toHaveTextContent('Choose “Use this resume”');
+    unmount();
+    render(<ResumeSelectionSection pipelineId={PIPE_ID} canSetSelection={false} />);
+    const line = await screen.findByTestId('resume-requires-attention');
+    expect(line).not.toHaveTextContent(/below/);
+    expect(line).toHaveTextContent('An active resume must be chosen');
+  });
+});

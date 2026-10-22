@@ -231,6 +231,14 @@ describe('RequisitionDetailView — header / meta / pipeline (2D)', () => {
     ).toBeInTheDocument();
   });
 
+  it('ATS-QA-1 I-2 (A5) — the workspace stage strip labels no_contact "Not contacted"', async () => {
+    mockApi();
+    mountDetail();
+    await screen.findByRole('heading', { name: /Senior Rust Engineer/ });
+    expect(await screen.findByTitle(/^Not contacted: \d+$/)).toBeInTheDocument();
+    expect(screen.queryByTitle(/^No contact: /)).not.toBeInTheDocument();
+  });
+
   it('Talent tab is the journey GRID: TALENT|PIPELINE|CLIENT|OFFER|PRE-START|ASSIGNMENT headers + status pills; talent opens the panel', async () => {
     mockApi();
     mountDetail();

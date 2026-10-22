@@ -5,6 +5,16 @@ export {
   ResumeExtractionDraftNotReviewableError,
 } from './lib/talent-evidence.repository.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
+// ATS-QA-1 I-4 — education read + recruiter edit (retire, never overwrite).
+export {
+  TalentEducationRepository,
+  EducationEntryRetiredError,
+  type ActiveEducationEntryRow,
+  type EducationEntryWithStateRow,
+  type EducationEntryFields,
+  type EducationRetireReason,
+  type EducationAuditAction,
+} from './lib/talent-education.repository.js';
 // TALENT-INTEL-1 TI-1G §2 — deterministic current-work-authorization selection.
 export { selectCurrentWorkAuthorization } from './lib/work-authorization-current.js';
 

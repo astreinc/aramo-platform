@@ -27,9 +27,15 @@ import type {
 // with the A3/D4b visibility predicate — no client-side filter, no
 // truncation banner.
 export async function listRequisitions(
-  params?: { company_id?: string; bookmarked?: boolean },
+  params?: { company_id?: string; bookmarked?: boolean; q?: string },
 ): Promise<RequisitionListResponse> {
   const search = new URLSearchParams();
+  // ATS-QA-1 D4 — the server title quick-search (?q=, requisition:search). It ANDs
+  // with the A3/D4b visibility predicate on the BE: narrows, never widens.
+  const q = params?.q?.trim();
+  if (q !== undefined && q !== '') {
+    search.set('q', q);
+  }
   const companyId = params?.company_id;
   if (companyId !== undefined && companyId !== '') {
     search.set('company_id', companyId);
@@ -43,6 +49,28 @@ export async function listRequisitions(
   return apiClient.get<RequisitionListResponse>(
     qs === '' ? '/v1/requisitions' : `/v1/requisitions?${qs}`,
   );
+}
+
+// ATS-QA-1 I-1 (D4) — the PICKER read: server keyset paging over every requisition the
+// caller can see (no fixed cap), filtered by status and searched by title or REQ number.
+export interface RequisitionPickerPage {
+  readonly items: readonly RequisitionView[];
+  readonly next_cursor: string | null;
+}
+
+export async function listRequisitionsForPicker(params: {
+  q?: string;
+  statuses: readonly string[];
+  cursor?: string | null;
+  pageSize?: number;
+}): Promise<RequisitionPickerPage> {
+  const search = new URLSearchParams({ paged: 'true', status: params.statuses.join(',') });
+  const q = params.q?.trim();
+  if (q !== undefined && q !== '') search.set('q', q);
+  if (params.cursor !== undefined && params.cursor !== null) search.set('cursor', params.cursor);
+  if (params.pageSize !== undefined) search.set('page_size', String(params.pageSize));
+  const r = await apiClient.get<{ items: RequisitionView[]; next_cursor?: string | null }>(`/v1/requisitions?${search.toString()}`);
+  return { items: r.items, next_cursor: r.next_cursor ?? null };
 }
 
 export async function getRequisition(id: string): Promise<RequisitionView> {

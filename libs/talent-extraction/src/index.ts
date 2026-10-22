@@ -47,6 +47,7 @@ export type {
   // Add-Talent governed-LLM DRAFT extraction (HF1 durable fact extraction).
   ResumeDraftInput,
   ResumeDraftProposal,
+  ResumeDraftRejectedWorkHistory,
   ResumeDraftResult,
   ResumeDraftStatus,
   ResumeDraftSkill,

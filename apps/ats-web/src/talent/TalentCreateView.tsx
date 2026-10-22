@@ -64,6 +64,12 @@ function provenanceFromOrigin(origin: string): Provenance {
   return origin === 'RESUME_EXTRACTION' ? 'governed_llm' : 'edited';
 }
 
+type ReviewArrayKey = 'work_history' | 'education' | 'certifications';
+
+function cleanArrayFlags(): Record<ReviewArrayKey, boolean> {
+  return { work_history: false, education: false, certifications: false };
+}
+
 export function TalentCreateView() {
   const navigate = useNavigate();
   const me = useMe();
@@ -123,8 +129,15 @@ export function TalentCreateView() {
   const [workHistory, setWorkHistory] = useState<WorkHistoryDraft[]>([]);
   const [education, setEducation] = useState<readonly EducationDraft[]>([]);
   const [certifications, setCertifications] = useState<readonly CertificationDraft[]>([]);
-  // Carried verbatim through PATCH/promote (not recruiter-edited on this form).
-  const skillsCarryRef = useRef<unknown[] | undefined>(undefined);
+  // ATS-QA-1 I-3 (Durable-Async I7 / §8.5) — which evidence arrays the recruiter
+  // has edited since the last successful save. Only those arrays are sent; the
+  // backend owns the per-array origin and keeps every other array (so a save can
+  // never wipe extracted work history / education / certifications). Structured
+  // skills are backend-owned and never sent.
+  const arrayDirtyRef = useRef<Record<ReviewArrayKey, boolean>>(cleanArrayFlags());
+  // Monotonic edit counter — a save only clears the dirty state when no newer
+  // edit happened while it was in flight.
+  const editSeqRef = useRef(0);
 
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState<string | null>(null);
@@ -135,11 +148,16 @@ export function TalentCreateView() {
   const [reviewDirty, setReviewDirty] = useState(false);
   const versionRef = useRef(version);
   versionRef.current = version;
+  // Latest form state for callbacks that run after an await (409 retry,
+  // hydrate) — avoids acting on a stale render's closure.
+  const latestRef = useRef({ fields, provenance, workHistory, education, certifications });
+  latestRef.current = { fields, provenance, workHistory, education, certifications };
 
   const isTerminal = TERMINAL.has(processingStatus);
 
   // ── review_payload <-> form mapping ─────────────────────────────────────
   const buildReviewPayload = useCallback((): TalentIntakeReviewPayload => {
+    const { fields, provenance, workHistory, education, certifications } = latestRef.current;
     const outFields: TalentIntakeReviewPayload['fields'] = {};
     for (const key of INTAKE_TEXT_KEYS) {
       const value = (fields[key] as string).trim();
@@ -152,16 +170,21 @@ export function TalentCreateView() {
     }
     outFields['can_relocate'] = { value: fields.can_relocate, origin: 'RECRUITER' };
     outFields['is_hot'] = { value: fields.is_hot, origin: 'RECRUITER' };
+    const dirty = arrayDirtyRef.current;
     return {
       fields: outFields,
-      work_history: workHistory.filter(
-        (e) => e.employer_name.trim() !== '' || e.role_title.trim() !== '',
-      ),
-      skills: skillsCarryRef.current,
-      education: [...education],
-      certifications: [...certifications],
+      // Arrays ride the save ONLY when the recruiter edited them (I7 / §8.5).
+      ...(dirty.work_history
+        ? {
+            work_history: workHistory.filter(
+              (e) => e.employer_name.trim() !== '' || e.role_title.trim() !== '',
+            ),
+          }
+        : {}),
+      ...(dirty.education ? { education: [...education] } : {}),
+      ...(dirty.certifications ? { certifications: [...certifications] } : {}),
     };
-  }, [fields, provenance, workHistory, education, certifications]);
+  }, []);
 
   // Hydrate the form from a persisted draft view. preserveEdited keeps local
   // recruiter edits (late extraction must never overwrite a recruiter value).
@@ -178,10 +201,11 @@ export function TalentCreateView() {
       const review = view.review_payload;
       if (review === null) return;
 
+      const localProvenance = latestRef.current.provenance;
       setFields((prev) => {
         const next: IntakeState = { ...prev };
         for (const [key, cell] of Object.entries(review.fields)) {
-          const localProv = provenance[key] as Provenance | undefined;
+          const localProv = localProvenance[key] as Provenance | undefined;
           if (preserveEdited && localProv === 'edited') continue; // recruiter wins
           if (typeof cell.value === 'boolean') {
             (next as unknown as Record<string, boolean>)[key] = cell.value;
@@ -201,20 +225,20 @@ export function TalentCreateView() {
         }
         return next;
       });
-      // Arrays — take from the persisted review unless the recruiter has started
-      // editing locally (tracked by a non-empty local set with edits).
-      if (review.work_history !== undefined && (!preserveEdited || workHistory.length === 0)) {
+      // Arrays — take the persisted (backend-merged) value unless the recruiter
+      // has unsaved local edits to THAT array, which win until they are saved.
+      const dirty = arrayDirtyRef.current;
+      if (review.work_history !== undefined && (!preserveEdited || !dirty.work_history)) {
         setWorkHistory(review.work_history as WorkHistoryDraft[]);
       }
-      if (review.education !== undefined && (!preserveEdited || education.length === 0)) {
+      if (review.education !== undefined && (!preserveEdited || !dirty.education)) {
         setEducation(review.education as EducationDraft[]);
       }
-      if (review.certifications !== undefined && (!preserveEdited || certifications.length === 0)) {
+      if (review.certifications !== undefined && (!preserveEdited || !dirty.certifications)) {
         setCertifications(review.certifications as CertificationDraft[]);
       }
-      skillsCarryRef.current = review.skills as unknown[] | undefined;
     },
-    [provenance, workHistory.length, education.length, certifications.length],
+    [],
   );
 
   // ── Reopen (?draft=<id>) — fully restore from backend state ─────────────
@@ -275,25 +299,46 @@ export function TalentCreateView() {
   }, [draftId, isTerminal, phase, refetchDraft]);
 
   // ── Autosave: persist recruiter edits after processing is terminal ──────
-  const flushSave = useCallback(async (): Promise<void> => {
-    if (draftId === null || !reviewDirty) return;
-    try {
+  // Returns true when nothing is left unsaved. A 409 (the worker or another tab
+  // advanced the version) refetches the authoritative draft — the backend merge
+  // keeps every extracted value — and re-sends the recruiter's edits once
+  // against the new version, so a create right after a late extraction never
+  // drops either side.
+  const flushSave = useCallback(async (): Promise<boolean> => {
+    if (draftId === null || !reviewDirty) return true;
+    const seq = editSeqRef.current;
+    const save = async () => {
       const view = await patchTalentIntakeReview(draftId, {
         review: buildReviewPayload(),
         expected_version: versionRef.current,
       });
+      versionRef.current = view.version;
       setVersion(view.version);
       setReviewStatus(view.review_status);
-      setReviewDirty(false);
-    } catch (err) {
-      if (err instanceof ApiError && err.status === 409) {
-        // Stale version (the worker advanced it) — refetch (merge preserves our
-        // edits) and leave dirty so the next pass re-saves against the new version.
-        await refetchDraft();
+      if (editSeqRef.current === seq) {
+        arrayDirtyRef.current = cleanArrayFlags();
+        setReviewDirty(false);
       }
-      // Other errors: keep dirty; autosave retries on the next edit/flush.
+    };
+    try {
+      await save();
+      return true;
+    } catch (err) {
+      if (!(err instanceof ApiError && err.status === 409)) {
+        // Keep dirty; autosave retries on the next edit/flush.
+        return false;
+      }
     }
-  }, [draftId, reviewDirty, buildReviewPayload, refetchDraft]);
+    try {
+      const latest = await getTalentIntakeDraft(draftId);
+      versionRef.current = latest.version;
+      hydrateFromView(latest, true);
+      await save();
+      return true;
+    } catch {
+      return false;
+    }
+  }, [draftId, reviewDirty, buildReviewPayload, hydrateFromView]);
 
   useEffect(() => {
     if (!reviewDirty || draftId === null || !isTerminal || reviewStatus === 'PROMOTED') return;
@@ -305,7 +350,12 @@ export function TalentCreateView() {
 
   // ── Field editing ───────────────────────────────────────────────────────
   function markDirty(): void {
+    editSeqRef.current += 1;
     setReviewDirty(true);
+  }
+  function markArrayDirty(key: ReviewArrayKey): void {
+    arrayDirtyRef.current = { ...arrayDirtyRef.current, [key]: true };
+    markDirty();
   }
   function onField(key: keyof IntakeState, value: string): void {
     setFields((s) => ({ ...s, [key]: value }));
@@ -325,15 +375,15 @@ export function TalentCreateView() {
   }
   function onWorkHistoryField(index: number, key: keyof WorkHistoryDraft, value: string): void {
     setWorkHistory((prev) => prev.map((e, i) => (i === index ? { ...e, [key]: value } : e)));
-    markDirty();
+    markArrayDirty('work_history');
   }
   function onAddWorkHistory(): void {
     setWorkHistory((prev) => [...prev, { employer_name: '', role_title: '' }]);
-    markDirty();
+    markArrayDirty('work_history');
   }
   function onRemoveWorkHistory(index: number): void {
     setWorkHistory((prev) => prev.filter((_, i) => i !== index));
-    markDirty();
+    markArrayDirty('work_history');
   }
 
   // ── Upload flow (async; never calls the old synchronous endpoint) ───────
@@ -446,7 +496,7 @@ export function TalentCreateView() {
     setWorkHistory([]);
     setEducation([]);
     setCertifications([]);
-    skillsCarryRef.current = undefined;
+    arrayDirtyRef.current = cleanArrayFlags();
     setSubmitting(false);
     setSubmitError(null);
     setMissingFields(null);
@@ -481,11 +531,9 @@ export function TalentCreateView() {
   const nameOk = fields.first_name.trim() !== '' && fields.last_name.trim() !== '';
   const emailOk = /\S+@\S+\.\S+/.test(fields.email1.trim());
   const phoneOk = fields.phone_cell.trim() !== '';
-  const cityOk = fields.city.trim() !== '';
-  const stateOk = fields.state.trim() !== '';
   // Create authority (§9/§13) — canonical admission ONLY (name + email + phone).
-  // A resume is NOT required and city/state are completeness guidance, never
-  // creation gates. An active-email duplicate is the one backend-authoritative
+  // A resume is NOT required and city/state are optional completeness guidance
+  // (ATS-QA-1 row A1), never creation gates and never shown as required. An active-email duplicate is the one backend-authoritative
   // block (the 409 is preserved — PO ruling), surfaced via `duplicate`.
   const canCreate = nameOk && emailOk && phoneOk && duplicate === null && !submitting;
 
@@ -495,8 +543,14 @@ export function TalentCreateView() {
     setSubmitting(true);
     setSubmitError(null);
     setMissingFields(null);
-    // Persist the latest edits before promoting.
-    await flushSave();
+    // Persist the latest edits before promoting. If they cannot be saved, stop:
+    // promoting now would create the Talent without them.
+    const saved = await flushSave();
+    if (!saved) {
+      setSubmitError('Your latest changes couldn’t be saved. Please try again.');
+      setSubmitting(false);
+      return;
+    }
     try {
       const record = await promoteTalentIntakeDraft(draftId);
       // §16 — on successful promotion: toast then navigate to Talent 360. The
@@ -683,13 +737,13 @@ export function TalentCreateView() {
           </div>
 
           {/* §20 — compact rail summary shown <760px (the full rail is hidden):
-              "{file} · {x}/5 required ▾" with the checklist disclosed on toggle. */}
+              "{file} · Required to create ▾" with the checklist disclosed on
+              toggle. ATS-QA-1 row A1: no "/5 required" count (City/State are
+              optional). */}
           <details className="rc-railsummary">
             <summary>
               <Icons.IconFile aria-hidden="true" />
-              {sourceFilename ?? 'resume'} ·{' '}
-              {[nameOk, emailOk, phoneOk, cityOk && stateOk, draftId !== null].filter(Boolean).length}
-              /5 required ▾
+              {sourceFilename ?? 'resume'} · Required to create ▾
             </summary>
             <div className="rc-railsummary__body">
               <RequirementList
@@ -697,7 +751,6 @@ export function TalentCreateView() {
                   { ok: nameOk, label: 'First and last name' },
                   { ok: emailOk, label: 'Email address' },
                   { ok: phoneOk, label: 'Phone number' },
-                  { ok: cityOk && stateOk, label: 'City and state' },
                   { ok: draftId !== null, label: 'Resume attached' },
                 ]}
               />
@@ -713,7 +766,6 @@ export function TalentCreateView() {
                 { ok: nameOk, label: 'First and last name' },
                 { ok: emailOk, label: 'Email address' },
                 { ok: phoneOk, label: 'Phone number' },
-                { ok: cityOk && stateOk, label: 'City and state' },
                 { ok: draftId !== null, label: 'Resume attached' },
               ]}
             />

@@ -1,5 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
+import { ApiError } from '@aramo/fe-foundation';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { KnownTalentDrawer } from './KnownTalentDrawer';
@@ -114,5 +115,37 @@ describe('KnownTalentDrawer (CRM-8 §12)', () => {
     renderDrawer([], false);
     await screen.findByText('Bob Khan');
     expect(screen.queryByRole('button', { name: 'Add to requisition' })).toBeNull();
+  });
+});
+
+// ATS-QA-1 D6 — each refusal shows its own message (the shared addTalentErrorMessage);
+// a 409 conflict is never "already", and only ALREADY_LIVE marks the row as on the requisition.
+describe('KnownTalentDrawer — add refusals (ATS-QA-1 D6)', () => {
+  async function clickAddBob() {
+    renderDrawer();
+    await screen.findByText('Bob Khan');
+    const bobRow = screen.getByText('Bob Khan').closest('.rc-ktd__row') as HTMLElement;
+    fireEvent.click(within(bobRow).getByRole('button', { name: 'Add to requisition' }));
+    return bobRow;
+  }
+
+  it.each([
+    ['PIPELINE_TRANSITION_CONFLICT', 409, /Something changed at the same moment/],
+    ['POLICY_DENIED', 422, /rules don’t allow adding talent right now/],
+    ['REQUISITION_NOT_ADVANCEABLE', 422, /can’t be added while the requisition is in its current status/],
+    ['NOT_FOUND', 404, /no longer available to you/],
+  ])('%s shows its own message', async (code, status, msg) => {
+    h.addTalentToPipeline.mockRejectedValue(new ApiError(status, 'x', code));
+    const bobRow = await clickAddBob();
+    expect(await screen.findByText(msg)).toBeInTheDocument();
+    expect(screen.queryByText(/already/i)).toBeNull();
+    expect(within(bobRow).getByRole('button', { name: 'Add to requisition' })).toBeInTheDocument();
+  });
+
+  it('PIPELINE_EPISODE_ALREADY_LIVE says so and reflects the row as on the requisition', async () => {
+    h.addTalentToPipeline.mockRejectedValue(new ApiError(409, 'x', 'PIPELINE_EPISODE_ALREADY_LIVE'));
+    const bobRow = await clickAddBob();
+    expect(await screen.findByText('This talent is already on this requisition.')).toBeInTheDocument();
+    expect(within(bobRow).queryByRole('button', { name: 'Add to requisition' })).toBeNull();
   });
 });
