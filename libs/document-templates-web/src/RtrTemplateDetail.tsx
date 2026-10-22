@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Button, hasScope, safeErrorMessage, useSession, useToast, type Session } from '@aramo/fe-foundation';
+import { Button, safeErrorMessage, useSession, useToast, type Session } from '@aramo/fe-foundation';
 
 import {
   createDraftFromActive,
@@ -11,8 +11,8 @@ import {
   listTemplateVersions,
   previewTemplateVersion,
   resolveUserNames,
-  DOC_TEMPLATE_MANAGE_SCOPE,
-  DOC_TEMPLATE_READ_SCOPE,
+  canAuthorTemplates,
+  canReadTemplates,
   RIGHT_TO_REPRESENT_TYPE_ID,
   versionLogoUrl,
   type DocumentTemplateView,
@@ -95,8 +95,9 @@ export function RtrTemplateDetail({
   const routes = useDocTemplateRoutes();
   const sessionState = useSession();
   const session = sessionOverride ?? (sessionState.status === 'authenticated' ? sessionState.session : null);
-  const canRead = session != null && hasScope(session, DOC_TEMPLATE_READ_SCOPE);
-  const canManage = session != null && hasScope(session, DOC_TEMPLATE_MANAGE_SCOPE);
+  // ORG-UX-1 §4.1 — new draft / draft preview / discard are authoring (author-or-manage).
+  const canRead = canReadTemplates(session);
+  const canAuthor = canAuthorTemplates(session);
   const toast = useToast();
   const navigate = useNavigate();
   const [params, setParams] = useSearchParams();
@@ -166,7 +167,7 @@ export function RtrTemplateDetail({
     }
   }
 
-  // Discard the open DRAFT (manage only; the row action is never offered on ACTIVE/RETIRED,
+  // Discard the open DRAFT (author-or-manage; the row action is never offered on ACTIVE/RETIRED,
   // and the backend refuses a non-DRAFT regardless).
   async function discardDraft(v: TemplateVersionView) {
     setBusy(true);
@@ -223,8 +224,8 @@ export function RtrTemplateDetail({
               };
               const openPreview = async (v: TemplateVersionView) => {
                 const label = `${v.status === 'DRAFT' ? 'Draft ' : ''}v${v.version_number} · ${template.name}${v.status !== 'DRAFT' ? ` · ${pillLabel(v.status)}` : ''}`;
-                if (v.status === 'DRAFT' && canManage) {
-                  // A DRAFT previews through the SERVER's fixed-sample render (§17; manage scope).
+                if (v.status === 'DRAFT' && canAuthor) {
+                  // A DRAFT previews through the SERVER's fixed-sample render (§17; author scope).
                   try {
                     const res = await previewFn(v.id);
                     setPreview(previewContentFrom(res, label, { src: versionLogoUrl(v.id, v.logo?.asset_id ?? null), tenantName }));
@@ -233,8 +234,8 @@ export function RtrTemplateDetail({
                   }
                   return;
                 }
-                // ACTIVE/RETIRED (or a reader without manage): the server sample preview is
-                // DRAFT-only + manage-scoped, so show the stored wording with field chips — no
+                // ACTIVE/RETIRED (or a reader without author): the server sample preview is
+                // DRAFT-only + author-scoped, so show the stored wording with field chips — no
                 // values invented on the client.
                 setPreview(contentFromVersion(v, map, label, letterheadOf(v)));
               };
@@ -277,7 +278,7 @@ export function RtrTemplateDetail({
                           Preview approved version
                         </Button>
                       ) : null}
-                      {canManage ? (
+                      {canAuthor ? (
                         <Button unstyled className="dt-btn dt-btn--primary dt-btn--lg" onClick={() => void startDraft(template, draft)} disabled={busy} data-testid="rtr-detail-draft">
                           {draft != null ? `Continue draft v${draft.version_number}` : 'Create new version'}
                         </Button>
@@ -307,7 +308,7 @@ export function RtrTemplateDetail({
                               <Button unstyled className="dt-link" onClick={() => void openPreview(v)}>View</Button>
                             )}
                             <Button unstyled className="dt-link" onClick={() => void openPreview(v)}>Preview</Button>
-                            {v.status === 'DRAFT' && canManage ? (
+                            {v.status === 'DRAFT' && canAuthor ? (
                               <Button unstyled className="dt-link dt-link--danger" onClick={() => setDiscardTarget(v)} disabled={busy} data-testid="rtr-detail-discard">Discard</Button>
                             ) : null}
                           </span>

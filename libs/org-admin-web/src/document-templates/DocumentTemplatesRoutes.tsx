@@ -14,7 +14,7 @@ import { TemplateGalleryPage } from './TemplateGalleryPage';
 //   /org/document-templates                       Our templates (ORG-UX-1 §3, P6)
 //   /org/document-templates/gallery               Template gallery (ORG-UX-1 §3, P6)
 //   /org/document-templates/new                   create your own (blank)
-//   /org/document-templates/aramo/:templateId     an Aramo default, branded preview
+//   /org/document-templates/aramo/:templateId     an Aramo gallery default, branded preview
 //   /org/document-templates/:templateId           your template: versions, approve, new draft
 //   /org/document-templates/:templateId/draft     the draft editor
 // The Org Home session is passed down explicitly (the screens' scope checks are UX; the

@@ -39,6 +39,33 @@ export const EVENT_TYPE_OPTIONS: readonly EventTypeOption[] = [
   { value: 'identity.tenant_user.disabled', label: 'User disabled' },
   { value: 'identity.tenant_user.role_assigned', label: 'Role assigned' },
   { value: 'identity.tenant_user.role_removed', label: 'Role removed' },
+  { value: 'identity.tenant_user.enabled', label: 'User enabled' },
+  // ORG-UX-1 §8.3 (G9) — invitation lifecycle.
+  { value: 'identity.tenant_user.invitation_resent', label: 'Invitation resent' },
+  { value: 'identity.tenant_user.invitation_revoked', label: 'Invitation revoked' },
+  { value: 'identity.tenant_user.email_changed', label: 'Invited email changed' },
+  { value: 'identity.tenant_profile.updated', label: 'Organization profile updated' },
+  { value: 'identity.site.created', label: 'Site created' },
+  { value: 'identity.site.updated', label: 'Site updated' },
+  { value: 'identity.site.deactivated', label: 'Site deactivated' },
+  // Domain verification (P2b) + Domain-Enforcement P3 — ORG-UX-1 §8.10 (G12, G17).
+  { value: 'identity.domain.verification.requested', label: 'Domain TXT record issued' },
+  { value: 'identity.domain.verified', label: 'Domain verified' },
+  { value: 'identity.domain.claim.provisional', label: 'Domain reserved' },
+  { value: 'identity.domain.claim.authoritative', label: 'Domain ownership confirmed' },
+  { value: 'identity.domain.claim.lapsed', label: 'Domain reservation lapsed' },
+  { value: 'identity.domain.claim.released', label: 'Domain released' },
+  { value: 'identity.domain.exception.granted', label: 'Shared domain exception granted' },
+  { value: 'identity.domain.exception.revoked', label: 'Shared domain exception revoked' },
+  { value: 'identity.domain.verification.delegation.issued', label: 'Domain verification link sent' },
+  { value: 'identity.domain.verification.delegation.used', label: 'Domain verification link used' },
+  { value: 'identity.domain.verification.delegation.revoked', label: 'Domain verification link revoked' },
+  // ORG-UX-1 §5.4 — Org template governance.
+  { value: 'identity.document_template.adopted', label: 'Template adopted' },
+  { value: 'identity.document_template.created', label: 'Template created' },
+  { value: 'identity.document_template.version_activated', label: 'Template approved' },
+  { value: 'identity.document_template.selection_set', label: 'Active template chosen' },
+  { value: 'identity.document_template.selection_cleared', label: 'Active template choice cleared' },
 ];
 
 const LABEL_BY_VALUE = new Map(EVENT_TYPE_OPTIONS.map((o) => [o.value, o.label]));
@@ -55,6 +82,8 @@ export const CATEGORY_TONE: Record<AuditCategory, PillTone> = {
   org: 'neutral',
   session: 'neutral',
   system: 'neutral',
+  domain: 'info',
+  template: 'brand',
 };
 
 export const CATEGORY_LABEL: Record<AuditCategory, string> = {
@@ -64,4 +93,6 @@ export const CATEGORY_LABEL: Record<AuditCategory, string> = {
   org: 'Org',
   session: 'Session',
   system: 'System',
+  domain: 'Domain',
+  template: 'Templates',
 };

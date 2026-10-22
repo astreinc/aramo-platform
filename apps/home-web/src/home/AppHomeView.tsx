@@ -4,17 +4,15 @@ import {
   IconBriefcase,
   IconPencil,
   InlineAlert,
-  productByKey,
   productEntryHref,
   readRememberedReturnContext,
-  useMyProducts,
   type ProductAvailability,
   type ProductAvailabilityView,
   type ProductKey,
 } from '@aramo/fe-foundation';
-import { ORG_DENIED_NOTICE, ORG_SECTIONS, useMe } from '@aramo/org-admin-web';
+import { ORG_DENIED_NOTICE, useMe, useOrgAccess } from '@aramo/org-admin-web';
 
-import { OrgTileIcon } from './org-tile-icons';
+import { YourOrganization } from './YourOrganization';
 
 // The Aramo App Home (accepted App Home handoff §5; frozen prototype 2026-10-18)
 // — "My applications". Rendered STRICTLY from the backend-authoritative
@@ -22,6 +20,29 @@ import { OrgTileIcon } from './org-tile-icons';
 // organization subscribes to it; "Open" exists only when the backend says the
 // person may use it now; products the organization doesn't subscribe to are
 // listed under "Other Aramo products". The view never creates access.
+//
+// ORG-UX-1 (Directive v1.0 LOCKED §1/§8.1; App Home & Organization handoff §5): the 8
+// Organization link tiles are replaced by "Your organization" (Setup + Shortcuts cards),
+// shown ONLY when the server's org_access is "admin" (never derived from scopes). App
+// cards' attention line stays HIDDEN: the org session has no authorized ATS/Sign count
+// projection (G7/G8; ADR-0035 R5) — `AttentionChip` renders only when a count source
+// passes an `attention` value, which no caller does today. Never an invented number.
+
+/** An app card's attention line (handoff §5). Supplied only by an authorized count source. */
+export interface AppAttention {
+  readonly text: string;
+}
+
+const ATTENTION_DOT: Record<Exclude<ProductKey, 'org'>, string> = { ats: '#946011', sign: '#022AC0' };
+
+function AttentionChip({ product, href, attention }: { readonly product: Exclude<ProductKey, 'org'>; readonly href: string; readonly attention: AppAttention }) {
+  return (
+    <a className="home-attn" href={href} data-testid={`home-attention-${product}`}>
+      <span className="home-attn__dot" style={{ background: ATTENTION_DOT[product] }} aria-hidden="true" />
+      {attention.text}
+    </a>
+  );
+}
 
 interface ProductCopy {
   readonly name: string;
@@ -47,13 +68,11 @@ function firstName(display: string | null | undefined): string {
 interface Props {
   /** Test seam — replaces the GET /v1/me/products read. */
   readonly fetchFn?: () => Promise<ProductAvailabilityView>;
-  /** Test seam — the "is organization admin" flag the shell derives from the session. */
-  readonly isOrgAdmin?: boolean;
   /** Test seam — the clock. */
   readonly now?: Date;
 }
 
-function AppCard({ product, org }: { readonly product: ProductAvailability; readonly org: string }) {
+function AppCard({ product, org, attention = null }: { readonly product: ProductAvailability; readonly org: string; readonly attention?: AppAttention | null }) {
   const key = product.key as Exclude<ProductKey, 'org'>;
   const copy = PRODUCT_COPY[key];
   const href = productEntryHref(product);
@@ -72,6 +91,7 @@ function AppCard({ product, org }: { readonly product: ProductAvailability; read
       {status === 'ready' ? (
         <>
           <span className="home-pill home-pill--ok">Ready</span>
+          {attention !== null && href !== null ? <AttentionChip product={key} href={href} attention={attention} /> : null}
           <a className="home-open" href={href ?? undefined} data-testid={`home-open-${product.key}`}>
             Open {copy.short}
           </a>
@@ -93,17 +113,17 @@ function AppCard({ product, org }: { readonly product: ProductAvailability; read
   );
 }
 
-export function AppHomeView({ fetchFn, isOrgAdmin = false, now }: Props = {}) {
-  const products = useMyProducts(fetchFn);
+export function AppHomeView({ fetchFn, now }: Props = {}) {
+  // One availability read serves the app cards AND the server's org_access tier.
+  const products = useOrgAccess(fetchFn);
   const me = useMe();
   const [params] = useSearchParams();
   const denied = params.get('notice') === ORG_DENIED_NOTICE;
   const back = denied ? readRememberedReturnContext() : null;
   const org = me?.tenant.display_name ?? 'Your organization';
   const host = typeof window === 'undefined' ? '' : window.location.host;
-  const view = products.status === 'ready' ? products.view : null;
-  const orgProduct = productByKey(view, 'org');
-  const showAdmin = isOrgAdmin || (orgProduct?.available ?? false);
+  const view = products.status === 'ready' ? products.products : null;
+  const showAdmin = products.status === 'ready' && products.access === 'admin';
   const subscribed = (view?.products ?? []).filter((p) => p.key !== 'org' && p.subscribed);
   const notSubscribed = (view?.products ?? []).filter((p) => p.key !== 'org' && !p.subscribed);
   const noAppRole = subscribed.length > 0 && subscribed.every((p) => !p.authorized);
@@ -194,26 +214,10 @@ export function AppHomeView({ fetchFn, isOrgAdmin = false, now }: Props = {}) {
       ) : null}
 
       {showAdmin ? (
-        <>
-          <div className="home-label home-label--admin">
-            Organization administration <span className="home-admin">ADMIN</span>
-            <span className="home-label__cap">Shared by every Aramo app · not a subscription</span>
-          </div>
-          <div className="home-orgtiles" data-testid="home-org-tiles">
-            {ORG_SECTIONS.map((s) => (
-              <Link key={s.key} to={`/org/${s.key}`} className="home-orgtile" data-testid={`home-org-${s.key}`}>
-                <OrgTileIcon section={s.key} />
-                <span>
-                  <span className="home-orgtile__name">{s.label}</span>
-                  <span className="home-orgtile__sub">{s.key === 'domain' && host ? host : s.sub}</span>
-                </span>
-              </Link>
-            ))}
-          </div>
-        </>
-      ) : (
+        <YourOrganization org={org} />
+      ) : products.status === 'ready' ? (
         <p className="home-footnote">Organization settings are managed by your organization admins.</p>
-      )}
+      ) : null}
     </section>
   );
 }

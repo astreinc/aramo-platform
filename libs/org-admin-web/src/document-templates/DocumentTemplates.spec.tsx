@@ -4,6 +4,7 @@ import type {
   TemplateLibraryItem,
   TemplateLibraryView,
   TemplateSelectionView,
+  TemplateVersionView,
 } from '@aramo/document-templates-web';
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
@@ -13,14 +14,16 @@ import { OrgAdminRoutes } from '../OrgAdminRoutes';
 
 import { AramoDefaultPreview } from './AramoDefaultPreview';
 import { CreateOwnTemplate } from './CreateOwnTemplate';
-import { DocumentTemplatesGallery, buildView } from './DocumentTemplatesGallery';
 import { fetchTemplateNotices, noticeMessage, parseNotices } from './notices-api';
+import { LEGACY_BANNER_TEXT, OurTemplatesPage } from './OurTemplatesPage';
+import { RESPONSIBILITY_SENTENCE, TemplateGalleryPage } from './TemplateGalleryPage';
+import { categoryCounts, GALLERY_ENTRIES } from './templates-view';
 
-// DOC-TEMPLATE-LIB-1 T-4 — Implementation Directive v1.0 (LOCKED) §8.2 / §6.2: the Org
-// Home "Document templates" section (gallery with the Aramo defaults' "Updated" badge,
-// template in use per document type, create your own with no copy, the branded default
-// preview, the withdrawal banner) and its gate (document_template:read; manage actions by
-// document_template:manage; a read-only session reaches only this section).
+// ORG-UX-1 (Directive v1.0 LOCKED §4.1, §5, §8.8; handoff rev. Oct 21 §6.8/§6.9) — Our
+// templates (table, legacy "Aramo starting point" banner, footnote to the gallery), the
+// Template gallery (category chips + counts, horizontal cards, Adopt for supported types
+// and authors only, "In Our templates", "Not configurable yet"), create your own (no copy),
+// the branded default preview, the withdrawal banner, and the org_access-driven routing.
 
 const RTR = 'd0c50005-0000-7000-8000-000000000001';
 function makeSession(scopes: readonly string[]): Session {
@@ -28,6 +31,9 @@ function makeSession(scopes: readonly string[]): Session {
 }
 const ADMIN = makeSession(['auth:session:read', 'tenant:admin:profile', 'document_template:read', 'document_template:manage']);
 const READER = makeSession(['auth:session:read', 'document_template:read']);
+// ORG-UX-1 §4.1 — an author (account manager, recruiting manager, lead recruiter): adopt /
+// create / edit, never approve.
+const AUTHOR = makeSession(['auth:session:read', 'document_template:read', 'document_template:author']);
 
 function item(over: Partial<TemplateLibraryItem>): TemplateLibraryItem {
   return {
@@ -67,21 +73,71 @@ function Where() {
   return <p data-testid="where">{l.pathname}</p>;
 }
 
-function renderGallery(props: Partial<Parameters<typeof DocumentTemplatesGallery>[0]> = {}) {
+function okJson(body: unknown, status = 200) {
+  return new Response(JSON.stringify(body), { status, headers: { 'Content-Type': 'application/json' } });
+}
+// OrgPageHeader reads /v1/me for the organization name.
+function stubMe() {
+  vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+    const url = String(input);
+    if (url.startsWith('/v1/me')) return okJson({ user: { display_name: 'Olive', email: 'o@acme.test' }, roles: [], tenant: { display_name: 'Acme', status: 'ACTIVE' } });
+    return okJson({});
+  });
+}
+
+function vers(id: string, templateId: string, n: number, status: TemplateVersionView['status'], activatedAt: string | null): TemplateVersionView {
+  return {
+    id, tenant_id: 'tenant-abc', template_id: templateId, version_number: n, status, render_schema_version: 'rtr-html-v1', field_schema: {},
+    binding_schema: null, created_by: 'u-author', created_at: '2026-10-01T00:00:00.000Z', activated_at: activatedAt,
+    activated_by: activatedAt === null ? null : 'u-approver', retired_at: null, content_fingerprint: null, previewed_fingerprint: null,
+  };
+}
+
+const NO_OWN: TemplateLibraryView = { ...LIBRARY, items: [DEFAULT] };
+
+function renderGallery(props: Partial<Parameters<typeof TemplateGalleryPage>[0]> = {}) {
+  stubMe();
   const fns = {
+    session: AUTHOR,
+    libraryFn: vi.fn().mockResolvedValue(NO_OWN),
+    adoptFn: vi.fn().mockResolvedValue({ template: { id: 'adopted-1' }, version: { id: 'v1' } }),
+    ...props,
+  };
+  render(
+    <ToastProvider>
+      <MemoryRouter initialEntries={['/org/document-templates/gallery']}>
+        <Routes>
+          <Route path="/org/document-templates/gallery" element={<TemplateGalleryPage {...fns} />} />
+          <Route path="*" element={<Where />} />
+        </Routes>
+      </MemoryRouter>
+    </ToastProvider>,
+  );
+  return fns;
+}
+
+function renderOurs(props: Partial<Parameters<typeof OurTemplatesPage>[0]> = {}) {
+  stubMe();
+  const fns = {
+    session: ADMIN,
     libraryFn: vi.fn().mockResolvedValue(LIBRARY),
     selectionsFn: vi.fn().mockResolvedValue([]),
-    setSelectionFn: vi.fn().mockResolvedValue(selection({})),
-    clearSelectionFn: vi.fn().mockResolvedValue(undefined),
+    versionsFn: vi.fn().mockImplementation((id: string) =>
+      Promise.resolve(
+        id === 'own-rtr'
+          ? [vers('ov1', 'own-rtr', 1, 'RETIRED', '2026-09-01T10:00:00.000Z'), { ...vers('v', 'own-rtr', 2, 'ACTIVE', '2026-10-09T10:00:00.000Z') }]
+          : [vers('dv1', 'own-draft', 1, 'DRAFT', null)],
+      ),
+    ),
+    namesFn: vi.fn().mockResolvedValue({ 'u-approver': 'Purush P.' }),
     noticesFn: vi.fn().mockResolvedValue([]),
-    sessionOverride: ADMIN,
     ...props,
   };
   render(
     <ToastProvider>
       <MemoryRouter initialEntries={['/org/document-templates']}>
         <Routes>
-          <Route path="/org/document-templates" element={<DocumentTemplatesGallery {...fns} />} />
+          <Route path="/org/document-templates" element={<OurTemplatesPage {...fns} />} />
           <Route path="*" element={<Where />} />
         </Routes>
       </MemoryRouter>
@@ -94,67 +150,160 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('Org Home document templates — gallery', () => {
-  it('lists the Aramo defaults with an "Updated {date}" badge, and the organization’s own templates', async () => {
+describe('Template gallery (§6.9 revised)', () => {
+  it('header carries the intro and the responsibility sentence', async () => {
     renderGallery();
-    const card = await screen.findByTestId('dt-default-def-rtr');
-    expect(within(card).getByText('Aramo Right to Represent')).toBeInTheDocument();
-    expect(within(card).getByTestId('dt-updated-badge')).toHaveTextContent(/^Updated /);
-    expect(within(card).getByText('ATS')).toBeInTheDocument();
-    expect(screen.getByTestId('dt-own-own-rtr')).toHaveTextContent('Active v2');
-    expect(screen.getByTestId('dt-own-own-draft')).toHaveTextContent('Draft — not approved yet');
+    expect(screen.getByRole('heading', { level: 1, name: 'Template gallery' })).toBeInTheDocument();
+    expect(screen.getByText(/Ready-made starting points\. Adopting one creates a draft in Our templates/)).toBeInTheDocument();
+    expect(screen.getByText(new RegExp(RESPONSIBILITY_SENTENCE.replace(/\./g, "\\.")))).toBeInTheDocument();
+    await screen.findByTestId('gallery-adopt');
   });
 
-  it('template in use: no choice means the Aramo default; choosing an approved own template sets it', async () => {
+  it('category chips: All · Recruiting · Hiring · Legal · Pre-start with counts; filtering is client-side', async () => {
+    renderGallery();
+    const bar = screen.getByRole('toolbar', { name: 'Filter by category' });
+    const chips = within(bar).getAllByRole('button');
+    expect(chips.map((c) => c.textContent)).toEqual(['All5', 'Recruiting1', 'Hiring1', 'Legal1', 'Pre-start2']);
+    expect(chips[0]).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getAllByRole('article')).toHaveLength(5);
+    fireEvent.click(screen.getByTestId('gallery-chip-Pre-start'));
+    expect(screen.getByTestId('gallery-chip-Pre-start')).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByTestId('gallery-chip-All')).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getAllByRole('article').map((a) => a.getAttribute('aria-label'))).toEqual(['Background check authorization', 'I-9 Employment eligibility']);
+    fireEvent.click(screen.getByTestId('gallery-chip-All'));
+    expect(screen.getAllByRole('article')).toHaveLength(5);
+    expect(categoryCounts(GALLERY_ENTRIES)).toEqual({ All: 5, Recruiting: 1, Hiring: 1, Legal: 1, 'Pre-start': 2 });
+  });
+
+  it('cards: exact copy, decorative preview hidden, unsupported types show "Not configurable yet"', async () => {
+    renderGallery();
+    const rtr = await screen.findByRole('article', { name: 'Right to Represent' });
+    expect(within(rtr).getByRole('heading', { level: 3, name: 'Right to Represent' })).toBeInTheDocument();
+    expect(rtr).toHaveTextContent('Authorizes your firm to submit the talent to one client for one requisition, with the agreed pay rate.');
+    expect(rtr.querySelector('[aria-hidden="true"]')).not.toBeNull();
+    for (const name of ['Offer letter', 'Client NDA', 'Background check authorization', 'I-9 Employment eligibility']) {
+      const card = screen.getByRole('article', { name });
+      expect(within(card).getByTestId('gallery-not-configurable')).toHaveTextContent('Not configurable yet');
+      expect(within(card).queryByRole('button')).toBeNull();
+    }
+  });
+
+  it('a supported type not yet adopted: Adopt (author) + Preview; Adopt confirms with the responsibility sentence, adopts and opens the draft', async () => {
     const fns = renderGallery();
-    expect(await screen.findByTestId('dt-in-use-current-RIGHT_TO_REPRESENT')).toHaveTextContent('Aramo default');
-    const select = screen.getByTestId('dt-in-use-select-RIGHT_TO_REPRESENT') as HTMLSelectElement;
-    // Choices: the Aramo default (clear), the Aramo default template itself, the APPROVED own
-    // template — never an unapproved draft.
-    const options = Array.from(select.options).map((o) => o.value);
-    expect(options).toEqual(['aramo-default', 'def-rtr', 'own-rtr']);
-    fireEvent.change(select, { target: { value: 'own-rtr' } });
-    await waitFor(() => expect(fns.setSelectionFn).toHaveBeenCalledWith({ document_type_id: RTR, client_id: null, template_id: 'own-rtr' }));
+    const rtr = await screen.findByRole('article', { name: 'Right to Represent' });
+    expect(within(rtr).queryByText('In Our templates')).toBeNull();
+    fireEvent.click(within(rtr).getByTestId('gallery-adopt'));
+    const modal = await screen.findByTestId('gallery-adopt-modal');
+    expect(modal).toHaveTextContent(RESPONSIBILITY_SENTENCE);
+    expect(modal).toHaveTextContent('Nothing is used until it’s approved.');
+    fireEvent.click(within(modal).getByTestId('gallery-adopt-confirm'));
+    await waitFor(() => expect(fns.adoptFn).toHaveBeenCalledWith('def-rtr'));
+    expect(await screen.findByTestId('where')).toHaveTextContent('/org/document-templates/adopted-1/draft');
   });
 
-  it('switching back to the Aramo default clears the choice', async () => {
-    const fns = renderGallery({ selectionsFn: vi.fn().mockResolvedValue([selection({})]) });
-    expect(await screen.findByTestId('dt-in-use-current-RIGHT_TO_REPRESENT')).toHaveTextContent('Our RTR · your template');
-    fireEvent.change(screen.getByTestId('dt-in-use-select-RIGHT_TO_REPRESENT'), { target: { value: 'aramo-default' } });
-    await waitFor(() => expect(fns.clearSelectionFn).toHaveBeenCalledWith({ document_type_id: RTR }));
+  it('an adopt refusal stays in the dialog as an alert', async () => {
+    const adoptFn = vi.fn().mockRejectedValue(new Error('nope'));
+    renderGallery({ adoptFn });
+    fireEvent.click(await screen.findByTestId('gallery-adopt'));
+    fireEvent.click(await screen.findByTestId('gallery-adopt-confirm'));
+    expect(await within(screen.getByTestId('gallery-adopt-modal')).findByRole('alert')).toBeInTheDocument();
   });
 
-  it('read-only: no create action and no way to change the template in use', async () => {
-    renderGallery({ sessionOverride: READER });
-    await screen.findByTestId('dt-default-def-rtr');
-    expect(screen.queryByTestId('dt-create-own')).toBeNull();
-    expect(screen.queryByTestId('dt-in-use-select-RIGHT_TO_REPRESENT')).toBeNull();
-  });
-
-  it('a session without document_template:read sees no templates', () => {
-    renderGallery({ sessionOverride: makeSession(['tenant:admin:profile']) });
-    expect(screen.getByTestId('dt-gallery-noaccess')).toBeInTheDocument();
-  });
-
-  it('shows a withdrawal banner per notice; none when there are no notices', async () => {
-    renderGallery({
-      noticesFn: vi.fn().mockResolvedValue(parseNotices({ notices: [NOTICE] })),
-    });
-    expect(await screen.findByTestId('dt-notice-def-rtr')).toHaveTextContent('Aramo is withdrawing “Aramo Right to Represent”');
-    expect(screen.getByTestId('dt-notice-def-rtr')).toHaveTextContent('Choose another template');
-  });
-
-  it('Create your own opens the create page; Preview opens the branded default preview', async () => {
+  it('Preview opens the branded read-only preview of the Aramo default', async () => {
     renderGallery();
-    fireEvent.click(await screen.findByTestId('dt-default-preview-def-rtr'));
+    fireEvent.click(await screen.findByTestId('gallery-preview'));
     expect(screen.getByTestId('where')).toHaveTextContent('/org/document-templates/aramo/def-rtr');
   });
 
-  it('buildView only lists document types that are configurable or in use', () => {
-    const v = buildView(LIBRARY, []);
-    expect(v.types.map((t) => t.type.key)).toEqual(['RIGHT_TO_REPRESENT']);
-    expect(v.defaults.map((d) => d.id)).toEqual(['def-rtr']);
-    expect(v.own.map((d) => d.id)).toEqual(['own-rtr', 'own-draft']);
+  it('a session without author or manage previews but is never offered Adopt', async () => {
+    renderGallery({ session: READER });
+    expect(await screen.findByTestId('gallery-preview')).toBeInTheDocument();
+    expect(screen.queryByTestId('gallery-adopt')).toBeNull();
+  });
+
+  it('a manage holder (owner/admin) is offered Adopt too', async () => {
+    renderGallery({ session: ADMIN });
+    expect(await screen.findByTestId('gallery-adopt')).toBeInTheDocument();
+  });
+
+  it('when the organization already has a template of the type: "In Our templates" + Preview, no Adopt', async () => {
+    renderGallery({ libraryFn: vi.fn().mockResolvedValue(LIBRARY) });
+    const rtr = await screen.findByRole('article', { name: 'Right to Represent' });
+    expect(await within(rtr).findByTestId('gallery-in-ours')).toHaveTextContent('In Our templates');
+    expect(within(rtr).getByTestId('gallery-preview')).toBeInTheDocument();
+    expect(within(rtr).queryByTestId('gallery-adopt')).toBeNull();
+  });
+
+  it('no use-the-default-directly affordance remains', async () => {
+    renderGallery({ session: ADMIN });
+    await screen.findByTestId('gallery-adopt');
+    expect(screen.queryByText(/Aramo default \(recommended\)|Template in use|switch back/i)).toBeNull();
+    expect(screen.queryByRole('combobox')).toBeNull();
+  });
+});
+
+describe('Our templates (§6.8)', () => {
+  it('table: Template (name + type) · Used in · Version · Status · Last approved · Manage → the editor', async () => {
+    renderOurs();
+    const row = await screen.findByTestId('our-template-own-rtr');
+    expect(screen.getAllByRole('columnheader').map((h) => h.textContent)).toEqual(['Template', 'Used in', 'Version', 'Status', 'Last approved', 'Actions']);
+    expect(row).toHaveTextContent('Our RTR');
+    expect(row).toHaveTextContent('Right to Represent');
+    expect(row).toHaveTextContent('ATS');
+    expect(row).toHaveTextContent('v2');
+    expect(within(row).getByText('Active')).toHaveClass('ox-pill--active');
+    expect(row).toHaveTextContent('Oct 9, 2026 · Purush P.');
+    const manage = within(row).getByRole('link', { name: 'Manage Our RTR' });
+    expect(manage).toHaveAttribute('href', '/org/document-templates/own-rtr');
+
+    const draft = screen.getByTestId('our-template-own-draft');
+    expect(within(draft).getByText('Draft')).toHaveClass('ox-pill--warn');
+    expect(draft).toHaveTextContent('v1');
+    expect(draft).toHaveTextContent('—');
+  });
+
+  it('"Used in" falls back to All apps when no product tags are known', async () => {
+    const lib: TemplateLibraryView = { ...LIBRARY, items: [OWN] };
+    renderOurs({ libraryFn: vi.fn().mockResolvedValue(lib) });
+    expect(await screen.findByTestId('our-template-own-rtr')).toHaveTextContent('All apps');
+  });
+
+  it('footnote links to the Template gallery', async () => {
+    renderOurs();
+    await screen.findByTestId('our-template-own-rtr');
+    expect(screen.getByText(/Need a new document type\?/)).toBeInTheDocument();
+    const links = screen.getAllByRole('link', { name: 'Template gallery' });
+    expect(links[links.length - 1]).toHaveAttribute('href', '/org/document-templates/gallery');
+  });
+
+  it('empty state points to the gallery', async () => {
+    renderOurs({ libraryFn: vi.fn().mockResolvedValue(NO_OWN) });
+    const empty = await screen.findByTestId('our-templates-empty');
+    expect(within(empty).getByRole('link', { name: 'Template gallery' })).toHaveAttribute('href', '/org/document-templates/gallery');
+  });
+
+  it('a grandfathered tenant-wide legacy selection shows the "Aramo starting point" banner', async () => {
+    renderOurs({ selectionsFn: vi.fn().mockResolvedValue([selection({ template_id: 'def-rtr', legacy_platform: true })]) });
+    expect(await screen.findByTestId('our-templates-legacy')).toHaveTextContent(LEGACY_BANNER_TEXT);
+    expect(within(screen.getByTestId('our-templates-legacy')).getByRole('link')).toHaveAttribute('href', '/org/document-templates/gallery');
+  });
+
+  it('no banner without a legacy selection (an ordinary or client-specific selection does not count)', async () => {
+    renderOurs({ selectionsFn: vi.fn().mockResolvedValue([selection({}), selection({ client_id: 'c1', legacy_platform: true })]) });
+    await screen.findByTestId('our-template-own-rtr');
+    expect(screen.queryByTestId('our-templates-legacy')).toBeNull();
+  });
+
+  it('shows a withdrawal banner per notice', async () => {
+    renderOurs({ noticesFn: vi.fn().mockResolvedValue(parseNotices({ notices: [NOTICE] })) });
+    expect(await screen.findByTestId('dt-notice-def-rtr')).toHaveTextContent('Aramo is withdrawing “Aramo Right to Represent”');
+  });
+
+  it('offers no selection control (no "use the Aramo default" choice)', async () => {
+    renderOurs();
+    await screen.findByTestId('our-template-own-rtr');
+    expect(screen.queryByRole('combobox')).toBeNull();
+    expect(screen.queryByText(/Aramo default \(recommended\)/)).toBeNull();
   });
 });
 
@@ -234,16 +383,22 @@ describe('withdrawal notices client (T-6 GET /v1/document-templates/notices)', (
   });
 });
 
-describe('Org Home routing — document_template:read gate', () => {
-  function okJson(body: unknown) {
-    return new Response(JSON.stringify(body), { status: 200, headers: { 'Content-Type': 'application/json' } });
+describe('Org routing — org_access (§4.3)', () => {
+  function productsView(access: 'admin' | 'templates' | 'none') {
+    return {
+      tenant_id: 'tenant-abc',
+      products: [{ key: 'org', subscribed: true, authorized: access !== 'none', available: access !== 'none', entry_path: '/org/', reason: null, org_access: access }],
+    };
   }
-  function mockApi() {
+  function mockApi(access: 'admin' | 'templates' | 'none') {
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
       const url = String(input);
+      if (url.startsWith('/v1/me/products')) return okJson(productsView(access));
+      if (url.startsWith('/v1/me')) return okJson({ user: { display_name: 'Olive', email: 'o@acme.test' }, roles: [], tenant: { display_name: 'Acme', status: 'ACTIVE' } });
       if (url.startsWith('/v1/document-templates/library')) return okJson(LIBRARY);
       if (url.startsWith('/v1/document-templates/selections')) return okJson({ items: [] });
       if (url.startsWith('/v1/document-templates/notices')) return okJson({ notices: [] });
+      if (/\/v1\/document-templates\/[^/]+\/versions/.test(url)) return okJson([]);
       return okJson({});
     });
   }
@@ -260,25 +415,18 @@ describe('Org Home routing — document_template:read gate', () => {
     );
   }
 
-  it('a document_template:read-only session enters Org Home at Document templates and sees only that tab', async () => {
-    mockApi();
-    renderAt('/org/users', READER);
-    await screen.findByTestId('dt-gallery');
-    const nav = screen.getByRole('navigation', { name: 'Organization sections' });
-    expect(within(nav).getAllByRole('link').map((a) => a.textContent)).toEqual(['Document templates']);
+  it('a template author lands on Our templates and can open the gallery', async () => {
+    mockApi('templates');
+    renderAt('/org', AUTHOR);
+    expect(await screen.findByTestId('our-templates')).toBeInTheDocument();
+    fireEvent.click(screen.getAllByRole('link', { name: 'Template gallery' })[0] as HTMLElement);
+    expect(await screen.findByTestId('template-gallery')).toBeInTheDocument();
   });
 
-  it('an organization administrator sees the Document templates tab alongside the other sections', async () => {
-    mockApi();
-    renderAt('/org/document-templates', ADMIN);
-    await screen.findByTestId('dt-gallery');
-    const nav = screen.getByRole('navigation', { name: 'Organization sections' });
-    expect(within(nav).getByText('Document templates')).toBeInTheDocument();
-    expect(within(nav).getByText('Profile')).toBeInTheDocument();
-  });
-
-  it('a member with neither scope is still sent to App Home with the denial notice', () => {
+  it('org_access none is sent to App Home with the denial notice', async () => {
+    mockApi('none');
     renderAt('/org/document-templates', makeSession(['talent:read']));
-    expect(screen.getByTestId('where')).toHaveTextContent('/');
+    expect(await screen.findByTestId('where')).toHaveTextContent('/');
   });
 });
+

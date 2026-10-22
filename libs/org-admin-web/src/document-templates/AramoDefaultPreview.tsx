@@ -16,7 +16,8 @@ import {
 // DOC-TEMPLATE-LIB-1 T-4 (§8.2; ADR-0034 D3, D4, D8) — an Aramo default as this
 // organization will send it: the CURRENT version, rendered by the server with the
 // organization's own details (name and address from the organization profile) and fixed
-// sample values for everything else. Read-only: nothing is copied, stored or approved.
+// sample values for everything else. Read-only: nothing is copied, stored or approved
+// (adopting is a separate, explicit gallery action — ORG-UX-1 §5.1).
 // The letterhead shows the organization name; the profile logo (when there is one) is
 // added when a real document is generated.
 
@@ -46,8 +47,8 @@ export function AramoDefaultPreview({
   }, [templateId, previewFn]);
 
   const back = (
-    <Button unstyled className="dt-link" onClick={() => navigate(routes.list)} data-testid="dt-default-back">
-      ← Document templates
+    <Button unstyled className="dt-link" onClick={() => navigate(`${routes.list}/gallery`)} data-testid="dt-default-back">
+      ← Template gallery
     </Button>
   );
 

@@ -79,7 +79,7 @@ async function stubBackends(page: Page, jar: Jar, seen: { consumerHeaders: Set<s
         products: [
           { key: 'ats', subscribed: true, authorized: true, available: true, entry_path: '/ats/', reason: null },
           { key: 'sign', subscribed: false, authorized: false, available: false, entry_path: null, reason: 'not_subscribed' },
-          { key: 'org', subscribed: true, authorized: jar.orgAdmin, available: jar.orgAdmin, entry_path: jar.orgAdmin ? '/org/' : null, reason: jar.orgAdmin ? null : 'not_authorized' },
+          { key: 'org', subscribed: true, authorized: jar.orgAdmin, available: jar.orgAdmin, entry_path: jar.orgAdmin ? '/org/' : null, reason: jar.orgAdmin ? null : 'not_authorized', org_access: jar.orgAdmin ? 'admin' : 'none' },
         ],
       });
     if (path === '/v1/tenant/users') return json(route, { items: USERS });
@@ -99,14 +99,19 @@ function fresh(orgAdmin = true) {
 }
 
 test.describe('unified multi-product experience on the integrated nginx bundle', () => {
-  test('App Home: shared rail + switcher + account menu; organization admin tiles; ATS opens at /ats/ through its own login', async ({ page }) => {
+  test('App Home: shared rail (Organization sections) + switcher + account menu; Your organization; ATS opens at /ats/ through its own login', async ({ page }) => {
     const { jar, seen } = fresh();
     await stubBackends(page, jar, seen);
     await page.goto('/');
     await expect(page.getByTestId('home-tiles')).toBeVisible();
     expect(seen.loginUrls[0]).toBe('/auth/org/login');
     await expect(page.getByRole('complementary', { name: 'Main navigation' })).toBeVisible();
-    await expect(page.getByTestId('home-org-tiles')).toBeVisible();
+    // ORG-UX-1 — every Organization section is a main-nav item (no horizontal tabs), and
+    // App Home's 8 link tiles are replaced by Your organization (Setup + Shortcuts).
+    await expect(page.getByTestId('org-nav-overview')).toHaveAttribute('href', '/org/overview');
+    await expect(page.getByTestId('org-nav-gallery')).toHaveAttribute('href', '/org/document-templates/gallery');
+    await expect(page.getByTestId('home-your-org')).toBeVisible();
+    await expect(page.getByTestId('home-org-tiles')).toHaveCount(0);
     await expect(page.getByTestId('home-other-sign')).toContainText('Not subscribed');
     await shot(page, '01-app-home-1440');
     await page.getByRole('button', { name: 'Switch application' }).click();
@@ -147,10 +152,11 @@ test.describe('unified multi-product experience on the integrated nginx bundle',
     await page.waitForURL(/\/org\/sites\?from=ats&return=/);
     await expect(page.getByTestId('org-back-link')).toHaveText('← Back to ATS Settings');
     await shot(page, '06-org-sites-with-back');
-    // The return context survives a tab switch, then returns to the exact page.
+    // The return context survives a main-nav section switch, then returns to the exact page.
     await page.getByTestId('org-nav-users').click();
     await expect(page.getByRole('heading', { name: 'Users & invitations' })).toBeVisible();
-    await expect(page.getByRole('columnheader', { name: 'Sign' })).toBeVisible();
+    await expect(page.getByTestId('home-crumb')).toHaveText('Organization / Users & invitations');
+    await expect(page.getByText('App access', { exact: true }).first()).toBeVisible();
     await shot(page, '07-org-users-invitations');
     await page.getByTestId('org-back-link').click();
     await page.waitForURL(/\/ats\/admin\/settings\/branches$/);
@@ -161,10 +167,11 @@ test.describe('unified multi-product experience on the integrated nginx bundle',
     await shot(page, '08-ats-roles-reference');
     await page.getByTestId('ats-roles-manage-access').click();
     await page.waitForURL(/\/org\/roles\?from=ats/);
-    await expect(page.getByRole('heading', { name: 'Users & product access' })).toBeVisible();
-    await shot(page, '09-org-product-access');
+    await expect(page.getByRole('heading', { name: 'Roles & access' })).toBeVisible();
+    await expect(page.getByTestId('org-nav-roles')).toHaveAttribute('aria-current', 'page');
+    await shot(page, '09-org-roles-access');
     await page.reload();
-    await expect(page.getByRole('heading', { name: 'Users & product access' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Roles & access' })).toBeVisible();
   });
 
   test('ATS Settings rail and the ORGANIZATION · SHARED link at 1920 wide', async ({ page }) => {
@@ -181,14 +188,16 @@ test.describe('unified multi-product experience on the integrated nginx bundle',
     await shot(page, '11-app-home-1920');
   });
 
-  test('a member without organization rights is refused safely: /org/* → App Home with the denial message; no Organization tile or rail item', async ({ page }) => {
+  test('a member without organization rights is refused safely: /org/* → App Home with the denial message; no Your organization and no Organization nav items', async ({ page }) => {
     const { jar, seen } = fresh(false);
     jar.org = true;
     await stubBackends(page, jar, seen);
     await page.goto('/org/users');
     await page.waitForURL(/\/\?notice=org-denied$/);
     await expect(page.getByTestId('home-org-denied')).toContainText('Organization administration needs the organization admin role');
-    await expect(page.getByTestId('home-org-tiles')).toHaveCount(0);
+    await expect(page.getByTestId('home-your-org')).toHaveCount(0);
+    await expect(page.getByTestId('org-nav-overview')).toHaveCount(0);
+    await expect(page.getByTestId('org-nav-templates')).toHaveCount(0);
     await expect(page.getByRole('link', { name: 'Organization' })).toHaveCount(0);
     await shot(page, '12-org-denied');
   });

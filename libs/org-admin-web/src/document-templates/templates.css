@@ -1,0 +1,81 @@
+/* ORG-UX-1 — Our templates (handoff rev. Oct 21 §6.8) and Template gallery (§6.9, revised:
+ * horizontal cards, category chips, 2-column grid). Built on the shared org-ui.css tokens. */
+
+.ox-tpl { display: flex; flex-direction: column; gap: 14px; min-width: 0; }
+.ox-tpl .ox-head { margin-bottom: 0; }
+.ox-tpl__banner { max-width: 900px; }
+/* The gallery's added header sentence (Directive §5.5), set as part of the intro line. */
+.ox-tpl__intro-extra { margin: -8px 0 0; max-width: 720px; font-size: 14px; color: var(--ox-muted); line-height: 1.45; }
+
+/* ── Our templates table ── */
+.ox-tpl__tr { gap: 0 14px; }
+.ox-tpl__tr:not(.ox-tr--head) > * { padding-top: 12px; padding-bottom: 12px; }
+.ox-tpl__tr > *:first-child { padding-left: 16px; }
+.ox-tpl__tr > * { padding-left: 0; padding-right: 0; }
+.ox-tpl__tr > *:last-child { padding-right: 16px; }
+.ox-tpl__name { display: flex; align-items: center; gap: 10px; min-width: 0; }
+.ox-tpl__thumb {
+  width: 28px; height: 34px; border-radius: 4px; border: 1px solid var(--ox-line); background: #fff; flex: none;
+  display: flex; flex-direction: column; gap: 3px; padding: 6px 5px; box-sizing: border-box;
+}
+.ox-tpl__thumb > span { height: 2px; background: var(--ox-line); }
+.ox-tpl__thumb > span:first-child { background: #c6cdd4; }
+.ox-tpl__thumb > span:last-child { width: 60%; }
+.ox-tpl__nametext { min-width: 0; }
+.ox-tpl__title { display: block; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ox-tpl__type { display: block; font-size: 12px; color: var(--ox-faint); }
+.ox-tpl__ver { font-size: 12.5px; }
+.ox-tpl__when { font-size: 12.5px; color: var(--ox-muted); }
+.ox-tpl__act { text-align: right; }
+.ox-tpl__manage { padding: 6px 14px; font-size: 13px; text-decoration: none; }
+.ox-tpl__foot { margin: 0; font-size: 12.5px; color: var(--ox-faint); }
+.ox-tpl__foot .ox-link { font-size: 12.5px; }
+.ox-tpl__modaltext { margin: 0; font-size: 13.5px; color: var(--ox-ink-2); line-height: 1.5; }
+
+/* ── Gallery: category chips ── */
+.ox-gal__chips { display: flex; gap: 8px; flex-wrap: wrap; }
+.ox-gal__chip {
+  border: 1px solid var(--ox-input-line); background: #fff; color: var(--ox-ink-2); border-radius: 18px; padding: 6px 14px;
+  font: inherit; font-size: 13px; font-weight: 600; cursor: pointer; white-space: nowrap;
+}
+.ox-gal__chip:hover { border-color: var(--ox-blue); }
+.ox-gal__chip[aria-pressed='true'] { background: var(--ox-blue); border-color: var(--ox-blue); color: #fff; }
+.ox-gal__chip:focus-visible { outline: 2px solid var(--ox-blue); outline-offset: 2px; }
+.ox-gal__chipcount { margin-left: 6px; font-weight: 500; opacity: 0.75; }
+
+/* ── Gallery: grid + horizontal cards ── */
+.ox-gal__grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(100%, 420px), 1fr)); gap: 14px; }
+.ox-gal__card {
+  background: #fff; border: 1px solid var(--ox-line); border-radius: 13px; box-shadow: var(--ox-shadow); padding: 16px;
+  display: grid; grid-template-columns: 112px minmax(0, 1fr); gap: 16px; align-items: stretch; min-width: 0;
+}
+.ox-gal__card:hover { border-color: var(--ox-blue-line); }
+.ox-gal__well {
+  background: var(--ox-bg); border: 1px solid var(--ox-line); border-radius: 8px; padding: 12px 12px 0; height: 146px;
+  box-sizing: border-box; overflow: hidden;
+}
+.ox-gal__page {
+  background: #fff; border: 1px solid var(--ox-line); border-bottom: none; height: 100%; padding: 10px 9px 0; box-sizing: border-box;
+  display: flex; flex-direction: column; gap: 4px;
+  --ox-gal-ink: var(--ox-blue);
+  --ox-gal-field: var(--ox-blue-line);
+}
+.ox-gal__page--off { opacity: 0.55; --ox-gal-ink: #c6cdd4; --ox-gal-field: var(--ox-line); }
+.ox-gal__logo { display: flex; align-items: center; gap: 4px; }
+.ox-gal__logosq { width: 8px; height: 8px; border-radius: 2px; background: var(--ox-gal-ink); flex: none; }
+.ox-gal__line { display: block; height: 2px; background: var(--ox-line); }
+.ox-gal__line--flex { flex: 1; }
+.ox-gal__line--field { background: var(--ox-gal-field); }
+.ox-gal__line--gap { margin-top: 3px; }
+.ox-gal__line--gap2 { margin-top: 4px; }
+.ox-gal__pagename { font-size: 7.5px; font-weight: 700; color: #1b2730; line-height: 1.2; margin-top: 3px; }
+.ox-gal__text { display: flex; flex-direction: column; gap: 6px; min-width: 0; }
+.ox-gal__name { margin: 0; font-size: 15px; font-weight: 700; letter-spacing: -0.01em; text-wrap: balance; }
+.ox-gal__desc { margin: 0; font-size: 13px; color: var(--ox-muted); line-height: 1.5; text-wrap: pretty; }
+.ox-gal__foot { margin-top: auto; padding-top: 8px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.ox-gal__cat {
+  border-radius: 6px; padding: 3px 8px; font-size: 10.5px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase;
+  background: var(--ox-grey-tint); color: var(--ox-ink-2); white-space: nowrap;
+}
+.ox-gal__spacer { margin-left: auto; }
+.ox-gal__inours { font-size: 12px; font-weight: 600; color: var(--ox-green); white-space: nowrap; }

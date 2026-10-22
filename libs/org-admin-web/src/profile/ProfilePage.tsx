@@ -1,8 +1,15 @@
-import type { ProductAvailabilityView, Session } from '@aramo/fe-foundation';
-
 import { OrgPageHeader } from '../ui/OrgPage';
 
-// ORG-UX-1 — placeholder; implemented in this increment (I-7).
-export function ProfilePage(_props: { readonly session?: Session; readonly products?: ProductAvailabilityView | null }) {
-  return <OrgPageHeader section="profile" />;
+import { TenantProfileForm } from './TenantProfileForm';
+
+// ORG-UX-1 (Directive v1.0 LOCKED §8.2; handoff §6.2) — Profile: the logo card, the four
+// form cards and the sticky unsaved-changes bar (TenantProfileForm). Admin-only (the
+// route gates on the server's org_access).
+export function ProfilePage() {
+  return (
+    <>
+      <OrgPageHeader section="profile" />
+      <TenantProfileForm />
+    </>
+  );
 }

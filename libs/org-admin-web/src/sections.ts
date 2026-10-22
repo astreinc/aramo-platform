@@ -86,7 +86,9 @@ export const ORG_SECTION_INTRO: Readonly<Record<OrgSectionKey, string>> = {
   domain: 'Prove your organization controls its email domain, and review how people sign in.',
   settings: 'Shared defaults for every Aramo app.',
   templates: 'Approved documents your apps send. Edits create a new draft version; apps always use the active version.',
-  gallery: 'Ready-made starting points. Adopting one creates a draft in Our templates; nothing is used until you approve it.',
+  // ORG-UX-1 §5.5 — plus the responsibility sentence.
+  gallery:
+    'Ready-made starting points. Adopting one creates a draft in Our templates; nothing is used until you approve it. Your organization is responsible for the content of any template it approves.',
   audit: 'Who changed what in your organization.',
 };
 

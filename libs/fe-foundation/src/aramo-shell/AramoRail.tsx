@@ -23,6 +23,8 @@ export interface AramoRailItem {
   readonly gear?: boolean;
   /** Badge count (omitted when 0). */
   readonly count?: number;
+  /** Optional `data-testid` for the link (ORG-UX-1: e2e reaches each Organization section by it). */
+  readonly testId?: string;
 }
 
 export interface AramoRailSection {
@@ -82,6 +84,7 @@ function RailLink({ item, active, kind }: { item: AramoRailItem; active: boolean
       title={tip}
       aria-label={tip}
       aria-current={active ? 'page' : undefined}
+      data-testid={item.testId}
       className={`ats-rail__item ats-rail__item--${kind}${active ? ' ats-rail__item--on' : ''}`}
     >
       <ItemIcon item={item} />
