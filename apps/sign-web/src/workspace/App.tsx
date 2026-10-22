@@ -17,6 +17,7 @@ import { PersonalSignupPage } from './routes/PersonalSignupPage';
 import { ReportPage } from './routes/ReportPage';
 import { DomainDelegatePage } from './routes/DomainDelegatePage';
 import { DomainCard } from './pages/DomainCard';
+import { AccountClosedPage, ClosedAccountGuard } from './pages/AccountClose';
 import { ConsoleShell } from './shell';
 import { Btn, Loading } from './ui';
 import { LegalAcceptanceGate } from './legal/LegalAcceptance';
@@ -52,6 +53,8 @@ export function App({ contextLoader }: { contextLoader?: () => Promise<SenderCon
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signed-out" element={<SignedOut offerAccountSwitch product={AUTH_PRODUCTS.sign} />} />
+        {/* Personal (Free) — the landing after the owner closed the account (no session). */}
+        <Route path="/account-closed" element={<AccountClosedPage />} />
         {/* Aramo Sign launch — public self-service signup (session-less). */}
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/signup/verify" element={<SignupVerifyPage />} />
@@ -160,7 +163,7 @@ function Authenticated({ scopes, contextLoader }: { scopes: readonly string[]; c
 
 function Gate({ expected, actual, scopes }: { expected: Workspace; actual: Workspace; scopes: readonly string[] }) {
   if (expected !== actual) return <Navigate to={`/${actual}`} replace />;
-  return (
+  const shell = (
     <ConsoleShell scopes={scopes}>
       {/* Personal — the current legal documents must be accepted before sending. */}
       {expected === 'personal' ? <LegalAcceptanceGate /> : null}
@@ -190,6 +193,8 @@ function Gate({ expected, actual, scopes }: { expected: Workspace; actual: Works
       </Routes>
     </ConsoleShell>
   );
+  // Personal (Free) — a closed account opens on the "Your account is closed" notice.
+  return expected === 'personal' ? <ClosedAccountGuard>{shell}</ClosedAccountGuard> : shell;
 }
 
 function FullState({ title, children, testId }: { title: string; children?: React.ReactNode; testId?: string }) {

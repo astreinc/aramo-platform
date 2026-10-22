@@ -73,7 +73,7 @@ export const LEGAL_DOCUMENTS: readonly LegalDocumentVersion[] = [
     version: '1.0',
     status: 'APPROVED',
     path: 'doc/legal/aramo-sign/personal-terms-of-service.md',
-    sha256: 'b36418f48ca345ac3b0faabcaff82933a823788985b53d25f5f7d4aeaf689cee',
+    sha256: '17948f6ab1de5f052c15f1482c3ddbdda7271fa60b6318a7748cfb4f4643b4dc',
     url: 'https://sign.aramo.ai/legal/personal-terms/1.0',
   },
   {
@@ -81,7 +81,7 @@ export const LEGAL_DOCUMENTS: readonly LegalDocumentVersion[] = [
     version: '1.0',
     status: 'APPROVED',
     path: 'doc/legal/aramo/privacy-notice.md',
-    sha256: '818c628418695a589450b26a0413f1a28c83507b038d8e229e56cb2784b2b3a2',
+    sha256: 'b677d985cef661970179240bf4a3bdd5645f0dce601abce51dc3b7d663af18bd',
     url: 'https://sign.aramo.ai/legal/privacy/1.0',
   },
   {
@@ -89,7 +89,7 @@ export const LEGAL_DOCUMENTS: readonly LegalDocumentVersion[] = [
     version: '1.0',
     status: 'APPROVED',
     path: 'doc/legal/aramo/acceptable-use-policy.md',
-    sha256: '2a081ba64d3519b2bfa0b9c3924d466f6cf71ff6d8d129067c96b520ed2a047f',
+    sha256: '2e64f8eece66c50b99954de8b4c885240bc4ca51fa0f6731a7d800b4706a476e',
     url: 'https://sign.aramo.ai/legal/acceptable-use/1.0',
   },
 ];

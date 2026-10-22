@@ -2,6 +2,7 @@
 //   /legal/<slug>/<version>   one exact version (stable URL; the registry's `url`)
 //   /legal/<slug>             the latest published version
 //   /legal/third-party-notices  attributions (not a registry document)
+//   /legal/subprocessors        the Aramo Sign Personal subprocessor list (not a registry document)
 // Metadata only (no texts): pages that LINK to a document import this module; the
 // texts load only with the legal page (./texts.ts, a separate chunk). Each entry
 // mirrors an APPROVED entry of the legal registry in @aramo/subscription — a
@@ -29,6 +30,23 @@ export const LEGAL_CATALOG: readonly LegalCatalogEntry[] = [
 
 export const PUBLIC_SIGN_ORIGIN = 'https://sign.aramo.ai';
 export const THIRD_PARTY_NOTICES_PATH = '/legal/third-party-notices';
+export const SUBPROCESSORS_SLUG = 'subprocessors';
+export const SUBPROCESSORS_PATH = `/legal/${SUBPROCESSORS_SLUG}`;
+
+export interface Subprocessor {
+  name: string;
+  purpose: string;
+  location: string;
+}
+
+/** The service providers that process personal information for Aramo Sign Personal accounts (Privacy Notice §7). */
+export const SUBPROCESSORS: readonly Subprocessor[] = [
+  { name: 'Amazon Web Services', purpose: 'Hosting, storage and email delivery', location: 'United States' },
+  { name: 'Cloudflare', purpose: 'Robot check on the signup page', location: 'Global' },
+  { name: 'Google', purpose: 'Sign-in with Google', location: "The person's own Google account" },
+  { name: 'Text-message (SMS) provider', purpose: 'Not yet selected; no phone numbers are shared until one is', location: '—' },
+];
+export const SUBPROCESSORS_UPDATED = '2026-10-22';
 
 /** GeoLite2 licence attribution (required wherever the data is used). */
 export const MAXMIND_ATTRIBUTION = 'This product includes GeoLite2 data created by MaxMind, available from https://www.maxmind.com.';

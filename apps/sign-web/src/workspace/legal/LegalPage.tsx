@@ -1,12 +1,25 @@
 import { useEffect, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 
-import { LEGAL_CATALOG, MAXMIND_ATTRIBUTION, PUBLIC_SIGN_ORIGIN, THIRD_PARTY_NOTICES_PATH, findLegal, latestLegal, legalPath } from './catalog';
+import {
+  LEGAL_CATALOG,
+  MAXMIND_ATTRIBUTION,
+  PUBLIC_SIGN_ORIGIN,
+  SUBPROCESSORS,
+  SUBPROCESSORS_PATH,
+  SUBPROCESSORS_SLUG,
+  SUBPROCESSORS_UPDATED,
+  THIRD_PARTY_NOTICES_PATH,
+  findLegal,
+  latestLegal,
+  legalPath,
+} from './catalog';
 import { Markdown } from './markdown';
 import { LEGAL_TEXTS } from './texts';
 
 // Aramo Sign Personal (Free) — the published legal texts on sign.aramo.ai
 // (public, no sign-in): /legal/:slug (latest) and /legal/:slug/:version (exact).
+// /legal/subprocessors (no version) is the subprocessor list, not a registry text.
 // The page shows the bundled text exactly as approved (rendered safely, never as
 // HTML); an unknown document or version is a not-found page, never a fallback to
 // another version.
@@ -43,6 +56,7 @@ function LegalFooter() {
           </a>
         );
       })}
+      <a href={SUBPROCESSORS_PATH}>Subprocessors</a>
       <a href={THIRD_PARTY_NOTICES_PATH}>Third-party notices</a>
     </footer>
   );
@@ -59,6 +73,7 @@ export function LegalNotFound() {
 
 export function LegalDocumentPage() {
   const { slug = '', version } = useParams<{ slug: string; version?: string }>();
+  if (slug === SUBPROCESSORS_SLUG && version === undefined) return <SubprocessorsPage />;
   const doc = findLegal(slug, version);
   const text = doc === null ? undefined : LEGAL_TEXTS[`${doc.slug}@${doc.version}`];
   if (doc === null || text === undefined) return <LegalNotFound />;
@@ -95,6 +110,41 @@ export function ThirdPartyNoticesPage() {
           </a>
           .
         </p>
+      </div>
+    </Shell>
+  );
+}
+
+export function SubprocessorsPage() {
+  return (
+    <Shell title="Subprocessors" testId="legal-subprocessors">
+      <h1 className="sg-h1">Aramo Sign subprocessors</h1>
+      <p className="sg-legal__meta" data-testid="subprocessors-updated">
+        Last updated {SUBPROCESSORS_UPDATED}
+      </p>
+      <div className="sg-legal__doc">
+        <p>
+          The service providers that process personal information for Aramo Sign Personal accounts, on our instructions. See the{' '}
+          <a href={legalPath('privacy')}>Aramo Privacy Notice</a>.
+        </p>
+        <table data-testid="subprocessors-table">
+          <thead>
+            <tr>
+              <th scope="col">Provider</th>
+              <th scope="col">What it does</th>
+              <th scope="col">Location</th>
+            </tr>
+          </thead>
+          <tbody>
+            {SUBPROCESSORS.map((s) => (
+              <tr key={s.name}>
+                <td>{s.name}</td>
+                <td>{s.purpose}</td>
+                <td>{s.location}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
       </div>
     </Shell>
   );

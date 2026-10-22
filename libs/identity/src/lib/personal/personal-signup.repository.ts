@@ -18,6 +18,14 @@ import { writePersonalAudit, type TenantRiskStateValue } from './personal-risk.s
 export const PERSONAL_SIGNUP_TTL_MS = 24 * 60 * 60 * 1000;
 export const PERSONAL_INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const PERSONAL_UNBOUND_LAPSE_DAYS = 7;
+// PO decision 2026-10-22 — a signup request whose email was never verified is
+// deleted (the row, with its email, phone and address) 3 days after it was created.
+export const PERSONAL_UNVERIFIED_PURGE_DAYS = 3;
+// The never-verified statuses: PENDING (started, email code sent) and REFUSED
+// (refused by the risk rating at start, before any code). Every later status
+// (EMAIL_VERIFIED, PROVISIONING, PROVISIONED, FAILED, LAPSED) is past email
+// verification and keeps its own path.
+export const PERSONAL_UNVERIFIED_STATUSES = ['PENDING', 'REFUSED'] as const;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type PersonalSignupStatus = 'PENDING' | 'EMAIL_VERIFIED' | 'PROVISIONING' | 'PROVISIONED' | 'REFUSED' | 'FAILED' | 'LAPSED';
@@ -485,6 +493,47 @@ export class PersonalSignupRepository {
         updated_at: s.updated_at,
       };
     });
+  }
+
+  // ── unverified purge (PO decision 2026-10-22) ──────────────────────────────
+
+  /**
+   * DELETE every signup request whose email was never verified, created at least
+   * `days` ago, in ONE statement, with one GLOBAL audit event (counts only) in the
+   * same transaction when anything was deleted. Returns the count and the cutoff.
+   *
+   * The predicate is anchored on created_at (the promise is "3 days after you
+   * started"; updated_at would let resends or wrong codes extend it). It cannot
+   * race an in-flight verification: a request is verifiable only before its
+   * expires_at (created_at + 24 h), and the DELETE also requires expires_at <= now
+   * and a never-verified status — a verification that commits first moves the row
+   * to EMAIL_VERIFIED and the DELETE's re-check under READ COMMITTED skips it.
+   * Rows already bound to a tenant, or referenced by a used invite, are never
+   * touched. Idempotent: a re-run deletes nothing more.
+   */
+  async purgeUnverified(now: Date, days = PERSONAL_UNVERIFIED_PURGE_DAYS): Promise<{ deleted: number; cutoff: Date }> {
+    const cutoff = new Date(now.getTime() - days * DAY_MS);
+    const deleted = await this.prisma.$transaction(async (tx) => {
+      const n = await tx.$executeRaw`
+        DELETE FROM "identity"."PersonalSignupRequest" r
+         WHERE r.status IN ('PENDING', 'REFUSED')
+           AND r.email_verified_at IS NULL
+           AND r.tenant_id IS NULL
+           AND r.created_at <= ${cutoff}
+           AND r.expires_at <= ${now}
+           AND NOT EXISTS (SELECT 1 FROM "identity"."PersonalSignupInvite" i WHERE i.used_by_signup_id = r.id)`;
+      if (n > 0) {
+        await writePersonalAudit(tx, {
+          event_type: 'identity.personal.signup.unverified_purged',
+          tenant_id: null,
+          subject_id: uuidv7(),
+          actor_id: null,
+          payload: { deleted: n, cutoff: cutoff.toISOString(), days },
+        });
+      }
+      return n;
+    });
+    return { deleted, cutoff };
   }
 
   // ── unbound lapse (§3.6) ───────────────────────────────────────────────────

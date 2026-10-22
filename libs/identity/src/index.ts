@@ -417,6 +417,8 @@ export {
   PERSONAL_SIGNUP_TTL_MS,
   PERSONAL_INVITE_TTL_MS,
   PERSONAL_UNBOUND_LAPSE_DAYS,
+  PERSONAL_UNVERIFIED_PURGE_DAYS,
+  PERSONAL_UNVERIFIED_STATUSES,
   generatePersonalInviteCode,
   hashPersonalInviteCode,
   initialRiskState,

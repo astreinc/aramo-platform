@@ -258,7 +258,7 @@ limit_req_status 429;
 #                   + /v1/sign/report ("Report this email", the same token)
 #   public entry    /login, /signed-out, /signup + /v1/signup/sign/  (no session)
 #   workspace       everything else + /v1/sign/sender/, /v1/sign/billing/,
-#                   /v1/sign/legal/, /auth/
+#                   /v1/sign/legal/, /v1/sign/account/, /auth/
 #   public pages    /legal/<slug>[/<version>] (published legal texts, in the SPA)
 # Wildcard *.aramo.ai cert covers the host. Only the Sign surfaces are proxied:
 # never apps/api, never the internal envelopes surface; a stray /v1/<other>
@@ -316,6 +316,12 @@ server {
   # Workspace — Personal legal re-acceptance (GET status, POST accept).
   # Authenticated (Aramo SSO `sign` session); small JSON bodies only.
   location /v1/sign/legal/ {
+    client_max_body_size 8k;
+    proxy_pass http://sign-service:3003;
+  }
+  # Workspace — the account surface: GET status, POST close (Personal "Close
+  # account"). Authenticated (Aramo SSO `sign` session); small JSON bodies only.
+  location /v1/sign/account/ {
     client_max_body_size 8k;
     proxy_pass http://sign-service:3003;
   }

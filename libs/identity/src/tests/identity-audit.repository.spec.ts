@@ -86,8 +86,8 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
   // DOC-TEMPLATE-ADMIN-RTR-1 A1 §1: +1 document_template.draft_discarded (43 -> 44).
   // ROLES-1 PR-2 §5.3: +2 ROLES1_RECONCILE_GRANT + ROLES1_RECONCILE_REVOKE (44 -> 46).
   // DOC-TEMPLATE-LIB-1 T-6: +2 GLOBAL document_template.withdrawal_published/_cancelled (46 -> 48).
-  it('EVENT_TYPES contains 68 values (32 + 9 PC-Inc2 tenant-lifecycle + 1 IC-1 cross-tenant refusal + 1 IC-3 PR-7 enable + 1 A1 template draft discard + 2 ROLES-1 reconciliation + 2 T-6 withdrawal + 9 Domain-Enforcement P3 claim/exception/delegation + 11 Sign Personal signup/risk/invite/send-location) and rejects unlisted', async () => {
-    expect(EVENT_TYPES).toHaveLength(68);
+  it('EVENT_TYPES contains 69 values (32 + 9 PC-Inc2 tenant-lifecycle + 1 IC-1 cross-tenant refusal + 1 IC-3 PR-7 enable + 1 A1 template draft discard + 2 ROLES-1 reconciliation + 2 T-6 withdrawal + 9 Domain-Enforcement P3 claim/exception/delegation + 12 Sign Personal signup/risk/invite/send-location/unverified-purge) and rejects unlisted', async () => {
+    expect(EVENT_TYPES).toHaveLength(69);
     expect(TENANT_SCOPED_EVENT_TYPES.has('identity.domain.claim.authoritative')).toBe(true);
     expect(TENANT_SCOPED_EVENT_TYPES.has('ROLES1_RECONCILE_GRANT')).toBe(true);
     expect(TENANT_SCOPED_EVENT_TYPES.has('ROLES1_RECONCILE_REVOKE')).toBe(true);
@@ -100,6 +100,8 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
     // Sign Personal (Free) v1.1 — risk events are tenant-scoped; the pilot invite issue is GLOBAL.
     expect(TENANT_SCOPED_EVENT_TYPES.has('identity.personal.risk.restricted')).toBe(true);
     expect(TENANT_SCOPED_EVENT_TYPES.has('identity.personal.invite.issued')).toBe(false);
+    // The unverified-signup purge is GLOBAL too (no tenant exists for those requests).
+    expect(TENANT_SCOPED_EVENT_TYPES.has('identity.personal.signup.unverified_purged')).toBe(false);
     const create = vi.fn().mockResolvedValue({ id: 'r' });
     const repo = new IdentityAuditRepository(makePrisma(create));
 

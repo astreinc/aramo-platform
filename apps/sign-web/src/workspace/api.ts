@@ -354,6 +354,20 @@ export const legalApi = {
     apiClient.post<{ pending: PendingLegalDocument[] }>('/v1/sign/legal/accept', { accept: docs.map((d) => ({ key: d.key, version: d.version })) }),
 };
 
+// Aramo Sign Personal (Free) — Settings → Close account (/v1/sign/account). `closable`
+// is true only for the owner of an open Personal account (backend-decided).
+export interface AccountStatus {
+  closable: boolean;
+  closed: boolean;
+  closed_at: string | null;
+}
+
+export const accountApi = {
+  status: () => apiClient.get<AccountStatus>('/v1/sign/account/status'),
+  close: (reason?: string) =>
+    apiClient.post<{ state: 'closed'; closed_at: string }>('/v1/sign/account/close', reason !== undefined && reason.trim() !== '' ? { confirm: 'CLOSE', reason: reason.trim() } : { confirm: 'CLOSE' }),
+};
+
 // ROLES-1 PR-3 — the Sign roles (the Sign Owner role is retired; ownership and billing
 // belong to the organization owner, tenant_owner).
 export type SignRoleKey = 'sign_admin' | 'sign_sender' | 'sign_viewer';
@@ -487,11 +501,22 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
     // Aramo Sign Personal (Free) §6 — the Personal sending gate's refusals.
     const personal = personalRefusalMessage(e.details?.['reason']);
     if (personal !== null) return personal;
+    // Personal (Free) — Settings → Close account refusals.
+    const close = closeRefusalMessage(e.details?.['reason']);
+    if (close !== null) return close;
     if (e.status === 403) return 'You don’t have permission to do that.';
     if (e.code === 'ENVELOPE_ILLEGAL_TRANSITION') return 'This envelope can’t be changed in its current state.';
     return e.message.length > 0 ? e.message : fallback;
   }
   return fallback;
+}
+
+function closeRefusalMessage(reason: unknown): string | null {
+  if (reason === 'not_account_owner') return 'Only the account owner can close this account.';
+  if (reason === 'business_account_close_via_organization') return 'An organization account is closed by its organization administrator.';
+  if (reason === 'account_close_confirmation_required') return 'Type CLOSE to confirm closing your account.';
+  if (reason === 'personal_account_not_closable') return 'This account can’t be closed here. Contact Aramo support.';
+  return null;
 }
 
 // Sign Unified Product S-7 — the recipient inbox (/v1/sign/inbox). A recipient

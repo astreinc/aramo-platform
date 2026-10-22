@@ -42,6 +42,7 @@ export default defineConfig({
       '/v1/sign/inbox': { target: 'http://localhost:3003', changeOrigin: false, secure: false },
       '/v1/sign/report': { target: 'http://localhost:3003', changeOrigin: false, secure: false },
       '/v1/sign/legal': { target: 'http://localhost:3003', changeOrigin: false, secure: false },
+      '/v1/sign/account': { target: 'http://localhost:3003', changeOrigin: false, secure: false },
       '/v1/signup/sign': { target: 'http://localhost:3002', changeOrigin: false, secure: false },
     },
   },

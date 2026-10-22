@@ -41,6 +41,7 @@ import {
 } from '@aramo/subscription';
 
 import { PersonalLapseSweeper } from '../app/platform/personal-lapse-sweeper.service.js';
+import { PersonalUnverifiedPurgeSweeper } from '../app/platform/personal-unverified-purge-sweeper.service.js';
 import { PlatformPersonalController } from '../app/platform/platform-personal.controller.js';
 import { PersonalSignupController } from '../app/signup/personal-signup.controller.js';
 import { PERSONAL_LEGAL_KEYS, PersonalSignupService } from '../app/signup/personal-signup.service.js';
@@ -202,6 +203,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
         AddressSuggestService,
         SignupBudget,
         PersonalLapseSweeper,
+        PersonalUnverifiedPurgeSweeper,
         LegalAcceptanceService,
         SubscriptionPrismaService,
         { provide: LEGAL_DOCUMENT_REGISTRY, useValue: registryDocs },
@@ -707,6 +709,34 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
     const r = await start({ ...person(), email: p.email });
     expect(r.status).toBe(202);
     expect(mail.filter((m) => m.to === p.email && /already have/.test(m.subject)).length).toBe(already + 1);
+  });
+
+  // ── unverified purge (PO 2026-10-22) ─────────────────────────────────────────
+
+  it('the purge sweeper deletes a signup whose email was never verified once it is 3 days old; a verified one stays; re-run is a no-op', async () => {
+    const unverified = person();
+    const s = await start(unverified);
+    expect(s.status).toBe(202);
+    const pendingId = s.body.signup_id as string;
+    const verified = await startedAndVerified();
+    const sweeper = module.get(PersonalUnverifiedPurgeSweeper);
+    const DAY = 24 * 3600_000;
+    const created = (await db.personalSignupRequest.findUnique({ where: { id: pendingId } }))!.created_at.getTime();
+    const globalPurges = () => db.identityAuditEvent.count({ where: { tenant_id: null, event_type: 'identity.personal.signup.unverified_purged' } });
+    const before = await globalPurges();
+
+    // Just under 3 days: kept.
+    expect(await sweeper.tick(new Date(created + 3 * DAY - 60_000))).toBeGreaterThanOrEqual(0);
+    expect(await db.personalSignupRequest.findUnique({ where: { id: pendingId } })).not.toBeNull();
+    // Just over 3 days: the row (email, phone, address) is gone; the verified request stays.
+    expect(await sweeper.tick(new Date(created + 3 * DAY + 60_000))).toBeGreaterThanOrEqual(1);
+    expect(await db.personalSignupRequest.findUnique({ where: { id: pendingId } })).toBeNull();
+    expect(await db.personalSignupRequest.count({ where: { email: unverified.email as string } })).toBe(0);
+    expect((await db.personalSignupRequest.findUnique({ where: { id: verified.signup_id } }))?.status).toBe('EMAIL_VERIFIED');
+    expect(await globalPurges()).toBeGreaterThanOrEqual(before + 1);
+    const after = await globalPurges();
+    expect(await sweeper.tick(new Date(created + 3 * DAY + 60_000))).toBe(0);
+    expect(await globalPurges()).toBe(after);
   });
 
   // ── unbound lapse ────────────────────────────────────────────────────────────

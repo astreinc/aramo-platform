@@ -91,6 +91,7 @@
     "apps/sign-service/src/app/inbox/recipient-inbox.controller.ts": "AP",
     "apps/sign-service/src/app/personal/sign-report.controller.ts": "PZ",
     "apps/sign-service/src/app/legal/sign-legal.controller.ts": "AP",
+    "apps/sign-service/src/app/account/sign-account.controller.ts": "AP",
     "apps/platform-admin/src/app/platform/platform.controller.ts": "AP",
     "apps/platform-admin/src/app/platform/platform-sign.controller.ts": "AP",
     "apps/platform-admin/src/app/signup/sign-signup.controller.ts": "PZ",

@@ -316,9 +316,14 @@ export class PersonalRiskService {
     return this.transition(tenant_id, ['restricted', 'review'], 'clear', 'identity.personal.risk.reinstated', 'reinstate', actor_id, reason, now);
   }
 
-  /** Any open state → closed (sending stopped for good; existing envelopes unaffected). */
-  async close(tenant_id: string, actor_id: string, reason: string | null = null, now: Date = new Date()): Promise<TenantRiskStateView> {
-    return this.transition(tenant_id, ['clear', 'review', 'restricted'], 'closed', 'identity.personal.risk.closed', 'close', actor_id, reason, now);
+  /**
+   * Any open state → closed (sending stopped for good; existing envelopes unaffected).
+   * The ONE close path: the operator (platform-admin) and the account owner (Sign
+   * settings → Close account, sign-service) both call it; `evidence` lands in the
+   * audit payload (e.g. { closed_by: 'owner' }).
+   */
+  async close(tenant_id: string, actor_id: string, reason: string | null = null, now: Date = new Date(), evidence: Record<string, unknown> = {}): Promise<TenantRiskStateView> {
+    return this.transition(tenant_id, ['clear', 'review', 'restricted'], 'closed', 'identity.personal.risk.closed', 'close', actor_id, reason, now, evidence);
   }
 
   /**
@@ -400,6 +405,7 @@ export class PersonalRiskService {
     actor_id: string,
     reason: string | null,
     now: Date,
+    evidence: Record<string, unknown> = {},
   ): Promise<TenantRiskStateView> {
     return this.prisma.$transaction(async (tx) => {
       const cur = await tx.tenantRiskState.findUnique({ where: { tenant_id } });
@@ -415,7 +421,7 @@ export class PersonalRiskService {
         tenant_id,
         subject_id: tenant_id,
         actor_id,
-        payload: { from: cur.state, to, reason },
+        payload: { ...evidence, from: cur.state, to, reason },
       });
       return toView(row);
     });

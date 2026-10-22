@@ -1008,6 +1008,8 @@
       "PERSONAL_SIGNUP_TTL_MS",
       "PERSONAL_TENANT_CAPABILITIES",
       "PERSONAL_UNBOUND_LAPSE_DAYS",
+      "PERSONAL_UNVERIFIED_PURGE_DAYS",
+      "PERSONAL_UNVERIFIED_STATUSES",
       "PLATFORM_ROLE_KEYS",
       "PLATFORM_SCOPE_PREFIX",
       "PRODUCT_KEYS",
@@ -6234,6 +6236,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-account.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-api.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -8202,6 +8210,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/AccountClose.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/Billing.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
@@ -8521,6 +8535,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/personal-unverified-purge-sweeper.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/platform-sign.controller.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -8590,6 +8610,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/recipient-inbox.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-account.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-account.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

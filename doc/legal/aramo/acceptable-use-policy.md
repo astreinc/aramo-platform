@@ -6,7 +6,7 @@
 | Version | 1.0 |
 | Applies to | **Every Aramo service**: Aramo Sign (personal and business), Aramo ATS, App Home and the Aramo platform APIs, for every user, organization and integration |
 | Incorporated by | **Intended** to be incorporated into the Aramo Sign Personal Terms, the Aramo Sign Business Terms and the Aramo platform agreements. |
-| Operator | **Astre Consulting Services Inc** (Aramo is its platform); [registered address] |
+| Operator | **Astre Consulting Services Inc**, a Virginia corporation, registered address 2909 Gettysburg Sq, Vienna, VA 22181, USA. Aramo is a platform from Astre |
 | Effective date | The date of publication of this version |
 
 ## 1. Why this policy exists
@@ -129,11 +129,12 @@ The Privacy Notice describes the data involved.
 
 7.3 **Proportionate and reviewable.** We use the least restrictive response that addresses the risk.
 
-- **Automated measures** (for example a temporary sending pause) are **temporary**: they lapse unless
-  a person confirms them.
+- **Automated restrictions from abuse reports** (for example a temporary sending pause) are
+  **temporary**: they lapse unless a person confirms them. Accounts held for review at signup wait
+  for a person's decision.
 - **Lasting actions** (suspension, closure, content removal) are decided by a person.
 - Where reasonable and lawful, **we explain the reason**.
-- **Anyone affected can ask for a human review**, and give their side, at [support@aramo.ai], or in
+- **Anyone affected can ask for a human review**, and give their side, at support@aramo.ai, or in
   India through the Grievance Officer.
 - **Every decision and reinstatement is recorded.**
 - We may act immediately when needed to prevent serious harm, and explain afterwards.
@@ -160,9 +161,10 @@ a legitimate sender, is itself misuse of the services. Reports we find to be fal
 in future. We may act against accounts that make them.
 
 8.3 **Other channels.**
-- Abuse: [abuse@aramo.ai]
-- India Grievance Officer: [name, grievance@aramo.ai]
-- Copyright notices: [copyright@aramo.ai]
+- Abuse: support@aramo.ai
+- India Grievance Officer: Purush Pichaimuthu, grievance@aramo.ai, 5/180 Skylab Avenue, Chennai
+  600126, Tamil Nadu, India
+- Copyright notices: support@aramo.ai
 
 We do not reveal the reporter's identity to the reported user unless the law requires it.
 
@@ -171,7 +173,7 @@ and contact the supposed sender through a channel you already trust.
 
 ## 9. Responsible disclosure
 
-Security researchers may report vulnerabilities to [security@aramo.ai]. Please give us reasonable
+Security researchers may report vulnerabilities to support@aramo.ai. Please give us reasonable
 time to fix the issue before disclosure, and do not access, change or delete other users' data.
 
 ## 10. Changes

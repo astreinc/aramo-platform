@@ -8,6 +8,7 @@ import { useWorkspace } from '../workspace';
 
 import { BillingPanel } from './Billing';
 import { DomainCard } from './DomainCard';
+import { CloseAccountSection } from './AccountClose';
 
 // Sign Settings (change log §B): Personal (Shared · read-only vs Sign-only),
 // Branding, Signing security, Integrations, Envelope audit, and the two links out
@@ -144,6 +145,8 @@ function PersonalSection() {
           <LinkBtn onClick={() => void logout()}>Sign out</LinkBtn>
         </div>
       </section>
+      {/* Personal (Free) — the owner of an open Personal account may close it (backend-decided). */}
+      {ctx.workspace === 'personal' ? <CloseAccountSection /> : null}
     </>
   );
 }

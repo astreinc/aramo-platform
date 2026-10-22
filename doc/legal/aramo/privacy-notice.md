@@ -5,7 +5,7 @@
 | Document key | `aramo.privacy_notice` (the personal signup records acceptance of this version) |
 | Version | 1.0 |
 | Covers | The aramo.ai website; Aramo App Home; Aramo Sign (personal and business accounts, and **signers**); Aramo ATS; Aramo platform APIs |
-| Operator | **Astre Consulting Services Inc** [registered address]. Aramo is a platform of Astre Consulting Services Inc. ("Aramo", "we") |
+| Operator | **Astre Consulting Services Inc**, a Virginia corporation, registered address 2909 Gettysburg Sq, Vienna, VA 22181, USA. Aramo is a platform from Astre ("Aramo", "we") |
 | Effective date | The date of publication of this version |
 ---
 
@@ -63,7 +63,7 @@ receive.
 | Usage and logs | Pages and actions, timestamps, errors | Operating and improving the service; security |
 | Signing evidence (audit trail) | For each signer: when the request was sent, opened, viewed, signed or declined; the email address used; IP address and device information at each step; the document's digital fingerprint (hash) | Creating the completion certificate; proving what happened |
 | Abuse-prevention signals | Robot-check result; whether the network is a known hosting, VPN or anonymizing network; signup and sending patterns; matches with scam or brand-impersonation wording; link checks; recipient reports | Protecting signers and the service (§5) |
-| Cookies and similar | Strictly necessary session and security cookies; the robot-check (Cloudflare Turnstile) | Sign-in, security. **[Analytics cookies only with consent where required.]** See §12. |
+| Cookies and similar | Only first-party cookies needed to run the service; the signup page's robot check (Cloudflare Turnstile) | Sign-in, security, preferences. No advertising, analytics or third-party tracking cookies. See §12. |
 
 ### 3.3 From others
 
@@ -115,7 +115,7 @@ train AI models.
 - refuse a signup that shows clear signs of abuse.
 
 5.3 **Your rights over these decisions.** We keep the signals and the reason for each decision. You
-can ask for a **human review**, give your view and contest the decision at [support@aramo.ai], or
+can ask for a **human review**, give your view and contest the decision at support@aramo.ai, or
 raise it with our Grievance Officer (India). We do not use these checks to make decisions about anyone's credit,
 employment, housing or insurance.
 
@@ -127,7 +127,7 @@ employment, housing or insurance.
   Message and data rates may apply. Reply **STOP** to opt out of non-essential messages and **HELP**
   for help. If you opt out, we may be unable to verify your account when verification is required.
 - **No sharing.** We do not sell or share your phone number for anyone's marketing. The SMS provider
-  ([SMS provider — not yet selected]) uses it only to deliver codes and prevent fraud on our behalf.
+  (SMS provider — not yet selected) uses it only to deliver codes and prevent fraud on our behalf.
 
 ## 7. Who we share information with
 
@@ -138,13 +138,13 @@ cross-context behavioral advertising.
 |---|---|
 | **Signers and senders** | Signers see the sender's name and email and the document. Senders see signers' signing status and the completion certificate, including signers' audit-trail information. |
 | **Your organization** (business users) | Administrators can see users, roles and activity in their organization |
-| **Service providers (subprocessors)** acting on our instructions | Hosting and storage (Amazon Web Services); email delivery (Amazon SES); text messages ([SMS provider — not yet selected]); robot check (Cloudflare Turnstile); payments (Stripe, business); address suggestions (Geoapify, business signup); sign-in (Google, Microsoft); [AI providers chosen by an organization for its ATS features]. **[Published list at aramo.ai/legal/subprocessors, with notice of changes.]** |
+| **Service providers (subprocessors)** acting on our instructions | Hosting and storage (Amazon Web Services); email delivery (Amazon SES); text messages (SMS provider — not yet selected); robot check (Cloudflare Turnstile); payments (Stripe, business); address suggestions (Geoapify, business signup); sign-in (Google, Microsoft). **The list for Aramo Sign Personal accounts is published at https://sign.aramo.ai/legal/subprocessors, with notice of changes.** |
 | **Legal and safety** | To comply with law, valid legal requests or court orders; to protect the rights, property or safety of users, signers, the public or Aramo; to investigate fraud or abuse. Where a scam targets a particular company, we may share details with that company or the relevant authority. |
 | **Business transfers** | In a merger, acquisition or sale of assets, subject to this notice |
 
 ## 8. Where information is stored
 
-- **US hosting.** Aramo's systems are hosted in the **United States** ([AWS us-east-1]).
+- **US hosting.** Aramo's systems are hosted in the **United States** (Amazon Web Services, us-east-1 region).
 - **India.** If you are in India, your personal data is transferred to and processed in the United
   States. The DPDP Act permits this unless the Government of India restricts transfers to a
   country. The same protections in this notice apply.
@@ -153,16 +153,14 @@ cross-context behavioral advertising.
 
 | Information | Kept for | Why (US / India) |
 |---|---|---|
-| Account and profile | While the account is open, plus **[90] days** after closing (download window), then erased | DPDP: erase once the purpose is served or consent is withdrawn |
-| Documents you uploaded (not completed) | While the account is open, plus [90] days; erased from backups within **35 days** after that | Same |
-| **Completed documents and signing evidence** (certificate, audit trail) | **[proposed: 10 years]** after completion, with integrity preserved through account closure, or as the sender's organization sets where permitted | US written-contract limitation periods are up to 10 years in many states. In India, Limitation Act periods (3 years for most contracts, longer for some property claims) plus the evidentiary value of electronic records |
-| Abuse, fraud and security records (signals, reports, decisions) | **[2] years** after the last event; longer during an investigation or legal claim | Fraud prevention; legal claims |
-| **System and security logs** | **[proposed: at least 180 days, up to 1 year]** | — |
+| Unverified signup requests (email never verified) | **3 days**, then deleted | Minimisation |
+| **Account data, documents, signed records and audit trails** | While the account is open; deleted within **30 days** after the account is closed (Personal accounts) or **90 days** (Business accounts); removed from backups within a further **90 days** | DPDP: erase once the purpose is served or consent is withdrawn |
+| **Security and access logs** | **180 days** | Security |
+| Legal-acceptance records (which terms were accepted, when, from where) | **6 years** after the account closes | Proof of consent (DPDP); limitation periods |
+| Abuse reports and review decisions | **2 years** | Fraud prevention; legal claims |
 | Verification codes | Hashed; deleted after expiry (minutes). The result is kept with the account | Data minimisation |
-| Billing and tax records (business) | **[8] years** | US: IRS, generally up to 7 years. India: GST records generally 72 months after the annual return (applies only if we bill in India) |
-| Unverified signup requests | 24 hours after expiry, then deleted | Minimisation |
-| Inactive free accounts | Closed after **[12] months** of inactivity, with notice where practical | — |
-| Consent and acceptance records | As long as the account exists, plus **[3] years** | Proof of consent (DPDP); limitation periods |
+| Billing and tax records (business) | **8 years** | US: IRS, generally up to 7 years. India: GST records generally 72 months after the annual return (applies only if we bill in India) |
+| Inactive free accounts | No fixed period. We may close or suspend inactive free accounts, with notice to the account email where practical. Once an account is closed, the periods above apply | — |
 
 See also the Aramo Sign Retention, Export and Deletion Policy.
 
@@ -177,7 +175,7 @@ You can:
 - **delete** your account;
 - **opt out** of optional emails.
 
-Use the account settings or email [privacy@aramo.ai]. We answer within **30 days** (45 days where
+Use the account settings or email privacy@aramo.ai. We answer within **30 days** (45 days where
 US state law allows, with notice of an extension).
 
 ### 10.2 India (Digital Personal Data Protection Act, 2023)
@@ -191,8 +189,7 @@ US state law allows, with notice of an extension).
 - **nominate** a person to exercise your rights if you die or become incapacitated.
 
 **How we respond:**
-- Contact our **Grievance Officer** (§17). We respond within **[the period in the DPDP Rules;
-  target 30 days]**.
+- Contact our **Grievance Officer** (§17). We respond within **30 days**.
 - If you are not satisfied, you may complain to the **Data Protection Board of India**.
 - If you withdraw consent, we stop processing, except where the law requires us to keep data
   (§9). Withdrawal may mean you can no longer use the service.
@@ -228,7 +225,7 @@ The sources, purposes and recipients are those in §§3, 4 and 7.
 - **Global Privacy Control:** we treat a GPC signal as an opt-out of sale or sharing. We do not sell
   or share, so it changes nothing in practice.
 - **Authorized agents:** you may use one with written authorization, and we may verify your identity.
-- **Appeals:** if we decline your request, you can appeal at [privacy@aramo.ai]. If you are not
+- **Appeals:** if we decline your request, you can appeal at privacy@aramo.ai. If you are not
   satisfied, you can contact your state Attorney General.
 - **No discrimination:** we will not treat you differently for exercising your rights.
 
@@ -249,16 +246,17 @@ the other parties.
   document and certificate. Because those records prove what was agreed, **we cannot delete a
   completed document or its evidence at a signer's request alone** while it is within its retention
   period. You may still ask for access and correction.
-- **Suspicious request?** Use "Report this email" in the message, or contact [abuse@aramo.ai].
-- **Your rights.** You may contact the sender directly, or us at [privacy@aramo.ai].
+- **Suspicious request?** Use "Report this email" in the message, or contact support@aramo.ai.
+- **Your rights.** You may contact the sender directly, or us at privacy@aramo.ai.
 
 ## 12. Cookies
 
-- **Strictly necessary** cookies keep you signed in, protect forms and run the robot check. They are
-  always on.
-- **[Analytics or other non-essential cookies]**, if we use them, are set only with your consent
-  where the law requires. You can change your choice at any time.
-- We do not use advertising cookies.
+- Aramo Sign uses **only first-party cookies needed to run the service**: to keep you signed in, to
+  keep the service and your account secure, and to remember your preferences. They are always on.
+- We do **not** use advertising or analytics cookies, and we do **not** use third-party tracking
+  cookies.
+- The robot check on the signup page is provided by **Cloudflare** (Turnstile) to protect the
+  service.
 
 ## 13. Security
 
@@ -278,7 +276,7 @@ the law requires.
 Aramo is not intended for anyone under **18**. Under India's DPDP Act a "child" is anyone under 18,
 and we do not seek verifiable parental consent. We therefore do not knowingly allow anyone under 18
 to create an account, and do not knowingly collect children's data. If you believe a child has given us information, contact
-[privacy@aramo.ai] and we will delete it.
+privacy@aramo.ai and we will delete it.
 
 ## 15. Google user data
 
@@ -289,11 +287,13 @@ scopes needed to sign you in.
 ## 16. Changes to this notice
 
 We will post updates here and change the effective date. For material changes we will notify account
-holders by email or in the service at least **[30] days** before they take effect, unless a change is
+holders by email or in the service at least **30 days** before they take effect, unless a change is
 required sooner by law.
 
 ## 17. Contact
 
-- Privacy requests: [privacy@aramo.ai]
-- **Grievance Officer (India):** [Name], [grievance@aramo.ai], [address]. Acknowledges within 24 hours.
-- Postal: Astre Consulting Services Inc, [registered address]
+- Privacy requests: privacy@aramo.ai
+- General support: support@aramo.ai
+- **Grievance Officer (India):** Purush Pichaimuthu, grievance@aramo.ai, 5/180 Skylab Avenue, Chennai
+  600126, Tamil Nadu, India. Acknowledges within 24 hours.
+- Postal: Astre Consulting Services Inc, 2909 Gettysburg Sq, Vienna, VA 22181, USA

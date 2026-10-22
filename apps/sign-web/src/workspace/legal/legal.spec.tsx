@@ -8,7 +8,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from '../App';
 
-import { LEGAL_CATALOG, MAXMIND_ATTRIBUTION, PUBLIC_SIGN_ORIGIN, footerLegalLinks, legalPath } from './catalog';
+import { LEGAL_CATALOG, MAXMIND_ATTRIBUTION, PUBLIC_SIGN_ORIGIN, SUBPROCESSORS, footerLegalLinks, legalPath } from './catalog';
 import { LegalAcceptanceGate } from './LegalAcceptance';
 import { Markdown, parseMarkdown } from './markdown';
 import { LEGAL_TEXTS } from './texts';
@@ -115,6 +115,23 @@ describe('/legal pages (public)', () => {
     at('/legal/third-party-notices');
     expect(await screen.findByTestId('maxmind-attribution')).toHaveTextContent(MAXMIND_ATTRIBUTION);
     expect(screen.getByRole('link', { name: 'https://www.maxmind.com' })).toHaveAttribute('href', 'https://www.maxmind.com');
+  });
+
+  it('/legal/subprocessors lists the Personal subprocessors with a last-updated date, and the Privacy Notice links to it', async () => {
+    at('/legal/subprocessors');
+    const page = await screen.findByTestId('legal-subprocessors');
+    expect(screen.getByTestId('subprocessors-updated')).toHaveTextContent('Last updated 2026-10-22');
+    const rows = within(screen.getByTestId('subprocessors-table')).getAllByRole('row').slice(1);
+    expect(rows.map((r) => within(r).getAllByRole('cell')[0]!.textContent)).toEqual(['Amazon Web Services', 'Cloudflare', 'Google', 'Text-message (SMS) provider']);
+    expect(rows).toHaveLength(SUBPROCESSORS.length);
+    expect(page).toHaveTextContent('no phone numbers are shared until one is');
+    expect(within(page).getByRole('link', { name: 'Subprocessors' })).toHaveAttribute('href', '/legal/subprocessors');
+    expect(LEGAL_TEXTS['privacy@1.0']!.text).toContain('https://sign.aramo.ai/legal/subprocessors');
+  });
+
+  it('/legal/subprocessors/<version> is not found (the list is not a versioned registry text)', async () => {
+    at('/legal/subprocessors/1.0');
+    expect(await screen.findByTestId('legal-not-found')).toBeInTheDocument();
   });
 });
 

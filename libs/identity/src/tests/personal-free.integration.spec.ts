@@ -89,6 +89,29 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign Personal (Fr
     });
   }
 
+  async function signupInput(now: Date) {
+    n += 1;
+    const email = `person${n}@gmail.com`;
+    return {
+      email,
+      canonical_email: email,
+      display_name: `Person ${n}`,
+      phone_e164: `+1202555${String(1000 + n).slice(-4)}`,
+      declared_residence: 'US',
+      ip: '203.0.113.7',
+      ip_country: 'US',
+      phone_region: 'US',
+      network_kind: 'residential',
+      geo_evidence: GEO,
+      risk_points: 0,
+      risk_signals: [],
+      decision: 'allow' as const,
+      invite_id: null,
+      status: 'PENDING' as const,
+      now,
+    };
+  }
+
   it('the migration created the three tables with their CHECKs', async () => {
     const t = await personalTenant();
     await expect(prisma.tenantRiskState.create({ data: { tenant_id: t, state: 'nonsense' } })).rejects.toThrow();
@@ -314,6 +337,50 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign Personal (Fr
       expect((await prisma.tenant.findUnique({ where: { id: kept.t } }))?.is_active).toBe(true);
       expect((await signups.findById(kept.row.id))?.status).toBe('PROVISIONED');
     }
+  });
+
+  it('unverified purge: PENDING / REFUSED requests older than 3 days are deleted in one statement (audited, counts only); verified rows, younger rows and still-verifiable rows are kept; idempotent', async () => {
+    // A clock long before every other row in this database keeps the counts exact.
+    const now = new Date('2020-01-10T12:00:00.000Z');
+    const cutoff = new Date(now.getTime() - 3 * DAY);
+    const MIN = 60_000;
+    const over = new Date(cutoff.getTime() - MIN);
+    const under = new Date(cutoff.getTime() + MIN);
+    const pendingOver = await signupRow({ now: over });
+    const pendingAtCutoff = await signupRow({ now: cutoff });
+    const pendingUnder = await signupRow({ now: under });
+    const refusedOver = await signups.create({ ...(await signupInput(over)), status: 'REFUSED', decision: 'refuse' });
+    const verifiedOver = await signupRow({ now: over });
+    await signups.markEmailVerified(verifiedOver.id, over);
+    const failedOver = await signupRow({ now: over });
+    await signups.markEmailVerified(failedOver.id, over);
+    await signups.claimForProvisioning(failedOver.id, { documents: [], ip: null, at: over });
+    await signups.markFailed(failedOver.id, 'provisioning_failed', over);
+    // Still verifiable (its code window has not passed): never deleted mid-verification.
+    const inFlight = await signupRow({ now: over });
+    await prisma.personalSignupRequest.update({ where: { id: inFlight.id }, data: { expires_at: new Date(now.getTime() + MIN) } });
+
+    const before = await prisma.identityAuditEvent.count({ where: { tenant_id: null, event_type: 'identity.personal.signup.unverified_purged' } });
+    expect(await signups.purgeUnverified(now)).toEqual({ deleted: 3, cutoff });
+    for (const gone of [pendingOver, pendingAtCutoff, refusedOver]) expect(await signups.findById(gone.id)).toBeNull();
+    for (const kept of [pendingUnder, verifiedOver, failedOver, inFlight]) expect(await signups.findById(kept.id)).not.toBeNull();
+    expect((await signups.findById(verifiedOver.id))?.status).toBe('EMAIL_VERIFIED');
+    expect((await signups.findById(failedOver.id))?.status).toBe('FAILED');
+
+    const ev = await prisma.identityAuditEvent.findMany({ where: { tenant_id: null, event_type: 'identity.personal.signup.unverified_purged' }, orderBy: { created_at: 'desc' } });
+    expect(ev).toHaveLength(before + 1);
+    expect(ev[0]).toMatchObject({ actor_id: null, actor_type: 'system', event_payload: { deleted: 3, cutoff: cutoff.toISOString(), days: 3 } });
+    // Counts only: no email, phone or address in the audit payload.
+    expect(JSON.stringify(ev[0]!.event_payload)).not.toMatch(/@|\+1202|203\.0\.113/);
+
+    // Idempotent: a re-run deletes nothing and writes no audit event.
+    expect(await signups.purgeUnverified(now)).toEqual({ deleted: 0, cutoff });
+    expect(await prisma.identityAuditEvent.count({ where: { tenant_id: null, event_type: 'identity.personal.signup.unverified_purged' } })).toBe(before + 1);
+    // Two minutes later the row just under the boundary and the (now expired) in-flight row go too.
+    expect((await signups.purgeUnverified(new Date(now.getTime() + 2 * MIN))).deleted).toBe(2);
+    expect(await signups.findById(pendingUnder.id)).toBeNull();
+    expect(await signups.findById(inFlight.id)).toBeNull();
+    expect((await signups.findById(verifiedOver.id))?.status).toBe('EMAIL_VERIFIED');
   });
 
   it('Google pre-pin: the enforced cohort is pinned to google before any sign-in', async () => {

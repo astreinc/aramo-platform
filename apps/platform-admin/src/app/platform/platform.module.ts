@@ -15,6 +15,7 @@ import { SubscriptionModule } from '@aramo/subscription';
 import { CognitoAdminService } from './cognito/cognito-admin.service.js';
 import { DomainClaimSweeper } from './domain-claim-sweeper.service.js';
 import { PersonalLapseSweeper } from './personal-lapse-sweeper.service.js';
+import { PersonalUnverifiedPurgeSweeper } from './personal-unverified-purge-sweeper.service.js';
 import { PlatformPersonalController } from './platform-personal.controller.js';
 import { PlatformController } from './platform.controller.js';
 import { PlatformSignController } from './platform-sign.controller.js';
@@ -77,6 +78,9 @@ import { TenantPolicyProvisioningService } from './tenant-policy-provisioning.se
     DomainClaimSweeper,
     // Sign Personal (Free) Launch v1.1 — opt-in unbound lapse (SIGN_PERSONAL_LAPSE_SWEEP_ENABLED=1).
     PersonalLapseSweeper,
+    // PO 2026-10-22 — unverified Personal signup requests deleted after 3 days
+    // (ON by default; SIGN_PERSONAL_UNVERIFIED_PURGE_ENABLED=0 switches it off).
+    PersonalUnverifiedPurgeSweeper,
     // DOC-TEMPLATE-LIB-1 T-3 (§5.3) — the RTR-TEMPLATE-1 provisioning-time RTR template
     // COPY is retired: a new tenant gets no RTR template row and resolves to the Aramo
     // (PLATFORM) RTR default. platform-admin no longer touches the documents store.

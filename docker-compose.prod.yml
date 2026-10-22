@@ -561,6 +561,9 @@ services:
       - SIGN_TURNSTILE_SECRET
       - SIGN_PERSONAL_LAPSE_SWEEP_ENABLED
       - SIGN_PERSONAL_LAPSE_SWEEP_INTERVAL_MS
+      # Unverified signup requests deleted after 3 days — ON unless set to 0.
+      - SIGN_PERSONAL_UNVERIFIED_PURGE_ENABLED
+      - SIGN_PERSONAL_UNVERIFIED_PURGE_INTERVAL_MS
     # Sign Personal (Free) — offline MaxMind GeoLite2 databases, read-only (written by
     # deploy/geoip/docker-compose.geoip.yml; a replaced file is picked up without a restart). A
     # missing directory / file ⇒ network country UNKNOWN ⇒ a risk signal, not a refusal.

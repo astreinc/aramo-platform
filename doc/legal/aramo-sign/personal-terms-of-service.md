@@ -6,9 +6,9 @@
 | Version | 1.0 |
 | Applies to | Personal (individual) Aramo Sign accounts, including the Free Personal plan |
 | Related | Aramo Privacy Notice (`aramo.privacy_notice`) · Aramo Acceptable Use Policy (`aramo.acceptable_use_policy`) · Electronic Signature Consent Disclosure for signers (`sign.esign_consent_disclosure`) |
-| Operator | **Astre Consulting Services Inc** [state of incorporation and registered address to be confirmed]. Aramo is a platform of Astre Consulting Services Inc. ("Aramo", "we", "us") |
+| Operator | **Astre Consulting Services Inc**, a Virginia corporation, registered address 2909 Gettysburg Sq, Vienna, VA 22181, USA. Aramo is a platform from Astre ("Aramo", "we", "us") |
 | Effective date | The date of publication of this version |
-| Governing law | [To be approved — §19] |
+| Governing law | US residents: Virginia law; courts in Fairfax County, Virginia. India residents: the laws of India; courts at Chennai, Tamil Nadu (§19) |
 ---
 
 ## 1. About these Terms
@@ -67,7 +67,7 @@ We may also hold an account for manual review before it can send.
 create or store a password for you. You are responsible for keeping your sign-in provider account
 secure.
 
-3.4 **Tell us about misuse.** Tell us promptly at [security@aramo.ai] if you think someone else has
+3.4 **Tell us about misuse.** Tell us promptly at support@aramo.ai if you think someone else has
 used your account.
 
 3.5 **Your responsibility.** You are responsible for activity on your account, except activity caused
@@ -202,7 +202,7 @@ and when you send. They look at things like:
 The Privacy Notice explains these checks.
 
 8.2 **Human review.** If an automated check holds, limits or pauses your account, a person at Aramo
-can review it. You can ask for a review, and explain your situation, at [support@aramo.ai].
+can review it. You can ask for a review, and explain your situation, at support@aramo.ai.
 **India:** you may also raise it with our Grievance Officer (§21).
 
 8.3 **What we may do.** If we reasonably believe that you, or activity on your account, breaks these
@@ -227,7 +227,7 @@ requires it, or where they are evidence of fraud being investigated.
 believes a request is suspicious can report it to us. Reports go to our team for review. A report
 may automatically pause sending from the account while we look into it.
 
-9.2 You can also report abuse, security issues or infringing content to [abuse@aramo.ai].
+9.2 You can also report abuse, security issues or infringing content to support@aramo.ai.
 
 9.3 **India — grievances.**
 - Complaints about content, abuse or the Service can be sent to our **Grievance Officer** (§21).
@@ -260,11 +260,13 @@ use the Service under these Terms.
 certificates.
 
 12.2 **When you close your account, or we close it:**
-- you will have **[90] days** to download your documents, unless the law or §8.4 prevents it;
-- after that we delete Your Content within **[the period in the Retention Policy]**;
-- we may keep limited records we must keep by law, or need for security, fraud prevention, disputes
-  or to show what happened in a signing (for example the completion certificate and audit events).
-  Those records are kept only as long as needed (see the Privacy Notice).
+- download any documents you want to keep before you close your account. If we close it, we will
+  give you a chance to download them where practical, unless the law or §8.4 prevents it;
+- we delete Your Content, including signed records and audit trails, within **30 days** after the
+  account is closed, and remove it from backups within a further **90 days**;
+- we may keep limited records we must keep by law, or need for security, fraud prevention or
+  disputes (for example security logs, abuse reports and records of the terms you accepted). Those
+  records are kept only for the periods in the Privacy Notice.
 
 12.3 **Signers keep their copies.** Signers who received a completed copy keep it. Deleting your
 account does not reach into their mailboxes.
@@ -285,8 +287,10 @@ responsible for the providers we choose to run the Service.
 features. If a change materially reduces what you can do on your plan, §4.2 applies.
 
 14.2 **These Terms.** We may update these Terms:
-- we will give you at least **[30] days'** notice of material changes by email or in the Service,
-  unless a change is required sooner by law or to address abuse or security;
+- changes to the free plan, or to any free feature or limit, may be made at any time without notice
+  (§4.2);
+- for other material changes to these Terms, we will give you at least **30 days'** notice by email
+  or in the Service, unless a change is required sooner by law or to address abuse or security;
 - if you do not agree, you may close your account before the change takes effect. Otherwise the
   updated Terms apply from their effective date.
 
@@ -310,7 +314,7 @@ Consumer Protection Act, 2019, or US state consumer-protection laws.
   lost profits, revenue, data or goodwill;
 - Aramo's total liability for all claims relating to the Service is limited to the greater of
   **(a) the amount you paid us for the Service in the 12 months before the claim**, and
-  **(b) [US $100 for US residents / ₹8,000 for India residents]**.
+  **(b) US $50 for US residents / ₹4,000 for India residents**.
 
 16.2 **What is never limited.** These limits do not apply to liability that cannot be limited by law,
 including:
@@ -338,38 +342,29 @@ contacting us. Pending signature requests will be voided.
 
 18.2 **Closing by us.** We may close a free account:
 - under §8;
-- after **[12] months** of inactivity, with at least **[30] days'** notice;
 - if we discontinue the free plan under §4.2.
+
+We may close or suspend inactive free accounts, with notice to the account email where practical.
 
 18.3 **What survives.** Sections that by their nature should continue survive closing, including §§6,
 11, 12, 15, 16, 19 and 20.
 
 ## 19. Disputes
 
-19.1 **Talk to us first.** Most concerns can be solved quickly. Please contact [support@aramo.ai]
+19.1 **Talk to us first.** Most concerns can be solved quickly. Please contact support@aramo.ai
 first. We will try to resolve the issue informally within **60 days**.
 
 19.2 **Governing law.**
-- **US users:** these Terms are governed by the laws of **[the State of ___]** and applicable US
+- **US users:** these Terms are governed by the laws of the **Commonwealth of Virginia** and applicable US
   federal law, without regard to conflict-of-laws rules.
 - **India residents:** these Terms are governed by the laws of India. You keep your rights under the
   Consumer Protection Act, 2019, including the right to file a complaint with the Consumer Disputes
   Redressal Commission that has jurisdiction where you live. Other disputes are subject to the courts
-  at **[city, India]**.
+  at **Chennai, Tamil Nadu**.
 
-19.3 **[Option A — US arbitration; US residents only]:**
-- **Arbitration.** If you live in the US, any dispute that is not resolved informally will be
-  resolved by binding individual arbitration administered by **[AAA under its Consumer Arbitration
-  Rules]**. Aramo will pay the filing and arbitrator fees beyond the amount of a court filing fee.
-- **Exceptions.** Either party may bring an individual claim in small-claims court, and may seek
-  injunctive relief for misuse of intellectual property.
-- **No class actions.** Claims may be brought only individually, not in a class or representative
-  action.
-- **Opting out.** You may opt out of arbitration within **30 days** of first accepting these Terms, by
-  emailing [legal@aramo.ai] with your name and account email.
-
-19.4 **[Option B — courts]:** disputes will be resolved in the state or federal courts located in
-**[county, state]**, subject to §19.2 for consumers outside the US.
+19.3 **Courts.** Disputes that are not resolved informally are subject to the exclusive
+jurisdiction of the state and federal courts located in **Fairfax County, Virginia**, subject to
+§19.2 for consumers outside the US.
 
 ## 20. General
 
@@ -384,7 +379,8 @@ of a merger, acquisition or sale of assets, with notice to you, provided your ri
 If we do not enforce a right, that is not a waiver.
 
 20.4 **Notices.** We send notices to your account email or show them in the Service. You can reach
-us at [legal@aramo.ai] or [postal address].
+us at support@aramo.ai or by post at Astre Consulting Services Inc, 2909 Gettysburg Sq, Vienna,
+VA 22181, USA.
 
 20.5 **Language.** If we provide a translation, the English version controls to the extent the law
 allows.
@@ -394,10 +390,8 @@ reasonably beyond our control.
 
 ## 21. Contact
 
-- General support: [support@aramo.ai]
-- Abuse and suspicious requests: [abuse@aramo.ai]
-- Security: [security@aramo.ai]
-- Legal and privacy: [legal@aramo.ai] / [privacy@aramo.ai]
-- Postal: Astre Consulting Services Inc, [registered address]
-- **Grievance Officer (India):** [Name], [email: grievance@aramo.ai], [address in India, if
-  required]. Acknowledges within 24 hours; resolves within 15 days.
+- General support, abuse and suspicious requests, and security: support@aramo.ai
+- Privacy: privacy@aramo.ai
+- Postal: Astre Consulting Services Inc, 2909 Gettysburg Sq, Vienna, VA 22181, USA
+- **Grievance Officer (India):** Purush Pichaimuthu, grievance@aramo.ai, 5/180 Skylab Avenue,
+  Chennai 600126, Tamil Nadu, India. Acknowledges within 24 hours; resolves within 15 days.
