@@ -35,6 +35,7 @@ import {
   activityIcon,
   attentionDot,
   clockTime,
+  contactDetailsEvidence,
   dueLabel,
   labelize,
   monthYear,
@@ -246,7 +247,7 @@ export function OverviewSection({ model, talentId, firstName, go, onAttention, t
                 <span className="t360-min0">
                   <OppState o={o} attention={attention} withBar={false} />
                 </span>
-                <span className="t360-owner">{o.owner_label ?? ''}</span>
+                <span className="t360-owner" title={o.owner_label ?? undefined}>{o.owner_label ?? ''}</span>
                 <span className="t360-chev">
                   <Glyph d={ICON.chevron} width={2} />
                 </span>
@@ -475,7 +476,7 @@ export function OpportunitiesSection({
               <OppState o={o} attention={model.attention} withBar />
             </span>
             <span className="t360-arow__end">
-              <span className="t360-owner">{o.owner_label ?? ''}</span>
+              <span className="t360-owner" title={o.owner_label ?? undefined}>{o.owner_label ?? ''}</span>
               {o.next_action !== null ? (
                 // The owning domain's next action — performed on that opportunity's page.
                 <Link
@@ -820,8 +821,8 @@ export function TrustSection({
   if (id !== null) {
     const both = id.primary_email_confirmed && id.mobile_confirmed;
     claims.push({
-      claim: 'Identity · email and mobile',
-      evidence: both ? 'Email control confirmed · mobile confirmed' : id.primary_email_confirmed ? 'Email confirmed · mobile not yet confirmed' : 'Not yet confirmed',
+      claim: 'Contact details · primary email and mobile',
+      evidence: contactDetailsEvidence(id),
       state: both ? 'Supported' : 'Review needed',
       tone: both ? 'green' : 'amber',
     });

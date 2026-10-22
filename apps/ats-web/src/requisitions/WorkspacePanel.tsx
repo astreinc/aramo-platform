@@ -99,7 +99,7 @@ const UPCOMING_INTERVIEW_STATES = new Set(['SCHEDULED', 'RESCHEDULED']);
 // owner==='pipeline' (backend Rule D — never re-derived). Pipeline owns these
 // recruiting stages ONLY; downstream journey stages live on the Talent board.
 const PIPELINE_STAGES: readonly { readonly key: string; readonly label: string }[] = [
-  { key: 'no_contact', label: 'No contact' },
+  { key: 'no_contact', label: 'Not contacted' },
   { key: 'contacted', label: 'Contacted' },
   { key: 'talent_responded', label: 'Talent responded' },
   { key: 'qualifying', label: 'Qualifying' },

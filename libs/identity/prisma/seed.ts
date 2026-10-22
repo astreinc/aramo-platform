@@ -2846,8 +2846,9 @@ const ADDRESS_LOOKUP_SEED_ROLE_SCOPE_ROW_IDS: Record<string, string> = (() => {
 // distinction). ALL FOUR are seeded HERE via this dedicated bundle (a single
 // self-contained bundle for a mixed base/AUTHZ1 role-set — the COMMERCIAL_SEED /
 // TASK_SEED precedent), so no (role, scope) pair is double-granted. EXCLUDED
-// (fail-closed, no inheritance): super_admin, sourcer, recruiting_manager,
-// lead_recruiter, delivery_manager, back_office, finance, auditor, candidate.
+// (fail-closed, no inheritance): super_admin, delivery_manager, back_office, finance,
+// auditor, candidate. (ATS-QA-1 A4 adds sourcer, recruiting_manager and lead_recruiter
+// through ATSQA1_RESUME_SELECT_BUNDLES below; tenant_admin holds it via ROLES-1.)
 export const RESUME_SELECT_SEED_BUNDLES: ReadonlyArray<
   readonly [string, readonly string[]]
 > = [
@@ -2855,6 +2856,16 @@ export const RESUME_SELECT_SEED_BUNDLES: ReadonlyArray<
   ['tenant_owner', ['pipeline:resume:set']],
   ['recruiter', ['pipeline:resume:set']],
   ['account_manager', ['pipeline:resume:set']],
+];
+
+// ATS-QA-1 Package 1 (Directive v1.0 LOCKED §4 I-2; conforming amendment A4) — every
+// role holding pipeline:add may choose the requisition résumé: + lead_recruiter,
+// recruiting_manager, sourcer. Dedicated bundle (the frozen 0x1200 range above is NOT
+// extended). Ids: atsQa1RoleScopeId (identical to the 20261022150000 migration's).
+export const ATSQA1_RESUME_SELECT_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['lead_recruiter', ['pipeline:resume:set']],
+  ['recruiting_manager', ['pipeline:resume:set']],
+  ['sourcer', ['pipeline:resume:set']],
 ];
 
 // Deterministic RoleScope row ids for the 4 pipeline:resume:set grants. Fresh
@@ -3200,6 +3211,13 @@ export function roles1RoleScopeId(role_id: string, scope_id: string): string {
 // the SQL `md5(...)::uuid` cast in 20261021150000_doclib_t4_document_template_grants.
 export function doclibT4RoleScopeId(role_id: string, scope_id: string): string {
   const h = createHash('md5').update(`doclib-t4:${role_id}:${scope_id}`).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
+// ATS-QA-1 — md5('ats-qa-1:' || role_id || ':' || scope_id) as a uuid, the SQL
+// `md5(...)::uuid` cast in 20261022150000_ats_qa_1_resume_select_grants.
+export function atsQa1RoleScopeId(role_id: string, scope_id: string): string {
+  const h = createHash('md5').update(`ats-qa-1:${role_id}:${scope_id}`).digest('hex');
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
 
@@ -4741,6 +4759,19 @@ export async function runIdentitySeed(
         where: { role_id_scope_id: { role_id, scope_id } },
         update: {},
         create: { id: doclibT4RoleScopeId(role_id, scope_id), role_id, scope_id },
+      });
+    }
+  }
+
+  // ATS-QA-1 (§4 I-2, A4) — pipeline:resume:set for the remaining pipeline:add roles.
+  for (const [roleKey, scopeKeys] of ATSQA1_RESUME_SELECT_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: atsQa1RoleScopeId(role_id, scope_id), role_id, scope_id },
       });
     }
   }

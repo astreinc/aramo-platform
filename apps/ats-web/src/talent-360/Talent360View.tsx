@@ -22,7 +22,17 @@ import { Button, LoadingState, safeErrorMessage } from '../ui';
 
 import { FollowUpDialog, LogActivityDialog, type FollowUpReqOption } from './t360-dialogs';
 import { ProfileSection, type ProfileData } from './t360-profile';
-import { SECTION_GROUPS, isSection, labelize, monthYear, sectionLabel, workAuthLabel, type T360Section } from './t360-model';
+import {
+  POSSIBLE_DUPLICATE,
+  SECTION_GROUPS,
+  contactDetailsChip,
+  isSection,
+  labelize,
+  monthYear,
+  sectionLabel,
+  workAuthLabel,
+  type T360Section,
+} from './t360-model';
 import {
   ActivitySection,
   CiSection,
@@ -275,6 +285,7 @@ export function Talent360View(): JSX.Element | null {
 
   const contactChip = c.recruiting_permitted ? (c.sms_permitted ? 'Contact permitted' : 'Contact permitted · no SMS') : 'Contact restricted';
   const identity = model.identity;
+  const contactDetails = identity !== null ? contactDetailsChip(identity) : null;
   // `<title> · <current employer>` once the full record has loaded (§8A).
   const employer = profileData?.record?.current_employer ?? null;
   const titleLine = [h.title, employer].filter((x): x is string => x !== null && x.trim() !== '').join(' · ');
@@ -437,14 +448,19 @@ export function Talent360View(): JSX.Element | null {
                 <Button unstyled type="button" className={`t360-chip t360-chip--btn t360-tone--${c.recruiting_permitted ? 'green' : 'amber'}`} onClick={() => go('trust')}>
                   {contactChip}
                 </Button>
-                {identity !== null ? (
+                {contactDetails !== null ? (
                   <Button
                     unstyled
                     type="button"
-                    className={`t360-chip t360-chip--btn t360-tone--${identity.advisory !== null ? 'amber' : 'green'}`}
+                    className={`t360-chip t360-chip--btn t360-tone--${contactDetails.tone}`}
                     onClick={() => go('trust')}
                   >
-                    {identity.advisory !== null ? 'Identity · 1 to review' : 'Identity confirmed'}
+                    {contactDetails.label}
+                  </Button>
+                ) : null}
+                {identity !== null && identity.advisory !== null ? (
+                  <Button unstyled type="button" className="t360-chip t360-chip--btn t360-tone--amber" onClick={() => go('trust')}>
+                    {POSSIBLE_DUPLICATE}
                   </Button>
                 ) : null}
               </div>

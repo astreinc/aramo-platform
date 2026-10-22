@@ -19,7 +19,7 @@ export type PillTone = 'green' | 'amber' | 'blue' | 'grey' | 'red';
 
 // ── Stage stepper (§3.3.3) ──────────────────────────────────────────────────
 export const STEPS = [
-  { key: 'no_contact', label: 'No contact' },
+  { key: 'no_contact', label: 'Not contacted' },
   { key: 'contacted', label: 'Contacted' },
   { key: 'responded', label: 'Talent responded' },
   { key: 'qualifying', label: 'Qualifying' },

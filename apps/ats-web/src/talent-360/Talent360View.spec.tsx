@@ -355,7 +355,8 @@ describe('Talent360View — redesign shell (§3–§4)', () => {
     expect(within(hd).getByText('Available now')).toBeInTheDocument();
     expect(within(hd).getByText('Recruiting ready')).toHaveAttribute('title', expect.stringMatching(/Worked out by Aramo/));
     expect(within(hd).getByRole('button', { name: 'Contact permitted · no SMS' })).toBeInTheDocument();
-    expect(within(hd).getByRole('button', { name: 'Identity · 1 to review' })).toBeInTheDocument();
+    expect(within(hd).getByRole('button', { name: 'Contact details confirmed' })).toBeInTheDocument();
+    expect(within(hd).getByRole('button', { name: 'Possible duplicate — review needed' })).toBeInTheDocument();
     expect(within(hd).getByText('divya@example.com')).toBeInTheDocument();
     expect(within(hd).getByText('Known since Mar 2024 · 5 requisitions')).toBeInTheDocument();
   });
@@ -371,11 +372,70 @@ describe('Talent360View — redesign shell (§3–§4)', () => {
     await waitFor(() => expect(screen.getAllByTestId('loc')[0]).toHaveTextContent(/^\/talent\/tal-1$/));
   });
 
-  it('identity chip and contact chip open Talent Trust', async () => {
+  it('contact-details chip and duplicate chip open Talent Trust', async () => {
+    getTalent360Mock.mockResolvedValue(makeModel());
+    const { unmount } = renderView();
+    fireEvent.click(await screen.findByRole('button', { name: 'Contact details confirmed' }));
+    expect(await screen.findByTestId('t360-trust')).toBeInTheDocument();
+    unmount();
+    renderView();
+    fireEvent.click(await screen.findByRole('button', { name: 'Possible duplicate — review needed' }));
+    expect(await screen.findByTestId('t360-trust')).toBeInTheDocument();
+  });
+
+  // ATS-QA-1 I-2 — Talent 360 §14: the header reports contact-details outcomes; "confirmed"
+  // only when the primary email AND mobile are confirmed; a duplicate is a separate chip.
+  it.each([
+    [true, true, false, 'Contact details confirmed', false],
+    [true, false, false, 'Contact details · not yet confirmed', false],
+    [false, true, false, 'Contact details · not yet confirmed', false],
+    [false, false, false, 'Contact details · not yet confirmed', false],
+    [true, true, true, 'Contact details confirmed', true],
+    [true, false, true, 'Contact details · not yet confirmed', true],
+    [false, true, true, 'Contact details · not yet confirmed', true],
+    [false, false, true, 'Contact details · not yet confirmed', true],
+  ] as const)(
+    'header chips: email=%s mobile=%s advisory=%s → "%s" (duplicate chip: %s)',
+    async (email, mobile, hasAdvisory, label, dupChip) => {
+      getTalent360Mock.mockResolvedValue(
+        makeModel({
+          identity: {
+            primary_email_confirmed: email,
+            mobile_confirmed: mobile,
+            advisory: hasAdvisory ? { advisory_id: 'adv1', label: 'Possible duplicate needs review' } : null,
+          },
+        }),
+      );
+      renderView();
+      await screen.findByRole('heading', { name: 'Divya Vasudevan', level: 1 });
+      const hd = screen.getByRole('banner');
+      const chip = within(hd).getByRole('button', { name: label });
+      expect(chip.className).toContain(email && mobile ? 't360-tone--green' : 't360-tone--amber');
+      expect(within(hd).queryAllByRole('button', { name: /Contact details/ })).toHaveLength(1);
+      if (dupChip) expect(within(hd).getByRole('button', { name: 'Possible duplicate — review needed' })).toBeInTheDocument();
+      else expect(within(hd).queryByRole('button', { name: /Possible duplicate/ })).toBeNull();
+      expect(within(hd).queryByText(/Identity/)).toBeNull();
+    },
+  );
+
+  it('ATS-QA-1 I-2 — the (truncated) opportunity owner carries its full name as a title (overview + Opportunities)', async () => {
     getTalent360Mock.mockResolvedValue(makeModel());
     renderView();
-    fireEvent.click(await screen.findByRole('button', { name: 'Identity · 1 to review' }));
-    expect(await screen.findByTestId('t360-trust')).toBeInTheDocument();
+    await screen.findByRole('heading', { name: 'Divya Vasudevan', level: 1 });
+    const owners = await screen.findAllByText('Sanjay Kumar', { selector: '.t360-owner' });
+    for (const el of owners) expect(el).toHaveAttribute('title', 'Sanjay Kumar');
+    fireEvent.click(within(nav()).getByRole('button', { name: /Opportunities/ }));
+    const inOpps = await screen.findAllByText('Sanjay Kumar', { selector: '.t360-owner' });
+    for (const el of inOpps) expect(el).toHaveAttribute('title', 'Sanjay Kumar');
+  });
+
+  it('header shows no contact-details or duplicate chip when the identity section is not composed', async () => {
+    getTalent360Mock.mockResolvedValue(makeModel({ identity: null }));
+    renderView();
+    await screen.findByRole('heading', { name: 'Divya Vasudevan', level: 1 });
+    const hd = screen.getByRole('banner');
+    expect(within(hd).queryByRole('button', { name: /Contact details/ })).toBeNull();
+    expect(within(hd).queryByRole('button', { name: /Possible duplicate/ })).toBeNull();
   });
 
   it('section nav collapse persists under talent360.secOpen', async () => {
@@ -540,6 +600,10 @@ describe('Talent360View — sections (§7–§9)', () => {
     renderView('/talent/tal-1?section=trust');
     const trust = await screen.findByTestId('t360-trust');
     expect(within(trust).getByText('Each claim shows what supports it. No scores.')).toBeInTheDocument();
+    // ATS-QA-1 I-2 — the trust row reads "Contact details", never "Identity".
+    expect(within(trust).getByText('Contact details · primary email and mobile')).toBeInTheDocument();
+    expect(within(trust).getByText('Primary email confirmed · mobile confirmed')).toBeInTheDocument();
+    expect(within(trust).queryByText(/^Identity/)).toBeNull();
     expect(within(trust).getByText('Review needed')).toBeInTheDocument();
     fireEvent.click(within(trust).getByRole('button', { name: 'Not the same person' }));
     await waitFor(() => expect(adv.dismissAdvisory).toHaveBeenCalledWith('adv1'));

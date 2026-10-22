@@ -125,7 +125,8 @@ export const SEED_SCOPE_KEYS = [
   // grant to the four pipeline:change-status holders (recruiter, account_manager,
   // tenant_admin, tenant_owner) via RESUME_SELECT_SEED_BUNDLES — NOT a reuse of
   // pipeline:change-status (lifecycle), NOT auto-inherited.
-  'pipeline:resume:set',        // recruiter+ / AM / owner+admin
+  // ATS-QA-1 A4 (LOCKED): + lead_recruiter, recruiting_manager, sourcer (every pipeline:add role).
+  'pipeline:resume:set',        // recruiter+ / AM / owner+admin / LR / RM / sourcer
   // Lane 2 / L2-F (F1) — the Client-Selection owner (enforced in ClientSelectionController +
   // the apps/api create-from-submittal orchestration). GRANTED to the ATS delivery matrix
   // (recruiter, account_manager, tenant_admin, tenant_owner) — mirrors placement:create.

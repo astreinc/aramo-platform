@@ -4,7 +4,7 @@
 
 import { WORK_AUTHORIZATION_LABELS } from '../talent/stated-fields';
 
-import type { AttentionItemView } from './talent-360-types';
+import type { AttentionItemView, IdentityView } from './talent-360-types';
 
 export const SECTION_KEYS = [
   'overview',
@@ -87,7 +87,7 @@ export function sectionLabel(k: T360Section): string {
 }
 
 // ── Stage (server current_journey_stage → 8-step ladder) ──────────────────────
-export const STAGES = ['No contact', 'Contacted', 'Talent responded', 'Qualifying', 'Qualified', 'Submitted', 'Interview', 'Offer'] as const;
+export const STAGES = ['Not contacted', 'Contacted', 'Talent responded', 'Qualifying', 'Qualified', 'Submitted', 'Interview', 'Offer'] as const;
 
 const STAGE_INDEX: Readonly<Record<string, number>> = {
   SOURCED: 0,
@@ -120,6 +120,29 @@ export function stagePill(stage: string): { label: string; tone: Tone } {
   const label = STAGES[i] ?? stage;
   const tone: Tone = i === 6 || i === 4 || i === 7 ? 'green' : i === 5 ? 'blue' : i === 3 ? 'amber' : 'grey';
   return { label, tone };
+}
+
+// ── Contact details (Talent 360 §14; ATS-QA-1 I-2) ────────────────────────────
+// Recruiter-facing outcomes only: whether the primary email and mobile have been
+// confirmed. This never asserts legal or government identity verification. A
+// possible duplicate is a SEPARATE status, never folded into the contact-details chip.
+export const CONTACT_DETAILS_CONFIRMED = 'Contact details confirmed';
+export const CONTACT_DETAILS_UNCONFIRMED = 'Contact details · not yet confirmed';
+export const POSSIBLE_DUPLICATE = 'Possible duplicate — review needed';
+
+/** Header chip: confirmed only when the primary email AND the mobile are confirmed. */
+export function contactDetailsChip(id: IdentityView): { label: string; tone: 'green' | 'amber' } {
+  return id.primary_email_confirmed && id.mobile_confirmed
+    ? { label: CONTACT_DETAILS_CONFIRMED, tone: 'green' }
+    : { label: CONTACT_DETAILS_UNCONFIRMED, tone: 'amber' };
+}
+
+/** Trust card evidence line for the contact-details row. */
+export function contactDetailsEvidence(id: IdentityView): string {
+  if (id.primary_email_confirmed && id.mobile_confirmed) return 'Primary email confirmed · mobile confirmed';
+  if (id.primary_email_confirmed) return 'Primary email confirmed · mobile not yet confirmed';
+  if (id.mobile_confirmed) return 'Mobile confirmed · primary email not yet confirmed';
+  return 'Not yet confirmed';
 }
 
 /** Sub-line colour for an opportunity, from the attention projection for its requisition. */

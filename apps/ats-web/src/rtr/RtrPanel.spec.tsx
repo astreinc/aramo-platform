@@ -154,6 +154,26 @@ describe('RtrPanel', () => {
     expect(screen.queryByText('Send for signature')).not.toBeInTheDocument();
   });
 
+  it('ATS-QA-1 I-2 (A7) — EXECUTED displays "Signed"; the other state labels are unchanged', async () => {
+    const cases: readonly (readonly [string, string])[] = [
+      ['EXECUTED', 'Signed'],
+      ['REQUESTED', 'Requested'],
+      ['AWAITING_SIGNATURE', 'Awaiting signature'],
+      ['DECLINED', 'Declined by the talent'],
+      ['EXPIRED', 'Expired unsigned'],
+      ['VOIDED', 'Withdrawn'],
+    ];
+    for (const [status, label] of cases) {
+      vi.mocked(getCurrentRtr).mockResolvedValue(
+        current({ status, document_status: status, executed_available: status === 'EXECUTED' }),
+      );
+      const { unmount } = renderPanel({ stage: 'qualifying' });
+      expect(await screen.findByText(label)).toBeInTheDocument();
+      expect(screen.queryByText('Executed')).not.toBeInTheDocument();
+      unmount();
+    }
+  });
+
   it('H — a backend error is surfaced with a safe retry', async () => {
     vi.mocked(getCurrentRtr).mockResolvedValueOnce(null);
     vi.mocked(requestRtr).mockRejectedValue(new Error('talent has no email for RTR signing'));

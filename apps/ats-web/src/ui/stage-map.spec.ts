@@ -39,7 +39,7 @@ describe('stage-map', () => {
   });
 
   it('renders the recruiter-facing label from the pipeline source', () => {
-    expect(stageLabel('no_contact')).toBe('No contact');
+    expect(stageLabel('no_contact')).toBe('Not contacted');
     expect(stageLabel('completed')).toBe('Completed');
   });
 

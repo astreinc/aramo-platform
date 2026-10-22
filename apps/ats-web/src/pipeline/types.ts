@@ -37,7 +37,7 @@ export const CLOSED_STATUSES: readonly PipelineStatus[] = [
 // Display labels (the recruiter-facing nouns). The state-machine source
 // uses snake_case identifiers; the UI shows the human form.
 export const PIPELINE_STATUS_LABELS: Record<PipelineStatus, string> = {
-  no_contact: 'No contact',
+  no_contact: 'Not contacted',
   contacted: 'Contacted',
   talent_responded: 'Talent responded',
   qualifying: 'Qualifying',
