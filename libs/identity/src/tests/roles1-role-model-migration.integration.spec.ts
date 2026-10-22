@@ -165,6 +165,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('ROLES-1 PR-2 role
       `INSERT INTO identity."RoleScope" (id, role_id, scope_id) SELECT '01900000-0000-7000-8000-000000001311', $1, id FROM identity."Scope" WHERE key = 'document_template:manage'`,
       [R.ats],
     );
+    // ORG-UX-1 — document_template:author is granted by a LATER migration
+    // (20261022140000_org_ux_1_template_author_grants, covered by its own spec): the
+    // pre-ROLES-1 catalog never held it.
+    await run(`DELETE FROM identity."RoleScope" WHERE scope_id IN (SELECT id FROM identity."Scope" WHERE key = 'document_template:author')`);
     // A production-only grant on rows 0010 and 0014 (unknown to the seed).
     const extra = uuidv7();
     await run(`INSERT INTO identity."Scope" (id, key, description) VALUES ($1, $2, 'prod-only')`, [extra, EXTRA_SCOPE_KEY]);
@@ -245,7 +249,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('ROLES-1 PR-2 role
   });
 
   it('bundles — relational on fixed ids, equal to the fresh-seed model (+ the production-only grant)', async () => {
-    const withExtra = (s: Set<string> | undefined) => new Set([...(s ?? []), EXTRA_SCOPE_KEY]);
+    // ORG-UX-1 — the fresh-seed model includes document_template:author, which a later
+    // migration grants (rewound above).
+    const withExtra = (s: Set<string> | undefined) =>
+      new Set([...(s ?? []), EXTRA_SCOPE_KEY].filter((k) => k !== 'document_template:author'));
     const sorted = (s: Set<string>) => [...s].sort();
     // DOC-TEMPLATE-LIB-1 T-4: ats_admin still carries document_template:manage after THIS
     // migration (the T-4 grants migration removes it — covered by its own spec).
@@ -364,6 +371,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('ROLES-1 PR-2 role
   });
 
   it('the seed re-run on the migrated database changes nothing (the deploy order: migrate, then seed)', async () => {
+    // Every later identity grants migration runs before the seed in a deploy (ORG-UX-1).
+    await run(readFileSync(resolve(ROOT, 'libs/identity/prisma/migrations/20261022140000_org_ux_1_template_author_grants/migration.sql'), 'utf8'));
     const before = await snapshot();
     await runIdentitySeed(prisma, { includeDevFixtures: false });
     expect(await snapshot()).toBe(before);

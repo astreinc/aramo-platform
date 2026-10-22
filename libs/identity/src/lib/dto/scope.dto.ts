@@ -96,7 +96,8 @@ export const SEED_SCOPE_KEYS = [
   'document:manage',            // tenant_admin+ (DOC-2 reconciled from document_type:manage, R22)
   // DOC-2 — Templates + Requirements scopes (dedicated DOCUMENTS_DOC2_SEED_BUNDLES).
   'document_template:read',     // recruiter+ (read templates/versions)
-  'document_template:manage',   // tenant_admin+ (create/activate/retire templates + versions)
+  'document_template:manage',   // tenant_owner/tenant_admin (approve/activate, selection, withdraw — ORG-UX-1 §4.1)
+  'document_template:author',   // ORG-UX-1 §4.1: org roles + account_manager/recruiting_manager/lead_recruiter (adopt/create/edit drafts)
   'document_requirement:read',  // recruiter+ (read requirement status)
   'document_requirement:manage',// tenant_admin+ (create/satisfy/waive requirements)
   // PX-V1 PX-3 — E-Sign SENDER product scopes (esign.aramo.ai). Distinct `sign:`

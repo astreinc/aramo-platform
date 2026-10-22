@@ -8765,6 +8765,15 @@ paths:
                             - type: string
                               enum: [not_subscribed, not_authorized, not_activated]
                             - type: 'null'
+                        org_access:
+                          type: string
+                          enum: [admin, templates, none]
+                          description: >-
+                            ORG-UX-1 (LOCKED §4.3) — present on the `org` entry only. Server-evaluated
+                            from the ADR-0035 role model: `admin` = holds tenant_owner or tenant_admin;
+                            `templates` = a template author/approver without an organization role
+                            (entry_path `/org/document-templates`); `none` = App Home only. Navigation
+                            only — every organization command keeps its own scope guard.
         '401':
           $ref: 'common.yaml#/components/responses/Unauthorized'
         '403':

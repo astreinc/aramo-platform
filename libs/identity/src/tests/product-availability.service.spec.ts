@@ -11,8 +11,15 @@ import type { TenantEntitlementReader } from '../lib/tenant-entitlement-reader.s
 const T = '01900000-0000-7000-8000-000000000001';
 const U = '01900000-0000-7000-8000-0000000000aa';
 
-function svc(caps: string[], held: string[], site: { site_id: string; siteHeld: string[] } | null = null): ProductAvailabilityService {
+function svc(
+  caps: string[],
+  held: string[],
+  site: { site_id: string; siteHeld: string[] } | null = null,
+  roleKeys: string[] = [],
+): ProductAvailabilityService {
   const roles = {
+    // ORG-UX-1 §4.3 — the held ROLE KEYS (organization administration is role-based).
+    getRoleKeysByUserTenantAndSite: async () => roleKeys,
     findActiveMembershipSite: async () => (site === null ? null : site.site_id),
     // Tenant-wide reader — what a tenant-wide membership resolves.
     getScopesByUserAndTenant: async () => held,
@@ -25,7 +32,7 @@ function svc(caps: string[], held: string[], site: { site_id: string; siteHeld: 
   const entitlements = { getCapabilities: async () => new Set(caps) } as unknown as TenantEntitlementReader;
   return new ProductAvailabilityService(roles, entitlements);
 }
-const byKey = (v: { products: readonly { key: string }[] }) => Object.fromEntries(v.products.map((p) => [p.key, p])) as Record<string, { subscribed: boolean; authorized: boolean; available: boolean; entry_path: string | null; reason: string | null }>;
+const byKey = (v: { products: readonly { key: string }[] }) => Object.fromEntries(v.products.map((p) => [p.key, p])) as Record<string, { subscribed: boolean; authorized: boolean; available: boolean; entry_path: string | null; reason: string | null; org_access?: string }>;
 
 const RECRUITER = ['auth:session:read', 'talent:read', 'requisition:read'];
 const ORG_ADMIN = ['auth:session:read', 'tenant:admin:user-manage', 'tenant:admin:profile', 'audit:read'];
@@ -40,12 +47,12 @@ describe('ProductAvailabilityService (D-ORG)', () => {
     const p = byKey(await svc(['core', 'ats', 'portal'], RECRUITER).forPrincipal({ user_id: U, tenant_id: T }));
     expect(p['ats']).toEqual({ key: 'ats', subscribed: true, authorized: true, available: true, entry_path: '/ats/', reason: null });
     expect(p['sign']).toMatchObject({ subscribed: false, authorized: false, available: false, entry_path: null, reason: 'not_subscribed' });
-    expect(p['org']).toMatchObject({ subscribed: true, authorized: false, available: false, entry_path: null, reason: 'not_authorized' });
+    expect(p['org']).toMatchObject({ subscribed: true, authorized: false, available: false, entry_path: null, reason: 'not_authorized', org_access: 'none' });
   });
 
   it('Sign-only tenant, org_admin + sign_sender: Organization available at /org/; ATS not_subscribed even though nothing else blocks it; Sign subscribed+authorized but not_activated while the entry is dark', async () => {
-    const p = byKey(await svc(['core', 'sign'], [...ORG_ADMIN, ...SIGN_SENDER]).forPrincipal({ user_id: U, tenant_id: T }));
-    expect(p['org']).toEqual({ key: 'org', subscribed: true, authorized: true, available: true, entry_path: '/org/', reason: null });
+    const p = byKey(await svc(['core', 'sign'], [...ORG_ADMIN, ...SIGN_SENDER], null, ['sign_sender', 'tenant_admin']).forPrincipal({ user_id: U, tenant_id: T }));
+    expect(p['org']).toEqual({ key: 'org', subscribed: true, authorized: true, available: true, entry_path: '/org/', reason: null, org_access: 'admin' });
     expect(p['ats']).toMatchObject({ subscribed: false, reason: 'not_subscribed', entry_path: null });
     expect(p['sign']).toMatchObject({ subscribed: true, authorized: true, available: false, entry_path: null, reason: 'not_activated' });
   });
@@ -72,25 +79,50 @@ describe('ProductAvailabilityService (D-ORG)', () => {
 
   it('an organization owner (ATS + Sign + org scopes) in a Sign-only tenant: Sign + Organization authorized, ATS not', async () => {
     const p = byKey(
-      await svc(['core', 'sign'], [...RECRUITER, ...SIGN_SENDER, 'tenant:admin:user-manage', 'sign:billing:manage']).forPrincipal({ user_id: U, tenant_id: T }),
+      await svc(['core', 'sign'], [...RECRUITER, ...SIGN_SENDER, 'tenant:admin:user-manage', 'sign:billing:manage'], null, ['tenant_owner']).forPrincipal({ user_id: U, tenant_id: T }),
     );
     expect(p['ats']).toMatchObject({ subscribed: false, authorized: false, available: false, reason: 'not_subscribed' });
     expect(p['sign']).toMatchObject({ subscribed: true, authorized: true });
     expect(p['org']).toMatchObject({ subscribed: true, authorized: true, available: true });
   });
 
-  it('the org subset ridden by an ATS role (e.g. tenant_owner) makes Organization authorized; an ordinary baseline marker does not', async () => {
-    const owner = byKey(await svc(['core', 'ats', 'portal'], [...RECRUITER, 'tenant:admin:user-manage']).forPrincipal({ user_id: U, tenant_id: T }));
-    expect(owner['org'].available).toBe(true);
+  it('an organization ROLE (tenant_owner) makes Organization authorized as admin; an ordinary baseline marker does not', async () => {
+    const owner = byKey(await svc(['core', 'ats', 'portal'], [...RECRUITER, 'tenant:admin:user-manage'], null, ['tenant_owner']).forPrincipal({ user_id: U, tenant_id: T }));
+    expect(owner['org']).toMatchObject({ available: true, entry_path: '/org/', org_access: 'admin' });
     const member = byKey(await svc(['core', 'ats', 'portal'], ['auth:session:read']).forPrincipal({ user_id: U, tenant_id: T }));
-    expect(member['org']).toMatchObject({ authorized: false, reason: 'not_authorized' });
+    expect(member['org']).toMatchObject({ authorized: false, reason: 'not_authorized', org_access: 'none' });
     expect(member['ats']).toMatchObject({ authorized: false, reason: 'not_authorized' });
   });
 
-  it('exposes exactly the projection fields — no roles, scopes or members', async () => {
+  // ORG-UX-1 §4.3 (Lead Correction A) — organization administration is the ROLE model,
+  // never scope possession.
+  it('Correction A: a tenant:admin:* scope or the directory read WITHOUT an organization role never opens Organization', async () => {
+    const atsAdmin = byKey(
+      await svc(['core', 'ats', 'portal'], [...RECRUITER, 'tenant:admin:settings', 'tenant:user:read:directory'], null, ['ats_admin']).forPrincipal({ user_id: U, tenant_id: T }),
+    );
+    expect(atsAdmin['org']).toMatchObject({ authorized: false, available: false, entry_path: null, org_access: 'none' });
+    const recruiter = byKey(
+      await svc(['core', 'ats', 'portal'], [...RECRUITER, 'tenant:user:read:directory', 'document_template:read'], null, ['recruiter']).forPrincipal({ user_id: U, tenant_id: T }),
+    );
+    expect(recruiter['org']).toMatchObject({ available: false, org_access: 'none' });
+  });
+
+  it('a template author without an organization role gets the templates workspace at /org/document-templates', async () => {
+    const am = byKey(
+      await svc(['core', 'ats', 'portal'], [...RECRUITER, 'tenant:user:read:directory', 'document_template:read', 'document_template:author'], null, ['account_manager']).forPrincipal({ user_id: U, tenant_id: T }),
+    );
+    expect(am['org']).toEqual({ key: 'org', subscribed: true, authorized: true, available: true, entry_path: '/org/document-templates', reason: null, org_access: 'templates' });
+  });
+
+  it('exposes exactly the projection fields — no roles, scopes or members (org_access on the org entry only)', async () => {
     const v = await svc(['core', 'ats'], RECRUITER).forPrincipal({ user_id: U, tenant_id: T });
     expect(Object.keys(v).sort()).toEqual(['products', 'tenant_id']);
-    for (const p of v.products) expect(Object.keys(p).sort()).toEqual(['authorized', 'available', 'entry_path', 'key', 'reason', 'subscribed']);
+    for (const p of v.products)
+      expect(Object.keys(p).sort()).toEqual(
+        p.key === 'org'
+          ? ['authorized', 'available', 'entry_path', 'key', 'org_access', 'reason', 'subscribed']
+          : ['authorized', 'available', 'entry_path', 'key', 'reason', 'subscribed'],
+      );
     expect(v.products.map((p) => p.key)).toEqual(['ats', 'sign', 'org']);
   });
 

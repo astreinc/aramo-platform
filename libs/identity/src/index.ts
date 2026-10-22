@@ -37,6 +37,7 @@ export {
   PRODUCT_KEYS,
   ATS_ENTRY_PATH,
   ORG_ENTRY_PATH,
+  ORG_TEMPLATES_ENTRY_PATH,
   DEFAULT_SIGN_ENTRY_URL,
   signEntryUrl,
   signEntryActivated,
@@ -44,6 +45,7 @@ export {
   type ProductAvailability,
   type ProductAvailabilityView,
   type ProductUnavailableReason,
+  type OrgAccess,
 } from './lib/authorization/product-availability.service.js';
 // Sign Unified Product S-1 — the Sign permission contract (scopes + built-in roles).
 export {
