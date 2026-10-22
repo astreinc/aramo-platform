@@ -10,10 +10,12 @@ import { useWorkspace } from '../workspace';
 // Terms: "You may close your account at any time from your account settings").
 // Shown only when the backend says this user may close the account (the owner of an
 // open Personal account); Business accounts never see it. Typing CLOSE confirms;
-// after the close the user is signed out to /account-closed.
+// after the close the user is signed out to /account-closed. The copy states only
+// implemented behavior (Lead 2026-10-22): no fixed-date deletion promise.
 
 export const ACCOUNT_CLOSED_PATH = '/account-closed';
 const PRIVACY_NOTICE = '/legal/privacy';
+const PRIVACY_EMAIL = 'privacy@aramo.ai';
 
 function useAccountStatus(loader: () => Promise<AccountStatus>): AccountStatus | null {
   const [status, setStatus] = useState<AccountStatus | null>(null);
@@ -65,9 +67,15 @@ export function CloseAccountSection({
           <p style={{ margin: '0 0 8px' }}>Closing your Aramo Sign personal account:</p>
           <ul style={{ margin: 0, paddingLeft: 20 }}>
             <li>stops sending immediately. You can’t send new documents for signature from this account again.</li>
+            <li>
+              ends your access to this workspace. You can’t open or download your documents afterwards, so download anything you want to keep first:
+              open each document from <Link to={`${base}/documents`}>Documents</Link> or your <Link to={`${base}/envelopes`}>envelopes</Link> and download
+              the signed copy and its certificate.
+            </li>
             <li>leaves requests you already sent open for their signers until they are completed, declined or expire.</li>
             <li>
-              deletes your account data, documents, signed records and audit trails within 30 days, as described in the{' '}
+              keeps the records we are required to keep — signed records and their evidence, and legal-acceptance and security records — and deletes
+              other data under our retention program, as described in the{' '}
               <a href={PRIVACY_NOTICE} target="_blank" rel="noopener noreferrer">
                 Privacy Notice
               </a>
@@ -75,8 +83,8 @@ export function CloseAccountSection({
             </li>
           </ul>
           <p style={{ margin: '8px 0 0' }}>
-            Download anything you want to keep first: open each document from <Link to={`${base}/documents`}>Documents</Link> or your{' '}
-            <Link to={`${base}/envelopes`}>envelopes</Link> and download the signed copy and its certificate.
+            You can ask us to delete your data at any time at <a href={`mailto:${PRIVACY_EMAIL}`}>{PRIVACY_EMAIL}</a>. Closing doesn’t sign you out on your
+            other devices; they show that the account is closed.
           </p>
         </div>
         <Field label="Why are you leaving? (optional)" htmlFor="close-reason">
@@ -110,12 +118,13 @@ export function AccountClosedNotice({ signedIn = false }: { signedIn?: boolean }
         <div className="sg-state__mark">S</div>
         <h1 className="sg-h1">Your account is closed</h1>
         <div className="sg-lede">
-          Your Aramo Sign personal account is closed and can no longer send documents. Your account data, documents, signed records and audit trails are
-          deleted within 30 days, as described in the{' '}
+          Your Aramo Sign personal account is closed and can no longer send documents. Requests you already sent stay open for their signers, and signers
+          who received a completed copy keep it. We keep the records we are required to keep — signed records and their evidence, and legal-acceptance and
+          security records — and delete other data under our retention program, as described in the{' '}
           <a href={PRIVACY_NOTICE} target="_blank" rel="noopener noreferrer">
             Privacy Notice
           </a>
-          . Signers who received a completed copy keep it.
+          . To ask us to delete your data, email <a href={`mailto:${PRIVACY_EMAIL}`}>{PRIVACY_EMAIL}</a>.
         </div>
         <div style={{ marginTop: 16 }}>
           {signedIn ? <Btn onClick={() => void logout(() => window.location.assign(ACCOUNT_CLOSED_PATH))}>Sign out</Btn> : <a href="/login">Back to sign in</a>}

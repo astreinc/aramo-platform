@@ -41,7 +41,7 @@ import {
 } from '@aramo/subscription';
 
 import { PersonalLapseSweeper } from '../app/platform/personal-lapse-sweeper.service.js';
-import { PersonalUnverifiedPurgeSweeper } from '../app/platform/personal-unverified-purge-sweeper.service.js';
+import { PersonalSignupAttemptPurgeSweeper } from '../app/platform/personal-signup-attempt-purge-sweeper.service.js';
 import { PlatformPersonalController } from '../app/platform/platform-personal.controller.js';
 import { PersonalSignupController } from '../app/signup/personal-signup.controller.js';
 import { PERSONAL_LEGAL_KEYS, PersonalSignupService } from '../app/signup/personal-signup.service.js';
@@ -203,7 +203,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
         AddressSuggestService,
         SignupBudget,
         PersonalLapseSweeper,
-        PersonalUnverifiedPurgeSweeper,
+        PersonalSignupAttemptPurgeSweeper,
         LegalAcceptanceService,
         SubscriptionPrismaService,
         { provide: LEGAL_DOCUMENT_REGISTRY, useValue: registryDocs },
@@ -588,6 +588,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
 
   // ── invite mode + pilot cap ──────────────────────────────────────────────────
 
+  // The cap's tenant term: provisioned by a Personal signup, active, not CLOSED and
+  // not closed by the owner / an operator (risk state 'closed').
+  const openPersonalTenants = async (): Promise<number> =>
+    Number(
+      (
+        await sql.query(
+          `SELECT count(*)::int AS n FROM identity."PersonalSignupRequest" r JOIN identity."Tenant" t ON t.id = r.tenant_id
+             LEFT JOIN identity."TenantRiskState" s ON s.tenant_id = t.id
+            WHERE r.status = 'PROVISIONED' AND t.is_active AND t.status <> 'CLOSED' AND (s.state IS NULL OR s.state <> 'closed')`,
+        )
+      ).rows[0].n,
+    );
+
   it('invite mode: code required, bound to the email, single use, 7-day expiry; pilot cap enforced at issue, start and complete', async () => {
     process.env['SIGN_PERSONAL_SIGNUP_MODE'] = 'invite';
     const auth = await op();
@@ -610,7 +623,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
     await http().post('/v1/signup/sign/personal/verify-email').send({ signup_id: s.body.signup_id, code: codeFrom(p.email as string) });
 
     // Pilot full (cap == active count) → complete refused; room → completes and consumes the invite.
-    const active = Number((await sql.query(`SELECT count(*)::int AS n FROM identity."PersonalSignupRequest" r JOIN identity."Tenant" t ON t.id = r.tenant_id WHERE r.status = 'PROVISIONED' AND t.is_active`)).rows[0].n);
+    const active = await openPersonalTenants();
     process.env['SIGN_PERSONAL_PILOT_CAP'] = String(active);
     expect(reason(await complete(s.body.signup_id))).toBe('personal_pilot_full');
     expect(reason(await http().post('/platform/personal-invites').set('Authorization', auth).send({ email: person().email }))).toBe('personal_pilot_full');
@@ -650,7 +663,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
   it('pilot cap is serialized: two concurrent completes at cap-1 → exactly one provisions', async () => {
     process.env['SIGN_PERSONAL_SIGNUP_MODE'] = 'invite';
     const auth = await op();
-    const active = Number((await sql.query(`SELECT count(*)::int AS n FROM identity."PersonalSignupRequest" r JOIN identity."Tenant" t ON t.id = r.tenant_id WHERE r.status = 'PROVISIONED' AND t.is_active AND t.status <> 'CLOSED'`)).rows[0].n);
+    const active = await openPersonalTenants();
     process.env['SIGN_PERSONAL_PILOT_CAP'] = String(active + 1);
     const ids: string[] = [];
     for (let i = 0; i < 2; i += 1) {
@@ -665,7 +678,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
     const [a, b] = await Promise.all(ids.map((id) => complete(id)));
     const outcomes = [a!, b!].map((r) => (r.status === 200 ? r.body.status : reason(r))).sort();
     expect(outcomes).toEqual(['PROVISIONED', 'personal_pilot_full']);
-    const after = Number((await sql.query(`SELECT count(*)::int AS n FROM identity."PersonalSignupRequest" r JOIN identity."Tenant" t ON t.id = r.tenant_id WHERE r.status = 'PROVISIONED' AND t.is_active AND t.status <> 'CLOSED'`)).rows[0].n);
+    const after = await openPersonalTenants();
     expect(after).toBe(active + 1);
   });
 
@@ -711,32 +724,45 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
     expect(mail.filter((m) => m.to === p.email && /already have/.test(m.subject)).length).toBe(already + 1);
   });
 
-  // ── unverified purge (PO 2026-10-22) ─────────────────────────────────────────
+  // ── signup-attempt cleanup (PO / Lead 2026-10-22) ───────────────────────────
 
-  it('the purge sweeper deletes a signup whose email was never verified once it is 3 days old; a verified one stays; re-run is a no-op', async () => {
+  it('the cleanup sweeper deletes an abandoned attempt 3 days after it expired and a refused one after 180 days; a verified, unexpired attempt stays; re-run is a no-op', async () => {
     const unverified = person();
     const s = await start(unverified);
     expect(s.status).toBe(202);
     const pendingId = s.body.signup_id as string;
     const verified = await startedAndVerified();
-    const sweeper = module.get(PersonalUnverifiedPurgeSweeper);
+    const sweeper = module.get(PersonalSignupAttemptPurgeSweeper);
     const DAY = 24 * 3600_000;
-    const created = (await db.personalSignupRequest.findUnique({ where: { id: pendingId } }))!.created_at.getTime();
-    const globalPurges = () => db.identityAuditEvent.count({ where: { tenant_id: null, event_type: 'identity.personal.signup.unverified_purged' } });
+    const expires = (await db.personalSignupRequest.findUnique({ where: { id: pendingId } }))!.expires_at.getTime();
+    const globalPurges = () => db.identityAuditEvent.count({ where: { tenant_id: null, event_type: 'identity.personal.signup.attempts_purged' } });
     const before = await globalPurges();
 
-    // Just under 3 days: kept.
-    expect(await sweeper.tick(new Date(created + 3 * DAY - 60_000))).toBeGreaterThanOrEqual(0);
+    // Just under 3 days after expiry: kept.
+    expect(await sweeper.tick(new Date(expires + 3 * DAY - 60_000))).toBeGreaterThanOrEqual(0);
     expect(await db.personalSignupRequest.findUnique({ where: { id: pendingId } })).not.toBeNull();
-    // Just over 3 days: the row (email, phone, address) is gone; the verified request stays.
-    expect(await sweeper.tick(new Date(created + 3 * DAY + 60_000))).toBeGreaterThanOrEqual(1);
+    // Push the verified attempt's expiry forward: it is still completable, so never deleted.
+    await db.personalSignupRequest.update({ where: { id: verified.signup_id }, data: { expires_at: new Date(expires + 10 * DAY) } });
+    // Just over 3 days after expiry: the row (email, phone, address) is gone.
+    expect(await sweeper.tick(new Date(expires + 3 * DAY + 60_000))).toBeGreaterThanOrEqual(1);
     expect(await db.personalSignupRequest.findUnique({ where: { id: pendingId } })).toBeNull();
     expect(await db.personalSignupRequest.count({ where: { email: unverified.email as string } })).toBe(0);
     expect((await db.personalSignupRequest.findUnique({ where: { id: verified.signup_id } }))?.status).toBe('EMAIL_VERIFIED');
     expect(await globalPurges()).toBeGreaterThanOrEqual(before + 1);
     const after = await globalPurges();
-    expect(await sweeper.tick(new Date(created + 3 * DAY + 60_000))).toBe(0);
+    expect(await sweeper.tick(new Date(expires + 3 * DAY + 60_000))).toBe(0);
     expect(await globalPurges()).toBe(after);
+
+    // A refused attempt is security evidence: kept at 179 days, deleted at 181.
+    const hp = person({ hp: 'http://spam' });
+    expect(reason(await start(hp))).toBe('personal_signup_refused');
+    const refused = await db.personalSignupRequest.findFirst({ where: { email: hp.email as string, status: 'REFUSED' } });
+    expect(refused).not.toBeNull();
+    const created = refused!.created_at.getTime();
+    expect(await sweeper.tick(new Date(created + 179 * DAY))).toBeGreaterThanOrEqual(0);
+    expect(await db.personalSignupRequest.findUnique({ where: { id: refused!.id } })).not.toBeNull();
+    expect(await sweeper.tick(new Date(created + 181 * DAY))).toBeGreaterThanOrEqual(1);
+    expect(await db.personalSignupRequest.findUnique({ where: { id: refused!.id } })).toBeNull();
   });
 
   // ── unbound lapse ────────────────────────────────────────────────────────────

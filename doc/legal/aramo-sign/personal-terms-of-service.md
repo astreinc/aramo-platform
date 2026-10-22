@@ -91,8 +91,8 @@ An "E-Sign" is one document (envelope) sent for signature, whatever the number o
   available features.
 - The free plan is **not a promise that any free allowance will continue**.
 - Documents you already sent remain subject to §12 and to any law that applies to them.
-- Where practical, we will try to give you a chance to download your documents if the free plan
-  ends.
+- If we end the free plan, we will try to tell you in advance, where practical, so you can download
+  your documents before your account is closed.
 
 4.3 **No charges.** The Free Personal plan costs nothing, and we will not charge you without your
 separate agreement to a paid plan. A paid plan would have its own terms, shown at purchase.
@@ -259,19 +259,29 @@ use the Service under these Terms.
 12.1 **While your account is open,** you can view and download your documents and completion
 certificates.
 
-12.2 **When you close your account, or we close it:**
-- download any documents you want to keep before you close your account. If we close it, we will
-  give you a chance to download them where practical, unless the law or §8.4 prevents it;
-- we delete Your Content, including signed records and audit trails, within **30 days** after the
-  account is closed, and remove it from backups within a further **90 days**;
-- we may keep limited records we must keep by law, or need for security, fraud prevention or
-  disputes (for example security logs, abuse reports and records of the terms you accepted). Those
-  records are kept only for the periods in the Privacy Notice.
+12.2 **Download before you close.** Once an account is closed, you can no longer sign in to it or
+download anything from it. There is no download period after closing. **Download any documents and
+certificates you want to keep before you close your account.** If we close it, we will try to tell
+you in advance, where practical, so you can download them, unless the law or §8.4 prevents it.
 
-12.3 **Signers keep their copies.** Signers who received a completed copy keep it. Deleting your
-account does not reach into their mailboxes.
+12.3 **When you close your account, or we close it:**
+- sending stops immediately, and the account shows only that it is closed;
+- signature requests you already sent stay open, and their signers can still sign them;
+- other parties keep the copies they received;
+- your data is not deleted automatically when the account closes. We keep it, and then delete or
+  anonymise it under our data-retention program, except records we must keep: signed records and
+  their audit evidence where the law or a dispute requires them, records of the terms you accepted,
+  security records and abuse records. The Privacy Notice (§9) explains how long these are kept.
 
-12.4 **Keep your own copies.** Keep your own copies of important documents. The Service is not a
+12.4 **Asking us to delete your data.** At any time, including after closing, you can ask us to
+delete your data by emailing privacy@aramo.ai (in India, you may also write to grievance@aramo.ai).
+This is handled by a person. We respond within **30 days**, delete the data we are not required to
+keep, and tell you what we keep and why.
+
+12.5 **Signers keep their copies.** Signers who received a completed copy keep it. Closing your
+account or deleting your data does not reach into their mailboxes.
+
+12.6 **Keep your own copies.** Keep your own copies of important documents. The Service is not a
 legal records-retention service.
 
 ## 13. Third-party services
@@ -338,7 +348,8 @@ export laws.
 ## 18. Closing your account
 
 18.1 **Closing it yourself.** You may close your account at any time from your account settings or by
-contacting us. Pending signature requests will be voided.
+contacting us. Sending stops immediately. Signature requests you already sent stay open for their
+signers. Download what you want to keep first: after closing you cannot sign in or download (§12).
 
 18.2 **Closing by us.** We may close a free account:
 - under §8;

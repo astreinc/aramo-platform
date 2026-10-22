@@ -28,6 +28,7 @@ import {
   normalizeE164,
   normalizeEmail,
   personalPilotCap,
+  PERSONAL_PROVISIONING_STALE_MS,
   personalRiskConfig,
   personalSignupMode,
   phoneRegion,
@@ -83,7 +84,6 @@ export const PERSONAL_LEGAL_KEYS = ['sign.personal_terms_of_service', 'aramo.pri
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const MAX_STARTS_PER_EMAIL_PER_DAY = 5;
-const PROVISIONING_STALE_MS = 5 * 60 * 1000;
 const NAME_MAX = 100;
 
 export type PersonalNextStep = 'phone' | 'terms' | 'review';
@@ -436,7 +436,7 @@ export class PersonalSignupService {
     const row = typeof input.signup_id === 'string' ? await this.requests.findById(input.signup_id).catch(() => null) : null;
     if (row === null) throw this.notFound(rid);
     if (row.status === 'PROVISIONED') return { status: 'PROVISIONED', email: row.email, sign_in, held: heldFor(row.decision, row.phone_verified_at !== null, this.sms.configured) };
-    if (row.status === 'PROVISIONING' && now.getTime() - row.updated_at.getTime() < PROVISIONING_STALE_MS) {
+    if (row.status === 'PROVISIONING' && now.getTime() - row.updated_at.getTime() < PERSONAL_PROVISIONING_STALE_MS) {
       return { status: 'PROVISIONING', email: row.email, sign_in, held: heldFor(row.decision, row.phone_verified_at !== null, this.sms.configured) };
     }
     if (!['EMAIL_VERIFIED', 'FAILED', 'PROVISIONING'].includes(row.status) || row.expires_at.getTime() <= now.getTime()) throw this.notFound(rid);

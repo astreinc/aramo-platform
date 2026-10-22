@@ -12,12 +12,13 @@ import { IdentityRepository, IdentityService, PersonalRiskService, TenantReposit
 // same transaction with the owner as the actor. What `closed` does today:
 //   - sending stops for good (the Personal send gate refuses: personal_restricted);
 //   - envelopes already sent are left as they are (signers can still complete);
-//   - sessions are NOT revoked server-side (the operator close does not do it
-//     either); sign-web signs the owner out of this session right after the close;
+//   - sign-web signs the owner out of THIS session right after the close; other
+//     sessions are not ended and only see the closed notice (the workspace is
+//     replaced by it, so documents can no longer be opened or downloaded);
 //   - the tenant lifecycle status is unchanged (sign-in still works and the
 //     workspace shows the account as closed).
-// Deleting the account's data after closing is NOT done here (a separately
-// governed erasure program).
+// Deleting the account's data after closing is NOT done here (records are kept or
+// deleted under the retention program; a deletion request goes to privacy@aramo.ai).
 //
 // Refusals (stable details.reason):
 //   account_close_confirmation_required  400  body.confirm is not exactly 'CLOSE'
@@ -100,6 +101,7 @@ export class SignAccountService {
     if (current.state === 'closed') return { state: 'closed', closed_at: current.updated_at.toISOString() };
     const note = typeof body.reason === 'string' && body.reason.trim() !== '' ? body.reason.trim() : null;
     try {
+      // Sessions are not revoked (Lead: "where applicable"): revocation is user-wide across tenants, so it is not applied here.
       const closed = await this.risk.close(auth.tenant_id, auth.sub, OWNER_CLOSE_REASON, new Date(), { closed_by: 'owner', note });
       return { state: 'closed', closed_at: closed.updated_at.toISOString() };
     } catch (err) {

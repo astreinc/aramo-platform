@@ -100,8 +100,8 @@ describe('IdentityAuditRepository — PR-8.0a-Reground §6 amendment', () => {
     // Sign Personal (Free) v1.1 — risk events are tenant-scoped; the pilot invite issue is GLOBAL.
     expect(TENANT_SCOPED_EVENT_TYPES.has('identity.personal.risk.restricted')).toBe(true);
     expect(TENANT_SCOPED_EVENT_TYPES.has('identity.personal.invite.issued')).toBe(false);
-    // The unverified-signup purge is GLOBAL too (no tenant exists for those requests).
-    expect(TENANT_SCOPED_EVENT_TYPES.has('identity.personal.signup.unverified_purged')).toBe(false);
+    // The signup-attempt cleanup is GLOBAL too (no tenant exists for those attempts).
+    expect(TENANT_SCOPED_EVENT_TYPES.has('identity.personal.signup.attempts_purged')).toBe(false);
     const create = vi.fn().mockResolvedValue({ id: 'r' });
     const repo = new IdentityAuditRepository(makePrisma(create));
 

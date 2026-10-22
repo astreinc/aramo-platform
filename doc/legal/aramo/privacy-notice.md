@@ -153,16 +153,17 @@ cross-context behavioral advertising.
 
 | Information | Kept for | Why (US / India) |
 |---|---|---|
-| Unverified signup requests (email never verified) | **3 days**, then deleted | Minimisation |
-| **Account data, documents, signed records and audit trails** | While the account is open; deleted within **30 days** after the account is closed (Personal accounts) or **90 days** (Business accounts); removed from backups within a further **90 days** | DPDP: erase once the purpose is served or consent is withdrawn |
-| **Security and access logs** | **180 days** | Security |
-| Legal-acceptance records (which terms were accepted, when, from where) | **6 years** after the account closes | Proof of consent (DPDP); limitation periods |
-| Abuse reports and review decisions | **2 years** | Fraud prevention; legal claims |
+| Signup attempts never completed (email not verified, or verified but signup not finished) | Deleted **3 days** after the attempt expires | Minimisation |
+| Refused signup attempts | Kept as security records for **180 days**, then deleted | Security; fraud prevention |
+| **Personal account data, documents, signed records and audit trails** | While the account is open. Closing the account does **not** delete them automatically, and there is no download period after closing, so download what you want to keep first. After closing, we keep them and then delete or anonymise them under our data-retention program, except the records below that we must keep. You can ask us to delete your data at any time (§10.1) | DPDP: erase once the purpose is served or consent is withdrawn, unless the law requires us to keep it |
+| Signed records and their audit evidence | Kept where the law or a dispute requires them | Proof of what was agreed; legal claims |
+| **Security and access logs** | At least **180 days** | Security; India CERT-In directions |
+| Legal-acceptance records (which terms were accepted, when, from where) | At least **6 years** after the account closes | Proof of consent (DPDP); limitation periods |
+| Abuse reports and review decisions | As long as needed to prevent repeat abuse | Fraud prevention; protecting signers |
 | Verification codes | Hashed; deleted after expiry (minutes). The result is kept with the account | Data minimisation |
-| Billing and tax records (business) | **8 years** | US: IRS, generally up to 7 years. India: GST records generally 72 months after the annual return (applies only if we bill in India) |
-| Inactive free accounts | No fixed period. We may close or suspend inactive free accounts, with notice to the account email where practical. Once an account is closed, the periods above apply | — |
-
-See also the Aramo Sign Retention, Export and Deletion Policy.
+| Billing and tax records (paid business plans only; the Free Personal plan has no billing) | As required by tax and accounting law | Legal obligation |
+| Business accounts | Under the organization's agreement with us | Contract |
+| Inactive free accounts | No fixed period. We may close or suspend inactive free accounts, with notice to the account email where practical. Once an account is closed, the rules above apply | — |
 
 ## 10. Your rights
 
@@ -171,12 +172,16 @@ See also the Aramo Sign Retention, Export and Deletion Policy.
 You can:
 - **access** your information;
 - **correct** it;
-- **download** your documents;
-- **delete** your account;
+- **download** your documents while your account is open (not after it is closed);
+- **close** your account yourself, from your account settings;
+- **ask us to delete** your data, at any time, including after closing;
 - **opt out** of optional emails.
 
-Use the account settings or email privacy@aramo.ai. We answer within **30 days** (45 days where
-US state law allows, with notice of an extension).
+Use the account settings or email privacy@aramo.ai (in India, you may also write to
+grievance@aramo.ai). Deletion requests are handled by a person: we respond within **30 days**,
+delete the data we are not required to keep, and tell you what we keep and why (§9). We answer
+other requests within **30 days** (45 days where US state law allows, with notice of an
+extension).
 
 ### 10.2 India (Digital Personal Data Protection Act, 2023)
 

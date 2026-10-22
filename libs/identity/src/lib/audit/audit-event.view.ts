@@ -240,8 +240,8 @@ export function summarizeDetail(
       return 'Recorded a send from outside the supported countries or an unknown location';
     case 'identity.personal.invite.issued':
       return 'Issued a personal pilot invite';
-    case 'identity.personal.signup.unverified_purged':
-      return 'Deleted unverified personal signup requests';
+    case 'identity.personal.signup.attempts_purged':
+      return 'Deleted expired and refused personal signup attempts';
     default:
       // Exhaustive over EVENT_TYPES; a future type lands here until summarized.
       return humanizeEventType(eventType);

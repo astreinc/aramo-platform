@@ -187,10 +187,11 @@ export const EVENT_TYPES = [
   'identity.personal.risk.closed',
   'identity.personal.risk.send_location_signal',
   'identity.personal.invite.issued',
-  // Unverified Personal signup requests deleted 3 days after creation (PO decision
-  // 2026-10-22). GLOBAL (no tenant exists); subject_id = the sweep run id; the
-  // payload carries counts and the cutoff only (no email, phone or address).
-  'identity.personal.signup.unverified_purged',
+  // Personal signup attempts deleted by the cleanup run (PO decision 2026-10-22;
+  // Lead ruling 2026-10-22): abandoned attempts 3 days after they expired, refused
+  // attempts after 180 days. GLOBAL (no tenant exists); subject_id = the run id;
+  // the payload carries counts and cutoffs only (no email, phone or address).
+  'identity.personal.signup.attempts_purged',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 

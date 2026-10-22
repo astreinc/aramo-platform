@@ -18,14 +18,23 @@ import { writePersonalAudit, type TenantRiskStateValue } from './personal-risk.s
 export const PERSONAL_SIGNUP_TTL_MS = 24 * 60 * 60 * 1000;
 export const PERSONAL_INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const PERSONAL_UNBOUND_LAPSE_DAYS = 7;
-// PO decision 2026-10-22 — a signup request whose email was never verified is
-// deleted (the row, with its email, phone and address) 3 days after it was created.
-export const PERSONAL_UNVERIFIED_PURGE_DAYS = 3;
-// The never-verified statuses: PENDING (started, email code sent) and REFUSED
-// (refused by the risk rating at start, before any code). Every later status
-// (EMAIL_VERIFIED, PROVISIONING, PROVISIONED, FAILED, LAPSED) is past email
-// verification and keeps its own path.
-export const PERSONAL_UNVERIFIED_STATUSES = ['PENDING', 'REFUSED'] as const;
+// Signup-attempt cleanup (PO decision 2026-10-22; Lead ruling 2026-10-22 "guarded
+// expiry cleanup for unbound or refused signup attempts without destroying
+// retained security evidence"). Two guarded rules, one hourly run:
+//   (a) abandoned attempts — PENDING / EMAIL_VERIFIED / FAILED, never bound to a
+//       tenant, never accepted — are deleted 3 days after the attempt EXPIRED
+//       (expires_at = created_at + 24 h, never extended; no step advances an
+//       expired attempt, so none can be completed once it is due);
+//   (b) refused attempts (REFUSED) are security evidence — the only record of the
+//       risk signals behind a refusal (no audit event is written at refusal) — and
+//       are kept 180 days from creation, then deleted.
+// PROVISIONING, PROVISIONED and LAPSED attempts are never deleted.
+export const PERSONAL_ABANDONED_PURGE_DAYS = 3;
+export const PERSONAL_REFUSED_RETENTION_DAYS = 180;
+export const PERSONAL_ABANDONED_STATUSES = ['PENDING', 'EMAIL_VERIFIED', 'FAILED'] as const;
+// A PROVISIONING claim older than this is stale (the process died mid-saga): a
+// retry may re-claim it, and it no longer holds a pilot-cap slot.
+export const PERSONAL_PROVISIONING_STALE_MS = 5 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type PersonalSignupStatus = 'PENDING' | 'EMAIL_VERIFIED' | 'PROVISIONING' | 'PROVISIONED' | 'REFUSED' | 'FAILED' | 'LAPSED';
@@ -276,28 +285,37 @@ export class PersonalSignupRepository {
   }
 
   /**
-   * §10 invite mode — the pilot cap, serialized. Under one transaction-scoped
-   * advisory lock: count the active Personal tenants PLUS the signups already
-   * claimed for provisioning (in-flight reservations), refuse at the cap, else
-   * claim this signup (EMAIL_VERIFIED | FAILED → PROVISIONING). Because an
-   * in-flight claim counts against the cap, two concurrent completes at cap-1
-   * cannot both proceed — the second sees the first's reservation.
+   * §10 invite mode — the pilot cap, serialized (A1-8: atomic capacity
+   * reservation with expiry/release). Under one transaction-scoped advisory lock:
+   * count the open Personal tenants (active, not CLOSED, and not closed by their
+   * owner or an operator — TenantRiskState.state = 'closed' releases the slot)
+   * PLUS the live reservations (PROVISIONING claims that are fresh — updated
+   * within PERSONAL_PROVISIONING_STALE_MS — and unexpired; a stale or expired
+   * claim releases its slot), refuse at the cap, else claim this signup
+   * (EMAIL_VERIFIED | FAILED → PROVISIONING). Because a live claim counts against
+   * the cap, two concurrent completes at cap-1 cannot both proceed — the second
+   * sees the first's reservation. `accepted.at` is the request's clock.
    */
   async claimForProvisioningWithinCap(
     id: string,
     accepted: { documents: unknown; ip: string | null; at: Date },
     cap: number,
   ): Promise<'claimed' | 'busy' | 'full'> {
+    const now = accepted.at;
+    const staleBefore = new Date(now.getTime() - PERSONAL_PROVISIONING_STALE_MS);
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('personal-pilot-cap', 0))`;
       const rows = await tx.$queryRaw<{ n: bigint }[]>`
         SELECT (
           (SELECT count(*) FROM "identity"."PersonalSignupRequest" r
              JOIN "identity"."Tenant" t ON t.id = r.tenant_id
-            WHERE r.status = 'PROVISIONED' AND t.is_active = true AND t.status <> 'CLOSED')
+             LEFT JOIN "identity"."TenantRiskState" s ON s.tenant_id = t.id
+            WHERE r.status = 'PROVISIONED' AND t.is_active = true AND t.status <> 'CLOSED'
+              AND (s.state IS NULL OR s.state <> 'closed'))
           +
           (SELECT count(*) FROM "identity"."PersonalSignupRequest" r
-            WHERE r.status = 'PROVISIONING' AND r.id <> ${id}::uuid)
+            WHERE r.status = 'PROVISIONING' AND r.id <> ${id}::uuid
+              AND r.updated_at > ${staleBefore} AND r.expires_at > ${now})
         )::bigint AS n`;
       if (Number(rows[0]?.n ?? 0) >= cap) return 'full';
       const n = await tx.personalSignupRequest.updateMany({
@@ -438,12 +456,18 @@ export class PersonalSignupRepository {
     return row !== null && row.used_at === null && row.expires_at.getTime() > now.getTime();
   }
 
-  /** Active pilot tenants: provisioned by a Personal signup, still active and not closed. */
+  /**
+   * Open pilot tenants: provisioned by a Personal signup, still active, not CLOSED
+   * and not closed by the owner or an operator (risk state 'closed') — the same
+   * tenant term as the cap count in claimForProvisioningWithinCap.
+   */
   async activePersonalTenantCount(): Promise<number> {
     const rows = await this.prisma.$queryRaw<{ n: bigint }[]>`
       SELECT count(*)::bigint AS n FROM "identity"."PersonalSignupRequest" r
       JOIN "identity"."Tenant" t ON t.id = r.tenant_id
-      WHERE r.status = 'PROVISIONED' AND t.is_active = true AND t.status <> 'CLOSED'`;
+      LEFT JOIN "identity"."TenantRiskState" s ON s.tenant_id = t.id
+      WHERE r.status = 'PROVISIONED' AND t.is_active = true AND t.status <> 'CLOSED'
+        AND (s.state IS NULL OR s.state <> 'closed')`;
     return Number(rows[0]?.n ?? 0);
   }
 
@@ -495,45 +519,67 @@ export class PersonalSignupRepository {
     });
   }
 
-  // ── unverified purge (PO decision 2026-10-22) ──────────────────────────────
+  // ── signup-attempt cleanup (PO 2026-10-22; Lead ruling 2026-10-22) ───────
 
   /**
-   * DELETE every signup request whose email was never verified, created at least
-   * `days` ago, in ONE statement, with one GLOBAL audit event (counts only) in the
-   * same transaction when anything was deleted. Returns the count and the cutoff.
+   * One cleanup run: two guarded DELETEs in ONE transaction, plus one GLOBAL audit
+   * event (counts and cutoffs only) when anything was deleted.
    *
-   * The predicate is anchored on created_at (the promise is "3 days after you
-   * started"; updated_at would let resends or wrong codes extend it). It cannot
-   * race an in-flight verification: a request is verifiable only before its
-   * expires_at (created_at + 24 h), and the DELETE also requires expires_at <= now
-   * and a never-verified status — a verification that commits first moves the row
-   * to EMAIL_VERIFIED and the DELETE's re-check under READ COMMITTED skips it.
-   * Rows already bound to a tenant, or referenced by a used invite, are never
-   * touched. Idempotent: a re-run deletes nothing more.
+   * (a) Abandoned: status PENDING / EMAIL_VERIFIED / FAILED, no tenant, never
+   *     accepted (accepted_at and accepted_documents NULL — any claim sets them,
+   *     so a FAILED provisioning attempt that reached the terms is kept), no used
+   *     invite, and expires_at <= now - 3 days. It cannot race a completion: every
+   *     step refuses an attempt at or past expires_at (fixed at created_at + 24 h),
+   *     and a claim that commits first moves the row to PROVISIONING, which the
+   *     DELETE's re-check under READ COMMITTED then skips.
+   * (b) Refused: status REFUSED (the risk evidence of a refusal), no tenant, no
+   *     used invite, created_at <= now - 180 days.
+   * PROVISIONING / PROVISIONED / LAPSED rows match neither rule. Idempotent: a
+   * re-run with the same clock deletes nothing more and writes no event.
    */
-  async purgeUnverified(now: Date, days = PERSONAL_UNVERIFIED_PURGE_DAYS): Promise<{ deleted: number; cutoff: Date }> {
-    const cutoff = new Date(now.getTime() - days * DAY_MS);
-    const deleted = await this.prisma.$transaction(async (tx) => {
-      const n = await tx.$executeRaw`
+  async purgeExpiredAttempts(
+    now: Date,
+    opts: { abandoned_days?: number; refused_days?: number } = {},
+  ): Promise<{ abandoned: number; refused: number; abandoned_cutoff: Date; refused_cutoff: Date }> {
+    const abandoned_days = opts.abandoned_days ?? PERSONAL_ABANDONED_PURGE_DAYS;
+    const refused_days = opts.refused_days ?? PERSONAL_REFUSED_RETENTION_DAYS;
+    const abandoned_cutoff = new Date(now.getTime() - abandoned_days * DAY_MS);
+    const refused_cutoff = new Date(now.getTime() - refused_days * DAY_MS);
+    const counts = await this.prisma.$transaction(async (tx) => {
+      const abandoned = await tx.$executeRaw`
         DELETE FROM "identity"."PersonalSignupRequest" r
-         WHERE r.status IN ('PENDING', 'REFUSED')
-           AND r.email_verified_at IS NULL
+         WHERE r.status IN ('PENDING', 'EMAIL_VERIFIED', 'FAILED')
            AND r.tenant_id IS NULL
-           AND r.created_at <= ${cutoff}
-           AND r.expires_at <= ${now}
+           AND r.owner_user_id IS NULL
+           AND r.accepted_at IS NULL
+           AND r.accepted_documents IS NULL
+           AND r.expires_at <= ${abandoned_cutoff}
            AND NOT EXISTS (SELECT 1 FROM "identity"."PersonalSignupInvite" i WHERE i.used_by_signup_id = r.id)`;
-      if (n > 0) {
+      const refused = await tx.$executeRaw`
+        DELETE FROM "identity"."PersonalSignupRequest" r
+         WHERE r.status = 'REFUSED'
+           AND r.tenant_id IS NULL
+           AND r.created_at <= ${refused_cutoff}
+           AND NOT EXISTS (SELECT 1 FROM "identity"."PersonalSignupInvite" i WHERE i.used_by_signup_id = r.id)`;
+      if (abandoned + refused > 0) {
         await writePersonalAudit(tx, {
-          event_type: 'identity.personal.signup.unverified_purged',
+          event_type: 'identity.personal.signup.attempts_purged',
           tenant_id: null,
           subject_id: uuidv7(),
           actor_id: null,
-          payload: { deleted: n, cutoff: cutoff.toISOString(), days },
+          payload: {
+            abandoned,
+            refused,
+            abandoned_cutoff: abandoned_cutoff.toISOString(),
+            refused_cutoff: refused_cutoff.toISOString(),
+            abandoned_days,
+            refused_days,
+          },
         });
       }
-      return n;
+      return { abandoned, refused };
     });
-    return { deleted, cutoff };
+    return { ...counts, abandoned_cutoff, refused_cutoff };
   }
 
   // ── unbound lapse (§3.6) ───────────────────────────────────────────────────

@@ -8,7 +8,7 @@ import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { PersonalRiskService } from '../lib/personal/personal-risk.service.js';
-import { PersonalSignupRepository } from '../lib/personal/personal-signup.repository.js';
+import { PERSONAL_PROVISIONING_STALE_MS, PersonalSignupRepository } from '../lib/personal/personal-signup.repository.js';
 import { DisabledSmsAdapter, LogSmsAdapter } from '../lib/personal/sms-verification.port.js';
 import { IdentityProviderPolicyService } from '../lib/identity-provider-policy.service.js';
 
@@ -17,7 +17,8 @@ import { IdentityProviderPolicyService } from '../lib/identity-provider-policy.s
 // 20261022120000_sign_personal_free): risk-state transitions audited in the same
 // transaction; clear-review NEVER sets phone assurance; a restriction is never
 // shortened; signup → provisioned risk state; invites; the review queue; the
-// unbound 7-day lapse (and a bound owner never lapses); the Google pre-pin.
+// unbound 7-day lapse (and a bound owner never lapses); the signup-attempt
+// cleanup; the pilot cap's reservation release; the Google pre-pin.
 
 const ROOT = resolve(__dirname, '../../../..');
 const splitDdl = (sql: string) => sql.replace(/--[^\n]*$/gm, '').split(/;\s*\n/);
@@ -339,48 +340,162 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign Personal (Fr
     }
   });
 
-  it('unverified purge: PENDING / REFUSED requests older than 3 days are deleted in one statement (audited, counts only); verified rows, younger rows and still-verifiable rows are kept; idempotent', async () => {
+  it('attempt cleanup: abandoned attempts go 3 days after expiry, refused after 180 days, in one run (audited, counts only); bound, accepted, in-flight and invite-used rows are kept; idempotent', async () => {
     // A clock long before every other row in this database keeps the counts exact.
     const now = new Date('2020-01-10T12:00:00.000Z');
-    const cutoff = new Date(now.getTime() - 3 * DAY);
     const MIN = 60_000;
-    const over = new Date(cutoff.getTime() - MIN);
-    const under = new Date(cutoff.getTime() + MIN);
+    const abandoned_cutoff = new Date(now.getTime() - 3 * DAY);
+    const refused_cutoff = new Date(now.getTime() - 180 * DAY);
+    // An attempt expires 24 h after it starts (PERSONAL_SIGNUP_TTL_MS).
+    const startedToExpireAt = (expires: Date) => new Date(expires.getTime() - DAY);
+    const over = startedToExpireAt(new Date(abandoned_cutoff.getTime() - MIN));
+    const verified = async (at: Date) => {
+      const r = await signupRow({ now: at });
+      await signups.markEmailVerified(r.id, at);
+      return r;
+    };
+    const refusedAt = async (at: Date) => signups.create({ ...(await signupInput(at)), status: 'REFUSED', decision: 'refuse' });
+
+    // Rule (a) — deleted.
     const pendingOver = await signupRow({ now: over });
-    const pendingAtCutoff = await signupRow({ now: cutoff });
-    const pendingUnder = await signupRow({ now: under });
-    const refusedOver = await signups.create({ ...(await signupInput(over)), status: 'REFUSED', decision: 'refuse' });
-    const verifiedOver = await signupRow({ now: over });
-    await signups.markEmailVerified(verifiedOver.id, over);
-    const failedOver = await signupRow({ now: over });
-    await signups.markEmailVerified(failedOver.id, over);
-    await signups.claimForProvisioning(failedOver.id, { documents: [], ip: null, at: over });
-    await signups.markFailed(failedOver.id, 'provisioning_failed', over);
-    // Still verifiable (its code window has not passed): never deleted mid-verification.
-    const inFlight = await signupRow({ now: over });
-    await prisma.personalSignupRequest.update({ where: { id: inFlight.id }, data: { expires_at: new Date(now.getTime() + MIN) } });
+    const pendingAtCutoff = await signupRow({ now: startedToExpireAt(abandoned_cutoff) });
+    const verifiedOver = await verified(over);
+    const failedUnaccepted = await verified(over);
+    await prisma.personalSignupRequest.update({ where: { id: failedUnaccepted.id }, data: { status: 'FAILED', failure_code: 'x' } });
+    // Rule (a) — kept.
+    const pendingUnder = await signupRow({ now: startedToExpireAt(new Date(abandoned_cutoff.getTime() + MIN)) });
+    const failedAccepted = await verified(over);
+    await signups.claimForProvisioning(failedAccepted.id, { documents: [], ip: null, at: over });
+    await signups.markFailed(failedAccepted.id, 'provisioning_failed', over);
+    const verifiedAccepted = await verified(over);
+    await prisma.personalSignupRequest.update({ where: { id: verifiedAccepted.id }, data: { accepted_at: over } });
+    const provisioning = await verified(over);
+    await signups.claimForProvisioning(provisioning.id, { documents: [], ip: null, at: over });
+    const bind = async (r: { id: string; email: string }) => {
+      await signups.claimForProvisioning(r.id, { documents: [], ip: null, at: over });
+      const t = await personalTenant();
+      const user = uuidv7();
+      await prisma.user.create({ data: { id: user, email: r.email, tenant_id: t } });
+      await signups.completeProvisioning({ id: r.id, tenant_id: t, owner_user_id: user, now: over });
+    };
+    const provisioned = await verified(over);
+    await bind(provisioned);
+    const lapsed = await verified(over);
+    await bind(lapsed);
+    await prisma.personalSignupRequest.update({ where: { id: lapsed.id }, data: { status: 'LAPSED' } });
+    const inviteUsed = await signupRow({ now: over });
+    const inv = await signups.issueInvite(`invite${++n}@gmail.com`, OPERATOR, over);
+    await prisma.personalSignupInvite.update({ where: { id: inv.id }, data: { used_at: over, used_by_signup_id: inviteUsed.id } });
+    // Rule (b) — a refusal is evidence: kept at 179 days (and at 4 days, though long expired), deleted at 180 and 181.
+    const refused179 = await refusedAt(new Date(now.getTime() - 179 * DAY));
+    const refused4 = await refusedAt(new Date(now.getTime() - 4 * DAY));
+    const refused180 = await refusedAt(refused_cutoff);
+    const refused181 = await refusedAt(new Date(now.getTime() - 181 * DAY));
 
-    const before = await prisma.identityAuditEvent.count({ where: { tenant_id: null, event_type: 'identity.personal.signup.unverified_purged' } });
-    expect(await signups.purgeUnverified(now)).toEqual({ deleted: 3, cutoff });
-    for (const gone of [pendingOver, pendingAtCutoff, refusedOver]) expect(await signups.findById(gone.id)).toBeNull();
-    for (const kept of [pendingUnder, verifiedOver, failedOver, inFlight]) expect(await signups.findById(kept.id)).not.toBeNull();
-    expect((await signups.findById(verifiedOver.id))?.status).toBe('EMAIL_VERIFIED');
-    expect((await signups.findById(failedOver.id))?.status).toBe('FAILED');
+    const purged = () => prisma.identityAuditEvent.findMany({ where: { tenant_id: null, event_type: 'identity.personal.signup.attempts_purged' }, orderBy: { created_at: 'desc' } });
+    const before = (await purged()).length;
+    expect(await signups.purgeExpiredAttempts(now)).toEqual({ abandoned: 4, refused: 2, abandoned_cutoff, refused_cutoff });
+    for (const gone of [pendingOver, pendingAtCutoff, verifiedOver, failedUnaccepted, refused180, refused181]) expect(await signups.findById(gone.id)).toBeNull();
+    const kept = { pendingUnder, failedAccepted, verifiedAccepted, provisioning, provisioned, lapsed, inviteUsed, refused179, refused4 };
+    for (const r of Object.values(kept)) expect(await signups.findById(r.id)).not.toBeNull();
+    expect((await signups.findById(failedAccepted.id))?.status).toBe('FAILED');
+    expect((await signups.findById(provisioning.id))?.status).toBe('PROVISIONING');
+    expect((await signups.findById(provisioned.id))?.status).toBe('PROVISIONED');
+    expect((await signups.findById(lapsed.id))?.status).toBe('LAPSED');
 
-    const ev = await prisma.identityAuditEvent.findMany({ where: { tenant_id: null, event_type: 'identity.personal.signup.unverified_purged' }, orderBy: { created_at: 'desc' } });
+    const ev = await purged();
     expect(ev).toHaveLength(before + 1);
-    expect(ev[0]).toMatchObject({ actor_id: null, actor_type: 'system', event_payload: { deleted: 3, cutoff: cutoff.toISOString(), days: 3 } });
+    expect(ev[0]).toMatchObject({
+      actor_id: null,
+      actor_type: 'system',
+      event_payload: {
+        abandoned: 4,
+        refused: 2,
+        abandoned_cutoff: abandoned_cutoff.toISOString(),
+        refused_cutoff: refused_cutoff.toISOString(),
+        abandoned_days: 3,
+        refused_days: 180,
+      },
+    });
     // Counts only: no email, phone or address in the audit payload.
     expect(JSON.stringify(ev[0]!.event_payload)).not.toMatch(/@|\+1202|203\.0\.113/);
 
     // Idempotent: a re-run deletes nothing and writes no audit event.
-    expect(await signups.purgeUnverified(now)).toEqual({ deleted: 0, cutoff });
-    expect(await prisma.identityAuditEvent.count({ where: { tenant_id: null, event_type: 'identity.personal.signup.unverified_purged' } })).toBe(before + 1);
-    // Two minutes later the row just under the boundary and the (now expired) in-flight row go too.
-    expect((await signups.purgeUnverified(new Date(now.getTime() + 2 * MIN))).deleted).toBe(2);
+    expect(await signups.purgeExpiredAttempts(now)).toEqual({ abandoned: 0, refused: 0, abandoned_cutoff, refused_cutoff });
+    expect(await purged()).toHaveLength(before + 1);
+    // Two minutes later only the attempt just under the boundary goes; nothing else moves.
+    expect(await signups.purgeExpiredAttempts(new Date(now.getTime() + 2 * MIN))).toMatchObject({ abandoned: 1, refused: 0 });
     expect(await signups.findById(pendingUnder.id)).toBeNull();
-    expect(await signups.findById(inFlight.id)).toBeNull();
-    expect((await signups.findById(verifiedOver.id))?.status).toBe('EMAIL_VERIFIED');
+    for (const r of Object.values(kept).filter((r) => r !== pendingUnder)) expect(await signups.findById(r.id)).not.toBeNull();
+  });
+
+  // ── pilot cap (A1-8: atomic reservation with expiry / release) ─────────────
+  describe('pilot cap', () => {
+    // The open count every cap below is relative to (other tests leave rows behind).
+    async function occupied(now: Date): Promise<number> {
+      const live = await prisma.personalSignupRequest.count({
+        where: { status: 'PROVISIONING', updated_at: { gt: new Date(now.getTime() - PERSONAL_PROVISIONING_STALE_MS) }, expires_at: { gt: now } },
+      });
+      return (await signups.activePersonalTenantCount()) + live;
+    }
+    const accepted = (at: Date) => ({ documents: [], ip: null, at });
+    async function verifiedNow(now: Date) {
+      const r = await signupRow({ now });
+      await signups.markEmailVerified(r.id, now);
+      return r;
+    }
+    async function provisionedTenant(now: Date): Promise<string> {
+      const r = await verifiedNow(now);
+      await signups.claimForProvisioning(r.id, accepted(now));
+      const t = await personalTenant();
+      const user = uuidv7();
+      await prisma.user.create({ data: { id: user, email: r.email, tenant_id: t } });
+      await signups.completeProvisioning({ id: r.id, tenant_id: t, owner_user_id: user, now });
+      return t;
+    }
+
+    it('an account closed by its owner or an operator (risk state closed) frees its slot', async () => {
+      const now = new Date();
+      const t = await provisionedTenant(now);
+      const cap = await occupied(now);
+      const next = await verifiedNow(now);
+      expect(await signups.claimForProvisioningWithinCap(next.id, accepted(now), cap)).toBe('full');
+      await risk.close(t, OPERATOR, 'owner_closed', now, { closed_by: 'owner', note: null });
+      expect((await prisma.tenant.findUnique({ where: { id: t } }))?.status).not.toBe('CLOSED');
+      expect(await occupied(now)).toBe(cap - 1);
+      expect(await signups.claimForProvisioningWithinCap(next.id, accepted(now), cap)).toBe('claimed');
+      await signups.markFailed(next.id, 'test_release', now);
+    });
+
+    it('a stale reservation (PROVISIONING older than the stale window) frees its slot; a fresh one still blocks; an expired one frees it', async () => {
+      const now = new Date();
+      const held = await verifiedNow(now);
+      expect(await signups.claimForProvisioningWithinCap(held.id, accepted(now), (await occupied(now)) + 1)).toBe('claimed');
+      const cap = await occupied(now);
+      const next = await verifiedNow(now);
+      // Fresh (just under the stale window): blocks.
+      await prisma.personalSignupRequest.update({ where: { id: held.id }, data: { updated_at: new Date(now.getTime() - PERSONAL_PROVISIONING_STALE_MS + 1000) } });
+      expect(await signups.claimForProvisioningWithinCap(next.id, accepted(now), cap)).toBe('full');
+      // Stale (at / past the window): released.
+      await prisma.personalSignupRequest.update({ where: { id: held.id }, data: { updated_at: new Date(now.getTime() - PERSONAL_PROVISIONING_STALE_MS) } });
+      expect(await signups.claimForProvisioningWithinCap(next.id, accepted(now), cap)).toBe('claimed');
+      await signups.markFailed(next.id, 'test_release', now);
+      // Fresh again but its attempt expired: released.
+      await prisma.personalSignupRequest.update({ where: { id: held.id }, data: { updated_at: now, expires_at: now } });
+      expect(await signups.claimForProvisioningWithinCap(next.id, accepted(now), cap)).toBe('claimed');
+      await signups.markFailed(next.id, 'test_release', now);
+      await signups.markFailed(held.id, 'test_release', now);
+    });
+
+    it('two concurrent claims at cap-1 still serialize: exactly one is claimed', async () => {
+      const now = new Date();
+      const a = await verifiedNow(now);
+      const b = await verifiedNow(now);
+      const cap = (await occupied(now)) + 1;
+      const outcomes = (await Promise.all([a, b].map((r) => signups.claimForProvisioningWithinCap(r.id, accepted(now), cap)))).sort();
+      expect(outcomes).toEqual(['claimed', 'full']);
+      for (const r of [a, b]) await signups.markFailed(r.id, 'test_release', now);
+    });
   });
 
   it('Google pre-pin: the enforced cohort is pinned to google before any sign-in', async () => {

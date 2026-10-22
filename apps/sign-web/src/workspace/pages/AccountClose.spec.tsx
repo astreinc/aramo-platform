@@ -75,7 +75,14 @@ describe('Close account (Personal)', () => {
     renderAt('/personal/settings/personal');
     const card = await screen.findByTestId('settings-close-account');
     expect(card).toHaveTextContent('stops sending immediately');
-    expect(card).toHaveTextContent('within 30 days');
+    expect(card).toHaveTextContent('can’t open or download your documents afterwards');
+    expect(card).toHaveTextContent('open for their signers');
+    expect(card).toHaveTextContent('signed records and their evidence, and legal-acceptance and security records');
+    expect(card).toHaveTextContent('retention program');
+    expect(card).toHaveTextContent('doesn’t sign you out on your other devices');
+    // No fixed-date deletion promise (Lead 2026-10-22).
+    expect(card).not.toHaveTextContent(/within \d+ days|backup/i);
+    expect(within(card).getByRole('link', { name: 'privacy@aramo.ai' })).toHaveAttribute('href', 'mailto:privacy@aramo.ai');
     expect(within(card).getByRole('link', { name: 'Privacy Notice' })).toHaveAttribute('href', '/legal/privacy');
     expect(within(card).getByRole('link', { name: 'Documents' })).toHaveAttribute('href', '/personal/documents');
     expect(screen.getByRole('button', { name: 'Close my account' })).toBeDisabled();
@@ -143,7 +150,11 @@ describe('Close account (Personal)', () => {
   it('a closed Personal account opens on "Your account is closed"', async () => {
     stub(PERSONAL, CLOSED);
     renderAt('/personal');
-    expect(await screen.findByTestId('state-account-closed')).toHaveTextContent('Your account is closed');
+    const notice = await screen.findByTestId('state-account-closed');
+    expect(notice).toHaveTextContent('Your account is closed');
+    expect(notice).toHaveTextContent('retention program');
+    expect(notice).not.toHaveTextContent(/within \d+ days|backup/i);
+    expect(within(notice).getByRole('link', { name: 'privacy@aramo.ai' })).toHaveAttribute('href', 'mailto:privacy@aramo.ai');
     expect(screen.getByRole('button', { name: 'Sign out' })).toBeInTheDocument();
   });
 
