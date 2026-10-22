@@ -37,6 +37,11 @@ RUN npx nx build aramo-platform-web --skip-nx-cache
 RUN npx nx build aramo-portal-web --skip-nx-cache
 # Sign Unified Product S-2 — the ONE Aramo Sign application (workspace + guest
 # signing) served by the sign host; the retired esign host only redirects.
+# Personal (Free) — the public Turnstile site key is baked into the Sign bundle at
+# build time (compose build arg from SIGN_TURNSTILE_SITE_KEY). Unset ⇒ no widget,
+# and the backend refuses Personal signups (fail closed).
+ARG VITE_SIGN_TURNSTILE_SITE_KEY=
+ENV VITE_SIGN_TURNSTILE_SITE_KEY=${VITE_SIGN_TURNSTILE_SITE_KEY}
 RUN npx nx build aramo-sign-web --skip-nx-cache
 
 # ---------- Stage 2: config validation gate (§2.7 — mirrors the retired front door's config validate) ---

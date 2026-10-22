@@ -12,6 +12,8 @@ import { ActivityPage, ContactsPage, DocumentsPage, ReportsPage } from './pages/
 import { TemplatesPage } from './pages/Templates';
 import { LoginPage } from './routes/LoginPage';
 import { SignupPage, SignupVerifyPage } from './routes/SignupPage';
+import { PersonalSignupPage } from './routes/PersonalSignupPage';
+import { ReportPage } from './routes/ReportPage';
 import { DomainDelegatePage } from './routes/DomainDelegatePage';
 import { DomainCard } from './pages/DomainCard';
 import { ConsoleShell } from './shell';
@@ -27,6 +29,7 @@ import type { SenderContext } from './api';
 //   /personal/*  PERSONAL workspace (sending not enabled)
 //   /login       login landing (?error=<CODE>), /signed-out public landing
 //   /signup      public self-service BUSINESS signup (+ /signup/verify; dark)
+//   /signup/personal  public Personal (Free) signup; /report  "Report this email"
 // The route prefix never authorizes: the backend decides tenant, kind, entitlement
 // and every action; a mismatched prefix is redirected to the backend's workspace.
 // Guest signing (/s/:token, /d/:token) is a separate zone that never loads this
@@ -42,6 +45,10 @@ export function App({ contextLoader }: { contextLoader?: () => Promise<SenderCon
         {/* Aramo Sign launch — public self-service signup (session-less). */}
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/signup/verify" element={<SignupVerifyPage />} />
+        {/* Aramo Sign Personal (Free) — public Personal signup (dark while the mode is off)
+            and "Report this email" from a Personal sender's signing email (no sign-in). */}
+        <Route path="/signup/personal" element={<PersonalSignupPage />} />
+        <Route path="/report" element={<ReportPage />} />
         {/* Domain-Enforcement P3 §5 — the IT administrator's delegate link
             (session-less; the token is in the URL fragment). */}
         <Route path="/domain-verification" element={<DomainDelegatePage />} />

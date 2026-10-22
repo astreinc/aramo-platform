@@ -1,4 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
+import { TenantRepository } from '@aramo/identity';
 import { MAILER_PORT, type MailerPort } from '@aramo/mailer';
 import { type SigningNotification, type SigningNotificationPort, type SigningNotificationResult } from '@aramo/sign';
 
@@ -27,9 +28,29 @@ interface Rendered {
   lines: string[];
   action?: { label: string; url: string };
   footnote?: string;
+  // Personal Free v1.1 §6.4 — "Report this email" (Personal senders only).
+  report?: { label: string; url: string };
 }
 
-export function renderSigningNotification(n: SigningNotification): Rendered {
+// Personal Free v1.1 §6.4 — the report link carries the recipient's own signing
+// token in the URL FRAGMENT (never sent in a request line or logged by a server):
+//   <origin>/s/<token>  →  <origin>/report#token=<token>
+export function reportUrlFromSigningUrl(signing_url: string | undefined): string | null {
+  const u = safeUrl(signing_url);
+  if (u === null) return null;
+  const m = /^(https?:\/\/[^#?]+?)\/s\/([A-Za-z0-9_-]{16,256})$/i.exec(u);
+  return m === null ? null : `${m[1]}/report#token=${m[2]}`;
+}
+
+const REPORTABLE = new Set(['SIGNATURE_REQUEST', 'SIGNATURE_REMINDER']);
+
+export function renderSigningNotification(n: SigningNotification, opts: { report_url?: string | null } = {}): Rendered {
+  const r = renderBase(n);
+  if (REPORTABLE.has(n.kind) && typeof opts.report_url === 'string') return { ...r, report: { label: 'Report this email', url: opts.report_url } };
+  return r;
+}
+
+function renderBase(n: SigningNotification): Rendered {
   const doc = n.envelope_subject;
   const sender = (n.audience ?? 'SIGNER') === 'SENDER';
   switch (n.kind) {
@@ -119,18 +140,48 @@ export function renderSigningNotification(n: SigningNotification): Rendered {
 
 @Injectable()
 export class MailerSigningNotificationAdapter implements SigningNotificationPort {
-  constructor(@Inject(MAILER_PORT) private readonly mailer: MailerPort) {}
+  private readonly log = new Logger(MailerSigningNotificationAdapter.name);
+
+  constructor(
+    @Inject(MAILER_PORT) private readonly mailer: MailerPort,
+    // Personal Free v1.1 §6.4 — resolves whether the sender is a PERSONAL tenant.
+    // Optional: absent ⇒ no report link (the pre-existing email exactly).
+    @Optional() private readonly tenants?: TenantRepository,
+  ) {}
+
+  // Only a Personal sender's signing request / reminder carries "Report this email".
+  private async reportUrl(input: SigningNotification): Promise<string | null> {
+    if (!REPORTABLE.has(input.kind) || input.tenant_id === undefined || this.tenants === undefined) return null;
+    try {
+      const tenant = await this.tenants.findById(input.tenant_id);
+      return tenant?.kind === 'PERSONAL' ? reportUrlFromSigningUrl(input.signing_url) : null;
+    } catch (err) {
+      // Never block a signing email on the lookup; the email goes without the link.
+      this.log.warn(`report link lookup failed: ${(err as Error).message}`);
+      return null;
+    }
+  }
 
   async notify(input: SigningNotification): Promise<SigningNotificationResult> {
-    const r = renderSigningNotification(input);
+    const r = renderSigningNotification(input, { report_url: await this.reportUrl(input) });
     const html = [
       `<p>Hello ${esc(input.to_name)},</p>`,
       ...r.lines.map((l) => `<p>${esc(l)}</p>`),
       r.action ? `<p><a href="${esc(r.action.url)}">${esc(r.action.label)}</a></p>` : '',
       r.footnote ? `<p style="color:#5c6770;font-size:13px">${esc(r.footnote)}</p>` : '',
+      r.report
+        ? `<p style="color:#5c6770;font-size:13px">Not expecting this, or don’t know the sender? <a href="${esc(r.report.url)}">${esc(r.report.label)}</a></p>`
+        : '',
       `<p style="color:#5c6770;font-size:13px">— ${BRAND}</p>`,
     ].join('');
-    const text = [`Hello ${input.to_name},`, ...r.lines, r.action ? `${r.action.label}: ${r.action.url}` : '', r.footnote ?? '', `— ${BRAND}`]
+    const text = [
+      `Hello ${input.to_name},`,
+      ...r.lines,
+      r.action ? `${r.action.label}: ${r.action.url}` : '',
+      r.footnote ?? '',
+      r.report ? `Not expecting this, or don’t know the sender? ${r.report.label}: ${r.report.url}` : '',
+      `— ${BRAND}`,
+    ]
       .filter((l) => l.length > 0)
       .join('\n\n');
     const sent = await this.mailer.send({ to: input.to_email, subject: r.subject, html, text });

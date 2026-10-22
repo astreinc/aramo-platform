@@ -5,6 +5,8 @@ import { errorMessage, senderApi, type EnvelopeRow, type Summary } from '../api'
 import { ErrorBox, Loading, StatusPill, rel } from '../ui';
 import { useWorkspace } from '../workspace';
 
+import { PersonalAllowance } from './PersonalAllowance';
+
 function greeting(now: Date): string {
   const h = now.getHours();
   return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
@@ -39,12 +41,14 @@ export function Dashboard() {
         {first !== '' ? `, ${first}` : ''}.
       </h1>
       <p className="sg-lede">{personal ? 'Here’s what’s happening with your documents.' : 'Here’s what’s happening with your agreements.'}</p>
-      {personal ? (
+      {personal && ctx.personal_sending_enabled !== true ? (
         <div className="sg-note" style={{ marginTop: 14 }} data-testid="personal-note">
           <span className="sg-tag sg-tag--grey">Personal</span>
           Sending from a personal account isn’t enabled yet. You can see envelopes you’re part of here.
         </div>
       ) : null}
+      {/* Aramo Sign Personal (Free) §4 — 2 a day, 5 a month, from the backend's ledger. */}
+      {personal && ctx.personal_sending_enabled === true ? <PersonalAllowance /> : null}
       {error !== '' ? <ErrorBox>{error}</ErrorBox> : null}
       {summary === null && error === '' ? <Loading /> : null}
       {summary !== null ? (

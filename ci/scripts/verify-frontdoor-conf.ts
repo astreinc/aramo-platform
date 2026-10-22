@@ -150,6 +150,8 @@ function checkRepo(): Issue[] {
     ['/v1/sign/sender/', 'sign-service:3003'],
     ['/v1/sign/billing/', 'sign-service:3003'],
     ['/v1/sign/inbox', 'sign-service:3003'],
+    // Personal Free v1.1 §6.4 — "Report this email".
+    ['/v1/sign/report', 'sign-service:3003'],
     ['/v1/signup/sign/', 'platform-admin:3002'],
     ['/v1/tenant/domain-verification', 'api:3000'],
     ['/v1/domain-verification/delegate', 'api:3000'],
@@ -167,6 +169,9 @@ function checkRepo(): Issue[] {
     if (!/limit_req\s+zone=sign_guest\b/.test(locationBody(sign.body, 'location /v1/sign/signing/') ?? '')) {
       issues.push({ where: TEMPLATE, reason: '(k) /v1/sign/signing/ must be rate-limited (limit_req zone=sign_guest)' });
     }
+    if (!/limit_req\s+zone=sign_report\b/.test(locationBody(sign.body, 'location /v1/sign/report') ?? '')) {
+      issues.push({ where: TEMPLATE, reason: '(k) /v1/sign/report must be rate-limited (limit_req zone=sign_report)' });
+    }
     if (!/limit_req\s+zone=sign_signup\b/.test(locationBody(sign.body, 'location /v1/signup/sign/') ?? '')) {
       issues.push({ where: TEMPLATE, reason: '(k) /v1/signup/sign/ must be rate-limited (limit_req zone=sign_signup)' });
     }
@@ -182,6 +187,13 @@ function checkRepo(): Issue[] {
   const signServerLevel = sign.body.replace(/^\s*location\b[^{]*\{[^}]*\}/gm, '');
   for (const h of ['Content-Security-Policy', 'Strict-Transport-Security', 'X-Content-Type-Options', 'X-Frame-Options', 'Referrer-Policy']) {
     if (!new RegExp(`add_header\\s+${h}\\s+"[^"]*"\\s+always;`).test(signServerLevel)) issues.push({ where: TEMPLATE, reason: `(k) sign block must set ${h} host-wide (add_header … always)` });
+  }
+  // Personal Free — the workspace CSP admits the robot-check origin for scripts
+  // and frames, and nothing else third-party beyond fonts.
+  const workspaceCsp = /add_header\s+Content-Security-Policy\s+"([^"]+)"/.exec(signServerLevel)?.[1] ?? '';
+  for (const d of ['script-src', 'frame-src']) {
+    const directive = new RegExp(`${d}\\s+([^;]+)`).exec(workspaceCsp)?.[1] ?? '';
+    if (!directive.split(/\s+/).includes('https://challenges.cloudflare.com')) issues.push({ where: TEMPLATE, reason: `(k) sign workspace CSP ${d} must allow https://challenges.cloudflare.com (Personal signup robot check)` });
   }
   const guest = locationBody(sign.body, 'location ~ ^/(s|d)/') ?? '';
   if (guest === '') {

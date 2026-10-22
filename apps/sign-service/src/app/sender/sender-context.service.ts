@@ -1,8 +1,9 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
-import { ESIGN_SCOPE, IdentityRepository, TenantRepository } from '@aramo/identity';
+import { ESIGN_SCOPE, IdentityRepository, TenantRepository, type TenantDto } from '@aramo/identity';
 
+import { PersonalSendGate } from '../personal/personal-send.gate.js';
 import { SIGN_TEMPLATES_FEATURE, SignFeatureGate } from '../sign-feature.gate.js';
 
 // PX-1 — the authenticated sender's context, resolved ENTIRELY server-side from
@@ -15,6 +16,11 @@ import { SIGN_TEMPLATES_FEATURE, SignFeatureGate } from '../sign-feature.gate.js
 // PERSONAL sending is NOT enabled (ruling): a PERSONAL tenant may read its own
 // envelopes but every authoring / lifecycle write is refused here, on the
 // backend, regardless of the scopes the principal holds.
+//
+// Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED §4 / §10 — lifted ONLY for
+// a bound (ACTIVE) PERSONAL tenant while SIGN_PERSONAL_SIGNUP_MODE is not `off`;
+// the send itself then passes the Personal sending gate (PersonalSendGate). With
+// the mode off (the shipped default) the refusal is exactly the one above.
 
 export const ESIGN_READ_SCOPE = 'sign:envelope:read';
 export const ESIGN_CREATE_SCOPE = 'sign:envelope:create';
@@ -46,7 +52,9 @@ export interface SenderContextView {
   features: { templates: boolean };
   // True only for a BUSINESS tenant whose principal holds create + send.
   can_send: boolean;
-  personal_sending_enabled: false;
+  // Personal Free v1.1 — true only for a bound PERSONAL tenant while Personal
+  // sending is switched on (SIGN_PERSONAL_SIGNUP_MODE not `off`).
+  personal_sending_enabled: boolean;
   // The tenant host's Organization administration (shared authority for the
   // tenant profile and users), or null when the tenant has no host label.
   organization_url: string | null;
@@ -62,25 +70,48 @@ export class SenderContextService {
     // DOC-TEMPLATE-LIB-1 T-5 — optional so existing compositions/tests keep working; absent
     // ⇒ the production registry (sign.templates NOT_AVAILABLE until activation).
     @Optional() private readonly features?: SignFeatureGate,
+    // Personal Free v1.1 — optional so existing compositions/tests keep working;
+    // absent ⇒ Personal authoring stays refused (today's behaviour).
+    @Optional() private readonly personal?: PersonalSendGate,
   ) {}
 
-  async tenantKind(tenant_id: string, requestId: string): Promise<string> {
+  async tenantOf(tenant_id: string, requestId: string): Promise<TenantDto> {
     const tenant = await this.tenants.findById(tenant_id);
     if (tenant === null) {
       throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Tenant not found for this session', 403, { requestId, details: { reason: 'tenant_unknown' } });
     }
-    return tenant.kind;
+    return tenant;
   }
 
-  // Backend refusal for authoring / lifecycle writes from a PERSONAL tenant.
+  async tenantKind(tenant_id: string, requestId: string): Promise<string> {
+    return (await this.tenantOf(tenant_id, requestId)).kind;
+  }
+
+  /** Personal Free v1.1 — a bound PERSONAL tenant while Personal sending is switched on. */
+  personalAuthoringOpen(tenant: Pick<TenantDto, 'kind' | 'status'>): boolean {
+    return this.personal !== undefined && this.personal.authoringOpen(tenant);
+  }
+
+  // Backend refusal for authoring / lifecycle writes from a PERSONAL tenant
+  // (lifted only per personalAuthoringOpen).
   async assertCanAuthor(auth: AuthContextType, requestId: string): Promise<void> {
-    const kind = await this.tenantKind(auth.tenant_id, requestId);
-    if (kind !== 'BUSINESS') {
-      throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Sending from a personal account is not enabled', 403, {
-        requestId,
-        details: { reason: 'personal_sending_not_enabled' },
-      });
-    }
+    await this.assertCanAuthorTenant(auth, requestId);
+  }
+
+  /** assertCanAuthor, returning the tenant (the send / remind paths need its kind). */
+  async assertCanAuthorTenant(auth: AuthContextType, requestId: string): Promise<TenantDto> {
+    const tenant = await this.tenantOf(auth.tenant_id, requestId);
+    if (tenant.kind === 'BUSINESS') return tenant;
+    if (!this.personalAuthoringOpen(tenant)) throw personalSendingNotEnabled(requestId);
+    // Personal Free v1.1 §4 — the FREE subscription is in place before any upload / send.
+    await this.personal?.ensureFreeSubscription(tenant);
+    return tenant;
+  }
+
+  // Business-only actions (e.g. a paid checkout): refused for every non-BUSINESS
+  // tenant whatever the Personal mode — the Free Personal plan is never purchased.
+  async assertBusiness(auth: AuthContextType, requestId: string): Promise<void> {
+    if ((await this.tenantKind(auth.tenant_id, requestId)) !== 'BUSINESS') throw personalSendingNotEnabled(requestId);
   }
 
   async context(auth: AuthContextType, requestId: string): Promise<SenderContextView> {
@@ -92,6 +123,9 @@ export class SenderContextService {
     const slug = await this.tenants.findSlugById(auth.tenant_id);
     const scopes = new Set(auth.scopes);
     const business = tenant.kind === 'BUSINESS';
+    const personalOpen = !business && this.personalAuthoringOpen(tenant);
+    // Personal Free v1.1 §4 — the FREE subscription opens lazily on first read.
+    if (personalOpen) await this.personal?.ensureFreeSubscription(tenant);
     const permissions = {
       read: scopes.has(ESIGN_READ_SCOPE),
       read_all: business && scopes.has(ESIGN_SCOPE.ENVELOPE_READ_ALL),
@@ -111,12 +145,19 @@ export class SenderContextService {
       workspace: business ? 'sign' : 'personal',
       permissions,
       features: { templates: (this.features ?? new SignFeatureGate()).isAvailable(SIGN_TEMPLATES_FEATURE) },
-      can_send: business && permissions.create && permissions.send,
-      personal_sending_enabled: false,
+      can_send: (business || personalOpen) && permissions.create && permissions.send,
+      personal_sending_enabled: personalOpen,
       organization_url: business && tenantBase !== null ? `${tenantBase}/org/profile` : null,
       app_home_url: tenantBase !== null ? `${tenantBase}/` : null,
     };
   }
+}
+
+function personalSendingNotEnabled(requestId: string): AramoError {
+  return new AramoError('INSUFFICIENT_PERMISSIONS', 'Sending from a personal account is not enabled', 403, {
+    requestId,
+    details: { reason: 'personal_sending_not_enabled' },
+  });
 }
 
 // The tenant host base URL. `SIGN_TENANT_HOST_URL_TEMPLATE` (e.g.

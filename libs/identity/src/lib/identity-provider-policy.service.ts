@@ -48,6 +48,26 @@ export class IdentityProviderPolicyService {
     await this.prisma.tenantIdentityProviderPolicy.createMany({ data: [{ tenant_id }], skipDuplicates: true });
   }
 
+  /**
+   * Sign Personal (Free) Launch v1.1 (LOCKED) §5 — V1 Personal sign-in is Google
+   * only: enroll the tenant in the enforced cohort with its pin ALREADY set, so
+   * the owner's first federation must be Google (any other provider is
+   * idp_not_permitted_for_tenant) and still binds only through the existing
+   * provider-checked verified-email reconcile. Idempotent; never re-points an
+   * existing pin.
+   */
+  async enrollEnforcedTenantPinned(tenant_id: string, idp: FederatedIdp): Promise<void> {
+    await this.prisma.$transaction(async (tx) => {
+      await tx.tenantIdentityProviderPolicy.createMany({ data: [{ tenant_id }], skipDuplicates: true });
+      const n = await tx.$executeRaw`
+        UPDATE "identity"."Tenant" SET "identity_provider" = ${idp}, "updated_at" = now()
+        WHERE "id" = ${tenant_id}::uuid AND "identity_provider" IS NULL`;
+      if (n === 1) {
+        await tx.tenantIdentityProviderPolicy.update({ where: { tenant_id }, data: { pinned_at: new Date() } });
+      }
+    });
+  }
+
   async policyOf(tenant_id: string): Promise<{ enforced: boolean; pin: string | null }> {
     const [policy, tenant] = await Promise.all([
       this.prisma.tenantIdentityProviderPolicy.findUnique({ where: { tenant_id } }),

@@ -217,6 +217,27 @@ export function summarizeDetail(
       return 'Granted a shared email domain exception';
     case 'identity.domain.exception.revoked':
       return 'Revoked a shared email domain exception';
+    // Sign Personal (Free) Launch v1.1 — the Personal account's signup and risk state.
+    case 'identity.personal.signup.provisioned':
+      return 'Created the personal account';
+    case 'identity.personal.signup.lapsed':
+      return 'The unclaimed personal account lapsed';
+    case 'identity.personal.risk.review_flagged':
+      return 'Held the personal account for review';
+    case 'identity.personal.risk.step_up_required':
+      return 'Asked for phone verification';
+    case 'identity.personal.risk.phone_verified':
+      return 'Verified the phone number';
+    case 'identity.personal.risk.restricted':
+      return 'Restricted sending';
+    case 'identity.personal.risk.review_cleared':
+      return 'Cleared the review';
+    case 'identity.personal.risk.reinstated':
+      return 'Reinstated sending';
+    case 'identity.personal.risk.closed':
+      return 'Closed the personal account';
+    case 'identity.personal.invite.issued':
+      return 'Issued a personal pilot invite';
     default:
       // Exhaustive over EVENT_TYPES; a future type lands here until summarized.
       return humanizeEventType(eventType);

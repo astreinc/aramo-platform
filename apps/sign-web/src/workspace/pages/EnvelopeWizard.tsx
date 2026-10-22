@@ -2,10 +2,11 @@ import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Input } from '@aramo/fe-foundation';
 
-import { errorMessage, fileToBase64, MAX_SIGNERS, senderApi, type ContactRow, type EnvelopeDetail, type RoutingMode } from '../api';
+import { errorMessage, fileToBase64, isAllowanceLimit, MAX_SIGNERS, senderApi, sendRefusalMessage, type ContactRow, type EnvelopeDetail, type RoutingMode } from '../api';
 import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, LinkBtn, Loading, RecipientPill, Sel, TextIn, fmtBytes } from '../ui';
 import { useWorkspace } from '../workspace';
 
+import { PersonalUpgradeLink } from './PersonalAllowance';
 import { PrepareEditor } from './PrepareEditor';
 import { readinessOf } from './readiness';
 
@@ -501,11 +502,14 @@ function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; 
   const [error, setError] = useState('');
   const [problems, setProblems] = useState<string[]>([]);
   const [sending, setSending] = useState(false);
+  // Aramo Sign Personal (Free) §4 — at a limit, offer the Business route (never a charge).
+  const [upgrade, setUpgrade] = useState(false);
   const ready = readinessOf(env);
 
   const send = async () => {
     setError('');
     setProblems([]);
+    setUpgrade(false);
     setSending(true);
     try {
       // Navigate straight to the Sent screen; updating the wizard's envelope first
@@ -514,7 +518,8 @@ function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; 
       onSent();
       nav(`${base}/envelopes/${env.id}/sent`);
     } catch (e) {
-      setError(errorMessage(e));
+      setError(sendRefusalMessage(e, ctx.workspace === 'personal'));
+      setUpgrade(ctx.workspace === 'personal' && isAllowanceLimit(e));
       const det = (e as { details?: { problems?: unknown } }).details;
       if (Array.isArray(det?.problems)) setProblems(det.problems.filter((p): p is string => typeof p === 'string'));
     } finally {
@@ -598,6 +603,7 @@ function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; 
               Each signer gets an email with a secure link to sign at sign.aramo.ai. They don’t need an Aramo account.
             </p>
             {error !== '' ? <ErrorBox>{error}</ErrorBox> : null}
+            {upgrade ? <PersonalUpgradeLink /> : null}
             {problems.length > 0 ? (
               <ul className="sg-muted" style={{ fontSize: 12.5 }}>
                 {problems.map((p) => (

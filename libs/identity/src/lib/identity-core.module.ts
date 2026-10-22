@@ -20,6 +20,11 @@ import { SignupRequestRepository } from './signup-request.repository.js';
 import { IdentityProviderPolicyService } from './identity-provider-policy.service.js';
 import { OrganizationRegionService } from './organization-region.service.js';
 import { DomainClaimService } from './domain-claim/domain-claim.service.js';
+import { GEO_IP_PORT, MaxmindGeoIpAdapter } from './personal/geo-ip.port.js';
+import { PersonalRiskService } from './personal/personal-risk.service.js';
+import { PersonalSignupRepository } from './personal/personal-signup.repository.js';
+import { ROBOT_CHECK_PORT, robotCheckAdapterFromEnv } from './personal/robot-check.port.js';
+import { SMS_VERIFICATION_PORT, smsVerificationAdapterFromEnv } from './personal/sms-verification.port.js';
 import { RoleService } from './role.service.js';
 import { TeamRepository } from './team.repository.js';
 import { TeamService } from './team.service.js';
@@ -91,6 +96,14 @@ import { ProductAvailabilityService } from './authorization/product-availability
     OrganizationRegionService,
     // Domain-Enforcement P3 (LOCKED) — one organization per email domain (the claim).
     DomainClaimService,
+    // Sign Personal (Free) Launch v1.1 (LOCKED) — risk state + signup store, and the
+    // three eligibility ports (offline GeoLite2, SMS delivery, robot check). The
+    // adapters are chosen from env at bootstrap and open nothing until first use.
+    PersonalRiskService,
+    PersonalSignupRepository,
+    { provide: GEO_IP_PORT, useFactory: () => new MaxmindGeoIpAdapter() },
+    { provide: SMS_VERIFICATION_PORT, useFactory: () => smsVerificationAdapterFromEnv() },
+    { provide: ROBOT_CHECK_PORT, useFactory: () => robotCheckAdapterFromEnv() },
     RoleRepository,
     IdentityAuditRepository,
     IdentityAuditService,
@@ -128,6 +141,11 @@ import { ProductAvailabilityService } from './authorization/product-availability
   ],
   exports: [
     SignupRequestRepository,
+    PersonalRiskService,
+    PersonalSignupRepository,
+    GEO_IP_PORT,
+    SMS_VERIFICATION_PORT,
+    ROBOT_CHECK_PORT,
     IdentityProviderPolicyService,
     OrganizationRegionService,
     DomainClaimService,

@@ -16,6 +16,7 @@
       "@aramo/entitlement": ["../../dist/libs/entitlement/src/index.d.ts"],
       "@aramo/mailer": ["../../dist/libs/mailer/src/index.d.ts"],
       "@aramo/subscription": ["../../dist/libs/subscription/src/index.d.ts"],
+      "@aramo/sign": ["../../dist/libs/sign/src/index.d.ts"],
       "@aramo/metering": ["../../dist/libs/metering/src/index.d.ts"],
       "@aramo/policy-store": ["../../dist/libs/policy-store/src/index.d.ts"],
       "@aramo/documents": ["../../dist/libs/documents/src/index.d.ts"],

@@ -60,7 +60,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
     await container?.stop();
   });
 
-  it('creates the esign schema with the twenty-one tables', async () => {
+  it('creates the esign schema with the twenty-two tables', async () => {
     const r = await db.query(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = 'sign'`,
     );
@@ -91,6 +91,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
         'SignWebhookSubscription',
         // Sign Unified Product S-7 — the recipient inbox.
         'SignRecipientBinding',
+        // Personal Free v1.1 §6.4 — abuse reports.
+        'AbuseReport',
       ].sort(),
     );
   });

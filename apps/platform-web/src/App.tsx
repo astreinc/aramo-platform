@@ -23,6 +23,8 @@ import { ProposalDetailView } from './skills/ProposalDetailView';
 import { DocumentTemplatesListView } from './document-templates/DocumentTemplatesListView';
 import { DocumentTemplateDetailView } from './document-templates/DocumentTemplateDetailView';
 import { TemplateVariablesView } from './document-templates/TemplateVariablesView';
+import { PersonalReviewView } from './personal/PersonalReviewView';
+import { PersonalInviteView } from './personal/PersonalInviteView';
 
 // The platform console app (Inc-2 PR-2). Single guarded surface: the whole thing
 // requires platform:tenant:read. Unauthenticated → RouteGuard redirects to
@@ -166,6 +168,29 @@ export function App() {
                     <TemplateVariablesView session={state.session} />
                   ) : (
                     <ForbiddenState scope="platform:document_template:read" />
+                  )
+                }
+              />
+              {/* Aramo Sign Personal (Free) §6.5/§10 — the Personal review queue and
+                  pilot invites; the API guards them with
+                  platform:tenant:lifecycle:manage (authoritative), mirrored here. */}
+              <Route
+                path="/personal-review"
+                element={
+                  hasScope(state.session, 'platform:tenant:lifecycle:manage') ? (
+                    <PersonalReviewView />
+                  ) : (
+                    <ForbiddenState scope="platform:tenant:lifecycle:manage" />
+                  )
+                }
+              />
+              <Route
+                path="/personal-invites"
+                element={
+                  hasScope(state.session, 'platform:tenant:lifecycle:manage') ? (
+                    <PersonalInviteView />
+                  ) : (
+                    <ForbiddenState scope="platform:tenant:lifecycle:manage" />
                   )
                 }
               />

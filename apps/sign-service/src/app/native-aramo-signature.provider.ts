@@ -125,6 +125,7 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
           to_email: signer.email,
           to_name: signer.name,
           envelope_subject: full.subject,
+          tenant_id,
           signing_url,
         });
         if (!result.delivered) {
@@ -224,6 +225,7 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
           to_email: signer.email,
           to_name: signer.name,
           envelope_subject: full.subject,
+          tenant_id,
           signing_url,
         });
         await this.repo.recordNotificationDelivery({

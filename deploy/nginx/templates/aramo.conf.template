@@ -240,6 +240,10 @@ server {
 # one fill per field, complete) — the guest zone allows that burst.
 limit_req_zone $binary_remote_addr zone=sign_guest:10m  rate=10r/s;
 limit_req_zone $binary_remote_addr zone=sign_signup:10m rate=10r/m;
+# Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED §6.4 — the session-less
+# "Report this email" intake (one report per recipient per envelope; sign-service
+# also budgets per address).
+limit_req_zone $binary_remote_addr zone=sign_report:10m rate=10r/m;
 # Domain-Enforcement P3 §5 — the session-less domain-verification delegate link
 # (one record read plus a few "Check" clicks per visit; apps/api also budgets per
 # address and per token).
@@ -251,6 +255,7 @@ limit_req_status 429;
 # §4.1 (amends the Host & Workspace Ruling v1.0): one host, one SPA (/srv/sign),
 # three authentication zones —
 #   guest signing   /s/:token, /d/:token + /v1/sign/signing/  (capability token)
+#                   + /v1/sign/report ("Report this email", the same token)
 #   public entry    /login, /signed-out, /signup + /v1/signup/sign/  (no session)
 #   workspace       everything else + /v1/sign/sender/, /v1/sign/billing/, /auth/
 # Wildcard *.aramo.ai cert covers the host. Only the Sign surfaces are proxied:
@@ -272,7 +277,9 @@ server {
 
   # Security headers (workspace policy). A location that sets its own add_header
   # does not inherit these, so the guest locations below repeat the full set.
-  add_header Content-Security-Policy "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; frame-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
+  # challenges.cloudflare.com = the robot check on the Personal signup page
+  # (Aramo-Sign-Personal-Free-Launch-Directive-v1_1); guest pages never load it.
+  add_header Content-Security-Policy "default-src 'self'; script-src 'self' https://challenges.cloudflare.com; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self'; worker-src 'self' blob:; frame-src 'self' blob: https://challenges.cloudflare.com; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'" always;
   add_header Strict-Transport-Security "max-age=31536000" always;
   add_header X-Content-Type-Options "nosniff" always;
   add_header X-Frame-Options "DENY" always;
@@ -302,6 +309,13 @@ server {
   # trailing slash so the bare list path matches too.
   location /v1/sign/inbox {
     client_max_body_size 16k;
+    proxy_pass http://sign-service:3003;
+  }
+  # Public — "Report this email" (Personal Free v1.1 §6.4). Session-less: the
+  # recipient's own signing token is the only authority.
+  location /v1/sign/report {
+    limit_req zone=sign_report burst=5 nodelay;
+    client_max_body_size 8k;
     proxy_pass http://sign-service:3003;
   }
   # Public entry — self-service signup (platform-admin owns the provisioning

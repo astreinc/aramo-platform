@@ -49,6 +49,7 @@ model SignatureEnvelope {
   events    SignatureEvent[]
   executed_access ExecutedAccessGrant[]
   recipient_bindings SignRecipientBinding[]
+  abuse_reports      AbuseReport[]
 
   @@index([tenant_id])
   @@index([tenant_id, status])
@@ -109,6 +110,7 @@ model Signer {
   disclosures SignerDisclosureAcceptance[]
 
   recipient_bindings SignRecipientBinding[]
+  abuse_reports      AbuseReport[]
   @@unique([envelope_id, signing_order])
   @@index([tenant_id])
   @@index([envelope_id])
@@ -519,5 +521,42 @@ model SignRecipientBinding {
 
   @@unique([signer_id, user_id], map: "SignRecipientBinding_signer_user_key")
   @@index([user_id])
+  @@schema("sign")
+}
+
+// ── Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED §6.4 — abuse reports ──
+
+/// "Report this email" on a Personal sender's signing email: one per recipient per
+/// envelope, from the recipient's own signing link. weight = severity × independence
+/// × credibility (each factor kept). reporter_key = sha256 of the normalized
+/// recipient address (never the address); reporter_domain for independence.
+/// CHECK reason: phishing|impersonation|spam|unknown_sender|other (nullable).
+/// CHECK outcome: OPEN|CONFIRMED|FALSE_REPORT|DISMISSED.
+model AbuseReport {
+  id                    String    @id @db.Uuid
+  tenant_id             String    @db.Uuid
+  envelope_id           String    @db.Uuid
+  signer_id             String    @db.Uuid
+  reason                String?
+  note                  String?
+  reporter_key          String
+  reporter_domain       String
+  severity              Float
+  independence          Float
+  credibility           Float
+  weight                Float
+  triggered_restriction Boolean   @default(false)
+  outcome               String    @default("OPEN")
+  outcome_reason        String?
+  decided_by            String?
+  decided_at            DateTime? @db.Timestamptz
+  created_at            DateTime  @default(now()) @db.Timestamptz
+
+  envelope SignatureEnvelope @relation(fields: [envelope_id], references: [id], onDelete: Cascade)
+  signer   Signer            @relation(fields: [signer_id], references: [id], onDelete: Cascade)
+
+  @@unique([envelope_id, signer_id])
+  @@index([tenant_id, created_at])
+  @@index([reporter_key])
   @@schema("sign")
 }

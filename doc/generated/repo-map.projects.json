@@ -944,12 +944,17 @@
       "AuthorizationVersionService",
       "BILLING_REGION_US",
       "CursorDecodeError",
+      "DEFAULT_PERSONAL_ALLOWED_COUNTRIES",
+      "DEFAULT_PERSONAL_PILOT_CAP",
+      "DEFAULT_PERSONAL_RISK_CONFIG",
       "DEFAULT_SIGN_ENTRY_URL",
       "DEFAULT_TENANT_KIND",
       "DNS_RESOLVER_PORT",
       "DOMAIN_CLAIM_PROVISIONAL_DAYS",
       "DOMAIN_CLAIM_STATES",
       "DOMAIN_VERIFICATION_STATUSES",
+      "DisabledRobotCheck",
+      "DisabledSmsAdapter",
       "DnsResolverModule",
       "DomainClaimService",
       "DomainVerificationService",
@@ -964,6 +969,8 @@
       "EsignSenderBoundary",
       "EsignSenderConsumerGuard",
       "FEDERATED_IDPS",
+      "GEO_IP_PORT",
+      "HOSTING_ASN_KEYWORDS",
       "INVITE_STATUSES",
       "IdentityAuditRepository",
       "IdentityAuditService",
@@ -975,8 +982,10 @@
       "IdentityService",
       "InMemoryScopeCache",
       "InvitationLifecycleService",
+      "LogSmsAdapter",
       "MINT_DENYING_STATUSES",
       "ManagementEdgeRepository",
+      "MaxmindGeoIpAdapter",
       "NodeDnsAdapter",
       "ORGANIZATION_COUNTRY_NOT_SUPPORTED",
       "ORGANIZATION_DETAILS_INVALID",
@@ -986,13 +995,27 @@
       "ORG_ROLE_KEYS",
       "ORG_SESSION_DOCUMENT_TEMPLATE_SCOPE_KEYS",
       "OrganizationRegionService",
+      "PERSONAL_ALLOWED_COUNTRIES",
+      "PERSONAL_INVITE_TTL_MS",
+      "PERSONAL_OTP_DIGITS",
+      "PERSONAL_OTP_MAX_ATTEMPTS",
+      "PERSONAL_OTP_MAX_SENDS_PER_DAY",
+      "PERSONAL_OTP_RESEND_GAP_MS",
+      "PERSONAL_OTP_TTL_MS",
+      "PERSONAL_RISK_DECISIONS",
+      "PERSONAL_SIGNUP_MODES",
+      "PERSONAL_SIGNUP_TTL_MS",
       "PERSONAL_TENANT_CAPABILITIES",
+      "PERSONAL_UNBOUND_LAPSE_DAYS",
       "PLATFORM_ROLE_KEYS",
       "PLATFORM_SCOPE_PREFIX",
       "PRODUCT_KEYS",
+      "PersonalRiskService",
+      "PersonalSignupRepository",
       "PrismaService",
       "ProductAvailabilityService",
       "RETIRED_ROLE_KEYS",
+      "ROBOT_CHECK_PORT",
       "RedisScopeCache",
       "RoleBundleValidator",
       "RoleRepository",
@@ -1005,6 +1028,7 @@
       "SIGN_ORGANIZATION_ROLE_DISPLAY",
       "SIGN_ORGANIZATION_ROLE_KEYS",
       "SIGN_SESSION_DOCUMENT_TEMPLATE_SCOPE_KEYS",
+      "SMS_VERIFICATION_PORT",
       "SignupRequestRepository",
       "StubAuditFinancialsGateAdapter",
       "StubDnsAdapter",
@@ -1015,18 +1039,25 @@
       "TENANT_KINDS",
       "TENANT_LAST_OWNER_DB_MARKER",
       "TENANT_OWNER_ROLE_KEY",
+      "TENANT_RISK_STATES",
       "TENANT_SCOPED_EVENT_TYPES",
       "TENANT_STATUSES",
       "TENANT_TRANSITIONS",
+      "TURNSTILE_SITEVERIFY_URL",
       "TeamRepository",
       "TenantEntitlementReader",
       "TenantRepository",
       "TenantService",
       "TenantUserLifecycleService",
+      "TestModeRobotCheck",
+      "TurnstileRobotCheckAdapter",
       "US_STATE_CODES",
       "authorityStatement",
       "bumpPrincipalVersion",
       "bumpPrincipalsWithRoleVersion",
+      "canonicalEmailForDuplicates",
+      "checkPersonalOtp",
+      "decisionForPoints",
       "decodeCursor",
       "deriveAllowedDomainOrThrow",
       "deriveSlugOrThrow",
@@ -1034,10 +1065,16 @@
       "encodeCursor",
       "ensureBaselineVersion",
       "evaluateEsignSenderAuthorization",
+      "evaluatePersonalSend",
       "extractEmailDomain",
       "extractTenantSlugFromHost",
       "filterScopesForConsumer",
       "generateDomainVerificationToken",
+      "generatePersonalInviteCode",
+      "generatePersonalOtp",
+      "hashPersonalInviteCode",
+      "hashPersonalOtp",
+      "initialRiskState",
       "isDomainVerificationStatus",
       "isEsignRoleKey",
       "isHolderIndexViolation",
@@ -1047,15 +1084,26 @@
       "isTenantKind",
       "isTenantLastOwnerViolation",
       "isTenantStatus",
+      "looksRandom",
+      "mayResendPersonalOtp",
       "normalizeClaimDomain",
+      "normalizeE164",
       "normalizeEmail",
       "normalizeIdp",
       "normalizeSlug",
       "normalizeUsPhone",
+      "personalPilotCap",
+      "personalRiskConfig",
+      "personalSignupMode",
+      "phoneRegion",
+      "ratePersonalSignup",
       "requiredCapabilityForConsumer",
+      "restrictionInForce",
       "rethrowTenantLastOwner",
+      "robotCheckAdapterFromEnv",
       "signEntryActivated",
       "signEntryUrl",
+      "smsVerificationAdapterFromEnv",
       "usProfileIneligibility",
       "validateUsOrganizationDetails"
     ],
@@ -1649,7 +1697,12 @@
       "isMetricGoalMap"
     ],
     "@aramo/sign": [
+      "ABUSE_REPORT_NOTE_MAX",
+      "ABUSE_REPORT_OUTCOMES",
+      "ABUSE_REPORT_REASONS",
+      "AbuseReportService",
       "CURRENT_DISCLOSURE_VERSION",
+      "DEFAULT_ABUSE_REPORT_CONFIG",
       "DEFAULT_SIGN_BASE_URL",
       "DISCLOSURE_V2_TEXT",
       "DOCUMENT_SOURCE_PROVIDER_PORT",
@@ -1699,18 +1752,23 @@
       "SigningSessionInvalidError",
       "SoftwareEvidenceManifestSigner",
       "WEBHOOK_DELIVERY_PORT",
+      "abuseReportConfig",
+      "abuseReporterKey",
       "backoffMs",
       "canonicalSignEventType",
       "computeEventHash",
       "currentDisclosure",
+      "emailDomainOf",
       "envelopeExpiresAt",
       "findDisclosure",
       "generateSigningToken",
       "hashSigningToken",
+      "isAbuseReportReason",
       "listDisclosures",
       "signBaseUrl",
       "signingSessionExpiresAt",
-      "toLifecycleEvent"
+      "toLifecycleEvent",
+      "weighReport"
     ],
     "@aramo/sign-service": ["AppModule"],
     "@aramo/signature-routing": [
@@ -1797,10 +1855,14 @@
       "BillingRefusedError",
       "BillingWebhookSignatureError",
       "CapacityService",
+      "DAY_WINDOW_MS",
       "DOMAIN_NOT_AUTHORITATIVE",
       "ESIGN_ENVELOPE_ALLOWANCE",
       "ESIGN_ENVELOPE_SENT_EVENT",
       "FEATURE_AVAILABILITY",
+      "FREE_SUBSCRIPTION_SOURCE",
+      "FreePersonalPlanKey",
+      "FreePersonalSubscriptionService",
       "LEGAL_DOCUMENTS",
       "LEGAL_DOCUMENT_REGISTRY",
       "LegalAcceptanceService",
@@ -1823,6 +1885,7 @@
       "mapProviderStatus",
       "openDevelopmentSubscription",
       "parsePlanPrices",
+      "personalSignupMode",
       "postTerminationExportDays",
       "stripeEventSubscriptionRef",
       "stripeSubscriptionState",
@@ -2948,6 +3011,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/platform-sign.controller.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -3009,6 +3078,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/esign-sender.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/personal-free.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -3454,6 +3529,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -5409,6 +5490,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/personal-free.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/px3-esign-sender-authz.integration.spec.ts",
         "project": "identity",
         "status": "excluded"
@@ -5714,6 +5801,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -6112,6 +6205,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/personal-free.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/recipient-inbox.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -6285,6 +6384,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/commercial-catalog-a1.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/personal-free.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -7209,6 +7314,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/platform-sign.controller.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -8006,6 +8117,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/personal/PersonalViews.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/platform-web/src/skills/ProposalDetailView.spec.tsx",
         "project": "aramo-platform-web",
         "status": "excluded"
@@ -8069,6 +8186,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/DomainCard.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/PersonalAllowance.spec.tsx",
         "project": "aramo-sign-web",
         "status": "excluded"
       },
@@ -8369,6 +8492,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/platform-sign.controller.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -8414,6 +8543,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/organization-billing-profile.adapter.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/personal-free.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/personal-free.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -8763,6 +8904,12 @@
       { "project": "identity", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/sign-signup.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -8771,6 +8918,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/launch-lifecycle.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/personal-free.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -9843,6 +9996,13 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      { "project": "platform-admin", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/app-module-boot.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -9898,6 +10058,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/native-signature-provider.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/personal-free.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/personal-free.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -10110,6 +10282,12 @@
         "status": "excluded"
       },
       { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/platform-sign.controller.spec.ts",

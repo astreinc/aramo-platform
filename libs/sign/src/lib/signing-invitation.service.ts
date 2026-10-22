@@ -138,6 +138,7 @@ export class SigningInvitationService {
         to_email: issued.signer.email,
         to_name: issued.signer.name,
         envelope_subject: issued.subject,
+        tenant_id: intent.tenant_id,
         signing_url: `${base}/s/${issued.raw}`,
       });
       if (!result.delivered) {

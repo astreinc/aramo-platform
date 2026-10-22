@@ -6,6 +6,7 @@ import {
   ESIGN_ENVELOPE_ALLOWANCE,
   ESIGN_ENVELOPE_SENT_EVENT,
   type AllowanceReadResult,
+  type AllowanceUnavailableReason,
 } from '@aramo/subscription';
 
 // Multi-Provider directive §B/§C — the Aramo Sign allowance at the native send seam.
@@ -25,7 +26,7 @@ export function aramoSignSendKey(envelope_id: string): string {
   return `${SEND_KEY_PREFIX}${envelope_id}`;
 }
 
-function refusal(reason: 'NOT_SUBSCRIBED' | 'LIMIT_REACHED', status: AllowanceReadResult): AramoError {
+function refusal(reason: AllowanceUnavailableReason, status: AllowanceReadResult): AramoError {
   if (reason === 'NOT_SUBSCRIBED') {
     return new AramoError('ESIGN_NOT_SUBSCRIBED', 'Sending needs an Aramo Sign subscription', 403, {
       requestId: '',
@@ -33,6 +34,19 @@ function refusal(reason: 'NOT_SUBSCRIBED' | 'LIMIT_REACHED', status: AllowanceRe
     });
   }
   const s = status.subscribed ? status : null;
+  // Personal Free v1.1 §4 — the day window (only plans configured with one).
+  if (reason === 'DAILY_LIMIT_REACHED') {
+    return new AramoError('ESIGN_ALLOWANCE_EXHAUSTED', 'The daily envelope limit is reached', 409, {
+      requestId: '',
+      details: {
+        reason,
+        window: 'DAY',
+        limit: s?.daily?.limit ?? null,
+        used: s?.daily?.used ?? null,
+        next_available_at: s?.daily?.next_available_at?.toISOString() ?? null,
+      },
+    });
+  }
   return new AramoError('ESIGN_ALLOWANCE_EXHAUSTED', 'The Aramo Sign envelope allowance for this period is used up', 409, {
     requestId: '',
     details: {

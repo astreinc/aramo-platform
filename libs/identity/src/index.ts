@@ -188,6 +188,10 @@ export {
   extractEmailDomain,
   isPersonalOrDisposableDomain,
   deriveAllowedDomainOrThrow,
+  // Sign Personal (Free) Launch v1.1 §2 / §3.8 — the one classification + Gmail duplicate key.
+  classifyEmailDomain,
+  canonicalEmailForDuplicates,
+  type EmailDomainClass,
 } from './lib/util/email-domain.js';
 // Subdomain-Identity Directive A — the subdomain-slug primitives. Exported so
 // apps/api's public cert-eligibility ask-endpoint can extract the slug from the
@@ -322,3 +326,86 @@ export {
   type DomainExceptionView,
   type PromoteOutcome,
 } from './lib/domain-claim/domain-claim.service.js';
+
+// Aramo-Sign-Personal-Free-Launch-Directive-v1_1 (LOCKED) — Personal (Free) signup:
+// eligibility (§6.6), activation mode + pilot cap (§10), risk rating (§6.2), one-time
+// codes (§3.2 / §6.3), the GeoIP / SMS / robot-check ports, the tenant risk state +
+// send gate (§6.3–§6.6) and the signup / invite / lapse store (§3, §7, §10).
+export {
+  PERSONAL_ALLOWED_COUNTRIES,
+  DEFAULT_PERSONAL_ALLOWED_COUNTRIES,
+  phoneRegion,
+  normalizeE164,
+  PERSONAL_SIGNUP_MODES,
+  personalSignupMode,
+  DEFAULT_PERSONAL_PILOT_CAP,
+  personalPilotCap,
+  type PersonalSignupMode,
+} from './lib/util/personal-eligibility.js';
+export {
+  PERSONAL_RISK_DECISIONS,
+  DEFAULT_PERSONAL_RISK_CONFIG,
+  personalRiskConfig,
+  decisionForPoints,
+  looksRandom,
+  ratePersonalSignup,
+  type PersonalRiskDecision,
+  type PersonalRiskConfig,
+  type PersonalRiskResult,
+  type PersonalRiskSignal,
+  type PersonalSignupSignalsInput,
+  type NetworkKind,
+  type RobotVerdict,
+} from './lib/personal/personal-risk-rating.js';
+export {
+  PERSONAL_OTP_DIGITS,
+  PERSONAL_OTP_TTL_MS,
+  PERSONAL_OTP_MAX_ATTEMPTS,
+  PERSONAL_OTP_RESEND_GAP_MS,
+  PERSONAL_OTP_MAX_SENDS_PER_DAY,
+  generatePersonalOtp,
+  hashPersonalOtp,
+  checkPersonalOtp,
+  mayResendPersonalOtp,
+  type PersonalOtpChannel,
+  type PersonalOtpCheck,
+} from './lib/personal/personal-otp.js';
+export { GEO_IP_PORT, MaxmindGeoIpAdapter, HOSTING_ASN_KEYWORDS, type GeoIpPort } from './lib/personal/geo-ip.port.js';
+export {
+  SMS_VERIFICATION_PORT,
+  LogSmsAdapter,
+  DisabledSmsAdapter,
+  smsVerificationAdapterFromEnv,
+  type SmsVerificationPort,
+} from './lib/personal/sms-verification.port.js';
+export {
+  ROBOT_CHECK_PORT,
+  TurnstileRobotCheckAdapter,
+  DisabledRobotCheck,
+  TestModeRobotCheck,
+  TURNSTILE_SITEVERIFY_URL,
+  robotCheckAdapterFromEnv,
+  type RobotCheckPort,
+} from './lib/personal/robot-check.port.js';
+export {
+  PersonalRiskService,
+  TENANT_RISK_STATES,
+  evaluatePersonalSend,
+  restrictionInForce,
+  type TenantRiskStateValue,
+  type TenantRiskStateView,
+  type PersonalSendRefusal,
+  type PersonalSendVerdict,
+} from './lib/personal/personal-risk.service.js';
+export {
+  PersonalSignupRepository,
+  PERSONAL_SIGNUP_TTL_MS,
+  PERSONAL_INVITE_TTL_MS,
+  PERSONAL_UNBOUND_LAPSE_DAYS,
+  generatePersonalInviteCode,
+  hashPersonalInviteCode,
+  initialRiskState,
+  type PersonalSignupRow,
+  type PersonalSignupStatus,
+  type PersonalReviewItem,
+} from './lib/personal/personal-signup.repository.js';

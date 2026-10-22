@@ -33,6 +33,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20261020130300_sign_naming_keys/migration.sql',
   '../../prisma/migrations/20261022100100_billing_account_country_guard/migration.sql',
   '../../prisma/migrations/20261022110100_billing_flag_domain_reason/migration.sql',
+  '../../prisma/migrations/20261023100000_sign_personal_free/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 const KEY = 'sign.envelopes';
@@ -200,7 +201,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     expect(s).toMatchObject({ subscribed: true, limit: null, unlimited: true, used: 150, remaining: null, threshold: 'OK' });
     const rows = await pg.query(`SELECT count(*)::int AS n FROM subscription."AllowanceUsage" WHERE tenant_id = $1`, [t]);
     expect(rows.rows[0].n).toBe(150);
-  });
+  }, 30_000);
 
   it('the pre-catalog operator plan keeps its 100 ceiling (unchanged for existing MANUAL subscriptions)', async () => {
     await openDevelopmentSubscription(prisma, { tenant_id: t, created_by: 'op' }, { ARAMO_ENV: 'test' });

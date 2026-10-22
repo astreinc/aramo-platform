@@ -21,7 +21,21 @@ import { PrismaService } from './prisma/prisma.service.js';
 // The send identity is unique per tenant/allowance: retries and duplicate events
 // never charge twice.
 
-export type AllowanceUnavailableReason = 'NOT_SUBSCRIBED' | 'LIMIT_REACHED';
+// Personal Free v1.1 §4 — DAILY_LIMIT_REACHED: the plan's day-window cap (a plan
+// without a window row never returns it).
+export type AllowanceUnavailableReason = 'NOT_SUBSCRIBED' | 'LIMIT_REACHED' | 'DAILY_LIMIT_REACHED';
+
+/** Personal Free v1.1 §4 — the day window: any 24 hours, counted from the same ledger. */
+export const DAY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
+export interface AllowanceWindowStatus {
+  readonly window: 'DAY';
+  readonly limit: number;
+  readonly used: number;
+  readonly remaining: number;
+  // When the oldest counted send leaves the window (null while under the cap).
+  readonly next_available_at: Date | null;
+}
 export type AllowanceThreshold = 'OK' | 'WARNING' | 'EXHAUSTED';
 
 export interface AllowanceStatus {
@@ -36,6 +50,8 @@ export interface AllowanceStatus {
   readonly period_start: Date;
   readonly period_end: Date;
   readonly threshold: AllowanceThreshold;
+  // Personal Free v1.1 §4 — present only when the plan has a day-window cap.
+  readonly daily?: AllowanceWindowStatus;
 }
 
 // Aramo Sign launch — why a tenant cannot send: no open subscription, or the open
@@ -75,6 +91,8 @@ interface ActivePlan {
   // null = unlimited (Commercial Plans Amendment A1).
   limit: number | null;
   period: BillingPeriod;
+  // Personal Free v1.1 — the day-window cap, or null when the plan has none.
+  daily_limit: number | null;
 }
 
 type PlanLookup = { ok: true; plan: ActivePlan } | { ok: false; state: UnsubscribedState };
@@ -86,7 +104,7 @@ export class AllowanceService {
   private async activePlan(db: Tx | PrismaService, tenant_id: string, allowance_key: string, at: Date): Promise<PlanLookup> {
     const sub = await db.tenantSubscription.findFirst({
       where: { tenant_id, ended_at: null },
-      include: { plan: { include: { allowances: { where: { allowance_key } } } } },
+      include: { plan: { include: { allowances: { where: { allowance_key } }, allowance_windows: { where: { allowance_key, window_kind: 'DAY' } } } } },
     });
     const allowance = sub?.plan.allowances[0];
     if (sub === null || sub === undefined || allowance === undefined) return { ok: false, state: 'NONE' };
@@ -95,7 +113,12 @@ export class AllowanceService {
     }
     return {
       ok: true,
-      plan: { plan_key: sub.plan.key, limit: allowance.unlimited ? null : (allowance.included_quantity ?? 0), period: billingPeriodAt(sub.period_anchor, at) },
+      plan: {
+        plan_key: sub.plan.key,
+        limit: allowance.unlimited ? null : (allowance.included_quantity ?? 0),
+        period: billingPeriodAt(sub.period_anchor, at),
+        daily_limit: sub.plan.allowance_windows[0]?.limit_quantity ?? null,
+      },
     };
   }
 
@@ -105,7 +128,28 @@ export class AllowanceService {
     });
   }
 
-  private statusOf(plan: ActivePlan, allowance_key: string, used: number): AllowanceStatus {
+  /** Sends counted in the day window ending at `at` (RESERVED + CONSUMED, any period). */
+  private async dailyUsage(db: Tx | PrismaService, tenant_id: string, allowance_key: string, at: Date): Promise<{ used: number; oldest: Date | null }> {
+    const since = new Date(at.getTime() - DAY_WINDOW_MS);
+    const rows = await db.allowanceUsage.findMany({
+      where: { tenant_id, allowance_key, state: { in: ['RESERVED', 'CONSUMED'] }, reserved_at: { gt: since, lte: at } },
+      select: { reserved_at: true },
+      orderBy: { reserved_at: 'asc' },
+    });
+    return { used: rows.length, oldest: rows[0]?.reserved_at ?? null };
+  }
+
+  private windowOf(limit: number, d: { used: number; oldest: Date | null }): AllowanceWindowStatus {
+    return {
+      window: 'DAY',
+      limit,
+      used: d.used,
+      remaining: Math.max(0, limit - d.used),
+      next_available_at: d.used >= limit && d.oldest !== null ? new Date(d.oldest.getTime() + DAY_WINDOW_MS) : null,
+    };
+  }
+
+  private statusOf(plan: ActivePlan, allowance_key: string, used: number, daily?: AllowanceWindowStatus): AllowanceStatus {
     return {
       subscribed: true,
       plan_key: plan.plan_key,
@@ -117,6 +161,7 @@ export class AllowanceService {
       period_start: plan.period.start,
       period_end: plan.period.end,
       threshold: plan.limit === null ? 'OK' : thresholdOf(used, plan.limit),
+      ...(daily !== undefined ? { daily } : {}),
     };
   }
 
@@ -125,7 +170,8 @@ export class AllowanceService {
     const found = await this.activePlan(this.prisma, tenant_id, allowance_key, at);
     if (!found.ok) return { subscribed: false, allowance_key, state: found.state };
     const plan = found.plan;
-    return this.statusOf(plan, allowance_key, await this.used(this.prisma, tenant_id, allowance_key, plan.period.start));
+    const daily = plan.daily_limit === null ? undefined : this.windowOf(plan.daily_limit, await this.dailyUsage(this.prisma, tenant_id, allowance_key, at));
+    return this.statusOf(plan, allowance_key, await this.used(this.prisma, tenant_id, allowance_key, plan.period.start), daily);
   }
 
   async reserve(input: {
@@ -147,16 +193,22 @@ export class AllowanceService {
       const plan = found.plan;
       const key = { tenant_id: input.tenant_id, allowance_key: input.allowance_key, send_key: input.send_key };
       const existing = await tx.allowanceUsage.findUnique({ where: { tenant_id_allowance_key_send_key: key } });
+      const dailyRaw =
+        plan.daily_limit === null ? undefined : await this.dailyUsage(tx, input.tenant_id, input.allowance_key, at);
+      const daily = plan.daily_limit === null || dailyRaw === undefined ? undefined : this.windowOf(plan.daily_limit, dailyRaw);
+      const used = await this.used(tx, input.tenant_id, input.allowance_key, plan.period.start);
       if (existing !== null && existing.state !== 'RELEASED') {
         // Same send retried: never a second charge.
-        const used = await this.used(tx, input.tenant_id, input.allowance_key, plan.period.start);
-        return { ok: true, already: true, status: this.statusOf(plan, input.allowance_key, used) } as const;
+        return { ok: true, already: true, status: this.statusOf(plan, input.allowance_key, used, daily) } as const;
       }
-      const used = await this.used(tx, input.tenant_id, input.allowance_key, plan.period.start);
       // A1 — an unlimited plan has no ceiling; the reservation is still written
       // (metering, capacity planning, abuse detection).
       if (plan.limit !== null && used >= plan.limit) {
-        return { ok: false, reason: 'LIMIT_REACHED', status: this.statusOf(plan, input.allowance_key, used) } as const;
+        return { ok: false, reason: 'LIMIT_REACHED', status: this.statusOf(plan, input.allowance_key, used, daily) } as const;
+      }
+      // Personal Free v1.1 §4 — the day-window cap (only plans configured with one).
+      if (daily !== undefined && daily.used >= daily.limit) {
+        return { ok: false, reason: 'DAILY_LIMIT_REACHED', status: this.statusOf(plan, input.allowance_key, used, daily) } as const;
       }
       const reserved_until = new Date(at.getTime() + (input.ttl_ms ?? DEFAULT_RESERVATION_TTL_MS));
       if (existing !== null) {
@@ -169,7 +221,9 @@ export class AllowanceService {
           data: { id: uuidv7(), ...key, period_start: plan.period.start, state: 'RESERVED', reserved_at: at, reserved_until },
         });
       }
-      return { ok: true, already: false, status: this.statusOf(plan, input.allowance_key, used + 1) } as const;
+      const dailyAfter =
+        plan.daily_limit === null || dailyRaw === undefined ? undefined : this.windowOf(plan.daily_limit, { used: dailyRaw.used + 1, oldest: dailyRaw.oldest ?? at });
+      return { ok: true, already: false, status: this.statusOf(plan, input.allowance_key, used + 1, dailyAfter) } as const;
     });
   }
 

@@ -133,6 +133,59 @@ export interface PlatformTenantSign {
   billing_events: { event_type: string; outcome: string; detail: string | null; event_created_at: string; received_at: string }[];
 }
 
+
+// Aramo Sign Personal (Free) — the operator's Personal review queue and pilot
+// invites (Aramo-Sign-Personal-Free-Launch-Directive-v1_1 §6.5, §10). Every route
+// is guarded by platform:tenant:lifecycle:manage; the backend is authoritative.
+export type PersonalRiskState = 'clear' | 'review' | 'restricted' | 'closed';
+
+export interface PersonalRiskSignal {
+  key: string;
+  points: number;
+  detail?: string | null;
+}
+
+export interface PersonalReviewItem {
+  tenant_id: string;
+  tenant_name: string;
+  owner_email: string | null;
+  state: PersonalRiskState;
+  reason: string | null;
+  // A review still owed while a temporary restriction is in force.
+  review_pending?: boolean;
+  risk_points: number | null;
+  signals: PersonalRiskSignal[];
+  phone_verified_at: string | null;
+  restricted_until: string | null;
+  report_count?: number | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export type PersonalReviewAction = 'clear-review' | 'restrict' | 'reinstate' | 'close';
+
+export type AbuseReportOutcome = 'OPEN' | 'CONFIRMED' | 'FALSE_REPORT' | 'DISMISSED';
+
+export interface PersonalAbuseReport {
+  id: string;
+  envelope_id: string;
+  reason: string | null;
+  note: string | null;
+  reporter_domain: string;
+  weight: number;
+  triggered_restriction: boolean;
+  outcome: AbuseReportOutcome;
+  outcome_reason: string | null;
+  decided_at: string | null;
+  created_at: string;
+}
+
+export interface PersonalInvite {
+  code: string;
+  email: string;
+  expires_at: string | null;
+}
+
 export const platformApi = {
   // Inc-3 PR-3.8 — the operator dashboard summary (default screen).
   getDashboard(): Promise<PlatformDashboard> {
@@ -204,6 +257,31 @@ export const platformApi = {
     body: { retentionPolicyCode: string; closeAt: string; reasonCode?: string },
   ): Promise<LifecycleActionResult> {
     return apiClient.post(`/platform/tenants/${id}/start-offboarding`, body);
+  },
+
+  // Aramo Sign Personal (Free) — review queue, review actions and pilot invites.
+  listPersonalReview(): Promise<{ items: PersonalReviewItem[] }> {
+    return apiClient.get('/platform/personal-review');
+  },
+
+  personalReviewAction(
+    id: string,
+    action: PersonalReviewAction,
+    body: { reason: string; until?: string },
+  ): Promise<unknown> {
+    return apiClient.post(`/platform/tenants/${encodeURIComponent(id)}/personal/${action}`, body);
+  },
+
+  listPersonalReports(tenantId: string): Promise<{ items: PersonalAbuseReport[] }> {
+    return apiClient.get(`/platform/tenants/${encodeURIComponent(tenantId)}/personal/reports`);
+  },
+
+  decidePersonalReport(reportId: string, body: { outcome: Exclude<AbuseReportOutcome, 'OPEN'>; reason: string }): Promise<PersonalAbuseReport> {
+    return apiClient.post(`/platform/personal-reports/${encodeURIComponent(reportId)}/decide`, body);
+  },
+
+  issuePersonalInvite(body: { email: string }): Promise<PersonalInvite> {
+    return apiClient.post('/platform/personal-invites', body);
   },
 
   close(
