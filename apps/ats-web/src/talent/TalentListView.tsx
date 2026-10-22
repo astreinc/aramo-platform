@@ -273,6 +273,9 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
   // CRM-2 — "Add to list" bulk action requires saved-list:edit (CRM-1 seeded).
   const canManageLists =
     session !== null && Array.isArray(session.scopes) && hasScope(session, 'saved-list:edit');
+  // ATS-QA-1 I-5 — bulk add uses each talent's default resume; the summary says so.
+  const canChooseResume =
+    session !== null && Array.isArray(session.scopes) && hasScope(session, 'pipeline:resume:set');
 
   // Roster probe (Owner column resolution) — one-shot, independent of search.
   useEffect(() => {
@@ -546,7 +549,7 @@ export function TalentListView({ sessionOverride }: TalentListViewProps = {}) {
     }
     setBusy(false);
     setReqDialogOpen(false);
-    setNotice(bulkAddSummary(req.title, ok, alreadyOn, refused));
+    setNotice(bulkAddSummary(req.title, ok, alreadyOn, refused, canChooseResume));
     // Keep the refused talent selected so the recruiter can act on them; clear the rest.
     setSelected(failedIds);
   };
@@ -1123,10 +1126,19 @@ export function bulkAddSummary(
   ok: number,
   alreadyOn: number,
   refused: ReadonlyMap<string, number>,
+  // ATS-QA-1 I-5 — the caller holds pipeline:resume:set: bulk add never prompts and
+  // never binds a resume (A4: never auto-bound), so say that each talent's default is
+  // only suggested and where it is confirmed or changed.
+  mayChooseResume = false,
 ): string {
   const parts = [`Added ${ok} to ${reqTitle}.`];
   if (alreadyOn > 0) parts.push(`${alreadyOn} already on this requisition.`);
   for (const [msg, n] of refused) parts.push(`${n} not added: ${msg}`);
+  if (mayChooseResume && ok > 0) {
+    parts.push(
+      `${ok} added with their default resume suggested — confirm or change it for this requisition on each talent’s requisition page.`,
+    );
+  }
   return parts.join(' ');
 }
 

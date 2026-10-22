@@ -7,6 +7,15 @@ import { addTalentErrorMessage } from '../pipeline/error-messages';
 import { listRequisitionsForPicker } from '../requisitions/requisitions-api';
 import type { RequisitionView } from '../requisitions/types';
 
+import {
+  ResumeChoiceField,
+  ResumeChoiceRefused,
+  saveResumeChoice,
+  suggestedResumeId,
+  useCanSetResume,
+  useResumeChoices,
+} from './add-resume-choice';
+
 // ATS-QA-1 D4 — the ONE requisition picker the three add-to-requisition surfaces share
 // (this dialog, the Lists detail and the Talent list bulk bar).
 //
@@ -197,16 +206,23 @@ export function RequisitionPicker({
 // Talent Detail surface and Talent 360 reuse the SAME flow (the sanctioned
 // pipeline-add path: RequisitionPicker → addTalentToPipeline). No business
 // logic is cloned; this is the one shared dialog.
+//
+// ATS-QA-1 I-5 — once a requisition is chosen, a caller holding pipeline:resume:set
+// sees the résumé choice when the Talent has more than one active edition
+// (add-resume-choice.tsx); the chosen edition is written right after the add.
 export function AddToRequisitionDialog({
   open,
   onClose,
   talentId,
   canSearch = true,
+  canSetResume,
 }: {
   open: boolean;
   onClose: () => void;
   talentId: string;
   canSearch?: boolean;
+  /** pipeline:resume:set — when omitted it is read from the session on first open. */
+  canSetResume?: boolean;
 }) {
   const [chosen, setChosen] = useState<RequisitionView | null>(null);
   const [busy, setBusy] = useState(false);
@@ -214,6 +230,11 @@ export function AddToRequisitionDialog({
   const [added, setAdded] = useState(false);
   // Remediation v1.0 R3 (DEF-11) — "already on this requisition" is NOT a success.
   const [alreadyOn, setAlreadyOn] = useState(false);
+  const mayChooseResume = useCanSetResume(open, canSetResume);
+  const resumeChoices = useResumeChoices(open && chosen !== null ? talentId : null, chosen?.id ?? null, mayChooseResume);
+  const [resumeId, setResumeId] = useState<string | null>(null);
+  const [resumeRefused, setResumeRefused] = useState<string | null>(null);
+  const [addedReqId, setAddedReqId] = useState<string | null>(null);
 
   useEffect(() => {
     if (!open) return;
@@ -221,14 +242,28 @@ export function AddToRequisitionDialog({
     setAlreadyOn(false);
     setActionErr(null);
     setChosen(null);
+    setResumeRefused(null);
+    setAddedReqId(null);
   }, [open]);
+
+  // Preselect the Talent's suggested default each time the choices load.
+  useEffect(() => {
+    setResumeId(resumeChoices.kind === 'choose' ? suggestedResumeId(resumeChoices.choices) : null);
+  }, [resumeChoices]);
 
   const onAdd = () => {
     if (chosen === null) return;
+    const editionToSave = resumeChoices.kind === 'choose' ? resumeId : null;
     setBusy(true);
     setActionErr(null);
+    setResumeRefused(null);
     addTalentToPipeline(talentId, chosen.id)
-      .then(() => {
+      .then(async (pipeline) => {
+        // The add stands even if the résumé selection is refused.
+        if (editionToSave !== null) {
+          setResumeRefused(await saveResumeChoice(pipeline.id, editionToSave));
+        }
+        setAddedReqId(chosen.id);
         setBusy(false);
         setAdded(true);
       })
@@ -262,6 +297,9 @@ export function AddToRequisitionDialog({
       ) : added ? (
         <>
           <InlineAlert variant="success">Talent added to the requisition.</InlineAlert>
+          {resumeRefused !== null && addedReqId !== null ? (
+            <ResumeChoiceRefused reason={resumeRefused} requisitionId={addedReqId} talentId={talentId} />
+          ) : null}
           <div className="talent-detail__dialog-actions">
             <Button variant="secondary" onClick={onClose}>Done</Button>
           </div>
@@ -269,11 +307,30 @@ export function AddToRequisitionDialog({
       ) : (
         <>
           <RequisitionPicker open={open} value={chosen} onChange={setChosen} canSearch={canSearch} />
+          {resumeChoices.kind === 'loading' ? <p className="rc-muted">Loading resumes…</p> : null}
+          {resumeChoices.kind === 'choose' ? (
+            <ResumeChoiceField
+              choices={resumeChoices.choices}
+              value={resumeId}
+              onChange={setResumeId}
+              requisitionId={chosen?.id ?? null}
+              disabled={busy}
+            />
+          ) : null}
           {actionErr !== null ? (
             <InlineAlert variant="error">{actionErr}</InlineAlert>
           ) : null}
           <div className="talent-detail__dialog-actions">
-            <Button variant="primary" onClick={onAdd} disabled={chosen === null || busy}>
+            <Button
+              variant="primary"
+              onClick={onAdd}
+              disabled={
+                chosen === null ||
+                busy ||
+                resumeChoices.kind === 'loading' ||
+                (resumeChoices.kind === 'choose' && resumeId === null)
+              }
+            >
               {busy ? 'Adding…' : 'Add to requisition'}
             </Button>
             <Button variant="secondary" onClick={onClose}>Cancel</Button>

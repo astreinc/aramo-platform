@@ -1,4 +1,5 @@
-import { fireEvent, render, screen, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { MemoryRouter } from 'react-router-dom';
 import { ApiError } from '@aramo/fe-foundation';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -11,10 +12,16 @@ const h = vi.hoisted(() => ({
   listRequisitionsForPicker: vi.fn(),
   listCompanies: vi.fn(),
   addTalentToPipeline: vi.fn(),
+  setPipelineResumeEdition: vi.fn(),
+  listTalentResumeEditions: vi.fn(),
 }));
 vi.mock('../requisitions/requisitions-api', () => ({ listRequisitionsForPicker: h.listRequisitionsForPicker }));
 vi.mock('../companies/companies-api', () => ({ listCompanies: h.listCompanies }));
-vi.mock('../pipeline/pipeline-api', () => ({ addTalentToPipeline: h.addTalentToPipeline }));
+vi.mock('../pipeline/pipeline-api', () => ({
+  addTalentToPipeline: h.addTalentToPipeline,
+  setPipelineResumeEdition: h.setPipelineResumeEdition,
+}));
+vi.mock('./talent-api', () => ({ listTalentResumeEditions: h.listTalentResumeEditions }));
 
 const req = (id: string, title: string, n: number, status: string, company_id = 'c1') => ({
   id, title, requisition_number: n, status, company_id,
@@ -24,11 +31,13 @@ beforeEach(() => {
   h.listRequisitionsForPicker.mockReset();
   h.listCompanies.mockReset();
   h.addTalentToPipeline.mockReset();
+  h.setPipelineResumeEdition.mockReset();
+  h.listTalentResumeEditions.mockReset();
   h.listCompanies.mockResolvedValue({ items: [{ id: 'c1', name: 'Acme Health' }] });
 });
 
 function renderDialog(canSearch = true) {
-  render(<AddToRequisitionDialog open onClose={() => undefined} talentId="t1" canSearch={canSearch} />);
+  render(<AddToRequisitionDialog open onClose={() => undefined} talentId="t1" canSearch={canSearch} canSetResume={false} />);
 }
 
 describe('requisitionOptionLabel', () => {
@@ -124,5 +133,129 @@ describe('AddToRequisitionDialog — shared RequisitionPicker (ATS-QA-1 D4)', ()
     fireEvent.change(screen.getByRole('combobox', { name: 'Requisition' }), { target: { value: 'r1' } });
     fireEvent.click(screen.getByRole('button', { name: 'Add to requisition' }));
     expect(await screen.findByText(/already on this requisition. Nothing was changed/)).toBeInTheDocument();
+  });
+});
+
+// ATS-QA-1 I-5 (amendment A4) — the résumé choice on add-to-requisition.
+const edition = (id: string, over: Record<string, unknown> = {}) => ({
+  edition_id: id, talent_document_id: `d-${id}`, attachment_id: null, purpose: 'GENERAL', label: null,
+  lifecycle_status: 'active', created_at: '2026-10-01T00:00:00.000Z', filename: `${id}.pdf`,
+  mime_type: 'application/pdf', uploaded_at: '2026-10-01T00:00:00.000Z', is_default: false,
+  revision_number: null, requisition_id: null, client_context_id: null, derived_from_edition_id: null,
+  processing_status: null, ...over,
+});
+
+describe('AddToRequisitionDialog — résumé choice (ATS-QA-1 I-5)', () => {
+  function renderWithResume(canSetResume: boolean) {
+    render(
+      <MemoryRouter>
+        <AddToRequisitionDialog open onClose={() => undefined} talentId="t1" canSetResume={canSetResume} />
+      </MemoryRouter>,
+    );
+  }
+  async function chooseReq() {
+    await screen.findByRole('option', { name: /Open role/ });
+    fireEvent.change(screen.getByRole('combobox', { name: 'Requisition' }), { target: { value: 'r1' } });
+  }
+  beforeEach(() => {
+    h.listRequisitionsForPicker.mockResolvedValue({ items: [req('r1', 'Open role', 1, 'open')], next_cursor: null });
+    h.addTalentToPipeline.mockResolvedValue({ id: 'pl-1' });
+  });
+
+  it('more than one active resume: default preselected and marked; the chosen one is written after the add', async () => {
+    h.listTalentResumeEditions.mockResolvedValue({
+      talent_id: 't1',
+      editions: [
+        edition('ed-new'),
+        edition('ed-default', { is_default: true }),
+        edition('ed-archived', { lifecycle_status: 'archived' }),
+      ],
+    });
+    h.setPipelineResumeEdition.mockResolvedValue({});
+    renderWithResume(true);
+    await chooseReq();
+    const group = await screen.findByTestId('add-resume-choice');
+    expect(within(group).getByText('Current default')).toBeInTheDocument();
+    expect(within(group).queryByText(/ed-archived/)).toBeNull(); // only active editions offered
+    const radios = within(group).getAllByRole('radio');
+    expect(radios).toHaveLength(2);
+    expect(within(group).getByRole('radio', { checked: true })).toHaveAttribute('value', 'ed-default');
+    fireEvent.click(within(group).getByLabelText(/ed-new\.pdf/));
+    fireEvent.click(screen.getByRole('button', { name: 'Add to requisition' }));
+    expect(await screen.findByText('Talent added to the requisition.')).toBeInTheDocument();
+    expect(h.addTalentToPipeline).toHaveBeenCalledWith('t1', 'r1');
+    expect(h.setPipelineResumeEdition).toHaveBeenCalledWith('pl-1', { resume_edition_id: 'ed-new' });
+  });
+
+  it('keeping the preselected default writes the default (explicit confirmation)', async () => {
+    h.listTalentResumeEditions.mockResolvedValue({
+      talent_id: 't1',
+      editions: [edition('ed-a'), edition('ed-default', { is_default: true })],
+    });
+    h.setPipelineResumeEdition.mockResolvedValue({});
+    renderWithResume(true);
+    await chooseReq();
+    await screen.findByTestId('add-resume-choice');
+    fireEvent.click(screen.getByRole('button', { name: 'Add to requisition' }));
+    await screen.findByText('Talent added to the requisition.');
+    expect(h.setPipelineResumeEdition).toHaveBeenCalledWith('pl-1', { resume_edition_id: 'ed-default' });
+  });
+
+  it('a single active resume: no prompt and no selection written (existing behaviour)', async () => {
+    h.listTalentResumeEditions.mockResolvedValue({
+      talent_id: 't1',
+      editions: [edition('ed-only', { is_default: true }), edition('ed-old', { lifecycle_status: 'retracted' })],
+    });
+    renderWithResume(true);
+    await chooseReq();
+    await waitFor(() => expect(h.listTalentResumeEditions).toHaveBeenCalledWith('t1'));
+    await waitFor(() => expect(screen.getByRole('button', { name: 'Add to requisition' })).not.toBeDisabled());
+    expect(screen.queryByTestId('add-resume-choice')).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Add to requisition' }));
+    await screen.findByText('Talent added to the requisition.');
+    expect(h.setPipelineResumeEdition).not.toHaveBeenCalled();
+  });
+
+  it('without pipeline:resume:set: no picker, editions never read, nothing written', async () => {
+    renderWithResume(false);
+    await chooseReq();
+    fireEvent.click(screen.getByRole('button', { name: 'Add to requisition' }));
+    await screen.findByText('Talent added to the requisition.');
+    expect(h.listTalentResumeEditions).not.toHaveBeenCalled();
+    expect(h.setPipelineResumeEdition).not.toHaveBeenCalled();
+    expect(screen.queryByTestId('add-resume-choice')).toBeNull();
+  });
+
+  it('a refused selection keeps the add, states the reason and links to the talent’s requisition page', async () => {
+    h.listTalentResumeEditions.mockResolvedValue({
+      talent_id: 't1',
+      editions: [edition('ed-a'), edition('ed-default', { is_default: true })],
+    });
+    h.setPipelineResumeEdition.mockRejectedValue(new ApiError(422, 'not active', 'VALIDATION_ERROR'));
+    renderWithResume(true);
+    await chooseReq();
+    await screen.findByTestId('add-resume-choice');
+    fireEvent.click(screen.getByRole('button', { name: 'Add to requisition' }));
+    expect(await screen.findByText('Talent added to the requisition.')).toBeInTheDocument();
+    const refused = screen.getByTestId('add-resume-refused');
+    expect(refused).toHaveTextContent('That resume has been archived or withdrawn.');
+    expect(within(refused).getByRole('link', { name: 'Choose the resume for this requisition' })).toHaveAttribute(
+      'href',
+      '/requisitions/r1/talent/t1',
+    );
+  });
+
+  it('a refused add writes no selection', async () => {
+    h.listTalentResumeEditions.mockResolvedValue({
+      talent_id: 't1',
+      editions: [edition('ed-a'), edition('ed-default', { is_default: true })],
+    });
+    h.addTalentToPipeline.mockRejectedValue(new ApiError(409, 'conflict', 'PIPELINE_TRANSITION_CONFLICT'));
+    renderWithResume(true);
+    await chooseReq();
+    await screen.findByTestId('add-resume-choice');
+    fireEvent.click(screen.getByRole('button', { name: 'Add to requisition' }));
+    expect(await screen.findByText(/Something changed at the same moment/)).toBeInTheDocument();
+    expect(h.setPipelineResumeEdition).not.toHaveBeenCalled();
   });
 });

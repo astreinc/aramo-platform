@@ -4,6 +4,14 @@ import { ApiError, Button, Dialog, InlineAlert, useToast, Input } from '@aramo/f
 import { addTalentToPipeline } from '../pipeline/pipeline-api';
 import { addTalentErrorMessage } from '../pipeline/error-messages';
 import { searchTalentForPicker } from '../talent/talent-api';
+import {
+  ResumeChoiceField,
+  ResumeChoiceRefused,
+  saveResumeChoice,
+  suggestedResumeId,
+  useCanSetResume,
+  useResumeChoices,
+} from '../talent/add-resume-choice';
 import type { TalentRecordView } from '../talent/types';
 import { Avatar, Icons } from '../ui';
 
@@ -26,6 +34,9 @@ interface AddTalentDialogProps {
   /** ATS-QA-1 1.1 — when set, the requisition cannot take talent in its current status: the
    *  button is disabled and this text says why (the server refuses regardless). */
   readonly disabledReason?: string | null;
+  /** ATS-QA-1 I-5 — pipeline:resume:set. When omitted it is read from the session on first
+   *  open. Without it there is no résumé choice (the add proceeds as before). */
+  readonly canSetResume?: boolean;
   readonly onAdded: () => void;
 }
 
@@ -36,6 +47,10 @@ interface AddTalentDialogProps {
 // keyset cursor. There is no client-side cap. Talent already live on this
 // requisition are marked and cannot be added again. The chosen talent is added
 // via POST /v1/pipelines (pipeline:add); the BE owns the initial status.
+//
+// ATS-QA-1 I-5 — picking a Talent with more than one active résumé (caller holding
+// pipeline:resume:set) opens a résumé-choice step first; the chosen edition is written
+// for this requisition right after the add. One résumé (or no scope): added at once.
 export function AddTalentDialog({
   requisitionId,
   existingTalentIds,
@@ -43,6 +58,7 @@ export function AddTalentDialog({
   canReAdd = false,
   canSearch = true,
   disabledReason = null,
+  canSetResume,
   onAdded,
 }: AddTalentDialogProps) {
   const ended = new Set(endedTalentIds);
@@ -60,8 +76,22 @@ export function AddTalentDialog({
   const [error, setError] = useState<string | null>(null);
   const requestSeq = useRef(0);
   const toast = useToast();
+  // ATS-QA-1 I-5 — the Talent being added, while its résumé choices load / are chosen.
+  const [pending, setPending] = useState<TalentRecordView | null>(null);
+  const [resumeId, setResumeId] = useState<string | null>(null);
+  const [refusedOutcome, setRefusedOutcome] = useState<{ talentId: string; reason: string } | null>(null);
+  const mayChooseResume = useCanSetResume(open, canSetResume);
+  const resumeChoices = useResumeChoices(pending?.id ?? null, requisitionId, mayChooseResume);
 
   const searchAllowed = canSearch && !searchDenied;
+
+  // A fresh open never shows a previous add's outcome or pending choice.
+  useEffect(() => {
+    if (!open) return;
+    setPending(null);
+    setResumeId(null);
+    setRefusedOutcome(null);
+  }, [open]);
 
   // Debounce the typed query into the server search term.
   useEffect(() => {
@@ -122,24 +152,48 @@ export function AddTalentDialog({
     setNextCursor(null);
     setError(null);
     setLoadError(null);
+    setPending(null);
+    setResumeId(null);
+    setRefusedOutcome(null);
   };
 
-  const add = async (talentId: string) => {
+  const add = async (talentId: string, editionId: string | null) => {
     setBusyId(talentId);
     setError(null);
     try {
-      await addTalentToPipeline(talentId, requisitionId);
-      toast.show('Talent added to the pipeline.');
-      setOpen(false);
-      reset();
+      const pipeline = await addTalentToPipeline(talentId, requisitionId);
+      // The add stands even if the résumé selection is refused.
+      const refused = editionId === null ? null : await saveResumeChoice(pipeline.id, editionId);
+      if (refused === null) {
+        toast.show('Talent added to the pipeline.');
+        setOpen(false);
+        reset();
+      } else {
+        // Keep the dialog open on the outcome: the reason + where to choose the resume.
+        setPending(null);
+        setRefusedOutcome({ talentId, reason: refused });
+      }
       onAdded();
     } catch (err) {
       // Remediation v1.0 R3 (DEF-14) — the server's typed refusal, never a guess.
       setError(addTalentErrorMessage(err));
+      setPending(null);
     } finally {
       setBusyId(null);
     }
   };
+
+  // ATS-QA-1 I-5 — a picked Talent with no choice to make (one résumé, none, or no
+  // pipeline:resume:set) is added at once, exactly as before.
+  useEffect(() => {
+    if (pending === null || busyId !== null) return;
+    // Only act on choices loaded for THIS talent (never a previous pick's state).
+    if (resumeChoices.kind !== 'none' && resumeChoices.kind !== 'choose') return;
+    if (resumeChoices.talentId !== pending.id) return;
+    if (resumeChoices.kind === 'none') void add(pending.id, null);
+    if (resumeChoices.kind === 'choose') setResumeId(suggestedResumeId(resumeChoices.choices));
+    // Re-run only when the pick or its choice state changes.
+  }, [pending, resumeChoices]);
 
   const blocked = disabledReason !== null && disabledReason !== '';
   const searching = term !== '' && searchAllowed;
@@ -172,10 +226,55 @@ export function AddTalentDialog({
         description="Add talent from your pool to this requisition's pipeline."
         footer={
           <Button variant="secondary" onClick={() => setOpen(false)}>
-            Close
+            {refusedOutcome !== null ? 'Done' : 'Close'}
           </Button>
         }
       >
+        {refusedOutcome !== null ? (
+          <>
+            <InlineAlert variant="success">Talent added to the pipeline.</InlineAlert>
+            <ResumeChoiceRefused
+              reason={refusedOutcome.reason}
+              requisitionId={requisitionId}
+              talentId={refusedOutcome.talentId}
+            />
+          </>
+        ) : pending !== null && resumeChoices.kind === 'choose' && resumeChoices.talentId === pending.id ? (
+          <>
+            <p className="rc-muted">
+              Adding <strong>{`${pending.first_name} ${pending.last_name}`.trim()}</strong> to this requisition.
+            </p>
+            <ResumeChoiceField
+              choices={resumeChoices.choices}
+              value={resumeId}
+              onChange={setResumeId}
+              requisitionId={requisitionId}
+              disabled={busyId !== null}
+            />
+            {error !== null ? <InlineAlert variant="error">{error}</InlineAlert> : null}
+            <div className="talent-detail__dialog-actions">
+              <Button
+                variant="primary"
+                onClick={() => void add(pending.id, resumeId)}
+                disabled={busyId !== null || resumeId === null}
+              >
+                {busyId !== null ? 'Adding…' : 'Add to requisition'}
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => {
+                  setPending(null);
+                  setResumeId(null);
+                }}
+                disabled={busyId !== null}
+              >
+                Back
+              </Button>
+            </div>
+          </>
+        ) : (
+        <>
+        {pending !== null ? <p className="rc-muted" role="status">Loading resumes…</p> : null}
         <label className="rc-field">
           <span className="rc-field__label">Search talent</span>
           <Input
@@ -215,8 +314,8 @@ export function AddTalentDialog({
                     <Button
                       unstyled
                       className="rc-pick__row"
-                      onClick={() => void add(t.id)}
-                      disabled={busyId !== null || isLive || reAddBlocked}
+                      onClick={() => setPending(t)}
+                      disabled={busyId !== null || pending !== null || isLive || reAddBlocked}
                       title={
                         isLive
                           ? 'Already on this requisition'
@@ -254,6 +353,8 @@ export function AddTalentDialog({
               </Button>
             ) : null}
           </>
+        )}
+        </>
         )}
       </Dialog>
     </>

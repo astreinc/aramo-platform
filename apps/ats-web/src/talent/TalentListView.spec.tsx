@@ -655,6 +655,16 @@ describe('bulkAddSummary (ATS-QA-1 D6)', () => {
       bulkAddSummary('BA', 1, 1, new Map([['Something changed at the same moment, so nothing was saved. Try again.', 2]])),
     ).toBe('Added 1 to BA. 1 already on this requisition. 2 not added: Something changed at the same moment, so nothing was saved. Try again.');
   });
+
+  // ATS-QA-1 I-5 — bulk add never prompts or binds a resume; a caller holding
+  // pipeline:resume:set is told the default is only suggested and where to change it.
+  it('I-5 — with pipeline:resume:set, a summary line on the suggested default resume', () => {
+    expect(bulkAddSummary('BA', 3, 0, new Map(), true)).toBe(
+      'Added 3 to BA. 3 added with their default resume suggested — confirm or change it for this requisition on each talent’s requisition page.',
+    );
+    expect(bulkAddSummary('BA', 0, 2, new Map(), true)).toBe('Added 0 to BA. 2 already on this requisition.');
+    expect(bulkAddSummary('BA', 3, 0, new Map(), false)).toBe('Added 3 to BA.');
+  });
 });
 
 describe('TalentListView — bulk Add to requisition (ATS-QA-1 D4/D6)', () => {

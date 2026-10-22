@@ -401,7 +401,7 @@ export class SubmitTalentToClientService {
       const selectionRows = await tx.$queryRawUnsafe<Array<{ resume_edition_id: string }>>(
         `SELECT "resume_edition_id" FROM "pipeline"."TalentRequisitionResume"
            WHERE "tenant_id" = $1::uuid AND "talent_record_id" = $2::uuid AND "requisition_id" = $3::uuid
-           ORDER BY "selected_at" DESC
+           ORDER BY "selected_at" DESC, "id" DESC
            LIMIT 1`,
         tenant_id,
         talent_record_id,
