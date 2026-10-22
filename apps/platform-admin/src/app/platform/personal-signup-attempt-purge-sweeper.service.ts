@@ -12,8 +12,12 @@ import { PersonalSignupRepository, PERSONAL_ABANDONED_PURGE_DAYS, PERSONAL_REFUS
 // PROVISIONING / PROVISIONED / LAPSED attempts, tenants and users are never touched.
 // Unlike the 7-day unbound lapse (opt-in: it soft-disables real tenants), this sweep
 // is ON by default. SIGN_PERSONAL_SIGNUP_PURGE_ENABLED=0 switches it off;
-// SIGN_PERSONAL_SIGNUP_PURGE_INTERVAL_MS tunes it (default 1 hour). Safe with more
-// than one process: each rule is one idempotent DELETE.
+// SIGN_PERSONAL_SIGNUP_PURGE_INTERVAL_MS tunes it (default once a day, PO 2026-10-22).
+// Each run deletes everything that reaches its deadline before the NEXT run (the
+// interval is passed as early_ms), so a record is gone between (deadline − interval)
+// and its deadline — never later than the Privacy Notice promises. It also runs once
+// shortly after start, so a restart (deploy) can never stretch the gap past one
+// interval. Safe with more than one process: each rule is one idempotent DELETE.
 //
 // Every run logs ONE structured line (also when nothing was deleted, so the monitor
 // sees the sweep is alive):
@@ -22,7 +26,9 @@ import { PersonalSignupRepository, PERSONAL_ABANDONED_PURGE_DAYS, PERSONAL_REFUS
 // and, when anything was deleted, the repository writes one GLOBAL identity audit
 // event (identity.personal.signup.attempts_purged) in the same transaction. Counts
 // only — never an email, phone or address.
-export const PERSONAL_SIGNUP_PURGE_DEFAULT_INTERVAL_MS = 3_600_000;
+export const PERSONAL_SIGNUP_PURGE_DEFAULT_INTERVAL_MS = 86_400_000;
+/** First run after start (lets the app finish booting). */
+export const PERSONAL_SIGNUP_PURGE_STARTUP_DELAY_MS = 60_000;
 export const PERSONAL_SIGNUP_PURGE_EVENT = 'personal_signup_attempt_purge';
 
 export function personalSignupPurgeEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
@@ -38,6 +44,7 @@ export function personalSignupPurgeIntervalMs(env: NodeJS.ProcessEnv = process.e
 export class PersonalSignupAttemptPurgeSweeper implements OnApplicationBootstrap, OnApplicationShutdown {
   private readonly logger = new Logger('PersonalSignupAttemptPurgeSweeper');
   private timer?: NodeJS.Timeout;
+  private startup?: NodeJS.Timeout;
   private running = false;
   private stopped = false;
 
@@ -50,10 +57,16 @@ export class PersonalSignupAttemptPurgeSweeper implements OnApplicationBootstrap
     }
     this.timer = setInterval(() => void this.tick(), personalSignupPurgeIntervalMs());
     this.timer.unref?.();
+    this.startup = setTimeout(() => void this.tick(), PERSONAL_SIGNUP_PURGE_STARTUP_DELAY_MS);
+    this.startup.unref?.();
   }
 
   async onApplicationShutdown(): Promise<void> {
     this.stopped = true;
+    if (this.startup !== undefined) {
+      clearTimeout(this.startup);
+      this.startup = undefined;
+    }
     if (this.timer !== undefined) {
       clearInterval(this.timer);
       this.timer = undefined;
@@ -68,6 +81,7 @@ export class PersonalSignupAttemptPurgeSweeper implements OnApplicationBootstrap
       const r = await this.signups.purgeExpiredAttempts(now, {
         abandoned_days: PERSONAL_ABANDONED_PURGE_DAYS,
         refused_days: PERSONAL_REFUSED_RETENTION_DAYS,
+        early_ms: personalSignupPurgeIntervalMs(),
       });
       this.logger.log(
         JSON.stringify({

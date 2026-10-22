@@ -539,12 +539,15 @@ export class PersonalSignupRepository {
    */
   async purgeExpiredAttempts(
     now: Date,
-    opts: { abandoned_days?: number; refused_days?: number } = {},
+    opts: { abandoned_days?: number; refused_days?: number; early_ms?: number } = {},
   ): Promise<{ abandoned: number; refused: number; abandoned_cutoff: Date; refused_cutoff: Date }> {
     const abandoned_days = opts.abandoned_days ?? PERSONAL_ABANDONED_PURGE_DAYS;
     const refused_days = opts.refused_days ?? PERSONAL_REFUSED_RETENTION_DAYS;
-    const abandoned_cutoff = new Date(now.getTime() - abandoned_days * DAY_MS);
-    const refused_cutoff = new Date(now.getTime() - refused_days * DAY_MS);
+    // early_ms: a periodic caller passes its run interval, so anything that will reach
+    // its deadline before the next run is deleted now — never later than promised.
+    const early = Math.max(0, opts.early_ms ?? 0);
+    const abandoned_cutoff = new Date(now.getTime() - abandoned_days * DAY_MS + early);
+    const refused_cutoff = new Date(now.getTime() - refused_days * DAY_MS + early);
     const counts = await this.prisma.$transaction(async (tx) => {
       const abandoned = await tx.$executeRaw`
         DELETE FROM "identity"."PersonalSignupRequest" r

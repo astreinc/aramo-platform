@@ -726,7 +726,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
 
   // ── signup-attempt cleanup (PO / Lead 2026-10-22) ───────────────────────────
 
-  it('the cleanup sweeper deletes an abandoned attempt 3 days after it expired and a refused one after 180 days; a verified, unexpired attempt stays; re-run is a no-op', async () => {
+  it('the daily cleanup sweeper deletes an abandoned attempt within 3 days after it expired and a refused one within 180 days (never later); a verified, unexpired attempt stays; re-run is a no-op', async () => {
     const unverified = person();
     const s = await start(unverified);
     expect(s.status).toBe(202);
@@ -738,30 +738,32 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
     const globalPurges = () => db.identityAuditEvent.count({ where: { tenant_id: null, event_type: 'identity.personal.signup.attempts_purged' } });
     const before = await globalPurges();
 
-    // Just under 3 days after expiry: kept.
-    expect(await sweeper.tick(new Date(expires + 3 * DAY - 60_000))).toBeGreaterThanOrEqual(0);
+    // The daily run deletes whatever reaches its 3-day deadline before the next run, so a
+    // row goes between 2 and 3 days after expiry — never later. Just under 2 days: kept.
+    expect(await sweeper.tick(new Date(expires + 2 * DAY - 60_000))).toBeGreaterThanOrEqual(0);
     expect(await db.personalSignupRequest.findUnique({ where: { id: pendingId } })).not.toBeNull();
     // Push the verified attempt's expiry forward: it is still completable, so never deleted.
     await db.personalSignupRequest.update({ where: { id: verified.signup_id }, data: { expires_at: new Date(expires + 10 * DAY) } });
-    // Just over 3 days after expiry: the row (email, phone, address) is gone.
-    expect(await sweeper.tick(new Date(expires + 3 * DAY + 60_000))).toBeGreaterThanOrEqual(1);
+    // Just over 2 days after expiry (its deadline falls before the next daily run): gone.
+    expect(await sweeper.tick(new Date(expires + 2 * DAY + 60_000))).toBeGreaterThanOrEqual(1);
     expect(await db.personalSignupRequest.findUnique({ where: { id: pendingId } })).toBeNull();
     expect(await db.personalSignupRequest.count({ where: { email: unverified.email as string } })).toBe(0);
     expect((await db.personalSignupRequest.findUnique({ where: { id: verified.signup_id } }))?.status).toBe('EMAIL_VERIFIED');
     expect(await globalPurges()).toBeGreaterThanOrEqual(before + 1);
     const after = await globalPurges();
-    expect(await sweeper.tick(new Date(expires + 3 * DAY + 60_000))).toBe(0);
+    expect(await sweeper.tick(new Date(expires + 2 * DAY + 60_000))).toBe(0);
     expect(await globalPurges()).toBe(after);
 
-    // A refused attempt is security evidence: kept at 179 days, deleted at 181.
+    // A refused attempt is security evidence: kept at 178 days, deleted by 180 (the daily
+    // run takes it on day 179, before its deadline passes).
     const hp = person({ hp: 'http://spam' });
     expect(reason(await start(hp))).toBe('personal_signup_refused');
     const refused = await db.personalSignupRequest.findFirst({ where: { email: hp.email as string, status: 'REFUSED' } });
     expect(refused).not.toBeNull();
     const created = refused!.created_at.getTime();
-    expect(await sweeper.tick(new Date(created + 179 * DAY))).toBeGreaterThanOrEqual(0);
+    expect(await sweeper.tick(new Date(created + 178 * DAY))).toBeGreaterThanOrEqual(0);
     expect(await db.personalSignupRequest.findUnique({ where: { id: refused!.id } })).not.toBeNull();
-    expect(await sweeper.tick(new Date(created + 181 * DAY))).toBeGreaterThanOrEqual(1);
+    expect(await sweeper.tick(new Date(created + 179 * DAY + 60_000))).toBeGreaterThanOrEqual(1);
     expect(await db.personalSignupRequest.findUnique({ where: { id: refused!.id } })).toBeNull();
   });
 

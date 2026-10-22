@@ -4,6 +4,7 @@ import type { PersonalSignupRepository } from '@aramo/identity';
 
 import {
   PERSONAL_SIGNUP_PURGE_DEFAULT_INTERVAL_MS,
+  PERSONAL_SIGNUP_PURGE_STARTUP_DELAY_MS,
   PersonalSignupAttemptPurgeSweeper,
   personalSignupPurgeEnabled,
   personalSignupPurgeIntervalMs,
@@ -36,15 +37,15 @@ afterEach(() => {
 });
 
 describe('PersonalSignupAttemptPurgeSweeper', () => {
-  it('is ON unless explicitly set to 0; the interval defaults to 1 hour and ignores nonsense', () => {
+  it('is ON unless explicitly set to 0; the interval defaults to once a day and ignores nonsense', () => {
     expect(personalSignupPurgeEnabled({})).toBe(true);
     expect(personalSignupPurgeEnabled({ SIGN_PERSONAL_SIGNUP_PURGE_ENABLED: '1' })).toBe(true);
     expect(personalSignupPurgeEnabled({ SIGN_PERSONAL_SIGNUP_PURGE_ENABLED: '0' })).toBe(false);
     expect(personalSignupPurgeIntervalMs({})).toBe(PERSONAL_SIGNUP_PURGE_DEFAULT_INTERVAL_MS);
-    expect(PERSONAL_SIGNUP_PURGE_DEFAULT_INTERVAL_MS).toBe(3_600_000);
+    expect(PERSONAL_SIGNUP_PURGE_DEFAULT_INTERVAL_MS).toBe(86_400_000);
     expect(personalSignupPurgeIntervalMs({ SIGN_PERSONAL_SIGNUP_PURGE_INTERVAL_MS: '60000' })).toBe(60_000);
-    expect(personalSignupPurgeIntervalMs({ SIGN_PERSONAL_SIGNUP_PURGE_INTERVAL_MS: '5' })).toBe(3_600_000);
-    expect(personalSignupPurgeIntervalMs({ SIGN_PERSONAL_SIGNUP_PURGE_INTERVAL_MS: 'x' })).toBe(3_600_000);
+    expect(personalSignupPurgeIntervalMs({ SIGN_PERSONAL_SIGNUP_PURGE_INTERVAL_MS: '5' })).toBe(86_400_000);
+    expect(personalSignupPurgeIntervalMs({ SIGN_PERSONAL_SIGNUP_PURGE_INTERVAL_MS: 'x' })).toBe(86_400_000);
   });
 
   it('each run applies both rules (3 days after expiry / 180 days refused) and logs exactly one line with both counts (also when nothing was deleted)', async () => {
@@ -57,7 +58,8 @@ describe('PersonalSignupAttemptPurgeSweeper', () => {
       const { repo: r, purgeExpiredAttempts } = repo(result(abandoned, refused));
       const sweeper = new PersonalSignupAttemptPurgeSweeper(r);
       expect(await sweeper.tick(NOW)).toBe(abandoned + refused);
-      expect(purgeExpiredAttempts).toHaveBeenCalledWith(NOW, { abandoned_days: 3, refused_days: 180 });
+      // Deletes everything that reaches its deadline before the next run (never late).
+      expect(purgeExpiredAttempts).toHaveBeenCalledWith(NOW, { abandoned_days: 3, refused_days: 180, early_ms: 86_400_000 });
       expect(log).toHaveBeenCalledTimes(1);
       const line = JSON.parse(String(log.mock.calls[0]![0]));
       expect(line).toEqual({
@@ -77,23 +79,28 @@ describe('PersonalSignupAttemptPurgeSweeper', () => {
     expect(JSON.parse(String(warn.mock.calls[0]![0]))).toMatchObject({ event: 'personal_signup_attempt_purge', failed: true });
   });
 
-  it('bootstrap schedules by default and not when switched off; shutdown stops further runs', async () => {
+  it('bootstrap schedules a daily run plus one run shortly after start, and nothing when switched off; shutdown stops further runs', async () => {
     const setI = vi.spyOn(global, 'setInterval');
+    const setT = vi.spyOn(global, 'setTimeout');
     vi.spyOn(Logger.prototype, 'log').mockImplementation(() => undefined);
     const { repo: r, purgeExpiredAttempts } = repo(result(0, 0));
     const on = new PersonalSignupAttemptPurgeSweeper(r);
     on.onApplicationBootstrap();
     expect(setI).toHaveBeenCalledTimes(1);
-    expect(setI.mock.calls[0]![1]).toBe(3_600_000);
+    expect(setI.mock.calls[0]![1]).toBe(86_400_000);
+    // A restart (deploy) can never stretch the gap past one interval.
+    expect(setT.mock.calls.some((c) => c[1] === PERSONAL_SIGNUP_PURGE_STARTUP_DELAY_MS)).toBe(true);
     await on.onApplicationShutdown();
     expect(await on.tick(NOW)).toBe(0);
     expect(purgeExpiredAttempts).not.toHaveBeenCalled();
 
     setI.mockClear();
+    setT.mockClear();
     process.env['SIGN_PERSONAL_SIGNUP_PURGE_ENABLED'] = '0';
     const off = new PersonalSignupAttemptPurgeSweeper(r);
     off.onApplicationBootstrap();
     expect(setI).not.toHaveBeenCalled();
+    expect(setT.mock.calls.some((c) => c[1] === PERSONAL_SIGNUP_PURGE_STARTUP_DELAY_MS)).toBe(false);
     await off.onApplicationShutdown();
   });
 });

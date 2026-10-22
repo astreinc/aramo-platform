@@ -427,6 +427,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign Personal (Fr
     expect(await signups.purgeExpiredAttempts(new Date(now.getTime() + 2 * MIN))).toMatchObject({ abandoned: 1, refused: 0 });
     expect(await signups.findById(pendingUnder.id)).toBeNull();
     for (const r of Object.values(kept).filter((r) => r !== pendingUnder)) expect(await signups.findById(r.id)).not.toBeNull();
+
+    // A daily run passes early_ms = its interval: everything that reaches its deadline
+    // before the next run goes now (never later than promised); a refusal at 179 days
+    // is within a day of 180, so it goes too; at 4 days it stays.
+    const dueTomorrow = await signupRow({ now: startedToExpireAt(new Date(abandoned_cutoff.getTime() + 12 * 60 * MIN)) });
+    expect(await signups.purgeExpiredAttempts(now)).toMatchObject({ abandoned: 0, refused: 0 });
+    const daily = await signups.purgeExpiredAttempts(now, { early_ms: DAY });
+    expect(daily).toMatchObject({ abandoned: 1, refused: 1, abandoned_cutoff: new Date(abandoned_cutoff.getTime() + DAY), refused_cutoff: new Date(refused_cutoff.getTime() + DAY) });
+    expect(await signups.findById(dueTomorrow.id)).toBeNull();
+    expect(await signups.findById(refused179.id)).toBeNull();
+    expect(await signups.findById(refused4.id)).not.toBeNull();
   });
 
   // ── pilot cap (A1-8: atomic reservation with expiry / release) ─────────────
