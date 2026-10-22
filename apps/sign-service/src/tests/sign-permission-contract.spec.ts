@@ -7,7 +7,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { canManageBilling } from '../app/billing/esign-billing.controller.js';
 import { SenderContextService } from '../app/sender/sender-context.service.js';
 import { SenderEnvelopeService } from '../app/sender/sender-envelope.service.js';
-import { SenderMembersService } from '../app/sender/sender-members.service.js';
+import { EsignSenderController } from '../app/sender/esign-sender.controller.js';
 
 // Sign Unified Product S-1 (Aramo-Sign-Unified-Product-Permission-Contract-
 // Platform-API-Directive-v1_0-LOCKED §4.3) — the role matrix, own-vs-organization
@@ -33,7 +33,7 @@ function ctx(kind = 'BUSINESS') {
     findSlugById: vi.fn(async () => 'astre'),
     findOrganizationNameById: vi.fn(async () => 'Astre Consulting Services Inc'),
   };
-  return new SenderContextService(tenants as never, { findUserById: vi.fn(async () => null) } as never);
+  return new SenderContextService(tenants as never, { findUserById: vi.fn(async () => null), findMembership: vi.fn(async () => null), findRoleKeysForMembership: vi.fn(async () => []) } as never);
 }
 
 function envelopeSvc(owner: string, kind = 'BUSINESS', status = 'DRAFT', source_application = 'aramo-sign') {
@@ -189,109 +189,14 @@ describe('billing administration — sign:billing:manage only', () => {
   });
 });
 
-function membersSvc(opts: { kind?: string; callerKeys: string[]; targetKeys: string[]; targetIsMember?: boolean; replaceError?: unknown }) {
-  const memberships: Record<string, { id: string; is_active: boolean } | null> = {
-    [ME]: { id: 'm-me', is_active: true },
-    [OTHER]: opts.targetIsMember === false ? null : { id: 'm-other', is_active: true },
-  };
-  let targetKeys = [...opts.targetKeys];
-  const repo = {
-    findMembership: vi.fn(async ({ user_id }: { user_id: string }) => memberships[user_id] ?? null),
-    listTenantUsers: vi.fn(async () => [
-      { user_id: ME, email: 'me@x.test', display_name: 'Me', is_active: true, role_keys: opts.callerKeys },
-      { user_id: OTHER, email: 'o@x.test', display_name: 'Other', is_active: true, role_keys: targetKeys },
-    ]),
-  };
-  const identity = {
-    findRoleKeysForMembership: vi.fn(async (id: string) => (id === 'm-me' ? opts.callerKeys : targetKeys)),
-    resolveRoleIdsByKeys: vi.fn(async (keys: string[]) => keys.map((k) => `id-${k}`)),
-    replaceMembershipRoles: vi.fn(async (a: { role_keys: string[] }) => {
-      if (opts.replaceError !== undefined) throw opts.replaceError;
-      targetKeys = [...a.role_keys];
-      return { added_role_ids: [], removed_role_ids: [] };
-    }),
-  };
-  return { svc: new SenderMembersService(ctx(opts.kind), repo as never, identity as never), identity, repo };
-}
-
-describe('Sign member administration', () => {
-  const admin = auth(ESIGN_ROLE_PERMISSIONS.sign_admin);
-
-  it('changes only the Sign role and keeps every other role of the member', async () => {
-    const { svc, identity } = membersSvc({ callerKeys: ['sign_admin'], targetKeys: ['recruiter', 'tenant_admin', 'sign_viewer'] });
-    const v = await svc.setRole(admin, OTHER, { sign_role: 'sign_sender' }, 'r');
-    expect(identity.replaceMembershipRoles).toHaveBeenCalledWith(
-      expect.objectContaining({ role_keys: ['recruiter', 'tenant_admin', 'sign_sender'], tenant_id: TENANT, owner_role_authority: { actor_user_id: ME } }),
-    );
-    expect(v).toMatchObject({ sign_role: 'sign_sender', sign_role_display: 'Sign Sender', organization_role: 'tenant_admin', organization_role_display: 'Tenant Admin' });
-  });
-
-  it('null removes Sign access only', async () => {
-    const { svc, identity } = membersSvc({ callerKeys: ['sign_admin'], targetKeys: ['recruiter', 'sign_sender'] });
-    await svc.setRole(admin, OTHER, { sign_role: null }, 'r');
-    expect(identity.replaceMembershipRoles).toHaveBeenCalledWith(expect.objectContaining({ role_keys: ['recruiter'] }));
-  });
-
-  // ROLES-1 PR-3 (§1, §3.5, §4.3) — Sign Owner is retired; ownership is tenant_owner.
-  it('lists organization-role holders as the Sign Owner / Admin equivalents; the assignable roles omit sign_owner', async () => {
-    const { svc } = membersSvc({ callerKeys: ['tenant_owner', 'tenant_admin'], targetKeys: ['tenant_admin', 'sign_viewer'] });
-    const out = await svc.list(orgOwnerAuth(), 'r');
-    expect(out.roles.map((r) => r.key)).toEqual(['sign_admin', 'sign_sender', 'sign_viewer']);
-    expect(out.items.find((m) => m.user_id === ME)).toMatchObject({ organization_role: 'tenant_owner', organization_role_display: 'Tenant Owner', sign_role: null });
-    expect(out.items.find((m) => m.user_id === OTHER)).toMatchObject({ organization_role: 'tenant_admin', sign_role: 'sign_viewer', sign_role_display: 'Sign Viewer' });
-  });
-
-  it('the retired sign_owner key is refused as a Sign role (400) and never written', async () => {
-    for (const callerKeys of [['sign_admin'], ['tenant_owner']]) {
-      const { svc, identity } = membersSvc({ callerKeys, targetKeys: [] });
-      await expect(svc.setRole(admin, OTHER, { sign_role: 'sign_owner' }, 'r')).rejects.toMatchObject({
-        code: 'VALIDATION_ERROR',
-        statusCode: 400,
-        context: { details: { allowed: ['sign_admin', 'sign_sender', 'sign_viewer', null] } },
-      });
-      expect(identity.replaceMembershipRoles).not.toHaveBeenCalled();
-    }
-  });
-
-  it('an organization owner is never demoted through Sign members: tenant_owner (and tenant_admin) are carried over', async () => {
-    const { svc, identity } = membersSvc({ callerKeys: ['sign_admin'], targetKeys: ['tenant_owner', 'tenant_admin', 'sign_admin'] });
-    const v = await svc.setRole(admin, OTHER, { sign_role: 'sign_viewer' }, 'r');
-    expect(identity.replaceMembershipRoles).toHaveBeenCalledWith(expect.objectContaining({ role_keys: ['tenant_owner', 'tenant_admin', 'sign_viewer'] }));
-    expect(v).toMatchObject({ organization_role: 'tenant_owner', sign_role: 'sign_viewer' });
-    const removed = membersSvc({ callerKeys: ['sign_admin'], targetKeys: ['tenant_owner', 'sign_sender'] });
-    await removed.svc.setRole(admin, OTHER, { sign_role: null }, 'r');
-    expect(removed.identity.replaceMembershipRoles).toHaveBeenCalledWith(expect.objectContaining({ role_keys: ['tenant_owner'] }));
-  });
-
-  it('the last tenant_owner: the DB last-owner backstop (409 TENANT_LAST_OWNER) is answered with 409 ESIGN_LAST_OWNER', async () => {
-    const backstop = new AramoError('TENANT_LAST_OWNER', 'The organization must keep at least one active owner', 409, { requestId: 'r', details: { reason: 'last_owner' } });
-    const { svc } = membersSvc({ callerKeys: ['tenant_owner'], targetKeys: ['tenant_owner', 'sign_admin'], replaceError: backstop });
-    await expect(svc.setRole(orgOwnerAuth(), OTHER, { sign_role: 'sign_sender' }, 'r')).rejects.toMatchObject({
-      code: 'ESIGN_LAST_OWNER',
-      statusCode: 409,
-      context: { details: { reason: 'last_owner' } },
-    });
-  });
-
-  it('the identity owner / organization-admin rules propagate unchanged (403)', async () => {
-    const refusal = new AramoError('INSUFFICIENT_PERMISSIONS', 'x', 403, { requestId: 'r', details: { reason: 'owner_role_requires_owner' } });
-    const { svc } = membersSvc({ callerKeys: ['sign_admin'], targetKeys: ['sign_viewer'], replaceError: refusal });
-    await expect(svc.setRole(admin, OTHER, { sign_role: 'sign_sender' }, 'r')).rejects.toMatchObject({ statusCode: 403, context: { details: { reason: 'owner_role_requires_owner' } } });
-  });
-
-  it('a non-member of this organization reads as not found; an unknown role is refused', async () => {
-    const outsider = membersSvc({ callerKeys: ['sign_admin'], targetKeys: [], targetIsMember: false });
-    await expect(outsider.svc.setRole(admin, OTHER, { sign_role: 'sign_sender' }, 'r')).rejects.toMatchObject({ statusCode: 404 });
-    const bad = membersSvc({ callerKeys: ['sign_admin'], targetKeys: [] });
-    for (const sign_role of ['tenant_admin', 'tenant_owner', 'super_admin', 42, undefined]) {
-      await expect(bad.svc.setRole(admin, OTHER, { sign_role }, 'r')).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
-    }
-    expect(bad.identity.replaceMembershipRoles).not.toHaveBeenCalled();
-  });
-
-  it('PERSONAL accounts have no member administration', async () => {
-    const { svc } = membersSvc({ kind: 'PERSONAL', callerKeys: ['tenant_owner'], targetKeys: [] });
-    await expect(svc.list(admin, 'r')).rejects.toMatchObject({ statusCode: 403, context: { details: { reason: 'personal_account' } } });
+// ORG-UX-1 (Directive v1.0 LOCKED §6, P7, Lead Correction C) — Sign's member role
+// administration is retired: Organization → Users & product access is the single
+// role-assignment surface. The members routes and SenderMembersService are gone.
+describe('Sign member administration is retired (single role authority)', () => {
+  it('the sender controller exposes no member list or Sign-role write', () => {
+    const handlers = Object.getOwnPropertyNames(EsignSenderController.prototype);
+    expect(handlers).not.toContain('listMembers');
+    expect(handlers).not.toContain('setMemberRole');
   });
 });
 

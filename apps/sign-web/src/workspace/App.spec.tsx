@@ -104,53 +104,36 @@ describe('Sign workspace App', () => {
   });
 
   // Sign Unified Product S-1 — Members appears only for holders of sign:member:manage.
-  it('Settings shows Members only when the backend grants member administration', async () => {
+  // ORG-UX-1 (LOCKED §6, H1/P7) — Sign Settings → Users & roles only points to Organization
+  // → Users & product access; no role is edited here.
+  it('Settings shows Users & roles only when the backend grants member administration', async () => {
     vi.stubGlobal('fetch', stubFetch(ctx({ permissions: { read: true, create: true, send: true, members: true } })));
     const first = renderAt('/sign/settings/personal');
-    expect(await screen.findByRole('link', { name: 'Members' })).toBeInTheDocument();
+    expect(await screen.findByRole('link', { name: 'Users & roles' })).toBeInTheDocument();
     first.unmount();
     vi.stubGlobal('fetch', stubFetch(ctx()));
     renderAt('/sign/settings/personal');
     await screen.findByTestId('settings-account');
-    expect(screen.queryByRole('link', { name: 'Members' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('link', { name: 'Users & roles' })).not.toBeInTheDocument();
   });
 
-  // ROLES-1 PR-3 (§3.5) — the Sign Owner role is retired: organization-role holders are
-  // shown with their organization role; the Sign role picker offers Admin / Sender / Viewer.
-  it('Members shows the organization role of each member and offers only the three Sign roles', async () => {
-    const base = stubFetch(ctx({ permissions: { read: true, create: true, send: true, members: true } }));
+  it('Users & roles: an organization admin gets the link to Organization (with a Sign return); others are told to ask an admin', async () => {
     vi.stubGlobal(
       'fetch',
-      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
-        if (String(input).endsWith('/v1/sign/sender/members')) {
-          return json({
-            items: [
-              { user_id: 'u1', email: 'priya@northwind.test', display_name: 'Priya Nair', active: true, sign_role: null, sign_role_display: null, organization_role: 'tenant_owner', organization_role_display: 'Tenant Owner' },
-              { user_id: 'u2', email: 'sam@northwind.test', display_name: 'Sam Lee', active: true, sign_role: 'sign_sender', sign_role_display: 'Sign Sender', organization_role: null, organization_role_display: null },
-            ],
-            roles: [
-              { key: 'sign_admin', display: 'Sign Admin' },
-              { key: 'sign_sender', display: 'Sign Sender' },
-              { key: 'sign_viewer', display: 'Sign Viewer' },
-            ],
-          });
-        }
-        return base(input, init);
-      }),
+      stubFetch(ctx({ permissions: { read: true, create: true, send: true, members: true }, org_admin: true, organization_roles_url: 'https://northwind.aramo.ai/org/roles' })),
     );
+    const first = renderAt('/sign/settings/members');
+    const link = await screen.findByTestId('settings-manage-in-org');
+    const href = link.getAttribute('href') ?? '';
+    expect(href.startsWith('https://northwind.aramo.ai/auth/org/login?')).toBe(true);
+    const returnTo = new URLSearchParams(href.split('?')[1]).get('return_to') ?? '';
+    expect(returnTo.startsWith('/org/roles?')).toBe(true);
+    expect(new URLSearchParams(returnTo.split('?')[1]).get('from')).toBe('sign');
+    expect(screen.queryByRole('combobox')).not.toBeInTheDocument();
+    first.unmount();
+    vi.stubGlobal('fetch', stubFetch(ctx({ permissions: { read: true, create: true, send: true, members: true }, org_admin: false })));
     renderAt('/sign/settings/members');
-    expect(await screen.findByTestId('member-org-role-u1')).toHaveTextContent('Tenant Owner');
-    expect(screen.getByTestId('member-org-role-u2')).toHaveTextContent('—');
-    const ownerPicker = screen.getByLabelText('Sign role for Priya Nair');
-    expect(ownerPicker).toHaveValue('');
-    expect(Array.from((ownerPicker as HTMLSelectElement).options).map((o) => o.textContent)).toEqual([
-      'Included with Tenant Owner',
-      'Sign Admin',
-      'Sign Sender',
-      'Sign Viewer',
-    ]);
-    expect(screen.queryByText('Sign Owner')).not.toBeInTheDocument();
-    expect(Array.from((screen.getByLabelText('Sign role for Sam Lee') as HTMLSelectElement).options)[0]?.textContent).toBe('No Sign access');
+    expect(await screen.findByTestId('settings-ask-org-admin')).toHaveTextContent('Ask your organization admin to change roles.');
   });
 
   // Sign Unified Product S-3 — ATS envelopes are listed with their origin.

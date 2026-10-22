@@ -42,6 +42,10 @@ export interface SenderContext {
   personal_sending_enabled: boolean;
   organization_url: string | null;
   app_home_url: string | null;
+  // ORG-UX-1 (LOCKED §4.3/§6) — role-based (tenant_owner / tenant_admin); absent = false.
+  org_admin?: boolean;
+  // ORG-UX-1 §6 — Organization → Users & product access (the single role surface).
+  organization_roles_url?: string | null;
 }
 
 export interface Summary {
@@ -339,22 +343,7 @@ export const billingApi = {
   portal: () => apiClient.post<{ url: string }>(`${BILLING}/portal`, {}),
 };
 
-// ROLES-1 PR-3 — the Sign roles (the Sign Owner role is retired; ownership and billing
-// belong to the organization owner, tenant_owner).
-export type SignRoleKey = 'sign_admin' | 'sign_sender' | 'sign_viewer';
-// The organization roles a member list shows next to the Sign role (read-only here).
-export type SignOrganizationRoleKey = 'tenant_owner' | 'tenant_admin';
-
-export interface SignMember {
-  user_id: string;
-  email: string;
-  display_name: string | null;
-  active: boolean;
-  sign_role: SignRoleKey | null;
-  sign_role_display: string | null;
-  organization_role?: SignOrganizationRoleKey | null;
-  organization_role_display?: string | null;
-}
+// ORG-UX-1 §6 — Sign member role administration is retired (Organization owns roles).
 
 export const senderApi = {
   context: () => apiClient.get<SenderContext>(`${BASE}/context`),
@@ -395,9 +384,6 @@ export const senderApi = {
   evidence: (id: string) => apiClient.get<Evidence>(`${BASE}/envelopes/${enc(id)}/evidence`),
   documents: () => apiClient.get<{ items: DocumentRow[] }>(`${BASE}/documents`),
   contacts: () => apiClient.get<{ items: ContactRow[] }>(`${BASE}/contacts`),
-  members: () => apiClient.get<{ items: SignMember[]; roles: { key: SignRoleKey; display: string }[] }>(`${BASE}/members`),
-  setMemberRole: (userId: string, sign_role: SignRoleKey | null) =>
-    apiClient.put<SignMember>(`${BASE}/members/${encodeURIComponent(userId)}/sign-role`, { sign_role }),
   activity: (limit = 200) => apiClient.get<{ items: LedgerEvent[] }>(`${BASE}/activity?limit=${limit}`),
   // DOC-TEMPLATE-LIB-1 T-5 — templates (Documents-owned) and envelopes started from one.
   templates: () => apiClient.get<{ items: SenderTemplate[]; unavailable: { document_type_id: string; reason: string }[] }>(`${BASE}/templates`),
