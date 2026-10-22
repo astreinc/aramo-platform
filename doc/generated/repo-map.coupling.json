@@ -13064,6 +13064,21 @@
       "to": "libs/contact/prisma/schema.prisma"
     },
     {
+      "from": "doc/backlog/sign-personal-closed-account-data-erasure.md",
+      "status": "unscoped",
+      "to": "doc/legal/aramo/privacy-notice.md"
+    },
+    {
+      "from": "doc/backlog/sign-personal-closed-account-data-erasure.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/tenant.service.ts"
+    },
+    {
+      "from": "doc/backlog/sign-personal-sms-provider-selection.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/personal/sms-verification.port.ts"
+    },
+    {
       "from": "doc/backlog/talent-lifecycle-am5-verified-inbound-application-DEFERRED.md",
       "status": "unscoped",
       "to": "apps/api/src/webhooks/indeed-apply.service.ts"
