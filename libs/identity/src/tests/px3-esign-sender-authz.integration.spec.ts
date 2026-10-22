@@ -162,8 +162,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-V1 PX-3 sign_s
       expect(recruiter.scopes).toContain('talent:read');
     }
     const org = await resolver.resolve(input('org'));
-    // DOC-TEMPLATE-LIB-1 T-4 (§6.2) — the org session = the org set + document_template:{read,manage}.
-    if (org.status === 'ok') expect([...org.scopes].sort()).toEqual([...ORG_ADMIN_SCOPE_KEYS, 'document_template:manage', 'document_template:read'].sort());
+    // DOC-TEMPLATE-LIB-1 T-4 (§6.2) + ORG-UX-1 §4.1 — the org session = the org set +
+    // document_template:{author,manage} (+ read alongside them).
+    if (org.status === 'ok') expect([...org.scopes].sort()).toEqual([...ORG_ADMIN_SCOPE_KEYS, 'document_template:author', 'document_template:manage', 'document_template:read'].sort());
     expect(await resolver.resolve(input('platform'))).toEqual({ status: 'ok', scopes: [] });
     // Sign capability revoked → the esign consumer resolves nothing (no admin via a dead product).
     caps.current = new Set(['core']);
