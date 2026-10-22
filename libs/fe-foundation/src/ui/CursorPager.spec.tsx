@@ -40,8 +40,9 @@ describe('useCursorPager', () => {
 
     rerender({ k: 'k2' });
     await waitFor(() => expect(fetchPage).toHaveBeenCalledTimes(2));
-    // After reset, items reflect a fresh first page (not appended to the old one).
-    expect(result.current.items).toEqual(['first']);
+    // After reset, items reflect a fresh first page (not appended to the old one). Awaited:
+    // the reset clears items before the refetch resolves (a bare expect raced on slow CI).
+    await waitFor(() => expect(result.current.items).toEqual(['first']));
   });
 
   it('surfaces a fetch error and stops paging', async () => {
