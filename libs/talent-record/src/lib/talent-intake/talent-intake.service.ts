@@ -22,7 +22,7 @@ import {
 } from '../dto/talent-intake.dto.js';
 import { TalentRecordRepository } from '../talent-record.repository.js';
 
-import { asReviewPayload } from './talent-intake-review.js';
+import { applyRecruiterReview, asReviewPayload } from './talent-intake-review.js';
 import {
   TALENT_INTAKE_EXTRACTION_REQUESTED_EVENT,
   TALENT_INTAKE_SOURCE_TYPE_RESUME_UPLOAD,
@@ -342,7 +342,11 @@ export class TalentIntakeService {
       id,
       created_by,
       expected_version: body.expected_version,
-      review_payload: body.review,
+      // Backend-owned merge (I7 / §8.5): only recruiter-origin fields and the
+      // arrays the recruiter actually edited come from the client; everything
+      // else keeps the persisted (extraction) value. CAS on expected_version
+      // still rejects a stale tab.
+      review_payload: applyRecruiterReview(existing.review_payload, body.review),
       review_status: 'IN_REVIEW',
     });
     if (count === 0) {

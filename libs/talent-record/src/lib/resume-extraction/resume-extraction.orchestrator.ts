@@ -5,7 +5,11 @@ import {
   type ParseStatus,
   type TalentRecordPrefill,
 } from '@aramo/resume-parse';
-import { TalentExtractionService } from '@aramo/talent-extraction';
+import {
+  TalentExtractionService,
+  type ResumeDraftProposal,
+  type ResumeDraftRejectedWorkHistory,
+} from '@aramo/talent-extraction';
 
 import type { DraftFromResumeResponse } from '../dto/draft-from-resume.response.js';
 
@@ -130,15 +134,19 @@ export class ResumeExtractionOrchestrator {
     if (phones[2] !== undefined) prefill.phone_work = phones[2];
     if (proposal.current_employer !== undefined) prefill.current_employer = proposal.current_employer;
     if (proposal.title !== undefined) prefill.title = proposal.title;
-    // Clean skills → the free-text key_skills field (the recruiter-facing R5 §2
-    // surface). The STRUCTURED skills + their source_refs are carried separately
-    // (below) for durable provenance (R7).
-    if (proposal.skills.length > 0) {
-      prefill.key_skills = proposal.skills.map((s) => s.surface_form).join(', ');
+    // key_skills (ATS-QA-1 row A2) — the de-duplicated DISPLAY union of the
+    // explicitly listed skills and the per-role skill_usage surface forms. It
+    // carries no years, proficiency or employment evidence. The STRUCTURED
+    // listed skills + their source_refs are carried separately (below) for
+    // durable provenance (R7); evidenced usage stays on each work-history entry.
+    const keySkills = composeKeySkills(proposal);
+    if (keySkills !== '') {
+      prefill.key_skills = keySkills;
     }
 
     const hasIdentity = prefill.first_name !== undefined || prefill.last_name !== undefined;
     const hasAny = Object.keys(prefill).length > 0 || proposal.work_history.length > 0;
+    const rejectedWarning = rejectedWorkHistoryWarning(proposal.rejected_work_history ?? []);
     const parse_status: ParseStatus = hasIdentity ? 'parsed' : 'partial';
     return {
       prefill,
@@ -158,8 +166,56 @@ export class ResumeExtractionOrchestrator {
       source_map_version: proposal.source_map_version,
       resume_text_hash: proposal.resume_text_hash,
       ...(hasAny
-        ? {}
+        ? rejectedWarning !== null
+          ? { warning: rejectedWarning }
+          : {}
         : { warning: 'No details could be read from this resume. Please enter them manually.' }),
     };
   }
+}
+
+// A2 — listed skills first (in résumé order), then evidenced skill_usage surface
+// forms in role order; de-duplicated case- and whitespace-insensitively (the
+// first written form wins). Display text only.
+export function composeKeySkills(
+  proposal: Pick<ResumeDraftProposal, 'skills' | 'work_history'>,
+): string {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  const add = (raw: string): void => {
+    const surface = raw.replace(/\s+/g, ' ').trim();
+    if (surface === '') return;
+    const key = surface.toLowerCase();
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(surface);
+  };
+  for (const s of proposal.skills) add(s.surface_form);
+  for (const wh of proposal.work_history) {
+    for (const su of wh.skill_usage ?? []) add(su.surface_form);
+  }
+  return out.join(', ');
+}
+
+// I-3 — recruiter-safe draft warning for work-history entries that could not be
+// matched to the résumé text. Names an employer only when that employer itself
+// was found in the résumé (never surfaces ungrounded text).
+export function rejectedWorkHistoryWarning(
+  rejected: readonly ResumeDraftRejectedWorkHistory[],
+): string | null {
+  if (rejected.length === 0) return null;
+  const employers = [
+    ...new Set(
+      rejected
+        .map((r) => r.employer_name?.trim() ?? '')
+        .filter((e) => e !== ''),
+    ),
+  ];
+  const count = rejected.length;
+  const head =
+    count === 1
+      ? '1 work history entry couldn’t be matched to the resume text and was left out'
+      : `${count} work history entries couldn’t be matched to the resume text and were left out`;
+  const named = employers.length > 0 ? ` (${employers.join(', ')})` : '';
+  return `${head}${named}. Check the resume and add ${count === 1 ? 'it' : 'them'} below if needed.`;
 }

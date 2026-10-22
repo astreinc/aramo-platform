@@ -13,12 +13,23 @@ export interface IntakeReviewField {
   origin: IntakeFieldOrigin;
 }
 
+// The reviewable evidence arrays the recruiter can edit on the Add-Talent form.
+// `skills` is NOT among them: the structured skills list is extraction-owned and
+// carried verbatim (the recruiter edits the free-text key_skills scalar instead).
+export const REVIEW_ARRAY_KEYS = ['work_history', 'education', 'certifications'] as const;
+export type ReviewArrayKey = (typeof REVIEW_ARRAY_KEYS)[number];
+
 export interface IntakeReviewPayload {
   fields: Record<string, IntakeReviewField>;
   work_history?: unknown[];
   skills?: unknown[];
   education?: unknown[];
   certifications?: unknown[];
+  // ATS-QA-1 I-3 (Durable-Async I7 / §8.5 conformance) — per-array origin, owned
+  // by the backend: RECRUITER once a review save carried that array (the
+  // recruiter edited it), RESUME_EXTRACTION when the governed extraction wrote
+  // it. Absent on drafts saved before this field existed.
+  array_origin?: Partial<Record<ReviewArrayKey, IntakeFieldOrigin>>;
   resume_provenance?: {
     source_map_version?: string;
     resume_text_hash?: string;
@@ -49,26 +60,64 @@ export function emptyIntakeReviewPayload(): IntakeReviewPayload {
   return { fields: {} };
 }
 
+function asArray(value: unknown): unknown[] | undefined {
+  return Array.isArray(value) ? value : undefined;
+}
+
+function asArrayOrigin(value: unknown): IntakeReviewPayload['array_origin'] {
+  if (value === null || typeof value !== 'object') return undefined;
+  const out: Partial<Record<ReviewArrayKey, IntakeFieldOrigin>> = {};
+  for (const key of REVIEW_ARRAY_KEYS) {
+    const v = (value as Record<string, unknown>)[key];
+    if (v === 'RECRUITER' || v === 'RESUME_EXTRACTION') out[key] = v;
+  }
+  return out;
+}
+
 export function asReviewPayload(value: unknown): IntakeReviewPayload {
   if (value === null || value === undefined || typeof value !== 'object') {
     return emptyIntakeReviewPayload();
   }
-  const parsed = value as Partial<IntakeReviewPayload>;
+  const parsed = value as Partial<Record<keyof IntakeReviewPayload, unknown>>;
+  const fields =
+    parsed.fields !== null && typeof parsed.fields === 'object'
+      ? (parsed.fields as Record<string, IntakeReviewField>)
+      : {};
+  const arrayOrigin = asArrayOrigin(parsed.array_origin);
   return {
-    fields: parsed.fields ?? {},
-    work_history: parsed.work_history,
-    skills: parsed.skills,
-    education: parsed.education,
-    certifications: parsed.certifications,
-    resume_provenance: parsed.resume_provenance,
+    fields,
+    work_history: asArray(parsed.work_history),
+    skills: asArray(parsed.skills),
+    education: asArray(parsed.education),
+    certifications: asArray(parsed.certifications),
+    ...(arrayOrigin !== undefined ? { array_origin: arrayOrigin } : {}),
+    resume_provenance: parsed.resume_provenance as IntakeReviewPayload['resume_provenance'],
   };
 }
 
+// Is this persisted array recruiter-owned (never replaced by extraction)?
+//   - origin RECRUITER                → yes (the recruiter edited it);
+//   - origin RESUME_EXTRACTION        → no;
+//   - no origin recorded (a draft saved before origins existed) → owned only
+//     when it actually holds entries. The old client saved every array on every
+//     autosave, so an EMPTY legacy array is not a recruiter decision; a
+//     non-empty one may be, and is kept.
+function isRecruiterOwned(base: IntakeReviewPayload, key: ReviewArrayKey): boolean {
+  const origin = base.array_origin?.[key];
+  if (origin !== undefined) return origin === 'RECRUITER';
+  const current = base[key];
+  return current !== undefined && current.length > 0;
+}
+
 // Merge a fresh governed extraction into the persisted review payload WITHOUT
-// clobbering recruiter edits. A field already carrying origin RECRUITER is left
-// untouched; every other proposed field is (re)written with origin
-// RESUME_EXTRACTION. Arrays (work-history/skills/…) are filled from the
-// extraction only when the recruiter has not already captured them.
+// clobbering recruiter edits (directive I7 / §8.5):
+//   - a scalar field already carrying origin RECRUITER is left untouched; every
+//     other proposed field is (re)written with origin RESUME_EXTRACTION;
+//   - each array is replaced by the extraction ONLY when the recruiter has not
+//     edited THAT array (per-array, backend-owned origin) — editing work history
+//     never freezes education, and vice versa;
+//   - nothing disappears: an extraction that returns no entries for an array
+//     (partial / repeated / failed) keeps whatever the draft already holds.
 export function mergeExtractionIntoReview(
   existing: unknown,
   result: DraftFromResumeResponse,
@@ -93,23 +142,79 @@ export function mergeExtractionIntoReview(
     };
   }
 
-  const recruiterTouchedArrays =
-    base.work_history !== undefined ||
-    base.skills !== undefined ||
-    base.education !== undefined ||
-    base.certifications !== undefined;
-
-  return {
+  const merged: IntakeReviewPayload = {
     fields: mergedFields,
-    work_history: recruiterTouchedArrays ? base.work_history : result.work_history,
-    skills: recruiterTouchedArrays ? base.skills : result.skills,
-    education: recruiterTouchedArrays ? base.education : result.education,
-    certifications: recruiterTouchedArrays ? base.certifications : result.certifications,
-    resume_provenance: {
-      source_map_version: result.source_map_version,
-      resume_text_hash: result.resume_text_hash,
-    },
+    // Structured skills are extraction-owned: a newer non-empty result replaces
+    // them; otherwise the draft keeps what it has.
+    skills:
+      result.skills !== undefined && result.skills.length > 0 ? result.skills : base.skills,
+    resume_provenance:
+      result.source_map_version !== undefined || result.resume_text_hash !== undefined
+        ? {
+            source_map_version: result.source_map_version,
+            resume_text_hash: result.resume_text_hash,
+          }
+        : base.resume_provenance,
   };
+  const origin: Partial<Record<ReviewArrayKey, IntakeFieldOrigin>> = { ...base.array_origin };
+  for (const key of REVIEW_ARRAY_KEYS) {
+    const proposed = result[key] as unknown[] | undefined;
+    if (isRecruiterOwned(base, key) || proposed === undefined || proposed.length === 0) {
+      merged[key] = base[key];
+      continue;
+    }
+    merged[key] = proposed;
+    origin[key] = 'RESUME_EXTRACTION';
+  }
+  if (Object.keys(origin).length > 0) merged.array_origin = origin;
+  return merged;
+}
+
+// Apply a recruiter review save onto the persisted payload (backend-owned field
+// authority — I7 / §8.5). The client sends:
+//   - the scalar fields it holds; only RECRUITER-origin values are authoritative
+//     from the client. A RESUME_EXTRACTION value from the client never replaces
+//     the persisted one (the backend owns extraction values — a tab holding an
+//     older extraction cannot roll back a newer one);
+//   - an array ONLY when the recruiter edited it. A sent array becomes
+//     recruiter-owned (origin RECRUITER); an omitted array keeps the persisted
+//     value and origin, so a save can never wipe extracted work history,
+//     education or certifications.
+// Skills and résumé provenance are backend-owned; a client value is used only
+// when the draft has none (older clients sent them back verbatim).
+export function applyRecruiterReview(existing: unknown, patch: unknown): IntakeReviewPayload {
+  const base = asReviewPayload(existing);
+  const incoming = asReviewPayload(patch);
+
+  const fields: Record<string, IntakeReviewField> = { ...base.fields };
+  for (const [key, cell] of Object.entries(incoming.fields)) {
+    if (cell === null || typeof cell !== 'object') continue;
+    const current = fields[key];
+    if (cell.origin === 'RECRUITER' || current === undefined) {
+      fields[key] = {
+        value: cell.value ?? null,
+        origin: cell.origin === 'RESUME_EXTRACTION' ? 'RESUME_EXTRACTION' : 'RECRUITER',
+      };
+    }
+  }
+
+  const merged: IntakeReviewPayload = {
+    fields,
+    skills: base.skills ?? incoming.skills,
+    resume_provenance: base.resume_provenance ?? incoming.resume_provenance,
+  };
+  const origin: Partial<Record<ReviewArrayKey, IntakeFieldOrigin>> = { ...base.array_origin };
+  for (const key of REVIEW_ARRAY_KEYS) {
+    const sent = incoming[key];
+    if (sent !== undefined) {
+      merged[key] = sent;
+      origin[key] = 'RECRUITER';
+    } else {
+      merged[key] = base[key];
+    }
+  }
+  if (Object.keys(origin).length > 0) merged.array_origin = origin;
+  return merged;
 }
 
 // Governed technical-failure statuses — the extraction ran but produced no

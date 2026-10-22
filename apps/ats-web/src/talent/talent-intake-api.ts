@@ -18,6 +18,12 @@ export interface TalentIntakeReviewPayload {
   skills?: unknown[];
   education?: unknown[];
   certifications?: unknown[];
+  // ATS-QA-1 I-3 — backend-owned per-array origin (RECRUITER once a save carried
+  // the array). Read-only for the client: a save sends an array only when the
+  // recruiter edited it, and the backend records the origin.
+  array_origin?: Partial<
+    Record<'work_history' | 'education' | 'certifications', 'RESUME_EXTRACTION' | 'RECRUITER'>
+  >;
   resume_provenance?: { source_map_version?: string; resume_text_hash?: string };
 }
 
