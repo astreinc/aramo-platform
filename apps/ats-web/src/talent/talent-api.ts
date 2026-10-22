@@ -72,6 +72,21 @@ export async function searchTalent(
   );
 }
 
+// ATS-QA-1 D3 — the Add-talent picker's server-side search: one keyset page of the
+// SAME /v1/talent-records paged path (tenant + site + existing visibility on the BE).
+// `q` (name search) needs talent:search, which every pipeline:add role holds; the
+// next page is fetched with the returned cursor. No client-side cap, no raised limit.
+export async function searchTalentForPicker(args: {
+  readonly q?: string;
+  readonly cursor?: string | null;
+}): Promise<TalentSearchPage> {
+  const params = new URLSearchParams({ paged: 'true' });
+  const q = args.q?.trim();
+  if (q !== undefined && q !== '') params.set('q', q);
+  if (args.cursor !== undefined && args.cursor !== null) params.set('cursor', args.cursor);
+  return searchTalent(params);
+}
+
 // Proactive duplicate-check — the Add-Talent "Possible existing Talent" card.
 // A TalentRecord can never be duplicated on primary email (the create-time 409
 // is the hard backstop); this lets the recruiter SEE the collision before

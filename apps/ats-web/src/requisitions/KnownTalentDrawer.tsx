@@ -1,7 +1,8 @@
-import { Button, Dialog, InlineAlert, useSession } from '@aramo/fe-foundation';
+import { ApiError, Button, Dialog, InlineAlert, useSession } from '@aramo/fe-foundation';
 import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 
+import { addTalentErrorMessage } from '../pipeline/error-messages';
 import { addTalentToPipeline } from '../pipeline/pipeline-api';
 import type { PipelineStatus } from '../pipeline/types';
 import { LastContactCell } from '../talent/components/LastContactCell';
@@ -97,10 +98,19 @@ export function KnownTalentDrawer({
     try {
       await addTalentToPipeline(talentId, requisition.id);
       setAttached((prev) => new Set([...prev, talentId])); // reflect "On this requisition"
+      setError(null);
       setNotice('Added to this requisition.');
       onAdded();
-    } catch {
-      setNotice('Add to requisition failed — please try again.');
+    } catch (err) {
+      // ATS-QA-1 D6 — the server's typed refusal through the one shared mapper. Only
+      // PIPELINE_EPISODE_ALREADY_LIVE means the talent is already here (reflect it).
+      if (err instanceof ApiError && err.code === 'PIPELINE_EPISODE_ALREADY_LIVE') {
+        setAttached((prev) => new Set([...prev, talentId]));
+        setNotice(addTalentErrorMessage(err));
+        return;
+      }
+      setNotice(null);
+      setError(addTalentErrorMessage(err));
     }
   }
 

@@ -129,3 +129,30 @@ describe('ConsentHistoryPanel', () => {
     });
   });
 });
+
+// ATS-QA-1 I-1 D11 — expires_at is a Timestamptz instant: rendered via formatInstant, never raw ISO.
+describe('ConsentHistoryPanel — expiry formatting (ATS-QA-1 D11)', () => {
+  const EVENT_ID = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1a00';
+  it('renders a non-null expires_at through the instant formatter, not as raw ISO', async () => {
+    const expiresAt = '2027-04-29T15:45:00Z';
+    const page: ConsentHistoryResponse = {
+      events: [
+        { event_id: EVENT_ID, scope: 'profile_storage', action: 'granted', created_at: '2026-04-29T00:00:00Z', expires_at: expiresAt },
+      ],
+      next_cursor: null,
+      is_anonymized: false,
+    };
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(page));
+    render(<ConsentHistoryPanel talentId={TALENT_ID} />);
+
+    expect(await screen.findByText(new Date(expiresAt).toLocaleString())).toBeInTheDocument();
+    expect(screen.queryByText(expiresAt)).toBeNull();
+  });
+
+  it('a null expires_at still renders the em dash', async () => {
+    vi.spyOn(globalThis, 'fetch').mockResolvedValue(jsonResponse(finalPage));
+    render(<ConsentHistoryPanel talentId={TALENT_ID} />);
+    await screen.findByTestId(`consent-history-event-${EVENT_ID}`);
+    expect(screen.getAllByText('—').length).toBeGreaterThanOrEqual(1);
+  });
+});

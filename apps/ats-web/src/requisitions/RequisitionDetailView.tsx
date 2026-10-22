@@ -16,6 +16,7 @@ import { resolveUserNames } from '../users/users-api';
 import { RtrPanel } from '../rtr/RtrPanel';
 import { canExecuteRtr, canSendRtr, useSignSubscribed } from '../rtr/rtr-access';
 import { listPipelinesForRequisition, voidPipelineEpisode } from '../pipeline/pipeline-api';
+import { collapseToCurrentEpisode, rollupByRequisition } from '../pipeline/rollup';
 import { PIPELINE_STATUS_LABELS, type PipelineView } from '../pipeline/types';
 import { listOffers } from '../offers/offers-api';
 import { RECRUITING_OFFER_STATE_LABELS } from '../offers/labels';
@@ -58,7 +59,7 @@ import {
   type RequisitionTalentBoardView,
 } from './requisition-talent-board-api';
 import { selectOfferStartCards } from './offer-start-rows';
-import { AddTalentDialog } from './AddTalentDialog';
+import { AddTalentDialog, addTalentDisabledReason } from './AddTalentDialog';
 import { WorkspacePanel } from './WorkspacePanel';
 import { PutOnHoldDialog, type PutOnHoldDetails } from './PutOnHoldDialog';
 import { RequisitionHoldBanner } from './hold-details';
@@ -608,7 +609,9 @@ export function RequisitionDetailView({
     available.add('talent');
     tabs.push({
       id: 'talent',
-      label: `Talent (${pipelines.length})`,
+      // ATS-QA-1 D5 — the collapsed current set (one current episode per Talent; rollup.ts),
+      // never the raw episode count (which double-counts ended + re-added episodes).
+      label: `Talent (${collapseToCurrentEpisode(pipelines).length})`,
       content: (
         <TalentJourney
           req={req}
@@ -621,6 +624,7 @@ export function RequisitionDetailView({
           canReadOffers={canReadOffers}
           canReadPlacements={canReadPlacements}
           onPipelineRemoved={(id) => setPipelines((prev) => prev.filter((p) => p.id !== id))}
+          onPipelinesChanged={refresh}
           onBeforeOpenTalent={rememberOrigin}
           onNavigate={setTab}
           talentView={talentView}
@@ -892,6 +896,8 @@ export function RequisitionDetailView({
               existingTalentIds={liveTalentIds}
               endedTalentIds={endedTalentIds}
               canReAdd={canReAdd}
+              canSearch={scopes.includes('talent:search')}
+              disabledReason={addTalentDisabledReason(req.status)}
               onAdded={refresh}
             />
           ) : null}
@@ -1013,7 +1019,7 @@ function SnapshotStrip({
     <div className="rc-snap">
       <SnapshotCard
         label="Talent"
-        value={pipelines.length}
+        value={rollupByRequisition(pipelines)[req.id]?.active ?? 0}
         hint="in play"
         onClick={canReadPipeline ? () => onNavigate('talent') : undefined}
       />
@@ -1284,6 +1290,7 @@ function TalentJourney({
   canReadOffers,
   canReadPlacements,
   onPipelineRemoved,
+  onPipelinesChanged,
   onBeforeOpenTalent,
   onNavigate,
   talentView,
@@ -1300,6 +1307,8 @@ function TalentJourney({
   readonly canReadOffers: boolean;
   readonly canReadPlacements: boolean;
   readonly onPipelineRemoved: (pipelineId: string) => void;
+  /** ATS-QA-1 D5 — reload the pipelines after an episode's status changes in place (Not in consideration). */
+  readonly onPipelinesChanged: () => void;
   readonly onBeforeOpenTalent: () => void;
   readonly onNavigate: (tab: TabId) => void;
   /** User directory display names keyed by user_id (for the board's recruiter initials). */
@@ -1331,6 +1340,7 @@ function TalentJourney({
     canReadPlacements,
     userNames,
     onPipelineRemoved,
+    onPipelinesChanged,
     eagerCells: talentView === 'list',
     onBeforeOpenTalent,
   });
@@ -1617,6 +1627,10 @@ function TalentJourney({
 // Shared per-tab empty state — mirrors the prototype's dashed "nothing here yet"
 // card (title + explanatory body). Used by the tabs whose prototype view is an
 // empty state; the populated tables/lists render instead once data exists.
+// ATS-QA-1 1.1 residual — Add talent is permitted on open, on hold and lead requisitions
+// (A1 AM-1); a draft or a requisition awaiting approval cannot take talent yet, so the
+// button is disabled and says why. The server re-checks regardless (POLICY_DENIED).
+
 function TabEmpty({
   title,
   children,
@@ -1650,9 +1664,10 @@ function OffersTab({
   const rows = selectOfferStartCards(board);
   if (rows.length === 0) {
     return (
-      <TabEmpty title="No offers or starts on this requisition">
-        A row appears here once a Talent is Client — Selected. Continue opens the single Offer &amp;
-        Start journey, where Talent-facing terms and the offer lifecycle live.
+      // ATS-QA-1 23e — the prototype v2 empty-state copy (Requisition Detail CRM v2 :517-518).
+      <TabEmpty title="No offers on this requisition">
+        Create offer becomes available when a Talent reaches <b>Client — Selected</b>. Offers carry
+        Talent-facing terms only; employer financials live in Commercial.
       </TabEmpty>
     );
   }

@@ -103,6 +103,7 @@ export function useRequisitionTalentActions({
   canReadPlacements,
   userNames,
   onPipelineRemoved,
+  onPipelinesChanged,
   eagerCells = false,
   onBeforeOpenTalent,
 }: {
@@ -117,6 +118,9 @@ export function useRequisitionTalentActions({
   /** User directory display names keyed by user_id (best-effort; for recruiter initials). */
   readonly userNames?: Record<string, string>;
   readonly onPipelineRemoved: (pipelineId: string) => void;
+  /** ATS-QA-1 D5 — called after an episode changes status in place (Not in consideration) so the
+   *  page reloads its pipelines: the Talent tab label and "in play" count then reflect it. */
+  readonly onPipelinesChanged?: () => void;
   /** Hydrate every row's CLIENT / PRE-START cells on mount (the Talent tab List). */
   readonly eagerCells?: boolean;
   /** Called right before navigating to the 360 page (the origin saves its view state). */
@@ -269,8 +273,9 @@ export function useRequisitionTalentActions({
       if (episode === undefined) return;
       await dispositionPipelineEpisode(episode.id, { ...choice, expected_version: episode.version });
       setBoardRefresh((n) => n + 1);
+      onPipelinesChanged?.();
     },
-    [nicTarget, pipelines],
+    [nicTarget, pipelines, onPipelinesChanged],
   );
 
   const requestSendRtr = useCallback((talentId: string, talentName: string) => {

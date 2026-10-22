@@ -123,3 +123,19 @@ describe('ConsentStatePanel', () => {
     ).not.toBeInTheDocument();
   });
 });
+
+// ATS-QA-1 I-1 D11 — expires_at is a Timestamptz instant: rendered via formatInstant, never raw ISO.
+describe('ConsentStatePanel — expiry formatting (ATS-QA-1 D11)', () => {
+  it('renders a non-null expires_at through the instant formatter, not as raw ISO', async () => {
+    const expiresAt = '2027-04-29T15:45:00Z';
+    const body: TalentConsentStateResponse = {
+      ...baseResponse,
+      scopes: baseResponse.scopes.map((s, i) => (i === 0 ? { ...s, expires_at: expiresAt } : s)),
+    };
+    mockFetch(body);
+    render(<ConsentStatePanel talentId={TALENT_ID} />);
+
+    expect(await screen.findByText(new Date(expiresAt).toLocaleString())).toBeInTheDocument();
+    expect(screen.queryByText(expiresAt)).toBeNull();
+  });
+});

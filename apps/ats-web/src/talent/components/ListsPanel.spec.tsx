@@ -95,3 +95,80 @@ describe('ListsPanel (CRM-3)', () => {
     expect(screen.getAllByText('Never').length).toBeGreaterThanOrEqual(1);
   });
 });
+
+// ATS-QA-1 D4 / D6 — the detail's Add to requisition uses the shared server-search
+// picker (open / on hold / lead; title · REQ-number · client) and reports each refusal
+// through addTalentErrorMessage (a 409 conflict is never "already in pipeline").
+describe('ListsPanel — Add to requisition (ATS-QA-1 D4/D6)', () => {
+  function mockFetchWithAdd(addStatus: number, addBody: unknown) {
+    mockFetch();
+    const base = vi.mocked(globalThis.fetch).getMockImplementation() as typeof fetch;
+    vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : (input as Request).url;
+      const json = (b: unknown, s = 200) =>
+        new Response(JSON.stringify(b), { status: s, headers: { 'Content-Type': 'application/json' } });
+      if (url.includes('/v1/requisitions')) {
+        // The picker filters by status on the SERVER (paged picker read); emulate it.
+        const all = [
+          { id: 'r1', title: 'Data Engineer', requisition_number: 12, status: 'on_hold', company_id: 'c1' },
+          { id: 'r2', title: 'Draft role', requisition_number: 13, status: 'draft', company_id: 'c1' },
+        ];
+        const statuses = (new URL(url, 'http://x').searchParams.get('status') ?? '').split(',').filter(Boolean);
+        return json({ items: statuses.length === 0 ? all : all.filter((r) => statuses.includes(r.status)), next_cursor: null });
+      }
+      if (url.includes('/v1/companies')) return json({ items: [{ id: 'c1', name: 'Acme Health' }] });
+      if (url.includes('/v1/pipelines')) return json(addBody, addStatus);
+      return base(input, init);
+    });
+  }
+
+  async function openPicker() {
+    render(
+      <MemoryRouter>
+        <ListsPanel sessionOverride={SESSION} />
+      </MemoryRouter>,
+    );
+    await waitFor(() => expect(screen.getByText('Hot React')).toBeInTheDocument());
+    fireEvent.click(screen.getByText('Hot React'));
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    fireEvent.click(screen.getAllByRole('button', { name: /add to requisition/i })[0] as HTMLElement);
+    const dialog = await screen.findByRole('dialog');
+    const select = await within(dialog).findByRole('combobox', { name: 'Requisition' });
+    return { dialog, select };
+  }
+
+  it('lists on-hold requisitions with REQ number and client; excludes drafts', async () => {
+    mockFetchWithAdd(201, {});
+    const { select } = await openPicker();
+    expect(await within(select).findByRole('option', { name: 'Data Engineer · REQ-12 · Acme Health' })).toBeInTheDocument();
+    expect(within(select).queryByRole('option', { name: /Draft role/ })).toBeNull();
+  });
+
+  it('a 409 conflict shows its own message, not "already"', async () => {
+    mockFetchWithAdd(409, { error: { code: 'PIPELINE_TRANSITION_CONFLICT', message: 'conflict' } });
+    const { dialog, select } = await openPicker();
+    await within(select).findByRole('option', { name: /Data Engineer/ });
+    fireEvent.change(select, { target: { value: 'r1' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add to pipeline' }));
+    expect(await screen.findByText(/Something changed at the same moment/)).toBeInTheDocument();
+    expect(screen.queryByText(/already/i)).toBeNull();
+  });
+
+  it('a policy refusal shows the policy message', async () => {
+    mockFetchWithAdd(422, { error: { code: 'POLICY_DENIED', message: 'denied' } });
+    const { dialog, select } = await openPicker();
+    await within(select).findByRole('option', { name: /Data Engineer/ });
+    fireEvent.change(select, { target: { value: 'r1' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add to pipeline' }));
+    expect(await screen.findByText(/rules don’t allow adding talent right now/)).toBeInTheDocument();
+  });
+
+  it('PIPELINE_EPISODE_ALREADY_LIVE says it is already on the requisition', async () => {
+    mockFetchWithAdd(409, { error: { code: 'PIPELINE_EPISODE_ALREADY_LIVE', message: 'live' } });
+    const { dialog, select } = await openPicker();
+    await within(select).findByRole('option', { name: /Data Engineer/ });
+    fireEvent.change(select, { target: { value: 'r1' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add to pipeline' }));
+    expect(await screen.findByText('Already on Data Engineer. Nothing was changed.')).toBeInTheDocument();
+  });
+});

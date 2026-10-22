@@ -144,6 +144,21 @@ export interface ActivityRow {
   readonly created_at: string;
 }
 
+// ATS-QA-1 D1/D2 — a pipeline milestone (Activity type `pipeline_status_change`,
+// subject_type 'pipeline', subject_id = the episode id) for one of the Talent's
+// VISIBLE episodes. Carries the episode's requisition so the item can be scoped to
+// that requisition (Talent × Requisition 360). `notes` is the durable system text
+// (`pipeline <from> -> <to>[: note]…`) exactly as written — historical stage keys
+// are preserved; the recruiter-facing wording is applied at display time.
+export interface PipelineActivityRow {
+  readonly id: string;
+  readonly pipeline_id: string;
+  readonly requisition_id: string;
+  readonly notes: string | null;
+  readonly created_by_id: string | null;
+  readonly created_at: string;
+}
+
 // A human-created task owned by this Talent (from TaskRepository.listForOwner).
 export interface TaskRow {
   readonly id: string;
@@ -289,6 +304,16 @@ export interface Talent360ReadPort {
     talent_id: string,
     limit: number,
   ): Promise<readonly ActivityRow[]>;
+
+  // ATS-QA-1 D1/D2 — pipeline milestones for the given episodes ONLY. The caller
+  // passes episodes already scoped to requisitions the viewer may see (listEpisodes
+  // + resolveRequisitions); the adapter additionally applies the activity
+  // repository's pipeline-visibility predicate over exactly those episode ids.
+  listPipelineActivity(
+    ctx: Talent360ActorContext,
+    episodes: readonly EpisodeRow[],
+    limit: number,
+  ): Promise<readonly PipelineActivityRow[]>;
 
   listTasks(
     ctx: Talent360ActorContext,

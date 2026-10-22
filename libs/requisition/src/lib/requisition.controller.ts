@@ -56,7 +56,7 @@ import type { UpdateRequisitionRequestDto } from './dto/update-requisition-reque
 import { RequisitionAssignmentRepository } from './requisition-assignment.repository.js';
 import { RequisitionIntakeService } from './requisition-intake.service.js';
 import { RequisitionProfileService } from './requisition-profile.service.js';
-import { RequisitionRepository } from './requisition.repository.js';
+import { RECRUITING_STATUS_VALUES, RequisitionRepository, type RecruitingStatusValue } from './requisition.repository.js';
 
 // RequisitionController — PR-A3 Gate 5 ATS Batch 2.
 //
@@ -126,7 +126,13 @@ export class RequisitionController {
     @Query('bookmarked') bookmarkedFilter: string | undefined,
     @RequestId() requestId: string,
     @Req() req: Request,
-  ): Promise<{ items: RequisitionView[] }> {
+    // ATS-QA-1 I-1 (D4) — opt-in picker paging: `?paged=true&status=open,on_hold&cursor=&page_size=`.
+    // Returns a superset ({ items, next_cursor }); without `paged` the response is unchanged.
+    @Query('paged') paged?: string,
+    @Query('status') statusCsv?: string,
+    @Query('cursor') cursor?: string,
+    @Query('page_size') pageSize?: string,
+  ): Promise<{ items: RequisitionView[]; next_cursor?: string | null }> {
     const searchTerm = q?.trim() ? q.trim() : undefined;
     if (searchTerm !== undefined && !authContext.scopes.includes('requisition:search')) {
       throw new AramoError(
@@ -137,6 +143,30 @@ export class RequisitionController {
       );
     }
     const visibility = await req.resolveVisibility!();
+    if (paged === 'true') {
+      const statuses = (statusCsv ?? '')
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => s.length > 0);
+      const unknown = statuses.filter((s) => !(RECRUITING_STATUS_VALUES as readonly string[]).includes(s));
+      if (unknown.length > 0) {
+        throw new AramoError('VALIDATION_ERROR', 'unknown requisition status filter', 400, {
+          requestId,
+          details: { reason: 'status_filter_invalid', unknown },
+        });
+      }
+      const size = pageSize === undefined ? undefined : Number(pageSize);
+      return this.requisitionRepository.listForActorPaged({
+        tenant_id: authContext.tenant_id,
+        visibility,
+        site_id: siteIdFromQuery,
+        company_id: companyIdFromQuery,
+        q: searchTerm,
+        statuses: statuses as RecruitingStatusValue[],
+        ...(cursor !== undefined && cursor !== '' ? { cursor } : {}),
+        ...(size !== undefined && Number.isFinite(size) ? { page_size: size } : {}),
+      });
+    }
     const items = await this.requisitionRepository.listForActor({
       tenant_id: authContext.tenant_id,
       visibility,

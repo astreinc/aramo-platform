@@ -166,8 +166,9 @@ export function UpcomingMeetings(props: UpcomingMeetingsProps): JSX.Element | nu
           );
         })}
         <li className="rc-upcoming__foot" aria-hidden="false">
-          Invitations and the Teams link live on your Outlook calendar. This is Aramo&apos;s last-known scheduling
-          state; a scheduled meeting isn&apos;t evidence the call happened.
+          {/* ATS-QA-1 I-1 UX — plain recruiter copy (was "last-known scheduling state … evidence"). */}
+          Meeting invites and Teams links are on your Outlook calendar. Aramo shows the last-known schedule; it
+          doesn&apos;t confirm the meeting took place.
         </li>
       </ul>
       {err !== null && <div data-testid="upcoming-error"><InlineAlert variant="error">{err}</InlineAlert></div>}

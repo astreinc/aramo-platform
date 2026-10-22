@@ -32,6 +32,7 @@ import type {
   IdentityOutcomeRow,
   InterviewScheduleRow,
   LastContactRow,
+  PipelineActivityRow,
   RequisitionSummaryRow,
   Talent360ActorContext,
   Talent360ReadPort,
@@ -49,6 +50,8 @@ import { TALENT_360_DOCUMENT_STORAGE } from './talent-360.ports.js';
 // best-effort reference data (missing ids fall back to null downstream).
 const EPISODE_LIMIT = 200;
 const RECENT_ACTIVITY_LIMIT = 40;
+// The Activity type PipelineRepository writes for every stage change.
+const PIPELINE_STATUS_CHANGE = 'pipeline_status_change';
 
 // The fixed recruiter-facing advisory copy (directive §14 — an OUTCOME, never
 // the internal advisory model). One pending duplicate advisory is surfaced.
@@ -334,6 +337,48 @@ export class Talent360ReadAdapter implements Talent360ReadPort {
       created_by_id: a.created_by_id,
       created_at: a.created_at,
     }));
+  }
+
+  // ATS-QA-1 D1/D2 — pipeline milestones written by PipelineRepository
+  // (transition + VOID correction) as Activity{type:'pipeline_status_change',
+  // subject_type:'pipeline', subject_id:<episode id>}. One bounded subject read per
+  // visible episode (the episodes are already visibility-scoped by the caller);
+  // visible_pipeline_ids is pinned to exactly those episode ids so the repository's
+  // own pipeline-visibility branch can never widen the read.
+  async listPipelineActivity(
+    ctx: Talent360ActorContext,
+    episodes: readonly EpisodeRow[],
+    limit: number,
+  ): Promise<readonly PipelineActivityRow[]> {
+    if (episodes.length === 0) return [];
+    const visiblePipelineIds: ReadonlySet<string> = new Set(episodes.map((e) => e.id));
+    const perEpisode = await Promise.all(
+      episodes.map(async (e) => {
+        const rows = await this.activities.listForActor({
+          tenant_id: ctx.tenant_id,
+          actor_user_id: ctx.user_id,
+          visibility: ctx.visibility,
+          visible_requisition_ids: ctx.visible_requisition_ids,
+          visible_pipeline_ids: visiblePipelineIds,
+          subject_type: 'pipeline',
+          subject_id: e.id,
+          limit,
+        });
+        return rows
+          .filter((a) => a.type === PIPELINE_STATUS_CHANGE)
+          .map(
+            (a): PipelineActivityRow => ({
+              id: a.id,
+              pipeline_id: e.id,
+              requisition_id: e.requisition_id,
+              notes: a.notes,
+              created_by_id: a.created_by_id,
+              created_at: a.created_at,
+            }),
+          );
+      }),
+    );
+    return perEpisode.flat();
   }
 
   async listTasks(

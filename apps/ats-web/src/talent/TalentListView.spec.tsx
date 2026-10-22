@@ -9,7 +9,7 @@ import type { ReactElement } from 'react';
 import { MemoryRouter, Route, Routes } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
-import { TalentListView } from './TalentListView';
+import { TalentListView, bulkAddSummary } from './TalentListView';
 import type { TalentRecordView } from './types';
 
 function renderInRouter(ui: ReactElement) {
@@ -643,5 +643,81 @@ describe('TalentListView — Talent Draft Recovery IA', () => {
     expect(
       screen.queryByText(/you started adding but haven't created yet/i),
     ).not.toBeInTheDocument();
+  });
+});
+
+// ATS-QA-1 D6 — the bulk Add to requisition reports each refusal by its own typed
+// message (addTalentErrorMessage); only PIPELINE_EPISODE_ALREADY_LIVE is "already on".
+describe('bulkAddSummary (ATS-QA-1 D6)', () => {
+  it('states added, already-on and each refusal reason with its count', () => {
+    expect(bulkAddSummary('BA', 2, 0, new Map())).toBe('Added 2 to BA.');
+    expect(
+      bulkAddSummary('BA', 1, 1, new Map([['Something changed at the same moment, so nothing was saved. Try again.', 2]])),
+    ).toBe('Added 1 to BA. 1 already on this requisition. 2 not added: Something changed at the same moment, so nothing was saved. Try again.');
+  });
+});
+
+describe('TalentListView — bulk Add to requisition (ATS-QA-1 D4/D6)', () => {
+  function mockWithReqs(addResults: Array<{ status: number; body: unknown }>) {
+    mockServer({ talent: [makeTalent('1', 'Ada', 'Lovelace'), makeTalent('2', 'Bob', 'Khan'), makeTalent('3', 'Cy', 'Ng')] });
+    const base = vi.mocked(globalThis.fetch).getMockImplementation() as typeof fetch;
+    let call = 0;
+    vi.mocked(globalThis.fetch).mockImplementation(async (input, init) => {
+      const url = typeof input === 'string' ? input : (input as Request).url;
+      const json = (b: unknown, st = 200) =>
+        new Response(JSON.stringify(b), { status: st, headers: { 'Content-Type': 'application/json' } });
+      if (url.includes('/v1/requisitions'))
+        return json({ items: [{ id: 'r1', title: 'Data Engineer', requisition_number: 12, status: 'lead', company_id: 'c1' }] });
+      if (url.includes('/v1/companies')) return json({ items: [{ id: 'c1', name: 'Acme Health' }] });
+      if (url.includes('/v1/pipelines')) {
+        const r = addResults[call++] ?? { status: 201, body: {} };
+        return json(r.body, r.status);
+      }
+      return base(input, init);
+    });
+  }
+
+  it('a 409 conflict and a policy refusal are not reported as "already in pipeline"', async () => {
+    mockWithReqs([
+      { status: 201, body: { id: 'p1' } },
+      { status: 409, body: { error: { code: 'PIPELINE_TRANSITION_CONFLICT', message: 'c' } } },
+      { status: 409, body: { error: { code: 'PIPELINE_EPISODE_ALREADY_LIVE', message: 'l' } } },
+    ]);
+    renderInRouter(<TalentListView sessionOverride={{ ...SESSION, scopes: ['talent:read', 'pipeline:add', 'requisition:search'] }} />);
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    fireEvent.click(screen.getByRole('checkbox', { name: /select ada lovelace/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /select bob khan/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /select cy ng/i }));
+    fireEvent.click(within(screen.getByRole('region', { name: 'Bulk actions' })).getByRole('button', { name: /add to requisition/i }));
+    const dialog = await screen.findByRole('dialog', { name: /add to requisition/i });
+    const select = await within(dialog).findByRole('combobox', { name: 'Requisition' });
+    // D4 — a lead requisition, labelled title · REQ-number · client.
+    await within(select).findByRole('option', { name: 'Data Engineer · REQ-12 · Acme Health' });
+    fireEvent.change(select, { target: { value: 'r1' } });
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Add to pipeline' }));
+    expect(
+      await screen.findByText(
+        'Added 1 to Data Engineer. 1 already on this requisition. 1 not added: Something changed at the same moment, so nothing was saved. Try again.',
+      ),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/already in pipeline/)).toBeNull();
+  });
+});
+
+// ATS-QA-1 23h — the density toggle switches the table to the compact variant, whose
+// rules (ui/ui.css) shrink the row, the sub-line and the avatar, not just the padding.
+describe('TalentListView — density (ATS-QA-1 23h)', () => {
+  it('Compact switches the table class; ui.css styles the compact sub-line and avatar', async () => {
+    mockServer({ talent: [makeTalent('1', 'Ada', 'Lovelace')] });
+    renderInRouter(<TalentListView sessionOverride={SESSION} />);
+    await waitFor(() => expect(screen.getByText('Ada Lovelace')).toBeInTheDocument());
+    expect(document.querySelector('table.rc-table--comfortable')).not.toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: /Comfortable/ }));
+    expect(document.querySelector('table.rc-table--compact')).not.toBeNull();
+    const fs = await import('node:fs');
+    const path = await import('node:path');
+    const css = fs.readFileSync(path.resolve(__dirname, '../ui/ui.css'), 'utf8');
+    expect(css).toMatch(/\.rc-table--compact \.rc-ent__sub \{/);
+    expect(css).toMatch(/\.rc-table--compact \.rc-av--sm \{/);
   });
 });

@@ -106,6 +106,23 @@ export function lifecycleActionErrorMessage(error: unknown): string {
     if (error.code === 'VALIDATION_ERROR' && reasonFromError(error) === 'hold_details_required') {
       return 'Add a reason and who placed the hold before putting the requisition on hold.';
     }
+    // ATS-QA-1 I-1 D9 — every other typed hold / status refusal gets its own copy
+    // (libs/requisition/src/lib/hold-details.ts + requisition.repository.ts reason codes).
+    if (error.code === 'VALIDATION_ERROR') {
+      const reason = reasonFromError(error);
+      if (reason === 'hold_source_not_allowed') {
+        return 'Choose who placed the hold: the client or your team. Holds from a vendor system are recorded automatically.';
+      }
+      if (reason === 'hold_effective_at_invalid') {
+        return 'The hold start date isn’t a valid date. Check it and try again.';
+      }
+      if (reason === 'hold_details_not_applicable') {
+        return 'Hold details can only be added when putting the requisition on hold. Reload and try the action again.';
+      }
+      if (reason === 'version_required_for_status_change') {
+        return 'This page is out of date, so the status wasn’t changed. Reload the requisition and try again.';
+      }
+    }
     if (error.code === 'TRANSACTION_CONFLICT_RETRYABLE') {
       return 'Something changed at the same moment, so nothing was saved. Try again.';
     }
@@ -128,6 +145,14 @@ export function lifecycleActionErrorMessage(error: unknown): string {
     }
     if (error.status === 404) {
       return 'This requisition is no longer available.';
+    }
+    if (error.status === 400 || error.code === 'VALIDATION_ERROR') {
+      return 'Some details for this action weren’t accepted. Check them and try again.';
+    }
+    // ATS-QA-1 I-1 D9 — a server fault is named as one, so the recruiter knows a retry
+    // (or support) is the next step rather than changing their input.
+    if (error.status >= 500) {
+      return 'Aramo couldn’t complete this action because of a problem on our side. Reload to check the current status, then try again; if it keeps happening, contact support.';
     }
   }
   return 'The action could not be completed. Please try again.';

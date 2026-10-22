@@ -105,6 +105,61 @@ paths:
       security:
         - BearerAuth: []
   /v1/requisitions:
+    get:
+      operationId: listRequisitions
+      summary: List the requisitions the caller can see.
+      description: |
+        Visibility-scoped list (A3 assignment / D4b client axis; `requisition:read:all`
+        sees all). Requires `requisition:read` and the `ats` capability. `q` (title
+        quick-search) requires `requisition:search`.
+
+        ATS-QA-1 I-1 (D4) — opt-in PICKER paging with `paged=true`: keyset-paginated
+        (created_at desc, id desc) over every visible requisition, filtered by `status`
+        (comma list of RecruitingStatus values) and searched by title OR requisition
+        number (`REQ-1015`, `1015`). Returns `{ items, next_cursor }`; without `paged` the
+        response is unchanged (`{ items }`, newest 50). An unknown status is 400
+        VALIDATION_ERROR (reason `status_filter_invalid`). Never widens visibility.
+      parameters:
+        - { name: q, in: query, required: false, schema: { type: string } }
+        - { name: site_id, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: company_id, in: query, required: false, schema: { type: string, format: uuid } }
+        - { name: bookmarked, in: query, required: false, schema: { type: string, enum: ['true'] } }
+        - { name: paged, in: query, required: false, schema: { type: string, enum: ['true'] } }
+        - name: status
+          in: query
+          required: false
+          description: Comma-separated RecruitingStatus values (paged mode only).
+          schema: { type: string }
+        - { name: cursor, in: query, required: false, schema: { type: string } }
+        - { name: page_size, in: query, required: false, schema: { type: integer, minimum: 1, maximum: 100 } }
+      responses:
+        '200':
+          description: The visible requisitions (paged mode adds `next_cursor`).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items: { type: object, additionalProperties: true }
+                  next_cursor:
+                    type: [string, 'null']
+        '400':
+          description: Invalid status filter.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          description: Missing scope (incl. `requisition:search` for `q`).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+      security:
+        - BearerAuth: []
     post:
       operationId: createRequisition
       summary: Create a requisition (manual authoring — Work Location surface).
@@ -12296,8 +12351,13 @@ components:
         occurred_at: { type: string, format: date-time }
         category: { type: string }
         title: { type: string }
-        body: { type: [string, 'null'] }
-        requisition_id: { type: [string, 'null'], format: uuid }
+        body:
+          type: [string, 'null']
+          description: 'For a pipeline stage change, the stored system note verbatim (`pipeline <from> -> <to>[: note]`); stage keys are kept as recorded and the client renders the stage labels.'
+        requisition_id:
+          type: [string, 'null']
+          format: uuid
+          description: The regarding requisition. Pipeline stage changes carry their episode's requisition; only requisitions visible to the caller are ever returned.
         requisition_label: { type: [string, 'null'] }
         actor_label: { type: [string, 'null'] }
         channel: { type: [string, 'null'] }

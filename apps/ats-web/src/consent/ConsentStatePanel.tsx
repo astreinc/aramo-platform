@@ -99,12 +99,12 @@ const SCOPE_COLUMNS: ReadonlyArray<TableColumn<ScopeRow>> = [
     },
   },
   // T10-B4/F-025/F-026 — event instants render via the shared instant formatter
-  // (was raw ISO). `expires_at` is left as-is: its date-vs-instant semantics are
-  // ambiguous from the FE contract (§3 rule C — preserve + flag), so it is not
-  // routed through a timezone-sensitive formatter.
+  // (was raw ISO). ATS-QA-1 I-1 D11 — `expires_at` is a Timestamptz instant
+  // (libs/consent/prisma/schema.prisma `expires_at DateTime? @db.Timestamptz`), so it
+  // uses the same instant formatter (overturns the earlier rule-C preserve note).
   { key: 'granted_at', header: 'Granted at', render: (row) => formatInstant(row.entry?.granted_at) || '—' },
   { key: 'revoked_at', header: 'Revoked at', render: (row) => formatInstant(row.entry?.revoked_at) || '—' },
-  { key: 'expires_at', header: 'Expires at', render: (row) => row.entry?.expires_at ?? '—' },
+  { key: 'expires_at', header: 'Expires at', render: (row) => formatInstant(row.entry?.expires_at) || '—' },
 ];
 
 export function ConsentStatePanel({ talentId }: ConsentStatePanelProps) {

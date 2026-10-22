@@ -1877,9 +1877,23 @@
 
 .rc-table tbody tr:last-child td { border-bottom: none; }
 
+/* ATS-QA-1 23h — Compact density. Row padding is the prototype My Desk value (rowPad
+   8px compact vs 12px comfortable); the type, the sub-line and the avatar also step
+   down so the toggle is a visible change, not a 4px nudge. */
 .rc-table--compact thead th { padding: 8px 12px; }
 
-.rc-table--compact tbody td { padding: 8px 12px; }
+.rc-table--compact tbody td { padding: 8px 12px; font-size: .78rem; line-height: 1.25; }
+
+.rc-table--compact .rc-ent { gap: 8px; }
+
+.rc-table--compact .rc-ent__nm { font-size: .8rem; }
+
+.rc-table--compact .rc-ent__sub { font-size: .68rem; }
+
+.rc-table--compact .rc-av--sm { width: 20px; height: 20px; font-size: .58rem; }
+
+.rc-table--compact .rc-contact__em,
+.rc-table--compact .rc-avail { font-size: .76rem; }
 
 .rc-row--clickable { cursor: pointer; }
 

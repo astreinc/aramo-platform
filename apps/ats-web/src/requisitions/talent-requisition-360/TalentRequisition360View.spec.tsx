@@ -91,7 +91,18 @@ interface Call {
   readonly body: unknown;
 }
 
-function mockApi(opts: { actions?: readonly string[]; board?: unknown } = {}): Call[] {
+interface MockOpts {
+  readonly actions?: readonly string[];
+  // Journey actions served AFTER the first transition attempt (the reloaded state).
+  readonly actionsAfter?: readonly string[];
+  readonly board?: unknown;
+  readonly transitionError?: { status: number; code: string };
+  readonly t360?: unknown;
+  readonly profile?: unknown;
+}
+
+function mockApi(opts: MockOpts = {}): Call[] {
+  let transitioned = false;
   const calls: Call[] = [];
   vi.spyOn(globalThis, 'fetch').mockImplementation(async (input, init) => {
     const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
@@ -102,14 +113,24 @@ function mockApi(opts: { actions?: readonly string[]; board?: unknown } = {}): C
       new Response(JSON.stringify(b), { status: 200, headers: { 'Content-Type': 'application/json' } });
     if (url.includes('/v1/rtr/current')) return json({ current: { document_id: 'doc-rtr-1', status: 'AWAITING_SIGNATURE', document_status: 'SENT' } });
     if (url.includes('/v1/rtr/doc-rtr-1/remind')) return json({ document_id: 'doc-rtr-1', status: 'AWAITING_SIGNATURE', reminder_sent: true });
-    if (url.includes('/transition')) return json({ ...PIPELINES.items[0], status: 'qualified', version: 4 });
+    if (url.includes('/transition')) {
+      transitioned = true;
+      if (opts.transitionError !== undefined) {
+        return new Response(JSON.stringify({ error: { code: opts.transitionError.code } }), {
+          status: opts.transitionError.status,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      return json({ ...PIPELINES.items[0], status: 'qualified', version: 4 });
+    }
     if (url.includes('/v1/talent-records/tal-1') && method === 'PATCH') return json({ id: 'tal-1', first_name: 'Ravi', last_name: 'Shankar', ...(body as object) });
-    if (url.includes('/journey')) return json(journey(opts.actions ?? ['mark_qualified']));
+    if (url.includes('/journey'))
+      return json(journey(transitioned && opts.actionsAfter !== undefined ? opts.actionsAfter : (opts.actions ?? ['mark_qualified'])));
     if (url.includes('/talent-board')) return json(opts.board ?? BOARD);
-    if (url.includes('/profile')) return json(PROFILE);
+    if (url.includes('/profile')) return json(opts.profile ?? PROFILE);
     if (url.includes('/v1/requisitions/req-1')) return json(REQ);
     if (url.includes('/v1/pipelines')) return json(PIPELINES);
-    if (url.includes('/v1/talent-360/')) return json(T360);
+    if (url.includes('/v1/talent-360/')) return json(opts.t360 ?? T360);
     if (url.includes('/v1/talent-records/tal-1'))
       return json({ id: 'tal-1', first_name: 'Ravi', last_name: 'Shankar', title: 'Business Analyst', current_employer: 'Cognizant', is_hot: false, email1: null });
     if (url.includes('/v1/companies/co-1')) return json({ id: 'co-1', name: 'Mindlance' });
@@ -331,5 +352,143 @@ describe('TalentRequisition360View', () => {
     await screen.findByText('1 of 1 in pipeline');
     fireEvent.click(screen.getByRole('button', { name: 'More' }));
     expect(screen.getByRole('menuitem', { name: 'Remove from requisition' })).toBeInTheDocument();
+  });
+  // ── ATS-QA-1 I-1 ──────────────────────────────────────────────────────────
+  it('D8: a 409 PIPELINE_TRANSITION_CONFLICT reloads the episode, shows a visible alert, and drops the stale action', async () => {
+    const calls = mockApi({
+      actions: ['mark_qualified'],
+      actionsAfter: [],
+      transitionError: { status: 409, code: 'PIPELINE_TRANSITION_CONFLICT' },
+    });
+    mount([...BASE, 'pipeline:change-status']);
+    const primary = await screen.findByTestId('tr360-primary');
+    await waitFor(() => expect(primary).toHaveAttribute('aria-disabled', 'false'));
+    const journeysBefore = calls.filter((c) => c.url.includes('/journey')).length;
+    fireEvent.click(primary);
+    const alert = await screen.findByTestId('tr360-action-error');
+    expect(alert).toHaveAttribute('role', 'alert');
+    expect(alert).toHaveClass('tr360-alert');
+    expect(alert).toHaveTextContent("This talent's stage has already changed. The page now shows the latest status.");
+    // The episode + journey are re-read; the reloaded journey no longer offers the stale action.
+    await waitFor(() => expect(calls.filter((c) => c.url.includes('/journey')).length).toBeGreaterThan(journeysBefore));
+    await waitFor(() => expect(screen.getByTestId('tr360-primary')).toHaveAttribute('aria-disabled', 'true'));
+    expect(calls.filter((c) => c.url.includes('/transition'))).toHaveLength(1);
+  });
+
+  it('a non-conflict refusal keeps its own message in the same visible alert', async () => {
+    mockApi({ actions: ['mark_qualified'], transitionError: { status: 409, code: 'PIPELINE_QUALIFY_REQUIRES_RTR' } });
+    mount([...BASE, 'pipeline:change-status']);
+    const primary = await screen.findByTestId('tr360-primary');
+    await waitFor(() => expect(primary).toHaveAttribute('aria-disabled', 'false'));
+    fireEvent.click(primary);
+    expect(await screen.findByTestId('tr360-action-error')).toHaveTextContent(/Right to Represent is signed/);
+  });
+
+  it.each([
+    ['SENT', /awaiting signature/],
+    ['NOT_SENT', /None has been sent yet/],
+    ['DECLINED', /last one was declined/],
+    ['EXPIRED', /expired unsigned/],
+    ['POLICY_UNRESOLVED', /No Right to Represent policy is set/],
+  ])('5.1: the disabled "Mark qualified" names the real reason (RTR %s)', async (rtr, reason) => {
+    const board = { ...BOARD, columns: [{ key: 'contacted', owner: 'pipeline', count: 1, cards: [card('tal-1', 'pp-1', { rtr_status: rtr })] }] };
+    mockApi({ actions: [], board });
+    mount([...BASE, 'pipeline:change-status']);
+    const primary = await screen.findByTestId('tr360-primary');
+    await waitFor(() => expect(primary).toHaveAccessibleDescription(reason));
+    expect(primary).toHaveTextContent('Mark qualified');
+    expect(primary).toHaveAttribute('aria-disabled', 'true');
+  });
+
+  it('5.2: clicking the disabled primary explains why inline and never writes', async () => {
+    const board = { ...BOARD, columns: [{ key: 'contacted', owner: 'pipeline', count: 1, cards: [card('tal-1', 'pp-1', { rtr_status: 'SENT' })] }] };
+    const calls = mockApi({ actions: [], board });
+    mount([...BASE, 'pipeline:change-status']);
+    const primary = await screen.findByTestId('tr360-primary');
+    await waitFor(() => expect(primary).toHaveAttribute('aria-disabled', 'true'));
+    expect(screen.queryByTestId('tr360-primary-reason-inline')).toBeNull();
+    fireEvent.click(primary);
+    expect(await screen.findByTestId('tr360-primary-reason-inline')).toHaveTextContent(
+      'Needs a signed Right to Represent. It is awaiting signature.',
+    );
+    expect(calls.some((c) => c.method === 'POST')).toBe(false);
+  });
+
+  it('5.2: a permission-blocked primary also explains itself on click', async () => {
+    mockApi({ actions: ['mark_qualified'] });
+    mount(BASE);
+    const primary = await screen.findByTestId('tr360-primary');
+    await waitFor(() => expect(primary).toHaveAttribute('aria-disabled', 'true'));
+    fireEvent.click(primary);
+    expect(await screen.findByTestId('tr360-primary-reason-inline')).toHaveTextContent("Your role can't change this Talent's stage");
+  });
+
+  const STAGE_T360 = {
+    ...T360,
+    recent_activity: {
+      items: [
+        { id: 'activity:m1', occurred_at: '2026-10-10T16:12:00Z', category: 'requisitions', title: 'Stage changed', body: 'pipeline qualifying -> qualified', requisition_id: 'req-1', requisition_label: 'REQ-1001', actor_label: 'Purush P.', channel: null, preview_id: null },
+        { id: 'activity:m0', occurred_at: '2026-10-07T16:12:00Z', category: 'requisitions', title: 'Stage changed', body: 'pipeline no_contact -> contacted', requisition_id: 'req-1', requisition_label: 'REQ-1001', actor_label: null, channel: null, preview_id: null },
+        { id: 'activity:m9', occurred_at: '2026-10-06T16:12:00Z', category: 'requisitions', title: 'Stage changed', body: 'pipeline qualifying -> qualified', requisition_id: 'req-9', requisition_label: 'REQ-9', actor_label: null, channel: null, preview_id: null },
+        { id: 'activity:n1', occurred_at: '2026-10-05T16:12:00Z', category: 'requisitions', title: 'Note added', body: 'Prefers remote Fridays', requisition_id: null, requisition_label: null, actor_label: 'Purush P.', channel: null, preview_id: null },
+      ],
+      category_counts: { requisitions: 4 },
+      has_more: false,
+    },
+  };
+
+  it('D2: the Overview feed shows this requisition\'s stage changes with their stage labels', async () => {
+    mockApi({ t360: STAGE_T360 });
+    mount(BASE);
+    const activity = await screen.findByTestId('tr360-activity');
+    await waitFor(() => expect(within(activity).getAllByText('Stage changed')).toHaveLength(2));
+    expect(within(activity).getByText('Qualifying → Qualified')).toBeInTheDocument();
+    // Historical event keeps its original stage.
+    expect(within(activity).getByText(/→ Contacted/)).toBeInTheDocument();
+  });
+
+  it('2.4: the Activity section renders the requisition-filtered feed (not a pointer to Overview)', async () => {
+    mockApi({ t360: STAGE_T360 });
+    mount(BASE, '/requisitions/req-1/talent/tal-1?view=act');
+    const feed = await screen.findByTestId('tr360-activity-section');
+    await waitFor(() => expect(within(feed).getAllByText('Stage changed')).toHaveLength(2));
+    expect(within(feed).getByText('Qualifying → Qualified')).toBeInTheDocument();
+    expect(within(feed).queryByText('Note added')).toBeNull();
+    expect(screen.queryByText(/is shown on Overview/)).toBeNull();
+  });
+
+  it('A3: the Notes view lists the notes the API actually produces', async () => {
+    mockApi({ t360: STAGE_T360 });
+    mount(BASE, '/requisitions/req-1/talent/tal-1?view=notes');
+    expect(await screen.findByText('Prefers remote Fridays')).toBeInTheDocument();
+    expect(screen.queryByText(/No notes for Ravi yet/)).toBeNull();
+  });
+
+  it('A3: with no notes the Notes view says so', async () => {
+    mockApi();
+    mount(BASE, '/requisitions/req-1/talent/tal-1?view=notes');
+    expect(await screen.findByText('No notes for Ravi yet.')).toBeInTheDocument();
+  });
+
+  const SKILLED_T360 = { ...T360, profile: { ...T360.profile, skills: [{ label: 'SQL' }, { label: 'Jira' }] } };
+
+  it('D13: the Skills view mentions client must-haves only when the requisition profile has them', async () => {
+    mockApi({ t360: SKILLED_T360 });
+    mount(BASE, '/requisitions/req-1/talent/tal-1?view=skills');
+    expect(await screen.findByText(/SQL, Jira\. Client must-haves for REQ-1001 are highlighted on Overview\./)).toBeInTheDocument();
+  });
+
+  it('D13: no must-haves copy when the requisition has no profile (and no skill comparison)', async () => {
+    mockApi({ t360: SKILLED_T360, profile: { ...PROFILE, has_profile: false } });
+    mount(BASE, '/requisitions/req-1/talent/tal-1?view=skills');
+    expect(await screen.findByText('SQL, Jira.')).toBeInTheDocument();
+    expect(screen.queryByText(/must-haves/)).toBeNull();
+  });
+
+  it('D13: no must-haves copy when the profile lists only preferred skills', async () => {
+    mockApi({ t360: SKILLED_T360, profile: { ...PROFILE, required_skills: [], critical_skills: [] } });
+    mount(BASE, '/requisitions/req-1/talent/tal-1?view=skills');
+    expect(await screen.findByText('SQL, Jira.')).toBeInTheDocument();
+    expect(screen.queryByText(/must-haves/)).toBeNull();
   });
 });

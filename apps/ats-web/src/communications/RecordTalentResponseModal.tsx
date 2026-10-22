@@ -1,6 +1,7 @@
 import { useMemo, useRef, useState } from 'react';
 import { ApiError, Button, Dialog, InlineAlert, Input, TextArea, useToast } from '@aramo/fe-foundation';
 
+import { formatInstant } from '../format/date';
 import { AttestCheckbox } from '../ui/AttestCheckbox';
 
 import {
@@ -139,11 +140,10 @@ export function RecordTalentResponseModal({
         setBanner('stale');
       } else if (err instanceof ApiError && (err.status === 400 || err.status === 422)) {
         // Field-level validation (400 DTO format) AND the §-rule rejections
-        // (422 business rules) echoed inline on the guarded field (occurred_at):
-        // "occurred_at cannot be in the future" / "...cannot precede the first
-        // recorded contact". Surface the server's specific reason so the recruiter
-        // can correct the time, instead of the generic "couldn't record" banner.
-        setServerDateErr(typeof err.message === 'string' ? err.message : 'That value was rejected.');
+        // (422 business rules) shown inline on the guarded field (occurred_at).
+        // ATS-QA-1 I-1 D7 — mapped to recruiter copy; the raw server message
+        // (which names the wire field) is never echoed.
+        setServerDateErr(responseTimeErrorMessage(err));
         setTried(true);
       } else {
         // network / 5xx — values preserved, retryable.
@@ -334,4 +334,22 @@ export function talentResponseRefusalMessage(err: ApiError): string | null {
     return 'Something changed at the same moment, so nothing was saved. Try again.';
   }
   return null;
+}
+
+// ATS-QA-1 I-1 D7 — recruiter copy for a 400/422 rejection of the response time. The backend
+// (talent-response.service.ts) refuses a time before the first grounded contact with
+// details { field: 'occurred_at', first_contact_at }, and a future time with { field: 'occurred_at' }.
+// The raw server message is never shown.
+export function responseTimeErrorMessage(err: ApiError): string {
+  const details = (err.details ?? {}) as { field?: unknown; first_contact_at?: unknown };
+  if (details.field === 'occurred_at') {
+    if (typeof details.first_contact_at === 'string' && details.first_contact_at !== '') {
+      return `Response time can’t be earlier than the first recorded contact (${formatInstant(details.first_contact_at)}).`;
+    }
+    if (typeof err.message === 'string' && /future/i.test(err.message)) {
+      return 'Response time can’t be in the future.';
+    }
+    return 'That response time wasn’t accepted. Check the date and time and try again.';
+  }
+  return 'Some details weren’t accepted. Check the date and time and try again.';
 }

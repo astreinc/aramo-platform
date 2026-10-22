@@ -1,17 +1,18 @@
 import {
+  ApiError,
   Button,
   Dialog,
   InlineAlert,
-  Select,
   hasScope,
   useSession,
   type Session,
 } from '@aramo/fe-foundation';
 import { useCallback, useEffect, useState } from 'react';
 
+import { addTalentErrorMessage } from '../../pipeline/error-messages';
 import { addTalentToPipeline } from '../../pipeline/pipeline-api';
-import { listRequisitions } from '../../requisitions/requisitions-api';
 import type { RequisitionView } from '../../requisitions/types';
+import { RequisitionPicker } from '../AddToRequisitionDialog';
 import { Avatar, Card, Icons, StagePill } from '../../ui';
 import type { PipelineStatus } from '../../pipeline/types';
 import { resolveUserNames } from '../../users/users-api';
@@ -61,6 +62,8 @@ export function ListsPanel({
     session !== null && Array.isArray(session.scopes) && hasScope(session, 'saved-list:edit');
   const canAddToReq =
     session !== null && Array.isArray(session.scopes) && hasScope(session, 'pipeline:add');
+  const canSearchReqs =
+    session !== null && Array.isArray(session.scopes) && hasScope(session, 'requisition:search');
 
   const [lists, setLists] = useState<readonly SavedListRowView[]>([]);
   const [owners, setOwners] = useState<Record<string, string>>({});
@@ -139,9 +142,16 @@ export function ListsPanel({
     if (reqTarget === null) return;
     try {
       await addTalentToPipeline(reqTarget, req.id);
+      setError(null);
       setNotice(`Added to ${req.title}.`);
-    } catch {
-      setNotice('Add to requisition failed — please try again.');
+    } catch (err) {
+      // ATS-QA-1 D6 — the server's typed refusal, through the one shared mapper.
+      if (err instanceof ApiError && err.code === 'PIPELINE_EPISODE_ALREADY_LIVE') {
+        setNotice(`Already on ${req.title}. Nothing was changed.`);
+      } else {
+        setNotice(null);
+        setError(addTalentErrorMessage(err));
+      }
     } finally {
       setReqTarget(null);
     }
@@ -247,6 +257,7 @@ export function ListsPanel({
 
         <ReqPickDialog
           open={reqTarget !== null}
+          canSearch={canSearchReqs}
           onClose={() => setReqTarget(null)}
           onPick={(r) => void addToReq(r)}
         />
@@ -304,39 +315,25 @@ export function ListsPanel({
   );
 }
 
-// Compact governed req-picker (reuses addTalentToPipeline via the parent). Lists
-// only OPEN requisitions, mirroring the Talent-list add-to-req dialog.
+// Compact governed req-picker (reuses addTalentToPipeline via the parent). ATS-QA-1 D4 —
+// the shared RequisitionPicker: server-side search, open / on hold / lead (A1 AM-1),
+// labelled title · REQ-number · client.
 function ReqPickDialog({
   open,
+  canSearch,
   onClose,
   onPick,
 }: {
   readonly open: boolean;
+  readonly canSearch: boolean;
   readonly onClose: () => void;
   readonly onPick: (req: RequisitionView) => void;
 }) {
-  const [reqs, setReqs] = useState<readonly RequisitionView[]>([]);
-  const [reqId, setReqId] = useState('');
-  const [loading, setLoading] = useState(false);
-
+  const [chosen, setChosen] = useState<RequisitionView | null>(null);
   useEffect(() => {
-    if (!open) return;
-    let cancelled = false;
-    setLoading(true);
-    setReqId('');
-    void listRequisitions()
-      .then((r) => {
-        if (!cancelled) setReqs(r.items.filter((x) => x.status === 'open'));
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+    if (!open) setChosen(null);
   }, [open]);
 
-  const chosen = reqs.find((r) => r.id === reqId) ?? null;
   return (
     <Dialog
       open={open}
@@ -363,18 +360,7 @@ function ReqPickDialog({
         </>
       }
     >
-      {loading ? (
-        <p className="rc-empty">Loading requisitions…</p>
-      ) : (
-        <Select value={reqId} onChange={(e) => setReqId(e.target.value)}>
-          <option value="">Choose a requisition…</option>
-          {reqs.map((r) => (
-            <option key={r.id} value={r.id}>
-              {r.title}
-            </option>
-          ))}
-        </Select>
-      )}
+      <RequisitionPicker open={open} value={chosen} onChange={setChosen} canSearch={canSearch} />
     </Dialog>
   );
 }

@@ -1,6 +1,6 @@
 import * as RadixDialog from '@radix-ui/react-dialog';
 import { Button, Input, Select } from '@aramo/fe-foundation';
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useId, useMemo, useState, type KeyboardEvent } from 'react';
 import { Link } from 'react-router-dom';
 
 import { useMe } from '../shell/me-api';
@@ -88,6 +88,135 @@ function seedFromView(v: ScheduledMeetingView, zone: string): { date: string; ti
   return { date, time, duration };
 }
 
+// ATS-QA-1 I-1 UX — the time-zone field is a SEARCHABLE list (was a native <select> with an
+// OS scrollbar). Still a validated selection: only a zone from `zones` can be chosen; typing
+// filters, it never becomes the value. Rendered inline (not portalled) so it stays inside the
+// dialog's stacking context and scroll lock — the shared fe-foundation Combobox portals its
+// list at z-index 70, below this dialog's content (71), so it is not reused here.
+export function zoneLabel(zone: string): string {
+  return zone.replace(/_/g, ' ');
+}
+
+function TimeZonePicker({
+  zones,
+  value,
+  localZone,
+  open,
+  onOpenChange,
+  onChange,
+  labelId,
+}: {
+  readonly zones: readonly string[];
+  readonly value: string;
+  readonly localZone: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+  readonly onChange: (zone: string) => void;
+  readonly labelId: string;
+}): JSX.Element {
+  const listId = useId();
+  const [query, setQuery] = useState('');
+  const [highlighted, setHighlighted] = useState(0);
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    if (q === '') return zones;
+    return zones.filter((z) => z.toLowerCase().includes(q) || zoneLabel(z).toLowerCase().includes(q));
+  }, [zones, query]);
+  const hi = Math.min(highlighted, Math.max(0, filtered.length - 1));
+  const optionId = (i: number): string => `${listId}-opt-${i}`;
+
+  const close = (): void => {
+    onOpenChange(false);
+    setQuery('');
+    setHighlighted(0);
+  };
+  const choose = (z: string): void => {
+    onChange(z);
+    close();
+  };
+  const onKeyDown = (e: KeyboardEvent<HTMLInputElement>): void => {
+    if (e.key === 'ArrowDown') {
+      e.preventDefault();
+      if (!open) onOpenChange(true);
+      else setHighlighted(Math.min(hi + 1, filtered.length - 1));
+    } else if (e.key === 'ArrowUp') {
+      e.preventDefault();
+      setHighlighted(Math.max(hi - 1, 0));
+    } else if (e.key === 'Enter') {
+      if (open && filtered[hi] !== undefined) {
+        e.preventDefault();
+        choose(filtered[hi]);
+      }
+    }
+  };
+
+  return (
+    <div style={{ position: 'relative' }}>
+      <Input
+        unstyled
+        type="text"
+        role="combobox"
+        aria-labelledby={labelId}
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-autocomplete="list"
+        aria-activedescendant={open && filtered.length > 0 ? optionId(hi) : undefined}
+        data-testid="schedule-timezone"
+        className="rc-sched__tz"
+        placeholder="Search time zones"
+        autoComplete="off"
+        value={open ? query : `${zoneLabel(value)}${value === localZone ? ' · your time zone' : ''}`}
+        onFocus={() => onOpenChange(true)}
+        onClick={() => onOpenChange(true)}
+        onBlur={close}
+        onChange={(e) => {
+          if (!open) onOpenChange(true);
+          setQuery(e.target.value);
+          setHighlighted(0);
+        }}
+        onKeyDown={onKeyDown}
+      />
+      {open ? (
+        <ul
+          id={listId}
+          role="listbox"
+          aria-labelledby={labelId}
+          data-testid="schedule-timezone-list"
+          style={{
+            position: 'absolute', top: '100%', left: 0, right: 0, zIndex: 2, margin: '4px 0 0', padding: 4,
+            listStyle: 'none', maxHeight: 220, overflowY: 'auto', background: '#fff',
+            border: '1px solid #D5DBE1', borderRadius: 8, boxShadow: '0 8px 24px rgba(15,25,40,.12)',
+          }}
+        >
+          {filtered.length === 0 ? (
+            <li style={{ padding: '8px 10px', fontSize: 12.5, color: '#5C6770' }}>No matching time zone.</li>
+          ) : (
+            filtered.map((z, i) => (
+              <li
+                key={z}
+                id={optionId(i)}
+                role="option"
+                aria-selected={z === value}
+                data-testid={`schedule-timezone-option-${z}`}
+                onMouseDown={(e) => e.preventDefault()}
+                onMouseEnter={() => setHighlighted(i)}
+                onClick={() => choose(z)}
+                style={{
+                  padding: '7px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 13,
+                  background: i === hi ? '#EEF3F8' : 'transparent', fontWeight: z === value ? 600 : 400,
+                }}
+              >
+                {zoneLabel(z)}
+                {z === localZone ? <span style={{ color: '#5C6770' }}> · your time zone</span> : null}
+              </li>
+            ))
+          )}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
 export interface ScheduleMeetingDialogProps {
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
@@ -146,6 +275,8 @@ export function ScheduleMeetingDialog(props: ScheduleMeetingDialogProps): JSX.El
   const [time, setTime] = useState('');
   const [duration, setDuration] = useState(30);
   const [timeZone, setTimeZone] = useState(initialZone);
+  const [tzOpen, setTzOpen] = useState(false);
+  const tzLabelId = useId();
   const [subject, setSubject] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [errState, setErrState] = useState<ReturnType<typeof describeCalendarMeetingError> | null>(null);
@@ -168,6 +299,7 @@ export function ScheduleMeetingDialog(props: ScheduleMeetingDialogProps): JSX.El
     setTime(seed.time);
     setDuration(seed.duration);
     setTimeZone(zone);
+    setTzOpen(false);
     setSubject(subjectFor('Recruiter screen', props.talentName, props.requisitionTitle));
     setSubmitting(false);
     setErrState(null);
@@ -268,7 +400,18 @@ export function ScheduleMeetingDialog(props: ScheduleMeetingDialogProps): JSX.El
       <RadixDialog.Root open={props.open} onOpenChange={props.onOpenChange}>
         <RadixDialog.Portal>
           <RadixDialog.Overlay className="rc-sched__overlay" />
-          <RadixDialog.Content className="rc-sched__content" data-testid="schedule-form" aria-describedby={undefined}>
+          <RadixDialog.Content
+            className="rc-sched__content"
+            data-testid="schedule-form"
+            aria-describedby={undefined}
+            // ATS-QA-1 I-1 UX — Escape closes an open time-zone list first, not the whole dialog.
+            onEscapeKeyDown={(e) => {
+              if (tzOpen) {
+                e.preventDefault();
+                setTzOpen(false);
+              }
+            }}
+          >
             <div className="rc-sched__hd">
               <span className="rc-sched__hd-ic" aria-hidden="true"><CalendarIcon /></span>
               <span className="rc-sched__hd-tx">
@@ -314,12 +457,19 @@ export function ScheduleMeetingDialog(props: ScheduleMeetingDialogProps): JSX.El
                     </Select>
                   </span>
                 </label>
-                <label className="rc-sched__fld rc-sched__full"><span>Time zone</span>
-                  {/* R3 — validated IANA selection, styled as the prototype's read-only field; no same-zone claim. */}
-                  <Select unstyled data-testid="schedule-timezone" className="rc-sched__tz" value={timeZone} onChange={(e) => setTimeZone(e.target.value)}>
-                    {zones.map((z) => (<option key={z} value={z}>{z}{z === initialZone ? ' · your timezone' : ''}</option>))}
-                  </Select>
-                </label>
+                <div className="rc-sched__fld rc-sched__full"><span id={tzLabelId}>Time zone</span>
+                  {/* R3 — validated IANA selection, styled as the prototype's read-only field; no same-zone claim.
+                      ATS-QA-1 I-1 UX — searchable list instead of a native select. */}
+                  <TimeZonePicker
+                    zones={zones}
+                    value={timeZone}
+                    localZone={initialZone}
+                    open={tzOpen}
+                    onOpenChange={setTzOpen}
+                    onChange={setTimeZone}
+                    labelId={tzLabelId}
+                  />
+                </div>
                 <label className="rc-sched__fld rc-sched__full"><span>Subject</span>
                   <Input unstyled type="text" data-testid="schedule-subject" className="rc-sched__in rc-sched__subject" value={subject} onChange={(e) => { setSubject(e.target.value); setSubjectEdited(true); }} />
                 </label>

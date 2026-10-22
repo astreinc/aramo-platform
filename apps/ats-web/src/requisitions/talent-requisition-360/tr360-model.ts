@@ -3,6 +3,8 @@
 // board card, Talent 360 read). Nothing in this file decides eligibility, stage
 // legality or readiness; those stay with the owning domain.
 
+import { ApiError } from '@aramo/fe-foundation';
+
 import type { PipelineStatus } from '../../pipeline/types';
 import type {
   RecruitingAvailableAction,
@@ -10,6 +12,7 @@ import type {
 } from '../../pipeline/talent-journey-api';
 import type { BoardCardView, RequisitionTalentBoardView } from '../requisition-talent-board-api';
 import type { RequisitionProfileView } from '../golden-profile';
+import type { RecentActivityItemView } from '../../talent-360/talent-360-types';
 
 // ── Status pill palette (§3) ────────────────────────────────────────────────
 export type PillTone = 'green' | 'amber' | 'blue' | 'grey' | 'red';
@@ -89,6 +92,65 @@ export const PRIMARY_ACTION_COPY: Record<RecruitingAvailableAction, PrimaryActio
   start_qualifying: { label: 'Start qualifying', tip: 'Advance to Qualifying (your decision)', dispatch: 'decision', to: 'qualifying' },
   mark_qualified: { label: 'Mark qualified', tip: 'Advance to Qualified (your decision)', dispatch: 'decision', to: 'qualified' },
 };
+
+// ATS-QA-1 5.1 — why the decision primary is not offered. The journey withholds
+// "Mark qualified" while the Right to Represent precondition is unmet, so the tip
+// names that real reason from the board's signing status (already on the client).
+// Display only: the server still decides what is offered.
+export const PRIMARY_NOT_OFFERED_TIP = 'Not available yet — the recruiting workflow has not offered this step';
+export function disabledPrimaryReason(
+  status: PipelineStatus | null,
+  rtrStatus: BoardCardView['rtr_status'] | null,
+): string {
+  if (status === 'qualifying') {
+    switch (rtrStatus) {
+      case 'NOT_SENT':
+        return 'Needs a signed Right to Represent. None has been sent yet.';
+      case 'SENT':
+        return 'Needs a signed Right to Represent. It is awaiting signature.';
+      case 'DECLINED':
+        return 'Needs a signed Right to Represent. The last one was declined.';
+      case 'EXPIRED':
+        return 'Needs a signed Right to Represent. The last one expired unsigned.';
+      case 'POLICY_UNRESOLVED':
+        return 'No Right to Represent policy is set for this client. Ask an admin to set it.';
+      default:
+        break;
+    }
+  }
+  return PRIMARY_NOT_OFFERED_TIP;
+}
+
+// ATS-QA-1 D8 — a stale action refused by the optimistic-concurrency check.
+export const STAGE_CONFLICT_MESSAGE = "This talent's stage has already changed. The page now shows the latest status.";
+export function isStageConflict(error: unknown): boolean {
+  return error instanceof ApiError && error.code === 'PIPELINE_TRANSITION_CONFLICT';
+}
+
+// ATS-QA-1 A3 — the notes the Talent 360 read actually produces. A note is an
+// activity-log row (id `activity:…`) which the API files under the
+// 'requisitions' category with the title "Note added"; there is no 'note'
+// category. Notes are Talent-level (no requisition), or on this requisition.
+export const NOTE_ACTIVITY_TITLE = 'Note added';
+export function tr360Notes(
+  items: readonly RecentActivityItemView[],
+  reqId: string,
+): readonly RecentActivityItemView[] {
+  return items.filter(
+    (a) =>
+      a.id.startsWith('activity:') &&
+      a.category === 'requisitions' &&
+      a.title === NOTE_ACTIVITY_TITLE &&
+      (a.requisition_id === null || a.requisition_id === reqId),
+  );
+}
+
+// ATS-QA-1 D13 — the "must-haves are highlighted on Overview" copy is shown only
+// when the requisition profile has must-haves. Nothing compares them with the
+// Talent's skills.
+export function hasMustHaveSkills(profile: RequisitionProfileView | null): boolean {
+  return requisitionSkills(profile).some((s) => s.must);
+}
 
 // ── Prev / next within the requisition (§3.3.1) ─────────────────────────────
 // Pipeline order = the board's server-ordered columns, then card order within each.

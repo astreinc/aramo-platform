@@ -392,6 +392,54 @@ describe('CompanyDetailView (account hub)', () => {
     expect(String(activityCall?.[0])).toContain('subject_id=co-1');
   });
 
+  it('Activity rows are humanised: no raw type enum, system notes reworded, date via formatInstant (ATS-QA-1 A4)', async () => {
+    const base = {
+      tenant_id: 't-1',
+      site_id: null,
+      subject_type: 'company',
+      subject_id: 'co-1',
+      created_by_id: null,
+      redacted_at: null,
+      redacted_by: null,
+      redaction_reason_code: null,
+      redaction_reason: null,
+      category: null,
+      visibility: null,
+      body_format: null,
+      is_pinned: false,
+      pinned_at: null,
+      pinned_by_id: null,
+    };
+    const created = '2026-10-20T14:05:00.000Z';
+    installFetch({
+      '/v1/companies/co-1': makeCompany(),
+      '/v1/activities': {
+        items: [
+          { ...base, id: 'a-1', type: 'call', notes: null, created_at: created },
+          { ...base, id: 'a-2', type: 'pipeline_status_change', notes: 'pipeline qualifying -> qualified', created_at: created },
+          { ...base, id: 'a-3', type: 'note', category: 'CLIENT_INTERACTION', notes: 'Hiring manager confirmed budget', created_at: created },
+        ],
+      },
+    });
+    renderAt('/companies/co-1', makeSession(['company:read', 'activity:read']));
+    await waitFor(() =>
+      expect(screen.getByRole('heading', { name: /Acme Corp/i })).toBeInTheDocument(),
+    );
+    fireEvent.click(screen.getByRole('tab', { name: /Activity/ }));
+    const callRow = await screen.findByTestId('company-activity-a-1');
+    expect(callRow.textContent).toContain('Call logged');
+    expect(callRow.textContent).not.toMatch(/\bcall\b/);
+    const stageRow = screen.getByTestId('company-activity-a-2');
+    expect(stageRow.textContent).toContain('Qualified');
+    expect(stageRow.textContent).not.toContain('pipeline qualifying -> qualified');
+    const noteRow = screen.getByTestId('company-activity-a-3');
+    expect(noteRow.textContent).toContain('Client interaction');
+    expect(noteRow.textContent).toContain('Hiring manager confirmed budget');
+    // Date: formatted instant, never the raw ISO string.
+    expect(screen.getAllByText(new Date(created).toLocaleString()).length).toBe(3);
+    expect(screen.queryByText(created)).toBeNull();
+  });
+
   it('surfaces the detail error when the company fetch returns 404 (D4b invisible)', async () => {
     installFetch({
       '/v1/companies/co-1': { status: 404, body: { message: 'not found' } },

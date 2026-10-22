@@ -39,6 +39,10 @@ describe('UpcomingMeetings', () => {
     expect(screen.getByTestId('upcoming-join-int-1')).toHaveAttribute('href', 'https://teams.example/join');
     const block = screen.getByTestId('upcoming-meetings');
     expect(block.textContent).toMatch(/last-known/i);
+    // ATS-QA-1 I-1 UX — plain Outlook/Teams note.
+    expect(block.textContent).toContain('Meeting invites and Teams links are on your Outlook calendar.');
+    expect(block.textContent).toContain("it doesn't confirm the meeting took place.");
+    expect(block.textContent).not.toMatch(/evidence/i);
     expect(block.textContent).not.toMatch(/changes made in outlook (show up|appear) here|automatically/i);
   });
 

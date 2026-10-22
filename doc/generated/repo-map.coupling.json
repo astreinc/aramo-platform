@@ -10457,6 +10457,11 @@
       "to": "libs/contact/src/lib/dto/contact.view.ts"
     },
     {
+      "from": "apps/ats-web/src/consent/ConsentStatePanel.tsx",
+      "status": "production",
+      "to": "libs/consent/prisma/schema.prisma"
+    },
+    {
       "from": "apps/ats-web/src/consent/consent-api.ts",
       "status": "production",
       "to": "libs/consent/src/lib/consent.controller.ts"
@@ -10638,6 +10643,11 @@
       "from": "apps/ats-web/src/requisitions/decimal-format.ts",
       "status": "production",
       "to": "libs/requisition/src/lib/compensation-validation.ts"
+    },
+    {
+      "from": "apps/ats-web/src/requisitions/error-messages.ts",
+      "status": "production",
+      "to": "libs/requisition/src/lib/hold-details.ts"
     },
     {
       "from": "apps/ats-web/src/requisitions/guarantee-terms-api.ts",
