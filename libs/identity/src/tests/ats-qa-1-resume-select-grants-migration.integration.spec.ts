@@ -190,4 +190,23 @@ describe('ATS-QA-1 — pipeline:resume:set for every pipeline:add role (real PG)
     await runIdentitySeed(prisma, { includeDevFixtures: false });
     expect(await snapshot()).toBe(before);
   });
+  // Production state found at deploy (2026-10-22): an older seed put a DIFFERENT scope
+  // (pipeline:add-activity) on 0x0077, so the seed id is taken. The block must use its
+  // derived id instead of failing on the Scope primary key.
+  it('seed id already held by another scope — uses the derived id; grants and holders intact', async () => {
+    await run(`DELETE FROM identity."RoleScope" WHERE scope_id = $1`, [SCOPE_ID]);
+    await run(`DELETE FROM identity."Scope" WHERE id = $1`, [SCOPE_ID]);
+    await run(`INSERT INTO identity."Scope" (id, key, description) VALUES ($1, 'qa1:collision-probe', 'probe')`, [SCOPE_ID]);
+    notices.length = 0;
+    await applyMigration();
+    const derived = (await run(`SELECT md5('ats-qa-1:scope:pipeline:resume:set')::uuid::text AS id`)).rows[0].id as string;
+    const scope = await run(`SELECT id, description FROM identity."Scope" WHERE key = 'pipeline:resume:set'`);
+    expect(scope.rows[0]).toEqual({ id: derived, description: seedScope.description });
+    expect((await run(`SELECT key FROM identity."Scope" WHERE id = $1`, [SCOPE_ID])).rows[0].key).toBe('qa1:collision-probe');
+    expect(await holders()).toEqual(seedHolders);
+    expect(notices.some((n) => n.includes('pipeline:resume:set grants inserted: 8'))).toBe(true);
+    const before = await snapshot();
+    await applyMigration();
+    expect(await snapshot()).toBe(before);
+  });
 });

@@ -9,8 +9,11 @@
 -- Steps (inside the DO block, so a refusal applies NOTHING):
 --   0. Guards. No role catalog yet = no-op (the seed writes the target model). Any role
 --      row not carrying its expected key is refused.
---   1. Scope row ensured (INSERT ... ON CONFLICT (key) DO NOTHING), description byte-identical
---      to the seed's (chr(59) stands in for its semicolons).
+--   1. Scope row ensured, description byte-identical to the seed's (chr(59) stands in for its
+--      semicolons). An existing pipeline:resume:set row is reused. Otherwise the seed id 0x0077
+--      is used when free. When 0x0077 already holds another scope (production: an older seed
+--      put pipeline:add-activity there) a fixed derived id md5(ats-qa-1:scope:pipeline:resume:set)
+--      is used instead, so the insert never collides on the primary key.
 --   2. Effective (tenant, user, scope) set before.
 --   3. Grants: INSERT ... ON CONFLICT (role_id, scope_id) DO NOTHING (existing ids kept).
 --   4. AuthorizationVersion bump for every principal whose effective set changed.
@@ -46,10 +49,17 @@ DECLARE
     RAISE EXCEPTION ''ats_qa_1: unexpected role state refused (ROLES-1 PR-2 role model required)''
   ; END IF
 
-  ; INSERT INTO "identity"."Scope" ("id", "key", "description")
-    VALUES (''01900000-0000-7000-8000-000000000077'', ''pipeline:resume:set'', ''TI-1D-D — set the Requisition-context resume selection for a pipeline (PUT /v1/pipelines/{id}/resume-edition'' || chr(59) || '' appends a TalentRequisitionResume working-selection row, never mutates prior). DEDICATED mutation scope'' || chr(59) || '' GRANTED to the four pipeline:change-status holders (recruiter, account_manager, tenant_admin, tenant_owner) via RESUME_SELECT_SEED_BUNDLES as an EXPLICIT TI-1D-D decision — NOT auto-inherited from pipeline:change-status and NOT a reuse of it (the dedicated scope preserves the lifecycle-vs-selection distinction). NO scope.created (scope-seed precedent).'')
-    ON CONFLICT ("key") DO NOTHING
   ; SELECT "id" INTO s_rs FROM "identity"."Scope" WHERE "key" = ''pipeline:resume:set''
+  ; IF s_rs IS NULL THEN
+    s_rs := ''01900000-0000-7000-8000-000000000077''
+    ; IF EXISTS (SELECT 1 FROM "identity"."Scope" WHERE "id" = s_rs) THEN
+      s_rs := md5(''ats-qa-1:scope:pipeline:resume:set'')::uuid
+    ; END IF
+    ; INSERT INTO "identity"."Scope" ("id", "key", "description")
+      VALUES (s_rs, ''pipeline:resume:set'', ''TI-1D-D — set the Requisition-context resume selection for a pipeline (PUT /v1/pipelines/{id}/resume-edition'' || chr(59) || '' appends a TalentRequisitionResume working-selection row, never mutates prior). DEDICATED mutation scope'' || chr(59) || '' GRANTED to the four pipeline:change-status holders (recruiter, account_manager, tenant_admin, tenant_owner) via RESUME_SELECT_SEED_BUNDLES as an EXPLICIT TI-1D-D decision — NOT auto-inherited from pipeline:change-status and NOT a reuse of it (the dedicated scope preserves the lifecycle-vs-selection distinction). NO scope.created (scope-seed precedent).'')
+      ON CONFLICT ("key") DO NOTHING
+    ; SELECT "id" INTO s_rs FROM "identity"."Scope" WHERE "key" = ''pipeline:resume:set''
+  ; END IF
 
   ; DROP TABLE IF EXISTS pg_temp."_qa1_eff_before"
   ; CREATE TEMP TABLE "_qa1_eff_before" ON COMMIT DROP AS
