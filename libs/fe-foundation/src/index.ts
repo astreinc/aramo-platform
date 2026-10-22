@@ -140,7 +140,10 @@ export {
   readRememberedReturnContext,
   rememberReturnContext,
   validReturnPath,
+  trustedSignOrigin,
+  SIGN_SETTINGS_PATH_PREFIX,
   type ReturnApp,
   type ReturnContext,
+  type ReturnValidationOptions,
 } from './navigation/return-context';
 

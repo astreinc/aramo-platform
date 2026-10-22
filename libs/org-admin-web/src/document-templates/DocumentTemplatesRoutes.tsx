@@ -4,13 +4,15 @@ import { Navigate, Route, Routes, useParams } from 'react-router-dom';
 
 import { AramoDefaultPreview } from './AramoDefaultPreview';
 import { CreateOwnTemplate } from './CreateOwnTemplate';
-import { DocumentTemplatesGallery } from './DocumentTemplatesGallery';
+import { OurTemplatesPage } from './OurTemplatesPage';
+import { TemplateGalleryPage } from './TemplateGalleryPage';
 
 // DOC-TEMPLATE-LIB-1 T-4 (§8.2) — the Org Home "Document templates" sub-tree, mounted at
 // /org/document-templates/*. The detail, draft editor and approval (preview gate →
 // approve) are the shared screens from @aramo/document-templates-web, routed by template
 // id; their navigation targets default to these Org Home paths.
-//   /org/document-templates                       gallery + template in use + notices
+//   /org/document-templates                       Our templates (ORG-UX-1 §3, P6)
+//   /org/document-templates/gallery               Template gallery (ORG-UX-1 §3, P6)
 //   /org/document-templates/new                   create your own (blank)
 //   /org/document-templates/aramo/:templateId     an Aramo default, branded preview
 //   /org/document-templates/:templateId           your template: versions, approve, new draft
@@ -35,7 +37,8 @@ function DefaultRoute() {
 export function DocumentTemplatesRoutes({ session }: { readonly session: Session }) {
   return (
     <Routes>
-      <Route index element={<DocumentTemplatesGallery sessionOverride={session} />} />
+      <Route index element={<OurTemplatesPage session={session} />} />
+      <Route path="gallery" element={<TemplateGalleryPage session={session} />} />
       <Route path="new" element={<CreateOwnTemplate sessionOverride={session} />} />
       <Route path="aramo/:templateId" element={<DefaultRoute />} />
       <Route path=":templateId" element={<DetailRoute session={session} />} />

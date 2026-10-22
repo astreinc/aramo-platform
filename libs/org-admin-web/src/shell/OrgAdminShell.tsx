@@ -1,71 +1,55 @@
-import { useEffect, useState } from 'react';
-import { Link, NavLink, Outlet, useLocation } from 'react-router-dom';
+import { useEffect, useMemo, useState } from 'react';
+import { Link, Outlet, useLocation } from 'react-router-dom';
 import {
   SettingsHeadlessProvider,
+  clearReturnContext,
   parseReturnContext,
+  productByKey,
   readRememberedReturnContext,
   rememberReturnContext,
-  clearReturnContext,
+  trustedSignOrigin,
+  type ProductAvailabilityView,
   type ReturnContext,
 } from '@aramo/fe-foundation';
 
-import { ORG_SECTIONS, orgSectionLabel, type OrgSection } from '../sections';
+import '../ui/org-ui.css';
 
-// Organization administration — the single shared tenant-management surface
-// (accepted App Home handoff §7; frozen prototype 2026-10-18). Page header =
-// the section title + "Organization · shared by every Aramo app", then the
-// section tab row (Profile · Users & invitations · Users & product access ·
-// Sites · Domain · Settings · Audit). Sections render embedded beneath it.
+// ORG-UX-1 (Directive v1.0 LOCKED §1, §3, §7.2; handoff §2/§6) — the Organization page
+// frame. There are NO horizontal section tabs: every section is an item in the MAIN left
+// nav (apps/home-web HomeShell), so this frame only renders the return marker and the page.
+// Each page renders its own header (H1 + exact intro + actions) via OrgPageHeader.
 //
-// Return context (Settings & navigation baseline §C): arriving from ATS or Sign
-// Settings with `?from=<app>&return=<path>` remembers the originating page for
-// this browser session and shows "Back to ATS Settings" / "Back to Sign
-// Settings" on every Organization page until used. The value is validated on
-// every read and is never authorization.
-// DOC-TEMPLATE-LIB-1 T-4 — `sections`: the tabs this session can open (default: all).
-export function OrgAdminShell({ sections = ORG_SECTIONS }: { readonly sections?: readonly OrgSection[] } = {}) {
+// Return marker (production query form, H6): arriving from ATS or Sign Settings with
+// `?from=<app>&return=<…>` remembers the originating page for this browser session and
+// shows "← Back to ATS Settings" / "← Back to Sign Settings" above the page title on every
+// Organization page until used. A Sign return is accepted only on the TRUSTED Sign origin
+// (the backend's Sign entry) and inside /sign/settings/ (Lead Correction C). Never
+// authorization, never followed automatically.
+export function OrgAdminShell({ products = null }: { readonly products?: ProductAvailabilityView | null } = {}) {
   const location = useLocation();
-  const [back, setBack] = useState<ReturnContext | null>(() => readRememberedReturnContext());
+  const signOrigin = useMemo(() => trustedSignOrigin(productByKey(products, 'sign')?.entry_path ?? null), [products]);
+  const [back, setBack] = useState<ReturnContext | null>(() => readRememberedReturnContext({ signOrigin }));
 
   useEffect(() => {
-    const ctx = parseReturnContext(location.search);
+    const ctx = parseReturnContext(location.search, { signOrigin });
     if (ctx !== null) {
       rememberReturnContext(ctx);
       setBack(ctx);
+    } else {
+      setBack(readRememberedReturnContext({ signOrigin }));
     }
-  }, [location.search]);
-
-  const sectionKey = location.pathname.replace(/^\/org\/?/, '').split('/')[0] ?? '';
-  const title = orgSectionLabel(sectionKey) ?? 'Organization';
+  }, [location.search, signOrigin]);
 
   return (
-    <div className="org-page">
+    <div className="ox-page" data-testid="org-page">
       {back !== null ? (
-        <a className="org-back" href={back.href} onClick={() => clearReturnContext()} data-testid="org-back-link">
+        <a className="ox-back" href={back.href} onClick={() => clearReturnContext()} data-testid="org-back-link">
           ← {back.label}
         </a>
       ) : null}
-      <header className="org-head">
-        <h1>{title}</h1>
-        <p>Organization · shared by every Aramo app</p>
-      </header>
-      <nav className="org-tabs" aria-label="Organization sections">
-        {sections.map((s) => (
-          <NavLink
-            key={s.key}
-            to={`/org/${s.key}`}
-            className={({ isActive }) => `org-tab${isActive ? ' org-tab--on' : ''}`}
-            data-testid={`org-nav-${s.key}`}
-          >
-            {s.label}
-          </NavLink>
-        ))}
-      </nav>
-      <div className="org-body">
-        <SettingsHeadlessProvider>
-          <Outlet />
-        </SettingsHeadlessProvider>
-      </div>
+      <SettingsHeadlessProvider>
+        <Outlet />
+      </SettingsHeadlessProvider>
     </div>
   );
 }
