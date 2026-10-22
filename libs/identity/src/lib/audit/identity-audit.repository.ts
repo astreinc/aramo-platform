@@ -201,7 +201,13 @@ export const EVENT_TYPES = [
   'identity.personal.risk.review_cleared',
   'identity.personal.risk.reinstated',
   'identity.personal.risk.closed',
+  'identity.personal.risk.send_location_signal',
   'identity.personal.invite.issued',
+  // Personal signup attempts deleted by the cleanup run (PO decision 2026-10-22;
+  // Lead ruling 2026-10-22): abandoned attempts 3 days after they expired, refused
+  // attempts after 180 days. GLOBAL (no tenant exists); subject_id = the run id;
+  // the payload carries counts and cutoffs only (no email, phone or address).
+  'identity.personal.signup.attempts_purged',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 
@@ -308,6 +314,7 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   'identity.personal.risk.review_cleared',
   'identity.personal.risk.reinstated',
   'identity.personal.risk.closed',
+  'identity.personal.risk.send_location_signal',
 ]);
 
 export interface WriteAuditEventInput {

@@ -7,6 +7,7 @@ import { useWorkspace } from '../workspace';
 
 import { BillingPanel } from './Billing';
 import { DomainCard } from './DomainCard';
+import { CloseAccountSection } from './AccountClose';
 
 // ORG-UX-1 §6/§7.2 — Organization links carry this Sign Settings page as the return.
 function useOrgLink(): (orgUrl: string) => string {
@@ -146,6 +147,8 @@ function PersonalSection() {
           <LinkBtn onClick={() => void logout()}>Sign out</LinkBtn>
         </div>
       </section>
+      {/* Personal (Free) — the owner of an open Personal account may close it (backend-decided). */}
+      {ctx.workspace === 'personal' ? <CloseAccountSection /> : null}
     </>
   );
 }

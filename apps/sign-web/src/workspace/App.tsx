@@ -1,3 +1,4 @@
+import { lazy, Suspense, type ReactNode } from 'react';
 import { Navigate, Route, Routes } from 'react-router-dom';
 import { AUTH_PRODUCTS, RouteGuard, SignedOut, ToastProvider, logout, useSession } from '@aramo/fe-foundation';
 
@@ -16,10 +17,19 @@ import { PersonalSignupPage } from './routes/PersonalSignupPage';
 import { ReportPage } from './routes/ReportPage';
 import { DomainDelegatePage } from './routes/DomainDelegatePage';
 import { DomainCard } from './pages/DomainCard';
+import { AccountClosedPage, ClosedAccountGuard } from './pages/AccountClose';
 import { ConsoleShell } from './shell';
-import { Btn } from './ui';
+import { Btn, Loading } from './ui';
+import { LegalAcceptanceGate } from './legal/LegalAcceptance';
 import { WorkspaceProvider, useSenderContext, type Workspace } from './workspace';
 import type { SenderContext } from './api';
+
+// Aramo Sign Personal (Free) — the published legal texts load as their own chunk
+// (the texts are bundled into it, never into the workspace entry).
+const LegalDocumentPage = lazy(() => import('./legal/LegalPage').then((m) => ({ default: m.LegalDocumentPage })));
+const LegalNotFound = lazy(() => import('./legal/LegalPage').then((m) => ({ default: m.LegalNotFound })));
+const ThirdPartyNoticesPage = lazy(() => import('./legal/LegalPage').then((m) => ({ default: m.ThirdPartyNoticesPage })));
+const lazyPage = (node: ReactNode) => <Suspense fallback={<Loading />}>{node}</Suspense>;
 
 // The Aramo Sign WORKSPACE — the signed-in zone of the one Sign application on
 // sign.aramo.ai (Sign Unified Product S-2; directive §4.1, amending the Lead Host
@@ -30,6 +40,7 @@ import type { SenderContext } from './api';
 //   /login       login landing (?error=<CODE>), /signed-out public landing
 //   /signup      public self-service BUSINESS signup (+ /signup/verify; dark)
 //   /signup/personal  public Personal (Free) signup; /report  "Report this email"
+//   /legal/:slug[/:version]  published legal texts; /legal/third-party-notices
 // The route prefix never authorizes: the backend decides tenant, kind, entitlement
 // and every action; a mismatched prefix is redirected to the backend's workspace.
 // Guest signing (/s/:token, /d/:token) is a separate zone that never loads this
@@ -42,6 +53,8 @@ export function App({ contextLoader }: { contextLoader?: () => Promise<SenderCon
       <Routes>
         <Route path="/login" element={<LoginPage />} />
         <Route path="/signed-out" element={<SignedOut offerAccountSwitch product={AUTH_PRODUCTS.sign} />} />
+        {/* Personal (Free) — the landing after the owner closed the account (no session). */}
+        <Route path="/account-closed" element={<AccountClosedPage />} />
         {/* Aramo Sign launch — public self-service signup (session-less). */}
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/signup/verify" element={<SignupVerifyPage />} />
@@ -49,6 +62,11 @@ export function App({ contextLoader }: { contextLoader?: () => Promise<SenderCon
             and "Report this email" from a Personal sender's signing email (no sign-in). */}
         <Route path="/signup/personal" element={<PersonalSignupPage />} />
         <Route path="/report" element={<ReportPage />} />
+        {/* Published legal texts (public, no sign-in): latest and exact versions. */}
+        <Route path="/legal/third-party-notices" element={lazyPage(<ThirdPartyNoticesPage />)} />
+        <Route path="/legal/:slug" element={lazyPage(<LegalDocumentPage />)} />
+        <Route path="/legal/:slug/:version" element={lazyPage(<LegalDocumentPage />)} />
+        <Route path="/legal/*" element={lazyPage(<LegalNotFound />)} />
         {/* Domain-Enforcement P3 §5 — the IT administrator's delegate link
             (session-less; the token is in the URL fragment). */}
         <Route path="/domain-verification" element={<DomainDelegatePage />} />
@@ -145,8 +163,10 @@ function Authenticated({ scopes, contextLoader }: { scopes: readonly string[]; c
 
 function Gate({ expected, actual, scopes }: { expected: Workspace; actual: Workspace; scopes: readonly string[] }) {
   if (expected !== actual) return <Navigate to={`/${actual}`} replace />;
-  return (
+  const shell = (
     <ConsoleShell scopes={scopes}>
+      {/* Personal — the current legal documents must be accepted before sending. */}
+      {expected === 'personal' ? <LegalAcceptanceGate /> : null}
       <Routes>
         <Route index element={<Dashboard />} />
         <Route path="envelopes" element={<EnvelopeList />} />
@@ -173,6 +193,8 @@ function Gate({ expected, actual, scopes }: { expected: Workspace; actual: Works
       </Routes>
     </ConsoleShell>
   );
+  // Personal (Free) — a closed account opens on the "Your account is closed" notice.
+  return expected === 'personal' ? <ClosedAccountGuard>{shell}</ClosedAccountGuard> : shell;
 }
 
 function FullState({ title, children, testId }: { title: string; children?: React.ReactNode; testId?: string }) {

@@ -669,6 +669,8 @@ model PersonalSignupRequest {
   ip_country             String?
   phone_region           String?
   network_kind           String?
+  // { country (null = UNKNOWN), looked_up_at, db_version } — GeoLite2 evidence.
+  geo_evidence           Json?
   email_otp_hash         String?
   email_otp_expires_at   DateTime? @db.Timestamptz(6)
   email_otp_attempts     Int       @default(0)
@@ -722,9 +724,12 @@ model TenantRiskState {
   phone_verified_at DateTime? @db.Timestamptz(6)
   restricted_until  DateTime? @db.Timestamptz(6)
   reason            String?
-  decided_by        String?   @db.Uuid
-  created_at        DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at        DateTime  @default(now()) @db.Timestamptz(6)
+  decided_by         String?   @db.Uuid
+  // CHECK: NULL | 'review' — review lifted the phone step while SMS was
+  // unavailable; never phone assurance (phone_verified_at stays NULL).
+  step_up_cleared_by String?
+  created_at         DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime  @default(now()) @db.Timestamptz(6)
 
   @@index([state])
   @@schema("identity")

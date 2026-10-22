@@ -8,6 +8,8 @@ import {
 } from 'react';
 import { Button, TextArea } from '@aramo/fe-foundation';
 
+import { legalPath } from '../legal/catalog';
+
 import { Alert, CardTitle, PrimaryBtn, SuIcon, type IconName, type Tone } from './signup-ui';
 
 // Aramo Sign Personal §6.4 — "Report this email". Every signing email from a
@@ -38,6 +40,19 @@ export function reportTokenFromHash(hash: string = window.location.hash): string
 }
 
 type State = 'form' | 'sent' | 'already' | 'invalid';
+
+/** What Aramo Sign does not allow (Aramo Acceptable Use Policy). */
+function AupLink() {
+  return (
+    <p className="su-hint" data-testid="report-aup">
+      What isn’t allowed on Aramo Sign is set out in our{' '}
+      <a href={legalPath('acceptable-use')} target="_blank" rel="noopener noreferrer">
+        Acceptable Use Policy
+      </a>
+      .
+    </p>
+  );
+}
 
 function Frame({ testId, children }: { testId: string; children: ReactNode }) {
   return (
@@ -80,13 +95,14 @@ export function ReportPage() {
 
   const submit = (e: FormEvent) => {
     e.preventDefault();
-    if (token === null || reason === '') return;
+    // The reason is optional (Acceptable Use Policy); the backend accepts none.
+    if (token === null) return;
     setBusy(true);
     setError(null);
     fetch('/v1/sign/report', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ token, reason, ...(note.trim() !== '' ? { note: note.trim() } : {}) }),
+      body: JSON.stringify({ token, ...(reason !== '' ? { reason } : {}), ...(note.trim() !== '' ? { note: note.trim() } : {}) }),
     })
       .then((res) => {
         if (res.ok) return setState('sent');
@@ -152,6 +168,7 @@ export function ReportPage() {
             </>
           }
         />
+        <AupLink />
       </Frame>
     );
   }
@@ -165,7 +182,7 @@ export function ReportPage() {
       <form className="su-stack" onSubmit={submit} noValidate>
         <div className="su-field">
           <span className="su-label" id="report-reason-label" style={{ marginBottom: 8 }}>
-            What’s wrong with this email?
+            What’s wrong with this email? <span className="su-label__opt">(optional)</span>
           </span>
           <div className="su-reasons" role="radiogroup" aria-labelledby="report-reason-label">
             {REPORT_REASONS.map((r, i) => (
@@ -210,12 +227,13 @@ export function ReportPage() {
         <PrimaryBtn
           type="submit"
           block
-          disabled={busy || reason === ''}
+          disabled={busy}
           data-testid="report-submit"
         >
           {busy ? 'Sending…' : 'Send report'}
         </PrimaryBtn>
       </form>
+      <AupLink />
     </Frame>
   );
 }

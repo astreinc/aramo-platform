@@ -8,16 +8,17 @@ import { ValidationPipe } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
-import { GEO_IP_PORT, PersonalRiskService } from '@aramo/identity';
+import { GEO_IP_PORT, PersonalRiskService, SMS_VERIFICATION_PORT } from '@aramo/identity';
 import { MAILER_PORT } from '@aramo/mailer';
 import { AbuseReportService, DOCUMENT_STORAGE_PORT, type DocumentStoragePort, type PutOwnedSourceInput } from '@aramo/sign';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { Client } from 'pg';
 import request from 'supertest';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { AppModule } from '../app/app.module.js';
 import { EsignBillingController } from '../app/billing/esign-billing.controller.js';
+import { PersonalLegalStatusService } from '../app/legal/personal-legal-status.service.js';
 import { ReportBudget } from '../app/personal/sign-report.service.js';
 import { SenderContextService } from '../app/sender/sender-context.service.js';
 import { SenderEnvelopeService } from '../app/sender/sender-envelope.service.js';
@@ -65,6 +66,22 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
   const mails: Mail[] = [];
   // GeoIP stub: the client address (X-Forwarded-For) → country.
   const countries = new Map<string, string>([['198.51.100.1', 'US'], ['198.51.100.2', 'IN'], ['203.0.113.9', 'DE']]);
+  const DB_VERSION = 'GeoLite2-Country 2026-10-20T00:00:00.000Z';
+  const geoStub = {
+    countryOf: async (ip: string) => countries.get(ip) ?? null,
+    networkKind: async () => 'residential' as const,
+    lookup: async (ip: string, now: Date = new Date()) => ({ country: countries.get(ip) ?? null, network_kind: 'residential' as const, looked_up_at: now.toISOString(), db_version: DB_VERSION }),
+  };
+  // SMS availability (mutable per test): on = a provider is configured.
+  const sms = { on: true };
+  const legal: { owed: { key: string; version: string; url: string; title: string }[] } = { owed: [] };
+  const legalStub = { pendingFor: vi.fn(async () => legal.owed), pending: vi.fn(async () => legal.owed) };
+  const smsStub = {
+    get configured() {
+      return sms.on;
+    },
+    send: async () => ({ ok: sms.on, ref: null }),
+  };
   const storage: DocumentStoragePort = {
     async putOwnedSource(i: PutOwnedSourceInput) {
       const k = `esign/source/${i.tenant_id}/${i.envelope_id}/${i.object_id ?? randomUUID()}`;
@@ -95,12 +112,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     return { id, owner, a: auth(id, owner) };
   }
 
-  async function riskState(tenant_id: string, over: Partial<{ state: string; step_up_required: boolean; phone_verified_at: Date | null; restricted_until: Date | null }> = {}): Promise<void> {
+  async function riskState(
+    tenant_id: string,
+    over: Partial<{ state: string; step_up_required: boolean; phone_verified_at: Date | null; restricted_until: Date | null; created_days_ago: number }> = {},
+  ): Promise<void> {
     await db.query(
-      `INSERT INTO identity."TenantRiskState" (tenant_id, state, step_up_required, phone_e164, phone_verified_at, restricted_until)
-       VALUES ($1, $2, $3, '+14155550100', $4, $5)
-       ON CONFLICT (tenant_id) DO UPDATE SET state = EXCLUDED.state, step_up_required = EXCLUDED.step_up_required, phone_verified_at = EXCLUDED.phone_verified_at, restricted_until = EXCLUDED.restricted_until`,
-      [tenant_id, over.state ?? 'clear', over.step_up_required ?? false, over.phone_verified_at ?? null, over.restricted_until ?? null],
+      `INSERT INTO identity."TenantRiskState" (tenant_id, state, step_up_required, phone_e164, phone_verified_at, restricted_until, created_at)
+       VALUES ($1, $2, $3, '+14155550100', $4, $5, now() - ($6 || ' days')::interval)
+       ON CONFLICT (tenant_id) DO UPDATE SET state = EXCLUDED.state, step_up_required = EXCLUDED.step_up_required, phone_verified_at = EXCLUDED.phone_verified_at, restricted_until = EXCLUDED.restricted_until, created_at = EXCLUDED.created_at`,
+      [tenant_id, over.state ?? 'clear', over.step_up_required ?? false, over.phone_verified_at ?? null, over.restricted_until ?? null, String(over.created_days_ago ?? 0)],
     );
   }
 
@@ -164,7 +184,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
         },
       })
       .overrideProvider(GEO_IP_PORT)
-      .useValue({ countryOf: async (ip: string) => countries.get(ip) ?? null, networkKind: async () => 'residential' })
+      .useValue(geoStub)
+      .overrideProvider(SMS_VERIFICATION_PORT)
+      .useValue(smsStub)
+      // Legal re-acceptance is covered by sign-legal.integration.spec; here the
+      // sender owes nothing unless a test says so.
+      .overrideProvider(PersonalLegalStatusService)
+      .useValue(legalStub)
       .compile();
     app = module.createNestApplication<NestExpressApplication>();
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
@@ -187,8 +213,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
   }, 60_000);
 
   beforeEach(() => {
+    legal.owed = [];
     module.get(ReportBudget).reset();
     process.env['SIGN_PERSONAL_SIGNUP_MODE'] = 'invite';
+    sms.on = true;
   });
 
   // ── mode off: byte-identical refusal ─────────────────────────────────────────
@@ -233,7 +261,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
 
   // ── the risk gate ─────────────────────────────────────────────────────────────
 
-  it('gate reasons: no state / review / restricted / step-up without phone / abroad without phone', async () => {
+  it('gate reasons: no state / review / restricted / step-up without phone; IP location alone never refuses as location', async () => {
     const p = await tenant('PERSONAL', 'ACTIVE', 60);
     const id = await draft(p.a);
     await expect(send(p.a, id)).rejects.toMatchObject({ context: { details: { reason: 'personal_review_pending' } } }); // no state → fail closed
@@ -243,15 +271,35 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     await expect(send(p.a, id)).rejects.toMatchObject({ context: { details: { reason: 'personal_restricted' } } });
     await riskState(p.id, { state: 'clear', step_up_required: true });
     await expect(send(p.a, id)).rejects.toMatchObject({ context: { details: { reason: 'phone_verification_required' } } });
+    // Young account (risk state < 7 days) sending from outside US/IN → flagged for review.
     await riskState(p.id, { state: 'clear' });
-    await expect(send(p.a, id, '203.0.113.9')).rejects.toMatchObject({ context: { details: { reason: 'personal_location_not_supported' } } });
-    await expect(send(p.a, id, '192.0.2.77')).rejects.toMatchObject({ context: { details: { reason: 'personal_location_not_supported' } } }); // unknown country
+    await expect(send(p.a, id, '203.0.113.9')).rejects.toMatchObject({ context: { details: { reason: 'personal_review_pending' } } });
+    expect(await risk.riskStateOf(p.id)).toMatchObject({ state: 'review', reason: 'send_location_outside' });
+    // Young account from an UNKNOWN location → review too (send_location_unknown).
+    await riskState(p.id, { state: 'clear' });
+    await expect(send(p.a, id, '192.0.2.77')).rejects.toMatchObject({ context: { details: { reason: 'personal_review_pending' } } });
+    expect(await risk.riskStateOf(p.id)).toMatchObject({ state: 'review', reason: 'send_location_unknown' });
+    // Established account with a step-up outstanding (open risk signal) from abroad → review.
+    await riskState(p.id, { state: 'clear', step_up_required: true, created_days_ago: 30 });
+    await expect(send(p.a, id, '203.0.113.9')).rejects.toMatchObject({ context: { details: { reason: 'personal_review_pending' } } });
     // Nothing was charged by refused sends.
     const used = await db.query(`SELECT count(*)::int AS n FROM subscription."AllowanceUsage" WHERE tenant_id = $1`, [p.id]);
     expect(used.rows[0].n).toBe(0);
-    // Abroad with phone assurance: allowed (§6.6).
-    await riskState(p.id, { state: 'clear', phone_verified_at: new Date() });
+    // Established account (no phone assurance, no open signals): abroad and UNKNOWN are ALLOWED and audited.
+    await riskState(p.id, { state: 'clear', created_days_ago: 30 });
     await expect(send(p.a, id, '203.0.113.9')).resolves.toMatchObject({ status: 'SENT' });
+    await expect(send(p.a, await draft(p.a), '192.0.2.77')).resolves.toMatchObject({ status: 'SENT' });
+    const sig = await db.query(
+      `SELECT event_payload FROM identity."IdentityAuditEvent" WHERE tenant_id = $1 AND event_type = 'identity.personal.risk.send_location_signal' ORDER BY created_at`,
+      [p.id],
+    );
+    expect(sig.rows.map((r) => r.event_payload)).toEqual([
+      expect.objectContaining({ location: 'outside', outcome: 'flagged_for_review', geo: { country: 'DE', looked_up_at: expect.any(String), db_version: DB_VERSION } }),
+      expect.objectContaining({ location: 'unknown', outcome: 'flagged_for_review', geo: expect.objectContaining({ country: null, db_version: DB_VERSION }) }),
+      expect.objectContaining({ location: 'outside', outcome: 'flagged_for_review' }),
+      expect.objectContaining({ location: 'outside', outcome: 'allowed', geo: expect.objectContaining({ country: 'DE' }) }),
+      expect.objectContaining({ location: 'unknown', outcome: 'allowed' }),
+    ]);
   });
 
   it('a restricted account may still void; existing envelopes are unaffected', async () => {
@@ -265,6 +313,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
   });
 
   // ── allowance ─────────────────────────────────────────────────────────────────
+
+  it('a sender who owes a legal acceptance is refused legal_acceptance_required before any send check', async () => {
+    const p = await tenant('PERSONAL', 'ACTIVE', 60);
+    await riskState(p.id);
+    const id = await draft(p.a);
+    legal.owed = [{ key: 'aramo.privacy_notice', version: '1.0', url: 'https://sign.aramo.ai/legal/privacy/1.0', title: 'Privacy Notice' }];
+    await expect(send(p.a, id)).rejects.toMatchObject({ statusCode: 403, context: { details: { reason: 'legal_acceptance_required' } } });
+    expect(legalStub.pendingFor).toHaveBeenLastCalledWith(expect.objectContaining({ id: p.id, kind: 'PERSONAL' }), p.a.sub);
+    legal.owed = [];
+    await expect(send(p.a, id)).resolves.toMatchObject({ status: 'SENT' });
+  });
 
   it('2 a day: the third send in 24 hours is refused DAILY_LIMIT_REACHED; each envelope counts once', async () => {
     const p = await tenant('PERSONAL', 'ACTIVE', 60);
@@ -298,6 +357,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     const id = await draft(p.a, { text: 'Sign here then visit https://pay.example.test/now' });
     await expect(send(p.a, id)).rejects.toMatchObject({ context: { details: { reason: 'phone_verification_required' } } });
     expect((await risk.riskStateOf(p.id))?.step_up_required).toBe(true);
+  });
+
+  it('young account, SMS unavailable: a step-up check routes the account to review instead (PO "Review replaces phone")', async () => {
+    sms.on = false;
+    const p = await tenant('PERSONAL');
+    await riskState(p.id);
+    const id = await draft(p.a, { recipients: 2 });
+    await expect(send(p.a, id)).rejects.toMatchObject({ context: { details: { reason: 'personal_review_pending' } } });
+    expect(await risk.riskStateOf(p.id)).toMatchObject({ state: 'review', step_up_required: true, reason: 'step_up_phone_unavailable', phone_verified_at: null });
+    // An operator clearing that review lifts the phone step, never phone assurance; the send then goes.
+    const cleared = await risk.clearReview(p.id, randomUUID(), 'reviewed');
+    expect(cleared).toMatchObject({ state: 'clear', step_up_required: false, step_up_cleared_by: 'review', phone_verified_at: null });
+    await expect(send(p.a, id)).resolves.toMatchObject({ status: 'SENT' });
   });
 
   it('young account: lure wording in the title queues the account for review', async () => {
@@ -367,7 +439,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     // New sends pause…
     await expect(send(p.a, await draft(p.a))).rejects.toMatchObject({ context: { details: { reason: 'personal_restricted' } } });
     // …and the pause lapses by itself after 72 hours unless an operator confirms it.
-    expect(await risk.assertPersonalSendAllowed(p.id, { ip_country: 'US', now: new Date(until + 1000) })).toEqual({ ok: true });
+    expect(await risk.assertPersonalSendAllowed(p.id, { ip_country: 'US', now: new Date(until + 1000) })).toEqual({ ok: true, location: 'inside' });
     expect(await risk.assertPersonalSendAllowed(p.id, { ip_country: 'US', now: new Date(until - 1000) })).toEqual({ ok: false, reason: 'personal_restricted' });
 
     // Guest signers are never restricted by the sender's state: the signing link still works.

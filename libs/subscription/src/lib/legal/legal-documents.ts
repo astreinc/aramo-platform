@@ -3,13 +3,26 @@
 // the SHA-256 of its file (a spec fails if a text changes without a new version),
 // so every acceptance record names the exact text that was accepted.
 //
-// Nothing is APPROVED. A document becomes APPROVED only by a governed change to
-// this registry after legal review and PO approval; until then:
-//   - signup shows no terms checkbox and records no acceptance,
+// A document becomes APPROVED only by a governed change to this registry after
+// legal review and PO approval. While the Business documents are DRAFT:
+//   - Business signup shows no terms checkbox and records no acceptance,
 //   - checkout records no terms acceptance,
 //   - a LIVE-mode checkout is refused (no live charging without approved terms).
+//
+// Aramo Sign Personal (Free) — the three Personal documents (Personal Terms, the
+// Aramo Privacy Notice, the Aramo Acceptable Use Policy) are APPROVED at 1.0 (PO,
+// 2026-10-21) and published on the Sign host at
+// https://sign.aramo.ai/legal/<slug>/<version>; sign-web bundles the SAME files
+// (a sign-web spec asserts the bundled bytes hash to the sha256 pinned here).
 
-export type LegalDocumentKey = 'sign.terms_of_service' | 'sign.privacy_policy' | 'sign.esign_consent_disclosure' | 'sign.retention_policy';
+export type LegalDocumentKey =
+  | 'sign.terms_of_service'
+  | 'sign.privacy_policy'
+  | 'sign.esign_consent_disclosure'
+  | 'sign.retention_policy'
+  | 'sign.personal_terms_of_service'
+  | 'aramo.privacy_notice'
+  | 'aramo.acceptable_use_policy';
 
 export interface LegalDocumentVersion {
   key: LegalDocumentKey;
@@ -54,7 +67,46 @@ export const LEGAL_DOCUMENTS: readonly LegalDocumentVersion[] = [
     sha256: '83248530dfba08dfdd19f5bddc4e9318833270f550d1b69ff8e0061a5d2f4a7b',
     url: null,
   },
+  // Aramo Sign Personal (Free) — APPROVED 1.0 (PO, 2026-10-21).
+  {
+    key: 'sign.personal_terms_of_service',
+    version: '1.0',
+    status: 'APPROVED',
+    path: 'doc/legal/aramo-sign/personal-terms-of-service.md',
+    sha256: 'b64ddd3ac08762e5d96eee8744f133cf9e9bf0ad799897a287779bb4c457d26e',
+    url: 'https://sign.aramo.ai/legal/personal-terms/1.0',
+  },
+  {
+    key: 'aramo.privacy_notice',
+    version: '1.0',
+    status: 'APPROVED',
+    path: 'doc/legal/aramo/privacy-notice.md',
+    sha256: '18fcc1aa386a06c0c9a15b8c60232aca6f0fbb1cdc100b288e524617f6e446b6',
+    url: 'https://sign.aramo.ai/legal/privacy/1.0',
+  },
+  {
+    key: 'aramo.acceptable_use_policy',
+    version: '1.0',
+    status: 'APPROVED',
+    path: 'doc/legal/aramo/acceptable-use-policy.md',
+    sha256: '2e64f8eece66c50b99954de8b4c885240bc4ca51fa0f6731a7d800b4706a476e',
+    url: 'https://sign.aramo.ai/legal/acceptable-use/1.0',
+  },
 ];
+
+/** The documents a Personal account accepts (signup and in-app re-acceptance), in display order. */
+export const PERSONAL_LEGAL_DOCUMENT_KEYS = ['sign.personal_terms_of_service', 'aramo.privacy_notice', 'aramo.acceptable_use_policy'] as const satisfies readonly LegalDocumentKey[];
+
+/** Display titles (the documents' own headings). */
+export const LEGAL_DOCUMENT_TITLES: Readonly<Record<LegalDocumentKey, string>> = {
+  'sign.terms_of_service': 'Aramo Sign Terms of Service',
+  'sign.privacy_policy': 'Aramo Sign Privacy Policy',
+  'sign.esign_consent_disclosure': 'Electronic Signature Consent Disclosure',
+  'sign.retention_policy': 'Aramo Sign Retention, Export and Deletion Policy',
+  'sign.personal_terms_of_service': 'Aramo Sign Personal Terms of Service',
+  'aramo.privacy_notice': 'Aramo Privacy Notice',
+  'aramo.acceptable_use_policy': 'Aramo Acceptable Use Policy',
+};
 
 export const LEGAL_DOCUMENT_REGISTRY = 'LEGAL_DOCUMENT_REGISTRY';
 

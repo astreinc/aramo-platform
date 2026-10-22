@@ -152,6 +152,10 @@ function checkRepo(): Issue[] {
     ['/v1/sign/inbox', 'sign-service:3003'],
     // Personal Free v1.1 §6.4 — "Report this email".
     ['/v1/sign/report', 'sign-service:3003'],
+    // Personal Free — legal re-acceptance in the workspace (status / accept).
+    ['/v1/sign/legal/', 'sign-service:3003'],
+    // Personal Free — the workspace account surface (status / close).
+    ['/v1/sign/account/', 'sign-service:3003'],
     ['/v1/signup/sign/', 'platform-admin:3002'],
     ['/v1/tenant/domain-verification', 'api:3000'],
     ['/v1/domain-verification/delegate', 'api:3000'],

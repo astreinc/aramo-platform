@@ -14,7 +14,7 @@ const root = resolve(fileURLToPath(import.meta.url), '..');
 //   - dev port 4206 (the registered local Cognito callback is
 //     http://localhost:4206/auth/sign/callback); preview 4306
 //   - dev proxies mirror the nginx sign block: /auth → auth-service,
-//     /v1/sign/{sender,billing,signing,inbox} → sign-service, /v1/signup/sign → platform-admin
+//     /v1/sign/{sender,billing,signing,inbox,report,legal} → sign-service, /v1/signup/sign → platform-admin
 export default defineConfig({
   root,
   // Per-app dependency cache. Without it every SPA dev server resolves the SAME
@@ -31,6 +31,9 @@ export default defineConfig({
   server: {
     port: 4206,
     host: 'localhost',
+    // The published legal texts are bundled byte-for-byte from doc/legal (?raw);
+    // the dev/test server may read them besides the app and the workspace libs.
+    fs: { allow: [root, resolve(root, '../../libs'), resolve(root, '../../node_modules'), resolve(root, '../../doc/legal')] },
     proxy: {
       '/auth': { target: 'http://localhost:3001', changeOrigin: false, secure: false },
       '/v1/sign/sender': { target: 'http://localhost:3003', changeOrigin: false, secure: false },
@@ -38,6 +41,8 @@ export default defineConfig({
       '/v1/sign/signing': { target: 'http://localhost:3003', changeOrigin: false, secure: false },
       '/v1/sign/inbox': { target: 'http://localhost:3003', changeOrigin: false, secure: false },
       '/v1/sign/report': { target: 'http://localhost:3003', changeOrigin: false, secure: false },
+      '/v1/sign/legal': { target: 'http://localhost:3003', changeOrigin: false, secure: false },
+      '/v1/sign/account': { target: 'http://localhost:3003', changeOrigin: false, secure: false },
       '/v1/signup/sign': { target: 'http://localhost:3002', changeOrigin: false, secure: false },
     },
   },

@@ -16,17 +16,25 @@ const tenant = (over: Partial<TenantDto> = {}): TenantDto =>
   ({ id: 't-1', name: 'n', is_active: true, created_at: new Date().toISOString(), updated_at: '', identity_provider: null, status: 'ACTIVE', kind: 'PERSONAL', ...over }) as TenantDto;
 const AUTH = { sub: 'u-1', tenant_id: 't-1', consumer_type: 'sign', actor_kind: 'user', scopes: ['sign:envelope:read', 'sign:envelope:create', 'sign:envelope:send'], iat: 0, exp: 0 } as never;
 
-function gate(over: { verdict?: unknown; phoneVerified?: boolean; status?: unknown; counts?: Record<string, number>; mode?: string } = {}) {
+function gate(over: { verdict?: unknown; phoneVerified?: boolean; status?: unknown; counts?: Record<string, number>; mode?: string; stepUpView?: unknown; geoThrows?: boolean; stepUpClearedBy?: string } = {}) {
   process.env['SIGN_PERSONAL_SIGNUP_MODE'] = over.mode ?? 'invite';
   const risk = {
     assertPersonalSendAllowed: vi.fn(async () => over.verdict ?? { ok: true }),
     phoneVerified: vi.fn(async () => over.phoneVerified ?? false),
-    requireStepUp: vi.fn(async () => ({})),
+    riskStateOf: vi.fn(async () => ({ phone_verified_at: over.phoneVerified === true ? new Date() : null, step_up_cleared_by: over.stepUpClearedBy ?? null })),
+    requireStepUp: vi.fn(async () => over.stepUpView ?? { state: 'clear', review_pending: false, step_up_required: true }),
     flagForReview: vi.fn(async () => ({})),
   };
   const free = { ensure: vi.fn(async () => ({ ok: true, opened: false, subscription_id: 's', source: 'FREE' })) };
   const allowance = { getStatus: vi.fn(async () => over.status ?? { subscribed: true, remaining: 5, daily: { remaining: 2 } }) };
-  const geo = { countryOf: vi.fn(async (ip: string) => (ip === '198.51.100.1' ? 'US' : null)), networkKind: vi.fn() };
+  const geo = {
+    countryOf: vi.fn(async (ip: string) => (ip === '198.51.100.1' ? 'US' : null)),
+    networkKind: vi.fn(),
+    lookup: vi.fn(async (ip: string, now: Date = new Date()) => {
+      if (over.geoThrows === true) throw new Error('mmdb exploded');
+      return { country: ip === '198.51.100.1' ? 'US' : ip === '203.0.113.9' ? 'GB' : null, network_kind: 'residential', looked_up_at: now.toISOString(), db_version: 'GeoLite2-Country 2026-10-20T00:00:00.000Z' };
+    }),
+  };
   const repo = { countByStatus: vi.fn(async () => over.counts ?? {}) };
   const g = new PersonalSendGate(free as never, allowance as never, risk as never, geo as never, repo as never);
   return { g, risk, free, allowance, geo };
@@ -69,13 +77,39 @@ describe('Personal Free — sending gate', () => {
     expect(await pdfHasLinks(new Uint8Array([1, 2, 3]))).toBe(false);
   });
 
-  it('the risk verdict is refused with its reason; the network country comes from GeoIP (unknown → null)', async () => {
-    const { g, risk } = gate({ verdict: { ok: false, reason: 'personal_location_not_supported' } });
-    await expect(g.assertRiskGate('t-1', '203.0.113.9', 'r')).rejects.toMatchObject({ statusCode: 403, code: 'INSUFFICIENT_PERMISSIONS', context: { details: { reason: 'personal_location_not_supported' } } });
-    expect(risk.assertPersonalSendAllowed).toHaveBeenCalledWith('t-1', expect.objectContaining({ ip_country: null }));
+  it('a sender who owes a legal acceptance is refused legal_acceptance_required; none owed or no service → allowed', async () => {
+    const owed = vi.fn(async () => [{ key: 'aramo.privacy_notice', version: '1.0', url: 'https://x', title: 'Privacy Notice' }]);
+    const t = { id: 't-1', kind: 'PERSONAL' };
+    const blocked = new PersonalSendGate({} as never, {} as never, {} as never, {} as never, {} as never, { pendingFor: owed } as never);
+    await expect(blocked.assertLegalAccepted(t, 'u-1', 'r')).rejects.toMatchObject({ statusCode: 403, context: { details: { reason: 'legal_acceptance_required' } } });
+    expect(owed).toHaveBeenCalledWith(t, 'u-1');
+    const clear = new PersonalSendGate({} as never, {} as never, {} as never, {} as never, {} as never, { pendingFor: vi.fn(async () => []) } as never);
+    await expect(clear.assertLegalAccepted(t, 'u-1', 'r')).resolves.toBeUndefined();
+    await expect(gate().g.assertLegalAccepted(t, 'u-1', 'r')).resolves.toBeUndefined();
+  });
+
+  it('the risk verdict is refused with its reason; the network country + geo evidence come from GeoIP', async () => {
+    const { g, risk } = gate({ verdict: { ok: false, reason: 'personal_review_pending', flag_review: 'send_location_outside' } });
+    await expect(g.assertRiskGate('t-1', '203.0.113.9', 'r')).rejects.toMatchObject({ statusCode: 403, code: 'INSUFFICIENT_PERMISSIONS', context: { details: { reason: 'personal_review_pending' } } });
+    expect(risk.assertPersonalSendAllowed).toHaveBeenCalledWith(
+      't-1',
+      expect.objectContaining({ ip_country: 'GB', geo: { country: 'GB', looked_up_at: expect.any(String), db_version: 'GeoLite2-Country 2026-10-20T00:00:00.000Z' } }),
+    );
     const ok = gate();
     await ok.g.assertRiskGate('t-1', '198.51.100.1', 'r');
     expect(ok.risk.assertPersonalSendAllowed).toHaveBeenCalledWith('t-1', expect.objectContaining({ ip_country: 'US' }));
+  });
+
+  it('outside / UNKNOWN allowed by identity → the send proceeds (no location refusal from IP alone)', async () => {
+    const out = gate({ verdict: { ok: true, location: 'outside' } });
+    await expect(out.g.assertRiskGate('t-1', '203.0.113.9', 'r')).resolves.toBeUndefined();
+    // No IP, or a GeoIP failure → UNKNOWN (country null, db_version null), never an error.
+    const none = gate({ verdict: { ok: true, location: 'unknown' } });
+    await none.g.assertRiskGate('t-1', null, 'r');
+    expect(none.risk.assertPersonalSendAllowed).toHaveBeenCalledWith('t-1', expect.objectContaining({ ip_country: null, geo: expect.objectContaining({ country: null, db_version: null }) }));
+    const boom = gate({ verdict: { ok: true, location: 'unknown' }, geoThrows: true });
+    await expect(boom.g.assertRiskGate('t-1', '198.51.100.1', 'r')).resolves.toBeUndefined();
+    expect(boom.risk.assertPersonalSendAllowed).toHaveBeenCalledWith('t-1', expect.objectContaining({ ip_country: null }));
   });
 
   it('young account: wording → review; first multi-recipient send → step-up unless phone assured', async () => {
@@ -88,6 +122,14 @@ describe('Personal Free — sending gate', () => {
     const c = gate({ phoneVerified: true });
     await expect(c.g.assertMaySend(tenant(), '198.51.100.1', input({ recipient_count: 2 }), 'r')).resolves.toBeUndefined();
     expect(c.risk.requireStepUp).not.toHaveBeenCalled();
+    // SMS unavailable: identity routes the step-up to review → the refusal says review.
+    const d = gate({ stepUpView: { state: 'review', review_pending: false, step_up_required: true } });
+    await expect(d.g.assertMaySend(tenant(), '198.51.100.1', input({ recipient_count: 2 }), 'r')).rejects.toMatchObject({ context: { details: { reason: 'personal_review_pending' } } });
+    // A phone step already lifted by review is not asked again (wording still goes to review).
+    const e = gate({ stepUpClearedBy: 'review' });
+    await expect(e.g.assertMaySend(tenant(), '198.51.100.1', input({ recipient_count: 2 }), 'r')).resolves.toBeUndefined();
+    expect(e.risk.requireStepUp).not.toHaveBeenCalled();
+    await expect(e.g.assertMaySend(tenant(), '198.51.100.1', input({ subject: 'Urgent action required' }), 'r')).rejects.toMatchObject({ context: { details: { reason: 'personal_review_pending' } } });
   });
 
   it('an established account skips the young checks; an exhausted allowance skips them too (the allowance refuses)', async () => {

@@ -99,6 +99,14 @@ describe('/signup/personal', () => {
     expect(phoneOpts).toEqual(['US', 'IN']);
     const resOpts = within(screen.getByLabelText('Country of residence')).getAllByRole('option').map((o) => (o as HTMLOptionElement).value);
     expect(resOpts).toEqual(['', 'US', 'IN', 'OTHER']);
+    // The Privacy Notice at the point of collection, and the GeoLite2 attribution.
+    expect(screen.getByTestId('personal-privacy-notice')).toHaveTextContent('We use your details as described in our Privacy Notice.');
+    const privacy = within(screen.getByTestId('personal-privacy-notice')).getByRole('link', { name: 'Privacy Notice' });
+    expect(privacy).toHaveAttribute('href', '/legal/privacy/1.0');
+    expect(privacy).toHaveAttribute('target', '_blank');
+    expect(screen.getByTestId('personal-maxmind')).toHaveTextContent('This product includes GeoLite2 data created by MaxMind, available from https://www.maxmind.com.');
+    expect(within(screen.getByTestId('personal-maxmind')).getByRole('link', { name: 'https://www.maxmind.com' })).toHaveAttribute('href', 'https://www.maxmind.com');
+    expect(within(screen.getByTestId('personal-maxmind')).getByRole('link', { name: 'Third-party notices' })).toHaveAttribute('href', '/legal/third-party-notices');
     // No Turnstile without a site key, and no script from Cloudflare.
     expect(screen.queryByTestId('turnstile')).toBeNull();
     expect(document.querySelector('script[src*="challenges.cloudflare.com"]')).toBeNull();

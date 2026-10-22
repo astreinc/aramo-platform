@@ -1,6 +1,6 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
-import { GEO_IP_PORT, type GeoIpPort, PersonalRiskService, type TenantDto, personalSignupMode } from '@aramo/identity';
+import { GEO_IP_PORT, type GeoIpPort, PersonalRiskService, type TenantDto, geoEvidenceOf, personalSignupMode, safeGeoLookup } from '@aramo/identity';
 import { EsignSenderRepository } from '@aramo/sign';
 import {
   AllowanceService,
@@ -10,6 +10,8 @@ import {
 } from '@aramo/subscription';
 import { PDFDict, PDFName, PDFRawStream, PDFDocument, decodePDFRawStream } from 'pdf-lib';
 import type { Request } from 'express';
+
+import { PersonalLegalStatusService, legalAcceptanceRequired } from '../legal/personal-legal-status.service.js';
 
 // Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED §4 / §6 — the Personal
 // sending gate on the sender console. It runs ONLY for a PERSONAL tenant; Business
@@ -21,10 +23,17 @@ import type { Request } from 'express';
 //                         sending authority stays tenant_owner + the `sign`
 //                         entitlement + a subscription in a sending state.
 //   risk gate (§6.3/6.6)→ identity's assertPersonalSendAllowed with the network
-//                         country of the request (offline GeoIP; unknown = not
-//                         eligible): review, restriction, step-up without phone
-//                         assurance and sending from abroad without phone
-//                         assurance are refused.
+//                         country of the request and its GeoLite2 evidence
+//                         (offline; a failed lookup is UNKNOWN): review,
+//                         restriction and step-up without phone assurance are
+//                         refused. Sending from outside the allowed countries or
+//                         from an UNKNOWN location is a risk signal (Architect
+//                         ruling 2026-10-21; PO "allow; review only if new"):
+//                         allowed and audited, except for an account younger than
+//                         7 days or with open risk signals — then flagged for
+//                         review and refused (personal_review_pending). IP
+//                         location alone never refuses with
+//                         personal_location_not_supported.
 //   young account §6.2  → the first 30 days or the first 10 sends: impersonation /
 //                         scam wording, links in the PDF and a first send to
 //                         several recipients raise review or step-up.
@@ -176,7 +185,16 @@ export class PersonalSendGate {
     private readonly risk: PersonalRiskService,
     @Inject(GEO_IP_PORT) private readonly geo: GeoIpPort,
     private readonly senderRepo: EsignSenderRepository,
+    // Personal legal documents: a current APPROVED version not yet accepted by
+    // this sender blocks sending until accepted in the workspace.
+    @Optional() private readonly legal?: PersonalLegalStatusService,
   ) {}
+
+  /** Refuse `legal_acceptance_required` while the sender owes an acceptance of a current document. */
+  async assertLegalAccepted(tenant: Pick<TenantDto, 'id' | 'kind'>, user_id: string, requestId: string): Promise<void> {
+    if (this.legal === undefined) return;
+    if ((await this.legal.pendingFor(tenant, user_id)).length > 0) throw legalAcceptanceRequired(requestId);
+  }
 
   mode(): PersonalSignupMode {
     return personalSignupMode();
@@ -193,17 +211,11 @@ export class PersonalSendGate {
     if (r.ok && r.opened) this.log.log(`FREE subscription opened for personal tenant ${tenant.id}`);
   }
 
-  /** §6.3 / §6.6 — the identity risk gate with the request's network country. */
+  /** §6.3 / §6.6 — the identity risk gate with the request's network country + its evidence. */
   async assertRiskGate(tenant_id: string, ip: string | null, requestId: string, now: Date = new Date()): Promise<void> {
-    let ip_country: string | null = null;
-    if (ip !== null) {
-      try {
-        ip_country = await this.geo.countryOf(ip);
-      } catch {
-        ip_country = null; // unknown network country = not eligible (fail closed)
-      }
-    }
-    const verdict = await this.risk.assertPersonalSendAllowed(tenant_id, { ip_country, now });
+    // Never throws: no IP, no database or a lookup error is UNKNOWN (country null).
+    const geo = await safeGeoLookup(this.geo, ip, now);
+    const verdict = await this.risk.assertPersonalSendAllowed(tenant_id, { ip_country: geo.country, now, geo: geoEvidenceOf(geo) });
     if (!verdict.ok) throw personalGateError(verdict.reason, requestId);
   }
 
@@ -242,8 +254,13 @@ export class PersonalSendGate {
       await this.risk.flagForReview(tenant.id, reason, now);
       throw personalGateError('personal_review_pending', requestId);
     }
-    if (await this.risk.phoneVerified(tenant.id)) return; // step-up already satisfied
-    await this.risk.requireStepUp(tenant.id, reason, now);
-    throw personalGateError('phone_verification_required', requestId);
+    // Step-up already satisfied: a verified phone, or — while SMS was unavailable —
+    // an operator's review lifted the phone step (step_up_cleared_by 'review'; the
+    // phone stays unverified). A lifted step is not re-asked for the same checks.
+    const state = await this.risk.riskStateOf(tenant.id);
+    if (state?.phone_verified_at != null || state?.step_up_cleared_by === 'review') return;
+    // Without SMS the step-up routes the account to review (identity decides).
+    const after = await this.risk.requireStepUp(tenant.id, reason, now);
+    throw personalGateError(after.state === 'review' || after.review_pending ? 'personal_review_pending' : 'phone_verification_required', requestId);
   }
 }

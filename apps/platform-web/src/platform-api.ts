@@ -158,6 +158,14 @@ export interface PersonalReviewItem {
   phone_verified_at: string | null;
   restricted_until: string | null;
   report_count?: number | null;
+  // Whether a phone step is outstanding (phone verification not yet satisfied).
+  step_up_required?: boolean;
+  // 'review' = an operator's review lifted the phone step while SMS was unavailable.
+  step_up_cleared_by?: string | null;
+  // True when clearing this review would also lift the phone step (SMS unavailable).
+  review_clears_phone_step?: boolean;
+  // The signup's GeoLite2 evidence (a risk signal, not proof of location); country null = unknown.
+  geo?: { country: string | null; looked_up_at: string; db_version: string | null } | null;
   created_at: string;
   updated_at: string;
 }
@@ -260,7 +268,7 @@ export const platformApi = {
   },
 
   // Aramo Sign Personal (Free) — review queue, review actions and pilot invites.
-  listPersonalReview(): Promise<{ items: PersonalReviewItem[] }> {
+  listPersonalReview(): Promise<{ items: PersonalReviewItem[]; phone_verification_available?: boolean }> {
     return apiClient.get('/platform/personal-review');
   },
 

@@ -4,7 +4,7 @@ import { ApiError, configureAuthConsumer } from '@aramo/fe-foundation';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from '../App';
-import { errorMessage, sendRefusalMessage, type BillingAccount, type SenderContext } from '../api';
+import { errorMessage, nextSendTime, sendRefusalMessage, type BillingAccount, type SenderContext } from '../api';
 
 import { AllowanceChip, PersonalAllowance } from './PersonalAllowance';
 
@@ -95,9 +95,17 @@ describe('Personal allowance in the workspace', () => {
 
   it('at the daily or monthly limit it says so and offers a Business organization', async () => {
     const { unmount } = render(<PersonalAllowance loader={() => Promise.resolve(account(2, 2))} />);
-    expect(await screen.findByText('You’ve reached today’s limit. You can send again tomorrow.')).toBeInTheDocument();
+    expect(await screen.findByText('You’ve reached the limit for 24 hours. You can send again later.')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Create a Business organization' })).toHaveAttribute('href', '/signup');
     unmount();
+    // The backend's next_available_at is shown as the exact time of the next send.
+    const at = '2026-10-22T09:14:00Z';
+    const withNext = account(2, 2);
+    const allowance = withNext.allowance as { daily: { limit: number; used: number; next_available_at?: string } };
+    allowance.daily.next_available_at = at;
+    const second = render(<PersonalAllowance loader={() => Promise.resolve(withNext)} />);
+    expect(await screen.findByText(`You’ve reached the limit for 24 hours. Your next send is available at ${nextSendTime(at)}.`)).toBeInTheDocument();
+    second.unmount();
     render(<PersonalAllowance loader={() => Promise.resolve(account(5, 0))} />);
     expect(await screen.findByText('You’ve used all your envelopes for this month.')).toBeInTheDocument();
   });
@@ -134,8 +142,15 @@ describe('Personal allowance in the workspace', () => {
 
   it('daily and monthly limit refusals are worded for a Personal account', () => {
     expect(sendRefusalMessage(apiErr(409, 'ESIGN_ALLOWANCE_EXHAUSTED', { reason: 'DAILY_LIMIT_REACHED', limit: 2 }), true)).toBe(
-      'You’ve sent 2 envelopes today. You can send again tomorrow.',
+      'You’ve sent 2 envelopes in the last 24 hours. You can send again later.',
     );
+    const at = '2026-10-22T09:14:00Z';
+    expect(sendRefusalMessage(apiErr(409, 'ESIGN_ALLOWANCE_EXHAUSTED', { reason: 'DAILY_LIMIT_REACHED', window: 'DAY', limit: 2, next_available_at: at }), true)).toBe(
+      `You’ve sent 2 envelopes in the last 24 hours. Your next send is available at ${nextSendTime(at)}.`,
+    );
+    expect(nextSendTime(at)).not.toBeNull();
+    expect(nextSendTime('not a time')).toBeNull();
+    expect(nextSendTime(null)).toBeNull();
     expect(sendRefusalMessage(apiErr(409, 'ESIGN_ALLOWANCE_EXHAUSTED', { reason: 'LIMIT_REACHED', limit: 5, period_end: '2026-11-01T00:00:00Z' }), true)).toContain(
       'You’ve used all 5 envelopes this month on your Free personal account',
     );
@@ -185,7 +200,7 @@ describe('Personal send refusal in the wizard', () => {
       </MemoryRouter>,
     );
     fireEvent.click(await screen.findByTestId('send-envelope'));
-    expect(await screen.findByText('You’ve sent 2 envelopes today. You can send again tomorrow.')).toBeInTheDocument();
+    expect(await screen.findByText('You’ve sent 2 envelopes in the last 24 hours. You can send again later.')).toBeInTheDocument();
     expect(screen.getByTestId('personal-upgrade')).toHaveTextContent('Create a Business organization');
   });
 });

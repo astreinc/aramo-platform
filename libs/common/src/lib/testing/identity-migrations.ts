@@ -124,6 +124,8 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   // (I-0 F-1) + granted to every pipeline:add role. One guarded DO block on fixed role ids
   // (a no-op without a role catalog). No returned-shape change.
   'libs/identity/prisma/migrations/20261022150000_ats_qa_1_resume_select_grants/migration.sql',
+  // Personal Free — GeoLite2 evidence + review-lifted phone step (additive).
+  'libs/identity/prisma/migrations/20261024100000_sign_personal_geo_step_up/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each
