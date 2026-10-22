@@ -12,6 +12,7 @@ import { IdentityModule } from '@aramo/identity';
 import { ObjectStorageModule, ObjectStorageService } from '@aramo/object-storage';
 import { PipelineModule } from '@aramo/pipeline';
 import { RequisitionModule } from '@aramo/requisition';
+import { TalentEvidenceModule } from '@aramo/talent-evidence';
 import { TalentExtractionModule } from '@aramo/talent-extraction';
 import { TalentRecordModule } from '@aramo/talent-record';
 import { TaskModule } from '@aramo/task';
@@ -24,6 +25,7 @@ import { Talent360ReadAdapter } from './talent-360.adapters.js';
 import { Talent360Controller } from './talent-360.controller.js';
 import { TALENT_360_DOCUMENT_STORAGE, TALENT_360_READ_PORT } from './talent-360.ports.js';
 import { Talent360Service } from './talent-360.service.js';
+import { TalentEducationModule } from './talent-education.module.js';
 
 // Talent360Module — the apps/api composition root for GET /v1/talent-360/:id.
 // It imports every OWNER module for its EXPORTED read repository/service (Talent
@@ -52,9 +54,15 @@ import { Talent360Service } from './talent-360.service.js';
     ConsentModule,
     IdentityModule,
     TalentExtractionModule,
+    // ATS-QA-1 I-4 — TalentEducationRepository (the education read).
+    TalentEvidenceModule,
     TalentJourneyModule,
     TalentIdentityModule,
     ObjectStorageModule,
+    // ATS-QA-1 I-4 — the education write surface rides this composition root so
+    // apps/api's root module is unchanged; it is its own module (the read stays
+    // read-only).
+    TalentEducationModule,
   ],
   controllers: [Talent360Controller],
   providers: [

@@ -203,6 +203,20 @@ export interface WorkHistoryRow {
   readonly source: string;
 }
 
+// ATS-QA-1 I-4 — one CURRENT declared education entry (TalentEducationRepository).
+export interface EducationRow {
+  readonly id: string;
+  readonly institution_name: string;
+  readonly degree_name: string;
+  readonly field_of_study: string | null;
+  readonly conferred_date: string | null;
+  readonly source: 'resume' | 'manual' | 'import';
+  readonly source_document_id: string | null;
+  readonly source_refs: readonly string[];
+  readonly corrects_entry_id: string | null;
+  readonly recorded_at: string;
+}
+
 // A Talent document's file for the read-only preview: the bytes of its content
 // artifact (executed > prepared > original upload) + the REGARDING requisition ids
 // so the service can apply visibility. null ⇒ absent / not this Talent's / no file.
@@ -339,6 +353,12 @@ export interface Talent360ReadPort {
     ctx: Talent360ActorContext,
     talent_id: string,
   ): Promise<readonly WorkHistoryRow[]>;
+
+  // ATS-QA-1 I-4 — the Talent's CURRENT declared education, tenant-scoped.
+  listEducation(
+    ctx: Talent360ActorContext,
+    talent_id: string,
+  ): Promise<readonly EducationRow[]>;
 }
 
 export const TALENT_360_READ_PORT = 'TALENT_360_READ_PORT';

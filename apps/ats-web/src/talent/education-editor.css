@@ -1,0 +1,55 @@
+/* ATS-QA-1 I-4 — the education list + editor (Talent 360 Profile and Edit talent). */
+.t360-eduform,
+.rc-eduform {
+  display: grid;
+  grid-template-columns: 1.4fr 1fr 1fr 150px;
+  gap: 8px;
+  align-items: start;
+  padding: 8px 0;
+  border-top: 1px solid #f2f4f6;
+}
+.t360-edufield,
+.rc-edufield {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+}
+.t360-eduform__actions,
+.rc-eduform__actions {
+  grid-column: 1 / -1;
+  display: flex;
+  gap: 8px;
+}
+.t360-hrow__acts,
+.rc-edu__acts {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  font-size: 12px;
+}
+.rc-edu .rc-edu__item {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  padding: 8px 0;
+  border-top: 1px solid #f2f4f6;
+}
+.rc-edu__main {
+  font-size: 0.85rem;
+}
+.rc-ferr {
+  font-size: 12px;
+  color: #b42318;
+}
+.rc-input--err {
+  border-color: #b42318;
+}
+@media (max-width: 640px) {
+  .t360-eduform,
+  .rc-eduform {
+    grid-template-columns: 1fr;
+  }
+}

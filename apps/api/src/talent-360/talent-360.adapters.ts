@@ -7,6 +7,7 @@ import { ConsentRepository } from '@aramo/consent';
 import { DocumentsRepository, type DocumentStoragePort } from '@aramo/documents';
 import { IdentityService } from '@aramo/identity';
 import { PipelineRepository } from '@aramo/pipeline';
+import { TalentEducationRepository } from '@aramo/talent-evidence';
 import { TalentExtractionService } from '@aramo/talent-extraction';
 import { TaskRepository } from '@aramo/task';
 import {
@@ -39,8 +40,10 @@ import type {
   TalentCoreRow,
   TaskRow,
   WorkHistoryRow,
+  EducationRow,
 } from './talent-360.ports.js';
 import { TALENT_360_DOCUMENT_STORAGE } from './talent-360.ports.js';
+import { toEducationRow } from './education-view.js';
 
 // The concrete Talent360ReadPort — the ONLY layer that touches the real domain
 // repositories/services. It maps each aggregate's view down to the narrow
@@ -79,6 +82,7 @@ export class Talent360ReadAdapter implements Talent360ReadPort {
     private readonly extraction: TalentExtractionService,
     @Inject(TALENT_360_DOCUMENT_STORAGE)
     private readonly documentStorage: DocumentStoragePort,
+    private readonly education: TalentEducationRepository,
   ) {}
 
   async loadTalent(
@@ -498,6 +502,24 @@ export class Talent360ReadAdapter implements Talent360ReadPort {
       employment_type: w.employment_type,
       source: w.source,
     }));
+  }
+
+  // ATS-QA-1 I-4 — current declared education from its only authority
+  // (talent_evidence.TalentEducationEntry, retired entries excluded). Tenant +
+  // Talent keyed. A read hiccup degrades to none, like work history (§28).
+  async listEducation(
+    ctx: Talent360ActorContext,
+    talent_id: string,
+  ): Promise<readonly EducationRow[]> {
+    try {
+      const rows = await this.education.listActiveForTalent({
+        tenant_id: ctx.tenant_id,
+        talent_id,
+      });
+      return rows.map(toEducationRow);
+    } catch {
+      return [];
+    }
   }
 }
 

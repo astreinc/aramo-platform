@@ -754,7 +754,7 @@ describe('Talent360View — Profile: full record, read-only (§8A)', () => {
     expect(within(screen.getByTestId('t360-pblock-03')).getByText('Freddie Mac')).toBeInTheDocument();
     expect(within(screen.getByTestId('t360-pblock-08')).getByText(/Prefers hybrid\./)).toBeInTheDocument();
     expect(within(screen.getByTestId('t360-pblock-08')).getByText('Separate from activity Notes')).toBeInTheDocument();
-    expect(within(screen.getByTestId('t360-pblock-10')).getByText('Saved when the talent was created — not readable yet.')).toBeInTheDocument();
+    expect(within(screen.getByTestId('t360-pblock-10')).getByText('No education on record.')).toBeInTheDocument();
   });
 
   it('work history shows every declared role, newest first', async () => {

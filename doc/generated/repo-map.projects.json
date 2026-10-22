@@ -1922,9 +1922,11 @@
       "canTalentEmbeddingTransition"
     ],
     "@aramo/talent-evidence": [
+      "EducationEntryRetiredError",
       "PrismaService",
       "TalentCanonicalCorrectionRepository",
       "TalentCanonicalCoverageRepository",
+      "TalentEducationRepository",
       "TalentEvidenceModule",
       "TalentEvidenceRepository",
       "TalentSkillCanonicalizationModule",
@@ -2317,6 +2319,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ats-batch8-pr-a8-4-export.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ats-qa-1-resume-selection.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ats-qa-1-talent-education.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -2749,6 +2763,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/support/trust-tenant-isolation-harness.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-360-pipeline-milestones.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -3543,6 +3563,12 @@
       { "project": "identity", "status": "production" },
       { "project": "import", "status": "production" },
       { "project": "integration", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/pipeline/src/tests/pipeline-resume-edition-routes.spec.ts",
+        "project": "pipeline",
+        "status": "excluded"
+      },
       { "project": "pipeline", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -3892,6 +3918,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ats-batch8-pr-a8-4-export.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ats-qa-1-resume-selection.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ats-qa-1-talent-education.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -4737,6 +4775,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/talent-360-pipeline-milestones.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/talent-360.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -5400,6 +5444,12 @@
       { "project": "export", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/ats-qa-1-resume-select-grants-migration.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/audit-query.service.spec.ts",
         "project": "identity",
         "status": "excluded"
@@ -6008,6 +6058,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/requisition/src/tests/ats-qa-1-requisition-picker-paging.integration.spec.ts",
+        "project": "requisition",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/requisition/src/tests/capacity-agreement-b2.integration.spec.ts",
         "project": "requisition",
         "status": "excluded"
@@ -6484,6 +6540,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/search-pr1.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/talent-intake-draft-integrity.integration.spec.ts",
         "project": "talent-record",
         "status": "excluded"
       },
@@ -7865,6 +7927,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/requisitions/AddTalentDialog.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/requisitions/GuaranteeTermsPanel.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
@@ -7908,6 +7976,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/requisitions/RequisitionDetailView.pipeline.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/requisitions/RequisitionDetailView.qa1.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
@@ -8057,7 +8131,25 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/talent/AddToRequisitionDialog.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/talent/TalentCreateView.draft-integrity.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/talent/TalentCreateView.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/talent/add-resume-choice.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
@@ -9139,6 +9231,12 @@
       { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ats-qa-1-resume-selection.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/create-submittal.unit.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -9378,6 +9476,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/requisition/src/tests/_capacity-b2-harness.ts",
+        "project": "requisition",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/requisition/src/tests/ats-qa-1-requisition-picker-paging.integration.spec.ts",
         "project": "requisition",
         "status": "excluded"
       },
@@ -9927,6 +10031,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/resume-layout-mapping-corpus.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/search-pr2-resume.spec.ts",
         "project": "talent-record",
         "status": "excluded"
@@ -10394,6 +10504,18 @@
     "@aramo/talent-evidence": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ats-qa-1-resume-selection.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ats-qa-1-talent-education.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/canonical-match-shadow.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -10475,6 +10597,12 @@
       { "project": "talent-extraction", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/talent-intake-draft-integrity.integration.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/talent-intake-view.spec.ts",
         "project": "talent-record",
         "status": "excluded"
@@ -10510,6 +10638,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/resume-edition-confirm-routes.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/resume-layout-mapping-corpus.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/talent-intake-draft-integrity.integration.spec.ts",
         "project": "talent-record",
         "status": "excluded"
       },

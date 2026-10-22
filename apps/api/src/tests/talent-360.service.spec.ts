@@ -144,6 +144,7 @@ function fakePort(overrides: Partial<Talent360ReadPort> = {}): Talent360ReadPort
     loadIdentityOutcomes: async () =>
       ({ primary_email_confirmed: false, mobile_confirmed: false, advisory: null }) as IdentityOutcomeRow,
     listWorkHistory: async () => [],
+    listEducation: async () => [],
   };
   return { ...base, ...overrides };
 }
@@ -328,6 +329,63 @@ describe('Talent360Service — composes authorized truth, is not the authority',
       expect(v.relationship_strip.active_opportunities).toBe(0);
       expect(v.relationship_strip.submittals).toBe(0);
       expect(v.attention).toEqual([]);
+    });
+  });
+
+  describe('ATS-QA-1 I-4 — education is composed from its one authority, never invented', () => {
+    const entry = {
+      id: 'edu-1',
+      institution_name: 'State University',
+      degree_name: 'BS',
+      field_of_study: 'Computer Science',
+      conferred_date: '2012-05-15',
+      source: 'resume' as const,
+      source_document_id: 'doc-1',
+      source_refs: ['b3'],
+      corrects_entry_id: null,
+      recorded_at: '2026-09-01T00:00:00.000Z',
+    };
+
+    it('passes the current education entries through with source and provenance refs', async () => {
+      const service = svc(fakePort({ listEducation: async () => [entry] }));
+      const v = await service.compose(ctx(), 'tal-1', NOW, TZ);
+      expect(v.profile.education).toEqual([entry]);
+    });
+
+    it('a Talent with no education yields [] (never a placeholder entry)', async () => {
+      const v = await svc(fakePort()).compose(ctx(), 'tal-1', NOW, TZ);
+      expect(v.profile.education).toEqual([]);
+    });
+
+    it('a superseded record never reads or returns education', async () => {
+      let read = false;
+      const service = svc(
+        fakePort({
+          loadTalent: async () => core({ record_status: 'superseded', superseded_by_record_id: 'tal-2' }),
+          listEducation: async () => {
+            read = true;
+            return [entry];
+          },
+        }),
+      );
+      const v = await service.compose(ctx(), 'tal-1', NOW, TZ);
+      expect(v.profile.education).toEqual([]);
+      expect(read).toBe(false);
+    });
+
+    it('a missing or cross-tenant Talent is NOT_FOUND before any education read', async () => {
+      let read = false;
+      const service = svc(
+        fakePort({
+          loadTalent: async () => null,
+          listEducation: async () => {
+            read = true;
+            return [entry];
+          },
+        }),
+      );
+      await expect(service.compose(ctx(), 'tal-x', NOW, TZ)).rejects.toMatchObject({ code: 'NOT_FOUND' });
+      expect(read).toBe(false);
     });
   });
 

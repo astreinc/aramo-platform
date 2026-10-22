@@ -895,3 +895,38 @@ model TalentIntakeOutboxEvent {
   @@index([published_at, created_at])
   @@schema("talent_evidence")
 }
+
+// ATS-QA-1 I-4 (L2, amendment A3) — recruiter edit lineage for TalentEducationEntry.
+// The entry table is unchanged and stays the only education authority. A
+// correction writes a new manual entry and retires the old one, a removal retires
+// it. At most one retirement per entry (primary key = entry id, so a concurrent
+// second retirement fails). reason is corrected or removed, and corrected carries
+// the replacing entry id. No Talent column and no personal value.
+model EducationEntryRetirement {
+  entry_id               String   @id @db.Uuid
+  tenant_id              String   @db.Uuid
+  reason                 String
+  superseded_by_entry_id String?  @db.Uuid
+  retired_by_id          String   @db.Uuid
+  retired_at             DateTime @db.Timestamptz
+
+  @@index([tenant_id])
+  @@index([superseded_by_entry_id])
+  @@schema("talent_evidence")
+}
+
+// ATS-QA-1 I-4 — append-only audit, one event per education change (added,
+// corrected, removed). changed_fields holds field NAMES only, never values.
+model EducationEntryAuditEvent {
+  id               String   @id @db.Uuid
+  tenant_id        String   @db.Uuid
+  entry_id         String   @db.Uuid
+  action           String
+  actor_id         String   @db.Uuid
+  related_entry_id String?  @db.Uuid
+  changed_fields   String[] @default([])
+  occurred_at      DateTime @db.Timestamptz
+
+  @@index([tenant_id, entry_id])
+  @@schema("talent_evidence")
+}

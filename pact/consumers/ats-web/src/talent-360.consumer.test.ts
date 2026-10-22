@@ -92,7 +92,8 @@ describe('ats-web → GET /v1/talent-360/:id (composed read)', () => {
             mobile_confirmed: like(false),
             advisory: null,
           },
-          profile: { summary: null, facts: [], skills: [], work_history: [] },
+          // ATS-QA-1 I-4 — education[] is always present (authorized-empty here).
+          profile: { summary: null, facts: [], skills: [], work_history: [], education: [] },
           relationship: {
             history: {
               known_since: regex(ISO_TIMESTAMP, '2026-05-25T00:00:00Z'),

@@ -2088,6 +2088,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ats-qa-1-resume-selection.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/pipeline/src/tests/pipeline-resume-edition-routes.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/auth-hardening-d1-recruiter-context.integration.spec.ts",
       "status": "excluded",
       "to": "libs/company/prisma/migrations/20260601160000_init_company_model/migration.sql"
@@ -11406,6 +11412,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/api/src/talent-360/talent-education.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/api/src/talent-identity/advisory-resolution.controller.ts"
     },
     {
@@ -20133,6 +20144,11 @@
       "to": "libs/identity/prisma/migrations/20261022140000_org_ux_1_template_author_grants/migration.sql"
     },
     {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261022150000_ats_qa_1_resume_select_grants/migration.sql"
+    },
+    {
       "from": "libs/common/src/lib/testing/talent-trust-migrations.ts",
       "status": "production",
       "to": "libs/talent-trust/prisma/migrations/20260628000000_init_talent_trust/migration.sql"
@@ -20968,6 +20984,24 @@
       "from": "libs/identity/src/lib/util/tenant-lifecycle.ts",
       "status": "production",
       "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ats-qa-1-resume-select-grants-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261021130000_roles1_role_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ats-qa-1-resume-select-grants-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261022140000_org_ux_1_template_author_grants/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ats-qa-1-resume-select-grants-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261022150000_ats_qa_1_resume_select_grants/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -23877,6 +23911,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/talent-evidence/prisma/migrations/20261008120000_talent_intake_actor_scope_last_touched/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/talent-evidence/prisma/migrations/20261022160000_ats_qa_1_education_edit_lineage/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",

@@ -221,11 +221,31 @@ export interface WorkHistoryEntryView {
   readonly source: string | null;
 }
 
+// ATS-QA-1 I-4 — one CURRENT declared education entry (hand-mirrored from
+// apps/api EducationEntryView). Corrected and removed entries are retired and not
+// listed. Certifications are separate.
+export interface EducationEntryView {
+  readonly id: string;
+  readonly institution_name: string;
+  readonly degree_name: string;
+  readonly field_of_study: string | null;
+  /** YYYY-MM-DD, or null when not stated. */
+  readonly conferred_date: string | null;
+  readonly source: 'resume' | 'manual' | 'import';
+  readonly source_document_id: string | null;
+  readonly source_refs: readonly string[];
+  /** The retired entry this manual entry corrected, else null. */
+  readonly corrects_entry_id: string | null;
+  readonly recorded_at: string;
+}
+
 export interface ProfileView {
   readonly summary: string | null;
   readonly facts: readonly ProfileFactView[];
   readonly skills: readonly ProfileSkillView[];
   readonly work_history: readonly WorkHistoryEntryView[];
+  /** ATS-QA-1 I-4 — optional on the type so an older payload still renders (treated as []). */
+  readonly education?: readonly EducationEntryView[];
 }
 
 export interface TalentDocumentView {

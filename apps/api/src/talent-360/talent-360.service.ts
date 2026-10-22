@@ -229,8 +229,12 @@ export class Talent360Service {
     const recruitingPermitted = consentSummary === 'contactable';
 
     // ---- Profile + relationship (talent:read, always present) ----------------
-    const workHistory = await this.port.listWorkHistory(ctx, talent_id);
-    const profile = this.toProfile(core, workHistory);
+    const [workHistory, education] = await Promise.all([
+      this.port.listWorkHistory(ctx, talent_id),
+      // ATS-QA-1 I-4 — current declared education (same talent:read + tenant scope).
+      this.port.listEducation(ctx, talent_id),
+    ]);
+    const profile = this.toProfile(core, workHistory, education);
     const relationship = this.toRelationship(
       core,
       bundles,
@@ -643,6 +647,7 @@ export class Talent360Service {
   private toProfile(
     core: TalentCoreRow,
     workHistory: Awaited<ReturnType<Talent360ReadPort['listWorkHistory']>>,
+    education: Awaited<ReturnType<Talent360ReadPort['listEducation']>>,
   ): Talent360View['profile'] {
     const facts: ProfileFactView[] = [];
     if (core.availability_status !== null) {
@@ -675,6 +680,7 @@ export class Talent360Service {
         span: spanLabel(w.start_date, w.end_date),
         source: w.source,
       })),
+      education: education.map((e) => ({ ...e, source_refs: [...e.source_refs] })),
     };
   }
 
@@ -824,7 +830,7 @@ export class Talent360Service {
       recent_activity: null,
       documents: null,
       identity: null,
-      profile: { summary: null, facts: [], skills: [], work_history: [] },
+      profile: { summary: null, facts: [], skills: [], work_history: [], education: [] },
       relationship: {
         history: { known_since: core.created_at, requisitions: 0, submittals: 0, interviews: 0, placements: 0 },
         ownership: { owner_provenance: null, also_working_with: [], worked_with_before: [], source: core.source, source_channel: null },

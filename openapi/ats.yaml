@@ -139,11 +139,13 @@ paths:
             application/json:
               schema:
                 type: object
+                additionalProperties: false
                 required: [items]
                 properties:
                   items:
                     type: array
-                    items: { type: object, additionalProperties: true }
+                    items:
+                      $ref: '#/components/schemas/RequisitionPickerItem'
                   next_cursor:
                     type: [string, 'null']
         '400':
@@ -738,6 +740,136 @@ paths:
           $ref: 'common.yaml#/components/responses/Forbidden'
         '404':
           $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+  # ── ATS-QA-1 I-4 (L2) — recruiter edit of declared education ──
+  # TalentEducationEntry is the only education authority. Nothing is overwritten or
+  # deleted: a correction writes a NEW manual entry and retires the old one, a
+  # removal retires the entry (kept as history with its provenance). Each change
+  # writes an audit event and the TR-7 ledger claim (manual = ai_derived false).
+  # Current education is read through GET /v1/talent-360/{talentId}
+  # (profile.education). Needs `ats` + `talent:edit`. A missing or other-tenant
+  # Talent or entry is 404; a superseded record is 422; an entry already corrected
+  # or removed is 409.
+  /v1/talent-records/{recordId}/education:
+    post:
+      operationId: addTalentEducationEntry
+      summary: Add a recruiter-entered (manual) education entry.
+      description: |
+        Writes a new TalentEducationEntry with source `manual` (no resume provenance),
+        an `added` audit event, and its CLAIMS/DEGREE ledger claim with
+        ai_derived false. Requires `talent:edit` + the `ats` capability.
+      parameters:
+        - name: recordId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TalentEducationEntryRequest'
+      responses:
+        '201':
+          description: The added entry id and the Talent's current education.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TalentEducationChangeView'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+  /v1/talent-records/{recordId}/education/{entryId}:
+    put:
+      operationId: correctTalentEducationEntry
+      summary: Correct an education entry (a new manual entry replaces it; the old one is retired, not overwritten).
+      description: |
+        Writes a new `manual` entry with the corrected fields and retires the target
+        entry (reason corrected). The retired entry and its provenance stay as
+        history; its ledger claim is SUPERSEDED by the new entry's claim. One
+        `corrected` audit event names the changed fields. A second correction or
+        removal of the same entry is 409. Requires `talent:edit` + `ats`.
+      parameters:
+        - name: recordId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: entryId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TalentEducationEntryRequest'
+      responses:
+        '200':
+          description: |
+            The replacing entry id and the Talent's current education. When nothing
+            differs, nothing is written and entry_id is the unchanged entry.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TalentEducationChangeView'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
+      security:
+        - BearerAuth: []
+    delete:
+      operationId: removeTalentEducationEntry
+      summary: Remove an education entry (retired and kept as history, never deleted).
+      description: |
+        Retires the entry (reason removed); it is no longer listed but is kept as
+        history with its provenance. Its ledger claim is REVOKED and a `removed`
+        audit event is written. Requires `talent:edit` + `ats`.
+      parameters:
+        - name: recordId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: entryId
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        '200':
+          description: The retired entry id and the Talent's current education.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TalentEducationChangeView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '409':
+          $ref: 'common.yaml#/components/responses/Conflict'
         '422':
           $ref: 'common.yaml#/components/responses/UnprocessableEntity'
       security:
@@ -11573,6 +11705,29 @@ components:
           description: Canonical postal code (UI label "ZIP / Postal code").
         work_arrangement:
           type: [string, 'null']
+    RequisitionPickerItem:
+      type: object
+      additionalProperties: false
+      description: |
+        ATS-QA-1 I-1 (D4) requisition list / picker projection: the fields the
+        requisition pickers rely on (label = title · REQ-number · client; status
+        filter). The full RequisitionView carries additional fields validated
+        server-side and intentionally not restated here (RequisitionLocationView
+        precedent).
+      required: [id, title, requisition_number, status, company_id]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        requisition_number:
+          type: integer
+        status:
+          type: string
+        company_id:
+          type: string
+          format: uuid
     # ── Calendar / Interview (InterviewSession) ──
     InterviewSessionState:
       type: string
@@ -12437,7 +12592,7 @@ components:
     ProfileView:
       type: object
       additionalProperties: false
-      required: [summary, facts, skills, work_history]
+      required: [summary, facts, skills, work_history, education]
       properties:
         summary: { type: [string, 'null'] }
         facts:
@@ -12449,6 +12604,65 @@ components:
         work_history:
           type: array
           items: { $ref: '#/components/schemas/WorkHistoryEntryView' }
+        education:
+          type: array
+          description: ATS-QA-1 I-4 — the Talent's CURRENT declared education (corrected and removed entries are retired and not listed). Empty when none. Certifications are separate.
+          items: { $ref: '#/components/schemas/EducationEntryView' }
+    EducationEntryView:
+      type: object
+      additionalProperties: false
+      description: One current declared education entry from TalentEducationEntry (the only education authority).
+      required: [id, institution_name, degree_name, field_of_study, conferred_date, source, source_document_id, source_refs, corrects_entry_id, recorded_at]
+      properties:
+        id: { type: string, format: uuid }
+        institution_name: { type: string }
+        degree_name: { type: string }
+        field_of_study: { type: [string, 'null'] }
+        conferred_date:
+          type: [string, 'null']
+          format: date
+          description: Calendar date; null when not stated (never guessed).
+        source:
+          type: string
+          enum: [resume, manual, import]
+        source_document_id:
+          type: [string, 'null']
+          format: uuid
+          description: The source document a resume entry was extracted from; null for a manual entry.
+        source_refs:
+          type: array
+          description: Source-map block refs a resume entry was grounded on; empty for a manual entry.
+          items: { type: string }
+        corrects_entry_id:
+          type: [string, 'null']
+          format: uuid
+          description: The retired entry this manual entry corrected (its provenance stays as history); null otherwise.
+        recorded_at: { type: string, format: date-time }
+    TalentEducationEntryRequest:
+      type: object
+      additionalProperties: false
+      description: A full education entry (add, or the corrected entry). Certifications are not accepted here.
+      required: [institution_name, degree_name]
+      properties:
+        institution_name: { type: string, minLength: 1, maxLength: 300 }
+        degree_name: { type: string, minLength: 1, maxLength: 300 }
+        field_of_study: { type: [string, 'null'], maxLength: 300, description: Empty or null = not stated. }
+        conferred_date:
+          type: [string, 'null']
+          format: date
+          description: A calendar date (YYYY-MM-DD). Empty or null = not stated; a partial date is refused.
+    TalentEducationChangeView:
+      type: object
+      additionalProperties: false
+      required: [entry_id, education]
+      properties:
+        entry_id:
+          type: string
+          format: uuid
+          description: The entry written by the change (the new entry for add or correct, the retired entry for remove).
+        education:
+          type: array
+          items: { $ref: '#/components/schemas/EducationEntryView' }
     TalentDocumentView:
       type: object
       additionalProperties: false
