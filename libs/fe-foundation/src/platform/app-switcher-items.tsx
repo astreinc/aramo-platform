@@ -63,15 +63,20 @@ export function buildAppSwitcherItems(args: {
         : { key, label, sub: 'Opens if available to you', icon, state: 'open', href },
     );
   }
+  // ORG-UX-1 (§4.3, PO H5) — Organization stays in the switcher, shown by ROLE: the
+  // backend marks it available for organization administrators (entry /org/) and for
+  // template authors (entry /org/document-templates, sub "Our templates").
   const org = productByKey(products, 'org');
   if (current === 'org' || (org !== null && org.available)) {
+    const templatesOnly = org?.org_access === 'templates';
+    const entry = org !== null && org.available && org.entry_path !== null && org.entry_path.startsWith('/') && !org.entry_path.startsWith('//') ? org.entry_path : ORG_PATH;
     items.push({
       key: 'org',
       label: 'Organization',
-      sub: current === 'org' ? 'You are here' : 'Admin · shared by all apps',
+      sub: current === 'org' ? 'You are here' : templatesOnly ? 'Our templates' : 'Admin · shared by all apps',
       icon: <IconBuilding />,
       state: current === 'org' ? 'current' : 'open',
-      ...link(ORG_PATH),
+      ...link(entry),
     });
   }
   return items;

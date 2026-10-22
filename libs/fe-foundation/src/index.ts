@@ -120,6 +120,7 @@ export {
   fetchMyProducts,
   productByKey,
   productEntryHref,
+  orgAccessOf,
   ssoEntryHref,
   PRODUCT_CONSUMER,
   useMyProducts,
@@ -128,6 +129,7 @@ export {
   type ProductKey,
   type ProductUnavailableReason,
   type ProductsState,
+  type OrgAccess,
 } from './platform/products';
 export { buildAppSwitcherItems, type AramoAppKey } from './platform/app-switcher-items';
 export {
