@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 
+import { legalPath, MAXMIND_ATTRIBUTION, MAXMIND_URL, THIRD_PARTY_NOTICES_PATH } from '../legal/catalog';
+
 import {
   codeFailureMessage,
   COUNTRIES,
@@ -39,8 +41,6 @@ import {
   useCountdown,
   type StepGroupDef,
 } from './signup-ui';
-import { legalPath, MAXMIND_ATTRIBUTION, MAXMIND_URL, THIRD_PARTY_NOTICES_PATH } from '../legal/catalog';
-
 import { Turnstile } from './Turnstile';
 
 // Aramo Sign Personal (Free) — /signup/personal, session-less
