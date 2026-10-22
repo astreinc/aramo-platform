@@ -145,12 +145,15 @@ const SITE_ID = '01900000-0000-7000-8000-000000000099';
 function makePrismaForMembership(fns: {
   findMany?: ReturnType<typeof vi.fn>;
   findUnique?: ReturnType<typeof vi.fn>;
+  invitationGroupBy?: ReturnType<typeof vi.fn>;
 }): PrismaService {
   return {
     userTenantMembership: {
       findMany: fns.findMany ?? vi.fn(),
       findUnique: fns.findUnique ?? vi.fn(),
     },
+    // ORG-UX-1 §8.3 (G4) — invited_at: the latest invitation per user (grouped read).
+    invitation: { groupBy: fns.invitationGroupBy ?? vi.fn().mockResolvedValue([]) },
   } as unknown as PrismaService;
 }
 
@@ -223,6 +226,8 @@ describe('IdentityRepository.listTenantUsers — Settings S5-BE1', () => {
     expect(result).toHaveLength(2);
     // (d) role_keys sorted asc
     expect(result[0]?.role_keys).toEqual(['account_manager', 'recruiter']);
+    // ORG-UX-1 §8.3 — no invitation row → invited_at null.
+    expect(result[0]?.invited_at).toBeNull();
     // (c) the disabled user's membership-level state surfaces (S3a saga
     // writes UserTenantMembership.is_active + deactivated_at; we
     // serialize the membership row's fields, NOT User.is_active).
@@ -291,6 +296,8 @@ describe('IdentityRepository.getTenantUser — Settings S5-BE1', () => {
       deactivated_at: null,
       site_id: null,
       role_keys: ['recruiter'],
+      // ORG-UX-1 §8.3 (G4) — no invitation row → null.
+      invited_at: null,
     });
   });
 });
