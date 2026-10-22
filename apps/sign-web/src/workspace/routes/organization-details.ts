@@ -117,7 +117,7 @@ export function validateOrgDetails(v: OrgDetailsValues, attested: boolean): Fiel
   const city = clean(v.city);
   if (city.length === 0 || city.length > 100) e.city = 'Enter the city.';
   if (!STATE_CODES.has(v.state_province)) e.state_province = 'Choose a state.';
-  if (!ZIP_RE.test(v.postal_code.trim())) e.postal_code = 'Enter a 5-digit ZIP code (or ZIP+4).';
+  if (!ZIP_RE.test(v.postal_code.trim())) e.postal_code = 'Use a 5-digit ZIP code, like 22181.';
   if (!EMAIL_RE.test(v.primary_contact_email.trim())) e.primary_contact_email = 'Enter a valid email address.';
   const name = clean(v.primary_contact_name);
   if (name.length === 0 || name.length > 100) e.primary_contact_name = 'Enter your full name.';
@@ -153,3 +153,23 @@ export function toOrganizationPayload(v: OrgDetailsValues): OrganizationPayload 
     authority_attested: true,
   };
 }
+
+/** Which activation step (handoff §4.4) owns each organization-details field. */
+export type BusinessStep = 'organization' | 'address' | 'billing' | 'you';
+
+export const FIELD_STEP: Record<keyof FieldErrors, BusinessStep> = {
+  organization_name: 'organization',
+  legal_name: 'organization',
+  address_line1: 'address',
+  address_line2: 'address',
+  city: 'address',
+  state_province: 'address',
+  postal_code: 'address',
+  primary_contact_email: 'billing',
+  primary_contact_phone: 'billing',
+  tax_id: 'billing',
+  registration_number: 'billing',
+  primary_contact_name: 'you',
+  signer_title: 'you',
+  authority_attested: 'you',
+};
