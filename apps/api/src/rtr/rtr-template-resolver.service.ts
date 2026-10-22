@@ -73,10 +73,14 @@ export class RtrTemplateResolverService {
     // on has been withdrawn (effective date passed) and the tenant has no approved RTR
     // template of its own: the tenant admin/owner must choose. Distinct from
     // RTR_TEMPLATE_NOT_CONFIGURED (never configured) — the wording is never swapped silently.
+    // ORG-UX-1 (LOCKED §5.3) — gallery-first: SELECTION_REQUIRED also means "no approved
+    // RTR template yet" (withdrawn_template_ids empty) — adopt or create one, then approve.
     if (r.outcome === 'SELECTION_REQUIRED') {
       throw new AramoError(
         'TEMPLATE_SELECTION_REQUIRED',
-        'The Aramo Right to Represent default was withdrawn; choose a template for this organization',
+        r.withdrawn_template_ids.length > 0
+          ? 'The Aramo Right to Represent default was withdrawn; choose a template for this organization'
+          : 'This organization has no approved Right to Represent template; adopt or create one and approve it',
         409,
         {
           requestId: input.requestId,

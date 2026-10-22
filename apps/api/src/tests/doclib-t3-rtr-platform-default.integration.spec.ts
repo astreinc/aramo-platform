@@ -28,6 +28,7 @@ import { RtrTemplateTenantLogoService } from '../rtr/rtr-template-tenant-logo.se
 import { DEFAULT_RTR_TEMPLATE_CONTENT_V1, RTR_GENERATED_SCHEMA_V1 } from '../rtr/rtr-template-content.js';
 
 import { episodeReaderAt } from './helpers/rtr-stage-fixture.js';
+import { grantLegacyPlatformSelection } from './helpers/legacy-template-selection.js';
 
 // DOC-TEMPLATE-LIB-1 T-3 (§4.2, §4.3, §5) — the RTR request path against the Aramo RTR
 // default on real Postgres 17. Skipped unless ARAMO_RUN_INTEGRATION=1.
@@ -37,10 +38,10 @@ import { episodeReaderAt } from './helpers/rtr-stage-fixture.js';
 // RTR default exactly as a fresh local DB does. Proves:
 //   (a) a tenant with its own selected RTR template renders ITS wording, byte-identical to
 //       the pre-T-3 render (no letterhead), and the logo is never fetched
-//   (b) a new tenant with no selection renders the Aramo default, pinned to the PLATFORM
+//   (b) a grandfathered (ORG-UX-1 T-A) tenant renders the Aramo default, pinned to the PLATFORM
 //       version, branded with the tenant's organisation name + logo captured at render into
 //       a per-render tenant TemplateAsset, and its provenance resolves owner-aware
-//   (c) a new tenant without a profile logo renders the Aramo default byte-identical to the
+//   (c) a grandfathered (ORG-UX-1 T-A) tenant without a profile logo renders the Aramo default byte-identical to the
 //       retired provisioning copy's output (same content, no letterhead)
 //   (d) the requisition's CLIENT company is consulted: a client selection wins
 //   (e) a withdrawn Aramo default is skipped → RTR_TEMPLATE_NOT_CONFIGURED for a tenant
@@ -252,8 +253,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(fetcher).not.toHaveBeenCalled();
     });
 
-    it('(b) a new tenant with no selection renders the Aramo default, branded with its name + logo captured at render', async () => {
+    // ORG-UX-1 §5.3 — gallery-first: a tenant with no (grandfathered) selection has no
+    // fallback to the Aramo default — RTR refuses until it adopts/creates and approves.
+    it('(b0) a new tenant with no selection cannot send an RTR: TEMPLATE_SELECTION_REQUIRED', async () => {
       const tenant = randomUUID();
+      brandingByTenant.set(tenant, branding({ display_name: 'New Co' }));
+      await expectCode(requestFor(tenant), 'TEMPLATE_SELECTION_REQUIRED');
+    });
+
+    it('(b) a grandfathered tenant renders the Aramo default, branded with its name + logo captured at render', async () => {
+      const tenant = randomUUID();
+      // ORG-UX-1 §5.3 (T-A) — a tenant on the Aramo default holds a grandfathered selection.
+      await grantLegacyPlatformSelection((q, p) => db.query(q, p), { tenant_id: tenant, document_type_id: RIGHT_TO_REPRESENT_TYPE_ID, template_id: platformTemplateId });
       brandingByTenant.set(tenant, branding({ name: 'acme-ws', display_name: 'Acme Branding', legal_name: 'Acme LLC', logo_url: 'https://cdn.acme.example/logo.png' }));
       fetcher.mockClear();
       const docId = await requestFor(tenant);
@@ -284,8 +295,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(own.rows[0].n).toBe(0);
     });
 
-    it('(c) a new tenant without a profile logo renders the Aramo default byte-identical to the retired copy (no letterhead)', async () => {
+    it('(c) a grandfathered tenant without a profile logo renders the Aramo default byte-identical to the retired copy (no letterhead)', async () => {
       const tenant = randomUUID();
+      // ORG-UX-1 §5.3 (T-A) — a tenant on the Aramo default holds a grandfathered selection.
+      await grantLegacyPlatformSelection((q, p) => db.query(q, p), { tenant_id: tenant, document_type_id: RIGHT_TO_REPRESENT_TYPE_ID, template_id: platformTemplateId });
       brandingByTenant.set(tenant, branding({ display_name: 'No Logo Co' }));
       fetcher.mockClear();
       const docId = await requestFor(tenant);
@@ -302,6 +315,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('(c2) an uncapturable logo degrades to no letterhead instead of blocking the RTR', async () => {
       const tenant = randomUUID();
+      // ORG-UX-1 §5.3 (T-A) — a tenant on the Aramo default holds a grandfathered selection.
+      await grantLegacyPlatformSelection((q, p) => db.query(q, p), { tenant_id: tenant, document_type_id: RIGHT_TO_REPRESENT_TYPE_ID, template_id: platformTemplateId });
       brandingByTenant.set(tenant, branding({ display_name: 'Http Co', logo_url: 'http://cdn.http-co.example/logo.png' }));
       const docId = await requestFor(tenant);
       const rev = await docsRepo.getCurrentRevision(tenant, docId);
@@ -330,6 +345,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const ownVersion = await ownRtrTemplate(own, 'Mine.');
       const relying = randomUUID();
       brandingByTenant.set(relying, branding({ display_name: 'Relying Co' }));
+      await grantLegacyPlatformSelection((q, p) => db.query(q, p), { tenant_id: relying, document_type_id: RIGHT_TO_REPRESENT_TYPE_ID, template_id: platformTemplateId });
       await db.query(
         `UPDATE "documents"."DocumentTemplate" SET withdraw_notice_at = now() - interval '8 days', withdraw_effective_at = now() - interval '1 second' WHERE id = $1`,
         [platformTemplateId],
@@ -350,7 +366,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const tenant = randomUUID();
       brandingByTenant.set(tenant, branding({ display_name: 'Fallback Co' }));
       const ownVersion = await ownRtrTemplate(tenant, 'Fallback wording.');
-      await templates.deleteSelection(tenant, RIGHT_TO_REPRESENT_TYPE_ID, null); // back to the Aramo default
+      // ORG-UX-1 §5.3 (T-A) — the tenant's tenant-wide choice is a grandfathered selection of
+      // the Aramo default (a tenant that relied on it before the gallery-first rule).
+      await grantLegacyPlatformSelection((q, p) => db.query(q, p), { tenant_id: tenant, document_type_id: RIGHT_TO_REPRESENT_TYPE_ID, template_id: platformTemplateId });
       const before = await requestFor(tenant);
       expect((await docsRepo.getCurrentRevision(tenant, before))?.template_version_id).toBe(platformVersionId);
       await db.query(

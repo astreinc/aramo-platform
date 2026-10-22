@@ -16,6 +16,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { AppModule } from '../app.module.js';
 
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
+import { grantLegacyPlatformSelection } from './helpers/legacy-template-selection.js';
 
 // DOC-TEMPLATE-LIB-1 T-5 — Implementation Directive v1.0 (LOCKED) §7.1 (ADR-0034 D6, D8,
 // D12; Conforming Amendment #9): the signed Documents template-library endpoints Aramo Sign
@@ -123,6 +124,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-TEMPLATE-LIB-
       ],
     );
     await db.query(`UPDATE documents."DocumentTemplate" SET current_version_id = $2 WHERE id = $1`, [defaultId, brandedVersionId]);
+    // ORG-UX-1 §5.3 (T-A) — tenant A is on the Aramo default through a grandfathered selection.
+    await grantLegacyPlatformSelection((q, p) => db.query(q, p), { tenant_id: TENANT_A, document_type_id: RTR, template_id: defaultId });
 
     // Tenant B has its own approved RTR template and selects it.
     ownB = randomUUID();
@@ -199,7 +202,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-TEMPLATE-LIB-
     expect(a.status).toBe(200);
     const items = a.body['items'] as Array<Record<string, unknown>>;
     expect(items).toHaveLength(1);
-    expect(items[0]).toMatchObject({ template_id: defaultId, owner_scope: 'PLATFORM', resolution: 'PLATFORM_DEFAULT', version_id: brandedVersionId, version_number: 90 });
+    expect(items[0]).toMatchObject({ template_id: defaultId, owner_scope: 'PLATFORM', resolution: 'TENANT_SELECTION', version_id: brandedVersionId, version_number: 90 });
     const vars = items[0]?.['variables'] as Array<{ key: string; source: string; value: string | null }>;
     expect(vars.find((v) => v.key === 'organization.name')).toMatchObject({ source: 'ORGANIZATION', value: 'Acme Branded Staffing' });
     expect(vars.find((v) => v.key === 'talent.full_name')).toMatchObject({ source: 'SENDER', value: null });
