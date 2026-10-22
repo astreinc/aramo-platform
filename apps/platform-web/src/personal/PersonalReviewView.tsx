@@ -15,19 +15,34 @@ import {
 // in review, accounts restricted (including by abuse reports), with every signal
 // and its risk points visible. Actions (clear review, restrict, reinstate, close)
 // each need a reason and are audited server-side. Clearing review never verifies
-// the phone (§6.3): phone assurance comes only from a real SMS verification.
+// the phone (§6.3): phone assurance comes only from a real SMS verification. While
+// phone verification is unavailable (no SMS provider), clearing review also lifts
+// an outstanding phone step (PO 2026-10-21 "Review replaces phone") — the phone
+// still counts as not verified.
 
 const SIGNAL_LABEL: Record<string, string> = {
   robot_check_low: 'Security check low',
   robot_check_failed: 'Security check failed',
+  honeypot_filled: 'Hidden form field filled',
   network_hosting: 'Hosting, VPN or Tor network',
+  network_hosting_vpn_tor: 'Hosting, VPN or Tor network',
   ip_velocity: 'Several signups from the same IP',
+  ip_signups_24h: 'Several signups from the same IP',
   phone_ip_country_mismatch: 'Phone country differs from network country',
+  // GeoLite2 network location: a risk signal only, never proof of where someone lives.
+  ip_country_outside: 'Network location outside the supported countries',
+  ip_country_unknown: 'Network location unknown',
   gmail_alias: 'Gmail alias of an existing account',
+  gmail_alias_of_existing: 'Gmail alias of an existing account',
   fast_form: 'Form completed very quickly',
   random_name: 'Random-looking name or address',
+  random_looking: 'Random-looking name or address',
   phone_reused: 'Phone already used by another account',
   abuse_reports: 'Abuse reports',
+  // Review reasons recorded on the account.
+  send_location_outside: 'Sent from outside the supported countries',
+  send_location_unknown: 'Sent from an unknown network location',
+  step_up_phone_unavailable: 'Phone step needed; phone verification unavailable',
 };
 
 export function signalLabel(key: string): string {
@@ -138,11 +153,26 @@ export function PersonalReviewView() {
               </div>
               <dl className="pw-facts" style={{ marginTop: 8 }}>
                 <dt>Reason</dt>
-                <dd>{it.reason ?? '—'}</dd>
+                <dd>{it.reason !== null ? (SIGNAL_LABEL[it.reason] ?? it.reason) : '—'}</dd>
                 <dt>Risk points</dt>
                 <dd data-testid="personal-review-points">{it.risk_points ?? '—'}</dd>
                 <dt>Phone verified</dt>
                 <dd>{it.phone_verified_at !== null ? fmt(it.phone_verified_at) : 'No'}</dd>
+                {it.step_up_cleared_by === 'review' ? (
+                  <>
+                    <dt>Phone step</dt>
+                    <dd data-testid="personal-review-step-cleared">Lifted by review (phone not verified)</dd>
+                  </>
+                ) : null}
+                {it.geo != null ? (
+                  <>
+                    <dt>Signup network location</dt>
+                    <dd data-testid="personal-review-geo">
+                      {it.geo.country ?? 'Unknown'}
+                      <span className="pw-audit__meta"> · {it.geo.db_version ?? 'no location database'}</span>
+                    </dd>
+                  </>
+                ) : null}
                 {it.restricted_until !== null ? (
                   <>
                     <dt>Restricted until</dt>
@@ -264,7 +294,15 @@ function ReviewActionDialog({
     >
       {error !== null ? <InlineAlert variant="error">{error}</InlineAlert> : null}
       {action === 'clear-review' ? (
-        <p className="pw-audit__detail">Clearing review does not verify the phone. An account that needs phone verification stays blocked from sending until it verifies.</p>
+        item.review_clears_phone_step === true ? (
+          <p className="pw-audit__detail" data-testid="personal-clear-lifts-phone">
+            Clearing review does not verify the phone. Phone verification is unavailable right now, so clearing review also lifts this account&apos;s phone step and lets it send. The phone stays recorded as not verified.
+          </p>
+        ) : (
+          <p className="pw-audit__detail" data-testid="personal-clear-keeps-phone">
+            Clearing review does not verify the phone. An account that needs phone verification stays blocked from sending until it verifies.
+          </p>
+        )
       ) : null}
       {action === 'restrict' ? <p className="pw-audit__detail">New sends pause. Envelopes already sent are not affected.</p> : null}
       <FormField label="Reason (required)">

@@ -2353,6 +2353,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity.personal.risk.restricted',
         'identity.personal.risk.review_cleared',
         'identity.personal.risk.review_flagged',
+        'identity.personal.risk.send_location_signal',
         'identity.personal.risk.step_up_required',
         'identity.personal.signup.lapsed',
         'identity.personal.signup.provisioned',

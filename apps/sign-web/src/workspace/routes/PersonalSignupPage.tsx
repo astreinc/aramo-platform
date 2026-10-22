@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState, type FormEvent, type ReactNode } from 'react';
 
+import { legalPath, MAXMIND_ATTRIBUTION, MAXMIND_URL, THIRD_PARTY_NOTICES_PATH } from '../legal/catalog';
+
 import {
   codeFailureMessage,
   COUNTRIES,
@@ -583,6 +585,14 @@ function PersonalForm({
         <Turnstile siteKey={siteKey} onToken={setRobot} />
       </div>
       {failure !== null ? <FailureBox f={failure} /> : null}
+      {/* Notice at the point of collection (Aramo Privacy Notice). */}
+      <p className="su-hint" data-testid="personal-privacy-notice">
+        We use your details as described in our{' '}
+        <a href={legalPath('privacy')} target="_blank" rel="noopener noreferrer">
+          Privacy Notice
+        </a>
+        .
+      </p>
       <StepFooter>
         {checking ? (
           <span className="su-hint" id="ps-checking">
@@ -601,6 +611,14 @@ function PersonalForm({
       <p className="su-hint">
         Signing up for a company? <a href="/signup">Create a Business account</a>. Already have an
         account? <a href="/login">Sign in</a>
+      </p>
+      {/* GeoLite2 licence attribution (network location is one signup risk signal). */}
+      <p className="su-hint" style={{ fontSize: 11 }} data-testid="personal-maxmind">
+        {MAXMIND_ATTRIBUTION.replace(`${MAXMIND_URL}.`, '')}
+        <a href={MAXMIND_URL} target="_blank" rel="noopener noreferrer">
+          {MAXMIND_URL}
+        </a>
+        . <a href={THIRD_PARTY_NOTICES_PATH}>Third-party notices</a>
       </p>
     </form>
   );

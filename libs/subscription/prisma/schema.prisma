@@ -289,11 +289,24 @@ model LegalAcceptance {
   document_key  String
   version       String
   sha256        String
-  // CHECK: SIGNUP | CHECKOUT
+  // CHECK: SIGNUP | CHECKOUT | IN_APP (Personal re-acceptance in the Sign workspace)
   context       String
   context_ref   String?
   accepted_at   DateTime @default(now()) @db.Timestamptz(6)
+  origin        LegalAcceptanceOrigin?
 
   @@index([tenant_id])
+  @@index([tenant_id, user_id, document_key])
+  @@schema("subscription")
+}
+
+// Aramo Sign Personal (Free) — where an IN_APP acceptance came from (IP, user agent).
+model LegalAcceptanceOrigin {
+  acceptance_id String          @id @db.Uuid
+  ip            String?
+  user_agent    String?
+  created_at    DateTime        @default(now()) @db.Timestamptz(6)
+  acceptance    LegalAcceptance @relation(fields: [acceptance_id], references: [id], onDelete: Restrict)
+
   @@schema("subscription")
 }

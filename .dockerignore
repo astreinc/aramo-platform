@@ -55,6 +55,10 @@ openapi
 doc
 *.md
 !README.md
+# Aramo Sign legal texts are bundled into sign-web (hash-pinned to the legal
+# registry), so the nginx image build needs them.
+!doc/legal
+!doc/legal/**
 
 # Don't recurse Docker artifacts into the context
 Dockerfile

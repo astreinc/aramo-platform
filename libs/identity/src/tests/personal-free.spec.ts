@@ -1,3 +1,7 @@
+import { mkdtempSync, renameSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
 import { describe, expect, it } from 'vitest';
 
 import { canonicalEmailForDuplicates, classifyEmailDomain, isPersonalOrDisposableDomain } from '../lib/util/email-domain.js';
@@ -33,7 +37,8 @@ import {
   TurnstileRobotCheckAdapter,
   robotCheckAdapterFromEnv,
 } from '../lib/personal/robot-check.port.js';
-import { MaxmindGeoIpAdapter } from '../lib/personal/geo-ip.port.js';
+import { MaxmindGeoIpAdapter, safeGeoLookup, type GeoIpPort } from '../lib/personal/geo-ip.port.js';
+import { PersonalRiskService } from '../lib/personal/personal-risk.service.js';
 
 // Aramo-Sign-Personal-Free-Launch-Directive-v1_1 (LOCKED) — unit coverage of the
 // identity-side Personal pieces: §2 classification (business behaviour unchanged),
@@ -128,6 +133,9 @@ describe('§6.2 risk rating', () => {
     ['no elapsed time', { elapsed_ms: null }, 'fast_form', 40],
     ['random-looking local part', { email_local_part: 'xkqzvbtrw991' }, 'random_looking', 10],
     ['phone reused', { phone_reused: true }, 'phone_reused', 30],
+    // Architect ruling 2026-10-21 — the network country is a risk signal (with the allowed set given).
+    ['network country outside US/IN', { ip_country: 'GB', phone_region: 'GB', allowed_countries: ['US', 'IN'] }, 'ip_country_outside', 60],
+    ['network country unknown', { ip_country: null, allowed_countries: ['US', 'IN'] }, 'ip_country_unknown', 30],
   ])('%s adds its points', (_label, patch, key, points) => {
     const r = ratePersonalSignup({ ...clean, ...patch });
     expect(r.signals).toEqual([expect.objectContaining({ key, points })]);
@@ -151,6 +159,21 @@ describe('§6.2 risk rating', () => {
     expect(ratePersonalSignup({ ...clean, gmail_alias_of_existing: true }).decision).toBe('step_up');
     expect(ratePersonalSignup({ ...clean, elapsed_ms: 100, network: 'vpn' }).decision).toBe('review');
     expect(ratePersonalSignup({ ...clean, elapsed_ms: 100, robot: 'low', phone_reused: true }).decision).toBe('refuse');
+  });
+
+  it('network country alone: outside → review, unknown → step_up, inside → nothing; never a refusal by itself', () => {
+    const allowed = ['US', 'IN'];
+    const outside = ratePersonalSignup({ ...clean, ip_country: 'DE', allowed_countries: allowed });
+    expect(outside.decision).toBe('review');
+    // The phone/IP mismatch still fires alongside (US phone, DE network): 60 + 15.
+    expect(outside.signals.map((x) => x.key)).toEqual(['ip_country_outside', 'phone_ip_country_mismatch']);
+    expect(outside.signals[0]).toMatchObject({ detail: 'DE' });
+    expect(ratePersonalSignup({ ...clean, ip_country: null, allowed_countries: allowed })).toMatchObject({ points: 30, decision: 'step_up' });
+    expect(ratePersonalSignup({ ...clean, ip_country: 'IN', phone_region: 'IN', allowed_countries: allowed })).toEqual({ points: 0, decision: 'allow', signals: [] });
+    expect(outside.signals.some((x) => x.refuse === true)).toBe(false);
+    const cfg = personalRiskConfig({ SIGN_PERSONAL_RISK_CONFIG: JSON.stringify({ points: { ip_country_outside: 10, ip_country_unknown: 0 } }) });
+    expect(cfg.points).toMatchObject({ ip_country_outside: 10, ip_country_unknown: 0 });
+    expect(ratePersonalSignup({ ...clean, ip_country: null, allowed_countries: allowed }, cfg)).toMatchObject({ points: 0, decision: 'allow' });
   });
 
   it('points and thresholds are configuration (bad overrides fall back)', () => {
@@ -217,15 +240,17 @@ describe('§6.3 / §6.6 send gate', () => {
     restricted_until: null,
     reason: null,
     decided_by: null,
+    step_up_cleared_by: null,
     created_at: now,
     updated_at: now,
   };
   const allowed = ['US', 'IN'];
   const at = (v: TenantRiskStateView | null, ip_country: string | null = 'US') => evaluatePersonalSend(v, { ip_country, now, allowed_countries: allowed });
+  const old: TenantRiskStateView = { ...base, created_at: new Date(now.getTime() - 8 * 86_400_000) };
 
   it('clear in US / IN sends; no risk row fails closed', () => {
-    expect(at(base)).toEqual({ ok: true });
-    expect(at(base, 'in')).toEqual({ ok: true });
+    expect(at(base)).toEqual({ ok: true, location: 'inside' });
+    expect(at(base, 'in')).toEqual({ ok: true, location: 'inside' });
     expect(at(null)).toEqual({ ok: false, reason: 'personal_review_pending' });
   });
 
@@ -233,29 +258,54 @@ describe('§6.3 / §6.6 send gate', () => {
     expect(at({ ...base, state: 'review' })).toEqual({ ok: false, reason: 'personal_review_pending' });
     expect(at({ ...base, state: 'restricted' })).toEqual({ ok: false, reason: 'personal_restricted' });
     expect(at({ ...base, state: 'restricted', restricted_until: new Date(now.getTime() + 1000) })).toEqual({ ok: false, reason: 'personal_restricted' });
-    expect(at({ ...base, state: 'restricted', restricted_until: new Date(now.getTime() - 1000) })).toEqual({ ok: true });
+    expect(at({ ...base, state: 'restricted', restricted_until: new Date(now.getTime() - 1000) })).toEqual({ ok: true, location: 'inside' });
     expect(at({ ...base, state: 'closed' })).toEqual({ ok: false, reason: 'personal_restricted' });
     // Correction D — a review owed under an expired automatic pause still holds sending.
     expect(at({ ...base, state: 'restricted', review_pending: true, restricted_until: new Date(now.getTime() - 1000) })).toEqual({ ok: false, reason: 'personal_review_pending' });
     expect(restrictionInForce({ state: 'clear', restricted_until: null }, now)).toBe(false);
   });
 
-  it('outstanding step-up needs phone assurance (review clearance never substitutes)', () => {
-    expect(at({ ...base, step_up_required: true })).toEqual({ ok: false, reason: 'phone_verification_required' });
-    expect(at({ ...base, step_up_required: true, phone_verified_at: now })).toEqual({ ok: true });
+  it('outstanding step-up needs phone assurance', () => {
+    expect(at({ ...base, step_up_required: true })).toEqual({ ok: false, reason: 'phone_verification_required', location: 'inside' });
+    expect(at({ ...base, step_up_required: true, phone_verified_at: now })).toEqual({ ok: true, location: 'inside' });
   });
 
-  it('sending from outside US / IN (or an unknown network) needs phone assurance', () => {
-    expect(at(base, 'GB')).toEqual({ ok: false, reason: 'personal_location_not_supported' });
-    expect(at(base, null)).toEqual({ ok: false, reason: 'personal_location_not_supported' });
-    expect(at({ ...base, phone_verified_at: now }, 'GB')).toEqual({ ok: true });
+  it('outside US / IN or UNKNOWN: allowed for an established account (no phone rule); never personal_location_not_supported', () => {
+    expect(at(old, 'GB')).toEqual({ ok: true, location: 'outside' });
+    expect(at(old, null)).toEqual({ ok: true, location: 'unknown' });
+    for (const c of ['GB', null, 'BR']) expect(JSON.stringify(at(old, c))).not.toContain('personal_location_not_supported');
   });
 
-  it('initial risk state from the signup decision', () => {
+  it('outside / UNKNOWN on a young account (< 7 days) or with a step-up outstanding → review (flagged)', () => {
+    expect(at(base, 'GB')).toEqual({ ok: false, reason: 'personal_review_pending', location: 'outside', flag_review: 'send_location_outside' });
+    expect(at(base, null)).toEqual({ ok: false, reason: 'personal_review_pending', location: 'unknown', flag_review: 'send_location_unknown' });
+    expect(at({ ...base, created_at: new Date(now.getTime() - 7 * 86_400_000) }, 'GB')).toEqual({ ok: true, location: 'outside' });
+    expect(at({ ...old, step_up_required: true }, 'GB')).toMatchObject({ ok: false, reason: 'personal_review_pending', flag_review: 'send_location_outside' });
+    // A satisfied step-up is not an open signal.
+    expect(at({ ...old, step_up_required: true, phone_verified_at: now }, 'GB')).toEqual({ ok: true, location: 'outside' });
+    // Review / restriction keep their own refusals (no extra flag).
+    expect(at({ ...old, state: 'review' }, 'GB')).toEqual({ ok: false, reason: 'personal_review_pending' });
+    expect(at({ ...old, state: 'restricted' }, null)).toEqual({ ok: false, reason: 'personal_restricted' });
+  });
+
+  it('initial risk state from the signup decision (SMS available vs not)', () => {
     expect(initialRiskState('allow', false)).toEqual({ state: 'clear', step_up_required: false, reason: null });
     expect(initialRiskState('review', true)).toMatchObject({ state: 'review', step_up_required: false });
     expect(initialRiskState('step_up', true)).toMatchObject({ state: 'clear', step_up_required: true });
-    expect(initialRiskState('step_up', false)).toMatchObject({ state: 'review', step_up_required: true });
+    expect(initialRiskState('step_up', false)).toEqual({ state: 'review', step_up_required: true, reason: 'signup_step_up_unverified' });
+    expect(initialRiskState('step_up', false, false)).toEqual({ state: 'review', step_up_required: true, reason: 'step_up_phone_unavailable' });
+    expect(initialRiskState('allow', false, false)).toEqual({ state: 'clear', step_up_required: false, reason: null });
+  });
+
+  it('review lifts the phone step only while SMS is unavailable', () => {
+    const noSms = new PersonalRiskService({} as never, new DisabledSmsAdapter());
+    const sms = new PersonalRiskService({} as never, new LogSmsAdapter());
+    expect(noSms.reviewClearsStepUp({ step_up_required: true, phone_verified_at: null })).toBe(true);
+    expect(noSms.reviewClearsStepUp({ step_up_required: true, phone_verified_at: now })).toBe(false);
+    expect(noSms.reviewClearsStepUp({ step_up_required: false, phone_verified_at: null })).toBe(false);
+    expect(sms.reviewClearsStepUp({ step_up_required: true, phone_verified_at: null })).toBe(false);
+    expect(noSms.phoneVerificationAvailable()).toBe(false);
+    expect(sms.phoneVerificationAvailable()).toBe(true);
   });
 });
 
@@ -291,10 +341,88 @@ describe('adapters', () => {
     expect(await new TurnstileRobotCheckAdapter('s', reply({ success: true })).verify(null, '1.1.1.1')).toEqual({ verdict: 'fail' });
   });
 
-  it('GeoIP with no database fails closed (country null, network unknown)', async () => {
+  it('GeoIP with no database is UNKNOWN (country null, network unknown, no db_version), never throws', async () => {
     const geo = new MaxmindGeoIpAdapter(undefined, '/nonexistent/asn.mmdb');
     expect(await geo.countryOf('8.8.8.8')).toBeNull();
     expect(await geo.networkKind('8.8.8.8')).toBe('unknown');
     expect(await geo.countryOf('not-an-ip')).toBeNull();
+    const at = new Date('2026-10-21T12:00:00Z');
+    expect(await new MaxmindGeoIpAdapter('/nonexistent/country.mmdb').lookup('8.8.8.8', at)).toEqual({
+      country: null,
+      network_kind: 'unknown',
+      looked_up_at: '2026-10-21T12:00:00.000Z',
+      db_version: null,
+    });
+  });
+
+  it('GeoIP reads the country + db_version (type + build time) and picks up a replaced file without a restart', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'geoip-'));
+    const path = join(dir, 'GeoLite2-Country.mmdb');
+    try {
+      writeFileSync(path, tinyCountryMmdb(['US', 'GB'], 1_760_000_000));
+      const geo = new MaxmindGeoIpAdapter(path, undefined, 0);
+      const first = await geo.lookup('8.8.8.8');
+      expect(first).toMatchObject({ country: 'US', db_version: `GeoLite2-Country ${new Date(1_760_000_000_000).toISOString()}` });
+      expect(await geo.countryOf('200.1.2.3')).toBe('GB');
+      // The updater writes a new file and renames it over the old one.
+      writeFileSync(`${path}.tmp`, tinyCountryMmdb(['IN', 'DE'], 1_761_000_000));
+      renameSync(`${path}.tmp`, path);
+      expect(await geo.lookup('8.8.8.8')).toMatchObject({ country: 'IN', db_version: `GeoLite2-Country ${new Date(1_761_000_000_000).toISOString()}` });
+      // A corrupt replacement keeps the last good database (never throws, never guesses).
+      writeFileSync(`${path}.tmp`, Buffer.from('not a database'));
+      renameSync(`${path}.tmp`, path);
+      expect(await geo.countryOf('8.8.8.8')).toBe('IN');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('safeGeoLookup: a throwing port or no IP is UNKNOWN', async () => {
+    const boom: GeoIpPort = {
+      countryOf: async () => 'US',
+      networkKind: async () => 'residential',
+      lookup: async () => {
+        throw new Error('db exploded');
+      },
+    };
+    const at = new Date('2026-10-21T12:00:00Z');
+    expect(await safeGeoLookup(boom, '8.8.8.8', at)).toEqual({ country: null, network_kind: 'unknown', looked_up_at: at.toISOString(), db_version: null });
+    expect(await safeGeoLookup(boom, null, at)).toMatchObject({ country: null });
   });
 });
+
+// A minimal MaxMind DB (IPv4, one node, 24-bit records): 0.0.0.0/1 → left country,
+// 128.0.0.0/1 → right country. Enough to exercise the real reader + metadata.
+function tinyCountryMmdb([left, right]: [string, string] | string[], buildEpoch: number): Buffer {
+  const str = (v: string) => Buffer.concat([Buffer.from([0x40 | Buffer.byteLength(v)]), Buffer.from(v)]);
+  const uint = (type: 5 | 6, n: number, bytes: number) => {
+    const b = Buffer.alloc(bytes);
+    b.writeUIntBE(n, 0, bytes);
+    return Buffer.concat([Buffer.from([(type << 5) | bytes]), b]);
+  };
+  const uint64 = (n: number) => {
+    const b = Buffer.alloc(8);
+    b.writeBigUInt64BE(BigInt(n));
+    return Buffer.concat([Buffer.from([8, 9 - 7]), b]); // extended type 9 (uint64)
+  };
+  const map = (entries: [string, Buffer][]) => Buffer.concat([Buffer.from([0xe0 | entries.length]), ...entries.flatMap(([k, v]) => [str(k), v])]);
+  const country = (iso: string) => map([['country', map([['iso_code', str(iso)]])]]);
+  const a = country(left!);
+  const b = country(right!);
+  const nodeCount = 1;
+  const rec = (offset: number) => {
+    const v = nodeCount + 16 + offset;
+    return Buffer.from([(v >> 16) & 0xff, (v >> 8) & 0xff, v & 0xff]);
+  };
+  const tree = Buffer.concat([rec(0), rec(a.length)]);
+  const meta = map([
+    ['node_count', uint(6, nodeCount, 4)],
+    ['record_size', uint(5, 24, 2)],
+    ['ip_version', uint(5, 4, 2)],
+    ['database_type', str('GeoLite2-Country')],
+    ['binary_format_major_version', uint(5, 2, 2)],
+    ['binary_format_minor_version', uint(5, 0, 2)],
+    ['build_epoch', uint64(buildEpoch)],
+  ]);
+  return Buffer.concat([tree, Buffer.alloc(16), a, b, Buffer.from('ABCDEF4D61784D696E642E636F6D', 'hex'), meta]);
+}

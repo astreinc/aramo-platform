@@ -5,6 +5,7 @@ import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaService } from '../prisma/prisma.service.js';
 
+import type { GeoEvidence } from './geo-ip.port.js';
 import type { PersonalRiskDecision, PersonalRiskSignal } from './personal-risk-rating.js';
 import { writePersonalAudit, type TenantRiskStateValue } from './personal-risk.service.js';
 
@@ -17,6 +18,23 @@ import { writePersonalAudit, type TenantRiskStateValue } from './personal-risk.s
 export const PERSONAL_SIGNUP_TTL_MS = 24 * 60 * 60 * 1000;
 export const PERSONAL_INVITE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 export const PERSONAL_UNBOUND_LAPSE_DAYS = 7;
+// Signup-attempt cleanup (PO decision 2026-10-22; Lead ruling 2026-10-22 "guarded
+// expiry cleanup for unbound or refused signup attempts without destroying
+// retained security evidence"). Two guarded rules, one hourly run:
+//   (a) abandoned attempts — PENDING / EMAIL_VERIFIED / FAILED, never bound to a
+//       tenant, never accepted — are deleted 3 days after the attempt EXPIRED
+//       (expires_at = created_at + 24 h, never extended; no step advances an
+//       expired attempt, so none can be completed once it is due);
+//   (b) refused attempts (REFUSED) are security evidence — the only record of the
+//       risk signals behind a refusal (no audit event is written at refusal) — and
+//       are kept 180 days from creation, then deleted.
+// PROVISIONING, PROVISIONED and LAPSED attempts are never deleted.
+export const PERSONAL_ABANDONED_PURGE_DAYS = 3;
+export const PERSONAL_REFUSED_RETENTION_DAYS = 180;
+export const PERSONAL_ABANDONED_STATUSES = ['PENDING', 'EMAIL_VERIFIED', 'FAILED'] as const;
+// A PROVISIONING claim older than this is stale (the process died mid-saga): a
+// retry may re-claim it, and it no longer holds a pilot-cap slot.
+export const PERSONAL_PROVISIONING_STALE_MS = 5 * 60 * 1000;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export type PersonalSignupStatus = 'PENDING' | 'EMAIL_VERIFIED' | 'PROVISIONING' | 'PROVISIONED' | 'REFUSED' | 'FAILED' | 'LAPSED';
@@ -32,6 +50,7 @@ export interface PersonalSignupRow {
   ip_country: string | null;
   phone_region: string | null;
   network_kind: string | null;
+  geo_evidence: unknown;
   email_otp_hash: string | null;
   email_otp_expires_at: Date | null;
   email_otp_attempts: number;
@@ -71,6 +90,10 @@ export interface PersonalReviewItem {
   step_up_required: boolean;
   // A review still owed under a (temporary) restriction.
   review_pending: boolean;
+  // 'review' = an operator's review lifted the phone step while SMS was unavailable.
+  step_up_cleared_by: string | null;
+  // The signup's GeoLite2 evidence (country null = UNKNOWN), when recorded.
+  geo: GeoEvidence | null;
   risk_points: number | null;
   decision: string | null;
   signals: { key: string; points: number; detail?: string }[];
@@ -95,15 +118,25 @@ export function hashPersonalInviteCode(code: string): string {
   return createHash('sha256').update(`personal-invite:${normalized}`, 'utf8').digest('hex');
 }
 
-/** The initial risk state a completed signup opens with (§6.2 / §6.3). */
-export function initialRiskState(decision: PersonalRiskDecision, phone_verified: boolean): { state: TenantRiskStateValue; step_up_required: boolean; reason: string | null } {
+/**
+ * The initial risk state a completed signup opens with (§6.2 / §6.3).
+ * `sms_available` (the SMS port is configured): with SMS, a step-up without phone
+ * assurance waits in the review queue and only a phone code satisfies it. Without
+ * SMS (PO 2026-10-21 "Review replaces phone"), the step-up is routed to review
+ * (reason step_up_phone_unavailable); an operator clearing that review lifts the
+ * phone step but NEVER records phone assurance (correction C).
+ */
+export function initialRiskState(
+  decision: PersonalRiskDecision,
+  phone_verified: boolean,
+  sms_available = true,
+): { state: TenantRiskStateValue; step_up_required: boolean; reason: string | null } {
   if (decision === 'review') return { state: 'review', step_up_required: false, reason: 'signup_review' };
   if (decision === 'step_up') {
-    // Step-up without phone assurance waits in the review queue; review clearance
-    // does NOT satisfy it (correction C) — only a phone code check does.
-    return phone_verified
-      ? { state: 'clear', step_up_required: true, reason: 'signup_step_up' }
-      : { state: 'review', step_up_required: true, reason: 'signup_step_up_unverified' };
+    if (phone_verified) return { state: 'clear', step_up_required: true, reason: 'signup_step_up' };
+    return sms_available
+      ? { state: 'review', step_up_required: true, reason: 'signup_step_up_unverified' }
+      : { state: 'review', step_up_required: true, reason: 'step_up_phone_unavailable' };
   }
   return { state: 'clear', step_up_required: false, reason: null };
 }
@@ -122,6 +155,7 @@ export class PersonalSignupRepository {
     ip_country: string | null;
     phone_region: string | null;
     network_kind: string | null;
+    geo_evidence: GeoEvidence;
     risk_points: number;
     risk_signals: PersonalRiskSignal[];
     decision: PersonalRiskDecision;
@@ -129,12 +163,13 @@ export class PersonalSignupRepository {
     status: 'PENDING' | 'REFUSED';
     now: Date;
   }): Promise<PersonalSignupRow> {
-    const { now, risk_signals, ...rest } = input;
+    const { now, risk_signals, geo_evidence, ...rest } = input;
     return this.prisma.personalSignupRequest.create({
       data: {
         id: uuidv7(),
         ...rest,
         risk_signals: risk_signals as never,
+        geo_evidence: geo_evidence as never,
         expires_at: new Date(now.getTime() + PERSONAL_SIGNUP_TTL_MS),
         created_at: now,
         updated_at: now,
@@ -250,28 +285,37 @@ export class PersonalSignupRepository {
   }
 
   /**
-   * §10 invite mode — the pilot cap, serialized. Under one transaction-scoped
-   * advisory lock: count the active Personal tenants PLUS the signups already
-   * claimed for provisioning (in-flight reservations), refuse at the cap, else
-   * claim this signup (EMAIL_VERIFIED | FAILED → PROVISIONING). Because an
-   * in-flight claim counts against the cap, two concurrent completes at cap-1
-   * cannot both proceed — the second sees the first's reservation.
+   * §10 invite mode — the pilot cap, serialized (A1-8: atomic capacity
+   * reservation with expiry/release). Under one transaction-scoped advisory lock:
+   * count the open Personal tenants (active, not CLOSED, and not closed by their
+   * owner or an operator — TenantRiskState.state = 'closed' releases the slot)
+   * PLUS the live reservations (PROVISIONING claims that are fresh — updated
+   * within PERSONAL_PROVISIONING_STALE_MS — and unexpired; a stale or expired
+   * claim releases its slot), refuse at the cap, else claim this signup
+   * (EMAIL_VERIFIED | FAILED → PROVISIONING). Because a live claim counts against
+   * the cap, two concurrent completes at cap-1 cannot both proceed — the second
+   * sees the first's reservation. `accepted.at` is the request's clock.
    */
   async claimForProvisioningWithinCap(
     id: string,
     accepted: { documents: unknown; ip: string | null; at: Date },
     cap: number,
   ): Promise<'claimed' | 'busy' | 'full'> {
+    const now = accepted.at;
+    const staleBefore = new Date(now.getTime() - PERSONAL_PROVISIONING_STALE_MS);
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended('personal-pilot-cap', 0))`;
       const rows = await tx.$queryRaw<{ n: bigint }[]>`
         SELECT (
           (SELECT count(*) FROM "identity"."PersonalSignupRequest" r
              JOIN "identity"."Tenant" t ON t.id = r.tenant_id
-            WHERE r.status = 'PROVISIONED' AND t.is_active = true AND t.status <> 'CLOSED')
+             LEFT JOIN "identity"."TenantRiskState" s ON s.tenant_id = t.id
+            WHERE r.status = 'PROVISIONED' AND t.is_active = true AND t.status <> 'CLOSED'
+              AND (s.state IS NULL OR s.state <> 'closed'))
           +
           (SELECT count(*) FROM "identity"."PersonalSignupRequest" r
-            WHERE r.status = 'PROVISIONING' AND r.id <> ${id}::uuid)
+            WHERE r.status = 'PROVISIONING' AND r.id <> ${id}::uuid
+              AND r.updated_at > ${staleBefore} AND r.expires_at > ${now})
         )::bigint AS n`;
       if (Number(rows[0]?.n ?? 0) >= cap) return 'full';
       const n = await tx.personalSignupRequest.updateMany({
@@ -313,11 +357,11 @@ export class PersonalSignupRepository {
    * (from the signup decision; phone assurance only if the phone code was
    * verified), the invite consumed, and the audit event.
    */
-  async completeProvisioning(args: { id: string; tenant_id: string; owner_user_id: string; now: Date; resumed_from?: string }): Promise<void> {
+  async completeProvisioning(args: { id: string; tenant_id: string; owner_user_id: string; now: Date; resumed_from?: string; sms_available?: boolean }): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
       const row = await tx.personalSignupRequest.findUnique({ where: { id: args.id } });
       if (row === null || row.status !== 'PROVISIONING') throw new Error(`personal signup ${args.id} is not provisioning`);
-      const risk = initialRiskState(row.decision as PersonalRiskDecision, row.phone_verified_at !== null);
+      const risk = initialRiskState(row.decision as PersonalRiskDecision, row.phone_verified_at !== null, args.sms_available ?? true);
       const fresh = {
         state: risk.state,
         step_up_required: risk.step_up_required,
@@ -326,6 +370,7 @@ export class PersonalSignupRepository {
         restricted_until: null,
         reason: risk.reason,
         decided_by: null,
+        step_up_cleared_by: null,
         updated_at: args.now,
       };
       if (args.resumed_from !== undefined) {
@@ -369,6 +414,8 @@ export class PersonalSignupRepository {
           state: risk.state,
           step_up_required: risk.step_up_required,
           phone_verified: row.phone_verified_at !== null,
+          reason: risk.reason,
+          geo: row.geo_evidence ?? null,
           invite: row.invite_id !== null,
           ...(args.resumed_from === undefined ? {} : { resumed_from_signup_id: args.resumed_from }),
         },
@@ -409,12 +456,18 @@ export class PersonalSignupRepository {
     return row !== null && row.used_at === null && row.expires_at.getTime() > now.getTime();
   }
 
-  /** Active pilot tenants: provisioned by a Personal signup, still active and not closed. */
+  /**
+   * Open pilot tenants: provisioned by a Personal signup, still active, not CLOSED
+   * and not closed by the owner or an operator (risk state 'closed') — the same
+   * tenant term as the cap count in claimForProvisioningWithinCap.
+   */
   async activePersonalTenantCount(): Promise<number> {
     const rows = await this.prisma.$queryRaw<{ n: bigint }[]>`
       SELECT count(*)::bigint AS n FROM "identity"."PersonalSignupRequest" r
       JOIN "identity"."Tenant" t ON t.id = r.tenant_id
-      WHERE r.status = 'PROVISIONED' AND t.is_active = true AND t.status <> 'CLOSED'`;
+      LEFT JOIN "identity"."TenantRiskState" s ON s.tenant_id = t.id
+      WHERE r.status = 'PROVISIONED' AND t.is_active = true AND t.status <> 'CLOSED'
+        AND (s.state IS NULL OR s.state <> 'closed')`;
     return Number(rows[0]?.n ?? 0);
   }
 
@@ -452,6 +505,8 @@ export class PersonalSignupRepository {
         reason: s.reason,
         step_up_required: s.step_up_required,
         review_pending: s.review_pending,
+        step_up_cleared_by: s.step_up_cleared_by,
+        geo: geoEvidenceFromJson(r?.geo_evidence),
         risk_points: r?.risk_points ?? null,
         decision: r?.decision ?? null,
         signals,
@@ -462,6 +517,69 @@ export class PersonalSignupRepository {
         updated_at: s.updated_at,
       };
     });
+  }
+
+  // ── signup-attempt cleanup (PO 2026-10-22; Lead ruling 2026-10-22) ───────
+
+  /**
+   * One cleanup run: two guarded DELETEs in ONE transaction, plus one GLOBAL audit
+   * event (counts and cutoffs only) when anything was deleted.
+   *
+   * (a) Abandoned: status PENDING / EMAIL_VERIFIED / FAILED, no tenant, never
+   *     accepted (accepted_at and accepted_documents NULL — any claim sets them,
+   *     so a FAILED provisioning attempt that reached the terms is kept), no used
+   *     invite, and expires_at <= now - 3 days. It cannot race a completion: every
+   *     step refuses an attempt at or past expires_at (fixed at created_at + 24 h),
+   *     and a claim that commits first moves the row to PROVISIONING, which the
+   *     DELETE's re-check under READ COMMITTED then skips.
+   * (b) Refused: status REFUSED (the risk evidence of a refusal), no tenant, no
+   *     used invite, created_at <= now - 180 days.
+   * PROVISIONING / PROVISIONED / LAPSED rows match neither rule. Idempotent: a
+   * re-run with the same clock deletes nothing more and writes no event.
+   */
+  async purgeExpiredAttempts(
+    now: Date,
+    opts: { abandoned_days?: number; refused_days?: number } = {},
+  ): Promise<{ abandoned: number; refused: number; abandoned_cutoff: Date; refused_cutoff: Date }> {
+    const abandoned_days = opts.abandoned_days ?? PERSONAL_ABANDONED_PURGE_DAYS;
+    const refused_days = opts.refused_days ?? PERSONAL_REFUSED_RETENTION_DAYS;
+    const abandoned_cutoff = new Date(now.getTime() - abandoned_days * DAY_MS);
+    const refused_cutoff = new Date(now.getTime() - refused_days * DAY_MS);
+    const counts = await this.prisma.$transaction(async (tx) => {
+      const abandoned = await tx.$executeRaw`
+        DELETE FROM "identity"."PersonalSignupRequest" r
+         WHERE r.status IN ('PENDING', 'EMAIL_VERIFIED', 'FAILED')
+           AND r.tenant_id IS NULL
+           AND r.owner_user_id IS NULL
+           AND r.accepted_at IS NULL
+           AND r.accepted_documents IS NULL
+           AND r.expires_at <= ${abandoned_cutoff}
+           AND NOT EXISTS (SELECT 1 FROM "identity"."PersonalSignupInvite" i WHERE i.used_by_signup_id = r.id)`;
+      const refused = await tx.$executeRaw`
+        DELETE FROM "identity"."PersonalSignupRequest" r
+         WHERE r.status = 'REFUSED'
+           AND r.tenant_id IS NULL
+           AND r.created_at <= ${refused_cutoff}
+           AND NOT EXISTS (SELECT 1 FROM "identity"."PersonalSignupInvite" i WHERE i.used_by_signup_id = r.id)`;
+      if (abandoned + refused > 0) {
+        await writePersonalAudit(tx, {
+          event_type: 'identity.personal.signup.attempts_purged',
+          tenant_id: null,
+          subject_id: uuidv7(),
+          actor_id: null,
+          payload: {
+            abandoned,
+            refused,
+            abandoned_cutoff: abandoned_cutoff.toISOString(),
+            refused_cutoff: refused_cutoff.toISOString(),
+            abandoned_days,
+            refused_days,
+          },
+        });
+      }
+      return { abandoned, refused };
+    });
+    return { ...counts, abandoned_cutoff, refused_cutoff };
   }
 
   // ── unbound lapse (§3.6) ───────────────────────────────────────────────────
@@ -511,3 +629,15 @@ export class PersonalSignupRepository {
 }
 
 class LapseRaced extends Error {}
+
+/** A stored geo_evidence JSON value as GeoEvidence (null when absent or malformed). */
+export function geoEvidenceFromJson(v: unknown): GeoEvidence | null {
+  if (v === null || typeof v !== 'object') return null;
+  const o = v as Record<string, unknown>;
+  if (typeof o['looked_up_at'] !== 'string') return null;
+  return {
+    country: typeof o['country'] === 'string' ? o['country'] : null,
+    looked_up_at: o['looked_up_at'],
+    db_version: typeof o['db_version'] === 'string' ? o['db_version'] : null,
+  };
+}

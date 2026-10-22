@@ -343,6 +343,35 @@ export const billingApi = {
   portal: () => apiClient.post<{ url: string }>(`${BILLING}/portal`, {}),
 };
 
+// Aramo Sign Personal (Free) — the current legal documents the signed-in user still
+// has to accept (/v1/sign/legal). Business accounts always get `pending: []`.
+export interface PendingLegalDocument {
+  key: string;
+  version: string;
+  url: string;
+  title: string;
+}
+
+export const legalApi = {
+  status: () => apiClient.get<{ pending: PendingLegalDocument[] }>('/v1/sign/legal/status'),
+  accept: (docs: readonly { key: string; version: string }[]) =>
+    apiClient.post<{ pending: PendingLegalDocument[] }>('/v1/sign/legal/accept', { accept: docs.map((d) => ({ key: d.key, version: d.version })) }),
+};
+
+// Aramo Sign Personal (Free) — Settings → Close account (/v1/sign/account). `closable`
+// is true only for the owner of an open Personal account (backend-decided).
+export interface AccountStatus {
+  closable: boolean;
+  closed: boolean;
+  closed_at: string | null;
+}
+
+export const accountApi = {
+  status: () => apiClient.get<AccountStatus>('/v1/sign/account/status'),
+  close: (reason?: string) =>
+    apiClient.post<{ state: 'closed'; closed_at: string }>('/v1/sign/account/close', reason !== undefined && reason.trim() !== '' ? { confirm: 'CLOSE', reason: reason.trim() } : { confirm: 'CLOSE' }),
+};
+
 // ORG-UX-1 §6 — Sign member role administration is retired (Organization owns roles).
 
 export const senderApi = {
@@ -430,7 +459,10 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
     if (e.code === 'ESIGN_NOT_SUBSCRIBED') return 'Your organization doesn’t have an active Aramo Sign plan, so envelopes can’t be sent. An admin can choose a plan in Settings → Plan & billing.';
     if (e.code === 'ESIGN_ALLOWANCE_EXHAUSTED' && isDailyLimit(e)) {
       const limit = e.details?.['limit'];
-      return `You’ve sent ${typeof limit === 'number' ? `${limit} envelopes` : 'the most envelopes allowed'} today. You can send again tomorrow.`;
+      const sent = `You’ve sent ${typeof limit === 'number' ? `${limit} envelopes` : 'the most envelopes allowed'} in the last 24 hours.`;
+      // Personal Free — the window is any 24 hours; the backend says when the next send is possible.
+      const next = nextSendTime(e.details?.['next_available_at']);
+      return next !== null ? `${sent} Your next send is available at ${next}.` : `${sent} You can send again later.`;
     }
     if (e.code === 'ESIGN_ALLOWANCE_EXHAUSTED') {
       const limit = e.details?.['limit'];
@@ -455,11 +487,22 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
     // Aramo Sign Personal (Free) §6 — the Personal sending gate's refusals.
     const personal = personalRefusalMessage(e.details?.['reason']);
     if (personal !== null) return personal;
+    // Personal (Free) — Settings → Close account refusals.
+    const close = closeRefusalMessage(e.details?.['reason']);
+    if (close !== null) return close;
     if (e.status === 403) return 'You don’t have permission to do that.';
     if (e.code === 'ENVELOPE_ILLEGAL_TRANSITION') return 'This envelope can’t be changed in its current state.';
     return e.message.length > 0 ? e.message : fallback;
   }
   return fallback;
+}
+
+function closeRefusalMessage(reason: unknown): string | null {
+  if (reason === 'not_account_owner') return 'Only the account owner can close this account.';
+  if (reason === 'business_account_close_via_organization') return 'An organization account is closed by its organization administrator.';
+  if (reason === 'account_close_confirmation_required') return 'Type CLOSE to confirm closing your account.';
+  if (reason === 'personal_account_not_closable') return 'This account can’t be closed here. Contact Aramo support.';
+  return null;
 }
 
 // Sign Unified Product S-7 — the recipient inbox (/v1/sign/inbox). A recipient
@@ -503,10 +546,19 @@ const PERSONAL_REFUSALS: Record<string, string> = {
   personal_restricted:
     'Sending is paused on your account while we review it. Envelopes you already sent aren’t affected. Contact Aramo support if you think this is a mistake.',
   personal_location_not_supported: 'Aramo Sign Personal is currently available in the United States and India.',
+  legal_acceptance_required: 'Review and accept the updated terms to send. Reload the page to see them.',
 };
 
 export function personalRefusalMessage(reason: unknown): string | null {
   return typeof reason === 'string' ? (PERSONAL_REFUSALS[reason] ?? null) : null;
+}
+
+/** "Oct 22, 9:14 AM" in the viewer's locale and time zone, or null for a missing/invalid time. */
+export function nextSendTime(iso: unknown): string | null {
+  if (typeof iso !== 'string') return null;
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return null;
+  return d.toLocaleString(undefined, { month: 'short', day: 'numeric', hour: 'numeric', minute: '2-digit' });
 }
 
 /** A send refused by the daily window (Personal Free: 2 a day) rather than the monthly allowance. */

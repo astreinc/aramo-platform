@@ -2117,6 +2117,154 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/legal/status:
+    get:
+      operationId: getSignLegalStatus
+      summary: The Personal legal documents the signed-in user still has to accept.
+      description: >
+        Aramo Sign Personal (Free). For the signed-in user of a PERSONAL tenant: every current
+        APPROVED version of the Personal Terms of Service, the Aramo Privacy Notice and the Aramo
+        Acceptable Use Policy that this user has not accepted (at signup or in the workspace) for
+        that exact version and text. A BUSINESS tenant always has nothing pending. Sending from a
+        Personal account is refused (details.reason = legal_acceptance_required) while anything is
+        pending. Requires a Sign session of a tenant entitled to `sign`.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignLegalStatus'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/legal/accept:
+    post:
+      operationId: acceptSignLegalDocuments
+      summary: Accept the current versions of the Personal legal documents.
+      description: >
+        Aramo Sign Personal (Free). Each item must name a Personal legal document and its CURRENT
+        approved version exactly; otherwise the whole request is refused (details.reason =
+        legal_version_not_current) and nothing is recorded. Records one acceptance per user,
+        document and version (idempotent) with the version, the text SHA-256, the time, the
+        client address and the user agent. Refused for a BUSINESS tenant (details.reason =
+        legal_acceptance_not_applicable). Answers the documents still pending.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [accept]
+              properties:
+                accept:
+                  type: array
+                  minItems: 1
+                  maxItems: 10
+                  items:
+                    type: object
+                    required: [key, version]
+                    properties:
+                      key:
+                        type: string
+                        maxLength: 100
+                      version:
+                        type: string
+                        maxLength: 20
+      responses:
+        '200':
+          description: Accepted; the documents still pending.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignLegalStatus'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/account/status:
+    get:
+      operationId: getSignAccountStatus
+      summary: Whether the signed-in user's account can be closed, and whether it is closed.
+      description: >
+        Aramo Sign Personal (Free). closable is true only for the owner (tenant_owner) of an open
+        PERSONAL account; a BUSINESS account is never closable here (its organization administrator
+        or the operator closes it). closed is true once the account was closed (by its owner or the
+        operator); closed_at is when. Requires a Sign session of a tenant entitled to `sign`.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignAccountStatus'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/account/close:
+    post:
+      operationId: closeSignAccount
+      summary: Close the signed-in owner's Personal account.
+      description: >
+        Aramo Sign Personal (Free) — Settings → Close account. The owner (tenant_owner) of a
+        PERSONAL account closes it: sending stops immediately and for good; envelopes already sent
+        stay open for their signers. The same close the operator performs, audited with the owner as
+        the actor. Requires confirm = CLOSE (else details.reason = account_close_confirmation_required).
+        Refused for a BUSINESS account (details.reason = business_account_close_via_organization) and
+        for a caller who is not the owner (details.reason = not_account_owner). A PERSONAL account
+        without a Personal risk state cannot be closed here (404, details.reason =
+        personal_account_not_closable). Closing a closed account answers its closed state.
+        Requires a Sign session of a tenant entitled to `sign`.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirm]
+              properties:
+                confirm:
+                  type: string
+                  enum: [CLOSE]
+                reason:
+                  type: string
+                  maxLength: 500
+                  description: Optional note from the owner, kept with the audit record.
+      responses:
+        '200':
+          description: The account is closed.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignAccountClosed'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
   /v1/sign/billing/plans:
     get:
       operationId: listBillingPlans
@@ -2586,6 +2734,50 @@ components:
         url:
           type: string
           format: uri
+    SignLegalStatus:
+      type: object
+      required: [pending]
+      properties:
+        pending:
+          type: array
+          description: Current approved Personal legal documents the user has not accepted (empty for a BUSINESS tenant).
+          items:
+            type: object
+            required: [key, version, url, title]
+            properties:
+              key:
+                type: string
+                enum: [sign.personal_terms_of_service, aramo.privacy_notice, aramo.acceptable_use_policy]
+              version:
+                type: string
+              url:
+                type: string
+                format: uri
+                description: The published text on the Sign host (https://sign.aramo.ai/legal/<slug>/<version>).
+              title:
+                type: string
+    SignAccountStatus:
+      type: object
+      required: [closable, closed, closed_at]
+      properties:
+        closable:
+          type: boolean
+          description: True only for the owner of an open PERSONAL account.
+        closed:
+          type: boolean
+        closed_at:
+          type: [string, 'null']
+          format: date-time
+    SignAccountClosed:
+      type: object
+      required: [state, closed_at]
+      properties:
+        state:
+          type: string
+          enum: [closed]
+        closed_at:
+          type: string
+          format: date-time
     SenderContext:
       type: object
       required: [user, tenant, workspace, permissions, can_send, personal_sending_enabled]

@@ -38,7 +38,7 @@ describe('/report', () => {
     open(fetch);
     expect(await screen.findByTestId('report-form')).toBeInTheDocument();
     expect(window.location.hash).toBe('');
-    const group = screen.getByRole('radiogroup', { name: 'What’s wrong with this email?' });
+    const group = screen.getByRole('radiogroup', { name: /^What’s wrong with this email\?/ });
     expect(within(group).getAllByRole('radio').map((r) => r.textContent)).toEqual([
       'PhishingIt asks for passwords, payment or personal details',
       'ImpersonationIt pretends to be a person or company it isn’t',
@@ -58,17 +58,23 @@ describe('/report', () => {
     expect((call[1] as RequestInit).credentials).toBeUndefined();
   });
 
-  it('Send report stays disabled until a reason is picked; arrow keys move the choice', async () => {
-    const fetch = reportFetch(202);
-    open(fetch);
+  it('the reason is optional (Acceptable Use Policy): a report without one sends the token only; the policy is linked; arrow keys move the choice', async () => {
+    const view = open(reportFetch(202));
     const send = await screen.findByTestId('report-submit');
-    expect(send).toBeDisabled();
-    fireEvent.click(send);
-    expect(fetch.mock.calls.some(([u]) => String(u).endsWith('/v1/sign/report'))).toBe(false);
+    expect(send).not.toBeDisabled();
+    expect(screen.getByRole('link', { name: 'Acceptable Use Policy' })).toHaveAttribute('href', '/legal/acceptable-use/1.0');
     fireEvent.click(screen.getByRole('radio', { name: /^Spam/ }));
     fireEvent.keyDown(screen.getByRole('radio', { name: /^Spam/ }), { key: 'ArrowDown' });
     expect(screen.getByRole('radio', { name: /^Something else/ })).toHaveAttribute('aria-checked', 'true');
-    expect(send).not.toBeDisabled();
+    // A fresh form, no reason picked: the report sends the token only.
+    view.unmount();
+    const fresh = reportFetch(202);
+    open(fresh);
+    fireEvent.click(await screen.findByTestId('report-submit'));
+    expect(await screen.findByTestId('report-thanks')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Acceptable Use Policy' })).toHaveAttribute('target', '_blank');
+    const call = fresh.mock.calls.find(([u]) => String(u).endsWith('/v1/sign/report'))!;
+    expect(JSON.parse(String((call[1] as RequestInit).body))).toEqual({ token: TOKEN });
   });
 
   it('a second report for the same email is acknowledged (409)', async () => {

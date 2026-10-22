@@ -120,6 +120,8 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   // One guarded DO block on fixed role ids (a no-op without a role catalog). No
   // returned-shape change. AFTER the ROLES-1 role model.
   'libs/identity/prisma/migrations/20261022140000_org_ux_1_template_author_grants/migration.sql',
+  // Personal Free — GeoLite2 evidence + review-lifted phone step (additive).
+  'libs/identity/prisma/migrations/20261024100000_sign_personal_geo_step_up/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each

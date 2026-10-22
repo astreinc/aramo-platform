@@ -5,6 +5,7 @@ import { Input, logout, ssoEntryHref } from '@aramo/fe-foundation';
 import { senderApi, type LedgerEvent } from './api';
 import { Avatar, Bare, Btn, Icon, eventDot, eventLabel, rel } from './ui';
 import { useWorkspace } from './workspace';
+import { LegalLinks } from './legal/LegalAcceptance';
 
 // The Sign console shell (prototype: white sidebar + top bar). Sidebar groups:
 // WORKSPACE · INSIGHTS · ADMINISTRATION. ≥900px the menu button collapses the
@@ -144,6 +145,8 @@ export function ConsoleShell({ children, scopes }: { children: ReactNode; scopes
       <div className="sg-main">
         <TopBar onMenu={() => (narrow ? setDrawer((d) => !d) : setCollapsed((c) => !c))} />
         <main>{children}</main>
+        {/* Aramo Sign Personal (Free) — the legal documents that bind this account. */}
+        <LegalLinks personal={personal} />
       </div>
     </div>
   );

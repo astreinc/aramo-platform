@@ -65,12 +65,43 @@ describe('PersonalReviewView', () => {
     expect(within(r2).getAllByRole('button').map((b) => b.textContent)).toEqual(['Reports', 'Reinstate', 'Close account']);
   });
 
+  it('while SMS is unavailable, clear review says it lifts the phone step (and still does not verify the phone)', async () => {
+    const held: PersonalReviewItem = {
+      ...REVIEW,
+      reason: 'step_up_phone_unavailable',
+      step_up_required: true,
+      review_clears_phone_step: true,
+      geo: { country: null, looked_up_at: '2026-10-20T00:00:00Z', db_version: null },
+    };
+    vi.spyOn(platformApi, 'listPersonalReview').mockResolvedValue({ items: [held], phone_verification_available: false });
+    renderIn(<PersonalReviewView />);
+    const row = await screen.findByTestId('personal-review-t-review');
+    expect(within(row).getByText('Phone step needed; phone verification unavailable')).toBeInTheDocument();
+    expect(within(row).getByTestId('personal-review-geo')).toHaveTextContent('Unknown · no location database');
+    fireEvent.click(within(row).getByRole('button', { name: 'Clear review' }));
+    const note = await screen.findByTestId('personal-clear-lifts-phone');
+    expect(note).toHaveTextContent('Clearing review does not verify the phone.');
+    expect(note).toHaveTextContent("also lifts this account's phone step");
+    expect(note).toHaveTextContent('The phone stays recorded as not verified.');
+    expect(screen.queryByTestId('personal-clear-keeps-phone')).toBeNull();
+  });
+
+  it('an account whose phone step was lifted by review shows that (phone still not verified)', async () => {
+    const lifted: PersonalReviewItem = { ...RESTRICTED, step_up_cleared_by: 'review', geo: { country: 'GB', looked_up_at: '2026-10-20T00:00:00Z', db_version: 'GeoLite2-Country 2026-10-19T00:00:00.000Z' } };
+    vi.spyOn(platformApi, 'listPersonalReview').mockResolvedValue({ items: [lifted] });
+    renderIn(<PersonalReviewView />);
+    const row = await screen.findByTestId('personal-review-t-restricted');
+    expect(within(row).getByTestId('personal-review-step-cleared')).toHaveTextContent('Lifted by review (phone not verified)');
+    expect(within(row).getByTestId('personal-review-geo')).toHaveTextContent('GB · GeoLite2-Country 2026-10-19T00:00:00.000Z');
+  });
+
   it('clear review needs a reason, says it does not verify the phone, and reloads', async () => {
     const list = vi.spyOn(platformApi, 'listPersonalReview').mockResolvedValueOnce({ items: [REVIEW] }).mockResolvedValueOnce({ items: [] });
     const act = vi.spyOn(platformApi, 'personalReviewAction').mockResolvedValue({});
     renderIn(<PersonalReviewView />);
     fireEvent.click(await screen.findByRole('button', { name: 'Clear review' }));
     expect(await screen.findByText(/Clearing review does not verify the phone/)).toBeInTheDocument();
+    expect(screen.getByTestId('personal-clear-keeps-phone')).toBeInTheDocument();
     const confirm = screen.getByTestId('personal-action-confirm');
     expect(confirm).toBeDisabled();
     fireEvent.change(screen.getByLabelText('Reason (required)'), { target: { value: 'Looks genuine' } });
@@ -168,6 +199,17 @@ describe('PersonalReviewView', () => {
     renderIn(<PersonalReviewView />);
     fireEvent.click(await screen.findByTestId('personal-review-reports'));
     expect(await screen.findByTestId('personal-reports-empty')).toHaveTextContent('No reports.');
+  });
+
+  it('signalLabel names every signal the backend records (incl. the GeoLite2 location signals)', () => {
+    expect(signalLabel('ip_country_outside')).toBe('Network location outside the supported countries');
+    expect(signalLabel('ip_country_unknown')).toBe('Network location unknown');
+    expect(signalLabel('send_location_outside')).toBe('Sent from outside the supported countries');
+    expect(signalLabel('send_location_unknown')).toBe('Sent from an unknown network location');
+    expect(signalLabel('step_up_phone_unavailable')).toBe('Phone step needed; phone verification unavailable');
+    for (const k of ['robot_check_low', 'robot_check_failed', 'honeypot_filled', 'network_hosting_vpn_tor', 'ip_signups_24h', 'phone_ip_country_mismatch', 'gmail_alias_of_existing', 'fast_form', 'random_looking', 'phone_reused']) {
+      expect(signalLabel(k)).not.toBe(k.replace(/[_.]/g, ' ').replace(/^./, (c) => c.toUpperCase()));
+    }
   });
 
   it('signalLabel falls back to a readable key', () => {

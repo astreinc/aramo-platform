@@ -250,8 +250,12 @@ export function summarizeDetail(
       return 'Reinstated sending';
     case 'identity.personal.risk.closed':
       return 'Closed the personal account';
+    case 'identity.personal.risk.send_location_signal':
+      return 'Recorded a send from outside the supported countries or an unknown location';
     case 'identity.personal.invite.issued':
       return 'Issued a personal pilot invite';
+    case 'identity.personal.signup.attempts_purged':
+      return 'Deleted expired and refused personal signup attempts';
     // ORG-UX-1 §8.10 — P3 verification delegation (previously unsummarized).
     case 'identity.domain.verification.delegation.issued':
       return 'Asked someone else to verify the email domain';

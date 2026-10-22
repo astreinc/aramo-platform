@@ -41,6 +41,7 @@ import {
 } from '@aramo/subscription';
 
 import { PersonalLapseSweeper } from '../app/platform/personal-lapse-sweeper.service.js';
+import { PersonalSignupAttemptPurgeSweeper } from '../app/platform/personal-signup-attempt-purge-sweeper.service.js';
 import { PlatformPersonalController } from '../app/platform/platform-personal.controller.js';
 import { PersonalSignupController } from '../app/signup/personal-signup.controller.js';
 import { PERSONAL_LEGAL_KEYS, PersonalSignupService } from '../app/signup/personal-signup.service.js';
@@ -54,11 +55,14 @@ import { generateTestKeyPair } from './test-keys.js';
 // Aramo-Sign-Personal-Free-Launch-Directive-v1_1 (LOCKED) — the PUBLIC Personal
 // (Free) signup + operator surface on REAL Postgres 17 (stubbed GeoIP / robot
 // check / SMS, capturing mailer, no Cognito anywhere): dark when off; the §2
-// classification; §6.6 location checks; §6.2 refusals stored; OTP lifecycle;
+// classification; §6.6 location checks (phone region + residence hard; the
+// GeoLite2 network country a risk signal only — Architect ruling 2026-10-21, with
+// its evidence stored); §6.2 refusals stored; OTP lifecycle;
 // binding preconditions (owner email == OTP-verified email, PROVISIONED tenant,
 // tenant_owner ONLY, no ExternalIdentity, no subscription, Google pre-pin);
 // legal-not-approved refusal; invite mode / cap / expiry; held accounts; operator
-// review actions (clear-review never sets phone assurance); the unbound lapse.
+// review actions (clear-review never sets phone assurance; while SMS is
+// unavailable it lifts the phone step — PO "Review replaces phone"); the unbound lapse.
 
 const ROOT = resolve(__dirname, '../../../..');
 const IDENTITY_MIGRATIONS = resolveIdentityMigrations(ROOT);
@@ -81,7 +85,7 @@ const SUBSCRIPTION_MIGRATIONS = [
 const TENANT_OWNER_ROLE_ID = '01900000-0000-7000-8000-000000000014';
 const TENANT_ADMIN_ROLE_ID = '01900000-0000-7000-8000-0000000002b0';
 
-// Test-only APPROVED versions (the real registry holds none — nothing is approved).
+// Test-only APPROVED versions (independent of the real registry's contents).
 const APPROVED: LegalDocumentVersion[] = PERSONAL_LEGAL_KEYS.map((key, i) => ({
   key: key as LegalDocumentVersion['key'],
   version: '1.0.0',
@@ -95,8 +99,16 @@ const useRegistry = (docs: readonly LegalDocumentVersion[]) => registryDocs.spli
 const ACCEPT_ALL = APPROVED.map((d) => ({ key: d.key, version: d.version }));
 
 // Stubs for the three ports (mutable per test).
-const geo = { country: 'US' as string | null, network: 'residential' as const };
-const geoStub = { countryOf: async () => geo.country, networkKind: async () => geo.network };
+const DB_VERSION = 'GeoLite2-Country 2026-10-20T00:00:00.000Z';
+const geo = { country: 'US' as string | null, network: 'residential' as const, db_version: DB_VERSION as string | null, throws: false };
+const geoStub = {
+  countryOf: async () => geo.country,
+  networkKind: async () => geo.network,
+  lookup: async (_ip: string, now: Date = new Date()) => {
+    if (geo.throws) throw new Error('mmdb exploded');
+    return { country: geo.country, network_kind: geo.network, looked_up_at: now.toISOString(), db_version: geo.db_version };
+  },
+};
 const robotStub = { verdict: 'pass' as 'pass' | 'low' | 'fail' | 'unavailable', verify: async () => ({ verdict: robotStub.verdict }) };
 const logSms = new LogSmsAdapter();
 let smsImpl: SmsVerificationPort = new DisabledSmsAdapter();
@@ -191,6 +203,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
         AddressSuggestService,
         SignupBudget,
         PersonalLapseSweeper,
+        PersonalSignupAttemptPurgeSweeper,
         LegalAcceptanceService,
         SubscriptionPrismaService,
         { provide: LEGAL_DOCUMENT_REGISTRY, useValue: registryDocs },
@@ -227,6 +240,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
     process.env['SIGN_PERSONAL_SIGNUP_MODE'] = 'open';
     delete process.env['SIGN_PERSONAL_PILOT_CAP'];
     geo.country = 'US';
+    geo.db_version = DB_VERSION;
+    geo.throws = false;
     robotStub.verdict = 'pass';
     smsImpl = new DisabledSmsAdapter();
   });
@@ -330,7 +345,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
   });
 
   it('legal documents not approved: terms null and complete refused (nothing provisioned)', async () => {
-    useRegistry(LEGAL_DOCUMENTS);
+    // A registry with no APPROVED Personal document (independent of what the real registry holds).
+    useRegistry(LEGAL_DOCUMENTS.filter((d) => !(PERSONAL_LEGAL_KEYS as readonly string[]).includes(d.key)));
     const p = await startedAndVerified();
     expect((await http().get('/v1/signup/sign/personal/terms')).body).toEqual({ documents: null });
     const r = await complete(p.signup_id, []);
@@ -357,16 +373,51 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
     delete process.env['SIGN_PUBLIC_SIGNUP_ENABLED'];
   });
 
-  it('location: Canadian phone, residence mismatch, network outside US/IN or unknown → refused; India passes', async () => {
+  it('location: Canadian phone, residence mismatch, residence outside US/IN → refused (hard); India passes', async () => {
     expect(reason(await start(person({ phone: '+14165550123' })))).toBe('personal_location_not_supported');
     expect(reason(await start(person({ residence: 'IN' })))).toBe('personal_location_not_supported');
     expect(reason(await start(person({ residence: 'GB', phone: '+447911123456' })))).toBe('personal_location_not_supported');
-    geo.country = 'GB';
-    expect(reason(await start(person()))).toBe('personal_location_not_supported');
-    geo.country = null;
-    expect(reason(await start(person()))).toBe('personal_location_not_supported');
     geo.country = 'IN';
-    expect((await start(person({ residence: 'IN', phone: `+91987654${String(3000 + n).slice(-4)}` }))).status).toBe(202);
+    const india = person({ residence: 'IN', phone: `+91987654${String(3000 + n).slice(-4)}` });
+    expect((await start(india)).status).toBe(202);
+    const row = await db.personalSignupRequest.findFirst({ where: { email: india.email as string } });
+    expect(row).toMatchObject({ decision: 'allow', ip_country: 'IN', risk_signals: [] });
+  });
+
+  it('network country outside US/IN is a risk signal, not a refusal: 202 → review, with the geo evidence stored', async () => {
+    geo.country = 'GB';
+    const p = await startedAndVerified();
+    expect(p.next).toBe('review');
+    const row = await db.personalSignupRequest.findUnique({ where: { id: p.signup_id } });
+    expect(row).toMatchObject({ decision: 'review', ip_country: 'GB', risk_points: 75 });
+    expect(row!.risk_signals).toEqual([
+      { key: 'ip_country_outside', points: 60, detail: 'GB' },
+      { key: 'phone_ip_country_mismatch', points: 15, detail: 'US/GB' },
+    ]);
+    expect(row!.geo_evidence).toEqual({ country: 'GB', looked_up_at: expect.any(String), db_version: DB_VERSION });
+    expect(new Date((row!.geo_evidence as { looked_up_at: string }).looked_up_at).getTime()).toBeGreaterThan(Date.now() - 60_000);
+    const done = await complete(p.signup_id);
+    expect(done.body).toMatchObject({ status: 'PROVISIONED', held: 'review' });
+    const t = (await db.personalSignupRequest.findUnique({ where: { id: p.signup_id } }))!.tenant_id!;
+    const prov = await db.identityAuditEvent.findFirst({ where: { tenant_id: t, event_type: 'identity.personal.signup.provisioned' } });
+    expect(prov!.event_payload).toMatchObject({ decision: 'review', geo: { country: 'GB', db_version: DB_VERSION } });
+    const item = (await http().get('/platform/personal-review').set('Authorization', await op())).body.items.find((i: { tenant_id: string }) => i.tenant_id === t);
+    expect(item).toMatchObject({ state: 'review', geo: { country: 'GB', db_version: DB_VERSION }, signals: expect.arrayContaining([expect.objectContaining({ key: 'ip_country_outside' })]) });
+  });
+
+  it('a missing GeoLite2 database no longer refuses: signup proceeds with ip_country_unknown (step-up; SMS off → review), evidence country null', async () => {
+    geo.country = null;
+    geo.db_version = null;
+    const p = await startedAndVerified();
+    expect(p.next).toBe('review');
+    const row = await db.personalSignupRequest.findUnique({ where: { id: p.signup_id } });
+    expect(row).toMatchObject({ decision: 'step_up', ip_country: null, risk_points: 30, risk_signals: [{ key: 'ip_country_unknown', points: 30 }] });
+    expect(row!.geo_evidence).toEqual({ country: null, looked_up_at: expect.any(String), db_version: null });
+    // A lookup error is UNKNOWN too — never a 500, never a refusal.
+    geo.throws = true;
+    const q = person();
+    expect((await start(q)).status).toBe(202);
+    expect(await db.personalSignupRequest.findFirst({ where: { email: q.email as string } })).toMatchObject({ decision: 'step_up', ip_country: null, geo_evidence: expect.objectContaining({ country: null, db_version: null }) });
   });
 
   // ── non-enumeration + refusals ───────────────────────────────────────────────
@@ -427,25 +478,57 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
 
   // ── step-up / review held accounts (§6.3) ────────────────────────────────────
 
-  it('step-up with SMS disabled: sent:false, still completes HELD (phone_verification_required); clear-review never sets phone assurance', async () => {
+  it('step-up with SMS disabled: routed to review (next review, held review); clear-review lifts the phone step but never sets phone assurance', async () => {
     const p = await startedAndVerified({ elapsed_ms: 1000 });
-    expect(p.next).toBe('phone');
+    expect(p.next).toBe('review');
     expect((await http().post('/v1/signup/sign/personal/phone/send').send({ signup_id: p.signup_id })).body).toEqual({ sent: false });
     const done = await complete(p.signup_id);
-    expect(done.body).toMatchObject({ status: 'PROVISIONED', held: 'phone_verification_required' });
+    expect(done.body).toMatchObject({ status: 'PROVISIONED', held: 'review' });
     const row = await db.personalSignupRequest.findUnique({ where: { id: p.signup_id } });
+    expect(row).toMatchObject({ decision: 'step_up' });
     const risk = module.get(PersonalRiskService);
-    expect(await risk.riskStateOf(row!.tenant_id!)).toMatchObject({ state: 'review', step_up_required: true, phone_verified_at: null });
+    expect(await risk.riskStateOf(row!.tenant_id!)).toMatchObject({ state: 'review', step_up_required: true, phone_verified_at: null, reason: 'step_up_phone_unavailable' });
 
     const auth = await op();
     const queue = await http().get('/platform/personal-review').set('Authorization', auth);
+    expect(queue.body.phone_verification_available).toBe(false);
     const item = queue.body.items.find((i: { tenant_id: string }) => i.tenant_id === row!.tenant_id);
-    expect(item).toMatchObject({ owner_email: p.email, state: 'review', risk_points: 40, signals: [{ key: 'fast_form', points: 40, detail: '1000' }], phone_verified_at: null });
+    expect(item).toMatchObject({
+      owner_email: p.email,
+      state: 'review',
+      reason: 'step_up_phone_unavailable',
+      risk_points: 40,
+      signals: [{ key: 'fast_form', points: 40, detail: '1000' }],
+      phone_verified_at: null,
+      review_clears_phone_step: true,
+      step_up_cleared_by: null,
+    });
 
     const cleared = await http().post(`/platform/tenants/${row!.tenant_id}/personal/clear-review`).set('Authorization', auth).send({ reason: 'reviewed' });
     expect(cleared.status).toBe(200);
-    expect(cleared.body).toMatchObject({ state: 'clear', phone_verified_at: null, step_up_required: true });
-    expect(await risk.assertPersonalSendAllowed(row!.tenant_id!, { ip_country: 'US', now: new Date() })).toEqual({ ok: false, reason: 'phone_verification_required' });
+    expect(cleared.body).toMatchObject({ state: 'clear', phone_verified_at: null, step_up_required: false, step_up_cleared_by: 'review' });
+    const ev = await db.identityAuditEvent.findFirst({ where: { tenant_id: row!.tenant_id!, event_type: 'identity.personal.risk.review_cleared' } });
+    expect(ev).toMatchObject({ actor_id: OPERATOR });
+    expect(ev!.event_payload).toMatchObject({ step_up_cleared: true, step_up_cleared_by: 'review', phone_verified: false });
+    expect(await risk.phoneVerified(row!.tenant_id!)).toBe(false);
+    // Young account (< 7 days) in the US sends; only the location rule would hold it.
+    expect(await risk.assertPersonalSendAllowed(row!.tenant_id!, { ip_country: 'US', now: new Date() })).toEqual({ ok: true, location: 'inside' });
+  });
+
+  it('step-up with SMS configured but the phone never verified: held for the phone; clear-review does NOT lift the phone step', async () => {
+    smsImpl = logSms;
+    const p = await startedAndVerified({ elapsed_ms: 1000 });
+    expect(p.next).toBe('phone');
+    const done = await complete(p.signup_id);
+    expect(done.body).toMatchObject({ status: 'PROVISIONED', held: 'phone_verification_required' });
+    const t = (await db.personalSignupRequest.findUnique({ where: { id: p.signup_id } }))!.tenant_id!;
+    const auth = await op();
+    const queue = await http().get('/platform/personal-review').set('Authorization', auth);
+    expect(queue.body.phone_verification_available).toBe(true);
+    expect(queue.body.items.find((i: { tenant_id: string }) => i.tenant_id === t)).toMatchObject({ reason: 'signup_step_up_unverified', review_clears_phone_step: false });
+    const cleared = await http().post(`/platform/tenants/${t}/personal/clear-review`).set('Authorization', auth).send({ reason: 'reviewed' });
+    expect(cleared.body).toMatchObject({ state: 'clear', phone_verified_at: null, step_up_required: true, step_up_cleared_by: null });
+    expect(await module.get(PersonalRiskService).assertPersonalSendAllowed(t, { ip_country: 'US', now: new Date() })).toEqual({ ok: false, reason: 'phone_verification_required', location: 'inside' });
   });
 
   it('operator abuse reports: listed per Personal account, decided with a reason; unknown report 404, bad outcome 400', async () => {
@@ -505,6 +588,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
 
   // ── invite mode + pilot cap ──────────────────────────────────────────────────
 
+  // The cap's tenant term: provisioned by a Personal signup, active, not CLOSED and
+  // not closed by the owner / an operator (risk state 'closed').
+  const openPersonalTenants = async (): Promise<number> =>
+    Number(
+      (
+        await sql.query(
+          `SELECT count(*)::int AS n FROM identity."PersonalSignupRequest" r JOIN identity."Tenant" t ON t.id = r.tenant_id
+             LEFT JOIN identity."TenantRiskState" s ON s.tenant_id = t.id
+            WHERE r.status = 'PROVISIONED' AND t.is_active AND t.status <> 'CLOSED' AND (s.state IS NULL OR s.state <> 'closed')`,
+        )
+      ).rows[0].n,
+    );
+
   it('invite mode: code required, bound to the email, single use, 7-day expiry; pilot cap enforced at issue, start and complete', async () => {
     process.env['SIGN_PERSONAL_SIGNUP_MODE'] = 'invite';
     const auth = await op();
@@ -527,7 +623,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
     await http().post('/v1/signup/sign/personal/verify-email').send({ signup_id: s.body.signup_id, code: codeFrom(p.email as string) });
 
     // Pilot full (cap == active count) → complete refused; room → completes and consumes the invite.
-    const active = Number((await sql.query(`SELECT count(*)::int AS n FROM identity."PersonalSignupRequest" r JOIN identity."Tenant" t ON t.id = r.tenant_id WHERE r.status = 'PROVISIONED' AND t.is_active`)).rows[0].n);
+    const active = await openPersonalTenants();
     process.env['SIGN_PERSONAL_PILOT_CAP'] = String(active);
     expect(reason(await complete(s.body.signup_id))).toBe('personal_pilot_full');
     expect(reason(await http().post('/platform/personal-invites').set('Authorization', auth).send({ email: person().email }))).toBe('personal_pilot_full');
@@ -567,7 +663,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
   it('pilot cap is serialized: two concurrent completes at cap-1 → exactly one provisions', async () => {
     process.env['SIGN_PERSONAL_SIGNUP_MODE'] = 'invite';
     const auth = await op();
-    const active = Number((await sql.query(`SELECT count(*)::int AS n FROM identity."PersonalSignupRequest" r JOIN identity."Tenant" t ON t.id = r.tenant_id WHERE r.status = 'PROVISIONED' AND t.is_active AND t.status <> 'CLOSED'`)).rows[0].n);
+    const active = await openPersonalTenants();
     process.env['SIGN_PERSONAL_PILOT_CAP'] = String(active + 1);
     const ids: string[] = [];
     for (let i = 0; i < 2; i += 1) {
@@ -582,7 +678,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
     const [a, b] = await Promise.all(ids.map((id) => complete(id)));
     const outcomes = [a!, b!].map((r) => (r.status === 200 ? r.body.status : reason(r))).sort();
     expect(outcomes).toEqual(['PROVISIONED', 'personal_pilot_full']);
-    const after = Number((await sql.query(`SELECT count(*)::int AS n FROM identity."PersonalSignupRequest" r JOIN identity."Tenant" t ON t.id = r.tenant_id WHERE r.status = 'PROVISIONED' AND t.is_active AND t.status <> 'CLOSED'`)).rows[0].n);
+    const after = await openPersonalTenants();
     expect(after).toBe(active + 1);
   });
 
@@ -626,6 +722,47 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
     const r = await start({ ...person(), email: p.email });
     expect(r.status).toBe(202);
     expect(mail.filter((m) => m.to === p.email && /already have/.test(m.subject)).length).toBe(already + 1);
+  });
+
+  // ── signup-attempt cleanup (PO / Lead 2026-10-22) ───────────────────────────
+
+  it('the cleanup sweeper deletes an abandoned attempt 3 days after it expired and a refused one after 180 days; a verified, unexpired attempt stays; re-run is a no-op', async () => {
+    const unverified = person();
+    const s = await start(unverified);
+    expect(s.status).toBe(202);
+    const pendingId = s.body.signup_id as string;
+    const verified = await startedAndVerified();
+    const sweeper = module.get(PersonalSignupAttemptPurgeSweeper);
+    const DAY = 24 * 3600_000;
+    const expires = (await db.personalSignupRequest.findUnique({ where: { id: pendingId } }))!.expires_at.getTime();
+    const globalPurges = () => db.identityAuditEvent.count({ where: { tenant_id: null, event_type: 'identity.personal.signup.attempts_purged' } });
+    const before = await globalPurges();
+
+    // Just under 3 days after expiry: kept.
+    expect(await sweeper.tick(new Date(expires + 3 * DAY - 60_000))).toBeGreaterThanOrEqual(0);
+    expect(await db.personalSignupRequest.findUnique({ where: { id: pendingId } })).not.toBeNull();
+    // Push the verified attempt's expiry forward: it is still completable, so never deleted.
+    await db.personalSignupRequest.update({ where: { id: verified.signup_id }, data: { expires_at: new Date(expires + 10 * DAY) } });
+    // Just over 3 days after expiry: the row (email, phone, address) is gone.
+    expect(await sweeper.tick(new Date(expires + 3 * DAY + 60_000))).toBeGreaterThanOrEqual(1);
+    expect(await db.personalSignupRequest.findUnique({ where: { id: pendingId } })).toBeNull();
+    expect(await db.personalSignupRequest.count({ where: { email: unverified.email as string } })).toBe(0);
+    expect((await db.personalSignupRequest.findUnique({ where: { id: verified.signup_id } }))?.status).toBe('EMAIL_VERIFIED');
+    expect(await globalPurges()).toBeGreaterThanOrEqual(before + 1);
+    const after = await globalPurges();
+    expect(await sweeper.tick(new Date(expires + 3 * DAY + 60_000))).toBe(0);
+    expect(await globalPurges()).toBe(after);
+
+    // A refused attempt is security evidence: kept at 179 days, deleted at 181.
+    const hp = person({ hp: 'http://spam' });
+    expect(reason(await start(hp))).toBe('personal_signup_refused');
+    const refused = await db.personalSignupRequest.findFirst({ where: { email: hp.email as string, status: 'REFUSED' } });
+    expect(refused).not.toBeNull();
+    const created = refused!.created_at.getTime();
+    expect(await sweeper.tick(new Date(created + 179 * DAY))).toBeGreaterThanOrEqual(0);
+    expect(await db.personalSignupRequest.findUnique({ where: { id: refused!.id } })).not.toBeNull();
+    expect(await sweeper.tick(new Date(created + 181 * DAY))).toBeGreaterThanOrEqual(1);
+    expect(await db.personalSignupRequest.findUnique({ where: { id: refused!.id } })).toBeNull();
   });
 
   // ── unbound lapse ────────────────────────────────────────────────────────────
