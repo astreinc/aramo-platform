@@ -13,6 +13,10 @@ import { PROJECTION_TRIGGER, ProjectionService } from './projection/projection.s
 import { VERIFICATION_CODE_SERVICE, VerificationCodeService } from './verification/verification-code.js';
 import { VerificationDeliveryModule } from './verification/mailer-verification-delivery.js';
 import { VerificationService } from './verification/verification.service.js';
+import { VerificationStatusService } from './verification/verification-status.service.js';
+import { ContradictionResolutionService } from './lifecycle/contradiction-resolution.service.js';
+import { DisputeService } from './lifecycle/dispute.service.js';
+import { ProposalService } from './lifecycle/proposal.service.js';
 import { IntelligencePrismaService } from './prisma/intelligence-prisma.service.js';
 import { PrismaIntelligenceUnitOfWork } from './repositories/prisma-unit-of-work.js';
 import { INTELLIGENCE_UNIT_OF_WORK } from './repositories/types.js';
@@ -23,6 +27,7 @@ import { INTELLIGENCE_UNIT_OF_WORK } from './repositories/types.js';
 // tokens. T3: identity resolution + merge / split. T4: verification (+ delivery
 // port; T8: @aramo/mailer adapter when MAILER_PROVIDER is set, else LOG). T5: projection / trust (post-commit trigger).
 // T6: read API + entitlement sync. T7: outbox drain (webhook fan-out).
+// T10: evidence lifecycle — disputes, proposals, contradiction resolution, verification status.
 @Module({
   // T8 — VERIFICATION_DELIVERY_PORT: the @aramo/mailer adapter when
   // MAILER_PROVIDER is set in the TI process, else the LOG adapter.
@@ -44,6 +49,10 @@ import { INTELLIGENCE_UNIT_OF_WORK } from './repositories/types.js';
     ProfileReadService,
     EntitlementService,
     IntelligenceOutboxDrainService,
+    VerificationStatusService,
+    DisputeService,
+    ProposalService,
+    ContradictionResolutionService,
   ],
   exports: [
     IntelligencePrismaService,
@@ -62,6 +71,10 @@ import { INTELLIGENCE_UNIT_OF_WORK } from './repositories/types.js';
     ProfileReadService,
     EntitlementService,
     IntelligenceOutboxDrainService,
+    VerificationStatusService,
+    DisputeService,
+    ProposalService,
+    ContradictionResolutionService,
   ],
 })
 export class IntelligenceCoreModule {}

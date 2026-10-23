@@ -61,6 +61,8 @@ export interface ProjectionOptions {
   availabilityFreshnessDays: number;
   /** Assertion ids backed by an acquired artifact (AUTHORITATIVE band). */
   artifactSupported?: ReadonlySet<string>;
+  /** `a|b` (both orders) — pairs a tenant reconciled through contradiction resolution (T10 M-3); never paired again. */
+  reconciled?: ReadonlySet<string>;
 }
 
 export interface ProjectedFact {
@@ -79,6 +81,8 @@ export interface ProjectionResult {
   effective_status: Map<string, AssertionStatus>;
   /** [losing member, winning representative] — distinct source references. */
   contradictions: Array<[string, string]>;
+  /** Every un-reconciled incompatible partner of each contradicted assertion (both directions). */
+  contradiction_partners: Map<string, string[]>;
   trust: TrustStateRow;
 }
 
@@ -294,6 +298,12 @@ export function computeProjection(
   const facts: ProjectedFact[] = [];
   const contradictions: Array<[string, string]> = [];
   const contradicted = new Set<string>();
+  const partners = new Map<string, Set<string>>();
+  const reconciled = opts.reconciled ?? new Set<string>();
+  const addPartner = (a: string, b: string) => {
+    partners.set(a, (partners.get(a) ?? new Set()).add(b));
+    partners.set(b, (partners.get(b) ?? new Set()).add(a));
+  };
   for (const [key, claims] of groups) {
     const [type, fact_key] = key.split('\u0000') as [string, string];
     const clusters = cluster(type, claims).sort(clusterOrder(type));
@@ -301,10 +311,14 @@ export function computeProjection(
     let factContradicted = false;
     for (const loser of clusters.slice(1)) {
       for (const m of loser.members) {
-        const partner = winner.members.find(
-          (w) => w.source_reference_id !== m.source_reference_id || (w.source_reference_id === null && w.id !== m.id),
+        const eligible = winner.members.filter(
+          (w) =>
+            (w.source_reference_id !== m.source_reference_id || (w.source_reference_id === null && w.id !== m.id)) &&
+            !reconciled.has(`${m.id}|${w.id}`),
         );
+        const partner = eligible[0];
         if (partner === undefined) continue;
+        for (const w of eligible) addPartner(m.id, w.id);
         contradictions.push([m.id, partner.id]);
         contradicted.add(m.id).add(partner.id);
         factContradicted = true;
@@ -343,7 +357,8 @@ export function computeProjection(
     opts.now,
   );
 
-  return { facts: orderFacts(facts), effective_status, contradictions, trust };
+  const contradiction_partners = new Map([...partners].map(([k, v]) => [k, [...v].sort()]));
+  return { facts: orderFacts(facts), effective_status, contradictions, contradiction_partners, trust };
 }
 
 /** The stored ResolvedProfileFact.value of a projected fact (type/key/supporting live in their own columns). */

@@ -130,6 +130,9 @@ export class TalentIngestService {
       // Assertions — append new claims, keep identical ones, supersede absent ones.
       const live = await repos.assertions.listLiveByReference(reference.id);
       const liveByHash = new Map(live.map((a) => [a.content_hash, a]));
+      // T10 — a claim REVOKED by a dispute correction or a contradiction retraction is
+      // not re-admitted from the same reference when the source re-sends it unchanged.
+      const revoked = new Set(await repos.assertions.listRevokedHashesByReference(reference.id));
       const seen = new Set<string>();
       const added: Array<{ id: string; assertion_type: string }> = [];
       for (const d of drafts) {
@@ -137,6 +140,7 @@ export class TalentIngestService {
           seen.add(d.content_hash);
           continue;
         }
+        if (revoked.has(d.content_hash)) continue;
         const created = await repos.assertions.create({
           subject_id: subject.id,
           assertion_type: d.assertion_type,

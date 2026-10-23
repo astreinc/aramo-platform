@@ -4,13 +4,13 @@
 #
 # Usage:
 #   tools/intelligence-service-client.sh --client-id aramo-ats \
-#     --scopes intelligence:ingest,intelligence:read,intelligence:entitlements \
+#     --scopes intelligence:ingest,intelligence:read,intelligence:verify,intelligence:entitlements,intelligence:disputes,intelligence:proposals \
 #     [--source-system ARAMO_ATS] [--inactive]
 #
 # Secret: export INTELLIGENCE_CLIENT_SECRET (>= 32 chars) to set it; leave it
 # unset to have a random secret generated and printed ONCE in the JSON result.
 # Only the scrypt hash (hashClientSecret) is stored — never the secret.
-# Scopes: intelligence:ingest | intelligence:read | intelligence:verify | intelligence:entitlements.
+# Scopes: intelligence:ingest | intelligence:read | intelligence:verify | intelligence:entitlements | intelligence:disputes | intelligence:proposals.
 #
 # Needs INTELLIGENCE_DATABASE_URL (environment or .env). Runs the compiled entry
 # dist/apps/talent-intelligence-service/src/provision-service-client.js, building

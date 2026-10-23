@@ -111,6 +111,7 @@ export { VERIFICATION_STALE_DAYS, deriveTrust, dimensionOf, independenceKey, typ
 export {
   DEFAULT_REASSESSMENT_INTERVAL_MS,
   PROJECTION_TRIGGER,
+  PROPOSAL_SETTLED_JUSTIFICATION,
   ProjectionService,
   TI_AVAILABILITY_FRESHNESS_DAYS_ENV,
   TI_REASSESSMENT_INTERVAL_MS_ENV,
@@ -145,12 +146,18 @@ export {
 export { VerificationRefusedError, VerificationService, type ConfirmResult } from './lib/verification/verification.service.js';
 
 // T6 — read API + entitlements.
+export { ProfileReadService, ReadRefusedError } from './lib/access/profile-read.service.js';
 export {
-  ProfileReadService,
-  ReadRefusedError,
   TI_CROSS_TENANT_READ_ENABLED_ENV,
+  activeReferenceTenants,
+  assertionVisibleTo,
   crossTenantReadEnabled,
-} from './lib/access/profile-read.service.js';
+  isOwnAssertion,
+  isTiOriginated,
+  reconciledPairs,
+  tenantViewAssertions,
+  tenantViewIdentifiers,
+} from './lib/access/tenant-view.js';
 export { EntitlementService, EntitlementSyncInvalidError, validateEntitlementSync } from './lib/access/entitlement.service.js';
 
 // T7 — outbox drain.
@@ -165,3 +172,20 @@ export {
   type DrainReport,
   type WebhookTransport,
 } from './lib/outbox/outbox-drain.service.js';
+
+// T10 — evidence lifecycle (Addendum A3 T10-2 / T10-3).
+export {
+  LifecycleRefusedError,
+  decodeCursor,
+  encodeCursor,
+  pageLimit,
+  requireActiveReference,
+  requireEntitledTenant,
+  tenantActor,
+  tenantReferencesOn,
+} from './lib/lifecycle/lifecycle-access.js';
+export { generateProposals, type DesiredProposal } from './lib/lifecycle/proposal-generator.js';
+export { DISPUTE_WITHDRAWAL_JUSTIFICATION, DisputeService, disputeSla } from './lib/lifecycle/dispute.service.js';
+export { ProposalService } from './lib/lifecycle/proposal.service.js';
+export { ContradictionResolutionService } from './lib/lifecycle/contradiction-resolution.service.js';
+export { VerificationStatusService } from './lib/verification/verification-status.service.js';

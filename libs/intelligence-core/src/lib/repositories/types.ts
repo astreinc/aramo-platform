@@ -1,5 +1,8 @@
 import type {
   Assertion,
+  AssertionDispute,
+  AssertionDisputeEvent,
+  AssertionDisputeStatement,
   AssertionEvent,
   AssertionLink,
   ArtifactSupport,
@@ -19,10 +22,12 @@ import type {
   ServiceClient,
   SubjectIdentifier,
   SubjectTrustState,
+  VerificationProposal,
   VerificationRequest,
 } from '../../../prisma/generated/client/client.js';
 import type {
   AccessState,
+  DisputeEventType,
   AssertionEventType,
   AssertionLinkType,
   AssertionStatus,
@@ -46,6 +51,9 @@ import type {
 
 export type {
   Assertion,
+  AssertionDispute,
+  AssertionDisputeEvent,
+  AssertionDisputeStatement,
   AssertionEvent,
   AssertionLink,
   ArtifactSupport,
@@ -65,6 +73,7 @@ export type {
   ServiceClient,
   SubjectIdentifier,
   SubjectTrustState,
+  VerificationProposal,
   VerificationRequest,
 };
 
@@ -165,8 +174,12 @@ export interface AssertionRepository {
   findById(id: string): Promise<Assertion | null>;
   /** Assertions of a reference whose status is not SUPERSEDED / WITHDRAWN / REVOKED. */
   listLiveByReference(referenceId: string): Promise<Assertion[]>;
+  /** Content hashes of a reference's REVOKED assertions (a corrected / retracted claim is not re-admitted from the same reference). */
+  listRevokedHashesByReference(referenceId: string): Promise<string[]>;
   listBySubject(subjectId: string): Promise<Assertion[]>;
   setStatus(id: string, status: AssertionStatus): Promise<void>;
+  /** Guarded status change: applies only while current_status = `from`. False = the status moved (nothing written). */
+  transitionStatus(id: string, from: AssertionStatus, to: AssertionStatus): Promise<boolean>;
   /** Re-point to another subject — only inside a repoint-enabled unit of work. */
   repoint(ids: string[], subjectId: string): Promise<void>;
   appendEvent(data: {
@@ -385,6 +398,102 @@ export interface ServiceClientRepository {
   }): Promise<ServiceClient>;
 }
 
+// ── T10 — evidence lifecycle ─────────────────────────────────────────────────
+
+export interface TenantKey {
+  source_system_id: string;
+  source_tenant_id: string;
+}
+
+/** Keyset position (created_at / opened_at, id) — ascending. */
+export interface PageCursor {
+  at: Date;
+  id: string;
+}
+
+export interface DisputePatch {
+  status?: string;
+  resolution_note?: string | null;
+  no_transition_reason?: string | null;
+  reinvestigation_due_at?: Date;
+  reinvestigation_extended_at?: Date | null;
+  triaged_at?: Date | null;
+  resolved_at?: Date | null;
+  withdrawn_at?: Date | null;
+}
+
+export interface DisputeRepository {
+  create(data: {
+    assertion_id: string;
+    opened_via_reference_id: string;
+    opened_at: Date;
+    triage_due_at: Date;
+    summary_due_at: Date;
+    reinvestigation_due_at: Date;
+    ccpa_due_at: Date | null;
+    ccpa_extended_due_at: Date | null;
+  }): Promise<AssertionDispute>;
+  findById(id: string): Promise<AssertionDispute | null>;
+  /** The OPEN / UNDER_REVIEW dispute of an assertion, if any. */
+  findOpenForAssertion(assertionId: string): Promise<AssertionDispute | null>;
+  update(id: string, patch: DisputePatch): Promise<AssertionDispute>;
+  /** Disputes whose assertion's subject is one of `subjectIds` (portal), newest first. */
+  listBySubjects(subjectIds: string[], opts: { statuses: readonly string[] | null; limit: number }): Promise<AssertionDispute[]>;
+  /**
+   * The tenant worklist (keyset on opened_at, id — ascending): disputes whose assertion's
+   * subject holds an ACTIVE reference of the tenant, restricted (cross-tenant off) to
+   * assertions the tenant contributed or TI originated.
+   */
+  listForTenant(
+    tenant: TenantKey,
+    opts: { crossTenant: boolean; statuses: readonly string[] | null; after: PageCursor | null; limit: number },
+  ): Promise<AssertionDispute[]>;
+  appendStatement(data: { dispute_id: string; author: string; statement: string; statement_hash: string; channel: string }): Promise<AssertionDisputeStatement>;
+  listStatements(disputeId: string): Promise<AssertionDisputeStatement[]>;
+  appendEvent(data: {
+    dispute_id: string;
+    event_type: DisputeEventType;
+    from_status?: string | null;
+    to_status?: string | null;
+    actor: string;
+    source_system_id?: string | null;
+    source_tenant_id?: string | null;
+    details?: JsonObject | null;
+  }): Promise<AssertionDisputeEvent>;
+  listEvents(disputeId: string): Promise<AssertionDisputeEvent[]>;
+}
+
+export interface NewProposal extends TenantKey {
+  subject_id: string;
+  kind: string;
+  trigger_kind: string;
+  basis_ref: string;
+  assertion_id: string | null;
+  identifier_type: string | null;
+  identifier_digest: string | null;
+  basis_snapshot: JsonObject;
+  created_by: string;
+}
+
+export interface ProposalRepository {
+  findById(id: string): Promise<VerificationProposal | null>;
+  findByKey(key: TenantKey & { subject_id: string; kind: string; basis_ref: string }): Promise<VerificationProposal | null>;
+  create(data: NewProposal): Promise<VerificationProposal>;
+  /** Refresh an OPEN row's trigger + snapshot. */
+  refresh(id: string, patch: { trigger_kind: string; basis_snapshot: JsonObject }): Promise<VerificationProposal>;
+  listOpenForSubject(tenant: TenantKey, subjectId: string): Promise<VerificationProposal[]>;
+  /** Guarded OPEN → terminal. Returns null when the row was no longer OPEN. */
+  resolve(
+    id: string,
+    patch: { status: 'DISMISSED' | 'ACTED' | 'SETTLED'; resolved_by: string; justification?: string | null; action?: string | null; note?: string | null; at: Date },
+  ): Promise<VerificationProposal | null>;
+  /**
+   * The tenant worklist (keyset on created_at, id — ascending): proposals of the tenant whose
+   * subject still holds an ACTIVE reference of the tenant and is not audit-retained.
+   */
+  listForTenant(tenant: TenantKey, opts: { status: string; kind: string | null; after: PageCursor | null; limit: number }): Promise<VerificationProposal[]>;
+}
+
 /** Every repository bound to ONE transaction. */
 export interface IntelligenceRepositories {
   subjects: GoldenTalentRepository;
@@ -404,6 +513,8 @@ export interface IntelligenceRepositories {
   entitlements: EntitledTenantRepository;
   readAudit: ReadAuditRepository;
   deliveries: WebhookDeliveryRepository;
+  disputes: DisputeRepository;
+  proposals: ProposalRepository;
 }
 
 export interface UnitOfWorkOptions {

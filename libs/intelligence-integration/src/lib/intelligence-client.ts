@@ -1,6 +1,22 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   SOURCE_SYSTEM_ARAMO_ATS,
+  formatReferenceParam,
+  type ContradictionResolution,
+  type ContradictionResolutionResponse,
+  type DisputeActionResponse,
+  type PortalDisputeListResponse,
+  type PortalDisputeView,
+  type PortalVerificationsResponse,
+  type ProposalAction,
+  type ProposalKind,
+  type ProposalListResponse,
+  type ProposalStatus,
+  type ProposalView,
+  type ReferenceVerificationsResponse,
+  type TalentReferenceTuple,
+  type TenantDisputeListResponse,
+  type TenantDisputeView,
   type ConfirmVerificationResponse,
   type CreateVerificationRequest,
   type CreateVerificationResponse,
@@ -66,6 +82,45 @@ export type IntelligenceFetch = (input: string, init: RequestInit) => Promise<Re
 /** DI token — overridable fetch (tests). Defaults to globalThis.fetch. */
 export const INTELLIGENCE_FETCH = 'INTELLIGENCE_FETCH';
 
+/** An ATS talent record as TI knows it: the reference (ARAMO_ATS, tenant, talent). */
+export interface AtsTalentRef {
+  tenant_id: string;
+  talent_id: string;
+}
+
+/** A tenant-side dispute / proposal action: the acting tenant + the ATS user (opaque id). */
+export interface AtsTenantActor {
+  tenant_id: string;
+  actor: string;
+}
+
+export interface WorklistPage {
+  cursor?: string;
+  limit?: number;
+}
+
+const atsTuple = (r: AtsTalentRef): TalentReferenceTuple => ({
+  source_system_id: SOURCE_SYSTEM_ARAMO_ATS,
+  source_tenant_id: r.tenant_id,
+  external_talent_id: r.talent_id,
+});
+
+const referencePath = (r: AtsTalentRef): string =>
+  `/v1/references/${encodeURIComponent(SOURCE_SYSTEM_ARAMO_ATS)}/${encodeURIComponent(r.tenant_id)}/${encodeURIComponent(r.talent_id)}`;
+
+/** `?k=v&…` from defined values; arrays repeat the key. Empty → ''. */
+function query(params: Record<string, string | number | undefined | string[]>): string {
+  const q = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v === undefined) continue;
+    for (const one of Array.isArray(v) ? v : [String(v)]) q.append(k, one);
+  }
+  const s = q.toString();
+  return s.length > 0 ? `?${s}` : '';
+}
+
+const references = (refs: AtsTalentRef[]): string[] => refs.map((r) => formatReferenceParam(atsTuple(r)));
+
 /** Refresh the token this many seconds before it expires. */
 const TOKEN_REFRESH_MARGIN_SEC = 60;
 
@@ -107,10 +162,7 @@ export class IntelligenceClient {
   }
 
   readProfile(args: { tenant_id: string; talent_id: string }): Promise<IntelligenceProfileReadResponse> {
-    const path =
-      `/v1/references/${encodeURIComponent(SOURCE_SYSTEM_ARAMO_ATS)}` +
-      `/${encodeURIComponent(args.tenant_id)}/${encodeURIComponent(args.talent_id)}/profile`;
-    return this.call<IntelligenceProfileReadResponse>('GET', path);
+    return this.call<IntelligenceProfileReadResponse>('GET', `${referencePath(args)}/profile`);
   }
 
   requestVerification(body: CreateVerificationRequest): Promise<CreateVerificationResponse> {
@@ -119,6 +171,120 @@ export class IntelligenceClient {
 
   confirmVerification(verificationId: string, code: string): Promise<ConfirmVerificationResponse> {
     return this.call<ConfirmVerificationResponse>('POST', `/v1/verifications/${encodeURIComponent(verificationId)}/confirm`, { code });
+  }
+
+  // ── T10 evidence lifecycle (Addendum A3 T10-2 / T10-3) ────────────────────
+  // Enrichment only: a failure here never blocks an ATS decision.
+
+  /** M-1 — verification status of one ATS talent record's contacts (scope intelligence:verify). */
+  listReferenceVerifications(ref: AtsTalentRef): Promise<ReferenceVerificationsResponse> {
+    return this.call<ReferenceVerificationsResponse>('GET', `${referencePath(ref)}/verifications`);
+  }
+
+  /** M-6 — the portal aggregate over the records the talent holds (scope intelligence:verify). */
+  aggregateVerifications(refs: AtsTalentRef[]): Promise<PortalVerificationsResponse> {
+    return this.call<PortalVerificationsResponse>('GET', `/v1/verifications${query({ reference: references(refs) })}`);
+  }
+
+  /** M-4 portal — the talent disputes one assertion through a record they hold (scope intelligence:disputes). */
+  openDispute(args: AtsTalentRef & { assertion_id: string; statement: string }): Promise<PortalDisputeView> {
+    return this.call<PortalDisputeView>('POST', '/v1/disputes', { portal_context: atsTuple(args), assertion_id: args.assertion_id, statement: args.statement });
+  }
+
+  listPortalDisputes(refs: AtsTalentRef[], opts: { status?: string } = {}): Promise<PortalDisputeListResponse> {
+    return this.call<PortalDisputeListResponse>('GET', `/v1/disputes${query({ reference: references(refs), status: opts.status })}`);
+  }
+
+  getPortalDispute(disputeId: string, refs: AtsTalentRef[]): Promise<PortalDisputeView> {
+    return this.call<PortalDisputeView>('GET', `/v1/disputes/${encodeURIComponent(disputeId)}${query({ reference: references(refs) })}`);
+  }
+
+  respondToDispute(disputeId: string, args: AtsTalentRef & { statement: string }): Promise<PortalDisputeView> {
+    return this.call<PortalDisputeView>('POST', `/v1/disputes/${encodeURIComponent(disputeId)}/respond`, { portal_context: atsTuple(args), statement: args.statement });
+  }
+
+  withdrawDispute(disputeId: string, args: AtsTalentRef & { actor?: string }): Promise<PortalDisputeView> {
+    return this.call<PortalDisputeView>('POST', `/v1/disputes/${encodeURIComponent(disputeId)}/withdraw`, {
+      portal_context: atsTuple(args),
+      ...(args.actor !== undefined ? { actor: args.actor } : {}),
+    });
+  }
+
+  /** M-4 tenant — the dispute worklist (scope intelligence:disputes). status: open (default) | all | a DisputeStatus. */
+  listTenantDisputes(tenantId: string, opts: WorklistPage & { status?: string } = {}): Promise<TenantDisputeListResponse> {
+    return this.call<TenantDisputeListResponse>(
+      'GET',
+      `/v1/tenants/${encodeURIComponent(tenantId)}/disputes${query({ status: opts.status, cursor: opts.cursor, limit: opts.limit })}`,
+    );
+  }
+
+  getTenantDispute(tenantId: string, disputeId: string): Promise<TenantDisputeView> {
+    return this.call<TenantDisputeView>('GET', `/v1/tenants/${encodeURIComponent(tenantId)}/disputes/${encodeURIComponent(disputeId)}`);
+  }
+
+  triageDispute(disputeId: string, by: AtsTenantActor): Promise<DisputeActionResponse> {
+    return this.disputeAction(disputeId, 'triage', by);
+  }
+
+  requestDisputeInfo(disputeId: string, by: AtsTenantActor & { note: string }): Promise<DisputeActionResponse> {
+    return this.disputeAction(disputeId, 'request-info', by);
+  }
+
+  correctDispute(disputeId: string, by: AtsTenantActor & { note: string }): Promise<DisputeActionResponse> {
+    return this.disputeAction(disputeId, 'correct', by);
+  }
+
+  upholdDispute(disputeId: string, by: AtsTenantActor & { note: string }): Promise<DisputeActionResponse> {
+    return this.disputeAction(disputeId, 'uphold', by);
+  }
+
+  extendDispute(disputeId: string, by: AtsTenantActor): Promise<DisputeActionResponse> {
+    return this.disputeAction(disputeId, 'extend', by);
+  }
+
+  /** M-2 — the trust-proposal worklist (scope intelligence:proposals). status defaults to OPEN. */
+  listProposals(tenantId: string, opts: WorklistPage & { status?: ProposalStatus; kind?: ProposalKind } = {}): Promise<ProposalListResponse> {
+    return this.call<ProposalListResponse>(
+      'GET',
+      `/v1/tenants/${encodeURIComponent(tenantId)}/proposals${query({ status: opts.status, kind: opts.kind, cursor: opts.cursor, limit: opts.limit })}`,
+    );
+  }
+
+  dismissProposal(proposalId: string, by: AtsTenantActor & { justification: string }): Promise<ProposalView> {
+    return this.call<ProposalView>('POST', `/v1/proposals/${encodeURIComponent(proposalId)}/dismiss`, {
+      source_tenant_id: by.tenant_id,
+      actor: by.actor,
+      justification: by.justification,
+    });
+  }
+
+  actOnProposal(proposalId: string, by: AtsTenantActor & { action: ProposalAction; note?: string }): Promise<ProposalView> {
+    return this.call<ProposalView>('POST', `/v1/proposals/${encodeURIComponent(proposalId)}/act`, {
+      source_tenant_id: by.tenant_id,
+      actor: by.actor,
+      action: by.action,
+      ...(by.note !== undefined ? { note: by.note } : {}),
+    });
+  }
+
+  /** M-3 — resolve a contradiction in the tenant's view, through its own record (scope intelligence:proposals). */
+  resolveContradiction(
+    ref: AtsTalentRef & { assertion_id: string },
+    body: { resolution: ContradictionResolution; reason: string; actor: string },
+  ): Promise<ContradictionResolutionResponse> {
+    return this.call<ContradictionResolutionResponse>(
+      'POST',
+      `${referencePath(ref)}/assertions/${encodeURIComponent(ref.assertion_id)}/contradiction-resolution`,
+      body,
+    );
+  }
+
+  private disputeAction(disputeId: string, action: string, by: AtsTenantActor & { note?: string }): Promise<DisputeActionResponse> {
+    return this.call<DisputeActionResponse>('POST', `/v1/disputes/${encodeURIComponent(disputeId)}/${action}`, {
+      source_tenant_id: by.tenant_id,
+      actor: by.actor,
+      ...(by.note !== undefined ? { note: by.note } : {}),
+    });
   }
 
   /** Drop the cached token (tests / credential rotation). */

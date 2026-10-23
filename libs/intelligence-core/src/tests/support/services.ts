@@ -1,13 +1,17 @@
 import {
+  ContradictionResolutionService,
+  DisputeService,
   GovIdTokenizer,
   IdentityMergeSplitService,
   IdentityResolutionService,
   IntelligenceOutboxDrainService,
   ProfileReadService,
   ProjectionService,
+  ProposalService,
   TalentIngestService,
   VerificationCodeService,
   VerificationService,
+  VerificationStatusService,
   type VerificationDeliveryPort,
   type VerificationDeliveryResult,
   type VerificationMessage,
@@ -55,7 +59,26 @@ export function services(mem = new InMemoryIntelligence()) {
   const reads = new ProfileReadService(mem);
   const transport = new RecordingTransport();
   const drain = new IntelligenceOutboxDrainService(mem, delivery, codes, transport);
-  return { mem, projection, mergeSplit, ingest, codes, delivery, verification, reads, transport, drain };
+  const disputes = new DisputeService(mem, projection);
+  const proposals = new ProposalService(mem);
+  const contradictions = new ContradictionResolutionService(mem, projection);
+  const verificationStatus = new VerificationStatusService(mem);
+  return {
+    mem,
+    projection,
+    mergeSplit,
+    ingest,
+    codes,
+    delivery,
+    verification,
+    reads,
+    transport,
+    drain,
+    disputes,
+    proposals,
+    contradictions,
+    verificationStatus,
+  };
 }
 
 /** The current code of a verification request (what the delivery port would send). */

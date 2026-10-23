@@ -1,21 +1,26 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { GOLDEN_TALENT_PROFILE_UPDATED, TRUST_CHANGE_MARKER } from '@aramo/intelligence-contracts';
 
+import { activeReferenceTenants, crossTenantReadEnabled, reconciledPairs, tenantViewAssertions, tenantViewIdentifiers } from '../access/tenant-view.js';
 import { survivingSubject } from '../identity/identity-resolution.service.js';
+import { generateProposals, type DesiredProposal } from '../lifecycle/proposal-generator.js';
 import {
   INTELLIGENCE_UNIT_OF_WORK,
   type Assertion,
   type IntelligenceRepositories,
   type IntelligenceUnitOfWork,
   type SubjectIdentifier,
+  type TenantKey,
   type TrustStateRow,
 } from '../repositories/types.js';
+import { canonicalJson } from '../normalize.js';
 import { RETIRED_ASSERTION_STATUSES, type AssertionEventType, type AssertionStatus } from '../vocabulary.js';
 
 import {
   DEFAULT_AVAILABILITY_FRESHNESS_DAYS,
   computeProjection,
   factSignature,
+  type ProjectionOptions,
   storedFactValue,
   type ProjectionAssertion,
   type ProjectionIdentifier,
@@ -104,6 +109,9 @@ export interface RebuildResult {
 }
 
 const PROJECTION_ACTOR = 'projection';
+/** Stamped on an OPEN proposal whose trigger no longer holds. */
+export const PROPOSAL_SETTLED_JUSTIFICATION = 'trigger cleared';
+const canonicalJsonOf = (v: unknown): string => canonicalJson(v ?? null);
 
 @Injectable()
 export class ProjectionService implements ProjectionTrigger {
@@ -126,16 +134,19 @@ export class ProjectionService implements ProjectionTrigger {
         );
         const identifiers = await repos.identifiers.listBySubject(subjectId);
         const supported = await artifactSupportedIds(repos, subjectId);
-        const result = computeProjection(assertions.map(toProjectionAssertion), identifiers.map(toProjectionIdentifier), {
+        const options: ProjectionOptions = {
           now,
           availabilityFreshnessDays: availabilityFreshnessDays(),
           artifactSupported: supported,
-        });
+          reconciled: reconciledPairs(await repos.assertions.listLinksFor(assertions.map((a) => a.id))),
+        };
+        const result = computeProjection(assertions.map(toProjectionAssertion), identifiers.map(toProjectionIdentifier), options);
 
         await this.applyStatuses(repos, assertions, result);
         await this.applyContradictionLinks(repos, assertions, result);
         const changed = await this.applyFacts(repos, subjectId, result);
         if (await this.applyTrust(repos, subjectId, result.trust, now)) changed.add(TRUST_CHANGE_MARKER);
+        await this.applyProposals(repos, subjectId, assertions, identifiers, result, options);
 
         const changed_fact_types = [...changed].sort();
         if (changed_fact_types.length > 0) {
@@ -237,6 +248,60 @@ export class ProjectionService implements ProjectionTrigger {
       changed.add(key.slice(0, i));
     }
     return changed;
+  }
+
+  /**
+   * T10 M-2 — regenerate the trust proposals of every ENTITLED tenant holding an
+   * ACTIVE reference, over THAT tenant's view (TI_CROSS_TENANT_READ_ENABLED).
+   * New basis → OPEN row; OPEN → refreshed; DISMISSED / ACTED / SETTLED → never
+   * re-opened; an OPEN row whose trigger no longer holds → SETTLED.
+   */
+  private async applyProposals(
+    repos: IntelligenceRepositories,
+    subjectId: string,
+    assertions: Assertion[],
+    identifiers: SubjectIdentifier[],
+    global: ProjectionResult,
+    options: ProjectionOptions,
+  ): Promise<void> {
+    const refs = await repos.references.listBySubject(subjectId);
+    const cross = crossTenantReadEnabled();
+    for (const tenant of activeReferenceTenants(refs)) {
+      const entitled = await repos.entitlements.find(tenant.source_system_id, tenant.source_tenant_id);
+      if (entitled === null || !entitled.active) continue;
+      const va = tenantViewAssertions(assertions, tenant, cross).map(toProjectionAssertion);
+      const vi = tenantViewIdentifiers(identifiers, refs, tenant, cross).map(toProjectionIdentifier);
+      const projection = cross ? global : computeProjection(va, vi, options);
+      await this.syncProposals(repos, tenant, subjectId, generateProposals({ assertions: va, identifiers: vi, projection }, options.now), options.now);
+    }
+  }
+
+  private async syncProposals(repos: IntelligenceRepositories, tenant: TenantKey, subjectId: string, desired: DesiredProposal[], now: Date): Promise<void> {
+    const keep = new Set<string>();
+    for (const d of desired) {
+      keep.add(`${d.kind}|${d.basis_ref}`);
+      const existing = await repos.proposals.findByKey({ ...tenant, subject_id: subjectId, kind: d.kind, basis_ref: d.basis_ref });
+      if (existing === null) {
+        await repos.proposals.create({
+          ...tenant,
+          subject_id: subjectId,
+          kind: d.kind,
+          trigger_kind: d.trigger_kind,
+          basis_ref: d.basis_ref,
+          assertion_id: d.assertion_id,
+          identifier_type: d.identifier_type,
+          identifier_digest: d.identifier_digest,
+          basis_snapshot: d.basis_snapshot,
+          created_by: PROJECTION_ACTOR,
+        });
+      } else if (existing.status === 'OPEN' && (existing.trigger_kind !== d.trigger_kind || canonicalJsonOf(existing.basis_snapshot) !== canonicalJsonOf(d.basis_snapshot))) {
+        await repos.proposals.refresh(existing.id, { trigger_kind: d.trigger_kind, basis_snapshot: d.basis_snapshot });
+      }
+    }
+    for (const open of await repos.proposals.listOpenForSubject(tenant, subjectId)) {
+      if (keep.has(`${open.kind}|${open.basis_ref}`)) continue;
+      await repos.proposals.resolve(open.id, { status: 'SETTLED', resolved_by: PROJECTION_ACTOR, justification: PROPOSAL_SETTLED_JUSTIFICATION, at: now });
+    }
   }
 
   private async applyTrust(repos: IntelligenceRepositories, subjectId: string, trust: TrustStateRow, now: Date): Promise<boolean> {

@@ -70,6 +70,7 @@ model GoldenTalent {
   conflicts   IdentityConflict[]
   verifications VerificationRequest[]
   trust_state SubjectTrustState?
+  proposals   VerificationProposal[]
 
   @@index([merged_into_id])
   @@schema("intelligence")
@@ -138,6 +139,7 @@ model ExternalTalentReference {
   assertions  Assertion[]
   verifications VerificationRequest[]
   deliveries  IntelligenceWebhookDelivery[]
+  disputes    AssertionDispute[]
 
   @@unique([source_system_id, source_tenant_id, external_talent_id])
   @@index([subject_id])
@@ -182,6 +184,8 @@ model Assertion {
   links_from       AssertionLink[]          @relation("AssertionLinkFrom")
   links_to         AssertionLink[]          @relation("AssertionLinkTo")
   supports         ArtifactSupport[]
+  disputes         AssertionDispute[]
+  proposals        VerificationProposal[]
 
   @@index([subject_id, assertion_type])
   @@index([source_reference_id, content_hash])
@@ -193,6 +197,7 @@ model AssertionEvent {
   id              String   @id @default(uuid()) @db.Uuid
   assertion_id    String   @db.Uuid
   /// AssertionEventType: ASSERTED | SUPERSEDED | STALE | CONTRADICTED | REVOKED | DISPUTED | WITHDRAWN | REVALIDATED | REPOINTED
+  ///   | DISPUTE_RESOLVED | CORRECTED | CONTRADICTION_RESOLVED (T10)
   event_type      String
   from_status     String?
   to_status       String?
@@ -213,7 +218,8 @@ model AssertionLink {
   id                String   @id @default(uuid()) @db.Uuid
   from_assertion_id String   @db.Uuid
   to_assertion_id   String   @db.Uuid
-  /// AssertionLinkType: CORROBORATES | CONTRADICTS | SUPERSEDES
+  /// AssertionLinkType: CORROBORATES | CONTRADICTS | SUPERSEDES | RECONCILES
+  /// (RECONCILES — T10 M-3: a tenant resolved the contradiction between the two; the projection no longer pairs them)
   link_type         String
   actor             String
   created_at        DateTime @default(now()) @db.Timestamptz(6)
@@ -532,5 +538,136 @@ model IntelligenceWebhookDelivery {
 
   @@unique([outbox_event_id, reference_id])
   @@index([reference_id])
+  @@schema("intelligence")
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ATI-SEP-1 T10 (Addendum A3 T10-2) — the evidence lifecycle: talent-raised
+// disputes of an Assertion and the per-tenant trust-proposal worklist
+// (migration 20261023150000). TI outcomes are enrichment only.
+// ════════════════════════════════════════════════════════════════════════════
+
+/// A talent-raised dispute of ONE assertion (opened through a reference the talent
+/// holds). At most one OPEN / UNDER_REVIEW dispute per assertion (partial unique
+/// index). The subject is the assertion's (re-pointed on merge/split), never stored here.
+model AssertionDispute {
+  id                      String @id @default(uuid()) @db.Uuid
+  assertion_id            String @db.Uuid
+  /// The reference the talent disputed through (portal context).
+  opened_via_reference_id String @db.Uuid
+  /// DisputeOpenedBy: TALENT
+  opened_by               String @default("TALENT")
+
+  /// DisputeStatus: OPEN | UNDER_REVIEW | RESOLVED_CORRECTED | RESOLVED_UPHELD | WITHDRAWN | RESOLVED_NO_TRANSITION
+  status               String  @default("OPEN")
+  resolution_note      String?
+  no_transition_reason String?
+
+  // SLA clocks (report-only, never enforcement).
+  opened_at                   DateTime  @default(now()) @db.Timestamptz(6)
+  triage_due_at               DateTime  @db.Timestamptz(6)
+  summary_due_at              DateTime  @db.Timestamptz(6)
+  reinvestigation_due_at      DateTime  @db.Timestamptz(6)
+  reinvestigation_extended_at DateTime? @db.Timestamptz(6)
+  ccpa_due_at                 DateTime? @db.Timestamptz(6)
+  ccpa_extended_due_at        DateTime? @db.Timestamptz(6)
+
+  triaged_at   DateTime? @db.Timestamptz(6)
+  resolved_at  DateTime? @db.Timestamptz(6)
+  withdrawn_at DateTime? @db.Timestamptz(6)
+  updated_at   DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  assertion        Assertion                  @relation(fields: [assertion_id], references: [id])
+  opened_via       ExternalTalentReference    @relation(fields: [opened_via_reference_id], references: [id])
+  statements       AssertionDisputeStatement[]
+  events           AssertionDisputeEvent[]
+
+  @@index([assertion_id])
+  @@index([status, opened_at])
+  @@schema("intelligence")
+}
+
+/// The dispute thread (talent statements + tenant request-info notes). Append-only (no UPDATE).
+model AssertionDisputeStatement {
+  id             String   @id @default(uuid()) @db.Uuid
+  dispute_id     String   @db.Uuid
+  /// DisputeStatementAuthor: TALENT | TENANT
+  author         String
+  statement      String
+  /// sha256(statement) hex — evidence of the exact bytes.
+  statement_hash String
+  /// DisputeStatementChannel: portal | tenant
+  channel        String
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+
+  dispute AssertionDispute @relation(fields: [dispute_id], references: [id])
+
+  @@index([dispute_id, created_at])
+  @@schema("intelligence")
+}
+
+/// Append-only audit of every dispute transition (no UPDATE, no DELETE).
+model AssertionDisputeEvent {
+  id               String   @id @default(uuid()) @db.Uuid
+  dispute_id       String   @db.Uuid
+  /// DisputeEventType: OPENED | STATEMENT_ADDED | TRIAGED | INFO_REQUESTED | CORRECTED | UPHELD | WITHDRAWN | EXTENDED | NO_TRANSITION
+  event_type       String
+  from_status      String?
+  to_status        String?
+  actor            String
+  /// The acting tenant (NULL for a talent action).
+  source_system_id String?
+  source_tenant_id String?
+  details          Json?    @db.JsonB
+  created_at       DateTime @default(now()) @db.Timestamptz(6)
+
+  dispute AssertionDispute @relation(fields: [dispute_id], references: [id])
+
+  @@index([dispute_id, created_at])
+  @@schema("intelligence")
+}
+
+/// One trust proposal for one tenant about one subject (the caseworker worklist).
+/// Generated by the projection over the tenant's view; it proposes and never
+/// disposes. Idempotency key (tenant, subject, kind, basis_ref): an OPEN row is
+/// refreshed, a DISMISSED / ACTED / SETTLED basis is never re-opened.
+model VerificationProposal {
+  id               String @id @default(uuid()) @db.Uuid
+  subject_id       String @db.Uuid
+  source_system_id String
+  source_tenant_id String
+
+  /// ProposalKind: VERIFY_CONTACT | RENEW_VERIFICATION | RESOLVE_CONTRADICTION
+  kind              String
+  /// ProposalTriggerKind: SINGLE_SOURCE_ONLY | VERIFICATION_STALE | OPEN_CONTRADICTION
+  trigger_kind      String
+  /// 'assertion:<id>' | 'identifier:<digest>' — never a contact value.
+  basis_ref         String
+  assertion_id      String? @db.Uuid
+  /// VerificationIdentifierType: EMAIL | PHONE
+  identifier_type   String?
+  /// sha256 of `TYPE:normalized_value` (PII-free).
+  identifier_digest String?
+  /// Kinds only — never a value.
+  basis_snapshot    Json    @db.JsonB
+
+  /// ProposalStatus: OPEN | DISMISSED | ACTED | SETTLED
+  status        String    @default("OPEN")
+  justification String?
+  /// ProposalAction (ACTED): VERIFICATION_REQUESTED | CONTRADICTION_RESOLVED | RECORD_UPDATED
+  action        String?
+  note          String?
+  created_by    String
+  resolved_by   String?
+  acted_at      DateTime? @db.Timestamptz(6)
+  created_at    DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at    DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+
+  subject   GoldenTalent @relation(fields: [subject_id], references: [id])
+  assertion Assertion?   @relation(fields: [assertion_id], references: [id])
+
+  @@unique([source_system_id, source_tenant_id, subject_id, kind, basis_ref])
+  @@index([source_system_id, source_tenant_id, status, created_at])
+  @@index([subject_id])
   @@schema("intelligence")
 }

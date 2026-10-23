@@ -2,6 +2,9 @@ import { randomUUID } from 'node:crypto';
 
 import type {
   Assertion,
+  AssertionDispute,
+  AssertionDisputeEvent,
+  AssertionDisputeStatement,
   AssertionEvent,
   AssertionLink,
   ArtifactSupport,
@@ -24,9 +27,10 @@ import type {
   SubjectIdentifier,
   SubjectTrustState,
   UnitOfWorkOptions,
+  VerificationProposal,
   VerificationRequest,
 } from '../../index.js';
-import { RETIRED_ASSERTION_STATUSES } from '../../index.js';
+import { RETIRED_ASSERTION_STATUSES, TI_ORIGINATED_SOURCE_KINDS } from '../../index.js';
 
 // In-memory IntelligenceRepositories + unit of work for UNIT specs. Mirrors the
 // database rules the domain relies on: the VERIFIED+ACTIVE partial unique index,
@@ -56,6 +60,10 @@ interface State {
   entitlements: Map<string, EntitledTenant>;
   readAudit: IntelligenceReadAudit[];
   deliveries: IntelligenceWebhookDelivery[];
+  disputes: Map<string, AssertionDispute>;
+  disputeStatements: AssertionDisputeStatement[];
+  disputeEvents: AssertionDisputeEvent[];
+  proposals: Map<string, VerificationProposal>;
 }
 
 function emptyState(): State {
@@ -81,6 +89,10 @@ function emptyState(): State {
     entitlements: new Map(),
     readAudit: [],
     deliveries: [],
+    disputes: new Map(),
+    disputeStatements: [],
+    disputeEvents: [],
+    proposals: new Map(),
   };
 }
 
@@ -126,6 +138,13 @@ export class InMemoryIntelligence implements IntelligenceUnitOfWork {
     const s = () => this.state;
     const checkUnique = (row: SubjectIdentifier) => this.checkVerifiedUnique(row);
     const repointOn = () => this.repointEnabled;
+    const findOpen = (assertionId: string) =>
+      [...s().disputes.values()].find((d) => d.assertion_id === assertionId && (d.status === 'OPEN' || d.status === 'UNDER_REVIEW'));
+    const hasActiveRef = (subjectId: string, t: { source_system_id: string; source_tenant_id: string }) =>
+      [...s().references.values()].some(
+        (r) => r.subject_id === subjectId && r.status === 'ACTIVE' && r.source_system_id === t.source_system_id && r.source_tenant_id === t.source_tenant_id,
+      );
+    const after = (at: Date, id: string, c: { at: Date; id: string }) => at.getTime() > c.at.getTime() || (at.getTime() === c.at.getTime() && id > c.id);
     return {
       subjects: {
         async create(data) {
@@ -298,6 +317,11 @@ export class InMemoryIntelligence implements IntelligenceUnitOfWork {
             )
             .map((a) => ({ ...a }));
         },
+        async listRevokedHashesByReference(referenceId) {
+          return [...s().assertions.values()]
+            .filter((a) => a.source_reference_id === referenceId && a.current_status === 'REVOKED')
+            .map((a) => a.content_hash);
+        },
         async listBySubject(subjectId) {
           return [...s().assertions.values()].filter((a) => a.subject_id === subjectId).map((a) => ({ ...a }));
         },
@@ -305,6 +329,12 @@ export class InMemoryIntelligence implements IntelligenceUnitOfWork {
           const r = s().assertions.get(id);
           if (!r) throw new Error('not found');
           s().assertions.set(id, { ...r, current_status: status });
+        },
+        async transitionStatus(id, from, to) {
+          const r = s().assertions.get(id);
+          if (!r || r.current_status !== from) return false;
+          s().assertions.set(id, { ...r, current_status: to });
+          return true;
         },
         async repoint(ids, subjectId) {
           if (ids.length > 0 && !repointOn()) throw new Error('Assertion subject_id changes only through a merge or split');
@@ -708,6 +738,180 @@ export class InMemoryIntelligence implements IntelligenceUnitOfWork {
           const row: ServiceClient = { ...data, created_at: prior?.created_at ?? tick() };
           s().clients.set(row.client_id, row);
           return { ...row };
+        },
+      },
+      disputes: {
+        async create(data) {
+          const row: AssertionDispute = {
+            id: randomUUID(),
+            ...data,
+            opened_by: 'TALENT',
+            status: 'OPEN',
+            resolution_note: null,
+            no_transition_reason: null,
+            reinvestigation_extended_at: null,
+            triaged_at: null,
+            resolved_at: null,
+            withdrawn_at: null,
+            updated_at: data.opened_at,
+          };
+          if (findOpen(row.assertion_id)) throw new Error('unique violation: AssertionDispute_one_open_per_assertion');
+          s().disputes.set(row.id, row);
+          return { ...row };
+        },
+        async findById(id) {
+          const r = s().disputes.get(id);
+          return r ? { ...r } : null;
+        },
+        async findOpenForAssertion(assertionId) {
+          const r = findOpen(assertionId);
+          return r ? { ...r } : null;
+        },
+        async update(id, patch) {
+          const r = s().disputes.get(id);
+          if (!r) throw new Error('not found');
+          const next = { ...r, ...patch, updated_at: tick() } as AssertionDispute;
+          if ((next.status === 'WITHDRAWN') !== (next.withdrawn_at !== null)) throw new Error('check violation: withdrawn');
+          if ((next.status === 'RESOLVED_NO_TRANSITION') !== (next.no_transition_reason !== null)) throw new Error('check violation: no_transition');
+          s().disputes.set(id, next);
+          return { ...next };
+        },
+        async listBySubjects(subjectIds, opts) {
+          const set = new Set(subjectIds);
+          return [...s().disputes.values()]
+            .filter((d) => set.has(s().assertions.get(d.assertion_id)?.subject_id ?? ''))
+            .filter((d) => opts.statuses === null || opts.statuses.includes(d.status))
+            .sort((a, b) => b.opened_at.getTime() - a.opened_at.getTime() || (a.id < b.id ? 1 : -1))
+            .slice(0, opts.limit)
+            .map((d) => ({ ...d }));
+        },
+        async listForTenant(tenant, opts) {
+          return [...s().disputes.values()]
+            .filter((d) => {
+              const a = s().assertions.get(d.assertion_id);
+              if (!a) return false;
+              if (s().subjects.get(a.subject_id)?.access_state !== 'ACTIVE') return false;
+              if (!hasActiveRef(a.subject_id, tenant)) return false;
+              const own = a.source_system_id === tenant.source_system_id && a.source_tenant_id === tenant.source_tenant_id;
+              if (!opts.crossTenant && !own && !TI_ORIGINATED_SOURCE_KINDS.includes(a.source_kind)) return false;
+              if (opts.statuses !== null && !opts.statuses.includes(d.status)) return false;
+              return opts.after === null || after(d.opened_at, d.id, opts.after);
+            })
+            .sort((a, b) => a.opened_at.getTime() - b.opened_at.getTime() || (a.id < b.id ? -1 : 1))
+            .slice(0, opts.limit)
+            .map((d) => ({ ...d }));
+        },
+        async appendStatement(data) {
+          const row: AssertionDisputeStatement = { id: randomUUID(), ...data, created_at: tick() };
+          s().disputeStatements.push(row);
+          return { ...row };
+        },
+        async listStatements(disputeId) {
+          return s().disputeStatements.filter((r) => r.dispute_id === disputeId).map((r) => ({ ...r }));
+        },
+        async appendEvent(data) {
+          const row: AssertionDisputeEvent = {
+            id: randomUUID(),
+            dispute_id: data.dispute_id,
+            event_type: data.event_type,
+            from_status: data.from_status ?? null,
+            to_status: data.to_status ?? null,
+            actor: data.actor,
+            source_system_id: data.source_system_id ?? null,
+            source_tenant_id: data.source_tenant_id ?? null,
+            details: (data.details ?? null) as AssertionDisputeEvent['details'],
+            created_at: tick(),
+          };
+          s().disputeEvents.push(row);
+          return { ...row };
+        },
+        async listEvents(disputeId) {
+          return s().disputeEvents.filter((r) => r.dispute_id === disputeId).map((r) => ({ ...r }));
+        },
+      },
+      proposals: {
+        async findById(id) {
+          const r = s().proposals.get(id);
+          return r ? { ...r } : null;
+        },
+        async findByKey(key) {
+          const r = [...s().proposals.values()].find(
+            (p) =>
+              p.source_system_id === key.source_system_id &&
+              p.source_tenant_id === key.source_tenant_id &&
+              p.subject_id === key.subject_id &&
+              p.kind === key.kind &&
+              p.basis_ref === key.basis_ref,
+          );
+          return r ? { ...r } : null;
+        },
+        async create(data) {
+          const now = tick();
+          const row: VerificationProposal = {
+            id: randomUUID(),
+            ...data,
+            basis_snapshot: structuredClone(data.basis_snapshot),
+            status: 'OPEN',
+            justification: null,
+            action: null,
+            note: null,
+            resolved_by: null,
+            acted_at: null,
+            created_at: now,
+            updated_at: now,
+          };
+          s().proposals.set(row.id, row);
+          return { ...row };
+        },
+        async refresh(id, patch) {
+          const r = s().proposals.get(id);
+          if (!r) throw new Error('not found');
+          const next = { ...r, trigger_kind: patch.trigger_kind, basis_snapshot: structuredClone(patch.basis_snapshot), updated_at: tick() };
+          s().proposals.set(id, next);
+          return { ...next };
+        },
+        async listOpenForSubject(tenant, subjectId) {
+          return [...s().proposals.values()]
+            .filter(
+              (p) =>
+                p.source_system_id === tenant.source_system_id &&
+                p.source_tenant_id === tenant.source_tenant_id &&
+                p.subject_id === subjectId &&
+                p.status === 'OPEN',
+            )
+            .map((p) => ({ ...p }));
+        },
+        async resolve(id, patch) {
+          const r = s().proposals.get(id);
+          if (!r || r.status !== 'OPEN') return null;
+          const next: VerificationProposal = {
+            ...r,
+            status: patch.status,
+            resolved_by: patch.resolved_by,
+            justification: patch.justification ?? null,
+            action: patch.action ?? null,
+            note: patch.note ?? null,
+            acted_at: patch.at,
+            updated_at: tick(),
+          };
+          if (next.status === 'DISMISSED' && next.justification === null) throw new Error('check violation: dismissed');
+          if ((next.status === 'ACTED') !== (next.action !== null)) throw new Error('check violation: acted');
+          s().proposals.set(id, next);
+          return { ...next };
+        },
+        async listForTenant(tenant, opts) {
+          return [...s().proposals.values()]
+            .filter((p) => {
+              if (p.source_system_id !== tenant.source_system_id || p.source_tenant_id !== tenant.source_tenant_id) return false;
+              const g = s().subjects.get(p.subject_id);
+              if (!g || g.access_state !== 'ACTIVE' || g.resolution_status === 'MERGED') return false;
+              if (p.status !== opts.status || (opts.kind !== null && p.kind !== opts.kind)) return false;
+              if (!hasActiveRef(p.subject_id, tenant)) return false;
+              return opts.after === null || after(p.created_at, p.id, opts.after);
+            })
+            .sort((a, b) => a.created_at.getTime() - b.created_at.getTime() || (a.id < b.id ? -1 : 1))
+            .slice(0, opts.limit)
+            .map((p) => ({ ...p }));
         },
       },
     };

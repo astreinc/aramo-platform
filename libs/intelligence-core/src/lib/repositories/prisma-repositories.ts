@@ -1,10 +1,18 @@
 import { randomUUID } from 'node:crypto';
 
-import { Prisma, type IntelligenceOutbox, type IntelligenceWebhookDelivery } from '../../../prisma/generated/client/client.js';
-import { RETIRED_ASSERTION_STATUSES } from '../vocabulary.js';
+import {
+  Prisma,
+  type AssertionDispute,
+  type IntelligenceOutbox,
+  type IntelligenceWebhookDelivery,
+  type VerificationProposal,
+} from '../../../prisma/generated/client/client.js';
+import { RETIRED_ASSERTION_STATUSES, TI_ORIGINATED_SOURCE_KINDS } from '../vocabulary.js';
 
 import type {
   AssertionRepository,
+  DisputeRepository,
+  ProposalRepository,
   EntitledTenantRepository,
   ReadAuditRepository,
   TrustStateRepository,
@@ -150,11 +158,22 @@ export class PrismaAssertionRepository implements AssertionRepository {
       orderBy: { created_at: 'asc' },
     });
   }
+  async listRevokedHashesByReference(referenceId: string) {
+    const rows = await this.db.assertion.findMany({
+      where: { source_reference_id: referenceId, current_status: 'REVOKED' },
+      select: { content_hash: true },
+    });
+    return rows.map((r) => r.content_hash);
+  }
   listBySubject(subjectId: string) {
     return this.db.assertion.findMany({ where: { subject_id: subjectId }, orderBy: { created_at: 'asc' } });
   }
   async setStatus(id: string, status: Parameters<AssertionRepository['setStatus']>[1]) {
     await this.db.assertion.update({ where: { id }, data: { current_status: status } });
+  }
+  async transitionStatus(id: string, from: Parameters<AssertionRepository['transitionStatus']>[1], to: Parameters<AssertionRepository['transitionStatus']>[2]) {
+    const r = await this.db.assertion.updateMany({ where: { id, current_status: from }, data: { current_status: to } });
+    return r.count === 1;
   }
   async repoint(ids: string[], subjectId: string) {
     if (ids.length > 0) await this.db.assertion.updateMany({ where: { id: { in: ids } }, data: { subject_id: subjectId } });
@@ -472,6 +491,129 @@ export class PrismaServiceClientRepository implements ServiceClientRepository {
   }
 }
 
+// ── T10 — evidence lifecycle ─────────────────────────────────────────────────
+
+const OPEN_DISPUTE_STATUSES = ['OPEN', 'UNDER_REVIEW'];
+
+export class PrismaDisputeRepository implements DisputeRepository {
+  constructor(private readonly db: IntelligenceDb) {}
+  create(data: Parameters<DisputeRepository['create']>[0]) {
+    return this.db.assertionDispute.create({ data: { id: randomUUID(), ...data, updated_at: data.opened_at } });
+  }
+  findById(id: string) {
+    return this.db.assertionDispute.findUnique({ where: { id } });
+  }
+  findOpenForAssertion(assertionId: string) {
+    return this.db.assertionDispute.findFirst({ where: { assertion_id: assertionId, status: { in: OPEN_DISPUTE_STATUSES } } });
+  }
+  update(id: string, patch: Parameters<DisputeRepository['update']>[1]) {
+    return this.db.assertionDispute.update({ where: { id }, data: patch });
+  }
+  listBySubjects(subjectIds: string[], opts: Parameters<DisputeRepository['listBySubjects']>[1]) {
+    if (subjectIds.length === 0) return Promise.resolve([]);
+    return this.db.assertionDispute.findMany({
+      where: { assertion: { subject_id: { in: subjectIds } }, ...(opts.statuses ? { status: { in: [...opts.statuses] } } : {}) },
+      orderBy: [{ opened_at: 'desc' }, { id: 'desc' }],
+      take: opts.limit,
+    });
+  }
+  listForTenant(tenant: Parameters<DisputeRepository['listForTenant']>[0], opts: Parameters<DisputeRepository['listForTenant']>[1]) {
+    const visible = opts.crossTenant
+      ? Prisma.empty
+      : Prisma.sql`AND ((a."source_system_id" = ${tenant.source_system_id} AND a."source_tenant_id" = ${tenant.source_tenant_id})
+                     OR a."source_kind" IN (${Prisma.join([...TI_ORIGINATED_SOURCE_KINDS])}))`;
+    const statuses = opts.statuses ? Prisma.sql`AND d."status" IN (${Prisma.join([...opts.statuses])})` : Prisma.empty;
+    const after = opts.after ? Prisma.sql`AND (d."opened_at", d."id") > (${opts.after.at}, ${opts.after.id}::uuid)` : Prisma.empty;
+    return this.db.$queryRaw<AssertionDispute[]>(Prisma.sql`
+      SELECT d.* FROM "intelligence"."AssertionDispute" d
+      JOIN "intelligence"."Assertion" a ON a."id" = d."assertion_id"
+      JOIN "intelligence"."GoldenTalent" g ON g."id" = a."subject_id" AND g."access_state" = 'ACTIVE'
+      WHERE EXISTS (
+        SELECT 1 FROM "intelligence"."ExternalTalentReference" r
+        WHERE r."subject_id" = a."subject_id" AND r."status" = 'ACTIVE'
+          AND r."source_system_id" = ${tenant.source_system_id} AND r."source_tenant_id" = ${tenant.source_tenant_id}
+      )
+      ${visible} ${statuses} ${after}
+      ORDER BY d."opened_at" ASC, d."id" ASC
+      LIMIT ${opts.limit}`);
+  }
+  appendStatement(data: Parameters<DisputeRepository['appendStatement']>[0]) {
+    return this.db.assertionDisputeStatement.create({ data: { id: randomUUID(), ...data } });
+  }
+  listStatements(disputeId: string) {
+    return this.db.assertionDisputeStatement.findMany({ where: { dispute_id: disputeId }, orderBy: [{ created_at: 'asc' }, { id: 'asc' }] });
+  }
+  appendEvent(data: Parameters<DisputeRepository['appendEvent']>[0]) {
+    const { details, ...rest } = data;
+    return this.db.assertionDisputeEvent.create({ data: { id: randomUUID(), ...rest, ...(details ? { details: json(details) } : {}) } });
+  }
+  listEvents(disputeId: string) {
+    return this.db.assertionDisputeEvent.findMany({ where: { dispute_id: disputeId }, orderBy: [{ created_at: 'asc' }, { id: 'asc' }] });
+  }
+}
+
+export class PrismaProposalRepository implements ProposalRepository {
+  constructor(private readonly db: IntelligenceDb) {}
+  findById(id: string) {
+    return this.db.verificationProposal.findUnique({ where: { id } });
+  }
+  findByKey(key: Parameters<ProposalRepository['findByKey']>[0]) {
+    return this.db.verificationProposal.findUnique({
+      where: {
+        source_system_id_source_tenant_id_subject_id_kind_basis_ref: {
+          source_system_id: key.source_system_id,
+          source_tenant_id: key.source_tenant_id,
+          subject_id: key.subject_id,
+          kind: key.kind,
+          basis_ref: key.basis_ref,
+        },
+      },
+    });
+  }
+  create(data: Parameters<ProposalRepository['create']>[0]) {
+    return this.db.verificationProposal.create({ data: { id: randomUUID(), ...data, basis_snapshot: json(data.basis_snapshot) } });
+  }
+  refresh(id: string, patch: Parameters<ProposalRepository['refresh']>[1]) {
+    return this.db.verificationProposal.update({ where: { id }, data: { trigger_kind: patch.trigger_kind, basis_snapshot: json(patch.basis_snapshot) } });
+  }
+  listOpenForSubject(tenant: Parameters<ProposalRepository['listOpenForSubject']>[0], subjectId: string) {
+    return this.db.verificationProposal.findMany({
+      where: { source_system_id: tenant.source_system_id, source_tenant_id: tenant.source_tenant_id, subject_id: subjectId, status: 'OPEN' },
+      orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+    });
+  }
+  async resolve(id: string, patch: Parameters<ProposalRepository['resolve']>[1]) {
+    const r = await this.db.verificationProposal.updateMany({
+      where: { id, status: 'OPEN' },
+      data: {
+        status: patch.status,
+        resolved_by: patch.resolved_by,
+        justification: patch.justification ?? null,
+        action: patch.action ?? null,
+        note: patch.note ?? null,
+        acted_at: patch.at,
+      },
+    });
+    return r.count === 1 ? this.db.verificationProposal.findUnique({ where: { id } }) : null;
+  }
+  listForTenant(tenant: Parameters<ProposalRepository['listForTenant']>[0], opts: Parameters<ProposalRepository['listForTenant']>[1]) {
+    const kind = opts.kind ? Prisma.sql`AND p."kind" = ${opts.kind}` : Prisma.empty;
+    const after = opts.after ? Prisma.sql`AND (p."created_at", p."id") > (${opts.after.at}, ${opts.after.id}::uuid)` : Prisma.empty;
+    return this.db.$queryRaw<VerificationProposal[]>(Prisma.sql`
+      SELECT p.* FROM "intelligence"."VerificationProposal" p
+      JOIN "intelligence"."GoldenTalent" g ON g."id" = p."subject_id" AND g."access_state" = 'ACTIVE' AND g."resolution_status" <> 'MERGED'
+      WHERE p."source_system_id" = ${tenant.source_system_id} AND p."source_tenant_id" = ${tenant.source_tenant_id}
+        AND p."status" = ${opts.status} ${kind} ${after}
+        AND EXISTS (
+          SELECT 1 FROM "intelligence"."ExternalTalentReference" r
+          WHERE r."subject_id" = p."subject_id" AND r."status" = 'ACTIVE'
+            AND r."source_system_id" = ${tenant.source_system_id} AND r."source_tenant_id" = ${tenant.source_tenant_id}
+        )
+      ORDER BY p."created_at" ASC, p."id" ASC
+      LIMIT ${opts.limit}`);
+  }
+}
+
 /** Bind every repository to one client (root or transaction). */
 export function createPrismaRepositories(db: IntelligenceDb): IntelligenceRepositories {
   return {
@@ -492,5 +634,7 @@ export function createPrismaRepositories(db: IntelligenceDb): IntelligenceReposi
     entitlements: new PrismaEntitledTenantRepository(db),
     readAudit: new PrismaReadAuditRepository(db),
     deliveries: new PrismaWebhookDeliveryRepository(db),
+    disputes: new PrismaDisputeRepository(db),
+    proposals: new PrismaProposalRepository(db),
   };
 }

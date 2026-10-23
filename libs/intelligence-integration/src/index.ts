@@ -15,7 +15,10 @@ export {
   IntelligenceNotConfiguredError,
   IntelligenceRejectedError,
   IntelligenceUnavailableError,
+  type AtsTalentRef,
+  type AtsTenantActor,
   type IntelligenceFetch,
+  type WorklistPage,
 } from './lib/intelligence-client.js';
 export {
   IngestPayloadRejectedError,

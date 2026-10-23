@@ -47,10 +47,14 @@ export const ASSERTION_EVENT_TYPES = [
   'WITHDRAWN',
   'REVALIDATED',
   'REPOINTED',
+  // T10 — dispute and contradiction outcomes (DISPUTED → VALID / REVOKED; CONTRADICTED → VALID / REVOKED).
+  'DISPUTE_RESOLVED',
+  'CORRECTED',
+  'CONTRADICTION_RESOLVED',
 ] as const;
 export type AssertionEventType = (typeof ASSERTION_EVENT_TYPES)[number];
 
-export const ASSERTION_LINK_TYPES = ['CORROBORATES', 'CONTRADICTS', 'SUPERSEDES'] as const;
+export const ASSERTION_LINK_TYPES = ['CORROBORATES', 'CONTRADICTS', 'SUPERSEDES', 'RECONCILES'] as const;
 export type AssertionLinkType = (typeof ASSERTION_LINK_TYPES)[number];
 
 export const IDENTITY_CONFLICT_TYPES = [
@@ -84,3 +88,21 @@ export const PROJECTED_ASSERTION_STATUSES: readonly AssertionStatus[] = ['VALID'
 export const EMAIL_OTP_METHOD = 'EMAIL_OTP';
 export const SMS_OTP_METHOD = 'SMS_OTP';
 export const PORTAL_VERIFICATION_SOURCE = 'aramo-portal';
+
+// ── ATI-SEP-1 T10 — evidence lifecycle ───────────────────────────────────────
+
+export const DISPUTE_EVENT_TYPES = [
+  'OPENED',
+  'STATEMENT_ADDED',
+  'TRIAGED',
+  'INFO_REQUESTED',
+  'CORRECTED',
+  'UPHELD',
+  'WITHDRAWN',
+  'EXTENDED',
+  'NO_TRANSITION',
+] as const;
+export type DisputeEventType = (typeof DISPUTE_EVENT_TYPES)[number];
+
+/** Source kinds TI itself originates (visible to every entitled tenant holding a reference). */
+export const TI_ORIGINATED_SOURCE_KINDS: readonly string[] = ['VERIFICATION', 'TI_ACQUIRED'];

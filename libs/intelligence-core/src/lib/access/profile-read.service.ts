@@ -28,6 +28,8 @@ import {
 } from '../repositories/types.js';
 import { RETIRED_ASSERTION_STATUSES, type ReadKind, type ReadOutcome } from '../vocabulary.js';
 
+import { crossTenantReadEnabled, reconciledPairs, tenantViewAssertions, tenantViewIdentifiers } from './tenant-view.js';
+
 // ATI-SEP-1 T6 (ADR-0036 §6, Addendum A1) — the tenant read API.
 //
 // A tenant reads a subject ONLY through its own reference tuple, and only when
@@ -51,12 +53,7 @@ import { RETIRED_ASSERTION_STATUSES, type ReadKind, type ReadOutcome } from '../
 // (metadata only — never the storage key).
 // Every attempt, granted or refused, is written to IntelligenceReadAudit.
 
-export const TI_CROSS_TENANT_READ_ENABLED_ENV = 'TI_CROSS_TENANT_READ_ENABLED';
-
-export function crossTenantReadEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
-  const v = (env[TI_CROSS_TENANT_READ_ENABLED_ENV] ?? '').trim().toLowerCase();
-  return v === 'true' || v === '1';
-}
+export { TI_CROSS_TENANT_READ_ENABLED_ENV, crossTenantReadEnabled } from './tenant-view.js';
 
 export class ReadRefusedError extends Error {
   constructor(readonly code: ReadRefusalCode) {
@@ -241,23 +238,12 @@ export class ProfileReadService {
   }
 
   private async viewAssertions(repos: IntelligenceRepositories, subjectId: string, tuple: SourceTuple, mode: ReadAccessMode): Promise<Assertion[]> {
-    const all = await repos.assertions.listBySubject(subjectId);
-    if (mode === 'CROSS_TENANT') return all;
-    return all.filter((a) => this.own(a, tuple) || TI_SOURCE_KINDS.has(a.source_kind));
+    return tenantViewAssertions(await repos.assertions.listBySubject(subjectId), tuple, mode === 'CROSS_TENANT');
   }
 
   private async viewIdentifiers(repos: IntelligenceRepositories, g: Granted, tuple: SourceTuple, mode: ReadAccessMode): Promise<SubjectIdentifier[]> {
-    const all = (await repos.identifiers.listBySubject(g.subject.id)).filter((i) => i.status === 'ACTIVE');
-    if (mode === 'CROSS_TENANT') return all;
-    const refs = await repos.references.listBySubject(g.subject.id);
-    const ownRefs = new Set(
-      refs.filter((r) => r.source_system_id === tuple.source_system_id && r.source_tenant_id === tuple.source_tenant_id).map((r) => r.id),
-    );
-    const own = all.filter((i) => i.source_reference_id !== null && ownRefs.has(i.source_reference_id));
-    const ownKeys = new Set(own.map((i) => `${i.identifier_type}|${i.normalized_value}`));
-    // A TI verification is visible only for a value the tenant itself holds — never a new contact.
-    const tiVerified = all.filter((i) => i.source_reference_id === null && ownKeys.has(`${i.identifier_type}|${i.normalized_value}`));
-    return [...own, ...tiVerified];
+    const all = await repos.identifiers.listBySubject(g.subject.id);
+    return tenantViewIdentifiers(all, await repos.references.listBySubject(g.subject.id), tuple, mode === 'CROSS_TENANT');
   }
 
   private async view(repos: IntelligenceRepositories, g: Granted, tuple: SourceTuple, mode: ReadAccessMode, now: Date): Promise<View> {
@@ -268,6 +254,7 @@ export class ProfileReadService {
       now,
       availabilityFreshnessDays: availabilityFreshnessDays(),
       artifactSupported: await artifactSupportedIds(repos, g.subject.id),
+      reconciled: reconciledPairs(await repos.assertions.listLinksFor(live.map((a) => a.id))),
     });
     return { mode, assertions, identifiers, projection };
   }
