@@ -11,6 +11,9 @@ import { TalentIntakeWorkerModule } from './talent-intake-consumer/talent-intake
 // single box it is `singlebox` (in-process delivery to TalentIntakeMessageHandler).
 async function bootstrap(): Promise<void> {
   const logger = createAramoLogger('TalentIntakeWorker');
+  // ATI-SEP-1 A3 — this process drains the ATS talent outbox by default; set
+  // ATS_TALENT_EVENTS_DRAIN_ENABLED=0 to turn it off. (The API leaves it unset.)
+  process.env['ATS_TALENT_EVENTS_DRAIN_ENABLED'] ??= '1';
   const app = await NestFactory.createApplicationContext(TalentIntakeWorkerModule, {
     bufferLogs: false,
   });

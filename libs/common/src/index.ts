@@ -117,6 +117,7 @@ export {
 } from './lib/testing/identity-migrations.js';
 export {
   TALENT_TRUST_MIGRATIONS,
+  TALENT_EVIDENCE_LATE_COLUMN_MIGRATIONS,
   resolveTalentTrustMigrations,
 } from './lib/testing/talent-trust-migrations.js';
 

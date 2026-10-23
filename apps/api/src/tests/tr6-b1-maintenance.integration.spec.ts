@@ -22,6 +22,8 @@ import { AppModule } from '../app.module.js';
 import { MatchSweepService } from '../talent-anchor/match-sweep.service.js';
 import { IdentityDetectionService } from '../talent-identity/identity-detection.service.js';
 
+import { TALENT_RECORD_ATI_SEP_1_MIGRATIONS } from './talent-record-fixtures.js';
+
 // TR-6 B1 (DDR §8 acceptance) — the maintenance-layer proof (real Postgres 17).
 // Boots AppModule to DI-wire the sweep + detection services over the real repos.
 //   (i)   incremental sweep — a subject matched with no new anchor is NOT re-matched
@@ -52,6 +54,7 @@ const MIGRATIONS = [
   'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
   // B1+B2 — title + country columns (regenerated client projects them).
   'libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql',
+  ...TALENT_RECORD_ATI_SEP_1_MIGRATIONS,
 ].map(M);
 
 const CREATED_BY = 'tr6-b1-maintenance';

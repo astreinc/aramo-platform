@@ -5,7 +5,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE, TALENT_TRUST_MIGRATIONS } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, TALENT_TRUST_MIGRATIONS, TALENT_EVIDENCE_LATE_COLUMN_MIGRATIONS } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
@@ -13,6 +13,8 @@ import { v7 as uuidv7 } from 'uuid';
 
 import { AppModule } from '../app.module.js';
 import { RecordReconcileOrchestrator } from '../talent-identity/record-reconcile.orchestrator.js';
+
+import { TALENT_RECORD_ATI_SEP_1_MIGRATIONS } from './talent-record-fixtures.js';
 
 // TR-2a-B3b (DDR-3 §8) — the record-reconcile acceptance suite (real Postgres 17).
 // Boots the AppModule to DI-wire the orchestrator + every domain repo, applies the
@@ -44,6 +46,7 @@ const MIGRATIONS = [
   'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
   // B1+B2 — title + country columns (regenerated client projects them).
   'libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql',
+  ...TALENT_RECORD_ATI_SEP_1_MIGRATIONS,
   // consent (+ audit schema) full.
   'libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql',
   'libs/consent/prisma/migrations/20260630170000_rekey_consent_to_talent_record/migration.sql',
@@ -79,6 +82,7 @@ const MIGRATIONS = [
   'libs/talent-evidence/prisma/migrations/20260915120000_hf1_resume_provenance/migration.sql',
   'libs/talent-evidence/prisma/migrations/20260915170000_hf2_experience_intelligence/migration.sql',
   'libs/talent-evidence/prisma/migrations/20260915180000_skill_tax_1g_canonical_reconciliation/migration.sql',
+  ...TALENT_EVIDENCE_LATE_COLUMN_MIGRATIONS,
   'libs/saved-list/prisma/migrations/20260602120000_init_saved_list_model/migration.sql',
   'libs/attachment/prisma/migrations/20260602120000_init_attachment_model/migration.sql',
   'libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql',

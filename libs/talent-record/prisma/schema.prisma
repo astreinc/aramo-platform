@@ -60,6 +60,11 @@ model TalentRecord {
   phone_home String?
   phone_cell String?
   phone_work String?
+  // ATI-SEP-1 A2 — the cell-phone dedupe key (ADD-not-rename): digits only, a
+  // 10-digit NANP number prefixed with country code 1 (E.164-ish, no '+').
+  // Written on every create/update that sets phone_cell; backfilled by the
+  // migration. Server-only — never projected onto TalentRecordView.
+  phone_cell_normalized String?
 
   // Address (free-text).
   address  String?
@@ -197,7 +202,53 @@ model TalentRecord {
   @@index([tenant_id, created_at, id])
   @@index([tenant_id, owner_id, id])
   @@index([tenant_id, city, state, id])
+  // ATI-SEP-1 A2 — the tenant-local cell-phone duplicate lookup.
+  @@index([tenant_id, phone_cell_normalized])
 
+  @@schema("talent_record")
+}
+
+// ATI-SEP-1 A3 (ADR-0036 §3, Addendum A2 E-1) — the ATS talent transactional
+// outbox. Written in the SAME talent_record transaction as the business fact it
+// records: `talent.created` (TalentRecord create), `talent.profile_updated`
+// (TalentRecord update / ATS evidence edit), `talent.erased` (S2 erasure pass).
+// The payload carries ids and changed field NAMES only — never PII, never a
+// document reference or storage key. Drained post-commit by the lease-safe
+// dispatcher (apps/api ats-talent-events), which fans each event out to the
+// registered in-process handlers; nothing on the ATS write path waits for them.
+// Column shape mirrors talent_evidence.TalentIntakeOutboxEvent (ADR-0033
+// envelope + lease + quarantine). subject_id is the TalentRecord id.
+model TalentEventOutbox {
+  id            String    @id @db.Uuid
+  tenant_id     String    @db.Uuid
+  event_type    String
+  event_payload Json      @db.JsonB
+  created_at    DateTime  @default(now()) @db.Timestamptz
+  published_at  DateTime? @db.Timestamptz
+
+  // Canonical envelope columns (ADR-0033 Decision 4) — always written.
+  event_version  String
+  source         String
+  subject_type   String
+  subject_id     String  @db.Uuid
+  correlation_id String?
+  causation_id   String?
+
+  // Concurrency-safe claim/lease (ADR-0033 Decision 1). A failed dispatch keeps
+  // the row leased until lease_expires_at (the retry backoff).
+  claimed_at         DateTime? @db.Timestamptz
+  lease_expires_at   DateTime? @db.Timestamptz
+  publish_attempts   Int       @default(0)
+  last_publish_error String?
+
+  // Quarantine: parked after the attempt budget; visible, never re-claimed.
+  quarantined_at    DateTime? @db.Timestamptz
+  quarantine_reason String?
+
+  // The claim scan uses a PARTIAL index (unpublished AND not quarantined,
+  // oldest-first) created in the migration SQL.
+  @@index([tenant_id, subject_id, created_at])
+  @@index([published_at, created_at])
   @@schema("talent_record")
 }
 

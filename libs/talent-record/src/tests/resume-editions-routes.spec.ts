@@ -52,7 +52,7 @@ function make(parts: {
   duplicate?: unknown;
 } = {}) {
   const findById = vi.fn().mockResolvedValue(parts.view === undefined ? { id: TALENT } : parts.view);
-  const repo = { findById };
+  const repo = { findById, recordProfileUpdated: vi.fn().mockResolvedValue(undefined) };
   const listResumeEditionsWithDocument = vi.fn().mockResolvedValue(parts.editions ?? [projectedRow()]);
   const createResumeDocument = vi.fn().mockResolvedValue('doc-new');
   const findResumeEditionById = vi.fn().mockResolvedValue(
@@ -97,7 +97,6 @@ function make(parts: {
   const ctl = new TalentRecordController(
     repo as never, {} as never, {} as never, resumeParser as never,
     talentExtraction as never, {} as never, {} as never,
-    undefined, // canonicalReconcile
     editionIngestion as never,
     resumeResolver as never,
     resumeText as never,

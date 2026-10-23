@@ -26,7 +26,7 @@ function make(parts: {
       ? { redacted_text: 'edition A redacted body', status: 'extracted', extracted_at: new Date('2026-07-01T00:00:00.000Z') }
       : parts.text,
   );
-  const repo = { findById, findResumeEditionText };
+  const repo = { findById, findResumeEditionText, recordProfileUpdated: vi.fn().mockResolvedValue(undefined) };
   const listResumeEditionsWithDocument = vi.fn().mockResolvedValue(parts.editions ?? [{ id: ED_A }, { id: ED_B }]);
   const setDefaultResumeEdition = vi.fn().mockResolvedValue({});
   const findResumeEditionById = vi.fn().mockResolvedValue({ id: ED_B, tenant_id: TENANT, talent_id: TALENT });
@@ -37,7 +37,7 @@ function make(parts: {
   const ctl = new TalentRecordController(
     repo as never, {} as never, {} as never, {} as never,
     talentExtraction as never, {} as never, {} as never,
-    undefined, {} as never, {} as never, resumeText as never,
+    {} as never, {} as never, resumeText as never,
   );
   return { ctl, findById, findResumeEditionText, listResumeEditionsWithDocument, enqueueReindex, setDefaultResumeEdition };
 }

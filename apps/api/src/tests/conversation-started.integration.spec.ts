@@ -7,7 +7,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, TALENT_EVIDENCE_LATE_COLUMN_MIGRATIONS } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -74,6 +74,7 @@ const MIGRATIONS = [
   M('libs/talent-evidence/prisma/migrations/20260915120000_hf1_resume_provenance/migration.sql'),
   M('libs/talent-evidence/prisma/migrations/20260915170000_hf2_experience_intelligence/migration.sql'),
   M('libs/talent-evidence/prisma/migrations/20260915180000_skill_tax_1g_canonical_reconciliation/migration.sql'),
+  ...TALENT_EVIDENCE_LATE_COLUMN_MIGRATIONS.map(M),
   M('libs/evidence/prisma/migrations/20260522090000_init_evidence_model/migration.sql'),
   M('libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql'),
   M('libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql'),

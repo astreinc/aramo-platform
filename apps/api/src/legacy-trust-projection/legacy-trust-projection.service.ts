@@ -26,9 +26,10 @@ import {
 // the created_by / link_source labels are UNCHANGED, so the reconcile stays
 // idempotent against every ledger row written before the move.
 //
-// Callers (non-create only): the examine endpoint's Step-4b reconcile and the
-// claims-ledger backfill CLI. The Add-Talent create / promote / edit path makes
-// ZERO calls here (ATI-SEP-1 §5).
+// Callers (never an ATS request path): the examine endpoint's Step-4b reconcile,
+// the claims-ledger backfill CLI, and (ATI-SEP-1 A3) the LEGACY talent-event
+// handler, which runs post-commit off the ATS talent outbox. The Add-Talent
+// create / promote / edit path makes ZERO calls here (ATI-SEP-1 §5).
 @Injectable()
 export class LegacyTrustProjectionService {
   private readonly logger = new Logger(LegacyTrustProjectionService.name);
@@ -245,6 +246,28 @@ export class LegacyTrustProjectionService {
   // TR-4 B2 (DDR §3.4) — the --all-tenants enumeration for the backfill CLI.
   async listTenantIdsWithEvidence(): Promise<string[]> {
     return this.evidence.listTenantIdsWithEvidence();
+  }
+
+  // ATI-SEP-1 A3 — route EVERY persisted work-history entry's experience
+  // assertions (TalentWorkHistoryEntry.assertions, written at Save since A2) for
+  // one talent. Post-commit only (the LEGACY talent-event handler); idempotent
+  // through the content-keyed source_ref. Returns the count written.
+  async routePersistedExperienceAssertionsToLedger(input: {
+    tenant_id: string;
+    talent_id: string;
+  }): Promise<number> {
+    const rows = await this.evidence.listWorkHistoryForLedger(input);
+    let written = 0;
+    for (const row of rows) {
+      if (!Array.isArray(row.assertions) || row.assertions.length === 0) continue;
+      written += await this.routeExperienceAssertionsToLedger({
+        tenant_id: input.tenant_id,
+        talent_id: input.talent_id,
+        work_experience_id: row.id,
+        assertions: row.assertions as ResumeDraftAssertion[],
+      });
+    }
+    return written;
   }
 
   // HF2 R1/R7 — route a WorkExperience's resume-derived ASSERTIONS (activities /

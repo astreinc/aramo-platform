@@ -27,7 +27,7 @@ import { AppModule } from '../app.module.js';
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { publishLifecyclePackage } from './publish-lifecycle-package.js';
-import { seedTalentRecord } from './talent-record-fixtures.js';
+import { seedTalentRecord, TALENT_RECORD_ATI_SEP_1_MIGRATION_PATHS } from './talent-record-fixtures.js';
 
 // PR-A5a Gate 5 — ATS Batch 4a (pipeline state machine + activity)
 // integration spec.
@@ -292,6 +292,7 @@ const MIGRATIONS = [
   TALENT_RECORD_WORK_AUTH,
   TALENT_RECORD_SUPERSESSION,
   TALENT_RECORD_TITLE_COUNTRY,
+  ...TALENT_RECORD_ATI_SEP_1_MIGRATION_PATHS,
   ACTIVITY_INIT,
   ACTIVITY_NOTE_EXTENSION,
   PIPELINE_INIT,

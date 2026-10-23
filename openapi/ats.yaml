@@ -10909,7 +10909,7 @@ components:
                   type: [string, 'null']
                 reason:
                   type: string
-                  enum: [email]
+                  enum: [email, phone]
                 continue_anyway:
                   type: boolean
         required:

@@ -69,6 +69,7 @@ export class TalentEducationService {
       actor_id: actor.user_id,
       fields,
     });
+    await this.recordChanged(actor, talent_id);
     await this.syncLedger(actor.tenant_id, talent_id);
     return { entry_id, education: await this.current(actor.tenant_id, talent_id) };
   }
@@ -101,6 +102,7 @@ export class TalentEducationService {
       throw this.mapRetired(err, actor, entry_id);
     }
     if (written === null) throw this.entryNotFound(actor, entry_id);
+    await this.recordChanged(actor, talent_id);
     await this.syncLedger(actor.tenant_id, talent_id);
     return { entry_id: written.entry_id, education: await this.current(actor.tenant_id, talent_id) };
   }
@@ -124,8 +126,21 @@ export class TalentEducationService {
       throw this.mapRetired(err, actor, entry_id);
     }
     if (written === null) throw this.entryNotFound(actor, entry_id);
+    await this.recordChanged(actor, talent_id);
     await this.syncLedger(actor.tenant_id, talent_id);
     return { entry_id, education: await this.current(actor.tenant_id, talent_id) };
+  }
+
+  // ATI-SEP-1 A3 — the committed education change is an ATS evidence edit:
+  // record talent.profile_updated (field names only) right after the entry
+  // transaction, before the (loud-fail) ledger sync.
+  private async recordChanged(actor: EducationActor, talent_id: string): Promise<void> {
+    await this.talentRecords.recordProfileUpdated({
+      tenant_id: actor.tenant_id,
+      talent_record_id: talent_id,
+      changed_fields: ['education'],
+      correlation_id: actor.request_id,
+    });
   }
 
   // ---- gates ----------------------------------------------------------------

@@ -1112,6 +1112,11 @@ describe('Talent360View — Documents (§8B)', () => {
     const dialog = await screen.findByRole('dialog');
     expect([...within(dialog).getByLabelText('Document type').querySelectorAll('option')].map((o) => o.textContent)).toEqual(['Resume', 'Resume · tailored']);
     const input = dialog.querySelector('input[type="file"]') as HTMLInputElement;
+    // ATI-SEP-1 A4 — PDF and DOCX only: the picker no longer offers legacy .doc,
+    // and a .doc file is refused like any other unsupported type.
+    expect(input.accept).toBe('.pdf,.docx');
+    fireEvent.change(input, { target: { files: [new File(['x'], 'old.doc', { type: 'application/msword' })] } });
+    expect(within(dialog).getByText('That file type isn’t supported for a resume. Use PDF or Word.')).toBeInTheDocument();
     fireEvent.change(input, { target: { files: [new File(['x'], 'photo.png', { type: 'image/png' })] } });
     expect(within(dialog).getByText('That file type isn’t supported for a resume. Use PDF or Word.')).toBeInTheDocument();
     fireEvent.change(input, { target: { files: [new File(['%PDF'], 'new.pdf', { type: 'application/pdf' })] } });

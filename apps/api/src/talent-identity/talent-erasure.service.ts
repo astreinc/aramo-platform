@@ -6,6 +6,7 @@ import {
   type ClusterPurgeExec,
   type PurgeClusterResult,
 } from '@aramo/identity-index';
+import { TALENT_EVENT_ERASED, buildTalentEventRow } from '@aramo/talent-record';
 
 // TR-15 B2 (DDR §5 — erasure made real) — the delete-pass engine behind the
 // `erase-talent` CLI. NO HTTP surface. It automates doc/runbooks/talent-rtbf-
@@ -149,7 +150,10 @@ const TALENT_CI_RUNS =
   ` OR r.conversation_transcript_id IN (${TALENT_TRANSCRIPTS})`;
 const TALENT_DOCUMENTS = `SELECT document_id FROM documents."DocumentAssociation" WHERE resource_type = 'TALENT' AND resource_id = ANY($1::uuid[])`;
 const TALENT_ACTIVITIES = `SELECT id FROM activity."Activity" WHERE subject_type = 'talent_record' AND subject_id = ANY($1::uuid[])`;
-const TALENT_INTAKE_DRAFTS = `SELECT id FROM talent_evidence."TalentIntakeDraft" WHERE promoted_talent_record_id = ANY($1::uuid[])`;
+// ATI-SEP-1 A2 — a Save that already created the record but has not yet marked
+// the draft PROMOTED holds the id only as its reservation; erase that draft too
+// (a re-Save must never re-create an erased Talent).
+const TALENT_INTAKE_DRAFTS = `SELECT id FROM talent_evidence."TalentIntakeDraft" WHERE promoted_talent_record_id = ANY($1::uuid[]) OR save_reserved_talent_record_id = ANY($1::uuid[])`;
 // A payload (jsonb, read as text) that names any of the record ids.
 const NAMES_A_RECORD = (col: string): string =>
   `${col}::text LIKE ANY (ARRAY(SELECT '%' || r::text || '%' FROM unnest($1::uuid[]) r))`;
@@ -283,7 +287,11 @@ const INVENTORY: ErasureStep[] = [
   { label: 'talent_evidence."TalentResumeDefault"', keyspace: 'record', where: `talent_id = ANY($1::uuid[])` },
   { label: 'talent_evidence."TalentResumeEdition"', keyspace: 'record', where: `talent_id = ANY($1::uuid[])` },
   { label: 'talent_evidence."ResumeExtractionDraft"', keyspace: 'record', where: `talent_id = ANY($1::uuid[])` },
-  { label: 'talent_evidence."TalentIntakeOutboxEvent"', keyspace: 'record', where: `subject_type = 'talent_intake_draft' AND subject_id IN (SELECT d.id::text FROM talent_evidence."TalentIntakeDraft" d WHERE d.promoted_talent_record_id = ANY($1::uuid[]))` },
+  { label: 'talent_evidence."TalentIntakeOutboxEvent"', keyspace: 'record', where: `subject_type = 'talent_intake_draft' AND subject_id IN (SELECT d.id::text FROM talent_evidence."TalentIntakeDraft" d WHERE d.promoted_talent_record_id = ANY($1::uuid[]) OR d.save_reserved_talent_record_id = ANY($1::uuid[]))` },
+  // ATI-SEP-1 A3 — the ATS talent outbox: every earlier talent.* event of the
+  // erased records (ids only, published or not). The talent.erased rows this pass
+  // writes (below, after the inventory) are what downstream consumers act on.
+  { label: 'talent_record."TalentEventOutbox"', keyspace: 'record', where: `subject_id = ANY($1::uuid[]) AND event_type <> '${TALENT_EVENT_ERASED}'` },
   { label: 'talent_evidence."TalentIntakeDraft"', keyspace: 'record', where: `id IN (${TALENT_INTAKE_DRAFTS})`, s3RefColumn: 'storage_key' },
   { label: 'examination."CanonicalMatchShadowObservation"', keyspace: 'record', where: `talent_id = ANY($1::uuid[])` },
   // ---- GROUP A polymorphic holders (discriminator MANDATORY — shared id space) ----
@@ -870,6 +878,18 @@ export class TalentErasureService {
         const n = res.rowCount ?? 0;
         report.redacted_rows += n;
         report.steps.push({ table: t.label, count: n, status: 'tombstoned' });
+      }
+      // ATI-SEP-1 A3 (Addendum A1 §1) — the business fact, in THIS transaction:
+      // one talent.erased per erased record (ids only), so the event exists iff
+      // the erasure commits.
+      failing = 'talent.erased outbox';
+      for (const record_id of scope.record_ids) {
+        const ev = buildTalentEventRow({ tenant_id: tenantId, event_type: TALENT_EVENT_ERASED, talent_record_id: record_id, correlation_id: runId });
+        await pg.query(
+          `INSERT INTO talent_record."TalentEventOutbox" (id, tenant_id, event_type, event_payload, event_version, source, subject_type, subject_id, correlation_id, causation_id)
+           VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, $5, $6, $7, $8::uuid, $9, NULL)`,
+          [ev.id, ev.tenant_id, ev.event_type, JSON.stringify(ev.event_payload), ev.event_version, ev.source, ev.subject_type, ev.subject_id, ev.correlation_id],
+        );
       }
       failing = 'cluster purge';
       report.cluster_purge = await this.purgeOrphanedClusters(pg, capturedClusters, scope.subject_ids, false);

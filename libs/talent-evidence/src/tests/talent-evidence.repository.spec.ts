@@ -69,6 +69,10 @@ describe('TalentEvidenceRepository — surface', () => {
     'markTalentIntakeDraftProcessed',
     'saveTalentIntakeDraftReview',
     'markTalentIntakeDraftPromoted',
+    // ATI-SEP-1 A2 — the resumable Save (reserve → evidence → … → PROMOTED).
+    'reserveTalentIntakeDraftSave',
+    'materializeIntakeSaveEvidence',
+    'completeTalentIntakeDraftSave',
     'touchTalentIntakeDraftOpened',
     // Talent Draft Recovery — discard (§18) + replace-résumé (§13) commands.
     'deleteTalentIntakeDraft',

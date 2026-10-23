@@ -189,6 +189,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('S2 — talent era
       expect(await count('talent_record."TalentRecord"', 'id = $1', [rec])).toBe(1);
       expect(await count('consent."TalentErasureRun"', 'record_id = $1', [rec])).toBe(0);
       expect(await count('audit."ConsentAuditEvent"', `subject_id = $1 AND event_type = 'consent.erased'`, [rec])).toBe(0);
+      // ATI-SEP-1 A3 — no talent.erased without the committed erasure.
+      expect(await count('talent_record."TalentEventOutbox"', `subject_id = $1 AND event_type = 'talent.erased'`, [rec])).toBe(0);
     } finally {
       await db.query(`DROP TRIGGER s2_test_fail ON talent_evidence."TalentCertificationEntry"; DROP FUNCTION public.s2_test_fail();`);
     }
@@ -595,8 +597,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('S2 — talent era
       }
       const hits: string[] = [];
       for (const [table, exprs] of byTable) {
+        // ATI-SEP-1 A3 (Addendum A1 §1) — the talent.erased propagation row carries the
+        // erased record id ONLY (like the consent.erased marker above); every other
+        // talent.* outbox row of the record must be gone.
+        const only = table === '"talent_record"."TalentEventOutbox"' ? ` AND event_type <> 'talent.erased'` : '';
         const r = await db.query<{ n: string }>(
-          `SELECT n FROM unnest($1::text[]) n WHERE EXISTS (SELECT 1 FROM ${table} WHERE concat_ws('|', ${exprs.join(', ')}) LIKE '%' || n || '%')`,
+          `SELECT n FROM unnest($1::text[]) n WHERE EXISTS (SELECT 1 FROM ${table} WHERE concat_ws('|', ${exprs.join(', ')}) LIKE '%' || n || '%'${only})`,
           [needles],
         );
         for (const row of r.rows) hits.push(`${table} ~ ${row.n}`);
@@ -773,6 +779,26 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('S2 — talent era
     );
     const exempt = new Set([...RETAINED, ...notReachedDirectly, 'talent_record."talent_resume_text"']);
     expect(direct.rows.filter((r) => !r.guarded && !exempt.has(r.label)).map((r) => r.label), 'a talent-keyed table without the S2 write guard').toEqual([]);
+  });
+
+  it('(14) ATI-SEP-1 A3 — the pass writes talent.erased (ids only) in its transaction, drops the earlier talent.* rows and a mid-Save intake draft', async () => {
+    const rec = await talent();
+    await seed('talent_record."TalentEventOutbox"', {
+      id: uuidv7(), tenant_id: TENANT, event_type: 'talent.created', event_payload: JSON.stringify({ talent_record_id: rec }),
+      event_version: 'v1', source: 'ats-talent-record', subject_type: 'talent_record', subject_id: rec,
+    });
+    // A Save that created the record but had not yet marked the draft PROMOTED.
+    const draftId = uuidv7();
+    await seed('talent_evidence."TalentIntakeDraft"', { id: draftId, tenant_id: TENANT, save_reserved_talent_record_id: rec });
+    const r = await erasure.execute(pg, TENANT, rec, okStore());
+    expect(r.outcome).toBe('COMPLETED');
+    expect(await count('talent_record."TalentEventOutbox"', `subject_id = $1 AND event_type <> 'talent.erased'`, [rec])).toBe(0);
+    const erased = await db.query<{ event_payload: unknown; event_version: string }>(
+      `SELECT event_payload, event_version FROM talent_record."TalentEventOutbox" WHERE subject_id = $1 AND event_type = 'talent.erased'`,
+      [rec],
+    );
+    expect(erased.rows).toEqual([{ event_payload: { talent_record_id: rec }, event_version: 'v1' }]);
+    expect(await count('talent_evidence."TalentIntakeDraft"', 'id = $1', [draftId])).toBe(0);
   });
 
   it('(13) replay identity: tombstones never collide or re-link — across husks, retries, re-runs and later erasures', async () => {

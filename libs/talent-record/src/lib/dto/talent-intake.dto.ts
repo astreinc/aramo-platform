@@ -46,7 +46,8 @@ export interface TalentIntakeDuplicateView {
   display_name: string;
   title: string | null;
   location: string | null; // "City, ST" when available
-  reason: 'email';
+  // ATI-SEP-1 A2 — which anchor collides: primary email or normalized cell phone.
+  reason: 'email' | 'phone';
   continue_anyway: boolean;
 }
 
@@ -128,6 +129,14 @@ export function talentIntakeActions(
     row.processing_status === 'PARTIAL' ||
     row.processing_status === 'FAILED';
   const promoted = row.promoted_talent_record_id !== null;
+  // ATI-SEP-1 A2 — a Save that already materialized evidence is resumed by Saving
+  // again; its résumé can no longer be replaced and the draft not discarded.
+  const partlySaved = row.save_evidence_materialized_at != null;
+  if (!promoted && partlySaved) {
+    actions.push('edit_draft');
+    if (opts.duplicateBlocksCreate !== true) actions.push('promote_to_talent');
+    return actions;
+  }
   if (!promoted) {
     actions.push('edit_draft');
     if (row.processing_status === 'FAILED' || row.processing_status === 'PARTIAL') {

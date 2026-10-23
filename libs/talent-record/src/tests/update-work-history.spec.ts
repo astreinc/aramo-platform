@@ -13,7 +13,7 @@ const AUTH = { sub: 'me', tenant_id: TENANT, scopes: ['talent:edit'] } as unknow
 
 function makeController(opts: { replaceThrows?: boolean } = {}) {
   const update = vi.fn().mockResolvedValue({ id: 'tal-1', first_name: 'Ada', last_name: 'Lovelace' });
-  const repo = { update };
+  const repo = { update, recordProfileUpdated: vi.fn().mockResolvedValue(undefined) };
   const replaceDeclaredWorkHistory = opts.replaceThrows
     ? vi.fn().mockRejectedValue(new Error('evidence replace failed'))
     : vi.fn().mockResolvedValue(['wh-1']);

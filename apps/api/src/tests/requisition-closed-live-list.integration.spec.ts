@@ -6,7 +6,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE, TALENT_TRUST_MIGRATIONS } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, TALENT_TRUST_MIGRATIONS, TALENT_EVIDENCE_LATE_COLUMN_MIGRATIONS } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -27,6 +27,7 @@ import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { ensureAtsEntitlement } from './ats-entitlement.js';
 import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
+import { TALENT_RECORD_ATI_SEP_1_MIGRATIONS } from './talent-record-fixtures.js';
 
 // HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
 const __authzTestResolver = new ConfigurableTestResolver();
@@ -99,6 +100,7 @@ const MIGRATIONS = [
   'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
   // B1+B2 — title + country columns (regenerated client projects them).
   'libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql',
+  ...TALENT_RECORD_ATI_SEP_1_MIGRATIONS,
   // TI-1D-C resume_edition_id column + TI-1H edition-aware uniqueness on
   // talent_resume_text (regenerated client projects resume_edition_id).
   'libs/talent-record/prisma/migrations/20260919120000_talent_intel_1d_c_resume_text_edition/migration.sql',
@@ -112,6 +114,7 @@ const MIGRATIONS = [
   'libs/talent-evidence/prisma/migrations/20260915120000_hf1_resume_provenance/migration.sql',
   'libs/talent-evidence/prisma/migrations/20260915170000_hf2_experience_intelligence/migration.sql',
   'libs/talent-evidence/prisma/migrations/20260915180000_skill_tax_1g_canonical_reconciliation/migration.sql',
+  ...TALENT_EVIDENCE_LATE_COLUMN_MIGRATIONS,
   // talent-trust
   ...TALENT_TRUST_MIGRATIONS,  // G1 — the shared, complete talent-trust set (@aramo/common)
   // examination

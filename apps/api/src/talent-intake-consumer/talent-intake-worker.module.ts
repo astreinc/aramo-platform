@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
 
+import { AtsTalentEventsModule } from '../ats-talent-events/ats-talent-events.module.js';
+
 import { TalentIntakePublisherModule } from './talent-intake-publisher.module.js';
 
 // ADR-0033 / single-box — the dedicated Talent Intake WORKER context. It boots
@@ -11,5 +13,9 @@ import { TalentIntakePublisherModule } from './talent-intake-publisher.module.js
 // the drain delivers each canonical outbox envelope directly to the in-process
 // TalentIntakeMessageHandler; with eventbridge it publishes to the bus — same
 // worker, same real DI graph, transport chosen by config.
-@Module({ imports: [TalentIntakePublisherModule] })
+//
+// ATI-SEP-1 A3 — the worker also hosts the ATS talent outbox drain
+// (AtsTalentEventsModule; ON by default here, see talent-intake-worker.main.ts),
+// so the post-commit talent.* consumers never run in the API request process.
+@Module({ imports: [TalentIntakePublisherModule, AtsTalentEventsModule] })
 export class TalentIntakeWorkerModule {}

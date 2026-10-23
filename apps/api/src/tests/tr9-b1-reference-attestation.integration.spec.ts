@@ -21,6 +21,7 @@ import { AppModule } from '../app.module.js';
 import { DossierService } from '../talent-identity/dossier.service.js';
 
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
+import { TALENT_RECORD_ATI_SEP_1_MIGRATIONS } from './talent-record-fixtures.js';
 
 
 // HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
@@ -53,6 +54,7 @@ const MIGRATIONS = [
   'libs/talent-record/prisma/migrations/20260706210000_tr2a_b3a_talent_record_supersession/migration.sql',
   // B1+B2 — title + country columns (regenerated client projects them).
   'libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql',
+  ...TALENT_RECORD_ATI_SEP_1_MIGRATIONS,
 ].map(M);
 
 const ISSUER = 'Aramo Core Auth';

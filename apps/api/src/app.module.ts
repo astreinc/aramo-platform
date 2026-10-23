@@ -139,7 +139,6 @@ import { PlacementLifecycleOrchestratorModule } from './placement-pipeline-orche
 import { PreStartOrchestratorModule } from './pre-start-requirement/pre-start-orchestrator.module.js';
 import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
 import { TenantWriteFreezeInterceptor } from './tenant-write-freeze/tenant-write-freeze.interceptor.js';
-import { TalentAnchorInterceptor } from './talent-anchor/talent-anchor.interceptor.js';
 import { TalentAnchorProducerService } from './talent-anchor/talent-anchor-producer.service.js';
 import { AdvisoryResolutionController } from './talent-identity/advisory-resolution.controller.js';
 import { ContradictionResolutionController } from './talent-identity/contradiction-resolution.controller.js';
@@ -167,6 +166,7 @@ import { SourcingService } from './talent-identity/sourcing.service.js';
 import { DossierService } from './talent-identity/dossier.service.js';
 import { ExamineController } from './controllers/examine.controller.js';
 import { LegacyTrustProjectionModule } from './legacy-trust-projection/legacy-trust-projection.module.js';
+import { AtsTalentEventsModule } from './ats-talent-events/ats-talent-events.module.js';
 import { CanonicalMatchShadowConfig } from './examinations/canonical-match-shadow.config.js';
 import { CanonicalMatchShadowComparator } from './examinations/canonical-match-shadow.comparator.js';
 import { TenantSettingsController } from './controllers/tenant-settings.controller.js';
@@ -254,6 +254,10 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // trust-ledger projection, consumed by ExamineController's Step-4b reconcile
     // and the claims-ledger backfill CLI. Never on an ATS create/edit path.
     LegacyTrustProjectionModule,
+    // ATI-SEP-1 A3 — the ATS talent outbox drain + dispatcher. The drain runs in
+    // the talent-intake-worker process; in the API it stays OFF unless
+    // ATS_TALENT_EVENTS_DRAIN_ENABLED=1.
+    AtsTalentEventsModule,
     // TR-2a-1 — the anchor producer (apps/api, above the I15 wall) records
     // TalentRecord identifier anchors into the trust ledger. TalentTrustModule
     // provides TalentTrustService; TalentRecordModule (above) provides the
@@ -857,17 +861,12 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
       provide: APP_INTERCEPTOR,
       useClass: PipelineTalentEnrichmentInterceptor,
     },
-    // TR-2a-1 — the write-time anchor hook. Global APP_INTERCEPTOR route-guarded
-    // to the talent-record WRITE routes (POST /v1/talent-records, PATCH :id);
-    // on success it records the record's identifier anchors into the trust
-    // ledger via the producer. apps/api orchestration above the I15 wall — the
-    // lib controller is untouched, best-effort (never fails the write; the
-    // backfill reconciles).
+    // TR-2a-1 — the anchor producer (used by the anchor backfill CLI). ATI-SEP-1
+    // A4: the global write-time APP_INTERCEPTOR that called it (and the matcher)
+    // on POST/PATCH /v1/talent-records is REMOVED — the ATS request path makes no
+    // trust call. Anchors + advisories now follow the committed talent.* event
+    // (ats-talent-events LEGACY handler, post-commit).
     TalentAnchorProducerService,
-    {
-      provide: APP_INTERCEPTOR,
-      useClass: TalentAnchorInterceptor,
-    },
     // Promotion Gate — Slice A (create branch). apps/api orchestration above the
     // I15 wall: PromotionService.promoteSubject reads the cip trust ledger +
     // ingestion arrival and writes the ats TalentRecord + consent event, linking

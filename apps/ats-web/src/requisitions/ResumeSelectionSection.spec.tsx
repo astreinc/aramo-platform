@@ -207,6 +207,11 @@ describe('ResumeSelectionSection', () => {
     vi.mocked(createTalentResumeEdition).mockResolvedValue({ edition_id: 'ed-new' } as never);
     render(<ResumeSelectionSection pipelineId={PIPE_ID} canSetSelection canUploadTailored />);
     const input = await screen.findByTestId('resume-tailored-input');
+    // ATI-SEP-1 A4 — PDF and DOCX only (no legacy .doc / application/msword).
+    const accept = (input as HTMLInputElement).accept;
+    expect(accept.split(',')).not.toContain('.doc');
+    expect(accept).not.toMatch(/msword/);
+    expect(accept.split(',')).toEqual(expect.arrayContaining(['.pdf', '.docx']));
     const file = new File(['x'], 'grace-ba.pdf', { type: 'application/pdf' });
     fireEvent.change(input, { target: { files: [file] } });
     await waitFor(() =>

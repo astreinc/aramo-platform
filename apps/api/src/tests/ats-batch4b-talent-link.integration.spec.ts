@@ -26,7 +26,7 @@ import { AppModule } from '../app.module.js';
 
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
-import { validTalentCreateBody } from './talent-record-fixtures.js';
+import { validTalentCreateBody, TALENT_RECORD_ATI_SEP_1_MIGRATION_PATHS } from './talent-record-fixtures.js';
 
 // HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
 const __authzTestResolver = new ConfigurableTestResolver();
@@ -144,6 +144,7 @@ const MIGRATIONS = [
   TALENT_RECORD_WORK_AUTH,
   TALENT_RECORD_SUPERSESSION,
   TALENT_RECORD_TITLE_COUNTRY,
+  ...TALENT_RECORD_ATI_SEP_1_MIGRATION_PATHS,
   TALENT_RECORD_DROP_CORE,
   IDENTITY_INDEX_INIT,
 ];

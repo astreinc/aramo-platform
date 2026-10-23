@@ -7,12 +7,11 @@ import { IdentityIndexModule } from '@aramo/identity-index';
 import { ObjectStorageModule } from '@aramo/object-storage';
 import { ResumeParseModule } from '@aramo/resume-parse';
 import { TalentExtractionModule } from '@aramo/talent-extraction';
-import { CanonicalReconcileModule } from '@aramo/canonical-reconcile';
-import { TalentReconcileSignalModule } from '@aramo/talent-reconcile-signal';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { TalentRecordController } from './talent-record.controller.js';
 import { TalentRecordRepository } from './talent-record.repository.js';
+import { TalentEventOutboxRepository } from './talent-events/talent-event-outbox.js';
 import { TalentRecordReconcileRepository } from './talent-record-reconcile.repository.js';
 import { TalentRecordService } from './talent-record.service.js';
 import { TalentLinkService } from './talent-link.service.js';
@@ -60,17 +59,17 @@ import { TalentIntakePromotionService } from './talent-intake/talent-intake-prom
     // production resume fact extractor (TI-1F P0.2); the deterministic mode
     // resolver (SettingsModule/TenantSettingService) is retired here.
     TalentExtractionModule,
-    // SKILL-TAX Canonical Reconciliation Activation — the best-effort producer.
-    CanonicalReconcileModule,
-    // TALENT-INTEL-1 TI-1F-C — the Talent-profile reconcile PUSH producer (§4-H),
-    // the separate architecture from canonical reconcile. Neutral leaf lib (owns
-    // the queue-name contract) — no talent-record → talent-reconcile cycle.
-    TalentReconcileSignalModule,
+    // ATI-SEP-1 A4 — the canonical / Talent-profile reconcile producers are no
+    // longer imported: create / update / evidence edits commit a talent.* outbox
+    // row (TalentEventOutboxRepository) and apps/api's dispatcher enqueues the
+    // reconciles post-commit.
   ],
   controllers: [TalentRecordController, TalentIntakeController],
   providers: [
     PrismaService,
     TalentRecordRepository,
+    // ATI-SEP-1 A3 — the ATS talent outbox store (drained by apps/api).
+    TalentEventOutboxRepository,
     // Durable Async Résumé-First Talent Intake — the HTTP intake lifecycle +
     // promotion. TalentCreateFromDraftService is the SHARED create-from-draft
     // composition reused by both the synchronous create path and the async
@@ -108,6 +107,7 @@ import { TalentIntakePromotionService } from './talent-intake/talent-intake-prom
   ],
   exports: [
     TalentRecordRepository,
+    TalentEventOutboxRepository,
     TalentRecordReconcileRepository,
     TalentRecordService,
     TalentLinkService,

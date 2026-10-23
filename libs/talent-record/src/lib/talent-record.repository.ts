@@ -21,6 +21,14 @@ import type {
 } from './dto/talent-search.dto.js';
 import type { UpdateTalentRecordRequestDto } from './dto/update-talent-record-request.dto.js';
 import { PrismaService } from './prisma/prisma.service.js';
+import { normalizePhoneForDedupe } from './talent-phone.js';
+import {
+  TALENT_EVENT_CREATED,
+  TALENT_EVENT_PROFILE_UPDATED,
+  writeTalentEvent,
+  type TalentEventInput,
+  type TalentEventOutboxWriter,
+} from './talent-events/talent-event-outbox.js';
 
 // Closed-vocabulary guard (stated-fields amendment §4/§5). The talent-record
 // DTOs are interfaces (no class-validator), so the @IsIn intent is enforced
@@ -60,6 +68,24 @@ function assertStatedFields(
   }
 }
 
+// ATI-SEP-1 A2 — a provided date_available must be a real instant. Validated up
+// front (400) rather than surfacing as a write-time failure: before A2 an
+// unparseable value threw inside the create AFTER the intake draft had been
+// claimed PROMOTED, stranding it. undefined / null pass.
+function assertDateAvailable(
+  input: { date_available?: string | null },
+  requestId: string,
+): void {
+  const v = input.date_available;
+  if (v === undefined || v === null) return;
+  if (typeof v !== 'string' || v.trim() === '' || Number.isNaN(new Date(v).getTime())) {
+    throw new AramoError('VALIDATION_ERROR', 'Invalid date_available', 400, {
+      requestId,
+      details: { field: 'date_available' },
+    });
+  }
+}
+
 // TalentRecord Admission Invariant (structural enforcement). A TalentRecord
 // represents a genuine, ATS-operable profile and MUST NOT be created unless the
 // minimum identity + contact anchors are present: first_name, last_name, a
@@ -87,6 +113,53 @@ function assertAdmissible(
       { requestId, details: { missing } },
     );
   }
+}
+
+// ATI-SEP-1 A2 — the create-time VALIDATION gate, exported so every create
+// composition (manual create, intake Save) can run it FIRST, before any state
+// change: the admission invariant (422) + closed-vocabulary stated fields (400)
+// + date_available (400). repo.create re-runs it as the non-bypassable backstop.
+export function validateTalentCreateInput(
+  input: CreateTalentRecordRequestDto,
+  requestId: string,
+): void {
+  assertAdmissible(input, requestId);
+  assertStatedFields(input, requestId);
+  assertDateAvailable(input, requestId);
+}
+
+// ATI-SEP-1 A2 — the tenant-local duplicate a create would collide with.
+export interface ActiveTalentDuplicate {
+  id: string;
+  reason: 'email' | 'phone';
+}
+
+// The 409 a duplicate create returns (same code/message family on every path).
+export function talentDuplicateError(
+  dup: ActiveTalentDuplicate,
+  requestId: string,
+): AramoError {
+  return dup.reason === 'email'
+    ? new AramoError(
+        'TALENT_RECORD_DUPLICATE',
+        'A talent with this primary email already exists in your tenant.',
+        409,
+        { requestId, details: { reason: 'email', existing_id: dup.id } },
+      )
+    : new AramoError(
+        'TALENT_RECORD_DUPLICATE',
+        'A talent with this cell phone already exists in your tenant.',
+        409,
+        { requestId, details: { reason: 'phone', existing_id: dup.id } },
+      );
+}
+
+function isUniqueViolation(err: unknown): boolean {
+  return (
+    err !== null &&
+    typeof err === 'object' &&
+    (err as { code?: unknown }).code === 'P2002'
+  );
 }
 
 // TalentRecordRepository — write + read surface for TalentRecord.
@@ -451,60 +524,230 @@ export class TalentRecordRepository {
     // draft-backed create the id is reserved up-front (draft.talent_id) so the
     // accepted resume evidence lifecycle is established FIRST and TalentRecord is
     // the final admission step. Omitted on the normal path → Prisma default uuid.
+    // ATI-SEP-1 A2 — with a reserved id the create is IDEMPOTENT: a replay that
+    // finds the row already committed returns it and writes nothing (no second
+    // talent.created).
     id?: string;
+    // ATI-SEP-1 A2 — re-check the tenant-local email1 / phone_cell duplicate
+    // INSIDE the create transaction under per-value advisory locks, so two
+    // concurrent creates of the same human cannot both commit (a different live
+    // record → 409). The caller still pre-checks for a cheap early 409.
+    dedupe?: boolean;
+    // ATI-SEP-1 A3 — context carried on the talent.created outbox row.
+    event?: { intake_draft_id?: string; correlation_id?: string | null };
+    // ATI-SEP-1 A2 — the first résumé edition's pending text row, written in the
+    // SAME transaction (the reindex work signal; never lost to a soft-fail).
+    resume_reindex?: { storage_key: string; resume_edition_id: string };
   }): Promise<TalentRecordView> {
-    const { tenant_id, entered_by_id, input } = args;
-    assertAdmissible(input, args.requestId ?? '');
-    assertStatedFields(input, args.requestId ?? '');
-    const row = await this.prisma.talentRecord.create({
-      data: {
-        ...(args.id !== undefined ? { id: args.id } : {}),
-        tenant_id,
-        site_id: input.site_id ?? null,
-        first_name: input.first_name,
-        last_name: input.last_name,
-        email1: input.email1 ?? null,
-        email2: input.email2 ?? null,
-        phone_home: input.phone_home ?? null,
-        phone_cell: input.phone_cell ?? null,
-        phone_work: input.phone_work ?? null,
-        address: input.address ?? null,
-        address2: input.address2 ?? null,
-        city: input.city ?? null,
-        state: input.state ?? null,
-        zip: input.zip ?? null,
-        country: input.country ?? 'US',
-        source: input.source ?? null,
-        key_skills: input.key_skills ?? null,
-        current_employer: input.current_employer ?? null,
-        current_pay: input.current_pay ?? null,
-        desired_pay: input.desired_pay ?? null,
-        date_available:
-          input.date_available === undefined
-            ? null
-            : new Date(input.date_available),
-        can_relocate: input.can_relocate ?? false,
-        is_hot: input.is_hot ?? false,
-        notes: input.notes ?? null,
-        web_site: input.web_site ?? null,
-        best_time_to_call: input.best_time_to_call ?? null,
-        title: input.title ?? null,
-        availability_status: input.availability_status ?? null,
-        engagement_type: input.engagement_type ?? null,
-        work_authorization: input.work_authorization ?? null,
-        owner_id: input.owner_id ?? entered_by_id,
-        entered_by_id,
-        tenant_status: args.tenant_status ?? null,
-      },
-    });
+    const { tenant_id, input } = args;
+    const requestId = args.requestId ?? '';
+    validateTalentCreateInput(input, requestId);
+    let row: unknown;
+    try {
+      row = await this.prisma.$transaction(async (tx) => {
+        if (args.dedupe === true) {
+          await this.lockDuplicateKeys(tx, tenant_id, input.email1, input.phone_cell);
+          const dup = await this.findActiveDuplicateIn(tx, {
+            tenant_id,
+            email1: input.email1,
+            phone_cell: input.phone_cell,
+            ...(args.id !== undefined ? { exclude_id: args.id } : {}),
+          });
+          if (dup !== null) throw talentDuplicateError(dup, requestId);
+        }
+        const created = await tx.talentRecord.create({
+          data: this.createData(args),
+        });
+        if (args.resume_reindex !== undefined) {
+          await tx.talentResumeText.create({
+            data: {
+              tenant_id,
+              talent_record_id: created.id,
+              storage_key: args.resume_reindex.storage_key,
+              resume_edition_id: args.resume_reindex.resume_edition_id,
+              status: 'pending',
+            },
+          });
+        }
+        await writeTalentEvent(tx as unknown as TalentEventOutboxWriter, {
+          tenant_id,
+          event_type: TALENT_EVENT_CREATED,
+          talent_record_id: created.id,
+          ...(args.event?.intake_draft_id !== undefined
+            ? { intake_draft_id: args.event.intake_draft_id }
+            : {}),
+          correlation_id: args.event?.correlation_id ?? (requestId !== '' ? requestId : null),
+        });
+        return created;
+      });
+    } catch (err) {
+      // Reserved-id replay: the row committed on an earlier/concurrent attempt.
+      if (args.id !== undefined && isUniqueViolation(err)) {
+        const existing = await this.findById({ tenant_id, id: args.id });
+        if (existing !== null) return existing;
+      }
+      throw err;
+    }
     return projectView(row as TalentRecordRow);
+  }
+
+  // The TalentRecord create payload (shared by the transactional create).
+  private createData(args: {
+    tenant_id: string;
+    entered_by_id: string;
+    input: CreateTalentRecordRequestDto;
+    tenant_status?: string;
+    id?: string;
+  }) {
+    const { tenant_id, entered_by_id, input } = args;
+    return {
+      ...(args.id !== undefined ? { id: args.id } : {}),
+      tenant_id,
+      site_id: input.site_id ?? null,
+      first_name: input.first_name,
+      last_name: input.last_name,
+      email1: input.email1 ?? null,
+      email2: input.email2 ?? null,
+      phone_home: input.phone_home ?? null,
+      phone_cell: input.phone_cell ?? null,
+      phone_work: input.phone_work ?? null,
+      address: input.address ?? null,
+      address2: input.address2 ?? null,
+      city: input.city ?? null,
+      state: input.state ?? null,
+      zip: input.zip ?? null,
+      country: input.country ?? 'US',
+      source: input.source ?? null,
+      key_skills: input.key_skills ?? null,
+      current_employer: input.current_employer ?? null,
+      current_pay: input.current_pay ?? null,
+      desired_pay: input.desired_pay ?? null,
+      date_available:
+        input.date_available === undefined
+          ? null
+          : new Date(input.date_available),
+      can_relocate: input.can_relocate ?? false,
+      is_hot: input.is_hot ?? false,
+      notes: input.notes ?? null,
+      web_site: input.web_site ?? null,
+      best_time_to_call: input.best_time_to_call ?? null,
+      title: input.title ?? null,
+      availability_status: input.availability_status ?? null,
+      engagement_type: input.engagement_type ?? null,
+      work_authorization: input.work_authorization ?? null,
+      owner_id: input.owner_id ?? entered_by_id,
+      entered_by_id,
+      tenant_status: args.tenant_status ?? null,
+      phone_cell_normalized: normalizePhoneForDedupe(input.phone_cell),
+    };
+  }
+
+  // ATI-SEP-1 A2 — serialize creates of the same email1 / phone_cell value within
+  // a tenant for the life of the transaction (released at COMMIT/ROLLBACK).
+  private async lockDuplicateKeys(
+    tx: { $executeRaw: PrismaService['$executeRaw'] },
+    tenant_id: string,
+    email1: string | null | undefined,
+    phone_cell: string | null | undefined,
+  ): Promise<void> {
+    const keys: string[] = [];
+    const email = (email1 ?? '').trim().toLowerCase();
+    if (email !== '') keys.push(`talent-dedupe:${tenant_id}:email:${email}`);
+    const phone = normalizePhoneForDedupe(phone_cell);
+    if (phone !== null) keys.push(`talent-dedupe:${tenant_id}:phone:${phone}`);
+    for (const key of keys.sort()) {
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${key}, 0))`;
+    }
+  }
+
+  private async findActiveDuplicateIn(
+    client: Pick<PrismaService, 'talentRecord'>,
+    args: {
+      tenant_id: string;
+      email1?: string | null;
+      phone_cell?: string | null;
+      exclude_id?: string;
+    },
+  ): Promise<ActiveTalentDuplicate | null> {
+    const exclude = args.exclude_id !== undefined ? { id: { not: args.exclude_id } } : {};
+    const email = (args.email1 ?? '').trim();
+    if (email !== '') {
+      const byEmail = await client.talentRecord.findFirst({
+        where: {
+          tenant_id: args.tenant_id,
+          record_status: 'live',
+          email1: { equals: email, mode: 'insensitive' },
+          ...exclude,
+        },
+        select: { id: true },
+      });
+      if (byEmail !== null) return { id: byEmail.id, reason: 'email' };
+    }
+    const phone = normalizePhoneForDedupe(args.phone_cell);
+    if (phone !== null) {
+      const byPhone = await client.talentRecord.findFirst({
+        where: {
+          tenant_id: args.tenant_id,
+          record_status: 'live',
+          phone_cell_normalized: phone,
+          ...exclude,
+        },
+        select: { id: true },
+      });
+      if (byPhone !== null) return { id: byPhone.id, reason: 'phone' };
+    }
+    return null;
+  }
+
+  // ATI-SEP-1 A2 — the create-time duplicate pre-check: a DIFFERENT live record
+  // in the tenant with this primary email (case-insensitive) or this normalized
+  // cell phone. exclude_id = the caller's own reserved id (a resumed Save is not
+  // its own duplicate).
+  async findActiveDuplicate(args: {
+    tenant_id: string;
+    email1?: string | null;
+    phone_cell?: string | null;
+    exclude_id?: string;
+  }): Promise<ActiveTalentDuplicate | null> {
+    return this.findActiveDuplicateIn(this.prisma, args);
+  }
+
+  // ATI-SEP-1 A2 — phone-keyed counterpart of findActiveByEmail.
+  async findActiveByPhone(args: {
+    tenant_id: string;
+    phone: string;
+  }): Promise<{ id: string } | null> {
+    const phone = normalizePhoneForDedupe(args.phone);
+    if (phone === null) return null;
+    return this.prisma.talentRecord.findFirst({
+      where: { tenant_id: args.tenant_id, record_status: 'live', phone_cell_normalized: phone },
+      select: { id: true },
+    });
+  }
+
+  // ATI-SEP-1 A3 — a talent.profile_updated for an ATS evidence edit committed
+  // outside a talent_record transaction (talent_evidence writes): appended right
+  // after that commit. TalentRecord scalar edits emit inside update() instead.
+  async recordProfileUpdated(args: {
+    tenant_id: string;
+    talent_record_id: string;
+    changed_fields: readonly string[];
+    correlation_id?: string | null;
+  }): Promise<void> {
+    await writeTalentEvent(this.prisma as unknown as TalentEventOutboxWriter, {
+      tenant_id: args.tenant_id,
+      event_type: TALENT_EVENT_PROFILE_UPDATED,
+      talent_record_id: args.talent_record_id,
+      changed_fields: args.changed_fields,
+      correlation_id: args.correlation_id ?? null,
+    });
   }
 
   // B3/B4 — manual-create dedup lookup. Returns the id of an ACTIVE (live)
   // TalentRecord in the tenant whose primary email matches (case-insensitive),
   // or null. Email is the primary identity anchor; the controller refuses a
-  // manual create that would duplicate it. (Phone dedup needs a normalized
-  // column — deferred.)
+  // manual create that would duplicate it. (ATI-SEP-1 A2 — the cell-phone
+  // counterpart is findActiveByPhone over phone_cell_normalized.)
   async findActiveByEmail(args: {
     tenant_id: string;
     email: string;
@@ -589,6 +832,28 @@ export class TalentRecordRepository {
     });
   }
 
+  // ATI-SEP-1 A2 — phone-keyed counterpart of findDuplicateByEmail (the
+  // proactive "Possible existing Talent" card): same live-only, tenant-wide
+  // posture, matched on the normalized cell phone.
+  async findDuplicateByPhone(args: {
+    tenant_id: string;
+    phone: string;
+  }): Promise<{
+    id: string;
+    first_name: string;
+    last_name: string;
+    title: string | null;
+    city: string | null;
+    state: string | null;
+  } | null> {
+    const phone = normalizePhoneForDedupe(args.phone);
+    if (phone === null) return null;
+    return this.prisma.talentRecord.findFirst({
+      where: { tenant_id: args.tenant_id, record_status: 'live', phone_cell_normalized: phone },
+      select: { id: true, first_name: true, last_name: true, title: true, city: true, state: true },
+    });
+  }
+
   // PR-A8-1 — import-engine create. Mirrors create(); attributes the
   // row to the import batch for reversion. THE non-negotiable boundary
   // (directive §0): the engine creates `TalentRecord` rows only and never
@@ -604,43 +869,54 @@ export class TalentRecordRepository {
     // (REQUIRED_FIELDS.talent_record), but the boundary is enforced here too so
     // no import path can admit a record missing a name/email/phone.
     assertAdmissible(input, import_batch_id);
-    const row = await this.prisma.talentRecord.create({
-      data: {
+    // ATI-SEP-1 A3 — the import create records talent.created in the same txn.
+    const row = await this.prisma.$transaction(async (tx) => {
+      const created = await tx.talentRecord.create({
+        data: {
+          tenant_id,
+          site_id: input.site_id ?? null,
+          first_name: input.first_name,
+          last_name: input.last_name,
+          email1: input.email1 ?? null,
+          email2: input.email2 ?? null,
+          phone_home: input.phone_home ?? null,
+          phone_cell: input.phone_cell ?? null,
+          phone_work: input.phone_work ?? null,
+          address: input.address ?? null,
+          address2: input.address2 ?? null,
+          city: input.city ?? null,
+          state: input.state ?? null,
+          zip: input.zip ?? null,
+          country: input.country ?? 'US',
+          source: input.source ?? null,
+          key_skills: input.key_skills ?? null,
+          current_employer: input.current_employer ?? null,
+          current_pay: input.current_pay ?? null,
+          desired_pay: input.desired_pay ?? null,
+          date_available:
+            input.date_available === undefined
+              ? null
+              : new Date(input.date_available),
+          can_relocate: input.can_relocate ?? false,
+          is_hot: input.is_hot ?? false,
+          notes: input.notes ?? null,
+          web_site: input.web_site ?? null,
+          best_time_to_call: input.best_time_to_call ?? null,
+          title: input.title ?? null,
+          owner_id: input.owner_id ?? entered_by_id,
+          entered_by_id,
+          // THE boundary: this create performs no identity resolution.
+          import_batch_id,
+          phone_cell_normalized: normalizePhoneForDedupe(input.phone_cell),
+        },
+      });
+      await writeTalentEvent(tx as unknown as TalentEventOutboxWriter, {
         tenant_id,
-        site_id: input.site_id ?? null,
-        first_name: input.first_name,
-        last_name: input.last_name,
-        email1: input.email1 ?? null,
-        email2: input.email2 ?? null,
-        phone_home: input.phone_home ?? null,
-        phone_cell: input.phone_cell ?? null,
-        phone_work: input.phone_work ?? null,
-        address: input.address ?? null,
-        address2: input.address2 ?? null,
-        city: input.city ?? null,
-        state: input.state ?? null,
-        zip: input.zip ?? null,
-        country: input.country ?? 'US',
-        source: input.source ?? null,
-        key_skills: input.key_skills ?? null,
-        current_employer: input.current_employer ?? null,
-        current_pay: input.current_pay ?? null,
-        desired_pay: input.desired_pay ?? null,
-        date_available:
-          input.date_available === undefined
-            ? null
-            : new Date(input.date_available),
-        can_relocate: input.can_relocate ?? false,
-        is_hot: input.is_hot ?? false,
-        notes: input.notes ?? null,
-        web_site: input.web_site ?? null,
-        best_time_to_call: input.best_time_to_call ?? null,
-        title: input.title ?? null,
-        owner_id: input.owner_id ?? entered_by_id,
-        entered_by_id,
-        // THE boundary: this create performs no identity resolution.
-        import_batch_id,
-      },
+        event_type: TALENT_EVENT_CREATED,
+        talent_record_id: created.id,
+        correlation_id: import_batch_id,
+      });
+      return created;
     });
     return projectView(row as TalentRecordRow);
   }
@@ -1041,6 +1317,9 @@ export class TalentRecordRepository {
     id: string;
     input: UpdateTalentRecordRequestDto;
     requestId: string;
+    // ATI-SEP-1 A3 — evidence areas the same request also edits (e.g.
+    // 'work_history'), named on the talent.profile_updated row.
+    extra_changed_fields?: readonly string[];
   }): Promise<TalentRecordView> {
     const existing = await this.findById({
       tenant_id: args.tenant_id,
@@ -1056,13 +1335,17 @@ export class TalentRecordRepository {
     }
     const i = args.input;
     assertStatedFields(i, args.requestId);
+    assertDateAvailable(i, args.requestId);
     const data: Record<string, unknown> = {};
     if (i.first_name !== undefined) data['first_name'] = i.first_name;
     if (i.last_name !== undefined) data['last_name'] = i.last_name;
     if (i.email1 !== undefined) data['email1'] = i.email1;
     if (i.email2 !== undefined) data['email2'] = i.email2;
     if (i.phone_home !== undefined) data['phone_home'] = i.phone_home;
-    if (i.phone_cell !== undefined) data['phone_cell'] = i.phone_cell;
+    if (i.phone_cell !== undefined) {
+      data['phone_cell'] = i.phone_cell;
+      data['phone_cell_normalized'] = normalizePhoneForDedupe(i.phone_cell);
+    }
     if (i.phone_work !== undefined) data['phone_work'] = i.phone_work;
     if (i.address !== undefined) data['address'] = i.address;
     if (i.address2 !== undefined) data['address2'] = i.address2;
@@ -1087,9 +1370,28 @@ export class TalentRecordRepository {
     if (i.work_authorization !== undefined) data['work_authorization'] = i.work_authorization;
     if (i.owner_id !== undefined) data['owner_id'] = i.owner_id;
 
-    const row = await this.prisma.talentRecord.update({
-      where: { id: args.id },
-      data,
+    // ATI-SEP-1 A3 — the update and its talent.profile_updated row commit
+    // together; a no-op PATCH (nothing changed) emits nothing.
+    const changed = [
+      ...Object.keys(data).filter((k) => k !== 'phone_cell_normalized'),
+      ...(args.extra_changed_fields ?? []),
+    ];
+    const row = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.talentRecord.update({
+        where: { id: args.id },
+        data,
+      });
+      if (changed.length > 0) {
+        const event: TalentEventInput = {
+          tenant_id: args.tenant_id,
+          event_type: TALENT_EVENT_PROFILE_UPDATED,
+          talent_record_id: args.id,
+          changed_fields: changed,
+          correlation_id: args.requestId !== '' ? args.requestId : null,
+        };
+        await writeTalentEvent(tx as unknown as TalentEventOutboxWriter, event);
+      }
+      return updated;
     });
     return projectView(row as TalentRecordRow);
   }

@@ -3,11 +3,11 @@ import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
 
-// ATI-SEP-1 A1 — STRUCTURAL: the ATS Add-Talent create / intake-promotion path
-// makes ZERO trust-ledger writes. Its only evidence collaborator is
-// TalentExtractionService (now ATS typed rows only — see that lib's
-// ati-sep-1-no-trust-edge.spec.ts); it never names the trust surface nor the
-// TEMPORARY apps/api LegacyTrustProjectionService. Comments are stripped first.
+// ATI-SEP-1 A1 + A4 — STRUCTURAL: the ATS talent create / update / intake-Save
+// paths make ZERO synchronous calls into the trust, identity-index or reconcile
+// surfaces (Addendum A2 F-1). Their only downstream coupling is the talent.*
+// outbox row the write commits; the trust / reconcile consumers run post-commit
+// off that outbox (apps/api ats-talent-events). Comments are stripped first.
 
 const strip = (raw: string): string =>
   raw
@@ -19,23 +19,49 @@ const strip = (raw: string): string =>
 const FILES = [
   '../lib/talent-create-from-draft.service.ts',
   '../lib/talent-intake/talent-intake-promotion.service.ts',
+  '../lib/talent-intake/talent-intake.service.ts',
+  '../lib/talent-record.controller.ts',
+  '../lib/talent-record.repository.ts',
+  '../lib/talent-events/talent-event-outbox.ts',
 ];
 
-describe('ATI-SEP-1 A1 — ATS create path never writes the trust ledger (structural)', () => {
-  it('names no trust surface and no legacy projection', () => {
+const FORBIDDEN = [
+  // trust ledger (A1)
+  '@aramo/talent-trust',
+  'TalentTrustService',
+  'recordDeclaredClaimIfAbsent',
+  'recordEvidence',
+  'recordAnchor',
+  'SubjectMatcher',
+  'matchForRef',
+  'LegacyTrustProjection',
+  'routeDeclaredEvidenceToLedger',
+  'routeExperienceAssertionsToLedger',
+  '@aramo/platform-trust',
+  // identity index (A4)
+  '@aramo/identity-index',
+  'IdentityIndexRepository',
+  // reconcile (A4) — now event-driven, post-commit
+  '@aramo/talent-reconcile',
+  '@aramo/canonical-reconcile',
+  'CanonicalReconcileProducer',
+  'TalentReconcileProducer',
+  'enqueueTalent',
+];
+
+describe('ATI-SEP-1 A1/A4 — ATS create / update / Save never call trust, identity-index or reconcile (structural)', () => {
+  it('names no forbidden surface', () => {
     for (const rel of FILES) {
       const code = strip(readFileSync(resolve(__dirname, rel), 'utf8'));
-      for (const token of [
-        '@aramo/talent-trust',
-        'TalentTrustService',
-        'recordDeclaredClaimIfAbsent',
-        'recordEvidence',
-        'LegacyTrustProjection',
-        'routeDeclaredEvidenceToLedger',
-        'routeExperienceAssertionsToLedger',
-      ]) {
+      for (const token of FORBIDDEN) {
         expect(code, `${rel} must not reference ${token}`).not.toContain(token);
       }
     }
+  });
+
+  it('TalentRecordModule no longer imports the reconcile producer modules', () => {
+    const code = strip(readFileSync(resolve(__dirname, '../lib/talent-record.module.ts'), 'utf8'));
+    expect(code).not.toContain('CanonicalReconcileModule');
+    expect(code).not.toContain('TalentReconcileSignalModule');
   });
 });

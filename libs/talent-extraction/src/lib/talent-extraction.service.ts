@@ -552,16 +552,32 @@ export class TalentExtractionService {
     tenant_id: string;
     work_authorization_status: TalentWorkAuthorizationStatusValue;
     asserted_by: string;
+    // ATI-SEP-1 A2 — a caller-supplied DETERMINISTIC id makes the append
+    // idempotent (the intake Save keys it on the reserved Talent): a replay that
+    // finds the row already present writes nothing. Omitted → a fresh append.
+    id?: string;
   }): Promise<void> {
-    await this.evidence.createTalentWorkAuthorization({
-      id: uuidv7(),
-      talent_id: input.talent_id,
-      tenant_id: input.tenant_id,
-      work_authorization_status: input.work_authorization_status,
-      authorized_to_work_in: [],
-      requires_sponsorship: false,
-      updated_at: new Date(),
-    });
+    if (input.id !== undefined) {
+      const existing = await this.evidence.findTalentWorkAuthorizationById(input.id);
+      if (existing !== null) return;
+    }
+    try {
+      await this.evidence.createTalentWorkAuthorization({
+        id: input.id ?? uuidv7(),
+        talent_id: input.talent_id,
+        tenant_id: input.tenant_id,
+        work_authorization_status: input.work_authorization_status,
+        authorized_to_work_in: [],
+        requires_sponsorship: false,
+        updated_at: new Date(),
+      });
+    } catch (err) {
+      // A concurrent replay won the deterministic-id insert → already recorded.
+      if (input.id !== undefined && (await this.evidence.findTalentWorkAuthorizationById(input.id)) !== null) {
+        return;
+      }
+      throw err;
+    }
   }
 
   // TALENT-INTEL-1 TI-1G §3 — the work-authorization read model: the DETERMINISTIC
@@ -1110,6 +1126,7 @@ export class TalentExtractionService {
         // stays NULL: company RESOLUTION is out of scope (the null column is the
         // forward seam; THE WALL forbids importing company here, ADR-0029/I15).
         ...(summary !== '' ? { experience_summary: summary } : {}),
+        ...assertionsField(e.assertions),
         // HF1 provenance — per-entry source_refs + the shared document/corpus anchors.
         ...provenanceFields(e.source_refs, input.provenance),
         created_at: createdAt,
@@ -1537,14 +1554,125 @@ export class TalentExtractionService {
     return this.evidence.saveTalentIntakeDraftReview(input);
   }
 
-  async markTalentIntakeDraftPromoted(input: {
+  // ATI-SEP-1 A2 — the resumable Save primitives (Addendum A2 A-a). Reserve the
+  // TalentRecord id (step 0) and mark PROMOTED only after every step (step 4).
+  // The pre-A2 claim-before-create linkage (markTalentIntakeDraftPromoted) is no
+  // longer exposed here: it could leave a PROMOTED draft with no record.
+  async reserveTalentIntakeDraftSave(input: {
     tenant_id: string;
     id: string;
     created_by?: string;
-    promoted_talent_record_id: string;
+    reserved_talent_record_id: string;
+  }): Promise<number> {
+    return this.evidence.reserveTalentIntakeDraftSave(input);
+  }
+
+  async completeTalentIntakeDraftSave(input: {
+    tenant_id: string;
+    id: string;
+    created_by?: string;
+    talent_record_id: string;
     promoted_at: Date;
   }): Promise<number> {
-    return this.evidence.markTalentIntakeDraftPromoted(input);
+    return this.evidence.completeTalentIntakeDraftSave(input);
+  }
+
+  // ATI-SEP-1 A2 — Save step 1: shape the recruiter-REVIEWED arrays (the source
+  // of truth on BOTH the governed and the extraction-decoupled draft) into typed
+  // evidence anchored on a freshly-minted résumé document, and hand them to the
+  // repository's atomic, draft-keyed materialization. A replay (already
+  // materialized for this draft + reserved id) writes nothing and returns
+  // materialized:false. No model call. The derived skill-years snapshot is a
+  // post-commit projection on the FIRST materialization only.
+  async materializeIntakeSaveEvidence(input: {
+    tenant_id: string;
+    intake_draft_id: string;
+    talent_id: string;
+    actor_id: string;
+    resume_document: {
+      storage_key: string;
+      file_name: string;
+      mime_type: string;
+      size_bytes: number;
+      artifact_sha256?: string;
+      source_map_version?: string;
+      resume_text_hash?: string;
+    } | null;
+    work_history?: readonly ResumeDraftWorkHistory[];
+    skills?: readonly ResumeDraftSkill[];
+    education?: readonly ResumeDraftEducation[];
+    certifications?: readonly ResumeDraftCertification[];
+    extraction_child_id: string | null;
+  }): Promise<{ materialized: boolean; document_id: string | null; edition_id: string | null }> {
+    const { tenant_id, talent_id } = input;
+    const createdAt = new Date();
+    const rd = input.resume_document;
+    const documentId = rd !== null ? uuidv7() : null;
+    const hasTextHash = typeof rd?.resume_text_hash === 'string' && rd.resume_text_hash !== '';
+    const provenance: ResumeProvenance = {
+      ...(documentId !== null ? { source_document_id: documentId } : {}),
+      ...(typeof rd?.source_map_version === 'string'
+        ? { source_map_version: rd.source_map_version }
+        : {}),
+      ...(hasTextHash ? { resume_text_hash: rd?.resume_text_hash } : {}),
+    };
+    const { workHistory, skillEvidence, projects, education, certifications } =
+      this.shapeReviewedCreateEvidence({
+        tenant_id,
+        talent_id,
+        provenance,
+        createdAt,
+        work_history: input.work_history,
+        skills: input.skills,
+        education: input.education,
+        certifications: input.certifications,
+      });
+    const result = await this.evidence.materializeIntakeSaveEvidence({
+      tenant_id,
+      intake_draft_id: input.intake_draft_id,
+      talent_id,
+      created_by: input.actor_id,
+      document:
+        rd !== null && documentId !== null
+          ? {
+              id: documentId,
+              filename: rd.file_name,
+              file_storage_ref: rd.storage_key,
+              mime_type: rd.mime_type,
+              size_bytes: rd.size_bytes,
+              ...(rd.artifact_sha256 !== undefined ? { artifact_sha256: rd.artifact_sha256 } : {}),
+              uploaded_at: createdAt,
+            }
+          : null,
+      // An edition needs the extracted-text hash (its content key). A résumé whose
+      // extraction never produced one is kept as the Talent's document only —
+      // the same rule the manual create has always applied.
+      edition:
+        rd !== null && hasTextHash
+          ? { id: uuidv7(), content_hash: rd.resume_text_hash as string, created_at: createdAt }
+          : null,
+      resume_default_id: uuidv7(),
+      work_history: workHistory,
+      skill_evidence: skillEvidence,
+      projects,
+      education,
+      certifications,
+      extraction_child_id: input.extraction_child_id,
+      reviewed_at: createdAt,
+    });
+    if (result.materialized) {
+      try {
+        await this.persistDerivedSkillSnapshot({
+          talent_id,
+          tenant_id,
+          entries: input.work_history ?? [],
+          createdAt,
+        });
+      } catch {
+        // non-fatal projection (recomputable from the typed rows)
+      }
+    }
+    return result;
   }
 
   async touchTalentIntakeDraftOpened(input: {
@@ -1660,6 +1788,7 @@ export class TalentExtractionService {
           ? { description_text: e.description.trim() }
           : {}),
         ...(summary !== '' ? { experience_summary: summary } : {}),
+        ...assertionsField(e.assertions),
         ...provenanceFields(e.source_refs, provenance),
         created_at: createdAt,
       });
@@ -1870,6 +1999,86 @@ export class TalentExtractionService {
         : {}),
     };
 
+    const { workHistory, skillEvidence, projects, education, certifications } =
+      this.shapeReviewedCreateEvidence({
+        tenant_id,
+        talent_id,
+        provenance,
+        createdAt,
+        work_history: input.work_history,
+        skills: input.skills,
+        education: input.education,
+        certifications: input.certifications,
+      });
+
+    // PHASE 1 atomic write (talent_evidence, single schema): document + default
+    // edition + evidence + draft-LINK (draft stays READY_FOR_REVIEW). All-or-none.
+    const result = await this.evidence.establishCreateDraftEvidence({
+      tenant_id,
+      talent_id,
+      created_by: input.actor_id,
+      draft_id: input.draft_id,
+      document: {
+        id: documentId,
+        uploaded_by_actor_id: input.actor_id,
+        filename: input.resume_document.file_name,
+        file_storage_ref: input.resume_document.storage_key,
+        mime_type: input.resume_document.mime_type,
+        size_bytes: input.resume_document.size_bytes,
+        uploaded_at: createdAt,
+      },
+      edition: {
+        id: uuidv7(),
+        content_hash: input.resume_document.resume_text_hash ?? '',
+        created_at: createdAt,
+      },
+      resume_default_id: uuidv7(),
+      work_history: workHistory,
+      skill_evidence: skillEvidence,
+      projects,
+      education,
+      certifications,
+    });
+
+    // POST-commit projections (best-effort; keyed by talent_id + work_experience_id,
+    // independent of the TalentRecord). Mirrors the review path.
+    try {
+      await this.persistDerivedSkillSnapshot({
+        talent_id,
+        tenant_id,
+        entries: input.work_history ?? [],
+        createdAt,
+      });
+    } catch {
+      // non-fatal projection
+    }
+
+    return result;
+  }
+
+  // The shared create-time shaping of recruiter-REVIEWED résumé facts into typed
+  // evidence rows anchored on the (about-to-be-created) source document (§4-F):
+  // work-history (+ its per-role skill usage, projects and experience
+  // assertions), declared skills (de-duplicated by surface form), education and
+  // certifications. Pure (ids minted here); used by the governed create-draft
+  // PHASE 1 and the ATI-SEP-1 A2 intake Save step 1 so both persist identically.
+  private shapeReviewedCreateEvidence(input: {
+    tenant_id: string;
+    talent_id: string;
+    provenance: ResumeProvenance;
+    createdAt: Date;
+    work_history?: readonly ResumeDraftWorkHistory[];
+    skills?: readonly ResumeDraftSkill[];
+    education?: readonly ResumeDraftEducation[];
+    certifications?: readonly ResumeDraftCertification[];
+  }): {
+    workHistory: CreateTalentWorkHistoryEntryInput[];
+    skillEvidence: CreateTalentSkillEvidenceInput[];
+    projects: CreateTalentProjectExperienceInput[];
+    education: CreateTalentEducationEntryInput[];
+    certifications: CreateTalentCertificationEntryInput[];
+  } {
+    const { tenant_id, talent_id, provenance, createdAt } = input;
     const workHistory: CreateTalentWorkHistoryEntryInput[] = [];
     const skillEvidence: CreateTalentSkillEvidenceInput[] = [];
     const projects: CreateTalentProjectExperienceInput[] = [];
@@ -1902,6 +2111,7 @@ export class TalentExtractionService {
           ? { description_text: e.description.trim() }
           : {}),
         ...(summary !== '' ? { experience_summary: summary } : {}),
+        ...assertionsField(e.assertions),
         ...provenanceFields(e.source_refs, provenance),
         created_at: createdAt,
       });
@@ -2023,49 +2233,7 @@ export class TalentExtractionService {
       });
     }
 
-    // PHASE 1 atomic write (talent_evidence, single schema): document + default
-    // edition + evidence + draft-LINK (draft stays READY_FOR_REVIEW). All-or-none.
-    const result = await this.evidence.establishCreateDraftEvidence({
-      tenant_id,
-      talent_id,
-      created_by: input.actor_id,
-      draft_id: input.draft_id,
-      document: {
-        id: documentId,
-        uploaded_by_actor_id: input.actor_id,
-        filename: input.resume_document.file_name,
-        file_storage_ref: input.resume_document.storage_key,
-        mime_type: input.resume_document.mime_type,
-        size_bytes: input.resume_document.size_bytes,
-        uploaded_at: createdAt,
-      },
-      edition: {
-        id: uuidv7(),
-        content_hash: input.resume_document.resume_text_hash ?? '',
-        created_at: createdAt,
-      },
-      resume_default_id: uuidv7(),
-      work_history: workHistory,
-      skill_evidence: skillEvidence,
-      projects,
-      education,
-      certifications,
-    });
-
-    // POST-commit projections (best-effort; keyed by talent_id + work_experience_id,
-    // independent of the TalentRecord). Mirrors the review path.
-    try {
-      await this.persistDerivedSkillSnapshot({
-        talent_id,
-        tenant_id,
-        entries: input.work_history ?? [],
-        createdAt,
-      });
-    } catch {
-      // non-fatal projection
-    }
-
-    return result;
+    return { workHistory, skillEvidence, projects, education, certifications };
   }
 
   // HF1 Gate-6 R2 — persist recruiter-reviewed resume SKILLS as declared
@@ -2251,6 +2419,34 @@ export class TalentExtractionService {
       verified: false,
     }));
   }
+}
+
+// ATI-SEP-1 A2 — the role's reviewed experience assertions, persisted as ATS
+// evidence (TalentWorkHistoryEntry.assertions). Statement-less / type-less
+// entries are dropped (the same filter the ledger projection applies); grounding
+// defaults to SOURCE_ASSOCIATED_INTERPRETATION. Omitted when none remain.
+function assertionsField(
+  assertions: readonly ResumeDraftAssertion[] | undefined,
+): { assertions?: ResumeDraftAssertion[] } {
+  if (!Array.isArray(assertions)) return {};
+  const kept = assertions
+    .filter(
+      (a) =>
+        a !== null &&
+        typeof a === 'object' &&
+        typeof a.statement === 'string' &&
+        a.statement.trim() !== '' &&
+        typeof a.type === 'string' &&
+        a.type.trim() !== '',
+    )
+    .map((a) => ({
+      type: a.type.trim(),
+      statement: a.statement.trim(),
+      ...(typeof a.metric === 'string' && a.metric.trim() !== '' ? { metric: a.metric.trim() } : {}),
+      grounding_class: a.grounding_class ?? 'SOURCE_ASSOCIATED_INTERPRETATION',
+      source_refs: Array.isArray(a.source_refs) ? dedupeRefs(a.source_refs) : [],
+    }));
+  return kept.length > 0 ? { assertions: kept } : {};
 }
 
 // HF1 Gate-6 — build the durable-provenance write fields for one evidence row:

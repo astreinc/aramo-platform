@@ -187,17 +187,27 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       intake = new TalentIntakeService(
         {} as never,
         extraction,
-        { findDuplicateByEmail: async () => null } as never,
+        { findDuplicateByEmail: async () => null, findDuplicateByPhone: async () => null } as never,
       );
       worker = new TalentIntakeExtractionService(
         { extractResume } as never,
         extraction,
         noopLogger as never,
       );
+      // ATI-SEP-1 A2 — the Save runs its REAL evidence step (talent_evidence) and
+      // a stubbed TalentRecord store (this spec carries no talent_record schema).
+      const records = new Map<string, unknown>();
       promotion = new TalentIntakePromotionService(
         extraction,
-        { confirmCreateFromDraftUpload: confirmCreate, createFromReviewedUpload: vi.fn() } as never,
-        { findById: async () => null, findActiveByEmail: async () => null } as never,
+        {
+          findById: async ({ id }: { id: string }) => records.get(id) ?? null,
+          findActiveDuplicate: async () => null,
+          create: async (args: { id: string; input: unknown }) => {
+            const rec = await confirmCreate(auth, args.input);
+            records.set(args.id, rec);
+            return rec;
+          },
+        } as never,
       );
     });
 
@@ -430,6 +440,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(body['education']).toEqual(ED_EXTRACTED);
       expect(body['title']).toBe('Lead Analyst');
       expect((await view(id)).review_status).toBe('PROMOTED');
+      // ATI-SEP-1 A2 — the reviewed arrays became ATS evidence on the reserved id.
+      const saved = await prisma.talentIntakeDraft.findUnique({ where: { id } });
+      expect(saved?.promoted_talent_record_id).toBe(saved?.save_reserved_talent_record_id);
+      expect(
+        await prisma.talentWorkHistoryEntry.count({ where: { talent_id: saved?.promoted_talent_record_id ?? '' } }),
+      ).toBe(WH_EXTRACTED.length);
 
       // A late extraction after promotion never rewrites the promoted draft.
       const before = await review(id);

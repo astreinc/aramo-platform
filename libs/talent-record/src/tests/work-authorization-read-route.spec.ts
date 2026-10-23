@@ -30,7 +30,7 @@ function make(parts: { talent?: unknown; state?: unknown } = {}) {
   const ctl = new TalentRecordController(
     { findById } as never, {} as never, {} as never, {} as never,
     { getWorkAuthorizationHistory } as never, {} as never, {} as never,
-    undefined, {} as never, {} as never, {} as never, undefined,
+    {} as never, {} as never, {} as never,
   );
   return { ctl, findById, getWorkAuthorizationHistory };
 }

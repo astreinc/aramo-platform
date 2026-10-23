@@ -1,7 +1,28 @@
 export { TalentRecordModule } from './lib/talent-record.module.js';
 export { TalentRecordController } from './lib/talent-record.controller.js';
-export { TalentRecordRepository } from './lib/talent-record.repository.js';
-export type { TalentContactFields } from './lib/talent-record.repository.js';
+export {
+  TalentRecordRepository,
+  talentDuplicateError,
+  validateTalentCreateInput,
+} from './lib/talent-record.repository.js';
+export type { TalentContactFields, ActiveTalentDuplicate } from './lib/talent-record.repository.js';
+// ATI-SEP-1 A2 — the cell-phone dedupe key.
+export { normalizePhoneForDedupe } from './lib/talent-phone.js';
+// ATI-SEP-1 A3 — the ATS talent outbox (business-fact events, ADR-0036 §3).
+export {
+  TalentEventOutboxRepository,
+  buildTalentEventRow,
+  TALENT_EVENT_CREATED,
+  TALENT_EVENT_PROFILE_UPDATED,
+  TALENT_EVENT_ERASED,
+  TALENT_EVENT_VERSION,
+  TALENT_EVENT_SOURCE,
+  TALENT_EVENT_SUBJECT_TYPE,
+  type TalentEventType,
+  type TalentEventPayload,
+  type TalentEventInput,
+  type TalentEventOutboxClaimRow,
+} from './lib/talent-events/talent-event-outbox.js';
 export {
   TalentRecordReconcileRepository,
   type EnrichmentPatch,

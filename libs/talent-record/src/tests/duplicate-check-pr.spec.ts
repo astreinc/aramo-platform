@@ -29,9 +29,12 @@ function makeAuthContext(scopes: string[]): AuthContextType {
 
 function makeController(): {
   ctl: TalentRecordController;
-  repo: { findDuplicateByEmail: ReturnType<typeof vi.fn> };
+  repo: { findDuplicateByEmail: ReturnType<typeof vi.fn>; findDuplicateByPhone: ReturnType<typeof vi.fn> };
 } {
-  const repo = { findDuplicateByEmail: vi.fn().mockResolvedValue(null) };
+  const repo = {
+    findDuplicateByEmail: vi.fn().mockResolvedValue(null),
+    findDuplicateByPhone: vi.fn().mockResolvedValue(null),
+  };
   const ctl = new TalentRecordController(
     repo as unknown as TalentRecordRepository,
     {} as unknown as TalentLinkService,
@@ -97,6 +100,23 @@ describe('Duplicate-check — handler contract', () => {
     await expect(
       ctl.duplicateCheck(auth, 'sarah.nolan@example.com'),
     ).resolves.toEqual({ match: existing });
+  });
+
+  it('ATI-SEP-1 A2 — no email collision + a phone → the normalized cell-phone lookup answers', async () => {
+    const { ctl, repo } = makeController();
+    const existing = { id: 'tal-p', first_name: 'Uma', last_name: 'M', title: null, city: null, state: null };
+    repo.findDuplicateByPhone.mockResolvedValueOnce(existing);
+    const auth = makeAuthContext(['talent:read']);
+    await expect(ctl.duplicateCheck(auth, 'uma@example.com', ' (571) 435-5777 ')).resolves.toEqual({ match: existing });
+    expect(repo.findDuplicateByPhone).toHaveBeenCalledWith({ tenant_id: TENANT_ID, phone: '(571) 435-5777' });
+  });
+
+  it('ATI-SEP-1 A2 — an email collision wins; the phone is not consulted', async () => {
+    const { ctl, repo } = makeController();
+    repo.findDuplicateByEmail.mockResolvedValueOnce({ id: 'tal-e', first_name: 'A', last_name: 'B', title: null, city: null, state: null });
+    const auth = makeAuthContext(['talent:read']);
+    await ctl.duplicateCheck(auth, 'a@example.com', '5551230000');
+    expect(repo.findDuplicateByPhone).not.toHaveBeenCalled();
   });
 
   it('no match → { match: null }', async () => {

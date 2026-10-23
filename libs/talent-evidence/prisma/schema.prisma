@@ -300,6 +300,15 @@ model TalentWorkHistoryEntry {
   experience_summary  String?
 
   is_authoritative    Boolean?
+
+  // ATI-SEP-1 A2 — the role's résumé-derived experience assertions (activities /
+  // accomplishments: { type, statement, metric?, grounding_class?, source_refs }[])
+  // as reviewed at Save. ATS evidence of record (ADD-not-rename, nullable — rows
+  // written before A2 and entries without assertions keep NULL). Previously these
+  // were routed only into the trust ledger; A1 removed that write, so they now
+  // persist here and the ledger projection reads them post-commit.
+  assertions          Json?
+
   created_at          DateTime                @db.Timestamptz
 
   @@index([tenant_id])
@@ -814,6 +823,19 @@ model TalentIntakeDraft {
   // ResumeExtractionDraft.talent_id). Set once, atomically, at promotion.
   promoted_talent_record_id String?   @db.Uuid
   promoted_at               DateTime? @db.Timestamptz
+
+  // ATI-SEP-1 A2 (Addendum A2 A-a) — the resumable Save. Save reserves the
+  // TalentRecord id up-front (SAVING = reserved AND not yet promoted) and every
+  // step is idempotent on it: evidence materialization (marked by
+  // save_evidence_materialized_at, set in the SAME talent_evidence transaction
+  // that writes the evidence), the TalentRecord create (primary key), the
+  // at-create follow-ups, and finally the promotion linkage above — written ONLY
+  // after every step completed, so PROMOTED always has a record. A failed Save
+  // leaves the draft editable; the next Save resumes on the reserved id.
+  // ADD-not-rename: distinct from promoted_talent_record_id.
+  save_reserved_talent_record_id String?   @db.Uuid
+  save_started_at                DateTime? @db.Timestamptz
+  save_evidence_materialized_at  DateTime? @db.Timestamptz
 
   // Optimistic concurrency for CAS claim + concurrent-edit guard.
   version Int @default(0)

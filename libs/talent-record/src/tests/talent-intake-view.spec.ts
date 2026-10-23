@@ -99,4 +99,13 @@ describe('talent intake draft view — actions + duplicate projection', () => {
     expect(talentIntakeActions(row)).toContain('promote_to_talent');
     expect(talentIntakeActions(row, { duplicateBlocksCreate: true })).not.toContain('promote_to_talent');
   });
+
+  it('ATI-SEP-1 A2 — a partly saved draft offers edit + Save again only (no discard / replace)', () => {
+    const row = mkRow({
+      processing_status: 'FAILED',
+      save_reserved_talent_record_id: '00000000-0000-7000-8000-0000000000aa',
+      save_evidence_materialized_at: new Date('2026-10-23T00:00:00Z'),
+    });
+    expect(talentIntakeActions(row)).toEqual(['edit_draft', 'promote_to_talent']);
+  });
 });

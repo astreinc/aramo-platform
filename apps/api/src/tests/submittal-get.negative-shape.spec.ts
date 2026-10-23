@@ -7,7 +7,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, TALENT_EVIDENCE_LATE_COLUMN_MIGRATIONS } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -265,6 +265,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         TALENT_EVIDENCE_HF1_MIGRATION,
         TALENT_EVIDENCE_HF2_MIGRATION,
         TALENT_EVIDENCE_1G_MIGRATION,
+        ...TALENT_EVIDENCE_LATE_COLUMN_MIGRATIONS.map((p) => resolve(ROOT, p)),
         TALENT_EVIDENCE_DOC1B_MIGRATION,
         EVIDENCE_INIT_MIGRATION,
         SUBMITTAL_INIT_MIGRATION,

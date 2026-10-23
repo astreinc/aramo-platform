@@ -71,19 +71,26 @@ export class TalentIntakeService {
       return null;
     }
     const review = asReviewPayload(row.review_payload);
-    const emailField = review.fields['email1'];
-    const email =
-      emailField !== undefined && typeof emailField.value === 'string'
-        ? emailField.value.trim()
-        : '';
-    if (email === '') {
-      return null;
+    const value = (key: string): string => {
+      const field = review.fields[key];
+      return field !== undefined && typeof field.value === 'string' ? field.value.trim() : '';
+    };
+    const email = value('email1');
+    const phone = value('phone_cell');
+    // ATI-SEP-1 A2 — the SAME authority as the Save-time 409: email1 first, then
+    // the normalized cell phone. A resumed Save's own reserved record is not a
+    // duplicate of itself.
+    const own = row.save_reserved_talent_record_id ?? null;
+    let match: Awaited<ReturnType<TalentRecordRepository['findDuplicateByEmail']>> = null;
+    let reason: 'email' | 'phone' = 'email';
+    if (email !== '') {
+      match = await this.talentRecord.findDuplicateByEmail({ tenant_id: authContext.tenant_id, email });
     }
-    const match = await this.talentRecord.findDuplicateByEmail({
-      tenant_id: authContext.tenant_id,
-      email,
-    });
-    if (match === null) {
+    if ((match === null || match.id === own) && phone !== '') {
+      match = await this.talentRecord.findDuplicateByPhone({ tenant_id: authContext.tenant_id, phone });
+      reason = 'phone';
+    }
+    if (match === null || match.id === own) {
       return null;
     }
     const location =
@@ -93,9 +100,9 @@ export class TalentIntakeService {
       display_name: `${match.first_name} ${match.last_name}`.trim(),
       title: match.title,
       location,
-      reason: 'email',
-      // V1 (PO ruling): an active-email duplicate is a hard create block — the
-      // 409 is preserved — so Continue anyway is never authorized.
+      reason,
+      // V1 (PO ruling): an active-email / cell-phone duplicate is a hard create
+      // block — the 409 is preserved — so Continue anyway is never authorized.
       continue_anyway: false,
     };
   }
@@ -493,6 +500,14 @@ export class TalentIntakeService {
         details: { review_status: existing.review_status },
       });
     }
+    // ATI-SEP-1 A2 — a Save that already materialized evidence is resumed (Save
+    // again), never discarded, so no evidence is orphaned.
+    if (existing.save_evidence_materialized_at != null) {
+      throw new AramoError('VALIDATION_ERROR', 'This draft is partly saved. Save it again to finish.', 422, {
+        requestId,
+        details: { reason: 'save_in_progress' },
+      });
+    }
     const count = await this.talentExtraction.deleteTalentIntakeDraft({ tenant_id, id, created_by });
     if (count === 0) {
       // Lost a race (promoted/discarded elsewhere between read and delete).
@@ -546,6 +561,12 @@ export class TalentIntakeService {
       throw new AramoError('VALIDATION_ERROR', 'A created talent cannot be edited here.', 422, {
         requestId,
         details: { review_status: existing.review_status },
+      });
+    }
+    if (existing.save_evidence_materialized_at != null) {
+      throw new AramoError('VALIDATION_ERROR', 'This draft is partly saved. Save it again to finish.', 422, {
+        requestId,
+        details: { reason: 'save_in_progress' },
       });
     }
     const presign = await this.objectStorage.createResumePresignedPut({
