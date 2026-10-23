@@ -276,6 +276,9 @@ const TALENT_RECORD_MIGRATIONS = [
   // TI-1H — edition-aware uniqueness (drops UNIQUE(talent_record_id), adds the
   // per-edition key + the partial-unique transient key).
   'libs/talent-record/prisma/migrations/20260920160000_talent_intel_1h_resume_text_edition_history/migration.sql',
+  // ATI-SEP-1 A2/A3 — phone_cell_normalized (create/update write it) + the
+  // TalentEventOutbox written in every TalentRecord create/update/delete txn.
+  'libs/talent-record/prisma/migrations/20261024130000_ati_sep_1_talent_event_outbox_phone_normalized/migration.sql',
 ].map((p) => resolve(ROOT, p));
 // PR-A1b §4 sweep — entitlement schema applied for the pact verifier so
 // the portal-thin pact interactions (5 interactions traversing the now
@@ -612,6 +615,14 @@ const TALENT_EVIDENCE_ATS_QA_1_EDUCATION_MIGRATION = resolve(
   ROOT,
   'libs/talent-evidence/prisma/migrations/20261022160000_ats_qa_1_education_edit_lineage/migration.sql',
 );
+// ATI-SEP-1 A2 — work-history assertions column + the resumable-Save columns on
+// TalentIntakeDraft (+ the D6 payload hash). The intake draft view and the
+// Talent 360 work-history read project them, so the returned shape depends on them.
+const TALENT_EVIDENCE_ATI_SEP_1_MIGRATIONS = [
+  'libs/talent-evidence/prisma/migrations/20261024110000_ati_sep_1_work_history_assertions/migration.sql',
+  'libs/talent-evidence/prisma/migrations/20261024120000_ati_sep_1_intake_resumable_save/migration.sql',
+  'libs/talent-evidence/prisma/migrations/20261024130000_ati_sep_1_intake_save_payload_hash/migration.sql',
+].map((p) => resolve(ROOT, p));
 // SKILL-TAX-1F-B2 — the canonical skills-taxonomy schema (Skill + Alias + Version +
 // Relationship + AuditEvent) and the 1F governance substrate (merged_into +
 // append-only audit trigger + SkillGovernanceProposal + SkillCorrectionTask). Applied
@@ -3889,6 +3900,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         TALENT_EVIDENCE_INTAKE_ENVELOPE_LEASE_MIGRATION,
         TALENT_EVIDENCE_INTAKE_LAST_TOUCHED_MIGRATION,
         TALENT_EVIDENCE_ATS_QA_1_EDUCATION_MIGRATION,
+        ...TALENT_EVIDENCE_ATI_SEP_1_MIGRATIONS,
         // SKILL-TAX-1F-B2 — canonical skills-taxonomy schema + 1F governance substrate
         // (platform-governance-consumer state handlers seed these tables).
         SKILLS_TAXONOMY_INIT_MIGRATION,
