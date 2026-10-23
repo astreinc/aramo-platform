@@ -73,6 +73,12 @@ export default defineConfig({
         changeOrigin: true,
         secure: false,
       },
+      // ATI-SEP-1 A2 A-c (P1) — the platform-owned MatchingPolicy (apps/api).
+      '/platform/matching-policy': {
+        target: 'http://127.0.0.1:3000',
+        changeOrigin: true,
+        secure: false,
+      },
       '/platform': {
         target: 'http://127.0.0.1:3002', // apps/platform-admin (IPv4 pin)
         changeOrigin: true,

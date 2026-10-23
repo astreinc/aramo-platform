@@ -182,6 +182,11 @@ export const SEED_SCOPE_KEYS = [
   // tenant-tier document_template:* scopes, which never authorize a platform write.
   'platform:document_template:read',    // super_admin only — read defaults + variable catalog
   'platform:document_template:manage',  // super_admin only — author/publish defaults, edit catalog
+  // ATI-SEP-1 A2 A-c (P1) — platform-owned matching calibration (the MatchingPolicy
+  // store, versioned + one ACTIVE). super_admin only; tenants consume, never edit —
+  // NO tenant role holds either and there is no tenant-tier policy route.
+  'platform:matching_policy:read',   // super_admin only — read the active policy + version history
+  'platform:matching_policy:write',  // super_admin only — create a policy version, activate a version
   // AUTHZ-D5 — 6 compensation:view:* scopes (the field-masking scope
   // family). The FINAL authorization PR — field-level masking of the
   // requisition read DTO's compensation surface (D4b masked WHICH
@@ -530,6 +535,9 @@ export const PLATFORM_SCOPE_KEYS = [
   // DOC-TEMPLATE-LIB-1 T-2 — Aramo default templates + variable catalog (super_admin only).
   'platform:document_template:read',
   'platform:document_template:manage',
+  // ATI-SEP-1 A2 A-c (P1) — platform-owned matching calibration (super_admin only).
+  'platform:matching_policy:read',
+  'platform:matching_policy:write',
 ] as const;
 export type PlatformScopeKey = (typeof PLATFORM_SCOPE_KEYS)[number];
 

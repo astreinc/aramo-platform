@@ -63,6 +63,16 @@ tags:
       token is refused with 403 `INSUFFICIENT_PERMISSIONS` (DDR §13.1 tripwire).
       The taxonomy is platform-global — these routes carry NO tenant scoping and
       NO PII; the review queue is counts-only (never a tenant id in a response).
+  - name: Platform Matching Policy
+    description: |
+      ATI-SEP-1 Addendum A2 ruling A-c — the platform-owned matching calibration
+      (the role-family evidence thresholds the ATS-side engine applies). Versioned
+      and append-only with exactly one ACTIVE version; version 1 is the compiled
+      engine defaults. The read requires `platform:matching_policy:read`; creating
+      and activating a version require `platform:matching_policy:write`
+      (super_admin only). Platform-tier only: a tenant-tier token is refused with
+      403 `INSUFFICIENT_PERMISSIONS`. Tenants consume the policy and have no route
+      to read or edit it. Platform-global reference data: no tenant scoping, no PII.
   - name: Platform Document Templates
     description: |
       DOC-TEMPLATE-LIB-1 T-2 — Aramo default document templates (PLATFORM owner, no
@@ -1868,6 +1878,95 @@ paths:
         '409':
           $ref: '#/components/responses/SkillProposalNotPending'
 
+  # ATI-SEP-1 A2 A-c (P1) — the platform-owned MatchingPolicy. Served by apps/api (nginx
+  # routes /platform/matching-policy to api:3000).
+  /platform/matching-policy:
+    get:
+      operationId: getPlatformMatchingPolicy
+      tags: [Platform Matching Policy]
+      summary: Read the ACTIVE matching policy and the version history.
+      description: '`active` is null only when the store holds no ACTIVE version (the engine then applies the compiled defaults). `versions` is newest first. Requires `platform:matching_policy:read`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      responses:
+        '200':
+          description: The ACTIVE version and every version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchingPolicyResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
+  /platform/matching-policy/versions:
+    post:
+      operationId: createPlatformMatchingPolicyVersion
+      tags: [Platform Matching Policy]
+      summary: Create a DRAFT matching policy version.
+      description: |
+        Appends a DRAFT version with the next version number. What matching runs
+        with does not change until the version is activated. `evidence_thresholds`
+        must carry EVERY role family, each `{ count, requires_ingested }` with an
+        integer count between 1 and 20; an unknown family or field is refused 400
+        `VALIDATION_ERROR` (`details.errors`). Audited. Requires
+        `platform:matching_policy:write`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateMatchingPolicyVersionRequest'
+      responses:
+        '201':
+          description: The created DRAFT version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchingPolicyVersionView'
+        '400':
+          $ref: '#/components/responses/MatchingPolicyValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
+  /platform/matching-policy/versions/{id}/activate:
+    post:
+      operationId: activatePlatformMatchingPolicyVersion
+      tags: [Platform Matching Policy]
+      summary: Make a version the ONE ACTIVE matching policy.
+      description: |
+        One transaction: the current ACTIVE version becomes RETIRED, the target
+        becomes ACTIVE. Re-activating a RETIRED version is the rollback path;
+        activating the ACTIVE version is a no-op that returns it. Audited.
+        Requires `platform:matching_policy:write`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/MatchingPolicyVersionIdParam'
+      responses:
+        '200':
+          description: The now-ACTIVE version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/MatchingPolicyVersionView'
+        '400':
+          $ref: '#/components/responses/MatchingPolicyValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/MatchingPolicyNotFound'
+
   # DOC-TEMPLATE-LIB-1 T-2 (§6.1, §8.1) — Aramo default document templates + the template
   # variable catalog. Served by apps/api (nginx routes these two prefixes to api:3000).
   /platform/document-templates/document-types:
@@ -3038,6 +3137,14 @@ components:
       schema:
         type: string
         format: uuid
+    MatchingPolicyVersionIdParam:
+      name: id
+      in: path
+      required: true
+      description: The MatchingPolicyVersion UUID.
+      schema:
+        type: string
+        format: uuid
     PlatformTemplateIdParam:
       name: id
       in: path
@@ -3135,6 +3242,18 @@ components:
         reason requirement was unmet (`reason_code_required` /
         `reason_text_required` / `retention_policy_code_required` /
         `close_at_required`).
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    MatchingPolicyValidation:
+      description: '`VALIDATION_ERROR` — the evidence_thresholds document is not a complete, well-formed role-family threshold set (`details.errors`).'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    MatchingPolicyNotFound:
+      description: '`NOT_FOUND` — no such matching policy version.'
       content:
         application/json:
           schema:
@@ -4098,6 +4217,102 @@ components:
           type: [string, 'null']
           description: Opaque continuation cursor, or null on the last page.
 
+    RoleFamilyEvidenceThreshold:
+      type: object
+      additionalProperties: false
+      required: [count, requires_ingested]
+      properties:
+        count:
+          type: integer
+          minimum: 1
+          maximum: 20
+          description: Minimum evidence count per critical skill.
+        requires_ingested:
+          type: boolean
+          description: Whether at least one ingested (not only declared) evidence item is required.
+    EvidenceThresholds:
+      type: object
+      additionalProperties: false
+      description: One threshold per role family; every family is required.
+      required: [backend_engineer, frontend_engineer, fullstack_engineer, devops_sre, data_engineer, architect, qa_test_engineer, product_project_manager, business_analyst]
+      properties:
+        backend_engineer:
+          $ref: '#/components/schemas/RoleFamilyEvidenceThreshold'
+        frontend_engineer:
+          $ref: '#/components/schemas/RoleFamilyEvidenceThreshold'
+        fullstack_engineer:
+          $ref: '#/components/schemas/RoleFamilyEvidenceThreshold'
+        devops_sre:
+          $ref: '#/components/schemas/RoleFamilyEvidenceThreshold'
+        data_engineer:
+          $ref: '#/components/schemas/RoleFamilyEvidenceThreshold'
+        architect:
+          $ref: '#/components/schemas/RoleFamilyEvidenceThreshold'
+        qa_test_engineer:
+          $ref: '#/components/schemas/RoleFamilyEvidenceThreshold'
+        product_project_manager:
+          $ref: '#/components/schemas/RoleFamilyEvidenceThreshold'
+        business_analyst:
+          $ref: '#/components/schemas/RoleFamilyEvidenceThreshold'
+    MatchingPolicyVersionView:
+      type: object
+      additionalProperties: false
+      required: [id, version_number, status, evidence_thresholds, note, created_by, created_at, activated_by, activated_at, retired_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        version_number:
+          type: integer
+          minimum: 1
+        status:
+          type: string
+          enum: [DRAFT, ACTIVE, RETIRED]
+        evidence_thresholds:
+          $ref: '#/components/schemas/EvidenceThresholds'
+        note:
+          type: [string, 'null']
+        created_by:
+          type: [string, 'null']
+          format: uuid
+          description: The platform actor that created the version; null for the migration seed.
+        created_at:
+          type: string
+          format: date-time
+        activated_by:
+          type: [string, 'null']
+          format: uuid
+        activated_at:
+          type: [string, 'null']
+          format: date-time
+          description: The most recent activation of this version.
+        retired_at:
+          type: [string, 'null']
+          format: date-time
+    MatchingPolicyResponse:
+      type: object
+      additionalProperties: false
+      required: [active, versions]
+      properties:
+        active:
+          oneOf:
+            - $ref: '#/components/schemas/MatchingPolicyVersionView'
+            - type: 'null'
+        versions:
+          type: array
+          description: Every version, newest first.
+          items:
+            $ref: '#/components/schemas/MatchingPolicyVersionView'
+    CreateMatchingPolicyVersionRequest:
+      type: object
+      additionalProperties: false
+      required: [evidence_thresholds]
+      properties:
+        evidence_thresholds:
+          $ref: '#/components/schemas/EvidenceThresholds'
+        note:
+          type: [string, 'null']
+          maxLength: 500
     ProposalView:
       type: object
       additionalProperties: false

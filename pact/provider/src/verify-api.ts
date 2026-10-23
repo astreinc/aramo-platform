@@ -641,6 +641,13 @@ const SKILLS_TAXONOMY_1F_B_PROPOSAL_CORRECTION_MIGRATION = resolve(
   ROOT,
   'libs/skills-taxonomy/prisma/migrations/20260918120000_skill_tax_1f_b_governance_proposal_correction/migration.sql',
 );
+// ATI-SEP-1 A2 A-c (P1) — the platform-owned MatchingPolicy store (MatchingPolicyVersion +
+// MatchingPolicyAuditEvent + the seeded ACTIVE version 1). The /platform/matching-policy
+// returned shapes depend on it.
+const SKILLS_TAXONOMY_MATCHING_POLICY_MIGRATION = resolve(
+  ROOT,
+  'libs/skills-taxonomy/prisma/migrations/20261023140000_matching_policy/migration.sql',
+);
 // SKILL-TAX-1D — the derived RequisitionSkillRequirement table (requisition schema),
 // needed by the review-queue state handler to seed an UNRESOLVED requirement surface.
 const REQUISITION_SKILL_REQUIREMENT_MIGRATION = resolve(
@@ -1295,6 +1302,32 @@ const PLATFORM_TENANT_SENTINEL_ID = '01900000-0000-7000-8000-000000000100';
 // SKILL-TAX-1F-B2 — ids the platform-governance-consumer pact addresses (the accept
 // interaction targets PLATFORM_PROPOSAL_ID; its payload references PLATFORM_SKILL_ID).
 const PLATFORM_SKILL_ID = '01900000-0000-7000-8000-0000000ab001';
+// ATI-SEP-1 A2 A-c (P1) — MatchingPolicy fixtures. v1 = the migration seed (fixed id);
+// v2 = the DRAFT the activate interaction targets.
+const PLATFORM_MATCHING_POLICY_V1_ID = '019a0000-0000-7000-8000-00000000a001';
+const PLATFORM_MATCHING_POLICY_V2_ID = '01900000-0000-7000-8000-0000000ab0a2';
+const MATCHING_POLICY_V1_THRESHOLDS = {
+  backend_engineer: { count: 2, requires_ingested: true },
+  frontend_engineer: { count: 2, requires_ingested: true },
+  fullstack_engineer: { count: 2, requires_ingested: true },
+  devops_sre: { count: 2, requires_ingested: true },
+  data_engineer: { count: 2, requires_ingested: true },
+  architect: { count: 3, requires_ingested: true },
+  qa_test_engineer: { count: 2, requires_ingested: true },
+  product_project_manager: { count: 2, requires_ingested: false },
+  business_analyst: { count: 2, requires_ingested: false },
+};
+async function resetMatchingPolicy(c: Client): Promise<void> {
+  await c.query(
+    'TRUNCATE TABLE skills_taxonomy."MatchingPolicyAuditEvent", skills_taxonomy."MatchingPolicyVersion"',
+  );
+  await c.query(
+    `INSERT INTO skills_taxonomy."MatchingPolicyVersion"
+       (id, version_number, status, evidence_thresholds, note, created_at, activated_at)
+     VALUES ($1::uuid, 1, 'ACTIVE', $2::jsonb, 'Seed', now(), now())`,
+    [PLATFORM_MATCHING_POLICY_V1_ID, JSON.stringify(MATCHING_POLICY_V1_THRESHOLDS)],
+  );
+}
 const PLATFORM_PROPOSAL_ID = '01900000-0000-7000-8000-0000000ab002';
 // M3 PR-9 §4.8 — portal-thin pact uses TALENT_SUB as the talent id; the
 // portal JWT's `sub` claim carries this value, and the GET /v1/portal/*
@@ -3864,6 +3897,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         SKILLS_TAXONOMY_1F_GOVERNANCE_MIGRATION,
         SKILLS_TAXONOMY_1F_AUDIT_APPEND_ONLY_MIGRATION,
         SKILLS_TAXONOMY_1F_B_PROPOSAL_CORRECTION_MIGRATION,
+        // ATI-SEP-1 A2 A-c (P1) — the MatchingPolicy store (platform-governance-consumer).
+        SKILLS_TAXONOMY_MATCHING_POLICY_MIGRATION,
         EVIDENCE_INIT_MIGRATION,
         SUBMITTAL_INIT_MIGRATION,
         // M4 PR-7 §4.9 — submittal-revoke schema extension (enum +
@@ -4598,6 +4633,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         authz_version: pactAuthzResolver.grant(PLATFORM_TENANT_SENTINEL_ID, PLATFORM_ADMIN_ID, [
           'platform:skill:read',
           'platform:skill:manage',
+          // ATI-SEP-1 A2 A-c (P1) — the platform-owned MatchingPolicy interactions.
+          'platform:matching_policy:read',
+          'platform:matching_policy:write',
         ]),
       })
         .setProtectedHeader({ alg: ALG })
@@ -5443,6 +5481,25 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             `INSERT INTO skills_taxonomy."SkillRelationship" (id, source_skill_id, target_skill_id, relationship_type, directionality, status, source, created_at, updated_at)
              VALUES ($1::uuid, $2::uuid, $3::uuid, 'BUILT_ON', 'DIRECTED', 'active', 'ADMIN_CURATED', now(), now())`,
             ['01900000-0000-7000-8000-0000000ac020', PLATFORM_SKILL_ID, targetSkillId],
+          );
+        });
+      },
+      // ===== ATI-SEP-1 A2 A-c (P1) platform MatchingPolicy pacts =====
+      // TRUNCATE (bypasses the append-only row triggers) then re-seed the migration's
+      // ACTIVE version 1 so each interaction starts from the post-migration state.
+      'the platform matching policy holds the seeded version 1': async () => {
+        await withClient(async (c) => {
+          await resetMatchingPolicy(c);
+        });
+      },
+      'a DRAFT matching policy version 2 exists': async () => {
+        await withClient(async (c) => {
+          await resetMatchingPolicy(c);
+          await c.query(
+            `INSERT INTO skills_taxonomy."MatchingPolicyVersion"
+               (id, version_number, status, evidence_thresholds, note, created_by, created_at)
+             VALUES ($1::uuid, 2, 'DRAFT', $2::jsonb, 'raise architect', $3::uuid, now())`,
+            [PLATFORM_MATCHING_POLICY_V2_ID, JSON.stringify(MATCHING_POLICY_V1_THRESHOLDS), PLATFORM_ADMIN_ID],
           );
         });
       },

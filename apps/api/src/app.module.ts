@@ -132,6 +132,7 @@ import { CiProcessingModule } from './conversation-intelligence/ci-processing.mo
 import { TechnicalScreeningApiModule } from './technical-screening/technical-screening-api.module.js';
 import { CanonicalReconciliationModule } from './canonical-reconciliation/canonical-reconciliation.module.js';
 import { SkillGovernanceModule } from './skill-governance/skill-governance.module.js';
+import { MatchingPolicyModule } from './matching-policy/matching-policy.module.js';
 // DOC-TEMPLATE-LIB-1 T-2 — platform-tier Aramo default templates + variable catalog.
 import { PlatformDocumentTemplatesModule } from './document-templates-platform/platform-document-templates.module.js';
 import { ReconciliationDrainModule } from './requisition-integration/reconciliation-drain.module.js';
@@ -502,6 +503,10 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     CanonicalReconciliationModule,
     // SKILL-TAX-1F-B1 — the durable correction/propagation engine (internal).
     SkillGovernanceModule,
+    // ATI-SEP-1 A2 A-c (P1) — the platform-owned MatchingPolicy: the /platform
+    // matching-policy surface + the @Global MATCHING_POLICY_SOURCE binding that
+    // MatchingService (libs/matching) reads the ACTIVE version through.
+    MatchingPolicyModule,
     SubmittalModule,
     CreateSubmittalModule,
     SubmittalWorkspaceModule,

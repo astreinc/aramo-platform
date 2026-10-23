@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   ExaminationRepository,
   type CreateExaminationSnapshotInput,
@@ -15,6 +15,12 @@ import {
   evaluateEntrustability,
   type EntrustabilityExamination,
 } from './engine.js';
+import {
+  DEFAULT_MATCHING_POLICY,
+  MATCHING_POLICY_SOURCE,
+  type MatchingPolicy,
+  type MatchingPolicySource,
+} from './matching-policy.js';
 
 // MatchingService — M3 PR-2 §3.3 orchestrator.
 //
@@ -76,29 +82,50 @@ function buildDeltaToEntrustable(
 
 @Injectable()
 export class MatchingService {
-  constructor(private readonly examinations: ExaminationRepository) {}
+  constructor(
+    private readonly examinations: ExaminationRepository,
+    // ATI-SEP-1 A2 A-c (P1) — the platform-owned MatchingPolicy port, bound at the
+    // composition root (apps/api MatchingPolicyModule, @Global). @Optional so the lib
+    // stays standalone: with no binding the compiled §2.5 defaults apply.
+    @Optional()
+    @Inject(MATCHING_POLICY_SOURCE)
+    private readonly policySource?: MatchingPolicySource,
+  ) {}
+
+  // The policy the next examination runs with: the store's ACTIVE version, or the
+  // compiled defaults when no source is bound or the store holds no ACTIVE version.
+  // A store read error propagates (never a silent fallback to defaults).
+  async resolvePolicy(): Promise<MatchingPolicy> {
+    if (this.policySource === undefined) return DEFAULT_MATCHING_POLICY;
+    return (await this.policySource.getActivePolicy()) ?? DEFAULT_MATCHING_POLICY;
+  }
 
   // Pure-function projection — returns the engine result and the
   // engine-derived delta_to_entrustable without touching the DB. Useful
   // for callers that want to inspect the examination before deciding to
-  // persist.
-  evaluate(input: MatchingAnalysisInput): {
+  // persist. The policy defaults to the compiled §2.5 calibration.
+  evaluate(
+    input: MatchingAnalysisInput,
+    policy: MatchingPolicy = DEFAULT_MATCHING_POLICY,
+  ): {
     examination: EntrustabilityExamination;
     delta_to_entrustable: DeltaToEntrustable | null;
   } {
-    const examination = evaluateEntrustability(input);
+    const examination = evaluateEntrustability(input, policy);
     const delta_to_entrustable = buildDeltaToEntrustable(examination);
     return { examination, delta_to_entrustable };
   }
 
-  // Evaluates the input and persists the result as a TalentJobExamination
-  // snapshot via PR-1's ExaminationRepository (§3.3). All nine required
-  // Json analysis-product fields are forwarded from the input contract;
-  // the three §3.4 version pins are supplied here from typed constants.
+  // Evaluates the input under the ACTIVE platform MatchingPolicy and persists the
+  // result as a TalentJobExamination snapshot via PR-1's ExaminationRepository
+  // (§3.3). All nine required Json analysis-product fields are forwarded from the
+  // input contract; the three §3.4 version pins are supplied here from typed
+  // constants.
   async evaluateAndPersist(
     input: MatchingAnalysisInput,
   ): Promise<TalentJobExaminationRow> {
-    const { examination, delta_to_entrustable } = this.evaluate(input);
+    const policy = await this.resolvePolicy();
+    const { examination, delta_to_entrustable } = this.evaluate(input, policy);
 
     const snapshotInput: CreateExaminationSnapshotInput = {
       // identity (forwarded)

@@ -171,6 +171,12 @@ server {
   location /platform/template-variables {
     proxy_pass http://api:3000;
   }
+  # ATI-SEP-1 A2 A-c (P1) — the platform-owned MatchingPolicy (/platform/matching-policy*)
+  # is served by apps/api (its store + the matching engine's port live there). Same
+  # edge-owned provider map: exactly this governed prefix goes to api:3000.
+  location /platform/matching-policy {
+    proxy_pass http://api:3000;
+  }
   location /platform/ {
     proxy_pass http://platform-admin:3002;
   }
@@ -181,7 +187,7 @@ server {
   # NO `/v1` location of any kind — DELIBERATE (R14 negative control). The platform
   # host reaches api:3000 ONLY for the governed /platform/skill* namespace and the
   # DOC-TEMPLATE-LIB-1 /platform/document-templates + /platform/template-variables
-  # prefixes above; the
+  # and the ATI-SEP-1 /platform/matching-policy prefixes above; the
   # TENANT `/v1/*` surface remains unreachable from this host by construction (no
   # /v1 proxy_pass here), so a stray /v1/* request falls through to the SPA fallback
   # (index.html), never to tenant data.

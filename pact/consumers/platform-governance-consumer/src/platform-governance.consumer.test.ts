@@ -13,7 +13,8 @@ const { like, uuid, regex, integer, eachLike } = MatchersV3;
 //
 // Scope: the platform-tier canonical-taxonomy governance contract SHAPE — a create
 // mutation, the counts-only review queue, the atomic proposal accept, and the DDR
-// §13.1 tier tripwire (a tenant-tier token is refused 403). Every governed operation
+// §13.1 tier tripwire (a tenant-tier token is refused 403). ATI-SEP-1 A2 A-c (P1)
+// adds the platform-owned MatchingPolicy (read, create a version, activate, tripwire). Every governed operation
 // carries consumer_type=platform; the taxonomy is platform-global (no tenant scope,
 // no PII); the review queue is COUNTS-ONLY (never a tenant id in a response).
 
@@ -31,6 +32,20 @@ const REQUEST_ID = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1bb0';
 const PLATFORM_BEARER = 'Bearer eyJfake.platform.token';
 const RECRUITER_BEARER = 'Bearer eyJfake.token';
 const ISO_TIMESTAMP = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,9})?Z$/;
+// ATI-SEP-1 A2 A-c (P1) — MatchingPolicy fixtures (v1 = the migration seed id).
+const POLICY_V1_ID = '019a0000-0000-7000-8000-00000000a001';
+const POLICY_V2_ID = '01900000-0000-7000-8000-0000000ab0a2';
+const POLICY_THRESHOLDS = {
+  backend_engineer: { count: 2, requires_ingested: true },
+  frontend_engineer: { count: 2, requires_ingested: true },
+  fullstack_engineer: { count: 2, requires_ingested: true },
+  devops_sre: { count: 2, requires_ingested: true },
+  data_engineer: { count: 2, requires_ingested: true },
+  architect: { count: 3, requires_ingested: true },
+  qa_test_engineer: { count: 2, requires_ingested: true },
+  product_project_manager: { count: 2, requires_ingested: false },
+  business_analyst: { count: 2, requires_ingested: false },
+};
 
 describe('platform-governance-consumer → /platform/* skill governance', () => {
   it('POST /platform/skills → 201 SkillView (create a canonical skill)', async () => {
@@ -308,6 +323,149 @@ describe('platform-governance-consumer → /platform/* skill governance', () => 
         expect(res.status).toBe(200);
         const json = (await res.json()) as { relationships: Array<{ source_skill_id: string }> };
         expect(json.relationships[0]!.source_skill_id).toBe(SKILL_ID);
+      });
+  });
+
+  // ===== ATI-SEP-1 A2 A-c (P1) — the platform-owned MatchingPolicy =====
+  // Versioned + append-only, one ACTIVE version; version 1 is the seeded compiled
+  // defaults. platform:matching_policy:read / :write; platform tier only.
+  it('GET /platform/matching-policy → 200 active version + history', async () => {
+    await provider
+      .addInteraction()
+      .given('the platform matching policy holds the seeded version 1')
+      .uponReceiving('a read-matching-policy request')
+      .withRequest('GET', '/platform/matching-policy', (b) => {
+        b.headers({ Authorization: like(PLATFORM_BEARER) });
+      })
+      .willRespondWith(200, (b) => {
+        b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
+          active: {
+            id: uuid(POLICY_V1_ID),
+            version_number: integer(1),
+            status: like('ACTIVE'),
+            evidence_thresholds: like(POLICY_THRESHOLDS),
+            note: like('Seed'),
+            created_by: null,
+            created_at: regex(ISO_TIMESTAMP, '2026-10-23T00:00:01Z'),
+            activated_by: null,
+            activated_at: regex(ISO_TIMESTAMP, '2026-10-23T00:00:01Z'),
+            retired_at: null,
+          },
+          versions: eachLike({
+            id: uuid(POLICY_V1_ID),
+            version_number: integer(1),
+            status: like('ACTIVE'),
+            evidence_thresholds: like(POLICY_THRESHOLDS),
+            note: like('Seed'),
+            created_by: null,
+            created_at: regex(ISO_TIMESTAMP, '2026-10-23T00:00:01Z'),
+            activated_by: null,
+            activated_at: regex(ISO_TIMESTAMP, '2026-10-23T00:00:01Z'),
+            retired_at: null,
+          }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/platform/matching-policy`, {
+          headers: { Authorization: PLATFORM_BEARER },
+        });
+        expect(res.status).toBe(200);
+        const json = (await res.json()) as { active: { status: string } | null; versions: unknown[] };
+        expect(json.active?.status).toBe('ACTIVE');
+        expect(json.versions.length).toBeGreaterThan(0);
+      });
+  });
+
+  it('POST /platform/matching-policy/versions → 201 DRAFT version', async () => {
+    const body = { evidence_thresholds: { ...POLICY_THRESHOLDS, architect: { count: 4, requires_ingested: true } }, note: 'raise architect' };
+    await provider
+      .addInteraction()
+      .given('the platform matching policy holds the seeded version 1')
+      .uponReceiving('a create-matching-policy-version request')
+      .withRequest('POST', '/platform/matching-policy/versions', (b) => {
+        b.headers({ Authorization: like(PLATFORM_BEARER), 'Content-Type': 'application/json' }).jsonBody(body);
+      })
+      .willRespondWith(201, (b) => {
+        b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
+          id: uuid(POLICY_V2_ID),
+          version_number: integer(2),
+          status: like('DRAFT'),
+          evidence_thresholds: like(body.evidence_thresholds),
+          note: like('raise architect'),
+          created_by: uuid('01900000-0000-7000-8000-0000000ac001'),
+          created_at: regex(ISO_TIMESTAMP, '2026-10-23T00:00:02Z'),
+          activated_by: null,
+          activated_at: null,
+          retired_at: null,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/platform/matching-policy/versions`, {
+          method: 'POST',
+          headers: { Authorization: PLATFORM_BEARER, 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        expect(res.status).toBe(201);
+        const json = (await res.json()) as { status: string; activated_at: string | null };
+        expect(json.status).toBe('DRAFT');
+        expect(json.activated_at).toBeNull();
+      });
+  });
+
+  it('POST /platform/matching-policy/versions/{id}/activate → 200 ACTIVE version', async () => {
+    await provider
+      .addInteraction()
+      .given('a DRAFT matching policy version 2 exists')
+      .uponReceiving('an activate-matching-policy-version request')
+      .withRequest('POST', `/platform/matching-policy/versions/${POLICY_V2_ID}/activate`, (b) => {
+        b.headers({ Authorization: like(PLATFORM_BEARER) });
+      })
+      .willRespondWith(200, (b) => {
+        b.headers({ 'X-Request-ID': uuid(REQUEST_ID) }).jsonBody({
+          id: uuid(POLICY_V2_ID),
+          version_number: integer(2),
+          status: like('ACTIVE'),
+          evidence_thresholds: like(POLICY_THRESHOLDS),
+          note: like('raise architect'),
+          created_by: uuid('01900000-0000-7000-8000-0000000ac001'),
+          created_at: regex(ISO_TIMESTAMP, '2026-10-23T00:00:02Z'),
+          activated_by: uuid('01900000-0000-7000-8000-0000000ac001'),
+          activated_at: regex(ISO_TIMESTAMP, '2026-10-23T00:00:03Z'),
+          retired_at: null,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/platform/matching-policy/versions/${POLICY_V2_ID}/activate`, {
+          method: 'POST',
+          headers: { Authorization: PLATFORM_BEARER },
+        });
+        expect(res.status).toBe(200);
+        const json = (await res.json()) as { status: string };
+        expect(json.status).toBe('ACTIVE');
+      });
+  });
+
+  it('GET /platform/matching-policy with a tenant-tier token → 403 (tenants cannot read or edit)', async () => {
+    await provider
+      .addInteraction()
+      .given('the platform matching policy holds the seeded version 1')
+      .uponReceiving('a tenant-tier token hitting the matching policy route')
+      .withRequest('GET', '/platform/matching-policy', (b) => {
+        b.headers({ Authorization: like(RECRUITER_BEARER) });
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody({
+          error: {
+            code: like('INSUFFICIENT_PERMISSIONS'),
+            message: like('Platform routes require consumer_type=platform'),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/platform/matching-policy`, {
+          headers: { Authorization: RECRUITER_BEARER },
+        });
+        expect(res.status).toBe(403);
       });
   });
 });

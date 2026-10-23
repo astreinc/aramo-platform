@@ -18,6 +18,7 @@ import { SkillGovernanceService } from './skill-governance.service.js';
 import { SkillCanonicalizationService } from './skill-canonicalization.service.js';
 import { SkillCanonicalizationProcessor } from './skill-canonicalization.processor.js';
 import { SKILL_CANONICALIZATION_QUEUE_NAME } from './skill-canonicalization.queue.constants.js';
+import { MatchingPolicyRepository } from './matching-policy.repository.js';
 
 // M5 PR-11 §4.5 — SkillsTaxonomyModule gains skill-canonicalization
 // processor + queue registration (Architecture v2.1 §9.2 / Plan v1.5
@@ -79,6 +80,8 @@ import { SKILL_CANONICALIZATION_QUEUE_NAME } from './skill-canonicalization.queu
     SkillGovernanceService,
     SkillCanonicalizationService,
     SkillCanonicalizationProcessor,
+    // ATI-SEP-1 A2 A-c (P1) — the platform-owned MatchingPolicy store.
+    MatchingPolicyRepository,
     {
       provide: 'SkillCanonicalizationProcessorLogger',
       useFactory: () => createAramoLogger(SkillCanonicalizationProcessor.name),
@@ -94,6 +97,7 @@ import { SKILL_CANONICALIZATION_QUEUE_NAME } from './skill-canonicalization.queu
     SkillAliasRepository,
     SkillVersionRepository,
     SkillRelationshipRepository,
+    MatchingPolicyRepository,
     PrismaService,
   ],
 })
