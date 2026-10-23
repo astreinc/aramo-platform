@@ -254,6 +254,10 @@ export default [
             // ONLY over HTTP (SignatureProviderPort); this app-boundary crossing
             // is the test-environment exception, narrowly scoped to this project.
             '@aramo/sign-service',
+            // ATI-SEP-1: verify-ti.ts test-bootstraps apps/talent-intelligence-service's
+            // AppModule to verify the intelligence-integration → talent-intelligence-service
+            // pact. Production ATS reaches TI ONLY over HTTP (IntelligenceClient).
+            '@aramo/talent-intelligence-service',
           ],
           depConstraints: SCOPE_DEP_CONSTRAINTS,
         },

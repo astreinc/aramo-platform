@@ -3,18 +3,14 @@ import { resolve } from 'node:path';
 import { PactV4, MatchersV3 } from '@pact-foundation/pact';
 import { describe, expect, it } from 'vitest';
 
-const { like, uuid, eachLike } = MatchersV3;
+const { like, uuid } = MatchersV3;
 
-// Portal P1 PR-2a/2b — Pact consumer test for the portal-thin client on the
-// OPEN-4 records surface (the old singleton /v1/portal/profile is removed).
-// Provider: aramo-core (apps/api). Interactions for GET /v1/portal/records:
-//   - 200 empty-list (a portal user with no records — the empty-state contract);
-//   - 200 one-record POSITIVE SHAPE (PR-2b — the deferred full-chain residue:
-//     the closed PortalProfile envelope, R10-clean);
-//   - 403 INSUFFICIENT_PERMISSIONS (non-portal consumer);
-//   - 401 (unauthenticated).
-// The 200-empty and 200-one-record cases share the request; the provider STATE
-// (given) disambiguates them at verification.
+// Portal P1 PR-2a/2b → ATI-SEP-1 Addendum A4 (GAP-PORTAL-ID-1) — Pact consumer
+// test for the portal-thin client on the records surface. Provider: aramo-core
+// (apps/api). The legacy portal identity chain is retired and the Portal identity
+// increment is deferred (A4: accepted degradation), so a portal session resolves
+// no talent and GET /v1/portal/records answers ONE uniform, non-leaking 404
+// NOT_AVAILABLE. The consumer-type (403) and token (401) checks are unchanged.
 
 const provider = new PactV4({
   consumer: 'portal-thin',
@@ -24,7 +20,7 @@ const provider = new PactV4({
 });
 
 describe('portal-thin consumer → GET /v1/portal/records', () => {
-  it('returns 200 with an empty records envelope for a portal user with no records', async () => {
+  it('returns the uniform 404 NOT_AVAILABLE while portal identity is deferred (A4)', async () => {
     await provider
       .addInteraction()
       .given('a portal user with no records exists')
@@ -33,42 +29,14 @@ describe('portal-thin consumer → GET /v1/portal/records', () => {
         // Exact (not like()) so the fingerprint differs from the 403/401 cases.
         b.headers({ Authorization: 'Bearer eyJfake.portal.token' });
       })
-      .willRespondWith(200, (b) => {
-        // Empty-state-valid: the closed envelope with an empty records array.
-        b.jsonBody({ records: [] });
-      })
-      .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/portal/records`, {
-          method: 'GET',
-          headers: { Authorization: 'Bearer eyJfake.portal.token' },
-        });
-        expect(res.status).toBe(200);
-        const body = (await res.json()) as { records: unknown[] };
-        expect(Array.isArray(body.records)).toBe(true);
-        expect(body.records).toHaveLength(0);
-      });
-  });
-
-  it('returns 200 with the PortalProfile envelope for a portal user with one record', async () => {
-    await provider
-      .addInteraction()
-      .given('a portal user with one record exists')
-      .uponReceiving('a portal records request resolving one record')
-      .withRequest('GET', '/v1/portal/records', (b) => {
-        b.headers({ Authorization: 'Bearer eyJfake.portal.token' });
-      })
-      .willRespondWith(200, (b) => {
-        // The closed PortalProfile envelope. Portal P2 P2b — tenant_name is now
-        // a MUST (the selection counterparty is NAMED, ruling 2); still R10-safe.
+      .willRespondWith(404, (b) => {
         b.jsonBody({
-          records: eachLike({
-            talent_id: uuid(),
-            tenant_id: uuid(),
-            tenant_name: like('Acme Corp'),
-            tenant_status: like('active'),
-            source_channel: like('self_signup'),
-            created_at: like('2026-05-01T12:00:00.000Z'),
-          }),
+          error: {
+            code: 'NOT_FOUND',
+            message: like('not available'),
+            request_id: like('00000000-0000-7000-8000-000000000000'),
+            details: { reason: 'NOT_AVAILABLE' },
+          },
         });
       })
       .executeTest(async (mock) => {
@@ -76,23 +44,10 @@ describe('portal-thin consumer → GET /v1/portal/records', () => {
           method: 'GET',
           headers: { Authorization: 'Bearer eyJfake.portal.token' },
         });
-        expect(res.status).toBe(200);
-        const body = (await res.json()) as {
-          records: Array<Record<string, unknown>>;
-        };
-        expect(Array.isArray(body.records)).toBe(true);
-        expect(body.records.length).toBeGreaterThanOrEqual(1);
-        const rec = body.records[0]!;
-        // Positive shape: the 6 selection-class fields present (P2b adds the
-        // NAMED counterparty tenant_name) …
-        for (const f of ['talent_id', 'tenant_id', 'tenant_name', 'tenant_status', 'source_channel', 'created_at']) {
-          expect(rec).toHaveProperty(f);
-        }
-        // … and NO trust/verification ORIGIN data (D3 / P-R4). tenant_name is an
-        // selection counterparty label, NOT an origin field, so it is legit here.
-        for (const f of ['verifier', 'verified_by', 'attestation']) {
-          expect(rec).not.toHaveProperty(f);
-        }
+        expect(res.status).toBe(404);
+        const body = (await res.json()) as { error: { code: string; details: { reason: string } } };
+        expect(body.error.code).toBe('NOT_FOUND');
+        expect(body.error.details.reason).toBe('NOT_AVAILABLE');
       });
   });
 

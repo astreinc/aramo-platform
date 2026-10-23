@@ -44,6 +44,9 @@ export default defineConfig({
       // verify.ts. eslint-side boundary override is scoped to that file pair.
       '@aramo/auth-service': resolve(root, 'apps/auth-service/src/app/auth/auth.module.ts'),
       '@aramo/sign-service': resolve(root, 'apps/sign-service/src/app/app.module.ts'),
+      // ATI-SEP-1 — pact/provider/src/verify-ti.ts test-bootstraps the TI AppModule
+      // (test-environment exception; production ATS reaches TI over HTTP only).
+      '@aramo/talent-intelligence-service': resolve(root, 'apps/talent-intelligence-service/src/app/app.module.ts'),
       '@aramo/auth-storage': resolve(root, 'libs/auth-storage/src/index.ts'),
       // PR-A1a §3 — new leaf lib hosting RolesGuard + @RequireScopes /
       // @RequireSiteMatch decorators. Mirrors tsconfig.base.json
