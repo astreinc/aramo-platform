@@ -6,7 +6,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE, TALENT_TRUST_MIGRATIONS, TALENT_EVIDENCE_LATE_COLUMN_MIGRATIONS } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, SKILLS_TAXONOMY_MIGRATIONS, TALENT_EVIDENCE_LATE_COLUMN_MIGRATIONS } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -118,18 +118,10 @@ const MIGRATIONS = [
   'libs/talent-evidence/prisma/migrations/20260915170000_hf2_experience_intelligence/migration.sql',
   'libs/talent-evidence/prisma/migrations/20260915180000_skill_tax_1g_canonical_reconciliation/migration.sql',
   ...TALENT_EVIDENCE_LATE_COLUMN_MIGRATIONS,
-  // talent-trust — kept for the AppModule boot set (examine Step-4b ledger
-  // routing was removed at ATI-SEP-1 T10 WP1).
   // ATI-SEP-1 P1 — MatchingService reads the ACTIVE platform MatchingPolicyVersion
-  // (skills_taxonomy) on every mint, so the schema + seeded v1 must exist.
-  'libs/skills-taxonomy/prisma/migrations/20260915140000_init_skill_registry/migration.sql',
-  'libs/skills-taxonomy/prisma/migrations/20260915150000_skill_alias_version/migration.sql',
-  'libs/skills-taxonomy/prisma/migrations/20260915160000_skill_relationship/migration.sql',
-  'libs/skills-taxonomy/prisma/migrations/20260917210000_skill_tax_1f_governance/migration.sql',
-  'libs/skills-taxonomy/prisma/migrations/20260917211000_skill_tax_1f_audit_append_only/migration.sql',
-  'libs/skills-taxonomy/prisma/migrations/20260918120000_skill_tax_1f_b_governance_proposal_correction/migration.sql',
-  'libs/skills-taxonomy/prisma/migrations/20261023140000_matching_policy/migration.sql',
-  ...TALENT_TRUST_MIGRATIONS,  // G1 — the shared, complete talent-trust set (@aramo/common)
+  // (skills_taxonomy) on every mint, so the schema + seeded v1 must exist — the
+  // shared set (@aramo/common, ATI-SEP-1 T10 WP5).
+  ...SKILLS_TAXONOMY_MIGRATIONS,
   // examination
   'libs/examination/prisma/migrations/20260517200000_init_examination_model/migration.sql',
   'libs/examination/prisma/migrations/20260521120000_add_live_list_index/migration.sql',

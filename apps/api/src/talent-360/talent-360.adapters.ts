@@ -9,6 +9,7 @@ import { IdentityService } from '@aramo/identity';
 import { PipelineRepository } from '@aramo/pipeline';
 import { TalentEducationRepository } from '@aramo/talent-evidence';
 import { TalentExtractionService } from '@aramo/talent-extraction';
+import { TalentDuplicateAdvisoryRepository } from '@aramo/talent-record';
 import { TaskRepository } from '@aramo/task';
 import {
   AUTHORIZED_TALENT_RETRIEVAL_READ_PORT,
@@ -83,6 +84,7 @@ export class Talent360ReadAdapter implements Talent360ReadPort {
     @Inject(TALENT_360_DOCUMENT_STORAGE)
     private readonly documentStorage: DocumentStoragePort,
     private readonly education: TalentEducationRepository,
+    private readonly advisories: TalentDuplicateAdvisoryRepository,
   ) {}
 
   async loadTalent(
@@ -470,7 +472,7 @@ export class Talent360ReadAdapter implements Talent360ReadPort {
     });
     const confirmed = (kind: string): boolean =>
       head.verifications.some((v) => v.anchor_kind === kind && v.status === 'VERIFIED');
-    const advisoryId = await this.loadDuplicateAdvisory();
+    const advisoryId = await this.loadDuplicateAdvisory(ctx.tenant_id, talent_id);
     return {
       primary_email_confirmed: confirmed('EMAIL'),
       mobile_confirmed: confirmed('PHONE'),
@@ -481,12 +483,17 @@ export class Talent360ReadAdapter implements Talent360ReadPort {
     };
   }
 
-  // TODO(ATI-SEP-1 T10 WP2): the pending within-tenant duplicate advisory for this
-  // record now lives in the ATS (talent-record duplicate-advisory). WP2 wires the
-  // read here (by ctx.tenant_id + talent_id); until then no advisory pointer is
-  // surfaced (the trust-ledger advisory read is retired).
-  private loadDuplicateAdvisory(): Promise<string | null> {
-    return Promise.resolve(null);
+  // ATI-SEP-1 T10 WP4 — the pending within-tenant duplicate advisory for this
+  // record is ATS-local (WP2 talent_record."talent_duplicate_advisory"): the oldest
+  // PENDING_REVIEW advisory naming the record, tenant-scoped. A read hiccup
+  // degrades to no pointer (a profile DETAIL never blanks the page, §28).
+  private async loadDuplicateAdvisory(tenant_id: string, talent_id: string): Promise<string | null> {
+    try {
+      const advisory = await this.advisories.findPendingForRecord(tenant_id, talent_id);
+      return advisory?.id ?? null;
+    } catch {
+      return null;
+    }
   }
 
   async listWorkHistory(

@@ -21,8 +21,10 @@ import { TalentDataInventoryService } from '../talent-identity/talent-data-inven
 // assembly against real Postgres. NO Nest boot — both services take a raw
 // PgExec. Applies every repo migration (so all inventory tables EXIST → the
 // dry-run counts none as 'failed'), seeds ONE rich human across both keyspaces
-// (a superseded husk + trust subject + evidence/event/anchor + education [the
-// TR-7 HALT-note holder] + consent ledger + retained audit), and proves:
+// (a superseded husk + a linked sourced arrival with its raw payload [ATI-SEP-1
+// T10 WP4 — replaces the retired trust subject] + a duplicate advisory +
+// education [the TR-7 HALT-note holder] + consent ledger + retained audit), and
+// proves:
 //   (b) dry-run: full inventory counted, correct counts, ZERO writes;
 //   (d) assembly: every element, read-only (row counts unchanged);
 //   (c) live erase: every holder emptied, husk reached, marker appended, audit
@@ -59,8 +61,8 @@ function allMigrations(): string[] {
 const TENANT = '01900000-0000-7000-8000-0000000000e1';
 const REC = '01900000-0000-7000-8000-0000000000e2'; // live record
 const HUSK = '01900000-0000-7000-8000-0000000000e3'; // superseded husk of REC
-const SUBJ = '01900000-0000-7000-8000-0000000000e4'; // trust subject
-const EV = '01900000-0000-7000-8000-0000000000e5'; // evidence record
+const SOURCED = '01900000-0000-7000-8000-0000000000e4'; // linked sourced arrival (ATI-SEP-1 WP2)
+const EV = '01900000-0000-7000-8000-0000000000e5'; // an opaque published-evidence id (screening)
 const SCREENING_ACTOR = '01900000-0000-7000-8000-0000000000e6'; // TIP-E2E INC-3 recruiter
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
@@ -108,26 +110,28 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         `INSERT INTO talent_record."TalentRecord" (id, tenant_id, first_name, last_name, superseded_by_record_id) VALUES ($1::uuid,$2::uuid,'Ada','L',$3::uuid)`,
         [HUSK, TENANT, REC],
       );
-      // Trust subject + the ATS ref (record→subject).
-      await db.query(`INSERT INTO talent_trust."ResolutionSubject" (id, tenant_id) VALUES ($1::uuid,$2::uuid)`, [SUBJ, TENANT]);
+      // ATI-SEP-1 T10 WP4 — the sourced arrival linked to the record (PROMOTED), its
+      // raw payload (keyed by sourced_talent_id), and a duplicate advisory REC↔HUSK.
       await db.query(
-        `INSERT INTO talent_trust."ResolutionSubjectRef" (id, subject_id, tenant_id, ref_type, ref_id, link_source) VALUES ($1::uuid,$2::uuid,$3::uuid,'ATS_TALENT_RECORD',$4::uuid,'test')`,
-        [uuidv7(), SUBJ, TENANT, REC],
-      );
-      // Evidence (subject keyspace) + its event child + an anchor (PII).
-      await db.query(
-        `INSERT INTO talent_trust."EvidenceRecord" (id, subject_id, tenant_id, dimension, assertion_type, assertion_payload, source_class, method, strength, collected_at, decay_profile, portability_class, current_status, created_by)
-         VALUES ($1::uuid,$2::uuid,$3::uuid,'CLAIMS','EMPLOYMENT','{}'::jsonb,'SELF','SELF_DECLARED',0.3,now(),'SLOW','TENANT_ONLY','VALID','test')`,
-        [EV, SUBJ, TENANT],
+        `INSERT INTO sourced_talent."SourcedTalent" (id, tenant_id, source_channel, external_source_id, provenance, legal_basis, arrived_at) VALUES ($1::uuid,$2::uuid,'INDEED','ext-ada','{}'::jsonb,'{}'::jsonb,now())`,
+        [SOURCED, TENANT],
       );
       await db.query(
-        `INSERT INTO talent_trust."EvidenceEvent" (id, evidence_id, tenant_id, event_type) VALUES ($1::uuid,$2::uuid,$3::uuid,'CREATED')`,
-        [uuidv7(), EV, TENANT],
+        `INSERT INTO talent_record."talent_record_sourced_arrival" (tenant_id, sourced_talent_id, talent_record_id, link_kind) VALUES ($1::uuid,$2::uuid,$3::uuid,'PROMOTED')`,
+        [TENANT, SOURCED, REC],
       );
       await db.query(
-        `INSERT INTO talent_trust."SubjectAnchor" (id, subject_id, tenant_id, anchor_kind, normalized_value, source_evidence_id, source_class) VALUES ($1::uuid,$2::uuid,$3::uuid,'EMAIL','ada@pii.example',$4::uuid,'SELF')`,
-        [uuidv7(), SUBJ, TENANT, EV],
+        `INSERT INTO ingestion."RawPayloadReference" (id, tenant_id, source, source_class, storage_ref, sha256, content_type, captured_at, sourced_talent_id, updated_at)
+         VALUES ($1::uuid,$2::uuid,'indeed','THIRD_PARTY_UNVERIFIED','raw/ada.json','h','application/json',now(),$3::uuid,now())`,
+        [uuidv7(), TENANT, SOURCED],
       );
+      {
+        const [a, b] = REC < HUSK ? [REC, HUSK] : [HUSK, REC];
+        await db.query(
+          `INSERT INTO talent_record."talent_duplicate_advisory" (id, tenant_id, talent_record_a_id, talent_record_b_id, basis, shared_kinds) VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,'EMAIL',ARRAY['EMAIL'])`,
+          [uuidv7(), TENANT, a, b],
+        );
+      }
       // Education (the TR-7 HALT-note holder) — one for the live record AND one
       // for the HUSK, to prove the husk chain is reached.
       for (const rid of [REC, HUSK]) {
@@ -200,9 +204,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const before = await count('talent_record."TalentRecord"', 'true', []);
       const report = await erasure.dryRun(pg, TENANT, REC);
 
-      // Scope: the husk chain is both records; the cluster is the one subject.
+      // Scope: the husk chain is both records; the one linked sourced arrival.
       expect(report.scope.record_ids.sort()).toEqual([REC, HUSK].sort());
-      expect(report.scope.subject_ids).toEqual([SUBJ]);
+      expect(report.scope.sourced_talent_ids).toEqual([SOURCED]);
 
       // Every inventory step exists (migrations applied) → none 'failed'.
       expect(report.steps.every((s) => s.status === 'counted')).toBe(true);
@@ -218,14 +222,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(c('technical_screening."ScreeningFinding"')).toBe(2);
       expect(c('technical_screening."ScreeningEvent"')).toBe(2);
       expect(c('technical_screening."ScreeningEvidencePublication"')).toBe(1);
-      expect(c('talent_trust."EvidenceRecord"')).toBe(1);
-      expect(c('talent_trust."EvidenceEvent"')).toBe(1);
-      expect(c('talent_trust."SubjectAnchor"')).toBe(1);
-      expect(c('talent_trust."ResolutionSubject"')).toBe(1);
+      // ATI-SEP-1 T10 WP4 — ATS-local sourcing holders.
+      expect(c('sourced_talent."SourcedTalent"')).toBe(1);
+      expect(c('ingestion."RawPayloadReference"')).toBe(1);
+      expect(c('talent_record."talent_duplicate_advisory"')).toBe(1);
+      expect(c('talent_record."talent_record_sourced_arrival"')).toBe(1);
+      expect(report.steps.some((s) => s.table.startsWith('talent_trust.'))).toBe(false);
 
       // Audit is NOT in the delete inventory (retained).
       expect(report.retained).toContain('audit."ConsentAuditEvent"');
-      expect(report.retained).toContain('talent_trust."SubjectMergeOperation"');
+      expect(report.retained.some((t) => t.startsWith('talent_trust.'))).toBe(false);
 
       // ZERO writes: the row count is unchanged, nothing was deleted/appended.
       expect(await count('talent_record."TalentRecord"', 'true', [])).toBe(before);
@@ -234,19 +240,21 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     // ---- (d) the assembly: every element, read-only ------------------------
     it('(d) data-inventory assembles every element and writes NOTHING', async () => {
-      const beforeRows = await count('talent_trust."EvidenceRecord"', 'true', []);
+      const beforeRows = await count('sourced_talent."SourcedTalent"', 'true', []);
       const inv = await inventory.assemble(pg, TENANT, REC);
 
       expect(inv.scope.record_ids.sort()).toEqual([REC, HUSK].sort());
-      expect(inv.scope.subject_ids).toEqual([SUBJ]);
+      expect(inv.scope.sourced_talent_ids).toEqual([SOURCED]);
       expect(inv.per_holder_counts.length).toBeGreaterThanOrEqual(30);
       expect(inv.consent_ledger.length).toBe(1);
-      expect(inv.evidence_timeline.length).toBe(1); // the CREATED event
+      expect(inv.sourced_arrivals.length).toBe(1);
+      expect(inv.raw_payload_refs.length).toBe(1);
+      expect(inv.duplicate_advisories.length).toBe(1);
       expect(inv.is_anonymized).toBe(false); // not yet erased
       expect(inv.total_rows).toBeGreaterThan(0);
 
       // Read-only: unchanged.
-      expect(await count('talent_trust."EvidenceRecord"', 'true', [])).toBe(beforeRows);
+      expect(await count('sourced_talent."SourcedTalent"', 'true', [])).toBe(beforeRows);
     });
 
     // ---- (c) the live erase: every holder emptied + audit retained + idempotent
@@ -268,11 +276,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await count('talent_evidence."TalentEducationEntry"', 'talent_id = ANY($1::uuid[])', [[REC, HUSK]])).toBe(0); // HALT-note holder reached, incl husk
       expect(await count('talent_embedding."TalentEmbedding"', 'talent_record_id = ANY($1::uuid[])', [[REC, HUSK]])).toBe(0); // GS-2A residue: zero embedding rows survive erase
       expect(await count('consent."TalentConsentEvent"', 'talent_record_id = $1::uuid', [REC])).toBe(0);
-      expect(await count('talent_trust."EvidenceRecord"', 'subject_id = $1::uuid', [SUBJ])).toBe(0);
-      expect(await count('talent_trust."EvidenceEvent"', 'evidence_id = $1::uuid', [EV])).toBe(0);
-      expect(await count('talent_trust."SubjectAnchor"', 'subject_id = $1::uuid', [SUBJ])).toBe(0);
-      expect(await count('talent_trust."ResolutionSubject"', 'id = $1::uuid', [SUBJ])).toBe(0);
-      expect(await count('talent_trust."ResolutionSubjectRef"', 'subject_id = $1::uuid', [SUBJ])).toBe(0);
+      expect(await count('sourced_talent."SourcedTalent"', 'id = $1::uuid', [SOURCED])).toBe(0);
+      expect(await count('ingestion."RawPayloadReference"', 'sourced_talent_id = $1::uuid', [SOURCED])).toBe(0);
+      expect(await count('talent_record."talent_record_sourced_arrival"', 'sourced_talent_id = $1::uuid', [SOURCED])).toBe(0);
+      expect(await count('talent_record."talent_duplicate_advisory"', 'tenant_id = $1::uuid', [TENANT])).toBe(0);
+      // The retired trust schemas do not exist (ATI-SEP-1 T10 WP5 drop migration).
+      expect((await db.query(`SELECT to_regnamespace('talent_trust') AS n`)).rows[0].n).toBeNull();
 
       // TIP-E2E INC-3 (§13 rows 25/47) — zero screening residue; every screening step
       // reports 'deleted' (plain governed DELETEs; no trigger refused them).

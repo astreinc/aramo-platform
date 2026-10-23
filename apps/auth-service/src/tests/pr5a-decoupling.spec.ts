@@ -19,7 +19,6 @@ const AUTH_APP_DIR = resolve(__dirname, '../app/auth');
 
 const FORBIDDEN_LIBS = [
   '@aramo/identity',
-  '@aramo/identity-index',
   '@aramo/mailer',
   '@aramo/portal-identity',
 ] as const;

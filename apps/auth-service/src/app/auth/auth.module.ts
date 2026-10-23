@@ -4,7 +4,6 @@ import { AramoExceptionFilter, CommonModule } from '@aramo/common';
 import { IdentityCoreModule } from '@aramo/identity';
 import { AuthStorageModule } from '@aramo/auth-storage';
 import { PortalIdentityModule } from '@aramo/portal-identity';
-import { IdentityIndexModule } from '@aramo/identity-index';
 import { MailerModule } from '@aramo/mailer';
 import { AUDIT_SINK } from '@aramo/auth-core';
 import { AuthController } from '@aramo/auth-core';
@@ -30,7 +29,7 @@ import { SessionOrchestratorService } from '@aramo/auth-core';
 import { PortalIdentityRepositoryAdapter } from './portal-identity-repository.adapter.js';
 import { MailerEmailSenderAdapter } from './mailer-email-sender.adapter.js';
 import { IdentityPrincipalDirectoryAdapter } from './identity-principal-directory.adapter.js';
-import { IdentityIndexEligibilityAdapter } from './identity-index-eligibility.adapter.js';
+import { PortalDeferredEligibilityAdapter } from './portal-deferred-eligibility.adapter.js';
 import { IdentityHostContextAdapter } from './identity-host-context.adapter.js';
 import { IdentityAuditSinkAdapter } from './identity-audit-sink.adapter.js';
 
@@ -51,15 +50,15 @@ import { IdentityAuditSinkAdapter } from './identity-audit-sink.adapter.js';
     IdentityCoreModule,
     AuthStorageModule,
     // Portal P1 — passwordless portal login deps: the portal identity +
-    // login-token store, the PII-free index (eligibility fingerprint lookup,
-    // aperture 1), and the mailer (magic-link send via the standing mail path).
+    // login-token store and the mailer (magic-link send via the standing mail
+    // path). ATI-SEP-1 T10 WP4 (Addendum A4, GAP-PORTAL-ID-1): the retired
+    // identity-index module is no longer imported; eligibility is the
+    // portal-deferred adapter below (no eligibility for any address).
     //
-    // Auth-Decoupling PR-2/3 (§2.4): IdentityIndexModule + MailerModule remain
-    // imported at the MODULE level to supply the adapters below — that residual
-    // module-level coupling is PR-5's to remove. The SERVICE-level coupling
-    // (PortalLoginService importing them directly) is gone, which is this PR's point.
+    // Auth-Decoupling PR-2/3 (§2.4): MailerModule remains imported at the MODULE
+    // level to supply the adapters below. The SERVICE-level coupling
+    // (PortalLoginService importing it directly) is gone.
     PortalIdentityModule,
-    IdentityIndexModule,
     MailerModule,
   ],
   controllers: [AuthController, JwksController, PortalAuthController],
@@ -76,10 +75,11 @@ import { IdentityAuditSinkAdapter } from './identity-audit-sink.adapter.js';
     PortalLoginService,
     PortalLoginBudget,
     // Auth-Decoupling PR-2/3 — bind auth's ports to the Aramo adapters. The
-    // adapters are the ONLY code that imports @aramo/mailer / @aramo/identity-index /
-    // computeEmailFingerprint; PortalLoginService depends only on the ports.
+    // adapters are the ONLY code that imports @aramo/mailer; PortalLoginService
+    // depends only on the ports. ELIGIBILITY_POLICY → the A4 portal-deferred
+    // adapter (GAP-PORTAL-ID-1): always null = no eligibility.
     { provide: EMAIL_SENDER, useClass: MailerEmailSenderAdapter },
-    { provide: ELIGIBILITY_POLICY, useClass: IdentityIndexEligibilityAdapter },
+    { provide: ELIGIBILITY_POLICY, useClass: PortalDeferredEligibilityAdapter },
     // Auth-Decoupling PR-4 — PrincipalDirectory + AuditSink. The adapters are the
     // ONLY code importing IdentityService/TenantService/RoleService/IdentityAuditService
     // for session resolution + audit; the orchestrators + controller depend only on

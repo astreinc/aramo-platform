@@ -7,6 +7,8 @@
 // (libs/intelligence-core/src/tests/intelligence-boundary-negative-control.spec.ts)
 // lints THIS file with `eslint --no-ignore` and asserts
 // @nx/enforce-module-boundaries rejects it. If it ever lints clean, the wall is broken.
-import * as talentTrustCipLib from '@aramo/talent-trust';
+// (ATI-SEP-1 T10 WP5 — re-pointed from the retired talent-trust lib to the
+// surviving scope:cip ingestion lib.)
+import * as ingestionCipLib from '@aramo/ingestion';
 
-export const INTELLIGENCE_TO_CIP_NEGATIVE_CONTROL = talentTrustCipLib;
+export const INTELLIGENCE_TO_CIP_NEGATIVE_CONTROL = ingestionCipLib;

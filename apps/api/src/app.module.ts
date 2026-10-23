@@ -25,7 +25,6 @@ import { IdentityModule, IdentityCoreModule, AuthorizationResolverModule } from 
 // HF-AUTH-1 — the fixed portal session scope set, passed to the resolver so a
 // version-1 portal token resolves to it server-side (portal carries no scopes).
 import { PORTAL_SESSION_SCOPES } from '@aramo/auth-core';
-import { IdentityIndexModule } from '@aramo/identity-index';
 import { PortalIdentityModule } from '@aramo/portal-identity';
 import { AuthStorageModule } from '@aramo/auth-storage';
 import { ImportModule } from '@aramo/import';
@@ -67,7 +66,6 @@ import {
   ResumeReindexModule,
   ResumeExtractionDraftWorkerModule,
 } from '@aramo/talent-record';
-import { TalentTrustModule } from '@aramo/talent-trust';
 import { TaskModule } from '@aramo/task';
 
 import { EsignServiceHttpProvider } from './sign/esign-service-http.provider.js';
@@ -146,7 +144,6 @@ import { PortalRtbfService } from './talent-identity/portal-rtbf.service.js';
 import { PromotionService } from './talent-identity/promotion.service.js';
 import { DuplicateDetectionService } from './talent-identity/duplicate-detection.service.js';
 import { RecordReconcileOrchestrator } from './talent-identity/record-reconcile.orchestrator.js';
-import { IdentityMaintenanceModule } from './jobs/identity-maintenance.module.js';
 import { JobDistributionSyncModule } from './job-distribution/job-distribution.module.js';
 import { SourcingController } from './talent-identity/sourcing.controller.js';
 import { SourcingService } from './talent-identity/sourcing.service.js';
@@ -247,22 +244,16 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // contradiction resolve, dispute disposition, email OTP request/status +
     // the public OTP confirm), re-pointed onto Talent Intelligence (fail-soft).
     IntelligenceTrustSurfacesModule,
-    // TR-2a-1 — the anchor producer (apps/api, above the I15 wall) records
-    // TalentRecord identifier anchors into the trust ledger. TalentTrustModule
-    // provides TalentTrustService; TalentRecordModule (above) provides the
-    // repository the producer reads. Composition-root wiring — talent_trust
-    // (cip) never imports talent-record (ats).
-    TalentTrustModule,
     // TR-3 B2 — the email-verification flow's mailer edge. apps/api →
     // @aramo/mailer is a NEW direct edge (previously only IdentityModule imported
     // MailerModule, in its own scope). MailerModule is a pure static leaf (no
     // forRoot) so MAILER_PORT binds once and EmailVerificationService resolves it.
     MailerModule,
     PortalModule,
-    // Portal P4b — the talent RTBF surface composes purgeCluster
-    // (IdentityIndexModule), the portal identity store (PortalIdentityModule),
-    // and refresh-token revoke (AuthStorageModule) at the composition root.
-    IdentityIndexModule,
+    // Portal P4b — the talent RTBF surface composes the portal identity store
+    // (PortalIdentityModule) and refresh-token revoke (AuthStorageModule) at the
+    // composition root. ATI-SEP-1 T10: the identity-index cluster purge is gone
+    // with that schema.
     PortalIdentityModule,
     AuthStorageModule,
     // PR-A3 Gate 5 — second ATS-domain leaf. RequisitionModule carries
@@ -576,15 +567,12 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // re-reads the retained resume with the deterministic parser (no LLM), and
     // writes name/phone/address as THIRD_PARTY_UNVERIFIED declared evidence onto
     // the arrival's resolved_subject_id — unblocking cold-ingest promotion (a
-    // TalentRecord needs a name). Consumer leaf: imports {ingestion, resume-parse,
-    // talent-trust} (all scope:cip). Placed after CanonicalizationModule so a
+    // TalentRecord needs a name). Consumer leaf (scope:cip). Placed after CanonicalizationModule so a
     // subject exists before extraction polls it.
     ColdIngestExtractionModule,
-    // TR-6 B1 (DDR §2/§7) — the identity-maintenance jobs: the hourly incremental
-    // match sweep (D1) + the daily read-only integrity-detection cron (D6). apps/api
-    // boundary layer; imports {talent-trust (cip), talent-record (ats)} — both edges
-    // pre-exist. The SCHEDULES registrar (jobs/registration.ts) enqueues its ticks.
-    IdentityMaintenanceModule,
+    // ATI-SEP-1 T10 WP5 — the TR-6 / TR-2b identity-maintenance job module
+    // (identity-index lifecycle sweep + dormant-notice delivery) is deleted with
+    // the identity_index / trust schemas.
     // SRC-2 PR-3 — the Indeed Job Sync freshness sweep (5-min BullMQ tick).
     JobDistributionSyncModule,
     // A8-3a — ObjectStorageModule (new leaf lib). The platform's first
@@ -721,7 +709,7 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // (*.aramo.ai via certbot DNS-01), so no per-host issuance gate exists.
     // TenantService.findActiveBySlug survives for its other callers.
     // TR-2a-3 — the privileged advisory-resolution surface (approve-merge /
-    // dismiss / reverse / list). Lives here (not libs/talent-trust) because it is
+    // dismiss / reverse / list). Lives here (not in a cip lib) because it is
     // the composition-root HTTP edge ABOVE the I15 wall calling the cip resolution
     // service; gated by the tenant-scoped identity:resolve scope (admin tier).
     AdvisoryResolutionController,

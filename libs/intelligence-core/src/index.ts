@@ -141,6 +141,8 @@ export {
   VerificationDeliveryModule,
   mailerConfigured,
   renderVerificationCodeEmail,
+  buildVerificationConfirmLink,
+  INTELLIGENCE_VERIFY_LINK_BASE_ENV,
   selectVerificationDelivery,
 } from './lib/verification/mailer-verification-delivery.js';
 export { VerificationRefusedError, VerificationService, type ConfirmResult } from './lib/verification/verification.service.js';

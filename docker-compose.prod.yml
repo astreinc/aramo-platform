@@ -571,6 +571,11 @@ services:
       - AWS_REGION
       - AWS_ACCESS_KEY_ID
       - AWS_SECRET_ACCESS_KEY
+      # ATI-SEP-1 T10 WP4 — OPTIONAL origin of the confirm-page link in the verification
+      # email (<base>/email-verifications/confirm?verification_id=<id>). TI does not know a
+      # tenant's host, so this is ONE configured origin. Unset ⇒ the email carries the
+      # 6-digit code only.
+      - INTELLIGENCE_VERIFY_LINK_BASE
     healthcheck:
       # GET /health answers 200 only when the TI database responds.
       test: ['CMD', 'node', '-e', "require('http').get({host:'127.0.0.1',port:3004,path:'/health',timeout:2500},(r)=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]

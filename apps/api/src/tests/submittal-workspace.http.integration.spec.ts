@@ -54,7 +54,6 @@ const MIGRATION_FILES: string[] = [
   ...migrationsFor('documents'),
   ...migrationsFor('client-talent-restriction'),
   ...migrationsFor('communications'),
-  ...migrationsFor('talent-trust'),
   ...migrationsFor('conversation-intelligence'),
 ];
 

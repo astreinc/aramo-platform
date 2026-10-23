@@ -1,6 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AramoError, normalizeEmail } from '@aramo/common';
-import { ClusterPurgeService } from '@aramo/identity-index';
 import { PortalIdentityRepository } from '@aramo/portal-identity';
 import { RefreshTokenService } from '@aramo/auth-storage';
 
@@ -11,16 +10,19 @@ import { RefreshTokenService } from '@aramo/auth-storage';
 // needs no dedicated scope: Option A gate).
 //
 // D-2 — platform-rail erasure, NOT the tenants':
-//   purgeCluster(cluster_id, 'talent_rtbf')  — fingerprints, cluster, arrival
-//     stamps, DormantLink, cluster-keyed PortalDispute, and NULLs PortalUser.cluster_id
-//   → then eraseByPortalUser — the portal_identity residue purgeCluster leaves:
-//     NoticeDelivery (P4a, explicit — the D-2 ruling now due), PortalLoginToken,
-//     the PortalUser row itself.
+//   eraseByPortalUser — the portal_identity rows: NoticeDelivery (P4a),
+//     PortalLoginToken, the PortalUser row itself.
 //   Tenant-rail records are untouched — each tenant is a separate controller.
 //
-// Ordering: purge (cluster-keyed) → delete residue → revoke sessions. Each step is
-// atomic; a mid-sequence failure leaves the identity re-erasable (idempotent — a
-// re-run finds the now-cluster-less user and finishes the residue delete).
+// ATI-SEP-1 T10 WP4 — the former step 1 (purgeCluster over the cross-tenant
+// identity index: fingerprints, cluster, arrival stamps, DormantLink,
+// cluster-keyed PortalDispute) is GONE with the identity_index / platform_trust
+// schemas. PortalUser.cluster_id is inert (Addendum A4); it is deleted with the
+// PortalUser row and never dereferenced.
+//
+// Ordering: delete portal_identity rows → revoke sessions. Each step is atomic; a
+// mid-sequence failure leaves the identity re-erasable (idempotent — a re-run
+// finds no user, revokes defensively, and succeeds).
 //
 // D-3 — GRAVE type-to-confirm (the erase-talent re-type-the-id pattern, as UI): the
 // caller must re-type their OWN email; a mismatch refuses with no erasure.
@@ -30,7 +32,6 @@ export class PortalRtbfService {
 
   constructor(
     private readonly portalIdentity: PortalIdentityRepository,
-    private readonly purge: ClusterPurgeService,
     private readonly refreshTokens: RefreshTokenService,
   ) {}
 
@@ -63,14 +64,8 @@ export class PortalRtbfService {
       );
     }
 
-    // D-2 step 1 — purge the platform-rail cluster-keyed data (if the identity is
-    // linked to a cluster). platform_trust/identity_index/ingestion, NEVER tenant.
-    if (user.cluster_id !== null) {
-      await this.purge.purgeCluster(user.cluster_id, 'talent_rtbf');
-    }
-
-    // D-2 step 2 — the portal_identity residue purgeCluster does not delete
-    // (NoticeDelivery + login tokens + the PortalUser row).
+    // D-2 — the portal_identity rows (NoticeDelivery + login tokens + the
+    // PortalUser row, whose inert cluster_id goes with it).
     const erased = await this.portalIdentity.eraseByPortalUser({
       portalUserId: user.id,
       emailNormalized: user.email_normalized,
@@ -87,7 +82,6 @@ export class PortalRtbfService {
       event: 'portal_identity_erased',
       caller: 'talent_rtbf',
       portal_user_id: user.id,
-      cluster_id: user.cluster_id,
       notice_deliveries_deleted: erased.notice_deliveries_deleted,
       login_tokens_deleted: erased.login_tokens_deleted,
       portal_user_deleted: erased.portal_user_deleted,

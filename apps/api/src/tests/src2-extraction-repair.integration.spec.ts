@@ -16,7 +16,6 @@ import {
   ARAMO_POSTGRES_TEST_IMAGE, AramoError } from '@aramo/common';
 import { SourcedTalentModule } from '@aramo/sourced-talent';
 import { CanonicalizationModule, CanonicalizationService } from '@aramo/canonicalization';
-import { TalentTrustModule } from '@aramo/talent-trust';
 import { TalentRecordModule } from '@aramo/talent-record';
 import { ConsentModule } from '@aramo/consent';
 import { ObjectStorageService, ObjectStorageModule } from '@aramo/object-storage';
@@ -81,8 +80,6 @@ function migrationsFor(lib: string): string[] {
 const MIGRATIONS = [
   ...migrationsFor('ingestion'),
   ...migrationsFor('canonicalization'),
-  ...migrationsFor('identity-index'),
-  ...migrationsFor('talent-trust'),
   ...migrationsFor('sourced-talent'),
   ...migrationsFor('talent-record'),
   ...migrationsFor('consent'),
@@ -176,12 +173,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return row.rows[0].id as string;
     }
 
-    // ATI-SEP-1 T10 WP2 — canonicalize no longer mints a trust subject, so "no
-    // Talent evidence" is asserted tenant-wide on the (still migrated) ledger.
-    const identityEvidenceCount = async (tenantId: string): Promise<number> => {
+    // ATI-SEP-1 T10 WP5 — the trust ledger is retired (schema dropped), so "no
+    // Talent minted" is asserted tenant-wide on the ATS TalentRecord table.
+    const talentRecordCount = async (tenantId: string): Promise<number> => {
       const r = await db.query(
-        `SELECT COUNT(*)::int AS c FROM "talent_trust"."EvidenceRecord"
-           WHERE tenant_id=$1 AND dimension='IDENTITY' AND assertion_type='FULL_NAME' AND current_status='VALID'`,
+        `SELECT COUNT(*)::int AS c FROM "talent_record"."TalentRecord" WHERE tenant_id=$1`,
         [tenantId],
       );
       return r.rows[0].c;
@@ -219,7 +215,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           ObjectStorageModule,
           ColdIngestExtractionModule, // the inert PARKED processor
           IngestionModule,
-          TalentTrustModule,
           SourcedTalentModule,
           CanonicalizationModule,
           TalentRecordModule,
@@ -303,8 +298,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // writes, no markers). createPresignedGet would throw if bytes were read.
       await processor.process({ id: 'src2-parked-tick' } as Job);
 
-      // No IDENTITY evidence was minted by cold-ingest.
-      expect(await identityEvidenceCount(TENANT_ID)).toBe(0);
+      // No Talent was minted by cold-ingest.
+      expect(await talentRecordCount(TENANT_ID)).toBe(0);
       // The extract-once gate is still NULL — the arrival remains STAGED.
       const after = await db.query(
         `SELECT extraction_done_at FROM "ingestion"."RawPayloadReference" WHERE id=$1`,

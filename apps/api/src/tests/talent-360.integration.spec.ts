@@ -58,10 +58,10 @@ const MIGRATION_FILES: string[] = [
   ...migrationsFor('submittal-eligibility'),
   ...migrationsFor('documents'),
   ...migrationsFor('client-talent-restriction'),
-  // Talent 360 additionally composes across communications (last contact) and
-  // talent-trust (identity outcomes via the dossier).
+  // Talent 360 additionally composes across communications (last contact). The
+  // identity outcomes come from Talent Intelligence (fail-soft, unconfigured here)
+  // + the ATS-local duplicate advisory (talent-record, above).
   ...migrationsFor('communications'),
-  ...migrationsFor('talent-trust'),
   // Boot-only: the CI reconciler's onModuleInit scan needs its table present.
   ...migrationsFor('conversation-intelligence'),
 ];
@@ -157,6 +157,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // Fixture ids.
     let mainTalent = '';
     let emptyTalent = '';
+    let mainAdvisoryId = '';
     let supersededTalent = '';
     let survivorTalent = '';
     let tenantBTalent = '';
@@ -329,29 +330,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [randomUUID(), TENANT_A, title, new Date(NOW + DAY), RECRUITER, ADMIN, talent],
       );
     }
-    async function seedTrustDossier(talent: string) {
-      const subj = randomUUID();
-      const subjB = randomUUID();
-      await db.query(`INSERT INTO talent_trust."ResolutionSubject" (id, tenant_id, status, created_at) VALUES ($1,$2,'ACTIVE',now())`, [subj, TENANT_A]);
-      await db.query(`INSERT INTO talent_trust."ResolutionSubject" (id, tenant_id, status, created_at) VALUES ($1,$2,'ACTIVE',now())`, [subjB, TENANT_A]);
+    // ATI-SEP-1 T10 WP4 — a PENDING_REVIEW within-tenant duplicate advisory (ATS-local,
+    // WP2) between `talent` and `other` (canonical pair order a < b).
+    async function seedDuplicateAdvisory(talent: string, other: string): Promise<string> {
+      const id = randomUUID();
+      const [a, b] = talent < other ? [talent, other] : [other, talent];
       await db.query(
-        `INSERT INTO talent_trust."ResolutionSubjectRef" (id, subject_id, tenant_id, ref_type, ref_id, linked_at, link_source) VALUES ($1,$2,$3,'ATS_TALENT_RECORD',$4,now(),'seed')`,
-        [randomUUID(), subj, TENANT_A, talent],
+        `INSERT INTO talent_record."talent_duplicate_advisory" (id, tenant_id, talent_record_a_id, talent_record_b_id, basis, shared_kinds, status)
+         VALUES ($1,$2,$3,$4,'EMAIL',ARRAY['EMAIL'],'PENDING_REVIEW')`,
+        [id, TENANT_A, a, b],
       );
-      for (const kind of ['EMAIL', 'PHONE']) {
-        await db.query(
-          `INSERT INTO talent_trust."SubjectAnchor" (id, subject_id, tenant_id, anchor_kind, normalized_value, source_evidence_id, source_class, created_at) VALUES ($1,$2,$3,$4,$5,$6,'seed',now())`,
-          [randomUUID(), subj, TENANT_A, kind, `${kind.toLowerCase()}:v`, randomUUID()],
-        );
-        await db.query(
-          `INSERT INTO talent_trust."VerificationRequest" (id, tenant_id, talent_record_id, subject_id, anchor_kind, normalized_value, token_hash, status, created_by, created_at, expires_at) VALUES ($1,$2,$3,$4,$5,$6,$7,'CONFIRMED',$8,now(),$9)`,
-          [randomUUID(), TENANT_A, talent, subj, kind, `${kind.toLowerCase()}:v`, randomUUID(), ADMIN, new Date(NOW + DAY)],
-        );
-      }
-      await db.query(
-        `INSERT INTO talent_trust."SubjectMatchAdvisory" (id, tenant_id, subject_a_id, subject_b_id, advise_band, has_contradiction, match_basis, status, created_by, created_at) VALUES ($1,$2,$3,$4,'POSSIBLE',false,'{}'::jsonb,'PENDING_REVIEW',$5,now())`,
-        [randomUUID(), TENANT_A, subj, subjB, ADMIN],
-      );
+      return id;
     }
 
     beforeAll(async () => {
@@ -437,7 +426,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await seedActivity(mainTalent, 'note', NOW - 60_000);
       await seedConsentGranted(mainTalent);
       await seedTask(mainTalent, 'Debrief call with Divya');
-      await seedTrustDossier(mainTalent);
+      const twinTalent = await seedTalent({ first: 'Divya', last: 'Twin', email: 'divya.twin@example.com' });
+      mainAdvisoryId = await seedDuplicateAdvisory(mainTalent, twinTalent);
 
       // Superseded talent still has an episode — it must NEVER reconstruct it.
       await seedPipeline(req1, supersededTalent, 'qualified');
@@ -499,17 +489,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect(rtr.signed_at).not.toBeNull();
       });
 
-      it('identity outcomes fail soft when Talent Intelligence is not configured (ATI-SEP-1 T10 WP3b)', async () => {
+      it('identity outcomes: TI fail-soft + the ATS-local duplicate advisory pointer (ATI-SEP-1 T10 WP3b/WP4)', async () => {
         // Contact confirmation is now a VERIFIED contact fact in Talent
         // Intelligence; this spec runs with TI unconfigured, so nothing is
         // confirmed and the page still renders (200). The duplicate advisory is
-        // ATS-local (WP2 hook — none surfaced yet). The legacy trust-ledger seed is
-        // no longer read.
+        // ATS-local (WP2 talent_duplicate_advisory): the PENDING_REVIEW pointer.
         const { status, body } = await get(mainTalent, await jwt(FULL_SCOPES));
         expect(status).toBe(200);
         expect(body.identity.primary_email_confirmed).toBe(false);
         expect(body.identity.mobile_confirmed).toBe(false);
-        expect(body.identity.advisory).toBeNull();
+        expect(body.identity.advisory).toMatchObject({ advisory_id: mainAdvisoryId });
       });
 
       it('keeps relationship counts single-TalentRecord scoped (active + closed = 4, no merged-human claim)', async () => {

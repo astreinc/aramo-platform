@@ -66,10 +66,6 @@ export default defineConfig({
       // login tokens). Imported by auth-service (login flow) and apps/api
       // (portal reads, P2). Mirrors tsconfig.base.json; the add-alias-in-same-PR lesson.
       '@aramo/portal-identity': resolve(root, 'libs/portal-identity/src/index.ts'),
-      // TR-2b B2a — platform-trust leaf (DormantLink substrate). Imported by
-      // apps/api (the identity-index lifecycle sweep's flag-gated dormant mint).
-      // Mirrors tsconfig.base.json; the add-alias-in-same-PR lesson.
-      '@aramo/platform-trust': resolve(root, 'libs/platform-trust/src/index.ts'),
       // Cold-Ingest Extraction — the resolved-arrival → declared-evidence poll
       // (scope:cip). Mirrors tsconfig.base.json @aramo/cold-ingest-extraction so
       // vitest resolves the apps/api AppModule import + the lib's unit/integration
@@ -122,12 +118,6 @@ export default defineConfig({
       // resolves the apps/api AppModule import + the D5 catalog tests.
       '@aramo/field-masking': resolve(root, 'libs/field-masking/src/index.ts'),
       '@aramo/identity': resolve(root, 'libs/identity/src/index.ts'),
-      // Step 4b (ADR-0016) — identity-index leaf (the PII-free cross-tenant
-      // resolution index; PersonCluster + the fingerprint store). Mirrors
-      // tsconfig.base.json so vitest runtime resolves the @aramo/identity-index
-      // import added to CanonicalizationModule (the first cross-lib runtime
-      // importer). The add-alias-in-same-PR lesson.
-      '@aramo/identity-index': resolve(root, 'libs/identity-index/src/index.ts'),
       // PR-A8-1 Gate 5 — import-engine leaf (audited reversible batches
       // + partial-commit). Mirrors tsconfig.base.json alias so vitest
       // runtime resolves the apps/api AppModule import + the A8-1
@@ -252,9 +242,6 @@ export default defineConfig({
       // Core libs/talent identity. Amendment §3.)
       '@aramo/talent-record': resolve(root, 'libs/talent-record/src/index.ts'),
       '@aramo/talent-intelligence': resolve(root, 'libs/talent-intelligence/src/index.ts'),
-      // TR-2a-1 — talent-trust (the trust ledger + within-tenant anchors). The
-      // apps/api anchor producer imports it above the I15 wall.
-      '@aramo/talent-trust': resolve(root, 'libs/talent-trust/src/index.ts'),
       // Tasks backend — task leaf (the actionable/assignable to-do; the last
       // core recruiter surface). Mirrors tsconfig.base.json @aramo/task alias
       // so vitest runtime resolves the apps/api AppModule import (TaskModule +

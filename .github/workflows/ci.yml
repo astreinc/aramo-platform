@@ -489,26 +489,6 @@ jobs:
         if: ${{ !cancelled() }}
         run: npm run release-manifest:selftest
 
-  # identity-index:privacy-wall is deliberately NOT folded into static-governance.
-  # Its LOCKED directives (Aramo-TR2b-DDR §I14 line 83; Aramo-TR2b-B1 line 41) mandate a
-  # "first-class named CI gate … visible in the required-checks list, not folded" — a
-  # visibility rationale that exceeds CI execution topology, so the CI-Velocity-2 governed-
-  # aggregate equivalence amendment (which is topology-only) does not cover it. It stays a
-  # standalone job in deployment-gate.needs, honoring TR2b literally. (identity_index carries
-  # a hard privacy invariant: no tenant_id, no PII, ever.)
-  identity-index-privacy-wall:
-    name: identity-index:privacy-wall
-    runs-on: ubuntu-latest
-    needs: install
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
-      - run: npm run identity-index:privacy-wall
-
   verify-vocabulary:
     name: verify:vocabulary
     runs-on: ubuntu-latest
@@ -933,7 +913,6 @@ jobs:
       - contract-parity-check # GLH-1-C — governed API route<->OpenAPI parity
       - aggregate-gate-check # GLH-1 A+B — pins the above INTO this needs list
       - static-governance # CI-Velocity-2 — consolidated cheap governance walls (named steps)
-      - identity-index-privacy-wall # TR2b-DDR/B1 — kept standalone (visibility rationale, not folded)
       - pact-consumer
       - pact-provider
       - test-unit

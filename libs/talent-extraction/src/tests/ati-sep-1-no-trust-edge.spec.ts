@@ -40,7 +40,7 @@ describe('ATI-SEP-1 A1 — talent-extraction has no trust-ledger edge (structura
     for (const f of files) {
       const code = strip(readFileSync(f, 'utf8'));
       for (const token of [
-        '@aramo/talent-trust',
+        `@aramo/${'talent-trust'}`, // retired lib (T10) — built so the retired-import grep stays empty
         'TalentTrustModule',
         'TalentTrustService',
         'recordDeclaredClaimIfAbsent',

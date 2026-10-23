@@ -125,7 +125,7 @@ function printReport(logger: Logger, report: ErasureReport): void {
   logger.log(`erase-talent [${report.mode}] tenant=${report.tenant_id} record=${report.record_id} outcome=${report.outcome}`);
   logger.log(
     `  scope: ${report.scope.record_ids.length} record(s) (husk chain), ` +
-      `${report.scope.subject_ids.length} trust subject(s), ${report.storage.total} object-storage artifact(s)`,
+      `${report.scope.sourced_talent_ids.length} linked sourced arrival(s), ${report.storage.total} object-storage artifact(s)`,
   );
   for (const b of report.blockers) {
     logger.warn(`  BLOCKER [${b.classification}] ${b.holder}: ${b.count} row(s) — ${b.reason} (needs: ${b.authority})`);
@@ -137,12 +137,6 @@ function printReport(logger: Logger, report: ErasureReport): void {
   const st = report.storage;
   logger.log(`  storage: ${st.purged} purged, ${st.pending} pending, ${st.failed} failed (of ${st.total})`);
   logger.log(`  RETAINED (audit, not deleted): ${report.retained.join(', ')}`);
-  const cp = report.cluster_purge;
-  const clusterVerb = report.mode === 'dry-run' ? 'would-purge' : 'purged';
-  logger.log(
-    `  clusters: ${cp.captured_cluster_ids.length} referenced, ${cp.orphaned_cluster_ids.length} orphaned → ${clusterVerb}` +
-      (cp.orphaned_cluster_ids.length > 0 ? ` [${cp.orphaned_cluster_ids.join(', ')}]` : ''),
-  );
 }
 
 void main();

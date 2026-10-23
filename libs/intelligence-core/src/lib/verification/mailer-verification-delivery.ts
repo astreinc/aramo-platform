@@ -24,20 +24,62 @@ import {
 // The code is placed only in the message body handed to the mailer. It is
 // never logged (the log line carries the verification id + a masked address).
 // A mailer failure is TRANSIENT (RETRY): the outbox drain retries with backoff.
+//
+// ATI-SEP-1 T10 WP4 — the email ALSO carries a link to the confirm page:
+//   ${INTELLIGENCE_VERIFY_LINK_BASE}/email-verifications/confirm?verification_id=<id>
+// where the talent enters the 6-digit code (the ATS public confirm surface,
+// POST /v1/email-verifications/confirm → TI confirm). The link carries the
+// verification id ONLY — never the code — so possession of the email alone is
+// still the proof. Talent Intelligence does not know a tenant's host, so the
+// base is ONE configured origin (env INTELLIGENCE_VERIFY_LINK_BASE on the TI
+// service, e.g. https://app.aramo.ai). It is OPTIONAL: unset / not an http(s)
+// URL → the email carries the code only (no link).
 
 export const MAILER_PROVIDER_ENV = 'MAILER_PROVIDER';
+export const INTELLIGENCE_VERIFY_LINK_BASE_ENV = 'INTELLIGENCE_VERIFY_LINK_BASE';
 
-export function renderVerificationCodeEmail(message: Pick<VerificationMessage, 'code' | 'expires_at'>): { subject: string; html: string; text: string } {
+/** The confirm-page link for a verification, or null when no valid base is configured. */
+export function buildVerificationConfirmLink(base: string | undefined | null, verificationId: string): string | null {
+  const trimmed = (base ?? '').trim().replace(/\/+$/, '');
+  if (trimmed.length === 0) return null;
+  let url: URL;
+  try {
+    url = new URL(`${trimmed}/email-verifications/confirm`);
+  } catch {
+    return null;
+  }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') return null;
+  url.searchParams.set('verification_id', verificationId);
+  return url.toString();
+}
+
+function escapeHtml(v: string): string {
+  return v.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
+export function renderVerificationCodeEmail(
+  message: Pick<VerificationMessage, 'code' | 'expires_at'>,
+  confirmLink: string | null = null,
+): { subject: string; html: string; text: string } {
   const minutes = Math.max(1, Math.round((message.expires_at.getTime() - Date.now()) / 60_000));
   const code = message.code.replace(/[^0-9]/g, '');
-  const text =
-    `Your Aramo verification code is ${code}.\n\n` +
-    `Enter it where you asked to verify this email address. It expires in about ${minutes} minutes.\n\n` +
-    `If you did not ask for this code, you can ignore this email.`;
+  const where = confirmLink === null
+    ? 'Enter it where you asked to verify this email address.'
+    : 'Enter it on the verification page:';
+  const text = [
+    `Your Aramo verification code is ${code}.`,
+    '',
+    confirmLink === null ? where : `${where} ${confirmLink}`,
+    `It expires in about ${minutes} minutes.`,
+    '',
+    'If you did not ask for this code, you can ignore this email.',
+  ].join('\n');
   const html =
     `<p>Your Aramo verification code is:</p>` +
     `<p style="font-size:24px;font-weight:600;letter-spacing:4px">${code}</p>` +
-    `<p>Enter it where you asked to verify this email address. It expires in about ${minutes} minutes.</p>` +
+    (confirmLink === null
+      ? `<p>${where} It expires in about ${minutes} minutes.</p>`
+      : `<p>${where} <a href="${escapeHtml(confirmLink)}">${escapeHtml(confirmLink)}</a>. It expires in about ${minutes} minutes.</p>`) +
     `<p>If you did not ask for this code, you can ignore this email.</p>`;
   return { subject: 'Your Aramo verification code', html, text };
 }
@@ -45,7 +87,10 @@ export function renderVerificationCodeEmail(message: Pick<VerificationMessage, '
 export class MailerVerificationDeliveryAdapter implements VerificationDeliveryPort {
   private readonly logger = new Logger('VerificationDelivery');
 
-  constructor(private readonly mailer: MailerPort) {}
+  constructor(
+    private readonly mailer: MailerPort,
+    private readonly linkBase: string | undefined = process.env[INTELLIGENCE_VERIFY_LINK_BASE_ENV],
+  ) {}
 
   isAvailable(channel: VerificationMessage['channel']): boolean {
     return channel === 'EMAIL';
@@ -53,7 +98,7 @@ export class MailerVerificationDeliveryAdapter implements VerificationDeliveryPo
 
   async deliver(message: VerificationMessage): Promise<VerificationDeliveryResult> {
     if (!this.isAvailable(message.channel)) return { status: 'NOT_AVAILABLE' };
-    const rendered = renderVerificationCodeEmail(message);
+    const rendered = renderVerificationCodeEmail(message, buildVerificationConfirmLink(this.linkBase, message.verification_id));
     try {
       await this.mailer.send({ to: message.destination, subject: rendered.subject, html: rendered.html, text: rendered.text });
     } catch (err) {

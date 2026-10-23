@@ -251,12 +251,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(pubs[0]!['state']).toBe('PUBLISHED');
       expect(pubs[0]!['trust_status']).toBe('VALID');
 
-      // ATI-SEP-1 T10 WP1 — no trust-ledger evidence for the pinned (inert) id.
-      const ev = await db.query<{ n: number }>(
-        `SELECT count(*)::int AS n FROM talent_trust."EvidenceRecord" WHERE id = $1::uuid`,
-        [pubs[0]!['evidence_record_id']],
-      );
-      expect(ev.rows[0]!.n).toBe(0);
+      // ATI-SEP-1 T10 WP1/WP5 — no trust-ledger evidence for the pinned (inert) id:
+      // the ledger schema itself is retired (dropped).
+      const ev = await db.query<{ gone: boolean }>(`SELECT to_regnamespace('talent_trust') IS NULL AS gone`);
+      expect(ev.rows[0]!.gone).toBe(true);
       // Row 51 — no actor identifier in the pinned publication payload; the real
       // recruiter id lives only in the session.
       const pinned = await db.query<{ canonical_payload: unknown }>(
@@ -378,8 +376,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(retry.status).toBe(200);
       const p = (retry.body['publications'] as Array<Record<string, unknown>>)[0]!;
       expect([p['state'], p['trust_status'], p['attempt_count']]).toEqual(['PUBLISHED', 'VALID', 1]);
-      const ledger = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM talent_trust."EvidenceRecord" WHERE id = $1::uuid`, [p['evidence_record_id']]);
-      expect(ledger.rows[0]!.n).toBe(0);
+      const ledger = await db.query<{ gone: boolean }>(`SELECT to_regnamespace('talent_trust') IS NULL AS gone`);
+      expect(ledger.rows[0]!.gone).toBe(true); // the retired ledger schema is dropped (T10 WP5)
     });
 
     it('DRAFT editing over HTTP: add, edit (DEMONSTRATED needs text), remove, void', async () => {

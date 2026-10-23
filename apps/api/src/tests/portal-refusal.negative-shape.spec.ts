@@ -6,7 +6,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE, resolveTalentTrustMigrations } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -26,23 +26,23 @@ import { AppModule } from '../app.module.js';
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { applyTalentRecordMigrations } from './talent-record-fixtures.js';
 
-// Portal P1 PR-2a — Portal OPEN-4 chain + R10 negative-shape integration test
-// (extends the M3 PR-9 F23 negative-shape spec onto the new records surface).
+// Portal P1 PR-2a — Portal records + R10 negative-shape integration test
+// (extends the M3 PR-9 F23 negative-shape spec onto the records surface).
 //
-// End-to-end (boots AppModule against a Postgres testcontainer):
-//   1. Provision consent + ingestion + examination + job-domain + talent +
-//      entitlement + talent_record + talent_trust + portal_identity migrations.
+// ATI-SEP-1 T10 WP4 — Addendum A4 (Talent Portal identity deferred; gap
+// GAP-PORTAL-ID-1): the legacy OPEN-4 chain (PortalUser.cluster_id → trust-ledger
+// subjects → ATS refs) is retired with the talent_trust / identity_index schemas,
+// so a portal session resolves NO talent. End-to-end (boots AppModule against a
+// Postgres testcontainer):
+//   1. Provision consent + ingestion + examination + job-domain + entitlement +
+//      identity.Tenant + talent_record + portal_identity migrations (no trust).
 //   2. Sign portal / recruiter / unentitled-tenant JWTs (+ an unauthenticated
-//      case). The portal JWT sub = PortalUser.id.
-//   3. Seed the OPEN-4 chain: a PortalUser → cluster → (tenant A) a husk that
-//      merges into the ACTIVE survivor holding the ATS record ref, and (tenant B)
-//      a second subject on the SAME cluster → a second record.
-//   4. GET /v1/portal/records → 200 resolving BOTH records (husk→survivor +
-//      cross-tenant), asserting (A) no R10-class leaks, (B) no PR-8 Match-Class
-//      leaks, (C) the closed PortalProfile envelope.
-//   5. GET /v1/portal/records/:id/{profile,consent} → 200 for an in-chain record;
-//      a record NOT in the chain (or malformed) → a UNIFORM 404.
-//   6. Recruiter JWT → 403 INSUFFICIENT_PERMISSIONS; unauthenticated → 401;
+//      case). The portal JWT sub = PortalUser.id (its cluster_id is INERT).
+//   3. Every /v1/portal records + consent route — the list, per-record reads of a
+//      REAL TalentRecord id, an unknown id, a malformed id, consent grant /
+//      revoke — answers ONE uniform, non-leaking 404 NOT_AVAILABLE, with no
+//      R10 / Match-class leak in the error body.
+//   4. Recruiter JWT → 403 INSUFFICIENT_PERMISSIONS; unauthenticated → 401;
 //      portal-scoped-but-unentitled-tenant JWT → 403 TENANT_CAPABILITY_NOT_ENTITLED.
 //
 // Lives in apps/api (not libs/portal) for the same Nx-cycle reason as PR-8's
@@ -104,29 +104,16 @@ const IDENTITY_TENANT_MIGRATIONS = [
   // IC-4 PR-9 — Tenant.kind (additive, defaulted); the client SELECTs it on every Tenant read.
   '20261015000002_ic4_tenant_kind',
 ].map((n) => resolve(ROOT, `libs/identity/prisma/migrations/${n}/migration.sql`));
-// Portal P1 PR-2a — the OPEN-4 chain provisions talent_trust (ResolutionSubject +
-// ResolutionSubjectRef, the PERSON_CLUSTER → ATS_TALENT_RECORD graph) and
-// portal_identity (PortalUser). Full talent_trust set so the regenerated client's
-// SELECTs resolve every column.
-// G1 — the shared, complete talent-trust set (@aramo/common).
-const TALENT_TRUST_MIGRATION_PATHS = resolveTalentTrustMigrations(ROOT);
+// Portal P1 PR-2a — portal_identity (PortalUser) for the portal session's sub.
 const PORTAL_IDENTITY_MIGRATION = resolve(
   ROOT,
   'libs/portal-identity/prisma/migrations/20260714120000_init_portal_identity/migration.sql',
 );
 
-// The OPEN-4 chain seed ids: a PortalUser (id = JWT sub) → cluster → a live
-// ResolutionSubject holding both the PERSON_CLUSTER ref and the ATS_TALENT_RECORD
-// ref (= the seeded TalentRecord).
+// An INERT legacy cluster pointer on the PortalUser (A4 §3 — kept, never read).
 const CLUSTER_ID = 'cccccccc-cccc-7ccc-8ccc-ccccccccc111';
-const SUBJECT_ID = 'dddddddd-dddd-7ddd-8ddd-ddddddddd111'; // the ACTIVE survivor (tenant A)
-// Husk→survivor proof: a MERGED subject that holds the PERSON_CLUSTER ref and
-// merges into SUBJECT_ID (the survivor that holds the ATS record ref). The chain
-// must follow the husk to the survivor via the standing resolver.
-const HUSK_SUBJECT_ID = 'dddddddd-dddd-7ddd-8ddd-ddddddddd222';
-// Cross-tenant proof: a second tenant referencing the SAME cluster → a 2nd record.
+// A second tenant's live record — never reachable from the portal session.
 const TENANT_B_ID = '33333333-3333-7333-8333-333333333333';
-const SUBJECT_B_ID = 'dddddddd-dddd-7ddd-8ddd-ddddddddd333';
 const RECORD_B_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaabbb';
 
 const ISSUER = 'Aramo Core Auth';
@@ -202,7 +189,7 @@ function assertNoR10OrMatchClass(value: unknown, contextPath: string): void {
 const __authzTestResolver = new ConfigurableTestResolver();
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
-  'Portal records — OPEN-4 chain + R10 negative-shape verification (end-to-end)',
+  'Portal records — A4 identity-deferred uniform 404 + R10 negative-shape verification (end-to-end)',
   () => {
     let container: StartedPostgreSqlContainer;
     let app: INestApplication;
@@ -242,10 +229,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // row) is readable by findSelfProfile.
       await applyTalentRecordMigrations(setup);
 
-      // Portal P1 PR-2a — the OPEN-4 chain schemas.
-      for (const migrationPath of [...TALENT_TRUST_MIGRATION_PATHS, PORTAL_IDENTITY_MIGRATION]) {
-        await setup.query(readFileSync(migrationPath, 'utf8'));
-      }
+      // Portal P1 PR-2a — the portal identity schema (PortalUser).
+      await setup.query(readFileSync(PORTAL_IDENTITY_MIGRATION, 'utf8'));
 
       // PR-A1b §4 — seed the integration-spec tenant with the `portal`
       // capability so the pass-path tests can traverse the gated routes.
@@ -295,54 +280,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ],
       );
 
-      // Portal P1 PR-2a — the OPEN-4 chain seed. sub → PortalUser → cluster →
-      // (cross-tenant) PERSON_CLUSTER holders → (husk→survivor) subjects →
-      // ATS_TALENT_RECORD refs → live records. Two tenants share CLUSTER_ID.
-      //
-      // TENANT A — husk→survivor: the PERSON_CLUSTER ref sits on a MERGED husk
-      // that points at SUBJECT_ID (the ACTIVE survivor holding the record ref).
-      await setup.query(
-        `INSERT INTO talent_trust."ResolutionSubject" (id, tenant_id, status, created_at)
-         VALUES ($1::uuid, $2::uuid, 'ACTIVE', NOW())`,
-        [SUBJECT_ID, TENANT_ID],
-      );
-      await setup.query(
-        `INSERT INTO talent_trust."ResolutionSubject"
-           (id, tenant_id, status, merged_into_subject_id, created_at)
-         VALUES ($1::uuid, $2::uuid, 'MERGED', $3::uuid, NOW())`,
-        [HUSK_SUBJECT_ID, TENANT_ID, SUBJECT_ID],
-      );
-      await setup.query(
-        `INSERT INTO talent_trust."ResolutionSubjectRef"
-           (id, subject_id, tenant_id, ref_type, ref_id, link_source, linked_at)
-         VALUES ($1::uuid,$2::uuid,$3::uuid,'PERSON_CLUSTER',$4::uuid,'seed',NOW())`,
-        ['00000000-0000-7000-8000-0000000000f1', HUSK_SUBJECT_ID, TENANT_ID, CLUSTER_ID],
-      );
-      await setup.query(
-        `INSERT INTO talent_trust."ResolutionSubjectRef"
-           (id, subject_id, tenant_id, ref_type, ref_id, link_source, linked_at)
-         VALUES ($1::uuid,$2::uuid,$3::uuid,'ATS_TALENT_RECORD',$4::uuid,'seed',NOW())`,
-        ['00000000-0000-7000-8000-0000000000f2', SUBJECT_ID, TENANT_ID, PORTAL_TALENT_ID],
-      );
-
-      // Portal P3a — a CONFIRMED email verification on the survivor subject, so
-      // the verification view has one VERIFICATION item to render + dispute.
-      await setup.query(
-        `INSERT INTO talent_trust."SubjectAnchor"
-           (id, subject_id, tenant_id, anchor_kind, normalized_value, source_evidence_id, source_class, created_at)
-         VALUES ($1::uuid,$2::uuid,$3::uuid,'EMAIL','p3a@example.com',$4::uuid,'SELF_ATTESTED',NOW())`,
-        ['00000000-0000-7000-8000-0000000000fa', SUBJECT_ID, TENANT_ID, '00000000-0000-7000-8000-0000000000fe'],
-      );
-      await setup.query(
-        `INSERT INTO talent_trust."VerificationRequest"
-           (id, tenant_id, talent_record_id, subject_id, anchor_kind, normalized_value,
-            token_hash, status, created_by, created_at, expires_at, consumed_at)
-         VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,'EMAIL','p3a@example.com',
-            'seed-hash','CONFIRMED','seed',NOW(),NOW() + INTERVAL '1 day',NOW())`,
-        ['00000000-0000-7000-8000-0000000000fb', TENANT_ID, PORTAL_TALENT_ID, SUBJECT_ID],
-      );
-
-      // TENANT B — cross-tenant: same cluster, a distinct live record.
+      // TENANT B — a distinct live record (never reachable from the portal session).
       await setup.query(
         `INSERT INTO talent_record."TalentRecord"
            (id, tenant_id, first_name, last_name, tenant_status, source_channel,
@@ -350,25 +288,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
          VALUES ($1, $2, 'Portal', 'TalentB', 'active', 'self_signup', NOW(), NOW())`,
         [RECORD_B_ID, TENANT_B_ID],
       );
-      await setup.query(
-        `INSERT INTO talent_trust."ResolutionSubject" (id, tenant_id, status, created_at)
-         VALUES ($1::uuid, $2::uuid, 'ACTIVE', NOW())`,
-        [SUBJECT_B_ID, TENANT_B_ID],
-      );
-      await setup.query(
-        `INSERT INTO talent_trust."ResolutionSubjectRef"
-           (id, subject_id, tenant_id, ref_type, ref_id, link_source, linked_at)
-         VALUES ($1::uuid,$2::uuid,$3::uuid,'PERSON_CLUSTER',$4::uuid,'seed',NOW())`,
-        ['00000000-0000-7000-8000-0000000000f3', SUBJECT_B_ID, TENANT_B_ID, CLUSTER_ID],
-      );
-      await setup.query(
-        `INSERT INTO talent_trust."ResolutionSubjectRef"
-           (id, subject_id, tenant_id, ref_type, ref_id, link_source, linked_at)
-         VALUES ($1::uuid,$2::uuid,$3::uuid,'ATS_TALENT_RECORD',$4::uuid,'seed',NOW())`,
-        ['00000000-0000-7000-8000-0000000000f4', SUBJECT_B_ID, TENANT_B_ID, RECORD_B_ID],
-      );
-
-      // The PortalUser (id = JWT sub) → the shared cluster.
+      // The PortalUser (id = JWT sub) with an INERT legacy cluster_id (A4 §3).
       await setup.query(
         `INSERT INTO portal_identity."PortalUser"
            (id, email_normalized, cluster_id, created_at, updated_at)
@@ -410,6 +330,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         authz_version: __authzTestResolver.grant(TENANT_ID, PORTAL_TALENT_ID, [
           'portal:profile:read',
           'portal:consent:read',
+          // Portal P2a — consent grant / revoke (the A4 uniform-404 proof reaches them).
+          'portal:consent:write',
           // Portal P3a — verification view + dispute rights.
           'portal:verification:read',
           'portal:dispute:read',
@@ -486,135 +408,60 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
     }, 60_000);
 
-    // A well-formed record id NOT reachable through the chain (uniform-404).
+    // A well-formed record id that does not exist anywhere (uniform-404).
     const UNKNOWN_RECORD_ID = 'eeeeeeee-eeee-7eee-8eee-eeeeeeeeeeee';
-    const PORTAL_PROFILE_KEYS = new Set([
-      'talent_id',
-      'tenant_id',
-      // Portal P2 P2b — the selection counterparty is now NAMED (ruling 2).
-      'tenant_name',
-      'tenant_status',
-      'source_channel',
-      'created_at',
-    ]);
+    const MALFORMED_RECORD_ID = 'not-a-uuid';
+    const IDEM = 'cccccccc-cccc-7ccc-8ccc-cccccccccccb';
+    const CONSENT_BODY = JSON.stringify({ scope: 'matching', consent_text_version: 'portal-consent-v1' });
 
-    it('GET /v1/portal/records — 200: OPEN-4 chain resolves husk→survivor + cross-tenant; R10 absence + closed envelope', async () => {
-      const res = await fetch(`http://127.0.0.1:${port}/v1/portal/records`, {
-        method: 'GET',
-        headers: { Authorization: `Bearer ${portalJwt}` },
+    // ATI-SEP-1 T10 WP4 (A4, GAP-PORTAL-ID-1) — ONE uniform, non-leaking answer for
+    // every records / consent route: the list, a REAL record id (in tenant A and in
+    // tenant B), an unknown id and a malformed id — no format / existence /
+    // membership oracle, and no R10 / Match-class field in the error body.
+    const RECORD_ROUTES: Array<[string, string, string | undefined]> = [
+      ['GET', '/v1/portal/records', undefined],
+      ['GET', `/v1/portal/records/${PORTAL_TALENT_ID}/profile`, undefined],
+      ['GET', `/v1/portal/records/${RECORD_B_ID}/profile`, undefined],
+      ['GET', `/v1/portal/records/${UNKNOWN_RECORD_ID}/profile`, undefined],
+      ['GET', `/v1/portal/records/${MALFORMED_RECORD_ID}/profile`, undefined],
+      ['GET', `/v1/portal/records/${PORTAL_TALENT_ID}/consent`, undefined],
+      ['GET', `/v1/portal/records/${UNKNOWN_RECORD_ID}/consent`, undefined],
+      ['GET', `/v1/portal/records/${PORTAL_TALENT_ID}/consent/text`, undefined],
+      ['GET', `/v1/portal/records/${PORTAL_TALENT_ID}/consent/history`, undefined],
+      ['POST', `/v1/portal/records/${PORTAL_TALENT_ID}/consent/grant`, CONSENT_BODY],
+      ['POST', `/v1/portal/records/${PORTAL_TALENT_ID}/consent/revoke`, CONSENT_BODY],
+    ];
+
+    it.each(RECORD_ROUTES)('%s %s — uniform 404 NOT_AVAILABLE (A4)', async (method, path, body) => {
+      const res = await fetch(`http://127.0.0.1:${port}${path}`, {
+        method,
+        headers: {
+          Authorization: `Bearer ${portalJwt}`,
+          'Idempotency-Key': IDEM,
+          ...(body !== undefined ? { 'Content-Type': 'application/json' } : {}),
+        },
+        ...(body !== undefined ? { body } : {}),
       });
-      expect(res.status).toBe(200);
-      const body = (await res.json()) as { records: Record<string, unknown>[] };
-      // (A)+(B): per-field R10 + Match-class absence (recursive over the envelope).
-      assertNoR10OrMatchClass(body, '/v1/portal/records.response');
-      // Closed envelope.
-      expect(new Set(Object.keys(body))).toEqual(new Set(['records']));
-      // TWO records: tenant A (resolved through a husk→survivor) + tenant B (the
-      // same cluster in a second tenant). Cross-tenant + husk-following, proven.
-      expect(body.records).toHaveLength(2);
-      const talentIds = body.records.map((r) => r.talent_id).sort();
-      expect(talentIds).toEqual([PORTAL_TALENT_ID, RECORD_B_ID].sort());
-      const tenantIds = new Set(body.records.map((r) => r.tenant_id));
-      expect(tenantIds).toEqual(new Set([TENANT_ID, TENANT_B_ID]));
-      // Portal P2 P2b — the counterparty is named from identity.Tenant.
-      const namesByTenant = new Map(
-        body.records.map((r) => [r.tenant_id, r.tenant_name]),
-      );
-      expect(namesByTenant.get(TENANT_ID)).toBe('Acme Corp');
-      expect(namesByTenant.get(TENANT_B_ID)).toBe('Globex');
-      for (const rec of body.records) {
-        expect(new Set(Object.keys(rec))).toEqual(PORTAL_PROFILE_KEYS);
-        expect(rec).not.toHaveProperty('source_recruiter_id');
-      }
+      expect(res.status).toBe(404);
+      const json = (await res.json()) as { error: { code: string; message: string; details?: Record<string, unknown> } };
+      assertNoR10OrMatchClass(json, `${path}.response`);
+      expect(json.error.code).toBe('NOT_FOUND');
+      expect(json.error.message).toBe('not available');
+      expect(json.error.details).toEqual({ reason: 'NOT_AVAILABLE' });
     });
 
-    it('GET /v1/portal/records/:id/profile — 200 for an in-chain record; R10 absence + closed key set', async () => {
-      const res = await fetch(
-        `http://127.0.0.1:${port}/v1/portal/records/${PORTAL_TALENT_ID}/profile`,
-        { method: 'GET', headers: { Authorization: `Bearer ${portalJwt}` } },
-      );
-      expect(res.status).toBe(200);
-      const body = (await res.json()) as Record<string, unknown>;
-      assertNoR10OrMatchClass(body, '/v1/portal/records/:id/profile.response');
-      expect(new Set(Object.keys(body))).toEqual(PORTAL_PROFILE_KEYS);
-      expect(body).not.toHaveProperty('source_recruiter_id');
-    });
-
-    it('GET /v1/portal/records/:id/consent — 200 for an in-chain record; R10 absence + closed envelope', async () => {
-      const res = await fetch(
-        `http://127.0.0.1:${port}/v1/portal/records/${PORTAL_TALENT_ID}/consent`,
-        { method: 'GET', headers: { Authorization: `Bearer ${portalJwt}` } },
-      );
-      expect(res.status).toBe(200);
-      const body = (await res.json()) as Record<string, unknown>;
-      assertNoR10OrMatchClass(body, '/v1/portal/records/:id/consent.response');
-      expect(new Set(Object.keys(body))).toEqual(
-        new Set(['talent_record_id', 'tenant_id', 'is_anonymized', 'computed_at', 'scopes']),
-      );
-    });
-
-    it('GET /v1/portal/records/:id/consent/text — 200: the versioned text, named by the record tenant (P2b)', async () => {
-      const res = await fetch(
-        `http://127.0.0.1:${port}/v1/portal/records/${PORTAL_TALENT_ID}/consent/text`,
-        { method: 'GET', headers: { Authorization: `Bearer ${portalJwt}` } },
-      );
-      expect(res.status).toBe(200);
-      const body = (await res.json()) as {
-        version: string;
-        texts: { scope: string; text: string }[];
-      };
-      assertNoR10OrMatchClass(body, '/v1/portal/records/:id/consent/text.response');
-      expect(new Set(Object.keys(body))).toEqual(new Set(['version', 'texts']));
-      expect(body.texts).toHaveLength(5);
-      // Canonical clause names the recipient by tenant_id (the D7 preimage).
-      for (const entry of body.texts) {
-        expect(entry.text).toContain(TENANT_ID);
-      }
-    });
-
-    it('GET /v1/portal/records/:id/consent/history — 200: append-only events, selection-class only (P2b)', async () => {
-      const res = await fetch(
-        `http://127.0.0.1:${port}/v1/portal/records/${PORTAL_TALENT_ID}/consent/history`,
-        { method: 'GET', headers: { Authorization: `Bearer ${portalJwt}` } },
-      );
-      expect(res.status).toBe(200);
-      const body = (await res.json()) as {
-        events: Record<string, unknown>[];
-        next_cursor: string | null;
-        is_anonymized: boolean;
-      };
-      assertNoR10OrMatchClass(body, '/v1/portal/records/:id/consent/history.response');
-      expect(new Set(Object.keys(body))).toEqual(
-        new Set(['events', 'next_cursor', 'is_anonymized']),
-      );
-      // The seeded 'matching' grant is present, and each event carries ONLY the
-      // 5 selection-class fields — no actor/recruiter/trust leak.
-      expect(body.events.length).toBeGreaterThanOrEqual(1);
-      for (const ev of body.events) {
-        expect(new Set(Object.keys(ev))).toEqual(
-          new Set(['event_id', 'scope', 'action', 'created_at', 'expires_at']),
+    it('a portal consent grant through the deferred surface writes NO consent event', async () => {
+      const c = new Client({ connectionString: container.getConnectionUri() });
+      await c.connect();
+      try {
+        const r = await c.query<{ n: number }>(
+          `SELECT count(*)::int AS n FROM consent."TalentConsentEvent" WHERE talent_record_id = $1`,
+          [PORTAL_TALENT_ID],
         );
+        expect(r.rows[0]!.n).toBe(1); // only the seeded recruiter grant
+      } finally {
+        await c.end();
       }
-    });
-
-    it('GET /v1/portal/records/:id/profile — uniform 404 for a record NOT in the caller chain', async () => {
-      const res = await fetch(
-        `http://127.0.0.1:${port}/v1/portal/records/${UNKNOWN_RECORD_ID}/profile`,
-        { method: 'GET', headers: { Authorization: `Bearer ${portalJwt}` } },
-      );
-      expect(res.status).toBe(404);
-      const body = (await res.json()) as { error: { code: string } };
-      expect(body.error.code).toBe('NOT_FOUND');
-    });
-
-    it('GET /v1/portal/records/:id/consent — uniform 404 for a record NOT in the caller chain', async () => {
-      const res = await fetch(
-        `http://127.0.0.1:${port}/v1/portal/records/${UNKNOWN_RECORD_ID}/consent`,
-        { method: 'GET', headers: { Authorization: `Bearer ${portalJwt}` } },
-      );
-      expect(res.status).toBe(404);
-      const body = (await res.json()) as { error: { code: string } };
-      expect(body.error.code).toBe('NOT_FOUND');
     });
 
     it('GET /v1/portal/records — 403 INSUFFICIENT_PERMISSIONS with a recruiter JWT (D)', async () => {

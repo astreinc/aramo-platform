@@ -6,7 +6,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE, TALENT_TRUST_MIGRATIONS, TALENT_EVIDENCE_LATE_COLUMN_MIGRATIONS } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, SKILLS_TAXONOMY_MIGRATIONS, TALENT_EVIDENCE_LATE_COLUMN_MIGRATIONS } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -115,8 +115,9 @@ const MIGRATIONS = [
   'libs/talent-evidence/prisma/migrations/20260915170000_hf2_experience_intelligence/migration.sql',
   'libs/talent-evidence/prisma/migrations/20260915180000_skill_tax_1g_canonical_reconciliation/migration.sql',
   ...TALENT_EVIDENCE_LATE_COLUMN_MIGRATIONS,
-  // talent-trust
-  ...TALENT_TRUST_MIGRATIONS,  // G1 — the shared, complete talent-trust set (@aramo/common)
+  // ATI-SEP-1 P1 — MatchingService reads the ACTIVE platform MatchingPolicyVersion
+  // (skills_taxonomy) on every mint: the shared set (@aramo/common, T10 WP5).
+  ...SKILLS_TAXONOMY_MIGRATIONS,
   // examination
   'libs/examination/prisma/migrations/20260517200000_init_examination_model/migration.sql',
   'libs/examination/prisma/migrations/20260521120000_add_live_list_index/migration.sql',

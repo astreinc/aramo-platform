@@ -272,6 +272,23 @@ export class TalentDuplicateAdvisoryRepository {
     return r === null ? null : toRow(r);
   }
 
+  /**
+   * ATI-SEP-1 T10 WP4 — the oldest PENDING_REVIEW advisory naming this record (as
+   * either side of a record pair, or as the record of an arrival advisory);
+   * tenant-scoped; null when none. The Talent 360 identity-outcome pointer.
+   */
+  async findPendingForRecord(tenantId: string, recordId: string): Promise<DuplicateAdvisoryRow | null> {
+    const r = await this.prisma.talentDuplicateAdvisory.findFirst({
+      where: {
+        tenant_id: tenantId,
+        status: 'PENDING_REVIEW',
+        OR: [{ talent_record_a_id: recordId }, { talent_record_b_id: recordId }],
+      },
+      orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+    });
+    return r === null ? null : toRow(r);
+  }
+
   /** Every advisory naming this sourced arrival (newest first), optionally by status. */
   async listForArrival(
     tenantId: string,

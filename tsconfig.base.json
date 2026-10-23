@@ -66,8 +66,6 @@
       "@aramo/field-masking": ["./libs/field-masking/src/index.ts"],
       "@aramo/examination": ["./libs/examination/src/index.ts"],
       "@aramo/identity": ["./libs/identity/src/index.ts"],
-      "@aramo/identity-index": ["./libs/identity-index/src/index.ts"],
-      "@aramo/platform-trust": ["./libs/platform-trust/src/index.ts"],
       "@aramo/import": ["./libs/import/src/index.ts"],
       "@aramo/integration": ["./libs/integration/src/index.ts"],
       "@aramo/ingestion": ["./libs/ingestion/src/index.ts"],
@@ -106,7 +104,6 @@
       "@aramo/talent-extraction": ["./libs/talent-extraction/src/index.ts"],
       "@aramo/talent-record": ["./libs/talent-record/src/index.ts"],
       "@aramo/talent-intelligence": ["./libs/talent-intelligence/src/index.ts"],
-      "@aramo/talent-trust": ["./libs/talent-trust/src/index.ts"],
       "@aramo/task": ["./libs/task/src/index.ts"],
       "@aramo/visibility": ["./libs/visibility/src/index.ts"]
     }

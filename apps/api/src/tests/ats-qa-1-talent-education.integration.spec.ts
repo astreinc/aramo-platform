@@ -66,7 +66,6 @@ const MIGRATION_FILES: string[] = [
   ...migrationsFor('documents'),
   ...migrationsFor('client-talent-restriction'),
   ...migrationsFor('communications'),
-  ...migrationsFor('talent-trust'),
   ...migrationsFor('talent-evidence'),
   ...migrationsFor('conversation-intelligence'),
 ];
@@ -244,15 +243,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       return r.rows[0].n;
     }
-    async function claimsFor(entryId: string) {
-      const r = await db.query(
-        `SELECT id, assertion_type, dimension, source_class, method, ai_derived, current_status, created_by, assertion_payload
-           FROM talent_trust."EvidenceRecord" WHERE source_ref->>'talent_evidence_id' = $1`,
-        [entryId],
-      );
-      return r.rows;
-    }
-
     beforeAll(async () => {
       container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
@@ -427,7 +417,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         const ev = await audits([added]);
         expect(ev).toHaveLength(1);
         expect(ev[0]).toMatchObject({ action: 'added', actor_id: RECRUITER, tenant_id: TENANT_A });
-        expect(await claimsFor(added)).toHaveLength(0);
         expect(await profileUpdatedEvents(mainTalent)).toBe(eventsBefore + 1);
       });
 
@@ -468,8 +457,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect(ev[0].changed_fields).toEqual(['institution_name']);
 
         // ATI-SEP-1 T10 WP1 — no ledger write for either entry.
-        expect(await claimsFor(resumeEntry)).toHaveLength(0);
-        expect(await claimsFor(corrected)).toHaveLength(0);
       });
 
       it('Talent 360 shows the correction and no longer shows the superseded entry', async () => {
@@ -511,7 +498,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect(await retirement(added)).toMatchObject({ reason: 'removed', superseded_by_entry_id: null, retired_by_id: RECRUITER });
         const ev = await audits([added]);
         expect(ev.map((e) => e.action)).toEqual(['added', 'removed']);
-        expect(await claimsFor(added)).toHaveLength(0);
       });
 
       it('two concurrent corrections of the same entry: exactly one wins, the other is 409', async () => {
@@ -527,7 +513,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           [target],
         );
         expect(replacements.rows[0].n).toBe(1);
-        expect(await claimsFor(target)).toHaveLength(0);
       });
 
       it('the extraction ledger routing never reads manual entries (their claims are ai_derived false only)', async () => {

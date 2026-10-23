@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { PortalController } from '../lib/portal.controller.js';
-import type { PortalRecordRef } from '../lib/portal-talent-resolver.service.js';
+import { PortalTalentResolverService, type PortalRecordRef } from '../lib/portal-talent-resolver.service.js';
 
 // Portal P1 PR-2a §4.1 — controller unit tests on the OPEN-4 records surface,
 // with mocked PortalTalentResolverService + TalentRecordService + ConsentService.
@@ -298,7 +298,7 @@ describe('PortalController — GET /v1/portal/records/:id/profile', () => {
     );
     await expect(
       controller.getRecordProfile(UNKNOWN_RECORD, portalAuth(), 'req-1'),
-    ).rejects.toMatchObject({ code: 'NOT_FOUND', message: 'record not found', statusCode: 404 });
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', message: 'not available', statusCode: 404 });
     // Membership WAS consulted for a well-formed id.
     expect(resolverCalls.resolveMember).toEqual([{ portalUserId: PORTAL_SUB, recordId: UNKNOWN_RECORD }]);
   });
@@ -313,7 +313,7 @@ describe('PortalController — GET /v1/portal/records/:id/profile', () => {
     );
     await expect(
       controller.getRecordProfile(MALFORMED_RECORD, portalAuth(), 'req-1'),
-    ).rejects.toMatchObject({ code: 'NOT_FOUND', message: 'record not found', statusCode: 404 });
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', message: 'not available', statusCode: 404 });
     // Malformed short-circuits: no membership probe → no unknown-vs-malformed oracle.
     expect(resolverCalls.resolveMember).toEqual([]);
   });
@@ -327,7 +327,7 @@ describe('PortalController — GET /v1/portal/records/:id/profile', () => {
     );
     await expect(
       controller.getRecordProfile(RECORD_A, portalAuth(), 'req-1'),
-    ).rejects.toMatchObject({ code: 'NOT_FOUND', message: 'record not found', statusCode: 404 });
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', message: 'not available', statusCode: 404 });
   });
 
   it('returns 403 for a non-portal consumer before any resolution', async () => {
@@ -380,7 +380,7 @@ describe('PortalController — GET /v1/portal/records/:id/consent', () => {
     // there is no surface to read another portal user's record.
     await expect(
       controller.getRecordConsent(UNKNOWN_RECORD, portalAuth(), 'req-1'),
-    ).rejects.toMatchObject({ code: 'NOT_FOUND', message: 'record not found', statusCode: 404 });
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', message: 'not available', statusCode: 404 });
     expect(consentCalls.consent).toEqual([]);
   });
 
@@ -528,5 +528,53 @@ describe('PortalController — verification + dispute routes (NOT_AVAILABLE, A4)
       thrown = err;
     }
     expect(thrown).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+  });
+});
+
+// ATI-SEP-1 T10 WP4 (Addendum A4, GAP-PORTAL-ID-1) — the REAL resolver resolves
+// no talent, so EVERY record / consent route answers the same uniform 404
+// NOT_AVAILABLE for a portal caller (the record list included), and nothing
+// downstream (talent record / consent services) is ever consulted.
+describe('PortalController + real PortalTalentResolverService — identity deferred (A4)', () => {
+  const VALID_BODY = { scope: 'contacting', consent_text_version: 'v1' } as never;
+  const IDEM = 'dddddddd-dddd-7ddd-8ddd-dddddddddddd';
+  const build = () => {
+    const profileCalls: ProfileCall[] = [];
+    const consentCalls: ConsentCall[] = [];
+    const controller = new PortalController(
+      new PortalTalentResolverService(),
+      makeTalentRecordService('project', { profile: profileCalls }) as never,
+      makeConsentService({ consent: consentCalls }) as never,
+      makeTenantService() as never,
+    );
+    return { controller, profileCalls, consentCalls };
+  };
+  const routes: Array<[string, (c: PortalController) => Promise<unknown>]> = [
+    ['getRecords', (c) => c.getRecords(portalAuth(), 'req-1')],
+    ['getRecordProfile', (c) => c.getRecordProfile(RECORD_A, portalAuth(), 'req-1')],
+    ['getRecordConsent', (c) => c.getRecordConsent(RECORD_A, portalAuth(), 'req-1')],
+    ['getRecordConsentText', (c) => c.getRecordConsentText(RECORD_A, portalAuth(), 'req-1')],
+    ['getRecordConsentHistory', (c) => c.getRecordConsentHistory(RECORD_A, undefined, undefined, undefined, portalAuth(), 'req-1')],
+    ['grantRecordConsent', (c) => c.grantRecordConsent(RECORD_A, VALID_BODY, IDEM, portalAuth(), 'req-1')],
+    ['revokeRecordConsent', (c) => c.revokeRecordConsent(RECORD_A, VALID_BODY, IDEM, portalAuth(), 'req-1')],
+    ['getRecordProfile (malformed id)', (c) => c.getRecordProfile(MALFORMED_RECORD, portalAuth(), 'req-1')],
+  ];
+
+  it.each(routes)('%s → uniform 404 NOT_AVAILABLE, no downstream read', async (_name, call) => {
+    const { controller, profileCalls, consentCalls } = build();
+    await expect(call(controller)).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+      message: 'not available',
+      statusCode: 404,
+      context: { details: { reason: 'NOT_AVAILABLE' } },
+    });
+    expect(profileCalls).toEqual([]);
+    expect(consentCalls).toEqual([]);
+  });
+
+  it('the resolver itself answers "no resolvable talent"', async () => {
+    const resolver = new PortalTalentResolverService();
+    expect(await resolver.resolveRecords(PORTAL_SUB)).toBeNull();
+    expect(await resolver.resolveMemberRecord(PORTAL_SUB, RECORD_A)).toBeNull();
   });
 });

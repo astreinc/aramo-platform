@@ -24,7 +24,9 @@ import { SessionOrchestratorService } from './session-orchestrator.service.js';
 // Auth-Decoupling PR-2/3 + PR-5a (ADR-0021 §2): this service depends ONLY on
 // auth-owned PORTS — EmailSender, EligibilityPolicy, and now PortalIdentityStore
 // (the portal-identity repository + login-token helpers). It imports no
-// @aramo/mailer, @aramo/identity-index, or @aramo/portal-identity. Method bodies,
+// @aramo/mailer or @aramo/portal-identity, and no identity-index library (that
+// library is retired — ATI-SEP-1 T10; the bound EligibilityPolicy is the A4
+// portal-deferred adapter, which resolves no eligibility: GAP-PORTAL-ID-1). Method bodies,
 // ordering, and control flow are otherwise unchanged (behaviour-preserving).
 
 export type PortalConsumeResult =

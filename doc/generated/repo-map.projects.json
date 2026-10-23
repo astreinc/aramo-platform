@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 0, "libs": 0, "total": 85 },
+  "aliasTotals": { "apps": 0, "libs": 0, "total": 83 },
   "aliases": {
     "@aramo/activity": "./libs/activity/src/index.ts",
     "@aramo/ai-draft": "./libs/ai-draft/src/index.ts",
@@ -38,10 +38,12 @@
     "@aramo/fe-foundation": "./libs/fe-foundation/src/index.ts",
     "@aramo/field-masking": "./libs/field-masking/src/index.ts",
     "@aramo/identity": "./libs/identity/src/index.ts",
-    "@aramo/identity-index": "./libs/identity-index/src/index.ts",
     "@aramo/import": "./libs/import/src/index.ts",
     "@aramo/ingestion": "./libs/ingestion/src/index.ts",
     "@aramo/integration": "./libs/integration/src/index.ts",
+    "@aramo/intelligence-contracts": "./libs/intelligence-contracts/src/index.ts",
+    "@aramo/intelligence-core": "./libs/intelligence-core/src/index.ts",
+    "@aramo/intelligence-integration": "./libs/intelligence-integration/src/index.ts",
     "@aramo/job-distribution": "./libs/job-distribution/src/index.ts",
     "@aramo/job-domain": "./libs/job-domain/src/index.ts",
     "@aramo/mailer": "./libs/mailer/src/index.ts",
@@ -54,7 +56,6 @@
     "@aramo/pipeline": "./libs/pipeline/src/index.ts",
     "@aramo/placement": "./libs/placement/src/index.ts",
     "@aramo/placement-pipeline-bridge": "./libs/placement-pipeline-bridge/src/index.ts",
-    "@aramo/platform-trust": "./libs/platform-trust/src/index.ts",
     "@aramo/policy-engine": "./libs/policy-engine/src/index.ts",
     "@aramo/policy-store": "./libs/policy-store/src/index.ts",
     "@aramo/portal": "./libs/portal/src/index.ts",
@@ -78,10 +79,7 @@
     "@aramo/talent-evidence": "./libs/talent-evidence/src/index.ts",
     "@aramo/talent-extraction": "./libs/talent-extraction/src/index.ts",
     "@aramo/talent-intelligence": "./libs/talent-intelligence/src/index.ts",
-    "@aramo/talent-reconcile": "./libs/talent-reconcile/src/index.ts",
-    "@aramo/talent-reconcile-signal": "./libs/talent-reconcile-signal/src/index.ts",
     "@aramo/talent-record": "./libs/talent-record/src/index.ts",
-    "@aramo/talent-trust": "./libs/talent-trust/src/index.ts",
     "@aramo/task": "./libs/task/src/index.ts",
     "@aramo/technical-screening": "./libs/technical-screening/src/index.ts",
     "@aramo/tenant-reset": "./libs/tenant-reset/src/index.ts",
@@ -385,7 +383,8 @@
       "ReleaseIdentityService",
       "RequestId",
       "RequestIdMiddleware",
-      "TALENT_TRUST_MIGRATIONS",
+      "SKILLS_TAXONOMY_MIGRATIONS",
+      "TALENT_EVIDENCE_LATE_COLUMN_MIGRATIONS",
       "agingDaysInTimeZone",
       "assertModuleHasNoLlmImports",
       "civilDayUtcMs",
@@ -409,7 +408,7 @@
       "resolveAuthStorageMigrations",
       "resolveIdentityMigrations",
       "resolveReleaseRevision",
-      "resolveTalentTrustMigrations",
+      "resolveSkillsTaxonomyMigrations",
       "rethrowTransactionConflict",
       "secretsManagerClientConfig"
     ],
@@ -1128,14 +1127,6 @@
       "usProfileIneligibility",
       "validateUsOrganizationDetails"
     ],
-    "@aramo/identity-index": [
-      "CLUSTER_PURGE_STATEMENTS",
-      "ClusterPurgeService",
-      "IdentityIndexModule",
-      "IdentityIndexRepository",
-      "PrismaService",
-      "purgeClusterViaExec"
-    ],
     "@aramo/import": [
       "CANONICAL_REQUISITION_IMPORT_KEYS",
       "IMPORT_BATCH_STATUS_VALUES",
@@ -1226,6 +1217,272 @@
       "redactForLog",
       "redactString"
     ],
+    "@aramo/intelligence-contracts": [
+      "ADMISSION_FIELD_CATALOGUE",
+      "ASSERTION_ADMISSION_CLASS",
+      "ASSERTION_TYPES",
+      "ATS_TALENT_EVENT_TYPES",
+      "AVAILABILITY_STATUSES",
+      "CLASS_C_EXACT_KEYS",
+      "CLASS_C_KEY_FRAGMENTS",
+      "CONTRADICTION_RESOLUTIONS",
+      "CONTRIBUTORS",
+      "DISPUTE_LIST_MAX_REFERENCES",
+      "DISPUTE_OPEN_STATUSES",
+      "DISPUTE_SLA",
+      "DISPUTE_STATEMENT_AUTHORS",
+      "DISPUTE_STATUSES",
+      "ENTITLEMENT_SYNC_MAX_TENANTS",
+      "EVENT_VERSION",
+      "FACT_STATES",
+      "GOLDEN_TALENT_PROFILE_UPDATED",
+      "IDENTIFIER_VERIFICATION_REQUESTED",
+      "IDENTIFIER_VERIFICATION_STATES",
+      "IDENTIFIER_VERIFICATION_STATUSES",
+      "IDENTITY_FIELD_ADMISSION_CLASS",
+      "INGESTIBLE_ASSERTION_TYPES",
+      "INGEST_OUTCOMES",
+      "INGEST_REJECTION_CODES",
+      "INGEST_SOURCE_KINDS",
+      "INTELLIGENCE_ATS_WEBHOOK_URL_ENV",
+      "INTELLIGENCE_DISPUTES_SCOPE",
+      "INTELLIGENCE_ENTITLEMENTS_SCOPE",
+      "INTELLIGENCE_EVENT_TYPES",
+      "INTELLIGENCE_INGEST_SCOPE",
+      "INTELLIGENCE_PROPOSALS_SCOPE",
+      "INTELLIGENCE_READ_SCOPE",
+      "INTELLIGENCE_SCOPES",
+      "INTELLIGENCE_SERVICE_NAME",
+      "INTELLIGENCE_VERIFY_SCOPE",
+      "INTELLIGENCE_WEBHOOK_SCHEME",
+      "INTELLIGENCE_WEBHOOK_SIGNATURE_HEADER",
+      "INTELLIGENCE_WEBHOOK_SIGNING_SECRET_ENV",
+      "INTELLIGENCE_WEBHOOK_TIMESTAMP_HEADER",
+      "INTELLIGENCE_WEBHOOK_TIMESTAMP_TOLERANCE_SEC",
+      "LIFECYCLE_PAGE_DEFAULT_LIMIT",
+      "LIFECYCLE_PAGE_MAX_LIMIT",
+      "LIFECYCLE_REFUSAL_CODES",
+      "LIFECYCLE_REFUSAL_HTTP_STATUS",
+      "LIFECYCLE_TEXT_MAX",
+      "PROFILE_FACT_TYPES",
+      "PROPOSAL_ACTIONS",
+      "PROPOSAL_KINDS",
+      "PROPOSAL_STATUSES",
+      "PROPOSAL_TRIGGER_KINDS",
+      "READ_ACCESS_MODES",
+      "READ_REFUSAL_CODES",
+      "RESOLUTION_RULES",
+      "SOURCE_KINDS",
+      "SOURCE_SYSTEM_ARAMO_ATS",
+      "SOURCE_SYSTEM_IDS",
+      "SOURCE_SYSTEM_TALENT_INTELLIGENCE",
+      "TALENT_CREATED",
+      "TALENT_ERASED",
+      "TALENT_PROFILE_UPDATED",
+      "TI_INTERNAL_EVENT_TYPES",
+      "TRUST_BANDS",
+      "TRUST_CHANGE_MARKER",
+      "TRUST_DIMENSIONS",
+      "VERIFICATION_CHANNELS",
+      "VERIFICATION_CODE_LENGTH",
+      "VERIFICATION_CONFIRM_OUTCOMES",
+      "VERIFICATION_DELIVERY_STATES",
+      "VERIFICATION_IDENTIFIER_TYPES",
+      "VERIFICATION_MAX_ATTEMPTS",
+      "VERIFICATION_OUTCOME_RESULTS",
+      "VERIFICATION_OUTCOME_TARGETS",
+      "VERIFICATION_REFUSAL_CODES",
+      "VERIFICATION_STATUSES",
+      "VERIFICATION_TTL_SECONDS",
+      "VERIFICATION_VALIDITY_DAYS",
+      "WORK_AUTHORIZATION_STATUSES",
+      "canonicalIntelligenceWebhookMessage",
+      "computeIntelligenceWebhookSignature",
+      "formatReferenceParam",
+      "identifierDigest",
+      "identifierDigestOf",
+      "isAtsTalentEventEnvelope",
+      "isAtsTalentEventType",
+      "isAuthoritativeWorkAuthorization",
+      "isClassCKey",
+      "isDocumentKey",
+      "isIntelligenceEventType",
+      "isIntelligenceProfileUpdatedWebhook",
+      "isIntelligenceScope",
+      "isLifecycleId",
+      "isUuid",
+      "maskIdentifierValue",
+      "normalizeEmailIdentifier",
+      "normalizeIdentifierValue",
+      "normalizeIngestKey",
+      "normalizePhoneIdentifier",
+      "parseReferenceParams",
+      "signIntelligenceWebhook",
+      "validateActProposalRequest",
+      "validateConfirmVerificationRequest",
+      "validateContradictionResolutionRequest",
+      "validateCreateVerificationRequest",
+      "validateDismissProposalRequest",
+      "validateOpenDisputeRequest",
+      "validateRespondDisputeRequest",
+      "validateTalentErasedRequest",
+      "validateTalentIngestRequest",
+      "validateTenantDisputeActionRequest",
+      "validateWithdrawDisputeRequest",
+      "verifyIntelligenceWebhook"
+    ],
+    "@aramo/intelligence-core": [
+      "ContradictionResolutionService",
+      "DEFAULT_AVAILABILITY_FRESHNESS_DAYS",
+      "DEFAULT_REASSESSMENT_INTERVAL_MS",
+      "DISPUTE_WITHDRAWAL_JUSTIFICATION",
+      "DisputeService",
+      "EntitlementService",
+      "EntitlementSyncInvalidError",
+      "EventIdReusedError",
+      "FetchWebhookTransport",
+      "GOV_ID_TOKENIZER",
+      "GovIdTokenizationUnavailableError",
+      "GovIdTokenizer",
+      "INTELLIGENCE_DATABASE_URL_ENV",
+      "INTELLIGENCE_GOV_ID_TOKEN_KEY_ENV",
+      "INTELLIGENCE_OUTBOX_MAX_ATTEMPTS_ENV",
+      "INTELLIGENCE_SERVICE_TOKEN_SECRET_ENV",
+      "INTELLIGENCE_VERIFICATION_CODE_KEY_ENV",
+      "INTELLIGENCE_VERIFY_LINK_BASE_ENV",
+      "IdentityMergeSplitService",
+      "IdentityResolutionService",
+      "IngestRejectedError",
+      "IntelligenceCoreModule",
+      "IntelligenceDatabaseConfigError",
+      "IntelligenceHealthService",
+      "IntelligenceOutboxDrainService",
+      "IntelligencePrismaService",
+      "LifecycleRefusedError",
+      "LogVerificationDeliveryAdapter",
+      "MailerVerificationDeliveryAdapter",
+      "MergeSplitError",
+      "PROJECTION_TRIGGER",
+      "PROPOSAL_SETTLED_JUSTIFICATION",
+      "PrismaIntelligenceUnitOfWork",
+      "ProfileReadService",
+      "ProjectionService",
+      "ProposalService",
+      "ReadRefusedError",
+      "ReferenceErasedError",
+      "SERVICE_TOKEN_AUDIENCE",
+      "SERVICE_TOKEN_ISSUER",
+      "SERVICE_TOKEN_TTL_SECONDS",
+      "ServiceClientProvisioningError",
+      "ServiceTokenError",
+      "ServiceTokenService",
+      "SourceSystemMismatchError",
+      "TI_AVAILABILITY_FRESHNESS_DAYS_ENV",
+      "TI_CROSS_TENANT_READ_ENABLED_ENV",
+      "TI_REASSESSMENT_INTERVAL_MS_ENV",
+      "TalentIngestService",
+      "VERIFICATION_CODE_SERVICE",
+      "VERIFICATION_DELIVERY_PORT",
+      "VERIFICATION_STALE_DAYS",
+      "VerificationCodeService",
+      "VerificationDeliveryModule",
+      "VerificationRefusedError",
+      "VerificationService",
+      "VerificationStatusService",
+      "VerificationUnavailableError",
+      "WEBHOOK_TRANSPORT",
+      "activeReferenceTenants",
+      "assertionContentHash",
+      "assertionVisibleTo",
+      "availabilityFreshnessDays",
+      "backoffMs",
+      "buildVerificationConfirmLink",
+      "canonicalJson",
+      "compatible",
+      "computeProjection",
+      "createPrismaRepositories",
+      "crossTenantReadEnabled",
+      "decideResolution",
+      "decodeCursor",
+      "dedupeIdentifiers",
+      "deriveTrust",
+      "dimensionOf",
+      "disputeSla",
+      "drainConfigFromEnv",
+      "encodeCursor",
+      "generateProposals",
+      "hashClientSecret",
+      "identifierDigest",
+      "identifierKey",
+      "independenceKey",
+      "isMaterialIdentityChange",
+      "isOwnAssertion",
+      "isTiOriginated",
+      "isTimeStale",
+      "mailerConfigured",
+      "maskDestination",
+      "namesConflict",
+      "namesMatch",
+      "normalizeEmail",
+      "normalizeNames",
+      "normalizePhone",
+      "orderFacts",
+      "pageLimit",
+      "provisionServiceClient",
+      "reassessmentIntervalMs",
+      "reconciledPairs",
+      "referenceLockKey",
+      "renderVerificationCodeEmail",
+      "requireActiveReference",
+      "requireEntitledTenant",
+      "resolveIntelligenceDatabaseUrl",
+      "selectVerificationDelivery",
+      "sha256Hex",
+      "snapshotOf",
+      "survivingSubject",
+      "tenantActor",
+      "tenantReferencesOn",
+      "tenantViewAssertions",
+      "tenantViewIdentifiers",
+      "toAssertionDrafts",
+      "toResolutionInput",
+      "validateEntitlementSync",
+      "verifyClientSecret"
+    ],
+    "@aramo/intelligence-integration": [
+      "AUTO_APPLY_CAPABLE",
+      "DEFAULT_ENTITLEMENT_SYNC_INTERVAL_MS",
+      "DEFAULT_INBOUND_SYNC_INTERVAL_MS",
+      "DEFAULT_INTELLIGENCE_HTTP_TIMEOUT_MS",
+      "DEFAULT_INTELLIGENCE_SYNC_POLICY",
+      "INBOUND_MAX_ATTEMPTS",
+      "INTELLIGENCE_FETCH",
+      "INTELLIGENCE_INTEGRATION_CONFIG",
+      "INTELLIGENCE_SYNC_FIELD_KEYS",
+      "IdentifierSlotEmptyError",
+      "IngestPayloadRejectedError",
+      "IntelligenceClient",
+      "IntelligenceEntitlementSyncService",
+      "IntelligenceInboundSyncService",
+      "IntelligenceIntegrationModule",
+      "IntelligenceIntegrationWorker",
+      "IntelligenceNotConfiguredError",
+      "IntelligencePublisherHandler",
+      "IntelligenceRejectedError",
+      "IntelligenceUnavailableError",
+      "IntelligenceVerificationDisabledError",
+      "IntelligenceVerificationService",
+      "IntelligenceWebhookReceiver",
+      "SYNC_POLICY_MODES",
+      "buildTalentIngestRequest",
+      "decideField",
+      "effectiveMode",
+      "fieldKeysOfColumns",
+      "isRecruiterConfirmed",
+      "loadIntelligenceConfig",
+      "mapWorkAuthorization",
+      "proposalsFromProfile"
+    ],
     "@aramo/job-distribution": [
       "INDEED_APPLY_WEBHOOK_PATH",
       "INDEED_CHANNEL",
@@ -1266,10 +1523,15 @@
     "@aramo/matching": [
       "CONFIDENCE_LEVELS",
       "CONSTRAINT_CHECK_STATUSES",
+      "DEFAULT_EVIDENCE_THRESHOLDS",
+      "DEFAULT_MATCHING_POLICY",
+      "EVIDENCE_COUNT_MAX",
+      "EVIDENCE_COUNT_MIN",
       "EVIDENCE_THRESHOLDS",
       "EXAMINATION_VERSION",
       "MATCHING_ANALYSIS_INPUT_CONTRACT_VERSION",
       "MATCHING_MODEL_VERSION",
+      "MATCHING_POLICY_SOURCE",
       "MATCH_QUEUE_NAME",
       "MatchingModule",
       "MatchingProcessor",
@@ -1277,7 +1539,8 @@
       "RISK_SEVERITIES",
       "ROLE_FAMILIES",
       "TAXONOMY_VERSION",
-      "evaluateEntrustability"
+      "evaluateEntrustability",
+      "parseEvidenceThresholds"
     ],
     "@aramo/metering": ["recordUsage"],
     "@aramo/microsoft-graph": [
@@ -1552,11 +1815,6 @@
       "PlacementPipelineBridgePrismaService",
       "PlacementPipelineInboxRepository"
     ],
-    "@aramo/platform-trust": [
-      "DORMANT_LINK_STATUSES",
-      "PlatformTrustModule",
-      "PlatformTrustRepository"
-    ],
     "@aramo/policy-engine": [
       "DECISION_PRECEDENCE",
       "EFFECT_KINDS",
@@ -1583,7 +1841,7 @@
       "selectEffectiveAt",
       "snapshotPolicyInputs"
     ],
-    "@aramo/portal": ["PortalController", "PortalModule"],
+    "@aramo/portal": ["PortalController", "PortalModule", "PortalTalentResolverService"],
     "@aramo/portal-identity": [
       "PORTAL_LOGIN_TOKEN_BYTES",
       "PORTAL_LOGIN_TTL_MS",
@@ -1810,6 +2068,8 @@
       "isSignatureProvider"
     ],
     "@aramo/skills-taxonomy": [
+      "MatchingPolicyRepository",
+      "MatchingPolicyVersionNotFoundError",
       "PrismaService",
       "ProposalApplyConflictError",
       "ProposalNotFoundError",
@@ -1955,9 +2215,6 @@
       "TalentExtractionModule",
       "TalentExtractionService",
       "deriveSkillId",
-      "mapAssertionToClaim",
-      "mapSkillToClaim",
-      "mapWorkHistoryToClaim",
       "normalizeSkillSurfaceForm"
     ],
     "@aramo/talent-intelligence": [
@@ -1965,31 +2222,11 @@
       "REQUISITION_CONTEXT_READ_PORT",
       "TALENT_DOSSIER_READ_PORT"
     ],
-    "@aramo/talent-reconcile": [
-      "CONTRADICTION_DETECTION_BATCH_SIZE",
-      "CONTRADICTION_DETECTION_QUEUE_NAME",
-      "ContradictionDetectionProcessor",
-      "ContradictionDetectionService",
-      "TALENT_RECONCILE_ACTOR",
-      "TALENT_RECONCILE_BATCH_SIZE",
-      "TALENT_RECONCILE_MAX_ATTEMPTS",
-      "TALENT_RECONCILE_QUEUE_NAME",
-      "TalentReconcileModule",
-      "TalentReconcileProcessor",
-      "TalentReconcileService",
-      "computeReconcilePlan"
-    ],
-    "@aramo/talent-reconcile-signal": [
-      "TALENT_RECONCILE_BACKSTOP_INTERVAL_MS",
-      "TALENT_RECONCILE_BACKSTOP_JOB",
-      "TALENT_RECONCILE_BACKSTOP_JOB_ID",
-      "TALENT_RECONCILE_JOB",
-      "TALENT_RECONCILE_QUEUE_NAME",
-      "TalentReconcileProducer",
-      "TalentReconcileSignalModule"
-    ],
     "@aramo/talent-record": [
-      "LinkTalentRecordRequestDto",
+      "DUPLICATE_ADVISORY_BASES",
+      "DUPLICATE_ADVISORY_STATUSES",
+      "INTELLIGENCE_SOURCE_KIND",
+      "INTELLIGENCE_WRITABLE_COLUMNS",
       "PROFILE_HYDRATION_FIELDS",
       "RECRUITER_CREATE_CONSENT_DEFAULT",
       "RESUME_ATTACHMENT_RESOLVER",
@@ -2004,15 +2241,24 @@
       "ResumeReindexProcessor",
       "ResumeSourceAuthorizer",
       "ResumeTextService",
+      "TALENT_EVENT_CREATED",
+      "TALENT_EVENT_DELETED",
+      "TALENT_EVENT_ERASED",
+      "TALENT_EVENT_PROFILE_UPDATED",
+      "TALENT_EVENT_SOURCE",
+      "TALENT_EVENT_SUBJECT_TYPE",
+      "TALENT_EVENT_VERSION",
       "TALENT_INTAKE_EVENT_SOURCE",
       "TALENT_INTAKE_EVENT_VERSION",
       "TALENT_INTAKE_EXTRACTION_REQUESTED_EVENT",
       "TALENT_INTAKE_PROCESSING_PORT",
       "TALENT_INTAKE_SOURCE_TYPE_RESUME_UPLOAD",
       "TALENT_INTAKE_SUBJECT_TYPE",
+      "TalentDuplicateAdvisoryRepository",
+      "TalentEventOutboxRepository",
       "TalentIntakeExtractionService",
       "TalentIntakeMessageHandler",
-      "TalentLinkService",
+      "TalentIntelligenceRepository",
       "TalentRecordController",
       "TalentRecordModule",
       "TalentRecordPrismaService",
@@ -2020,71 +2266,15 @@
       "TalentRecordRepository",
       "TalentRecordService",
       "applyRecruiterCreateConsentDefault",
+      "arrivalPhoneKey",
+      "buildTalentEventRow",
       "composeProfileHydration",
-      "redactResumeText"
-    ],
-    "@aramo/talent-trust": [
-      "ANCHOR_KINDS",
-      "CANONICAL_CLAIM_SHAPES",
-      "DECAY_PROFILES",
-      "EVENT_TO_STATUS",
-      "EVIDENCE_EVENT_TYPES",
-      "EVIDENCE_LINK_RELATIONS",
-      "EVIDENCE_STATUSES",
-      "GAP_THRESHOLD_DAYS",
-      "MATCH_ADVISE_BANDS",
-      "MATCH_ADVISORY_STATUSES",
-      "MATCH_RESOLUTION_ACTIONS",
-      "MERGE_OPERATION_KINDS",
-      "METHODS",
-      "OVERLAP_THRESHOLD_DAYS",
-      "PORTABILITY_CLASSES",
-      "PORTAL_DISPUTE_OUTCOME_MAP",
-      "PORTAL_DISPUTE_WITHDRAWAL_JUSTIFICATION",
-      "PRESENTATION_BANDS",
-      "PROPOSAL_STATUSES",
-      "PROPOSAL_TRIGGER_KINDS",
-      "PrismaService",
-      "REASON_ATTESTER_IDENTITY_OVERLAP",
-      "REASON_EMPLOYER_CONFLICT_SAME_WINDOW",
-      "REASON_IMPOSSIBLE_RANGE",
-      "RECOMPUTE_STALENESS_DAYS",
-      "RESOLUTION_SUBJECT_REF_TYPES",
-      "RESOLUTION_SUBJECT_STATUSES",
-      "RecordEvidenceDto",
-      "SCREENING_EVIDENCE_SOURCES",
-      "SCREENING_FINDING_BASES",
-      "SCREENING_FINDING_ORIGINS",
-      "SCREENING_REVIEW_OUTCOMES",
-      "SEED_ASSERTION_TYPES",
-      "SOURCE_CLASSES",
-      "STATEMENT_CLASS_DIMENSION",
-      "SubjectMatcherService",
-      "SubjectRefDto",
-      "SubjectResolutionService",
-      "TRUST_DIMENSIONS",
-      "TRUST_STATEMENT_LONGITUDINAL",
-      "TRUST_STATEMENT_SINGLE_SOURCE",
-      "TalentTrustModule",
-      "TalentTrustRepository",
-      "TalentTrustService",
-      "VERIFICATION_STALE_DAYS",
-      "VERIFICATION_VIEW_FORBIDDEN_FIELDS",
-      "attesterDescriptorKey",
-      "classifyPair",
-      "computeConsistencyPlan",
-      "deriveSkillIdCanonical",
-      "deriveStrength",
-      "deriveTrustState",
-      "deriveTrustStatements",
-      "effectiveStrength",
-      "generateProposals",
-      "isConfirmingAnchor",
-      "isRegisteredAssertionType",
-      "namesFlatlyConflict",
-      "parseToIsoDateOrNull",
-      "sameUltimateSource",
-      "validateClaimShape"
+      "intelligenceReferenceId",
+      "normalizePhoneForDedupe",
+      "phoneLookupForms",
+      "redactResumeText",
+      "talentDuplicateError",
+      "validateTalentCreateInput"
     ],
     "@aramo/task": [
       "StubTaskAssigneeValidator",
@@ -2273,7 +2463,13 @@
       },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/advisory-resolution.integration.spec.ts",
+        "from": "apps/api/src/tests/ati-sep-1-ats-local-identity.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ati-sep-1-t10-trust-surfaces.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -2304,12 +2500,6 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ats-batch4a-pipeline-activity.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/ats-batch4b-talent-link.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -2520,6 +2710,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/match-list.negative-shape.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/matching-policy.controller.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -2777,12 +2973,6 @@
       },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/support/trust-tenant-isolation-harness.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/talent-360-pipeline-milestones.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -2814,42 +3004,6 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tenant-write-freeze.interceptor.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr12-b1-proposals.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr12-b2-queue.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr15-b1-dispute-resolution.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr3-b2-email-verification.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr4-b3-consistency.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr9-b1-reference-attestation.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -3247,13 +3401,19 @@
       },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-record/src/tests/talent-intake-promotion-decoupling.spec.ts",
+        "from": "libs/talent-record/src/tests/talent-intake-manual-entry.spec.ts",
         "project": "talent-record",
         "status": "excluded"
       },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-record/src/tests/talent-intake-promotion-seam.spec.ts",
+        "from": "libs/talent-record/src/tests/talent-intake-save.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/talent-intake-saved-edit.spec.ts",
         "project": "talent-record",
         "status": "excluded"
       },
@@ -3526,6 +3686,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/matching-policy.controller.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/placement-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3680,10 +3846,15 @@
         "status": "excluded"
       },
       { "project": "api", "status": "production" },
-      { "project": "requisition", "status": "production" },
-      { "project": "talent-record", "status": "production" }
+      { "project": "requisition", "status": "production" }
     ],
     "@aramo/canonicalization": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ati-sep-1-ats-local-identity.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/indeed-apply-webhook.integration.spec.ts",
@@ -3872,7 +4043,25 @@
       },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/advisory-resolution.integration.spec.ts",
+        "from": "apps/api/src/tests/ati-sep-1-ats-local-identity.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ati-sep-1-intelligence-integration.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ati-sep-1-t10-intelligence-access.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ati-sep-1-t10-trust-surfaces.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -3903,12 +4092,6 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ats-batch4a-pipeline-activity.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/ats-batch4b-talent-link.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -4466,6 +4649,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/promotion.service.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/r2-rtr-integrity.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -4778,12 +4967,6 @@
       },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/support/trust-tenant-isolation-harness.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/t8p2-requisition-import.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -4904,115 +5087,7 @@
       },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr12-b1-proposals.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr12-b2-queue.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr14-b1-dossier-reads.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr14-b2-dossier.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr15-b1-dispute-resolution.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tr15-b2-erasure.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr2a-b3b-reconcile.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr2b-b2a-lifecycle-sweep.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr2b-b2b-admit-arrivals.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr2b-b2b-erasure-cluster-purge.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr3-b2-email-verification.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr4-b2-claims-routing.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr4-b3-consistency.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr5-b1-recompute-sweep.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr5-b2-continuity-thinness.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr6-b1-maintenance.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr7-b1-credential-routing.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr8-b1-renewal.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr9-b1-reference-attestation.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -5063,12 +5138,6 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/auth-service/src/tests/auth.site-axis.integration.spec.ts",
-        "project": "auth-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/auth-service/src/tests/portal-login-adapters.spec.ts",
         "project": "auth-service",
         "status": "excluded"
       },
@@ -5634,12 +5703,6 @@
       { "project": "identity", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "libs/identity-index/src/tests/identity-index.integration.spec.ts",
-        "project": "identity-index",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "libs/import/src/tests/no-llm-boundary.spec.ts",
         "project": "import",
         "status": "excluded"
@@ -5671,6 +5734,30 @@
         "status": "excluded"
       },
       { "project": "integration", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/intelligence-core/src/tests/golden-model.integration.spec.ts",
+        "project": "intelligence-core",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/intelligence-core/src/tests/intelligence-schema.integration.spec.ts",
+        "project": "intelligence-core",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/intelligence-core/src/tests/lifecycle.integration.spec.ts",
+        "project": "intelligence-core",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/intelligence-core/src/tests/verification-trust-access.integration.spec.ts",
+        "project": "intelligence-core",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/job-domain/src/tests/job-domain.integration.spec.ts",
@@ -6374,6 +6461,12 @@
       { "project": "signature-routing", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/skills-taxonomy/src/tests/matching-policy.integration.spec.ts",
+        "project": "skills-taxonomy",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/skills-taxonomy/src/tests/skill-alias-version.integration.spec.ts",
         "project": "skills-taxonomy",
         "status": "excluded"
@@ -6540,24 +6633,10 @@
       { "project": "talent-intelligence", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-reconcile/src/tests/contradiction-detection.service.spec.ts",
-        "project": "talent-reconcile",
+        "from": "libs/talent-record/src/tests/ati-sep-1-intake-save.integration.spec.ts",
+        "project": "talent-record",
         "status": "excluded"
       },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-reconcile/src/tests/no-llm-boundary.spec.ts",
-        "project": "talent-reconcile",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-reconcile/src/tests/right-to-work-reconcile.integration.spec.ts",
-        "project": "talent-reconcile",
-        "status": "excluded"
-      },
-      { "project": "talent-reconcile", "status": "production" },
-      { "project": "talent-reconcile-signal", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/profile-hydration.integration.spec.ts",
@@ -6584,13 +6663,7 @@
       },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-record/src/tests/talent-intake-promotion-decoupling.spec.ts",
-        "project": "talent-record",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-record/src/tests/talent-intake-promotion-seam.spec.ts",
+        "from": "libs/talent-record/src/tests/talent-intake-manual-entry.spec.ts",
         "project": "talent-record",
         "status": "excluded"
       },
@@ -6607,85 +6680,6 @@
         "status": "excluded"
       },
       { "project": "talent-record", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-trust/src/tests/anchor.integration.spec.ts",
-        "project": "talent-trust",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-trust/src/tests/match.integration.spec.ts",
-        "project": "talent-trust",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-trust/src/tests/resolution-decision.integration.spec.ts",
-        "project": "talent-trust",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-trust/src/tests/resolution.integration.spec.ts",
-        "project": "talent-trust",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-trust/src/tests/security-s1a-tenant-bound-lifecycle.spec.ts",
-        "project": "talent-trust",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-trust/src/tests/source-class-backfill.integration.spec.ts",
-        "project": "talent-trust",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-trust/src/tests/sourced-talent-ref.integration.spec.ts",
-        "project": "talent-trust",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-trust/src/tests/sourcing-pool.integration.spec.ts",
-        "project": "talent-trust",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-trust/src/tests/talent-trust.integration.spec.ts",
-        "project": "talent-trust",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-trust/src/tests/tr-screen-1-publication.integration.spec.ts",
-        "project": "talent-trust",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-trust/src/tests/tr2a-b3a-fixpoint-cluster.integration.spec.ts",
-        "project": "talent-trust",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-trust/src/tests/tr4-b1-claim-shapes.integration.spec.ts",
-        "project": "talent-trust",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-trust/src/tests/tr6-b1-engine.integration.spec.ts",
-        "project": "talent-trust",
-        "status": "excluded"
-      },
-      { "project": "talent-trust", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/task/src/tests/task-assignee-binding.di.spec.ts",
@@ -7362,6 +7356,12 @@
       { "project": "activity", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ati-sep-1-t10-trust-surfaces.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/create-submittal.unit.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -7425,6 +7425,7 @@
       { "project": "identity", "status": "production" },
       { "project": "import", "status": "production" },
       { "project": "integration", "status": "production" },
+      { "project": "intelligence-integration", "status": "production" },
       { "project": "pipeline", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -7487,6 +7488,18 @@
     "@aramo/events": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ati-sep-1-ats-talent-events.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ati-sep-1-intelligence-integration.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/singlebox-talent-intake-publisher.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -7510,6 +7523,13 @@
         "status": "excluded"
       },
       { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/intelligence-integration/src/tests/intelligence-publisher.handler.spec.ts",
+        "project": "intelligence-integration",
+        "status": "excluded"
+      },
+      { "project": "intelligence-integration", "status": "production" },
       { "project": "outbox-publisher", "status": "production" },
       { "project": "talent-record", "status": "production" }
     ],
@@ -7565,6 +7585,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/matching/src/tests/match-queue.integration.spec.ts",
+        "project": "matching",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/matching/src/tests/matching-policy.spec.ts",
         "project": "matching",
         "status": "excluded"
       },
@@ -8188,12 +8214,6 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
-        "from": "apps/ats-web/src/talent/components/TrustPanel.spec.tsx",
-        "project": "aramo-ats-web",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/task/task.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
@@ -8783,30 +8803,6 @@
       { "project": "sign-service", "status": "production" },
       { "project": "visibility", "status": "production" }
     ],
-    "@aramo/identity-index": [
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/ats-batch4b-talent-link.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      { "project": "api", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/auth-service/src/tests/portal-login-adapters.spec.ts",
-        "project": "auth-service",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/auth-service/src/tests/portal-login.integration.spec.ts",
-        "project": "auth-service",
-        "status": "excluded"
-      },
-      { "project": "auth-service", "status": "production" },
-      { "project": "canonicalization", "status": "production" },
-      { "project": "talent-record", "status": "production" }
-    ],
     "@aramo/import": [
       {
         "excludedBy": "src/tests/**/*",
@@ -8861,7 +8857,12 @@
         "status": "excluded"
       },
       { "project": "api", "status": "production" },
-      { "project": "canonicalization", "status": "production" }
+      { "project": "canonicalization", "status": "production" },
+      {
+        "from": "tools/intelligence-boundary-probes/intelligence-probe/intelligence-negative-control/intelligence-imports-cip.fixture.ts",
+        "project": "intelligence-boundary-probe-intelligence",
+        "status": "unscoped"
+      }
     ],
     "@aramo/integration": [
       {
@@ -8973,6 +8974,130 @@
         "status": "unscoped"
       }
     ],
+    "@aramo/intelligence-contracts": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ati-sep-1-intelligence-integration.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ati-sep-1-t10-trust-surfaces.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/intelligence-core/src/tests/identifier-contract-parity.spec.ts",
+        "project": "intelligence-core",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/intelligence-core/src/tests/intelligence-boundary-negative-control.spec.ts",
+        "project": "intelligence-core",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/intelligence-core/src/tests/outbox-drain.service.spec.ts",
+        "project": "intelligence-core",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/intelligence-core/src/tests/support/fixtures.ts",
+        "project": "intelligence-core",
+        "status": "excluded"
+      },
+      { "project": "intelligence-core", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/intelligence-integration/src/tests/ingest-payload-builder.spec.ts",
+        "project": "intelligence-integration",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/intelligence-integration/src/tests/intelligence-webhook.receiver.spec.ts",
+        "project": "intelligence-integration",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/intelligence-integration/src/tests/sync-policy.spec.ts",
+        "project": "intelligence-integration",
+        "status": "excluded"
+      },
+      { "project": "intelligence-integration", "status": "production" },
+      { "project": "talent-intelligence-service", "status": "production" }
+    ],
+    "@aramo/intelligence-core": [
+      {
+        "from": "tools/intelligence-boundary-probes/ats-probe/intelligence-negative-control/ats-imports-intelligence.fixture.ts",
+        "project": "intelligence-boundary-probe-ats",
+        "status": "unscoped"
+      },
+      {
+        "from": "tools/intelligence-boundary-probes/cip-probe/intelligence-negative-control/cip-imports-intelligence.fixture.ts",
+        "project": "intelligence-boundary-probe-cip",
+        "status": "unscoped"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/talent-intelligence-service/src/tests/health.spec.ts",
+        "project": "talent-intelligence-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/talent-intelligence-service/src/tests/ingest.spec.ts",
+        "project": "talent-intelligence-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/talent-intelligence-service/src/tests/lifecycle.spec.ts",
+        "project": "talent-intelligence-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/talent-intelligence-service/src/tests/read-verify.spec.ts",
+        "project": "talent-intelligence-service",
+        "status": "excluded"
+      },
+      { "project": "talent-intelligence-service", "status": "production" }
+    ],
+    "@aramo/intelligence-integration": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ati-sep-1-intelligence-integration.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ati-sep-1-t10-intelligence-access.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ati-sep-1-t10-trust-surfaces.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ati-sep-1-worker-module-di.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      { "project": "api", "status": "production" }
+    ],
     "@aramo/job-distribution": [
       {
         "excludedBy": "src/tests/**/*",
@@ -9037,12 +9162,6 @@
         "project": "api",
         "status": "excluded"
       },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr3-b2-email-verification.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
       { "project": "api", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -9084,6 +9203,13 @@
       { "project": "identity", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/intelligence-core/src/tests/mailer-verification-delivery.spec.ts",
+        "project": "intelligence-core",
+        "status": "excluded"
+      },
+      { "project": "intelligence-core", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -9113,6 +9239,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/derive-matching-input.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/matching-policy-seed.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/matching-policy.controller.unit.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -9265,6 +9403,12 @@
       { "project": "aramo-home-web", "status": "production" }
     ],
     "@aramo/outbox-publisher": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ati-sep-1-ats-talent-events.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/talent-intake-aws-transport.integration.spec.ts",
@@ -9589,7 +9733,6 @@
       },
       { "project": "api", "status": "production" }
     ],
-    "@aramo/platform-trust": [{ "project": "api", "status": "production" }],
     "@aramo/policy-engine": [
       {
         "excludedBy": "src/tests/**/*",
@@ -9819,8 +9962,7 @@
         "project": "auth-service",
         "status": "excluded"
       },
-      { "project": "auth-service", "status": "production" },
-      { "project": "portal", "status": "production" }
+      { "project": "auth-service", "status": "production" }
     ],
     "@aramo/pre-start-requirement": [
       {
@@ -10157,6 +10299,11 @@
       },
       { "project": "evidence", "status": "production" },
       {
+        "from": "tools/intelligence-boundary-probes/intelligence-probe/intelligence-negative-control/intelligence-imports-ats.fixture.ts",
+        "project": "intelligence-boundary-probe-intelligence",
+        "status": "unscoped"
+      },
+      {
         "excludedBy": "src/i15-negative-control/**",
         "from": "libs/matching/src/i15-negative-control/cip-imports-ats.fixture.ts",
         "project": "matching",
@@ -10364,6 +10511,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/matching-policy.controller.unit.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/skill-correction-engine.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -10409,7 +10562,8 @@
         "project": "api",
         "status": "excluded"
       },
-      { "project": "api", "status": "production" }
+      { "project": "api", "status": "production" },
+      { "project": "canonicalization", "status": "production" }
     ],
     "@aramo/submittal": [
       {
@@ -10585,6 +10739,12 @@
     "@aramo/talent-evidence": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ati-sep-1-intelligence-integration.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ats-qa-1-resume-selection.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -10637,18 +10797,6 @@
         "project": "api",
         "status": "excluded"
       },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr4-b2-claims-routing.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr7-b1-credential-routing.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
       { "project": "api", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -10671,6 +10819,13 @@
       { "project": "evidence", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/intelligence-integration/src/tests/ingest-payload-builder.spec.ts",
+        "project": "intelligence-integration",
+        "status": "excluded"
+      },
+      { "project": "intelligence-integration", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/submittal/src/tests/submittal.repository.integration.spec.ts",
         "project": "submittal",
         "status": "excluded"
@@ -10678,7 +10833,19 @@
       { "project": "talent-extraction", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/ati-sep-1-intake-save.integration.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/talent-intake-draft-integrity.integration.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/talent-intake-manual-entry.spec.ts",
         "project": "talent-record",
         "status": "excluded"
       },
@@ -10697,19 +10864,13 @@
         "project": "api",
         "status": "excluded"
       },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr4-b2-claims-routing.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr7-b1-credential-routing.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
       { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/talent-record/src/tests/ati-sep-1-intake-save.integration.spec.ts",
+        "project": "talent-record",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/talent-record/src/tests/create-from-draft-upload.spec.ts",
@@ -10737,21 +10898,20 @@
       { "project": "talent-record", "status": "production" }
     ],
     "@aramo/talent-intelligence": [{ "project": "api", "status": "production" }],
-    "@aramo/talent-reconcile": [
+    "@aramo/talent-record": [
+      { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/security-s1b-trust-lifecycle-hardening.integration.spec.ts",
+        "from": "apps/api/src/tests/ati-sep-1-ats-local-identity.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
-      { "project": "api", "status": "production" }
-    ],
-    "@aramo/talent-reconcile-signal": [
-      { "project": "talent-reconcile", "status": "production" },
-      { "project": "talent-record", "status": "production" }
-    ],
-    "@aramo/talent-record": [
-      { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ati-sep-1-intelligence-integration.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
@@ -10868,12 +11028,6 @@
       },
       {
         "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/talent-anchor-producer.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/talent-email-recipient.adapter.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -10924,6 +11078,19 @@
       { "project": "attachment", "status": "production" },
       { "project": "export", "status": "production" },
       { "project": "import", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/intelligence-integration/src/tests/ingest-payload-builder.spec.ts",
+        "project": "intelligence-integration",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/intelligence-integration/src/tests/intelligence-publisher.handler.spec.ts",
+        "project": "intelligence-integration",
+        "status": "excluded"
+      },
+      { "project": "intelligence-integration", "status": "production" },
       { "project": "portal", "status": "production" },
       { "project": "reporting", "status": "production" },
       { "project": "saved-list", "status": "production" },
@@ -10945,159 +11112,7 @@
         "project": "selection",
         "status": "excluded"
       },
-      { "project": "selection", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-reconcile/src/tests/reconcile-plan.spec.ts",
-        "project": "talent-reconcile",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-reconcile/src/tests/right-to-work-reconcile.integration.spec.ts",
-        "project": "talent-reconcile",
-        "status": "excluded"
-      },
-      { "project": "talent-reconcile", "status": "production" }
-    ],
-    "@aramo/talent-trust": [
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/g1-trust-recompute-ordering-recovery.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/src1-e2e-closure.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/src2-extraction-repair.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/support/trust-tenant-isolation-harness.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/talent-anchor-producer.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr12-b1-proposals.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr12-b2-queue.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr14-b1-dossier-reads.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr14-b2-dossier.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr15-b1-dispute-resolution.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr3-b2-email-verification.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr4-b2-claims-routing.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr4-b3-consistency.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr5-b1-recompute-sweep.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr5-b2-continuity-thinness.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr6-b1-maintenance.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr7-b1-credential-routing.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr8-b1-renewal.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "apps/api/src/tests/tr9-b1-reference-attestation.integration.spec.ts",
-        "project": "api",
-        "status": "excluded"
-      },
-      { "project": "api", "status": "production" },
-      { "project": "canonicalization", "status": "production" },
-      { "project": "portal", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-extraction/src/tests/ledger-mapper.spec.ts",
-        "project": "talent-extraction",
-        "status": "excluded"
-      },
-      { "project": "talent-extraction", "status": "production" },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-reconcile/src/tests/reconcile-plan.spec.ts",
-        "project": "talent-reconcile",
-        "status": "excluded"
-      },
-      {
-        "excludedBy": "src/tests/**/*",
-        "from": "libs/talent-reconcile/src/tests/right-to-work-reconcile.integration.spec.ts",
-        "project": "talent-reconcile",
-        "status": "excluded"
-      },
-      { "project": "talent-reconcile", "status": "production" }
+      { "project": "selection", "status": "production" }
     ],
     "@aramo/task": [
       { "from": "tools/enable-e2e-recruiter.ts", "project": "(unscoped)", "status": "unscoped" },
@@ -11433,13 +11448,6 @@
       "targets": ["build", "lint", "test"]
     },
     {
-      "name": "identity-index",
-      "root": "libs/identity-index",
-      "sourceRoot": "libs/identity-index/src",
-      "tags": ["scope:cip"],
-      "targets": ["build", "lint", "test"]
-    },
-    {
       "name": "import",
       "root": "libs/import",
       "sourceRoot": "libs/import/src",
@@ -11466,6 +11474,48 @@
       "sourceRoot": "libs/integration/src",
       "tags": ["scope:ats", "type:connector"],
       "targets": ["build", "lint", "test"]
+    },
+    {
+      "name": "intelligence-boundary-probe-ats",
+      "root": "tools/intelligence-boundary-probes/ats-probe",
+      "sourceRoot": "tools/intelligence-boundary-probes/ats-probe",
+      "tags": ["scope:ats"],
+      "targets": []
+    },
+    {
+      "name": "intelligence-boundary-probe-cip",
+      "root": "tools/intelligence-boundary-probes/cip-probe",
+      "sourceRoot": "tools/intelligence-boundary-probes/cip-probe",
+      "tags": ["scope:cip"],
+      "targets": []
+    },
+    {
+      "name": "intelligence-boundary-probe-intelligence",
+      "root": "tools/intelligence-boundary-probes/intelligence-probe",
+      "sourceRoot": "tools/intelligence-boundary-probes/intelligence-probe",
+      "tags": ["scope:intelligence"],
+      "targets": []
+    },
+    {
+      "name": "intelligence-contracts",
+      "root": "libs/intelligence-contracts",
+      "sourceRoot": "libs/intelligence-contracts/src",
+      "tags": ["scope:shared"],
+      "targets": ["build", "lint", "test", "typecheck"]
+    },
+    {
+      "name": "intelligence-core",
+      "root": "libs/intelligence-core",
+      "sourceRoot": "libs/intelligence-core/src",
+      "tags": ["scope:intelligence"],
+      "targets": ["build", "lint", "test", "typecheck"]
+    },
+    {
+      "name": "intelligence-integration",
+      "root": "libs/intelligence-integration",
+      "sourceRoot": "libs/intelligence-integration/src",
+      "tags": ["scope:ats"],
+      "targets": ["build", "lint", "test", "typecheck"]
     },
     {
       "name": "job-distribution",
@@ -11564,13 +11614,6 @@
       "sourceRoot": "pact/consumers/platform-governance-consumer/src",
       "tags": ["pact-consumer"],
       "targets": ["lint", "pact-test", "test"]
-    },
-    {
-      "name": "platform-trust",
-      "root": "libs/platform-trust",
-      "sourceRoot": "libs/platform-trust/src",
-      "tags": ["scope:shared"],
-      "targets": ["build", "lint", "test"]
     },
     {
       "name": "policy-engine",
@@ -11723,7 +11766,7 @@
       "name": "sourced-talent",
       "root": "libs/sourced-talent",
       "sourceRoot": "libs/sourced-talent/src",
-      "tags": ["scope:cip"],
+      "tags": ["scope:ats"],
       "targets": ["build", "lint", "test"]
     },
     {
@@ -11758,14 +11801,14 @@
       "name": "talent-evidence",
       "root": "libs/talent-evidence",
       "sourceRoot": "libs/talent-evidence/src",
-      "tags": ["scope:cip"],
+      "tags": ["scope:ats"],
       "targets": ["build", "lint", "test"]
     },
     {
       "name": "talent-extraction",
       "root": "libs/talent-extraction",
       "sourceRoot": "libs/talent-extraction/src",
-      "tags": ["scope:cip"],
+      "tags": ["scope:ats"],
       "targets": ["build", "lint", "test"]
     },
     {
@@ -11776,31 +11819,17 @@
       "targets": ["build", "lint", "test"]
     },
     {
-      "name": "talent-reconcile",
-      "root": "libs/talent-reconcile",
-      "sourceRoot": "libs/talent-reconcile/src",
-      "tags": ["scope:ats"],
-      "targets": ["build", "lint", "test"]
-    },
-    {
-      "name": "talent-reconcile-signal",
-      "root": "libs/talent-reconcile-signal",
-      "sourceRoot": "libs/talent-reconcile-signal/src",
-      "tags": ["scope:cip"],
-      "targets": ["build", "lint", "test"]
+      "name": "talent-intelligence-service",
+      "root": "apps/talent-intelligence-service",
+      "sourceRoot": "apps/talent-intelligence-service/src",
+      "tags": ["scope:intelligence"],
+      "targets": ["build", "lint", "serve", "test", "typecheck"]
     },
     {
       "name": "talent-record",
       "root": "libs/talent-record",
       "sourceRoot": "libs/talent-record/src",
       "tags": ["scope:ats"],
-      "targets": ["build", "lint", "test"]
-    },
-    {
-      "name": "talent-trust",
-      "root": "libs/talent-trust",
-      "sourceRoot": "libs/talent-trust/src",
-      "tags": ["scope:cip"],
       "targets": ["build", "lint", "test"]
     },
     {

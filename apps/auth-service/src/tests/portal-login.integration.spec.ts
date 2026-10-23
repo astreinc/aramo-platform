@@ -14,14 +14,12 @@ import { v7 as uuidv7 } from 'uuid';
 import {
   ARAMO_POSTGRES_TEST_IMAGE,
   CommonModule,
-  computeEmailFingerprint,
   resolveIdentityMigrations,
   resolveAuthStorageMigrations,
 } from '@aramo/common';
 import { IdentityCoreModule, PrismaService as IdentityPrismaService } from '@aramo/identity';
 import { AuthStorageModule } from '@aramo/auth-storage';
 import { PortalIdentityModule } from '@aramo/portal-identity';
-import { IdentityIndexModule } from '@aramo/identity-index';
 import { MailerModule, MAILER_PORT } from '@aramo/mailer';
 import { PortalAuthController, PORTAL_SESSION_SCOPES } from '@aramo/auth-core';
 import { EMAIL_SENDER } from '@aramo/auth-core';
@@ -48,16 +46,21 @@ import { IdentityHostContextAdapter } from '../app/auth/identity-host-context.ad
 import { IdentityPrincipalDirectoryAdapter } from '../app/auth/identity-principal-directory.adapter.js';
 import { PortalIdentityRepositoryAdapter } from '../app/auth/portal-identity-repository.adapter.js';
 import { MailerEmailSenderAdapter } from '../app/auth/mailer-email-sender.adapter.js';
-import { IdentityIndexEligibilityAdapter } from '../app/auth/identity-index-eligibility.adapter.js';
+import { PortalDeferredEligibilityAdapter } from '../app/auth/portal-deferred-eligibility.adapter.js';
 
 import { generateTestKeyPair } from './test-keys.js';
 
 // Portal P1 PR-1 — the required HTTP-boot integration. Boots the auth module
-// against Postgres 17 (identity + auth_storage + portal_identity + identity_index
-// provisioned), with a mock mailer, and drives the passwordless flow end to end:
-// request-link writes a token row + sends mail; consume mints the PortalUser +
-// sets the session cookies + a correct portal JWT; an unknown email writes no
-// row, sends no mail, and returns the identical neutral response.
+// against Postgres 17 (identity + auth_storage + portal_identity provisioned),
+// with a mock mailer, and drives the passwordless flow end to end.
+//
+// ATI-SEP-1 T10 WP4 (Addendum A4, GAP-PORTAL-ID-1) — the retired identity index
+// no longer supplies eligibility; ELIGIBILITY_POLICY is the portal-deferred
+// adapter (always null). Eligibility therefore comes ONLY from an existing
+// PortalUser: request-link writes a token row + sends mail for one; consume
+// finds that PortalUser (cluster_id untouched — no destructive change) + sets
+// the session cookies + a correct portal JWT; an unknown email writes no row,
+// sends no mail, and returns the identical neutral response.
 
 const REPO_ROOT = resolve(__dirname, '../../../..');
 const IDENTITY_MIGRATIONS = resolveIdentityMigrations(REPO_ROOT);
@@ -66,13 +69,8 @@ const PORTAL_IDENTITY_MIGRATION = resolve(
   REPO_ROOT,
   'libs/portal-identity/prisma/migrations/20260714120000_init_portal_identity/migration.sql',
 );
-const IDENTITY_INDEX_MIGRATION = resolve(
-  REPO_ROOT,
-  'libs/identity-index/prisma/migrations/20260630000000_init_identity_index/migration.sql',
-);
-
-const TEST_PEPPER = 'portal-login-integration-pepper';
 const ELIGIBLE_EMAIL = 'known@example.com';
+const ELIGIBLE_PORTAL_ID = uuidv7();
 const UNKNOWN_EMAIL = 'nobody@example.com';
 
 function splitDdl(sql: string): string[] {
@@ -148,7 +146,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ...IDENTITY_MIGRATIONS,
         ...AUTH_STORAGE_MIGRATIONS,
         PORTAL_IDENTITY_MIGRATION,
-        IDENTITY_INDEX_MIGRATION,
       ];
       for (const migrationPath of migrations) {
         for (const stmt of splitDdl(readFileSync(migrationPath, 'utf8'))) {
@@ -157,14 +154,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           await setup.$executeRawUnsafe(t);
         }
       }
-      // Seed eligibility: a ClusterFingerprint for the eligible email (aperture 1).
-      const clusterId = uuidv7();
+      // Seed eligibility (A4): an EXISTING PortalUser for the eligible email — the
+      // only eligibility source while the policy port is portal-deferred.
       await setup.$executeRawUnsafe(
-        `INSERT INTO "identity_index"."PersonCluster" (id, updated_at) VALUES ('${clusterId}', NOW())`,
-      );
-      const fp = computeEmailFingerprint(ELIGIBLE_EMAIL, TEST_PEPPER);
-      await setup.$executeRawUnsafe(
-        `INSERT INTO "identity_index"."ClusterFingerprint" (id, cluster_id, fingerprint, kind) VALUES ('${uuidv7()}', '${clusterId}', '${fp}', 'email')`,
+        `INSERT INTO "portal_identity"."PortalUser" (id, email_normalized, cluster_id, updated_at) VALUES ('${ELIGIBLE_PORTAL_ID}', '${ELIGIBLE_EMAIL}', NULL, NOW())`,
       );
       await setup.$disconnect();
 
@@ -174,14 +167,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         AUTH_AUDIENCE: process.env['AUTH_AUDIENCE'],
         AUTH_PRIVATE_KEY: process.env['AUTH_PRIVATE_KEY'],
         AUTH_PUBLIC_KEY: process.env['AUTH_PUBLIC_KEY'],
-        ARAMO_IDENTITY_PEPPER: process.env['ARAMO_IDENTITY_PEPPER'],
         AUTH_ALLOW_INSECURE_COOKIES: process.env['AUTH_ALLOW_INSECURE_COOKIES'],
       };
       process.env['DATABASE_URL'] = url;
       process.env['AUTH_AUDIENCE'] = 'aramo-test-audience';
       process.env['AUTH_PRIVATE_KEY'] = privatePem;
       process.env['AUTH_PUBLIC_KEY'] = publicPem;
-      process.env['ARAMO_IDENTITY_PEPPER'] = TEST_PEPPER;
       process.env['AUTH_ALLOW_INSECURE_COOKIES'] = 'true';
 
       module = await Test.createTestingModule({
@@ -190,7 +181,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           IdentityCoreModule,
           AuthStorageModule,
           PortalIdentityModule,
-          IdentityIndexModule,
           MailerModule,
         ],
         controllers: [PortalAuthController, JwksController],
@@ -219,9 +209,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           // Auth-Decoupling PR-2/3 — the port bindings (DI ripple, §4 D-1). The
           // MAILER_PORT override below still reaches the send via the adapter.
           MailerEmailSenderAdapter,
-          IdentityIndexEligibilityAdapter,
+          PortalDeferredEligibilityAdapter,
           { provide: EMAIL_SENDER, useClass: MailerEmailSenderAdapter },
-          { provide: ELIGIBILITY_POLICY, useClass: IdentityIndexEligibilityAdapter },
+          { provide: ELIGIBILITY_POLICY, useClass: PortalDeferredEligibilityAdapter },
         ],
       })
         .overrideProvider(MAILER_PORT)
@@ -256,7 +246,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     const NEUTRAL = 'If this address is known to Aramo, a sign-in link has been sent.';
 
-    it('request-link for an eligible email → 200 neutral, a token row is written, mail is sent', async () => {
+    it('request-link for an existing portal user → 200 neutral, a token row is written, mail is sent', async () => {
       const res = await request(app.getHttpServer())
         .post('/auth/portal/request-link')
         .send({ email: ELIGIBLE_EMAIL });
@@ -267,7 +257,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(mailer.send.mock.calls[0][0].to).toBe(ELIGIBLE_EMAIL);
     });
 
-    it('consume the emailed token → 302, session cookies set, PortalUser minted, portal JWT correct', async () => {
+    it('consume the emailed token → 302, session cookies set, existing PortalUser found, portal JWT correct', async () => {
       // Extract the raw token from the mail the previous test captured.
       const sent = mailer.send.mock.calls[0][0] as { text: string };
       const raw = /token=([^&\s"]+)/.exec(sent.text)?.[1];
@@ -283,13 +273,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(access).toBeTruthy();
       expect(refresh).toBeTruthy();
 
-      // The PortalUser was lazily minted with the eligible email + the cluster.
+      // The existing PortalUser was found (no new mint); A4 — no cluster is
+      // resolved, so cluster_id stays as it was (null).
       const users = await db.$queryRawUnsafe<{ id: string; cluster_id: string | null }[]>(
         `SELECT id, cluster_id FROM "portal_identity"."PortalUser" WHERE email_normalized = $1`,
         ELIGIBLE_EMAIL,
       );
       expect(users).toHaveLength(1);
-      expect(users[0].cluster_id).not.toBeNull();
+      expect(users[0].id).toBe(ELIGIBLE_PORTAL_ID);
+      expect(users[0].cluster_id).toBeNull();
 
       // The access JWT is a portal token whose sub is the PortalUser id.
       const jwt = /aramo_access_token_portal=([^;]+)/.exec(access!)?.[1];
@@ -319,47 +311,24 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(mailer.send).not.toHaveBeenCalled();
     });
 
-    // TR-2b B2b (Directive §PR-2.3, ruling 2) — login-time cluster re-link, the
-    // full circle: a portal user whose orphaned cluster was purged (B2a/B2b) has a
-    // PortalUser with cluster_id NULL. When their cluster re-appears in the index
-    // (a fresh arrival re-mints it), the NEXT consume fills cluster_id — one write,
-    // same user, monotonic fill (never overwrites a non-null cluster).
-    it('re-links a NULL-cluster PortalUser at next consume (purged → re-linked)', async () => {
-      const RELINK_EMAIL = 'relink@example.com';
+    // ATI-SEP-1 A4 §3 — no destructive change to portal_identity data: an existing
+    // PortalUser's (now inert) non-null cluster_id survives a login unchanged.
+    it('keeps an existing PortalUser cluster_id unchanged at consume (A4: inert, never cleared)', async () => {
+      const INERT_EMAIL = 'inert@example.com';
       const portalId = uuidv7();
-      // The purged-cluster portal user: an existing PortalUser with cluster_id NULL.
+      const inertCluster = uuidv7();
       await db.$executeRawUnsafe(
         `INSERT INTO "portal_identity"."PortalUser" (id, email_normalized, cluster_id, updated_at)
-         VALUES ($1, $2, NULL, NOW())`,
+         VALUES ($1, $2, $3, NOW())`,
         portalId,
-        RELINK_EMAIL,
-      );
-      // The fresh cluster re-appears in the PII-free index (the eligibility hit).
-      const clusterId = uuidv7();
-      await db.$executeRawUnsafe(
-        `INSERT INTO "identity_index"."PersonCluster" (id, updated_at) VALUES ($1, NOW())`,
-        clusterId,
-      );
-      const fp = computeEmailFingerprint(RELINK_EMAIL, TEST_PEPPER);
-      await db.$executeRawUnsafe(
-        `INSERT INTO "identity_index"."ClusterFingerprint" (id, cluster_id, fingerprint, kind)
-         VALUES ($1, $2, $3, 'email')`,
-        uuidv7(),
-        clusterId,
-        fp,
+        INERT_EMAIL,
+        inertCluster,
       );
 
-      const before = await db.$queryRawUnsafe<{ cluster_id: string | null }[]>(
-        `SELECT cluster_id FROM "portal_identity"."PortalUser" WHERE id = $1`,
-        portalId,
-      );
-      expect(before[0]!.cluster_id).toBeNull();
-
-      // request-link + consume for the re-linkable portal user.
       mailer.send.mockClear();
       await request(app.getHttpServer())
         .post('/auth/portal/request-link')
-        .send({ email: RELINK_EMAIL });
+        .send({ email: INERT_EMAIL });
       const sent = mailer.send.mock.calls[0]![0] as { text: string };
       const raw = /token=([^&\s"]+)/.exec(sent.text)?.[1];
       const res = await request(app.getHttpServer()).get(
@@ -367,14 +336,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       expect(res.status).toBe(302);
 
-      // The SAME PortalUser now carries the fresh cluster (re-linked, one write).
       const after = await db.$queryRawUnsafe<{ id: string; cluster_id: string | null }[]>(
         `SELECT id, cluster_id FROM "portal_identity"."PortalUser" WHERE email_normalized = $1`,
-        RELINK_EMAIL,
+        INERT_EMAIL,
       );
       expect(after).toHaveLength(1);
-      expect(after[0]!.id).toBe(portalId); // re-linked, NOT a new mint
-      expect(after[0]!.cluster_id).toBe(clusterId);
+      expect(after[0]!.id).toBe(portalId);
+      expect(after[0]!.cluster_id).toBe(inertCluster);
     });
 
     // FIX-PORTAL-SCOPES-1 (D3) — real-session-mint authorization coverage: the path

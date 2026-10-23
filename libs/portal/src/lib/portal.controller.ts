@@ -32,25 +32,23 @@ import type { PortalProfileDto } from './dto/portal-profile.dto.js';
 import type { PortalRecordsResponseDto } from './dto/portal-records.dto.js';
 import { PortalTalentResolverService } from './portal-talent-resolver.service.js';
 
-// Portal P1 PR-2a — Portal Controller (OPEN-4 chain). The placeholder
-// `sub`-passthrough is GONE: the portal session's JWT `sub` (= PortalUser.id)
-// resolves to the portal user's ATS records ACROSS tenants via
-// PortalTalentResolverService (sub → PortalUser → cluster → PERSON_CLUSTER
-// holders → survivor subjects → live TalentRecords).
+// Portal P1 PR-2a — Portal Controller. The portal session's JWT `sub`
+// (= PortalUser.id) resolves to the portal user's ATS records through
+// PortalTalentResolverService.
 //
-// Three reads (the old GET /v1/portal/profile + /consent are REMOVED, not
-// aliased — nothing runtime consumed them; the portal-thin pact is repointed
-// in-slice):
-//   GET /v1/portal/records                 — the portal user's records across
-//                                            tenants (selection surface, P-R5)
-//   GET /v1/portal/records/:id/profile     — one record's R10-filtered profile
-//   GET /v1/portal/records/:id/consent     — one record's consent state
+// ATI-SEP-1 T10 WP4 — Addendum A4 (GAP-PORTAL-ID-1): the legacy OPEN-4 chain
+// (cluster → trust-ledger subjects → ATS refs) is retired with the
+// identity_index / trust schemas, and the resolver answers "no resolvable
+// talent". Every record / consent route below therefore answers ONE uniform,
+// non-leaking 404 NOT_AVAILABLE (after the unchanged portal-consumer + sub
+// checks) until the Portal identity increment re-binds portal accounts to their
+// authorized ATS relationships. The route bodies are kept intact so that
+// increment only swaps the resolver.
 //
 // Auth posture: `sub` derives identity from the JWT (never a path/body param for
-// WHO the caller is). Every per-record read validates membership through the
-// chain — a record id not reachable is a UNIFORM 404 (oracle-resistant: no
-// "exists but not yours"). A portal user with no cluster / no live records is a
-// VALID EMPTY state (200 with an empty list), never an error.
+// WHO the caller is). Every per-record call validates membership through the
+// resolver — a record id not reachable is the SAME uniform 404 (oracle-resistant:
+// no "exists but not yours", no format-vs-membership distinction).
 //
 // R10 refusal enforcement stays structural: this controller emits only
 // PortalProfileDto (+ list) + TalentConsentStateResponseDto — all openapi-bound
@@ -91,6 +89,8 @@ export class PortalController {
     this.assertConsumerIsPortal(authContext, requestId);
     const sub = this.assertSubIsUuid(authContext, requestId);
     const refs = await this.resolver.resolveRecords(sub);
+    // null = the session resolves to no talent (A4 / GAP-PORTAL-ID-1).
+    if (refs === null) throw this.uniformNotFound(requestId);
     const records: PortalProfileDto[] = [];
     for (const ref of refs) {
       const projection = await this.talentRecordService.findSelfProfile({
@@ -355,10 +355,7 @@ export class PortalController {
   private notAvailable(authContext: AuthContextType, requestId: string): never {
     this.assertConsumerIsPortal(authContext, requestId);
     this.assertSubIsUuid(authContext, requestId);
-    throw new AramoError('NOT_FOUND', 'not available', 404, {
-      requestId,
-      details: { reason: 'NOT_AVAILABLE' },
-    });
+    throw this.uniformNotFound(requestId);
   }
 
   private assertIdempotencyKey(
@@ -398,8 +395,12 @@ export class PortalController {
   }
 
   private uniformNotFound(requestId: string): AramoError {
-    // Uniform: no details that distinguish "unknown" from "not yours".
-    return new AramoError('NOT_FOUND', 'record not found', 404, { requestId });
+    // Uniform (ATI-SEP-1 A4): ONE shape for every unresolvable portal call —
+    // unknown, not-yours, malformed, vanished, and identity-deferred alike.
+    return new AramoError('NOT_FOUND', 'not available', 404, {
+      requestId,
+      details: { reason: 'NOT_AVAILABLE' },
+    });
   }
 
   private assertConsumerIsPortal(

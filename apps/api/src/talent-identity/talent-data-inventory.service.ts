@@ -3,11 +3,15 @@ import { TalentErasureService, type PgExec, type ErasureScope } from './talent-e
 // TR-15 B2 (DDR §6 — D5, the DSAR assembly) — read-only per-talent data
 // inventory. NO HTTP surface; admin CLI only. Assembles, in one JSON, the raw
 // material a subject-access-request answers: the resolved scope (husk chain +
-// trust cluster), the per-holder presence counts (from the SAME erasure
-// inventory), the consent ledger, the trust bands (the dossier head), the
-// evidence-event timeline (the dossier's timeline read), and the document /
+// linked sourced arrivals), the per-holder presence counts (from the SAME
+// erasure inventory), the consent ledger, the sourced arrivals + their raw
+// payload refs, the within-tenant duplicate advisories, and the document /
 // attachment refs. Every query is a SELECT — the CLI proves row counts are
 // unchanged.
+//
+// ATI-SEP-1 T10 WP4 — the former trust bands + evidence-event timeline (trust
+// ledger reads) are gone with that schema: verification / evidence facts now
+// live in Talent Intelligence and are answered by its own DSAR surface.
 
 export interface TalentDataInventory {
   tenant_id: string;
@@ -17,8 +21,9 @@ export interface TalentDataInventory {
   per_holder_counts: Array<{ table: string; count: number }>;
   total_rows: number;
   consent_ledger: Record<string, unknown>[];
-  trust_bands: Record<string, unknown>[];
-  evidence_timeline: Record<string, unknown>[];
+  sourced_arrivals: Record<string, unknown>[];
+  raw_payload_refs: Record<string, unknown>[];
+  duplicate_advisories: Record<string, unknown>[];
   document_refs: Record<string, unknown>[];
   attachment_refs: Record<string, unknown>[];
 }
@@ -30,7 +35,7 @@ export class TalentDataInventoryService {
   async assemble(pg: PgExec, tenantId: string, recordId: string): Promise<TalentDataInventory> {
     // dryRun is read-only: it resolves the scope and counts every holder.
     const dry = await this.erasure.dryRun(pg, tenantId, recordId);
-    const { record_ids, subject_ids } = dry.scope;
+    const { record_ids, sourced_talent_ids } = dry.scope;
 
     const consent_ledger = (
       await pg.query(
@@ -40,20 +45,35 @@ export class TalentDataInventoryService {
       )
     ).rows;
 
-    const trust_bands = (
+    const sourced_arrivals = (
       await pg.query(
-        `SELECT * FROM talent_trust."TrustState" WHERE subject_id = ANY($1::uuid[])`,
-        [subject_ids],
+        `SELECT st.id, st.source_channel, st.external_source_id, st.created_at, sa.talent_record_id, sa.link_kind
+           FROM talent_record."talent_record_sourced_arrival" sa
+           JOIN sourced_talent."SourcedTalent" st ON st.id = sa.sourced_talent_id
+          WHERE sa.sourced_talent_id = ANY($1::uuid[])
+          ORDER BY st.created_at ASC`,
+        [sourced_talent_ids],
       )
     ).rows;
 
-    const evidence_timeline = (
+    const raw_payload_refs = (
       await pg.query(
-        `SELECT id, evidence_id, event_type, actor, reason, occurred_at
-         FROM talent_trust."EvidenceEvent"
-         WHERE evidence_id IN (SELECT id FROM talent_trust."EvidenceRecord" WHERE subject_id = ANY($1::uuid[]))
-         ORDER BY occurred_at ASC`,
-        [subject_ids],
+        `SELECT id, sourced_talent_id, storage_ref, created_at
+           FROM ingestion."RawPayloadReference"
+          WHERE sourced_talent_id = ANY($1::uuid[])
+          ORDER BY created_at ASC`,
+        [sourced_talent_ids],
+      )
+    ).rows;
+
+    const duplicate_advisories = (
+      await pg.query(
+        `SELECT id, talent_record_a_id, talent_record_b_id, sourced_talent_id, basis, status, created_at
+           FROM talent_record."talent_duplicate_advisory"
+          WHERE talent_record_a_id = ANY($1::uuid[]) OR talent_record_b_id = ANY($1::uuid[])
+             OR sourced_talent_id = ANY($2::uuid[])
+          ORDER BY created_at ASC`,
+        [record_ids, sourced_talent_ids],
       )
     ).rows;
 
@@ -96,8 +116,9 @@ export class TalentDataInventoryService {
       per_holder_counts: dry.steps.map((s) => ({ table: s.table, count: s.count })),
       total_rows: dry.total_rows,
       consent_ledger,
-      trust_bands,
-      evidence_timeline,
+      sourced_arrivals,
+      raw_payload_refs,
+      duplicate_advisories,
       document_refs,
       attachment_refs,
     };

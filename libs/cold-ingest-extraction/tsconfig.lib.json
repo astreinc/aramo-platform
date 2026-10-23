@@ -10,8 +10,7 @@
     "paths": {
       "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
       "@aramo/ingestion": ["../../dist/libs/ingestion/src/index.d.ts"],
-      "@aramo/resume-parse": ["../../dist/libs/resume-parse/src/index.d.ts"],
-      "@aramo/talent-trust": ["../../dist/libs/talent-trust/src/index.d.ts"]
+      "@aramo/resume-parse": ["../../dist/libs/resume-parse/src/index.d.ts"]
     }
   },
   "include": ["src/**/*.ts"],

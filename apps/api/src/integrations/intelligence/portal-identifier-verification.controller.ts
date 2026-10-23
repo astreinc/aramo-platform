@@ -101,7 +101,12 @@ export class PortalIdentifierVerificationController {
 }
 
 function notFound(requestId: string): AramoError {
-  return new AramoError('NOT_FOUND', 'record not found', 404, { requestId });
+  // ATI-SEP-1 A4 (GAP-PORTAL-ID-1) — the SAME uniform 404 NOT_AVAILABLE shape as
+  // libs/portal's PortalController (the portal resolver resolves no talent).
+  return new AramoError('NOT_FOUND', 'not available', 404, {
+    requestId,
+    details: { reason: 'NOT_AVAILABLE' },
+  });
 }
 
 function mapError(err: unknown, requestId: string): unknown {

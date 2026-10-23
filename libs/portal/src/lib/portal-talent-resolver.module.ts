@@ -1,17 +1,13 @@
 import { Module } from '@nestjs/common';
-import { PortalIdentityModule } from '@aramo/portal-identity';
-import { TalentTrustModule } from '@aramo/talent-trust';
 
 import { PortalTalentResolverService } from './portal-talent-resolver.service.js';
 
-// ATI-SEP-1 T10 WP3b — the OPEN-4 membership chain in its own module. The
-// PortalController no longer reads the trust ledger (its verification + dispute
-// routes answer NOT_AVAILABLE under Addendum A4); the ONLY remaining libs/portal
-// edge to @aramo/talent-trust is this resolver's (sub → cluster → subjects → ATS
-// refs). It is isolated here so the portal identity re-point (WP4) replaces it in
-// one place.
+// ATI-SEP-1 T10 WP4 — the portal talent resolver in its own module. Under
+// Addendum A4 (GAP-PORTAL-ID-1) it has NO dependencies: the trust-ledger /
+// identity-index chain is retired and the resolver answers "no resolvable
+// talent" (see PortalTalentResolverService). The Portal identity increment
+// replaces the implementation here, in one place.
 @Module({
-  imports: [PortalIdentityModule, TalentTrustModule],
   providers: [PortalTalentResolverService],
   exports: [PortalTalentResolverService],
 })

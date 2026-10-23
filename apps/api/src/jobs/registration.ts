@@ -12,7 +12,6 @@ import {
 } from '@aramo/talent-record';
 import { COLD_INGEST_EXTRACTION_QUEUE_NAME } from '@aramo/cold-ingest-extraction';
 
-import { IDENTITY_INDEX_LIFECYCLE_QUEUE_NAME } from '../talent-identity/identity-lifecycle-sweep.queue.constants.js';
 import { JOB_DISTRIBUTION_SYNC_QUEUE_NAME } from '../job-distribution/job-distribution-sync.queue.constants.js';
 import {
   LIFECYCLE_POLL_QUEUE_NAME,
@@ -137,17 +136,8 @@ const SCHEDULES = [
   // handler now).
   // ATI-SEP-1 T10 WP3b — the TR-4 consistency poll, TR-5 decay-recompute sweep
   // and G1 recompute-repair schedules were removed (Talent Intelligence owns trust).
-  // TR-2b B2a (Directive §PR-1.3) — the daily identity-index lifecycle sweep.
-  // Orphan purge (LIVE: clusters failing R4 liveness past ORPHAN_GRACE_DAYS) +
-  // dormant detection (DARK: report-only behind DORMANT_LINK_MINTING_ENABLED).
-  // Runs at 05:00 UTC, BEFORE the 06:00 detection report and 07:00 recompute
-  // (engine cadence, not tenant config). The manual CLI is the escape hatch.
-  {
-    queue_name: IDENTITY_INDEX_LIFECYCLE_QUEUE_NAME,
-    job_name: 'tick',
-    job_id: 'identity-index-lifecycle-daily',
-    repeat: { pattern: '0 5 * * *', tz: 'UTC' as const },
-  },
+  // ATI-SEP-1 T10 WP5 — the TR-2b daily identity-index lifecycle sweep was
+  // removed with the identity_index schema.
   // SRC-2 PR-3 (R4) — the Indeed Job Sync freshness sweep. Every 300s: per enabled
   // tenant×'indeed', diff the publishable requisition set against ChannelPostingState
   // and drive create/update/expire mutations (bounded per-tick, fail-closed when

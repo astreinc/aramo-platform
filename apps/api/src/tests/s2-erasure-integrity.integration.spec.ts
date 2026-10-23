@@ -260,11 +260,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('S2 — talent era
     expect(await count('communications."CommunicationInteraction"', 'id = $1', [shared])).toBe(1);
   });
 
-  it('(3b) the newly classified DELETE holders + general communications + raw payloads are erased with their artifacts', async () => {
+  it('(3b) the newly classified DELETE holders + general communications + linked sourced arrivals + raw payloads are erased with their artifacts', async () => {
     const rec = await talent();
-    const subject = uuidv7();
-    await db.query(`INSERT INTO talent_trust."ResolutionSubject"(id, tenant_id) VALUES ($1,$2)`, [subject, TENANT]);
-    await db.query(`INSERT INTO talent_trust."ResolutionSubjectRef"(id,subject_id,tenant_id,ref_type,ref_id,link_source) VALUES ($1,$2,$3,'ATS_TALENT_RECORD',$4,'test')`, [uuidv7(), subject, TENANT, rec]);
+    const other = await talent(); // a bystander record named by a duplicate advisory
+    // ATI-SEP-1 T10 WP4 — the ATS-local sourced arrival LINKED to the record (WP2),
+    // its raw payload (by sourced_talent_id), and a pending duplicate advisory.
+    const sourced = uuidv7();
+    await seed('sourced_talent."SourcedTalent"', { id: sourced, tenant_id: TENANT, source_channel: 'INDEED', external_source_id: `ext-${sourced}` });
+    await db.query(`INSERT INTO talent_record."talent_record_sourced_arrival"(tenant_id,sourced_talent_id,talent_record_id,link_kind) VALUES ($1,$2,$3,'PROMOTED')`, [TENANT, sourced, rec]);
+    const [pa, pb] = rec < other ? [rec, other] : [other, rec];
+    const advisory = uuidv7();
+    await db.query(`INSERT INTO talent_record."talent_duplicate_advisory"(id,tenant_id,talent_record_a_id,talent_record_b_id,basis,shared_kinds) VALUES ($1,$2,$3,$4,'EMAIL',ARRAY['EMAIL'])`, [advisory, TENANT, pa, pb]);
     await seed('talent_evidence."TalentProjectExperience"', { id: uuidv7(), tenant_id: TENANT, talent_id: rec });
     await seed('talent_evidence."TalentResumeDefault"', { id: uuidv7(), tenant_id: TENANT, talent_id: rec });
     await seed('talent_evidence."TalentResumeEdition"', { id: uuidv7(), tenant_id: TENANT, talent_id: rec });
@@ -273,7 +279,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('S2 — talent era
     await seed('talent_evidence."TalentIntakeDraft"', { id: draft, tenant_id: TENANT, promoted_talent_record_id: rec, storage_key: `${TENANT}/intake/${draft}-Ada_Lovelace.pdf` });
     await seed('talent_evidence."TalentIntakeOutboxEvent"', { id: uuidv7(), subject_type: 'talent_intake_draft', subject_id: draft });
     await seed('examination."CanonicalMatchShadowObservation"', { id: uuidv7(), tenant_id: TENANT, talent_id: rec, match_class: 'CANONICAL_EXACT' });
-    await seed('ingestion."RawPayloadReference"', { id: uuidv7(), tenant_id: TENANT, resolved_subject_id: subject, storage_ref: `${TENANT}/ingestion/raw/${uuidv7()}.json`, verified_email: 'ada@pii.example' });
+    await seed('ingestion."RawPayloadReference"', { id: uuidv7(), tenant_id: TENANT, sourced_talent_id: sourced, storage_ref: `${TENANT}/ingestion/raw/${uuidv7()}.json`, verified_email: 'ada@pii.example' });
     const call = uuidv7();
     await db.query(`INSERT INTO communications."CommunicationInteraction"(id,tenant_id,channel,direction,from_address,to_address,body) VALUES ($1,$2,'email','outbound','r@x','ada@pii.example','hello Ada')`, [call, TENANT]);
     await db.query(`INSERT INTO communications."CommunicationAssociation"(id,tenant_id,interaction_id,subject_type,subject_id,relation_type) VALUES ($1,$2,$3,'talent_record',$4,'subject')`, [uuidv7(), TENANT, call, rec]);
@@ -299,13 +305,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('S2 — talent era
       ['talent_evidence."TalentIntakeDraft"', 'id = $1', draft],
       ['talent_evidence."TalentIntakeOutboxEvent"', 'subject_id = $1', draft],
       ['examination."CanonicalMatchShadowObservation"', 'talent_id = $1', rec],
-      ['ingestion."RawPayloadReference"', 'resolved_subject_id = $1', subject],
+      ['ingestion."RawPayloadReference"', 'sourced_talent_id = $1', sourced],
+      ['sourced_talent."SourcedTalent"', 'id = $1', sourced],
+      ['talent_record."talent_record_sourced_arrival"', 'sourced_talent_id = $1', sourced],
+      ['talent_record."talent_duplicate_advisory"', 'id = $1', advisory],
       ['communications."CommunicationInteraction"', 'id = $1', call],
       ['conversation_transcript."ConversationTranscript"', 'id = $1', tr],
       ['talent_record."TalentRecord"', 'id = $1', rec],
     ] as const) {
       expect(await count(t, w, [p]), t).toBe(0);
     }
+    // The bystander record named only by the (erased) advisory survives.
+    expect(await count('talent_record."TalentRecord"', 'id = $1', [other])).toBe(1);
     // Exactly one completion marker, carrying the run id; purged artifacts hold no key.
     const marker = await db.query<{ event_payload: { run_id: string } }>(`SELECT event_payload FROM audit."ConsentAuditEvent" WHERE subject_id = $1 AND event_type = 'consent.erased'`, [rec]);
     expect(marker.rows).toHaveLength(1);
@@ -646,7 +657,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('S2 — talent era
     const act = uuidv7();
     await db.query(`INSERT INTO activity."Activity"(id,tenant_id,type,subject_type,subject_id,notes) VALUES ($1,$2,'note','talent_record',$3,'n')`, [act, TENANT, rec]);
     await db.query(`INSERT INTO activity."ActivityNoteEvent"(id,tenant_id,activity_id,event_type,actor_user_id) VALUES ($1,$2,$3,'CREATED',$4)`, [uuidv7(), TENANT, act, uuidv7()]);
-    // The cluster purge runs after the tombstones: fail the last write of the pass.
+    // The run-record update is the last write of the pass: fail it.
     await db.query(`
       CREATE OR REPLACE FUNCTION public.s2_test_fail_late() RETURNS TRIGGER AS $$ BEGIN RAISE EXCEPTION 's2 injected late failure'; END; $$ LANGUAGE plpgsql;
       CREATE TRIGGER s2_test_fail_late BEFORE UPDATE ON consent."TalentErasureRun" FOR EACH ROW EXECUTE FUNCTION public.s2_test_fail_late();`);
@@ -735,7 +746,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('S2 — talent era
     const cols = await db.query<{ s: string; t: string; c: string }>(
       `SELECT c.table_schema s, c.table_name t, c.column_name c FROM information_schema.columns c
          JOIN information_schema.tables t ON t.table_schema = c.table_schema AND t.table_name = c.table_name AND t.table_type = 'BASE TABLE'
-        WHERE c.table_schema NOT IN ('pg_catalog', 'information_schema')
+        -- ATI-SEP-1 (ADR-0036 Decision 2): the intelligence schema is the Talent Intelligence
+        -- service's OWN database (only co-located by this spec's migration glob); TI erases on
+        -- the talent.erased event, never through this pass.
+        WHERE c.table_schema NOT IN ('pg_catalog', 'information_schema', 'intelligence')
           AND (c.column_name ~ 'talent' OR c.table_name IN ('OutboxEvent', 'IdempotencyKey')
             OR (c.table_schema, c.table_name, c.column_name) IN (
               ('activity', 'Activity', 'subject_id'), ('attachment', 'Attachment', 'owner_id'), ('communications', 'CommunicationAssociation', 'subject_id'),
@@ -777,7 +791,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('S2 — talent era
                 ('documents', 'DocumentAssociation', 'resource_id'), ('documents', 'DocumentRequirement', 'resource_id'),
                 ('saved_list', 'SavedListEntry', 'item_id'), ('task', 'Task', 'owner_id'))`,
     );
-    const exempt = new Set([...RETAINED, ...notReachedDirectly, 'talent_record."talent_resume_text"']);
+    // ATI-SEP-1 T10 WP2/WP4 — talent_record_sourced_arrival is a same-schema FK child of
+    // TalentRecord (ON DELETE CASCADE; erased explicitly by the pass) — the FK locks the record.
+    // talent_record."intelligence_link" is likewise an FK child of TalentRecord; the TI inbound
+    // inbox (talent_intelligence_inbound_event) holds ids only and is erased by the pass.
+    const exempt = new Set([...RETAINED, ...notReachedDirectly, 'talent_record."talent_resume_text"', 'talent_record."talent_record_sourced_arrival"', 'talent_record."intelligence_link"', 'talent_record."talent_intelligence_inbound_event"']);
     expect(direct.rows.filter((r) => !r.guarded && !exempt.has(r.label)).map((r) => r.label), 'a talent-keyed table without the S2 write guard').toEqual([]);
   });
 

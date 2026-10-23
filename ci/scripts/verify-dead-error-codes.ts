@@ -35,6 +35,16 @@ const REGISTRY_SITES = [
 // Each MUST carry a reason. This is the machine-detectable exemption the Architect
 // requires (not a prose comment the guard would have to interpret).
 export const RESERVED_CODES: Record<string, string> = {
+  ADVISORY_NO_MERGED_SUBJECT:
+    'RESERVED (ATI-SEP-1 T10 WP5): its only emitter was the deleted legacy trust-ledger library (talent_trust schema dropped; Talent Intelligence owns evidence, disputes and resolution). Kept because the error-code registry is APPEND-ONLY; classified reserved with no throw-site.',
+  CONTRADICTION_OVERRIDE_REQUIRED:
+    'RESERVED (ATI-SEP-1 T10 WP5): its only emitter was the deleted legacy trust-ledger library (talent_trust schema dropped; Talent Intelligence owns evidence, disputes and resolution). Kept because the error-code registry is APPEND-ONLY; classified reserved with no throw-site.',
+  CLAIM_SHAPE_INVALID:
+    'RESERVED (ATI-SEP-1 T10 WP5): its only emitter was the deleted legacy trust-ledger library (talent_trust schema dropped; Talent Intelligence owns evidence, disputes and resolution). Kept because the error-code registry is APPEND-ONLY; classified reserved with no throw-site.',
+  EVIDENCE_NOT_DISPUTED:
+    'RESERVED (ATI-SEP-1 T10 WP5): its only emitter was the deleted legacy trust-ledger library (talent_trust schema dropped; Talent Intelligence owns evidence, disputes and resolution). Kept because the error-code registry is APPEND-ONLY; classified reserved with no throw-site.',
+  DISPUTE_OUTCOME_INVALID:
+    'RESERVED (ATI-SEP-1 T10 WP5): its only emitter was the deleted legacy trust-ledger library (talent_trust schema dropped; Talent Intelligence owns evidence, disputes and resolution). Kept because the error-code registry is APPEND-ONLY; classified reserved with no throw-site.',
   TALENT_LINK_INVALID:
     'RESERVED (ATI-SEP-1 T10 WP2, Addendum A3): the TalentRecord ↔ PersonCluster link routes (GET/POST/DELETE /v1/talent-records/:id/link) were its only emitter and were deleted with identity_index retirement. Kept because the error-code registry is APPEND-ONLY; classified reserved with no throw-site.',
   ESIGN_LAST_OWNER:
