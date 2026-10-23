@@ -7,8 +7,10 @@ interface ResumeDropzoneProps {
   readonly disabled?: boolean;
 }
 
-// Add-Talent intake (phase 1) — the resume dropzone. A resume is REQUIRED to
-// create a talent (no manual-entry fallback): every manual add starts here.
+// Add-Talent intake (phase 1) — the resume dropzone. A resume is OPTIONAL
+// (ATI-SEP-1 supersedes the former résumé-required ruling): the recruiter can
+// always "Enter details manually" instead. Only PDF and DOCX are accepted — the
+// extractor reads no other format (legacy .doc is not offered).
 // The assurances stated here are REAL: ADR-0015 secure resume-text storage,
 // server-side SSN-shaped redaction (D4), and the stated-facts-only /
 // no-scoring parse posture (R10).
@@ -50,7 +52,7 @@ export function ResumeDropzone({
           ref={inputRef}
           type="file"
           className="rc-visually-hidden"
-          accept=".pdf,.doc,.docx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+          accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
           disabled={disabled}
           data-testid="resume-file-input"
           onChange={(ev) => {

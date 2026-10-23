@@ -17,6 +17,7 @@ import {
 } from './talent-api';
 import {
   completeTalentIntakeUpload,
+  createManualTalentIntakeDraft,
   createTalentIntakeDraft,
   discardTalentIntakeDraft,
   getTalentIntakeDraft,
@@ -48,9 +49,11 @@ import type {
 // is notification-only (triggers a refetch); the Talent is created only on an
 // idempotent PROMOTE. The old synchronous draft-from-resume path is retired.
 //
-// Phases: intake (dropzone) → processing (upload+commit) → form (review, with a
-// live processing banner + persisted edits) → success. ?draft restores a
-// persisted draft fully from backend state.
+// Phases: intake (dropzone OR "Enter details manually") → processing
+// (upload+commit) → form (review, with a live processing banner + persisted
+// edits) → success. ?draft restores a persisted draft fully from backend state.
+// ATI-SEP-1 A5: a resume is optional — manual entry creates an artifact-less
+// draft (settled READY by the backend) and uses the same review + promote path.
 
 type Phase = 'intake' | 'processing' | 'form';
 
@@ -104,7 +107,7 @@ export function TalentCreateView() {
     day: 'numeric',
     year: 'numeric',
   });
-  const headerDescription = `Resume-first creation · source is recorded automatically ("Added manually by ${authorName} · ${addedToday}")`;
+  const headerDescription = `Start from a resume or enter details manually · source is recorded automatically ("Added manually by ${authorName} · ${addedToday}")`;
 
   const [phase, setPhase] = useState<Phase>('intake');
 
@@ -122,6 +125,10 @@ export function TalentCreateView() {
   const [sourceFilename, setSourceFilename] = useState<string | null>(null);
   const [sizeBytes, setSizeBytes] = useState<number | null>(null);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  const [startingManual, setStartingManual] = useState(false);
+  // True once a persisted draft view has been applied — the banner waits for it
+  // on ?draft= reopen so it never states a resume/no-resume fact before GET.
+  const [draftLoaded, setDraftLoaded] = useState(false);
 
   // Form state (the review).
   const [fields, setFields] = useState<IntakeState>(emptyIntakeState);
@@ -190,6 +197,7 @@ export function TalentCreateView() {
   // recruiter edits (late extraction must never overwrite a recruiter value).
   const hydrateFromView = useCallback(
     (view: TalentIntakeDraftView, preserveEdited: boolean) => {
+      setDraftLoaded(true);
       setVersion(view.version);
       setProcessingStatus(view.processing_status);
       setReviewStatus(view.review_status);
@@ -298,8 +306,11 @@ export function TalentCreateView() {
     };
   }, [draftId, isTerminal, phase, refetchDraft]);
 
-  // ── Autosave: persist recruiter edits after processing is terminal ──────
-  // Returns true when nothing is left unsaved. A 409 (the worker or another tab
+  // ── Autosave: persist recruiter edits at ANY processing state ───────────
+  // ATI-SEP-1 A5 — saves run while the resume is still QUEUED/PROCESSING too
+  // (the banner promises progress is saved). The backend merge keeps every
+  // RECRUITER-origin field when the extraction lands, so an early save is never
+  // overwritten. Returns true when nothing is left unsaved. A 409 (the worker or another tab
   // advanced the version) refetches the authoritative draft — the backend merge
   // keeps every extracted value — and re-sends the recruiter's edits once
   // against the new version, so a create right after a late extraction never
@@ -341,12 +352,12 @@ export function TalentCreateView() {
   }, [draftId, reviewDirty, buildReviewPayload, hydrateFromView]);
 
   useEffect(() => {
-    if (!reviewDirty || draftId === null || !isTerminal || reviewStatus === 'PROMOTED') return;
+    if (!reviewDirty || draftId === null || reviewStatus === 'PROMOTED') return;
     const t = window.setTimeout(() => {
       void flushSave();
     }, 800);
     return () => window.clearTimeout(t);
-  }, [reviewDirty, draftId, isTerminal, reviewStatus, flushSave]);
+  }, [reviewDirty, draftId, reviewStatus, flushSave]);
 
   // ── Field editing ───────────────────────────────────────────────────────
   function markDirty(): void {
@@ -422,7 +433,10 @@ export function TalentCreateView() {
     } catch (err) {
       setUploadError(uploadErrorMessage(err));
       // The object IS uploaded — go to the form so the recruiter can still work
-      // and promote once required fields are set (failure is recoverable).
+      // and promote once required fields are set (failure is recoverable). The
+      // draft stays UPLOADED, so the banner offers Try again (retry re-runs
+      // complete-upload server-side) and Replace resume.
+      setProcessingStatus('UPLOADED');
       setPhase('form');
       return;
     }
@@ -431,8 +445,27 @@ export function TalentCreateView() {
     setPhase('form');
   }
 
+  // ATI-SEP-1 A5 — manual entry: no resume. The backend returns a draft already
+  // settled READY (nothing to read), and the same review form opens on it.
+  async function onManualEntry(): Promise<void> {
+    setUploadError(null);
+    setStartingManual(true);
+    try {
+      const view = await createManualTalentIntakeDraft();
+      setDraftId(view.id);
+      setUploadFile(null);
+      hydrateFromView(view, false);
+      setPhase('form');
+    } catch (err) {
+      setUploadError(createErrorMessage(err));
+    } finally {
+      setStartingManual(false);
+    }
+  }
+
   async function onRetry(): Promise<void> {
     if (draftId === null) return;
+    setUploadError(null);
     try {
       const view = await retryTalentIntakeExtraction(draftId);
       hydrateFromView(view, true);
@@ -487,6 +520,7 @@ export function TalentCreateView() {
     setReviewStatus('NOT_STARTED');
     setDraftWarning(null);
     setDraftFailure(null);
+    setDraftLoaded(false);
     setUploadFile(null);
     setSourceFilename(null);
     setSizeBytes(null);
@@ -657,9 +691,18 @@ export function TalentCreateView() {
           {uploadError !== null ? (
             <InlineAlert variant="error">{uploadError}</InlineAlert>
           ) : null}
-          <ResumeDropzone onFile={handleFile} />
+          <ResumeDropzone onFile={handleFile} disabled={startingManual} />
           <p className="rc-stepreq">
-            Add a resume to prefill details, or enter the Talent information manually.
+            Add a resume to prefill details, or{' '}
+            <Button
+              unstyled
+              type="button"
+              className="rc-linkbtn"
+              disabled={startingManual}
+              onClick={() => void onManualEntry()}
+            >
+              Enter details manually
+            </Button>
           </p>
           <div className="rc-stepcancel">
             <Button unstyled type="button" className="rc-btn" onClick={() => navigate('/talent')}>
@@ -693,12 +736,18 @@ export function TalentCreateView() {
               <span className="rc-stepeyebrow">Step 2 of 2 · Review &amp; create</span>
             </div>
 
-            <ProcessingBanner
-              processingStatus={processingStatus}
-              failure={draftFailure}
-              onRetry={onRetry}
-              onReplace={onReplaceResume}
-            />
+            {reopenDraftId === null || draftLoaded ? (
+              <ProcessingBanner
+                processingStatus={processingStatus}
+                failure={draftFailure}
+                hasResume={sourceFilename !== null}
+                onRetry={onRetry}
+                onReplace={onReplaceResume}
+              />
+            ) : null}
+            {uploadError !== null ? (
+              <InlineAlert variant="error">{uploadError}</InlineAlert>
+            ) : null}
             {draftWarning !== null && processingStatus !== 'FAILED' ? (
               <div className="rc-warnnote" role="status">
                 {draftWarning}
@@ -743,7 +792,7 @@ export function TalentCreateView() {
           <details className="rc-railsummary">
             <summary>
               <Icons.IconFile aria-hidden="true" />
-              {sourceFilename ?? 'resume'} · Required to create ▾
+              {sourceFilename ?? 'Manual entry'} · Required to create ▾
             </summary>
             <div className="rc-railsummary__body">
               <RequirementList
@@ -751,7 +800,6 @@ export function TalentCreateView() {
                   { ok: nameOk, label: 'First and last name' },
                   { ok: emailOk, label: 'Email address' },
                   { ok: phoneOk, label: 'Phone number' },
-                  { ok: draftId !== null, label: 'Resume attached' },
                 ]}
               />
             </div>
@@ -766,7 +814,6 @@ export function TalentCreateView() {
                 { ok: nameOk, label: 'First and last name' },
                 { ok: emailOk, label: 'Email address' },
                 { ok: phoneOk, label: 'Phone number' },
-                { ok: draftId !== null, label: 'Resume attached' },
               ]}
             />
             <p className="rc-secnote">
@@ -814,53 +861,104 @@ export function TalentCreateView() {
 }
 
 // ── Processing / failure banner ──────────────────────────────────────────────
+// ATI-SEP-1 A5 — every state is stated truthfully:
+//   - FAILED renders the backend's specific, recruiter-safe failure copy (e.g. a
+//     too-long resume vs. a file with no readable text), never a generic line
+//     when a specific one exists;
+//   - UPLOADED in the form means the upload never reached the queue (the
+//     complete-upload call failed) — Try again re-runs it, Replace re-uploads;
+//   - PARTIAL is distinct from READY ("Partially read"), never "Resume read";
+//   - a manual-entry draft (no resume) says so instead of claiming a read.
+const GENERIC_FAILURE =
+  'We couldn’t read this resume. Enter the details below — the resume stays attached.';
+
 function ProcessingBanner({
   processingStatus,
   failure,
+  hasResume,
   onRetry,
   onReplace,
 }: {
   readonly processingStatus: string;
   readonly failure: string | null;
+  readonly hasResume: boolean;
   readonly onRetry: () => void;
   readonly onReplace: (file: File) => void;
 }) {
   const fileRef = useRef<HTMLInputElement>(null);
+  const recovery = (
+    <>
+      {/* Genuine native need: a hidden file picker triggered programmatically
+          (the fe-foundation Input has no type=file + imperative click). Only PDF
+          and DOCX — the extractor reads no other format. */}
+      {/* eslint-disable-next-line no-restricted-syntax */}
+      <input
+        ref={fileRef}
+        type="file"
+        accept=".pdf,.docx"
+        style={{ display: 'none' }}
+        data-testid="replace-resume-input"
+        onChange={(e) => {
+          const f = e.target.files?.[0];
+          if (f !== undefined) onReplace(f);
+          e.target.value = '';
+        }}
+      />
+      <span className="rc-failnote__acts">
+        <Button unstyled type="button" className="rc-linkbtn" onClick={onRetry}>
+          {processingStatus === 'UPLOADED' ? 'Try again' : 'Try reading again'}
+        </Button>
+        <Button unstyled type="button" className="rc-linkbtn" onClick={() => fileRef.current?.click()}>
+          Replace resume
+        </Button>
+      </span>
+    </>
+  );
   if (processingStatus === 'FAILED') {
     // §13 — failure NEVER blocks creation; manual entry remains available and the
     // resume stays attached. Try reading again / Replace resume are the recovery
     // affordances.
+    const message = (failure ?? '').trim() || GENERIC_FAILURE;
     return (
       <div className="rc-failnote" role="alert">
-        {/* Genuine native need: a hidden file picker triggered programmatically
-            (the fe-foundation Input has no type=file + imperative click). */}
-        {/* eslint-disable-next-line no-restricted-syntax */}
-        <input
-          ref={fileRef}
-          type="file"
-          accept=".pdf,.doc,.docx"
-          style={{ display: 'none' }}
-          onChange={(e) => {
-            const f = e.target.files?.[0];
-            if (f !== undefined) onReplace(f);
-            e.target.value = '';
-          }}
-        />
         <span>
-          <b>Couldn’t read this resume.</b> Enter the details below — the resume stays attached.
+          <b>Couldn’t read this resume.</b> {message}
         </span>
-        <span className="rc-failnote__acts">
-          <Button unstyled type="button" className="rc-linkbtn" onClick={onRetry}>
-            Try reading again
-          </Button>
-          <Button unstyled type="button" className="rc-linkbtn" onClick={() => fileRef.current?.click()}>
-            Replace resume
-          </Button>
-        </span>
+        {recovery}
       </div>
     );
   }
-  if (processingStatus === 'READY' || processingStatus === 'PARTIAL') {
+  if (!hasResume) {
+    // Manual entry (or an artifact-less source) — nothing is being read.
+    return (
+      <div className="rc-readingnote" role="status">
+        No resume attached — enter the details below. Your progress is saved.
+      </div>
+    );
+  }
+  if (processingStatus === 'UPLOADED') {
+    return (
+      <div className="rc-failnote" role="alert">
+        <span>
+          <b>The resume upload didn’t finish.</b> Try again, or enter the details below —
+          nothing is lost.
+        </span>
+        {recovery}
+      </div>
+    );
+  }
+  if (processingStatus === 'PARTIAL') {
+    return (
+      <div className="rc-failnote" role="status">
+        <span>
+          <b>Partially read — some fields may be missing.</b> Review the values below and
+          fill in the rest.
+        </span>
+        {recovery}
+      </div>
+    );
+  }
+  if (processingStatus === 'READY') {
     return (
       <div className="rc-parsedpill">
         <Icons.IconCheck />

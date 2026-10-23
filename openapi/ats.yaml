@@ -9573,6 +9573,29 @@ paths:
           $ref: 'common.yaml#/components/responses/Forbidden'
       security:
         - BearerAuth: []
+  /v1/talent-intake-drafts/manual:
+    post:
+      operationId: createManualTalentIntakeDraft
+      summary: Create a manual-entry Talent Intake draft (no résumé).
+      description: |
+        ATI-SEP-1 — creates a tenant-scoped, artifact-less TalentIntakeDraft for
+        manual entry and settles it READY immediately. No extraction is
+        requested (no outbox event, no LLM work). The recruiter reviews it and
+        promotes through the same promote route. Gated: capability ats + scope
+        talent:create.
+      responses:
+        '201':
+          description: The created manual-entry intake draft.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TalentIntakeDraftView'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+      security:
+        - BearerAuth: []
   /v1/talent-intake-drafts/{id}/complete-upload:
     post:
       operationId: completeTalentIntakeUpload
@@ -9758,8 +9781,11 @@ paths:
       summary: Retry extraction on the same stored résumé (no re-upload).
       description: |
         Re-queues extraction against the same stored artifact (no re-upload).
-        A no-op when the draft is not in a retryable (FAILED/PARTIAL) state.
-        Gated: capability ats + scope talent:edit.
+        From UPLOADED (complete-upload never succeeded) it re-runs the
+        complete-upload semantics (object check, then QUEUED + outbox); a
+        missing object returns 422. A no-op when the draft is not in a
+        retryable (UPLOADED/FAILED/PARTIAL) state. Gated: capability ats + scope
+        talent:edit.
       parameters:
         - name: id
           in: path
@@ -9780,6 +9806,8 @@ paths:
           $ref: 'common.yaml#/components/responses/Forbidden'
         '404':
           $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          $ref: 'common.yaml#/components/responses/UnprocessableEntity'
       security:
         - BearerAuth: []
   /v1/talent-intake-drafts/{id}/promote:
@@ -10821,7 +10849,7 @@ components:
           type: string
           format: uuid
         source_filename:
-          type: string
+          type: [string, 'null']
         mime_type:
           type: [string, 'null']
         size_bytes:
@@ -10918,7 +10946,7 @@ components:
           type: string
           format: uuid
         source_filename:
-          type: string
+          type: [string, 'null']
         processing_status:
           type: string
         review_status:

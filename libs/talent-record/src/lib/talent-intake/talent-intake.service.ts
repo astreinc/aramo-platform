@@ -25,6 +25,7 @@ import { TalentRecordRepository } from '../talent-record.repository.js';
 import { applyRecruiterReview, asReviewPayload } from './talent-intake-review.js';
 import {
   TALENT_INTAKE_EXTRACTION_REQUESTED_EVENT,
+  TALENT_INTAKE_SOURCE_TYPE_MANUAL_ENTRY,
   TALENT_INTAKE_SOURCE_TYPE_RESUME_UPLOAD,
   TALENT_INTAKE_EVENT_SOURCE,
   TALENT_INTAKE_EVENT_VERSION,
@@ -151,6 +152,54 @@ export class TalentIntakeService {
     };
   }
 
+  // 1a — Manual entry (ATI-SEP-1 A5): the recruiter adds a Talent WITHOUT a
+  // résumé. Persists an artifact-less draft and settles it terminal (READY)
+  // immediately — there is nothing to extract, so NO outbox event and NO LLM
+  // work. READY (not PARTIAL): PARTIAL means "a résumé was only partly read"
+  // and carries retry/replace + Needs-attention semantics, none of which apply
+  // when no résumé was supplied. The draft then follows the ordinary review →
+  // PATCH → promote path (admission is the only create gate).
+  async createManualIntake(
+    authContext: AuthContextType,
+    requestId: string,
+  ): Promise<TalentIntakeDraftView> {
+    const tenant_id = authContext.tenant_id;
+    const created_by = authContext.sub;
+    const draftId = uuidv7();
+    await this.talentExtraction.createTalentIntakeDraft({
+      id: draftId,
+      tenant_id,
+      created_by,
+      source_type: TALENT_INTAKE_SOURCE_TYPE_MANUAL_ENTRY,
+      source_filename: null,
+      storage_key: null,
+      mime_type: null,
+    });
+    await this.settleManualIntake(tenant_id, draftId);
+    const row = await this.talentExtraction.findTalentIntakeDraftById({
+      tenant_id,
+      id: draftId,
+      created_by,
+    });
+    if (row === null) {
+      throw this.notFound(draftId, requestId);
+    }
+    return this.buildView(authContext, row);
+  }
+
+  // Terminal settle for a manual-entry draft (no extraction child, no warning).
+  private async settleManualIntake(tenant_id: string, id: string): Promise<void> {
+    await this.talentExtraction.markTalentIntakeDraftProcessed({
+      tenant_id,
+      id,
+      processing_status: 'READY',
+      warning_code: null,
+      failure_code: null,
+      failure_detail: null,
+      processing_completed_at: new Date(),
+    });
+  }
+
   // 1b — Source-agnostic admission (ADR-0033 Decision 5). A NON-upload producer
   // (job board / sourcing / agent / import / integration / external API) enters
   // the SAME Talent Intake authority WITHOUT fabricating an S3 upload. Idempotent
@@ -174,7 +223,13 @@ export class TalentIntakeService {
   ): Promise<{ draft_id: string; created: boolean; processing_status: string }> {
     const sourceType = (body.source_type ?? '').trim();
     const sourceEventId = (body.source_event_id ?? '').trim();
-    if (sourceType === '' || sourceType === TALENT_INTAKE_SOURCE_TYPE_RESUME_UPLOAD) {
+    // RESUME_UPLOAD and MANUAL_ENTRY are recruiter-surface intakes with their own
+    // routes; neither is a producer source.
+    if (
+      sourceType === '' ||
+      sourceType === TALENT_INTAKE_SOURCE_TYPE_RESUME_UPLOAD ||
+      sourceType === TALENT_INTAKE_SOURCE_TYPE_MANUAL_ENTRY
+    ) {
       throw new AramoError(
         'VALIDATION_ERROR',
         'source_type must be a non-empty non-upload source.',
@@ -367,6 +422,13 @@ export class TalentIntakeService {
 
   // 6 — Retry extraction on the SAME stored artifact (no re-upload). A no-op when
   // the draft is not in a retryable (FAILED/PARTIAL) state.
+  //
+  // ATI-SEP-1 A5 — a draft left UPLOADED (the browser's complete-upload call
+  // failed after the bytes landed) is retried by re-running the complete-upload
+  // semantics: headObject check, commit tag, then the guarded UPLOADED → QUEUED
+  // + outbox transition (itself idempotent — a replay enqueues nothing). A
+  // missing object surfaces the same 422 object_missing so the FE offers
+  // Replace. A manual-entry draft stranded UPLOADED is simply settled READY.
   async retry(
     authContext: AuthContextType,
     id: string,
@@ -381,6 +443,19 @@ export class TalentIntakeService {
     });
     if (existing === null) {
       throw this.notFound(id, requestId);
+    }
+    if (existing.processing_status === 'UPLOADED' && existing.promoted_talent_record_id === null) {
+      if (existing.storage_key !== null) {
+        await this.completeUpload(authContext, id, {}, requestId);
+      } else if (existing.source_type === TALENT_INTAKE_SOURCE_TYPE_MANUAL_ENTRY) {
+        await this.settleManualIntake(tenant_id, id);
+      }
+      const settled = await this.talentExtraction.findTalentIntakeDraftById({
+        tenant_id,
+        id,
+        created_by,
+      });
+      return this.buildView(authContext, settled ?? existing);
     }
     await this.talentExtraction.requeueTalentIntakeDraftWithOutbox({
       tenant_id,

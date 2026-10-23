@@ -135,6 +135,11 @@ export function talentIntakeActions(
       // non-success extraction (§13).
       actions.push('retry_extraction');
       actions.push('replace_resume');
+    } else if (row.processing_status === 'UPLOADED' && row.storage_key !== null) {
+      // ATI-SEP-1 A5 — an artifact draft still UPLOADED never reached the queue
+      // (complete-upload failed). Retry re-runs complete-upload; replace re-uploads.
+      actions.push('retry_extraction');
+      actions.push('replace_resume');
     }
     if (terminal && opts.duplicateBlocksCreate !== true) {
       actions.push('promote_to_talent');
@@ -207,6 +212,33 @@ export function computeDraftDisplayName(row: TalentIntakeDraftRow): string | nul
   return name === '' ? null : name;
 }
 
+// ATI-SEP-1 A5 — truthful, intake-specific failure copy keyed on the internal
+// failure_code. The code itself is NEVER projected; only this recruiter-safe
+// prose is. Every message states what the recruiter can do next (manual entry
+// is always available; the résumé stays attached). Unknown codes fall back to
+// the worker-recorded failure_detail.
+const INTAKE_FAILURE_COPY: Readonly<Record<string, string>> = {
+  provider_truncated:
+    'This resume was too long to read in one pass. Enter the details below — the resume stays attached.',
+  RESUME_UNREADABLE:
+    'We couldn’t read any text in this file (it may be a scanned image or protected). Enter the details below, or replace it with a PDF or DOCX that contains text.',
+  invalid_structured_output:
+    'We couldn’t prepare the details from this resume. Try reading it again, or enter the details below — the resume stays attached.',
+  provider_failure:
+    'Resume reading is temporarily unavailable. Try reading it again shortly, or enter the details below — the resume stays attached.',
+  EXTRACTION_FAILED:
+    'We couldn’t prepare the details from this resume. Try reading it again, or enter the details below — the resume stays attached.',
+};
+
+export function intakeFailureMessage(row: TalentIntakeDraftRow): string | null {
+  if (row.processing_status !== 'FAILED') {
+    return (row.failure_detail as string | null) ?? null;
+  }
+  const code = row.failure_code as string | null;
+  const mapped = code !== null ? INTAKE_FAILURE_COPY[code] : undefined;
+  return mapped ?? (row.failure_detail as string | null) ?? null;
+}
+
 export function toTalentIntakeDraftView(
   row: TalentIntakeDraftRow,
   opts: { duplicate?: TalentIntakeDuplicateView | null } = {},
@@ -223,9 +255,9 @@ export function toTalentIntakeDraftView(
     review_payload: row.review_payload ?? null,
     // warning_code / failure_detail hold recruiter-safe prose (set by the worker
     // from the shared orchestrator). The internal code lives on the child and is
-    // never projected here.
+    // never projected here; FAILED copy is specialised per code (see above).
     warning: (row.warning_code as string | null) ?? null,
-    failure: (row.failure_detail as string | null) ?? null,
+    failure: intakeFailureMessage(row),
     promoted_talent_record_id: row.promoted_talent_record_id,
     version: row.version,
     created_at: new Date(row.created_at).toISOString(),
