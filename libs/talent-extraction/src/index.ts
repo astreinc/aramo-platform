@@ -30,14 +30,6 @@ export {
   ARAMO_SKILL_NAMESPACE,
 } from './lib/skill-id.js';
 
-// TR-4 B2 — the pure ledger mapper (typed row → canonical CLAIMS payload).
-export {
-  mapWorkHistoryToClaim,
-  mapSkillToClaim,
-  mapAssertionToClaim,
-  type LedgerClaim,
-} from './lib/ledger-mapper.js';
-
 export type {
   ExtractDeclaredEvidenceInput,
   ExtractDeclaredEvidenceResult,

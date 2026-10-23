@@ -30,6 +30,7 @@ import {
   type GoldenConstraints,
 } from '../matching-derivation/derive-matching-input.js';
 import { CanonicalMatchShadowComparator } from '../examinations/canonical-match-shadow.comparator.js';
+import { LegacyTrustProjectionService } from '../legacy-trust-projection/legacy-trust-projection.service.js';
 
 // Gate-1 G1-B — the pairing-level EXAMINE endpoint. POST /v1/examinations
 // { talent_id, requisition_id } MINTS a TalentJobExamination for the (talent,
@@ -89,6 +90,8 @@ export class ExamineController {
     // SKILL-TAX-1E — dark/observe-only canonical shadow comparator. Runs AFTER
     // the authoritative mint; best-effort + isolated (cannot fail this request).
     private readonly canonicalMatchShadow: CanonicalMatchShadowComparator,
+    // ATI-SEP-1 A1 — TEMPORARY (deleted at T10): the Step-4b ledger reconcile.
+    private readonly legacyTrustProjection: LegacyTrustProjectionService,
   ) {}
 
   @Post()
@@ -216,7 +219,9 @@ export class ExamineController {
     // existence check) and self-healing — a prior partial ledger failure completes
     // on this run, and a fully-routed talent writes nothing. Loud-fail: a ledger
     // error propagates (this request errors) rather than half-committing silently.
-    await this.talentExtractionService.routeDeclaredEvidenceToLedger({ tenant_id, talent_id });
+    // ATI-SEP-1 A1 — routed via the TEMPORARY LegacyTrustProjectionService (the
+    // projection left talent-extraction; examine is not an ATS create/edit path).
+    await this.legacyTrustProjection.routeDeclaredEvidenceToLedger({ tenant_id, talent_id });
 
     // Step 5 — read declared skill evidence + derive the input.
     const declared = await this.talentEvidenceRepository.findTalentSkillEvidenceByTalent(

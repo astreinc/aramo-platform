@@ -291,7 +291,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       publisher = new EventBridgeOutboxPublisher(eb, { busName: BUS, sourcePrefix: SOURCE_PREFIX }, noop as never);
 
-      const talentExtraction = new TalentExtractionService({} as never, repo, {} as never, {} as never);
+      const talentExtraction = new TalentExtractionService({} as never, repo, {} as never);
       const orchestratorStub = {
         extractResume: async () => {
           orchestratorCalls += 1;

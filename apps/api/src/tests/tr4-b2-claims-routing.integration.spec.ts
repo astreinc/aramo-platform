@@ -12,10 +12,12 @@ import { Client } from 'pg';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { TalentEvidenceRepository } from '@aramo/talent-evidence';
-import { TalentExtractionService } from '@aramo/talent-extraction';
 import { TalentTrustService } from '@aramo/talent-trust';
 
 import { AppModule } from '../app.module.js';
+// ATI-SEP-1 A1 — the ledger reconcile left talent-extraction for the TEMPORARY
+// apps/api LegacyTrustProjectionService (deleted at T10); behaviour unchanged.
+import { LegacyTrustProjectionService } from '../legacy-trust-projection/legacy-trust-projection.service.js';
 
 // TR-4 B2 (§5 a/c/e) — talent-extraction routes typed EMPLOYMENT/SKILL rows into
 // the trust ledger as canonical CLAIMS evidence, idempotently, over real Postgres
@@ -50,7 +52,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let db: Client;
     const savedEnv: Partial<Record<string, string | undefined>> = {};
     let evidence: TalentEvidenceRepository;
-    let extraction: TalentExtractionService;
+    let extraction: LegacyTrustProjectionService;
     let trust: TalentTrustService;
 
     async function seedSkill(tenant: string, talent: string, surface: string): Promise<string> {
@@ -122,7 +124,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await app.init();
 
       evidence = module.get(TalentEvidenceRepository);
-      extraction = module.get(TalentExtractionService);
+      extraction = module.get(LegacyTrustProjectionService);
       trust = module.get(TalentTrustService);
     }, 300_000);
 

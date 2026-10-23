@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { describe, expect, it } from 'vitest';
+import { deriveSkillId } from '@aramo/talent-extraction';
 import { deriveSkillIdCanonical, validateClaimShape } from '@aramo/talent-trust';
 
 import {
@@ -11,9 +12,11 @@ import {
   mapSkillToClaim,
   mapWorkAuthorizationToClaim,
   mapWorkHistoryToClaim,
-} from '../lib/ledger-mapper.js';
-import { deriveSkillId } from '../lib/skill-id.js';
+} from '../legacy-trust-projection/ledger-mapper.js';
 
+// ATI-SEP-1 A1 — moved from libs/talent-extraction/src/tests/ledger-mapper.spec.ts
+// with the mapper itself (TEMPORARY; deleted at T10). Assertions unchanged.
+//
 // TR-4 B2 (§5b) — the mapper conformance PROPERTY: every mapper output conforms
 // to the T4-B1 registry, so the write gate provably never fires on this path;
 // and deriveSkillId parity between the two homes (byte-identical).
@@ -213,7 +216,11 @@ describe('D1 — the producer never reads examination results (structural)', () 
       .map((l) => l.replace(/\/\/.*$/, ''))
       .join('\n');
 
-  const files = ['../lib/talent-extraction.service.ts', '../lib/ledger-mapper.ts'];
+  const files = [
+    '../legacy-trust-projection/legacy-trust-projection.service.ts',
+    '../legacy-trust-projection/ledger-mapper.ts',
+    '../../../../libs/talent-extraction/src/lib/talent-extraction.service.ts',
+  ];
 
   it('HF2 mapAssertionToClaim → EXPERIENCE_CLAIM conforms to the T4-B1 shape + carries grounding_class', () => {
     const claim = mapAssertionToClaim(

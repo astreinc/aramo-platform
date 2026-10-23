@@ -1,7 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { TalentExtractionService } from '../lib/talent-extraction.service.js';
+import { LegacyTrustProjectionService } from '../legacy-trust-projection/legacy-trust-projection.service.js';
 
+// ATI-SEP-1 A1 — moved from libs/talent-extraction/src/tests/route-ledger.spec.ts
+// with the projection itself (TEMPORARY; deleted at T10). Assertions unchanged.
+//
 // TR-4 B2 (§5c/§5d) — the reconcile's idempotence + loud-fail posture, unit-level
 // with controllable stubs (no DB). The real ledger behavior is proven in the
 // apps/api integration spec; here we prove the CONTROL FLOW: skip-when-present,
@@ -29,7 +32,7 @@ function makeService(opts: {
     written: boolean;
     evidence_id?: string;
   }>;
-}): { service: TalentExtractionService; record: ReturnType<typeof vi.fn> } {
+}): { service: LegacyTrustProjectionService; record: ReturnType<typeof vi.fn> } {
   const evidence = {
     listSkillEvidenceForLedger: vi.fn().mockResolvedValue(opts.skills),
     listWorkHistoryForLedger: vi.fn().mockResolvedValue(opts.work),
@@ -41,14 +44,7 @@ function makeService(opts: {
   };
   const record = vi.fn(opts.record);
   const trust = { recordDeclaredClaimIfAbsent: record };
-  const aiDraft = { generateDraft: vi.fn() };
-  const service = new TalentExtractionService(
-    aiDraft as never,
-    evidence as never,
-    trust as never,
-    // HF1 — structured-generation port; the ledger path never invokes it.
-    {} as never,
-  );
+  const service = new LegacyTrustProjectionService(evidence as never, trust as never);
   return { service, record };
 }
 
@@ -148,12 +144,7 @@ describe('routeDeclaredEvidenceToLedger — loud fail then exactly-once on retry
       listWorkAuthorizationForLedger: vi.fn().mockResolvedValue([]),
     };
     const trust = { recordDeclaredClaimIfAbsent: vi.fn(record) };
-    const service = new TalentExtractionService(
-      { generateDraft: vi.fn() } as never,
-      evidence as never,
-      trust as never,
-      {} as never,
-    );
+    const service = new LegacyTrustProjectionService(evidence as never, trust as never);
 
     // Run 1 — s1 writes, s2 throws → the whole call rejects LOUDLY.
     await expect(
@@ -172,26 +163,23 @@ describe('routeDeclaredEvidenceToLedger — loud fail then exactly-once on retry
   });
 });
 
-// HF2 R1/R7 — persistExperienceAssertions routes activities/accomplishments to
-// the EvidenceRecord ledger as EXPERIENCE_CLAIM, deterministically (no AI call),
-// idempotent via the content source_ref, grounding_class carried.
-describe('persistExperienceAssertions — EXPERIENCE_CLAIM routing (HF2)', () => {
-  it('writes each assertion as EXPERIENCE_CLAIM; no model call; carries grounding_class', async () => {
+// HF2 R1/R7 — routeExperienceAssertionsToLedger (formerly talent-extraction's
+// persistExperienceAssertions) routes activities/accomplishments to the
+// EvidenceRecord ledger as EXPERIENCE_CLAIM, deterministically (the service holds
+// no AI surface), idempotent via the content source_ref, grounding_class carried.
+describe('routeExperienceAssertionsToLedger — EXPERIENCE_CLAIM routing (HF2)', () => {
+  it('writes each assertion as EXPERIENCE_CLAIM; carries grounding_class', async () => {
     const seen = new Set<string>();
-    const generateStructured = vi.fn();
-    const generateDraft = vi.fn();
     const record = vi.fn(async (input: { assertion_type: string; assertion_payload: { grounding_class?: string }; source_ref: { talent_evidence_id: string } }) => {
       if (seen.has(input.source_ref.talent_evidence_id)) return { written: false };
       seen.add(input.source_ref.talent_evidence_id);
       return { written: true, evidence_id: 'ev' };
     });
-    const svc = new TalentExtractionService(
-      { generateDraft } as never,
+    const svc = new LegacyTrustProjectionService(
       {} as never,
       { recordDeclaredClaimIfAbsent: record } as never,
-      { generateStructured, providerKey: () => 'anthropic' } as never,
     );
-    const written = await svc.persistExperienceAssertions({
+    const written = await svc.routeExperienceAssertionsToLedger({
       tenant_id: 't', talent_id: 'tr', work_experience_id: 'we-1',
       assertions: [
         { type: 'DEVELOP', statement: 'Built Java services', source_refs: ['B003'], grounding_class: 'SOURCE_ASSOCIATED_INTERPRETATION' },
@@ -202,9 +190,6 @@ describe('persistExperienceAssertions — EXPERIENCE_CLAIM routing (HF2)', () =>
     expect(record).toHaveBeenCalledTimes(2);
     expect(record.mock.calls[0][0].assertion_type).toBe('EXPERIENCE_CLAIM');
     expect(record.mock.calls[0][0].assertion_payload.grounding_class).toBe('SOURCE_ASSOCIATED_INTERPRETATION');
-    // Deterministic (R6/§26): no AI surface invoked by the persistence path.
-    expect(generateStructured).not.toHaveBeenCalled();
-    expect(generateDraft).not.toHaveBeenCalled();
   });
 
   it('is idempotent — a re-run of the same assertions writes nothing new', async () => {
@@ -214,16 +199,15 @@ describe('persistExperienceAssertions — EXPERIENCE_CLAIM routing (HF2)', () =>
       seen.add(input.source_ref.talent_evidence_id);
       return { written: true, evidence_id: 'ev' };
     });
-    const svc = new TalentExtractionService(
-      { generateDraft: vi.fn() } as never, {} as never,
+    const svc = new LegacyTrustProjectionService(
+      {} as never,
       { recordDeclaredClaimIfAbsent: record } as never,
-      { generateStructured: vi.fn(), providerKey: () => 'anthropic' } as never,
     );
     const args = {
       tenant_id: 't', talent_id: 'tr', work_experience_id: 'we-1',
       assertions: [{ type: 'DEVELOP', statement: 'Built services', source_refs: ['B003'] }],
     };
-    expect(await svc.persistExperienceAssertions(args)).toBe(1);
-    expect(await svc.persistExperienceAssertions(args)).toBe(0); // idempotent
+    expect(await svc.routeExperienceAssertionsToLedger(args)).toBe(1);
+    expect(await svc.routeExperienceAssertionsToLedger(args)).toBe(0); // idempotent
   });
 });

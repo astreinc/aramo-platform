@@ -98,6 +98,9 @@ function make(opts: {
   };
   const talentExtractionService = {
     extractDeclaredEvidence: extract,
+  };
+  // ATI-SEP-1 A1 — the Step-4b reconcile moved to the TEMPORARY legacy projection.
+  const legacyTrustProjection = {
     routeDeclaredEvidenceToLedger: vi
       .fn()
       .mockResolvedValue({ skills_written: 0, work_history_written: 0, skipped: 0 }),
@@ -112,8 +115,9 @@ function make(opts: {
     talentExtractionService as never,
     matchingService as never,
     canonicalMatchShadow as never,
+    legacyTrustProjection as never,
   );
-  return { ctl, extract, evaluateAndPersist, talentEvidenceRepository, talentRecordRepository, requisitionRepository, canonicalMatchShadow };
+  return { ctl, extract, evaluateAndPersist, talentEvidenceRepository, talentRecordRepository, requisitionRepository, canonicalMatchShadow, legacyTrustProjection };
 }
 
 describe('ExamineController — mint + lazy/idempotent orchestration', () => {
@@ -133,6 +137,12 @@ describe('ExamineController — mint + lazy/idempotent orchestration', () => {
     await ctl.examine({ talent_id: TALENT, requisition_id: REQ }, recruiterAuth(), 'rq-2', reqFake());
     expect(extract).not.toHaveBeenCalled();
     expect(evaluateAndPersist).toHaveBeenCalledTimes(1);
+  });
+
+  it('ATI-SEP-1 A1 — the Step-4b ledger reconcile runs UNCONDITIONALLY via the legacy projection', async () => {
+    const { ctl, legacyTrustProjection } = make({ evidenceCount: 3 });
+    await ctl.examine({ talent_id: TALENT, requisition_id: REQ }, recruiterAuth(), 'rq-2b', reqFake());
+    expect(legacyTrustProjection.routeDeclaredEvidenceToLedger).toHaveBeenCalledWith({ tenant_id: TENANT, talent_id: TALENT });
   });
 
   it('passes resume redacted_text + key_skills into extraction', async () => {

@@ -1,8 +1,8 @@
 import { Logger } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
-import { TalentExtractionService } from '@aramo/talent-extraction';
 
 import { AppModule } from '../app.module.js';
+import { LegacyTrustProjectionService } from '../legacy-trust-projection/legacy-trust-projection.service.js';
 
 // TR-4 B2 (DDR §3.4) — the one-time CLAIMS-ledger backfill CLI. Routes existing
 // `talent_evidence` EMPLOYMENT/SKILL rows that lack a ledger counterpart into the
@@ -13,7 +13,9 @@ import { AppModule } from '../app.module.js';
 //
 // The producer owns its ledger write (DDR §1) — this CLI is an operational
 // entrypoint above the wall that wires the app context and invokes
-// TalentExtractionService; it is NOT a poll and NOT a request-path trigger.
+// the projection service; it is NOT a poll and NOT a request-path trigger.
+// ATI-SEP-1 A1 — the reconcile now lives in the TEMPORARY
+// LegacyTrustProjectionService (apps/api; deleted at T10), same behaviour.
 //
 // Usage (after build):
 //   node dist/apps/api/src/talent-anchor/claims-ledger-backfill.command.js <tenant_id>
@@ -31,9 +33,9 @@ async function main(): Promise<void> {
     logger: ['error', 'warn', 'log'],
   });
   try {
-    const extraction = ctx.get(TalentExtractionService);
+    const projection = ctx.get(LegacyTrustProjectionService);
     const tenantIds =
-      arg === '--all-tenants' ? await extraction.listTenantIdsWithEvidence() : [arg];
+      arg === '--all-tenants' ? await projection.listTenantIdsWithEvidence() : [arg];
     if (arg === '--all-tenants') {
       logger.log(`claims-ledger backfill --all-tenants: ${tenantIds.length} tenant(s) with evidence`);
     }
@@ -45,7 +47,7 @@ async function main(): Promise<void> {
     let grandRightToWork = 0;
     let grandSkipped = 0;
     for (const tenantId of tenantIds) {
-      const result = await extraction.backfillLedgerForTenant(tenantId);
+      const result = await projection.backfillLedgerForTenant(tenantId);
       grandSkills += result.skills_written;
       grandWork += result.work_history_written;
       grandEducation += result.education_written;

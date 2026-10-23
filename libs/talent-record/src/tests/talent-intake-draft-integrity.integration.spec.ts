@@ -170,7 +170,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       extraction = new TalentExtractionService(
         { generateDraft: vi.fn() } as never,
         repo,
-        {} as never,
         { generateStructured: vi.fn() } as never,
       );
     }, 180_000);

@@ -31,7 +31,6 @@ function svcWith(parsed: Record<string, unknown>) {
   const svc = new TalentExtractionService(
     { generateDraft: vi.fn() } as never,
     {} as never,
-    {} as never,
     { generateStructured, providerKey: () => 'anthropic' } as never,
   );
   return { svc, generateStructured };
@@ -137,7 +136,6 @@ describe('persistDeclaredWorkHistory — year-only END dates use the end edge', 
     const svc = new TalentExtractionService(
       { generateDraft: vi.fn() } as never,
       evidence as never,
-      {} as never,
       { generateStructured: vi.fn() } as never,
     );
     await svc.persistDeclaredWorkHistory({

@@ -40,7 +40,6 @@ function svcWith(outcome: Outcome): TalentExtractionService {
   return new TalentExtractionService(
     { generateDraft: vi.fn() } as never,
     {} as never,
-    {} as never,
     { generateStructured, providerKey: () => 'anthropic' } as never,
   );
 }
@@ -277,7 +276,7 @@ describe('extractResumeDraft v3 — experience intelligence', () => {
   it('C: provider schema is structured-output-conformant (0 maxItems, 0 optional props) + enum/maxLength/no source_excerpt', async () => {
     const generateStructured = vi.fn().mockResolvedValue(ok({}));
     const svc = new TalentExtractionService(
-      { generateDraft: vi.fn() } as never, {} as never, {} as never,
+      { generateDraft: vi.fn() } as never, {} as never,
       { generateStructured, providerKey: () => 'anthropic' } as never,
     );
     await svc.extractResumeDraft({ tenant_id: TENANT, source_map: mapOf([{ id: 'B001', text: 'x' }]) });

@@ -1,8 +1,12 @@
+// TEMPORARY — ATI-SEP-1 §5; deleted at T10 when Talent Intelligence service
+// ingestion replaces it. Never call from an ATS create/edit request path.
+// (Moved verbatim from libs/talent-extraction by ATI-SEP-1 A1.)
+//
 // TR-4 B2 (DDR §3.1) — the PURE mapper: a typed talent_evidence row → the
 // canonical CLAIMS payload the T4-B1 registry accepts. The mapper's OUTPUT
-// ALWAYS conforms (property-tested in ledger-mapper.spec.ts): employer_name and
-// role_title are NOT-NULL columns, so EMPLOYMENT always has its required fields;
-// surface_form is NOT-NULL, so SKILL always has value_raw. The T4-B1 write gate
+// ALWAYS conforms (property-tested in legacy-trust-projection-ledger-mapper.spec.ts):
+// employer_name and role_title are NOT-NULL columns, so EMPLOYMENT always has its
+// required fields; surface_form is NOT-NULL, so SKILL always has value_raw. The T4-B1 write gate
 // therefore never fires on this path — a property, not an assumption.
 //
 // Dates: the typed store already holds parsed `@db.Date` values, so there is no
