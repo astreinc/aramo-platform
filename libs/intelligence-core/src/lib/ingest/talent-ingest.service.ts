@@ -1,6 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
-  GOLDEN_TALENT_PROFILE_UPDATED,
   validateTalentErasedRequest,
   validateTalentIngestRequest,
   type IngestRejectionCode,
@@ -13,6 +12,7 @@ import {
 import { identifierKey } from '../identity/identity-resolution.js';
 import { IdentityResolutionService, survivingSubject } from '../identity/identity-resolution.service.js';
 import { GovIdTokenizer } from '../normalize.js';
+import { PROJECTION_TRIGGER, type ProjectionTrigger } from '../projection/projection.service.js';
 import {
   INTELLIGENCE_UNIT_OF_WORK,
   type IntelligenceRepositories,
@@ -31,7 +31,9 @@ import { SINGLE_VALUED_ASSERTION_TYPES, toAssertionDrafts, toResolutionInput } f
 //   inbox replay check → identity resolution (T3) → assertions appended
 //   (dedupe by content hash per reference) → assertions of this reference that
 //   are absent from the snapshot SUPERSEDED (AssertionEvent + current_status)
-//   → outbox 'golden_talent.profile_updated' when anything changed → inbox row.
+//   → inbox row. AFTER COMMIT, when anything changed, the projection is rebuilt
+//   (T5 ProjectionTrigger); the projection — not ingest — writes the outbox
+//   'golden_talent.profile_updated' when a resolved fact or the trust state moved.
 // Erasure (Addendum A1): reference → ERASED; a subject with no ACTIVE reference
 // → AUDIT_RETAINED. Evidence is never deleted.
 
@@ -94,6 +96,7 @@ export class TalentIngestService {
     @Inject(INTELLIGENCE_UNIT_OF_WORK) private readonly uow: IntelligenceUnitOfWork,
     private readonly identity: IdentityResolutionService,
     @Inject(GOV_ID_TOKENIZER) private readonly tokenizer: GovIdTokenizer,
+    @Optional() @Inject(PROJECTION_TRIGGER) private readonly projection?: ProjectionTrigger,
   ) {}
 
   /** Validate, then ingest one full snapshot of a source reference. */
@@ -116,7 +119,7 @@ export class TalentIngestService {
         .map((i) => `id:${identifierKey(i.identifier_type, i.normalized_value)}`),
     ];
 
-    return this.uow.run(async (repos) => {
+    const response = await this.uow.run(async (repos) => {
       const replay = await this.replay(repos, req.source_event_id, req, 'TALENT_SNAPSHOT');
       if (replay) return { ...(replay as unknown as TalentIngestResponse), replayed: true };
 
@@ -200,17 +203,6 @@ export class TalentIngestService {
         added.length > 0 ||
         superseded.length > 0;
 
-      if (changed) {
-        await repos.outbox.enqueue({
-          event_type: GOLDEN_TALENT_PROFILE_UPDATED,
-          subject_id: subject.id,
-          payload: { intelligence_subject_id: subject.id },
-          occurred_at: new Date(),
-          correlation_id: req.source_event_id,
-          causation_id: req.source_event_id,
-        });
-      }
-
       const response: TalentIngestResponse = {
         intelligence_subject_id: subject.id,
         outcome: resolution.created_subject ? 'CREATED' : resolution.created_reference ? 'LINKED' : 'UPDATED',
@@ -230,6 +222,8 @@ export class TalentIngestService {
       });
       return response;
     }, { lockKeys });
+    if (response.changed && !response.replayed) await this.projection?.subjectsChanged([response.intelligence_subject_id]);
+    return response;
   }
 
   /** talent.erased — the reference is ERASED; evidence is retained (Addendum A1). */

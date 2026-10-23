@@ -68,3 +68,19 @@ export type MergeSplitKind = (typeof MERGE_SPLIT_KINDS)[number];
 
 export const INBOX_KINDS = ['TALENT_SNAPSHOT', 'TALENT_ERASED'] as const;
 export type InboxKind = (typeof INBOX_KINDS)[number];
+
+// ── ATI-SEP-1 T4–T7 ──────────────────────────────────────────────────────────
+
+export const READ_KINDS = ['PROFILE', 'EVIDENCE', 'ARTIFACTS'] as const;
+export type ReadKind = (typeof READ_KINDS)[number];
+
+export const READ_OUTCOMES = ['GRANTED', 'NOT_ENTITLED', 'SOURCE_SYSTEM_MISMATCH', 'REFERENCE_NOT_FOUND'] as const;
+export type ReadOutcome = (typeof READ_OUTCOMES)[number];
+
+/** Assertion statuses the projection reads (everything not retired). */
+export const PROJECTED_ASSERTION_STATUSES: readonly AssertionStatus[] = ['VALID', 'STALE', 'CONTRADICTED', 'DISPUTED'];
+
+/** Verification method / source recorded on a TI-verified identifier. */
+export const EMAIL_OTP_METHOD = 'EMAIL_OTP';
+export const SMS_OTP_METHOD = 'SMS_OTP';
+export const PORTAL_VERIFICATION_SOURCE = 'aramo-portal';

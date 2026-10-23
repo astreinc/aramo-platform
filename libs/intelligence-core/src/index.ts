@@ -86,3 +86,75 @@ export {
   type ServicePrincipal,
   type ServiceTokenErrorCode,
 } from './lib/auth/service-token.service.js';
+export {
+  ServiceClientProvisioningError,
+  provisionServiceClient,
+  type ProvisionServiceClientInput,
+  type ProvisionServiceClientResult,
+} from './lib/auth/service-client-provisioning.js';
+
+// T5 — projection, trust, re-assessment.
+export {
+  DEFAULT_AVAILABILITY_FRESHNESS_DAYS,
+  compatible,
+  computeProjection,
+  identifierDigest,
+  isTimeStale,
+  orderFacts,
+  type ProjectedFact,
+  type ProjectionAssertion,
+  type ProjectionIdentifier,
+  type ProjectionOptions,
+  type ProjectionResult,
+} from './lib/projection/projection.js';
+export { VERIFICATION_STALE_DAYS, deriveTrust, dimensionOf, independenceKey, type TrustAssertion } from './lib/projection/trust-derivation.js';
+export {
+  DEFAULT_REASSESSMENT_INTERVAL_MS,
+  PROJECTION_TRIGGER,
+  ProjectionService,
+  TI_AVAILABILITY_FRESHNESS_DAYS_ENV,
+  TI_REASSESSMENT_INTERVAL_MS_ENV,
+  availabilityFreshnessDays,
+  reassessmentIntervalMs,
+  type ProjectionTrigger,
+  type RebuildResult,
+} from './lib/projection/projection.service.js';
+
+// T4 — verification.
+export {
+  INTELLIGENCE_VERIFICATION_CODE_KEY_ENV,
+  VERIFICATION_CODE_SERVICE,
+  VerificationCodeService,
+  VerificationUnavailableError,
+} from './lib/verification/verification-code.js';
+export {
+  LogVerificationDeliveryAdapter,
+  VERIFICATION_DELIVERY_PORT,
+  maskDestination,
+  type VerificationDeliveryPort,
+  type VerificationDeliveryResult,
+  type VerificationMessage,
+} from './lib/verification/verification-delivery.js';
+export { VerificationRefusedError, VerificationService, type ConfirmResult } from './lib/verification/verification.service.js';
+
+// T6 — read API + entitlements.
+export {
+  ProfileReadService,
+  ReadRefusedError,
+  TI_CROSS_TENANT_READ_ENABLED_ENV,
+  crossTenantReadEnabled,
+} from './lib/access/profile-read.service.js';
+export { EntitlementService, EntitlementSyncInvalidError, validateEntitlementSync } from './lib/access/entitlement.service.js';
+
+// T7 — outbox drain.
+export {
+  FetchWebhookTransport,
+  INTELLIGENCE_OUTBOX_MAX_ATTEMPTS_ENV,
+  IntelligenceOutboxDrainService,
+  WEBHOOK_TRANSPORT,
+  backoffMs,
+  drainConfigFromEnv,
+  type DrainConfig,
+  type DrainReport,
+  type WebhookTransport,
+} from './lib/outbox/outbox-drain.service.js';

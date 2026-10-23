@@ -1,11 +1,16 @@
-import { CanActivate, ExecutionContext, HttpException, HttpStatus, Injectable } from '@nestjs/common';
+import { CanActivate, ExecutionContext, HttpException, HttpStatus, Injectable, SetMetadata } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
 import { ServiceTokenError, ServiceTokenService, type ServicePrincipal } from '@aramo/intelligence-core';
-import { INTELLIGENCE_INGEST_SCOPE } from '@aramo/intelligence-contracts';
+import { INTELLIGENCE_INGEST_SCOPE, type IntelligenceScope } from '@aramo/intelligence-contracts';
 
-// ATI-SEP-1 T2 — bearer service-token guard for the ingestion endpoints. The
-// token must verify (HS256, iss/aud, unexpired), its client must still be
-// active with the same source system, and it must carry intelligence:ingest.
-// The body's source_system_id is checked against the principal by the service.
+// ATI-SEP-1 T2/T4–T6 — bearer service-token guard. The token must verify
+// (HS256, iss/aud, unexpired), its client must still be active with the same
+// source system, and it must carry the route's scope: @RequireScope(...) on the
+// handler or controller, intelligence:ingest when none is declared (T2 routes).
+// A body's / path's source_system_id is checked against the principal by the service.
+
+export const REQUIRED_SCOPE_KEY = 'intelligence:required-scope';
+export const RequireScope = (scope: IntelligenceScope) => SetMetadata(REQUIRED_SCOPE_KEY, scope);
 
 export interface ServiceRequest {
   headers: Record<string, string | string[] | undefined>;
@@ -14,7 +19,10 @@ export interface ServiceRequest {
 
 @Injectable()
 export class ServiceTokenGuard implements CanActivate {
-  constructor(private readonly tokens: ServiceTokenService) {}
+  constructor(
+    private readonly tokens: ServiceTokenService,
+    private readonly reflector: Reflector,
+  ) {}
 
   async canActivate(context: ExecutionContext): Promise<boolean> {
     const req = context.switchToHttp().getRequest<ServiceRequest>();
@@ -33,8 +41,11 @@ export class ServiceTokenGuard implements CanActivate {
       }
       throw new HttpException({ error: { code: 'UNAUTHENTICATED', message: 'the bearer service token is invalid' } }, HttpStatus.UNAUTHORIZED);
     }
-    if (!principal.scopes.includes(INTELLIGENCE_INGEST_SCOPE)) {
-      throw new HttpException({ error: { code: 'FORBIDDEN', message: `scope ${INTELLIGENCE_INGEST_SCOPE} is required` } }, HttpStatus.FORBIDDEN);
+    const required =
+      this.reflector.getAllAndOverride<IntelligenceScope | undefined>(REQUIRED_SCOPE_KEY, [context.getHandler(), context.getClass()]) ??
+      INTELLIGENCE_INGEST_SCOPE;
+    if (!principal.scopes.includes(required)) {
+      throw new HttpException({ error: { code: 'FORBIDDEN', message: `scope ${required} is required` } }, HttpStatus.FORBIDDEN);
     }
     req.servicePrincipal = principal;
     return true;

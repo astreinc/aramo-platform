@@ -6,6 +6,7 @@ import type {
   AssertionLink,
   ArtifactSupport,
   DocumentTypePolicy,
+  EntitledTenant,
   EvidenceArtifact,
   ExternalTalentReference,
   GoldenTalent,
@@ -13,13 +14,17 @@ import type {
   IntelligenceInbox,
   IntelligenceOutbox,
   IntelligenceQuarantine,
+  IntelligenceReadAudit,
   IntelligenceRepositories,
+  IntelligenceWebhookDelivery,
   IntelligenceUnitOfWork,
   MergeSplitEvent,
   ResolvedProfileFact,
   ServiceClient,
   SubjectIdentifier,
+  SubjectTrustState,
   UnitOfWorkOptions,
+  VerificationRequest,
 } from '../../index.js';
 import { RETIRED_ASSERTION_STATUSES } from '../../index.js';
 
@@ -46,6 +51,11 @@ interface State {
   quarantine: IntelligenceQuarantine[];
   outbox: IntelligenceOutbox[];
   clients: Map<string, ServiceClient>;
+  verifications: Map<string, VerificationRequest>;
+  trust: Map<string, SubjectTrustState>;
+  entitlements: Map<string, EntitledTenant>;
+  readAudit: IntelligenceReadAudit[];
+  deliveries: IntelligenceWebhookDelivery[];
 }
 
 function emptyState(): State {
@@ -66,11 +76,19 @@ function emptyState(): State {
     quarantine: [],
     outbox: [],
     clients: new Map(),
+    verifications: new Map(),
+    trust: new Map(),
+    entitlements: new Map(),
+    readAudit: [],
+    deliveries: [],
   };
 }
 
 let clock = Date.parse('2026-10-23T00:00:00.000Z');
 const tick = () => new Date((clock += 1000));
+const claimable = (r: { claimed_at: Date | null; lease_expires_at: Date | null }, now: Date) =>
+  r.lease_expires_at === null || r.lease_expires_at.getTime() <= now.getTime();
+const owns = (r: { claimed_at: Date | null }, claimedAt: Date) => r.claimed_at !== null && r.claimed_at.getTime() === claimedAt.getTime();
 
 export class InMemoryIntelligence implements IntelligenceUnitOfWork {
   state: State = emptyState();
@@ -135,6 +153,16 @@ export class InMemoryIntelligence implements IntelligenceUnitOfWork {
           s().subjects.set(id, next);
           return { ...next };
         },
+        async listForReassessment(before, limit) {
+          return [...s().subjects.values()]
+            .filter((g) => g.resolution_status !== 'MERGED')
+            .filter((g) => {
+              const t = s().trust.get(g.id);
+              return t === undefined || t.assessed_at.getTime() < before.getTime();
+            })
+            .slice(0, limit)
+            .map((g) => g.id);
+        },
       },
       identifiers: {
         async findActiveVerified(keys) {
@@ -153,6 +181,11 @@ export class InMemoryIntelligence implements IntelligenceUnitOfWork {
         async listActiveByReference(referenceId) {
           return [...s().identifiers.values()]
             .filter((r) => r.source_reference_id === referenceId && r.status === 'ACTIVE')
+            .map((r) => ({ ...r }));
+        },
+        async listActiveByKey(key) {
+          return [...s().identifiers.values()]
+            .filter((r) => r.status === 'ACTIVE' && r.identifier_type === key.identifier_type && r.normalized_value === key.normalized_value)
             .map((r) => ({ ...r }));
         },
         async create(data) {
@@ -298,7 +331,18 @@ export class InMemoryIntelligence implements IntelligenceUnitOfWork {
         async listEvents(assertionId) {
           return s().events.filter((e) => e.assertion_id === assertionId).map((e) => ({ ...e }));
         },
+        async listEventsFor(ids) {
+          const set = new Set(ids);
+          return s().events.filter((e) => set.has(e.assertion_id)).map((e) => ({ ...e }));
+        },
+        async listLinksFor(ids) {
+          const set = new Set(ids);
+          return s().links.filter((l) => set.has(l.from_assertion_id) || set.has(l.to_assertion_id)).map((l) => ({ ...l }));
+        },
         async appendLink(data) {
+          if (s().links.some((l) => l.from_assertion_id === data.from_assertion_id && l.to_assertion_id === data.to_assertion_id && l.link_type === data.link_type)) {
+            throw new Error('unique violation: AssertionLink');
+          }
           const row: AssertionLink = { id: randomUUID(), ...data, created_at: tick() };
           s().links.push(row);
           return { ...row };
@@ -333,6 +377,10 @@ export class InMemoryIntelligence implements IntelligenceUnitOfWork {
         async listBySubject(subjectId) {
           return [...s().artifacts.values()].filter((a) => a.subject_id === subjectId).map((a) => ({ ...a }));
         },
+        async listSupports(artifactIds) {
+          const set = new Set(artifactIds);
+          return s().supports.filter((x) => set.has(x.artifact_id)).map((x) => ({ ...x }));
+        },
         async addSupport(assertionId, artifactId) {
           const row: ArtifactSupport = { assertion_id: assertionId, artifact_id: artifactId, created_at: tick() };
           s().supports.push(row);
@@ -359,6 +407,9 @@ export class InMemoryIntelligence implements IntelligenceUnitOfWork {
         },
         async listBySubject(subjectId) {
           return [...s().facts.values()].filter((f) => f.subject_id === subjectId).map((f) => ({ ...f }));
+        },
+        async deleteOne(subjectId, factType, factKey) {
+          s().facts.delete(`${subjectId}|${factType}|${factKey}`);
         },
         async deleteBySubject(subjectId) {
           let n = 0;
@@ -455,7 +506,7 @@ export class InMemoryIntelligence implements IntelligenceUnitOfWork {
             event_version: 'v1',
             tenant_id: data.tenant_id ?? null,
             source: 'talent-intelligence',
-            subject_type: 'golden_talent',
+            subject_type: data.subject_type ?? 'golden_talent',
             subject_id: data.subject_id,
             payload: structuredClone(data.payload),
             occurred_at: data.occurred_at,
@@ -474,6 +525,177 @@ export class InMemoryIntelligence implements IntelligenceUnitOfWork {
         },
         async listPending(limit) {
           return s().outbox.filter((o) => o.published_at === null && o.quarantined_at === null).slice(0, limit);
+        },
+        async claim(limit, now, leaseMs) {
+          const rows = s()
+            .outbox.filter((o) => o.published_at === null && o.quarantined_at === null && claimable(o, now))
+            .slice(0, limit);
+          for (const r of rows) {
+            r.claimed_at = new Date(now.getTime());
+            r.lease_expires_at = new Date(now.getTime() + leaseMs);
+          }
+          return rows.map((r) => ({ ...r }));
+        },
+        async markPublished(id, claimedAt, at) {
+          const r = s().outbox.find((o) => o.id === id);
+          if (!r || r.published_at !== null || !owns(r, claimedAt)) return false;
+          Object.assign(r, { published_at: at, lease_expires_at: null, last_publish_error: null });
+          return true;
+        },
+        async markRetry(id, claimedAt, error, retryAt) {
+          const r = s().outbox.find((o) => o.id === id);
+          if (!r || r.published_at !== null || !owns(r, claimedAt)) return false;
+          Object.assign(r, { publish_attempts: r.publish_attempts + 1, last_publish_error: error, lease_expires_at: retryAt });
+          return true;
+        },
+        async quarantine(id, claimedAt, error, at) {
+          const r = s().outbox.find((o) => o.id === id);
+          if (!r || r.published_at !== null || !owns(r, claimedAt)) return false;
+          Object.assign(r, { publish_attempts: r.publish_attempts + 1, last_publish_error: error, quarantined_at: at, lease_expires_at: null });
+          return true;
+        },
+      },
+      deliveries: {
+        async createMany(rows) {
+          let n = 0;
+          for (const d of rows) {
+            if (s().deliveries.some((x) => x.outbox_event_id === d.outbox_event_id && x.reference_id === d.reference_id)) continue;
+            s().deliveries.push({
+              id: randomUUID(),
+              ...d,
+              payload: structuredClone(d.payload),
+              created_at: tick(),
+              claimed_at: null,
+              lease_expires_at: null,
+              attempts: 0,
+              last_error: null,
+              delivered_at: null,
+              quarantined_at: null,
+            });
+            n++;
+          }
+          return n;
+        },
+        async listByOutboxEvent(id) {
+          return s().deliveries.filter((d) => d.outbox_event_id === id).map((d) => ({ ...d }));
+        },
+        async claim(limit, now, leaseMs) {
+          const rows = s()
+            .deliveries.filter((d) => d.delivered_at === null && d.quarantined_at === null && claimable(d, now))
+            .slice(0, limit);
+          for (const r of rows) {
+            r.claimed_at = new Date(now.getTime());
+            r.lease_expires_at = new Date(now.getTime() + leaseMs);
+          }
+          return rows.map((r) => ({ ...r }));
+        },
+        async markDelivered(id, claimedAt, at) {
+          const r = s().deliveries.find((d) => d.id === id);
+          if (!r || r.delivered_at !== null || !owns(r, claimedAt)) return false;
+          Object.assign(r, { delivered_at: at, lease_expires_at: null, last_error: null });
+          return true;
+        },
+        async markRetry(id, claimedAt, error, retryAt) {
+          const r = s().deliveries.find((d) => d.id === id);
+          if (!r || r.delivered_at !== null || !owns(r, claimedAt)) return false;
+          Object.assign(r, { attempts: r.attempts + 1, last_error: error, lease_expires_at: retryAt });
+          return true;
+        },
+        async quarantine(id, claimedAt, error, at) {
+          const r = s().deliveries.find((d) => d.id === id);
+          if (!r || r.delivered_at !== null || !owns(r, claimedAt)) return false;
+          Object.assign(r, { attempts: r.attempts + 1, last_error: error, quarantined_at: at, lease_expires_at: null });
+          return true;
+        },
+      },
+      verifications: {
+        async create(data) {
+          const row: VerificationRequest = {
+            ...data,
+            attempts: 0,
+            status: 'PENDING',
+            outcome: null,
+            created_at: tick(),
+            confirmed_at: null,
+          };
+          s().verifications.set(row.id, row);
+          return { ...row };
+        },
+        async findById(id) {
+          const r = s().verifications.get(id);
+          return r ? { ...r } : null;
+        },
+        async listPending(key, subjectId) {
+          return [...s().verifications.values()]
+            .filter(
+              (v) =>
+                v.status === 'PENDING' &&
+                v.identifier_type === key.identifier_type &&
+                v.normalized_value === key.normalized_value &&
+                (subjectId === null || v.subject_id === subjectId),
+            )
+            .map((v) => ({ ...v }));
+        },
+        async update(id, patch) {
+          const r = s().verifications.get(id);
+          if (!r) throw new Error('not found');
+          const next = { ...r, ...patch } as VerificationRequest;
+          if ((next.status === 'CONFIRMED') !== (next.confirmed_at !== null)) throw new Error('check violation: confirmed');
+          if (next.attempts > next.max_attempts) throw new Error('check violation: attempts');
+          s().verifications.set(id, next);
+          return { ...next };
+        },
+      },
+      trust: {
+        async find(subjectId) {
+          const r = s().trust.get(subjectId);
+          return r ? { ...r } : null;
+        },
+        async upsert(subjectId, row, assessedAt) {
+          const next: SubjectTrustState = { subject_id: subjectId, ...row, assessed_at: assessedAt };
+          s().trust.set(subjectId, next);
+          return { ...next };
+        },
+      },
+      entitlements: {
+        async find(system, tenant) {
+          const r = s().entitlements.get(`${system}|${tenant}`);
+          return r ? { ...r } : null;
+        },
+        async upsert(system, tenant, active) {
+          const row: EntitledTenant = { source_system_id: system, tenant_id: tenant, active, updated_at: tick() };
+          s().entitlements.set(`${system}|${tenant}`, row);
+          return { ...row };
+        },
+        async deactivateAllExcept(system, keep) {
+          let n = 0;
+          for (const r of s().entitlements.values()) {
+            if (r.source_system_id === system && r.active && !keep.includes(r.tenant_id)) {
+              r.active = false;
+              n++;
+            }
+          }
+          return n;
+        },
+      },
+      readAudit: {
+        async create(data) {
+          const row: IntelligenceReadAudit = {
+            id: randomUUID(),
+            client_id: data.client_id,
+            source_system_id: data.source_system_id,
+            source_tenant_id: data.source_tenant_id,
+            external_talent_id: data.external_talent_id,
+            read_kind: data.read_kind,
+            outcome: data.outcome,
+            access_mode: data.access_mode ?? null,
+            reference_id: data.reference_id ?? null,
+            subject_id: data.subject_id ?? null,
+            fields_returned: data.fields_returned ?? 0,
+            created_at: tick(),
+          };
+          s().readAudit.push(row);
+          return { ...row };
         },
       },
       clients: {

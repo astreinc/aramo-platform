@@ -4,6 +4,7 @@ import type {
   AssertionLink,
   ArtifactSupport,
   DocumentTypePolicy,
+  EntitledTenant,
   EvidenceArtifact,
   ExternalTalentReference,
   GoldenTalent,
@@ -11,10 +12,14 @@ import type {
   IntelligenceInbox,
   IntelligenceOutbox,
   IntelligenceQuarantine,
+  IntelligenceReadAudit,
+  IntelligenceWebhookDelivery,
   MergeSplitEvent,
   ResolvedProfileFact,
   ServiceClient,
   SubjectIdentifier,
+  SubjectTrustState,
+  VerificationRequest,
 } from '../../../prisma/generated/client/client.js';
 import type {
   AccessState,
@@ -30,6 +35,8 @@ import type {
   InboxKind,
   MergeSplitKind,
   ReferenceStatus,
+  ReadKind,
+  ReadOutcome,
   ResolutionStatus,
 } from '../vocabulary.js';
 
@@ -43,6 +50,7 @@ export type {
   AssertionLink,
   ArtifactSupport,
   DocumentTypePolicy,
+  EntitledTenant,
   EvidenceArtifact,
   ExternalTalentReference,
   GoldenTalent,
@@ -50,10 +58,14 @@ export type {
   IntelligenceInbox,
   IntelligenceOutbox,
   IntelligenceQuarantine,
+  IntelligenceReadAudit,
+  IntelligenceWebhookDelivery,
   MergeSplitEvent,
   ResolvedProfileFact,
   ServiceClient,
   SubjectIdentifier,
+  SubjectTrustState,
+  VerificationRequest,
 };
 
 export type JsonValue = string | number | boolean | null | JsonValue[] | { [k: string]: JsonValue };
@@ -77,6 +89,8 @@ export interface GoldenTalentRepository {
     id: string,
     patch: { resolution_status?: ResolutionStatus; merged_into_id?: string | null; access_state?: AccessState },
   ): Promise<GoldenTalent>;
+  /** Non-merged subjects whose trust state is missing or was assessed before `assessedBefore` (oldest first). */
+  listForReassessment(assessedBefore: Date, limit: number): Promise<string[]>;
 }
 
 export interface NewSubjectIdentifier extends IdentifierKey {
@@ -97,6 +111,8 @@ export interface SubjectIdentifierRepository {
   findActiveVerified(keys: IdentifierKey[]): Promise<SubjectIdentifier[]>;
   listBySubject(subjectId: string): Promise<SubjectIdentifier[]>;
   listActiveByReference(referenceId: string): Promise<SubjectIdentifier[]>;
+  /** ACTIVE rows of one key, any verification status. */
+  listActiveByKey(key: IdentifierKey): Promise<SubjectIdentifier[]>;
   create(data: NewSubjectIdentifier): Promise<SubjectIdentifier>;
   update(
     id: string,
@@ -163,6 +179,9 @@ export interface AssertionRepository {
     details?: JsonObject | null;
   }): Promise<AssertionEvent>;
   listEvents(assertionId: string): Promise<AssertionEvent[]>;
+  listEventsFor(assertionIds: string[]): Promise<AssertionEvent[]>;
+  /** Links whose from- OR to-assertion is in the set. */
+  listLinksFor(assertionIds: string[]): Promise<AssertionLink[]>;
   appendLink(data: {
     from_assertion_id: string;
     to_assertion_id: string;
@@ -184,6 +203,7 @@ export interface EvidenceArtifactRepository {
     source_url?: string | null;
   }): Promise<EvidenceArtifact>;
   listBySubject(subjectId: string): Promise<EvidenceArtifact[]>;
+  listSupports(artifactIds: string[]): Promise<ArtifactSupport[]>;
   addSupport(assertionId: string, artifactId: string): Promise<ArtifactSupport>;
   repoint(ids: string[], subjectId: string): Promise<void>;
 }
@@ -197,6 +217,7 @@ export interface ResolvedProfileFactRepository {
     supporting_assertion_ids: string[];
   }): Promise<ResolvedProfileFact>;
   listBySubject(subjectId: string): Promise<ResolvedProfileFact[]>;
+  deleteOne(subjectId: string, factType: string, factKey: string): Promise<void>;
   /** Projection rows are recomputable — dropping them (on merge/split) is safe. */
   deleteBySubject(subjectId: string): Promise<number>;
 }
@@ -244,6 +265,8 @@ export interface IntelligenceQuarantineRepository {
 export interface IntelligenceOutboxRepository {
   enqueue(data: {
     event_type: string;
+    /** Default 'golden_talent'. */
+    subject_type?: string;
     subject_id: string;
     payload: JsonObject;
     occurred_at: Date;
@@ -252,6 +275,103 @@ export interface IntelligenceOutboxRepository {
     tenant_id?: string | null;
   }): Promise<IntelligenceOutbox>;
   listPending(limit: number): Promise<IntelligenceOutbox[]>;
+  /**
+   * Lease-safe claim (FOR UPDATE SKIP LOCKED): rows not published, not
+   * quarantined, whose lease is absent or expired. Each claimed row gets
+   * claimed_at = now and lease_expires_at = now + leaseMs (the claim token).
+   */
+  claim(limit: number, now: Date, leaseMs: number): Promise<IntelligenceOutbox[]>;
+  /** The guarded writes below apply only while `claimedAt` still owns the row; false = lost the lease. */
+  markPublished(id: string, claimedAt: Date, at: Date): Promise<boolean>;
+  markRetry(id: string, claimedAt: Date, error: string, retryAt: Date): Promise<boolean>;
+  quarantine(id: string, claimedAt: Date, error: string, at: Date): Promise<boolean>;
+}
+
+export interface NewWebhookDelivery extends SourceTuple {
+  outbox_event_id: string;
+  reference_id: string;
+  subject_id: string;
+  payload: JsonObject;
+}
+
+export interface WebhookDeliveryRepository {
+  /** Idempotent per (outbox_event_id, reference_id). Returns the number created. */
+  createMany(rows: NewWebhookDelivery[]): Promise<number>;
+  listByOutboxEvent(outboxEventId: string): Promise<IntelligenceWebhookDelivery[]>;
+  claim(limit: number, now: Date, leaseMs: number): Promise<IntelligenceWebhookDelivery[]>;
+  markDelivered(id: string, claimedAt: Date, at: Date): Promise<boolean>;
+  markRetry(id: string, claimedAt: Date, error: string, retryAt: Date): Promise<boolean>;
+  quarantine(id: string, claimedAt: Date, error: string, at: Date): Promise<boolean>;
+}
+
+export interface NewVerificationRequest {
+  subject_id: string | null;
+  identifier_type: 'EMAIL' | 'PHONE';
+  normalized_value: string;
+  channel: 'EMAIL' | 'SMS';
+  code_salt: string;
+  code_hash: string;
+  expires_at: Date;
+  max_attempts: number;
+  requested_by_reference_id: string | null;
+  requested_by_client_id: string;
+  portal_session_id: string | null;
+}
+
+export interface VerificationRequestRepository {
+  create(data: NewVerificationRequest & { id: string }): Promise<VerificationRequest>;
+  findById(id: string): Promise<VerificationRequest | null>;
+  /** PENDING requests for the same identifier (and subject, when given). */
+  listPending(key: IdentifierKey, subjectId: string | null): Promise<VerificationRequest[]>;
+  update(
+    id: string,
+    patch: {
+      status?: 'PENDING' | 'CONFIRMED' | 'EXPIRED' | 'LOCKED';
+      attempts?: number;
+      outcome?: string | null;
+      subject_id?: string | null;
+      confirmed_at?: Date | null;
+    },
+  ): Promise<VerificationRequest>;
+}
+
+export interface TrustStateRow {
+  identity_band: string;
+  claims_band: string;
+  continuity_band: string;
+  eligibility_band: string;
+  open_contradiction_count: number;
+  stale_assertion_count: number;
+  has_open_dispute: boolean;
+  single_source_only: boolean;
+  verification_stale: boolean;
+}
+
+export interface TrustStateRepository {
+  find(subjectId: string): Promise<SubjectTrustState | null>;
+  upsert(subjectId: string, row: TrustStateRow, assessedAt: Date): Promise<SubjectTrustState>;
+}
+
+export interface EntitledTenantRepository {
+  find(sourceSystemId: string, tenantId: string): Promise<EntitledTenant | null>;
+  upsert(sourceSystemId: string, tenantId: string, active: boolean): Promise<EntitledTenant>;
+  /** Deactivate every ACTIVE tenant of the source system not in `keep`. Returns the number deactivated. */
+  deactivateAllExcept(sourceSystemId: string, keep: string[]): Promise<number>;
+}
+
+export interface ReadAuditRepository {
+  create(data: {
+    client_id: string;
+    source_system_id: string;
+    source_tenant_id: string;
+    external_talent_id: string;
+    read_kind: ReadKind;
+    outcome: ReadOutcome;
+    access_mode?: string | null;
+    reference_id?: string | null;
+    subject_id?: string | null;
+    fields_returned?: number;
+  }): Promise<IntelligenceReadAudit>;
 }
 
 export interface ServiceClientRepository {
@@ -279,6 +399,11 @@ export interface IntelligenceRepositories {
   quarantine: IntelligenceQuarantineRepository;
   outbox: IntelligenceOutboxRepository;
   clients: ServiceClientRepository;
+  verifications: VerificationRequestRepository;
+  trust: TrustStateRepository;
+  entitlements: EntitledTenantRepository;
+  readAudit: ReadAuditRepository;
+  deliveries: WebhookDeliveryRepository;
 }
 
 export interface UnitOfWorkOptions {

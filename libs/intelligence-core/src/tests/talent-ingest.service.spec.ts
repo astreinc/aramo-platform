@@ -6,6 +6,7 @@ import {
   GovIdTokenizer,
   IdentityResolutionService,
   IngestRejectedError,
+  ProjectionService,
   ReferenceErasedError,
   SourceSystemMismatchError,
   TalentIngestService,
@@ -16,7 +17,8 @@ import { InMemoryIntelligence } from './support/in-memory-intelligence.js';
 
 // ATI-SEP-1 T2 + T3 — the ingestion pipeline end to end over in-memory
 // repositories: admission, idempotency, snapshot semantics, identity resolution
-// (Priya examples), conflicts, erasure → AUDIT_RETAINED.
+// (Priya examples), conflicts, erasure → AUDIT_RETAINED. The outbox row is
+// written by the post-commit projection (T5) when a resolved fact moved.
 
 const ATS = { client_id: 'ats-client', source_system_id: 'ARAMO_ATS' };
 const KEY = 'k'.repeat(32);
@@ -27,7 +29,7 @@ describe('TalentIngestService', () => {
 
   beforeEach(() => {
     mem = new InMemoryIntelligence();
-    svc = new TalentIngestService(mem, new IdentityResolutionService(), GovIdTokenizer.withKey(KEY));
+    svc = new TalentIngestService(mem, new IdentityResolutionService(), GovIdTokenizer.withKey(KEY), new ProjectionService(mem));
   });
 
   const subjects = () => [...mem.state.subjects.values()];

@@ -25,6 +25,17 @@ export const GOLDEN_TALENT_PROFILE_UPDATED = 'golden_talent.profile_updated' as 
 export const INTELLIGENCE_EVENT_TYPES = [GOLDEN_TALENT_PROFILE_UPDATED] as const;
 export type IntelligenceEventType = (typeof INTELLIGENCE_EVENT_TYPES)[number];
 
+/**
+ * TI-INTERNAL business fact (never sent to the ATS): a talent asked to verify an
+ * identifier. The outbox drain routes it to the verification delivery port.
+ */
+export const IDENTIFIER_VERIFICATION_REQUESTED = 'identifier_verification.requested' as const;
+export const TI_INTERNAL_EVENT_TYPES = [IDENTIFIER_VERIFICATION_REQUESTED] as const;
+export type TiInternalEventType = (typeof TI_INTERNAL_EVENT_TYPES)[number];
+
+/** Source system id TI uses for assertions it originates itself (verification, acquisition). */
+export const SOURCE_SYSTEM_TALENT_INTELLIGENCE = 'TALENT_INTELLIGENCE' as const;
+
 export function isAtsTalentEventType(value: unknown): value is AtsTalentEventType {
   return typeof value === 'string' && (ATS_TALENT_EVENT_TYPES as readonly string[]).includes(value);
 }

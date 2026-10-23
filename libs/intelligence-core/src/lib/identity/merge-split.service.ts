@@ -1,5 +1,6 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
 
+import { PROJECTION_TRIGGER, type ProjectionTrigger } from '../projection/projection.service.js';
 import {
   INTELLIGENCE_UNIT_OF_WORK,
   type GoldenTalent,
@@ -16,7 +17,8 @@ import type { AccessState, ResolutionStatus } from '../vocabulary.js';
 // REPOINTED AssertionEvent per moved assertion. A split given a merge event id
 // restores the merged-away subject exactly (status, references, assertions,
 // identifiers, artifacts, conflicts). ResolvedProfileFact rows are a projection:
-// they are dropped for both subjects and recomputed by the projector.
+// they are dropped for both subjects and, after commit, recomputed by the
+// projection (T5 ProjectionTrigger, when bound).
 
 export class MergeSplitError extends Error {
   constructor(message: string) {
@@ -52,10 +54,37 @@ const uniq = (xs: string[]) => [...new Set(xs)].sort();
 
 @Injectable()
 export class IdentityMergeSplitService {
-  constructor(@Inject(INTELLIGENCE_UNIT_OF_WORK) private readonly uow: IntelligenceUnitOfWork) {}
+  constructor(
+    @Inject(INTELLIGENCE_UNIT_OF_WORK) private readonly uow: IntelligenceUnitOfWork,
+    @Optional() @Inject(PROJECTION_TRIGGER) private readonly projection?: ProjectionTrigger,
+  ) {}
 
   /** Merge `fromSubjectId` INTO `intoSubjectId`. The from-subject becomes MERGED. */
-  merge(fromSubjectId: string, intoSubjectId: string, actor: string, reason: string): Promise<MergeSplitEvent> {
+  async merge(fromSubjectId: string, intoSubjectId: string, actor: string, reason: string): Promise<MergeSplitEvent> {
+    const event = await this.mergeTx(fromSubjectId, intoSubjectId, actor, reason);
+    await this.projection?.subjectsChanged([event.into_subject_id, event.from_subject_id]);
+    return event;
+  }
+
+  /**
+   * Split rows out of `subjectId`. With `restoreMergeEventId`, the rows that merge
+   * moved are returned to the merged-away subject, which regains its prior state.
+   * Otherwise the selected rows move to a NEW PROVISIONAL subject. Assertions and
+   * identifiers sourced from a moved reference always travel with it.
+   */
+  async split(
+    subjectId: string,
+    selection: SplitSelection,
+    actor: string,
+    reason: string,
+    options: { restoreMergeEventId?: string } = {},
+  ): Promise<MergeSplitEvent> {
+    const event = await this.splitTx(subjectId, selection, actor, reason, options);
+    await this.projection?.subjectsChanged([event.from_subject_id, event.into_subject_id]);
+    return event;
+  }
+
+  private mergeTx(fromSubjectId: string, intoSubjectId: string, actor: string, reason: string): Promise<MergeSplitEvent> {
     if (fromSubjectId === intoSubjectId) return Promise.reject(new MergeSplitError('cannot merge a subject into itself'));
     return this.uow.run(
       async (repos) => {
@@ -101,13 +130,7 @@ export class IdentityMergeSplitService {
     );
   }
 
-  /**
-   * Split rows out of `subjectId`. With `restoreMergeEventId`, the rows that merge
-   * moved are returned to the merged-away subject, which regains its prior state.
-   * Otherwise the selected rows move to a NEW PROVISIONAL subject. Assertions and
-   * identifiers sourced from a moved reference always travel with it.
-   */
-  split(
+  private splitTx(
     subjectId: string,
     selection: SplitSelection,
     actor: string,

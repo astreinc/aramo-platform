@@ -49,7 +49,9 @@ describe('talent-intelligence-service — token exchange + ingestion', () => {
   let token: string;
 
   beforeAll(async () => {
-    for (const k of [SECRET_ENV, DB_ENV]) saved[k] = process.env[k];
+    for (const k of [SECRET_ENV, DB_ENV, 'TI_OUTBOX_DRAIN_ENABLED', 'TI_REASSESSMENT_ENABLED']) saved[k] = process.env[k];
+    process.env['TI_OUTBOX_DRAIN_ENABLED'] = '0';
+    process.env['TI_REASSESSMENT_ENABLED'] = '0';
     process.env[SECRET_ENV] = 't'.repeat(48);
     process.env[DB_ENV] = 'postgresql://boot:test@127.0.0.1:1/aramo_intelligence';
     mem = new InMemoryIntelligence();

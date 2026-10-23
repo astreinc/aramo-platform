@@ -68,6 +68,8 @@ model GoldenTalent {
   artifacts   EvidenceArtifact[]
   facts       ResolvedProfileFact[]
   conflicts   IdentityConflict[]
+  verifications VerificationRequest[]
+  trust_state SubjectTrustState?
 
   @@index([merged_into_id])
   @@schema("intelligence")
@@ -134,6 +136,8 @@ model ExternalTalentReference {
   subject     GoldenTalent        @relation(fields: [subject_id], references: [id])
   identifiers SubjectIdentifier[]
   assertions  Assertion[]
+  verifications VerificationRequest[]
+  deliveries  IntelligenceWebhookDelivery[]
 
   @@unique([source_system_id, source_tenant_id, external_talent_id])
   @@index([subject_id])
@@ -380,6 +384,8 @@ model IntelligenceOutbox {
   published_at       DateTime? @db.Timestamptz(6)
   quarantined_at     DateTime? @db.Timestamptz(6)
 
+  deliveries IntelligenceWebhookDelivery[]
+
   @@index([published_at, quarantined_at, created_at])
   @@schema("intelligence")
 }
@@ -395,5 +401,136 @@ model ServiceClient {
   active           Boolean  @default(true)
   created_at       DateTime @default(now()) @db.Timestamptz(6)
 
+  @@schema("intelligence")
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ATI-SEP-1 T4–T7 — verification, trust state, entitlement, read audit, webhook
+// deliveries (migration 20261023140000).
+// ════════════════════════════════════════════════════════════════════════════
+
+/// T4 — one talent identifier verification (email one-time code; SMS path on hold).
+/// The code is NEVER stored: code_hash = sha256(code_salt ':' code). The code is
+/// derived from a keyed HMAC (INTELLIGENCE_VERIFICATION_CODE_KEY) at delivery.
+model VerificationRequest {
+  id         String  @id @default(uuid()) @db.Uuid
+  /// The subject the identifier will bind to (NULL: portal context, resolved at confirm).
+  subject_id String? @db.Uuid
+
+  /// VerificationIdentifierType: EMAIL | PHONE
+  identifier_type  String
+  normalized_value String
+  /// VerificationChannel: EMAIL | SMS
+  channel          String
+  code_salt        String
+  code_hash        String
+  expires_at       DateTime @db.Timestamptz(6)
+  attempts         Int      @default(0)
+  max_attempts     Int      @default(5)
+  /// VerificationStatus: PENDING | CONFIRMED | EXPIRED | LOCKED
+  status           String   @default("PENDING")
+  /// VerificationConfirmOutcome (set on CONFIRMED): BOUND | ALREADY_BOUND | ANCHOR_CONTRADICTION | UNBOUND
+  outcome          String?
+
+  requested_by_reference_id String? @db.Uuid
+  requested_by_client_id    String
+  portal_session_id         String?
+
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  confirmed_at DateTime? @db.Timestamptz(6)
+
+  subject                 GoldenTalent?            @relation(fields: [subject_id], references: [id])
+  requested_by_reference  ExternalTalentReference? @relation(fields: [requested_by_reference_id], references: [id])
+
+  @@index([identifier_type, normalized_value, status])
+  @@index([subject_id])
+  @@schema("intelligence")
+}
+
+/// T5 — the materialized trust state of a subject (bands, never numbers);
+/// recomputed by the projection on every change and by the re-assessment job.
+model SubjectTrustState {
+  subject_id String @id @db.Uuid
+
+  /// TrustBand: NOT_ESTABLISHED | SELF_ASSERTED | CORROBORATED | INDEPENDENTLY_VERIFIED | AUTHORITATIVE
+  identity_band    String
+  claims_band      String
+  continuity_band  String
+  eligibility_band String
+
+  open_contradiction_count Int
+  stale_assertion_count    Int
+  has_open_dispute         Boolean
+  single_source_only       Boolean
+  verification_stale       Boolean
+
+  assessed_at DateTime @db.Timestamptz(6)
+
+  subject GoldenTalent @relation(fields: [subject_id], references: [id])
+
+  @@index([assessed_at])
+  @@schema("intelligence")
+}
+
+/// T6 — which source-system tenants hold the `intelligence` capability. TI does
+/// not know ATS entitlements: the ATS maintains this via POST /v1/entitlements/sync.
+model EntitledTenant {
+  source_system_id String
+  tenant_id        String
+  active           Boolean  @default(true)
+  updated_at       DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@id([source_system_id, tenant_id])
+  @@schema("intelligence")
+}
+
+/// T6 — one row per read attempt (granted or refused). Append-only (trigger).
+model IntelligenceReadAudit {
+  id                 String   @id @default(uuid()) @db.Uuid
+  client_id          String
+  source_system_id   String
+  source_tenant_id   String
+  external_talent_id String
+  /// ReadKind: PROFILE | EVIDENCE | ARTIFACTS
+  read_kind          String
+  /// ReadOutcome: GRANTED | NOT_ENTITLED | SOURCE_SYSTEM_MISMATCH | REFERENCE_NOT_FOUND
+  outcome            String
+  /// ReadAccessMode (granted reads): TENANT_SCOPED | CROSS_TENANT
+  access_mode        String?
+  reference_id       String?  @db.Uuid
+  subject_id         String?  @db.Uuid
+  fields_returned    Int      @default(0)
+  created_at         DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([source_tenant_id, created_at])
+  @@index([subject_id])
+  @@schema("intelligence")
+}
+
+/// T7 — one webhook delivery of a 'golden_talent.profile_updated' outbox event
+/// to ONE ACTIVE reference of an ENTITLED tenant (fan-out). Own lease/backoff/quarantine.
+model IntelligenceWebhookDelivery {
+  id                 String   @id @default(uuid()) @db.Uuid
+  outbox_event_id    String   @db.Uuid
+  reference_id       String   @db.Uuid
+  subject_id         String   @db.Uuid
+  source_system_id   String
+  source_tenant_id   String
+  external_talent_id String
+  payload            Json     @db.JsonB
+  created_at         DateTime @default(now()) @db.Timestamptz(6)
+
+  claimed_at       DateTime? @db.Timestamptz(6)
+  lease_expires_at DateTime? @db.Timestamptz(6)
+  attempts         Int       @default(0)
+  last_error       String?
+  delivered_at     DateTime? @db.Timestamptz(6)
+  quarantined_at   DateTime? @db.Timestamptz(6)
+
+  outbox_event IntelligenceOutbox      @relation(fields: [outbox_event_id], references: [id])
+  reference    ExternalTalentReference @relation(fields: [reference_id], references: [id])
+
+  @@unique([outbox_event_id, reference_id])
+  @@index([reference_id])
   @@schema("intelligence")
 }
