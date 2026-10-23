@@ -252,14 +252,6 @@ export default defineConfig({
       // Core libs/talent identity. Amendment §3.)
       '@aramo/talent-record': resolve(root, 'libs/talent-record/src/index.ts'),
       '@aramo/talent-intelligence': resolve(root, 'libs/talent-intelligence/src/index.ts'),
-      // Promotion Gate Slice-B1 — the reconcile poll (scope:ats). Mirrors
-      // tsconfig.base.json @aramo/talent-reconcile so vitest resolves the apps/api
-      // AppModule import + the lib's unit/integration specs.
-      '@aramo/talent-reconcile': resolve(root, 'libs/talent-reconcile/src/index.ts'),
-      // TALENT-INTEL-1 TI-1F-C — the neutral Talent-profile reconcile producer/queue
-      // contract (scope:cip). Owned queue name breaks the talent-record⇄talent-reconcile
-      // cycle: both depend on THIS leaf, never the reverse.
-      '@aramo/talent-reconcile-signal': resolve(root, 'libs/talent-reconcile-signal/src/index.ts'),
       // TR-2a-1 — talent-trust (the trust ledger + within-tenant anchors). The
       // apps/api anchor producer imports it above the I15 wall.
       '@aramo/talent-trust': resolve(root, 'libs/talent-trust/src/index.ts'),

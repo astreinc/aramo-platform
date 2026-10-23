@@ -1,4 +1,7 @@
 import 'reflect-metadata';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+
 import { describe, expect, it, vi } from 'vitest';
 import type { AuthContextType } from '@aramo/auth';
 import { REQUIRED_SCOPES_KEY, REQUIRES_SITE_MATCH_KEY } from '@aramo/authorization';
@@ -99,12 +102,6 @@ function make(opts: {
   const talentExtractionService = {
     extractDeclaredEvidence: extract,
   };
-  // ATI-SEP-1 A1 — the Step-4b reconcile moved to the TEMPORARY legacy projection.
-  const legacyTrustProjection = {
-    routeDeclaredEvidenceToLedger: vi
-      .fn()
-      .mockResolvedValue({ skills_written: 0, work_history_written: 0, skipped: 0 }),
-  };
   const matchingService = { evaluateAndPersist };
   const canonicalMatchShadow = { observe: vi.fn().mockResolvedValue(0) };
   const ctl = new ExamineController(
@@ -115,9 +112,8 @@ function make(opts: {
     talentExtractionService as never,
     matchingService as never,
     canonicalMatchShadow as never,
-    legacyTrustProjection as never,
   );
-  return { ctl, extract, evaluateAndPersist, talentEvidenceRepository, talentRecordRepository, requisitionRepository, canonicalMatchShadow, legacyTrustProjection };
+  return { ctl, extract, evaluateAndPersist, talentEvidenceRepository, talentRecordRepository, requisitionRepository, canonicalMatchShadow };
 }
 
 describe('ExamineController — mint + lazy/idempotent orchestration', () => {
@@ -139,10 +135,10 @@ describe('ExamineController — mint + lazy/idempotent orchestration', () => {
     expect(evaluateAndPersist).toHaveBeenCalledTimes(1);
   });
 
-  it('ATI-SEP-1 A1 — the Step-4b ledger reconcile runs UNCONDITIONALLY via the legacy projection', async () => {
-    const { ctl, legacyTrustProjection } = make({ evidenceCount: 3 });
-    await ctl.examine({ talent_id: TALENT, requisition_id: REQ }, recruiterAuth(), 'rq-2b', reqFake());
-    expect(legacyTrustProjection.routeDeclaredEvidenceToLedger).toHaveBeenCalledWith({ tenant_id: TENANT, talent_id: TALENT });
+  it('ATI-SEP-1 T10 WP1 — no trust-ledger routing: the controller takes no legacy projection dependency', () => {
+    const src = readFileSync(resolve(__dirname, '../controllers/examine.controller.ts'), 'utf8');
+    expect(src).not.toContain('LegacyTrustProjection');
+    expect(src).not.toContain('routeDeclaredEvidenceToLedger');
   });
 
   it('passes resume redacted_text + key_skills into extraction', async () => {

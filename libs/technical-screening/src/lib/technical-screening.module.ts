@@ -13,7 +13,7 @@ import { TechnicalScreeningService } from './technical-screening.service.js';
 // libs/technical-screening — TIP-E2E INC-3 (ARAMO-TIP-E2E-INC-3-v1.0-LOCKED §3).
 // The domain owns sessions, findings, confirmation and publication tracking.
 // The SCREENING_EVIDENCE_PUBLISHER binding is REQUIRED: the composition root
-// (apps/api) passes its Talent Trust adapter class to register(), so a missing
+// (apps/api) passes its publisher adapter class to register(), so a missing
 // adapter is a compile/bootstrap failure, never a silent fallback. The repository
 // is exported for the talent-merge re-key (record-reconcile operational holders).
 @Module({})

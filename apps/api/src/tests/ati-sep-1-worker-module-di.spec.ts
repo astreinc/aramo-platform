@@ -26,7 +26,7 @@ describe('talent-intake-worker context — ATS talent events DI resolution', () 
     }
   });
 
-  it('compiles with the drain and the four handlers (canonical, talent-reconcile, legacy, intelligence publisher)', async () => {
+  it('compiles with the drain and the two handlers (canonical skill reconcile, intelligence publisher)', async () => {
     let module: TestingModule | undefined;
     try {
       module = await Test.createTestingModule({ imports: [TalentIntakeWorkerModule] }).compile();
@@ -34,8 +34,7 @@ describe('talent-intake-worker context — ATS talent events DI resolution', () 
       const handlers = module.get<Array<{ name: string }>>(ATS_TALENT_EVENT_HANDLERS, { strict: false });
       expect(handlers.map((h) => h.name)).toEqual([
         'canonical-reconcile',
-        'talent-reconcile-signal',
-        'legacy-trust-projection',
+        // ATI-SEP-1 T10 WP1 — talent-reconcile-signal + legacy-trust-projection removed.
         // ATI-SEP-1 T8 — ATS → Talent Intelligence (no-op when TI is unconfigured).
         'intelligence-publisher',
       ]);

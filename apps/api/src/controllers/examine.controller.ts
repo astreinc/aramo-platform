@@ -30,7 +30,6 @@ import {
   type GoldenConstraints,
 } from '../matching-derivation/derive-matching-input.js';
 import { CanonicalMatchShadowComparator } from '../examinations/canonical-match-shadow.comparator.js';
-import { LegacyTrustProjectionService } from '../legacy-trust-projection/legacy-trust-projection.service.js';
 
 // Gate-1 G1-B — the pairing-level EXAMINE endpoint. POST /v1/examinations
 // { talent_id, requisition_id } MINTS a TalentJobExamination for the (talent,
@@ -90,8 +89,6 @@ export class ExamineController {
     // SKILL-TAX-1E — dark/observe-only canonical shadow comparator. Runs AFTER
     // the authoritative mint; best-effort + isolated (cannot fail this request).
     private readonly canonicalMatchShadow: CanonicalMatchShadowComparator,
-    // ATI-SEP-1 A1 — TEMPORARY (deleted at T10): the Step-4b ledger reconcile.
-    private readonly legacyTrustProjection: LegacyTrustProjectionService,
   ) {}
 
   @Post()
@@ -213,15 +210,9 @@ export class ExamineController {
       });
     }
 
-    // Step 4b — TR-4 B2 (DDR §3): route the talent's typed EMPLOYMENT/SKILL rows
-    // into the trust ledger as canonical CLAIMS evidence. UNCONDITIONAL (outside
-    // the extract-once guard above): a RECONCILE that is idempotent (source_ref
-    // existence check) and self-healing — a prior partial ledger failure completes
-    // on this run, and a fully-routed talent writes nothing. Loud-fail: a ledger
-    // error propagates (this request errors) rather than half-committing silently.
-    // ATI-SEP-1 A1 — routed via the TEMPORARY LegacyTrustProjectionService (the
-    // projection left talent-extraction; examine is not an ATS create/edit path).
-    await this.legacyTrustProjection.routeDeclaredEvidenceToLedger({ tenant_id, talent_id });
+    // Step 4b (the TR-4 B2 trust-ledger CLAIMS routing) was removed at ATI-SEP-1
+    // T10 WP1 — matching stays ATS-local and never read the ledger back; Talent
+    // Intelligence receives the evidence via the talent.* event feed.
 
     // Step 5 — read declared skill evidence + derive the input.
     const declared = await this.talentEvidenceRepository.findTalentSkillEvidenceByTalent(

@@ -41,8 +41,8 @@ const FORBIDDEN = [
   // identity index (A4)
   '@aramo/identity-index',
   'IdentityIndexRepository',
-  // reconcile (A4) — now event-driven, post-commit
-  '@aramo/talent-reconcile',
+  // reconcile (A4) — now event-driven, post-commit (the talent-reconcile libs
+  // were deleted at T10 WP1; an import of them no longer resolves)
   '@aramo/canonical-reconcile',
   'CanonicalReconcileProducer',
   'TalentReconcileProducer',

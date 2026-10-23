@@ -1,7 +1,6 @@
 import { Logger } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
-import { ContradictionDetectionService } from '@aramo/talent-reconcile';
 
 import {
   startTrustTenantHarness,
@@ -222,24 +221,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ).toBe(true);
       warn.mockRestore();
     });
-
-    // ---- B8: the contradiction detector keeps refused work pending ---------
-    it('B8 — contradiction detection with evidence of another tenant: outcome refused, row not resolved, nothing written', async () => {
-      const detector = h.module.get(ContradictionDetectionService);
-      const incumbent = await seed(TENANT_B);
-      const fresh = await seed(TENANT_B);
-      const before = await h.snapshot(incumbent);
-      const result = await detector.resolvePending({
-        id: uuidv7(),
-        tenant_id: TENANT_A, // the pending row's tenant ≠ the evidence's tenant
-        talent_record_id: uuidv7(),
-        field_name: 'email1',
-        new_evidence_id: fresh,
-        incumbent_evidence_id: incumbent,
-      });
-      expect(result.outcome).toBe('refused');
-      untouched(before, await h.snapshot(incumbent));
-      expect(await linkCount(fresh, incumbent, 'CONTRADICTS')).toBe(0);
-    });
+    // B8 (contradiction detection) removed at ATI-SEP-1 T10 WP1 with libs/talent-reconcile.
   },
 );

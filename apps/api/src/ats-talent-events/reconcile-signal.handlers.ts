@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { RedisConnectionConfig } from '@aramo/common';
 import { CanonicalReconcileProducer } from '@aramo/canonical-reconcile';
-import { TalentReconcileProducer } from '@aramo/talent-reconcile-signal';
 import { TALENT_EVENT_DELETED, TALENT_EVENT_ERASED } from '@aramo/talent-record';
 
 import type { AtsTalentEventEnvelope, AtsTalentEventHandler } from './ats-talent-event-handler.js';
@@ -25,22 +24,5 @@ export class CanonicalReconcileTalentEventHandler implements AtsTalentEventHandl
     if (event.event_type === TALENT_EVENT_ERASED || event.event_type === TALENT_EVENT_DELETED) return;
     if (!this.redis.isConfigured) return;
     await this.producer.enqueueTalentRequired(event.tenant_id, event.subject_id);
-  }
-}
-
-// ATI-SEP-1 A3 (b) — the Talent-profile reconcile signal (TI-1F-C §4-H, the
-// SEPARATE architecture from the skill canonical reconcile), formerly enqueued
-// inline by create / confirm / work-authorization edits. Best-effort +
-// Redis-gated inside the producer; the watermark backstop recovers a miss.
-@Injectable()
-export class TalentReconcileSignalTalentEventHandler implements AtsTalentEventHandler {
-  readonly name = 'talent-reconcile-signal';
-
-  constructor(private readonly producer: TalentReconcileProducer) {}
-
-  async handle(event: AtsTalentEventEnvelope): Promise<void> {
-    // The Talent no longer exists (erased or deleted) — nothing to reconcile.
-    if (event.event_type === TALENT_EVENT_ERASED || event.event_type === TALENT_EVENT_DELETED) return;
-    await this.producer.enqueueTalent(event.tenant_id, event.subject_id);
   }
 }

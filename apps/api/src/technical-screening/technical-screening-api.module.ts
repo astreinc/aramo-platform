@@ -5,7 +5,6 @@ import { EntitlementModule } from '@aramo/entitlement';
 import { JobDomainModule } from '@aramo/job-domain';
 import { TalentEvidenceModule } from '@aramo/talent-evidence';
 import { TalentRecordModule } from '@aramo/talent-record';
-import { TalentTrustModule } from '@aramo/talent-trust';
 
 import { ConversationTranscriptZoomModule } from '../conversation-transcript/conversation-transcript-zoom.module.js';
 import { CiProcessingModule } from '../conversation-intelligence/ci-processing.module.js';
@@ -32,7 +31,6 @@ import {
     ConsentModule,
     EntitlementModule,
     TalentRecordModule,
-    TalentTrustModule,
     JobDomainModule,
     TalentEvidenceModule,
     // INC-3 A1-4/A1-5 — the existing Outlook scheduling + Teams artifacts and

@@ -8,11 +8,7 @@ import { LeaseSafeOutboxDrainService } from '@aramo/outbox-publisher';
 import { AtsTalentEventDispatcher } from '../ats-talent-events/ats-talent-event-dispatcher.js';
 import type { AtsTalentEventHandler } from '../ats-talent-events/ats-talent-event-handler.js';
 import { AtsTalentEventsDrainWorker } from '../ats-talent-events/ats-talent-events-drain.worker.js';
-import { LegacyTrustTalentEventHandler } from '../ats-talent-events/legacy-trust-talent-event.handler.js';
-import {
-  CanonicalReconcileTalentEventHandler,
-  TalentReconcileSignalTalentEventHandler,
-} from '../ats-talent-events/reconcile-signal.handlers.js';
+import { CanonicalReconcileTalentEventHandler } from '../ats-talent-events/reconcile-signal.handlers.js';
 
 // ATI-SEP-1 A3 — the ATS talent outbox consumers run post-commit, off the
 // lease-safe drain: fan-out to every handler, a failing handler fails only the
@@ -141,50 +137,6 @@ describe('ATI-SEP-1 A3 — handlers', () => {
     payload: { talent_record_id: 'tal-1' },
   });
 
-  function legacy(view: unknown) {
-    const deps = {
-      talentRecords: { findById: vi.fn(async () => view) },
-      anchors: { recordAnchorsForView: vi.fn(async () => 2) },
-      matcher: { matchForRef: vi.fn(async () => undefined) },
-      projection: {
-        routeDeclaredEvidenceToLedger: vi.fn(async () => ({})),
-        routePersistedExperienceAssertionsToLedger: vi.fn(async () => 1),
-      },
-    };
-    const h = new LegacyTrustTalentEventHandler(
-      deps.talentRecords as never,
-      deps.anchors as never,
-      deps.matcher as never,
-      deps.projection as never,
-    );
-    return { h, deps };
-  }
-
-  it('LEGACY: talent.created → anchors, matcher, declared-evidence + assertion routing (post-commit)', async () => {
-    const view = { id: 'tal-1', tenant_id: TENANT, email1: 'ada@example.com' };
-    const { h, deps } = legacy(view);
-    await h.handle(env('talent.created') as never);
-    expect(deps.anchors.recordAnchorsForView).toHaveBeenCalledWith(view);
-    expect(deps.matcher.matchForRef).toHaveBeenCalledWith(TENANT, 'ATS_TALENT_RECORD', 'tal-1');
-    expect(deps.projection.routeDeclaredEvidenceToLedger).toHaveBeenCalledWith({ tenant_id: TENANT, talent_id: 'tal-1' });
-    expect(deps.projection.routePersistedExperienceAssertionsToLedger).toHaveBeenCalledWith({ tenant_id: TENANT, talent_id: 'tal-1' });
-  });
-
-  it('LEGACY: talent.erased and an absent Talent are no-ops', async () => {
-    const erased = legacy({ id: 'tal-1', tenant_id: TENANT });
-    await erased.h.handle(env('talent.erased') as never);
-    expect(erased.deps.talentRecords.findById).not.toHaveBeenCalled();
-    const gone = legacy(null);
-    await gone.h.handle(env('talent.profile_updated') as never);
-    expect(gone.deps.anchors.recordAnchorsForView).not.toHaveBeenCalled();
-  });
-
-  it('LEGACY: a trust failure propagates (→ dispatch retry), it is never swallowed', async () => {
-    const { h, deps } = legacy({ id: 'tal-1', tenant_id: TENANT });
-    deps.matcher.matchForRef.mockRejectedValueOnce(new Error('trust down'));
-    await expect(h.handle(env('talent.created') as never)).rejects.toThrow('trust down');
-  });
-
   it('canonical reconcile: no Redis → no-op; Redis → the REQUIRED enqueue (a queue failure retries); erased skipped', async () => {
     const producer = { enqueueTalentRequired: vi.fn(async () => undefined) };
     await new CanonicalReconcileTalentEventHandler(producer as never, { isConfigured: false } as never).handle(env('talent.created') as never);
@@ -194,14 +146,6 @@ describe('ATI-SEP-1 A3 — handlers', () => {
     expect(producer.enqueueTalentRequired).toHaveBeenCalledWith(TENANT, 'tal-1');
     await live.handle(env('talent.erased') as never);
     expect(producer.enqueueTalentRequired).toHaveBeenCalledTimes(1);
-  });
-
-  it('talent reconcile signal: enqueued for created / profile_updated, skipped for erased', async () => {
-    const producer = { enqueueTalent: vi.fn(async () => undefined) };
-    const h = new TalentReconcileSignalTalentEventHandler(producer as never);
-    await h.handle(env('talent.profile_updated') as never);
-    await h.handle(env('talent.erased') as never);
-    expect(producer.enqueueTalent).toHaveBeenCalledTimes(1);
   });
 });
 

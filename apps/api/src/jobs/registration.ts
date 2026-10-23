@@ -56,6 +56,8 @@ import {
 // distinct BullMQ queues total (the other 4 — match, talent-reconcile,
 // contradiction-detection, canonicalization-trigger — are enqueue/event-driven,
 // not repeat-scheduled). The job-distribution-sync 300s tick is the 12th.
+// ATI-SEP-1 T10 WP1 — the talent-reconcile + contradiction-detection queues were
+// deleted with libs/talent-reconcile (neither was repeat-scheduled here).
 // CB-D2-A1 — the lifecycle-poll 300s tick is the 13th repeat-scheduled queue
 // (of 18 distinct BullMQ queues total: +lifecycle-poll here, +connector-execution
 // which is enqueue-driven, not repeat-scheduled).

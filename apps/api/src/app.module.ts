@@ -15,7 +15,6 @@ import { AuthorizationModule } from '@aramo/authorization';
 import { CalendarModule } from '@aramo/calendar';
 import { CanonicalizationModule } from '@aramo/canonicalization';
 import { ColdIngestExtractionModule } from '@aramo/cold-ingest-extraction';
-import { TalentReconcileModule } from '@aramo/talent-reconcile';
 import { CompanyModule } from '@aramo/company';
 import { ConsentModule } from '@aramo/consent';
 import { ContactModule } from '@aramo/contact';
@@ -140,7 +139,6 @@ import { PlacementLifecycleOrchestratorModule } from './placement-pipeline-orche
 import { PreStartOrchestratorModule } from './pre-start-requirement/pre-start-orchestrator.module.js';
 import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
 import { TenantWriteFreezeInterceptor } from './tenant-write-freeze/tenant-write-freeze.interceptor.js';
-import { TalentAnchorProducerService } from './talent-anchor/talent-anchor-producer.service.js';
 import { AdvisoryResolutionController } from './talent-identity/advisory-resolution.controller.js';
 import { ContradictionResolutionController } from './talent-identity/contradiction-resolution.controller.js';
 import { DisputeResolutionController } from './talent-identity/dispute-resolution.controller.js';
@@ -166,7 +164,6 @@ import { VerificationProposalController } from './talent-identity/verification-p
 import { SourcingService } from './talent-identity/sourcing.service.js';
 import { DossierService } from './talent-identity/dossier.service.js';
 import { ExamineController } from './controllers/examine.controller.js';
-import { LegacyTrustProjectionModule } from './legacy-trust-projection/legacy-trust-projection.module.js';
 import { AtsTalentEventsModule } from './ats-talent-events/ats-talent-events.module.js';
 import { IntelligenceIntegrationHttpModule } from './integrations/intelligence/intelligence-integration-http.module.js';
 import { CanonicalMatchShadowConfig } from './examinations/canonical-match-shadow.config.js';
@@ -252,10 +249,6 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     JobDomainModule,
     TalentEvidenceModule,
     TalentExtractionModule,
-    // ATI-SEP-1 A1 — TEMPORARY (deleted at T10): the relocated typed-row →
-    // trust-ledger projection, consumed by ExamineController's Step-4b reconcile
-    // and the claims-ledger backfill CLI. Never on an ATS create/edit path.
-    LegacyTrustProjectionModule,
     // ATI-SEP-1 A3 — the ATS talent outbox drain + dispatcher. The drain runs in
     // the talent-intake-worker process; in the API it stays OFF unless
     // ATS_TALENT_EVENTS_DRAIN_ENABLED=1.
@@ -595,15 +588,6 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // talent-trust} (all scope:cip). Placed after CanonicalizationModule so a
     // subject exists before extraction polls it.
     ColdIngestExtractionModule,
-    // Promotion Gate Slice-B1 — the reconcile poll (NEW leaf lib, scope:ats).
-    // Above the I15 wall: reads the cip trust ledger + writes the ats TalentRecord
-    // (enrich fill-null contact + append key_skills) with field→evidence
-    // provenance, recording occupied+newer-differing as pending contradictions
-    // (B2 acts). OPEN-2: L2 is the retained history, L3 the current projection —
-    // no L3 version table. Imports {talent-trust (cip), talent-record (ats)};
-    // ats→cip is wall-clean (canonicalization precedent). Placed after the
-    // promotion/extraction path so a promoted subject exists before reconcile.
-    TalentReconcileModule,
     // TR-6 B1 (DDR §2/§7) — the identity-maintenance jobs: the hourly incremental
     // match sweep (D1) + the daily read-only integrity-detection cron (D6). apps/api
     // boundary layer; imports {talent-trust (cip), talent-record (ats)} — both edges
@@ -869,12 +853,6 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
       provide: APP_INTERCEPTOR,
       useClass: PipelineTalentEnrichmentInterceptor,
     },
-    // TR-2a-1 — the anchor producer (used by the anchor backfill CLI). ATI-SEP-1
-    // A4: the global write-time APP_INTERCEPTOR that called it (and the matcher)
-    // on POST/PATCH /v1/talent-records is REMOVED — the ATS request path makes no
-    // trust call. Anchors + advisories now follow the committed talent.* event
-    // (ats-talent-events LEGACY handler, post-commit).
-    TalentAnchorProducerService,
     // Promotion Gate — Slice A (create branch). apps/api orchestration above the
     // I15 wall: PromotionService.promoteSubject reads the cip trust ledger +
     // ingestion arrival and writes the ats TalentRecord + consent event, linking

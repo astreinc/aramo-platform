@@ -1,7 +1,7 @@
 // TIP-E2E INC-3 — the outbound evidence-publication port (directive §3/§7).
-// Screening never writes Talent Trust directly: apps/api binds an adapter over
-// TalentTrustService.recordScreeningFindingIfAbsent (Aramo-TR-SCREEN-1-DDR §3).
-// Every argument comes from the PINNED publication intent.
+// apps/api binds the adapter. ATI-SEP-1 T10 WP1: the binding is ATS-local
+// (ScreeningLocalPublisherAdapter — publication state only, no trust-ledger
+// write). Every argument comes from the PINNED publication intent.
 //
 // Contract: resolve { written } on a write or an identical replay; throw an error
 // whose `code` is 'IDEMPOTENCY_KEY_CONFLICT' on a conflicting replay; any other

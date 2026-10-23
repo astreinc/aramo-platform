@@ -75,8 +75,6 @@
       "@aramo/talent-embedding": ["../../dist/libs/talent-embedding/src/index.d.ts"],
       "@aramo/talent-evidence": ["../../dist/libs/talent-evidence/src/index.d.ts"],
       "@aramo/talent-extraction": ["../../dist/libs/talent-extraction/src/index.d.ts"],
-      "@aramo/talent-reconcile": ["../../dist/libs/talent-reconcile/src/index.d.ts"],
-      "@aramo/talent-reconcile-signal": ["../../dist/libs/talent-reconcile-signal/src/index.d.ts"],
       "@aramo/talent-record": ["../../dist/libs/talent-record/src/index.d.ts"],
       "@aramo/talent-intelligence": ["../../dist/libs/talent-intelligence/src/index.d.ts"],
       "@aramo/talent-trust": ["../../dist/libs/talent-trust/src/index.d.ts"],
