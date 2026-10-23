@@ -12,42 +12,46 @@ import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequestId } from '@aramo/common';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
-import { TalentTrustService } from '@aramo/talent-trust';
 
 import { ResolveContradictionDto } from './dto/contradiction-resolution.dto.js';
+import { IntelligenceAccess } from './intelligence-access.js';
 
-// TR-4 B3 (§3.3) — the PRIVILEGED resolve-contradiction surface. The consistency
-// detectors (and the promotion-reconcile detector) RAISE contradictions; a human
-// RESOLVES them here — the one human arm on the contradiction machinery. Lives in
-// apps/api (above the I15 wall) and calls the cip TalentTrustService.
+// TR-4 B3 → ATI-SEP-1 T10 WP3b (Addendum A3 T10-2) — the PRIVILEGED
+// resolve-contradiction surface, re-pointed onto Talent Intelligence (M-3):
 //
-// Resolving a contradiction is a trust-model action, not recruiter self-serve:
-// same privileged, tenant-scoped `identity:resolve` scope as the advisory merge
-// surface (tenant_admin + tenant_owner + sourcer — the seed IDENTITY_RESOLVE
-// bundle). actor comes ONLY from the JWT (R4 audit). Security S1 — the acting
-// tenant comes ONLY from the JWT and the service loads the evidence tenant-bound.
-// Refusals are domain-coded: an unknown or foreign evidence id → 404 NOT_FOUND; a not-CONTRADICTED
-// record → 422 EVIDENCE_NOT_CONTRADICTED. No FE this slice (TR-14 owns the UI).
+//   POST /v1/talent/identity/contradictions/:assertionId/resolve
+//        { talent_record_id, reason, resolution? = KEEP | RETRACT }
+//   → TI POST /v1/references/ARAMO_ATS/:tenant/:talent_record_id/assertions/:assertionId/contradiction-resolution
+//
+// KEEP — the assertion stands (its contradictions in this tenant's view are
+// reconciled); RETRACT — the assertion is wrong (only one this tenant
+// contributed). The resolution is the tenant's ENRICHMENT decision in TI; it
+// never mutates ATS data. Same privileged `identity:resolve` scope as before;
+// tenant + actor come ONLY from the JWT. Refusals: unknown / not-yours → 404
+// NOT_FOUND; not contradicted → 422 EVIDENCE_NOT_CONTRADICTED; TI not enabled /
+// down → 503 INTELLIGENCE_UNAVAILABLE (details.intelligence_status).
 @Controller('v1/talent/identity/contradictions')
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 @RequireCapability('core')
 export class ContradictionResolutionController {
-  constructor(private readonly trust: TalentTrustService) {}
+  constructor(private readonly ti: IntelligenceAccess) {}
 
-  @Post(':evidenceId/resolve')
+  @Post(':assertionId/resolve')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('identity:resolve')
   async resolve(
     @AuthContext() authContext: AuthContextType,
     @RequestId() requestId: string,
-    @Param('evidenceId', ParseUUIDPipe) evidenceId: string,
+    @Param('assertionId', ParseUUIDPipe) assertionId: string,
     @Body() body: ResolveContradictionDto,
-  ): Promise<{ status: 'RESOLVED'; evidence_id: string }> {
-    // Flips CONTRADICTED → VALID via the CONTRADICTION_RESOLVED arm; recompute
-    // fires and the CORROBORATED cap lifts. Throws 404 NOT_FOUND for an unknown or
-    // foreign id, or AramoError EVIDENCE_NOT_CONTRADICTED (422) for a non-standing
-    // contradiction — the requestId threads into that envelope.
-    await this.trust.resolveContradiction(authContext.tenant_id, evidenceId, authContext.sub, body.reason, requestId);
-    return { status: 'RESOLVED', evidence_id: evidenceId };
+  ): Promise<{ status: 'RESOLVED'; assertion_id: string; resolution: string; assertion_status: string }> {
+    const tenant_id = authContext.tenant_id;
+    const r = await this.ti.act(tenant_id, requestId, (c) =>
+      c.resolveContradiction(
+        { tenant_id, talent_id: body.talent_record_id, assertion_id: assertionId },
+        { resolution: body.resolution ?? 'KEEP', reason: body.reason, actor: authContext.sub },
+      ),
+    );
+    return { status: 'RESOLVED', assertion_id: r.assertion_id, resolution: r.resolution, assertion_status: r.status };
   }
 }

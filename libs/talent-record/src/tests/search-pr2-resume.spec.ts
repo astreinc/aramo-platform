@@ -7,7 +7,6 @@ import { extractResumeText } from '@aramo/resume-parse';
 
 import { TalentRecordController } from '../lib/talent-record.controller.js';
 import type { TalentRecordRepository } from '../lib/talent-record.repository.js';
-import type { TalentLinkService } from '../lib/talent-link.service.js';
 import { ResumeTextService } from '../lib/resume-text/resume-text.service.js';
 import {
   redactResumeText,
@@ -59,7 +58,6 @@ function makeController(): {
   };
   const ctl = new TalentRecordController(
     repo as unknown as TalentRecordRepository,
-    {} as unknown as TalentLinkService,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     {} as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

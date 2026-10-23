@@ -1,9 +1,9 @@
 import { apiClient } from '@aramo/fe-foundation';
 
-import type { ProposalListItem, ProposalPage } from './types';
+import type { ProposalAction, ProposalListItem, ProposalPage } from './types';
 
 // The Trust Proposals worklist client (mirrors the identity-advisories-api
-// convention). Consumes the TR-12 keyset list + the dismiss / mark-acted
+// convention). Consumes the (Talent Intelligence-backed) keyset list + the dismiss / mark-acted
 // bookkeeping endpoints (all at talent:read; the real ACTs carry their own gates
 // and are fired via their own clients). Tenant/actor come from the session cookie
 // the apiClient attaches — never a param. ApiError propagates for the caller's
@@ -42,14 +42,16 @@ export async function dismissProposal(
   );
 }
 
-// POST /v1/talent/identity/proposals/:id/act — bookkeeping only (records ACTED).
-// The real action was already fired via its own gated client; this marks the row.
+// POST /v1/talent/identity/proposals/:id/act — bookkeeping only (records ACTED
+// with what the human did). The real action was already fired via its own
+// gated client; this marks the row.
 export async function markProposalActed(
   id: string,
+  action: ProposalAction,
   note?: string,
 ): Promise<ProposalListItem> {
   return apiClient.post<ProposalListItem>(
     `${BASE}/${encodeURIComponent(id)}/act`,
-    note !== undefined && note !== '' ? { note } : {},
+    note !== undefined && note !== '' ? { action, note } : { action },
   );
 }

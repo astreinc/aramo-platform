@@ -1,67 +1,42 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
-import {
-  AramoError,
-  type AramoLogger,
-  computeEmailFingerprint,
-  loadIdentityPepper,
-  loadIdentityAdmissionPolicy,
-} from '@aramo/common';
-import { IdentityIndexRepository } from '@aramo/identity-index';
-import { TalentTrustService, type SourceClass } from '@aramo/talent-trust';
+import { AramoError, type AramoLogger } from '@aramo/common';
+import { SourcedTalentRepository, type SourcedTalentRow } from '@aramo/sourced-talent';
 
 import { Prisma } from '../../prisma/generated/client/client.js';
 
 import { PrismaService } from './prisma/prisma.service.js';
 
-// T2-2a / T2-3 — canonicalization orchestrator (the atomic resolve-or-
-// associate-or-create canonicalize service). Lead-authored per
-// Aramo-T2-2a-Canonicalization-Orchestration-Directive-v1_0-LOCKED.md
-// + Aramo-T2-3-Resolution-Trigger-Gate5-Prompt-v1_0.
+// T2-2a / T2-3 — canonicalization orchestrator (the atomic resolve-or-create
+// canonicalize service).
 //
 // Surface (closed, single method):
 //   canonicalize({ payload_id, source_channel, authContext, requestId })
 //     → CanonicalizeResult
 //
-// Semantics (T2-3 RESOLVE): the production path runs the inline resolver.
-//     Step 4b (ADR-0016) splits resolution into two anchors:
-//       * WITHIN-TENANT SUBJECT (resolved_subject_id): a verified-email
-//         SubjectAnchor match on talent_trust (the findFirst is tenant-
-//         filtered). Hit → reuse that tenant's ResolutionSubject; miss →
-//         mint a new subject + record its anchor. resolution_method =
-//         confirmed_anchor_match | new_identity.
-//       * CROSS-TENANT CLUSTER (resolved_cluster_id): a salted one-way
-//         fingerprint of the verified email, computed tenant-side, resolves a
-//         PII-free identity_index.PersonCluster (I14 — no raw email crosses the
-//         tenant wall). One human across tenants shares ONE cluster.
-//     DETERMINISTIC, exact, oldest-first within the tenant; no fuzzy
-//     auto-merge. An UNverified email does NOT resolve (held as evidence,
-//     not an identity key) and yields no fingerprint.
+// ATI-SEP-1 T10 WP2 (Addenda A2 F-1 / A3 — ATS keeps sourcing, rebuilt on
+// sourced_talent): every ingestion arrival resolves to an ATS-local
+// sourced_talent.SourcedTalent row, keyed by (tenant, channel, external id):
+//   * an arrival a SRC-1 channel writer already landed (Indeed apply webhook,
+//     manual capture — provenance.ingestion_payload_id = this payload) is REUSED;
+//   * otherwise canonicalize records one idempotently: channel = the payload's
+//     source (upper-cased), external id = the channel profile URL when present,
+//     else the payload's content hash (a re-pull of the same profile / the same
+//     bytes is the SAME arrival).
+// The retired trust subject + identity-index cluster are no longer minted:
+// RawPayloadReference.resolved_subject_id / resolved_cluster_id become INERT
+// soft refs (ADD-not-rename); sourced_talent_id is the new anchor + poll gate.
+// No fuzzy match, no cross-tenant key — the arrival stays inside the tenant wall.
 //
-// Boundary re-frame (T2-3 vs T2-2a): the resolver is now IN Core
-// canonicalization (the A5b-2 deferral vindicated; T2-1 ruled this is
-// where it belongs). The ATS adapter STILL has no resolver — the ATS
-// no-resolution tripwire (apps/api/src/tests/ats-batch4b-talent-link.
-// integration.spec.ts) holds: libs/talent + libs/identity carry no
-// findTalentByEmail / resolveIdentity / matchIdentity. The resolver
-// lives INLINE in the canonicalize $transaction (no named public
-// method): the lib-level forbidden-name tripwire (proof 5) stays
-// literally green; the boundary is structural, not nominal.
+// Atomicity (Directive §1 Ruling 1): the payload decision + outbox event commit
+// in ONE Prisma $transaction at READ COMMITTED with a SELECT … FOR UPDATE lock on
+// the RawPayloadReference row. The SourcedTalent write runs on the sourced-talent
+// lib's OWN client (a separate connection, the precedent the retired resolver
+// seams set): it is idempotent on the (tenant, channel, external id) @@unique, so
+// a canonicalize rollback leaves at most a reusable arrival that the retry finds.
 //
-// Atomicity (Directive §1 Ruling 1 — NON-NEGOTIABLE): all writes happen
-// in ONE Prisma $transaction at READ COMMITTED with a SELECT … FOR UPDATE
-// lock on the RawPayloadReference row. A partial canonicalization is a
-// corrupt identity — saga is forbidden; a mid-tx failure rolls back
-// EVERYTHING (evidence / outbox event / the resolved_subject_id +
-// resolved_cluster_id decision). Proof 4 (atomicity) is load-bearing.
-//
-// R-boundary: identity + contact-method evidence ONLY. No tier / score /
-// rank / match (R10). The populated evidence models map 1:1 to spec
-// (R12). TalentSkillEvidence + the other 5 non-contact evidence creates
-// are DEFERRED (F-canonicalization-skills) — the generic payload carries
-// no real skill_id / work-history / rate / work-auth / document /
-// derived-snapshot signal; populating with synthetic values would
-// VIOLATE R12.
+// R-boundary: identity + contact material ONLY. No tier / ordinal / match
+// output (R10).
 
 // Resolution method — closed enum mirroring the ingestion-schema
 // ResolutionMethod (DB) enum. TR-2a-B2 (DDR-2 §6): canonicalize/recordSourcedArrival
@@ -93,10 +68,9 @@ export interface CanonicalizeInput {
 }
 
 export interface CanonicalizeResult {
-  // Fix-Slice-2 — the within-tenant L2 ResolutionSubject id this arrival
-  // resolved to. canonicalize resolves the arrival's subject via the
-  // verified-email SubjectAnchor.
-  subject_id: string;
+  // ATI-SEP-1 T10 WP2 — the ATS-local sourced_talent.SourcedTalent id this
+  // arrival resolved to (the sourcing pool / promotion key).
+  sourced_talent_id: string;
   tenant_id: string;
   resolution_method: ResolutionMethodValue;
   // true when the payload was already canonicalized (the idempotency
@@ -106,9 +80,6 @@ export interface CanonicalizeResult {
   // OutboxEvent id IF a new event was written (i.e.
   // already_canonicalized === false). Drained by T2-2b.
   outbox_event_id: string | null;
-  // Number of L2 contact EvidenceRecords written this run (email + profile_url;
-  // 0 when the payload carried neither, or already_canonicalized === true).
-  contact_evidence_written: number;
 }
 
 // Locked-row shape returned by the SELECT … FOR UPDATE. Mirrors the
@@ -116,18 +87,14 @@ export interface CanonicalizeResult {
 interface LockedPayloadRow {
   id: string;
   tenant_id: string;
+  source: string;
+  source_class: string;
+  sha256: string;
+  captured_at: Date;
   verified_email: string | null;
   profile_url: string | null;
-  // TR-2a-B1 (DDR-1 §3.1) — the arrival's server-derived attestation level,
-  // read off the payload row and threaded to the resolver's writes. TEXT column
-  // (String at the client), narrowed to SourceClass at the recordSourcedArrival
-  // boundary — the value was written from the closed channel map at ingest.
-  source_class: string;
-  // TR-2a-B2 (Name-Wiring §1) — the declared name claim, threaded to the
-  // resolver's CONFIRMED-arm NAME guard. Nullable.
   declared_name: string | null;
-  // Fix-Slice-2 — the L2 subject idempotency anchor (was resolved_talent_id).
-  resolved_subject_id: string | null;
+  sourced_talent_id: string | null;
   resolution_method: ResolutionMethodValue | null;
 }
 
@@ -151,37 +118,32 @@ export class CanonicalizationRepository {
     private readonly prisma: PrismaService,
     @Inject('CanonicalizationRepositoryLogger')
     private readonly logger: AramoLogger,
-    // Step 4b — the PII-free cross-tenant resolution index. Cluster
-    // resolution happens via its OWN client (identity_index schema is not in
-    // canonicalization's multi-schema follower client); an orphan cluster on
-    // a canonicalize rollback is harmless and reused on retry (idempotent via
-    // the fingerprint @@unique).
-    private readonly identityIndex: IdentityIndexRepository,
-    // Fix-Slice-2 — the within-tenant L2 resolution seam (TR-2a). Canonicalize
-    // (scope:ats) → talent-trust (scope:cip) is ats→cip, lint-green (mirrors the
-    // identityIndex edge). Runs on talent-trust's OWN client (a separate
-    // connection, like identityIndex) — its writes are orphan-safe on a
-    // canonicalize rollback and re-resolve idempotently on retry.
-    private readonly talentTrust: TalentTrustService,
+    // ATI-SEP-1 T10 WP2 — the ATS-local sourcing store (scope:ats → scope:ats).
+    // Runs on its OWN client; recordArrival is idempotent on the dedup key.
+    private readonly sourced: SourcedTalentRepository,
   ) {}
 
-  // T2-3 — polling-outbox read. Returns up to `limit` unresolved payloads
-  // (resolved_talent_id IS NULL), oldest first (created_at asc). The
-  // CanonicalizationTriggerProcessor calls this on each tick and invokes
-  // canonicalize() per row.
+  // T2-3 — polling-outbox read. Returns up to `limit` payloads not yet resolved
+  // to a SourcedTalent (sourced_talent_id IS NULL), oldest first. A legacy row
+  // canonicalized before WP2 (resolved_subject_id set, sourced_talent_id NULL) is
+  // picked up ONCE and lands its arrival — the forward backfill of the pool.
+  // `minAgeMs` holds a just-written payload back for a moment so the SRC-1
+  // channel writer's own recordArrival (written right after acceptPayload) lands
+  // first and is reused rather than duplicated.
   //
-  // No transaction / no lock — the canonicalize $transaction itself
-  // SELECTs FOR UPDATE the RawPayloadReference row, so two ticks racing
-  // on the same payload serialize on that lock; the second sees
-  // resolved_talent_id non-null (from the first) and the idempotency
-  // short-circuit fires (a no-op). The query result may be stale by the
-  // time canonicalize runs — that's fine, the lock + short-circuit are
-  // the load-bearing correctness invariants.
+  // No transaction / no lock — the canonicalize $transaction itself SELECTs FOR
+  // UPDATE the row, so two ticks racing on one payload serialize there and the
+  // second short-circuits on the now non-null sourced_talent_id.
   async findUnresolvedPayloadBatch(args: {
     limit: number;
+    minAgeMs?: number;
   }): Promise<UnresolvedPayloadRow[]> {
+    const minAge = args.minAgeMs ?? 0;
     const rows = await this.prisma.rawPayloadReference.findMany({
-      where: { resolved_subject_id: null },
+      where: {
+        sourced_talent_id: null,
+        ...(minAge > 0 ? { created_at: { lte: new Date(Date.now() - minAge) } } : {}),
+      },
       orderBy: { created_at: 'asc' },
       take: args.limit,
       select: {
@@ -202,24 +164,21 @@ export class CanonicalizationRepository {
       source_channel: input.source_channel,
     });
 
-    // Atomic interactive transaction at READ COMMITTED (Directive §1
-    // Ruling 4). The first statement is SELECT … FOR UPDATE on the
-    // RawPayloadReference row — the concurrent-canonicalize race
-    // protection without SERIALIZABLE's cost.
     const result = await this.prisma.$transaction(
       async (tx) => {
-        // Step 1 — read + lock the payload row. $queryRaw runs on the
-        // same connection as the surrounding interactive tx, so the
-        // FOR UPDATE row-lock is held for the rest of the transaction.
+        // Step 1 — read + lock the payload row (held for the rest of the tx).
         const lockedRows = await tx.$queryRaw<LockedPayloadRow[]>`
           SELECT
             id,
             tenant_id,
+            source,
+            source_class,
+            sha256,
+            captured_at,
             verified_email,
             profile_url,
-            source_class,
             declared_name,
-            resolved_subject_id,
+            sourced_talent_id,
             resolution_method
           FROM "ingestion"."RawPayloadReference"
           WHERE id = ${input.payload_id}::uuid
@@ -228,9 +187,7 @@ export class CanonicalizationRepository {
 
         const payload = lockedRows[0];
 
-        // Cross-tenant absorbed into NOT_FOUND — no enumeration. A
-        // caller from a different tenant cannot distinguish
-        // 'payload exists in another tenant' from 'no such payload'.
+        // Cross-tenant absorbed into NOT_FOUND — no enumeration.
         if (payload === undefined || payload.tenant_id !== input.authContext.tenant_id) {
           throw new AramoError(
             'CANONICALIZATION_PAYLOAD_NOT_FOUND',
@@ -243,127 +200,41 @@ export class CanonicalizationRepository {
           );
         }
 
-        // Step 2 — idempotency. If resolved_subject_id is already set, the
-        // payload has been canonicalized in a prior run; no-op return.
-        // The locked row + this check is the idempotency-anchor: the
-        // resolved_subject_id write is the LAST mutation inside the tx, so this
-        // read sees either NULL (first canonicalize) or the committed non-NULL
-        // value (a prior canonicalize succeeded).
-        if (payload.resolved_subject_id !== null) {
+        // Step 2 — idempotency: sourced_talent_id is the LAST write of a prior
+        // successful canonicalize.
+        if (payload.sourced_talent_id !== null) {
           this.logger.log({
             event: 'canonicalize_idempotent_noop',
             tenant_id: payload.tenant_id,
             payload_id: payload.id,
-            subject_id: payload.resolved_subject_id,
-            prior_resolution_method: payload.resolution_method,
+            sourced_talent_id: payload.sourced_talent_id,
           });
-          // The prior canonicalize wrote resolution_method alongside
-          // resolved_subject_id (the last-write tuple at Step 5). A non-null
-          // resolved_subject_id ⇒ a non-null resolution_method.
-          const priorMethod = payload.resolution_method ?? 'new_identity';
           return {
-            subject_id: payload.resolved_subject_id,
+            sourced_talent_id: payload.sourced_talent_id,
             tenant_id: payload.tenant_id,
-            resolution_method: priorMethod,
+            resolution_method: payload.resolution_method ?? 'new_identity',
             already_canonicalized: true,
             outbox_event_id: null,
-            contact_evidence_written: 0,
           } satisfies CanonicalizeResult;
         }
 
-        // Step 3a (4b) — CROSS-TENANT IDENTITY → PERSON_CLUSTER (PII-free).
-        // UNTOUCHED by Fix-Slice-2 (§5 leave-untouched, R1). The same-human key
-        // across tenants is a salted one-way fingerprint of the verified email,
-        // computed TENANT-SIDE; only the opaque fingerprint crosses into
-        // identity_index (I14 — no raw email leaves the tenant wall).
-        // resolve-or-create is race-safe via the fingerprint @@unique. No
-        // admitted email ⇒ no cross-tenant key ⇒ resolvedClusterId stays NULL.
-        // Runs on identityIndex's OWN client (cross-connection, orphan-safe).
-        //
-        // TR-2b B1 (Directive §2; DDR R1/R2) — ADMISSION POLICY GATE (Ruling
-        // D15). The mint is wrapped by the platform-global, fail-loud
-        // IdentityIndexAdmissionPolicy switch, loaded inline at the seam exactly
-        // as the pepper is (no new config-injection pattern). Unset/garbage →
-        // fail-loud 500, STOPPING the mint rather than minting under an
-        // undeclared gate. Flipping the switch never retro-ingests: this path
-        // only ever reads the CURRENT arrival (history enters solely via the
-        // audited B2 backfill command, DDR R7).
-        const admissionPolicy = loadIdentityAdmissionPolicy();
-        let admittedEmail: string | null = null;
-        if (admissionPolicy === 'PORTABLE_ONLY') {
-          // The ratified live behavior (DDR R2): admit iff a VERIFIED email is
-          // present — the only D5-portable anchor built today. Byte-for-byte the
-          // pre-B1 condition, now policy-attributed.
-          admittedEmail = payload.verified_email;
-        } else {
-          // ALL_ARRIVALS — admit any arrival carrying normalized anchor material
-          // regardless of verified status. SUBSTRATE NOTE (Directive §2 →
-          // Gate-6): the canonicalization payload (LockedPayloadRow) carries NO
-          // unverified-email field at HEAD, so the only index-admissible material
-          // is still the verified email — this arm is structurally identical to
-          // PORTABLE_ONLY until the TR-2b B2 L1 writer / ADR-0019 sourcing
-          // service supplies unverified normalized anchors. THIS branch is that
-          // expansion seam; no payload field is invented here (never guess PII).
-          admittedEmail = payload.verified_email;
-        }
-        let resolvedClusterId: string | null = null;
-        if (admittedEmail !== null) {
-          const pepper = loadIdentityPepper();
-          const fingerprint = computeEmailFingerprint(admittedEmail, pepper);
-          const cluster =
-            await this.identityIndex.findOrCreateClusterByFingerprint(
-              fingerprint,
-              'email',
-            );
-          resolvedClusterId = cluster.id;
-        }
+        // Step 3 — resolve the arrival to its SourcedTalent row.
+        const { arrival, existed } = await this.resolveArrival(payload, input.source_channel);
+        const resolvedMethod: ResolutionMethodValue = existed
+          ? 'confirmed_anchor_match'
+          : 'new_identity';
 
-        // Step 3 (Fix-Slice-2 §4.2/§4.3) — WITHIN-TENANT IDENTITY → L2
-        // ResolutionSubject. The arrival's subject is resolved through the
-        // built TR-2a-1 verified-email SubjectAnchor (hit → reuse the subject;
-        // miss → new subject + record anchor), and its per-arrival contact
-        // evidence attaches on L2. Runs on talent-trust's OWN client (cross-connection,
-        // orphan-safe on rollback; the subject re-resolves idempotently on
-        // retry via the email anchor / SOURCED_TALENT @@unique).
-        const arrival = await this.talentTrust.recordSourcedArrival({
-          tenant_id: payload.tenant_id,
-          payload_id: payload.id,
-          verified_email: payload.verified_email,
-          profile_url: payload.profile_url,
-          source_channel: input.source_channel,
-          // TR-2a-B1 (DDR-1 §3.1) — thread the server-derived attestation level
-          // onto the resolver's evidence/anchor writes. Narrowed from the TEXT
-          // column: the value was set at ingest from the closed channel map.
-          source_class: payload.source_class as SourceClass,
-          // TR-2a-B2 (Name-Wiring §1) — the declared name claim for the NAME guard.
-          declared_name: payload.declared_name,
-          created_by: 'canonicalization',
-          // TR-2b B1 PR-2 (DDR R4) — the admitted PERSON_CLUSTER id (non-null only
-          // when the admission-policy gate above minted/resolved a cluster). Drives
-          // the PERSON_CLUSTER ResolutionSubjectRef write inside recordSourcedArrival
-          // — reverse linkage, no ref without a mint.
-          cluster_id: resolvedClusterId,
-        });
-        const subjectId = arrival.subject_id;
-        const resolvedMethod: ResolutionMethodValue = arrival.resolution_method;
-
-        // Step 5 — record the decision on the RawPayloadReference row. The LAST
-        // write before the outbox emission; the idempotency anchor (the next
-        // canonicalize on this payload short-circuits at Step 2 on a non-null
-        // resolved_subject_id).
+        // Step 4 — record the decision on the payload row (the idempotency
+        // anchor). resolved_subject_id / resolved_cluster_id are NOT written.
         await tx.rawPayloadReference.update({
           where: { id: payload.id },
           data: {
-            resolved_subject_id: subjectId,
-            resolved_cluster_id: resolvedClusterId,
+            sourced_talent_id: arrival.id,
             resolution_method: resolvedMethod,
           },
         });
 
-        // Step 6 — write the outbox event IN THE SAME TRANSACTION (T2-2a
-        // writes, T2-2b drains). The event commits atomically with the state
-        // change; rollback leaves no orphan event row (atomicity proof 4). The
-        // payload now carries the L2 subject id.
+        // Step 5 — the outbox event IN THE SAME TRANSACTION.
         const outboxEventId = uuidv7();
         await tx.outboxEvent.create({
           data: {
@@ -371,7 +242,7 @@ export class CanonicalizationRepository {
             tenant_id: payload.tenant_id,
             event_type: 'talent.canonicalized',
             event_payload: {
-              subject_id: subjectId,
+              sourced_talent_id: arrival.id,
               tenant_id: payload.tenant_id,
               resolution_method: resolvedMethod,
               payload_id: payload.id,
@@ -380,20 +251,14 @@ export class CanonicalizationRepository {
         });
 
         return {
-          subject_id: subjectId,
+          sourced_talent_id: arrival.id,
           tenant_id: payload.tenant_id,
           resolution_method: resolvedMethod,
           already_canonicalized: false,
           outbox_event_id: outboxEventId,
-          contact_evidence_written: arrival.contact_evidence_written,
         } satisfies CanonicalizeResult;
       },
       {
-        // Directive §1 Ruling 4 — READ COMMITTED + SELECT FOR UPDATE on
-        // the payload row. Sufficient to prevent the concurrent-
-        // canonicalize race (two callers racing for the same payload
-        // serialize on the row lock); cheaper than SERIALIZABLE for the
-        // surrounding writes which do not need range-lock semantics.
         isolationLevel: Prisma.TransactionIsolationLevel.ReadCommitted,
       },
     );
@@ -402,14 +267,54 @@ export class CanonicalizationRepository {
       event: 'canonicalize_completed',
       tenant_id: result.tenant_id,
       payload_id: input.payload_id,
-      subject_id: result.subject_id,
+      sourced_talent_id: result.sourced_talent_id,
       resolution_method: result.resolution_method,
       already_canonicalized: result.already_canonicalized,
       outbox_event_id: result.outbox_event_id,
-      contact_evidence_written: result.contact_evidence_written,
       latency_ms: Date.now() - startedAt,
     });
 
     return result;
+  }
+
+  // The arrival this payload is: the channel writer's own row when it recorded
+  // one for this payload, else an idempotent (tenant, channel, external id) row.
+  private async resolveArrival(
+    payload: LockedPayloadRow,
+    provenanceChannel: string,
+  ): Promise<{ arrival: SourcedTalentRow; existed: boolean }> {
+    const linked = await this.sourced.findByIngestionPayloadId(payload.tenant_id, payload.id);
+    if (linked !== null) return { arrival: linked, existed: true };
+
+    const source_channel = payload.source.toUpperCase();
+    const external_source_id = payload.profile_url ?? payload.sha256;
+    const prior = await this.sourced.findArrival(payload.tenant_id, source_channel, external_source_id);
+    if (prior !== null) return { arrival: prior, existed: true };
+
+    const email = payload.verified_email?.trim().toLowerCase() ?? '';
+    const arrival = await this.sourced.recordArrival({
+      tenant_id: payload.tenant_id,
+      source_channel,
+      external_source_id,
+      ...(email !== '' ? { normalized_email: email } : {}),
+      provenance: {
+        ingestion_payload_id: payload.id,
+        captured_at: payload.captured_at.toISOString(),
+        source: payload.source,
+        source_class: payload.source_class,
+        provenance_channel: provenanceChannel,
+        recorded_by: 'canonicalization',
+        applicant: {
+          full_name: payload.declared_name,
+          email: payload.verified_email,
+          profile_url: payload.profile_url,
+        },
+      },
+      // No ratified basis is asserted at canonicalize — promotion carries the
+      // payload's source + server-derived source_class into the consent ledger.
+      legal_basis: { basis: null, status: 'PENDING_COUNSEL' },
+      arrived_at: payload.captured_at,
+    });
+    return { arrival, existed: false };
   }
 }

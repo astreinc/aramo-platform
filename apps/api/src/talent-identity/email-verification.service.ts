@@ -1,48 +1,52 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
-import { AramoError, normalizeEmail } from '@aramo/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
 import { ConsentService } from '@aramo/consent';
-import { MAILER_PORT, type MailerPort } from '@aramo/mailer';
+import {
+  SOURCE_SYSTEM_ARAMO_ATS,
+  maskIdentifierValue,
+  normalizeEmailIdentifier,
+  type CreateVerificationResponse,
+  type ReferenceVerificationItem,
+} from '@aramo/intelligence-contracts';
 import { TalentRecordRepository } from '@aramo/talent-record';
-import { TalentTrustRepository, TalentTrustService } from '@aramo/talent-trust';
 
 import { type VerifiableEmailSlot } from './dto/email-verification.dto.js';
-import {
-  buildConfirmUrl,
-  loadVerificationLinkConfig,
-  renderVerificationEmail,
-} from './verification-emails.js';
-import {
-  generateVerificationToken,
-  verificationExpiresAt,
-} from './verification-token.js';
+import { IntelligenceAccess, type IntelligenceStatus } from './intelligence-access.js';
 
-// TR-3 B2 (§3.1) — the email-verification REQUEST orchestrator. Lives in
-// apps/api (the promotion/reconcile boundary precedent, ABOVE the I15 wall):
-// it composes talent-record (the stored slots), consent (the send gate), the
-// cip trust ledger (the request row + subject), and the mailer — none of which
-// import one another. talent_trust imports NO ats; this is the only place the
-// four meet.
+// TR-3 B2 → ATI-SEP-1 T10 WP3b (Addendum A3 T10-3) — recruiter-initiated email
+// verification, executed by Talent Intelligence as a 6-digit one-time code:
 //
-// The recipient is NEVER caller-chosen: the DTO carries a STORED SLOT
-// (email1/email2), and this service reads the address off the record. A
-// caller-supplied address is structurally impossible (acceptance (c)).
+//   POST /v1/talent-records/:id/email-verifications { slot }
+//     gates (in order): record in tenant → live → slot holds an address →
+//     contacting/email consent (fails CLOSED) → TI enabled for the tenant →
+//     TI POST /v1/verifications { source_reference: ARAMO_ATS/tenant/record,
+//     identifier_type: EMAIL, value: <the STORED address> }.
+//     TI mints the code and its delivery adapter mails it with the confirm link
+//     (/email-verifications/confirm?verification_id=…); the talent enters the
+//     code on the public confirm page (PublicVerificationController → TI confirm).
+//   GET  /v1/talent-records/:id/email-verifications
+//     per-slot status from TI GET …/verifications (VERIFIED / PENDING /
+//     UNVERIFIED), matched to email1 / email2 by TI's masked form of the
+//     normalized address (the value itself never crosses the TI wire back).
+//
+// The recipient is NEVER caller-chosen: the DTO names a STORED SLOT and the
+// address is read off the record. The legacy link + token path (verification
+// emails, token hashes, the trust ledger's VerificationRequest) is retired.
 
-// The status of one stored email slot, for the record-detail surface (§3.3).
-//   verified — a PLATFORM_VERIFIED EMAIL anchor exists for the value.
-//   pending  — an open, non-expired request is outstanding.
-//   expired  — the latest request lapsed (or was consumed without a live anchor).
-//   none     — the slot holds no address, or nothing has been requested.
-export type EmailSlotVerificationStatus =
-  | 'verified'
-  | 'pending'
-  | 'expired'
-  | 'none';
+export type EmailSlotVerificationStatus = 'verified' | 'pending' | 'expired' | 'none';
 
 export interface EmailSlotStatusView {
   slot: VerifiableEmailSlot;
   value_present: boolean;
   status: EmailSlotVerificationStatus;
+  /** PENDING: the code's expiry; VERIFIED: when re-verification falls due. */
+  expires_at: string | null;
+}
+
+export interface EmailVerificationStatusResponse {
+  intelligence_status: IntelligenceStatus;
+  items: EmailSlotStatusView[];
 }
 
 export interface RequestVerificationResult {
@@ -50,15 +54,15 @@ export interface RequestVerificationResult {
   slot: VerifiableEmailSlot;
   status: 'PENDING';
   expires_at: string;
-  // True when an open request already existed and was resent (token rotated in
-  // place, same request identity) rather than freshly minted (acceptance (d)).
-  resent: boolean;
+  /** QUEUED — the code is on its way; NOT_AVAILABLE — TI cannot deliver on this channel. */
+  delivery: CreateVerificationResponse['delivery'];
 }
 
-// No tenant display-name source is threaded through the JWT (AuthContext carries
-// no tenant_name); a later slice can pass the tenant label. The renderer reads
-// fine with the product name as the label.
-const DEFAULT_TENANT_LABEL = 'Aramo';
+const STATUS_OF: Record<ReferenceVerificationItem['status'], EmailSlotVerificationStatus> = {
+  VERIFIED: 'verified',
+  PENDING: 'pending',
+  UNVERIFIED: 'none',
+};
 
 @Injectable()
 export class EmailVerificationService {
@@ -66,13 +70,10 @@ export class EmailVerificationService {
 
   constructor(
     private readonly talentRecords: TalentRecordRepository,
-    private readonly trustRepo: TalentTrustRepository,
-    private readonly trust: TalentTrustService,
     private readonly consent: ConsentService,
-    @Inject(MAILER_PORT) private readonly mailer: MailerPort,
+    private readonly ti: IntelligenceAccess,
   ) {}
 
-  // §3.1 — the request path. Gates run IN ORDER; the first failure throws.
   async requestVerification(input: {
     recordId: string;
     slot: VerifiableEmailSlot;
@@ -82,49 +83,27 @@ export class EmailVerificationService {
     const { recordId, slot, authContext, requestId } = input;
     const tenantId = authContext.tenant_id;
 
-    // Gate 1 — the record exists in THIS tenant (findById is tenant-scoped).
-    const record = await this.talentRecords.findById({
-      tenant_id: tenantId,
-      id: recordId,
-    });
+    // Gate 1 — the record exists in THIS tenant.
+    const record = await this.talentRecords.findById({ tenant_id: tenantId, id: recordId });
     if (record === null) {
-      throw new AramoError('NOT_FOUND', 'talent record not found', 404, {
+      throw new AramoError('NOT_FOUND', 'talent record not found', 404, { requestId, details: { talent_record_id: recordId } });
+    }
+    // Gate 2 — the record is live.
+    if (record.record_status !== 'live') {
+      throw new AramoError('TALENT_RECORD_SUPERSEDED', 'talent record is superseded', 422, {
         requestId,
         details: { talent_record_id: recordId },
       });
     }
-
-    // Gate 2 — the record is live (a superseded record is refused; the same
-    // operational-refusal code the B3a send-gate uses).
-    if (record.record_status !== 'live') {
-      throw new AramoError(
-        'TALENT_RECORD_SUPERSEDED',
-        'talent record is superseded',
-        422,
-        { requestId, details: { talent_record_id: recordId } },
-      );
-    }
-
-    // Gate 3 — the named slot actually holds an address. The slot itself is
-    // DTO-validated (email1|email2); an empty slot is a 400 (nothing to verify).
+    // Gate 3 — the named slot holds an address.
     const rawAddress = slot === 'email1' ? record.email1 : record.email2;
-    const normalized =
-      rawAddress === null ? '' : normalizeEmail(rawAddress);
-    if (rawAddress === null || normalized.length === 0) {
-      throw new AramoError(
-        'VALIDATION_ERROR',
-        'the named email slot holds no address',
-        400,
-        { requestId, details: { slot, reason: 'email_slot_empty' } },
-      );
+    if (rawAddress === null || normalizeEmailIdentifier(rawAddress).length === 0) {
+      throw new AramoError('VALIDATION_ERROR', 'the named email slot holds no address', 400, {
+        requestId,
+        details: { slot, reason: 'email_slot_empty' },
+      });
     }
-
-    // Gate 4 — consent (contacting/email). THE RULED DIVERGENCE (DDR §2.1): a
-    // verification email is a voluntary enhancement, so it fails CLOSED on an
-    // unknown consent state — BOTH `denied` AND `error`/empty-ledger map to 403
-    // VERIFICATION_CONSENT_REQUIRED (the selection send-gate, by contrast, maps
-    // empty-ledger to 500). `selection` is the existing operation that derives
-    // the `contacting` scope; TR-3 adds NO consent-vocabulary value (§1).
+    // Gate 4 — consent (contacting/email), fail CLOSED (the ruled TR-3 divergence).
     const decision = await this.consent.check(
       { talent_record_id: recordId, operation: 'selection', channel: 'email' },
       undefined,
@@ -140,158 +119,48 @@ export class EmailVerificationService {
         consent_result: decision.result,
         reason_code: decision.reason_code,
       });
-      throw new AramoError(
-        'VERIFICATION_CONSENT_REQUIRED',
-        'consent required to send a verification email',
-        403,
-        {
-          requestId,
-          details: { consent_decision: decision, reason: decision.result },
-        },
-      );
+      throw new AramoError('VERIFICATION_CONSENT_REQUIRED', 'consent required to send a verification email', 403, {
+        requestId,
+        details: { consent_decision: decision, reason: decision.result },
+      });
     }
-
-    // Resolve (or materialize) the record's trust subject — the same subject the
-    // ATS anchor producer keys the unverified SELF email anchor to, so the
-    // PLATFORM_VERIFIED row confirm mints will sit beside it.
-    const subjectId = await this.trustRepo.resolveOrCreateSubject(
-      tenantId,
-      'ATS_TALENT_RECORD',
-      recordId,
-      'verification',
+    // Gate 5 — TI executes the verification (enabled for this tenant).
+    const r = await this.ti.act(tenantId, requestId, (c) =>
+      c.requestVerification({
+        source_reference: { source_system_id: SOURCE_SYSTEM_ARAMO_ATS, source_tenant_id: tenantId, external_talent_id: recordId },
+        identifier_type: 'EMAIL',
+        value: rawAddress.trim(),
+      }),
     );
-
-    const now = new Date();
-    const token = generateVerificationToken();
-    const expiresAt = verificationExpiresAt(now);
-
-    // Idempotent open-request (§3.1, acceptance (d)): one live request per
-    // (subject, kind, value). A repeat while one is open is a RESEND — rotate the
-    // token in place (old link dies), re-stamp the TTL, keep the same identity.
-    const open = await this.trustRepo.findOpenVerificationRequest(
-      tenantId,
-      subjectId,
-      'EMAIL',
-      normalized,
-      now,
-    );
-    const requestRow =
-      open === null
-        ? await this.trustRepo.createVerificationRequest({
-            tenant_id: tenantId,
-            talent_record_id: recordId,
-            subject_id: subjectId,
-            anchor_kind: 'EMAIL',
-            normalized_value: normalized,
-            token_hash: token.hash,
-            created_by: authContext.sub,
-            expires_at: expiresAt,
-          })
-        : await this.trustRepo.rotateVerificationToken(
-            open.id,
-            token.hash,
-            expiresAt,
-          );
-
-    // Send via the mailer port — to the STORED address (never a caller value).
-    const { confirmBaseUrl } = loadVerificationLinkConfig();
-    const rendered = renderVerificationEmail({
-      tenantLabel: DEFAULT_TENANT_LABEL,
-      confirmUrl: buildConfirmUrl(confirmBaseUrl, token.raw),
-    });
-    await this.mailer.send({
-      to: rawAddress,
-      subject: rendered.subject,
-      html: rendered.html,
-      text: rendered.text,
-    });
-
-    return {
-      verification_id: requestRow.id,
-      slot,
-      status: 'PENDING',
-      expires_at: requestRow.expires_at.toISOString(),
-      resent: open !== null,
-    };
+    return { verification_id: r.verification_id, slot, status: 'PENDING', expires_at: r.expires_at, delivery: r.delivery };
   }
 
-  // §3.3 — per-slot verification status for the record-detail surface. Verified
-  // is read off the PLATFORM_VERIFIED anchor (bands, never a number); pending /
-  // expired off the request rows. Read-only; no subject is created here.
-  async getStatus(input: {
-    recordId: string;
-    authContext: AuthContextType;
-    requestId: string;
-  }): Promise<{ items: EmailSlotStatusView[] }> {
+  async getStatus(input: { recordId: string; authContext: AuthContextType; requestId: string }): Promise<EmailVerificationStatusResponse> {
     const { recordId, authContext, requestId } = input;
     const tenantId = authContext.tenant_id;
-
-    const record = await this.talentRecords.findById({
-      tenant_id: tenantId,
-      id: recordId,
-    });
+    const record = await this.talentRecords.findById({ tenant_id: tenantId, id: recordId });
     if (record === null) {
-      throw new AramoError('NOT_FOUND', 'talent record not found', 404, {
-        requestId,
-        details: { talent_record_id: recordId },
-      });
+      throw new AramoError('NOT_FOUND', 'talent record not found', 404, { requestId, details: { talent_record_id: recordId } });
     }
-
-    const subject = await this.trust.resolveSubjectRef({
-      tenant_id: tenantId,
-      ref_type: 'ATS_TALENT_RECORD',
-      ref_id: recordId,
+    const slots: Array<{ slot: VerifiableEmailSlot; normalized: string }> = (['email1', 'email2'] as const).map((slot) => {
+      const raw = slot === 'email1' ? record.email1 : record.email2;
+      return { slot, normalized: raw === null ? '' : normalizeEmailIdentifier(raw) };
     });
-    const now = new Date();
 
-    const slots: VerifiableEmailSlot[] = ['email1', 'email2'];
-    const items: EmailSlotStatusView[] = [];
-    for (const slot of slots) {
-      const rawAddress = slot === 'email1' ? record.email1 : record.email2;
-      const normalized =
-        rawAddress === null ? '' : normalizeEmail(rawAddress);
-      if (normalized.length === 0) {
-        items.push({ slot, value_present: false, status: 'none' });
-        continue;
-      }
-      if (subject === null) {
-        items.push({ slot, value_present: true, status: 'none' });
-        continue;
-      }
-      const verified = await this.trustRepo.findSubjectAnchor(
-        tenantId,
-        subject.id,
-        'EMAIL',
-        normalized,
-        'PLATFORM_VERIFIED',
-      );
-      if (verified !== null) {
-        items.push({ slot, value_present: true, status: 'verified' });
-        continue;
-      }
-      const open = await this.trustRepo.findOpenVerificationRequest(
-        tenantId,
-        subject.id,
-        'EMAIL',
-        normalized,
-        now,
-      );
-      if (open !== null) {
-        items.push({ slot, value_present: true, status: 'pending' });
-        continue;
-      }
-      const latest = await this.trustRepo.findLatestVerificationRequest(
-        tenantId,
-        subject.id,
-        'EMAIL',
-        normalized,
-      );
-      items.push({
-        slot,
-        value_present: true,
-        status: latest === null ? 'none' : 'expired',
-      });
-    }
-    return { items };
+    const read = await this.ti.read(tenantId, (c) => c.listReferenceVerifications({ tenant_id: tenantId, talent_id: recordId }));
+    const tiItems = (read.value?.items ?? []).filter((i) => i.identifier_type === 'EMAIL');
+
+    const items = slots.map(({ slot, normalized }): EmailSlotStatusView => {
+      if (normalized.length === 0) return { slot, value_present: false, status: 'none', expires_at: null };
+      const mask = maskIdentifierValue(normalized);
+      // Two DIFFERENT addresses sharing one masked form cannot be told apart:
+      // report the honest "none" rather than guess.
+      const ambiguous = slots.some((o) => o.slot !== slot && o.normalized !== normalized && o.normalized !== '' && maskIdentifierValue(o.normalized) === mask);
+      const match = ambiguous ? undefined : tiItems.find((i) => i.value_masked === mask);
+      if (match === undefined) return { slot, value_present: true, status: 'none', expires_at: null };
+      return { slot, value_present: true, status: STATUS_OF[match.status], expires_at: match.expires_at };
+    });
+    return { intelligence_status: read.status, items };
   }
 }
+

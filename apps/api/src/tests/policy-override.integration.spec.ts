@@ -83,7 +83,7 @@ const MIGRATIONS = [
   ...migrationsFor('requisition'),
   ...migrationsFor('pipeline'),
   ...migrationsFor('policy-store'),
-  ...migrationsFor('talent-trust'),
+  ...migrationsFor('sourced-talent'),
   ...migrationsFor('talent-record'),
   // L2-B — the consent-schema IdempotencyKey table backs the required Idempotency-Key on create.
   resolve(ROOT, 'libs/consent/prisma/migrations/20260429164414_initial_consent_schema/migration.sql'),

@@ -34,30 +34,6 @@ export async function listTalent(): Promise<TalentRecordListResponse> {
   return apiClient.get<TalentRecordListResponse>('/v1/talent-records');
 }
 
-// TR-9 B1 (D5) — record a reference the recruiter already lawfully holds. The
-// platform contacts no one. NO rating/rating field exists (R10: a reference with
-// a number is a review, not evidence). SKILL/WORK → CLAIMS; TENURE → CONTINUITY.
-export interface RecordReferenceRequest {
-  attester: { name: string; email?: string; company?: string; role?: string };
-  relationship: string;
-  statement_class: 'SKILL' | 'WORK' | 'TENURE';
-  statement: string;
-  period?: { start?: string; end?: string };
-}
-export interface RecordReferenceResult {
-  recorded: boolean; // false on an idempotent re-record
-  evidence_id: string;
-}
-export async function recordReferenceAttestation(
-  recordId: string,
-  body: RecordReferenceRequest,
-): Promise<RecordReferenceResult> {
-  return apiClient.post<RecordReferenceResult>(
-    `/v1/talent-records/${encodeURIComponent(recordId)}/reference-attestations`,
-    body,
-  );
-}
-
 // Segment 4d — the SERVER-SIDE faceted + keyset-paginated path (?paged=true).
 // Filters, sort, presets (?preset=), the My-team scope (?scope=my_team) and the
 // keyset cursor are all resolved on the BE (4a native / 4b cross-facet counts /
@@ -328,9 +304,10 @@ export async function putResumeToStorage(
 // was replaced by the durable async Talent Intake flow (talent-intake-api.ts):
 // create-intake → upload → complete-upload(202) → background worker → GET/SSE.
 
-// TR-3 B2 — request an email-verification for a STORED slot (email1|email2).
-// Server derives the address from the stored field; the FE never sends a
-// free-form address. Scope: talent:edit (server-gated).
+// TR-3 B2 → ATI-SEP-1 T10 WP3b — request an email verification (a 6-digit code
+// Talent Intelligence mails) for a STORED slot (email1|email2). Server derives the
+// address from the stored field; the FE never sends a free-form address. Scope:
+// talent:edit (server-gated). 503 INTELLIGENCE_UNAVAILABLE when TI is not enabled.
 export async function requestEmailVerification(
   recordId: string,
   slot: EmailSlot,

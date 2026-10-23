@@ -4,7 +4,6 @@ import type { AuthContextType } from '@aramo/auth';
 
 import { TalentRecordController } from '../lib/talent-record.controller.js';
 import type { TalentRecordRepository } from '../lib/talent-record.repository.js';
-import type { TalentLinkService } from '../lib/talent-link.service.js';
 
 // Search PR-1 — talent quick-search proofs (GET /v1/talent-records?q=).
 // Lead rulings R1 (REUSE talent:search) / R3 (ILIKE-contains) / R5
@@ -32,7 +31,6 @@ function makeController(): {
   const repo = { list: vi.fn().mockResolvedValue([]) };
   const ctl = new TalentRecordController(
     repo as unknown as TalentRecordRepository,
-    {} as unknown as TalentLinkService,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     {} as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

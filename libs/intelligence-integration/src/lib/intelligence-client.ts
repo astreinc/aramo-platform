@@ -22,6 +22,7 @@ import {
   type CreateVerificationResponse,
   type EntitlementSyncRequest,
   type EntitlementSyncResponse,
+  type IntelligenceEvidenceReadResponse,
   type IntelligenceProfileReadResponse,
   type ServiceTokenResponse,
   type TalentErasedRequest,
@@ -45,7 +46,9 @@ import { INTELLIGENCE_INTEGRATION_CONFIG, type IntelligenceIntegrationConfig } f
 //   IntelligenceRejectedError      — any other 4xx (status + TI error code).
 // This client is NEVER called from an ATS create / update request path: the
 // publisher runs in the worker's outbox drain, the inbound sync in the worker's
-// inbox drain, and only the opt-in portal verification route calls it inline.
+// inbox drain; the inline callers are the opt-in portal verification route and
+// the T10 recruiter trust surfaces (dossier, proposals, disputes, email
+// verification), which are enrichment only and fail soft.
 
 export class IntelligenceNotConfiguredError extends Error {
   constructor() {
@@ -163,6 +166,11 @@ export class IntelligenceClient {
 
   readProfile(args: { tenant_id: string; talent_id: string }): Promise<IntelligenceProfileReadResponse> {
     return this.call<IntelligenceProfileReadResponse>('GET', `${referencePath(args)}/profile`);
+  }
+
+  /** The tenant-view evidence (assertions + their history) behind the profile (scope intelligence:read). */
+  readEvidence(args: AtsTalentRef): Promise<IntelligenceEvidenceReadResponse> {
+    return this.call<IntelligenceEvidenceReadResponse>('GET', `${referencePath(args)}/evidence`);
   }
 
   requestVerification(body: CreateVerificationRequest): Promise<CreateVerificationResponse> {

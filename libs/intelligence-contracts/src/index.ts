@@ -160,6 +160,14 @@ export {
   type WithdrawDisputeRequest,
 } from './lib/lifecycle.js';
 export {
+  identifierDigest,
+  identifierDigestOf,
+  maskIdentifierValue,
+  normalizeEmailIdentifier,
+  normalizeIdentifierValue,
+  normalizePhoneIdentifier,
+} from './lib/identifier.js';
+export {
   INTELLIGENCE_ATS_WEBHOOK_URL_ENV,
   INTELLIGENCE_WEBHOOK_SCHEME,
   INTELLIGENCE_WEBHOOK_SIGNATURE_HEADER,

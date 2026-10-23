@@ -21,7 +21,10 @@ vi.mock('./trust-proposals-api', () => ({
   dismissProposal: vi.fn(),
 }));
 vi.mock('../talent/talent-api', () => ({ requestEmailVerification: vi.fn() }));
-vi.mock('../talent/dossier-api', () => ({ resolveContradiction: vi.fn() }));
+vi.mock('../talent/dossier-api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../talent/dossier-api')>()),
+  resolveContradiction: vi.fn(),
+}));
 
 function makeSession(scopes: string[]): Session {
   return { sub: 'u1', consumer_type: 'recruiter', tenant_id: 't', scopes, iat: 0, exp: 0 };
@@ -31,12 +34,10 @@ const FULL = makeSession(['talent:read', 'talent:edit', 'identity:resolve']);
 function item(over: Partial<ProposalListItem> = {}): ProposalListItem {
   return {
     id: 'prop-1',
-    tenant_id: 't',
-    subject_id: 'ssssssss-1111-2222-3333-444444444444',
     kind: 'VERIFY_CONTACT',
     trigger_kind: 'SINGLE_SOURCE_ONLY',
-    basis_ref_id: 'bbbbbbbb-5555-6666-7777-888888888888',
     basis_kinds: ['EMAIL'],
+    identifier_type: 'EMAIL',
     status: 'OPEN',
     created_at: '2026-07-02T10:30:00Z',
     record_id: 'rrrrrrrr-9999-0000-1111-222222222222',
@@ -45,7 +46,7 @@ function item(over: Partial<ProposalListItem> = {}): ProposalListItem {
   };
 }
 function page(items: readonly ProposalListItem[], next: string | null = null): ProposalPage {
-  return { items, next_cursor: next };
+  return { intelligence_status: 'ENABLED', items, next_cursor: next };
 }
 function renderView(session: Session = FULL) {
   return render(
@@ -69,7 +70,7 @@ describe('TrustProposalsView — the caseworker queue', () => {
   it('an email VERIFY with a resolvable slot one-clicks the request endpoint then marks acted', async () => {
     vi.mocked(getProposals).mockResolvedValue(page([item()]));
     vi.mocked(requestEmailVerification).mockResolvedValue({
-      verification_id: 'v1', slot: 'email1', status: 'PENDING', expires_at: '', resent: false,
+      verification_id: 'v1', slot: 'email1', status: 'PENDING', expires_at: '', delivery: 'QUEUED',
     });
     vi.mocked(markProposalActed).mockResolvedValue(item({ status: 'ACTED' }));
     renderView();
@@ -80,7 +81,7 @@ describe('TrustProposalsView — the caseworker queue', () => {
       'rrrrrrrr-9999-0000-1111-222222222222',
       'email1',
     ));
-    await waitFor(() => expect(markProposalActed).toHaveBeenCalledWith('prop-1'));
+    await waitFor(() => expect(markProposalActed).toHaveBeenCalledWith('prop-1', 'VERIFICATION_REQUESTED'));
   });
 
   it('a consent 403 renders as the row refusal state ("Consent required"); the row is NOT marked acted', async () => {
@@ -98,7 +99,7 @@ describe('TrustProposalsView — the caseworker queue', () => {
 
   it('a PHONE VERIFY (no slot) renders the deep-link, not a one-click', async () => {
     vi.mocked(getProposals).mockResolvedValue(
-      page([item({ kind: 'VERIFY_CONTACT', basis_kinds: ['PHONE'], slot: undefined })]),
+      page([item({ kind: 'VERIFY_CONTACT', basis_kinds: ['PHONE'], identifier_type: 'PHONE', slot: undefined })]),
     );
     renderView();
 
@@ -108,22 +109,36 @@ describe('TrustProposalsView — the caseworker queue', () => {
 
   it('a RESOLVE_CONTRADICTION opens the existing dialog; confirming resolves then marks acted', async () => {
     vi.mocked(getProposals).mockResolvedValue(
-      page([item({ kind: 'RESOLVE_CONTRADICTION', trigger_kind: 'OPEN_CONTRADICTION', basis_kinds: ['EMPLOYMENT'], slot: undefined })]),
+      page([
+        item({
+          kind: 'RESOLVE_CONTRADICTION',
+          trigger_kind: 'OPEN_CONTRADICTION',
+          basis_kinds: ['WORK_HISTORY'],
+          identifier_type: undefined,
+          assertion_id: 'bbbbbbbb-5555-6666-7777-888888888888',
+          slot: undefined,
+        }),
+      ]),
     );
-    vi.mocked(resolveContradiction).mockResolvedValue({ status: 'RESOLVED', evidence_id: 'bbbbbbbb-5555-6666-7777-888888888888' });
+    vi.mocked(resolveContradiction).mockResolvedValue({
+      status: 'RESOLVED',
+      assertion_id: 'bbbbbbbb-5555-6666-7777-888888888888',
+      resolution: 'KEEP',
+      assertion_status: 'VALID',
+    });
     vi.mocked(markProposalActed).mockResolvedValue(item({ status: 'ACTED' }));
     renderView();
 
     fireEvent.click(await screen.findByRole('button', { name: 'Resolve' }));
     // The reused ContradictionResolveDialog — fill the justification + confirm.
-    const textarea = await screen.findByPlaceholderText('Why this is not a real conflict…');
+    const textarea = await screen.findByPlaceholderText('Why…');
     fireEvent.change(textarea, { target: { value: 'distinct roles' } });
     fireEvent.click(screen.getByTestId('contradiction-confirm'));
 
     await waitFor(() => expect(resolveContradiction).toHaveBeenCalledWith(
-      'bbbbbbbb-5555-6666-7777-888888888888', 'distinct roles',
+      'bbbbbbbb-5555-6666-7777-888888888888', 'rrrrrrrr-9999-0000-1111-222222222222', 'distinct roles', 'KEEP',
     ));
-    await waitFor(() => expect(markProposalActed).toHaveBeenCalledWith('prop-1'));
+    await waitFor(() => expect(markProposalActed).toHaveBeenCalledWith('prop-1', 'CONTRADICTION_RESOLVED'));
   });
 
   it('Dismiss opens the justification dialog and dismisses', async () => {
@@ -151,9 +166,23 @@ describe('TrustProposalsView — the caseworker queue', () => {
   });
 
   it('R10: renders NO score/rank/tier/rating text and no bare number in the rows', async () => {
-    vi.mocked(getProposals).mockResolvedValue(page([item(), item({ id: 'prop-2', kind: 'RESOLVE_CONTRADICTION', basis_kinds: ['EMPLOYMENT'], slot: undefined })]));
+    vi.mocked(getProposals).mockResolvedValue(page([item(), item({ id: 'prop-2', kind: 'RESOLVE_CONTRADICTION', basis_kinds: ['WORK_HISTORY'], assertion_id: 'a-2', slot: undefined })]));
     const { container } = renderView();
     await screen.findByText('Verify contact');
     expect(container.textContent ?? '').not.toMatch(/score|rank|tier|rating/i);
+  });
+
+  it('Talent Intelligence not enabled → an honest note and an empty queue (no error)', async () => {
+    vi.mocked(getProposals).mockResolvedValue({ intelligence_status: 'NOT_CONFIGURED', items: [], next_cursor: null });
+    renderView();
+    expect(await screen.findByTestId('proposals-ti-status')).toHaveTextContent('Talent Intelligence not enabled.');
+    expect(screen.getByText('No proposals in this tab.')).toBeInTheDocument();
+    expect(screen.queryByRole('alert')).toBeNull();
+  });
+
+  it('Talent Intelligence unavailable → the unavailable note', async () => {
+    vi.mocked(getProposals).mockResolvedValue({ intelligence_status: 'UNAVAILABLE', items: [], next_cursor: null });
+    renderView();
+    expect(await screen.findByTestId('proposals-ti-status')).toHaveTextContent('Talent Intelligence is temporarily unavailable.');
   });
 });

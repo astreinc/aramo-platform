@@ -47,7 +47,7 @@ const MIGRATIONS = [
   ...migrationsFor('requisition'),
   ...migrationsFor('pipeline'),
   ...migrationsFor('policy-store'),
-  ...migrationsFor('talent-trust'),
+  ...migrationsFor('sourced-talent'),
   ...migrationsFor('talent-record'),
 ];
 

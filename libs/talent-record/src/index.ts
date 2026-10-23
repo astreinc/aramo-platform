@@ -49,7 +49,21 @@ export {
 } from './lib/talent-intelligence/talent-intelligence.repository.js';
 export { TalentRecordService } from './lib/talent-record.service.js';
 export type { PortalProfileProjection } from './lib/dto/portal-profile-projection.dto.js';
-export { TalentLinkService } from './lib/talent-link.service.js';
+export {
+  TalentDuplicateAdvisoryRepository,
+  DUPLICATE_ADVISORY_STATUSES,
+  DUPLICATE_ADVISORY_BASES,
+  type DuplicateAdvisoryStatus,
+  type DuplicateAdvisoryBasis,
+  type DuplicateAdvisoryRow,
+  type DuplicateAdvisoryMergeState,
+  type SourcedArrivalLinkRow,
+  type SourcedArrivalLinkKind,
+  type DuplicateSharedKind,
+  type RecordContactKeys,
+  phoneLookupForms,
+  arrivalPhoneKey,
+} from './lib/duplicate-advisory/talent-duplicate-advisory.repository.js';
 export { PrismaService as TalentRecordPrismaService } from './lib/prisma/prisma.service.js';
 
 // Segment 4 — server-side faceted-search contract.
@@ -108,7 +122,6 @@ export type {
   TalentRecordView,
   CreateTalentRecordRequestDto,
   UpdateTalentRecordRequestDto,
-  TalentLinkView,
   ProfileHydrationValue,
   ProfileHydrationItem,
   ProfileHydrationResponse,
@@ -118,7 +131,6 @@ export {
   PROFILE_HYDRATION_FIELDS,
   type ProfileHydrationInputRecord,
 } from './lib/profile-hydration.js';
-export { LinkTalentRecordRequestDto } from './lib/dto/link-talent-record-request.dto.js';
 
 // TALENT-INTEL-1 (TI-1B) — the shared resume-extraction orchestrator + its
 // authorization seam, and the dependency-inversion PORT for the ATTACHMENT

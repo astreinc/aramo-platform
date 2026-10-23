@@ -1,310 +1,190 @@
+import { AramoError } from '@aramo/common';
 import { describe, expect, it, vi } from 'vitest';
 
 import { PromotionService } from '../talent-identity/promotion.service.js';
-import {
-  PROMOTION_LINK_SOURCE,
-  PROMOTION_SYSTEM_ACTOR_ID,
-} from '../talent-identity/promotion.constants.js';
+import { PROMOTION_SYSTEM_ACTOR_ID } from '../talent-identity/promotion.constants.js';
 
-// Unit coverage for the Promotion Gate create branch. The four collaborators
-// (talent_trust / talent_record / consent / ingestion) are stubbed — each is
-// integration-tested in its own lib; here we prove the ORCHESTRATION: the five
-// outcomes, the evidence→field mapping, system-actor attribution, and the
-// create→link→consent ordering.
+// ATI-SEP-1 T10 WP2 — unit coverage for sourcing promotion on ATS data only. The
+// collaborators (sourced_talent / the ATS advisory store / talent_record /
+// consent / ingestion) are stubbed; here we prove the ORCHESTRATION: every
+// outcome, the arrival → field mapping, system-actor attribution, the tenant
+// dedupe 409 (+ the SOURCED_ARRIVAL advisory it raises), and create → consent.
 
 const TENANT = '11111111-1111-7111-8111-111111111111';
-const PAYLOAD_ID = 'pppppppp-pppp-7ppp-8ppp-ppppppppp01'.replace(/p/g, 'a');
-const SUBJECT_ID = 'ssssssss-ssss-7sss-8sss-sssssssss01'.replace(/s/g, 'b');
-const RECORD_ID = 'rrrrrrrr-rrrr-7rrr-8rrr-rrrrrrrrr01'.replace(/r/g, 'c');
+const ARRIVAL_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaa01';
+const PAYLOAD_ID = 'bbbbbbbb-bbbb-7bbb-8bbb-bbbbbbbbbb01';
+const RECORD_ID = 'cccccccc-cccc-7ccc-8ccc-cccccccccc01';
+const EXISTING_ID = 'dddddddd-dddd-7ddd-8ddd-dddddddddd01';
 
-const sourcedRef = {
-  tenant_id: TENANT,
-  ref_type: 'SOURCED_TALENT' as const,
-  ref_id: PAYLOAD_ID,
-};
+const REF = { tenant_id: TENANT, sourced_talent_id: ARRIVAL_ID };
 
-function ev(assertion_type: string, assertion_payload: unknown, current_status = 'VALID') {
-  return { id: `ev-${assertion_type}`, assertion_type, assertion_payload, current_status, dimension: 'IDENTITY' };
+function arrival(over: Record<string, unknown> = {}) {
+  return {
+    id: ARRIVAL_ID,
+    tenant_id: TENANT,
+    source_channel: 'INDEED',
+    external_source_id: 'apply-1',
+    normalized_email: 'ada@example.com',
+    normalized_phone: '4155550100',
+    provenance: {
+      ingestion_payload_id: PAYLOAD_ID,
+      applicant: { full_name: 'Ada Lovelace', email: 'ada@example.com', phone: '415-555-0100' },
+    },
+    legal_basis: {},
+    arrived_at: new Date('2026-07-04T00:00:00.000Z'),
+    created_at: new Date('2026-07-04T00:00:00.000Z'),
+    ...over,
+  };
 }
 
 function makeService(over: {
-  subject?: unknown;
-  refs?: Array<{ ref_type: string; ref_id: string; link_source: string }>;
-  evidence?: unknown[];
   arrival?: unknown;
-  trustState?: unknown;
-  openAdvisories?: unknown[];
+  link?: unknown;
+  pending?: unknown[];
+  payload?: unknown;
+  duplicate?: unknown;
+  createError?: unknown;
 } = {}) {
-  const resolveSubjectRef = vi
+  const findById = vi.fn().mockResolvedValue(over.arrival === undefined ? arrival() : over.arrival);
+  const sourced = { findById } as never;
+
+  const findArrivalLink = vi.fn().mockResolvedValue(over.link ?? null);
+  const listForArrival = vi.fn().mockResolvedValue(over.pending ?? []);
+  const findRecordContactKeys = vi
     .fn()
-    .mockResolvedValue(over.subject === undefined ? { id: SUBJECT_ID, tenant_id: TENANT } : over.subject);
-  const listSubjectRefs = vi.fn().mockResolvedValue(over.refs ?? [
-    { ref_type: 'SOURCED_TALENT', ref_id: PAYLOAD_ID, link_source: 'canonicalization' },
-  ]);
-  const getEvidence = vi.fn().mockResolvedValue(over.evidence ?? []);
-  const attachSubjectRef = vi.fn().mockResolvedValue(undefined);
-  const getTrustState = vi.fn().mockResolvedValue(over.trustState ?? { identity_band: 'SELF_ASSERTED' });
-  const trust = { resolveSubjectRef, listSubjectRefs, getEvidence, attachSubjectRef, getTrustState } as never;
+    .mockResolvedValue({ id: EXISTING_ID, record_status: 'live', email: 'ada@example.com', phone: '14155559999' });
+  const advisories = { findArrivalLink, listForArrival, findRecordContactKeys } as never;
 
-  // Promotion-Trigger slice-A — the identity gate reader. Default: no open
-  // advisories (identity settled).
-  const listMatchAdvisories = vi.fn().mockResolvedValue(over.openAdvisories ?? []);
-  const trustRepo = { listMatchAdvisories } as never;
+  const flagArrivalAgainstRecord = vi.fn().mockResolvedValue(true);
+  const detection = { flagArrivalAgainstRecord } as never;
 
-  const create = vi.fn().mockResolvedValue({ id: RECORD_ID });
-  // TR-2b B1 PR-2 — the single cluster writer (repo.setLink). Present on the
-  // mock so the PERSON_CLUSTER-ref carry can be asserted; a no-op resolve.
-  const setLink = vi.fn().mockResolvedValue({ id: RECORD_ID, cluster_id: null });
-  const talentRecords = { create, setLink } as never;
-
-  // Slice-B2 — the create-path provenance writer.
-  const upsertFieldProvenance = vi.fn().mockResolvedValue(undefined);
-  const reconcileRepo = { upsertFieldProvenance } as never;
+  const create = over.createError !== undefined
+    ? vi.fn().mockRejectedValue(over.createError)
+    : vi.fn().mockResolvedValue({ id: RECORD_ID });
+  const findActiveDuplicate = vi.fn().mockResolvedValue(over.duplicate ?? null);
+  const talentRecords = { create, findActiveDuplicate } as never;
 
   const registerSourceDerivedConsent = vi.fn().mockResolvedValue(undefined);
   const sourceConsent = { registerSourceDerivedConsent } as never;
 
-  const findById = vi
-    .fn()
-    .mockResolvedValue(
-      over.arrival === undefined
-        ? { id: PAYLOAD_ID, source: 'indeed', captured_at: new Date('2026-07-04T00:00:00.000Z') }
-        : over.arrival,
-    );
-  const ingestion = { findById } as never;
+  const payloadFind = vi.fn().mockResolvedValue(
+    over.payload === undefined
+      ? {
+          id: PAYLOAD_ID,
+          tenant_id: TENANT,
+          source: 'indeed',
+          source_class: 'THIRD_PARTY_UNVERIFIED',
+          captured_at: new Date('2026-07-04T00:00:00.000Z'),
+        }
+      : over.payload,
+  );
+  const ingestion = { findById: payloadFind } as never;
 
-  const service = new PromotionService(trust, trustRepo, talentRecords, reconcileRepo, sourceConsent, ingestion);
-  return { service, resolveSubjectRef, listSubjectRefs, getEvidence, attachSubjectRef, getTrustState, listMatchAdvisories, create, setLink, upsertFieldProvenance, registerSourceDerivedConsent, findById };
+  const service = new PromotionService(sourced, advisories, detection, talentRecords, sourceConsent, ingestion);
+  return { service, findById, findArrivalLink, listForArrival, create, findActiveDuplicate, registerSourceDerivedConsent, flagArrivalAgainstRecord };
 }
 
-describe('PromotionService.promoteSubject — create branch', () => {
-  it('promotes: maps FULL_NAME + contact → named record (system actor), links, reconciles consent, attaches advisory', async () => {
-    const { service, create, attachSubjectRef, registerSourceDerivedConsent, upsertFieldProvenance } = makeService({
-      evidence: [
-        ev('FULL_NAME', { first_name: 'Alan', last_name: 'Turing' }),
-        ev('EMAIL', { normalized_value: 'alan@example.com' }),
-        ev('PHONE', { value: '+15551234567' }),
-        ev('ADDRESS', { address: '1 Bletchley', city: 'MK', state: 'BK', zip: 'MK3' }),
-      ],
+describe('PromotionService.promoteArrival (ATS-local)', () => {
+  it('unknown / other-tenant arrival → deferred_unknown_subject', async () => {
+    expect((await makeService({ arrival: null }).service.promoteArrival(REF)).status).toBe('deferred_unknown_subject');
+    expect(
+      (await makeService({ arrival: arrival({ tenant_id: 'other' }) }).service.promoteArrival(REF)).status,
+    ).toBe('deferred_unknown_subject');
+  });
+
+  it('a linked arrival → already_promoted, no create', async () => {
+    const m = makeService({ link: { talent_record_id: EXISTING_ID } });
+    expect(await m.service.promoteArrival(REF)).toEqual({ status: 'already_promoted', talent_record_id: EXISTING_ID });
+    expect(m.create).not.toHaveBeenCalled();
+  });
+
+  it('a PENDING ATS advisory gates the mint → deferred_unresolved_identity', async () => {
+    const m = makeService({ pending: [{ id: 'adv-1' }] });
+    expect((await m.service.promoteArrival(REF)).status).toBe('deferred_unresolved_identity');
+    expect(m.listForArrival).toHaveBeenCalledWith(TENANT, ARRIVAL_ID, 'PENDING_REVIEW');
+    expect(m.create).not.toHaveBeenCalled();
+  });
+
+  it('a one-token name → deferred_no_name; no payload link → deferred_no_basis; no phone → deferred_incomplete_contact', async () => {
+    const mono = arrival({ provenance: { ingestion_payload_id: PAYLOAD_ID, applicant: { full_name: 'Cher' } } });
+    expect((await makeService({ arrival: mono }).service.promoteArrival(REF)).status).toBe('deferred_no_name');
+    const noBasis = arrival({ provenance: { applicant: { full_name: 'Ada Lovelace' } } });
+    expect((await makeService({ arrival: noBasis }).service.promoteArrival(REF)).status).toBe('deferred_no_basis');
+    const badSource = makeService({
+      payload: { id: PAYLOAD_ID, tenant_id: TENANT, source: 'not-a-source', source_class: 'X', captured_at: new Date() },
     });
-
-    const result = await service.promoteSubject(sourcedRef);
-
-    expect(result).toEqual({ status: 'promoted', talent_record_id: RECORD_ID, trust_state: { identity_band: 'SELF_ASSERTED' } });
-    // create: system actor + mapped PII + source.
-    expect(create).toHaveBeenCalledWith(
-      expect.objectContaining({
-        tenant_id: TENANT,
-        entered_by_id: PROMOTION_SYSTEM_ACTOR_ID,
-        input: expect.objectContaining({
-          first_name: 'Alan',
-          last_name: 'Turing',
-          email1: 'alan@example.com',
-          phone_cell: '+15551234567',
-          address: '1 Bletchley',
-          city: 'MK',
-          state: 'BK',
-          zip: 'MK3',
-          source: 'indeed',
-        }),
-      }),
+    expect((await badSource.service.promoteArrival(REF)).status).toBe('deferred_no_basis');
+    const noPhone = arrival({
+      normalized_phone: null,
+      provenance: { ingestion_payload_id: PAYLOAD_ID, applicant: { full_name: 'Ada Lovelace', email: 'ada@example.com' } },
+    });
+    expect((await makeService({ arrival: noPhone }).service.promoteArrival(REF)).status).toBe(
+      'deferred_incomplete_contact',
     );
-    // link: ATS_TALENT_RECORD ref → new record, promotion link_source.
-    expect(attachSubjectRef).toHaveBeenCalledWith({
-      tenant_id: TENANT,
-      subject_id: SUBJECT_ID,
-      ref_type: 'ATS_TALENT_RECORD',
-      ref_id: RECORD_ID,
-      link_source: PROMOTION_LINK_SOURCE,
+  });
+
+  it('promotes: create (system actor, sourced status, dedupe + PROMOTED link in-txn) then consent with the arrival basis', async () => {
+    const m = makeService();
+    expect(await m.service.promoteArrival(REF, { requestId: 'req-1' })).toEqual({
+      status: 'promoted',
+      talent_record_id: RECORD_ID,
     });
-    // consent: keyed to the new record, arrival source + captured_at.
-    expect(registerSourceDerivedConsent).toHaveBeenCalledWith(
+    const arg = m.create.mock.calls[0]![0];
+    expect(arg).toMatchObject({
+      tenant_id: TENANT,
+      entered_by_id: PROMOTION_SYSTEM_ACTOR_ID,
+      tenant_status: 'sourced',
+      dedupe: true,
+      sourced_arrival: { sourced_talent_id: ARRIVAL_ID },
+      input: {
+        first_name: 'Ada',
+        last_name: 'Lovelace',
+        email1: 'ada@example.com',
+        phone_cell: '415-555-0100',
+        source: 'indeed',
+      },
+    });
+    expect(m.registerSourceDerivedConsent).toHaveBeenCalledWith(
       expect.objectContaining({
-        tenant_id: TENANT,
         talent_record_id: RECORD_ID,
         source: 'indeed',
+        source_class: 'THIRD_PARTY_UNVERIFIED',
         occurred_at: '2026-07-04T00:00:00.000Z',
       }),
     );
-    // Slice-B2 create-path provenance: each set field → its source EvidenceRecord.id
-    // (the back-fill invariant so B2's incumbent join always resolves).
-    const provWrites = upsertFieldProvenance.mock.calls.map((c) => ({
-      field_name: c[0].field_name,
-      evidence_id: c[0].evidence_id,
-      talent_record_id: c[0].talent_record_id,
-    }));
-    expect(provWrites).toEqual(
-      expect.arrayContaining([
-        { field_name: 'first_name', evidence_id: 'ev-FULL_NAME', talent_record_id: RECORD_ID },
-        { field_name: 'last_name', evidence_id: 'ev-FULL_NAME', talent_record_id: RECORD_ID },
-        { field_name: 'email1', evidence_id: 'ev-EMAIL', talent_record_id: RECORD_ID },
-        { field_name: 'phone_cell', evidence_id: 'ev-PHONE', talent_record_id: RECORD_ID },
-        { field_name: 'address', evidence_id: 'ev-ADDRESS', talent_record_id: RECORD_ID },
-        { field_name: 'city', evidence_id: 'ev-ADDRESS', talent_record_id: RECORD_ID },
-      ]),
-    );
   });
 
-  it('TR-2b B1 PR-2: a subject carrying a PERSON_CLUSTER ref → cluster_id written onto the new record via setLink', async () => {
-    const CLUSTER_ID = 'dddddddd-dddd-7ddd-8ddd-ddddddddd001';
-    const { service, create, setLink } = makeService({
-      refs: [
-        { ref_type: 'SOURCED_TALENT', ref_id: PAYLOAD_ID, link_source: 'canonicalization' },
-        { ref_type: 'PERSON_CLUSTER', ref_id: CLUSTER_ID, link_source: 'canonicalization' },
-      ],
-      evidence: [
-        ev('FULL_NAME', { first_name: 'Ada', last_name: 'Lovelace' }),
-        ev('EMAIL', { normalized_value: 'ada@example.com' }),
-        ev('PHONE', { value: '+15551230000' }),
-      ],
+  it('a tenant duplicate → 409 TALENT_RECORD_DUPLICATE + a SOURCED_ARRIVAL advisory against the existing record', async () => {
+    const m = makeService({ duplicate: { id: EXISTING_ID, reason: 'email' } });
+    await expect(m.service.promoteArrival(REF)).rejects.toMatchObject({
+      code: 'TALENT_RECORD_DUPLICATE',
+      statusCode: 409,
     });
-
-    const result = await service.promoteSubject(sourcedRef);
-
-    expect(result).toMatchObject({ status: 'promoted', talent_record_id: RECORD_ID });
-    expect(create).toHaveBeenCalledTimes(1);
-    // The single cluster writer is called with the record + the cluster from the
-    // PERSON_CLUSTER ref (server-only column; OFF THE WIRE).
-    expect(setLink).toHaveBeenCalledWith({
+    expect(m.create).not.toHaveBeenCalled();
+    expect(m.flagArrivalAgainstRecord).toHaveBeenCalledWith({
       tenant_id: TENANT,
-      id: RECORD_ID,
-      cluster_id: CLUSTER_ID,
+      sourced_talent_id: ARRIVAL_ID,
+      talent_record_id: EXISTING_ID,
+      kinds: ['EMAIL'],
     });
   });
 
-  it('TR-2b B1 PR-2: a subject WITHOUT a PERSON_CLUSTER ref → cluster_id left NULL (setLink not called)', async () => {
-    const { service, create, setLink } = makeService({
-      refs: [{ ref_type: 'SOURCED_TALENT', ref_id: PAYLOAD_ID, link_source: 'canonicalization' }],
-      evidence: [
-        ev('FULL_NAME', { first_name: 'Ada', last_name: 'Lovelace' }),
-        ev('EMAIL', { normalized_value: 'ada@example.com' }),
-        ev('PHONE', { value: '+15551230000' }),
-      ],
+  it('the in-txn duplicate re-check firing also raises the advisory and rethrows', async () => {
+    const err = new AramoError('TALENT_RECORD_DUPLICATE', 'dup', 409, {
+      requestId: 'r',
+      details: { reason: 'phone', existing_id: EXISTING_ID },
     });
-
-    const result = await service.promoteSubject(sourcedRef);
-
-    expect(result).toMatchObject({ status: 'promoted', talent_record_id: RECORD_ID });
-    expect(create).toHaveBeenCalledTimes(1);
-    expect(setLink).not.toHaveBeenCalled();
+    const m = makeService({ createError: err });
+    await expect(m.service.promoteArrival(REF)).rejects.toBe(err);
+    expect(m.flagArrivalAgainstRecord).toHaveBeenCalledWith(
+      expect.objectContaining({ talent_record_id: EXISTING_ID, sourced_talent_id: ARRIVAL_ID }),
+    );
+    expect(m.registerSourceDerivedConsent).not.toHaveBeenCalled();
   });
 
-  it('already_promoted: subject already carrying an ATS_TALENT_RECORD ref → no-op returns the existing record, no create', async () => {
-    const { service, create, attachSubjectRef } = makeService({
-      refs: [
-        { ref_type: 'SOURCED_TALENT', ref_id: PAYLOAD_ID, link_source: 'canonicalization' },
-        { ref_type: 'ATS_TALENT_RECORD', ref_id: RECORD_ID, link_source: 'manual' },
-      ],
-    });
-    const result = await service.promoteSubject(sourcedRef);
-    expect(result).toEqual({ status: 'already_promoted', talent_record_id: RECORD_ID });
-    expect(create).not.toHaveBeenCalled();
-    expect(attachSubjectRef).not.toHaveBeenCalled();
-  });
-
-  it('deferred_no_name: no FULL_NAME evidence → defer, no record created', async () => {
-    const { service, create } = makeService({ evidence: [ev('EMAIL', { normalized_value: 'x@y.com' })] });
-    const result = await service.promoteSubject(sourcedRef);
-    expect(result).toEqual({ status: 'deferred_no_name' });
-    expect(create).not.toHaveBeenCalled();
-  });
-
-  it('deferred_no_name: PARTIAL name (first only) is not promotable → defer, no half-named record', async () => {
-    const { service, create } = makeService({ evidence: [ev('FULL_NAME', { first_name: 'Alan' })] });
-    const result = await service.promoteSubject(sourcedRef);
-    expect(result).toEqual({ status: 'deferred_no_name' });
-    expect(create).not.toHaveBeenCalled();
-  });
-
-  it('deferred_no_name: SUPERSEDED name evidence is not live → defer', async () => {
-    const { service } = makeService({
-      evidence: [ev('FULL_NAME', { first_name: 'Alan', last_name: 'Turing' }, 'SUPERSEDED')],
-    });
-    expect(await service.promoteSubject(sourcedRef)).toEqual({ status: 'deferred_no_name' });
-  });
-
-  it('deferred_no_basis: no SOURCED_TALENT ref → cannot reconcile basis, defer (no orphan record)', async () => {
-    const { service, create } = makeService({
-      refs: [],
-      evidence: [ev('FULL_NAME', { first_name: 'Alan', last_name: 'Turing' })],
-    });
-    const result = await service.promoteSubject(sourcedRef);
-    expect(result).toEqual({ status: 'deferred_no_basis' });
-    expect(create).not.toHaveBeenCalled();
-  });
-
-  it('deferred_no_basis: arrival source not a consent source type → defer', async () => {
-    const { service, create } = makeService({
-      evidence: [ev('FULL_NAME', { first_name: 'Alan', last_name: 'Turing' })],
-      arrival: { id: PAYLOAD_ID, source: 'mystery_source', captured_at: new Date('2026-07-04T00:00:00.000Z') },
-    });
-    const result = await service.promoteSubject(sourcedRef);
-    expect(result).toEqual({ status: 'deferred_no_basis' });
-    expect(create).not.toHaveBeenCalled();
-  });
-
-  // TalentRecord Admission Invariant — the governed promotion gate guarantees
-  // the contact anchors. A subject with a live name + valid basis but WITHOUT a
-  // primary email (or without a cell phone) is NOT admissible; it stays in
-  // staging (deferred), never minted as a half-formed record.
-  it('deferred_incomplete_contact: name + basis but NO email → defer, no record created', async () => {
-    const { service, create } = makeService({
-      evidence: [
-        ev('FULL_NAME', { first_name: 'Alan', last_name: 'Turing' }),
-        ev('PHONE', { value: '+15551234567' }),
-        // No EMAIL evidence — the admission invariant must defer.
-      ],
-    });
-    const result = await service.promoteSubject(sourcedRef);
-    expect(result).toEqual({ status: 'deferred_incomplete_contact' });
-    expect(create).not.toHaveBeenCalled();
-  });
-
-  it('deferred_incomplete_contact: name + basis + email but NO phone → defer, no record created', async () => {
-    const { service, create } = makeService({
-      evidence: [
-        ev('FULL_NAME', { first_name: 'Alan', last_name: 'Turing' }),
-        ev('EMAIL', { normalized_value: 'alan@example.com' }),
-        // No PHONE evidence — the admission invariant must defer.
-      ],
-    });
-    const result = await service.promoteSubject(sourcedRef);
-    expect(result).toEqual({ status: 'deferred_incomplete_contact' });
-    expect(create).not.toHaveBeenCalled();
-  });
-
-  it('deferred_unknown_subject: subjectRef resolves to nothing → defer, no create', async () => {
-    const { service, create } = makeService({ subject: null });
-    const result = await service.promoteSubject(sourcedRef);
-    expect(result).toEqual({ status: 'deferred_unknown_subject' });
-    expect(create).not.toHaveBeenCalled();
-  });
-
-  it('deferred_unresolved_identity (Promotion-Trigger gate): a PENDING_REVIEW merge advisory blocks the mint', async () => {
-    const { service, create, listMatchAdvisories, attachSubjectRef } = makeService({
-      evidence: [ev('FULL_NAME', { first_name: 'Alan', last_name: 'Turing' })],
-      openAdvisories: [{ id: 'adv-1', status: 'PENDING_REVIEW' }],
-    });
-    const result = await service.promoteSubject(sourcedRef);
-    expect(result).toEqual({ status: 'deferred_unresolved_identity' });
-    expect(listMatchAdvisories).toHaveBeenCalledWith(TENANT, {
-      subjectId: SUBJECT_ID,
-      status: 'PENDING_REVIEW',
-    });
-    // Identity not settled → NO record minted, NO link attached.
-    expect(create).not.toHaveBeenCalled();
-    expect(attachSubjectRef).not.toHaveBeenCalled();
-  });
-
-  it('identity gate does not block an already-promoted subject (no-op returns before the gate)', async () => {
-    const { service, listMatchAdvisories } = makeService({
-      refs: [
-        { ref_type: 'SOURCED_TALENT', ref_id: PAYLOAD_ID, link_source: 'canonicalization' },
-        { ref_type: 'ATS_TALENT_RECORD', ref_id: RECORD_ID, link_source: 'manual' },
-      ],
-    });
-    const result = await service.promoteSubject(sourcedRef);
-    expect(result).toEqual({ status: 'already_promoted', talent_record_id: RECORD_ID });
-    expect(listMatchAdvisories).not.toHaveBeenCalled();
+  it('a concurrent promotion that won the link → already_promoted with its record', async () => {
+    const m = makeService({ createError: new Error('unique violation') });
+    m.findArrivalLink.mockResolvedValueOnce(null).mockResolvedValueOnce({ talent_record_id: EXISTING_ID });
+    expect(await m.service.promoteArrival(REF)).toEqual({ status: 'already_promoted', talent_record_id: EXISTING_ID });
   });
 });

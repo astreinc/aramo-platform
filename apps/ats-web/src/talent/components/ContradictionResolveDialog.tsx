@@ -1,21 +1,30 @@
 import { useState } from 'react';
-import { Button, Dialog, InlineAlert, useToast, TextArea } from '@aramo/fe-foundation';
+import { Button, Dialog, InlineAlert, Select, useToast, TextArea } from '@aramo/fe-foundation';
 
-import { resolveContradiction, type ContradictionItem } from '../dossier-api';
+import { resolveContradiction, type ContradictionResolution } from '../dossier-api';
+
+/** The contradicted evidence to resolve, and the record it is resolved through. */
+export interface ContradictionTarget {
+  readonly assertion_id: string;
+  readonly assertion_type: string;
+  readonly talent_record_id: string;
+}
 
 interface Props {
-  readonly item: ContradictionItem | null;
+  readonly item: ContradictionTarget | null;
   readonly onClose: () => void;
-  /** Re-fetch the dossier so the lifted (VALID) state renders. */
+  /** Re-fetch so the resolved state renders. */
   readonly onResolved: () => void;
 }
 
-// TR-14 B2 (§3.4) — resolve a standing contradiction from the Trust tab, via the
-// privileged TR-4 endpoint (identity:resolve; the caller gates the trigger). A
-// justification is required (R4 audit — the reason threads into the resolved
-// event). On success the dossier refetches and the cap lifts.
+// TR-14 B2 → ATI-SEP-1 T10 WP3b — resolve a standing contradiction in Talent
+// Intelligence (identity:resolve; the caller gates the trigger). KEEP: the
+// evidence stands and its contradictions are reconciled; RETRACT: the evidence
+// is wrong (only evidence this workspace contributed). A justification is
+// required (R4 audit). Enrichment only — never changes the ATS record.
 export function ContradictionResolveDialog({ item, onClose, onResolved }: Props) {
   const [justification, setJustification] = useState('');
+  const [resolution, setResolution] = useState<ContradictionResolution>('KEEP');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const toast = useToast();
@@ -24,6 +33,7 @@ export function ContradictionResolveDialog({ item, onClose, onResolved }: Props)
 
   const reset = () => {
     setJustification('');
+    setResolution('KEEP');
     setError(null);
     setBusy(false);
   };
@@ -33,7 +43,7 @@ export function ContradictionResolveDialog({ item, onClose, onResolved }: Props)
     setBusy(true);
     setError(null);
     try {
-      await resolveContradiction(item.evidence_id, justification.trim());
+      await resolveContradiction(item.assertion_id, item.talent_record_id, justification.trim(), resolution);
       toast.show('Contradiction resolved.');
       reset();
       onResolved();
@@ -67,21 +77,31 @@ export function ContradictionResolveDialog({ item, onClose, onResolved }: Props)
       }
     >
       <InlineAlert variant="success">
-        Resolving marks this evidence valid again and lifts the cap it placed on the
-        dimension. Say why for the record.
+        Keep marks this evidence as standing and reconciles the conflict; retract marks it as wrong. Say why for the record.
       </InlineAlert>
-      {item?.reason != null && item.reason !== '' ? (
-        <p className="rc-muted-line">Raised because: {item.reason}</p>
-      ) : null}
+      <label className="rc-field rc-mt-16">
+        <span className="rc-field__label">Resolution</span>
+        <Select
+          unstyled
+          className="rc-select"
+          aria-label="Resolution"
+          value={resolution}
+          onChange={(e) => setResolution(e.target.value === 'RETRACT' ? 'RETRACT' : 'KEEP')}
+        >
+          <option value="KEEP">Keep — the evidence stands</option>
+          <option value="RETRACT">Retract — the evidence is wrong</option>
+        </Select>
+      </label>
       <label className="rc-field rc-mt-16">
         <span className="rc-field__label">Justification (required)</span>
-        <TextArea unstyled
+        <TextArea
+          unstyled
           className="rc-select"
           rows={3}
           value={justification}
           maxLength={2000}
           onChange={(e) => setJustification(e.target.value)}
-          placeholder="Why this is not a real conflict…"
+          placeholder="Why…"
         />
       </label>
       {error !== null ? <InlineAlert variant="error">{error}</InlineAlert> : null}

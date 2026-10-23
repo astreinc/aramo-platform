@@ -11,11 +11,15 @@ import {
   TalentRecordModule,
 } from '@aramo/talent-record';
 import { IntelligenceIntegrationModule, IntelligencePublisherHandler } from '@aramo/intelligence-integration';
+import { SourcedTalentModule } from '@aramo/sourced-talent';
+
+import { DuplicateDetectionService } from '../talent-identity/duplicate-detection.service.js';
 
 import { AtsTalentEventDispatcher } from './ats-talent-event-dispatcher.js';
 import { ATS_TALENT_EVENT_HANDLERS, type AtsTalentEventHandler } from './ats-talent-event-handler.js';
 import { ATS_TALENT_EVENTS_DRAIN, AtsTalentEventsDrainWorker } from './ats-talent-events-drain.worker.js';
 import { CanonicalReconcileTalentEventHandler } from './reconcile-signal.handlers.js';
+import { DuplicateDetectionTalentEventHandler } from './duplicate-detection.handler.js';
 
 // ATI-SEP-1 A3 (ADR-0036 §3) — the ATS talent outbox drain + in-process
 // dispatcher. Imported by the talent-intake-worker context (where the drain is
@@ -46,12 +50,17 @@ function envInt(name: string, fallback: number): number {
     CommonModule,
     TalentRecordModule,
     CanonicalReconcileModule,
+    // ATI-SEP-1 T10 WP2 — the duplicate detector's sourced-arrival leg.
+    SourcedTalentModule,
     // ATI-SEP-1 T8 — the Intelligence publisher (+ the worker's inbound sync /
     // entitlement sync loops, active only in the drain-enabled worker process).
     IntelligenceIntegrationModule,
   ],
   providers: [
     CanonicalReconcileTalentEventHandler,
+    // ATI-SEP-1 T10 WP2 — ATS-local within-tenant duplicate advisories.
+    DuplicateDetectionService,
+    DuplicateDetectionTalentEventHandler,
     // EXTENSION POINT — ATI-SEP-1 T8 appended the Intelligence publisher
     // (provided by IntelligenceIntegrationModule). Order: the ATS-internal
     // reconciles first, then the TI publisher.
@@ -60,6 +69,8 @@ function envInt(name: string, fallback: number): number {
       useFactory: (...handlers: AtsTalentEventHandler[]): readonly AtsTalentEventHandler[] => handlers,
       inject: [
         CanonicalReconcileTalentEventHandler,
+        // ATI-SEP-1 T10 WP2 — ATS-local duplicate advisories (ATS data only).
+        DuplicateDetectionTalentEventHandler,
         // ATI-SEP-1 T10 WP1 — the legacy trust feed + the talent-reconcile
         // signal handlers were removed (write-side legacy feeds off).
         // ATI-SEP-1 T8 — ATS → TI (entitlement-gated; no-op when TI is unconfigured).

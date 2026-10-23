@@ -499,11 +499,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect(rtr.signed_at).not.toBeNull();
       });
 
-      it('surfaces the duplicate identity outcome from the real advisory/dossier path', async () => {
-        const { body } = await get(mainTalent, await jwt(FULL_SCOPES));
-        expect(body.identity.primary_email_confirmed).toBe(true);
-        expect(body.identity.mobile_confirmed).toBe(true);
-        expect(body.identity.advisory).not.toBeNull();
+      it('identity outcomes fail soft when Talent Intelligence is not configured (ATI-SEP-1 T10 WP3b)', async () => {
+        // Contact confirmation is now a VERIFIED contact fact in Talent
+        // Intelligence; this spec runs with TI unconfigured, so nothing is
+        // confirmed and the page still renders (200). The duplicate advisory is
+        // ATS-local (WP2 hook — none surfaced yet). The legacy trust-ledger seed is
+        // no longer read.
+        const { status, body } = await get(mainTalent, await jwt(FULL_SCOPES));
+        expect(status).toBe(200);
+        expect(body.identity.primary_email_confirmed).toBe(false);
+        expect(body.identity.mobile_confirmed).toBe(false);
+        expect(body.identity.advisory).toBeNull();
       });
 
       it('keeps relationship counts single-TalentRecord scoped (active + closed = 4, no merged-human claim)', async () => {

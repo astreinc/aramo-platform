@@ -95,7 +95,7 @@ function make(parts: {
   const resumeText = { enqueueReindex };
 
   const ctl = new TalentRecordController(
-    repo as never, {} as never, {} as never, resumeParser as never,
+    repo as never, {} as never, resumeParser as never,
     talentExtraction as never, {} as never, {} as never,
     editionIngestion as never,
     resumeResolver as never,

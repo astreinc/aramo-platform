@@ -52,9 +52,7 @@ import {
   type WorkAuthorizationStateView,
 } from './dto/work-authorization-state.view.js';
 import type { TalentDuplicateCheckResponse } from './dto/talent-duplicate-check.view.js';
-import { LinkTalentRecordRequestDto } from './dto/link-talent-record-request.dto.js';
 import type { ResumeUploadUrlRequestDto } from './dto/resume-upload-url-request.dto.js';
-import type { TalentLinkView } from './dto/talent-link.view.js';
 import type { TalentRecordView } from './dto/talent-record.view.js';
 import type { TalentProfileFieldStateResponse } from './dto/talent-profile-field-state.view.js';
 import type { ProfileHydrationResponse } from './dto/profile-hydration.view.js';
@@ -87,7 +85,6 @@ import {
   type TalentResumeEditionsResponse,
   type TalentResumeEditionTextView,
 } from './dto/talent-resume-edition.view.js';
-import { TalentLinkService } from './talent-link.service.js';
 import {
   TalentRecordRepository,
   talentDuplicateError,
@@ -171,7 +168,6 @@ const RECONCILE_COVERED_CLEARABLE_FIELDS = [
 export class TalentRecordController {
   constructor(
     private readonly repo: TalentRecordRepository,
-    private readonly linkService: TalentLinkService,
     private readonly objectStorage: ObjectStorageService,
     private readonly resumeParser: ResumeParserService,
     private readonly talentExtraction: TalentExtractionService,
@@ -1584,73 +1580,9 @@ export class TalentRecordController {
     });
   }
 
-  // -------------------------------------------------------------------------
-  // PR-A5b-2 — cluster-link routes (the keystone).
-  //
-  // Scope reuse: the existing seeded `talent:read` / `talent:edit`
-  // scopes cover the read / write surface naturally. A dedicated
-  // `talent:link` scope was considered but not warranted — linking is
-  // a per-record edit (the route shape and the data shape both fit
-  // under `talent:edit`'s authority), and consolidating reduces the
-  // scope-catalog churn at the keystone. If Gate 5 finds otherwise,
-  // a dedicated scope can be added without rewriting the routes.
-  //
-  // SACRED BOUNDARIES (enforced by TalentLinkService):
-  //   - LINK-NOT-CREATE — never mints an identity.
-  //   - ASSOCIATE-NOT-RESOLVE — cluster_id is an explicit input.
-  // 4e-rest: the link is now CLUSTER-ONLY (the PERSON_CLUSTER pointer); the
-  // former identity-link column was dropped.
-  // -------------------------------------------------------------------------
-
-  @Get(':id/link')
-  @HttpCode(HttpStatus.OK)
-  @RequireScopes('talent:read')
-  @RequireSiteMatch()
-  async getLink(
-    @AuthContext() authContext: AuthContextType,
-    @Param('id') id: string,
-    @RequestId() requestId: string,
-  ): Promise<TalentLinkView> {
-    return this.linkService.getLink({
-      tenant_id: authContext.tenant_id,
-      talent_record_id: id,
-      requestId,
-    });
-  }
-
-  @Post(':id/link')
-  @HttpCode(HttpStatus.OK)
-  @RequireScopes('talent:edit')
-  @RequireSiteMatch()
-  async link(
-    @AuthContext() authContext: AuthContextType,
-    @Param('id') id: string,
-    @Body() body: LinkTalentRecordRequestDto,
-    @RequestId() requestId: string,
-  ): Promise<TalentLinkView> {
-    return this.linkService.link({
-      tenant_id: authContext.tenant_id,
-      talent_record_id: id,
-      cluster_id: body.cluster_id,
-      requestId,
-    });
-  }
-
-  @Delete(':id/link')
-  @HttpCode(HttpStatus.OK)
-  @RequireScopes('talent:edit')
-  @RequireSiteMatch()
-  async unlink(
-    @AuthContext() authContext: AuthContextType,
-    @Param('id') id: string,
-    @RequestId() requestId: string,
-  ): Promise<TalentLinkView> {
-    return this.linkService.unlink({
-      tenant_id: authContext.tenant_id,
-      talent_record_id: id,
-      requestId,
-    });
-  }
+  // ATI-SEP-1 T10 WP2 — the PR-A5b-2 cluster-link routes (GET/POST/DELETE
+  // :id/link) were removed with the identity-index link (no FE / pact / openapi
+  // caller). TalentRecord.cluster_id is inert.
 
   // -------------------------------------------------------------------------
   // A8-3b — resume upload + parse-to-prefill (E1 + E2).

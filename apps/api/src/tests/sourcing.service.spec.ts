@@ -6,27 +6,41 @@ import { SourcingService } from '../talent-identity/sourcing.service.js';
 // deferral short-circuit, and idempotency. E6 (Q-2): the idempotent no-op now
 // comes from catching the pipeline application guard's EXACT one-live refusal
 // (PIPELINE_EPISODE_ALREADY_LIVE), NOT a generic P2002 — a bare P2002 propagates.
+// ATI-SEP-1 T10 WP2 — plus the ATS-local pool / drill-in readers (sourced_talent
+// arrivals + the ATS duplicate advisories; no trust ledger).
 
 const TENANT = '11111111-1111-7111-8111-111111111111';
-const REF = { tenant_id: TENANT, ref_type: 'SOURCED_TALENT' as const, ref_id: 'payload-1' };
+const REF = { tenant_id: TENANT, sourced_talent_id: 'arrival-1' };
 const REQ_ID = 'req-1';
 const RECORD_ID = 'rec-1';
+
+function arrivalRow(id: string, at: string, name = `Name ${id}`) {
+  return {
+    id,
+    tenant_id: TENANT,
+    source_channel: 'INDEED',
+    external_source_id: `apply-${id}`,
+    normalized_email: `${id}@x.com`,
+    normalized_phone: '4155550100',
+    provenance: { ingestion_payload_id: `payload-${id}`, applicant: { full_name: name } },
+    legal_basis: {},
+    arrived_at: new Date(at),
+    created_at: new Date(at),
+  };
+}
 
 function make(parts: {
   promoteOutcome?: unknown;
   pipelineThrows?: 'P2002' | 'live' | 'other';
-  poolRows?: unknown[];
-  displayEvidence?: unknown[];
-  subject?: unknown;
-  trustState?: unknown;
-  evidence?: unknown[];
-  refs?: unknown[];
+  batches?: unknown[][];
+  linked?: string[];
+  arrival?: unknown;
   advisories?: unknown[];
 } = {}) {
-  const promoteSubject = vi
+  const promoteArrival = vi
     .fn()
     .mockResolvedValue(parts.promoteOutcome ?? { status: 'promoted', talent_record_id: RECORD_ID });
-  const promotion = { promoteSubject } as never;
+  const promotion = { promoteArrival } as never;
 
   const create = parts.pipelineThrows
     ? vi.fn().mockRejectedValue(
@@ -43,31 +57,22 @@ function make(parts: {
   const addToTenantBench = vi.fn().mockResolvedValue({ added: true });
   const savedLists = { getOrCreateTenantBench, addToTenantBench } as never;
 
-  const listSourcedPool = vi.fn().mockResolvedValue(parts.poolRows ?? []);
-  const listDisplayIdentityEvidence = vi.fn().mockResolvedValue(parts.displayEvidence ?? []);
-  const findSubjectById = vi.fn().mockResolvedValue(
-    parts.subject === undefined ? { id: 'subj-1', tenant_id: TENANT } : parts.subject,
-  );
-  const findTrustStateBySubject = vi.fn().mockResolvedValue(parts.trustState ?? null);
-  // TR-14 B1 — getSubjectDetail now reads evidence CLUSTER-UNION (clusterMembers +
-  // listEvidenceBySubjects) instead of the single-subject listEvidenceBySubject.
-  const clusterMembers = vi.fn().mockResolvedValue(['subj-1']);
-  const listEvidenceBySubjects = vi.fn().mockResolvedValue(parts.evidence ?? []);
-  const listRefsBySubject = vi.fn().mockResolvedValue(parts.refs ?? []);
-  const listMatchAdvisories = vi.fn().mockResolvedValue(parts.advisories ?? []);
-  const trustRepo = {
-    listSourcedPool,
-    listDisplayIdentityEvidence,
-    findSubjectById,
-    findTrustStateBySubject,
-    clusterMembers,
-    listEvidenceBySubjects,
-    listRefsBySubject,
-    listMatchAdvisories,
-  } as never;
+  const listByTenantKeyset = vi.fn();
+  for (const b of parts.batches ?? [[]]) listByTenantKeyset.mockResolvedValueOnce(b);
+  listByTenantKeyset.mockResolvedValue([]);
+  const findById = vi.fn().mockResolvedValue(parts.arrival === undefined ? arrivalRow('arrival-1', '2026-07-01T00:00:00Z') : parts.arrival);
+  const sourced = { listByTenantKeyset, findById } as never;
 
-  const service = new SourcingService(promotion, pipelines, savedLists, trustRepo);
-  return { service, promoteSubject, create, getOrCreateTenantBench, addToTenantBench, listSourcedPool, listDisplayIdentityEvidence, findSubjectById, listMatchAdvisories };
+  const findLinkedArrivalIds = vi.fn().mockResolvedValue(new Set(parts.linked ?? []));
+  const listForArrival = vi.fn().mockResolvedValue(parts.advisories ?? []);
+  const countPendingByArrivals = vi.fn().mockResolvedValue(new Map<string, number>());
+  const advisories = { findLinkedArrivalIds, listForArrival, countPendingByArrivals } as never;
+
+  const findNamesByIds = vi.fn().mockResolvedValue(new Map([['rec-9', 'Ada King']]));
+  const talentRecords = { findNamesByIds } as never;
+
+  const service = new SourcingService(promotion, pipelines, savedLists, sourced, advisories, talentRecords);
+  return { service, promoteArrival, create, getOrCreateTenantBench, addToTenantBench, listByTenantKeyset, findById, listForArrival };
 }
 
 describe('SourcingService.promoteAndAddToPipeline', () => {
@@ -180,85 +185,86 @@ describe('SourcingService.promoteAndSaveToBench', () => {
   });
 });
 
-describe('SourcingService.getPool', () => {
-  it('composes the anti-join list with batched display names (no N+1), sets bands + count', async () => {
-    const created = new Date('2026-07-05T00:00:00.000Z');
-    const { service, listDisplayIdentityEvidence } = make({
-      poolRows: [
-        { subject_id: 's1', created_at: created, identity_band: 'SELF_ASSERTED', claims_band: 'NOT_ESTABLISHED', continuity_band: 'NOT_ESTABLISHED', eligibility_band: 'NOT_ESTABLISHED', open_contradiction_count: 2 },
-      ],
-      displayEvidence: [
-        { subject_id: 's1', assertion_type: 'FULL_NAME', assertion_payload: { first_name: 'Ada', last_name: 'Lovelace' } },
-        { subject_id: 's1', assertion_type: 'EMAIL', assertion_payload: { normalized_value: 'ada@x.com' } },
-      ],
+describe('SourcingService.getPool (ATS-local)', () => {
+  it('lists un-linked arrivals with their parsed name/email/phone; no trust fields', async () => {
+    const { service } = make({
+      batches: [[arrivalRow('a1', '2026-07-01T00:00:00Z', 'Ada Lovelace'), arrivalRow('a2', '2026-07-02T00:00:00Z')]],
+      linked: ['a2'],
     });
-    const page = await service.getPool(TENANT, { limit: 50 });
-    expect(page.items).toHaveLength(1);
-    expect(page.items[0]).toEqual({
-      subject_id: 's1',
-      display_name: 'Ada Lovelace',
-      email: 'ada@x.com',
-      trust_bands: { identity: 'SELF_ASSERTED', claims: 'NOT_ESTABLISHED', continuity: 'NOT_ESTABLISHED', eligibility: 'NOT_ESTABLISHED' },
-      open_contradiction_count: 2,
-    });
-    // one batched evidence read for the whole page.
-    expect(listDisplayIdentityEvidence).toHaveBeenCalledWith(TENANT, ['s1']);
-    // page < limit → no next cursor.
+    const page = await service.getPool(TENANT, { limit: 10 });
+    expect(page.items).toEqual([
+      {
+        subject_id: 'a1',
+        display_name: 'Ada Lovelace',
+        email: 'a1@x.com',
+        phone: '4155550100',
+        source_channel: 'INDEED',
+        arrived_at: '2026-07-01T00:00:00.000Z',
+        open_advisory_count: 0,
+      },
+    ]);
+    // A short batch fully consumed → last page.
     expect(page.next_cursor).toBeNull();
   });
 
-  it('emits an opaque next_cursor when the page is full (keyset)', async () => {
-    const created = new Date('2026-07-05T00:00:00.000Z');
-    const rows = Array.from({ length: 2 }, (_, i) => ({
-      subject_id: `s${i}`, created_at: created, identity_band: null, claims_band: null, continuity_band: null, eligibility_band: null, open_contradiction_count: 0,
-    }));
-    const { service } = make({ poolRows: rows });
+  it('fills a page past linked arrivals across batches and returns a cursor while more may exist', async () => {
+    const { service, listByTenantKeyset } = make({
+      batches: [
+        [arrivalRow('a1', '2026-07-01T00:00:00Z'), arrivalRow('a2', '2026-07-02T00:00:00Z')],
+        [arrivalRow('a3', '2026-07-03T00:00:00Z'), arrivalRow('a4', '2026-07-04T00:00:00Z')],
+      ],
+      linked: ['a1', 'a2'],
+    });
     const page = await service.getPool(TENANT, { limit: 2 });
+    expect(page.items.map((i) => i.subject_id)).toEqual(['a3', 'a4']);
     expect(page.next_cursor).not.toBeNull();
-    // round-trips: decode(encode(created,'s1')) → the query would resume after s1.
-    expect(typeof page.next_cursor).toBe('string');
-  });
-
-  it('empty pool → no evidence read, no cursor', async () => {
-    const { service, listDisplayIdentityEvidence } = make({ poolRows: [] });
-    const page = await service.getPool(TENANT);
-    expect(page.items).toEqual([]);
-    expect(page.next_cursor).toBeNull();
-    expect(listDisplayIdentityEvidence).toHaveBeenCalledWith(TENANT, []);
+    expect(listByTenantKeyset).toHaveBeenCalledTimes(2);
+    expect(listByTenantKeyset.mock.calls[1]![0].cursor.id).toBe('a2');
   });
 });
 
-describe('SourcingService.getSubjectDetail', () => {
-  it('composes trust + evidence + refs + PENDING identity advisories (tenant-scoped)', async () => {
-    const { service, listMatchAdvisories } = make({
-      trustState: { identity_band: 'CORROBORATED', claims_band: 'NOT_ESTABLISHED', continuity_band: 'NOT_ESTABLISHED', eligibility_band: 'NOT_ESTABLISHED', open_contradiction_count: 1, single_source_only: true, longitudinal_observed: true },
-      // strength is present on the repo row and must be STRIPPED from the wire (TR-14 B1).
-      evidence: [{ id: 'e1', assertion_type: 'FULL_NAME', assertion_payload: { first_name: 'Ada', last_name: 'Byron' }, current_status: 'VALID', strength: 0.42 }],
-      refs: [{ ref_type: 'SOURCED_TALENT', ref_id: 'p1', link_source: 'x' }],
-      advisories: [{ id: 'adv-1', status: 'PENDING_REVIEW' }],
+describe('SourcingService.getSubjectDetail (ATS-local)', () => {
+  it('composes the arrival material + refs + PENDING ATS advisories (with the record name)', async () => {
+    const { service, listForArrival } = make({
+      advisories: [
+        {
+          id: 'adv-1',
+          talent_record_a_id: 'rec-9',
+          basis: 'SOURCED_ARRIVAL',
+          shared_kinds: ['EMAIL'],
+          status: 'PENDING_REVIEW',
+          created_at: new Date('2026-07-05T00:00:00Z'),
+        },
+      ],
     });
-    const detail = await service.getSubjectDetail(TENANT, 'subj-1');
-    expect(detail.subject_id).toBe('subj-1');
-    expect(detail.display_name).toBe('Ada Byron');
-    expect(detail.trust_bands?.identity).toBe('CORROBORATED');
-    expect(detail.open_contradiction_count).toBe(1);
-    expect(detail.open_identity_advisories).toHaveLength(1);
-    // TR-14 B1 — the ungated `strength` ordinal is stripped from the wire.
-    expect('strength' in detail.evidence[0]!).toBe(false);
-    // TR-5 B2 (β1) — the flags surface as statements (strings only, no numbers).
-    expect(detail.trust_statements).toEqual(['Evidence from a single source', 'Observed over time']);
-    expect(detail.trust_statements.every((s) => !/\d/.test(s))).toBe(true);
-    // only PENDING_REVIEW advisories for this subject.
-    expect(listMatchAdvisories).toHaveBeenCalledWith(TENANT, { subjectId: 'subj-1', status: 'PENDING_REVIEW' });
+    const d = await service.getSubjectDetail(TENANT, 'arrival-1');
+    expect(listForArrival).toHaveBeenCalledWith(TENANT, 'arrival-1', 'PENDING_REVIEW');
+    expect(d.refs).toEqual([
+      { ref_type: 'SOURCED_TALENT', ref_id: 'arrival-1', link_source: 'INDEED' },
+      { ref_type: 'INGESTION_PAYLOAD', ref_id: 'payload-arrival-1', link_source: 'ingestion' },
+    ]);
+    expect(d.open_identity_advisories).toEqual([
+      {
+        id: 'adv-1',
+        talent_record_id: 'rec-9',
+        talent_record_name: 'Ada King',
+        basis: 'SOURCED_ARRIVAL',
+        shared_kinds: ['EMAIL'],
+        status: 'PENDING_REVIEW',
+        created_at: '2026-07-05T00:00:00.000Z',
+      },
+    ]);
+    expect(d).not.toHaveProperty('trust_bands');
+    expect(d).not.toHaveProperty('evidence');
   });
 
-  it('404 when the subject is not in the caller tenant', async () => {
-    const { service } = make({ subject: { id: 'subj-1', tenant_id: 'OTHER' } });
-    await expect(service.getSubjectDetail(TENANT, 'subj-1')).rejects.toThrow();
-  });
-
-  it('404 when the subject does not exist', async () => {
-    const { service } = make({ subject: null });
-    await expect(service.getSubjectDetail(TENANT, 'subj-1')).rejects.toThrow();
+  it('404 when the arrival is in another tenant / absent', async () => {
+    await expect(
+      make({ arrival: { ...arrivalRow('arrival-1', '2026-07-01T00:00:00Z'), tenant_id: 'other' } }).service.getSubjectDetail(
+        TENANT,
+        'arrival-1',
+      ),
+    ).rejects.toThrow(/not found/);
+    await expect(make({ arrival: null }).service.getSubjectDetail(TENANT, 'x')).rejects.toThrow(/not found/);
   });
 });

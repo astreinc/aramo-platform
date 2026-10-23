@@ -53,7 +53,6 @@ function controllerWith(repo: { searchPaged: ReturnType<typeof vi.fn> }) {
     repo as never,
     {} as never,
     {} as never,
-    {} as never,
     // talentExtraction — unused by the paged list() path.
     {} as never,
     // TI-1B — resumeOrchestrator (unused on this path; governed-LLM sole extractor).

@@ -210,10 +210,8 @@ interface TalentRecordRow {
   work_authorization: WorkAuthorization | null;
   owner_id: string | null;
   entered_by_id: string | null;
-  // 4e-rest — the PERSON_CLUSTER pointer (identity_index). SERVER-ONLY: it is
-  // carried on the internal row for TalentLinkService's link-state reads via
-  // findLinkState, and is DELIBERATELY absent from projectView / TalentRecordView
-  // (cluster_id is a cross-tenant id — never rendered to a tenant-visible surface).
+  // 4e-rest — the former PERSON_CLUSTER pointer. INERT since ATI-SEP-1 T10 WP2
+  // (no writer); DELIBERATELY absent from projectView / TalentRecordView.
   cluster_id: string | null;
   // TR-2a-B3a (DDR-3 §3) — the record supersession lifecycle axis (distinct from
   // tenant_status). record_status defaults 'live'; the superseded_* pair is set
@@ -542,6 +540,11 @@ export class TalentRecordRepository {
     // ATI-SEP-1 A2 — the first résumé edition's pending text row, written in the
     // SAME transaction (the reindex work signal; never lost to a soft-fail).
     resume_reindex?: { storage_key: string; resume_edition_id: string };
+    // ATI-SEP-1 T10 WP2 — sourcing promotion: the sourced arrival this record is
+    // minted from. The PROMOTED link row commits in the SAME transaction as the
+    // record + its talent.created row (a re-promotion sees the link and no-ops;
+    // a concurrent second promotion of the arrival fails on the link PK).
+    sourced_arrival?: { sourced_talent_id: string; linked_by?: string | null };
   }): Promise<TalentRecordView> {
     const { tenant_id, input } = args;
     const requestId = args.requestId ?? '';
@@ -562,6 +565,17 @@ export class TalentRecordRepository {
         const created = await tx.talentRecord.create({
           data: this.createData(args),
         });
+        if (args.sourced_arrival !== undefined) {
+          await tx.talentRecordSourcedArrival.create({
+            data: {
+              tenant_id,
+              sourced_talent_id: args.sourced_arrival.sourced_talent_id,
+              talent_record_id: created.id,
+              link_kind: 'PROMOTED',
+              linked_by: args.sourced_arrival.linked_by ?? null,
+            },
+          });
+        }
         if (args.resume_reindex !== undefined) {
           await tx.talentResumeText.create({
             data: {
@@ -1489,32 +1503,9 @@ export class TalentRecordRepository {
     return result.count > 0 ? { id: args.id } : null;
   }
 
-  // -------------------------------------------------------------------------
-  // PR-A5b-2 — cluster-link write surface (data-only).
-  //
-  // setLink / clearLink are PRIMITIVE column writes — no cross-lib
-  // validation lives here. The cluster-exists check is run by
-  // TalentLinkService BEFORE calling these methods. Both calls are
-  // tenant-scoped at the row level (WHERE id = :id AND tenant_id = :t)
-  // so a controller mistake cannot set the link on a row from a
-  // different tenant.
-  // -------------------------------------------------------------------------
-
-  // 4e-rest: SERVER-ONLY link-state read for TalentLinkService. Returns just
-  // the tenant-local id + the PERSON_CLUSTER pointer via a MINIMAL select —
-  // never widen it. cluster_id is a cross-tenant id, so it is exposed only on
-  // this internal accessor, never on findById / projectView / TalentRecordView.
-  // The service uses findById for existence/404 and findLinkState for the link
-  // reads (idempotency, already-linked guard, is_linked).
-  async findLinkState(args: {
-    tenant_id: string;
-    id: string;
-  }): Promise<{ id: string; cluster_id: string | null } | null> {
-    return this.prisma.talentRecord.findFirst({
-      where: { tenant_id: args.tenant_id, id: args.id },
-      select: { id: true, cluster_id: true },
-    });
-  }
+  // ATI-SEP-1 T10 WP2 — the PR-A5b-2 cluster-link surface (findLinkState /
+  // setLink / clearLink) was removed with the identity-index link; nothing writes
+  // TalentRecord.cluster_id any more (inert column, ADD-not-rename).
 
   // 4e-rest-b: SERVER-ONLY portal self-profile read. Tenant-scoped, MINIMAL
   // select of exactly the fields the portal profile projects — never widen it.
@@ -1596,41 +1587,5 @@ export class TalentRecordRepository {
       status: row.status,
       extracted_at: row.extracted_at ?? null,
     };
-  }
-
-  // 4e-rest: cluster-only link write (the former identity-link column was
-  // dropped). Writes the PERSON_CLUSTER pointer; tenant-scoped at the row
-  // level so a controller mistake cannot link a row from a different tenant.
-  async setLink(args: {
-    tenant_id: string;
-    id: string;
-    cluster_id: string;
-  }): Promise<{ id: string; cluster_id: string | null } | null> {
-    const result = await this.prisma.talentRecord.updateMany({
-      where: { id: args.id, tenant_id: args.tenant_id },
-      data: { cluster_id: args.cluster_id },
-    });
-    if (result.count === 0) {
-      // Row was not in tenant (or vanished) — caller handles as
-      // NOT_FOUND. We don't throw here so the read-after-write below
-      // is the single fetch point. Returns link-state only (no
-      // tenant-visible view — cluster_id is server-only).
-      return null;
-    }
-    return this.findLinkState({ tenant_id: args.tenant_id, id: args.id });
-  }
-
-  async clearLink(args: {
-    tenant_id: string;
-    id: string;
-  }): Promise<{ id: string; cluster_id: string | null } | null> {
-    const result = await this.prisma.talentRecord.updateMany({
-      where: { id: args.id, tenant_id: args.tenant_id },
-      data: { cluster_id: null },
-    });
-    if (result.count === 0) {
-      return null;
-    }
-    return this.findLinkState({ tenant_id: args.tenant_id, id: args.id });
   }
 }

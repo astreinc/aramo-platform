@@ -87,7 +87,7 @@ function make(opts: { port?: RecruiterCreateConsentDefaultPort; draft?: unknown 
   };
   const svc = new TalentCreateFromDraftService(repo as never, talentExtraction as never, opts.port);
   const ctl = new TalentRecordController(
-    repo as never, {} as never, {} as never, {} as never,
+    repo as never, {} as never, {} as never,
     talentExtraction as never, {} as never, {} as never,
     undefined, undefined, undefined,
     svc,

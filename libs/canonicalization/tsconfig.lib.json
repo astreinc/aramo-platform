@@ -9,9 +9,8 @@
     "types": ["node"],
     "paths": {
       "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
-      "@aramo/identity-index": ["../../dist/libs/identity-index/src/index.d.ts"],
       "@aramo/ingestion": ["../../dist/libs/ingestion/src/index.d.ts"],
-      "@aramo/talent-trust": ["../../dist/libs/talent-trust/src/index.d.ts"]
+      "@aramo/sourced-talent": ["../../dist/libs/sourced-talent/src/index.d.ts"]
     }
   },
   "include": ["src/**/*.ts"],

@@ -26,8 +26,6 @@ function makeController(opts: { persistThrows?: boolean } = {}) {
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     {} as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    {} as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
     talentExtraction as any,
     // TI-1B — resumeOrchestrator (unused on this path; governed-LLM sole extractor).
     {} as never,

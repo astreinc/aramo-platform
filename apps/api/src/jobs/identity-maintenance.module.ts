@@ -12,28 +12,15 @@ import { PlatformTrustModule } from '@aramo/platform-trust';
 import { PortalIdentityModule } from '@aramo/portal-identity';
 import { MailerModule } from '@aramo/mailer';
 
-import { MatchSweepService } from '../talent-anchor/match-sweep.service.js';
-import { MatchSweepProcessor } from '../talent-anchor/match-sweep.processor.js';
-import { MATCH_SWEEP_QUEUE_NAME } from '../talent-anchor/match-sweep.queue.constants.js';
-import { IdentityDetectionService } from '../talent-identity/identity-detection.service.js';
-import { IdentityDetectionProcessor } from '../talent-identity/identity-detection.processor.js';
-import { IDENTITY_DETECTION_QUEUE_NAME } from '../talent-identity/identity-detection.queue.constants.js';
-import { ConsistencyService } from '../talent-identity/consistency.service.js';
-import { ConsistencyProcessor } from '../talent-identity/consistency.processor.js';
-import { CONSISTENCY_QUEUE_NAME } from '../talent-identity/consistency.queue.constants.js';
-import { RecomputeSweepService } from '../talent-identity/recompute-sweep.service.js';
-import { RecomputeSweepProcessor } from '../talent-identity/recompute-sweep.processor.js';
-import { RECOMPUTE_SWEEP_QUEUE_NAME } from '../talent-identity/recompute-sweep.queue.constants.js';
-import { RecomputeRepairService } from '../talent-identity/recompute-repair.service.js';
-import { RecomputeRepairProcessor } from '../talent-identity/recompute-repair.processor.js';
-import { RECOMPUTE_REPAIR_QUEUE_NAME } from '../talent-identity/recompute-repair.queue.constants.js';
 import { IdentityLifecycleSweepService } from '../talent-identity/identity-lifecycle-sweep.service.js';
 import { DormantNoticeService } from '../talent-identity/dormant-notice.service.js';
 import { IdentityLifecycleSweepProcessor } from '../talent-identity/identity-lifecycle-sweep.processor.js';
 import { IDENTITY_INDEX_LIFECYCLE_QUEUE_NAME } from '../talent-identity/identity-lifecycle-sweep.queue.constants.js';
 
-// TR-6 B1 (DDR §2/§7) — the identity-maintenance job module: the hourly incremental
-// match sweep (D1) + the daily read-only integrity detection cron (D6). apps/api
+// TR-6 B1 (DDR §2/§7) — the identity-maintenance job module. ATI-SEP-1 T10 WP2
+// removed the hourly trust match sweep (D1) + the daily identity-detection cron
+// (D6): within-tenant duplicate detection is now the ATS-local talent-event
+// handler (ats-talent-events/duplicate-detection.handler.ts). apps/api
 // boundary layer (the reconcile/orchestrator precedent) — imports {talent-trust
 // (cip), talent-record (ats)}; ats→cip is wall-clean and both edges already exist
 // (NO new @aramo/* edge). talent_trust imports NO ats.
@@ -85,74 +72,16 @@ import { IDENTITY_INDEX_LIFECYCLE_QUEUE_NAME } from '../talent-identity/identity
       inject: [RedisConnectionConfig],
       extraProviders: [RedisConnectionConfig],
     }),
-    BullModule.registerQueue({ name: MATCH_SWEEP_QUEUE_NAME }),
-    BullModule.registerQueue({ name: IDENTITY_DETECTION_QUEUE_NAME }),
-    // TR-4 B3 — the hourly consistency detector poll (same wiring as the others).
-    BullModule.registerQueue({ name: CONSISTENCY_QUEUE_NAME }),
-    // TR-5 B1 — the daily decay-recompute sweep (same wiring as the others).
-    BullModule.registerQueue({ name: RECOMPUTE_SWEEP_QUEUE_NAME }),
-    // G1 — the 2-minute TrustState recomputation-repair job (same wiring).
-    BullModule.registerQueue({ name: RECOMPUTE_REPAIR_QUEUE_NAME }),
     // TR-2b B2a — the daily identity-index lifecycle sweep (same wiring).
     BullModule.registerQueue({ name: IDENTITY_INDEX_LIFECYCLE_QUEUE_NAME }),
   ],
   providers: [
-    MatchSweepService,
-    MatchSweepProcessor,
-    IdentityDetectionService,
-    IdentityDetectionProcessor,
-    ConsistencyService,
-    ConsistencyProcessor,
-    RecomputeSweepService,
-    RecomputeSweepProcessor,
-    RecomputeRepairService,
-    RecomputeRepairProcessor,
     IdentityLifecycleSweepService,
     IdentityLifecycleSweepProcessor,
     DormantNoticeService,
     {
       provide: 'DormantNoticeServiceLogger',
       useFactory: () => createAramoLogger(DormantNoticeService.name),
-    },
-    {
-      provide: 'MatchSweepServiceLogger',
-      useFactory: () => createAramoLogger(MatchSweepService.name),
-    },
-    {
-      provide: 'MatchSweepProcessorLogger',
-      useFactory: () => createAramoLogger(MatchSweepProcessor.name),
-    },
-    {
-      provide: 'IdentityDetectionServiceLogger',
-      useFactory: () => createAramoLogger(IdentityDetectionService.name),
-    },
-    {
-      provide: 'IdentityDetectionProcessorLogger',
-      useFactory: () => createAramoLogger(IdentityDetectionProcessor.name),
-    },
-    {
-      provide: 'ConsistencyServiceLogger',
-      useFactory: () => createAramoLogger(ConsistencyService.name),
-    },
-    {
-      provide: 'ConsistencyProcessorLogger',
-      useFactory: () => createAramoLogger(ConsistencyProcessor.name),
-    },
-    {
-      provide: 'RecomputeSweepServiceLogger',
-      useFactory: () => createAramoLogger(RecomputeSweepService.name),
-    },
-    {
-      provide: 'RecomputeSweepProcessorLogger',
-      useFactory: () => createAramoLogger(RecomputeSweepProcessor.name),
-    },
-    {
-      provide: 'RecomputeRepairServiceLogger',
-      useFactory: () => createAramoLogger(RecomputeRepairService.name),
-    },
-    {
-      provide: 'RecomputeRepairProcessorLogger',
-      useFactory: () => createAramoLogger(RecomputeRepairProcessor.name),
     },
     {
       provide: 'IdentityLifecycleSweepServiceLogger',
@@ -164,11 +93,6 @@ import { IDENTITY_INDEX_LIFECYCLE_QUEUE_NAME } from '../talent-identity/identity
     },
   ],
   exports: [
-    MatchSweepService,
-    IdentityDetectionService,
-    ConsistencyService,
-    RecomputeSweepService,
-    RecomputeRepairService,
     IdentityLifecycleSweepService,
   ],
 })

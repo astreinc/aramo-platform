@@ -3,7 +3,7 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "sourceRoot": "libs/sourced-talent/src",
   "projectType": "library",
-  "tags": ["scope:cip"],
+  "tags": ["scope:ats"],
   "targets": {
     "build": {
       "executor": "@nx/js:tsc",

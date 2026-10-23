@@ -19,7 +19,6 @@ import {
   PipelineRepository,
   resolveAddTalentOutcome,
 } from '@aramo/pipeline';
-import type { SubjectRef } from '@aramo/talent-trust';
 
 import {
   SourcingService,
@@ -32,14 +31,14 @@ import {
   SaveToBenchRequestDto,
 } from './dto/sourcing.dto.js';
 
-// Promotion-Trigger slice-A — the sourcer's HTTP surface. Lives in apps/api
-// (ABOVE the I15 wall): promotes a sourced L2 subject into an ATS TalentRecord
-// (via PromotionService, behind the identity gate) and associates it to a
-// requisition (Add to Pipeline) or the tenant bench (Save to Pool). Both
-// endpoints require the talent:source scope (sourcer+). Tenant is taken from the
-// auth context, NEVER the body (tenant-wall). A gate deferral returns the
-// deferral status with no record minted (200 — an expected outcome, not an
-// error; slice-B's surface renders it).
+// Promotion-Trigger slice-A — the sourcer's HTTP surface. ATI-SEP-1 T10 WP2: runs
+// purely on ATS data — the pool is sourced_talent arrivals, promotion mints an ATS
+// TalentRecord from an arrival (PromotionService, behind the ATS duplicate-
+// advisory gate) and associates it to a requisition (Add to Pipeline) or the
+// tenant bench (Save to Pool). Both endpoints require the talent:source scope
+// (sourcer+). Tenant is taken from the auth context, NEVER the body (tenant-
+// wall). A gate deferral returns the deferral status with no record minted (200
+// — an expected outcome, not an error); a tenant duplicate is a 409.
 @Controller('v1/sourcing')
 @UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)
 @RequireCapability('core')
@@ -55,8 +54,8 @@ export class SourcingController {
 
   // ---- Slice B-api — the sourcing-pool read surface (talent:source) ----------
 
-  // The pre-promotion pool: un-promoted sourced subjects (bands +
-  // open_contradiction_count + display name/email), keyset-paginated oldest-first.
+  // The pre-promotion pool: un-promoted sourced arrivals (display name / email /
+  // phone + pending-advisory count), keyset-paginated oldest-first.
   @Get('pool')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('talent:source')
@@ -71,9 +70,9 @@ export class SourcingController {
     });
   }
 
-  // Subject drill-in: trust bands + evidence ledger + refs + pending identity
-  // merge advisories (adjudicated via the existing advisory-resolution endpoints,
-  // now reachable by a sourcer via the identity:resolve grant).
+  // Arrival drill-in (the param is the SourcedTalent id): the arrival's parsed
+  // applicant material + refs + PENDING duplicate advisories (adjudicated via the
+  // advisory-resolution endpoints, identity:resolve).
   @Get('pool/:subjectId')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('talent:source')
@@ -148,11 +147,7 @@ export class SourcingController {
       );
     }
 
-    const subjectRef: SubjectRef = {
-      tenant_id: authContext.tenant_id,
-      ref_type: dto.ref_type,
-      ref_id: dto.ref_id,
-    };
+    const subjectRef = { tenant_id: authContext.tenant_id, sourced_talent_id: dto.ref_id };
     // ALLOW or OVERRIDE: thread the provenance so it commits INSIDE the pipeline
     // write's tx (for an OVERRIDE it carries the reason_code + capability).
     const result = await this.sourcing.promoteAndAddToPipeline(subjectRef, dto.requisition_id, {
@@ -185,11 +180,9 @@ export class SourcingController {
     @AuthContext() authContext: AuthContextType,
     @Body() dto: SaveToBenchRequestDto,
   ): Promise<SourcingResult> {
-    const subjectRef: SubjectRef = {
-      tenant_id: authContext.tenant_id,
-      ref_type: dto.ref_type,
-      ref_id: dto.ref_id,
-    };
-    return this.sourcing.promoteAndSaveToBench(subjectRef);
+    return this.sourcing.promoteAndSaveToBench(
+      { tenant_id: authContext.tenant_id, sourced_talent_id: dto.ref_id },
+      { actor_id: authContext.sub },
+    );
   }
 }

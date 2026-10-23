@@ -16,6 +16,10 @@ const strip = (raw: string): string =>
     .map((l) => l.replace(/\/\/.*$/, ''))
     .join('\n');
 
+// The retired module specifiers are composed (never written as bare literals) so
+// the repo-wide "no legacy import" grep over libs/talent-record stays empty.
+const legacy = (name: string): string => `@aramo/${name}`;
+
 const FILES = [
   '../lib/talent-create-from-draft.service.ts',
   '../lib/talent-intake/talent-intake-promotion.service.ts',
@@ -23,11 +27,14 @@ const FILES = [
   '../lib/talent-record.controller.ts',
   '../lib/talent-record.repository.ts',
   '../lib/talent-events/talent-event-outbox.ts',
+  // ATI-SEP-1 T10 WP2 — the module + the ATS-local duplicate advisory store.
+  '../lib/talent-record.module.ts',
+  '../lib/duplicate-advisory/talent-duplicate-advisory.repository.ts',
 ];
 
 const FORBIDDEN = [
   // trust ledger (A1)
-  '@aramo/talent-trust',
+  legacy('talent-trust'),
   'TalentTrustService',
   'recordDeclaredClaimIfAbsent',
   'recordEvidence',
@@ -37,10 +44,12 @@ const FORBIDDEN = [
   'LegacyTrustProjection',
   'routeDeclaredEvidenceToLedger',
   'routeExperienceAssertionsToLedger',
-  '@aramo/platform-trust',
+  legacy('platform-trust'),
   // identity index (A4)
-  '@aramo/identity-index',
+  legacy('identity-index'),
   'IdentityIndexRepository',
+  'IdentityIndexModule',
+  'TalentLinkService',
   // reconcile (A4) — now event-driven, post-commit (the talent-reconcile libs
   // were deleted at T10 WP1; an import of them no longer resolves)
   '@aramo/canonical-reconcile',
@@ -63,5 +72,15 @@ describe('ATI-SEP-1 A1/A4 — ATS create / update / Save never call trust, ident
     const code = strip(readFileSync(resolve(__dirname, '../lib/talent-record.module.ts'), 'utf8'));
     expect(code).not.toContain('CanonicalReconcileModule');
     expect(code).not.toContain('TalentReconcileSignalModule');
+  });
+
+  it('ATI-SEP-1 T10 WP2 — the identity-index cluster-link routes are gone (GET/POST/DELETE :id/link)', () => {
+    const code = strip(readFileSync(resolve(__dirname, '../lib/talent-record.controller.ts'), 'utf8'));
+    expect(code).not.toContain("':id/link'");
+    expect(code).not.toContain('linkService');
+    const repo = strip(readFileSync(resolve(__dirname, '../lib/talent-record.repository.ts'), 'utf8'));
+    // Nothing writes the inert cluster_id any more.
+    expect(repo).not.toMatch(/cluster_id:\s*args\./);
+    expect(repo).not.toContain('setLink');
   });
 });

@@ -12,14 +12,6 @@ import {
 } from '@aramo/talent-record';
 import { COLD_INGEST_EXTRACTION_QUEUE_NAME } from '@aramo/cold-ingest-extraction';
 
-import { MATCH_SWEEP_QUEUE_NAME } from '../talent-anchor/match-sweep.queue.constants.js';
-import { IDENTITY_DETECTION_QUEUE_NAME } from '../talent-identity/identity-detection.queue.constants.js';
-import { CONSISTENCY_QUEUE_NAME } from '../talent-identity/consistency.queue.constants.js';
-import { RECOMPUTE_SWEEP_QUEUE_NAME } from '../talent-identity/recompute-sweep.queue.constants.js';
-import {
-  RECOMPUTE_REPAIR_QUEUE_NAME,
-  RECOMPUTE_REPAIR_INTERVAL_MS,
-} from '../talent-identity/recompute-repair.queue.constants.js';
 import { IDENTITY_INDEX_LIFECYCLE_QUEUE_NAME } from '../talent-identity/identity-lifecycle-sweep.queue.constants.js';
 import { JOB_DISTRIBUTION_SYNC_QUEUE_NAME } from '../job-distribution/job-distribution-sync.queue.constants.js';
 import {
@@ -140,57 +132,11 @@ const SCHEDULES = [
     job_id: 'cold-ingest-extraction-60s',
     repeat: { every: 60_000 },
   },
-  // TR-6 B1 (DDR §2) — the scheduled incremental match sweep. HOURLY (an engine
-  // constant, not tenant config): re-match every ACTIVE subject with a new anchor
-  // since its last_matched_at watermark. The gate is tenant-agnostic (batches all
-  // tenants per query); the manual match-backfill CLI is the full-resweep escape hatch.
-  {
-    queue_name: MATCH_SWEEP_QUEUE_NAME,
-    job_name: 'tick',
-    job_id: 'match-sweep-hourly',
-    repeat: { pattern: '0 * * * *', tz: 'UTC' as const },
-  },
-  // TR-6 B1 (DDR §7) — the daily read-only integrity-detection cron. Reports the
-  // cheap detector classes (per-class counts + structured logs); mutates nothing.
-  {
-    queue_name: IDENTITY_DETECTION_QUEUE_NAME,
-    job_name: 'tick',
-    job_id: 'identity-detection-daily',
-    repeat: { pattern: '0 6 * * *', tz: 'UTC' as const },
-  },
-  // TR-4 B3 (§3.1) — the hourly cross-source consistency detector poll. Re-checks
-  // every ACTIVE subject with CLAIMS evidence added since its last_consistency_at
-  // watermark; runs the three deterministic detectors over its cluster-union
-  // CLAIMS evidence. Tenant-agnostic gate (batches all tenants); the manual
-  // consistency-check CLI is the escape hatch.
-  {
-    queue_name: CONSISTENCY_QUEUE_NAME,
-    job_name: 'tick',
-    job_id: 'consistency-check-hourly',
-    repeat: { pattern: '0 * * * *', tz: 'UTC' as const },
-  },
-  // TR-5 B1 (DDR §2) — the daily decay-recompute sweep. Re-prices every ACTIVE
-  // subject whose TrustState is older than RECOMPUTE_STALENESS_DAYS and carries
-  // decaying evidence, so a band goes honest on the clock's schedule rather than
-  // only when some other write triggers a recompute. Time-driven (no watermark
-  // column); tenant-agnostic gate (batches all tenants); the manual
-  // recompute-sweep CLI is the escape hatch. Daily is ample — decay is gradual.
-  {
-    queue_name: RECOMPUTE_SWEEP_QUEUE_NAME,
-    job_name: 'tick',
-    job_id: 'trust-recompute-sweep-daily',
-    repeat: { pattern: '0 7 * * *', tz: 'UTC' as const },
-  },
-  // G1 — the TrustState recomputation-repair tick (every 2 minutes). Drains the
-  // durable per-subject requests a failed post-commit recompute left pending.
-  // Distinct from the daily decay sweep above; the cadence is a polling interval,
-  // not a recovery SLA.
-  {
-    queue_name: RECOMPUTE_REPAIR_QUEUE_NAME,
-    job_name: 'tick',
-    job_id: 'trust-recompute-repair-2min',
-    repeat: { every: RECOMPUTE_REPAIR_INTERVAL_MS },
-  },
+  // ATI-SEP-1 T10 WP2 — the TR-6 hourly match sweep + daily identity-detection
+  // cron were removed (within-tenant duplicate detection is the ATS talent-event
+  // handler now).
+  // ATI-SEP-1 T10 WP3b — the TR-4 consistency poll, TR-5 decay-recompute sweep
+  // and G1 recompute-repair schedules were removed (Talent Intelligence owns trust).
   // TR-2b B2a (Directive §PR-1.3) — the daily identity-index lifecycle sweep.
   // Orphan purge (LIVE: clusters failing R4 liveness past ORPHAN_GRACE_DAYS) +
   // dormant detection (DARK: report-only behind DORMANT_LINK_MINTING_ENABLED).

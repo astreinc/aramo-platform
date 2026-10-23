@@ -3,29 +3,33 @@ import type { ActorKind } from '@aramo/auth';
 import { PipelineRepository } from '@aramo/pipeline';
 import type { InsertPolicyDecisionRecordInput } from '@aramo/policy-store';
 import { SavedListRepository } from '@aramo/saved-list';
+import { SourcedTalentRepository, type SourcedTalentRow } from '@aramo/sourced-talent';
 import {
-  deriveTrustStatements,
-  TalentTrustRepository,
-  type SubjectRef,
-  type EvidenceRecordRow,
-  type ResolutionSubjectRefRow,
-  type SubjectMatchAdvisoryRow,
-  type TrustStateRow,
-} from '@aramo/talent-trust';
+  TalentDuplicateAdvisoryRepository,
+  TalentRecordRepository,
+  type DuplicateAdvisoryRow,
+} from '@aramo/talent-record';
 
-import { PromotionService, type PromotionOutcome } from './promotion.service.js';
+import {
+  PromotionService,
+  type PromotionOutcome,
+  type SourcedArrivalRef,
+} from './promotion.service.js';
+import { describeSourcedArrival } from './sourced-arrival.view.js';
 
-// Promotion-Trigger slice-A — the two sourcer triggers, both promote-then-
-// associate behind the identity gate (which lives in promoteSubject). apps/api
-// orchestration above the I15 wall: reads cip talent-trust (via promoteSubject),
-// writes ats talent-record / pipeline / saved-list. Idempotent on replay:
-// promoteSubject no-ops an already-promoted subject; the pipeline
-// @@unique([talent_record_id, requisition_id]) and the bench
-// @@unique([saved_list_id, item_id]) no-op a duplicate association.
+// ATI-SEP-1 T10 WP2 — the sourcing surface, rebuilt on ATS data only (Addenda A2
+// F-1 / A3: ATS keeps sourcing; it no longer reads a trust ledger). The pool is
+// the tenant's sourced_talent arrivals not yet linked to a TalentRecord; the
+// drill-in is the arrival's own parsed applicant material + the ATS duplicate
+// advisories that name it. Both triggers promote-then-associate behind the
+// promotion gate (PromotionService.promoteArrival). Idempotent on replay: a
+// linked arrival returns already_promoted; the pipeline one-live-episode refusal
+// and the bench @@unique no-op a duplicate association.
 //
-// A gate deferral (deferred_unresolved_identity / deferred_no_name / …) short-
-// circuits: NO record is minted and NO association happens — the outcome carries
-// the deferral status straight through.
+// Wire-shape note (documented divergence): the trust fields (trust_bands,
+// open_contradiction_count, trust_statements, evidence) are gone. `subject_id`
+// keeps its name and now carries the sourced_talent.SourcedTalent id (also the
+// drill-in route param and the SOURCED_TALENT ref_id the promote POSTs send).
 
 export interface SourcingResult {
   status: PromotionOutcome['status'];
@@ -37,20 +41,16 @@ export interface SourcingResult {
   bench_id?: string;
 }
 
-// Promotion-Trigger slice B-api — the sourcing-pool read shapes.
-export interface TrustBands {
-  identity: string | null;
-  claims: string | null;
-  continuity: string | null;
-  eligibility: string | null;
-}
-
 export interface PoolItem {
+  // The SourcedTalent id (the drill-in key + the promote ref_id).
   subject_id: string;
   display_name: string | null;
   email: string | null;
-  trust_bands: TrustBands;
-  open_contradiction_count: number;
+  phone: string | null;
+  source_channel: string;
+  arrived_at: string;
+  // PENDING_REVIEW duplicate advisories naming this arrival (review before promote).
+  open_advisory_count: number;
 }
 
 export interface PoolPage {
@@ -59,28 +59,40 @@ export interface PoolPage {
   next_cursor: string | null;
 }
 
-// TR-14 B1 (DDR §2.4) — the sourcing evidence row WITHOUT `strength`. The ordinal
-// is stripped server-side (a trust product does not ship an ungated number); the
-// FE already omitted it by type, pact never pinned it.
-export type SourcingEvidenceRow = Omit<EvidenceRecordRow, 'strength'>;
+// The ref the promote POSTs address (kept from the prior wire shape so the FE
+// reads the SOURCED_TALENT ref_id off the detail unchanged).
+export interface SourcingRefRow {
+  ref_type: 'SOURCED_TALENT' | 'INGESTION_PAYLOAD';
+  ref_id: string;
+  link_source: string;
+}
+
+// A duplicate advisory as shown on the drill-in (ids + named kinds only).
+export interface ArrivalAdvisory {
+  id: string;
+  talent_record_id: string;
+  talent_record_name: string | null;
+  basis: string;
+  shared_kinds: string[];
+  status: string;
+  created_at: string;
+}
 
 export interface SubjectDetail {
   subject_id: string;
   display_name: string | null;
   email: string | null;
-  trust_bands: TrustBands | null;
-  open_contradiction_count: number;
-  // TR-5 B2 (DDR §4, β1) — the named-thinness assessment statements, rendered
-  // from the TrustState flags by deriveTrustStatements. STRINGS ONLY (a fixed,
-  // locked sentence set) — no count, span, or ordinal ever crosses this wire; the
-  // numeric payloads stay in the ledger, visible only via `evidence[]`.
-  trust_statements: string[];
-  evidence: SourcingEvidenceRow[];
-  refs: ResolutionSubjectRefRow[];
-  // The PRE-promotion needs-review: pending same-human MERGE advisories (subject-
-  // keyed). Attribute contradictions are post-promotion (record-keyed) — NOT here.
-  open_identity_advisories: SubjectMatchAdvisoryRow[];
+  phone: string | null;
+  headline: string | null;
+  profile_url: string | null;
+  source_channel: string;
+  arrived_at: string;
+  refs: SourcingRefRow[];
+  open_identity_advisories: ArrivalAdvisory[];
 }
+
+// Bounded batch scan while filling a pool page past linked arrivals.
+const POOL_SCAN_ROUNDS = 10;
 
 @Injectable()
 export class SourcingService {
@@ -90,115 +102,113 @@ export class SourcingService {
     private readonly promotion: PromotionService,
     private readonly pipelines: PipelineRepository,
     private readonly savedLists: SavedListRepository,
-    private readonly trustRepo: TalentTrustRepository,
+    private readonly sourced: SourcedTalentRepository,
+    private readonly advisories: TalentDuplicateAdvisoryRepository,
+    private readonly talentRecords: TalentRecordRepository,
   ) {}
 
-  // ---- Promotion-Trigger slice B-api — the sourcing-surface readers ----------
-
-  // The pre-promotion pool page: the anti-join list (bands + contradiction count)
-  // + ONE batched display-name/email read for the page's subjects (no N+1).
-  // Keyset-paginated oldest-first; next_cursor is opaque (created_at|id).
+  // The pool page: un-linked arrivals, keyset-paginated oldest-first. Arrivals
+  // already linked to a record (a different schema) are filtered out batch by
+  // batch until the page fills or the tenant's arrivals are exhausted.
   async getPool(
     tenant_id: string,
     opts: { cursor?: string | null; limit?: number } = {},
   ): Promise<PoolPage> {
     const limit = Math.min(Math.max(opts.limit ?? 50, 1), 200);
-    const cursor = decodeCursor(opts.cursor ?? null);
-    const rows = await this.trustRepo.listSourcedPool({ tenant_id, limit, cursor });
+    let cursor = decodeCursor(opts.cursor ?? null);
+    const picked: SourcedTalentRow[] = [];
+    let more = true;
+    for (let round = 0; round < POOL_SCAN_ROUNDS && picked.length < limit; round += 1) {
+      const batch = await this.sourced.listByTenantKeyset({ tenant_id, limit, cursor });
+      const linked = await this.advisories.findLinkedArrivalIds(
+        tenant_id,
+        batch.map((r) => r.id),
+      );
+      let consumed = 0;
+      for (const row of batch) {
+        if (picked.length === limit) break;
+        consumed += 1;
+        cursor = { created_at: row.created_at, id: row.id };
+        if (!linked.has(row.id)) picked.push(row);
+      }
+      // A short batch fully consumed = the tenant's arrivals are exhausted.
+      if (batch.length < limit && consumed === batch.length) {
+        more = false;
+        break;
+      }
+    }
 
-    const subjectIds = rows.map((r) => r.subject_id);
-    const evidence = await this.trustRepo.listDisplayIdentityEvidence(tenant_id, subjectIds);
-    const display = groupDisplay(evidence);
+    const pending = await this.advisories.countPendingByArrivals(
+      tenant_id,
+      picked.map((r) => r.id),
+    );
+    const items: PoolItem[] = picked.map((r) => {
+      const d = describeSourcedArrival(r);
+      return {
+        subject_id: r.id,
+        display_name: d.display_name,
+        email: d.email,
+        phone: d.phone,
+        source_channel: r.source_channel,
+        arrived_at: r.arrived_at.toISOString(),
+        open_advisory_count: pending.get(r.id) ?? 0,
+      };
+    });
 
-    const items: PoolItem[] = rows.map((r) => ({
-      subject_id: r.subject_id,
-      display_name: display.get(r.subject_id)?.name ?? null,
-      email: display.get(r.subject_id)?.email ?? null,
-      trust_bands: {
-        identity: r.identity_band,
-        claims: r.claims_band,
-        continuity: r.continuity_band,
-        eligibility: r.eligibility_band,
-      },
-      open_contradiction_count: r.open_contradiction_count,
-    }));
-
-    const last = rows[rows.length - 1];
-    const next_cursor =
-      rows.length === limit && last !== undefined
-        ? encodeCursor(last.created_at, last.subject_id)
-        : null;
+    const next_cursor = more && cursor !== null ? encodeCursor(cursor.created_at, cursor.id) : null;
     return { items, next_cursor };
   }
 
-  // The subject drill-in: trust bands + evidence ledger + refs + PENDING identity
-  // advisories — composed from the subject_id-keyed talent_trust readers, all
-  // tenant-scoped. 404 if the subject is not in the caller's tenant.
-  async getSubjectDetail(tenant_id: string, subjectId: string): Promise<SubjectDetail> {
-    const subject = await this.trustRepo.findSubjectById(subjectId);
-    if (subject === null || subject.tenant_id !== tenant_id) {
-      throw new NotFoundException(`subject ${subjectId} not found in tenant`);
+  // The arrival drill-in — 404 when the arrival is not in the caller's tenant.
+  async getSubjectDetail(tenant_id: string, sourcedTalentId: string): Promise<SubjectDetail> {
+    const row = await this.sourced.findById(sourcedTalentId);
+    if (row === null || row.tenant_id !== tenant_id) {
+      throw new NotFoundException(`sourced arrival ${sourcedTalentId} not found in tenant`);
     }
-    // TR-14 B1 (DDR §2.3) — ONE STORY: the evidence goes CLUSTER-UNION, the same
-    // set the bands derive from at recompute. Previously single-subject
-    // (listEvidenceBySubject) → a merged cluster's bands and evidence diverged.
-    // A pool subject is ACTIVE (its own fixpoint), so clusterMembers(subjectId) IS
-    // the recompute's union set.
-    const members = await this.trustRepo.clusterMembers(subjectId);
-    const [trustState, evidenceRows, refs, advisories]: [
-      TrustStateRow | null,
-      EvidenceRecordRow[],
-      ResolutionSubjectRefRow[],
-      SubjectMatchAdvisoryRow[],
-    ] = await Promise.all([
-      this.trustRepo.findTrustStateBySubject(subjectId),
-      this.trustRepo.listEvidenceBySubjects(members),
-      this.trustRepo.listRefsBySubject(subjectId),
-      this.trustRepo.listMatchAdvisories(tenant_id, { subjectId, status: 'PENDING_REVIEW' }),
-    ]);
-    // TR-14 B1 (DDR §2.4) — STRIP the ungated `strength` ordinal off the wire
-    // (blast radius ~zero: FE omits it, pact does not pin it). The dossier (B2)
-    // never carries it either.
-    const evidence: SourcingEvidenceRow[] = evidenceRows.map(
-      ({ strength: _strength, ...rest }) => rest,
-    );
-    const display = groupDisplay(
-      evidence
-        .filter((e) => e.current_status === 'VALID' && (e.assertion_type === 'FULL_NAME' || e.assertion_type === 'EMAIL'))
-        .map((e) => ({ subject_id: subjectId, assertion_type: e.assertion_type, assertion_payload: e.assertion_payload })),
-    );
+    const d = describeSourcedArrival(row);
+    const advisories = await this.advisories.listForArrival(tenant_id, row.id, 'PENDING_REVIEW');
+    const names = await this.recordNames(tenant_id, advisories);
+    const refs: SourcingRefRow[] = [
+      { ref_type: 'SOURCED_TALENT', ref_id: row.id, link_source: row.source_channel },
+      ...(d.ingestion_payload_id !== null
+        ? [{ ref_type: 'INGESTION_PAYLOAD' as const, ref_id: d.ingestion_payload_id, link_source: 'ingestion' }]
+        : []),
+    ];
     return {
-      subject_id: subjectId,
-      display_name: display.get(subjectId)?.name ?? null,
-      email: display.get(subjectId)?.email ?? null,
-      trust_bands:
-        trustState === null
-          ? null
-          : {
-              identity: trustState.identity_band,
-              claims: trustState.claims_band,
-              continuity: trustState.continuity_band,
-              eligibility: trustState.eligibility_band,
-            },
-      open_contradiction_count: trustState?.open_contradiction_count ?? 0,
-      trust_statements:
-        trustState === null
-          ? []
-          : deriveTrustStatements({
-              single_source_only: trustState.single_source_only,
-              longitudinal_observed: trustState.longitudinal_observed,
-              verified_control_stale: trustState.verified_control_stale,
-            }),
-      evidence,
+      subject_id: row.id,
+      display_name: d.display_name,
+      email: d.email,
+      phone: d.phone,
+      headline: d.headline,
+      profile_url: d.profile_url,
+      source_channel: row.source_channel,
+      arrived_at: row.arrived_at.toISOString(),
       refs,
-      open_identity_advisories: advisories,
+      open_identity_advisories: advisories.map((a) => ({
+        id: a.id,
+        talent_record_id: a.talent_record_a_id,
+        talent_record_name: names.get(a.talent_record_a_id) ?? null,
+        basis: a.basis,
+        shared_kinds: a.shared_kinds,
+        status: a.status,
+        created_at: a.created_at.toISOString(),
+      })),
     };
+  }
+
+  private async recordNames(
+    tenant_id: string,
+    advisories: readonly DuplicateAdvisoryRow[],
+  ): Promise<Map<string, string>> {
+    const ids = [...new Set(advisories.map((a) => a.talent_record_a_id))];
+    if (ids.length === 0) return new Map();
+    return this.talentRecords.findNamesByIds({ tenant_id, ids });
   }
 
   // Trigger 1 — Add to Pipeline: promote (gated) → associate the minted record
   // to the requisition. A gate deferral short-circuits (no mint, no pipeline).
   async promoteAndAddToPipeline(
-    subjectRef: SubjectRef,
+    subjectRef: SourcedArrivalRef,
     requisitionId: string,
     // ADR-0024 PR-3b — `provenance` is an OPAQUE §D17a record the command
     // boundary (SourcingController) already produced from an ALLOW decision.
@@ -217,7 +227,10 @@ export class SourcingService {
       expected_requisition_status?: string | null;
     },
   ): Promise<SourcingResult> {
-    const outcome = await this.promotion.promoteSubject(subjectRef, opts);
+    const outcome = await this.promotion.promoteArrival(subjectRef, {
+      ...(opts?.requestId === undefined ? {} : { requestId: opts.requestId }),
+      actor_id: opts?.created_by_id ?? null,
+    });
     if (!isPromoted(outcome)) return { status: outcome.status };
 
     const talent_record_id = outcome.talent_record_id;
@@ -260,10 +273,10 @@ export class SourcingService {
   // Trigger 2 — Save to Pool: promote (gated) → add the minted record to the
   // tenant-shared sourcing bench. A gate deferral short-circuits.
   async promoteAndSaveToBench(
-    subjectRef: SubjectRef,
-    opts?: { requestId?: string },
+    subjectRef: SourcedArrivalRef,
+    opts?: { requestId?: string; actor_id?: string | null },
   ): Promise<SourcingResult> {
-    const outcome = await this.promotion.promoteSubject(subjectRef, opts);
+    const outcome = await this.promotion.promoteArrival(subjectRef, opts);
     if (!isPromoted(outcome)) return { status: outcome.status };
 
     const talent_record_id = outcome.talent_record_id;
@@ -295,48 +308,7 @@ function isLiveEpisodeAlready(err: unknown): boolean {
   );
 }
 
-// ---- Promotion-Trigger slice B-api — display + keyset helpers -----------------
-
-interface DisplayEntry {
-  name?: string;
-  email?: string;
-}
-
-// Group the batched FULL_NAME/EMAIL evidence per subject. The reader returns
-// newest-first, so the FIRST FULL_NAME / EMAIL seen for a subject is the newest.
-function groupDisplay(
-  rows: Array<{ subject_id: string; assertion_type: string; assertion_payload: unknown }>,
-): Map<string, DisplayEntry> {
-  const out = new Map<string, DisplayEntry>();
-  for (const r of rows) {
-    const entry = out.get(r.subject_id) ?? {};
-    const p = payloadObj(r.assertion_payload);
-    if (r.assertion_type === 'FULL_NAME' && entry.name === undefined) {
-      const parts = [str(p['first_name']), str(p['last_name'])].filter(
-        (x): x is string => x !== undefined,
-      );
-      if (parts.length > 0) entry.name = parts.join(' ');
-    } else if (r.assertion_type === 'EMAIL' && entry.email === undefined) {
-      // TR-4 B1 (DDR §2.3) — contact writers CONVERGED on `value` as of 2026-07-08;
-      // this dual-read stays for pre-convergence rows keyed `normalized_value`
-      // (append-only history — no rewrite).
-      const email = str(p['normalized_value']) ?? str(p['value']);
-      if (email !== undefined) entry.email = email;
-    }
-    out.set(r.subject_id, entry);
-  }
-  return out;
-}
-
-function payloadObj(v: unknown): Record<string, unknown> {
-  return v !== null && typeof v === 'object' ? (v as Record<string, unknown>) : {};
-}
-
-function str(v: unknown): string | undefined {
-  if (typeof v !== 'string') return undefined;
-  const t = v.trim();
-  return t.length === 0 ? undefined : t;
-}
+// ---- keyset helpers ----------------------------------------------------------
 
 // Opaque keyset cursor = base64url("<created_at ISO>|<subject_id>").
 function encodeCursor(created_at: Date, id: string): string {

@@ -185,6 +185,12 @@ model TalentRecord {
   profile_field_state      TalentProfileFieldState[]
   // ATI-SEP-1 T8 — the TI Golden-subject link (at most one per record).
   intelligence_link        IntelligenceLink[]
+  // ATI-SEP-1 T10 WP2 — ATS-local within-tenant duplicate advisories (the record
+  // is side A or side B of the canonical pair) + the sourced arrivals this record
+  // was promoted from / approved as. Same-schema children, Cascade purge.
+  duplicate_advisories_a   TalentDuplicateAdvisory[]    @relation("DuplicateAdvisoryA")
+  duplicate_advisories_b   TalentDuplicateAdvisory[]    @relation("DuplicateAdvisoryB")
+  sourced_arrivals         TalentRecordSourcedArrival[]
 
   // Indexes — every query path leads with tenant_id; (last, first)
   // serves the dominant "search by name" recruiter query path.
@@ -514,5 +520,72 @@ model TalentIntelligenceSyncPolicy {
 
   @@id([tenant_id, field_key])
   @@map("talent_intelligence_sync_policy")
+  @@schema("talent_record")
+}
+
+// ATI-SEP-1 T10 WP2 (A2 F-1 / A3) — the ATS-local within-tenant duplicate
+// advisory. Detected from ATS data only (shared normalized email1 / cell phone
+// between two live records, or a sourced arrival sharing one with a live
+// record); a reviewer approves (re-home onto the survivor), dismisses, or
+// reverses an approval. Pair canonical order: talent_record_a_id <
+// talent_record_b_id. Exactly one of talent_record_b_id / sourced_talent_id is
+// set (DB CHECK). basis: EMAIL | PHONE | SOURCED_ARRIVAL. status: PENDING_REVIEW
+// | APPROVED | DISMISSED | REVERSED. merge_state carries the durable re-home
+// checkpoint (sweep steps + collision rows) so an approval is resumable and
+// reversible. Ids + kinds only — never a contact value.
+model TalentDuplicateAdvisory {
+  id                     String    @id @db.Uuid
+  tenant_id              String    @db.Uuid
+  talent_record_a_id     String    @db.Uuid
+  talent_record_b_id     String?   @db.Uuid
+  sourced_talent_id      String?   @db.Uuid
+  basis                  String
+  shared_kinds           String[]  @default([])
+  status                 String    @default("PENDING_REVIEW")
+  decided_by             String?
+  decided_at             DateTime? @db.Timestamptz
+  justification          String?
+  surviving_record_id    String?   @db.Uuid
+  superseded_record_id   String?   @db.Uuid
+  merge_state            Json?
+  merge_completed_at     DateTime? @db.Timestamptz
+  reversed_by            String?
+  reversed_at            DateTime? @db.Timestamptz
+  reversal_justification String?
+  created_at             DateTime  @default(now()) @db.Timestamptz
+  updated_at             DateTime  @default(now()) @updatedAt @db.Timestamptz
+
+  talent_record_a TalentRecord  @relation("DuplicateAdvisoryA", fields: [talent_record_a_id], references: [id], onDelete: Cascade)
+  talent_record_b TalentRecord? @relation("DuplicateAdvisoryB", fields: [talent_record_b_id], references: [id], onDelete: Cascade)
+
+  @@unique([tenant_id, talent_record_a_id, talent_record_b_id], map: "talent_duplicate_advisory_pair_key")
+  @@unique([tenant_id, talent_record_a_id, sourced_talent_id], map: "talent_duplicate_advisory_arrival_key")
+  @@index([tenant_id, status, created_at], map: "talent_duplicate_advisory_queue_idx")
+  @@index([tenant_id, sourced_talent_id], map: "talent_duplicate_advisory_sourced_idx")
+  @@index([talent_record_b_id], map: "talent_duplicate_advisory_b_idx")
+  @@map("talent_duplicate_advisory")
+  @@schema("talent_record")
+}
+
+// ATI-SEP-1 T10 WP2 — the sourced arrival -> TalentRecord link (replaces the
+// retired trust-subject ATS_TALENT_RECORD ref). One row per (tenant, arrival):
+// PROMOTED (written in the promotion create transaction) or ADVISORY_APPROVED (a
+// reviewer confirmed the arrival is an existing record's human). An arrival with
+// a link row is out of the sourcing pool. sourced_talent_id is a UUID-only
+// reference into sourced_talent (no FK).
+model TalentRecordSourcedArrival {
+  tenant_id         String   @db.Uuid
+  sourced_talent_id String   @db.Uuid
+  talent_record_id  String   @db.Uuid
+  link_kind         String
+  advisory_id       String?  @db.Uuid
+  linked_by         String?
+  created_at        DateTime @default(now()) @db.Timestamptz
+
+  talent_record TalentRecord @relation(fields: [talent_record_id], references: [id], onDelete: Cascade)
+
+  @@id([tenant_id, sourced_talent_id])
+  @@index([tenant_id, talent_record_id], map: "talent_record_sourced_arrival_record_idx")
+  @@map("talent_record_sourced_arrival")
   @@schema("talent_record")
 }

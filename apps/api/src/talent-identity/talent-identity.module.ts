@@ -1,19 +1,19 @@
 import { Module } from '@nestjs/common';
-import { TalentTrustModule } from '@aramo/talent-trust';
+import { EntitlementModule } from '@aramo/entitlement';
+import { IntelligenceIntegrationModule } from '@aramo/intelligence-integration';
 
 import { DossierService } from './dossier.service.js';
+import { IntelligenceAccess } from './intelligence-access.js';
 
 // TalentIdentityModule — a thin composition module that provides + EXPORTS the
-// DossierService so other apps/api read-composition modules (Talent 360) can
-// reuse the authoritative trust dossier without re-deriving identity outcomes.
-// It imports TalentTrustModule for DossierService's deps (TalentTrustService +
-// TalentTrustRepository, both exported there). This does NOT change AppModule's
-// own DossierService wiring (which serves DossierController in its own module
-// scope) — the two module scopes each hold a stateless instance, so there is no
-// cross-module bare-class lookup and no double-provide within a single scope.
+// DossierService (and the fail-soft IntelligenceAccess gate it reads through) so
+// the apps/api read compositions (Talent 360, the TIP read seam) and the
+// recruiter trust surfaces share ONE presentation of Talent Intelligence's view.
+// ATI-SEP-1 T10 WP3b: the dossier reads TI over HTTP (IntelligenceIntegrationModule
+// → IntelligenceClient); the legacy trust-ledger dependency is gone.
 @Module({
-  imports: [TalentTrustModule],
-  providers: [DossierService],
-  exports: [DossierService],
+  imports: [EntitlementModule, IntelligenceIntegrationModule],
+  providers: [IntelligenceAccess, DossierService],
+  exports: [IntelligenceAccess, DossierService],
 })
 export class TalentIdentityModule {}

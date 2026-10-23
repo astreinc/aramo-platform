@@ -13,7 +13,6 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import { TalentTrustService, TalentTrustRepository } from '@aramo/talent-trust';
 
 import { AppModule } from '../app.module.js';
-import { SourcingService } from '../talent-identity/sourcing.service.js';
 
 const ROOT = resolve(__dirname, '../../../..');
 const M = (p: string): string => resolve(ROOT, p);
@@ -38,7 +37,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     const savedEnv: Partial<Record<string, string | undefined>> = {};
     let trust: TalentTrustService;
     let repo: TalentTrustRepository;
-    let sourcing: SourcingService;
 
     async function seedEmployment(args: {
       talentId: string;
@@ -94,7 +92,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await module.init();
       trust = module.get(TalentTrustService);
       repo = module.get(TalentTrustRepository);
-      sourcing = module.get(SourcingService);
     }, 300_000);
 
     afterAll(async () => {
@@ -197,38 +194,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(forQ[0]!.merged_subject_id).toBe(Q);
     });
 
-    // ---- (d) one story: bands and evidence from the SAME cluster-union ----
-
-    it('(d) getSubjectDetail evidence goes cluster-union (pre-fix single-subject divergence, now fixed)', async () => {
-      const tA = uuidv7();
-      const tB = uuidv7();
-      const e1 = await seedEmployment({ talentId: tA, employer: 'acme', start: '2020-01-01', end: '2020-12-31', srcId: 'a1' });
-      const e2 = await seedEmployment({ talentId: tB, employer: 'globex', start: '2018-01-01', end: '2019-12-31', srcId: 'b1' });
-      const sidA = await subjectIdFor(tA);
-      const sidB = await subjectIdFor(tB);
-      await mergeAndComplete(sidA, sidB);
-      await trust.recomputeTrustState(sidA, TENANT); // bands now over the union [A,B]
-
-      // Pre-fix path (single-subject) sees only A's evidence — the divergence.
-      const singleSubject = await repo.listEvidenceBySubject(sidA);
-      expect(singleSubject.map((e) => e.id)).toEqual([e1]);
-
-      // The fixed detail read derives evidence from the SAME union the bands did.
-      const detail = await sourcing.getSubjectDetail(TENANT, sidA);
-      expect(detail.evidence.map((e) => e.id).sort()).toEqual([e1, e2].sort());
-    });
-
-    // ---- (e) the strip: strength off the sourcing wire ----
-
-    it('(e) getSubjectDetail evidence rows carry no strength (stripped)', async () => {
-      const t = uuidv7();
-      await seedEmployment({ talentId: t, employer: 'acme', start: '2020-01-01', end: '2020-12-31', srcId: 'a1' });
-      const sid = await subjectIdFor(t);
-      const detail = await sourcing.getSubjectDetail(TENANT, sid);
-      expect(detail.evidence.length).toBeGreaterThan(0);
-      for (const row of detail.evidence) {
-        expect('strength' in row).toBe(false);
-      }
-    });
+    // (d)/(e) — the sourcing drill-in no longer reads the trust ledger
+    // (ATI-SEP-1 T10 WP2: sourcing runs on sourced_talent); its coverage moved to
+    // ati-sep-1-sourcing-ats-local.integration.spec.ts.
   },
 );

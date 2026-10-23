@@ -5,9 +5,8 @@ import {
   createAramoLogger,
   RedisConnectionConfig,
 } from '@aramo/common';
-import { IdentityIndexModule } from '@aramo/identity-index';
 import { IngestionModule } from '@aramo/ingestion';
-import { TalentTrustModule } from '@aramo/talent-trust';
+import { SourcedTalentModule } from '@aramo/sourced-talent';
 
 import { CanonicalizationOutboxRepository } from './canonicalization-outbox.repository.js';
 import { CanonicalizationRepository } from './canonicalization.repository.js';
@@ -19,10 +18,9 @@ import { PrismaService } from './prisma/prisma.service.js';
 // T2-2a / T2-3 — libs/canonicalization module.
 //
 //   - Consumer-direction leaf; imports IngestionModule (the follower still
-//     reads/writes the ingestion RawPayloadReference), IdentityIndexModule
-//     (4b cluster) + TalentTrustModule (L2 resolution seam). Fix-Slice-Final-
-//     Drop removed the TalentModule + TalentEvidenceModule edges; canonicalize
-//     no longer follows the talent / talent_evidence schemas.
+//     reads/writes the ingestion RawPayloadReference) + SourcedTalentModule
+//     (ATI-SEP-1 T10 WP2 — the ATS-local arrival store each payload resolves
+//     to). The retired trust-subject + identity-index edges are gone.
 //
 //   - T2-2a: service-only (no controller). The PR-10 precedent.
 //
@@ -42,11 +40,8 @@ import { PrismaService } from './prisma/prisma.service.js';
 @Module({
   imports: [
     CommonModule,
-    IdentityIndexModule,
-    // Fix-Slice-2 — the within-tenant L2 resolution seam (TR-2a). ats→cip
-    // (canonicalization is scope:ats; talent-trust scope:cip), lint-green —
-    // mirrors the IdentityIndexModule edge. Provides TalentTrustService.
-    TalentTrustModule,
+    // ATI-SEP-1 T10 WP2 — scope:ats → scope:ats. Provides SourcedTalentRepository.
+    SourcedTalentModule,
     IngestionModule,
     BullModule.forRootAsync({
       extraOptions: { manualRegistration: true },

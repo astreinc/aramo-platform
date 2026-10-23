@@ -62,7 +62,6 @@ function makeController(extra: Record<string, unknown> = {}) {
   const ctl = new TalentRecordController(
     repo as never,
     {} as never,
-    {} as never,
     resumeParser as never,
     talentExtraction as never,
     orchestrator,

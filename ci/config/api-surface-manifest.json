@@ -78,13 +78,11 @@
     "apps/api/src/talent-journey-audit/talent-journey-audit.controller.ts": "AP",
     "apps/api/src/talent-identity/advisory-resolution.controller.ts": "AP",
     "apps/api/src/talent-identity/contradiction-resolution.controller.ts": "AP",
-    "apps/api/src/talent-identity/dispute-resolution.controller.ts": "AP",
     "apps/api/src/talent-identity/dossier.controller.ts": "AP",
     "apps/api/src/talent-identity/email-verification.controller.ts": "AP",
     "apps/api/src/talent-identity/portal-dispute-disposition.controller.ts": "AP",
     "apps/api/src/talent-identity/portal-notice.controller.ts": "PZ",
     "apps/api/src/talent-identity/portal-rights.controller.ts": "AP",
-    "apps/api/src/talent-identity/reference-attestation.controller.ts": "AP",
     "apps/api/src/talent-identity/sourcing.controller.ts": "AP",
     "apps/api/src/talent-identity/verification-proposal.controller.ts": "AP",
     "apps/api/src/talent-journey/talent-journey.controller.ts": "AP",
@@ -641,22 +639,6 @@
     },
     {
       "method": "DELETE",
-      "path": "/v1/talent-records/*/link"
-    },
-    {
-      "method": "GET",
-      "path": "/v1/talent-records/*/link"
-    },
-    {
-      "method": "POST",
-      "path": "/v1/talent-records/*/link"
-    },
-    {
-      "method": "POST",
-      "path": "/v1/talent-records/*/reference-attestations"
-    },
-    {
-      "method": "DELETE",
       "path": "/v1/talent-records/*"
     },
     {
@@ -706,14 +688,6 @@
     {
       "method": "POST",
       "path": "/v1/talent/identity/contradictions/*/resolve"
-    },
-    {
-      "method": "POST",
-      "path": "/v1/talent/identity/disputes/*/raise"
-    },
-    {
-      "method": "POST",
-      "path": "/v1/talent/identity/disputes/*/resolve"
     },
     {
       "method": "POST",

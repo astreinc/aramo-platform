@@ -24,9 +24,10 @@ import { applyTrustProxy } from '../trust-proxy.js';
 // applyTrustProxy(app) is called on the test app — the SAME helper main.ts boots
 // (Ruling 2) — so this exercises the deploy path, not a test-harness reimpl.
 //
-// The confirm handler runs budget.allow(ip) BEFORE token extraction; a no-token
-// body ({}) is refused with 404 AFTER the key is captured and BEFORE any DB query,
-// so this spec needs no seed.
+// The confirm handler runs budget.allow(ip) BEFORE body extraction; an empty
+// body ({}) is refused (400, ATI-SEP-1 T10 WP3b: {verification_id, code}) AFTER the
+// key is captured and BEFORE any Talent Intelligence call, so this spec needs no
+// seed and no TI.
 
 const captured: string[] = [];
 const recordingBudget = {

@@ -15,11 +15,6 @@ import request from 'supertest';
 import { IngestionModule } from '@aramo/ingestion';
 import { SourcedTalentModule, SourcedTalentRepository } from '@aramo/sourced-talent';
 import { CanonicalizationModule, CanonicalizationService } from '@aramo/canonicalization';
-import {
-  TalentTrustModule,
-  TalentTrustService,
-  TalentTrustRepository,
-} from '@aramo/talent-trust';
 import { TalentRecordModule } from '@aramo/talent-record';
 import { ConsentModule } from '@aramo/consent';
 import { ObjectStorageService } from '@aramo/object-storage';
@@ -35,14 +30,14 @@ import {
 } from '../webhooks/indeed-apply.constants.js';
 import { computeIndeedSignature } from '../webhooks/indeed-signature.js';
 import { PromotionService } from '../talent-identity/promotion.service.js';
+import { DuplicateDetectionService } from '../talent-identity/duplicate-detection.service.js';
 
 // SRC-1 PR-3 — the full SRC-1 exit criterion end-to-end against real Postgres 17.
 // Reuses the PR-2 harness (S3 + tenant fakes, ruled acceptable in the PR-2 Gate-6;
-// real Postgres for the spine). The Cold-Ingest Extraction poll (which writes the
-// declared identity evidence for EVERY sourced arrival, channel-agnostic) is out
-// of SRC-1 scope; the spec seeds that evidence via TalentTrustService.recordEvidence
-// to represent it — the promotion PATH is what PR-3 verifies carries the correct
-// Indeed consent basis, not extraction.
+// real Postgres for the spine). ATI-SEP-1 T10 WP2: the spine runs on ATS data
+// only — canonicalize resolves the payload to the webhook's own sourced_talent
+// arrival, and promotion mints the record from the arrival's applicant material
+// (no trust ledger, no extraction proxy).
 
 const ROOT = resolve(__dirname, '../../../..');
 const SECRET = 'src1-e2e-secret';
@@ -60,8 +55,6 @@ function migrationsFor(lib: string): string[] {
 const MIGRATIONS = [
   ...migrationsFor('ingestion'),
   ...migrationsFor('canonicalization'),
-  ...migrationsFor('identity-index'),
-  ...migrationsFor('talent-trust'),
   ...migrationsFor('sourced-talent'),
   ...migrationsFor('talent-record'),
   ...migrationsFor('consent'),
@@ -99,8 +92,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let app: INestApplication;
     let db: Client;
     let canonicalization: CanonicalizationService;
-    let trust: TalentTrustService;
-    let trustRepo: TalentTrustRepository;
     let arrivals: SourcedTalentRepository;
     let promotion: PromotionService;
     const savedEnv: Record<string, string | undefined> = {};
@@ -159,7 +150,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           IngestionModule,
           SourcedTalentModule,
           CanonicalizationModule,
-          TalentTrustModule,
           TalentRecordModule,
           ConsentModule,
         ],
@@ -167,6 +157,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         providers: [
           IndeedApplyWebhookService,
           PromotionService,
+          DuplicateDetectionService,
           { provide: ObjectStorageService, useValue: fakeStorage },
           { provide: TenantService, useValue: fakeTenants },
         ],
@@ -182,8 +173,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await app.init();
 
       canonicalization = moduleRef.get(CanonicalizationService);
-      trust = moduleRef.get(TalentTrustService);
-      trustRepo = moduleRef.get(TalentTrustRepository);
       arrivals = moduleRef.get(SourcedTalentRepository);
       promotion = moduleRef.get(PromotionService);
 
@@ -240,58 +229,35 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(staging.rows[0].normalized_email).toBe('ada@example.com');
       expect(staging.rows[0].provenance.ingestion_payload_id).toBe(payloadId);
 
-      // ---- 4. canonicalize the document arrival → SOURCED_TALENT subject ----
-      await canonicalization.canonicalize({
+      // ---- 4. canonicalize the document arrival → the webhook's own arrival ----
+      const arrivalRow = await arrivals.findArrival(TENANT_ID, 'INDEED', APPLY_ID);
+      expect(arrivalRow).not.toBeNull();
+      const canon = await canonicalization.canonicalize({
         payload_id: payloadId,
         source_channel: 'indeed',
         authContext: { tenant_id: TENANT_ID },
         requestId: 'e2e-canon',
       });
-      const ref = await db.query(
-        `SELECT subject_id FROM "talent_trust"."ResolutionSubjectRef"
-          WHERE tenant_id=$1 AND ref_type='SOURCED_TALENT' AND ref_id=$2`,
-        [TENANT_ID, payloadId],
+      expect(canon.sourced_talent_id).toBe(arrivalRow!.id);
+      const linked = await db.query(
+        `SELECT sourced_talent_id, resolved_subject_id, resolved_cluster_id
+           FROM "ingestion"."RawPayloadReference" WHERE id=$1`,
+        [payloadId],
       );
-      expect(ref.rows.length).toBe(1);
-      const subjectId = ref.rows[0].subject_id as string;
+      expect(linked.rows[0].sourced_talent_id).toBe(arrivalRow!.id);
+      // The retired trust / identity-index ids are no longer written.
+      expect(linked.rows[0].resolved_subject_id).toBeNull();
+      expect(linked.rows[0].resolved_cluster_id).toBeNull();
+      // Exactly one arrival for the application (no canonicalize duplicate).
+      const count = await db.query(
+        `SELECT count(*)::int AS n FROM "sourced_talent"."SourcedTalent" WHERE tenant_id=$1`,
+        [TENANT_ID],
+      );
+      expect(count.rows[0].n).toBe(1);
 
-      // ---- 5. the subject appears in the sourcing-pool QUERY (repo-level) ----
-      const pool = await trustRepo.listSourcedPool({ tenant_id: TENANT_ID, limit: 50 });
-      expect(pool.some((r) => r.subject_id === subjectId)).toBe(true);
-
-      // ---- 6. seed declared identity evidence (extraction proxy — channel-agnostic) ----
-      //   The TalentRecord Admission Invariant requires a primary email + cell
-      //   phone on the subject's identity evidence, so the extraction proxy
-      //   seeds all three anchors (name + email + phone) the signed application
-      //   carried — the governed promotion gate then mints rather than defers.
-      const recordAnchor = (
-        assertion_type: string,
-        assertion_payload: Record<string, unknown>,
-      ) =>
-        trust.recordEvidence({
-          subjectRef: {
-            tenant_id: TENANT_ID,
-            ref_type: 'SOURCED_TALENT',
-            ref_id: payloadId,
-            link_source: 'src1-pr3-extraction-proxy',
-          },
-          dimension: 'IDENTITY',
-          assertion_type,
-          assertion_payload,
-          source_class: 'THIRD_PARTY_UNVERIFIED',
-          method: 'DOCUMENT',
-          portability_class: 'TENANT_ONLY',
-          decay_profile: 'DURABLE',
-          created_by: 'src1-pr3-test',
-        });
-      await recordAnchor('FULL_NAME', { first_name: 'Ada', last_name: 'Lovelace' });
-      // canonical claim shape for EMAIL/PHONE is { value } (the normalized identifier).
-      await recordAnchor('EMAIL', { value: 'ada@example.com' });
-      await recordAnchor('PHONE', { value: '4155550100' });
-
-      // ---- 7. promoteSubject → TalentRecord ----
-      const outcome = await promotion.promoteSubject(
-        { tenant_id: TENANT_ID, ref_type: 'SOURCED_TALENT', ref_id: payloadId },
+      // ---- 5. promoteArrival → TalentRecord (name/contact from the arrival) ----
+      const outcome = await promotion.promoteArrival(
+        { tenant_id: TENANT_ID, sourced_talent_id: arrivalRow!.id },
         { requestId: 'e2e-promote' },
       );
       expect(outcome.status).toBe('promoted');
@@ -304,7 +270,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(record.rows.length).toBe(1);
       expect(record.rows[0].first_name).toBe('Ada');
 
-      // ---- 8. consent grant carries source_basis { channel: indeed, class } ----
+      // ---- 6. consent grant carries source_basis { channel: indeed, class } ----
       const grants = await db.query(
         `SELECT metadata FROM "consent"."TalentConsentEvent"
           WHERE tenant_id=$1 AND talent_record_id=$2 AND action='granted'`,
@@ -318,7 +284,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(withBasis.metadata.source_basis.channel).toBe('indeed');
       expect(withBasis.metadata.source_basis.source_class).toBe('THIRD_PARTY_UNVERIFIED');
 
-      // ---- 9. dedup memory live: findArrival returns the staging row ----
+      // ---- 7. dedup memory live: findArrival returns the staging row ----
       const found = await arrivals.findArrival(TENANT_ID, 'INDEED', APPLY_ID);
       expect(found).not.toBeNull();
       expect(found?.normalized_email).toBe('ada@example.com');

@@ -39,6 +39,12 @@ function harness(reply: unknown = { ok: true }, status = 200) {
 const tuple = (r: { tenant_id: string; talent_id: string }) => ({ source_system_id: 'ARAMO_ATS', source_tenant_id: r.tenant_id, external_talent_id: r.talent_id });
 
 describe('IntelligenceClient — T10 evidence lifecycle', () => {
+  it('T6 evidence read (WP3b dossier evidence)', async () => {
+    const h = harness({ assertions: [] });
+    await h.client.readEvidence(REF_B);
+    expect(h.last()).toEqual({ method: 'GET', url: `${BASE}/v1/references/ARAMO_ATS/ten-b/tal%202/evidence`, body: undefined });
+  });
+
   it('M-1 / M-6 verification status', async () => {
     const h = harness({ items: [] });
     await h.client.listReferenceVerifications(REF_A);

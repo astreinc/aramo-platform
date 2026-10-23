@@ -10,7 +10,8 @@ import {
   talentRequisition360Path,
   type Tr360NavState,
 } from '../requisitions/talent-requisition-360/route';
-import { getDossier, type DossierHead } from '../talent/dossier-api';
+import { ContradictionResolveDialog, type ContradictionTarget } from '../talent/components/ContradictionResolveDialog';
+import { getDossier, intelligenceStatusNote, type DossierHead } from '../talent/dossier-api';
 import { EditResumePanel } from '../talent/TalentEditView';
 import { updateErrorMessage } from '../talent/error-messages';
 import { buildPatchBody, stateFromTalent, type IntakeState } from '../talent/intake-fields';
@@ -804,8 +805,12 @@ export function TrustSection({
 }): JSX.Element {
   const [head, setHead] = useState<DossierHead | null>(null);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [resolveTarget, setResolveTarget] = useState<ContradictionTarget | null>(null);
+  const [reload, setReload] = useState(0);
   useEffect(() => {
     let live = true;
+    // Talent Intelligence is enrichment: a failed read leaves the section on the
+    // record-derived claims (never an error banner).
     getDossier(talentId)
       .then((d) => {
         if (live) setHead(d);
@@ -814,7 +819,7 @@ export function TrustSection({
     return () => {
       live = false;
     };
-  }, [talentId]);
+  }, [talentId, reload]);
 
   const id = model.identity;
   const claims: TrustClaim[] = [];
@@ -856,10 +861,27 @@ export function TrustSection({
     for (const d of dims) {
       const band = head.dimensions?.[d.key]?.band;
       if (band !== undefined && band !== null) {
-        claims.push({ claim: d.label, evidence: 'From the evidence ledger', state: bandLabel(String(band)), tone: bandTone(String(band)) });
+        claims.push({ claim: d.label, evidence: 'From Talent Intelligence', state: bandLabel(String(band)), tone: bandTone(String(band)) });
       }
     }
+    for (const c of head.contradictions) {
+      claims.push({
+        claim: `Conflicting evidence · ${labelize(c.assertion_type)}`,
+        evidence: c.contributed_by === 'REQUESTING_TENANT' ? 'Recorded by your team' : 'From another source',
+        state: 'Review needed',
+        tone: 'amber',
+        ...(canResolveIdentity
+          ? {
+              action: {
+                label: 'Resolve',
+                run: () => setResolveTarget({ assertion_id: c.assertion_id, assertion_type: c.assertion_type, talent_record_id: talentId }),
+              },
+            }
+          : {}),
+      });
+    }
   }
+  const tiNote = head !== null ? intelligenceStatusNote(head.intelligence_status) : null;
 
   const c = model.header.contactability;
   const lc = model.relationship_strip.last_contact;
@@ -869,6 +891,18 @@ export function TrustSection({
       <div className="t360-card t360-card--sect t360-col--wide">
         <div className="t360-sect__title">Talent Trust</div>
         <div className="t360-caption t360-caption--trust">Each claim shows what supports it. No scores.</div>
+        {tiNote !== null ? (
+          <div className="t360-empty" data-testid="t360-trust-ti-status">
+            {tiNote}
+          </div>
+        ) : null}
+        {head !== null && head.ledger_established && head.statements.length > 0 ? (
+          <ul className="t360-caption" data-testid="t360-trust-statements">
+            {head.statements.map((st) => (
+              <li key={st}>{st}</li>
+            ))}
+          </ul>
+        ) : null}
         {claims.length === 0 ? <div className="t360-empty">No trust evidence recorded for this record yet.</div> : null}
         {claims.map((t) => (
           <div key={t.claim} className="t360-claim">
@@ -931,6 +965,9 @@ export function TrustSection({
         >
           <ConsentHistoryPanel talentId={talentId} showTitle={false} />
         </Dialog>
+      ) : null}
+      {resolveTarget !== null ? (
+        <ContradictionResolveDialog item={resolveTarget} onClose={() => setResolveTarget(null)} onResolved={() => setReload((n) => n + 1)} />
       ) : null}
     </div>
   );

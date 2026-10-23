@@ -1,27 +1,23 @@
-// FE mirror of the B-api sourcing shapes (apps/api/src/talent-identity/
+// FE mirror of the sourcing shapes (apps/api/src/talent-identity/
 // sourcing.service.ts + advisory-resolution.controller.ts). Hand-mirrored, not
-// imported: ats-web is untagged and must not import the scope:cip talent-trust
-// lib nor the api app (the I15 wall). Typed to what the wire delivers — Dates
-// arrive as ISO strings over JSON.
+// imported: ats-web is untagged and must not import the api app. Typed to what
+// the wire delivers — Dates arrive as ISO strings over JSON.
+//
+// ATI-SEP-1 T10 WP2 — sourcing runs on ATS data only (sourced arrivals + ATS
+// duplicate advisories). The trust fields (bands, contradiction counts, trust
+// statements, evidence ledger) are gone from the wire. `subject_id` now carries
+// the sourced arrival id (the drill-in key + the promote ref_id).
 
-// The 4 per-dimension trust bands. Each is a PresentationBand string or null
-// (null = no TrustState / no evidence yet). Rendered as BandPills (R10 — labels).
-export interface TrustBands {
-  readonly identity: string | null;
-  readonly claims: string | null;
-  readonly continuity: string | null;
-  readonly eligibility: string | null;
-}
-
-// One un-promoted pool row. Lean by design (Lead ruling): the SOURCED_TALENT
-// ref_id the promote POSTs need is NOT here — it is read from SubjectDetail.refs
-// on drill-in, so promotion is detail-gated ("look before you promote").
+// One un-promoted pool row (a sourced arrival not yet linked to a talent record).
 export interface PoolItem {
   readonly subject_id: string;
   readonly display_name: string | null;
   readonly email: string | null;
-  readonly trust_bands: TrustBands;
-  readonly open_contradiction_count: number;
+  readonly phone: string | null;
+  readonly source_channel: string;
+  readonly arrived_at: string; // ISO
+  // Pending duplicate advisories naming this arrival (review before promoting).
+  readonly open_advisory_count: number;
 }
 
 export interface PoolPage {
@@ -30,37 +26,23 @@ export interface PoolPage {
   readonly next_cursor: string | null;
 }
 
-// One evidence-ledger row. NOTE (R10): `strength` is NO LONGER on the wire —
-// TR-14 B1 stripped the ungated ordinal server-side. This type never carried it
-// (a derived number must never render); the omission now matches the response.
-export interface EvidenceRow {
-  readonly id: string;
-  readonly dimension: string;
-  readonly assertion_type: string;
-  readonly assertion_payload: unknown;
-  readonly source_class: string;
-  readonly method: string;
-  readonly current_status: string;
-  readonly collected_at: string;
-  readonly created_at: string;
-}
-
-// One identity ref on the subject (SOURCED_TALENT before promotion; the promote
-// POSTs read the SOURCED_TALENT ref_id from here).
+// One ref on the arrival — SOURCED_TALENT (the promote POSTs read its ref_id)
+// and, when recorded, the ingestion payload it was landed from.
 export interface SubjectRefRow {
   readonly ref_type: string;
   readonly ref_id: string;
   readonly link_source: string;
 }
 
-// A pending same-human MERGE advisory surfaced on the subject detail. Resolved
-// via the existing /v1/talent/identity/advisories POSTs (identity:resolve).
+// A pending duplicate advisory on the arrival: it may be an existing talent
+// record's person. Resolved via the /v1/talent/identity/advisories POSTs
+// (identity:resolve).
 export interface SubjectAdvisory {
   readonly id: string;
-  readonly subject_a_id: string;
-  readonly subject_b_id: string;
-  readonly advise_band: string;
-  readonly has_contradiction: boolean;
+  readonly talent_record_id: string;
+  readonly talent_record_name: string | null;
+  readonly basis: string;
+  readonly shared_kinds: readonly string[];
   readonly status: string;
   readonly created_at: string;
 }
@@ -69,25 +51,26 @@ export interface SubjectDetail {
   readonly subject_id: string;
   readonly display_name: string | null;
   readonly email: string | null;
-  readonly trust_bands: TrustBands | null;
-  readonly open_contradiction_count: number;
-  // TR-5 B2 — named-thinness assessment statements (strings only, no numbers).
-  readonly trust_statements: readonly string[];
-  readonly evidence: readonly EvidenceRow[];
+  readonly phone: string | null;
+  readonly headline: string | null;
+  readonly profile_url: string | null;
+  readonly source_channel: string;
+  readonly arrived_at: string;
   readonly refs: readonly SubjectRefRow[];
   readonly open_identity_advisories: readonly SubjectAdvisory[];
 }
 
 // The promote-outcome status union (PromotionOutcome.status). promoted /
 // already_promoted are success; every deferred_* is an EXPECTED outcome that
-// renders as guidance, never an error.
+// renders as guidance, never an error. A tenant duplicate is a 409 (ApiError).
 export type SourcingStatus =
   | 'promoted'
   | 'already_promoted'
   | 'deferred_unresolved_identity'
   | 'deferred_no_name'
   | 'deferred_no_basis'
-  | 'deferred_unknown_subject';
+  | 'deferred_unknown_subject'
+  | 'deferred_incomplete_contact';
 
 export interface SourcingResult {
   readonly status: SourcingStatus;
@@ -96,15 +79,14 @@ export interface SourcingResult {
   readonly bench_id?: string;
 }
 
-// The ref_type vocabulary the trigger POSTs accept (mirrors the api DTO). The
-// promote reads the SOURCED_TALENT ref off the detail.
-export type SourcingRefType = 'SOURCED_TALENT' | 'PERSON_CLUSTER' | 'ATS_TALENT_RECORD';
+// The ref_type vocabulary the trigger POSTs accept (mirrors the api DTO).
+export type SourcingRefType = 'SOURCED_TALENT';
 
 // The advisory as returned by the resolution POSTs (AdvisoryView). Only the
-// fields the drawer needs after a resolve are typed; the surface reads status.
+// fields the surfaces read after a resolve are typed.
 export interface AdvisoryView {
   readonly id: string;
   readonly status: string;
-  readonly has_contradiction: boolean;
-  readonly resolution_action: string | null;
+  readonly basis: string;
+  readonly surviving_record_id: string | null;
 }

@@ -7,12 +7,10 @@ import { describe, expect, it } from 'vitest';
 // scans). Per Directive §4 proofs 5-7 and the standing
 // Charter-R10/R12-clean enforcement.
 //
-//   Proof 5 — RE-HOMED at Fix-Slice-2 — within-tenant resolution lives on L2.
-//             The retired husk resolver + mint + overlay are GONE from
-//             canonicalize; within-tenant resolution now routes to the built
-//             TR-2a-1 seam (talentTrust.recordSourcedArrival, which composes
-//             the verified-email SubjectAnchor lookup / resolveOrCreateSubject).
-//             resolution_method is still computed (verified_email_match |
+//   Proof 5 — RE-HOMED at ATI-SEP-1 T10 WP2 — each arrival resolves to an
+//             ATS-local sourced_talent.SourcedTalent row (SourcedTalentRepository);
+//             the retired trust-subject + identity-index seams are gone.
+//             resolution_method is still computed (confirmed_anchor_match |
 //             new_identity). No standalone named resolver on the lib surface
 //             (findByVerifiedEmail / resolveIdentity / resolveTalent forbidden).
 //   Proof 6 — INVERTED at Fix-Slice-2 — canonicalize mints ZERO legacy person-entity rows.
@@ -23,8 +21,8 @@ import { describe, expect, it } from 'vitest';
 //             platform-wide zero assertion.
 //   Proof 7 — R10/R12: the canonicalize source carries no tier/score/rank/match
 //             output vocabulary; it writes NO talent_evidence husk rows (contact
-//             evidence attaches on L2 via the seam); the outbox payload is
-//             subject-keyed (no husk talent_id).
+//             evidence is not written here); the outbox payload is
+//             arrival-keyed (sourced_talent_id; no husk talent_id).
 
 const ROOT = resolve(__dirname, '../../../..');
 const LIB_SRC = resolve(ROOT, 'libs/canonicalization/src/lib');
@@ -100,36 +98,31 @@ describe('Fix-Slice-2 — Proof 5 (re-homed): within-tenant resolution lives on 
     expect(code).not.toMatch(/talentTenantOverlay\.create/);
   });
 
-  it('canonicalize routes within-tenant resolution to the built L2 seam (talentTrust.recordSourcedArrival)', () => {
+  it('canonicalize resolves each arrival to an ATS-local SourcedTalent (ATI-SEP-1 T10 WP2)', () => {
     const repo = readFileSync(
       resolve(LIB_SRC, 'canonicalization.repository.ts'),
       'utf8',
     );
     const code = stripComments(repo);
-    // Positive evidence that within-tenant resolution now lives on L2: the
-    // arrival's subject is resolved via the talent-trust seam (which composes
-    // the verified-email SubjectAnchor lookup / resolveOrCreateSubject).
-    expect(code).toMatch(/this\.talentTrust\.recordSourcedArrival/);
-    // The result feeds resolved_subject_id + a subject-keyed outbox.
-    expect(code).toMatch(/resolved_subject_id:/);
-  });
-
-  it('resolution_method is computed (confirmed_anchor_match | new_identity) — the DDR-2 decision procedure on L2', () => {
-    const service = readFileSync(
-      resolve(ROOT, 'libs/talent-trust/src/lib/talent-trust.service.ts'),
-      'utf8',
-    );
-    const code = stripComments(service);
-    // TR-2a-B2 (DDR-2 §2/§6): the R1.3 auto-resolve is retired. The resolver
-    // looks up email SubjectAnchors and runs the decision table — a single
-    // confirming ACTIVE target passing the NAME guard → confirmed_anchor_match;
-    // everything else → new_identity. verified_email_match is no longer WRITTEN
-    // (read-widened historical only).
-    expect(code).toMatch(/findAnchorsByValue/);
+    expect(code).toMatch(/this\.sourced\.recordArrival/);
+    expect(code).toMatch(/this\.sourced\.findByIngestionPayloadId/);
+    // The decision lands on the new anchor; the retired ids are never written.
+    expect(code).toMatch(/sourced_talent_id: arrival\.id/);
+    expect(code).not.toMatch(/resolved_subject_id:/);
+    expect(code).not.toMatch(/resolved_cluster_id:/);
     expect(code).toMatch(/confirmed_anchor_match/);
     expect(code).toMatch(/new_identity/);
-    // The retired auto-resolve literal is not a WRITE target anymore.
-    expect(code).not.toMatch(/resolution_method = 'verified_email_match'/);
+  });
+
+  it('the canonicalization lib imports none of the retired trust / identity-index libs', () => {
+    const retired = ['talent-trust', 'identity-index', 'platform-trust'].map((n) => `@aramo/${n}`);
+    for (const [file, src] of readAllSrc()) {
+      for (const spec of retired) {
+        expect(src.includes(`'${spec}'`), `${file} imports ${spec}`).toBe(false);
+      }
+    }
+    const tsconfig = readFileSync(resolve(ROOT, 'libs/canonicalization/tsconfig.lib.json'), 'utf8');
+    for (const spec of retired) expect(tsconfig.includes(`"${spec}"`)).toBe(false);
   });
 
   it('NO standalone named resolver method on the canonicalize lib surface (findByVerifiedEmail / resolveIdentity / resolveTalent)', () => {
@@ -226,7 +219,7 @@ describe('T2-2a — Proof 7: R10/R12 boundary', () => {
     expect(hits).toEqual([]);
   });
 
-  it('R12 / Fix-Slice-2: canonicalize writes NO talent_evidence husk rows — contact evidence routes to L2', () => {
+  it('R12: canonicalize writes NO talent_evidence husk rows', () => {
     const repo = readFileSync(
       resolve(LIB_SRC, 'canonicalization.repository.ts'),
       'utf8',
@@ -242,11 +235,9 @@ describe('T2-2a — Proof 7: R10/R12 boundary', () => {
     expect(code).not.toMatch(/talentWorkAuthorization\.create/);
     expect(code).not.toMatch(/talentDocument\.create/);
     expect(code).not.toMatch(/talentDerivedSnapshot\.create/);
-    // Positive: contact evidence is now an L2 concern (the seam).
-    expect(code).toMatch(/this\.talentTrust\.recordSourcedArrival/);
   });
 
-  it('outbox event payload carries subject_id + method + payload_id ONLY (no husk talent_id, no tier/score/rank)', () => {
+  it('outbox event payload carries sourced_talent_id + method + payload_id ONLY (no husk talent_id, no tier/score/rank)', () => {
     const repo = readFileSync(
       resolve(LIB_SRC, 'canonicalization.repository.ts'),
       'utf8',
@@ -255,13 +246,14 @@ describe('T2-2a — Proof 7: R10/R12 boundary', () => {
     const m = repo.match(/event_payload:\s*\{[\s\S]+?\}\s+as\s+never/);
     expect(m).not.toBeNull();
     const payloadLiteral = stripComments(m![0]);
-    // The payload is now L2-subject-keyed (was the husk talent_id).
-    expect(payloadLiteral).toMatch(/subject_id:/);
+    // The payload is arrival-keyed (ATI-SEP-1 T10 WP2).
+    expect(payloadLiteral).toMatch(/sourced_talent_id:/);
+    expect(payloadLiteral).not.toMatch(/\bsubject_id:/);
     expect(payloadLiteral).toMatch(/tenant_id:/);
     expect(payloadLiteral).toMatch(/resolution_method:/);
     expect(payloadLiteral).toMatch(/payload_id:/);
     // The retired husk key is gone.
-    expect(payloadLiteral).not.toMatch(/talent_id:/);
+    expect(payloadLiteral).not.toMatch(/\btalent_id:/);
     // NO R10-forbidden keys present.
     for (const k of ['tier', 'score', 'rank', 'why_matched_sentence', 'strengths']) {
       const re = new RegExp(`\\b${k}\\b`);

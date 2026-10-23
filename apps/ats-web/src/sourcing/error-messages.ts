@@ -12,22 +12,25 @@ export function poolErrorMessage(error: unknown): string {
 export function subjectErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
     if (error.status === 404) {
-      return 'This subject is no longer in the sourcing pool.';
+      return 'This arrival is no longer in the sourcing pool.';
     }
     if (error.status === 403) {
-      return 'You do not have permission to view this subject.';
+      return 'You do not have permission to view this arrival.';
     }
   }
-  return 'This subject could not be loaded.';
+  return 'This arrival could not be loaded.';
 }
 
 export function promoteErrorMessage(error: unknown): string {
   if (error instanceof ApiError) {
+    if (error.status === 409) {
+      return 'A talent with this email or cell phone already exists. It has been flagged for identity review.';
+    }
     if (error.status === 403) {
       return 'You do not have permission to promote from the sourcing pool.';
     }
     if (error.status === 404) {
-      return 'This subject or requisition is no longer available.';
+      return 'This arrival or requisition is no longer available.';
     }
   }
   return 'That action could not be completed. Please try again.';
@@ -51,13 +54,15 @@ export function advisoryErrorMessage(error: unknown): string {
 export function deferralGuidance(status: SourcingStatus): string {
   switch (status) {
     case 'deferred_unresolved_identity':
-      return 'Resolve the pending identity flag below before promoting this subject.';
+      return 'Resolve the pending identity flag below before promoting this arrival.';
     case 'deferred_no_name':
-      return 'This subject has no name on record yet, so it can’t be promoted. Add name evidence first.';
+      return 'This arrival has no first and last name yet, so it can’t be promoted.';
+    case 'deferred_incomplete_contact':
+      return 'This arrival needs both an email and a cell phone before it can be promoted.';
     case 'deferred_no_basis':
-      return 'This subject has no sourced arrival to promote from.';
+      return 'This arrival has no recorded source to promote from.';
     case 'deferred_unknown_subject':
-      return 'This subject could not be found. Refresh the pool and try again.';
+      return 'This arrival could not be found. Refresh the pool and try again.';
     default:
       return 'This subject can’t be promoted yet.';
   }

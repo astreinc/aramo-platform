@@ -3,7 +3,6 @@ import type { AuthContextType } from '@aramo/auth';
 
 import { TalentRecordController } from '../lib/talent-record.controller.js';
 import type { TalentRecordRepository } from '../lib/talent-record.repository.js';
-import type { TalentLinkService } from '../lib/talent-link.service.js';
 import type { TalentRecordView } from '../lib/dto/talent-record.view.js';
 import type { UpdateTalentRecordRequestDto } from '../lib/dto/update-talent-record-request.dto.js';
 
@@ -61,7 +60,6 @@ function makeController(): {
   const repo = { update: vi.fn().mockResolvedValue(makeView()) };
   const ctl = new TalentRecordController(
     repo as unknown as TalentRecordRepository,
-    {} as unknown as TalentLinkService,
     // objectStorage / resumeParser / talentExtraction — unused by the scalar
     // contact-anchor PATCH path (no work_history in these bodies).
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

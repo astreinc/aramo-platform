@@ -3,13 +3,14 @@ import { describe, expect, it } from 'vitest';
 import { TalentDossierReadAdapter } from '../talent-intelligence/talent-dossier-read.adapter.js';
 import type { DossierService } from '../talent-identity/dossier.service.js';
 
-// TIP-E2E INC-2 §3.3 / §6 — the dossier adapter PRESENTS existing DossierService
-// outcomes (verifications + advisory pointers + ledger_established). It delegates;
-// it never recomputes trust or exposes internal machinery.
+// TIP-E2E INC-2 §3.3 / §6 → ATI-SEP-1 T10 WP3b — the dossier adapter PRESENTS
+// DossierService outcomes (now Talent Intelligence's view): the contact
+// verification outcomes + ledger_established. Advisory pointers are no longer a
+// trust read (ATS-local advisories, WP2) — always empty here.
 const TENANT = '11111111-1111-7111-8111-111111111111';
 const RECORD = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
 
-describe('TalentDossierReadAdapter (INC-2 §3.3)', () => {
+describe('TalentDossierReadAdapter (INC-2 §3.3, T10 WP3b)', () => {
   it('delegates to DossierService and maps the recruiter-facing outcome', async () => {
     const dossier = {
       getDossier: async (tenant_id: string, recordId: string) => {
@@ -17,43 +18,29 @@ describe('TalentDossierReadAdapter (INC-2 §3.3)', () => {
         expect(recordId).toBe(RECORD);
         return {
           ledger_established: true,
-          dimensions: { identity: null, claims: null, continuity: null, eligibility: null },
-          statements: [],
+          intelligence_status: 'ENABLED',
           verifications: [
-            { anchor_kind: 'EMAIL', status: 'CONFIRMED' },
-            { anchor_kind: 'PHONE', status: 'PENDING' },
+            { anchor_kind: 'EMAIL', status: 'VERIFIED', disputed: false },
+            { anchor_kind: 'PHONE', status: 'DECLARED', disputed: false },
           ],
-          advisory_pointers: ['adv-1'],
         };
       },
     } as unknown as DossierService;
-    const head = await new TalentDossierReadAdapter(dossier).getDossierHead({
-      tenant_id: TENANT,
-      talent_record_id: RECORD,
-    });
+    const head = await new TalentDossierReadAdapter(dossier).getDossierHead({ tenant_id: TENANT, talent_record_id: RECORD });
     expect(head.ledger_established).toBe(true);
     expect(head.talent_record_id).toBe(RECORD);
     expect(head.verifications).toEqual([
-      { anchor_kind: 'EMAIL', status: 'CONFIRMED' },
-      { anchor_kind: 'PHONE', status: 'PENDING' },
+      { anchor_kind: 'EMAIL', status: 'VERIFIED' },
+      { anchor_kind: 'PHONE', status: 'DECLARED' },
     ]);
-    expect(head.advisory_pointers).toEqual(['adv-1']);
+    expect(head.advisory_pointers).toEqual([]);
   });
 
-  it('no trust subject → ledger_established:false (not an error)', async () => {
+  it('TI not enabled → ledger_established:false (not an error)', async () => {
     const dossier = {
-      getDossier: async () => ({
-        ledger_established: false,
-        dimensions: { identity: null, claims: null, continuity: null, eligibility: null },
-        statements: [],
-        verifications: [],
-        advisory_pointers: [],
-      }),
+      getDossier: async () => ({ ledger_established: false, intelligence_status: 'NOT_ENTITLED', verifications: [] }),
     } as unknown as DossierService;
-    const head = await new TalentDossierReadAdapter(dossier).getDossierHead({
-      tenant_id: TENANT,
-      talent_record_id: RECORD,
-    });
+    const head = await new TalentDossierReadAdapter(dossier).getDossierHead({ tenant_id: TENANT, talent_record_id: RECORD });
     expect(head.ledger_established).toBe(false);
     expect(head.verifications).toEqual([]);
   });

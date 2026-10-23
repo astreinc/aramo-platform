@@ -460,15 +460,17 @@ export class Talent360ReadAdapter implements Talent360ReadPort {
     ctx: Talent360ActorContext,
     talent_id: string,
   ): Promise<IdentityOutcomeRow> {
-    // INC-2 — re-pointed onto the TalentDossier read port (delegates to the existing
-    // DossierService; presents recruiter-facing outcomes, never the trust machinery).
+    // ATI-SEP-1 T10 WP3b — contact confirmation = a VERIFIED contact fact in Talent
+    // Intelligence's view of this record (read through the TalentDossier port,
+    // fail-soft: TI absent / not entitled / down → nothing confirmed). The
+    // duplicate advisory is ATS-local (WP2), read through loadDuplicateAdvisory.
     const head = await this.dossierPort.getDossierHead({
       tenant_id: ctx.tenant_id,
       talent_record_id: talent_id,
     });
     const confirmed = (kind: string): boolean =>
-      head.verifications.some((v) => v.anchor_kind === kind && v.status === 'CONFIRMED');
-    const advisoryId = head.advisory_pointers[0] ?? null;
+      head.verifications.some((v) => v.anchor_kind === kind && v.status === 'VERIFIED');
+    const advisoryId = await this.loadDuplicateAdvisory();
     return {
       primary_email_confirmed: confirmed('EMAIL'),
       mobile_confirmed: confirmed('PHONE'),
@@ -477,6 +479,14 @@ export class Talent360ReadAdapter implements Talent360ReadPort {
           ? null
           : { advisory_id: advisoryId, label: DUPLICATE_ADVISORY_LABEL },
     };
+  }
+
+  // TODO(ATI-SEP-1 T10 WP2): the pending within-tenant duplicate advisory for this
+  // record now lives in the ATS (talent-record duplicate-advisory). WP2 wires the
+  // read here (by ctx.tenant_id + talent_id); until then no advisory pointer is
+  // surfaced (the trust-ledger advisory read is retired).
+  private loadDuplicateAdvisory(): Promise<string | null> {
+    return Promise.resolve(null);
   }
 
   async listWorkHistory(

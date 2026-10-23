@@ -5,10 +5,9 @@ import { EntitlementModule } from '@aramo/entitlement';
 import { IdentityCoreModule } from '@aramo/identity';
 import { TalentRecordModule } from '@aramo/talent-record';
 import { PortalIdentityModule } from '@aramo/portal-identity';
-import { TalentTrustModule } from '@aramo/talent-trust';
 
 import { PortalController } from './portal.controller.js';
-import { PortalTalentResolverService } from './portal-talent-resolver.service.js';
+import { PortalTalentResolverModule } from './portal-talent-resolver.module.js';
 
 // libs/portal — M3 PR-9 foundation slice. Hosts the two portal HTTP
 // endpoints in a new lib; registered into apps/api's AppModule.
@@ -37,12 +36,13 @@ import { PortalTalentResolverService } from './portal-talent-resolver.service.js
     // + the platform-rail index-ref graph (cluster → subjects → ATS refs). Still
     // no prisma in libs/portal; all data access flows through injected services.
     PortalIdentityModule,
-    TalentTrustModule,
+    // ATI-SEP-1 T10 WP3b — the OPEN-4 chain (PortalTalentResolverService) lives in
+    // its own module; PortalController itself no longer reads the trust ledger.
+    PortalTalentResolverModule,
   ],
   controllers: [PortalController],
-  providers: [PortalTalentResolverService],
   // ATI-SEP-1 T8 — the OPEN-4 membership chain, reused by the apps/api portal
   // identifier-verification route (Talent Intelligence path).
-  exports: [PortalTalentResolverService],
+  exports: [PortalTalentResolverModule],
 })
 export class PortalModule {}
