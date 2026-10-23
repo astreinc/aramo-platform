@@ -53,3 +53,16 @@ export {
   type VerifiableIdentifierSlot,
 } from './lib/intelligence-verification.service.js';
 export { IntelligenceIntegrationWorker } from './lib/intelligence-integration.worker.js';
+export {
+  BACKFILL_EVENT_NAMESPACE,
+  BACKFILL_KEY_VERSION,
+  BackfillRefusedError,
+  DEFAULT_BACKFILL_CONCURRENCY,
+  DEFAULT_BACKFILL_PAGE_SIZE,
+  IntelligenceBackfillService,
+  backfillContentHash,
+  backfillEventId,
+  type BackfillOptions,
+  type BackfillRejection,
+  type BackfillSummary,
+} from './lib/intelligence-backfill.service.js';

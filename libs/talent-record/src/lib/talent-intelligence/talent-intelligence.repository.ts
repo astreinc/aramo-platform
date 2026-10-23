@@ -129,6 +129,24 @@ export class TalentIntelligenceRepository {
     return row ?? null;
   }
 
+  /**
+   * ATI-SEP-1 backfill — one keyset page of a tenant's LIVE records (superseded
+   * records are not replayed; an erased record no longer exists), stable order by
+   * id, strictly after `after`. Same admissible column allowlist as the publisher.
+   */
+  async listLiveAdmissibleRecordsPage(args: { tenant_id: string; after?: string | null; limit: number }): Promise<AdmissibleTalentRecord[]> {
+    return this.prisma.talentRecord.findMany({
+      where: {
+        tenant_id: args.tenant_id,
+        record_status: 'live',
+        ...(args.after ? { id: { gt: args.after } } : {}),
+      },
+      select: ADMISSIBLE_SELECT,
+      orderBy: { id: 'asc' },
+      take: args.limit,
+    });
+  }
+
   /** Fields whose CURRENT value came from Talent Intelligence (never echoed back). */
   async listIntelligenceSourcedFields(talentRecordId: string): Promise<Set<string>> {
     const rows = await this.prisma.talentRecordFieldProvenance.findMany({

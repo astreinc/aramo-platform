@@ -4,6 +4,7 @@ import { TalentEvidenceModule } from '@aramo/talent-evidence';
 import { TalentRecordModule } from '@aramo/talent-record';
 
 import { INTELLIGENCE_INTEGRATION_CONFIG, loadIntelligenceConfig } from './intelligence-config.js';
+import { IntelligenceBackfillService } from './intelligence-backfill.service.js';
 import { IntelligenceClient } from './intelligence-client.js';
 import { IntelligenceEntitlementSyncService } from './intelligence-entitlement-sync.service.js';
 import { IntelligenceInboundSyncService } from './intelligence-inbound-sync.service.js';
@@ -28,6 +29,7 @@ import { IntelligenceWebhookReceiver } from './intelligence-webhook.receiver.js'
     IntelligenceWebhookReceiver,
     IntelligenceVerificationService,
     IntelligenceIntegrationWorker,
+    IntelligenceBackfillService,
   ],
   exports: [
     INTELLIGENCE_INTEGRATION_CONFIG,
@@ -37,6 +39,7 @@ import { IntelligenceWebhookReceiver } from './intelligence-webhook.receiver.js'
     IntelligenceInboundSyncService,
     IntelligenceWebhookReceiver,
     IntelligenceVerificationService,
+    IntelligenceBackfillService,
   ],
 })
 export class IntelligenceIntegrationModule {}

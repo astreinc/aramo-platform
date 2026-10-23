@@ -211,3 +211,45 @@ executed by TI.
   governed from `apps/platform-admin` (Addendum A2 A-c).
 - A second migration ledger and a second database are new operational
   surfaces, with a runbook in `deploy/migrate-prod.sh`.
+
+## Operations — backfill
+
+Talent Intelligence is a clean rebuild: it starts empty. The
+`intelligence-backfill` CLI fills it by replaying committed ATS data
+(`apps/api/src/intelligence-backfill/intelligence-backfill.command.ts`,
+service `IntelligenceBackfillService` in `@aramo/intelligence-integration`).
+It uses HTTP only, the same admission builder as the outbox publisher, and
+deterministic `source_event_id`s
+(`uuidv5(backfill:v1:<tenant>:<talent>:<content sha256>)`). A re-run over
+unchanged data is answered `replayed: true` by TI's inbox and is safe. The
+CLI never runs automatically and does not touch the ATS create path.
+
+Each PROD step below needs its own authorization:
+
+1. **Deploy** the TI service and the ATS build that contains the CLI.
+2. **Enable the capability**: grant `intelligence` to each tenant to be
+   backfilled.
+3. **Provision the service client** in TI. Set `INTELLIGENCE_SERVICE_URL`,
+   `INTELLIGENCE_ATS_CLIENT_ID` and `INTELLIGENCE_ATS_CLIENT_SECRET` for the
+   ATS.
+4. **Backfill.** Do a dry run first, then the real run:
+
+   ```sh
+   docker compose run --rm api node dist/apps/api/src/intelligence-backfill/intelligence-backfill.command.js --dry-run
+   docker compose run --rm api node dist/apps/api/src/intelligence-backfill/intelligence-backfill.command.js \
+     [--tenant <uuid>]… [--limit N] [--concurrency 4]
+   ```
+
+   The run does a full REPLACE entitlement sync first. It then pages LIVE
+   records by id and prints a JSON summary: `scanned`, `ingested`,
+   `replayed`, `rejected` (+ `rejected_by_code`), `failed` and
+   `not_entitled`.
+   - Exit code `3`: the run finished with rejections or failures. Re-run, or
+     look into the codes.
+   - Resume with `--tenant <uuid> --after <cursor>`. The cursor is the
+     `after` of the last `intelligence_backfill_checkpoint` log line.
+   - Logs carry ids, codes and counts only.
+5. **Verify reads.** Sample TI profile reads for backfilled talents. Check
+   that `intelligence_link` count = live record count per tenant.
+6. **Backup** both databases.
+7. **Drop the legacy schemas.**

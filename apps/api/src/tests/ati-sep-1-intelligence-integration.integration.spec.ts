@@ -1,5 +1,4 @@
-import { readFileSync, readdirSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { readFileSync } from 'node:fs';
 
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
@@ -26,6 +25,8 @@ import {
 
 import { AtsTalentEventDispatcher } from '../ats-talent-events/ats-talent-event-dispatcher.js';
 
+import { collectIntelligenceIntegrationMigrations, splitDdl } from './support/intelligence-integration-migrations.js';
+
 // ATI-SEP-1 T8 / T9 — the ATS side of the Talent Intelligence integration against
 // a REAL Postgres 17 with the documents + talent_evidence + talent_record +
 // entitlement migrations. Talent Intelligence itself is a FAKE fetch (the ATS
@@ -43,74 +44,6 @@ import { AtsTalentEventDispatcher } from '../ats-talent-events/ats-talent-event-
 //     creates a contradiction, AUTO_APPLY fills an empty field) — and an
 //     INTELLIGENCE-sourced value is never echoed back to TI.
 
-const ROOT = resolve(__dirname, '../../../..');
-const MIGRATION_LIBS = ['documents', 'talent-evidence', 'talent-record', 'entitlement'];
-
-function collectMigrations(): string[] {
-  const all: { name: string; path: string }[] = [];
-  for (const lib of MIGRATION_LIBS) {
-    const dir = resolve(ROOT, `libs/${lib}/prisma/migrations`);
-    for (const d of readdirSync(dir, { withFileTypes: true })) {
-      if (d.isDirectory() && /^\d+_/.test(d.name)) all.push({ name: d.name, path: resolve(dir, d.name, 'migration.sql') });
-    }
-  }
-  return all.sort((a, b) => a.name.localeCompare(b.name)).map((m) => m.path);
-}
-
-// Dollar-quote / comment / string-literal aware splitter (top-level `;` only).
-function splitDdl(sql: string): string[] {
-  const out: string[] = [];
-  let cur = '';
-  let i = 0;
-  let tag: string | null = null;
-  while (i < sql.length) {
-    const ch = sql[i];
-    if (tag === null && ch === '-' && sql[i + 1] === '-') {
-      const nl = sql.indexOf('\n', i);
-      if (nl === -1) break;
-      cur += '\n';
-      i = nl + 1;
-      continue;
-    }
-    if (ch === '$') {
-      const m = /^\$[A-Za-z0-9_]*\$/.exec(sql.slice(i));
-      if (m !== null && (tag === null || tag === m[0])) {
-        tag = tag === null ? m[0] : null;
-        cur += m[0];
-        i += m[0].length;
-        continue;
-      }
-    }
-    if (tag === null && ch === "'") {
-      cur += ch;
-      i += 1;
-      while (i < sql.length) {
-        cur += sql[i];
-        if (sql[i] === "'") {
-          if (sql[i + 1] === "'") {
-            cur += sql[i + 1];
-            i += 2;
-            continue;
-          }
-          i += 1;
-          break;
-        }
-        i += 1;
-      }
-      continue;
-    }
-    if (tag === null && ch === ';') {
-      if (cur.trim().length > 0) out.push(cur.trim());
-      cur = '';
-      i += 1;
-      continue;
-    }
-    cur += ch;
-    i += 1;
-  }
-  if (cur.trim().length > 0) out.push(cur.trim());
-  return out;
-}
 
 const TENANT = '11111111-1111-7111-8111-111111111111';
 const ACTOR = '33333333-3333-7333-8333-333333333333';
@@ -170,7 +103,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('ATI-SEP-1 T8/T9 �
     const url = container.getConnectionUri();
     const setup = new EvidencePrismaService(url);
     await setup.$connect();
-    for (const path of collectMigrations()) {
+    for (const path of collectIntelligenceIntegrationMigrations()) {
       for (const stmt of splitDdl(readFileSync(path, 'utf8'))) await setup.$executeRawUnsafe(stmt);
     }
     await setup.$disconnect();
