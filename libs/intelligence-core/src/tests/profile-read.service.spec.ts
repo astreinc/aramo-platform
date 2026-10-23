@@ -121,7 +121,11 @@ describe('ProfileReadService — access control matrix', () => {
     expect(e.assertions.find((x) => x.assertion_type === 'TITLE' && x.contributed_by === 'REQUESTING_TENANT')?.status).toBe('VALID');
     expect(e.assertions.some((x) => x.assertion_type === 'VERIFICATION_OUTCOME')).toBe(true);
     const json = JSON.stringify([p, e]);
-    for (const leak of ['tenant-b', 'b-1', 'Manager', 'priya.b-only@x.io', '"Go"']) expect(json).not.toContain(leak);
+    // Exact-token leak probes (quoted) — a bare substring like b-1 can occur by
+    // chance inside a random UUID.
+    for (const leak of ['"tenant-b"', '"b-1"', 'Manager', 'priya.b-only@x.io', '"Go"']) expect(json).not.toContain(leak);
+    // A contradiction raised only by the hidden tenant's assertion leaves no trace.
+    expect(json).not.toContain('CONTRADICTED');
   });
 
   it('flag ON: the full Golden projection; other sources are named only as OTHER_SOURCE', async () => {

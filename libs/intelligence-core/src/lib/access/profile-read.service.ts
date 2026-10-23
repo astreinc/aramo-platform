@@ -93,6 +93,21 @@ function trustView(t: TrustStateRow): TrustStateView {
   };
 }
 
+// TENANT_SCOPED (TI_CROSS_TENANT_READ_ENABLED=false) recomputes contradictions
+// INSIDE the requesting tenant's view (effective_status above). The stored
+// ledger events, however, record contradictions against the GLOBAL assertion
+// set — replaying them would reveal that a hidden source disagrees. So the
+// scoped history omits contradiction transitions; the view's own status
+// carries any contradiction that is visible to this tenant.
+function revealsHiddenContradiction(e: { event_type: string; from_status: string | null; to_status: string | null }): boolean {
+  return (
+    e.event_type === 'CONTRADICTED' ||
+    e.event_type === 'CONTRADICTION_RESOLVED' ||
+    e.from_status === 'CONTRADICTED' ||
+    e.to_status === 'CONTRADICTED'
+  );
+}
+
 @Injectable()
 export class ProfileReadService {
   constructor(@Inject(INTELLIGENCE_UNIT_OF_WORK) private readonly uow: IntelligenceUnitOfWork) {}
@@ -140,7 +155,7 @@ export class ProfileReadService {
         valid_to: a.valid_to?.toISOString() ?? null,
         ai_derived: a.ai_derived,
         source_document_hash: a.source_document_hash,
-        history: (byAssertion.get(a.id) ?? []).map((e) => ({
+        history: (byAssertion.get(a.id) ?? []).filter((e) => mode === 'CROSS_TENANT' || !revealsHiddenContradiction(e)).map((e) => ({
           event_type: e.event_type,
           from_status: e.from_status,
           to_status: e.to_status,
