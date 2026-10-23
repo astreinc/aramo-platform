@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 0, "libs": 0, "total": 83 },
+  "aliasTotals": { "apps": 0, "libs": 0, "total": 84 },
   "aliases": {
     "@aramo/activity": "./libs/activity/src/index.ts",
     "@aramo/ai-draft": "./libs/ai-draft/src/index.ts",
@@ -79,6 +79,7 @@
     "@aramo/talent-evidence": "./libs/talent-evidence/src/index.ts",
     "@aramo/talent-extraction": "./libs/talent-extraction/src/index.ts",
     "@aramo/talent-intelligence": "./libs/talent-intelligence/src/index.ts",
+    "@aramo/talent-intelligence-service": "./apps/talent-intelligence-service/src/app/app.module.ts",
     "@aramo/talent-record": "./libs/talent-record/src/index.ts",
     "@aramo/task": "./libs/task/src/index.ts",
     "@aramo/technical-screening": "./libs/technical-screening/src/index.ts",
@@ -1451,6 +1452,11 @@
     ],
     "@aramo/intelligence-integration": [
       "AUTO_APPLY_CAPABLE",
+      "BACKFILL_EVENT_NAMESPACE",
+      "BACKFILL_KEY_VERSION",
+      "BackfillRefusedError",
+      "DEFAULT_BACKFILL_CONCURRENCY",
+      "DEFAULT_BACKFILL_PAGE_SIZE",
       "DEFAULT_ENTITLEMENT_SYNC_INTERVAL_MS",
       "DEFAULT_INBOUND_SYNC_INTERVAL_MS",
       "DEFAULT_INTELLIGENCE_HTTP_TIMEOUT_MS",
@@ -1461,6 +1467,7 @@
       "INTELLIGENCE_SYNC_FIELD_KEYS",
       "IdentifierSlotEmptyError",
       "IngestPayloadRejectedError",
+      "IntelligenceBackfillService",
       "IntelligenceClient",
       "IntelligenceEntitlementSyncService",
       "IntelligenceInboundSyncService",
@@ -1474,6 +1481,8 @@
       "IntelligenceVerificationService",
       "IntelligenceWebhookReceiver",
       "SYNC_POLICY_MODES",
+      "backfillContentHash",
+      "backfillEventId",
       "buildTalentIngestRequest",
       "decideField",
       "effectiveMode",
@@ -2222,6 +2231,7 @@
       "REQUISITION_CONTEXT_READ_PORT",
       "TALENT_DOSSIER_READ_PORT"
     ],
+    "@aramo/talent-intelligence-service": ["AppModule"],
     "@aramo/talent-record": [
       "DUPLICATE_ADVISORY_BASES",
       "DUPLICATE_ADVISORY_STATUSES",
@@ -4044,6 +4054,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ati-sep-1-ats-local-identity.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ati-sep-1-intelligence-backfill.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -8977,6 +8993,12 @@
     "@aramo/intelligence-contracts": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ati-sep-1-intelligence-backfill.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ati-sep-1-intelligence-integration.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -8988,6 +9010,11 @@
         "status": "excluded"
       },
       { "project": "api", "status": "production" },
+      {
+        "from": "pact/provider/src/verify-ti.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/intelligence-core/src/tests/identifier-contract-parity.spec.ts",
@@ -9021,6 +9048,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/intelligence-integration/src/tests/intelligence-backfill.service.spec.ts",
+        "project": "intelligence-integration",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/intelligence-integration/src/tests/intelligence-webhook.receiver.spec.ts",
         "project": "intelligence-integration",
         "status": "excluded"
@@ -9032,9 +9065,24 @@
         "status": "excluded"
       },
       { "project": "intelligence-integration", "status": "production" },
+      {
+        "from": "pact/consumers/intelligence-integration-consumer/src/intelligence-client.consumer.test.ts",
+        "project": "intelligence-integration-consumer-pact",
+        "status": "unscoped"
+      },
+      {
+        "from": "pact/consumers/intelligence-webhook-consumer/src/intelligence-webhook.consumer.test.ts",
+        "project": "intelligence-webhook-consumer-pact",
+        "status": "unscoped"
+      },
       { "project": "talent-intelligence-service", "status": "production" }
     ],
     "@aramo/intelligence-core": [
+      {
+        "from": "pact/provider/src/verify-ti.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      },
       {
         "from": "tools/intelligence-boundary-probes/ats-probe/intelligence-negative-control/ats-imports-intelligence.fixture.ts",
         "project": "intelligence-boundary-probe-ats",
@@ -9074,6 +9122,12 @@
     "@aramo/intelligence-integration": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ati-sep-1-intelligence-backfill.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ati-sep-1-intelligence-integration.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -9096,7 +9150,12 @@
         "project": "api",
         "status": "excluded"
       },
-      { "project": "api", "status": "production" }
+      { "project": "api", "status": "production" },
+      {
+        "from": "pact/consumers/intelligence-integration-consumer/src/intelligence-client.consumer.test.ts",
+        "project": "intelligence-integration-consumer-pact",
+        "status": "unscoped"
+      }
     ],
     "@aramo/job-distribution": [
       {
@@ -10739,6 +10798,12 @@
     "@aramo/talent-evidence": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ati-sep-1-intelligence-backfill.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ati-sep-1-intelligence-integration.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -10898,11 +10963,24 @@
       { "project": "talent-record", "status": "production" }
     ],
     "@aramo/talent-intelligence": [{ "project": "api", "status": "production" }],
+    "@aramo/talent-intelligence-service": [
+      {
+        "from": "pact/provider/src/verify-ti.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      }
+    ],
     "@aramo/talent-record": [
       { "from": "tools/seed-e2e-data.ts", "project": "(unscoped)", "status": "unscoped" },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ati-sep-1-ats-local-identity.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ati-sep-1-intelligence-backfill.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -11516,6 +11594,20 @@
       "sourceRoot": "libs/intelligence-integration/src",
       "tags": ["scope:ats"],
       "targets": ["build", "lint", "test", "typecheck"]
+    },
+    {
+      "name": "intelligence-integration-consumer-pact",
+      "root": "pact/consumers/intelligence-integration-consumer",
+      "sourceRoot": "pact/consumers/intelligence-integration-consumer/src",
+      "tags": ["pact-consumer"],
+      "targets": ["lint", "pact-test", "test"]
+    },
+    {
+      "name": "intelligence-webhook-consumer-pact",
+      "root": "pact/consumers/intelligence-webhook-consumer",
+      "sourceRoot": "pact/consumers/intelligence-webhook-consumer/src",
+      "tags": ["pact-consumer"],
+      "targets": ["lint", "pact-test", "test"]
     },
     {
       "name": "job-distribution",

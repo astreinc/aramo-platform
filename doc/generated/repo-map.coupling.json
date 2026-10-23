@@ -12237,6 +12237,11 @@
     {
       "from": "doc/adr/0036-talent-intelligence-service.md",
       "status": "unscoped",
+      "to": "apps/api/src/intelligence-backfill/intelligence-backfill.command.ts"
+    },
+    {
+      "from": "doc/adr/0036-talent-intelligence-service.md",
+      "status": "unscoped",
       "to": "deploy/migrate-prod.sh"
     },
     {
@@ -22218,6 +22223,11 @@
       "to": "scripts/verify-vocabulary.sh"
     },
     {
+      "from": "pact/consumers/intelligence-integration-consumer/src/intelligence-client.consumer.test.ts",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-ti.ts"
+    },
+    {
       "from": "pact/consumers/requisition-import-consumer/src/requisition-import.consumer.test.ts",
       "status": "unscoped",
       "to": "openapi/ats.yaml"
@@ -22530,6 +22540,11 @@
     {
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
+      "to": "libs/entitlement/prisma/migrations/20261024150000_add_intelligence_capability/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
       "to": "libs/evidence/prisma/migrations/20260522090000_init_evidence_model/migration.sql"
     },
     {
@@ -22706,6 +22721,11 @@
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
       "to": "libs/ingestion/prisma/migrations/20260706210000_add_confirmed_anchor_match_to_resolution_method/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/ingestion/prisma/migrations/20261024160000_ati_sep_1_raw_payload_sourced_talent_id/migration.sql"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
@@ -23105,6 +23125,16 @@
     {
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
+      "to": "libs/sourced-talent/prisma/migrations/20260704000000_init_sourced_talent/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/sourced-talent/prisma/migrations/20260713160000_add_sourced_talent_normalized_contact/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
       "to": "libs/submittal-eligibility/prisma/migrations/20260822120000_init_submittal_eligibility_model/migration.sql"
     },
     {
@@ -23325,6 +23355,21 @@
     {
       "from": "pact/provider/src/verify-api.ts",
       "status": "unscoped",
+      "to": "libs/talent-record/prisma/migrations/20261024140000_ati_sep_1_intelligence_integration/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/talent-record/prisma/migrations/20261024160000_ati_sep_1_duplicate_advisory/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
+      "to": "libs/talent-record/prisma/migrations/20261024170000_ati_sep_1_drop_legacy_trust_schemas/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify-api.ts",
+      "status": "unscoped",
       "to": "libs/talent-record/src/lib/talent-record.controller.ts"
     },
     {
@@ -23411,6 +23456,21 @@
       "from": "pact/provider/src/verify-sign.ts",
       "status": "unscoped",
       "to": "pact/provider/src/verify.ts"
+    },
+    {
+      "from": "pact/provider/src/verify-ti.ts",
+      "status": "unscoped",
+      "to": "apps/talent-intelligence-service/src/main.ts"
+    },
+    {
+      "from": "pact/provider/src/verify-ti.ts",
+      "status": "unscoped",
+      "to": "pact/consumers/intelligence-integration-consumer/src/intelligence-client.consumer.test.ts"
+    },
+    {
+      "from": "pact/provider/src/verify-ti.ts",
+      "status": "unscoped",
+      "to": "tools/db-sync-intelligence.sh"
     },
     {
       "from": "pact/provider/src/verify.ts",
@@ -24274,6 +24334,11 @@
       "status": "unscoped",
       "to": "apps/sign-service/src/app/app.module.ts"
     },
+    {
+      "from": "tsconfig.base.json",
+      "status": "unscoped",
+      "to": "apps/talent-intelligence-service/src/app/app.module.ts"
+    },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/activity/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/ai-draft/src/index.ts" },
     { "from": "tsconfig.base.json", "status": "unscoped", "to": "libs/attachment/src/index.ts" },
@@ -24489,6 +24554,11 @@
       "status": "unscoped",
       "to": "apps/sign-service/src/app/app.module.ts"
     },
+    {
+      "from": "vitest.shared.ts",
+      "status": "unscoped",
+      "to": "apps/talent-intelligence-service/src/app/app.module.ts"
+    },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/activity/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/ai-draft/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/attachment/src/index.ts" },
@@ -24665,7 +24735,8 @@
     },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/tenant-reset/src/index.ts" },
     { "from": "vitest.shared.ts", "status": "unscoped", "to": "libs/visibility/src/index.ts" },
-    { "from": "vitest.shared.ts", "status": "unscoped", "to": "pact/provider/src/verify-api.ts" }
+    { "from": "vitest.shared.ts", "status": "unscoped", "to": "pact/provider/src/verify-api.ts" },
+    { "from": "vitest.shared.ts", "status": "unscoped", "to": "pact/provider/src/verify-ti.ts" }
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
