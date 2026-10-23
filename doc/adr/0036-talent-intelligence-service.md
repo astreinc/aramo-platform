@@ -251,5 +251,15 @@ Each PROD step below needs its own authorization:
    - Logs carry ids, codes and counts only.
 5. **Verify reads.** Sample TI profile reads for backfilled talents. Check
    that `intelligence_link` count = live record count per tenant.
-6. **Backup** both databases.
-7. **Drop the legacy schemas.**
+6. **Backup and archive.** Back up both databases. Separately, archive the
+   legacy evidence history before it is dropped:
+   `pg_dump -n talent_trust -n platform_trust -n identity_index`.
+   - Retain the archive under the platform's data-retention policy.
+   - Approval to drop is not approval to erase required historical evidence
+     (PO disposition 2026-10-23).
+   - Confirm that no runtime dependency remains on these schemas. At this
+     branch only comments, inert soft-reference columns and test assertions
+     mention them.
+7. **Drop the legacy schemas** by applying migration
+   `20261024170000_ati_sep_1_drop_legacy_trust_schemas`. This is a destructive
+   PROD operation and needs explicit PO authorization at that time.
