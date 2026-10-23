@@ -26,8 +26,11 @@ Memory maintenance is governed by `Aramo-Memory-Hygiene-Rule-v1_0-LOCKED`
 replace-in-place, never append narrative.
 
 ## Engineering laws
-- `ARAMO_RUN_INTEGRATION=1 nx run api` locally before every push
-  (apps/api has migration consumers the isolated specs miss).
+- Full `nx run api` integration suite runs in CI, not locally before
+  push (PO ruling 2026-10-16). Locally run TARGETED integration specs
+  (`ARAMO_RUN_INTEGRATION=1`) for every area touched — apps/api has
+  migration consumers the isolated lib specs miss, so include the
+  AppModule-booting specs that reach changed migrations.
 - Any new migration changing a returned shape must be registered in
   `pact/provider/src/verify-api.ts`.
 - New cross-lib dependency = 3-place wiring: `tsconfig.base.json`
