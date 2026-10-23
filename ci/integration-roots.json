@@ -23,6 +23,7 @@
     "libs/identity-index",
     "libs/ingestion",
     "libs/integration",
+    "libs/intelligence-core",
     "libs/job-domain",
     "libs/matching",
     "libs/metering",

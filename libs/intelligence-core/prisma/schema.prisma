@@ -1,0 +1,29 @@
+// Per-module Prisma schema for Talent Intelligence (ATI-SEP-1 T0, ADR-0036).
+//
+// This schema lives in its OWN database (`aramo_intelligence`, role
+// `aramo_intelligence`, INTELLIGENCE_DATABASE_URL) — never the shared Aramo DB.
+// Its migrations are applied by tools/db-sync-intelligence.sh (ledger
+// public._intelligence_migrations in the TI database) and are EXCLUDED from
+// tools/db-sync-local.sh. No cross-database reference of any kind: ATS ids are
+// external references only (T1 adds GoldenTalent / ExternalTalentReference).
+//
+// T0 ships only the schema and a service-identity table.
+
+generator client {
+  provider = "prisma-client-js"
+  output   = "./generated/client"
+}
+
+datasource db {
+  provider = "postgresql"
+  schemas  = ["intelligence"]
+}
+
+/// Service identity / schema baseline facts (key → value). T0 only.
+model ServiceInfo {
+  key        String   @id
+  value      String
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@schema("intelligence")
+}

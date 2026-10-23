@@ -33,6 +33,12 @@
 # sourcing the .env, so a '$' in the password survives verbatim (the gotcha that
 # bit the manual recipe: a sourced or double-quoted password loses its '$').
 #
+# Talent Intelligence (ATI-SEP-1 T0, ADR-0036): AFTER the shared-DB gate passes,
+# migrate_intelligence() ensures the aramo_intelligence role + database
+# (tools/ensure-intelligence-db.sh) and applies + gates libs/intelligence-core
+# migrations with tools/db-sync-intelligence.sh (own ledger in the TI database).
+# Requires INTELLIGENCE_DB_PASSWORD in the .env (fails closed without it).
+#
 # Provable LOCALLY (against a running prod-style stack) with overrides:
 #   ARAMO_DIR=$PWD ARAMO_ENV_FILE=$PWD/.env deploy/migrate-prod.sh
 # The gate parse is unit-checked (no docker/DB) by deploy/migrate-prod.test.sh.
@@ -141,6 +147,78 @@ gate_passes() {
   [ "$pending" -eq 0 ] 2>/dev/null
 }
 
+# --- Talent Intelligence database (ATI-SEP-1 T0, ADR-0036 Decision 2) -------
+# TI owns a SEPARATE database (aramo_intelligence, role aramo_intelligence) on the
+# same postgres server, with its own migrations (libs/intelligence-core) and its
+# own ledger (public._intelligence_migrations IN the TI database). The PROD volume
+# is not fresh, so initdb scripts never run: tools/ensure-intelligence-db.sh
+# creates/re-asserts the role + database idempotently (superuser URL = DBURL), then
+# tools/db-sync-intelligence.sh applies + reports, and the TI gate requires
+# pending 0 AND drift 0. Runs AFTER the shared-DB gate passed.
+INTELLIGENCE_DB_NAME="aramo_intelligence"
+
+# The TI runner URL — host pinned to the 'postgres' service, NO password in the URL
+# (it travels as PGPASSWORD, so no URL-encoding concern). Mirrors the compose URL.
+build_intelligence_dburl() {
+  local user
+  user="$(read_env INTELLIGENCE_DB_USER)"; user="${user:-aramo_intelligence}"
+  printf 'postgresql://%s@postgres:5432/%s' "$user" "$INTELLIGENCE_DB_NAME"
+}
+
+# TI gate — 0 iff the status carries 'pending — 0' AND 'drift — 0' lines.
+# A missing line (connection error, garbage) fails closed.
+intelligence_gate_passes() {
+  local status="$1" pending drift
+  pending="$(printf '%s' "$status" | sed -nE 's/^db:sync:intelligence pending — ([0-9]+) on-disk.*/\1/p' | head -n1)"
+  drift="$(printf '%s' "$status" | sed -nE 's/^db:sync:intelligence drift — ([0-9]+) recorded.*/\1/p' | head -n1)"
+  [ -n "$pending" ] && [ -n "$drift" ] || return 1
+  [ "$pending" -eq 0 ] 2>/dev/null && [ "$drift" -eq 0 ] 2>/dev/null
+}
+
+run_ti_container() { # script args...
+  # The TI password reaches the container as a bare `-e NAME` passthrough from this
+  # process's env — never on the docker argv.
+  INTELLIGENCE_DB_PASSWORD="$TI_PASSWORD" PGPASSWORD="$TI_PASSWORD" docker run --rm \
+    --network "$NETWORK" \
+    -v "$ARAMO_DIR":/repo -w /repo \
+    -e INTELLIGENCE_ADMIN_DATABASE_URL="$DBURL" \
+    -e INTELLIGENCE_DATABASE_URL="$TI_DBURL" \
+    -e INTELLIGENCE_DB_USER="$TI_USER" \
+    -e INTELLIGENCE_DB_NAME="$INTELLIGENCE_DB_NAME" \
+    -e INTELLIGENCE_DB_PASSWORD \
+    -e PGPASSWORD \
+    "$MIGRATE_IMAGE" \
+    bash "$@"
+}
+
+migrate_intelligence() {
+  echo "[migrate] ── Talent Intelligence database (${INTELLIGENCE_DB_NAME}) — ATI-SEP-1 / ADR-0036 ──"
+  TI_USER="$(read_env INTELLIGENCE_DB_USER)"; TI_USER="${TI_USER:-aramo_intelligence}"
+  TI_PASSWORD="$(read_env INTELLIGENCE_DB_PASSWORD)"
+  TI_DBURL="$(build_intelligence_dburl)"
+  if [ -z "$TI_PASSWORD" ]; then
+    echo "[migrate] FATAL: INTELLIGENCE_DB_PASSWORD is not set in ${ENV_FILE} — the talent-intelligence-service" >&2
+    echo "[migrate] container cannot start without it (docker-compose.prod.yml guards it). Set a 16+ char" >&2
+    echo "[migrate] URL-safe value [A-Za-z0-9._~-] (see .env.prod.example) and re-run." >&2
+    exit 2
+  fi
+  echo "[migrate] TI: ensuring role ${TI_USER} + database ${INTELLIGENCE_DB_NAME} (idempotent; nothing dropped)…"
+  run_ti_container tools/ensure-intelligence-db.sh
+  echo "[migrate] TI pre-apply status:"
+  run_ti_container tools/db-sync-intelligence.sh --status
+  echo "[migrate] TI: applying pending migrations…"
+  run_ti_container tools/db-sync-intelligence.sh
+  local status
+  status="$(run_ti_container tools/db-sync-intelligence.sh --status)"
+  echo "[migrate] TI post-apply status: ${status}"
+  if intelligence_gate_passes "$status"; then
+    echo "[migrate] OK — Talent Intelligence database: zero pending, zero drift."
+  else
+    echo "[migrate] FATAL: Talent Intelligence migrations pending or drifted after apply (see status above)." >&2
+    exit 1
+  fi
+}
+
 # --- main -----------------------------------------------------------------
 
 main() {
@@ -186,7 +264,9 @@ main() {
   if [ -n "$UNTIL" ]; then
     if gate_passes "$status" 1; then
       echo "[migrate] OK — zero pending on-disk migrations at-or-before the stop point '${UNTIL}'."
-      echo "[migrate] Deferred migrations after the stop point stay pending (see status above). Safe to build + recreate containers."
+      echo "[migrate] Deferred migrations after the stop point stay pending (see status above)."
+      migrate_intelligence
+      echo "[migrate] Safe to build + recreate containers."
     else
       echo "[migrate] FATAL: migrations at-or-before the stop point remain unapplied, or the runner reported no stop-point status (see above)." >&2
       exit 1
@@ -195,7 +275,9 @@ main() {
   fi
 
   if gate_passes "$status"; then
-    echo "[migrate] OK — zero pending on-disk migrations. Safe to build + recreate containers."
+    echo "[migrate] OK — zero pending on-disk migrations (shared Aramo DB)."
+    migrate_intelligence
+    echo "[migrate] Safe to build + recreate containers."
   else
     echo "[migrate] FATAL: pending on-disk migrations remain after apply (see status above)." >&2
     # The on_exit trap prints the "containers NOT recreated" reassurance.

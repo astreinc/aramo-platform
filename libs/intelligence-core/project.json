@@ -1,0 +1,45 @@
+{
+  "name": "intelligence-core",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "libs/intelligence-core/src",
+  "projectType": "library",
+  "tags": [
+    "scope:intelligence"
+  ],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": [
+        "{options.outputPath}"
+      ],
+      "options": {
+        "outputPath": "dist/libs/intelligence-core",
+        "main": "libs/intelligence-core/src/index.ts",
+        "tsConfig": "libs/intelligence-core/tsconfig.lib.json"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": [
+          "libs/intelligence-core/**/*.ts"
+        ]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --passWithNoTests --root libs/intelligence-core"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "tsc --noEmit -p libs/intelligence-core/tsconfig.lib.json"
+      },
+      "dependsOn": [
+        "^build"
+      ]
+    }
+  }
+}

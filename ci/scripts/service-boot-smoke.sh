@@ -40,7 +40,9 @@ case "$SERVICE" in
   api)            ENTRY="dist/apps/api/src/main.js" ;;
   auth-service)   ENTRY="dist/apps/auth-service/src/main.js" ;;
   platform-admin) ENTRY="dist/apps/platform-admin/src/main.js" ;;
-  *) echo "service-boot-smoke: unknown service '$SERVICE' (expected api|auth-service|platform-admin)" >&2; exit 2 ;;
+  sign-service)   ENTRY="dist/apps/sign-service/src/main.js" ;;
+  talent-intelligence-service) ENTRY="dist/apps/talent-intelligence-service/src/main.js" ;;
+  *) echo "service-boot-smoke: unknown service '$SERVICE' (expected api|auth-service|platform-admin|sign-service|talent-intelligence-service)" >&2; exit 2 ;;
 esac
 
 echo "── prod-deps boot-smoke [$SERVICE] · image $IMAGE · entry $ENTRY ──"

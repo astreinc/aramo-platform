@@ -152,5 +152,19 @@ else
   bad "U7 locale-independence (got '${got}', stderr '${err}')"
 fi
 
+# U8 (ATI-SEP-1 T0) — mig_list never offers a separate-database library's
+# migrations (libs/intelligence-core → aramo_intelligence) to the shared-DB runner.
+U8_ROOT="$(mktemp -d)"
+mkdir -p "$U8_ROOT/libs/a/prisma/migrations/20260101000000_a" \
+         "$U8_ROOT/libs/intelligence-core/prisma/migrations/20260102000000_ti" \
+         "$U8_ROOT/libs/intelligence-core-x/prisma/migrations/20260103000000_x"
+got="$(cd "$U8_ROOT" && mig_list | tr '\n' ' ' | sed 's/ $//')"
+rm -rf "$U8_ROOT"
+if [ "$got" = "libs/a/prisma/migrations/20260101000000_a/ libs/intelligence-core-x/prisma/migrations/20260103000000_x/" ]; then
+  ok "U8 mig_list excludes libs/intelligence-core (exact lib name only)"
+else
+  bad "U8 mig_list separate-DB exclusion (got '${got}')"
+fi
+
 echo "db-sync-local.test — ${pass} passed, ${fail} failed"
 [ "$fail" = 0 ]

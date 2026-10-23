@@ -1,0 +1,8 @@
+{
+  "name": "intelligence-boundary-probe-ats",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "tools/intelligence-boundary-probes/ats-probe",
+  "projectType": "library",
+  "tags": ["scope:ats"],
+  "targets": {}
+}

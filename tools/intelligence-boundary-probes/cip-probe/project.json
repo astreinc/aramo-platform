@@ -1,0 +1,8 @@
+{
+  "name": "intelligence-boundary-probe-cip",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "tools/intelligence-boundary-probes/cip-probe",
+  "projectType": "library",
+  "tags": ["scope:cip"],
+  "targets": {}
+}

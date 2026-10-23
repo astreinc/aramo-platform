@@ -66,6 +66,16 @@ export const REQUIRED_PASSTHROUGH: Record<string, string[]> = {
   ],
 };
 
+// Per-service REQUIRED guarded interpolations — vars a service consumes INSIDE a built value
+// (e.g. a URL assembled from parts) behind a `${VAR:?message}` guard, so compose refuses to
+// start without them. ATI-SEP-1 T0: talent-intelligence-service builds
+// INTELLIGENCE_DATABASE_URL from INTELLIGENCE_DB_PASSWORD; dropping the guard would boot the
+// service against an empty password. ASSERTION 1b keeps the guard; ASSERTION 2b documents
+// every guarded var (incl. POSTGRES_PASSWORD) in the operator contract.
+export const REQUIRED_GUARDED: Record<string, string[]> = {
+  'talent-intelligence-service': ['INTELLIGENCE_DB_PASSWORD'],
+};
+
 export interface ComposeEnvModel {
   /** service id -> bare-name passthrough vars (anchor-resolved) */
   passthroughByService: Record<string, string[]>;
@@ -73,6 +83,10 @@ export interface ComposeEnvModel {
   allPassthrough: Set<string>;
   /** vars required via a no-default `${VAR}` interpolation anywhere in the file */
   requiredInterpolations: Set<string>;
+  /** service id -> vars referenced behind a `${VAR:?message}` guard in its environment */
+  guardedByService: Record<string, string[]>;
+  /** every `${VAR:?message}` guarded var anywhere in the file */
+  requiredGuards: Set<string>;
 }
 
 /** Extract passthrough + required-interpolation vars from a compose document + its raw text. */
@@ -83,6 +97,7 @@ export function parseComposeEnv(composeText: string): ComposeEnvModel {
   const services = doc.services ?? {};
   const passthroughByService: Record<string, string[]> = {};
   const allPassthrough = new Set<string>();
+  const guardedByService: Record<string, string[]> = {};
 
   for (const [svc, def] of Object.entries(services)) {
     const env = def?.environment;
@@ -100,6 +115,14 @@ export function parseComposeEnv(composeText: string): ComposeEnvModel {
       passthroughByService[svc] = bare;
       for (const v of bare) allPassthrough.add(v);
     }
+    const entries = Array.isArray(env)
+      ? env.map(String)
+      : Object.values((env ?? {}) as Record<string, unknown>).map(String);
+    const guarded = new Set<string>();
+    for (const entry of entries) {
+      for (const g of entry.matchAll(/\$\{([A-Z_][A-Z0-9_]*):\?/g)) guarded.add(g[1]);
+    }
+    if (guarded.size) guardedByService[svc] = [...guarded];
   }
 
   // No-default interpolations `${VAR}` (a `${VAR:-...}` / `${VAR:?...}` has a default/guard
@@ -109,7 +132,10 @@ export function parseComposeEnv(composeText: string): ComposeEnvModel {
   let m: RegExpExecArray | null;
   while ((m = noDefault.exec(composeText)) !== null) requiredInterpolations.add(m[1]);
 
-  return { passthroughByService, allPassthrough, requiredInterpolations };
+  const requiredGuards = new Set<string>();
+  for (const g of composeText.matchAll(/\$\{([A-Z_][A-Z0-9_]*):\?/g)) requiredGuards.add(g[1]);
+
+  return { passthroughByService, allPassthrough, requiredInterpolations, guardedByService, requiredGuards };
 }
 
 /** Keys documented in .env.prod.example (incl. commented `# VAR=` optional entries). */
@@ -127,7 +153,9 @@ export interface EnvViolation {
   kind:
     | 'required-not-passed-through'
     | 'passthrough-not-documented'
-    | 'required-interp-not-documented';
+    | 'required-interp-not-documented'
+    | 'required-guard-missing'
+    | 'guarded-not-documented';
   var: string;
   service?: string;
 }
@@ -136,6 +164,7 @@ export function validateEnvPassthrough(
   model: ComposeEnvModel,
   documented: Set<string>,
   requiredManifest: Record<string, string[]> = REQUIRED_PASSTHROUGH,
+  guardedManifest: Record<string, string[]> = REQUIRED_GUARDED,
 ): EnvViolation[] {
   const violations: EnvViolation[] = [];
 
@@ -148,6 +177,14 @@ export function validateEnvPassthrough(
     }
   }
 
+  // ASSERTION 1b — every manifest-guarded var is `${VAR:?}`-guarded in its service.
+  for (const [svc, vars] of Object.entries(guardedManifest)) {
+    const have = new Set(model.guardedByService[svc] ?? []);
+    for (const v of vars) {
+      if (!have.has(v)) violations.push({ kind: 'required-guard-missing', var: v, service: svc });
+    }
+  }
+
   // ASSERTION 2 — every passthrough var is documented in the operator contract.
   for (const v of model.allPassthrough) {
     if (!documented.has(v)) violations.push({ kind: 'passthrough-not-documented', var: v });
@@ -155,6 +192,10 @@ export function validateEnvPassthrough(
   // ... and every no-default interpolation var is documented too.
   for (const v of model.requiredInterpolations) {
     if (!documented.has(v)) violations.push({ kind: 'required-interp-not-documented', var: v });
+  }
+  // ASSERTION 2b — and every `${VAR:?}`-guarded var (the compose refuses to start without it).
+  for (const v of model.requiredGuards) {
+    if (!documented.has(v)) violations.push({ kind: 'guarded-not-documented', var: v });
   }
 
   return violations;
@@ -242,9 +283,28 @@ services:
 `);
   const caughtLocal = localProblems.some((x) => x.includes('MAILER_OUTBOX')) && localProblems.some((x) => x.includes('NODE_ENV=production'));
 
-  if (!caughtDrop || !caughtUndoc || !resolvedBoth || !caughtLocal) {
+  // Fixture 5 — a guarded URL part: dropped guard (1b) and undocumented guard (2b).
+  const guardModel = parseComposeEnv(`
+services:
+  talent-intelligence-service:
+    environment:
+      - INTELLIGENCE_DATABASE_URL=postgresql://u:\${FIXTURE_GUARDED_PW:?must be set}@postgres:5432/db
+  other:
+    environment:
+      - X=\${FIXTURE_UNGUARDED:-x}
+`);
+  const v5 = validateEnvPassthrough(guardModel, new Set(), {}, {
+    'talent-intelligence-service': ['FIXTURE_GUARDED_PW'],
+    other: ['FIXTURE_UNGUARDED'],
+  });
+  const caughtGuard =
+    v5.some((x) => x.kind === 'guarded-not-documented' && x.var === 'FIXTURE_GUARDED_PW') &&
+    v5.some((x) => x.kind === 'required-guard-missing' && x.var === 'FIXTURE_UNGUARDED') &&
+    !v5.some((x) => x.kind === 'required-guard-missing' && x.var === 'FIXTURE_GUARDED_PW');
+
+  if (!caughtDrop || !caughtUndoc || !resolvedBoth || !caughtLocal || !caughtGuard) {
     console.error(
-      `SELFTEST FAILED: env-passthrough checker vacuous (drop=${caughtDrop} undoc=${caughtUndoc} anchor=${resolvedBoth} local=${caughtLocal}).`,
+      `SELFTEST FAILED: env-passthrough checker vacuous (drop=${caughtDrop} undoc=${caughtUndoc} anchor=${resolvedBoth} local=${caughtLocal} guard=${caughtGuard}).`,
     );
     process.exit(2);
   }
@@ -268,6 +328,14 @@ function main(): void {
         console.error(
           `  - REQUIRED var "${v.var}" is not passed through to service "${v.service}" (container would boot without it).`,
         );
+      else if (v.kind === 'required-guard-missing')
+        console.error(
+          `  - REQUIRED guarded var "${v.var}" is not \${${v.var}:?} -guarded in service "${v.service}" (it would boot with an empty value).`,
+        );
+      else if (v.kind === 'guarded-not-documented')
+        console.error(
+          `  - guarded var "${v.var}" (compose refuses to start without it) is NOT documented in .env.prod.example.`,
+        );
       else if (v.kind === 'passthrough-not-documented')
         console.error(
           `  - passthrough var "${v.var}" is NOT documented in .env.prod.example (operator never sets it → arrives empty).`,
@@ -280,7 +348,7 @@ function main(): void {
     process.exit(1);
   }
   console.log(
-    `✓ env-passthrough: ${model.allPassthrough.size} passthrough + ${model.requiredInterpolations.size} required-interp vars all documented; ${Object.values(REQUIRED_PASSTHROUGH).flat().length} required-manifest entries wired.`,
+    `✓ env-passthrough: ${model.allPassthrough.size} passthrough + ${model.requiredInterpolations.size} required-interp + ${model.requiredGuards.size} guarded vars all documented; ${Object.values(REQUIRED_PASSTHROUGH).flat().length} required-manifest + ${Object.values(REQUIRED_GUARDED).flat().length} guarded-manifest entries wired.`,
   );
 }
 

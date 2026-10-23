@@ -80,6 +80,10 @@ export default defineConfig({
       '@aramo/documents-contracts': resolve(root, 'libs/documents-contracts/src/index.ts'),
       '@aramo/documents-rendering': resolve(root, 'libs/documents-rendering/src/index.ts'),
       '@aramo/sign': resolve(root, 'libs/sign/src/index.ts'),
+      // ATI-SEP-1 T0 (ADR-0036) — the Talent Intelligence libs (own database, scope:intelligence)
+      // and the shared ATS ⇄ TI contract (scope:shared). Mirrors tsconfig.base.json.
+      '@aramo/intelligence-contracts': resolve(root, 'libs/intelligence-contracts/src/index.ts'),
+      '@aramo/intelligence-core': resolve(root, 'libs/intelligence-core/src/index.ts'),
       // PR-A2 Gate 5 — first ATS-domain leaves (company + contact). Mirrors
       // tsconfig.base.json aliases so vitest runtime resolves the AppModule
       // imports + cross-lib edge contact -> company in the integration specs.

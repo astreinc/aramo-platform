@@ -12,6 +12,8 @@
 #   certbot        the DNS-01 sidecar owning the *.aramo.ai wildcard cert.
 #   api            apps/api — the D1 image, UNCHANGED (referenced, not rebuilt).
 #   auth-service   apps/auth-service — the D1 image, UNCHANGED.
+#   talent-intelligence-service  apps/talent-intelligence-service (ATI-SEP-1 / ADR-0036)
+#                  — internal only (:3004), own database aramo_intelligence.
 #   postgres       persisted named volume (the fresh-start DB survives restarts).
 #   redis          BullMQ (real, not degraded).
 # Postgres + Redis are container-INTERNAL — never published to the host/network.
@@ -162,6 +164,9 @@ services:
       # (same source as the postgres service → cannot drift).
       - DATABASE_URL=postgresql://${POSTGRES_USER:-aramo}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-aramo}?schema=public
       - REDIS_URL=redis://redis:6379
+      # ATI-SEP-1 T0 — the Talent Intelligence origin (compose-internal, no nginx route).
+      # Consumed by the ATS Intelligence Publisher / Inbound Sync once they land.
+      - INTELLIGENCE_SERVICE_URL=${INTELLIGENCE_SERVICE_URL:-http://talent-intelligence-service:3004}
       # CI-B6P — Conversation Intelligence processing. DARK by default: the
       # activation flag must be explicitly "true" to enable any model call. Both
       # carry safe defaults (optional ${VAR:-default} form → exempt from the
@@ -483,6 +488,38 @@ services:
       - SIGN_GEOIP_ASN_DB_PATH=${SIGN_GEOIP_ASN_DB_PATH:-/geoip/GeoLite2-ASN.mmdb}
     volumes:
       - /opt/aramo/geoip:/geoip:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+
+  talent-intelligence-service:
+    # ATI-SEP-1 T0 (ADR-0036) — Talent Intelligence, an independently subscribable
+    # product with its OWN database (aramo_intelligence, role aramo_intelligence) on
+    # the same postgres server. Container-internal ONLY: never port-published and
+    # deliberately NO nginx upstream (nginx resolves upstreams at config-load — see the
+    # sign-service note above — so the front door never depends on this container).
+    # The api reaches it at http://talent-intelligence-service:3004.
+    # The role + database are created idempotently by deploy/migrate-prod.sh
+    # (tools/ensure-intelligence-db.sh) BEFORE containers are recreated; migrations
+    # are libs/intelligence-core (tools/db-sync-intelligence.sh, own ledger).
+    image: ${ARAMO_INTELLIGENCE_IMAGE:-aramo/talent-intelligence-service:local}
+    container_name: aramo-prod-intelligence
+    restart: unless-stopped
+    environment:
+      # PORT 3004 matches main.ts's default (api=3000, auth=3001, platform-admin=3002, sign=3003).
+      - PORT=3004
+      - NODE_ENV=production
+      # The TI service reads ONLY this URL (no DATABASE_URL fallback; it refuses the shared
+      # Aramo DB). INTELLIGENCE_DB_PASSWORD must be URL-safe (tools/ensure-intelligence-db.sh
+      # enforces [A-Za-z0-9._~-], 16+ chars).
+      - INTELLIGENCE_DATABASE_URL=postgresql://${INTELLIGENCE_DB_USER:-aramo_intelligence}:${INTELLIGENCE_DB_PASSWORD:?INTELLIGENCE_DB_PASSWORD must be set}@postgres:5432/aramo_intelligence
+    healthcheck:
+      # GET /health answers 200 only when the TI database responds.
+      test: ['CMD', 'node', '-e', "require('http').get({host:'127.0.0.1',port:3004,path:'/health',timeout:2500},(r)=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]
+      interval: 30s
+      timeout: 5s
+      start_period: 40s
+      retries: 3
     depends_on:
       postgres:
         condition: service_healthy

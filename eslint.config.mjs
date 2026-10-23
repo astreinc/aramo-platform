@@ -73,10 +73,20 @@ const RAW_ELEMENT_RESTRICTED = Object.entries(RAW_ELEMENT_COMPONENT).map(([el, c
 // pact provider harness) unconstrained — the wall governs the tagged libs.
 // Proven to fire by libs/matching/src/tests/i15-negative-control.spec.ts (CIP⊥ATS),
 // apps/platform-admin/src/tests/platform-negative-control.spec.ts (PLATFORM⊥ATS),
-// and apps/portal-web/src/tests/portal-web-negative-control.spec.ts (PORTAL⊥ATS).
+// apps/portal-web/src/tests/portal-web-negative-control.spec.ts (PORTAL⊥ATS), and
+// libs/intelligence-core/src/tests/intelligence-boundary-negative-control.spec.ts
+// (ATS⊥INTELLIGENCE, CIP⊥INTELLIGENCE, INTELLIGENCE⊥ATS/CIP — ATI-SEP-1 A7).
 const SCOPE_DEP_CONSTRAINTS = [
-  { sourceTag: 'scope:cip', onlyDependOnLibsWithTags: ['scope:cip', 'scope:boundary', 'scope:shared'] },
-  { sourceTag: 'scope:ats', onlyDependOnLibsWithTags: ['scope:ats', 'scope:cip', 'scope:boundary', 'scope:shared'] },
+  { sourceTag: 'scope:cip', onlyDependOnLibsWithTags: ['scope:cip', 'scope:boundary', 'scope:shared'], notDependOnLibsWithTags: ['scope:intelligence'] },
+  // ATI-SEP-1 A7 — scope:ats keeps its legacy scope:cip edge until T10 retires the
+  // trust substrate, but may NEVER reach scope:intelligence (Add Talent has no TI dependency).
+  { sourceTag: 'scope:ats', onlyDependOnLibsWithTags: ['scope:ats', 'scope:cip', 'scope:boundary', 'scope:shared'], notDependOnLibsWithTags: ['scope:intelligence'] },
+  // ATI-SEP-1 A7 (ADR-0036 Decision 1) — scope:intelligence is the Talent Intelligence
+  // service (apps/talent-intelligence-service + libs/intelligence-core): its own product,
+  // its own database. Its legal closure is scope:intelligence + scope:shared ONLY — no
+  // scope:ats, scope:cip, scope:boundary, scope:platform, scope:portal or scope:sign.
+  // The only code it shares with the ATS is libs/intelligence-contracts (scope:shared).
+  { sourceTag: 'scope:intelligence', onlyDependOnLibsWithTags: ['scope:intelligence', 'scope:shared'] },
   { sourceTag: 'scope:platform', onlyDependOnLibsWithTags: ['scope:platform', 'scope:boundary', 'scope:shared'] },
   { sourceTag: 'scope:portal', onlyDependOnLibsWithTags: ['scope:portal', 'scope:boundary', 'scope:shared'] },
   // DOC-4 (R-4-2) + Sign Unified Product S-2 — scope:sign is the ONE Aramo Sign
@@ -138,6 +148,11 @@ export default [
       // lints it explicitly with `eslint --no-ignore` to prove the boundary rule
       // rejects it. Also tsconfig.lib.json-excluded from the auth-core build.
       '**/auth-negative-control/**',
+      // ATI-SEP-1 A7 negative controls: committed, deliberate breaches of the
+      // ATS / Talent Intelligence wall (tools/intelligence-boundary-probes/*). The
+      // wall-fires spec (libs/intelligence-core/src/tests/intelligence-boundary-negative-control.spec.ts)
+      // lints them explicitly with `eslint --no-ignore` to prove the rule rejects them.
+      '**/intelligence-negative-control/**',
     ],
   },
   ...nx.configs['flat/base'],
@@ -152,6 +167,25 @@ export default [
           enforceBuildableLibDependency: true,
           allow: [],
           depConstraints: SCOPE_DEP_CONSTRAINTS,
+        },
+      ],
+    },
+  },
+  // ATI-SEP-1 A7 — the UNTAGGED composition roots (apps/api, apps/auth-service,
+  // apps/sign-service, apps/ats-web, apps/home-web) fall under the trailing '*'
+  // rule, which would let them import scope:intelligence. They must not: the ATS
+  // reaches Talent Intelligence over HTTP only, through @aramo/intelligence-contracts
+  // (scope:shared). File-scoped override; the TI app itself is excluded.
+  {
+    files: ['apps/**/*.{ts,tsx,js,jsx,mjs,cjs}'],
+    ignores: ['apps/talent-intelligence-service/**'],
+    rules: {
+      '@nx/enforce-module-boundaries': [
+        'error',
+        {
+          enforceBuildableLibDependency: true,
+          allow: [],
+          depConstraints: [...SCOPE_DEP_CONSTRAINTS, { sourceTag: '*', notDependOnLibsWithTags: ['scope:intelligence'] }],
         },
       ],
     },
