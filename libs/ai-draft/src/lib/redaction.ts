@@ -16,6 +16,12 @@ const EMAIL_RE = /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g;
 const PHONE_RE = /(?<!\d)(?:\+?1[-. ]?)?\(?\d{3}\)?[-. ]?\d{3}[-. ]?\d{4}(?!\d)/g;
 const CC_RE = /\b\d{13,19}\b/g;
 const ROUTING_RE = /\b\d{9}\b/g;
+// A US phone glued to the front of an email local part ("571-509-9955jane@x.com",
+// from a document whose layout lost the separator). EMAIL_RE runs first and its
+// local part accepts digits and hyphens, so without this split the phone is
+// captured as part of the email and never as a phone. The remainder must start
+// with a letter, so an all-digit address ("5715099955@carrier.net") is untouched.
+const GLUED_PHONE_PREFIX_RE = /^((?:\+?1[-.]?)?\d{3}[-.]?\d{3}[-.]?\d{4})(?=[A-Za-z])/;
 
 // The redaction result. `emails`/`phones` are the CAPTURED raw values that were
 // masked out of `redactedText` — returned so a caller can reuse them (e.g. merge
@@ -42,21 +48,32 @@ export function redactPii(text: string): RedactionResult {
     return '[REDACTED:SSN]';
   });
 
-  redactedText = redactedText.replace(EMAIL_RE, (match) => {
-    spanCount += 1;
-    const norm = match.toLowerCase();
-    if (!emails.includes(norm)) emails.push(norm);
-    return '[REDACTED:EMAIL]';
-  });
-
-  redactedText = redactedText.replace(PHONE_RE, (match) => {
-    spanCount += 1;
+  const capturePhone = (match: string): void => {
     const digits = match.replace(/\D/g, '');
     const ten = digits.length >= 10 ? digits.slice(-10) : digits;
     if (ten.length === 10) {
       const norm = `${ten.slice(0, 3)}-${ten.slice(3, 6)}-${ten.slice(6)}`;
       if (!phones.includes(norm)) phones.push(norm);
     }
+  };
+
+  redactedText = redactedText.replace(EMAIL_RE, (match) => {
+    const glued = GLUED_PHONE_PREFIX_RE.exec(match);
+    const phonePart = glued?.[1];
+    const emailPart = phonePart !== undefined ? match.slice(phonePart.length) : match;
+    if (phonePart !== undefined) {
+      spanCount += 1;
+      capturePhone(phonePart);
+    }
+    spanCount += 1;
+    const norm = emailPart.toLowerCase();
+    if (!emails.includes(norm)) emails.push(norm);
+    return phonePart !== undefined ? '[REDACTED:PHONE] [REDACTED:EMAIL]' : '[REDACTED:EMAIL]';
+  });
+
+  redactedText = redactedText.replace(PHONE_RE, (match) => {
+    spanCount += 1;
+    capturePhone(match);
     return '[REDACTED:PHONE]';
   });
 

@@ -18,6 +18,30 @@ describe('redactPii — capture (HF2 R17: reuse masked values, no second scan)',
     expect(r.phones).toEqual(['703-555-1212']);
   });
 
+  it('splits a phone glued to the front of an email into a phone + an email', () => {
+    const r = redactPii('Reshma 571-509-9955jane-doe@example.com Centreville');
+    expect(r.redactedText).toBe('Reshma [REDACTED:PHONE] [REDACTED:EMAIL] Centreville');
+    expect(r.spanCount).toBe(2);
+    expect(r.emails).toEqual(['jane-doe@example.com']);
+    expect(r.phones).toEqual(['571-509-9955']);
+  });
+
+  it('splits an undelimited glued phone (and a +1 prefix) from the email', () => {
+    expect(redactPii('5715099955jane@example.com').phones).toEqual(['571-509-9955']);
+    const r = redactPii('+1-571-509-9955jane@example.com');
+    expect(r.emails).toEqual(['jane@example.com']);
+    expect(r.phones).toEqual(['571-509-9955']);
+  });
+
+  it('leaves an all-digit email and a digits-inside email intact', () => {
+    const sms = redactPii('5715099955@carrier.net');
+    expect(sms.emails).toEqual(['5715099955@carrier.net']);
+    expect(sms.phones).toEqual([]);
+    const inside = redactPii('jane5715099955@example.com');
+    expect(inside.emails).toEqual(['jane5715099955@example.com']);
+    expect(inside.phones).toEqual([]);
+  });
+
   it('no PII → empty capture arrays', () => {
     const r = redactPii('Just some prose, no contact.');
     expect(r.emails).toEqual([]);
