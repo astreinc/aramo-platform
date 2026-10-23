@@ -57,7 +57,17 @@ replace-in-place, never append narrative.
 - Pipeline⊥ATS wall (ADR-0029/I15): Pipeline libs never hard-import
   ATS libs; cross L3 by UUID ref + versioned Pact-tested connector
   contract only; nx boundary tags CI-enforce this.
-- `identity_index` schema: NO `tenant_id` column, NO PII column, ever.
+- ATS / Talent Intelligence / Talent Portal are independent product
+  boundaries (ATI-SEP-1 + Addenda A1–A4; ADR-0036). ATS ↔ TI cross only
+  by versioned HTTP contract + HMAC webhook (`libs/intelligence-contracts`,
+  scope:shared); `scope:ats` and `scope:cip` never import
+  `scope:intelligence`, and TI never imports ATS — eslint walls
+  CI-enforce this. TI has its own database/role/migration ledger; ATS
+  never reads it. ATS Add Talent never calls TI (TI absent/unentitled
+  must not affect create). ATS documents never cross to TI. The legacy
+  `identity_index` / `talent_trust` / `platform_trust` substrate is
+  retired; Talent Portal identity is Portal-owned and pending
+  (GAP-PORTAL-ID-1) — never rebuild it on ATS tables or TI storage.
 - Never run Terraform from the box (wrong AWS account; 403 on the
   state bucket). Infra runs from the Mac.
 
