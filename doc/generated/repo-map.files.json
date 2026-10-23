@@ -3708,6 +3708,7 @@
     "libs/intelligence-core/tsconfig.lib.json",
     "libs/intelligence-core/vitest.config.ts",
     "libs/intelligence-integration/project.json",
+    "libs/intelligence-integration/src/client.ts",
     "libs/intelligence-integration/src/index.ts",
     "libs/intelligence-integration/src/lib/ingest-payload-builder.ts",
     "libs/intelligence-integration/src/lib/intelligence-backfill.service.ts",

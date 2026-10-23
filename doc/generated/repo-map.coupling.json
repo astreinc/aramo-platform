@@ -22228,6 +22228,11 @@
       "to": "pact/provider/src/verify-ti.ts"
     },
     {
+      "from": "pact/consumers/intelligence-integration-consumer/vitest.config.ts",
+      "status": "unscoped",
+      "to": "libs/intelligence-integration/src/client.ts"
+    },
+    {
       "from": "pact/consumers/requisition-import-consumer/src/requisition-import.consumer.test.ts",
       "status": "unscoped",
       "to": "openapi/ats.yaml"
