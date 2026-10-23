@@ -7,7 +7,9 @@ export type EventVersion = typeof EVENT_VERSION;
 
 /** The ATS is the first (and today the only) source system TI ingests from. */
 export const SOURCE_SYSTEM_ARAMO_ATS = 'ARAMO_ATS' as const;
-export type SourceSystemId = typeof SOURCE_SYSTEM_ARAMO_ATS;
+/** Closed list of source systems TI admits (the ingestion validator enforces it). */
+export const SOURCE_SYSTEM_IDS = [SOURCE_SYSTEM_ARAMO_ATS] as const;
+export type SourceSystemId = (typeof SOURCE_SYSTEM_IDS)[number];
 
 export const TALENT_CREATED = 'talent.created' as const;
 export const TALENT_PROFILE_UPDATED = 'talent.profile_updated' as const;

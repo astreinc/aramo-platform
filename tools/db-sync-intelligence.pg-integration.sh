@@ -92,8 +92,10 @@ else
 fi
 
 # --- I6 (before any apply: no ledger yet) -------------------------------------
+# Every on-disk migration is pending (count derived — grows with each increment).
+tot="$(cd "$ROOT" && ls -d libs/intelligence-core/prisma/migrations/*/ | wc -l | tr -d ' ')"
 st="$(runner "$ROOT" "$TI_URL" --status)"; rc=$?
-if [ "$rc" = 0 ] && printf '%s' "$st" | grep -q "pending — 1 on-disk" \
+if [ "$rc" = 0 ] && printf '%s' "$st" | grep -q "pending — ${tot} on-disk" \
    && [ "$(sql "$TI_URL" "SELECT to_regclass('public._intelligence_migrations') IS NULL")" = "t" ]; then
   ok "I6 --status is read-only (no ledger table created)"
 else

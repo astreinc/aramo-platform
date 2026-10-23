@@ -1,13 +1,14 @@
 // @aramo/intelligence-contracts — the ONLY code shared between the ATS and the
 // Talent Intelligence (TI) service (ADR-0036 Decision 1). Event names, the
-// envelope version and the wire DTOs. No domain logic, no persistence, no
-// import of any ATS or TI library (scope:shared leaf).
+// envelope version, the wire DTOs, the admission field catalogue and its
+// validator. No persistence, no import of any ATS or TI library (scope:shared leaf).
 export {
   ATS_TALENT_EVENT_TYPES,
   EVENT_VERSION,
   GOLDEN_TALENT_PROFILE_UPDATED,
   INTELLIGENCE_EVENT_TYPES,
   SOURCE_SYSTEM_ARAMO_ATS,
+  SOURCE_SYSTEM_IDS,
   TALENT_CREATED,
   TALENT_ERASED,
   TALENT_PROFILE_UPDATED,
@@ -27,6 +28,66 @@ export {
   INTELLIGENCE_SERVICE_NAME,
   type IntelligenceHealthResponse,
   type IntelligenceProfileReadResponse,
+} from './lib/api.js';
+export {
+  ADMISSION_FIELD_CATALOGUE,
+  ASSERTION_ADMISSION_CLASS,
+  ASSERTION_TYPES,
+  AVAILABILITY_STATUSES,
+  CLASS_C_EXACT_KEYS,
+  CLASS_C_KEY_FRAGMENTS,
+  IDENTIFIER_VERIFICATION_STATUSES,
+  IDENTITY_FIELD_ADMISSION_CLASS,
+  INGESTIBLE_ASSERTION_TYPES,
+  INGEST_SOURCE_KINDS,
+  SOURCE_KINDS,
+  VERIFICATION_OUTCOME_RESULTS,
+  VERIFICATION_OUTCOME_TARGETS,
+  WORK_AUTHORIZATION_STATUSES,
+  type AdmissionClass,
+  type AssertionType,
+  type AvailabilityStatus,
+  type IdentifierVerificationStatus,
+  type IngestSourceKind,
+  type SourceKind,
+  type VerificationOutcomeResult,
+  type VerificationOutcomeTarget,
+  type WorkAuthorizationStatus,
+} from './lib/admission.js';
+export {
+  INGEST_OUTCOMES,
+  INGEST_REJECTION_CODES,
+  INTELLIGENCE_INGEST_SCOPE,
+  RESOLUTION_RULES,
+  type AssertionPayloads,
+  type IdentifierVerification,
+  type IdentityEmail,
+  type IdentityGovernmentId,
+  type IdentityNames,
+  type IdentityPhone,
+  type IngestAssertionProvenance,
+  type IngestAssertionType,
+  type IngestLocation,
+  type IngestOutcome,
+  type IngestRejectionCode,
+  type IngestValidationIssue,
+  type IngestValidationResult,
+  type ResolutionRule,
+  type ServiceTokenResponse,
+  type TalentErasedRequest,
+  type TalentErasedResponse,
+  type TalentIngestAssertion,
+  type TalentIngestIdentity,
+  type TalentIngestRequest,
+  type TalentIngestResponse,
   type TalentIngestionRequest,
   type TalentIngestionResponse,
-} from './lib/api.js';
+} from './lib/ingest.js';
+export {
+  isAuthoritativeWorkAuthorization,
+  isClassCKey,
+  isDocumentKey,
+  normalizeIngestKey,
+  validateTalentErasedRequest,
+  validateTalentIngestRequest,
+} from './lib/ingest-validator.js';

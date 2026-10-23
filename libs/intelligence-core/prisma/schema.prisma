@@ -7,7 +7,7 @@
 // tools/db-sync-local.sh. No cross-database reference of any kind: ATS ids are
 // external references only (T1 adds GoldenTalent / ExternalTalentReference).
 //
-// T0 ships only the schema and a service-identity table.
+// T0 shipped the schema + a service-identity table; T1 adds the Golden model below.
 
 generator client {
   provider = "prisma-client-js"
@@ -24,6 +24,376 @@ model ServiceInfo {
   key        String   @id
   value      String
   updated_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@schema("intelligence")
+}
+
+// ════════════════════════════════════════════════════════════════════════════
+// ATI-SEP-1 T1 — the GOLDEN MODEL (ADR-0036 §4–§6, Addendum A1).
+//
+// CLOSED-VOCABULARY DISCIPLINE (libs/talent-trust precedent): every closed
+// vocabulary is a String (TEXT) column with its values documented in `///` and
+// enforced in code — never a Prisma native enum. Intra-schema relations carry
+// real FKs. ATS ids are EXTERNAL references (text), never FKs.
+//
+// IMMUTABILITY (migration 20261023130000 triggers):
+//   * Assertion — content immutable; only current_status may change, except
+//     that a MERGE/SPLIT re-points subject_id under the transaction-local
+//     setting intelligence.repoint = 'on' (IdentityMergeSplitService only).
+//   * AssertionEvent, AssertionLink, MergeSplitEvent — append-only (no UPDATE).
+//   * Assertion, AssertionEvent, AssertionLink, MergeSplitEvent, EvidenceArtifact
+//     — no DELETE (evidence is never deleted, Addendum A1).
+// ════════════════════════════════════════════════════════════════════════════
+
+/// The Golden subject. id = intelligence_subject_id (canonical in TI).
+model GoldenTalent {
+  id String @id @default(uuid()) @db.Uuid
+
+  /// GoldenTalentResolutionStatus: ACTIVE | PROVISIONAL | MERGED
+  resolution_status String  @default("PROVISIONAL")
+  /// Set when resolution_status = MERGED: the surviving subject.
+  merged_into_id    String? @db.Uuid
+  /// GoldenTalentAccessState: ACTIVE | AUDIT_RETAINED (Addendum A1 — no ACTIVE reference left)
+  access_state      String  @default("ACTIVE")
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  merged_into GoldenTalent?  @relation("GoldenTalentMerge", fields: [merged_into_id], references: [id])
+  merged_from GoldenTalent[] @relation("GoldenTalentMerge")
+
+  identifiers SubjectIdentifier[]
+  references  ExternalTalentReference[]
+  assertions  Assertion[]
+  artifacts   EvidenceArtifact[]
+  facts       ResolvedProfileFact[]
+  conflicts   IdentityConflict[]
+
+  @@index([merged_into_id])
+  @@schema("intelligence")
+}
+
+/// A contact / government identifier observed for a subject. normalized_value:
+/// EMAIL lowercased + trimmed; PHONE '+' + digits (E.164-ish); GOV_ID a keyed
+/// HMAC-SHA256 token (INTELLIGENCE_GOV_ID_TOKEN_KEY) — the raw value is NEVER stored.
+/// Partial unique index (migration): one (identifier_type, normalized_value) may
+/// be VERIFIED + ACTIVE on at most one row, i.e. bound to at most one subject.
+model SubjectIdentifier {
+  id         String @id @default(uuid()) @db.Uuid
+  subject_id String @db.Uuid
+
+  /// SubjectIdentifierType: EMAIL | PHONE | GOV_ID
+  identifier_type     String
+  normalized_value    String
+  /// GOV_ID only (e.g. US)
+  jurisdiction        String?
+  /// GOV_ID only (e.g. SSN)
+  identifier_class    String?
+  /// SubjectIdentifierVerificationStatus: UNVERIFIED | VERIFIED | REVOKED
+  verification_status String    @default("UNVERIFIED")
+  verification_method String?
+  verification_source String?
+  verified_at         DateTime? @db.Timestamptz(6)
+  valid_from          DateTime? @db.Timestamptz(6)
+  valid_to            DateTime? @db.Timestamptz(6)
+  /// SubjectIdentifierStatus: ACTIVE | SUPERSEDED
+  status              String    @default("ACTIVE")
+  is_primary          Boolean   @default(false)
+  /// The ExternalTalentReference that asserted it (NULL for TI-originated identifiers).
+  source_reference_id String?   @db.Uuid
+  created_at          DateTime  @default(now()) @db.Timestamptz(6)
+
+  subject          GoldenTalent             @relation(fields: [subject_id], references: [id])
+  source_reference ExternalTalentReference? @relation(fields: [source_reference_id], references: [id])
+
+  @@index([identifier_type, normalized_value])
+  @@index([subject_id])
+  @@index([source_reference_id])
+  @@schema("intelligence")
+}
+
+/// One source system's talent record linked to a subject. The tuple
+/// (source_system_id, source_tenant_id, external_talent_id) is authoritative (§5 R1).
+model ExternalTalentReference {
+  id                 String @id @default(uuid()) @db.Uuid
+  subject_id         String @db.Uuid
+  /// SourceSystemId (contracts SOURCE_SYSTEM_IDS): ARAMO_ATS
+  source_system_id   String
+  source_tenant_id   String
+  external_talent_id String
+
+  /// ExternalTalentReferenceStatus: ACTIVE | ERASED | DETACHED
+  status    String    @default("ACTIVE")
+  linked_at DateTime  @default(now()) @db.Timestamptz(6)
+  erased_at DateTime? @db.Timestamptz(6)
+
+  /// Normalized identity snapshot of the last ingest (names + identifier keys;
+  /// GOV_ID as token only) — R1 contradiction detection.
+  last_identity_snapshot Json @db.JsonB
+
+  subject     GoldenTalent        @relation(fields: [subject_id], references: [id])
+  identifiers SubjectIdentifier[]
+  assertions  Assertion[]
+
+  @@unique([source_system_id, source_tenant_id, external_talent_id])
+  @@index([subject_id])
+  @@schema("intelligence")
+}
+
+/// One immutable claim about a subject. Only current_status changes (trigger).
+model Assertion {
+  id         String @id @default(uuid()) @db.Uuid
+  subject_id String @db.Uuid
+
+  /// AssertionType (contracts ASSERTION_TYPES): SKILL | WORK_HISTORY | EDUCATION |
+  /// CERTIFICATION | PROJECT | CURRENT_EMPLOYER | TITLE | LOCATION |
+  /// PUBLIC_PROFILE_URL | AVAILABILITY | NAME | WORK_AUTHORIZATION | VERIFICATION_OUTCOME
+  assertion_type       String
+  /// AdmissionClass: A | B
+  admission_class      String
+  payload              Json      @db.JsonB
+  source_reference_id  String?   @db.Uuid
+  source_system_id     String
+  source_tenant_id     String?
+  /// SourceKind: RECRUITER | RESUME_DERIVED | TALENT_SELF | TI_ACQUIRED | VERIFICATION
+  source_kind          String
+  source_event_id      String
+  /// AssertionVerificationStatus: DECLARED | DOCUMENT_SUPPORTED | VERIFIED
+  verification_status  String    @default("DECLARED")
+  observed_at          DateTime  @db.Timestamptz(6)
+  valid_from           DateTime? @db.Timestamptz(6)
+  valid_to             DateTime? @db.Timestamptz(6)
+  /// AssertionCurrentStatus: VALID | STALE | CONTRADICTED | REVOKED | SUPERSEDED | DISPUTED | WITHDRAWN
+  current_status       String    @default("VALID")
+  ai_derived           Boolean   @default(false)
+  /// sha256 of the canonical (type, payload, source_kind, validity, ai_derived) — dedupe key per reference.
+  content_hash         String
+  /// Opaque sha256 of the source document (D-7). Never a document reference.
+  source_document_hash String?
+  created_at           DateTime  @default(now()) @db.Timestamptz(6)
+
+  subject          GoldenTalent             @relation(fields: [subject_id], references: [id])
+  source_reference ExternalTalentReference? @relation(fields: [source_reference_id], references: [id])
+  events           AssertionEvent[]
+  links_from       AssertionLink[]          @relation("AssertionLinkFrom")
+  links_to         AssertionLink[]          @relation("AssertionLinkTo")
+  supports         ArtifactSupport[]
+
+  @@index([subject_id, assertion_type])
+  @@index([source_reference_id, content_hash])
+  @@schema("intelligence")
+}
+
+/// Append-only lifecycle log of an Assertion (trigger: no UPDATE / DELETE).
+model AssertionEvent {
+  id              String   @id @default(uuid()) @db.Uuid
+  assertion_id    String   @db.Uuid
+  /// AssertionEventType: ASSERTED | SUPERSEDED | STALE | CONTRADICTED | REVOKED | DISPUTED | WITHDRAWN | REVALIDATED | REPOINTED
+  event_type      String
+  from_status     String?
+  to_status       String?
+  /// Who/what caused it (service client id, 'ingest', 'merge:<id>', operator).
+  actor           String
+  source_event_id String?
+  details         Json?    @db.JsonB
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+
+  assertion Assertion @relation(fields: [assertion_id], references: [id])
+
+  @@index([assertion_id, created_at])
+  @@schema("intelligence")
+}
+
+/// Append-only relation between two assertions (trigger: no UPDATE / DELETE).
+model AssertionLink {
+  id                String   @id @default(uuid()) @db.Uuid
+  from_assertion_id String   @db.Uuid
+  to_assertion_id   String   @db.Uuid
+  /// AssertionLinkType: CORROBORATES | CONTRADICTS | SUPERSEDES
+  link_type         String
+  actor             String
+  created_at        DateTime @default(now()) @db.Timestamptz(6)
+
+  from_assertion Assertion @relation("AssertionLinkFrom", fields: [from_assertion_id], references: [id])
+  to_assertion   Assertion @relation("AssertionLinkTo", fields: [to_assertion_id], references: [id])
+
+  @@unique([from_assertion_id, to_assertion_id, link_type])
+  @@schema("intelligence")
+}
+
+/// A document TI itself acquired (never one sent by a source system).
+model EvidenceArtifact {
+  id            String   @id @default(uuid()) @db.Uuid
+  subject_id    String   @db.Uuid
+  document_type String
+  issuer        String?
+  /// TI-owned storage key (TI bucket only).
+  storage_key   String
+  sha256        String
+  retrieved_at  DateTime @db.Timestamptz(6)
+  source_url    String?
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+
+  subject  GoldenTalent       @relation(fields: [subject_id], references: [id])
+  policy   DocumentTypePolicy @relation(fields: [document_type], references: [document_type])
+  supports ArtifactSupport[]
+
+  @@index([subject_id])
+  @@schema("intelligence")
+}
+
+/// Per document type: may an artifact be returned to tenants (ADR §6)? Default no.
+model DocumentTypePolicy {
+  document_type      String   @id
+  globally_shareable Boolean  @default(false)
+  updated_at         DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  artifacts EvidenceArtifact[]
+
+  @@schema("intelligence")
+}
+
+/// Which artifact supports which assertion.
+model ArtifactSupport {
+  assertion_id String   @db.Uuid
+  artifact_id  String   @db.Uuid
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+
+  assertion Assertion        @relation(fields: [assertion_id], references: [id])
+  artifact  EvidenceArtifact @relation(fields: [artifact_id], references: [id])
+
+  @@id([assertion_id, artifact_id])
+  @@schema("intelligence")
+}
+
+/// Projection (recomputed, never hand-authored): the resolved value of one fact.
+/// fact_key distinguishes multi-valued facts ('' for single-valued ones).
+model ResolvedProfileFact {
+  id                       String   @id @default(uuid()) @db.Uuid
+  subject_id               String   @db.Uuid
+  fact_type                String
+  fact_key                 String   @default("")
+  value                    Json     @db.JsonB
+  supporting_assertion_ids String[] @db.Uuid
+  resolved_at              DateTime @default(now()) @db.Timestamptz(6)
+
+  subject GoldenTalent @relation(fields: [subject_id], references: [id])
+
+  @@unique([subject_id, fact_type, fact_key])
+  @@schema("intelligence")
+}
+
+/// An identity question for review — never labelled fraud (§5 R4).
+model IdentityConflict {
+  id                  String    @id @default(uuid()) @db.Uuid
+  subject_id          String    @db.Uuid
+  /// IdentityConflictType: IDENTITY_ATTRIBUTE_CONFLICT | ANCHOR_CONTRADICTION | REFERENCE_IDENTITY_MUTATION
+  conflict_type       String
+  /// Other subjects the conflict names (ANCHOR_CONTRADICTION).
+  related_subject_ids String[]  @db.Uuid
+  details             Json      @db.JsonB
+  /// IdentityConflictStatus: OPEN | RESOLVED
+  status              String    @default("OPEN")
+  created_at          DateTime  @default(now()) @db.Timestamptz(6)
+  resolved_at         DateTime? @db.Timestamptz(6)
+
+  subject GoldenTalent @relation(fields: [subject_id], references: [id])
+
+  @@index([subject_id, status])
+  @@schema("intelligence")
+}
+
+/// Append-only record of a merge or split (trigger: no UPDATE / DELETE).
+/// moved = { reference_ids, assertion_ids, identifier_ids, artifact_ids, conflict_ids,
+///           from_prior_resolution_status, from_prior_access_state, restores_merge_event_id? }
+model MergeSplitEvent {
+  id              String   @id @default(uuid()) @db.Uuid
+  /// MergeSplitKind: MERGE | SPLIT
+  kind            String
+  from_subject_id String   @db.Uuid
+  into_subject_id String   @db.Uuid
+  actor           String
+  reason          String
+  moved           Json     @db.JsonB
+  created_at      DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([from_subject_id])
+  @@index([into_subject_id])
+  @@schema("intelligence")
+}
+
+/// Ingestion idempotency (ADR §3): one row per processed source event. The
+/// stored response is returned verbatim on replay.
+model IntelligenceInbox {
+  event_id           String   @id
+  source_system_id   String
+  source_tenant_id   String
+  external_talent_id String
+  /// IntelligenceInboxKind: TALENT_SNAPSHOT | TALENT_ERASED
+  kind               String
+  received_at        DateTime @default(now()) @db.Timestamptz(6)
+  /// Outcome (TalentIngestResponse.outcome / TalentErasedResponse.outcome)
+  outcome            String
+  response           Json     @db.JsonB
+
+  @@schema("intelligence")
+}
+
+/// Refused ingestion requests (400). Only the refusal code + issue paths are
+/// kept — never the refused body (it may carry a document or Class C data).
+model IntelligenceQuarantine {
+  id               String   @id @default(uuid()) @db.Uuid
+  source_system_id String?
+  source_event_id  String?
+  client_id        String?
+  /// IngestRejectionCode: DOCUMENT_REJECTED | CLASS_C_REJECTED | INVALID_REQUEST
+  reason           String
+  issues           Json     @db.JsonB
+  received_at      DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([received_at])
+  @@schema("intelligence")
+}
+
+/// TI → ATS outbox (ADR-0033 envelope + claim/lease; mirrors
+/// talent_evidence.TalentIntakeOutboxEvent). Envelope carries ids only.
+model IntelligenceOutbox {
+  id             String   @id @default(uuid()) @db.Uuid
+  /// IntelligenceEventType: golden_talent.profile_updated
+  event_type     String
+  event_version  String   @default("v1")
+  /// Global subjects have no tenant — NULL.
+  tenant_id      String?
+  source         String   @default("talent-intelligence")
+  subject_type   String   @default("golden_talent")
+  subject_id     String
+  payload        Json     @db.JsonB
+  occurred_at    DateTime @db.Timestamptz(6)
+  correlation_id String?
+  causation_id   String?
+  created_at     DateTime @default(now()) @db.Timestamptz(6)
+
+  claimed_at         DateTime? @db.Timestamptz(6)
+  lease_expires_at   DateTime? @db.Timestamptz(6)
+  publish_attempts   Int       @default(0)
+  last_publish_error String?
+  published_at       DateTime? @db.Timestamptz(6)
+  quarantined_at     DateTime? @db.Timestamptz(6)
+
+  @@index([published_at, quarantined_at, created_at])
+  @@schema("intelligence")
+}
+
+/// A service client allowed to exchange credentials for a short-lived token
+/// (POST /v1/oauth/token, client_credentials). secret_hash = scrypt (never the secret).
+model ServiceClient {
+  client_id        String   @id
+  secret_hash      String
+  allowed_scopes   String[]
+  /// The only source_system_id this client may ingest as.
+  source_system_id String
+  active           Boolean  @default(true)
+  created_at       DateTime @default(now()) @db.Timestamptz(6)
 
   @@schema("intelligence")
 }
