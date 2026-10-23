@@ -18,6 +18,7 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { TalentRecordRepository } from '../lib/talent-record.repository.js';
 import { TalentEventOutboxRepository } from '../lib/talent-events/talent-event-outbox.js';
 import { TalentIntakePromotionService } from '../lib/talent-intake/talent-intake-promotion.service.js';
+import { TalentIntakeService } from '../lib/talent-intake/talent-intake.service.js';
 import { TALENT_INTAKE_SOURCE_TYPE_RESUME_UPLOAD } from '../lib/talent-intake/talent-intake.constants.js';
 
 // ATI-SEP-1 A2 + A3 — the resumable intake Save and the ATS talent outbox
@@ -177,10 +178,25 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
                   "talent_evidence"."TalentSkillEvidence", "talent_evidence"."TalentEducationEntry",
                   "talent_evidence"."TalentWorkAuthorization", "talent_evidence"."TalentResumeDefault",
                   "talent_evidence"."TalentResumeEdition", "talent_evidence"."TalentDocument",
-                  "talent_evidence"."TalentDerivedSnapshot" CASCADE`,
+                  "talent_evidence"."TalentDerivedSnapshot", "talent_evidence"."TalentCertificationEntry",
+                  "talent_evidence"."TalentProjectExperience" CASCADE`,
       );
       save = new TalentIntakePromotionService(extraction, records);
+      intakeSvc = new TalentIntakeService({} as never, extraction, records);
     });
+
+    let intakeSvc: TalentIntakeService;
+
+    // A recruiter review PATCH through the real intake service (CAS on the live version).
+    async function patchWorkHistory(id: string, workHistory: unknown[]) {
+      const cur = await evidencePrisma.talentIntakeDraft.findUniqueOrThrow({ where: { id } });
+      return intakeSvc.patchReview(
+        auth,
+        id,
+        { review: { fields: {}, work_history: workHistory }, expected_version: cur.version } as never,
+        'rq-patch',
+      );
+    }
 
     async function draft(fields: Record<string, unknown>): Promise<string> {
       const id = uuidv7();
@@ -444,6 +460,115 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(d.promoted_talent_record_id).toBeNull();
       const rec = await save.promote(auth, id, 'rq');
       expect(await counts(rec.id)).toEqual(EXPECTED);
+    });
+  
+    // ATI-SEP-1 D6 — recruiter edits are never silently lost by a resumed Save.
+    it('D6: step 1 ran, record not yet created, recruiter edits work history → re-Save re-materializes (old rows gone, new rows only)', async () => {
+      const id = await draft(ADA);
+      vi.spyOn(records, 'create').mockRejectedValueOnce(new Error('injected'));
+      await expect(save.promote(auth, id, 'rq-1')).rejects.toThrow('injected');
+      const mid = await evidencePrisma.talentIntakeDraft.findUniqueOrThrow({ where: { id } });
+      const reserved = mid.save_reserved_talent_record_id as string;
+      expect(mid.save_evidence_payload_hash).toMatch(/^[0-9a-f]{64}$/);
+      expect(await evidencePrisma.talentWorkHistoryEntry.count({ where: { talent_id: reserved } })).toBe(2);
+
+      // The PATCH is accepted: no TalentRecord exists yet.
+      await patchWorkHistory(id, [{ employer_name: 'Initech', role_title: 'Principal Analyst', start_date: '2016', end_date: '2019' }]);
+
+      const rec = await save.promote(auth, id, 'rq-2');
+      expect(rec.id).toBe(reserved);
+      const rows = await evidencePrisma.talentWorkHistoryEntry.findMany({ where: { talent_id: rec.id } });
+      expect(rows.map((r) => [r.employer_name, r.role_title])).toEqual([['Initech', 'Principal Analyst']]);
+      // The rest of step 1 is untouched: one document, one edition; skills/education re-written once.
+      expect(await counts(rec.id)).toEqual({ ...EXPECTED, workHistory: 1 });
+      expect(await evidencePrisma.talentSkillEvidence.count({ where: { talent_id: rec.id } })).toBe(1);
+      expect(await evidencePrisma.talentEducationEntry.count({ where: { talent_id: rec.id } })).toBe(1);
+      const done = await evidencePrisma.talentIntakeDraft.findUniqueOrThrow({ where: { id } });
+      expect(done.review_status).toBe('PROMOTED');
+      expect(done.save_evidence_payload_hash).not.toBe(mid.save_evidence_payload_hash);
+    });
+
+    it('D6: an unchanged re-Save does not touch the materialized evidence', async () => {
+      const id = await draft(ADA);
+      vi.spyOn(records, 'create').mockRejectedValueOnce(new Error('injected'));
+      await expect(save.promote(auth, id, 'rq-1')).rejects.toThrow('injected');
+      const mid = await evidencePrisma.talentIntakeDraft.findUniqueOrThrow({ where: { id } });
+      const before = await evidencePrisma.talentWorkHistoryEntry.findMany({
+        where: { talent_id: mid.save_reserved_talent_record_id as string },
+        orderBy: { id: 'asc' },
+      });
+      const rec = await save.promote(auth, id, 'rq-2');
+      const after = await evidencePrisma.talentWorkHistoryEntry.findMany({ where: { talent_id: rec.id }, orderBy: { id: 'asc' } });
+      expect(after.map((r) => r.id)).toEqual(before.map((r) => r.id));
+    });
+
+    it('D6: the record already exists (crash after step 2) → an array edit is refused 409 INTAKE_DRAFT_SAVED_EDIT_ON_TALENT; the draft is unchanged', async () => {
+      const id = await draft(ADA);
+      vi.spyOn(extraction, 'recordDeclaredWorkAuthorization').mockRejectedValueOnce(new Error('injected'));
+      await expect(save.promote(auth, id, 'rq-1')).rejects.toThrow('injected');
+      const mid = await evidencePrisma.talentIntakeDraft.findUniqueOrThrow({ where: { id } });
+      await expect(patchWorkHistory(id, [{ employer_name: 'Elsewhere', role_title: 'Engineer' }])).rejects.toMatchObject({
+        statusCode: 409,
+        code: 'INTAKE_DRAFT_SAVED_EDIT_ON_TALENT',
+        context: { details: { talent_record_id: mid.save_reserved_talent_record_id } },
+      });
+      expect(await evidencePrisma.talentIntakeDraft.findUniqueOrThrow({ where: { id } })).toEqual(mid);
+      // The Save still finishes, on the evidence it already wrote.
+      const rec = await save.promote(auth, id, 'rq-2');
+      expect(await counts(rec.id)).toEqual(EXPECTED);
+    });
+
+    it('DELETE: the TalentRecord delete and its talent.deleted row (ids only) commit together; a missing id → 404 and no row', async () => {
+      const rec = await records.create({
+        tenant_id: TENANT,
+        entered_by_id: ACTOR,
+        input: { first_name: 'Ada', last_name: 'Lovelace', email1: 'ada@example.com', phone_cell: '555 123 0000' } as never,
+        requestId: 'seed',
+      });
+      await records.delete({ tenant_id: TENANT, id: rec.id, requestId: 'rq-del' });
+      expect(await recordPrisma.talentRecord.count({ where: { id: rec.id } })).toBe(0);
+      const ev = await recordPrisma.talentEventOutbox.findFirstOrThrow({ where: { event_type: 'talent.deleted' } });
+      expect(ev).toMatchObject({ subject_id: rec.id, tenant_id: TENANT, event_version: 'v1', correlation_id: 'rq-del' });
+      expect(ev.event_payload).toEqual({ talent_record_id: rec.id });
+
+      await expect(records.delete({ tenant_id: TENANT, id: uuidv7(), requestId: 'rq' })).rejects.toMatchObject({ statusCode: 404 });
+      expect(await recordPrisma.talentEventOutbox.count({ where: { event_type: 'talent.deleted' } })).toBe(1);
+    });
+
+    it('DELETE: a failed outbox write rolls the delete back (same transaction)', async () => {
+      const rec = await records.create({
+        tenant_id: TENANT,
+        entered_by_id: ACTOR,
+        input: { first_name: 'Ada', last_name: 'Lovelace', email1: 'ada@example.com', phone_cell: '555 123 0000' } as never,
+        requestId: 'seed',
+      });
+      await recordPrisma.$executeRawUnsafe(
+        `ALTER TABLE "talent_record"."TalentEventOutbox" ADD CONSTRAINT d6_block_deleted CHECK (event_type <> 'talent.deleted')`,
+      );
+      try {
+        await expect(records.delete({ tenant_id: TENANT, id: rec.id, requestId: 'rq' })).rejects.toThrow();
+        expect(await recordPrisma.talentRecord.count({ where: { id: rec.id } })).toBe(1);
+      } finally {
+        await recordPrisma.$executeRawUnsafe(`ALTER TABLE "talent_record"."TalentEventOutbox" DROP CONSTRAINT d6_block_deleted`);
+      }
+    });
+
+    it('D4: an evidence-edit talent.profile_updated append is retried inline (transient failure → one row)', async () => {
+      const rec = await records.create({
+        tenant_id: TENANT,
+        entered_by_id: ACTOR,
+        input: { first_name: 'Ada', last_name: 'Lovelace', email1: 'ada@example.com', phone_cell: '555 123 0000' } as never,
+        requestId: 'seed',
+      });
+      const real = recordPrisma.talentEventOutbox.create.bind(recordPrisma.talentEventOutbox);
+      const spy = vi
+        .spyOn(recordPrisma.talentEventOutbox, 'create')
+        .mockRejectedValueOnce(new Error('transient'))
+        .mockRejectedValueOnce(new Error('transient'))
+        .mockImplementation(real as never);
+      await records.recordProfileUpdated({ tenant_id: TENANT, talent_record_id: rec.id, changed_fields: ['work_history'] });
+      expect(spy).toHaveBeenCalledTimes(3);
+      expect(await recordPrisma.talentEventOutbox.count({ where: { event_type: 'talent.profile_updated' } })).toBe(1);
     });
   },
 );

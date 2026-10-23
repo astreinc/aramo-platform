@@ -72,6 +72,10 @@ describe('TalentEvidenceRepository — surface', () => {
     // ATI-SEP-1 A2 — the resumable Save (reserve → evidence → … → PROMOTED).
     'reserveTalentIntakeDraftSave',
     'materializeIntakeSaveEvidence',
+    // D6 — a resumed Save re-materializes changed reviewed arrays (pre-record).
+    'rematerializeIntakeSaveEvidence',
+    'findIntakeSaveDocumentId',
+    'writeIntakeSaveTypedEvidence',
     'completeTalentIntakeDraftSave',
     'touchTalentIntakeDraftOpened',
     // Talent Draft Recovery — discard (§18) + replace-résumé (§13) commands.

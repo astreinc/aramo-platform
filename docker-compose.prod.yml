@@ -285,6 +285,10 @@ services:
       # plane is applied; it stays fail-closed when its bus is unconfigured.
       - TALENT_INTAKE_TRANSPORT=${TALENT_INTAKE_TRANSPORT:-singlebox}
       - TALENT_INTAKE_DRAIN_ENABLED=0
+      # ATI-SEP-1 A3 — the ATS talent outbox (talent.* business-fact events) is
+      # drained by the talent-intake-worker ONLY; the API just writes it. Pinned
+      # explicitly (env-passthrough literal manifest) so the API never drains.
+      - ATS_TALENT_EVENTS_DRAIN_ENABLED=0
     depends_on:
       postgres:
         condition: service_healthy
@@ -307,6 +311,15 @@ services:
       - REDIS_URL=redis://redis:6379
       # This worker IS the single-box drainer (DRAIN enabled by default; no AWS).
       - TALENT_INTAKE_TRANSPORT=${TALENT_INTAKE_TRANSPORT:-singlebox}
+      # ATI-SEP-1 A3 — this worker also drains the ATS talent outbox (talent.*
+      # events → the in-process dispatcher). Pinned explicitly (env-passthrough
+      # literal manifest). The tuning knobs are optional; the defaults equal the
+      # in-code defaults.
+      - ATS_TALENT_EVENTS_DRAIN_ENABLED=1
+      - ATS_TALENT_EVENTS_DRAIN_INTERVAL_MS=${ATS_TALENT_EVENTS_DRAIN_INTERVAL_MS:-5000}
+      - ATS_TALENT_EVENTS_DRAIN_LIMIT=${ATS_TALENT_EVENTS_DRAIN_LIMIT:-25}
+      - ATS_TALENT_EVENTS_LEASE_SECONDS=${ATS_TALENT_EVENTS_LEASE_SECONDS:-120}
+      - ATS_TALENT_EVENTS_MAX_ATTEMPTS=${ATS_TALENT_EVENTS_MAX_ATTEMPTS:-10}
       # Extraction reads the résumé from S3 and the tenant-LLM key from Secrets
       # Manager — the SAME credentials/config the API uses.
       - S3_RESUME_BUCKET

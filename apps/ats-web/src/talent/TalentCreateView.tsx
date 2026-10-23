@@ -150,6 +150,12 @@ export function TalentCreateView() {
   const [submitError, setSubmitError] = useState<string | null>(null);
   const [missingFields, setMissingFields] = useState<string[] | null>(null);
   const [duplicate, setDuplicate] = useState<TalentDuplicateMatch | null>(null);
+  // ATI-SEP-1 D6 — the Save already created this Talent (it is finishing its
+  // follow-ups), so the backend refuses further draft edits (409
+  // INTAKE_DRAFT_SAVED_EDIT_ON_TALENT). Holds that Talent's id; the recruiter is
+  // directed to the Talent record to make the change there.
+  const [editOnTalentId, setEditOnTalentId] = useState<string | null>(null);
+  const editOnTalentRef = useRef<string | null>(null);
 
   // Autosave bookkeeping.
   const [reviewDirty, setReviewDirty] = useState(false);
@@ -317,6 +323,8 @@ export function TalentCreateView() {
   // drops either side.
   const flushSave = useCallback(async (): Promise<boolean> => {
     if (draftId === null || !reviewDirty) return true;
+    // D6 — the backend refuses every further edit once the Talent exists.
+    if (editOnTalentRef.current !== null) return false;
     const seq = editSeqRef.current;
     const save = async () => {
       const view = await patchTalentIntakeReview(draftId, {
@@ -335,6 +343,16 @@ export function TalentCreateView() {
       await save();
       return true;
     } catch (err) {
+      if (err instanceof ApiError && err.code === 'INTAKE_DRAFT_SAVED_EDIT_ON_TALENT') {
+        // Not a stale version — re-sending can never succeed. Direct the
+        // recruiter to the Talent record instead.
+        const talentId = err.details?.['talent_record_id'];
+        if (typeof talentId === 'string') {
+          editOnTalentRef.current = talentId;
+          setEditOnTalentId(talentId);
+        }
+        return false;
+      }
       if (!(err instanceof ApiError && err.status === 409)) {
         // Keep dirty; autosave retries on the next edit/flush.
         return false;
@@ -352,12 +370,12 @@ export function TalentCreateView() {
   }, [draftId, reviewDirty, buildReviewPayload, hydrateFromView]);
 
   useEffect(() => {
-    if (!reviewDirty || draftId === null || reviewStatus === 'PROMOTED') return;
+    if (!reviewDirty || draftId === null || reviewStatus === 'PROMOTED' || editOnTalentId !== null) return;
     const t = window.setTimeout(() => {
       void flushSave();
     }, 800);
     return () => window.clearTimeout(t);
-  }, [reviewDirty, draftId, reviewStatus, flushSave]);
+  }, [reviewDirty, draftId, reviewStatus, editOnTalentId, flushSave]);
 
   // ── Field editing ───────────────────────────────────────────────────────
   function markDirty(): void {
@@ -580,6 +598,19 @@ export function TalentCreateView() {
     // Persist the latest edits before promoting. If they cannot be saved, stop:
     // promoting now would create the Talent without them.
     const saved = await flushSave();
+    if (!saved && editOnTalentRef.current !== null) {
+      // The Talent already exists: finish its Save, then open the Talent record,
+      // where the recruiter makes the change the draft could no longer carry.
+      try {
+        const record = await promoteTalentIntakeDraft(draftId);
+        toast.show('Talent created · make your latest changes on the Talent record');
+        navigate(`/talent/${record.id}`);
+      } catch (err) {
+        setSubmitError(createErrorMessage(err));
+        setSubmitting(false);
+      }
+      return;
+    }
     if (!saved) {
       setSubmitError('Your latest changes couldn’t be saved. Please try again.');
       setSubmitting(false);
@@ -766,6 +797,13 @@ export function TalentCreateView() {
                 onReview={(id) => navigate(`/talent/${id}`)}
                 onDiscard={onDiscardDraft}
               />
+            ) : null}
+            {editOnTalentId !== null ? (
+              <InlineAlert variant="error">
+                This talent has already been created, so changes here can no longer be
+                saved. <Link to={`/talent/${editOnTalentId}`}>Open the Talent record</Link>{' '}
+                to make them there.
+              </InlineAlert>
             ) : null}
             {submitError !== null ? (
               <InlineAlert variant="error">{submitError}</InlineAlert>

@@ -1603,6 +1603,8 @@ export class TalentExtractionService {
     education?: readonly ResumeDraftEducation[];
     certifications?: readonly ResumeDraftCertification[];
     extraction_child_id: string | null;
+    // D6 — hash of the reviewed arrays, stamped with the materialization.
+    payload_hash?: string;
   }): Promise<{ materialized: boolean; document_id: string | null; edition_id: string | null }> {
     const { tenant_id, talent_id } = input;
     const createdAt = new Date();
@@ -1659,8 +1661,76 @@ export class TalentExtractionService {
       certifications,
       extraction_child_id: input.extraction_child_id,
       reviewed_at: createdAt,
+      ...(input.payload_hash !== undefined ? { payload_hash: input.payload_hash } : {}),
     });
     if (result.materialized) {
+      try {
+        await this.persistDerivedSkillSnapshot({
+          talent_id,
+          tenant_id,
+          entries: input.work_history ?? [],
+          createdAt,
+        });
+      } catch {
+        // non-fatal projection (recomputable from the typed rows)
+      }
+    }
+    return result;
+  }
+
+  // D6 — a resumed Save whose TalentRecord does not exist yet re-materializes
+  // the reviewed arrays the recruiter edited after step 1: the same shaping as
+  // step 1, anchored on the résumé document step 1 minted, handed to the
+  // repository's atomic delete + re-write (claimed on the payload hash, so a
+  // concurrent re-Save writes once). The derived skill-years snapshot is
+  // re-projected after commit.
+  async rematerializeIntakeSaveEvidence(input: {
+    tenant_id: string;
+    intake_draft_id: string;
+    talent_id: string;
+    payload_hash: string;
+    resume_document: { source_map_version?: string; resume_text_hash?: string } | null;
+    work_history?: readonly ResumeDraftWorkHistory[];
+    skills?: readonly ResumeDraftSkill[];
+    education?: readonly ResumeDraftEducation[];
+    certifications?: readonly ResumeDraftCertification[];
+  }): Promise<{ rematerialized: boolean }> {
+    const { tenant_id, talent_id } = input;
+    const createdAt = new Date();
+    const rd = input.resume_document;
+    const documentId =
+      rd !== null ? await this.evidence.findIntakeSaveDocumentId({ tenant_id, talent_id }) : null;
+    const hasTextHash = typeof rd?.resume_text_hash === 'string' && rd.resume_text_hash !== '';
+    const provenance: ResumeProvenance = {
+      ...(documentId !== null ? { source_document_id: documentId } : {}),
+      ...(typeof rd?.source_map_version === 'string'
+        ? { source_map_version: rd.source_map_version }
+        : {}),
+      ...(hasTextHash ? { resume_text_hash: rd?.resume_text_hash } : {}),
+    };
+    const { workHistory, skillEvidence, projects, education, certifications } =
+      this.shapeReviewedCreateEvidence({
+        tenant_id,
+        talent_id,
+        provenance,
+        createdAt,
+        work_history: input.work_history,
+        skills: input.skills,
+        education: input.education,
+        certifications: input.certifications,
+      });
+    const result = await this.evidence.rematerializeIntakeSaveEvidence({
+      tenant_id,
+      intake_draft_id: input.intake_draft_id,
+      talent_id,
+      payload_hash: input.payload_hash,
+      work_history: workHistory,
+      skill_evidence: skillEvidence,
+      projects,
+      education,
+      certifications,
+    });
+    if (result.rematerialized) {
       try {
         await this.persistDerivedSkillSnapshot({
           talent_id,

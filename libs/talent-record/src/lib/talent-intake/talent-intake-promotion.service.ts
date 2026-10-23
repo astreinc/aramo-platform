@@ -20,7 +20,7 @@ import {
   validateTalentCreateInput,
 } from '../talent-record.repository.js';
 
-import { asReviewPayload } from './talent-intake-review.js';
+import { asReviewPayload, reviewEvidencePayloadHash } from './talent-intake-review.js';
 
 // Namespace for the deterministic per-Talent ids the Save mints for its
 // idempotent follow-up writes (uuid v5 over the reserved TalentRecord id).
@@ -43,6 +43,11 @@ const SAVE_WORK_AUTH_NAMESPACE = '6f4b8a52-2f0e-4c55-9d3e-6a1c7e0b9d21';
 //           on the draft, so a re-Save never duplicates it): résumé Document +
 //           edition + default, typed evidence incl. experience assertions, and
 //           the extraction child linked + ACCEPTED when still reviewable.
+//           The run is stamped with a hash of the reviewed arrays (D6): a
+//           resumed Save whose TalentRecord does not exist yet and whose arrays
+//           changed since (the recruiter edited the draft after a partial Save)
+//           re-materializes them atomically, so no edit is silently lost. Once
+//           the record exists, PATCH refuses such edits (409) instead.
 //   step 2  TalentRecord + talent.created outbox row (+ the first edition's
 //           pending text row) in ONE talent_record txn, idempotent on the
 //           reserved id; the email/phone duplicate is re-checked under lock.
@@ -126,10 +131,34 @@ export class TalentIntakePromotionService {
     // STEP 0 — reserve (or resume on) the TalentRecord id.
     const reservedId = await this.reserve(intake, created_by, requestId);
 
-    // STEP 1 — ATS evidence, materialized once per (draft, reserved id).
+    // STEP 1 — ATS evidence, materialized once per (draft, reserved id) and
+    // re-materialized (pre-record only) when the reviewed arrays changed.
     const rd = body.resume_document;
+    const payloadHash = reviewEvidencePayloadHash(asReviewPayload(intake.review_payload));
     let editionId: string | null = null;
-    if (intake.save_evidence_materialized_at == null) {
+    let record: TalentRecordView | null = null;
+    if (intake.save_evidence_materialized_at != null) {
+      record = await this.repo.findById({ tenant_id, id: reservedId });
+      if (record === null && (intake.save_evidence_payload_hash ?? null) !== payloadHash) {
+        await this.talentExtraction.rematerializeIntakeSaveEvidence({
+          tenant_id,
+          intake_draft_id: intake.id,
+          talent_id: reservedId,
+          payload_hash: payloadHash,
+          resume_document:
+            rd !== undefined
+              ? {
+                  ...(rd.source_map_version !== undefined ? { source_map_version: rd.source_map_version } : {}),
+                  ...(rd.resume_text_hash !== undefined ? { resume_text_hash: rd.resume_text_hash } : {}),
+                }
+              : null,
+          work_history: body.work_history,
+          skills: body.skills,
+          education: body.education,
+          certifications: body.certifications,
+        });
+      }
+    } else {
       const artifactSha = rd !== undefined ? await this.artifactSha(intake, rd.storage_key, requestId) : undefined;
       const evidence = await this.talentExtraction.materializeIntakeSaveEvidence({
         tenant_id,
@@ -153,12 +182,13 @@ export class TalentIntakePromotionService {
         education: body.education,
         certifications: body.certifications,
         extraction_child_id: intake.resume_extraction_draft_id,
+        payload_hash: payloadHash,
       });
       editionId = evidence.edition_id;
     }
 
     // STEP 2 — the TalentRecord (+ talent.created) on the reserved id.
-    let record = await this.repo.findById({ tenant_id, id: reservedId });
+    record ??= await this.repo.findById({ tenant_id, id: reservedId });
     if (record === null) {
       if (editionId === null && rd !== undefined) {
         // Resumed Save: the edition minted by an earlier step 1 is the Talent's
@@ -255,6 +285,7 @@ export class TalentIntakePromotionService {
     // Carry the winner's progress so step 1 is not re-attempted needlessly.
     intake.save_reserved_talent_record_id = reserved;
     intake.save_evidence_materialized_at = reread.save_evidence_materialized_at ?? null;
+    intake.save_evidence_payload_hash = reread.save_evidence_payload_hash ?? null;
     return reserved;
   }
 

@@ -6,13 +6,19 @@ import { PrismaService } from '../prisma/prisma.service.js';
 // ATI-SEP-1 A3 (ADR-0036 §3; Addendum A2 E-1) — the ATS talent outbox. Events
 // carry past-tense BUSINESS-FACT names; the version rides the envelope
 // (event_version), never the name. Every row is written in the SAME
-// talent_record transaction as the fact it records (create / update), or in the
-// erasure pass's transaction (talent.erased), so a row exists iff the fact
-// committed. Payloads are ids + changed field NAMES only: no PII, no document
+// talent_record transaction as the fact it records (create / update / delete),
+// or in the erasure pass's transaction (talent.erased), so a row exists iff the
+// fact committed. Payloads are ids + changed field NAMES only: no PII, no document
 // reference, no storage key.
 export const TALENT_EVENT_CREATED = 'talent.created';
 export const TALENT_EVENT_PROFILE_UPDATED = 'talent.profile_updated';
 export const TALENT_EVENT_ERASED = 'talent.erased';
+// DELETE /v1/talent-records/:id — the recruiter's hard delete of the
+// TalentRecord row (talent:delete). NOT erasure: no governed redaction of the
+// Talent's evidence / identity runs, so it is its own business fact.
+// (@aramo/intelligence-contracts ATS_TALENT_EVENT_TYPES does not list it yet;
+// until it does, the apps/api dispatcher acknowledges it as an unknown no-op.)
+export const TALENT_EVENT_DELETED = 'talent.deleted';
 export const TALENT_EVENT_VERSION = 'v1';
 export const TALENT_EVENT_SOURCE = 'ats-talent-record';
 export const TALENT_EVENT_SUBJECT_TYPE = 'talent_record';
@@ -20,7 +26,8 @@ export const TALENT_EVENT_SUBJECT_TYPE = 'talent_record';
 export type TalentEventType =
   | typeof TALENT_EVENT_CREATED
   | typeof TALENT_EVENT_PROFILE_UPDATED
-  | typeof TALENT_EVENT_ERASED;
+  | typeof TALENT_EVENT_ERASED
+  | typeof TALENT_EVENT_DELETED;
 
 export interface TalentEventPayload {
   talent_record_id: string;

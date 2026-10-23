@@ -7,6 +7,7 @@ import type {
 } from '@aramo/events';
 import {
   TALENT_EVENT_CREATED,
+  TALENT_EVENT_DELETED,
   TALENT_EVENT_ERASED,
   TALENT_EVENT_PROFILE_UPDATED,
 } from '@aramo/talent-record';
@@ -21,6 +22,7 @@ const KNOWN_EVENTS: ReadonlySet<string> = new Set([
   TALENT_EVENT_CREATED,
   TALENT_EVENT_PROFILE_UPDATED,
   TALENT_EVENT_ERASED,
+  TALENT_EVENT_DELETED,
 ]);
 
 // ATI-SEP-1 A3 — the in-process OutboxPublisherPort for the ATS talent outbox.

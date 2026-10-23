@@ -76,6 +76,16 @@ export const REQUIRED_GUARDED: Record<string, string[]> = {
   'talent-intelligence-service': ['INTELLIGENCE_DB_PASSWORD'],
 };
 
+// Per-service REQUIRED literal pins — `VAR=value` assignments whose exact value is the
+// topology contract, so a dropped or flipped pin silently changes which container does the
+// work. ATI-SEP-1 A3: the ATS talent outbox is drained by the talent-intake-worker ONLY; an
+// api that also drained would double-dispatch, a worker that did not would leave every
+// talent.* event undelivered. ASSERTION 1c keeps both pins.
+export const REQUIRED_LITERAL: Record<string, Record<string, string>> = {
+  api: { ATS_TALENT_EVENTS_DRAIN_ENABLED: '0' },
+  'talent-intake-worker': { ATS_TALENT_EVENTS_DRAIN_ENABLED: '1' },
+};
+
 export interface ComposeEnvModel {
   /** service id -> bare-name passthrough vars (anchor-resolved) */
   passthroughByService: Record<string, string[]>;
@@ -87,6 +97,8 @@ export interface ComposeEnvModel {
   guardedByService: Record<string, string[]>;
   /** every `${VAR:?message}` guarded var anywhere in the file */
   requiredGuards: Set<string>;
+  /** service id -> literal `VAR=value` assignments (list-form environment) */
+  literalByService: Record<string, Record<string, string>>;
 }
 
 /** Extract passthrough + required-interpolation vars from a compose document + its raw text. */
@@ -98,17 +110,24 @@ export function parseComposeEnv(composeText: string): ComposeEnvModel {
   const passthroughByService: Record<string, string[]> = {};
   const allPassthrough = new Set<string>();
   const guardedByService: Record<string, string[]> = {};
+  const literalByService: Record<string, Record<string, string>> = {};
 
   for (const [svc, def] of Object.entries(services)) {
     const env = def?.environment;
     const bare: string[] = [];
+    const literal: Record<string, string> = {};
     if (Array.isArray(env)) {
       for (const raw of env) {
         const entry = String(raw);
         // Bare-name passthrough = a list entry with NO '=' (value comes from the shell env).
         if (!entry.includes('=')) bare.push(entry.trim());
+        else {
+          const eq = entry.indexOf('=');
+          literal[entry.slice(0, eq).trim()] = entry.slice(eq + 1).trim();
+        }
       }
     }
+    if (Object.keys(literal).length) literalByService[svc] = literal;
     // Map-form environment (e.g. postgres) is always assigned key: value — never a
     // bare-name passthrough — so it contributes nothing here.
     if (bare.length) {
@@ -135,7 +154,14 @@ export function parseComposeEnv(composeText: string): ComposeEnvModel {
   const requiredGuards = new Set<string>();
   for (const g of composeText.matchAll(/\$\{([A-Z_][A-Z0-9_]*):\?/g)) requiredGuards.add(g[1]);
 
-  return { passthroughByService, allPassthrough, requiredInterpolations, guardedByService, requiredGuards };
+  return {
+    passthroughByService,
+    allPassthrough,
+    requiredInterpolations,
+    guardedByService,
+    requiredGuards,
+    literalByService,
+  };
 }
 
 /** Keys documented in .env.prod.example (incl. commented `# VAR=` optional entries). */
@@ -155,9 +181,12 @@ export interface EnvViolation {
     | 'passthrough-not-documented'
     | 'required-interp-not-documented'
     | 'required-guard-missing'
-    | 'guarded-not-documented';
+    | 'guarded-not-documented'
+    | 'required-literal-mismatch';
   var: string;
   service?: string;
+  /** required-literal-mismatch: the pinned value the manifest expects */
+  expected?: string;
 }
 
 export function validateEnvPassthrough(
@@ -165,6 +194,7 @@ export function validateEnvPassthrough(
   documented: Set<string>,
   requiredManifest: Record<string, string[]> = REQUIRED_PASSTHROUGH,
   guardedManifest: Record<string, string[]> = REQUIRED_GUARDED,
+  literalManifest: Record<string, Record<string, string>> = REQUIRED_LITERAL,
 ): EnvViolation[] {
   const violations: EnvViolation[] = [];
 
@@ -182,6 +212,15 @@ export function validateEnvPassthrough(
     const have = new Set(model.guardedByService[svc] ?? []);
     for (const v of vars) {
       if (!have.has(v)) violations.push({ kind: 'required-guard-missing', var: v, service: svc });
+    }
+  }
+
+  // ASSERTION 1c — every manifest-pinned literal is assigned exactly that value.
+  for (const [svc, pins] of Object.entries(literalManifest)) {
+    const have = model.literalByService[svc] ?? {};
+    for (const [v, expected] of Object.entries(pins)) {
+      if (have[v] !== expected)
+        violations.push({ kind: 'required-literal-mismatch', var: v, service: svc, expected });
     }
   }
 
@@ -302,9 +341,28 @@ services:
     v5.some((x) => x.kind === 'required-guard-missing' && x.var === 'FIXTURE_UNGUARDED') &&
     !v5.some((x) => x.kind === 'required-guard-missing' && x.var === 'FIXTURE_GUARDED_PW');
 
-  if (!caughtDrop || !caughtUndoc || !resolvedBoth || !caughtLocal || !caughtGuard) {
+  // Fixture 6 — a flipped literal pin and a dropped one (assertion 1c).
+  const pinModel = parseComposeEnv(`
+services:
+  api:
+    environment:
+      - FIXTURE_PIN=1
+  worker:
+    environment:
+      - OTHER=1
+`);
+  const v6 = validateEnvPassthrough(pinModel, new Set(['OTHER', 'FIXTURE_PIN']), {}, {}, {
+    api: { FIXTURE_PIN: '0' },
+    worker: { FIXTURE_PIN: '1', OTHER: '1' },
+  });
+  const caughtPin =
+    v6.some((x) => x.kind === 'required-literal-mismatch' && x.service === 'api' && x.var === 'FIXTURE_PIN') &&
+    v6.some((x) => x.kind === 'required-literal-mismatch' && x.service === 'worker' && x.var === 'FIXTURE_PIN') &&
+    !v6.some((x) => x.kind === 'required-literal-mismatch' && x.var === 'OTHER');
+
+  if (!caughtDrop || !caughtUndoc || !resolvedBoth || !caughtLocal || !caughtGuard || !caughtPin) {
     console.error(
-      `SELFTEST FAILED: env-passthrough checker vacuous (drop=${caughtDrop} undoc=${caughtUndoc} anchor=${resolvedBoth} local=${caughtLocal} guard=${caughtGuard}).`,
+      `SELFTEST FAILED: env-passthrough checker vacuous (drop=${caughtDrop} undoc=${caughtUndoc} anchor=${resolvedBoth} local=${caughtLocal} guard=${caughtGuard} pin=${caughtPin}).`,
     );
     process.exit(2);
   }
@@ -332,6 +390,10 @@ function main(): void {
         console.error(
           `  - REQUIRED guarded var "${v.var}" is not \${${v.var}:?} -guarded in service "${v.service}" (it would boot with an empty value).`,
         );
+      else if (v.kind === 'required-literal-mismatch')
+        console.error(
+          `  - REQUIRED pin "${v.var}=${v.expected ?? ''}" is missing or different in service "${v.service}".`,
+        );
       else if (v.kind === 'guarded-not-documented')
         console.error(
           `  - guarded var "${v.var}" (compose refuses to start without it) is NOT documented in .env.prod.example.`,
@@ -348,7 +410,7 @@ function main(): void {
     process.exit(1);
   }
   console.log(
-    `✓ env-passthrough: ${model.allPassthrough.size} passthrough + ${model.requiredInterpolations.size} required-interp + ${model.requiredGuards.size} guarded vars all documented; ${Object.values(REQUIRED_PASSTHROUGH).flat().length} required-manifest + ${Object.values(REQUIRED_GUARDED).flat().length} guarded-manifest entries wired.`,
+    `✓ env-passthrough: ${model.allPassthrough.size} passthrough + ${model.requiredInterpolations.size} required-interp + ${model.requiredGuards.size} guarded vars all documented; ${Object.values(REQUIRED_PASSTHROUGH).flat().length} required-manifest + ${Object.values(REQUIRED_GUARDED).flat().length} guarded-manifest + ${Object.values(REQUIRED_LITERAL).flatMap((p) => Object.keys(p)).length} literal-pin entries wired.`,
   );
 }
 

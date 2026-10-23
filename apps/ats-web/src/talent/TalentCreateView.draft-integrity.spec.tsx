@@ -183,6 +183,38 @@ describe('TalentCreateView — draft integrity (ATS-QA-1 I-3)', () => {
     expect(promoted()).toBe(false);
   });
 
+  it('ATI-SEP-1 D6: an edit refused because the Talent already exists (409 INTAKE_DRAFT_SAVED_EDIT_ON_TALENT) is not retried; the recruiter is directed to the Talent record', async () => {
+    patchResponses.push(() =>
+      jsonResponse(
+        {
+          error: {
+            code: 'INTAKE_DRAFT_SAVED_EDIT_ON_TALENT',
+            message: 'created',
+            details: { reason: 'saved_edit_on_talent', talent_record_id: 't1' },
+          },
+        },
+        409,
+      ),
+    );
+    renderDraft();
+    await waitFor(() => expect(screen.getByDisplayValue('Initech')).toBeInTheDocument());
+    fireEvent.change(screen.getByLabelText('Role title 1'), { target: { value: 'Senior Analyst' } });
+    await waitFor(() => expect(screen.getByText(/already been created/)).toBeInTheDocument(), {
+      timeout: 3000,
+    });
+    const link = screen.getByRole('link', { name: /Open the Talent record/ });
+    expect(link.getAttribute('href')).toBe('/talent/t1');
+    // Not a stale version: no refetch-and-resend, and autosave stops.
+    expect(patches()).toHaveLength(1);
+    fireEvent.change(screen.getByLabelText('Role title 1'), { target: { value: 'Principal Analyst' } });
+    await new Promise((r) => setTimeout(r, 1000));
+    expect(patches()).toHaveLength(1);
+    // Create finishes the Save of the existing Talent and opens it.
+    fireEvent.click(screen.getByRole('button', { name: /Create talent/ }));
+    await waitFor(() => expect(promoted()).toBe(true));
+    expect(patches()).toHaveLength(1);
+  });
+
   it('a late extraction fills untouched fields and arrays while keeping the recruiter edit', async () => {
     getDraft = () => ({
       ...BASE_DRAFT,

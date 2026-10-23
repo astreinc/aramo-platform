@@ -1,3 +1,5 @@
+import { createHash } from 'node:crypto';
+
 import type { DraftFromResumeResponse } from '../dto/draft-from-resume.response.js';
 
 // Durable Async Talent Intake — the persisted recruiter-review payload shape and
@@ -215,6 +217,43 @@ export function applyRecruiterReview(existing: unknown, patch: unknown): IntakeR
   }
   if (Object.keys(origin).length > 0) merged.array_origin = origin;
   return merged;
+}
+
+// D6 — the evidence arrays a Save materializes (the recruiter-editable ones plus
+// the backend-owned structured skills).
+export const SAVE_EVIDENCE_ARRAY_KEYS = ['work_history', 'skills', 'education', 'certifications'] as const;
+
+// Canonical JSON (object keys sorted at every depth): JSONB does not preserve
+// key order, so the hash must not depend on it.
+function canonicalJson(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(canonicalJson).join(',')}]`;
+  if (value !== null && typeof value === 'object') {
+    const entries = Object.entries(value as Record<string, unknown>)
+      .filter(([, v]) => v !== undefined)
+      .sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0));
+    return `{${entries.map(([k, v]) => `${JSON.stringify(k)}:${canonicalJson(v)}`).join(',')}}`;
+  }
+  return JSON.stringify(value ?? null);
+}
+
+// D6 — SHA-256 over the reviewed evidence arrays. Stamped with a Save's step-1
+// materialization; a resumed Save whose current payload hashes differently
+// re-materializes (an absent array hashes the same as an empty one).
+export function reviewEvidencePayloadHash(review: IntakeReviewPayload): string {
+  const arrays = Object.fromEntries(SAVE_EVIDENCE_ARRAY_KEYS.map((k) => [k, review[k] ?? []]));
+  return createHash('sha256').update(canonicalJson(arrays)).digest('hex');
+}
+
+// D6 — does a merged review save change any persisted VALUE (a scalar field's
+// value or a reviewed array)? Origin-only changes and an unchanged autosave do
+// not count.
+export function reviewValuesChanged(existing: unknown, merged: IntakeReviewPayload): boolean {
+  const base = asReviewPayload(existing);
+  const keys = new Set([...Object.keys(base.fields), ...Object.keys(merged.fields)]);
+  for (const key of keys) {
+    if ((base.fields[key]?.value ?? null) !== (merged.fields[key]?.value ?? null)) return true;
+  }
+  return reviewEvidencePayloadHash(base) !== reviewEvidencePayloadHash(merged);
 }
 
 // Governed technical-failure statuses — the extraction ran but produced no

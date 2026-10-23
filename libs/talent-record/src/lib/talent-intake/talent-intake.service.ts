@@ -22,7 +22,7 @@ import {
 } from '../dto/talent-intake.dto.js';
 import { TalentRecordRepository } from '../talent-record.repository.js';
 
-import { applyRecruiterReview, asReviewPayload } from './talent-intake-review.js';
+import { applyRecruiterReview, asReviewPayload, reviewValuesChanged } from './talent-intake-review.js';
 import {
   TALENT_INTAKE_EXTRACTION_REQUESTED_EVENT,
   TALENT_INTAKE_SOURCE_TYPE_MANUAL_ENTRY,
@@ -399,16 +399,36 @@ export class TalentIntakeService {
         details: { review_status: existing.review_status },
       });
     }
+    // Backend-owned merge (I7 / §8.5): only recruiter-origin fields and the
+    // arrays the recruiter actually edited come from the client; everything
+    // else keeps the persisted (extraction) value.
+    const merged = applyRecruiterReview(existing.review_payload, body.review);
+    // D6 — a partly saved draft whose TalentRecord already exists (the Save
+    // committed the record and is finishing its follow-ups) can no longer carry
+    // a changed value to the Talent: the resumed Save never rewrites a created
+    // record or its evidence. Refuse the edit rather than lose it silently; the
+    // FE directs the recruiter to the Talent record. An unchanged autosave
+    // passes. (A Save committing the record between this check and the write
+    // below is not fenced — the resumed Save would then skip the edit.)
+    const reserved = existing.save_reserved_talent_record_id ?? null;
+    if (reserved !== null && reviewValuesChanged(existing.review_payload, merged)) {
+      const onTalent = await this.talentRecord.findById({ tenant_id, id: reserved });
+      if (onTalent !== null) {
+        throw new AramoError(
+          'INTAKE_DRAFT_SAVED_EDIT_ON_TALENT',
+          'This talent has already been created. Make further changes on the Talent record.',
+          409,
+          { requestId, details: { reason: 'saved_edit_on_talent', talent_record_id: reserved } },
+        );
+      }
+    }
     const count = await this.talentExtraction.saveTalentIntakeDraftReview({
       tenant_id,
       id,
       created_by,
       expected_version: body.expected_version,
-      // Backend-owned merge (I7 / §8.5): only recruiter-origin fields and the
-      // arrays the recruiter actually edited come from the client; everything
-      // else keeps the persisted (extraction) value. CAS on expected_version
-      // still rejects a stale tab.
-      review_payload: applyRecruiterReview(existing.review_payload, body.review),
+      // CAS on expected_version still rejects a stale tab.
+      review_payload: merged,
       review_status: 'IN_REVIEW',
     });
     if (count === 0) {

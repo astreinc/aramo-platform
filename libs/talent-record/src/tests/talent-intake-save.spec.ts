@@ -20,10 +20,12 @@ const ADMISSIBLE: Record<string, string> = {
   phone_cell: '(571) 435-5777',
 };
 
-function review(fields: Record<string, unknown>) {
+const NORTHSTAR = [{ employer_name: 'Northstar', role_title: 'Engineer', source_refs: ['B1'] }];
+
+function review(fields: Record<string, unknown>, workHistory: unknown[] = NORTHSTAR) {
   return {
     fields: Object.fromEntries(Object.entries(fields).map(([k, v]) => [k, { value: v, origin: 'RECRUITER' }])),
-    work_history: [{ employer_name: 'Northstar', role_title: 'Engineer', source_refs: ['B1'] }],
+    work_history: workHistory,
   };
 }
 
@@ -38,6 +40,10 @@ function world(opts: {
   const state = {
     reserved: null as string | null,
     materializedAt: null as Date | null,
+    payloadHash: null as string | null,
+    // D6 — the draft's current reviewed work history (a test edits it between Saves).
+    workHistory: NORTHSTAR as unknown[],
+    rematerialized: [] as unknown[][],
     promoted: null as string | null,
     records: new Map<string, { id: string }>(),
     evidenceWrites: 0,
@@ -65,7 +71,8 @@ function world(opts: {
     promoted_talent_record_id: state.promoted,
     save_reserved_talent_record_id: state.reserved,
     save_evidence_materialized_at: state.materializedAt,
-    review_payload: review(opts.fields ?? ADMISSIBLE),
+    save_evidence_payload_hash: state.payloadHash,
+    review_payload: review(opts.fields ?? ADMISSIBLE, state.workHistory),
   });
   const talentExtraction = {
     findTalentIntakeDraftById: vi.fn(async () => intake()),
@@ -74,15 +81,24 @@ function world(opts: {
       state.reserved = i.reserved_talent_record_id;
       return 1;
     }),
-    materializeIntakeSaveEvidence: vi.fn(async (i: { talent_id: string }) => {
+    materializeIntakeSaveEvidence: vi.fn(async (i: { talent_id: string; payload_hash?: string }) => {
       maybeFail('materialize');
       if (state.materializedAt !== null || i.talent_id !== state.reserved) {
         return { materialized: false, document_id: null, edition_id: null };
       }
       state.materializedAt = new Date();
+      state.payloadHash = i.payload_hash ?? null;
       state.evidenceWrites += 1;
       return { materialized: true, document_id: 'doc-1', edition_id: null };
     }),
+    rematerializeIntakeSaveEvidence: vi.fn(
+      async (i: { talent_id: string; payload_hash: string; work_history?: unknown[] }) => {
+        if (i.talent_id !== state.reserved || state.payloadHash === i.payload_hash) return { rematerialized: false };
+        state.payloadHash = i.payload_hash;
+        state.rematerialized.push(i.work_history ?? []);
+        return { rematerialized: true };
+      },
+    ),
     getDefaultResumeEdition: vi.fn(async () => null),
     recordDeclaredWorkAuthorization: vi.fn(async (i: { id: string }) => {
       maybeFail('workAuth');
@@ -210,5 +226,49 @@ describe('ATI-SEP-1 A2 — intake Save (unit)', () => {
     });
     const rec = await w.svc.promote(AUTH, 'intake-1', 'rq-1');
     expect(rec.id).toBe('winner-id');
+  });
+
+  // D6 — recruiter edits are never silently lost by a resumed Save.
+  it('D6: arrays edited after step 1 (record not yet created) → the re-Save re-materializes them before creating the record', async () => {
+    const w = world({ failOnce: 'create' });
+    await expect(w.svc.promote(AUTH, 'intake-1', 'rq-1')).rejects.toThrow('injected create failure');
+    const firstHash = w.state.payloadHash;
+    expect(firstHash).toMatch(/^[0-9a-f]{64}$/);
+
+    const edited = [{ employer_name: 'Northstar', role_title: 'Staff Engineer', source_refs: ['B1'] }];
+    w.state.workHistory = edited;
+    const rec = await w.svc.promote(AUTH, 'intake-1', 'rq-2');
+    expect(w.state.rematerialized).toEqual([edited]);
+    expect(w.state.payloadHash).not.toBe(firstHash);
+    const order = (fn: { mock: { invocationCallOrder: number[] } }) => fn.mock.invocationCallOrder.at(-1) as number;
+    expect(order(w.talentExtraction.rematerializeIntakeSaveEvidence)).toBeLessThan(order(w.repo.create));
+    expect(w.state.promoted).toBe(rec.id);
+    expect(w.state.evidenceWrites).toBe(1);
+  });
+
+  it('D6: an unchanged re-Save does not re-materialize', async () => {
+    const w = world({ failOnce: 'create' });
+    await expect(w.svc.promote(AUTH, 'intake-1', 'rq-1')).rejects.toThrow('injected create failure');
+    // JSONB key order is not preserved — the hash must not depend on it.
+    w.state.workHistory = [{ source_refs: ['B1'], role_title: 'Engineer', employer_name: 'Northstar' }];
+    await w.svc.promote(AUTH, 'intake-1', 'rq-2');
+    expect(w.talentExtraction.rematerializeIntakeSaveEvidence).not.toHaveBeenCalled();
+  });
+
+  it('D6: once the record exists the re-Save never rewrites its evidence (PATCH refuses such edits instead)', async () => {
+    const w = world({ failOnce: 'workAuth', fields: { ...ADMISSIBLE, work_authorization: 'US_CITIZEN' } });
+    await expect(w.svc.promote(AUTH, 'intake-1', 'rq-1')).rejects.toThrow('injected workAuth failure');
+    w.state.workHistory = [{ employer_name: 'Elsewhere', role_title: 'Engineer' }];
+    await w.svc.promote(AUTH, 'intake-1', 'rq-2');
+    expect(w.talentExtraction.rematerializeIntakeSaveEvidence).not.toHaveBeenCalled();
+    expect(w.state.records.size).toBe(1);
+  });
+
+  it('D6: a draft materialized before the hash existed (NULL) re-materializes once', async () => {
+    const w = world({ failOnce: 'create' });
+    await expect(w.svc.promote(AUTH, 'intake-1', 'rq-1')).rejects.toThrow('injected create failure');
+    w.state.payloadHash = null;
+    await w.svc.promote(AUTH, 'intake-1', 'rq-2');
+    expect(w.state.rematerialized).toHaveLength(1);
   });
 });

@@ -24,11 +24,15 @@ import { PrismaService } from './prisma/prisma.service.js';
 import { normalizePhoneForDedupe } from './talent-phone.js';
 import {
   TALENT_EVENT_CREATED,
+  TALENT_EVENT_DELETED,
   TALENT_EVENT_PROFILE_UPDATED,
   writeTalentEvent,
   type TalentEventInput,
   type TalentEventOutboxWriter,
 } from './talent-events/talent-event-outbox.js';
+
+// D4 — the post-commit talent.profile_updated append: first try + 3 retries.
+const PROFILE_UPDATED_APPEND_ATTEMPTS = 4;
 
 // Closed-vocabulary guard (stated-fields amendment §4/§5). The talent-record
 // DTOs are interfaces (no class-validator), so the @IsIn intent is enforced
@@ -728,19 +732,45 @@ export class TalentRecordRepository {
   // ATI-SEP-1 A3 — a talent.profile_updated for an ATS evidence edit committed
   // outside a talent_record transaction (talent_evidence writes): appended right
   // after that commit. TalentRecord scalar edits emit inside update() instead.
+  //
+  // D4 — the evidence commit and this append cannot share a transaction (two
+  // schemas, two clients), so the append is retried inline (1 + 3 attempts) and
+  // a final failure is logged at error with the talent id, never thrown: the
+  // edit is committed and a 5xx would only invite a duplicate re-submit.
+  // RESIDUAL RISK: a crash or a persistent outbox failure between the evidence
+  // commit and a successful append loses that one event; downstream consumers
+  // then see the edit only on the Talent's next event (or a watermark backstop).
   async recordProfileUpdated(args: {
     tenant_id: string;
     talent_record_id: string;
     changed_fields: readonly string[];
     correlation_id?: string | null;
   }): Promise<void> {
-    await writeTalentEvent(this.prisma as unknown as TalentEventOutboxWriter, {
+    const event: TalentEventInput = {
       tenant_id: args.tenant_id,
       event_type: TALENT_EVENT_PROFILE_UPDATED,
       talent_record_id: args.talent_record_id,
       changed_fields: args.changed_fields,
       correlation_id: args.correlation_id ?? null,
-    });
+    };
+    for (let attempt = 1; attempt <= PROFILE_UPDATED_APPEND_ATTEMPTS; attempt += 1) {
+      try {
+        await writeTalentEvent(this.prisma as unknown as TalentEventOutboxWriter, event);
+        return;
+      } catch (err) {
+        if (attempt === PROFILE_UPDATED_APPEND_ATTEMPTS) {
+          // ids + field names only — never values.
+          this.logger.error({
+            event: 'talent_profile_updated_append_failed',
+            tenant_id: args.tenant_id,
+            talent_id: args.talent_record_id,
+            changed_fields: [...args.changed_fields],
+            attempts: attempt,
+            reason: err instanceof Error ? err.message : 'unknown',
+          });
+        }
+      }
+    }
   }
 
   // B3/B4 — manual-create dedup lookup. Returns the id of an ACTIVE (live)
@@ -1413,7 +1443,16 @@ export class TalentRecordRepository {
         { requestId: args.requestId, details: { id: args.id } },
       );
     }
-    await this.prisma.talentRecord.delete({ where: { id: args.id } });
+    // ATI-SEP-1 A3 — the delete and its talent.deleted row commit together.
+    await this.prisma.$transaction(async (tx) => {
+      await tx.talentRecord.delete({ where: { id: args.id } });
+      await writeTalentEvent(tx as unknown as TalentEventOutboxWriter, {
+        tenant_id: args.tenant_id,
+        event_type: TALENT_EVENT_DELETED,
+        talent_record_id: args.id,
+        correlation_id: args.requestId !== '' ? args.requestId : null,
+      });
+    });
   }
 
   // TR-2a-B3b (DDR-3 §2/§3) — the supersession WRITER (the B3a record_status axis

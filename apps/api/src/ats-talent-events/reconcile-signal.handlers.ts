@@ -2,7 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { RedisConnectionConfig } from '@aramo/common';
 import { CanonicalReconcileProducer } from '@aramo/canonical-reconcile';
 import { TalentReconcileProducer } from '@aramo/talent-reconcile-signal';
-import { TALENT_EVENT_ERASED } from '@aramo/talent-record';
+import { TALENT_EVENT_DELETED, TALENT_EVENT_ERASED } from '@aramo/talent-record';
 
 import type { AtsTalentEventEnvelope, AtsTalentEventHandler } from './ats-talent-event-handler.js';
 
@@ -21,7 +21,8 @@ export class CanonicalReconcileTalentEventHandler implements AtsTalentEventHandl
   ) {}
 
   async handle(event: AtsTalentEventEnvelope): Promise<void> {
-    if (event.event_type === TALENT_EVENT_ERASED) return;
+    // The Talent no longer exists (erased or deleted) — nothing to reconcile.
+    if (event.event_type === TALENT_EVENT_ERASED || event.event_type === TALENT_EVENT_DELETED) return;
     if (!this.redis.isConfigured) return;
     await this.producer.enqueueTalentRequired(event.tenant_id, event.subject_id);
   }
@@ -38,7 +39,8 @@ export class TalentReconcileSignalTalentEventHandler implements AtsTalentEventHa
   constructor(private readonly producer: TalentReconcileProducer) {}
 
   async handle(event: AtsTalentEventEnvelope): Promise<void> {
-    if (event.event_type === TALENT_EVENT_ERASED) return;
+    // The Talent no longer exists (erased or deleted) — nothing to reconcile.
+    if (event.event_type === TALENT_EVENT_ERASED || event.event_type === TALENT_EVENT_DELETED) return;
     await this.producer.enqueueTalent(event.tenant_id, event.subject_id);
   }
 }

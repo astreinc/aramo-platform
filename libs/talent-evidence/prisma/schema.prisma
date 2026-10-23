@@ -836,6 +836,11 @@ model TalentIntakeDraft {
   save_reserved_talent_record_id String?   @db.Uuid
   save_started_at                DateTime? @db.Timestamptz
   save_evidence_materialized_at  DateTime? @db.Timestamptz
+  // D6 — SHA-256 of the reviewed evidence arrays step 1 materialized (stamped
+  // with save_evidence_materialized_at). A re-Save before the TalentRecord
+  // exists re-materializes when the current review payload hashes differently,
+  // so an array edit made after a partial Save is never silently lost.
+  save_evidence_payload_hash     String?
 
   // Optimistic concurrency for CAS claim + concurrent-edit guard.
   version Int @default(0)

@@ -90,6 +90,8 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'RESUME_SOURCE_UNAUTHORIZED',
       // Resume Revision Lifecycle §4 — exact-artifact duplicate refusal (409).
       'RESUME_DUPLICATE_ARTIFACT',
+      // ATI-SEP-1 D6 — an intake-draft edit after its Save created the Talent (409).
+      'INTAKE_DRAFT_SAVED_EDIT_ON_TALENT',
       // TR-6 B2 — 6 advisory-resolution domain refusal codes (replacing the
       // AramoExceptionFilter status-collapse on the advisory surface only).
       'ADVISORY_NOT_PENDING',

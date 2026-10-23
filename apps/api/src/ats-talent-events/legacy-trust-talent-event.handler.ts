@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { SubjectMatcherService } from '@aramo/talent-trust';
-import { TALENT_EVENT_ERASED, TalentRecordRepository } from '@aramo/talent-record';
+import { TALENT_EVENT_DELETED, TALENT_EVENT_ERASED, TalentRecordRepository } from '@aramo/talent-record';
 
 import { LegacyTrustProjectionService } from '../legacy-trust-projection/legacy-trust-projection.service.js';
 import { TalentAnchorProducerService } from '../talent-anchor/talent-anchor-producer.service.js';
@@ -31,7 +31,8 @@ export class LegacyTrustTalentEventHandler implements AtsTalentEventHandler {
   ) {}
 
   async handle(event: AtsTalentEventEnvelope): Promise<void> {
-    if (event.event_type === TALENT_EVENT_ERASED) return;
+    // The Talent no longer exists (erased or deleted) — nothing to reconcile.
+    if (event.event_type === TALENT_EVENT_ERASED || event.event_type === TALENT_EVENT_DELETED) return;
     const view = await this.talentRecords.findById({
       tenant_id: event.tenant_id,
       id: event.subject_id,

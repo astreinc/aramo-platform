@@ -702,6 +702,8 @@ export interface TalentIntakeDraftRow {
   save_reserved_talent_record_id?: string | null;
   save_started_at?: Date | null;
   save_evidence_materialized_at?: Date | null;
+  // D6 — hash of the reviewed evidence arrays step 1 materialized.
+  save_evidence_payload_hash?: string | null;
 }
 
 export interface CreateTalentIntakeDraftInput {
@@ -2270,6 +2272,8 @@ export class TalentEvidenceRepository {
     certifications: readonly CreateTalentCertificationEntryInput[];
     extraction_child_id: string | null;
     reviewed_at: Date;
+    // D6 — stamped with the claim (the reviewed arrays this run materialized).
+    payload_hash?: string;
   }): Promise<{ materialized: boolean; document_id: string | null; edition_id: string | null }> {
     return this.prisma.$transaction(async (tx) => {
       const claimed = await tx.talentIntakeDraft.updateMany({
@@ -2279,7 +2283,10 @@ export class TalentEvidenceRepository {
           save_reserved_talent_record_id: input.talent_id,
           save_evidence_materialized_at: null,
         },
-        data: { save_evidence_materialized_at: new Date() },
+        data: {
+          save_evidence_materialized_at: new Date(),
+          ...(input.payload_hash !== undefined ? { save_evidence_payload_hash: input.payload_hash } : {}),
+        },
       });
       if (claimed.count === 0) {
         return { materialized: false, document_id: null, edition_id: null };
@@ -2341,76 +2348,7 @@ export class TalentEvidenceRepository {
           });
         }
       }
-      for (const e of input.work_history) {
-        await tx.talentWorkHistoryEntry.create({
-          data: {
-            id: e.id, talent_id: e.talent_id, tenant_id: e.tenant_id,
-            employer_name: e.employer_name, role_title: e.role_title,
-            start_date: e.start_date, end_date: e.end_date, location: e.location,
-            employment_type: e.employment_type, description_text: e.description_text,
-            source: e.source, source_document_id: e.source_document_id,
-            source_refs: e.source_refs ?? [], source_map_version: e.source_map_version,
-            resume_text_hash: e.resume_text_hash, company_id: e.company_id,
-            experience_summary: e.experience_summary, is_authoritative: e.is_authoritative,
-            ...(e.assertions !== undefined ? { assertions: e.assertions as never } : {}),
-            created_at: e.created_at,
-          },
-        });
-      }
-      for (const s of input.skill_evidence) {
-        await tx.talentSkillEvidence.create({
-          data: {
-            id: s.id, talent_id: s.talent_id, tenant_id: s.tenant_id, skill_id: s.skill_id,
-            source_record_id: s.source_record_id, surface_form: s.surface_form, source: s.source,
-            evidence_text: s.evidence_text, proficiency_claim: s.proficiency_claim,
-            years_claimed: s.years_claimed, confidence_score: s.confidence_score,
-            source_document_id: s.source_document_id, source_refs: s.source_refs ?? [],
-            source_map_version: s.source_map_version, resume_text_hash: s.resume_text_hash,
-            work_experience_id: s.work_experience_id, version: s.version,
-            usage_start: s.usage_start, usage_end: s.usage_end,
-            usage_period_basis: s.usage_period_basis, activity_context: s.activity_context,
-            created_at: s.created_at,
-          },
-        });
-      }
-      for (const p of input.projects) {
-        await tx.talentProjectExperience.create({
-          data: {
-            id: p.id, talent_id: p.talent_id, tenant_id: p.tenant_id,
-            work_experience_id: p.work_experience_id, project_name: p.project_name,
-            context_summary: p.context_summary, domain: p.domain, start_date: p.start_date,
-            end_date: p.end_date, source_document_id: p.source_document_id,
-            source_refs: p.source_refs ?? [], source_map_version: p.source_map_version,
-            resume_text_hash: p.resume_text_hash, created_at: p.created_at,
-          },
-        });
-      }
-      for (const ed of input.education) {
-        await tx.talentEducationEntry.create({
-          data: {
-            id: ed.id, talent_id: ed.talent_id, tenant_id: ed.tenant_id,
-            institution_name: ed.institution_name, degree_name: ed.degree_name,
-            field_of_study: ed.field_of_study, conferred_date: ed.conferred_date,
-            evidence_text: ed.evidence_text, source: ed.source,
-            source_document_id: ed.source_document_id, source_refs: ed.source_refs ?? [],
-            source_map_version: ed.source_map_version, resume_text_hash: ed.resume_text_hash,
-            created_at: ed.created_at,
-          },
-        });
-      }
-      for (const c of input.certifications) {
-        await tx.talentCertificationEntry.create({
-          data: {
-            id: c.id, talent_id: c.talent_id, tenant_id: c.tenant_id,
-            certification_name: c.certification_name, issuer_name: c.issuer_name,
-            credential_ref: c.credential_ref, issued_date: c.issued_date,
-            expiry_date: c.expiry_date, evidence_text: c.evidence_text, source: c.source,
-            source_document_id: c.source_document_id, source_refs: c.source_refs ?? [],
-            source_map_version: c.source_map_version, resume_text_hash: c.resume_text_hash,
-            created_at: c.created_at,
-          },
-        });
-      }
+      await this.writeIntakeSaveTypedEvidence(tx, input);
       if (input.extraction_child_id !== null) {
         await tx.resumeExtractionDraft.updateMany({
           where: {
@@ -2435,6 +2373,155 @@ export class TalentEvidenceRepository {
         edition_id: input.document !== null ? (input.edition?.id ?? null) : null,
       };
     });
+  }
+
+  // D6 — re-materialize step 1 for a resumed Save whose TalentRecord does NOT
+  // exist yet and whose reviewed arrays changed since the first run (the
+  // recruiter edited the draft after a partial Save). ONE talent_evidence
+  // transaction: the claim (still reserved on this talent id, still
+  // materialized, not promoted, and the stored hash differs) re-stamps the hash,
+  // then the typed evidence rows of the reserved talent are deleted and
+  // re-written from the current review payload. Before step 2 the reserved id is
+  // reachable ONLY through this draft (no TalentRecord, so no evidence route can
+  // address it), so every typed row on it is this draft's. The résumé Document,
+  // edition and default are untouched (the artifact cannot change once
+  // materialized). A lost claim (count 0) writes nothing.
+  async rematerializeIntakeSaveEvidence(input: {
+    tenant_id: string;
+    intake_draft_id: string;
+    talent_id: string;
+    payload_hash: string;
+    work_history: readonly CreateTalentWorkHistoryEntryInput[];
+    skill_evidence: readonly CreateTalentSkillEvidenceInput[];
+    projects: readonly CreateTalentProjectExperienceInput[];
+    education: readonly CreateTalentEducationEntryInput[];
+    certifications: readonly CreateTalentCertificationEntryInput[];
+  }): Promise<{ rematerialized: boolean }> {
+    return this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.talentIntakeDraft.updateMany({
+        where: {
+          id: input.intake_draft_id,
+          tenant_id: input.tenant_id,
+          save_reserved_talent_record_id: input.talent_id,
+          save_evidence_materialized_at: { not: null },
+          promoted_talent_record_id: null,
+          OR: [
+            { save_evidence_payload_hash: null },
+            { save_evidence_payload_hash: { not: input.payload_hash } },
+          ],
+        },
+        data: { save_evidence_materialized_at: new Date(), save_evidence_payload_hash: input.payload_hash },
+      });
+      if (claimed.count === 0) return { rematerialized: false };
+      const owned = { tenant_id: input.tenant_id, talent_id: input.talent_id };
+      await tx.talentSkillEvidence.deleteMany({ where: owned });
+      await tx.talentProjectExperience.deleteMany({ where: owned });
+      await tx.talentWorkHistoryEntry.deleteMany({ where: owned });
+      await tx.talentEducationEntry.deleteMany({ where: owned });
+      await tx.talentCertificationEntry.deleteMany({ where: owned });
+      await this.writeIntakeSaveTypedEvidence(tx, input);
+      return { rematerialized: true };
+    });
+  }
+
+  // D6 — the résumé TalentDocument step 1 minted for the reserved talent (the
+  // provenance anchor a re-materialization reuses). Null for a non-upload draft.
+  async findIntakeSaveDocumentId(input: { tenant_id: string; talent_id: string }): Promise<string | null> {
+    const row = await this.prisma.talentDocument.findFirst({
+      where: { tenant_id: input.tenant_id, talent_id: input.talent_id },
+      select: { id: true },
+    });
+    return row?.id ?? null;
+  }
+
+  // The typed evidence rows of an intake Save (step 1 and its D6 re-run).
+  private async writeIntakeSaveTypedEvidence(
+    tx: Pick<
+      PrismaService,
+      | 'talentWorkHistoryEntry'
+      | 'talentSkillEvidence'
+      | 'talentProjectExperience'
+      | 'talentEducationEntry'
+      | 'talentCertificationEntry'
+    >,
+    input: {
+      work_history: readonly CreateTalentWorkHistoryEntryInput[];
+      skill_evidence: readonly CreateTalentSkillEvidenceInput[];
+      projects: readonly CreateTalentProjectExperienceInput[];
+      education: readonly CreateTalentEducationEntryInput[];
+      certifications: readonly CreateTalentCertificationEntryInput[];
+    },
+  ): Promise<void> {
+    for (const e of input.work_history) {
+      await tx.talentWorkHistoryEntry.create({
+        data: {
+          id: e.id, talent_id: e.talent_id, tenant_id: e.tenant_id,
+          employer_name: e.employer_name, role_title: e.role_title,
+          start_date: e.start_date, end_date: e.end_date, location: e.location,
+          employment_type: e.employment_type, description_text: e.description_text,
+          source: e.source, source_document_id: e.source_document_id,
+          source_refs: e.source_refs ?? [], source_map_version: e.source_map_version,
+          resume_text_hash: e.resume_text_hash, company_id: e.company_id,
+          experience_summary: e.experience_summary, is_authoritative: e.is_authoritative,
+          ...(e.assertions !== undefined ? { assertions: e.assertions as never } : {}),
+          created_at: e.created_at,
+        },
+      });
+    }
+    for (const s of input.skill_evidence) {
+      await tx.talentSkillEvidence.create({
+        data: {
+          id: s.id, talent_id: s.talent_id, tenant_id: s.tenant_id, skill_id: s.skill_id,
+          source_record_id: s.source_record_id, surface_form: s.surface_form, source: s.source,
+          evidence_text: s.evidence_text, proficiency_claim: s.proficiency_claim,
+          years_claimed: s.years_claimed, confidence_score: s.confidence_score,
+          source_document_id: s.source_document_id, source_refs: s.source_refs ?? [],
+          source_map_version: s.source_map_version, resume_text_hash: s.resume_text_hash,
+          work_experience_id: s.work_experience_id, version: s.version,
+          usage_start: s.usage_start, usage_end: s.usage_end,
+          usage_period_basis: s.usage_period_basis, activity_context: s.activity_context,
+          created_at: s.created_at,
+        },
+      });
+    }
+    for (const p of input.projects) {
+      await tx.talentProjectExperience.create({
+        data: {
+          id: p.id, talent_id: p.talent_id, tenant_id: p.tenant_id,
+          work_experience_id: p.work_experience_id, project_name: p.project_name,
+          context_summary: p.context_summary, domain: p.domain, start_date: p.start_date,
+          end_date: p.end_date, source_document_id: p.source_document_id,
+          source_refs: p.source_refs ?? [], source_map_version: p.source_map_version,
+          resume_text_hash: p.resume_text_hash, created_at: p.created_at,
+        },
+      });
+    }
+    for (const ed of input.education) {
+      await tx.talentEducationEntry.create({
+        data: {
+          id: ed.id, talent_id: ed.talent_id, tenant_id: ed.tenant_id,
+          institution_name: ed.institution_name, degree_name: ed.degree_name,
+          field_of_study: ed.field_of_study, conferred_date: ed.conferred_date,
+          evidence_text: ed.evidence_text, source: ed.source,
+          source_document_id: ed.source_document_id, source_refs: ed.source_refs ?? [],
+          source_map_version: ed.source_map_version, resume_text_hash: ed.resume_text_hash,
+          created_at: ed.created_at,
+        },
+      });
+    }
+    for (const c of input.certifications) {
+      await tx.talentCertificationEntry.create({
+        data: {
+          id: c.id, talent_id: c.talent_id, tenant_id: c.tenant_id,
+          certification_name: c.certification_name, issuer_name: c.issuer_name,
+          credential_ref: c.credential_ref, issued_date: c.issued_date,
+          expiry_date: c.expiry_date, evidence_text: c.evidence_text, source: c.source,
+          source_document_id: c.source_document_id, source_refs: c.source_refs ?? [],
+          source_map_version: c.source_map_version, resume_text_hash: c.resume_text_hash,
+          created_at: c.created_at,
+        },
+      });
+    }
   }
 
   // ATI-SEP-1 A2 — Save step 4 (final): mark the draft PROMOTED, ONLY after the
