@@ -12,6 +12,7 @@ import {
   TalentRecordModule,
 } from '@aramo/talent-record';
 import { TalentTrustModule } from '@aramo/talent-trust';
+import { IntelligenceIntegrationModule, IntelligencePublisherHandler } from '@aramo/intelligence-integration';
 
 import { LegacyTrustProjectionModule } from '../legacy-trust-projection/legacy-trust-projection.module.js';
 import { TalentAnchorProducerService } from '../talent-anchor/talent-anchor-producer.service.js';
@@ -57,14 +58,18 @@ function envInt(name: string, fallback: number): number {
     TalentReconcileSignalModule,
     TalentTrustModule,
     LegacyTrustProjectionModule,
+    // ATI-SEP-1 T8 — the Intelligence publisher (+ the worker's inbound sync /
+    // entitlement sync loops, active only in the drain-enabled worker process).
+    IntelligenceIntegrationModule,
   ],
   providers: [
     TalentAnchorProducerService,
     CanonicalReconcileTalentEventHandler,
     TalentReconcileSignalTalentEventHandler,
     LegacyTrustTalentEventHandler,
-    // EXTENSION POINT (ATI-SEP-1 T8): append the Intelligence publisher here —
-    // add its class to `providers`, to `inject`, and to the returned array.
+    // EXTENSION POINT — ATI-SEP-1 T8 appended the Intelligence publisher
+    // (provided by IntelligenceIntegrationModule). Order: the ATS-internal
+    // reconciles first, then the TI publisher.
     {
       provide: ATS_TALENT_EVENT_HANDLERS,
       useFactory: (...handlers: AtsTalentEventHandler[]): readonly AtsTalentEventHandler[] => handlers,
@@ -73,6 +78,8 @@ function envInt(name: string, fallback: number): number {
         TalentReconcileSignalTalentEventHandler,
         // TEMPORARY — removed at T10.
         LegacyTrustTalentEventHandler,
+        // ATI-SEP-1 T8 — ATS → TI (entitlement-gated; no-op when TI is unconfigured).
+        IntelligencePublisherHandler,
       ],
     },
     { provide: 'AtsTalentEventDispatcherLogger', useFactory: () => createAramoLogger(AtsTalentEventDispatcher.name) },

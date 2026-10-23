@@ -36,6 +36,17 @@ export {
   type TalentProfileSourceType,
   type TalentProfileProjectionPolicy,
 } from './lib/talent-record-reconcile.repository.js';
+export {
+  INTELLIGENCE_SOURCE_KIND,
+  INTELLIGENCE_WRITABLE_COLUMNS,
+  TalentIntelligenceRepository,
+  intelligenceReferenceId,
+  type AdmissibleTalentRecord,
+  type InboundEventRow,
+  type InboundEventStatus,
+  type IntelligenceWritableColumn,
+  type SyncPolicyMode,
+} from './lib/talent-intelligence/talent-intelligence.repository.js';
 export { TalentRecordService } from './lib/talent-record.service.js';
 export type { PortalProfileProjection } from './lib/dto/portal-profile-projection.dto.js';
 export { TalentLinkService } from './lib/talent-link.service.js';

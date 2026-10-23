@@ -123,7 +123,22 @@ describe('ProductAvailabilityService (D-ORG)', () => {
           ? ['authorized', 'available', 'entry_path', 'key', 'org_access', 'reason', 'subscribed']
           : ['authorized', 'available', 'entry_path', 'key', 'reason', 'subscribed'],
       );
-    expect(v.products.map((p) => p.key)).toEqual(['ats', 'sign', 'org']);
+    expect(v.products.map((p) => p.key)).toEqual(['ats', 'sign', 'org', 'intelligence']);
+  });
+
+  // ATI-SEP-1 T9 — Talent Intelligence: subscribed only with the `intelligence`
+  // capability (default OFF), authorized like the ATS, opened inside the ATS.
+  it('Talent Intelligence: not_subscribed without the capability; with it, available at /ats/ for an ATS user only', async () => {
+    const off = byKey(await svc(['core', 'ats', 'portal'], RECRUITER).forPrincipal({ user_id: U, tenant_id: T }));
+    expect(off['intelligence']).toMatchObject({ subscribed: false, authorized: false, available: false, entry_path: null, reason: 'not_subscribed' });
+    const on = byKey(await svc(['core', 'ats', 'portal', 'intelligence'], RECRUITER).forPrincipal({ user_id: U, tenant_id: T }));
+    expect(on['intelligence']).toEqual({ key: 'intelligence', subscribed: true, authorized: true, available: true, entry_path: '/ats/', reason: null });
+    // An org admin with no ATS scope: subscribed, not authorized.
+    const admin = byKey(await svc(['core', 'ats', 'intelligence'], ORG_ADMIN, null, ['tenant_admin']).forPrincipal({ user_id: U, tenant_id: T }));
+    expect(admin['intelligence']).toMatchObject({ subscribed: true, authorized: false, reason: 'not_authorized' });
+    // Without the ATS it cannot open (its insights live inside the ATS).
+    const noAts = byKey(await svc(['core', 'intelligence'], RECRUITER).forPrincipal({ user_id: U, tenant_id: T }));
+    expect(noAts['intelligence']).toMatchObject({ subscribed: true, authorized: false, available: false });
   });
 
   // D-ORG Gate-6 V1 — authorization parity with the session path (PR-4 §2.4

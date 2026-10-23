@@ -41,5 +41,8 @@ import { PortalTalentResolverService } from './portal-talent-resolver.service.js
   ],
   controllers: [PortalController],
   providers: [PortalTalentResolverService],
+  // ATI-SEP-1 T8 — the OPEN-4 membership chain, reused by the apps/api portal
+  // identifier-verification route (Talent Intelligence path).
+  exports: [PortalTalentResolverService],
 })
 export class PortalModule {}

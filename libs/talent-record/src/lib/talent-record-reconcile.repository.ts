@@ -50,6 +50,9 @@ export interface PendingContradictionRow {
 // TALENT-INTEL-1 TI-1D-A — TalentProfileFieldState closed vocabularies, enforced
 // by the writer (TS union), not a DB CHECK (talent_record String-vocab precedent).
 export type TalentProfileValueState = 'UNKNOWN' | 'SET' | 'EXPLICITLY_CLEARED';
+// ATI-SEP-1 T8 — a value applied from Talent Intelligence by the inbound sync
+// policy is RECONCILED (machine-sourced); its provenance row carries
+// source_kind INTELLIGENCE. The wire vocabulary is unchanged.
 export type TalentProfileSourceType = 'MANUAL' | 'RESUME' | 'RECONCILED' | 'IMPORT';
 export type TalentProfileProjectionPolicy = 'AUTO' | 'HOLD';
 
@@ -182,6 +185,9 @@ export class TalentRecordReconcileRepository {
   // LEFT JOIN so a (should-not-happen) missing-incumbent row still surfaces with
   // incumbent_evidence_id = null (B2 leaves it pending + logs). The status='pending'
   // filter is served by the @@index([tenant_id, status]).
+  // ATI-SEP-1 T8 — TRUST_EVIDENCE rows only: an INTELLIGENCE contradiction (a
+  // Talent Intelligence value routed to review) has no trust EvidenceRecord to
+  // contradict, and an INTELLIGENCE provenance row is never a trust incumbent.
   async findPendingContradictions(args: {
     limit: number;
   }): Promise<PendingContradictionForResolution[]> {
@@ -200,7 +206,9 @@ export class TalentRecordReconcileRepository {
        FROM "talent_record"."talent_record_reconcile_contradiction" c
        LEFT JOIN "talent_record"."talent_record_field_provenance" p
          ON p.talent_record_id = c.talent_record_id AND p.field_name = c.field_name
+        AND p.source_kind = 'TRUST_EVIDENCE'
        WHERE c.status = 'pending'
+         AND c.source_kind = 'TRUST_EVIDENCE'
        ORDER BY c.created_at ASC
        LIMIT $1`,
       args.limit,

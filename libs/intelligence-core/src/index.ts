@@ -135,6 +135,13 @@ export {
   type VerificationDeliveryResult,
   type VerificationMessage,
 } from './lib/verification/verification-delivery.js';
+export {
+  MailerVerificationDeliveryAdapter,
+  VerificationDeliveryModule,
+  mailerConfigured,
+  renderVerificationCodeEmail,
+  selectVerificationDelivery,
+} from './lib/verification/mailer-verification-delivery.js';
 export { VerificationRefusedError, VerificationService, type ConfirmResult } from './lib/verification/verification.service.js';
 
 // T6 — read API + entitlements.

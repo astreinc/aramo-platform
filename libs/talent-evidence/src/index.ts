@@ -3,6 +3,8 @@ export {
   TalentEvidenceRepository,
   // TI-1F-B — thrown inside the atomic promotion tx on a non-reviewable draft.
   ResumeExtractionDraftNotReviewableError,
+  // ATI-SEP-1 T8 — the admissible evidence read for the Intelligence publisher.
+  type IntelligenceEvidenceSnapshot,
 } from './lib/talent-evidence.repository.js';
 export { PrismaService } from './lib/prisma/prisma.service.js';
 // ATS-QA-1 I-4 — education read + recruiter edit (retire, never overwrite).

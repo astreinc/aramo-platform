@@ -13,6 +13,7 @@ import { TalentRecordController } from './talent-record.controller.js';
 import { TalentRecordRepository } from './talent-record.repository.js';
 import { TalentEventOutboxRepository } from './talent-events/talent-event-outbox.js';
 import { TalentRecordReconcileRepository } from './talent-record-reconcile.repository.js';
+import { TalentIntelligenceRepository } from './talent-intelligence/talent-intelligence.repository.js';
 import { TalentRecordService } from './talent-record.service.js';
 import { TalentLinkService } from './talent-link.service.js';
 import { ResumeTextService } from './resume-text/resume-text.service.js';
@@ -81,6 +82,10 @@ import { TalentIntakePromotionService } from './talent-intake/talent-intake-prom
     // pending contradictions). Consumed by the apps/api reconcile poll above
     // the I15 wall (mirrors TalentRecordRepository's cross-lib export).
     TalentRecordReconcileRepository,
+    // ATI-SEP-1 T8 — the ATS ↔ Talent Intelligence store (admissible read,
+    // intelligence_link, inbound inbox, sync policy, inbound writes). Consumed
+    // by @aramo/intelligence-integration (scope:ats) in apps/api.
+    TalentIntelligenceRepository,
     TalentRecordService,
     TalentLinkService,
     // Search PR-2 — the resume-text re-extract + persistence service. The
@@ -109,6 +114,7 @@ import { TalentIntakePromotionService } from './talent-intake/talent-intake-prom
     TalentRecordRepository,
     TalentEventOutboxRepository,
     TalentRecordReconcileRepository,
+    TalentIntelligenceRepository,
     TalentRecordService,
     TalentLinkService,
     ResumeTextService,

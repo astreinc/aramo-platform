@@ -53,6 +53,7 @@
       "@aramo/sign": ["./libs/sign/src/index.ts"],
       "@aramo/intelligence-contracts": ["./libs/intelligence-contracts/src/index.ts"],
       "@aramo/intelligence-core": ["./libs/intelligence-core/src/index.ts"],
+      "@aramo/intelligence-integration": ["./libs/intelligence-integration/src/index.ts"],
       "@aramo/conversation-transcript": ["./libs/conversation-transcript/src/index.ts"],
       "@aramo/contact": ["./libs/contact/src/index.ts"],
       "@aramo/entitlement": ["./libs/entitlement/src/index.ts"],

@@ -10,7 +10,9 @@
     "types": ["node"],
     "paths": {
       "@aramo/intelligence-contracts": ["../../dist/libs/intelligence-contracts/src/index.d.ts"],
-      "@aramo/intelligence-core": ["../../dist/libs/intelligence-core/src/index.d.ts"]
+      "@aramo/intelligence-core": ["../../dist/libs/intelligence-core/src/index.d.ts"],
+      "@aramo/mailer": ["../../dist/libs/mailer/src/index.d.ts"],
+      "@aramo/common": ["../../dist/libs/common/src/index.d.ts"]
     }
   },
   "include": ["src/**/*.ts"],

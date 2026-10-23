@@ -26,7 +26,7 @@ import './overview.css';
 // is read from an existing endpoint; nothing is invented (a failed read shows "—").
 // Admin-only (the route gates on the server's org_access).
 
-const APP_NAMES: Readonly<Record<string, string>> = { ats: 'Aramo ATS', sign: 'Aramo Sign' };
+const APP_NAMES: Readonly<Record<string, string>> = { ats: 'Aramo ATS', sign: 'Aramo Sign', intelligence: 'Talent Intelligence' };
 
 export const DOMAIN_STATUS_VIEW: Readonly<Record<DomainVerificationStatus, { readonly label: string; readonly color: string }>> = {
   UNVERIFIED: { label: 'Not verified', color: '#946011' },

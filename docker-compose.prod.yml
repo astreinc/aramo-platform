@@ -164,9 +164,20 @@ services:
       # (same source as the postgres service → cannot drift).
       - DATABASE_URL=postgresql://${POSTGRES_USER:-aramo}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-aramo}?schema=public
       - REDIS_URL=redis://redis:6379
-      # ATI-SEP-1 T0 — the Talent Intelligence origin (compose-internal, no nginx route).
-      # Consumed by the ATS Intelligence Publisher / Inbound Sync once they land.
+      # ATI-SEP-1 T0/T8 — the Talent Intelligence origin (compose-internal, no nginx route).
+      # ALL TI vars are OPTIONAL (directive invariant: the ATS works with TI absent).
+      # Without the client credentials the integration is inert (publisher outcome
+      # TI_NOT_CONFIGURED). The api uses them only for the gated portal identifier
+      # verification; the publisher / inbound sync run in talent-intake-worker.
       - INTELLIGENCE_SERVICE_URL=${INTELLIGENCE_SERVICE_URL:-http://talent-intelligence-service:3004}
+      - INTELLIGENCE_ATS_CLIENT_ID
+      - INTELLIGENCE_ATS_CLIENT_SECRET
+      # Verifies the TI → ATS webhook (POST /v1/integrations/intelligence/events);
+      # same value as the TI service's. Unset ⇒ every delivery is refused 401.
+      - INTELLIGENCE_WEBHOOK_SIGNING_SECRET
+      # Portal identifier verification through TI. DARK by default (only "true"
+      # routes it); the legacy trust email verification is unchanged until T10.
+      - INTELLIGENCE_VERIFICATION_ENABLED=${INTELLIGENCE_VERIFICATION_ENABLED:-false}
       # CI-B6P — Conversation Intelligence processing. DARK by default: the
       # activation flag must be explicitly "true" to enable any model call. Both
       # carry safe defaults (optional ${VAR:-default} form → exempt from the
@@ -320,6 +331,14 @@ services:
       - ATS_TALENT_EVENTS_DRAIN_LIMIT=${ATS_TALENT_EVENTS_DRAIN_LIMIT:-25}
       - ATS_TALENT_EVENTS_LEASE_SECONDS=${ATS_TALENT_EVENTS_LEASE_SECONDS:-120}
       - ATS_TALENT_EVENTS_MAX_ATTEMPTS=${ATS_TALENT_EVENTS_MAX_ATTEMPTS:-10}
+      # ATI-SEP-1 T8 — the Intelligence publisher (a talent.* handler), the inbound
+      # sync (TI webhook inbox drain) and the full REPLACE entitlement sync run HERE.
+      # All OPTIONAL: without the client credentials every one is a no-op.
+      - INTELLIGENCE_SERVICE_URL=${INTELLIGENCE_SERVICE_URL:-http://talent-intelligence-service:3004}
+      - INTELLIGENCE_ATS_CLIENT_ID
+      - INTELLIGENCE_ATS_CLIENT_SECRET
+      - INTELLIGENCE_ENTITLEMENT_SYNC_INTERVAL_MS=${INTELLIGENCE_ENTITLEMENT_SYNC_INTERVAL_MS:-900000}
+      - INTELLIGENCE_INBOUND_SYNC_INTERVAL_MS=${INTELLIGENCE_INBOUND_SYNC_INTERVAL_MS:-5000}
       # Extraction reads the résumé from S3 and the tenant-LLM key from Secrets
       # Manager — the SAME credentials/config the API uses.
       - S3_RESUME_BUCKET
@@ -526,6 +545,32 @@ services:
       # Aramo DB). INTELLIGENCE_DB_PASSWORD must be URL-safe (tools/ensure-intelligence-db.sh
       # enforces [A-Za-z0-9._~-], 16+ chars).
       - INTELLIGENCE_DATABASE_URL=postgresql://${INTELLIGENCE_DB_USER:-aramo_intelligence}:${INTELLIGENCE_DB_PASSWORD:?INTELLIGENCE_DB_PASSWORD must be set}@postgres:5432/aramo_intelligence
+      # ATI-SEP-1 T2–T8 — secrets (each >= 32 chars). Bare-name passthroughs, OPTIONAL
+      # for boot: unset ⇒ the dependent surface reports itself unavailable (token
+      # exchange 503 / government ids 503 / verification 503 / webhooks deferred)
+      # while the service and the ATS keep running.
+      - INTELLIGENCE_SERVICE_TOKEN_SECRET
+      - INTELLIGENCE_GOV_ID_TOKEN_KEY
+      - INTELLIGENCE_VERIFICATION_CODE_KEY
+      # Signs the TI → ATS webhook; same value as the api's. Unset ⇒ no delivery is sent.
+      - INTELLIGENCE_WEBHOOK_SIGNING_SECRET
+      - INTELLIGENCE_ATS_WEBHOOK_URL=${INTELLIGENCE_ATS_WEBHOOK_URL:-http://api:3000/v1/integrations/intelligence/events}
+      - INTELLIGENCE_OUTBOX_MAX_ATTEMPTS=${INTELLIGENCE_OUTBOX_MAX_ATTEMPTS:-10}
+      # Read posture: tenant-scoped (own assertions + TI-acquired) until Legal L-1.
+      - TI_CROSS_TENANT_READ_ENABLED=${TI_CROSS_TENANT_READ_ENABLED:-false}
+      - TI_OUTBOX_DRAIN_ENABLED=${TI_OUTBOX_DRAIN_ENABLED:-1}
+      - TI_OUTBOX_DRAIN_INTERVAL_MS=${TI_OUTBOX_DRAIN_INTERVAL_MS:-5000}
+      - TI_REASSESSMENT_ENABLED=${TI_REASSESSMENT_ENABLED:-1}
+      - TI_REASSESSMENT_INTERVAL_MS=${TI_REASSESSMENT_INTERVAL_MS:-3600000}
+      - TI_AVAILABILITY_FRESHNESS_DAYS=${TI_AVAILABILITY_FRESHNESS_DAYS:-90}
+      # Verification code delivery (T8): with MAILER_PROVIDER set, the TI delivery
+      # adapter sends through @aramo/mailer (ses|stub; SES needs the sender + creds);
+      # unset ⇒ the LOG adapter (no mail is sent).
+      - MAILER_PROVIDER
+      - SES_FROM_ADDRESS
+      - AWS_REGION
+      - AWS_ACCESS_KEY_ID
+      - AWS_SECRET_ACCESS_KEY
     healthcheck:
       # GET /health answers 200 only when the TI database responds.
       test: ['CMD', 'node', '-e', "require('http').get({host:'127.0.0.1',port:3004,path:'/health',timeout:2500},(r)=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"]

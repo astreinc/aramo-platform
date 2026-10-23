@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "outDir": "../../dist/libs/intelligence-integration",
+    "rootDir": "src",
+    "module": "nodenext",
+    "moduleResolution": "nodenext",
+    "declaration": true,
+    "types": ["node"],
+    "paths": {
+      "@aramo/common": ["../../dist/libs/common/src/index.d.ts"],
+      "@aramo/entitlement": ["../../dist/libs/entitlement/src/index.d.ts"],
+      "@aramo/events": ["../../dist/libs/events/src/index.d.ts"],
+      "@aramo/intelligence-contracts": ["../../dist/libs/intelligence-contracts/src/index.d.ts"],
+      "@aramo/talent-evidence": ["../../dist/libs/talent-evidence/src/index.d.ts"],
+      "@aramo/talent-record": ["../../dist/libs/talent-record/src/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"],
+  "exclude": ["src/tests/**/*", "**/*.spec.ts"]
+}

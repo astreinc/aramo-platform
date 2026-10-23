@@ -6165,6 +6165,88 @@ paths:
       security:
         - BearerAuth: []
 
+  # ATI-SEP-1 T8 (ADR-0036 §3 "TI → ATS") — the Talent Intelligence webhook receiver.
+  /v1/integrations/intelligence/events:
+    post:
+      operationId: receiveIntelligenceProfileUpdated
+      summary: Talent Intelligence → ATS webhook (golden_talent.profile_updated, HMAC-authenticated).
+      description: |
+        Service-to-service receiver for the Talent Intelligence service. NO Aramo session; the
+        SOLE authority is the `aramo-intelligence-webhook-v1` HMAC: `X-Aramo-Intelligence-Signature`
+        = base64(HMAC-SHA256(INTELLIGENCE_WEBHOOK_SIGNING_SECRET, "aramo-intelligence-webhook-v1\n" +
+        timestamp + "\n" + raw body)), with `X-Aramo-Intelligence-Timestamp` inside ±300 s. Fails
+        closed: an unset secret or a missing / stale / invalid signature is 401 before the body is
+        parsed. A verified delivery is recorded in the ATS inbox (idempotent on `event_id`) and
+        acknowledged 202; the worker's inbound sync reads the profile from TI and applies the
+        tenant's field sync policy off the request path. A replay of a recorded `event_id` is 200
+        with `duplicate: true`. The body carries ids and fact-type names only (no value, no PII).
+      security:
+        - IntelligenceWebhookSignature: []
+      parameters:
+        - name: X-Aramo-Intelligence-Timestamp
+          in: header
+          required: true
+          description: Unix epoch seconds the delivery was signed (±300 s window).
+          schema:
+            type: string
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required:
+                - event_id
+                - event_type
+                - event_version
+                - intelligence_subject_id
+                - occurred_at
+                - source_system_id
+                - source_tenant_id
+                - external_talent_id
+                - changed_fact_types
+              properties:
+                event_id: { type: string, description: Unique per delivery (the inbox key). }
+                event_type: { type: string, enum: [golden_talent.profile_updated] }
+                event_version: { type: string, enum: [v1] }
+                intelligence_subject_id: { type: string, format: uuid }
+                occurred_at: { type: string, format: date-time }
+                source_system_id: { type: string, enum: [ARAMO_ATS] }
+                source_tenant_id: { type: string, format: uuid }
+                external_talent_id: { type: string, format: uuid, description: The ATS TalentRecord id. }
+                changed_fact_types:
+                  type: array
+                  items: { type: string }
+      responses:
+        '200':
+          description: A replay of an already-recorded delivery (no-op).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [received, duplicate, event_id]
+                properties:
+                  received: { type: boolean, enum: [true] }
+                  duplicate: { type: boolean, enum: [true] }
+                  event_id: { type: string }
+        '202':
+          description: Recorded in the inbox; the inbound sync applies it asynchronously.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [received, event_id]
+                properties:
+                  received: { type: boolean, enum: [true] }
+                  event_id: { type: string }
+        '400':
+          description: Malformed golden_talent.profile_updated body.
+        '401':
+          description: Signing secret unset, or the signature is missing, stale or invalid (fail closed).
+
   /v1/webhooks/indeed/apply:
     post:
       operationId: indeedApplyWebhook
@@ -8918,7 +9000,9 @@ paths:
         deployment). Never grants anything; never lists roles, scopes, members or commercial
         data. `entry_path` is the relative path on the tenant host (App Home topology:
         `/ats/`, `/org/`; Sign reports `not_activated` with a null path until its web entry
-        is activated).
+        is activated). ATI-SEP-1 T9: `intelligence` (Talent Intelligence) is subscribed
+        when the tenant holds the `intelligence` capability (default off) and opens inside
+        the ATS (`/ats/`, authorized like the ATS).
       responses:
         '200':
           description: Per-product availability for the caller in their one tenant.
@@ -8939,7 +9023,7 @@ paths:
                       properties:
                         key:
                           type: string
-                          enum: [ats, sign, org]
+                          enum: [ats, sign, org, intelligence]
                         subscribed: { type: boolean }
                         authorized: { type: boolean }
                         available: { type: boolean }
@@ -10254,6 +10338,17 @@ components:
       description: |
         HMAC signature over the exact raw request body, computed and sent by Indeed. Not a
         secret — the shared signing secret is provisioned out-of-band and never documented.
+
+    # ATI-SEP-1 T8 — the Talent Intelligence webhook (service-to-service) authenticates by
+    # the aramo-intelligence-webhook-v1 HMAC, not a bearer token. This header carries the
+    # COMPUTED signature only; INTELLIGENCE_WEBHOOK_SIGNING_SECRET is provisioned out-of-band.
+    IntelligenceWebhookSignature:
+      type: apiKey
+      in: header
+      name: X-Aramo-Intelligence-Signature
+      description: |
+        base64 HMAC-SHA256 over "aramo-intelligence-webhook-v1\n{timestamp}\n{raw body}", computed
+        and sent by the Talent Intelligence service. Not a secret.
 
     # COMM-B6 — the Zoom Phone webhook (XP) authenticates by HMAC-SHA256 signature over
     # `v0:{x-zm-request-timestamp}:{raw body}`, not a bearer token. This header carries the

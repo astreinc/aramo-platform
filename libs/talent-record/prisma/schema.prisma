@@ -183,6 +183,8 @@ model TalentRecord {
   // TALENT-INTEL-1 TI-1D-A — per-field control state (explicit-clear / HOLD)
   // gating automatic reconcile projection. Same-schema child, Cascade purge.
   profile_field_state      TalentProfileFieldState[]
+  // ATI-SEP-1 T8 — the TI Golden-subject link (at most one per record).
+  intelligence_link        IntelligenceLink[]
 
   // Indexes — every query path leads with tenant_id; (last, first)
   // serves the dominant "search by name" recruiter query path.
@@ -356,6 +358,10 @@ model TalentRecordFieldProvenance {
   // The L2 EvidenceRecord that projected the current value (→ its payload_id
   // gives the contributing arrival). Cross-schema UUID-only, no FK.
   evidence_id      String @db.Uuid
+  // ATI-SEP-1 T8 — TRUST_EVIDENCE (evidence_id is a talent_trust.EvidenceRecord
+  // id; every pre-T8 row) | INTELLIGENCE (the value came from Talent
+  // Intelligence; evidence_id is a TI-derived reference, never a trust row).
+  source_kind      String @default("TRUST_EVIDENCE")
 
   created_at DateTime @default(now()) @db.Timestamptz
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
@@ -384,6 +390,13 @@ model TalentRecordReconcileContradiction {
   // Closed lifecycle: 'pending' (B1 records) | 'resolved' (B2 consumes). B1
   // writes 'pending' only.
   status           String @default("pending")
+  // ATI-SEP-1 T8 — TRUST_EVIDENCE (B1/B2 trust contradictions; every pre-T8 row)
+  // | INTELLIGENCE (a Talent Intelligence value routed to review by the tenant's
+  // sync policy; new_evidence_id is a TI-derived reference). The trust B2 poll
+  // reads TRUST_EVIDENCE rows only.
+  source_kind      String  @default("TRUST_EVIDENCE")
+  // INTELLIGENCE rows — the proposed value (display string), for the reviewer.
+  proposed_value   String?
 
   created_at DateTime @default(now()) @db.Timestamptz
 
@@ -445,5 +458,61 @@ model TalentProfileFieldState {
   @@unique([tenant_id, talent_record_id, field_key])
   @@index([tenant_id, talent_record_id])
   @@map("talent_profile_field_state")
+  @@schema("talent_record")
+}
+
+// ATI-SEP-1 T8 (ADR-0036 §3 "TI -> ATS") — the TI Golden-subject link. One row
+// per (tenant, record); intelligence_subject_id is a UUID-only reference into
+// the TI database (no FK there). Same-schema child of TalentRecord (Cascade).
+model IntelligenceLink {
+  tenant_id               String    @db.Uuid
+  talent_record_id        String    @db.Uuid
+  intelligence_subject_id String    @db.Uuid
+  linked_at               DateTime  @default(now()) @db.Timestamptz
+  last_synced_at          DateTime? @db.Timestamptz
+
+  talent_record TalentRecord @relation(fields: [talent_record_id], references: [id], onDelete: Cascade)
+
+  @@id([tenant_id, talent_record_id])
+  @@index([intelligence_subject_id])
+  @@map("intelligence_link")
+  @@schema("talent_record")
+}
+
+// ATI-SEP-1 T8 — the inbox of the HMAC-signed TI webhook. event_id is the
+// delivery id (idempotent receive). status: RECEIVED (to process) | APPLIED |
+// SKIPPED | QUARANTINED. Ids + fact-type names only — no value, no PII.
+model TalentIntelligenceInboundEvent {
+  event_id                String    @id
+  tenant_id               String    @db.Uuid
+  talent_record_id        String    @db.Uuid
+  intelligence_subject_id String    @db.Uuid
+  changed_fact_types      String[]  @default([])
+  occurred_at             DateTime  @db.Timestamptz
+  received_at             DateTime  @default(now()) @db.Timestamptz
+  status                  String    @default("RECEIVED")
+  outcome                 String?
+  attempts                Int       @default(0)
+  lease_expires_at        DateTime? @db.Timestamptz
+  processed_at            DateTime? @db.Timestamptz
+  last_error              String?
+
+  @@index([tenant_id, talent_record_id])
+  @@map("talent_intelligence_inbound_event")
+  @@schema("talent_record")
+}
+
+// ATI-SEP-1 T8 — the per-tenant inbound field sync policy. A missing row means
+// the code default (DEFAULT_INTELLIGENCE_SYNC_POLICY). mode: AUTO_APPLY |
+// REVIEW | IGNORE (DB CHECK).
+model TalentIntelligenceSyncPolicy {
+  tenant_id  String   @db.Uuid
+  field_key  String
+  mode       String
+  updated_at DateTime @default(now()) @db.Timestamptz
+  updated_by String?  @db.Uuid
+
+  @@id([tenant_id, field_key])
+  @@map("talent_intelligence_sync_policy")
   @@schema("talent_record")
 }

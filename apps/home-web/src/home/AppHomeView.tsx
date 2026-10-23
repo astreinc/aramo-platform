@@ -3,6 +3,7 @@ import {
   Button,
   IconBriefcase,
   IconPencil,
+  IconShieldCheck,
   InlineAlert,
   productEntryHref,
   readRememberedReturnContext,
@@ -33,7 +34,7 @@ export interface AppAttention {
   readonly text: string;
 }
 
-const ATTENTION_DOT: Record<Exclude<ProductKey, 'org'>, string> = { ats: '#946011', sign: '#022AC0' };
+const ATTENTION_DOT: Record<Exclude<ProductKey, 'org'>, string> = { ats: '#946011', sign: '#022AC0', intelligence: '#0B7A5C' };
 
 function AttentionChip({ product, href, attention }: { readonly product: Exclude<ProductKey, 'org'>; readonly href: string; readonly attention: AppAttention }) {
   return (
@@ -54,7 +55,13 @@ interface ProductCopy {
 const PRODUCT_COPY: Record<Exclude<ProductKey, 'org'>, ProductCopy> = {
   ats: { name: 'Aramo ATS', short: 'ATS', blurb: 'Requisitions, talent, submittals and placements', icon: <IconBriefcase /> },
   sign: { name: 'Aramo Sign', short: 'Sign', blurb: 'Send and track documents for e-signature', icon: <IconPencil /> },
+  // ATI-SEP-1 T9 — its insights open inside Aramo ATS.
+  intelligence: { name: 'Talent Intelligence', short: 'Intelligence', blurb: 'Verified talent profiles, inside Aramo ATS', icon: <IconShieldCheck /> },
 };
+
+// ATI-SEP-1 T9 — products App Home shows ONLY when the organization subscribes
+// (never listed under "Other Aramo products").
+const SUBSCRIBED_ONLY: ReadonlySet<ProductKey> = new Set<ProductKey>(['intelligence']);
 
 function greeting(now: Date): string {
   const h = now.getHours();
@@ -125,7 +132,7 @@ export function AppHomeView({ fetchFn, now }: Props = {}) {
   const view = products.status === 'ready' ? products.products : null;
   const showAdmin = products.status === 'ready' && products.access === 'admin';
   const subscribed = (view?.products ?? []).filter((p) => p.key !== 'org' && p.subscribed);
-  const notSubscribed = (view?.products ?? []).filter((p) => p.key !== 'org' && !p.subscribed);
+  const notSubscribed = (view?.products ?? []).filter((p) => p.key !== 'org' && !p.subscribed && !SUBSCRIBED_ONLY.has(p.key));
   const noAppRole = subscribed.length > 0 && subscribed.every((p) => !p.authorized);
 
   return (

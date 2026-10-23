@@ -261,6 +261,39 @@ export function validateLocalOnly(composeText: string): string[] {
   return problems;
 }
 
+// ASSERTION 4 — ATI-SEP-1 (ADR-0036) "the ATS works with Talent Intelligence absent":
+// in the ATS services NO Talent Intelligence var (INTELLIGENCE_* / TI_*) may be
+// required — never a `${VAR:?}` guard, never a no-default `${VAR}` interpolation,
+// never a REQUIRED_PASSTHROUGH entry. Bare-name passthroughs and `${VAR:-default}`
+// are fine (unset ⇒ the integration is inert, outcome TI_NOT_CONFIGURED).
+export const TI_ABSENT_SERVICES: readonly string[] = ['api', 'talent-intake-worker'];
+const TI_VAR = /^(INTELLIGENCE_|TI_)/;
+
+export function validateIntelligenceOptional(
+  composeText: string,
+  requiredManifest: Record<string, string[]> = REQUIRED_PASSTHROUGH,
+  services: readonly string[] = TI_ABSENT_SERVICES,
+): string[] {
+  const problems: string[] = [];
+  const doc = parse(composeText) as { services?: Record<string, { environment?: unknown }> } | null;
+  for (const svc of services) {
+    const def = doc?.services?.[svc];
+    if (def === undefined) continue;
+    const env = Array.isArray(def.environment)
+      ? def.environment.map(String)
+      : Object.entries((def.environment ?? {}) as Record<string, unknown>).map(([k, v]) => `${k}=${String(v)}`);
+    for (const entry of env) {
+      for (const g of entry.matchAll(/\$\{([A-Z_][A-Z0-9_]*)(:\?|\})/g)) {
+        if (TI_VAR.test(g[1])) problems.push(`service "${svc}" REQUIRES Talent Intelligence var ${g[1]} (\${${g[1]}${g[2] === ':?' ? ':?' : ''}…}) — TI must stay optional for the ATS`);
+      }
+    }
+    for (const v of requiredManifest[svc] ?? []) {
+      if (TI_VAR.test(v)) problems.push(`REQUIRED_PASSTHROUGH lists Talent Intelligence var ${v} for "${svc}" — TI must stay optional for the ATS`);
+    }
+  }
+  return problems;
+}
+
 // ── Embedded selftest (isolated fixtures; the "seeded missing-passthrough" proof) ────────
 function selftest(): void {
   // Fixture 1 — a service that DROPS a required passthrough (assertion 1).
@@ -360,9 +393,30 @@ services:
     v6.some((x) => x.kind === 'required-literal-mismatch' && x.service === 'worker' && x.var === 'FIXTURE_PIN') &&
     !v6.some((x) => x.kind === 'required-literal-mismatch' && x.var === 'OTHER');
 
-  if (!caughtDrop || !caughtUndoc || !resolvedBoth || !caughtLocal || !caughtGuard || !caughtPin) {
+  // Fixture 7 — a Talent Intelligence var made REQUIRED in an ATS service (assertion 4).
+  const tiProblems = validateIntelligenceOptional(
+    `
+services:
+  api:
+    environment:
+      - INTELLIGENCE_ATS_CLIENT_ID=\${INTELLIGENCE_ATS_CLIENT_ID:?must be set}
+      - INTELLIGENCE_SERVICE_URL=\${INTELLIGENCE_SERVICE_URL:-http://ti:3004}
+      - INTELLIGENCE_ATS_CLIENT_SECRET
+  talent-intake-worker:
+    environment:
+      - TI_FIXTURE=\${TI_FIXTURE}
+`,
+    { api: ['INTELLIGENCE_WEBHOOK_SIGNING_SECRET'] },
+  );
+  const caughtTi =
+    tiProblems.some((x) => x.includes('INTELLIGENCE_ATS_CLIENT_ID')) &&
+    tiProblems.some((x) => x.includes('TI_FIXTURE')) &&
+    tiProblems.some((x) => x.includes('REQUIRED_PASSTHROUGH')) &&
+    !tiProblems.some((x) => x.includes('INTELLIGENCE_SERVICE_URL') || x.includes('INTELLIGENCE_ATS_CLIENT_SECRET'));
+
+  if (!caughtDrop || !caughtUndoc || !resolvedBoth || !caughtLocal || !caughtGuard || !caughtPin || !caughtTi) {
     console.error(
-      `SELFTEST FAILED: env-passthrough checker vacuous (drop=${caughtDrop} undoc=${caughtUndoc} anchor=${resolvedBoth} local=${caughtLocal} guard=${caughtGuard} pin=${caughtPin}).`,
+      `SELFTEST FAILED: env-passthrough checker vacuous (drop=${caughtDrop} undoc=${caughtUndoc} anchor=${resolvedBoth} local=${caughtLocal} guard=${caughtGuard} pin=${caughtPin} ti=${caughtTi}).`,
     );
     process.exit(2);
   }
@@ -377,6 +431,12 @@ function main(): void {
   if (localOnly.length > 0) {
     console.error('✗ local-development settings would reach production:');
     for (const p of localOnly) console.error(`  - ${p}`);
+    process.exit(1);
+  }
+  const tiRequired = validateIntelligenceOptional(readFileSync(COMPOSE, 'utf8'));
+  if (tiRequired.length > 0) {
+    console.error('✗ Talent Intelligence must stay optional for the ATS (ATI-SEP-1):');
+    for (const p of tiRequired) console.error(`  - ${p}`);
     process.exit(1);
   }
   if (violations.length > 0) {

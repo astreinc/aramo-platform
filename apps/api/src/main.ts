@@ -25,6 +25,10 @@ import {
   DOCUSIGN_WEBHOOK_MAX_BODY_BYTES,
   DOCUSIGN_WEBHOOK_ROUTE,
 } from './esignature-providers/docusign/docusign-connect.js';
+import {
+  INTELLIGENCE_EVENTS_MAX_BODY_BYTES,
+  INTELLIGENCE_EVENTS_WEBHOOK_ROUTE,
+} from './integrations/intelligence/intelligence-webhook.constants.js';
 
 async function bootstrap(): Promise<void> {
   const port = process.env['PORT'] ?? 3000;
@@ -73,6 +77,12 @@ async function bootstrap(): Promise<void> {
   app.use(
     DOCUSIGN_WEBHOOK_ROUTE,
     express.raw({ type: () => true, limit: DOCUSIGN_WEBHOOK_MAX_BODY_BYTES }),
+  );
+  // ATI-SEP-1 T8 — route-scoped RAW body for the Talent Intelligence webhook
+  // ONLY: the x-aramo-intelligence-signature HMAC covers the exact raw bytes.
+  app.use(
+    INTELLIGENCE_EVENTS_WEBHOOK_ROUTE,
+    express.raw({ type: () => true, limit: INTELLIGENCE_EVENTS_MAX_BODY_BYTES }),
   );
   // Restore Nest's default global parsers for every other route (behaviour-
   // preserving — Nest uses express json+urlencoded under the hood).

@@ -11,7 +11,7 @@ import { GovIdTokenizer } from './normalize.js';
 import { FetchWebhookTransport, IntelligenceOutboxDrainService, WEBHOOK_TRANSPORT } from './outbox/outbox-drain.service.js';
 import { PROJECTION_TRIGGER, ProjectionService } from './projection/projection.service.js';
 import { VERIFICATION_CODE_SERVICE, VerificationCodeService } from './verification/verification-code.js';
-import { LogVerificationDeliveryAdapter, VERIFICATION_DELIVERY_PORT } from './verification/verification-delivery.js';
+import { VerificationDeliveryModule } from './verification/mailer-verification-delivery.js';
 import { VerificationService } from './verification/verification.service.js';
 import { IntelligencePrismaService } from './prisma/intelligence-prisma.service.js';
 import { PrismaIntelligenceUnitOfWork } from './repositories/prisma-unit-of-work.js';
@@ -21,9 +21,12 @@ import { INTELLIGENCE_UNIT_OF_WORK } from './repositories/types.js';
 // Depends only on scope:intelligence + scope:shared (eslint depConstraints).
 // T0: Prisma + health. T1: repositories / unit of work. T2: ingestion + service
 // tokens. T3: identity resolution + merge / split. T4: verification (+ delivery
-// port, LOG adapter by default). T5: projection / trust (post-commit trigger).
+// port; T8: @aramo/mailer adapter when MAILER_PROVIDER is set, else LOG). T5: projection / trust (post-commit trigger).
 // T6: read API + entitlement sync. T7: outbox drain (webhook fan-out).
 @Module({
+  // T8 — VERIFICATION_DELIVERY_PORT: the @aramo/mailer adapter when
+  // MAILER_PROVIDER is set in the TI process, else the LOG adapter.
+  imports: [VerificationDeliveryModule],
   providers: [
     IntelligencePrismaService,
     IntelligenceHealthService,
@@ -36,7 +39,6 @@ import { INTELLIGENCE_UNIT_OF_WORK } from './repositories/types.js';
     ProjectionService,
     { provide: PROJECTION_TRIGGER, useExisting: ProjectionService },
     { provide: VERIFICATION_CODE_SERVICE, useFactory: () => VerificationCodeService.fromEnv() },
-    { provide: VERIFICATION_DELIVERY_PORT, useClass: LogVerificationDeliveryAdapter },
     { provide: WEBHOOK_TRANSPORT, useClass: FetchWebhookTransport },
     VerificationService,
     ProfileReadService,
@@ -54,7 +56,7 @@ import { INTELLIGENCE_UNIT_OF_WORK } from './repositories/types.js';
     ProjectionService,
     PROJECTION_TRIGGER,
     VERIFICATION_CODE_SERVICE,
-    VERIFICATION_DELIVERY_PORT,
+    VerificationDeliveryModule,
     WEBHOOK_TRANSPORT,
     VerificationService,
     ProfileReadService,

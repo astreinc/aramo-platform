@@ -1,0 +1,553 @@
+openapi: 3.1.0
+info:
+  title: Aramo Talent Intelligence Service (ATI-SEP-1)
+  version: 0.1.0
+  description: >
+    The Talent Intelligence service (apps/talent-intelligence-service, ADR-0036) — an
+    independently subscribable product with its own database. Container-internal only (no
+    nginx route): its callers are first-party services (the ATS) holding a client_credentials
+    service token. A tenant reads a subject ONLY through its own source reference tuple and only
+    while it holds the `intelligence` capability (EntitledTenant ACTIVE). Wire DTOs and the closed
+    admission catalogue live in libs/intelligence-contracts; the ingestion schema is CLOSED
+    (unknown keys, documents and Class C fields are refused server-side). Trust is expressed in
+    bands, never numbers.
+tags:
+  - name: auth
+    description: Service-token exchange (OAuth 2.0 client_credentials).
+  - name: ingest
+    description: Source-system snapshots and erasures (scope intelligence:ingest).
+  - name: verification
+    description: Talent identifier verification — email one-time code (scope intelligence:verify).
+  - name: references
+    description: The tenant read API, addressed by the tenant's own reference tuple (scope intelligence:read).
+  - name: entitlements
+    description: The source system's entitled-tenant list (scope intelligence:entitlements).
+paths:
+  /v1/oauth/token:
+    post:
+      tags: [auth]
+      operationId: exchangeIntelligenceServiceToken
+      summary: Exchange client credentials for a short-lived service token.
+      description: >
+        grant_type=client_credentials. Credentials in the body (form or JSON) or as HTTP Basic.
+        Optional `scope` (space-separated) narrows the token to a subset of the client's grant.
+        Errors use the OAuth 2.0 shape. The response is never cached (Cache-Control no-store).
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+          application/x-www-form-urlencoded:
+            schema:
+              $ref: '#/components/schemas/TokenRequest'
+      responses:
+        '200':
+          description: A bearer service token.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [access_token, token_type, expires_in, scope]
+                properties:
+                  access_token: { type: string }
+                  token_type: { type: string, enum: [Bearer] }
+                  expires_in: { type: integer, description: Seconds until expiry. }
+                  scope: { type: string }
+        '400':
+          $ref: '#/components/responses/OAuthError'
+        '401':
+          $ref: '#/components/responses/OAuthError'
+        '503':
+          $ref: '#/components/responses/OAuthError'
+
+  /v1/ingest/talent:
+    post:
+      tags: [ingest]
+      operationId: ingestTalentSnapshot
+      summary: Ingest a full snapshot of one source reference.
+      description: >
+        Closed admission schema (TalentIngestRequest in libs/intelligence-contracts). Idempotent on
+        (source_system_id, source_tenant_id, external_talent_id, source_event_id): a replay returns
+        the stored outcome with replayed=true. An assertion absent from a later snapshot of the same
+        reference is superseded. Identity resolution: existing reference → verified anchor → new
+        provisional subject.
+      security:
+        - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              description: TalentIngestRequest (closed; see libs/intelligence-contracts ingest.ts).
+              required: [source_system_id, source_tenant_id, external_talent_id, source_event_id, occurred_at, identity, assertions]
+              properties:
+                source_system_id: { type: string, enum: [ARAMO_ATS] }
+                source_tenant_id: { type: string }
+                external_talent_id: { type: string }
+                source_event_id: { type: string }
+                occurred_at: { type: string, format: date-time }
+                identity: { type: object }
+                assertions:
+                  type: array
+                  items: { type: object }
+      responses:
+        '200':
+          description: The ingestion outcome.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [intelligence_subject_id, outcome, resolution, changed, assertions_added, assertions_superseded, conflicts_opened, replayed]
+                properties:
+                  intelligence_subject_id: { type: string, format: uuid }
+                  outcome: { type: string, enum: [CREATED, LINKED, UPDATED] }
+                  resolution: { type: string, enum: [EXISTING_REFERENCE, VERIFIED_ANCHOR, NEW_PROVISIONAL, ANCHOR_CONTRADICTION] }
+                  changed: { type: boolean }
+                  assertions_added: { type: integer }
+                  assertions_superseded: { type: integer }
+                  conflicts_opened: { type: integer }
+                  replayed: { type: boolean }
+        '400':
+          description: DOCUMENT_REJECTED | CLASS_C_REJECTED | INVALID_REQUEST (with issue paths).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: EVENT_ID_REUSED | REFERENCE_ERASED.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '503':
+          description: GOV_ID_TOKENIZATION_UNAVAILABLE.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/ingest/talent/erased:
+    post:
+      tags: [ingest]
+      operationId: ingestTalentErased
+      summary: The source reference was erased (Addendum A1).
+      description: >
+        Sets the reference to ERASED. A subject with no ACTIVE reference becomes AUDIT_RETAINED and
+        no tenant read path returns it. Evidence is never deleted by one tenant's erasure.
+        Idempotent on source_event_id.
+      security:
+        - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [source_system_id, source_tenant_id, external_talent_id, source_event_id, occurred_at]
+              properties:
+                source_system_id: { type: string, enum: [ARAMO_ATS] }
+                source_tenant_id: { type: string }
+                external_talent_id: { type: string }
+                source_event_id: { type: string }
+                occurred_at: { type: string, format: date-time }
+      responses:
+        '200':
+          description: The erasure outcome.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [outcome, intelligence_subject_id, subject_access_state, replayed]
+                properties:
+                  outcome: { type: string, enum: [ERASED, ALREADY_ERASED, NOT_FOUND] }
+                  intelligence_subject_id: { type: [string, 'null'], format: uuid }
+                  subject_access_state: { type: [string, 'null'], enum: [ACTIVE, AUDIT_RETAINED, null] }
+                  replayed: { type: boolean }
+        '400':
+          description: INVALID_REQUEST.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '409':
+          description: EVENT_ID_REUSED.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+
+  /v1/verifications:
+    post:
+      tags: [verification]
+      operationId: createIntelligenceVerification
+      summary: Open an identifier verification (email one-time code).
+      description: >
+        Exactly one of source_reference (the talent's reference in a source system) or
+        portal_context. TI derives the code from a keyed HMAC and hands it to its delivery port
+        only (outbox identifier_verification.requested); the code never appears in a response.
+        SMS reports delivery NOT_AVAILABLE while it is on hold.
+      security:
+        - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [identifier_type, value]
+              properties:
+                source_reference:
+                  type: object
+                  additionalProperties: false
+                  required: [source_system_id, source_tenant_id, external_talent_id]
+                  properties:
+                    source_system_id: { type: string, enum: [ARAMO_ATS] }
+                    source_tenant_id: { type: string }
+                    external_talent_id: { type: string }
+                portal_context:
+                  type: object
+                  additionalProperties: false
+                  required: [portal_session_id]
+                  properties:
+                    portal_session_id: { type: string }
+                identifier_type: { type: string, enum: [EMAIL, PHONE] }
+                value: { type: string }
+      responses:
+        '201':
+          description: The verification is open.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [verification_id, channel, status, expires_at, delivery]
+                properties:
+                  verification_id: { type: string, format: uuid }
+                  channel: { type: string, enum: [EMAIL, SMS] }
+                  status: { type: string, enum: [PENDING] }
+                  expires_at: { type: string, format: date-time }
+                  delivery: { type: string, enum: [QUEUED, NOT_AVAILABLE] }
+        '400':
+          $ref: '#/components/responses/Refused'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/Refused'
+        '503':
+          $ref: '#/components/responses/Refused'
+
+  /v1/verifications/{id}/confirm:
+    post:
+      tags: [verification]
+      operationId: confirmIntelligenceVerification
+      summary: Confirm a one-time code.
+      description: >
+        BOUND — the identifier is now VERIFIED on the talent's subject; ALREADY_BOUND;
+        ANCHOR_CONTRADICTION — it is VERIFIED on another subject (opened for review, never
+        re-bound); UNBOUND — the code was right but no single subject could be named.
+        422 INVALID_CODE carries attempts_remaining; 423 after the attempt budget.
+      security:
+        - serviceToken: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [code]
+              properties:
+                code: { type: string, pattern: '^[0-9]{6}$' }
+      responses:
+        '200':
+          description: Confirmed.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [verification_id, status, outcome]
+                properties:
+                  verification_id: { type: string, format: uuid }
+                  status: { type: string, enum: [CONFIRMED] }
+                  outcome: { type: string, enum: [BOUND, ALREADY_BOUND, ANCHOR_CONTRADICTION, UNBOUND] }
+        '400':
+          $ref: '#/components/responses/Refused'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '404':
+          $ref: '#/components/responses/Refused'
+        '409':
+          $ref: '#/components/responses/Refused'
+        '410':
+          $ref: '#/components/responses/Refused'
+        '422':
+          $ref: '#/components/responses/Refused'
+        '423':
+          $ref: '#/components/responses/Refused'
+        '503':
+          $ref: '#/components/responses/Refused'
+
+  /v1/references/{source_system_id}/{source_tenant_id}/{external_talent_id}/profile:
+    get:
+      tags: [references]
+      operationId: readIntelligenceProfile
+      summary: The resolved Golden profile for one of the caller's references.
+      description: >
+        Requires the tenant's ACTIVE entitlement and an ACTIVE reference. TENANT_SCOPED (the default,
+        TI_CROSS_TENANT_READ_ENABLED=false) returns only the tenant's own assertions plus TI-acquired
+        evidence and verification outcomes; CROSS_TENANT returns the full Golden projection. 404 for
+        an unknown, erased or audit-retained reference (indistinguishable).
+      security:
+        - serviceToken: []
+      parameters:
+        - $ref: '#/components/parameters/SourceSystemId'
+        - $ref: '#/components/parameters/SourceTenantId'
+        - $ref: '#/components/parameters/ExternalTalentId'
+      responses:
+        '200':
+          description: The profile projection (facts + trust bands).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [intelligence_subject_id, access_mode, facts, trust, generated_at]
+                properties:
+                  intelligence_subject_id: { type: string, format: uuid }
+                  access_mode: { type: string, enum: [TENANT_SCOPED, CROSS_TENANT] }
+                  facts:
+                    type: array
+                    items: { type: object }
+                  trust: { type: object }
+                  generated_at: { type: string, format: date-time }
+        '400':
+          $ref: '#/components/responses/Refused'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Refused'
+        '404':
+          $ref: '#/components/responses/Refused'
+
+  /v1/references/{source_system_id}/{source_tenant_id}/{external_talent_id}/evidence:
+    get:
+      tags: [references]
+      operationId: readIntelligenceEvidence
+      summary: The evidence (assertions with history) visible to the caller for one reference.
+      description: >
+        Same access rule as the profile read. Another tenant's id is never revealed (contributed_by
+        is REQUESTING_TENANT | OTHER_SOURCE | TALENT_INTELLIGENCE).
+      security:
+        - serviceToken: []
+      parameters:
+        - $ref: '#/components/parameters/SourceSystemId'
+        - $ref: '#/components/parameters/SourceTenantId'
+        - $ref: '#/components/parameters/ExternalTalentId'
+      responses:
+        '200':
+          description: The visible assertions.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [intelligence_subject_id, access_mode, assertions, generated_at]
+                properties:
+                  intelligence_subject_id: { type: string, format: uuid }
+                  access_mode: { type: string, enum: [TENANT_SCOPED, CROSS_TENANT] }
+                  assertions:
+                    type: array
+                    items: { type: object }
+                  generated_at: { type: string, format: date-time }
+        '400':
+          $ref: '#/components/responses/Refused'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Refused'
+        '404':
+          $ref: '#/components/responses/Refused'
+
+  /v1/references/{source_system_id}/{source_tenant_id}/{external_talent_id}/artifacts:
+    get:
+      tags: [references]
+      operationId: readIntelligenceArtifacts
+      summary: TI-acquired artifacts (metadata + sha256 only) for one reference.
+      description: >
+        Same access rule as the profile read. Only document types whose DocumentTypePolicy is
+        globally_shareable are returned; never bytes, keys or URLs.
+      security:
+        - serviceToken: []
+      parameters:
+        - $ref: '#/components/parameters/SourceSystemId'
+        - $ref: '#/components/parameters/SourceTenantId'
+        - $ref: '#/components/parameters/ExternalTalentId'
+      responses:
+        '200':
+          description: The visible artifacts.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [intelligence_subject_id, access_mode, artifacts, generated_at]
+                properties:
+                  intelligence_subject_id: { type: string, format: uuid }
+                  access_mode: { type: string, enum: [TENANT_SCOPED, CROSS_TENANT] }
+                  artifacts:
+                    type: array
+                    items: { type: object }
+                  generated_at: { type: string, format: date-time }
+        '400':
+          $ref: '#/components/responses/Refused'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Refused'
+        '404':
+          $ref: '#/components/responses/Refused'
+
+  /v1/entitlements/sync:
+    post:
+      tags: [entitlements]
+      operationId: syncIntelligenceEntitlements
+      summary: Upsert or replace the source system's entitled tenants.
+      description: >
+        UPSERT applies the listed rows; REPLACE also deactivates every tenant of the source system
+        that is not listed. At most 10000 tenants per call.
+      security:
+        - serviceToken: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              additionalProperties: false
+              required: [source_system_id, mode, tenants]
+              properties:
+                source_system_id: { type: string, enum: [ARAMO_ATS] }
+                mode: { type: string, enum: [UPSERT, REPLACE] }
+                tenants:
+                  type: array
+                  maxItems: 10000
+                  items:
+                    type: object
+                    additionalProperties: false
+                    required: [tenant_id, active]
+                    properties:
+                      tenant_id: { type: string }
+                      active: { type: boolean }
+      responses:
+        '200':
+          description: Applied.
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required: [applied, deactivated]
+                properties:
+                  applied: { type: integer }
+                  deactivated: { type: integer }
+        '400':
+          $ref: '#/components/responses/Refused'
+        '401':
+          $ref: '#/components/responses/Unauthenticated'
+        '403':
+          $ref: '#/components/responses/Refused'
+
+components:
+  securitySchemes:
+    serviceToken:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT (HS256, from /v1/oauth/token)
+      description: A client_credentials service token carrying the route's scope.
+  parameters:
+    SourceSystemId:
+      name: source_system_id
+      in: path
+      required: true
+      schema: { type: string, enum: [ARAMO_ATS] }
+    SourceTenantId:
+      name: source_tenant_id
+      in: path
+      required: true
+      schema: { type: string }
+    ExternalTalentId:
+      name: external_talent_id
+      in: path
+      required: true
+      schema: { type: string }
+  schemas:
+    TokenRequest:
+      type: object
+      required: [grant_type]
+      properties:
+        grant_type: { type: string, enum: [client_credentials] }
+        client_id: { type: string }
+        client_secret: { type: string }
+        scope: { type: string, description: Space-separated subset of the client's grant. }
+    Error:
+      type: object
+      required: [error]
+      properties:
+        error:
+          type: object
+          required: [code, message]
+          properties:
+            code: { type: string }
+            message: { type: string }
+  responses:
+    OAuthError:
+      description: OAuth 2.0 error (invalid_request | unsupported_grant_type | invalid_scope | invalid_client | temporarily_unavailable).
+      content:
+        application/json:
+          schema:
+            type: object
+            required: [error]
+            properties:
+              error: { type: string }
+              error_description: { type: string }
+    Unauthenticated:
+      description: UNAUTHENTICATED — a valid bearer service token is required.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Forbidden:
+      description: FORBIDDEN (scope) | SOURCE_SYSTEM_MISMATCH.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'
+    Refused:
+      description: A typed refusal ({ error { code, message, … } }).
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/Error'

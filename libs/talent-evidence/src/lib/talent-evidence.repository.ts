@@ -94,6 +94,68 @@ export type TalentDocumentRetentionPolicyValue =
 
 // ---- TalentSkillEvidence (Group 2 §2.2 #16) ----------------------------
 
+// ATI-SEP-1 T8 (ADR-0036 §4) — the typed ATS evidence the Talent Intelligence
+// publisher reads to build an admission payload. An explicit column allowlist
+// per table: raw description text, evidence_text excerpts, document ids, source
+// refs, rate expectations and document rows are NEVER selected. resume_text_hash
+// rides along only as a provenance discriminator (résumé-derived vs recruiter).
+export interface IntelligenceEvidenceSnapshot {
+  skills: Array<{
+    id: string;
+    surface_form: string;
+    source: TalentSkillEvidenceSourceValue;
+    proficiency_claim: string | null;
+    years_claimed: number | null;
+    usage_end: Date | null;
+    resume_text_hash: string | null;
+    created_at: Date;
+  }>;
+  work_history: Array<{
+    id: string;
+    employer_name: string;
+    role_title: string;
+    start_date: Date | null;
+    end_date: Date | null;
+    location: string | null;
+    experience_summary: string | null;
+    source: TalentWorkHistorySourceValue;
+    resume_text_hash: string | null;
+    assertions: unknown;
+    created_at: Date;
+  }>;
+  education: Array<{
+    id: string;
+    institution_name: string;
+    degree_name: string;
+    field_of_study: string | null;
+    conferred_date: Date | null;
+    source: TalentEducationSourceValue;
+    resume_text_hash: string | null;
+    created_at: Date;
+  }>;
+  certifications: Array<{
+    id: string;
+    certification_name: string;
+    issuer_name: string | null;
+    credential_ref: string | null;
+    issued_date: Date | null;
+    expiry_date: Date | null;
+    source: TalentCertificationSourceValue;
+    resume_text_hash: string | null;
+    created_at: Date;
+  }>;
+  projects: Array<{
+    id: string;
+    project_name: string | null;
+    context_summary: string | null;
+    start_date: Date | null;
+    end_date: Date | null;
+    resume_text_hash: string | null;
+    created_at: Date;
+  }>;
+  work_authorizations: TalentWorkAuthorizationRow[];
+}
+
 export interface CreateTalentSkillEvidenceInput {
   id: string;
   talent_id: string;
@@ -1306,6 +1368,111 @@ export class TalentEvidenceRepository {
       orderBy: [{ asserted_at: 'desc' }, { id: 'desc' }],
     });
     return rows as TalentWorkAuthorizationRow[];
+  }
+
+  // ATI-SEP-1 T8 — one tenant-scoped read of the admissible typed evidence for
+  // the Talent Intelligence publisher (see IntelligenceEvidenceSnapshot).
+  async readEvidenceForIntelligence(args: {
+    tenant_id: string;
+    talent_id: string;
+  }): Promise<IntelligenceEvidenceSnapshot> {
+    const where = { tenant_id: args.tenant_id, talent_id: args.talent_id };
+    const [skills, work_history, education, certifications, projects, work_authorizations] = await Promise.all([
+      this.prisma.talentSkillEvidence.findMany({
+        where,
+        select: {
+          id: true,
+          surface_form: true,
+          source: true,
+          proficiency_claim: true,
+          years_claimed: true,
+          usage_end: true,
+          resume_text_hash: true,
+          created_at: true,
+        },
+        orderBy: { id: 'asc' },
+      }),
+      this.prisma.talentWorkHistoryEntry.findMany({
+        where,
+        select: {
+          id: true,
+          employer_name: true,
+          role_title: true,
+          start_date: true,
+          end_date: true,
+          location: true,
+          experience_summary: true,
+          source: true,
+          resume_text_hash: true,
+          assertions: true,
+          created_at: true,
+        },
+        orderBy: { id: 'asc' },
+      }),
+      this.prisma.talentEducationEntry.findMany({
+        where,
+        select: {
+          id: true,
+          institution_name: true,
+          degree_name: true,
+          field_of_study: true,
+          conferred_date: true,
+          source: true,
+          resume_text_hash: true,
+          created_at: true,
+        },
+        orderBy: { id: 'asc' },
+      }),
+      this.prisma.talentCertificationEntry.findMany({
+        where,
+        select: {
+          id: true,
+          certification_name: true,
+          issuer_name: true,
+          credential_ref: true,
+          issued_date: true,
+          expiry_date: true,
+          source: true,
+          resume_text_hash: true,
+          created_at: true,
+        },
+        orderBy: { id: 'asc' },
+      }),
+      this.prisma.talentProjectExperience.findMany({
+        where,
+        select: {
+          id: true,
+          project_name: true,
+          context_summary: true,
+          start_date: true,
+          end_date: true,
+          resume_text_hash: true,
+          created_at: true,
+        },
+        orderBy: { id: 'asc' },
+      }),
+      this.findWorkAuthorizationByTalent(args),
+    ]);
+    // ATS-QA-1 I-4 — a retired education entry is not current evidence.
+    const retired =
+      education.length === 0
+        ? new Set<string>()
+        : new Set(
+            (
+              await this.prisma.educationEntryRetirement.findMany({
+                where: { tenant_id: args.tenant_id, entry_id: { in: education.map((e) => e.id) } },
+                select: { entry_id: true },
+              })
+            ).map((r) => r.entry_id),
+          );
+    return {
+      skills: skills as IntelligenceEvidenceSnapshot['skills'],
+      work_history: work_history as IntelligenceEvidenceSnapshot['work_history'],
+      education: education.filter((e) => !retired.has(e.id)) as IntelligenceEvidenceSnapshot['education'],
+      certifications: certifications as IntelligenceEvidenceSnapshot['certifications'],
+      projects,
+      work_authorizations,
+    };
   }
 
   // Backfill enumeration: the distinct talent_ids that own ANY typed skill,

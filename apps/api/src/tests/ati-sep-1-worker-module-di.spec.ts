@@ -1,5 +1,6 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { Test, type TestingModule } from '@nestjs/testing';
+import { IntelligenceIntegrationWorker } from '@aramo/intelligence-integration';
 
 import { ATS_TALENT_EVENTS_DRAIN } from '../ats-talent-events/ats-talent-events-drain.worker.js';
 import { ATS_TALENT_EVENT_HANDLERS } from '../ats-talent-events/ats-talent-event-handler.js';
@@ -25,7 +26,7 @@ describe('talent-intake-worker context — ATS talent events DI resolution', () 
     }
   });
 
-  it('compiles with the drain and the three handlers (canonical, talent-reconcile, legacy)', async () => {
+  it('compiles with the drain and the four handlers (canonical, talent-reconcile, legacy, intelligence publisher)', async () => {
     let module: TestingModule | undefined;
     try {
       module = await Test.createTestingModule({ imports: [TalentIntakeWorkerModule] }).compile();
@@ -35,7 +36,11 @@ describe('talent-intake-worker context — ATS talent events DI resolution', () 
         'canonical-reconcile',
         'talent-reconcile-signal',
         'legacy-trust-projection',
+        // ATI-SEP-1 T8 — ATS → Talent Intelligence (no-op when TI is unconfigured).
+        'intelligence-publisher',
       ]);
+      // The worker hosts the inbound sync + entitlement sync loops (idle while unconfigured).
+      expect(module.get(IntelligenceIntegrationWorker, { strict: false })).toBeDefined();
     } finally {
       await module?.close();
     }

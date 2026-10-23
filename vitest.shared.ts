@@ -84,6 +84,8 @@ export default defineConfig({
       // and the shared ATS ⇄ TI contract (scope:shared). Mirrors tsconfig.base.json.
       '@aramo/intelligence-contracts': resolve(root, 'libs/intelligence-contracts/src/index.ts'),
       '@aramo/intelligence-core': resolve(root, 'libs/intelligence-core/src/index.ts'),
+      // ATI-SEP-1 T8 — the ATS-side TI integration (scope:ats; HTTP + contracts only).
+      '@aramo/intelligence-integration': resolve(root, 'libs/intelligence-integration/src/index.ts'),
       // PR-A2 Gate 5 — first ATS-domain leaves (company + contact). Mirrors
       // tsconfig.base.json aliases so vitest runtime resolves the AppModule
       // imports + cross-lib edge contact -> company in the integration specs.

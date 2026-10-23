@@ -92,6 +92,9 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'RESUME_DUPLICATE_ARTIFACT',
       // ATI-SEP-1 D6 — an intake-draft edit after its Save created the Talent (409).
       'INTAKE_DRAFT_SAVED_EDIT_ON_TALENT',
+      // ATI-SEP-1 T8 — gated Talent Intelligence portal verification (503 / 422).
+      'INTELLIGENCE_UNAVAILABLE',
+      'IDENTIFIER_VERIFICATION_REFUSED',
       // TR-6 B2 — 6 advisory-resolution domain refusal codes (replacing the
       // AramoExceptionFilter status-collapse on the advisory surface only).
       'ADVISORY_NOT_PENDING',

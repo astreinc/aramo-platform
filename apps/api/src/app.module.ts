@@ -168,6 +168,7 @@ import { DossierService } from './talent-identity/dossier.service.js';
 import { ExamineController } from './controllers/examine.controller.js';
 import { LegacyTrustProjectionModule } from './legacy-trust-projection/legacy-trust-projection.module.js';
 import { AtsTalentEventsModule } from './ats-talent-events/ats-talent-events.module.js';
+import { IntelligenceIntegrationHttpModule } from './integrations/intelligence/intelligence-integration-http.module.js';
 import { CanonicalMatchShadowConfig } from './examinations/canonical-match-shadow.config.js';
 import { CanonicalMatchShadowComparator } from './examinations/canonical-match-shadow.comparator.js';
 import { TenantSettingsController } from './controllers/tenant-settings.controller.js';
@@ -259,6 +260,8 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // the talent-intake-worker process; in the API it stays OFF unless
     // ATS_TALENT_EVENTS_DRAIN_ENABLED=1.
     AtsTalentEventsModule,
+    // ATI-SEP-1 T8 — TI webhook receiver + gated portal identifier verification.
+    IntelligenceIntegrationHttpModule,
     // TR-2a-1 — the anchor producer (apps/api, above the I15 wall) records
     // TalentRecord identifier anchors into the trust ledger. TalentTrustModule
     // provides TalentTrustService; TalentRecordModule (above) provides the
