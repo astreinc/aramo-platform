@@ -44,7 +44,9 @@ echo "[build] repo=${ROOT_DIR} revision=${AUTHORIZED_SHA}"
 # front door (`[emerg] host not found in upstream "sign-service"`). The prod app
 # topology is 5 containers (api, auth-service, platform-admin, sign-service,
 # nginx); nginx must never be recreated without sign-service built + running.
-for S in api auth-service platform-admin sign-service; do
+# ATI-SEP-1 T0 (ADR-0036) adds talent-intelligence-service (:3004, container-
+# internal; NO nginx upstream, so nginx never depends on it) → 6 images.
+for S in api auth-service platform-admin sign-service talent-intelligence-service; do
   echo "[build] building aramo/${S}:local"
   docker build --no-cache -f "${ROOT_DIR}/apps/${S}/Dockerfile" \
     --build-arg GIT_REVISION="${AUTHORIZED_SHA}" -t "aramo/${S}:local" "${ROOT_DIR}"
@@ -53,4 +55,4 @@ echo "[build] building aramo/nginx:local"
 docker build --no-cache -f "${ROOT_DIR}/deploy/nginx/Dockerfile" \
   --build-arg GIT_REVISION="${AUTHORIZED_SHA}" -t "aramo/nginx:local" "${ROOT_DIR}"
 
-echo "[build] OK — 5 images stamped ${AUTHORIZED_SHA} from ${ROOT_DIR}"
+echo "[build] OK — 6 images stamped ${AUTHORIZED_SHA} from ${ROOT_DIR}"

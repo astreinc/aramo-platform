@@ -170,6 +170,11 @@ describe('TalentEditView', () => {
     // the newer ED_B offers "Make default" — never latest-wins.
     await waitFor(() => expect(screen.getByText(/general.pdf/)).toBeInTheDocument());
     expect(screen.getByText(/genai.docx/)).toBeInTheDocument();
+    // ATI-SEP-1 A4 — the résumé picker offers PDF and DOCX only (no legacy .doc).
+    const picker = document.querySelector('input[type="file"]') as HTMLInputElement;
+    expect(picker.accept.split(',')).not.toContain('.doc');
+    expect(picker.accept).not.toMatch(/msword/);
+    expect(picker.accept.split(',')).toEqual(expect.arrayContaining(['.pdf', '.docx']));
     const makeDefault = screen.getByRole('button', { name: /Make default/ });
     fireEvent.click(makeDefault);
     await waitFor(() => {

@@ -2,7 +2,6 @@ import { Injectable } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
 import { TalentRecordRepository } from '@aramo/talent-record';
-import { TalentTrustRepository } from '@aramo/talent-trust';
 import {
   TechnicalScreeningService,
   type ScreeningPublicationRow,
@@ -27,7 +26,6 @@ export interface AccessibleTalent {
 export class ScreeningAccessService {
   constructor(
     private readonly talentRecords: TalentRecordRepository,
-    private readonly trust: TalentTrustRepository,
     private readonly screening: TechnicalScreeningService,
   ) {}
 
@@ -69,21 +67,14 @@ export class ScreeningAccessService {
     return { session, talent };
   }
 
-  // The published evidence's CURRENT trust status (directive §5 labels), read
-  // tenant-bound. null when not yet published (or no longer present).
-  async trustStatuses(
-    tenantId: string,
-    publications: ScreeningPublicationRow[],
-  ): Promise<Map<string, string | null>> {
+  // The publication's status label (directive §5), derived from the ATS-local
+  // ScreeningPublication state alone — ATI-SEP-1 T10 WP1: no trust-ledger read.
+  // PUBLISHED → 'VALID' (the "Published" label); anything else → null (the UI
+  // labels PENDING / FAILED / CONFLICT from `state`). The response shape is
+  // unchanged.
+  trustStatuses(publications: ScreeningPublicationRow[]): Map<string, string | null> {
     const out = new Map<string, string | null>();
-    for (const p of publications) {
-      if (p.state !== 'PUBLISHED') {
-        out.set(p.id, null);
-        continue;
-      }
-      const ev = await this.trust.findEvidenceByIdForTenant(tenantId, p.evidence_record_id);
-      out.set(p.id, ev?.current_status ?? null);
-    }
+    for (const p of publications) out.set(p.id, p.state === 'PUBLISHED' ? 'VALID' : null);
     return out;
   }
 }

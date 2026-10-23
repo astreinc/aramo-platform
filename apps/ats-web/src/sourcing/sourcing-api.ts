@@ -28,8 +28,8 @@ export async function getPool(
   return apiClient.get<PoolPage>(`/v1/sourcing/pool${qs === '' ? '' : `?${qs}`}`);
 }
 
-// GET /v1/sourcing/pool/:subjectId — the subject drill-in (bands + evidence +
-// refs + pending advisories).
+// GET /v1/sourcing/pool/:subjectId — the arrival drill-in (applicant material +
+// refs + pending duplicate advisories). subjectId is the sourced arrival id.
 export async function getSubjectDetail(subjectId: string): Promise<SubjectDetail> {
   return apiClient.get<SubjectDetail>(
     `/v1/sourcing/pool/${encodeURIComponent(subjectId)}`,
@@ -58,14 +58,13 @@ export async function saveToBench(body: {
 
 const ADVISORY_BASE = '/v1/talent/identity/advisories';
 
-// POST :id/approve — execute the pointer-only merge. A contradicted advisory
-// (has_contradiction) requires override_acknowledged + justification (R3).
+// POST :id/approve — the same person: a record pair re-homes onto the survivor
+// (default: the first record), a sourced arrival links to the existing record.
 export async function approveAdvisory(
   advisoryId: string,
   body?: {
-    surviving_subject_id?: string;
+    surviving_record_id?: string;
     justification?: string;
-    override_acknowledged?: boolean;
   },
 ): Promise<AdvisoryView> {
   return apiClient.post<AdvisoryView>(
@@ -74,7 +73,7 @@ export async function approveAdvisory(
   );
 }
 
-// POST :id/dismiss — not the same human (justification optional).
+// POST :id/dismiss — not the same person (justification optional).
 export async function dismissAdvisory(
   advisoryId: string,
   body?: { justification?: string },
@@ -85,7 +84,7 @@ export async function dismissAdvisory(
   );
 }
 
-// POST :id/reverse — un-merge a MERGED advisory (justification REQUIRED, R4).
+// POST :id/reverse — undo an APPROVED advisory (justification REQUIRED).
 export async function reverseAdvisory(
   advisoryId: string,
   body: { justification: string },

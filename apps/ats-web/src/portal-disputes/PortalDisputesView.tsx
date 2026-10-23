@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button, hasScope, InlineAlert, useSession, type Session, TextArea } from '@aramo/fe-foundation';
 
 import { formatInstant } from '../format/date';
+import { intelligenceStatusNote, type IntelligenceStatus } from '../talent/dossier-api';
 import { Card, safeErrorMessage } from '../ui';
 
 import {
@@ -13,11 +14,11 @@ import {
 } from './portal-disputes-api';
 import { portalDisputeItemTypeLabel, portalDisputeStatusLabel } from './portal-disputes-vocab';
 
-// Portal P3b (§PR-2) — the minimal tenant dispute-disposition worklist (mirrors
-// IdentityAdvisoriesView conventions). Gated on identity:resolve: the reviewer
-// TRIAGES a talent dispute (→ the backing evidence goes DISPUTED), then
-// CORRECTS (evidence revoked) or UPHOLDS (evidence stands). PROPOSE/DISPOSE —
-// the human disposes here; corrections flow through the standing trust writers.
+// Portal P3b → ATI-SEP-1 T10 WP3b — the minimal tenant dispute-disposition
+// worklist over Talent Intelligence disputes. Gated on identity:resolve: the
+// reviewer TRIAGES a talent dispute (→ the disputed evidence goes DISPUTED in TI),
+// then CORRECTS (evidence revoked) or UPHOLDS (evidence stands). PROPOSE/DISPOSE.
+// When TI is not enabled the list is empty with an honest note (never an error).
 
 const OPEN_STATES = ['OPEN', 'UNDER_REVIEW'];
 
@@ -29,6 +30,7 @@ export function PortalDisputesView({ sessionOverride }: { sessionOverride?: Sess
 
   const [disputes, setDisputes] = useState<PortalDisputeItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [tiStatus, setTiStatus] = useState<IntelligenceStatus>('ENABLED');
   const [pending, setPending] = useState<{ id: string; action: 'correct' | 'uphold' } | null>(null);
   const [note, setNote] = useState('');
   const [busy, setBusy] = useState(false);
@@ -38,6 +40,7 @@ export function PortalDisputesView({ sessionOverride }: { sessionOverride?: Sess
     try {
       const res = await getPortalDisputes();
       setDisputes(res.disputes);
+      setTiStatus(res.intelligence_status ?? 'ENABLED');
     } catch (e) {
       setError(safeErrorMessage(e, 'Failed to load disputes.'));
     }
@@ -85,6 +88,11 @@ export function PortalDisputesView({ sessionOverride }: { sessionOverride?: Sess
       <h1>Identity disputes</h1>
       <p className="rc-muted">Talent-raised disputes on verifications you furnished.</p>
       {error !== null && <InlineAlert variant="error">{error}</InlineAlert>}
+      {intelligenceStatusNote(tiStatus) !== null && (
+        <p className="rc-muted" data-testid="disputes-ti-status">
+          {intelligenceStatusNote(tiStatus)}
+        </p>
+      )}
 
       <Card>
         <table className="rc-table rc-table--comfortable">
@@ -98,7 +106,7 @@ export function PortalDisputesView({ sessionOverride }: { sessionOverride?: Sess
           </thead>
           <tbody>
             {(disputes ?? []).map((d) => (
-              <tr key={`${d.dispute_id}:${d.subject_id}`}>
+              <tr key={d.dispute_id}>
                 <td>{portalDisputeItemTypeLabel(d.item_type)}</td>
                 <td>{portalDisputeStatusLabel(d.status)}</td>
                 <td>{formatInstant(d.arrived_at)}</td>

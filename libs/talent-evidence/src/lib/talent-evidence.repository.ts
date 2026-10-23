@@ -94,6 +94,68 @@ export type TalentDocumentRetentionPolicyValue =
 
 // ---- TalentSkillEvidence (Group 2 §2.2 #16) ----------------------------
 
+// ATI-SEP-1 T8 (ADR-0036 §4) — the typed ATS evidence the Talent Intelligence
+// publisher reads to build an admission payload. An explicit column allowlist
+// per table: raw description text, evidence_text excerpts, document ids, source
+// refs, rate expectations and document rows are NEVER selected. resume_text_hash
+// rides along only as a provenance discriminator (résumé-derived vs recruiter).
+export interface IntelligenceEvidenceSnapshot {
+  skills: Array<{
+    id: string;
+    surface_form: string;
+    source: TalentSkillEvidenceSourceValue;
+    proficiency_claim: string | null;
+    years_claimed: number | null;
+    usage_end: Date | null;
+    resume_text_hash: string | null;
+    created_at: Date;
+  }>;
+  work_history: Array<{
+    id: string;
+    employer_name: string;
+    role_title: string;
+    start_date: Date | null;
+    end_date: Date | null;
+    location: string | null;
+    experience_summary: string | null;
+    source: TalentWorkHistorySourceValue;
+    resume_text_hash: string | null;
+    assertions: unknown;
+    created_at: Date;
+  }>;
+  education: Array<{
+    id: string;
+    institution_name: string;
+    degree_name: string;
+    field_of_study: string | null;
+    conferred_date: Date | null;
+    source: TalentEducationSourceValue;
+    resume_text_hash: string | null;
+    created_at: Date;
+  }>;
+  certifications: Array<{
+    id: string;
+    certification_name: string;
+    issuer_name: string | null;
+    credential_ref: string | null;
+    issued_date: Date | null;
+    expiry_date: Date | null;
+    source: TalentCertificationSourceValue;
+    resume_text_hash: string | null;
+    created_at: Date;
+  }>;
+  projects: Array<{
+    id: string;
+    project_name: string | null;
+    context_summary: string | null;
+    start_date: Date | null;
+    end_date: Date | null;
+    resume_text_hash: string | null;
+    created_at: Date;
+  }>;
+  work_authorizations: TalentWorkAuthorizationRow[];
+}
+
 export interface CreateTalentSkillEvidenceInput {
   id: string;
   talent_id: string;
@@ -170,6 +232,8 @@ export interface CreateTalentWorkHistoryEntryInput {
   company_id?: string;
   experience_summary?: string;
   is_authoritative?: boolean;
+  // ATI-SEP-1 A2 — the role's reviewed experience assertions (nullable JSON).
+  assertions?: unknown;
   created_at: Date;
 }
 
@@ -696,6 +760,12 @@ export interface TalentIntakeDraftRow {
   processing_completed_at: Date | null;
   last_opened_at: Date | null;
   last_touched_at: Date | null;
+  // ATI-SEP-1 A2 — resumable-Save reservation (null until a Save starts).
+  save_reserved_talent_record_id?: string | null;
+  save_started_at?: Date | null;
+  save_evidence_materialized_at?: Date | null;
+  // D6 — hash of the reviewed evidence arrays step 1 materialized.
+  save_evidence_payload_hash?: string | null;
 }
 
 export interface CreateTalentIntakeDraftInput {
@@ -981,6 +1051,7 @@ export class TalentEvidenceRepository {
         company_id: input.company_id,
         experience_summary: input.experience_summary,
         is_authoritative: input.is_authoritative,
+        ...(input.assertions !== undefined ? { assertions: input.assertions as never } : {}),
         created_at: input.created_at,
       },
     });
@@ -1178,6 +1249,8 @@ export class TalentEvidenceRepository {
       start_date: Date | null;
       end_date: Date | null;
       employment_type: string | null;
+      // ATI-SEP-1 A2 — the persisted experience assertions (JSON; may be null).
+      assertions: unknown;
     }>
   > {
     return this.prisma.talentWorkHistoryEntry.findMany({
@@ -1189,6 +1262,7 @@ export class TalentEvidenceRepository {
         start_date: true,
         end_date: true,
         employment_type: true,
+        assertions: true,
       },
       orderBy: { id: 'asc' },
     });
@@ -1294,6 +1368,111 @@ export class TalentEvidenceRepository {
       orderBy: [{ asserted_at: 'desc' }, { id: 'desc' }],
     });
     return rows as TalentWorkAuthorizationRow[];
+  }
+
+  // ATI-SEP-1 T8 — one tenant-scoped read of the admissible typed evidence for
+  // the Talent Intelligence publisher (see IntelligenceEvidenceSnapshot).
+  async readEvidenceForIntelligence(args: {
+    tenant_id: string;
+    talent_id: string;
+  }): Promise<IntelligenceEvidenceSnapshot> {
+    const where = { tenant_id: args.tenant_id, talent_id: args.talent_id };
+    const [skills, work_history, education, certifications, projects, work_authorizations] = await Promise.all([
+      this.prisma.talentSkillEvidence.findMany({
+        where,
+        select: {
+          id: true,
+          surface_form: true,
+          source: true,
+          proficiency_claim: true,
+          years_claimed: true,
+          usage_end: true,
+          resume_text_hash: true,
+          created_at: true,
+        },
+        orderBy: { id: 'asc' },
+      }),
+      this.prisma.talentWorkHistoryEntry.findMany({
+        where,
+        select: {
+          id: true,
+          employer_name: true,
+          role_title: true,
+          start_date: true,
+          end_date: true,
+          location: true,
+          experience_summary: true,
+          source: true,
+          resume_text_hash: true,
+          assertions: true,
+          created_at: true,
+        },
+        orderBy: { id: 'asc' },
+      }),
+      this.prisma.talentEducationEntry.findMany({
+        where,
+        select: {
+          id: true,
+          institution_name: true,
+          degree_name: true,
+          field_of_study: true,
+          conferred_date: true,
+          source: true,
+          resume_text_hash: true,
+          created_at: true,
+        },
+        orderBy: { id: 'asc' },
+      }),
+      this.prisma.talentCertificationEntry.findMany({
+        where,
+        select: {
+          id: true,
+          certification_name: true,
+          issuer_name: true,
+          credential_ref: true,
+          issued_date: true,
+          expiry_date: true,
+          source: true,
+          resume_text_hash: true,
+          created_at: true,
+        },
+        orderBy: { id: 'asc' },
+      }),
+      this.prisma.talentProjectExperience.findMany({
+        where,
+        select: {
+          id: true,
+          project_name: true,
+          context_summary: true,
+          start_date: true,
+          end_date: true,
+          resume_text_hash: true,
+          created_at: true,
+        },
+        orderBy: { id: 'asc' },
+      }),
+      this.findWorkAuthorizationByTalent(args),
+    ]);
+    // ATS-QA-1 I-4 — a retired education entry is not current evidence.
+    const retired =
+      education.length === 0
+        ? new Set<string>()
+        : new Set(
+            (
+              await this.prisma.educationEntryRetirement.findMany({
+                where: { tenant_id: args.tenant_id, entry_id: { in: education.map((e) => e.id) } },
+                select: { entry_id: true },
+              })
+            ).map((r) => r.entry_id),
+          );
+    return {
+      skills: skills as IntelligenceEvidenceSnapshot['skills'],
+      work_history: work_history as IntelligenceEvidenceSnapshot['work_history'],
+      education: education.filter((e) => !retired.has(e.id)) as IntelligenceEvidenceSnapshot['education'],
+      certifications: certifications as IntelligenceEvidenceSnapshot['certifications'],
+      projects,
+      work_authorizations,
+    };
   }
 
   // Backfill enumeration: the distinct talent_ids that own ANY typed skill,
@@ -2197,6 +2376,354 @@ export class TalentEvidenceRepository {
     return updated.count;
   }
 
+  // ATI-SEP-1 A2 — Save step 0: RESERVE the TalentRecord id on the draft (the
+  // SAVING state). Set once, guarded on no prior reservation and no promotion,
+  // so concurrent Saves elect ONE id: the loser gets count 0, re-reads, and
+  // resumes on the winner's id. Actor-scoped (G1). Not a recruiter "touch".
+  async reserveTalentIntakeDraftSave(input: {
+    tenant_id: string;
+    id: string;
+    created_by?: string;
+    reserved_talent_record_id: string;
+  }): Promise<number> {
+    const owner = input.created_by !== undefined ? { created_by: input.created_by } : {};
+    const updated = await this.prisma.talentIntakeDraft.updateMany({
+      where: {
+        id: input.id,
+        tenant_id: input.tenant_id,
+        ...owner,
+        save_reserved_talent_record_id: null,
+        promoted_talent_record_id: null,
+      },
+      data: {
+        save_reserved_talent_record_id: input.reserved_talent_record_id,
+        save_started_at: new Date(),
+        // version is NOT bumped: the review payload is unchanged, so an open
+        // tab's next review save must not be rejected as stale.
+      },
+    });
+    return updated.count;
+  }
+
+  // ATI-SEP-1 A2 — Save step 1: materialize the recruiter-reviewed ATS evidence
+  // against the reserved id in ONE talent_evidence transaction (single schema,
+  // genuinely atomic). The FIRST statement claims the step on the draft
+  // (save_evidence_materialized_at IS NULL → now()), so a re-Save or a
+  // concurrent Save that finds it already claimed writes nothing (count 0 →
+  // { materialized: false }) — the step's idempotency key is (draft id, reserved
+  // talent id). Then: the résumé Document quartet + TalentDocument + edition +
+  // first-edition default (when an artifact is attached), every typed evidence
+  // row, and the governed extraction child linked + ACCEPTED when it is still
+  // READY_FOR_REVIEW (a PROCESSING / FAILED / decided child is left alone — the
+  // reviewed arrays are the source of truth either way). All-or-none.
+  async materializeIntakeSaveEvidence(input: {
+    tenant_id: string;
+    intake_draft_id: string;
+    talent_id: string;
+    created_by: string;
+    document: {
+      id: string;
+      filename: string;
+      file_storage_ref: string;
+      mime_type: string;
+      size_bytes: number;
+      artifact_sha256?: string;
+      uploaded_at: Date;
+    } | null;
+    edition: { id: string; content_hash: string; created_at: Date } | null;
+    resume_default_id: string;
+    work_history: readonly CreateTalentWorkHistoryEntryInput[];
+    skill_evidence: readonly CreateTalentSkillEvidenceInput[];
+    projects: readonly CreateTalentProjectExperienceInput[];
+    education: readonly CreateTalentEducationEntryInput[];
+    certifications: readonly CreateTalentCertificationEntryInput[];
+    extraction_child_id: string | null;
+    reviewed_at: Date;
+    // D6 — stamped with the claim (the reviewed arrays this run materialized).
+    payload_hash?: string;
+  }): Promise<{ materialized: boolean; document_id: string | null; edition_id: string | null }> {
+    return this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.talentIntakeDraft.updateMany({
+        where: {
+          id: input.intake_draft_id,
+          tenant_id: input.tenant_id,
+          save_reserved_talent_record_id: input.talent_id,
+          save_evidence_materialized_at: null,
+        },
+        data: {
+          save_evidence_materialized_at: new Date(),
+          ...(input.payload_hash !== undefined ? { save_evidence_payload_hash: input.payload_hash } : {}),
+        },
+      });
+      if (claimed.count === 0) {
+        return { materialized: false, document_id: null, edition_id: null };
+      }
+      if (input.document !== null) {
+        const canonicalDocumentId = await this.mintCanonicalDocument(tx, {
+          tenant_id: input.tenant_id,
+          talent_id: input.talent_id,
+          document_type: 'resume',
+          filename: input.document.filename,
+          file_storage_ref: input.document.file_storage_ref,
+          mime_type: input.document.mime_type,
+          size_bytes: input.document.size_bytes,
+          uploaded_by_actor_id: input.created_by,
+          uploaded_at: input.document.uploaded_at,
+          is_active: true,
+          artifact_sha256: input.document.artifact_sha256,
+        });
+        await tx.talentDocument.create({
+          data: {
+            id: input.document.id,
+            talent_id: input.talent_id,
+            tenant_id: input.tenant_id,
+            parse_status: 'parsed',
+            consent_scope_at_upload: [],
+            retention_policy: 'default',
+            is_active: true,
+            document_id: canonicalDocumentId,
+          },
+        });
+        if (input.edition !== null) {
+          await tx.talentResumeEdition.create({
+            data: {
+              id: input.edition.id,
+              tenant_id: input.tenant_id,
+              talent_id: input.talent_id,
+              talent_document_id: input.document.id,
+              content_hash: input.edition.content_hash,
+              ...(input.document.artifact_sha256 !== undefined
+                ? { artifact_sha256: input.document.artifact_sha256 }
+                : {}),
+              created_at: input.edition.created_at,
+              created_by: input.created_by,
+              purpose: 'GENERAL',
+            },
+          });
+          // A freshly reserved Talent has no edition yet → this is its default.
+          await tx.talentResumeDefault.upsert({
+            where: { tenant_id_talent_id: { tenant_id: input.tenant_id, talent_id: input.talent_id } },
+            create: {
+              id: input.resume_default_id,
+              tenant_id: input.tenant_id,
+              talent_id: input.talent_id,
+              resume_edition_id: input.edition.id,
+              set_at: input.edition.created_at,
+              set_by: input.created_by,
+            },
+            update: {},
+          });
+        }
+      }
+      await this.writeIntakeSaveTypedEvidence(tx, input);
+      if (input.extraction_child_id !== null) {
+        await tx.resumeExtractionDraft.updateMany({
+          where: {
+            id: input.extraction_child_id,
+            tenant_id: input.tenant_id,
+            status: 'READY_FOR_REVIEW',
+            OR: [{ talent_id: null }, { talent_id: input.talent_id }],
+          },
+          data: {
+            status: 'ACCEPTED',
+            talent_id: input.talent_id,
+            ...(input.document !== null ? { talent_document_id: input.document.id } : {}),
+            ...(input.edition !== null ? { resume_edition_id: input.edition.id } : {}),
+            reviewed_by: input.created_by,
+            reviewed_at: input.reviewed_at,
+          },
+        });
+      }
+      return {
+        materialized: true,
+        document_id: input.document?.id ?? null,
+        edition_id: input.document !== null ? (input.edition?.id ?? null) : null,
+      };
+    });
+  }
+
+  // D6 — re-materialize step 1 for a resumed Save whose TalentRecord does NOT
+  // exist yet and whose reviewed arrays changed since the first run (the
+  // recruiter edited the draft after a partial Save). ONE talent_evidence
+  // transaction: the claim (still reserved on this talent id, still
+  // materialized, not promoted, and the stored hash differs) re-stamps the hash,
+  // then the typed evidence rows of the reserved talent are deleted and
+  // re-written from the current review payload. Before step 2 the reserved id is
+  // reachable ONLY through this draft (no TalentRecord, so no evidence route can
+  // address it), so every typed row on it is this draft's. The résumé Document,
+  // edition and default are untouched (the artifact cannot change once
+  // materialized). A lost claim (count 0) writes nothing.
+  async rematerializeIntakeSaveEvidence(input: {
+    tenant_id: string;
+    intake_draft_id: string;
+    talent_id: string;
+    payload_hash: string;
+    work_history: readonly CreateTalentWorkHistoryEntryInput[];
+    skill_evidence: readonly CreateTalentSkillEvidenceInput[];
+    projects: readonly CreateTalentProjectExperienceInput[];
+    education: readonly CreateTalentEducationEntryInput[];
+    certifications: readonly CreateTalentCertificationEntryInput[];
+  }): Promise<{ rematerialized: boolean }> {
+    return this.prisma.$transaction(async (tx) => {
+      const claimed = await tx.talentIntakeDraft.updateMany({
+        where: {
+          id: input.intake_draft_id,
+          tenant_id: input.tenant_id,
+          save_reserved_talent_record_id: input.talent_id,
+          save_evidence_materialized_at: { not: null },
+          promoted_talent_record_id: null,
+          OR: [
+            { save_evidence_payload_hash: null },
+            { save_evidence_payload_hash: { not: input.payload_hash } },
+          ],
+        },
+        data: { save_evidence_materialized_at: new Date(), save_evidence_payload_hash: input.payload_hash },
+      });
+      if (claimed.count === 0) return { rematerialized: false };
+      const owned = { tenant_id: input.tenant_id, talent_id: input.talent_id };
+      await tx.talentSkillEvidence.deleteMany({ where: owned });
+      await tx.talentProjectExperience.deleteMany({ where: owned });
+      await tx.talentWorkHistoryEntry.deleteMany({ where: owned });
+      await tx.talentEducationEntry.deleteMany({ where: owned });
+      await tx.talentCertificationEntry.deleteMany({ where: owned });
+      await this.writeIntakeSaveTypedEvidence(tx, input);
+      return { rematerialized: true };
+    });
+  }
+
+  // D6 — the résumé TalentDocument step 1 minted for the reserved talent (the
+  // provenance anchor a re-materialization reuses). Null for a non-upload draft.
+  async findIntakeSaveDocumentId(input: { tenant_id: string; talent_id: string }): Promise<string | null> {
+    const row = await this.prisma.talentDocument.findFirst({
+      where: { tenant_id: input.tenant_id, talent_id: input.talent_id },
+      select: { id: true },
+    });
+    return row?.id ?? null;
+  }
+
+  // The typed evidence rows of an intake Save (step 1 and its D6 re-run).
+  private async writeIntakeSaveTypedEvidence(
+    tx: Pick<
+      PrismaService,
+      | 'talentWorkHistoryEntry'
+      | 'talentSkillEvidence'
+      | 'talentProjectExperience'
+      | 'talentEducationEntry'
+      | 'talentCertificationEntry'
+    >,
+    input: {
+      work_history: readonly CreateTalentWorkHistoryEntryInput[];
+      skill_evidence: readonly CreateTalentSkillEvidenceInput[];
+      projects: readonly CreateTalentProjectExperienceInput[];
+      education: readonly CreateTalentEducationEntryInput[];
+      certifications: readonly CreateTalentCertificationEntryInput[];
+    },
+  ): Promise<void> {
+    for (const e of input.work_history) {
+      await tx.talentWorkHistoryEntry.create({
+        data: {
+          id: e.id, talent_id: e.talent_id, tenant_id: e.tenant_id,
+          employer_name: e.employer_name, role_title: e.role_title,
+          start_date: e.start_date, end_date: e.end_date, location: e.location,
+          employment_type: e.employment_type, description_text: e.description_text,
+          source: e.source, source_document_id: e.source_document_id,
+          source_refs: e.source_refs ?? [], source_map_version: e.source_map_version,
+          resume_text_hash: e.resume_text_hash, company_id: e.company_id,
+          experience_summary: e.experience_summary, is_authoritative: e.is_authoritative,
+          ...(e.assertions !== undefined ? { assertions: e.assertions as never } : {}),
+          created_at: e.created_at,
+        },
+      });
+    }
+    for (const s of input.skill_evidence) {
+      await tx.talentSkillEvidence.create({
+        data: {
+          id: s.id, talent_id: s.talent_id, tenant_id: s.tenant_id, skill_id: s.skill_id,
+          source_record_id: s.source_record_id, surface_form: s.surface_form, source: s.source,
+          evidence_text: s.evidence_text, proficiency_claim: s.proficiency_claim,
+          years_claimed: s.years_claimed, confidence_score: s.confidence_score,
+          source_document_id: s.source_document_id, source_refs: s.source_refs ?? [],
+          source_map_version: s.source_map_version, resume_text_hash: s.resume_text_hash,
+          work_experience_id: s.work_experience_id, version: s.version,
+          usage_start: s.usage_start, usage_end: s.usage_end,
+          usage_period_basis: s.usage_period_basis, activity_context: s.activity_context,
+          created_at: s.created_at,
+        },
+      });
+    }
+    for (const p of input.projects) {
+      await tx.talentProjectExperience.create({
+        data: {
+          id: p.id, talent_id: p.talent_id, tenant_id: p.tenant_id,
+          work_experience_id: p.work_experience_id, project_name: p.project_name,
+          context_summary: p.context_summary, domain: p.domain, start_date: p.start_date,
+          end_date: p.end_date, source_document_id: p.source_document_id,
+          source_refs: p.source_refs ?? [], source_map_version: p.source_map_version,
+          resume_text_hash: p.resume_text_hash, created_at: p.created_at,
+        },
+      });
+    }
+    for (const ed of input.education) {
+      await tx.talentEducationEntry.create({
+        data: {
+          id: ed.id, talent_id: ed.talent_id, tenant_id: ed.tenant_id,
+          institution_name: ed.institution_name, degree_name: ed.degree_name,
+          field_of_study: ed.field_of_study, conferred_date: ed.conferred_date,
+          evidence_text: ed.evidence_text, source: ed.source,
+          source_document_id: ed.source_document_id, source_refs: ed.source_refs ?? [],
+          source_map_version: ed.source_map_version, resume_text_hash: ed.resume_text_hash,
+          created_at: ed.created_at,
+        },
+      });
+    }
+    for (const c of input.certifications) {
+      await tx.talentCertificationEntry.create({
+        data: {
+          id: c.id, talent_id: c.talent_id, tenant_id: c.tenant_id,
+          certification_name: c.certification_name, issuer_name: c.issuer_name,
+          credential_ref: c.credential_ref, issued_date: c.issued_date,
+          expiry_date: c.expiry_date, evidence_text: c.evidence_text, source: c.source,
+          source_document_id: c.source_document_id, source_refs: c.source_refs ?? [],
+          source_map_version: c.source_map_version, resume_text_hash: c.resume_text_hash,
+          created_at: c.created_at,
+        },
+      });
+    }
+  }
+
+  // ATI-SEP-1 A2 — Save step 4 (final): mark the draft PROMOTED, ONLY after the
+  // TalentRecord exists (the caller has completed every prior step). Guarded on
+  // the reservation, so it can only ever link the reserved id; idempotent (a
+  // replay re-asserts the same values). Returns rows affected.
+  async completeTalentIntakeDraftSave(input: {
+    tenant_id: string;
+    id: string;
+    created_by?: string;
+    talent_record_id: string;
+    promoted_at: Date;
+  }): Promise<number> {
+    const owner = input.created_by !== undefined ? { created_by: input.created_by } : {};
+    const updated = await this.prisma.talentIntakeDraft.updateMany({
+      where: {
+        id: input.id,
+        tenant_id: input.tenant_id,
+        ...owner,
+        save_reserved_talent_record_id: input.talent_record_id,
+        OR: [
+          { promoted_talent_record_id: null },
+          { promoted_talent_record_id: input.talent_record_id },
+        ],
+      },
+      data: {
+        review_status: 'PROMOTED',
+        promoted_talent_record_id: input.talent_record_id,
+        promoted_at: input.promoted_at,
+        version: { increment: 1 },
+      },
+    });
+    return updated.count;
+  }
+
   // An open updates last_opened_at ONLY — it is NOT a recruiter "touch" for the
   // staleness rule (§22 enumerates touches as create / review PATCH / retry /
   // replace), so last_touched_at is deliberately untouched here.
@@ -2228,6 +2755,9 @@ export class TalentEvidenceRepository {
         tenant_id: input.tenant_id,
         created_by: input.created_by,
         review_status: { not: 'PROMOTED' },
+        // ATI-SEP-1 A2 — a Save that already materialized evidence on the
+        // reserved id is resumed, never discarded (no orphan evidence).
+        save_evidence_materialized_at: null,
       },
     });
     return deleted.count;
@@ -2253,6 +2783,9 @@ export class TalentEvidenceRepository {
         tenant_id: input.tenant_id,
         created_by: input.created_by,
         review_status: { not: 'PROMOTED' },
+        // ATI-SEP-1 A2 — the résumé Document is already materialized by a
+        // started Save; the artifact can no longer be swapped under it.
+        save_evidence_materialized_at: null,
       },
       data: {
         storage_key: input.storage_key,
@@ -2453,6 +2986,7 @@ export class TalentEvidenceRepository {
             company_id: e.company_id,
             experience_summary: e.experience_summary,
             is_authoritative: e.is_authoritative,
+            ...(e.assertions !== undefined ? { assertions: e.assertions as never } : {}),
             created_at: e.created_at,
           },
         });
@@ -2685,6 +3219,7 @@ export class TalentEvidenceRepository {
             source_refs: e.source_refs ?? [], source_map_version: e.source_map_version,
             resume_text_hash: e.resume_text_hash, company_id: e.company_id,
             experience_summary: e.experience_summary, is_authoritative: e.is_authoritative,
+            ...(e.assertions !== undefined ? { assertions: e.assertions as never } : {}),
             created_at: e.created_at,
           },
         });

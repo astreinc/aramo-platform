@@ -13,7 +13,7 @@ const AUTH = { sub: 'me', tenant_id: TENANT, scopes: ['talent:create'] } as unkn
 function makeController(opts: { persistThrows?: boolean } = {}) {
   const create = vi.fn().mockResolvedValue({ id: 'tal-new', first_name: 'Ada', last_name: 'Lovelace' });
   const findActiveByEmail = vi.fn().mockResolvedValue(null);
-  const repo = { create, findActiveByEmail };
+  const repo = { create, findActiveByEmail, findActiveDuplicate: vi.fn().mockResolvedValue(null) };
   const persistDeclaredWorkHistory = opts.persistThrows
     ? vi.fn().mockRejectedValue(new Error('evidence write failed'))
     : vi.fn().mockResolvedValue(['wh-1']);
@@ -21,8 +21,6 @@ function makeController(opts: { persistThrows?: boolean } = {}) {
   const ctl = new TalentRecordController(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     repo as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    {} as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     {} as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

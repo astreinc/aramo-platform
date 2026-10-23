@@ -7,7 +7,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, TALENT_EVIDENCE_LATE_COLUMN_MIGRATIONS } from '@aramo/common';
 import { Client } from 'pg';
 import { PrismaService } from '@aramo/submittal-eligibility';
 import { CommunicationsRepository, CommunicationsPrismaService } from '@aramo/communications';
@@ -119,6 +119,7 @@ const MIGRATIONS = [
   'libs/talent-evidence/prisma/migrations/20260519170000_init_talent_evidence_model/migration.sql',
   'libs/talent-evidence/prisma/migrations/20260916120000_talent_intel_1a_resume_edition/migration.sql',
   'libs/talent-evidence/prisma/migrations/20261006120000_resume_revision_lifecycle_artifact_sha256/migration.sql',
+  ...TALENT_EVIDENCE_LATE_COLUMN_MIGRATIONS,
   'libs/submittal/prisma/migrations/20260523120000_init_submittal_model/migration.sql',
   'libs/submittal/prisma/migrations/20260523200000_add_submittal_revoke/migration.sql',
   'libs/submittal/prisma/migrations/20260526140602_add_submittal_event_log/migration.sql',

@@ -119,6 +119,9 @@ model RawPayloadReference {
   resolution_method   ResolutionMethod?
   resolved_subject_id String?           @db.Uuid
   resolved_cluster_id String?           @db.Uuid
+  // ATI-SEP-1 T10 WP2 — FOLLOWER mirror: the sourced_talent.SourcedTalent anchor
+  // (the canonicalize idempotency anchor + poll gate).
+  sourced_talent_id   String?           @db.Uuid
   // Cold-Ingest Extraction follower mirror (bit-identical to ingestion — the
   // drift tripwire enforces). canonicalize does not read/write these; the
   // extraction poll (its own cip lib) owns them.
@@ -131,5 +134,6 @@ model RawPayloadReference {
   @@unique([tenant_id, sha256])
   @@index([tenant_id, verified_email])
   @@index([tenant_id, profile_url])
+  @@index([tenant_id, sourced_talent_id])
   @@schema("ingestion")
 }

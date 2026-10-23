@@ -18,8 +18,6 @@ import {
 import type { Request } from 'express';
 import { v7 as uuidv7 } from 'uuid';
 import { AramoError, RequestId } from '@aramo/common';
-import { CanonicalReconcileProducer } from '@aramo/canonical-reconcile';
-import { TalentReconcileProducer } from '@aramo/talent-reconcile-signal';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import {
   RequireScopes,
@@ -54,9 +52,7 @@ import {
   type WorkAuthorizationStateView,
 } from './dto/work-authorization-state.view.js';
 import type { TalentDuplicateCheckResponse } from './dto/talent-duplicate-check.view.js';
-import { LinkTalentRecordRequestDto } from './dto/link-talent-record-request.dto.js';
 import type { ResumeUploadUrlRequestDto } from './dto/resume-upload-url-request.dto.js';
-import type { TalentLinkView } from './dto/talent-link.view.js';
 import type { TalentRecordView } from './dto/talent-record.view.js';
 import type { TalentProfileFieldStateResponse } from './dto/talent-profile-field-state.view.js';
 import type { ProfileHydrationResponse } from './dto/profile-hydration.view.js';
@@ -89,8 +85,11 @@ import {
   type TalentResumeEditionsResponse,
   type TalentResumeEditionTextView,
 } from './dto/talent-resume-edition.view.js';
-import { TalentLinkService } from './talent-link.service.js';
-import { TalentRecordRepository } from './talent-record.repository.js';
+import {
+  TalentRecordRepository,
+  talentDuplicateError,
+  validateTalentCreateInput,
+} from './talent-record.repository.js';
 import { TalentCreateFromDraftService } from './talent-create-from-draft.service.js';
 import { TalentRecordReconcileRepository } from './talent-record-reconcile.repository.js';
 
@@ -169,7 +168,6 @@ const RECONCILE_COVERED_CLEARABLE_FIELDS = [
 export class TalentRecordController {
   constructor(
     private readonly repo: TalentRecordRepository,
-    private readonly linkService: TalentLinkService,
     private readonly objectStorage: ObjectStorageService,
     private readonly resumeParser: ResumeParserService,
     private readonly talentExtraction: TalentExtractionService,
@@ -182,15 +180,11 @@ export class TalentRecordController {
     // written on manual edit so automatic reconcile never undoes recruiter intent.
     // REQUIRED (before the @Optional param below, per TS param ordering).
     private readonly reconcileRepo: TalentRecordReconcileRepository,
-    // SKILL-TAX Canonical Reconciliation Activation — best-effort enqueue on the
-    // confirmed CREATE evidence flow (Redis-gated + never throws; the backstop
-    // recovers a missed enqueue). NOT triggered from matching. @Optional so the
-    // many hand-wired unit-test `new TalentRecordController(...)` sites that do
-    // not exercise enqueue keep compiling; production wires CanonicalReconcileModule
-    // (proven by the apps/api DI-boot), so the confirmed-create path always fires it.
-    @Optional() private readonly canonicalReconcile?: CanonicalReconcileProducer,
+    // ATI-SEP-1 A4 — the reconcile producers (canonical + Talent-profile) left
+    // this controller: create / update / evidence edits commit a talent.* outbox
+    // row and the apps/api dispatcher enqueues the reconciles post-commit.
     // TALENT-INTEL-1 TI-1D-C — the shared resume-edition ingestion composition.
-    // @Optional (mirrors canonicalReconcile): the many hand-wired unit-test
+    // @Optional: the many hand-wired unit-test
     // construction sites boot without it; apps/api wires TalentRecordModule (which
     // provides it), so the confirmed-create edition companion + the resume-editions
     // routes always have it in production.
@@ -205,12 +199,6 @@ export class TalentRecordController {
     private readonly resumeResolver?: ResumeAttachmentResolver,
     // The resume-text cache writer, to associate the producing edition (§D).
     @Optional() private readonly resumeText?: ResumeTextService,
-    // TALENT-INTEL-1 TI-1F-C — the Talent-profile reconcile PUSH producer (§4-H),
-    // the SEPARATE architecture from canonicalReconcile (skill canonical). Emitted
-    // best-effort AFTER a CONFIRM promotion / confirmed CREATE. @Optional (mirrors
-    // canonicalReconcile) so hand-wired unit-test construction sites keep compiling;
-    // apps/api wires TalentReconcileSignalModule so production always has it.
-    @Optional() private readonly talentReconcile?: TalentReconcileProducer,
     // The SHARED CREATE-from-draft composition (TI-1F-B), reused by the async
     // Talent-intake PROMOTE path. @Optional + appended LAST so the many hand-wired
     // unit-test construction sites keep their positional alignment; apps/api wires
@@ -368,12 +356,23 @@ export class TalentRecordController {
   async duplicateCheck(
     @AuthContext() authContext: AuthContextType,
     @Query('email') email: string | undefined,
+    // ATI-SEP-1 A2 — the cell-phone counterpart (normalized match), consulted
+    // when the email does not collide.
+    @Query('phone') phone?: string,
   ): Promise<TalentDuplicateCheckResponse> {
     const trimmed = (email ?? '').trim();
-    if (trimmed === '') return { match: null };
-    const match = await this.repo.findDuplicateByEmail({
+    if (trimmed !== '') {
+      const match = await this.repo.findDuplicateByEmail({
+        tenant_id: authContext.tenant_id,
+        email: trimmed,
+      });
+      if (match !== null) return { match };
+    }
+    const trimmedPhone = (phone ?? '').trim();
+    if (trimmedPhone === '') return { match: null };
+    const match = await this.repo.findDuplicateByPhone({
       tenant_id: authContext.tenant_id,
-      email: trimmed,
+      phone: trimmedPhone,
     });
     return { match };
   }
@@ -750,6 +749,8 @@ export class TalentRecordController {
       created_at: new Date(),
       created_by: authContext.sub,
     });
+    // ATI-SEP-1 A3 — a new résumé edition is an ATS evidence change.
+    await this.emitProfileUpdated(authContext.tenant_id, id, ['resume_edition'], requestId);
     // 6. Return the created edition projected with its document metadata.
     const rows = await this.talentExtraction.listResumeEditionsWithDocument({
       tenant_id: authContext.tenant_id,
@@ -819,6 +820,7 @@ export class TalentRecordController {
       set_at: new Date(),
       set_by: authContext.sub,
     });
+    await this.emitProfileUpdated(authContext.tenant_id, id, ['resume_edition'], requestId);
     const rows = await this.talentExtraction.listResumeEditionsWithDocument({
       tenant_id: authContext.tenant_id,
       talent_id: id,
@@ -862,6 +864,7 @@ export class TalentRecordController {
       talent_id: id,
       edition_id: editionId,
     });
+    await this.emitProfileUpdated(authContext.tenant_id, id, ['resume_edition'], requestId);
     const rows = await this.talentExtraction.listResumeEditionsWithDocument({
       tenant_id: authContext.tenant_id,
       talent_id: id,
@@ -914,14 +917,10 @@ export class TalentRecordController {
       }
       throw err;
     }
-    // TALENT-INTEL-1 TI-1F-C §4-H — AFTER the authoritative promotion commits, emit
-    // BOTH reconcile signals (the two architectures are SEPARATE and must not
-    // merge): the SKILL canonical reconcile AND the Talent-profile reconcile. Both
-    // are best-effort + Redis-gated inside the producers — a missed signal never
-    // fails the CONFIRM (the watermark backstop recovers it). Trust projection +
-    // the derived snapshot already ran inside/after the promotion (TI-1F-B).
-    await this.canonicalReconcile?.enqueueTalent(authContext.tenant_id, id);
-    await this.talentReconcile?.enqueueTalent(authContext.tenant_id, id);
+    // TALENT-INTEL-1 TI-1F-C §4-H / ATI-SEP-1 A3 — AFTER the authoritative
+    // promotion commits, record talent.profile_updated; the dispatcher fans it
+    // out to BOTH reconcile signals (skill canonical + Talent-profile) post-commit.
+    await this.emitProfileUpdated(authContext.tenant_id, id, ['resume_evidence'], requestId);
     return this.projectEditionView(authContext, id, editionId, requestId);
   }
 
@@ -1080,6 +1079,9 @@ export class TalentRecordController {
         },
       );
     }
+    // ATI-SEP-1 A2 — VALIDATION FIRST (admission 422, stated fields /
+    // date_available 400): a rejected create writes nothing on any branch below.
+    validateTalentCreateInput(body, requestId);
     // TALENT-INTEL-1 TI-1F-C (strengthened-D) — the durable-draft-backed create.
     // When the recruiter confirms a create prefilled from a persisted
     // CREATE_DRAFT_UPLOAD draft, promotion is ORDERED + IDEMPOTENT: accepted resume
@@ -1100,23 +1102,24 @@ export class TalentRecordController {
       const handled = await this.confirmCreateFromDraftUpload(authContext, body, email1, requestId);
       if (handled !== null) return handled;
     }
-    const duplicate = await this.repo.findActiveByEmail({
+    // ATI-SEP-1 A2 — tenant-local dedupe on email1 AND the normalized cell phone
+    // (409 { reason }); re-checked under lock inside the create transaction.
+    const duplicate = await this.repo.findActiveDuplicate({
       tenant_id: authContext.tenant_id,
-      email: email1,
+      email1,
+      phone_cell: phoneCell,
     });
     if (duplicate !== null) {
-      throw new AramoError(
-        'TALENT_RECORD_DUPLICATE',
-        'A talent with this primary email already exists in your tenant.',
-        409,
-        { requestId, details: { email1, existing_id: duplicate.id } },
-      );
+      throw talentDuplicateError(duplicate, requestId);
     }
+    // ATI-SEP-1 A3 — the TalentRecord and its talent.created outbox row commit in
+    // ONE talent_record transaction.
     const created = await this.repo.create({
       tenant_id: authContext.tenant_id,
       entered_by_id: authContext.sub,
       input: body,
       requestId,
+      dedupe: true,
     });
 
     // CONSENT-RECRUITER-CREATE-DEFAULT-1 §1/§2 — the manual (non-draft) create
@@ -1260,13 +1263,9 @@ export class TalentRecordController {
       // Talent record. (No PII in logs — §17.)
     }
 
-    // SKILL-TAX Canonical Reconciliation Activation — enqueue AFTER the confirmed
-    // -create evidence block. Best-effort + Redis-gated: a missed/failed enqueue
-    // never fails the create (the backstop recovers eligible unreconciled rows).
-    await this.canonicalReconcile?.enqueueTalent(authContext.tenant_id, created.id);
-    // TI-1F-C §4-H — the SEPARATE Talent-profile reconcile signal (both fire on a
-    // confirmed evidence write; best-effort + Redis-gated).
-    await this.talentReconcile?.enqueueTalent(authContext.tenant_id, created.id);
+    // SKILL-TAX canonical + TI-1F-C Talent-profile reconcile — ATI-SEP-1 A4: no
+    // longer enqueued here; the dispatcher fans the committed talent.created out
+    // to both post-commit (the evidence block above has committed by then).
 
     // TALENT-INTEL-1 TI-1G §1 — an EXPLICIT work-authorization value on create is a
     // governed RIGHT_TO_WORK assertion → append evidence (history). The scalar was
@@ -1347,6 +1346,23 @@ export class TalentRecordController {
   // untouched field is omitted, so this never fires spuriously). NO inference.
   // Delegates to the SHARED TalentCreateFromDraftService (reused by create/update/
   // confirm and the async intake promote).
+  // ATI-SEP-1 A3 — talent.profile_updated for an ATS evidence edit committed in
+  // talent_evidence (outside a talent_record transaction), appended right after
+  // that commit. Field NAMES only.
+  private async emitProfileUpdated(
+    tenant_id: string,
+    talentId: string,
+    changed_fields: readonly string[],
+    requestId: string,
+  ): Promise<void> {
+    await this.repo.recordProfileUpdated({
+      tenant_id,
+      talent_record_id: talentId,
+      changed_fields,
+      correlation_id: requestId,
+    });
+  }
+
   private async recordWorkAuthEvidence(
     authContext: AuthContextType,
     talentId: string,
@@ -1458,6 +1474,8 @@ export class TalentRecordController {
         tenant_id: authContext.tenant_id,
         entries: body.work_history,
       });
+      // ATI-SEP-1 A3 — the replace committed in talent_evidence; record it.
+      await this.emitProfileUpdated(authContext.tenant_id, id, ['work_history'], requestId);
     }
 
     // TALENT-INTEL-1 TI-1D-A — record per-field control state for each
@@ -1537,9 +1555,10 @@ export class TalentRecordController {
     // Present-in-body is the explicit-change signal (P0 dirty-PATCH: an untouched
     // field is omitted; a clear sends null → handled as EXPLICITLY_CLEARED above,
     // no value-evidence). The scalar was already written by repo.update.
+    // ATI-SEP-1 A4 — the Talent reconcile follows the talent.profile_updated
+    // row repo.update committed (work_authorization is among its changed fields).
     if (typeof bodyRec['work_authorization'] === 'string' && (bodyRec['work_authorization'] as string).trim() !== '') {
       await this.recordWorkAuthEvidence(authContext, id, body);
-      await this.talentReconcile?.enqueueTalent(authContext.tenant_id, id);
     }
 
     return updated;
@@ -1561,73 +1580,9 @@ export class TalentRecordController {
     });
   }
 
-  // -------------------------------------------------------------------------
-  // PR-A5b-2 — cluster-link routes (the keystone).
-  //
-  // Scope reuse: the existing seeded `talent:read` / `talent:edit`
-  // scopes cover the read / write surface naturally. A dedicated
-  // `talent:link` scope was considered but not warranted — linking is
-  // a per-record edit (the route shape and the data shape both fit
-  // under `talent:edit`'s authority), and consolidating reduces the
-  // scope-catalog churn at the keystone. If Gate 5 finds otherwise,
-  // a dedicated scope can be added without rewriting the routes.
-  //
-  // SACRED BOUNDARIES (enforced by TalentLinkService):
-  //   - LINK-NOT-CREATE — never mints an identity.
-  //   - ASSOCIATE-NOT-RESOLVE — cluster_id is an explicit input.
-  // 4e-rest: the link is now CLUSTER-ONLY (the PERSON_CLUSTER pointer); the
-  // former identity-link column was dropped.
-  // -------------------------------------------------------------------------
-
-  @Get(':id/link')
-  @HttpCode(HttpStatus.OK)
-  @RequireScopes('talent:read')
-  @RequireSiteMatch()
-  async getLink(
-    @AuthContext() authContext: AuthContextType,
-    @Param('id') id: string,
-    @RequestId() requestId: string,
-  ): Promise<TalentLinkView> {
-    return this.linkService.getLink({
-      tenant_id: authContext.tenant_id,
-      talent_record_id: id,
-      requestId,
-    });
-  }
-
-  @Post(':id/link')
-  @HttpCode(HttpStatus.OK)
-  @RequireScopes('talent:edit')
-  @RequireSiteMatch()
-  async link(
-    @AuthContext() authContext: AuthContextType,
-    @Param('id') id: string,
-    @Body() body: LinkTalentRecordRequestDto,
-    @RequestId() requestId: string,
-  ): Promise<TalentLinkView> {
-    return this.linkService.link({
-      tenant_id: authContext.tenant_id,
-      talent_record_id: id,
-      cluster_id: body.cluster_id,
-      requestId,
-    });
-  }
-
-  @Delete(':id/link')
-  @HttpCode(HttpStatus.OK)
-  @RequireScopes('talent:edit')
-  @RequireSiteMatch()
-  async unlink(
-    @AuthContext() authContext: AuthContextType,
-    @Param('id') id: string,
-    @RequestId() requestId: string,
-  ): Promise<TalentLinkView> {
-    return this.linkService.unlink({
-      tenant_id: authContext.tenant_id,
-      talent_record_id: id,
-      requestId,
-    });
-  }
+  // ATI-SEP-1 T10 WP2 — the PR-A5b-2 cluster-link routes (GET/POST/DELETE
+  // :id/link) were removed with the identity-index link (no FE / pact / openapi
+  // caller). TalentRecord.cluster_id is inert.
 
   // -------------------------------------------------------------------------
   // A8-3b — resume upload + parse-to-prefill (E1 + E2).

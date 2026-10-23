@@ -1,29 +1,30 @@
-import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsIn, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { LIFECYCLE_TEXT_MAX, PROPOSAL_ACTIONS, type ProposalAction } from '@aramo/intelligence-contracts';
 
-// TR-12 B1/B2 — request DTOs for the caseworker's dismiss + mark-acted endpoints.
-// The global ValidationPipe runs whitelist + forbidNonWhitelisted, so these
-// classes (not interfaces) gate the body shape: unknown props are rejected.
-
-const JUSTIFICATION_MAX = 2000;
+// TR-12 B1/B2 → ATI-SEP-1 T10 WP3b — request DTOs for the caseworker's dismiss +
+// mark-acted endpoints (relayed to Talent Intelligence). The global
+// ValidationPipe runs whitelist + forbidNonWhitelisted, so these classes gate
+// the body shape: unknown props are rejected.
 
 // POST /v1/talent/identity/proposals/:id/dismiss — justification is REQUIRED (a
-// dismissal is a reviewer's judgment that a proposal is not worth acting on; it
-// is never silent). A missing/empty justification is a shape failure → the pipe's
-// VALIDATION_ERROR 400 (distinct from the OPEN-only guard's PROPOSAL_NOT_OPEN 409).
+// dismissal is a reviewer's judgment; it is never silent).
 export class DismissProposalRequestDto {
   @IsString()
   @IsNotEmpty()
-  @MaxLength(JUSTIFICATION_MAX)
+  @MaxLength(LIFECYCLE_TEXT_MAX)
   justification!: string;
 }
 
-// POST /v1/talent/identity/proposals/:id/act (TR-12 B2 §3.1) — bookkeeping only.
-// The human already invoked the real action through its own gated endpoint; this
-// records that they did. An OPTIONAL note (the actor is the JWT sub). Executes
-// nothing.
+// POST /v1/talent/identity/proposals/:id/act — bookkeeping only. `action` names
+// what the human did through the real gated endpoint (defaults from the
+// proposal kind); an OPTIONAL note. The actor is the JWT sub. Executes nothing.
 export class MarkActedRequestDto {
   @IsOptional()
+  @IsIn(PROPOSAL_ACTIONS)
+  action?: ProposalAction;
+
+  @IsOptional()
   @IsString()
-  @MaxLength(JUSTIFICATION_MAX)
+  @MaxLength(LIFECYCLE_TEXT_MAX)
   note?: string;
 }

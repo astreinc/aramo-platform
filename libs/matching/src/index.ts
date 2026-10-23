@@ -13,6 +13,23 @@ export type {
   FailedCriterion,
   EntrustabilityExamination,
 } from './lib/engine.js';
+// ATI-SEP-1 A2 A-c (P1) — the platform-owned MatchingPolicy (compiled defaults, the
+// strict thresholds parser, and the composition-root port).
+export {
+  DEFAULT_MATCHING_POLICY,
+  DEFAULT_EVIDENCE_THRESHOLDS,
+  EVIDENCE_COUNT_MIN,
+  EVIDENCE_COUNT_MAX,
+  MATCHING_POLICY_SOURCE,
+  parseEvidenceThresholds,
+} from './lib/matching-policy.js';
+export type {
+  MatchingPolicy,
+  MatchingPolicySource,
+  EvidenceThresholds,
+  EvidenceThresholdsParseResult,
+  RoleFamilyEvidenceThreshold,
+} from './lib/matching-policy.js';
 export {
   MATCHING_ANALYSIS_INPUT_CONTRACT_VERSION,
   EXAMINATION_VERSION,

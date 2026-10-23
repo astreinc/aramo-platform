@@ -28,8 +28,8 @@ import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 //     tenant scope as Talent 360 (cross-tenant / missing / superseded negatives)
 //   - a correction writes a NEW manual entry and RETIRES the old one: the old
 //     row and its provenance are untouched history, never overwritten
-//   - every change writes an audit event and the TR-7 ledger dual-write
-//     (manual → ai_derived false; the retired entry's claim leaves VALID)
+//   - every change writes an audit event and a talent.profile_updated outbox
+//     row; ATI-SEP-1 T10 WP1 — NO trust-ledger claim is written any more
 // Skipped unless ARAMO_RUN_INTEGRATION=1.
 
 const ROOT = resolve(__dirname, '../../../..');
@@ -66,7 +66,6 @@ const MIGRATION_FILES: string[] = [
   ...migrationsFor('documents'),
   ...migrationsFor('client-talent-restriction'),
   ...migrationsFor('communications'),
-  ...migrationsFor('talent-trust'),
   ...migrationsFor('talent-evidence'),
   ...migrationsFor('conversation-intelligence'),
 ];
@@ -237,15 +236,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       return r.rows;
     }
-    async function claimsFor(entryId: string) {
+    async function profileUpdatedEvents(talentId: string): Promise<number> {
       const r = await db.query(
-        `SELECT id, assertion_type, dimension, source_class, method, ai_derived, current_status, created_by, assertion_payload
-           FROM talent_trust."EvidenceRecord" WHERE source_ref->>'talent_evidence_id' = $1`,
-        [entryId],
+        `SELECT count(*)::int n FROM talent_record."TalentEventOutbox" WHERE subject_id = $1 AND event_type = 'talent.profile_updated'`,
+        [talentId],
       );
-      return r.rows;
+      return r.rows[0].n;
     }
-
     beforeAll(async () => {
       container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
@@ -392,11 +389,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
     });
 
-    describe('edit — add, correct, remove keep history, provenance, audit and the ledger', () => {
+    describe('edit — add, correct, remove keep history, provenance, audit — and write no ledger claim', () => {
       let added = '';
       let corrected = '';
 
-      it('add writes a manual entry, an audit event and a ledger claim with ai_derived false', async () => {
+      it('add writes a manual entry, an audit event and talent.profile_updated — no ledger claim', async () => {
+        const eventsBefore = await profileUpdatedEvents(mainTalent);
         const { status, body } = await add(mainTalent, await jwt(EDIT_SCOPES), {
           institution_name: '  Community College ',
           degree_name: 'AA',
@@ -419,17 +417,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         const ev = await audits([added]);
         expect(ev).toHaveLength(1);
         expect(ev[0]).toMatchObject({ action: 'added', actor_id: RECRUITER, tenant_id: TENANT_A });
-        const claims = await claimsFor(added);
-        expect(claims).toHaveLength(1);
-        expect(claims[0]).toMatchObject({
-          assertion_type: 'DEGREE',
-          dimension: 'CLAIMS',
-          source_class: 'THIRD_PARTY_UNVERIFIED',
-          method: 'DOCUMENT',
-          ai_derived: false,
-          current_status: 'VALID',
-          created_by: 'talent-education-edit',
-        });
+        expect(await profileUpdatedEvents(mainTalent)).toBe(eventsBefore + 1);
       });
 
       it('correcting the resume entry writes a new manual entry and retires the old one — the old row and its provenance are untouched', async () => {
@@ -468,20 +456,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect(ev[0]).toMatchObject({ action: 'corrected', actor_id: RECRUITER, related_entry_id: resumeEntry });
         expect(ev[0].changed_fields).toEqual(['institution_name']);
 
-        // Ledger: the extracted entry's claim (written as the extraction producer
-        // writes it) is SUPERSEDED by the manual correction's claim (ai_derived false).
-        const old = await claimsFor(resumeEntry);
-        expect(old).toHaveLength(1);
-        expect(old[0]).toMatchObject({ ai_derived: true, current_status: 'SUPERSEDED' });
-        const fresh = await claimsFor(corrected);
-        expect(fresh).toHaveLength(1);
-        expect(fresh[0]).toMatchObject({ ai_derived: false, current_status: 'VALID' });
-        expect(fresh[0].assertion_payload).toMatchObject({ institution_raw: 'State University', degree_raw: 'BS' });
-        const link = await db.query(
-          `SELECT relation FROM talent_trust."EvidenceLink" WHERE from_evidence_id = $1 AND to_evidence_id = $2`,
-          [fresh[0].id, old[0].id],
-        );
-        expect(link.rows.map((r) => r.relation)).toEqual(['SUPERSEDES']);
+        // ATI-SEP-1 T10 WP1 — no ledger write for either entry.
       });
 
       it('Talent 360 shows the correction and no longer shows the superseded entry', async () => {
@@ -515,7 +490,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect((await audits([corrected])).length).toBe(n);
       });
 
-      it('remove retires the entry (kept as history), writes an audit event and revokes its claim', async () => {
+      it('remove retires the entry (kept as history) and writes an audit event — no ledger write', async () => {
         const { status, body } = await remove(mainTalent, added, await jwt(EDIT_SCOPES));
         expect(status).toBe(200);
         expect(body.education.map((e: { id: string }) => e.id)).not.toContain(added);
@@ -523,9 +498,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         expect(await retirement(added)).toMatchObject({ reason: 'removed', superseded_by_entry_id: null, retired_by_id: RECRUITER });
         const ev = await audits([added]);
         expect(ev.map((e) => e.action)).toEqual(['added', 'removed']);
-        const claims = await claimsFor(added);
-        expect(claims).toHaveLength(1);
-        expect(claims[0].current_status).toBe('REVOKED');
       });
 
       it('two concurrent corrections of the same entry: exactly one wins, the other is 409', async () => {
@@ -541,8 +513,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           [target],
         );
         expect(replacements.rows[0].n).toBe(1);
-        const valid = (await claimsFor(target)).filter((c) => c.current_status === 'VALID');
-        expect(valid).toHaveLength(0);
       });
 
       it('the extraction ledger routing never reads manual entries (their claims are ai_derived false only)', async () => {

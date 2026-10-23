@@ -1,16 +1,21 @@
 import type { ExaminationTierValue } from '@aramo/examination';
 
-import type {
-  MatchingAnalysisInput,
-  RoleFamily,
-} from './dto/matching-analysis-input.dto.js';
+import type { MatchingAnalysisInput } from './dto/matching-analysis-input.dto.js';
 import { MATCHING_ANALYSIS_INPUT_CONTRACT_VERSION } from './dto/version-pins.js';
+import {
+  DEFAULT_EVIDENCE_THRESHOLDS,
+  DEFAULT_MATCHING_POLICY,
+  type EvidenceThresholds,
+  type MatchingPolicy,
+} from './matching-policy.js';
 
 // M3 PR-2 §3.2 — the deterministic entrustability engine.
 //
-// Pure function: MatchingAnalysisInput → { tier, failed_criteria[] }.
+// Pure function: (MatchingAnalysisInput, MatchingPolicy) → { tier, failed_criteria[] }.
 // No I/O, no async, no recruiter input, no clock-dependence (the input
-// supplies computed_at; the engine never reads the clock).
+// supplies computed_at; the engine never reads the clock). The policy (the
+// platform-owned calibration, ATI-SEP-1 A2 A-c) is a parameter; omitted, the
+// compiled §2.5 defaults apply.
 //
 // Implements the §2.5 Entrustability Rule Set exactly:
 //   - Skill Evidence Rule (per-critical-skill: evidence_count ≥ role-
@@ -41,19 +46,10 @@ import { MATCHING_ANALYSIS_INPUT_CONTRACT_VERSION } from './dto/version-pins.js'
 
 // Role-Family evidence-count thresholds from §2.5 Threshold Calibration.
 // Architect = 3; everyone else = 2. PM/BA do not require ingested.
-export const EVIDENCE_THRESHOLDS: Readonly<
-  Record<RoleFamily, { readonly count: number; readonly requires_ingested: boolean }>
-> = {
-  backend_engineer:        { count: 2, requires_ingested: true },
-  frontend_engineer:       { count: 2, requires_ingested: true },
-  fullstack_engineer:      { count: 2, requires_ingested: true },
-  devops_sre:              { count: 2, requires_ingested: true },
-  data_engineer:           { count: 2, requires_ingested: true },
-  architect:               { count: 3, requires_ingested: true },
-  qa_test_engineer:        { count: 2, requires_ingested: true },
-  product_project_manager: { count: 2, requires_ingested: false },
-  business_analyst:        { count: 2, requires_ingested: false },
-};
+// ATI-SEP-1 A2 A-c (P1) — these are now the COMPILED DEFAULTS of the platform-owned
+// MatchingPolicy (matching-policy.ts); the engine reads the thresholds of the policy it
+// is handed. Kept exported under its original name for existing callers.
+export const EVIDENCE_THRESHOLDS: EvidenceThresholds = DEFAULT_EVIDENCE_THRESHOLDS;
 
 // §2.5 Audit Specification: failed_criteria[] shape (Diagnostic).
 //   { criterion, field_path, observed_value, expected_threshold }
@@ -85,6 +81,7 @@ function formatExpectedThreshold(
 
 export function evaluateEntrustability(
   input: MatchingAnalysisInput,
+  policy: MatchingPolicy = DEFAULT_MATCHING_POLICY,
 ): EntrustabilityExamination {
   // Contract-version compatibility check (§3.1 / §3.4 coupling). A
   // mismatch indicates the analysis layer is emitting a contract shape
@@ -98,7 +95,7 @@ export function evaluateEntrustability(
 
   const hard: FailedCriterion[] = [];
   const soft: FailedCriterion[] = [];
-  const threshold = EVIDENCE_THRESHOLDS[input.role_family];
+  const threshold = policy.evidence_thresholds[input.role_family];
   const expected = formatExpectedThreshold(threshold);
 
   // -- Skill Evidence Rule + Blocking Conditions ("missing ANY critical skill") --
@@ -128,7 +125,7 @@ export function evaluateEntrustability(
     // WORTH_CONSIDERING (submittable — the recruiter vouches) and never sinks to
     // STRETCH. The ENTRUSTABLE moat stays intact — a soft criterion still blocks
     // ENTRUSTABLE (which requires zero hard AND zero soft), so only
-    // ingested-corroborated evidence reaches ENTRUSTABLE. EVIDENCE_THRESHOLDS is
+    // ingested-corroborated evidence reaches ENTRUSTABLE. The thresholds are
     // unchanged (all families keep requires_ingested); only this rule's
     // classification flips hard→soft.
     if (threshold.requires_ingested && !skill.has_ingested_evidence) {

@@ -7,8 +7,10 @@ import { TalentExtractionService } from '../lib/talent-extraction.service.js';
 //  • §4-F — every promoted evidence row is anchored on source_document_id (the
 //    draft's talent_document_id) and NEVER carries the resume_edition_id.
 //  • §4-E — the raw typed facts + the draft ACCEPT are handed to ONE atomic repo
-//    call (promoteResumeExtractionDraftEvidence); the derived snapshot + the
-//    trust assertions are projections that run AFTER that commit.
+//    call (promoteResumeExtractionDraftEvidence); the derived snapshot is a
+//    projection that runs AFTER that commit.
+//  • ATI-SEP-1 A1 — NO ledger write: draft assertions are not routed anywhere
+//    from this ATS path (the service holds no trust surface).
 //  • §6 — one shared extractor: the promotion reads the grounded facts the draft
 //    already holds (structured_payload); it NEVER re-invokes a model.
 //  • the missing-anchor guard (no talent/document → throw, no promote).
@@ -37,11 +39,9 @@ function makeService(promoteImpl?: () => Promise<unknown>) {
   // MUST NEVER call a model (§6, one shared extractor).
   const generateDraft = vi.fn();
   const generateStructured = vi.fn();
-  const recordDeclaredClaimIfAbsent = vi.fn().mockResolvedValue({ written: true });
   const svc = new TalentExtractionService(
     { generateDraft } as never,
     evidence as never,
-    { recordDeclaredClaimIfAbsent } as never,
     { generateStructured, providerKey: () => 'anthropic' } as never,
   );
   return {
@@ -50,7 +50,6 @@ function makeService(promoteImpl?: () => Promise<unknown>) {
     createTalentDerivedSnapshot,
     generateDraft,
     generateStructured,
-    recordDeclaredClaimIfAbsent,
   };
 }
 
@@ -178,6 +177,23 @@ describe('TalentExtractionService.promoteResumeExtractionDraft (TI-1F-B)', () =>
     await expect(
       svc.promoteResumeExtractionDraft({ draft: draft(), actor_id: 'recruiter-1' }),
     ).resolves.toBeDefined(); // the committed promotion result is still returned
+  });
+
+  it('ATI-SEP-1 A1 — draft assertions cause NO ledger write (typed rows + snapshot only)', async () => {
+    const { svc, promoteResumeExtractionDraftEvidence, createTalentDerivedSnapshot } = makeService();
+    const base = draft() as unknown as { structured_payload: { work_history: Record<string, unknown>[] } };
+    const [role] = base.structured_payload.work_history;
+    if (role !== undefined) {
+      role['assertions'] = [{ type: 'DEVELOP', statement: 'Built the platform', source_refs: ['B004'] }];
+    }
+    // The evidence stub exposes ONLY the atomic promote + the snapshot writer; any
+    // ledger route would need a trust surface the service no longer holds.
+    await expect(
+      svc.promoteResumeExtractionDraft({ draft: base as never, actor_id: 'recruiter-1' }),
+    ).resolves.toBeDefined();
+    expect(promoteResumeExtractionDraftEvidence).toHaveBeenCalledOnce();
+    expect(createTalentDerivedSnapshot).toHaveBeenCalledOnce();
+    expect(Reflect.get(svc, 'trust')).toBeUndefined();
   });
 
   it('throws (no promotion) when the draft lacks a talent/document anchor', async () => {

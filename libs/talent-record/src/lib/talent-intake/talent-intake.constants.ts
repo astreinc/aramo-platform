@@ -21,3 +21,8 @@ export const TALENT_INTAKE_SUBJECT_TYPE = 'talent_intake_draft' as const;
 
 // The intake draft source_type.
 export const TALENT_INTAKE_SOURCE_TYPE_RESUME_UPLOAD = 'RESUME_UPLOAD' as const;
+
+// ATI-SEP-1 A5 — a recruiter-started intake with NO artifact (Add Talent →
+// "Enter details manually"). No extraction is ever requested for it: the draft
+// is created terminal (READY) with no outbox event and no LLM work.
+export const TALENT_INTAKE_SOURCE_TYPE_MANUAL_ENTRY = 'MANUAL_ENTRY' as const;

@@ -89,6 +89,8 @@ const TALENT_RECORD_MIGRATION_PATHS = [
   // B1+B2 — title + country columns (regenerated client projects both;
   // TalentRecordRepository.findById 500s without them).
   '../../../talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql',
+  // ATI-SEP-1 A2/A3 — phone_cell_normalized (projected by the client) + the talent outbox.
+  '../../../talent-record/prisma/migrations/20261024130000_ati_sep_1_talent_event_outbox_phone_normalized/migration.sql',
 ].map((p) => resolve(__dirname, p));
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';

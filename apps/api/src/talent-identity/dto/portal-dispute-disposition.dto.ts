@@ -1,37 +1,46 @@
 import { IsString, Length } from 'class-validator';
+import { LIFECYCLE_TEXT_MAX } from '@aramo/intelligence-contracts';
 
-// Portal P3b (§PR-2 + Amendment v1.2) — the TENANT-side dispute-disposition
-// request/response envelopes. Tenant-facing (the reviewer's own worklist): the
-// tenant + subject identifiers are the tenant's own data, not origin-secret —
-// this is NOT a trust-class talent surface. `identity:resolve`-gated.
+import type { IntelligenceStatus } from '../intelligence-access.js';
 
-const NOTE_MIN = 1;
-const NOTE_MAX = 4000;
+// Portal P3b → ATI-SEP-1 T10 WP3b — the TENANT-side dispute-disposition
+// request/response envelopes (relayed to Talent Intelligence). Tenant-facing
+// (the reviewer's own worklist): the record ids are the tenant's own references
+// — this is NOT a trust-class talent surface. `identity:resolve`-gated.
 
 export class PortalDisputeDisposeDto {
-  // The resolution note recorded on the dispute + passed as the TR-15 justification.
+  // The resolution note recorded on the dispute in TI.
   @IsString()
-  @Length(NOTE_MIN, NOTE_MAX)
+  @Length(1, LIFECYCLE_TEXT_MAX)
   note!: string;
 }
 
 export class PortalDisputeRequestInfoDto {
   @IsString()
-  @Length(NOTE_MIN, NOTE_MAX)
+  @Length(1, LIFECYCLE_TEXT_MAX)
   note!: string;
 }
 
-// A tenant worklist entry (one per work item the tenant holds).
+// A tenant worklist entry (one per dispute).
 export interface PortalDisputeTenantItemDto {
   dispute_id: string;
-  subject_id: string;
-  item_type: string; // ANCHOR | VERIFICATION
-  status: string; // work-item status
+  /** The tenant's own ATS records on the disputed subject. */
+  talent_record_ids: string[];
+  assertion_id: string;
+  /** The disputed assertion's type (e.g. VERIFICATION_OUTCOME, TITLE). */
+  item_type: string;
+  contributed_by: string; // REQUESTING_TENANT | OTHER_SOURCE | TALENT_INTELLIGENCE
+  status: string; // OPEN | UNDER_REVIEW | RESOLVED_CORRECTED | RESOLVED_UPHELD | WITHDRAWN | RESOLVED_NO_TRANSITION
   arrived_at: string;
+  updated_at: string;
+  triage_due_at: string;
+  reinvestigation_due_at: string;
 }
 
 export interface PortalDisputeTenantListDto {
+  intelligence_status: IntelligenceStatus;
   disputes: PortalDisputeTenantItemDto[];
+  next_cursor: string | null;
 }
 
 export interface PortalDisputeTenantStatementDto {
@@ -40,25 +49,17 @@ export interface PortalDisputeTenantStatementDto {
   created_at: string;
 }
 
-export interface PortalDisputeTenantWorkItemDto {
-  subject_id: string;
-  status: string;
-  no_transition_reason: string | null;
-}
-
-export interface PortalDisputeTenantDetailDto {
-  dispute_id: string;
-  item_type: string;
-  status: string; // parent status
+export interface PortalDisputeTenantDetailDto extends PortalDisputeTenantItemDto {
   opened_at: string;
+  assertion_status: string;
+  assertion_payload: Record<string, unknown>;
   resolution_note: string | null;
-  triage_due_at: string;
-  reinvestigation_due_at: string;
+  no_transition_reason: string | null;
+  reinvestigation_extended_at: string | null;
   statements: PortalDisputeTenantStatementDto[];
-  work_items: PortalDisputeTenantWorkItemDto[];
 }
 
-// The disposition action envelope (returned by triage/correct/uphold/withdraw/extend).
+// The disposition action envelope (triage / request-info / correct / uphold / extend).
 export interface PortalDisputeDispositionResultDto {
   dispute_id: string;
   status: string;

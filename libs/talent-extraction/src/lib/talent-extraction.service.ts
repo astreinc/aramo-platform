@@ -31,7 +31,6 @@ import {
   type CreateTalentIntakeDraftInput,
   type CreateSourceIntakeWithOutboxInput,
 } from '@aramo/talent-evidence';
-import { TalentTrustService } from '@aramo/talent-trust';
 
 import type {
   ExtractDeclaredEvidenceInput,
@@ -64,14 +63,6 @@ import type {
   TalentWorkHistoryView,
 } from './dto/extraction.dto.js';
 import { deriveSkillId } from './skill-id.js';
-import {
-  mapCertificationToClaim,
-  mapEducationToClaim,
-  mapWorkAuthorizationToClaim,
-  mapSkillToClaim,
-  mapWorkHistoryToClaim,
-  mapAssertionToClaim,
-} from './ledger-mapper.js';
 // HF2 R14/R27 — canonical strict date normalization + interval-union skill
 // timeline. Duration derivation consumes ONLY normalized ResumeDate values
 // (never a loose new Date(freeform)); unknown/ambiguous → null (contributes
@@ -364,8 +355,6 @@ export class TalentExtractionService {
   constructor(
     private readonly aiDraft: AiDraftService,
     private readonly evidence: TalentEvidenceRepository,
-    // TR-4 B2 — the NEW edge: the producer owns its ledger write (DDR §3).
-    private readonly trust: TalentTrustService,
     // HF1 §12/R2 — the native JSON-schema structured-generation port (the B6P
     // surface on @aramo/ai-draft). The Add-Talent resume draft path uses THIS
     // (not the free-text generateDraft); the examine path keeps generateDraft.
@@ -548,178 +537,13 @@ export class TalentExtractionService {
     };
   }
 
-  // TR-4 B2 (DDR §3.1-§3.3) — route this talent's typed EMPLOYMENT/SKILL rows into
-  // the trust ledger as canonical CLAIMS evidence. A RECONCILE, by design: it reads
-  // the typed store and writes only the rows lacking a ledger counterpart (the
-  // §3.2 source_ref existence check), so it is IDEMPOTENT and SELF-HEALING —
-  // re-running (re-examine or backfill) writes nothing already written, and a
-  // prior partial failure completes exactly once on the next run.
-  //
-  // MARKER-SEMANTICS NOTE (§2.2 finding): talent-extraction has NO poll and NO
-  // boolean marker — extractDeclaredEvidence is invoked synchronously by the
-  // examine HTTP endpoint, gated by an exists-check (skill-count === 0) that guards
-  // only the expensive LLM extraction. This reconcile is therefore called
-  // UNCONDITIONALLY by examine (outside that guard), so a ledger failure on run N
-  // is retried on run N+1. source_ref = the STABLE typed-row id (never re-minted on
-  // a re-examine, since extraction is skipped), so the existence check is sound.
-  //
-  // LOUD FAIL (§3.3): a ledger-write failure PROPAGATES (the examine request errors)
-  // — never swallowed, never a silent half-commit. The typed rows persist; their
-  // ledger counterparts land on the next successful run.
-  async routeDeclaredEvidenceToLedger(input: {
-    tenant_id: string;
-    talent_id: string;
-  }): Promise<{
-    skills_written: number;
-    work_history_written: number;
-    education_written: number;
-    certification_written: number;
-    // TALENT-INTEL-1 TI-1C — declared work-authorization → RIGHT_TO_WORK.
-    work_authorization_written: number;
-    skipped: number;
-  }> {
-    // talent_id IS the ATS TalentRecord.id (ATS-as-heart) — the subject resolves
-    // via the ATS_TALENT_RECORD ref.
-    const subjectRef = {
-      tenant_id: input.tenant_id,
-      ref_type: 'ATS_TALENT_RECORD' as const,
-      ref_id: input.talent_id,
-      link_source: 'talent-extraction',
-    };
-
-    let skills_written = 0;
-    let work_history_written = 0;
-    let education_written = 0;
-    let certification_written = 0;
-    let work_authorization_written = 0;
-    let skipped = 0;
-
-    const skills = await this.evidence.listSkillEvidenceForLedger({
-      tenant_id: input.tenant_id,
-      talent_id: input.talent_id,
-    });
-    for (const row of skills) {
-      const claim = mapSkillToClaim(row);
-      const result = await this.trust.recordDeclaredClaimIfAbsent({
-        subjectRef,
-        assertion_type: claim.assertion_type,
-        assertion_payload: claim.payload,
-        source_ref: claim.source_ref,
-        created_by: 'talent-extraction',
-      });
-      if (result.written) skills_written += 1;
-      else skipped += 1;
-    }
-
-    const work = await this.evidence.listWorkHistoryForLedger({
-      tenant_id: input.tenant_id,
-      talent_id: input.talent_id,
-    });
-    for (const row of work) {
-      const claim = mapWorkHistoryToClaim(row);
-      const result = await this.trust.recordDeclaredClaimIfAbsent({
-        subjectRef,
-        assertion_type: claim.assertion_type,
-        assertion_payload: claim.payload,
-        source_ref: claim.source_ref,
-        created_by: 'talent-extraction',
-      });
-      if (result.written) work_history_written += 1;
-      else skipped += 1;
-    }
-
-    const education = await this.evidence.listEducationForLedger({
-      tenant_id: input.tenant_id,
-      talent_id: input.talent_id,
-    });
-    for (const row of education) {
-      const claim = mapEducationToClaim(row);
-      const result = await this.trust.recordDeclaredClaimIfAbsent({
-        subjectRef,
-        assertion_type: claim.assertion_type,
-        assertion_payload: claim.payload,
-        source_ref: claim.source_ref,
-        created_by: 'talent-extraction',
-      });
-      if (result.written) education_written += 1;
-      else skipped += 1;
-    }
-
-    const certifications = await this.evidence.listCertificationForLedger({
-      tenant_id: input.tenant_id,
-      talent_id: input.talent_id,
-    });
-    for (const row of certifications) {
-      const claim = mapCertificationToClaim(row);
-      const result = await this.trust.recordDeclaredClaimIfAbsent({
-        subjectRef,
-        assertion_type: claim.assertion_type,
-        assertion_payload: claim.payload,
-        source_ref: claim.source_ref,
-        created_by: 'talent-extraction',
-      });
-      if (result.written) certification_written += 1;
-      else skipped += 1;
-    }
-
-    // TALENT-INTEL-1 (TI-1C §step-5) — route declared work-authorization rows as
-    // RIGHT_TO_WORK claims. Same idempotent posture: recordDeclaredClaimIfAbsent
-    // writes only rows lacking a ledger counterpart (source_ref = the typed row),
-    // at THIRD_PARTY_UNVERIFIED — a declared claim that cannot elevate ELIGIBILITY.
-    const workAuthorizations = await this.evidence.listWorkAuthorizationForLedger({
-      tenant_id: input.tenant_id,
-      talent_id: input.talent_id,
-    });
-    for (const row of workAuthorizations) {
-      const claim = mapWorkAuthorizationToClaim(row);
-      const result = await this.trust.recordDeclaredClaimIfAbsent({
-        subjectRef,
-        assertion_type: claim.assertion_type,
-        assertion_payload: claim.payload,
-        source_ref: claim.source_ref,
-        created_by: 'talent-extraction',
-      });
-      if (result.written) work_authorization_written += 1;
-      else skipped += 1;
-    }
-
-    if (
-      skills_written > 0 ||
-      work_history_written > 0 ||
-      education_written > 0 ||
-      certification_written > 0 ||
-      work_authorization_written > 0
-    ) {
-      this.logger.log({
-        event: 'talent_claims_routed_to_ledger',
-        tenant_id: input.tenant_id,
-        talent_id: input.talent_id,
-        skills_written,
-        work_history_written,
-        education_written,
-        certification_written,
-        work_authorization_written,
-        skipped,
-      });
-    }
-    return {
-      skills_written,
-      work_history_written,
-      education_written,
-      certification_written,
-      work_authorization_written,
-      skipped,
-    };
-  }
-
   // TALENT-INTEL-1 TI-1G §1 — the governed work-authorization evidence writer.
   // Activates the (previously dormant) RIGHT_TO_WORK evidence path from an EXPLICIT
   // recruiter statement: APPEND a TalentWorkAuthorization assertion (append-only —
   // a new row per assertion, never overwriting prior history) carrying only the
-  // recruiter-stated coarse status, then route it into the trust ledger as a
-  // declared RIGHT_TO_WORK claim (THIRD_PARTY_UNVERIFIED — cannot elevate the
-  // ELIGIBILITY band; declaration ≠ verification). NO inference: the decomposed
-  // richer fields (authorized_to_work_in / visa_type / requires_sponsorship) are
+  // recruiter-stated coarse status. ATI-SEP-1 A1 — an ATS typed-row write ONLY:
+  // no ledger call on this path (declaration ≠ verification). NO inference: the
+  // decomposed richer fields (authorized_to_work_in / visa_type / requires_sponsorship) are
   // NOT derived from the status, location, or any resume signal — they stay at
   // their empty/false defaults until a surface explicitly collects them (TI-1G
   // §2/§3). The caller (controller) enqueues Talent reconcile after this.
@@ -728,22 +552,32 @@ export class TalentExtractionService {
     tenant_id: string;
     work_authorization_status: TalentWorkAuthorizationStatusValue;
     asserted_by: string;
+    // ATI-SEP-1 A2 — a caller-supplied DETERMINISTIC id makes the append
+    // idempotent (the intake Save keys it on the reserved Talent): a replay that
+    // finds the row already present writes nothing. Omitted → a fresh append.
+    id?: string;
   }): Promise<void> {
-    await this.evidence.createTalentWorkAuthorization({
-      id: uuidv7(),
-      talent_id: input.talent_id,
-      tenant_id: input.tenant_id,
-      work_authorization_status: input.work_authorization_status,
-      authorized_to_work_in: [],
-      requires_sponsorship: false,
-      updated_at: new Date(),
-    });
-    // Route the just-appended typed row into the RIGHT_TO_WORK trust ledger
-    // (idempotent; source_ref = the typed row, so each assertion lands once).
-    await this.routeDeclaredEvidenceToLedger({
-      tenant_id: input.tenant_id,
-      talent_id: input.talent_id,
-    });
+    if (input.id !== undefined) {
+      const existing = await this.evidence.findTalentWorkAuthorizationById(input.id);
+      if (existing !== null) return;
+    }
+    try {
+      await this.evidence.createTalentWorkAuthorization({
+        id: input.id ?? uuidv7(),
+        talent_id: input.talent_id,
+        tenant_id: input.tenant_id,
+        work_authorization_status: input.work_authorization_status,
+        authorized_to_work_in: [],
+        requires_sponsorship: false,
+        updated_at: new Date(),
+      });
+    } catch (err) {
+      // A concurrent replay won the deterministic-id insert → already recorded.
+      if (input.id !== undefined && (await this.evidence.findTalentWorkAuthorizationById(input.id)) !== null) {
+        return;
+      }
+      throw err;
+    }
   }
 
   // TALENT-INTEL-1 TI-1G §3 — the work-authorization read model: the DETERMINISTIC
@@ -756,51 +590,6 @@ export class TalentExtractionService {
   }): Promise<{ current: TalentWorkAuthorizationRow | null; history: TalentWorkAuthorizationRow[] }> {
     const history = await this.evidence.findWorkAuthorizationByTalent(input);
     return { current: selectCurrentWorkAuthorization(history, new Date()), history };
-  }
-
-  // TR-4 B2 (DDR §3.4) — the one-time backfill: reconcile every talent in a tenant
-  // that owns typed evidence. Same idempotent per-talent path as the live route, so
-  // a second run reports zero. Recompute rides each subject's writes as always.
-  async backfillLedgerForTenant(tenant_id: string): Promise<{
-    talents: number;
-    skills_written: number;
-    work_history_written: number;
-    education_written: number;
-    certification_written: number;
-    // TALENT-INTEL-1 TI-1C — declared work-authorization → RIGHT_TO_WORK.
-    work_authorization_written: number;
-    skipped: number;
-  }> {
-    const talentIds = await this.evidence.listTalentIdsWithEvidenceByTenant(tenant_id);
-    let skills_written = 0;
-    let work_history_written = 0;
-    let education_written = 0;
-    let certification_written = 0;
-    let work_authorization_written = 0;
-    let skipped = 0;
-    for (const talent_id of talentIds) {
-      const r = await this.routeDeclaredEvidenceToLedger({ tenant_id, talent_id });
-      skills_written += r.skills_written;
-      work_history_written += r.work_history_written;
-      education_written += r.education_written;
-      certification_written += r.certification_written;
-      work_authorization_written += r.work_authorization_written;
-      skipped += r.skipped;
-    }
-    return {
-      talents: talentIds.length,
-      skills_written,
-      work_history_written,
-      education_written,
-      certification_written,
-      work_authorization_written,
-      skipped,
-    };
-  }
-
-  // TR-4 B2 (DDR §3.4) — the --all-tenants enumeration for the backfill CLI.
-  async listTenantIdsWithEvidence(): Promise<string[]> {
-    return this.evidence.listTenantIdsWithEvidence();
   }
 
   // Add-Talent governed-LLM DRAFT extraction (HF1 durable fact extraction).
@@ -1337,6 +1126,7 @@ export class TalentExtractionService {
         // stays NULL: company RESOLUTION is out of scope (the null column is the
         // forward seam; THE WALL forbids importing company here, ADR-0029/I15).
         ...(summary !== '' ? { experience_summary: summary } : {}),
+        ...assertionsField(e.assertions),
         // HF1 provenance — per-entry source_refs + the shared document/corpus anchors.
         ...provenanceFields(e.source_refs, input.provenance),
         created_at: createdAt,
@@ -1367,17 +1157,6 @@ export class TalentExtractionService {
         provenance: input.provenance,
         createdAt,
       });
-
-      // HF2 R1/R7 — activity/accomplishment assertions → EvidenceRecord ledger
-      // (EXPERIENCE_CLAIM, deterministic, non-authoritative — P5).
-      if (Array.isArray(e.assertions) && e.assertions.length > 0) {
-        await this.persistExperienceAssertions({
-          talent_id: input.talent_id,
-          tenant_id: input.tenant_id,
-          work_experience_id: workExperienceId,
-          assertions: e.assertions,
-        });
-      }
     }
 
     // HF2 R14 — the derived skill-years snapshot (union, not sum), computed ONLY
@@ -1775,14 +1554,195 @@ export class TalentExtractionService {
     return this.evidence.saveTalentIntakeDraftReview(input);
   }
 
-  async markTalentIntakeDraftPromoted(input: {
+  // ATI-SEP-1 A2 — the resumable Save primitives (Addendum A2 A-a). Reserve the
+  // TalentRecord id (step 0) and mark PROMOTED only after every step (step 4).
+  // The pre-A2 claim-before-create linkage (markTalentIntakeDraftPromoted) is no
+  // longer exposed here: it could leave a PROMOTED draft with no record.
+  async reserveTalentIntakeDraftSave(input: {
     tenant_id: string;
     id: string;
     created_by?: string;
-    promoted_talent_record_id: string;
+    reserved_talent_record_id: string;
+  }): Promise<number> {
+    return this.evidence.reserveTalentIntakeDraftSave(input);
+  }
+
+  async completeTalentIntakeDraftSave(input: {
+    tenant_id: string;
+    id: string;
+    created_by?: string;
+    talent_record_id: string;
     promoted_at: Date;
   }): Promise<number> {
-    return this.evidence.markTalentIntakeDraftPromoted(input);
+    return this.evidence.completeTalentIntakeDraftSave(input);
+  }
+
+  // ATI-SEP-1 A2 — Save step 1: shape the recruiter-REVIEWED arrays (the source
+  // of truth on BOTH the governed and the extraction-decoupled draft) into typed
+  // evidence anchored on a freshly-minted résumé document, and hand them to the
+  // repository's atomic, draft-keyed materialization. A replay (already
+  // materialized for this draft + reserved id) writes nothing and returns
+  // materialized:false. No model call. The derived skill-years snapshot is a
+  // post-commit projection on the FIRST materialization only.
+  async materializeIntakeSaveEvidence(input: {
+    tenant_id: string;
+    intake_draft_id: string;
+    talent_id: string;
+    actor_id: string;
+    resume_document: {
+      storage_key: string;
+      file_name: string;
+      mime_type: string;
+      size_bytes: number;
+      artifact_sha256?: string;
+      source_map_version?: string;
+      resume_text_hash?: string;
+    } | null;
+    work_history?: readonly ResumeDraftWorkHistory[];
+    skills?: readonly ResumeDraftSkill[];
+    education?: readonly ResumeDraftEducation[];
+    certifications?: readonly ResumeDraftCertification[];
+    extraction_child_id: string | null;
+    // D6 — hash of the reviewed arrays, stamped with the materialization.
+    payload_hash?: string;
+  }): Promise<{ materialized: boolean; document_id: string | null; edition_id: string | null }> {
+    const { tenant_id, talent_id } = input;
+    const createdAt = new Date();
+    const rd = input.resume_document;
+    const documentId = rd !== null ? uuidv7() : null;
+    const hasTextHash = typeof rd?.resume_text_hash === 'string' && rd.resume_text_hash !== '';
+    const provenance: ResumeProvenance = {
+      ...(documentId !== null ? { source_document_id: documentId } : {}),
+      ...(typeof rd?.source_map_version === 'string'
+        ? { source_map_version: rd.source_map_version }
+        : {}),
+      ...(hasTextHash ? { resume_text_hash: rd?.resume_text_hash } : {}),
+    };
+    const { workHistory, skillEvidence, projects, education, certifications } =
+      this.shapeReviewedCreateEvidence({
+        tenant_id,
+        talent_id,
+        provenance,
+        createdAt,
+        work_history: input.work_history,
+        skills: input.skills,
+        education: input.education,
+        certifications: input.certifications,
+      });
+    const result = await this.evidence.materializeIntakeSaveEvidence({
+      tenant_id,
+      intake_draft_id: input.intake_draft_id,
+      talent_id,
+      created_by: input.actor_id,
+      document:
+        rd !== null && documentId !== null
+          ? {
+              id: documentId,
+              filename: rd.file_name,
+              file_storage_ref: rd.storage_key,
+              mime_type: rd.mime_type,
+              size_bytes: rd.size_bytes,
+              ...(rd.artifact_sha256 !== undefined ? { artifact_sha256: rd.artifact_sha256 } : {}),
+              uploaded_at: createdAt,
+            }
+          : null,
+      // An edition needs the extracted-text hash (its content key). A résumé whose
+      // extraction never produced one is kept as the Talent's document only —
+      // the same rule the manual create has always applied.
+      edition:
+        rd !== null && hasTextHash
+          ? { id: uuidv7(), content_hash: rd.resume_text_hash as string, created_at: createdAt }
+          : null,
+      resume_default_id: uuidv7(),
+      work_history: workHistory,
+      skill_evidence: skillEvidence,
+      projects,
+      education,
+      certifications,
+      extraction_child_id: input.extraction_child_id,
+      reviewed_at: createdAt,
+      ...(input.payload_hash !== undefined ? { payload_hash: input.payload_hash } : {}),
+    });
+    if (result.materialized) {
+      try {
+        await this.persistDerivedSkillSnapshot({
+          talent_id,
+          tenant_id,
+          entries: input.work_history ?? [],
+          createdAt,
+        });
+      } catch {
+        // non-fatal projection (recomputable from the typed rows)
+      }
+    }
+    return result;
+  }
+
+  // D6 — a resumed Save whose TalentRecord does not exist yet re-materializes
+  // the reviewed arrays the recruiter edited after step 1: the same shaping as
+  // step 1, anchored on the résumé document step 1 minted, handed to the
+  // repository's atomic delete + re-write (claimed on the payload hash, so a
+  // concurrent re-Save writes once). The derived skill-years snapshot is
+  // re-projected after commit.
+  async rematerializeIntakeSaveEvidence(input: {
+    tenant_id: string;
+    intake_draft_id: string;
+    talent_id: string;
+    payload_hash: string;
+    resume_document: { source_map_version?: string; resume_text_hash?: string } | null;
+    work_history?: readonly ResumeDraftWorkHistory[];
+    skills?: readonly ResumeDraftSkill[];
+    education?: readonly ResumeDraftEducation[];
+    certifications?: readonly ResumeDraftCertification[];
+  }): Promise<{ rematerialized: boolean }> {
+    const { tenant_id, talent_id } = input;
+    const createdAt = new Date();
+    const rd = input.resume_document;
+    const documentId =
+      rd !== null ? await this.evidence.findIntakeSaveDocumentId({ tenant_id, talent_id }) : null;
+    const hasTextHash = typeof rd?.resume_text_hash === 'string' && rd.resume_text_hash !== '';
+    const provenance: ResumeProvenance = {
+      ...(documentId !== null ? { source_document_id: documentId } : {}),
+      ...(typeof rd?.source_map_version === 'string'
+        ? { source_map_version: rd.source_map_version }
+        : {}),
+      ...(hasTextHash ? { resume_text_hash: rd?.resume_text_hash } : {}),
+    };
+    const { workHistory, skillEvidence, projects, education, certifications } =
+      this.shapeReviewedCreateEvidence({
+        tenant_id,
+        talent_id,
+        provenance,
+        createdAt,
+        work_history: input.work_history,
+        skills: input.skills,
+        education: input.education,
+        certifications: input.certifications,
+      });
+    const result = await this.evidence.rematerializeIntakeSaveEvidence({
+      tenant_id,
+      intake_draft_id: input.intake_draft_id,
+      talent_id,
+      payload_hash: input.payload_hash,
+      work_history: workHistory,
+      skill_evidence: skillEvidence,
+      projects,
+      education,
+      certifications,
+    });
+    if (result.rematerialized) {
+      try {
+        await this.persistDerivedSkillSnapshot({
+          talent_id,
+          tenant_id,
+          entries: input.work_history ?? [],
+          createdAt,
+        });
+      } catch {
+        // non-fatal projection (recomputable from the typed rows)
+      }
+    }
+    return result;
   }
 
   async touchTalentIntakeDraftOpened(input: {
@@ -1819,8 +1779,8 @@ export class TalentExtractionService {
   // draft's talent_document_id — NEVER resume_edition_id, §4-F), and hands them to
   // the repository's ATOMIC promotion (persist ALL accepted facts + flip the draft
   // READY_FOR_REVIEW → ACCEPTED in one tx; §4-E). Prior evidence is PRESERVED —
-  // these are additive creates, never a replace-set (§4-G). Trust projection,
-  // the derived skill-years snapshot, and reconciliation run AFTER commit
+  // these are additive creates, never a replace-set (§4-G). The derived
+  // skill-years snapshot and reconciliation run AFTER commit
   // (idempotent, §4-E) — the raw fact promotion is the only atomic unit here;
   // Talent/skill reconcile SIGNALS are TI-1F-C. Mirrors the create-path persister
   // shaping (persistDeclared*) via the shared row helpers.
@@ -1869,7 +1829,6 @@ export class TalentExtractionService {
     const workHistory: CreateTalentWorkHistoryEntryInput[] = [];
     const skillEvidence: CreateTalentSkillEvidenceInput[] = [];
     const projects: CreateTalentProjectExperienceInput[] = [];
-    const assertionTasks: { work_experience_id: string; assertions: readonly ResumeDraftAssertion[] }[] = [];
 
     for (const e of payload.work_history ?? []) {
       const employer = e.employer_name.trim();
@@ -1899,6 +1858,7 @@ export class TalentExtractionService {
           ? { description_text: e.description.trim() }
           : {}),
         ...(summary !== '' ? { experience_summary: summary } : {}),
+        ...assertionsField(e.assertions),
         ...provenanceFields(e.source_refs, provenance),
         created_at: createdAt,
       });
@@ -1955,9 +1915,6 @@ export class TalentExtractionService {
         });
       }
 
-      if (Array.isArray(e.assertions) && e.assertions.length > 0) {
-        assertionTasks.push({ work_experience_id: workExperienceId, assertions: e.assertions });
-      }
     }
 
     // Declared top-level skills (dedup by lowercased surface, mirroring the create
@@ -2044,8 +2001,8 @@ export class TalentExtractionService {
 
     // AFTER commit (idempotent projections, §4-E) — best-effort: a hiccup here
     // never un-promotes the committed evidence. The derived skill-years snapshot
-    // and the experience-assertion trust claims are projections of the now-
-    // committed facts. Talent/skill canonical RECONCILE signals are TI-1F-C.
+    // is a projection of the now-committed facts (ATI-SEP-1 A1: no ledger write
+    // here). Talent/skill canonical RECONCILE signals are TI-1F-C.
     try {
       await this.persistDerivedSkillSnapshot({
         talent_id,
@@ -2055,18 +2012,6 @@ export class TalentExtractionService {
       });
     } catch {
       // non-fatal projection
-    }
-    for (const task of assertionTasks) {
-      try {
-        await this.persistExperienceAssertions({
-          talent_id,
-          tenant_id,
-          work_experience_id: task.work_experience_id,
-          assertions: task.assertions,
-        });
-      } catch {
-        // non-fatal trust projection
-      }
     }
 
     return result;
@@ -2088,7 +2033,8 @@ export class TalentExtractionService {
   // default edition + all evidence + the draft-LINK (talent_id/doc/edition, draft
   // stays READY_FOR_REVIEW) to the repository's atomic writer. No model call — the
   // governed extraction already ran in A; these are the reviewed facts. The derived
-  // snapshot + assertion trust claims run POST-commit (idempotent projections). The
+  // snapshot runs POST-commit (idempotent projection; ATI-SEP-1 A1: no ledger
+  // write on this create path). The
   // shaping mirrors promoteResumeExtractionDraft (the review path) + the create-
   // persister mapping; ACCEPTED is written later (phase 3) once the Talent exists.
   async establishCreateDraftEvidence(input: {
@@ -2123,10 +2069,89 @@ export class TalentExtractionService {
         : {}),
     };
 
+    const { workHistory, skillEvidence, projects, education, certifications } =
+      this.shapeReviewedCreateEvidence({
+        tenant_id,
+        talent_id,
+        provenance,
+        createdAt,
+        work_history: input.work_history,
+        skills: input.skills,
+        education: input.education,
+        certifications: input.certifications,
+      });
+
+    // PHASE 1 atomic write (talent_evidence, single schema): document + default
+    // edition + evidence + draft-LINK (draft stays READY_FOR_REVIEW). All-or-none.
+    const result = await this.evidence.establishCreateDraftEvidence({
+      tenant_id,
+      talent_id,
+      created_by: input.actor_id,
+      draft_id: input.draft_id,
+      document: {
+        id: documentId,
+        uploaded_by_actor_id: input.actor_id,
+        filename: input.resume_document.file_name,
+        file_storage_ref: input.resume_document.storage_key,
+        mime_type: input.resume_document.mime_type,
+        size_bytes: input.resume_document.size_bytes,
+        uploaded_at: createdAt,
+      },
+      edition: {
+        id: uuidv7(),
+        content_hash: input.resume_document.resume_text_hash ?? '',
+        created_at: createdAt,
+      },
+      resume_default_id: uuidv7(),
+      work_history: workHistory,
+      skill_evidence: skillEvidence,
+      projects,
+      education,
+      certifications,
+    });
+
+    // POST-commit projections (best-effort; keyed by talent_id + work_experience_id,
+    // independent of the TalentRecord). Mirrors the review path.
+    try {
+      await this.persistDerivedSkillSnapshot({
+        talent_id,
+        tenant_id,
+        entries: input.work_history ?? [],
+        createdAt,
+      });
+    } catch {
+      // non-fatal projection
+    }
+
+    return result;
+  }
+
+  // The shared create-time shaping of recruiter-REVIEWED résumé facts into typed
+  // evidence rows anchored on the (about-to-be-created) source document (§4-F):
+  // work-history (+ its per-role skill usage, projects and experience
+  // assertions), declared skills (de-duplicated by surface form), education and
+  // certifications. Pure (ids minted here); used by the governed create-draft
+  // PHASE 1 and the ATI-SEP-1 A2 intake Save step 1 so both persist identically.
+  private shapeReviewedCreateEvidence(input: {
+    tenant_id: string;
+    talent_id: string;
+    provenance: ResumeProvenance;
+    createdAt: Date;
+    work_history?: readonly ResumeDraftWorkHistory[];
+    skills?: readonly ResumeDraftSkill[];
+    education?: readonly ResumeDraftEducation[];
+    certifications?: readonly ResumeDraftCertification[];
+  }): {
+    workHistory: CreateTalentWorkHistoryEntryInput[];
+    skillEvidence: CreateTalentSkillEvidenceInput[];
+    projects: CreateTalentProjectExperienceInput[];
+    education: CreateTalentEducationEntryInput[];
+    certifications: CreateTalentCertificationEntryInput[];
+  } {
+    const { tenant_id, talent_id, provenance, createdAt } = input;
     const workHistory: CreateTalentWorkHistoryEntryInput[] = [];
     const skillEvidence: CreateTalentSkillEvidenceInput[] = [];
     const projects: CreateTalentProjectExperienceInput[] = [];
-    const assertionTasks: { work_experience_id: string; assertions: readonly ResumeDraftAssertion[] }[] = [];
 
     for (const e of input.work_history ?? []) {
       const employer = e.employer_name.trim();
@@ -2156,6 +2181,7 @@ export class TalentExtractionService {
           ? { description_text: e.description.trim() }
           : {}),
         ...(summary !== '' ? { experience_summary: summary } : {}),
+        ...assertionsField(e.assertions),
         ...provenanceFields(e.source_refs, provenance),
         created_at: createdAt,
       });
@@ -2208,9 +2234,6 @@ export class TalentExtractionService {
           ...provenanceFields(pj.source_refs, provenance),
           created_at: createdAt,
         });
-      }
-      if (Array.isArray(e.assertions) && e.assertions.length > 0) {
-        assertionTasks.push({ work_experience_id: workExperienceId, assertions: e.assertions });
       }
     }
 
@@ -2280,61 +2303,7 @@ export class TalentExtractionService {
       });
     }
 
-    // PHASE 1 atomic write (talent_evidence, single schema): document + default
-    // edition + evidence + draft-LINK (draft stays READY_FOR_REVIEW). All-or-none.
-    const result = await this.evidence.establishCreateDraftEvidence({
-      tenant_id,
-      talent_id,
-      created_by: input.actor_id,
-      draft_id: input.draft_id,
-      document: {
-        id: documentId,
-        uploaded_by_actor_id: input.actor_id,
-        filename: input.resume_document.file_name,
-        file_storage_ref: input.resume_document.storage_key,
-        mime_type: input.resume_document.mime_type,
-        size_bytes: input.resume_document.size_bytes,
-        uploaded_at: createdAt,
-      },
-      edition: {
-        id: uuidv7(),
-        content_hash: input.resume_document.resume_text_hash ?? '',
-        created_at: createdAt,
-      },
-      resume_default_id: uuidv7(),
-      work_history: workHistory,
-      skill_evidence: skillEvidence,
-      projects,
-      education,
-      certifications,
-    });
-
-    // POST-commit projections (best-effort; keyed by talent_id + work_experience_id,
-    // independent of the TalentRecord). Mirrors the review path.
-    try {
-      await this.persistDerivedSkillSnapshot({
-        talent_id,
-        tenant_id,
-        entries: input.work_history ?? [],
-        createdAt,
-      });
-    } catch {
-      // non-fatal projection
-    }
-    for (const task of assertionTasks) {
-      try {
-        await this.persistExperienceAssertions({
-          talent_id,
-          tenant_id,
-          work_experience_id: task.work_experience_id,
-          assertions: task.assertions,
-        });
-      } catch {
-        // non-fatal trust projection
-      }
-    }
-
-    return result;
+    return { workHistory, skillEvidence, projects, education, certifications };
   }
 
   // HF1 Gate-6 R2 — persist recruiter-reviewed resume SKILLS as declared
@@ -2450,42 +2419,6 @@ export class TalentExtractionService {
     return ids;
   }
 
-  // HF2 R1/R7 — route a WorkExperience's resume-derived ASSERTIONS (activities /
-  // accomplishments) into the talent-trust EvidenceRecord ledger as EXPERIENCE_
-  // CLAIM rows. Reuses the SAME governed write surface as the declared-claim
-  // reconcile (recordDeclaredClaimIfAbsent: THIRD_PARTY_UNVERIFIED / DOCUMENT /
-  // ai_derived; NON-authoritative — cannot elevate a trust band). DETERMINISTIC
-  // — no AI call (R6/§26); the source_ref is a content id so a re-create is
-  // idempotent. grounding_class rides the payload (SOURCE_ASSOCIATED_
-  // INTERPRETATION) for later Vector/KG projection. Returns the count written.
-  async persistExperienceAssertions(input: {
-    talent_id: string;
-    tenant_id: string;
-    work_experience_id: string;
-    assertions: readonly ResumeDraftAssertion[];
-  }): Promise<number> {
-    const subjectRef = {
-      tenant_id: input.tenant_id,
-      ref_type: 'ATS_TALENT_RECORD' as const,
-      ref_id: input.talent_id,
-      link_source: 'talent-extraction',
-    };
-    let written = 0;
-    for (const a of input.assertions) {
-      if (a.statement.trim() === '' || a.type.trim() === '') continue;
-      const claim = mapAssertionToClaim(a, input.work_experience_id);
-      const result = await this.trust.recordDeclaredClaimIfAbsent({
-        subjectRef,
-        assertion_type: claim.assertion_type,
-        assertion_payload: claim.payload,
-        source_ref: claim.source_ref,
-        created_by: 'talent-extraction',
-      });
-      if (result.written) written += 1;
-    }
-    return written;
-  }
-
   // Full-profile EDIT (LOCKED scope expansion) — REPLACE the talent's declared
   // ('resume'-sourced) work-history with the recruiter-reviewed set. Mirrors
   // persistDeclaredWorkHistory's mapping (employer/role required; free-text dates
@@ -2556,6 +2489,34 @@ export class TalentExtractionService {
       verified: false,
     }));
   }
+}
+
+// ATI-SEP-1 A2 — the role's reviewed experience assertions, persisted as ATS
+// evidence (TalentWorkHistoryEntry.assertions). Statement-less / type-less
+// entries are dropped (the same filter the ledger projection applies); grounding
+// defaults to SOURCE_ASSOCIATED_INTERPRETATION. Omitted when none remain.
+function assertionsField(
+  assertions: readonly ResumeDraftAssertion[] | undefined,
+): { assertions?: ResumeDraftAssertion[] } {
+  if (!Array.isArray(assertions)) return {};
+  const kept = assertions
+    .filter(
+      (a) =>
+        a !== null &&
+        typeof a === 'object' &&
+        typeof a.statement === 'string' &&
+        a.statement.trim() !== '' &&
+        typeof a.type === 'string' &&
+        a.type.trim() !== '',
+    )
+    .map((a) => ({
+      type: a.type.trim(),
+      statement: a.statement.trim(),
+      ...(typeof a.metric === 'string' && a.metric.trim() !== '' ? { metric: a.metric.trim() } : {}),
+      grounding_class: a.grounding_class ?? 'SOURCE_ASSOCIATED_INTERPRETATION',
+      source_refs: Array.isArray(a.source_refs) ? dedupeRefs(a.source_refs) : [],
+    }));
+  return kept.length > 0 ? { assertions: kept } : {};
 }
 
 // HF1 Gate-6 — build the durable-provenance write fields for one evidence row:

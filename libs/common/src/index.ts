@@ -115,10 +115,11 @@ export {
   AUTH_STORAGE_MIGRATIONS,
   resolveAuthStorageMigrations,
 } from './lib/testing/identity-migrations.js';
+export { TALENT_EVIDENCE_LATE_COLUMN_MIGRATIONS } from './lib/testing/talent-evidence-migrations.js';
 export {
-  TALENT_TRUST_MIGRATIONS,
-  resolveTalentTrustMigrations,
-} from './lib/testing/talent-trust-migrations.js';
+  SKILLS_TAXONOMY_MIGRATIONS,
+  resolveSkillsTaxonomyMigrations,
+} from './lib/testing/skills-taxonomy-migrations.js';
 
 // Enterprise Search GS-2 P1 — the ONE canonical pgvector-capable PG17 test-container image.
 export { ARAMO_POSTGRES_TEST_IMAGE } from './lib/testing/postgres-test-image.js';

@@ -13,7 +13,7 @@ const AUTH = { sub: 'me', tenant_id: TENANT, scopes: ['talent:edit'] } as unknow
 
 function makeController(opts: { replaceThrows?: boolean } = {}) {
   const update = vi.fn().mockResolvedValue({ id: 'tal-1', first_name: 'Ada', last_name: 'Lovelace' });
-  const repo = { update };
+  const repo = { update, recordProfileUpdated: vi.fn().mockResolvedValue(undefined) };
   const replaceDeclaredWorkHistory = opts.replaceThrows
     ? vi.fn().mockRejectedValue(new Error('evidence replace failed'))
     : vi.fn().mockResolvedValue(['wh-1']);
@@ -21,8 +21,6 @@ function makeController(opts: { replaceThrows?: boolean } = {}) {
   const ctl = new TalentRecordController(
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     repo as any,
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    {} as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     {} as any,
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

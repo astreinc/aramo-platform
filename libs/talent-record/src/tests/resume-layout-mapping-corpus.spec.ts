@@ -25,7 +25,6 @@ function pipelineFor(text: string, model: Record<string, unknown>) {
   const extraction = new TalentExtractionService(
     { generateDraft: vi.fn() } as never,
     {} as never,
-    {} as never,
     { generateStructured, providerKey: () => 'anthropic' } as never,
   );
   const orchestrator = new ResumeExtractionOrchestrator(

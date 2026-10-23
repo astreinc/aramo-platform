@@ -23,6 +23,7 @@ import { ProposalDetailView } from './skills/ProposalDetailView';
 import { DocumentTemplatesListView } from './document-templates/DocumentTemplatesListView';
 import { DocumentTemplateDetailView } from './document-templates/DocumentTemplateDetailView';
 import { TemplateVariablesView } from './document-templates/TemplateVariablesView';
+import { MatchingPolicyView } from './matching/MatchingPolicyView';
 import { PersonalReviewView } from './personal/PersonalReviewView';
 import { PersonalInviteView } from './personal/PersonalInviteView';
 
@@ -168,6 +169,21 @@ export function App() {
                     <TemplateVariablesView session={state.session} />
                   ) : (
                     <ForbiddenState scope="platform:document_template:read" />
+                  )
+                }
+              />
+              {/* ATI-SEP-1 A2 A-c (P1) — the platform-owned matching calibration.
+                  Same pattern as the skills section: gated on
+                  platform:matching_policy:read (ForbiddenState otherwise); the
+                  new-version + activate controls gate on platform:matching_policy:write
+                  inside the view. The API is authoritative. */}
+              <Route
+                path="/matching"
+                element={
+                  hasScope(state.session, 'platform:matching_policy:read') ? (
+                    <MatchingPolicyView session={state.session} />
+                  ) : (
+                    <ForbiddenState scope="platform:matching_policy:read" />
                   )
                 }
               />

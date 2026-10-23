@@ -1,0 +1,44 @@
+{
+  "name": "talent-intelligence-service",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "apps/talent-intelligence-service/src",
+  "projectType": "application",
+  "tags": ["scope:intelligence"],
+  "targets": {
+    "build": {
+      "executor": "@nx/js:tsc",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/apps/talent-intelligence-service",
+        "main": "apps/talent-intelligence-service/src/main.ts",
+        "tsConfig": "apps/talent-intelligence-service/tsconfig.app.json"
+      }
+    },
+    "serve": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["build"],
+      "options": {
+        "command": "node dist/apps/talent-intelligence-service/src/main.js"
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["apps/talent-intelligence-service/**/*.ts"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --passWithNoTests --root apps/talent-intelligence-service"
+      }
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "dependsOn": ["^build"],
+      "options": {
+        "command": "tsc --noEmit -p apps/talent-intelligence-service/tsconfig.app.json"
+      }
+    }
+  }
+}

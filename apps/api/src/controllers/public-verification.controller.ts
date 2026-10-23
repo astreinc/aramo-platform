@@ -1,45 +1,40 @@
-import {
-  Body,
-  Controller,
-  HttpCode,
-  HttpStatus,
-  Injectable,
-  Ip,
-  Post,
-} from '@nestjs/common';
+import { Body, Controller, HttpCode, HttpStatus, Injectable, Ip, Post } from '@nestjs/common';
 import { AramoError, RequestId } from '@aramo/common';
-import { TalentTrustService } from '@aramo/talent-trust';
+import { VERIFICATION_CODE_LENGTH, isUuid } from '@aramo/intelligence-contracts';
+import { IntelligenceClient } from '@aramo/intelligence-integration';
 
-import { hashVerificationToken } from '../talent-identity/verification-token.js';
+import { intelligenceError } from '../talent-identity/intelligence-access.js';
 
-// TR-3 B2 (§3.2) — the PUBLIC email-verification confirm endpoint.
+// TR-3 B2 → ATI-SEP-1 T10 WP3b (Addendum A3 T10-3) — the PUBLIC email
+// verification confirm endpoint: a 6-digit one-time code minted and checked by
+// Talent Intelligence.
 //
-// POST /v1/email-verifications/confirm  { token }
+// POST /v1/email-verifications/confirm  { verification_id, code }
+//   → TI POST /v1/verifications/:verification_id/confirm { code }
 //
-// DELIBERATELY UN-GUARDED (the public-invitation precedent): the talent has NO
-// JWT — they arrive from an email link, not a session. NO @UseGuards. The ONLY
-// authority is the high-entropy single-use token in the body (hash-matched
-// server-side). It inherits the app's filter / request-id / validation.
+// DELIBERATELY UN-GUARDED (PZ — public, session-less first-party): the talent
+// has NO session; they arrive from the emailed link (?verification_id=…) and
+// type the code from the same email. The authority is the code, checked by TI,
+// which enforces the TTL (VERIFICATION_TTL_SECONDS) and the attempt budget
+// (VERIFICATION_MAX_ATTEMPTS, then LOCKED). The code is relayed and never logged
+// or stored here.
 //
-// ORACLE-RESISTANT (DDR §2.4). Every non-success path — a bad token, an expired
-// token, an already-consumed token, a rotated ("revoked") token, a missing
-// token, OR an over-budget IP — returns ONE indistinguishable not-found-class
-// response: the SAME code (NOT_FOUND), the SAME status (404), the SAME body
-// (modulo the always-random request_id). An attacker probing tokens learns
-// NOTHING about which of these occurred — not even whether a token existed. The
-// FE renders a single generic failure state to match.
-//
-// The success shape (200 { status:'VERIFIED' }) is naturally distinguishable
-// from failure — that is fine and intended: the anti-oracle is that the FOUR+
-// FAILURE modes are indistinguishable FROM EACH OTHER, not that success hides.
+// Refusals:
+//   404 NOT_FOUND                         unknown verification id / over the per-IP budget (uniform)
+//   400 VALIDATION_ERROR                  not a UUID id / not a 6-digit code
+//   422 IDENTIFIER_VERIFICATION_REFUSED   details.reason INVALID_CODE (+ attempts_remaining) |
+//                                         VERIFICATION_EXPIRED | VERIFICATION_LOCKED | ALREADY_CONFIRMED
+//   503 INTELLIGENCE_UNAVAILABLE          TI not configured / unreachable
+// Success: 200 { status: 'VERIFIED' } — the TI binding outcome stays internal
+// (a public caller never learns about another subject).
 
-// Per-IP budget (engine constants). A fixed small window caps confirm attempts
-// per source IP so the endpoint cannot be used as a token-guessing oracle at
-// volume. SCALING CAVEAT: this counter is IN-MEMORY and PER-PROCESS — correct on
-// the single-box posture (§3.2), but a multi-instance deployment needs a shared
-// store (Redis fixed-window) or the budget is per-replica. Documented, not hidden.
+// Per-IP budget. A fixed small window caps confirm attempts per source IP (TI's
+// per-verification attempt budget is the second line). SCALING CAVEAT: the
+// counter is IN-MEMORY and PER-PROCESS — correct on the single-box posture; a
+// multi-instance deployment needs a shared store or the budget is per-replica.
 const CONFIRM_BUDGET_MAX_PER_WINDOW = 10;
 const CONFIRM_BUDGET_WINDOW_MS = 60_000;
+const CODE_PATTERN = new RegExp(`^\\d{${VERIFICATION_CODE_LENGTH}}$`);
 
 interface IpWindow {
   windowStart: number;
@@ -47,20 +42,14 @@ interface IpWindow {
 }
 
 // An injectable singleton so the confirm controller resolves ONE shared budget
-// map per process (and so it is overridable/resettable in tests, and available
-// to a future operational reset). Not exported from any lib — apps/api-internal.
+// map per process (overridable / resettable in tests).
 @Injectable()
 export class VerificationConfirmBudget {
   private readonly windows = new Map<string, IpWindow>();
 
-  // Returns true if this IP may proceed; false once it has spent its window
-  // budget. Fixed-window: the first hit of a new window resets the count.
   allow(ip: string, nowMs: number): boolean {
     const existing = this.windows.get(ip);
-    if (
-      existing === undefined ||
-      nowMs - existing.windowStart >= CONFIRM_BUDGET_WINDOW_MS
-    ) {
+    if (existing === undefined || nowMs - existing.windowStart >= CONFIRM_BUDGET_WINDOW_MS) {
       this.windows.set(ip, { windowStart: nowMs, count: 1 });
       return true;
     }
@@ -68,9 +57,6 @@ export class VerificationConfirmBudget {
     return existing.count <= CONFIRM_BUDGET_MAX_PER_WINDOW;
   }
 
-  // Clear all windows. Used to isolate the shared per-process counter between
-  // integration tests (each test owns its own budget); also a natural seam for
-  // a future operational "unblock this box" op.
   reset(): void {
     this.windows.clear();
   }
@@ -79,50 +65,43 @@ export class VerificationConfirmBudget {
 @Controller('v1/email-verifications')
 export class PublicVerificationController {
   constructor(
-    private readonly trust: TalentTrustService,
+    private readonly client: IntelligenceClient,
     private readonly budget: VerificationConfirmBudget,
   ) {}
 
   @Post('confirm')
   @HttpCode(HttpStatus.OK)
-  async confirm(
-    @Body() body: unknown,
-    @Ip() ip: string,
-    @RequestId() requestId: string,
-  ): Promise<{ status: 'VERIFIED' }> {
-    // Budget first — an over-budget IP is refused with the SAME not-found the
-    // invalid-token paths return (it must not reveal that it was rate-limited).
-    if (!this.budget.allow(ip ?? 'unknown', Date.now())) {
-      throw notFound(requestId);
+  async confirm(@Body() body: unknown, @Ip() ip: string, @RequestId() requestId: string): Promise<{ status: 'VERIFIED' }> {
+    // Budget first — an over-budget IP gets the SAME not-found an unknown id does.
+    if (!this.budget.allow(ip ?? 'unknown', Date.now())) throw notFound(requestId);
+
+    const { verificationId, code } = extract(body);
+    if (verificationId === null || code === null) {
+      throw new AramoError('VALIDATION_ERROR', 'verification_id (uuid) and a 6-digit code are required', 400, {
+        requestId,
+        details: { invalid_field: verificationId === null ? 'verification_id' : 'code' },
+      });
     }
-
-    const raw = extractToken(body);
-    // A missing/malformed token is FOLDED into the same not-found (no "you sent
-    // no token" signal — the request either carries a valid secret or it does not).
-    if (raw === null) throw notFound(requestId);
-
-    const result = await this.trust.confirmEmailVerification(
-      hashVerificationToken(raw),
-    );
-    // EVERY invalid state (bad/expired/consumed/rotated) surfaces as verified:
-    // false → the one not-found. Only a live token yields 200 VERIFIED.
-    if (!result.verified) throw notFound(requestId);
-
+    try {
+      await this.client.confirmVerification(verificationId, code);
+    } catch (err) {
+      throw intelligenceError(err, requestId);
+    }
     return { status: 'VERIFIED' };
   }
 }
 
-// The single not-found-class response every failure returns. Constant code +
-// constant message + empty details → byte-identical bodies (modulo request_id).
 function notFound(requestId: string): AramoError {
-  return new AramoError('NOT_FOUND', 'verification not found', 404, {
-    requestId,
-  });
+  return new AramoError('NOT_FOUND', 'not found', 404, { requestId });
 }
 
-function extractToken(body: unknown): string | null {
-  if (typeof body !== 'object' || body === null) return null;
-  const token = (body as Record<string, unknown>)['token'];
-  if (typeof token !== 'string' || token.trim().length === 0) return null;
-  return token;
+function extract(body: unknown): { verificationId: string | null; code: string | null } {
+  if (typeof body !== 'object' || body === null) return { verificationId: null, code: null };
+  const b = body as Record<string, unknown>;
+  const id = b['verification_id'];
+  const code = b['code'];
+  return {
+    verificationId: typeof id === 'string' && isUuid(id) ? id : null,
+    code: typeof code === 'string' && CODE_PATTERN.test(code) ? code : null,
+  };
 }

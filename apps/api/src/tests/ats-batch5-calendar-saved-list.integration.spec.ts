@@ -26,7 +26,7 @@ import { AppModule } from '../app.module.js';
 import { ConfigurableTestResolver } from './support/test-auth-harness.js';
 import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 import { placementCapacityMigrations } from './support/placement-capacity-migrations.js';
-import { validTalentCreateBody } from './talent-record-fixtures.js';
+import { validTalentCreateBody, TALENT_RECORD_ATI_SEP_1_MIGRATION_PATHS } from './talent-record-fixtures.js';
 
 // HF-AUTH-1 — compact tokens carry no scopes; guard resolves via this resolver.
 const __authzTestResolver = new ConfigurableTestResolver();
@@ -360,6 +360,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         TALENT_RECORD_WORK_AUTH,
         TALENT_RECORD_SUPERSESSION,
         TALENT_RECORD_TITLE_COUNTRY,
+        ...TALENT_RECORD_ATI_SEP_1_MIGRATION_PATHS,
         resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'),
         REQUISITION_POSTAL_CODE_MIGRATION,
         // Track 4 T4-B2 — requisition read DERIVES openings_available from the

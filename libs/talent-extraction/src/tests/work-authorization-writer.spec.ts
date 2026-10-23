@@ -5,7 +5,9 @@ import { TalentExtractionService } from '../lib/talent-extraction.service.js';
 // TALENT-INTEL-1 TI-1G §1 — the governed work-authorization evidence writer.
 // Proves: an explicit recruiter status APPENDS a TalentWorkAuthorization assertion
 // carrying ONLY the coarse status (NO inference of authorized_to_work_in / visa_type
-// / requires_sponsorship), then routes it into the RIGHT_TO_WORK trust ledger.
+// / requires_sponsorship). ATI-SEP-1 A1 — the writer is an ATS typed-row write
+// ONLY: it no longer routes into the ledger (that projection moved to the
+// TEMPORARY apps/api LegacyTrustProjectionService, never on the create path).
 
 const TENANT = '01900000-0000-7000-8000-000000000001';
 const TALENT = '01900000-0000-7000-8000-0000000000aa';
@@ -18,22 +20,9 @@ function makeService() {
   const svc = new TalentExtractionService(
     { generateDraft } as never,
     evidence,
-    { recordDeclaredClaimIfAbsent: vi.fn() } as never,
     { generateStructured, providerKey: () => 'anthropic' } as never,
   );
-  // Isolate the writer from the ledger fan-out (its own read/route surface is
-  // covered elsewhere); assert only that the writer invokes it for this subject.
-  const routeSpy = vi
-    .spyOn(svc, 'routeDeclaredEvidenceToLedger')
-    .mockResolvedValue({
-      skills_written: 0,
-      work_history_written: 0,
-      education_written: 0,
-      certification_written: 0,
-      work_authorization_written: 1,
-      skipped: 0,
-    });
-  return { svc, createTalentWorkAuthorization, routeSpy, generateDraft, generateStructured };
+  return { svc, createTalentWorkAuthorization, generateDraft, generateStructured };
 }
 
 describe('TalentExtractionService.recordDeclaredWorkAuthorization (TI-1G §1)', () => {
@@ -60,14 +49,18 @@ describe('TalentExtractionService.recordDeclaredWorkAuthorization (TI-1G §1)', 
     expect(generateStructured).not.toHaveBeenCalled();
   });
 
-  it('routes the appended assertion into the RIGHT_TO_WORK trust ledger for this subject', async () => {
-    const { svc, routeSpy } = makeService();
+  it('ATI-SEP-1 A1 — writes the typed row ONLY: no ledger read/route, no trust surface', async () => {
+    const { svc, createTalentWorkAuthorization } = makeService();
     await svc.recordDeclaredWorkAuthorization({
       talent_id: TALENT,
       tenant_id: TENANT,
       work_authorization_status: 'US_CITIZEN',
       asserted_by: 'recruiter-1',
     });
-    expect(routeSpy).toHaveBeenCalledWith({ tenant_id: TENANT, talent_id: TALENT });
+    // The evidence stub exposes ONLY createTalentWorkAuthorization — any ledger
+    // fan-out (a *ForLedger read) would have thrown on the missing method.
+    expect(createTalentWorkAuthorization).toHaveBeenCalledOnce();
+    expect(Reflect.get(svc, 'trust')).toBeUndefined();
+    expect(Reflect.get(svc, 'routeDeclaredEvidenceToLedger')).toBeUndefined();
   });
 });

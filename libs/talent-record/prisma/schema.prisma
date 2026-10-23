@@ -60,6 +60,11 @@ model TalentRecord {
   phone_home String?
   phone_cell String?
   phone_work String?
+  // ATI-SEP-1 A2 — the cell-phone dedupe key (ADD-not-rename): digits only, a
+  // 10-digit NANP number prefixed with country code 1 (E.164-ish, no '+').
+  // Written on every create/update that sets phone_cell; backfilled by the
+  // migration. Server-only — never projected onto TalentRecordView.
+  phone_cell_normalized String?
 
   // Address (free-text).
   address  String?
@@ -178,6 +183,14 @@ model TalentRecord {
   // TALENT-INTEL-1 TI-1D-A — per-field control state (explicit-clear / HOLD)
   // gating automatic reconcile projection. Same-schema child, Cascade purge.
   profile_field_state      TalentProfileFieldState[]
+  // ATI-SEP-1 T8 — the TI Golden-subject link (at most one per record).
+  intelligence_link        IntelligenceLink[]
+  // ATI-SEP-1 T10 WP2 — ATS-local within-tenant duplicate advisories (the record
+  // is side A or side B of the canonical pair) + the sourced arrivals this record
+  // was promoted from / approved as. Same-schema children, Cascade purge.
+  duplicate_advisories_a   TalentDuplicateAdvisory[]    @relation("DuplicateAdvisoryA")
+  duplicate_advisories_b   TalentDuplicateAdvisory[]    @relation("DuplicateAdvisoryB")
+  sourced_arrivals         TalentRecordSourcedArrival[]
 
   // Indexes — every query path leads with tenant_id; (last, first)
   // serves the dominant "search by name" recruiter query path.
@@ -197,7 +210,53 @@ model TalentRecord {
   @@index([tenant_id, created_at, id])
   @@index([tenant_id, owner_id, id])
   @@index([tenant_id, city, state, id])
+  // ATI-SEP-1 A2 — the tenant-local cell-phone duplicate lookup.
+  @@index([tenant_id, phone_cell_normalized])
 
+  @@schema("talent_record")
+}
+
+// ATI-SEP-1 A3 (ADR-0036 §3, Addendum A2 E-1) — the ATS talent transactional
+// outbox. Written in the SAME talent_record transaction as the business fact it
+// records: `talent.created` (TalentRecord create), `talent.profile_updated`
+// (TalentRecord update / ATS evidence edit), `talent.erased` (S2 erasure pass).
+// The payload carries ids and changed field NAMES only — never PII, never a
+// document reference or storage key. Drained post-commit by the lease-safe
+// dispatcher (apps/api ats-talent-events), which fans each event out to the
+// registered in-process handlers; nothing on the ATS write path waits for them.
+// Column shape mirrors talent_evidence.TalentIntakeOutboxEvent (ADR-0033
+// envelope + lease + quarantine). subject_id is the TalentRecord id.
+model TalentEventOutbox {
+  id            String    @id @db.Uuid
+  tenant_id     String    @db.Uuid
+  event_type    String
+  event_payload Json      @db.JsonB
+  created_at    DateTime  @default(now()) @db.Timestamptz
+  published_at  DateTime? @db.Timestamptz
+
+  // Canonical envelope columns (ADR-0033 Decision 4) — always written.
+  event_version  String
+  source         String
+  subject_type   String
+  subject_id     String  @db.Uuid
+  correlation_id String?
+  causation_id   String?
+
+  // Concurrency-safe claim/lease (ADR-0033 Decision 1). A failed dispatch keeps
+  // the row leased until lease_expires_at (the retry backoff).
+  claimed_at         DateTime? @db.Timestamptz
+  lease_expires_at   DateTime? @db.Timestamptz
+  publish_attempts   Int       @default(0)
+  last_publish_error String?
+
+  // Quarantine: parked after the attempt budget; visible, never re-claimed.
+  quarantined_at    DateTime? @db.Timestamptz
+  quarantine_reason String?
+
+  // The claim scan uses a PARTIAL index (unpublished AND not quarantined,
+  // oldest-first) created in the migration SQL.
+  @@index([tenant_id, subject_id, created_at])
+  @@index([published_at, created_at])
   @@schema("talent_record")
 }
 
@@ -305,6 +364,10 @@ model TalentRecordFieldProvenance {
   // The L2 EvidenceRecord that projected the current value (→ its payload_id
   // gives the contributing arrival). Cross-schema UUID-only, no FK.
   evidence_id      String @db.Uuid
+  // ATI-SEP-1 T8 — TRUST_EVIDENCE (evidence_id is a talent_trust.EvidenceRecord
+  // id; every pre-T8 row) | INTELLIGENCE (the value came from Talent
+  // Intelligence; evidence_id is a TI-derived reference, never a trust row).
+  source_kind      String @default("TRUST_EVIDENCE")
 
   created_at DateTime @default(now()) @db.Timestamptz
   updated_at DateTime @default(now()) @updatedAt @db.Timestamptz
@@ -333,6 +396,13 @@ model TalentRecordReconcileContradiction {
   // Closed lifecycle: 'pending' (B1 records) | 'resolved' (B2 consumes). B1
   // writes 'pending' only.
   status           String @default("pending")
+  // ATI-SEP-1 T8 — TRUST_EVIDENCE (B1/B2 trust contradictions; every pre-T8 row)
+  // | INTELLIGENCE (a Talent Intelligence value routed to review by the tenant's
+  // sync policy; new_evidence_id is a TI-derived reference). The trust B2 poll
+  // reads TRUST_EVIDENCE rows only.
+  source_kind      String  @default("TRUST_EVIDENCE")
+  // INTELLIGENCE rows — the proposed value (display string), for the reviewer.
+  proposed_value   String?
 
   created_at DateTime @default(now()) @db.Timestamptz
 
@@ -394,5 +464,128 @@ model TalentProfileFieldState {
   @@unique([tenant_id, talent_record_id, field_key])
   @@index([tenant_id, talent_record_id])
   @@map("talent_profile_field_state")
+  @@schema("talent_record")
+}
+
+// ATI-SEP-1 T8 (ADR-0036 §3 "TI -> ATS") — the TI Golden-subject link. One row
+// per (tenant, record); intelligence_subject_id is a UUID-only reference into
+// the TI database (no FK there). Same-schema child of TalentRecord (Cascade).
+model IntelligenceLink {
+  tenant_id               String    @db.Uuid
+  talent_record_id        String    @db.Uuid
+  intelligence_subject_id String    @db.Uuid
+  linked_at               DateTime  @default(now()) @db.Timestamptz
+  last_synced_at          DateTime? @db.Timestamptz
+
+  talent_record TalentRecord @relation(fields: [talent_record_id], references: [id], onDelete: Cascade)
+
+  @@id([tenant_id, talent_record_id])
+  @@index([intelligence_subject_id])
+  @@map("intelligence_link")
+  @@schema("talent_record")
+}
+
+// ATI-SEP-1 T8 — the inbox of the HMAC-signed TI webhook. event_id is the
+// delivery id (idempotent receive). status: RECEIVED (to process) | APPLIED |
+// SKIPPED | QUARANTINED. Ids + fact-type names only — no value, no PII.
+model TalentIntelligenceInboundEvent {
+  event_id                String    @id
+  tenant_id               String    @db.Uuid
+  talent_record_id        String    @db.Uuid
+  intelligence_subject_id String    @db.Uuid
+  changed_fact_types      String[]  @default([])
+  occurred_at             DateTime  @db.Timestamptz
+  received_at             DateTime  @default(now()) @db.Timestamptz
+  status                  String    @default("RECEIVED")
+  outcome                 String?
+  attempts                Int       @default(0)
+  lease_expires_at        DateTime? @db.Timestamptz
+  processed_at            DateTime? @db.Timestamptz
+  last_error              String?
+
+  @@index([tenant_id, talent_record_id])
+  @@map("talent_intelligence_inbound_event")
+  @@schema("talent_record")
+}
+
+// ATI-SEP-1 T8 — the per-tenant inbound field sync policy. A missing row means
+// the code default (DEFAULT_INTELLIGENCE_SYNC_POLICY). mode: AUTO_APPLY |
+// REVIEW | IGNORE (DB CHECK).
+model TalentIntelligenceSyncPolicy {
+  tenant_id  String   @db.Uuid
+  field_key  String
+  mode       String
+  updated_at DateTime @default(now()) @db.Timestamptz
+  updated_by String?  @db.Uuid
+
+  @@id([tenant_id, field_key])
+  @@map("talent_intelligence_sync_policy")
+  @@schema("talent_record")
+}
+
+// ATI-SEP-1 T10 WP2 (A2 F-1 / A3) — the ATS-local within-tenant duplicate
+// advisory. Detected from ATS data only (shared normalized email1 / cell phone
+// between two live records, or a sourced arrival sharing one with a live
+// record); a reviewer approves (re-home onto the survivor), dismisses, or
+// reverses an approval. Pair canonical order: talent_record_a_id <
+// talent_record_b_id. Exactly one of talent_record_b_id / sourced_talent_id is
+// set (DB CHECK). basis: EMAIL | PHONE | SOURCED_ARRIVAL. status: PENDING_REVIEW
+// | APPROVED | DISMISSED | REVERSED. merge_state carries the durable re-home
+// checkpoint (sweep steps + collision rows) so an approval is resumable and
+// reversible. Ids + kinds only — never a contact value.
+model TalentDuplicateAdvisory {
+  id                     String    @id @db.Uuid
+  tenant_id              String    @db.Uuid
+  talent_record_a_id     String    @db.Uuid
+  talent_record_b_id     String?   @db.Uuid
+  sourced_talent_id      String?   @db.Uuid
+  basis                  String
+  shared_kinds           String[]  @default([])
+  status                 String    @default("PENDING_REVIEW")
+  decided_by             String?
+  decided_at             DateTime? @db.Timestamptz
+  justification          String?
+  surviving_record_id    String?   @db.Uuid
+  superseded_record_id   String?   @db.Uuid
+  merge_state            Json?
+  merge_completed_at     DateTime? @db.Timestamptz
+  reversed_by            String?
+  reversed_at            DateTime? @db.Timestamptz
+  reversal_justification String?
+  created_at             DateTime  @default(now()) @db.Timestamptz
+  updated_at             DateTime  @default(now()) @updatedAt @db.Timestamptz
+
+  talent_record_a TalentRecord  @relation("DuplicateAdvisoryA", fields: [talent_record_a_id], references: [id], onDelete: Cascade)
+  talent_record_b TalentRecord? @relation("DuplicateAdvisoryB", fields: [talent_record_b_id], references: [id], onDelete: Cascade)
+
+  @@unique([tenant_id, talent_record_a_id, talent_record_b_id], map: "talent_duplicate_advisory_pair_key")
+  @@unique([tenant_id, talent_record_a_id, sourced_talent_id], map: "talent_duplicate_advisory_arrival_key")
+  @@index([tenant_id, status, created_at], map: "talent_duplicate_advisory_queue_idx")
+  @@index([tenant_id, sourced_talent_id], map: "talent_duplicate_advisory_sourced_idx")
+  @@index([talent_record_b_id], map: "talent_duplicate_advisory_b_idx")
+  @@map("talent_duplicate_advisory")
+  @@schema("talent_record")
+}
+
+// ATI-SEP-1 T10 WP2 — the sourced arrival -> TalentRecord link (replaces the
+// retired trust-subject ATS_TALENT_RECORD ref). One row per (tenant, arrival):
+// PROMOTED (written in the promotion create transaction) or ADVISORY_APPROVED (a
+// reviewer confirmed the arrival is an existing record's human). An arrival with
+// a link row is out of the sourcing pool. sourced_talent_id is a UUID-only
+// reference into sourced_talent (no FK).
+model TalentRecordSourcedArrival {
+  tenant_id         String   @db.Uuid
+  sourced_talent_id String   @db.Uuid
+  talent_record_id  String   @db.Uuid
+  link_kind         String
+  advisory_id       String?  @db.Uuid
+  linked_by         String?
+  created_at        DateTime @default(now()) @db.Timestamptz
+
+  talent_record TalentRecord @relation(fields: [talent_record_id], references: [id], onDelete: Cascade)
+
+  @@id([tenant_id, sourced_talent_id])
+  @@index([tenant_id, talent_record_id], map: "talent_record_sourced_arrival_record_idx")
+  @@map("talent_record_sourced_arrival")
   @@schema("talent_record")
 }

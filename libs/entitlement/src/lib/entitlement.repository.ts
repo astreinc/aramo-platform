@@ -36,6 +36,17 @@ export class EntitlementRepository {
     return result;
   }
 
+  // ATI-SEP-1 T8 — every tenant holding `capability` (the periodic full REPLACE
+  // entitlement sync to Talent Intelligence). Ordered for a stable payload.
+  async listTenantIdsWithCapability(capability: Capability): Promise<string[]> {
+    const rows = await this.prisma.tenantEntitlement.findMany({
+      where: { capability },
+      select: { tenant_id: true },
+      orderBy: { tenant_id: 'asc' },
+    });
+    return rows.map((r) => r.tenant_id);
+  }
+
   async grantCapabilities(args: {
     tenant_id: string;
     capabilities: readonly Capability[];

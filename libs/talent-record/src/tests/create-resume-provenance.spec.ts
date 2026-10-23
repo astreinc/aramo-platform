@@ -18,7 +18,7 @@ const READ_AUTH = { sub: 'me', tenant_id: TENANT, scopes: ['talent:read'] } as u
 function makeController(extra: Record<string, unknown> = {}) {
   const create = vi.fn().mockResolvedValue({ id: 'tal-new', first_name: 'Ada', last_name: 'Lovelace' });
   const findActiveByEmail = vi.fn().mockResolvedValue(null);
-  const repo = { create, findActiveByEmail };
+  const repo = { create, findActiveByEmail, findActiveDuplicate: vi.fn().mockResolvedValue(null) };
   const createResumeDocument = vi.fn().mockResolvedValue('doc-777');
   const persistDeclaredWorkHistory = vi.fn().mockResolvedValue(['wh-1']);
   const persistDeclaredSkills = vi.fn().mockResolvedValue(['sk-1']);
@@ -62,13 +62,11 @@ function makeController(extra: Record<string, unknown> = {}) {
   const ctl = new TalentRecordController(
     repo as never,
     {} as never,
-    {} as never,
     resumeParser as never,
     talentExtraction as never,
     orchestrator,
     // TI-1D-A — reconcileRepo (field-state writes; no-op fake on this path).
     { upsertProfileFieldState: async () => undefined, releaseProjectionHold: async () => undefined, listProfileFieldStates: async () => [] } as never,
-    undefined, // @Optional canonicalReconcile
     editionIngestion as never,
   );
   return { ctl, createResumeDocument, persistDeclaredWorkHistory, persistDeclaredSkills, extractResumeDraft, createEditionForDocument, markResumeExtractionDraftAccepted };

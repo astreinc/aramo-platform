@@ -10,7 +10,7 @@ import type {
 } from './talent-360-types';
 
 // Render/interaction tests for the Talent 360 workspace. The composed read is
-// mocked (getTalent360); the reused heavy surfaces (TrustPanel, WorkHistory,
+// mocked (getTalent360); the reused heavy surfaces (the dossier read, WorkHistory,
 // CallButton, AddToRequisitionDialog, the email composer) are stubbed so this
 // spec exercises Talent360View's OWN presentation + interaction behavior — it
 // renders the contract and never re-derives server truth.
@@ -19,17 +19,23 @@ vi.mock('./talent-360-api');
 vi.mock('../shell/breadcrumb', () => ({ useEntityCrumb: () => undefined }));
 // Trust & Evidence reads the SAME authoritative dossier via a recruiter-facing
 // adapter; stub getDossier so the spec exercises the adapter's projection.
-vi.mock('../talent/dossier-api', () => ({
-  getDossier: vi.fn().mockResolvedValue({
-    ledger_established: false,
-    dimensions: {},
-    verifications: [],
-    merge_provenance: [],
-    statements: [],
-    contradictions: [],
-    proposal_pointers: [],
-  }),
+const dossier = vi.hoisted(() => ({ getDossier: vi.fn() }));
+vi.mock('../talent/dossier-api', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../talent/dossier-api')>()),
+  getDossier: dossier.getDossier,
 }));
+const EMPTY_DOSSIER = {
+  talent_record_id: 'tal-1',
+  intelligence_status: 'ENABLED',
+  ledger_established: false,
+  dimensions: {},
+  facts: [],
+  verifications: [],
+  statements: [],
+  contradictions: [],
+  has_open_dispute: false,
+  generated_at: null,
+};
 vi.mock('../communications/CallButton', () => ({
   CallButton: () => <button type="button">Call</button>,
 }));
@@ -281,6 +287,7 @@ const EDITIONS = [
 ];
 
 beforeEach(() => {
+  dossier.getDossier.mockResolvedValue(EMPTY_DOSSIER);
   h.scopes = [...BASE_SCOPES];
   h.createTask.mockResolvedValue({});
   h.updateTask.mockResolvedValue({});
@@ -609,6 +616,49 @@ describe('Talent360View — sections (§7–§9)', () => {
     await waitFor(() => expect(adv.dismissAdvisory).toHaveBeenCalledWith('adv1'));
     fireEvent.click(within(trust).getByRole('button', { name: 'Consent history →' }));
     expect(await screen.findByTestId('consent-history')).toHaveTextContent('tal-1');
+  });
+
+  it('Talent Trust: Talent Intelligence bands, statements and conflicting evidence render from the dossier (ATI-SEP-1 WP3b)', async () => {
+    dossier.getDossier.mockResolvedValue({
+      ...EMPTY_DOSSIER,
+      ledger_established: true,
+      dimensions: {
+        identity: { band: 'CORROBORATED' },
+        claims: { band: 'SELF_ASSERTED' },
+        continuity: { band: 'NOT_ESTABLISHED' },
+        eligibility: { band: 'NOT_ESTABLISHED' },
+      },
+      statements: ['All evidence comes from a single source.'],
+      contradictions: [
+        { assertion_id: 'as-1', assertion_type: 'TITLE', contributed_by: 'OTHER_SOURCE', assertion_payload: {}, observed_at: '2026-10-01T00:00:00Z' },
+      ],
+    });
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView('/talent/tal-1?section=trust');
+    const trust = await screen.findByTestId('t360-trust');
+    expect(await within(trust).findByText('All evidence comes from a single source.')).toBeInTheDocument();
+    expect(within(trust).getAllByText('From Talent Intelligence').length).toBeGreaterThan(0);
+    expect(within(trust).getByText(/Conflicting evidence/)).toBeInTheDocument();
+    expect(within(trust).getByRole('button', { name: 'Resolve' })).toBeInTheDocument();
+    expect(within(trust).queryByTestId('t360-trust-ti-status')).toBeNull();
+  });
+
+  it('Talent Trust: Talent Intelligence not enabled → an honest note, the record claims still render', async () => {
+    dossier.getDossier.mockResolvedValue({ ...EMPTY_DOSSIER, intelligence_status: 'NOT_ENTITLED' });
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView('/talent/tal-1?section=trust');
+    const trust = await screen.findByTestId('t360-trust');
+    expect(await within(trust).findByTestId('t360-trust-ti-status')).toHaveTextContent('Talent Intelligence not enabled.');
+    expect(within(trust).getByText('Contact details · primary email and mobile')).toBeInTheDocument();
+  });
+
+  it('Talent Trust: a failed dossier read is silent (enrichment only)', async () => {
+    dossier.getDossier.mockRejectedValue(new Error('503'));
+    getTalent360Mock.mockResolvedValue(makeModel());
+    renderView('/talent/tal-1?section=trust');
+    const trust = await screen.findByTestId('t360-trust');
+    expect(within(trust).getByText('Contact details · primary email and mobile')).toBeInTheDocument();
+    expect(within(trust).queryByTestId('t360-trust-ti-status')).toBeNull();
   });
 
   it('Talent Trust: "Record consent" opens the capture dialog when recruiting contact is not permitted', async () => {
@@ -1112,6 +1162,11 @@ describe('Talent360View — Documents (§8B)', () => {
     const dialog = await screen.findByRole('dialog');
     expect([...within(dialog).getByLabelText('Document type').querySelectorAll('option')].map((o) => o.textContent)).toEqual(['Resume', 'Resume · tailored']);
     const input = dialog.querySelector('input[type="file"]') as HTMLInputElement;
+    // ATI-SEP-1 A4 — PDF and DOCX only: the picker no longer offers legacy .doc,
+    // and a .doc file is refused like any other unsupported type.
+    expect(input.accept).toBe('.pdf,.docx');
+    fireEvent.change(input, { target: { files: [new File(['x'], 'old.doc', { type: 'application/msword' })] } });
+    expect(within(dialog).getByText('That file type isn’t supported for a resume. Use PDF or Word.')).toBeInTheDocument();
     fireEvent.change(input, { target: { files: [new File(['x'], 'photo.png', { type: 'image/png' })] } });
     expect(within(dialog).getByText('That file type isn’t supported for a resume. Use PDF or Word.')).toBeInTheDocument();
     fireEvent.change(input, { target: { files: [new File(['%PDF'], 'new.pdf', { type: 'application/pdf' })] } });

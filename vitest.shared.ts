@@ -44,6 +44,9 @@ export default defineConfig({
       // verify.ts. eslint-side boundary override is scoped to that file pair.
       '@aramo/auth-service': resolve(root, 'apps/auth-service/src/app/auth/auth.module.ts'),
       '@aramo/sign-service': resolve(root, 'apps/sign-service/src/app/app.module.ts'),
+      // ATI-SEP-1 — pact/provider/src/verify-ti.ts test-bootstraps the TI AppModule
+      // (test-environment exception; production ATS reaches TI over HTTP only).
+      '@aramo/talent-intelligence-service': resolve(root, 'apps/talent-intelligence-service/src/app/app.module.ts'),
       '@aramo/auth-storage': resolve(root, 'libs/auth-storage/src/index.ts'),
       // PR-A1a §3 — new leaf lib hosting RolesGuard + @RequireScopes /
       // @RequireSiteMatch decorators. Mirrors tsconfig.base.json
@@ -66,10 +69,6 @@ export default defineConfig({
       // login tokens). Imported by auth-service (login flow) and apps/api
       // (portal reads, P2). Mirrors tsconfig.base.json; the add-alias-in-same-PR lesson.
       '@aramo/portal-identity': resolve(root, 'libs/portal-identity/src/index.ts'),
-      // TR-2b B2a — platform-trust leaf (DormantLink substrate). Imported by
-      // apps/api (the identity-index lifecycle sweep's flag-gated dormant mint).
-      // Mirrors tsconfig.base.json; the add-alias-in-same-PR lesson.
-      '@aramo/platform-trust': resolve(root, 'libs/platform-trust/src/index.ts'),
       // Cold-Ingest Extraction — the resolved-arrival → declared-evidence poll
       // (scope:cip). Mirrors tsconfig.base.json @aramo/cold-ingest-extraction so
       // vitest resolves the apps/api AppModule import + the lib's unit/integration
@@ -80,6 +79,12 @@ export default defineConfig({
       '@aramo/documents-contracts': resolve(root, 'libs/documents-contracts/src/index.ts'),
       '@aramo/documents-rendering': resolve(root, 'libs/documents-rendering/src/index.ts'),
       '@aramo/sign': resolve(root, 'libs/sign/src/index.ts'),
+      // ATI-SEP-1 T0 (ADR-0036) — the Talent Intelligence libs (own database, scope:intelligence)
+      // and the shared ATS ⇄ TI contract (scope:shared). Mirrors tsconfig.base.json.
+      '@aramo/intelligence-contracts': resolve(root, 'libs/intelligence-contracts/src/index.ts'),
+      '@aramo/intelligence-core': resolve(root, 'libs/intelligence-core/src/index.ts'),
+      // ATI-SEP-1 T8 — the ATS-side TI integration (scope:ats; HTTP + contracts only).
+      '@aramo/intelligence-integration': resolve(root, 'libs/intelligence-integration/src/index.ts'),
       // PR-A2 Gate 5 — first ATS-domain leaves (company + contact). Mirrors
       // tsconfig.base.json aliases so vitest runtime resolves the AppModule
       // imports + cross-lib edge contact -> company in the integration specs.
@@ -116,12 +121,6 @@ export default defineConfig({
       // resolves the apps/api AppModule import + the D5 catalog tests.
       '@aramo/field-masking': resolve(root, 'libs/field-masking/src/index.ts'),
       '@aramo/identity': resolve(root, 'libs/identity/src/index.ts'),
-      // Step 4b (ADR-0016) — identity-index leaf (the PII-free cross-tenant
-      // resolution index; PersonCluster + the fingerprint store). Mirrors
-      // tsconfig.base.json so vitest runtime resolves the @aramo/identity-index
-      // import added to CanonicalizationModule (the first cross-lib runtime
-      // importer). The add-alias-in-same-PR lesson.
-      '@aramo/identity-index': resolve(root, 'libs/identity-index/src/index.ts'),
       // PR-A8-1 Gate 5 — import-engine leaf (audited reversible batches
       // + partial-commit). Mirrors tsconfig.base.json alias so vitest
       // runtime resolves the apps/api AppModule import + the A8-1
@@ -221,7 +220,7 @@ export default defineConfig({
       '@aramo/settings': resolve(root, 'libs/settings/src/index.ts'),
       '@aramo/skills-taxonomy': resolve(root, 'libs/skills-taxonomy/src/index.ts'),
       '@aramo/canonical-reconcile': resolve(root, 'libs/canonical-reconcile/src/index.ts'),
-      // Fix-Slice-1 — sourced-talent L1 staging leaf (scope:cip). Mirrors the
+      // Fix-Slice-1 — sourced-talent L1 staging leaf (scope:ats since ATI-SEP-1 T10 WP2). Mirrors the
       // tsconfig.base.json @aramo/sourced-talent path so vitest runtime resolves
       // the public surface. No consumer imports it yet (substrate-only slice);
       // the alias lands now for template parity + fix-slice-2's cross-lib wiring.
@@ -246,17 +245,6 @@ export default defineConfig({
       // Core libs/talent identity. Amendment §3.)
       '@aramo/talent-record': resolve(root, 'libs/talent-record/src/index.ts'),
       '@aramo/talent-intelligence': resolve(root, 'libs/talent-intelligence/src/index.ts'),
-      // Promotion Gate Slice-B1 — the reconcile poll (scope:ats). Mirrors
-      // tsconfig.base.json @aramo/talent-reconcile so vitest resolves the apps/api
-      // AppModule import + the lib's unit/integration specs.
-      '@aramo/talent-reconcile': resolve(root, 'libs/talent-reconcile/src/index.ts'),
-      // TALENT-INTEL-1 TI-1F-C — the neutral Talent-profile reconcile producer/queue
-      // contract (scope:cip). Owned queue name breaks the talent-record⇄talent-reconcile
-      // cycle: both depend on THIS leaf, never the reverse.
-      '@aramo/talent-reconcile-signal': resolve(root, 'libs/talent-reconcile-signal/src/index.ts'),
-      // TR-2a-1 — talent-trust (the trust ledger + within-tenant anchors). The
-      // apps/api anchor producer imports it above the I15 wall.
-      '@aramo/talent-trust': resolve(root, 'libs/talent-trust/src/index.ts'),
       // Tasks backend — task leaf (the actionable/assignable to-do; the last
       // core recruiter surface). Mirrors tsconfig.base.json @aramo/task alias
       // so vitest runtime resolves the apps/api AppModule import (TaskModule +

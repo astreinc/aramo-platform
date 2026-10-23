@@ -4,11 +4,12 @@ import { resolve } from 'node:path';
 import { parse as parseYaml } from 'yaml';
 import { describe, expect, it } from 'vitest';
 
-// TR-14 B2 (§3.2 / §5e) — the negative-shape proof for the contracted dossier: NO
-// top-level trust-ordinal numeric (no strength, no count) anywhere in the Dossier
-// schemas. The ONLY place a number may legally appear is inside `assertion_payload`
-// (opaque ledger claim facts) — which is deliberately typeless (unconstrained), so
-// the refusal walker skips it and it is exempt here too. This complements the
+// TR-14 B2 (§3.2 / §5e) → ATI-SEP-1 T10 WP3b — the negative-shape proof for the
+// contracted dossier (now Talent Intelligence's view): NO trust-ordinal numeric
+// (no strength, no count) anywhere in the Dossier schemas. The ONLY places a
+// number may legally appear are inside `assertion_payload` / a fact `value`
+// (opaque claim facts) — deliberately typeless (unconstrained), so the refusal
+// walker skips them and they are exempt here too. This complements the
 // refusal walker (which enforces additionalProperties:false + forbidden names but
 // not numeric types).
 
@@ -23,18 +24,17 @@ describe('TR-14 B2 — the dossier wire carries no trust-ordinal numeric', () =>
   it('registers the dossier schemas', () => {
     expect(dossierSchemaNames).toContain('DossierHead');
     expect(dossierSchemaNames).toContain('DossierEvidencePage');
-    // TR-12 B2 — the proposal-pointer schema joins the contracted head.
-    expect(dossierSchemaNames).toContain('DossierProposalPointer');
+    expect(dossierSchemaNames).toContain('DossierFactItem');
+    expect(dossierSchemaNames).toContain('DossierIntelligenceStatus');
   });
 
-  it('DossierHead requires proposal_pointers (TR-12 B2 pointer line)', () => {
-    const head = schemas['DossierHead']!;
-    expect(head['required']).toContain('proposal_pointers');
-    const pointer = schemas['DossierProposalPointer']!;
-    // kinds are WORDS (an enum of the three proposal kinds) — never a number.
-    const kind = (pointer['properties'] as Node)['kind'] as Node;
-    expect(kind['type']).toBe('string');
-    expect(Array.isArray(kind['enum'])).toBe(true);
+  it('DossierHead + DossierEvidencePage require intelligence_status (fail-soft enrichment)', () => {
+    expect(schemas['DossierHead']!['required']).toContain('intelligence_status');
+    expect(schemas['DossierEvidencePage']!['required']).toContain('intelligence_status');
+    expect(schemas['DossierIntelligenceStatus']!['enum']).toEqual(['ENABLED', 'NOT_ENTITLED', 'NOT_CONFIGURED', 'UNAVAILABLE']);
+    // corroboration is a WORD-shaped boolean, never a source count.
+    const fact = (schemas['DossierFactItem']!['properties'] as Node)['corroborated'] as Node;
+    expect(fact['type']).toBe('boolean');
   });
 
   // Recursively assert no `type: integer|number` appears — EXCEPT under an
@@ -55,7 +55,7 @@ describe('TR-14 B2 — the dossier wire carries no trust-ordinal numeric', () =>
       throw new Error(`trust-ordinal numeric found at ${path} (type=${JSON.stringify(type)})`);
     }
     for (const [k, v] of Object.entries(obj)) {
-      assertNoNumeric(v, `${path}.${k}`, underPayload || k === 'assertion_payload');
+      assertNoNumeric(v, `${path}.${k}`, underPayload || k === 'assertion_payload' || (k === 'value' && path.endsWith('.properties')));
     }
   }
 
@@ -70,11 +70,15 @@ describe('TR-14 B2 — the dossier wire carries no trust-ordinal numeric', () =>
     }
   });
 
-  it('assertion_payload is the only unconstrained (typeless) passthrough', () => {
-    // DossierEvidenceSummary + DossierContradictionItem carry assertion_payload.
-    const summary = schemas['DossierEvidenceSummary']!;
-    const payload = (summary['properties'] as Node)['assertion_payload'] as Node;
-    expect(payload['type']).toBeUndefined(); // typeless → walker-skipped, numeric-exempt
-    expect(typeof payload['description']).toBe('string');
+  it('assertion_payload / fact value are the only unconstrained (typeless) passthroughs', () => {
+    for (const [schema, key] of [
+      ['DossierEvidenceItem', 'assertion_payload'],
+      ['DossierContradictionItem', 'assertion_payload'],
+      ['DossierFactItem', 'value'],
+    ] as const) {
+      const prop = (schemas[schema]!['properties'] as Node)[key] as Node;
+      expect(prop['type']).toBeUndefined(); // typeless → walker-skipped, numeric-exempt
+      expect(typeof prop['description']).toBe('string');
+    }
   });
 });

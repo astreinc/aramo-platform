@@ -6,15 +6,15 @@
 // The trigger queue is the ingestion → canonicalization production seam:
 // a BullMQ repeat job ticks the CanonicalizationTriggerProcessor which
 // drains unresolved RawPayloadReference rows (the polling-outbox shape —
-// the row's resolved_subject_id IS NULL IS the work-to-do signal; no
+// the row's sourced_talent_id IS NULL IS the work-to-do signal; no
 // separate outbox table needed).
 //
 // Why the polling-outbox shape (Lead-reviewable design choice):
-//   - Durability: a failed canonicalize leaves resolved_subject_id NULL;
+//   - Durability: a failed canonicalize leaves sourced_talent_id NULL;
 //     the next tick re-picks. A payload is NEVER lost on failure.
 //   - Idempotency: two layers — (a) the polling query filters out
-//     already-resolved rows (WHERE resolved_subject_id IS NULL);
-//     (b) canonicalize's resolved_subject_id short-circuit (T2-2a Step
+//     already-resolved rows (WHERE sourced_talent_id IS NULL);
+//     (b) canonicalize's sourced_talent_id short-circuit (T2-2a Step
 //     2) catches any race-induced re-fire.
 //   - Atomicity: createPayload's commit IS the trigger commit (the
 //     RawPayloadReference row appearing IS the trigger). No separate
@@ -29,3 +29,9 @@ export const CANONICALIZATION_TRIGGER_QUEUE_NAME =
 // hold the worker indefinitely. 100 mirrors OUTBOX_PUBLISHER_BATCH_SIZE
 // (Ruling 2 precedent).
 export const CANONICALIZATION_TRIGGER_BATCH_SIZE = 100 as const;
+
+// ATI-SEP-1 T10 WP2 — the scheduled tick only picks payloads at least this old,
+// so an SRC-1 channel writer's own SourcedTalent row (recorded right after its
+// acceptPayload) lands first and canonicalize reuses it instead of minting a
+// second arrival for the same payload.
+export const CANONICALIZATION_TRIGGER_MIN_AGE_MS = 30_000 as const;

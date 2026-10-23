@@ -39,6 +39,17 @@
     "apps/api/src/documents/documents-esign.controller.ts": "SS",
     "apps/api/src/documents/documents-esign-templates.controller.ts": "SS",
     "apps/api/src/integrations/sign/esign-events.controller.ts": "SS",
+    "apps/api/src/integrations/intelligence/intelligence-events.controller.ts": "SS",
+    "apps/api/src/integrations/intelligence/portal-identifier-verification.controller.ts": "AP",
+    "apps/talent-intelligence-service/src/app/health.controller.ts": "IZ",
+    "apps/talent-intelligence-service/src/app/auth/oauth-token.controller.ts": "SS",
+    "apps/talent-intelligence-service/src/app/ingest/ingest.controller.ts": "SS",
+    "apps/talent-intelligence-service/src/app/verification/verification.controller.ts": "SS",
+    "apps/talent-intelligence-service/src/app/references/references.controller.ts": "SS",
+    "apps/talent-intelligence-service/src/app/entitlements/entitlements.controller.ts": "SS",
+    "apps/talent-intelligence-service/src/app/lifecycle/disputes.controller.ts": "SS",
+    "apps/talent-intelligence-service/src/app/lifecycle/tenant-worklists.controller.ts": "SS",
+    "apps/talent-intelligence-service/src/app/lifecycle/proposals.controller.ts": "SS",
     "apps/api/src/communications/communications.controller.ts": "AP",
     "apps/api/src/communications/general-talent-contact-draft.controller.ts": "AP",
     "apps/api/src/communications/requisition-contact-draft.controller.ts": "AP",
@@ -60,19 +71,18 @@
     "apps/api/src/rtr/rtr.controller.ts": "AP",
     "apps/api/src/skill-governance/skill-governance.controller.ts": "AP",
     "apps/api/src/document-templates-platform/platform-document-templates.controller.ts": "AP",
+    "apps/api/src/matching-policy/matching-policy.controller.ts": "AP",
     "apps/api/src/create-submittal/create-submittal.controller.ts": "AP",
     "apps/api/src/submit-talent/submit-talent.controller.ts": "AP",
     "apps/api/src/submittal-workspace/submittal-workspace.controller.ts": "AP",
     "apps/api/src/talent-journey-audit/talent-journey-audit.controller.ts": "AP",
     "apps/api/src/talent-identity/advisory-resolution.controller.ts": "AP",
     "apps/api/src/talent-identity/contradiction-resolution.controller.ts": "AP",
-    "apps/api/src/talent-identity/dispute-resolution.controller.ts": "AP",
     "apps/api/src/talent-identity/dossier.controller.ts": "AP",
     "apps/api/src/talent-identity/email-verification.controller.ts": "AP",
     "apps/api/src/talent-identity/portal-dispute-disposition.controller.ts": "AP",
     "apps/api/src/talent-identity/portal-notice.controller.ts": "PZ",
     "apps/api/src/talent-identity/portal-rights.controller.ts": "AP",
-    "apps/api/src/talent-identity/reference-attestation.controller.ts": "AP",
     "apps/api/src/talent-identity/sourcing.controller.ts": "AP",
     "apps/api/src/talent-identity/verification-proposal.controller.ts": "AP",
     "apps/api/src/talent-journey/talent-journey.controller.ts": "AP",
@@ -629,22 +639,6 @@
     },
     {
       "method": "DELETE",
-      "path": "/v1/talent-records/*/link"
-    },
-    {
-      "method": "GET",
-      "path": "/v1/talent-records/*/link"
-    },
-    {
-      "method": "POST",
-      "path": "/v1/talent-records/*/link"
-    },
-    {
-      "method": "POST",
-      "path": "/v1/talent-records/*/reference-attestations"
-    },
-    {
-      "method": "DELETE",
       "path": "/v1/talent-records/*"
     },
     {
@@ -694,14 +688,6 @@
     {
       "method": "POST",
       "path": "/v1/talent/identity/contradictions/*/resolve"
-    },
-    {
-      "method": "POST",
-      "path": "/v1/talent/identity/disputes/*/raise"
-    },
-    {
-      "method": "POST",
-      "path": "/v1/talent/identity/disputes/*/resolve"
     },
     {
       "method": "POST",

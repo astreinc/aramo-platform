@@ -31,7 +31,11 @@ import {
 // subscribed=true / authorized=false (no bulk grant), and the projection never
 // exposes roles, scopes, other members or commercial data — only the three
 // booleans, a reason and the entry path.
-export const PRODUCT_KEYS = ['ats', 'sign', 'org'] as const;
+// ATI-SEP-1 T9 — `intelligence` (Talent Intelligence): subscribed = the tenant
+// holds the `intelligence` capability (default OFF); its insights surface inside
+// the ATS, so it is authorized / opened exactly like the ATS (entry /ats/). App
+// Home shows its tile ONLY when subscribed (never as an "other product").
+export const PRODUCT_KEYS = ['ats', 'sign', 'org', 'intelligence'] as const;
 export type ProductKey = (typeof PRODUCT_KEYS)[number];
 
 export type ProductUnavailableReason = 'not_subscribed' | 'not_authorized' | 'not_activated';
@@ -142,6 +146,13 @@ export class ProductAvailabilityService {
         signActivated ? signEntryUrl() : null,
       ),
       { ...product('org', capabilities.has('core'), capabilities.has('core') && orgAccess !== 'none', true, orgEntry), org_access: capabilities.has('core') ? orgAccess : 'none' },
+      product(
+        'intelligence',
+        capabilities.has('intelligence'),
+        capabilities.has('intelligence') && capabilities.has('ats') && atsScopes.length > 0,
+        true,
+        ATS_ENTRY_PATH,
+      ),
     ];
     return { tenant_id: args.tenant_id, products };
   }

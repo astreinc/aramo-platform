@@ -7,6 +7,7 @@ import { CanonicalizationRepository } from './canonicalization.repository.js';
 import { CanonicalizationService } from './canonicalization.service.js';
 import {
   CANONICALIZATION_TRIGGER_BATCH_SIZE,
+  CANONICALIZATION_TRIGGER_MIN_AGE_MS,
   CANONICALIZATION_TRIGGER_QUEUE_NAME,
 } from './canonicalization-trigger.queue.constants.js';
 
@@ -15,10 +16,10 @@ import {
 // Design (Lead-reviewable SPLIT — the polling-outbox shape, the
 // simplest substrate-aligned variant of the §3 outbox-driven option):
 //
-//   - The unresolved RawPayloadReference row (resolved_subject_id IS NULL)
+//   - The unresolved RawPayloadReference row (sourced_talent_id IS NULL)
 //     IS the trigger's "work-to-do" signal. No separate
 //     ingestion.OutboxEvent table is needed — the existing
-//     resolved_subject_id field (added by T2-2a) already encodes both
+//     sourced_talent_id field (ATI-SEP-1 T10 WP2) already encodes both
 //     "needs canonicalize" (NULL) and "canonicalized" (non-NULL).
 //
 //   - Each tick: fetch up to N unresolved payloads (oldest first),
@@ -26,15 +27,15 @@ import {
 //     T2-1 resolver runs (verified-email SubjectAnchor match → existing
 //     ResolutionSubject; no match → new subject).
 //
-//   - Durability: a failed canonicalize leaves resolved_subject_id NULL;
+//   - Durability: a failed canonicalize leaves sourced_talent_id NULL;
 //     the next tick re-picks the row. A payload is NEVER lost on
 //     canonicalization failure (per-payload errors are caught + logged
 //     so one bad payload does not abort the whole tick — mirrors
 //     OutboxPublisherProcessor.drainSchema's per-schema isolation).
 //
 //   - Idempotency: two layers — (a) the polling query filters out
-//     already-resolved rows (WHERE resolved_subject_id IS NULL); (b)
-//     canonicalize's own resolved_subject_id short-circuit (T2-2a Step 2)
+//     already-resolved rows (WHERE sourced_talent_id IS NULL); (b)
+//     canonicalize's own sourced_talent_id short-circuit (T2-2a Step 2)
 //     catches any race-induced re-fire (e.g. two ticks racing on the
 //     same row both serialize on the SELECT FOR UPDATE lock; only the
 //     first does work, the second short-circuits).
@@ -92,7 +93,11 @@ export class CanonicalizationTriggerProcessor
     const batchSize =
       job.data.override_batch_size ?? CANONICALIZATION_TRIGGER_BATCH_SIZE;
 
-    const result = await this.drainBatch({ batchSize, jobId: job.id ?? null });
+    const result = await this.drainBatch({
+      batchSize,
+      jobId: job.id ?? null,
+      minAgeMs: CANONICALIZATION_TRIGGER_MIN_AGE_MS,
+    });
 
     this.logger.log({
       event: 'canonicalization_trigger_tick_completed',
@@ -111,9 +116,13 @@ export class CanonicalizationTriggerProcessor
   async drainBatch(args: {
     batchSize: number;
     jobId: string | null;
+    // ATI-SEP-1 T10 WP2 — hold just-written payloads back (the scheduled tick
+    // passes CANONICALIZATION_TRIGGER_MIN_AGE_MS; a direct call defaults to 0).
+    minAgeMs?: number;
   }): Promise<DrainResult> {
     const unresolved = await this.repo.findUnresolvedPayloadBatch({
       limit: args.batchSize,
+      ...(args.minAgeMs !== undefined ? { minAgeMs: args.minAgeMs } : {}),
     });
 
     if (unresolved.length === 0) {
@@ -146,7 +155,7 @@ export class CanonicalizationTriggerProcessor
           job_id: args.jobId,
           payload_id: row.id,
           tenant_id: row.tenant_id,
-          subject_id: result.subject_id,
+          sourced_talent_id: result.sourced_talent_id,
           resolution_method: result.resolution_method,
           already_canonicalized: result.already_canonicalized,
         });

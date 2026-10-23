@@ -1,0 +1,8 @@
+{
+  "name": "intelligence-boundary-probe-intelligence",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "tools/intelligence-boundary-probes/intelligence-probe",
+  "projectType": "library",
+  "tags": ["scope:intelligence"],
+  "targets": {}
+}

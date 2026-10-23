@@ -319,9 +319,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       return r.id;
     }
-    async function setResolved(id: string, subjectId: string): Promise<void> {
+    // ATI-SEP-1 T10 WP2 — "resolved" = canonicalized to a sourced_talent arrival.
+    async function setResolved(id: string, sourcedTalentId: string): Promise<void> {
       await prisma.$executeRawUnsafe(
-        `UPDATE "ingestion"."RawPayloadReference" SET "resolved_subject_id" = '${subjectId}'::uuid WHERE id = '${id}'::uuid`,
+        `UPDATE "ingestion"."RawPayloadReference" SET "sourced_talent_id" = '${sourcedTalentId}'::uuid WHERE id = '${id}'::uuid`,
       );
     }
 
@@ -334,7 +335,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
       const subject = uuidv7();
       await setResolved(eligible, subject);
-      // unresolved: resolved_subject_id stays NULL → excluded.
+      // unresolved: sourced_talent_id stays NULL → excluded.
       await setResolved(alreadyDone, uuidv7());
       await prisma.$executeRawUnsafe(
         `UPDATE "ingestion"."RawPayloadReference" SET "extraction_done_at" = now() WHERE id = '${alreadyDone}'::uuid`,
@@ -352,7 +353,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const myIds = new Set([eligible, unresolved, alreadyDone, atCap]);
       const returnedMine = arrivals.filter((a) => myIds.has(a.id));
       expect(returnedMine.map((a) => a.id)).toEqual([eligible]);
-      expect(returnedMine[0]?.resolved_subject_id).toBe(subject);
+      expect(returnedMine[0]?.sourced_talent_id).toBe(subject);
+      expect(returnedMine[0]?.resolved_subject_id).toBeNull();
       expect(returnedMine[0]?.storage_ref).toContain('poll-eligible');
     });
 
@@ -392,7 +394,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // storage_ref, sha256, content_type, captured_at) are written once at intake
     // and MUST survive every downstream lifecycle write unchanged — the
     // extract-once gate (markExtractionDone / bumpExtractionAttempt) AND the
-    // canonicalization writeback (resolved_subject_id). Provenance is preserved,
+    // canonicalization writeback (sourced_talent_id). Provenance is preserved,
     // never dropped or overwritten (directive: "normalization cannot drop or
     // overwrite arrival provenance").
     interface ArrivalEnvelope {
@@ -438,7 +440,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Run every real post-intake write path against this arrival.
       const repo = new IngestionRepository(prisma);
       await repo.bumpExtractionAttempt(id);
-      await setResolved(id, uuidv7()); // canonicalization writeback (resolved_subject_id)
+      await setResolved(id, uuidv7()); // canonicalization writeback (sourced_talent_id)
       await repo.markExtractionDone(id);
 
       const after = await readEnvelope(id);
@@ -497,7 +499,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
 
       // Lifecycle-only writes still succeed: extraction gate + attempt counter +
-      // canonicalization writeback (resolved_subject_id).
+      // canonicalization writeback (sourced_talent_id).
       const repo = new IngestionRepository(prisma);
       await repo.bumpExtractionAttempt(id);
       await setResolved(id, uuidv7());

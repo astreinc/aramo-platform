@@ -26,8 +26,11 @@ Memory maintenance is governed by `Aramo-Memory-Hygiene-Rule-v1_0-LOCKED`
 replace-in-place, never append narrative.
 
 ## Engineering laws
-- `ARAMO_RUN_INTEGRATION=1 nx run api` locally before every push
-  (apps/api has migration consumers the isolated specs miss).
+- Full `nx run api` integration suite runs in CI, not locally before
+  push (PO ruling 2026-10-16). Locally run TARGETED integration specs
+  (`ARAMO_RUN_INTEGRATION=1`) for every area touched — apps/api has
+  migration consumers the isolated lib specs miss, so include the
+  AppModule-booting specs that reach changed migrations.
 - Any new migration changing a returned shape must be registered in
   `pact/provider/src/verify-api.ts`.
 - New cross-lib dependency = 3-place wiring: `tsconfig.base.json`
@@ -57,7 +60,17 @@ replace-in-place, never append narrative.
 - Pipeline⊥ATS wall (ADR-0029/I15): Pipeline libs never hard-import
   ATS libs; cross L3 by UUID ref + versioned Pact-tested connector
   contract only; nx boundary tags CI-enforce this.
-- `identity_index` schema: NO `tenant_id` column, NO PII column, ever.
+- ATS / Talent Intelligence / Talent Portal are independent product
+  boundaries (ATI-SEP-1 + Addenda A1–A4; ADR-0036). ATS ↔ TI cross only
+  by versioned HTTP contract + HMAC webhook (`libs/intelligence-contracts`,
+  scope:shared); `scope:ats` and `scope:cip` never import
+  `scope:intelligence`, and TI never imports ATS — eslint walls
+  CI-enforce this. TI has its own database/role/migration ledger; ATS
+  never reads it. ATS Add Talent never calls TI (TI absent/unentitled
+  must not affect create). ATS documents never cross to TI. The legacy
+  `identity_index` / `talent_trust` / `platform_trust` substrate is
+  retired; Talent Portal identity is Portal-owned and pending
+  (GAP-PORTAL-ID-1) — never rebuild it on ATS tables or TI storage.
 - Never run Terraform from the box (wrong AWS account; 403 on the
   state bucket). Infra runs from the Mac.
 

@@ -60,10 +60,8 @@ const MIGRATION_FILES: string[] = [
   ...migrationsFor('submittal-eligibility'),
   ...migrationsFor('documents'),
   ...migrationsFor('client-talent-restriction'),
-  // Talent 360 additionally composes across communications (last contact) and
-  // talent-trust (identity outcomes via the dossier).
+  // Talent 360 additionally composes across communications (last contact).
   ...migrationsFor('communications'),
-  ...migrationsFor('talent-trust'),
   // Boot-only: the CI reconciler's onModuleInit scan needs its table present.
   ...migrationsFor('conversation-intelligence'),
 ];

@@ -902,7 +902,7 @@ export class ScreeningSessionController {
 
   private async detail(auth: AuthContextType, id: string, requestId: string): Promise<ScreeningSessionDetailView> {
     const d = await this.screening.getDetail(auth.tenant_id, id, requestId);
-    const statuses = await this.access.trustStatuses(auth.tenant_id, d.publications);
+    const statuses = this.access.trustStatuses(d.publications);
     return {
       session: sessionView(d.session),
       findings: d.findings.map(findingView),

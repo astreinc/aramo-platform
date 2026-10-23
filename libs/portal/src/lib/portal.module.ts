@@ -4,11 +4,9 @@ import { ConsentModule } from '@aramo/consent';
 import { EntitlementModule } from '@aramo/entitlement';
 import { IdentityCoreModule } from '@aramo/identity';
 import { TalentRecordModule } from '@aramo/talent-record';
-import { PortalIdentityModule } from '@aramo/portal-identity';
-import { TalentTrustModule } from '@aramo/talent-trust';
 
 import { PortalController } from './portal.controller.js';
-import { PortalTalentResolverService } from './portal-talent-resolver.service.js';
+import { PortalTalentResolverModule } from './portal-talent-resolver.module.js';
 
 // libs/portal — M3 PR-9 foundation slice. Hosts the two portal HTTP
 // endpoints in a new lib; registered into apps/api's AppModule.
@@ -33,13 +31,15 @@ import { PortalTalentResolverService } from './portal-talent-resolver.service.js
     // exports TenantService; it is already in apps/api's graph, so no new app
     // wiring. NO prisma enters libs/portal — data still flows through services.
     IdentityCoreModule,
-    // Portal P1 PR-2a — the OPEN-4 chain deps: PortalUser lookup (sub → cluster)
-    // + the platform-rail index-ref graph (cluster → subjects → ATS refs). Still
-    // no prisma in libs/portal; all data access flows through injected services.
-    PortalIdentityModule,
-    TalentTrustModule,
+    // ATI-SEP-1 T10 WP4 (Addendum A4, GAP-PORTAL-ID-1) — the portal talent
+    // resolver lives in its own module. The legacy OPEN-4 chain deps (PortalUser
+    // cluster lookup + the trust-ledger index-ref graph) are retired; the
+    // resolver currently resolves no talent (uniform 404 NOT_AVAILABLE).
+    PortalTalentResolverModule,
   ],
   controllers: [PortalController],
-  providers: [PortalTalentResolverService],
+  // ATI-SEP-1 T8 — the portal membership resolver, reused by the apps/api portal
+  // identifier-verification route (Talent Intelligence path).
+  exports: [PortalTalentResolverModule],
 })
 export class PortalModule {}

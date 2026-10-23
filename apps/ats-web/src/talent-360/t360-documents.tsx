@@ -35,7 +35,8 @@ import { getTalent360DocumentContent } from './talent-360-api';
 import type { Talent360View as Model, TalentDocumentView } from './talent-360-types';
 
 const MAX_BYTES = 10 * 1024 * 1024;
-const ACCEPT = '.pdf,.doc,.docx';
+// ATI-SEP-1 A4 — PDF and DOCX only: the résumé extractor reads no legacy .doc.
+const ACCEPT = '.pdf,.docx';
 const DOCX_MIME = 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 const RESUME_KIND = /r[ée]sum[ée]/i;
 
@@ -554,7 +555,7 @@ function UploadDialog({
   const choose = (f: File | undefined): void => {
     if (f === undefined) return;
     const lower = f.name.toLowerCase();
-    if (!['.pdf', '.doc', '.docx'].some((x) => lower.endsWith(x))) {
+    if (!['.pdf', '.docx'].some((x) => lower.endsWith(x))) {
       setFile(null);
       setFileError('That file type isn’t supported for a resume. Use PDF or Word.');
       return;

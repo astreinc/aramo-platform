@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import { PortalController } from '../lib/portal.controller.js';
-import type { PortalRecordRef } from '../lib/portal-talent-resolver.service.js';
+import { PortalTalentResolverService, type PortalRecordRef } from '../lib/portal-talent-resolver.service.js';
 
 // Portal P1 PR-2a §4.1 — controller unit tests on the OPEN-4 records surface,
 // with mocked PortalTalentResolverService + TalentRecordService + ConsentService.
@@ -135,20 +135,6 @@ const TENANT_NAMES: Record<string, string> = {
   [TENANT_A]: 'Acme Corp',
   [TENANT_B]: 'Globex',
 };
-// Portal P3a — minimal TalentTrustService mock (verification view + disputes).
-// The P1/P2 record/consent tests never call these; P3a route tests stub as needed.
-function makeTrustService(overrides: Record<string, unknown> = {}) {
-  return {
-    aggregateVerifications: async () => [],
-    openPortalDispute: async () => ({}),
-    listPortalDisputes: async () => [],
-    getPortalDispute: async () => ({ dispute: {}, statements: [] }),
-    respondPortalDisputeStatement: async () => ({}),
-    withdrawPortalDispute: async () => ({}),
-    ...overrides,
-  };
-}
-
 function makeTenantService() {
   return {
     getTenantById: async (id: string) => ({
@@ -196,7 +182,6 @@ describe('PortalController — GET /v1/portal/records', () => {
       makeTalentRecordService('project', profileCalls) as never,
       makeConsentService({ consent: [] }) as never,
       makeTenantService() as never,
-      makeTrustService() as never,
     );
     await expect(
       controller.getRecords(portalAuth({ consumer_type: 'recruiter' }), 'req-1'),
@@ -211,7 +196,6 @@ describe('PortalController — GET /v1/portal/records', () => {
       makeTalentRecordService('project', { profile: [] }) as never,
       makeConsentService({ consent: [] }) as never,
       makeTenantService() as never,
-      makeTrustService() as never,
     );
     await expect(
       controller.getRecords(portalAuth({ sub: 'not-a-uuid' }), 'req-1'),
@@ -231,7 +215,6 @@ describe('PortalController — GET /v1/portal/records', () => {
       makeTalentRecordService('project', profileCalls) as never,
       makeConsentService({ consent: [] }) as never,
       makeTenantService() as never,
-      makeTrustService() as never,
     );
     const result = await controller.getRecords(portalAuth(), 'req-1');
     // WHO comes from sub only.
@@ -253,7 +236,6 @@ describe('PortalController — GET /v1/portal/records', () => {
       makeTalentRecordService('project', { profile: [] }) as never,
       makeConsentService({ consent: [] }) as never,
       makeTenantService() as never,
-      makeTrustService() as never,
     );
     const result = await controller.getRecords(portalAuth(), 'req-1');
     expect(result).toEqual({ records: [] });
@@ -265,7 +247,6 @@ describe('PortalController — GET /v1/portal/records', () => {
       makeTalentRecordService('project', { profile: [] }) as never,
       makeConsentService({ consent: [] }) as never,
       makeTenantService() as never,
-      makeTrustService() as never,
     );
     const result = await controller.getRecords(portalAuth(), 'req-1');
     expect(Object.keys(result)).toEqual(['records']);
@@ -293,7 +274,6 @@ describe('PortalController — GET /v1/portal/records/:id/profile', () => {
       makeTalentRecordService('project', profileCalls) as never,
       makeConsentService({ consent: [] }) as never,
       makeTenantService() as never,
-      makeTrustService() as never,
     );
     const result = await controller.getRecordProfile(RECORD_A, portalAuth(), 'req-1');
     expect(profileCalls.profile).toEqual([{ tenant_id: TENANT_A, talent_id: RECORD_A }]);
@@ -315,11 +295,10 @@ describe('PortalController — GET /v1/portal/records/:id/profile', () => {
       makeTalentRecordService('project', { profile: [] }) as never,
       makeConsentService({ consent: [] }) as never,
       makeTenantService() as never,
-      makeTrustService() as never,
     );
     await expect(
       controller.getRecordProfile(UNKNOWN_RECORD, portalAuth(), 'req-1'),
-    ).rejects.toMatchObject({ code: 'NOT_FOUND', message: 'record not found', statusCode: 404 });
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', message: 'not available', statusCode: 404 });
     // Membership WAS consulted for a well-formed id.
     expect(resolverCalls.resolveMember).toEqual([{ portalUserId: PORTAL_SUB, recordId: UNKNOWN_RECORD }]);
   });
@@ -331,11 +310,10 @@ describe('PortalController — GET /v1/portal/records/:id/profile', () => {
       makeTalentRecordService('project', { profile: [] }) as never,
       makeConsentService({ consent: [] }) as never,
       makeTenantService() as never,
-      makeTrustService() as never,
     );
     await expect(
       controller.getRecordProfile(MALFORMED_RECORD, portalAuth(), 'req-1'),
-    ).rejects.toMatchObject({ code: 'NOT_FOUND', message: 'record not found', statusCode: 404 });
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', message: 'not available', statusCode: 404 });
     // Malformed short-circuits: no membership probe → no unknown-vs-malformed oracle.
     expect(resolverCalls.resolveMember).toEqual([]);
   });
@@ -346,11 +324,10 @@ describe('PortalController — GET /v1/portal/records/:id/profile', () => {
       makeTalentRecordService('null', { profile: [] }) as never,
       makeConsentService({ consent: [] }) as never,
       makeTenantService() as never,
-      makeTrustService() as never,
     );
     await expect(
       controller.getRecordProfile(RECORD_A, portalAuth(), 'req-1'),
-    ).rejects.toMatchObject({ code: 'NOT_FOUND', message: 'record not found', statusCode: 404 });
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', message: 'not available', statusCode: 404 });
   });
 
   it('returns 403 for a non-portal consumer before any resolution', async () => {
@@ -360,7 +337,6 @@ describe('PortalController — GET /v1/portal/records/:id/profile', () => {
       makeTalentRecordService('project', { profile: [] }) as never,
       makeConsentService({ consent: [] }) as never,
       makeTenantService() as never,
-      makeTrustService() as never,
     );
     await expect(
       controller.getRecordProfile(RECORD_A, portalAuth({ consumer_type: 'recruiter' }), 'req-1'),
@@ -377,7 +353,6 @@ describe('PortalController — GET /v1/portal/records/:id/consent', () => {
       makeTalentRecordService('project', { profile: [] }) as never,
       makeConsentService(consentCalls) as never,
       makeTenantService() as never,
-      makeTrustService() as never,
     );
     const result = await controller.getRecordConsent(RECORD_A, portalAuth(), 'req-7');
     expect(consentCalls.consent).toHaveLength(1);
@@ -400,13 +375,12 @@ describe('PortalController — GET /v1/portal/records/:id/consent', () => {
       makeTalentRecordService('project', { profile: [] }) as never,
       makeConsentService(consentCalls) as never,
       makeTenantService() as never,
-      makeTrustService() as never,
     );
     // A record id the caller does not hold resolves to nothing → uniform 404;
     // there is no surface to read another portal user's record.
     await expect(
       controller.getRecordConsent(UNKNOWN_RECORD, portalAuth(), 'req-1'),
-    ).rejects.toMatchObject({ code: 'NOT_FOUND', message: 'record not found', statusCode: 404 });
+    ).rejects.toMatchObject({ code: 'NOT_FOUND', message: 'not available', statusCode: 404 });
     expect(consentCalls.consent).toEqual([]);
   });
 
@@ -417,7 +391,6 @@ describe('PortalController — GET /v1/portal/records/:id/consent', () => {
       makeTalentRecordService('project', { profile: [] }) as never,
       makeConsentService(consentCalls) as never,
       makeTenantService() as never,
-      makeTrustService() as never,
     );
     await expect(
       controller.getRecordConsent(RECORD_A, portalAuth({ sub: 'not-a-uuid' }), 'req-1'),
@@ -432,7 +405,6 @@ describe('PortalController — GET /v1/portal/records/:id/consent', () => {
       makeTalentRecordService('project', { profile: [] }) as never,
       makeConsentService(consentCalls) as never,
       makeTenantService() as never,
-      makeTrustService() as never,
     );
     await expect(
       controller.getRecordConsent(RECORD_A, portalAuth({ consumer_type: 'ingestion' }), 'req-1'),
@@ -449,7 +421,6 @@ describe('PortalController — GET /v1/portal/records/:id/consent/text (P2b)', (
       makeTalentRecordService('project', { profile: [] }) as never,
       makeConsentService(calls) as never,
       makeTenantService() as never,
-      makeTrustService() as never,
     );
     const result = await controller.getRecordConsentText(RECORD_A, portalAuth(), 'req-1');
     // Recipient is the record's tenant, NOT the portal session sentinel.
@@ -464,7 +435,6 @@ describe('PortalController — GET /v1/portal/records/:id/consent/text (P2b)', (
       makeTalentRecordService('project', { profile: [] }) as never,
       makeConsentService(calls) as never,
       makeTenantService() as never,
-      makeTrustService() as never,
     );
     await expect(
       controller.getRecordConsentText(UNKNOWN_RECORD, portalAuth(), 'req-1'),
@@ -479,7 +449,6 @@ describe('PortalController — GET /v1/portal/records/:id/consent/text (P2b)', (
       makeTalentRecordService('project', { profile: [] }) as never,
       makeConsentService(calls) as never,
       makeTenantService() as never,
-      makeTrustService() as never,
     );
     await expect(
       controller.getRecordConsentText(RECORD_A, portalAuth({ consumer_type: 'recruiter' }), 'req-1'),
@@ -496,7 +465,6 @@ describe('PortalController — GET /v1/portal/records/:id/consent/history (P2b)'
       makeTalentRecordService('project', { profile: [] }) as never,
       makeConsentService(calls) as never,
       makeTenantService() as never,
-      makeTrustService() as never,
     );
     const result = await controller.getRecordConsentHistory(
       RECORD_A, undefined, undefined, undefined, portalAuth(), 'req-9',
@@ -512,7 +480,6 @@ describe('PortalController — GET /v1/portal/records/:id/consent/history (P2b)'
       makeTalentRecordService('project', { profile: [] }) as never,
       makeConsentService(calls) as never,
       makeTenantService() as never,
-      makeTrustService() as never,
     );
     await expect(
       controller.getRecordConsentHistory(
@@ -520,5 +487,94 @@ describe('PortalController — GET /v1/portal/records/:id/consent/history (P2b)'
       ),
     ).rejects.toMatchObject({ code: 'NOT_FOUND', statusCode: 404 });
     expect(calls.history).toEqual([]);
+  });
+});
+
+// ATI-SEP-1 T10 WP3b (Addendum A4) — the verification view + dispute routes are
+// retired from the trust ledger and answer ONE uniform 404 NOT_AVAILABLE for a
+// portal caller (the consumer / sub checks still run first).
+describe('PortalController — verification + dispute routes (NOT_AVAILABLE, A4)', () => {
+  const controller = () =>
+    new PortalController(
+      makeResolver([REF_A], { resolveRecords: [], resolveMember: [] }) as never,
+      makeTalentRecordService('project', { profile: [] }) as never,
+      makeConsentService({ consent: [] }) as never,
+      makeTenantService() as never,
+    );
+  const routes: Array<[string, (c: PortalController, a: ReturnType<typeof portalAuth>) => unknown]> = [
+    ['getVerifications', (c, a) => c.getVerifications(a, 'req-1')],
+    ['openDispute', (c, a) => c.openDispute(a, 'req-1')],
+    ['listDisputes', (c, a) => c.listDisputes(a, 'req-1')],
+    ['getDispute', (c, a) => c.getDispute(a, 'req-1')],
+    ['respondDispute', (c, a) => c.respondDispute(a, 'req-1')],
+    ['withdrawDispute', (c, a) => c.withdrawDispute(a, 'req-1')],
+  ];
+
+  it.each(routes)('%s → uniform 404 NOT_AVAILABLE for a portal caller', (_name, call) => {
+    let thrown: unknown = null;
+    try {
+      call(controller(), portalAuth());
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toMatchObject({ code: 'NOT_FOUND', statusCode: 404, context: { details: { reason: 'NOT_AVAILABLE' } } });
+  });
+
+  it.each(routes)('%s → 403 for a non-portal consumer (checked first)', (_name, call) => {
+    let thrown: unknown = null;
+    try {
+      call(controller(), portalAuth({ consumer_type: 'recruiter' }));
+    } catch (err) {
+      thrown = err;
+    }
+    expect(thrown).toMatchObject({ code: 'INSUFFICIENT_PERMISSIONS', statusCode: 403 });
+  });
+});
+
+// ATI-SEP-1 T10 WP4 (Addendum A4, GAP-PORTAL-ID-1) — the REAL resolver resolves
+// no talent, so EVERY record / consent route answers the same uniform 404
+// NOT_AVAILABLE for a portal caller (the record list included), and nothing
+// downstream (talent record / consent services) is ever consulted.
+describe('PortalController + real PortalTalentResolverService — identity deferred (A4)', () => {
+  const VALID_BODY = { scope: 'contacting', consent_text_version: 'v1' } as never;
+  const IDEM = 'dddddddd-dddd-7ddd-8ddd-dddddddddddd';
+  const build = () => {
+    const profileCalls: ProfileCall[] = [];
+    const consentCalls: ConsentCall[] = [];
+    const controller = new PortalController(
+      new PortalTalentResolverService(),
+      makeTalentRecordService('project', { profile: profileCalls }) as never,
+      makeConsentService({ consent: consentCalls }) as never,
+      makeTenantService() as never,
+    );
+    return { controller, profileCalls, consentCalls };
+  };
+  const routes: Array<[string, (c: PortalController) => Promise<unknown>]> = [
+    ['getRecords', (c) => c.getRecords(portalAuth(), 'req-1')],
+    ['getRecordProfile', (c) => c.getRecordProfile(RECORD_A, portalAuth(), 'req-1')],
+    ['getRecordConsent', (c) => c.getRecordConsent(RECORD_A, portalAuth(), 'req-1')],
+    ['getRecordConsentText', (c) => c.getRecordConsentText(RECORD_A, portalAuth(), 'req-1')],
+    ['getRecordConsentHistory', (c) => c.getRecordConsentHistory(RECORD_A, undefined, undefined, undefined, portalAuth(), 'req-1')],
+    ['grantRecordConsent', (c) => c.grantRecordConsent(RECORD_A, VALID_BODY, IDEM, portalAuth(), 'req-1')],
+    ['revokeRecordConsent', (c) => c.revokeRecordConsent(RECORD_A, VALID_BODY, IDEM, portalAuth(), 'req-1')],
+    ['getRecordProfile (malformed id)', (c) => c.getRecordProfile(MALFORMED_RECORD, portalAuth(), 'req-1')],
+  ];
+
+  it.each(routes)('%s → uniform 404 NOT_AVAILABLE, no downstream read', async (_name, call) => {
+    const { controller, profileCalls, consentCalls } = build();
+    await expect(call(controller)).rejects.toMatchObject({
+      code: 'NOT_FOUND',
+      message: 'not available',
+      statusCode: 404,
+      context: { details: { reason: 'NOT_AVAILABLE' } },
+    });
+    expect(profileCalls).toEqual([]);
+    expect(consentCalls).toEqual([]);
+  });
+
+  it('the resolver itself answers "no resolvable talent"', async () => {
+    const resolver = new PortalTalentResolverService();
+    expect(await resolver.resolveRecords(PORTAL_SUB)).toBeNull();
+    expect(await resolver.resolveMemberRecord(PORTAL_SUB, RECORD_A)).toBeNull();
   });
 });

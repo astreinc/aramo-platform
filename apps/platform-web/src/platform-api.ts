@@ -94,7 +94,8 @@ export interface LifecycleActionResult {
 // IC-3 PR-8 — mirrors libs/entitlement CAPABILITY_VALUES (the backend-authoritative
 // closed set; the DTO + EntitlementRepository decide, this list only OFFERS). `sign`
 // lets an operator provision a Sign-only ([core, esign]) or ATS + Sign tenant.
-const CAPABILITIES = ['core', 'ats', 'portal', 'sourcing', 'sign'] as const;
+// ATI-SEP-1 T9 — `intelligence` (Talent Intelligence) is provisionable; default OFF.
+const CAPABILITIES = ['core', 'ats', 'portal', 'sourcing', 'sign', 'intelligence'] as const;
 export type Capability = (typeof CAPABILITIES)[number];
 export const ALL_CAPABILITIES: readonly Capability[] = CAPABILITIES;
 

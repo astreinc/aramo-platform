@@ -25,8 +25,8 @@ import { ensureWriteFreezeTenant } from '../write-freeze-tenant.js';
 
 // TIP-E2E INC-3 (ARAMO-TIP-E2E-INC-3-v1.0-LOCKED §8/§9/§13) — the Technical
 // Screening HTTP surface through the REAL AppModule + guards against real
-// Postgres 17, publishing through the REAL Talent Trust writer
-// (Aramo-TR-SCREEN-1-DDR §3). Rows 1–4, 7, 10, 12, 14, 15, 21–23, 35, 39 (HTTP),
+// Postgres 17. ATI-SEP-1 T10 WP1 — publication is ATS-local (the publication row
+// is marked PUBLISHED; nothing is written to the trust ledger). Rows 1–4, 7, 10, 12, 14, 15, 21–23, 35, 39 (HTTP),
 // 42, 44, 45, 51.
 
 const __authz = new ConfigurableTestResolver();
@@ -233,7 +233,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
     }, 60_000);
 
-    it('end to end: draft → confirm (attested) → published SCREENING_FINDING evidence with honest provenance', async () => {
+    it('end to end: draft → confirm (attested) → ATS-local PUBLISHED publication, no trust-ledger write', async () => {
       const token = await jwt({ scopes: ALL });
       const talentId = await talent();
       const { id, findingId, version } = await draftWithFinding(token, talentId);
@@ -251,25 +251,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(pubs[0]!['state']).toBe('PUBLISHED');
       expect(pubs[0]!['trust_status']).toBe('VALID');
 
-      const ev = await db.query<Record<string, unknown>>(
-        `SELECT assertion_type, source_class, method, ai_derived, created_by, assertion_payload FROM talent_trust."EvidenceRecord" WHERE id = $1::uuid`,
-        [pubs[0]!['evidence_record_id']],
+      // ATI-SEP-1 T10 WP1/WP5 — no trust-ledger evidence for the pinned (inert) id:
+      // the ledger schema itself is retired (dropped).
+      const ev = await db.query<{ gone: boolean }>(`SELECT to_regnamespace('talent_trust') IS NULL AS gone`);
+      expect(ev.rows[0]!.gone).toBe(true);
+      // Row 51 — no actor identifier in the pinned publication payload; the real
+      // recruiter id lives only in the session.
+      const pinned = await db.query<{ canonical_payload: unknown }>(
+        `SELECT canonical_payload FROM technical_screening."ScreeningEvidencePublication" WHERE id = $1::uuid`,
+        [pubs[0]!['id']],
       );
-      expect(ev.rows[0]).toMatchObject({
-        assertion_type: 'SCREENING_FINDING',
-        source_class: 'THIRD_PARTY_UNVERIFIED',
-        method: 'HUMAN_ATTESTED',
-        ai_derived: false,
-        created_by: 'technical-screening',
-      });
-      // Row 51 — no actor identifier on the evidence wire; the real recruiter id
-      // lives only in the screening domain.
-      expect(JSON.stringify(ev.rows[0]!['assertion_payload'])).not.toContain(RECRUITER);
-      const evt = await db.query<{ actor: string }>(
-        `SELECT actor FROM talent_trust."EvidenceEvent" WHERE evidence_id = $1::uuid`,
-        [pubs[0]!['evidence_record_id']],
-      );
-      expect(evt.rows.map((r) => r.actor)).toEqual(['technical-screening']);
+      expect(JSON.stringify(pinned.rows[0]!.canonical_payload)).not.toContain(RECRUITER);
       expect((confirmed.body['session'] as Record<string, unknown>)['confirmed_by_actor_id']).toBe(RECRUITER);
 
       // Row 21 — screening writes nothing into Examination / Pipeline / Submittal.
@@ -374,55 +366,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect([r.status, codeOf(r.body)]).toEqual([422, 'TALENT_RECORD_SUPERSEDED']);
     });
 
-    it('trust failure after confirm leaves CONFIRMED + PENDING; /publish retries with no re-attestation (row 14)', async () => {
-      const token = await jwt({ scopes: ALL });
-      const { id, findingId, version } = await draftWithFinding(token, await talent());
-      // Make the trust write fail transiently: a trigger rejecting inserts.
-      await db.query(`CREATE OR REPLACE FUNCTION talent_trust.inc3_block() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'inc3 test block'; END; $$ LANGUAGE plpgsql`);
-      await db.query(`CREATE TRIGGER inc3_block BEFORE INSERT ON talent_trust."EvidenceRecord" FOR EACH ROW EXECUTE FUNCTION talent_trust.inc3_block()`);
-      try {
-        const confirmed = await call('POST', S(id, '/confirm'), token, { version, confirmed_finding_ids: [findingId], observations_confirmed: true }, { 'Idempotency-Key': uuidv7() });
-        expect(confirmed.status).toBe(200);
-        expect((confirmed.body['session'] as Record<string, unknown>)['state']).toBe('CONFIRMED');
-        const p = (confirmed.body['publications'] as Array<Record<string, unknown>>)[0]!;
-        expect(p['state']).toBe('PENDING');
-        expect(p['attempt_count']).toBe(1);
-        expect(p['trust_status']).toBeNull();
-        const evidence = await db.query<{ n: number }>(`SELECT count(*)::int AS n FROM talent_trust."EvidenceRecord" WHERE id = $1::uuid`, [p['evidence_record_id']]);
-        expect(evidence.rows[0]!.n).toBe(0);
-      } finally {
-        await db.query(`DROP TRIGGER inc3_block ON talent_trust."EvidenceRecord"`);
-        await db.query(`DROP FUNCTION talent_trust.inc3_block()`);
-      }
-      const retry = await call('POST', S(id, '/publish'), token, undefined, { 'Idempotency-Key': uuidv7() });
-      expect(retry.status).toBe(200);
-      const p = (retry.body['publications'] as Array<Record<string, unknown>>)[0]!;
-      expect([p['state'], p['trust_status']]).toEqual(['PUBLISHED', 'VALID']);
-    });
-
-    it('a published finding contested via TR-15: upheld → REVOKED, session stays CONFIRMED (row 44); cross-tenant dispute refused 404 (row 45)', async () => {
+    it('ATI-SEP-1 T10 WP1 — /publish after confirm is an idempotent no-op; the status derives from the local publication state', async () => {
       const token = await jwt({ scopes: ALL });
       const { id, findingId, version } = await draftWithFinding(token, await talent());
       const confirmed = await call('POST', S(id, '/confirm'), token, { version, confirmed_finding_ids: [findingId], observations_confirmed: true }, { 'Idempotency-Key': uuidv7() });
-      const evidenceId = (confirmed.body['publications'] as Array<Record<string, unknown>>)[0]!['evidence_record_id'] as string;
-
-      // Row 45 (MANDATORY) — a foreign tenant's identity:resolve holder cannot
-      // raise a dispute on it: 404 indistinguishable from absent, no event, no change.
-      const foreign = await jwt({ scopes: ['identity:resolve'], tenant: OTHER_TENANT, sub: FOREIGN_ADMIN });
-      const cross = await call('POST', `/v1/talent/identity/disputes/${evidenceId}/raise`, foreign, { grounds: 'x' });
-      const absent = await call('POST', `/v1/talent/identity/disputes/${uuidv7()}/raise`, foreign, { grounds: 'x' });
-      expect([cross.status, codeOf(cross.body)]).toEqual([absent.status, codeOf(absent.body)]);
-      expect(cross.status).toBe(404);
-      const events = await db.query<{ event_type: string }>(`SELECT event_type FROM talent_trust."EvidenceEvent" WHERE evidence_id = $1::uuid`, [evidenceId]);
-      expect(events.rows.map((e) => e.event_type)).toEqual(['CREATED']);
-
-      // Row 44 — the owning tenant's dispute, upheld.
-      const resolver = await jwt({ scopes: ['identity:resolve', ...ALL] });
-      expect((await call('POST', `/v1/talent/identity/disputes/${evidenceId}/raise`, resolver, { grounds: 'talent objects' })).status).toBe(200);
-      expect((await call('POST', `/v1/talent/identity/disputes/${evidenceId}/resolve`, resolver, { outcome: 'upheld', justification: 'observation was wrong' })).status).toBe(200);
-      const after = await call('GET', S(id), resolver);
-      expect((after.body['session'] as Record<string, unknown>)['state']).toBe('CONFIRMED');
-      expect((after.body['publications'] as Array<Record<string, unknown>>)[0]!['trust_status']).toBe('REVOKED');
+      const first = (confirmed.body['publications'] as Array<Record<string, unknown>>)[0]!;
+      expect([first['state'], first['trust_status'], first['attempt_count']]).toEqual(['PUBLISHED', 'VALID', 1]);
+      const retry = await call('POST', S(id, '/publish'), token, undefined, { 'Idempotency-Key': uuidv7() });
+      expect(retry.status).toBe(200);
+      const p = (retry.body['publications'] as Array<Record<string, unknown>>)[0]!;
+      expect([p['state'], p['trust_status'], p['attempt_count']]).toEqual(['PUBLISHED', 'VALID', 1]);
+      const ledger = await db.query<{ gone: boolean }>(`SELECT to_regnamespace('talent_trust') IS NULL AS gone`);
+      expect(ledger.rows[0]!.gone).toBe(true); // the retired ledger schema is dropped (T10 WP5)
     });
 
     it('DRAFT editing over HTTP: add, edit (DEMONSTRATED needs text), remove, void', async () => {

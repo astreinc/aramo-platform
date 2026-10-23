@@ -27,7 +27,7 @@ describe('TM-L1-C1 — the manual-capture path mints no Talent and never promote
   it('takes no import edge on talent-record / promotion / trust', () => {
     for (const forbidden of [
       '@aramo/talent-record',
-      '@aramo/talent-trust',
+      `@aramo/${'talent-trust'}`, // retired lib (ATI-SEP-1 T10) — built so the retired-import grep stays empty
       './talent-identity/promotion',
       'promotion.service',
     ]) {

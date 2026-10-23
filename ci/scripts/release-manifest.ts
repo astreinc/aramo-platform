@@ -28,7 +28,16 @@ export const REVISION_REGEX = /^[0-9a-f]{40}$/;
 export const DIGEST_REGEX = /^sha256:[0-9a-f]{64}$/;
 // The governed deployable artifact set — every image the docker-build matrix produces. The
 // manifest must contain exactly these, once each.
-export const REQUIRED_COMPONENTS = ['api', 'auth-service', 'nginx', 'platform-admin'] as const;
+// ATI-SEP-1 T0 — sign-service (built by the matrix since DOC-3 deploys, previously missing
+// here) and talent-intelligence-service (ADR-0036) are governed artifacts too.
+export const REQUIRED_COMPONENTS = [
+  'api',
+  'auth-service',
+  'nginx',
+  'platform-admin',
+  'sign-service',
+  'talent-intelligence-service',
+] as const;
 
 export interface ManifestArtifact {
   component: string;

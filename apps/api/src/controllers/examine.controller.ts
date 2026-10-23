@@ -210,13 +210,9 @@ export class ExamineController {
       });
     }
 
-    // Step 4b — TR-4 B2 (DDR §3): route the talent's typed EMPLOYMENT/SKILL rows
-    // into the trust ledger as canonical CLAIMS evidence. UNCONDITIONAL (outside
-    // the extract-once guard above): a RECONCILE that is idempotent (source_ref
-    // existence check) and self-healing — a prior partial ledger failure completes
-    // on this run, and a fully-routed talent writes nothing. Loud-fail: a ledger
-    // error propagates (this request errors) rather than half-committing silently.
-    await this.talentExtractionService.routeDeclaredEvidenceToLedger({ tenant_id, talent_id });
+    // Step 4b (the TR-4 B2 trust-ledger CLAIMS routing) was removed at ATI-SEP-1
+    // T10 WP1 — matching stays ATS-local and never read the ledger back; Talent
+    // Intelligence receives the evidence via the talent.* event feed.
 
     // Step 5 — read declared skill evidence + derive the input.
     const declared = await this.talentEvidenceRepository.findTalentSkillEvidenceByTalent(

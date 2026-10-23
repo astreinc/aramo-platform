@@ -17,6 +17,9 @@ import type { TalentIntakeProcessingPort } from './talent-intake-processing.port
 // EventBridge/SQS/Lambda) carries ZERO semantic drift. It knows nothing of
 // BullMQ, SQS, Lambda, or EventBridge — it is the single implementation behind
 // TALENT_INTAKE_PROCESSING_PORT, invoked by the runtime-neutral message handler.
+// ATI-SEP-1 A4 — claim attempts per delivery before yielding to the next one.
+const MAX_CLAIM_ATTEMPTS = 3;
+
 @Injectable()
 export class TalentIntakeExtractionService implements TalentIntakeProcessingPort {
   constructor(
@@ -34,33 +37,46 @@ export class TalentIntakeExtractionService implements TalentIntakeProcessingPort
     tenant_id: string;
     correlation_id?: string | null;
   }): Promise<boolean> {
-    const intake = await this.talentExtraction.findTalentIntakeDraftById({
-      tenant_id: input.tenant_id,
-      id: input.draft_id,
-    });
-    if (intake === null) {
-      this.logger.warn({
-        event: 'talent_intake_extract_skipped',
-        reason: 'draft_missing',
-        draft_id: input.draft_id,
+    // ATI-SEP-1 A4 — bounded re-read + re-claim. The claim CASes on the version
+    // just read; a recruiter review save landing between that read and the claim
+    // bumps the version WITHOUT claiming, so a single attempt would leave the
+    // draft QUEUED forever. A lost CAS therefore re-reads: still QUEUED (and not
+    // promoted) at a newer version → claim again on that version; anything else
+    // (a concurrent worker claimed it / terminal / promoted) → idempotent no-op.
+    for (let attempt = 0; attempt < MAX_CLAIM_ATTEMPTS; attempt += 1) {
+      const intake = await this.talentExtraction.findTalentIntakeDraftById({
+        tenant_id: input.tenant_id,
+        id: input.draft_id,
       });
-      return false;
+      if (intake === null) {
+        this.logger.warn({
+          event: 'talent_intake_extract_skipped',
+          reason: 'draft_missing',
+          draft_id: input.draft_id,
+        });
+        return false;
+      }
+      if (intake.processing_status !== 'QUEUED' || intake.promoted_talent_record_id !== null) {
+        // Already claimed / processed / terminal / promoted — idempotent no-op.
+        return false;
+      }
+      const claimed = await this.talentExtraction.claimTalentIntakeDraftForProcessing({
+        tenant_id: intake.tenant_id,
+        id: intake.id,
+        expected_version: intake.version,
+      });
+      if (claimed > 0) {
+        await this.runIntakeExtraction(intake, input.correlation_id ?? null);
+        return true;
+      }
     }
-    if (intake.processing_status !== 'QUEUED') {
-      // Already claimed / processed / terminal — idempotent no-op.
-      return false;
-    }
-    const claimed = await this.talentExtraction.claimTalentIntakeDraftForProcessing({
-      tenant_id: intake.tenant_id,
-      id: intake.id,
-      expected_version: intake.version,
+    // Still contended after the bound — leave it to the next delivery / drain.
+    this.logger.warn({
+      event: 'talent_intake_extract_skipped',
+      reason: 'claim_contended',
+      draft_id: input.draft_id,
     });
-    if (claimed === 0) {
-      // Lost the CAS race to a concurrent worker — never double-process.
-      return false;
-    }
-    await this.runIntakeExtraction(intake, input.correlation_id ?? null);
-    return true;
+    return false;
   }
 
   private async runIntakeExtraction(

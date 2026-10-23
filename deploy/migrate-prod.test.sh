@@ -93,6 +93,26 @@ check  "G4 legacy verdict on bounded output: total pending 3 → abort (before-s
 # G5 the legacy verdict on a plain run is byte-for-byte as before.
 check  "G5 legacy verdict, plain run, zero pending → proceed" 0 "$PLAIN_ZERO"
 
+# ATI-SEP-1 T0 — Talent Intelligence gate (pending 0 AND drift 0; missing line fails closed).
+checkti() {
+  local desc="$1" expected="$2" status="$3" got
+  if intelligence_gate_passes "$status"; then got=0; else got=1; fi
+  if [ "$got" = "$expected" ]; then echo "  ok    ${desc}"; pass=$((pass + 1)); else echo "  FAIL  ${desc} (expected ${expected}, got ${got})"; fail=$((fail + 1)); fi
+}
+TI_OK="$(printf '%s\n' 'db:sync:intelligence status — 1/1 migrations recorded as applied' 'db:sync:intelligence pending — 0 on-disk migration(s) not yet applied' 'db:sync:intelligence drift — 0 recorded migration(s) whose checksum changed')"
+checkti "TI1 pending 0 + drift 0 → proceed" 0 "$TI_OK"
+checkti "TI2 pending 1 → abort" 1 "$(printf '%s' "$TI_OK" | sed 's/pending — 0/pending — 1/')"
+checkti "TI3 drift 1 → abort" 1 "$(printf '%s' "$TI_OK" | sed 's/drift — 0/drift — 1/')"
+checkti "TI4 no drift line → abort (fail closed)" 1 "$(printf '%s' "$TI_OK" | grep -v drift)"
+checkti "TI5 shared-DB status lines are not a TI verdict → abort" 1 "db:sync:local pending — 0 on-disk migration(s) not yet applied"
+ENV_FILE="$(mktemp)"; printf 'INTELLIGENCE_DB_USER=aramo_intelligence\n' > "$ENV_FILE"
+if [ "$(build_intelligence_dburl)" = "postgresql://aramo_intelligence@postgres:5432/aramo_intelligence" ]; then
+  echo "  ok    TI6 TI runner URL: postgres service host, aramo_intelligence db, no password in the URL"; pass=$((pass + 1))
+else
+  echo "  FAIL  TI6 TI runner URL ($(build_intelligence_dburl))"; fail=$((fail + 1))
+fi
+rm -f "$ENV_FILE"
+
 echo ""
 echo "gate parse: ${pass} passed, ${fail} failed"
 [ "$fail" = 0 ]

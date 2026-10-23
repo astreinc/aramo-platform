@@ -10,8 +10,10 @@ import type { ResumeDate } from '../lib/resume-date.js';
 // HF2 P6 — the confirmed-create persistence of Talent Experience Intelligence:
 // WorkExperience (+experience_summary, company_id NULL seam) → per-role
 // SkillUsage (+version/basis/activity/work_experience_id) + ProjectExperience +
-// EXPERIENCE_CLAIM assertions, plus the union-based derived-years snapshot
-// (R14/R27). All DETERMINISTIC — no model call is ever made on this path.
+// the union-based derived-years snapshot (R14/R27). All DETERMINISTIC — no model
+// call is ever made on this path. ATI-SEP-1 A1 — EXPERIENCE_CLAIM assertions are
+// NO LONGER routed to the ledger here (ATS typed rows only; the projection moved
+// to the TEMPORARY apps/api LegacyTrustProjectionService).
 
 const TENANT = '01900000-0000-7000-8000-000000000001';
 const TALENT = '01900000-0000-7000-8000-0000000000aa';
@@ -32,14 +34,11 @@ function makeService() {
     createTalentEducationEntry,
     createTalentCertificationEntry,
   };
-  const recordDeclaredClaimIfAbsent = vi.fn().mockResolvedValue({ written: true });
-  const trust = { recordDeclaredClaimIfAbsent };
   const generateDraft = vi.fn();
   const generateStructured = vi.fn();
   const svc = new TalentExtractionService(
     { generateDraft } as never,
     evidence as never,
-    trust as never,
     { generateStructured, providerKey: () => 'anthropic' } as never,
   );
   return {
@@ -50,7 +49,6 @@ function makeService() {
     createTalentDerivedSnapshot,
     createTalentEducationEntry,
     createTalentCertificationEntry,
-    recordDeclaredClaimIfAbsent,
     generateDraft,
     generateStructured,
   };
@@ -136,9 +134,10 @@ describe('persistDeclaredWorkHistory — nested Experience Intelligence (P6, det
     expect(pj.project_name).toBe('Atlas');
     expect(pj.domain).toBe('infra');
 
-    // 4) Assertion routed to the trust ledger (EXPERIENCE_CLAIM).
-    expect(s.recordDeclaredClaimIfAbsent).toHaveBeenCalledOnce();
-    expect(s.recordDeclaredClaimIfAbsent.mock.calls[0][0].assertion_type).toBe('EXPERIENCE_CLAIM');
+    // 4) ATI-SEP-1 A1 — the assertion is NOT routed to the ledger: the service
+    // holds no trust surface, and the evidence stub saw typed-row writes only.
+    expect(Reflect.get(s.svc, 'trust')).toBeUndefined();
+    expect(Reflect.get(s.svc, 'persistExperienceAssertions')).toBeUndefined();
 
     // 5) Derived snapshot: declared (no confidence), with per-skill years.
     expect(s.createTalentDerivedSnapshot).toHaveBeenCalledOnce();

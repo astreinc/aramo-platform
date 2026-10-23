@@ -237,5 +237,78 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         ),
       ).rejects.toThrow();
     });
+
+    // ---- ATI-SEP-1 T10 WP2 — the ATS-local sourcing reads ----------------------
+
+    it('findByIngestionPayloadId resolves the arrival a channel writer recorded for a payload (tenant-scoped)', async () => {
+      const payloadId = '0190aaaa-0000-7000-8000-00000000c001';
+      const arrival = await repo.recordArrival({
+        tenant_id: TENANT,
+        source_channel: 'INDEED',
+        external_source_id: 'wp2-payload-link',
+        provenance: { ingestion_payload_id: payloadId },
+        legal_basis: {},
+        arrived_at: ARRIVED_AT,
+      });
+      expect((await repo.findByIngestionPayloadId(TENANT, payloadId))?.id).toBe(arrival.id);
+      expect(await repo.findByIngestionPayloadId('00000000-0000-4000-8000-0000000000ff', payloadId)).toBeNull();
+    });
+
+    it('listByTenantKeyset pages oldest-first after the cursor; findByIds is tenant-walled', async () => {
+      const tenant = '00000000-0000-4000-8000-0000000000a7';
+      const ids: string[] = [];
+      for (let i = 0; i < 3; i += 1) {
+        const r = await repo.recordArrival({
+          tenant_id: tenant,
+          source_channel: 'GITHUB',
+          external_source_id: `wp2-keyset-${i}`,
+          provenance: {},
+          legal_basis: {},
+          arrived_at: ARRIVED_AT,
+        });
+        ids.push(r.id);
+      }
+      const first = await repo.listByTenantKeyset({ tenant_id: tenant, limit: 2, cursor: null });
+      expect(first.map((r) => r.id)).toEqual(ids.slice(0, 2));
+      const last = first[first.length - 1]!;
+      const second = await repo.listByTenantKeyset({
+        tenant_id: tenant,
+        limit: 2,
+        cursor: { created_at: last.created_at, id: last.id },
+      });
+      expect(second.map((r) => r.id)).toEqual([ids[2]]);
+      expect((await repo.findByIds(tenant, ids)).length).toBe(3);
+      expect(await repo.findByIds(TENANT, ids)).toEqual([]);
+    });
+
+    it('findByNormalizedContact matches on email OR any phone form, tenant-scoped', async () => {
+      const tenant = '00000000-0000-4000-8000-0000000000a8';
+      const byEmail = await repo.recordArrival({
+        tenant_id: tenant,
+        source_channel: 'INDEED',
+        external_source_id: 'wp2-contact-email',
+        normalized_email: 'contact@x.com',
+        provenance: {},
+        legal_basis: {},
+        arrived_at: ARRIVED_AT,
+      });
+      const byPhone = await repo.recordArrival({
+        tenant_id: tenant,
+        source_channel: 'INDEED',
+        external_source_id: 'wp2-contact-phone',
+        normalized_phone: '4155550100',
+        provenance: {},
+        legal_basis: {},
+        arrived_at: ARRIVED_AT,
+      });
+      const hits = await repo.findByNormalizedContact({
+        tenant_id: tenant,
+        email: 'contact@x.com',
+        phones: ['14155550100', '4155550100'],
+      });
+      expect(hits.map((h) => h.id).sort()).toEqual([byEmail.id, byPhone.id].sort());
+      expect(await repo.findByNormalizedContact({ tenant_id: TENANT, email: 'contact@x.com' })).toEqual([]);
+      expect(await repo.findByNormalizedContact({ tenant_id: tenant })).toEqual([]);
+    });
   },
 );

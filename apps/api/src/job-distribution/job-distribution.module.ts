@@ -17,7 +17,7 @@ import { JOB_DISTRIBUTION_SYNC_QUEUE_NAME } from './job-distribution-sync.queue.
 // publishable read) + JobDistributionModule (the lib primitives: posting-state
 // repo, connector, token service). apps/api is untagged, so these imports open no
 // nx boundary edge, and the lib itself carries none. BullMQ wiring mirrors
-// IdentityMaintenanceModule verbatim: forRootAsync with manualRegistration +
+// the (since-deleted) IdentityMaintenanceModule: forRootAsync with manualRegistration +
 // lazyConnect + a RedisConnectionConfig factory; registerQueue for the one queue;
 // per-provider logger factory tokens. The worker gates on
 // RedisConnectionConfig.isConfigured (silent when REDIS_URL is absent — CI / local

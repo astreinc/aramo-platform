@@ -1,7 +1,6 @@
 import { Module } from '@nestjs/common';
 import { AiDraftModule } from '@aramo/ai-draft';
 import { TalentEvidenceModule } from '@aramo/talent-evidence';
-import { TalentTrustModule } from '@aramo/talent-trust';
 
 import { TalentExtractionService } from './talent-extraction.service.js';
 
@@ -14,13 +13,12 @@ import { TalentExtractionService } from './talent-extraction.service.js';
 // consumer. The gated libs (matching / examination / resume-parse / import)
 // keep their boundary specs; scoring stays deterministic + LLM-free.
 //
-// TR-4 B2 (DDR §3) — NEW edge talent-extraction → @aramo/talent-trust (I15-legal:
-// ATS-side producer → cip trust ledger). The producer dual-writes its typed
-// EMPLOYMENT/SKILL claims into the ledger as canonical CLAIMS evidence; no cycle
-// (talent-trust replicated deriveSkillId locally in B1 precisely to avoid the
-// reverse edge).
+// ATI-SEP-1 A1 — the TR-4 B2 edge talent-extraction → talent-trust lib is
+// REMOVED: this lib (scope:ats) persists ATS typed rows only. The typed-row →
+// ledger projection lives in the TEMPORARY apps/api LegacyTrustProjectionService
+// (deleted at T10), reached only from non-create callers (examine, backfill).
 @Module({
-  imports: [AiDraftModule, TalentEvidenceModule, TalentTrustModule],
+  imports: [AiDraftModule, TalentEvidenceModule],
   providers: [TalentExtractionService],
   exports: [TalentExtractionService],
 })

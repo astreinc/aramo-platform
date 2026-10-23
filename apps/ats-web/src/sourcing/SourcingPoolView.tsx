@@ -1,29 +1,27 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { hasScope, InlineAlert, useSession, type Session, Button } from '@aramo/fe-foundation';
 
-import { Avatar, BandPill, Card, Icons, StatusPill } from '../ui';
+import { Avatar, Card, Icons, StatusPill } from '../ui';
 
 import { SourcingSubjectDrawer } from './components/SourcingSubjectDrawer';
 import { getPool } from './sourcing-api';
 import { poolErrorMessage } from './error-messages';
 import type { PoolItem } from './types';
 
-// The 4 trust dimensions, canonical order — one BandPill column each.
-const DIMENSIONS = [
-  { key: 'identity', label: 'Identity' },
-  { key: 'claims', label: 'Claims' },
-  { key: 'continuity', label: 'Continuity' },
-  { key: 'eligibility', label: 'Eligibility' },
-] as const;
+const COL_COUNT = 5; // arrival · source · arrived · review · open
 
-const COL_COUNT = 2 + DIMENSIONS.length + 2; // subject + 4 bands + review + open
+function arrivedOn(iso: string): string {
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return '—';
+  return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+}
 
-// SourcingPoolView — the un-promoted sourcing pool (talent:source). A keyset
-// "Load more" queue (forked from TalentListView's paging shape): each row shows
-// the subject's name/email, the 4 trust BandPills, and an open-contradiction
-// indicator; Open drills into the subject drawer where identity is settled and
-// promotion happens (detail-gated). Route-gated on talent:source; the advisory-
-// resolve actions inside the drawer are separately gated on identity:resolve.
+// SourcingPoolView — the un-promoted sourcing pool (talent:source). ATI-SEP-1
+// T10 WP2: the rows are sourced arrivals (ATS data only) — name/email, source
+// channel, arrival date and a pending-identity-review indicator; Open drills into
+// the arrival drawer where identity is settled and promotion happens
+// (detail-gated). Route-gated on talent:source; the advisory-resolve actions
+// inside the drawer are separately gated on identity:resolve.
 interface SourcingPoolViewProps {
   /** Test seam — replaces the useSession() read (mirrors the sibling views). */
   readonly sessionOverride?: Session;
@@ -105,12 +103,9 @@ export function SourcingPoolView({ sessionOverride }: SourcingPoolViewProps = {}
             <table className="rc-table rc-table--comfortable rc-sourcing-table">
               <thead>
                 <tr>
-                  <th scope="col">Subject</th>
-                  {DIMENSIONS.map((d) => (
-                    <th scope="col" key={d.key}>
-                      {d.label}
-                    </th>
-                  ))}
+                  <th scope="col">Arrival</th>
+                  <th scope="col">Source</th>
+                  <th scope="col">Arrived</th>
                   <th scope="col">Review</th>
                   <th scope="col" aria-label="Row actions" />
                 </tr>
@@ -124,7 +119,7 @@ export function SourcingPoolView({ sessionOverride }: SourcingPoolViewProps = {}
                   </tr>
                 ) : (
                   items.map((it, i) => {
-                    const name = it.display_name ?? it.email ?? 'Unnamed subject';
+                    const name = it.display_name ?? it.email ?? 'Unnamed arrival';
                     return (
                       <tr
                         key={it.subject_id}
@@ -149,15 +144,14 @@ export function SourcingPoolView({ sessionOverride }: SourcingPoolViewProps = {}
                             </span>
                           </span>
                         </td>
-                        {DIMENSIONS.map((d) => (
-                          <td key={d.key}>
-                            <BandPill band={it.trust_bands[d.key]} />
-                          </td>
-                        ))}
+                        <td>{it.source_channel}</td>
                         <td>
-                          {it.open_contradiction_count > 0 ? (
+                          <span className="mono">{arrivedOn(it.arrived_at)}</span>
+                        </td>
+                        <td>
+                          {it.open_advisory_count > 0 ? (
                             <StatusPill tone="warn" dot>
-                              {it.open_contradiction_count} to review
+                              {it.open_advisory_count} to review
                             </StatusPill>
                           ) : (
                             <span className="rc-consent-stub">—</span>

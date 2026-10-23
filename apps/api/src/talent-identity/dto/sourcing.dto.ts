@@ -1,12 +1,12 @@
 import { IsIn, IsOptional, IsString, IsUUID } from 'class-validator';
 
-// Promotion-Trigger slice-A — the two sourcer-trigger request bodies. The
-// subject is addressed by its pre-promotion L2 ref (SOURCED_TALENT ref_id = the
-// origin arrival's payload id); tenant comes from the auth context, never the
-// body (tenant-wall). ref_type is constrained to the pre-promotion attachment
-// points a sourcer would act on.
+// Promotion-Trigger slice-A — the two sourcer-trigger request bodies. ATI-SEP-1
+// T10 WP2: the arrival is addressed by its sourced_talent.SourcedTalent id
+// (ref_type SOURCED_TALENT — the only remaining ref kind; the retired trust-
+// subject PERSON_CLUSTER / ATS_TALENT_RECORD kinds are refused by the pipe).
+// Tenant comes from the auth context, never the body (tenant-wall).
 
-const SOURCING_REF_TYPES = ['SOURCED_TALENT', 'PERSON_CLUSTER', 'ATS_TALENT_RECORD'] as const;
+const SOURCING_REF_TYPES = ['SOURCED_TALENT'] as const;
 
 export class AddToPipelineRequestDto {
   @IsIn(SOURCING_REF_TYPES)

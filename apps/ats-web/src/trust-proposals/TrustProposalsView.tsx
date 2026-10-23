@@ -4,6 +4,7 @@ import { hasScope, InlineAlert, useSession, type Session, Button } from '@aramo/
 
 import { Card, FilterChip, PageHeader, StatusPill, Tag, Toolbar } from '../ui';
 import { ContradictionResolveDialog } from '../talent/components/ContradictionResolveDialog';
+import { intelligenceStatusNote, type IntelligenceStatus } from '../talent/dossier-api';
 import { requestEmailVerification } from '../talent/talent-api';
 
 import { getProposals, markProposalActed } from './trust-proposals-api';
@@ -41,7 +42,7 @@ const KIND_LABEL: Record<ProposalKind, string> = {
 };
 const TRIGGER_LABEL: Record<string, string> = {
   SINGLE_SOURCE_ONLY: 'Single source',
-  VERIFIED_CONTROL_STALE: 'Verification stale',
+  VERIFICATION_STALE: 'Verification stale',
   OPEN_CONTRADICTION: 'Open contradiction',
 };
 
@@ -91,6 +92,7 @@ export function TrustProposalsView({ sessionOverride }: TrustProposalsViewProps 
   const [loading, setLoading] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tiStatus, setTiStatus] = useState<IntelligenceStatus>('ENABLED');
   const [appendNote, setAppendNote] = useState<string | null>(null);
   const [resolveTarget, setResolveTarget] = useState<ProposalListItem | null>(null);
   const [dismissTarget, setDismissTarget] = useState<string | null>(null);
@@ -108,6 +110,7 @@ export function TrustProposalsView({ sessionOverride }: TrustProposalsViewProps 
         });
         setItems((prev) => (append ? [...prev, ...res.items] : [...res.items]));
         setNextCursor(res.next_cursor);
+        setTiStatus(res.intelligence_status ?? 'ENABLED');
         setError(null);
         if (append) setAppendNote(`Loaded ${res.items.length} more.`);
       } catch (err) {
@@ -151,7 +154,7 @@ export function TrustProposalsView({ sessionOverride }: TrustProposalsViewProps 
     });
     try {
       await requestEmailVerification(it.record_id, it.slot);
-      await markProposalActed(it.id);
+      await markProposalActed(it.id, 'VERIFICATION_REQUESTED');
       refetch();
     } catch (err) {
       setRefusal((p) => ({ ...p, [it.id]: verifyActErrorState(err) }));
@@ -162,7 +165,7 @@ export function TrustProposalsView({ sessionOverride }: TrustProposalsViewProps 
     const t = resolveTarget;
     setResolveTarget(null);
     if (t !== null) {
-      void markProposalActed(t.id).finally(() => refetch());
+      void markProposalActed(t.id, 'CONTRADICTION_RESOLVED').finally(() => refetch());
     }
   };
 
@@ -197,7 +200,7 @@ export function TrustProposalsView({ sessionOverride }: TrustProposalsViewProps 
     if (it.kind === 'RESOLVE_CONTRADICTION') {
       return (
         <div className="rc-rowq">
-          {canResolve ? (
+          {canResolve && it.assertion_id !== undefined && it.record_id !== undefined ? (
             <Button unstyled
               type="button"
               className="tc-button"
@@ -250,6 +253,11 @@ export function TrustProposalsView({ sessionOverride }: TrustProposalsViewProps 
       </Toolbar>
 
       {error !== null ? <InlineAlert variant="error">{error}</InlineAlert> : null}
+      {intelligenceStatusNote(tiStatus) !== null ? (
+        <p className="rc-muted" data-testid="proposals-ti-status">
+          {intelligenceStatusNote(tiStatus)}
+        </p>
+      ) : null}
       <p role="status" className="rc-visually-hidden">
         {appendNote ?? ''}
       </p>
@@ -287,7 +295,7 @@ export function TrustProposalsView({ sessionOverride }: TrustProposalsViewProps 
                             {shortId(it.record_id)}
                           </Link>
                         ) : (
-                          <span className="rc-muted-line mono">{shortId(it.subject_id)}</span>
+                          <span className="rc-muted-line">—</span>
                         )}
                       </td>
                       <td>
@@ -326,14 +334,11 @@ export function TrustProposalsView({ sessionOverride }: TrustProposalsViewProps 
 
       <ContradictionResolveDialog
         item={
-          resolveTarget !== null
+          resolveTarget !== null && resolveTarget.assertion_id !== undefined && resolveTarget.record_id !== undefined
             ? {
-                evidence_id: resolveTarget.basis_ref_id,
-                dimension: '',
+                assertion_id: resolveTarget.assertion_id,
                 assertion_type: resolveTarget.basis_kinds[0] ?? '',
-                reason: null,
-                contradicting_evidence_id: null,
-                assertion_payload: null,
+                talent_record_id: resolveTarget.record_id,
               }
             : null
         }

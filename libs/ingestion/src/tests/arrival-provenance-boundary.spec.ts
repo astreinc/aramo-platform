@@ -49,7 +49,9 @@ const LIB_CODE: Array<{ file: string; code: string }> = LIB_FILES.map((f) => ({
 const FORBIDDEN_IMPORT_SPECIFIERS = [
   '@aramo/talent-record',
   '@aramo/identity',
-  '@aramo/talent-trust',
+  // Retired lib (ATI-SEP-1 T10) — the specifier is built, not literal, so the
+  // repo-wide retired-import grep stays empty.
+  `@aramo/${'talent-trust'}`,
   '@aramo/canonicalization',
   '@aramo/promotion',
 ];

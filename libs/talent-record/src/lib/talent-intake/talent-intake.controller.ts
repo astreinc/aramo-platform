@@ -59,6 +59,20 @@ export class TalentIntakeController {
     return this.intake.createIntake(authContext, body, requestId);
   }
 
+  // ATI-SEP-1 A5 — manual entry: create an artifact-less draft, settled READY at
+  // once (no outbox event, no LLM). The FE opens the same review form and
+  // promotes through the same promote route.
+  @Post('manual')
+  @HttpCode(HttpStatus.CREATED)
+  @RequireScopes('talent:create')
+  @RequireSiteMatch()
+  async createManual(
+    @AuthContext() authContext: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<TalentIntakeDraftView> {
+    return this.intake.createManualIntake(authContext, requestId);
+  }
+
   // Complete upload → atomically QUEUE + outbox → 202. The governed extraction
   // runs asynchronously in the worker; the request never waits for the LLM.
   @Post(':id/complete-upload')
@@ -112,7 +126,8 @@ export class TalentIntakeController {
     return this.intake.patchReview(authContext, id, body, requestId);
   }
 
-  // Retry extraction on the same stored artifact (no re-upload).
+  // Retry extraction on the same stored artifact (no re-upload). From UPLOADED it
+  // re-runs complete-upload (headObject → QUEUE + outbox), idempotently.
   @Post(':id/retry')
   @HttpCode(HttpStatus.OK)
   @RequireScopes('talent:edit')

@@ -17,8 +17,9 @@ import { SourcingPoolView } from './SourcingPoolView';
 import type { PoolPage, SubjectDetail } from './types';
 
 // The sourcing surface talks to two api modules; both are mocked (vitest hoists
-// vi.mock above these imports) so the specs assert the FE behaviour (bands,
-// keyset, promote mapping, advisory gating) without a server.
+// vi.mock above these imports) so the specs assert the FE behaviour (rows,
+// keyset, promote mapping, advisory gating) without a server. ATI-SEP-1 T10 WP2:
+// the pool is sourced arrivals on ATS data — no trust bands on the wire.
 vi.mock('./sourcing-api', () => ({
   getPool: vi.fn(),
   getSubjectDetail: vi.fn(),
@@ -43,33 +44,30 @@ function page(items: PoolPage['items'], next: string | null): PoolPage {
   return { items, next_cursor: next };
 }
 
+function item(over: Partial<PoolPage['items'][number]> = {}): PoolPage['items'][number] {
+  return {
+    subject_id: 's1',
+    display_name: 'Ada Lovelace',
+    email: 'ada@x.com',
+    phone: '5551230000',
+    source_channel: 'INDEED',
+    arrived_at: '2026-07-01T00:00:00Z',
+    open_advisory_count: 0,
+    ...over,
+  };
+}
+
 function detail(over: Partial<SubjectDetail> = {}): SubjectDetail {
   return {
     subject_id: 's1',
     display_name: 'Ada Lovelace',
     email: 'ada@x.com',
-    trust_bands: {
-      identity: 'SELF_ASSERTED',
-      claims: null,
-      continuity: null,
-      eligibility: null,
-    },
-    open_contradiction_count: 0,
-    trust_statements: [],
-    evidence: [
-      {
-        id: 'e1',
-        dimension: 'IDENTITY',
-        assertion_type: 'FULL_NAME',
-        assertion_payload: { first_name: 'Ada' },
-        source_class: 'THIRD_PARTY_UNVERIFIED',
-        method: 'DOCUMENT',
-        current_status: 'VALID',
-        collected_at: '2026-07-01T00:00:00Z',
-        created_at: '2026-07-01T00:00:00Z',
-      },
-    ],
-    refs: [{ ref_type: 'SOURCED_TALENT', ref_id: 'arr-1', link_source: 'x' }],
+    phone: '5551230000',
+    headline: 'Analytical Engines Ltd',
+    profile_url: null,
+    source_channel: 'INDEED',
+    arrived_at: '2026-07-01T00:00:00Z',
+    refs: [{ ref_type: 'SOURCED_TALENT', ref_id: 'arr-1', link_source: 'INDEED' }],
     open_identity_advisories: [],
     ...over,
   };
@@ -96,28 +94,14 @@ function cleanupMocks() {
 }
 
 describe('SourcingPoolView — pool queue', () => {
-  it('renders rows with trust band labels + the contradiction indicator', async () => {
-    vi.mocked(getPool).mockResolvedValue(
-      page(
-        [
-          {
-            subject_id: 's1',
-            display_name: 'Ada Lovelace',
-            email: 'ada@x.com',
-            trust_bands: { identity: 'SELF_ASSERTED', claims: null, continuity: null, eligibility: null },
-            open_contradiction_count: 2,
-          },
-        ],
-        null,
-      ),
-    );
+  it('renders arrival rows with source + the pending-review indicator (no trust bands)', async () => {
+    vi.mocked(getPool).mockResolvedValue(page([item({ open_advisory_count: 2 })], null));
     renderView(SOURCER);
     expect(await screen.findByText('Ada Lovelace')).toBeInTheDocument();
-    // Band label (R10 — a label, not a number).
-    expect(screen.getByText('Self-asserted')).toBeInTheDocument();
-    // A null band renders "Not established".
-    expect(screen.getAllByText('Not established').length).toBeGreaterThan(0);
+    expect(screen.getByText('INDEED')).toBeInTheDocument();
     expect(screen.getByText('2 to review')).toBeInTheDocument();
+    expect(screen.queryByText('Not established')).toBeNull();
+    expect(screen.queryByText('Identity')).toBeNull();
   });
 
   it('empty pool shows the calm empty copy', async () => {
@@ -128,34 +112,8 @@ describe('SourcingPoolView — pool queue', () => {
 
   it('keyset "Load more" fetches the next page with the cursor', async () => {
     vi.mocked(getPool)
-      .mockResolvedValueOnce(
-        page(
-          [
-            {
-              subject_id: 's1',
-              display_name: 'Ada',
-              email: null,
-              trust_bands: { identity: null, claims: null, continuity: null, eligibility: null },
-              open_contradiction_count: 0,
-            },
-          ],
-          'cur-1',
-        ),
-      )
-      .mockResolvedValueOnce(
-        page(
-          [
-            {
-              subject_id: 's2',
-              display_name: 'Grace',
-              email: null,
-              trust_bands: { identity: null, claims: null, continuity: null, eligibility: null },
-              open_contradiction_count: 0,
-            },
-          ],
-          null,
-        ),
-      );
+      .mockResolvedValueOnce(page([item({ subject_id: 's1', display_name: 'Ada', email: null })], 'cur-1'))
+      .mockResolvedValueOnce(page([item({ subject_id: 's2', display_name: 'Grace', email: null })], null));
     renderView(SOURCER);
     await screen.findByText('Ada');
     fireEvent.click(screen.getByRole('button', { name: 'Load more' }));
@@ -164,47 +122,19 @@ describe('SourcingPoolView — pool queue', () => {
   });
 });
 
-describe('SourcingPoolView — subject drawer', () => {
-  const oneRow = page(
-    [
-      {
-        subject_id: 's1',
-        display_name: 'Ada Lovelace',
-        email: 'ada@x.com',
-        trust_bands: { identity: 'SELF_ASSERTED', claims: null, continuity: null, eligibility: null },
-        open_contradiction_count: 0,
-      },
-    ],
-    null,
-  );
+describe('SourcingPoolView — arrival drawer', () => {
+  const oneRow = page([item()], null);
 
-  it('Open drills into the drawer showing evidence WITHOUT strength (R10)', async () => {
+  it('Open drills into the drawer showing the arrival material (no trust ledger)', async () => {
     vi.mocked(getPool).mockResolvedValue(oneRow);
     vi.mocked(getSubjectDetail).mockResolvedValue(detail());
     renderView(SOURCER);
     fireEvent.click(await screen.findByRole('button', { name: 'Open Ada Lovelace' }));
-    // Evidence row: assertion type + source/method/date, never a strength number.
-    expect(await screen.findByText('Full name')).toBeInTheDocument();
-    expect(screen.getByText(/Third party \(unverified\) · Document/)).toBeInTheDocument();
-    expect(screen.getByText('Valid')).toBeInTheDocument();
+    expect(await screen.findByText('Analytical Engines Ltd')).toBeInTheDocument();
+    expect(screen.getByText('5551230000')).toBeInTheDocument();
     expect(screen.getByText('Sourced talent')).toBeInTheDocument();
-    expect(screen.queryByText(/THIRD_PARTY_UNVERIFIED|SOURCED_TALENT/)).not.toBeInTheDocument();
-    // No numeric strength leaked anywhere in the drawer.
     const drawer = screen.getByRole('dialog');
-    expect(drawer.textContent ?? '').not.toMatch(/strength/i);
-  });
-
-  it('renders the named-thinness statements in the drawer (strings only, no numbers)', async () => {
-    vi.mocked(getPool).mockResolvedValue(oneRow);
-    vi.mocked(getSubjectDetail).mockResolvedValue(
-      detail({ trust_statements: ['Evidence from a single source', 'Observed over time'] }),
-    );
-    renderView(SOURCER);
-    fireEvent.click(await screen.findByRole('button', { name: 'Open Ada Lovelace' }));
-    expect(await screen.findByText('Evidence from a single source')).toBeInTheDocument();
-    expect(screen.getByText('Observed over time')).toBeInTheDocument();
-    // The statement lines carry no digit.
-    expect(screen.getByText('Evidence from a single source').textContent ?? '').not.toMatch(/\d/);
+    expect(drawer.textContent ?? '').not.toMatch(/strength|Trust|Evidence/);
   });
 
   it('Save to pool → deferral renders as guidance, not an error toast', async () => {
@@ -213,10 +143,23 @@ describe('SourcingPoolView — subject drawer', () => {
     vi.mocked(saveToBench).mockResolvedValue({ status: 'deferred_unresolved_identity' });
     renderView(SOURCER);
     fireEvent.click(await screen.findByRole('button', { name: 'Open Ada Lovelace' }));
-    await screen.findByText('Full name');
+    await screen.findByText('Analytical Engines Ltd');
     fireEvent.click(screen.getByRole('button', { name: /Save to pool/ }));
     expect(
-      await screen.findByText('Resolve the pending identity flag below before promoting this subject.'),
+      await screen.findByText('Resolve the pending identity flag below before promoting this arrival.'),
+    ).toBeInTheDocument();
+  });
+
+  it('Save to pool → incomplete contact renders its guidance', async () => {
+    vi.mocked(getPool).mockResolvedValue(oneRow);
+    vi.mocked(getSubjectDetail).mockResolvedValue(detail());
+    vi.mocked(saveToBench).mockResolvedValue({ status: 'deferred_incomplete_contact' });
+    renderView(SOURCER);
+    fireEvent.click(await screen.findByRole('button', { name: 'Open Ada Lovelace' }));
+    await screen.findByText('Analytical Engines Ltd');
+    fireEvent.click(screen.getByRole('button', { name: /Save to pool/ }));
+    expect(
+      await screen.findByText('This arrival needs both an email and a cell phone before it can be promoted.'),
     ).toBeInTheDocument();
   });
 
@@ -226,7 +169,7 @@ describe('SourcingPoolView — subject drawer', () => {
     vi.mocked(saveToBench).mockResolvedValue({ status: 'promoted', talent_record_id: 'r1', bench_id: 'b1' });
     renderView(SOURCER);
     fireEvent.click(await screen.findByRole('button', { name: 'Open Ada Lovelace' }));
-    await screen.findByText('Full name');
+    await screen.findByText('Analytical Engines Ltd');
     expect(vi.mocked(getPool)).toHaveBeenCalledTimes(1);
     fireEvent.click(screen.getByRole('button', { name: /Save to pool/ }));
     await waitFor(() => expect(vi.mocked(saveToBench)).toHaveBeenCalledWith({ ref_type: 'SOURCED_TALENT', ref_id: 'arr-1' }));
@@ -242,7 +185,7 @@ describe('SourcingPoolView — subject drawer', () => {
     vi.mocked(addToPipeline).mockResolvedValue({ status: 'promoted', talent_record_id: 'r1', pipeline_id: 'p1' });
     renderView(SOURCER);
     fireEvent.click(await screen.findByRole('button', { name: 'Open Ada Lovelace' }));
-    await screen.findByText('Full name');
+    await screen.findByText('Analytical Engines Ltd');
     fireEvent.click(screen.getByRole('button', { name: /Add to pipeline/ }));
     fireEvent.click(await screen.findByText('Senior Rust Engineer'));
     await waitFor(() =>
@@ -256,79 +199,48 @@ describe('SourcingPoolView — subject drawer', () => {
 });
 
 describe('SourcingPoolView — advisory resolution (identity:resolve gating)', () => {
-  const rowWithAdvisory = page(
-    [
-      {
-        subject_id: 's1',
-        display_name: 'Ada Lovelace',
-        email: 'ada@x.com',
-        trust_bands: { identity: 'SELF_ASSERTED', claims: null, continuity: null, eligibility: null },
-        open_contradiction_count: 0,
-      },
-    ],
-    null,
-  );
+  const rowWithAdvisory = page([item({ open_advisory_count: 1 })], null);
   const withAdvisory = detail({
     open_identity_advisories: [
       {
         id: 'adv-1',
-        subject_a_id: 's1',
-        subject_b_id: 's9',
-        advise_band: 'STRONG',
-        has_contradiction: false,
+        talent_record_id: 'r9',
+        talent_record_name: 'Ada King',
+        basis: 'SOURCED_ARRIVAL',
+        shared_kinds: ['EMAIL'],
         status: 'PENDING_REVIEW',
         created_at: '2026-07-02T00:00:00Z',
       },
     ],
   });
 
-  it('a resolver can approve an advisory inline', async () => {
+  it('a resolver can confirm the same person inline', async () => {
     vi.mocked(getPool).mockResolvedValue(rowWithAdvisory);
     vi.mocked(getSubjectDetail).mockResolvedValue(withAdvisory);
-    vi.mocked(approveAdvisory).mockResolvedValue({ id: 'adv-1', status: 'MERGED', has_contradiction: false, resolution_action: 'MERGE' });
+    vi.mocked(approveAdvisory).mockResolvedValue({
+      id: 'adv-1',
+      status: 'APPROVED',
+      basis: 'SOURCED_ARRIVAL',
+      surviving_record_id: 'r9',
+    });
     renderView(SOURCER);
     fireEvent.click(await screen.findByRole('button', { name: 'Open Ada Lovelace' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Approve merge' }));
-    // Non-contradicted → no override ack required; confirm immediately.
+    expect(await screen.findByText('Ada King')).toBeInTheDocument();
+    fireEvent.click(await screen.findByRole('button', { name: 'Same person' }));
+    expect(await screen.findByTestId('advisory-kinds')).toHaveTextContent('Shares EMAIL');
     fireEvent.click(await screen.findByTestId('advisory-confirm'));
     await waitFor(() => expect(vi.mocked(approveAdvisory)).toHaveBeenCalledWith('adv-1', {}));
   });
 
-  it('a non-resolver sees no approve/dismiss actions (scope-gated)', async () => {
+  it('a non-resolver sees no link/dismiss actions (scope-gated)', async () => {
     vi.mocked(getPool).mockResolvedValue(rowWithAdvisory);
     vi.mocked(getSubjectDetail).mockResolvedValue(withAdvisory);
     renderView(SOURCER_NO_RESOLVE);
     fireEvent.click(await screen.findByRole('button', { name: 'Open Ada Lovelace' }));
-    // The advisory renders, but the actions are gated away.
-    expect(await screen.findByText('Possible match')).toBeInTheDocument();
-    expect(screen.queryByRole('button', { name: 'Approve merge' })).toBeNull();
+    expect(await screen.findByText('Possible match · shares EMAIL')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Same person' })).toBeNull();
     expect(
       screen.getByText('Resolving identity needs the identity:resolve permission.'),
     ).toBeInTheDocument();
-  });
-
-  it('a contradicted advisory approve requires the ack + justification (R3)', async () => {
-    vi.mocked(getPool).mockResolvedValue(rowWithAdvisory);
-    vi.mocked(getSubjectDetail).mockResolvedValue(
-      detail({
-        open_identity_advisories: [
-          {
-            id: 'adv-2',
-            subject_a_id: 's1',
-            subject_b_id: 's9',
-            advise_band: 'STRONG',
-            has_contradiction: true,
-            status: 'PENDING_REVIEW',
-            created_at: '2026-07-02T00:00:00Z',
-          },
-        ],
-      }),
-    );
-    renderView(SOURCER);
-    fireEvent.click(await screen.findByRole('button', { name: 'Open Ada Lovelace' }));
-    fireEvent.click(await screen.findByRole('button', { name: 'Approve merge' }));
-    // Confirm is disabled until ack + justification are supplied (R3).
-    const confirm = await screen.findByTestId('advisory-confirm');
-    expect(confirm).toBeDisabled();
   });
 });

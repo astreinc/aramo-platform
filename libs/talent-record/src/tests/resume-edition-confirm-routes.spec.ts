@@ -61,7 +61,9 @@ function make(parts: {
   rejectedCount?: number;
 } = {}) {
   const findById = vi.fn().mockResolvedValue(parts.talent === undefined ? { id: TALENT } : parts.talent);
-  const repo = { findById };
+  // ATI-SEP-1 A3 — CONFIRM records talent.profile_updated; the reconciles follow it.
+  const recordProfileUpdated = vi.fn().mockResolvedValue(undefined);
+  const repo = { findById, recordProfileUpdated };
   const findResumeEditionById = vi
     .fn()
     .mockResolvedValue(parts.edition === undefined ? { id: EDITION, tenant_id: TENANT, talent_id: TALENT } : parts.edition);
@@ -86,30 +88,26 @@ function make(parts: {
     markResumeExtractionDraftRejected,
     listResumeEditionsWithDocument,
   };
-  // TI-1F-C §4-H — the two SEPARATE reconcile producers, emitted after CONFIRM.
-  const enqueueCanonical = vi.fn().mockResolvedValue(undefined);
-  const enqueueTalentReconcile = vi.fn().mockResolvedValue(undefined);
-  const canonicalReconcile = { enqueueTalent: enqueueCanonical };
-  const talentReconcile = { enqueueTalent: enqueueTalentReconcile };
   const ctl = new TalentRecordController(
-    repo as never, {} as never, {} as never, {} as never,
+    repo as never, {} as never, {} as never,
     talentExtraction as never, {} as never, {} as never,
-    canonicalReconcile as never, {} as never, {} as never, {} as never,
-    talentReconcile as never,
+    {} as never, {} as never, {} as never,
   );
-  return { ctl, findById, findResumeEditionById, findResumeExtractionDraftByEdition, promoteResumeExtractionDraft, markResumeExtractionDraftRejected, enqueueCanonical, enqueueTalentReconcile };
+  return { ctl, findById, findResumeEditionById, findResumeExtractionDraftByEdition, promoteResumeExtractionDraft, markResumeExtractionDraftRejected, recordProfileUpdated };
 }
 
 describe('TI-1F-B — POST :id/resume-editions/:editionId/confirm', () => {
-  it('promotes the reviewed draft, emits BOTH reconcile signals (§4-H), returns the edition view (ACCEPTED)', async () => {
-    const { ctl, promoteResumeExtractionDraft, enqueueCanonical, enqueueTalentReconcile } = make();
+  it('promotes the reviewed draft, records talent.profile_updated (the §4-H signals follow it), returns the edition view (ACCEPTED)', async () => {
+    const { ctl, promoteResumeExtractionDraft, recordProfileUpdated } = make();
     const res = await ctl.confirmResumeEdition(AUTH, TALENT, EDITION, 'rq-1');
     expect(promoteResumeExtractionDraft).toHaveBeenCalledWith(
       expect.objectContaining({ draft: expect.objectContaining({ id: 'dr-1' }), actor_id: 'me' }),
     );
-    // §4-H — the two SEPARATE reconcile architectures both fire after the commit.
-    expect(enqueueCanonical).toHaveBeenCalledWith(TENANT, TALENT);
-    expect(enqueueTalentReconcile).toHaveBeenCalledWith(TENANT, TALENT);
+    // ATI-SEP-1 A3 — ONE post-commit business fact (ids + field names only); the
+    // dispatcher fans it out to both reconcile architectures.
+    expect(recordProfileUpdated).toHaveBeenCalledWith(
+      expect.objectContaining({ tenant_id: TENANT, talent_record_id: TALENT, changed_fields: ['resume_evidence'] }),
+    );
     expect(res.edition_id).toBe(EDITION);
     expect(res.processing_status).toBe('ACCEPTED');
   });
@@ -171,12 +169,11 @@ describe('TI-1F-B — POST :id/resume-editions/:editionId/reject', () => {
   });
 
   it('REJECT triggers NO reconciliation (§3)', async () => {
-    const { ctl, enqueueCanonical, enqueueTalentReconcile } = make({
+    const { ctl, recordProfileUpdated } = make({
       edition: { id: EDITION, tenant_id: TENANT, talent_id: TALENT },
     });
     await ctl.rejectResumeEdition(AUTH, TALENT, EDITION, 'rq-1');
-    expect(enqueueCanonical).not.toHaveBeenCalled();
-    expect(enqueueTalentReconcile).not.toHaveBeenCalled();
+    expect(recordProfileUpdated).not.toHaveBeenCalled();
   });
 
   it('409 when the draft is no longer reviewable at reject time (race → 0 rows)', async () => {

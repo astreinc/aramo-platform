@@ -3,6 +3,7 @@ import type { AuthContextType } from '@aramo/auth';
 
 import { TalentRecordController } from '../lib/talent-record.controller.js';
 import { TalentCreateFromDraftService } from '../lib/talent-create-from-draft.service.js';
+import { TalentIntakePromotionService } from '../lib/talent-intake/talent-intake-promotion.service.js';
 import {
   applyRecruiterCreateConsentDefault,
   type RecruiterCreateConsentDefaultPort,
@@ -66,6 +67,7 @@ function makePort(fail = false): RecruiterCreateConsentDefaultPort & {
 function make(opts: { port?: RecruiterCreateConsentDefaultPort; draft?: unknown } = {}) {
   const repo = {
     findActiveByEmail: vi.fn().mockResolvedValue(null),
+    findActiveDuplicate: vi.fn().mockResolvedValue(null),
     findById: vi.fn().mockResolvedValue(null),
     create: vi.fn().mockImplementation(async (args: { id?: string }) => ({
       id: args.id ?? 'tal-generated',
@@ -83,24 +85,57 @@ function make(opts: { port?: RecruiterCreateConsentDefaultPort; draft?: unknown 
     markResumeExtractionDraftAccepted: vi.fn().mockResolvedValue(1),
     createResumeDocument: vi.fn().mockResolvedValue('doc-1'),
   };
-  const svc = new TalentCreateFromDraftService(
-    repo as never,
-    talentExtraction as never,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    undefined,
-    opts.port,
-  );
+  const svc = new TalentCreateFromDraftService(repo as never, talentExtraction as never, opts.port);
   const ctl = new TalentRecordController(
-    repo as never, {} as never, {} as never, {} as never,
+    repo as never, {} as never, {} as never,
     talentExtraction as never, {} as never, {} as never,
-    undefined, undefined, undefined, undefined, undefined,
+    undefined, undefined, undefined,
     svc,
     opts.port,
   );
   return { ctl, svc, repo, talentExtraction };
+}
+
+// ATI-SEP-1 A2 — the intake Save (one path; the former decoupled branch is gone).
+function makeSave(port?: RecruiterCreateConsentDefaultPort) {
+  let reserved: string | null = null;
+  const intake = () => ({
+    id: 'intake-1',
+    tenant_id: TENANT,
+    created_by: AUTH.sub,
+    storage_key: null,
+    source_filename: null,
+    mime_type: null,
+    size_bytes: null,
+    artifact_sha256: null,
+    resume_extraction_draft_id: null,
+    promoted_talent_record_id: null,
+    save_reserved_talent_record_id: reserved,
+    save_evidence_materialized_at: null,
+    review_payload: {
+      fields: Object.fromEntries(
+        Object.entries(manualBody()).map(([k, v]) => [k, { value: v, origin: 'RECRUITER' }]),
+      ),
+    },
+  });
+  const repo = {
+    findActiveDuplicate: vi.fn().mockResolvedValue(null),
+    findById: vi.fn().mockResolvedValue(null),
+    create: vi.fn().mockImplementation(async (args: { id: string }) => ({ id: args.id })),
+  };
+  const talentExtraction = {
+    findTalentIntakeDraftById: vi.fn(async () => intake()),
+    reserveTalentIntakeDraftSave: vi.fn(async (i: { reserved_talent_record_id: string }) => {
+      reserved = i.reserved_talent_record_id;
+      return 1;
+    }),
+    materializeIntakeSaveEvidence: vi.fn().mockResolvedValue({ materialized: true, document_id: null, edition_id: null }),
+    getDefaultResumeEdition: vi.fn().mockResolvedValue(null),
+    recordDeclaredWorkAuthorization: vi.fn().mockResolvedValue(undefined),
+    completeTalentIntakeDraftSave: vi.fn().mockResolvedValue(1),
+  };
+  const svc = new TalentIntakePromotionService(talentExtraction as never, repo as never, undefined, port);
+  return { svc, repo, talentExtraction };
 }
 
 describe('CONSENT-RECRUITER-CREATE-DEFAULT-1 — recruiter create paths', () => {
@@ -155,20 +190,13 @@ describe('CONSENT-RECRUITER-CREATE-DEFAULT-1 — recruiter create paths', () => 
     expect(port.recordDefault.mock.calls[0]?.[0]).toMatchObject({ talent_record_id: res?.id });
   });
 
-  it('intake promotion — decoupled branch (createFromReviewedUpload) invokes the port once, after create', async () => {
+  it('intake Save invokes the port once, after create', async () => {
     const port = makePort();
-    const m = make({ port });
-    const res = await m.svc.createFromReviewedUpload(
-      AUTH,
-      manualBody() as never,
-      'ada@example.com',
-      'rq-4',
-      'tal-reserved',
-    );
-    expect(res.id).toBe('tal-reserved');
+    const m = makeSave(port);
+    const res = await m.svc.promote(AUTH, 'intake-1', 'rq-4');
     expect(port.recordDefault).toHaveBeenCalledTimes(1);
     expect(port.recordDefault).toHaveBeenCalledWith({
-      talent_record_id: 'tal-reserved',
+      talent_record_id: res.id,
       authContext: AUTH,
       requestId: 'rq-4',
     });
@@ -193,10 +221,11 @@ describe('CONSENT-RECRUITER-CREATE-DEFAULT-1 — recruiter create paths', () => 
     // The draft lifecycle still closes after a consent failure.
     expect(draft.talentExtraction.markResumeExtractionDraftAccepted).toHaveBeenCalledOnce();
 
-    const decoupled = make({ port: makePort(true) });
-    await expect(
-      decoupled.svc.createFromReviewedUpload(AUTH, manualBody() as never, 'ada@example.com', 'rq-7'),
-    ).resolves.toMatchObject({ id: 'tal-generated' });
+    const saved = makeSave(makePort(true));
+    const viaSave = await saved.svc.promote(AUTH, 'intake-1', 'rq-7');
+    expect(viaSave.id).toBeDefined();
+    // The Save still completes (draft PROMOTED) after a consent failure.
+    expect(saved.talentExtraction.completeTalentIntakeDraftSave).toHaveBeenCalledOnce();
   });
 
   it('port absent → no-op; create still succeeds', async () => {
@@ -204,9 +233,7 @@ describe('CONSENT-RECRUITER-CREATE-DEFAULT-1 — recruiter create paths', () => 
     await expect(m.ctl.create(AUTH, manualBody() as never, 'rq-8')).resolves.toMatchObject({
       id: 'tal-generated',
     });
-    await expect(
-      m.svc.createFromReviewedUpload(AUTH, manualBody() as never, 'ada@example.com', 'rq-9'),
-    ).resolves.toMatchObject({ id: 'tal-generated' });
+    await expect(makeSave().svc.promote(AUTH, 'intake-1', 'rq-9')).resolves.toBeDefined();
   });
 
   it('non-recruiter consumer → the port is not invoked', async () => {

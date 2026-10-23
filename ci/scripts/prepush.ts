@@ -86,7 +86,7 @@ console.log(
   `▸ integration (serial, --no-file-parallelism): ${integrationRoots.join(', ') || '(none affected)'}`,
 );
 console.log(
-  '▸ unconditional walls: vocabulary, error-codes, identity-index privacy-wall, portal/ats/ingestion refusal, version:sync-check' +
+  '▸ unconditional walls: vocabulary, error-codes, portal/ats/ingestion refusal, version:sync-check' +
     (touchedLintable.length ? `, eslint(${touchedLintable.length} touched)` : ''),
 );
 console.log(
@@ -115,10 +115,6 @@ for (const r of integrationRoots) {
 // Unconditional cheap walls (seconds; never affected-scoped).
 steps.push(['verify:vocabulary', () => run('npm run --silent verify:vocabulary')]);
 steps.push(['error-codes:check', () => run('npm run --silent error-codes:check')]);
-steps.push([
-  'identity-index:privacy-wall',
-  () => run('npm run --silent identity-index:privacy-wall'),
-]);
 steps.push(['portal:refusal-check', () => run('npm run --silent portal:refusal-check')]);
 steps.push(['ats:refusal-check', () => run('npm run --silent ats:refusal-check')]);
 steps.push(['ingestion:refusal-check', () => run('npm run --silent ingestion:refusal-check')]);

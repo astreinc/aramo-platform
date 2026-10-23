@@ -108,6 +108,13 @@ export async function createTalentIntakeDraft(body: {
   return apiClient.post<CreateTalentIntakeDraftResponse>(BASE, body);
 }
 
+// ATI-SEP-1 A5 — manual entry (no resume). The backend creates an artifact-less
+// draft already settled READY (no extraction is requested); the FE opens the
+// same review form on it and promotes through the same promote route.
+export async function createManualTalentIntakeDraft(): Promise<TalentIntakeDraftView> {
+  return apiClient.post<TalentIntakeDraftView>(`${BASE}/manual`, {});
+}
+
 export async function completeTalentIntakeUpload(
   id: string,
   body: { artifact_sha256?: string } = {},
@@ -133,6 +140,8 @@ export async function patchTalentIntakeReview(
   return apiClient.patch<TalentIntakeDraftView>(`${BASE}/${encodeURIComponent(id)}`, body);
 }
 
+// Retry — re-reads the same stored resume (FAILED/PARTIAL), or re-runs
+// complete-upload for a draft stuck UPLOADED (the commit call failed).
 export async function retryTalentIntakeExtraction(id: string): Promise<TalentIntakeDraftView> {
   return apiClient.post<TalentIntakeDraftView>(`${BASE}/${encodeURIComponent(id)}/retry`, {});
 }

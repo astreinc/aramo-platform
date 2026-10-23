@@ -48,6 +48,9 @@ function crumbsFor(pathname: string): BreadcrumbItem[] {
   if (pathname.startsWith('/personal-invites')) {
     return [{ label: 'Dashboard', href: '/' }, { label: 'Pilot invites' }];
   }
+  if (pathname.startsWith('/matching')) {
+    return [{ label: 'Dashboard', href: '/' }, { label: 'Matching policy' }];
+  }
   if (pathname.startsWith('/template-variables')) {
     return [{ label: 'Dashboard', href: '/' }, { label: 'Template variables' }];
   }
@@ -94,6 +97,10 @@ export function PlatformShell({ children }: { readonly children: ReactNode }) {
   const canReadDocTemplates =
     sessionState.status === 'authenticated' &&
     hasScope(sessionState.session, 'platform:document_template:read');
+  // ATI-SEP-1 A2 A-c (P1) — gate the Matching policy nav on platform:matching_policy:read.
+  const canReadMatchingPolicy =
+    sessionState.status === 'authenticated' &&
+    hasScope(sessionState.session, 'platform:matching_policy:read');
   // Aramo Sign Personal (Free) — the review queue + pilot invites need lifecycle management.
   const canManageLifecycle =
     sessionState.status === 'authenticated' &&
@@ -125,6 +132,11 @@ export function PlatformShell({ children }: { readonly children: ReactNode }) {
           <RailNavItem to="/skills" end label="Registry" icon={<Icons.IconTag />} />
           <RailNavItem to="/skills/review-queue" label="Review queue" icon={<Icons.IconList />} />
           <RailNavItem to="/skills/proposals" label="Proposals" icon={<Icons.IconBolt />} />
+        </RailNavSection>
+      ) : null}
+      {canReadMatchingPolicy ? (
+        <RailNavSection label="Matching">
+          <RailNavItem to="/matching" label="Matching policy" icon={<Icons.IconSliders />} />
         </RailNavSection>
       ) : null}
       {canReadDocTemplates ? (

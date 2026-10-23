@@ -26,7 +26,6 @@ function makeService() {
   const svc = new TalentExtractionService(
     { generateDraft } as never,
     evidence as never,
-    {} as never,
     { generateStructured, providerKey: () => 'anthropic' } as never,
   );
   return {

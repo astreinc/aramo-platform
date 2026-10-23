@@ -213,6 +213,9 @@ export const SEED_IDS = {
     // (Aramo defaults + the variable catalog). super_admin only.
     'platform:document_template:read': '01900000-0000-7000-8000-000000000322',
     'platform:document_template:manage': '01900000-0000-7000-8000-000000000323',
+    // ATI-SEP-1 A2 A-c (P1) — platform-owned matching calibration. super_admin only.
+    'platform:matching_policy:read': '01900000-0000-7000-8000-000000000324',
+    'platform:matching_policy:write': '01900000-0000-7000-8000-000000000325',
     // AUTHZ-D4a — 4 team-model scopes (Amendment §4/§6; Lead Gate-5 ruling 2
     // narrows company:read:all to TA+TO only — mirrors requisition:read:all).
     'company:assign': '01900000-0000-7000-8000-00000000008c',
@@ -591,6 +594,10 @@ export const SEED_IDS = {
     // document-template scopes (0x303..0x3ff platform range).
     super_admin_platform_document_template_read: '01900000-0000-7000-8000-000000000312',
     super_admin_platform_document_template_manage: '01900000-0000-7000-8000-000000000313',
+    // ATI-SEP-1 A2 A-c (P1) — super_admin RoleScope rows for the 2 platform
+    // matching-policy scopes (0x303..0x3ff platform range).
+    super_admin_platform_matching_policy_read: '01900000-0000-7000-8000-000000000314',
+    super_admin_platform_matching_policy_write: '01900000-0000-7000-8000-000000000315',
     // AUTHZ-D4a — 4 RoleScope rows for tenant_admin's new team-model
     // scopes (the other bundle holders go through AUTHZ1_ROLE_SCOPE_ROW_IDS
     // since they live in AUTHZ1_BUNDLES).
@@ -844,6 +851,9 @@ export const ROLE_SCOPE_ASSIGNMENTS = {
     // DOC-TEMPLATE-LIB-1 T-2 — Aramo default templates + variable catalog.
     'platform:document_template:read',
     'platform:document_template:manage',
+    // ATI-SEP-1 A2 A-c (P1) — platform-owned matching calibration (read + write).
+    'platform:matching_policy:read',
+    'platform:matching_policy:write',
   ],
 } as const;
 
@@ -956,6 +966,11 @@ const ROLE_SCOPE_ROW_IDS: Record<string, string> = {
     SEED_IDS.role_scopes.super_admin_platform_document_template_read,
   'super_admin:platform:document_template:manage':
     SEED_IDS.role_scopes.super_admin_platform_document_template_manage,
+  // ATI-SEP-1 A2 A-c (P1) — super_admin grants for the 2 matching-policy scopes.
+  'super_admin:platform:matching_policy:read':
+    SEED_IDS.role_scopes.super_admin_platform_matching_policy_read,
+  'super_admin:platform:matching_policy:write':
+    SEED_IDS.role_scopes.super_admin_platform_matching_policy_write,
   // AUTHZ-D4a — 4 new tenant_admin RoleScope rows for the team-model scopes.
   'ats_admin:company:assign': SEED_IDS.role_scopes.tenant_admin_company_assign,
   'ats_admin:org:manage': SEED_IDS.role_scopes.tenant_admin_org_manage,
@@ -3503,6 +3518,9 @@ export async function runIdentitySeed(
   // DOC-TEMPLATE-LIB-1 T-2 (§6.1) — platform-tier document-template authoring.
   await upsertScope(prisma, SEED_IDS.scopes['platform:document_template:read'], 'platform:document_template:read', 'Platform-tier: read Aramo default document templates + the template variable catalog (super_admin only)');
   await upsertScope(prisma, SEED_IDS.scopes['platform:document_template:manage'], 'platform:document_template:manage', 'Platform-tier: author, preview and publish Aramo default document templates + maintain the template variable catalog (super_admin only)');
+  // ATI-SEP-1 A2 A-c (P1) — platform-owned matching calibration (MatchingPolicy store).
+  await upsertScope(prisma, SEED_IDS.scopes['platform:matching_policy:read'], 'platform:matching_policy:read', 'Platform-tier: read the active matching policy (role-family evidence thresholds) + its version history (super_admin only)');
+  await upsertScope(prisma, SEED_IDS.scopes['platform:matching_policy:write'], 'platform:matching_policy:write', 'Platform-tier: create a matching policy version and activate a version (super_admin only; tenants consume, never edit)');
   // AUTHZ-D4a — 4 team-model scopes (Amendment §4/§6). Lead Gate-5 ruling 2
   // narrowed company:read:all to TA+TO only (mirrors requisition:read:all).
   await upsertScope(prisma, SEED_IDS.scopes['company:assign'], 'company:assign', 'Assign / unassign a user to a client (account_manager + tenant_admin + tenant_owner; mirrors requisition:assign as the AM act)');

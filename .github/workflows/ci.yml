@@ -82,6 +82,10 @@ jobs:
               - 'apps/auth-service/Dockerfile'
             padmin_dockerfile:
               - 'apps/platform-admin/Dockerfile'
+            sign_dockerfile:
+              - 'apps/sign-service/Dockerfile'
+            ti_dockerfile:
+              - 'apps/talent-intelligence-service/Dockerfile'
             nginx:
               - 'deploy/nginx/**'
       - name: Install (PR lane only — nx affected needs the project graph)
@@ -94,13 +98,13 @@ jobs:
           set -euo pipefail
           if [ "${{ github.event_name }}" != "pull_request" ]; then
             # merge_group / push / schedule — ALL images build (full release set).
-            echo 'json={"api":"true","auth-service":"true","platform-admin":"true","nginx":"true"}' >> "$GITHUB_OUTPUT"
+            echo 'json={"api":"true","auth-service":"true","platform-admin":"true","sign-service":"true","talent-intelligence-service":"true","nginx":"true"}' >> "$GITHUB_OUTPUT"
             exit 0
           fi
           # PR fast lane — sound, dependency-aware affected detection.
           if [ "${{ steps.filter.outputs.global }}" = "true" ]; then
             # A global dependency changed → conservatively rebuild every app image.
-            api=true; auth=true; padmin=true
+            api=true; auth=true; padmin=true; sign=true; ti=true
             echo "::notice::global dependency changed — all app images affected."
           else
             AFFECTED_JSON=$(npx nx show projects --affected --type app --base="$NX_BASE" --head="$NX_HEAD" --json)
@@ -110,10 +114,12 @@ jobs:
             if aff api || [ "${{ steps.filter.outputs.api_dockerfile }}" = "true" ]; then api=true; else api=false; fi
             if aff auth-service || [ "${{ steps.filter.outputs.auth_dockerfile }}" = "true" ]; then auth=true; else auth=false; fi
             if aff platform-admin || [ "${{ steps.filter.outputs.padmin_dockerfile }}" = "true" ]; then padmin=true; else padmin=false; fi
+            if aff sign-service || [ "${{ steps.filter.outputs.sign_dockerfile }}" = "true" ]; then sign=true; else sign=false; fi
+            if aff talent-intelligence-service || [ "${{ steps.filter.outputs.ti_dockerfile }}" = "true" ]; then ti=true; else ti=false; fi
           fi
           nginx="${{ steps.filter.outputs.nginx }}"; nginx="${nginx:-false}"
-          printf 'json={"api":"%s","auth-service":"%s","platform-admin":"%s","nginx":"%s"}\n' \
-            "$api" "$auth" "$padmin" "$nginx" >> "$GITHUB_OUTPUT"
+          printf 'json={"api":"%s","auth-service":"%s","platform-admin":"%s","sign-service":"%s","talent-intelligence-service":"%s","nginx":"%s"}\n' \
+            "$api" "$auth" "$padmin" "$sign" "$ti" "$nginx" >> "$GITHUB_OUTPUT"
 
   install:
     name: install
@@ -221,6 +227,8 @@ jobs:
           - { name: api, dockerfile: apps/api/Dockerfile }
           - { name: auth-service, dockerfile: apps/auth-service/Dockerfile }
           - { name: platform-admin, dockerfile: apps/platform-admin/Dockerfile }
+          - { name: sign-service, dockerfile: apps/sign-service/Dockerfile }
+          - { name: talent-intelligence-service, dockerfile: apps/talent-intelligence-service/Dockerfile }
           - { name: nginx, dockerfile: deploy/nginx/Dockerfile }
     steps:
       - uses: actions/checkout@v4
@@ -480,26 +488,6 @@ jobs:
       - name: release-manifest:check
         if: ${{ !cancelled() }}
         run: npm run release-manifest:selftest
-
-  # identity-index:privacy-wall is deliberately NOT folded into static-governance.
-  # Its LOCKED directives (Aramo-TR2b-DDR §I14 line 83; Aramo-TR2b-B1 line 41) mandate a
-  # "first-class named CI gate … visible in the required-checks list, not folded" — a
-  # visibility rationale that exceeds CI execution topology, so the CI-Velocity-2 governed-
-  # aggregate equivalence amendment (which is topology-only) does not cover it. It stays a
-  # standalone job in deployment-gate.needs, honoring TR2b literally. (identity_index carries
-  # a hard privacy invariant: no tenant_id, no PII, ever.)
-  identity-index-privacy-wall:
-    name: identity-index:privacy-wall
-    runs-on: ubuntu-latest
-    needs: install
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-node@v6
-        with:
-          node-version-file: .nvmrc
-          cache: npm
-      - run: npm ci || npm ci || npm ci # retry: free-email-domains postinstall fetches 3 third-party hosts and hard-exits on a transient ETIMEDOUT
-      - run: npm run identity-index:privacy-wall
 
   verify-vocabulary:
     name: verify:vocabulary
@@ -794,6 +782,14 @@ jobs:
           done
       - name: migration-runner:pg (tools/db-sync-local.pg-integration.sh)
         run: bash tools/db-sync-local.pg-integration.sh
+      # ATI-SEP-1 T0 (ADR-0036 Decision 2) — the Talent Intelligence database on a REAL
+      # PostgreSQL: tools/ensure-intelligence-db.sh creates the aramo_intelligence role +
+      # database on a server that already holds data (twice — idempotent), then
+      # tools/db-sync-intelligence.sh applies libs/intelligence-core migrations TWICE
+      # (second run applies 0), plus status read-only, checksum drift, atomic failure and
+      # the shared-DB runner's exclusion of the TI migrations.
+      - name: migration-runner:pg (tools/db-sync-intelligence.pg-integration.sh)
+        run: bash tools/db-sync-intelligence.pg-integration.sh
 
   terraform-fmt:
     name: terraform:fmt
@@ -917,7 +913,6 @@ jobs:
       - contract-parity-check # GLH-1-C — governed API route<->OpenAPI parity
       - aggregate-gate-check # GLH-1 A+B — pins the above INTO this needs list
       - static-governance # CI-Velocity-2 — consolidated cheap governance walls (named steps)
-      - identity-index-privacy-wall # TR2b-DDR/B1 — kept standalone (visibility rationale, not folded)
       - pact-consumer
       - pact-provider
       - test-unit

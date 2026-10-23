@@ -127,6 +127,12 @@ model RawPayloadReference {
   // no verified email ⇒ no cross-tenant key ⇒ NULL. UUID-only, no FK
   // (cross-schema; identity_index owns PersonCluster).
   resolved_cluster_id String?           @db.Uuid
+  // ATI-SEP-1 T10 WP2 — the ATS-local sourcing anchor: the
+  // sourced_talent.SourcedTalent row this arrival resolved to (keyed by
+  // tenant + channel + external id). The canonicalize idempotency anchor + poll
+  // gate. resolved_subject_id / resolved_cluster_id above are INERT soft refs from
+  // here on (ADD-not-rename; no longer written). UUID-only, no FK.
+  sourced_talent_id   String?           @db.Uuid
   // Cold-Ingest Extraction — the async subject-poll's extract-once gate (the
   // analogue of resolved_subject_id's canonicalize-poll gate). A resolved
   // arrival with a resume storage_ref is picked up by the extraction poll;
@@ -147,5 +153,6 @@ model RawPayloadReference {
   // a tenant.
   @@index([tenant_id, verified_email])
   @@index([tenant_id, profile_url])
+  @@index([tenant_id, sourced_talent_id])
   @@schema("ingestion")
 }

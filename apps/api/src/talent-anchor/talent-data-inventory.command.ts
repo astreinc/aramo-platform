@@ -50,7 +50,7 @@ async function main(): Promise<void> {
     process.stdout.write(JSON.stringify(inventory, null, 2) + '\n');
     logger.log(
       `talent-data-inventory: ${inventory.scope.record_ids.length} record(s), ` +
-        `${inventory.scope.subject_ids.length} subject(s), ${inventory.total_rows} data row(s), ` +
+        `${inventory.scope.sourced_talent_ids.length} linked sourced arrival(s), ${inventory.total_rows} data row(s), ` +
         `is_anonymized=${inventory.is_anonymized} (read-only — no writes)`,
     );
   } finally {

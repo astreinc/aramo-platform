@@ -135,6 +135,103 @@ paths:
       security:
         - BearerAuth: []
 
+  # ATI-SEP-1 T8 (ADR-0036 §5) — identifier verification through Talent Intelligence.
+  # GATED: INTELLIGENCE_VERIFICATION_ENABLED=true + TI configured + the record tenant's
+  # `intelligence` capability; otherwise a UNIFORM 404 (the feature does not exist here).
+  /v1/portal/records/{id}/identifier-verifications:
+    post:
+      operationId: requestPortalIdentifierVerification
+      summary: Ask Talent Intelligence to email a one-time code to one stored address of the record.
+      description: |
+        `id` must be reachable through the caller's OPEN-4 chain (else a UNIFORM 404). The caller
+        names a STORED slot (email1 | email2), never an address. The ATS relays the request to the
+        Talent Intelligence service for the record's ATS reference; TI mints the code and emails
+        it. The code never appears in this response. Requires `portal:profile:edit`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalIdentifierVerificationRequest'
+      responses:
+        '201':
+          description: A verification was opened and the code is queued for delivery.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalIdentifierVerificationOpened'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          description: IDENTIFIER_VERIFICATION_REFUSED — Talent Intelligence refused the request (details.reason).
+        '503':
+          description: INTELLIGENCE_UNAVAILABLE — Talent Intelligence could not be reached.
+      security:
+        - BearerAuth: []
+
+  /v1/portal/records/{id}/identifier-verifications/{verificationId}/confirm:
+    post:
+      operationId: confirmPortalIdentifierVerification
+      summary: Confirm the emailed one-time code.
+      description: |
+        Relays the 6-digit code to Talent Intelligence. TI enforces the expiry and the attempt
+        budget (then locks the verification). A wrong code is 422 IDENTIFIER_VERIFICATION_REFUSED
+        with details.reason INVALID_CODE and details.attempts_remaining. Requires
+        `portal:profile:edit`.
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: verificationId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/PortalIdentifierVerificationConfirmRequest'
+      responses:
+        '200':
+          description: The identifier is verified.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PortalIdentifierVerificationConfirmed'
+        '400':
+          $ref: 'common.yaml#/components/responses/BadRequest'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+        '422':
+          description: IDENTIFIER_VERIFICATION_REFUSED — wrong / expired / locked / already confirmed (details.reason).
+        '503':
+          description: INTELLIGENCE_UNAVAILABLE — Talent Intelligence could not be reached.
+      security:
+        - BearerAuth: []
+
   /v1/portal/records/{id}/consent:
     get:
       operationId: getPortalRecordConsent
@@ -563,6 +660,45 @@ components:
       bearerFormat: JWT
 
   schemas:
+    # ATI-SEP-1 T8 — portal identifier verification (Talent Intelligence path).
+    PortalIdentifierVerificationRequest:
+      type: object
+      additionalProperties: false
+      required: [slot]
+      properties:
+        slot:
+          type: string
+          enum: [email1, email2]
+          description: The stored email slot to verify (never a caller-supplied address).
+    PortalIdentifierVerificationOpened:
+      type: object
+      additionalProperties: false
+      required: [verification_id, status, expires_at, delivery]
+      properties:
+        verification_id: { type: string, format: uuid }
+        status: { type: string, enum: [PENDING] }
+        expires_at: { type: string, format: date-time }
+        delivery:
+          type: string
+          enum: [QUEUED, NOT_AVAILABLE]
+    PortalIdentifierVerificationConfirmRequest:
+      type: object
+      additionalProperties: false
+      required: [code]
+      properties:
+        code:
+          type: string
+          pattern: '^[0-9]{6}$'
+    PortalIdentifierVerificationConfirmed:
+      type: object
+      additionalProperties: false
+      required: [verification_id, status, outcome]
+      properties:
+        verification_id: { type: string, format: uuid }
+        status: { type: string, enum: [CONFIRMED] }
+        outcome:
+          type: string
+          enum: [BOUND, ALREADY_BOUND, ANCHOR_CONTRADICTION, UNBOUND]
     # M3 PR-9 §4.5 — PortalProfile schema. R10-filtered by construction:
     # additionalProperties: false enforces the closed envelope; no field
     # name matches the verify-portal-refusal.ts forbidden list

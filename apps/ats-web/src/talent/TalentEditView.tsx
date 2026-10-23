@@ -479,7 +479,7 @@ export function EditResumePanel({
       <input
         ref={inputRef}
         type="file"
-        accept=".pdf,.doc,.docx,application/pdf"
+        accept=".pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document"
         hidden
         onChange={(e) => onReplace(e.target.files?.[0])}
       />

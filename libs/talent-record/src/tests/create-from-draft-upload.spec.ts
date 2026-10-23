@@ -56,11 +56,17 @@ function make(parts: {
   createThrows?: Error;
 } = {}) {
   const findActiveByEmail = vi.fn().mockResolvedValue(parts.duplicate ?? null);
+  // ATI-SEP-1 A2 — the create-time dedupe is email1 + normalized phone_cell.
+  const findActiveDuplicate = vi
+    .fn()
+    .mockResolvedValue(
+      parts.duplicate != null ? { id: (parts.duplicate as { id: string }).id, reason: 'email' } : null,
+    );
   const findById = vi.fn().mockResolvedValue(parts.existingTalent ?? null);
   const create = parts.createThrows
     ? vi.fn().mockRejectedValue(parts.createThrows)
     : vi.fn().mockImplementation(async (args: { id?: string }) => ({ id: args.id ?? 'tal-generated', first_name: 'Ada', last_name: 'Lovelace' }));
-  const repo = { findActiveByEmail, findById, create };
+  const repo = { findActiveByEmail, findActiveDuplicate, findById, create };
 
   const findResumeExtractionDraftById = vi
     .fn()
@@ -75,29 +81,20 @@ function make(parts: {
     establishCreateDraftEvidence,
     markResumeExtractionDraftAccepted,
   };
-  const enqueueCanonical = vi.fn().mockResolvedValue(undefined);
-  const enqueueTalentReconcile = vi.fn().mockResolvedValue(undefined);
-
   const ctl = new TalentRecordController(
-    repo as never, {} as never, {} as never, {} as never,
+    repo as never, {} as never, {} as never,
     talentExtraction as never, {} as never, {} as never,
-    { enqueueTalent: enqueueCanonical } as never, {} as never, {} as never, {} as never,
-    { enqueueTalent: enqueueTalentReconcile } as never,
+    {} as never, {} as never, {} as never,
     // The SHARED create-from-draft composition — this spec exercises the
     // confirmCreateFromDraftUpload 3-phase via create(), so it wires the real
     // service with the same mocks the controller used to delegate to.
-    new TalentCreateFromDraftService(
-      repo as never,
-      talentExtraction as never,
-      { enqueueTalent: enqueueCanonical } as never,
-      { enqueueTalent: enqueueTalentReconcile } as never,
-    ),
+    new TalentCreateFromDraftService(repo as never, talentExtraction as never),
   );
-  return { ctl, findActiveByEmail, findById, create, findResumeExtractionDraftById, establishCreateDraftEvidence, markResumeExtractionDraftAccepted, enqueueCanonical, enqueueTalentReconcile };
+  return { ctl, findActiveByEmail, findActiveDuplicate, findById, create, findResumeExtractionDraftById, establishCreateDraftEvidence, markResumeExtractionDraftAccepted };
 }
 
 describe('TI-1F-C strengthened-D — confirmCreateFromDraftUpload ordering + idempotency', () => {
-  it('happy path: evidence FIRST → TalentRecord (reserved id) → ACCEPTED last → signals; ONE reserved id; no model call', async () => {
+  it('happy path: evidence FIRST → TalentRecord (reserved id) → ACCEPTED last; ONE reserved id; no model call', async () => {
     const m = make();
     const res = await m.ctl.create(AUTH, body() as never, 'rq-1');
 
@@ -116,9 +113,9 @@ describe('TI-1F-C strengthened-D — confirmCreateFromDraftUpload ordering + ide
     expect(m.establishCreateDraftEvidence.mock.invocationCallOrder[0]).toBeLessThan(m.create.mock.invocationCallOrder[0]);
     expect(m.create.mock.invocationCallOrder[0]).toBeLessThan(m.markResumeExtractionDraftAccepted.mock.invocationCallOrder[0]);
 
-    // §4-H signals fire after the durable Talent exists.
-    expect(m.enqueueCanonical).toHaveBeenCalledWith(TENANT, reserved);
-    expect(m.enqueueTalentReconcile).toHaveBeenCalledWith(TENANT, reserved);
+    // ATI-SEP-1 A4 — no reconcile is enqueued inline: §4-H signals follow the
+    // talent.created row the reserved-id create commits (dedupe re-checked there).
+    expect(m.create).toHaveBeenCalledWith(expect.objectContaining({ id: reserved, dedupe: true }));
   });
 
   it('failure during the evidence transaction → NO TalentRecord, draft NOT accepted', async () => {

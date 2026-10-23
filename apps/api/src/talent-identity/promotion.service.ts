@@ -1,67 +1,60 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { AramoError } from '@aramo/common';
 import {
   CONSENT_SOURCE_TYPES,
   SourceConsentService,
   type ConsentSourceType,
 } from '@aramo/consent';
 import { IngestionRepository } from '@aramo/ingestion';
+import { SourcedTalentRepository } from '@aramo/sourced-talent';
 import {
+  normalizePhoneForDedupe,
+  talentDuplicateError,
+  TalentDuplicateAdvisoryRepository,
   TalentRecordRepository,
-  TalentRecordReconcileRepository,
   type CreateTalentRecordRequestDto,
+  type DuplicateSharedKind,
 } from '@aramo/talent-record';
-import {
-  TalentTrustService,
-  TalentTrustRepository,
-  type EvidenceRecordRow,
-  type SubjectRef,
-  type TrustStateRow,
-} from '@aramo/talent-trust';
 
+import { DuplicateDetectionService } from './duplicate-detection.service.js';
 import {
-  PROMOTION_LINK_SOURCE,
   PROMOTION_SOURCED_STATUS,
   PROMOTION_SYSTEM_ACTOR_ID,
 } from './promotion.constants.js';
+import { describeSourcedArrival } from './sourced-arrival.view.js';
 
-// Promotion Gate — Slice A (create branch). apps/api orchestration ABOVE the
-// I15 wall: reads the cip trust ledger (talent_trust) + the cip ingestion
-// arrival, and writes the ats heart (talent_record) + the consent ledger.
-// talent_trust/ingestion import NO ats; this composition-root service is the
-// only place the L2→L3 bridge is crossed (the TalentAnchorProducerService
-// precedent).
+// ATI-SEP-1 T10 WP2 — sourcing promotion (sourced arrival → TalentRecord), rebuilt
+// on ATS data only (Addenda A2 F-1 / A3: ATS keeps sourcing + every recruiter
+// decision; Talent Intelligence output never gates it). apps/api orchestration:
+// reads sourced_talent + the ingestion arrival, writes talent_record + consent.
 //
-// create-or-reconcile, CREATE branch only (Lifecycle Spec §3 stage 3):
-//   - subject already linked to a TalentRecord (ATS_TALENT_RECORD ref) → no-op,
-//     return the existing record (idempotent). Enrich-on-re-arrival is slice B.
-//   - subject with declared identity evidence + no record → mint a named
-//     TalentRecord from the evidence (system actor), attach the ATS_TALENT_RECORD
-//     ref, reconcile the arrival's legal basis to an L3 TalentConsentEvent, and
-//     read TrustState as advisory (never blocks — default advisory).
-//   - subject with no usable name evidence (extraction pending/failed) → DEFER
-//     (not an error; the extraction poll retries). Never create a nameless
-//     record.
-//
-// Cross-client (talent_record / talent_trust / consent) writes follow the
-// accepted apps/api-orchestration precedent; the residual create→link duplicate
-// window is registered to backlog B1 (the 4th site in that class).
+//   1. unknown arrival (or another tenant's)       → deferred_unknown_subject
+//   2. arrival already linked to a record           → already_promoted (no-op)
+//   3. a PENDING_REVIEW duplicate advisory names it  → deferred_unresolved_identity
+//   4. no two-part name on the arrival               → deferred_no_name
+//   5. no mappable legal-basis arrival               → deferred_no_basis
+//   6. missing email1 or cell phone (A2 admission)   → deferred_incomplete_contact
+//   7. a live record in the tenant shares the email
+//      or normalized cell phone                      → a SOURCED_ARRIVAL advisory is
+//      raised for review and the call fails 409 TALENT_RECORD_DUPLICATE (the same
+//      refusal Add Talent returns)
+//   8. otherwise mint the record through the talent-record create path (in-txn
+//      dedupe re-check + the PROMOTED arrival link + the talent.created outbox row,
+//      one transaction), then reconcile the arrival's legal basis to an L3
+//      TalentConsentEvent.
+
+export interface SourcedArrivalRef {
+  tenant_id: string;
+  sourced_talent_id: string;
+}
 
 export type PromotionOutcome =
-  | { status: 'promoted'; talent_record_id: string; trust_state: TrustStateRow | null }
+  | { status: 'promoted'; talent_record_id: string }
   | { status: 'already_promoted'; talent_record_id: string }
   | { status: 'deferred_no_name' }
   | { status: 'deferred_no_basis' }
   | { status: 'deferred_unknown_subject' }
-  // Promotion-Trigger slice-A — the identity gate: the subject has an
-  // unresolved (PENDING_REVIEW) merge advisory ("might be the same human as
-  // another subject"). Block the mint until identity is settled (a human
-  // resolves the advisory). NOT an attribute contradiction (those ride onto
-  // the record) — this is identity-not-settled.
   | { status: 'deferred_unresolved_identity' }
-  // TalentRecord Admission Invariant — the subject's declared identity evidence
-  // does not yet carry BOTH a primary email AND a cell phone. A TalentRecord
-  // must not exist without its contact anchors, so the subject stays in the
-  // staging substrate; the poll retries once the contact evidence arrives.
   | { status: 'deferred_incomplete_contact' };
 
 @Injectable()
@@ -69,300 +62,155 @@ export class PromotionService {
   private readonly logger = new Logger(PromotionService.name);
 
   constructor(
-    private readonly trust: TalentTrustService,
-    private readonly trustRepo: TalentTrustRepository,
+    private readonly sourced: SourcedTalentRepository,
+    private readonly advisories: TalentDuplicateAdvisoryRepository,
+    private readonly detection: DuplicateDetectionService,
     private readonly talentRecords: TalentRecordRepository,
-    private readonly reconcileRepo: TalentRecordReconcileRepository,
     private readonly sourceConsent: SourceConsentService,
     private readonly ingestion: IngestionRepository,
   ) {}
 
-  async promoteSubject(
-    subjectRef: SubjectRef,
-    opts?: { requestId?: string },
+  async promoteArrival(
+    ref: SourcedArrivalRef,
+    opts?: { requestId?: string; actor_id?: string | null },
   ): Promise<PromotionOutcome> {
-    const tenant_id = subjectRef.tenant_id;
-    const requestId =
-      opts?.requestId ?? `promote:${subjectRef.ref_type}:${subjectRef.ref_id}`;
+    const tenant_id = ref.tenant_id;
+    const requestId = opts?.requestId ?? `promote:sourced:${ref.sourced_talent_id}`;
 
-    // 1. Resolve the subject (merge-followed). Unknown ref → nothing to promote.
-    const subject = await this.trust.resolveSubjectRef(subjectRef);
-    if (subject === null) {
-      this.logger.warn(
-        `promoteSubject: unknown subject for ref ${subjectRef.ref_type}:${subjectRef.ref_id} (${requestId})`,
-      );
+    // 1. The arrival, tenant-walled (another tenant's id reads as unknown).
+    const arrival = await this.sourced.findById(ref.sourced_talent_id);
+    if (arrival === null || arrival.tenant_id !== tenant_id) {
       return { status: 'deferred_unknown_subject' };
     }
 
-    // 2. Idempotent no-op — a subject already linked to a record returns it.
-    const refs = await this.trust.listSubjectRefs(tenant_id, subject.id);
-    const existingRecordRef = refs.find((r) => r.ref_type === 'ATS_TALENT_RECORD');
-    if (existingRecordRef !== undefined) {
-      return { status: 'already_promoted', talent_record_id: existingRecordRef.ref_id };
+    // 2. Idempotent no-op — an arrival already linked to a record returns it.
+    const link = await this.advisories.findArrivalLink(tenant_id, arrival.id);
+    if (link !== null) {
+      return { status: 'already_promoted', talent_record_id: link.talent_record_id };
     }
 
-    // 2.5. Identity gate (Promotion-Trigger slice-A) — block the mint if the
-    //    subject has an UNRESOLVED merge advisory ("might be the same human as
-    //    another subject"). Identity must be settled before a record exists, so
-    //    two live records never key to one human. Read-only check against the
-    //    TR-2a advisory ledger (does NOT rebuild resolution — that is TR-2).
-    //    Attribute contradictions (name/phone) do NOT block here — they ride
-    //    onto the record as the sourcer's clean-up queue (B1/B2).
-    const openAdvisories = await this.trustRepo.listMatchAdvisories(tenant_id, {
-      subjectId: subject.id,
-      status: 'PENDING_REVIEW',
-    });
-    if (openAdvisories.length > 0) {
+    // 3. The identity gate — an unresolved ATS duplicate advisory for this arrival.
+    const pending = await this.advisories.listForArrival(tenant_id, arrival.id, 'PENDING_REVIEW');
+    if (pending.length > 0) {
       this.logger.warn(
-        `promoteSubject: subject ${subject.id} has ${openAdvisories.length} unresolved merge advisory(ies); deferring (${requestId})`,
+        `promoteArrival: arrival ${arrival.id} has ${pending.length} pending duplicate advisory(ies); deferring (${requestId})`,
       );
       return { status: 'deferred_unresolved_identity' };
     }
 
-    // 3. Gather declared identity evidence → name (required: BOTH parts, the
-    //    TalentRecord contract is non-null first_name + last_name) + contact.
-    const identity = await this.trust.getEvidence(subjectRef, { dimension: 'IDENTITY' });
-    const name = extractName(identity);
-    if (name === null) {
-      // Extraction pending/failed, or only a partial name — defer (the poll
-      // retries). Never mint a nameless/half-named record.
-      return { status: 'deferred_no_name' };
-    }
+    // 4. Name — both parts (the TalentRecord contract is non-null first + last).
+    const d = describeSourcedArrival(arrival);
+    if (d.first_name === null || d.last_name === null) return { status: 'deferred_no_name' };
 
-    // 4. Legal basis — the origin SOURCED_TALENT arrival carries the source +
-    //    captured_at. A promoted record MUST NOT exist without its basis, so a
-    //    missing/unmappable basis DEFERS rather than creating an orphan.
-    const sourcedRef = refs.find((r) => r.ref_type === 'SOURCED_TALENT');
-    if (sourcedRef === undefined) return { status: 'deferred_no_basis' };
-    const arrival = await this.ingestion.findById({ id: sourcedRef.ref_id });
-    if (arrival === null) return { status: 'deferred_no_basis' };
-    const source = arrival.source;
-    if (!isConsentSource(source)) {
+    // 5. Legal basis — the ingestion arrival this row was landed from.
+    if (d.ingestion_payload_id === null) return { status: 'deferred_no_basis' };
+    const payload = await this.ingestion.findById({ id: d.ingestion_payload_id });
+    if (payload === null || payload.tenant_id !== tenant_id) return { status: 'deferred_no_basis' };
+    if (!isConsentSource(payload.source)) {
       this.logger.warn(
-        `promoteSubject: arrival source "${source}" is not a consent source type; deferring (${requestId})`,
+        `promoteArrival: arrival source "${payload.source}" is not a consent source type; deferring (${requestId})`,
       );
       return { status: 'deferred_no_basis' };
     }
 
-    // 5. Map the declared identity evidence to the record's PII fields.
-    const contact = extractContact(identity);
-    const f = contact.fields;
+    // 6. Admission anchors (A2) — primary email AND cell phone.
+    const email1 = (d.email ?? '').trim();
+    const phoneCell = (d.phone ?? '').trim();
+    if (email1 === '' || phoneCell === '') return { status: 'deferred_incomplete_contact' };
 
-    // 5a. Admission invariant — the governed promotion gate guarantees the
-    //     contact anchors. A subject whose declared identity evidence lacks a
-    //     primary email OR a cell phone is NOT admissible as a TalentRecord;
-    //     defer (it remains in staging) rather than minting an incomplete row.
-    //     The poll re-promotes once the missing contact evidence arrives. This
-    //     gate precedes the input build so email1/phone_cell are present as the
-    //     DTO's required admission anchors.
-    const email1 = (f.email1 ?? '').trim();
-    const phoneCell = (f.phone_cell ?? '').trim();
-    if (email1 === '' || phoneCell === '') {
-      this.logger.warn(
-        `promoteSubject: subject ${subject.id} missing required contact anchor(s) ` +
-          `(email1=${email1 !== ''}, phone_cell=${phoneCell !== ''}); ` +
-          `deferring admission (${requestId})`,
-      );
-      return { status: 'deferred_incomplete_contact' };
+    // 7. Tenant-local duplicate pre-check (the create re-checks under locks).
+    const dup = await this.talentRecords.findActiveDuplicate({
+      tenant_id,
+      email1,
+      phone_cell: phoneCell,
+    });
+    if (dup !== null) {
+      await this.flagDuplicate(tenant_id, arrival.id, dup.id, email1, phoneCell);
+      // The same 409 the Add Talent path returns.
+      throw talentDuplicateError(dup, requestId);
     }
 
     const input: CreateTalentRecordRequestDto = {
-      first_name: name.first_name,
-      last_name: name.last_name,
+      first_name: d.first_name,
+      last_name: d.last_name,
       email1,
       phone_cell: phoneCell,
-      ...(f.address !== undefined ? { address: f.address } : {}),
-      ...(f.address2 !== undefined ? { address2: f.address2 } : {}),
-      ...(f.city !== undefined ? { city: f.city } : {}),
-      ...(f.state !== undefined ? { state: f.state } : {}),
-      ...(f.zip !== undefined ? { zip: f.zip } : {}),
-      source,
+      ...(d.headline !== null ? { current_employer: d.headline } : {}),
+      ...(d.profile_url !== null ? { web_site: d.profile_url } : {}),
+      source: payload.source,
     };
 
-    // 6. Create the record (system actor — automated promotion, not a human).
-    //    Lands at tenant_status='sourced' (un-worked); a recruiter working it in
-    //    L3 flips it to 'engaged' (deferred to its own slice).
-    const record = await this.talentRecords.create({
-      tenant_id,
-      entered_by_id: PROMOTION_SYSTEM_ACTOR_ID,
-      input,
-      requestId,
-      tenant_status: PROMOTION_SOURCED_STATUS,
-    });
-
-    // 7. Link — attach the ATS_TALENT_RECORD ref to THIS subject (idempotent;
-    //    UUID-only, no FK). This is the L2→L3 pointer; re-promotion sees it at
-    //    step 2 and no-ops.
-    await this.trust.attachSubjectRef({
-      tenant_id,
-      subject_id: subject.id,
-      ref_type: 'ATS_TALENT_RECORD',
-      ref_id: record.id,
-      link_source: PROMOTION_LINK_SOURCE,
-    });
-
-    // 7.25. TR-2b B1 PR-2 (DDR R4) — carry the subject's PERSON_CLUSTER onto the
-    //    new record. When the resolved subject carries a PERSON_CLUSTER ref (its
-    //    ref_id IS the identity_index cluster id, written at admission), populate
-    //    TalentRecord.cluster_id through the single cluster writer (repo.setLink —
-    //    the same tenant-scoped column writer the manual-link path uses). This is
-    //    the record-level pointer INTO the index (server-only; cluster_id is OFF
-    //    THE WIRE — never on TalentRecordView / any response). Idempotent: a
-    //    re-promotion no-ops at step 2 before reaching here. `refs` was read at
-    //    step 2, so no extra fetch.
-    const clusterRef = refs.find((r) => r.ref_type === 'PERSON_CLUSTER');
-    if (clusterRef !== undefined) {
-      await this.talentRecords.setLink({
-        tenant_id,
-        id: record.id,
-        cluster_id: clusterRef.ref_id,
-      });
-    }
-
-    // 7.5. Create-path provenance (Slice-B2 back-fill invariant) — record which
-    //    EvidenceRecord each set field projects, so B2's pending → provenance →
-    //    incumbent join always resolves (a field set here and later contradicted
-    //    at the FIRST reconcile would otherwise have no incumbent). Best-effort:
-    //    the record is already created + linked; a provenance write failure is
-    //    self-healed by B1's occupied-same align on the next reconcile. Same
-    //    talent_record schema as the record (not cross-client); residual write
-    //    failure registered to backlog B1.
-    const provenance: FieldEvidence[] = [
-      { field_name: 'first_name', evidence_id: name.evidence_id },
-      { field_name: 'last_name', evidence_id: name.evidence_id },
-      ...contact.provenance,
-    ];
+    // 8. Mint (system actor) — record + PROMOTED link + talent.created, one txn.
+    let recordId: string;
     try {
-      for (const pr of provenance) {
-        await this.reconcileRepo.upsertFieldProvenance({
-          tenant_id,
-          talent_record_id: record.id,
-          field_name: pr.field_name,
-          evidence_id: pr.evidence_id,
-        });
-      }
+      const record = await this.talentRecords.create({
+        tenant_id,
+        entered_by_id: PROMOTION_SYSTEM_ACTOR_ID,
+        input,
+        requestId,
+        tenant_status: PROMOTION_SOURCED_STATUS,
+        dedupe: true,
+        sourced_arrival: { sourced_talent_id: arrival.id, linked_by: opts?.actor_id ?? null },
+        event: { correlation_id: requestId },
+      });
+      recordId = record.id;
     } catch (err) {
-      this.logger.warn(
-        `promoteSubject: create-path provenance write failed for record ${record.id} (${requestId}); B1 reconcile will back-fill: ${err instanceof Error ? err.message : String(err)}`,
-      );
+      // A concurrent promotion of the same arrival won the link PK → its record.
+      const raced = await this.advisories.findArrivalLink(tenant_id, arrival.id);
+      if (raced !== null) {
+        return { status: 'already_promoted', talent_record_id: raced.talent_record_id };
+      }
+      // The in-txn duplicate re-check fired (a concurrent create of the human).
+      const existingId = duplicateExistingId(err);
+      if (existingId !== null) {
+        await this.flagDuplicate(tenant_id, arrival.id, existingId, email1, phoneCell);
+      }
+      throw err;
     }
 
-    // 8. Reconcile legal basis → L3 TalentConsentEvent keyed to the new record.
-    //    TR-15 B2 (DDR §4) — carry the arrival's basis provenance VERBATIM into
-    //    the grant metadata (source channel + the server-derived source_class),
-    //    stopping the flatten. The basis dimension survives promotion; counsel
-    //    assigns meaning later. Read from the ingestion arrival (the actual basis
-    //    at this path) — NOT sourced_talent.legal_basis (unreachable here).
+    // 9. Reconcile the arrival's legal basis → L3 TalentConsentEvent, carrying
+    //    the arrival's source channel + server-derived source_class verbatim.
     await this.sourceConsent.registerSourceDerivedConsent({
       tenant_id,
-      talent_record_id: record.id,
-      source,
-      source_class: arrival.source_class,
-      occurred_at: arrival.captured_at.toISOString(),
+      talent_record_id: recordId,
+      source: payload.source,
+      source_class: payload.source_class,
+      occurred_at: payload.captured_at.toISOString(),
       requestId,
     });
 
-    // 9. Advisory genuineness — read the rollup; attach as context (never block).
-    const trust_state = await this.trust.getTrustState(subjectRef);
-
     this.logger.log(
-      `promoteSubject: promoted subject ${subject.id} → TalentRecord ${record.id} (source=${source}, ${requestId})`,
+      `promoteArrival: promoted arrival ${arrival.id} → TalentRecord ${recordId} (source=${payload.source}, ${requestId})`,
     );
-    return { status: 'promoted', talent_record_id: record.id, trust_state };
+    return { status: 'promoted', talent_record_id: recordId };
+  }
+
+  private async flagDuplicate(
+    tenant_id: string,
+    sourced_talent_id: string,
+    talent_record_id: string,
+    email1: string,
+    phoneCell: string,
+  ): Promise<void> {
+    const keys = await this.advisories.findRecordContactKeys(tenant_id, talent_record_id);
+    const kinds: DuplicateSharedKind[] = [];
+    if (keys?.email !== null && keys?.email === email1.toLowerCase()) kinds.push('EMAIL');
+    if (keys?.phone !== null && keys?.phone === normalizePhoneForDedupe(phoneCell)) kinds.push('PHONE');
+    await this.detection.flagArrivalAgainstRecord({
+      tenant_id,
+      sourced_talent_id,
+      talent_record_id,
+      kinds: kinds.length > 0 ? kinds : ['EMAIL'],
+    });
   }
 }
-
-// ---- pure evidence → field mappers (declared THIRD_PARTY_UNVERIFIED) --------
 
 function isConsentSource(source: string): source is ConsentSourceType {
   return (CONSENT_SOURCE_TYPES as readonly string[]).includes(source);
 }
 
-// SUPERSEDED / REVOKED / CONTRADICTED / STALE records are not live truth — map
-// only currently-valid declared evidence (fresh declared evidence is VALID).
-function isLive(e: EvidenceRecordRow): boolean {
-  return e.current_status === 'VALID';
-}
-
-function payloadOf(e: EvidenceRecordRow): Record<string, unknown> {
-  return e.assertion_payload !== null && typeof e.assertion_payload === 'object'
-    ? (e.assertion_payload as Record<string, unknown>)
-    : {};
-}
-
-function str(v: unknown): string | undefined {
-  if (typeof v !== 'string') return undefined;
-  const t = v.trim();
-  return t.length === 0 ? undefined : t;
-}
-
-// Slice-B2 — the (field_name → source EvidenceRecord.id) provenance a create
-// projects. The value came FROM this evidence; the back-fill invariant records
-// it so B2's pending-row → provenance → incumbent join always resolves.
-interface FieldEvidence {
-  field_name: string;
-  evidence_id: string;
-}
-
-// A named record needs BOTH parts (the DTO contract is non-null). A partial
-// name (only first or only last) is NOT promotable → null (defer). Carries the
-// FULL_NAME EvidenceRecord.id so create writes first_name/last_name provenance.
-function extractName(
-  identity: EvidenceRecordRow[],
-): { first_name: string; last_name: string; evidence_id: string } | null {
-  for (const e of identity) {
-    if (e.assertion_type !== 'FULL_NAME' || !isLive(e)) continue;
-    const p = payloadOf(e);
-    const first_name = str(p['first_name']);
-    const last_name = str(p['last_name']);
-    if (first_name !== undefined && last_name !== undefined) {
-      return { first_name, last_name, evidence_id: e.id };
-    }
-  }
-  return null;
-}
-
-interface ContactFields {
-  email1?: string;
-  phone_cell?: string;
-  address?: string;
-  address2?: string;
-  city?: string;
-  state?: string;
-  zip?: string;
-}
-
-// Returns the mapped contact fields AND, per field actually set, the source
-// EvidenceRecord.id (create-path provenance; the field_names match B1's so B2's
-// join is uniform). ADDRESS sub-fields share their one ADDRESS evidence.
-function extractContact(identity: EvidenceRecordRow[]): {
-  fields: ContactFields;
-  provenance: FieldEvidence[];
-} {
-  const fields: ContactFields = {};
-  const provenance: FieldEvidence[] = [];
-  const set = (field_name: keyof ContactFields, value: string | undefined, evidence_id: string): void => {
-    if (value === undefined) return;
-    fields[field_name] = value;
-    provenance.push({ field_name, evidence_id });
-  };
-  for (const e of identity) {
-    if (!isLive(e)) continue;
-    const p = payloadOf(e);
-    if (e.assertion_type === 'EMAIL' && fields.email1 === undefined) {
-      // TR-4 B1 (DDR §2.3) — contact writers CONVERGED on `value` as of 2026-07-08;
-      // this dual-read stays to read pre-convergence rows whose key is the legacy
-      // `normalized_value` (append-only history — no rewrite). New rows carry `value`.
-      set('email1', str(p['normalized_value']) ?? str(p['value']), e.id);
-    } else if (e.assertion_type === 'PHONE' && fields.phone_cell === undefined) {
-      set('phone_cell', str(p['value']), e.id);
-    } else if (e.assertion_type === 'ADDRESS' && fields.address === undefined) {
-      set('address', str(p['address']), e.id);
-      set('address2', str(p['address2']), e.id);
-      set('city', str(p['city']), e.id);
-      set('state', str(p['state']), e.id);
-      set('zip', str(p['zip']), e.id);
-    }
-  }
-  return { fields, provenance };
+function duplicateExistingId(err: unknown): string | null {
+  if (!(err instanceof AramoError) || err.code !== 'TALENT_RECORD_DUPLICATE') return null;
+  const existing = (err.context.details as { existing_id?: unknown } | undefined)?.existing_id;
+  return typeof existing === 'string' ? existing : null;
 }

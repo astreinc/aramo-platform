@@ -20,9 +20,9 @@
     "libs/evidence",
     "libs/examination",
     "libs/identity",
-    "libs/identity-index",
     "libs/ingestion",
     "libs/integration",
+    "libs/intelligence-core",
     "libs/job-domain",
     "libs/matching",
     "libs/metering",
@@ -48,9 +48,7 @@
     "libs/subscription",
     "libs/talent-embedding",
     "libs/talent-evidence",
-    "libs/talent-reconcile",
     "libs/talent-record",
-    "libs/talent-trust",
     "libs/technical-screening"
   ],
   "coverageAliases": [

@@ -12,7 +12,8 @@ import { apiClient } from '../api/client';
 // mirror, no auto role grant).
 export const MY_PRODUCTS_PATH = '/v1/me/products';
 
-export type ProductKey = 'ats' | 'sign' | 'org';
+// ATI-SEP-1 T9 — `intelligence` (Talent Intelligence; opens inside the ATS).
+export type ProductKey = 'ats' | 'sign' | 'org' | 'intelligence';
 export type ProductUnavailableReason = 'not_subscribed' | 'not_authorized' | 'not_activated';
 
 // ORG-UX-1 (Directive v1.0 LOCKED §4.3, Lead Correction A) — what the Organization
@@ -88,7 +89,7 @@ export function productEntryHref(product: ProductAvailability): string | null {
 }
 
 // The auth consumer each product app signs in as (consumer-isolated sessions).
-export const PRODUCT_CONSUMER: Readonly<Record<ProductKey, string>> = { ats: 'recruiter', sign: 'sign', org: 'org' };
+export const PRODUCT_CONSUMER: Readonly<Record<ProductKey, string>> = { ats: 'recruiter', sign: 'sign', org: 'org', intelligence: 'recruiter' };
 
 /**
  * AUTH-SIGNIN-1 R6 (existing SSO preserved) — opening another Aramo app from

@@ -42,7 +42,9 @@ export interface ResumeSelectionSectionProps {
   readonly canUploadTailored?: boolean;
 }
 
-const RESUME_ACCEPT = '.pdf,.doc,.docx,application/pdf';
+// ATI-SEP-1 A4 — PDF and DOCX only (no legacy .doc / application/msword).
+const RESUME_ACCEPT =
+  '.pdf,.docx,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document';
 
 export function ResumeSelectionSection({
   pipelineId,

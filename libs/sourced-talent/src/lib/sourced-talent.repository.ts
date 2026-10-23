@@ -8,10 +8,10 @@ import { PrismaService } from './prisma/prisma.service.js';
 // app-side (Postgres 17 has no native uuidv7(); identity-index / talent-trust /
 // canonicalization precedent).
 //
-// SCOPE (Fix-Slice-1): the record/find primitives ONLY. No promotion/resolver
-// wiring (that is fix-slice-2). A recorded arrival is, to the rest of the
-// platform, unconsented/unverified/unevidenced until it passes the promotion
-// front door.
+// ATI-SEP-1 T10 WP2 — the ATS-local sourcing store: canonicalize resolves every
+// ingestion arrival to a row here, the sourcing pool reads it, and promotion
+// mints a TalentRecord from it. A recorded arrival is, to the rest of the
+// platform, unconsented/unverified until it passes the promotion front door.
 
 export interface SourcedTalentRow {
   id: string;
@@ -125,49 +125,86 @@ export class SourcedTalentRepository {
   }
 
   /**
-   * TR-2b B2b (Directive §PR-2.2, R7) — keyset-paginated read of L1 arrivals that
-   * carry a normalized_email, for the admit-arrivals backfill CLI. Returns only
-   * the minimal admission material (id, tenant, channel, normalized_email) — no
-   * PII beyond the email the fingerprint is derived from. L1 has no writer yet
-   * (the ADR-0019 sourcing service is future), so this reads an empty table today
-   * (dry-run reports 0) — the mechanism precedes the history (D15).
+   * ATI-SEP-1 T10 WP2 — the arrival an ingestion payload already landed as. The
+   * SRC-1 writers (Indeed apply webhook, manual capture) record the payload id in
+   * provenance.ingestion_payload_id; canonicalize reuses that arrival instead of
+   * minting a second one for the same payload. Tenant-scoped.
    */
-  async listArrivalsWithEmail(input: {
-    batchSize: number;
-    afterId?: string;
-  }): Promise<SourcedArrivalWithEmail[]> {
+  async findByIngestionPayloadId(
+    tenantId: string,
+    payloadId: string,
+  ): Promise<SourcedTalentRow | null> {
+    const row = await this.prisma.sourcedTalent.findFirst({
+      where: {
+        tenant_id: tenantId,
+        provenance: { path: ['ingestion_payload_id'], equals: payloadId },
+      },
+      orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+    });
+    return (row as SourcedTalentRow | null) ?? null;
+  }
+
+  /** ATI-SEP-1 T10 WP2 — tenant-scoped batch read by id (pool / advisory display). */
+  async findByIds(tenantId: string, ids: readonly string[]): Promise<SourcedTalentRow[]> {
+    if (ids.length === 0) return [];
+    const rows = await this.prisma.sourcedTalent.findMany({
+      where: { tenant_id: tenantId, id: { in: [...ids] } },
+    });
+    return rows as SourcedTalentRow[];
+  }
+
+  /**
+   * ATI-SEP-1 T10 WP2 — the sourcing pool's keyset scan: a tenant's arrivals,
+   * oldest first, strictly after the (created_at, id) cursor. The caller filters
+   * out the arrivals already linked to a TalentRecord (a separate schema).
+   */
+  async listByTenantKeyset(input: {
+    tenant_id: string;
+    limit: number;
+    cursor: { created_at: Date; id: string } | null;
+  }): Promise<SourcedTalentRow[]> {
+    const c = input.cursor;
     const rows = await this.prisma.sourcedTalent.findMany({
       where: {
-        normalized_email: { not: null },
-        ...(input.afterId === undefined ? {} : { id: { gt: input.afterId } }),
+        tenant_id: input.tenant_id,
+        ...(c === null
+          ? {}
+          : {
+              OR: [
+                { created_at: { gt: c.created_at } },
+                { created_at: c.created_at, id: { gt: c.id } },
+              ],
+            }),
       },
-      orderBy: { id: 'asc' },
-      take: input.batchSize,
-      select: {
-        id: true,
-        tenant_id: true,
-        source_channel: true,
-        normalized_email: true,
-      },
+      orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+      take: input.limit,
     });
-    return rows.flatMap((r) =>
-      r.normalized_email === null
-        ? []
-        : [
-            {
-              id: r.id,
-              tenant_id: r.tenant_id,
-              source_channel: r.source_channel,
-              normalized_email: r.normalized_email,
-            },
-          ],
-    );
+    return rows as SourcedTalentRow[];
   }
-}
 
-export interface SourcedArrivalWithEmail {
-  id: string;
-  tenant_id: string;
-  source_channel: string;
-  normalized_email: string;
+  /**
+   * ATI-SEP-1 T10 WP2 — the duplicate detector's arrival leg: a tenant's arrivals
+   * whose normalized email equals `email` OR whose normalized phone is one of
+   * `phones` (the caller passes every equivalent digit form). Tenant-scoped; an
+   * empty key set returns [].
+   */
+  async findByNormalizedContact(input: {
+    tenant_id: string;
+    email?: string | null;
+    phones?: readonly string[];
+  }): Promise<SourcedTalentRow[]> {
+    const or: Array<Record<string, unknown>> = [];
+    if (input.email !== undefined && input.email !== null && input.email !== '') {
+      or.push({ normalized_email: input.email });
+    }
+    if (input.phones !== undefined && input.phones.length > 0) {
+      or.push({ normalized_phone: { in: [...input.phones] } });
+    }
+    if (or.length === 0) return [];
+    const rows = await this.prisma.sourcedTalent.findMany({
+      where: { tenant_id: input.tenant_id, OR: or as never },
+      orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+    });
+    return rows as SourcedTalentRow[];
+  }
 }

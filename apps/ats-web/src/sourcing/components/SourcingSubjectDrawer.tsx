@@ -1,14 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { InlineAlert, useToast } from '@aramo/fe-foundation';
 
-import {
-  evidenceAssertionTypeLabel,
-  evidenceMethodLabel,
-  evidenceSourceClassLabel,
-  evidenceStatusLabel,
-  identityRefTypeLabel,
-} from '../../talent/evidence-vocab';
-import { Avatar, BandPill, Button, Icons, StatusPill } from '../../ui';
+import { identityRefTypeLabel } from '../../talent/evidence-vocab';
+import { Avatar, Button, Icons, StatusPill } from '../../ui';
 import { addToPipeline, getSubjectDetail, saveToBench } from '../sourcing-api';
 import { deferralGuidance, promoteErrorMessage, subjectErrorMessage } from '../error-messages';
 import type { PoolItem, SourcingResult, SubjectAdvisory, SubjectDetail } from '../types';
@@ -30,27 +24,19 @@ interface Props {
   readonly onPromoted: () => void;
 }
 
-// The four trust dimensions, in canonical order, paired with their wire key.
-const DIMENSIONS = [
-  { key: 'identity', label: 'Identity' },
-  { key: 'claims', label: 'Claims' },
-  { key: 'continuity', label: 'Continuity' },
-  { key: 'eligibility', label: 'Eligibility' },
-] as const;
-
 function collectedOn(iso: string): string {
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
   return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
 }
 
-// SourcingSubjectDrawer — the subject drill-in (originally forked from the retired Talent triage drawer):
-// same non-modal right slide-in + focus-trap + prev/next, but the body is the
-// sourcing subject: the 4 trust BandPills, the evidence ledger (assertion /
-// source / method / status / date — NEVER strength, R10), the identity refs, and
-// the pending same-human advisories with inline approve/dismiss (identity:resolve
-// -gated). The footer promotes: Add to pipeline / Save to pool, both reading the
-// SOURCED_TALENT ref_id off refs[]. A deferral renders as guidance, not an error.
+// SourcingSubjectDrawer — the sourced-arrival drill-in (non-modal right slide-in +
+// focus-trap + prev/next). ATI-SEP-1 T10 WP2: the body is the arrival's own
+// applicant material (contact, source, arrival date), its refs, and the pending
+// ATS duplicate advisories ("may be an existing talent") with inline link /
+// dismiss (identity:resolve-gated). The footer promotes: Add to pipeline / Save
+// to pool, both reading the SOURCED_TALENT ref_id off refs[]. A deferral renders
+// as guidance, not an error.
 export function SourcingSubjectDrawer({
   item,
   index,
@@ -150,9 +136,10 @@ export function SourcingSubjectDrawer({
 
   const displayName = detail?.display_name ?? item.display_name;
   const email = detail?.email ?? item.email;
-  const heading = displayName ?? email ?? 'Unnamed subject';
-  const bands = detail?.trust_bands ?? item.trust_bands;
-  const contradictions = detail?.open_contradiction_count ?? item.open_contradiction_count;
+  const heading = displayName ?? email ?? 'Unnamed arrival';
+  const phone = detail?.phone ?? item.phone;
+  const sourceChannel = detail?.source_channel ?? item.source_channel;
+  const arrivedAt = detail?.arrived_at ?? item.arrived_at;
   const advisories = detail?.open_identity_advisories ?? [];
   // The promote POSTs address the subject by its SOURCED_TALENT ref (I15: no
   // TalentRecord exists yet). A pool subject always carries one (the anti-join);
@@ -213,13 +200,13 @@ export function SourcingSubjectDrawer({
       className="rc-drawer rc-drawer--open rc-sourcing-drawer"
       role="dialog"
       aria-modal="false"
-      aria-label={`${heading} — sourcing subject`}
+      aria-label={`${heading} — sourced arrival`}
     >
       <div className="rc-drawer__hd">
         <Button unstyled
           type="button"
           className="rc-drawer__nav"
-          aria-label="Previous subject"
+          aria-label="Previous arrival"
           onClick={onPrev}
           disabled={index <= 0}
         >
@@ -228,7 +215,7 @@ export function SourcingSubjectDrawer({
         <Button unstyled
           type="button"
           className="rc-drawer__nav"
-          aria-label="Next subject"
+          aria-label="Next arrival"
           onClick={onNext}
           disabled={index >= total - 1}
         >
@@ -254,40 +241,37 @@ export function SourcingSubjectDrawer({
         </div>
 
         <section className="rc-drawer__sec">
-          <h4>Trust</h4>
-          <div className="rc-sourcing-bands">
-            {DIMENSIONS.map((d) => (
-              <div key={d.key} className="rc-sourcing-band">
-                <span className="rc-sourcing-band__dim">{d.label}</span>
-                <BandPill band={bands[d.key]} />
-              </div>
-            ))}
-          </div>
-          {contradictions > 0 ? (
-            <div className="rc-sourcing-contra">
-              <StatusPill tone="warn" dot>
-                {contradictions === 1
-                  ? '1 open contradiction'
-                  : `${contradictions} open contradictions`}
-              </StatusPill>
+          <h4>Arrival</h4>
+          <div className="rc-kv-list">
+            <div className="rc-kv">
+              <span className="rc-kv__k">Source</span>
+              <span className="rc-kv__v">{sourceChannel}</span>
             </div>
-          ) : null}
-          {/* TR-5 B2 — named-thinness assessment statements beside the bands.
-              Plain Confident-blue lines from the server's fixed sentence set;
-              no pill kinds, no numbers. */}
-          {(detail?.trust_statements ?? []).length > 0 ? (
-            <ul className="rc-sourcing-statements">
-              {detail!.trust_statements.map((s) => (
-                <li key={s} className="rc-sourcing-statements__line">
-                  {s}
-                </li>
-              ))}
-            </ul>
-          ) : null}
+            <div className="rc-kv">
+              <span className="rc-kv__k">Arrived</span>
+              <span className="rc-kv__v">{collectedOn(arrivedAt)}</span>
+            </div>
+            <div className="rc-kv">
+              <span className="rc-kv__k">Cell phone</span>
+              <span className="rc-kv__v mono">{phone ?? '—'}</span>
+            </div>
+            {detail?.headline != null ? (
+              <div className="rc-kv">
+                <span className="rc-kv__k">Current employer</span>
+                <span className="rc-kv__v">{detail.headline}</span>
+              </div>
+            ) : null}
+            {detail?.profile_url != null ? (
+              <div className="rc-kv">
+                <span className="rc-kv__k">Profile</span>
+                <span className="rc-kv__v mono">{detail.profile_url}</span>
+              </div>
+            ) : null}
+          </div>
         </section>
 
         {loading ? (
-          <p className="rc-drawer__empty">Loading subject…</p>
+          <p className="rc-drawer__empty">Loading arrival…</p>
         ) : error !== null ? (
           <div className="rc-drawer__sec">
             <InlineAlert variant="error">{error}</InlineAlert>
@@ -303,10 +287,14 @@ export function SourcingSubjectDrawer({
                   {advisories.map((a) => (
                     <li key={a.id} className="rc-sourcing-adv__row">
                       <div className="rc-sourcing-adv__meta">
-                        <StatusPill tone={a.has_contradiction ? 'danger' : 'info'}>
-                          {a.has_contradiction ? 'Possible match · contradiction' : 'Possible match'}
+                        <StatusPill tone="info">
+                          {a.shared_kinds.length > 0
+                            ? `Possible match · shares ${a.shared_kinds.join(', ')}`
+                            : 'Possible match'}
                         </StatusPill>
-                        <span className="rc-sourcing-adv__id mono">{a.subject_b_id}</span>
+                        <span className="rc-sourcing-adv__id">
+                          {a.talent_record_name ?? a.talent_record_id}
+                        </span>
                       </div>
                       {canResolve ? (
                         <div className="rc-sourcing-adv__act">
@@ -320,7 +308,7 @@ export function SourcingSubjectDrawer({
                             variant="primary"
                             onClick={() => setAdvisoryTarget({ advisory: a, action: 'approve' })}
                           >
-                            Approve merge
+                            Same person
                           </Button>
                         </div>
                       ) : (
@@ -328,29 +316,6 @@ export function SourcingSubjectDrawer({
                           Resolving identity needs the identity:resolve permission.
                         </p>
                       )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-            </section>
-
-            <section className="rc-drawer__sec">
-              <h4>Evidence</h4>
-              {detail === null || detail.evidence.length === 0 ? (
-                <p className="rc-drawer__empty">No evidence recorded yet.</p>
-              ) : (
-                <ul className="rc-sourcing-ev">
-                  {detail.evidence.map((e) => (
-                    <li key={e.id} className="rc-sourcing-ev__row">
-                      <div className="rc-sourcing-ev__top">
-                        <span className="rc-sourcing-ev__type">{evidenceAssertionTypeLabel(e.assertion_type)}</span>
-                        <StatusPill tone={e.current_status === 'VALID' ? 'ok' : 'neutral'}>
-                          {evidenceStatusLabel(e.current_status)}
-                        </StatusPill>
-                      </div>
-                      <div className="rc-sourcing-ev__sub">
-                        {evidenceSourceClassLabel(e.source_class)} · {evidenceMethodLabel(e.method)} · {collectedOn(e.collected_at)}
-                      </div>
                     </li>
                   ))}
                 </ul>

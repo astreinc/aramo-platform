@@ -1,0 +1,27 @@
+{
+  "name": "intelligence-webhook-consumer-pact",
+  "$schema": "../../../node_modules/nx/schemas/project-schema.json",
+  "sourceRoot": "pact/consumers/intelligence-webhook-consumer/src",
+  "projectType": "library",
+  "tags": ["pact-consumer"],
+  "targets": {
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "options": {
+        "lintFilePatterns": ["pact/consumers/intelligence-webhook-consumer/**/*.ts"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "echo 'Pact contract tests are excluded from the aggregate test target. Run nx pact-test intelligence-webhook-consumer-pact (or invoke vitest directly) to execute them.'"
+      }
+    },
+    "pact-test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "vitest run --passWithNoTests --root pact/consumers/intelligence-webhook-consumer"
+      }
+    }
+  }
+}

@@ -34,7 +34,8 @@ describe('RawPayloadReference schema — structural guarantees', () => {
     // §4.2 names plus the PR-13 §4.4 skill_surface_forms column plus
     // the T2-2a additives (resolution_method + resolved_subject_id) plus
     // the 4b resolved_cluster_id plus the Cold-Ingest-Extraction extract-
-    // once marker (extraction_done_at + extraction_attempts). Catches both
+    // once marker (extraction_done_at + extraction_attempts) plus the
+    // ATI-SEP-1 T10 WP2 sourced_talent_id anchor. Catches both
     // missing fields AND drift toward an R10-forbidden output field.
     const block = extractModelBlock(readSchema(), 'RawPayloadReference');
     const fieldNames = block
@@ -63,6 +64,7 @@ describe('RawPayloadReference schema — structural guarantees', () => {
         'skill_surface_forms',
         'source',
         'source_class',
+        'sourced_talent_id',
         'storage_ref',
         'tenant_id',
         'updated_at',

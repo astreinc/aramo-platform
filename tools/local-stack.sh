@@ -68,6 +68,12 @@ load_env() {
   # tokens, Microsoft delegated tokens, tenant LLM keys), so a developer box never
   # writes the real AWS account. Opt out with AWS_SECRETS_MANAGER_ENDPOINT= (empty).
   export AWS_SECRETS_MANAGER_ENDPOINT="${AWS_SECRETS_MANAGER_ENDPOINT-http://localhost:4566}"
+  # ATI-SEP-1 T0 (ADR-0036) — Talent Intelligence has its OWN database + role on the
+  # same local server. LOCAL-ONLY defaults unless .env sets them (see .env.example).
+  export INTELLIGENCE_DB_USER="${INTELLIGENCE_DB_USER:-aramo_intelligence}"
+  export INTELLIGENCE_DB_PASSWORD="${INTELLIGENCE_DB_PASSWORD:-aramo-intelligence-local-dev}"
+  export INTELLIGENCE_DATABASE_URL="${INTELLIGENCE_DATABASE_URL:-postgresql://${INTELLIGENCE_DB_USER}:${INTELLIGENCE_DB_PASSWORD}@localhost:5432/aramo_intelligence}"
+  export INTELLIGENCE_SERVICE_URL="${INTELLIGENCE_SERVICE_URL:-http://localhost:3004}"
 }
 
 compose() { docker compose "$@"; }
@@ -133,6 +139,11 @@ cmd_up() {
 
   log "2/7 db: apply migrations (tools/db-sync-local.sh)"
   bash tools/db-sync-local.sh
+  # ATI-SEP-1 T0 — the Talent Intelligence database: role + database (idempotent;
+  # the local `aramo` user is the server superuser), then its own migration ledger.
+  log "2b/7 db: Talent Intelligence database (tools/ensure-intelligence-db.sh + tools/db-sync-intelligence.sh)"
+  INTELLIGENCE_ADMIN_DATABASE_URL="${INTELLIGENCE_ADMIN_DATABASE_URL:-$DATABASE_URL}" bash tools/ensure-intelligence-db.sh
+  bash tools/db-sync-intelligence.sh
 
   # Host-jiti seeds (identity + tenant provisioning). These graphs transform
   # cleanly under jiti; the POLICY seed does NOT (see step 5/7) — it must run
@@ -150,8 +161,8 @@ cmd_up() {
   if [ "${SKIP_BUILD:-0}" = "1" ]; then
     log "4/7 build: skipped (SKIP_BUILD=1) — reusing dist/"
   else
-    log "4/7 build: nx build api auth-service sign-service"
-    npx nx run-many -t build -p api auth-service sign-service
+    log "4/7 build: nx build api auth-service sign-service talent-intelligence-service"
+    npx nx run-many -t build -p api auth-service sign-service talent-intelligence-service
   fi
 
   log "5/7 link: runtime deps for node dist/ (tools/local-run-link.sh)"
@@ -179,11 +190,13 @@ cmd_up() {
     ARAMO_ENV=local ARAMO_SUBSCRIPTION_TENANT_ID="$ASTRE_TENANT_ID" npm run prisma:seed-dev-subscription
   fi
 
-  log "7/7 start: auth-service :3001, api :3000, sign-service :3003, ats-web :4201, home-web :4205, sign-web :4206, talent-intake-consumer"
+  log "7/7 start: auth-service :3001, api :3000, sign-service :3003, talent-intelligence-service :3004, ats-web :4201, home-web :4205, sign-web :4206, talent-intake-consumer"
   start_app auth-service env PORT=3001 node dist/apps/auth-service/src/main.js
   start_app api          env PORT=3000 node dist/apps/api/src/main.js
   # E-Sign: without it "Send for signature" fails (api → localhost:3003 refused).
   start_app sign-service env PORT=3003 node dist/apps/sign-service/src/main.js
+  # ATI-SEP-1 T0 — Talent Intelligence (own DB via INTELLIGENCE_DATABASE_URL; GET /health).
+  start_app talent-intelligence-service env PORT=3004 node dist/apps/talent-intelligence-service/src/main.js
   start_app ats-web      npx nx serve aramo-ats-web
   # D-ORG — App Home + Organization Administration; forwards /ats/ to :4201 like nginx.
   start_app home-web     npx nx serve aramo-home-web
@@ -200,6 +213,7 @@ cmd_up() {
   log "         http://localhost:4201/ats/ (ATS dev server directly)"
   log "  api  → http://localhost:3000   auth → http://localhost:3001"
   log "  esign → http://localhost:3003"
+  log "  talent intelligence → http://localhost:3004/health"
   log "  Aramo Sign (workspace + guest signing, sign-web) → http://localhost:4206"
   log "  local mailbox (outbox) → node tools/local-mail.cjs"
   log "  intake consumer → LocalStack SQS (http://localhost:4566) → extraction"
@@ -207,12 +221,12 @@ cmd_up() {
 }
 
 cmd_down() {
-  stop_app talent-intake-consumer; stop_app home-web; stop_app sign-web; stop_app ats-web; stop_app sign-service; stop_app api; stop_app auth-service
+  stop_app talent-intake-consumer; stop_app home-web; stop_app sign-web; stop_app ats-web; stop_app talent-intelligence-service; stop_app sign-service; stop_app api; stop_app auth-service
   if command -v docker >/dev/null; then log "infra: docker compose down"; compose down; fi
 }
 
 cmd_status() {
-  for name in auth-service api sign-service ats-web sign-web home-web talent-intake-consumer; do
+  for name in auth-service api sign-service talent-intelligence-service ats-web sign-web home-web talent-intake-consumer; do
     local pidf="$RUN_DIR/$name.pid"
     if [ -f "$pidf" ] && kill -0 "$(cat "$pidf")" 2>/dev/null; then
       printf '  %-13s UP   (pid %s)\n' "$name" "$(cat "$pidf")"

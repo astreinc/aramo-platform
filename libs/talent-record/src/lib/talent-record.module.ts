@@ -3,19 +3,18 @@ import { createAramoLogger } from '@aramo/common';
 import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
-import { IdentityIndexModule } from '@aramo/identity-index';
 import { ObjectStorageModule } from '@aramo/object-storage';
 import { ResumeParseModule } from '@aramo/resume-parse';
 import { TalentExtractionModule } from '@aramo/talent-extraction';
-import { CanonicalReconcileModule } from '@aramo/canonical-reconcile';
-import { TalentReconcileSignalModule } from '@aramo/talent-reconcile-signal';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { TalentRecordController } from './talent-record.controller.js';
 import { TalentRecordRepository } from './talent-record.repository.js';
+import { TalentEventOutboxRepository } from './talent-events/talent-event-outbox.js';
 import { TalentRecordReconcileRepository } from './talent-record-reconcile.repository.js';
+import { TalentIntelligenceRepository } from './talent-intelligence/talent-intelligence.repository.js';
 import { TalentRecordService } from './talent-record.service.js';
-import { TalentLinkService } from './talent-link.service.js';
+import { TalentDuplicateAdvisoryRepository } from './duplicate-advisory/talent-duplicate-advisory.repository.js';
 import { ResumeTextService } from './resume-text/resume-text.service.js';
 import { ResumeExtractionOrchestrator } from './resume-extraction/resume-extraction.orchestrator.js';
 import { ResumeSourceAuthorizer } from './resume-extraction/resume-source-authorizer.js';
@@ -31,9 +30,6 @@ import { TalentIntakePromotionService } from './talent-intake/talent-intake-prom
 //   - AuthModule          → JwtAuthGuard
 //   - AuthorizationModule → RolesGuard
 //   - EntitlementModule   → EntitlementGuard
-//   - IdentityIndexModule → IdentityIndexRepository (the cluster-exists
-//     validation gate for the PERSON_CLUSTER link). DIRECTIONAL EDGE
-//     ONLY — `identity-index` does NOT import `talent-record`. No cycle.
 //   - ObjectStorageModule (A8-3b) → ObjectStorageService (the E1
 //     presigned-PUT helper for resume uploads).
 //   - ResumeParseModule (A8-3b) → ResumeParserService (the E2
@@ -42,16 +38,13 @@ import { TalentIntakePromotionService } from './talent-intake/talent-intake-prom
 //     would cycle because resume-parse defines the prefill type
 //     structurally (libs/resume-parse types/TalentRecordPrefill).
 //
-// TalentLinkService is the ATS↔identity-index link adapter; it composes
-// TalentRecordRepository (the ATS-side write) with IdentityIndexRepository
-// (the cluster read-only validation). 4e-rest made the link CLUSTER-ONLY once
-// selection #349 + consent #350 released their former identity reads.
+// ATI-SEP-1 T10 WP2 — the identity-index link adapter (TalentLinkService) and
+// its IdentityIndexModule edge were removed; TalentRecord.cluster_id is inert.
 @Module({
   imports: [
     AuthModule,
     AuthorizationModule,
     EntitlementModule,
-    IdentityIndexModule,
     ObjectStorageModule,
     ResumeParseModule,
     // Add-Talent governed-LLM resume extraction. TalentExtractionModule →
@@ -60,17 +53,17 @@ import { TalentIntakePromotionService } from './talent-intake/talent-intake-prom
     // production resume fact extractor (TI-1F P0.2); the deterministic mode
     // resolver (SettingsModule/TenantSettingService) is retired here.
     TalentExtractionModule,
-    // SKILL-TAX Canonical Reconciliation Activation — the best-effort producer.
-    CanonicalReconcileModule,
-    // TALENT-INTEL-1 TI-1F-C — the Talent-profile reconcile PUSH producer (§4-H),
-    // the separate architecture from canonical reconcile. Neutral leaf lib (owns
-    // the queue-name contract) — no talent-record → talent-reconcile cycle.
-    TalentReconcileSignalModule,
+    // ATI-SEP-1 A4 — the canonical / Talent-profile reconcile producers are no
+    // longer imported: create / update / evidence edits commit a talent.* outbox
+    // row (TalentEventOutboxRepository) and apps/api's dispatcher enqueues the
+    // reconciles post-commit.
   ],
   controllers: [TalentRecordController, TalentIntakeController],
   providers: [
     PrismaService,
     TalentRecordRepository,
+    // ATI-SEP-1 A3 — the ATS talent outbox store (drained by apps/api).
+    TalentEventOutboxRepository,
     // Durable Async Résumé-First Talent Intake — the HTTP intake lifecycle +
     // promotion. TalentCreateFromDraftService is the SHARED create-from-draft
     // composition reused by both the synchronous create path and the async
@@ -82,8 +75,14 @@ import { TalentIntakePromotionService } from './talent-intake/talent-intake-prom
     // pending contradictions). Consumed by the apps/api reconcile poll above
     // the I15 wall (mirrors TalentRecordRepository's cross-lib export).
     TalentRecordReconcileRepository,
+    // ATI-SEP-1 T8 — the ATS ↔ Talent Intelligence store (admissible read,
+    // intelligence_link, inbound inbox, sync policy, inbound writes). Consumed
+    // by @aramo/intelligence-integration (scope:ats) in apps/api.
+    TalentIntelligenceRepository,
     TalentRecordService,
-    TalentLinkService,
+    // ATI-SEP-1 T10 WP2 — ATS-local duplicate advisories + the sourced-arrival
+    // link store (consumed by apps/api sourcing / promotion / advisory surfaces).
+    TalentDuplicateAdvisoryRepository,
     // Search PR-2 — the resume-text re-extract + persistence service. The
     // enqueue side is consumed by AttachmentController (the commit seam);
     // the drain side by the ResumeReindexProcessor (the separate worker
@@ -108,9 +107,11 @@ import { TalentIntakePromotionService } from './talent-intake/talent-intake-prom
   ],
   exports: [
     TalentRecordRepository,
+    TalentEventOutboxRepository,
     TalentRecordReconcileRepository,
+    TalentIntelligenceRepository,
     TalentRecordService,
-    TalentLinkService,
+    TalentDuplicateAdvisoryRepository,
     ResumeTextService,
     ResumeEditionIngestionService,
     // TALENT-INTEL-1 (TI-1F-A) — exported so the apps/api-only

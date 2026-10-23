@@ -84,3 +84,12 @@ export {
   type CanonicalizationStatus,
   type CanonicalizationMatchMethod,
 } from './lib/skill-canonicalization.service.js';
+// ATI-SEP-1 A2 A-c (P1) — the platform-owned MatchingPolicy store (versioned,
+// append-only, one ACTIVE version). The thresholds document is opaque here.
+export {
+  MatchingPolicyRepository,
+  MatchingPolicyVersionNotFoundError,
+  type MatchingPolicyVersionRow,
+  type MatchingPolicyStatus,
+  type CreateMatchingPolicyVersionInput,
+} from './lib/matching-policy.repository.js';

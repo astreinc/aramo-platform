@@ -60,6 +60,7 @@ import {
 } from '@aramo/documents-contracts';
 
 import { PactConfigurableResolver } from './auth-helpers.js';
+import { TI_STUB_CLIENT_ID, TI_STUB_CLIENT_SECRET, TiStub, tiReferencePath, tiRefusal } from './support/ti-stub.js';
 
 // M5 PR-6 §4.14 — string-DI-token literals overridden so the verify
 // harness doesn't need real Anthropic API + AWS Secrets Manager +
@@ -276,6 +277,9 @@ const TALENT_RECORD_MIGRATIONS = [
   // TI-1H — edition-aware uniqueness (drops UNIQUE(talent_record_id), adds the
   // per-edition key + the partial-unique transient key).
   'libs/talent-record/prisma/migrations/20260920160000_talent_intel_1h_resume_text_edition_history/migration.sql',
+  // ATI-SEP-1 A2/A3 — phone_cell_normalized (create/update write it) + the
+  // TalentEventOutbox written in every TalentRecord create/update/delete txn.
+  'libs/talent-record/prisma/migrations/20261024130000_ati_sep_1_talent_event_outbox_phone_normalized/migration.sql',
 ].map((p) => resolve(ROOT, p));
 // PR-A1b §4 sweep — entitlement schema applied for the pact verifier so
 // the portal-thin pact interactions (5 interactions traversing the now
@@ -612,6 +616,14 @@ const TALENT_EVIDENCE_ATS_QA_1_EDUCATION_MIGRATION = resolve(
   ROOT,
   'libs/talent-evidence/prisma/migrations/20261022160000_ats_qa_1_education_edit_lineage/migration.sql',
 );
+// ATI-SEP-1 A2 — work-history assertions column + the resumable-Save columns on
+// TalentIntakeDraft (+ the D6 payload hash). The intake draft view and the
+// Talent 360 work-history read project them, so the returned shape depends on them.
+const TALENT_EVIDENCE_ATI_SEP_1_MIGRATIONS = [
+  'libs/talent-evidence/prisma/migrations/20261024110000_ati_sep_1_work_history_assertions/migration.sql',
+  'libs/talent-evidence/prisma/migrations/20261024120000_ati_sep_1_intake_resumable_save/migration.sql',
+  'libs/talent-evidence/prisma/migrations/20261024130000_ati_sep_1_intake_save_payload_hash/migration.sql',
+].map((p) => resolve(ROOT, p));
 // SKILL-TAX-1F-B2 — the canonical skills-taxonomy schema (Skill + Alias + Version +
 // Relationship + AuditEvent) and the 1F governance substrate (merged_into +
 // append-only audit trigger + SkillGovernanceProposal + SkillCorrectionTask). Applied
@@ -640,6 +652,13 @@ const SKILLS_TAXONOMY_1F_AUDIT_APPEND_ONLY_MIGRATION = resolve(
 const SKILLS_TAXONOMY_1F_B_PROPOSAL_CORRECTION_MIGRATION = resolve(
   ROOT,
   'libs/skills-taxonomy/prisma/migrations/20260918120000_skill_tax_1f_b_governance_proposal_correction/migration.sql',
+);
+// ATI-SEP-1 A2 A-c (P1) — the platform-owned MatchingPolicy store (MatchingPolicyVersion +
+// MatchingPolicyAuditEvent + the seeded ACTIVE version 1). The /platform/matching-policy
+// returned shapes depend on it.
+const SKILLS_TAXONOMY_MATCHING_POLICY_MIGRATION = resolve(
+  ROOT,
+  'libs/skills-taxonomy/prisma/migrations/20261023140000_matching_policy/migration.sql',
 );
 // SKILL-TAX-1D — the derived RequisitionSkillRequirement table (requisition schema),
 // needed by the review-queue state handler to seed an UNRESOLVED requirement surface.
@@ -1073,136 +1092,39 @@ const ATTACHMENT_INIT_MIGRATION = resolve(
   ROOT,
   'libs/attachment/prisma/migrations/20260602120000_init_attachment_model/migration.sql',
 );
-// PC-4b — Promotion / Advisory / Sourcing (post-B3). The talent_trust schema
-// (11 migrations: init + anchor + advisory + resolution + watermark + 2 index-
-// only + 2 B1 source_class + B2 reopen + B3b subject_merge_operation) — the
-// full L2 identity substrate the sourcing/advisory/promote paths read+write.
-// All TEXT-backed vocab (no PG enums), self-contained (CREATE SCHEMA in init),
-// FKs intra-schema, cross-schema refs FK-less UUIDs (I1). PLUS saved_list (init
-// + list_kind) — the WRITE-CLOSURE of POST /v1/sourcing/bench (getOrCreate
-// tenant-bench + addToTenantBench); discovered at build, additive test-infra,
-// bench disposition unchanged.
-const TALENT_TRUST_INIT_MIGRATION = resolve(
+// ATI-SEP-1 T10 WP2/WP5 (Addenda A2 F-1 / A3) — the legacy talent_trust /
+// platform_trust / identity_index schemas are DELETED (libs removed; the drop
+// migration below). Sourcing, promotion and duplicate advisories run on ATS data:
+// the sourced_talent arrival table (init + normalized-contact columns), the
+// talent_record duplicate-advisory + sourced-arrival link tables, and the
+// RawPayloadReference.sourced_talent_id anchor. saved_list (init + list_kind +
+// visibility, below) stays the WRITE-CLOSURE of POST /v1/sourcing/bench.
+const SOURCED_TALENT_MIGRATIONS = [
+  'libs/sourced-talent/prisma/migrations/20260704000000_init_sourced_talent/migration.sql',
+  'libs/sourced-talent/prisma/migrations/20260713160000_add_sourced_talent_normalized_contact/migration.sql',
+].map((p) => resolve(ROOT, p));
+// ATI-SEP-1 T10 WP2 — sourced_talent_id on RawPayloadReference. The regenerated
+// ingestion client selects it, so createPayload's RETURNING * 500s on the
+// ingestion-consumer pacts without this migration (same reason as the additives above).
+const INGESTION_ATI_SEP_1_SOURCED_TALENT_MIGRATION = resolve(
   ROOT,
-  'libs/talent-trust/prisma/migrations/20260628000000_init_talent_trust/migration.sql',
+  'libs/ingestion/prisma/migrations/20261024160000_ati_sep_1_raw_payload_sourced_talent_id/migration.sql',
 );
-const TALENT_TRUST_ANCHOR_MIGRATION = resolve(
+// ATI-SEP-1 T8 + T10 — talent_record additives: intelligence_link + the TI webhook
+// inbox + the per-tenant sync policy + provenance source_kind (T8); the ATS
+// duplicate advisory + sourced-arrival link (T10 WP2, the advisory / sourcing
+// returned shapes); the legacy trust schema drop (T10 WP5 — a no-op on this fresh
+// DB, applied so the provider schema matches HEAD).
+const TALENT_RECORD_ATI_SEP_1_MIGRATIONS = [
+  'libs/talent-record/prisma/migrations/20261024140000_ati_sep_1_intelligence_integration/migration.sql',
+  'libs/talent-record/prisma/migrations/20261024160000_ati_sep_1_duplicate_advisory/migration.sql',
+  'libs/talent-record/prisma/migrations/20261024170000_ati_sep_1_drop_legacy_trust_schemas/migration.sql',
+].map((p) => resolve(ROOT, p));
+// ATI-SEP-1 T9 — the `intelligence` capability enum value (default OFF). The
+// TI-backed provider states grant it to the verifier tenant for ENABLED states.
+const ENTITLEMENT_INTELLIGENCE_CAPABILITY_MIGRATION = resolve(
   ROOT,
-  'libs/talent-trust/prisma/migrations/20260703120000_tr2a1_subject_anchor/migration.sql',
-);
-const TALENT_TRUST_ADVISORY_MIGRATION = resolve(
-  ROOT,
-  'libs/talent-trust/prisma/migrations/20260703130000_tr2a2_match_advisory/migration.sql',
-);
-const TALENT_TRUST_ADVISORY_RESOLUTION_MIGRATION = resolve(
-  ROOT,
-  'libs/talent-trust/prisma/migrations/20260703140000_tr2a3_advisory_resolution/migration.sql',
-);
-const TALENT_TRUST_WATERMARK_MIGRATION = resolve(
-  ROOT,
-  'libs/talent-trust/prisma/migrations/20260705120000_add_reconcile_watermark_to_resolution_subject/migration.sql',
-);
-const TALENT_TRUST_ATS_REF_UNIQUE_MIGRATION = resolve(
-  ROOT,
-  'libs/talent-trust/prisma/migrations/20260706120000_ats_ref_partial_unique/migration.sql',
-);
-const TALENT_TRUST_POOL_KEYSET_MIGRATION = resolve(
-  ROOT,
-  'libs/talent-trust/prisma/migrations/20260706160000_sourcing_pool_keyset_index/migration.sql',
-);
-const TALENT_TRUST_B1_SOURCE_CLASS_MIGRATION = resolve(
-  ROOT,
-  'libs/talent-trust/prisma/migrations/20260706170000_tr2a_b1_subject_anchor_source_class/migration.sql',
-);
-const TALENT_TRUST_B1_SOURCE_CLASS_UNIQUE_MIGRATION = resolve(
-  ROOT,
-  'libs/talent-trust/prisma/migrations/20260706180000_tr2a_b1_subject_anchor_source_class_unique/migration.sql',
-);
-const TALENT_TRUST_B2_REOPEN_MIGRATION = resolve(
-  ROOT,
-  'libs/talent-trust/prisma/migrations/20260706200000_tr2a_b2_advisory_reopen_provenance/migration.sql',
-);
-const TALENT_TRUST_B3B_MERGE_OP_MIGRATION = resolve(
-  ROOT,
-  'libs/talent-trust/prisma/migrations/20260706230000_tr2a_b3b_subject_merge_operation/migration.sql',
-);
-// TR-6 B1 — ResolutionSubject.last_matched_at (the regenerated client SELECTs it on
-// every subject read) + SubjectMergeOperation.kind/actor/reason (the advisory
-// reverse-happy state's reverseMerge → unmergeSubjects now persists a DIRECT_UNMERGE
-// row). Without both, the advisory-resolution provider states 500 (client select /
-// insert of a column the DB lacks).
-const TALENT_TRUST_TR6_LAST_MATCHED_MIGRATION = resolve(
-  ROOT,
-  'libs/talent-trust/prisma/migrations/20260707120000_tr6_b1_last_matched_at/migration.sql',
-);
-const TALENT_TRUST_TR6_MERGE_OP_KIND_MIGRATION = resolve(
-  ROOT,
-  'libs/talent-trust/prisma/migrations/20260707130000_tr6_b1_merge_operation_kind/migration.sql',
-);
-// TR-3 B2 — the VerificationRequest table (T3-B1, landed writer-less). The
-// email-verification provider states seed/read it (the pending-token confirm
-// state INSERTs a row; the request-happy state's confirm path writes one), and
-// the regenerated client SELECTs its columns, so the table must exist or those
-// provider states 500. COUPLING FLAG: this TALENT_TRUST migration list is shared
-// with the TR track — a concurrent TR lander rebases this addition.
-const TALENT_TRUST_TR3_VERIFICATION_REQUEST_MIGRATION = resolve(
-  ROOT,
-  'libs/talent-trust/prisma/migrations/20260708120000_tr3_b1_verification_request/migration.sql',
-);
-// TR-4 B1 — EvidenceLink @@unique([from,to,relation]). Adds no column (the client
-// SELECT shape is unchanged), so no provider state 500s; registered here so the
-// provider schema matches HEAD. COUPLING FLAG: shared talent_trust list — a
-// concurrent TR lander rebases this addition.
-const TALENT_TRUST_TR4_LINK_UNIQUE_MIGRATION = resolve(
-  ROOT,
-  'libs/talent-trust/prisma/migrations/20260709120000_tr4_b1_evidence_link_unique/migration.sql',
-);
-// TR-4 B3 — ResolutionSubject.last_consistency_at (the consistency-poll watermark).
-// The regenerated client SELECTs it on every subject read, so the column must exist
-// or those provider states 500. COUPLING FLAG: shared talent_trust list — second lander rebases.
-const TALENT_TRUST_TR4_CONSISTENCY_WATERMARK_MIGRATION = resolve(
-  ROOT,
-  'libs/talent-trust/prisma/migrations/20260710120000_tr4_b3_last_consistency_at/migration.sql',
-);
-// TR-5 B2 — TrustState.single_source_only + longitudinal_observed (the thinness
-// flags). The regenerated client SELECTs them on every trust-state read, so the
-// columns must exist or those provider states 500. COUPLING FLAG: shared
-// talent_trust list — second lander rebases.
-const TALENT_TRUST_TR5_THINNESS_FLAGS_MIGRATION = resolve(
-  ROOT,
-  'libs/talent-trust/prisma/migrations/20260711120000_tr5_b2_thinness_flags/migration.sql',
-);
-// TR-8 D2 — TrustState.verified_control_stale. The regenerated client SELECTs it on
-// every trust-state read, so the column must exist or those provider states 500.
-// COUPLING FLAG: shared talent_trust list — second lander rebases.
-const TALENT_TRUST_TR8_VERIFIED_STALE_MIGRATION = resolve(
-  ROOT,
-  'libs/talent-trust/prisma/migrations/20260712120000_tr8_b1_verified_control_stale/migration.sql',
-);
-// TR-12 B1 — the VerificationProposal table. The regenerated client knows the
-// model, so the table must exist or the talent_trust provider states 500.
-// COUPLING FLAG: shared talent_trust list — second lander rebases.
-const TALENT_TRUST_TR12_PROPOSAL_MIGRATION = resolve(
-  ROOT,
-  'libs/talent-trust/prisma/migrations/20260713120000_tr12_b1_verification_proposal/migration.sql',
-);
-// Portal P3a — the dispute substrate (PortalDispute + WorkItem + Statement); the
-// provider states for the verification/dispute pact interactions query it.
-const TALENT_TRUST_P3A_DISPUTE_MIGRATION = resolve(
-  ROOT,
-  'libs/talent-trust/prisma/migrations/20260715120000_p3a_portal_dispute_substrate/migration.sql',
-);
-// Portal P3b — the tenant-side disposition column (no_transition_reason) the
-// regenerated client SELECTs; without it the dispute provider states 500.
-const TALENT_TRUST_P3B_DISPUTE_MIGRATION = resolve(
-  ROOT,
-  'libs/talent-trust/prisma/migrations/20260716120000_p3b_dispute_disposition/migration.sql',
-);
-// G1 — ResolutionSubject.trust_recompute_requested_at (additive; the durable
-// TrustState recomputation request written with every evidence write).
-const TALENT_TRUST_G1_RECOMPUTE_REQUEST_MIGRATION = resolve(
-  ROOT,
-  'libs/talent-trust/prisma/migrations/20261014120000_g1_trust_recompute_requested_at/migration.sql',
+  'libs/entitlement/prisma/migrations/20261024150000_add_intelligence_capability/migration.sql',
 );
 // TIP-E2E INC-3 — the technical_screening schema (sessions, findings, publication
 // intents, events); the screening provider states query it.
@@ -1281,6 +1203,8 @@ const PLATFORM_GOVERNANCE_PACT = resolve(
 );
 // DOC-4C (R1 seam C) — sign-service → apps/api source-document pull.
 const ESIGN_SOURCE_PACT = resolve(ROOT, 'pact/pacts/sign-service-aramo-core.json');
+// ATI-SEP-1 T8 — the TI webhook publisher (consumer intelligence-webhook).
+const INTELLIGENCE_WEBHOOK_PACT = resolve(ROOT, 'pact/pacts/intelligence-webhook-aramo-core.json');
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-pact-provider-api-audience';
@@ -1295,21 +1219,38 @@ const PLATFORM_TENANT_SENTINEL_ID = '01900000-0000-7000-8000-000000000100';
 // SKILL-TAX-1F-B2 — ids the platform-governance-consumer pact addresses (the accept
 // interaction targets PLATFORM_PROPOSAL_ID; its payload references PLATFORM_SKILL_ID).
 const PLATFORM_SKILL_ID = '01900000-0000-7000-8000-0000000ab001';
+// ATI-SEP-1 A2 A-c (P1) — MatchingPolicy fixtures. v1 = the migration seed (fixed id);
+// v2 = the DRAFT the activate interaction targets.
+const PLATFORM_MATCHING_POLICY_V1_ID = '019a0000-0000-7000-8000-00000000a001';
+const PLATFORM_MATCHING_POLICY_V2_ID = '01900000-0000-7000-8000-0000000ab0a2';
+const MATCHING_POLICY_V1_THRESHOLDS = {
+  backend_engineer: { count: 2, requires_ingested: true },
+  frontend_engineer: { count: 2, requires_ingested: true },
+  fullstack_engineer: { count: 2, requires_ingested: true },
+  devops_sre: { count: 2, requires_ingested: true },
+  data_engineer: { count: 2, requires_ingested: true },
+  architect: { count: 3, requires_ingested: true },
+  qa_test_engineer: { count: 2, requires_ingested: true },
+  product_project_manager: { count: 2, requires_ingested: false },
+  business_analyst: { count: 2, requires_ingested: false },
+};
+async function resetMatchingPolicy(c: Client): Promise<void> {
+  await c.query(
+    'TRUNCATE TABLE skills_taxonomy."MatchingPolicyAuditEvent", skills_taxonomy."MatchingPolicyVersion"',
+  );
+  await c.query(
+    `INSERT INTO skills_taxonomy."MatchingPolicyVersion"
+       (id, version_number, status, evidence_thresholds, note, created_at, activated_at)
+     VALUES ($1::uuid, 1, 'ACTIVE', $2::jsonb, 'Seed', now(), now())`,
+    [PLATFORM_MATCHING_POLICY_V1_ID, JSON.stringify(MATCHING_POLICY_V1_THRESHOLDS)],
+  );
+}
 const PLATFORM_PROPOSAL_ID = '01900000-0000-7000-8000-0000000ab002';
 // M3 PR-9 §4.8 — portal-thin pact uses TALENT_SUB as the talent id; the
 // portal JWT's `sub` claim carries this value, and the GET /v1/portal/*
 // endpoints derive talent_id from authContext.sub. Must match the
 // pact/consumers/portal-thin/src/portal-*.consumer.test.ts constant.
 const PORTAL_TALENT_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
-
-// Portal P1 PR-2b — the OPEN-4 chain's positive-shape ids (the deferred 2a
-// residue). A PortalUser at PORTAL_TALENT_ID points at PORTAL_CLUSTER_ID; an
-// ACTIVE ResolutionSubject in TENANT_ID holds that PERSON_CLUSTER ref plus an
-// ATS_TALENT_RECORD ref → PORTAL_RECORD_ID, a live talent_record row. The
-// full-chain positive interaction resolves exactly one record.
-const PORTAL_CLUSTER_ID = 'cccccccc-cccc-7ccc-8ccc-ccccccccccc1';
-const PORTAL_SUBJECT_ID = 'dddddddd-dddd-7ddd-8ddd-ddddddddddd1';
-const PORTAL_RECORD_ID = 'eeeeeeee-eeee-7eee-8eee-eeeeeeeeeee1';
 
 // Portal P1 PR-2a — the portal_identity schema (PortalUser) so the OPEN-4 chain
 // (portalJwt.sub = PortalUser.id → cluster_id) resolves in the provider. The
@@ -1514,6 +1455,10 @@ const REQUISITION_S3_HOLD_DETAILS_MIGRATION = resolve(
 // use; the recruiter actor uuid matches the audit-row value the pacts
 // assert with a regex matcher.
 const PACT_TALENT_ID = 'aaaaaaaa-aaaa-7aaa-8aaa-aaaaaaaaaaaa';
+// ATI-SEP-1 T8 — TEST-ONLY TI webhook secret + the marker the intelligence-webhook
+// consumer records in place of a (time-bound) valid signature.
+const PACT_INTELLIGENCE_WEBHOOK_SECRET = 'pact-test-intelligence-webhook-secret';
+const PACT_WEBHOOK_VALID_SIGNATURE = 'pact-valid-signature';
 // TIP-E2E INC-3 — fixed technical-screening fixture ids (mirrored in
 // pact/consumers/ats-web/src/technical-screening.consumer.test.ts).
 const PACT_SCREENING_SESSION_ID = '0192f3c0-0000-7000-8000-00000000c501';
@@ -1556,6 +1501,13 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // (MODE A). Each token below is minted with an authz_version returned by
     // grant(...), which registers that token's scopes for server-side resolution.
     const pactAuthzResolver = new PactConfigurableResolver();
+    // ATI-SEP-1 (ADR-0036 §3) — the in-process Talent Intelligence stub the ATS
+    // IntelligenceClient calls (INTELLIGENCE_SERVICE_URL). resetAllRows resets it;
+    // TI-backed states program it. `tiConfigured` backs the overridden integration
+    // config's `configured` flag so a state can exercise NOT_CONFIGURED.
+    const tiStub = new TiStub();
+    const tiConfigured = { value: true };
+    let tiStubUrl = '';
     // Assigned in beforeAll before any state handler runs; initialized empty
     // for strict null-checks compliance.
     let dbUrl = '';
@@ -1819,22 +1771,22 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // already truncated above.
       await c.query('TRUNCATE TABLE task."Task" CASCADE');
       await c.query('TRUNCATE TABLE attachment."Attachment" CASCADE');
-      // PC-4b — talent_trust L2 substrate + saved_list bench. TRUNCATE
-      // ResolutionSubject CASCADE clears its FK-children (ResolutionSubjectRef,
-      // EvidenceRecord[+events/links], TrustState, SubjectMatchAdvisory,
-      // SubjectAnchor). SubjectMergeOperation has no FK (logical) → separate.
-      // SavedList CASCADE clears SavedListEntry. RawPayloadReference (the mint
-      // arrival) is already truncated above (ingestion).
-      await c.query('TRUNCATE TABLE talent_trust."ResolutionSubject" CASCADE');
-      await c.query('TRUNCATE TABLE talent_trust."SubjectMergeOperation" CASCADE');
-      // TR-3 B2 — VerificationRequest has NO FK to ResolutionSubject (subject_id
-      // is a logical UUID ref), so the CASCADE above does not clear it; truncate
-      // explicitly so a prior email-verification interaction's row does not leak.
-      await c.query('TRUNCATE TABLE talent_trust."VerificationRequest" CASCADE');
-      // TR-12 B2 — VerificationProposal is relation-less (subject_id is a logical
-      // UUID ref), so the ResolutionSubject CASCADE above does not clear it;
-      // truncate explicitly so a prior proposal interaction's row does not leak.
-      await c.query('TRUNCATE TABLE talent_trust."VerificationProposal" CASCADE');
+      // ATI-SEP-1 T10 WP2 — the ATS-local sourcing / duplicate-advisory substrate.
+      // talent_duplicate_advisory + talent_record_sourced_arrival + intelligence_link
+      // FK TalentRecord (cleared by the CASCADE above); SourcedTalent (no FK, its own
+      // schema) and the TI webhook inbox (no FK) are truncated explicitly.
+      // SavedList CASCADE (below) clears SavedListEntry. RawPayloadReference (the
+      // arrival's legal-basis source) is already truncated above (ingestion).
+      await c.query('TRUNCATE TABLE sourced_talent."SourcedTalent" CASCADE');
+      await c.query('TRUNCATE TABLE talent_record."talent_duplicate_advisory" CASCADE');
+      await c.query('TRUNCATE TABLE talent_record."talent_record_sourced_arrival" CASCADE');
+      await c.query('TRUNCATE TABLE talent_record."talent_intelligence_inbound_event" CASCADE');
+      // ATI-SEP-1 — Talent Intelligence is OFF by default for every interaction:
+      // drop the verifier tenant's `intelligence` capability and reset the TI stub;
+      // a TI-backed state re-grants it (grantIntelligence) and programs the stub.
+      await c.query(`DELETE FROM entitlement."TenantEntitlement" WHERE capability = 'intelligence'`);
+      tiStub.reset();
+      tiConfigured.value = true;
       // Portal P1 PR-2b — portal_identity.PortalUser (id = portalJwt sub) is
       // seeded by BOTH the no-records and one-record states; truncate so the
       // second state to run does not conflict on the primary key. UUID-only
@@ -1890,55 +1842,6 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
            (id, email_normalized, cluster_id, created_at, updated_at)
          VALUES ($1, 'portal-thin@example.com', NULL, NOW(), NOW())`,
         [PORTAL_TALENT_ID],
-      );
-    }
-
-    // Portal P1 PR-2b — the full OPEN-4 chain (the deferred 2a positive shape).
-    // PortalUser → PORTAL_CLUSTER_ID → an ACTIVE ResolutionSubject in TENANT_ID
-    // holding PERSON_CLUSTER(cluster) + ATS_TALENT_RECORD(record) → a live
-    // talent_record row. resolveRecords returns exactly one record; the
-    // GET /v1/portal/records interaction asserts the PortalProfile envelope.
-    // Single-tenant / no-husk: the husk→survivor and cross-tenant legs are
-    // proven by the apps/api chain integration spec; the pact pins the shape.
-    async function seedPortalUserWithOneRecord(c: Client): Promise<void> {
-      // Portal P2 P2b — the records read enriches tenant_name via
-      // TenantService.getTenantById, so the selection tenant must exist with a
-      // name (the contract's tenant_name matcher expects a string, not null).
-      await c.query(
-        `INSERT INTO identity."Tenant" (id, name, updated_at)
-         VALUES ($1::uuid, 'Acme Corp', NOW()) ON CONFLICT DO NOTHING`,
-        [TENANT_ID],
-      );
-      await c.query(
-        `INSERT INTO talent_record."TalentRecord"
-           (id, tenant_id, first_name, last_name, tenant_status, source_channel,
-            created_at, updated_at)
-         VALUES ($1::uuid, $2::uuid, 'Portal', 'Talent', 'active', 'self_signup',
-            NOW(), NOW())`,
-        [PORTAL_RECORD_ID, TENANT_ID],
-      );
-      await c.query(
-        `INSERT INTO talent_trust."ResolutionSubject" (id, tenant_id, status, created_at)
-         VALUES ($1::uuid, $2::uuid, 'ACTIVE', NOW())`,
-        [PORTAL_SUBJECT_ID, TENANT_ID],
-      );
-      await c.query(
-        `INSERT INTO talent_trust."ResolutionSubjectRef"
-           (id, subject_id, tenant_id, ref_type, ref_id, link_source, linked_at)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, 'PERSON_CLUSTER', $4::uuid, 'seed', NOW())`,
-        ['00000000-0000-7000-8000-0000000000b1', PORTAL_SUBJECT_ID, TENANT_ID, PORTAL_CLUSTER_ID],
-      );
-      await c.query(
-        `INSERT INTO talent_trust."ResolutionSubjectRef"
-           (id, subject_id, tenant_id, ref_type, ref_id, link_source, linked_at)
-         VALUES ($1::uuid, $2::uuid, $3::uuid, 'ATS_TALENT_RECORD', $4::uuid, 'seed', NOW())`,
-        ['00000000-0000-7000-8000-0000000000b2', PORTAL_SUBJECT_ID, TENANT_ID, PORTAL_RECORD_ID],
-      );
-      await c.query(
-        `INSERT INTO portal_identity."PortalUser"
-           (id, email_normalized, cluster_id, created_at, updated_at)
-         VALUES ($1::uuid, 'portal-onerecord@example.com', $2::uuid, NOW(), NOW())`,
-        [PORTAL_TALENT_ID, PORTAL_CLUSTER_ID],
       );
     }
 
@@ -2737,17 +2640,23 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       );
     }
 
-    // PC-4b — Promotion / Advisory / Sourcing fixture ids (talent_trust L2).
+    // PC-4b → ATI-SEP-1 T10 — Promotion / Advisory / Sourcing / dossier fixture ids
+    // (ATS-local sourcing + duplicate advisories; TI-stub-backed dossier/proposals).
+    const ATSW_POOL_RECORD_ID = '00000000-0000-7000-8000-7a00000000b1';
+    const ATSW_MINT_PAYLOAD_ID = '00000000-0000-7000-8000-a45000000001';
+    const ATSW_DEFER_RECORD_ID = '00000000-0000-7000-8000-7a00000000b3';
+    const ATSW_ADV_RECORD_A_ID = '00000000-0000-7000-8000-7a00000000a1';
+    const ATSW_ADV_RECORD_B_ID = '00000000-0000-7000-8000-7a00000000a2';
+    const ATSW_ADV_APPROVED_ID = '00000000-0000-7000-8000-adf000000002';
+    const ATSW_TI_SUBJECT_ID = '00000000-0000-7000-8000-d05000000002';
+    const ATSW_DOSSIER_EMAIL_ASSERTION_ID = '00000000-0000-7000-8000-d05000000006';
+    const ATSW_TI_VERIFICATION_ID = '00000000-0000-7000-8000-7e0000000002';
     const ATSW_DETAIL_LIVE_ID = '00000000-0000-7000-8000-7a0000000010';
     const ATSW_DETAIL_SUPERSEDED_ID = '00000000-0000-7000-8000-7a0000000011';
     const ATSW_SUPERSEDED_BY_ID = '00000000-0000-7000-8000-7a0000000012';
     const ATSW_POOL_SUBJECT_ID = '00000000-0000-7000-8000-5b1000000001';
-    const ATSW_POOL_SUBJECT_B_ID = '00000000-0000-7000-8000-5b1000000008';
-    const ATSW_POOL_SOURCED_REF_ID = '00000000-0000-7000-8000-50c000000001';
     const ATSW_POOL_ADVISORY_ID = '00000000-0000-7000-8000-adf000000009';
-    const ATSW_MINT_SUBJECT_ID = '00000000-0000-7000-8000-5b1000000002';
     const ATSW_MINT_ARRIVAL_ID = '00000000-0000-7000-8000-a44000000001';
-    const ATSW_PROMOTED_SUBJECT_ID = '00000000-0000-7000-8000-5b1000000003';
     const ATSW_PROMOTED_ARRIVAL_ID = '00000000-0000-7000-8000-a44000000002';
     const ATSW_PROMOTED_TALENT_ID = '00000000-0000-7000-8000-7a0000000013';
     // TALENT-INTEL-1 TI-1D-B — field-state read model fixture ids.
@@ -2771,208 +2680,122 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     const ATSW_RT_DOC = '00000000-0000-7000-8000-7d0000000003';
     const ATSW_RT_ED = '00000000-0000-7000-8000-7e0000000003';
     const ATSW_RT_TEXT_ID = '00000000-0000-7000-8000-7c0000000003';
-    const ATSW_DEFER_SUBJECT_ID = '00000000-0000-7000-8000-5b1000000004';
-    const ATSW_DEFER_SUBJECT_B_ID = '00000000-0000-7000-8000-5b1000000005';
     const ATSW_DEFER_ARRIVAL_ID = '00000000-0000-7000-8000-a44000000003';
     const ATSW_DEFER_ADVISORY_ID = '00000000-0000-7000-8000-adf00000000a';
-    const ATSW_ADV_SUBJECT_A_ID = '00000000-0000-7000-8000-5b1000000006';
-    const ATSW_ADV_SUBJECT_B_ID = '00000000-0000-7000-8000-5b1000000007';
     const ATSW_ADV_PENDING_ID = '00000000-0000-7000-8000-adf000000001';
-    const ATSW_ADV_MERGED_ID = '00000000-0000-7000-8000-adf000000002';
-    const ATSW_ADV_CONTRADICTION_ID = '00000000-0000-7000-8000-adf000000003';
     // TR-14 B2 — the trust dossier states.
     const ATSW_DOSSIER_RECORD_ID = '00000000-0000-7000-8000-d05000000001';
-    const ATSW_DOSSIER_SUBJECT_ID = '00000000-0000-7000-8000-d05000000002';
-    const ATSW_DOSSIER_REF_ID = '00000000-0000-7000-8000-d05000000003';
     const ATSW_DOSSIER_EVIDENCE_ID = '00000000-0000-7000-8000-d05000000004';
-    const ATSW_DOSSIER_EVENT_ID = '00000000-0000-7000-8000-d05000000005';
     const ATSW_DOSSIER_EMPTY_RECORD_ID = '00000000-0000-7000-8000-d05000000010';
-    const ATSW_CONTRA_SUBJECT_ID = '00000000-0000-7000-8000-d05000000020';
-    const ATSW_CONTRA_REF_ID = '00000000-0000-7000-8000-d05000000021';
     const ATSW_CONTRA_RECORD_ID = '00000000-0000-7000-8000-d05000000022';
     const ATSW_CONTRA_EVIDENCE_ID = '00000000-0000-7000-8000-d05000000023';
     // TR-12 B2 — the Trust Proposals worklist states.
     const ATSW_PROP_OPEN_ID = '00000000-0000-7000-8000-d12000000001';
     const ATSW_PROP_TERMINAL_ID = '00000000-0000-7000-8000-d12000000002';
-    const ATSW_PROP_SUBJECT_ID = '00000000-0000-7000-8000-d12000000005';
     const ATSW_PROP_RECORD_ID = '00000000-0000-7000-8000-d12000000010';
-    const ATSW_PROP_REF_ID = '00000000-0000-7000-8000-d12000000011';
     const ATSW_PROP_EVIDENCE_ID = '00000000-0000-7000-8000-d12000000020';
 
-    // TR-12 B2 — seed a VerificationProposal (talent_trust worklist row). All
-    // vocab is TEXT (no enum casts); basis_snapshot is jsonb (kinds only).
-    async function seedAtsWebVerificationProposal(
-      c: Client,
-      params: { id: string; subjectId: string; status?: string },
-    ): Promise<void> {
-      await c.query(
-        `INSERT INTO talent_trust."VerificationProposal"
-           (id, tenant_id, subject_id, kind, trigger_kind, basis_ref_id, basis_snapshot, status,
-            created_by, created_at, updated_at, resolved_by, resolved_at, justification)
-         VALUES ($1,$2,$3,'RESOLVE_CONTRADICTION','OPEN_CONTRADICTION',$4,$5::jsonb,$6,
-            'caseworker', now(), now(), $7, $8, $9)
-         ON CONFLICT (id) DO NOTHING`,
-        [
-          params.id,
-          TENANT_ID,
-          params.subjectId,
-          ATSW_PROP_EVIDENCE_ID,
-          JSON.stringify({ assertion_type: 'EMPLOYMENT' }),
-          params.status ?? 'OPEN',
-          params.status !== undefined && params.status !== 'OPEN' ? 'prior-actor' : null,
-          params.status !== undefined && params.status !== 'OPEN' ? new Date() : null,
-          params.status !== undefined && params.status !== 'OPEN' ? 'prior resolution' : null,
-        ],
-      );
-    }
-
-    // COMPOSABLE (PC-4b+): seed a ResolutionSubject (talent_trust L2 anchor).
-    // All talent_trust vocab is TEXT (no enum casts). status defaults ACTIVE.
-    async function seedAtsWebResolutionSubject(
-      c: Client,
-      params: { id: string; status?: string; mergedIntoSubjectId?: string },
-    ): Promise<void> {
-      await c.query(
-        `INSERT INTO talent_trust."ResolutionSubject"
-           (id, tenant_id, status, merged_into_subject_id)
-         VALUES ($1,$2,$3,$4) ON CONFLICT (id) DO NOTHING`,
-        [params.id, TENANT_ID, params.status ?? 'ACTIVE', params.mergedIntoSubjectId ?? null],
-      );
-    }
-
-    async function seedAtsWebResolutionSubjectRef(
-      c: Client,
-      params: { id: string; subjectId: string; refType: string; refId: string },
-    ): Promise<void> {
-      await c.query(
-        `INSERT INTO talent_trust."ResolutionSubjectRef"
-           (id, subject_id, tenant_id, ref_type, ref_id, link_source)
-         VALUES ($1,$2,$3,$4,$5,'pact-seed') ON CONFLICT (id) DO NOTHING`,
-        [params.id, params.subjectId, TENANT_ID, params.refType, params.refId],
-      );
-    }
-
-    async function seedAtsWebTrustState(
-      c: Client,
-      params: {
-        subjectId: string;
-        identityBand: string;
-        claimsBand: string;
-        continuityBand: string;
-        eligibilityBand: string;
-        openContradictionCount?: number;
-      },
-    ): Promise<void> {
-      await c.query(
-        `INSERT INTO talent_trust."TrustState"
-           (subject_id, tenant_id, identity_band, claims_band, continuity_band,
-            eligibility_band, open_contradiction_count, last_recomputed_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,NOW()) ON CONFLICT (subject_id) DO NOTHING`,
-        [
-          params.subjectId,
-          TENANT_ID,
-          params.identityBand,
-          params.claimsBand,
-          params.continuityBand,
-          params.eligibilityBand,
-          params.openContradictionCount ?? 0,
-        ],
-      );
-    }
-
-    // Evidence — non-read defaults are picked from valid vocab; the promote/
-    // pool/detail paths only read dimension + assertion_type + current_status +
-    // assertion_payload.
-    async function seedAtsWebEvidenceRecord(
+    // ATI-SEP-1 T10 WP2 — seed a sourced_talent arrival (raw + immutable: INSERT
+    // only). The channel writer's parsed applicant fields live in provenance
+    // .structured (read by describeSourcedArrival); provenance.ingestion_payload_id
+    // names the RawPayloadReference whose source is the promotion's legal basis.
+    async function seedAtsWebSourcedTalent(
       c: Client,
       params: {
         id: string;
-        subjectId: string;
-        assertionType: string;
-        assertionPayload: Record<string, unknown>;
-        dimension?: string;
-        currentStatus?: string;
+        firstName: string;
+        lastName: string;
+        email?: string | null;
+        phone?: string | null;
+        ingestionPayloadId?: string | null;
+        arrivedAt?: string;
       },
     ): Promise<void> {
+      const structured: Record<string, string> = { first_name: params.firstName, last_name: params.lastName };
+      if (params.email) structured['email'] = params.email;
+      if (params.phone) structured['phone'] = params.phone;
+      const provenance: Record<string, unknown> = { structured };
+      if (params.ingestionPayloadId) provenance['ingestion_payload_id'] = params.ingestionPayloadId;
       await c.query(
-        `INSERT INTO talent_trust."EvidenceRecord"
-           (id, subject_id, tenant_id, dimension, assertion_type, assertion_payload,
-            source_class, method, strength, collected_at, decay_profile,
-            portability_class, current_status, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6::jsonb,'THIRD_PARTY_UNVERIFIED','DOCUMENT',0.1,
-                 NOW(),'SLOW','TENANT_ONLY',$7,$8) ON CONFLICT (id) DO NOTHING`,
+        `INSERT INTO sourced_talent."SourcedTalent"
+           (id, tenant_id, source_channel, external_source_id, provenance, legal_basis,
+            arrived_at, normalized_email, normalized_phone)
+         VALUES ($1::uuid,$2,'manual_capture',$8::text,$3::jsonb,$4::jsonb,$5,$6,$7) ON CONFLICT (id) DO NOTHING`,
         [
           params.id,
-          params.subjectId,
           TENANT_ID,
-          params.dimension ?? 'IDENTITY',
-          params.assertionType,
-          JSON.stringify(params.assertionPayload),
-          params.currentStatus ?? 'VALID',
-          RECRUITER_ID,
+          JSON.stringify(provenance),
+          JSON.stringify({ basis: 'talent_direct' }),
+          params.arrivedAt ?? '2026-07-01T00:00:00Z',
+          params.email ? params.email.toLowerCase() : null,
+          params.phone ?? null,
+          `pact-${params.id}`,
         ],
       );
     }
 
-    // TR-14 B2 — seed an EvidenceEvent (the dossier evidence timeline's spine).
-    async function seedAtsWebEvidenceEvent(
+    // ATI-SEP-1 T10 WP2 — seed a within-tenant duplicate advisory (canonical pair
+    // order a < b for a record pair; exactly one of record_b / sourced_talent).
+    async function seedAtsWebDuplicateAdvisory(
       c: Client,
       params: {
         id: string;
-        evidenceId: string;
-        eventType: string;
-        reason?: string | null;
-        linkedEvidenceId?: string | null;
-        actor?: string | null;
-      },
-    ): Promise<void> {
-      await c.query(
-        `INSERT INTO talent_trust."EvidenceEvent"
-           (id, evidence_id, tenant_id, event_type, reason, linked_evidence_id, actor, occurred_at)
-         VALUES ($1,$2,$3,$4,$5,$6,$7,NOW()) ON CONFLICT (id) DO NOTHING`,
-        [
-          params.id,
-          params.evidenceId,
-          TENANT_ID,
-          params.eventType,
-          params.reason ?? null,
-          params.linkedEvidenceId ?? null,
-          params.actor ?? RECRUITER_ID,
-        ],
-      );
-    }
-
-    async function seedAtsWebSubjectMatchAdvisory(
-      c: Client,
-      params: {
-        id: string;
-        subjectA: string;
-        subjectB: string;
-        adviseBand: string;
+        recordAId: string;
+        recordBId?: string;
+        sourcedTalentId?: string;
         status: string;
-        hasContradiction?: boolean;
-        survivingSubjectId?: string;
-        mergedSubjectId?: string;
+        survivingRecordId?: string;
+        supersededRecordId?: string;
+        mergeCompleted?: boolean;
       },
     ): Promise<void> {
+      const decided = params.status !== 'PENDING_REVIEW';
       await c.query(
-        `INSERT INTO talent_trust."SubjectMatchAdvisory"
-           (id, tenant_id, subject_a_id, subject_b_id, advise_band, has_contradiction,
-            match_basis, status, surviving_subject_id, merged_subject_id, created_by)
-         VALUES ($1,$2,$3,$4,$5,$6,'{"shared":[],"contradiction_kinds":[]}'::jsonb,
-                 $7,$8,$9,$10) ON CONFLICT (id) DO NOTHING`,
+        `INSERT INTO talent_record."talent_duplicate_advisory"
+           (id, tenant_id, talent_record_a_id, talent_record_b_id, sourced_talent_id, basis,
+            shared_kinds, status, decided_by, decided_at, surviving_record_id,
+            superseded_record_id, merge_state, merge_completed_at, created_at, updated_at)
+         VALUES ($1,$2,$3,$4,$5,$6,ARRAY['EMAIL']::text[],$7,$8,$9,$10,$11,$12::jsonb,$13,
+                 '2026-05-25T00:00:00Z', now()) ON CONFLICT (id) DO NOTHING`,
         [
           params.id,
           TENANT_ID,
-          params.subjectA,
-          params.subjectB,
-          params.adviseBand,
-          params.hasContradiction ?? false,
+          params.recordAId,
+          params.recordBId ?? null,
+          params.sourcedTalentId ?? null,
+          params.sourcedTalentId !== undefined ? 'SOURCED_ARRIVAL' : 'EMAIL',
           params.status,
-          params.survivingSubjectId ?? null,
-          params.mergedSubjectId ?? null,
-          RECRUITER_ID,
+          decided ? RECRUITER_ID : null,
+          decided ? new Date() : null,
+          params.survivingRecordId ?? null,
+          params.supersededRecordId ?? null,
+          params.mergeCompleted ? JSON.stringify({ sweep_steps: [], collision_records: [] }) : null,
+          params.mergeCompleted ? new Date() : null,
         ],
+      );
+    }
+
+    // ATI-SEP-1 T10 WP2 — the sourced arrival → TalentRecord link (PROMOTED).
+    async function seedAtsWebSourcedArrivalLink(
+      c: Client,
+      params: { sourcedTalentId: string; talentRecordId: string },
+    ): Promise<void> {
+      await c.query(
+        `INSERT INTO talent_record."talent_record_sourced_arrival"
+           (tenant_id, sourced_talent_id, talent_record_id, link_kind, linked_by)
+         VALUES ($1,$2,$3,'PROMOTED',NULL) ON CONFLICT DO NOTHING`,
+        [TENANT_ID, params.sourcedTalentId, params.talentRecordId],
+      );
+    }
+
+    // ATI-SEP-1 T9 — grant the verifier tenant the `intelligence` capability
+    // (resetAllRows removes it), so the ATS TI gate answers ENABLED and the
+    // surfaces call the stub.
+    async function grantAtsWebIntelligence(c: Client): Promise<void> {
+      await c.query(
+        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
+         VALUES ($1::uuid, 'intelligence') ON CONFLICT DO NOTHING`,
+        [TENANT_ID],
       );
     }
 
@@ -3815,6 +3638,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         INGESTION_SOURCE_CLASS_MIGRATION,
         INGESTION_DECLARED_NAME_MIGRATION,
         INGESTION_CONFIRMED_METHOD_MIGRATION,
+        // ATI-SEP-1 T10 WP2 — RawPayloadReference.sourced_talent_id.
+        INGESTION_ATI_SEP_1_SOURCED_TALENT_MIGRATION,
         EXAMINATION_INIT_MIGRATION,
         EXAMINATION_LIVE_LIST_MIGRATION,
         // M4 PR-5 §4.10 — ExaminationOverride table + immutability trigger
@@ -3827,6 +3652,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         JOB_DOMAIN_DROP_REQUISITION_MIGRATION,
         // 4e-selection-key — talent_record schema (selection.talent_id).
         ...TALENT_RECORD_MIGRATIONS,
+        // ATI-SEP-1 T8 + T10 — intelligence link/inbox/sync policy, the ATS duplicate
+        // advisory + sourced-arrival link, and the legacy trust schema drop.
+        ...TALENT_RECORD_ATI_SEP_1_MIGRATIONS,
         // M4 PR-3 §4.8 — evidence + talent-evidence + submittal
         // migrations applied so the submittal-create pact verification
         // can build the evidence package + persist the workflow record.
@@ -3856,6 +3684,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         TALENT_EVIDENCE_INTAKE_ENVELOPE_LEASE_MIGRATION,
         TALENT_EVIDENCE_INTAKE_LAST_TOUCHED_MIGRATION,
         TALENT_EVIDENCE_ATS_QA_1_EDUCATION_MIGRATION,
+        ...TALENT_EVIDENCE_ATI_SEP_1_MIGRATIONS,
         // SKILL-TAX-1F-B2 — canonical skills-taxonomy schema + 1F governance substrate
         // (platform-governance-consumer state handlers seed these tables).
         SKILLS_TAXONOMY_INIT_MIGRATION,
@@ -3864,6 +3693,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         SKILLS_TAXONOMY_1F_GOVERNANCE_MIGRATION,
         SKILLS_TAXONOMY_1F_AUDIT_APPEND_ONLY_MIGRATION,
         SKILLS_TAXONOMY_1F_B_PROPOSAL_CORRECTION_MIGRATION,
+        // ATI-SEP-1 A2 A-c (P1) — the MatchingPolicy store (platform-governance-consumer).
+        SKILLS_TAXONOMY_MATCHING_POLICY_MIGRATION,
         EVIDENCE_INIT_MIGRATION,
         SUBMITTAL_INIT_MIGRATION,
         // M4 PR-7 §4.9 — submittal-revoke schema extension (enum +
@@ -3919,6 +3750,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // interactions; @RequireCapability('portal') on PortalController
         // requires the tenant to be entitled before RolesGuard runs.
         ENTITLEMENT_INIT_MIGRATION,
+        // ATI-SEP-1 T9 — the `intelligence` capability enum value.
+        ENTITLEMENT_INTELLIGENCE_CAPABILITY_MIGRATION,
         INTEGRATION_INIT_MIGRATION,
         // L1-D3-A — lifecycle-authority + versioned mapping-set schema (in order).
         INTEGRATION_LIFECYCLE_AUTHORITY_MIGRATION,
@@ -4039,40 +3872,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         TASK_WORKSPACE_MIGRATION,
         TASK_REQUISITION_CONTEXT_MIGRATION,
         ATTACHMENT_INIT_MIGRATION,
-        // PC-4b — talent_trust L2 substrate (11) + saved_list write-closure (2).
-        TALENT_TRUST_INIT_MIGRATION,
-        TALENT_TRUST_ANCHOR_MIGRATION,
-        TALENT_TRUST_ADVISORY_MIGRATION,
-        TALENT_TRUST_ADVISORY_RESOLUTION_MIGRATION,
-        TALENT_TRUST_WATERMARK_MIGRATION,
-        // TR-6 B1 — last_matched_at (client SELECTs it on every subject read).
-        TALENT_TRUST_TR6_LAST_MATCHED_MIGRATION,
-        TALENT_TRUST_ATS_REF_UNIQUE_MIGRATION,
-        TALENT_TRUST_POOL_KEYSET_MIGRATION,
-        TALENT_TRUST_B1_SOURCE_CLASS_MIGRATION,
-        TALENT_TRUST_B1_SOURCE_CLASS_UNIQUE_MIGRATION,
-        TALENT_TRUST_B2_REOPEN_MIGRATION,
-        TALENT_TRUST_B3B_MERGE_OP_MIGRATION,
-        // TR-6 B1 — SubjectMergeOperation.kind/actor/reason (the reverse-happy
-        // advisory state's unmergeSubjects persists a DIRECT_UNMERGE row).
-        TALENT_TRUST_TR6_MERGE_OP_KIND_MIGRATION,
-        // TR-3 B2 — VerificationRequest (the email-verification confirm/request
-        // provider states seed + write it).
-        TALENT_TRUST_TR3_VERIFICATION_REQUEST_MIGRATION,
-        // TR-4 B1 — EvidenceLink semantic uniqueness (additive index).
-        TALENT_TRUST_TR4_LINK_UNIQUE_MIGRATION,
-        // TR-4 B3 — last_consistency_at watermark (regenerated client SELECTs it).
-        TALENT_TRUST_TR4_CONSISTENCY_WATERMARK_MIGRATION,
-        // TR-5 B2 — TrustState thinness flags (regenerated client SELECTs them).
-        TALENT_TRUST_TR5_THINNESS_FLAGS_MIGRATION,
-        // TR-8 D2 — TrustState.verified_control_stale (regenerated client SELECTs it).
-        TALENT_TRUST_TR8_VERIFIED_STALE_MIGRATION,
-        // TR-12 B1 — the VerificationProposal table (regenerated client knows it).
-        TALENT_TRUST_TR12_PROPOSAL_MIGRATION,
-        // Portal P3a — the dispute substrate tables (verification/dispute pacts).
-        TALENT_TRUST_P3A_DISPUTE_MIGRATION,
-        TALENT_TRUST_P3B_DISPUTE_MIGRATION,
-        TALENT_TRUST_G1_RECOMPUTE_REQUEST_MIGRATION,
+        // ATI-SEP-1 T10 WP2 — the ATS-local sourcing substrate (sourced_talent
+        // arrivals) replaces the retired talent_trust L2 substrate.
+        ...SOURCED_TALENT_MIGRATIONS,
         // TIP-E2E INC-3 — technical_screening (self-contained; no cross-schema FK).
         TECHNICAL_SCREENING_INIT_MIGRATION,
         TECHNICAL_SCREENING_A1_MIGRATION,
@@ -4256,6 +4058,13 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // tolerance is never weakened for Pact. TEST-ONLY secret; matches the value the
       // consumer/requestFilter sign with.
       process.env['SIGN_WEBHOOK_SIGNING_SECRET'] = 'pact-test-esign-webhook-secret';
+      // ATI-SEP-1 T8 — the TI → ATS webhook (aramo-intelligence-webhook-v1). The
+      // requestFilter re-signs the recorded valid delivery with a FRESH timestamp
+      // over the exact forwarded bytes; the bad-signature delivery keeps its bogus
+      // signature (fresh timestamp) so the STRICT receiver answers 401. TEST-ONLY.
+      process.env['INTELLIGENCE_WEBHOOK_SIGNING_SECRET'] = PACT_INTELLIGENCE_WEBHOOK_SECRET;
+      // ATI-SEP-1 — point the ATS TI client at the in-process stub.
+      tiStubUrl = await tiStub.start();
 
       // PR-A1a §6 — recruiter accessJwt carries 'submittal:create'.
       // PR-A1a-2 §3 — adds 'submittal:approve' for the 5 newly-guarded
@@ -4598,6 +4407,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         authz_version: pactAuthzResolver.grant(PLATFORM_TENANT_SENTINEL_ID, PLATFORM_ADMIN_ID, [
           'platform:skill:read',
           'platform:skill:manage',
+          // ATI-SEP-1 A2 A-c (P1) — the platform-owned MatchingPolicy interactions.
+          'platform:matching_policy:read',
+          'platform:matching_policy:write',
         ]),
       })
         .setProtectedHeader({ alg: ALG })
@@ -4855,6 +4667,24 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // provider verifies contract shape, not RBAC derivation.
         .overrideProvider(EFFECTIVE_AUTHORIZATION_RESOLVER)
         .useValue(pactAuthzResolver)
+        // ATI-SEP-1 — the ATS-side TI integration config (string DI token). Points
+        // at the stub; `configured` is a live getter so a provider state can turn
+        // Talent Intelligence NOT_CONFIGURED. Background syncs stay off (0).
+        .overrideProvider('INTELLIGENCE_INTEGRATION_CONFIG')
+        .useValue({
+          get serviceUrl(): string | null {
+            return tiConfigured.value ? tiStubUrl : null;
+          },
+          clientId: TI_STUB_CLIENT_ID,
+          clientSecret: TI_STUB_CLIENT_SECRET,
+          get configured(): boolean {
+            return tiConfigured.value;
+          },
+          timeoutMs: 5000,
+          verificationEnabled: false,
+          entitlementSyncIntervalMs: 0,
+          inboundSyncIntervalMs: 0,
+        })
         .compile();
 
       app = module.createNestApplication();
@@ -4870,6 +4700,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // one path, so no other pact interaction's body parsing changes.
       const expressForEsignRaw = require('express') as typeof import('express');
       app.use('/v1/integrations/sign/events', expressForEsignRaw.raw({ type: () => true }));
+      // ATI-SEP-1 T8 — mirror main.ts's route-scoped RAW body for the TI webhook
+      // (the HMAC covers the exact bytes).
+      app.use('/v1/integrations/intelligence/events', expressForEsignRaw.raw({ type: () => true }));
       app.useGlobalPipes(
         new ValidationPipe({
           whitelist: true,
@@ -4892,6 +4725,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
 
     afterAll(async () => {
       await app?.close();
+      await tiStub.stop();
       await container?.stop();
       for (const [k, v] of Object.entries(savedEnv)) {
         if (v === undefined) delete process.env[k];
@@ -5443,6 +5277,25 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             `INSERT INTO skills_taxonomy."SkillRelationship" (id, source_skill_id, target_skill_id, relationship_type, directionality, status, source, created_at, updated_at)
              VALUES ($1::uuid, $2::uuid, $3::uuid, 'BUILT_ON', 'DIRECTED', 'active', 'ADMIN_CURATED', now(), now())`,
             ['01900000-0000-7000-8000-0000000ac020', PLATFORM_SKILL_ID, targetSkillId],
+          );
+        });
+      },
+      // ===== ATI-SEP-1 A2 A-c (P1) platform MatchingPolicy pacts =====
+      // TRUNCATE (bypasses the append-only row triggers) then re-seed the migration's
+      // ACTIVE version 1 so each interaction starts from the post-migration state.
+      'the platform matching policy holds the seeded version 1': async () => {
+        await withClient(async (c) => {
+          await resetMatchingPolicy(c);
+        });
+      },
+      'a DRAFT matching policy version 2 exists': async () => {
+        await withClient(async (c) => {
+          await resetMatchingPolicy(c);
+          await c.query(
+            `INSERT INTO skills_taxonomy."MatchingPolicyVersion"
+               (id, version_number, status, evidence_thresholds, note, created_by, created_at)
+             VALUES ($1::uuid, 2, 'DRAFT', $2::jsonb, 'raise architect', $3::uuid, now())`,
+            [PLATFORM_MATCHING_POLICY_V2_ID, JSON.stringify(MATCHING_POLICY_V1_THRESHOLDS), PLATFORM_ADMIN_ID],
           );
         });
       },
@@ -6760,24 +6613,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       },
       // ===== Portal P1 PR-2a portal-thin (OPEN-4 chain, minimal-green) =====
       'a portal user with no records exists': async () => {
-        // Portal P1 PR-2a — seed a PortalUser (id = portalJwt sub) with cluster_id
-        // NULL. The OPEN-4 chain resolves to an EMPTY record set:
-        //   GET /v1/portal/records            → 200 { records: [] }
-        //   GET /v1/portal/records/{id}/consent → 404 (id not in the chain)
-        // The full-chain positive shape is PR-2b's deeper pact.
+        // Portal P1 PR-2a → ATI-SEP-1 A4 (GAP-PORTAL-ID-1) — seed a PortalUser (id =
+        // portalJwt sub). The legacy OPEN-4 chain is retired, so the session resolves
+        // no talent: every records / consent / verification / dispute route answers
+        // the uniform 404 NOT_AVAILABLE. The RTBF grave-confirm still reads this
+        // PortalUser's email (the mismatch interaction).
         await withClient(async (c) => {
           await resetAllRows(c);
           await seedPortalUserWithNoRecords(c);
-        });
-      },
-      // ===== Portal P1 PR-2b portal-thin positive shape (OPEN-4 full chain) =====
-      'a portal user with one record exists': async () => {
-        // Portal P1 PR-2b — seed the full OPEN-4 chain (PortalUser → cluster →
-        // ACTIVE subject holding PERSON_CLUSTER + ATS_TALENT_RECORD → live
-        // talent_record). GET /v1/portal/records → 200 { records: [ <profile> ] }.
-        await withClient(async (c) => {
-          await resetAllRows(c);
-          await seedPortalUserWithOneRecord(c);
         });
       },
       'the platform notice registry is available': async () => {
@@ -8284,21 +8127,6 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         });
       },
 
-      // TR-9 B1 (D5) — reference-attestation capture: a live record at the
-      // consumer's URL id (PACT_TALENT_ID) so the capture's record-exists guard
-      // passes and the reference records as ATTESTATION evidence. No email/consent
-      // needed — capture contacts no one, rides the tenant's existing basis.
-      'an ats-web recruiter and a live talent record for reference capture': async () => {
-        await withClient(async (c) => {
-          await resetAllRows(c);
-          await seedAtsWebTalentRecord(c, {
-            id: PACT_TALENT_ID,
-            firstName: 'Ada',
-            lastName: 'Lovelace',
-          });
-        });
-      },
-
       // ATS-QA-1 I-4 — a live TalentRecord with no education yet; the consumer
       // adds a manual entry (POST /v1/talent-records/:id/education).
       'an ats-web recruiter and a live talent record for education edit': async () => {
@@ -8547,400 +8375,408 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           });
         },
 
-      // TR-3 B2 — email-verification REQUEST happy: a live record (id =
-      // PACT_TALENT_ID, the consumer's URL id) with a stored email1 + the full
-      // contacting-consent chain granted → the request gate passes and mails the
-      // stored slot (stub mailer). resolveOrCreateSubject materializes the
-      // subject; the VerificationRequest is written by the flow.
+      // ===============================================================
+      // ATI-SEP-1 T10 WP3b (Addendum A3 T10-3) — email verification by a
+      // 6-digit one-time code, executed by Talent Intelligence (TI stub).
+      // ===============================================================
+
+      // Request happy: a live record (PACT_TALENT_ID) with a stored email1 + the
+      // contacting-consent chain granted + Talent Intelligence ENABLED → the ATS
+      // relays the STORED address to TI POST /v1/verifications.
       'an ats-web recruiter and a live talent record with a stored email and consent granted':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
-            await seedAtsWebTalentRecord(c, {
-              id: PACT_TALENT_ID,
-              firstName: 'Ada',
-              lastName: 'Lovelace',
-            });
-            await c.query(
-              `UPDATE talent_record."TalentRecord" SET email1 = $2 WHERE id = $1`,
-              [PACT_TALENT_ID, 'ada@example.com'],
-            );
+            await seedAtsWebTalentRecord(c, { id: PACT_TALENT_ID, firstName: 'Ada', lastName: 'Lovelace' });
+            await c.query(`UPDATE talent_record."TalentRecord" SET email1 = $2 WHERE id = $1`, [
+              PACT_TALENT_ID,
+              'ada@example.com',
+            ]);
             await seedAtsWebContactingConsent(c);
+            await grantAtsWebIntelligence(c);
+          });
+          tiStub.on('POST', '/v1/verifications', (r) => {
+            const b = (r.body ?? {}) as { identifier_type?: string; value?: string };
+            if (b.identifier_type !== 'EMAIL' || b.value !== 'ada@example.com') {
+              return tiRefusal(400, 'INVALID_REQUEST');
+            }
+            return {
+              status: 201,
+              body: {
+                verification_id: ATSW_TI_VERIFICATION_ID,
+                channel: 'EMAIL',
+                status: 'PENDING',
+                expires_at: '2026-07-10T00:10:00.000Z',
+                delivery: 'QUEUED',
+              },
+            };
           });
         },
 
-      // TR-3 B2 — email-verification REQUEST refused: the same live record with a
-      // non-empty ledger but contacting UN-granted → the consent check returns
-      // `denied`, which the verification gate maps to 403
-      // VERIFICATION_CONSENT_REQUIRED (the ruled divergence).
+      // Request refused: the same record with contacting UN-granted → the consent
+      // gate (before any TI call) maps to 403 VERIFICATION_CONSENT_REQUIRED.
       'an ats-web recruiter and a live talent record with consent NOT granted':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
-            await seedAtsWebTalentRecord(c, {
-              id: PACT_TALENT_ID,
-              firstName: 'Ada',
-              lastName: 'Lovelace',
-            });
-            await c.query(
-              `UPDATE talent_record."TalentRecord" SET email1 = $2 WHERE id = $1`,
-              [PACT_TALENT_ID, 'ada@example.com'],
-            );
+            await seedAtsWebTalentRecord(c, { id: PACT_TALENT_ID, firstName: 'Ada', lastName: 'Lovelace' });
+            await c.query(`UPDATE talent_record."TalentRecord" SET email1 = $2 WHERE id = $1`, [
+              PACT_TALENT_ID,
+              'ada@example.com',
+            ]);
             await seedAtsWebNoContactingConsent(c);
           });
         },
 
-      // TR-3 B2 — public confirm happy: a PENDING VerificationRequest whose
-      // token_hash = sha256(the consumer's example token).base64url, pointing at
-      // a seeded ACTIVE subject. The confirm consumes it + mints the
-      // PLATFORM_VERIFIED anchor + recomputes → 200 VERIFIED.
-      'a pending email-verification token exists': async () => {
-        await withClient(async (c) => {
-          await resetAllRows(c);
-          const subjectId = '00000000-0000-7000-8000-7e0000000001';
-          await seedAtsWebResolutionSubject(c, { id: subjectId });
-          const { createHash } =
-            require('node:crypto') as typeof import('node:crypto');
-          const tokenHash = createHash('sha256')
-            .update('a-valid-raw-token')
-            .digest('base64url');
-          await c.query(
-            `INSERT INTO talent_trust."VerificationRequest"
-               (id, tenant_id, talent_record_id, subject_id, anchor_kind,
-                normalized_value, token_hash, status, created_by, expires_at)
-             VALUES ($1,$2,$3,$4,'EMAIL','confirm@example.com',$5,'PENDING',
-                     'pact-seed', NOW() + INTERVAL '72 hours')`,
-            [
-              '00000000-0000-7000-8000-7e0000000002',
-              TENANT_ID,
-              PACT_TALENT_ID,
-              subjectId,
-              tokenHash,
-            ],
-          );
-        });
-      },
-
-      // TR-3 B2 — public confirm not-found: an empty VerificationRequest floor
-      // (resetAllRows truncates it) → any token misses → the ONE oracle-resistant
-      // 404 NOT_FOUND.
-      'no matching email-verification token exists': async () => {
-        await withClient(async (c) => {
-          await resetAllRows(c);
-        });
-      },
-
-      // -- sourcing pool + subject-detail: one sourced ACTIVE subject (SOURCED
-      // ref, no ATS ref) with a TrustState (bands), FULL_NAME + EMAIL evidence
-      // (display), and a PENDING advisory (subject-detail open_identity_
-      // advisories). subject_b has no SOURCED ref -> stays out of the pool.
-      'an ats-web recruiter and a sourced subject with trust and a pending advisory exist':
+      // Request with TI not enabled for the tenant (no `intelligence` capability):
+      // consent passes, the TI gate answers NOT_ENTITLED → 503 INTELLIGENCE_UNAVAILABLE.
+      'an ats-web recruiter and a live talent record with consent granted but Talent Intelligence not enabled':
         async () => {
           await withClient(async (c) => {
             await resetAllRows(c);
-            await seedAtsWebResolutionSubject(c, { id: ATSW_POOL_SUBJECT_ID });
-            await seedAtsWebResolutionSubject(c, { id: ATSW_POOL_SUBJECT_B_ID });
-            await seedAtsWebResolutionSubjectRef(c, {
-              id: ATSW_POOL_SOURCED_REF_ID,
-              subjectId: ATSW_POOL_SUBJECT_ID,
-              refType: 'SOURCED_TALENT',
-              refId: ATSW_MINT_ARRIVAL_ID,
+            await seedAtsWebTalentRecord(c, { id: PACT_TALENT_ID, firstName: 'Ada', lastName: 'Lovelace' });
+            await c.query(`UPDATE talent_record."TalentRecord" SET email1 = $2 WHERE id = $1`, [
+              PACT_TALENT_ID,
+              'ada@example.com',
+            ]);
+            await seedAtsWebContactingConsent(c);
+          });
+        },
+
+      // Per-slot status: email1 holds an address TI reports PENDING (matched by
+      // TI's masked form of the normalized address); email2 is empty.
+      'an ats-web recruiter and a live talent record with a pending email verification':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebTalentRecord(c, { id: PACT_TALENT_ID, firstName: 'Ada', lastName: 'Lovelace' });
+            await c.query(`UPDATE talent_record."TalentRecord" SET email1 = $2 WHERE id = $1`, [
+              PACT_TALENT_ID,
+              'ada@example.com',
+            ]);
+            await grantAtsWebIntelligence(c);
+          });
+          tiStub.on('GET', `${tiReferencePath(TENANT_ID, PACT_TALENT_ID)}/verifications`, {
+            status: 200,
+            body: {
+              items: [
+                {
+                  identifier_type: 'EMAIL',
+                  value_masked: 'a***@example.com',
+                  status: 'PENDING',
+                  expires_at: '2026-07-10T00:10:00.000Z',
+                },
+              ],
+            },
+          });
+        },
+
+      // Public confirm: TI knows the verification id; code 123456 confirms it,
+      // any other code is INVALID_CODE (attempts_remaining carried).
+      'a pending email verification exists in Talent Intelligence': async () => {
+        await withClient((c) => resetAllRows(c));
+        tiStub.on('POST', `/v1/verifications/${ATSW_TI_VERIFICATION_ID}/confirm`, (r) => {
+          const code = ((r.body ?? {}) as { code?: string }).code;
+          if (code === '123456') {
+            return { status: 200, body: { verification_id: ATSW_TI_VERIFICATION_ID, status: 'CONFIRMED', outcome: 'BOUND' } };
+          }
+          return tiRefusal(422, 'INVALID_CODE', { attempts_remaining: 4 });
+        });
+      },
+
+      // Public confirm not-found: TI does not know the id (stub default 404) →
+      // the ONE uniform 404 NOT_FOUND.
+      'no matching email verification exists': async () => {
+        await withClient((c) => resetAllRows(c));
+      },
+
+      // ===============================================================
+      // ATI-SEP-1 T10 WP2 — sourcing over sourced_talent arrivals (ATS data only).
+      // ===============================================================
+
+      // Pool + drill-in: one un-promoted arrival (Grace Hopper) with a PENDING
+      // SOURCED_ARRIVAL duplicate advisory against a live record.
+      'an ats-web recruiter and a sourced arrival with a pending duplicate advisory exist':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebSourcedTalent(c, {
+              id: ATSW_POOL_SUBJECT_ID,
+              firstName: 'Grace',
+              lastName: 'Hopper',
+              email: 'grace@example.com',
+              phone: '+15125550101',
             });
-            await seedAtsWebTrustState(c, {
-              subjectId: ATSW_POOL_SUBJECT_ID,
-              identityBand: 'CORROBORATED',
-              claimsBand: 'SELF_ASSERTED',
-              continuityBand: 'NOT_ESTABLISHED',
-              eligibilityBand: 'NOT_ESTABLISHED',
-              openContradictionCount: 0,
-            });
-            await seedAtsWebEvidenceRecord(c, {
-              id: '00000000-0000-7000-8000-e00000000001',
-              subjectId: ATSW_POOL_SUBJECT_ID,
-              assertionType: 'FULL_NAME',
-              assertionPayload: { first_name: 'Grace', last_name: 'Hopper' },
-            });
-            await seedAtsWebEvidenceRecord(c, {
-              id: '00000000-0000-7000-8000-e00000000002',
-              subjectId: ATSW_POOL_SUBJECT_ID,
-              assertionType: 'EMAIL',
-              assertionPayload: { normalized_value: 'grace@example.com' },
-            });
-            await seedAtsWebSubjectMatchAdvisory(c, {
+            await seedAtsWebTalentRecord(c, { id: ATSW_POOL_RECORD_ID, firstName: 'Grace', lastName: 'Hopper' });
+            await seedAtsWebDuplicateAdvisory(c, {
               id: ATSW_POOL_ADVISORY_ID,
-              subjectA: ATSW_POOL_SUBJECT_ID,
-              subjectB: ATSW_POOL_SUBJECT_B_ID,
-              adviseBand: 'ADVISE_WEAK',
+              recordAId: ATSW_POOL_RECORD_ID,
+              sourcedTalentId: ATSW_POOL_SUBJECT_ID,
               status: 'PENDING_REVIEW',
             });
           });
         },
 
-      // -- TR-14 B2 dossier: a talent record whose ATS_TALENT_RECORD ref resolves
-      // to a subject with a TrustState (bands), a CLAIMS evidence row + its CREATED
-      // event (the timeline). ledger_established:true; the collections are empty
-      // (no contradiction/anchor/merge seeded) — the dossier head pins them loosely.
-      'a talent record with a trust dossier exists': async () => {
+      // Promote fresh mint: an arrival with a two-part name + email + cell phone,
+      // landed from a talent_direct (consent-source) ingestion payload; no link, no
+      // pending advisory, no tenant duplicate → 'promoted'.
+      'an ats-web recruiter and a promotable sourced arrival exist': async () => {
         await withClient(async (c) => {
           await resetAllRows(c);
-          await seedAtsWebResolutionSubject(c, { id: ATSW_DOSSIER_SUBJECT_ID });
-          await seedAtsWebResolutionSubjectRef(c, {
-            id: ATSW_DOSSIER_REF_ID,
-            subjectId: ATSW_DOSSIER_SUBJECT_ID,
-            refType: 'ATS_TALENT_RECORD',
-            refId: ATSW_DOSSIER_RECORD_ID,
-          });
-          await seedAtsWebTrustState(c, {
-            subjectId: ATSW_DOSSIER_SUBJECT_ID,
-            identityBand: 'CORROBORATED',
-            claimsBand: 'SELF_ASSERTED',
-            continuityBand: 'NOT_ESTABLISHED',
-            eligibilityBand: 'NOT_ESTABLISHED',
-            openContradictionCount: 0,
-          });
-          await seedAtsWebEvidenceRecord(c, {
-            id: ATSW_DOSSIER_EVIDENCE_ID,
-            subjectId: ATSW_DOSSIER_SUBJECT_ID,
-            assertionType: 'EMPLOYMENT',
-            dimension: 'CLAIMS',
-            assertionPayload: { employer_norm: 'acme', start_date: '2020-01-01', end_date: '2021-01-01' },
-          });
-          await seedAtsWebEvidenceEvent(c, {
-            id: ATSW_DOSSIER_EVENT_ID,
-            evidenceId: ATSW_DOSSIER_EVIDENCE_ID,
-            eventType: 'CREATED',
+          await seedAtsWebSourcingRequisition(c);
+          await seedAtsWebRawPayloadReference(c, { id: ATSW_MINT_PAYLOAD_ID, source: 'talent_direct' });
+          await seedAtsWebSourcedTalent(c, {
+            id: ATSW_MINT_ARRIVAL_ID,
+            firstName: 'Grace',
+            lastName: 'Hopper',
+            email: 'grace.hopper@example.com',
+            phone: '+15125550199',
+            ingestionPayloadId: ATSW_MINT_PAYLOAD_ID,
           });
         });
       },
 
-      // -- TR-14 B2 dossier: a record with NO subject (the honest add-talent edge).
-      // The dossier head returns the uniform ledger_established:false shape.
-      'a talent record with no evidence ledger exists': async () => {
+      // Promote already_promoted: the arrival already links (PROMOTED) to a record.
+      'an ats-web recruiter and an already-promoted sourced arrival exist': async () => {
         await withClient(async (c) => {
           await resetAllRows(c);
+          await seedAtsWebSourcingRequisition(c);
+          await seedAtsWebSourcedTalent(c, {
+            id: ATSW_PROMOTED_ARRIVAL_ID,
+            firstName: 'Grace',
+            lastName: 'Hopper',
+            email: 'grace.promoted@example.com',
+            phone: '+15125550102',
+          });
+          await seedAtsWebTalentRecord(c, { id: ATSW_PROMOTED_TALENT_ID, firstName: 'Grace', lastName: 'Hopper' });
+          await seedAtsWebSourcedArrivalLink(c, {
+            sourcedTalentId: ATSW_PROMOTED_ARRIVAL_ID,
+            talentRecordId: ATSW_PROMOTED_TALENT_ID,
+          });
         });
       },
 
-      // -- TR-14 B2 resolve (the deferred TR-4 interaction): a subject with a
-      // standing CONTRADICTED evidence row — POST .../resolve flips it to VALID.
+      // Promote deferral: a PENDING duplicate advisory names the arrival →
+      // 'deferred_unresolved_identity' (200, no record minted).
+      'an ats-web recruiter and a sourced arrival with a pending duplicate advisory blocking promotion exist':
+        async () => {
+          await withClient(async (c) => {
+            await resetAllRows(c);
+            await seedAtsWebSourcingRequisition(c);
+            await seedAtsWebSourcedTalent(c, {
+              id: ATSW_DEFER_ARRIVAL_ID,
+              firstName: 'Grace',
+              lastName: 'Hopper',
+              email: 'grace.defer@example.com',
+              phone: '+15125550103',
+            });
+            await seedAtsWebTalentRecord(c, { id: ATSW_DEFER_RECORD_ID, firstName: 'Grace', lastName: 'Hopper' });
+            await seedAtsWebDuplicateAdvisory(c, {
+              id: ATSW_DEFER_ADVISORY_ID,
+              recordAId: ATSW_DEFER_RECORD_ID,
+              sourcedTalentId: ATSW_DEFER_ARRIVAL_ID,
+              status: 'PENDING_REVIEW',
+            });
+          });
+        },
+
+      // ===============================================================
+      // ATI-SEP-1 T10 WP3b — the recruiter trust dossier + contradiction resolve,
+      // a read-only presentation of Talent Intelligence's tenant view (TI stub).
+      // ===============================================================
+
+      // ENABLED: TI answers the record's profile (bands + facts) and evidence.
+      'a talent record with a Talent Intelligence profile exists': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTalentRecord(c, { id: ATSW_DOSSIER_RECORD_ID, firstName: 'Ada', lastName: 'Lovelace' });
+          await grantAtsWebIntelligence(c);
+        });
+        const ref = tiReferencePath(TENANT_ID, ATSW_DOSSIER_RECORD_ID);
+        tiStub.on('GET', `${ref}/profile`, {
+          status: 200,
+          body: {
+            intelligence_subject_id: ATSW_TI_SUBJECT_ID,
+            access_mode: 'TENANT_SCOPED',
+            facts: [
+              {
+                fact_type: 'CURRENT_EMPLOYER',
+                fact_key: '',
+                value: { employer: 'Analytical Engines' },
+                state: 'RESOLVED',
+                verification_status: 'DECLARED',
+                corroborating_sources: 1,
+                supporting_assertion_ids: [ATSW_DOSSIER_EVIDENCE_ID],
+              },
+              {
+                fact_type: 'EMAIL',
+                fact_key: 'a***@example.com',
+                value: { value_masked: 'a***@example.com' },
+                state: 'RESOLVED',
+                verification_status: 'VERIFIED',
+                corroborating_sources: 1,
+                supporting_assertion_ids: [ATSW_DOSSIER_EMAIL_ASSERTION_ID],
+              },
+            ],
+            trust: {
+              identity_band: 'CORROBORATED',
+              claims_band: 'SELF_ASSERTED',
+              continuity_band: 'NOT_ESTABLISHED',
+              eligibility_band: 'NOT_ESTABLISHED',
+              open_contradiction_count: 0,
+              stale_assertion_count: 0,
+              has_open_dispute: false,
+              single_source_only: true,
+              verification_stale: false,
+            },
+            generated_at: '2026-07-01T00:00:00.000Z',
+          },
+        });
+        tiStub.on('GET', `${ref}/evidence`, {
+          status: 200,
+          body: {
+            intelligence_subject_id: ATSW_TI_SUBJECT_ID,
+            access_mode: 'TENANT_SCOPED',
+            assertions: [
+              {
+                assertion_id: ATSW_DOSSIER_EVIDENCE_ID,
+                assertion_type: 'EMPLOYMENT',
+                admission_class: 'A',
+                payload: { employer: 'Analytical Engines', title: 'Analyst' },
+                contributed_by: 'REQUESTING_TENANT',
+                source_kind: 'ATS_RECORD',
+                verification_status: 'DECLARED',
+                status: 'VALID',
+                observed_at: '2026-06-01T00:00:00.000Z',
+                valid_from: '2020-01-01',
+                valid_to: null,
+                ai_derived: false,
+                source_document_hash: null,
+                history: [{ event_type: 'CREATED', from_status: null, to_status: 'VALID', at: '2026-06-01T00:00:00.000Z' }],
+              },
+            ],
+            generated_at: '2026-07-01T00:00:00.000Z',
+          },
+        });
+      },
+
+      // NOT_CONFIGURED: the integration has no TI URL / credentials → the honest
+      // "no assessment" head (200, never an error).
+      'a talent record exists and Talent Intelligence is not configured': async () => {
+        await withClient(async (c) => {
+          await resetAllRows(c);
+          await seedAtsWebTalentRecord(c, { id: ATSW_DOSSIER_EMPTY_RECORD_ID, firstName: 'Ada', lastName: 'Lovelace' });
+        });
+        tiConfigured.value = false;
+      },
+
+      // Resolve: TI reconciles the contradicted assertion in the tenant's view (KEEP).
       'a talent record with a standing contradiction exists': async () => {
         await withClient(async (c) => {
           await resetAllRows(c);
-          await seedAtsWebResolutionSubject(c, { id: ATSW_CONTRA_SUBJECT_ID });
-          await seedAtsWebResolutionSubjectRef(c, {
-            id: ATSW_CONTRA_REF_ID,
-            subjectId: ATSW_CONTRA_SUBJECT_ID,
-            refType: 'ATS_TALENT_RECORD',
-            refId: ATSW_CONTRA_RECORD_ID,
-          });
-          await seedAtsWebEvidenceRecord(c, {
-            id: ATSW_CONTRA_EVIDENCE_ID,
-            subjectId: ATSW_CONTRA_SUBJECT_ID,
-            assertionType: 'EMPLOYMENT',
-            dimension: 'CLAIMS',
-            currentStatus: 'CONTRADICTED',
-            assertionPayload: { employer_norm: 'acme' },
-          });
+          await seedAtsWebTalentRecord(c, { id: ATSW_CONTRA_RECORD_ID, firstName: 'Ada', lastName: 'Lovelace' });
+          await grantAtsWebIntelligence(c);
         });
+        tiStub.on(
+          'POST',
+          `${tiReferencePath(TENANT_ID, ATSW_CONTRA_RECORD_ID)}/assertions/${ATSW_CONTRA_EVIDENCE_ID}/contradiction-resolution`,
+          (r) => {
+            const b = (r.body ?? {}) as { resolution?: string };
+            return {
+              status: 200,
+              body: { assertion_id: ATSW_CONTRA_EVIDENCE_ID, resolution: b.resolution ?? 'KEEP', status: 'VALID', reconciled_with: [] },
+            };
+          },
+        );
       },
 
-      // -- TR-12 B2: an OPEN trust proposal (list / dismiss / mark-acted happy).
-      // Subject + ATS_TALENT_RECORD ref (so the list enriches the record pointer)
-      // + a RESOLVE_CONTRADICTION proposal in OPEN. The value never seeds a wire
-      // field — record_id/basis_kinds only.
+      // ===============================================================
+      // ATI-SEP-1 T10 WP3b (A3 T10-2) — the trust-proposal worklist (TI M-2).
+      // ===============================================================
+
       'an open trust proposal exists': async () => {
         await withClient(async (c) => {
           await resetAllRows(c);
-          await seedAtsWebResolutionSubject(c, { id: ATSW_PROP_SUBJECT_ID });
-          await seedAtsWebResolutionSubjectRef(c, {
-            id: ATSW_PROP_REF_ID,
-            subjectId: ATSW_PROP_SUBJECT_ID,
-            refType: 'ATS_TALENT_RECORD',
-            refId: ATSW_PROP_RECORD_ID,
-          });
-          await seedAtsWebVerificationProposal(c, {
-            id: ATSW_PROP_OPEN_ID,
-            subjectId: ATSW_PROP_SUBJECT_ID,
-            status: 'OPEN',
-          });
+          await grantAtsWebIntelligence(c);
         });
+        const view = (status: string, acted: boolean) => ({
+          proposal_id: ATSW_PROP_OPEN_ID,
+          external_talent_ids: [ATSW_PROP_RECORD_ID],
+          kind: 'RESOLVE_CONTRADICTION',
+          trigger_kind: 'OPEN_CONTRADICTION',
+          status,
+          assertion_id: ATSW_PROP_EVIDENCE_ID,
+          assertion_type: 'EMPLOYMENT',
+          identifier_type: null,
+          identifier_digest: null,
+          justification: null,
+          action: acted ? 'CONTRADICTION_RESOLVED' : null,
+          created_at: '2026-05-25T00:00:00.000Z',
+          acted_at: acted ? '2026-05-26T00:00:00.000Z' : null,
+        });
+        tiStub.on('GET', `/v1/tenants/${TENANT_ID}/proposals`, { status: 200, body: { items: [view('OPEN', false)], next_cursor: null } });
+        tiStub.on('POST', `/v1/proposals/${ATSW_PROP_OPEN_ID}/dismiss`, { status: 200, body: view('DISMISSED', false) });
+        tiStub.on('POST', `/v1/proposals/${ATSW_PROP_OPEN_ID}/act`, { status: 200, body: view('ACTED', true) });
       },
 
-      // -- TR-12 B2: a TERMINAL (DISMISSED) trust proposal — the OPEN-only guard
-      // refuses dismiss/act with PROPOSAL_NOT_OPEN 409.
       'a terminal trust proposal exists': async () => {
         await withClient(async (c) => {
           await resetAllRows(c);
-          await seedAtsWebResolutionSubject(c, { id: ATSW_PROP_SUBJECT_ID });
-          await seedAtsWebResolutionSubjectRef(c, {
-            id: ATSW_PROP_REF_ID,
-            subjectId: ATSW_PROP_SUBJECT_ID,
-            refType: 'ATS_TALENT_RECORD',
-            refId: ATSW_PROP_RECORD_ID,
-          });
-          await seedAtsWebVerificationProposal(c, {
-            id: ATSW_PROP_TERMINAL_ID,
-            subjectId: ATSW_PROP_SUBJECT_ID,
-            status: 'DISMISSED',
-          });
+          await grantAtsWebIntelligence(c);
         });
+        tiStub.on('GET', `/v1/tenants/${TENANT_ID}/proposals`, { status: 200, body: { items: [], next_cursor: null } });
+        tiStub.on('POST', `/v1/proposals/${ATSW_PROP_TERMINAL_ID}/dismiss`, tiRefusal(409, 'PROPOSAL_NOT_OPEN'));
+        tiStub.on('POST', `/v1/proposals/${ATSW_PROP_TERMINAL_ID}/act`, tiRefusal(409, 'PROPOSAL_NOT_OPEN'));
       },
 
-      // -- promote fresh-mint: sourced ACTIVE subject + SOURCED ref + VALID
-      // FULL_NAME evidence + the L1 arrival (talent_direct = consent source);
-      // no ATS ref, no PENDING advisory -> promoteSubject returns 'promoted'.
-      'an ats-web recruiter and a promotable sourced subject exist': async () => {
+      // ===============================================================
+      // ATI-SEP-1 T10 WP2 — within-tenant duplicate advisories (ATS data).
+      // ===============================================================
+
+      // A PENDING_REVIEW record-pair advisory (a < b) over two live records.
+      'an ats-web recruiter and a pending duplicate advisory exist': async () => {
         await withClient(async (c) => {
           await resetAllRows(c);
-          await seedAtsWebResolutionSubject(c, { id: ATSW_MINT_SUBJECT_ID });
-          await seedAtsWebSourcingRequisition(c);
-          await seedAtsWebResolutionSubjectRef(c, {
-            id: '00000000-0000-7000-8000-50c000000002',
-            subjectId: ATSW_MINT_SUBJECT_ID,
-            refType: 'SOURCED_TALENT',
-            refId: ATSW_MINT_ARRIVAL_ID,
-          });
-          await seedAtsWebEvidenceRecord(c, {
-            id: '00000000-0000-7000-8000-e00000000003',
-            subjectId: ATSW_MINT_SUBJECT_ID,
-            assertionType: 'FULL_NAME',
-            assertionPayload: { first_name: 'Grace', last_name: 'Hopper' },
-          });
-          // TalentRecord Admission Invariant — the governed promotion gate now
-          // requires a primary email + cell phone on the subject's identity
-          // evidence (else it defers). A promotable subject therefore carries
-          // both, so promote-to-bench / promote-to-pipeline mint a fresh record.
-          await seedAtsWebEvidenceRecord(c, {
-            id: '00000000-0000-7000-8000-e00000000004',
-            subjectId: ATSW_MINT_SUBJECT_ID,
-            assertionType: 'EMAIL',
-            assertionPayload: { normalized_value: 'grace.hopper@example.com' },
-          });
-          await seedAtsWebEvidenceRecord(c, {
-            id: '00000000-0000-7000-8000-e00000000005',
-            subjectId: ATSW_MINT_SUBJECT_ID,
-            assertionType: 'PHONE',
-            assertionPayload: { value: '+15125550199' },
-          });
-          await seedAtsWebRawPayloadReference(c, {
-            id: ATSW_MINT_ARRIVAL_ID,
-            source: 'talent_direct',
+          await seedAtsWebTalentRecord(c, { id: ATSW_ADV_RECORD_A_ID, firstName: 'Ada', lastName: 'Lovelace' });
+          await seedAtsWebTalentRecord(c, { id: ATSW_ADV_RECORD_B_ID, firstName: 'Ada', lastName: 'Lovelace' });
+          await seedAtsWebDuplicateAdvisory(c, {
+            id: ATSW_ADV_PENDING_ID,
+            recordAId: ATSW_ADV_RECORD_A_ID,
+            recordBId: ATSW_ADV_RECORD_B_ID,
+            status: 'PENDING_REVIEW',
           });
         });
       },
 
-      // -- promote already_promoted: sourced subject that already carries an
-      // ATS_TALENT_RECORD ref -> step-2 returns 'already_promoted'.
-      'an ats-web recruiter and an already-promoted sourced subject exist':
-        async () => {
-          await withClient(async (c) => {
-            await resetAllRows(c);
-            await seedAtsWebResolutionSubject(c, { id: ATSW_PROMOTED_SUBJECT_ID });
-            await seedAtsWebSourcingRequisition(c);
-            await seedAtsWebResolutionSubjectRef(c, {
-              id: '00000000-0000-7000-8000-50c000000003',
-              subjectId: ATSW_PROMOTED_SUBJECT_ID,
-              refType: 'SOURCED_TALENT',
-              refId: ATSW_PROMOTED_ARRIVAL_ID,
-            });
-            await seedAtsWebResolutionSubjectRef(c, {
-              id: '00000000-0000-7000-8000-50c000000004',
-              subjectId: ATSW_PROMOTED_SUBJECT_ID,
-              refType: 'ATS_TALENT_RECORD',
-              refId: ATSW_PROMOTED_TALENT_ID,
-            });
-            await seedAtsWebTalentRecord(c, {
-              id: ATSW_PROMOTED_TALENT_ID,
-              firstName: 'Grace',
-              lastName: 'Hopper',
-            });
-          });
-        },
+      // ===== ATI-SEP-1 T8 — the TI → ATS webhook (intelligence-webhook consumer) =====
+      // An empty inbox (resetAllRows) so the signed delivery records fresh → 202.
+      'the ATS accepts Talent Intelligence webhook deliveries': async () => {
+        await withClient((c) => resetAllRows(c));
+      },
 
-      // -- promote advisory-gate defer: sourced subject with a PENDING advisory
-      // -> step-2.5 returns 'deferred_unresolved_identity' (200).
-      'an ats-web recruiter and a sourced subject with a pending identity advisory exist':
-        async () => {
-          await withClient(async (c) => {
-            await resetAllRows(c);
-            await seedAtsWebResolutionSubject(c, { id: ATSW_DEFER_SUBJECT_ID });
-            await seedAtsWebSourcingRequisition(c);
-            await seedAtsWebResolutionSubject(c, { id: ATSW_DEFER_SUBJECT_B_ID });
-            await seedAtsWebResolutionSubjectRef(c, {
-              id: '00000000-0000-7000-8000-50c000000005',
-              subjectId: ATSW_DEFER_SUBJECT_ID,
-              refType: 'SOURCED_TALENT',
-              refId: ATSW_DEFER_ARRIVAL_ID,
-            });
-            await seedAtsWebSubjectMatchAdvisory(c, {
-              id: ATSW_DEFER_ADVISORY_ID,
-              subjectA: ATSW_DEFER_SUBJECT_ID,
-              subjectB: ATSW_DEFER_SUBJECT_B_ID,
-              adviseBand: 'ADVISE_STRONG',
-              status: 'PENDING_REVIEW',
-            });
-          });
-        },
-
-      // -- advisory approve-happy / dismiss-happy / reverse-not-MERGED-409: a
-      // PENDING advisory (no contradiction) over two ACTIVE subjects.
-      'an ats-web recruiter and a pending advisory without contradiction exist':
-        async () => {
-          await withClient(async (c) => {
-            await resetAllRows(c);
-            await seedAtsWebResolutionSubject(c, { id: ATSW_ADV_SUBJECT_A_ID });
-            await seedAtsWebResolutionSubject(c, { id: ATSW_ADV_SUBJECT_B_ID });
-            await seedAtsWebSubjectMatchAdvisory(c, {
-              id: ATSW_ADV_PENDING_ID,
-              subjectA: ATSW_ADV_SUBJECT_A_ID,
-              subjectB: ATSW_ADV_SUBJECT_B_ID,
-              adviseBand: 'ADVISE_STRONG',
-              status: 'PENDING_REVIEW',
-            });
-          });
-        },
-
-      // -- advisory reverse-happy / reversal_justification-400 / approve-
-      // already-resolved-409: a MERGED advisory (subject_b merged into a).
-      'an ats-web recruiter and a merged advisory exist': async () => {
+      // An APPROVED record-pair advisory whose re-home completed (b superseded by a).
+      'an ats-web recruiter and an approved duplicate advisory exist': async () => {
         await withClient(async (c) => {
           await resetAllRows(c);
-          await seedAtsWebResolutionSubject(c, { id: ATSW_ADV_SUBJECT_A_ID });
-          await seedAtsWebResolutionSubject(c, {
-            id: ATSW_ADV_SUBJECT_B_ID,
-            status: 'MERGED',
-            mergedIntoSubjectId: ATSW_ADV_SUBJECT_A_ID,
-          });
-          await seedAtsWebSubjectMatchAdvisory(c, {
-            id: ATSW_ADV_MERGED_ID,
-            subjectA: ATSW_ADV_SUBJECT_A_ID,
-            subjectB: ATSW_ADV_SUBJECT_B_ID,
-            adviseBand: 'ADVISE_STRONG',
-            status: 'MERGED',
-            survivingSubjectId: ATSW_ADV_SUBJECT_A_ID,
-            mergedSubjectId: ATSW_ADV_SUBJECT_B_ID,
+          await seedAtsWebTalentRecord(c, { id: ATSW_ADV_RECORD_A_ID, firstName: 'Ada', lastName: 'Lovelace' });
+          await seedAtsWebTalentRecord(c, { id: ATSW_ADV_RECORD_B_ID, firstName: 'Ada', lastName: 'Lovelace' });
+          await c.query(
+            `UPDATE talent_record."TalentRecord"
+               SET record_status = 'superseded', superseded_by_record_id = $2, superseded_at = NOW()
+             WHERE id = $1`,
+            [ATSW_ADV_RECORD_B_ID, ATSW_ADV_RECORD_A_ID],
+          );
+          await seedAtsWebDuplicateAdvisory(c, {
+            id: ATSW_ADV_APPROVED_ID,
+            recordAId: ATSW_ADV_RECORD_A_ID,
+            recordBId: ATSW_ADV_RECORD_B_ID,
+            status: 'APPROVED',
+            survivingRecordId: ATSW_ADV_RECORD_A_ID,
+            supersededRecordId: ATSW_ADV_RECORD_B_ID,
+            mergeCompleted: true,
           });
         });
       },
-
-      // -- advisory approve-contradiction-400: a PENDING advisory with
-      // has_contradiction=true -> approve without override 400.
-      'an ats-web recruiter and a pending advisory with a contradiction exist':
-        async () => {
-          await withClient(async (c) => {
-            await resetAllRows(c);
-            await seedAtsWebResolutionSubject(c, { id: ATSW_ADV_SUBJECT_A_ID });
-            await seedAtsWebResolutionSubject(c, { id: ATSW_ADV_SUBJECT_B_ID });
-            await seedAtsWebSubjectMatchAdvisory(c, {
-              id: ATSW_ADV_CONTRADICTION_ID,
-              subjectA: ATSW_ADV_SUBJECT_A_ID,
-              subjectB: ATSW_ADV_SUBJECT_B_ID,
-              adviseBand: 'ADVISE_STRONG',
-              status: 'PENDING_REVIEW',
-              hasContradiction: true,
-            });
-          });
-        },
 
       // ===============================================================
       // PC-6 — mock-infra (resume + ai-draft). Backends mocked; no seed for
@@ -9739,11 +9575,30 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         req.headers['x-aramo-sign-timestamp'] = ts;
         req.headers['x-aramo-sign-signature'] = sig;
       }
+      // ATI-SEP-1 T8 — the TI webhook (intelligence-webhook consumer). A recorded
+      // PACT_WEBHOOK_VALID_SIGNATURE marker is replaced by a real
+      // aramo-intelligence-webhook-v1 signature over the exact forwarded bytes with a
+      // FRESH timestamp; any other signature is left as recorded (fresh timestamp
+      // only), so the strict receiver's BAD_SIGNATURE path answers 401.
+      if (req.headers['x-aramo-intelligence-signature'] !== undefined) {
+        const tiReq = req as unknown as { body?: unknown };
+        const forwarded = Buffer.isBuffer(tiReq.body)
+          ? tiReq.body
+          : Buffer.from(tiReq.body === undefined || tiReq.body === null ? '' : JSON.stringify(tiReq.body));
+        const ts = String(Math.floor(Date.now() / 1000));
+        req.headers['x-aramo-intelligence-timestamp'] = ts;
+        if (req.headers['x-aramo-intelligence-signature'] === PACT_WEBHOOK_VALID_SIGNATURE) {
+          const { createHmac } = require('node:crypto') as typeof import('node:crypto');
+          req.headers['x-aramo-intelligence-signature'] = createHmac('sha256', PACT_INTELLIGENCE_WEBHOOK_SECRET)
+            .update(`aramo-intelligence-webhook-v1\n${ts}\n${forwarded.toString('utf8')}`, 'utf8')
+            .digest('base64');
+        }
+      }
       next();
     }
 
     it(
-      'verifies all interactions from the 6 aramo-core pacts',
+      'verifies all interactions from the 8 aramo-core pacts',
       async () => {
         const verifier = new Verifier({
           providerBaseUrl: `http://127.0.0.1:${port}`,
@@ -9755,6 +9610,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             REQUISITION_IMPORT_PACT,
             PLATFORM_GOVERNANCE_PACT,
             ESIGN_SOURCE_PACT,
+            INTELLIGENCE_WEBHOOK_PACT,
           ],
           stateHandlers,
           requestFilter: requestFilter as never,
@@ -9789,7 +9645,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           throw new Error(evidencePackageStateIsolation.violations.join('\n'));
         }
       },
-      600_000,
+      1_800_000,
     );
   },
 );

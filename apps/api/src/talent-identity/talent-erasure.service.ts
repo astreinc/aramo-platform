@@ -1,16 +1,11 @@
 import { createHash, randomUUID } from 'node:crypto';
 
-import { Logger } from '@nestjs/common';
-import {
-  purgeClusterViaExec,
-  type ClusterPurgeExec,
-  type PurgeClusterResult,
-} from '@aramo/identity-index';
+import { TALENT_EVENT_ERASED, buildTalentEventRow } from '@aramo/talent-record';
 
 // TR-15 B2 (DDR §5 — erasure made real) — the delete-pass engine behind the
 // `erase-talent` CLI. NO HTTP surface. It automates doc/runbooks/talent-rtbf-
 // erasure.md: given a tenant + an ATS TalentRecord id, it resolves the WHOLE
-// human (the husk chain of records + the merged cluster of trust subjects),
+// human (the husk chain of records + the sourced arrivals linked to them),
 // then deletes every PII holder child-before-parent, purges the object-storage
 // artifacts, appends a retained consent erasure marker, and flips is_anonymized.
 //
@@ -21,8 +16,7 @@ import {
 //      commercial / legal records pending a PO/Legal retention class, a legal
 //      hold, an interaction shared with another talent — BLOCKS the run. Nothing
 //      is skipped silently and nothing is deleted.
-//   2. The database pass (every INVENTORY delete + the orphaned-cluster purge +
-//      the durable run record) is ONE transaction: any failure rolls everything
+//   2. The database pass (every INVENTORY delete + the durable run record) is ONE transaction: any failure rolls everything
 //      back — no partial erasure, no orphaned husk-less rows, no marker.
 //   3. Object storage cannot join that transaction, so artifacts are recorded
 //      durably (consent."TalentErasureRun" / "TalentErasureArtifact") and purged
@@ -49,12 +43,17 @@ import {
 // it). Every other operation keeps its original rejection. Commercial / legal
 // records, unclassified holders and shared interactions still BLOCK.
 //
-// Two keyspaces: GROUP A/C holders key on the RECORD id(s); GROUP B trust
-// surfaces key on the SUBJECT id(s). The ordering below is load-bearing and,
-// for GROUP B, DB-enforced (real FKs, no cascades). RETAINED (never deleted):
-// the audit streams — audit."ConsentAuditEvent", talent_trust."Subject-
-// MergeOperation" and audit."MeetingSchedulingAuditEvent" (verified to carry
-// only ids, times and statuses) — the append-only record of process. ⚠ INVENTORY
+// Two keyspaces: GROUP A/C holders key on the RECORD id(s); GROUP B (ATS-local
+// sourcing, ATI-SEP-1 T10 WP4) keys on the SOURCED-TALENT id(s) linked to those
+// records (talent_record."talent_record_sourced_arrival"). The ordering below is
+// load-bearing. RETAINED (never deleted): the audit streams —
+// audit."ConsentAuditEvent" and audit."MeetingSchedulingAuditEvent" (verified to
+// carry only ids, times and statuses) — the append-only record of process.
+//
+// ATI-SEP-1 T10 WP4 — the retired trust-ledger / identity-index holders (the
+// former GROUP B subject keyspace + the orphaned-cluster purge) are gone with
+// their schemas; the trust-side facts of the talent now live in Talent
+// Intelligence, which receives the talent.erased event this pass writes. ⚠ INVENTORY
 // ADDITION beyond the reconcile repoint set (the 19-holder map):
 // talent_evidence."TalentEducationEntry" + "TalentCertificationEntry" (TR-7 B1
 // PII, never wired into repoint) — included so the erase reaches every holder
@@ -108,17 +107,19 @@ export interface ErasureBlocker {
 }
 
 // One erasure target: a table + the WHERE that scopes it to this human, built
-// from the resolved record-id and subject-id sets. `s3RefColumn`, when set,
+// from the resolved record-id and sourced-talent-id sets. `s3RefColumn`, when set,
 // names a column whose values are S3 object keys to collect before the delete.
 interface ErasureStep {
   label: string; // schema."Table"
-  keyspace: 'record' | 'subject' | 'record-child' | 'evidence-set';
-  where: string; // SQL WHERE body; uses $1 (record ids) / $2 (subject ids) per keyspace
+  // record / record-child: $1 = record ids. sourced: $1 = sourced-talent ids.
+  // record-or-sourced: $1 = record ids, $2 = sourced-talent ids.
+  keyspace: 'record' | 'record-child' | 'sourced' | 'record-or-sourced';
+  where: string; // SQL WHERE body
   s3RefColumn?: string;
 }
 
 // The frozen inventory, in delete order (child-before-parent). $1 = record-id
-// array (GROUP A/C) or subject-id array (GROUP B, keyspace subject/evidence-set).
+// array (GROUP A/C) or sourced-talent-id array (GROUP B, keyspace sourced).
 // Same-schema cascades are NOT listed (talent_record children → TalentRecord).
 // pipeline."Pipeline" cascades into append-only history, so the PREFLIGHT blocks
 // a talent with any pipeline until the S2 authority amendment lands.
@@ -149,7 +150,10 @@ const TALENT_CI_RUNS =
   ` OR r.conversation_transcript_id IN (${TALENT_TRANSCRIPTS})`;
 const TALENT_DOCUMENTS = `SELECT document_id FROM documents."DocumentAssociation" WHERE resource_type = 'TALENT' AND resource_id = ANY($1::uuid[])`;
 const TALENT_ACTIVITIES = `SELECT id FROM activity."Activity" WHERE subject_type = 'talent_record' AND subject_id = ANY($1::uuid[])`;
-const TALENT_INTAKE_DRAFTS = `SELECT id FROM talent_evidence."TalentIntakeDraft" WHERE promoted_talent_record_id = ANY($1::uuid[])`;
+// ATI-SEP-1 A2 — a Save that already created the record but has not yet marked
+// the draft PROMOTED holds the id only as its reservation; erase that draft too
+// (a re-Save must never re-create an erased Talent).
+const TALENT_INTAKE_DRAFTS = `SELECT id FROM talent_evidence."TalentIntakeDraft" WHERE promoted_talent_record_id = ANY($1::uuid[]) OR save_reserved_talent_record_id = ANY($1::uuid[])`;
 // A payload (jsonb, read as text) that names any of the record ids.
 const NAMES_A_RECORD = (col: string): string =>
   `${col}::text LIKE ANY (ARRAY(SELECT '%' || r::text || '%' FROM unnest($1::uuid[]) r))`;
@@ -237,7 +241,6 @@ const PARENT_LOCKS: ReadonlyArray<Pick<ErasureStep, 'keyspace'> & { sql: string 
   { keyspace: 'record', sql: `SELECT 1 FROM documents."Document" WHERE id IN (${TALENT_DOCUMENTS}) FOR UPDATE` },
   { keyspace: 'record', sql: `SELECT 1 FROM technical_screening."ScreeningSession" WHERE talent_record_id = ANY($1::uuid[]) FOR UPDATE` },
   { keyspace: 'record', sql: `SELECT 1 FROM communications."CommunicationInteraction" WHERE id IN (${TALENT_INTERACTIONS}) FOR UPDATE` },
-  { keyspace: 'subject', sql: `SELECT 1 FROM talent_trust."ResolutionSubject" WHERE id = ANY($1::uuid[]) FOR UPDATE` },
 ];
 
 const INVENTORY: ErasureStep[] = [
@@ -283,7 +286,11 @@ const INVENTORY: ErasureStep[] = [
   { label: 'talent_evidence."TalentResumeDefault"', keyspace: 'record', where: `talent_id = ANY($1::uuid[])` },
   { label: 'talent_evidence."TalentResumeEdition"', keyspace: 'record', where: `talent_id = ANY($1::uuid[])` },
   { label: 'talent_evidence."ResumeExtractionDraft"', keyspace: 'record', where: `talent_id = ANY($1::uuid[])` },
-  { label: 'talent_evidence."TalentIntakeOutboxEvent"', keyspace: 'record', where: `subject_type = 'talent_intake_draft' AND subject_id IN (SELECT d.id::text FROM talent_evidence."TalentIntakeDraft" d WHERE d.promoted_talent_record_id = ANY($1::uuid[]))` },
+  { label: 'talent_evidence."TalentIntakeOutboxEvent"', keyspace: 'record', where: `subject_type = 'talent_intake_draft' AND subject_id IN (SELECT d.id::text FROM talent_evidence."TalentIntakeDraft" d WHERE d.promoted_talent_record_id = ANY($1::uuid[]) OR d.save_reserved_talent_record_id = ANY($1::uuid[]))` },
+  // ATI-SEP-1 A3 — the ATS talent outbox: every earlier talent.* event of the
+  // erased records (ids only, published or not). The talent.erased rows this pass
+  // writes (below, after the inventory) are what downstream consumers act on.
+  { label: 'talent_record."TalentEventOutbox"', keyspace: 'record', where: `subject_id = ANY($1::uuid[]) AND event_type <> '${TALENT_EVENT_ERASED}'` },
   { label: 'talent_evidence."TalentIntakeDraft"', keyspace: 'record', where: `id IN (${TALENT_INTAKE_DRAFTS})`, s3RefColumn: 'storage_key' },
   { label: 'examination."CanonicalMatchShadowObservation"', keyspace: 'record', where: `talent_id = ANY($1::uuid[])` },
   // ---- GROUP A polymorphic holders (discriminator MANDATORY — shared id space) ----
@@ -302,24 +309,21 @@ const INVENTORY: ErasureStep[] = [
   { label: 'documents."IdempotencyKey"', keyspace: 'record', where: NAMES_A_RECORD('response_body') },
   { label: 'sign."IdempotencyKey"', keyspace: 'record', where: NAMES_A_RECORD('response_body') },
   ...ORDINARY_OUTBOXES.map((label): ErasureStep => ({ label, keyspace: 'record', where: `published_at IS NOT NULL AND ${NAMES_A_RECORD('event_payload')}` })),
-  // ---- GROUP B trust-side PII (subject keyspace; real FKs, NO cascade → order enforced) ----
-  { label: 'talent_trust."EvidenceEvent"', keyspace: 'evidence-set', where: `evidence_id IN (SELECT id FROM talent_trust."EvidenceRecord" WHERE subject_id = ANY($1::uuid[]))` },
-  { label: 'talent_trust."EvidenceLink"', keyspace: 'evidence-set', where: `from_evidence_id IN (SELECT id FROM talent_trust."EvidenceRecord" WHERE subject_id = ANY($1::uuid[])) OR to_evidence_id IN (SELECT id FROM talent_trust."EvidenceRecord" WHERE subject_id = ANY($1::uuid[]))` },
-  { label: 'talent_trust."EvidenceRecord"', keyspace: 'subject', where: `subject_id = ANY($1::uuid[])` },
-  { label: 'talent_trust."SubjectAnchor"', keyspace: 'subject', where: `subject_id = ANY($1::uuid[])` },
-  { label: 'talent_trust."TrustState"', keyspace: 'subject', where: `subject_id = ANY($1::uuid[])` },
-  { label: 'talent_trust."SubjectMatchAdvisory"', keyspace: 'subject', where: `subject_a_id = ANY($1::uuid[]) OR subject_b_id = ANY($1::uuid[])` },
-  { label: 'talent_trust."VerificationRequest"', keyspace: 'subject', where: `subject_id = ANY($1::uuid[])` },
-  { label: 'talent_trust."VerificationProposal"', keyspace: 'subject', where: `subject_id = ANY($1::uuid[])` },
-  // Portal P3a (F-1 ruling: subject-keyed ⇒ erasure INVENTORY only). ONE parent
-  // entry — PortalDisputeWorkItem + PortalDisputeStatement CASCADE from it. Reached
-  // via the subject-keyed work items (a dispute of an erased subject dies whole).
-  { label: 'talent_trust."PortalDispute"', keyspace: 'evidence-set', where: `id IN (SELECT dispute_id FROM talent_trust."PortalDisputeWorkItem" WHERE subject_id = ANY($1::uuid[]))` },
-  // S2 F3 — the raw ingested payloads resolved to an erased subject (declared name,
-  // verified email, the stored payload object). Cluster purge only unlinks them.
-  { label: 'ingestion."RawPayloadReference"', keyspace: 'subject', where: `resolved_subject_id = ANY($1::uuid[])`, s3RefColumn: 'storage_ref' },
-  { label: 'talent_trust."ResolutionSubjectRef"', keyspace: 'subject', where: `subject_id = ANY($1::uuid[])` },
-  { label: 'talent_trust."ResolutionSubject"', keyspace: 'subject', where: `id = ANY($1::uuid[])` }, // LAST trust row (parent)
+  // ---- GROUP B ATS-local sourcing (ATI-SEP-1 T10 WP4). The sourced arrivals LINKED to the
+  //      erased records (talent_record_sourced_arrival: PROMOTED / ADVISORY_APPROVED — the
+  //      same human) are erased with their raw payloads (declared name, contact, the stored
+  //      payload object), keyed by RawPayloadReference.sourced_talent_id (WP2). Then every
+  //      within-tenant duplicate advisory naming an erased record OR an erased arrival, and
+  //      the link rows themselves (both also cascade from TalentRecord; listed explicitly so
+  //      the dry-run counts them and the coverage proof sees them). ----
+  { label: 'ingestion."RawPayloadReference"', keyspace: 'sourced', where: `sourced_talent_id = ANY($1::uuid[])`, s3RefColumn: 'storage_ref' },
+  { label: 'sourced_talent."SourcedTalent"', keyspace: 'sourced', where: `id = ANY($1::uuid[])` },
+  { label: 'talent_record."talent_duplicate_advisory"', keyspace: 'record-or-sourced', where: `talent_record_a_id = ANY($1::uuid[]) OR talent_record_b_id = ANY($1::uuid[]) OR sourced_talent_id = ANY($2::uuid[])` },
+  { label: 'talent_record."talent_record_sourced_arrival"', keyspace: 'record-or-sourced', where: `talent_record_id = ANY($1::uuid[]) OR sourced_talent_id = ANY($2::uuid[])` },
+  // ATI-SEP-1 T8 — the ATS ↔ Talent Intelligence link + the TI → ATS inbound event inbox
+  // (ids only) for the erased records (the link also cascades from TalentRecord).
+  { label: 'talent_record."intelligence_link"', keyspace: 'record', where: `talent_record_id = ANY($1::uuid[])` },
+  { label: 'talent_record."talent_intelligence_inbound_event"', keyspace: 'record', where: `talent_record_id = ANY($1::uuid[])` },
   // ---- Enterprise Search GS-2A semantic index (record keyspace) — cross-schema UUID ref to
   //      talent_record.TalentRecord.id, NO FK (repo invariant). The embedding is a PII-derived
   //      holder, so erasure reaches it EXPLICITLY here (deleted before the husk record; the dry-run
@@ -329,7 +333,7 @@ const INVENTORY: ErasureStep[] = [
   //      parent THROUGH the session (children carry no talent_record_id; sessions are deleted
   //      last so the subselects still resolve; the husk chain covers merged sessions). Plain
   //      governed DELETEs — the screening tables carry NO delete trigger and NO marker (§10.1).
-  //      The published trust evidence is erased by subject in GROUP B above. ----
+  //      The published evidence is Talent Intelligence's (talent.erased below). ----
   // ---- TIP-E2E INC-3 A1-8 (Part H) + S2 F3 — the talent's conversation data, erased BEFORE the
   //      screening rows its subselects resolve through: CI runs (+ claims / citations / drafts)
   //      → the conversation transcripts (+ source AND normalized object-storage artifacts) →
@@ -383,12 +387,11 @@ const RESUME_TEXT_S3 = {
 
 // S2 F3 — the PREFLIGHT guards: every talent-keyed holder this pass may NOT erase
 // today. Any row present BLOCKS the run before a single write (never skipped).
-// keyspace 'record' binds $1 = record ids; 'subject' binds $1 = subject ids;
-// 'tenant' binds $1 = the tenant id.
+// keyspace 'record' binds $1 = record ids; 'tenant' binds $1 = the tenant id.
 interface HolderGuard {
   holder: string;
   classification: Exclude<HolderClassification, 'DELETE'>;
-  keyspace: 'record' | 'subject' | 'tenant';
+  keyspace: 'record' | 'tenant';
   sql: string; // SELECT count(*)::int AS n …
   reason: string;
   authority: string;
@@ -396,6 +399,8 @@ interface HolderGuard {
 const PO_LEGAL = 'PO/Legal retention class (TM-L12 legal hold / retention; ADR-0007 Decision F)';
 const CLASSIFY = 'Architect / PO holder classification (S2 holder coverage)';
 // The talent's contact values (lower-cased) — captured by the preflight, before any delete.
+// ATI-SEP-1 T10 WP4 — the sourced arrivals linked to the records (the same human).
+const TALENT_SOURCED_ARRIVALS = `SELECT sa.sourced_talent_id FROM talent_record."talent_record_sourced_arrival" sa WHERE sa.talent_record_id = ANY($1::uuid[])`;
 const TALENT_CONTACT_VALUES = `SELECT lower(cm.value) FROM talent_evidence."TalentContactMethod" cm WHERE cm.talent_id = ANY($1::uuid[]) AND cm.value IS NOT NULL AND length(cm.value) >= 5`;
 export const ERASURE_HOLDER_GUARDS: readonly HolderGuard[] = [
   // ---- legal hold (TM-L12 "must not erase data subject to legal hold") ----
@@ -426,7 +431,9 @@ export const ERASURE_HOLDER_GUARDS: readonly HolderGuard[] = [
   //      redacted or retained. They BLOCK until classified (truthful: never a silent residue). ----
   { holder: 'policy_store."PolicyDecisionRecord"', classification: 'PENDING_CLASSIFICATION', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM policy_store."PolicyDecisionRecord" WHERE ${NAMES_A_RECORD('inputs')}`, reason: 'a policy decision record names the talent in its inputs', authority: CLASSIFY },
   { holder: 'ai_draft."AiDraftEvent"', classification: 'PENDING_CLASSIFICATION', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM ai_draft."AiDraftEvent" WHERE ${NAMES_A_RECORD('event_payload')}`, reason: 'an immutable AI-draft event names the talent', authority: CLASSIFY },
-  { holder: 'sourced_talent."SourcedTalent"', classification: 'PENDING_CLASSIFICATION', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM sourced_talent."SourcedTalent" s WHERE s.normalized_email IN (${TALENT_CONTACT_VALUES}) OR s.normalized_phone IN (${TALENT_CONTACT_VALUES})`, reason: 'a sourced-talent record carries a contact value of the talent', authority: CLASSIFY },
+  // ATI-SEP-1 T10 WP4 — a sourced arrival LINKED to the erased records is erased (GROUP B);
+  // only an UNLINKED one that carries a contact value of the talent still blocks.
+  { holder: 'sourced_talent."SourcedTalent"', classification: 'PENDING_CLASSIFICATION', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM sourced_talent."SourcedTalent" s WHERE (s.normalized_email IN (${TALENT_CONTACT_VALUES}) OR s.normalized_phone IN (${TALENT_CONTACT_VALUES})) AND s.id NOT IN (${TALENT_SOURCED_ARRIVALS})`, reason: 'an unlinked sourced-talent record carries a contact value of the talent', authority: CLASSIFY },
   { holder: 'import."ImportFailure"', classification: 'PENDING_CLASSIFICATION', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM import."ImportFailure" f WHERE EXISTS (SELECT 1 FROM (${TALENT_CONTACT_VALUES}) v(value) WHERE f.original_row_data::text ILIKE '%' || v.value || '%')`, reason: 'a failed import row carries a contact value of the talent', authority: CLASSIFY },
   // ---- shared rows (another person's data) ----
   // S2 LOCKED §5 — an interaction of this talent that ALSO belongs to another person (named
@@ -443,7 +450,7 @@ export const ERASURE_HOLDER_GUARDS: readonly HolderGuard[] = [
 
 export interface ErasureScope {
   record_ids: string[]; // the husk chain (every record of the human)
-  subject_ids: string[]; // the merged cluster (every trust subject)
+  sourced_talent_ids: string[]; // the sourced arrivals linked to those records
   s3_keys: string[]; // every object-storage key to purge (deduplicated)
 }
 
@@ -452,18 +459,6 @@ export interface ErasureStepResult {
   count: number; // rows counted (dry-run) or deleted (execute)
   status: 'counted' | 'deleted' | 'redacted' | 'tombstoned' | 'rolled_back' | 'failed';
   error?: string;
-}
-
-// TR-2b B2b (Directive §PR-2.1) — the cluster last-reference section. The erased
-// subjects' PERSON_CLUSTER ref_ids are captured BEFORE the delete pass (they die
-// in the generic ResolutionSubjectRef delete). After the inventory, each captured
-// cluster is R4-liveness-checked EXCLUDING the erased subjects; an orphaned
-// cluster is purged (purgeCluster, caller 'erasure', NO grace — RTBF intent is
-// explicit, D11). Dry-run reports would_purge without purging.
-export interface ErasureClusterPurge {
-  captured_cluster_ids: string[]; // PERSON_CLUSTER refs of the erased subjects
-  orphaned_cluster_ids: string[]; // of those, orphaned post-erasure (would-purge)
-  purged: PurgeClusterResult[]; // execute only — the actual purge results
 }
 
 export interface ErasureStorageStatus {
@@ -490,12 +485,10 @@ export interface ErasureReport {
   is_anonymized_flipped: boolean; // true ONLY when the run is COMPLETED
   total_rows: number; // rows deleted (or, in a dry-run, that would be)
   redacted_rows: number; // retained rows redacted or tombstoned (S2 LOCKED §3.2 / §3.3)
-  cluster_purge: ErasureClusterPurge;
 }
 
 export const RETAINED = [
   'audit."ConsentAuditEvent"',
-  'talent_trust."SubjectMergeOperation"',
   'audit."MeetingSchedulingAuditEvent"',
 ];
 
@@ -509,15 +502,12 @@ interface RunRow {
   id: string;
   state: 'STORAGE_PENDING' | 'COMPLETED';
   record_ids: string[];
-  subject_ids: string[];
 }
 
 export class TalentErasureService {
-  private readonly logger = new Logger(TalentErasureService.name);
-
   // Resolve the WHOLE human from one record id: the husk chain (records linked
-  // by supersession, both directions) + the merged trust cluster (subjects) +
-  // the object-storage keys. Read-only. `exists` = the anchor record is present.
+  // by supersession, both directions) + the sourced arrivals linked to those
+  // records + the object-storage keys. Read-only. `exists` = the anchor record is present.
   async resolveScope(pg: PgExec, tenantId: string, recordId: string): Promise<ErasureScope> {
     const recRows = await pg.query<{ id: string }>(
       `WITH RECURSIVE chain(id, sby) AS (
@@ -534,25 +524,14 @@ export class TalentErasureService {
     const record_ids = recRows.rows.map((r) => r.id);
     if (record_ids.length === 0) record_ids.push(recordId); // never resolves empty
 
-    const subjRows = await pg.query<{ id: string }>(
-      `WITH RECURSIVE cluster(id, mib) AS (
-         SELECT rs.id, rs.merged_into_subject_id
-         FROM talent_trust."ResolutionSubject" rs
-         WHERE rs.tenant_id = $1::uuid AND rs.id IN (
-           SELECT subject_id FROM talent_trust."ResolutionSubjectRef"
-           WHERE tenant_id = $1::uuid AND ref_type = 'ATS_TALENT_RECORD' AND ref_id = ANY($2::uuid[])
-         )
-         UNION
-         SELECT s.id, s.merged_into_subject_id FROM talent_trust."ResolutionSubject" s
-           JOIN cluster c ON (s.merged_into_subject_id = c.id OR s.id = c.mib)
-         WHERE s.tenant_id = $1::uuid
-       )
-       SELECT DISTINCT id FROM cluster`,
+    const srcRows = await pg.query<{ id: string }>(
+      `SELECT DISTINCT sourced_talent_id AS id FROM talent_record."talent_record_sourced_arrival"
+        WHERE tenant_id = $1::uuid AND talent_record_id = ANY($2::uuid[])`,
       [tenantId, record_ids],
     );
-    const subject_ids = subjRows.rows.map((r) => r.id);
-    const s3_keys = await this.collectStorageKeys(pg, { record_ids, subject_ids, s3_keys: [] });
-    return { record_ids, subject_ids, s3_keys };
+    const sourced_talent_ids = srcRows.rows.map((r) => r.id);
+    const s3_keys = await this.collectStorageKeys(pg, { record_ids, sourced_talent_ids, s3_keys: [] });
+    return { record_ids, sourced_talent_ids, s3_keys };
   }
 
   // Every object-storage key the delete pass orphans: each s3-bearing INVENTORY
@@ -583,7 +562,7 @@ export class TalentErasureService {
   async preflight(pg: PgExec, tenantId: string, scope: ErasureScope): Promise<ErasureBlocker[]> {
     const blockers: ErasureBlocker[] = [];
     for (const g of ERASURE_HOLDER_GUARDS) {
-      const param = g.keyspace === 'tenant' ? tenantId : g.keyspace === 'subject' ? scope.subject_ids : scope.record_ids;
+      const param = g.keyspace === 'tenant' ? tenantId : scope.record_ids;
       const rows = await pg.query<{ n: number | string }>(g.sql, [param]);
       const n = Number(rows.rows[0]?.n ?? 0);
       if (n > 0) blockers.push({ holder: g.holder, classification: g.classification, count: n, reason: g.reason, authority: g.authority });
@@ -591,104 +570,17 @@ export class TalentErasureService {
     return blockers;
   }
 
-  // Each INVENTORY WHERE references exactly one id-array as $1 — the record set
-  // (record / record-child) or the subject set (subject / evidence-set).
+  // The id-arrays an INVENTORY WHERE binds: the record set (record / record-child),
+  // the sourced-talent set (sourced), or both ($1 records, $2 sourced).
   private keyParams(step: Pick<ErasureStep, 'keyspace'>, scope: ErasureScope): unknown[] {
-    return step.keyspace === 'subject' || step.keyspace === 'evidence-set'
-      ? [scope.subject_ids]
-      : [scope.record_ids];
-  }
-
-  // TR-2b B2b — the distinct PERSON_CLUSTER ref_ids the erased subjects hold.
-  // Captured BEFORE the delete pass (they die in the generic ResolutionSubjectRef
-  // delete). PII-free (a cluster id is an opaque index key).
-  private async capturePersonClusterRefs(
-    pg: PgExec,
-    subjectIds: string[],
-  ): Promise<string[]> {
-    if (subjectIds.length === 0) return [];
-    const rows = await pg.query<{ ref_id: string }>(
-      `SELECT DISTINCT ref_id FROM talent_trust."ResolutionSubjectRef"
-        WHERE ref_type = 'PERSON_CLUSTER' AND subject_id = ANY($1::uuid[])`,
-      [subjectIds],
-    );
-    return rows.rows.map((r) => r.ref_id);
-  }
-
-  // TR-2b B2b — the R4 liveness rule as a husk-aware raw SQL, EXCLUDING the erased
-  // subjects (so a dry-run predicts the POST-erasure state, and execute is correct
-  // whether run before or after the delete). Mirrors the DI lifecycle-sweep
-  // liveTenants: a cluster is live iff some NON-erased holder of a PERSON_CLUSTER
-  // ref resolves (following merged_into_subject_id) to an ACTIVE survivor that
-  // still holds an ATS_TALENT_RECORD ref.
-  private async isClusterLiveExcluding(
-    pg: PgExec,
-    clusterId: string,
-    excludedSubjectIds: string[],
-  ): Promise<boolean> {
-    const rows = await pg.query<{ live: boolean }>(
-      `WITH RECURSIVE follow(id, merged_into, status) AS (
-         SELECT s.id, s.merged_into_subject_id, s.status
-           FROM talent_trust."ResolutionSubject" s
-          WHERE s.id IN (
-            SELECT subject_id FROM talent_trust."ResolutionSubjectRef"
-             WHERE ref_type = 'PERSON_CLUSTER' AND ref_id = $1::uuid
-               AND subject_id <> ALL($2::uuid[])
-          )
-         UNION
-         SELECT s2.id, s2.merged_into_subject_id, s2.status
-           FROM talent_trust."ResolutionSubject" s2
-           JOIN follow f ON s2.id = f.merged_into
-       )
-       SELECT EXISTS (
-         SELECT 1 FROM follow f
-          WHERE f.status = 'ACTIVE'
-            AND EXISTS (
-              SELECT 1 FROM talent_trust."ResolutionSubjectRef" ats
-               WHERE ats.subject_id = f.id AND ats.ref_type = 'ATS_TALENT_RECORD'
-            )
-       ) AS live`,
-      [clusterId, excludedSubjectIds],
-    );
-    return rows.rows[0]?.live ?? false;
-  }
-
-  // TR-2b B2b — per captured cluster: R4 liveness (excluding the erased subjects);
-  // orphaned → purgeCluster (caller 'erasure', NO grace). Dry-run reports the
-  // would-purge ids without purging. The purge reuses the ONE shared primitive
-  // (purgeClusterViaExec over the erase pass's PgExec — the same statement array
-  // the DI ClusterPurgeService runs, pinned by the tripwire).
-  private async purgeOrphanedClusters(
-    pg: PgExec,
-    clusterIds: string[],
-    excludedSubjectIds: string[],
-    dryRun: boolean,
-  ): Promise<ErasureClusterPurge> {
-    const orphaned: string[] = [];
-    const purged: PurgeClusterResult[] = [];
-    for (const clusterId of clusterIds) {
-      const live = await this.isClusterLiveExcluding(pg, clusterId, excludedSubjectIds);
-      if (live) continue;
-      orphaned.push(clusterId);
-      if (!dryRun) {
-        const exec: ClusterPurgeExec = pg;
-        purged.push(
-          await purgeClusterViaExec(exec, clusterId, 'erasure', (e) =>
-            this.logger.log(JSON.stringify(e)),
-          ),
-        );
-      }
-    }
-    return {
-      captured_cluster_ids: clusterIds,
-      orphaned_cluster_ids: orphaned,
-      purged,
-    };
+    if (step.keyspace === 'sourced') return [scope.sourced_talent_ids];
+    if (step.keyspace === 'record-or-sourced') return [scope.record_ids, scope.sourced_talent_ids];
+    return [scope.record_ids];
   }
 
   private async findRun(pg: PgExec, tenantId: string, recordId: string): Promise<RunRow | null> {
     const rows = await pg.query<RunRow>(
-      `SELECT id, state, record_ids, subject_ids FROM consent."TalentErasureRun" WHERE tenant_id = $1::uuid AND record_id = $2::uuid`,
+      `SELECT id, state, record_ids FROM consent."TalentErasureRun" WHERE tenant_id = $1::uuid AND record_id = $2::uuid`,
       [tenantId, recordId],
     );
     return rows.rows[0] ?? null;
@@ -741,7 +633,6 @@ export class TalentErasureService {
       is_anonymized_flipped: false,
       total_rows: 0,
       redacted_rows: 0,
-      cluster_purge: { captured_cluster_ids: [], orphaned_cluster_ids: [], purged: [] },
     };
   }
 
@@ -750,7 +641,6 @@ export class TalentErasureService {
     const report = this.base(tenantId, recordId, 'dry-run', scope);
     report.outcome = 'DRY_RUN';
     report.blockers = await this.preflight(pg, tenantId, scope);
-    const capturedClusters = await this.capturePersonClusterRefs(pg, scope.subject_ids);
     for (const r of REDACTIONS) {
       const rows = await pg.query<{ n: string }>(`SELECT count(*)::int AS n FROM ${r.label} WHERE ${r.where}`, [scope.record_ids]);
       const n = Number(rows.rows[0]?.n ?? 0);
@@ -779,7 +669,6 @@ export class TalentErasureService {
     }
     report.storage.total = scope.s3_keys.length;
     report.storage.pending = scope.s3_keys.length;
-    report.cluster_purge = await this.purgeOrphanedClusters(pg, capturedClusters, scope.subject_ids, true);
     return report;
   }
 
@@ -802,7 +691,6 @@ export class TalentErasureService {
     }
     // The preflight runs INSIDE the transaction, after the identity locks (below) — the one
     // authoritative check; dryRun runs the same guards read-only.
-    const capturedClusters = await this.capturePersonClusterRefs(pg, scope.subject_ids);
     const runId = randomUUID();
     let failing: string | null = null;
     await pg.query('BEGIN');
@@ -823,10 +711,11 @@ export class TalentErasureService {
       // S2 LOCKED §2 — open the run through the SECURITY DEFINER entry point. It creates the
       // DB_PASS_IN_PROGRESS run in THIS transaction and arms it; the record set it authorizes
       // is computed by the database (the husk chain), so it must equal the resolved scope.
+      // ATI-SEP-1 T10 WP4 — the run's subject_ids (retired trust subjects) is always empty.
       failing = 'erasure run authorization';
       const opened = await pg.query<{ ids: string[] }>(
         `SELECT consent.s2_begin_talent_erasure_run($1::uuid, $2::uuid, $3::uuid, $4::uuid[]) AS ids`,
-        [runId, tenantId, recordId, scope.subject_ids],
+        [runId, tenantId, recordId, []],
       );
       const authorized = [...(opened.rows[0]?.ids ?? [])].sort();
       if (authorized.join(',') !== [...scope.record_ids].sort().join(',')) {
@@ -871,8 +760,18 @@ export class TalentErasureService {
         report.redacted_rows += n;
         report.steps.push({ table: t.label, count: n, status: 'tombstoned' });
       }
-      failing = 'cluster purge';
-      report.cluster_purge = await this.purgeOrphanedClusters(pg, capturedClusters, scope.subject_ids, false);
+      // ATI-SEP-1 A3 (Addendum A1 §1) — the business fact, in THIS transaction:
+      // one talent.erased per erased record (ids only), so the event exists iff
+      // the erasure commits.
+      failing = 'talent.erased outbox';
+      for (const record_id of scope.record_ids) {
+        const ev = buildTalentEventRow({ tenant_id: tenantId, event_type: TALENT_EVENT_ERASED, talent_record_id: record_id, correlation_id: runId });
+        await pg.query(
+          `INSERT INTO talent_record."TalentEventOutbox" (id, tenant_id, event_type, event_payload, event_version, source, subject_type, subject_id, correlation_id, causation_id)
+           VALUES ($1::uuid, $2::uuid, $3, $4::jsonb, $5, $6, $7, $8::uuid, $9, NULL)`,
+          [ev.id, ev.tenant_id, ev.event_type, JSON.stringify(ev.event_payload), ev.event_version, ev.source, ev.subject_type, ev.subject_id, ev.correlation_id],
+        );
+      }
       failing = 'erasure run record';
       const complete = keys.length === 0;
       // Leave DB_PASS_IN_PROGRESS (a deferred trigger rejects a COMMIT that does not).
@@ -899,7 +798,6 @@ export class TalentErasureService {
       report.steps.push({ table: failing ?? 'unknown', count: 0, status: 'failed', error: msg(err) });
       report.total_rows = 0;
       report.redacted_rows = 0;
-      report.cluster_purge = { captured_cluster_ids: capturedClusters, orphaned_cluster_ids: [], purged: [] };
       if (err instanceof ErasureBlockedError) {
         report.outcome = 'BLOCKED';
         report.blockers = err.blockers;
@@ -923,7 +821,7 @@ export class TalentErasureService {
   // artifact and complete the run when all are verifiably gone. No DB re-pass.
   async resume(pg: PgExec, tenantId: string, recordId: string, store: ErasureObjectStore): Promise<ErasureReport> {
     const run = await this.findRun(pg, tenantId, recordId);
-    const scope: ErasureScope = { record_ids: run?.record_ids ?? [recordId], subject_ids: run?.subject_ids ?? [], s3_keys: [] };
+    const scope: ErasureScope = { record_ids: run?.record_ids ?? [recordId], sourced_talent_ids: [], s3_keys: [] };
     const report = this.base(tenantId, recordId, 'resume', scope);
     if (run === null) {
       report.failure = 'no_erasure_run: run erase-talent --execute first';
@@ -1007,7 +905,7 @@ export class TalentErasureService {
     return {
       run_id: runId,
       record_ids: scope.record_ids,
-      subject_ids: scope.subject_ids,
+      sourced_talent_ids: scope.sourced_talent_ids,
       tables_cleared: report.steps.filter((s) => s.status === 'deleted').map((s) => s.table),
       tables_redacted: report.steps.filter((s) => s.status === 'redacted' || s.status === 'tombstoned').map((s) => s.table),
       artifacts_purged: purged,

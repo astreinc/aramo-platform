@@ -59,7 +59,6 @@ function makeService(outcome: Outcome): {
   const svc = new TalentExtractionService(
     { generateDraft } as never, // aiDraft — examine path only, never the draft path
     {} as never, // evidence
-    {} as never, // trust
     { generateStructured, providerKey: () => 'anthropic' } as never,
   );
   return { svc, generateStructured, generateDraft };
@@ -312,7 +311,6 @@ describe('replaceDeclaredWorkHistory — replace-set mapping + delegation', () =
     const svc = new TalentExtractionService(
       {} as never,
       { replaceWorkHistoryForTalent } as never,
-      {} as never,
       {} as never,
     );
     return { svc, replaceWorkHistoryForTalent };

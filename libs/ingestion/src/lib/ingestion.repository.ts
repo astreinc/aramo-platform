@@ -54,13 +54,15 @@ export interface RawPayloadRow {
 }
 
 // Cold-Ingest Extraction — the poll's projection: a resolved arrival whose
-// resume still needs declared-evidence extraction, plus the subject it resolved
-// to (resolved_subject_id, the write target).
+// resume still needs extraction. ATI-SEP-1 T10 WP2 — "resolved" now means
+// canonicalized to an ATS-local sourced_talent arrival (sourced_talent_id); the
+// retired trust-subject id is an inert soft ref (null for new arrivals).
 export interface ArrivalNeedingExtraction {
   id: string;
   tenant_id: string;
   storage_ref: string;
-  resolved_subject_id: string;
+  sourced_talent_id: string;
+  resolved_subject_id: string | null;
   // SRC-2 PR-1 — the content-type discriminator: 'application/json' arrivals
   // (the SRC-1 apply webhook) carry a JSON envelope with the resume base64 INSIDE
   // it; every other content_type is a bare resume object (the existing path).
@@ -105,17 +107,17 @@ export class IngestionRepository {
   // ---- Cold-Ingest Extraction poll (the extract-once gate) -----------------
 
   // A resolved cold-ingest arrival whose resume still needs extraction. The
-  // subject is carried on the arrival (resolved_subject_id, set by canonicalize).
+  // arrival is resolved once canonicalize stamps sourced_talent_id.
   async findArrivalsNeedingExtraction(args: {
     limit: number;
     maxAttempts: number;
   }): Promise<ArrivalNeedingExtraction[]> {
-    // NEEDS extraction = canonicalized (has a subject) + not-yet-done + under
+    // NEEDS extraction = canonicalized (has an arrival) + not-yet-done + under
     // the transient-retry cap. Oldest first (created_at asc), like the
     // canonicalize poll. storage_ref is always present (non-nullable column).
     const rows = await this.prisma.rawPayloadReference.findMany({
       where: {
-        resolved_subject_id: { not: null },
+        sourced_talent_id: { not: null },
         extraction_done_at: null,
         extraction_attempts: { lt: args.maxAttempts },
       },
@@ -125,6 +127,7 @@ export class IngestionRepository {
         id: true,
         tenant_id: true,
         storage_ref: true,
+        sourced_talent_id: true,
         resolved_subject_id: true,
         content_type: true,
       },
@@ -134,7 +137,8 @@ export class IngestionRepository {
       tenant_id: r.tenant_id,
       storage_ref: r.storage_ref,
       // Non-null by the where-filter; narrow for the caller.
-      resolved_subject_id: r.resolved_subject_id as string,
+      sourced_talent_id: r.sourced_talent_id as string,
+      resolved_subject_id: r.resolved_subject_id ?? null,
       content_type: r.content_type,
     }));
   }

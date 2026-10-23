@@ -12,6 +12,17 @@ import type { Client } from 'pg';
 
 const ROOT = resolve(__dirname, '../../../..');
 
+// ATI-SEP-1 A2/A3 — TalentRecord.phone_cell_normalized (the regenerated client
+// projects it) + the talent_record."TalentEventOutbox" every create/update now
+// writes in-transaction. The ONE place hand-picked integration migration sets
+// take it from (repo-relative, and resolved for the absolute-path lists).
+export const TALENT_RECORD_ATI_SEP_1_MIGRATIONS: readonly string[] = [
+  'libs/talent-record/prisma/migrations/20261024130000_ati_sep_1_talent_event_outbox_phone_normalized/migration.sql',
+];
+export const TALENT_RECORD_ATI_SEP_1_MIGRATION_PATHS: readonly string[] = TALENT_RECORD_ATI_SEP_1_MIGRATIONS.map((p) =>
+  resolve(ROOT, p),
+);
+
 // The COLUMN-mutating talent-record migrations. The Prisma client projects
 // every scalar column on findFirst, so the table must match the client (init +
 // the additive columns, minus the 4e-rest identity-link column drop). The trgm /
@@ -33,6 +44,7 @@ const TALENT_RECORD_MIGRATION_PATHS = [
   // B1+B2 — adds title + country (the regenerated client projects both; the
   // test schema must carry them or findFirst 500s).
   'libs/talent-record/prisma/migrations/20260910130000_add_talent_title_and_country/migration.sql',
+  ...TALENT_RECORD_ATI_SEP_1_MIGRATIONS,
 ].map((p) => resolve(ROOT, p));
 
 // Apply the talent_record schema to a test database. Feeds each whole

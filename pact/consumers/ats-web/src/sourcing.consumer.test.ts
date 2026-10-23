@@ -3,35 +3,32 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
   ACCESS_COOKIE,
   ISO_TIMESTAMP,
-  TENANT_ID,
+  eachLike,
   like,
   makeAtsWebProvider,
   regex,
   uuid,
 } from './support/ats-web-pact.js';
 
-// PC-4b — Pact consumer for ats-web, sourcing domain (post-B3). The sourcing
-// pool + promote (create-or-reconcile) surface PC-4 deferred; now settled.
-// Merges into ats-web-aramo-core.json.
+// PC-4b → ATI-SEP-1 T10 WP2 (Addenda A2 F-1 / A3) — Pact consumer for ats-web,
+// sourcing domain. Sourcing runs on ATS data only: the pool is the tenant's
+// un-promoted sourced_talent arrivals, promotion mints an ATS TalentRecord from an
+// arrival behind the ATS duplicate-advisory gate. Merges into ats-web-aramo-core.json.
 //
-// Scope (PC-4b Directive §1/§3 + Gate-5 ruling): 6 interactions —
-//   - GET /v1/sourcing/pool (PoolPage: one sourced subject + bands);
-//   - GET /v1/sourcing/pool/:subjectId (SubjectDetail: bands + evidence + refs
-//     + PENDING open_identity_advisories);
+// Scope: 6 interactions —
+//   - GET /v1/sourcing/pool (PoolPage: one arrival + pending-advisory count);
+//   - GET /v1/sourcing/pool/:subjectId (the arrival drill-in: refs + PENDING
+//     open_identity_advisories);
 //   - POST /v1/sourcing/pipeline -> 'promoted' (FRESH MINT, 200);
 //   - POST /v1/sourcing/pipeline -> 'already_promoted' (idempotent, 200);
 //   - POST /v1/sourcing/bench -> 'promoted' (200);
-//   - POST /v1/sourcing/pipeline -> 'deferred_unresolved_identity' (the
-//     advisory gate's by-design 200 outcome — a PENDING advisory blocks the
-//     mint; the create-or-reconcile business invariant).
+//   - POST /v1/sourcing/pipeline -> 'deferred_unresolved_identity' (a PENDING
+//     duplicate advisory blocks the mint — an expected 200 outcome).
 //
-// All POSTs are 200 (deferrals are expected outcomes, not throws). illegal-
-// state: 0-by-substrate. idempotency: 0-by-substrate (no Idempotency-Key).
-// Vocabulary: trust bands are PresentationBand (NOT_ESTABLISHED..AUTHORITATIVE);
-// no scoring vocab. EvidenceRecord.strength NOT pinned (cycle-law-5 — FE does
-// not consume it; wire-exposure routed to PO as product).
-//
-// Guard chain: @RequireCapability('core') + @RequireScopes('talent:source').
+// Wire note: `subject_id` keeps its name and carries the SourcedTalent id (the
+// drill-in param + the SOURCED_TALENT ref_id). The retired trust fields are gone;
+// no trust or numeric signal is pinned. Guard chain: @RequireCapability('core') +
+// @RequireScopes('talent:source').
 
 const provider = makeAtsWebProvider();
 
@@ -46,10 +43,10 @@ const REQ_ID = '00000000-0000-7000-8000-4e9300000001';
 // GET /v1/sourcing/pool — happy
 // ======================================================================
 describe('ats-web → GET /v1/sourcing/pool', () => {
-  it('returns 200 PoolPage with a sourced subject and trust bands', async () => {
+  it('returns 200 PoolPage with a sourced arrival', async () => {
     await provider
       .addInteraction()
-      .given('an ats-web recruiter and a sourced subject with trust and a pending advisory exist')
+      .given('an ats-web recruiter and a sourced arrival with a pending duplicate advisory exist')
       .uponReceiving('a sourcing pool read')
       .withRequest('GET', '/v1/sourcing/pool', (b) => {
         b.headers({ Cookie: like(ACCESS_COOKIE) });
@@ -61,13 +58,10 @@ describe('ats-web → GET /v1/sourcing/pool', () => {
               subject_id: uuid(POOL_SUBJECT_ID),
               display_name: like('Grace Hopper'),
               email: like('grace@example.com'),
-              trust_bands: {
-                identity: like('CORROBORATED'),
-                claims: like('SELF_ASSERTED'),
-                continuity: like('NOT_ESTABLISHED'),
-                eligibility: like('NOT_ESTABLISHED'),
-              },
-              open_contradiction_count: like(0),
+              phone: like('+15125550101'),
+              source_channel: like('manual_capture'),
+              arrived_at: regex(ISO_TIMESTAMP, '2026-07-01T00:00:00.000Z'),
+              open_advisory_count: like(1),
             },
           ],
           next_cursor: null,
@@ -89,10 +83,10 @@ describe('ats-web → GET /v1/sourcing/pool', () => {
 // GET /v1/sourcing/pool/:subjectId — happy
 // ======================================================================
 describe('ats-web → GET /v1/sourcing/pool/:subjectId', () => {
-  it('returns 200 SubjectDetail with bands, evidence, refs, open advisories', async () => {
+  it('returns 200 the arrival drill-in with refs and open duplicate advisories', async () => {
     await provider
       .addInteraction()
-      .given('an ats-web recruiter and a sourced subject with trust and a pending advisory exist')
+      .given('an ats-web recruiter and a sourced arrival with a pending duplicate advisory exist')
       .uponReceiving('a sourcing subject-detail read')
       .withRequest('GET', `/v1/sourcing/pool/${POOL_SUBJECT_ID}`, (b) => {
         b.headers({ Cookie: like(ACCESS_COOKIE) });
@@ -102,16 +96,23 @@ describe('ats-web → GET /v1/sourcing/pool/:subjectId', () => {
           subject_id: uuid(POOL_SUBJECT_ID),
           display_name: like('Grace Hopper'),
           email: like('grace@example.com'),
-          trust_bands: {
-            identity: like('CORROBORATED'),
-            claims: like('SELF_ASSERTED'),
-            continuity: like('NOT_ESTABLISHED'),
-            eligibility: like('NOT_ESTABLISHED'),
-          },
-          open_contradiction_count: like(0),
-          evidence: like([]),
-          refs: like([]),
-          open_identity_advisories: like([]),
+          phone: like('+15125550101'),
+          source_channel: like('manual_capture'),
+          arrived_at: regex(ISO_TIMESTAMP, '2026-07-01T00:00:00.000Z'),
+          refs: eachLike({
+            ref_type: like('SOURCED_TALENT'),
+            ref_id: uuid(POOL_SUBJECT_ID),
+            link_source: like('manual_capture'),
+          }),
+          open_identity_advisories: eachLike({
+            id: uuid(),
+            talent_record_id: uuid(),
+            talent_record_name: like('Grace Hopper'),
+            basis: like('SOURCED_ARRIVAL'),
+            shared_kinds: like(['EMAIL']),
+            status: 'PENDING_REVIEW',
+            created_at: regex(ISO_TIMESTAMP, '2026-05-25T00:00:00.000Z'),
+          }),
         });
       })
       .executeTest(async (mock) => {
@@ -133,7 +134,7 @@ describe('ats-web → POST /v1/sourcing/pipeline', () => {
     const BODY = { ref_type: 'SOURCED_TALENT', ref_id: MINT_ARRIVAL_ID, requisition_id: REQ_ID };
     await provider
       .addInteraction()
-      .given('an ats-web recruiter and a promotable sourced subject exist')
+      .given('an ats-web recruiter and a promotable sourced arrival exist')
       .uponReceiving('a promote-to-pipeline (fresh mint)')
       .withRequest('POST', '/v1/sourcing/pipeline', (b) => {
         b.headers({ Cookie: like(ACCESS_COOKIE), 'Content-Type': 'application/json' }).jsonBody(BODY);
@@ -154,11 +155,11 @@ describe('ats-web → POST /v1/sourcing/pipeline', () => {
       });
   });
 
-  it('returns 200 already_promoted for a previously-promoted subject', async () => {
+  it('returns 200 already_promoted for a previously-promoted arrival', async () => {
     const BODY = { ref_type: 'SOURCED_TALENT', ref_id: PROMOTED_ARRIVAL_ID, requisition_id: REQ_ID };
     await provider
       .addInteraction()
-      .given('an ats-web recruiter and an already-promoted sourced subject exist')
+      .given('an ats-web recruiter and an already-promoted sourced arrival exist')
       .uponReceiving('a promote-to-pipeline (already promoted)')
       .withRequest('POST', '/v1/sourcing/pipeline', (b) => {
         b.headers({ Cookie: like(ACCESS_COOKIE), 'Content-Type': 'application/json' }).jsonBody(BODY);
@@ -182,11 +183,11 @@ describe('ats-web → POST /v1/sourcing/pipeline', () => {
       });
   });
 
-  it('returns 200 deferred_unresolved_identity when a PENDING advisory blocks the mint', async () => {
+  it('returns 200 deferred_unresolved_identity when a PENDING duplicate advisory blocks the mint', async () => {
     const BODY = { ref_type: 'SOURCED_TALENT', ref_id: DEFER_ARRIVAL_ID, requisition_id: REQ_ID };
     await provider
       .addInteraction()
-      .given('an ats-web recruiter and a sourced subject with a pending identity advisory exist')
+      .given('an ats-web recruiter and a sourced arrival with a pending duplicate advisory blocking promotion exist')
       .uponReceiving('a promote-to-pipeline blocked by the advisory gate')
       .withRequest('POST', '/v1/sourcing/pipeline', (b) => {
         b.headers({ Cookie: like(ACCESS_COOKIE), 'Content-Type': 'application/json' }).jsonBody(BODY);
@@ -215,7 +216,7 @@ describe('ats-web → POST /v1/sourcing/bench', () => {
     const BODY = { ref_type: 'SOURCED_TALENT', ref_id: MINT_ARRIVAL_ID };
     await provider
       .addInteraction()
-      .given('an ats-web recruiter and a promotable sourced subject exist')
+      .given('an ats-web recruiter and a promotable sourced arrival exist')
       .uponReceiving('a promote-to-bench (fresh mint)')
       .withRequest('POST', '/v1/sourcing/bench', (b) => {
         b.headers({ Cookie: like(ACCESS_COOKIE), 'Content-Type': 'application/json' }).jsonBody(BODY);

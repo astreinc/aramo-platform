@@ -22,9 +22,10 @@ import {
 } from '../dto/talent-intake.dto.js';
 import { TalentRecordRepository } from '../talent-record.repository.js';
 
-import { applyRecruiterReview, asReviewPayload } from './talent-intake-review.js';
+import { applyRecruiterReview, asReviewPayload, reviewValuesChanged } from './talent-intake-review.js';
 import {
   TALENT_INTAKE_EXTRACTION_REQUESTED_EVENT,
+  TALENT_INTAKE_SOURCE_TYPE_MANUAL_ENTRY,
   TALENT_INTAKE_SOURCE_TYPE_RESUME_UPLOAD,
   TALENT_INTAKE_EVENT_SOURCE,
   TALENT_INTAKE_EVENT_VERSION,
@@ -70,19 +71,26 @@ export class TalentIntakeService {
       return null;
     }
     const review = asReviewPayload(row.review_payload);
-    const emailField = review.fields['email1'];
-    const email =
-      emailField !== undefined && typeof emailField.value === 'string'
-        ? emailField.value.trim()
-        : '';
-    if (email === '') {
-      return null;
+    const value = (key: string): string => {
+      const field = review.fields[key];
+      return field !== undefined && typeof field.value === 'string' ? field.value.trim() : '';
+    };
+    const email = value('email1');
+    const phone = value('phone_cell');
+    // ATI-SEP-1 A2 — the SAME authority as the Save-time 409: email1 first, then
+    // the normalized cell phone. A resumed Save's own reserved record is not a
+    // duplicate of itself.
+    const own = row.save_reserved_talent_record_id ?? null;
+    let match: Awaited<ReturnType<TalentRecordRepository['findDuplicateByEmail']>> = null;
+    let reason: 'email' | 'phone' = 'email';
+    if (email !== '') {
+      match = await this.talentRecord.findDuplicateByEmail({ tenant_id: authContext.tenant_id, email });
     }
-    const match = await this.talentRecord.findDuplicateByEmail({
-      tenant_id: authContext.tenant_id,
-      email,
-    });
-    if (match === null) {
+    if ((match === null || match.id === own) && phone !== '') {
+      match = await this.talentRecord.findDuplicateByPhone({ tenant_id: authContext.tenant_id, phone });
+      reason = 'phone';
+    }
+    if (match === null || match.id === own) {
       return null;
     }
     const location =
@@ -92,9 +100,9 @@ export class TalentIntakeService {
       display_name: `${match.first_name} ${match.last_name}`.trim(),
       title: match.title,
       location,
-      reason: 'email',
-      // V1 (PO ruling): an active-email duplicate is a hard create block — the
-      // 409 is preserved — so Continue anyway is never authorized.
+      reason,
+      // V1 (PO ruling): an active-email / cell-phone duplicate is a hard create
+      // block — the 409 is preserved — so Continue anyway is never authorized.
       continue_anyway: false,
     };
   }
@@ -151,6 +159,54 @@ export class TalentIntakeService {
     };
   }
 
+  // 1a — Manual entry (ATI-SEP-1 A5): the recruiter adds a Talent WITHOUT a
+  // résumé. Persists an artifact-less draft and settles it terminal (READY)
+  // immediately — there is nothing to extract, so NO outbox event and NO LLM
+  // work. READY (not PARTIAL): PARTIAL means "a résumé was only partly read"
+  // and carries retry/replace + Needs-attention semantics, none of which apply
+  // when no résumé was supplied. The draft then follows the ordinary review →
+  // PATCH → promote path (admission is the only create gate).
+  async createManualIntake(
+    authContext: AuthContextType,
+    requestId: string,
+  ): Promise<TalentIntakeDraftView> {
+    const tenant_id = authContext.tenant_id;
+    const created_by = authContext.sub;
+    const draftId = uuidv7();
+    await this.talentExtraction.createTalentIntakeDraft({
+      id: draftId,
+      tenant_id,
+      created_by,
+      source_type: TALENT_INTAKE_SOURCE_TYPE_MANUAL_ENTRY,
+      source_filename: null,
+      storage_key: null,
+      mime_type: null,
+    });
+    await this.settleManualIntake(tenant_id, draftId);
+    const row = await this.talentExtraction.findTalentIntakeDraftById({
+      tenant_id,
+      id: draftId,
+      created_by,
+    });
+    if (row === null) {
+      throw this.notFound(draftId, requestId);
+    }
+    return this.buildView(authContext, row);
+  }
+
+  // Terminal settle for a manual-entry draft (no extraction child, no warning).
+  private async settleManualIntake(tenant_id: string, id: string): Promise<void> {
+    await this.talentExtraction.markTalentIntakeDraftProcessed({
+      tenant_id,
+      id,
+      processing_status: 'READY',
+      warning_code: null,
+      failure_code: null,
+      failure_detail: null,
+      processing_completed_at: new Date(),
+    });
+  }
+
   // 1b — Source-agnostic admission (ADR-0033 Decision 5). A NON-upload producer
   // (job board / sourcing / agent / import / integration / external API) enters
   // the SAME Talent Intake authority WITHOUT fabricating an S3 upload. Idempotent
@@ -174,7 +230,13 @@ export class TalentIntakeService {
   ): Promise<{ draft_id: string; created: boolean; processing_status: string }> {
     const sourceType = (body.source_type ?? '').trim();
     const sourceEventId = (body.source_event_id ?? '').trim();
-    if (sourceType === '' || sourceType === TALENT_INTAKE_SOURCE_TYPE_RESUME_UPLOAD) {
+    // RESUME_UPLOAD and MANUAL_ENTRY are recruiter-surface intakes with their own
+    // routes; neither is a producer source.
+    if (
+      sourceType === '' ||
+      sourceType === TALENT_INTAKE_SOURCE_TYPE_RESUME_UPLOAD ||
+      sourceType === TALENT_INTAKE_SOURCE_TYPE_MANUAL_ENTRY
+    ) {
       throw new AramoError(
         'VALIDATION_ERROR',
         'source_type must be a non-empty non-upload source.',
@@ -337,16 +399,36 @@ export class TalentIntakeService {
         details: { review_status: existing.review_status },
       });
     }
+    // Backend-owned merge (I7 / §8.5): only recruiter-origin fields and the
+    // arrays the recruiter actually edited come from the client; everything
+    // else keeps the persisted (extraction) value.
+    const merged = applyRecruiterReview(existing.review_payload, body.review);
+    // D6 — a partly saved draft whose TalentRecord already exists (the Save
+    // committed the record and is finishing its follow-ups) can no longer carry
+    // a changed value to the Talent: the resumed Save never rewrites a created
+    // record or its evidence. Refuse the edit rather than lose it silently; the
+    // FE directs the recruiter to the Talent record. An unchanged autosave
+    // passes. (A Save committing the record between this check and the write
+    // below is not fenced — the resumed Save would then skip the edit.)
+    const reserved = existing.save_reserved_talent_record_id ?? null;
+    if (reserved !== null && reviewValuesChanged(existing.review_payload, merged)) {
+      const onTalent = await this.talentRecord.findById({ tenant_id, id: reserved });
+      if (onTalent !== null) {
+        throw new AramoError(
+          'INTAKE_DRAFT_SAVED_EDIT_ON_TALENT',
+          'This talent has already been created. Make further changes on the Talent record.',
+          409,
+          { requestId, details: { reason: 'saved_edit_on_talent', talent_record_id: reserved } },
+        );
+      }
+    }
     const count = await this.talentExtraction.saveTalentIntakeDraftReview({
       tenant_id,
       id,
       created_by,
       expected_version: body.expected_version,
-      // Backend-owned merge (I7 / §8.5): only recruiter-origin fields and the
-      // arrays the recruiter actually edited come from the client; everything
-      // else keeps the persisted (extraction) value. CAS on expected_version
-      // still rejects a stale tab.
-      review_payload: applyRecruiterReview(existing.review_payload, body.review),
+      // CAS on expected_version still rejects a stale tab.
+      review_payload: merged,
       review_status: 'IN_REVIEW',
     });
     if (count === 0) {
@@ -367,6 +449,13 @@ export class TalentIntakeService {
 
   // 6 — Retry extraction on the SAME stored artifact (no re-upload). A no-op when
   // the draft is not in a retryable (FAILED/PARTIAL) state.
+  //
+  // ATI-SEP-1 A5 — a draft left UPLOADED (the browser's complete-upload call
+  // failed after the bytes landed) is retried by re-running the complete-upload
+  // semantics: headObject check, commit tag, then the guarded UPLOADED → QUEUED
+  // + outbox transition (itself idempotent — a replay enqueues nothing). A
+  // missing object surfaces the same 422 object_missing so the FE offers
+  // Replace. A manual-entry draft stranded UPLOADED is simply settled READY.
   async retry(
     authContext: AuthContextType,
     id: string,
@@ -381,6 +470,19 @@ export class TalentIntakeService {
     });
     if (existing === null) {
       throw this.notFound(id, requestId);
+    }
+    if (existing.processing_status === 'UPLOADED' && existing.promoted_talent_record_id === null) {
+      if (existing.storage_key !== null) {
+        await this.completeUpload(authContext, id, {}, requestId);
+      } else if (existing.source_type === TALENT_INTAKE_SOURCE_TYPE_MANUAL_ENTRY) {
+        await this.settleManualIntake(tenant_id, id);
+      }
+      const settled = await this.talentExtraction.findTalentIntakeDraftById({
+        tenant_id,
+        id,
+        created_by,
+      });
+      return this.buildView(authContext, settled ?? existing);
     }
     await this.talentExtraction.requeueTalentIntakeDraftWithOutbox({
       tenant_id,
@@ -416,6 +518,14 @@ export class TalentIntakeService {
       throw new AramoError('VALIDATION_ERROR', 'A created talent cannot be discarded.', 422, {
         requestId,
         details: { review_status: existing.review_status },
+      });
+    }
+    // ATI-SEP-1 A2 — a Save that already materialized evidence is resumed (Save
+    // again), never discarded, so no evidence is orphaned.
+    if (existing.save_evidence_materialized_at != null) {
+      throw new AramoError('VALIDATION_ERROR', 'This draft is partly saved. Save it again to finish.', 422, {
+        requestId,
+        details: { reason: 'save_in_progress' },
       });
     }
     const count = await this.talentExtraction.deleteTalentIntakeDraft({ tenant_id, id, created_by });
@@ -471,6 +581,12 @@ export class TalentIntakeService {
       throw new AramoError('VALIDATION_ERROR', 'A created talent cannot be edited here.', 422, {
         requestId,
         details: { review_status: existing.review_status },
+      });
+    }
+    if (existing.save_evidence_materialized_at != null) {
+      throw new AramoError('VALIDATION_ERROR', 'This draft is partly saved. Save it again to finish.', 422, {
+        requestId,
+        details: { reason: 'save_in_progress' },
       });
     }
     const presign = await this.objectStorage.createResumePresignedPut({

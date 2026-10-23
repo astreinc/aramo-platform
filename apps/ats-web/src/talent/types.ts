@@ -171,19 +171,19 @@ export interface AttachmentDownloadUrlResponse {
 // status is a BAND/LABEL (verified|pending|expired|none), NEVER a numeric value.
 export type EmailSlot = 'email1' | 'email2';
 
-// POST /v1/talent-records/:id/email-verifications 200 result. status is fixed
-// 'PENDING' on a freshly-issued verification; resent=true when an existing
-// pending verification was re-sent rather than newly minted.
+// POST /v1/talent-records/:id/email-verifications 200 result (ATI-SEP-1 T10 WP3b:
+// Talent Intelligence mails a 6-digit code). delivery=NOT_AVAILABLE when TI
+// cannot deliver on the channel.
 export interface EmailVerificationRequestResult {
   readonly verification_id: string;
   readonly slot: EmailSlot;
   readonly status: 'PENDING';
   readonly expires_at: string;
-  readonly resent: boolean;
+  readonly delivery: 'QUEUED' | 'NOT_AVAILABLE';
 }
 
 // The per-slot displayed verification status (GET status items). A band/label
-// vocabulary — never a number. 'none' = no verification exists for the slot.
+// vocabulary — never a number. 'none' = not verified and nothing pending.
 export type EmailSlotVerificationStatus =
   | 'verified'
   | 'pending'
@@ -194,11 +194,13 @@ export interface EmailVerificationStatusItem {
   readonly slot: EmailSlot;
   readonly value_present: boolean;
   readonly status: EmailSlotVerificationStatus;
+  readonly expires_at: string | null;
 }
 
 // GET /v1/talent-records/:id/email-verifications 200 body — always two items,
-// email1 then email2.
+// email1 then email2; intelligence_status says whether TI answered.
 export interface EmailVerificationStatusResponse {
+  readonly intelligence_status: 'ENABLED' | 'NOT_ENTITLED' | 'NOT_CONFIGURED' | 'UNAVAILABLE';
   readonly items: EmailVerificationStatusItem[];
 }
 

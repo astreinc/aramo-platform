@@ -1,21 +1,33 @@
 import { apiClient } from '@aramo/fe-foundation';
 
-// Portal P3b — the tenant dispute-disposition client (mirrors the *-api.ts
-// convention; core + identity:resolve). Tenant/actor come from the session
-// cookie the apiClient attaches — never a param. ApiError propagates.
+import type { IntelligenceStatus } from '../talent/dossier-api';
+
+// Portal P3b → ATI-SEP-1 T10 WP3b — the tenant dispute-disposition client (core +
+// identity:resolve). The disputes live in Talent Intelligence; the ATS relays.
+// Tenant/actor come from the session cookie the apiClient attaches — never a
+// param. ApiError propagates.
 
 const BASE = '/v1/talent/identity/portal-disputes';
 
 export interface PortalDisputeItem {
   dispute_id: string;
-  subject_id: string;
+  /** This workspace's records on the disputed talent. */
+  talent_record_ids: string[];
+  assertion_id: string;
+  /** The disputed assertion type. */
   item_type: string;
+  contributed_by: string;
   status: string;
   arrived_at: string;
+  updated_at: string;
+  triage_due_at: string;
+  reinvestigation_due_at: string;
 }
 
 export interface PortalDisputeList {
+  intelligence_status: IntelligenceStatus;
   disputes: PortalDisputeItem[];
+  next_cursor: string | null;
 }
 
 export interface PortalDisputeDispositionResult {

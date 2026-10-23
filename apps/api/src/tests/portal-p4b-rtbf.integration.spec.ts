@@ -17,11 +17,15 @@ import { PortalRtbfService } from '../talent-identity/portal-rtbf.service.js';
 
 // Portal P4 P4b (§PR-2, D-2/D-3) — the talent RTBF, end-to-end against a real
 // Postgres 17. Boots AppModule, applies every lib migration (glob — auto-includes
-// portal_identity incl. NoticeDelivery + platform_trust + identity_index), seeds a
-// full platform identity, and drives PortalRtbfService.eraseSelf. Proves the
-// full circle: purge → residue delete (NoticeDelivery EXPLICIT, Gate-5) → the
-// tenant-rail record UNTOUCHED (D-2) → a re-login mints a FRESH identity; plus the
-// grave-confirm mismatch refusal and idempotency.
+// portal_identity incl. NoticeDelivery), seeds a full platform identity, and
+// drives PortalRtbfService.eraseSelf. Proves the full circle: portal_identity
+// delete (NoticeDelivery EXPLICIT, Gate-5) → the tenant-rail record UNTOUCHED
+// (D-2) → a re-login mints a FRESH identity; plus the grave-confirm mismatch
+// refusal and idempotency.
+//
+// ATI-SEP-1 T10 WP4 — the former identity-index cluster purge step is gone with
+// that schema; PortalUser.cluster_id is inert (Addendum A4) and is deleted with
+// the PortalUser row.
 
 const ROOT = resolve(__dirname, '../../../..');
 
@@ -92,27 +96,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     });
 
     beforeEach(async () => {
-      await db.query(`TRUNCATE TABLE identity_index."PersonCluster" CASCADE`);
-      await db.query(`TRUNCATE TABLE identity_index."ClusterFingerprint" CASCADE`);
-      await db.query(`TRUNCATE TABLE talent_trust."ResolutionSubject" CASCADE`);
+      await db.query(`TRUNCATE TABLE talent_record."TalentRecord" CASCADE`);
       await db.query(`TRUNCATE TABLE portal_identity."NoticeDelivery" CASCADE`);
       await db.query(`TRUNCATE TABLE portal_identity."PortalUser" CASCADE`);
       await db.query(`TRUNCATE TABLE portal_identity."PortalLoginToken" CASCADE`);
     });
 
     async function seedIdentity(): Promise<{ sub: string; clusterId: string }> {
-      const clusterId = uuidv7();
+      const clusterId = uuidv7(); // an INERT legacy pointer (A4) — never dereferenced
       const sub = uuidv7();
-      await db.query(
-        `INSERT INTO identity_index."PersonCluster" (id, created_at, updated_at)
-         VALUES ($1::uuid, now(), now())`,
-        [clusterId],
-      );
-      await db.query(
-        `INSERT INTO identity_index."ClusterFingerprint" (id, cluster_id, fingerprint, kind, created_at)
-         VALUES ($1::uuid, $2::uuid, $3, 'email', now())`,
-        [uuidv7(), clusterId, `fp-${EMAIL}`],
-      );
       await db.query(
         `INSERT INTO portal_identity."PortalUser" (id, email_normalized, cluster_id, created_at, updated_at)
          VALUES ($1::uuid, $2, $3::uuid, now(), now())`,
@@ -130,9 +122,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       );
       // Tenant-rail record for the same person (D-2 untouched proof).
       await db.query(
-        `INSERT INTO talent_trust."ResolutionSubject" (id, tenant_id, status, created_at)
-         VALUES ($1::uuid, $2::uuid, 'ACTIVE', now())`,
-        [uuidv7(), TENANT],
+        `INSERT INTO talent_record."TalentRecord" (id, tenant_id, first_name, last_name, email1)
+         VALUES ($1::uuid, $2::uuid, 'Erase', 'Me', $3)`,
+        [uuidv7(), TENANT, EMAIL],
       );
       return { sub, clusterId };
     }
@@ -147,22 +139,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       one(`SELECT count(*)::int AS n FROM portal_identity."NoticeDelivery" WHERE portal_user_id = $1::uuid`, [sub]);
     const tokens = () =>
       one(`SELECT count(*)::int AS n FROM portal_identity."PortalLoginToken" WHERE email_normalized = $1`, [EMAIL]);
-    const clusters = (id: string) =>
-      one(`SELECT count(*)::int AS n FROM identity_index."PersonCluster" WHERE id = $1::uuid`, [id]);
-    const fingerprints = (id: string) =>
-      one(`SELECT count(*)::int AS n FROM identity_index."ClusterFingerprint" WHERE cluster_id = $1::uuid`, [id]);
-    const tenantSubjects = () =>
-      one(`SELECT count(*)::int AS n FROM talent_trust."ResolutionSubject" WHERE tenant_id = $1::uuid`, [TENANT]);
+    const tenantRecords = () =>
+      one(`SELECT count(*)::int AS n FROM talent_record."TalentRecord" WHERE tenant_id = $1::uuid`, [TENANT]);
 
     it('erases the platform identity, leaves the tenant-rail record untouched, and a re-login mints a FRESH identity', async () => {
-      const { sub, clusterId } = await seedIdentity();
+      const { sub } = await seedIdentity();
       // Pre-state.
       expect(await portalUsers(sub)).toBe(1);
       expect(await notices(sub)).toBe(1);
       expect(await tokens()).toBe(1);
-      expect(await clusters(clusterId)).toBe(1);
-      expect(await fingerprints(clusterId)).toBe(1);
-      expect(await tenantSubjects()).toBe(1);
+      expect(await tenantRecords()).toBe(1);
 
       await rtbf.eraseSelf({ portalUserId: sub, confirmation: EMAIL, requestId: 'req-1' });
 
@@ -170,15 +156,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(await portalUsers(sub)).toBe(0);
       expect(await notices(sub)).toBe(0);
       expect(await tokens()).toBe(0);
-      expect(await clusters(clusterId)).toBe(0);
-      expect(await fingerprints(clusterId)).toBe(0);
       // D-2: the tenant-rail record is UNTOUCHED (a separate controller).
-      expect(await tenantSubjects()).toBe(1);
+      expect(await tenantRecords()).toBe(1);
 
       // Re-registration: the same email mints a BRAND-NEW identity (fresh id).
       const fresh = await portals.findOrCreatePortalOnLogin({
         email_normalized: EMAIL,
-        cluster_id: uuidv7(),
+        cluster_id: null,
         now: new Date(),
       });
       expect(fresh.id).not.toBe(sub);

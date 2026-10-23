@@ -69,6 +69,14 @@ describe('TalentEvidenceRepository — surface', () => {
     'markTalentIntakeDraftProcessed',
     'saveTalentIntakeDraftReview',
     'markTalentIntakeDraftPromoted',
+    // ATI-SEP-1 A2 — the resumable Save (reserve → evidence → … → PROMOTED).
+    'reserveTalentIntakeDraftSave',
+    'materializeIntakeSaveEvidence',
+    // D6 — a resumed Save re-materializes changed reviewed arrays (pre-record).
+    'rematerializeIntakeSaveEvidence',
+    'findIntakeSaveDocumentId',
+    'writeIntakeSaveTypedEvidence',
+    'completeTalentIntakeDraftSave',
     'touchTalentIntakeDraftOpened',
     // Talent Draft Recovery — discard (§18) + replace-résumé (§13) commands.
     'deleteTalentIntakeDraft',
@@ -138,6 +146,8 @@ describe('TalentEvidenceRepository — surface', () => {
         'findProjectExperienceByTalent',
         // TALENT-INTEL-1 TI-1G §3 — full work-auth assertion history read (by-talent).
         'findWorkAuthorizationByTalent',
+        // ATI-SEP-1 T8 — the admissible evidence read for the Intelligence publisher.
+        'readEvidenceForIntelligence',
         // TALENT-INTEL-1 (TI-1A §5) — resume-edition substrate: the edition
         // companion to TalentDocument (create + by-id + by-talent list) and the
         // separate default/presentation selection (upsert + find).

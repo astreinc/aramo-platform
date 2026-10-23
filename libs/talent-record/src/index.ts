@@ -1,7 +1,29 @@
 export { TalentRecordModule } from './lib/talent-record.module.js';
 export { TalentRecordController } from './lib/talent-record.controller.js';
-export { TalentRecordRepository } from './lib/talent-record.repository.js';
-export type { TalentContactFields } from './lib/talent-record.repository.js';
+export {
+  TalentRecordRepository,
+  talentDuplicateError,
+  validateTalentCreateInput,
+} from './lib/talent-record.repository.js';
+export type { TalentContactFields, ActiveTalentDuplicate } from './lib/talent-record.repository.js';
+// ATI-SEP-1 A2 — the cell-phone dedupe key.
+export { normalizePhoneForDedupe } from './lib/talent-phone.js';
+// ATI-SEP-1 A3 — the ATS talent outbox (business-fact events, ADR-0036 §3).
+export {
+  TalentEventOutboxRepository,
+  buildTalentEventRow,
+  TALENT_EVENT_CREATED,
+  TALENT_EVENT_PROFILE_UPDATED,
+  TALENT_EVENT_ERASED,
+  TALENT_EVENT_DELETED,
+  TALENT_EVENT_VERSION,
+  TALENT_EVENT_SOURCE,
+  TALENT_EVENT_SUBJECT_TYPE,
+  type TalentEventType,
+  type TalentEventPayload,
+  type TalentEventInput,
+  type TalentEventOutboxClaimRow,
+} from './lib/talent-events/talent-event-outbox.js';
 export {
   TalentRecordReconcileRepository,
   type EnrichmentPatch,
@@ -14,9 +36,34 @@ export {
   type TalentProfileSourceType,
   type TalentProfileProjectionPolicy,
 } from './lib/talent-record-reconcile.repository.js';
+export {
+  INTELLIGENCE_SOURCE_KIND,
+  INTELLIGENCE_WRITABLE_COLUMNS,
+  TalentIntelligenceRepository,
+  intelligenceReferenceId,
+  type AdmissibleTalentRecord,
+  type InboundEventRow,
+  type InboundEventStatus,
+  type IntelligenceWritableColumn,
+  type SyncPolicyMode,
+} from './lib/talent-intelligence/talent-intelligence.repository.js';
 export { TalentRecordService } from './lib/talent-record.service.js';
 export type { PortalProfileProjection } from './lib/dto/portal-profile-projection.dto.js';
-export { TalentLinkService } from './lib/talent-link.service.js';
+export {
+  TalentDuplicateAdvisoryRepository,
+  DUPLICATE_ADVISORY_STATUSES,
+  DUPLICATE_ADVISORY_BASES,
+  type DuplicateAdvisoryStatus,
+  type DuplicateAdvisoryBasis,
+  type DuplicateAdvisoryRow,
+  type DuplicateAdvisoryMergeState,
+  type SourcedArrivalLinkRow,
+  type SourcedArrivalLinkKind,
+  type DuplicateSharedKind,
+  type RecordContactKeys,
+  phoneLookupForms,
+  arrivalPhoneKey,
+} from './lib/duplicate-advisory/talent-duplicate-advisory.repository.js';
 export { PrismaService as TalentRecordPrismaService } from './lib/prisma/prisma.service.js';
 
 // Segment 4 — server-side faceted-search contract.
@@ -75,7 +122,6 @@ export type {
   TalentRecordView,
   CreateTalentRecordRequestDto,
   UpdateTalentRecordRequestDto,
-  TalentLinkView,
   ProfileHydrationValue,
   ProfileHydrationItem,
   ProfileHydrationResponse,
@@ -85,7 +131,6 @@ export {
   PROFILE_HYDRATION_FIELDS,
   type ProfileHydrationInputRecord,
 } from './lib/profile-hydration.js';
-export { LinkTalentRecordRequestDto } from './lib/dto/link-talent-record-request.dto.js';
 
 // TALENT-INTEL-1 (TI-1B) — the shared resume-extraction orchestrator + its
 // authorization seam, and the dependency-inversion PORT for the ATTACHMENT

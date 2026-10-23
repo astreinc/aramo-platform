@@ -91,6 +91,27 @@ describe('AppHomeView', () => {
     expect(screen.getByText(/managed by your organization admins/)).toBeInTheDocument();
   });
 
+  // ATI-SEP-1 T9 — the Talent Intelligence tile is shown ONLY when the organization subscribes.
+  function withIntelligence(v: ProductAvailabilityView, p: P): ProductAvailabilityView {
+    const reason = !p.subscribed ? 'not_subscribed' : !p.authorized ? 'not_authorized' : !p.available ? 'not_activated' : null;
+    return { ...v, products: [...v.products, { key: 'intelligence', ...p, reason }] } as ProductAvailabilityView;
+  }
+
+  it('T9 · Talent Intelligence NOT subscribed: no tile and never listed under Other Aramo products', async () => {
+    renderHome(withIntelligence(view(READY_ATS, OFF), OFF));
+    expect(await screen.findByTestId('home-open-ats')).toBeInTheDocument();
+    expect(screen.queryByTestId('home-tile-intelligence')).toBeNull();
+    expect(screen.queryByTestId('home-other-intelligence')).toBeNull();
+    expect(screen.getByTestId('home-other-sign')).toBeInTheDocument();
+  });
+
+  it('T9 · Talent Intelligence subscribed: its tile opens inside the ATS', async () => {
+    renderHome(withIntelligence(view(READY_ATS, OFF), READY_ATS));
+    const tile = await screen.findByTestId('home-tile-intelligence');
+    expect(tile).toHaveTextContent('Talent Intelligence');
+    expect(screen.getByTestId('home-open-intelligence')).toHaveAttribute('href', '/auth/recruiter/login?return_to=%2Fats%2F');
+  });
+
   it('C · ATS + Sign tenant, ATS-only user: Sign card shows No access with the reason and no Open', async () => {
     renderHome(view(READY_ATS, NOACCESS));
     const sign = await screen.findByTestId('home-tile-sign');

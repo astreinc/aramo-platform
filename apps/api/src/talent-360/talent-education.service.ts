@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import {
   EducationEntryRetiredError,
@@ -7,7 +7,6 @@ import {
   type EducationEntryWithStateRow,
 } from '@aramo/talent-evidence';
 import { TalentRecordRepository } from '@aramo/talent-record';
-import { TalentTrustService, type EvidenceRecordRow, type SubjectRef } from '@aramo/talent-trust';
 
 import type { TalentEducationEntryRequestDto } from './dto/talent-education.dto.js';
 import type { TalentEducationChangeView } from './dto/talent-360.view.js';
@@ -26,19 +25,9 @@ import { toEducationRow } from './education-view.js';
 // A superseded record is read-only (422 TALENT_RECORD_SUPERSEDED, the
 // reference-attestation precedent).
 //
-// Ledger (the TR-7 producer contract, extended by A3): each entry has ONE
-// canonical CLAIMS/DEGREE claim keyed by source_ref.talent_evidence_id =
-// THIRD_PARTY_UNVERIFIED / DOCUMENT, the TR-7 class and method. A manual entry is
-// written with ai_derived false, a resume/import entry exactly as the extraction
-// producer writes it (ai_derived true). A retired entry's VALID claim is flipped:
-// SUPERSEDED by the replacing entry's claim (correction) or REVOKED (removal). The
-// sync runs after the entry transaction commits, under a per-Talent lock, and is
-// idempotent over ALL of the Talent's entries — so a ledger failure (which
-// propagates, the TR-4 B2 loud-fail posture) heals on the next change.
-
-const CREATED_BY = 'talent-education-edit';
-const EXTRACTION_CREATED_BY = 'talent-extraction';
-const REMOVED_REASON = 'education entry removed by a recruiter';
+// ATI-SEP-1 T10 WP1 — the trust-ledger DEGREE-claim sync was removed (write-side
+// legacy feeds off). Education reaches Talent Intelligence through the
+// talent.profile_updated event recorded after every committed change.
 
 export interface EducationActor {
   readonly tenant_id: string;
@@ -48,12 +37,9 @@ export interface EducationActor {
 
 @Injectable()
 export class TalentEducationService {
-  private readonly logger = new Logger(TalentEducationService.name);
-
   constructor(
     private readonly talentRecords: TalentRecordRepository,
     private readonly education: TalentEducationRepository,
-    private readonly trust: TalentTrustService,
   ) {}
 
   async add(
@@ -69,7 +55,7 @@ export class TalentEducationService {
       actor_id: actor.user_id,
       fields,
     });
-    await this.syncLedger(actor.tenant_id, talent_id);
+    await this.recordChanged(actor, talent_id);
     return { entry_id, education: await this.current(actor.tenant_id, talent_id) };
   }
 
@@ -101,7 +87,7 @@ export class TalentEducationService {
       throw this.mapRetired(err, actor, entry_id);
     }
     if (written === null) throw this.entryNotFound(actor, entry_id);
-    await this.syncLedger(actor.tenant_id, talent_id);
+    await this.recordChanged(actor, talent_id);
     return { entry_id: written.entry_id, education: await this.current(actor.tenant_id, talent_id) };
   }
 
@@ -124,8 +110,20 @@ export class TalentEducationService {
       throw this.mapRetired(err, actor, entry_id);
     }
     if (written === null) throw this.entryNotFound(actor, entry_id);
-    await this.syncLedger(actor.tenant_id, talent_id);
+    await this.recordChanged(actor, talent_id);
     return { entry_id, education: await this.current(actor.tenant_id, talent_id) };
+  }
+
+  // ATI-SEP-1 A3 — the committed education change is an ATS evidence edit:
+  // record talent.profile_updated (field names only) right after the entry
+  // transaction.
+  private async recordChanged(actor: EducationActor, talent_id: string): Promise<void> {
+    await this.talentRecords.recordProfileUpdated({
+      tenant_id: actor.tenant_id,
+      talent_record_id: talent_id,
+      changed_fields: ['education'],
+      correlation_id: actor.request_id,
+    });
   }
 
   // ---- gates ----------------------------------------------------------------
@@ -207,126 +205,6 @@ export class TalentEducationService {
       return { ...v, source_refs: [...v.source_refs] };
     });
   }
-
-  // ---- ledger ---------------------------------------------------------------
-
-  private async syncLedger(tenant_id: string, talent_id: string): Promise<void> {
-    await this.education.withLedgerLock({ tenant_id, talent_id }, async () => {
-      const entries = await this.education.listAllForTalent({ tenant_id, talent_id });
-      if (entries.length === 0) return;
-      const subjectRef: SubjectRef = {
-        tenant_id,
-        ref_type: 'ATS_TALENT_RECORD',
-        ref_id: talent_id,
-        link_source: CREATED_BY,
-      };
-      const claims = await this.claimsByEntry(subjectRef);
-
-      // 1. Every entry (current or retired) has its claim.
-      for (const e of entries) {
-        if (claims.has(e.id)) continue;
-        const id = await this.writeClaim(subjectRef, e);
-        if (id !== null) {
-          claims.set(e.id, { id, current_status: 'VALID' } as EvidenceRecordRow);
-        }
-      }
-
-      // 2. A retired entry's claim leaves the VALID set: superseded by the
-      //    replacing entry's claim, or revoked when the entry was removed.
-      let flipped = 0;
-      for (const e of entries) {
-        if (e.retirement === null) continue;
-        const claim = claims.get(e.id);
-        if (claim === undefined || claim.current_status !== 'VALID') continue;
-        const replacing =
-          e.retirement.superseded_by_entry_id === null
-            ? undefined
-            : claims.get(e.retirement.superseded_by_entry_id);
-        if (e.retirement.reason === 'corrected' && replacing !== undefined) {
-          await this.trust.supersede(tenant_id, claim.id, replacing.id);
-        } else {
-          await this.trust.revoke(tenant_id, claim.id, REMOVED_REASON);
-        }
-        flipped += 1;
-      }
-      if (flipped > 0) {
-        this.logger.log({ event: 'talent_education_ledger_synced', tenant_id, talent_id, flipped });
-      }
-    });
-  }
-
-  // The DEGREE claims of the subject, keyed by the entry id they were written
-  // for. When an entry somehow has more than one, the VALID one wins.
-  private async claimsByEntry(subjectRef: SubjectRef): Promise<Map<string, EvidenceRecordRow>> {
-    const out = new Map<string, EvidenceRecordRow>();
-    const evidence = await this.trust.getEvidence(subjectRef, { dimension: 'CLAIMS' });
-    for (const ev of evidence) {
-      if (ev.assertion_type !== 'DEGREE') continue;
-      const ref = ev.source_ref as { talent_evidence_id?: unknown } | null;
-      const key = ref?.talent_evidence_id;
-      if (typeof key !== 'string') continue;
-      const prior = out.get(key);
-      if (prior === undefined || (prior.current_status !== 'VALID' && ev.current_status === 'VALID')) {
-        out.set(key, ev);
-      }
-    }
-    return out;
-  }
-
-  private async writeClaim(subjectRef: SubjectRef, e: EducationEntryWithStateRow): Promise<string | null> {
-    const claim = degreeClaim(e);
-    if (e.source === 'manual') {
-      // Recruiter-entered: the same TR-7 class/method, never AI-shaped.
-      const ev = await this.trust.recordEvidence({
-        subjectRef,
-        dimension: 'CLAIMS',
-        assertion_type: 'DEGREE',
-        assertion_payload: claim.payload,
-        source_class: 'THIRD_PARTY_UNVERIFIED',
-        method: 'DOCUMENT',
-        source_ref: claim.source_ref,
-        ai_derived: false,
-        portability_class: 'TENANT_ONLY',
-        decay_profile: 'SLOW',
-        created_by: CREATED_BY,
-      });
-      return ev.id;
-    }
-    // resume / import: exactly the extraction producer's write (idempotent).
-    const r = await this.trust.recordDeclaredClaimIfAbsent({
-      subjectRef,
-      assertion_type: 'DEGREE',
-      assertion_payload: claim.payload,
-      source_ref: claim.source_ref,
-      created_by: EXTRACTION_CREATED_BY,
-    });
-    return r.evidence_id ?? null;
-  }
-}
-
-// The DEGREE claim for one entry — the same payload as the TR-7 extraction mapper
-// (talent-extraction mapEducationToClaim, not exported from that lib): required
-// institution_raw + degree_raw, optional field_raw and conferred_date_raw.
-function degreeClaim(e: {
-  id: string;
-  institution_name: string;
-  degree_name: string;
-  field_of_study: string | null;
-  conferred_date: Date | null;
-}): {
-  payload: Record<string, unknown>;
-  source_ref: { talent_evidence_id: string; kind: 'education'; store: 'talent_evidence' };
-} {
-  const payload: Record<string, unknown> = {
-    institution_raw: e.institution_name,
-    degree_raw: e.degree_name,
-  };
-  if (e.field_of_study !== null && e.field_of_study.trim() !== '') payload['field_raw'] = e.field_of_study;
-  if (e.conferred_date !== null) payload['conferred_date_raw'] = e.conferred_date.toISOString().slice(0, 10);
-  return {
-    payload,
-    source_ref: { talent_evidence_id: e.id, kind: 'education', store: 'talent_evidence' },
-  };
 }
 
 function changedFields(

@@ -15,7 +15,6 @@ import { AuthorizationModule } from '@aramo/authorization';
 import { CalendarModule } from '@aramo/calendar';
 import { CanonicalizationModule } from '@aramo/canonicalization';
 import { ColdIngestExtractionModule } from '@aramo/cold-ingest-extraction';
-import { TalentReconcileModule } from '@aramo/talent-reconcile';
 import { CompanyModule } from '@aramo/company';
 import { ConsentModule } from '@aramo/consent';
 import { ContactModule } from '@aramo/contact';
@@ -26,7 +25,6 @@ import { IdentityModule, IdentityCoreModule, AuthorizationResolverModule } from 
 // HF-AUTH-1 — the fixed portal session scope set, passed to the resolver so a
 // version-1 portal token resolves to it server-side (portal carries no scopes).
 import { PORTAL_SESSION_SCOPES } from '@aramo/auth-core';
-import { IdentityIndexModule } from '@aramo/identity-index';
 import { PortalIdentityModule } from '@aramo/portal-identity';
 import { AuthStorageModule } from '@aramo/auth-storage';
 import { ImportModule } from '@aramo/import';
@@ -68,7 +66,6 @@ import {
   ResumeReindexModule,
   ResumeExtractionDraftWorkerModule,
 } from '@aramo/talent-record';
-import { TalentTrustModule } from '@aramo/talent-trust';
 import { TaskModule } from '@aramo/task';
 
 import { EsignServiceHttpProvider } from './sign/esign-service-http.provider.js';
@@ -132,6 +129,7 @@ import { CiProcessingModule } from './conversation-intelligence/ci-processing.mo
 import { TechnicalScreeningApiModule } from './technical-screening/technical-screening-api.module.js';
 import { CanonicalReconciliationModule } from './canonical-reconciliation/canonical-reconciliation.module.js';
 import { SkillGovernanceModule } from './skill-governance/skill-governance.module.js';
+import { MatchingPolicyModule } from './matching-policy/matching-policy.module.js';
 // DOC-TEMPLATE-LIB-1 T-2 — platform-tier Aramo default templates + variable catalog.
 import { PlatformDocumentTemplatesModule } from './document-templates-platform/platform-document-templates.module.js';
 import { ReconciliationDrainModule } from './requisition-integration/reconciliation-drain.module.js';
@@ -139,33 +137,20 @@ import { PlacementLifecycleOrchestratorModule } from './placement-pipeline-orche
 import { PreStartOrchestratorModule } from './pre-start-requirement/pre-start-orchestrator.module.js';
 import { TenantCognitoAdapter } from './cognito/tenant-cognito.adapter.js';
 import { TenantWriteFreezeInterceptor } from './tenant-write-freeze/tenant-write-freeze.interceptor.js';
-import { TalentAnchorInterceptor } from './talent-anchor/talent-anchor.interceptor.js';
-import { TalentAnchorProducerService } from './talent-anchor/talent-anchor-producer.service.js';
 import { AdvisoryResolutionController } from './talent-identity/advisory-resolution.controller.js';
-import { ContradictionResolutionController } from './talent-identity/contradiction-resolution.controller.js';
-import { DisputeResolutionController } from './talent-identity/dispute-resolution.controller.js';
-import { PortalDisputeDispositionController } from './talent-identity/portal-dispute-disposition.controller.js';
-import { EmailVerificationController } from './talent-identity/email-verification.controller.js';
-import { EmailVerificationService } from './talent-identity/email-verification.service.js';
-import { ReferenceAttestationController } from './talent-identity/reference-attestation.controller.js';
-import { ReferenceAttestationService } from './talent-identity/reference-attestation.service.js';
-import {
-  PublicVerificationController,
-  VerificationConfirmBudget,
-} from './controllers/public-verification.controller.js';
 import { PortalNoticeController } from './talent-identity/portal-notice.controller.js';
 import { PortalRightsController } from './talent-identity/portal-rights.controller.js';
 import { PortalRtbfService } from './talent-identity/portal-rtbf.service.js';
 import { PromotionService } from './talent-identity/promotion.service.js';
+import { DuplicateDetectionService } from './talent-identity/duplicate-detection.service.js';
 import { RecordReconcileOrchestrator } from './talent-identity/record-reconcile.orchestrator.js';
-import { IdentityMaintenanceModule } from './jobs/identity-maintenance.module.js';
 import { JobDistributionSyncModule } from './job-distribution/job-distribution.module.js';
 import { SourcingController } from './talent-identity/sourcing.controller.js';
-import { DossierController } from './talent-identity/dossier.controller.js';
-import { VerificationProposalController } from './talent-identity/verification-proposal.controller.js';
 import { SourcingService } from './talent-identity/sourcing.service.js';
-import { DossierService } from './talent-identity/dossier.service.js';
 import { ExamineController } from './controllers/examine.controller.js';
+import { AtsTalentEventsModule } from './ats-talent-events/ats-talent-events.module.js';
+import { IntelligenceIntegrationHttpModule } from './integrations/intelligence/intelligence-integration-http.module.js';
+import { IntelligenceTrustSurfacesModule } from './talent-identity/intelligence-trust-surfaces.module.js';
 import { CanonicalMatchShadowConfig } from './examinations/canonical-match-shadow.config.js';
 import { CanonicalMatchShadowComparator } from './examinations/canonical-match-shadow.comparator.js';
 import { TenantSettingsController } from './controllers/tenant-settings.controller.js';
@@ -249,22 +234,26 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     JobDomainModule,
     TalentEvidenceModule,
     TalentExtractionModule,
-    // TR-2a-1 — the anchor producer (apps/api, above the I15 wall) records
-    // TalentRecord identifier anchors into the trust ledger. TalentTrustModule
-    // provides TalentTrustService; TalentRecordModule (above) provides the
-    // repository the producer reads. Composition-root wiring — talent_trust
-    // (cip) never imports talent-record (ats).
-    TalentTrustModule,
+    // ATI-SEP-1 A3 — the ATS talent outbox drain + dispatcher. The drain runs in
+    // the talent-intake-worker process; in the API it stays OFF unless
+    // ATS_TALENT_EVENTS_DRAIN_ENABLED=1.
+    AtsTalentEventsModule,
+    // ATI-SEP-1 T8 — TI webhook receiver + gated portal identifier verification.
+    IntelligenceIntegrationHttpModule,
+    // ATI-SEP-1 T10 WP3b — the recruiter trust surfaces (dossier, proposals,
+    // contradiction resolve, dispute disposition, email OTP request/status +
+    // the public OTP confirm), re-pointed onto Talent Intelligence (fail-soft).
+    IntelligenceTrustSurfacesModule,
     // TR-3 B2 — the email-verification flow's mailer edge. apps/api →
     // @aramo/mailer is a NEW direct edge (previously only IdentityModule imported
     // MailerModule, in its own scope). MailerModule is a pure static leaf (no
     // forRoot) so MAILER_PORT binds once and EmailVerificationService resolves it.
     MailerModule,
     PortalModule,
-    // Portal P4b — the talent RTBF surface composes purgeCluster
-    // (IdentityIndexModule), the portal identity store (PortalIdentityModule),
-    // and refresh-token revoke (AuthStorageModule) at the composition root.
-    IdentityIndexModule,
+    // Portal P4b — the talent RTBF surface composes the portal identity store
+    // (PortalIdentityModule) and refresh-token revoke (AuthStorageModule) at the
+    // composition root. ATI-SEP-1 T10: the identity-index cluster purge is gone
+    // with that schema.
     PortalIdentityModule,
     AuthStorageModule,
     // PR-A3 Gate 5 — second ATS-domain leaf. RequisitionModule carries
@@ -493,6 +482,10 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     CanonicalReconciliationModule,
     // SKILL-TAX-1F-B1 — the durable correction/propagation engine (internal).
     SkillGovernanceModule,
+    // ATI-SEP-1 A2 A-c (P1) — the platform-owned MatchingPolicy: the /platform
+    // matching-policy surface + the @Global MATCHING_POLICY_SOURCE binding that
+    // MatchingService (libs/matching) reads the ACTIVE version through.
+    MatchingPolicyModule,
     SubmittalModule,
     CreateSubmittalModule,
     SubmittalWorkspaceModule,
@@ -574,24 +567,12 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // re-reads the retained resume with the deterministic parser (no LLM), and
     // writes name/phone/address as THIRD_PARTY_UNVERIFIED declared evidence onto
     // the arrival's resolved_subject_id — unblocking cold-ingest promotion (a
-    // TalentRecord needs a name). Consumer leaf: imports {ingestion, resume-parse,
-    // talent-trust} (all scope:cip). Placed after CanonicalizationModule so a
+    // TalentRecord needs a name). Consumer leaf (scope:cip). Placed after CanonicalizationModule so a
     // subject exists before extraction polls it.
     ColdIngestExtractionModule,
-    // Promotion Gate Slice-B1 — the reconcile poll (NEW leaf lib, scope:ats).
-    // Above the I15 wall: reads the cip trust ledger + writes the ats TalentRecord
-    // (enrich fill-null contact + append key_skills) with field→evidence
-    // provenance, recording occupied+newer-differing as pending contradictions
-    // (B2 acts). OPEN-2: L2 is the retained history, L3 the current projection —
-    // no L3 version table. Imports {talent-trust (cip), talent-record (ats)};
-    // ats→cip is wall-clean (canonicalization precedent). Placed after the
-    // promotion/extraction path so a promoted subject exists before reconcile.
-    TalentReconcileModule,
-    // TR-6 B1 (DDR §2/§7) — the identity-maintenance jobs: the hourly incremental
-    // match sweep (D1) + the daily read-only integrity-detection cron (D6). apps/api
-    // boundary layer; imports {talent-trust (cip), talent-record (ats)} — both edges
-    // pre-exist. The SCHEDULES registrar (jobs/registration.ts) enqueues its ticks.
-    IdentityMaintenanceModule,
+    // ATI-SEP-1 T10 WP5 — the TR-6 / TR-2b identity-maintenance job module
+    // (identity-index lifecycle sweep + dormant-notice delivery) is deleted with
+    // the identity_index / trust schemas.
     // SRC-2 PR-3 — the Indeed Job Sync freshness sweep (5-min BullMQ tick).
     JobDistributionSyncModule,
     // A8-3a — ObjectStorageModule (new leaf lib). The platform's first
@@ -628,9 +609,8 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     TalentRecordExistenceReaderModule,
     OfferDocumentModule,
     // SRC-1 PR-2 — SourcedTalentModule provides SourcedTalentRepository so the
-    // Indeed apply webhook can write the channel dedup-memory arrival. The
-    // apps/api → @aramo/sourced-talent nx edge already exists (admit-arrivals),
-    // so this is ZERO new edges (R13.5).
+    // Indeed apply webhook can write the channel dedup-memory arrival.
+    // ATI-SEP-1 T10 WP2 — also the sourcing pool / promotion / advisory reads.
     SourcedTalentModule,
     // M6 PR-2 §4 — OutboxPublisherModule (new leaf lib). Hosts the
     // relocated outbox-publisher BullMQ queue + processor; drains
@@ -729,15 +709,10 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // (*.aramo.ai via certbot DNS-01), so no per-host issuance gate exists.
     // TenantService.findActiveBySlug survives for its other callers.
     // TR-2a-3 — the privileged advisory-resolution surface (approve-merge /
-    // dismiss / reverse / list). Lives here (not libs/talent-trust) because it is
+    // dismiss / reverse / list). Lives here (not in a cip lib) because it is
     // the composition-root HTTP edge ABOVE the I15 wall calling the cip resolution
     // service; gated by the tenant-scoped identity:resolve scope (admin tier).
     AdvisoryResolutionController,
-    // TR-4 B3 — the privileged resolve-contradiction surface (identity:resolve).
-    // The one human arm on the contradiction machinery the detectors feed.
-    ContradictionResolutionController,
-    DisputeResolutionController,
-    PortalDisputeDispositionController,
     // Portal P4a (§PR-1.1, D-5) — the PUBLIC platform-notice read (GET
     // /v1/portal/notice). Unguarded by construction (a sibling of PortalController,
     // not a method on it — its class guards are unconditional); always available,
@@ -746,24 +721,10 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
     // Portal P4b (§PR-2, D-2/D-3) — the talent RTBF surface (erase own platform
     // identity; Option A gate — no scope, self-service self-deletion).
     PortalRightsController,
-    // TR-12 B1 (DDR §4) — the caseworker's worklist surface (list OPEN proposals /
-    // dismiss). Reads at talent:read (capability ats — the dossier precedent); it
-    // executes nothing (no ACT endpoint this slice — propose-never-dispose).
-    VerificationProposalController,
     // Promotion-Trigger slice-A — the sourcer's two triggers (Add to Pipeline /
     // Save to Pool). Both promote a sourced L2 subject → ATS TalentRecord behind
     // the identity gate, then associate. Gated on the talent:source scope.
     SourcingController,
-    DossierController,
-    // TR-3 B2 — the AUTHENTICATED email-verification surface (request + status)
-    // nested under the talent-record resource. Composes talent-record + consent +
-    // trust ledger + mailer at the app boundary (above the I15 wall).
-    EmailVerificationController,
-    ReferenceAttestationController,
-    // TR-3 B2 — the PUBLIC (un-guarded) confirm endpoint (POST
-    // /v1/email-verifications/confirm). No JwtAuthGuard — the talent has no
-    // session; authority is the single-use token. Oracle-resistant (§3.2).
-    PublicVerificationController,
     // SRC-1 PR-2 — the PUBLIC (un-guarded) Indeed Apply webhook (POST
     // /v1/webhooks/indeed/apply). No JwtAuthGuard — Indeed has no session;
     // authority is the X-Indeed-Signature HMAC (R5). Wildcard tenant host only.
@@ -852,48 +813,23 @@ import { PolicyStartupModule } from './policy/policy-startup.module.js';
       provide: APP_INTERCEPTOR,
       useClass: PipelineTalentEnrichmentInterceptor,
     },
-    // TR-2a-1 — the write-time anchor hook. Global APP_INTERCEPTOR route-guarded
-    // to the talent-record WRITE routes (POST /v1/talent-records, PATCH :id);
-    // on success it records the record's identifier anchors into the trust
-    // ledger via the producer. apps/api orchestration above the I15 wall — the
-    // lib controller is untouched, best-effort (never fails the write; the
-    // backfill reconciles).
-    TalentAnchorProducerService,
-    {
-      provide: APP_INTERCEPTOR,
-      useClass: TalentAnchorInterceptor,
-    },
-    // Promotion Gate — Slice A (create branch). apps/api orchestration above the
-    // I15 wall: PromotionService.promoteSubject reads the cip trust ledger +
-    // ingestion arrival and writes the ats TalentRecord + consent event, linking
-    // a cold-ingest ResolutionSubject (L2) to a freshly-minted TalentRecord (L3).
-    // Provider-only (no HTTP surface — the auto-trigger policy is deferred to a
-    // later slice); the deps (TalentTrustService, TalentRecordRepository,
-    // SourceConsentService, IngestionRepository) come from their already-imported
-    // modules.
+    // ATI-SEP-1 T10 WP2 — sourcing promotion (sourced arrival → TalentRecord) on
+    // ATS data only: SourcedTalentRepository + TalentDuplicateAdvisoryRepository +
+    // TalentRecordRepository + SourceConsentService + IngestionRepository, all from
+    // already-imported modules. DuplicateDetectionService raises the ATS-local
+    // within-tenant duplicate advisories (also bound in AtsTalentEventsModule).
+    DuplicateDetectionService,
     PromotionService,
-    // TR-2a-B3b (DDR-3 §1) — the record-reconcile orchestrator (phase 2 of a
-    // merge). apps/api boundary layer above the I15 wall; composes the cip
-    // trust-side (SubjectMergeOperation, ref normalization, recompute) + each ATS
-    // domain's OWN repointTalentRecordRefs. talent_trust imports NO ats. All deps
-    // resolve via already-imported modules.
+    // The record re-home of an APPROVED pair advisory — each ATS domain's OWN
+    // repointTalentRecordRefs, checkpointed on the ATS advisory row.
     RecordReconcileOrchestrator,
     // Promotion-Trigger slice-A — the sourcing trigger orchestrator (deps
     // PromotionService + PipelineRepository + SavedListRepository resolve via
     // their already-imported modules).
     SourcingService,
-    DossierService,
-    // TR-3 B2 — the email-verification request orchestrator (deps
-    // TalentRecordRepository + TalentTrustRepository + TalentTrustService +
-    // ConsentService + MAILER_PORT resolve via their already-imported modules).
-    EmailVerificationService,
-    ReferenceAttestationService,
     // Portal P4b — the talent RTBF orchestration (purgeCluster → delete residue →
     // revoke sessions), injected by PortalRightsController.
     PortalRtbfService,
-    // TR-3 B2 — the public confirm route's per-IP fixed-window budget (a shared
-    // singleton the PublicVerificationController injects).
-    VerificationConfirmBudget,
     // SRC-1 PR-2 — the Indeed apply webhook processing service (R4 order over
     // object-storage + ingestion + sourced-talent; deps resolve via their
     // already-imported modules — SourcedTalentModule added above).

@@ -16,7 +16,6 @@ import {
   ARAMO_POSTGRES_TEST_IMAGE, AramoError } from '@aramo/common';
 import { SourcedTalentModule } from '@aramo/sourced-talent';
 import { CanonicalizationModule, CanonicalizationService } from '@aramo/canonicalization';
-import { TalentTrustModule } from '@aramo/talent-trust';
 import { TalentRecordModule } from '@aramo/talent-record';
 import { ConsentModule } from '@aramo/consent';
 import { ObjectStorageService, ObjectStorageModule } from '@aramo/object-storage';
@@ -81,8 +80,6 @@ function migrationsFor(lib: string): string[] {
 const MIGRATIONS = [
   ...migrationsFor('ingestion'),
   ...migrationsFor('canonicalization'),
-  ...migrationsFor('identity-index'),
-  ...migrationsFor('talent-trust'),
   ...migrationsFor('sourced-talent'),
   ...migrationsFor('talent-record'),
   ...migrationsFor('consent'),
@@ -176,11 +173,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return row.rows[0].id as string;
     }
 
-    const identityEvidenceCount = async (subjectId: string): Promise<number> => {
+    // ATI-SEP-1 T10 WP5 — the trust ledger is retired (schema dropped), so "no
+    // Talent minted" is asserted tenant-wide on the ATS TalentRecord table.
+    const talentRecordCount = async (tenantId: string): Promise<number> => {
       const r = await db.query(
-        `SELECT COUNT(*)::int AS c FROM "talent_trust"."EvidenceRecord"
-           WHERE subject_id=$1 AND dimension='IDENTITY' AND assertion_type='FULL_NAME' AND current_status='VALID'`,
-        [subjectId],
+        `SELECT COUNT(*)::int AS c FROM "talent_record"."TalentRecord" WHERE tenant_id=$1`,
+        [tenantId],
       );
       return r.rows[0].c;
     };
@@ -217,7 +215,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           ObjectStorageModule,
           ColdIngestExtractionModule, // the inert PARKED processor
           IngestionModule,
-          TalentTrustModule,
           SourcedTalentModule,
           CanonicalizationModule,
           TalentRecordModule,
@@ -273,11 +270,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
 
       const row = await db.query(
-        `SELECT resolved_subject_id, extraction_done_at FROM "ingestion"."RawPayloadReference" WHERE id=$1`,
+        `SELECT sourced_talent_id, extraction_done_at FROM "ingestion"."RawPayloadReference" WHERE id=$1`,
         [payloadId],
       );
-      // Resolved (has a subject) + STAGED (extract-once gate NOT stamped).
-      expect(row.rows[0].resolved_subject_id).not.toBeNull();
+      // Resolved (has an arrival) + STAGED (extract-once gate NOT stamped).
+      expect(row.rows[0].sourced_talent_id).not.toBeNull();
       expect(row.rows[0].extraction_done_at).toBeNull();
 
       // The staging poll returns it — it is available to a future governed extractor.
@@ -296,18 +293,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         authContext: { tenant_id: TENANT_ID },
         requestId: 'src2-canon-2',
       });
-      const before = await db.query(
-        `SELECT resolved_subject_id FROM "ingestion"."RawPayloadReference" WHERE id=$1`,
-        [payloadId],
-      );
-      const subjectId = before.rows[0].resolved_subject_id as string;
 
       // Run the PARKED processor tick — it is inert (no extraction, no reads, no
       // writes, no markers). createPresignedGet would throw if bytes were read.
       await processor.process({ id: 'src2-parked-tick' } as Job);
 
-      // No IDENTITY evidence was minted by cold-ingest.
-      expect(await identityEvidenceCount(subjectId)).toBe(0);
+      // No Talent was minted by cold-ingest.
+      expect(await talentRecordCount(TENANT_ID)).toBe(0);
       // The extract-once gate is still NULL — the arrival remains STAGED.
       const after = await db.query(
         `SELECT extraction_done_at FROM "ingestion"."RawPayloadReference" WHERE id=$1`,

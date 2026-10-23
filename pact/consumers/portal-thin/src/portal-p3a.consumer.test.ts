@@ -5,13 +5,11 @@ import { describe, expect, it } from 'vitest';
 
 const { like } = MatchersV3;
 
-// Portal P3a — pact for the portal-thin client on the verification-view + dispute
-// surface. Provider: aramo-core (apps/api). These interactions reuse existing
-// provider states (no new seed): a portal user with no cluster gets an EMPTY
-// verification list + a uniform 404 on dispute-open (the item id cannot resolve);
-// a non-portal consumer is 403. The positive one-item + open-201 flow is proven
-// by the apps/api integration spec (the item id is an HMAC surrogate the thin
-// consumer cannot mint without the pepper).
+// Portal P3a → ATI-SEP-1 Addendum A4 (GAP-PORTAL-ID-1) — pact for the portal-thin
+// client on the verification-view + dispute surface. Provider: aramo-core
+// (apps/api). Disputes and verifications moved to Talent Intelligence and the
+// Portal identity increment is deferred, so every portal caller gets ONE uniform
+// 404 NOT_AVAILABLE; a non-portal consumer is still 403.
 
 const IDEMPOTENCY_KEY = 'cccccccc-cccc-7ccc-8ccc-ccccccccccc8';
 const BOGUS_ITEM_ID = 'f'.repeat(64);
@@ -24,25 +22,30 @@ const provider = new PactV4({
 });
 
 describe('portal-thin consumer → GET /v1/portal/verifications', () => {
-  it('returns an empty verification list for a portal user with no cluster', async () => {
+  it('returns the uniform 404 NOT_AVAILABLE while portal identity is deferred (A4)', async () => {
     await provider
       .addInteraction()
       .given('a portal user with no records exists')
-      .uponReceiving('a portal verifications request for a user with no cluster')
+      .uponReceiving('a portal verifications request while portal identity is deferred')
       .withRequest('GET', '/v1/portal/verifications', (b) => {
         b.headers({ Authorization: 'Bearer eyJfake.portal.token' });
       })
-      .willRespondWith(200, (b) => {
-        b.jsonBody({ verifications: [] });
+      .willRespondWith(404, (b) => {
+        b.jsonBody({
+          error: {
+            code: 'NOT_FOUND',
+            message: like('not available'),
+            request_id: like('00000000-0000-7000-8000-000000000000'),
+            details: { reason: 'NOT_AVAILABLE' },
+          },
+        });
       })
       .executeTest(async (mock) => {
         const res = await fetch(`${mock.url}/v1/portal/verifications`, {
           method: 'GET',
           headers: { Authorization: 'Bearer eyJfake.portal.token' },
         });
-        expect(res.status).toBe(200);
-        const body = (await res.json()) as { verifications: unknown[] };
-        expect(body.verifications).toHaveLength(0);
+        expect(res.status).toBe(404);
       });
   });
 
@@ -75,11 +78,11 @@ describe('portal-thin consumer → GET /v1/portal/verifications', () => {
 });
 
 describe('portal-thin consumer → POST /v1/portal/disputes', () => {
-  it('returns a uniform 404 when the item id cannot resolve in the caller view', async () => {
+  it('returns the uniform 404 NOT_AVAILABLE for a dispute-open while portal identity is deferred', async () => {
     await provider
       .addInteraction()
       .given('a portal user with no records exists')
-      .uponReceiving('a portal dispute-open for an unresolvable item')
+      .uponReceiving('a portal dispute-open while portal identity is deferred')
       .withRequest('POST', '/v1/portal/disputes', (b) => {
         b.headers({
           Authorization: 'Bearer eyJfake.portal.token',
@@ -92,9 +95,9 @@ describe('portal-thin consumer → POST /v1/portal/disputes', () => {
         b.jsonBody({
           error: {
             code: 'NOT_FOUND',
-            message: like('not found'),
+            message: like('not available'),
             request_id: like('00000000-0000-7000-8000-000000000000'),
-            details: like({}),
+            details: { reason: 'NOT_AVAILABLE' },
           },
         });
       })

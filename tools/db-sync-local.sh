@@ -46,10 +46,18 @@ ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 # shellcheck source=sign-naming/ledger-reconcile.sh
 . "$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)/sign-naming/ledger-reconcile.sh"
 
-# Ordered relative migration-dir paths (timestamp dir-name is the sort key).
+# Libraries whose migrations target a SEPARATE database and therefore are NEVER
+# applied by this runner (the shared Aramo DB). ATI-SEP-1 / ADR-0036 Decision 2:
+# libs/intelligence-core migrates the Talent Intelligence database
+# (aramo_intelligence) via tools/db-sync-intelligence.sh, with its own ledger.
+SEPARATE_DB_MIGRATION_LIBS="intelligence-core"
+
+# Ordered relative migration-dir paths (timestamp dir-name is the sort key),
+# excluding SEPARATE_DB_MIGRATION_LIBS.
 mig_list() {
   ls -d libs/*/prisma/migrations/*/ 2>/dev/null \
-    | awk -F/ '{print $(NF-1)"\t"$0}' | sort | cut -f2
+    | awk -F/ -v skip=" ${SEPARATE_DB_MIGRATION_LIBS} " 'index(skip, " " $2 " ") == 0 {print $(NF-1)"\t"$0}' \
+    | sort | cut -f2
 }
 
 # PENDING = on-disk migration dirs NOT recorded in the ledger. This — NOT

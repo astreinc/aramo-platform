@@ -59,8 +59,6 @@ function migrationsFor(lib: string): string[] {
 const MIGRATIONS = [
   ...migrationsFor('ingestion'),
   ...migrationsFor('canonicalization'),
-  ...migrationsFor('identity-index'),
-  ...migrationsFor('talent-trust'),
   ...migrationsFor('sourced-talent'),
 ];
 
@@ -226,7 +224,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       return r.rows[0].c;
     };
 
-    it('valid signature → storage + RawPayloadReference + sourced_talent staging row (normalized + linkage), then canonicalize mints the SOURCED_TALENT ref', async () => {
+    it('valid signature → storage + RawPayloadReference + sourced_talent staging row (normalized + linkage), then canonicalize resolves to that same arrival', async () => {
       const applyId = 'apply-spine-001';
       const { raw, rawString, email, phone } = applyPayload(applyId);
       const sig = computeIndeedSignature(raw, SECRET);
@@ -272,20 +270,25 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       expect(arrival.rows[0].provenance.ingestion_payload_id).toBe(payloadId);
       expect(arrival.rows[0].provenance.signature_header).toBe('x-indeed-signature');
 
-      // Canonicalize the document arrival → a SOURCED_TALENT ResolutionSubjectRef
-      // pointing at the RawPayloadReference.id (the two-surface layering, R1/R2).
-      await canonicalization.canonicalize({
+      // ATI-SEP-1 T10 WP2 — canonicalize resolves the document arrival to the
+      // webhook's OWN sourced_talent row (provenance.ingestion_payload_id), not a
+      // trust subject; no second arrival is minted.
+      const canon = await canonicalization.canonicalize({
         payload_id: payloadId,
         source_channel: 'indeed',
         authContext: { tenant_id: TENANT_ID },
         requestId: 'canon-req-1',
       });
-      const ref = await db.query(
-        `SELECT subject_id FROM "talent_trust"."ResolutionSubjectRef"
-          WHERE tenant_id = $1 AND ref_type = 'SOURCED_TALENT' AND ref_id = $2`,
+      const linked = await db.query(
+        `SELECT sourced_talent_id FROM "ingestion"."RawPayloadReference" WHERE id = $1`,
+        [payloadId],
+      );
+      expect(linked.rows[0].sourced_talent_id).toBe(canon.sourced_talent_id);
+      const arrivals = await db.query(
+        `SELECT id FROM "sourced_talent"."SourcedTalent" WHERE tenant_id = $1 AND provenance->>'ingestion_payload_id' = $2`,
         [TENANT_ID, payloadId],
       );
-      expect(ref.rows.length).toBe(1);
+      expect(arrivals.rows.map((r) => r.id)).toEqual([canon.sourced_talent_id]);
     });
 
     it('re-application (same apply_id) is idempotent — original arrival row, no duplicate payload', async () => {
