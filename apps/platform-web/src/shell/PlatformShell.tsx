@@ -118,6 +118,9 @@ function ShellFrame({ session, environment, paletteSources, children }: ShellFra
   const groups = visibleNavGroups(can);
   const activeKey = navKeyFor(pathname);
   const crumbs = crumbsFor(pathname, entity);
+  // The Template Studio (/document-templates/:id) is full-bleed with its own top
+  // bar (breadcrumb + account menu), so the shell top bar is not rendered there.
+  const isStudio = /^\/document-templates\/[^/]+\/?$/.test(pathname);
 
   // ⌘K / Ctrl+K opens the palette (⌘\ is AppShell's rail toggle).
   useEffect(() => {
@@ -211,14 +214,14 @@ function ShellFrame({ session, environment, paletteSources, children }: ShellFra
   );
 
   return (
-    <div className="pw-shell">
+    <div className={isStudio ? 'pw-shell pw-shell--studio' : 'pw-shell'}>
       <EnvironmentBar
         email={identity.email}
         tenant={identity.tenant}
         role={identity.role}
-        context={environment ?? (/^\/document-templates\/[^/]+\/?$/.test(pathname) ? 'studio' : 'console')}
+        context={environment ?? (isStudio ? 'studio' : 'console')}
       />
-      <AppShell rail={rail} topBar={topBar}>
+      <AppShell rail={rail} topBar={isStudio ? undefined : topBar}>
         {children}
       </AppShell>
       <CommandPalette

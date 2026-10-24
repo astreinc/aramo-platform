@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
+import { useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
 import { Button } from '@aramo/fe-foundation';
 
 import type { OperatorIdentity } from '../identity/identity';
@@ -15,9 +15,11 @@ export interface AccountMenuProps {
   readonly identity: OperatorIdentity;
   readonly onSwitchAccount: () => void;
   readonly onSignOut: () => void;
+  /** Optional note under the identity block, e.g. the Studio's unsaved-changes warning. */
+  readonly notice?: ReactNode;
 }
 
-export function AccountMenu({ identity, onSwitchAccount, onSignOut }: AccountMenuProps) {
+export function AccountMenu({ identity, onSwitchAccount, onSignOut, notice }: AccountMenuProps) {
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLButtonElement>(null);
@@ -85,6 +87,11 @@ export function AccountMenu({ identity, onSwitchAccount, onSignOut }: AccountMen
               </span>
             </span>
           </div>
+          {notice ? (
+            <div className="pw-account__notice" role="status">
+              {notice}
+            </div>
+          ) : null}
           <div className="pw-account__rule" />
           <Button
             unstyled

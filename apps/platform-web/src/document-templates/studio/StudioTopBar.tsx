@@ -184,7 +184,12 @@ export function StudioTopBar(p: StudioTopBarProps) {
             </div>
           ) : null}
         </div>
-        <AccountMenu identity={p.identity} onSwitchAccount={p.onSwitchAccount} onSignOut={p.onSignOut} />
+        <AccountMenu
+          identity={p.identity}
+          onSwitchAccount={p.onSwitchAccount}
+          onSignOut={p.onSignOut}
+          notice={p.dirty ? "You have unsaved changes. They're saved before you sign out." : undefined}
+        />
       </div>
     </header>
   );

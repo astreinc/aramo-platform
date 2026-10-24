@@ -278,17 +278,17 @@
 
 /* 900–1080px: re-expand (the shared ui.css collapses the rail at ≤1080px) */
 @media (min-width: 900px) and (max-width: 1080px) {
-  .pw-shell .rc-app:not(.rc-app--rail-collapsed) {
+  .pw-shell:not(.pw-shell--studio) .rc-app:not(.rc-app--rail-collapsed) {
     grid-template-columns: var(--pw-rail-w) 1fr;
   }
-  .pw-shell .rc-app:not(.rc-app--rail-collapsed) .rc-rail {
+  .pw-shell:not(.pw-shell--studio) .rc-app:not(.rc-app--rail-collapsed) .rc-rail {
     padding: 14px 0;
   }
-  .pw-shell .rc-app:not(.rc-app--rail-collapsed) .pw-nav-item {
+  .pw-shell:not(.pw-shell--studio) .rc-app:not(.rc-app--rail-collapsed) .pw-nav-item {
     justify-content: flex-start;
   }
-  .pw-shell .rc-app:not(.rc-app--rail-collapsed) .pw-nav-item__label,
-  .pw-shell .rc-app:not(.rc-app--rail-collapsed) .rc-rail__who {
+  .pw-shell:not(.pw-shell--studio) .rc-app:not(.rc-app--rail-collapsed) .pw-nav-item__label,
+  .pw-shell:not(.pw-shell--studio) .rc-app:not(.rc-app--rail-collapsed) .rc-rail__who {
     display: revert;
   }
 }
@@ -508,6 +508,61 @@
   flex: 1;
   max-width: 1400px;
   padding: 28px 32px 72px;
+}
+
+/* ─────────── Template Studio route (handoff §10.2) ─────────── */
+
+/* Full-bleed: the Studio has its own top bar and sizes itself to the viewport. */
+.pw-shell--studio .rc-content {
+  max-width: none;
+  padding: 0;
+  overflow: hidden;
+}
+
+/* The rail auto-collapses below 1280px inside the Studio (same collapsed look). */
+@media (max-width: 1279px) {
+  .pw-shell--studio .rc-app {
+    grid-template-columns: var(--pw-rail-w-collapsed) 1fr;
+  }
+  .pw-shell--studio .rc-nav {
+    padding: 0 10px;
+  }
+  .pw-shell--studio .rc-rail__foot {
+    margin: 0 10px;
+  }
+  .pw-shell--studio .pw-rail-head,
+  .pw-shell--studio .pw-rail-tagrow,
+  .pw-shell--studio .rc-rail__user {
+    justify-content: center;
+  }
+  .pw-shell--studio .pw-rail-name,
+  .pw-shell--studio .pw-rail-collapse,
+  .pw-shell--studio .pw-rail-tag__full,
+  .pw-shell--studio .rc-nav__label,
+  .pw-shell--studio .pw-nav-item__label,
+  .pw-shell--studio .rc-rail__who {
+    display: none;
+  }
+  .pw-shell--studio .pw-rail-tag__short,
+  .pw-shell--studio .pw-rail-divider {
+    display: block;
+  }
+  .pw-shell--studio .pw-nav-item {
+    justify-content: center;
+    padding: 9px 0;
+  }
+}
+
+/* ─────────── account menu notice (Studio unsaved changes) ─────────── */
+
+.pw-account__notice {
+  margin: 0 8px 8px;
+  padding: 7px 9px;
+  border: 1px solid var(--pw-alert-warn-line);
+  background: var(--pw-alert-warn-bg);
+  border-radius: 8px;
+  font-size: 12px;
+  color: var(--pw-alert-warn-ink);
 }
 
 /* ─────────── command palette (scoped to dialogs holding .pw-cmdk) ─────────── */

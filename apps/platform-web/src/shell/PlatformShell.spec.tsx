@@ -254,3 +254,18 @@ describe('PlatformShell — environment bar identity (directive R-6)', () => {
     expect(screen.getByTestId('envbar-identity')).toHaveTextContent('Signed in as');
   });
 });
+
+describe('Template Studio route (handoff §10.2)', () => {
+  it('drops the shell top bar and marks the shell full-bleed on /document-templates/:id', async () => {
+    const { container } = renderShell({ path: '/document-templates/t1' });
+    await waitFor(() => expect(container.querySelector('.pw-shell--studio')).not.toBeNull());
+    expect(container.querySelector('.pw-crumbs')).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Search (⌘K)' })).toBeNull();
+  });
+
+  it('keeps the shell top bar on the template library', async () => {
+    const { container } = renderShell({ path: '/document-templates' });
+    await waitFor(() => expect(container.querySelector('.pw-crumbs')).not.toBeNull());
+    expect(container.querySelector('.pw-shell--studio')).toBeNull();
+  });
+});
