@@ -25,6 +25,22 @@ import {
 import { CognitoAdminService } from './cognito/cognito-admin.service.js';
 import { TenantPolicyProvisioningService } from './tenant-policy-provisioning.service.js';
 
+// PLATFORM-UX-1 B-1c (directive R-8) — the email domains a platform-admin
+// invitation may target. PLATFORM_ADMIN_EMAIL_DOMAINS is a comma list; entries
+// are trimmed, lowercased and stripped of a leading '@'; empty entries dropped. Unset or empty → the
+// default ['aramo.ai'].
+export const DEFAULT_PLATFORM_ADMIN_EMAIL_DOMAINS: readonly string[] = ['aramo.ai'];
+
+export function platformAdminEmailDomains(
+  env: NodeJS.ProcessEnv = process.env,
+): readonly string[] {
+  const parsed = (env['PLATFORM_ADMIN_EMAIL_DOMAINS'] ?? '')
+    .split(',')
+    .map((d) => d.trim().toLowerCase().replace(/^@/, ''))
+    .filter((d) => d.length > 0);
+  return parsed.length > 0 ? parsed : DEFAULT_PLATFORM_ADMIN_EMAIL_DOMAINS;
+}
+
 // PlatformInvitationService — orchestrates the cross-schema saga (Lead
 // ruling 7):
 //   1. Cognito (TENANT or PLATFORM pool) — AdminCreateUser (Pattern A,
@@ -789,6 +805,21 @@ export class PlatformInvitationService {
     actor_user_id: string;
     request_id: string;
   }): Promise<InviteResult> {
+    // PLATFORM-UX-1 B-1c (directive R-8) — platform administrators come only
+    // from the allowed operator email domains (PLATFORM_ADMIN_EMAIL_DOMAINS,
+    // default aramo.ai). Refused BEFORE any Cognito or identity side effect.
+    const domain = extractEmailDomain(args.email);
+    if (!platformAdminEmailDomains().includes(domain)) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'Platform administrators must use an allowed operator email domain',
+        400,
+        {
+          requestId: args.request_id,
+          details: { reason: 'platform_admin_domain_not_allowed' },
+        },
+      );
+    }
     return this.inviteUserIntoTenant({
       tenant_id: PLATFORM_TENANT_SENTINEL_ID,
       email: args.email,

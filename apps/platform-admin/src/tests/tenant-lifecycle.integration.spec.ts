@@ -329,6 +329,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
           slug: 'list-suspended',
           status: 'SUSPENDED',
           is_active: true,
+          // PLATFORM-UX-1 B-1b — kind on the list row.
+          kind: 'BUSINESS',
         }),
       );
       expect(suspendedRow).toHaveProperty('status_reason_code');
@@ -376,13 +378,22 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     // -------------------------------------------------------------- DETAIL ---
     it('detail — GET /platform/tenants/:id returns the tenant; unknown id → 404', async () => {
       const token = await jwt(READ_ONLY_SCOPES);
-      const id = await seedTenant({ name: 'Detail Co', status: 'ACTIVE' });
+      const id = await seedTenant({ name: 'Detail Co', slug: 'detail-co', status: 'ACTIVE' });
       const ok = await request(server())
         .get(`/platform/tenants/${id}`)
         .set('Authorization', `Bearer ${token}`);
       expect(ok.status).toBe(200);
       expect(ok.body.tenant.id).toBe(id);
       expect(ok.body.tenant.status).toBe('ACTIVE');
+      // PLATFORM-UX-1 B-1b — additive slug on the detail read; kind kept.
+      expect(ok.body.tenant.slug).toBe('detail-co');
+      expect(ok.body.tenant.kind).toBe('BUSINESS');
+      const noSlugId = await seedTenant({ name: 'Detail No Slug Co', status: 'ACTIVE' });
+      const noSlug = await request(server())
+        .get(`/platform/tenants/${noSlugId}`)
+        .set('Authorization', `Bearer ${token}`);
+      expect(noSlug.status).toBe(200);
+      expect(noSlug.body.tenant.slug).toBeNull();
 
       const missing = await request(server())
         .get(`/platform/tenants/${uuidv7()}`)
