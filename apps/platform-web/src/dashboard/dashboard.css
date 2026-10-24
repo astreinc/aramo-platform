@@ -1,35 +1,97 @@
-/* Inc-3 PR-3.8 (Workstream C) — operator dashboard layout. Token-driven
- * (Platform Violet theme.css supplies every color/radius/shadow); no hardcoded
- * hex. The KpiCard/pw-audit structural styles come from the fe-foundation
- * barrel (rc-kpi) + platform-shell.css (pw-audit); this sheet is layout only. */
+/* PLATFORM-UX-1 F-3 — the operator dashboard (Platform Admin.dc.html
+ * is.dashboard; handoff §5). Token-driven; the shared page / card / table
+ * grammar is in tenants/tenants.css. Prefix `pd-`. */
 
-.pw-dashboard {
-  max-width: 1180px;
+.pd-refreshed {
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12);
 }
 
-/* Status-count tiles — a responsive row of KpiCards. */
-.pw-kpis {
+/* Status tiles — buttons that open the filtered tenant list. */
+.pd-tiles {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
-  gap: 14px;
-  margin-bottom: 22px;
+  gap: 12px;
+  margin-bottom: 20px;
+}
+.pd-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px 16px 14px;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-card);
+  background: var(--pw-surface);
+  color: var(--pw-ink);
+  font-family: var(--pw-font);
+  text-align: left;
+  cursor: pointer;
+}
+.pd-tile:hover {
+  border-color: var(--pw-line-strong);
+  box-shadow: var(--pw-shadow-tile-hover);
+}
+.pd-tile .pw-pill {
+  align-self: flex-start;
+}
+.pd-tile__count {
+  font-size: var(--pw-fs-30);
+  font-weight: 700;
+  letter-spacing: var(--pw-tracking-tight);
+  line-height: 1;
+}
+.pd-tile__more {
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12);
+}
+.pd-tiles-alert {
+  margin: 0 0 20px;
 }
 
-/* Two-column split: onboarding funnel + recent activity. Collapses to one
- * column on narrow viewports so the page body never scrolls sideways. */
-.pw-dashboard__grid {
+/* Funnel + activity: two columns at 1440, one at 900. */
+.pd-panels {
   display: grid;
-  grid-template-columns: minmax(0, 3fr) minmax(0, 2fr);
-  gap: 22px;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 480px), 1fr));
+  gap: 16px;
   align-items: start;
 }
 
-@media (max-width: 900px) {
-  .pw-dashboard__grid {
-    grid-template-columns: 1fr;
-  }
+.pd-activity {
+  margin: 0;
+  padding: 4px 0;
+  list-style: none;
+}
+.pd-activity__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 2px 12px;
+  padding: 10px 20px;
+  border-bottom: 1px solid var(--pw-rule-2);
+}
+.pd-activity__what {
+  min-width: 0;
+  font-size: var(--pw-fs-13-5);
+}
+.pd-activity__rel {
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12);
+  text-align: right;
+  white-space: nowrap;
+}
+.pd-activity__why {
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12);
+}
+.pd-activity__ts {
+  color: var(--pw-faint);
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-11);
+  text-align: right;
+  white-space: nowrap;
 }
 
+/* Legacy panel grammar still used by views not yet rebuilt (Matching policy,
+ * Document templates — increments F-8/F-9 replace them). Kept byte-equivalent. */
 .pw-panel {
   border: 1px solid var(--line);
   border-radius: var(--r-lg);
