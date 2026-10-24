@@ -14159,6 +14159,11 @@
       "to": "scripts/verify-vocabulary.sh"
     },
     {
+      "from": "doc/platform-admin/implementation-plan.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/visual/DIVERGENCES.md"
+    },
+    {
       "from": "doc/platform-console/platform-console-architecture-inventory.md",
       "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform-invitation.service.ts"
