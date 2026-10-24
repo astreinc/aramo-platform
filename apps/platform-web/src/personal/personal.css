@@ -292,14 +292,6 @@
   color: var(--pw-danger);
 }
 
-/* A confirm dialog opened over the drawer: its own overlay sits above the
- * drawer (z 100, the dialog scrim), as in the design. Scoped to the portal that
- * holds the confirm dialog, so the drawer's lighter overlay is unchanged. */
-body > div:has(> .tc-dialog__content .pw-cd) > .tc-dialog__overlay {
-  z-index: 100;
-  background: var(--pw-overlay);
-}
-
 /* ── pilot invites ── */
 
 .pw-sp-invgrid {

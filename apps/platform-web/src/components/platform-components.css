@@ -1041,3 +1041,30 @@ body:has(.pw-drawer) .tc-dialog__overlay {
   height: 32px;
   border-radius: var(--pw-r-btn-sm);
 }
+
+/* A ConfirmDialog opened over a DetailDrawer: its own overlay sits above the
+ * drawer (z 100, the dialog scrim), as in the design. Scoped to the portal that
+ * holds the confirm dialog, so the drawer's lighter overlay is unchanged. */
+body > div:has(> .tc-dialog__content .pw-cd) > .tc-dialog__overlay {
+  z-index: 100;
+  background: var(--pw-overlay);
+}
+
+/* ─────────── Toast (handoff §3.6) — restyles the fe-foundation toast ─────────── */
+
+.tc-toast-viewport {
+  right: auto;
+  left: 50%;
+  bottom: 24px;
+  transform: translateX(-50%);
+  align-items: center;
+  z-index: 120;
+}
+.tc-toast {
+  background-color: var(--pw-ink);
+  color: #ffffff;
+  border-radius: 10px;
+  font-size: 13.5px;
+  font-weight: 500;
+  min-width: 0;
+}

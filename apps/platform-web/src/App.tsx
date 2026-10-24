@@ -91,9 +91,9 @@ export function PlatformConsole({ session }: { readonly session: Session }) {
       <Routes>
         {/* Inc-3 PR-3.8 — the operator dashboard is the default post-login
             screen; the tenant list is one click away in the rail. */}
-        <Route path="/" element={<DashboardView />} />
-        <Route path="/tenants" element={<TenantsListView />} />
-        <Route path="/tenants/new" element={<ProvisionTenantView />} />
+        <Route path="/" element={<DashboardView session={session} />} />
+        <Route path="/tenants" element={<TenantsListView session={session} />} />
+        <Route path="/tenants/new" element={<ProvisionTenantView session={session} />} />
         {/* The detail view keeps reading its tab from `?tab=` (directive R-12). */}
         <Route path="/tenants/:id" element={<TenantDetailView session={session} />} />
         {/* SKILL-TAX-1F-C1/C2 — the platform skill governance console, gated on
