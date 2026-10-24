@@ -1220,6 +1220,12 @@
   background: var(--hot-tint);
   color: var(--hot);
 }
+
+/* PLATFORM-UX-1 U-0 (R-4): muted tone, values from Platform Admin.dc.html TONE.muted. */
+.rc-pill--muted {
+  background: #f0f2f4;
+  color: #66717b;
+}
 /* ─────────────── Tag + overflow ─────────────── */
 
 .rc-tags {
