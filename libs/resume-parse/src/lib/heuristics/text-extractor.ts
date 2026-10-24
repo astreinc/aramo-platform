@@ -66,7 +66,7 @@ export async function extractResumeText(buffer: Buffer): Promise<string | null> 
 
   if (format === 'docx') {
     try {
-      const result = await mammoth.extractRawText({ buffer });
+      const result = await mammoth.extractRawText({ buffer: await withBodyLineBreaksAsText(buffer) });
       const body = result.value;
       // mammoth reads word/document.xml ONLY — it drops HEADER/FOOTER parts.
       // Many resumes put the contact block (name, email, phone, City/ST ZIP) in
@@ -115,18 +115,52 @@ async function extractDocxHeaderFooterText(buffer: Buffer): Promise<string> {
   }
 }
 
+// mammoth's raw-text output drops line breaks (<w:br/>, <w:cr/>) inside a
+// paragraph, so "555-201-3344<br/>jane@example.com" reaches extraction glued as
+// one token (the email redaction then swallows the phone). Rewrite each break in
+// word/document.xml as a newline text node in the same run before mammoth reads
+// it. A document with no breaks is passed through unchanged; any failure falls
+// back to the original bytes.
+async function withBodyLineBreaksAsText(buffer: Buffer): Promise<Buffer> {
+  try {
+    const zip = await JSZip.loadAsync(buffer);
+    const file = zip.file('word/document.xml');
+    if (file === null) return buffer;
+    const xml = await file.async('string');
+    if (!/<w:(?:br|cr)\b/.test(xml)) return buffer;
+    zip.file('word/document.xml', xml.replace(LINE_BREAK_RE, '<w:t xml:space="preserve">&#10;</w:t>'));
+    return await zip.generateAsync({ type: 'nodebuffer' });
+  } catch {
+    return buffer;
+  }
+}
+
+// A paragraph's text-bearing tokens, in document order: run text, tabs, and
+// line breaks. <w:tab/> inside paragraph properties (<w:tabs> tab-stop
+// definitions) is excluded by stripping <w:pPr> first.
+const PARAGRAPH_PROPERTIES_RE = /<w:pPr\b[\s\S]*?<\/w:pPr>/g;
+const RUN_TOKEN_RE = /<w:t\b[^>]*>([\s\S]*?)<\/w:t>|<w:t\b[^>]*\/>|<w:tab\b[^>]*\/>|<w:(?:br|cr)\b[^>]*\/>/g;
+const LINE_BREAK_RE = /<w:(?:br|cr)\b[^>]*\/>/g;
+
 // Turn WordprocessingML runs into plain text: one line per paragraph (<w:p>),
-// concatenating that paragraph's <w:t> run text. Tabs (<w:tab/>) → spaces so
-// "Name<tab>City, ST" stays on one line. XML entities decoded.
+// concatenating that paragraph's <w:t> run text in order. Tabs (<w:tab/>) →
+// spaces so "Name<tab>City, ST" stays on one line; line breaks (<w:br/>,
+// <w:cr/>) start a new line. Without these separators a "phone<tab>email" or
+// "phone<br/>email" header came out glued. XML entities decoded.
 function docxXmlRunsToText(xml: string): string {
   const lines: string[] = [];
   for (const para of xml.split(/<\/w:p>/)) {
-    const withTabs = para.replace(/<w:tab\b[^>]*\/>/g, ' ');
-    const runs = [...withTabs.matchAll(/<w:t\b[^>]*>([\s\S]*?)<\/w:t>/g)].map((m) =>
-      decodeXmlEntities(m[1] ?? ''),
-    );
-    const line = runs.join('').replace(/[ \t]+/g, ' ').trim();
-    if (line !== '') lines.push(line);
+    let text = '';
+    for (const m of para.replace(PARAGRAPH_PROPERTIES_RE, '').matchAll(RUN_TOKEN_RE)) {
+      const token = m[0];
+      if (token.startsWith('<w:tab')) text += ' ';
+      else if (token.startsWith('<w:br') || token.startsWith('<w:cr')) text += '\n';
+      else text += decodeXmlEntities(m[1] ?? '');
+    }
+    for (const raw of text.split('\n')) {
+      const line = raw.replace(/[ \t]+/g, ' ').trim();
+      if (line !== '') lines.push(line);
+    }
   }
   return lines.join('\n');
 }

@@ -51,8 +51,27 @@ for S in api auth-service platform-admin sign-service talent-intelligence-servic
   docker build --no-cache -f "${ROOT_DIR}/apps/${S}/Dockerfile" \
     --build-arg GIT_REVISION="${AUTHORIZED_SHA}" -t "aramo/${S}:local" "${ROOT_DIR}"
 done
+# Sign Personal (Free) — the Cloudflare Turnstile SITE key is public and baked into
+# the Sign bundle at build time (deploy/nginx/Dockerfile ARG VITE_SIGN_TURNSTILE_SITE_KEY).
+# This script is the production build path, so it — not docker-compose's build args —
+# must pass it. Source: an exported SIGN_TURNSTILE_SITE_KEY, else the box env file
+# (ARAMO_ENV_FILE, default <repo>/.env). Unset/unreadable ⇒ built without the widget
+# (the backend then refuses Personal signups: fail closed). Only the SITE key is
+# read; the Turnstile SECRET never enters an image.
+ENV_FILE="${ARAMO_ENV_FILE:-${ROOT_DIR}/.env}"
+TURNSTILE_SITE_KEY="${SIGN_TURNSTILE_SITE_KEY:-}"
+if [ -z "$TURNSTILE_SITE_KEY" ] && [ -r "$ENV_FILE" ]; then
+  TURNSTILE_SITE_KEY="$(grep -E '^SIGN_TURNSTILE_SITE_KEY=' "$ENV_FILE" | tail -1 | cut -d= -f2- | tr -d '"'"'"'\r' || true)"
+fi
+if [ -n "$TURNSTILE_SITE_KEY" ]; then
+  echo "[build] Sign Turnstile site key: set (${TURNSTILE_SITE_KEY:0:6}…)"
+else
+  echo "[build] Sign Turnstile site key: NOT set — the Personal signup robot check will not render"
+fi
 echo "[build] building aramo/nginx:local"
 docker build --no-cache -f "${ROOT_DIR}/deploy/nginx/Dockerfile" \
-  --build-arg GIT_REVISION="${AUTHORIZED_SHA}" -t "aramo/nginx:local" "${ROOT_DIR}"
+  --build-arg GIT_REVISION="${AUTHORIZED_SHA}" \
+  --build-arg VITE_SIGN_TURNSTILE_SITE_KEY="${TURNSTILE_SITE_KEY}" \
+  -t "aramo/nginx:local" "${ROOT_DIR}"
 
 echo "[build] OK — 6 images stamped ${AUTHORIZED_SHA} from ${ROOT_DIR}"
