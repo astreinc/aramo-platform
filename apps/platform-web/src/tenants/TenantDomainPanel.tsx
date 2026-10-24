@@ -208,6 +208,10 @@ export function TenantDomainPanel({
         <dl className="pt-dl170 pt-dl-14">
           <dt>Reason</dt>
           <dd>{domainReasonLabel(claim.reason)}</dd>
+          {/* The design's "Since" row. The domain response carries no claim date
+              (data gap, directive R-13): the designed empty value. */}
+          <dt>Since</dt>
+          <dd data-testid="domain-since">—</dd>
           <dt>Shared-domain exception</dt>
           <dd>{claim.exception ? 'Granted' : 'None'}</dd>
         </dl>

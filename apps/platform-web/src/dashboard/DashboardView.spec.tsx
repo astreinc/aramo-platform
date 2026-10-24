@@ -59,13 +59,13 @@ describe('DashboardView', () => {
     vi.spyOn(platformApi, 'getDashboard').mockReturnValue(new Promise(() => undefined));
     renderDash();
     expect(screen.getAllByText('Loading…').length).toBeGreaterThanOrEqual(2);
-    expect(screen.getByRole('button', { name: 'View Active tenants' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^Active/ })).toBeInTheDocument();
   });
 
   it('shows the counts as tiles that open /tenants?status=X', async () => {
     vi.spyOn(platformApi, 'getDashboard').mockResolvedValue(FULL);
     renderDash();
-    const tile = await screen.findByRole('button', { name: 'View Provisioned tenants' });
+    const tile = await screen.findByRole('button', { name: /^Provisioned/ });
     expect(within(tile).getByText('3')).toBeInTheDocument();
     expect(within(tile).getByText('View tenants →')).toBeInTheDocument();
     fireEvent.click(tile);
@@ -128,9 +128,9 @@ describe('DashboardView', () => {
   it('errors per panel with Try again', async () => {
     const spy = vi.spyOn(platformApi, 'getDashboard').mockRejectedValueOnce(new Error('boom')).mockResolvedValue(FULL);
     renderDash();
-    expect(await screen.findByText('Couldn’t load recent activity.')).toBeInTheDocument();
-    expect(screen.getByText('Couldn’t load the onboarding funnel.')).toBeInTheDocument();
-    expect(screen.getByText('Couldn’t load tenant counts.')).toBeInTheDocument();
+    expect(await screen.findByText("Couldn't load recent activity.")).toBeInTheDocument();
+    expect(screen.getByText("Couldn't load the onboarding funnel.")).toBeInTheDocument();
+    expect(screen.getByText("Couldn't load tenant counts.")).toBeInTheDocument();
     fireEvent.click(screen.getAllByRole('button', { name: 'Try again' })[0] as HTMLElement);
     expect(await screen.findByRole('link', { name: 'Oldest Co' })).toBeInTheDocument();
     expect(spy).toHaveBeenCalledTimes(2);

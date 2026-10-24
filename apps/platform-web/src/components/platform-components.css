@@ -7,6 +7,10 @@
 
 .pw-sr-only {
   position: absolute;
+  /* Pinned to the containing block's left edge: at its static position a 1px
+     box inside a horizontally scrolling table (whose scroller is not positioned)
+     would widen the PAGE (H-1 900px pass, Template variables). */
+  left: 0;
   width: 1px;
   height: 1px;
   padding: 0;
@@ -35,7 +39,9 @@
   font-family: var(--pw-font);
   font-size: var(--pw-fs-13-5);
   font-weight: 600;
-  line-height: 1;
+  /* The design's buttons are UA buttons: the label's line box is the font's
+     normal line height, centred — line-height:1 sits the glyphs 1px high. */
+  line-height: normal;
   white-space: nowrap;
   cursor: pointer;
   text-decoration: none;
@@ -113,12 +119,16 @@
   border-radius: var(--pw-r-pill);
   font-size: var(--pw-fs-12);
   font-weight: 600;
-  line-height: 1;
+  /* The design's pills inherit the normal line height inside their fixed
+     height; line-height:1 rounds the glyphs 1px off at 12.5px. */
+  line-height: normal;
 }
 .pw-pill--sm > .rc-pill {
   height: auto;
   padding: 1px 8px;
-  line-height: 1.5;
+  /* The design's inline timeline pills use the font's normal line height
+     (12px Hanken Grotesk → 16px), so the pill is 18px tall. */
+  line-height: normal;
 }
 .pw-pill--lg > .rc-pill {
   height: 24px;
@@ -472,6 +482,7 @@
 }
 .pw-taginput__rm {
   padding: 0 3px;
+  font-size: var(--pw-fs-ua-button);
   border: none;
   background: transparent;
   color: var(--pw-muted);
@@ -881,6 +892,13 @@ body:has(.pw-cd) .tc-dialog__overlay {
   background: var(--pw-overlay);
 }
 .tc-dialog__content:has(.pw-cd) {
+  /* Centred without a transform, as in the design (a grid overlay with
+     place-items:center): a translate(-50%,-50%) layer rasterises its text
+     differently from the page. */
+  inset: 0;
+  margin: auto;
+  height: fit-content;
+  transform: none;
   z-index: 101;
   width: min(580px, 94vw);
   max-height: 88vh;
@@ -1043,9 +1061,11 @@ body:has(.pw-drawer) .tc-dialog__overlay {
 }
 
 /* A ConfirmDialog opened over a DetailDrawer: its own overlay sits above the
- * drawer (z 100, the dialog scrim), as in the design. Scoped to the portal that
- * holds the confirm dialog, so the drawer's lighter overlay is unchanged. */
-body > div:has(> .tc-dialog__content .pw-cd) > .tc-dialog__overlay {
+ * drawer (z 100, the dialog scrim), as in the design. Radix portals the overlay
+ * and the content as adjacent children of <body>, so the confirm dialog's
+ * overlay is the one immediately followed by the content holding .pw-cd; the
+ * drawer's lighter overlay is unchanged. */
+.tc-dialog__overlay:has(+ .tc-dialog__content .pw-cd) {
   z-index: 100;
   background: var(--pw-overlay);
 }

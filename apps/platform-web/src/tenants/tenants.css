@@ -163,6 +163,8 @@
   gap: 10px;
   margin: 16px 20px;
   padding: 12px 14px;
+  /* The design's per-panel alert uses the normal line height. */
+  line-height: normal;
 }
 .pt-panel-alert__action {
   margin-left: auto;
@@ -170,6 +172,7 @@
 
 /* Filled info / note boxes */
 .pt-note {
+  box-sizing: content-box; /* the design's boxes are content-box (width excludes padding + border) */
   display: flex;
   gap: 10px;
   max-width: 900px;
@@ -447,6 +450,7 @@
   font-size: var(--pw-fs-12-5);
 }
 .pt-slug {
+  box-sizing: content-box; /* the design's boxes are content-box (width excludes padding + border) */
   display: flex;
   align-items: center;
   max-width: 460px;
@@ -690,6 +694,7 @@
   font-weight: 700;
 }
 .pt-callout {
+  box-sizing: content-box; /* the design's boxes are content-box (width excludes padding + border) */
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -707,10 +712,14 @@
   color: var(--pw-alert-info-ink);
   font-size: var(--pw-fs-13-5);
 }
+/* The design's max-width cards are content-box (its pages set no box-sizing):
+   the cap excludes padding and border, so a padded 900px card is 942px wide. */
 .pt-w900 {
+  box-sizing: content-box;
   max-width: 900px;
 }
 .pt-w1100 {
+  box-sizing: content-box;
   max-width: 1100px;
 }
 .pt-ov {
@@ -749,8 +758,9 @@
   color: var(--pw-danger);
 }
 .pt-tl-wrap {
+  /* The Timeline <ol> already carries the design's 12px 20px 6px padding. */
   margin: 0;
-  padding: 12px 20px 6px;
+  padding: 0;
 }
 .pt-sign-grid {
   display: grid;

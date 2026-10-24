@@ -202,7 +202,7 @@ function ShellFrame({ session, environment, paletteSources, children }: ShellFra
         })}
       </nav>
       <span className="pw-topbar-mark">PLATFORM</span>
-      <Button unstyled className="pw-cmdk-trigger" aria-label="Search (⌘K)" onClick={() => setPaletteOpen(true)}>
+      <Button unstyled className="pw-cmdk-trigger" aria-label="Search tenants, skills, templates ⌘K" onClick={() => setPaletteOpen(true)}>
         <SearchIcon size={15} />
         <span className="pw-cmdk-trigger__text">Tenants, skills, templates</span>
         <span className="pw-cmdk-trigger__key" aria-hidden="true">

@@ -105,7 +105,10 @@ export function toTimelineEvent(e: PlatformAuditEvent, index: number): TimelineE
   const ft = auditTransition(e);
   const reason = auditReason(e);
   const rejected = e.event_type === REJECTED_EVENT;
-  const tone: PlatformTone | 'faint' = rejected ? 'danger' : ft ? tenantStatusPill(ft.to).tone : 'faint';
+  // The dot takes the target status's tone whenever the event records one, even
+  // without a from-status (the design's `e.to ? TONE[TS[e.to]]` — e.g. Provisioned).
+  const toStatus = ft?.to ?? str((e.event_payload as AuditPayload).after?.status);
+  const tone: PlatformTone | 'faint' = rejected ? 'danger' : toStatus !== null ? tenantStatusPill(toStatus).tone : 'faint';
   return {
     id: `${e.event_type}-${e.created_at}-${index}`,
     label: eventLabel(e.event_type),

@@ -26,7 +26,16 @@ export function ViewOnlyNote({ permission, subject = 'this', needs = 'Changing i
     <div className="pw-viewonly" role="note">
       <b className="pw-viewonly__lead">View only.</b>
       <span>
-        You can view {subject}. {needs} the <b>{permission}</b> permission.
+        {/* One text node before the permission, as in the design: split text
+            nodes shape (and so rasterise) differently from one run. */}
+        {typeof needs === 'string' ? (
+          `You can view ${subject}. ${needs} the `
+        ) : (
+          <>
+            You can view {subject}. {needs} the{' '}
+          </>
+        )}
+        <b>{permission}</b> permission.
       </span>
     </div>
   );

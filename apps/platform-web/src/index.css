@@ -9,6 +9,14 @@
   box-sizing: border-box;
 }
 
+/* The design's table cells are content-box (its pages set no box-sizing): a
+   cell's width/max-width excludes its padding, which drives the auto table
+   layout's column widths. */
+th,
+td {
+  box-sizing: content-box;
+}
+
 html,
 body {
   margin: 0;

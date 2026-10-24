@@ -172,7 +172,7 @@ describe('PlatformShell — top bar (handoff §3.4)', () => {
   it('opens the account menu with identity, account switch and sign out', async () => {
     renderShell();
     await screen.findByText('Maya Okafor');
-    fireEvent.click(screen.getByRole('button', { name: 'Account: Maya Okafor' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Account: Maya Okafor, MO' }));
     const menu = screen.getByRole('menu', { name: 'Account' });
     expect(menu).toHaveTextContent('maya.okafor@aramo.ai');
     expect(menu).toHaveTextContent('SUPER ADMIN');
@@ -207,7 +207,7 @@ describe('PlatformShell — top bar (handoff §3.4)', () => {
     renderShell();
     await screen.findByText('Maya Okafor');
     await act(async () => {
-      fireEvent.click(screen.getByRole('button', { name: 'Search (⌘K)' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Search tenants, skills, templates ⌘K' }));
     });
     expect(screen.getByRole('dialog', { name: 'Search' })).toHaveTextContent('↵ opens the first result');
   });
@@ -260,7 +260,7 @@ describe('Template Studio route (handoff §10.2)', () => {
     const { container } = renderShell({ path: '/document-templates/t1' });
     await waitFor(() => expect(container.querySelector('.pw-shell--studio')).not.toBeNull());
     expect(container.querySelector('.pw-crumbs')).toBeNull();
-    expect(screen.queryByRole('button', { name: 'Search (⌘K)' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Search tenants, skills, templates ⌘K' })).toBeNull();
   });
 
   it('keeps the shell top bar on the template library', async () => {

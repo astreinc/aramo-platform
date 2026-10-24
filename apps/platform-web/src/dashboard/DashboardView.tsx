@@ -103,7 +103,7 @@ function Dashboard({ session }: { readonly session: Session }) {
       {load.status === 'error' ? (
         <div role="alert" className="pw-alert pw-alert--error pt-panel-alert pd-tiles-alert">
           <span>
-            <b>Couldn’t load tenant counts.</b>
+            <b>{"Couldn't load tenant counts."}</b>
           </span>
           <TryAgain onClick={() => void fetchDashboard()} />
         </div>
@@ -116,7 +116,6 @@ function Dashboard({ session }: { readonly session: Session }) {
                 key={status}
                 unstyled
                 className="pd-tile"
-                aria-label={`View ${pill.label} tenants`}
                 onClick={() => navigate(`/tenants?status=${status}`)}
               >
                 <Pill tone={pill.tone}>{pill.label}</Pill>
@@ -144,7 +143,7 @@ function Dashboard({ session }: { readonly session: Session }) {
           {load.status === 'error' || (data !== null && !funnelValid) ? (
             <div role="alert" className="pw-alert pw-alert--error pt-panel-alert">
               <span>
-                <b>Couldn’t load the onboarding funnel.</b>
+                <b>{"Couldn't load the onboarding funnel."}</b>
                 {data !== null ? ' The other panels are unaffected.' : null}
               </span>
               <TryAgain onClick={() => void fetchDashboard()} />
@@ -212,7 +211,7 @@ function Dashboard({ session }: { readonly session: Session }) {
           {load.status === 'error' || (data !== null && !activityValid) ? (
             <div role="alert" className="pw-alert pw-alert--error pt-panel-alert">
               <span>
-                <b>Couldn’t load recent activity.</b>
+                <b>{"Couldn't load recent activity."}</b>
                 {data !== null ? ' The other panels are unaffected.' : null}
               </span>
               <TryAgain onClick={() => void fetchDashboard()} />

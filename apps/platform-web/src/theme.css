@@ -128,6 +128,8 @@
   --pw-fs-12: 12px;
   --pw-fs-12-5: 12.5px;
   --pw-fs-13: 13px;
+  /* The UA button size the design inherits where it sets none (tag × button). */
+  --pw-fs-ua-button: 13.3333px;
   --pw-fs-13-5: 13.5px;
   --pw-fs-14: 14px;
   --pw-fs-15: 15px;

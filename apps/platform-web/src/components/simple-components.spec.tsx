@@ -12,7 +12,7 @@ import { ViewOnlyNote } from './ViewOnlyNote';
 describe('EnvironmentBar (handoff §3.2)', () => {
   it('names the console and the signed-in identity', () => {
     render(<EnvironmentBar email="maya.okafor@aramo.ai" tenant="Aramo Platform" role="Super admin" />);
-    expect(screen.getByRole('banner')).toHaveTextContent('PLATFORM ADMIN');
+    expect(screen.getByRole('region', { name: 'Platform environment' })).toHaveTextContent('PLATFORM ADMIN');
     expect(screen.getByText('admin.aramo.ai · actions here apply across every tenant')).toBeInTheDocument();
     expect(screen.getByTestId('envbar-identity')).toHaveTextContent(
       'Signed in as maya.okafor@aramo.ai · Aramo Platform · Super admin',

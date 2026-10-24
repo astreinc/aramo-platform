@@ -64,7 +64,8 @@ export function AccountMenu({ identity, onSwitchAccount, onSignOut, notice }: Ac
         className="pw-account__trigger"
         aria-haspopup="menu"
         aria-expanded={open}
-        aria-label={`Account: ${identity.name}`}
+        // The name contains the visible initials (WCAG 2.5.3 label in name).
+        aria-label={`Account: ${identity.name}, ${identity.initials}`}
         onClick={() => setOpen((o) => !o)}
       >
         <span className="pw-account__avatar" aria-hidden="true">

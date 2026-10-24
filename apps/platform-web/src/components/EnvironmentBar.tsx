@@ -25,7 +25,11 @@ const CONTEXT_LINE: Readonly<Record<EnvironmentContext, string>> = {
 
 export function EnvironmentBar({ email, tenant, role, context = 'console' }: EnvironmentBarProps) {
   return (
-    <div role="banner" className="pw-envbar">
+    // role="region" (not "banner"): the shell's top bar <header> is already the
+    // page's banner landmark, and a page has one banner (axe
+    // landmark-no-duplicate-banner). Deviation from the design file's
+    // role=banner, recorded in H-1.
+    <div role="region" aria-label="Platform environment" className="pw-envbar">
       <span className="pw-envbar__mark">
         <span className="pw-envbar__diamond" aria-hidden="true" />
         PLATFORM ADMIN

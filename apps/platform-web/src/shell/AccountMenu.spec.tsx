@@ -16,13 +16,13 @@ const ID = {
 describe('AccountMenu notice', () => {
   it('shows the notice under the identity block when given', () => {
     render(<AccountMenu identity={ID} onSwitchAccount={vi.fn()} onSignOut={vi.fn()} notice="You have unsaved changes." />);
-    fireEvent.click(screen.getByRole('button', { name: 'Account: Maya Okafor' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Account: Maya Okafor/ }));
     expect(screen.getByRole('status')).toHaveTextContent('You have unsaved changes.');
   });
 
   it('renders no notice by default', () => {
     render(<AccountMenu identity={ID} onSwitchAccount={vi.fn()} onSignOut={vi.fn()} />);
-    fireEvent.click(screen.getByRole('button', { name: 'Account: Maya Okafor' }));
+    fireEvent.click(screen.getByRole('button', { name: /^Account: Maya Okafor/ }));
     expect(screen.queryByRole('status')).toBeNull();
   });
 });

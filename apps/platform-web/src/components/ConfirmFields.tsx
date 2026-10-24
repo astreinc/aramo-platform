@@ -15,20 +15,11 @@ interface FieldBase {
   readonly required?: boolean;
 }
 
-function Label({ text, required }: { readonly text: ReactNode; readonly required?: boolean }) {
-  return (
-    <span className="pw-field__label">
-      {text}
-      {required ? (
-        <>
-          {' '}
-          <span className="pw-field__req" aria-hidden="true">
-            *
-          </span>
-        </>
-      ) : null}
-    </span>
-  );
+function Label({ text }: { readonly text: ReactNode; readonly required?: boolean }) {
+  // The design's dialog labels carry no visual required marker (Platform
+  // Admin.dc.html dialog fields); the control's `required` attribute conveys it
+  // to assistive technology.
+  return <span className="pw-field__label">{text}</span>;
 }
 
 export interface FieldTextProps extends FieldBase {

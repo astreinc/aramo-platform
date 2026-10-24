@@ -211,12 +211,19 @@
   line-height: normal;
 }
 .pw-shell .rc-rail__whoname {
+  /* The design wraps the name and the role line (no ellipsis). */
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
   line-height: 1.25;
   color: #ffffff;
   font-size: var(--pw-fs-12-5);
   font-weight: 600;
 }
 .pw-shell .rc-rail__who small {
+  white-space: normal;
+  overflow: visible;
+  text-overflow: clip;
   color: var(--rail-item-fg);
   font-size: var(--pw-fs-11);
 }
@@ -509,6 +516,12 @@
   max-width: 1400px;
   padding: 28px 32px 72px;
 }
+/* A screen never widens the page: its wide table scrolls inside its card
+   (handoff §15, 900px pass). Grid/flex children default to min-width:auto,
+   which would let a min-width table push the page sideways. */
+.pw-shell .rc-content > * {
+  min-width: 0;
+}
 
 /* ─────────── Template Studio route (handoff §10.2) ─────────── */
 
@@ -579,7 +592,12 @@ body:has(.pw-cmdk) .tc-dialog__overlay {
   gap: 0;
   padding: 0;
   overflow: hidden;
-  transform: translateX(-50%);
+  /* Centred with auto margins, not translateX(-50%): a transformed layer
+     rasterises its text differently from the design's page-flow palette. */
+  right: 0;
+  left: 0;
+  margin: 0 auto;
+  transform: none;
   border: none;
   border-radius: var(--pw-r-dialog);
   box-shadow: var(--pw-shadow-dialog);

@@ -83,12 +83,16 @@ export function LifecycleActionMenu({
         unstyled
         className="pw-lcmenu__trigger"
         aria-haspopup="menu"
+        aria-label={label}
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
         onClick={() => setOpen((o) => !o)}
       >
         <span className="pw-lcmenu__diamond" aria-hidden="true" />
-        {label} <span aria-hidden="true">▾</span>
+        {/* One text node, as in the design ("Lifecycle actions ▾"): a separate
+            flex item would add the 8px gap before the caret, and a split run
+            shapes differently. The accessible name stays the plain label. */}
+        {`${label} ▾`}
       </Button>
       {open ? (
         <div id={menuId} role="menu" aria-label={label} className="pw-lcmenu__menu" ref={menuRef} onKeyDown={onMenuKey}>
@@ -99,7 +103,10 @@ export function LifecycleActionMenu({
               role="menuitem"
               className="pw-lcmenu__item"
               onClick={() => {
-                setOpen(false);
+                // Focus the trigger before the dialog opens: the menu item is
+                // about to unmount, so the dialog returns focus to the trigger
+                // when it closes (WCAG 2.4.3; H-1 keyboard journey J3).
+                close();
                 onSelect(a.key);
               }}
             >
