@@ -507,13 +507,15 @@ export const StudioCanvas = forwardRef<CanvasHandle, StudioCanvasProps>(function
           unstyled
           className="pws-tb__icon pws-tb__icon--auto pws-tb__num"
           title="Numbered list"
-          aria-label="Numbered list"
           onMouseDown={(e) => {
             keep(e);
             if (selected !== null) setKind(selected.id, selected.kind === 'ol' ? 'p' : 'ol');
           }}
         >
-          1.
+          {/* The visible "1." is decorative; the name is the sr-only text (an aria-label
+              that omits the visible text fails WCAG 2.5.3 label-in-name). */}
+          <span aria-hidden="true">1.</span>
+          <span className="pws-sr">Numbered list</span>
         </Button>
         <Button
           unstyled

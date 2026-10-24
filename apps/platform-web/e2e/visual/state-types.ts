@@ -4,7 +4,7 @@
 import type { Locator, Page } from '@playwright/test';
 
 import type { MockOptions } from '../fixtures/mock-api';
-import type { ProtoProps } from '../support/proto';
+import type { ProtoProps, StudioProtoProps } from '../support/proto';
 
 export interface ViewportSpec {
   readonly name: '1440' | '900';
@@ -38,13 +38,24 @@ export interface Mask {
   readonly padLeft?: number;
   /** Grow the design-file region by this many px at the bottom (a reworded copy block). */
   readonly padBottom?: number;
+  /** Grow the design-file region by this many px at the top. */
+  readonly padTop?: number;
+  /** Apply at one viewport only (default: both). */
+  readonly viewport?: ViewportSpec['name'];
 }
 
 export interface ScreenState {
   /** Snapshot name: kebab-case; the file is `<name>-<viewport>.png`. */
   readonly name: string;
   readonly proto: {
+    /**
+     * The design file: Platform Admin.dc.html (default) or Template Studio.dc.html
+     * (the template library and the Studio, handoff §10).
+     */
+    readonly file?: 'admin' | 'studio';
     readonly props?: ProtoProps;
+    /** Template Studio.dc.html props (persona manager / reader). */
+    readonly studio?: StudioProtoProps;
     /** Route deep link (`#tenants`). */
     readonly hash?: string;
     /** setState patch applied after load (route, ids, tabs, filters…). */
@@ -69,6 +80,12 @@ export interface ScreenState {
    * build is asserted on `frozenCheck` (copy/state) instead of pixels, and the
    * pixel gap is reported. The string is the DIVERGENCES.md id.
    */
+  /**
+   * Max differing pixels for this state only, when its text rasterises
+   * differently on every run (anti-aliasing per directive §3). Each use is listed
+   * in DIVERGENCES.md "Anti-aliasing allowances". Default: the global 25.
+   */
+  readonly aaAllowance?: number;
   readonly frozen?: string;
   readonly frozenCheck?: (page: Page) => Promise<void>;
   /**

@@ -81,10 +81,18 @@ export function VersionDiff(props: VersionDiffProps) {
             {options}
           </Select>
           <span className="pws-cmp__stats">
-            <span className="pws-cmp__stat pws-cmp__stat--add">{stats.added} Added</span>
-            <span className="pws-cmp__stat pws-cmp__stat--chg">{stats.changed} Changed</span>
-            <span className="pws-cmp__stat pws-cmp__stat--del">{stats.removed} Removed</span>
-            <span className="pws-cmp__stat pws-cmp__stat--same">{stats.unchanged} Unchanged</span>
+            <span className="pws-cmp__stat pws-cmp__stat--add">
+              <span>{stats.added}</span> <span>Added</span>
+            </span>
+            <span className="pws-cmp__stat pws-cmp__stat--chg">
+              <span>{stats.changed}</span> <span>Changed</span>
+            </span>
+            <span className="pws-cmp__stat pws-cmp__stat--del">
+              <span>{stats.removed}</span> <span>Removed</span>
+            </span>
+            <span className="pws-cmp__stat pws-cmp__stat--same">
+              <span>{stats.unchanged}</span> <span>Unchanged</span>
+            </span>
           </span>
           <label className="pws-cmp__co">
             <Checkbox unstyled className="pws-check-in" checked={props.changesOnly} onChange={(e) => props.onChangesOnly(e.target.checked)} />
@@ -103,7 +111,7 @@ export function VersionDiff(props: VersionDiffProps) {
             {B?.label} <span className="pws-cmp__colsub">· {B?.sub}</span>
           </span>
         </div>
-        <div className="pws-cmp__rows" role="list" aria-label={`${A?.label ?? ''} compared with ${B?.label ?? ''}`}>
+        <div className="pws-cmp__rows" role="list" tabIndex={0} aria-label={`${A?.label ?? ''} compared with ${B?.label ?? ''}`}>
           {shown.map((r, i) => (
             <div key={i} role="listitem" className={`pws-drow pws-drow--${r.kind}`}>
               <span className="pws-drow__mark">

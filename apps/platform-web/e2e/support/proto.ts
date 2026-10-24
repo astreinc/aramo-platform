@@ -19,6 +19,8 @@ import { resolve } from 'node:path';
 
 import type { Page } from '@playwright/test';
 
+import { loadFonts } from './fonts';
+
 const DIR = resolve(__dirname, '../../../../doc/design-reference/platform-admin/platform');
 const ORIGIN = 'http://proto.test';
 
@@ -106,12 +108,82 @@ export async function protoCall(page: Page, fnSrc: string): Promise<void> {
 }
 
 export async function settle(page: Page): Promise<void> {
+  await loadFonts(page);
   // The account menu's prototype-only "Components & open questions" (Handoff page).
   await page.evaluate(() => {
     for (const a of Array.from(document.querySelectorAll('[role="menuitem"]'))) {
       if (a.textContent?.trim() === 'Components & open questions') (a as HTMLElement).style.display = 'none';
     }
   });
+  // Template Studio.dc.html tags its slash menu's disabled items with a dashed
+  // NEEDS BACKEND tag that showAnnotations does not gate (directive R-13: never built).
+  await page.evaluate(() => {
+    for (const el of Array.from(document.querySelectorAll('span'))) {
+      if (el.children.length === 0 && el.textContent?.trim() === 'NEEDS BACKEND') (el as HTMLElement).style.display = 'none';
+    }
+  });
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null)))));
   await page.evaluate(() => document.fonts.ready);
+}
+
+// ---- Template Studio.dc.html ------------------------------------------------------
+
+export interface StudioProtoProps {
+  persona?: 'manager' | 'reader';
+}
+
+function patchStudioHtml(src: string, props: StudioProtoProps): string {
+  let s = src;
+  const q = '&quot;';
+  const setDefault = (prop: string, from: string, to: string): void => {
+    const needle = `${q}${prop}${q}:{`;
+    const at = s.indexOf(needle);
+    if (at < 0) throw new Error(`prototype prop ${prop} not found`);
+    const end = s.indexOf('}', at);
+    const seg = s.slice(at, end).replace(`${q}default${q}:${from}`, `${q}default${q}:${to}`);
+    s = s.slice(0, at) + seg + s.slice(end);
+  };
+  // showAnnotations=false → no dashed NEEDS BACKEND tags (handoff "Don't build").
+  setDefault('showAnnotations', 'true', 'false');
+  if (props.persona) setDefault('persona', `${q}manager${q}`, `${q}${props.persona}${q}`);
+  // Drop the prototype-only Handoff page from the rail.
+  s = s.replace(",['Handoff',[['spec','Components & questions',IC2.spec]]]", '');
+  return s;
+}
+
+/**
+ * Opens Template Studio.dc.html (library or Studio) on the synthetic origin and
+ * captures its logic instance as `window.__pi` (protoState / protoCall work on it).
+ */
+export async function openStudioProto(page: Page, props: StudioProtoProps = {}, hash = ''): Promise<void> {
+  await page.route(`${ORIGIN}/**`, async (route) => {
+    const name = decodeURIComponent(new URL(route.request().url()).pathname.slice(1));
+    const buf = await readFile(resolve(DIR, name));
+    if (name.endsWith('.html')) {
+      await route.fulfill({ body: patchStudioHtml(buf.toString('utf8'), props), contentType: 'text/html; charset=utf-8' });
+    } else {
+      await route.fulfill({ body: buf, contentType: name.endsWith('.js') ? 'text/javascript' : 'application/octet-stream' });
+    }
+  });
+  await page.goto(`${ORIGIN}/Template%20Studio.dc.html${hash ? `#${hash}` : ''}`);
+  await page.waitForFunction(() => document.querySelector('nav[aria-label="Platform admin"]') !== null && document.fonts.status === 'loaded', null, { timeout: 30_000 });
+  await page.waitForFunction(() => {
+    const w = window as unknown as { __pi?: unknown };
+    const el = document.querySelector('nav[aria-label="Platform admin"]');
+    if (!el) return false;
+    const key = Object.keys(el).find((k) => k.startsWith('__reactFiber$'));
+    if (!key) return false;
+    type F = { return: F | null; stateNode: { logic?: { state?: { tpls?: unknown } } } | null };
+    let f = (el as unknown as Record<string, F>)[key] ?? null;
+    while (f) {
+      const logic = f.stateNode && f.stateNode.logic;
+      if (logic && logic.state && logic.state.tpls) {
+        w.__pi = logic;
+        return true;
+      }
+      f = f.return;
+    }
+    return false;
+  });
+  await settle(page);
 }

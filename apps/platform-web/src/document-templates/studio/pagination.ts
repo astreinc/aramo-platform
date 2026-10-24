@@ -14,12 +14,20 @@ export function estimateBlockHeight(text: string): number {
   return BLOCK_PX + Math.ceil(text.length / CHARS_PER_LINE) * LINE_PX;
 }
 
-/** Group block indices into pages. Always at least one (possibly empty) page. */
-export function paginate(texts: readonly string[]): number[][] {
+/** The gap the design adds under each measured block. */
+export const MEASURED_GAP_PX = 12;
+
+/**
+ * Group block indices into pages. Always at least one (possibly empty) page. Like the
+ * design, a block's height is its MEASURED editor height plus 12px when the editor's
+ * blocks were measured (one height per block); otherwise it is estimated from its text.
+ */
+export function paginate(texts: readonly string[], measured?: readonly number[] | null): number[][] {
   const pages: number[][] = [[]];
   let h = FIRST_PAGE_OFFSET_PX;
+  const useMeasured = measured != null && measured.length === texts.length;
   texts.forEach((t, i) => {
-    const bh = estimateBlockHeight(t);
+    const bh = useMeasured ? (measured[i] as number) + MEASURED_GAP_PX : estimateBlockHeight(t);
     const cur = pages[pages.length - 1] as number[];
     if (h + bh > PAGE_BODY_PX && cur.length > 0) {
       pages.push([i]);

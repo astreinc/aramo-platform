@@ -148,7 +148,7 @@ export function StudioTopBar(p: StudioTopBarProps) {
               aria-disabled={!r.ready}
               onClick={p.onPublish}
             >
-              Publish v{p.nextVersion}…
+              Publish {`v${p.nextVersion}`}…
             </Button>
           </>
         ) : null}
@@ -178,7 +178,7 @@ export function StudioTopBar(p: StudioTopBarProps) {
                 <span className="pws-more__grow">Keyboard shortcuts</span>
                 <span className="pws-more__kbd">?</span>
               </Button>
-              <div className="pws-more__off" aria-disabled="true" title="PDF download isn't available yet">
+              <div role="menuitem" className="pws-more__off" aria-disabled="true" title="PDF download isn't available yet">
                 Download as PDF
               </div>
             </div>

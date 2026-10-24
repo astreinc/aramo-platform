@@ -33,8 +33,15 @@ export default defineConfig({
     //                      rasterisation noise stays under it);
     //   maxDiffPixels 25   at most 25 such pixels in the whole frame — a moved,
     //                      missing or recoloured element (a 1px-shifted word is
-    //                      ≥100 px) always fails. The suite runs pixel-exact
-    //                      today (PW_STRICT=1 → maxDiffPixels 0 for diagnosis).
+    //                      ≥100 px) always fails. PW_STRICT=1 → maxDiffPixels 0
+    //                      for diagnosis.
+    // Glyph rasterisation varies run to run under machine load (measured 61–255
+    // scattered glyph-edge pixels, no layout shift). Lead ruling 2026-10-24: the
+    // visual project retries a failed comparison up to twice, so random noise
+    // clears while a real difference fails all three attempts. A state whose
+    // text rasterises differently on EVERY run (the prototype and the build
+    // split text into different runs) carries a documented per-state
+    // `aaAllowance` (see e2e/visual/DIVERGENCES.md); nothing else is loosened.
     toHaveScreenshot: { threshold: 0.2, maxDiffPixels: 25, animations: 'disabled', caret: 'hide', scale: 'css' },
   },
   reporter: [['list'], ['html', { open: 'never', outputFolder: '../../dist/e2e/platform-web/report' }]],
@@ -51,7 +58,7 @@ export default defineConfig({
     viewport: { width: 1440, height: 900 },
   },
   projects: [
-    { name: 'visual', testMatch: /visual\/.*\.spec\.ts$/ },
+    { name: 'visual', testMatch: /visual\/.*\.spec\.ts$/, retries: 2 },
     { name: 'a11y', testMatch: /a11y\/.*\.spec\.ts$/ },
     { name: 'keyboard', testMatch: /keyboard\/.*\.spec\.ts$/ },
     { name: 'responsive', testMatch: /responsive\/.*\.spec\.ts$/ },

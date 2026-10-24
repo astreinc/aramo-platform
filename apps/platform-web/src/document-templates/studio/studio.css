@@ -34,6 +34,9 @@
   --pws-overlay-right-shadow: -12px 0 40px rgba(15, 25, 40, 0.18);
   --pws-float-hover: rgba(255, 255, 255, 0.14);
   --pws-float-rule: rgba(255, 255, 255, 0.2);
+  /* Chromium's disabled-button text colour: the design's disabled buttons set
+     no colour of their own, so they render it (under their .5 opacity). */
+  --pws-ua-disabled-ink: rgba(16, 16, 16, 0.3);
   --pws-top-h: 56px;
   --pws-left-w: 272px;
   --pws-right-w: 328px;
@@ -122,6 +125,7 @@
 }
 .pws-btn34:disabled {
   opacity: 0.5;
+  color: var(--pws-ua-disabled-ink);
   cursor: default;
 }
 .pws-btn34--dark {
@@ -220,6 +224,11 @@
   font-size: var(--pw-fs-12);
 }
 
+/* The design's 20px pills are flex items of their row: the wrapper is a flex
+   box so the pill's line is exactly 20px (an inline pill makes it 20.5px). */
+.pws-pill20 {
+  display: inline-flex;
+}
 .pws-pill20 .rc-pill {
   height: 20px;
   padding: 0 8px;
@@ -288,7 +297,8 @@
   min-width: 0;
   height: var(--pws-top-h);
   padding: 0 16px 0 18px;
-  box-sizing: border-box;
+  /* The design's header is content-box: 56px plus its 1px bottom rule. */
+  box-sizing: content-box;
   border-bottom: 1px solid var(--pw-line);
   background: var(--pw-surface);
 }
@@ -417,7 +427,8 @@ a.pws-top__crumb:hover {
   z-index: 90;
   width: 250px;
   padding: 6px;
-  box-sizing: border-box;
+  /* Content-box, as in the design: 250px plus padding and border. */
+  box-sizing: content-box;
   border: 1px solid var(--pw-line);
   border-radius: var(--pw-r-menu);
   background: var(--pw-surface);
@@ -537,9 +548,20 @@ a.pws-top__crumb:hover {
   background: var(--pw-surface);
 }
 .pws-left {
+  /* A z-indexed grid item (a stacking context), as in the design: its 1px rule
+     paints over the column next to it, which the preview's overflowing page
+     would otherwise cover. */
+  z-index: 75;
+  /* The design's panels are content-box: the 272 / 328 width excludes the 1px
+     rule, so each panel is 1px wider than its grid column (the left one's rule
+     sits under the canvas; the right one's runs off the viewport edge). */
+  box-sizing: content-box;
+  width: var(--pws-left-w);
   border-right: 1px solid var(--pw-line);
 }
 .pws-right {
+  box-sizing: content-box;
+  width: var(--pws-right-w);
   border-left: 1px solid var(--pw-line);
 }
 .pws-left--overlay,
@@ -579,7 +601,8 @@ a.pws-top__crumb:hover {
   min-width: 16px;
   height: 16px;
   padding: 0 4px;
-  box-sizing: border-box;
+  /* Content-box, as in the design: min-width excludes the 4px padding. */
+  box-sizing: content-box;
   place-items: center;
   border-radius: 8px;
   background: var(--pw-danger);
@@ -732,7 +755,10 @@ a.pws-top__crumb:hover {
   white-space: nowrap;
 }
 .pws-tb__sep {
-  flex: none;
+  /* Shrinkable, as in the design: the toolbar overflows its scroller at 1440,
+     so the design's flex items shrink to their min-content (a rule to 0px, a
+     32px toggle to 30px). */
+  flex: 0 1 auto;
   width: 1px;
   height: 20px;
   margin: 0 4px;
@@ -740,7 +766,7 @@ a.pws-top__crumb:hover {
 }
 .pws-tb__icon,
 .pws-tb__fmt {
-  flex: none;
+  flex: 0 1 auto;
   height: 30px;
   min-width: 30px;
   border: 1px solid transparent;
@@ -751,10 +777,13 @@ a.pws-top__crumb:hover {
   cursor: pointer;
 }
 .pws-tb__icon {
-  display: inline-grid;
+  /* A UA button, as in the design: the 16px icon sits inline on the label's
+     baseline (2px above the box centre), not grid-centred. */
+  display: inline-block;
   width: 32px;
-  place-items: center;
+  padding: 1px 6px;
   color: var(--pw-ink-2);
+  font-size: var(--pw-fs-ua-button);
 }
 .pws-tb__icon--auto {
   width: auto;
@@ -767,6 +796,10 @@ a.pws-top__crumb:hover {
 .pws-tb__icon:disabled {
   opacity: 0.4;
   cursor: default;
+}
+/* Undo / redo carry no disabled look in the design (it never dims them). */
+.pws-tb__hist:disabled {
+  opacity: 1;
 }
 .pws-tb__fmt {
   font-size: var(--pw-fs-13-5);
@@ -910,6 +943,8 @@ a.pws-top__crumb:hover {
 }
 .pws-page__h1 {
   margin: 0 0 18px;
+  /* The design's version-view title keeps the normal line height. */
+  line-height: normal;
   font-size: var(--pw-fs-24);
   font-weight: 700;
   letter-spacing: var(--pw-tracking-tight);
@@ -993,6 +1028,8 @@ a.pws-top__crumb:hover {
   white-space: nowrap;
 }
 .pws-blk {
+  /* Content-box, as in the design: min-height excludes the 2px padding. */
+  box-sizing: content-box;
   min-height: 1.4em;
   margin-right: -6px;
   margin-left: -6px;
@@ -1153,6 +1190,11 @@ a.pws-top__crumb:hover {
   color: #ffffff;
   font-family: var(--pw-font);
   font-size: var(--pw-fs-13);
+  /* I and U are 600 in the design, B is 800. */
+  font-weight: 600;
+}
+.pws-float__fmt.pws-tb__fmt--b {
+  font-weight: 800;
 }
 .pws-float__fmt:hover,
 .pws-float__var:hover {
@@ -1173,6 +1215,8 @@ a.pws-top__crumb:hover {
 .pws-vp {
   position: fixed;
   z-index: 90;
+  /* Content-box, as in the design: 330px plus the 1px border. */
+  box-sizing: content-box;
   width: 330px;
   overflow: hidden;
   border: 1px solid var(--pw-line);
@@ -1192,6 +1236,8 @@ a.pws-top__crumb:hover {
   font-size: var(--pw-fs-13-5);
 }
 .pws-vp__list {
+  /* Content-box, as in the design: 300px of rows plus the 4px padding. */
+  box-sizing: content-box;
   max-height: 300px;
   padding: 4px;
   overflow-y: auto;
@@ -1242,7 +1288,8 @@ a.pws-top__crumb:hover {
   position: fixed;
   z-index: 90;
   padding: 6px;
-  box-sizing: border-box;
+  /* Content-box, as in the design: the 220 / 280px width plus padding and border. */
+  box-sizing: content-box;
   border: 1px solid var(--pw-line);
   border-radius: var(--pw-r-menu);
   background: var(--pw-surface);
@@ -1325,6 +1372,7 @@ a.pws-top__crumb:hover {
 
 .pws-vars__q {
   margin-bottom: 8px;
+  padding: 0 12px;
 }
 .pws-vars__groups {
   display: flex;
@@ -1624,6 +1672,7 @@ a.pws-top__crumb:hover {
 .pws-zbtn {
   width: 28px;
   height: 28px;
+  font-size: var(--pw-fs-ua-button);
   border: 1px solid var(--pw-line-2);
   border-radius: var(--pw-r-sm);
   background: var(--pw-surface);
@@ -1712,7 +1761,11 @@ a.pws-top__crumb:hover {
   border-radius: 3px;
   background: var(--pws-hl);
 }
-/* A variable with no sample value renders "[missing: key]" on the error tint. */
+/* A variable with no sample value renders "[missing: key]" on the error tint
+   (the pseudo-element carries the 2px padding; the empty span adds none). */
+.pws-pvpage__body .dt-sample:empty {
+  padding: 0;
+}
 .pws-pvpage__body .dt-sample:empty::before {
   padding: 0 2px;
   border-radius: 3px;
@@ -1735,6 +1788,12 @@ body:has(.pws-cmp) .tc-dialog__overlay {
   background: var(--pw-overlay);
 }
 .tc-dialog__content:has(.pws-cmp) {
+  /* Placed as in the design's overlay (a 20px-padded place-items:center grid):
+     centred when it fits, pinned to the 20px inset when 96vw is wider than the
+     room left (below 1000px), and with no transform. */
+  inset: 20px;
+  margin: auto;
+  transform: none;
   z-index: 101;
   display: grid;
   grid-template-columns: auto 1fr;
@@ -1752,10 +1811,13 @@ body:has(.pws-cmp) .tc-dialog__overlay {
   font-family: var(--pw-font);
 }
 .tc-dialog__content:has(.pws-cmp) .tc-dialog__title {
+  /* On the controls' first line (centred on the 34px selects), also when the
+     controls wrap to a second line below 1000px. */
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   margin: 0;
-  padding: 14px 0 14px 20px;
+  /* Centred on a 34px line, exactly as the design's flex line centres it. */
+  padding: calc(14px + (34px - 1lh) / 2) 0 14px 20px;
   border-bottom: 1px solid var(--pw-line);
   color: var(--pw-ink);
   font-size: var(--pw-fs-17);
@@ -1786,6 +1848,7 @@ body:has(.pws-cmp) .tc-dialog__overlay {
 .pws-cmp__swap {
   width: 34px;
   height: 34px;
+  font-size: var(--pw-fs-ua-button);
   border: 1px solid var(--pw-line-2);
   border-radius: var(--pw-r-md);
   background: var(--pw-surface);
@@ -1800,6 +1863,8 @@ body:has(.pws-cmp) .tc-dialog__overlay {
 .pws-cmp__stat {
   display: inline-flex;
   align-items: center;
+  /* The count and the label are separate flex items in the design, 5px apart. */
+  gap: 5px;
   height: 24px;
   padding: 0 9px;
   border-radius: var(--pw-r-pill);
@@ -1966,6 +2031,9 @@ body:has(.pws-cmp) .tc-dialog__overlay {
   font-size: var(--pw-fs-12-5);
 }
 .pws-dlg-live {
+  /* The design puts the live line 12px under the fields; it sits in the fields'
+     14px-gap grid here, so pull it up by the difference. */
+  margin-top: -2px;
   color: var(--pw-ink-2);
   font-size: var(--pw-fs-13);
   font-weight: 600;
@@ -1984,8 +2052,16 @@ body:has(.pws-keys) .tc-dialog__overlay {
   background: var(--pw-overlay);
 }
 .tc-dialog__content:has(.pws-keys) {
+  /* Content-box and centred without a transform, as in the design (a 520px
+     content box in a place-items:center grid); no flex gap under the title. */
   z-index: 111;
+  box-sizing: content-box;
+  inset: 0;
   width: min(520px, 94vw);
+  height: fit-content;
+  margin: auto;
+  gap: 0;
+  transform: none;
   padding: 20px 22px;
   border: none;
   border-radius: var(--pw-r-dialog);
@@ -2071,6 +2147,8 @@ body:has(.pws-keys) .tc-dialog__overlay {
   margin-bottom: 12px;
 }
 .pws-lib__q {
+  /* A UA input in the design: content-box, so 240px plus padding and border. */
+  box-sizing: content-box;
   width: 240px;
 }
 .pws-lib__count {
@@ -2111,7 +2189,8 @@ body:has(.pws-keys) .tc-dialog__overlay {
 .pws-lib__table td {
   padding: 13px 16px;
   border-bottom: 1px solid var(--pw-rule);
-  vertical-align: top;
+  /* The design's cells keep the UA's middle alignment. */
+  vertical-align: middle;
 }
 .pws-lib__row {
   cursor: pointer;
@@ -2128,6 +2207,11 @@ body:has(.pws-keys) .tc-dialog__overlay {
 }
 .pws-lib__wd {
   margin-top: 4px;
+}
+/* The design's 20px pill sits alone on its line, so the line is exactly 20px
+   (a middle-aligned pill makes it 20.5px). */
+.pws-lib__wd .pw-pill {
+  vertical-align: top;
 }
 .pws-lib__draft {
   color: var(--pw-faint);
@@ -2161,4 +2245,103 @@ body:has(.pws-keys) .tc-dialog__overlay {
   .pws-lib * {
     transition: none !important;
   }
+}
+
+/* Dialogs opened from the library or the Studio (Template Studio.dc.html): the
+   title carries no tracking (Platform Admin.dc.html's dialogs use -.01em). */
+body:has(.pws-lib, .pws-root) .tc-dialog__content:has(.pw-cd) .tc-dialog__title {
+  letter-spacing: normal;
+}
+/* …a field's helper comes before its counter (the console puts the counter first)… */
+body:has(.pws-lib, .pws-root) .pw-cd .pw-field__count {
+  order: 1;
+}
+/* …and the Change box's arrow is body text (14px), not the console's 16px. */
+body:has(.pws-lib, .pws-root) .pw-cd__arrow {
+  font-size: var(--pw-fs-14);
+}
+
+/* The library's empty state (Template Studio.dc.html): a bold (700) title. */
+.pws-lib__card .pw-empty__title {
+  font-weight: 700;
+}
+
+/* A block's editable region draws no outline (the design sets outline:none):
+   the selected block's ring and tint are its focus indicator. */
+.pws-root .pws-blk:focus-visible {
+  outline: none;
+}
+
+/* Properties (Template Studio.dc.html inspector): the Name input is a UA
+   content-box input (36px plus its border); the product-tag box is the Studio's
+   own, denser than the console's TagInput. */
+.pws-props__in {
+  box-sizing: content-box;
+  width: auto;
+}
+.pws-props .pw-field {
+  gap: 5px;
+}
+.pws-props .pw-field__label {
+  font-size: var(--pw-fs-12-5);
+}
+.pws-props .pw-taginput {
+  gap: 5px;
+  min-height: 0;
+  padding: 5px;
+}
+.pws-props .pw-taginput__tag {
+  gap: 3px;
+  padding: 2px 3px 2px 7px;
+  font-size: var(--pw-fs-11-5);
+}
+.pws-props .pw-taginput__input {
+  min-width: 70px;
+  height: 24px;
+  font-size: var(--pw-fs-12);
+}
+
+/* The block menu's rows (Template Studio.dc.html) are plain flex rows: the
+   label and the ⌥↑ / ✓ hint stretch to the row and sit on its first line. */
+.pws-menu--block .pws-menu__item {
+  align-items: normal;
+  gap: 0;
+}
+
+/* The {{ popover's search field draws no outline (the design sets
+   outline:none; the field sits flush under the popover's edge). */
+.pws-root .pws-vp__q:focus-visible {
+  outline: none;
+}
+
+/* Preview / version-view blocks as the design renders them: every block is its own
+   element (the first heading keeps its 16px top margin, the last paragraph its 10px
+   bottom margin) and a list is a UA list (40px indent, 14px margins, bullets). */
+.pws-pvpage__body .dt-doc h2:first-child {
+  margin-top: 16px;
+}
+.pws-page--ro .dt-doc h2:first-child {
+  margin-top: 18px;
+}
+.pws-pvpage__body .dt-doc p:last-child,
+.pws-page--ro .dt-doc p:last-child {
+  margin-bottom: 10px;
+}
+.pws-pvpage__body .dt-doc ul,
+.pws-pvpage__body .dt-doc ol,
+.pws-page--ro .dt-doc ul,
+.pws-page--ro .dt-doc ol {
+  margin: 14px 0;
+  padding-left: 40px;
+  list-style: revert;
+}
+.pws-pvpage__body .dt-doc li,
+.pws-page--ro .dt-doc li {
+  margin: 0;
+}
+
+/* Edit is unavailable to view-only operators; the design draws the segment
+   un-dimmed (the Studio stays in Preview), so it keeps its normal look. */
+.pws-top .pws-seg__item:disabled {
+  opacity: 1;
 }

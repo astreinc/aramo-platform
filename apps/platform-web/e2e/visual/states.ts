@@ -8,6 +8,7 @@ import { TENANT_STATES } from './states-tenants';
 import { PERSONAL_STATES } from './states-personal';
 import { SKILL_STATES } from './states-skills';
 import { MISC_STATES } from './states-misc';
+import { STUDIO_STATES } from './states-studio';
 
 export const STATES: readonly ScreenState[] = [
   ...SHELL_STATES,
@@ -15,4 +16,5 @@ export const STATES: readonly ScreenState[] = [
   ...PERSONAL_STATES,
   ...SKILL_STATES,
   ...MISC_STATES,
+  ...STUDIO_STATES,
 ];

@@ -14,7 +14,7 @@ export interface Rect {
   height: number;
 }
 
-export async function boxesOf(locators: readonly Locator[], toBottom: readonly boolean[] = [], textBox: readonly boolean[] = [], padRight: readonly number[] = [], padLeft: readonly number[] = [], padBottom: readonly number[] = []): Promise<Rect[]> {
+export async function boxesOf(locators: readonly Locator[], toBottom: readonly boolean[] = [], textBox: readonly boolean[] = [], padRight: readonly number[] = [], padLeft: readonly number[] = [], padBottom: readonly number[] = [], padTop: readonly number[] = []): Promise<Rect[]> {
   const out: Rect[] = [];
   const vh = locators.length > 0 ? (locators[0]!.page().viewportSize()?.height ?? 900) : 900;
   for (const [k, l] of locators.entries()) {
@@ -29,9 +29,10 @@ export async function boxesOf(locators: readonly Locator[], toBottom: readonly b
           })
         : await l.nth(i).boundingBox();
       if (b && b.width > 0 && b.height > 0) {
-        const y = Math.floor(b.y);
+        const pt = padTop[k] ?? 0;
+        const y = Math.floor(b.y) - pt;
         const pl = padLeft[k] ?? 0;
-        out.push({ x: Math.floor(b.x) - pl, y, width: Math.ceil(b.width) + 1 + pl + (padRight[k] ?? 0), height: toBottom[k] ? Math.max(0, vh - y) : Math.ceil(b.height) + 1 + (padBottom[k] ?? 0) });
+        out.push({ x: Math.floor(b.x) - pl, y, width: Math.ceil(b.width) + 1 + pl + (padRight[k] ?? 0), height: toBottom[k] ? Math.max(0, vh - y) : Math.ceil(b.height) + 1 + pt + (padBottom[k] ?? 0) });
       }
     }
   }

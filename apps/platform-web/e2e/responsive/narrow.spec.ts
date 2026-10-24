@@ -7,6 +7,7 @@
 
 import { expect, test } from '@playwright/test';
 
+import { studioMock } from '../fixtures/templates';
 import { openBuild, settleBuild } from '../support/build';
 import { STATES } from '../visual/states';
 
@@ -58,6 +59,28 @@ test('rail: expanded at 900px, collapsed below 900px', async ({ page }) => {
   await page.setViewportSize({ width: 600, height: 900 });
   await settleBuild(page);
   expect(Math.round((await rail.boundingBox())!.width)).toBe(64);
+  const pageScroll = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
+  expect(pageScroll).toBeLessThanOrEqual(0);
+});
+
+test('Template Studio sizes to the viewport at 900px: no page scroll, panels as overlays', async ({ page }) => {
+  await page.setViewportSize({ width: 900, height: 900 });
+  await openBuild(page, '/document-templates/dt_01J5OFFR', studioMock());
+  const r = await page.evaluate(() => {
+    const doc = document.scrollingElement as HTMLElement;
+    const root = document.querySelector('.pws-root')!.getBoundingClientRect();
+    return { x: doc.scrollWidth - doc.clientWidth, y: doc.scrollHeight - doc.clientHeight, bottom: root.bottom, right: root.right };
+  });
+  expect(r.x, 'horizontal page scroll').toBeLessThanOrEqual(0);
+  expect(r.y, 'vertical page scroll (the Studio scrolls inside its panes)').toBeLessThanOrEqual(0);
+  expect(Math.round(r.bottom)).toBe(900);
+  expect(Math.round(r.right)).toBe(900);
+  // Below 1280 / 1100 the outline and the inspector start closed and open as overlays.
+  await expect(page.getByRole('complementary', { name: 'Template structure' })).toHaveCount(0);
+  await expect(page.getByRole('complementary', { name: 'Inspector' })).toHaveCount(0);
+  await page.getByRole('button', { name: 'Toggle inspector' }).dispatchEvent('click');
+  const insp = page.getByRole('complementary', { name: 'Inspector' });
+  await expect(insp).toHaveCSS('position', 'fixed');
   const pageScroll = await page.evaluate(() => document.documentElement.scrollWidth - document.documentElement.clientWidth);
   expect(pageScroll).toBeLessThanOrEqual(0);
 });

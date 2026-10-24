@@ -132,7 +132,7 @@ function VariablesTab({ catalog, readiness, editable, onInsert, drag }: StudioIn
       </div>
       {unknown.length > 0 ? (
         <div className="pws-vars__unknown" role="alert">
-          Unknown in this draft:{' '}
+          {'Unknown in this draft: '}
           {unknown.map((k) => (
             <span key={k} className="pws-mono">
               {k}{' '}
@@ -181,7 +181,7 @@ function VariablesTab({ catalog, readiness, editable, onInsert, drag }: StudioIn
                       e.g. <span className="pws-vcard__sample">{v.sample}</span>
                     </span>
                   ) : null}
-                  {used > 0 ? <span className="pws-vcard__used">{used}× in draft</span> : null}
+                  {used > 0 ? <span className="pws-vcard__used">{`${used}× in draft`}</span> : null}
                 </span>
               </div>
             );
@@ -223,7 +223,7 @@ function PropertiesTab(props: StudioInspectorProps) {
         <span className="pws-props__l">Name</span>
         <Input
           unstyled
-          className="pws-in pws-in--36"
+          className="pws-in pws-in--36 pws-props__in"
           value={name}
           disabled={!canManage}
           maxLength={NAME_MAX}

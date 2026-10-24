@@ -312,6 +312,11 @@
   background: var(--pw-surface);
   backdrop-filter: none;
 }
+/* The template library's header (Template Studio.dc.html) is content-box: 56px
+   plus its 1px rule, where the console's (Platform Admin.dc.html) is 56px in all. */
+.pw-shell--library .rc-topbar {
+  box-sizing: content-box;
+}
 
 .pw-crumbs {
   display: flex;
@@ -805,30 +810,4 @@ body:has(.pw-cmdk) .tc-dialog__overlay {
   gap: 10px;
   flex-wrap: wrap;
   margin: 14px 0;
-}
-
-/* DOC-TEMPLATE-LIB-1 T-2 — template content (variables as chips, preview samples
-   highlighted). Minimal until T-4 extracts libs/document-templates-web. */
-.pw-dt-doc {
-  border: 1px solid var(--rc-border, #d0d5dd);
-  border-radius: 8px;
-  padding: 16px 20px;
-  background: var(--rc-surface, #ffffff);
-  line-height: 1.5;
-}
-.pw-dt-chip {
-  display: inline-block;
-  padding: 0 6px;
-  border-radius: 4px;
-  font-size: 0.85em;
-  border: 1px solid var(--rc-border, #d0d5dd);
-  background: var(--rc-surface-2, #f2f4f7);
-}
-.pw-dt-sample {
-  background: var(--rc-surface-2, #f2f4f7);
-  border-bottom: 1px dashed var(--rc-border, #d0d5dd);
-}
-.pw-dt-source {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.85rem;
 }

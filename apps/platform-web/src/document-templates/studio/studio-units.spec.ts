@@ -191,6 +191,13 @@ describe('pagination — client-estimated A4 breaks', () => {
     expect(pages[0]).toHaveLength(10); // 70 + 10 × 76 = 830 ≤ 860
     expect(pages.flat()).toHaveLength(20);
   });
+  it('uses the measured editor heights (+12px each) when there is one per block, as the design does', () => {
+    // 70 + 3 × (300 + 12) = 1006 > 860: the third block starts page 2.
+    expect(paginate(['a', 'b', 'c'], [300, 300, 300])).toEqual([[0, 1], [2]]);
+    // A measurement for a different block list is ignored (estimate from text).
+    expect(paginate(['a', 'b', 'c'], [300, 300])).toEqual([[0, 1, 2]]);
+    expect(paginate(['a'], null)).toEqual([[0]]);
+  });
   it('zoom 60–150 in steps of 10', () => {
     expect(zoomIn(150)).toBe(150);
     expect(zoomIn(100)).toBe(110);

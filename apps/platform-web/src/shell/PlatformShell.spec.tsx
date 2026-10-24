@@ -263,9 +263,11 @@ describe('Template Studio route (handoff §10.2)', () => {
     expect(screen.queryByRole('button', { name: 'Search tenants, skills, templates ⌘K' })).toBeNull();
   });
 
-  it('keeps the shell top bar on the template library', async () => {
+  it('keeps the shell top bar on the template library, with the Studio file frame', async () => {
     const { container } = renderShell({ path: '/document-templates' });
     await waitFor(() => expect(container.querySelector('.pw-crumbs')).not.toBeNull());
     expect(container.querySelector('.pw-shell--studio')).toBeNull();
+    expect(container.querySelector('.pw-shell--library')).not.toBeNull();
+    expect(screen.getByText('Template changes apply to every tenant that uses the default')).toBeInTheDocument();
   });
 });

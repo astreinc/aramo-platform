@@ -39,7 +39,7 @@ import './platform-shell.css';
 export interface PlatformShellProps {
   readonly session: Session;
   readonly children: ReactNode;
-  /** The environment-bar context line. Default: studio on /document-templates/:id (the Studio), else console. */
+  /** The environment-bar context line. Default: studio on /document-templates and /document-templates/:id (Template Studio.dc.html), else console. */
   readonly environment?: EnvironmentContext;
   /** Test seam: the /platform/me loader. */
   readonly loadMe?: LoadMe;
@@ -121,6 +121,10 @@ function ShellFrame({ session, environment, paletteSources, children }: ShellFra
   // The Template Studio (/document-templates/:id) is full-bleed with its own top
   // bar (breadcrumb + account menu), so the shell top bar is not rendered there.
   const isStudio = /^\/document-templates\/[^/]+\/?$/.test(pathname);
+  // The template library (/document-templates) is drawn in Template Studio.dc.html,
+  // not Platform Admin.dc.html: its environment line is the Studio's and its top
+  // bar is the Studio file's content-box header (56px + the 1px rule).
+  const isLibrary = /^\/document-templates\/?$/.test(pathname);
 
   // ⌘K / Ctrl+K opens the palette (⌘\ is AppShell's rail toggle).
   useEffect(() => {
@@ -214,12 +218,12 @@ function ShellFrame({ session, environment, paletteSources, children }: ShellFra
   );
 
   return (
-    <div className={isStudio ? 'pw-shell pw-shell--studio' : 'pw-shell'}>
+    <div className={isStudio ? 'pw-shell pw-shell--studio' : isLibrary ? 'pw-shell pw-shell--library' : 'pw-shell'}>
       <EnvironmentBar
         email={identity.email}
         tenant={identity.tenant}
         role={identity.role}
-        context={environment ?? (isStudio ? 'studio' : 'console')}
+        context={environment ?? (isStudio || isLibrary ? 'studio' : 'console')}
       />
       <AppShell rail={rail} topBar={isStudio ? undefined : topBar}>
         {children}

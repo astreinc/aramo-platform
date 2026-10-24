@@ -122,6 +122,8 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
   const [pvError, setPvError] = useState<string | null>(null);
   const [highlight, setHighlight] = useState(true);
   const [zoom, setZoom] = useState(100);
+  // The editor's block heights as Preview opens: page breaks follow them (handoff §10.7).
+  const [blockHeights, setBlockHeights] = useState<number[] | null>(null);
 
   const [width, setWidth] = useState(viewportWidth);
   const [leftOpen, setLeftOpen] = useState(() => viewportWidth() >= LEFT_BP);
@@ -311,6 +313,8 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
 
   // ── preview (saves first) ─────────────────────────────────────────────
   const enterPreview = useCallback(async () => {
+    const editors = Array.from(document.querySelectorAll<HTMLElement>('.pws-doc [data-block-id]'));
+    if (editors.length > 0) setBlockHeights(editors.map((el) => el.offsetHeight));
     setMode('preview');
     setViewVersionId(null);
     if (!canManage) return;
@@ -663,7 +667,10 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
                     {versionPill(viewVersion).label}
                   </Pill>
                 </span>
-                Published {formatDate(viewVersion.activated_at ?? viewVersion.created_at)} · read only
+                {/* Three flex items, 10px apart, as in the design's bar. */}
+                <span>Published</span>
+                <span>{formatDate(viewVersion.activated_at ?? viewVersion.created_at)}</span>
+                <span>· read only</span>
                 <span className="pws-vbar__acts">
                   <Button unstyled className="pws-btn28" onClick={() => openCompare(viewVersion.id)}>
                     Compare with draft
@@ -685,7 +692,7 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
                   </Button>
                 </span>
               </div>
-              <div className="pws-doc__scroll pws-doc__scroll--version">
+              <div className="pws-doc__scroll pws-doc__scroll--version" tabIndex={0} role="region" aria-label={`v${viewVersion.version_number} content`}>
                 <div className="pws-page pws-page--ro">
                   <h1 className="pws-page__h1">{viewDoc?.title ?? ''}</h1>
                   {viewVersion !== null && htmlContentOf(viewVersion) !== null ? (
@@ -709,6 +716,7 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
                 onHighlight={setHighlight}
                 zoom={zoom}
                 onZoom={setZoom}
+                blockHeights={canManage ? blockHeights : null}
               />
             </section>
           ) : (

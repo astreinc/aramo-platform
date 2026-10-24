@@ -5,6 +5,7 @@ import type { Page } from '@playwright/test';
 
 import { mockApi, type MockOptions, type MockTracker } from '../fixtures/mock-api';
 import { NOW_ISO } from '../fixtures/tenants';
+import { loadFonts } from './fonts';
 
 export async function openBuild(page: Page, path: string, opts: MockOptions & { railCollapsed?: boolean } = {}): Promise<void> {
   await page.clock.setFixedTime(new Date(NOW_ISO));
@@ -30,6 +31,6 @@ export async function settleBuild(page: Page): Promise<void> {
     await page.waitForTimeout(50);
     quiet = tracker && tracker.pending() > 0 ? 0 : quiet + 1;
   }
-  await page.evaluate(() => document.fonts.ready);
+  await loadFonts(page);
   await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null)))));
 }

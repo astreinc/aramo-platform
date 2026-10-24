@@ -314,8 +314,8 @@ describe('TemplateStudio (manage)', () => {
     await screen.findByRole('textbox', { name: 'Heading' });
     fireEvent.click(screen.getByRole('button', { name: 'Compare' }));
     const cmp = await screen.findByRole('dialog', { name: 'Compare versions' });
-    expect(within(cmp).getByText('1 Changed')).toBeInTheDocument();
-    expect(within(cmp).getByText('1 Added')).toBeInTheDocument();
+    expect(cmp.querySelector('.pws-cmp__stat--chg')).toHaveTextContent('1 Changed');
+    expect(cmp.querySelector('.pws-cmp__stat--add')).toHaveTextContent('1 Added');
     fireEvent.click(within(cmp).getByRole('button', { name: 'Close' }));
 
     fireEvent.click(screen.getByRole('tab', { name: 'Versions' }));

@@ -67,7 +67,7 @@ export function StudioLeftPanel(props: StudioLeftPanelProps) {
         {tab === 'outline' ? (
           <>
             <div className="pws-outline__stats">
-              {props.headings} headings · {blocks.length} blocks · {props.variables} variables
+              {`${props.headings} headings · ${blocks.length} blocks · ${props.variables} variables`}
             </div>
             {blocks.map((b, i) => {
               const isH = b.kind === 'h2';

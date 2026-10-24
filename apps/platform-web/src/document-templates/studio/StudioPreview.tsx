@@ -1,5 +1,5 @@
 import { Button, Checkbox } from '@aramo/fe-foundation';
-import { SafeDoc, studioPreviewParts, type BindingMap } from '@aramo/document-templates-web';
+import { SafeDoc, studioPlainText, studioPreviewParts, type BindingMap } from '@aramo/document-templates-web';
 
 import { EmptyState } from '../../components/EmptyState';
 import type { SamplePreview } from '../document-templates-api';
@@ -33,6 +33,8 @@ export interface StudioPreviewProps {
   readonly onHighlight: (on: boolean) => void;
   readonly zoom: number;
   readonly onZoom: (z: number) => void;
+  /** The editor's block heights, measured as Preview opened (null: estimate from text). */
+  readonly blockHeights?: readonly number[] | null;
 }
 
 /** The organization line of the page header: the preview's legal-name sample, if any. */
@@ -45,7 +47,12 @@ export function orgNameOf(p: SamplePreview): string {
 export function StudioPreview(props: StudioPreviewProps) {
   const { source } = props;
   const parts = source !== null ? studioPreviewParts(source.html) : [];
-  const pages = paginate(parts.map((p) => p.text));
+  // Stored content (the :read view) estimates with each variable as its {{key}} token, as
+  // the design does; a sample render estimates with the sample values.
+  const pages = paginate(
+    parts.map((p) => (source?.mode === 'content' ? studioPlainText(p.html) : p.text)),
+    props.blockHeights,
+  );
   const count = source !== null ? pages.length : 0;
   return (
     <>
@@ -64,21 +71,22 @@ export function StudioPreview(props: StudioPreviewProps) {
           Highlight variables
         </label>
         <span className="pws-pvbar__count">
-          {count} {count === 1 ? 'page' : 'pages'} · A4
+          {`${count} ${count === 1 ? 'page' : 'pages'}`} · A4
         </span>
         <span className="pws-pvbar__zoom">
           <Button unstyled className="pws-zbtn" aria-label="Zoom out" onClick={() => props.onZoom(zoomOut(props.zoom))}>
             −
           </Button>
           <span className="pws-pvbar__z" aria-live="polite">
-            {props.zoom}%
+            {`${props.zoom}%`}
           </span>
           <Button unstyled className="pws-zbtn" aria-label="Zoom in" onClick={() => props.onZoom(zoomIn(props.zoom))}>
             +
           </Button>
         </span>
       </div>
-      <div className="pws-pv">
+      {/* Keyboard-scrollable (WCAG 2.1.1): the pages scroll in this region. */}
+      <div className="pws-pv" tabIndex={0} role="region" aria-label="Preview pages">
         {props.error !== null ? (
           <div role="alert" className="pw-alert pw-alert--error pws-pv__err">
             {props.error}

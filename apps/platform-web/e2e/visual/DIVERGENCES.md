@@ -1,7 +1,8 @@
 # PLATFORM-UX-1 H-1 — visual parity: masks and typed divergences
 
-The parity suite (`parity.spec.ts`) compares the build against the design file
-(`doc/design-reference/platform-admin/platform/Platform Admin.dc.html`) at
+The parity suite (`parity.spec.ts`) compares the build against the design files
+(`doc/design-reference/platform-admin/platform/Platform Admin.dc.html`; the template
+library and the Studio against `Template Studio.dc.html`, `states-studio.ts`) at
 1440×900 and 900×900. A region is masked ONLY for a sanctioned divergence listed
 here. The same solid `#FF00FF` rectangle is painted into the reference (at
 capture, from the design-file locator, plus 1px of slack) and into the build
@@ -33,6 +34,18 @@ writing every unmasked screen-state is pixel-exact under `threshold 0.2`
 | DV-16 | Proposals: no evidence line (the proposal DTO has none); the breadcrumb ends in the proposal | Data gap (R-13); directive §6 F-2 ("breadcrumb ends in the entity name") | skills-proposals, skills-proposal-relationship, skills-proposal-409 |
 | DV-17 | Merge dialog consequence copy | The real merge is a soft merge (`skill-registry.service.ts`: the loser goes inactive and points at the winner; aliases, versions and relationships are not moved), so the design's "move to the winner" would be untrue | skill-merge-dialog |
 | DV-18 | Activate dialog consequence copy reworded | Directive R-18: the design's word is banned by `scripts/verify-vocabulary.sh` (`TIER2_TERMS_REGEX`) | matching-activate-dialog |
+| DV-20 | Rail icons for Tenants, Review queue and Platform admins: Template Studio.dc.html draws them in an older style; the shell rail is Platform Admin.dc.html's (one rail for the whole console) | The two design files disagree; the console shell (Platform Admin.dc.html §3.3) wins. Lead to confirm | every lib-* and studio-* state |
+| DV-21 | Library top bar: the console top bar (crumb weight 500, the ⌘K search beside the PLATFORM marker) where the Studio file's library header has a plain crumb link and no search | Handoff §3.4 (⌘K on every console page); `/document-templates` is a console route (R-12). Lead to confirm | lib, lib-filtered, lib-empty, lib-viewonly, lib-create, lib-create-copy |
+| DV-22 | Library Draft column: no block count under "Open draft" / "No draft" (at 900px the shorter cells re-flow the auto table layout, so the table is masked to the bottom) | Data gap: the list DTO carries no content (R-13; known F-9 divergence) | lib, lib-filtered, lib-create, lib-create-copy |
+| DV-23 | Reader persona identity and rail: the Studio file keeps the operator's identity and lists every page for its `reader` persona; the build shows the auditor's own identity fallback and the rail filtered by permission | Prototype simplification vs directive R-6 / handoff §3.3 | lib-viewonly, studio-viewonly |
+| DV-24 | Library view-only note: the build shows the ViewOnlyNote above the filters (the table moves down) | Handoff §16.3 ("an auditor sees view-only notes"); the Studio file's library has none | lib-viewonly |
+| DV-25 | Sections tab: the designed empty state ("No sections yet…") instead of the section library | Data gap: no shared section library (R-13; known F-9 divergence) | studio-sections |
+| DV-26 | Read-only renders (version view, `:read` preview) draw variables as the shared SafeDoc label chips, not the `{{key}}` chip text, so the document body re-flows | `libs/document-templates-web` SafeDoc is the only allowed HTML renderer (R-11); its exports stay byte-compatible (known F-9 divergence) | studio-version-view, studio-viewonly |
+| DV-27 | Preview footer: "Draft · vN" (the draft version number) instead of "Draft · rev N" (a session save counter) | The server has no save revision; the version number is the stable id (known F-9 divergence) | studio-preview, studio-preview-plain, studio-preview-zoom |
+| DV-28 | Preview "Long values" sample set is disabled | Data gap: the server has one sample set (R-13; known F-9 divergence) | studio-preview, studio-preview-plain, studio-preview-zoom, studio-viewonly |
+| DV-29 | Pending-withdrawal bar: no reason after "Takes effect …" | Data gap: the template DTO carries no withdrawal reason (known F-9 divergence) | studio-withdrawal-pending |
+| DV-30 | `:read` Studio panels describe the PUBLISHED version (outline, variable usage, checks, readiness pill) and the preview page header has no organization sample; the design file's describe the draft | Directive R-13 (`:read` sees the published version only; no sample render for `:read`) | studio-viewonly |
+| DV-31 | Unhighlighted preview: each sample value is its own span (shared SafeDoc), so the line's text is shaped per run (sub-pixel glyph differences, no layout shift) where the design file renders one text run | R-11 (SafeDoc is the only renderer; byte-compatible exports) | studio-preview-plain |
 
 ## States asserted on copy, not pixels
 
@@ -49,6 +62,10 @@ writing every unmasked screen-state is pixel-exact under `threshold 0.2`
 | — | Every image is taken at the top of the page with the pointer parked in the bottom-right corner (no hover), on both sides. |
 | — | The design file is served from disk through `page.route` on `http://proto.test/` rather than `file://`: its runtime fetches its own source, which Chromium refuses on `file://` (the onboarding funnel and the rail icons then never render). |
 | — | Prototype-only elements are removed through the file's own switches before render: `showAnnotations=false`, the Handoff nav group dropped from `NAV`, and the account menu's "Components & open questions" item hidden. |
+| — | Template Studio.dc.html (library + Studio, `support/proto.ts openStudioProto`): `showAnnotations=false`; the Handoff nav group dropped from `NAVS`; the dashed "NEEDS BACKEND" tags on the slash menu's disabled items (not gated by `showAnnotations`) hidden (R-13: never built). Every Studio state starts from the save state the file shows when a template is opened from the library (`openStudio()`: "Saved · —", rev 1), not its seeded "Saved · 14:52:08". |
+| — | Both sides load every web-font face and unicode subset before an image is taken (`support/fonts.ts`): `document.fonts.ready` alone can resolve before a late weight has loaded. The reference capture shoots until two consecutive frames are identical (as toHaveScreenshot does). |
+| — | The panel toggles at the ends of the formatting toolbar, and the Compare dialog's "Changes only" box, are activated with a dispatched click: a real click first scrolls the overflowing toolbar / the dialog, which the design file's state does not. The keyboard suite activates them with the keyboard. |
+| — | Studio fixtures (`fixtures/templates.ts`) port the file's VARS, DOC_TYPES and TPLS0 (with its draft / v3 / v2 / v1 content) into the real DTOs; the preview fixture renders samples as the server does (`htmlWithSamples`: an unknown key is an empty `data-sample` span). |
 
 ## Accessibility conflicts (design vs WCAG) — Lead ruling 2026-10-24
 
@@ -68,3 +85,14 @@ strict. The PO may overrule this at Gate 5.
 
 `PW_A11Y_DESIGN_CONFLICTS=allow` reports these two rules without failing; every
 other serious or critical finding still fails, and there are none.
+
+## Anti-aliasing allowances (directive §3: rasterisation only, no layout shift)
+
+Lead ruling 2026-10-24. The visual project retries a failed comparison up to twice
+(random glyph noise under machine load clears; a real difference fails all three).
+A state whose text rasterises differently on every run carries a per-state
+`aaAllowance`; the diff image must show glyph-edge pixels only.
+
+| ID | State | Allowance | Measured | Evidence |
+|---|---|---|---|---|
+| AA-01 | `studio-withdraw-dialog` | 160 px | 116 (900), 134 (1440) | diff = dialog title, field labels and live line glyph edges; boxes and positions identical |

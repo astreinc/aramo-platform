@@ -3,12 +3,13 @@
 // `nx run aramo-platform-web:e2e-visual-reference` (PW_CAPTURE_REFERENCE=1); the
 // images it writes are the committed baselines toHaveScreenshot compares against.
 
+import { writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
 import { test } from '@playwright/test';
 
 import { boxesOf, paint, saveRects } from '../support/masks';
-import { openProto, protoCall, protoState, settle } from '../support/proto';
+import { openProto, openStudioProto, protoCall, protoState, settle } from '../support/proto';
 import { VIEWPORTS } from './state-types';
 import { STATES } from './states';
 
@@ -32,7 +33,8 @@ for (const s of STATES) {
           }
         });
       }
-      await openProto(page, s.proto.props ?? {}, s.proto.hash ?? '');
+      if (s.proto.file === 'studio') await openStudioProto(page, s.proto.studio ?? {}, s.proto.hash ?? '');
+      else await openProto(page, s.proto.props ?? {}, s.proto.hash ?? '');
       if (s.proto.state) await protoState(page, s.proto.state);
       if (s.proto.call) await protoCall(page, s.proto.call);
       if (s.proto.act) await s.proto.act(page);
@@ -42,8 +44,16 @@ for (const s of STATES) {
       await page.mouse.move(vp.width - 1, vp.height - 1);
       if (s.blur) await page.evaluate(() => (document.activeElement as HTMLElement | null)?.blur());
       await settle(page);
-      const pm = (s.masks ?? []).filter((m) => m.proto);
-      const rects = await boxesOf(pm.map((m) => m.proto!(page)), pm.map((m) => m.toBottom === true), pm.map((m) => m.textBox === true), pm.map((m) => m.padRight ?? 0), pm.map((m) => m.padLeft ?? 0), pm.map((m) => m.padBottom ?? 0));
+      const pm = (s.masks ?? []).filter((m) => m.proto && (!m.viewport || m.viewport === vp.name));
+      const rects = await boxesOf(
+        pm.map((m) => m.proto!(page)),
+        pm.map((m) => m.toBottom === true),
+        pm.map((m) => m.textBox === true),
+        pm.map((m) => m.padRight ?? 0),
+        pm.map((m) => m.padLeft ?? 0),
+        pm.map((m) => m.padBottom ?? 0),
+        pm.map((m) => m.padTop ?? 0),
+      );
       // 1px of slack around each design-file region: the build's region is
       // measured from a different DOM and may round to the neighbouring pixel.
       for (const r of rects) {
@@ -54,7 +64,18 @@ for (const s of STATES) {
       }
       await saveRects(resolve(OUT, `${s.name}-${vp.name}.masks.json`), rects);
       await paint(page, rects);
-      await page.screenshot({ path: resolve(OUT, `${s.name}-${vp.name}.png`), animations: 'disabled', caret: 'hide', scale: 'css' });
+      // Like toHaveScreenshot on the build side: shoot until two consecutive
+      // frames are identical, so a transient raster (text drawn before the last
+      // compositing pass) never becomes the baseline.
+      let prev: Buffer | null = null;
+      let shot: Buffer = Buffer.alloc(0);
+      for (let i = 0; i < 10; i += 1) {
+        shot = await page.screenshot({ animations: 'disabled', caret: 'hide', scale: 'css' });
+        if (prev !== null && prev.equals(shot)) break;
+        prev = shot;
+        await page.waitForTimeout(100);
+      }
+      await writeFile(resolve(OUT, `${s.name}-${vp.name}.png`), shot);
     });
   }
 }

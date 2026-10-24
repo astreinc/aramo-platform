@@ -37,10 +37,25 @@ for (const s of STATES) {
         if (s.frozenCheck) await s.frozenCheck(page);
         return;
       }
-      const buildRects = await boxesOf((s.masks ?? []).map((m) => m.build(page)), (s.masks ?? []).map((m) => m.toBottom === true), (s.masks ?? []).map((m) => m.textBox === true));
+      const masks = (s.masks ?? []).filter((m) => !m.viewport || m.viewport === vp.name);
+      const buildRects = await boxesOf(
+        masks.map((m) => m.build(page)),
+        masks.map((m) => m.toBottom === true),
+        masks.map((m) => m.textBox === true),
+      );
       const protoRects = await loadRects(resolve(SHOTS, `${s.name}-${vp.name}.masks.json`));
       await paint(page, [...protoRects, ...buildRects]);
-      await expect(page).toHaveScreenshot(`${s.name}-${vp.name}.png`, process.env['PW_STRICT'] ? { maxDiffPixels: 0, ...(process.env['PW_THRESHOLD'] ? { threshold: Number(process.env['PW_THRESHOLD']) } : {}) } : {});
+      await expect(page).toHaveScreenshot(
+        `${s.name}-${vp.name}.png`,
+        process.env['PW_STRICT']
+          ? {
+              maxDiffPixels: 0,
+              ...(process.env['PW_THRESHOLD'] ? { threshold: Number(process.env['PW_THRESHOLD']) } : {}),
+            }
+          : s.aaAllowance !== undefined
+            ? { maxDiffPixels: s.aaAllowance }
+            : {},
+      );
     });
   }
 }
