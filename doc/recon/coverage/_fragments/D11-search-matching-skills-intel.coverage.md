@@ -1,17 +1,28 @@
 # D11 — Search, Matching, Skills & Intelligence (COVERAGE)
-> Baseline SHA 12330b0f5049c97f01022df0b190035933345212
+> Baseline SHA 680907fc06620845944794e0a529918c980f5124
+
+All commands run read-only against the commit (`git ls-tree` / `git grep` /
+`git show` at `680907fc`). `<D11 libs>` = `libs/{matching,skills-taxonomy,talent-embedding,conversation-intelligence,conversation-transcript,examination,reporting,metering}`.
+`<TI surface>` = `apps/talent-intelligence-service libs/{intelligence-core,intelligence-integration,intelligence-contracts,talent-intelligence,technical-screening}`.
 
 | surface | inspected | not_verified | method/command |
 |---|---|---|---|
-| D11 libs on disk | 8 | 0 | `ls -d libs/{matching,skills-taxonomy,talent-embedding,conversation-intelligence,conversation-transcript,examination,reporting,metering}` |
-| @Controller files in D11 libs | 4 | 0 | `grep -rl @Controller <D11 libs> --include='*.ts' \| grep -v /tests/ \| wc -l` → 4 (match-list, override, reporting, dashboard — all opened) |
-| @Injectable files in D11 libs | 28 | 19 | `grep -rl @Injectable <D11 libs> \| grep -v /tests/ \| wc -l` → 28; 9 load-bearing services opened line-by-line, remaining 19 confirmed present by grep only |
-| apps/api D11 controllers | 3 | 0 | opened examine.controller.ts, enterprise-search.controller.ts, skill-governance.controller.ts |
-| Prisma model decls in D11 schemas | 18 | 0 (field-level: 3) | `grep -rhE '^model ' <D11 schemas> \| wc -l` → 18; examination schema read in full, other 5 schemas enumerated at decl line only (field-level detail not read for 15 models) |
-| HTTP routes across D11 surface | 44 | 0 | reporting 16 + dashboard 1 + skill-governance 23 + examination 2 + examine 1 + enterprise-search 1; `grep -cE '@(Get\|Post\|Patch\|Delete)\('` per controller |
-| BullMQ processors (D11 lib+apps) | 4 | 0 | `grep -rl '@Processor(' libs/matching libs/skills-taxonomy apps/api/src/embedding apps/api/src/conversation-intelligence \| grep -v /tests/ \| wc -l` → 4 (matching, skill-canonicalization, talent-embedding, ci) |
-| Dark-gate env flags | 3 | 0 | `grep -rn 'EMBEDDING_PROCESSING_ENABLED\|CI_PROCESSING_ENABLED\|SKILL_CANONICAL_SHADOW_ENABLED' apps/api/src` — all three config files opened |
-| apps/api composition wiring of D11 modules | 8 | 0 | `grep -n 'MatchingModule\|ReportingModule\|SkillsTaxonomyModule\|ExaminationModule\|TalentEmbeddingModule\|ConversationIntelligenceModule' apps/api/src/app.module.ts` + sub-module files |
-| FE D11 surfaces (apps) | 5 | 5 (line-level) | `ls apps/ats-web/src \| grep -iE 'search\|report\|dashboard'` + `apps/platform-web/src/skills`; route wiring confirmed by grep of *-api.ts, component bodies not read line-by-line |
-| D11 lib migration dirs | 22 | 22 (contents) | `ls libs/<lib>/prisma/migrations` → examination 7, skills-taxonomy 6, conversation-intelligence 3, conversation-transcript 3, metering 2, talent-embedding 1, reporting 0, matching 0; dir counts only, migration SQL not read |
-| ADR / LOCKED anchors for D11 | 5 | 0 | ADR-0031, ADR-0029, ADR-0019 (rejected), ADR-0018, ADR-0015 opened/greped under `doc/adr/` |
+| D11 libs on disk | 8 | 0 | `git ls-tree --name-only 680907fc libs/ \| grep -E '^libs/(matching\|skills-taxonomy\|talent-embedding\|conversation-intelligence\|conversation-transcript\|examination\|reporting\|metering)$'` |
+| New intelligence libs/apps on disk (TI service + read seam + screening) | 6 | 0 | `git diff --name-status 12330b0f 680907fc -- apps libs \| grep '^A'` → `apps/talent-intelligence-service`, `libs/intelligence-core`, `libs/intelligence-integration`, `libs/intelligence-contracts`, `libs/talent-intelligence`, `libs/technical-screening` (module/index files opened; nx tags read from each `project.json`) |
+| @Controller files in D11 libs | 4 | 0 | `git grep -l @Controller 680907fc -- <D11 libs> \| grep -v /tests/ \| wc -l` → 4 (match-list, override, reporting, dashboard — all opened; unchanged) |
+| @Controller files in `<TI surface>` | 2 | 7 | `git grep -l @Controller 680907fc -- <TI surface> \| grep -vE 'spec\|/tests/' \| wc -l` → 9 (TI service controllers); ingest + references opened, the other 7 route-decls read by grep only |
+| @Injectable files in D11 libs | 10 | 20 | `git grep -l @Injectable 680907fc -- <D11 libs> \| grep -v /tests/ \| wc -l` → 30; 10 load-bearing services opened line-by-line, remaining 20 confirmed present by grep only |
+| @Injectable files in `<TI surface>` | 4 | 27 | same command over `<TI surface>` → 31; publisher handler, inbound sync, worker, profile-read opened at the cited lines; others listed only |
+| apps/api D11 controllers | 4 | 0 | opened examine.controller.ts, enterprise-search.controller.ts, skill-governance.controller.ts, matching-policy.controller.ts (new) |
+| apps/api intelligence / screening controllers | 2 | 0 | `apps/api/src/technical-screening/technical-screening.controller.ts` (2 controller classes, routes by grep) + `apps/api/src/integrations/intelligence/intelligence-events.controller.ts` opened |
+| Prisma model decls in D11 schemas | 20 | 0 (field-level: 5) | `for l in <D11 libs>; do git show 680907fc:$l/prisma/schema.prisma \| grep -E '^model '; done \| wc -l` → 20; examination schema read in full, MatchingPolicy models + CI run read field-level, others at decl line only |
+| Prisma model decls in TI / screening schemas | 36 | 36 (field-level) | `git show 680907fc:libs/intelligence-core/prisma/schema.prisma \| grep -c '^model '` → 26; `… libs/technical-screening/prisma/schema.prisma …` → 10; enumerated at decl line only |
+| HTTP routes across D11 surface | 47 | 0 | reporting 16 + dashboard 1 + skill-governance 23 + examination 2 + examine 1 + enterprise-search 1 + matching-policy 3 (new); `git show 680907fc:<controller> \| grep -cE '@(Get\|Post\|Patch\|Delete)\('` per controller |
+| HTTP routes on the new intelligence / screening surface | 21 | 28 | technical-screening 20 + intelligence-events 1 (routes read); TI service 28 handlers (sum of the same grep over the 9 TI controllers) — enumerated, guards read on 2 controllers only |
+| BullMQ processors (D11 lib+apps) | 4 | 0 | `git grep -l '@Processor(' 680907fc -- libs/matching libs/skills-taxonomy apps/api/src/embedding apps/api/src/conversation-intelligence \| grep -v /tests/ \| wc -l` → 4 (matching, skill-canonicalization, talent-embedding, ci; unchanged) |
+| Dark-gate env flags | 3 | 0 | `git grep -n 'EMBEDDING_PROCESSING_ENABLED\|CI_PROCESSING_ENABLED\|SKILL_CANONICAL_SHADOW_ENABLED' 680907fc -- apps/api/src` — all three config files opened; TI gates `INTELLIGENCE_SERVICE_URL`, `TI_CROSS_TENANT_READ_ENABLED`, `ATS_TALENT_EVENTS_DRAIN_ENABLED` read at the cited lines |
+| apps/api composition wiring of D11 modules | 12 | 0 | `git grep -n 'MatchingModule\|ReportingModule\|SkillsTaxonomyModule\|ExaminationModule\|TalentEmbeddingModule\|ConversationIntelligenceModule' 680907fc -- apps/api/src/app.module.ts` + sub-module files (8, unchanged) + `MatchingPolicyModule`, `TalentIntelligenceReadModule`, `IntelligenceIntegrationHttpModule`, `TechnicalScreeningApiModule` (4 new) |
+| FE D11 surfaces (apps) | 7 | 7 (line-level) | `git ls-tree --name-only 680907fc apps/ats-web/src/ \| grep -iE 'search\|report\|dashboard\|technical-screening'` (4) + `git ls-tree --name-only 680907fc apps/platform-web/src/ \| grep -iE 'skills\|matching'` (2) + submittal match lookup (1); route wiring confirmed by grep of *-api.ts, component bodies not read line-by-line |
+| D11 lib migration dirs | 2 | 18 (contents) | `git ls-tree -r --name-only 680907fc -- <lib>/prisma/migrations \| awk -F/ '{print $5}' \| grep '^2' \| sort -u \| wc -l` per lib → skills-taxonomy 7, examination 6, conversation-intelligence 3, conversation-transcript 2, metering 1, talent-embedding 1, reporting 0, matching 0 = 20; read: `20261023140000_matching_policy`, `20261016150000_inc3_a1_ci_screening_profile` |
+| TI / screening migration dirs | 0 | 6 (contents) | same command → intelligence-core 4, technical-screening 2; dir names only |
+| ADR / LOCKED anchors for D11 | 15 | 1 | ADR-0031, ADR-0029, ADR-0036 (new), ADR-0019 (rejected), ADR-0018, ADR-0015 under `doc/adr/`; canonical LOCKED read at the cited sections: ATI-SEP-1 + A1/A2/A3/A4, TIP-E2E ARCH-DELIVERY, INC-2, INC-3, INC-3-A1 (Part D, §9) = 6 ADRs + 9 LOCKED; TR-SCREEN-1 DDR headers only (not_verified) |
