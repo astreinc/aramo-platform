@@ -1,6 +1,6 @@
 # Aramo — Current-State Architecture & Implementation Baseline
 
-> **Baseline commit (frozen):** `12330b0f5049c97f01022df0b190035933345212` (branch `main`, tip PR #909).
+> **Baseline commit (frozen):** `680907fc06620845944794e0a529918c980f5124` (branch `main` after PR #1007, 2026-10-24; refreshed from `12330b0f`, PR #909, 2026-10-09).
 > **Nature:** a read-only, 100% code-grounded reconnaissance snapshot of what the
 > repository **implements today**. It is a **current-state baseline, not a newly
 > ratified architecture** — it documents what exists before anything is proposed to change.
@@ -19,7 +19,7 @@ the baseline SHA. Anything not directly inspected is labelled `NOT VERIFIED`.
 
 | Category | Means | Source of truth |
 |---|---|---|
-| **AS-BUILT** | What the code does today | Repository code at `12330b0f` (`as-built/`) |
+| **AS-BUILT** | What the code does today | Repository code at `680907fc` (`as-built/`) |
 | **AS-DESIGNED** | Ratified architectural intent | LOCKED directives / ADRs, cited by file + section (`as-designed/`) |
 | **GAP REGISTER** | Divergences, defects, risks, proposals | Reconciliation of the two (`gaps/G1-gap-register.md`) |
 
@@ -50,14 +50,19 @@ observed behaviour; recommendations live only in the Gap Register.
 
 ### Consolidated reports
 
-- **[G1 — Consolidated Gap Register](gaps/G1-gap-register.md)** — 70 consolidated
-  entries (from 74 domain findings, 4 cross-domain merges) with stable ids and
-  `src: Dxx-Gy` traceability: **15 confirmed defects**, **34 AS-BUILT⊥AS-DESIGNED
-  divergences**, **21 proposed enhancements** (severity: 5 high / 26 medium / 39 low).
+- **[G1 — Consolidated Gap Register](gaps/G1-gap-register.md)** — 115 consolidated
+  entries (from 123 domain findings, 8 cross-domain merges) with stable ids and
+  `src: Dxx-Gy` traceability: **27 confirmed defects**, **58 AS-BUILT⊥AS-DESIGNED
+  divergences**, **30 proposed enhancements** (severity: 6 high / 35 medium / 74 low);
+  **106 open, 9 RESOLVED at 680907fc** (RESOLVED entries keep their ids). At
+  12330b0f: 70 entries (15/34/21; 5/26/39).
 - **[C1 — Coverage & Completeness Report](coverage/C1-coverage-completeness.md)** —
   inventory and coverage accounting of every module, route, endpoint, data model,
   and UI screen, with each surface marked inspected or `NOT VERIFIED` and every
-  denominator re-derived by command.
+  denominator re-derived by command against `680907fc` (10 apps, 80 libs, 131
+  controllers, 667 handler decorators, 54 schemas / 283 models / 314 migrations,
+  9 OpenAPI specs / 435 path-items), plus the method corrections where an old
+  count came from an on-disk grep.
 
 ### Evidence fragments (traceability)
 
@@ -68,8 +73,11 @@ observed behaviour; recommendations live only in the Gap Register.
 ## At a glance
 
 - 15 AS-BUILT + 15 AS-DESIGNED documents · G1 · C1
-- 47 Mermaid diagrams (ERDs, sequence, state, component) derived from code
-- ~1,515 `path:line` evidence citations at the baseline SHA
+- 62 Mermaid diagrams (ERDs, sequence, state, component) derived from code
+  (`find doc/recon -name '*.md' -exec grep -c '^```mermaid' {} + | awk -F: '{s+=$2} END{print s}'`)
+- 3200 `path:line` evidence citations at the baseline SHA across all recon
+  documents (`find doc/recon -name '*.md' -exec grep -ohE '[A-Za-z0-9_./-]+\.(ts|tsx|prisma|yaml|sql|json|sh|mjs|conf|template|tf):[0-9]+' {} + | wc -l`;
+  a token-volume count, not a count of independently verified claims)
 - Coverage axes: backend, frontend, database, infrastructure, security, integrations, workflows
 
 ## Method
@@ -87,13 +95,7 @@ observed behaviour; recommendations live only in the Gap Register.
 
 ## Verification status
 
-Of 17 verified artifacts (15 AS-BUILT + G1 + C1), 13 passed independent adversarial
-verification outright; the remaining 4 (D03, D04, D13, C1) were converged by hand
-for single residual count/wording precision items, each with the corrected figure
-re-derived directly against code. One verifier-flagged count (D04's "82 files
-decorate `@RequireScopes`") was **retained** because it reproduces exactly under a
-standard method (`grep -rln '@RequireScopes(' apps libs | grep -v tests` = 82); the
-verifier's higher figure came from an unreproducible method.
+Pending verification of the refresh.
 
 ## Known limitations
 
@@ -102,16 +104,24 @@ verifier's higher figure came from an unreproducible method.
   line-read (see C1 NOT-VERIFIED register).
 - Some contract-parity and runtime-boot surfaces are enumerated but marked
   `NOT VERIFIED` where only static inspection was possible.
+- The new Talent Intelligence service (`apps/talent-intelligence-service`,
+  `libs/intelligence-core`) is enumerated at controller / route / model level, but
+  most of its bodies are `NOT VERIFIED`.
+- Whether migrations are applied in any live database (including the destructive
+  ATI-SEP-1 legacy-schema drop and the separate TI database) is out of a static
+  pass and is `NOT VERIFIED`.
 - Counts are reproducible at the baseline SHA by the commands recorded beside them;
-  they may drift as `main` advances. The snapshot stays pinned to `12330b0f`.
+  they may drift as `main` advances. The snapshot stays pinned to `680907fc`.
 
 ## Process note (recorded for transparency)
 
 During generation, one automated agent ran a branch-switch + fast-forward that
 briefly moved the working tree off the baseline onto a later `main`; this was
 detected via the verifiers' SHA checks and reverted — the tree was restored to the
-frozen baseline `12330b0f` and all documentation is anchored there. No source files
+frozen baseline `12330b0f`, to which that original pass is anchored. No source files
 were modified by that event (refs only).
+
+Refreshed on 2026-10-24 from 12330b0f to 680907fc (514 commits, 70 merged PRs) by parallel domain agents, then reconciled and independently verified; the C1 coverage files, previously untracked because of a generic coverage ignore rule, are now tracked.
 
 ---
 
