@@ -1,0 +1,31 @@
+# D14 — Cross-Cutting Platform & External Integrations (COVERAGE)
+> Baseline SHA 680907fc06620845944794e0a529918c980f5124
+
+| surface | inspected | not_verified | method/command |
+| --- | --- | --- | --- |
+| `libs/events` source files | 5 | 0 | `find libs/events/src -name '*.ts' \| grep -Ev 'tests\|spec' \| wc -l` = 5; all read (envelope, port, lease-safe, module, index); unchanged since 12330b0f |
+| `libs/outbox-publisher` source files | 7 | 1 | `find libs/outbox-publisher/src -name '*.ts' \| grep -Ev 'tests\|spec' \| wc -l` = 8; `fake-outbox-publisher.ts` not opened; unchanged since 12330b0f |
+| `apps/api/src/talent-intake-consumer` files | 10 | 1 | `find apps/api/src/talent-intake-consumer -name '*.ts' \| wc -l` = 11 (old 8; +singlebox publisher, transport factory, worker module); `sqs-event.types.ts` not opened |
+| `apps/api/src/ats-talent-events` files | 3 | 3 | `ls apps/api/src/ats-talent-events` = 6; read module, dispatcher, drain worker headers; handler files not opened |
+| `libs/intelligence-integration` source files | 4 | 10 | `find libs/intelligence-integration/src -name '*.ts' \| grep -Ev 'tests\|spec' \| wc -l` = 14; read config, client, publisher handler, webhook receiver class anchors |
+| `libs/mailer` source files | 5 | 4 | `find libs/mailer/src -name '*.ts' \| grep -Ev 'tests\|spec' \| wc -l` = 9 (old 8; +outbox-mailer.adapter); read module/port/ses-adapter/config/outbox-adapter; client-factory, stub-adapter, tokens, index not opened |
+| `libs/object-storage` source files | 4 | 4 | `find libs/object-storage/src -name '*.ts' \| grep -Ev 'tests\|spec' \| wc -l` = 8; read module/service/s3-factory/config exports; key-convention, log-redaction, types, index not opened |
+| `libs/microsoft-graph` source files | 3 | 9 | `find libs/microsoft-graph/src -name '*.ts' \| grep -Ev 'tests\|spec' \| wc -l` = 12 (old 10; +calendar port, meeting-artifacts port); read delegated-authorization.service, graph-scopes, export anchors |
+| `apps/api/src/microsoft` Graph HTTP adapters | 5 | 20 | `find apps/api/src/microsoft -name '*.ts' \| grep -Ev 'tests\|spec' \| wc -l` = 25; class anchors for graph/calendar/meeting-artifacts/oauth adapters + scheduling service; bodies not read |
+| `libs/subscription` billing files | 4 | 13 | `find libs/subscription/src -name '*.ts' \| grep -Ev 'tests\|spec' \| wc -l` = 17; read billing-provider.port, stripe-billing.provider (config + signature), stripe-wire anchors, subscription.module bindings |
+| Sign-service integration files (billing controller, reconcile worker, SNS, webhook publisher, KMS signer) | 5 | 0 | read the Stripe webhook handler, reconcile worker env gate, `eventPublisherFromEnv`, HMAC builder, KMS class anchor |
+| Signup-risk ports (Turnstile, GeoLite2, SMS) + Geoapify | 4 | 0 | read `robot-check.port.ts`, `geo-ip.port.ts` adapter section, `sms-verification.port.ts` in full, `address-suggest.service.ts` header + base URL; bindings in `identity-core.module.ts:104-106` |
+| External e-signature provider files (`apps/api/src/esignature-providers`) | 6 | 9 | `find apps/api/src/esignature-providers -name '*.ts' \| grep -Ev 'tests\|spec' \| wc -l` = 15; read config env names, DocuSign HMAC route constants, Adobe webhook rationale, adapter class anchors |
+| Tenant LLM provider files | 4 | n/a | read `llm-provider.ts` provider list, Anthropic/OpenAI provider class + SDK construction lines, settings resolver anchor |
+| `libs/task` source files | 2 | 14 | `find libs/task/src -name '*.ts' \| grep -Ev 'tests\|spec' \| wc -l` = 16; read module + controller (routes); repository, prisma, DTOs, ports not opened |
+| `libs/audit` source files | 2 | 0 | `find libs/audit/src -name '*.ts' \| grep -Ev 'tests\|spec' \| wc -l` = 2; both read (empty module + index) |
+| BullMQ `@Processor` files (workspace) | 1 | 18 | `git grep -lE "@Processor\(" 680907fc -- apps libs \| grep -Ev 'tests\|spec' \| wc -l` = 19 (old 26; 7 talent-identity/talent-reconcile/match-sweep processors no longer present); only `outbox-publisher.processor.ts` read in depth |
+| Redis-independent `setInterval` worker files | 6 | 6 | `git grep -lE "setInterval\(" 680907fc -- apps libs \| grep -vE 'tests\|spec\|-web/' \| wc -l` = 12; env gates read for the two outbox drains, billing reconcile, TI workers; platform-admin sweepers and sign-service delivery/expiry/invitation workers enumerated by name only |
+| `@aws-sdk/*` consumer files (workspace) | 9 | 5 | `git grep -lE "@aws-sdk/" 680907fc -- apps libs \| grep -Ev 'tests\|spec' \| wc -l` = 14; read eventbridge/lazy-eventbridge/ses-adapter/object-storage.service/s3-factory/sns-publisher/secrets-adapter/kms-signer/cognito-admin class anchors; tenant-cognito adapter + port, tenant-user controller, secret-cache, ses client-factory sites not opened |
+| `talent-intake-events` Terraform module files | 1 | 2 | `find infrastructure/modules/talent-intake-events -name '*.tf' \| wc -l` = 3; read `main.tf` resource anchors; `variables.tf`/`outputs.tf` not opened |
+| prod ADR-0033 wiring (`talent-intake.tf`) | 1 | 0 | read `infrastructure/environments/prod/talent-intake.tf` header |
+| prod compose transport + integration env | 1 | 0 | `grep -n "TALENT_INTAKE_TRANSPORT\|SIGN_BILLING_RECONCILE\|SIGN_SMS_PROVIDER\|SIGN_GEOIP\|SIGN_ADDRESS_PROVIDER\|TURNSTILE" docker-compose.prod.yml` |
+| ADR anchors (0018, 0033, 0036) | 3 | 1 | `ls doc/adr/ \| grep -E '0018\|0033\|0036' \| grep '.md$' \| wc -l` = 4; 0018/0033 unchanged since 12330b0f; 0036 read for the integration section; the `Aramo-ADR-0018-...-LOCKED.md` mirror not opened |
+| LOCKED directives dated after 2026-10-09 touching D14 | 10 | 0 | `find <locked> -name '*-LOCKED.md' -newermt 2026-10-09`; read Standalone auth, Commercial A1, Personal Free v1.1 + A1, Signup Federated-Owner A1, Multi-Provider, Naming, ATI-SEP + A2, COMM-C2B A1 (plus TENANT-LLM-2 v1.0, dated earlier) |
+| Task HTTP routes | 5 | 0 | `grep -cE "@(Get\|Post\|Patch\|Delete)\(" libs/task/src/lib/task.controller.ts` = 5; all mapped to the endpoint table |
+| Other cross-cutting leaf libs (export, saved-list, entitlement, settings, canonical-reconcile, platform-trust, tenant-reset, canonicalization) | 0 (module/controller anchors only) | 8 | `@Controller` greps located export + saved-list controllers; internals belong to their own domains and were not inspected |
