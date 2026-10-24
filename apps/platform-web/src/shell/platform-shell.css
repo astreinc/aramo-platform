@@ -1,43 +1,644 @@
-/* Platform console shell chrome (Inc-2 PR-2). Only the platform-specific bits:
- * the PLATFORM marker (A3 anti-footgun) + content padding. The rail/topbar/nav
- * structural rules all come from the fe-foundation ui.css (rc-*) via the barrel. */
+/* PLATFORM-UX-1 F-2 — the platform console chrome (handoff §3.1–§3.4; directive
+ * R-1). The shared AppShell keeps its structure; everything here is scoped under
+ * `.pw-shell`, so the tenant apps and AramoRail / app-rail.css are untouched.
+ * Values are Platform Admin.dc.html's, through the theme.css token layer.
+ *
+ * Layout: environment bar 30px (sticky, z 70) · rail 236 / 64 (sticky under the
+ * bar) │ top bar 56px (sticky under the bar) · <main> 28px 32px 72px, max 1400px.
+ * The rail auto-collapses below 900px (the shared ui.css collapses at 1080px;
+ * the 900–1080px band is re-expanded below unless the operator collapsed it). */
 
-/* The rail PLATFORM marker — a bold violet pill at the top of the rail so the
- * operator can never mistake this for a tenant console. */
-.pw-platform-mark {
-  display: block;
-  margin: 4px 12px 12px;
-  padding: 5px 10px;
-  border-radius: var(--r-sm);
-  background: var(--brand);
-  color: #fff;
-  font-size: 0.72rem;
+/* ─────────── frame ─────────── */
+
+.pw-shell .rc-app {
+  min-height: calc(100vh - var(--pw-envbar-h));
+}
+
+/* The shared skip link sits at top:-60px of .rc-app, which now starts 30px down
+ * under the environment bar; keep it fully hidden until focused. */
+.pw-shell .rc-skip-link {
+  top: -90px;
+}
+.pw-shell .rc-skip-link:focus,
+.pw-shell .rc-skip-link:focus-visible {
+  top: 8px;
+}
+
+/* The design's collapse control lives in the rail header; hide the shared
+ * floating edge toggle (⌘/Ctrl+\ and the same persisted key still apply). */
+.pw-shell .rc-rail-toggle {
+  display: none;
+}
+
+/* ─────────── rail (midnight) ─────────── */
+
+.pw-shell .rc-rail {
+  top: var(--pw-envbar-h);
+  height: calc(100vh - var(--pw-envbar-h));
+  padding: 14px 0;
+  background: var(--rail-bg);
+  color: var(--rail-item-fg);
+}
+.pw-shell .rc-nav {
+  padding: 0 12px;
+}
+.pw-shell .rc-rail__foot {
+  margin: 0 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--rail-divider);
+}
+
+/* header: mark · aramo.ai · collapse */
+.pw-rail-head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 2px 2px 6px;
+}
+.pw-rail-logo {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: none;
+  border-radius: var(--pw-r-item);
+  background: transparent;
+  cursor: pointer;
+}
+.pw-rail-logo:hover {
+  background: rgba(255, 255, 255, 0.1);
+}
+.pw-rail-name {
+  color: #ffffff;
+  font-size: var(--pw-fs-15-5);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  white-space: nowrap;
+}
+.pw-rail-name__tld {
+  color: var(--rail-item-fg);
+  font-weight: 400;
+}
+.pw-rail-collapse {
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin-left: auto;
+  padding: 0;
+  border: none;
+  border-radius: var(--pw-r-sm);
+  background: transparent;
+  color: var(--rail-item-fg);
+  cursor: pointer;
+}
+.pw-rail-collapse:hover {
+  background: var(--rail-item-bg-active);
+  color: #ffffff;
+}
+
+/* the PLATFORM tag ("P" collapsed) */
+.pw-rail-tagrow {
+  display: flex;
+  padding: 4px 4px 12px;
+}
+.pw-rail-tag {
+  /* The design's non-control boxes are content-box: 22px + the 1px border = 24px. */
+  box-sizing: content-box;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  height: 22px;
+  padding: 0 8px;
+  border: 1px solid var(--rail-accent);
+  border-radius: var(--pw-r-tag);
+  color: var(--pw-terracotta-soft);
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-10-5);
+  font-weight: 600;
+  letter-spacing: var(--pw-tracking-mark);
+}
+.pw-rail-tag__short {
+  display: none;
+}
+
+/* groups */
+.pw-rail-group {
+  margin-bottom: 6px;
+}
+.pw-shell .rc-nav__label {
+  padding: 10px 12px 6px;
+  color: var(--rail-label);
+  font-size: var(--pw-fs-10-5);
+  font-weight: 600;
+  letter-spacing: var(--pw-tracking-label);
+  text-transform: uppercase;
+  opacity: 1;
+}
+.pw-rail-divider {
+  display: none;
+  height: 1px;
+  margin: 8px;
+  background: var(--rail-divider);
+}
+
+/* items */
+.pw-shell .pw-nav-item {
+  position: relative;
+  gap: 12px;
+  margin-bottom: 2px;
+  padding: 9px 12px;
+  border-radius: var(--pw-r-item);
+  color: var(--rail-item-fg);
+  font-size: var(--pw-fs-14);
+  font-weight: 500;
+  white-space: nowrap;
+  text-decoration: none;
+}
+.pw-shell .pw-nav-item:hover {
+  background: var(--rail-item-bg-hover);
+  color: var(--rail-item-fg-active);
+  text-decoration: none;
+}
+.pw-shell .pw-nav-item[aria-current='page'] {
+  background: var(--rail-item-bg-active);
+  color: var(--rail-item-fg-active);
   font-weight: 700;
-  letter-spacing: 0.14em;
+}
+/* the 3px terracotta active-edge bar (non-colour cue, handoff §3.3) */
+.pw-shell .pw-nav-item[aria-current='page']::before {
+  content: '';
+  position: absolute;
+  top: 9px;
+  bottom: 9px;
+  left: -12px;
+  width: 3px;
+  border-radius: 0 3px 3px 0;
+  background: var(--rail-accent);
+}
+.pw-shell .pw-nav-item svg {
+  width: 19px;
+  height: 19px;
+  opacity: 1;
+}
+.pw-nav-item__label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.pw-shell .rc-rail :focus-visible {
+  outline-color: var(--rail-focus);
+}
+
+/* footer avatar block */
+.pw-shell .rc-rail__user {
+  gap: 10px;
+  padding: 0;
+}
+.pw-shell .rc-rail__user-av {
+  /* content-box as in the design: 30px + the 1px terracotta border = 32px. */
+  box-sizing: content-box;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--rail-accent);
+  background: var(--rail-surface-raised);
+  color: #ffffff;
+  font-size: var(--pw-fs-11-5);
+  font-weight: 600;
+}
+.pw-shell .rc-rail__who {
+  line-height: normal;
+}
+.pw-shell .rc-rail__whoname {
+  line-height: 1.25;
+  color: #ffffff;
+  font-size: var(--pw-fs-12-5);
+  font-weight: 600;
+}
+.pw-shell .rc-rail__who small {
+  color: var(--rail-item-fg);
+  font-size: var(--pw-fs-11);
+}
+
+/* collapsed rail (operator toggle) — 64px, centred icons, dividers for labels */
+.pw-shell .rc-app--rail-collapsed .rc-nav {
+  padding: 0 10px;
+}
+.pw-shell .rc-app--rail-collapsed .rc-rail__foot {
+  margin: 0 10px;
+}
+.pw-shell .rc-app--rail-collapsed .pw-rail-head,
+.pw-shell .rc-app--rail-collapsed .pw-rail-tagrow,
+.pw-shell .rc-app--rail-collapsed .rc-rail__user {
+  justify-content: center;
+}
+.pw-shell .rc-app--rail-collapsed .pw-rail-name,
+.pw-shell .rc-app--rail-collapsed .pw-rail-collapse,
+.pw-shell .rc-app--rail-collapsed .pw-rail-tag__full {
+  display: none;
+}
+.pw-shell .rc-app--rail-collapsed .pw-rail-tag__short,
+.pw-shell .rc-app--rail-collapsed .pw-rail-divider {
+  display: block;
+}
+.pw-shell .rc-app--rail-collapsed .pw-nav-item {
+  justify-content: center;
+  padding: 9px 0;
+}
+
+/* auto-collapse below 900px (same collapsed look) */
+@media (max-width: 899px) {
+  .pw-shell .rc-nav {
+    padding: 0 10px;
+  }
+  .pw-shell .rc-rail__foot {
+    margin: 0 10px;
+  }
+  .pw-shell .pw-rail-head,
+  .pw-shell .pw-rail-tagrow,
+  .pw-shell .rc-rail__user {
+    justify-content: center;
+  }
+  .pw-shell .pw-rail-name,
+  .pw-shell .pw-rail-collapse,
+  .pw-shell .pw-rail-tag__full,
+  .pw-shell .rc-nav__label {
+    display: none;
+  }
+  .pw-shell .pw-rail-tag__short,
+  .pw-shell .pw-rail-divider {
+    display: block;
+  }
+  .pw-shell .pw-nav-item {
+    justify-content: center;
+    padding: 9px 0;
+  }
+}
+
+/* 900–1080px: re-expand (the shared ui.css collapses the rail at ≤1080px) */
+@media (min-width: 900px) and (max-width: 1080px) {
+  .pw-shell .rc-app:not(.rc-app--rail-collapsed) {
+    grid-template-columns: var(--pw-rail-w) 1fr;
+  }
+  .pw-shell .rc-app:not(.rc-app--rail-collapsed) .rc-rail {
+    padding: 14px 0;
+  }
+  .pw-shell .rc-app:not(.rc-app--rail-collapsed) .pw-nav-item {
+    justify-content: flex-start;
+  }
+  .pw-shell .rc-app:not(.rc-app--rail-collapsed) .pw-nav-item__label,
+  .pw-shell .rc-app:not(.rc-app--rail-collapsed) .rc-rail__who {
+    display: revert;
+  }
+}
+
+/* ─────────── top bar ─────────── */
+
+.pw-shell .rc-topbar {
+  top: var(--pw-envbar-h);
+  z-index: 50;
+  gap: 12px;
+  height: var(--pw-topbar-h);
+  padding: 0 24px;
+  border-bottom: 1px solid var(--pw-line);
+  background: var(--pw-surface);
+  backdrop-filter: none;
+}
+
+.pw-crumbs {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  font-size: var(--pw-fs-13);
+  white-space: nowrap;
+}
+.pw-crumbs__step {
+  display: contents;
+}
+.pw-crumbs__link {
+  color: var(--pw-muted);
+  font-weight: 500;
+}
+.pw-crumbs__sep {
+  color: var(--pw-crumb-sep);
+}
+.pw-crumbs__here {
+  overflow: hidden;
+  color: var(--pw-ink);
+  font-weight: 600;
+  text-overflow: ellipsis;
+}
+
+.pw-topbar-mark {
+  display: inline-flex;
+  flex: none;
+  align-items: center;
+  height: 24px;
+  margin-left: auto;
+  padding: 0 9px;
+  border-radius: var(--pw-r-tag);
+  background: var(--pw-terracotta);
+  color: var(--pw-midnight);
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-10-5);
+  font-weight: 600;
+  letter-spacing: var(--pw-tracking-mark);
+}
+
+.pw-cmdk-trigger {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 8px;
+  width: min(300px, 28vw);
+  height: 36px;
+  padding: 0 10px;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-item);
+  background: var(--pw-surface);
+  color: var(--pw-faint);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-13);
+  cursor: pointer;
+}
+.pw-cmdk-trigger:hover {
+  border-color: var(--pw-line-2);
+}
+.pw-cmdk-trigger__text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.pw-cmdk-trigger__key {
+  margin-left: auto;
+  padding: 1px 5px;
+  border: 1px solid var(--pw-line-2);
+  border-radius: var(--pw-r-xs);
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-10-5);
+}
+
+/* account menu */
+.pw-account {
+  position: relative;
+  flex: none;
+}
+.pw-account__trigger {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 3px;
+  border: none;
+  border-radius: 20px;
+  background: transparent;
+  color: var(--pw-muted);
+  cursor: pointer;
+}
+.pw-account__trigger:hover {
+  background: var(--pw-surface-hover);
+}
+.pw-account__avatar {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  background: var(--pw-midnight);
+  color: #ffffff;
+  font-size: var(--pw-fs-11);
+  font-weight: 700;
+}
+.pw-account__avatar--lg {
+  width: 36px;
+  height: 36px;
+  font-size: var(--pw-fs-12-5);
+}
+.pw-account__menu {
+  box-sizing: content-box; /* the design's boxes are content-box (width excludes padding + border) */
+  position: absolute;
+  top: 42px;
+  right: 0;
+  z-index: 80;
+  width: 290px;
+  padding: 6px;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-menu);
+  background: var(--pw-surface);
+  box-shadow: var(--pw-shadow-menu);
+}
+.pw-account__id {
+  display: flex;
+  gap: 11px;
+  padding: 11px 12px 12px;
+}
+.pw-account__who {
+  min-width: 0;
+}
+.pw-account__name {
+  display: block;
+  font-size: var(--pw-fs-13);
+  font-weight: 700;
+}
+.pw-account__email {
+  display: block;
+  overflow: hidden;
+  color: var(--pw-muted);
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-12);
+  text-overflow: ellipsis;
+}
+.pw-account__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+.pw-account__role {
+  padding: 2px 8px;
+  border-radius: 12px;
+  background: var(--pw-role-badge-bg);
+  color: var(--pw-role-badge-fg);
+  font-size: var(--pw-fs-10);
+  font-weight: 700;
+  letter-spacing: var(--pw-tracking-caps);
+}
+.pw-account__tenant {
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-11-5);
+}
+.pw-account__rule {
+  height: 1px;
+  margin: 0 6px 6px;
+  background: var(--pw-rule-2);
+}
+.pw-account__item {
+  display: block;
+  width: 100%;
+  padding: 9px 11px;
+  border: none;
+  border-radius: var(--pw-r-md);
+  background: transparent;
+  color: var(--pw-ink);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-13);
+  font-weight: 500;
+  text-align: left;
+  cursor: pointer;
+}
+.pw-account__item:hover,
+.pw-account__item:focus-visible {
+  background: var(--pw-surface-hover);
+}
+.pw-account__item--signout {
+  color: var(--pw-danger);
+  font-weight: 600;
+}
+.pw-account__item--signout:hover,
+.pw-account__item--signout:focus-visible {
+  background: var(--pw-alert-error-bg);
+}
+
+/* ─────────── content ─────────── */
+
+.pw-shell .rc-content {
+  flex: 1;
+  max-width: 1400px;
+  padding: 28px 32px 72px;
+}
+
+/* ─────────── command palette (scoped to dialogs holding .pw-cmdk) ─────────── */
+
+body:has(.pw-cmdk) .tc-dialog__overlay {
+  z-index: 110;
+  background: var(--pw-overlay);
+}
+.tc-dialog__content:has(.pw-cmdk) {
+  top: 12vh;
+  z-index: 111;
+  width: min(620px, 96vw);
+  max-height: 70vh;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  transform: translateX(-50%);
+  border: none;
+  border-radius: var(--pw-r-dialog);
+  box-shadow: var(--pw-shadow-dialog);
+  font-family: var(--pw-font);
+}
+.tc-dialog__content:has(.pw-cmdk) .tc-dialog__title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+}
+.tc-dialog__content:has(.pw-cmdk) .tc-dialog__body {
+  min-height: 0;
+  gap: 0;
+}
+.pw-cmdk {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  max-height: 70vh;
+}
+.pw-cmdk__bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 0 16px;
+  border-bottom: 1px solid var(--pw-line);
+  color: var(--pw-muted);
+}
+.pw-cmdk__input {
+  box-sizing: content-box; /* + the UA 1px padding = 54px, as in the design */
+  flex: 1;
+  height: 52px;
+  border: none;
+  color: var(--pw-ink);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-15);
+  outline: none;
+}
+.pw-cmdk__input:focus-visible {
+  outline: none;
+}
+.pw-cmdk__key {
+  padding: 1px 5px;
+  border: 1px solid var(--pw-line-2);
+  border-radius: var(--pw-r-xs);
+  color: var(--pw-muted);
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-10-5);
+}
+.pw-cmdk__list {
+  padding: 6px;
+  overflow-y: auto;
+}
+.pw-cmdk__opt {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 9px 10px;
+  border: none;
+  border-radius: var(--pw-r-md);
+  background: transparent;
+  color: var(--pw-ink);
+  font-family: var(--pw-font);
+  text-align: left;
+  cursor: pointer;
+}
+.pw-cmdk__opt:hover,
+.pw-cmdk__opt:focus-visible {
+  background: var(--pw-surface-hover);
+}
+.pw-cmdk__kind {
+  flex: none;
+  width: 70px;
+  color: var(--pw-faint);
+  font-size: var(--pw-fs-10-5);
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.pw-cmdk__label {
+  font-size: var(--pw-fs-14);
+  font-weight: 600;
+}
+.pw-cmdk__sub {
+  color: var(--pw-muted);
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-12);
+}
+.pw-cmdk__pill {
+  margin-left: auto;
+}
+.pw-cmdk__none {
+  padding: 24px;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-13);
   text-align: center;
 }
-
-/* A second marker in the topbar, next to the brand — visible even when the rail
- * is collapsed. */
-.pw-topbar-mark {
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--brand-tint);
-  color: var(--brand-strong);
-  font-size: 0.68rem;
-  font-weight: 700;
-  letter-spacing: 0.12em;
+.pw-cmdk__foot {
+  padding: 8px 16px;
+  border-top: 1px solid var(--pw-line);
+  background: var(--pw-surface-2);
+  color: var(--pw-faint);
+  font-size: var(--pw-fs-11-5);
 }
 
-.pw-topbar-spacer {
-  flex: 1 1 auto;
-}
+/* ─────────── page-level helpers used by the existing views (later increments
+ * restyle them; the shell's <main> now owns the page padding) ─────────── */
 
-/* Content wrapper padding (the rc-content host is structural; page padding is
- * app-owned). */
 .pw-page {
-  padding: 24px 28px;
-  max-width: 1180px;
+  padding: 0;
 }
 
 .pw-page__head {

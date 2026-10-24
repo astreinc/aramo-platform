@@ -195,7 +195,23 @@ export interface PersonalInvite {
   expires_at: string | null;
 }
 
+// PLATFORM-UX-1 B-1a (directive R-6) — the signed-in operator, caller only
+// (GET /platform/me). The shared Session type carries no name or email.
+export interface PlatformMe {
+  user_id: string;
+  email: string;
+  display_name: string | null;
+  tenant_id: string;
+  tenant_name: string;
+  role_keys: string[];
+}
+
 export const platformApi = {
+  // PLATFORM-UX-1 B-1a — the signed-in operator's identity (caller only).
+  getMe(): Promise<PlatformMe> {
+    return apiClient.get('/platform/me');
+  },
+
   // Inc-3 PR-3.8 — the operator dashboard summary (default screen).
   getDashboard(): Promise<PlatformDashboard> {
     return apiClient.get('/platform/dashboard');

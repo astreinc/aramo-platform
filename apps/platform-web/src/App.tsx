@@ -1,16 +1,11 @@
+import type { ReactElement } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
-import {
-  AUTH_PRODUCTS,
-  ForbiddenState,
-  RouteGuard,
-  SignedOut,
-  ToastProvider,
-  hasScope,
-  useSession,
-} from '@aramo/fe-foundation';
+import { RouteGuard, ToastProvider, hasScope, useSession, type Session } from '@aramo/fe-foundation';
 
-import { LoginPage } from './LoginPage';
+import { LoginPage, PlatformSignedOut } from './LoginPage';
 import { PlatformShell } from './shell/PlatformShell';
+import { PlatformAccessDenied } from './shell/PlatformAccessDenied';
+import { PLATFORM_PERMISSIONS as P } from './components/permissions';
 import { DashboardView } from './dashboard/DashboardView';
 import { TenantsListView } from './tenants/TenantsListView';
 import { TenantDetailView } from './tenants/TenantDetailView';
@@ -26,13 +21,15 @@ import { TemplateVariablesView } from './document-templates/TemplateVariablesVie
 import { MatchingPolicyView } from './matching/MatchingPolicyView';
 import { PersonalReviewView } from './personal/PersonalReviewView';
 import { PersonalInviteView } from './personal/PersonalInviteView';
+import { PlatformAdminsView } from './admins/PlatformAdminsView';
 
-// The platform console app (Inc-2 PR-2). Single guarded surface: the whole thing
-// requires platform:tenant:read. Unauthenticated → RouteGuard redirects to
-// /auth/platform/login (the configured consumer). Authenticated-but-unscoped →
-// fe-foundation ForbiddenState. Lifecycle actions additionally check
-// platform:tenant:lifecycle:manage client-side for button visibility (the detail
-// view) — server-side enforcement is authoritative.
+// The platform console app. RouteGuard handles only loading, unauthenticated
+// (→ sign-in) and the TENANT_ACCESS_DENIED wrong-account redirect — it no longer
+// receives `requireScope` (PLATFORM-UX-1 directive R-5). Every permission gate —
+// the console entry (platform:tenant:read) and each route's own scope — renders
+// the in-shell AccessDenied (handoff §3.5) INSIDE PlatformShell, with the
+// signed-in identity and the account-switch / sign-out actions, and never
+// redirects. Server-side enforcement stays authoritative.
 export function App() {
   const state = useSession();
   const location = useLocation();
@@ -58,163 +55,103 @@ export function App() {
   if (location.pathname === '/signed-out') {
     return (
       <ToastProvider>
-        <SignedOut offerAccountSwitch product={AUTH_PRODUCTS.platform} />
+        <PlatformSignedOut />
       </ToastProvider>
     );
   }
 
   return (
     <ToastProvider>
-      <RouteGuard requireScope="platform:tenant:read" sessionStateOverride={state}>
-        {state.status === 'authenticated' ? (
-          <PlatformShell>
-            <Routes>
-              {/* Inc-3 PR-3.8 — the operator dashboard is the default post-login
-                  screen; the tenant list is one click away in the rail. */}
-              <Route path="/" element={<DashboardView />} />
-              <Route path="/tenants" element={<TenantsListView />} />
-              <Route path="/tenants/new" element={<ProvisionTenantView />} />
-              <Route
-                path="/tenants/:id"
-                element={<TenantDetailView session={state.session} />}
-              />
-              {/* SKILL-TAX-1F-C1 — the platform skill governance console. Reachable
-                  within the platform tier (app-level platform:tenant:read gate) and
-                  additionally gated on platform:skill:read; a platform operator
-                  without the skill scope sees a ForbiddenState rather than a page
-                  that would only 403 at the API. Manage controls gate on
-                  platform:skill:manage inside the views. */}
-              <Route
-                path="/skills"
-                element={
-                  hasScope(state.session, 'platform:skill:read') ? (
-                    <SkillsRegistryView session={state.session} />
-                  ) : (
-                    <ForbiddenState scope="platform:skill:read" />
-                  )
-                }
-              />
-              {/* SKILL-TAX-1F-C2 — Review Queue + Proposals. Static paths precede
-                  /skills/:id so react-router ranks them ahead of the dynamic detail
-                  route. Same platform:skill:read gate. */}
-              <Route
-                path="/skills/review-queue"
-                element={
-                  hasScope(state.session, 'platform:skill:read') ? (
-                    <ReviewQueueView session={state.session} />
-                  ) : (
-                    <ForbiddenState scope="platform:skill:read" />
-                  )
-                }
-              />
-              <Route
-                path="/skills/proposals"
-                element={
-                  hasScope(state.session, 'platform:skill:read') ? (
-                    <ProposalsListView />
-                  ) : (
-                    <ForbiddenState scope="platform:skill:read" />
-                  )
-                }
-              />
-              <Route
-                path="/skills/proposals/:id"
-                element={
-                  hasScope(state.session, 'platform:skill:read') ? (
-                    <ProposalDetailView session={state.session} />
-                  ) : (
-                    <ForbiddenState scope="platform:skill:read" />
-                  )
-                }
-              />
-              <Route
-                path="/skills/:id"
-                element={
-                  hasScope(state.session, 'platform:skill:read') ? (
-                    <SkillDetailView session={state.session} />
-                  ) : (
-                    <ForbiddenState scope="platform:skill:read" />
-                  )
-                }
-              />
-              {/* DOC-TEMPLATE-LIB-1 T-2 (§8.1) — Aramo default document templates +
-                  the template variable catalog. Same pattern as the skills section:
-                  gated on platform:document_template:read (ForbiddenState otherwise);
-                  write controls gate on platform:document_template:manage inside the
-                  views. The API is authoritative. */}
-              <Route
-                path="/document-templates"
-                element={
-                  hasScope(state.session, 'platform:document_template:read') ? (
-                    <DocumentTemplatesListView session={state.session} />
-                  ) : (
-                    <ForbiddenState scope="platform:document_template:read" />
-                  )
-                }
-              />
-              <Route
-                path="/document-templates/:id"
-                element={
-                  hasScope(state.session, 'platform:document_template:read') ? (
-                    <DocumentTemplateDetailView session={state.session} />
-                  ) : (
-                    <ForbiddenState scope="platform:document_template:read" />
-                  )
-                }
-              />
-              <Route
-                path="/template-variables"
-                element={
-                  hasScope(state.session, 'platform:document_template:read') ? (
-                    <TemplateVariablesView session={state.session} />
-                  ) : (
-                    <ForbiddenState scope="platform:document_template:read" />
-                  )
-                }
-              />
-              {/* ATI-SEP-1 A2 A-c (P1) — the platform-owned matching calibration.
-                  Same pattern as the skills section: gated on
-                  platform:matching_policy:read (ForbiddenState otherwise); the
-                  new-version + activate controls gate on platform:matching_policy:write
-                  inside the view. The API is authoritative. */}
-              <Route
-                path="/matching"
-                element={
-                  hasScope(state.session, 'platform:matching_policy:read') ? (
-                    <MatchingPolicyView session={state.session} />
-                  ) : (
-                    <ForbiddenState scope="platform:matching_policy:read" />
-                  )
-                }
-              />
-              {/* Aramo Sign Personal (Free) §6.5/§10 — the Personal review queue and
-                  pilot invites; the API guards them with
-                  platform:tenant:lifecycle:manage (authoritative), mirrored here. */}
-              <Route
-                path="/personal-review"
-                element={
-                  hasScope(state.session, 'platform:tenant:lifecycle:manage') ? (
-                    <PersonalReviewView />
-                  ) : (
-                    <ForbiddenState scope="platform:tenant:lifecycle:manage" />
-                  )
-                }
-              />
-              <Route
-                path="/personal-invites"
-                element={
-                  hasScope(state.session, 'platform:tenant:lifecycle:manage') ? (
-                    <PersonalInviteView />
-                  ) : (
-                    <ForbiddenState scope="platform:tenant:lifecycle:manage" />
-                  )
-                }
-              />
-              <Route path="*" element={<Navigate to="/" replace />} />
-            </Routes>
-          </PlatformShell>
-        ) : null}
+      <RouteGuard sessionStateOverride={state}>
+        {state.status === 'authenticated' ? <PlatformConsole session={state.session} /> : null}
       </RouteGuard>
     </ToastProvider>
+  );
+}
+
+/** The authenticated console: the shell, the entry gate and every routed screen. */
+export function PlatformConsole({ session }: { readonly session: Session }) {
+  // Entry gate (handoff §2): without platform:tenant:read every route shows the
+  // in-shell access-denied state for the whole console.
+  if (!hasScope(session, P.tenantRead)) {
+    return (
+      <PlatformShell session={session}>
+        <PlatformAccessDenied session={session} scope={P.tenantRead} />
+      </PlatformShell>
+    );
+  }
+
+  // A per-route gate: the screen, or the in-shell access-denied state naming the
+  // page and its missing permission (with "Back to dashboard").
+  const gate = (scope: string, page: string, element: ReactElement): ReactElement =>
+    hasScope(session, scope) ? element : <PlatformAccessDenied session={session} scope={scope} page={page} />;
+
+  return (
+    <PlatformShell session={session}>
+      <Routes>
+        {/* Inc-3 PR-3.8 — the operator dashboard is the default post-login
+            screen; the tenant list is one click away in the rail. */}
+        <Route path="/" element={<DashboardView />} />
+        <Route path="/tenants" element={<TenantsListView />} />
+        <Route path="/tenants/new" element={<ProvisionTenantView />} />
+        {/* The detail view keeps reading its tab from `?tab=` (directive R-12). */}
+        <Route path="/tenants/:id" element={<TenantDetailView session={session} />} />
+        {/* SKILL-TAX-1F-C1/C2 — the platform skill governance console, gated on
+            platform:skill:read; manage controls gate on platform:skill:manage
+            inside the views. Static paths precede /skills/:id so react-router
+            ranks them ahead of the dynamic detail route. */}
+        <Route
+          path="/skills"
+          element={gate(P.skillRead, 'Registry', <SkillsRegistryView session={session} />)}
+        />
+        <Route
+          path="/skills/review-queue"
+          element={gate(P.skillRead, 'Review queue', <ReviewQueueView session={session} />)}
+        />
+        <Route path="/skills/proposals" element={gate(P.skillRead, 'Proposals', <ProposalsListView />)} />
+        <Route
+          path="/skills/proposals/:id"
+          element={gate(P.skillRead, 'Proposals', <ProposalDetailView session={session} />)}
+        />
+        <Route path="/skills/:id" element={gate(P.skillRead, 'Registry', <SkillDetailView session={session} />)} />
+        {/* DOC-TEMPLATE-LIB-1 T-2 (§8.1) — Aramo default document templates + the
+            template variable catalog, gated on platform:document_template:read;
+            write controls gate on platform:document_template:manage inside. */}
+        <Route
+          path="/document-templates"
+          element={gate(P.documentTemplateRead, 'Document templates', <DocumentTemplatesListView session={session} />)}
+        />
+        <Route
+          path="/document-templates/:id"
+          element={gate(P.documentTemplateRead, 'Document templates', <DocumentTemplateDetailView session={session} />)}
+        />
+        <Route
+          path="/template-variables"
+          element={gate(P.documentTemplateRead, 'Template variables', <TemplateVariablesView session={session} />)}
+        />
+        {/* ATI-SEP-1 A2 A-c (P1) — the platform-owned matching calibration, gated
+            on platform:matching_policy:read; new-version + activate gate on
+            platform:matching_policy:write inside the view. */}
+        <Route
+          path="/matching"
+          element={gate(P.matchingPolicyRead, 'Matching policy', <MatchingPolicyView session={session} />)}
+        />
+        {/* Aramo Sign Personal (Free) §6.5/§10 — the review queue and pilot
+            invites; the API guards them with platform:tenant:lifecycle:manage
+            (authoritative, amendment 3), mirrored here. */}
+        <Route
+          path="/personal-review"
+          element={gate(P.tenantLifecycleManage, 'Review queue', <PersonalReviewView />)}
+        />
+        <Route
+          path="/personal-invites"
+          element={gate(P.tenantLifecycleManage, 'Pilot invites', <PersonalInviteView />)}
+        />
+        {/* PLATFORM-UX-1 (directive R-12) — Platform admins at /admins (never under
+            /platform/, which nginx proxies to the backend). */}
+        <Route path="/admins" element={gate(P.adminInvite, 'Platform admins', <PlatformAdminsView />)} />
+        <Route path="*" element={<Navigate to="/" replace />} />
+      </Routes>
+    </PlatformShell>
   );
 }
