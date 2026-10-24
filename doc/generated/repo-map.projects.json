@@ -676,13 +676,16 @@
       "SampleValues",
       "activateTemplateVersion",
       "adoptTemplate",
+      "appendStudioVariable",
       "bindingMapFrom",
       "canApproveTemplates",
       "canAuthorTemplates",
       "canReadTemplates",
       "clearTemplateSelection",
       "contentFromVersion",
+      "convertStudioValue",
       "createOwnTemplate",
+      "createStudioCodec",
       "emptyBindingMap",
       "fetchTemplateCatalog",
       "fetchTemplateLibrary",
@@ -690,15 +693,32 @@
       "getDocumentTemplate",
       "getTemplateVersion",
       "htmlOf",
+      "isCanonicalStudioHtml",
+      "isStudioValueEmpty",
       "listDocumentTemplates",
       "listTemplateSelections",
       "listTemplateVersions",
+      "makeStudioChip",
       "previewContentFrom",
       "previewTemplateDefault",
       "previewTemplateVersion",
+      "removeStudioVariable",
+      "renderStudioBlockDom",
       "resolveUserNames",
+      "serializeStudioBlockDom",
       "setTemplateSelection",
-      "useDocTemplateRoutes"
+      "studioActiveMarks",
+      "studioBlocksFromHtml",
+      "studioBlocksToHtml",
+      "studioInsertAtRange",
+      "studioPasteNodes",
+      "studioPlainText",
+      "studioPreviewParts",
+      "studioToggleMark",
+      "studioValueFromText",
+      "studioVariableKeys",
+      "useDocTemplateRoutes",
+      "variableToken"
     ],
     "@aramo/documents": [
       "DOCUMENTS_SCHEMA",
@@ -3234,7 +3254,19 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/platform-me.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/platform-sign.controller.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/platform.controller.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -3770,6 +3802,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/platform-me.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/platform.controller.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -6016,6 +6060,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/platform-me.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/platform.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -7018,6 +7068,13 @@
       { "project": "aramo-ats-web", "status": "production" },
       { "project": "aramo-home-web", "status": "production" },
       {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "apps/platform-web/src/document-templates/studio/studio-units.spec.ts",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      { "project": "aramo-platform-web", "status": "production" },
+      {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "libs/org-admin-web/src/document-templates/DocumentTemplates.spec.tsx",
         "project": "org-admin-web",
@@ -7452,6 +7509,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/platform-me.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -8303,7 +8366,37 @@
       { "project": "aramo-home-web", "status": "production" },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/App.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/platform-web/src/LoginPage.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/admins/PlatformAdminsView.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/components/interactive-components.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/document-templates/TemplateVariablesView.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/matching/MatchingPolicyView.spec.tsx",
         "project": "aramo-platform-web",
         "status": "excluded"
       },
@@ -8320,8 +8413,44 @@
         "status": "excluded"
       },
       {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/skills/SkillsRegistryView.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "apps/platform-web/src/skills/skill-labels.spec.ts",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
         "excludedBy": "src/**/*.spec.ts",
         "from": "apps/platform-web/src/skills/skills-api.spec.ts",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/tenants/ProvisionTenantView.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/tenants/TenantDetailView.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/tenants/TenantDomainPeople.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "apps/platform-web/src/tenants/tenant-config.spec.ts",
         "project": "aramo-platform-web",
         "status": "excluded"
       },
@@ -8696,7 +8825,19 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/platform-me.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/platform-sign.controller.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/platform.controller.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -11257,7 +11398,16 @@
       "root": "apps/platform-web",
       "sourceRoot": "apps/platform-web/src",
       "tags": ["scope:platform"],
-      "targets": ["build", "lint", "preview", "serve", "test"]
+      "targets": [
+        "build",
+        "e2e-a11y",
+        "e2e-visual",
+        "e2e-visual-reference",
+        "lint",
+        "preview",
+        "serve",
+        "test"
+      ]
     },
     {
       "name": "aramo-portal-web",
