@@ -1,418 +1,571 @@
-import { useCallback, useEffect, useState, type CSSProperties } from 'react';
-import { Link } from 'react-router-dom';
-import { ApiError, Button, Checkbox, Dialog, FormField, InlineAlert, Input, TextArea } from '@aramo/fe-foundation';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Button, Select, useOptionalToast } from '@aramo/fe-foundation';
 
 import {
+  ConfirmDialog,
+  DetailDrawer,
+  EmptyState,
+  FieldAck,
+  FieldText,
+  FieldTextArea,
+  FilterBar,
+  Pill,
+  Skeleton,
+  formatDate,
+  formatDateRelative,
+  formatRelative,
+  formatTimestamp,
+} from '../components';
+import {
   platformApi,
-  type AbuseReportOutcome,
   type PersonalAbuseReport,
   type PersonalReviewAction,
   type PersonalReviewItem,
-  type PersonalRiskState,
 } from '../platform-api';
 
-// Aramo Sign Personal (Free) §6.5 — the operator's Personal review queue: accounts
-// in review, accounts restricted (including by abuse reports), with every signal
-// and its risk points visible. Actions (clear review, restrict, reinstate, close)
-// each need a reason and are audited server-side. Clearing review never verifies
-// the phone (§6.3): phone assurance comes only from a real SMS verification. While
-// phone verification is unavailable (no SMS provider), clearing review also lifts
-// an outstanding phone step (PO 2026-10-21 "Review replaces phone") — the phone
-// still counts as not verified.
+import {
+  ACTION_BUTTON,
+  REASON_MAX,
+  REPORT_BUTTON,
+  REPORT_DECISIONS,
+  REPORT_PILL,
+  REVIEW_FILTERS,
+  UNTIL_IN_PAST,
+  actionSpec,
+  actionsFor,
+  applyRiskView,
+  filterLabel,
+  loadErrorText,
+  phoneLabel,
+  phoneStepLabel,
+  reasonLabel,
+  reportCategory,
+  reportDecisionSpec,
+  reviewErrorText,
+  signalLabel,
+  signalTotal,
+  statePill,
+  untilAsUtc,
+  visibleItems,
+  type ReportDecision,
+  type ReviewFilter,
+  type ReviewSort,
+} from './personal-review-model';
+import './personal.css';
 
-const SIGNAL_LABEL: Record<string, string> = {
-  robot_check_low: 'Security check low',
-  robot_check_failed: 'Security check failed',
-  honeypot_filled: 'Hidden form field filled',
-  network_hosting: 'Hosting, VPN or Tor network',
-  network_hosting_vpn_tor: 'Hosting, VPN or Tor network',
-  ip_velocity: 'Several signups from the same IP',
-  ip_signups_24h: 'Several signups from the same IP',
-  phone_ip_country_mismatch: 'Phone country differs from network country',
-  // GeoLite2 network location: a risk signal only, never proof of where someone lives.
-  ip_country_outside: 'Network location outside the supported countries',
-  ip_country_unknown: 'Network location unknown',
-  gmail_alias: 'Gmail alias of an existing account',
-  gmail_alias_of_existing: 'Gmail alias of an existing account',
-  fast_form: 'Form completed very quickly',
-  random_name: 'Random-looking name or address',
-  random_looking: 'Random-looking name or address',
-  phone_reused: 'Phone already used by another account',
-  abuse_reports: 'Abuse reports',
-  // Review reasons recorded on the account.
-  send_location_outside: 'Sent from outside the supported countries',
-  send_location_unknown: 'Sent from an unknown network location',
-  step_up_phone_unavailable: 'Phone step needed; phone verification unavailable',
-};
-
-export function signalLabel(key: string): string {
-  return SIGNAL_LABEL[key] ?? key.replace(/[_.]/g, ' ').replace(/^./, (c) => c.toUpperCase());
-}
-
-const STATE_LABEL: Record<PersonalRiskState, string> = {
-  clear: 'Clear',
-  review: 'In review',
-  restricted: 'Restricted',
-  closed: 'Closed',
-};
-
-const STATE_STYLE: Record<PersonalRiskState, CSSProperties> = {
-  clear: { background: 'var(--ok-tint)', color: 'var(--ok)' },
-  review: { background: 'var(--info-tint)', color: 'var(--info)' },
-  restricted: { background: 'var(--warn-tint)', color: 'var(--warn)' },
-  closed: { background: 'var(--surface-2)', color: 'var(--muted)' },
-};
-
-const ACTIONS_BY_STATE: Record<PersonalRiskState, PersonalReviewAction[]> = {
-  review: ['clear-review', 'restrict', 'close'],
-  restricted: ['reinstate', 'close'],
-  clear: ['restrict', 'close'],
-  closed: [],
-};
-
-const ACTION_LABEL: Record<PersonalReviewAction, string> = {
-  'clear-review': 'Clear review',
-  restrict: 'Restrict',
-  reinstate: 'Reinstate',
-  close: 'Close account',
-};
-
-/** The actions for an item; a review owed under a restriction can be cleared too. */
-export function actionsFor(it: PersonalReviewItem): PersonalReviewAction[] {
-  const base = ACTIONS_BY_STATE[it.state] ?? [];
-  return it.state === 'restricted' && it.review_pending === true ? ['clear-review', ...base] : base;
-}
-
-const OUTCOME_LABEL: Record<Exclude<AbuseReportOutcome, 'OPEN'>, string> = {
-  CONFIRMED: 'Confirm',
-  FALSE_REPORT: 'Mark false report',
-  DISMISSED: 'Dismiss',
-};
-
-const OUTCOME_SHOWN: Record<AbuseReportOutcome, string> = {
-  OPEN: 'Open',
-  CONFIRMED: 'Confirmed',
-  FALSE_REPORT: 'False report',
-  DISMISSED: 'Dismissed',
-};
-
-function fmt(iso: string | null | undefined): string {
-  return iso ? new Date(iso).toLocaleString() : '—';
-}
-
-function errorText(e: unknown, fallback: string): string {
-  if (!(e instanceof ApiError)) return fallback;
-  const reason = e.details?.['reason'];
-  return `${e.message}${typeof reason === 'string' ? ` (${reason})` : ''}`;
-}
+// PLATFORM-UX-1 F-6 (handoff §8.1; amendment 3, 11; directive R-19) — the Sign
+// Personal review queue: a state filter with counts, a sort, the accounts table
+// and the account drawer (facts, recorded signals, abuse reports, the footer
+// actions allowed by the account's state). The route is gated on
+// platform:tenant:lifecycle:manage in App.tsx (amendment 3 — the API needs it to
+// read, so there is no view-only state). Every action needs a reason and is
+// audited server-side. Clearing review never verifies the phone (§6.3).
 
 export function PersonalReviewView() {
+  const toast = useOptionalToast();
   const [items, setItems] = useState<PersonalReviewItem[] | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<string | null>(null);
-  const [acting, setActing] = useState<{ item: PersonalReviewItem; action: PersonalReviewAction } | null>(null);
-  const [reportsFor, setReportsFor] = useState<PersonalReviewItem | null>(null);
+  const [filter, setFilter] = useState<ReviewFilter>('ALL');
+  const [sort, setSort] = useState<ReviewSort>('signed');
+  // The open account. Kept as a snapshot so an account that leaves the queue
+  // after an action (cleared, closed) stays viewable — reports included.
+  const [open, setOpen] = useState<PersonalReviewItem | null>(null);
 
-  const load = useCallback(() => {
+  const load = useCallback(async (): Promise<PersonalReviewItem[] | null> => {
     setError(null);
-    platformApi
-      .listPersonalReview()
-      .then((r) => setItems(r.items))
-      .catch((e: unknown) => setError(errorText(e, 'Could not load the review queue.')));
+    try {
+      const r = await platformApi.listPersonalReview();
+      setItems(r.items);
+      return r.items;
+    } catch (e) {
+      setError(loadErrorText(e, 'The review queue couldn’t be loaded. Try again.'));
+      return null;
+    }
   }, []);
-  useEffect(load, [load]);
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  const all = items ?? [];
+  const rows = useMemo(() => visibleItems(all, filter, sort), [all, filter, sort]);
+  const options = REVIEW_FILTERS.map((f) => ({
+    value: f,
+    label: filterLabel(f),
+    count: all.filter((i) => f === 'ALL' || i.state === f).length,
+  }));
+
+  const onChanged = (updated: PersonalReviewItem, message: string): void => {
+    toast.show(message);
+    setOpen(updated);
+    void load().then((fresh) => {
+      const again = fresh?.find((i) => i.tenant_id === updated.tenant_id);
+      if (again) setOpen((cur) => (cur !== null && cur.tenant_id === again.tenant_id ? again : cur));
+    });
+  };
 
   return (
-    <div className="pw-page" data-testid="personal-review">
-      <div className="pw-page__head">
-        <h1 className="pw-page__title">Personal review queue</h1>
-        <Link to="/personal-invites">Issue pilot invite</Link>
+    <div className="pw-sp" data-testid="personal-review">
+      <div className="pw-sp-head">
+        <h1 className="pw-sp-title">Sign Personal review queue</h1>
+        <p className="pw-sp-intro">
+          Free Sign Personal accounts flagged for abuse review. Risk points are evidence from signals, not a rating of the person.
+        </p>
       </div>
-      <p className="pw-audit__detail" style={{ marginTop: 0 }}>
-        Aramo Sign Personal accounts in review or restricted. A person decides every outcome; each action is audited with its reason.
-      </p>
-      {done !== null ? <InlineAlert variant="success">{done}</InlineAlert> : null}
-      {error !== null ? <InlineAlert variant="error">{error}</InlineAlert> : null}
-      {items === null && error === null ? <p role="status">Loading…</p> : null}
-      {items !== null && items.length === 0 ? <p data-testid="personal-review-empty">No accounts need review.</p> : null}
-      {items !== null && items.length > 0 ? (
-        <ul className="pw-audit" aria-label="Accounts needing review">
-          {items.map((it) => (
-            <li key={it.tenant_id} className="pw-audit__item" data-testid={`personal-review-${it.tenant_id}`}>
-              <div className="pw-audit__head">
-                <span>
-                  <Link to={`/tenants/${it.tenant_id}`}>{it.tenant_name}</Link>
-                  {it.owner_email !== null ? <span className="pw-audit__meta"> · {it.owner_email}</span> : null}
-                </span>
-                <span
-                  className="pw-badge"
-                  style={{ ...STATE_STYLE[it.state], padding: '2px 9px', borderRadius: 999, fontSize: '0.75rem', fontWeight: 600, whiteSpace: 'nowrap' }}
-                >
-                  {STATE_LABEL[it.state] ?? it.state}
-                </span>
-              </div>
-              <dl className="pw-facts" style={{ marginTop: 8 }}>
-                <dt>Reason</dt>
-                <dd>{it.reason !== null ? (SIGNAL_LABEL[it.reason] ?? it.reason) : '—'}</dd>
-                <dt>Risk points</dt>
-                <dd data-testid="personal-review-points">{it.risk_points ?? '—'}</dd>
-                <dt>Phone verified</dt>
-                <dd>{it.phone_verified_at !== null ? fmt(it.phone_verified_at) : 'No'}</dd>
-                {it.step_up_cleared_by === 'review' ? (
-                  <>
-                    <dt>Phone step</dt>
-                    <dd data-testid="personal-review-step-cleared">Lifted by review (phone not verified)</dd>
-                  </>
-                ) : null}
-                {it.geo != null ? (
-                  <>
-                    <dt>Signup network location</dt>
-                    <dd data-testid="personal-review-geo">
-                      {it.geo.country ?? 'Unknown'}
-                      <span className="pw-audit__meta"> · {it.geo.db_version ?? 'no location database'}</span>
-                    </dd>
-                  </>
-                ) : null}
-                {it.restricted_until !== null ? (
-                  <>
-                    <dt>Restricted until</dt>
-                    <dd>{fmt(it.restricted_until)}</dd>
-                  </>
-                ) : it.state === 'restricted' ? (
-                  <>
-                    <dt>Restricted until</dt>
-                    <dd>Reinstated by an operator</dd>
-                  </>
-                ) : null}
-                {it.report_count != null ? (
-                  <>
-                    <dt>Abuse reports</dt>
-                    <dd>{it.report_count}</dd>
-                  </>
-                ) : null}
-                <dt>Signed up</dt>
-                <dd>{fmt(it.created_at)}</dd>
-              </dl>
-              {it.signals.length > 0 ? (
-                <ul className="pw-audit__detail" aria-label={`Signals for ${it.tenant_name}`} data-testid="personal-review-signals" style={{ paddingLeft: 18 }}>
-                  {it.signals.map((s) => (
-                    <li key={s.key}>
-                      {signalLabel(s.key)} <span className="pw-audit__meta">+{s.points}</span>
-                      {s.detail ? <span className="pw-audit__meta"> · {s.detail}</span> : null}
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-              {it.review_pending === true ? (
-                <p className="pw-audit__detail" data-testid="personal-review-owed">A review is still owed. It holds sending even after this restriction ends.</p>
-              ) : null}
-              {actionsFor(it).length ? (
-                <div className="pw-actions" style={{ marginTop: 8 }}>
-                  <Button variant="secondary" size="sm" onClick={() => setReportsFor(it)} data-testid="personal-review-reports">
-                    Reports
-                  </Button>
-                  {actionsFor(it).map((a) => (
-                    <Button key={a} variant={a === 'close' ? 'secondary' : 'primary'} size="sm" onClick={() => setActing({ item: it, action: a })}>
-                      {ACTION_LABEL[a]}
-                    </Button>
-                  ))}
-                </div>
-              ) : null}
-            </li>
-          ))}
-        </ul>
-      ) : null}
-      {reportsFor !== null ? <ReportsDialog item={reportsFor} onClose={() => setReportsFor(null)} /> : null}
-      {acting !== null ? (
-        <ReviewActionDialog
-          item={acting.item}
-          action={acting.action}
-          onClose={() => setActing(null)}
-          onDone={() => {
-            setDone(`${ACTION_LABEL[acting.action]}: ${acting.item.tenant_name}.`);
-            setActing(null);
-            load();
-          }}
-        />
+      <FilterBar label="State" options={options} value={filter} onChange={setFilter}>
+        <label className="pw-sp-sort">
+          Sort
+          <Select
+            unstyled
+            className="pw-sp-sort__select"
+            value={sort}
+            onChange={(e) => setSort(e.target.value as ReviewSort)}
+          >
+            <option value="signed">Signed up, newest</option>
+            <option value="until">Restricted until, soonest</option>
+          </Select>
+        </label>
+      </FilterBar>
+      <div className="pw-sp-card">
+        {error !== null ? (
+          <div role="alert" className="pw-alert pw-alert--error pw-sp-card__alert">
+            {error}
+          </div>
+        ) : null}
+        <div className="pw-sp-scroll">
+          <table className="pw-sp-table">
+            <thead>
+              <tr>
+                <th>Account</th>
+                <th>State</th>
+                <th>Reason</th>
+                <th className="pw-sp-num">Risk points</th>
+                <th>Phone</th>
+                <th className="pw-sp-num">Reports</th>
+                <th>Signed up</th>
+                <th>Restricted until</th>
+              </tr>
+            </thead>
+            <tbody>
+              {items === null && error === null ? <SkeletonRows /> : null}
+              {rows.map((it) => (
+                <ReviewRow
+                  key={it.tenant_id}
+                  item={it}
+                  selected={open?.tenant_id === it.tenant_id}
+                  onOpen={() => setOpen(it)}
+                />
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {items !== null && rows.length === 0 ? (
+          <div data-testid="personal-review-empty">
+            <EmptyState size="lg" title="Nothing in this state" body="No Sign Personal accounts match this filter." />
+          </div>
+        ) : null}
+      </div>
+      {open !== null ? (
+        <AccountDrawer item={open} onClose={() => setOpen(null)} onChanged={onChanged} />
       ) : null}
     </div>
   );
 }
 
-function ReviewActionDialog({
-  item,
-  action,
-  onClose,
-  onDone,
-}: {
-  item: PersonalReviewItem;
-  action: PersonalReviewAction;
-  onClose: () => void;
-  onDone: () => void;
-}) {
-  const [reason, setReason] = useState('');
-  const [until, setUntil] = useState('');
-  const [confirm, setConfirm] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-
-  const submit = async (): Promise<void> => {
-    setBusy(true);
-    setError(null);
-    try {
-      await platformApi.personalReviewAction(item.tenant_id, action, {
-        reason: reason.trim(),
-        ...(action === 'restrict' && until !== '' ? { until: new Date(until).toISOString() } : {}),
-      });
-      onDone();
-    } catch (e) {
-      setError(errorText(e, 'Action failed.'));
-      setBusy(false);
-    }
-  };
-
-  const disabled = busy || reason.trim() === '' || (action === 'close' && !confirm);
-
+function SkeletonRows() {
   return (
-    <Dialog
-      open
-      onOpenChange={(o) => {
-        if (!o) onClose();
-      }}
-      title={`${ACTION_LABEL[action]} — ${item.tenant_name}`}
-      size="md"
-      footer={
-        <>
-          <Button variant="secondary" onClick={onClose} disabled={busy}>
-            Cancel
-          </Button>
-          <Button variant="primary" onClick={() => void submit()} disabled={disabled} data-testid="personal-action-confirm">
-            {busy ? 'Working…' : ACTION_LABEL[action]}
-          </Button>
-        </>
-      }
-    >
-      {error !== null ? <InlineAlert variant="error">{error}</InlineAlert> : null}
-      {action === 'clear-review' ? (
-        item.review_clears_phone_step === true ? (
-          <p className="pw-audit__detail" data-testid="personal-clear-lifts-phone">
-            Clearing review does not verify the phone. Phone verification is unavailable right now, so clearing review also lifts this account&apos;s phone step and lets it send. The phone stays recorded as not verified.
-          </p>
-        ) : (
-          <p className="pw-audit__detail" data-testid="personal-clear-keeps-phone">
-            Clearing review does not verify the phone. An account that needs phone verification stays blocked from sending until it verifies.
-          </p>
-        )
-      ) : null}
-      {action === 'restrict' ? <p className="pw-audit__detail">New sends pause. Envelopes already sent are not affected.</p> : null}
-      <FormField label="Reason (required)">
-        <TextArea unstyled className="tc-input" rows={3} value={reason} onChange={(e) => setReason(e.target.value)} />
-      </FormField>
-      {action === 'restrict' ? (
-        <FormField label="Restrict until (optional)" helper="Leave empty to keep the restriction until an operator reinstates the account.">
-          <Input unstyled className="tc-input" type="datetime-local" value={until} onChange={(e) => setUntil(e.target.value)} />
-        </FormField>
-      ) : null}
-      {action === 'close' ? (
-        <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-          <Checkbox checked={confirm} onChange={(e) => setConfirm(e.target.checked)} />
-          <span>I understand this closes the personal account.</span>
-        </label>
-      ) : null}
-    </Dialog>
+    <>
+      {[0, 1, 2].map((i) => (
+        <tr key={i} aria-hidden="true">
+          {[160, 80, 140, 40, 80, 30, 90, 90].map((w, j) => (
+            <td key={j}>
+              <Skeleton width={w} />
+            </td>
+          ))}
+        </tr>
+      ))}
+    </>
   );
 }
 
-// §6.4 — the reports behind an account; a person records each outcome. Marking a
-// report false lowers that reporter's weight in future reports.
-function ReportsDialog({ item, onClose }: { item: PersonalReviewItem; onClose: () => void }) {
+function ReviewRow({
+  item: it,
+  selected,
+  onOpen,
+}: {
+  readonly item: PersonalReviewItem;
+  readonly selected: boolean;
+  readonly onOpen: () => void;
+}) {
+  const pill = statePill(it.state);
+  return (
+    <tr
+      className={selected ? 'pw-sp-row pw-sp-row--on' : 'pw-sp-row'}
+      onClick={onOpen}
+      data-testid={`personal-review-${it.tenant_id}`}
+    >
+      <td>
+        <Button
+          unstyled
+          className="pw-sp-row__name"
+          onClick={(e) => {
+            e.stopPropagation();
+            onOpen();
+          }}
+        >
+          {it.tenant_name}
+        </Button>
+        <div className="pw-sp-row__email">{it.owner_email ?? '—'}</div>
+      </td>
+      <td>
+        <Pill tone={pill.tone}>{pill.label}</Pill>
+        <div className="pw-sp-row__owed">{it.review_pending === true ? 'Review owed' : ''}</div>
+      </td>
+      <td className="pw-sp-row__reason">{reasonLabel(it.reason)}</td>
+      <td className="pw-sp-num pw-sp-row__points" data-testid="personal-review-points">
+        {it.risk_points ?? '—'}
+      </td>
+      <td className="pw-sp-row__text">{phoneLabel(it)}</td>
+      <td className="pw-sp-num pw-sp-row__text">{it.report_count ?? '—'}</td>
+      <td className="pw-sp-row__text pw-sp-nowrap">
+        {formatDate(it.created_at)}
+        <div className="pw-sp-row__sub">{formatRelative(it.created_at)}</div>
+      </td>
+      <td className="pw-sp-row__text pw-sp-nowrap">{it.restricted_until !== null ? formatDate(it.restricted_until) : '—'}</td>
+    </tr>
+  );
+}
+
+// ── the account drawer ──────────────────────────────────────────────────────
+
+function AccountDrawer({
+  item: it,
+  onClose,
+  onChanged,
+}: {
+  readonly item: PersonalReviewItem;
+  readonly onClose: () => void;
+  readonly onChanged: (updated: PersonalReviewItem, message: string) => void;
+}) {
+  const toast = useOptionalToast();
   const [reports, setReports] = useState<PersonalAbuseReport[] | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [deciding, setDeciding] = useState<{ report: PersonalAbuseReport; outcome: Exclude<AbuseReportOutcome, 'OPEN'> } | null>(null);
-  const [reason, setReason] = useState('');
-  const [busy, setBusy] = useState(false);
+  const [reportsError, setReportsError] = useState<string | null>(null);
+  const [acting, setActing] = useState<PersonalReviewAction | null>(null);
+  const [deciding, setDeciding] = useState<{ report: PersonalAbuseReport; outcome: ReportDecision } | null>(null);
 
-  const load = useCallback(() => {
-    platformApi
-      .listPersonalReports(item.tenant_id)
-      .then((r) => setReports(r.items))
-      .catch((e: unknown) => setError(errorText(e, 'Could not load reports.')));
-  }, [item.tenant_id]);
-  useEffect(load, [load]);
-
-  const decide = async (): Promise<void> => {
-    if (deciding === null) return;
-    setBusy(true);
-    setError(null);
+  const loadReports = useCallback(async () => {
+    setReportsError(null);
     try {
-      await platformApi.decidePersonalReport(deciding.report.id, { outcome: deciding.outcome, reason: reason.trim() });
-      setDeciding(null);
-      setReason('');
-      load();
+      setReports((await platformApi.listPersonalReports(it.tenant_id)).items);
     } catch (e) {
-      setError(errorText(e, 'Could not record the outcome.'));
-    } finally {
-      setBusy(false);
+      setReportsError(loadErrorText(e, 'Reports couldn’t be loaded. Try again.'));
     }
-  };
+  }, [it.tenant_id]);
+  useEffect(() => {
+    void loadReports();
+  }, [loadReports]);
+
+  const pill = statePill(it.state);
+  const acts = actionsFor(it);
+  const closed = it.state === 'closed';
+  const reportCount = reports !== null ? reports.length : it.report_count;
+  const facts: ReadonlyArray<readonly [string, string]> = [
+    ['Tenant', it.tenant_name],
+    ['Reason', reasonLabel(it.reason)],
+    ['Phone', `${phoneLabel(it)} · ${phoneStepLabel(it)}`],
+    [
+      'Signup network',
+      it.geo != null ? `${it.geo.country ?? 'Unknown'} · ${it.geo.db_version ?? 'no location database'}` : '—',
+    ],
+    ['Signed up', formatDateRelative(it.created_at)],
+    ['Restricted until', it.restricted_until !== null ? formatTimestamp(it.restricted_until) : '—'],
+    ['Abuse reports', reportCount != null ? String(reportCount) : '—'],
+    ['Review owed', it.review_pending === true ? 'Yes' : 'No'],
+  ];
+
+  const footer =
+    acts.length > 0 ? (
+      <>
+        {acts.map((a) => (
+          <Button
+            key={a}
+            unstyled
+            className={a === 'close' ? 'pw-sp-act pw-sp-act--danger' : 'pw-sp-act'}
+            onClick={() => setActing(a)}
+          >
+            {ACTION_BUTTON[a]}
+          </Button>
+        ))}
+      </>
+    ) : undefined;
 
   return (
-    <Dialog
+    <DetailDrawer
       open
       onOpenChange={(o) => {
         if (!o) onClose();
       }}
-      title={`Abuse reports — ${item.tenant_name}`}
-      size="md"
-      footer={
-        <Button variant="secondary" onClick={onClose}>
-          Close
-        </Button>
+      title={
+        <>
+          <b className="pw-sp-drawer__name">{it.tenant_name}</b>
+          <Pill tone={pill.tone}>{pill.label}</Pill>
+        </>
       }
+      subtitle={`${it.owner_email ?? '—'} · ${it.tenant_id}`}
+      footer={footer}
     >
-      {error !== null ? <InlineAlert variant="error">{error}</InlineAlert> : null}
-      {reports === null && error === null ? <p role="status">Loading…</p> : null}
-      {reports !== null && reports.length === 0 ? <p data-testid="personal-reports-empty">No reports.</p> : null}
-      {reports !== null && reports.length > 0 ? (
-        <ul className="pw-audit" aria-label="Abuse reports" data-testid="personal-reports">
-          {reports.map((r) => (
-            <li key={r.id} className="pw-audit__item">
-              <div className="pw-audit__head">
-                <span>{r.reason ?? 'No reason given'}</span>
-                <span className="pw-audit__meta">{OUTCOME_SHOWN[r.outcome]}</span>
+      <div data-testid="personal-drawer">
+        <dl className="pw-sp-facts">
+          {facts.map(([k, v]) => (
+            <div key={k} className="pw-sp-facts__row">
+              <dt>{k}</dt>
+              <dd>{v}</dd>
+            </div>
+          ))}
+        </dl>
+        <h3 className="pw-sp-h3">
+          <span>Signals</span>
+          <span className="pw-sp-h3__aside" data-testid="personal-signal-total">
+            {signalTotal(it)} risk points from recorded signals
+          </span>
+        </h3>
+        <div className="pw-sp-signals" data-testid="personal-review-signals">
+          {it.signals.length === 0 ? <div className="pw-sp-signal pw-sp-signal--none">No signals recorded.</div> : null}
+          {it.signals.map((s, i) => (
+            <div key={`${s.key}-${String(i)}`} className="pw-sp-signal">
+              <span className="pw-sp-signal__label">{signalLabel(s.key)}</span>
+              <span className="pw-sp-signal__pts">+{s.points}</span>
+              <span className="pw-sp-signal__code">
+                {s.key}
+                {s.detail ? ` · ${s.detail}` : ''}
+              </span>
+            </div>
+          ))}
+        </div>
+        <h3 className="pw-sp-h3">Reports</h3>
+        {reportsError !== null ? (
+          <div role="alert" className="pw-alert pw-alert--error pw-sp-gap">
+            {reportsError}
+          </div>
+        ) : null}
+        {reports === null && reportsError === null ? (
+          <div className="pw-sp-gap" aria-busy="true">
+            <span className="pw-sr-only" role="status">
+              Loading reports…
+            </span>
+            <Skeleton height={64} radius={10} />
+          </div>
+        ) : null}
+        {reports !== null && reports.length === 0 ? (
+          <div className="pw-sp-noreports" data-testid="personal-reports-empty">
+            No abuse reports.
+          </div>
+        ) : null}
+        {(reports ?? []).map((r) => {
+          const rp = REPORT_PILL[r.outcome];
+          return (
+            <div key={r.id} className="pw-sp-report" data-testid={`personal-report-${r.id}`}>
+              <div className="pw-sp-report__head">
+                <b className="pw-sp-report__cat">{reportCategory(r)}</b>
+                <Pill tone={rp.tone}>{rp.label}</Pill>
+                <span className="pw-sp-report__at">{formatDate(r.created_at)}</span>
               </div>
-              <p className="pw-audit__detail">
-                From {r.reporter_domain} · weight {r.weight.toFixed(2)} · {fmt(r.created_at)}
-                {r.note ? ` · “${r.note}”` : ''}
-              </p>
+              {r.note ? <div className="pw-sp-report__note">“{r.note}”</div> : null}
+              {r.outcome_reason ? <div className="pw-sp-report__decision">Decision: {r.outcome_reason}</div> : null}
               {r.outcome === 'OPEN' ? (
-                <div className="pw-actions">
-                  {(Object.keys(OUTCOME_LABEL) as Exclude<AbuseReportOutcome, 'OPEN'>[]).map((o) => (
-                    <Button key={o} size="sm" variant="secondary" onClick={() => setDeciding({ report: r, outcome: o })}>
-                      {OUTCOME_LABEL[o]}
+                <div className="pw-sp-report__acts">
+                  {REPORT_DECISIONS.map((o) => (
+                    <Button
+                      key={o}
+                      unstyled
+                      className={o === 'CONFIRMED' ? 'pw-sp-rbtn pw-sp-rbtn--priv' : 'pw-sp-rbtn'}
+                      onClick={() => setDeciding({ report: r, outcome: o })}
+                    >
+                      {REPORT_BUTTON[o]}
                     </Button>
                   ))}
                 </div>
               ) : null}
-            </li>
-          ))}
-        </ul>
+            </div>
+          );
+        })}
+        {closed ? (
+          <div className="pw-sp-closed" data-testid="personal-closed-note">
+            This account is closed. Reports stay viewable; no further actions.
+          </div>
+        ) : null}
+      </div>
+      {acting !== null ? (
+        <ReviewActionDialog
+          item={it}
+          action={acting}
+          onClose={() => setActing(null)}
+          onDone={(updated) => {
+            const label = actionSpec(acting, it).label;
+            setActing(null);
+            onChanged(updated, `${label}: ${it.tenant_name}.`);
+          }}
+        />
       ) : null}
       {deciding !== null ? (
-        <div style={{ marginTop: 12 }}>
-          <FormField label={`Reason for “${OUTCOME_LABEL[deciding.outcome]}” (required)`}>
-            <TextArea unstyled className="tc-input" rows={2} value={reason} onChange={(e) => setReason(e.target.value)} />
-          </FormField>
-          <div className="pw-actions">
-            <Button variant="secondary" onClick={() => setDeciding(null)} disabled={busy}>
-              Cancel
-            </Button>
-            <Button variant="primary" onClick={() => void decide()} disabled={busy || reason.trim() === ''} data-testid="personal-report-decide">
-              {busy ? 'Saving…' : OUTCOME_LABEL[deciding.outcome]}
-            </Button>
-          </div>
-        </div>
+        <ReportDecisionDialog
+          item={it}
+          report={deciding.report}
+          outcome={deciding.outcome}
+          onClose={() => setDeciding(null)}
+          onDone={() => {
+            setDeciding(null);
+            toast.show('Report updated.');
+            void loadReports();
+          }}
+        />
       ) : null}
-    </Dialog>
+    </DetailDrawer>
+  );
+}
+
+// ── dialogs ────────────────────────────────────────────────────────────────
+
+const REASON_HELPER = 'Recorded on the account. The account holder doesn’t see it.';
+
+export function ReviewActionDialog({
+  item: it,
+  action,
+  onClose,
+  onDone,
+  now = () => new Date(),
+}: {
+  readonly item: PersonalReviewItem;
+  readonly action: PersonalReviewAction;
+  readonly onClose: () => void;
+  readonly onDone: (updated: PersonalReviewItem) => void;
+  /** Clock seam (tests). */
+  readonly now?: () => Date;
+}) {
+  const spec = actionSpec(action, it);
+  const [reason, setReason] = useState('');
+  const [until, setUntil] = useState('');
+  const [ack, setAck] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const canCommit = reason.trim().length > 0 && (action !== 'close' || ack);
+
+  const commit = async (): Promise<void> => {
+    const untilAt = action === 'restrict' ? untilAsUtc(until) : null;
+    if (untilAt !== null && untilAt.getTime() <= now().getTime()) {
+      setError(UNTIL_IN_PAST);
+      return;
+    }
+    setBusy(true);
+    setError(null);
+    try {
+      const r = await platformApi.personalReviewAction(it.tenant_id, action, {
+        reason: reason.trim(),
+        ...(untilAt !== null ? { until: untilAt.toISOString() } : {}),
+      });
+      onDone(applyRiskView(it, r, { to: spec.to, reason: reason.trim(), clearedReview: action === 'clear-review' }));
+    } catch (e) {
+      setError(reviewErrorText(e, it, 'The action couldn’t be completed. Try again.'));
+      setBusy(false);
+    }
+  };
+
+  const from = statePill(it.state);
+  const to = statePill(spec.to);
+  const consequence =
+    action === 'clear-review' && it.review_clears_phone_step === true ? (
+      <>
+        {spec.consequence}{' '}
+        <span data-testid="personal-clear-lifts-phone">
+          Clearing review doesn’t verify the phone. Phone verification is unavailable right now, so this also lifts the
+          account’s phone step; the phone stays recorded as not verified.
+        </span>
+      </>
+    ) : (
+      spec.consequence
+    );
+
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+      title={`${spec.label} — ${it.tenant_name}`}
+      from={from}
+      to={to}
+      consequence={consequence}
+      error={error}
+      commitLabel={spec.label}
+      tone={spec.tone}
+      canCommit={canCommit}
+      busy={busy}
+      onCommit={() => void commit()}
+    >
+      <FieldTextArea label="Reason" value={reason} onChange={setReason} max={REASON_MAX} helper={REASON_HELPER} />
+      {action === 'restrict' ? (
+        <FieldText
+          label="Restrict until (optional)"
+          type="datetime-local"
+          value={until}
+          onChange={(v) => {
+            setUntil(v);
+            setError(null);
+          }}
+          helper="Leave empty to restrict until someone reinstates it. Times are UTC."
+        />
+      ) : null}
+      {action === 'close' ? <FieldAck label="I understand this closes the account." checked={ack} onChange={setAck} /> : null}
+    </ConfirmDialog>
+  );
+}
+
+function ReportDecisionDialog({
+  item,
+  report,
+  outcome,
+  onClose,
+  onDone,
+}: {
+  readonly item: PersonalReviewItem;
+  readonly report: PersonalAbuseReport;
+  readonly outcome: ReportDecision;
+  readonly onClose: () => void;
+  readonly onDone: () => void;
+}) {
+  const spec = reportDecisionSpec(outcome);
+  const [reason, setReason] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const commit = async (): Promise<void> => {
+    setBusy(true);
+    setError(null);
+    try {
+      await platformApi.decidePersonalReport(report.id, { outcome, reason: reason.trim() });
+      onDone();
+    } catch (e) {
+      setError(reviewErrorText(e, item, 'The outcome couldn’t be recorded. Try again.'));
+      setBusy(false);
+    }
+  };
+
+  return (
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+      title={spec.label}
+      consequence={spec.consequence}
+      error={error}
+      commitLabel={spec.label}
+      tone={spec.tone}
+      canCommit={reason.trim().length > 0}
+      busy={busy}
+      onCommit={() => void commit()}
+    >
+      <FieldTextArea label="Reason" value={reason} onChange={setReason} max={REASON_MAX} />
+    </ConfirmDialog>
   );
 }

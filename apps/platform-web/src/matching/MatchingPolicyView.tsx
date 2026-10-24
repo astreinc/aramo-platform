@@ -1,23 +1,26 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   ApiError,
   Button,
   Checkbox,
-  DataTable,
-  Dialog,
-  FormField,
-  InlineAlert,
   Input,
-  StatusPill,
-  TextArea,
-  formatDate,
   hasScope,
-  type PillTone,
+  useOptionalToast,
   type Session,
-  type TableColumn,
 } from '@aramo/fe-foundation';
 
 import {
+  ConfirmDialog,
+  FieldTextArea,
+  Pill,
+  SkeletonPanel,
+  formatDate,
+  permissionLabel,
+  type PillSpec,
+} from '../components';
+
+import {
+  COMPILED_DEFAULT_THRESHOLDS,
   EVIDENCE_COUNT_MAX,
   EVIDENCE_COUNT_MIN,
   ROLE_FAMILIES,
@@ -29,15 +32,62 @@ import {
   type MatchingPolicyVersion,
   type RoleFamily,
 } from './matching-policy-api';
+import './matching.css';
 
 export const MATCHING_POLICY_READ_SCOPE = 'platform:matching_policy:read';
 export const MATCHING_POLICY_WRITE_SCOPE = 'platform:matching_policy:write';
 
-const STATUS_TONE: Readonly<Record<MatchingPolicyStatus, PillTone>> = {
-  ACTIVE: 'ok',
-  DRAFT: 'info',
-  RETIRED: 'neutral',
+export const NOTE_MAX = 500;
+
+// PLATFORM-UX-1 F-8 (handoff §9 Matching policy) — the platform-owned matching
+// calibration: the ACTIVE version's role-family evidence thresholds (or "Compiled
+// defaults apply" when none is active), Edit as new version (inline number
+// inputs and checkboxes plus a note → a DRAFT; nothing changes until it is
+// activated), and the version history with "Activate vN…" and its impact diff.
+// Versions are append-only; re-activating a RETIRED version is the rollback.
+// Read-scope operators see the view-only note (handoff §2).
+
+export const STATUS_PILL: Readonly<Record<MatchingPolicyStatus, PillSpec>> = {
+  ACTIVE: { label: 'Active', tone: 'ok' },
+  DRAFT: { label: 'Draft', tone: 'info' },
+  RETIRED: { label: 'Retired', tone: 'muted' },
 };
+
+/** "2 · ingested" — one threshold in the impact table. */
+function thresholdText(t: { count: number; requires_ingested: boolean }): string {
+  return `${String(t.count)}${t.requires_ingested ? ' · ingested' : ''}`;
+}
+
+export interface ImpactRow {
+  readonly family: RoleFamily;
+  readonly label: string;
+  readonly now: string;
+  readonly after: string;
+  readonly changed: boolean;
+}
+
+/** The activation impact: every role family, active-now (or compiled defaults) → after. */
+export function impactRows(active: EvidenceThresholds | null, next: EvidenceThresholds): ImpactRow[] {
+  const base = active ?? COMPILED_DEFAULT_THRESHOLDS;
+  return ROLE_FAMILIES.map((family) => {
+    const a = base[family];
+    const b = next[family];
+    return {
+      family,
+      label: ROLE_FAMILY_LABELS[family],
+      now: thresholdText(a),
+      after: thresholdText(b),
+      changed: a.count !== b.count || a.requires_ingested !== b.requires_ingested,
+    };
+  });
+}
+
+/** Clamp an edited count into the engine's bounds (the design clamps on input). */
+export function clampCount(raw: string): number {
+  const n = Math.trunc(Number(raw));
+  if (!Number.isFinite(n) || n < EVIDENCE_COUNT_MIN) return EVIDENCE_COUNT_MIN;
+  return Math.min(EVIDENCE_COUNT_MAX, n);
+}
 
 function errorMessage(e: unknown, fallback: string): string {
   if (!(e instanceof ApiError)) return fallback;
@@ -46,152 +96,246 @@ function errorMessage(e: unknown, fallback: string): string {
   return e.message;
 }
 
-interface ThresholdRow {
-  family: RoleFamily;
-  count: number;
-  requires_ingested: boolean;
+function cloneThresholds(t: EvidenceThresholds): EvidenceThresholds {
+  const out = {} as EvidenceThresholds;
+  for (const f of ROLE_FAMILIES) out[f] = { ...t[f] };
+  return out;
 }
 
-function rowsOf(t: EvidenceThresholds): ThresholdRow[] {
-  return ROLE_FAMILIES.map((family) => ({ family, ...t[family] }));
-}
-
-const THRESHOLD_COLUMNS: ReadonlyArray<TableColumn<ThresholdRow>> = [
-  { key: 'family', header: 'Role family', render: (r) => ROLE_FAMILY_LABELS[r.family] },
-  { key: 'count', header: 'Evidence count (min)', render: (r) => <span className="num">{r.count}</span> },
-  {
-    key: 'requires_ingested',
-    header: 'Requires ingested evidence',
-    render: (r) => (r.requires_ingested ? 'Yes' : 'No'),
-  },
-];
-
-// ATI-SEP-1 A2 A-c (P1) — the platform-owned matching calibration. Shows the ACTIVE
-// policy (the role-family evidence thresholds the ATS-side engine applies) and every
-// version. Write-scope operators edit AS A NEW VERSION (a DRAFT; nothing changes until
-// it is activated) and activate any non-active version — re-activating a RETIRED
-// version is the rollback. Versions are append-only: a version is never edited in
-// place. Tenants consume the policy and have no surface to it.
 export function MatchingPolicyView({ session }: { readonly session: Session }) {
   const canWrite = hasScope(session, MATCHING_POLICY_WRITE_SCOPE);
+  const toast = useOptionalToast();
   const [state, setState] = useState<MatchingPolicyState | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState<EvidenceThresholds | null>(null);
+  const [note, setNote] = useState('');
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
   const [activating, setActivating] = useState<MatchingPolicyVersion | null>(null);
 
   const load = useCallback(async () => {
-    setLoading(true);
     setError(null);
     try {
       setState(await matchingPolicyApi.getPolicy());
     } catch (e) {
-      setError(errorMessage(e, 'Failed to load the matching policy.'));
-    } finally {
-      setLoading(false);
+      setError(errorMessage(e, 'The matching policy couldn’t be loaded. Try again.'));
     }
   }, []);
-
   useEffect(() => {
     void load();
   }, [load]);
 
-  const historyColumns = useMemo<ReadonlyArray<TableColumn<MatchingPolicyVersion>>>(() => {
-    const base: Array<TableColumn<MatchingPolicyVersion>> = [
-      { key: 'version_number', header: 'Version', render: (v) => <span className="num">v{v.version_number}</span> },
-      {
-        key: 'status',
-        header: 'Status',
-        render: (v) => <StatusPill tone={STATUS_TONE[v.status]}>{v.status}</StatusPill>,
-      },
-      { key: 'note', header: 'Note', render: (v) => v.note ?? '—' },
-      { key: 'created_at', header: 'Created', render: (v) => formatDate(v.created_at) },
-      {
-        key: 'activated_at',
-        header: 'Last activated',
-        render: (v) => (v.activated_at !== null ? formatDate(v.activated_at) : '—'),
-      },
-    ];
-    if (canWrite) {
-      base.push({
-        key: 'actions',
-        header: '',
-        render: (v) =>
-          v.status === 'ACTIVE' ? null : (
-            <Button variant="ghost" onClick={() => setActivating(v)}>
-              Activate v{v.version_number}
-            </Button>
-          ),
-      });
-    }
-    return base;
-  }, [canWrite]);
-
   const active = state?.active ?? null;
+  const editing = draft !== null;
+  const shown = draft ?? active?.evidence_thresholds ?? COMPILED_DEFAULT_THRESHOLDS;
+
+  const startEdit = (): void => {
+    setDraft(cloneThresholds(active?.evidence_thresholds ?? COMPILED_DEFAULT_THRESHOLDS));
+    setNote('');
+    setSaveError(null);
+  };
+  const setRow = (f: RoleFamily, patch: Partial<{ count: number; requires_ingested: boolean }>): void => {
+    setDraft((d) => (d === null ? d : { ...d, [f]: { ...d[f], ...patch } }));
+  };
+
+  const saveDraft = async (): Promise<void> => {
+    if (draft === null) return;
+    setSaving(true);
+    setSaveError(null);
+    try {
+      const v = await matchingPolicyApi.createVersion({
+        evidence_thresholds: draft,
+        note: note.trim().length > 0 ? note.trim() : null,
+      });
+      setDraft(null);
+      toast.show(`Draft v${String(v.version_number)} saved. Activate it when ready.`);
+      void load();
+    } catch (e) {
+      setSaveError(errorMessage(e, 'The draft couldn’t be saved. Try again.'));
+    } finally {
+      setSaving(false);
+    }
+  };
 
   return (
-    <div className="pw-page">
-      <div className="pw-page__head">
-        <h1 className="pw-page__title">Matching policy</h1>
-        {canWrite && active !== null ? (
-          <Button variant="primary" onClick={() => setEditing(true)}>
+    <div className="pw-mp" data-testid="matching-policy">
+      <div className="pw-mp-head">
+        <div>
+          <h1 className="pw-mp-title">Matching policy</h1>
+          <p className="pw-mp-intro">
+            Minimum evidence each role family needs before a skill counts in matching, across every tenant.
+          </p>
+        </div>
+        {canWrite && !editing && state !== null ? (
+          <Button unstyled className="pw-btn pw-btn--normal" onClick={startEdit}>
             Edit as new version
           </Button>
         ) : null}
       </div>
-
-      <div className="pw-notice" role="note">
-        Platform-owned calibration for the ATS matching engine: the minimum evidence per
-        critical skill for each role family. Tenants use the active version and cannot
-        change it. A new version takes effect only when activated.
-      </div>
-
-      {error ? <InlineAlert variant="error">{error}</InlineAlert> : null}
-
-      <section className="pw-panel" aria-label="Active policy">
-        <h2 className="pw-panel__title">
-          Active policy{active !== null ? ` — v${String(active.version_number)}` : ''}
-        </h2>
-        {active === null && !loading && error === null ? (
-          <p>No active version is stored; matching applies the compiled defaults.</p>
-        ) : null}
-        <DataTable
-          columns={THRESHOLD_COLUMNS}
-          rows={active !== null ? rowsOf(active.evidence_thresholds) : []}
-          rowKey={(r) => r.family}
-          emptyMessage={loading ? 'Loading…' : 'No active policy.'}
-        />
-      </section>
-
-      <section className="pw-panel" aria-label="Version history">
-        <h2 className="pw-panel__title">Version history</h2>
-        <DataTable
-          columns={historyColumns}
-          rows={state?.versions ?? []}
-          rowKey={(v) => v.id}
-          rowMuted={(v) => v.status === 'RETIRED'}
-          emptyMessage={loading ? 'Loading…' : 'No versions.'}
-        />
-      </section>
-
-      {editing && active !== null ? (
-        <NewVersionDialog
-          base={active}
-          open={editing}
-          onOpenChange={setEditing}
-          onDone={() => {
-            setEditing(false);
-            void load();
-          }}
-        />
+      {!canWrite ? (
+        <div className="pw-viewonly pw-mp-viewonly" role="note">
+          <b className="pw-viewonly__lead">View only.</b>
+          <span>
+            Changing the policy needs the <b>{permissionLabel(MATCHING_POLICY_WRITE_SCOPE)}</b> permission.
+          </span>
+        </div>
       ) : null}
+      <div className="pw-mp-grid">
+        <section className="pw-mp-card" aria-labelledby="pw-mp-policy-title">
+          <div className="pw-mp-card__head">
+            {editing ? (
+              <>
+                <h2 id="pw-mp-policy-title" className="pw-mp-card__title">
+                  New draft version
+                </h2>
+                <p className="pw-mp-card__sub">Saving creates a draft. Nothing changes until you activate it.</p>
+              </>
+            ) : active !== null ? (
+              <>
+                <h2 id="pw-mp-policy-title" className="pw-mp-card__title">
+                  Active policy <span className="pw-mono">v{active.version_number}</span>
+                </h2>
+                <p className="pw-mp-card__sub">
+                  Activated {formatDate(active.activated_at)}
+                  {active.note ? ` · ${active.note}` : ''}
+                </p>
+              </>
+            ) : (
+              <>
+                <h2 id="pw-mp-policy-title" className="pw-mp-card__title">
+                  {state === null && error === null ? 'Active policy' : 'No active version'}
+                </h2>
+                <p className="pw-mp-card__sub">{state === null ? ' ' : 'Compiled defaults apply.'}</p>
+              </>
+            )}
+          </div>
+          {error !== null ? (
+            <div role="alert" className="pw-alert pw-alert--error pw-mp-card__alert">
+              {error}
+            </div>
+          ) : null}
+          {state === null && error === null ? (
+            <SkeletonPanel lines={['100%', '100%', '100%', '100%', '100%', '100%', '100%', '100%', '100%']} />
+          ) : null}
+          {state !== null ? (
+            <table className="pw-mp-table">
+              <thead>
+                <tr>
+                  <th className="pw-mp-th--family">Role family</th>
+                  <th className="pw-mp-th--count">Min. evidence</th>
+                  <th className="pw-mp-th--ing">Ingested evidence</th>
+                </tr>
+              </thead>
+              <tbody>
+                {ROLE_FAMILIES.map((f) => {
+                  const t = shown[f];
+                  return (
+                    <tr key={f} data-testid={`mp-row-${f}`}>
+                      <td className="pw-mp-td--family">{ROLE_FAMILY_LABELS[f]}</td>
+                      <td className="pw-mp-td--count">
+                        {draft !== null ? (
+                          <Input
+                            unstyled
+                            className="pw-mp-num"
+                            type="number"
+                            min={EVIDENCE_COUNT_MIN}
+                            max={EVIDENCE_COUNT_MAX}
+                            aria-label={`${ROLE_FAMILY_LABELS[f]}: minimum evidence`}
+                            value={String(t.count)}
+                            onChange={(e) => setRow(f, { count: clampCount(e.target.value) })}
+                          />
+                        ) : (
+                          <span className="pw-mp-count">{t.count}</span>
+                        )}
+                      </td>
+                      <td className="pw-mp-td--ing">
+                        {draft !== null ? (
+                          <label className="pw-mp-check">
+                            <Checkbox
+                              unstyled
+                              className="pw-mp-check__box"
+                              aria-label={`${ROLE_FAMILY_LABELS[f]}: ingested evidence required`}
+                              checked={t.requires_ingested}
+                              onChange={(e) => setRow(f, { requires_ingested: e.target.checked })}
+                            />
+                            Required
+                          </label>
+                        ) : t.requires_ingested ? (
+                          'Required'
+                        ) : (
+                          'Not required'
+                        )}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          ) : null}
+          {editing ? (
+            <div className="pw-mp-edit">
+              <FieldTextArea label="Note (optional)" value={note} onChange={setNote} max={NOTE_MAX} rows={2} />
+              {saveError !== null ? (
+                <div role="alert" className="pw-alert pw-alert--error">
+                  {saveError}
+                </div>
+              ) : null}
+              <div className="pw-mp-edit__actions">
+                <Button unstyled className="pw-mp-btn pw-mp-btn--secondary" onClick={() => setDraft(null)}>
+                  Cancel
+                </Button>
+                <Button
+                  unstyled
+                  className="pw-mp-btn pw-mp-btn--normal"
+                  disabled={saving}
+                  aria-busy={saving || undefined}
+                  onClick={() => void saveDraft()}
+                >
+                  Save draft version
+                </Button>
+              </div>
+            </div>
+          ) : null}
+        </section>
+        <section className="pw-mp-card" aria-labelledby="pw-mp-history-title">
+          <div className="pw-mp-card__head">
+            <h2 id="pw-mp-history-title" className="pw-mp-card__title">
+              Version history
+            </h2>
+          </div>
+          {state === null && error === null ? <SkeletonPanel /> : null}
+          {state !== null && state.versions.length === 0 ? (
+            <div className="pw-mp-none">No versions yet.</div>
+          ) : null}
+          {(state?.versions ?? []).map((v) => {
+            const p = STATUS_PILL[v.status];
+            return (
+              <div key={v.id} className="pw-mp-hist" data-testid={`mp-version-${String(v.version_number)}`}>
+                <b className="pw-mp-hist__v">v{v.version_number}</b>
+                <Pill tone={p.tone}>{p.label}</Pill>
+                <span className="pw-mp-hist__body">
+                  <span className="pw-mp-hist__note">{v.note ?? '—'}</span>
+                  <span className="pw-mp-hist__meta">
+                    Created {formatDate(v.created_at)} · last activated {formatDate(v.activated_at)}
+                  </span>
+                </span>
+                {canWrite && v.status !== 'ACTIVE' ? (
+                  <Button unstyled className="pw-mp-activate" onClick={() => setActivating(v)}>
+                    Activate v{v.version_number}…
+                  </Button>
+                ) : null}
+              </div>
+            );
+          })}
+        </section>
+      </div>
       {activating !== null ? (
         <ActivateDialog
           version={activating}
-          activeNumber={active?.version_number ?? null}
-          open
-          onOpenChange={(o) => !o && setActivating(null)}
+          active={active}
+          onClose={() => setActivating(null)}
           onDone={() => {
+            toast.show(`v${String(activating.version_number)} is now active.`);
             setActivating(null);
             void load();
           }}
@@ -201,181 +345,87 @@ export function MatchingPolicyView({ session }: { readonly session: Session }) {
   );
 }
 
-// ---- Edit as new version --------------------------------------------------
-// Starts from the ACTIVE version's thresholds; saving creates a DRAFT version (the
-// API assigns the next number). The DRAFT is activated separately.
-function NewVersionDialog({
-  base,
-  open,
-  onOpenChange,
-  onDone,
-}: {
-  readonly base: MatchingPolicyVersion;
-  readonly open: boolean;
-  readonly onOpenChange: (open: boolean) => void;
-  readonly onDone: () => void;
-}) {
-  const [draft, setDraft] = useState<Record<RoleFamily, { count: string; requires_ingested: boolean }>>(() => {
-    const out = {} as Record<RoleFamily, { count: string; requires_ingested: boolean }>;
-    for (const f of ROLE_FAMILIES) {
-      out[f] = {
-        count: String(base.evidence_thresholds[f].count),
-        requires_ingested: base.evidence_thresholds[f].requires_ingested,
-      };
-    }
-    return out;
-  });
-  const [note, setNote] = useState('');
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+// ── Activate vN (720px, with the impact diff) ──────────────────────────────
 
-  const invalid = ROLE_FAMILIES.filter((f) => {
-    const n = Number(draft[f].count);
-    return !Number.isInteger(n) || n < EVIDENCE_COUNT_MIN || n > EVIDENCE_COUNT_MAX;
-  });
-
-  const submit = async (): Promise<void> => {
-    setBusy(true);
-    setError(null);
-    const evidence_thresholds = {} as EvidenceThresholds;
-    for (const f of ROLE_FAMILIES) {
-      evidence_thresholds[f] = { count: Number(draft[f].count), requires_ingested: draft[f].requires_ingested };
-    }
-    try {
-      await matchingPolicyApi.createVersion({
-        evidence_thresholds,
-        note: note.trim().length > 0 ? note.trim() : null,
-      });
-      onOpenChange(false);
-      onDone();
-    } catch (e) {
-      setError(errorMessage(e, 'Could not create the version.'));
-      setBusy(false);
-    }
-  };
-
-  const editColumns: ReadonlyArray<TableColumn<RoleFamily>> = [
-    { key: 'family', header: 'Role family', render: (f) => ROLE_FAMILY_LABELS[f] },
-    {
-      key: 'count',
-      header: 'Evidence count (min)',
-      render: (f) => (
-        <Input
-          unstyled
-          aria-label={`${ROLE_FAMILY_LABELS[f]} evidence count`}
-          className="tc-input"
-          type="number"
-          min={EVIDENCE_COUNT_MIN}
-          max={EVIDENCE_COUNT_MAX}
-          value={draft[f].count}
-          onChange={(e) => setDraft({ ...draft, [f]: { ...draft[f], count: e.target.value } })}
-          style={{ width: 96 }}
-        />
-      ),
-    },
-    {
-      key: 'requires_ingested',
-      header: 'Requires ingested',
-      render: (f) => (
-        <Checkbox
-          aria-label={`${ROLE_FAMILY_LABELS[f]} requires ingested evidence`}
-          checked={draft[f].requires_ingested}
-          onChange={(e) => setDraft({ ...draft, [f]: { ...draft[f], requires_ingested: e.target.checked } })}
-        />
-      ),
-    },
-  ];
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title={`New version (from v${String(base.version_number)})`}
-      size="lg"
-      footer={
-        <>
-          <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={busy}>
-            Cancel
-          </Button>
-          <Button variant="primary" onClick={() => void submit()} disabled={busy || invalid.length > 0}>
-            {busy ? 'Saving…' : 'Save as draft version'}
-          </Button>
-        </>
-      }
-    >
-      {error ? <InlineAlert variant="error">{error}</InlineAlert> : null}
-      {invalid.length > 0 ? (
-        <InlineAlert variant="error">
-          Each evidence count must be a whole number from {EVIDENCE_COUNT_MIN} to {EVIDENCE_COUNT_MAX}.
-        </InlineAlert>
-      ) : null}
-      <DataTable columns={editColumns} rows={[...ROLE_FAMILIES]} rowKey={(f) => f} emptyMessage="" />
-      <FormField label="Note (optional)">
-        <TextArea unstyled className="tc-input" rows={2} value={note} onChange={(e) => setNote(e.target.value)} />
-      </FormField>
-    </Dialog>
-  );
-}
-
-// ---- Activate ---------------------------------------------------------------
-function ActivateDialog({
+export function ActivateDialog({
   version,
-  activeNumber,
-  open,
-  onOpenChange,
+  active,
+  onClose,
   onDone,
 }: {
   readonly version: MatchingPolicyVersion;
-  readonly activeNumber: number | null;
-  readonly open: boolean;
-  readonly onOpenChange: (open: boolean) => void;
+  readonly active: MatchingPolicyVersion | null;
+  readonly onClose: () => void;
   readonly onDone: () => void;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  const n = String(version.version_number);
+  const rows = impactRows(active?.evidence_thresholds ?? null, version.evidence_thresholds);
 
-  const submit = async (): Promise<void> => {
+  const commit = async (): Promise<void> => {
     setBusy(true);
     setError(null);
     try {
       await matchingPolicyApi.activateVersion(version.id);
-      onOpenChange(false);
       onDone();
     } catch (e) {
-      setError(errorMessage(e, 'Could not activate the version.'));
+      setError(errorMessage(e, 'The version couldn’t be activated. Try again.'));
       setBusy(false);
     }
   };
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={onOpenChange}
-      title={`Activate v${String(version.version_number)}`}
-      size="md"
-      footer={
-        <>
-          <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={busy}>
-            Cancel
-          </Button>
-          <Button variant="primary" onClick={() => void submit()} disabled={busy}>
-            {busy ? 'Activating…' : 'Activate'}
-          </Button>
-        </>
+    <ConfirmDialog
+      open
+      onOpenChange={(o) => {
+        if (!o) onClose();
+      }}
+      wide
+      title={`Activate v${n}`}
+      from={
+        active !== null
+          ? { label: `v${String(active.version_number)} active`, tone: 'ok' }
+          : { label: 'Compiled defaults', tone: 'neutral' }
       }
+      to={{ label: `v${n} active`, tone: 'ok' }}
+      consequence={`Matching across every tenant uses these thresholds from the next matching run. ${
+        active !== null ? `v${String(active.version_number)} is retired and can be activated again later.` : ''
+      }`.trim()}
+      error={error}
+      commitLabel={`Activate v${n}`}
+      tone="privileged"
+      busy={busy}
+      onCommit={() => void commit()}
     >
-      {error ? <InlineAlert variant="error">{error}</InlineAlert> : null}
-      <div className="pw-notice" role="status">
-        Every new examination on every tenant will use v{version.version_number}
-        {activeNumber !== null ? ` instead of v${String(activeNumber)}, which is retired` : ''}. You can
-        re-activate an earlier version at any time.
-      </div>
-      <DataTable
-        columns={THRESHOLD_COLUMNS}
-        rows={rowsOf(version.evidence_thresholds)}
-        rowKey={(r) => r.family}
-        emptyMessage=""
-      />
-    </Dialog>
+      <table className="pw-mp-impact" aria-label="Impact of activation">
+        <thead>
+          <tr>
+            <th>Role family</th>
+            <th>Active now</th>
+            <th>After activation</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => (
+            <tr
+              key={r.family}
+              className={r.changed ? 'pw-mp-impact__row pw-mp-impact__row--changed' : 'pw-mp-impact__row'}
+              data-changed={r.changed || undefined}
+            >
+              <td>{r.label}</td>
+              <td className="pw-mp-impact__now">{r.now}</td>
+              <td className="pw-mp-impact__after">
+                <span className="pw-mp-impact__mark" aria-hidden="true">
+                  {r.changed ? '●' : ''}
+                </span>{' '}
+                {r.changed ? <span className="pw-sr-only">Changed: </span> : null}
+                {r.after}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </ConfirmDialog>
   );
 }

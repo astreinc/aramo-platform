@@ -1,0 +1,90 @@
+/* PLATFORM-UX-1 F-8 — Platform admins (handoff §9). Every value is copied from
+ * doc/design-reference/platform-admin/platform/Platform Admin.dc.html
+ * (is.admins, the admin invite dialog) and expressed through the theme.css
+ * token layer. */
+
+.pw-ad-head {
+  margin-bottom: 18px;
+}
+.pw-ad-title {
+  margin: 0;
+  font-size: var(--pw-fs-24);
+  font-weight: 700;
+  letter-spacing: var(--pw-tracking-tight);
+}
+.pw-ad-intro {
+  max-width: 720px;
+  margin: 6px 0 0;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-14);
+}
+
+.pw-ad-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
+  gap: 16px;
+  align-items: start;
+  max-width: 1000px;
+}
+.pw-ad-card {
+  padding: 20px;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-card);
+  background: var(--pw-surface);
+}
+.pw-ad-card__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+.pw-ad-diamond {
+  width: 8px;
+  height: 8px;
+  background: var(--pw-terracotta);
+  transform: rotate(45deg);
+}
+.pw-ad-card__title {
+  margin: 0;
+  font-size: var(--pw-fs-15);
+  font-weight: 700;
+}
+.pw-ad-card__sub {
+  margin: 0 0 16px;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-13);
+}
+.pw-ad-done {
+  margin-bottom: 14px;
+}
+.pw-ad-fields {
+  display: grid;
+  gap: 14px;
+}
+.pw-ad-field {
+  display: grid;
+  gap: 6px;
+}
+.pw-ad-hint {
+  color: var(--pw-danger);
+  font-size: var(--pw-fs-12-5);
+}
+.pw-ad-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+/* The admins list: the designed empty state (no list endpoint — R-13). */
+.pw-ad-empty {
+  padding: 28px 20px;
+  border: 1px dashed var(--pw-crumb-sep);
+  border-radius: var(--pw-r-card);
+  background: var(--pw-surface);
+  text-align: center;
+}
+.pw-ad-empty__body {
+  margin: 4px 0 10px;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-13);
+}
