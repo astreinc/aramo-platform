@@ -377,7 +377,7 @@ is `ProjectionService.subjectsChanged` / `reassess`
 `TalentErasureService.execute`
 (`apps/api/src/talent-identity/talent-erasure.service.ts:678`) runs one
 transaction: exclusive identity advisory lock (`:705`), a transaction-bound
-erasure run via `consent.s2_begin_talent_erasure_run` (`:717`), redactions,
+erasure run via the confined `consent` SECURITY DEFINER entry point (`:717`; name confined by the S2 confinement spec), redactions,
 per-requisition tombstones (`:752`), a `talent.erased` outbox row (`:768`), then
 `COMMIT` (`:794`) and post-commit storage purge. It has no HTTP route (CLI
 `apps/api/src/talent-anchor/erase-talent.command.ts`). `DELETE

@@ -14936,6 +14936,11 @@
     {
       "from": "doc/recon/as-built/D04-security-identity-authz.md",
       "status": "unscoped",
+      "to": "apps/api/src/tests/s2-erasure-authorization-confinement.spec.ts"
+    },
+    {
+      "from": "doc/recon/as-built/D04-security-identity-authz.md",
+      "status": "unscoped",
       "to": "apps/ats-web/src/admin/AdminGate.tsx"
     },
     {

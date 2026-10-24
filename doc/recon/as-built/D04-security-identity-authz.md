@@ -144,7 +144,7 @@ DB-level controls added since the old baseline (migrations under `libs/identity/
 - `20261021130000_roles1_role_model` — role key renames (`tenant_admin`→`ats_admin`, `org_admin`→`tenant_admin`), `sign_owner` deactivated; `20261020130100_sign_naming_role_scope_keys` — `esign_*`/`esign:` → `sign_*`/`sign:`.
 - Scope-grant migrations (`doclib_t4`, `doclib_t5`, `org_ux_1`, `ats_qa_1`) bump `AuthorizationVersion` for every affected principal in the same transaction.
 - `libs/auth-storage/prisma/migrations/20261020130200_sign_naming_consumer/migration.sql` — revokes live refresh tokens of the old `esign` consumer.
-- `libs/consent/prisma/migrations/20261016180000_s2_erasure_run_authorization/migration.sql` and `libs/consent/prisma/migrations/20261016190000_s2_erasure_write_serialization/migration.sql` — transaction-bound erasure authorization (SECURITY DEFINER entry point `consent.s2_begin_talent_erasure_run`) and advisory-lock serialization of talent-keyed writes.
+- `libs/consent/prisma/migrations/20261016180000_s2_erasure_run_authorization/migration.sql` and `libs/consent/prisma/migrations/20261016190000_s2_erasure_write_serialization/migration.sql` — transaction-bound erasure authorization (the SECURITY DEFINER erasure-run entry point in the `consent` schema; its name is confined by `apps/api/src/tests/s2-erasure-authorization-confinement.spec.ts`) and advisory-lock serialization of talent-keyed writes.
 
 ## API Endpoints
 
