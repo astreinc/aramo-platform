@@ -1,163 +1,218 @@
-import { useCallback, useMemo, useState } from 'react';
-import {
-  Button,
-  CursorLoadMore,
-  DataTable,
-  InlineAlert,
-  hasScope,
-  useCursorPager,
-  type CursorPage,
-  type Session,
-  type TableColumn, Input, Select,
-} from '@aramo/fe-foundation';
+import { useCallback, useEffect, useState } from 'react';
+import { Button, Input, hasScope, useCursorPager, useOptionalToast, type CursorPage, type Session } from '@aramo/fe-foundation';
 
-import {
-  skillsApi,
-  type ReviewQueueRow,
-  type ReviewQueueSourceDomain,
-} from './skills-api';
+import { SegmentedFilter, SkeletonPanel, type SegmentOption } from '../components';
+
+import { skillsApi, type ReviewQueueRow, type ReviewQueueSourceDomain } from './skills-api';
+import { DOMAIN_LABEL } from './skill-labels';
+import { useSkillDirectory } from './skill-directory';
+import { AliasFromSurfaceDialog, CreateSkillDialog } from './skill-dialogs';
 import { SKILL_MANAGE_SCOPE } from './SkillsRegistryView';
-import { SkillFormDialog } from './skill-form-dialogs';
-import { AliasFromSurfaceDialog } from './AliasFromSurfaceDialog';
+import { SkillsPageHead, SkillsViewOnly } from './skills-chrome';
 
-const PAGE_LIMIT = 50;
+export const QUEUE_PAGE_SIZE = 50;
 
-interface AppliedFilters {
-  sourceDomain: '' | ReviewQueueSourceDomain;
-  minOccurrence: string;
-  surfaceSearch: string;
+type DomainFilter = 'ALL' | ReviewQueueSourceDomain;
+
+const DOMAIN_OPTIONS: readonly SegmentOption<DomainFilter>[] = [
+  { value: 'ALL', label: 'All' },
+  { value: 'talent', label: 'Talent' },
+  { value: 'requisition', label: 'Requisition' },
+];
+
+/** The footer's left text: "Showing N · more available · 50 per page". */
+export function queueFooterLine(shown: number, hasMore: boolean): string {
+  return `Showing ${shown}${hasMore ? ' · more available' : ''} · ${QUEUE_PAGE_SIZE} per page`;
 }
 
-const EMPTY_FILTERS: AppliedFilters = { sourceDomain: '', minOccurrence: '', surfaceSearch: '' };
+/** Keeps a typed value for `ms` before it becomes the applied filter. */
+function useDebounced<T>(value: T, ms: number): T {
+  const [v, setV] = useState(value);
+  useEffect(() => {
+    const t = setTimeout(() => setV(value), ms);
+    return () => clearTimeout(t);
+  }, [value, ms]);
+  return v;
+}
 
-// SKILL-TAX-1F-C2 — the unresolved-surface review queue. Counts-only rows
-// (surface_form / occurrence_count / tenant_count) — no tenant/Talent/requisition
-// identity is fetched or shown. Keyset pagination via the fe-foundation CursorPager
-// (the cursor is opaque; the browser never decodes it). Manage-scope operators can
-// turn a reviewed surface into a canonical skill, or attach it as an alias of a
-// HUMAN-chosen existing skill — there is no automatic canonical-destination guess.
+// PLATFORM-UX-1 F-7 — Skills review queue (handoff §9; directive R-9). Rows are
+// counts only: surface form, occurrences, tenants — never a tenant, talent or
+// requisition identity. "First seen" is dropped (not in the response). The
+// rows merge every in-scope domain, so Domain shows the filtered domain, or
+// "—" under All. Keyset paging through the opaque cursor ("Load more").
 export function ReviewQueueView({ session }: { readonly session: Session }) {
   const canManage = hasScope(session, SKILL_MANAGE_SCOPE);
-  // Draft (input) vs applied (committed on submit) filters — applied drives the pager.
-  const [draft, setDraft] = useState<AppliedFilters>(EMPTY_FILTERS);
-  const [applied, setApplied] = useState<AppliedFilters>(EMPTY_FILTERS);
-  const [createFrom, setCreateFrom] = useState<string | null>(null);
+  const toast = useOptionalToast();
+  const directory = useSkillDirectory();
+  const [domain, setDomain] = useState<DomainFilter>('ALL');
+  const [minText, setMinText] = useState('1');
+  const [q, setQ] = useState('');
+  const appliedMin = useDebounced(minText, 300);
+  const appliedQ = useDebounced(q, 300);
   const [aliasFrom, setAliasFrom] = useState<string | null>(null);
+  const [createFrom, setCreateFrom] = useState<string | null>(null);
 
-  const resetKey = JSON.stringify(applied);
+  const minOccurrence = Math.max(1, Number.parseInt(appliedMin, 10) || 1);
+  const search = appliedQ.trim();
+  const resetKey = JSON.stringify([domain, minOccurrence, search]);
   const fetchPage = useCallback(
     async (cursor: string | null): Promise<CursorPage<ReviewQueueRow>> => {
       const page = await skillsApi.listReviewQueue({
-        sourceDomain: applied.sourceDomain || undefined,
-        minOccurrence: applied.minOccurrence !== '' ? Number(applied.minOccurrence) : undefined,
-        surfaceSearch: applied.surfaceSearch || undefined,
-        limit: PAGE_LIMIT,
+        sourceDomain: domain === 'ALL' ? undefined : domain,
+        minOccurrence,
+        surfaceSearch: search.length > 0 ? search : undefined,
+        limit: QUEUE_PAGE_SIZE,
         cursor,
       });
       return { items: page.rows, next_cursor: page.next_cursor };
     },
-    [applied],
+    [domain, minOccurrence, search],
   );
-
   const pager = useCursorPager<ReviewQueueRow>(fetchPage, resetKey);
-
-  const columns = useMemo<ReadonlyArray<TableColumn<ReviewQueueRow>>>(() => {
-    const base: Array<TableColumn<ReviewQueueRow>> = [
-      { key: 'surface_form', header: 'Unresolved surface', render: (r) => <span className="mono">{r.surface_form}</span> },
-      { key: 'occurrence_count', header: 'Occurrences', render: (r) => <span className="num">{r.occurrence_count}</span> },
-      { key: 'tenant_count', header: 'Tenants', render: (r) => <span className="num">{r.tenant_count}</span> },
-    ];
-    if (canManage) {
-      base.push({
-        key: 'actions',
-        header: '',
-        render: (r) => (
-          <span className="pw-actions" style={{ margin: 0 }}>
-            <Button variant="ghost" onClick={() => setCreateFrom(r.surface_form)}>Create skill</Button>
-            <Button variant="ghost" onClick={() => setAliasFrom(r.surface_form)}>Add as alias…</Button>
-          </span>
-        ),
-      });
-    }
-    return base;
-  }, [canManage]);
+  const firstLoad = pager.loading && pager.items.length === 0;
+  const domainLabel = domain === 'ALL' ? '—' : DOMAIN_LABEL[domain];
 
   return (
-    <div className="pw-page">
-      <div className="pw-page__head">
-        <h1 className="pw-page__title">Review queue</h1>
-      </div>
-
-      <form
-        className="pw-toolbar"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setApplied(draft);
-        }}
-      >
-        <Select unstyled
-          aria-label="Source domain"
-          className="tc-input"
-          value={draft.sourceDomain}
-          onChange={(e) => setDraft({ ...draft, sourceDomain: e.target.value as AppliedFilters['sourceDomain'] })}
-          style={{ minWidth: 160 }}
-        >
-          <option value="">All domains</option>
-          <option value="talent">talent</option>
-          <option value="requisition">requisition</option>
-        </Select>
-        <Input unstyled
-          aria-label="Minimum occurrences"
-          className="tc-input"
-          type="number"
-          min={0}
-          placeholder="Min occurrences"
-          value={draft.minOccurrence}
-          onChange={(e) => setDraft({ ...draft, minOccurrence: e.target.value })}
-          style={{ minWidth: 140 }}
-        />
-        <Input unstyled
-          aria-label="Surface search"
-          className="tc-input"
-          placeholder="Search surface…"
-          value={draft.surfaceSearch}
-          onChange={(e) => setDraft({ ...draft, surfaceSearch: e.target.value })}
-          style={{ minWidth: 200 }}
-        />
-        <Button variant="secondary" type="submit">Apply</Button>
-      </form>
-
-      {pager.error ? <InlineAlert variant="error">{pager.error}</InlineAlert> : null}
-
-      <DataTable
-        columns={columns}
-        rows={[...pager.items]}
-        rowKey={(r) => r.surface_form}
-        emptyMessage={pager.loading ? 'Loading…' : 'No unresolved surfaces match.'}
+    <div className="pw-sk">
+      <SkillsPageHead
+        title="Skills review queue"
+        lede="Surface forms seen in tenant data that don't resolve to a skill yet."
       />
-      {pager.items.length > 0 || !pager.loading ? (
-        <CursorLoadMore hasMore={pager.hasMore} loading={pager.loading} onLoadMore={pager.loadMore} />
+      {!canManage ? (
+        <SkillsViewOnly what="Adding aliases and creating skills" className="pw-sk-viewonly-below" />
       ) : null}
 
-      {createFrom !== null ? (
-        <SkillFormDialog
-          mode="create"
-          initialName={createFrom}
+      <div className="pw-sk-toolbar pw-sk-toolbar--queue">
+        <SegmentedFilter label="Domain" options={DOMAIN_OPTIONS} value={domain} onChange={setDomain} />
+        <label className="pw-sk-min">
+          Min. occurrences
+          <Input
+            unstyled
+            className="pw-input"
+            type="number"
+            min={1}
+            value={minText}
+            onChange={(e) => setMinText(e.target.value)}
+          />
+        </label>
+        <Input
+          unstyled
+          className="pw-input pw-sk-search pw-sk-search--queue"
+          aria-label="Search surface forms"
+          placeholder="Search surface forms"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+        />
+      </div>
+
+      {pager.error ? (
+        <div role="alert" className="pw-alert pw-alert--error pw-sk-alert">
+          {pager.error}
+        </div>
+      ) : null}
+
+      <div className="pw-sk-card">
+        {firstLoad ? (
+          <div className="pw-sk-loading">
+            <SkeletonPanel lines={['100%', '92%', '96%', '88%']} label="Loading the review queue…" />
+          </div>
+        ) : (
+          <>
+            <div className="pw-sk-scroll">
+              <table className="pw-sk-table pw-sk-table--queue">
+                <thead>
+                  <tr>
+                    <th scope="col">Surface form</th>
+                    <th scope="col">Domain</th>
+                    <th scope="col" className="pw-sk-right">
+                      Occurrences
+                    </th>
+                    <th scope="col" className="pw-sk-right">
+                      Tenants
+                    </th>
+                    <th scope="col">
+                      <span className="pw-sr-only">Actions</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {pager.items.map((r) => (
+                    <tr key={r.surface_form}>
+                      <td className="pw-sk-cell-surface">“{r.surface_form}”</td>
+                      <td>{domainLabel}</td>
+                      <td className="pw-sk-right">{r.occurrence_count}</td>
+                      <td className="pw-sk-right">{r.tenant_count}</td>
+                      <td className="pw-sk-cell-actions">
+                        {canManage ? (
+                          <span className="pw-sk-rowactions">
+                            <Button
+                              unstyled
+                              className="pw-btn pw-btn--normal pw-btn--30"
+                              onClick={() => setAliasFrom(r.surface_form)}
+                            >
+                              Add as alias…
+                            </Button>
+                            <Button
+                              unstyled
+                              className="pw-btn pw-btn--secondary pw-btn--30"
+                              aria-label={`Create skill from “${r.surface_form}”`}
+                              onClick={() => setCreateFrom(r.surface_form)}
+                            >
+                              Create skill
+                            </Button>
+                          </span>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+            {pager.items.length === 0 && !pager.loading ? (
+              <div className="pw-sk-empty">Nothing waiting at this threshold.</div>
+            ) : null}
+          </>
+        )}
+        <div className="pw-sk-foot">
+          <span>{queueFooterLine(pager.items.length, pager.hasMore)}</span>
+          {pager.hasMore && !firstLoad ? (
+            <Button
+              unstyled
+              className="pw-btn pw-btn--secondary pw-btn--30 pw-sk-more"
+              disabled={pager.loading}
+              aria-busy={pager.loading || undefined}
+              onClick={pager.loadMore}
+            >
+              Load more
+            </Button>
+          ) : null}
+        </div>
+      </div>
+
+      {aliasFrom !== null ? (
+        <AliasFromSurfaceDialog
           open
-          onOpenChange={(o) => !o && setCreateFrom(null)}
-          onDone={() => {
-            setCreateFrom(null);
+          onOpenChange={(o) => {
+            if (!o) setAliasFrom(null);
+          }}
+          surface={aliasFrom}
+          directory={directory}
+          onAdded={(skillId) => {
+            toast.show(`“${aliasFrom}” added to ${directory.nameOf(skillId) ?? 'the skill'}.`);
             pager.reload();
           }}
         />
       ) : null}
-      {aliasFrom !== null ? (
-        <AliasFromSurfaceDialog
-          surface={aliasFrom}
+      {createFrom !== null ? (
+        <CreateSkillDialog
           open
-          onOpenChange={(o) => !o && setAliasFrom(null)}
-          onDone={() => {
-            setAliasFrom(null);
+          onOpenChange={(o) => {
+            if (!o) setCreateFrom(null);
+          }}
+          initialName={createFrom}
+          onCreated={(created) => {
+            toast.show(`Skill “${created.canonical_name}” created.`);
+            directory.reload();
             pager.reload();
           }}
         />

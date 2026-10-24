@@ -1,68 +1,89 @@
-import { useCallback, useEffect, useState } from 'react';
-import { useParams } from 'react-router-dom';
-import {
-  ApiError,
-  Button,
-  DataTable,
-  InlineAlert,
-  Tabs,
-  hasScope,
-  type Session,
-  type TableColumn,
-  type TabItem,
-} from '@aramo/fe-foundation';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent, type ReactNode } from 'react';
+import { Link, useNavigate, useParams } from 'react-router-dom';
+import { ApiError, Button, Input, Select, hasScope, useOptionalToast, type Session } from '@aramo/fe-foundation';
+
+import { Pill, SkeletonPanel, formatDate } from '../components';
+import { useEntityCrumb } from '../shell/crumbs';
 
 import {
   skillsApi,
+  ALIAS_TYPES,
   type Skill,
   type SkillAlias,
+  type SkillAliasType,
   type SkillRelationship,
   type SkillVersion,
 } from './skills-api';
-import { SkillStatusBadge } from './SkillStatusBadge';
+import {
+  ALIAS_TYPE_LABEL,
+  aliasTypeLabel,
+  directionLabel,
+  relationshipSourceLabel,
+  relationshipTypeLabel,
+  statusPill,
+} from './skill-labels';
+import { skillErrorMessage } from './skill-errors';
+import { useSkillDirectory, type SkillDirectory } from './skill-directory';
+import { SkillName } from './SkillName';
+import {
+  AddRelationshipDialog,
+  EditSkillDialog,
+  MergeSkillDialog,
+  OverrideSkillDialog,
+  ToggleSkillDialog,
+} from './skill-dialogs';
 import { SKILL_MANAGE_SCOPE } from './SkillsRegistryView';
-import { AliasDialog, RelationshipDialog, SkillFormDialog, VersionDialog } from './skill-form-dialogs';
-import { ConfirmDialog, MergeDialog, OverrideDialog } from './skill-action-dialogs';
+import { SkillsViewOnly } from './skills-chrome';
 
-type ActiveDialog =
-  | { kind: 'edit' }
-  | { kind: 'merge' }
-  | { kind: 'override' }
-  | { kind: 'deactivate' }
-  | { kind: 'reactivate' }
-  | { kind: 'addAlias' }
-  | { kind: 'removeAlias'; alias: SkillAlias }
-  | { kind: 'addVersion' }
-  | { kind: 'updateVersion'; version: SkillVersion }
-  | { kind: 'addRelationship' }
-  | { kind: 'removeRelationship'; rel: SkillRelationship };
+type TabKey = 'overview' | 'aliases' | 'versions' | 'rels';
+type DialogKind = 'edit' | 'override' | 'merge' | 'toggle' | 'addRel';
 
-function fmt(iso: string): string {
-  return new Date(iso).toLocaleString();
+/**
+ * A relationship row from THIS skill's point of view. The list holds edges in
+ * either orientation; a directed edge where this skill is the target reads
+ * "{other} {type} {this}". Direction always comes from the server's
+ * `directionality`.
+ */
+export function relationshipView(rel: SkillRelationship, selfId: string) {
+  const outgoing = rel.source_skill_id === selfId;
+  const otherId = outgoing ? rel.target_skill_id : rel.source_skill_id;
+  const selfFirst = outgoing || rel.directionality === 'SYMMETRIC';
+  return {
+    otherId,
+    selfFirst,
+    type: relationshipTypeLabel(rel.relationship_type),
+    meta: `${directionLabel(rel.directionality)} · ${relationshipSourceLabel(rel.source)}`,
+    ref: rel.source_ref ?? '—',
+  };
 }
 
-// SKILL-TAX-1F-C1 — the canonical Skill detail page. Overview + Aliases / Versions /
-// Relationships tabs, each reading via the B3 detail-read endpoints. Manage-scope
-// operators get the governance controls (edit / deactivate / reactivate / merge /
-// override / alias± / version± / relationship±); read-only operators see every read
-// surface and no mutation control. Every action reloads server truth on completion
-// (conflict-refresh) so a stale registry view corrects itself.
+// PLATFORM-UX-1 F-7 — Skill detail (handoff §9; directive R-9). Header: name,
+// status pill, `id · normalized` in mono; actions Edit · Override… · Merge
+// into… (terracotta outline) · Deactivate/Reactivate…; tabs Overview ·
+// Aliases (n) · Versions (n) · Relationships (n). Every skill reference shows a
+// NAME, resolved through the registry list. Without platform:skill:manage the
+// view-only note replaces the actions and the add rows (never a silent hide).
 export function SkillDetailView({ session }: { readonly session: Session }) {
   const { id = '' } = useParams();
+  const navigate = useNavigate();
+  const toast = useOptionalToast();
   const canManage = hasScope(session, SKILL_MANAGE_SCOPE);
+  const directory = useSkillDirectory();
   const [skill, setSkill] = useState<Skill | null>(null);
   const [aliases, setAliases] = useState<SkillAlias[]>([]);
   const [versions, setVersions] = useState<SkillVersion[]>([]);
   const [relationships, setRelationships] = useState<SkillRelationship[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<ActiveDialog | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [tab, setTab] = useState<TabKey>('overview');
+  const [dialog, setDialog] = useState<DialogKind | null>(null);
+
+  useEntityCrumb(skill?.canonical_name);
 
   const refresh = useCallback(async () => {
-    setError(null);
     try {
       const [s, a, v, r] = await Promise.all([
         skillsApi.getSkill(id),
-        skillsApi.listAliases(id, { includeInactive: true }),
+        skillsApi.listAliases(id),
         skillsApi.listVersions(id),
         skillsApi.listRelationships(id),
       ]);
@@ -70,234 +91,495 @@ export function SkillDetailView({ session }: { readonly session: Session }) {
       setAliases(a.aliases);
       setVersions(v.versions);
       setRelationships(r.relationships);
+      setLoadError(null);
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Failed to load skill.');
+      setLoadError(e instanceof ApiError ? e.message : 'The skill could not be loaded.');
     }
   }, [id]);
 
   useEffect(() => {
+    setSkill(null);
+    setTab('overview');
     void refresh();
   }, [refresh]);
 
-  const close = (): void => setDialog(null);
-  const done = (): void => {
-    close();
+  const after = (message: string): void => {
+    toast.show(message);
     void refresh();
+    directory.reload();
   };
 
-  if (error) return <div className="pw-page"><InlineAlert variant="error">{error}</InlineAlert></div>;
-  if (!skill) return <div className="pw-page">Loading…</div>;
-
-  const overview = (
-    <div>
-      {canManage ? (
-        <div className="pw-actions">
-          <Button variant="secondary" onClick={() => setDialog({ kind: 'edit' })}>Edit</Button>
-          {skill.status === 'active' ? (
-            <Button variant="secondary" onClick={() => setDialog({ kind: 'deactivate' })}>Deactivate</Button>
-          ) : (
-            <Button variant="secondary" onClick={() => setDialog({ kind: 'reactivate' })}>Reactivate</Button>
-          )}
-          <Button variant="secondary" onClick={() => setDialog({ kind: 'merge' })}>Merge…</Button>
-          <Button variant="secondary" onClick={() => setDialog({ kind: 'override' })}>Override…</Button>
+  if (loadError && !skill) {
+    return (
+      <div className="pw-sk">
+        <div role="alert" className="pw-alert pw-alert--error">
+          {loadError}
         </div>
-      ) : (
-        <span className="pw-audit__meta">Read-only (platform:skill:manage required to act).</span>
-      )}
-      <dl className="pw-facts">
-        <dt>Skill ID</dt>
-        <dd className="mono">{skill.id}</dd>
-        <dt>Canonical name</dt>
-        <dd>{skill.canonical_name}</dd>
-        <dt>Normalized</dt>
-        <dd className="mono">{skill.normalized_name}</dd>
-        <dt>Description</dt>
-        <dd>{skill.description ?? '—'}</dd>
-        <dt>Status</dt>
-        <dd><SkillStatusBadge status={skill.status} /></dd>
-        {skill.merged_into_skill_id ? (
-          <>
-            <dt>Merged into</dt>
-            <dd className="mono">{skill.merged_into_skill_id}</dd>
-          </>
-        ) : null}
-        <dt>Created</dt>
-        <dd>{fmt(skill.created_at)}</dd>
-        <dt>Updated</dt>
-        <dd>{fmt(skill.updated_at)}</dd>
-      </dl>
-    </div>
-  );
-
-  const aliasColumns: ReadonlyArray<TableColumn<SkillAlias>> = [
-    { key: 'alias', header: 'Alias', render: (a) => a.alias },
-    { key: 'normalized_alias', header: 'Normalized', render: (a) => <span className="mono">{a.normalized_alias}</span> },
-    { key: 'alias_type', header: 'Type', render: (a) => a.alias_type },
-    { key: 'status', header: 'Status', render: (a) => <SkillStatusBadge status={a.status} /> },
-    ...(canManage
-      ? [{
-          key: 'actions',
-          header: '',
-          render: (a: SkillAlias) =>
-            a.status === 'active' ? (
-              <Button variant="ghost" onClick={() => setDialog({ kind: 'removeAlias', alias: a })}>Remove</Button>
-            ) : null,
-        }]
-      : []),
-  ];
-
-  const aliasesTab = (
-    <div>
-      {canManage ? (
-        <div className="pw-actions">
-          <Button variant="secondary" onClick={() => setDialog({ kind: 'addAlias' })}>Add alias</Button>
+      </div>
+    );
+  }
+  if (!skill) {
+    return (
+      <div className="pw-sk">
+        <div className="pw-sk-card">
+          <div className="pw-sk-loading">
+            <SkeletonPanel label="Loading skill…" />
+          </div>
         </div>
-      ) : null}
-      <DataTable columns={aliasColumns} rows={aliases} rowKey={(a) => a.id} rowMuted={(a) => a.status === 'inactive'} emptyMessage="No aliases." />
-    </div>
-  );
+      </div>
+    );
+  }
 
-  const versionColumns: ReadonlyArray<TableColumn<SkillVersion>> = [
-    { key: 'version', header: 'Version', render: (v) => v.version },
-    { key: 'version_family', header: 'Family', render: (v) => v.version_family ?? '—' },
-    { key: 'status', header: 'Status', render: (v) => <SkillStatusBadge status={v.status} /> },
-    ...(canManage
-      ? [{
-          key: 'actions',
-          header: '',
-          render: (v: SkillVersion) => (
-            <Button variant="ghost" onClick={() => setDialog({ kind: 'updateVersion', version: v })}>Update</Button>
-          ),
-        }]
-      : []),
+  const p = statusPill(skill.status);
+  const active = skill.status === 'active';
+  const tabs: ReadonlyArray<readonly [TabKey, string]> = [
+    ['overview', 'Overview'],
+    ['aliases', `Aliases (${aliases.length})`],
+    ['versions', `Versions (${versions.length})`],
+    ['rels', `Relationships (${relationships.length})`],
   ];
-
-  const versionsTab = (
-    <div>
-      {canManage ? (
-        <div className="pw-actions">
-          <Button variant="secondary" onClick={() => setDialog({ kind: 'addVersion' })}>Add version</Button>
-        </div>
-      ) : null}
-      <DataTable columns={versionColumns} rows={versions} rowKey={(v) => v.id} emptyMessage="No versions." />
-    </div>
-  );
-
-  const relColumns: ReadonlyArray<TableColumn<SkillRelationship>> = [
-    { key: 'relationship_type', header: 'Type', render: (r) => r.relationship_type },
-    { key: 'directionality', header: 'Direction', render: (r) => r.directionality },
-    {
-      key: 'target',
-      header: 'Endpoints',
-      render: (r) => (
-        <span className="mono">
-          {r.source_skill_id.slice(0, 8)} → {r.target_skill_id.slice(0, 8)}
-        </span>
-      ),
-    },
-    { key: 'source', header: 'Source', render: (r) => r.source },
-    ...(canManage
-      ? [{
-          key: 'actions',
-          header: '',
-          render: (r: SkillRelationship) => (
-            <Button variant="ghost" onClick={() => setDialog({ kind: 'removeRelationship', rel: r })}>Remove</Button>
-          ),
-        }]
-      : []),
-  ];
-
-  const relationshipsTab = (
-    <div>
-      {canManage ? (
-        <div className="pw-actions">
-          <Button variant="secondary" onClick={() => setDialog({ kind: 'addRelationship' })}>Add relationship</Button>
-        </div>
-      ) : null}
-      <DataTable columns={relColumns} rows={relationships} rowKey={(r) => r.id} emptyMessage="No relationships." />
-    </div>
-  );
-
-  const tabs: TabItem[] = [
-    { id: 'overview', label: 'Overview', content: overview },
-    { id: 'aliases', label: `Aliases (${aliases.length})`, content: aliasesTab },
-    { id: 'versions', label: `Versions (${versions.length})`, content: versionsTab },
-    { id: 'relationships', label: `Relationships (${relationships.length})`, content: relationshipsTab },
-  ];
+  const close = (o: boolean): void => {
+    if (!o) setDialog(null);
+  };
 
   return (
-    <div className="pw-page">
-      <div className="pw-page__head">
-        <h1 className="pw-page__title">{skill.canonical_name}</h1>
-        <SkillStatusBadge status={skill.status} />
+    <div className="pw-sk">
+      <div className="pw-sk-dhead">
+        <div>
+          <div className="pw-sk-dhead__name">
+            <h1 className="pw-sk-title">{skill.canonical_name}</h1>
+            <Pill tone={p.tone}>{p.label}</Pill>
+          </div>
+          <div className="pw-sk-dhead__ids">
+            {skill.id} · {skill.normalized_name}
+          </div>
+        </div>
+        {canManage ? (
+          <div className="pw-sk-actions">
+            <Button unstyled className="pw-btn pw-btn--secondary pw-sk-btn36" onClick={() => setDialog('edit')}>
+              Edit
+            </Button>
+            <Button unstyled className="pw-btn pw-btn--secondary pw-sk-btn36" onClick={() => setDialog('override')}>
+              Override…
+            </Button>
+            <Button
+              unstyled
+              className="pw-btn pw-btn--secondary pw-sk-btn36 pw-sk-btn-merge"
+              onClick={() => setDialog('merge')}
+            >
+              Merge into…
+            </Button>
+            <Button unstyled className="pw-btn pw-btn--secondary pw-sk-btn36" onClick={() => setDialog('toggle')}>
+              {active ? 'Deactivate' : 'Reactivate'}…
+            </Button>
+          </div>
+        ) : null}
       </div>
-      <Tabs items={tabs} ariaLabel="Skill detail" />
+      {!canManage ? <SkillsViewOnly className="pw-sk-viewonly-detail" /> : null}
 
-      {dialog?.kind === 'edit' ? (
-        <SkillFormDialog mode="edit" skill={skill} open onOpenChange={(o) => !o && close()} onDone={done} />
+      <SkillTabs tabs={tabs} value={tab} onChange={setTab} />
+
+      <div className="pw-sk-body" role="tabpanel" id={`pw-sk-panel-${tab}`} aria-labelledby={`pw-sk-tab-${tab}`}>
+        {tab === 'overview' ? <OverviewTab skill={skill} directory={directory} /> : null}
+        {tab === 'aliases' ? (
+          <AliasesTab
+            skill={skill}
+            aliases={aliases}
+            canManage={canManage}
+            onChanged={(m) => after(m)}
+            onError={(m) => toast.show(m)}
+          />
+        ) : null}
+        {tab === 'versions' ? (
+          <VersionsTab
+            skill={skill}
+            versions={versions}
+            canManage={canManage}
+            onChanged={(m) => after(m)}
+            onError={(m) => toast.show(m)}
+          />
+        ) : null}
+        {tab === 'rels' ? (
+          <RelationshipsTab
+            skill={skill}
+            relationships={relationships}
+            directory={directory}
+            canManage={canManage}
+            onAdd={() => setDialog('addRel')}
+            onChanged={(m) => after(m)}
+            onError={(m) => toast.show(m)}
+          />
+        ) : null}
+      </div>
+
+      {dialog === 'edit' ? (
+        <EditSkillDialog open onOpenChange={close} skill={skill} onSaved={() => after('Skill updated.')} />
       ) : null}
-      {dialog?.kind === 'merge' ? (
-        <MergeDialog loser={skill} open onOpenChange={(o) => !o && close()} onDone={done} />
+      {dialog === 'override' ? (
+        <OverrideSkillDialog open onOpenChange={close} skill={skill} onSaved={() => after('Override saved.')} />
       ) : null}
-      {dialog?.kind === 'override' ? (
-        <OverrideDialog skill={skill} open onOpenChange={(o) => !o && close()} onDone={done} />
-      ) : null}
-      {dialog?.kind === 'deactivate' ? (
-        <ConfirmDialog
-          title="Deactivate skill"
-          confirmLabel="Deactivate"
-          body={<><strong>{skill.canonical_name}</strong> becomes unavailable for normal future canonicalization. Historical references remain identifiable; a durable re-reconcile is enqueued.</>}
-          onConfirm={async () => { await skillsApi.deactivateSkill(skill.id); }}
+      {dialog === 'toggle' ? (
+        <ToggleSkillDialog
           open
-          onOpenChange={(o) => !o && close()}
-          onDone={done}
+          onOpenChange={close}
+          skill={skill}
+          onDone={(nowActive) =>
+            after(`${skill.canonical_name} ${nowActive ? 'reactivated' : 'deactivated'}.`)
+          }
         />
       ) : null}
-      {dialog?.kind === 'reactivate' ? (
-        <ConfirmDialog
-          title="Reactivate skill"
-          confirmLabel="Reactivate"
-          body={<>Reactivate <strong>{skill.canonical_name}</strong> for normal canonicalization. A durable re-reconcile is enqueued.</>}
-          onConfirm={async () => { await skillsApi.reactivateSkill(skill.id); }}
+      {dialog === 'merge' ? (
+        <MergeSkillDialog
           open
-          onOpenChange={(o) => !o && close()}
-          onDone={done}
+          onOpenChange={close}
+          skill={skill}
+          directory={directory}
+          onMerged={(winnerId) => {
+            toast.show(`${skill.canonical_name} merged into ${directory.nameOf(winnerId) ?? 'the winner'}.`);
+            directory.reload();
+            navigate(`/skills/${winnerId}`);
+          }}
         />
       ) : null}
-      {dialog?.kind === 'addAlias' ? (
-        <AliasDialog skillId={skill.id} open onOpenChange={(o) => !o && close()} onDone={done} />
-      ) : null}
-      {dialog?.kind === 'removeAlias' ? (
-        <ConfirmDialog
-          title="Remove alias"
-          confirmLabel="Remove alias"
-          body={<>Soft-remove the alias “{dialog.alias.alias}”. It becomes inactive but stays historically traceable.</>}
-          onConfirm={async () => { await skillsApi.removeAlias(skill.id, dialog.alias.id); }}
+      {dialog === 'addRel' ? (
+        <AddRelationshipDialog
           open
-          onOpenChange={(o) => !o && close()}
-          onDone={done}
-        />
-      ) : null}
-      {dialog?.kind === 'addVersion' ? (
-        <VersionDialog skillId={skill.id} open onOpenChange={(o) => !o && close()} onDone={done} />
-      ) : null}
-      {dialog?.kind === 'updateVersion' ? (
-        <VersionDialog skillId={skill.id} version={dialog.version} open onOpenChange={(o) => !o && close()} onDone={done} />
-      ) : null}
-      {dialog?.kind === 'addRelationship' ? (
-        <RelationshipDialog skillId={skill.id} open onOpenChange={(o) => !o && close()} onDone={done} />
-      ) : null}
-      {dialog?.kind === 'removeRelationship' ? (
-        <ConfirmDialog
-          title="Remove relationship"
-          confirmLabel="Remove relationship"
-          body={<>Soft-remove this {dialog.rel.relationship_type} edge. It becomes inactive but stays historically traceable.</>}
-          onConfirm={async () => { await skillsApi.removeRelationship(skill.id, dialog.rel.id); }}
-          open
-          onOpenChange={(o) => !o && close()}
-          onDone={done}
+          onOpenChange={close}
+          skill={skill}
+          directory={directory}
+          onAdded={() => after('Relationship added.')}
         />
       ) : null}
     </div>
+  );
+}
+
+// ---- Tabs (role=tablist; ←/→ move between tabs) ------------------------------
+function SkillTabs({
+  tabs,
+  value,
+  onChange,
+}: {
+  readonly tabs: ReadonlyArray<readonly [TabKey, string]>;
+  readonly value: TabKey;
+  readonly onChange: (t: TabKey) => void;
+}) {
+  const refs = useRef<Array<HTMLButtonElement | null>>([]);
+  const onKey = (e: KeyboardEvent, i: number): void => {
+    if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+    e.preventDefault();
+    const next = (i + (e.key === 'ArrowRight' ? 1 : tabs.length - 1)) % tabs.length;
+    const entry = tabs[next];
+    if (entry) onChange(entry[0]);
+    refs.current[next]?.focus();
+  };
+  return (
+    <div role="tablist" aria-label="Skill detail" className="pw-sk-tabs">
+      {tabs.map(([k, label], i) => (
+        <Button
+          key={k}
+          unstyled
+          ref={(el: HTMLButtonElement | null) => {
+            refs.current[i] = el;
+          }}
+          role="tab"
+          id={`pw-sk-tab-${k}`}
+          aria-selected={value === k}
+          aria-controls={`pw-sk-panel-${k}`}
+          tabIndex={value === k ? 0 : -1}
+          className="pw-sk-tab"
+          onClick={() => onChange(k)}
+          onKeyDown={(e: KeyboardEvent) => onKey(e, i)}
+        >
+          {label}
+        </Button>
+      ))}
+    </div>
+  );
+}
+
+// ---- Overview ----------------------------------------------------------------
+function OverviewTab({ skill, directory }: { readonly skill: Skill; readonly directory: SkillDirectory }) {
+  const rows: Array<readonly [string, ReactNode]> = [
+    ['Canonical name', skill.canonical_name],
+    ['Normalized name', skill.normalized_name],
+    ['Skill ID', skill.id],
+    ['Status', skill.status === 'active' ? 'Active' : 'Inactive'],
+    ['Updated', formatDate(skill.updated_at)],
+  ];
+  if (skill.description) rows.splice(2, 0, ['Description', skill.description]);
+  if (skill.merged_into_skill_id) {
+    const winner = skill.merged_into_skill_id;
+    rows.push([
+      'Merged into',
+      <Link key="m" to={`/skills/${winner}`}>
+        <SkillName id={winner} directory={directory} />
+      </Link>,
+    ]);
+  }
+  return (
+    <section className="pw-sk-card pw-sk-card--open">
+      <dl className="pw-sk-facts">
+        {rows.map(([k, v]) => (
+          <div key={k} className="pw-sk-fact">
+            <dt>{k}</dt>
+            <dd>{v}</dd>
+          </div>
+        ))}
+      </dl>
+    </section>
+  );
+}
+
+interface MutatingTabProps {
+  readonly skill: Skill;
+  readonly canManage: boolean;
+  readonly onChanged: (message: string) => void;
+  readonly onError: (message: string) => void;
+}
+
+// ---- Aliases (inline add of surface + type; remove) ---------------------------
+function AliasesTab({ skill, aliases, canManage, onChanged, onError }: MutatingTabProps & { readonly aliases: readonly SkillAlias[] }) {
+  const [surface, setSurface] = useState('');
+  const [type, setType] = useState<SkillAliasType>('COMMON_NAME');
+  const [busy, setBusy] = useState(false);
+
+  const add = async (): Promise<void> => {
+    const v = surface.trim();
+    if (v.length === 0 || busy) return;
+    setBusy(true);
+    try {
+      await skillsApi.addAlias(skill.id, { alias: v, alias_type: type });
+      setSurface('');
+      onChanged('Alias added.');
+    } catch (e) {
+      onError(skillErrorMessage(e, 'The alias could not be added.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const remove = async (a: SkillAlias): Promise<void> => {
+    try {
+      await skillsApi.removeAlias(skill.id, a.id);
+      onChanged(`Alias “${a.alias}” removed.`);
+    } catch (e) {
+      onError(skillErrorMessage(e, 'The alias could not be removed.'));
+    }
+  };
+
+  return (
+    <section className="pw-sk-card">
+      {canManage ? (
+        <div className="pw-sk-addrow">
+          <Input
+            unstyled
+            className="pw-input pw-sk-grow"
+            placeholder="Surface form"
+            aria-label="Surface form"
+            value={surface}
+            onChange={(e) => setSurface(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter') void add();
+            }}
+          />
+          <Select
+            unstyled
+            className="pw-select"
+            aria-label="Alias type"
+            value={type}
+            onChange={(e) => setType(e.target.value as SkillAliasType)}
+          >
+            {ALIAS_TYPES.map((t) => (
+              <option key={t} value={t}>
+                {ALIAS_TYPE_LABEL[t]}
+              </option>
+            ))}
+          </Select>
+          <Button
+            unstyled
+            className="pw-btn pw-btn--normal pw-sk-btn36 pw-sk-btn36--pad14"
+            aria-busy={busy || undefined}
+            onClick={() => void add()}
+          >
+            Add alias
+          </Button>
+        </div>
+      ) : null}
+      {aliases.map((a) => (
+        <div key={a.id} className="pw-sk-item">
+          <b className="pw-sk-item__name">{a.alias}</b>
+          <span className="pw-sk-item__sub">{aliasTypeLabel(a.alias_type)}</span>
+          <span className="pw-sk-code">{a.alias_type}</span>
+          {canManage ? (
+            <Button
+              unstyled
+              className="pw-btn pw-btn--secondary pw-sk-btn28"
+              aria-label={`Remove alias ${a.alias}`}
+              onClick={() => void remove(a)}
+            >
+              Remove
+            </Button>
+          ) : null}
+        </div>
+      ))}
+      {aliases.length === 0 ? <div className="pw-sk-none">No aliases yet.</div> : null}
+    </section>
+  );
+}
+
+// ---- Versions (inline add; Active ⇄ Inactive) ---------------------------------
+function VersionsTab({
+  skill,
+  versions,
+  canManage,
+  onChanged,
+  onError,
+}: MutatingTabProps & { readonly versions: readonly SkillVersion[] }) {
+  const [version, setVersion] = useState('');
+  const [family, setFamily] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const add = async (): Promise<void> => {
+    const v = version.trim();
+    if (v.length === 0 || busy) return;
+    setBusy(true);
+    try {
+      const f = family.trim();
+      await skillsApi.addVersion(skill.id, { version: v, version_family: f.length > 0 ? f : null });
+      setVersion('');
+      setFamily('');
+      onChanged('Version added.');
+    } catch (e) {
+      onError(skillErrorMessage(e, 'The version could not be added.'));
+    } finally {
+      setBusy(false);
+    }
+  };
+  const toggle = async (v: SkillVersion): Promise<void> => {
+    const next = v.status === 'active' ? 'inactive' : 'active';
+    try {
+      await skillsApi.updateVersion(skill.id, v.id, { status: next });
+      onChanged(`Version ${v.version} is now ${next === 'active' ? 'Active' : 'Inactive'}.`);
+    } catch (e) {
+      onError(skillErrorMessage(e, 'The version status could not be changed.'));
+    }
+  };
+
+  return (
+    <section className="pw-sk-card">
+      {canManage ? (
+        <div className="pw-sk-addrow">
+          <Input
+            unstyled
+            className="pw-input pw-input--mono pw-sk-version"
+            placeholder="Version"
+            aria-label="Version"
+            value={version}
+            onChange={(e) => setVersion(e.target.value)}
+          />
+          <Input
+            unstyled
+            className="pw-input pw-sk-grow pw-sk-grow--140"
+            placeholder="Family"
+            aria-label="Family"
+            value={family}
+            onChange={(e) => setFamily(e.target.value)}
+          />
+          <Button
+            unstyled
+            className="pw-btn pw-btn--normal pw-sk-btn36 pw-sk-btn36--pad14"
+            aria-busy={busy || undefined}
+            onClick={() => void add()}
+          >
+            Add version
+          </Button>
+        </div>
+      ) : null}
+      {versions.map((v) => {
+        const p = statusPill(v.status);
+        return (
+          <div key={v.id} className="pw-sk-item">
+            <b className="pw-sk-item__name--mono">{v.version}</b>
+            <span className="pw-sk-item__sub">{v.version_family ?? '—'}</span>
+            <Pill tone={p.tone}>{p.label}</Pill>
+            {canManage ? (
+              <Button
+                unstyled
+                className="pw-btn pw-btn--secondary pw-sk-btn28"
+                aria-label={`Change status of version ${v.version}`}
+                onClick={() => void toggle(v)}
+              >
+                Change status
+              </Button>
+            ) : null}
+          </div>
+        );
+      })}
+      {versions.length === 0 ? <div className="pw-sk-none">No versions tracked.</div> : null}
+    </section>
+  );
+}
+
+// ---- Relationships (dialog add; names, never ids) -----------------------------
+function RelationshipsTab({
+  skill,
+  relationships,
+  directory,
+  canManage,
+  onAdd,
+  onChanged,
+  onError,
+}: MutatingTabProps & {
+  readonly relationships: readonly SkillRelationship[];
+  readonly directory: SkillDirectory;
+  readonly onAdd: () => void;
+}) {
+  const remove = async (r: SkillRelationship): Promise<void> => {
+    try {
+      await skillsApi.removeRelationship(skill.id, r.id);
+      onChanged('Relationship removed.');
+    } catch (e) {
+      onError(skillErrorMessage(e, 'The relationship could not be removed.'));
+    }
+  };
+  return (
+    <section className="pw-sk-card">
+      {canManage ? (
+        <div className="pw-sk-addbar">
+          <Button unstyled className="pw-btn pw-btn--normal pw-btn--34" onClick={onAdd}>
+            + Add relationship
+          </Button>
+        </div>
+      ) : null}
+      {relationships.map((r) => {
+        const v = relationshipView(r, skill.id);
+        const other = (
+          <Link className="pw-sk-item__link" to={`/skills/${v.otherId}`}>
+            <SkillName id={v.otherId} directory={directory} />
+          </Link>
+        );
+        return (
+          <div key={r.id} className="pw-sk-item pw-sk-item--wrap">
+            <span className="pw-sk-item__text">
+              {v.selfFirst ? skill.canonical_name : other} <span className="pw-sk-item__muted">{v.type}</span>{' '}
+              {v.selfFirst ? other : skill.canonical_name}
+            </span>
+            <span className="pw-sk-item__meta">{v.meta}</span>
+            <span className="pw-sk-code">{v.ref}</span>
+            {canManage ? (
+              <Button
+                unstyled
+                className="pw-btn pw-btn--secondary pw-sk-btn28"
+                aria-label="Remove relationship"
+                onClick={() => void remove(r)}
+              >
+                Remove
+              </Button>
+            ) : null}
+          </div>
+        );
+      })}
+      {relationships.length === 0 ? <div className="pw-sk-none">No relationships.</div> : null}
+    </section>
   );
 }

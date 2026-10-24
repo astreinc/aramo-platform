@@ -1,0 +1,502 @@
+/* PLATFORM-UX-1 F-7 — Skills: Registry, Skill detail, Review queue, Proposals.
+ * Every value is copied from doc/design-reference/platform-admin/platform/
+ * Platform Admin.dc.html (the `is.skills` / `is.skill` / `is.skillQueue` /
+ * `is.proposals` regions) and expressed through the theme.css --pw-* tokens.
+ * The one colour the token layer doesn't carry (the selected proposal row,
+ * #F1F4FA) is a local custom property below.
+ */
+
+.pw-sk {
+  --pw-sk-selected: #f1f4fa;
+}
+
+/* ─────────── page head ─────────── */
+
+.pw-sk-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 18px;
+}
+.pw-sk-head--plain {
+  display: block;
+}
+.pw-sk-title {
+  margin: 0;
+  font-size: var(--pw-fs-24);
+  font-weight: 700;
+  letter-spacing: var(--pw-tracking-tight);
+}
+.pw-sk-lede {
+  max-width: 720px;
+  margin: 6px 0 0;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-14);
+}
+
+/* The view-only note sits under the head (registry) or the detail head. */
+.pw-sk-viewonly-below {
+  margin-bottom: 12px;
+}
+.pw-sk-viewonly-detail {
+  margin-top: 12px;
+}
+
+/* ─────────── toolbar (registry + queue) ─────────── */
+
+.pw-sk-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+}
+.pw-sk-toolbar--queue {
+  gap: 10px;
+}
+.pw-sk-search {
+  width: 260px;
+}
+.pw-sk-search--queue {
+  width: 220px;
+}
+.pw-sk-check {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: var(--pw-fs-13-5);
+}
+.pw-sk-check__box {
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  accent-color: var(--pw-midnight);
+}
+.pw-sk-count {
+  margin-left: auto;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12-5);
+}
+.pw-sk-min {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-13);
+}
+.pw-sk-min .pw-input {
+  width: 80px;
+  padding: 0 10px;
+}
+
+/* ─────────── card + table ─────────── */
+
+.pw-sk-card {
+  overflow: hidden;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-card);
+  background: var(--pw-surface);
+}
+.pw-sk-card--open {
+  overflow: visible;
+}
+.pw-sk-card--pad {
+  padding: 20px;
+}
+.pw-sk-scroll {
+  overflow-x: auto;
+}
+.pw-sk-table {
+  width: 100%;
+  min-width: 720px;
+  border-collapse: collapse;
+}
+.pw-sk-table--queue {
+  min-width: 820px;
+}
+.pw-sk-table th {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--pw-line);
+  background: var(--pw-surface-2);
+  color: var(--pw-faint);
+  font-size: var(--pw-fs-11);
+  font-weight: 600;
+  letter-spacing: var(--pw-tracking-caps);
+  text-align: left;
+  text-transform: uppercase;
+}
+.pw-sk-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--pw-rule);
+  font-size: var(--pw-fs-13);
+}
+.pw-sk-table--queue td {
+  padding: 11px 16px;
+}
+.pw-sk-table .pw-sk-right {
+  text-align: right;
+}
+.pw-sk-row {
+  color: var(--pw-ink);
+  cursor: pointer;
+}
+.pw-sk-row:hover {
+  background: var(--pw-row-hover);
+}
+.pw-sk-row--muted {
+  color: var(--pw-row-muted);
+}
+.pw-sk-table td.pw-sk-cell-name {
+  font-size: var(--pw-fs-13-5);
+  font-weight: 600;
+}
+/* The name cell's link carries the row's keyboard path; it reads as row text. */
+.pw-sk-rowlink {
+  color: inherit;
+}
+.pw-sk-rowlink:hover {
+  color: inherit;
+  text-decoration: none;
+}
+.pw-sk-table td.pw-sk-cell-mono {
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-12-5);
+}
+.pw-sk-table td.pw-sk-cell-surface {
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-13);
+  font-weight: 500;
+}
+.pw-sk-table td.pw-sk-cell-actions {
+  text-align: right;
+  white-space: nowrap;
+}
+.pw-sk-rowactions {
+  display: inline-flex;
+  gap: 6px;
+}
+.pw-sk-empty {
+  padding: 36px;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-13);
+  text-align: center;
+}
+.pw-sk-foot {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--pw-line);
+  background: var(--pw-surface-2);
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12-5);
+}
+.pw-sk-foot--registry {
+  align-items: normal;
+}
+.pw-sk-more.pw-btn {
+  margin-left: auto;
+  padding: 0 12px;
+}
+.pw-sk-loading {
+  padding: 16px 20px;
+}
+
+/* ─────────── skill detail ─────────── */
+
+.pw-sk-dhead {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.pw-sk-dhead__name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.pw-sk-dhead__ids {
+  margin-top: 6px;
+  color: var(--pw-muted);
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-12-5);
+}
+.pw-sk-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+/* The 36px detail buttons (Edit / Override… / Merge into… / Deactivate…). */
+.pw-sk-btn36.pw-btn {
+  height: 36px;
+  padding: 0 12px;
+  font-size: var(--pw-fs-13);
+}
+.pw-sk-btn36--pad14.pw-btn {
+  padding: 0 14px;
+}
+/* Merge into… — the terracotta outline (privileged action). */
+.pw-sk-btn-merge.pw-btn {
+  border-color: var(--pw-terracotta);
+}
+.pw-sk-btn-merge.pw-btn:hover:not(:disabled) {
+  background: var(--pw-terracotta-hover);
+}
+/* The 28px row buttons (Remove / Change status). */
+.pw-sk-btn28.pw-btn {
+  height: 28px;
+  margin-left: auto;
+  padding: 0 10px;
+  border-radius: var(--pw-r-btn-sm);
+  font-size: var(--pw-fs-12);
+}
+
+.pw-sk-tabs {
+  display: flex;
+  gap: 4px;
+  margin: 18px 0 20px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--pw-line);
+}
+.pw-sk-tab {
+  height: 40px;
+  margin-bottom: -1px;
+  padding: 0 12px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--pw-muted);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-13-5);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.pw-sk-tab[aria-selected='true'] {
+  border-bottom-color: var(--pw-midnight);
+  color: var(--pw-ink);
+  font-weight: 700;
+}
+.pw-sk-body {
+  max-width: 900px;
+}
+
+.pw-sk-facts {
+  margin: 0;
+}
+.pw-sk-fact {
+  display: grid;
+  grid-template-columns: 180px 1fr;
+  gap: 12px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--pw-rule-2);
+}
+.pw-sk-fact dt {
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-13);
+}
+.pw-sk-fact dd {
+  margin: 0;
+  font-size: var(--pw-fs-13-5);
+}
+
+/* The inline add row (aliases, versions) and the relationship add bar. */
+.pw-sk-addrow {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--pw-line);
+}
+.pw-sk-addbar {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--pw-line);
+}
+.pw-sk-addrow .pw-input {
+  height: 36px;
+}
+.pw-sk-addrow .pw-select {
+  height: 36px;
+  font-size: var(--pw-fs-13-5);
+}
+.pw-sk-grow {
+  flex: 1;
+  min-width: 180px;
+}
+.pw-sk-grow--140 {
+  min-width: 140px;
+}
+.pw-sk-addrow .pw-sk-version {
+  width: 110px;
+}
+
+.pw-sk-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--pw-rule-2);
+}
+.pw-sk-item--wrap {
+  flex-wrap: wrap;
+}
+.pw-sk-item__name {
+  font-size: var(--pw-fs-13-5);
+}
+.pw-sk-item__name--mono {
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-13);
+}
+.pw-sk-item__sub {
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12-5);
+}
+.pw-sk-item__meta {
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12);
+}
+.pw-sk-item__text {
+  font-size: var(--pw-fs-13-5);
+}
+.pw-sk-item__muted {
+  color: var(--pw-muted);
+}
+.pw-sk-item__link {
+  font-weight: 600;
+}
+.pw-sk-code {
+  color: var(--pw-faint);
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-11);
+}
+.pw-sk-faint {
+  color: var(--pw-faint);
+}
+.pw-sk-none {
+  padding: 24px 16px;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-13);
+}
+
+/* ─────────── proposals ─────────── */
+
+.pw-sk-seg-inline {
+  display: inline-flex;
+  margin-bottom: 12px;
+}
+.pw-sk-seg-inline .pw-segmented {
+  display: inline-flex;
+}
+.pw-sk-split {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 400px), 1fr));
+  gap: 16px;
+  align-items: start;
+}
+.pw-sk-prow.pw-btn {
+  display: grid;
+  grid-template-columns: 3px 1fr auto;
+  gap: 12px;
+  width: 100%;
+  height: auto;
+  padding: 0;
+  border: none;
+  border-bottom: 1px solid var(--pw-rule-2);
+  border-radius: 0;
+  background: transparent;
+  color: var(--pw-ink);
+  font-size: var(--pw-fs-14);
+  font-weight: 400;
+  line-height: normal;
+  text-align: left;
+  white-space: normal;
+  justify-content: stretch;
+  align-items: stretch;
+}
+.pw-sk-prow.pw-btn:hover {
+  background: var(--pw-row-hover);
+}
+.pw-sk-prow--on.pw-btn,
+.pw-sk-prow--on.pw-btn:hover {
+  background: var(--pw-sk-selected);
+}
+.pw-sk-prow__bar {
+  background: transparent;
+}
+.pw-sk-prow--on .pw-sk-prow__bar {
+  background: var(--pw-midnight);
+}
+.pw-sk-prow__main {
+  min-width: 0;
+  padding: 12px 0;
+}
+.pw-sk-prow__summary {
+  display: block;
+  font-size: var(--pw-fs-13-5);
+  font-weight: 600;
+}
+.pw-sk-prow__meta {
+  display: block;
+  margin-top: 2px;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12);
+}
+.pw-sk-prow__pill {
+  padding: 12px 14px 0 0;
+}
+
+.pw-sk-alert.pw-alert {
+  margin-bottom: 14px;
+  line-height: normal;
+}
+.pw-sk-pd__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.pw-sk-pd__title {
+  margin: 0;
+  font-size: var(--pw-fs-16);
+  font-weight: 700;
+}
+.pw-sk-pd__id {
+  color: var(--pw-faint);
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-11-5);
+}
+.pw-sk-pd__meta {
+  margin-top: 4px;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12-5);
+}
+.pw-sk-pd__difftitle {
+  margin: 12px 0 6px;
+  font-size: var(--pw-fs-13);
+  font-weight: 600;
+}
+.pw-sk-pd__note {
+  margin-top: 10px;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12-5);
+}
+.pw-sk-pd__note--reason {
+  margin-top: 6px;
+}
+.pw-sk-pd__decide {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+}
+.pw-sk-pd__readonly {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-box);
+  background: var(--pw-surface-2);
+  color: var(--pw-ink-2);
+  font-size: var(--pw-fs-13);
+}
