@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#F4F6FA;color:#18212B;font-family:'Hanken Grotesk',system-ui,sans-serif;font-size:14px;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+a{color:#022AC0;text-decoration:none}a:hover{color:#3355E0;text-decoration:underline}
+button,input,select,textarea{font-family:'Hanken Grotesk',system-ui,sans-serif}
+:focus-visible{outline:2px solid #022AC0;outline-offset:2px}
+::selection{background:#022AC033}
+[data-block]:empty:before{content:attr(data-ph);color:#A3ADB6;pointer-events:none}
+[data-block] ul,[data-block] ol{margin:0;padding-left:22px}[data-block] li{margin:2px 0}
+@media (prefers-reduced-motion: reduce){*{transition:none !important}}
+</style>
+</helmet>
+<div style="height:100vh;display:flex;flex-direction:column;overflow:hidden">
+<div role="banner" style="height:30px;flex:none;background:#D97757;color:#0B1022;display:flex;align-items:center;gap:14px;padding:0 16px;font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden">
+  <span style="display:inline-flex;align-items:center;gap:7px;font-family:'IBM Plex Mono',monospace;letter-spacing:.08em"><span style="width:7px;height:7px;background:#0B1022;border-radius:1px;transform:rotate(45deg)"></span>PLATFORM ADMIN</span>
+  <span style="font-weight:500">Template changes apply to every tenant that uses the default</span>
+  <span style="margin-left:auto;font-weight:500">Signed in as <b>maya.okafor@aramo.ai</b> · Aramo Platform · Super admin</span>
+</div>
+<div style="flex:1;display:flex;min-height:0">
+<nav aria-label="Platform admin" style="width:{{ railW }};flex:none;background:#0B1022;display:flex;flex-direction:column;padding:14px {{ railPad }};box-sizing:border-box;overflow-y:auto;overflow-x:hidden;transition:width .18s">
+  <div style="display:flex;align-items:center;gap:10px;padding:2px 2px 6px;justify-content:{{ railJ }}">
+    <button onClick="{{ expandRail }}" title="Aramo" style="width:34px;height:34px;border:none;border-radius:9px;display:grid;place-items:center;flex:none;background:transparent;padding:0;cursor:pointer" style-hover="background:rgba(255,255,255,.1)"><svg width="25" height="25" viewBox="0 0 64 64"><g stroke="#FFFFFF" stroke-width="5" stroke-linecap="round"><line x1="43" y1="32" x2="56" y2="32"></line><line x1="32" y1="43" x2="32" y2="56"></line><line x1="24.2" y1="39.8" x2="15" y2="49"></line><line x1="21" y1="32" x2="8" y2="32"></line><line x1="24.2" y1="24.2" x2="15" y2="15"></line><line x1="32" y1="21" x2="32" y2="8"></line><line x1="39.8" y1="39.8" x2="49" y2="49"></line></g><line x1="39.8" y1="24.2" x2="54.5" y2="9.5" stroke="#D97757" stroke-width="6" stroke-linecap="round"></line><circle cx="32" cy="32" r="6" fill="#FFFFFF"></circle></svg></button>
+    <sc-if value="{{ railExp }}" hint-placeholder-val="{{ true }}">
+      <span style="color:#fff;font-weight:600;font-size:15.5px;letter-spacing:-.01em;white-space:nowrap">aramo<span style="color:#C9CACE;font-weight:400">.ai</span></span>
+      <button onClick="{{ toggleRail }}" title="Collapse sidebar (⌘\)" aria-label="Collapse sidebar" style="margin-left:auto;width:30px;height:30px;border:none;border-radius:6px;display:grid;place-items:center;color:#C9CACE;background:transparent;cursor:pointer;padding:0" style-hover="background:rgba(255,255,255,.12);color:#fff"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2.5"></rect><line x1="9.5" y1="4.5" x2="9.5" y2="19.5"></line></svg></button>
+    </sc-if>
+  </div>
+  <div style="display:flex;justify-content:{{ railJ }};padding:4px 4px 12px">
+    <span title="Platform admin console" style="display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border:1px solid #D97757;color:#F0B49E;border-radius:5px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:600;letter-spacing:.08em">{{ platformTag }}</span>
+  </div>
+  <sc-for list="{{ navGroups }}" as="g" hint-placeholder-count="6">
+    <div style="margin-bottom:6px">
+      <sc-if value="{{ railExp }}" hint-placeholder-val="{{ true }}"><div style="color:#91939C;font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;padding:10px 12px 6px">{{ g.g }}</div></sc-if>
+      <sc-if value="{{ railCol }}" hint-placeholder-val="{{ false }}"><div style="height:1px;background:rgba(255,255,255,.12);margin:8px 8px"></div></sc-if>
+      <sc-for list="{{ g.items }}" as="n" hint-placeholder-count="2">
+        <a href="{{ n.href }}" onClick="{{ n.onClick }}" aria-current="{{ n.cur }}" title="{{ n.label }}" style="display:flex;align-items:center;gap:12px;justify-content:{{ railJ }};padding:9px {{ itemPad }};margin-bottom:2px;border-radius:9px;background:{{ n.bg }};color:{{ n.color }};font-size:14px;font-weight:{{ n.fw }};white-space:nowrap;text-decoration:none;position:relative" style-hover="background:rgba(255,255,255,.08);color:#fff;text-decoration:none">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="{{ n.icon }}"></path></svg>
+          <sc-if value="{{ railExp }}" hint-placeholder-val="{{ true }}"><span style="overflow:hidden;text-overflow:ellipsis">{{ n.label }}</span></sc-if>
+          <sc-if value="{{ n.showBar }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;left:-12px;top:9px;bottom:9px;width:3px;border-radius:0 3px 3px 0;background:#D97757"></span></sc-if>
+        </a>
+      </sc-for>
+    </div>
+  </sc-for>
+  <div style="margin-top:auto;padding-top:12px;border-top:1px solid rgba(255,255,255,.12);display:flex;align-items:center;gap:10px;justify-content:{{ railJ }}">
+    <span style="width:30px;height:30px;border-radius:50%;background:#1A1E2F;border:1px solid #D97757;color:#fff;display:grid;place-items:center;font-size:11.5px;font-weight:600;flex:none">MO</span>
+    <sc-if value="{{ railExp }}" hint-placeholder-val="{{ true }}"><span style="min-width:0"><span style="display:block;color:#fff;font-size:12.5px;font-weight:600;line-height:1.25">Maya Okafor</span><span style="display:block;color:#C9CACE;font-size:11px">Super admin · Aramo Platform</span></span></sc-if>
+  </div>
+</nav>
+
+<div style="flex:1;min-width:0;display:flex;flex-direction:column;min-height:0">
+
+<sc-if value="{{ isLib }}" hint-placeholder-val="{{ false }}">
+  <header style="height:56px;flex:none;background:#fff;border-bottom:1px solid #E5E9ED;display:flex;align-items:center;gap:12px;padding:0 24px"><nav aria-label="Breadcrumb" style="font-size:13px;display:flex;gap:6px"><a href="Platform%20Admin.dc.html" style="color:#5C6770">Documents</a><span style="color:#C3CBD2">/</span><span aria-current="page" style="font-weight:600">Document templates</span></nav><span style="margin-left:auto;display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:5px;background:#D97757;color:#0B1022;font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:600;letter-spacing:.08em">PLATFORM</span><div style="position:relative;flex:none"><button onClick="{{ toggleAcct }}" aria-haspopup="menu" aria-expanded="{{ acctOpen }}" aria-label="Account" style="display:flex;align-items:center;gap:6px;padding:3px;border:none;background:transparent;border-radius:20px;cursor:pointer" style-hover="background:#F4F6FA"><span style="width:30px;height:30px;border-radius:50%;background:#0B1022;color:#fff;display:grid;place-items:center;font-size:11px;font-weight:700">MO</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5C6770" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"></path></svg></button>
+<sc-if value="{{ acctOpen }}" hint-placeholder-val="{{ false }}"><div role="menu" style="position:absolute;top:42px;right:0;width:290px;background:#fff;border:1px solid #E5E9ED;border-radius:12px;box-shadow:0 12px 32px rgba(15,25,40,.14);padding:6px;z-index:95">
+  <div style="display:flex;gap:11px;padding:11px 12px 12px"><span style="width:36px;height:36px;border-radius:50%;background:#0B1022;color:#fff;display:grid;place-items:center;font-size:12.5px;font-weight:700;flex:none">MO</span><span style="min-width:0"><span style="display:block;font-size:13px;font-weight:700">Maya Okafor</span><span style="display:block;font-size:12px;color:#5C6770;font-family:'IBM Plex Mono',monospace">maya.okafor@aramo.ai</span><span style="display:flex;gap:6px;margin-top:6px"><span style="border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700;letter-spacing:.05em;background:#FBE7DF;color:#8A3A1F">SUPER ADMIN</span><span style="font-size:11.5px;color:#5C6770">Aramo Platform</span></span></span></div>
+  <sc-if value="{{ acctUnsaved }}" hint-placeholder-val="{{ false }}"><div style="margin:0 8px 8px;padding:7px 9px;border:1px solid #E7D3A8;background:#FAF0DC;border-radius:8px;font-size:12px;color:#6B4609">You have unsaved changes. They're saved before you sign out.</div></sc-if>
+  <div style="height:1px;background:#F0F2F4;margin:0 6px 6px"></div>
+  <a href="#" role="menuitem" onClick="{{ switchAcct }}" style="display:block;padding:9px 11px;border-radius:8px;color:#18212B;font-size:13px;font-weight:500;text-decoration:none" style-hover="background:#F4F6FA;text-decoration:none">Sign in with a different account</a>
+  <a href="#" role="menuitem" onClick="{{ signOut }}" style="display:block;padding:9px 11px;border-radius:8px;color:#A8412F;font-size:13px;font-weight:600;text-decoration:none" style-hover="background:#F8E9E6;text-decoration:none">Sign out</a>
+</div></sc-if></div></header>
+  <main id="main" style="flex:1;overflow:auto;padding:28px 32px 64px">
+    <div style="display:flex;align-items:flex-end;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:18px;max-width:1280px"><div><h1 style="font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0">Document templates</h1><p style="font-size:14px;color:#5C6770;max-width:720px;margin:6px 0 0">Platform defaults that tenants start from. Open one to edit its draft in the Template Studio.</p></div><sc-if value="{{ manage }}" hint-placeholder-val="{{ true }}"><button onClick="{{ lib.create }}" style="height:38px;padding:0 16px;border:1px solid #0B1022;background:#0B1022;color:#fff;border-radius:8px;font-size:13.5px;font-weight:600;cursor:pointer" style-hover="background:#1A1E2F">+ Create default template</button></sc-if></div>
+    <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:12px;max-width:1280px"><div role="group" aria-label="Product" style="display:flex;gap:4px;background:#fff;border:1px solid #E5E9ED;border-radius:10px;padding:3px"><sc-for list="{{ lib.tags }}" as="g" hint-placeholder-count="3"><button onClick="{{ g.onClick }}" aria-pressed="{{ g.on }}" style="height:30px;padding:0 10px;border:none;border-radius:7px;background:{{ g.bg }};color:{{ g.fg }};font-size:12.5px;font-weight:{{ g.fw }};cursor:pointer">{{ g.l }}</button></sc-for></div><input value="{{ lib.q }}" onChange="{{ lib.onQ }}" placeholder="Search templates" aria-label="Search templates" style="height:38px;border:1px solid #D5DBE1;border-radius:8px;padding:0 12px;font-size:14px;width:240px;outline:none" style-focus="border-color:#022AC0;box-shadow:0 0 0 3px rgba(2,42,192,.15)"><span style="margin-left:auto;font-size:12.5px;color:#5C6770">{{ lib.count }}</span></div>
+    <div style="background:#fff;border:1px solid #E5E9ED;border-radius:13px;overflow:hidden;max-width:1280px"><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;min-width:900px">
+      <thead><tr><th style="padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;text-align:left;border-bottom:1px solid #E5E9ED">Template</th><th style="padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;text-align:left;border-bottom:1px solid #E5E9ED">Current version</th><th style="padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;text-align:left;border-bottom:1px solid #E5E9ED">Draft</th><th style="padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;text-align:left;border-bottom:1px solid #E5E9ED">Products</th><th style="padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;text-align:left;border-bottom:1px solid #E5E9ED">Updated</th><th style="padding:10px 16px;background:#FAFBFC;border-bottom:1px solid #E5E9ED"></th></tr></thead>
+      <tbody><sc-for list="{{ lib.rows }}" as="r" hint-placeholder-count="5"><tr onClick="{{ r.open }}" style="cursor:pointer" style-hover="background:#F7F9FC">
+        <td style="padding:13px 16px;border-bottom:1px solid #EEF1F4"><b style="font-size:14px">{{ r.name }}</b><div style="font-size:12px;color:#5C6770">{{ r.type }} · <span style="font-family:'IBM Plex Mono',monospace">{{ r.id }}</span></div></td>
+        <td style="padding:13px 16px;border-bottom:1px solid #EEF1F4"><span style="display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:999px;font-size:12px;font-weight:600;white-space:nowrap;background:{{ r.curP.bg }};color:{{ r.curP.fg }}"><span style="width:6px;height:6px;border-radius:50%;background:currentColor"></span>{{ r.curP.label }}</span><sc-if value="{{ r.hasWd }}" hint-placeholder-val="{{ false }}"><div style="margin-top:4px"><span style="display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;font-size:11.5px;font-weight:600;background:{{ r.wdP.bg }};color:{{ r.wdP.fg }}">{{ r.wdP.label }}</span></div></sc-if></td>
+        <td style="padding:13px 16px;border-bottom:1px solid #EEF1F4;font-size:13px;font-weight:600;color:{{ r.draftInk }}">{{ r.draftL }}<div style="font-size:11.5px;color:#93A0A8;font-weight:400">{{ r.blocksN }}</div></td>
+        <td style="padding:13px 16px;border-bottom:1px solid #EEF1F4"><span style="display:flex;gap:4px;flex-wrap:wrap"><sc-for list="{{ r.tags }}" as="g" hint-placeholder-count="2"><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;padding:2px 6px;border:1px solid #D5DBE1;border-radius:4px">{{ g }}</span></sc-for></span></td>
+        <td style="padding:13px 16px;border-bottom:1px solid #EEF1F4;font-size:13px;white-space:nowrap">{{ r.upd }}</td>
+        <td style="padding:13px 16px;border-bottom:1px solid #EEF1F4;text-align:right"><span style="font-size:13px;font-weight:600;color:#022AC0;white-space:nowrap">Open studio →</span></td>
+      </tr></sc-for></tbody></table></div>
+      <sc-if value="{{ lib.empty }}" hint-placeholder-val="{{ false }}"><div style="padding:40px;text-align:center"><b>No templates match</b><div style="font-size:13px;color:#5C6770;margin-top:4px">Try another product or search term.</div></div></sc-if>
+    </div>
+  </main>
+</sc-if>
+
+<sc-if value="{{ isStudio }}" hint-placeholder-val="{{ true }}">
+  <header style="height:56px;flex:none;background:#fff;border-bottom:1px solid #E5E9ED;display:flex;align-items:center;gap:10px;padding:0 16px 0 18px;min-width:0">
+    <nav aria-label="Breadcrumb" style="font-size:13px;display:flex;gap:6px;align-items:center;min-width:0;white-space:nowrap;overflow:hidden;flex:1 1 auto;min-width:110px"><sc-if value="{{ st.wide }}" hint-placeholder-val="{{ true }}"><a href="Platform%20Admin.dc.html" style="color:#5C6770;flex:none">Documents</a><span style="color:#C3CBD2">/</span><a href="#library" onClick="{{ st.toLib }}" style="color:#5C6770;flex:none">Document templates</a><span style="color:#C3CBD2">/</span></sc-if><sc-if value="{{ st.narrowHdr }}" hint-placeholder-val="{{ false }}"><a href="#library" onClick="{{ st.toLib }}" aria-label="Back to templates" style="color:#5C6770;flex:none">←</a></sc-if><span aria-current="page" style="font-weight:700;overflow:hidden;text-overflow:ellipsis">{{ st.name }}</span></nav>
+    <span style="flex:none;display:inline-flex;align-items:center;height:22px;padding:0 8px;border:1px solid #D5DBE1;border-radius:6px;font-size:11.5px;font-weight:600;color:#3F4A55;white-space:nowrap;font-family:'IBM Plex Mono',monospace">{{ st.cur }}</span>
+    <sc-if value="{{ manage }}" hint-placeholder-val="{{ true }}"><span role="status" style="flex:none;display:inline-flex;align-items:center;gap:6px;font-size:12.5px;color:#5C6770;white-space:nowrap"><span style="width:7px;height:7px;border-radius:50%;background:{{ st.saveDot }}"></span>{{ st.saveL }}</span></sc-if>
+    <div style="margin-left:auto;display:flex;align-items:center;gap:8px;flex:none">
+      <div role="group" aria-label="Mode" style="display:flex;gap:2px;background:#EEF1F4;border-radius:9px;padding:3px"><sc-for list="{{ st.modes }}" as="m" hint-placeholder-count="2"><button onClick="{{ m.onClick }}" aria-pressed="{{ m.on }}" style="height:28px;padding:0 12px;border:none;border-radius:7px;background:{{ m.bg }};box-shadow:{{ m.sh }};font-size:12.5px;font-weight:{{ m.fw }};cursor:pointer;color:#18212B">{{ m.l }}</button></sc-for></div>
+      <button onClick="{{ st.openChecks }}" title="Publishing checks" style="display:inline-flex;align-items:center;gap:8px;height:32px;padding:0 10px;border:none;border-radius:8px;background:{{ st.readyBg }};color:{{ st.readyFg }};font-size:12.5px;font-weight:700;cursor:pointer;white-space:nowrap"><sc-if value="{{ st.wide }}" hint-placeholder-val="{{ true }}"><span aria-hidden="true" style="display:flex;gap:2px"><sc-for list="{{ st.readySegs }}" as="g" hint-placeholder-count="8"><span style="width:5px;height:12px;border-radius:2px;background:{{ g.bg }}"></span></sc-for></span></sc-if>{{ st.readyL }}</button>
+      <button onClick="{{ st.compare }}" style="height:34px;padding:0 12px;border:1px solid #D5DBE1;background:#fff;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap" style-hover="background:#F4F6FA" title="Compare versions">{{ st.cmpL }}</button>
+      <sc-if value="{{ manage }}" hint-placeholder-val="{{ true }}">
+        <button onClick="{{ st.save }}" disabled="{{ st.saveDis }}" title="Save draft (⌘S)" style="height:34px;padding:0 12px;border:1px solid #D5DBE1;background:#fff;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;opacity:{{ st.saveOp }};white-space:nowrap">{{ st.saveTxt }}</button>
+        <button onClick="{{ st.publish }}" aria-disabled="{{ st.pubDis }}" title="Publish requires every check to pass" style="height:34px;padding:0 14px;border:1px solid #D97757;background:#D97757;color:#0B1022;border-radius:8px;font-size:13px;font-weight:700;cursor:pointer;opacity:{{ st.pubOp }};white-space:nowrap" style-hover="background:#C9684A">Publish {{ st.nextV }}…</button>
+      </sc-if>
+      <div style="position:relative"><button onClick="{{ st.toggleMore }}" aria-label="More actions" aria-haspopup="menu" style="width:34px;height:34px;border:1px solid #D5DBE1;background:#fff;border-radius:8px;cursor:pointer;font-size:16px;color:#3F4A55">⋯</button>
+        <sc-if value="{{ st.more }}" hint-placeholder-val="{{ false }}"><div role="menu" style="position:absolute;right:0;top:40px;width:250px;background:#fff;border:1px solid #E5E9ED;border-radius:12px;box-shadow:0 12px 32px rgba(15,25,40,.14);padding:6px;z-index:90">
+          <sc-if value="{{ st.canWithdraw }}" hint-placeholder-val="{{ false }}"><button role="menuitem" onClick="{{ st.withdraw }}" style="display:block;width:100%;text-align:left;padding:9px 11px;border:none;background:transparent;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;color:#8A3A1F" style-hover="background:#FDF3EF">Withdraw template…</button></sc-if>
+          <sc-if value="{{ st.canCancelWd }}" hint-placeholder-val="{{ false }}"><button role="menuitem" onClick="{{ st.cancelWd }}" style="display:block;width:100%;text-align:left;padding:9px 11px;border:none;background:transparent;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer" style-hover="background:#F4F6FA">Cancel withdrawal…</button></sc-if>
+          <button role="menuitem" onClick="{{ st.toggleAutosave }}" style="display:flex;width:100%;text-align:left;padding:9px 11px;border:none;background:transparent;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer" style-hover="background:#F4F6FA"><span style="flex:1">Autosave drafts</span><b>{{ st.autosaveL }}</b></button>
+          <button role="menuitem" onClick="{{ st.showShortcuts }}" style="display:flex;width:100%;text-align:left;padding:9px 11px;border:none;background:transparent;border-radius:8px;font-size:13px;font-weight:500;cursor:pointer" style-hover="background:#F4F6FA"><span style="flex:1">Keyboard shortcuts</span><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#93A0A8">?</span></button>
+          <div style="padding:8px 11px;font-size:11.5px;color:#93A0A8;border-top:1px solid #F0F2F4;margin-top:4px">Download as PDF <sc-if value="{{ ann }}" hint-placeholder-val="{{ false }}"><span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;padding:1px 5px;border:1px dashed #C0410C;color:#C0410C;border-radius:4px">NEEDS BACKEND</span></sc-if></div>
+        </div></sc-if>
+      </div>
+      <div style="position:relative;flex:none"><button onClick="{{ toggleAcct }}" aria-haspopup="menu" aria-expanded="{{ acctOpen }}" aria-label="Account" style="display:flex;align-items:center;gap:6px;padding:3px;border:none;background:transparent;border-radius:20px;cursor:pointer" style-hover="background:#F4F6FA"><span style="width:30px;height:30px;border-radius:50%;background:#0B1022;color:#fff;display:grid;place-items:center;font-size:11px;font-weight:700">MO</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5C6770" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"></path></svg></button>
+<sc-if value="{{ acctOpen }}" hint-placeholder-val="{{ false }}"><div role="menu" style="position:absolute;top:42px;right:0;width:290px;background:#fff;border:1px solid #E5E9ED;border-radius:12px;box-shadow:0 12px 32px rgba(15,25,40,.14);padding:6px;z-index:95">
+  <div style="display:flex;gap:11px;padding:11px 12px 12px"><span style="width:36px;height:36px;border-radius:50%;background:#0B1022;color:#fff;display:grid;place-items:center;font-size:12.5px;font-weight:700;flex:none">MO</span><span style="min-width:0"><span style="display:block;font-size:13px;font-weight:700">Maya Okafor</span><span style="display:block;font-size:12px;color:#5C6770;font-family:'IBM Plex Mono',monospace">maya.okafor@aramo.ai</span><span style="display:flex;gap:6px;margin-top:6px"><span style="border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700;letter-spacing:.05em;background:#FBE7DF;color:#8A3A1F">SUPER ADMIN</span><span style="font-size:11.5px;color:#5C6770">Aramo Platform</span></span></span></div>
+  <sc-if value="{{ acctUnsaved }}" hint-placeholder-val="{{ false }}"><div style="margin:0 8px 8px;padding:7px 9px;border:1px solid #E7D3A8;background:#FAF0DC;border-radius:8px;font-size:12px;color:#6B4609">You have unsaved changes. They're saved before you sign out.</div></sc-if>
+  <div style="height:1px;background:#F0F2F4;margin:0 6px 6px"></div>
+  <a href="#" role="menuitem" onClick="{{ switchAcct }}" style="display:block;padding:9px 11px;border-radius:8px;color:#18212B;font-size:13px;font-weight:500;text-decoration:none" style-hover="background:#F4F6FA;text-decoration:none">Sign in with a different account</a>
+  <a href="#" role="menuitem" onClick="{{ signOut }}" style="display:block;padding:9px 11px;border-radius:8px;color:#A8412F;font-size:13px;font-weight:600;text-decoration:none" style-hover="background:#F8E9E6;text-decoration:none">Sign out</a>
+</div></sc-if></div>
+    </div>
+  </header>
+
+  <sc-if value="{{ st.wdPending }}" hint-placeholder-val="{{ false }}"><div role="status" style="flex:none;display:flex;align-items:center;gap:10px;padding:8px 18px;background:#FAF0DC;border-bottom:1px solid #E7D3A8;font-size:13px;color:#6B4609"><b>Withdrawal pending.</b> Takes effect {{ st.wdEff }}. {{ st.wdReason }}<sc-if value="{{ st.canCancelWd }}" hint-placeholder-val="{{ false }}"><button onClick="{{ st.cancelWd }}" style="margin-left:auto;height:28px;padding:0 10px;border:1px solid #E7D3A8;background:#fff;border-radius:7px;font-size:12.5px;font-weight:600;cursor:pointer">Cancel withdrawal</button></sc-if></div></sc-if>
+  <sc-if value="{{ reader }}" hint-placeholder-val="{{ false }}"><div style="flex:none;display:flex;align-items:center;gap:10px;padding:8px 18px;background:#FAFBFC;border-bottom:1px solid #E5E9ED;font-size:13px;color:#3F4A55;flex-wrap:wrap"><b>View only.</b> You're seeing the published version. Editing and draft preview need the <b>Manage templates</b> permission.<sc-if value="{{ ann }}" hint-placeholder-val="{{ false }}"><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;padding:2px 6px;border:1px dashed #C0410C;color:#C0410C;border-radius:4px;background:#FFF7F3">NEEDS BACKEND · draft preview for :read</span></sc-if></div></sc-if>
+
+  <div style="flex:1;min-height:0;display:grid;grid-template-columns:{{ st.cols }}">
+    <sc-if value="{{ st.leftOpen }}" hint-placeholder-val="{{ true }}">
+    <aside aria-label="Template structure" style="background:#fff;border-right:1px solid #E5E9ED;display:flex;flex-direction:column;min-height:0;position:{{ st.lPos }};left:{{ st.lLeft }};top:86px;bottom:0;width:272px;z-index:75;box-shadow:{{ st.lSh }}">
+      <div style="padding:10px 12px;border-bottom:1px solid #E5E9ED"><div role="tablist" style="display:flex;gap:2px;background:#EEF1F4;border-radius:9px;padding:3px"><sc-for list="{{ st.leftTabs }}" as="tb" hint-placeholder-count="3"><button role="tab" aria-selected="{{ tb.on }}" onClick="{{ tb.onClick }}" style="flex:1;height:28px;border:none;border-radius:7px;background:{{ tb.bg }};box-shadow:{{ tb.sh }};font-size:12.5px;font-weight:{{ tb.fw }};cursor:pointer;color:#18212B">{{ tb.l }}</button></sc-for></div></div>
+      <div style="flex:1;overflow-y:auto;padding:10px 8px 20px">
+        <sc-if value="{{ st.lt.outline }}" hint-placeholder-val="{{ true }}">
+          <div style="padding:2px 8px 8px;font-size:11.5px;color:#93A0A8">{{ outlineStats }}</div>
+          <sc-for list="{{ outline }}" as="o" hint-placeholder-count="10"><div onDragOver="{{ o.over }}" onDrop="{{ o.drop }}" style="position:relative">
+            <sc-if value="{{ o.dropB }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:6px;right:6px;top:-1px;height:2px;background:#022AC0;border-radius:2px"></div></sc-if>
+            <button draggable="{{ manage }}" onDragStart="{{ o.dragStart }}" onDragEnd="{{ dragEnd }}" onClick="{{ o.go }}" title="{{ o.kind }}" style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:6px 8px 6px {{ o.pad }};border:none;border-left:2px solid {{ o.bar }};background:{{ o.bg }};border-radius:0 7px 7px 0;cursor:pointer;font-size:{{ o.fs }};font-weight:{{ o.fw }};color:{{ o.fg }}" style-hover="background:#F4F6FA"><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;color:#B3BCC4;width:16px;flex:none">{{ o.n }}</span><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ o.label }}</span></button>
+            <sc-if value="{{ o.dropA }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:6px;right:6px;bottom:-1px;height:2px;background:#022AC0;border-radius:2px"></div></sc-if>
+          </div></sc-for>
+          <sc-if value="{{ outlineEmpty }}" hint-placeholder-val="{{ false }}"><div style="padding:20px 10px;font-size:12.5px;color:#5C6770;text-align:center">The outline fills in as you add headings and paragraphs.</div></sc-if>
+          <div style="padding:12px 8px 0;font-size:11.5px;color:#93A0A8">Drag rows to reorder blocks.</div>
+        </sc-if>
+        <sc-if value="{{ st.lt.sections }}" hint-placeholder-val="{{ false }}">
+          <div style="padding:2px 8px 10px;font-size:12px;color:#5C6770;line-height:1.5">Drag a section onto the page, or click Insert to add it after the selected block. Inserted content becomes part of this draft.</div>
+          <sc-if value="{{ ann }}" hint-placeholder-val="{{ false }}"><div style="margin:0 8px 10px;font-family:'IBM Plex Mono',monospace;font-size:10px;padding:4px 6px;border:1px dashed #C0410C;color:#C0410C;border-radius:4px;background:#FFF7F3">NEEDS BACKEND · shared section library (storage, usage counts)</div></sc-if>
+          <sc-for list="{{ sections }}" as="x" hint-placeholder-count="6"><div draggable="{{ manage }}" onDragStart="{{ x.dragStart }}" onDragEnd="{{ dragEnd }}" style="display:flex;gap:10px;align-items:flex-start;padding:10px;margin:0 4px 6px;border:1px solid #E5E9ED;border-radius:10px;background:#fff;cursor:grab" style-hover="border-color:#B9C3CC;box-shadow:0 2px 8px rgba(15,25,40,.06)">
+            <span aria-hidden="true" style="color:#B3BCC4;font-size:12px;line-height:18px;letter-spacing:-2px">⋮⋮</span>
+            <span style="flex:1;min-width:0"><span style="display:block;font-size:13px;font-weight:600">{{ x.name }}</span><span style="display:block;font-size:11.5px;color:#5C6770">{{ x.desc }}</span><span style="display:block;font-size:11px;color:#93A0A8;margin-top:2px">{{ x.vars }} variables · used in {{ x.used }} templates</span></span>
+            <sc-if value="{{ manage }}" hint-placeholder-val="{{ true }}"><button onClick="{{ x.insert }}" style="height:26px;padding:0 8px;border:1px solid #D5DBE1;background:#fff;border-radius:6px;font-size:11.5px;font-weight:600;cursor:pointer">Insert</button></sc-if>
+          </div></sc-for>
+        </sc-if>
+        <sc-if value="{{ st.lt.versions }}" hint-placeholder-val="{{ false }}">
+          <sc-for list="{{ versions }}" as="x" hint-placeholder-count="4"><div style="display:flex;gap:10px;align-items:center;padding:10px;margin:0 4px 4px;border-left:2px solid {{ x.bar }};background:{{ x.bg }};border-radius:0 9px 9px 0">
+            <button onClick="{{ x.view }}" style="flex:1;min-width:0;text-align:left;border:none;background:transparent;cursor:pointer;padding:0"><span style="display:flex;gap:8px;align-items:center"><b style="font-family:'IBM Plex Mono',monospace;font-size:13px">{{ x.n }}</b><span style="display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;font-size:11.5px;font-weight:600;background:{{ x.p.bg }};color:{{ x.p.fg }}">{{ x.p.label }}</span></span><span style="display:block;font-size:11.5px;color:#5C6770;margin-top:3px">{{ x.d }}</span></button>
+            <button onClick="{{ x.cmp }}" title="Compare with draft" style="height:26px;padding:0 8px;border:1px solid #D5DBE1;background:#fff;border-radius:6px;font-size:11.5px;font-weight:600;cursor:pointer">Diff</button>
+          </div></sc-for>
+        </sc-if>
+      </div>
+    </aside>
+    </sc-if>
+
+    <section aria-label="Document" style="display:flex;flex-direction:column;min-width:0;min-height:0;background:#E9ECF1">
+      <sc-if value="{{ st.isEdit }}" hint-placeholder-val="{{ true }}">
+      <div role="toolbar" aria-label="Formatting" style="flex:none;display:flex;align-items:center;gap:4px;padding:6px 10px;background:#fff;border-bottom:1px solid #E5E9ED;flex-wrap:nowrap;overflow-x:auto;white-space:nowrap">
+        <button onClick="{{ st.toggleLeft }}" title="Outline" aria-label="Toggle outline" style="height:30px;width:32px;border:1px solid transparent;background:transparent;border-radius:6px;cursor:pointer;color:#3F4A55" style-hover="background:#F4F6FA"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4.5" width="18" height="15" rx="2.5"></rect><line x1="9.5" y1="4.5" x2="9.5" y2="19.5"></line></svg></button>
+        <span style="width:1px;height:20px;background:#E5E9ED;margin:0 4px"></span>
+        <select value="{{ tb.selType }}" onChange="{{ tb.onType }}" disabled="{{ tb.typeDis }}" aria-label="Block type" style="height:30px;border:1px solid #D5DBE1;border-radius:6px;padding:0 6px;font-size:12.5px;background:#fff;color:#18212B"><option value="p">Paragraph</option><option value="h2">Heading</option><option value="ul">Bulleted list</option><option value="ol">Numbered list</option></select>
+        <span style="width:1px;height:20px;background:#E5E9ED;margin:0 4px"></span>
+        <sc-for list="{{ tb.fmt }}" as="f" hint-placeholder-count="3"><button onMouseDown="{{ f.run }}" title="{{ f.tt }}" aria-label="{{ f.tt }}" aria-pressed="{{ f.on }}" style="height:30px;min-width:30px;border:1px solid {{ f.bd }};background:{{ f.bg }};border-radius:6px;cursor:pointer;font-size:13.5px;font-weight:{{ f.fw }};font-style:{{ f.fst }};text-decoration:{{ f.td }};color:#18212B" style-hover="background:#F4F6FA">{{ f.l }}</button></sc-for>
+        <button onMouseDown="{{ tb.bul }}" title="Bulleted list" aria-label="Bulleted list" style="height:30px;min-width:30px;border:1px solid transparent;background:transparent;border-radius:6px;cursor:pointer" style-hover="background:#F4F6FA"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#18212B" stroke-width="1.8" stroke-linecap="round"><path d="M9 6h11M9 12h11M9 18h11"></path><circle cx="4.5" cy="6" r="1" fill="#18212B"></circle><circle cx="4.5" cy="12" r="1" fill="#18212B"></circle><circle cx="4.5" cy="18" r="1" fill="#18212B"></circle></svg></button>
+        <button onMouseDown="{{ tb.num }}" title="Numbered list" aria-label="Numbered list" style="height:30px;min-width:30px;border:1px solid transparent;background:transparent;border-radius:6px;cursor:pointer;font-size:12px;font-weight:700;font-family:'IBM Plex Mono',monospace" style-hover="background:#F4F6FA">1.</button>
+        <button onMouseDown="{{ tb.br }}" title="Line break (⇧ Enter)" aria-label="Line break" style="height:30px;min-width:30px;border:1px solid transparent;background:transparent;border-radius:6px;cursor:pointer;font-size:14px" style-hover="background:#F4F6FA">↵</button>
+        <span style="width:1px;height:20px;background:#E5E9ED;margin:0 4px"></span>
+        <button onMouseDown="{{ tb.varBtn }}" title="Insert variable (type &#123;&#123; in text)" style="height:30px;padding:0 10px;border:1px solid #C9D2F5;background:#E6EAFA;color:#011F8D;border-radius:6px;cursor:pointer;font-size:12.5px;font-weight:600;font-family:'IBM Plex Mono',monospace;white-space:nowrap">+ Variable</button>
+        <button onMouseDown="{{ tb.secBtn }}" title="Insert a section" style="height:30px;padding:0 10px;border:1px solid #D5DBE1;background:#fff;border-radius:6px;cursor:pointer;font-size:12.5px;font-weight:600;white-space:nowrap">+ Section</button>
+        <span style="width:1px;height:20px;background:#E5E9ED;margin:0 4px"></span>
+        <button onMouseDown="{{ tb.undo }}" title="Undo (⌘Z)" aria-label="Undo" style="height:30px;min-width:30px;border:1px solid transparent;background:transparent;border-radius:6px;cursor:pointer;font-size:15px" style-hover="background:#F4F6FA">↶</button>
+        <button onMouseDown="{{ tb.redo }}" title="Redo (⌘⇧Z)" aria-label="Redo" style="height:30px;min-width:30px;border:1px solid transparent;background:transparent;border-radius:6px;cursor:pointer;font-size:15px" style-hover="background:#F4F6FA">↷</button>
+        <span style="display:inline-flex;align-items:center;gap:4px;margin-left:6px;padding-left:8px;border-left:1px solid #E5E9ED" title="Outside the allowed content set">
+          <button disabled="" style="height:26px;padding:0 7px;border:1px dashed #D5DBE1;background:#fff;border-radius:6px;font-size:11.5px;color:#93A0A8">Table</button>
+          <button disabled="" style="height:26px;padding:0 7px;border:1px dashed #D5DBE1;background:#fff;border-radius:6px;font-size:11.5px;color:#93A0A8">H3</button>
+          <button disabled="" style="height:26px;padding:0 7px;border:1px dashed #D5DBE1;background:#fff;border-radius:6px;font-size:11.5px;color:#93A0A8">Align</button>
+          <button disabled="" style="height:26px;padding:0 7px;border:1px dashed #D5DBE1;background:#fff;border-radius:6px;font-size:11.5px;color:#93A0A8">Conditional</button>
+          <sc-if value="{{ ann }}" hint-placeholder-val="{{ false }}"><span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;padding:1px 5px;border:1px dashed #C0410C;color:#C0410C;border-radius:4px;background:#FFF7F3">NEEDS BACKEND</span></sc-if>
+        </span>
+        <button onClick="{{ st.toggleRight }}" title="Inspector" aria-label="Toggle inspector" style="margin-left:auto;height:30px;width:32px;border:1px solid transparent;background:transparent;border-radius:6px;cursor:pointer;color:#3F4A55" style-hover="background:#F4F6FA"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7"><rect x="3" y="4.5" width="18" height="15" rx="2.5"></rect><line x1="14.5" y1="4.5" x2="14.5" y2="19.5"></line></svg></button>
+      </div>
+      <div ref="{{ canvasRef }}" onDragOver="{{ canvasOver }}" onDrop="{{ canvasDrop }}" onMouseLeave="{{ leave }}" style="flex:1;overflow:auto;padding:28px 24px 160px">
+        <div style="width:794px;max-width:100%;margin:0 auto;background:#fff;box-shadow:0 1px 3px rgba(15,25,40,.08),0 8px 28px rgba(15,25,40,.08);border-radius:3px;padding:56px 72px 72px 76px;box-sizing:border-box;min-height:1000px">
+          <label style="display:block;margin-bottom:18px;padding-bottom:14px;border-bottom:1px dashed #E5E9ED"><span style="display:block;font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#93A0A8;margin-bottom:4px">Document title</span><input value="{{ title }}" onChange="{{ onTitle }}" placeholder="Untitled document" style="width:100%;border:none;font-size:24px;font-weight:700;letter-spacing:-.02em;color:#18212B;outline:none;padding:0;background:transparent"></label>
+          <sc-if value="{{ canvasEmpty }}" hint-placeholder-val="{{ false }}"><div style="border:1.5px dashed #C9D2F5;border-radius:12px;padding:36px 28px;text-align:center;background:#FAFBFF">
+            <div style="font-size:16px;font-weight:700">Start this template</div>
+            <p style="font-size:13px;color:#5C6770;margin:6px auto 18px;max-width:420px;line-height:1.5">Write from scratch, drag a section from the library, or copy the published version. Type <b>/</b> for blocks and <b>&#123;&#123;</b> for variables.</p>
+            <div style="display:flex;gap:8px;justify-content:center;flex-wrap:wrap"><button onClick="{{ empty.heading }}" style="height:34px;padding:0 12px;border:1px solid #0B1022;background:#0B1022;color:#fff;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Add a heading</button><button onClick="{{ empty.para }}" style="height:34px;padding:0 12px;border:1px solid #D5DBE1;background:#fff;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Add a paragraph</button><button onClick="{{ empty.sections }}" style="height:34px;padding:0 12px;border:1px solid #D5DBE1;background:#fff;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Browse sections</button><sc-if value="{{ empty.canCopy }}" hint-placeholder-val="{{ false }}"><button onClick="{{ empty.copy }}" style="height:34px;padding:0 12px;border:1px solid #D5DBE1;background:#fff;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer">Copy published version</button></sc-if></div>
+          </div></sc-if>
+          <sc-for list="{{ blocks }}" as="b" hint-placeholder-count="12"><div onMouseEnter="{{ b.enter }}" onDragOver="{{ b.over }}" onDrop="{{ b.drop }}" style="position:relative">
+            <sc-if value="{{ b.dropBefore }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:-10px;right:-10px;top:-2px;height:3px;background:#022AC0;border-radius:2px;z-index:2"></div></sc-if>
+            <div style="position:absolute;left:-58px;top:3px;display:flex;gap:1px;opacity:{{ b.ctrlOp }};transition:opacity .12s">
+              <button onClick="{{ b.add }}" title="Add block below" aria-label="Add block below" style="width:24px;height:24px;border:none;background:transparent;border-radius:5px;cursor:pointer;color:#93A0A8;font-size:16px;line-height:1" style-hover="background:#EEF1F4;color:#18212B">+</button>
+              <button draggable="true" onDragStart="{{ b.dragStart }}" onDragEnd="{{ dragEnd }}" onClick="{{ b.menu }}" title="Drag to move · click for options" aria-label="Block options" style="width:24px;height:24px;border:none;background:transparent;border-radius:5px;cursor:grab;color:#93A0A8;font-size:12px;letter-spacing:-2px" style-hover="background:#EEF1F4;color:#18212B">⋮⋮</button>
+            </div>
+            <sc-if value="{{ b.showTag }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;right:-64px;top:4px;font-size:10px;font-weight:600;color:#93A0A8;letter-spacing:.04em;text-transform:uppercase;white-space:nowrap">{{ b.typeTag }}</span></sc-if>
+            <div key="{{ b.key }}" data-block="{{ b.id }}" data-ph="{{ b.ph }}" ref="{{ b.ref }}" contentEditable="{{ b.editable }}" suppressContentEditableWarning="true" spellCheck="true" onInput="{{ b.input }}" onKeyDown="{{ b.keydown }}" onKeyUp="{{ b.keyup }}" onFocus="{{ b.focus }}" onPaste="{{ onPaste }}" style="outline:none;font-size:{{ b.fs }};font-weight:{{ b.fw }};line-height:{{ b.lh }};margin:{{ b.mg }};padding:2px 6px;margin-left:-6px;margin-right:-6px;border-radius:5px;background:{{ b.bg }};box-shadow:{{ b.ring }};min-height:1.4em"></div>
+            <sc-if value="{{ b.dropAfter }}" hint-placeholder-val="{{ false }}"><div style="position:absolute;left:-10px;right:-10px;bottom:-2px;height:3px;background:#022AC0;border-radius:2px;z-index:2"></div></sc-if>
+          </div></sc-for>
+          <sc-if value="{{ dropHint }}" hint-placeholder-val="{{ false }}"><div style="margin-top:14px;border:1.5px dashed #9FB0E8;border-radius:10px;padding:14px;text-align:center;font-size:12.5px;color:#022AC0;background:#F4F6FE">Drop here to add at the end</div></sc-if>
+        </div>
+      </div>
+      </sc-if>
+
+      <sc-if value="{{ st.isPreview }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:none;display:flex;align-items:center;gap:10px;padding:6px 12px;background:#fff;border-bottom:1px solid #E5E9ED;flex-wrap:wrap">
+          <span style="font-size:12.5px;font-weight:700">Preview</span>
+          <div role="group" aria-label="Sample data" style="display:flex;gap:2px;background:#EEF1F4;border-radius:8px;padding:3px"><sc-for list="{{ pv.sets }}" as="x" hint-placeholder-count="2"><button onClick="{{ x.onClick }}" aria-pressed="{{ x.on }}" style="height:26px;padding:0 10px;border:none;border-radius:6px;background:{{ x.bg }};box-shadow:{{ x.sh }};font-size:12px;font-weight:{{ x.fw }};cursor:pointer;color:#18212B">{{ x.l }}</button></sc-for></div>
+          <label style="display:flex;gap:6px;align-items:center;font-size:12.5px"><input type="checkbox" checked="{{ pv.hl }}" onChange="{{ pv.onHl }}" style="accent-color:#0B1022;margin:0">Highlight variables</label>
+          <span style="font-size:12.5px;color:#5C6770">{{ pv.count }} · A4</span>
+          <span style="margin-left:auto;display:flex;align-items:center;gap:4px"><button onClick="{{ pv.zout }}" aria-label="Zoom out" style="width:28px;height:28px;border:1px solid #D5DBE1;background:#fff;border-radius:6px;cursor:pointer">−</button><span style="font-family:'IBM Plex Mono',monospace;font-size:12px;width:44px;text-align:center">{{ pv.zoom }}</span><button onClick="{{ pv.zin }}" aria-label="Zoom in" style="width:28px;height:28px;border:1px solid #D5DBE1;background:#fff;border-radius:6px;cursor:pointer">+</button></span>
+          <sc-if value="{{ ann }}" hint-placeholder-val="{{ false }}"><span title="Page breaks are estimated in the browser" style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;padding:1px 5px;border:1px dashed #C0410C;color:#C0410C;border-radius:4px;background:#FFF7F3">NEEDS BACKEND · exact PDF pagination</span></sc-if>
+        </div>
+        <div style="flex:1;overflow:auto;padding:28px 24px 80px;background:#DDE1E7">
+          <div style="zoom:{{ pv.zoomV }};display:grid;gap:24px;justify-content:center">
+            <sc-for list="{{ pv.pages }}" as="pg" hint-placeholder-count="2"><article aria-label="Page" style="width:794px;height:1123px;background:#fff;box-shadow:0 2px 10px rgba(15,25,40,.14);display:flex;flex-direction:column;box-sizing:border-box;padding:56px 76px 40px">
+              <div style="display:flex;justify-content:space-between;font-size:11px;color:#93A0A8;border-bottom:1px solid #EEF1F4;padding-bottom:10px;margin-bottom:24px"><span style="font-weight:600;color:#5C6770">{{ pv.org }}</span><span>{{ pv.title }}</span></div>
+              <sc-if value="{{ pg.first }}" hint-placeholder-val="{{ true }}"><h1 style="font-size:22px;font-weight:700;letter-spacing:-.02em;margin:0 0 16px">{{ pv.title }}</h1></sc-if>
+              <div style="flex:1;overflow:hidden">{{ pg.el }}</div>
+              <div style="display:flex;justify-content:space-between;font-size:10.5px;color:#93A0A8;border-top:1px solid #EEF1F4;padding-top:10px"><span style="font-family:'IBM Plex Mono',monospace">{{ st.id }} · {{ pv.ver }}</span><span>Page {{ pg.n }} of {{ pg.total }}</span></div>
+            </article></sc-for>
+          </div>
+        </div>
+      </sc-if>
+
+      <sc-if value="{{ hasVV }}" hint-placeholder-val="{{ false }}">
+        <div style="flex:none;display:flex;align-items:center;gap:10px;padding:8px 14px;background:#E6EFF8;border-bottom:1px solid #C9DAEE;font-size:13px;color:#1E4E80;flex-wrap:wrap"><b>Viewing {{ vv.n }}</b><span style="display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;font-size:11.5px;font-weight:600;background:{{ vv.p.bg }};color:{{ vv.p.fg }}">{{ vv.p.label }}</span>Published {{ vv.date }} · read only<span style="margin-left:auto;display:flex;gap:6px"><button onClick="{{ vv.cmp }}" style="height:28px;padding:0 10px;border:1px solid #C9DAEE;background:#fff;border-radius:7px;font-size:12.5px;font-weight:600;cursor:pointer">Compare with draft</button><sc-if value="{{ manage }}" hint-placeholder-val="{{ true }}"><button onClick="{{ vv.restore }}" style="height:28px;padding:0 10px;border:1px solid #C9DAEE;background:#fff;border-radius:7px;font-size:12.5px;font-weight:600;cursor:pointer">Restore into draft…</button></sc-if><button onClick="{{ vv.back }}" style="height:28px;padding:0 10px;border:1px solid #0B1022;background:#0B1022;color:#fff;border-radius:7px;font-size:12.5px;font-weight:600;cursor:pointer">Back to draft</button></span></div>
+        <div style="flex:1;overflow:auto;padding:28px 24px 80px"><div style="width:794px;max-width:100%;margin:0 auto;background:#fff;box-shadow:0 1px 3px rgba(15,25,40,.08),0 8px 28px rgba(15,25,40,.08);border-radius:3px;padding:56px 72px 72px 76px;box-sizing:border-box"><h1 style="font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0 0 18px">{{ vv.title }}</h1>{{ vv.el }}</div></div>
+      </sc-if>
+    </section>
+
+    <sc-if value="{{ st.rightOpen }}" hint-placeholder-val="{{ true }}">
+    <aside aria-label="Inspector" style="background:#fff;border-left:1px solid #E5E9ED;display:flex;flex-direction:column;min-height:0;position:{{ st.rPos }};right:0;top:86px;bottom:0;width:328px;max-width:92vw;z-index:75;box-shadow:{{ st.rSh }}">
+      <div style="padding:10px 12px;border-bottom:1px solid #E5E9ED"><div role="tablist" style="display:flex;gap:2px;background:#EEF1F4;border-radius:9px;padding:3px"><sc-for list="{{ st.rightTabs }}" as="tb" hint-placeholder-count="3"><button role="tab" aria-selected="{{ tb.on }}" onClick="{{ tb.onClick }}" style="flex:1;height:28px;border:none;border-radius:7px;background:{{ tb.bg }};box-shadow:{{ tb.sh }};font-size:12.5px;font-weight:{{ tb.fw }};cursor:pointer;color:#18212B;display:inline-flex;align-items:center;justify-content:center;gap:5px">{{ tb.l }}<sc-if value="{{ tb.hasC }}" hint-placeholder-val="{{ false }}"><span style="min-width:16px;height:16px;border-radius:8px;background:#A8412F;color:#fff;font-size:10px;font-weight:700;display:grid;place-items:center;padding:0 4px">{{ tb.c }}</span></sc-if></button></sc-for></div></div>
+      <div style="flex:1;overflow-y:auto;padding:12px 14px 24px">
+        <sc-if value="{{ st.rt.variables }}" hint-placeholder-val="{{ true }}">
+          <input value="{{ vars.q }}" onChange="{{ vars.onQ }}" placeholder="Search variables" aria-label="Search variables" style="width:100%;box-sizing:border-box;height:36px;border:1px solid #D5DBE1;border-radius:8px;padding:0 12px;font-size:13.5px;outline:none;margin-bottom:8px" style-focus="border-color:#022AC0;box-shadow:0 0 0 3px rgba(2,42,192,.15)">
+          <div style="display:flex;gap:4px;flex-wrap:wrap;margin-bottom:12px"><sc-for list="{{ vars.filt }}" as="g" hint-placeholder-count="6"><button onClick="{{ g.onClick }}" aria-pressed="{{ g.on }}" style="height:24px;padding:0 8px;border:1px solid {{ g.bd }};background:{{ g.bg }};color:{{ g.fg }};border-radius:999px;font-size:11.5px;font-weight:600;cursor:pointer">{{ g.l }}</button></sc-for></div>
+          <sc-if value="{{ hasUnknown }}" hint-placeholder-val="{{ false }}"><div style="margin-bottom:12px;padding:10px 12px;border:1px solid #EBC6BE;background:#F8E9E6;border-radius:10px;font-size:12.5px;color:#7A2E21">Unknown in this draft: <sc-for list="{{ unknownUsed }}" as="u" hint-placeholder-count="1"><span style="font-family:'IBM Plex Mono',monospace">{{ u.k }}</span> </sc-for>· see Checks.</div></sc-if>
+          <sc-for list="{{ vars.list }}" as="gr" hint-placeholder-count="4"><div style="margin-bottom:12px">
+            <div style="font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#93A0A8;padding:0 2px 6px">{{ gr.g }}</div>
+            <sc-for list="{{ gr.items }}" as="x" hint-placeholder-count="3"><div draggable="{{ x.canIns }}" onDragStart="{{ x.dragStart }}" onDragEnd="{{ dragEnd }}" style="display:grid;grid-template-columns:1fr auto;gap:2px 8px;padding:8px 10px;border:1px solid #EEF1F4;border-radius:9px;margin-bottom:5px" style-hover="border-color:#C9D2F5;background:#FAFBFF">
+              <span style="font-size:13px;font-weight:600;min-width:0">{{ x.label }}<sc-if value="{{ x.inactive }}" hint-placeholder-val="{{ false }}"> <span style="font-size:10.5px;font-weight:700;color:#946011">INACTIVE</span></sc-if></span>
+              <sc-if value="{{ x.canIns }}" hint-placeholder-val="{{ false }}"><button onMouseDown="{{ x.insert }}" title="Insert at cursor" style="grid-row:span 2;align-self:center;height:26px;padding:0 8px;border:1px solid #C9D2F5;background:#E6EAFA;color:#011F8D;border-radius:6px;font-size:11.5px;font-weight:600;cursor:pointer">Insert</button></sc-if>
+              <span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#5C6770;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ x.key }}</span>
+              <span style="grid-column:1 / -1;display:flex;gap:8px;font-size:11.5px;color:#93A0A8;flex-wrap:wrap"><span>{{ x.typeL }}</span><span>e.g. <span style="color:#3F4A55">{{ x.sample }}</span></span><sc-if value="{{ x.hasUsed }}" hint-placeholder-val="{{ false }}"><span style="color:#022AC0;font-weight:600">{{ x.used }}</span></sc-if></span>
+            </div></sc-for>
+          </div></sc-for>
+          <sc-if value="{{ vars.none }}" hint-placeholder-val="{{ false }}"><div style="padding:20px 6px;text-align:center;font-size:12.5px;color:#5C6770">No variables match.</div></sc-if>
+          <a href="Platform%20Admin.dc.html" style="display:block;font-size:12.5px;font-weight:600;margin-top:4px">Manage template variables ↗</a>
+        </sc-if>
+        <sc-if value="{{ st.rt.properties }}" hint-placeholder-val="{{ false }}">
+          <div style="display:grid;gap:14px">
+            <label style="display:grid;gap:5px"><span style="font-size:12.5px;font-weight:600">Name</span><input value="{{ props.name }}" onChange="{{ props.onName }}" disabled="{{ reader }}" style="height:36px;border:1px solid #D5DBE1;border-radius:8px;padding:0 10px;font-size:13.5px;outline:none" style-focus="border-color:#022AC0;box-shadow:0 0 0 3px rgba(2,42,192,.15)"><span style="font-size:11px;color:#93A0A8;text-align:right">{{ props.nameC }}</span></label>
+            <label style="display:grid;gap:5px"><span style="font-size:12.5px;font-weight:600">Description</span><textarea value="{{ props.desc }}" onChange="{{ props.onDesc }}" disabled="{{ reader }}" rows="3" style="border:1px solid #D5DBE1;border-radius:8px;padding:8px 10px;font-size:13.5px;resize:vertical;outline:none" style-focus="border-color:#022AC0;box-shadow:0 0 0 3px rgba(2,42,192,.15)"></textarea><span style="font-size:11px;color:#93A0A8;text-align:right">{{ props.descC }}</span></label>
+            <div style="display:grid;gap:5px"><span style="font-size:12.5px;font-weight:600">Product tags</span><div style="display:flex;gap:5px;flex-wrap:wrap;align-items:center;border:1px solid #D5DBE1;border-radius:8px;padding:5px"><sc-for list="{{ props.tags }}" as="g" hint-placeholder-count="2"><span style="display:inline-flex;align-items:center;gap:3px;font-family:'IBM Plex Mono',monospace;font-size:11.5px;padding:2px 3px 2px 7px;border:1px solid #D5DBE1;border-radius:5px;background:#F4F6FA">{{ g.g }}<sc-if value="{{ manage }}" hint-placeholder-val="{{ true }}"><button onClick="{{ g.rm }}" aria-label="Remove tag" style="border:none;background:transparent;cursor:pointer;color:#5C6770;padding:0 3px">×</button></sc-if></span></sc-for><sc-if value="{{ manage }}" hint-placeholder-val="{{ true }}"><input value="{{ props.tagDraft }}" onChange="{{ props.onTag }}" onKeyDown="{{ props.onTagKey }}" placeholder="TAG ↵" aria-label="Add tag" style="flex:1;min-width:70px;height:24px;border:none;font-family:'IBM Plex Mono',monospace;font-size:12px;outline:none"></sc-if></div></div>
+            <dl style="display:grid;grid-template-columns:110px 1fr;gap:8px 10px;margin:0;font-size:12.5px;padding-top:4px;border-top:1px solid #F0F2F4">
+              <dt style="color:#5C6770;padding-top:10px">Document type</dt><dd style="margin:0;padding-top:10px">{{ props.type }} <span style="color:#93A0A8">· set at creation</span></dd>
+              <dt style="color:#5C6770">Kind</dt><dd style="margin:0">Generated</dd>
+              <dt style="color:#5C6770">Template ID</dt><dd style="margin:0;font-family:'IBM Plex Mono',monospace;font-size:11.5px">{{ props.id }}</dd>
+              <dt style="color:#5C6770">Created</dt><dd style="margin:0">{{ props.created }}</dd>
+              <dt style="color:#5C6770">Updated</dt><dd style="margin:0">{{ props.updated }}</dd>
+            </dl>
+            <sc-if value="{{ ann }}" hint-placeholder-val="{{ false }}"><div style="font-size:11.5px;color:#5C6770;border:1px dashed #C3CBD2;border-radius:8px;padding:7px 9px">Uploaded PDF and hybrid kinds exist in the model but aren't authorable here. <span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;color:#C0410C">NEEDS BACKEND</span></div></sc-if>
+            <div style="border:1px solid #E5E9ED;border-radius:10px;padding:12px"><div style="display:flex;align-items:center;gap:8px;margin-bottom:6px"><b style="font-size:13px">Withdrawal</b><span style="display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:999px;font-size:11.5px;font-weight:600;background:{{ props.wdP.bg }};color:{{ props.wdP.fg }}">{{ props.wdP.label }}</span></div><div style="font-size:12.5px;color:#5C6770">{{ props.wdL }}</div>
+              <div style="display:flex;gap:6px;margin-top:10px"><sc-if value="{{ st.canWithdraw }}" hint-placeholder-val="{{ false }}"><button onClick="{{ st.withdraw }}" style="height:30px;padding:0 10px;border:1px solid #D97757;background:#fff;border-radius:7px;font-size:12.5px;font-weight:600;cursor:pointer">Withdraw…</button></sc-if><sc-if value="{{ st.canCancelWd }}" hint-placeholder-val="{{ false }}"><button onClick="{{ st.cancelWd }}" style="height:30px;padding:0 10px;border:1px solid #D5DBE1;background:#fff;border-radius:7px;font-size:12.5px;font-weight:600;cursor:pointer">Cancel withdrawal…</button></sc-if></div></div>
+          </div>
+        </sc-if>
+        <sc-if value="{{ st.rt.checks }}" hint-placeholder-val="{{ false }}">
+          <div style="font-size:12.5px;color:#5C6770;margin-bottom:10px">{{ checks.line }}</div>
+          <ol style="list-style:none;margin:0;padding:0;display:grid;gap:6px">
+            <sc-for list="{{ checks.items }}" as="i" hint-placeholder-count="8"><li style="display:grid;grid-template-columns:22px 1fr;gap:8px;padding:9px 10px;border:1px solid #EEF1F4;border-radius:9px">
+              <span aria-hidden="true" style="width:20px;height:20px;border-radius:50%;display:grid;place-items:center;font-size:11px;font-weight:800;background:{{ i.ibg }};color:{{ i.ifg }}">{{ i.icon }}</span>
+              <span style="min-width:0"><span style="display:block;font-size:13px;font-weight:600;overflow-wrap:anywhere">{{ i.l }}</span><sc-if value="{{ i.showD }}" hint-placeholder-val="{{ false }}"><span style="display:block;font-size:12px;color:#5C6770;margin-top:2px">{{ i.d }}</span></sc-if><sc-if value="{{ i.hasFix }}" hint-placeholder-val="{{ false }}"><button onClick="{{ i.fix }}" style="margin-top:6px;height:26px;padding:0 8px;border:1px solid #D5DBE1;background:#fff;border-radius:6px;font-size:11.5px;font-weight:600;cursor:pointer">{{ i.fixL }}</button></sc-if></span>
+            </li></sc-for>
+          </ol>
+          <p style="font-size:11.5px;color:#93A0A8;margin:12px 2px 0;line-height:1.5">Publish unlocks when every required check passes. Saving the draft again resets the preview check.</p>
+        </sc-if>
+      </div>
+    </aside>
+    </sc-if>
+  </div>
+</sc-if>
+</div>
+</div>
+</div>
+
+<sc-if value="{{ anyPop }}" hint-placeholder-val="{{ false }}"><div onMouseDown="{{ closePops }}" style="position:fixed;inset:0;z-index:80"></div></sc-if>
+<sc-if value="{{ hasFloat }}" hint-placeholder-val="{{ false }}"><div role="toolbar" aria-label="Selection" style="position:fixed;left:{{ float.x }};top:{{ float.y }};transform:translateX(-50%);display:flex;gap:2px;padding:4px;background:#0B1022;border-radius:9px;box-shadow:0 8px 24px rgba(15,25,40,.3);z-index:85"><sc-for list="{{ tb.fmt }}" as="f" hint-placeholder-count="3"><button onMouseDown="{{ f.run }}" aria-label="{{ f.tt }}" style="height:28px;min-width:28px;border:none;background:transparent;border-radius:6px;color:#fff;cursor:pointer;font-size:13px;font-weight:{{ f.fw }};font-style:{{ f.fst }};text-decoration:{{ f.td }}" style-hover="background:rgba(255,255,255,.14)">{{ f.l }}</button></sc-for><span style="width:1px;background:rgba(255,255,255,.2);margin:4px 2px"></span><button onMouseDown="{{ floatVar }}" style="height:28px;padding:0 8px;border:none;background:transparent;border-radius:6px;color:#7FB0FF;cursor:pointer;font-size:12px;font-weight:600;font-family:'IBM Plex Mono',monospace" style-hover="background:rgba(255,255,255,.14)">+ Variable</button></div></sc-if>
+
+<sc-if value="{{ hasVp }}" hint-placeholder-val="{{ false }}"><div role="dialog" aria-label="Insert variable" style="position:fixed;left:{{ vp.x }};top:{{ vp.y }};width:330px;background:#fff;border:1px solid #E5E9ED;border-radius:12px;box-shadow:0 14px 36px rgba(15,25,40,.18);z-index:90;overflow:hidden">
+  <input autoFocus="{{ true }}" value="{{ vp.q }}" onChange="{{ vp.onQ }}" onKeyDown="{{ vp.onKey }}" placeholder="Search variables — Enter picks the first" aria-label="Search variables" style="width:100%;box-sizing:border-box;height:40px;border:none;border-bottom:1px solid #E5E9ED;padding:0 12px;font-size:13.5px;outline:none">
+  <div style="max-height:300px;overflow-y:auto;padding:4px"><sc-for list="{{ vp.items }}" as="x" hint-placeholder-count="6"><button onMouseDown="{{ x.pick }}" style="display:grid;grid-template-columns:1fr auto;width:100%;text-align:left;padding:7px 9px;border:none;background:transparent;border-radius:8px;cursor:pointer;gap:1px 8px" style-hover="background:#F4F6FA"><span style="font-size:13px;font-weight:600">{{ x.label }}</span><span style="font-size:10.5px;color:#93A0A8;text-transform:uppercase;letter-spacing:.05em">{{ x.group }}</span><span style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#5C6770">{{ x.key }}</span><span style="font-size:11.5px;color:#93A0A8">{{ x.sample }}</span></button></sc-for></div>
+</div></sc-if>
+
+<sc-if value="{{ hasSl }}" hint-placeholder-val="{{ false }}"><div role="menu" aria-label="Blocks" style="position:fixed;left:{{ sl.x }};top:{{ sl.y }};width:280px;background:#fff;border:1px solid #E5E9ED;border-radius:12px;box-shadow:0 14px 36px rgba(15,25,40,.18);z-index:90;padding:6px"><div style="padding:6px 9px 4px;font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#93A0A8">Insert or turn into</div><sc-for list="{{ sl.items }}" as="x" hint-placeholder-count="8"><button role="menuitem" onMouseDown="{{ x.pick }}" aria-disabled="{{ x.dis }}" style="display:flex;align-items:center;gap:8px;width:100%;text-align:left;padding:7px 9px;border:none;background:transparent;border-radius:8px;cursor:pointer;opacity:{{ x.op }}" style-hover="background:#F4F6FA"><span style="flex:1"><span style="display:block;font-size:13px;font-weight:600">{{ x.l }}</span><span style="display:block;font-size:11.5px;color:#5C6770">{{ x.d }}</span></span><sc-if value="{{ x.nb }}" hint-placeholder-val="{{ false }}"><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;padding:1px 4px;border:1px dashed #C0410C;color:#C0410C;border-radius:4px">NEEDS BACKEND</span></sc-if></button></sc-for></div></sc-if>
+
+<sc-if value="{{ hasBm }}" hint-placeholder-val="{{ false }}"><div role="menu" aria-label="Block options" style="position:fixed;left:{{ bm.x }};top:{{ bm.y }};width:220px;background:#fff;border:1px solid #E5E9ED;border-radius:12px;box-shadow:0 14px 36px rgba(15,25,40,.18);z-index:90;padding:6px">
+  <div style="padding:6px 9px 4px;font-size:10.5px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:#93A0A8">Turn into</div>
+  <sc-for list="{{ bm.types }}" as="x" hint-placeholder-count="4"><button role="menuitem" onClick="{{ x.pick }}" style="display:flex;width:100%;text-align:left;padding:7px 9px;border:none;background:transparent;border-radius:8px;cursor:pointer;font-size:13px" style-hover="background:#F4F6FA"><span style="flex:1">{{ x.l }}</span><b>{{ x.mark }}</b></button></sc-for>
+  <div style="height:1px;background:#F0F2F4;margin:4px 6px"></div>
+  <button role="menuitem" onClick="{{ bm.dup }}" style="display:block;width:100%;text-align:left;padding:7px 9px;border:none;background:transparent;border-radius:8px;cursor:pointer;font-size:13px" style-hover="background:#F4F6FA">Duplicate</button>
+  <button role="menuitem" onClick="{{ bm.up }}" style="display:flex;width:100%;text-align:left;padding:7px 9px;border:none;background:transparent;border-radius:8px;cursor:pointer;font-size:13px" style-hover="background:#F4F6FA"><span style="flex:1">Move up</span><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#93A0A8">⌥↑</span></button>
+  <button role="menuitem" onClick="{{ bm.down }}" style="display:flex;width:100%;text-align:left;padding:7px 9px;border:none;background:transparent;border-radius:8px;cursor:pointer;font-size:13px" style-hover="background:#F4F6FA"><span style="flex:1">Move down</span><span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#93A0A8">⌥↓</span></button>
+  <button role="menuitem" onClick="{{ bm.del }}" style="display:block;width:100%;text-align:left;padding:7px 9px;border:none;background:transparent;border-radius:8px;cursor:pointer;font-size:13px;color:#A8412F;font-weight:600" style-hover="background:#F8E9E6">Delete block</button>
+</div></sc-if>
+
+<sc-if value="{{ cmp.open }}" hint-placeholder-val="{{ false }}"><div style="position:fixed;inset:0;background:rgba(15,25,40,.45);z-index:100;display:grid;place-items:center;padding:20px">
+  <div role="dialog" aria-modal="true" aria-label="Compare versions" style="width:min(1180px,96vw);height:min(860px,92vh);background:#fff;border-radius:14px;box-shadow:0 24px 60px rgba(15,25,40,.28);display:flex;flex-direction:column;overflow:hidden">
+    <div style="padding:14px 20px;border-bottom:1px solid #E5E9ED;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+      <h2 style="font-size:17px;font-weight:700;margin:0">Compare versions</h2>
+      <select value="{{ cmp.a }}" onChange="{{ cmp.onA }}" aria-label="Left version" style="height:34px;border:1px solid #D5DBE1;border-radius:8px;padding:0 8px;font-size:13px;background:#fff"><sc-for list="{{ cmp.opts }}" as="o" hint-placeholder-count="3"><option value="{{ o.v }}">{{ o.l }}</option></sc-for></select>
+      <button onClick="{{ cmp.swap }}" aria-label="Swap" style="height:34px;width:34px;border:1px solid #D5DBE1;background:#fff;border-radius:8px;cursor:pointer">⇄</button>
+      <select value="{{ cmp.b }}" onChange="{{ cmp.onB }}" aria-label="Right version" style="height:34px;border:1px solid #D5DBE1;border-radius:8px;padding:0 8px;font-size:13px;background:#fff"><sc-for list="{{ cmp.opts }}" as="o" hint-placeholder-count="3"><option value="{{ o.v }}">{{ o.l }}</option></sc-for></select>
+      <span style="display:flex;gap:6px;margin-left:8px;flex-wrap:wrap"><sc-for list="{{ cmp.stats }}" as="x" hint-placeholder-count="4"><span style="display:inline-flex;align-items:center;gap:5px;height:24px;padding:0 9px;border-radius:999px;font-size:12px;font-weight:600;background:{{ x.bg }};color:{{ x.fg }}">{{ x.c }} {{ x.l }}</span></sc-for></span>
+      <label style="display:flex;gap:6px;align-items:center;font-size:12.5px;margin-left:auto"><input type="checkbox" checked="{{ cmp.changesOnly }}" onChange="{{ cmp.onCO }}" style="accent-color:#0B1022;margin:0">Changes only</label>
+      <button onClick="{{ cmp.close }}" aria-label="Close" style="width:32px;height:32px;border:none;border-radius:7px;background:transparent;cursor:pointer;font-size:18px;color:#5C6770" style-hover="background:#F4F6FA">×</button>
+    </div>
+    <div style="display:grid;grid-template-columns:44px 1fr 1fr;border-bottom:1px solid #E5E9ED;background:#FAFBFC;font-size:12px;font-weight:600;color:#5C6770"><span></span><span style="padding:8px 16px;border-left:1px solid #E5E9ED">{{ cmp.A.label }} <span style="font-weight:400;color:#93A0A8">· {{ cmp.A.sub }}</span></span><span style="padding:8px 16px;border-left:1px solid #E5E9ED">{{ cmp.B.label }} <span style="font-weight:400;color:#93A0A8">· {{ cmp.B.sub }}</span></span></div>
+    <div style="flex:1;overflow:auto">
+      <sc-for list="{{ cmp.rows }}" as="r" hint-placeholder-count="10"><div style="display:grid;grid-template-columns:44px 1fr 1fr;border-bottom:1px solid #F0F2F4">
+        <span style="display:grid;place-items:center;font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:700;background:{{ r.mbg }}">{{ r.mark }}</span>
+        <div style="padding:10px 16px;border-left:1px solid #F0F2F4;background:{{ r.lbg }};font-size:13.5px;line-height:1.6;font-weight:{{ r.lfw }}"><sc-if value="{{ r.lEmpty }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:#B3BCC4;font-weight:400">—</span></sc-if><sc-for list="{{ r.L }}" as="w" hint-placeholder-count="6"><span style="background:{{ w.bg }};color:{{ w.fg }};text-decoration:{{ w.deco }};font-family:{{ w.ff }};font-size:{{ w.fs }};border-radius:3px">{{ w.t }}</span></sc-for></div>
+        <div style="padding:10px 16px;border-left:1px solid #F0F2F4;background:{{ r.rbg }};font-size:13.5px;line-height:1.6;font-weight:{{ r.rfw }}"><sc-if value="{{ r.rEmpty }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;color:#B3BCC4;font-weight:400">—</span></sc-if><sc-for list="{{ r.R }}" as="w" hint-placeholder-count="6"><span style="background:{{ w.bg }};color:{{ w.fg }};text-decoration:{{ w.deco }};font-family:{{ w.ff }};font-size:{{ w.fs }};border-radius:3px">{{ w.t }}</span></sc-for></div>
+      </div></sc-for>
+      <sc-if value="{{ cmp.noneShow }}" hint-placeholder-val="{{ false }}"><div style="padding:48px;text-align:center;font-size:13.5px;color:#5C6770">These two versions have identical content.</div></sc-if>
+    </div>
+  </div>
+</div></sc-if>
+
+<sc-if value="{{ dlg.open }}" hint-placeholder-val="{{ false }}"><div onClick="{{ dlg.close }}" style="position:fixed;inset:0;background:rgba(15,25,40,.45);z-index:110;display:grid;place-items:center;padding:16px">
+  <div role="dialog" aria-modal="true" aria-label="{{ dlg.title }}" onClick="{{ dlg.stop }}" style="width:min(580px,94vw);max-height:88vh;background:#fff;border-radius:14px;box-shadow:0 24px 60px rgba(15,25,40,.28);display:flex;flex-direction:column;overflow:hidden">
+    <div style="padding:18px 22px 0;display:flex;gap:12px"><h2 style="font-size:17px;font-weight:700;margin:0">{{ dlg.title }}</h2><button onClick="{{ dlg.close }}" aria-label="Close" style="margin-left:auto;width:30px;height:30px;border:none;border-radius:7px;background:transparent;cursor:pointer;font-size:18px;color:#5C6770">×</button></div>
+    <div style="padding:14px 22px 18px;overflow-y:auto">
+      <sc-if value="{{ dlg.hasFT }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:#FAFBFC;border:1px solid #E5E9ED;border-radius:10px;margin-bottom:10px;flex-wrap:wrap"><span style="font-size:12px;color:#5C6770;font-weight:600;text-transform:uppercase;letter-spacing:.05em">Change</span><span style="display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:999px;font-size:12.5px;font-weight:600;background:{{ dlg.from.bg }};color:{{ dlg.from.fg }}">{{ dlg.from.label }}</span><span aria-label="to">→</span><span style="display:inline-flex;align-items:center;height:24px;padding:0 10px;border-radius:999px;font-size:12.5px;font-weight:700;background:{{ dlg.to.bg }};color:{{ dlg.to.fg }}">{{ dlg.to.label }}</span></div></sc-if>
+      <sc-if value="{{ dlg.hasCons }}" hint-placeholder-val="{{ false }}"><p style="font-size:13.5px;line-height:1.55;color:#3F4A55;margin:0 0 14px">{{ dlg.cons }}</p></sc-if>
+      <sc-if value="{{ dlg.hasSummary }}" hint-placeholder-val="{{ false }}"><div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:12px"><sc-for list="{{ dlg.summary }}" as="x" hint-placeholder-count="4"><div style="border:1px solid #E5E9ED;border-radius:10px;padding:10px 12px"><div style="font-size:20px;font-weight:700">{{ x.c }}</div><div style="font-size:12px;color:#5C6770">{{ x.l }}</div></div></sc-for></div></sc-if>
+      <sc-if value="{{ dlg.hasWarn }}" hint-placeholder-val="{{ false }}"><div style="padding:9px 12px;border:1px solid #E7D3A8;background:#FAF0DC;border-radius:9px;font-size:12.5px;color:#6B4609;margin-bottom:12px">{{ dlg.warn }}</div></sc-if>
+      <div style="display:grid;gap:14px">
+        <sc-for list="{{ dlg.fields }}" as="f" hint-placeholder-count="2"><div style="display:grid;gap:6px">
+          <sc-if value="{{ f.isSelect }}" hint-placeholder-val="{{ false }}"><label style="display:grid;gap:6px"><span style="font-size:13px;font-weight:600">{{ f.label }}</span><select value="{{ f.value }}" onChange="{{ f.onChange }}" style="height:38px;border:1px solid #D5DBE1;border-radius:8px;padding:0 10px;font-size:14px;background:#fff;color:#18212B"><sc-for list="{{ f.options }}" as="o" hint-placeholder-count="4"><option value="{{ o.v }}" disabled="{{ o.dis }}">{{ o.l }}</option></sc-for></select></label></sc-if>
+          <sc-if value="{{ f.isText }}" hint-placeholder-val="{{ true }}"><label style="display:grid;gap:6px"><span style="font-size:13px;font-weight:600">{{ f.label }}</span><input type="{{ f.inputType }}" value="{{ f.value }}" onChange="{{ f.onChange }}" style="height:38px;border:1px solid #D5DBE1;border-radius:8px;padding:0 12px;font-size:14px;outline:none" style-focus="border-color:#022AC0;box-shadow:0 0 0 3px rgba(2,42,192,.15)"></label></sc-if>
+          <sc-if value="{{ f.isArea }}" hint-placeholder-val="{{ false }}"><label style="display:grid;gap:6px"><span style="font-size:13px;font-weight:600">{{ f.label }}</span><textarea value="{{ f.value }}" onChange="{{ f.onChange }}" rows="3" style="border:1px solid #D5DBE1;border-radius:8px;padding:9px 12px;font-size:14px;resize:vertical;outline:none" style-focus="border-color:#022AC0;box-shadow:0 0 0 3px rgba(2,42,192,.15)"></textarea></label></sc-if>
+          <sc-if value="{{ f.isTags }}" hint-placeholder-val="{{ false }}"><span style="font-size:13px;font-weight:600">{{ f.label }}</span><div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;min-height:38px;border:1px solid #D5DBE1;border-radius:8px;padding:4px 6px;box-sizing:border-box"><sc-for list="{{ f.tags }}" as="g" hint-placeholder-count="1"><span style="display:inline-flex;align-items:center;gap:4px;font-family:'IBM Plex Mono',monospace;font-size:12px;padding:2px 4px 2px 8px;border:1px solid #D5DBE1;border-radius:5px;background:#F4F6FA">{{ g.g }}<button onClick="{{ g.rm }}" aria-label="Remove" style="border:none;background:transparent;cursor:pointer;color:#5C6770;padding:0 3px">×</button></span></sc-for><input value="{{ f.tagDraft }}" onChange="{{ f.onTag }}" onKeyDown="{{ f.onTagKey }}" placeholder="TAG ↵" style="flex:1;min-width:80px;height:28px;border:none;font-family:'IBM Plex Mono',monospace;font-size:12.5px;outline:none"></div></sc-if>
+          <sc-if value="{{ f.hasHelp }}" hint-placeholder-val="{{ false }}"><span style="font-size:12.5px;color:#5C6770">{{ f.helper }}</span></sc-if>
+          <sc-if value="{{ f.hasCount }}" hint-placeholder-val="{{ false }}"><span style="font-size:11.5px;color:#93A0A8;text-align:right">{{ f.count }}</span></sc-if>
+        </div></sc-for>
+      </div>
+      <sc-if value="{{ dlg.hasLive }}" hint-placeholder-val="{{ false }}"><div style="margin-top:12px;font-size:13px;font-weight:600;color:#3F4A55">{{ dlg.live }}</div></sc-if>
+      <sc-if value="{{ dlg.hasError }}" hint-placeholder-val="{{ false }}"><div role="alert" style="margin-top:14px;padding:10px 12px;border:1px solid #EBC6BE;background:#F8E9E6;border-radius:10px;color:#7A2E21;font-size:13px">{{ dlg.error }}</div></sc-if>
+    </div>
+    <div style="padding:12px 22px;border-top:1px solid #E5E9ED;display:flex;gap:8px;justify-content:flex-end;background:#FAFBFC">
+      <button onClick="{{ dlg.close }}" style="height:38px;padding:0 16px;border:1px solid #D5DBE1;background:#fff;border-radius:8px;font-size:13.5px;font-weight:600;cursor:pointer">Cancel</button>
+      <sc-if value="{{ dlg.isPriv }}" hint-placeholder-val="{{ false }}"><button onClick="{{ dlg.onCommit }}" disabled="{{ dlg.disabled }}" style="height:38px;padding:0 16px;border:1px solid #D97757;background:#D97757;color:#0B1022;border-radius:8px;font-size:13.5px;font-weight:700;cursor:pointer;opacity:{{ dlg.op }}">{{ dlg.commit }}</button></sc-if>
+      <sc-if value="{{ dlg.isPrimary }}" hint-placeholder-val="{{ false }}"><button onClick="{{ dlg.onCommit }}" disabled="{{ dlg.disabled }}" style="height:38px;padding:0 16px;border:1px solid #0B1022;background:#0B1022;color:#fff;border-radius:8px;font-size:13.5px;font-weight:600;cursor:pointer;opacity:{{ dlg.op }}">{{ dlg.commit }}</button></sc-if>
+    </div>
+  </div>
+</div></sc-if>
+
+<sc-if value="{{ sc }}" hint-placeholder-val="{{ false }}"><div onClick="{{ closeSc }}" style="position:fixed;inset:0;background:rgba(15,25,40,.45);z-index:110;display:grid;place-items:center;padding:16px"><div role="dialog" aria-modal="true" aria-label="Keyboard shortcuts" style="width:min(520px,94vw);background:#fff;border-radius:14px;box-shadow:0 24px 60px rgba(15,25,40,.28);padding:20px 22px"><h2 style="font-size:17px;font-weight:700;margin:0 0 12px">Keyboard shortcuts</h2><div style="display:grid;grid-template-columns:auto 1fr;gap:8px 16px;font-size:13.5px"><sc-for list="{{ keys }}" as="k" hint-placeholder-count="10"><span style="font-family:'IBM Plex Mono',monospace;font-size:12px;padding:2px 8px;border:1px solid #D5DBE1;border-radius:5px;background:#FAFBFC;white-space:nowrap;justify-self:start">{{ k.k }}</span><span>{{ k.l }}</span></sc-for></div></div></div></sc-if>
+
+<sc-if value="{{ hasToast }}" hint-placeholder-val="{{ false }}"><div role="status" style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#18212B;color:#fff;padding:11px 18px;border-radius:10px;font-size:13.5px;font-weight:500;box-shadow:0 10px 30px rgba(15,25,40,.3);z-index:120;max-width:90vw">{{ toast }}</div></sc-if>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;persona&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;manager&quot;,&quot;reader&quot;],&quot;default&quot;:&quot;manager&quot;,&quot;tsType&quot;:&quot;'manager'|'reader'&quot;,&quot;section&quot;:&quot;Prototype&quot;},&quot;showAnnotations&quot;:{&quot;editor&quot;:&quot;boolean&quot;,&quot;default&quot;:true,&quot;tsType&quot;:&quot;boolean&quot;,&quot;section&quot;:&quot;Prototype&quot;},&quot;startScreen&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;studio&quot;,&quot;library&quot;],&quot;default&quot;:&quot;studio&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Prototype&quot;}}">
+const NOW = new Date('2026-10-24T15:00:00Z');
+const MON = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
+const pd = s => new Date(s.length === 10 ? s + 'T09:00:00Z' : s);
+const fmtD = s => { if (!s) return '—'; const x = pd(s); return x.getUTCDate() + ' ' + MON[x.getUTCMonth()] + ' ' + x.getUTCFullYear(); };
+const rel = s => { if (!s) return ''; const n = Math.floor((NOW - pd(s)) / 864e5); if (n < 0) return 'in ' + (-n) + (n === -1 ? ' day' : ' days'); return n === 0 ? 'today' : n === 1 ? '1 day ago' : n < 60 ? n + ' days ago' : Math.round(n / 30.4) + ' months ago'; };
+const clock = () => { const d = new Date(); return String(d.getHours()).padStart(2,'0') + ':' + String(d.getMinutes()).padStart(2,'0') + ':' + String(d.getSeconds()).padStart(2,'0'); };
+const TONE = { ok:['#1F7A4D','#E3F1EA'], info:['#2C6FB3','#E6EFF8'], warn:['#946011','#FAF0DC'], danger:['#A8412F','#F7E7E3'], neutral:['#3F4A55','#EBEEF2'], muted:['#66717B','#F0F2F4'] };
+const pill = (label, tone) => ({ label, fg: TONE[tone][0], bg: TONE[tone][1] });
+const esc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;');
+const OP = 'op_7f3a91c2e48b';
+
+const VARS = [
+  ['talent.first_name','First name','Talent','TEXT','Amina','ACTIVE','talent.firstName'],
+  ['talent.full_name','Full name','Talent','TEXT','Amina Diallo','ACTIVE','talent.fullName'],
+  ['talent.email','Email','Talent','TEXT','amina.diallo@mail.com','ACTIVE','talent.email'],
+  ['requisition.title','Role title','Requisition','TEXT','Senior Platform Engineer','ACTIVE','requisition.title'],
+  ['requisition.hiring_manager','Hiring manager','Requisition','TEXT','Jonas Weber','ACTIVE','requisition.hiringManager'],
+  ['requisition.start_date','Start date','Requisition','DATE','3 Nov 2026','ACTIVE','offer.startDate'],
+  ['requisition.location','Work location','Requisition','TEXT','Hamburg, Germany','ACTIVE','requisition.location'],
+  ['offer.base_salary','Base salary','Offer','CURRENCY','€84,000','ACTIVE','offer.baseSalary'],
+  ['offer.bonus_target','Bonus target','Offer','CURRENCY','€8,400','ACTIVE','offer.bonusTarget'],
+  ['offer.equity','Equity grant','Offer','TEXT','1,200 share options','ACTIVE',null],
+  ['offer.probation_months','Probation (months)','Offer','NUMBER','6','ACTIVE',null],
+  ['offer.hours_per_week','Hours per week','Offer','NUMBER','40','INACTIVE','offer.hours'],
+  ['offer.terms','Additional terms','Offer','MULTILINE_TEXT','Relocation support up to €5,000 is available on request.','ACTIVE',null],
+  ['organization.legal_name','Legal name','Organization','TEXT','Northwind Logistics GmbH','ACTIVE','tenant.legalName'],
+  ['organization.address','Registered address','Organization','MULTILINE_TEXT','Speicherstadt 12, 20457 Hamburg','ACTIVE',null],
+  ['organization.signatory','Signatory name','Organization','TEXT','Jonas Weber','ACTIVE',null],
+  ['organization.signatory_title','Signatory title','Organization','TEXT','Head of Engineering','ACTIVE',null],
+  ['document.issue_date','Issue date','Document','DATE','24 Oct 2026','ACTIVE',null],
+  ['document.expiry_date','Response deadline','Document','DATE','7 Nov 2026','ACTIVE',null]
+].map(([key,label,group,type,sample,status,binding]) => ({ key, label, group, type, sample, status, binding }));
+const VMAP = {}; VARS.forEach(v => VMAP[v.key] = v);
+const GROUPS = ['Talent','Requisition','Offer','Organization','Document'];
+const LONG = { 'talent.first_name':'Maximiliana-Josephine', 'talent.full_name':'Maximiliana-Josephine Okonkwo-Lindqvist', 'requisition.title':'Principal Site Reliability Engineer, Global Payments Infrastructure', 'organization.legal_name':'Northwind Logistics Holdings GmbH & Co. KG', 'requisition.location':'Hamburg, Germany (hybrid, 3 days on site)', 'offer.terms':'Relocation support up to €5,000 is available on request, together with temporary housing for up to 60 days, a one-time home-office allowance of €1,000 and reimbursement of reasonable travel costs for the first month.', 'organization.signatory_title':'Senior Vice President, Engineering and Platform Operations' };
+const chip = k => { const v = VMAP[k]; const st = !v ? 'unknown' : v.status === 'ACTIVE' ? 'ok' : 'inactive'; const c = st === 'ok' ? ['#E6EAFA','#011F8D','#C9D2F5','solid'] : st === 'inactive' ? ['#FAF0DC','#6B4609','#E7D3A8','solid'] : ['#F8E9E6','#7A2E21','#D9A396','dashed']; const title = v ? v.label + ' · e.g. ' + v.sample + (st === 'inactive' ? ' · inactive' : '') : 'Unknown variable — not in Template variables'; return '<span data-var="' + k + '" contenteditable="false" title="' + esc(title) + '" style="display:inline-block;padding:0 6px;margin:0 1px;border-radius:5px;border:1px ' + c[3] + ' ' + c[2] + ';background:' + c[0] + ';color:' + c[1] + ';font-family:IBM Plex Mono,monospace;font-size:12.5px;line-height:20px;white-space:nowrap;cursor:default;font-weight:500">{{' + k + '}}</span>'; };
+const VRE = /<span[^>]*data-var="([^"]+)"[^>]*>[^<]*<\/span>/g;
+let UID = 100; const nid = () => 'b' + (++UID);
+const B = (t, html) => ({ id: nid(), t, html, rev: 0 });
+const v = chip;
+const UL = a => '<ul>' + a.map(i => '<li>' + i + '</li>').join('') + '</ul>';
+const OL = a => '<ol>' + a.map(i => '<li>' + i + '</li>').join('') + '</ol>';
+
+const offerDraft = () => [
+  B('h2','Offer of employment'),
+  B('p','Dear ' + v('talent.first_name') + ','),
+  B('p','We are pleased to offer you the position of <b>' + v('requisition.title') + '</b> at ' + v('organization.legal_name') + ', reporting to ' + v('requisition.hiring_manager') + '. Your start date will be ' + v('requisition.start_date') + ', based in ' + v('requisition.location') + '.'),
+  B('h2','Compensation'),
+  B('p','Your annual base salary will be ' + v('offer.base_salary') + ', paid monthly. You will also receive a signing bonus of ' + v('offer.signing_bonus') + '.'),
+  B('ul', UL(['An annual performance bonus with a target of ' + v('offer.bonus_target') + '.','Equity: ' + v('offer.equity') + ', subject to the plan rules.', v('offer.hours_per_week') + ' contracted hours per week.'])),
+  B('h2','Benefits'),
+  B('p','You will be enrolled in the benefits programme from your first day, including health cover, pension contributions and 25 days of paid leave per year.'),
+  B('h2','Conditions'),
+  B('ol', OL(['Satisfactory references.','Proof of your right to work in ' + v('requisition.location') + '.','Completion of a probation period of ' + v('offer.probation_months') + ' months.'])),
+  B('p', v('offer.terms')),
+  B('h2','Confidentiality'),
+  B('p','During and after your employment you agree to keep confidential all non-public information about ' + v('organization.legal_name') + ', its clients and its talent.'),
+  B('h2','Acceptance'),
+  B('p','Please sign this letter by ' + v('document.expiry_date') + ' to accept the offer. If we have not received your signature by then, the offer will lapse.'),
+  B('p','Sincerely,<br>' + v('organization.signatory') + '<br>' + v('organization.signatory_title'))
+];
+const offerV3 = () => [
+  B('h2','Offer of employment'), B('p','Dear ' + v('talent.first_name') + ','),
+  B('p','We are pleased to offer you the position of <b>' + v('requisition.title') + '</b> at ' + v('organization.legal_name') + ', reporting to ' + v('requisition.hiring_manager') + '. Your start date will be ' + v('requisition.start_date') + '.'),
+  B('h2','Compensation'), B('p','Your annual base salary will be ' + v('offer.base_salary') + ' per annum.'),
+  B('ul', UL(['An annual performance bonus with a target of ' + v('offer.bonus_target') + '.','Equity: ' + v('offer.equity') + ', subject to the plan rules.'])),
+  B('h2','Benefits'), B('p','You will be enrolled in the benefits programme from your first day, including health cover and 25 days of paid leave per year.'),
+  B('h2','Conditions'), B('ol', OL(['Satisfactory references.','Completion of a probation period of ' + v('offer.probation_months') + ' months.'])),
+  B('p', v('offer.terms')), B('h2','Acceptance'),
+  B('p','Please sign this letter by ' + v('document.expiry_date') + ' to accept the offer.'),
+  B('p','Sincerely,<br>' + v('organization.signatory'))
+];
+const offerV2 = () => [
+  B('h2','Offer of employment'), B('p','Dear ' + v('talent.first_name') + ','),
+  B('p','We are pleased to offer you the position of ' + v('requisition.title') + ' at ' + v('organization.legal_name') + '. Your start date will be ' + v('requisition.start_date') + '.'),
+  B('h2','Compensation'), B('p','Your annual base salary will be ' + v('offer.base_salary') + ' per annum.'),
+  B('p', v('offer.terms')), B('p','Please sign this letter by ' + v('document.expiry_date') + '.'), B('p','Sincerely,<br>' + v('organization.signatory'))
+];
+const offerV1 = () => [ B('p','Dear ' + v('talent.first_name') + ','), B('p','We are pleased to offer you the position of ' + v('requisition.title') + ' at ' + v('organization.legal_name') + ', with a base salary of ' + v('offer.base_salary') + '.'), B('p','Sincerely,<br>' + v('organization.signatory')) ];
+const nda = () => [ B('h2','Mutual non-disclosure agreement'), B('p','This agreement is made between ' + v('organization.legal_name') + ', ' + v('organization.address') + ', and ' + v('talent.full_name') + '.'), B('h2','Confidential information'), B('p','Each party will keep confidential any non-public information shared during the interview process and will use it only to evaluate the potential engagement.'), B('h2','Term'), B('p','These obligations last for two years from ' + v('document.issue_date') + '.'), B('p','Signed for ' + v('organization.legal_name') + ':<br>' + v('organization.signatory')) ];
+const interview = () => [ B('p','Hi ' + v('talent.first_name') + ','), B('p','Your interview for ' + v('requisition.title') + ' is confirmed. ' + v('requisition.hiring_manager') + ' will meet you in ' + v('requisition.location') + '.') ];
+const contractor = () => [ B('h2','Contractor agreement'), B('p', v('talent.full_name') + ' will provide services to ' + v('organization.legal_name') + ' as an independent contractor from ' + v('requisition.start_date') + '.'), B('p','Sincerely,<br>' + v('organization.signatory')) ];
+const ref = () => [ B('p','Dear referee,'), B('p', v('talent.full_name') + ' has applied for the role of ' + v('requisition.title') + ' at ' + v('organization.legal_name') + ' and named you as a referee.') ];
+const TPLS0 = () => [
+  { id:'dt_01J5OFFR', name:'Offer letter', type:'Offer letter', desc:'Default offer letter used by ATS when an offer is approved.', tags:['ATS','SIGN'], created:'2026-01-30', updated:'2026-10-24', title:'Offer of employment', current:3, draft:true, wd:{ state:'NONE' }, blocks: offerDraft(), versions:[{ n:3, status:'PUBLISHED', date:'2026-09-02', title:'Offer of employment', blocks: offerV3() },{ n:2, status:'REPLACED', date:'2026-05-14', title:'Offer of employment', blocks: offerV2() },{ n:1, status:'REPLACED', date:'2026-01-30', title:'Offer letter', blocks: offerV1() }] },
+  { id:'dt_01J5NDA0', name:'Non-disclosure agreement', type:'Non-disclosure agreement', desc:'Mutual NDA for talent before technical interviews.', tags:['SIGN'], created:'2026-02-01', updated:'2026-08-09', title:'Mutual non-disclosure agreement', current:2, draft:false, wd:{ state:'NONE' }, blocks: nda(), versions:[{ n:2, status:'PUBLISHED', date:'2026-08-09', title:'Mutual non-disclosure agreement', blocks: nda() },{ n:1, status:'REPLACED', date:'2026-02-01', title:'Non-disclosure agreement', blocks: nda().slice(0,4) }] },
+  { id:'dt_01J5INTV', name:'Interview confirmation', type:'Interview confirmation', desc:'Confirms interview time and location.', tags:['ATS'], created:'2026-10-21', updated:'2026-10-21', title:'Your interview', current:null, draft:true, wd:{ state:'NONE' }, blocks: interview(), versions:[] },
+  { id:'dt_01J5CONT', name:'Contractor agreement', type:'Contractor agreement', desc:'Independent contractor terms.', tags:['ATS','SIGN'], created:'2025-11-12', updated:'2026-10-22', title:'Contractor agreement', current:4, draft:false, wd:{ state:'PENDING', effective:'2026-10-29', reason:'Replaced by country-specific agreements.' }, blocks: contractor(), versions:[{ n:4, status:'PUBLISHED', date:'2026-07-01', title:'Contractor agreement', blocks: contractor() }] },
+  { id:'dt_01J5REFR', name:'Reference request', type:'Reference request', desc:'Asks a referee to respond about a talent.', tags:['ATS'], created:'2026-04-03', updated:'2026-04-03', title:'Reference request', current:1, draft:false, wd:{ state:'NONE' }, blocks: ref(), versions:[{ n:1, status:'PUBLISHED', date:'2026-04-03', title:'Reference request', blocks: ref() }] }
+];
+const SECTIONS = [
+  { key:'greet', name:'Greeting', desc:'Salutation with first name', used:6, mk: () => [B('p','Dear ' + v('talent.first_name') + ',')] },
+  { key:'role', name:'Role & start date', desc:'Position, manager, start date', used:4, mk: () => [B('p','We are pleased to offer you the position of <b>' + v('requisition.title') + '</b>, reporting to ' + v('requisition.hiring_manager') + ', starting on ' + v('requisition.start_date') + '.')] },
+  { key:'comp', name:'Compensation', desc:'Heading, salary and bonus', used:3, mk: () => [B('h2','Compensation'), B('p','Your annual base salary will be ' + v('offer.base_salary') + ', with a bonus target of ' + v('offer.bonus_target') + '.')] },
+  { key:'benefits', name:'Benefits summary', desc:'Heading and bulleted list', used:3, mk: () => [B('h2','Benefits'), B('ul', UL(['Health cover from day one.','Pension contributions.','25 days of paid leave per year.']))] },
+  { key:'conf', name:'Confidentiality clause', desc:'Standard confidentiality wording', used:5, mk: () => [B('h2','Confidentiality'), B('p','You agree to keep confidential all non-public information about ' + v('organization.legal_name') + ', its clients and its talent.')] },
+  { key:'rtw', name:'Right to work', desc:'Proof of eligibility', used:2, mk: () => [B('p','This offer depends on proof of your right to work in ' + v('requisition.location') + '.')] },
+  { key:'accept', name:'Acceptance & deadline', desc:'Heading and response deadline', used:4, mk: () => [B('h2','Acceptance'), B('p','Please sign by ' + v('document.expiry_date') + ' to accept.')] },
+  { key:'sign', name:'Signature block', desc:'Sign-off with signatory', used:7, mk: () => [B('p','Sincerely,<br>' + v('organization.signatory') + '<br>' + v('organization.signatory_title'))] }
+];
+const VST = { PUBLISHED:['Published','ok'], REPLACED:['Replaced','muted'], DRAFT:['Draft','info'] };
+const DOC_TYPES = [['','Choose a document type'],['Offer letter','Offer letter'],['Non-disclosure agreement','Non-disclosure agreement'],['Contractor agreement','Contractor agreement'],['Interview confirmation','Interview confirmation'],['Reference request','Reference request'],['Rejection letter','Rejection letter'],['TAX','Tax form — set by regulation, not configurable',true],['BG','Background check consent — managed by the provider',true]];
+const BT = { p:['Paragraph','14.5px',400,'1.65','0 0 10px'], h2:['Heading','19px',700,'1.3','18px 0 6px'], h3:['Subheading','16px',700,'1.35','14px 0 4px'], ul:['Bulleted list','14.5px',400,'1.6','0 0 10px'], ol:['Numbered list','14.5px',400,'1.6','0 0 10px'] };
+
+const plain = h => (h || '').replace(VRE, ' {{$1}} ').replace(/<br\s*\/?>/g, ' ').replace(/<\/li>/g, ' ').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/&amp;/g, '&').replace(/\u200b/g, '').replace(/\s+/g, ' ').trim();
+function lcs(a, b, eq) {
+  const n = a.length, m = b.length, d = Array.from({ length: n + 1 }, () => new Array(m + 1).fill(0));
+  for (let i = n - 1; i >= 0; i--) for (let j = m - 1; j >= 0; j--) d[i][j] = eq(a[i], b[j]) ? d[i + 1][j + 1] + 1 : Math.max(d[i + 1][j], d[i][j + 1]);
+  const ops = []; let i = 0, j = 0;
+  while (i < n && j < m) { if (eq(a[i], b[j])) { ops.push(['=', i, j]); i++; j++; } else if (d[i + 1][j] >= d[i][j + 1]) { ops.push(['-', i, null]); i++; } else { ops.push(['+', null, j]); j++; } }
+  while (i < n) ops.push(['-', i++, null]); while (j < m) ops.push(['+', null, j++]);
+  return ops;
+}
+const SEGC = { same:['transparent','#18212B','none'], del:['#F6D9D2','#7A2E21','line-through'], add:['#D3EBDD','#17603C','none'] };
+const sg = (t, k) => { const isVar = /^\{\{.+\}\}$/.test(t); return { t, bg: SEGC[k][0], fg: SEGC[k][1], deco: SEGC[k][2], ff: isVar ? "'IBM Plex Mono',monospace" : 'inherit', fs: isVar ? '12.5px' : 'inherit' }; };
+const tok = s => s.split(/(\s+)/).filter(x => x.length);
+function wordDiff(a, b) { const A = tok(a), Bt = tok(b), L = [], R = []; lcs(A, Bt, (x, y) => x === y).forEach(([o, i, j]) => { if (o === '=') { L.push(sg(A[i], 'same')); R.push(sg(Bt[j], 'same')); } else if (o === '-') L.push(sg(A[i], 'del')); else R.push(sg(Bt[j], 'add')); }); return [L, R]; }
+function blockDiff(A, Bb) {
+  const a = A.map(b => plain(b.html)), b = Bb.map(x => plain(x.html));
+  const ops = lcs(a, b, (x, y) => x === y), rows = [];
+  let k = 0;
+  while (k < ops.length) {
+    if (ops[k][0] === '=') { const t = a[ops[k][1]]; const s = tok(t).map(x => sg(x, 'same')); rows.push({ kind:'same', L: s, R: s, lt: A[ops[k][1]].t, rt: Bb[ops[k][2]].t }); k++; continue; }
+    const dels = [], adds = [];
+    while (k < ops.length && ops[k][0] !== '=') { if (ops[k][0] === '-') dels.push(ops[k][1]); else adds.push(ops[k][2]); k++; }
+    const n = Math.max(dels.length, adds.length);
+    for (let i = 0; i < n; i++) {
+      const di = dels[i], ai = adds[i];
+      if (di !== undefined && ai !== undefined) { const [L, R] = wordDiff(a[di], b[ai]); rows.push({ kind:'chg', L, R, lt: A[di].t, rt: Bb[ai].t }); }
+      else if (di !== undefined) rows.push({ kind:'del', L: tok(a[di]).map(x => sg(x, 'del')), R: [], lt: A[di].t, rt: '' });
+      else rows.push({ kind:'add', L: [], R: tok(b[ai]).map(x => sg(x, 'add')), lt: '', rt: Bb[ai].t });
+    }
+  }
+  return rows;
+}
+
+class Component extends DCLogic {
+  state = {
+    route: 'studio', tplId: 'dt_01J5OFFR', tpls: TPLS0(), mode: 'edit', viewVer: null,
+    leftTab: 'outline', rightTab: 'variables', leftOpen: true, rightOpen: true, railOpen: false,
+    vq: '', vGroup: 'ALL', sel: null, fmt: {}, float: null, slash: null, varPop: null, vpq: '', blockMenu: null, hover: null,
+    drop: null, dragging: false,
+    save: { state: 'saved', at: '14:52:08', rev: 7 }, previewedRev: null, dirty: false, tick: 0, autosave: true,
+    sampleSet: 'standard', hl: true, zoom: 100, pages: null,
+    cmp: null, dlg: null, toast: null, shortcuts: false, more: false,
+    libQ: '', libTag: 'ALL', tagDraft: '', w: 1440
+  };
+  H = {}; E = {};
+
+  componentDidMount() {
+    const h = (location.hash || '').slice(1);
+    if (h === 'new') { this.setState({ route: 'library' }); setTimeout(() => { const c = this.renderVals().lib; c && c.create(); try { history.replaceState(null, '', '#library'); } catch (e) {} }, 0); }
+    else if (h === 'library' || this.props.startScreen === 'library') this.setState({ route: 'library' });
+    else if (h && this.state.tpls.some(t => t.id === h)) this.setState({ tplId: h });
+    try { if (localStorage.getItem('aramo.platform.rail') === '1') this.setState({ railCol: true }); } catch (e) {}
+    this._kb = e => {
+      const m = e.metaKey || e.ctrlKey, inEd = e.target && (e.target.isContentEditable || /INPUT|TEXTAREA|SELECT/.test(e.target.tagName));
+      if (this.state.route !== 'studio') { if (e.key === 'Escape') this.setState({ dlg: null, acct: false }); return; }
+      if (m && e.key.toLowerCase() === 's') { e.preventDefault(); if (this.canManage()) this.saveDraft(false); }
+      else if (m && e.shiftKey && e.key.toLowerCase() === 'p') { e.preventDefault(); this.state.mode === 'preview' ? this.setState({ mode: 'edit' }) : this.enterPreview(); }
+      else if (m && e.key === '\\') { e.preventDefault(); this.setState(s => { const c = !s.railCol; try { localStorage.setItem('aramo.platform.rail', c ? '1' : '0'); } catch (x) {} return { railCol: c }; }); }
+      else if (e.key === 'Escape') this.setState({ dlg: null, cmp: null, shortcuts: false, slash: null, varPop: null, blockMenu: null, more: false, acct: false });
+      else if (e.key === '?' && !inEd) { e.preventDefault(); this.setState({ shortcuts: true }); }
+    };
+    document.addEventListener('keydown', this._kb);
+    this._sc = () => { cancelAnimationFrame(this._raf); this._raf = requestAnimationFrame(() => this.onSel()); };
+    document.addEventListener('selectionchange', this._sc);
+    if (!this.canManage()) setTimeout(() => this.enterPreview(), 0);
+    this._rs = () => { const w = window.innerWidth, pw = this.state.w; const up = { w }; if (w < 1280 && (pw >= 1280 || pw === 1440)) up.leftOpen = false; if (w < 1100 && (pw >= 1100 || pw === 1440)) up.rightOpen = false; if (w >= 1280 && pw < 1280) up.leftOpen = true; if (w >= 1100 && pw < 1100) up.rightOpen = true; this.setState(up); };
+    this._rs(); window.addEventListener('resize', this._rs);
+  }
+  componentWillUnmount() { window.removeEventListener('resize', this._rs); document.removeEventListener('keydown', this._kb); document.removeEventListener('selectionchange', this._sc); clearTimeout(this._as); clearTimeout(this._tk); clearTimeout(this._t); }
+  componentDidUpdate() {
+    if (this._focus && this.E[this._focus]) { const el = this.E[this._focus], atEnd = this._focusEnd; this._focus = null; el.focus(); const r = document.createRange(); r.selectNodeContents(el); r.collapse(!atEnd); const s = window.getSelection(); s.removeAllRanges(); s.addRange(r); }
+  }
+  canManage() { return (this.props.persona || 'manager') === 'manager'; }
+  toast = m => { clearTimeout(this._t); this.setState({ toast: m }); this._t = setTimeout(() => this.setState({ toast: null }), 3500); };
+  tp() { return this.state.tpls.find(t => t.id === this.state.tplId); }
+  live(t) { t = t || this.tp(); return t.blocks.map(b => ({ ...b, html: this.H[b.id] !== undefined ? this.H[b.id] : b.html })); }
+  upTp(f) { this.setState(s => ({ tpls: s.tpls.map(x => x.id === s.tplId ? f(x) : x) })); }
+  setBlocks(blocks, bump) { blocks.forEach(b => { if (bump && bump.includes(b.id)) { b.rev = (b.rev || 0) + 1; } }); this.upTp(x => ({ ...x, blocks, draft: true })); this.markDirty(); }
+
+  onSel() {
+    const s = window.getSelection(); if (!s.rangeCount) return;
+    const n = s.anchorNode, el = n && (n.nodeType === 1 ? n : n.parentElement), be = el && el.closest && el.closest('[data-block]');
+    if (!be) { if (this.state.float) this.setState({ float: null }); return; }
+    this._range = s.getRangeAt(0).cloneRange();
+    const fmt = { b: document.queryCommandState('bold'), i: document.queryCommandState('italic'), u: document.queryCommandState('underline') };
+    let float = null;
+    if (!s.isCollapsed && s.toString().trim()) { const r = s.getRangeAt(0).getBoundingClientRect(); float = { x: Math.round(r.left + r.width / 2), y: Math.round(r.top - 46) }; }
+    const id = be.getAttribute('data-block'), cur = this.state;
+    if (cur.sel !== id || JSON.stringify(cur.fmt) !== JSON.stringify(fmt) || JSON.stringify(cur.float) !== JSON.stringify(float)) this.setState({ sel: id, fmt, float });
+  }
+  markDirty() {
+    if (!this.state.dirty) this.setState(s => ({ dirty: true, save: { ...s.save, state: 'unsaved' } }));
+    clearTimeout(this._as); if (this.state.autosave) this._as = setTimeout(() => this.saveDraft(true), 3000);
+  }
+  onInput(id, el) { this.H[id] = el.innerHTML; this.markDirty(); clearTimeout(this._tk); this._tk = setTimeout(() => this.setState(s => ({ tick: s.tick + 1 })), 250); }
+  saveDraft(auto) {
+    if (!this.state.dirty && auto) return;
+    clearTimeout(this._as);
+    this.setState(s => ({ save: { ...s.save, state: 'saving' } }));
+    return new Promise(res => setTimeout(() => {
+      const blocks = this.live();
+      this.upTp(x => ({ ...x, blocks, draft: true, updated: '2026-10-24' }));
+      this.setState(s => ({ dirty: false, save: { state: 'saved', at: clock(), rev: s.save.rev + 1, auto } }));
+      if (!auto) this.toast('Draft saved.');
+      res();
+    }, 550));
+  }
+  async enterPreview() {
+    if (this.state.dirty) await this.saveDraft(true);
+    const t = this.tp(), set = this.state.sampleSet; const pub = !this.canManage() && t.current ? t.versions.find(x => x.n === t.current) : null; const blocks = pub ? pub.blocks : this.state.mode === 'version' && this.state.viewVer ? t.versions.find(x => x.n === this.state.viewVer).blocks : this.live();
+    const pages = [[]]; let h = 70, cap = 860;
+    blocks.forEach(b => { const el = this.E[b.id]; let bh = el ? el.offsetHeight + 12 : 28 + Math.ceil(plain(b.html).length / 88) * 24; if (set === 'long') bh = Math.round(bh * 1.18); if (h + bh > cap && pages[pages.length - 1].length) { pages.push([]); h = 0; } pages[pages.length - 1].push(b); h += bh; });
+    this.setState(s => ({ mode: 'preview', pages, previewedRev: s.save.rev, slash: null, varPop: null, blockMenu: null, float: null }));
+  }
+  renderBlock(b, set, hl) {
+    let h = b.html.replace(VRE, (m, k) => { const vv = VMAP[k]; const val = vv ? ((set === 'long' && LONG[k]) || vv.sample) : '[missing: ' + k + ']'; const miss = !vv; return hl || miss ? '<mark style="background:' + (miss ? '#F8E9E6' : '#FFF1CC') + ';color:inherit;padding:0 2px;border-radius:3px">' + esc(val) + '</mark>' : esc(val); });
+    const st = { h2:'font-size:16.5px;font-weight:700;margin:16px 0 6px', h3:'font-size:15px;font-weight:700;margin:12px 0 4px', p:'margin:0 0 10px' }[b.t];
+    return st ? '<' + b.t + ' style="' + st + '">' + h + '</' + b.t + '>' : '<div style="margin:0 0 10px">' + h + '</div>';
+  }
+  insertBlocks(newBlocks, afterId, before) {
+    const bl = this.live(); let idx = afterId ? bl.findIndex(b => b.id === afterId) : bl.length - 1; if (idx < 0) idx = bl.length - 1; if (before) idx -= 1;
+    bl.splice(idx + 1, 0, ...newBlocks); this.setBlocks(bl); return newBlocks[0] && newBlocks[0].id;
+  }
+  moveBlock(id, targetId, pos) {
+    if (id === targetId) return; const bl = this.live(); const i = bl.findIndex(b => b.id === id); const [m] = bl.splice(i, 1);
+    let j = bl.findIndex(b => b.id === targetId); if (pos === 'after') j += 1; bl.splice(j, 0, m); this.setBlocks(bl);
+  }
+  setType(id, t) {
+    const bl = this.live(), b = bl.find(x => x.id === id); if (!b || b.t === t) return;
+    const isL = x => x === 'ul' || x === 'ol';
+    let h = b.html;
+    if (isL(b.t) && !isL(t)) h = h.replace(/<\/?(ul|ol)[^>]*>/g, '').replace(/<li[^>]*>/g, '').replace(/<\/li>/g, '<br>').replace(/(<br>)+$/, '');
+    else if (!isL(b.t) && isL(t)) h = '<' + t + '><li>' + (h || '') + '</li></' + t + '>';
+    else if (isL(b.t) && isL(t)) h = h.replace(/<(\/?)(ul|ol)/g, '<$1' + t);
+    b.t = t; b.html = h; this.H[id] = h; this.setBlocks(bl, [id]); this.setState({ blockMenu: null, slash: null });
+  }
+  removeVar(k) { const bl = this.live(); const ids = []; bl.forEach(b => { if (b.html.includes('data-var="' + k + '"')) { b.html = b.html.replace(new RegExp('<span[^>]*data-var="' + k.replace(/\./g, '\\.') + '"[^>]*>[^<]*<\/span>(&nbsp;)?', 'g'), ''); this.H[b.id] = b.html; ids.push(b.id); } }); this.setBlocks(bl, ids); this.toast('Removed {{' + k + '}} from the draft.'); }
+  restoreRange() { if (this._range) { const s = window.getSelection(); s.removeAllRanges(); s.addRange(this._range); const n = this._range.startContainer; const el = n.nodeType === 1 ? n : n.parentElement; const be = el && el.closest('[data-block]'); if (be) { be.focus(); s.removeAllRanges(); s.addRange(this._range); return be; } } return null; }
+  syncFromRange() { const s = window.getSelection(); if (!s.rangeCount) return; const n = s.anchorNode, el = n && (n.nodeType === 1 ? n : n.parentElement), be = el && el.closest('[data-block]'); if (be) this.onInput(be.getAttribute('data-block'), be); }
+  exec(cmd, arg) { const be = this.restoreRange(); if (!be) { this.toast('Click into the document first.'); return; } document.execCommand(cmd, false, arg); this.syncFromRange(); this.onSel(); }
+  insertVar(k, brace) {
+    const be = this.restoreRange();
+    if (!be) { const bl = this.live(); const target = bl.find(b => b.id === this.state.sel) || bl[bl.length - 1]; if (!target) { this.insertBlocks([B('p', chip(k) + '&nbsp;')]); } else { const nh = (this.H[target.id] !== undefined ? this.H[target.id] : target.html) + ' ' + chip(k) + '&nbsp;'; this.H[target.id] = nh; target.html = nh; this.setBlocks(bl, [target.id]); } this.setState({ varPop: null }); this.toast('Inserted {{' + k + '}}.'); return; }
+    if (brace) { const s = window.getSelection(), r = s.getRangeAt(0), n = r.startContainer; if (n.nodeType === 3 && r.startOffset >= 2 && n.textContent.slice(r.startOffset - 2, r.startOffset) === '{{') { r.setStart(n, r.startOffset - 2); r.deleteContents(); } }
+    document.execCommand('insertHTML', false, chip(k) + '&nbsp;'); this.syncFromRange(); this.setState({ varPop: null, vpq: '' });
+  }
+  onKeyDown(e, b) {
+    const el = e.currentTarget, text = el.textContent;
+    if (e.key === '/' && !text.trim()) { e.preventDefault(); const r = el.getBoundingClientRect(); this.setState({ slash: { id: b.id, x: Math.round(r.left), y: Math.round(r.bottom + 6) } }); return; }
+    if (e.altKey && (e.key === 'ArrowUp' || e.key === 'ArrowDown')) { e.preventDefault(); const bl = this.live(), i = bl.findIndex(x => x.id === b.id), j = e.key === 'ArrowUp' ? i - 1 : i + 1; if (j < 0 || j >= bl.length) return; [bl[i], bl[j]] = [bl[j], bl[i]]; this.setBlocks(bl); this._focus = b.id; return; }
+    if (e.key === 'Enter' && !e.shiftKey && b.t !== 'ul' && b.t !== 'ol') {
+      e.preventDefault(); const s = window.getSelection(); if (!s.rangeCount) return; const r = s.getRangeAt(0).cloneRange(); r.setEndAfter(el.lastChild || el); const frag = r.extractContents(); const d = document.createElement('div'); d.appendChild(frag);
+      this.H[b.id] = el.innerHTML; const rest = d.innerHTML.replace(/^(<br>)+/, ''); const nb = B(b.t === 'p' ? 'p' : 'p', rest); this.H[nb.id] = rest; this._focus = nb.id; this._focusEnd = false; this.insertBlocks([nb], b.id); return;
+    }
+    if (e.key === 'Backspace' && !text.trim() && !el.querySelector('[data-var]')) { const bl = this.live(); if (bl.length <= 1) return; e.preventDefault(); const i = bl.findIndex(x => x.id === b.id); const prev = bl[i - 1] || bl[i + 1]; bl.splice(i, 1); this._focus = prev.id; this._focusEnd = true; this.setBlocks(bl); }
+  }
+  onKeyUp(e) {
+    const s = window.getSelection(); if (!s.rangeCount) return; const r = s.getRangeAt(0), n = r.startContainer;
+    if (n.nodeType === 3 && r.startOffset >= 2 && n.textContent.slice(r.startOffset - 2, r.startOffset) === '{{' && e.key === '{') { const rc = r.getBoundingClientRect(); this._range = r.cloneRange(); this.setState({ varPop: { x: Math.round(rc.left), y: Math.round(rc.bottom + 6), brace: true }, vpq: '' }); }
+  }
+  dragStart(e, payload) { try { e.dataTransfer.setData('text/plain', payload.kind); e.dataTransfer.effectAllowed = 'move'; } catch (x) {} this._drag = payload; this.setState({ dragging: true, blockMenu: null }); }
+  dragOver(e, id) { e.preventDefault(); e.stopPropagation(); const r = e.currentTarget.getBoundingClientRect(); const pos = e.clientY < r.top + r.height / 2 ? 'before' : 'after'; const d = this.state.drop; if (!d || d.id !== id || d.pos !== pos) this.setState({ drop: { id, pos } }); }
+  dropOn(e, id) {
+    e.preventDefault(); e.stopPropagation(); const d = this._drag, pos = (this.state.drop && this.state.drop.pos) || 'after'; this._drag = null; this.setState({ drop: null, dragging: false });
+    if (!d) return;
+    if (d.kind === 'block') this.moveBlock(d.id, id, pos);
+    else if (d.kind === 'section') { const sec = SECTIONS.find(x => x.key === d.key); const nb = sec.mk(); if (id) this.insertBlocks(nb, id, pos === 'before'); else this.insertBlocks(nb); this.toast('Section “' + sec.name + '” inserted.'); }
+    else if (d.kind === 'var') { this.insertVar(d.key); }
+  }
+
+  openDlg(cfg) { const values = {}; (cfg.fields || []).forEach(f => values[f.key] = f.default !== undefined ? f.default : f.type === 'check' ? false : f.type === 'tags' ? [] : ''); this.setState({ dlg: { ...cfg, values, error: null, tagDraft: {} }, more: false }); }
+  setDv(k, val) { this.setState(s => ({ dlg: { ...s.dlg, values: { ...s.dlg.values, [k]: val }, error: null } })); }
+  openStudio(id) { this.H = {}; this.E = {}; this.setState({ route: 'studio', tplId: id, mode: 'edit', viewVer: null, dirty: false, sel: null, pages: null, previewedRev: null, save: { state: 'saved', at: '—', rev: 1 } }, () => { if (!this.canManage()) this.enterPreview(); }); try { history.replaceState(null, '', '#' + id); } catch (e) {} }
+
+  checks(t, blocks) {
+    const used = {}; blocks.forEach(b => { let m; const re = /data-var="([^"]+)"/g; while ((m = re.exec(b.html))) used[m[1]] = (used[m[1]] || 0) + 1; });
+    const unknown = Object.keys(used).filter(k => !VMAP[k]), inactive = Object.keys(used).filter(k => VMAP[k] && VMAP[k].status !== 'ACTIVE');
+    const hasText = blocks.some(b => plain(b.html).length > 0);
+    const s = this.state, saved = !s.dirty, previewed = saved && s.previewedRev === s.save.rev;
+    const items = [
+      { l:'Document title is set', ok: !!(t.title || '').trim(), sev:'fail', d:'Shown as the document heading and in Sign.' },
+      { l:'Draft has content', ok: hasText, sev:'fail', d:'Add at least one paragraph.' },
+      ...unknown.map(k => ({ l:'Unknown variable {{' + k + '}}', ok:false, sev:'fail', d:'Not in Template variables. Remove it, or add it on the Template variables page first.', fix: () => this.removeVar(k), fixL:'Remove from draft' })),
+      ...inactive.map(k => ({ l:'Inactive variable {{' + k + '}}', ok:false, sev:'warn', d:'Renders its sample today but tenants can’t bind it. Consider removing it.', fix: () => this.removeVar(k), fixL:'Remove from draft' })),
+      { l:'Only allowed formatting', ok:true, sev:'fail', d:'Paragraphs, H2, bold, italic, underline, lists, line breaks and variables.' },
+      { l:'Draft saved', ok: saved, sev:'fail', d:'Save the draft before previewing.' },
+      { l:'Previewed after the last save', ok: previewed, sev:'fail', d:'Open Preview to check the saved draft with sample values.' },
+      { l:'Template is not withdrawn', ok: t.wd.state !== 'WITHDRAWN', sev:'fail', d:'Withdrawn templates can’t be published.' }
+    ];
+    const fails = items.filter(i => !i.ok && i.sev === 'fail').length, warns = items.filter(i => !i.ok && i.sev === 'warn').length;
+    return { items, fails, warns, used, ready: fails === 0, passed: items.filter(i => i.ok).length, total: items.length };
+  }
+
+  renderVals() {
+    const s = this.state, manage = this.canManage(), ann = this.props.showAnnotations !== false;
+    const V = { ann, manage, reader: !manage, isLib: s.route === 'library', isStudio: s.route === 'studio' };
+    const RI = { dash:'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z', ten:'M4 21V6a1 1 0 0 1 1-1h8a1 1 0 0 1 1 1v15M14 10h5a1 1 0 0 1 1 1v10M2 21h20', shield:'M12 3l8 3v6c0 5-3.5 7.5-8 9-4.5-1.5-8-4-8-9V6z', layers:'M12 3 2 8l10 5 10-5zM2 13l10 5 10-5', sliders:'M4 6h9M17 6h3M4 12h3M11 12h9M4 18h11M19 18h1M15 4v4M9 10v4M17 16v4', doc:'M14 3H6a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V8zM14 3v5h5M8 13h8M8 17h5', braces:'M8 4c-2 0-3 1-3 3v2c0 1-1 2-2 3 1 1 2 2 2 3v2c0 2 1 3 3 3M16 4c2 0 3 1 3 3v2c0 1 1 2 2 3-1 1-2 2-2 3v2c0 2-1 3-3 3', key:'M14.5 4a5.5 5.5 0 1 1-4.6 8.5L3 19.4V21h3v-2h2v-2h2l1.3-1.3A5.5 5.5 0 0 1 14.5 4z' };
+    const railExp = !s.railCol && s.w >= (s.route === 'studio' ? 1280 : 900);
+    const IC2 = { ...RI, inbox:'M3 13h5l2 3h4l2-3h5M5.5 5h13L21 13v6H3v-6z', spark:'M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5 18 18M6 18l2.5-2.5M15.5 8.5 18 6', mail:'M3 6h18v12H3zM3 7l9 6 9-6', spec:'M9 12l2 2 4-4M5 3h14v18H5z' };
+    const NAVS = [['Operations',[['dashboard','Dashboard',IC2.dash],['tenants','Tenants',IC2.ten]]],['Sign Personal',[['personal','Review queue',IC2.shield],['invites','Pilot invites',IC2.mail]]],['Skills',[['skills','Registry',IC2.layers],['skillQueue','Review queue',IC2.inbox],['proposals','Proposals',IC2.spark]]],['Matching',[['matching','Matching policy',IC2.sliders]]],['Documents',[['templates','Document templates',IC2.doc],['variables','Template variables',IC2.braces]]],['Platform',[['admins','Platform admins',IC2.key]]],['Handoff',[['spec','Components & questions',IC2.spec]]]];
+    V.navGroups = NAVS.map(([g, items]) => ({ g, items: items.map(([k, label, icon]) => { const on = k === 'templates'; return { label, icon, cur: on ? 'page' : undefined, bg: on ? 'rgba(255,255,255,.12)' : 'transparent', color: on ? '#FFFFFF' : '#C9CACE', fw: on ? 700 : 500, showBar: on, href: on ? '#library' : 'Platform%20Admin.dc.html#' + k, onClick: on ? (e => { e.preventDefault(); this.setState({ route: 'library' }); try { history.replaceState(null, '', '#library'); } catch (x) {} }) : undefined }; }) }));
+    V.railW = railExp ? '236px' : '64px'; V.railExp = railExp; V.railCol = !railExp; V.railJ = railExp ? 'flex-start' : 'center'; V.railPad = railExp ? '12px' : '10px'; V.itemPad = railExp ? '12px' : '0'; V.platformTag = railExp ? 'PLATFORM' : 'P';
+    V.toggleRail = () => { const c = !s.railCol; try { localStorage.setItem('aramo.platform.rail', c ? '1' : '0'); } catch (e) {} this.setState({ railCol: c }); };
+    V.expandRail = () => { if (s.railCol) V.toggleRail(); };
+    // library
+    const q = s.libQ.trim().toLowerCase();
+    const libRows = s.tpls.filter(t => (s.libTag === 'ALL' || t.tags.includes(s.libTag)) && (!q || t.name.toLowerCase().includes(q) || t.type.toLowerCase().includes(q)));
+    V.lib = { q: s.libQ, onQ: e => this.setState({ libQ: e.target.value }), empty: libRows.length === 0, count: libRows.length + ' templates',
+      tags: ['ALL','ATS','SIGN'].map(k => { const on = s.libTag === k; return { l: k === 'ALL' ? 'All products' : k, on, bg: on ? '#0B1022' : 'transparent', fg: on ? '#fff' : '#3F4A55', fw: on ? 700 : 500, onClick: () => this.setState({ libTag: k }) }; }),
+      rows: libRows.map(t => ({ ...t, cur: t.current ? 'v' + t.current : 'Not published', curP: t.current ? pill('Published v' + t.current,'ok') : pill('Not published','neutral'), draftL: t.draft ? 'Open draft' : 'No draft', draftInk: t.draft ? '#2C6FB3' : '#93A0A8', wdP: t.wd.state === 'PENDING' ? pill('Withdrawal ' + fmtD(t.wd.effective),'warn') : t.wd.state === 'WITHDRAWN' ? pill('Withdrawn','muted') : null, hasWd: t.wd.state !== 'NONE', upd: fmtD(t.updated) + ' · ' + rel(t.updated), blocksN: t.blocks.length + ' blocks', open: () => this.openStudio(t.id) })),
+      create: () => this.openDlg({ title:'Create default template', cons:'Creates a platform default with a draft. Tenants only see it after you publish.', fields:[{ key:'type', type:'select', label:'Document type', required:true, options: DOC_TYPES, helper:'Fixed by regulation or a provider? Those types are listed but can’t be chosen.' },{ key:'name', type:'text', label:'Name', required:true, max:120 },{ key:'desc', type:'textarea', label:'Description (optional)', max:500 },{ key:'tags', type:'tags', label:'Product tags', default:['ATS'], helper:'Enter to add. Uppercase, up to 16.' },{ key:'start', type:'select', label:'Start from', default:'blank', options:[['blank','Blank document'],...s.tpls.filter(t => t.current).map(t => ['copy:' + t.id, 'Copy of ' + t.name + ' (v' + t.current + ')'])], helper:'Copying fills the new draft with that published version.' }], commit:'Create and open studio', tone:'primary',
+        commitFn: vv => { const id = 'dt_01JB' + Math.random().toString(36).slice(2, 6).toUpperCase(); let blocks = []; if (vv.start.startsWith('copy:')) { const src = s.tpls.find(t => t.id === vv.start.slice(5)); blocks = src.versions.find(x => x.n === src.current).blocks.map(b => B(b.t, b.html)); } this.setState(st => ({ tpls: [...st.tpls, { id, name: vv.name.trim(), type: vv.type, desc: vv.desc, tags: vv.tags, created:'2026-10-24', updated:'2026-10-24', title: vv.name.trim(), current: null, draft: true, wd: { state:'NONE' }, blocks, versions: [] }] })); setTimeout(() => this.openStudio(id), 0); this.toast('Template created.'); return null; } }) };
+
+    const t = this.tp();
+    if (t && s.route === 'studio') {
+      const blocks = this.live(t);
+      const viewV = s.mode === 'version' && s.viewVer ? t.versions.find(x => x.n === s.viewVer) : null;
+      const ck = this.checks(t, blocks);
+      const editable = manage && s.mode === 'edit';
+      const hasPub = !!t.current;
+      V.st = { ...t, cur: hasPub ? 'v' + t.current : 'Not published', nextV: 'v' + ((t.current || 0) + 1),
+        isEdit: s.mode === 'edit' && manage, isPreview: s.mode === 'preview' || (!manage && s.mode !== 'version'), isVersion: s.mode === 'version',
+        saveL: s.save.state === 'saving' ? 'Saving…' : s.save.state === 'unsaved' ? 'Unsaved changes' : (s.save.auto ? 'Autosaved · ' : 'Saved · ') + s.save.at, saveDot: s.save.state === 'saving' ? '#2C6FB3' : s.save.state === 'unsaved' ? '#946011' : '#1F7A4D',
+        autosave: s.autosave, autosaveL: s.autosave ? 'On' : 'Off', toggleAutosave: () => this.setState({ autosave: !s.autosave }),
+        modes: [['edit','Edit'],['preview','Preview']].map(([k, l]) => { const on = (k === 'preview' ? s.mode === 'preview' : s.mode !== 'preview'); return { l, on, bg: on ? '#fff' : 'transparent', fw: on ? 700 : 500, sh: on ? '0 1px 2px rgba(15,25,40,.12)' : 'none', onClick: () => k === 'preview' ? this.enterPreview() : this.setState({ mode: 'edit', viewVer: null }) }; }),
+        ready: ck.ready, readyL: ck.ready ? (s.w >= 1200 ? 'Ready to publish' : 'Ready') : ck.fails + (ck.fails === 1 ? ' issue' : ' issues') + (s.w >= 1200 ? ' before publishing' : ''), readyBg: ck.ready ? '#E3F1EA' : '#FAF0DC', readyFg: ck.ready ? '#17603C' : '#6B4609',
+        readySegs: ck.items.map(i => ({ bg: i.ok ? '#1F7A4D' : i.sev === 'warn' ? '#D9A441' : '#D5DBE1' })),
+        openChecks: () => this.setState({ rightOpen: true, rightTab: 'checks' }),
+        pubDis: !ck.ready, pubOp: ck.ready ? '1' : '.5',
+        publish: () => { if (!ck.ready) { this.setState({ rightOpen: true, rightTab: 'checks' }); return; } const base = hasPub ? t.versions.find(x => x.n === t.current).blocks : []; const rows = blockDiff(base, blocks); const n = (t.current || 0) + 1;
+          this.openDlg({ title:'Publish v' + n + ' of ' + t.name, from: hasPub ? pill('v' + t.current + ' published','ok') : pill('Not published','neutral'), to: pill('v' + n + ' published','ok'), cons:'v' + n + ' becomes the platform default for every tenant that uses this template. Documents already sent are not changed.' + (hasPub ? ' v' + t.current + ' is marked Replaced and stays viewable.' : ''), summary: [['Added', rows.filter(r => r.kind === 'add').length],['Changed', rows.filter(r => r.kind === 'chg').length],['Removed', rows.filter(r => r.kind === 'del').length],['Variables', Object.keys(ck.used).length]].map(([l, c]) => ({ l, c })), warn: ck.warns ? ck.warns + ' warning' + (ck.warns > 1 ? 's' : '') + ' (inactive variables) will publish as is.' : '', fields: [], commit:'Publish v' + n, tone:'priv',
+            commitFn: () => { const copy = blocks.map(b => ({ ...b })); this.upTp(x => ({ ...x, current: n, draft: false, blocks: copy, versions: [{ n, status:'PUBLISHED', date:'2026-10-24', title: x.title, blocks: copy.map(b => B(b.t, b.html)) }, ...x.versions.map(r => ({ ...r, status: r.status === 'PUBLISHED' ? 'REPLACED' : r.status }))] })); this.toast('v' + n + ' published. Tenants now get this version.'); return null; } }); },
+        compare: () => this.setState({ cmp: { a: hasPub ? 'v' + t.current : (t.versions[0] ? 'v' + t.versions[0].n : 'draft'), b: 'draft', changesOnly: false }, more: false }),
+        more: s.more, toggleMore: () => this.setState({ more: !s.more }), showShortcuts: () => this.setState({ shortcuts: true, more: false }),
+        canWithdraw: manage && t.wd.state === 'NONE' && hasPub, canCancelWd: manage && t.wd.state === 'PENDING',
+        withdraw: () => this.openDlg({ title:'Withdraw ' + t.name, cons:'Tenants are told this default is being withdrawn. After the notice period it can’t be used for new documents. Documents already sent are unaffected.', fields:[{ key:'days', type:'number', label:'Notice period (days)', required:true, default:'7', helper:'0–365. 0 withdraws immediately.' },{ key:'reason', type:'textarea', label:'Reason', required:true, max:500, helper:'Shown to tenant admins with the notice.' }], live: vals => { const d = Number(vals.days); return d >= 0 && d <= 365 ? 'Takes effect ' + fmtD(new Date(NOW.getTime() + d * 864e5).toISOString().slice(0, 10)) + (d === 0 ? ' (immediately)' : '') : 'Enter 0–365 days.'; }, commit:'Withdraw template', tone:'priv',
+          commitFn: vals => { const d = Number(vals.days); if (!(d >= 0 && d <= 365)) return 'Notice must be between 0 and 365 days.'; const eff = new Date(NOW.getTime() + d * 864e5).toISOString().slice(0, 10); this.upTp(x => ({ ...x, wd: { state: d === 0 ? 'WITHDRAWN' : 'PENDING', effective: eff, reason: vals.reason } })); this.toast(d === 0 ? 'Template withdrawn.' : 'Withdrawal scheduled for ' + fmtD(eff) + '.'); return null; } }),
+        cancelWd: () => this.openDlg({ title:'Cancel withdrawal', cons:'The template stays available to tenants. Tenant admins are told the withdrawal was cancelled.', fields:[], commit:'Cancel withdrawal', tone:'primary', commitFn: () => { this.upTp(x => ({ ...x, wd: { state:'NONE' } })); this.toast('Withdrawal cancelled.'); return null; } }),
+        wdPending: t.wd.state === 'PENDING', wdDone: t.wd.state === 'WITHDRAWN', wdEff: t.wd.effective ? fmtD(t.wd.effective) + ' · ' + rel(t.wd.effective) : '', wdReason: t.wd.reason || '',
+        save: () => this.saveDraft(false), saveDis: !s.dirty, saveOp: s.dirty ? '1' : '.5',
+        toLib: e => { e && e.preventDefault && e.preventDefault(); this.setState({ route: 'library' }); try { history.replaceState(null, '', '#library'); } catch (x) {} },
+        leftOpen: s.leftOpen, rightOpen: s.rightOpen, toggleLeft: () => this.setState({ leftOpen: !s.leftOpen }), toggleRight: () => this.setState({ rightOpen: !s.rightOpen }),
+        cols: (s.leftOpen && s.w >= 1280 ? '272px ' : '') + 'minmax(0,1fr)' + (s.rightOpen && s.w >= 1100 ? ' 328px' : ''), lPos: s.w >= 1280 ? 'static' : 'fixed', lSh: s.w >= 1280 ? 'none' : '12px 0 40px rgba(15,25,40,.18)', rPos: s.w >= 1100 ? 'static' : 'fixed', rSh: s.w >= 1100 ? 'none' : '-12px 0 40px rgba(15,25,40,.18)', lLeft: s.w >= 1280 ? 'auto' : '64px', wide: s.w >= 1200, narrowHdr: s.w < 1200, cmpL: s.w >= 1200 ? 'Compare' : '⇄', saveTxt: s.w >= 1200 ? 'Save draft' : 'Save',
+        leftTabs: [['outline','Outline'],['sections','Sections'],['versions','Versions']].map(([k, l]) => { const on = s.leftTab === k; return { l, on, bg: on ? '#fff' : 'transparent', fw: on ? 700 : 500, sh: on ? '0 1px 2px rgba(15,25,40,.12)' : 'none', onClick: () => this.setState({ leftTab: k }) }; }),
+        lt: { outline: s.leftTab === 'outline', sections: s.leftTab === 'sections', versions: s.leftTab === 'versions' },
+        rightTabs: [['variables','Variables',''],['properties','Properties',''],['checks','Checks', ck.fails + ck.warns ? String(ck.fails + ck.warns) : '']].map(([k, l, c]) => { const on = s.rightTab === k; return { l, c, hasC: !!c, on, bg: on ? '#fff' : 'transparent', fw: on ? 700 : 500, sh: on ? '0 1px 2px rgba(15,25,40,.12)' : 'none', onClick: () => this.setState({ rightTab: k }) }; }),
+        rt: { variables: s.rightTab === 'variables', properties: s.rightTab === 'properties', checks: s.rightTab === 'checks' }
+      };
+      // outline
+      let inH = false;
+      V.outline = blocks.map((b, i) => { const isH = b.t === 'h2' || b.t === 'h3'; if (isH) inH = true; const txt = plain(b.html); const on = s.sel === b.id; return { id: b.id, n: i + 1, label: txt ? (txt.length > 46 ? txt.slice(0, 46) + '…' : txt) : 'Empty ' + BT[b.t][0].toLowerCase(), isH, kind: BT[b.t][0], pad: isH ? '8px' : inH ? '22px' : '8px', fw: isH ? 700 : 400, fg: isH ? '#18212B' : '#5C6770', fs: isH ? '13px' : '12.5px', bg: on ? '#E9EDFB' : 'transparent', bar: on ? '#022AC0' : 'transparent', dropB: s.drop && s.drop.id === b.id && s.drop.pos === 'before', dropA: s.drop && s.drop.id === b.id && s.drop.pos === 'after',
+        go: () => { const el = this.E[b.id], c = this._canvas; if (el && c) { c.scrollTop += el.getBoundingClientRect().top - c.getBoundingClientRect().top - 90; el.focus(); } this.setState({ sel: b.id }); },
+        dragStart: e => this.dragStart(e, { kind:'block', id: b.id }), over: e => this.dragOver(e, b.id), drop: e => this.dropOn(e, b.id) }; });
+      V.outlineEmpty = blocks.length === 0;
+      V.outlineStats = blocks.filter(b => b.t === 'h2').length + ' headings · ' + blocks.length + ' blocks · ' + Object.keys(ck.used).length + ' variables';
+      V.sections = SECTIONS.map(x => ({ ...x, vars: (x.mk().map(b => b.html).join('').match(/data-var=/g) || []).length, dragStart: e => this.dragStart(e, { kind:'section', key: x.key }), insert: () => { if (!manage) return; const id = this.insertBlocks(x.mk(), s.sel || undefined); this._focus = id; this.toast('Section “' + x.name + '” inserted.'); } }));
+      V.versions = [{ n: 'Draft', p: pill(t.draft ? 'Open draft' : 'No changes', t.draft ? 'info' : 'muted'), d: 'Updated ' + fmtD(t.updated), on: s.mode !== 'version', view: () => this.setState({ mode: 'edit', viewVer: null }), cmp: () => this.setState({ cmp: { a: hasPub ? 'v' + t.current : 'draft', b: 'draft', changesOnly: false } }), isDraft: true }]
+        .concat(t.versions.map(x => ({ n: 'v' + x.n, p: pill(VST[x.status][0], VST[x.status][1]), d: fmtD(x.date) + ' · ' + x.blocks.length + ' blocks', by: OP.slice(0, 7) + '…', on: s.mode === 'version' && s.viewVer === x.n, view: () => this.setState({ mode: 'version', viewVer: x.n }), cmp: () => this.setState({ cmp: { a: 'v' + x.n, b: 'draft', changesOnly: false } }), isDraft: false })))
+        .map(x => ({ ...x, bg: x.on ? '#E9EDFB' : 'transparent', bar: x.on ? '#022AC0' : 'transparent' }));
+      // canvas blocks
+      const d = s.drop;
+      V.blocks = blocks.map(b => { const on = s.sel === b.id, hov = s.hover === b.id; const key = b.id + ':' + (b.rev || 0); return { id: b.id, key, editable: editable ? 'true' : 'false', ph: b.t === 'h2' ? 'Heading' : 'Type / for blocks, {{ for variables', fs: BT[b.t][1], fw: BT[b.t][2], lh: BT[b.t][3], mg: BT[b.t][4], ctrlOp: editable && (on || hov) ? '1' : '0', ring: on && editable ? '0 0 0 1px #DCE3F7' : 'none', bg: on && editable ? '#FAFBFF' : 'transparent', typeTag: BT[b.t][0], showTag: on && editable,
+        dropBefore: !!(d && d.id === b.id && d.pos === 'before'), dropAfter: !!(d && d.id === b.id && d.pos === 'after'),
+        ref: el => { if (el) { this.E[b.id] = el; if (el.dataset.k !== key) { el.innerHTML = this.H[b.id] !== undefined ? this.H[b.id] : b.html; el.dataset.k = key; } } },
+        input: e => this.onInput(b.id, e.currentTarget), keydown: e => this.onKeyDown(e, b), keyup: e => this.onKeyUp(e), focus: () => { if (s.sel !== b.id) this.setState({ sel: b.id }); },
+        enter: () => { if (s.hover !== b.id) this.setState({ hover: b.id }); },
+        add: () => { const nb = B('p', ''); this._focus = nb.id; this.insertBlocks([nb], b.id); },
+        menu: e => { const r = e.currentTarget.getBoundingClientRect(); this.setState({ blockMenu: { id: b.id, x: Math.round(r.left), y: Math.round(r.bottom + 4) }, sel: b.id }); },
+        dragStart: e => this.dragStart(e, { kind:'block', id: b.id }), over: e => this.dragOver(e, b.id), drop: e => this.dropOn(e, b.id) }; });
+      V.canvasEmpty = blocks.length === 0 && s.mode === 'edit';
+      V.canvasRef = el => { this._canvas = el; };
+      V.dragEnd = () => { this._drag = null; this.setState({ drop: null, dragging: false }); };
+      V.canvasOver = e => { if (this._drag) e.preventDefault(); };
+      V.canvasDrop = e => this.dropOn(e, null);
+      V.dropHint = s.dragging; V.onPaste = e => { e.preventDefault(); const txt = (e.clipboardData || window.clipboardData).getData('text/plain'); document.execCommand('insertText', false, txt); this.toast('Pasted as plain text. Formatting outside the allowed set is removed.'); };
+      V.leave = () => { if (s.hover) this.setState({ hover: null }); };
+      V.title = t.title; V.onTitle = e => { const val = e.target.value; this.upTp(x => ({ ...x, title: val })); this.markDirty(); };
+      V.empty = { heading: () => { const nb = B('h2', ''); this._focus = nb.id; this.insertBlocks([nb]); }, para: () => { const nb = B('p', ''); this._focus = nb.id; this.insertBlocks([nb]); }, sections: () => this.setState({ leftOpen: true, leftTab: 'sections' }), canCopy: hasPub, copy: () => { const src = t.versions.find(x => x.n === t.current); this.setBlocks(src.blocks.map(b => B(b.t, b.html))); this.toast('Copied v' + t.current + ' into the draft.'); } };
+      // toolbar
+      const selB = blocks.find(b => b.id === s.sel);
+      V.tb = { selType: selB ? selB.t : 'p', onType: e => { if (s.sel) this.setType(s.sel, e.target.value); }, typeDis: !selB,
+        fmt: [['B','bold','Bold (⌘B)',s.fmt.b],['I','italic','Italic (⌘I)',s.fmt.i],['U','underline','Underline (⌘U)',s.fmt.u]].map(([l, c, tt, on]) => ({ l, tt, on: !!on, bg: on ? '#E9EDFB' : 'transparent', bd: on ? '#C9D2F5' : 'transparent', fw: l === 'B' ? 800 : 600, fst: l === 'I' ? 'italic' : 'normal', td: l === 'U' ? 'underline' : 'none', run: e => { e.preventDefault(); this.exec(c); } })),
+        bul: e => { e.preventDefault(); if (s.sel) this.setType(s.sel, selB && selB.t === 'ul' ? 'p' : 'ul'); }, num: e => { e.preventDefault(); if (s.sel) this.setType(s.sel, selB && selB.t === 'ol' ? 'p' : 'ol'); },
+        br: e => { e.preventDefault(); this.exec('insertHTML', '<br>'); },
+        undo: e => { e.preventDefault(); this.exec('undo'); }, redo: e => { e.preventDefault(); this.exec('redo'); },
+        varBtn: e => { e.preventDefault(); const r = e.currentTarget.getBoundingClientRect(); this.setState({ varPop: { x: Math.round(r.left), y: Math.round(r.bottom + 6), brace: false }, vpq: '' }); },
+        secBtn: e => { e.preventDefault(); this.setState({ leftOpen: true, leftTab: 'sections' }); }
+      };
+      // floating
+      V.float = s.float && editable ? { x: s.float.x + 'px', y: s.float.y + 'px' } : null; V.hasFloat = !!V.float;
+      V.floatVar = e => { e.preventDefault(); this.setState({ varPop: { x: s.float.x - 140, y: s.float.y + 48, brace: false }, vpq: '' }); };
+      // variables inspector
+      const vq = s.vq.trim().toLowerCase();
+      V.vars = { q: s.vq, onQ: e => this.setState({ vq: e.target.value }),
+        filt: ['ALL'].concat(GROUPS).map(g => { const on = s.vGroup === g; return { l: g === 'ALL' ? 'All' : g, on, bg: on ? '#0B1022' : '#fff', fg: on ? '#fff' : '#3F4A55', bd: on ? '#0B1022' : '#D5DBE1', onClick: () => this.setState({ vGroup: g }) }; }),
+        list: GROUPS.filter(g => s.vGroup === 'ALL' || s.vGroup === g).map(g => ({ g, items: VARS.filter(x => x.group === g && (!vq || x.key.includes(vq) || x.label.toLowerCase().includes(vq))).map(x => { const u = ck.used[x.key] || 0; return { ...x, typeL: x.type.replace('_', ' ').toLowerCase(), used: u ? u + '× in draft' : '', hasUsed: u > 0, inactive: x.status !== 'ACTIVE', bind: x.binding || 'No ATS binding', canIns: editable && x.status === 'ACTIVE', insert: e => { e.preventDefault(); this.insertVar(x.key); }, dragStart: e => this.dragStart(e, { kind:'var', key: x.key }) }; }) })).filter(g => g.items.length),
+        none: false };
+      V.vars.none = V.vars.list.length === 0;
+      V.unknownUsed = Object.keys(ck.used).filter(k => !VMAP[k]).map(k => ({ k }));
+      V.hasUnknown = V.unknownUsed.length > 0;
+      // properties
+      V.props = { name: t.name, desc: t.desc, type: t.type, id: t.id, created: fmtD(t.created), updated: fmtD(t.updated), tags: t.tags.map(g => ({ g, rm: () => this.upTp(x => ({ ...x, tags: x.tags.filter(y => y !== g) })) })), tagDraft: s.tagDraft, onTag: e => this.setState({ tagDraft: e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, '').slice(0, 24) }), onTagKey: e => { if (e.key === 'Enter' && s.tagDraft && !t.tags.includes(s.tagDraft) && t.tags.length < 16) { this.upTp(x => ({ ...x, tags: [...x.tags, s.tagDraft] })); this.setState({ tagDraft: '' }); } },
+        onName: e => { const val = e.target.value.slice(0, 120); this.upTp(x => ({ ...x, name: val })); }, onDesc: e => { const val = e.target.value.slice(0, 500); this.upTp(x => ({ ...x, desc: val })); }, nameC: t.name.length + ' / 120', descC: (t.desc || '').length + ' / 500',
+        wdL: t.wd.state === 'NONE' ? 'Available to tenants' : t.wd.state === 'PENDING' ? 'Withdrawal pending · ' + fmtD(t.wd.effective) : 'Withdrawn ' + fmtD(t.wd.effective), wdP: t.wd.state === 'NONE' ? pill('None','ok') : t.wd.state === 'PENDING' ? pill('Pending','warn') : pill('Withdrawn','muted') };
+      V.checks = { ...ck, items: ck.items.map(i => ({ ...i, icon: i.ok ? '✓' : i.sev === 'warn' ? '!' : '×', ibg: i.ok ? '#E3F1EA' : i.sev === 'warn' ? '#FAF0DC' : '#F7E7E3', ifg: i.ok ? '#1F7A4D' : i.sev === 'warn' ? '#946011' : '#A8412F', hasFix: !!i.fix && manage, showD: !i.ok })), line: ck.passed + ' of ' + ck.total + ' checks pass' + (ck.warns ? ' · ' + ck.warns + ' warning' + (ck.warns > 1 ? 's' : '') : '') };
+      // preview
+      const pages = s.pages || [];
+      V.pv = { sets: [['standard','Standard samples'],['long','Long values']].map(([k, l]) => { const on = s.sampleSet === k; return { l, on, bg: on ? '#fff' : 'transparent', fw: on ? 700 : 500, sh: on ? '0 1px 2px rgba(15,25,40,.12)' : 'none', onClick: () => this.setState({ sampleSet: k }, () => this.enterPreview()) }; }),
+        hl: s.hl, onHl: e => this.setState({ hl: e.target.checked }), zoom: s.zoom + '%', zoomV: String(s.zoom / 100), zin: () => this.setState({ zoom: Math.min(150, s.zoom + 10) }), zout: () => this.setState({ zoom: Math.max(60, s.zoom - 10) }),
+        count: pages.length + (pages.length === 1 ? ' page' : ' pages'), title: viewV ? viewV.title : (!manage && hasPub ? t.versions.find(x => x.n === t.current).title : t.title), org: VMAP['organization.legal_name'].sample, ver: viewV ? 'v' + viewV.n : !manage && hasPub ? 'v' + t.current : 'Draft · rev ' + s.save.rev,
+        pages: pages.map((pg, i) => ({ n: i + 1, total: pages.length, first: i === 0, el: React.createElement('div', { style: { fontSize: 14, lineHeight: 1.65, color: '#18212B' }, dangerouslySetInnerHTML: { __html: pg.map(b => this.renderBlock(b, s.sampleSet, s.hl)).join('') } }) })),
+        readOnlyNote: !manage };
+      // version view
+      V.vv = viewV ? { n: 'v' + viewV.n, date: fmtD(viewV.date), p: pill(VST[viewV.status][0], VST[viewV.status][1]), title: viewV.title, el: React.createElement('div', { style: { fontSize: 14.5, lineHeight: 1.65 }, dangerouslySetInnerHTML: { __html: viewV.blocks.map(b => { const st = { h2:'font-size:19px;font-weight:700;margin:18px 0 6px', h3:'font-size:16px;font-weight:700', p:'margin:0 0 10px' }[b.t]; return st ? '<' + b.t + ' style="' + st + '">' + b.html + '</' + b.t + '>' : '<div style="margin:0 0 10px">' + b.html + '</div>'; }).join('') } }),
+        back: () => this.setState({ mode: 'edit', viewVer: null }), cmp: () => this.setState({ cmp: { a: 'v' + viewV.n, b: 'draft', changesOnly: false } }),
+        restore: () => this.openDlg({ title:'Restore v' + viewV.n + ' into the draft', cons:'Replaces the current draft content with v' + viewV.n + '. Published versions are not changed. You can still compare or undo by restoring another version.', fields:[], commit:'Replace draft', tone:'primary', commitFn: () => { this.H = {}; this.setBlocks(viewV.blocks.map(b => B(b.t, b.html))); this.upTp(x => ({ ...x, title: viewV.title })); this.setState({ mode: 'edit', viewVer: null }); this.toast('Draft replaced with v' + viewV.n + '. Save and preview before publishing.'); return null; } }) } : null;
+      V.hasVV = !!V.vv && s.mode === 'version';
+      // compare
+      if (s.cmp) {
+        const get = r => r === 'draft' ? { blocks, label:'Draft', sub:'Unpublished' } : (x => ({ blocks: x.blocks, label: 'v' + x.n, sub: VST[x.status][0] + ' · ' + fmtD(x.date) }))(t.versions.find(x => 'v' + x.n === r));
+        const A = get(s.cmp.a), Bv = get(s.cmp.b), rows = blockDiff(A.blocks, Bv.blocks);
+        const opts = [{ v:'draft', l:'Draft' }].concat(t.versions.map(x => ({ v: 'v' + x.n, l: 'v' + x.n + ' · ' + VST[x.status][0] })));
+        V.cmp = { open: true, a: s.cmp.a, b: s.cmp.b, opts, A, B: Bv, onA: e => this.setState({ cmp: { ...s.cmp, a: e.target.value } }), onB: e => this.setState({ cmp: { ...s.cmp, b: e.target.value } }), swap: () => this.setState({ cmp: { ...s.cmp, a: s.cmp.b, b: s.cmp.a } }),
+          changesOnly: s.cmp.changesOnly, onCO: e => this.setState({ cmp: { ...s.cmp, changesOnly: e.target.checked } }), close: () => this.setState({ cmp: null }),
+          stats: [['Added', rows.filter(r => r.kind === 'add').length, '#17603C', '#D3EBDD'],['Changed', rows.filter(r => r.kind === 'chg').length, '#6B4609', '#FAF0DC'],['Removed', rows.filter(r => r.kind === 'del').length, '#7A2E21', '#F6D9D2'],['Unchanged', rows.filter(r => r.kind === 'same').length, '#3F4A55', '#EBEEF2']].map(([l, c, fg, bg]) => ({ l, c, fg, bg })),
+          rows: rows.filter(r => !s.cmp.changesOnly || r.kind !== 'same').map((r, i) => ({ ...r, i: i + 1, mark: { same:'', add:'+', del:'−', chg:'~' }[r.kind], mbg: { same:'transparent', add:'#D3EBDD', del:'#F6D9D2', chg:'#FAF0DC' }[r.kind], lbg: r.kind === 'del' ? '#FDF3F1' : r.kind === 'chg' ? '#FFFCF5' : r.kind === 'add' ? '#F4F6FA' : '#fff', rbg: r.kind === 'add' ? '#F3FAF6' : r.kind === 'chg' ? '#FFFCF5' : r.kind === 'del' ? '#F4F6FA' : '#fff', lEmpty: !r.L.length, rEmpty: !r.R.length, lfw: r.lt === 'h2' ? 700 : 400, rfw: r.rt === 'h2' ? 700 : 400, lt: r.lt ? BT[r.lt][0] : '', rt: r.rt ? BT[r.rt][0] : '' })),
+          none: rows.every(r => r.kind === 'same') };
+        V.cmp.noneShow = V.cmp.none && s.cmp.changesOnly;
+      } else V.cmp = { open: false };
+      // popovers
+      const vpq = s.vpq.trim().toLowerCase();
+      V.vp = s.varPop ? { x: s.varPop.x + 'px', y: s.varPop.y + 'px', q: s.vpq, onQ: e => this.setState({ vpq: e.target.value }), close: () => this.setState({ varPop: null }), brace: s.varPop.brace,
+        items: VARS.filter(x => x.status === 'ACTIVE' && (!vpq || x.key.includes(vpq) || x.label.toLowerCase().includes(vpq))).slice(0, 9).map(x => ({ ...x, pick: e => { e.preventDefault(); this.insertVar(x.key, s.varPop.brace); } })),
+        onKey: e => { if (e.key === 'Enter') { const f = VARS.find(x => x.status === 'ACTIVE' && (!vpq || x.key.includes(vpq) || x.label.toLowerCase().includes(vpq))); if (f) { e.preventDefault(); this.insertVar(f.key, s.varPop.brace); } } } } : null;
+      V.hasVp = !!V.vp;
+      V.sl = s.slash ? { x: s.slash.x + 'px', y: s.slash.y + 'px', close: () => this.setState({ slash: null }), items: [['p','Paragraph','Plain text',true],['h2','Heading','Section heading (H2)',true],['ul','Bulleted list','',true],['ol','Numbered list','',true],['var','Variable','Insert a {{variable}}',true],['sec','Section','From the section library',true],['h3','Subheading (H3)','Not in the allowed content set',false],['table','Table','Not in the allowed content set',false]].map(([k, l, d, ok]) => ({ l, d, ok, dis: !ok, op: ok ? '1' : '.5', nb: !ok, pick: e => { e.preventDefault(); if (!ok) return; const id = s.slash.id; if (k === 'var') { const el = this.E[id]; el.focus(); const r = document.createRange(); r.selectNodeContents(el); r.collapse(false); this._range = r; this.setState({ slash: null, varPop: { x: s.slash.x, y: s.slash.y, brace: false }, vpq: '' }); } else if (k === 'sec') this.setState({ slash: null, leftOpen: true, leftTab: 'sections' }); else { this._focus = id; this.setType(id, k); this.setState({ slash: null }); } } })) } : null;
+      V.hasSl = !!V.sl;
+      const bm = s.blockMenu && blocks.find(b => b.id === s.blockMenu.id);
+      V.bm = bm ? { x: s.blockMenu.x + 'px', y: s.blockMenu.y + 'px', close: () => this.setState({ blockMenu: null }),
+        types: ['p','h2','ul','ol'].map(k => ({ l: BT[k][0], on: bm.t === k, mark: bm.t === k ? '✓' : '', pick: () => this.setType(bm.id, k) })),
+        dup: () => { const nb = B(bm.t, this.H[bm.id] !== undefined ? this.H[bm.id] : bm.html); this.insertBlocks([nb], bm.id); this.setState({ blockMenu: null }); this.toast('Block duplicated.'); },
+        up: () => { const bl = this.live(), i = bl.findIndex(x => x.id === bm.id); if (i > 0) { [bl[i - 1], bl[i]] = [bl[i], bl[i - 1]]; this.setBlocks(bl); } this.setState({ blockMenu: null }); },
+        down: () => { const bl = this.live(), i = bl.findIndex(x => x.id === bm.id); if (i < bl.length - 1) { [bl[i + 1], bl[i]] = [bl[i], bl[i + 1]]; this.setBlocks(bl); } this.setState({ blockMenu: null }); },
+        del: () => { const bl = this.live().filter(x => x.id !== bm.id); delete this.H[bm.id]; this.setBlocks(bl); this.setState({ blockMenu: null, sel: null }); this.toast('Block deleted.'); } } : null;
+      V.hasBm = !!V.bm;
+      V.anyPop = V.hasVp || V.hasSl || V.hasBm || s.more;
+      V.closePops = () => this.setState({ varPop: null, slash: null, blockMenu: null, more: false });
+    }
+    // dialog
+    const D = s.dlg;
+    if (D) {
+      const fields = (D.fields || []).map(f => { const val = D.values[f.key]; const set = x => this.setDv(f.key, x); return { ...f, value: f.type === 'tags' ? '' : val, checked: !!val, isSelect: f.type === 'select', isText: f.type === 'text' || f.type === 'number', isArea: f.type === 'textarea', isCheck: f.type === 'check', isTags: f.type === 'tags', inputType: f.type, hasHelp: !!f.helper, count: f.max ? String(val || '').length + ' / ' + f.max : '', hasCount: !!f.max,
+        onChange: e => { let x = f.type === 'check' ? e.target.checked : e.target.value; if (f.max && typeof x === 'string') x = x.slice(0, f.max); set(x); },
+        options: (f.options || []).map(o => ({ v: o[0], l: o[1], dis: !!o[2] })),
+        tags: f.type === 'tags' ? (val || []).map(g => ({ g, rm: () => set(val.filter(y => y !== g)) })) : [], tagDraft: (D.tagDraft || {})[f.key] || '',
+        onTag: e => { const tv = e.target.value.toUpperCase().replace(/[^A-Z0-9_]/g, ''); this.setState(st => ({ dlg: { ...st.dlg, tagDraft: { ...st.dlg.tagDraft, [f.key]: tv } } })); },
+        onTagKey: e => { const tv = (D.tagDraft || {})[f.key]; if (e.key === 'Enter' && tv) { e.preventDefault(); if (!(val || []).includes(tv) && (val || []).length < 16) set([...(val || []), tv]); this.setState(st => ({ dlg: { ...st.dlg, tagDraft: { ...st.dlg.tagDraft, [f.key]: '' } } })); } } }; });
+      const ok = (D.fields || []).every(f => { const x = D.values[f.key]; if (f.type === 'check') return !f.required || x; if (f.type === 'tags') return true; return !f.required || String(x).trim().length > 0; });
+      V.dlg = { open: true, title: D.title, cons: D.cons, hasCons: !!D.cons, hasFT: !!D.from, from: D.from, to: D.to, fields, hasError: !!D.error, error: D.error, commit: D.commit, disabled: !ok, op: ok ? '1' : '.45', hasLive: !!D.live, live: D.live ? D.live(D.values) : '', hasSummary: !!D.summary, summary: D.summary || [], hasWarn: !!D.warn, warn: D.warn,
+        isPriv: D.tone === 'priv', isPrimary: D.tone !== 'priv',
+        onCommit: () => { if (!ok) return; const err = D.commitFn(D.values); if (err) this.setState(st => ({ dlg: { ...st.dlg, error: err } })); else this.setState({ dlg: null }); },
+        close: () => this.setState({ dlg: null }), stop: e => e.stopPropagation() };
+    } else V.dlg = { open: false };
+    V.acctOpen = !!s.acct; V.acctUnsaved = s.dirty; V.toggleAcct = () => this.setState({ acct: !s.acct, more: false });
+    const leave = async (to, e) => { if (e && e.preventDefault) e.preventDefault(); if (s.dirty && this.canManage()) await this.saveDraft(true); window.location.href = 'Platform%20Admin.dc.html#' + to; };
+    V.signOut = e => leave('signedout', e); V.switchAcct = e => leave('signin', e);
+    V.sc = s.shortcuts; V.closeSc = () => this.setState({ shortcuts: false });
+    V.keys = [['⌘ S','Save draft'],['⌘ ⇧ P','Toggle preview'],['⌘ B / I / U','Bold, italic, underline'],['/','Block menu on an empty line'],['{{','Insert a variable'],['Enter','New paragraph'],['⌥ ↑ / ⌥ ↓','Move block up or down'],['Backspace','Delete an empty block'],['⌘ Z / ⌘ ⇧ Z','Undo / redo'],['⌘ \\','Collapse or expand the sidebar'],['?','This sheet'],['Esc','Close menus and dialogs']].map(([k, l]) => ({ k, l }));
+    V.hasToast = !!s.toast; V.toast = s.toast;
+    return V;
+  }
+}
+</script>
+</body>
+</html>
