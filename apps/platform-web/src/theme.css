@@ -1,90 +1,231 @@
-/* Aramo Platform Console — theme layer (Inc-2 PR-2, Workstream B / Instrument A3).
+/* Aramo Platform Console — theme layer (PLATFORM-UX-1 F-1, directive R-1/R-2).
  *
- * SAME design system as ats-web (shared fe-foundation chrome), DISTINCT accent.
- * ats-web is "Confident Blue"; the platform console is "Platform Violet" — an
- * unmistakably different hue so an operator always knows they are in the
- * god-console (the A3 anti-footgun; reinforced by the PLATFORM rail marker).
+ * Midnight + terracotta, the platform design language (DDR v1.2–v1.4). Every
+ * value below is copied from doc/design-reference/platform-admin/platform/
+ * Platform Admin.dc.html. It replaces the retired Platform Violet in full.
  *
- * TWO layers, exactly like ats-web/src/ui/theme.css:
+ * THREE layers:
  *   1. Re-map fe-foundation's OWN tokens (--c-*, --font-*, --r-*, --sh-*) so the
- *      frozen Button/Card/Table/Dialog/Combobox/FormField inherit the platform
- *      accent with ZERO edits to libs/fe-foundation.
- *   2. Define the structural NAMESPACE the extracted chrome consumes — this is
- *      EXACTLY the token-variable contract enumerated in the fe-foundation
- *      ui.css header (the acceptance test for the PR-1.6 carve's theming
- *      contract, §8.6). Every variable in that header is defined below.
+ *      frozen Button/Card/Table/Dialog/FormField inherit the platform palette
+ *      with ZERO edits to libs/fe-foundation.
+ *   2. The structural NAMESPACE the shared chrome (ui.css) consumes — the
+ *      token-variable contract enumerated in the ui.css header. The rail values
+ *      are the midnight rail (R-1: AppShell stays; AramoRail/app-rail.css are
+ *      untouched).
+ *   3. The platform token layer (--pw-*): every canvas, ink, line, tone, tint,
+ *      radius, shadow and type value the design uses. platform-web components
+ *      and CSS reference these, never raw hex.
  *
  * Load order (main.tsx): imported AFTER the fe-foundation barrel (pulled in via
- * App), so these :root rules win on equal specificity. libs/fe-foundation is
- * untouched. Neutrals + semantics are held identical to ats-web on purpose — the
- * accent is the sole differentiator (same system, different console).
+ * App), so these :root rules win on equal specificity.
  */
 
 :root {
+  /* ── 3. Platform token layer (Platform Admin.dc.html) ── */
+
+  /* Midnight + terracotta */
+  --pw-midnight: #0b1022;
+  --pw-midnight-raised: #1a1e2f;
+  --pw-terracotta: #d97757;
+  --pw-terracotta-soft: #f0b49e; /* PLATFORM tag text on midnight */
+  --pw-terracotta-hover: #fdf3ef; /* terracotta-outline hover fill */
+  --pw-terracotta-focus: rgba(217, 119, 87, 0.25);
+  --pw-role-badge-bg: #fbe7df;
+  --pw-role-badge-fg: #8a3a1f;
+
+  /* Aramo blue (links + focus) */
+  --pw-link: #022ac0;
+  --pw-link-hover: #3355e0;
+  --pw-focus: #022ac0;
+  --pw-focus-ring: 0 0 0 3px rgba(2, 42, 192, 0.15);
+  --pw-focus-ondark: #7fb0ff;
+  --pw-selection: rgba(2, 42, 192, 0.133);
+
+  /* Canvas, surfaces, ink */
+  --pw-canvas: #f4f6fa;
+  --pw-surface: #ffffff;
+  --pw-surface-2: #fafbfc; /* table head, dialog footer, info boxes */
+  --pw-surface-hover: #f4f6fa; /* button / menu-item hover */
+  --pw-row-hover: #f7f9fc;
+  --pw-ink: #18212b;
+  --pw-ink-2: #3f4a55; /* secondary ink: consequence lines, notes */
+  --pw-muted: #5c6770;
+  --pw-faint: #93a0a8;
+  --pw-row-muted: #7c8790; /* muted table rows (Closed / Offboarding) */
+  --pw-crumb-sep: #c3cbd2;
+
+  /* Lines */
+  --pw-line: #e5e9ed;
+  --pw-line-2: #d5dbe1; /* inputs, secondary buttons */
+  --pw-line-strong: #b9c3cc; /* tile hover border */
+  --pw-rule: #eef1f4; /* table row rule, skeleton block, segmented hover */
+  --pw-rule-2: #f0f2f4; /* list row rule, menu divider */
+
+  /* Status tones (handoff §3.7; design TONE) — text / fill */
+  --pw-ok: #1f7a4d;
+  --pw-ok-bg: #e3f1ea;
+  --pw-info: #2c6fb3;
+  --pw-info-bg: #e6eff8;
+  --pw-warn: #946011;
+  --pw-warn-bg: #faf0dc;
+  --pw-danger: #a8412f;
+  --pw-danger-bg: #f7e7e3;
+  --pw-neutral: #3f4a55;
+  --pw-neutral-bg: #ebeef2;
+  --pw-muted-tone: #66717b;
+  --pw-muted-tone-bg: #f0f2f4;
+  --pw-hot: #c0410c;
+  --pw-hot-bg: #fce9df;
+  --pw-brand: #022ac0;
+  --pw-brand-bg: #e6eafa;
+
+  /* Inline alerts (handoff §3.6) — fill / border / text */
+  --pw-alert-error-bg: #f8e9e6;
+  --pw-alert-error-line: #ebc6be;
+  --pw-alert-error-ink: #7a2e21;
+  --pw-alert-success-bg: #e3f1ea;
+  --pw-alert-success-line: #bfdccb;
+  --pw-alert-success-ink: #17603c;
+  --pw-alert-info-bg: #e6eff8;
+  --pw-alert-info-line: #c9daee;
+  --pw-alert-info-ink: #1e4e80;
+  --pw-alert-warn-bg: #faf0dc;
+  --pw-alert-warn-line: #e7d3a8;
+  --pw-alert-warn-ink: #6b4609;
+  --pw-ack-bg: #fdf6f4; /* terminal-acknowledgement checkbox box */
+
+  /* Overlays */
+  --pw-overlay: rgba(15, 25, 40, 0.45);
+  --pw-overlay-drawer: rgba(15, 25, 40, 0.32);
+
+  /* Shadows */
+  --pw-shadow-tile-hover: 0 2px 8px rgba(15, 25, 40, 0.06);
+  --pw-shadow-menu: 0 12px 32px rgba(15, 25, 40, 0.14);
+  --pw-shadow-dialog: 0 24px 60px rgba(15, 25, 40, 0.28);
+  --pw-shadow-drawer: -12px 0 40px rgba(15, 25, 40, 0.18);
+  --pw-shadow-toast: 0 10px 30px rgba(15, 25, 40, 0.3);
+
+  /* Radii */
+  --pw-r-xs: 4px; /* key caps, skeleton lines */
+  --pw-r-tag: 5px; /* PLATFORM marker, tag chips */
+  --pw-r-sm: 6px; /* kind badge, copy button */
+  --pw-r-btn-sm: 7px; /* 28–30px buttons, segmented items */
+  --pw-r-md: 8px; /* inputs, 34–38px buttons */
+  --pw-r-item: 9px; /* rail items, ⌘K trigger */
+  --pw-r-box: 10px; /* alerts, notes, info boxes, segmented group */
+  --pw-r-menu: 12px; /* menus */
+  --pw-r-card: 13px; /* cards */
+  --pw-r-dialog: 14px; /* dialogs, command palette */
+  --pw-r-pill: 999px;
+
+  /* Type */
+  --pw-font: 'Hanken Grotesk', system-ui, sans-serif;
+  --pw-mono: 'IBM Plex Mono', monospace;
+  --pw-fs-10: 10px;
+  --pw-fs-10-5: 10.5px;
+  --pw-fs-11: 11px;
+  --pw-fs-11-5: 11.5px;
+  --pw-fs-12: 12px;
+  --pw-fs-12-5: 12.5px;
+  --pw-fs-13: 13px;
+  /* The UA button size the design inherits where it sets none (tag × button). */
+  --pw-fs-ua-button: 13.3333px;
+  --pw-fs-13-5: 13.5px;
+  --pw-fs-14: 14px;
+  --pw-fs-15: 15px;
+  --pw-fs-15-5: 15.5px;
+  --pw-fs-16: 16px;
+  --pw-fs-17: 17px;
+  --pw-fs-22: 22px;
+  --pw-fs-24: 24px;
+  --pw-fs-30: 30px;
+  --pw-tracking-tight: -0.02em;
+  --pw-tracking-mark: 0.08em; /* PLATFORM marker / env-bar label */
+  --pw-tracking-label: 0.09em; /* rail group label */
+  --pw-tracking-caps: 0.05em; /* table heads, Change label */
+
+  /* Shell geometry (handoff §3.1) */
+  --pw-envbar-h: 30px;
+  --pw-topbar-h: 56px;
+  --pw-rail-w: 236px;
+  --pw-rail-w-collapsed: 64px;
+
   /* ── 1. fe-foundation token re-map (themes the frozen primitives) ── */
 
-  --c-bg: #f4f6fa; /* canvas */
+  --c-bg: #f4f6fa;
   --c-surface: #ffffff;
   --c-surface-2: #fafbfc;
-  --c-border: #e5e9ed; /* line */
-  --c-border-strong: #d5dbe1; /* line-2 */
-  --c-text: #1b2730; /* ink */
-  --c-text-muted: #5c6770; /* muted */
-  --c-text-subtle: #93a0a8; /* faint */
+  --c-border: #e5e9ed;
+  --c-border-strong: #d5dbe1;
+  --c-text: #18212b;
+  --c-text-muted: #5c6770;
+  --c-text-subtle: #93a0a8;
 
-  /* Accent → Platform Violet */
-  --c-accent: #5b3fa0;
-  --c-accent-hover: #45307c;
-  --c-accent-active: #35245e;
-  --c-accent-soft: #efeafc; /* brand-tint */
+  /* Accent → midnight fills (primary actions are midnight in the design) */
+  --c-accent: #0b1022;
+  --c-accent-hover: #1a1e2f;
+  --c-accent-active: #1a1e2f;
+  --c-accent-soft: #e6eafa;
   --c-accent-fg: #ffffff;
 
-  /* States (semantics held identical to ats-web) */
+  /* States */
   --c-danger: #a8412f;
-  --c-danger-soft: #f7e9e6;
-  --c-danger-border: #e9ccc4;
+  --c-danger-soft: #f8e9e6;
+  --c-danger-border: #ebc6be;
   --c-success: #1f7a4d;
-  --c-success-soft: #e6f2ea;
-  --c-success-border: #c5e2cf;
-  --c-focus-ring: #7c5cc9; /* brand-accent */
+  --c-success-soft: #e3f1ea;
+  --c-success-border: #bfdccb;
+  --c-focus-ring: #022ac0;
 
-  /* Type — same families as ats-web */
+  /* Type — Hanken Grotesk (UI) + IBM Plex Mono (IDs, codes, timestamps) */
   --font-sans: 'Hanken Grotesk', system-ui, -apple-system, sans-serif;
   --font-mono: 'IBM Plex Mono', ui-monospace, 'SF Mono', monospace;
 
-  /* Radii — same mockup grammar */
+  /* Radii */
   --r-sm: 6px;
   --r-md: 9px;
   --r-lg: 13px;
 
-  /* Elevation → single violet-ink shadow (calm grammar) */
-  --sh-1: 0 1px 2px rgba(28, 20, 48, 0.05), 0 4px 16px rgba(28, 20, 48, 0.04);
-  --sh-2: 0 1px 2px rgba(28, 20, 48, 0.06), 0 6px 20px rgba(28, 20, 48, 0.06);
-  --sh-3: 0 8px 28px rgba(28, 20, 48, 0.12), 0 2px 6px rgba(28, 20, 48, 0.06);
+  /* Elevation — the design's cards are flat; menus and dialogs carry shadows */
+  --sh-1: none;
+  --sh-2: 0 12px 32px rgba(15, 25, 40, 0.14);
+  --sh-3: 0 24px 60px rgba(15, 25, 40, 0.28);
 
-  /* ── 2. The fe-foundation ui.css token-variable CONTRACT (§8.6) ── */
+  /* ── 2. The fe-foundation ui.css token-variable CONTRACT ── */
 
-  /* accent/brand — Platform Violet */
-  --brand: #5b3fa0;
-  --brand-strong: #45307c;
-  --brand-accent: #7c5cc9;
-  --brand-tint: #efeafc;
-  --brand-hover: #3355E0;
-  --brand-ondark: #7FB0FF;
+  /* accent/brand — midnight fill, Aramo-blue focus/links */
+  --brand: #0b1022;
+  --brand-strong: #022ac0;
+  --brand-accent: #022ac0;
+  --brand-tint: #e6eafa;
+  --brand-hover: #3355e0;
+  --brand-ondark: #7fb0ff;
 
-  /* rail — deep violet-charcoal (vs ats-web navy #122a47) */
-  --rail: #221a3a;
-  --rail-hover: #33285a;
-  --rail-text: #b6a8d6;
+  /* rail — midnight (R-1) */
+  --rail: #0b1022;
+  --rail-hover: rgba(255, 255, 255, 0.08);
+  --rail-text: #c9cace;
   --rail-strong: #ffffff;
-  --rail-av-bg: #45307c;
-  --rail-av-text: #ddd0f5;
-  --rail-label: #91939C;
-  --rail-badge: rgba(255, 255, 255, 0.14);
+  --rail-av-bg: #1a1e2f;
+  --rail-av-text: #ffffff;
+  --rail-label: #91939c;
+  --rail-badge: rgba(255, 255, 255, 0.12);
 
-  /* surfaces/ink — identical to ats-web */
+  /* rail — the handoff §3.3 token names (aliases of the contract above) */
+  --rail-bg: #0b1022;
+  --rail-surface-raised: #1a1e2f;
+  --rail-item-fg: #c9cace;
+  --rail-item-fg-active: #ffffff;
+  --rail-item-bg-active: rgba(255, 255, 255, 0.12);
+  --rail-item-bg-hover: rgba(255, 255, 255, 0.08);
+  --rail-accent: #d97757;
+  --rail-link: #7fb0ff;
+  --rail-focus: #7fb0ff;
+  --rail-divider: rgba(255, 255, 255, 0.12);
+
+  /* surfaces/ink */
   --canvas: #f4f6fa;
-  --ink: #1b2730;
+  --ink: #18212b;
   --muted: #5c6770;
   --faint: #93a0a8;
   --surface: #ffffff;
@@ -92,19 +233,19 @@
   --line: #e5e9ed;
   --line-2: #d5dbe1;
 
-  /* semantics — identical to ats-web (red is danger in both consoles) */
+  /* semantics (status tones, handoff §3.7) */
   --ok: #1f7a4d;
-  --ok-tint: #e6f2ea;
+  --ok-tint: #e3f1ea;
   --info: #2c6fb3;
-  --info-tint: #e9f1f9;
+  --info-tint: #e6eff8;
   --warn: #946011;
-  --warn-tint: #faefd8;
+  --warn-tint: #faf0dc;
   --danger: #a8412f;
-  --danger-tint: #f7e9e6;
+  --danger-tint: #f7e7e3;
   --hot: #c0410c;
-  --hot-tint: #fbeadf;
+  --hot-tint: #fce9df;
 
-  --elev: 0 1px 2px rgba(28, 20, 48, 0.05), 0 4px 16px rgba(28, 20, 48, 0.04);
+  --elev: none;
 
   --tnum: 'tnum' 1;
 }

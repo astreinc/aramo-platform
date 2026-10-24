@@ -1,0 +1,328 @@
+/* PLATFORM-UX-1 F-6 — Sign Personal: the review queue, its drawer and the pilot
+ * invites (handoff §8). Every value is copied from
+ * doc/design-reference/platform-admin/platform/Platform Admin.dc.html
+ * (is.personal, is.invites, pr.hasD) and expressed through the theme.css token
+ * layer (--pw-*). */
+
+.pw-sp {
+  --pw-sp-row-selected: #f1f4fa; /* the open account's row (design selBg) */
+}
+
+/* ── page header ── */
+
+.pw-sp-head {
+  margin-bottom: 18px;
+}
+.pw-sp-title {
+  margin: 0;
+  font-size: var(--pw-fs-24);
+  font-weight: 700;
+  letter-spacing: var(--pw-tracking-tight);
+}
+.pw-sp-intro {
+  max-width: 720px;
+  margin: 6px 0 0;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-14);
+}
+
+/* ── filter row: the sort select ── */
+
+.pw-sp-sort {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-13);
+}
+.pw-sp-sort__select {
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--pw-line-2);
+  border-radius: var(--pw-r-md);
+  background: var(--pw-surface);
+  color: var(--pw-ink);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-13-5);
+}
+.pw-sp-sort__select:focus {
+  border-color: var(--pw-focus);
+  box-shadow: var(--pw-focus-ring);
+  outline: none;
+}
+
+/* ── table card ── */
+
+.pw-sp-card {
+  overflow: hidden;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-card);
+  background: var(--pw-surface);
+}
+.pw-sp-card .pw-empty__title {
+  font-weight: 700; /* the design's <b> */
+}
+.pw-sp-card__alert {
+  margin: 12px 16px;
+}
+.pw-sp-scroll {
+  overflow-x: auto;
+}
+.pw-sp-table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+}
+.pw-sp-table th {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--pw-line);
+  background: var(--pw-surface-2);
+  color: var(--pw-faint);
+  font-size: var(--pw-fs-11);
+  font-weight: 600;
+  letter-spacing: var(--pw-tracking-caps);
+  text-align: left;
+  text-transform: uppercase;
+}
+.pw-sp-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--pw-rule);
+}
+.pw-sp-table th.pw-sp-num,
+.pw-sp-table td.pw-sp-num {
+  text-align: right;
+}
+.pw-sp-nowrap {
+  white-space: nowrap;
+}
+.pw-sp-row {
+  cursor: pointer;
+}
+.pw-sp-row:hover {
+  background: var(--pw-row-hover);
+}
+.pw-sp-row--on {
+  background: var(--pw-sp-row-selected);
+}
+.pw-sp-row__name {
+  padding: 0;
+  border: none;
+  background: transparent;
+  color: var(--pw-ink);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-13-5);
+  font-weight: 700;
+  text-align: left;
+  cursor: pointer;
+}
+.pw-sp-row__email {
+  color: var(--pw-muted);
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-11-5);
+}
+.pw-sp-row__owed {
+  margin-top: 3px;
+  color: var(--pw-warn);
+  font-size: var(--pw-fs-11-5);
+  font-weight: 600;
+}
+.pw-sp-row__reason {
+  max-width: 240px;
+  font-size: var(--pw-fs-13);
+}
+.pw-sp-row__points {
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-13);
+}
+.pw-sp-row__text {
+  font-size: var(--pw-fs-13);
+}
+.pw-sp-row__sub {
+  color: var(--pw-faint);
+  font-size: var(--pw-fs-11-5);
+}
+
+/* ── drawer ── */
+
+.pw-sp-drawer__name {
+  font-size: var(--pw-fs-17);
+}
+.pw-sp-facts {
+  display: grid;
+  grid-template-columns: 150px 1fr;
+  gap: 8px 12px;
+  margin: 0 0 20px;
+  font-size: var(--pw-fs-13-5);
+}
+.pw-sp-facts__row {
+  display: contents;
+}
+.pw-sp-facts dt {
+  color: var(--pw-muted);
+}
+.pw-sp-facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pw-sp-h3 {
+  display: flex;
+  justify-content: space-between;
+  margin: 0 0 8px;
+  font-size: var(--pw-fs-13);
+  font-weight: 700;
+}
+.pw-sp-h3__aside {
+  color: var(--pw-muted);
+  font-weight: 500;
+}
+.pw-sp-signals {
+  overflow: hidden;
+  margin-bottom: 20px;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-box);
+}
+.pw-sp-signal {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--pw-rule-2);
+}
+.pw-sp-signal--none {
+  display: block;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-13);
+}
+.pw-sp-signal__label {
+  font-size: var(--pw-fs-13-5);
+}
+.pw-sp-signal__pts {
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-12-5);
+  font-weight: 600;
+}
+.pw-sp-signal__code {
+  color: var(--pw-faint);
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-11);
+}
+.pw-sp-gap {
+  margin-bottom: 20px;
+}
+.pw-sp-noreports {
+  margin-bottom: 20px;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-13);
+}
+.pw-sp-report {
+  margin-bottom: 10px;
+  padding: 12px;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-box);
+}
+.pw-sp-report__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.pw-sp-report__cat {
+  font-size: var(--pw-fs-13-5);
+}
+.pw-sp-report__at {
+  margin-left: auto;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12);
+}
+.pw-sp-report__note {
+  margin-top: 6px;
+  color: var(--pw-ink-2);
+  font-size: var(--pw-fs-13);
+}
+.pw-sp-report__decision {
+  margin-top: 4px;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12-5);
+}
+.pw-sp-report__acts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+.pw-sp-rbtn {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--pw-line-2);
+  border-radius: var(--pw-r-btn-sm);
+  background: var(--pw-surface);
+  color: var(--pw-ink);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-12);
+  font-weight: 600;
+  cursor: pointer;
+}
+.pw-sp-rbtn--priv {
+  border-color: var(--pw-terracotta);
+}
+.pw-sp-closed {
+  margin-top: 6px;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12-5);
+}
+/* footer actions (36px) */
+.pw-sp-act {
+  height: 36px;
+  padding: 0 14px;
+  border: 1px solid var(--pw-line-2);
+  border-radius: var(--pw-r-md);
+  background: var(--pw-surface);
+  color: var(--pw-ink);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-13);
+  font-weight: 600;
+  cursor: pointer;
+}
+.pw-sp-act:hover {
+  background: var(--pw-surface-hover);
+}
+.pw-sp-act--danger {
+  border-color: var(--pw-alert-error-line);
+  color: var(--pw-danger);
+}
+
+/* ── pilot invites ── */
+
+.pw-sp-invgrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 380px), 1fr));
+  gap: 16px;
+  align-items: start;
+  max-width: 960px;
+}
+.pw-sp-panel {
+  padding: 20px;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-card);
+  background: var(--pw-surface);
+}
+.pw-sp-panel__head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 14px;
+}
+.pw-sp-panel__title {
+  margin: 0;
+  font-size: var(--pw-fs-15);
+  font-weight: 700;
+}
+.pw-sp-panel__alert {
+  margin-bottom: 12px;
+}
+.pw-sp-panel__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 14px;
+}

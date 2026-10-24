@@ -1,206 +1,264 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import {
-  ApiError,
-  DataTable,
-  InlineAlert,
-  KpiCard,
-  type TableColumn,
-} from '@aramo/fe-foundation';
+import { Link, useNavigate } from 'react-router-dom';
+import { Button, hasScope, useToast, type Session } from '@aramo/fe-foundation';
 
 import {
-  platformApi,
-  type PlatformDashboard,
-  type PlatformDashboardOnboardingRow,
-} from '../platform-api';
-import { StatusBadge } from '../tenants/status';
+  EmptyState,
+  PLATFORM_PERMISSIONS as P,
+  Pill,
+  Skeleton,
+  SkeletonPanel,
+  TENANT_STATUS_PILL,
+  daysAgo,
+  formatClock,
+  formatDate,
+  formatRelative,
+  formatTimestamp,
+  tenantStatusPill,
+} from '../components';
+import { platformApi, type PlatformDashboard, type PlatformDashboardActivityRow } from '../platform-api';
+import { reasonLabel } from '../tenants/lifecycle-reasons';
+import { actorLabel, eventLabel } from '../tenants/tenant-labels';
+import { ownerInviteErrorCopy } from '../tenants/tenant-errors';
+import { WithSession } from '../tenants/with-session';
 
+import '../tenants/tenants.css';
 import './dashboard.css';
 
-// Inc-3 PR-3.8 (Workstream C) — the operator dashboard, the platform console's
-// default screen. Three panels over GET /platform/dashboard: lifecycle status
-// counts (KpiCard tiles, badge colors matching the tenant list), the onboarding
-// funnel (aged PROVISIONED tenants + the not-yet-invited distinction), and the
-// recent tenant.* activity feed (deep-linking into each tenant's audit tab).
-// R10: counts, ages, statuses, and events only — no health metric, no composite
-// index, nothing resembling a numeric rating of a tenant. Empty states are
-// honest — a healthy small estate shows small numbers, not fake density.
+// PLATFORM-UX-1 F-3 (handoff §5; directive R-19) — the operator dashboard over
+// GET /platform/dashboard: status tiles that open the filtered tenant list, the
+// onboarding funnel (PROVISIONED oldest first) with the owner-invite action, and
+// the recent lifecycle activity with human labels. Counts, ages, statuses and
+// events only — no rating of any tenant. Each panel owns its loading and error
+// state; one read feeds all three, so a failed read errors every panel.
 
-function fmtDate(iso: string): string {
-  return new Date(iso).toLocaleDateString(undefined, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  });
+const STATUS_ORDER = Object.keys(TENANT_STATUS_PILL);
+
+type Load = { status: 'loading' } | { status: 'error' } | { status: 'ready'; data: PlatformDashboard; at: Date };
+
+export function DashboardView({ session }: { readonly session?: Session } = {}) {
+  return <WithSession session={session}>{(s) => <Dashboard session={s} />}</WithSession>;
 }
 
-function fmtDateTime(iso: string): string {
-  return new Date(iso).toLocaleString();
-}
+function Dashboard({ session }: { readonly session: Session }) {
+  const navigate = useNavigate();
+  const toast = useToast();
+  const canProvision = hasScope(session, P.tenantProvision);
+  const [load, setLoad] = useState<Load>({ status: 'loading' });
+  const [sending, setSending] = useState<string | null>(null);
 
-// Age in whole days from an ISO timestamp to now. Rendered as the onboarding
-// "how long has this tenant been waiting" signal (an age, not a rating).
-function ageLabel(iso: string): string {
-  const ms = Date.now() - new Date(iso).getTime();
-  const days = Math.max(0, Math.floor(ms / 86_400_000));
-  if (days === 0) return 'today';
-  if (days === 1) return '1 day';
-  return `${days} days`;
-}
-
-function InvitedBadge({ invited }: { readonly invited: boolean }) {
-  return (
-    <span
-      className="pw-badge"
-      style={{
-        display: 'inline-block',
-        padding: '2px 9px',
-        borderRadius: '999px',
-        fontSize: '0.75rem',
-        fontWeight: 600,
-        whiteSpace: 'nowrap',
-        background: invited ? 'var(--ok-tint)' : 'var(--warn-tint)',
-        color: invited ? 'var(--ok)' : 'var(--warn)',
-      }}
-    >
-      {invited ? 'Invited' : 'Not yet invited'}
-    </span>
-  );
-}
-
-const ONBOARDING_COLUMNS: ReadonlyArray<
-  TableColumn<PlatformDashboardOnboardingRow>
-> = [
-  {
-    key: 'name',
-    header: 'Tenant',
-    render: (t) => (
-      <Link className="rc-link-strong" to={`/tenants/${t.tenant_id}`}>
-        <span className="rc-ent__nm">{t.name}</span>
-      </Link>
-    ),
-  },
-  { key: 'created_at', header: 'Provisioned', render: (t) => fmtDate(t.created_at) },
-  { key: 'age', header: 'Waiting', render: (t) => ageLabel(t.created_at) },
-  {
-    key: 'invited',
-    header: 'Owner invite',
-    render: (t) => <InvitedBadge invited={t.invited} />,
-  },
-];
-
-export function DashboardView() {
-  const [data, setData] = useState<PlatformDashboard | null>(null);
-  const [error, setError] = useState<string | null>(null);
-  const [loading, setLoading] = useState(true);
-
-  const load = useCallback(async () => {
-    setLoading(true);
-    setError(null);
+  const fetchDashboard = useCallback(async (): Promise<void> => {
+    setLoad({ status: 'loading' });
     try {
-      const res = await platformApi.getDashboard();
-      setData(res);
-    } catch (e) {
-      setError(
-        e instanceof ApiError ? e.message : 'Failed to load the dashboard.',
-      );
-    } finally {
-      setLoading(false);
+      const data = await platformApi.getDashboard();
+      setLoad({ status: 'ready', data, at: new Date() });
+    } catch {
+      setLoad({ status: 'error' });
     }
   }, []);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void fetchDashboard();
+  }, [fetchDashboard]);
 
-  if (error) {
-    return (
-      <div className="pw-page">
-        <InlineAlert variant="error">{error}</InlineAlert>
-      </div>
-    );
-  }
-  if (!data) {
-    return <div className="pw-page">Loading…</div>;
-  }
+  const sendInvite = async (tenantId: string, name: string): Promise<void> => {
+    setSending(tenantId);
+    try {
+      await platformApi.resendOwnerInvite(tenantId);
+      toast.show(`Owner invite sent to ${name}.`);
+      void fetchDashboard();
+    } catch (e) {
+      toast.show(ownerInviteErrorCopy(e));
+    } finally {
+      setSending(null);
+    }
+  };
+
+  const data = load.status === 'ready' ? load.data : null;
+  const counts = new Map((data?.status_counts ?? []).map((c) => [c.status, c.count]));
+  const activityValid = data !== null && Array.isArray(data.recent_activity);
+  const funnelValid = data !== null && Array.isArray(data.onboarding);
 
   return (
-    <div className="pw-page pw-dashboard">
-      <div className="pw-page__head">
-        <h1 className="pw-page__title">Dashboard</h1>
+    <div className="pw-page">
+      <div className="pt-head pt-head--22">
+        <div>
+          <h1 className="pt-h1">Dashboard</h1>
+          <p className="pt-intro">
+            Tenant counts, onboarding and recent lifecycle activity. The Aramo Platform tenant is excluded.
+          </p>
+        </div>
+        <div className="pt-head__actions">
+          {load.status === 'ready' ? (
+            <span className="pd-refreshed">
+              Refreshed <span className="pt-mono">{formatClock(load.at)}</span>
+            </span>
+          ) : null}
+          <Button unstyled className="pw-btn pw-btn--secondary pw-btn--34" onClick={() => void fetchDashboard()}>
+            Refresh
+          </Button>
+        </div>
       </div>
 
-      {/* Status counts — one KpiCard per lifecycle status, badge-colored label. */}
-      <section aria-label="Tenant status counts" className="pw-kpis">
-        {data.status_counts.map((c) => (
-          <KpiCard
-            key={c.status}
-            label={<StatusBadge status={c.status} />}
-            value={c.count}
-          />
-        ))}
-      </section>
+      {load.status === 'error' ? (
+        <div role="alert" className="pw-alert pw-alert--error pt-panel-alert pd-tiles-alert">
+          <span>
+            <b>{"Couldn't load tenant counts."}</b>
+          </span>
+          <TryAgain onClick={() => void fetchDashboard()} />
+        </div>
+      ) : (
+        <section aria-label="Tenant status counts" className="pd-tiles">
+          {STATUS_ORDER.map((status) => {
+            const pill = tenantStatusPill(status);
+            return (
+              <Button
+                key={status}
+                unstyled
+                className="pd-tile"
+                onClick={() => navigate(`/tenants?status=${status}`)}
+              >
+                <Pill tone={pill.tone}>{pill.label}</Pill>
+                {data === null ? (
+                  <Skeleton width={48} height={30} radius={6} />
+                ) : (
+                  <span className="pd-tile__count">{counts.get(status) ?? 0}</span>
+                )}
+                <span className="pd-tile__more">View tenants →</span>
+              </Button>
+            );
+          })}
+        </section>
+      )}
 
-      <div className="pw-dashboard__grid">
-        {/* Onboarding funnel. */}
-        <section className="pw-panel" aria-label="Onboarding funnel">
-          <h2 className="pw-panel__title">Onboarding funnel</h2>
-          <p className="pw-panel__sub">
-            Provisioned tenants awaiting activation, oldest first.
-          </p>
-          <DataTable
-            columns={ONBOARDING_COLUMNS}
-            rows={data.onboarding}
-            rowKey={(t) => t.tenant_id}
-            emptyMessage={
-              loading ? 'Loading…' : 'No tenants are waiting to onboard.'
-            }
-          />
+      <div className="pd-panels">
+        <section className="pt-card" aria-labelledby="pd-funnel-title">
+          <div className="pt-card__head">
+            <h2 id="pd-funnel-title" className="pt-card__title">
+              Onboarding funnel
+            </h2>
+            <p className="pt-card__sub">Provisioned tenants waiting for their owner&apos;s first sign-in, oldest first.</p>
+          </div>
+          {load.status === 'loading' ? <SkeletonPanel lines={['100%', '80%', '90%']} /> : null}
+          {load.status === 'error' || (data !== null && !funnelValid) ? (
+            <div role="alert" className="pw-alert pw-alert--error pt-panel-alert">
+              <span>
+                <b>{"Couldn't load the onboarding funnel."}</b>
+                {data !== null ? ' The other panels are unaffected.' : null}
+              </span>
+              <TryAgain onClick={() => void fetchDashboard()} />
+            </div>
+          ) : null}
+          {funnelValid && data.onboarding.length === 0 ? (
+            <EmptyState title="No tenants waiting" body="Every provisioned tenant's owner has signed in." />
+          ) : null}
+          {funnelValid && data.onboarding.length > 0 ? (
+            <div className="pt-scroll">
+              <table className="pt-table pt-min560">
+                <thead>
+                  <tr>
+                    <th className="pt-th pt-th--first">Tenant</th>
+                    <th className="pt-th">Provisioned</th>
+                    <th className="pt-th pt-th--right">Waiting</th>
+                    <th className="pt-th">Owner invite</th>
+                    <th className="pt-th pt-th--last">
+                      <span className="pw-sr-only">Action</span>
+                    </th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {data.onboarding.slice(0, 10).map((f) => (
+                    <tr key={f.tenant_id}>
+                      <td className="pt-td pt-td--first">
+                        <Link className="pt-strong" to={`/tenants/${f.tenant_id}`}>
+                          {f.name}
+                        </Link>
+                      </td>
+                      <td className="pt-td pt-td--13 pt-nowrap">{formatDate(f.created_at)}</td>
+                      <td className="pt-td pt-td--13 pt-nowrap pt-right pt-strong">{daysAgo(f.created_at) ?? 0} d</td>
+                      <td className="pt-td">
+                        {f.invited ? <Pill tone="info">Invited</Pill> : <Pill tone="warn">Not yet invited</Pill>}
+                      </td>
+                      <td className="pt-td pt-td--last pt-right">
+                        {canProvision ? (
+                          <Button
+                            unstyled
+                            className="pw-btn pw-btn--secondary pw-btn--30"
+                            disabled={sending === f.tenant_id}
+                            aria-busy={sending === f.tenant_id || undefined}
+                            onClick={() => void sendInvite(f.tenant_id, f.name)}
+                          >
+                            {f.invited ? 'Resend invite' : 'Send invite'}
+                          </Button>
+                        ) : null}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          ) : null}
         </section>
 
-        {/* Recent lifecycle activity. */}
-        <section className="pw-panel" aria-label="Recent activity">
-          <h2 className="pw-panel__title">Recent activity</h2>
-          <p className="pw-panel__sub">
-            The latest tenant lifecycle events across the estate.
-          </p>
-          {data.recent_activity.length === 0 ? (
-            <p className="pw-audit__meta">No recent lifecycle activity.</p>
-          ) : (
-            <ul className="pw-audit">
-              {data.recent_activity.map((a, i) => (
-                <li
-                  className="pw-audit__item"
-                  key={`${a.event_type}-${a.created_at}-${i}`}
-                >
-                  <div className="pw-audit__head">
-                    <span>{a.event_type}</span>
-                    <span className="pw-audit__meta">
-                      {fmtDateTime(a.created_at)}
-                    </span>
-                  </div>
-                  <div className="pw-audit__detail">
-                    {a.tenant_id !== null ? (
-                      <Link
-                        className="rc-link-strong"
-                        to={`/tenants/${a.tenant_id}?tab=lifecycle`}
-                      >
-                        {a.tenant_name ?? a.tenant_id}
-                      </Link>
-                    ) : (
-                      (a.tenant_name ?? '—')
-                    )}
-                    {a.reason_code ? (
-                      <span className="pw-audit__meta"> · {a.reason_code}</span>
-                    ) : null}
-                    <span className="pw-audit__meta"> · {a.actor_type}</span>
-                  </div>
-                </li>
+        <section className="pt-card" aria-labelledby="pd-activity-title">
+          <div className="pt-card__head">
+            <h2 id="pd-activity-title" className="pt-card__title">
+              Recent lifecycle activity
+            </h2>
+            <p className="pt-card__sub">Last 15 tenant lifecycle events.</p>
+          </div>
+          {load.status === 'loading' ? <SkeletonPanel lines={['100%', '70%', '85%']} /> : null}
+          {load.status === 'error' || (data !== null && !activityValid) ? (
+            <div role="alert" className="pw-alert pw-alert--error pt-panel-alert">
+              <span>
+                <b>{"Couldn't load recent activity."}</b>
+                {data !== null ? ' The other panels are unaffected.' : null}
+              </span>
+              <TryAgain onClick={() => void fetchDashboard()} />
+            </div>
+          ) : null}
+          {activityValid && data.recent_activity.length === 0 ? <EmptyState body="No lifecycle events yet." /> : null}
+          {activityValid && data.recent_activity.length > 0 ? (
+            <ul className="pd-activity">
+              {data.recent_activity.slice(0, 15).map((e, i) => (
+                <ActivityRow key={`${e.event_type}-${e.created_at}-${i}`} e={e} />
               ))}
             </ul>
-          )}
+          ) : null}
         </section>
       </div>
     </div>
+  );
+}
+
+function ActivityRow({ e }: { readonly e: PlatformDashboardActivityRow }) {
+  const ts = formatTimestamp(e.created_at);
+  return (
+    <li className="pd-activity__row">
+      <span className="pd-activity__what">
+        <b className="pt-strong">{eventLabel(e.event_type)}</b>
+        {' · '}
+        {e.tenant_id !== null ? (
+          <Link to={`/tenants/${e.tenant_id}?tab=lifecycle`}>{e.tenant_name ?? e.tenant_id}</Link>
+        ) : (
+          (e.tenant_name ?? 'Unknown tenant')
+        )}
+      </span>
+      <span className="pd-activity__rel" title={ts}>
+        {formatRelative(e.created_at)}
+      </span>
+      <span className="pd-activity__why">
+        {e.reason_code ? reasonLabel(e.reason_code) : 'No reason code'} · {actorLabel(e.actor_type, e.event_type)}
+      </span>
+      <span className="pd-activity__ts">{ts}</span>
+    </li>
+  );
+}
+
+function TryAgain({ onClick }: { readonly onClick: () => void }) {
+  return (
+    <Button unstyled className="pw-btn pw-btn--secondary pw-btn--30 pt-panel-alert__action" onClick={onClick}>
+      Try again
+    </Button>
   );
 }

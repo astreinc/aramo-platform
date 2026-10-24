@@ -3,11 +3,15 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "sourceRoot": "apps/platform-web/src",
   "projectType": "application",
-  "tags": ["scope:platform"],
+  "tags": [
+    "scope:platform"
+  ],
   "targets": {
     "build": {
       "executor": "@nx/vite:build",
-      "outputs": ["{options.outputPath}"],
+      "outputs": [
+        "{options.outputPath}"
+      ],
       "options": {
         "outputPath": "dist/apps/platform-web",
         "configFile": "apps/platform-web/vite.config.ts"
@@ -34,7 +38,39 @@
     "lint": {
       "executor": "@nx/eslint:lint",
       "options": {
-        "lintFilePatterns": ["apps/platform-web/src/**/*.{ts,tsx}"]
+        "lintFilePatterns": [
+          "apps/platform-web/src/**/*.{ts,tsx}"
+        ]
+      }
+    },
+    "e2e-visual": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/platform-web",
+        "command": "playwright test --project=visual"
+      },
+      "metadata": {
+        "description": "PLATFORM-UX-1 H-1 visual parity vs Platform Admin.dc.html (1440 + 900). Not in CI (lead decision)."
+      }
+    },
+    "e2e-visual-reference": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/platform-web",
+        "command": "PW_CAPTURE_REFERENCE=1 playwright test --project=visual capture-reference"
+      },
+      "metadata": {
+        "description": "Re-captures the design-file reference images into e2e/visual/__screenshots__ (only when the pinned design changes)."
+      }
+    },
+    "e2e-a11y": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/platform-web",
+        "command": "playwright test --project=a11y --project=keyboard --project=responsive"
+      },
+      "metadata": {
+        "description": "PLATFORM-UX-1 H-1 axe (0 serious/critical), keyboard-only journeys, 900px pass. Not in CI (lead decision)."
       }
     }
   }

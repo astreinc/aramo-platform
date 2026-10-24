@@ -372,6 +372,43 @@ paths:
             application/json:
               schema:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
+  /platform/me:
+    get:
+      operationId: getPlatformMe
+      tags: [Platform Admins]
+      summary: The signed-in platform operator's own identity.
+      description: |
+        PLATFORM-UX-1 B-1a — the console chrome's identity read (environment
+        bar + account menu). Caller-only: `user_id` is the token subject and
+        `tenant_id` the token tenant; there is no path, query, or body input,
+        so no other principal is readable through this operation. Read from the
+        identity membership: the user's email and display name, the tenant's
+        name (display name, else the tenant name), and the caller's active
+        role keys in that tenant (sorted). A token whose subject has no
+        membership in its tenant → 404.
+
+        Requires scope `platform:tenant:read`; platform tier only.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      responses:
+        '200':
+          description: The caller's identity.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformMeResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          description: '`NOT_FOUND` — the token subject has no membership in its tenant.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
   /platform/dashboard:
     get:
       operationId: getPlatformDashboard
@@ -526,7 +563,8 @@ paths:
       summary: Get a tenant's detail.
       description: |
         Single-tenant detail read (the identity `TenantDto` shape: id, name,
-        status, home-realm identity_provider, is_active, timestamps).
+        kind, status, home-realm identity_provider, is_active, timestamps) plus
+        the tenant's subdomain `slug` (or null; PLATFORM-UX-1 B-1b, additive).
 
         Requires scope `platform:tenant:read`.
       security:
@@ -1097,6 +1135,13 @@ paths:
         pool; the invitee is bound to the sentinel platform tenant with the
         `super_admin` role. Idempotency mirrors the tenant-invite flow.
 
+        PLATFORM-UX-1 B-1c — the email's domain must be one of the allowed
+        operator domains (`PLATFORM_ADMIN_EMAIL_DOMAINS`, a comma list,
+        case-insensitive; default `aramo.ai`). Any other domain is refused 400
+        `VALIDATION_ERROR` with `details.reason`
+        `platform_admin_domain_not_allowed`, before any Cognito or identity
+        side effect.
+
         Requires scope `platform:admin:invite`.
       security:
         - BearerAuth: []
@@ -1115,7 +1160,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/InviteUserResponse'
         '400':
-          description: '`VALIDATION_ERROR` — invalid email.'
+          description: '`VALIDATION_ERROR` — invalid email, or the email domain is not an allowed operator domain (`details.reason` `platform_admin_domain_not_allowed`).'
           content:
             application/json:
               schema:
@@ -3562,7 +3607,7 @@ components:
     TenantDetail:
       type: object
       additionalProperties: false
-      required: [id, name, kind, is_active, created_at, updated_at, identity_provider, status]
+      required: [id, name, kind, slug, is_active, created_at, updated_at, identity_provider, status]
       properties:
         id:
           type: string
@@ -3571,6 +3616,11 @@ components:
           type: string
         kind:
           $ref: '#/components/schemas/TenantKind'
+        slug:
+          oneOf:
+            - type: string
+            - type: 'null'
+          description: The tenant's subdomain label (`<slug>.aramo.ai`), or null (PLATFORM-UX-1 B-1b).
         is_active:
           type: boolean
         created_at:
@@ -3707,6 +3757,32 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PlatformDashboardActivityRow'
+
+    PlatformMeResponse:
+      type: object
+      additionalProperties: false
+      required: [user_id, email, display_name, tenant_id, tenant_name, role_keys]
+      description: The signed-in platform operator's own identity (caller-only; PLATFORM-UX-1 B-1a).
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: string
+          format: email
+        display_name:
+          oneOf:
+            - type: string
+            - type: 'null'
+        tenant_id:
+          type: string
+          format: uuid
+        tenant_name:
+          type: string
+        role_keys:
+          type: array
+          items:
+            type: string
 
     InviteUserRequest:
       type: object

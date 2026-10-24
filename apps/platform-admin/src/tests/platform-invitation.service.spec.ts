@@ -1,7 +1,10 @@
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { AramoError } from '@aramo/common';
 
-import { PlatformInvitationService } from '../app/platform/platform-invitation.service.js';
+import {
+  PlatformInvitationService,
+  platformAdminEmailDomains,
+} from '../app/platform/platform-invitation.service.js';
 import type { CognitoAdminService } from '../app/platform/cognito/cognito-admin.service.js';
 
 // Unit-level proofs for the platform-tier saga. The integration spec
@@ -1080,13 +1083,13 @@ describe('PlatformInvitationService — platform admin invite (proof 7 platform-
     mocks.identitySvc.findUserByEmail.mockResolvedValue(null);
     mocks.cognito.adminCreateUser.mockResolvedValue({ cognito_sub: 'plat-sub' });
     mocks.identitySvc.createUserFromInvitation.mockResolvedValue({
-      user: { id: 'plat-u', email: 'p@a.io', display_name: null, is_active: true, deactivated_at: null, created_at: '', updated_at: '' },
+      user: { id: 'plat-u', email: 'p@aramo.ai', display_name: null, is_active: true, deactivated_at: null, created_at: '', updated_at: '' },
       membership_id: 'plat-m',
     });
 
     const svc = buildService(mocks);
     await svc.invitePlatformAdmin({
-      email: 'p@a.io',
+      email: 'p@aramo.ai',
       actor_user_id: 'sa',
       request_id: TEST_REQUEST_ID,
     });
@@ -1095,7 +1098,7 @@ describe('PlatformInvitationService — platform admin invite (proof 7 platform-
       'super_admin',
     ]);
     expect(mocks.cognito.adminCreateUser).toHaveBeenCalledWith(
-      expect.objectContaining({ pool: 'platform', email: 'p@a.io' }),
+      expect.objectContaining({ pool: 'platform', email: 'p@aramo.ai' }),
     );
     // Sentinel tenant id is the PLATFORM_TENANT_SENTINEL_ID from libs/auth.
     // D-AUTHZ-PLATFORM-INVITE-1: super_admin is a see-all-tier role
@@ -1108,6 +1111,127 @@ describe('PlatformInvitationService — platform admin invite (proof 7 platform-
         request_id: TEST_REQUEST_ID,
       }),
     );
+  });
+});
+
+
+// PLATFORM-UX-1 B-1c (directive R-8) — the platform-admin invite email-domain
+// allowlist (PLATFORM_ADMIN_EMAIL_DOMAINS, default aramo.ai). A refused domain
+// is a 400 VALIDATION_ERROR reason platform_admin_domain_not_allowed raised
+// BEFORE any Cognito or identity call.
+describe('PlatformInvitationService — platform admin invite email-domain allowlist (B-1c)', () => {
+  const ENV_KEY = 'PLATFORM_ADMIN_EMAIL_DOMAINS';
+  let saved: string | undefined;
+  beforeEach(() => {
+    saved = process.env[ENV_KEY];
+    delete process.env[ENV_KEY];
+  });
+  afterEach(() => {
+    if (saved === undefined) delete process.env[ENV_KEY];
+    else process.env[ENV_KEY] = saved;
+  });
+
+  function happyMocks(): Mocks {
+    const mocks = makeMocks();
+    mocks.identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['r-super']);
+    mocks.cognito.adminGetUser.mockResolvedValue(null);
+    mocks.cognito.adminCreateUser.mockResolvedValue({ cognito_sub: 'plat-sub' });
+    mocks.identitySvc.createUserFromInvitation.mockResolvedValue({
+      user: { id: 'plat-u', email: 'x', display_name: null, is_active: true, deactivated_at: null, created_at: '', updated_at: '' },
+      membership_id: 'plat-m',
+    });
+    return mocks;
+  }
+
+  async function expectRefused(mocks: Mocks, email: string): Promise<void> {
+    const err = await buildService(mocks)
+      .invitePlatformAdmin({ email, actor_user_id: 'sa', request_id: TEST_REQUEST_ID })
+      .catch((e: unknown) => e);
+    expect(err).toBeInstanceOf(AramoError);
+    expect((err as AramoError).code).toBe('VALIDATION_ERROR');
+    expect((err as AramoError).statusCode).toBe(400);
+    expect((err as AramoError).context.details).toEqual({ reason: 'platform_admin_domain_not_allowed' });
+    // Refused before any side effect.
+    expect(mocks.cognito.adminGetUser).not.toHaveBeenCalled();
+    expect(mocks.cognito.adminCreateUser).not.toHaveBeenCalled();
+    expect(mocks.identitySvc.findUserByEmail).not.toHaveBeenCalled();
+    expect(mocks.identitySvc.createUserFromInvitation).not.toHaveBeenCalled();
+  }
+
+  it('default (unset): an aramo.ai address is allowed', async () => {
+    const mocks = happyMocks();
+    await buildService(mocks).invitePlatformAdmin({
+      email: 'ops@aramo.ai',
+      actor_user_id: 'sa',
+      request_id: TEST_REQUEST_ID,
+    });
+    expect(mocks.cognito.adminCreateUser).toHaveBeenCalledWith(
+      expect.objectContaining({ pool: 'platform', email: 'ops@aramo.ai' }),
+    );
+  });
+
+  it('default (unset): any other domain is refused 400 platform_admin_domain_not_allowed', async () => {
+    await expectRefused(happyMocks(), 'ops@example.com');
+  });
+
+  it('a subdomain or look-alike of an allowed domain is refused (exact domain match)', async () => {
+    await expectRefused(happyMocks(), 'ops@eu.aramo.ai');
+    await expectRefused(happyMocks(), 'ops@notaramo.ai');
+  });
+
+  it('multiple domains: each listed domain is allowed, an unlisted one refused', async () => {
+    process.env[ENV_KEY] = 'aramo.ai, astreinc.com';
+    for (const email of ['a@aramo.ai', 'b@astreinc.com']) {
+      const mocks = happyMocks();
+      await buildService(mocks).invitePlatformAdmin({ email, actor_user_id: 'sa', request_id: TEST_REQUEST_ID });
+      expect(mocks.cognito.adminCreateUser).toHaveBeenCalledTimes(1);
+    }
+    await expectRefused(happyMocks(), 'c@example.com');
+  });
+
+  it('a configured list replaces the default (aramo.ai not implied)', async () => {
+    process.env[ENV_KEY] = 'astreinc.com';
+    await expectRefused(happyMocks(), 'ops@aramo.ai');
+  });
+
+  it('case-insensitive on both the configured list and the email', async () => {
+    process.env[ENV_KEY] = ' AstreInc.COM ,ARAMO.AI';
+    const mocks = happyMocks();
+    await buildService(mocks).invitePlatformAdmin({
+      email: 'Ops@ARAMO.ai',
+      actor_user_id: 'sa',
+      request_id: TEST_REQUEST_ID,
+    });
+    expect(mocks.cognito.adminCreateUser).toHaveBeenCalledTimes(1);
+  });
+
+  it('the tenant-pool invite is NOT subject to the platform-admin allowlist', async () => {
+    const mocks = happyMocks();
+    mocks.identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['r-rec']);
+    await buildService(mocks).inviteUserIntoTenant({
+      tenant_id: 'tenant-x',
+      email: 'rec@example.com',
+      role_keys: ['recruiter'],
+      display_name: null,
+      actor_user_id: 'sa',
+      pool: 'tenant',
+      request_id: TEST_REQUEST_ID,
+    });
+    expect(mocks.cognito.adminCreateUser).toHaveBeenCalledTimes(1);
+  });
+});
+
+describe('platformAdminEmailDomains (B-1c env parsing)', () => {
+  it('defaults to [aramo.ai] when unset or blank', () => {
+    expect(platformAdminEmailDomains({})).toEqual(['aramo.ai']);
+    expect(platformAdminEmailDomains({ PLATFORM_ADMIN_EMAIL_DOMAINS: '' })).toEqual(['aramo.ai']);
+    expect(platformAdminEmailDomains({ PLATFORM_ADMIN_EMAIL_DOMAINS: ' , ,' })).toEqual(['aramo.ai']);
+  });
+
+  it('splits on commas, trims, lowercases, strips a leading @ and drops empty entries', () => {
+    expect(
+      platformAdminEmailDomains({ PLATFORM_ADMIN_EMAIL_DOMAINS: ' Aramo.AI ,, @astreinc.com ' }),
+    ).toEqual(['aramo.ai', 'astreinc.com']);
   });
 });
 

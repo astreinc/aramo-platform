@@ -1,13 +1,22 @@
-import { useEffect, useState } from 'react';
-import { InlineAlert } from '@aramo/fe-foundation';
+import { Button } from '@aramo/fe-foundation';
 
-import { platformApi, type PlatformTenantSign } from '../platform-api';
+import { Pill, SkeletonPanel, formatDate, formatRelative, formatTimestamp } from '../components';
+import type { PlatformTenantSign } from '../platform-api';
 
-// Aramo Sign launch — the operator's READ-ONLY view of a tenant's Aramo Sign
-// account: product capabilities, the effective subscription, this period's
-// usage and the recent billing-provider events. Support visibility only; there
-// are deliberately no actions here (capability and subscription changes are
-// governed commercial actions).
+import {
+  billingEventLabel,
+  billingOutcomePill,
+  subscriptionPill,
+  subscriptionSourceLabel,
+} from './tenant-labels';
+
+// PLATFORM-UX-1 F-5 (handoff §6.3 Aramo Sign) — the operator's READ-ONLY view
+// of a tenant's Aramo Sign account: plan + subscription pill (never "—"; no
+// subscription is "No subscription"), capabilities, Sign enabled, Source with
+// its mono code (FREE → "Free (Sign Personal)"), eligibility, storage, online
+// billing, the period's usage with a 6px bar (or the unsubscribed allowance
+// state), the dates, and the billing events. No actions: plan, subscription
+// and capability changes are governed commercial actions.
 
 function bytes(n: number): string {
   if (n >= 1024 ** 3) return `${Math.round((n / 1024 ** 3) * 10) / 10} GB`;
@@ -15,113 +24,199 @@ function bytes(n: number): string {
   return `${Math.round(n / 1024)} KB`;
 }
 
-function fmt(iso: string | null | undefined): string {
-  return iso ? new Date(iso).toLocaleString() : '—';
+/** "2.4 GB of 25 GB" · "4 MB (not limited)" · "Not metered". */
+export function storageLine(storage: PlatformTenantSign['storage']): string {
+  if (storage === null || storage === undefined) return 'Not metered';
+  if (storage.unlimited || storage.limit === null) return `${bytes(storage.used)} (not limited)`;
+  return `${bytes(storage.used)} of ${bytes(storage.limit)}`;
 }
 
-export function TenantSignPanel({ tenantId }: { tenantId: string }) {
-  const [data, setData] = useState<PlatformTenantSign | null>(null);
-  const [error, setError] = useState<string | null>(null);
+/** The usage headline and bar width (null width = no bar). */
+export function usageLine(allowance: PlatformTenantSign['allowance']): { text: string; pct: number | null } {
+  if (!allowance.subscribed) {
+    return { text: `Not metered · ${subscriptionPill(allowance.state ?? 'NONE').label}`, pct: null };
+  }
+  if (allowance.limit === null) return { text: `${allowance.used} envelopes (unlimited)`, pct: null };
+  const pct = allowance.limit > 0 ? Math.min(100, Math.round((allowance.used / allowance.limit) * 100)) : 100;
+  return { text: `${allowance.used} of ${allowance.limit} envelopes`, pct };
+}
 
-  useEffect(() => {
-    let live = true;
-    platformApi
-      .getTenantSign(tenantId)
-      .then((d) => live && setData(d))
-      .catch(() => live && setError('Could not load the Aramo Sign account.'));
-    return () => {
-      live = false;
-    };
-  }, [tenantId]);
+const yesNo = (b: boolean): string => (b ? 'Yes' : 'No');
 
-  if (error !== null) return <InlineAlert variant="error">{error}</InlineAlert>;
-  if (data === null) return <p>Loading…</p>;
+export interface TenantSignPanelProps {
+  readonly data: PlatformTenantSign | null;
+  readonly failed: boolean;
+  readonly onRetry: () => void;
+}
+
+export function TenantSignPanel({ data, failed, onRetry }: TenantSignPanelProps) {
+  const banner = (
+    <div className="pt-note" role="note">
+      Read-only. Plan, subscription and capability changes are governed commercial actions and aren&apos;t made from
+      this console.
+    </div>
+  );
+  if (failed) {
+    return (
+      <div data-testid="tenant-sign">
+        {banner}
+        <section className="pt-card pt-w900">
+          <div role="alert" className="pw-alert pw-alert--error pt-panel-alert">
+            <span>
+              <b>Couldn’t load the Aramo Sign account.</b>
+            </span>
+            <Button unstyled className="pw-btn pw-btn--secondary pw-btn--30 pt-panel-alert__action" onClick={onRetry}>
+              Try again
+            </Button>
+          </div>
+        </section>
+      </div>
+    );
+  }
+  if (data === null) {
+    return (
+      <div data-testid="tenant-sign">
+        {banner}
+        <section className="pt-card pt-w900">
+          <SkeletonPanel />
+        </section>
+      </div>
+    );
+  }
+
   const sub = data.subscription;
-  const a = data.allowance;
+  if (sub === null) {
+    const none = subscriptionPill(data.allowance.subscribed ? 'NONE' : (data.allowance.state ?? 'NONE'));
+    return (
+      <div data-testid="tenant-sign">
+        {banner}
+        <section className="pt-card pt-w900 pt-pad20">
+          <div className="pt-none-row">
+            <b>Subscription</b>
+            <Pill tone={none.tone}>{none.label}</Pill>
+            <span className="pt-code-faint pt-code-faint--115">{data.allowance.subscribed ? 'NONE' : (data.allowance.state ?? 'NONE')}</span>
+          </div>
+          <p className="pt-none-text" data-testid="tenant-sign-plan">
+            This tenant has no Sign subscription. Sign enabled: <b>{yesNo(data.sign_entitled)}</b>. Usage is not metered.
+          </p>
+        </section>
+      </div>
+    );
+  }
+
+  const subP = subscriptionPill(sub.status);
+  const usage = usageLine(data.allowance);
+  const dates: readonly (readonly [string, string | null | undefined])[] = [
+    ['Started', sub.started_at],
+    ['Current period ends', sub.current_period_end],
+    ['Cancellation', sub.cancel_at_period_end ? sub.current_period_end : null],
+    ['Payment grace until', sub.grace_until],
+    ['Ended', sub.ended_at],
+    ['Commitment ends', sub.commitment_end ?? null],
+  ];
+  const lapsed = sub.eligibility_state === 'LAPSED';
+
   return (
     <div data-testid="tenant-sign">
-      <dl className="pw-facts">
-        <dt>Capabilities</dt>
-        <dd>{data.capabilities.join(', ') || '—'}</dd>
-        <dt>Aramo Sign</dt>
-        <dd>{data.sign_entitled ? 'Enabled' : 'Not enabled'}</dd>
-        <dt>Plan</dt>
-        <dd data-testid="tenant-sign-plan">{sub === null ? 'No subscription' : `${sub.plan_name} · ${sub.status}${sub.sending ? '' : ' (not sending)'}`}</dd>
-        {sub !== null ? (
-          <>
+      {banner}
+      <div className="pt-sign-grid">
+        <section className="pt-card pt-pad">
+          <div className="pt-plan" data-testid="tenant-sign-plan">
+            <b className="pt-b15">{sub.plan_name}</b>
+            <Pill tone={subP.tone}>{subP.label}</Pill>
+            {!sub.sending ? <span className="pt-notsending">(not sending)</span> : null}
+          </div>
+          <dl className="pt-dl170">
+            <dt>Capabilities</dt>
+            <dd className="pt-dd-mono">{data.capabilities.join(', ') || 'None'}</dd>
+            <dt>Sign enabled</dt>
+            <dd>{yesNo(data.sign_entitled)}</dd>
             <dt>Source</dt>
-            <dd>{sub.source === 'SELF_SERVICE' ? 'Self-service (Stripe)' : sub.source === 'MANUAL' ? 'Arranged by Aramo' : 'Development'}</dd>
-            <dt>Started</dt>
-            <dd>{fmt(sub.started_at)}</dd>
-            <dt>Current period ends</dt>
-            <dd>{fmt(sub.current_period_end)}</dd>
-            {sub.cancel_at_period_end ? (
-              <>
-                <dt>Cancellation</dt>
-                <dd>Ends at period end</dd>
-              </>
-            ) : null}
-            {sub.grace_until !== null ? (
-              <>
-                <dt>Payment grace until</dt>
-                <dd>{fmt(sub.grace_until)}</dd>
-              </>
-            ) : null}
-            {sub.ended_at !== null ? (
-              <>
-                <dt>Ended</dt>
-                <dd>{fmt(sub.ended_at)}</dd>
-              </>
-            ) : null}
-          </>
-        ) : null}
-        {sub !== null && sub.commitment_end != null ? (
-          <>
-            <dt>Commitment ends</dt>
-            <dd data-testid="tenant-sign-commitment">
-              {fmt(sub.commitment_end)}
-              {sub.cancel_requested_within_commitment ? ' · cancellation requested inside the commitment' : ''}
+            <dd>
+              {subscriptionSourceLabel(sub.source)} <span className="pt-code-faint">{sub.source}</span>
             </dd>
-          </>
-        ) : null}
-        {sub?.eligibility_state != null ? (
-          <>
-            <dt>Plan eligibility</dt>
-            <dd data-testid="tenant-sign-eligibility">{sub.eligibility_state === 'LAPSED' ? 'Lapsed (qualifying ATS subscription not active)' : 'OK'}</dd>
-          </>
-        ) : null}
-        <dt>Usage this period</dt>
-        <dd data-testid="tenant-sign-usage">
-          {a.subscribed ? `${a.used}${a.limit === null ? ' envelopes (unlimited)' : ` of ${a.limit} envelopes`} (renews ${fmt(a.period_end)})` : '—'}
-        </dd>
-        <dt>Storage</dt>
-        <dd data-testid="tenant-sign-storage">
-          {data.storage != null ? `${bytes(data.storage.used)}${data.storage.limit === null ? ' (not limited)' : ` of ${bytes(data.storage.limit)}`}` : '—'}
-        </dd>
-        <dt>Online billing</dt>
-        <dd>{data.billing_available ? 'Configured' : 'Not configured'}</dd>
-      </dl>
-      <h3 className="pw-page__title" style={{ fontSize: '1.05rem' }}>
-        Recent billing events
-      </h3>
-      {data.billing_events.length === 0 ? (
-        <p className="pw-audit__meta">None.</p>
-      ) : (
-        <ul className="pw-audit" data-testid="tenant-sign-events">
-          {data.billing_events.map((e, i) => (
-            <li key={`${e.received_at}-${i}`} className="pw-audit__item">
-              <div className="pw-audit__head">
-                <span>{e.event_type}</span>
-                <span className="pw-audit__meta">{fmt(e.received_at)}</span>
-              </div>
-              <div className="pw-audit__detail">
-                {e.outcome}
-                {e.detail !== null ? <span className="pw-audit__meta"> · {e.detail}</span> : null}
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
+            <dt>Eligibility</dt>
+            <dd data-testid="tenant-sign-eligibility">
+              {lapsed ? <Pill tone="warn">Lapsed</Pill> : <Pill tone="ok">Eligible</Pill>}
+            </dd>
+            <dt>Storage</dt>
+            <dd data-testid="tenant-sign-storage">{storageLine(data.storage)}</dd>
+            <dt>Online billing</dt>
+            <dd>{data.billing_available ? 'Available' : 'Not available'}</dd>
+          </dl>
+        </section>
+        <section className="pt-card pt-pad">
+          <b className="pt-b15">Usage this period</b>
+          <div className="pt-usage" data-testid="tenant-sign-usage">
+            {usage.text}
+          </div>
+          {usage.pct !== null ? (
+            <div className="pt-bar" aria-hidden="true">
+              <div className="pt-bar__fill" style={{ width: `${usage.pct}%` }} />
+            </div>
+          ) : null}
+          <dl className="pt-dl170 pt-dl-top">
+            {dates.map(([k, v]) => (
+              <DateRow key={k} label={k} value={v ?? null} />
+            ))}
+          </dl>
+          {sub.cancel_requested_within_commitment ? (
+            <p className="pt-none-text" data-testid="tenant-sign-commitment">
+              Cancellation requested inside the commitment.
+            </p>
+          ) : null}
+        </section>
+      </div>
+      <section className="pt-card pt-card--clip pt-w1100 pt-mt16">
+        <div className="pt-card__head pt-card__head--14">
+          <h2 className="pt-card__title">Recent billing events</h2>
+        </div>
+        {data.billing_events.length === 0 ? (
+          <div className="pt-empty-pad">No billing events received.</div>
+        ) : (
+          <div className="pt-scroll">
+            <table className="pt-table pt-min640" data-testid="tenant-sign-events">
+              <thead>
+                <tr>
+                  <th className="pt-th pt-th--first20">Event</th>
+                  <th className="pt-th">Received</th>
+                  <th className="pt-th">Outcome</th>
+                  <th className="pt-th pt-th--last">Detail</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.billing_events.map((e, i) => {
+                  const out = billingOutcomePill(e.outcome);
+                  return (
+                    <tr key={`${e.received_at}-${i}`}>
+                      <td className="pt-td pt-td--first20 pt-td--event">
+                        {billingEventLabel(e.event_type)}
+                        <div className="pt-code-faint">{e.event_type}</div>
+                      </td>
+                      <td className="pt-td pt-td--mono12">{formatTimestamp(e.received_at)}</td>
+                      <td className="pt-td">
+                        <Pill tone={out.tone}>{out.label}</Pill>
+                      </td>
+                      <td className="pt-td pt-td--last pt-td--detail">{e.detail ?? 'No detail'}</td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
     </div>
+  );
+}
+
+function DateRow({ label, value }: { readonly label: string; readonly value: string | null }) {
+  return (
+    <>
+      <dt>{label}</dt>
+      <dd>
+        {value ? formatDate(value) : 'None'} {value ? <span className="pt-rel">{formatRelative(value)}</span> : null}
+      </dd>
+    </>
   );
 }

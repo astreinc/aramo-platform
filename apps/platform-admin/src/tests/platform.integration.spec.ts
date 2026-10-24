@@ -1016,13 +1016,34 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const res = await request(app.getHttpServer())
         .post('/platform/admins/invitations')
         .set('Authorization', `Bearer ${provToken}`)
-        .send({ email: 'new-platform-admin@aramo.platform' });
+        // PLATFORM-UX-1 B-1c — an allowed operator domain (default aramo.ai).
+        .send({ email: 'new-platform-admin@aramo.ai' });
       expect(res.status).toBe(201);
       // The new admin's membership is at the sentinel platform tenant.
       const admin = await identityPrisma.user.findUnique({
-        where: { email: 'new-platform-admin@aramo.platform' },
+        where: { email: 'new-platform-admin@aramo.ai' },
       });
       expect(admin).not.toBeNull();
+    });
+
+    // PLATFORM-UX-1 B-1c (directive R-8) — the platform-admin invite refuses a
+    // domain outside PLATFORM_ADMIN_EMAIL_DOMAINS (default aramo.ai) with 400
+    // VALIDATION_ERROR reason platform_admin_domain_not_allowed, and writes
+    // nothing (no user row, no Cognito call).
+    it('PLATFORM-UX-1 B-1c — invitePlatformAdmin refuses a non-allowed email domain (400, no side effect)', async () => {
+      const provToken = await platformJwt();
+      cognitoMock.adminCreateUser.mockClear();
+      const res = await request(app.getHttpServer())
+        .post('/platform/admins/invitations')
+        .set('Authorization', `Bearer ${provToken}`)
+        .send({ email: 'outsider@example.com' });
+      expect(res.status).toBe(400);
+      expect(res.body?.error?.code).toBe('VALIDATION_ERROR');
+      expect(res.body?.error?.details?.reason).toBe('platform_admin_domain_not_allowed');
+      expect(cognitoMock.adminCreateUser).not.toHaveBeenCalled();
+      expect(
+        await identityPrisma.user.findUnique({ where: { email: 'outsider@example.com' } }),
+      ).toBeNull();
     });
 
     // -------------------------------------------------------------------

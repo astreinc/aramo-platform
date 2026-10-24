@@ -10428,15 +10428,45 @@
       "to": "apps/auth-service/src/tests/test-keys.ts"
     },
     {
+      "from": "apps/platform-web/e2e/fixtures/tenants.ts",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/platform-api.ts"
+    },
+    {
+      "from": "apps/platform-web/e2e/visual/DIVERGENCES.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "apps/platform-web/e2e/visual/masks-common.ts",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "apps/platform-web/playwright.config.ts",
+      "status": "unscoped",
+      "to": "apps/platform-web/vite.config.ts"
+    },
+    {
       "from": "apps/platform-web/project.json",
       "status": "unscoped",
       "to": "apps/platform-web/vite.config.ts"
+    },
+    {
+      "from": "apps/platform-web/src/tenants/tenant-roles.ts",
+      "status": "production",
+      "to": "scripts/verify-vocabulary.sh"
     },
     {
       "excludedBy": "src/**/*.spec.ts",
       "from": "apps/platform-web/src/tests/platform-web-negative-control.spec.ts",
       "status": "excluded",
       "to": "apps/platform-web/src/platform-negative-control/platform-imports-ats.fixture.ts"
+    },
+    {
+      "from": "apps/platform-web/vite.config.ts",
+      "status": "unscoped",
+      "to": "libs/document-templates-web/src/index.ts"
     },
     {
       "from": "apps/platform-web/vite.config.ts",
@@ -12556,16 +12586,6 @@
     {
       "from": "doc/backlog/ui-hotfix-fe-foundation-standard-gaps-DRAFT.md",
       "status": "unscoped",
-      "to": "apps/platform-web/src/skills/skill-action-dialogs.tsx"
-    },
-    {
-      "from": "doc/backlog/ui-hotfix-fe-foundation-standard-gaps-DRAFT.md",
-      "status": "unscoped",
-      "to": "apps/platform-web/src/skills/skill-form-dialogs.tsx"
-    },
-    {
-      "from": "doc/backlog/ui-hotfix-fe-foundation-standard-gaps-DRAFT.md",
-      "status": "unscoped",
       "to": "doc/runbooks/singlebox-ops.md"
     },
     {
@@ -12607,6 +12627,106 @@
       "from": "doc/backlog/work-history-edit-audit-and-provenance.md",
       "status": "unscoped",
       "to": "libs/talent-record/src/lib/talent-record.controller.ts"
+    },
+    {
+      "from": "doc/design-reference/platform-admin/github.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-personal.controller.ts"
+    },
+    {
+      "from": "doc/design-reference/platform-admin/github.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform.controller.ts"
+    },
+    {
+      "from": "doc/design-reference/platform-admin/github.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/App.tsx"
+    },
+    {
+      "from": "doc/design-reference/platform-admin/github.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/LoginPage.tsx"
+    },
+    {
+      "from": "doc/design-reference/platform-admin/github.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/dashboard/DashboardView.tsx"
+    },
+    {
+      "from": "doc/design-reference/platform-admin/github.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/document-templates/DocumentTemplateDetailView.tsx"
+    },
+    {
+      "from": "doc/design-reference/platform-admin/github.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/document-templates/DocumentTemplatesListView.tsx"
+    },
+    {
+      "from": "doc/design-reference/platform-admin/github.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/document-templates/TemplateVariablesView.tsx"
+    },
+    {
+      "from": "doc/design-reference/platform-admin/github.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/matching/MatchingPolicyView.tsx"
+    },
+    {
+      "from": "doc/design-reference/platform-admin/github.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/shell/PlatformShell.tsx"
+    },
+    {
+      "from": "doc/design-reference/platform-admin/github.md",
+      "status": "unscoped",
+      "to": "libs/document-templates-web/src/dt-block-editor.tsx"
+    },
+    {
+      "from": "doc/design-reference/platform-admin/github.md",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/auth/SignInPage.tsx"
+    },
+    {
+      "from": "doc/design-reference/platform-admin/github.md",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/auth/session.ts"
+    },
+    {
+      "from": "doc/design-reference/platform-admin/github.md",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/ui/AppShell.tsx"
+    },
+    {
+      "from": "doc/design-reference/platform-admin/handoff/Platform Admin and Template Studio - Claude Code handoff.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/App.tsx"
+    },
+    {
+      "from": "doc/design-reference/platform-admin/handoff/Platform Admin and Template Studio - Claude Code handoff.md",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/auth/SignInPage.tsx"
+    },
+    {
+      "from": "doc/design-reference/platform-admin/handoff/Platform Admin and Template Studio - Claude Code handoff.md",
+      "status": "unscoped",
+      "to": "libs/fe-foundation/src/ui/AppShell.tsx"
+    },
+    {
+      "from": "doc/design-reference/platform-admin/handoff/Platform Admin and Template Studio - Claude Code handoff.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/design-reference/platform-admin/handoff/Platform Admin and Template Studio - handoff amendment 1.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/App.tsx"
+    },
+    {
+      "from": "doc/design-reference/platform-admin/handoff/Platform Admin and Template Studio - handoff amendment 1.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
     },
     {
       "from": "doc/directives/00-DIRECTIVE-STANDARD.md",
@@ -14037,6 +14157,11 @@
       "from": "doc/milestone-signoffs/M1-refusal-signoff.md",
       "status": "unscoped",
       "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/platform-admin/implementation-plan.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/visual/DIVERGENCES.md"
     },
     {
       "from": "doc/platform-console/platform-console-architecture-inventory.md",

@@ -21,6 +21,8 @@ import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import {
   DomainClaimService,
   IdentityAuditRepository,
+  IdentityRepository,
+  TenantRepository,
   TenantService,
   type AuditEventRow,
   type PlatformDashboardData,
@@ -34,6 +36,8 @@ import {
 import { ProvisionTenantRequestDto } from './dto/provision-tenant.request.dto.js';
 import type { ProvisionTenantResponseDto } from './dto/provision-tenant.response.dto.js';
 import type { PlatformTenantListResponseDto } from './dto/tenant-list.response.dto.js';
+import type { PlatformTenantDetailResponseDto } from './dto/tenant-detail.response.dto.js';
+import type { PlatformMeResponseDto } from './dto/platform-me.response.dto.js';
 import type { PlatformTenantAuditEventDto } from './dto/tenant-audit.response.dto.js';
 import {
   CloseTenantRequestDto,
@@ -60,6 +64,7 @@ import { PlatformInvitationService } from './platform-invitation.service.js';
 //
 // All routes are platform-tier:
 //   POST /platform/tenants                                provision + invite Owner
+//   GET  /platform/me                                     the caller's own identity
 //   GET  /platform/tenants                                list (super_admin view)
 //   POST /platform/tenants/:tenant_id/invitations         invite a user into a tenant
 //   POST /platform/admins/invitations                     invite another platform admin
@@ -73,7 +78,46 @@ export class PlatformController {
     private readonly auditRepo: IdentityAuditRepository,
     // Domain-Enforcement P3 (LOCKED) §6 — operator domain-claim actions.
     private readonly domainClaims: DomainClaimService,
+    // PLATFORM-UX-1 B-1a / B-1b — the caller-only identity read (/platform/me)
+    // and the tenant slug on the detail read. Both are existing
+    // IdentityCoreModule exports; no identity-lib change.
+    private readonly identityRepo: IdentityRepository,
+    private readonly tenantRepo: TenantRepository,
   ) {}
+
+  // PLATFORM-UX-1 B-1a (directive R-6) — the signed-in operator's own identity
+  // for the console chrome (environment bar + account menu). Caller-only by
+  // construction: user_id = authCtx.sub and tenant_id = authCtx.tenant_id, both
+  // from the verified token; there is NO path/query/body input, so no other
+  // principal is ever readable through this route. Read from the identity
+  // membership (user + tenant + active role assignments). A token whose
+  // (sub, tenant_id) has no membership → 404 NOT_FOUND (mirrors GET /v1/me).
+  @Get('me')
+  @RequireScopes('platform:tenant:read')
+  async getMe(
+    @AuthContext() authCtx: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<PlatformMeResponseDto> {
+    this.assertConsumerIsPlatform(authCtx, requestId);
+    const ctx = await this.identityRepo.findMeContext({
+      user_id: authCtx.sub,
+      tenant_id: authCtx.tenant_id,
+    });
+    if (ctx === null) {
+      throw new AramoError('NOT_FOUND', 'Membership not found', 404, {
+        requestId,
+        details: { tenant_id: authCtx.tenant_id },
+      });
+    }
+    return {
+      user_id: authCtx.sub,
+      email: ctx.email,
+      display_name: ctx.display_name,
+      tenant_id: authCtx.tenant_id,
+      tenant_name: (ctx.tenant_display_name ?? '').trim() || ctx.tenant_name,
+      role_keys: [...new Set(ctx.roles.map((r) => r.key))].sort(),
+    };
+  }
 
   @Post('tenants')
   @HttpCode(HttpStatus.CREATED)
@@ -211,7 +255,7 @@ export class PlatformController {
     @Param('tenant_id', new ParseUUIDPipe()) tenant_id: string,
     @AuthContext() authCtx: AuthContextType,
     @RequestId() requestId: string,
-  ): Promise<{ tenant: import('@aramo/identity').TenantDto }> {
+  ): Promise<PlatformTenantDetailResponseDto> {
     this.assertConsumerIsPlatform(authCtx, requestId);
     const tenant = await this.tenantSvc.getTenantById(tenant_id);
     if (tenant === null) {
@@ -220,7 +264,10 @@ export class PlatformController {
         details: { tenant_id },
       });
     }
-    return { tenant };
+    // PLATFORM-UX-1 B-1b (directive R-7) — additive `slug` (subdomain label or
+    // null); TenantDto stays unwidened.
+    const slug = await this.tenantRepo.findSlugById(tenant_id);
+    return { tenant: { ...tenant, slug } };
   }
 
   // Platform-Console Increment-2 PR-2 (G1) — the tenant lifecycle audit timeline

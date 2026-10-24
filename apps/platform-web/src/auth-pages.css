@@ -1,0 +1,14 @@
+/* PLATFORM-UX-1 F-2 — the platform signed-out page (handoff §11): the primary
+ * "Sign in again" is midnight (Platform Admin.dc.html), on the shared sign-in
+ * frame (the brand panel stays the shared blue, directive R-16). */
+
+.pw-signedout .aramo-auth__btn--primary {
+  border-color: var(--pw-midnight);
+  background: var(--pw-midnight);
+  color: #ffffff;
+  font-weight: 600;
+}
+.pw-signedout .aramo-auth__btn--primary:hover {
+  border-color: var(--pw-midnight-raised);
+  background: var(--pw-midnight-raised);
+}

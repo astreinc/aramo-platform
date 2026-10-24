@@ -3,7 +3,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { configureAuthConsumer } from '@aramo/fe-foundation';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { LoginPage } from './LoginPage';
+import { LoginPage, PlatformSignedOut } from './LoginPage';
 
 // AUTH-SIGNIN-1 §3.3 — this app's /login is the shared Aramo sign-in screen
 // (behaviour is covered in fe-foundation SignInPage.spec.tsx); these pin the
@@ -53,5 +53,38 @@ describe('platform-web LoginPage', () => {
     renderAt('/login?error=TENANT_ACCESS_DENIED');
     expect(screen.getByText('Signed in with a different account')).toBeInTheDocument();
     expect(screen.getByRole('link', { name: /sign out of microsoft/i })).toBeInTheDocument();
+  });
+
+  // PLATFORM-UX-1 F-2 (R-17, amendment 14) — the platform copy via errorCopy.
+  it('VALIDATION_ERROR shows the session-ended copy with the provider buttons', async () => {
+    renderAt('/login?error=VALIDATION_ERROR');
+    expect(screen.getByText('Your session ended.')).toBeInTheDocument();
+    expect(screen.getByText('Sign in again to continue.')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Continue with Microsoft' })).toBeInTheDocument();
+  });
+
+  it('INTERNAL_ERROR shows the provider-failure copy with the provider buttons', async () => {
+    renderAt('/login?error=INTERNAL_ERROR');
+    expect(screen.getByText('The sign-in provider didn’t respond.')).toBeInTheDocument();
+    expect(screen.getByText('Try again, or use the other provider.')).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: 'Continue with Google' })).toBeInTheDocument();
+  });
+
+  it('TENANT_ACCESS_DENIED keeps the account-switch action', () => {
+    renderAt('/login?error=TENANT_ACCESS_DENIED');
+    expect(screen.getByRole('button', { name: 'Sign in with a different account' })).toBeInTheDocument();
+  });
+
+  it('the signed-out page carries the platform copy and both re-entry buttons, with no navigation', () => {
+    render(
+      <MemoryRouter initialEntries={['/signed-out']}>
+        <PlatformSignedOut />
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole('heading', { name: "You've signed out securely" })).toBeInTheDocument();
+    expect(screen.getByText('Your Platform administration session has ended on this device.')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sign in again' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: 'Sign in with a different account' })).toBeInTheDocument();
+    expect(fetchSpy).not.toHaveBeenCalledWith(expect.stringContaining('/session'), expect.anything());
   });
 });

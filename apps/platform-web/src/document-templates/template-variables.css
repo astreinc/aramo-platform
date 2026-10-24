@@ -1,0 +1,112 @@
+/* PLATFORM-UX-1 F-8 — Template variables (handoff §9). Every value is copied
+ * from doc/design-reference/platform-admin/platform/Platform Admin.dc.html
+ * (is.variables, varDlg) and expressed through the theme.css token layer. */
+
+.pw-tv-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.pw-tv-title {
+  margin: 0;
+  font-size: var(--pw-fs-24);
+  font-weight: 700;
+  letter-spacing: var(--pw-tracking-tight);
+}
+.pw-tv-intro {
+  max-width: 720px;
+  margin: 6px 0 0;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-14);
+}
+.pw-tv-viewonly {
+  margin-bottom: 12px;
+}
+
+.pw-tv-card {
+  overflow: hidden;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-card);
+  background: var(--pw-surface);
+}
+.pw-tv-card .pw-empty__title {
+  font-weight: 700;
+}
+.pw-tv-card__alert {
+  margin: 12px 16px;
+}
+.pw-tv-scroll {
+  overflow-x: auto;
+}
+.pw-tv-table {
+  width: 100%;
+  min-width: 1100px;
+  border-collapse: collapse;
+}
+.pw-tv-table th {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--pw-line);
+  background: var(--pw-surface-2);
+  color: var(--pw-faint);
+  font-size: var(--pw-fs-11);
+  font-weight: 600;
+  letter-spacing: var(--pw-tracking-caps);
+  text-align: left;
+  text-transform: uppercase;
+}
+.pw-tv-table td {
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--pw-rule);
+}
+.pw-tv-key {
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-12-5);
+}
+.pw-tv-label {
+  font-size: var(--pw-fs-13-5);
+  font-weight: 600;
+}
+.pw-tv-text {
+  font-size: var(--pw-fs-13);
+}
+.pw-tv-type {
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-11-5);
+}
+.pw-tv-products {
+  display: flex;
+  gap: 4px;
+}
+.pw-tv-product {
+  padding: 2px 6px;
+  border: 1px solid var(--pw-line-2);
+  border-radius: var(--pw-r-xs);
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-11);
+}
+.pw-tv-bind {
+  color: var(--pw-muted);
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-12);
+}
+.pw-tv-table td.pw-tv-actions {
+  text-align: right;
+}
+.pw-tv-edit {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--pw-line-2);
+  border-radius: var(--pw-r-btn-sm);
+  background: var(--pw-surface);
+  color: var(--pw-ink);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-12);
+  font-weight: 600;
+  cursor: pointer;
+}
+.pw-tv-edit:hover {
+  background: var(--pw-surface-hover);
+}

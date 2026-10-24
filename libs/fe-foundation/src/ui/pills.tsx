@@ -12,7 +12,11 @@ export type PillTone =
   | 'ok'
   | 'warn'
   | 'danger'
-  | 'hot';
+  | 'hot'
+  // PLATFORM-UX-1 U-0 (directive R-4): additive low-emphasis grey for
+  // terminal/retired states (Closed, Released, Replaced). Platform Admin.dc.html
+  // TONE.muted = ['#66717B', '#F0F2F4'].
+  | 'muted';
 
 interface StatusPillProps {
   readonly tone: PillTone;

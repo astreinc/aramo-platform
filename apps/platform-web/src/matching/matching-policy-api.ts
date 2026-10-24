@@ -45,6 +45,21 @@ export interface RoleFamilyEvidenceThreshold {
 }
 export type EvidenceThresholds = Record<RoleFamily, RoleFamilyEvidenceThreshold>;
 
+// The compiled defaults the engine applies when no version is ACTIVE (mirrors
+// libs/matching DEFAULT_EVIDENCE_THRESHOLDS; platform-web cannot import scope:cip).
+// Shown as "Compiled defaults" and used as the base of a first draft.
+export const COMPILED_DEFAULT_THRESHOLDS: EvidenceThresholds = {
+  backend_engineer: { count: 2, requires_ingested: true },
+  frontend_engineer: { count: 2, requires_ingested: true },
+  fullstack_engineer: { count: 2, requires_ingested: true },
+  devops_sre: { count: 2, requires_ingested: true },
+  data_engineer: { count: 2, requires_ingested: true },
+  architect: { count: 3, requires_ingested: true },
+  qa_test_engineer: { count: 2, requires_ingested: true },
+  product_project_manager: { count: 2, requires_ingested: false },
+  business_analyst: { count: 2, requires_ingested: false },
+};
+
 export interface MatchingPolicyVersion {
   id: string;
   version_number: number;

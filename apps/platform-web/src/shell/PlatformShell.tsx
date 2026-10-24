@@ -1,168 +1,240 @@
-import type { ReactNode } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useCallback, useEffect, useState, type ReactNode } from 'react';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import {
   AppShell,
-  Breadcrumb,
-  Icons,
+  Button,
   Rail,
-  RailNavItem,
   RailNavLabel,
-  RailNavSection,
-  ShellBrand,
+  RailUser,
   TopBar,
-  UserMenu,
   hasScope,
   logout,
-  useSession,
-  type BreadcrumbItem,
+  redirectToLogin,
+  useRailCollapse,
+  type Session,
 } from '@aramo/fe-foundation';
 
+import markUrl from '../assets/aramo-mark-white.svg';
+import { EnvironmentBar, type EnvironmentContext } from '../components/EnvironmentBar';
+import { IdentityProvider, useIdentity, type LoadMe } from '../identity/identity';
+
+import { AccountMenu } from './AccountMenu';
+import { CommandPalette, type PaletteSources } from './CommandPalette';
+import { CrumbProvider, useCrumbEntity } from './crumbs';
+import { crumbsFor, navKeyFor, visibleNavGroups } from './nav';
+import { NavIcon, PanelIcon, SearchIcon } from './nav-icons';
 import './platform-shell.css';
 
-// The platform console chrome. Reuses the extracted fe-foundation AppShell kit
-// (rail + topbar + user menu) — zero locally-defined chrome. The PLATFORM marker
-// (A3 anti-footgun) makes the god-console unmistakable: the violet rail + a
-// PLATFORM pill in the topbar. No /me enrichment (platform-web has no /v1 proxy
-// to reach GET /v1/me), so UserMenu renders loading-safe — Sign out is always
-// available; the identity panel is intentionally minimal.
+// PLATFORM-UX-1 F-2 — the platform console chrome (handoff §3; directive R-1,
+// R-5, R-6). The shared AppShell (collapse key `rc-rail-collapsed`, ⌘/Ctrl+\
+// toggle, skip link, single <main>) themed midnight entirely through
+// platform-web tokens + platform-scoped CSS (platform-shell.css), with:
+//   - the terracotta environment bar on top ("Signed in as …"),
+//   - the rail header (white mark, "aramo.ai", the PLATFORM tag — "P" collapsed),
+//     the permission-filtered groups (empty groups hidden) and the footer avatar,
+//   - the top bar: breadcrumb ending in the entity name, the PLATFORM marker, the
+//     ⌘K palette and the account menu.
+// AramoRail / app-rail.css are not used or touched.
 
-function crumbsFor(pathname: string): BreadcrumbItem[] {
-  // Inc-3 PR-3.8 — the dashboard is the home crumb; tenant routes hang off it.
-  if (pathname === '/' || pathname === '') {
-    return [{ label: 'Dashboard' }];
-  }
-  // SKILL-TAX-1F-C1/C2 — the skills governance section (Registry / Review queue /
-  // Proposals) hangs off Dashboard, mirroring the tenants crumb trail.
-  // DOC-TEMPLATE-LIB-1 T-2 — Aramo default templates + the variable catalog.
-  if (pathname.startsWith('/document-templates')) {
-    const crumbs: BreadcrumbItem[] = [
-      { label: 'Dashboard', href: '/' },
-      { label: 'Document templates', href: '/document-templates' },
-    ];
-    if (/^\/document-templates\/[^/]+/.exec(pathname)) crumbs.push({ label: 'Detail' });
-    return crumbs;
-  }
-  if (pathname.startsWith('/personal-review')) {
-    return [{ label: 'Dashboard', href: '/' }, { label: 'Personal review queue' }];
-  }
-  if (pathname.startsWith('/personal-invites')) {
-    return [{ label: 'Dashboard', href: '/' }, { label: 'Pilot invites' }];
-  }
-  if (pathname.startsWith('/matching')) {
-    return [{ label: 'Dashboard', href: '/' }, { label: 'Matching policy' }];
-  }
-  if (pathname.startsWith('/template-variables')) {
-    return [{ label: 'Dashboard', href: '/' }, { label: 'Template variables' }];
-  }
-  if (pathname.startsWith('/skills')) {
-    const crumbs: BreadcrumbItem[] = [
-      { label: 'Dashboard', href: '/' },
-      { label: 'Skills', href: '/skills' },
-    ];
-    if (pathname.startsWith('/skills/review-queue')) {
-      crumbs.push({ label: 'Review queue' });
-    } else if (/^\/skills\/proposals\/[^/]+/.exec(pathname)) {
-      crumbs.push({ label: 'Proposals', href: '/skills/proposals' });
-      crumbs.push({ label: 'Detail' });
-    } else if (pathname.startsWith('/skills/proposals')) {
-      crumbs.push({ label: 'Proposals' });
-    } else if (/^\/skills\/[^/]+/.exec(pathname)) {
-      crumbs.push({ label: 'Detail' });
-    }
-    return crumbs;
-  }
-  const crumbs: BreadcrumbItem[] = [
-    { label: 'Dashboard', href: '/' },
-    { label: 'Tenants', href: '/tenants' },
-  ];
-  const m = /^\/tenants\/([^/]+)/.exec(pathname);
-  if (pathname.startsWith('/tenants/new')) {
-    crumbs.push({ label: 'Provision' });
-  } else if (m) {
-    crumbs.push({ label: 'Detail' });
-  }
-  return crumbs;
+export interface PlatformShellProps {
+  readonly session: Session;
+  readonly children: ReactNode;
+  /** The environment-bar context line. Default: studio on /document-templates and /document-templates/:id (Template Studio.dc.html), else console. */
+  readonly environment?: EnvironmentContext;
+  /** Test seam: the /platform/me loader. */
+  readonly loadMe?: LoadMe;
+  /** Test seam: the command-palette list readers. */
+  readonly paletteSources?: PaletteSources;
 }
 
-export function PlatformShell({ children }: { readonly children: ReactNode }) {
+export function PlatformShell({ session, children, environment, loadMe, paletteSources }: PlatformShellProps) {
+  return (
+    <IdentityProvider session={session} load={loadMe}>
+      <CrumbProvider>
+        <ShellFrame session={session} environment={environment} paletteSources={paletteSources}>
+          {children}
+        </ShellFrame>
+      </CrumbProvider>
+    </IdentityProvider>
+  );
+}
+
+function RailHeader() {
+  const { collapsed, toggle } = useRailCollapse();
+  return (
+    <>
+      <div className="pw-rail-head">
+        <Button
+          unstyled
+          className="pw-rail-logo"
+          title="Aramo"
+          aria-label={collapsed ? 'Expand sidebar' : 'Aramo'}
+          onClick={() => {
+            if (collapsed) toggle();
+          }}
+        >
+          <img src={markUrl} width={25} height={25} alt="" />
+        </Button>
+        <span className="pw-rail-name">
+          aramo<span className="pw-rail-name__tld">.ai</span>
+        </span>
+        <Button
+          unstyled
+          className="pw-rail-collapse"
+          title="Collapse sidebar (⌘\)"
+          aria-label="Collapse sidebar"
+          onClick={toggle}
+        >
+          <PanelIcon />
+        </Button>
+      </div>
+      <div className="pw-rail-tagrow">
+        <span className="pw-rail-tag" title="Platform admin console">
+          <span className="pw-rail-tag__full">PLATFORM</span>
+          <span className="pw-rail-tag__short" aria-hidden="true">
+            P
+          </span>
+        </span>
+      </div>
+    </>
+  );
+}
+
+interface ShellFrameProps {
+  readonly session: Session;
+  readonly environment?: EnvironmentContext;
+  readonly paletteSources?: PaletteSources;
+  readonly children: ReactNode;
+}
+
+function ShellFrame({ session, environment, paletteSources, children }: ShellFrameProps) {
+  const identity = useIdentity();
+  const entity = useCrumbEntity();
   const { pathname } = useLocation();
-  const sessionState = useSession();
-  // Gate the Skills nav item on platform:skill:read (the section is otherwise
-  // reachable only via URL, where the route renders a ForbiddenState). Server-side
-  // enforcement is authoritative; this just hides the entry point.
-  const canReadSkills =
-    sessionState.status === 'authenticated' &&
-    hasScope(sessionState.session, 'platform:skill:read');
-  // DOC-TEMPLATE-LIB-1 T-2 — gate the Documents nav on platform:document_template:read.
-  const canReadDocTemplates =
-    sessionState.status === 'authenticated' &&
-    hasScope(sessionState.session, 'platform:document_template:read');
-  // ATI-SEP-1 A2 A-c (P1) — gate the Matching policy nav on platform:matching_policy:read.
-  const canReadMatchingPolicy =
-    sessionState.status === 'authenticated' &&
-    hasScope(sessionState.session, 'platform:matching_policy:read');
-  // Aramo Sign Personal (Free) — the review queue + pilot invites need lifecycle management.
-  const canManageLifecycle =
-    sessionState.status === 'authenticated' &&
-    hasScope(sessionState.session, 'platform:tenant:lifecycle:manage');
-  const handleSignOut = (): void => {
+  const navigate = useNavigate();
+  const [paletteOpen, setPaletteOpen] = useState(false);
+
+  const can = useCallback((scope: string) => hasScope(session, scope), [session]);
+  const groups = visibleNavGroups(can);
+  const activeKey = navKeyFor(pathname);
+  const crumbs = crumbsFor(pathname, entity);
+  // The Template Studio (/document-templates/:id) is full-bleed with its own top
+  // bar (breadcrumb + account menu), so the shell top bar is not rendered there.
+  const isStudio = /^\/document-templates\/[^/]+\/?$/.test(pathname);
+  // The template library (/document-templates) is drawn in Template Studio.dc.html,
+  // not Platform Admin.dc.html: its environment line is the Studio's and its top
+  // bar is the Studio file's content-box header (56px + the 1px rule).
+  const isLibrary = /^\/document-templates\/?$/.test(pathname);
+
+  // ⌘K / Ctrl+K opens the palette (⌘\ is AppShell's rail toggle).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent): void => {
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+        e.preventDefault();
+        setPaletteOpen(true);
+      }
+    };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, []);
+
+  const switchAccount = (): void => redirectToLogin({ selectAccount: true });
+  const signOut = (): void => {
     void logout();
   };
 
   const rail = (
-    <Rail>
-      <span className="pw-platform-mark" aria-label="Platform console">
-        PLATFORM
-      </span>
-      <RailNavLabel>Operations</RailNavLabel>
-      <RailNavItem to="/" end label="Dashboard" icon={<Icons.IconDesk />} />
-      <RailNavItem
-        to="/tenants"
-        label="Tenants"
-        icon={<Icons.IconBuilding />}
-      />
-      {canManageLifecycle ? (
-        <RailNavSection label="Sign Personal">
-          <RailNavItem to="/personal-review" label="Review queue" icon={<Icons.IconShield />} />
-          <RailNavItem to="/personal-invites" label="Pilot invites" icon={<Icons.IconUserPlus />} />
-        </RailNavSection>
-      ) : null}
-      {canReadSkills ? (
-        <RailNavSection label="Skills">
-          <RailNavItem to="/skills" end label="Registry" icon={<Icons.IconTag />} />
-          <RailNavItem to="/skills/review-queue" label="Review queue" icon={<Icons.IconList />} />
-          <RailNavItem to="/skills/proposals" label="Proposals" icon={<Icons.IconBolt />} />
-        </RailNavSection>
-      ) : null}
-      {canReadMatchingPolicy ? (
-        <RailNavSection label="Matching">
-          <RailNavItem to="/matching" label="Matching policy" icon={<Icons.IconSliders />} />
-        </RailNavSection>
-      ) : null}
-      {canReadDocTemplates ? (
-        <RailNavSection label="Documents">
-          <RailNavItem to="/document-templates" label="Document templates" icon={<Icons.IconFile />} />
-          <RailNavItem to="/template-variables" label="Template variables" icon={<Icons.IconList />} />
-        </RailNavSection>
-      ) : null}
+    <Rail
+      user={
+        <RailUser
+          initials={identity.initials}
+          name={identity.name}
+          role={identity.role ? `${identity.role} · ${identity.tenant}` : identity.tenant}
+        />
+      }
+    >
+      <RailHeader />
+      {groups.map((g) => (
+        <div key={g.label} className="pw-rail-group">
+          <RailNavLabel>{g.label}</RailNavLabel>
+          <span className="pw-rail-divider" aria-hidden="true" />
+          {g.items.map((item) => {
+            const current = item.key === activeKey;
+            return (
+              <Link
+                key={item.key}
+                to={item.to}
+                className="rc-nav__item pw-nav-item"
+                aria-current={current ? 'page' : undefined}
+                title={item.label}
+              >
+                <NavIcon name={item.icon} />
+                <span className="pw-nav-item__label">{item.label}</span>
+              </Link>
+            );
+          })}
+        </div>
+      ))}
     </Rail>
   );
 
   const topBar = (
     <TopBar>
-      <ShellBrand brand="Aramo" brandSub="Platform Console" to="/" />
-      <span className="pw-topbar-mark" aria-hidden="true">
-        PLATFORM
-      </span>
-      <Breadcrumb items={crumbsFor(pathname)} />
-      <div className="pw-topbar-spacer" />
-      <UserMenu name="" email="" roleLine={null} onSignOut={handleSignOut} />
+      <nav aria-label="Breadcrumb" className="pw-crumbs">
+        {crumbs.map((c, i) => {
+          const last = i === crumbs.length - 1;
+          return (
+            <span key={`${c.label}-${i}`} className="pw-crumbs__step">
+              {last ? (
+                <span aria-current="page" className="pw-crumbs__here">
+                  {c.label}
+                </span>
+              ) : c.to ? (
+                <Link to={c.to} className="pw-crumbs__link">
+                  {c.label}
+                </Link>
+              ) : (
+                <span className="pw-crumbs__link">{c.label}</span>
+              )}
+              {last ? null : (
+                <span className="pw-crumbs__sep" aria-hidden="true">
+                  /
+                </span>
+              )}
+            </span>
+          );
+        })}
+      </nav>
+      <span className="pw-topbar-mark">PLATFORM</span>
+      <Button unstyled className="pw-cmdk-trigger" aria-label="Search tenants, skills, templates ⌘K" onClick={() => setPaletteOpen(true)}>
+        <SearchIcon size={15} />
+        <span className="pw-cmdk-trigger__text">Tenants, skills, templates</span>
+        <span className="pw-cmdk-trigger__key" aria-hidden="true">
+          ⌘K
+        </span>
+      </Button>
+      <AccountMenu identity={identity} onSwitchAccount={switchAccount} onSignOut={signOut} />
     </TopBar>
   );
 
   return (
-    <AppShell rail={rail} topBar={topBar}>
-      {children}
-    </AppShell>
+    <div className={isStudio ? 'pw-shell pw-shell--studio' : isLibrary ? 'pw-shell pw-shell--library' : 'pw-shell'}>
+      <EnvironmentBar
+        email={identity.email}
+        tenant={identity.tenant}
+        role={identity.role}
+        context={environment ?? (isStudio || isLibrary ? 'studio' : 'console')}
+      />
+      <AppShell rail={rail} topBar={isStudio ? undefined : topBar}>
+        {children}
+      </AppShell>
+      <CommandPalette
+        open={paletteOpen}
+        onOpenChange={setPaletteOpen}
+        can={can}
+        onNavigate={(to) => navigate(to)}
+        sources={paletteSources}
+      />
+    </div>
   );
 }

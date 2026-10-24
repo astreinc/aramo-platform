@@ -7,6 +7,9 @@
 export interface PlatformTenantSummaryDto {
   id: string;
   name: string;
+  // PLATFORM-UX-1 B-1b (directive R-7) — BUSINESS | PERSONAL. The repository
+  // row (PlatformTenantListRow) already carries it; additive on the DTO.
+  kind: string;
   slug: string | null;
   status: string;
   status_reason_code: string | null;

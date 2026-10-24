@@ -165,6 +165,10 @@ export const documentTemplatesApi = {
   createDraft(id: string, body?: { render_schema_version: string; field_schema: unknown }): Promise<TemplateVersion> {
     return apiClient.post(`/platform/document-templates/${id}/versions`, body ?? {});
   },
+  // PLATFORM-UX-1 F-9 (directive R-10) — read one version (the "Start from a copy" source).
+  getVersion(versionId: string): Promise<TemplateVersion> {
+    return apiClient.get(`/platform/document-templates/versions/${versionId}`);
+  },
   updateDraft(versionId: string, body: { field_schema?: unknown; render_schema_version?: string; internal_notes?: string | null }): Promise<TemplateVersion> {
     return apiClient.patch(`/platform/document-templates/versions/${versionId}`, body);
   },

@@ -32,6 +32,8 @@ export interface PlatformTenantDetail {
   updated_at: string;
   identity_provider: string | null;
   status: string;
+  // PLATFORM-UX-1 B-1b (directive R-7) — the subdomain label, or null.
+  slug: string | null;
 }
 
 export interface PlatformAuditEvent {
@@ -81,6 +83,45 @@ export interface ProvisionTenantResult {
   membership_id: string;
   capabilities: string[];
   invitation_sent: boolean;
+}
+
+// Domain-Enforcement P3 — the operator view of a tenant's email-domain claim
+// (GET /platform/tenants/:id/domain and every domain action's response). Reads
+// and writes all need platform:tenant:lifecycle:manage.
+export type DomainClaimState = 'PROVISIONAL' | 'AUTHORITATIVE' | 'LAPSED' | 'RELEASED';
+
+export interface TenantDomainClaim {
+  domain: string;
+  claim: DomainClaimState | string;
+  expires_at: string | null;
+  reason: string | null;
+  exception: boolean;
+}
+
+export interface TenantDomainException {
+  id: string;
+  domain: string;
+  justification: string;
+  evidence_ref: string;
+  granted_by_user_id: string;
+  granted_at: string;
+  revoked_by_user_id: string | null;
+  revoked_at: string | null;
+}
+
+export interface TenantDomain {
+  tenant_id: string;
+  domain_claim: TenantDomainClaim | null;
+  exceptions: TenantDomainException[];
+}
+
+// POST /platform/tenants/:id/invitations — invite a user into a tenant.
+export interface InviteTenantUserResult {
+  tenant_id: string;
+  user_id: string;
+  membership_id: string;
+  role_keys: string[];
+  status: 'invitation_sent' | 'roles_updated';
 }
 
 export interface LifecycleActionResult {
@@ -195,7 +236,23 @@ export interface PersonalInvite {
   expires_at: string | null;
 }
 
+// PLATFORM-UX-1 B-1a (directive R-6) — the signed-in operator, caller only
+// (GET /platform/me). The shared Session type carries no name or email.
+export interface PlatformMe {
+  user_id: string;
+  email: string;
+  display_name: string | null;
+  tenant_id: string;
+  tenant_name: string;
+  role_keys: string[];
+}
+
 export const platformApi = {
+  // PLATFORM-UX-1 B-1a — the signed-in operator's identity (caller only).
+  getMe(): Promise<PlatformMe> {
+    return apiClient.get('/platform/me');
+  },
+
   // Inc-3 PR-3.8 — the operator dashboard summary (default screen).
   getDashboard(): Promise<PlatformDashboard> {
     return apiClient.get('/platform/dashboard');
@@ -234,6 +291,8 @@ export const platformApi = {
     // IC-4 PR-9 — BUSINESS (default) | PERSONAL; the backend DTO + service are
     // the authority (closed TENANT_KINDS, personal capability set, owner role).
     kind?: TenantKind;
+    // IC-2 PR-4 — optional subdomain label; validated server-side (deriveSlugOrThrow).
+    slug?: string;
   }): Promise<ProvisionTenantResult> {
     return apiClient.post('/platform/tenants', body);
   },
@@ -263,7 +322,7 @@ export const platformApi = {
 
   startOffboarding(
     id: string,
-    body: { retentionPolicyCode: string; closeAt: string; reasonCode?: string },
+    body: { retentionPolicyCode: string; closeAt: string; reasonCode?: string; reasonText?: string },
   ): Promise<LifecycleActionResult> {
     return apiClient.post(`/platform/tenants/${id}/start-offboarding`, body);
   },
@@ -291,6 +350,36 @@ export const platformApi = {
 
   issuePersonalInvite(body: { email: string }): Promise<PersonalInvite> {
     return apiClient.post('/platform/personal-invites', body);
+  },
+
+  // PLATFORM-UX-1 F-5 — invite a user into a tenant (platform:tenant:provision).
+  inviteTenantUser(
+    id: string,
+    body: { email: string; role_keys: string[]; display_name?: string },
+  ): Promise<InviteTenantUserResult> {
+    return apiClient.post(`/platform/tenants/${encodeURIComponent(id)}/invitations`, body);
+  },
+
+  // PLATFORM-UX-1 F-5 — the tenant's domain claim and its four operator actions
+  // (platform:tenant:lifecycle:manage, reads included).
+  getTenantDomain(id: string): Promise<TenantDomain> {
+    return apiClient.get(`/platform/tenants/${encodeURIComponent(id)}/domain`);
+  },
+
+  promoteTenantDomain(id: string, body: { evidence_ref: string }): Promise<TenantDomain> {
+    return apiClient.post(`/platform/tenants/${encodeURIComponent(id)}/domain/promote`, body);
+  },
+
+  releaseTenantDomain(id: string, body: { reason: string }): Promise<TenantDomain> {
+    return apiClient.post(`/platform/tenants/${encodeURIComponent(id)}/domain/release`, body);
+  },
+
+  grantTenantDomainException(id: string, body: { justification: string; evidence_ref: string }): Promise<TenantDomain> {
+    return apiClient.post(`/platform/tenants/${encodeURIComponent(id)}/domain/exception`, body);
+  },
+
+  revokeTenantDomainException(id: string): Promise<TenantDomain> {
+    return apiClient.delete(`/platform/tenants/${encodeURIComponent(id)}/domain/exception`);
   },
 
   close(

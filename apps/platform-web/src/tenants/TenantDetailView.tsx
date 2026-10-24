@@ -1,233 +1,407 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useParams, useSearchParams } from 'react-router-dom';
-import {
-  ApiError,
-  Button,
-  InlineAlert,
-  Tabs,
-  hasScope,
-  useToast,
-  type Session,
-  type TabItem,
-} from '@aramo/fe-foundation';
+import { ApiError, Button, hasScope, useToast, type Session } from '@aramo/fe-foundation';
 
+import {
+  EmptyState,
+  LifecycleActionMenu,
+  PLATFORM_PERMISSIONS as P,
+  Pill,
+  SkeletonPanel,
+  Timeline,
+  ViewOnlyNote,
+  formatDateRelative,
+  permissionLabel,
+  tenantStatusPill,
+} from '../components';
 import {
   platformApi,
   type PlatformAuditEvent,
   type PlatformTenantDetail,
+  type PlatformTenantSign,
 } from '../platform-api';
+import { useEntityCrumb } from '../shell/crumbs';
 
-import { StatusBadge } from './status';
-import { LifecycleDialog, type LifecycleAction } from './LifecycleDialog';
+import { LifecycleDialog } from './LifecycleDialog';
+import { LIFECYCLE_ACTIONS, allowedActions, type LifecycleActionKey } from './lifecycle-reasons';
+import { TenantDomainPanel } from './TenantDomainPanel';
+import { TenantPeoplePanel } from './TenantPeoplePanel';
 import { TenantSignPanel } from './TenantSignPanel';
+import { ownerInviteErrorCopy } from './tenant-errors';
+import { capabilityLabel, kindLabel, providerLabel, timelineFrom } from './tenant-labels';
 
-const LIFECYCLE_SCOPE = 'platform:tenant:lifecycle:manage';
+import './tenants.css';
 
-// The transitions the operator may start from each status (mirrors the service's
-// transition table; server-side is authoritative — these just gate button
-// visibility).
-const ACTIONS_BY_STATUS: Record<string, LifecycleAction[]> = {
-  PROVISIONED: ['close'],
-  ACTIVE: ['suspend', 'offboarding'],
-  SUSPENDED: ['reactivate', 'offboarding'],
-  OFFBOARDING: ['close'],
-  CLOSED: [],
+// PLATFORM-UX-1 F-5 (handoff §6.3, §7; directive R-12, R-13, R-15; amendment
+// 4, 12, 13) — the tenant detail. Header: name, status pill, kind badge, the
+// sign-in host (slug, B-1b), the tenant ID with Copy, and the Lifecycle actions
+// menu limited to the transitions allowed from the current status. Tabs ride
+// `?tab=overview|lifecycle|sign|domain|people`. Domain is hidden without
+// platform:tenant:lifecycle:manage (its reads need it too); every other missing
+// permission shows a view-only note, never a silently missing control.
+
+export type TenantTab = 'overview' | 'lifecycle' | 'sign' | 'domain' | 'people';
+
+const TAB_LABEL: Readonly<Record<TenantTab, string>> = {
+  overview: 'Overview',
+  lifecycle: 'Lifecycle & audit',
+  sign: 'Aramo Sign',
+  domain: 'Domain',
+  people: 'People',
 };
 
-const ACTION_LABEL: Record<LifecycleAction, string> = {
-  suspend: 'Suspend',
-  reactivate: 'Reactivate',
-  offboarding: 'Start offboarding',
-  close: 'Close',
-};
-
-function fmt(iso: string | null): string {
-  return iso ? new Date(iso).toLocaleString() : '—';
+/** The tabs this operator sees (amendment 13: Domain needs lifecycle:manage). */
+export function visibleTabs(canLifecycle: boolean): TenantTab[] {
+  return (['overview', 'lifecycle', 'sign', 'domain', 'people'] as const).filter((t) => t !== 'domain' || canLifecycle);
 }
 
-function auditSummary(e: PlatformAuditEvent): string {
-  const p = e.event_payload as {
-    before?: { status?: string };
-    after?: { status?: string };
-    reason?: { code?: string | null; text?: string | null };
-  };
-  const parts: string[] = [];
-  if (p.before?.status && p.after?.status) {
-    parts.push(`${p.before.status} → ${p.after.status}`);
-  }
-  if (p.reason?.code) parts.push(`reason: ${p.reason.code}`);
-  if (typeof e.event_payload['reason'] === 'string') {
-    parts.push(`reason: ${e.event_payload['reason'] as string}`);
-  }
-  return parts.join(' · ');
+/** `?tab=` → a visible tab; anything else falls back to Overview. */
+export function resolveTab(param: string | null, tabs: readonly TenantTab[]): TenantTab {
+  return tabs.find((t) => t === param) ?? 'overview';
 }
+
+type Loaded<T> = { status: 'loading' } | { status: 'error'; notFound?: boolean } | { status: 'ready'; value: T };
 
 export function TenantDetailView({ session }: { readonly session: Session }) {
   const { id = '' } = useParams();
-  // Inc-3 PR-3.8 — the dashboard's activity feed deep-links to `?tab=lifecycle`
-  // so a lifecycle event opens straight on the audit tab. Only the two known
-  // tab ids are honored (Tabs falls back to the first tab otherwise).
-  const [searchParams] = useSearchParams();
-  const tabParam = searchParams.get('tab') ?? undefined;
+  const [params, setParams] = useSearchParams();
   const toast = useToast();
-  const [tenant, setTenant] = useState<PlatformTenantDetail | null>(null);
-  const [events, setEvents] = useState<PlatformAuditEvent[]>([]);
-  const [error, setError] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<LifecycleAction | null>(null);
-  const canManage = hasScope(session, LIFECYCLE_SCOPE);
+  const canLifecycle = hasScope(session, P.tenantLifecycleManage);
+  const canProvision = hasScope(session, P.tenantProvision);
 
-  const load = useCallback(async () => {
-    setError(null);
+  const [tenant, setTenant] = useState<Loaded<PlatformTenantDetail>>({ status: 'loading' });
+  const [audit, setAudit] = useState<Loaded<PlatformAuditEvent[]>>({ status: 'loading' });
+  const [sign, setSign] = useState<Loaded<PlatformTenantSign>>({ status: 'loading' });
+  const [dialog, setDialog] = useState<LifecycleActionKey | null>(null);
+  const [sending, setSending] = useState(false);
+  const tabRefs = useRef<Partial<Record<TenantTab, HTMLButtonElement | null>>>({});
+
+  const loadTenant = useCallback(async (): Promise<void> => {
     try {
-      const [t, a] = await Promise.all([
-        platformApi.getTenant(id),
-        platformApi.getTenantAudit(id),
-      ]);
-      setTenant(t.tenant);
-      setEvents(a.events);
+      const res = await platformApi.getTenant(id);
+      setTenant({ status: 'ready', value: res.tenant });
     } catch (e) {
-      setError(e instanceof ApiError ? e.message : 'Failed to load tenant.');
+      setTenant({ status: 'error', notFound: e instanceof ApiError && e.status === 404 });
+    }
+  }, [id]);
+
+  const loadAudit = useCallback(async (): Promise<void> => {
+    try {
+      const res = await platformApi.getTenantAudit(id);
+      setAudit({ status: 'ready', value: res.events });
+    } catch {
+      setAudit({ status: 'error' });
+    }
+  }, [id]);
+
+  const loadSign = useCallback(async (): Promise<void> => {
+    setSign({ status: 'loading' });
+    try {
+      setSign({ status: 'ready', value: await platformApi.getTenantSign(id) });
+    } catch {
+      setSign({ status: 'error' });
     }
   }, [id]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    setTenant({ status: 'loading' });
+    setAudit({ status: 'loading' });
+    void loadTenant();
+    void loadAudit();
+    void loadSign();
+  }, [loadTenant, loadAudit, loadSign]);
 
-  const sendOwnerInvite = async (): Promise<void> => {
-    try {
-      await platformApi.resendOwnerInvite(id);
-      toast.show('Owner invite sent.');
-      void load(); // refresh the timeline so the send is reflected
-    } catch (e) {
-      const reason =
-        e instanceof ApiError
-          ? (e.details?.['reason'] as string | undefined)
-          : undefined;
-      toast.show(
-        e instanceof ApiError
-          ? `Resend failed: ${e.message}${reason ? ` (${reason})` : ''}`
-          : 'Resend failed.',
-      );
-      void load(); // state may have changed underneath (422-aware)
+  const t = tenant.status === 'ready' ? tenant.value : null;
+  useEntityCrumb(t?.name ?? null);
+
+  const tabs = visibleTabs(canLifecycle);
+  const tab = resolveTab(params.get('tab'), tabs);
+  const selectTab = (next: TenantTab): void => {
+    const p = new URLSearchParams(params);
+    p.set('tab', next);
+    setParams(p, { replace: true });
+  };
+  const onTabKey = (e: KeyboardEvent<HTMLDivElement>): void => {
+    const at = tabs.indexOf(tab);
+    let next: TenantTab | undefined;
+    if (e.key === 'ArrowRight') next = tabs[(at + 1) % tabs.length];
+    else if (e.key === 'ArrowLeft') next = tabs[(at - 1 + tabs.length) % tabs.length];
+    else if (e.key === 'Home') next = tabs[0];
+    else if (e.key === 'End') next = tabs[tabs.length - 1];
+    if (next !== undefined) {
+      e.preventDefault();
+      selectTab(next);
+      tabRefs.current[next]?.focus();
     }
   };
 
-  if (error) return <div className="pw-page"><InlineAlert variant="error">{error}</InlineAlert></div>;
-  if (!tenant) return <div className="pw-page">Loading…</div>;
-
-  const actions = ACTIONS_BY_STATUS[tenant.status] ?? [];
-  // Inc-3 PR-3.4 (B4) — "owner not yet invited" is derived from the audit
-  // timeline the page already loads: no tenant.owner_invite.sent means the
-  // create-now-invite-later path was taken and no invite has gone out yet.
-  const ownerInvited = events.some(
-    (e) => e.event_type === 'tenant.owner_invite.sent',
-  );
-  const ownerNotYetInvited =
-    tenant.status === 'PROVISIONED' && !ownerInvited;
-
-  const overview = (
-    <dl className="pw-facts">
-      <dt>Tenant ID</dt>
-      <dd className="mono">{tenant.id}</dd>
-      <dt>Name</dt>
-      <dd>{tenant.name}</dd>
-      <dt>Status</dt>
-      <dd><StatusBadge status={tenant.status} /></dd>
-      <dt>Home realm (IdP)</dt>
-      <dd>{tenant.identity_provider ?? '— (chooser)'}</dd>
-      <dt>Active</dt>
-      <dd>{tenant.is_active ? 'yes' : 'no'}</dd>
-      <dt>Created</dt>
-      <dd>{fmt(tenant.created_at)}</dd>
-      <dt>Updated</dt>
-      <dd>{fmt(tenant.updated_at)}</dd>
-    </dl>
-  );
-
-  const lifecycle = (
-    <div>
-      <div className="pw-actions">
-        {canManage ? (
-          actions.map((a) => (
-            <Button key={a} variant="secondary" onClick={() => setDialog(a)}>
-              {ACTION_LABEL[a]}
-            </Button>
-          ))
-        ) : (
-          <span className="pw-audit__meta">
-            Read-only (lifecycle:manage scope required to act).
-          </span>
-        )}
-        {tenant.status === 'PROVISIONED' ? (
-          <Button variant="ghost" onClick={() => void sendOwnerInvite()}>
-            Send owner invite
-          </Button>
-        ) : null}
+  if (tenant.status === 'error') {
+    return (
+      <div className="pw-page">
+        <section className="pt-card pt-w900">
+          {tenant.notFound ? (
+            <EmptyState title="Tenant not found" body="This tenant doesn’t exist, or its ID is mistyped." />
+          ) : (
+            <div role="alert" className="pw-alert pw-alert--error pt-panel-alert">
+              <span>
+                <b>Couldn’t load this tenant.</b>
+              </span>
+              <Button
+                unstyled
+                className="pw-btn pw-btn--secondary pw-btn--30 pt-panel-alert__action"
+                onClick={() => {
+                  setTenant({ status: 'loading' });
+                  void loadTenant();
+                }}
+              >
+                Try again
+              </Button>
+            </div>
+          )}
+        </section>
       </div>
+    );
+  }
+  if (t === null) {
+    return (
+      <div className="pw-page" aria-busy="true">
+        <SkeletonPanel lines={[240, 320]} label="Loading tenant…" />
+      </div>
+    );
+  }
 
-      {ownerNotYetInvited ? (
-        <p className="pw-notice" role="status">
-          <strong>Owner not yet invited.</strong> This tenant was provisioned
-          without sending the owner’s invitation. Use “Send owner invite” when the
-          owner is ready to onboard.
-        </p>
-      ) : null}
+  const status = tenantStatusPill(t.status);
+  const acts = allowedActions(t.status);
+  const host = t.slug ? `${t.slug}.aramo.ai` : null;
+  const events = audit.status === 'ready' ? audit.value : [];
+  const invited = events.some((e) => e.event_type === 'tenant.owner_invite.sent');
+  const provisioned = t.status === 'PROVISIONED';
+  const menuActions = acts.map((a) => ({
+    key: a,
+    label: LIFECYCLE_ACTIONS[a].label,
+    description: LIFECYCLE_ACTIONS[a].description,
+    tone: LIFECYCLE_ACTIONS[a].tone === 'danger' ? ('danger' as const) : ('normal' as const),
+  }));
 
-      <h3 className="pw-page__title" style={{ fontSize: '1.05rem' }}>
-        Audit timeline
-      </h3>
-      {events.length === 0 ? (
-        <p className="pw-audit__meta">No lifecycle events yet.</p>
-      ) : (
-        <ul className="pw-audit">
-          {events.map((e, i) => (
-            <li className="pw-audit__item" key={`${e.event_type}-${e.created_at}-${i}`}>
-              <div className="pw-audit__head">
-                <span>{e.event_type}</span>
-                <span className="pw-audit__meta">{fmt(e.created_at)}</span>
-              </div>
-              <div className="pw-audit__detail">
-                {auditSummary(e) || '—'}
-                <span className="pw-audit__meta">
-                  {' '}
-                  · {e.actor_type}
-                  {e.actor_id ? ` ${e.actor_id.slice(0, 8)}` : ''}
-                </span>
-              </div>
-            </li>
-          ))}
-        </ul>
-      )}
-    </div>
-  );
+  const copyId = async (): Promise<void> => {
+    try {
+      await navigator.clipboard.writeText(t.id);
+      toast.show('Tenant ID copied.');
+    } catch {
+      toast.show('Couldn’t copy the tenant ID.');
+    }
+  };
 
-  const tabs: TabItem[] = [
-    { id: 'overview', label: 'Overview', content: overview },
-    { id: 'lifecycle', label: 'Lifecycle & Audit', content: lifecycle },
-    // Aramo Sign launch — read-only Sign account (support visibility).
-    { id: 'sign', label: 'Aramo Sign', content: <TenantSignPanel tenantId={id} /> },
+  const sendOwnerInvite = async (): Promise<void> => {
+    setSending(true);
+    try {
+      await platformApi.resendOwnerInvite(t.id);
+      toast.show(`Owner invite sent to ${t.name}.`);
+    } catch (e) {
+      toast.show(ownerInviteErrorCopy(e));
+    } finally {
+      setSending(false);
+      void loadAudit();
+      void loadTenant();
+    }
+  };
+
+  const capabilities = sign.status === 'ready' ? sign.value.capabilities.map(capabilityLabel).join(', ') || 'None' : null;
+  const overviewRows: readonly (readonly [string, string, boolean?])[] = [
+    ['Tenant ID', t.id, true],
+    ['Name', t.name],
+    ['Kind', kindLabel(t.kind)],
+    ['Status', status.label],
+    ['Home sign-in provider', providerLabel(t.identity_provider)],
+    ['Active', t.is_active ? 'Yes' : 'No'],
+    ['Created', formatDateRelative(t.created_at)],
+    ['Updated', formatDateRelative(t.updated_at)],
+    ['Capabilities', capabilities ?? (sign.status === 'error' ? 'Couldn’t load capabilities' : 'Loading…')],
   ];
 
   return (
     <div className="pw-page">
-      <div className="pw-page__head">
-        <h1 className="pw-page__title">{tenant.name}</h1>
-        <StatusBadge status={tenant.status} />
+      <div className="pt-dhead">
+        <div className="pt-dhead__main">
+          <div className="pt-dhead__row">
+            <h1 className="pt-h1">{t.name}</h1>
+            <Pill tone={status.tone}>{status.label}</Pill>
+            <span className="pt-kind">{kindLabel(t.kind)}</span>
+          </div>
+          <div className="pt-dhead__meta">
+            {host !== null ? <span className="pt-mono">{host}</span> : <span>No sign-in address</span>}
+            <span className="pt-idrow">
+              <span className="pt-mono">{t.id}</span>
+              <Button unstyled className="pt-copy" aria-label="Copy tenant ID" onClick={() => void copyId()}>
+                Copy
+              </Button>
+            </span>
+          </div>
+        </div>
+        <div>
+          {canLifecycle && acts.length > 0 ? (
+            <LifecycleActionMenu
+              actions={menuActions}
+              onSelect={(k) => setDialog(k as LifecycleActionKey)}
+              footnote={provisioned ? 'Becomes Active automatically when the owner first signs in.' : undefined}
+            />
+          ) : null}
+          {t.status === 'CLOSED' ? (
+            <span className="pt-closed-note">Closed is terminal. No further lifecycle actions.</span>
+          ) : null}
+        </div>
       </div>
-      <Tabs items={tabs} ariaLabel="Tenant detail" initialId={tabParam} />
-
-      {dialog ? (
-        <LifecycleDialog
-          action={dialog}
-          tenantId={id}
-          open={dialog !== null}
-          onOpenChange={(o) => {
-            if (!o) setDialog(null);
-          }}
-          onDone={() => void load()}
-        />
+      {!canLifecycle ? (
+        <div className="pt-viewonly-wrap">
+          <ViewOnlyNote
+            subject="this tenant"
+            needs="Lifecycle and domain changes need"
+            permission={permissionLabel(P.tenantLifecycleManage)}
+          />
+        </div>
       ) : null}
+
+      <div role="tablist" aria-label="Tenant sections" className="pt-tabs" onKeyDown={onTabKey}>
+        {tabs.map((k) => (
+          <Button
+            key={k}
+            ref={(el) => {
+              tabRefs.current[k] = el;
+            }}
+            unstyled
+            role="tab"
+            id={`pt-tab-${k}`}
+            aria-selected={tab === k}
+            aria-controls={`pt-panel-${k}`}
+            tabIndex={tab === k ? 0 : -1}
+            className={tab === k ? 'pt-tab pt-tab--on' : 'pt-tab'}
+            onClick={() => selectTab(k)}
+          >
+            {TAB_LABEL[k]}
+          </Button>
+        ))}
+      </div>
+
+      <div role="tabpanel" id={`pt-panel-${tab}`} aria-labelledby={`pt-tab-${tab}`}>
+        {tab === 'overview' ? (
+          <>
+            {provisioned ? (
+              <div className="pt-callout">
+                <span className="pt-callout__text">
+                  <b>{invited ? 'Invited' : 'Not yet invited'}.</b>{' '}
+                  {invited
+                    ? 'Owner invite sent. The tenant becomes Active automatically when the owner first signs in.'
+                    : 'The owner hasn’t been invited yet. The tenant stays Provisioned until the owner signs in.'}
+                </span>
+                {canProvision ? (
+                  <Button
+                    unstyled
+                    className="pw-btn pw-btn--normal pw-btn--34"
+                    disabled={sending || audit.status !== 'ready'}
+                    aria-busy={sending || undefined}
+                    onClick={() => void sendOwnerInvite()}
+                  >
+                    {invited ? 'Resend owner invite' : 'Send owner invite'}
+                  </Button>
+                ) : null}
+              </div>
+            ) : null}
+            <section className="pt-card pt-w900" aria-label="Tenant details">
+              <dl className="pt-ov">
+                {overviewRows.map(([k, v, mono]) => (
+                  <div key={k} className="pt-ov__row">
+                    <dt className="pt-ov__k">{k}</dt>
+                    <dd className={mono ? 'pt-ov__v pt-ov__v--mono' : 'pt-ov__v'}>{v}</dd>
+                  </div>
+                ))}
+              </dl>
+            </section>
+          </>
+        ) : null}
+
+        {tab === 'lifecycle' ? (
+          <>
+            {canLifecycle && acts.length > 0 ? (
+              <div className="pt-actrow">
+                {acts.map((a) => (
+                  <Button
+                    key={a}
+                    unstyled
+                    className={`pw-btn pw-btn--secondary pw-btn--34${LIFECYCLE_ACTIONS[a].tone === 'danger' ? ' pt-actbtn--danger' : ''}`}
+                    onClick={() => setDialog(a)}
+                  >
+                    {LIFECYCLE_ACTIONS[a].label}…
+                  </Button>
+                ))}
+              </div>
+            ) : null}
+            <section className="pt-card pt-w900" aria-labelledby="pt-timeline-title">
+              <div className="pt-card__head pt-card__head--14">
+                <h2 id="pt-timeline-title" className="pt-card__title">
+                  Timeline
+                </h2>
+                <span className="pt-card__sub">Tenant lifecycle events, newest first.</span>
+              </div>
+              {audit.status === 'loading' ? <SkeletonPanel lines={['100%', '70%', '85%']} /> : null}
+              {audit.status === 'error' ? (
+                <div role="alert" className="pw-alert pw-alert--error pt-panel-alert">
+                  <span>
+                    <b>Couldn’t load the timeline.</b> The other tabs are unaffected.
+                  </span>
+                  <Button
+                    unstyled
+                    className="pw-btn pw-btn--secondary pw-btn--30 pt-panel-alert__action"
+                    onClick={() => {
+                      setAudit({ status: 'loading' });
+                      void loadAudit();
+                    }}
+                  >
+                    Try again
+                  </Button>
+                </div>
+              ) : null}
+              {audit.status === 'ready' && events.length === 0 ? <EmptyState body="No lifecycle events yet." /> : null}
+              {audit.status === 'ready' && events.length > 0 ? (
+                <div className="pt-tl-wrap">
+                  <Timeline events={timelineFrom(events)} />
+                </div>
+              ) : null}
+            </section>
+          </>
+        ) : null}
+
+        {tab === 'sign' ? (
+          <TenantSignPanel
+            data={sign.status === 'ready' ? sign.value : null}
+            failed={sign.status === 'error'}
+            onRetry={() => void loadSign()}
+          />
+        ) : null}
+
+        {tab === 'domain' && canLifecycle ? <TenantDomainPanel tenantId={t.id} tenantName={t.name} kind={t.kind} /> : null}
+
+        {tab === 'people' ? (
+          <TenantPeoplePanel tenantId={t.id} host={host ?? 'Aramo'} canInvite={canProvision} />
+        ) : null}
+      </div>
+
+      <LifecycleDialog
+        action={dialog}
+        tenantId={t.id}
+        tenantName={t.name}
+        status={t.status}
+        onClose={() => setDialog(null)}
+        onStale={() => {
+          void loadTenant();
+          void loadAudit();
+        }}
+        onDone={(res) => {
+          setDialog(null);
+          toast.show(`${t.name} is now ${tenantStatusPill(res.to).label.toLowerCase()}.`);
+          void loadTenant();
+          void loadAudit();
+        }}
+      />
     </div>
   );
 }

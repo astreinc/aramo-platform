@@ -1,202 +1,159 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
+
+import { ConfirmDialog, FieldAck, FieldSelect, FieldText, FieldTextArea, tenantStatusPill } from '../components';
+import { platformApi, type LifecycleActionResult } from '../platform-api';
+
 import {
-  ApiError,
-  Button,
-  Dialog,
-  FormField,
-  InlineAlert, Checkbox, Input, Select, TextArea,
-} from '@aramo/fe-foundation';
+  EMPTY_LIFECYCLE_VALUES,
+  LIFECYCLE_ACTIONS,
+  lifecycleValuesComplete,
+  type LifecycleActionKey,
+  type LifecycleValues,
+} from './lifecycle-reasons';
+import { alreadyInStatusCopy, lifecycleErrorCopy, type ErrorCopy } from './tenant-errors';
 
-import { platformApi } from '../platform-api';
+// PLATFORM-UX-1 F-5 (handoff §7; directive R-15) — one lifecycle transition in
+// the confirm-dialog pattern: the Change box (current status → target), the
+// consequence, the action's fields from lifecycle-reasons.ts, and the commit in
+// the action's tone (terracotta, or danger for Close). Commit stays at 45% until
+// every required field has a value. `illegal_transition` and "already in that
+// status" keep the dialog open with their copy; success closes it and the caller
+// toasts and refetches the timeline.
 
-export type LifecycleAction =
-  | 'suspend'
-  | 'reactivate'
-  | 'offboarding'
-  | 'close';
-
-const TITLES: Record<LifecycleAction, string> = {
-  suspend: 'Suspend tenant',
-  reactivate: 'Reactivate tenant',
-  offboarding: 'Start offboarding',
-  close: 'Close tenant',
-};
-
-const REASON_CODES = [
-  'ap_violation',
-  'non_payment',
-  'security_incident',
-  'tenant_request',
-  'contract_end',
-  'resolved',
-  'offboarding_complete',
-  'other',
-];
-
-interface Props {
-  readonly action: LifecycleAction;
+export interface LifecycleDialogProps {
+  readonly action: LifecycleActionKey | null;
   readonly tenantId: string;
-  readonly open: boolean;
-  readonly onOpenChange: (open: boolean) => void;
-  readonly onDone: () => void;
+  readonly tenantName: string;
+  /** The status the dialog opened on. */
+  readonly status: string;
+  readonly onClose: () => void;
+  /** Called after a committed change (changed: true). */
+  readonly onDone: (result: LifecycleActionResult) => void;
+  /** Called when the server says the state moved underneath (refetch). */
+  readonly onStale?: () => void;
 }
 
-// A confirmation-gated lifecycle action dialog (P3). Reason requirements mirror
-// the transition service: SUSPEND needs code + text; REACTIVATE + CLOSE need
-// code; OFFBOARDING needs closeAt + retentionPolicyCode. Typed 4xx from the
-// service (illegal transition 422, missing reason, etc.) render as an InlineAlert
-// with the reason. CLOSE carries an extra confirmation checkbox.
-export function LifecycleDialog({
-  action,
-  tenantId,
-  open,
-  onOpenChange,
-  onDone,
-}: Props) {
-  const [reasonCode, setReasonCode] = useState<string>(REASON_CODES[0] ?? 'other');
-  const [reasonText, setReasonText] = useState('');
-  const [closeAt, setCloseAt] = useState('');
-  const [retentionPolicyCode, setRetentionPolicyCode] = useState('');
-  const [confirmClose, setConfirmClose] = useState(false);
-  const [error, setError] = useState<string | null>(null);
+/** The request for an action, from the dialog values (exported for tests). */
+export function submitLifecycle(
+  action: LifecycleActionKey,
+  tenantId: string,
+  v: LifecycleValues,
+): Promise<LifecycleActionResult> {
+  const text = v.text.trim();
+  switch (action) {
+    case 'suspend':
+      return platformApi.suspend(tenantId, { reasonCode: v.code, reasonText: text });
+    case 'reactivate':
+      return platformApi.reactivate(tenantId, { reasonCode: v.code });
+    case 'offboard':
+      return platformApi.startOffboarding(tenantId, {
+        retentionPolicyCode: v.retention,
+        closeAt: new Date(`${v.closeAt}T00:00:00Z`).toISOString(),
+        ...(v.code ? { reasonCode: v.code } : {}),
+        ...(text ? { reasonText: text } : {}),
+      });
+    case 'close':
+      return platformApi.close(tenantId, { reasonCode: v.code, ...(text ? { reasonText: text } : {}) });
+  }
+}
+
+export function LifecycleDialog({ action, tenantId, tenantName, status, onClose, onDone, onStale }: LifecycleDialogProps) {
+  const [values, setValues] = useState<LifecycleValues>(EMPTY_LIFECYCLE_VALUES);
+  const [error, setError] = useState<ErrorCopy | null>(null);
   const [busy, setBusy] = useState(false);
 
-  const reset = (): void => {
-    setReasonText('');
-    setCloseAt('');
-    setRetentionPolicyCode('');
-    setConfirmClose(false);
+  useEffect(() => {
+    setValues(EMPTY_LIFECYCLE_VALUES);
     setError(null);
     setBusy(false);
+  }, [action]);
+
+  if (action === null) return null;
+  const cfg = LIFECYCLE_ACTIONS[action];
+  const set = (patch: Partial<LifecycleValues>): void => {
+    setValues((v) => ({ ...v, ...patch }));
+    setError(null);
   };
 
-  const submit = async (): Promise<void> => {
+  const commit = async (): Promise<void> => {
     setBusy(true);
     setError(null);
     try {
-      if (action === 'suspend') {
-        await platformApi.suspend(tenantId, { reasonCode, reasonText });
-      } else if (action === 'reactivate') {
-        await platformApi.reactivate(tenantId, { reasonCode });
-      } else if (action === 'offboarding') {
-        await platformApi.startOffboarding(tenantId, {
-          retentionPolicyCode,
-          closeAt: new Date(closeAt).toISOString(),
-          reasonCode,
-        });
-      } else {
-        await platformApi.close(tenantId, { reasonCode, reasonText });
+      const res = await submitLifecycle(action, tenantId, values);
+      if (!res.changed) {
+        setError(alreadyInStatusCopy(res.status));
+        setBusy(false);
+        onStale?.();
+        return;
       }
-      reset();
-      onOpenChange(false);
-      onDone();
-    } catch (e) {
-      // Typed 4xx → surface the reason honestly (illegal transition, missing
-      // reason, etc.). details.reason is the transition service's machine code.
-      const reason =
-        e instanceof ApiError
-          ? (e.details?.['reason'] as string | undefined)
-          : undefined;
-      setError(
-        e instanceof ApiError
-          ? `${e.message}${reason ? ` (${reason})` : ''}`
-          : 'Action failed.',
-      );
       setBusy(false);
+      onDone(res);
+    } catch (e) {
+      const copy = lifecycleErrorCopy(e, status);
+      setError(copy);
+      setBusy(false);
+      if (copy.code === 'illegal_transition') onStale?.();
     }
   };
 
-  const disabled =
-    busy ||
-    (action === 'suspend' && reasonText.trim().length === 0) ||
-    (action === 'offboarding' &&
-      (closeAt.length === 0 || retentionPolicyCode.trim().length === 0)) ||
-    (action === 'close' && !confirmClose);
-
   return (
-    <Dialog
-      open={open}
+    <ConfirmDialog
+      open
       onOpenChange={(o) => {
-        if (!o) reset();
-        onOpenChange(o);
+        if (!o && !busy) onClose();
       }}
-      title={TITLES[action]}
-      size="md"
-      footer={
-        <>
-          <Button variant="secondary" onClick={() => onOpenChange(false)} disabled={busy}>
-            Cancel
-          </Button>
-          <Button variant="primary" onClick={() => void submit()} disabled={disabled}>
-            {busy ? 'Working…' : TITLES[action]}
-          </Button>
-        </>
+      title={`${cfg.label} — ${tenantName}`}
+      from={tenantStatusPill(status)}
+      to={tenantStatusPill(cfg.to)}
+      consequence={cfg.consequence}
+      commitLabel={cfg.commit}
+      tone={cfg.tone}
+      canCommit={lifecycleValuesComplete(action, values)}
+      busy={busy}
+      onCommit={() => void commit()}
+      error={
+        error ? (
+          <>
+            {error.message} <span className="pt-err-code pt-err-code--plain">{error.code}</span>
+          </>
+        ) : null
       }
     >
-      {error ? <InlineAlert variant="error">{error}</InlineAlert> : null}
-
-      <FormField label="Reason code">
-        <Select unstyled
-          className="tc-input"
-          value={reasonCode}
-          onChange={(e) => setReasonCode(e.target.value)}
-        >
-          {REASON_CODES.map((c) => (
-            <option key={c} value={c}>
-              {c}
-            </option>
-          ))}
-        </Select>
-      </FormField>
-
-      {action === 'suspend' || action === 'close' ? (
-        <FormField
-          label={action === 'suspend' ? 'Reason (required)' : 'Reason (optional)'}
-        >
-          <TextArea unstyled
-            className="tc-input"
-            rows={3}
-            value={reasonText}
-            onChange={(e) => setReasonText(e.target.value)}
-            placeholder="Operator note…"
-          />
-        </FormField>
-      ) : null}
-
-      {action === 'offboarding' ? (
-        <>
-          <FormField label="Close date">
-            <Input unstyled
-              className="tc-input"
-              type="date"
-              value={closeAt}
-              onChange={(e) => setCloseAt(e.target.value)}
+      {cfg.fields.map((f) => {
+        if (f.type === 'select') {
+          const value = f.key === 'code' ? values.code : values.retention;
+          return (
+            <FieldSelect
+              key={f.key}
+              label={f.label}
+              required={f.required}
+              helper={'helper' in f ? f.helper : undefined}
+              value={value}
+              onChange={(v) => set(f.key === 'code' ? { code: v } : { retention: v })}
+              options={[{ value: '', label: f.placeholder }, ...f.options]}
             />
-          </FormField>
-          <FormField
-            label="Retention policy code"
-            helper="Opaque string — policy semantics TBD (counsel-gated)."
-          >
-            <Input unstyled
-              className="tc-input"
-              value={retentionPolicyCode}
-              onChange={(e) => setRetentionPolicyCode(e.target.value)}
-              placeholder="e.g. standard_90d"
+          );
+        }
+        if (f.type === 'date') {
+          return (
+            <FieldText key={f.key} label={f.label} required type="date" value={values.closeAt} onChange={(v) => set({ closeAt: v })} />
+          );
+        }
+        if (f.type === 'textarea') {
+          return (
+            <FieldTextArea
+              key={f.key}
+              label={f.label}
+              required={f.required}
+              helper={f.helper}
+              max={f.max}
+              value={values.text}
+              onChange={(v) => set({ text: v })}
             />
-          </FormField>
-        </>
-      ) : null}
-
-      {action === 'close' ? (
-        <label style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 8 }}>
-          <Checkbox
-           
-            checked={confirmClose}
-            onChange={(e) => setConfirmClose(e.target.checked)}
-          />
-          <span>I understand this closes the tenant (terminal).</span>
-        </label>
-      ) : null}
-    </Dialog>
+          );
+        }
+        return <FieldAck key={f.key} label={f.label} checked={values.ack} onChange={(c) => set({ ack: c })} />;
+      })}
+    </ConfirmDialog>
   );
 }
