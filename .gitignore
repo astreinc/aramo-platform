@@ -13,6 +13,8 @@ tmp/
 
 # Coverage
 coverage/
+# The recon coverage report is documentation, not test output.
+!doc/recon/coverage/
 
 # Per-module Prisma generated clients (output = "../generated/client")
 **/prisma/generated/

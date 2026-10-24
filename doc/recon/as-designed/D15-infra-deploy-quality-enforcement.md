@@ -1,6 +1,6 @@
 # D15 — Infrastructure, Deployment, Persistence Ops & Quality/Contract Enforcement (AS-DESIGNED)
-> Baseline SHA 12330b0f5049c97f01022df0b190035933345212 · category AS-DESIGNED
-> Sourced ONLY from ratified ADRs / LOCKED specs under `doc/adr/*`. Not synthesized from code.
+> Baseline SHA 680907fc06620845944794e0a529918c980f5124 · category AS-DESIGNED
+> Sourced ONLY from ratified ADRs / LOCKED specs under `doc/adr/*` and LOCKED directives in the canonical `Aramo/locked/` folder (cited by file name and section). Not synthesized from code.
 
 ## IaC conventions — ADR-0012 (Accepted 2026-05-23)
 
@@ -16,6 +16,13 @@
   sequencing under `infrastructure/modules/` (Decision 7), and defers
   `tfsec`/`checkov` + `terraform plan` PR-comment integration to PR-10
   (Decision 6). (`doc/adr/0012-iac-conventions.md`, Context + Decisions 6/7.)
+- **Lightsail root separation:** `Aramo-Single-Box-Directive-4-Lightsail-Terraform-v1_0-LOCKED.md`
+  §B (lines 21–27): `infrastructure-lightsail/` is "a new, separate root … Its own
+  state … ZERO references to the platform"; §F lists Cognito config, `.env`
+  secrets and app deploy/seed as explicitly OUT of Terraform.
+- **Terraform vocabulary exemption:** `Aramo-Sign-Naming-Unification-Directive-v1_0-LOCKED.md`
+  §3.8 (N-9): the provider's KMS key-spec attribute is a "strictly file- and
+  field-specific" exemption.
 
 ## Observability conventions — ADR-0013 (Accepted 2026-05-23)
 
@@ -50,6 +57,19 @@
   replication, (+2). PR-10b ships RDS automated backups + PITR; the remaining
   mechanisms carry M7 deferrals. (`doc/adr/0017-rds-disaster-recovery-strategy.md`,
   Context.)
+- **Single-box backups (the box-era substitute):**
+  `Aramo-Single-Box-Directive-3-Ops-Production-Readiness-v1_0-LOCKED.md` §B
+  (lines 17–21): "A scheduled `pg_dump` … of the box Postgres → S3 … Restore
+  drill — REQUIRED, not optional". No RPO/RTO figure is set for the box.
+- **Talent Intelligence database:** `doc/adr/0036-talent-intelligence-service.md`
+  Decision 2 (`:67`–`75`): `aramo_intelligence` on the existing Postgres server
+  with its own role; "migrations … applied by a per-database runner
+  (`tools/db-sync-intelligence.sh`) with its own ledger table
+  `public._intelligence_migrations` … `deploy/migrate-prod.sh` invokes it after
+  ensuring the database and role exist (idempotent; the PROD volume is not
+  fresh, so `initdb` scripts cannot be relied on)." ATI-SEP-1 ruling G3
+  (`Aramo-ATS-TI-Separation-Program-Directive-v1_0-LOCKED.md` §4) states the
+  same.
 
 ## Background-jobs substrate — ADR-0018 (Accepted; partly superseded)
 
@@ -73,8 +93,10 @@
 - Context records the grounded audit (`b36cd7a7`): `libs/outbox-publisher`
   drains 7 `OutboxEvent` tables emitting **structured logs only**; EventBridge/
   SQS/Lambda/Step Functions absent from code and both Terraform roots; the lone
-  esign `aws_sns_topic` authored-but-never-applied with no subscription.
+  e-sign `aws_sns_topic` authored-but-never-applied with no subscription.
   (`doc/adr/0033-cross-service-durable-event-foundation.md`, Context.)
+- ATI-SEP-1 §3 item 6 / ruling E-1 reuse the ADR-0033 envelope for the ATS → TI
+  `talent.*` events with an explicit `event_version`.
 
 ## Front door — ADR-0023 (Accepted 2026-07-24)
 
@@ -88,6 +110,18 @@
   user scoped to the `_acme-challenge.aramo.ai` TXT record only; the request-path
   ask-endpoint is retired. (`doc/adr/0023-frontdoor-nginx-wildcard-tls.md`,
   Decisions 2–3.)
+- **Fourth host class (Sign):**
+  `Aramo-Sign-Unified-Product-Permission-Contract-Platform-API-Directive-v1_0-LOCKED.md`
+  §4.1.3: one host, three authentication zones, "a Content-Security-Policy and
+  standard security headers on the Sign host; rate limiting on guest-signing and
+  signup routes … the front-door verifier updated; one base-URL setting".
+  `Aramo-Sign-Unified-Product-D1-Host-Retirement-Addendum-v1_0-LOCKED.md`
+  "Final host topology": `esign.aramo.ai` retired with no redirect (**overrides
+  parent §4.1.1**, which had specified a compatibility redirect); Directions §1
+  reconcile nginx, env vars, Cognito callbacks and deployment documentation.
+  `Aramo-Domain-Enforcement-P3-One-Organization-Per-Domain-Directive-v1_0-LOCKED.md`
+  §4 (line 100): the narrow sign-host exception to apps/api for the two
+  domain-verification prefixes.
 
 ## Pipeline⊥ATS boundary wall — ADR-0029 (LOCKED)
 
@@ -96,33 +130,55 @@
   nx boundary tags CI-enforce this.
   (`doc/adr/0029-pipeline-boundary-modular-monolith.md` /
   `doc/adr/Aramo-ADR-0029-Pipeline-Boundary-Modular-Monolith-v1_0-LOCKED.md`.)
+- **ATS⊥TI wall (ADR-0036 Decision 1, `:50`–`54`):** "`scope:ats` must not
+  depend on `scope:intelligence`. `scope:intelligence` must not depend on
+  `scope:ats` or `scope:cip`" — "CI-enforced in `eslint.config.mjs`". ATI-SEP-1
+  §5 executor discipline: "Pact registration for every new contract."
 
 ## Quality / contract-enforcement governance (CI)
 
 - **Deployment-gate as the single required check**, override-label discipline,
   and the fast/full/nightly lane model derive from the CI-Velocity LOCKED
   directive family referenced in `.github/workflows/ci.yml:1-29` (PR-M0R-3 §4.1
-  VARIANT B aggregator; CI-Velocity-2 §PR-2). The directives themselves are
-  canonical LOCKED artifacts held outside the repo (OneDrive Aramo/locked) —
-  **no in-repo ADR anchor fully specifies the CI lane topology**; the workflow
-  header comment is the nearest in-tree ratified reference.
+  VARIANT B aggregator; CI-Velocity-2 §PR-2).
+  `Aramo-CI-Velocity-Directive-v1_0-LOCKED.md` §PR-2 (lines 32–38): PR lane on
+  `nx affected`; "**Merge queue** (`merge_group` trigger): the FULL current suite
+  … runs on the queued merge result before it lands on main. `deployment-gate`
+  requires the merge-group full set"; "Nightly full-serial run on `main` … never
+  block PRs retroactively." `Aramo-CI-Velocity-2-Governed-Aggregate-Equivalence-Amendment-v1_0-LOCKED.md`
+  (LOCKED) governs the consolidated aggregate. No in-repo ADR restates this.
 - The **vocabulary two-tier discipline** (Tier-1 R7, Tier-2 locked vocabulary)
   is codified by PR-1 precedent and recorded in `doc/adr/0001-pr1-precedent-decisions.md`
   + `doc/adr/0011-r7-allowlist-extension-for-openapi-prohibited-values.md`.
+- **Migration-ledger re-key discipline:** `Aramo-Sign-Naming-Unification-Directive-v1_0-LOCKED.md`
+  §3.1: the ledger re-key from the old lib path "must be a **guarded
+  reconciliation**, not a blind path rewrite … On partial state, it refuses and
+  makes no change … Running it again after success is a no-op."
 
 ## Explicit anchor gaps (no ratified AS-DESIGNED source found)
 
 - **Single-box Lightsail deployment topology** (`infrastructure-lightsail/`,
-  `docker-compose.prod.yml`): there is **no numbered ADR** specifying the
-  single-box compose stack as the canonical production topology. ADR-0023 governs
-  only the front-door slice. The single-box design is driven by LOCKED directives
-  ("Single-Box Directive 1", referenced in `docker-compose.prod.yml:1`) that are
-  **not present as in-repo ADR files** at this SHA — AS-DESIGNED for the overall
-  box topology has **no in-repo anchor**.
+  `docker-compose.prod.yml`): anchored out-of-repo by
+  `Aramo-Astre-Single-Box-Go-Live-Spec-v1_0-LOCKED.md` (§1 architecture, §8
+  platform deferred to go-live #2) and Single-Box Directives 1–4 (referenced in
+  `docker-compose.prod.yml:1`). There is still **no numbered in-repo ADR**
+  specifying the single-box compose stack as the canonical production
+  topology; ADR-0023 governs only the front-door slice.
 - **Persistence-ops migrate/seed gating** (`deploy/migrate-prod.sh`,
   `deploy/seed-prod.sh`): no ADR ratifies the migrate-then-gate deploy sequence;
   the scripts cite operational incidents (`singlebox-ops.md`) rather than a
-  ratified design spec. **No AS-DESIGNED anchor.**
+  ratified design spec. The bounded `--until` mode cites a "Lead Architect
+  ruling 2026-10-14" (`deploy/migrate-prod.sh:46`–`47`); no LOCKED file carrying
+  that ruling was found in `Aramo/locked/`. ADR-0036 Decision 2 anchors only the
+  TI-DB step. **No AS-DESIGNED anchor for the shared-DB sequence.**
+- **Image build gate** (`deploy/build-images.sh`, authorized-SHA + clean-tree,
+  6 images): sourced to "T2-F1-H2" in its header; no LOCKED file found. **No
+  anchor.**
 - **Integration-root registry** (`ci/integration-roots.json`): sourced to "Dev
   Execution Model v1.4 §12 / PR-B" per the file's own `$comment`, a LOCKED
   directive not present as an in-repo ADR. **No in-repo ADR anchor.**
+- **Separate GeoIP updater compose project** (`deploy/geoip/docker-compose.geoip.yml`):
+  cites an "Architect ruling 2026-10-21" (`:6`) for GeoLite2 as a risk signal
+  only; the Sign Personal (Free) Launch directive v1.1 is LOCKED but the
+  separate-project deployment shape was not found stated in it. **Not
+  verified as anchored.**
