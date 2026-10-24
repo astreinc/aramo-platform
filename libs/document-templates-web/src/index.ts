@@ -74,3 +74,33 @@ export {
   type TemplateSelectionView,
   type TemplateOwnerScope,
 } from './document-templates-api';
+// PLATFORM-UX-1 F-9 (directive R-11) — the Template Studio codec (additive: built on the
+// rtr-html-v1 contract and HTML_CODEC above; no existing export changes).
+export {
+  studioBlocksFromHtml,
+  studioBlocksToHtml,
+  isCanonicalStudioHtml,
+  studioPlainText,
+  studioVariableKeys,
+  isStudioValueEmpty,
+  removeStudioVariable,
+  appendStudioVariable,
+  convertStudioValue,
+  studioValueFromText,
+  studioPreviewParts,
+  makeStudioChip,
+  renderStudioBlockDom,
+  studioPasteNodes,
+  createStudioCodec,
+  serializeStudioBlockDom,
+  studioActiveMarks,
+  studioToggleMark,
+  studioInsertAtRange,
+  variableToken,
+  type StudioBlock,
+  type StudioBlockKind,
+  type StudioCodec,
+  type StudioChipState,
+  type StudioChipInfo,
+  type StudioChipResolver,
+} from './studio-codec';
