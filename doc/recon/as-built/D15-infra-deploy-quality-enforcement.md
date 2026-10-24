@@ -32,7 +32,9 @@ walls include: an nx module-boundary wall (now with a `scope:intelligence`
 wall), a two-tier vocabulary gate, OpenAPI validate/lint/drift, route↔OpenAPI
 contract parity, env-passthrough parity (with a TI-optional guard), front-door
 conf check, repo-map check, Pact consumer/provider (13 consumer projects + 1
-provider project with 4 verifier specs), a dynamic integration matrix driven by
+provider project with 4 verifier specs; consumers verified per provider: api 8,
+sign-service 3, auth-service 1, talent-intelligence-service 1 — see the split
+below), a dynamic integration matrix driven by
 a canonical registry (`ci/integration-roots.json`, 49 roots), a real-PostgreSQL
 migration-runner job, Terraform fmt/validate/lint/sec, and npm-audit with an
 allow-list. Persistence ops (build/migrate/seed) are gated shell scripts under
@@ -356,6 +358,14 @@ The wall is exercised by the negative-control fixtures under
 - `scripts/verify-vocabulary.sh:36` — `R7_ALLOWLIST` (Tier-1); `:77` `FRONTDOOR_LEGACY_ALLOWLIST`; `:500` `TIER2_TERMS_REGEX`
 - `scripts/audit-check.sh:1` — allow-list-aware `npm audit` wrapper (ADR-0014)
 - `pact/provider/src/verify.ts:138` / `verify-api.ts:1474` / `verify-sign.ts:149` / `verify-ti.ts:70` — the 4 provider verifier suites (auth-service / api / sign-service / talent-intelligence-service)
+- Consumers verified per provider (consumer count ≠ consumers verified by a given provider; 13 consumer projects in total):
+
+  | Provider | Consumers verified | Evidence |
+  |---|---|---|
+  | api | 8 | `pact/provider/src/verify-api.ts` pactUrls `:9605-9614` — ingestion, prohibited-source-type, portal-thin, ats-web, requisition-import, platform-governance, sign-service-aramo-core, intelligence-webhook |
+  | sign-service | 3 | `pact/provider/src/verify-sign.ts:57`, `:59`, `:61` — sign-consumer, sign-web, sign-workspace |
+  | auth-service | 1 | `pact/provider/src/verify.ts:131` — auth-service-consumer |
+  | talent-intelligence-service | 1 | `pact/provider/src/verify-ti.ts:39` — intelligence-integration |
 - `deploy/migrate-prod.sh:56` — migrate-then-gate before recreate; `:194` `migrate_intelligence()`
 - `deploy/seed-prod.sh:264` — regen client + seed + assert before recreate
 - `tools/db-sync-intelligence.sh:42` — `TI_LEDGER="public._intelligence_migrations"`

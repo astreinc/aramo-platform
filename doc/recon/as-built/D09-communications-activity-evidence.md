@@ -66,8 +66,9 @@ pointing at the interaction it confirms
 
 Producers at this SHA: (1) the recruiter confirms a substantive response via
 `POST /v1/communications/talent-responses`
-(`apps/api/src/communications/talent-response.controller.ts:36`) — the ONLY path
-to `talent_responded`: it requires a recruiter USER principal
+(`apps/api/src/communications/talent-response.controller.ts:36`) — the only FORWARD path
+to `talent_responded` (a backward correction with a note, `qualifying → talent_responded`
+via `/transition`, also lands there: `libs/pipeline/src/lib/pipeline.repository.ts:775-802`): it requires a recruiter USER principal
 (`apps/api/src/communications/talent-response.service.ts:72`), the literal
 attestation `substantive_response_attested: true` (`:99`), and either a verified
 source interaction or a note (`:112`); it writes the confirmation durably then
@@ -108,7 +109,7 @@ stage equality.
 | `CommunicationsEvidenceReferenceVerifier` (apps/api, @Global) | Verifies interaction exists + bound to Talent × Requisition; refuses `provider_observation` | `apps/api/src/pipeline-evidence/evidence-reference-verifier.module.ts:26` |
 | `TalentResponseService` (apps/api) | Recruiter-confirmed response: principal, attestation, source/note, consent-from-no_contact, requisition status, durable write → milestone advance | `apps/api/src/communications/talent-response.service.ts:58` `recordResponse` |
 | `maybeAdvanceToContacted` (apps/api microsoft) | Email-accept → `contacted` best-effort orchestration | `apps/api/src/microsoft/microsoft-email.service.ts:259` |
-| `ZoomWebhookService` (apps/api) | Signature-verified Zoom ingress; records interaction transitions; no Pipeline advance | `apps/api/src/communications/zoom-webhook.service.ts:30` |
+| `ZoomWebhookService` (apps/api) | Signature-verified Zoom ingress; records interaction transitions; no Pipeline advance | comment at `apps/api/src/communications/zoom-webhook.service.ts:30` |
 | `CommunicationCallService.maybeAdvanceToContacted` (apps/api) | Outbound voice call (COMM-C2A) → `contacted` best-effort orchestration | `apps/api/src/communications/communication-call.service.ts:294` |
 | `PipelineProviderObservationOrchestrator` (apps/api) | Provider observation → decision/disposition actions only; evidence-backed targets stay pending | `apps/api/src/pipeline-integration/pipeline-provider-observation.orchestrator.ts:79` `ingest` |
 | `MicrosoftSchedulingService` (apps/api) | Outlook calendar-meeting schedule / reschedule / cancel / reconcile / list-upcoming; consent gate before invitation | `apps/api/src/microsoft/microsoft-scheduling.service.ts:142` |
@@ -220,7 +221,7 @@ scheduling path for screening meetings; its controller is catalogued in D11.
   `recruiting_available_actions[0]` (never stage equality) and maps it to the
   primary CTA (`:376-386`). It is the only ats-web consumer of the field
   (`git grep -n recruiting_available_actions 680907fc -- apps/ats-web/src`).
-- `apps/ats-web/src/pipeline/talent-journey-api.ts:102` — the GET
+- `apps/ats-web/src/pipeline/talent-journey-api.ts:112` — the GET
   `/v1/pipelines/:id/journey` read client; mirrors the apps/api
   `TalentRequisitionJourney` contract and consumes the composed stages as the
   single stage source.
@@ -232,7 +233,7 @@ scheduling path for screening meetings; its controller is catalogued in D11.
 
 ## Key Flows
 
-Recruiter-confirmed "Talent responded" (the only path to `talent_responded`):
+Recruiter-confirmed "Talent responded" (the only forward path to `talent_responded`; a noted backward correction from `qualifying` via `/transition` also lands there, `libs/pipeline/src/lib/pipeline.repository.ts:775-802`):
 
 ```mermaid
 sequenceDiagram
@@ -364,7 +365,7 @@ sequenceDiagram
 - `libs/communications/src/lib/communications.repository.ts:293` — `findFirstOutboundContactInstant`
 - `apps/api/src/microsoft/microsoft-email.service.ts:259` — `maybeAdvanceToContacted`
 - `apps/api/src/microsoft/microsoft-email.service.ts:278` — `recordContactEvidence` call on email accept
-- `apps/api/src/communications/zoom-webhook.service.ts:30` — ingestion independent of progression (no advance)
+- `apps/api/src/communications/zoom-webhook.service.ts:30` — comment: ingestion independent of progression (no advance)
 - `apps/api/src/communications/communication-call.service.ts:303` — `recordContactEvidence` call on outbound voice call (COMM-C2A)
 - `apps/api/src/pipeline-integration/pipeline-provider-mapping-target.ts:36` — `RETIRED_PROVIDER_EVIDENCE_TARGETS`
 - `apps/api/src/pipeline-integration/pipeline-provider-observation.orchestrator.ts:142` — evidence-backed target → pending `EVIDENCE_NOT_DURABLE`

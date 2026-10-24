@@ -183,7 +183,7 @@ approve / select / withdraw.
 
 ## Build sequence intent (§20 R24, line 357)
 
-DOC-3 = Native E-Sign Service Core (`apps/esign-service`, `esign` schema,
+DOC-3 = Native E-Sign Service Core (`apps/esign-service`, `esign` schema (now `apps/sign-service`, schema `sign`),
 envelope/signer/field/session/disclosure/event, `SignatureProvider` contract,
 `NativeAramoSignatureProvider`, capability tokens, state machines, idempotency,
 expiry, decline, void; must remain ATS-neutral). DOC-4 = Sign Web + Execution

@@ -169,7 +169,7 @@ stateDiagram-v2
     revoked --> [*]
 ```
 
-The confirm step still revalidates the pinned examination (missing or non-active → `EXAMINATION_PINNED_OUTDATED`) (`libs/submittal/src/lib/submittal.repository.ts:500-527`) and requires the three attestations (`libs/submittal/src/lib/submittal.controller.ts:321-328`).
+The confirm step still revalidates the pinned examination (missing or non-active → `EXAMINATION_PINNED_OUTDATED`) (`libs/submittal/src/lib/submittal.repository.ts:500-527`) and requires the three attestations (`if` at `libs/submittal/src/lib/submittal.controller.ts:322`, throw at `:327-339`).
 
 ### Engagement decision (pure)
 
@@ -209,7 +209,7 @@ Evidence: `apps/api/src/client-submittal-policy/csp-linearization.ts:1-37`; gate
 - `libs/submittal/src/lib/submittal-state.ts:54` — `canTransition` 8-transition matrix
 - `libs/submittal/src/lib/submittal.controller.ts:78` — `@Controller('v1/submittals')`; `:79` guards; `:80` `@RequireCapability('ats')`
 - `libs/submittal/src/lib/submittal.controller.ts:121` — `assertLifecycleMutationAuthorized`
-- `libs/submittal/src/lib/submittal.controller.ts:290` — `confirmSubmittal` (ATTESTATION_MISSING 422 manual check `:321`); lifecycle authz `:363`
+- `libs/submittal/src/lib/submittal.controller.ts:290` — `confirmSubmittal` (ATTESTATION_MISSING 422 manual check: `if` at `:322`, throw at `:327-339`); lifecycle authz `:363`
 - `libs/submittal/src/lib/submittal.controller.ts:418` — `findByTalentAndJob` discovery GET
 - `libs/submittal/src/lib/submittal.controller.ts:454` — `getSubmittal`
 - `libs/submittal/src/lib/submittal.controller.ts:500` — `getEvidencePackage`

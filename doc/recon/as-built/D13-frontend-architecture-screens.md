@@ -65,7 +65,7 @@ D13 (frontend) owns **no persisted data model**; all shapes are TS view/DTO inte
 
 ## API Endpoints
 
-D13 defines **no HTTP routes** (the FE apps are clients). It wires FE calls to backend `/v1/*` and `/platform/*` endpoints. Distinct path-token counts at 680907fc (non-spec source, `git grep -hoE '/v1/[a-zA-Z0-9_:/-]+' 680907fc -- <path> | sort -u | wc -l`): ats-web **235** (63 `*-api.ts` wiring modules); `libs/org-admin-web` 28; sign-web 26; portal-web 8; home-web 4; `libs/document-templates-web` 2; platform-web 1 (a comment at `apps/platform-web/src/shell/PlatformShell.tsx:26`) plus 10 distinct `'/platform/…` literals. Representative talent-intake wiring (`apps/ats-web/src/talent/talent-intake-api.ts`, base `/v1/talent-intake-drafts` at `:102`):
+D13 defines **no HTTP routes** (the FE apps are clients). It wires FE calls to backend `/v1/*` and `/platform/*` endpoints. Distinct path-token counts at 680907fc (non-spec source, `git grep -hoE '/v1/[a-zA-Z0-9/_:-]+' 680907fc -- '<src>/*.ts' '<src>/*.tsx' ':!*.spec.*' | sort -u | wc -l`): ats-web **188** (235 including spec files; 63 `*-api.ts` wiring modules); `libs/org-admin-web` 28; sign-web 26; portal-web 8; home-web 4; `libs/document-templates-web` 2; platform-web 1 (a comment at `apps/platform-web/src/shell/PlatformShell.tsx:26`) plus 10 distinct `'/platform/…` literals. Representative talent-intake wiring (`apps/ats-web/src/talent/talent-intake-api.ts`, base `/v1/talent-intake-drafts` at `:102`):
 
 | Method | Route (client call) | Evidence (path:line · symbol) |
 |--------|---------------------|-------------------------------|
@@ -299,8 +299,8 @@ flowchart TD
 
 ## NOT VERIFIED (explicit)
 
-- **Exact per-SPA screen counts as "screens"**: counted by filename convention — ats-web 45 `*View.tsx` + 13 `*Section.tsx` (58); org-admin-web 11 `*Page.tsx`; sign-web workspace 20 `.tsx` under `pages/` + `routes/`; platform-web 29 non-spec `.tsx`; portal-web 12 non-spec `.tsx`; home-web 8 non-spec `.tsx` — not by route or by a runtime screen registry. Dialogs/drawers (non-routed surfaces) are excluded from the route tables.
+- **Exact per-SPA screen counts as "screens"**: counted by filename convention — ats-web 45 `*View.tsx` + 13 `*Section.tsx` (58); org-admin-web 11 `*Page.tsx`; sign-web workspace 21 non-spec `.tsx` (13 under `pages/`, 8 under `routes/`); platform-web 29 non-spec `.tsx`; portal-web 12 non-spec `.tsx`; home-web 8 non-spec `.tsx` — not by route or by a runtime screen registry. Dialogs/drawers (non-routed surfaces) are excluded from the route tables.
 - **Deployed `/srv` contents and live nginx state**: the repo template and Dockerfile were read; what is running on any host was not checked (no production contact).
 - **Guard decorators on the backend endpoints** the FE calls are documented in backend domains (D03), not re-verified here.
-- **Every one of the 235 ats-web `/v1` client strings** (and the 28/26/8/4/2 in the other FE projects): counts are de-duplicated greps; endpoint-by-endpoint FE→BE pairing was spot-checked (talent intake, products, Sign workspace/guest) not exhaustively mapped.
+- **Every one of the 188 non-spec ats-web `/v1` client strings** (and the 28/26/8/4/2 in the other FE projects): counts are de-duplicated greps; endpoint-by-endpoint FE→BE pairing was spot-checked (talent intake, products, Sign workspace/guest) not exhaustively mapped.
 - **Page bodies** of the org-admin-web pages, the sign-web workspace pages (`EnvelopeWizard`, `PrepareEditor`, `Billing`, `Settings`, `Templates`), `TalentRequisition360View`, `TechnicalScreeningView` and the platform-web document-template/matching/Personal views were not opened beyond their route wiring and imports.

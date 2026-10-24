@@ -54,7 +54,7 @@ observed behaviour; recommendations live only in the Gap Register.
   entries (from 123 domain findings, 8 cross-domain merges) with stable ids and
   `src: Dxx-Gy` traceability: **27 confirmed defects**, **58 AS-BUILT⊥AS-DESIGNED
   divergences**, **30 proposed enhancements** (severity: 6 high / 35 medium / 74 low);
-  **106 open, 9 RESOLVED at 680907fc** (RESOLVED entries keep their ids). At
+  **105 open, 1 SUPERSEDED, 9 RESOLVED at 680907fc** (1 of the 9 RESOLVED-BY-RECORD; closed entries keep their ids). At
   12330b0f: 70 entries (15/34/21; 5/26/39).
 - **[C1 — Coverage & Completeness Report](coverage/C1-coverage-completeness.md)** —
   inventory and coverage accounting of every module, route, endpoint, data model,
@@ -75,7 +75,7 @@ observed behaviour; recommendations live only in the Gap Register.
 - 15 AS-BUILT + 15 AS-DESIGNED documents · G1 · C1
 - 62 Mermaid diagrams (ERDs, sequence, state, component) derived from code
   (`find doc/recon -name '*.md' -exec grep -c '^```mermaid' {} + | awk -F: '{s+=$2} END{print s}'`)
-- 3200 `path:line` evidence citations at the baseline SHA across all recon
+- 3218 `path:line` evidence citations at the baseline SHA across all recon
   documents (`find doc/recon -name '*.md' -exec grep -ohE '[A-Za-z0-9_./-]+\.(ts|tsx|prisma|yaml|sql|json|sh|mjs|conf|template|tf):[0-9]+' {} + | wc -l`;
   a token-volume count, not a count of independently verified claims)
 - Coverage axes: backend, frontend, database, infrastructure, security, integrations, workflows
@@ -95,7 +95,18 @@ observed behaviour; recommendations live only in the Gap Register.
 
 ## Verification status
 
-Pending verification of the refresh.
+**Refresh verification (2026-10-24, baseline 680907fc).** Three independent read-only auditors each covered five domains (D01–D05, D06–D10, D11–D15). Each one:
+- resolved at least 30 `path:line` citations per as-built file against `git show 680907fc:<path>`, and at least 60 for D13 (most domains were checked in full);
+- re-ran at least 4 coverage-fragment counts per domain with their recorded commands;
+- tried to falsify substantive claims, every RESOLVED gap and every new high-severity gap;
+- opened newly cited LOCKED sources to confirm the cited sections.
+
+**Results.**
+- Every new high-severity gap was confirmed from code: G-073, G-082, G-089 and the carried-over highs.
+- Every RESOLVED status held except D01-G2, which was re-statused SUPERSEDED (G-022).
+- D04-G15 was closed as RESOLVED-BY-RECORD (G-091).
+- The auditors reported 47 corrections: line drift, five count errors, and four claims the code contradicts (D01 shared-code exclusivity, D02 "never float", D04 host-binding scope, D09 "only path"). 45 were applied and re-verified at 680907fc. 2 were rejected because the code contradicts the correction (the D03-G7 provider line stays `:21`; the D10 Pact test-file count is 6, not 7).
+- Consistency rulings were applied across domains: ATS-QA-1 is LOCKED by reference via ATI-SEP-1; the Security S1 file status is caveated.
 
 ## Known limitations
 

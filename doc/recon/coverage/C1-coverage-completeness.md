@@ -55,25 +55,25 @@ mermaid diagrams `grep -c '^```mermaid' <as-built>`.
 
 | Doc | `path:line` tokens | mermaid diagrams |
 |---|---|---|
-| D01 | 74 | 2 |
-| D02 | 158 | 8 |
-| D03 | 203 | 3 |
-| D04 | 237 | 4 |
+| D01 | 76 | 2 |
+| D02 | 160 | 8 |
+| D03 | 205 | 3 |
+| D04 | 241 | 4 |
 | D05 | 96 | 4 |
 | D06 | 187 | 3 |
 | D07 | 182 | 5 |
 | D08 | 195 | 4 |
-| D09 | 182 | 3 |
-| D10 | 251 | 5 |
+| D09 | 184 | 3 |
+| D10 | 253 | 5 |
 | D11 | 165 | 4 |
 | D12 | 182 | 5 |
 | D13 | 193 | 4 |
 | D14 | 209 | 4 |
-| D15 | 81 | 4 |
-| **Total** | **2595** | **62** |
+| D15 | 84 | 4 |
+| **Total** | **2612** | **62** |
 
 (Totals are the arithmetic sum of a reproducible token count; they are a volume
-metric, not an assertion that 2595 distinct claims were each independently
+metric, not an assertion that 2612 distinct claims were each independently
 re-verified. At 12330b0f the same command gave 1559 tokens and 47 diagrams.)
 
 ---
@@ -133,10 +133,10 @@ line-read.
 
 - **D01 System Context & Topology** — 10 apps, 80 libs, 106 tracked `project.json`, 85 tagged apps+libs projects (5 apps untagged), 5 backend ports, 5 FE dev ports, 137 `@Controller` / 172 `@Module` / 580 `@Injectable` files (unfiltered), 54 schemas, 314 migrations, 84 `@aramo/*` path mappings, 9 OpenAPI specs, 36 ADRs, 4 compose files, 10 prod services, 4 nginx host classes, 5 baked SPA roots, 5 backend Dockerfiles, 14 infra modules: all enumerated. NV: running-prod runtime selection (incl. whether TI runs), `.env` values (out of tree), per-lib tag-to-cluster correctness vs ADR-0029 D5 / ADR-0036 (79 of 80 not checked).
 - **D02 Database & Data Model** — 54 tracked schemas (17 read in full or by changed section, 37 model-name/namespace grep); 283 models, 98 enums, 51 distinct `@@schema` namespaces, 382 `@@schema` lines, 4 multi-namespace datasources, 314 migrations (84 added, 23 deleted, 5 renamed since 12330b0f; 4 TI-database), 9 S2 erasure migrations, 13 outbox-style tables, 18 AS-DESIGNED anchors. NV: 247 of 314 migration trigger-classifications; 2 outbox drains with no reader found (documents, offer); endpoint↔table + FE↔table mapping (out of scope); live-DB/FK and drop-migration / TI-database application status (static only).
-- **D03 Backend API Surface** — 5 HTTP apps, 131 controller files / 137 decorators (manifest-classified: AP 100 / SS 16 / PZ 7 / XP 5 / IZ 2 / AD 1), 667 handler decorators, 533 `@RequireScopes` matches (496 decorator lines), 122 distinct scope keys, 61 composite-boundary applications, 29 controller files with no `@UseGuards` line, 9 specs / 435 path-items (3 of 9 with `servers:`), 185-entry `transitionalUndocumented` ratchet, 10 route overrides. NV: seeded scope-catalog single cardinality; 3 of 4 contract-parity dimensions (schema/scope/security); per-handler → spec cross-walk (667); 37 lib-authored controllers' host composition; runtime boot.
+- **D03 Backend API Surface** — 5 HTTP apps, 131 controller files / 137 decorators (manifest-classified: AP 100 / SS 16 / PZ 7 / XP 5 / IZ 2 / AD 1), 667 handler decorators, 533 `@RequireScopes` matches (496 decorator lines), 122 distinct scope keys, 59 composite-boundary applications (61 incl. 2 test files), 29 controller files with no `@UseGuards` line, 9 specs / 435 path-items (3 of 9 with `servers:`), 185-entry `transitionalUndocumented` ratchet, 10 route overrides. NV: seeded scope-catalog single cardinality; 3 of 4 contract-parity dimensions (schema/scope/security); per-handler → spec cross-walk (667); 37 lib-authored controllers' host composition; runtime boot.
 - **D04 Security / Identity / AuthZ** — 227 D04 lib source files (48 read), 21 security controllers (6 read), 5 schemas (models grepped), 23 new migrations since 12330b0f (IC-1, ROLES-1 last-owner and S2 bodies read), 8 auth endpoints + 8 consent endpoints read, 190 scope-catalog + 18 role-catalog keys counted, 7 authorization services and 7 Personal-signup risk-control files read, no `APP_GUARD` confirmed. NV: 179 lib files, 15 controllers, per-route audit behind 101 `JwtAuthGuard` / 92 `@RequireScopes` / 86 `@RequireCapability` files, 4 `EsignSenderBoundary` users (D10), 4 FE auth files, 9 auth-service files, 4 ADR anchors head/title only, 8 LOCKED directives cited at title/§ level only.
 - **D05 Talent Domain** — 2 lib controllers / 29 endpoints, 25 talent-identity routes (9 controllers), 23 education + screening routes (5 read), 25 `@Injectable` files, 29 models / 20 enums, 8 new talent migrations (each read), 5 ADRs, 12 canonical LOCKED instruments. NV: TI service bodies (9 controllers / 28 handlers + 17 intelligence-core classes, 45 items), 18 `ScreeningSessionController` routes, 7 of 11 intake-consumer files, 45 of 46 FE talent files, 2 BullMQ processor bodies.
-- **D06 Requisition / Job / VMS** — 4 core libs, 3 controllers (Requisition 13 + VMS mapping-admin 7 + pre-start 13 endpoints), 7 requisition models / 5 enums / 24 migrations, 4 new hold columns, 9 `RecruitingStatus` values, 8 governed transition actions, 12 integration lifecycle models+enums, `requisition.repository.ts` (2752 lines; every changed hunk read), 98 ats-web requisition FE files, 2 documented requisition operations. NV: ReconciliationDrainService internals, LifecyclePollProducer schedule, ActivityNote linkage, scope seeding cross-check, Talent × Requisition 360 FE (10 files), runtime/tests.
+- **D06 Requisition / Job / VMS** — 4 core libs, 3 controllers (Requisition 13 + VMS mapping-admin 7 + pre-start 13 endpoints), 7 requisition models / 5 enums / 23 migration directories, 4 new hold columns, 9 `RecruitingStatus` values, 8 governed transition actions, 12 integration lifecycle models+enums, `requisition.repository.ts` (2752 lines; every changed hunk read), 98 ats-web requisition FE files, 2 documented requisition operations. NV: ReconciliationDrainService internals, LifecyclePollProducer schedule, ActivityNote linkage, scope seeding cross-check, Talent × Requisition 360 FE (10 files), runtime/tests.
 - **D07 Pipeline / Placement / Selection** — 5 libs, 3 in-lib + 4 apps/api controllers, 4 new `libs/pipeline` port adapters, 6 state-machine modules read, 54 model/enum decls (31 models), 2 new migrations (headers read), 52 raw endpoint decorators (36 as-built table rows), 42 OpenAPI D07 paths, 135 lib source files (load-bearing subset read), 37 FE files referencing D07 routes. NV: 4 placement sub-lifecycle internal guards, migration triggers / partial indexes, 16 FE spec files, view-component bodies.
 - **D08 Submittal / Engagement / Policy** — 8 controllers (+ `talent-journey-audit`), 26 handlers, 18 `@Injectable` files (12 read), 4 models, 1 new migration, 13 pure decision functions read, 14 `ats.yaml` domain paths, 7 ats-web callers, 8 canonical LOCKED directives. NV: 6 services (per-module PrismaServices, policy gateway read paths, eligibility reader), 2 pact files, ADR-0027/0029/0030 sections, S2 amendment beyond migration headers; `/v1/client-submittal-policy/*` + `.../restrictions` absent from OpenAPI (gap G-028).
 - **D09 Communications / Activity / Evidence** — 4 libs / 13 models, 11 in-scope controllers + the new apps/api Microsoft surface, evidence core (pipeline-state, pipeline.repository, evidence-admissibility, verifier) read, provider-observation orchestrator read (0 production callers), 2 error codes and 422 mappings confirmed. NV: 16 of 25 migrations, 10 communications specs, 12 + 11 + 19 lib src files (communications / activity / contact + calendar), 21 + 2 + 20 apps/api files (communications / talent-journey / microsoft), 22 of 24 ats-web communications files, 3 scheduling FE files.

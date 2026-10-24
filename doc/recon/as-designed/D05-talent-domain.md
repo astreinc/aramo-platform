@@ -232,6 +232,7 @@ and Addenda A1–A4 (all LOCKED 2026-10-23). In-repo anchor: ADR-0036.
 
 ### Security S1 and G1 — trust-ledger directives (LOCKED 2026-10-14; substrate since retired)
 Sources: `Aramo/locked/Aramo-Security-S1-Talent-Trust-Tenant-Isolation-Remediation-Directive-v1_0-LOCKED.md`
+(caveat: filed as LOCKED, but its own line 3 reads "DRAFT / NOT EFFECTIVE"; ATI-SEP-1 LOCKED `:30` treats S1 `:11` and `:14` as superseded — consistent with D04-G13)
 (§1: Talent Trust must refuse any lifecycle mutation of an evidence row not
 owned by the acting tenant, 404-indistinguishable) and
 `Aramo/locked/Aramo-G1-TrustState-Recompute-Ordering-and-Recovery-Directive-v1_0-LOCKED.md`

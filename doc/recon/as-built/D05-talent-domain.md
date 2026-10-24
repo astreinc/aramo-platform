@@ -108,7 +108,7 @@ talent-intelligence 0. TI side: intelligence-core 17 `@Injectable` classes.
 | TalentRecordFieldProvenance | `:356` — provenance-by-reference; `source_kind` added (default `TRUST_EVIDENCE`; `INTELLIGENCE` for TI-applied values) |
 | TalentRecordReconcileContradiction | `:390` — append-only occupied+differing contradiction log (now fed by TI inbound sync) |
 | TalentProfileFieldState | `:431` — per-field control state (SET / EXPLICITLY_CLEARED, projection_policy AUTO/HOLD) |
-| IntelligenceLink | `:473` — `intelligence_link(talent_id, intelligence_subject_id)` |
+| IntelligenceLink | `:473` — columns `tenant_id`, `talent_record_id`, `intelligence_subject_id` (`:474-476`), `@@id([tenant_id, talent_record_id])` (`:482`) |
 | TalentIntelligenceInboundEvent | `:491` — HMAC webhook inbox (claimable) |
 | TalentIntelligenceSyncPolicy | `:514` — per-tenant field mode AUTO_APPLY / REVIEW / IGNORE |
 | TalentDuplicateAdvisory | `:536` — within-tenant advisory (pair or arrival), status + `merge_state` |
@@ -364,7 +364,7 @@ The drain runs only when `ATS_TALENT_EVENTS_DRAIN_ENABLED === '1'`
 (`apps/api/src/ats-talent-events/ats-talent-events-drain.worker.ts:34`); the
 worker entrypoint defaults it on (`apps/api/src/talent-intake-worker.main.ts:16`).
 The publisher is gated on the tenant's `intelligence` capability
-(`libs/intelligence-integration/src/lib/intelligence-publisher.handler.ts:70`);
+(`libs/intelligence-integration/src/lib/intelligence-publisher.handler.ts:87` `entitlements.getCapabilities`; `INTELLIGENCE_CAPABILITY` at `:55`);
 TI read isolation is enforced at read time by `assertionVisibleTo`
 (`libs/intelligence-core/src/lib/access/tenant-view.ts:29`) with
 `TI_CROSS_TENANT_READ_ENABLED` (`:13`). The G1 recompute-repair and TR-5 sweep

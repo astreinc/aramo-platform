@@ -107,7 +107,7 @@ Schema `requisition` (libs/requisition/prisma/schema.prisma):
 - `RequisitionEmbedding` + `RequisitionEmbeddingStatus` (schema.prisma:594,586) —
   GS-2B pgvector semantic index (DARK).
 
-The `requisition` schema has 24 migration directories, the newest being
+The `requisition` schema has 23 migration directories, the newest being
 `20261021090000_s3_requisition_hold_details`.
 
 Schema `job_domain` (libs/job-domain/prisma/schema.prisma): `Job` (:55),
@@ -159,7 +159,7 @@ The status-only editor subset admits `hold` alongside `status` and `version`
 The detail read enriches `RequisitionView.hold` (a `RequisitionHoldView`:
 `recorded`, `reason`, `reason_provided`, `source`, `effective_at`,
 `instructions`, `provider_status`) only while the requisition is `on_hold`
-(libs/requisition/src/lib/dto/requisition.view.ts:165-182;
+(libs/requisition/src/lib/dto/requisition.view.ts:171 `hold`, :174-182 `RequisitionHoldView`;
 requisition.repository.ts:2274-2276).
 
 VMS mapping administration
@@ -374,7 +374,7 @@ executeExternalLifecycleCommand requisition.repository.ts:1662-1812.
 - libs/requisition/src/lib/dto/requisition-transitions.ts:65 `governingAction`
 - libs/requisition/src/lib/dto/external-lifecycle-command.ts:35 `ExternalLifecycleTransitionCommand`
 - libs/requisition/src/lib/dto/external-lifecycle-command.ts:91 `EXTERNAL_LIFECYCLE_ACTIONS`
-- libs/requisition/src/lib/dto/requisition.view.ts:170 `hold: RequisitionHoldView | null`; :173 `RequisitionHoldView`
+- libs/requisition/src/lib/dto/requisition.view.ts:171 `hold: RequisitionHoldView | null`; :174 `RequisitionHoldView`
 - libs/requisition/src/lib/dto/update-requisition-request.dto.ts:28 `hold?` control payload
 - libs/requisition/src/lib/hold-details.ts:11 `MANUAL_HOLD_SOURCES`; :27 `resolveManualHoldDetails`
 - libs/requisition/src/lib/status-edit-gate.ts:47 `STATUS_ONLY_ALLOWED_FIELDS` (`status`,`version`,`hold`)

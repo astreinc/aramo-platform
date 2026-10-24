@@ -416,8 +416,8 @@ flowchart LR
   comment states it has not (`talent-intake.tf:2`); I did not inspect remote Terraform state.
 - **19 BullMQ processors** is a `@Processor(` file count over `libs/` + `apps/` excluding
   tests/spec; it includes processors owned by other domains and is listed as substrate
-  context, not a D14-exclusive inventory. The 7-file drop since 12330b0f corresponds to
-  the talent-identity / talent-reconcile / match-sweep processors no longer present in
+  context, not a D14-exclusive inventory. The 7 processor files present at the prior baseline are absent; they
+  correspond to the talent-identity / talent-reconcile / match-sweep processors no longer present in
   `apps/api` and `libs/talent-reconcile`; where that work now runs (presumably the TI
   service workers) was not traced.
 - **Which provider env values are set in production** (Stripe keys/mode, Turnstile secret,

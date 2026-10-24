@@ -13,9 +13,14 @@ Aramo's security domain is a **three-tier, port-decoupled identity spine**:
    authorization **revision number** — never a scope list. There are now **six**
    consumers (`recruiter`, `portal`, `ingestion`, `platform`, `sign`, `org`), each
    with its **own cookie triple** (`aramo_access_token_<consumer>` etc.), so sessions
-   for two products on one host never overwrite each other. Login, callback,
-   refresh, logout and `/session` each run a **host/tenant binding** check
-   (`AUTH_HOST_TENANT_BINDING` = `log` by default, `enforce` opt-in).
+   for two products on one host never overwrite each other. Login seals
+   `host_class`/`context_id` into the PKCE state
+   (`libs/auth-core/src/lib/auth.controller.ts:252-259`); callback
+   (`libs/auth-core/src/lib/session-orchestrator.service.ts:172`), refresh
+   (`libs/auth-core/src/lib/refresh-orchestrator.service.ts:107`), POST logout
+   (`auth.controller.ts:636-653`, log-only, always revokes) and `/session`
+   (`:837-846`) evaluate the **host/tenant binding**; GET logout (`:707-731`) does
+   not (`AUTH_HOST_TENANT_BINDING` = `log` by default, `enforce` opt-in).
 
 2. **AuthZ at every protected route (`apps/api`, `apps/platform-admin`,
    `apps/sign-service`)** — `JwtAuthGuard` (`libs/auth`) verifies the JWT
@@ -423,6 +428,16 @@ send-time gate `libs/identity/src/lib/personal/personal-risk.service.ts:96`.
 - `apps/platform-admin/src/app/signup/sign-signup.service.ts:71` `SignupBudget` (in-process, per-IP window)
 - `infrastructure/cognito-triggers/README.md:18` deployed PreSignUp behaviour (version-controlled copy)
 - `scripts/verify-vocabulary.sh:500` `TIER2_TERMS_REGEX` (vocab CI wall)
+- Vocabulary exemption inventory (`scripts/verify-vocabulary.sh`, 653 lines at 680907fc; banned-term list itself not restated):
+
+  | Array | Lines | Quoted entries |
+  |---|---|---|
+  | `R7_ALLOWLIST` | `:36-55` | 18 |
+  | `R7_ALLOWLIST_GLOB` | `:59-65` | 5 |
+  | `FRONTDOOR_LEGACY_ALLOWLIST` | `:77-86` | 8 |
+  | `TIER2_EXCLUDES` | `:94-493` | 133 (2 point at absent files: see D13-G10) |
+
+  `TIER2_TERMS_REGEX` is at `:500`.
 
 ## NOT VERIFIED (explicit)
 
@@ -448,7 +463,7 @@ send-time gate `libs/identity/src/lib/personal/personal-risk.service.ts:96`.
   `consumer_type`/`JwtAuthGuard`-only gating (RolesGuard is a no-op without
   `@RequireScopes` — `libs/authorization/src/lib/roles.guard.ts:53`).
 - **`apps/sign-service` guard stack** beyond the `EsignSenderBoundary` usage
-  (5 files) and **`apps/talent-intelligence-service` token issuance/verification
+  (3 user files plus the definition) and **`apps/talent-intelligence-service` token issuance/verification
   internals** were not deeply read (owned by D10 / D11).
 - **S2 trigger bodies per table** (the per-lib `s2_erasure_permits` call sites)
   were read only in the two `libs/consent` migrations named above.

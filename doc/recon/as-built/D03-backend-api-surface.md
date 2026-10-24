@@ -38,8 +38,8 @@ Counts re-derived at this SHA (commands in the coverage fragment):
   through the `ESIGN_SEND_SCOPE` constant, apps/sign-service/src/app/sender/sender-context.service.ts:27).
   Composite route boundaries apply scopes without a literal `@RequireScopes` line:
   `EsignSenderBoundary` (libs/identity/src/lib/authorization/esign-sender-boundary.ts:114,
-  39 applications) and the sign-service-local `BillingBoundary`, `LegalBoundary`,
-  `AccountBoundary`, `RecipientInboxBoundary`, `SignApiBoundary` (22 applications in total).
+  37 production applications: esign-sender 22 + templates 3 + integration-admin 12; 2 more are in test files) and the sign-service-local `BillingBoundary`, `LegalBoundary`,
+  `AccountBoundary`, `RecipientInboxBoundary`, `SignApiBoundary` (22 applications in total; 59 non-test composite-boundary applications overall).
 - **9 OpenAPI specs** under `openapi/` declaring **435 path-items** total
   (ats 205, sign 71, platform 68, documents 35, intelligence 25, portal 16, auth 7,
   common 6, ingestion 2).
@@ -54,8 +54,9 @@ per route** via `@UseGuards(JwtAuthGuard, EntitlementGuard, RolesGuard)` (141 `@
 text matches, 106 decorator lines) or a composite boundary decorator built with
 `applyDecorators(UseGuards(...))`, so a guardless controller is genuinely anonymous
 (apps/api/src/controllers/version.controller.ts:9). 29 of the 131 controller files carry no
-`@UseGuards` decorator line; 10 of those are sign-service files whose routes mount a
-composite boundary, and the remainder are the deliberately session-less webhook, public,
+`@UseGuards` decorator line; 8 of those are sign-service files whose routes mount a
+composite boundary (`esign-http.controller.ts` — internal + token zone — and
+`personal/sign-report.controller.ts` — public, token-only — are sign-service files with 0), and the remainder are the deliberately session-less webhook, public,
 token-exchange, health and auth surfaces listed in the API Endpoints section. Errors are
 normalized to a single nested envelope by `AramoExceptionFilter`
 (libs/common/src/lib/errors/aramo-exception.filter.ts:24), which sign-service applies per
@@ -77,7 +78,7 @@ validates intra-spec `$ref` integrity, not code parity (ci/scripts/compare-spec-
 |---|---|---|
 | `apps/api` | Tenant ATS core HTTP app; port 3000; disables default bodyParser to control raw-webhook parse order; its single `AppModule` `imports:` array (apps/api/src/app.module.ts:184) lists 114 top-level entries and its `controllers:` array (apps/api/src/app.module.ts:678) registers 11 app-local controllers (other app-local controllers are registered by feature modules) | apps/api/src/main.ts:41 `NestFactory.create`; apps/api/src/app.module.ts:881 `AppModule` |
 | `apps/auth-service` | Session/auth HTTP app; port 3001; controllers imported from `@aramo/auth-core` | apps/auth-service/src/app/auth/auth.module.ts:64 `controllers: [AuthController, JwksController, PortalAuthController]` |
-| `apps/sign-service` | Aramo Sign HTTP app; port 3003; `rawBody: true` for billing-webhook signature verification; 36 MB JSON limit for base64 uploads; cookie-parser for the `sign` session; 12 controller classes over 13 route prefixes under `v1/sign/*` | apps/sign-service/src/main.ts:13 `NestFactory.create(AppModule, { rawBody: true })`; :16 `useBodyParser('json', { limit: '36mb' })`; apps/sign-service/src/app/app.module.ts:155 `controllers: [...]` |
+| `apps/sign-service` | Aramo Sign HTTP app; port 3003; `rawBody: true` for billing-webhook signature verification; 36 MB JSON limit for base64 uploads; cookie-parser for the `sign` session; 12 `@Controller` classes over 11 distinct route prefixes under `v1/sign/*` (`v1/sign/sender` is shared by `esign-sender.controller.ts:41` and `esign-sender-templates.controller.ts:23`) | apps/sign-service/src/main.ts:13 `NestFactory.create(AppModule, { rawBody: true })`; :16 `useBodyParser('json', { limit: '36mb' })`; apps/sign-service/src/app/app.module.ts:155 `controllers: [...]` |
 | `apps/platform-admin` | Platform-tier admin HTTP app; port 3002; also hosts the session-less public Sign signup (`v1/signup/sign`, `v1/signup/sign/personal`) | apps/platform-admin/src/main.ts:18 `NestFactory.create`; apps/platform-admin/src/app/platform/platform.controller.ts:67 `@Controller('platform')`; apps/platform-admin/src/app/signup/sign-signup.controller.ts:15 `@Controller('v1/signup/sign')` |
 | `apps/talent-intelligence-service` | Talent Intelligence HTTP app; port 3004; container-internal (no nginx upstream); `ServiceTokenGuard` on service routes; own OAuth client-credentials token endpoint | apps/talent-intelligence-service/src/main.ts:15 `DEFAULT_PORT = 3004`; :19 `NestFactory.create`; apps/talent-intelligence-service/src/app/auth/service-token.guard.ts:21 `class ServiceTokenGuard` |
 | `ValidationPipe` (global pipe, per app) | DTO allow-list + transform at the controller boundary | apps/api/src/main.ts:93 `app.useGlobalPipes`; :96 `forbidNonWhitelisted: true` |
@@ -142,7 +143,7 @@ IZ = infra/health):
 | Auth (Cognito) | `auth/:consumer` | SS | libs/auth-core/src/lib/auth.controller.ts:180 `@Controller('auth/:consumer')` |
 | Portal passwordless auth | `auth/portal` | SS | libs/auth-core/src/lib/portal-auth.controller.ts:86 `@Controller('auth/portal')` |
 | Sign envelopes (internal service-to-service, no JWT) | `v1/sign/envelopes` | SS | apps/sign-service/src/app/esign-http.controller.ts:78 `@Controller('v1/sign/envelopes')` |
-| Sign signing (capability token) | `v1/sign/signing` | PZ (10 routeOverrides) | apps/sign-service/src/app/esign-http.controller.ts:194 `@Controller('v1/sign/signing')` |
+| Sign signing (capability token) | `v1/sign/signing` | PZ (10 routeOverrides: 9 PZ `/v1/sign/signing/*` + 1 XP `POST /v1/sign/billing/webhook/stripe`) | apps/sign-service/src/app/esign-http.controller.ts:194 `@Controller('v1/sign/signing')` |
 | Sign sender workspace | `v1/sign/sender` (+ `/integrations`) | AP | apps/sign-service/src/app/sender/esign-sender.controller.ts:41 (22 handlers); apps/sign-service/src/app/sender/esign-sender-templates.controller.ts:23 (3); apps/sign-service/src/app/integrations/integration-admin.controller.ts:14 (12) |
 | Sign billing (+ Stripe webhook) | `v1/sign/billing` | AP; `POST /v1/sign/billing/webhook/stripe` XP (routeOverride) | apps/sign-service/src/app/billing/esign-billing.controller.ts:142; webhook :247 |
 | Sign recipient inbox / legal / account | `v1/sign/inbox`, `v1/sign/legal`, `v1/sign/account` | AP | apps/sign-service/src/app/inbox/recipient-inbox.controller.ts:18; apps/sign-service/src/app/legal/sign-legal.controller.ts:29; apps/sign-service/src/app/account/sign-account.controller.ts:24 |
@@ -349,7 +350,7 @@ flowchart LR
 - .github/workflows/ci.yml:528 `name: contract-parity:check`
 - deploy/nginx/templates/aramo.conf.template:78 tenant-host `location /v1/` → `api:3000`
 - deploy/nginx/templates/aramo.conf.template:180 admin-host `location /platform/` → `platform-admin:3002`
-- deploy/nginx/templates/aramo.conf.template:297 Sign-host `location /v1/sign/signing/` → `sign-service:3003`
+- deploy/nginx/templates/aramo.conf.template:298 Sign-host `location /v1/sign/signing/` → `sign-service:3003`
 - deploy/nginx/templates/aramo.conf.template:343 Sign-host `location /v1/signup/sign/` → `platform-admin:3002`
 
 ## NOT VERIFIED (explicit)

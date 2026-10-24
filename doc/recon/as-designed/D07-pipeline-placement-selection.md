@@ -11,7 +11,7 @@ Anchors (`doc/adr/0029-pipeline-boundary-modular-monolith.md`; LOCKED mirror `do
 - **D2 / I15** — "the Pipeline⊥ATS import wall (CI-enforced — the load-bearing invariant). The Pipeline intelligence libs MUST NOT directly import the ATS libs... only by UUID reference and through the connector contract (D3) — never a hard import, never a cross-schema FK." Enforced via nx boundary tags (`doc/adr/0029-pipeline-boundary-modular-monolith.md:35`).
 - **D3** — "Contract-first L3 seam." Pipeline↔ATS talk only through a first-class, versioned, Pact-tested connector contract, even in-process (`doc/adr/0029-pipeline-boundary-modular-monolith.md:37`).
 - **D4** — "Extractability is continuously verified, not assumed" (`doc/adr/0029-pipeline-boundary-modular-monolith.md:39`).
-- **D5** — The lib partition is drawn deliberately, including the boundary libs. Intelligence libs = Pipeline; the ATS bucket lists `engagement`, `submittal`, `examination`, `talent_record`, and the recruiter engagement-draft libs (exact term in ADR); `canonicalization` + `consent` sit on the boundary (`doc/adr/0029-pipeline-boundary-modular-monolith.md:41`).
+- **D5** — The lib partition is drawn deliberately, including the boundary libs. Intelligence libs = Pipeline; the ATS bucket lists `engagement`, `submittal`, `examination`, `talent_record`, and the recruiter engagement-draft libs (exact term in ADR); `canonicalization` + `consent` sit on the boundary (`doc/adr/0029-pipeline-boundary-modular-monolith.md:34`).
 - **Forcing function (§3)** — physical extraction happens only on a real tier-3 client (the first Pipeline-only buyer needing the Pipeline deployed into their own ATS) or an independent-scaling/deployment need; "Tier-3 might exist someday is NOT a forcing function" (`doc/adr/0029-pipeline-boundary-modular-monolith.md:49`).
 - **Invariants (§5)** — adds I15; consistent with I1 (UUID-only cross-schema, no FK) and I14 (`identity_index` PII/tenant boundary); no invariant relaxed (`doc/adr/0029-pipeline-boundary-modular-monolith.md:61`).
 
@@ -51,9 +51,9 @@ Anchor (`doc/adr/0033-cross-service-durable-event-foundation.md`) — the Outbox
 
 ## No ratified in-tree anchor (stated explicitly)
 
-The following D07 behaviours are implemented and documented in code/comments but have NO ratifying ADR under `doc/adr/`. Their governing directives are LOCKED `.md` files filed in the canonical store (OneDrive `Aramo/locked/`), which are OUT OF TREE and therefore NOT citable here:
+The following D07 behaviours are implemented and documented in code/comments but have no in-tree ADR under `doc/adr/`. Where a canonical LOCKED directive governs them, it is listed in the next section:
 
-- **Pipeline canonical 8-state funnel + evidence-backed milestones** (the Recruiting-Journey Evidence-Governed Milestones directive; §3/§7/§17 referenced in `libs/pipeline/src/lib/pipeline-state.ts:82`). No in-tree ADR.
+- **Pipeline canonical 8-state funnel + evidence-backed milestones** (the Recruiting-Journey Evidence-Governed Milestones directive; §3/§7/§17 referenced in `libs/pipeline/src/lib/pipeline-state.ts:82`). No in-tree ADR; anchored canonically by Talent-Lifecycle A1 D-1 (`Aramo-Talent-Lifecycle-R1-R5-Amendment-A1-Dispositions-and-Superseding-Amendments-v1_0-LOCKED.md:22`, which explicitly supersedes the missing milestones record) and Implementation Directive v1.2 §7.
 - **Accidental-Add VOID correction** (Pipeline Void / Accidental-Add Correction Directive; referenced in `libs/pipeline/src/lib/pipeline-state.ts:239`). No in-tree ADR.
 - **PlacementProcess lifecycle & acyclicity** (Aramo-Track3-E1a-PlacementProcess-Directive v1.3 LOCKED; referenced in `libs/placement/src/lib/lifecycle/placement-lifecycle.ts:1`). No in-tree ADR.
 - **TalentSelection 11-state machine** (M5 PR-1 Directive Amendment v1.1 §2/§4; referenced in `libs/selection/src/lib/selection-state.ts:2`). No in-tree ADR.
@@ -61,7 +61,7 @@ The following D07 behaviours are implemented and documented in code/comments but
 - **Placement→Pipeline lifecycle bridge** (Lane 2 / L2-G Part 3 directive v1.2; referenced in `apps/api/src/placement-pipeline-orchestration/placement-lifecycle-orchestrator.service.ts:11`). No in-tree ADR.
 - **Offer lifecycle as a dedicated aggregate** (Offer Lifecycle slice #2 / Lane 4 Hiring-Commitment; referenced in `libs/placement/src/lib/lifecycle/placement-lifecycle.ts:20`). No in-tree ADR.
 
-These are recorded so a gap of type `as_built_vs_as_designed` is only ever raised against a ratified in-tree anchor, never against an absent one.
+These are recorded so a gap of type `as_built_vs_as_designed` is only ever raised against a ratified anchor (in-tree or canonical LOCKED), never against an absent one.
 
 ### Canonical LOCKED anchors ratified after 2026-10-09 (OneDrive `Aramo/locked/`)
 

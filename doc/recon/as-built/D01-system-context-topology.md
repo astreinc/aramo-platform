@@ -80,9 +80,14 @@ only on `intelligence|shared` (`:89`); `scope:platform`, `scope:portal`,
 `shared` (`:90`, `:91`, `:97`, `:107`); a retained `scope:esign-sender` rule
 walls any stray project carrying the retired sender-console tag (`:101`; 0
 projects carry it); `scope:boundary` → `boundary|shared` (`:108`);
-`scope:shared` → `shared` only (`:109`); trailing `*` → `*` (`:110`). The only
-code shared between ATS and Talent Intelligence is
-`libs/intelligence-contracts` (`scope:shared`, `libs/intelligence-contracts/src/index.ts:1`–`4`).
+`scope:shared` → `shared` only (`:109`); trailing `*` → `*` (`:110`). The code comment
+in `libs/intelligence-contracts/src/index.ts:1`–`4` describes
+`libs/intelligence-contracts` (`scope:shared`) as the only code shared between
+ATS and Talent Intelligence. The import graph is wider: TI also consumes other
+`scope:shared` libs — `@aramo/mailer` in production code
+(`libs/intelligence-core/src/lib/verification/mailer-verification-delivery.ts:2`)
+and `@aramo/common` in integration specs only (e.g.
+`libs/intelligence-core/src/tests/lifecycle.integration.spec.ts`).
 
 ## Data Models
 
@@ -282,7 +287,8 @@ Evidence: `eslint.config.mjs:79`–`110` `SCOPE_DEP_CONSTRAINTS`; enforced at
 - `apps/sign-web/project.json:6` — tag `scope:sign`
 - `apps/talent-intelligence-service/project.json:6` — tag `scope:intelligence`
 - `libs/intelligence-core/project.json:7` — tag `scope:intelligence`
-- `libs/intelligence-contracts/src/index.ts:1` — the only ATS/TI shared code (`scope:shared`)
+- `libs/intelligence-contracts/src/index.ts:1` — code comment naming it the only ATS/TI shared code (`scope:shared`); TI also imports `@aramo/mailer` (`scope:shared`)
+- `libs/intelligence-core/src/lib/verification/mailer-verification-delivery.ts:2` — TI production import of `@aramo/mailer`
 - `eslint.config.mjs:79` — `const SCOPE_DEP_CONSTRAINTS`
 - `eslint.config.mjs:80` — `scope:cip` constraint (+ never `scope:intelligence`)
 - `eslint.config.mjs:83` — `scope:ats` may depend on `scope:cip`, never `scope:intelligence`

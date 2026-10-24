@@ -103,7 +103,7 @@ from code (NOT VERIFIED here).
 | `apps/sign-service` EsignSignerController | public signer transport `/v1/sign/signing/*` (capability token) | `apps/sign-service/src/app/esign-http.controller.ts:196` `class EsignSignerController` |
 | `apps/sign-service` EsignSenderController / SenderEnvelopeService | authenticated sender workspace (drafts, documents, recipients, fields, send/remind/void, contacts, activity) | `apps/sign-service/src/app/sender/esign-sender.controller.ts:43`; `apps/sign-service/src/app/sender/sender-envelope.service.ts:77` |
 | `apps/sign-service` EsignSenderTemplatesController / SenderTemplatesService | start an envelope from a Documents template (feature-gated `sign.templates`) | `apps/sign-service/src/app/sender/esign-sender-templates.controller.ts:25`; `apps/sign-service/src/app/sign-feature.gate.ts:20` |
-| `apps/sign-service` SignOAuthController / SignApiController / SignTokenService / SignApiGuard | S-4 integration platform: token endpoint (client_credentials, token-exchange, sign-event grant) + Sign API | `apps/sign-service/src/app/integrations/sign-api.controller.ts:33`, `:45`; `apps/sign-service/src/app/integrations/sign-token.service.ts:31`; `apps/sign-service/src/app/integrations/sign-api.guard.ts:38` |
+| `apps/sign-service` SignOAuthController / SignApiController / SignTokenService / SignApiGuard | S-4 integration platform: token endpoint (client_credentials, token-exchange, sign-event grant) + Sign API | `apps/sign-service/src/app/integrations/sign-api.controller.ts:33`, `:45`; `apps/sign-service/src/app/integrations/sign-token.service.ts:79` `class SignTokenService`; `apps/sign-service/src/app/integrations/sign-api.guard.ts:38` |
 | `apps/sign-service` IntegrationAdminController | installations, credentials, role mappings, webhook subscriptions | `apps/sign-service/src/app/integrations/integration-admin.controller.ts:16` |
 | `apps/sign-service` SignWebhookDeliveryService | S-5 per-subscription webhook delivery | `apps/sign-service/src/app/integrations/webhook-delivery.service.ts:65` |
 | `apps/sign-service` RecipientInboxController | S-7 recipient inbox (signed-in recipients) | `apps/sign-service/src/app/inbox/recipient-inbox.controller.ts:20`; `apps/sign-service/src/app/inbox/recipient-inbox.service.ts:30` |
@@ -511,6 +511,6 @@ Template resolution (`libs/documents/src/lib/template-resolution.service.ts:74` 
   header comments of `20261016180200_s2_document_event_erasure_delete` and the
   three `sign_naming_*` migrations only; other constraints are taken from schema
   comments.
-- Pact interaction content: counts only (see coverage fragment).
+- Pact interaction content: counts only (see coverage fragment). Consumer count and provider verification are distinct numbers: 6 consumer test files across 4 consumer projects touch D10; provider `sign-service` verifies 3 consumers (`sign-consumer`, `sign-web-consumer`, `sign-workspace-consumer`; 28 interactions, `pact/provider/src/verify-sign.ts:57-61`); provider `api` verifies 1 (`sign-source-consumer`, pact `sign-service-aramo-core.json`; 8 interactions, `pact/provider/src/verify-api.ts:1205`, `:9612`).
 - Deployment / activation state (live billing, public signup, Personal mode,
   provider credentials) is environment configuration, not observable in code.
