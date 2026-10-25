@@ -13,6 +13,7 @@ import {
   type ProviderAdjustmentEffect,
   type ProviderAdjustmentRequest,
   type ProviderCheckoutSessionState,
+  type ProviderPaymentPicture,
   type ProviderSubscriptionState,
   type VerifiedBillingEvent,
 } from './billing-provider.port.js';
@@ -26,7 +27,9 @@ import {
   wireBalanceAdjustmentState,
   wireCheckoutAccountParams,
   wireCouponParams,
+  wireDisputeState,
   wireInvoicePayment,
+  wireListComplete,
   wireListData,
   wirePortalAccountParams,
   wireRefundParams,
@@ -341,6 +344,33 @@ export class StripeBillingProvider implements BillingProviderPort, BillingProvid
         return none({ ...facts, object_ref: mine.object_ref, present: mine.status === 'succeeded' && mine.amount_minor === req.amount_minor, provider_status: mine.status, tenant_id: mine.tenant_id, live: mine.live, observed_amount_minor: mine.amount_minor });
       }
     }
+  }
+
+  async readPaymentPicture(invoice_ref: string): Promise<ProviderPaymentPicture> {
+    // CCP-C4-P — GET only: the invoice, every refund of its payment, every dispute on it.
+    const inv = wireInvoicePayment(await this.call('GET', `/v1/invoices/${encodeURIComponent(invoice_ref)}`));
+    let refunds: Array<Record<string, unknown>> = [];
+    let disputes: Array<Record<string, unknown>> = [];
+    let complete = true;
+    if (inv.payment_ref !== null) {
+      const r = await this.call('GET', `/v1/refunds?payment_intent=${encodeURIComponent(inv.payment_ref)}&limit=100`);
+      const d = await this.call('GET', `/v1/disputes?payment_intent=${encodeURIComponent(inv.payment_ref)}&limit=100`);
+      refunds = wireListData(r);
+      disputes = wireListData(d);
+      complete = wireListComplete(r) && wireListComplete(d);
+    }
+    return {
+      provider: 'STRIPE',
+      invoice_ref,
+      account_ref: inv.account_ref,
+      payment_ref: inv.payment_ref,
+      currency: inv.currency,
+      captured_minor: inv.amount_paid_minor,
+      refunds: refunds.map(wireRefundState).map((x) => ({ object_ref: x.object_ref, amount_minor: x.amount_minor, status: x.status, command_id: x.command_id })),
+      disputes: disputes.map(wireDisputeState),
+      complete,
+      live: this.mode() === 'live',
+    };
   }
 
   verifyWebhook(rawBody: Buffer, signatureHeader: string | undefined, nowSec: number): VerifiedBillingEvent {

@@ -25,6 +25,7 @@ import {
   type ProviderAdjustmentEffect,
   type ProviderAdjustmentRequest,
   type ProviderInvoiceState,
+  type ProviderPaymentPicture,
   type ProviderPortalConfigurationState,
   type ProviderSubscriptionState,
 } from '@aramo/subscription';
@@ -207,6 +208,8 @@ class PactBillingReader implements BillingProviderReadPort {
 class PactAdjustmentReader implements BillingProviderAdjustmentPort {
   readonly provider = 'STRIPE' as const;
   readonly failingTenants = new Set<string>();
+  /** CCP-C4-P — invoice → the paying account (the states register their tenant's account). */
+  readonly invoices = new Map<string, string>();
   isConfigured(): boolean {
     return true;
   }
@@ -219,6 +222,12 @@ class PactAdjustmentReader implements BillingProviderAdjustmentPort {
   async readAdjustmentEffect(req: ProviderAdjustmentRequest): Promise<ProviderAdjustmentEffect> {
     if (this.failingTenants.has(req.tenant_id)) throw new Error('pact adjustment reader: provider read unavailable');
     return { provider: 'STRIPE', operation: req.operation, object_ref: null, present: false, provider_status: null, tenant_id: null, live: false, observed_amount_minor: null, refundable_remainder_minor: null, payment_currency: null };
+  }
+  /** CCP-C4-P — a paid invoice with no refund and no dispute (its payment: pi_<invoice body>). */
+  async readPaymentPicture(invoice_ref: string): Promise<ProviderPaymentPicture> {
+    const account_ref = this.invoices.get(invoice_ref);
+    if (account_ref === undefined) throw new Error(`pact adjustment reader: unknown invoice ${invoice_ref}`);
+    return { provider: 'STRIPE', invoice_ref, account_ref, payment_ref: `pi_${invoice_ref.replace(/^in_/, '')}`, currency: 'usd', captured_minor: 1_000_000, refunds: [], disputes: [], complete: true, live: false };
   }
 }
 
@@ -434,7 +443,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
      */
     /** CCP-C4-R — an APPROVED REFUND applied by its requester (the flag set only for this seed call). */
     async function appliedRefund(invoice: string): Promise<{ requestId: string; tenant_id: string }> {
-      const requestId = await approvedAdjustment('REFUND', { amount_minor: 100, currency: 'USD', provider_invoice_ref: invoice });
+      const requestId = await approvedAdjustment('REFUND', refundPayload(invoice));
       process.env['CCP_REFUND_EXECUTION_ENABLED'] = '1';
       try {
         await asRole('commercial_ops', 'POST', `/platform/commercial/change-requests/${requestId}/billing-adjustment`);
@@ -445,8 +454,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       return { requestId, tenant_id: t.rows[0].t as string };
     }
 
+    /** CCP-C4-P — a complete REFUND payload (the invoice, its payment and the provenance). */
+    function refundPayload(invoice: string): Record<string, unknown> {
+      return { amount_minor: 100, currency: 'USD', provider_invoice_ref: invoice, provider_payment_ref: `pi_${invoice.replace(/^in_/, '')}`, category: 'R4_SERVICE_FAILURE', basis: 'Service outage under the order form', refund_policy_ref: 'aramo-refund-policy@v1-draft' };
+    }
+
     async function approvedAdjustment(action_type: 'CREDIT' | 'DISCOUNT' | 'REFUND', payload: Record<string, unknown>): Promise<string> {
       const tenant_id = await commercialTenant();
+      if (action_type === 'REFUND') adjustmentReader.invoices.set(String(payload['provider_invoice_ref']), `acct_${tenant_id}`);
       const ss = randomUUID();
       await db.query(
         `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by, billing_provider, billing_account_ref, billing_subscription_ref)
@@ -917,7 +932,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             await asRole('commercial_ops', 'POST', `/platform/commercial/change-requests/${requestId}/billing-adjustment`);
             return { requestId };
           },
-          'an approved refund exists': async () => ({ requestId: await approvedAdjustment('REFUND', { amount_minor: 100, currency: 'USD', provider_invoice_ref: 'in_pactc4refund' }) }),
+          'an approved refund exists': async () => ({ requestId: await approvedAdjustment('REFUND', refundPayload('in_pactc4refund')) }),
           // CCP-C4-R — a REFUND applied by its requester (the flag set only for this seed call): its
           // command is queued and never dispatched (no provider in the harness), so its outcome is unproven.
           'a refund is being applied': async () => {
@@ -926,6 +941,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             return { requestId };
           },
           'a refund that was never executed is being applied': async () => ({ requestId: (await appliedRefund('in_pactc4notrun')).requestId }),
+          // CCP-C4-P — the refund report reads an approved REFUND (no amount for a non-holder).
+          'refund records exist': async () => ({ requestId: await approvedAdjustment('REFUND', refundPayload('in_pactc4report')) }),
           // CCP-A8 — the support exception overlay.
           'a tenant with a past-due Stripe-owned Sign subscription exists': async (params?: unknown) => {
             const p = params as { tenant_id?: unknown; subscription_id?: unknown } | undefined;

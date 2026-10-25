@@ -255,6 +255,25 @@ export interface ProviderAdjustmentEffect {
   payment_currency?: string | null;
 }
 
+/**
+ * CCP-C4-P (Amendment A1 RF-4, RF-5) — the provider's authoritative picture of ONE paid invoice's
+ * payment: who paid, the payment, its currency and captured amount, every refund of that payment
+ * and every dispute (chargeback) on it. `complete` is false when a list was truncated (the picture
+ * cannot then be reconciled confidently).
+ */
+export interface ProviderPaymentPicture {
+  provider: BillingProviderKey;
+  invoice_ref: string;
+  account_ref: string;
+  payment_ref: string | null;
+  currency: string | null;
+  captured_minor: number;
+  refunds: Array<{ object_ref: string | null; amount_minor: number; status: string | null; command_id: string | null }>;
+  disputes: Array<{ object_ref: string | null; amount_minor: number; status: string | null }>;
+  complete: boolean;
+  live: boolean;
+}
+
 export interface BillingProviderAdjustmentPort {
   readonly provider: BillingProviderKey;
   isConfigured(): boolean;
@@ -266,4 +285,6 @@ export interface BillingProviderAdjustmentPort {
    * id in the provider metadata). Never changes provider state.
    */
   readAdjustmentEffect(req: ProviderAdjustmentRequest, object_ref: string | null): Promise<ProviderAdjustmentEffect>;
+  /** CCP-C4-P — read the payment picture of one invoice (READ ONLY; never changes provider state). */
+  readPaymentPicture(invoice_ref: string): Promise<ProviderPaymentPicture>;
 }

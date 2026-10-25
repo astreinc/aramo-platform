@@ -249,3 +249,13 @@ export function wireRefundState(obj: Record<string, unknown>): { object_ref: str
     live: obj['livemode'] === true,
   };
 }
+
+/** CCP-C4-P — a Stripe list envelope: false when Stripe reports more items than were returned. */
+export function wireListComplete(obj: Record<string, unknown>): boolean {
+  return obj['has_more'] !== true;
+}
+
+/** CCP-C4-P — a Stripe dispute (chargeback) → Aramo's dispute facts. */
+export function wireDisputeState(obj: Record<string, unknown>): { object_ref: string | null; amount_minor: number; status: string | null } {
+  return { object_ref: wireStr(obj['id']), amount_minor: wireInt(obj['amount']), status: wireStr(obj['status']) };
+}

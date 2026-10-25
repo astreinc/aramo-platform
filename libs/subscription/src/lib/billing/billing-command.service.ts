@@ -6,6 +6,8 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { assertProductKey, type ProductKey } from '../product-registry.js';
 import { REFUND_POLICY_NOT_APPROVED, refundExecutionEnabled } from '../commercial/commercial-billing-adjustment.js';
 import { canonicalJson } from '../commercial/commercial-policy.js';
+import { refundReservations } from '../commercial/refund-remainder.gate.js';
+import { assessRefundAmount } from '../commercial/refund-remainder.js';
 
 import {
   BILLING_PROVIDER_ADJUSTMENT_PORT,
@@ -471,7 +473,7 @@ export class BillingCommandService {
    */
   private async performAdjustment(cmd: BillingCommandRow): Promise<{ detail: string; object_ref: string | null }> {
     if (this.adjustments === undefined || !this.adjustments.isConfigured()) throw new CommandRefusal('ADJUSTMENTS_NOT_CONFIGURED', 'the billing-adjustment provider port is not configured');
-    const req = await this.prisma.commercialChangeRequest.findUnique({ where: { id: cmd.change_request_id }, select: { state: true, action_type: true } });
+    const req = await this.prisma.commercialChangeRequest.findUnique({ where: { id: cmd.change_request_id }, select: { state: true, action_type: true, payload: true } });
     if (req === null || req.state !== 'APPLYING' || !(BILLING_COMMAND_KINDS_BY_ACTION[req.action_type] ?? []).includes(cmd.command_kind as BillingCommandKind)) {
       throw new CommandRefusal('REQUEST_NOT_APPLYING', `the change request is ${req?.state ?? 'missing'}; an adjustment is sent only for an approved request being applied`);
     }
@@ -486,13 +488,22 @@ export class BillingCommandService {
       if (before.object_ref !== null) return { detail: `refund already initiated at the provider (${before.provider_status ?? 'unknown'})`, object_ref: before.object_ref };
       // The disabled flag blocks only NEW external execution (Architect C4 disposition, TD-C4-12).
       if (!refundExecutionEnabled()) throw new CommandRefusal(REFUND_POLICY_NOT_APPROVED, 'the refund policy is not approved; no new refund is sent to the provider');
-      // TD-C4-1 identity: the amount is bounded by the payment's refundable remainder, in its currency.
-      if (before.payment_currency !== undefined && before.payment_currency !== null && before.payment_currency.toUpperCase() !== String(r.currency)) {
-        throw new CommandRefusal('REFUND_CURRENCY_MISMATCH', `the refund currency ${String(r.currency)} is not the payment currency ${before.payment_currency}`);
+      // CCP-C4-P (RF-3…RF-5) — the remainder once more, just before the write: the provider's payment
+      // picture (disputes, refunds, captured amount; read outside any transaction) and every OTHER
+      // outstanding Aramo reservation on the payment, counted once. A failed read refuses; never guessed.
+      let picture;
+      try {
+        picture = await this.adjustments.readPaymentPicture(cmd.target_ref);
+      } catch (e) {
+        throw new CommandRefusal('REFUND_REMAINDER_UNVERIFIABLE', `the payment picture could not be read: ${String((e as Error)?.message ?? e).slice(0, 200)}`);
       }
-      if (before.refundable_remainder_minor !== undefined && before.refundable_remainder_minor !== null && (r.amount_minor as number) > before.refundable_remainder_minor) {
-        throw new CommandRefusal('REFUND_EXCEEDS_REMAINDER', 'the refund exceeds the payment\'s refundable remainder');
-      }
+      const payload = (req.payload ?? {}) as Record<string, unknown>;
+      const outstanding = await refundReservations(this.prisma, { provider_payment_ref: String(payload['provider_payment_ref']), provider_invoice_ref: cmd.target_ref, exclude_change_request_id: cmd.change_request_id });
+      const decision = assessRefundAmount(
+        { picture, expected: { account_ref: String(r.account_ref), payment_ref: String(payload['provider_payment_ref']), currency: String(r.currency) }, outstanding },
+        r.amount_minor as number,
+      );
+      if (!decision.ok) throw new CommandRefusal(decision.refusal, `refund refused before any write (${decision.refusal})`);
     }
     const { object_ref } = await this.adjustments.executeAdjustment(r, cmd.idempotency_key);
     return { detail: `${cmd.command_kind} accepted by the provider`, object_ref };

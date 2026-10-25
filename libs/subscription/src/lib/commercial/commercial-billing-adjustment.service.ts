@@ -9,7 +9,7 @@ import {
   adjustmentRequestOf,
   isAdjustmentCommandKind,
 } from '../billing/billing-provider-command.js';
-import { BILLING_PROVIDER_ADJUSTMENT_PORT, type BillingProviderAdjustmentPort } from '../billing/billing-provider.port.js';
+import { BILLING_PROVIDER_ADJUSTMENT_PORT, type BillingProviderAdjustmentPort, type ProviderPaymentPicture } from '../billing/billing-provider.port.js';
 import { SubscriptionLifecycleService } from '../billing/subscription-lifecycle.service.js';
 import { takeBillingLock } from '../billing/governed-subscription.js';
 import { PrismaService } from '../prisma/prisma.service.js';
@@ -46,6 +46,7 @@ import {
   CommercialChangeRequestService,
 } from './commercial-change-request.service.js';
 import { CommercialOperatorRepository } from './commercial-operator.repository.js';
+import { RefundRemainderGate, RefundRemainderRefusedError, refundBindingOf } from './refund-remainder.gate.js';
 
 // CCP-C4 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.2 row C4, §10; Conversion Rule C-22, C-23;
 // Charter Amendment A1-Apply-Deadline AD-2…AD-8) — the requester-only apply of an APPROVED credit,
@@ -113,6 +114,8 @@ export class CommercialBillingAdjustmentService {
     // in-transaction completion of a confirmed refund). Unbound: the resolution is refused (uncertain).
     @Optional() @Inject(SubscriptionLifecycleService) private readonly lifecycle?: SubscriptionLifecycleService,
     @Optional() @Inject(BILLING_PROVIDER_ADJUSTMENT_PORT) private readonly adjustmentPort?: BillingProviderAdjustmentPort,
+    // CCP-C4-P — the refundable-remainder gate (unbound: a REFUND apply is refused UNVERIFIABLE).
+    @Optional() @Inject(RefundRemainderGate) private readonly refundGate?: RefundRemainderGate,
   ) {
     this.now = clock ?? (() => new Date());
   }
@@ -138,6 +141,20 @@ export class CommercialBillingAdjustmentService {
     }
     const tenant_id = head.tenant_id as string;
     const product_key = assertProductKey(head.product_key);
+    // CCP-C4-P (RF-3…RF-5) — a REFUND about to apply re-reads the provider's payment picture first
+    // (outside any transaction); the remainder is decided again under the billing lock below.
+    let refundPicture: ProviderPaymentPicture | null = null;
+    if (action === 'REFUND' && (head.state === 'APPROVED' || head.state === 'APPLY_FAILED')) {
+      try {
+        if (this.refundGate === undefined) throw new RefundRemainderRefusedError('REFUND_REMAINDER_UNVERIFIABLE', { basis: 'gate_not_bound' });
+        refundPicture = await this.refundGate.readPicture(String((head.payload as Record<string, unknown>)['provider_invoice_ref']));
+      } catch (e) {
+        if (!(e instanceof RefundRemainderRefusedError)) throw e;
+        const r = new BillingAdjustmentRefusedError(e.refusal, e.detail);
+        await this.auditRefusal(actor, head, r, ctx);
+        throw r;
+      }
+    }
 
     const after = { replayed: false, expired_now: false };
     try {
@@ -178,6 +195,16 @@ export class CommercialBillingAdjustmentService {
         // NC-5 — refuses NOT_APPROVED (any state but APPROVED / APPLY_FAILED), lost eligibility and
         // broken integrity, before anything is written.
         await this.changeRequests.assertApplyEligible(id, ctx.platform_tenant_id, tx);
+        if (action === 'REFUND') {
+          // The picture may predate an APPLY_FAILED → retry; a REFUND that reached here without one refuses.
+          if (refundPicture === null || this.refundGate === undefined) throw new BillingAdjustmentRefusedError('REFUND_REMAINDER_UNVERIFIABLE', { basis: 'no_picture' });
+          try {
+            await this.refundGate.assertInTx(tx, refundPicture, refundBindingOf(tenant_id, product_key, req.payload as Record<string, unknown>, id));
+          } catch (e) {
+            if (e instanceof RefundRemainderRefusedError) throw new BillingAdjustmentRefusedError(e.refusal, e.detail);
+            throw e;
+          }
+        }
         const now = this.now();
         const attempt = req.apply_attempts + 1;
         await tx.commercialChangeRequest.update({ where: { id }, data: { state: 'APPLYING', apply_attempts: attempt, updated_at: now } });

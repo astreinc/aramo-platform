@@ -79,6 +79,10 @@ export const APPLY_EXPLANATIONS: Readonly<Record<string, string>> = {
   NOT_RESOLVABLE: 'Only a refund that is being applied and has not been confirmed can be resolved this way.',
   REFUND_EXCEEDS_REMAINDER: 'The refund is larger than what is still refundable on that payment; nothing was sent to Stripe.',
   REFUND_CURRENCY_MISMATCH: 'The refund currency is not the currency of that payment; nothing was sent to Stripe.',
+  // CCP-C4-P (Amendment A1 RF-4, RF-5)
+  REFUND_PAYMENT_DISPUTED: 'A dispute on that payment is open or unresolved; no refund can be made until it is settled.',
+  REFUND_REMAINDER_UNVERIFIABLE: 'The refundable amount of that payment could not be verified at Stripe, so the refund is refused rather than guessed.',
+  REFUND_PAYMENT_MISMATCH: 'The invoice or payment is not one this tenant paid for this product.',
 };
 
 export const explanationOf = (code: string): string => APPLY_EXPLANATIONS[code] ?? 'The change could not be applied.';

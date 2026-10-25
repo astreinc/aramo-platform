@@ -455,6 +455,30 @@ export {
   withholdAmounts,
 } from './lib/commercial/commercial-billing-adjustment.js';
 export { CommercialBillingAdjustmentLedger, type AdjustmentConfirmOutcome, type CommercialBillingAdjustmentRow } from './lib/commercial/commercial-billing-adjustment.ledger.js';
+// CCP-C4-P — the refundable remainder (Amendment A1 RF-3…RF-5) and the refund report.
+export {
+  REFUND_REMAINDER_REFUSALS,
+  assessRefundAmount,
+  refundableRemainder,
+  type LocalRefundReservation,
+  type RefundRemainderRefusal,
+  type RefundRemainderResult,
+} from './lib/commercial/refund-remainder.js';
+export { REFUND_OUTSTANDING_STATES, RefundRemainderGate, RefundRemainderRefusedError, refundBindingOf, refundReservations } from './lib/commercial/refund-remainder.gate.js';
+export {
+  CommercialRefundReportService,
+  FINANCE_AMOUNT_SCOPE,
+  REFUND_REPORT_STATES,
+  RefundReportQueryError,
+  accountingPeriodOf,
+  canReadFinanceAmounts,
+  refundReportState,
+  type RefundReportQuery,
+  type RefundReportRow,
+  type RefundReportState,
+} from './lib/commercial/commercial-refund-report.service.js';
+export { REFUND_CATEGORIES, REFUND_PAYLOAD_CODES, REFUND_POLICY_REF, type RefundCategory } from './lib/commercial/commercial-change-request.js';
+export { type ProviderPaymentPicture } from './lib/billing/billing-provider.port.js';
 export {
   CommercialBillingAdjustmentService,
   type BillingAdjustmentApplyResult,

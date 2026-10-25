@@ -34,7 +34,7 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 // commercial tenant (change requests and approvals are append-only, and Q14 allows one
 // open request per tenant × product).
 //
-// Coverage — CCP routes (33):
+// Coverage — CCP routes (34):
 //   GET  /platform/commercial/audit-events                      (CCP-A2)
 //   POST /platform/commercial/change-requests                   (CCP-A3)
 //   GET  /platform/commercial/change-requests
@@ -55,6 +55,7 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 //   POST /platform/commercial/change-requests/{id}/billing-adjustment (CCP-C4)
 //   GET  /platform/commercial/change-requests/{id}/billing-adjustment (CCP-C4)
 //   POST /platform/commercial/change-requests/{id}/billing-adjustment/resolve (CCP-C4-R)
+//   GET  /platform/commercial/finance/refunds                   (CCP-C4-P)
 //   GET  /platform/commercial/tenants/{tenant_id}/billing-status (CCP-C3)
 //   GET  /platform/commercial/billing-portal-configuration      (CCP-C3)
 //   GET  /platform/commercial/finance/renewals                  (CCP-C6)
@@ -132,6 +133,7 @@ const PORTAL_CONFIG = '/platform/commercial/billing-portal-configuration';
 const RENEWALS = '/platform/commercial/finance/renewals';
 const OUTSTANDING = '/platform/commercial/finance/outstanding-payments';
 const RECONCILIATION = '/platform/commercial/finance/reconciliation-report';
+const REFUND_REPORT = '/platform/commercial/finance/refunds';
 // CCP-C6 — the Finance fixture tenants seeded by the provider state 'finance records exist'.
 const FIN_RENEWAL_TENANT = 'cca10000-0000-7000-8000-0000000006a1';
 const FIN_OUTSTANDING_TENANT = 'cca10000-0000-7000-8000-0000000006a2';
@@ -268,6 +270,7 @@ const GATE_ROUTES: readonly GateRoute[] = [
   { name: 'POST change-requests/{id}/billing-adjustment', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/billing-adjustment`, scope: 'platform:approval:read' },
   { name: 'GET change-requests/{id}/billing-adjustment', method: 'GET', path: `${CR}/${EX_REQUEST_ID}/billing-adjustment`, scope: 'platform:approval:read' },
   { name: 'POST change-requests/{id}/billing-adjustment/resolve', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/billing-adjustment/resolve`, scope: 'platform:approval:read' },
+  { name: 'GET finance/refunds', method: 'GET', path: REFUND_REPORT, scope: 'platform:billing:read' },
   { name: 'GET tenants/{tenant_id}/billing-status', method: 'GET', path: BILLING_STATUS, scope: 'platform:billing:read' },
   { name: 'GET billing-portal-configuration', method: 'GET', path: PORTAL_CONFIG, scope: 'platform:billing:read' },
   { name: 'GET finance/renewals', method: 'GET', path: RENEWALS, scope: 'platform:billing:read' },
@@ -1367,6 +1370,36 @@ describe('platform-web → POST /platform/commercial/change-requests/{id}/billin
       .executeTest(async (mock) => {
         const res = await call(`${mock.url}${resolvePath()}`, 'POST', platformSession('finance_admin'));
         expect(res.status).toBe(403);
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/finance/refunds (CCP-C4-P)', () => {
+  it('finance_admin reads the refund report (200; a projection of the records; without platform:billing:amount:read the amount is withheld FINANCE_SCOPE_REQUIRED)', async () => {
+    await provider
+      .addInteraction()
+      .given('refund records exist')
+      .uponReceiving('a refund report read by finance_admin')
+      .withRequest('GET', REFUND_REPORT, (b) => {
+        b.headers(platformSession('finance_admin')).query({ limit: '50' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          refunds: eachLike({
+            change_request_id: uuid(EX_REQUEST_ID),
+            refund_state: regex('^(requested|approved|pending|confirmed|failed|reconciled|closed)$', 'approved'),
+            reconciliation_status: regex('^(NOT_SENT|PENDING_PROVIDER|COMMAND_FAILED|CONFIRMED|RESOLVED_NOT_EXECUTED)$', 'NOT_SENT'),
+            category: like('R4_SERVICE_FAILURE'),
+            currency: like('USD'),
+            amount_withheld: 'FINANCE_SCOPE_REQUIRED',
+          }),
+          next_cursor: null,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${REFUND_REPORT}?limit=50`, 'GET', platformSession('finance_admin'));
+        expect(res.status).toBe(200);
+        expect(JSON.stringify(res.body)).not.toContain('amount_minor');
       });
   });
 });

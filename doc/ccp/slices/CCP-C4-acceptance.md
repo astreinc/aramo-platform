@@ -265,3 +265,127 @@ Files: **20 modified** plus this record. `git diff --stat`: 773 insertions, 39 d
 | TD-C4R-5 | Partial scope | TD-C4-18's C7 half: C7 (`wip/ccp-c7` `1b41f78c`) is not on this branch. C4R-7 proves the C7 refusal's inputs unchanged (the subscription row byte-identical: `commitment_end`, period, status). The direct assertion (C7 cancel → `FINANCIAL_TREATMENT_UNDEFINED` with `COMMITMENT_TERM_DETAIL` after a manual credit) must be added at the C4 + C7 integration, together with the integrator-owned union for `guard_billing_provider_command()` (both C4 and C7 re-create it). | **For the integrator** |
 | TD-C4R-6 | Test timing | C4-U-14 (Nest module compile) timed out at the 5 s default under load (the same as C1-U-10 in the earlier full run); it now has an explicit 60 s timeout. The isolated `commercial-catalog-a1` 150-sends timeout did not repeat in the targeted runs; it was not re-investigated here. | Recorded (Architect asked to watch it) |
 | TD-C4R-7 | Decision point | Partial refunds are allowed within the provider-reported remainder, pending the catalog amendment's decision point 2. | **Architect / PO** |
+
+## C4-P — bounded remediation (Amendment A1 §3 RF-1…RF-10; Architect C4-P disposition)
+
+Binding: `Aramo-CCP-Program-Build-Directive-Amendment-A1-Commercial-Action-Catalog-v1_0-LOCKED.md`; its SHA-256 `ad862360aab001858d3eb093a97e3331e5360bffe46893a62bebdfb425e60e60` matches the sidecar. Work is on `wip/ccp-c4` at `20218e13`; nothing committed or pushed.
+
+Status is unchanged:
+- **Refunds stay DISABLED.** Apply is refused `REFUND_POLICY_NOT_APPROVED` before any provider call (C4P-6, C4-REFUND-1).
+- **C4 is NOT DELIVERED.**
+- **No migration and no guard change:** the payload is JSONB, already bound by its checksum, and the projection reads existing tables.
+
+### C4-P.1 Refundable remainder (RF-3, RF-4, RF-5; gap 1)
+
+**The pure rule** is `libs/subscription/src/lib/commercial/refund-remainder.ts:69` (`refundableRemainder`) and `:112` (`assessRefundAmount`). The remainder is computed as follows:
+
+- **Start:** the captured amount of the payment.
+- **Subtract provider refunds:** every refund that is succeeded, pending or requires_action. Failed and canceled refunds release their funds.
+- **Subtract disputes:**
+  - **Lost** disputes reduce the remainder by their amount.
+  - **Won** or `warning_closed` disputes do not reduce it.
+  - **Open** disputes refuse the refund: `REFUND_PAYMENT_DISPUTED` (`:80`). Open means `needs_response`, `under_review` or either `warning_` variant.
+- **Subtract outstanding Aramo REFUND reservations:** every APPROVED, APPLYING or APPLY_FAILED REFUND on the same payment, from any tenant, counts as reserved.
+  - A held uncertain command keeps its reservation. An uncertain outcome never makes the amount refundable again.
+  - A reservation already visible at the provider is counted **once**. It is matched by the command id in the refund's metadata, or by its recorded refund object. Where the two amounts differ, the larger one counts (`:99`).
+
+**Refused, never guessed:**
+- `REFUND_REMAINDER_UNVERIFIABLE`: a provider read failure, a truncated list, an unknown refund or dispute status, or no payment.
+- `REFUND_PAYMENT_MISMATCH`: a different payment or paying account (RF-5).
+- `REFUND_CURRENCY_MISMATCH`.
+- `REFUND_EXCEEDS_REMAINDER`.
+- No refusal detail carries an amount.
+
+**The provider read:**
+- A new READ-only port method `readPaymentPicture`: `billing-provider.port.ts` (`ProviderPaymentPicture`); Stripe adapter `stripe-billing.provider.ts:349`.
+- It makes three GETs: the invoice, then the refunds and the disputes of its payment.
+- Wire translations live in `stripe-wire.ts`: `wireDisputeState`, `wireListComplete`. No vocabulary exemption was added.
+
+**Where the remainder is checked:**
+
+| Point | When | Code |
+|---|---|---|
+| Create | The picture is read before the create transaction. Inside it, after the Q14 slot check, it is checked **under the tenant's billing lock** (`takeBillingLock` `:373`) through `RefundRemainderGate.assertInTx`. A refusal is `REFUND_NOT_REFUNDABLE`, mapped to 409 `refund_not_refundable` with `details.refusal`. | `commercial-change-request.service.ts:349`, `:373`, `:377`; gate `refund-remainder.gate.ts:51` / `:65` / `:90` |
+| Apply | The picture is re-read, then checked again in the apply transaction under the billing lock, excluding the request itself. A refusal leaves the request APPROVED with no command. | `commercial-billing-adjustment.service.ts:150`, `:202` |
+| Dispatch | Just before the one write (flag on only): re-read, plus the other outstanding reservations. A refusal fails the command with 0 writes. | `billing-command.service.ts:496`, `:502` |
+
+**Serialization:**
+- Q14 serializes one tenant's REFUNDs.
+- The billing lock and the reservation scan cover the payment.
+- C4P-8 proves concurrent creates, applies and dispatches give one request, one command and one provider refund.
+
+### C4-P.2 Payload provenance (gap 2)
+**New REFUND payload fields** (closed key set, immutable, under the payload checksum), defined at `commercial-change-request.ts:500` (`REFUND_CATEGORIES`) and the REFUND case `:560-577`:
+- `provider_payment_ref` (`pi_…`, RF-2/RF-5);
+- `category`, a closed enum R1…R8;
+- `basis`, non-empty, at most 2 000 characters;
+- `refund_policy_ref`, in the form `<document-id>@<version>`.
+
+**Stable codes**, as error-line prefixes; the create 400 also carries `details.codes`:
+- `REFUND_CATEGORY_INVALID`
+- `REFUND_BASIS_REQUIRED`
+- `REFUND_POLICY_REF_REQUIRED`
+- `REFUND_PAYMENT_REF_INVALID`
+
+`refund_policy_ref` only **identifies** the proposed policy. It is never read by any execution path. Execution stays `REFUND_POLICY_NOT_APPROVED` until Gate 2. No key was added to `CommercialPolicyVersion`. The category is recorded and never used to decide.
+
+**Backward compatibility:** no deployed data exists. The pre-C4-P REFUND fixtures were updated as follows:
+- **Shared test support:** `refundPayload()` and `REFUND_PROVENANCE` were added to the shared test support (`libs/subscription/src/tests/support/ccp-c4.ts`). The fake also gained a payment picture (invoice payment `pi_<invoice body>`, disputes, read failures and truncation). Every C4 / C4-R spec uses these.
+- **Routes spec:** uses them too.
+- **Pact provider:** `refundPayload()` plus an invoice → account registry in its in-memory reader.
+- **Unit tests:** the C4-U-2 REFUND payloads gained the new fields.
+
+### C4-P.3 Refund report (gap 3)
+**Route:** `GET /platform/commercial/finance/refunds`.
+- Controller: `apps/platform-admin/src/app/platform/platform-commercial-refund-report.controller.ts:46`.
+- Service: `CommercialRefundReportService`.
+
+**Data:** it is a projection of change requests, `CommercialBillingAdjustment`, the commands and the resolution audit event. **No ledger table.**
+
+**Each row carries:**
+- `refund_state`: requested, approved, pending, confirmed, failed, reconciled, plus `closed` (TD-C4P-2). The projection is `commercial-refund-report.service.ts:88`.
+- `reconciliation_status`.
+- `category`.
+- `effective_at`: the command's provider confirmation time.
+- `accounting_period`: the UTC YYYY-MM of `effective_at`.
+- The provider refs.
+
+**Amount access:** the route is gated on `platform:billing:read`. The amount is returned only with `platform:billing:amount:read`, through the minimal local `canReadFinanceAmounts` (`:22`, used at controller `:57`). Otherwise the amount is omitted with `amount_withheld: "FINANCE_SCOPE_REQUIRED"`.
+
+**Contracts:** OpenAPI path plus `FinanceRefundReport` / `FinanceRefundReportRow`, and a manifest entry. The `CommercialChangeRequestConflict` and `CommercialBillingAdjustmentConflict` descriptions now list the remainder refusals.
+
+### C4-P tests and gates (exact counts)
+| Run | Result |
+|---|---|
+| C4 integration spec | **36 / 36**, of which 9 are new (C4P-1…C4P-9) |
+| | **C4P-1** (RF-4 example): $1,000 paid, $300 confirmed → $700.01 refused at create, $700 created. |
+| | **C4P-2**: a held uncertain $200 reserves its amount: 800.00 OK, 800.01 refused, and 1,000 OK when the held request is excluded. |
+| | **C4P-3**: a lost-response provider refund matched by command id is counted once: 800.00 OK, not 600. |
+| | **C4P-4**: 4 open dispute statuses refused; a lost dispute reduces; a won one does not; an unknown status is unverifiable. |
+| | **C4P-5**: read failure and truncation → unverifiable; another payment or another tenant's invoice → mismatch; EUR → currency mismatch; 0 rows created. |
+| | **C4P-6**: stable codes; immutability; still `REFUND_POLICY_NOT_APPROVED` with 0 provider calls and 0 refunds. |
+| | **C4P-7**: the apply-time re-check after a refund made elsewhere → APPROVED kept, 0 commands. |
+| | **C4P-8**: concurrency. |
+| | **C4P-9**: report projection, including the effective date and accounting month. |
+| | C4R-5 was re-based: an over-refund is now refused at **create**, and an open dispute after apply stops the dispatch with 0 writes. |
+| C4 unit + `stripe-wire.spec` | 33 / 33, with C4P-U-1…U-4 (categories and codes; the remainder arithmetic incl. match-once; refusals with no amounts in them; the report projection and the scope check) |
+| **Full `libs/subscription`** (`ARAMO_RUN_INTEGRATION=1`, `--maxWorkers=2`) | **50 files, 793 / 793**: C1/C2 regression, the guard-union probes (4 500), compensation, the Finance → Owner chain, the TD-C4-18 safeguards and every C4 / C4-R test. The earlier load-sensitive 150-sends test also passed. |
+| platform-admin C4 routes spec | **6 / 6**. C4P-RI-1: the 5 `platform:billing:read` roles get 200 with `amount_withheld`, and the amount never appears in their bodies. The FAS holders (`platform_owner`, `finance_admin`, `read_only_auditor` with `platform:billing:amount:read`) get `amount_minor`. `catalog_manager` and `super_admin` get 403, as does the tenant tier. A bad limit or cursor is 400. |
+| Pact consumer (pacts deleted; serial) | **184 / 184 tests, 185 interactions** (+3: the report read by `finance_admin` with `amount_withheld`, and the super_admin and tenant-tier gate refusals) |
+| Pact provider | **2 / 2**: coverage gate with 34 CCP routes, and 185 interactions verified. New state `refund records exist`. The in-memory reader answers `readPaymentPicture`. |
+| Gates | contract-parity: 712 live routes (710 governed), 543 ops, 0 orphan, 0 unclassified. openapi drift ok. redocly valid. orphan-scopes, error-codes (no new AramoError code), env-passthrough (unchanged), integration-roots, repo-map (regenerated, temporary index) and vocabulary all OK. ESLint: 0 errors. Typecheck: `nx build typecheck` for subscription + platform-admin (2 projects + 28 dependency tasks) and `tsc` for both pact projects are clean. |
+
+Files: **24 modified + 5 new** (`refund-remainder.ts`, `refund-remainder.gate.ts`, `commercial-refund-report.service.ts`, `platform-commercial-refund-report.controller.ts`, `dto/commercial-refund-report.dto.ts`) plus this record. `git diff --stat` over the modified files: 780 insertions, 53 deletions.
+
+### C4-P risk findings and typed divergences
+| ID | Type | Finding | Disposition |
+|---|---|---|---|
+| **TD-C4P-1** | Choice (conservative) | A reservation matched to a provider refund of a different amount counts the larger amount once. A reservation whose provider refund FAILED keeps reserving until it is resolved (C4-R). This never over-refunds; it may under-state the remainder until reconciliation. | **Confirm** (Architect) |
+| **TD-C4P-2** | Projection | The report adds `closed` to the six named states: a request that ended without any execution (REJECTED, EXPIRED, APPLY_EXPIRED, or WITHDRAWN before apply). `reconciled` = WITHDRAWN with the `COMMERCIAL_REFUND_RESOLVED_NOT_EXECUTED` event. | **Confirm** |
+| TD-C4P-3 | Scope | Report filters are tenant and product only (keyset paging). Filtering by state or accounting period needs a projection index or a stored state; not built. | Recorded |
+| **TD-C4P-4** | Reachability | Q14 (one open request per tenant × product) plus the payment ↔ tenant binding mean a second outstanding REFUND on the same payment is not normally reachable. The reservation logic is proven at the gate (C4P-2, C4P-3) and in the pure rule. Payment ownership across tenants is enforced by the account binding. | Recorded |
+| TD-C4P-5 | Provider semantics | The captured amount is the invoice's `amount_paid` (one payment per invoice in the pinned API). A payment reversal outside refunds and disputes is not modeled. Stripe reports it through those objects. | For the refund policy / D3 |
+| **TD-C4P-6** | Merge note | `canReadFinanceAmounts` (`commercial-refund-report.service.ts:22`) is a minimal local check on `platform:billing:amount:read`. **The integrator replaces it with CCP-R3's `finance-amount-access.ts` at merge.** No role in this base holds the scope (R3 seeds it). The per-role test grants it to the three FAS grantees only for the holder cases. | **For the integrator** |
+| TD-C4P-7 | Stable codes | Payload refusal codes ride the existing 400 `VALIDATION_ERROR` as error-line prefixes and `details.codes`. Remainder refusals ride the existing 409 `COMMERCIAL_CHANGE_REQUEST_CONFLICT` with `details.refusal`. No new AramoError code was added. | Recorded |
+| TD-C4P-8 | Ordering | At apply, the refund flag is checked first, so with refunds disabled no provider read happens either (0 calls). The remainder re-check at apply runs only when execution is enabled (tests). | Recorded |
+| TD-C4P-9 | Merge note | C4-P touches `commercial-change-request.service.ts` (create) and `index.ts`, on top of the C4 / C4-R overlap list. | For the lead |

@@ -4,6 +4,7 @@ import {
   BillingProviderUnavailableError,
   type ProviderAdjustmentEffect,
   type ProviderAdjustmentRequest,
+  type ProviderPaymentPicture,
 } from '../../lib/billing/billing-provider.port.js';
 import { BillingWebhookInboxService } from '../../lib/billing/billing-webhook-inbox.service.js';
 import { SubscriptionLifecycleService } from '../../lib/billing/subscription-lifecycle.service.js';
@@ -13,6 +14,8 @@ import { CommercialBillingAdjustmentLedger } from '../../lib/commercial/commerci
 import { CommercialBillingAdjustmentService } from '../../lib/commercial/commercial-billing-adjustment.service.js';
 import { CommercialConversionLedger } from '../../lib/commercial/commercial-conversion.ledger.js';
 import { CommercialConversionService } from '../../lib/commercial/commercial-conversion.service.js';
+import { CommercialChangeRequestService } from '../../lib/commercial/commercial-change-request.service.js';
+import { RefundRemainderGate } from '../../lib/commercial/refund-remainder.gate.js';
 import { CommercialOperatorRepository } from '../../lib/commercial/commercial-operator.repository.js';
 import { CommercialPolicyRepository } from '../../lib/commercial/commercial-policy.repository.js';
 import type { PrismaService } from '../../lib/prisma/prisma.service.js';
@@ -29,6 +32,18 @@ import { type C1Harness, FakeStripe, type ProviderFailure, c1Harness } from './c
 // returns the first result and makes NO second effect; every effect carries the command id metadata;
 // reads never change state. `writes` counts every money-moving call (executeAdjustment), the oracle of
 // "no money movement before the chain completes".
+
+/** CCP-C4-P — the fake's default payment of an invoice: `pi_` + the invoice id's body. */
+export function paymentRefOf(invoice_ref: string): string {
+  return `pi_${invoice_ref.replace(/^in_/, '')}`;
+}
+
+/** CCP-C4-P — the provenance every test REFUND payload carries (the policy ref identifies a DRAFT policy). */
+export const REFUND_PROVENANCE = { category: 'R4_SERVICE_FAILURE', basis: 'Service outage credit under section 4.2 of the order form', refund_policy_ref: 'aramo-refund-policy@v1-draft' } as const;
+/** A complete REFUND payload for an invoice the fake knows. */
+export function refundPayload(amount_minor: number, invoice_ref: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
+  return { amount_minor, currency: 'USD', provider_invoice_ref: invoice_ref, provider_payment_ref: paymentRefOf(invoice_ref), ...REFUND_PROVENANCE, ...extra };
+}
 
 interface BalanceTxn {
   id: string;
@@ -51,13 +66,18 @@ export class FakeAdjustmentStripe extends FakeStripe implements BillingProviderA
   balance: BalanceTxn[] = [];
   discounts = new Map<string, { coupon_ref: string; discount_ref: string; tenant_id: string }>();
   refunds: FakeRefund[] = [];
-  /** invoice_ref → the account that paid it, the amount paid and its currency (defaults: 1 000 000 USD minor). */
-  invoices = new Map<string, { account_ref: string; amount_paid?: number; currency?: string }>();
+  /** invoice_ref → the account that paid it, its payment, the amount paid and its currency (defaults: pi_<invoice>, 1 000 000 USD minor). */
+  invoices = new Map<string, { account_ref: string; payment_ref?: string; amount_paid?: number; currency?: string }>();
+  /** CCP-C4-P — invoice_ref → its disputes (Stripe statuses). */
+  disputes = new Map<string, Array<{ status: string; amount: number }>>();
+  /** CCP-C4-P — invoices whose payment-picture READ fails, or whose lists are reported truncated. */
+  pictureFailures = new Set<string>();
+  pictureTruncated = new Set<string>();
   /** CCP-C4-R — command ids whose provider READ fails (an uncertain reconciliation). */
   readFailures = new Set<string>();
   /** The status a new refund reports (Stripe: pending | succeeded | failed). */
   refundStatus = 'succeeded';
-  adjustmentCalls: { op: 'executeAdjustment' | 'readAdjustmentEffect'; operation: string; ref: string; command_id: string; idempotency_key?: string }[] = [];
+  adjustmentCalls: { op: 'executeAdjustment' | 'readAdjustmentEffect' | 'readPaymentPicture'; operation: string; ref: string; command_id: string; idempotency_key?: string }[] = [];
   adjustmentFailures = new Map<string, ProviderFailure>();
   /** Per command id: the next N executeAdjustment calls succeed at the provider but the response is lost. */
   lostResponses = new Map<string, number>();
@@ -146,6 +166,27 @@ export class FakeAdjustmentStripe extends FakeStripe implements BillingProviderA
     }
   }
 
+  /** CCP-C4-P — the payment picture of one invoice (a read; counted in adjustmentCalls). */
+  async readPaymentPicture(invoice_ref: string): Promise<ProviderPaymentPicture> {
+    await this.probe(`readPaymentPicture ${invoice_ref}`);
+    this.adjustmentCalls.push({ op: 'readPaymentPicture', operation: 'REFUND_CREATE', ref: invoice_ref, command_id: '' });
+    if (this.pictureFailures.has(invoice_ref)) throw new BillingProviderUnavailableError('stripe GET: HTTP 503', true);
+    const inv = this.invoices.get(invoice_ref);
+    if (inv === undefined) throw new BillingProviderUnavailableError('No such invoice', false);
+    return {
+      provider: 'STRIPE',
+      invoice_ref,
+      account_ref: inv.account_ref,
+      payment_ref: inv.payment_ref ?? paymentRefOf(invoice_ref),
+      currency: inv.currency ?? 'usd',
+      captured_minor: inv.amount_paid ?? 1_000_000,
+      refunds: this.refunds.filter((r) => r.invoice_ref === invoice_ref).map((r) => ({ object_ref: r.id, amount_minor: r.amount, status: r.status, command_id: r.command_id })),
+      disputes: (this.disputes.get(invoice_ref) ?? []).map((d, i) => ({ object_ref: `dp_${String(i)}`, amount_minor: d.amount, status: d.status })),
+      complete: !this.pictureTruncated.has(invoice_ref),
+      live: false,
+    };
+  }
+
   adjustmentCount(op: 'executeAdjustment' | 'readAdjustmentEffect', command_id?: string): number {
     return this.adjustmentCalls.filter((c) => c.op === op && (command_id === undefined || c.command_id === command_id)).length;
   }
@@ -157,6 +198,8 @@ export interface C4Harness extends Omit<C1Harness, 'billing'> {
   adjustments: CommercialBillingAdjustmentService;
   /** CCP-C4-R (TD-C4-18) — the C2 conversion on the same services. */
   conversions: CommercialConversionService;
+  /** CCP-C4-P — the refundable-remainder gate. */
+  refundGate: RefundRemainderGate;
 }
 
 export function c4Harness(prisma: PrismaService, now: () => Date): C4Harness {
@@ -166,11 +209,14 @@ export function c4Harness(prisma: PrismaService, now: () => Date): C4Harness {
   const policies = new CommercialPolicyRepository(prisma);
   const operators = new CommercialOperatorRepository(prisma, audit, policies);
   const adjustmentLedger = new CommercialBillingAdjustmentLedger(audit);
+  // CCP-C4-P — the change-request service with the refundable-remainder gate bound (as the module does).
+  const refundGate = new RefundRemainderGate(billing);
+  const changeRequests = new CommercialChangeRequestService(prisma, audit, policies, operators, now, refundGate);
   const conversionLedger = new CommercialConversionLedger(audit);
   const lifecycle = new SubscriptionLifecycleService(prisma, base.allowance, billing, new CapacityService(prisma), undefined, undefined, base.orgProfile, billing, conversionLedger, billing, adjustmentLedger);
   const commands = new BillingCommandService(prisma, billing, lifecycle, billing, billing);
   const inbox = new BillingWebhookInboxService(prisma, billing, lifecycle);
-  const adjustments = new CommercialBillingAdjustmentService(prisma, audit, operators, base.changeRequests, commands, now, lifecycle, billing);
-  const conversions = new CommercialConversionService(prisma, audit, operators, base.changeRequests, conversionLedger, commands, lifecycle, now);
-  return { ...base, billing, lifecycle, commands, inbox, adjustmentLedger, adjustments, conversions };
+  const adjustments = new CommercialBillingAdjustmentService(prisma, audit, operators, changeRequests, commands, now, lifecycle, billing, refundGate);
+  const conversions = new CommercialConversionService(prisma, audit, operators, changeRequests, conversionLedger, commands, lifecycle, now);
+  return { ...base, changeRequests, billing, lifecycle, commands, inbox, adjustmentLedger, adjustments, conversions, refundGate };
 }

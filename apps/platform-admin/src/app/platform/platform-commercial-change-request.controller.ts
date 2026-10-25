@@ -234,6 +234,10 @@ export function toAramoError(err: unknown, requestId: string): unknown {
         return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, { requestId, details: { reason: 'state_invalid', ...d } });
       case 'INTEGRITY':
         return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, { requestId, details: { reason: 'integrity', ...d } });
+      // CCP-C4-P (Amendment A1 RF-3…RF-5) — details.refusal: REFUND_EXCEEDS_REMAINDER |
+      // REFUND_PAYMENT_DISPUTED | REFUND_REMAINDER_UNVERIFIABLE | REFUND_PAYMENT_MISMATCH | REFUND_CURRENCY_MISMATCH.
+      case 'REFUND_NOT_REFUNDABLE':
+        return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, { requestId, details: { reason: 'refund_not_refundable', ...d } });
     }
   }
   return err;

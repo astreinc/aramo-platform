@@ -21,15 +21,16 @@ import {
 } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { filterScopesForConsumer } from '@aramo/identity';
-import { BillingCommandService, BillingWebhookInboxService, CommercialBillingAdjustmentService, CommercialChangeRequestService, SubscriptionPrismaService } from '@aramo/subscription';
+import { BillingCommandService, BillingWebhookInboxService, CommercialBillingAdjustmentService, CommercialChangeRequestService, CommercialRefundReportService, SubscriptionPrismaService } from '@aramo/subscription';
 
 import { PlatformCommercialBillingAdjustmentController } from '../app/platform/platform-commercial-billing-adjustment.controller.js';
 import { PlatformCommercialBillingController } from '../app/platform/platform-commercial-billing.controller.js';
 import { PlatformCommercialChangeRequestController } from '../app/platform/platform-commercial-change-request.controller.js';
+import { PlatformCommercialRefundReportController } from '../app/platform/platform-commercial-refund-report.controller.js';
 // eslint-disable-next-line @nx/enforce-module-boundaries -- test-only real-Postgres support shared with the libs/subscription CCP specs (TD-A3-19 precedent)
 import { CCP_BUNDLES, addOperator, applyCcpA6Schema } from '../../../../libs/subscription/src/tests/support/ccp-a3-database.js';
 // eslint-disable-next-line @nx/enforce-module-boundaries -- test-only: the one shared C4 harness (fake Stripe, no network, no key)
-import { c4Harness, type C4Harness } from '../../../../libs/subscription/src/tests/support/ccp-c4.js';
+import { c4Harness, refundPayload, type C4Harness } from '../../../../libs/subscription/src/tests/support/ccp-c4.js';
 
 import { generateTestKeyPair } from './test-keys.js';
 
@@ -47,7 +48,10 @@ class RoleBundleResolver implements EffectiveAuthorizationResolver {
   readonly roleOf = new Map<string, string>();
   async resolve(input: EffectiveAuthorizationInput): Promise<EffectiveAuthorizationResolution> {
     const role = this.roleOf.get(input.principal_id);
-    const scopes = role === undefined ? [] : [...(CCP_BUNDLES[role] ?? [])];
+    // CCP-C4-P — `<role>+amount` principals also hold the LOCKED Finance amount scope (FAS-2; its
+    // grantees platform_owner, finance_admin, read_only_auditor once CCP-R3's seed lands).
+    const base = role?.replace(/\+amount$/, '');
+    const scopes = base === undefined ? [] : [...(CCP_BUNDLES[base] ?? []), ...(role?.endsWith('+amount') === true ? ['platform:billing:amount:read'] : [])];
     return { status: 'ok', scopes: filterScopesForConsumer({ consumer: input.consumer_type, scopes, tenantHasEsign: false }) };
   }
 }
@@ -120,7 +124,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 — the bi
     process.env['AUTH_PUBLIC_KEY'] = keys.publicPem;
     const moduleRef = await Test.createTestingModule({
       imports: [AuthModule, AuthorizationModule],
-      controllers: [PlatformCommercialChangeRequestController, PlatformCommercialBillingAdjustmentController, PlatformCommercialBillingController],
+      controllers: [PlatformCommercialChangeRequestController, PlatformCommercialBillingAdjustmentController, PlatformCommercialBillingController, PlatformCommercialRefundReportController],
       providers: [
         { provide: EFFECTIVE_AUTHORIZATION_RESOLVER, useValue: resolver },
         { provide: APP_FILTER, useClass: AramoExceptionFilter },
@@ -128,6 +132,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 — the bi
         { provide: CommercialBillingAdjustmentService, useValue: h.adjustments },
         { provide: BillingCommandService, useValue: h.commands },
         { provide: BillingWebhookInboxService, useValue: h.inbox },
+        { provide: CommercialRefundReportService, useValue: new CommercialRefundReportService(prisma) },
       ],
     }).compile();
     app = moduleRef.createNestApplication({ logger: false });
@@ -140,6 +145,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 — the bi
     }
     user['commercial_ops_2'] = await addOperator(pg, ['commercial_ops']);
     resolver.roleOf.set(user['commercial_ops_2'] as string, 'commercial_ops');
+    for (const role of ['platform_owner', 'finance_admin', 'read_only_auditor']) {
+      user[`${role}+amount`] = await addOperator(pg, [role]);
+      resolver.roleOf.set(user[`${role}+amount`] as string, `${role}+amount`);
+    }
   }, 300_000);
 
   afterAll(async () => {
@@ -204,7 +213,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 — the bi
 
   it('C4-RI-3 the refund designed disabled state: an approved REFUND → 409 apply_refused REFUND_POLICY_NOT_APPROVED with an explanation; the request stays APPROVED; no command; the read says refund_execution_disabled', async () => {
     const { t } = await selfService();
-    const id = await approved('REFUND', t, { amount_minor: 4_000, currency: 'USD', provider_invoice_ref: 'in_c4route' });
+    h.billing.invoices.set('in_c4route', { account_ref: `acct_${t}` });
+    const id = await approved('REFUND', t, refundPayload(4_000, 'in_c4route'));
     const res = await post('commercial_ops', `${BASE}/${id}/billing-adjustment`);
     expect(out(res)).toEqual([409, 'COMMERCIAL_CHANGE_REQUEST_CONFLICT', 'REFUND_POLICY_NOT_APPROVED']);
     expect(res.body.error.details.explanation).toMatch(/refund policy has not been approved/);
@@ -222,12 +232,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 — the bi
 
   it('C4-RI-5 (CCP-C4-R) POST …/billing-adjustment/resolve per role: only the requester; an APPROVED refund is 409 NOT_RESOLVABLE; a refund sent nowhere (FAILED before any provider write, flag then off) is resolved 200 RESOLVED_NOT_EXECUTED (WITHDRAWN) and the slot is released; a non-REFUND is 409 action_not_applicable', async () => {
     const { t } = await selfService();
-    const id = await approved('REFUND', t, { amount_minor: 30_000, currency: 'USD', provider_invoice_ref: 'in_c4routeres' });
+    h.billing.invoices.set('in_c4routeres', { account_ref: `acct_${t}` });
+    const id = await approved('REFUND', t, refundPayload(30_000, 'in_c4routeres'));
     const path = `${BASE}/${id}/billing-adjustment/resolve`;
     expect(out(await post('commercial_ops', path))).toEqual([409, 'COMMERCIAL_CHANGE_REQUEST_CONFLICT', 'NOT_RESOLVABLE']);
     process.env['CCP_REFUND_EXECUTION_ENABLED'] = '1';
     try {
       expect((await post('commercial_ops', `${BASE}/${id}/billing-adjustment`)).status).toBe(200);
+      const [cmd] = await h.commands.forChangeRequest(id);
+      h.billing.adjustmentFailures.set(cmd!.id, { kind: 'refused', times: 1 }); // refused by the provider: nothing created
       await h.commands.dispatchDue(new Date());
     } finally {
       delete process.env['CCP_REFUND_EXECUTION_ENABLED'];
@@ -247,9 +260,33 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 — the bi
     expect(ok.status, JSON.stringify(ok.body)).toBe(200);
     expect(ok.body).toMatchObject({ resolution: 'RESOLVED_NOT_EXECUTED', outcomes: ['NOT_FOUND'], request: { id, state: 'WITHDRAWN', payload: { amount_withheld: 'FINANCE_SCOPE_PENDING' } }, adjustment: { status: 'RESOLVED_NOT_EXECUTED', record: null } });
     expect(JSON.stringify(ok.body)).not.toContain('30000');
-    expect((await post('commercial_ops', BASE, { action_type: 'REFUND', tenant_id: t, product_key: 'sign', payload: { amount_minor: 1, currency: 'USD', provider_invoice_ref: 'in_c4routeres' }, reason: 'after resolution', idempotency_key: key() })).status).toBe(201);
+    expect((await post('commercial_ops', BASE, { action_type: 'REFUND', tenant_id: t, product_key: 'sign', payload: refundPayload(1, 'in_c4routeres'), reason: 'after resolution', idempotency_key: key() })).status).toBe(201);
     const { t: t2 } = await selfService();
     const credit = await approved('CREDIT', t2, { amount_minor: 10, currency: 'USD' });
     expect(out(await post('commercial_ops', `${BASE}/${credit}/billing-adjustment/resolve`))).toEqual([409, 'COMMERCIAL_CHANGE_REQUEST_CONFLICT', 'action_not_applicable']);
+  });
+
+  it('C4P-RI-1 GET /platform/commercial/finance/refunds per role: the five platform:billing:read roles 200, catalog_manager and super_admin 403, tenant tier 403; the amount only with platform:billing:amount:read (FAS holders), otherwise amount_withheld FINANCE_SCOPE_REQUIRED; no amount anywhere in a non-holder body', async () => {
+    const { t } = await selfService();
+    h.billing.invoices.set('in_c4report', { account_ref: `acct_${t}` });
+    const id = await approved('REFUND', t, refundPayload(4_321, 'in_c4report'));
+    const path = `/platform/commercial/finance/refunds?tenant_id=${t}`;
+    for (const role of ['platform_owner', 'finance_admin', 'commercial_ops', 'support_admin', 'read_only_auditor']) {
+      const r = await get(role, path);
+      expect(r.status, role).toBe(200);
+      expect(r.body, role).toEqual({ refunds: [expect.objectContaining({ change_request_id: id, refund_state: 'approved', reconciliation_status: 'NOT_SENT', category: 'R4_SERVICE_FAILURE', currency: 'USD', amount_withheld: 'FINANCE_SCOPE_REQUIRED', effective_at: null, accounting_period: null })], next_cursor: null });
+      expect(r.body.refunds[0], role).not.toHaveProperty('amount_minor');
+      expect(JSON.stringify(r.body), role).not.toContain('4321');
+    }
+    for (const role of ['platform_owner+amount', 'finance_admin+amount', 'read_only_auditor+amount']) {
+      const r = await get(role, path);
+      expect(r.status, role).toBe(200);
+      expect(r.body.refunds[0], role).toMatchObject({ change_request_id: id, amount_minor: 4_321 });
+      expect(r.body.refunds[0], role).not.toHaveProperty('amount_withheld');
+    }
+    for (const role of ['catalog_manager', 'super_admin']) expect(out(await get(role, path)), role).toEqual([403, 'INSUFFICIENT_PERMISSIONS', null]);
+    expect((await get('finance_admin', path, 'recruiter')).status).toBe(403);
+    expect((await get('finance_admin', '/platform/commercial/finance/refunds?limit=0')).status).toBe(400);
+    expect((await get('finance_admin', '/platform/commercial/finance/refunds?cursor=nope')).status).toBe(400);
   });
 });

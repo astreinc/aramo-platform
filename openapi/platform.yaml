@@ -3127,6 +3127,57 @@ paths:
         '403':
           $ref: '#/components/responses/PlatformForbidden'
 
+  /platform/commercial/finance/refunds:
+    get:
+      operationId: getPlatformCommercialFinanceRefunds
+      tags: [Platform Commercial Finance]
+      summary: The refund report (CCP-C4-P; read-only).
+      description: |
+        CCP-C4-P (Amendment A1 RF-2, RF-10). A read-only projection of the existing records (change
+        requests, the provider-confirmed billing adjustments, the provider commands and the commercial
+        audit); no ledger table. One row per REFUND request, newest first: `refund_state`
+        (requested | approved | pending | confirmed | failed | reconciled | closed), the category,
+        `effective_at` (the provider confirmation time) and `accounting_period` (its UTC month, YYYY-MM),
+        and `reconciliation_status`. Requires `platform:billing:read`. The amount is returned only to a
+        caller holding `platform:billing:amount:read`; otherwise it is omitted and the row carries
+        `amount_withheld: FINANCE_SCOPE_REQUIRED`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: tenant_id
+          in: query
+          required: false
+          description: Only this tenant.
+          schema: { type: string, format: uuid }
+        - name: product_key
+          in: query
+          required: false
+          description: Only this product (the closed registry; `sign` in v1).
+          schema: { type: string, enum: [sign] }
+        - name: limit
+          in: query
+          required: false
+          schema: { type: integer, minimum: 1, maximum: 200 }
+        - name: cursor
+          in: query
+          required: false
+          description: The opaque keyset cursor of the previous page (pinned to the filters).
+          schema: { type: string, maxLength: 2000 }
+      responses:
+        '200':
+          description: The refund report page.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceRefundReport'
+        '400':
+          $ref: '#/components/responses/FinanceReportValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
   /platform/commercial/finance/outstanding-payments:
     get:
       operationId: getPlatformCommercialFinanceOutstandingPayments
@@ -5352,7 +5403,10 @@ components:
         `COMMERCIAL_CHANGE_REQUEST_CONFLICT` (details.reason `state_invalid`,
         `open_request_exists` or `integrity`), `IDEMPOTENCY_KEY_CONFLICT`, or (CCP-A9)
         `PLATFORM_LAST_OWNER` — a `ROLE_REVOKE` of the platform's last effective
-        `platform_owner` (details.reason `platform_last_owner`).
+        `platform_owner` (details.reason `platform_last_owner`). CCP-C4-P: a REFUND whose amount is not
+        refundable now — details.reason `refund_not_refundable` with details.refusal
+        REFUND_EXCEEDS_REMAINDER | REFUND_PAYMENT_DISPUTED | REFUND_REMAINDER_UNVERIFIABLE |
+        REFUND_PAYMENT_MISMATCH | REFUND_CURRENCY_MISMATCH (no amount in the body).
       content:
         application/json:
           schema:
@@ -5387,6 +5441,8 @@ components:
       description: |
         `COMMERCIAL_CHANGE_REQUEST_CONFLICT` with details.reason `apply_refused` (details.refusal
         REFUND_POLICY_NOT_APPROVED — the refund designed disabled state — | REFUND_OUTCOME_UNCERTAIN |
+        the CCP-C4-P remainder refusals REFUND_EXCEEDS_REMAINDER | REFUND_PAYMENT_DISPUTED |
+        REFUND_REMAINDER_UNVERIFIABLE | REFUND_PAYMENT_MISMATCH | REFUND_CURRENCY_MISMATCH |
         NOT_RESOLVABLE (CCP-C4-R resolution) | APPLY_EXPIRED | NOT_APPROVED |
         APPROVER_NO_LONGER_ELIGIBLE | …; nothing is written), `apply_failed` (rolled back before any
         provider command; the request is APPLY_FAILED and retryable; details.failure e.g.
@@ -8204,6 +8260,46 @@ components:
           $ref: '#/components/schemas/CommercialBillingAdjustment'
         replayed:
           type: boolean
+
+    FinanceRefundReportRow:
+      type: object
+      additionalProperties: false
+      required: [change_request_id, tenant_id, product_key, request_state, refund_state, reconciliation_status, category, provider_invoice_ref, provider_payment_ref, provider_refund_ref, currency, effective_at, accounting_period, requested_by, created_at, applied_at]
+      properties:
+        change_request_id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        product_key: { type: string }
+        request_state: { $ref: '#/components/schemas/CommercialChangeRequestState' }
+        refund_state: { type: string, enum: [requested, approved, pending, confirmed, failed, reconciled, closed] }
+        reconciliation_status: { type: string, enum: [NOT_SENT, PENDING_PROVIDER, COMMAND_FAILED, CONFIRMED, RESOLVED_NOT_EXECUTED] }
+        category: { type: [string, 'null'], enum: [R1_DUPLICATE, R2_OVERCHARGE, R3_UNAUTHORIZED, R4_SERVICE_FAILURE, R5_COMMITMENT_CANCELLATION, R6_NONCOMMITTED_CANCELLATION, R7_GOODWILL, R8_TAX, null] }
+        provider_invoice_ref: { type: [string, 'null'] }
+        provider_payment_ref: { type: [string, 'null'] }
+        provider_refund_ref: { type: [string, 'null'] }
+        currency: { type: [string, 'null'] }
+        amount_minor:
+          type: [integer, 'null']
+          description: Present only for a caller holding `platform:billing:amount:read`.
+        amount_withheld:
+          type: string
+          enum: [FINANCE_SCOPE_REQUIRED]
+          description: Present instead of `amount_minor` for a caller without `platform:billing:amount:read`.
+        effective_at: { type: [string, 'null'], format: date-time }
+        accounting_period: { type: [string, 'null'], pattern: '^[0-9]{4}-[0-9]{2}$' }
+        requested_by: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+        applied_at: { type: [string, 'null'], format: date-time }
+
+    FinanceRefundReport:
+      type: object
+      additionalProperties: false
+      required: [refunds, next_cursor]
+      properties:
+        refunds:
+          type: array
+          items:
+            $ref: '#/components/schemas/FinanceRefundReportRow'
+        next_cursor: { type: [string, 'null'] }
 
     CommercialRefundResolutionEnvelope:
       type: object

@@ -12,12 +12,14 @@ import { BillingAdjustmentRefusedError, REFUND_EXECUTION_FLAG, discountCouponRef
 import { CommercialApprovalRefusedError, CommercialChangeRequestError, CommercialNotBootstrappedError } from '../lib/commercial/commercial-change-request.service.js';
 import { ConversionApplyFailedError } from '../lib/commercial/commercial-conversion.js';
 import { commercialPolicyChecksum } from '../lib/commercial/commercial-policy.js';
+import { CommercialRefundReportService } from '../lib/commercial/commercial-refund-report.service.js';
+import { RefundRemainderRefusedError, refundBindingOf } from '../lib/commercial/refund-remainder.gate.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
 import { seededPolicyV1 } from './fixtures/commercial-policy-seed.js';
 import { CCP_BUNDLES, POLICY_V1, activatePolicyV2, addOperator, applyCcpA6Schema, grantRole, revokeRole } from './support/ccp-a3-database.js';
 import { A6_CTX, INCLUDED, as, newTenant, publishedVersion, rawSubscription } from './support/ccp-a6.js';
-import { type C4Harness, c4Harness } from './support/ccp-c4.js';
+import { type C4Harness, c4Harness, refundPayload } from './support/ccp-c4.js';
 
 // CCP-C4 (PBD §5.2 row C4, §10; Conversion Rule C-22, C-23; Charter §6.4 NC-1…NC-5, §7 D5) — credits,
 // discounts and refunds executed in Stripe by C1 durable command, on real Postgres 17 with the real
@@ -111,7 +113,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 credits, d
       if (e instanceof CommercialApplyRefusedError) return `REFUSED:${e.reason}`;
       if (e instanceof CommercialApprovalRefusedError) return `APPROVAL:${e.refusal}`;
       if (e instanceof CommercialNotBootstrappedError) return 'NOT_BOOTSTRAPPED';
-      if (e instanceof CommercialChangeRequestError) return e.code;
+      if (e instanceof CommercialChangeRequestError) return e.code === 'REFUND_NOT_REFUNDABLE' ? `NOT_REFUNDABLE:${String(e.details['refusal'])}` : e.code;
       if (e instanceof BillingCommandError) return `COMMAND:${e.code}`;
       if (e instanceof ConversionApplyFailedError) return `CONVERSION_FAILED:${e.code}`;
       throw e;
@@ -171,7 +173,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 credits, d
     expect(await chainRule(a.request.id)).toBe('FINANCE_ONLY');
     const b = await create('DISCOUNT', (await selfServiceTenant()).t, { discount_bps: 2_000 });
     expect(b.request.required_chain).toMatchObject({ rule: 'FINANCE_THEN_OWNER', basis: { discount_bps: 2_000, discount_escalation_threshold_bps: 2_000, escalates: true } });
-    const r = await create('REFUND', (await selfServiceTenant()).t, { amount_minor: 1, currency: 'USD', provider_invoice_ref: 'in_c4small' });
+    const small = await selfServiceTenant();
+    h.billing.invoices.set('in_c4small', { account_ref: small.acct });
+    const r = await create('REFUND', small.t, refundPayload(1, 'in_c4small'));
     expect(r.request.required_chain).toMatchObject({ rule: 'FINANCE_THEN_OWNER', steps: [{ role_key: 'finance_admin', scope_keys: ['platform:billing:approve'] }, { role_key: 'platform_owner', scope_keys: ['platform:billing:approve'] }] });
     expect(r.request.policy_version_id).toBe(POLICY_V1);
   });
@@ -382,7 +386,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 credits, d
     expect(process.env[REFUND_EXECUTION_FLAG]).toBeUndefined();
     const { t, acct } = await selfServiceTenant();
     h.billing.invoices.set('in_c4refund1', { account_ref: acct });
-    const id = await approved('REFUND', t, { amount_minor: 4_000, currency: 'USD', provider_invoice_ref: 'in_c4refund1' });
+    const id = await approved('REFUND', t, refundPayload(4_000, 'in_c4refund1'));
     const w = h.billing.adjustmentCalls.length;
     const sigs = await approvalsJson(id);
     expect(await refusal(applyAs(id))).toBe('REFUSED:REFUND_POLICY_NOT_APPROVED');
@@ -399,10 +403,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 credits, d
   it('C4-REFUND-2 with the flag ON (tests only): the same path runs end to end (one refund write, pending until the refund webhook); a refund command found by the dispatcher after the flag is switched OFF again is FAILED REFUND_POLICY_NOT_APPROVED with no provider call', async () => {
     const { t, acct } = await selfServiceTenant();
     h.billing.invoices.set('in_c4refund2', { account_ref: acct });
-    const id = await approved('REFUND', t, { amount_minor: 4_500, currency: 'USD', provider_invoice_ref: 'in_c4refund2' });
+    const id = await approved('REFUND', t, refundPayload(4_500, 'in_c4refund2'));
     const t2 = await selfServiceTenant();
     h.billing.invoices.set('in_c4refund3', { account_ref: t2.acct });
-    const held = await approved('REFUND', t2.t, { amount_minor: 10, currency: 'USD', provider_invoice_ref: 'in_c4refund3' });
+    const held = await approved('REFUND', t2.t, refundPayload(10, 'in_c4refund3'));
     process.env[REFUND_EXECUTION_FLAG] = '1';
     try {
       const out = await applyAs(id);
@@ -594,7 +598,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 credits, d
     const s = await selfServiceTenant();
     const inv = `in_c4r${String(++keyN).padStart(6, '0')}`;
     h.billing.invoices.set(inv, { account_ref: s.acct, ...invoice });
-    const id = await approved('REFUND', s.t, { amount_minor, currency: 'USD', provider_invoice_ref: inv });
+    const id = await approved('REFUND', s.t, refundPayload(amount_minor, inv));
     return { id, t: s.t, acct: s.acct, inv };
   }
   const withFlag = async <T>(f: () => Promise<T>): Promise<T> => {
@@ -691,7 +695,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 credits, d
     expect(await commandsOf(a.id)).toHaveLength(1);
     expect(await adjustmentOf(a.id)).toBeUndefined();
     // The slot is free: a new REFUND on the same tenant is accepted.
-    const again = await create('REFUND', a.t, { amount_minor: 100, currency: 'USD', provider_invoice_ref: a.inv });
+    const again = await create('REFUND', a.t, refundPayload(100, a.inv));
     expect(again.request.state).toBe('DRAFT');
     // Terminal: a second resolution / apply is refused; the old command is never sent.
     expect(await refusal(resolve(a.id))).toBe('REFUSED:NOT_RESOLVABLE');
@@ -737,7 +741,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 credits, d
       h.billing.readFailures.delete(c.id);
     }
     expect(await reqRow(a.id)).toMatchObject({ state: 'APPLYING', withdrawn_at: null });
-    expect(await refusal(create('REFUND', a.t, { amount_minor: 1, currency: 'USD', provider_invoice_ref: a.inv }))).toBe('OPEN_REQUEST_EXISTS');
+    expect(await refusal(create('REFUND', a.t, refundPayload(1, a.inv)))).toBe('OPEN_REQUEST_EXISTS');
     expect(await auditCount(a.id, 'COMMERCIAL_REFUND_RESOLVED_NOT_EXECUTED')).toBe(0);
     expect(await auditCount(a.id, 'COMMERCIAL_CHANGE_REQUEST_APPLY_REFUSED')).toBe(1);
     // pending at the provider
@@ -770,15 +774,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 credits, d
     expect(h.billing.refunds.filter((r) => r.invoice_ref === a.inv)).toHaveLength(0);
   });
 
-  it('C4R-5 refund identity: the amount is bounded by the payment\'s refundable remainder (an over-refund is FAILED REFUND_EXCEEDS_REMAINDER before any write); a PARTIAL refund within the remainder is allowed and confirmed', async () => {
-    const over = await approvedRefund(30_000, { amount_paid: 20_000 });
-    const w = h.billing.writes;
-    await withFlag(async () => {
-      await applyAs(over.id);
-      await dispatch();
-    });
-    expect((await commandsOf(over.id))[0]).toMatchObject({ state: 'FAILED', last_error_code: 'REFUND_EXCEEDS_REMAINDER' });
-    expect(h.billing.writes - w).toBe(0);
+  it('C4R-5 refund identity: an over-refund is refused at CREATE (REFUND_EXCEEDS_REMAINDER, nothing written); a PARTIAL refund within the remainder is allowed and confirmed; a dispute opened after apply stops the dispatch before any write (REFUND_PAYMENT_DISPUTED)', async () => {
+    const s = await selfServiceTenant();
+    h.billing.invoices.set('in_c4rover', { account_ref: s.acct, amount_paid: 20_000 });
+    expect(await refusal(create('REFUND', s.t, refundPayload(30_000, 'in_c4rover')))).toBe('NOT_REFUNDABLE:REFUND_EXCEEDS_REMAINDER');
+    expect((await pg.query(`SELECT count(*)::int n FROM subscription."CommercialChangeRequest" WHERE tenant_id = $1`, [s.t])).rows[0].n).toBe(0);
     const part = await approvedRefund(10_000, { amount_paid: 20_000 });
     await withFlag(async () => {
       await applyAs(part.id);
@@ -787,6 +787,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 credits, d
     await h.commands.reconcilePending('sign', now);
     expect((await reqRow(part.id)).state).toBe('APPLIED');
     expect(Number((await adjustmentOf(part.id)).amount_minor)).toBe(10_000);
+    const disputed = await approvedRefund(5_000);
+    const w = h.billing.writes;
+    await withFlag(async () => {
+      await applyAs(disputed.id);
+      h.billing.disputes.set(disputed.inv, [{ status: 'needs_response', amount: 5_000 }]);
+      await dispatch();
+    });
+    expect((await commandsOf(disputed.id))[0]).toMatchObject({ state: 'FAILED', last_error_code: 'REFUND_PAYMENT_DISPUTED' });
+    expect(h.billing.writes - w).toBe(0);
   });
 
   it('C4R-6 DB backstops of the resolution: no WITHDRAWN without its resolution audit event; never while a command is in flight; only REFUND (a CREDIT in APPLYING cannot be withdrawn)', async () => {
@@ -817,6 +826,185 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 credits, d
     expect(await refusal(h.conversions.apply(as(OPS, 'commercial_ops'), conv.request.id, A6_CTX))).toBe('CONVERSION_FAILED:FINANCIAL_TREATMENT_UNDEFINED');
     expect(await commandsOf(conv.request.id)).toEqual([]);
     expect((await one(`SELECT row_to_json(s)::text j FROM subscription."TenantSubscription" s WHERE id = $1`, [ss])).j).toBe(before);
+  });
+
+  // ---- CCP-C4-P (Amendment A1 RF-3…RF-5, Architect C4-P gaps 1–3) -------------------------------
+
+  /** A self-service tenant whose invoice (paid `paid`) the fake knows. */
+  async function paidInvoice(paid: number, o: { currency?: string } = {}): Promise<{ t: string; acct: string; inv: string; ss: string }> {
+    const s = await selfServiceTenant();
+    const inv = `in_c4p${String(++keyN).padStart(6, '0')}`;
+    h.billing.invoices.set(inv, { account_ref: s.acct, amount_paid: paid, ...o });
+    return { t: s.t, acct: s.acct, ss: s.ss, inv };
+  }
+  /** The gate, directly, in a rolled-back transaction under the billing lock (as create / apply run it). */
+  async function gate(t: string, inv: string, amount_minor: number, exclude?: string): Promise<string> {
+    const picture = await h.refundGate.readPicture(inv);
+    try {
+      await prisma.$transaction(async (tx) => {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`billing:${t}`}, 0))`;
+        await h.refundGate.assertInTx(tx, picture, refundBindingOf(t, 'sign', refundPayload(amount_minor, inv), exclude));
+        throw new Error('ROLLBACK_OK');
+      });
+    } catch (e) {
+      if ((e as Error).message === 'ROLLBACK_OK') return 'OK';
+      if (e instanceof RefundRemainderRefusedError) return e.refusal;
+      throw e;
+    }
+    return 'UNREACHABLE';
+  }
+  /** A refund confirmed end to end (flag on for its send only). */
+  async function confirmedRefund(t: string, inv: string, amount_minor: number): Promise<string> {
+    const id = await approved('REFUND', t, refundPayload(amount_minor, inv));
+    await withFlag(async () => {
+      await applyAs(id);
+      await dispatch();
+    });
+    await h.commands.reconcilePending('sign', now);
+    expect((await reqRow(id)).state).toBe('APPLIED');
+    return id;
+  }
+
+  it('C4P-1 RF-4 example: paid $1,000 with a confirmed $300 refund → $700 can still be requested, $701 is refused at create (REFUND_EXCEEDS_REMAINDER); the remainder is the provider\'s (captured − confirmed)', async () => {
+    const p = await paidInvoice(100_000);
+    await confirmedRefund(p.t, p.inv, 30_000);
+    expect(await refusal(create('REFUND', p.t, refundPayload(70_001, p.inv)))).toBe('NOT_REFUNDABLE:REFUND_EXCEEDS_REMAINDER');
+    const ok = await create('REFUND', p.t, refundPayload(70_000, p.inv));
+    expect(ok.request).toMatchObject({ state: 'DRAFT', payload: { amount_minor: 70_000, category: 'R4_SERVICE_FAILURE', refund_policy_ref: 'aramo-refund-policy@v1-draft' } });
+  });
+
+  it('C4P-2 an uncertain $200 command still held reserves its amount (never refundable again while uncertain); excluding that request shows the reservation is the only difference', async () => {
+    const p = await paidInvoice(100_000);
+    const held = await approved('REFUND', p.t, refundPayload(20_000, p.inv));
+    await withFlag(async () => {
+      await applyAs(held);
+      h.billing.adjustmentFailures.set((await commandsOf(held))[0].id, { kind: 'refused', times: 1 });
+      await dispatch();
+    });
+    expect(await reqRow(held)).toMatchObject({ state: 'APPLYING' });
+    expect(await gate(p.t, p.inv, 80_000)).toBe('OK');
+    expect(await gate(p.t, p.inv, 80_001)).toBe('REFUND_EXCEEDS_REMAINDER');
+    expect(await gate(p.t, p.inv, 100_000, held)).toBe('OK');
+  });
+
+  it('C4P-3 a provider refund that matches a local command (by its command id, the lost-response case) is counted ONCE, not twice', async () => {
+    const p = await paidInvoice(100_000);
+    const id = await approved('REFUND', p.t, refundPayload(20_000, p.inv));
+    const t0 = now;
+    try {
+      await withFlag(async () => {
+        await applyAs(id);
+        h.billing.lostResponses.set((await commandsOf(id))[0].id, 1);
+        await dispatch();
+      });
+      expect((await commandsOf(id))[0]).toMatchObject({ state: 'RETRY_WAIT', provider_object_ref: null });
+      expect(h.billing.refunds.filter((r) => r.invoice_ref === p.inv)).toHaveLength(1);
+      expect(await gate(p.t, p.inv, 80_000)).toBe('OK'); // 100 000 − 20 000 once (not 60 000)
+      expect(await gate(p.t, p.inv, 80_001)).toBe('REFUND_EXCEEDS_REMAINDER');
+    } finally {
+      now = t0;
+    }
+  });
+
+  it('C4P-4 disputes: an open or unresolved dispute blocks every refund (REFUND_PAYMENT_DISPUTED); a lost dispute reduces the remainder; a won one does not', async () => {
+    const p = await paidInvoice(100_000);
+    for (const status of ['needs_response', 'under_review', 'warning_needs_response', 'warning_under_review']) {
+      h.billing.disputes.set(p.inv, [{ status, amount: 10_000 }]);
+      expect(await refusal(create('REFUND', p.t, refundPayload(1, p.inv))), status).toBe('NOT_REFUNDABLE:REFUND_PAYMENT_DISPUTED');
+    }
+    h.billing.disputes.set(p.inv, [{ status: 'lost', amount: 30_000 }]);
+    expect(await gate(p.t, p.inv, 70_001)).toBe('REFUND_EXCEEDS_REMAINDER');
+    expect(await gate(p.t, p.inv, 70_000)).toBe('OK');
+    h.billing.disputes.set(p.inv, [{ status: 'won', amount: 30_000 }]);
+    expect(await gate(p.t, p.inv, 100_000)).toBe('OK');
+    h.billing.disputes.set(p.inv, [{ status: 'something_new', amount: 1 }]);
+    expect(await gate(p.t, p.inv, 1)).toBe('REFUND_REMAINDER_UNVERIFIABLE');
+  });
+
+  it('C4P-5 never guessed / bound (RF-5): a provider read failure or a truncated list → REFUND_REMAINDER_UNVERIFIABLE; another payment, another tenant\'s invoice → REFUND_PAYMENT_MISMATCH; another currency → REFUND_CURRENCY_MISMATCH; nothing is created', async () => {
+    const p = await paidInvoice(100_000);
+    h.billing.pictureFailures.add(p.inv);
+    expect(await refusal(create('REFUND', p.t, refundPayload(1, p.inv)))).toBe('NOT_REFUNDABLE:REFUND_REMAINDER_UNVERIFIABLE');
+    h.billing.pictureFailures.delete(p.inv);
+    h.billing.pictureTruncated.add(p.inv);
+    expect(await refusal(create('REFUND', p.t, refundPayload(1, p.inv)))).toBe('NOT_REFUNDABLE:REFUND_REMAINDER_UNVERIFIABLE');
+    h.billing.pictureTruncated.delete(p.inv);
+    expect(await refusal(create('REFUND', p.t, refundPayload(1, p.inv, { provider_payment_ref: 'pi_someotherpayment' })))).toBe('NOT_REFUNDABLE:REFUND_PAYMENT_MISMATCH');
+    const other = await paidInvoice(100_000);
+    expect(await refusal(create('REFUND', p.t, refundPayload(1, other.inv)))).toBe('NOT_REFUNDABLE:REFUND_PAYMENT_MISMATCH');
+    const eur = await paidInvoice(100_000, { currency: 'eur' });
+    expect(await refusal(create('REFUND', eur.t, refundPayload(1, eur.inv)))).toBe('NOT_REFUNDABLE:REFUND_CURRENCY_MISMATCH');
+    expect((await pg.query(`SELECT count(*)::int n FROM subscription."CommercialChangeRequest" WHERE tenant_id = ANY($1::uuid[])`, [[p.t, eur.t]])).rows[0].n).toBe(0);
+  });
+
+  it('C4P-6 payload provenance (gap 2): a closed category, a non-empty basis and a refund_policy_ref are required, with stable codes; they are immutable under the checksum; a policy ref NEVER makes a refund executable (still REFUND_POLICY_NOT_APPROVED, 0 Stripe refund calls)', async () => {
+    const p = await paidInvoice(100_000);
+    const codes = async (payload: Record<string, unknown>): Promise<unknown> => {
+      try {
+        await create('REFUND', p.t, payload);
+        return 'OK';
+      } catch (e) {
+        return (e as CommercialChangeRequestError).details['codes'];
+      }
+    };
+    expect(await codes(refundPayload(1, p.inv, { category: 'R9_WHATEVER' }))).toEqual(['REFUND_CATEGORY_INVALID']);
+    expect(await codes(refundPayload(1, p.inv, { basis: '   ' }))).toEqual(['REFUND_BASIS_REQUIRED']);
+    const { refund_policy_ref: _drop, ...noRef } = refundPayload(1, p.inv);
+    expect(await codes(noRef)).toEqual(['REFUND_POLICY_REF_REQUIRED']);
+    expect(await codes(refundPayload(1, p.inv, { refund_policy_ref: 'no-version' }))).toEqual(['REFUND_POLICY_REF_REQUIRED']);
+    const { provider_payment_ref: _p, ...noPay } = refundPayload(1, p.inv);
+    expect(await codes(noPay)).toEqual(['REFUND_PAYMENT_REF_INVALID']);
+    const id = await approved('REFUND', p.t, refundPayload(5_000, p.inv, { category: 'R7_GOODWILL' }));
+    expect(await dbError(`UPDATE subscription."CommercialChangeRequest" SET payload = jsonb_set(payload, '{category}', '"R1_DUPLICATE"') WHERE id = $1`, [id])).toContain('immutable');
+    const calls = h.billing.adjustmentCalls.length;
+    expect(await refusal(applyAs(id))).toBe('REFUSED:REFUND_POLICY_NOT_APPROVED');
+    expect(h.billing.adjustmentCalls.length - calls).toBe(0);
+    expect(h.billing.refunds.filter((r) => r.invoice_ref === p.inv)).toHaveLength(0);
+  });
+
+  it('C4P-7 the remainder is decided again at APPLY under the billing lock: a refund made elsewhere after approval leaves too little → refused REFUND_EXCEEDS_REMAINDER, APPROVED kept, no command', async () => {
+    const p = await paidInvoice(100_000);
+    const id = await approved('REFUND', p.t, refundPayload(50_000, p.inv));
+    h.billing.refunds.push({ id: 're_c4p_elsewhere', invoice_ref: p.inv, amount: 60_000, status: 'succeeded', command_id: 'not-aramo', tenant_id: p.t });
+    await withFlag(async () => {
+      expect(await refusal(applyAs(id))).toBe('REFUSED:REFUND_EXCEEDS_REMAINDER');
+    });
+    expect(await reqRow(id)).toMatchObject({ state: 'APPROVED', apply_attempts: 0 });
+    expect(await commandsOf(id)).toEqual([]);
+  });
+
+  it('C4P-8 concurrency: two concurrent REFUND creates on one payment → exactly one (Q14 + billing lock); two concurrent applies → one command; two concurrent dispatches → one provider refund', async () => {
+    const p = await paidInvoice(100_000);
+    const both = await Promise.allSettled([create('REFUND', p.t, refundPayload(60_000, p.inv)), create('REFUND', p.t, refundPayload(60_000, p.inv))]);
+    expect(both.filter((x) => x.status === 'fulfilled')).toHaveLength(1);
+    expect(((both.find((x) => x.status === 'rejected') as PromiseRejectedResult).reason as CommercialChangeRequestError).code).toBe('OPEN_REQUEST_EXISTS');
+    const id = ((both.find((x) => x.status === 'fulfilled') as PromiseFulfilledResult<{ request: { id: string } }>).value).request.id;
+    await submit(id);
+    await approveFa(id);
+    await approvePo(id);
+    await withFlag(async () => {
+      const applies = await Promise.allSettled([applyAs(id), applyAs(id)]);
+      expect(applies.filter((x) => x.status === 'fulfilled').length).toBeGreaterThanOrEqual(1);
+      expect(await commandsOf(id)).toHaveLength(1);
+      await Promise.all([dispatch(), dispatch()]);
+    });
+    expect(h.billing.refunds.filter((r) => r.invoice_ref === p.inv)).toHaveLength(1);
+    await h.commands.reconcilePending('sign', now);
+    expect((await reqRow(id)).state).toBe('APPLIED');
+  });
+
+  it('C4P-9 refund report (gap 3): a projection of the existing records — confirmed rows carry the effective date (the provider confirmation) and its UTC accounting month; held, resolved and requested rows their own states', async () => {
+    const p = await paidInvoice(100_000);
+    const id = await confirmedRefund(p.t, p.inv, 12_345);
+    const out = await new CommercialRefundReportService(prisma).list({ tenant_id: p.t });
+    expect(out.refunds).toHaveLength(1);
+    const cmd = (await commandsOf(id))[0];
+    expect(out.refunds[0]).toMatchObject({ change_request_id: id, refund_state: 'confirmed', reconciliation_status: 'CONFIRMED', category: 'R4_SERVICE_FAILURE', amount_minor: 12_345, provider_invoice_ref: p.inv, effective_at: cmd.confirmed_at, accounting_period: `${cmd.confirmed_at.getUTCFullYear()}-${String(cmd.confirmed_at.getUTCMonth() + 1).padStart(2, '0')}` });
+    const r2 = await create('REFUND', p.t, refundPayload(1, p.inv));
+    expect((await new CommercialRefundReportService(prisma).list({ tenant_id: p.t })).refunds.map((r) => [r.change_request_id, r.refund_state, r.reconciliation_status])).toEqual([
+      [r2.request.id, 'requested', 'NOT_SENT'],
+      [id, 'confirmed', 'CONFIRMED'],
+    ]);
   });
 
   it('C4-TX-1 no provider call ran inside a local DB transaction across this spec (the fake\'s probe saw no open transaction and no locked command row on every call)', () => {

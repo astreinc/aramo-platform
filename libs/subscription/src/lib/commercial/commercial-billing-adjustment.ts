@@ -1,6 +1,7 @@
 import type { AdjustmentCommandKind } from '../billing/billing-provider-command.js';
 import type { ProviderAdjustmentEffect } from '../billing/billing-provider.port.js';
 
+import type { RefundRemainderRefusal } from './refund-remainder.js';
 import type { C4BillingAdjustmentAction } from './commercial-change-request.js';
 
 // CCP-C4 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.2 row C4, §10; Conversion Rule C-22,
@@ -77,7 +78,7 @@ export function adjustmentOperationOf(action_type: C4BillingAdjustmentAction, pa
 // ---- refusals and failures ------------------------------------------------------------------
 
 /** Refusals (nothing changes; one APPLY_REFUSED audit row). */
-export type BillingAdjustmentRefusalCode = typeof REFUND_POLICY_NOT_APPROVED | 'APPLY_EXPIRED' | typeof REFUND_OUTCOME_UNCERTAIN | 'NOT_RESOLVABLE';
+export type BillingAdjustmentRefusalCode = typeof REFUND_POLICY_NOT_APPROVED | 'APPLY_EXPIRED' | typeof REFUND_OUTCOME_UNCERTAIN | 'NOT_RESOLVABLE' | RefundRemainderRefusal;
 
 // ---- CCP-C4-R: REFUND identity (Architect C4 disposition, TD-C4-1 / TD-C4-12) -----------------
 //

@@ -493,6 +493,25 @@ export class CommercialPayloadError extends Error {
 }
 
 const MAX_PAYLOAD_BYTES = 65_536;
+
+/**
+ * CCP-C4-P — the closed refund categories (recorded, never used to decide: no eligibility algorithm).
+ */
+export const REFUND_CATEGORIES = [
+  'R1_DUPLICATE',
+  'R2_OVERCHARGE',
+  'R3_UNAUTHORIZED',
+  'R4_SERVICE_FAILURE',
+  'R5_COMMITMENT_CANCELLATION',
+  'R6_NONCOMMITTED_CANCELLATION',
+  'R7_GOODWILL',
+  'R8_TAX',
+] as const;
+export type RefundCategory = (typeof REFUND_CATEGORIES)[number];
+/** `<document-id>@<version>`, e.g. `aramo-refund-policy@v1-draft`. */
+export const REFUND_POLICY_REF = /^[A-Za-z0-9][A-Za-z0-9._-]{1,120}@[A-Za-z0-9][A-Za-z0-9._-]{0,40}$/;
+/** CCP-C4-P — the stable codes of a refused REFUND payload (the prefix of each error line). */
+export const REFUND_PAYLOAD_CODES = ['REFUND_CATEGORY_INVALID', 'REFUND_BASIS_REQUIRED', 'REFUND_POLICY_REF_REQUIRED', 'REFUND_PAYMENT_REF_INVALID'] as const;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 
@@ -539,10 +558,21 @@ export function validatePayload(action_type: CommercialActionType, payload: unkn
       optionalUuid(p, 'compensates_change_request_id', errors);
       break;
     case 'REFUND':
-      closedKeys(p, ['amount_minor', 'currency', 'provider_invoice_ref', 'subscription_id'], errors);
+      // CCP-C4-P (Amendment A1 RF-2; Architect C4-P gap 2): the referenced invoice AND payment, the
+      // amount, the currency, and the structured provenance — `category` (closed), `basis` (the
+      // contractual or legal basis) and `refund_policy_ref` (the governing refund policy document and
+      // version). All immutable, bound by the payload checksum. `refund_policy_ref` only IDENTIFIES the
+      // proposed policy: it never makes a refund executable (RF-8; REFUND_POLICY_NOT_APPROVED stays).
+      closedKeys(p, ['amount_minor', 'currency', 'provider_invoice_ref', 'provider_payment_ref', 'category', 'basis', 'refund_policy_ref', 'subscription_id'], errors);
       int('amount_minor', 1, Number.MAX_SAFE_INTEGER);
       if (typeof p['currency'] !== 'string' || !/^[A-Z]{3}$/.test(p['currency'])) errors.push('currency must be an ISO 4217 code');
       if (typeof p['provider_invoice_ref'] !== 'string' || !/^in_[A-Za-z0-9]{3,200}$/.test(p['provider_invoice_ref'])) errors.push('provider_invoice_ref must be a provider invoice id');
+      if (typeof p['provider_payment_ref'] !== 'string' || !/^pi_[A-Za-z0-9]{3,200}$/.test(p['provider_payment_ref'])) errors.push('REFUND_PAYMENT_REF_INVALID: provider_payment_ref must be a provider payment id');
+      if (typeof p['category'] !== 'string' || !(REFUND_CATEGORIES as readonly string[]).includes(p['category'])) errors.push(`REFUND_CATEGORY_INVALID: category must be one of ${REFUND_CATEGORIES.join(', ')}`);
+      if (typeof p['basis'] !== 'string' || p['basis'].trim().length === 0) errors.push('REFUND_BASIS_REQUIRED: basis must state the contractual or legal basis');
+      else if (p['basis'].length > 2000) errors.push('REFUND_BASIS_REQUIRED: basis must be at most 2000 characters');
+      if (typeof p['refund_policy_ref'] !== 'string' || p['refund_policy_ref'].trim().length === 0) errors.push('REFUND_POLICY_REF_REQUIRED: refund_policy_ref must identify the refund policy document and version');
+      else if (!REFUND_POLICY_REF.test(p['refund_policy_ref'])) errors.push('REFUND_POLICY_REF_REQUIRED: refund_policy_ref must be <document-id>@<version>');
       optionalUuid(p, 'subscription_id', errors);
       break;
     case 'SUPPORT_EXTENSION':

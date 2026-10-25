@@ -21,6 +21,8 @@ import { APPLY_EXPLANATIONS } from '../lib/commercial/commercial-apply-records.j
 import {
   COMMERCIAL_ACTIONS,
   COMMERCIAL_ACTION_TYPES,
+  REFUND_CATEGORIES,
+  REFUND_POLICY_REF,
   CommercialPayloadError,
   canTransitionFor,
   isApplyExpirable,
@@ -28,6 +30,9 @@ import {
   validatePayload,
 } from '../lib/commercial/commercial-change-request.js';
 import type { CommercialPolicyContent } from '../lib/commercial/commercial-policy.js';
+import { accountingPeriodOf, canReadFinanceAmounts, refundReportState } from '../lib/commercial/commercial-refund-report.service.js';
+import { assessRefundAmount, refundableRemainder } from '../lib/commercial/refund-remainder.js';
+import type { ProviderPaymentPicture } from '../lib/billing/billing-provider.port.js';
 
 import { seededPolicyV1 } from './fixtures/commercial-policy-seed.js';
 
@@ -61,9 +66,11 @@ describe('CCP-C4 pure model', () => {
     expect(payloadErrors('DISCOUNT', { discount_bps: 0 })).toEqual(['discount_bps must be an integer between 1 and 10000']);
     expect(payloadErrors('DISCOUNT', { discount_bps: 10_000 })).toEqual([]);
     expect(payloadErrors('DISCOUNT', { discount_bps: 10_001 })).toHaveLength(1);
-    expect(payloadErrors('REFUND', { amount_minor: 5, currency: 'USD', provider_invoice_ref: 'in_abc123' })).toEqual([]);
-    expect(payloadErrors('REFUND', { amount_minor: 5, currency: 'USD', provider_invoice_ref: 'ch_abc123' })).toEqual(['provider_invoice_ref must be a provider invoice id']);
-    expect(payloadErrors('REFUND', { amount_minor: 5, currency: 'USD', provider_invoice_ref: 'in_abc123', compensates_change_request_id: U })).toEqual(['compensates_change_request_id is not a field of this action']);
+    // CCP-C4-P: a REFUND names the invoice AND the payment, and carries its provenance (category, basis, policy ref).
+    const R = { amount_minor: 5, currency: 'USD', provider_invoice_ref: 'in_abc123', provider_payment_ref: 'pi_abc123', category: 'R2_OVERCHARGE', basis: 'Billed twice for October', refund_policy_ref: 'aramo-refund-policy@v1-draft' };
+    expect(payloadErrors('REFUND', R)).toEqual([]);
+    expect(payloadErrors('REFUND', { ...R, provider_invoice_ref: 'ch_abc123' })).toEqual(['provider_invoice_ref must be a provider invoice id']);
+    expect(payloadErrors('REFUND', { ...R, compensates_change_request_id: U })).toEqual(['compensates_change_request_id is not a field of this action']);
     expect(payloadErrors('CREDIT', { amount_minor: 1, currency: 'USD', subscription_id: 'not-a-uuid' })).toEqual(['subscription_id must be a uuid']);
   });
 
@@ -132,6 +139,73 @@ describe('CCP-C4 pure model', () => {
     expect(refundExecutionEnabled({ CCP_REFUND_EXECUTION_ENABLED: '0' })).toBe(false);
     expect(refundExecutionEnabled({ CCP_REFUND_EXECUTION_ENABLED: '1' })).toBe(true);
     for (const c of ['REFUND_POLICY_NOT_APPROVED', 'TARGET_NOT_SELF_SERVICE', 'COMPENSATION_TARGET_INVALID', 'COMPENSATION_MISMATCH', 'ALREADY_COMPENSATED']) expect(APPLY_EXPLANATIONS[c]).toBeTruthy();
+  });
+});
+
+describe('CCP-C4-P refund provenance and remainder (Amendment A1 RF-3…RF-5)', () => {
+  const R = { amount_minor: 5, currency: 'USD', provider_invoice_ref: 'in_abc123', provider_payment_ref: 'pi_abc123', category: 'R2_OVERCHARGE', basis: 'Billed twice', refund_policy_ref: 'aramo-refund-policy@v1-draft' };
+  const pic = (o: Partial<ProviderPaymentPicture> = {}): ProviderPaymentPicture => ({ provider: 'STRIPE', invoice_ref: 'in_1', account_ref: 'acct_1', payment_ref: 'pi_1', currency: 'usd', captured_minor: 100_000, refunds: [], disputes: [], complete: true, live: false, ...o });
+  const expected = { account_ref: 'acct_1', payment_ref: 'pi_1', currency: 'USD' };
+  const rem = (o: Partial<ProviderPaymentPicture> = {}, outstanding: Parameters<typeof refundableRemainder>[0]['outstanding'] = []) => refundableRemainder({ picture: pic(o), expected, outstanding });
+
+  it('C4P-U-1 the eight closed categories; stable codes for an unknown category, a missing basis, a missing or malformed policy ref and a missing payment', () => {
+    expect(REFUND_CATEGORIES).toEqual(['R1_DUPLICATE', 'R2_OVERCHARGE', 'R3_UNAUTHORIZED', 'R4_SERVICE_FAILURE', 'R5_COMMITMENT_CANCELLATION', 'R6_NONCOMMITTED_CANCELLATION', 'R7_GOODWILL', 'R8_TAX']);
+    for (const c of REFUND_CATEGORIES) expect(payloadErrors('REFUND', { ...R, category: c })).toEqual([]);
+    const code = (p: Record<string, unknown>) => payloadErrors('REFUND', p).map((x) => x.split(':')[0]);
+    expect(code({ ...R, category: 'R0' })).toEqual(['REFUND_CATEGORY_INVALID']);
+    expect(code({ ...R, basis: '' })).toEqual(['REFUND_BASIS_REQUIRED']);
+    expect(code({ ...R, basis: 'x'.repeat(2001) })).toEqual(['REFUND_BASIS_REQUIRED']);
+    const { refund_policy_ref: _r, ...noRef } = R;
+    expect(code(noRef)).toEqual(['REFUND_POLICY_REF_REQUIRED']);
+    expect(code({ ...R, refund_policy_ref: 'policy' })).toEqual(['REFUND_POLICY_REF_REQUIRED']);
+    const { provider_payment_ref: _p, ...noPay } = R;
+    expect(code(noPay)).toEqual(['REFUND_PAYMENT_REF_INVALID']);
+    expect(REFUND_POLICY_REF.test('aramo-refund-policy@v1-draft')).toBe(true);
+  });
+
+  it('C4P-U-2 remainder = captured − (succeeded + pending) refunds − lost disputes − outstanding reservations, each counted once; RF-4 example', () => {
+    const r = rem({ refunds: [{ object_ref: 're_1', amount_minor: 30_000, status: 'succeeded', command_id: 'c-1' }] });
+    expect(r).toMatchObject({ ok: true, remainder_minor: 70_000 });
+    expect(assessRefundAmount({ picture: pic({ refunds: [{ object_ref: 're_1', amount_minor: 30_000, status: 'succeeded', command_id: null }] }), expected, outstanding: [] }, 70_001)).toMatchObject({ ok: false, refusal: 'REFUND_EXCEEDS_REMAINDER' });
+    expect(rem({ refunds: [{ object_ref: 're_1', amount_minor: 30_000, status: 'pending', command_id: null }, { object_ref: 're_2', amount_minor: 5_000, status: 'failed', command_id: null }] })).toMatchObject({ remainder_minor: 70_000 });
+    // an uncertain held reservation (no provider refund) reserves its amount
+    expect(rem({}, [{ change_request_id: 'a', amount_minor: 20_000, command_ids: ['c-9'], provider_object_refs: [] }])).toMatchObject({ remainder_minor: 80_000, local_reserved_minor: 20_000 });
+    // matched by command id → once; matched by object ref → once; a mismatched amount counts the larger
+    expect(rem({ refunds: [{ object_ref: 're_9', amount_minor: 20_000, status: 'succeeded', command_id: 'c-9' }] }, [{ change_request_id: 'a', amount_minor: 20_000, command_ids: ['c-9'], provider_object_refs: [] }])).toMatchObject({ remainder_minor: 80_000, provider_held_minor: 0 });
+    expect(rem({ refunds: [{ object_ref: 're_9', amount_minor: 20_000, status: 'pending', command_id: null }] }, [{ change_request_id: 'a', amount_minor: 20_000, command_ids: [], provider_object_refs: ['re_9'] }])).toMatchObject({ remainder_minor: 80_000 });
+    expect(rem({ refunds: [{ object_ref: 're_9', amount_minor: 15_000, status: 'succeeded', command_id: 'c-9' }] }, [{ change_request_id: 'a', amount_minor: 20_000, command_ids: ['c-9'], provider_object_refs: [] }])).toMatchObject({ remainder_minor: 80_000 });
+    // lost dispute reduces; won does not
+    expect(rem({ disputes: [{ object_ref: 'dp', amount_minor: 30_000, status: 'lost' }] })).toMatchObject({ remainder_minor: 70_000 });
+    expect(rem({ disputes: [{ object_ref: 'dp', amount_minor: 30_000, status: 'won' }] })).toMatchObject({ remainder_minor: 100_000 });
+  });
+
+  it('C4P-U-3 refused, never guessed: open dispute, truncated list, unknown statuses, no payment, binding mismatches', () => {
+    expect(rem({ disputes: [{ object_ref: 'dp', amount_minor: 1, status: 'needs_response' }] })).toMatchObject({ ok: false, refusal: 'REFUND_PAYMENT_DISPUTED' });
+    expect(rem({ complete: false })).toMatchObject({ ok: false, refusal: 'REFUND_REMAINDER_UNVERIFIABLE' });
+    expect(rem({ refunds: [{ object_ref: 're', amount_minor: 1, status: 'mystery', command_id: null }] })).toMatchObject({ ok: false, refusal: 'REFUND_REMAINDER_UNVERIFIABLE' });
+    expect(rem({ disputes: [{ object_ref: 'dp', amount_minor: 1, status: null }] })).toMatchObject({ ok: false, refusal: 'REFUND_REMAINDER_UNVERIFIABLE' });
+    expect(rem({ payment_ref: null })).toMatchObject({ ok: false, refusal: 'REFUND_REMAINDER_UNVERIFIABLE' });
+    expect(rem({ payment_ref: 'pi_2' })).toMatchObject({ ok: false, refusal: 'REFUND_PAYMENT_MISMATCH' });
+    expect(rem({ account_ref: 'acct_2' })).toMatchObject({ ok: false, refusal: 'REFUND_PAYMENT_MISMATCH' });
+    expect(rem({ currency: 'eur' })).toMatchObject({ ok: false, refusal: 'REFUND_CURRENCY_MISMATCH' });
+    // refusals carry no amount (RF-10)
+    for (const x of [rem({ complete: false }), assessRefundAmount({ picture: pic(), expected, outstanding: [] }, 100_001)]) expect(JSON.stringify(x)).not.toMatch(/100000|100001/);
+  });
+
+  it('C4P-U-4 refund report projection: states, reconciliation status and the UTC accounting month', () => {
+    expect(refundReportState('PENDING_APPROVAL', [], false)).toEqual({ refund_state: 'requested', reconciliation_status: 'NOT_SENT' });
+    expect(refundReportState('APPROVED', [], false)).toEqual({ refund_state: 'approved', reconciliation_status: 'NOT_SENT' });
+    expect(refundReportState('APPLYING', [{ state: 'PENDING_PROVIDER', confirmed_at: null }], false)).toEqual({ refund_state: 'pending', reconciliation_status: 'PENDING_PROVIDER' });
+    expect(refundReportState('APPLYING', [{ state: 'FAILED', confirmed_at: null }], false)).toEqual({ refund_state: 'pending', reconciliation_status: 'COMMAND_FAILED' });
+    expect(refundReportState('APPLIED', [{ state: 'CONFIRMED', confirmed_at: new Date() }], false)).toEqual({ refund_state: 'confirmed', reconciliation_status: 'CONFIRMED' });
+    expect(refundReportState('APPLY_FAILED', [], false)).toEqual({ refund_state: 'failed', reconciliation_status: 'NOT_SENT' });
+    expect(refundReportState('WITHDRAWN', [{ state: 'FAILED', confirmed_at: null }], true)).toEqual({ refund_state: 'reconciled', reconciliation_status: 'RESOLVED_NOT_EXECUTED' });
+    expect(refundReportState('REJECTED', [], false).refund_state).toBe('closed');
+    expect(accountingPeriodOf(new Date('2026-10-31T23:59:59.999Z'))).toBe('2026-10');
+    expect(accountingPeriodOf(new Date('2026-11-01T00:00:00.000Z'))).toBe('2026-11');
+    expect(accountingPeriodOf(null)).toBeNull();
+    expect(canReadFinanceAmounts(['platform:billing:read'])).toBe(false);
+    expect(canReadFinanceAmounts(['platform:billing:read', 'platform:billing:amount:read'])).toBe(true);
   });
 });
 
