@@ -13,7 +13,11 @@
 //     grant); absent → exit non-zero, no write.
 //   - grants ONLY the missing members of the canonical bundle; never deletes;
 //     never touches RBAC/tenant/subscription rows. Re-run after convergence is a
-//     no-op (idempotent via the composite PK + createMany skipDuplicates).
+//     no-op (idempotent via the composite PK + the provenance upsert).
+//   - CCP-A7: the grant is recorded with the non-commercial source PROVISIONING (D4), and
+//     NEVER clears a governed revoke (no resurrection, Charter D1 / G4). A withheld capability
+//     is printed; the seed-prod Gate 3 (active rows only) then fails closed. Recovery is a
+//     governed re-grant, never this seed.
 
 import { DEFAULT_TENANT_CAPABILITIES } from '../src/lib/capability.js';
 import { EntitlementRepository } from '../src/lib/entitlement.repository.js';
@@ -56,7 +60,7 @@ async function main(): Promise<void> {
       return rows[0]?.present === true;
     },
     getCapabilities: (id) => repo.getCapabilities(id),
-    grantCapabilities: (args) => repo.grantCapabilities(args),
+    grantCapabilities: (args) => repo.grantCapabilities({ ...args, granted_source: 'PROVISIONING' }),
   };
 
   try {
@@ -64,11 +68,16 @@ async function main(): Promise<void> {
       tenantId,
       required: DEFAULT_TENANT_CAPABILITIES,
     });
-    if (result.granted.length === 0) {
+    if (result.withheld_revoked.length > 0) {
+      console.error(
+        `[entitlement-seed] tenant ${result.tenant_id}: ${result.withheld_revoked.length} capability(ies) under a governed revoke were NOT re-granted (no resurrection; recovery is a governed re-grant): ${result.withheld_revoked.join(', ')}.`,
+      );
+    }
+    if (result.granted.length === 0 && result.withheld_revoked.length === 0) {
       console.log(
         `[entitlement-seed] tenant ${result.tenant_id}: all ${result.required.length} canonical capabilities already present — no-op.`,
       );
-    } else {
+    } else if (result.granted.length > 0) {
       console.log(
         `[entitlement-seed] tenant ${result.tenant_id}: granted ${result.granted.length} missing capability(ies): ${result.granted.join(', ')}.`,
       );

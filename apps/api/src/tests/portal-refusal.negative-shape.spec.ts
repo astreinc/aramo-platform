@@ -6,7 +6,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveEntitlementMigrations } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -83,10 +83,8 @@ const JOB_DOMAIN_INIT_MIGRATION = resolve(
 // PR-A1b §4 sweep — portal routes are now class-level @RequireCapability('portal');
 // the integration boot must have the entitlement schema available so the
 // tenant-axis gate can be exercised (both pass and deliberate-failure paths).
-const ENTITLEMENT_INIT_MIGRATION = resolve(
-  ROOT,
-  'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
-);
+// CCP-A7 — the full entitlement set (the shared helper; the repository reads A7 columns).
+const ENTITLEMENT_MIGRATIONS = resolveEntitlementMigrations(ROOT);
 // Portal P2 P2b — the portal reads now enrich tenant_name via TenantService
 // (@aramo/identity), so the identity.Tenant table must exist + carry every
 // column the regenerated Tenant client SELECTs. Same Tenant-relevant subset the
@@ -218,7 +216,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         EXAMINATION_INIT_MIGRATION,
         EXAMINATION_LIVE_LIST_MIGRATION,
         JOB_DOMAIN_INIT_MIGRATION,
-        ENTITLEMENT_INIT_MIGRATION,
+        ...ENTITLEMENT_MIGRATIONS,
         // Portal P2 P2b — identity.Tenant for the tenant_name enrichment read.
         ...IDENTITY_TENANT_MIGRATIONS,
       ]) {

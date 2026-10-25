@@ -487,7 +487,7 @@ export class PersonalSignupService {
       const resumable = await this.requests.findResumableLapsed(row.email);
       if (resumable !== null) {
         await this.idpPolicy.enrollEnforcedTenantPinned(resumable.tenant_id, 'google');
-        await this.entitlements.grantCapabilities({ tenant_id: resumable.tenant_id, capabilities: PERSONAL_TENANT_CAPABILITIES.filter(isCapability) });
+        await this.entitlements.grantCapabilities({ tenant_id: resumable.tenant_id, capabilities: PERSONAL_TENANT_CAPABILITIES.filter(isCapability), granted_source: 'SIGNUP', granted_by: PERSONAL_SIGNUP_SYSTEM_ACTOR_ID });
       }
       const adopted = resumable === null ? await this.adopt(row) : null;
       const res = resumable !== null ? { tenant_id: resumable.tenant_id, owner_user_id: resumable.user_id } : (adopted ?? (await this.provision(row, rid)));
@@ -546,7 +546,7 @@ export class PersonalSignupService {
     });
     try {
       await this.idpPolicy.enrollEnforcedTenantPinned(tenant.id, 'google');
-      await this.entitlements.grantCapabilities({ tenant_id: tenant.id, capabilities: PERSONAL_TENANT_CAPABILITIES.filter(isCapability) });
+      await this.entitlements.grantCapabilities({ tenant_id: tenant.id, capabilities: PERSONAL_TENANT_CAPABILITIES.filter(isCapability), granted_source: 'SIGNUP', granted_by: PERSONAL_SIGNUP_SYSTEM_ACTOR_ID });
       const owner = await this.identity.createFederatedOwnerNoSub({
         email: row.email,
         display_name: row.display_name,
@@ -577,7 +577,7 @@ export class PersonalSignupService {
     const membership = await this.identityRepo.findMembership({ user_id: user.id, tenant_id: tenant.id });
     if (membership === null || !(await this.identity.findRoleKeysForMembership(membership.id)).includes('tenant_owner')) return null;
     await this.idpPolicy.enrollEnforcedTenantPinned(tenant.id, 'google');
-    await this.entitlements.grantCapabilities({ tenant_id: tenant.id, capabilities: PERSONAL_TENANT_CAPABILITIES.filter(isCapability) });
+    await this.entitlements.grantCapabilities({ tenant_id: tenant.id, capabilities: PERSONAL_TENANT_CAPABILITIES.filter(isCapability), granted_source: 'SIGNUP', granted_by: PERSONAL_SIGNUP_SYSTEM_ACTOR_ID });
     return { tenant_id: tenant.id, owner_user_id: user.id };
   }
 

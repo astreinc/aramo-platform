@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import type { AddressInfo } from 'node:net';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveEntitlementMigrations } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -37,7 +37,8 @@ const __authzTestResolver = new ConfigurableTestResolver();
 const ROOT = resolve(__dirname, '../../../..');
 const AUDIENCE = 'aramo-doclib-t6-http-spec';
 const ALG = 'RS256';
-const ENTITLEMENT_INIT = resolve(ROOT, 'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql');
+// CCP-A7 — the full entitlement set (the shared helper; the repository reads A7 columns).
+const ENTITLEMENT_MIGRATIONS = resolveEntitlementMigrations(ROOT);
 const IDENTITY_INIT = resolve(ROOT, 'libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql');
 function documentsMigrations(): string[] {
   const dir = resolve(ROOT, 'libs/documents/prisma/migrations');
@@ -101,7 +102,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const dburl = container.getConnectionUri();
       db = new Client({ connectionString: dburl });
       await db.connect();
-      await db.query(readFileSync(ENTITLEMENT_INIT, 'utf8'));
+      for (const entitlementMigration of ENTITLEMENT_MIGRATIONS) await db.query(readFileSync(entitlementMigration, 'utf8'));
       for (const p of documentsMigrations()) await db.query(readFileSync(p, 'utf8'));
       await db.query(readFileSync(IDENTITY_INIT, 'utf8'));
       for (const t of [RELYING_TENANT, OWN_CHOICE_TENANT, PLATFORM_TENANT_SENTINEL_ID]) await ensureWriteFreezeTenant((s) => db.query(s), t);

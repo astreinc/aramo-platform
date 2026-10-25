@@ -11,6 +11,8 @@ export interface CommercialChangeApplicationDto {
   to_plan_version_id: string | null;
   capabilities: string[];
   capabilities_inserted: string[];
+  // CCP-A7 — the capabilities an ENTITLEMENT_REVOKE revoked (empty for every other action).
+  capabilities_revoked: string[];
   attempt: number;
   applied_by: string;
   applied_at: string;

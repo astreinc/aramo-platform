@@ -400,9 +400,13 @@ export class PlatformInvitationService {
     // 3. Entitlement tx — soft-disable the tenant on failure (Lead
     // ruling 7).
     try {
+      // CCP-A7 (D4): the provisioning grant is non-commercial provenance, and never clears a
+      // governed revoke.
       await this.entitlementRepo.grantCapabilities({
         tenant_id,
         capabilities: desired,
+        granted_source: 'PROVISIONING',
+        granted_by: args.actor_user_id,
       });
     } catch (err) {
       this.logger.warn(

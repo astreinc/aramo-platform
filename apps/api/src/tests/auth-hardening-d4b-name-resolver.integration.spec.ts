@@ -6,7 +6,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveEntitlementMigrations } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -75,7 +75,7 @@ const MIGRATIONS = [
   'libs/identity/prisma/migrations/20261016000001_ic1_user_tenant_immutable/migration.sql',
   // IC-4 PR-9 — Tenant.kind (additive, defaulted); the client SELECTs it on every Tenant read.
   'libs/identity/prisma/migrations/20261015000002_ic4_tenant_kind/migration.sql',
-  'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
+  ...resolveEntitlementMigrations(ROOT),
 ].map((p) => resolve(ROOT, p));
 
 const ISSUER = 'Aramo Core Auth';

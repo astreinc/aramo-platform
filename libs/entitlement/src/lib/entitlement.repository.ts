@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 
 import type { Capability } from './capability.js';
 import { isCapability } from './capability.js';
+import { type EntitlementGrantOutcome, type UngovernedGrantSource, upsertEntitlements } from './entitlement-provenance.js';
 import { PrismaService } from './prisma/prisma.service.js';
 
 // EntitlementRepository — read surface for the EntitlementGuard +, since
@@ -17,14 +18,21 @@ import { PrismaService } from './prisma/prisma.service.js';
 // step of the cross-schema saga (Cognito → identity-tx → entitlement-tx;
 // Lead ruling 7 — soft-disable on entitlement failure rather than 2PC). The
 // composite PK (@@id([tenant_id, capability])) makes the grant idempotent
-// at the row level; the createMany skipDuplicates honors that.
+// at the row level.
+//
+// CCP-A7 (Charter D1) — the two READERS count only ACTIVE rows (revoked_at = null): a governed
+// revoke stops the capability on the very next request, mint and refresh, and drops the tenant
+// from the Intelligence REPLACE sync. The former `createMany … skipDuplicates` grant is the
+// shared provenance UPSERT (entitlement-provenance.ts): this ungoverned path (provisioning,
+// signup, the seed reconcile) names its non-commercial source and NEVER clears a governed revoke
+// (the resurrection guard); each withheld capability is recorded as RESURRECTION_REFUSED.
 @Injectable()
 export class EntitlementRepository {
   constructor(private readonly prisma: PrismaService) {}
 
   async getCapabilities(tenantId: string): Promise<Set<Capability>> {
     const rows = await this.prisma.tenantEntitlement.findMany({
-      where: { tenant_id: tenantId },
+      where: { tenant_id: tenantId, revoked_at: null },
       select: { capability: true },
     });
     const result = new Set<Capability>();
@@ -40,7 +48,7 @@ export class EntitlementRepository {
   // entitlement sync to Talent Intelligence). Ordered for a stable payload.
   async listTenantIdsWithCapability(capability: Capability): Promise<string[]> {
     const rows = await this.prisma.tenantEntitlement.findMany({
-      where: { capability },
+      where: { capability, revoked_at: null },
       select: { tenant_id: true },
       orderBy: { tenant_id: 'asc' },
     });
@@ -50,14 +58,19 @@ export class EntitlementRepository {
   async grantCapabilities(args: {
     tenant_id: string;
     capabilities: readonly Capability[];
-  }): Promise<void> {
-    if (args.capabilities.length === 0) return;
-    await this.prisma.tenantEntitlement.createMany({
-      data: args.capabilities.map((capability) => ({
+    /** C-20 / D4: a non-commercial source (PROVISIONING or SIGNUP). */
+    granted_source: UngovernedGrantSource;
+    granted_by?: string | null;
+  }): Promise<EntitlementGrantOutcome> {
+    if (args.capabilities.length === 0) return { granted: [], already_held: [], withheld_revoked: [] };
+    return this.prisma.$transaction((tx) =>
+      upsertEntitlements(tx, {
         tenant_id: args.tenant_id,
-        capability,
-      })),
-      skipDuplicates: true,
-    });
+        capabilities: args.capabilities,
+        granted_source: args.granted_source,
+        granted_by: args.granted_by ?? null,
+        change_request_id: null,
+      }),
+    );
   }
 }

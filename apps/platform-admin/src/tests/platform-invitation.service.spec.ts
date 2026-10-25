@@ -188,6 +188,9 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
     expect(mocks.entitlementRepo.grantCapabilities).toHaveBeenCalledWith({
       tenant_id: 'tenant-x',
       capabilities: ['core', 'ats', 'portal'],
+      // CCP-A7 (D4) — non-commercial provisioning provenance.
+      granted_source: 'PROVISIONING',
+      granted_by: 'super-admin-1',
     });
     // ADR-0024 PR-4a-2 (step 4) — the new tenant's requisition-lifecycle package
     // is published (template copy) as part of provisioning.
@@ -374,7 +377,7 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
       expect(mocks.identitySvc.createUserFromInvitation).toHaveBeenCalledWith(
         expect.objectContaining({ role_keys: ['tenant_owner', 'tenant_admin'], owner_role_authority: 'platform' }),
       );
-      expect(mocks.entitlementRepo.grantCapabilities).toHaveBeenCalledWith({ tenant_id: 'tenant-x', capabilities: ['core', 'sign'] });
+      expect(mocks.entitlementRepo.grantCapabilities).toHaveBeenCalledWith({ tenant_id: 'tenant-x', capabilities: ['core', 'sign'], granted_source: 'PROVISIONING', granted_by: 'super-admin-1' });
       expect(mocks.policyProvisioning.publishDefaultLifecyclePackage).not.toHaveBeenCalled();
       // exactly ONE tenant and ONE owner identity
       expect(mocks.tenantSvc.provisionTenant).toHaveBeenCalledTimes(1);
@@ -1297,14 +1300,14 @@ describe('PlatformInvitationService — IC-4 PR-9 PERSONAL tenant provisioning',
     expect(mocks.tenantSvc.provisionTenant).toHaveBeenCalledWith(expect.objectContaining({ kind: 'PERSONAL', owner_email: 'jane.doe@gmail.com' }));
     expect(mocks.identitySvc.resolveRoleIdsByKeys).toHaveBeenCalledWith(['tenant_owner', 'tenant_admin']);
     expect(mocks.identitySvc.createUserFromInvitation).toHaveBeenCalledWith(expect.objectContaining({ tenant_id: 'tenant-p', role_keys: ['tenant_owner', 'tenant_admin'] }));
-    expect(mocks.entitlementRepo.grantCapabilities).toHaveBeenCalledWith({ tenant_id: 'tenant-p', capabilities: ['core', 'sign'] });
+    expect(mocks.entitlementRepo.grantCapabilities).toHaveBeenCalledWith({ tenant_id: 'tenant-p', capabilities: ['core', 'sign'], granted_source: 'PROVISIONING', granted_by: 'super-admin-1' });
     expect(mocks.policyProvisioning.publishDefaultLifecyclePackage).not.toHaveBeenCalled();
     expect(out).toMatchObject({ tenant_id: 'tenant-p', tenant_kind: 'PERSONAL', capabilities: ['core', 'sign'] });
   });
   it('PERSONAL with capabilities [esign] (explicit) → [core, esign]; with [core, ats] → 400 personal_tenant_capability_not_allowed BEFORE Cognito and before any tenant/identity call', async () => {
     const ok = happyMocks();
     await buildService(ok).provisionTenantAndInviteOwner({ name: 'Jane Doe', owner_email: 'jane.doe@gmail.com', capabilities: ['sign'], actor_user_id: 'sa', request_id: TEST_REQUEST_ID, invite_owner: true, kind: 'PERSONAL' });
-    expect(ok.entitlementRepo.grantCapabilities).toHaveBeenCalledWith({ tenant_id: 'tenant-p', capabilities: ['core', 'sign'] });
+    expect(ok.entitlementRepo.grantCapabilities).toHaveBeenCalledWith({ tenant_id: 'tenant-p', capabilities: ['core', 'sign'], granted_source: 'PROVISIONING', granted_by: 'sa' });
 
     const refused = happyMocks();
     await expect(

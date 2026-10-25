@@ -387,7 +387,8 @@ export class SignSignupService {
     };
     try {
       await this.idpPolicy.enrollEnforcedTenant(tenant.id);
-      await this.entitlements.grantCapabilities({ tenant_id: tenant.id, capabilities: [...SIGN_CAPABILITIES] });
+      // CCP-A7 / Conv. C-20 — the signup grant is NOT a commercial grant (provenance SIGNUP).
+      await this.entitlements.grantCapabilities({ tenant_id: tenant.id, capabilities: [...SIGN_CAPABILITIES], granted_source: 'SIGNUP', granted_by: SIGN_SIGNUP_SYSTEM_ACTOR_ID });
       const owner = await this.identity.createFederatedOwnerNoSub({
         email: args.owner_email,
         display_name: args.owner_display_name,

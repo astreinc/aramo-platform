@@ -78,14 +78,15 @@ describe('CCP-A9 role-change payload', () => {
 });
 
 describe('CCP-A9 narrow apply transitions (TD-A9-1)', () => {
-  it('A9-U-4 the A3 table is unchanged (exactly 6 allowed pairs); role actions add exactly APPROVED → APPLYING and APPLYING → APPLIED; the A6 actions add the A6 apply set (post-A6 merge); no other action reaches APPLYING; APPLY_FAILED unreachable for role actions', () => {
+  it('A9-U-4 the A3 table is unchanged (exactly 6 allowed pairs); role actions add exactly APPROVED → APPLYING and APPLYING → APPLIED; the A6 actions and the CCP-A7 ENTITLEMENT_REVOKE add the A6 apply set; no other action reaches APPLYING; APPLY_FAILED unreachable for role actions', () => {
     const states = COMMERCIAL_CHANGE_REQUEST_STATES;
     const a3 = (f: (typeof states)[number], t: (typeof states)[number]) => COMMERCIAL_A3_TRANSITIONS[f].includes(t);
     let base = 0;
     for (const f of states) for (const t of states) if (a3(f, t)) base += 1;
     expect(base).toBe(6);
     expect(Object.values(COMMERCIAL_A3_TRANSITIONS).flat()).not.toContain('APPLYING');
-    const A6 = ['SUBSCRIPTION_OPEN', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'ENTITLEMENT_GRANT'];
+    // CCP-A7 — ENTITLEMENT_REVOKE uses the A6 apply set (its own DB branch, migration 20261026000100).
+    const A6 = ['SUBSCRIPTION_OPEN', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'ENTITLEMENT_GRANT', 'ENTITLEMENT_REVOKE'];
     for (const action of Object.keys(COMMERCIAL_ACTIONS)) {
       const extra: string[] = [];
       for (const f of states) for (const t of states) if (canTransitionFor(action, f, t) && !a3(f, t)) extra.push(`${f}->${t}`);

@@ -14,6 +14,7 @@ import {
   AramoExceptionFilter,
   CommonModule,
   RequestIdMiddleware,
+  ENTITLEMENT_PROVENANCE_MIGRATION,
   resolveIdentityMigrations,
 } from '@aramo/common';
 import { AuthModule, EFFECTIVE_AUTHORIZATION_RESOLVER, PLATFORM_TENANT_SENTINEL_ID } from '@aramo/auth';
@@ -170,7 +171,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin â€
     const url = container.getConnectionUri();
     const setup = new IdentityPrismaService(url);
     await setup.$connect();
-    for (const stmt of [...IDENTITY_MIGRATIONS.flatMap((p) => splitDdl(readFileSync(p, 'utf8'))), ...ENTITLEMENT_DDL]) {
+    for (const stmt of [...IDENTITY_MIGRATIONS.flatMap((p) => splitDdl(readFileSync(p, 'utf8'))), ...ENTITLEMENT_DDL, ...splitDdl(readFileSync(resolve(__dirname, '../../../..', ENTITLEMENT_PROVENANCE_MIGRATION), 'utf8'))]) {
       if (stmt.trim().length > 0) await setup.$executeRawUnsafe(stmt.trim());
     }
     await setup.role.createMany({

@@ -2,7 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveEntitlementMigrations } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import { Client } from 'pg';
@@ -48,7 +48,7 @@ const ADD_SCOPES = ['pipeline:add', 'requisition:read:all'];
 
 const M = (p: string): string => resolve(ROOT, p);
 const MIGRATIONS = [
-  'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
+  ...resolveEntitlementMigrations(ROOT),
   'libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql',
   'libs/requisition/prisma/migrations/20260603140100_add_import_batch_id_to_requisition/migration.sql',
   'libs/requisition/prisma/migrations/20260605123400_add_compensation_fields_to_requisition/migration.sql',

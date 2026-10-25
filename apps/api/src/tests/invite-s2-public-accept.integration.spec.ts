@@ -7,7 +7,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveEntitlementMigrations } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -36,7 +36,7 @@ import { AppModule } from '../app.module.js';
 
 const ROOT = resolve(__dirname, '../../../..');
 const MIGRATIONS = [
-  'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
+  ...resolveEntitlementMigrations(ROOT),
   'libs/identity/prisma/migrations/20260512000000_init_identity_model/migration.sql',
   'libs/identity/prisma/migrations/20260625000000_add_tenant_allowed_domain/migration.sql',
   'libs/identity/prisma/migrations/20260626000000_add_tenant_domain_verification/migration.sql',

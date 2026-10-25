@@ -582,7 +582,8 @@ model CommercialOperatorAttestation {
 model CommercialChangeApplication {
   id                       String   @id @db.Uuid
   change_request_id        String   @unique @db.Uuid
-  // CHECK: SUBSCRIPTION_OPEN | SUBSCRIPTION_CHANGE | SUBSCRIPTION_END | ENTITLEMENT_GRANT
+  // CHECK: SUBSCRIPTION_OPEN | SUBSCRIPTION_CHANGE | SUBSCRIPTION_END | ENTITLEMENT_GRANT |
+  // ENTITLEMENT_REVOKE (CCP-A7, migration 20261026000100)
   action_type              String
   tenant_id                String   @db.Uuid
   product_key              String
@@ -592,6 +593,9 @@ model CommercialChangeApplication {
   to_plan_version_id       String?  @db.Uuid
   capabilities             String[]
   capabilities_inserted    String[]
+  // CCP-A7 — the capabilities an ENTITLEMENT_REVOKE application revoked (empty for every other
+  // action; CHECK). ADDED rather than overloading `capabilities`.
+  capabilities_revoked     String[] @default([])
   attempt                  Int
   applied_by               String   @db.Uuid
   applied_at               DateTime @db.Timestamptz(3)

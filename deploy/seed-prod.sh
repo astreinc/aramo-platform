@@ -228,13 +228,16 @@ run_assert_platform_owner() {
 # tenant holds the COMPLETE canonical bundle. Counts ONLY the required members
 # {core,ats,portal} (IN-list) so a stray 'sourcing' row can never make an
 # incomplete bundle false-pass, and a missing member fails closed. Expect 3.
+# CCP-A7 (Charter D1 / G4): counts ACTIVE rows only (revoked_at IS NULL). STAGE D never
+# re-grants a governed revoke (no resurrection), so a revoked member fails this gate closed
+# instead of false-passing on the kept row; recovery is a governed re-grant, never the seed.
 run_assert_entitlements() {
   docker run --rm \
     --network "$NETWORK" \
     -e DATABASE_URL="$DBURL" \
     "$ASSERT_IMAGE" \
     psql "${DBURL%%\?*}" -v ON_ERROR_STOP=1 -q -t -A -c \
-    "SELECT count(*) FROM entitlement.\"TenantEntitlement\" WHERE tenant_id='${ASTRE_TENANT_ID}' AND capability IN ('core','ats','portal');"
+    "SELECT count(*) FROM entitlement.\"TenantEntitlement\" WHERE tenant_id='${ASTRE_TENANT_ID}' AND capability IN ('core','ats','portal') AND revoked_at IS NULL;"
 }
 
 # THE GATE. The seed-presence query returns a single count. Returns 0 iff that

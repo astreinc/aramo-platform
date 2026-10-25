@@ -147,6 +147,21 @@ export function isA6Applicable(action_type: string): action_type is A6Applicable
 }
 
 /**
+ * CCP-A7 — the governed entitlement revoke (Charter D1), applied through the same transactional
+ * apply with the A6 transitions (DB guard, migration 20261026000100).
+ */
+export const A7_APPLICABLE_ACTIONS = ['ENTITLEMENT_REVOKE'] as const;
+export type A7ApplicableAction = (typeof A7_APPLICABLE_ACTIONS)[number];
+export function isA7Applicable(action_type: string): action_type is A7ApplicableAction {
+  return (A7_APPLICABLE_ACTIONS as readonly string[]).includes(action_type);
+}
+/** Every action the transactional apply (CommercialApplyService) applies: A6 ∪ A7. */
+export type CommercialApplicableAction = A6ApplicableAction | A7ApplicableAction;
+export function isCommercialApplicable(action_type: string): action_type is CommercialApplicableAction {
+  return isA6Applicable(action_type) || isA7Applicable(action_type);
+}
+
+/**
  * CCP-A9 narrow apply path (TD-A9-1): only a governed role change is applied inside A9,
  * APPROVED → APPLYING → APPLIED in one transaction. Every other action keeps the A3 table
  * (its apply belongs to CCP-A6). APPLY_FAILED stays unreachable: a refused role-change apply
@@ -158,7 +173,7 @@ export const COMMERCIAL_A9_ROLE_APPLY_TRANSITIONS: Readonly<Partial<Record<Comme
   APPLYING: ['APPLIED'],
 };
 
-/** CCP-A6 apply transitions, admitted only for the four A6 action types (DB guard, migration 20261025200000). */
+/** CCP-A6 apply transitions, admitted only for the four A6 action types (DB guard, migration 20261025200000) and, since CCP-A7, ENTITLEMENT_REVOKE (migration 20261026000100). */
 export const COMMERCIAL_A6_APPLY_TRANSITIONS: Readonly<Partial<Record<CommercialChangeRequestState, readonly CommercialChangeRequestState[]>>> = {
   APPROVED: ['APPLYING'],
   APPLY_FAILED: ['APPLYING'],
@@ -167,13 +182,15 @@ export const COMMERCIAL_A6_APPLY_TRANSITIONS: Readonly<Partial<Record<Commercial
 
 /**
  * The per-action transition table, mirroring the DB guard exactly: the A3 base for every
- * action, plus the CCP-A9 role-change apply (role actions only) and the CCP-A6 apply (the
- * four A6 action types only). canTransition above is the action-agnostic union.
+ * action, plus the CCP-A9 role-change apply (role actions only), the CCP-A6 apply (the four
+ * A6 action types only) and the CCP-A7 revoke (ENTITLEMENT_REVOKE, the A6 apply set). canTransition above is the action-agnostic union.
  */
 export function canTransitionFor(action_type: string, from: CommercialChangeRequestState, to: CommercialChangeRequestState): boolean {
   if (COMMERCIAL_A3_TRANSITIONS[from].includes(to)) return true;
   if ((COMMERCIAL_ROLE_CHANGE_ACTIONS as readonly string[]).includes(action_type)) return (COMMERCIAL_A9_ROLE_APPLY_TRANSITIONS[from] ?? []).includes(to);
   if (isA6Applicable(action_type)) return (COMMERCIAL_A6_APPLY_TRANSITIONS[from] ?? []).includes(to);
+  // CCP-A7: the governed revoke uses the A6 apply set (its own DB branch, same transitions).
+  if (isA7Applicable(action_type)) return (COMMERCIAL_A6_APPLY_TRANSITIONS[from] ?? []).includes(to);
   return false;
 }
 
@@ -385,7 +402,9 @@ export function validatePayload(action_type: CommercialActionType, payload: unkn
       closedKeys(p, ['subscription_id'], errors);
       if (typeof p['subscription_id'] !== 'string' || !UUID.test(p['subscription_id'])) errors.push('subscription_id must be a uuid');
       break;
-    case 'ENTITLEMENT_GRANT': {
+    case 'ENTITLEMENT_GRANT':
+    case 'ENTITLEMENT_REVOKE': {
+      // CCP-A7 — the revoke names exactly the capabilities the approvers approve removing.
       closedKeys(p, ['capabilities'], errors);
       const caps = p['capabilities'];
       if (!Array.isArray(caps) || caps.length === 0 || caps.length > 16 || !caps.every((c) => typeof c === 'string' && /^[a-z][a-z_]{0,39}$/.test(c))) {

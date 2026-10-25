@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import type { AddressInfo } from 'node:net';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveEntitlementMigrations } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -31,7 +31,8 @@ const __authzTestResolver = new ConfigurableTestResolver();
 type SignKey = CryptoKey | KeyObject;
 
 const ROOT = resolve(__dirname, '../../../..');
-const ENTITLEMENT_INIT = resolve(ROOT, 'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql');
+// CCP-A7 — the full entitlement set (the shared helper; the repository reads A7 columns).
+const ENTITLEMENT_MIGRATIONS = resolveEntitlementMigrations(ROOT);
 const PLACEMENT_INIT = resolve(ROOT, 'libs/placement/prisma/migrations/20260803180000_init_placement_model/migration.sql');
 const PLACEMENT_OFFER = resolve(ROOT, 'libs/placement/prisma/migrations/20260805120000_placement_offer_and_outbox/migration.sql');
 const PLACEMENT_REASON = resolve(ROOT, 'libs/placement/prisma/migrations/20260807120000_placement_fallthrough_reason/migration.sql');
@@ -93,7 +94,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-d Placement RE
     setupClient = new Client({ connectionString: url });
     await setupClient.connect();
 
-    for (const p of [ENTITLEMENT_INIT, PLACEMENT_INIT, PLACEMENT_OFFER, PLACEMENT_REASON, PLACEMENT_REPLACEMENT, PLACEMENT_PERMANENT, PLACEMENT_FALLOFF_REMEDY, PLACEMENT_GUARANTEE_TERMS, PLACEMENT_OFFER_INIT, PLACEMENT_OFFER_COMPENSATION, PLACEMENT_OFFER_ID, PLACEMENT_OFFER_STATE_COLLAPSE]) {
+    for (const p of [...ENTITLEMENT_MIGRATIONS, PLACEMENT_INIT, PLACEMENT_OFFER, PLACEMENT_REASON, PLACEMENT_REPLACEMENT, PLACEMENT_PERMANENT, PLACEMENT_FALLOFF_REMEDY, PLACEMENT_GUARANTEE_TERMS, PLACEMENT_OFFER_INIT, PLACEMENT_OFFER_COMPENSATION, PLACEMENT_OFFER_ID, PLACEMENT_OFFER_STATE_COLLAPSE]) {
       await setupClient.query(readFileSync(p, 'utf8'));
     }
     // TENANT_ATS is entitled to 'ats' (the intended placement boundary).

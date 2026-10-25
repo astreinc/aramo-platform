@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import type { AddressInfo } from 'node:net';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveEntitlementMigrations } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -32,7 +32,7 @@ const AUDIENCE = 'aramo-email-template-authz-spec';
 const ALG = 'RS256';
 
 const MIGRATIONS = [
-  resolve(ROOT, 'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql'),
+  ...resolveEntitlementMigrations(ROOT),
   resolve(ROOT, 'libs/communications/prisma/migrations/20260825120000_init_communications/migration.sql'),
   resolve(ROOT, 'libs/communications/prisma/migrations/20260905130000_comm_c2b_provider_identity_email_tenant/migration.sql'),
   resolve(ROOT, 'libs/communications/prisma/migrations/20260905140000_comm_c2b_meeting_channel/migration.sql'),
