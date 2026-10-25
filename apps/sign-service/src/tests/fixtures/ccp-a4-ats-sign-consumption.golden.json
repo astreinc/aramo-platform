@@ -1,0 +1,324 @@
+{
+  "captured_on": "b0e59aa6 (baseline code, pre-A4 schema)",
+  "observation": {
+    "0190a4a7-0000-7000-8000-000000000001": {
+      "availability_before": {
+        "available": true,
+        "reason": null,
+        "allowance": {
+          "limit": 100,
+          "unlimited": false,
+          "used": 0,
+          "remaining": 100,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "rtr_send": {
+        "ok": "sent:rtr-1"
+      },
+      "rtr_retry": {
+        "ok": "sent:rtr-1"
+      },
+      "offer_send": {
+        "ok": "sent:offer-1"
+      },
+      "offer_failed_draft": {
+        "error": "Error: provider refused",
+        "status": null,
+        "details": null
+      },
+      "offer_failed_after_accept": {
+        "error": "Error: timeout after acceptance",
+        "status": null,
+        "details": null
+      },
+      "availability_after": {
+        "available": true,
+        "reason": null,
+        "allowance": {
+          "limit": 100,
+          "unlimited": false,
+          "used": 3,
+          "remaining": 97,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "ledger": [
+        {
+          "state": "CONSUMED",
+          "n": 3
+        },
+        {
+          "state": "RELEASED",
+          "n": 1
+        }
+      ],
+      "metered": {
+        "n": 3
+      }
+    },
+    "0190a4a7-0000-7000-8000-000000000002": {
+      "availability_before": {
+        "available": true,
+        "reason": null,
+        "allowance": {
+          "limit": 100,
+          "unlimited": false,
+          "used": 98,
+          "remaining": 2,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "WARNING"
+        }
+      },
+      "rtr_send": {
+        "ok": "sent:rtr-2"
+      },
+      "rtr_retry": {
+        "ok": "sent:rtr-2"
+      },
+      "offer_send": {
+        "ok": "sent:offer-2"
+      },
+      "offer_failed_draft": {
+        "error": "ESIGN_ALLOWANCE_EXHAUSTED",
+        "status": 409,
+        "details": {
+          "reason": "LIMIT_REACHED",
+          "limit": 100,
+          "used": 100,
+          "period_end": "2026-11-01T00:00:00.000Z"
+        }
+      },
+      "offer_failed_after_accept": {
+        "error": "ESIGN_ALLOWANCE_EXHAUSTED",
+        "status": 409,
+        "details": {
+          "reason": "LIMIT_REACHED",
+          "limit": 100,
+          "used": 100,
+          "period_end": "2026-11-01T00:00:00.000Z"
+        }
+      },
+      "availability_after": {
+        "available": false,
+        "reason": "LIMIT_REACHED",
+        "allowance": {
+          "limit": 100,
+          "unlimited": false,
+          "used": 100,
+          "remaining": 0,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "EXHAUSTED"
+        }
+      },
+      "ledger": [
+        {
+          "state": "CONSUMED",
+          "n": 2
+        }
+      ],
+      "metered": {
+        "n": 2
+      }
+    },
+    "0190a4a7-0000-7000-8000-000000000003": {
+      "availability_before": {
+        "available": false,
+        "reason": "LIMIT_REACHED",
+        "allowance": {
+          "limit": 100,
+          "unlimited": false,
+          "used": 100,
+          "remaining": 0,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "EXHAUSTED"
+        }
+      },
+      "rtr_send": {
+        "error": "ESIGN_ALLOWANCE_EXHAUSTED",
+        "status": 409,
+        "details": {
+          "reason": "LIMIT_REACHED",
+          "limit": 100,
+          "used": 100,
+          "period_end": "2026-11-01T00:00:00.000Z"
+        }
+      },
+      "rtr_retry": {
+        "error": "ESIGN_ALLOWANCE_EXHAUSTED",
+        "status": 409,
+        "details": {
+          "reason": "LIMIT_REACHED",
+          "limit": 100,
+          "used": 100,
+          "period_end": "2026-11-01T00:00:00.000Z"
+        }
+      },
+      "offer_send": {
+        "error": "ESIGN_ALLOWANCE_EXHAUSTED",
+        "status": 409,
+        "details": {
+          "reason": "LIMIT_REACHED",
+          "limit": 100,
+          "used": 100,
+          "period_end": "2026-11-01T00:00:00.000Z"
+        }
+      },
+      "offer_failed_draft": {
+        "error": "ESIGN_ALLOWANCE_EXHAUSTED",
+        "status": 409,
+        "details": {
+          "reason": "LIMIT_REACHED",
+          "limit": 100,
+          "used": 100,
+          "period_end": "2026-11-01T00:00:00.000Z"
+        }
+      },
+      "offer_failed_after_accept": {
+        "error": "ESIGN_ALLOWANCE_EXHAUSTED",
+        "status": 409,
+        "details": {
+          "reason": "LIMIT_REACHED",
+          "limit": 100,
+          "used": 100,
+          "period_end": "2026-11-01T00:00:00.000Z"
+        }
+      },
+      "availability_after": {
+        "available": false,
+        "reason": "LIMIT_REACHED",
+        "allowance": {
+          "limit": 100,
+          "unlimited": false,
+          "used": 100,
+          "remaining": 0,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "EXHAUSTED"
+        }
+      },
+      "ledger": [],
+      "metered": {
+        "n": 0
+      }
+    },
+    "0190a4a7-0000-7000-8000-000000000004": {
+      "availability_before": {
+        "available": true,
+        "reason": null,
+        "allowance": {
+          "limit": null,
+          "unlimited": true,
+          "used": 7,
+          "remaining": null,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "rtr_send": {
+        "ok": "sent:rtr-4"
+      },
+      "rtr_retry": {
+        "ok": "sent:rtr-4"
+      },
+      "offer_send": {
+        "ok": "sent:offer-4"
+      },
+      "offer_failed_draft": {
+        "error": "Error: provider refused",
+        "status": null,
+        "details": null
+      },
+      "offer_failed_after_accept": {
+        "error": "Error: timeout after acceptance",
+        "status": null,
+        "details": null
+      },
+      "availability_after": {
+        "available": true,
+        "reason": null,
+        "allowance": {
+          "limit": null,
+          "unlimited": true,
+          "used": 10,
+          "remaining": null,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "ledger": [
+        {
+          "state": "CONSUMED",
+          "n": 3
+        },
+        {
+          "state": "RELEASED",
+          "n": 1
+        }
+      ],
+      "metered": {
+        "n": 3
+      }
+    },
+    "0190a4a7-0000-7000-8000-000000000005": {
+      "availability_before": {
+        "available": false,
+        "reason": "NOT_SUBSCRIBED",
+        "allowance": null
+      },
+      "rtr_send": {
+        "error": "ESIGN_NOT_SUBSCRIBED",
+        "status": 403,
+        "details": {
+          "reason": "NOT_SUBSCRIBED"
+        }
+      },
+      "rtr_retry": {
+        "error": "ESIGN_NOT_SUBSCRIBED",
+        "status": 403,
+        "details": {
+          "reason": "NOT_SUBSCRIBED"
+        }
+      },
+      "offer_send": {
+        "error": "ESIGN_NOT_SUBSCRIBED",
+        "status": 403,
+        "details": {
+          "reason": "NOT_SUBSCRIBED"
+        }
+      },
+      "offer_failed_draft": {
+        "error": "ESIGN_NOT_SUBSCRIBED",
+        "status": 403,
+        "details": {
+          "reason": "NOT_SUBSCRIBED"
+        }
+      },
+      "offer_failed_after_accept": {
+        "error": "ESIGN_NOT_SUBSCRIBED",
+        "status": 403,
+        "details": {
+          "reason": "NOT_SUBSCRIBED"
+        }
+      },
+      "availability_after": {
+        "available": false,
+        "reason": "NOT_SUBSCRIBED",
+        "allowance": null
+      },
+      "ledger": [],
+      "metered": {
+        "n": 0
+      }
+    }
+  }
+}
