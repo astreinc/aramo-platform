@@ -35,6 +35,7 @@
     "prisma:seed-policy-lifecycle": "node deploy/jiti-tsconfig-runner.mjs apps/api/src/policy/seed-lifecycle.ts",
     "prisma:seed-entitlements": "node deploy/jiti-tsconfig-runner.mjs libs/entitlement/prisma/seed-entitlements.ts",
     "prisma:seed-dev-subscription": "node deploy/jiti-tsconfig-runner.mjs libs/subscription/prisma/seed-development-subscription.ts",
+    "ccp:bootstrap-platform-owner": "node deploy/jiti-tsconfig-runner.mjs libs/subscription/scripts/ccp-bootstrap-platform-owner.ts",
     "db:sync:local": "bash tools/db-sync-local.sh",
     "db:sync:intelligence": "bash tools/db-sync-intelligence.sh",
     "format": "prettier --write .",
