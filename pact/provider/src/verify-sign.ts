@@ -242,10 +242,13 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // The governed DEVELOPMENT subscription on the seeded Aramo Sign included plan
       // (100 envelopes / month), so a console send passes the allowance gate.
       // CCP-A4 (MP-A2 N-9, N-11) — explicit product context (no DB default exists) and the
-      // arbiter of the one-open-BASE-per-(tenant, product) index.
+      // arbiter of the one-open-BASE-per-(tenant, product) index. CCP-A5 (N-18) — pinned to the
+      // plan's current (PUBLISHED) version, named explicitly (no DB default).
       await db.query(
-        `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, product_key, composition_role, period_anchor, source, created_by)
-         SELECT gen_random_uuid(), $1::uuid, p.id, p.product_key, 'BASE', now(), 'DEVELOPMENT', 'pact-verify-sign'
+        `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by)
+         SELECT gen_random_uuid(), $1::uuid, p.id,
+                (SELECT v.id FROM subscription."PlanVersion" v WHERE v.plan_id = p.id AND v.status = 'PUBLISHED'),
+                p.product_key, 'BASE', now(), 'DEVELOPMENT', 'pact-verify-sign'
            FROM subscription."Plan" p WHERE p.key = 'aramo-sign-included-v1' AND p.product_key = 'sign'
          ON CONFLICT (tenant_id, product_key) WHERE ended_at IS NULL AND composition_role = 'BASE' DO NOTHING`,
         [SENDER_TENANT_ID],
@@ -518,8 +521,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1, $2::entitlement."Capability") ON CONFLICT (tenant_id, capability) DO NOTHING`, [ATS_TENANT_ID, capability]);
       }
       await db.query(
-        `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, product_key, composition_role, period_anchor, source, created_by)
-         SELECT gen_random_uuid(), $1::uuid, p.id, p.product_key, 'BASE', now(), 'DEVELOPMENT', 'pact-verify-sign'
+        `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by)
+         SELECT gen_random_uuid(), $1::uuid, p.id,
+                (SELECT v.id FROM subscription."PlanVersion" v WHERE v.plan_id = p.id AND v.status = 'PUBLISHED'),
+                p.product_key, 'BASE', now(), 'DEVELOPMENT', 'pact-verify-sign'
            FROM subscription."Plan" p WHERE p.key = 'aramo-sign-included-v1' AND p.product_key = 'sign'
          ON CONFLICT (tenant_id, product_key) WHERE ended_at IS NULL AND composition_role = 'BASE' DO NOTHING`,
         [ATS_TENANT_ID],

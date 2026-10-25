@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 
+import { planVersionTerms } from './plan-version.js';
 import { PrismaService } from './prisma/prisma.service.js';
 import { assertMeteredKeyOf, openBaseSubscription, type ProductKey } from './product-registry.js';
 
@@ -21,6 +22,8 @@ import { assertMeteredKeyOf, openBaseSubscription, type ProductKey } from './pro
 // CCP-A4 (MP-A2 N-11) — the product is explicit (a required ProductKey); only that
 // product's open BASE subscription decides the limit, and the capacity key must belong
 // to that product (sign.storage_bytes → sign).
+// CCP-A5 (MP-A2 N-18) — the limit comes from the subscription's PINNED plan version
+// (grandfathering; checksum-verified, fail closed).
 
 export type CapacityRefusal = 'NOT_SUBSCRIBED' | 'CAPACITY_EXCEEDED';
 
@@ -45,12 +48,12 @@ export class CapacityService {
     assertMeteredKeyOf(product_key, capacity_key);
     const sub = await db.tenantSubscription.findFirst({
       where: openBaseSubscription(tenant_id, product_key),
-      include: { plan: { include: { capacities: { where: { capacity_key } } } } },
+      include: { plan_version: true },
     });
     if (sub === null) return { subscribed: false, limit: null };
-    const row = sub.plan.capacities[0];
+    const row = planVersionTerms(sub.plan_version).capacities.find((c) => c.capacity_key === capacity_key);
     if (row === undefined || row.unlimited || row.limit_quantity === null) return { subscribed: true, limit: null };
-    return { subscribed: true, limit: Number(row.limit_quantity) };
+    return { subscribed: true, limit: row.limit_quantity };
   }
 
   private async usedOf(db: Tx | PrismaService, tenant_id: string, capacity_key: string): Promise<number> {

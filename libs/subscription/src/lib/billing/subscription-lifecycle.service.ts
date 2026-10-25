@@ -6,6 +6,8 @@ import { addMonthsClamped } from '../billing-period.js';
 import { CapacityService, type CapacityStatus } from '../capacity.service.js';
 import { isFeatureAvailable } from '../feature-availability.js';
 import { LEGAL_DOCUMENTS, LEGAL_DOCUMENT_REGISTRY, approvedLegalDocument, type LegalDocumentVersion } from '../legal/legal-documents.js';
+import { PIN_REASON_PROVIDER_PLAN_CHANGE, planVersionTerms } from '../plan-version.js';
+import { currentPublishedVersion } from '../plan-version.repository.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { BASE_COMPOSITION, assertProductKey, openBaseSubscription, type ProductKey } from '../product-registry.js';
 
@@ -18,6 +20,9 @@ import {
 } from './billing-provider.port.js';
 import { ORGANIZATION_BILLING_PROFILE_PORT, type OrganizationBillingProfile, type OrganizationBillingProfilePort } from './organization-billing-profile.port.js';
 import { PLAN_ELIGIBILITY_PORT, type PlanEligibilityPort, type PlanEligibilityRule } from './plan-eligibility.port.js';
+import { type PriceResolution, effectiveProviderPrice, parsePlanPrices, resolvePriceToVersion } from './provider-price.js';
+
+export { parsePlanPrices } from './provider-price.js';
 
 // Aramo Sign launch — the subscription lifecycle (Final Implementation
 // Authorization: commercial authority). Stripe is authoritative for payment
@@ -68,6 +73,15 @@ import { PLAN_ELIGIBILITY_PORT, type PlanEligibilityPort, type PlanEligibilityRu
 // read, ended or replaced; a provider subscription or checkout of another product is
 // IGNORED and left untouched; a provider price resolves only to a plan of the same
 // product (the composite FK refuses a cross-product plan at the DB as well).
+//
+// CCP-A5 (MP-A2 N-17, N-18; Charter D3) — every subscription is pinned to a plan VERSION
+// (plan_version_id). Terms (commitment, eligibility, list price, features) are read from the
+// pinned version; the catalog and checkout read the plan's current PUBLISHED version. The
+// provider price is pinned to the version (PlanVersionPrice) with STRIPE_PLAN_PRICES as the
+// cutover fallback (provider-price.ts). planForPrice resolves a VERSION. A provider-side plan
+// change re-pins plan_version_id under a named reason, and the DB trigger records it
+// (SubscriptionVersionPinEvent); an env-mapped price of the SAME plan keeps the row's version
+// (grandfathering: the env cannot tell versions apart).
 
 export const PAST_DUE_GRACE_DAYS_DEFAULT = 7;
 
@@ -182,19 +196,6 @@ type Tx = Parameters<Parameters<PrismaService['$transaction']>[0]>[0];
 
 const SENDING = new Set(['TRIALING', 'ACTIVE', 'PAST_DUE']);
 
-/** STRIPE_PLAN_PRICES = "plan-key=price_x,other-key=price_y" (operator config). */
-export function parsePlanPrices(raw: string | undefined): Map<string, string> {
-  const m = new Map<string, string>();
-  for (const pair of (raw ?? '').split(',')) {
-    const i = pair.indexOf('=');
-    if (i <= 0) continue;
-    const k = pair.slice(0, i).trim();
-    const v = pair.slice(i + 1).trim();
-    if (k !== '' && v !== '') m.set(k, v);
-  }
-  return m;
-}
-
 /** Provider status → Aramo lifecycle status. */
 export function mapProviderStatus(provider_status: string): { status: string; grace: boolean; ends: boolean } {
   switch (provider_status) {
@@ -262,8 +263,11 @@ export class SubscriptionLifecycleService {
     return parsePlanPrices(process.env['STRIPE_PLAN_PRICES']);
   }
 
-  billingAvailable(): boolean {
-    return this.billing.isConfigured() && this.prices().size > 0;
+  /** CCP-A5 — configured, and a provider price exists (an env entry or a version pin). */
+  async billingAvailable(): Promise<boolean> {
+    if (!this.billing.isConfigured()) return false;
+    if (this.prices().size > 0) return true;
+    return (await this.prisma.planVersionPrice.count()) > 0;
   }
 
   /**
@@ -275,19 +279,26 @@ export class SubscriptionLifecycleService {
     const plans = await this.prisma.plan.findMany({
       // Public catalog only: operator / legacy plans are never presented.
       where: { product_key: assertProductKey(product_key), display_order: { lt: OPERATOR_DISPLAY_ORDER_FLOOR }, sales_model: { not: 'OPERATOR' } },
-      include: { allowances: true, capacities: true, features: true },
+      // CCP-A5 — the plan's current (PUBLISHED) version carries the terms shown.
+      include: { versions: { where: { status: 'PUBLISHED' } } },
       orderBy: [{ display_order: 'asc' }, { key: 'asc' }],
     });
     const out: CatalogPlanView[] = [];
-    for (const p of plans) {
+    for (const plan of plans) {
+      const version = plan.versions[0];
+      // A plan with no PUBLISHED version has nothing to present or sell.
+      if (version === undefined) continue;
+      const terms = planVersionTerms(version);
+      const p = terms.plan;
       const eligible = await this.eligible(tenant_id, p.eligibility);
+      const price = await effectiveProviderPrice(this.prisma, version.id, plan.key, prices);
       out.push({
-        key: p.key,
-        name: p.name,
-        description: p.description,
-        tenant_kind: p.tenant_kind,
-        sales_model: p.sales_model,
-        status: p.status,
+        key: plan.key,
+        name: plan.name,
+        description: plan.description,
+        tenant_kind: plan.tenant_kind,
+        sales_model: plan.sales_model,
+        status: plan.status,
         price: p.list_price_minor !== null && p.currency !== null ? { amount_minor: p.list_price_minor, currency: p.currency, interval: p.billing_interval } : null,
         reference_price:
           p.reference_price_substantiated && p.reference_price_minor !== null && p.currency !== null ? { amount_minor: p.reference_price_minor, currency: p.currency } : null,
@@ -295,22 +306,22 @@ export class SubscriptionLifecycleService {
         eligibility: p.eligibility,
         eligible,
         support_tier: p.support_tier,
-        activation_note: p.activation_note,
-        allowances: p.allowances.map((a) => ({
+        activation_note: plan.activation_note,
+        allowances: terms.allowances.map((a) => ({
           allowance_key: a.allowance_key,
           included_quantity: a.included_quantity,
           unlimited: a.unlimited,
           period: a.period,
           available: isFeatureAvailable(a.allowance_key),
         })),
-        capacities: p.capacities.map((c) => ({
+        capacities: terms.capacities.map((c) => ({
           capacity_key: c.capacity_key,
-          limit: c.limit_quantity === null ? null : Number(c.limit_quantity),
+          limit: c.limit_quantity,
           unlimited: c.unlimited,
           available: isFeatureAvailable(c.capacity_key),
         })),
-        features: p.features.map((f) => ({ feature_key: f.feature_key, enabled: f.enabled, available: isFeatureAvailable(f.feature_key) })),
-        purchasable: p.sellable && p.status === 'ACTIVE' && this.billing.isConfigured() && prices.has(p.key) && eligible,
+        features: terms.features.map((f) => ({ feature_key: f.feature_key, enabled: f.enabled, available: isFeatureAvailable(f.feature_key) })),
+        purchasable: plan.sellable && plan.status === 'ACTIVE' && this.billing.isConfigured() && price.ok && eligible,
       });
     }
     return out;
@@ -318,7 +329,7 @@ export class SubscriptionLifecycleService {
 
   /** The tenant's open subscription of the product, else its most recent one (for display). */
   private async currentRow(tenant_id: string, product_key: ProductKey) {
-    const include = { plan: { include: { features: true } } } as const;
+    const include = { plan: true, plan_version: true } as const;
     const open = await this.prisma.tenantSubscription.findFirst({ where: openBaseSubscription(tenant_id, product_key), include });
     if (open !== null) return open;
     return this.prisma.tenantSubscription.findFirst({
@@ -333,6 +344,9 @@ export class SubscriptionLifecycleService {
     const allowance = await this.allowance.getStatus(tenant_id, product_key, allowance_key, at);
     const storage = await this.capacity.status(tenant_id, product_key, STORAGE_CAPACITY_KEY);
     const exportDays = postTerminationExportDays();
+    // CCP-A5 — the subscription's terms come from its PINNED version (grandfathering).
+    const terms = row === null ? null : planVersionTerms(row.plan_version).plan;
+    const features = row === null ? [] : planVersionTerms(row.plan_version).features;
     return {
       subscription:
         row === null
@@ -349,20 +363,20 @@ export class SubscriptionLifecycleService {
               cancel_at_period_end: row.cancel_at_period_end,
               grace_until: row.grace_until,
               billing_managed: row.billing_account_ref !== null,
-              commitment_months: row.plan.commitment_months,
+              commitment_months: terms?.commitment_months ?? null,
               commitment_end: row.commitment_end,
               cancel_requested_within_commitment: row.cancel_requested_within_commitment,
               eligibility_state: row.eligibility_state,
               list_price:
-                row.plan.list_price_minor !== null && row.plan.currency !== null
-                  ? { amount_minor: row.plan.list_price_minor, currency: row.plan.currency, interval: row.plan.billing_interval }
+                terms !== null && terms.list_price_minor !== null && terms.currency !== null
+                  ? { amount_minor: terms.list_price_minor, currency: terms.currency, interval: terms.billing_interval }
                   : null,
-              features: row.plan.features.map((f) => ({ feature_key: f.feature_key, enabled: f.enabled, available: isFeatureAvailable(f.feature_key) })),
+              features: features.map((f) => ({ feature_key: f.feature_key, enabled: f.enabled, available: isFeatureAvailable(f.feature_key) })),
               export_access_until: row.ended_at !== null && exportDays !== null ? new Date(row.ended_at.getTime() + exportDays * 86_400_000) : null,
             },
       allowance,
       storage: storage.subscribed ? { capacity_key: storage.capacity_key, limit: storage.limit, unlimited: storage.unlimited, used: storage.used } : null,
-      billing_available: this.billingAvailable(),
+      billing_available: await this.billingAvailable(),
     };
   }
 
@@ -398,11 +412,19 @@ export class SubscriptionLifecycleService {
     const product_key = assertProductKey(input.product_key);
     if (!this.billing.isConfigured()) throw new BillingRefusedError('BILLING_UNAVAILABLE');
     const plan = await this.prisma.plan.findUnique({ where: { key: input.plan_key } });
-    const price = this.prices().get(input.plan_key);
+    // CCP-A5 — what is sold is the plan's current (PUBLISHED) version.
+    const version = plan === null ? null : await currentPublishedVersion(this.prisma, plan.id);
     // CCP-A4 — a plan of another product is never sold through this product's checkout.
-    if (plan === null || plan.product_key !== product_key || !plan.sellable || plan.status !== 'ACTIVE' || plan.sales_model !== 'SELF_SERVICE') throw new BillingRefusedError('PLAN_NOT_SELLABLE');
-    if (!(await this.eligible(input.tenant_id, plan.eligibility))) throw new BillingRefusedError('PLAN_NOT_ELIGIBLE');
-    if (price === undefined) throw new BillingRefusedError('BILLING_UNAVAILABLE', 'no provider price configured for the plan');
+    if (plan === null || version === null || plan.product_key !== product_key || !plan.sellable || plan.status !== 'ACTIVE' || plan.sales_model !== 'SELF_SERVICE') {
+      throw new BillingRefusedError('PLAN_NOT_SELLABLE');
+    }
+    if (!(await this.eligible(input.tenant_id, planVersionTerms(version).plan.eligibility))) throw new BillingRefusedError('PLAN_NOT_ELIGIBLE');
+    // CCP-A5 (D3) — the version's pinned price, else the env (cutover); a pin/env disagreement fails closed.
+    const effective = await effectiveProviderPrice(this.prisma, version.id, plan.key, this.prices());
+    if (!effective.ok) {
+      throw new BillingRefusedError('BILLING_UNAVAILABLE', effective.reason === 'PARITY_MISMATCH' ? 'provider price parity mismatch for the plan version' : 'no provider price configured for the plan');
+    }
+    const price = effective.ref;
     // A1 — terms evidence. No live charging without approved terms; an approved
     // version must be affirmatively accepted.
     const terms = approvedLegalDocument('sign.terms_of_service', this.legal);
@@ -524,9 +546,10 @@ export class SubscriptionLifecycleService {
     // whose cancellation settings could contradict the (pending) annual terms.
     // It needs an explicit portal configuration set up to match the approved
     // contract (STRIPE_PORTAL_CONFIGURATION); until then the portal is refused.
-    const plan = await this.prisma.plan.findUnique({ where: { id: row.plan_id } });
+    // CCP-A5 — the commitment term of the subscription's pinned version.
+    const version = await this.prisma.planVersion.findUniqueOrThrow({ where: { id: row.plan_version_id } });
     const configuration = process.env['STRIPE_PORTAL_CONFIGURATION']?.trim() || undefined;
-    if (plan?.commitment_months != null && configuration === undefined) {
+    if (planVersionTerms(version).plan.commitment_months !== null && configuration === undefined) {
       throw new BillingRefusedError('PORTAL_NOT_CONFIGURED', 'the billing portal for commitment plans needs an approved portal configuration');
     }
     return this.billing.createPortalSession(row.billing_account_ref, return_url, configuration);
@@ -659,6 +682,7 @@ export class SubscriptionLifecycleService {
       id: string;
       tenant_id: string;
       plan_id: string;
+      plan_version_id: string;
       product_key: string;
       status: string;
       grace_until: Date | null;
@@ -690,8 +714,12 @@ export class SubscriptionLifecycleService {
           ? row.grace_until
           : new Date(at.getTime() + graceDays() * 86_400_000)
         : null;
-    // A plan change made in the provider (its price maps to another catalog plan).
-    const plan_id = (await this.planForPrice(tx, state.price_ref, assertProductKey(row.product_key))) ?? row.plan_id;
+    // A plan change made in the provider (its price maps to another catalog plan or version).
+    // CCP-A5 (N-17) — re-pin plan_version_id under a named reason; the DB trigger records it.
+    const pin = await this.repinTarget(tx, row, state.price_ref);
+    if (pin !== null) {
+      await tx.$executeRaw`SELECT set_config('aramo.subscription_pin_reason', ${PIN_REASON_PROVIDER_PLAN_CHANGE}, true), set_config('aramo.subscription_pin_price_ref', ${state.price_ref ?? ''}, true)`;
+    }
     // A1 — a cancellation that would end the subscription before the commitment
     // term is flagged for the (pending) annual-commitment terms; it is never
     // silently treated as month-to-month and no fee is invented.
@@ -708,7 +736,7 @@ export class SubscriptionLifecycleService {
         billing_account_ref: state.account_ref,
         provider_state_at: at,
         ended_at: mapped.ends ? at : null,
-        plan_id,
+        ...(pin !== null ? { plan_id: pin.plan_id, plan_version_id: pin.plan_version_id } : {}),
       },
     });
     const reactivated = !SENDING.has(row.status) && SENDING.has(mapped.status);
@@ -741,9 +769,17 @@ export class SubscriptionLifecycleService {
     if (mapped.ends) return { outcome: 'IGNORED', detail: 'checkout subscription already ended', tenant_id };
     // The plan is the one the owner chose at checkout; a provider price that maps
     // to a different sellable plan wins (plan change made in the provider).
-    const plan_id = (await this.planForPrice(tx, state.price_ref, product_key)) ?? intent.plan_id;
+    // CCP-A5 — the price resolves to a VERSION; else the checkout plan's current version.
+    const resolved = await this.planForPrice(tx, state.price_ref, product_key);
+    const plan_id = resolved?.plan_id ?? intent.plan_id;
     const plan = await tx.plan.findUniqueOrThrow({ where: { id: plan_id } });
     if (plan.product_key !== product_key) return { outcome: 'IGNORED', detail: `checkout plan belongs to another product than ${product_key}`, tenant_id };
+    const version =
+      resolved !== null && resolved.version_status === 'PUBLISHED'
+        ? await tx.planVersion.findUniqueOrThrow({ where: { id: resolved.plan_version_id } })
+        : await currentPublishedVersion(tx, plan_id);
+    if (version === null) return { outcome: 'IGNORED', detail: `plan ${plan.key} has no published version`, tenant_id };
+    const terms = planVersionTerms(version).plan;
     const open = await tx.tenantSubscription.findFirst({ where: openBaseSubscription(tenant_id, product_key) });
     const sends = SENDING.has(mapped.status);
     if (open !== null && !sends) {
@@ -760,12 +796,13 @@ export class SubscriptionLifecycleService {
         id,
         tenant_id,
         plan_id,
+        plan_version_id: version.id,
         product_key,
         composition_role: BASE_COMPOSITION,
-        commitment_start: plan.commitment_months !== null ? anchor : null,
-        commitment_end: plan.commitment_months !== null ? addMonthsClamped(anchor, plan.commitment_months) : null,
-        eligibility_state: plan.eligibility !== null ? 'OK' : null,
-        eligibility_checked_at: plan.eligibility !== null ? at : null,
+        commitment_start: terms.commitment_months !== null ? anchor : null,
+        commitment_end: terms.commitment_months !== null ? addMonthsClamped(anchor, terms.commitment_months) : null,
+        eligibility_state: terms.eligibility !== null ? 'OK' : null,
+        eligibility_checked_at: terms.eligibility !== null ? at : null,
         period_anchor: anchor,
         source: 'SELF_SERVICE',
         created_by: intent.user_id,
@@ -790,15 +827,31 @@ export class SubscriptionLifecycleService {
     };
   }
 
-  /** A provider price → a sellable plan of the SAME product (CCP-A4), else null. */
-  private async planForPrice(tx: Tx, price_ref: string | null, product_key: ProductKey): Promise<string | null> {
+  /**
+   * A provider price → a VERSION of a sellable plan of the SAME product (CCP-A4, CCP-A5 N-17),
+   * else null: a version pin first, else the STRIPE_PLAN_PRICES cutover fallback onto the
+   * plan's current (unpinned) PUBLISHED version.
+   */
+  private async planForPrice(tx: Tx, price_ref: string | null, product_key: ProductKey): Promise<PriceResolution | null> {
     if (price_ref === null) return null;
-    for (const [key, price] of this.prices()) {
-      if (price !== price_ref) continue;
-      const p = await tx.plan.findUnique({ where: { key } });
-      if (p !== null && p.sellable && p.product_key === product_key) return p.id;
+    return resolvePriceToVersion(tx, price_ref, product_key, this.prices());
+  }
+
+  /**
+   * CCP-A5 — the version a provider update moves a subscription to, or null to keep its pin.
+   * Kept: no resolution; the same version; an env-mapped price of the SAME plan (the env cannot
+   * tell versions apart, so a grandfathered row stays on its version); a target that is not
+   * PUBLISHED (a re-pin onto a RETIRED version is never made; the DB refuses it as well).
+   */
+  private async repinTarget(tx: Tx, row: { plan_id: string; plan_version_id: string; product_key: string }, price_ref: string | null): Promise<PriceResolution | null> {
+    const r = await this.planForPrice(tx, price_ref, assertProductKey(row.product_key));
+    if (r === null || r.plan_version_id === row.plan_version_id) return null;
+    if (r.source === 'ENV' && r.plan_id === row.plan_id) return null;
+    if (r.version_status !== 'PUBLISHED') {
+      this.log.warn(`provider price ${price_ref ?? ''} maps to a ${r.version_status} version; subscription pin kept`);
+      return null;
     }
-    return null;
+    return r;
   }
 
   /**
@@ -808,14 +861,19 @@ export class SubscriptionLifecycleService {
    * is a commercial decision). Recovery clears it.
    */
   async refreshEligibility(product_key: ProductKey, at: Date = new Date()): Promise<{ checked: number; lapsed: number; restored: number }> {
-    const rows = await this.prisma.tenantSubscription.findMany({
-      where: { product_key: assertProductKey(product_key), composition_role: BASE_COMPOSITION, ended_at: null, plan: { eligibility: { not: null } } },
-      include: { plan: true },
+    // CCP-A5 — the eligibility rule is a term of the subscription's PINNED version.
+    const open = await this.prisma.tenantSubscription.findMany({
+      where: { product_key: assertProductKey(product_key), composition_role: BASE_COMPOSITION, ended_at: null },
+      include: { plan: true, plan_version: true },
+    });
+    const rows = open.flatMap((r) => {
+      const rule = planVersionTerms(r.plan_version).plan.eligibility;
+      return rule === null ? [] : [{ ...r, rule }];
     });
     const tally = { checked: 0, lapsed: 0, restored: 0 };
     for (const r of rows) {
       tally.checked += 1;
-      const ok = await this.eligible(r.tenant_id, r.plan.eligibility);
+      const ok = await this.eligible(r.tenant_id, r.rule);
       const next = ok ? 'OK' : 'LAPSED';
       if (next !== r.eligibility_state) {
         if (next === 'LAPSED') tally.lapsed += 1;

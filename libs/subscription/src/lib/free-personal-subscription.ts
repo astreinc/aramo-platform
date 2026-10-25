@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 
+import { currentPublishedVersion } from './plan-version.repository.js';
 import { PrismaService } from './prisma/prisma.service.js';
 import { BASE_COMPOSITION, assertProductKey, openBaseSubscription, type ProductKey } from './product-registry.js';
 
@@ -56,6 +57,9 @@ export class FreePersonalSubscriptionService {
     const plan = await this.prisma.plan.findUnique({ where: { key: FreePersonalPlanKey } });
     if (plan === null) return { ok: false, reason: 'plan_missing' };
     if (plan.product_key !== product_key) throw new Error(`plan ${plan.key} is not a ${product_key} plan`);
+    // CCP-A5 (N-18) — pinned to the plan's current (PUBLISHED) version; none → nothing to open.
+    const version = await currentPublishedVersion(this.prisma, plan.id);
+    if (version === null) return { ok: false, reason: 'plan_missing' };
     const id = uuidv7();
     try {
       await this.prisma.tenantSubscription.create({
@@ -63,6 +67,7 @@ export class FreePersonalSubscriptionService {
           id,
           tenant_id: input.tenant_id,
           plan_id: plan.id,
+          plan_version_id: version.id,
           product_key,
           composition_role: BASE_COMPOSITION,
           period_anchor: input.at ?? new Date(),

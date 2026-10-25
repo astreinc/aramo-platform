@@ -3,6 +3,7 @@ import { recordUsage } from '@aramo/metering';
 import { v7 as uuidv7 } from 'uuid';
 
 import { billingPeriodAt, type BillingPeriod } from './billing-period.js';
+import { planVersionTerms } from './plan-version.js';
 import { PrismaService } from './prisma/prisma.service.js';
 import { assertMeteredKeyOf, openBaseSubscription, type ProductKey } from './product-registry.js';
 
@@ -25,6 +26,10 @@ import { assertMeteredKeyOf, openBaseSubscription, type ProductKey } from './pro
 // CCP-A4 (MP-A2 N-11) — every operation takes the product explicitly (a required
 // ProductKey, no defaulting overload) and resolves ONLY that product's open BASE
 // subscription. The allowance key must belong to that product (sign.envelopes → sign).
+//
+// CCP-A5 (MP-A2 N-3(c), N-18) — the limit and the day window come from the subscription's
+// PINNED plan version (checksum-verified, fail closed), so publishing a later version never
+// changes an existing subscriber's allowance (grandfathering). v1 = the live rows (N-19).
 
 // Personal Free v1.1 §4 — DAILY_LIMIT_REACHED: the plan's day-window cap (a plan
 // without a window row never returns it).
@@ -110,10 +115,12 @@ export class AllowanceService {
     assertMeteredKeyOf(product_key, allowance_key);
     const sub = await db.tenantSubscription.findFirst({
       where: openBaseSubscription(tenant_id, product_key),
-      include: { plan: { include: { allowances: { where: { allowance_key } }, allowance_windows: { where: { allowance_key, window_kind: 'DAY' } } } } },
+      include: { plan: true, plan_version: true },
     });
-    const allowance = sub?.plan.allowances[0];
-    if (sub === null || sub === undefined || allowance === undefined) return { ok: false, state: 'NONE' };
+    if (sub === null) return { ok: false, state: 'NONE' };
+    const terms = planVersionTerms(sub.plan_version);
+    const allowance = terms.allowances.find((a) => a.allowance_key === allowance_key);
+    if (allowance === undefined) return { ok: false, state: 'NONE' };
     if (!subscriptionSends(sub, at)) {
       return { ok: false, state: sub.status === 'PAST_DUE' ? 'PAST_DUE' : sub.status === 'INCOMPLETE' ? 'INCOMPLETE' : 'CANCELED' };
     }
@@ -123,7 +130,7 @@ export class AllowanceService {
         plan_key: sub.plan.key,
         limit: allowance.unlimited ? null : (allowance.included_quantity ?? 0),
         period: billingPeriodAt(sub.period_anchor, at),
-        daily_limit: sub.plan.allowance_windows[0]?.limit_quantity ?? null,
+        daily_limit: terms.allowance_windows.find((w) => w.allowance_key === allowance_key && w.window_kind === 'DAY')?.limit_quantity ?? null,
       },
     };
   }
