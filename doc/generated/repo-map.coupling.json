@@ -12766,6 +12766,11 @@
       "to": "libs/identity/src/tests/seed-scrub.integration.spec.ts"
     },
     {
+      "from": "doc/ccp/slices/CCP-A2-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A1-acceptance.md"
+    },
+    {
       "from": "doc/design-reference/platform-admin/github.md",
       "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform-personal.controller.ts"
