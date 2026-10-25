@@ -31,6 +31,7 @@ import { PolicyView } from './commercial-governance/PolicyView';
 import { AuditExplorerView } from './commercial-governance/AuditExplorerView';
 import { ContractsView } from './contracts/ContractsView';
 import { CONTRACT_READ_SCOPE } from './contracts/contracts-api';
+import { SupportExtensionsView } from './commercial/support-extensions/SupportExtensionsView';
 
 // The platform console app. RouteGuard handles only loading, unauthenticated
 // (→ sign-in) and the TENANT_ACCESS_DENIED wrong-account redirect — it no longer
@@ -197,6 +198,9 @@ export function PlatformConsole({ session }: { readonly session: Session }) {
             the Commercial access-denied card (merge train: replaces B1's placeholders). */}
         <Route path="/commercial/policy" element={commercialGate(CP.approvalRead, 'policy', <PolicyView />)} />
         <Route path="/commercial/audit" element={commercialGate(CP.commercialAuditRead, 'audit', <AuditExplorerView />)} />
+        {/* CCP-B6 — Commercial › Support extensions (extensions and escalations), gated on the list
+            route's scope platform:subscription:read, behind B1's commercial card (merge train TD-MERGE-32). */}
+        <Route path="/commercial/support-extensions" element={commercialGate(CP.subscriptionRead, 'support extensions', <SupportExtensionsView session={session} />)} />
         {/* ── end CCP-B1 */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>

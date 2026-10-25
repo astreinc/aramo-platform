@@ -67,3 +67,14 @@ export { BeforeAfterDiff, type BeforeAfterDiffProps, type BeforeAfterRow } from 
 export { BootstrapBanner, type BootstrapBannerProps } from './BootstrapBanner';
 export { CrStepper, type CrStep, type CrStepMark, type CrStepperProps } from './CrStepper';
 export { EligibilityVerdict, RosterVerdicts, type EligibilityVerdictProps, type RosterVerdict, type RosterVerdictsProps } from './EligibilityVerdict';
+// CCP-B6 — the NEW support-extension components (CCP-UI v1.0 handoff §6 ExceptionOverlay; §5.10).
+export { ExceptionOverlay, type ExceptionOverlayProps, type ExceptionOverlayRow } from './ExceptionOverlay';
+export {
+  SupportField,
+  SupportRequestDialog,
+  type SupportChain,
+  type SupportCommitTone,
+  type SupportFieldProps,
+  type SupportPreview,
+  type SupportRequestDialogProps,
+} from './SupportRequestDialog';

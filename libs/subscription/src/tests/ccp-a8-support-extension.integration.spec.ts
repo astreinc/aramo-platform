@@ -272,6 +272,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A8 support ex
 
   // ---- escalated → approved → applied (the A6 path, reused) -----------------------------
 
+  it('TD-B6-5 (merge train) apply_actionable on the integrated branch: after Finance approves an escalated extension, only its requester (support_admin) reads true; the approver and another support_admin read false', async () => {
+    const t = await newTenant(pg);
+    const sub = await stripeRow(t);
+    const esc = await extend(t, sub, 20);
+    expect(esc.outcome).toBe('ESCALATED');
+    await h.changeRequests.approve(as(FA, 'finance_admin'), esc.request.id, { step_index: 0 }, A6_CTX);
+    const SA2 = await addOperator(pg, ['support_admin']);
+    const view = async (user: string, role: string) => (await h.changeRequests.get(as(user, role), esc.request.id, A6_CTX)).apply_actionable;
+    expect(await view(SA, 'support_admin')).toBe(true);
+    expect(await view(FA, 'finance_admin')).toBe(false);
+    expect(await view(SA2, 'support_admin')).toBe(false);
+  });
+
   it('A8-ESC-APPLY-1 an escalated extension, once Finance approves, is applied by the requester authority through CommercialApplyService.apply: overlay is_exception = false, SUPPORT_EXTENSION_APPLIED; the Stripe-owned row is byte-identical; a role without the authority is refused', async () => {
     clock = T0;
     const t = await newTenant(pg);

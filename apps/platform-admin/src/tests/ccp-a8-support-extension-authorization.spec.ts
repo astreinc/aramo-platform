@@ -113,14 +113,20 @@ const DECISION = { within_bounds: true, breaches: [], eligibility: [], counters:
 
 const svcMock = {
   request: vi.fn(async () => ({ outcome: 'APPLIED', replayed: false, request: REQUEST_ROW, extension: EXT_ROW, application: APPLICATION, decision: DECISION }) as unknown),
-  list: vi.fn(async () => [{ ...EXT_ROW, active: true }]),
+  // CCP-B6: the GET route reads `overview` (the overlays + their recorded context, the open base
+  // rows and the ACTIVE policy clause).
+  overview: vi.fn(async () => ({
+    extensions: [{ ...EXT_ROW, active: true, context: { policy_version_number: 1, clause: { support_extension_max_days: 14 }, counters: { requested_days: 14 }, roles_at_apply: ['support_admin'] } }],
+    subscriptions: [{ id: SUB, product_key: 'sign', source: 'SELF_SERVICE', status: 'PAST_DUE', grace_until: NOW, current_period_end: null }],
+    policy: { version_id: EXT_ROW.policy_version_id, version_number: 1, clause: { support_extension_max_days: 14 }, approval_expiry_hours: 72 },
+  })),
 };
 const BASE = '/platform/commercial/support-extensions';
 const BODY = { tenant_id: TENANT, product_key: 'sign', subscription_id: SUB, requested_days: 14, reason: 'support goodwill', idempotency_key: 'idem-a8-00001' };
 type Route = { name: string; method: 'get' | 'post'; path: string; fn: keyof typeof svcMock; scope: string; allowed: readonly string[]; ok: number };
 const ROUTES: Route[] = [
   { name: 'POST request', method: 'post', path: BASE, fn: 'request', scope: 'platform:subscription:support', allowed: ['support_admin'], ok: 201 },
-  { name: 'GET list', method: 'get', path: `${BASE}?tenant_id=${TENANT}`, fn: 'list', scope: 'platform:subscription:read', allowed: ['platform_owner', 'finance_admin', 'commercial_ops', 'support_admin', 'read_only_auditor'], ok: 200 },
+  { name: 'GET list', method: 'get', path: `${BASE}?tenant_id=${TENANT}`, fn: 'overview', scope: 'platform:subscription:read', allowed: ['platform_owner', 'finance_admin', 'commercial_ops', 'support_admin', 'read_only_auditor'], ok: 200 },
 ];
 
 describe('CCP-A8 — route gates on /platform/commercial/support-extensions (real JwtAuthGuard + RolesGuard, service mocked)', () => {
@@ -231,6 +237,17 @@ describe('CCP-A8 — route gates on /platform/commercial/support-extensions (rea
     expect((await call(ROUTES[0] as Route, 'support_admin')).status).toBe(200);
   });
 
+  it('B6-RT-list serializes the overlays with their context, the open base rows and the ACTIVE policy (dates as ISO strings)', async () => {
+    const res = await call(ROUTES[1] as Route, 'support_admin');
+    expect(res.status).toBe(200);
+    expect(svcMock.overview).toHaveBeenCalledWith(TENANT, undefined);
+    expect(res.body).toEqual({
+      extensions: [expect.objectContaining({ id: EXT_ID, active: true, applied_at: NOW.toISOString(), context: { policy_version_number: 1, clause: { support_extension_max_days: 14 }, counters: { requested_days: 14 }, roles_at_apply: ['support_admin'] } })],
+      subscriptions: [{ id: SUB, product_key: 'sign', source: 'SELF_SERVICE', status: 'PAST_DUE', grace_until: NOW.toISOString(), current_period_end: null }],
+      policy: { version_id: EXT_ROW.policy_version_id, version_number: 1, clause: { support_extension_max_days: 14 }, approval_expiry_hours: 72 },
+    });
+  });
+
   const bad: Array<[string, object]> = [
     ['tenant_id not a uuid', { ...BODY, tenant_id: 'x' }],
     ['unknown product_key', { ...BODY, product_key: 'ats' }],
@@ -254,7 +271,7 @@ describe('CCP-A8 — route gates on /platform/commercial/support-extensions (rea
       const res = await call(ROUTES[1] as Route, 'finance_admin', { path });
       expect(res.status, path).toBe(400);
     }
-    expect(svcMock.list).not.toHaveBeenCalled();
+    expect(svcMock.overview).not.toHaveBeenCalled();
   });
 
   const mapping: Array<[string, unknown, number, string, Record<string, unknown>]> = [

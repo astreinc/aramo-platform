@@ -162,7 +162,18 @@ export const CCP_STATES: readonly ScreenState[] = [
     // The Commercial group alone (element-level): six items, labels and glyphs.
     name: 'ccp-rail-group',
     proto: { file: 'ccp', ccp: { persona: 'priya' }, hash: 'approvals' },
-    build: { path: '/commercial/approvals', mock: ccpMock({ persona: 'ccpFinance' }) },
+    // DV-MERGE-1 (merge train TD-MERGE-32): the CCP-B6 "Support extensions" item is not in the
+    // CCP-UI v1.0 rail; it is taken out of the layout for this six-item comparison only (its
+    // presence and gating are asserted by commercial-visibility.spec.tsx).
+    build: {
+      path: '/commercial/approvals',
+      mock: ccpMock({ persona: 'ccpFinance' }),
+      act: async (p: Page) => {
+        await p.locator('.pw-rail-group a[href="/commercial/support-extensions"]').evaluate((el) => {
+          (el as HTMLElement).style.display = 'none';
+        });
+      },
+    },
     element: {
       proto: (p) => p.locator('nav[aria-label="Platform admin"] > div').filter({ hasText: /^\s*Commercial/ }),
       build: (p) => p.locator('.pw-rail-group').filter({ hasText: /^\s*Commercial/ }),

@@ -11,6 +11,7 @@ import { MISC_STATES } from './states-misc';
 import { STUDIO_STATES } from './states-studio';
 import { CCP_STATES } from './states-ccp';
 import { CCP_CATALOG_STATES } from './states-ccp-catalog';
+import { CCP_SUPPORT_STATES } from './states-ccp-support';
 
 export const STATES: readonly ScreenState[] = [
   ...SHELL_STATES,
@@ -23,4 +24,6 @@ export const STATES: readonly ScreenState[] = [
   ...CCP_STATES,
   // CCP-B2 — the Catalog screen.
   ...CCP_CATALOG_STATES,
+  // CCP-B6 — the support-extension workflow (Commercial Control Plane v1.0.dc.html).
+  ...CCP_SUPPORT_STATES,
 ];

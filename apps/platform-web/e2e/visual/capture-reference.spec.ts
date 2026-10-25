@@ -64,7 +64,13 @@ for (const s of STATES) {
         r.width += 2;
         r.height += 2;
       }
-      await saveRects(resolve(OUT, `${s.name}-${vp.name}.masks.json`), rects);
+      // CCP-B6: an element-level state stores its regions relative to the element (the
+      // element sits elsewhere on the build's page); parity re-anchors them on the build element.
+      const origin = s.element ? await s.element.proto(page).boundingBox() : null;
+      await saveRects(
+        resolve(OUT, `${s.name}-${vp.name}.masks.json`),
+        origin ? rects.map((r) => ({ ...r, x: r.x - origin.x, y: r.y - origin.y })) : rects,
+      );
       await paint(page, rects);
       // Like toHaveScreenshot on the build side: shoot until two consecutive
       // frames are identical, so a transient raster (text drawn before the last

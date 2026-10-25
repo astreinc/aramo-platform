@@ -42,6 +42,31 @@ export interface SupportExtensionDto {
   remove_change_request_id: string | null;
   /** The overlay keeps the row sending now (unremoved and extends_until in the future). */
   active?: boolean;
+  /** CCP-B6 (list route only) — what was recorded when the overlay was applied. */
+  context?: {
+    policy_version_number: number | null;
+    clause: Record<string, number> | null;
+    counters: Record<string, number> | null;
+    roles_at_apply: string[];
+  };
+}
+
+/** CCP-B6 — an open base subscription row of the tenant (the POST names one by id). */
+export interface SupportExtensionSubscriptionDto {
+  id: string;
+  product_key: string;
+  source: string;
+  status: string;
+  grace_until: string | null;
+  current_period_end: string | null;
+}
+
+export interface SupportExtensionListDto {
+  extensions: SupportExtensionDto[];
+  /** CCP-B6 — the tenant's open base subscription rows (optionally one product). */
+  subscriptions: SupportExtensionSubscriptionDto[];
+  /** CCP-B6 — the ACTIVE policy's extension clause; null when no valid ACTIVE policy. */
+  policy: { version_id: string; version_number: number; clause: Record<string, number>; approval_expiry_hours: number } | null;
 }
 
 export interface SupportExtensionDecisionDto {

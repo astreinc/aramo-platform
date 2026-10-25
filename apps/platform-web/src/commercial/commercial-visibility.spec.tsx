@@ -13,16 +13,17 @@ import { ROLE_SCOPES, SEVEN_ROLES, sessionFor, type FixtureRole } from './test-f
 // item's commercial READ scope; super_admin (no commercial scope) sees no Commercial
 // group, and a deep link renders the in-shell AccessDenied naming the six roles.
 
-const ITEMS = ['Approvals', 'Subscriptions', 'Catalog', 'Contracts', 'Policy', 'Audit'] as const;
+// Merge train TD-MERGE-32: + CCP-B6 'Support extensions' (platform:subscription:read).
+const ITEMS = ['Approvals', 'Subscriptions', 'Catalog', 'Contracts', 'Policy', 'Audit', 'Support extensions'] as const;
 
 /** The expected Commercial items per role (from the A1 bundles; recorded in CCP-B1-acceptance.md). */
 const EXPECTED: Readonly<Record<FixtureRole, readonly (typeof ITEMS)[number][]>> = {
-  platform_owner: ['Approvals', 'Subscriptions', 'Catalog', 'Contracts', 'Policy', 'Audit'],
-  finance_admin: ['Approvals', 'Subscriptions', 'Catalog', 'Contracts', 'Policy', 'Audit'],
-  commercial_ops: ['Approvals', 'Subscriptions', 'Catalog', 'Contracts', 'Policy'],
+  platform_owner: ['Approvals', 'Subscriptions', 'Catalog', 'Contracts', 'Policy', 'Audit', 'Support extensions'],
+  finance_admin: ['Approvals', 'Subscriptions', 'Catalog', 'Contracts', 'Policy', 'Audit', 'Support extensions'],
+  commercial_ops: ['Approvals', 'Subscriptions', 'Catalog', 'Contracts', 'Policy', 'Support extensions'],
   catalog_manager: ['Approvals', 'Catalog', 'Policy'],
-  support_admin: ['Approvals', 'Subscriptions', 'Catalog', 'Contracts', 'Policy'],
-  read_only_auditor: ['Approvals', 'Subscriptions', 'Catalog', 'Contracts', 'Policy', 'Audit'],
+  support_admin: ['Approvals', 'Subscriptions', 'Catalog', 'Contracts', 'Policy', 'Support extensions'],
+  read_only_auditor: ['Approvals', 'Subscriptions', 'Catalog', 'Contracts', 'Policy', 'Audit', 'Support extensions'],
   super_admin: [],
 };
 
@@ -33,6 +34,7 @@ const ROUTE: Readonly<Record<(typeof ITEMS)[number], string>> = {
   Contracts: '/commercial/contracts',
   Policy: '/commercial/policy',
   Audit: '/commercial/audit',
+  'Support extensions': '/commercial/support-extensions',
 };
 
 function json(body: unknown, status = 200): Response {

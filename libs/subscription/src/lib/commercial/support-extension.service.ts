@@ -18,6 +18,7 @@ import {
   CommercialChangeRequestService,
 } from './commercial-change-request.service.js';
 import { CommercialOperatorRepository } from './commercial-operator.repository.js';
+import { type CommercialPolicyContent, CommercialPolicyUnavailableError } from './commercial-policy.js';
 import { CommercialPolicyRepository } from './commercial-policy.repository.js';
 import { type SupportExtensionDecision, decideSupportExtension, overlayCovers } from './support-extension.js';
 
@@ -93,6 +94,50 @@ export type SupportExtensionOutcome =
       /** null on an idempotent replay (the decision is on the SUPPORT_EXTENSION_ESCALATED event). */
       decision: SupportExtensionDecision | null;
     };
+
+/** CCP-B6 — the context recorded when an overlay was applied (read from the request and its audit trail). */
+export interface SupportExtensionContext {
+  policy_version_number: number | null;
+  /** The clause the decision used (null when not recorded). */
+  clause: Record<string, number> | null;
+  /** The counter snapshot of the decision (null when not recorded). */
+  counters: Record<string, number> | null;
+  /** The applying actor's role keys at the time (server-side snapshot on the apply event). */
+  roles_at_apply: string[];
+}
+
+/** CCP-B6 — an open BASE subscription row, as the console needs it to request an extension. */
+export interface SupportExtensionSubscriptionRow {
+  id: string;
+  product_key: string;
+  source: string;
+  status: string;
+  grace_until: Date | null;
+  current_period_end: Date | null;
+}
+
+export interface SupportExtensionOverview {
+  extensions: Array<SupportExtensionRow & { active: boolean; context: SupportExtensionContext }>;
+  subscriptions: SupportExtensionSubscriptionRow[];
+  /** The ACTIVE policy's support-extension clause; null when no valid ACTIVE policy. */
+  policy: { version_id: string; version_number: number; clause: Record<string, number>; approval_expiry_hours: number } | null;
+}
+
+function clauseOf(c: CommercialPolicyContent): Record<string, number> {
+  return {
+    support_extension_max_days: c.support_extension_max_days,
+    support_extension_frequency_window_days: c.support_extension_frequency_window_days,
+    support_extension_cumulative_max_days: c.support_extension_cumulative_max_days,
+    support_extension_cumulative_window_days: c.support_extension_cumulative_window_days,
+  };
+}
+
+function recordOfInts(raw: unknown): Record<string, number> | null {
+  if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const out: Record<string, number> = {};
+  for (const [k, v] of Object.entries(raw as Record<string, unknown>)) if (typeof v === 'number' && Number.isInteger(v)) out[k] = v;
+  return out;
+}
 
 const SUBJECT = (id: string): string => `commercial_change_request:${id}`;
 const TX_OPTIONS = { timeout: 15_000, maxWait: 10_000 } as const;
@@ -282,6 +327,81 @@ export class SupportExtensionService {
       return { outcome: 'APPLIED', replayed: true, request: existing, extension, application, decision: null };
     }
     return { outcome: 'ESCALATED', replayed: true, request: existing, decision: null };
+  }
+
+  /**
+   * CCP-B6 — what the console's support-extension screen reads in one call (read only): the
+   * overlays (as `list`) each with the context recorded when it was applied, the tenant's open
+   * BASE subscription rows (the POST needs the row id), and the ACTIVE policy's extension clause
+   * (the live preview; null when no valid ACTIVE policy). The server stays the authority on the
+   * bound: the preview only mirrors it.
+   */
+  async overview(tenant_id: string, product_key?: string): Promise<SupportExtensionOverview> {
+    const extensions = await this.list(tenant_id, product_key);
+    const rows = await this.prisma.tenantSubscription.findMany({
+      where: { tenant_id, ended_at: null, composition_role: BASE_COMPOSITION, ...(product_key !== undefined ? { product_key } : {}) },
+      orderBy: [{ started_at: 'desc' }, { id: 'desc' }],
+      select: { id: true, product_key: true, source: true, status: true, grace_until: true, current_period_end: true },
+    });
+    const policy = await this.policies.getActivePolicy().then(
+      (p) => ({
+        version_id: p.version_id,
+        version_number: p.version_number,
+        clause: clauseOf(p.content),
+        approval_expiry_hours: p.content.approval_expiry_hours,
+      }),
+      (e: unknown) => {
+        // No valid ACTIVE policy: the preview shows its unavailable state; the POST fails closed (503).
+        if (e instanceof CommercialPolicyUnavailableError) return null;
+        throw e;
+      },
+    );
+    const requestIds = extensions.map((e) => e.change_request_id);
+    const requests = requestIds.length === 0 ? [] : await this.prisma.commercialChangeRequest.findMany({ where: { id: { in: requestIds } }, select: { id: true, kind: true, required_chain: true } });
+    const versionIds = [...new Set(extensions.map((e) => e.policy_version_id))];
+    const versions = versionIds.length === 0 ? [] : await this.prisma.commercialPolicyVersion.findMany({ where: { id: { in: versionIds } }, select: { id: true, version_number: true } });
+    const subjects = extensions.map((e) => `support_extension:${e.id}`);
+    const applyEvents =
+      subjects.length === 0
+        ? []
+        : await this.prisma.commercialAuditEvent.findMany({
+            where: { subject: { in: subjects }, event_type: { in: ['SUPPORT_EXTENSION_EXCEPTION_APPLIED', 'SUPPORT_EXTENSION_APPLIED'] } },
+            select: { subject: true, actor_role_keys: true },
+          });
+    const escalations =
+      requestIds.length === 0
+        ? []
+        : await this.prisma.commercialAuditEvent.findMany({ where: { change_request_id: { in: requestIds }, event_type: 'SUPPORT_EXTENSION_ESCALATED' }, select: { change_request_id: true, payload: true } });
+    const byRequest = new Map(requests.map((r) => [r.id, r]));
+    const versionNumber = new Map(versions.map((v) => [v.id, v.version_number]));
+    const roles = new Map(applyEvents.map((ev) => [ev.subject, ev.actor_role_keys]));
+    const escalated = new Map(escalations.map((ev) => [ev.change_request_id, ev.payload as Record<string, unknown>]));
+    return {
+      extensions: extensions.map((e) => {
+        const req = byRequest.get(e.change_request_id);
+        // EXCEPTION: the chain basis holds the clause and counter snapshot (A8 bounded path);
+        // NORMAL (escalated, then approved): the SUPPORT_EXTENSION_ESCALATED event holds them.
+        const basis = req?.kind === 'EXCEPTION' ? ((req.required_chain as { basis?: Record<string, unknown> } | null)?.basis ?? null) : (escalated.get(e.change_request_id) ?? null);
+        return {
+          ...e,
+          context: {
+            policy_version_number: versionNumber.get(e.policy_version_id) ?? null,
+            clause: recordOfInts(basis?.['clause']),
+            counters: recordOfInts(basis?.['counters']),
+            roles_at_apply: roles.get(`support_extension:${e.id}`) ?? [],
+          },
+        };
+      }),
+      subscriptions: rows.map((r) => ({
+        id: r.id,
+        product_key: r.product_key,
+        source: r.source,
+        status: r.status,
+        grace_until: r.grace_until,
+        current_period_end: r.current_period_end,
+      })),
+      policy,
+    };
   }
 
   /** The overlays of a tenant (optionally one product), newest first, with whether each covers `now`. */

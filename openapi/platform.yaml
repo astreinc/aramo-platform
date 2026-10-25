@@ -3506,7 +3506,7 @@ paths:
       operationId: listPlatformSupportExtensions
       tags: [Platform Commercial Support Extensions]
       summary: List a tenant's support extension overlays (CCP-A8).
-      description: 'The overlays of a tenant (optionally one product), newest first, with whether each keeps the row sending now. Requires `platform:subscription:read`.'
+      description: 'The overlays of a tenant (optionally one product), newest first, with whether each keeps the row sending now. CCP-B6 adds (read only) each overlay''s recorded `context`, the tenant''s open base `subscriptions` and the ACTIVE `policy` clause (null when no valid ACTIVE policy). Requires `platform:subscription:read`.'
       security:
         - BearerAuth: []
         - CookieAccessAuth: []
@@ -7319,6 +7319,72 @@ components:
         active:
           type: boolean
           description: Present on the list route — the overlay keeps the row sending now.
+        context:
+          $ref: '#/components/schemas/SupportExtensionContext'
+
+    SupportExtensionContext:
+      type: object
+      additionalProperties: false
+      description: CCP-B6 (list route only) — what was recorded when the overlay was applied.
+      required: [policy_version_number, clause, counters, roles_at_apply]
+      properties:
+        policy_version_number:
+          type: [integer, 'null']
+        clause:
+          description: The policy clause the decision used (the chain basis of a bounded exception, or the escalation event of an approved one); null when not recorded.
+          type: [object, 'null']
+          additionalProperties:
+            type: integer
+        counters:
+          description: The decision's counter snapshot; null when not recorded.
+          type: [object, 'null']
+          additionalProperties:
+            type: integer
+        roles_at_apply:
+          description: The applying actor's role keys at the time (server-side snapshot on the apply audit event).
+          type: array
+          items:
+            type: string
+
+    SupportExtensionSubscription:
+      type: object
+      additionalProperties: false
+      description: CCP-B6 — an open base subscription row of the tenant (the POST names one by id).
+      required: [id, product_key, source, status, grace_until, current_period_end]
+      properties:
+        id:
+          type: string
+          format: uuid
+        product_key:
+          type: string
+        source:
+          type: string
+        status:
+          type: string
+        grace_until:
+          type: [string, 'null']
+          format: date-time
+        current_period_end:
+          type: [string, 'null']
+          format: date-time
+
+    SupportExtensionPolicy:
+      type: object
+      additionalProperties: false
+      description: CCP-B6 — the ACTIVE commercial policy's support-extension clause and approval window.
+      required: [version_id, version_number, clause, approval_expiry_hours]
+      properties:
+        version_id:
+          type: string
+          format: uuid
+        version_number:
+          type: integer
+        clause:
+          type: object
+          additionalProperties:
+            type: integer
+        approval_expiry_hours:
+          type: integer
 
     SupportExtensionDecision:
       type: object
@@ -7384,12 +7450,22 @@ components:
     SupportExtensionList:
       type: object
       additionalProperties: false
-      required: [extensions]
+      required: [extensions, subscriptions, policy]
       properties:
         extensions:
           type: array
           items:
             $ref: '#/components/schemas/SupportExtension'
+        subscriptions:
+          description: CCP-B6 — the tenant's open base subscription rows (optionally one product).
+          type: array
+          items:
+            $ref: '#/components/schemas/SupportExtensionSubscription'
+        policy:
+          description: CCP-B6 — the ACTIVE policy's extension clause; null when no valid ACTIVE policy.
+          oneOf:
+            - $ref: '#/components/schemas/SupportExtensionPolicy'
+            - type: 'null'
 
     CommercialApprovalEnvelope:
       type: object

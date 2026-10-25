@@ -42,7 +42,8 @@ export type NavKey =
   | 'catalog'
   | 'contracts'
   | 'policy'
-  | 'audit';
+  | 'audit'
+  | 'supportExtensions';
 
 export interface NavItem {
   readonly key: NavKey;
@@ -107,6 +108,8 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { key: 'contracts', label: 'Contracts', to: '/commercial/contracts', scope: CP.subscriptionRead, icon: 'contract' },
       { key: 'policy', label: 'Policy', to: '/commercial/policy', scope: CP.approvalRead, icon: 'scale' },
       { key: 'audit', label: 'Audit', to: '/commercial/audit', scope: CP.commercialAuditRead, icon: 'audit' },
+      // CCP-B6 (merge train TD-MERGE-32): the support-extension workflow; not in the CCP-UI v1.0 rail.
+      { key: 'supportExtensions', label: 'Support extensions', to: '/commercial/support-extensions', scope: CP.subscriptionRead, icon: 'shield' },
     ],
   },
   // ── end CCP-B1
@@ -149,6 +152,7 @@ export function navKeyFor(pathname: string): NavKey | null {
   if (p.startsWith('/commercial/contracts')) return 'contracts';
   if (p.startsWith('/commercial/policy')) return 'policy';
   if (p.startsWith('/commercial/audit')) return 'audit';
+  if (p.startsWith('/commercial/support-extensions')) return 'supportExtensions';
   return null;
 }
 

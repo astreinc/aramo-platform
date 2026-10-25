@@ -28,6 +28,8 @@ export const COMMERCIAL_PERMISSIONS = {
   // B2's catalog pair folded into this one commercial map.
   catalogDraft: 'platform:catalog:draft',
   commercialAuditRead: 'platform:commercial:audit:read',
+  // CCP-B6 — requesting a support extension or its removal (support_admin; merge train TD-MERGE-32).
+  subscriptionSupport: 'platform:subscription:support',
 } as const;
 
 export type CommercialPermission = (typeof COMMERCIAL_PERMISSIONS)[keyof typeof COMMERCIAL_PERMISSIONS];
@@ -47,6 +49,7 @@ export const PERMISSION_LABEL: Readonly<Record<PlatformPermission | CommercialPe
   'platform:subscription:read': 'View subscriptions',
   'platform:catalog:read': 'View the commercial catalog',
   'platform:commercial:audit:read': 'View the commercial audit',
+  'platform:subscription:support': 'Request support extensions',
   'platform:catalog:draft': 'Draft plan versions',
 };
 

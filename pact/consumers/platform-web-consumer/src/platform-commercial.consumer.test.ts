@@ -1653,6 +1653,118 @@ describe('platform-web → GET /platform/commercial/support-extensions (CCP-A8)'
   });
 });
 
+// ── CCP-B6 — the console's support-extension screen ──────────────────────────
+// The screen reads the list route once (the overlays with their recorded context, the open base
+// rows its POST names, the ACTIVE policy clause for the live preview), creates a removal as a
+// SUPPORT_EXTENSION change request with operation REMOVE (TD-A8-5), and applies an approved
+// escalation as its requester (TD-B2-3). Each mutating interaction has its own tenant.
+const SE_TENANT_SCREEN = 'cca10000-0000-7000-8000-0000000008a4';
+const SE_TENANT_REMOVE = 'cca10000-0000-7000-8000-0000000008a5';
+const SE_TENANT_ESC_APPLY = 'cca10000-0000-7000-8000-0000000008a6';
+const SE_EXTENSION_ID = 'cca10000-0000-7000-8000-0000000008c2';
+const SE_CLAUSE = {
+  support_extension_max_days: integer(14),
+  support_extension_frequency_window_days: integer(90),
+  support_extension_cumulative_max_days: integer(30),
+  support_extension_cumulative_window_days: integer(365),
+};
+
+describe('platform-web → the support-extension screen (CCP-B6)', () => {
+  it('support_admin reads the screen: overlays with their recorded context, the open base rows and the ACTIVE policy clause (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('a support extension has been applied', { tenant_id: SE_TENANT_SCREEN })
+      .uponReceiving('the support-extension screen read by support_admin')
+      .withRequest('GET', SE, (b) => {
+        b.headers(platformSession('support_admin')).query({ tenant_id: SE_TENANT_SCREEN, product_key: 'sign' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          extensions: eachLike({
+            ...SE_EXTENSION(SE_TENANT_SCREEN, 'cca10000-0000-7000-8000-0000000008b4'),
+            active: true,
+            context: {
+              policy_version_number: integer(1),
+              clause: like(SE_CLAUSE),
+              counters: like({ requested_days: integer(7), extensions_in_frequency_window: integer(0), cumulative_days_before: integer(0), cumulative_days_after: integer(7) }),
+              roles_at_apply: eachLike('support_admin'),
+            },
+          }),
+          subscriptions: eachLike({
+            id: uuid('cca10000-0000-7000-8000-0000000008b4'),
+            product_key: 'sign',
+            source: like('SELF_SERVICE'),
+            status: like('PAST_DUE'),
+            grace_until: iso(),
+            current_period_end: null,
+          }),
+          policy: { version_id: POLICY_V1, version_number: integer(1), clause: like(SE_CLAUSE), approval_expiry_hours: integer(72) },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${SE}?tenant_id=${SE_TENANT_SCREEN}&product_key=sign`, 'GET', platformSession('support_admin'));
+        expect(res.status).toBe(200);
+        expect(res.body['policy']).not.toBeNull();
+      });
+  });
+
+  it('support_admin requests the removal of an overlay: a SUPPORT_EXTENSION change request with operation REMOVE (201 DRAFT, Finance chain)', async () => {
+    const body = {
+      action_type: 'SUPPORT_EXTENSION',
+      tenant_id: SE_TENANT_REMOVE,
+      product_key: 'sign',
+      payload: { operation: 'REMOVE', support_extension_id: fromProviderState('${extensionId}', SE_EXTENSION_ID) },
+      reason: 'Granted in error',
+      idempotency_key: 'pact-b6-remove-0001',
+    };
+    await provider
+      .addInteraction()
+      .given('a support extension has been applied', { tenant_id: SE_TENANT_REMOVE })
+      .uponReceiving('a support extension removal request by support_admin')
+      .withRequest('POST', CR, (b) => {
+        b.headers(platformJson('support_admin')).jsonBody(body);
+      })
+      .willRespondWith(201, (b) => {
+        b.jsonBody({
+          request: like({
+            id: uuid(EX_REQUEST_ID),
+            action_type: 'SUPPORT_EXTENSION',
+            kind: 'NORMAL',
+            state: 'DRAFT',
+            payload: { operation: 'REMOVE', support_extension_id: uuid(SE_EXTENSION_ID) },
+            required_chain: like({ rule: 'FINANCE_ONLY' }),
+          }),
+          replayed: false,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}`, 'POST', platformJson('support_admin'), { ...body, payload: { operation: 'REMOVE', support_extension_id: SE_EXTENSION_ID } });
+        expect(res.status).toBe(201);
+      });
+  });
+
+  it('support_admin, the requester, applies an approved escalated extension (200 APPLIED)', async () => {
+    await provider
+      .addInteraction()
+      .given('an approved escalated support extension exists', { tenant_id: SE_TENANT_ESC_APPLY })
+      .uponReceiving('an approved escalated support extension applied by its requester')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/apply`, `${CR}/${EX_REQUEST_ID}/apply`), (b) => {
+        b.headers(platformSession('support_admin'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          request: like({ id: uuid(EX_REQUEST_ID), action_type: 'SUPPORT_EXTENSION', kind: 'NORMAL', state: 'APPLIED' }),
+          application: like({ action_type: 'SUPPORT_EXTENSION', capabilities: [], attempt: 1 }),
+          replayed: false,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}/${EX_REQUEST_ID}/apply`, 'POST', platformSession('support_admin'));
+        expect(res.status).toBe(200);
+      });
+  });
+});
+
 // ── gate refusals on every CCP route: super_admin and the tenant tier ─────────
 
 // ── CCP-B4 — enterprise contract records (read-only) ──────────────────────────

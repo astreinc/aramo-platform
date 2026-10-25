@@ -215,6 +215,48 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A8 — the su
     expect((await get('read_only_auditor', `${SE}?tenant_id=${t.tenant_id}`)).body.extensions).toMatchObject([{ id: ext.id, active: false, remove_change_request_id: rid, removed_by: user['support_admin'] }]);
   });
 
+  it('B6-RI-GET the list also returns the open base rows, the ACTIVE policy clause, and each overlay\'s recorded context (bounded: chain basis + apply-event roles; escalated: the escalation event); read only', async () => {
+    const t = await pastDue();
+    const before = (await get('read_only_auditor', `${SE}?tenant_id=${t.tenant_id}&product_key=sign`)).body;
+    expect(before.extensions).toEqual([]);
+    expect(before.subscriptions).toMatchObject([{ id: t.subscription_id, product_key: 'sign', source: 'SELF_SERVICE', status: 'PAST_DUE', current_period_end: null }]);
+    expect(typeof before.subscriptions[0].grace_until).toBe('string');
+    expect(before.policy).toMatchObject({
+      version_number: 1,
+      approval_expiry_hours: 72,
+      clause: { support_extension_max_days: 14, support_extension_frequency_window_days: 90, support_extension_cumulative_max_days: 30, support_extension_cumulative_window_days: 365 },
+    });
+    const counts = async (): Promise<unknown> => (await pg.query(`SELECT (SELECT count(*)::int FROM subscription."CommercialChangeRequest" WHERE tenant_id = $1) r, (SELECT count(*)::int FROM subscription."CommercialAuditEvent" WHERE tenant_id = $1) a`, [t.tenant_id])).rows[0];
+    const c0 = await counts();
+    await get('support_admin', `${SE}?tenant_id=${t.tenant_id}`);
+    expect(await counts()).toEqual(c0); // the read writes nothing
+
+    expect((await post('support_admin', SE, body(t, 5))).status).toBe(201);
+    const [bounded] = (await get('support_admin', `${SE}?tenant_id=${t.tenant_id}`)).body.extensions;
+    expect(bounded).toMatchObject({ is_exception: true, days: 5, active: true });
+    expect(bounded.context).toEqual({
+      policy_version_number: 1,
+      clause: { support_extension_max_days: 14, support_extension_frequency_window_days: 90, support_extension_cumulative_max_days: 30, support_extension_cumulative_window_days: 365 },
+      counters: { requested_days: 5, extensions_in_frequency_window: 0, cumulative_days_before: 0, cumulative_days_after: 5 },
+      roles_at_apply: ['support_admin'],
+    });
+
+    // A second extension inside the window escalates; approved and applied, its context comes from the escalation event.
+    const esc = await post('support_admin', SE, body(t, 2));
+    expect(esc.body).toMatchObject({ outcome: 'ESCALATED', decision: { breaches: ['FREQUENCY'] } });
+    const id = esc.body.request.id as string;
+    expect((await post('finance_admin', `${CR}/${id}/approvals`, { step_index: 0 })).status).toBe(201);
+    expect((await post('support_admin', `${CR}/${id}/apply`)).status).toBe(200);
+    const list = (await get('finance_admin', `${SE}?tenant_id=${t.tenant_id}`)).body.extensions;
+    expect(list.map((e: { is_exception: boolean }) => e.is_exception)).toEqual([false, true]);
+    expect(list[0].context).toEqual({
+      policy_version_number: 1,
+      clause: { support_extension_max_days: 14, support_extension_frequency_window_days: 90, support_extension_cumulative_max_days: 30, support_extension_cumulative_window_days: 365 },
+      counters: { requested_days: 2, extensions_in_frequency_window: 1, cumulative_days_before: 5, cumulative_days_after: 7 },
+      roles_at_apply: ['support_admin'],
+    });
+  });
+
   it('A8-RI-REFUSE tenant tier 403; a bounded EXCEPTION request is never applied through …/apply (409 action_not_applicable); a row of another tenant 400 subscription_not_open', async () => {
     const t = await pastDue();
     const tier = await request(app.getHttpServer()).post(SE).set('Authorization', `Bearer ${await token('support_admin', 'recruiter')}`).send(body(t, 2));
