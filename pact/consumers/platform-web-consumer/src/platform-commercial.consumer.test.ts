@@ -46,6 +46,8 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 //   POST /platform/commercial/change-requests/{id}/apply        (CCP-A6)
 //   GET  /platform/commercial/billing-commands                  (CCP-C1)
 //   GET  /platform/commercial/billing-webhook-inbox             (CCP-C1)
+//   POST /platform/commercial/change-requests/{id}/convert      (CCP-C2)
+//   GET  /platform/commercial/change-requests/{id}/conversion   (CCP-C2)
 // For each route: the allowed call, super_admin refused (403, holds no commercial
 // scope), and the tenant tier refused (403 tier tripwire). Plus the role-level
 // refusals: a role missing the route scope (audit feed), a role missing the requester
@@ -190,6 +192,8 @@ const GATE_ROUTES: readonly GateRoute[] = [
   { name: 'POST change-requests/{id}/apply', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/apply`, scope: 'platform:approval:read' },
   { name: 'GET billing-commands', method: 'GET', path: COMMANDS, scope: 'platform:billing:read' },
   { name: 'GET billing-webhook-inbox', method: 'GET', path: INBOX, scope: 'platform:billing:read' },
+  { name: 'POST change-requests/{id}/convert', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/convert`, scope: 'platform:approval:read' },
+  { name: 'GET change-requests/{id}/conversion', method: 'GET', path: `${CR}/${EX_REQUEST_ID}/conversion`, scope: 'platform:approval:read' },
 ];
 
 // ── CCP-A2 — the commercial audit feed ────────────────────────────────────────
@@ -730,6 +734,122 @@ describe('platform-web → GET /platform/commercial/billing-webhook-inbox (CCP-C
       .executeTest(async (mock) => {
         const res = await call(`${mock.url}${INBOX}`, 'GET', platformSession('catalog_manager'));
         expect(res.status).toBe(403);
+      });
+  });
+});
+
+// ── CCP-C2 — governed manual <-> self-service conversion ─────────────────────
+
+describe('platform-web → POST /platform/commercial/change-requests/{id}/convert (CCP-C2)', () => {
+  const convert = (requestId = EX_REQUEST_ID) => `${CR}/${requestId}/convert`;
+  const conversionRequest = (state: string) => ({
+    id: uuid(EX_REQUEST_ID),
+    action_type: 'CONVERSION',
+    kind: 'NORMAL',
+    state,
+    tenant_id: uuid('cca10000-0000-7000-8000-0000000000b6'),
+    product_key: 'sign',
+    payload: like({ direction: 'TO_SELF_SERVICE', plan_key: 'aramo-sign-standard-business-v1' }),
+    requested_by: OP.commercial_ops,
+    approved_at: iso(),
+  });
+
+  it('the requester (commercial_ops) applies an approved governed → self-service conversion (200: the checkout release, nothing changed at the provider)', async () => {
+    await provider
+      .addInteraction()
+      .given('an approved governed-to-self-service conversion exists')
+      .uponReceiving('a conversion apply by its requester')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/convert`, convert()), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          replayed: false,
+          request: conversionRequest('APPLIED'),
+          conversion: {
+            direction: 'TO_SELF_SERVICE',
+            status: 'RELEASED',
+            pending_provider: false,
+            release: {
+              id: uuid('cca10000-0000-7000-8000-0000000000b7'),
+              change_request_id: uuid(EX_REQUEST_ID),
+              governed_subscription_id: uuid('cca10000-0000-7000-8000-0000000000b8'),
+              plan_version_id: uuid('cca10000-0000-7000-8000-0000000000b9'),
+              held_subscription_ref: null,
+              state: 'RELEASED',
+              effective_state: 'RELEASED',
+              expires_at: iso('2026-10-26T10:00:00.000Z'),
+              intent_id: null,
+              consumed_at: null,
+              self_service_subscription_id: null,
+              converted_at: null,
+              expired_at: null,
+            },
+            commands: [],
+            application: { change_request_id: uuid(EX_REQUEST_ID), action_type: 'CONVERSION', attempt: 1, capabilities: [], applied_by: OP.commercial_ops },
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${convert()}`, 'POST', platformSession('commercial_ops'));
+        expect(res.status).toBe(200);
+      });
+  });
+
+  it('a role without the requester authority (finance_admin) is refused (403 requester_scope_missing)', async () => {
+    await provider
+      .addInteraction()
+      .given('an approved governed-to-self-service conversion exists')
+      .uponReceiving('a conversion apply by a role without the requester scope')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/convert`, convert()), (b) => {
+        b.headers(platformSession('finance_admin'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(errorBody('INSUFFICIENT_PERMISSIONS', { reason: 'requester_scope_missing', missing_scopes: ['platform:subscription:request'] }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${convert()}`, 'POST', platformSession('finance_admin'));
+        expect(res.status).toBe(403);
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/change-requests/{id}/conversion (CCP-C2)', () => {
+  const read = (requestId = EX_REQUEST_ID) => `${CR}/${requestId}/conversion`;
+
+  it('read_only_auditor reads a self-service → governed conversion that is pending at the provider (200 pending_provider: true; never reported committed)', async () => {
+    await provider
+      .addInteraction()
+      .given('a self-service-to-governed conversion is pending at the provider')
+      .uponReceiving('a pending-provider conversion read by read_only_auditor')
+      .withRequest('GET', fromProviderState(`${CR}/\${requestId}/conversion`, read()), (b) => {
+        b.headers(platformSession('read_only_auditor'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          request: { id: uuid(EX_REQUEST_ID), action_type: 'CONVERSION', state: 'APPLYING', requested_by: OP.commercial_ops },
+          conversion: {
+            direction: 'TO_GOVERNED',
+            status: 'PENDING_PROVIDER',
+            pending_provider: true,
+            release: null,
+            commands: eachLike({
+              command_kind: 'SUBSCRIPTION_CANCEL',
+              change_request_id: uuid(EX_REQUEST_ID),
+              step: 'cancel_held_activation',
+              idempotency_key: regex('^aramo-ccp-[0-9a-f-]{36}-cancel_held_activation$', `aramo-ccp-${EX_REQUEST_ID}-cancel_held_activation`),
+              params: { mode: 'IMMEDIATE' },
+              state: 'PENDING',
+              pending_provider: true,
+              confirmed_at: null,
+            }),
+            application: null,
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${read()}`, 'GET', platformSession('read_only_auditor'));
+        expect(res.status).toBe(200);
       });
   });
 });

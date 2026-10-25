@@ -2169,6 +2169,7 @@
     ],
     "@aramo/subscription": [
       "A6_APPLICABLE_ACTIONS",
+      "APPLY_DEADLINE_POLICY_KEY",
       "APPROVAL_REFUSALS",
       "AllowanceService",
       "AramoSignIncludedPlanKey",
@@ -2206,6 +2207,7 @@
       "COMMERCIAL_AUDIT_DEFAULT_LIMIT",
       "COMMERCIAL_AUDIT_EVENT_TYPE_PATTERN",
       "COMMERCIAL_AUDIT_MAX_LIMIT",
+      "COMMERCIAL_C2_CONVERSION_TRANSITIONS",
       "COMMERCIAL_CHANGE_REQUEST_KINDS",
       "COMMERCIAL_CHANGE_REQUEST_STATES",
       "COMMERCIAL_CLOCK",
@@ -2217,6 +2219,9 @@
       "COMMERCIAL_ROLE_CHANGE_ROLE_KEYS",
       "COMMERCIAL_TERMINAL_STATES",
       "COMMERCIAL_TRANSITIONS",
+      "CONVERSION_DIRECTIONS",
+      "CONVERSION_RELEASE_STATES",
+      "CONVERSION_RELEASE_TRANSITIONS",
       "CapacityService",
       "CommercialApplyFailedError",
       "CommercialApplyRefusedError",
@@ -2228,12 +2233,16 @@
       "CommercialChangeRequestError",
       "CommercialChangeRequestIntegrityError",
       "CommercialChangeRequestService",
+      "CommercialConversionLedger",
+      "CommercialConversionService",
       "CommercialNotBootstrappedError",
       "CommercialOperatorRepository",
       "CommercialPayloadError",
       "CommercialPolicyInputError",
       "CommercialPolicyRepository",
       "CommercialPolicyUnavailableError",
+      "ConversionApplyFailedError",
+      "ConversionApplyRefusedError",
       "D9_STATEMENT_VERSION",
       "DAY_WINDOW_MS",
       "DOMAIN_NOT_AUTHORITATIVE",
@@ -2278,6 +2287,7 @@
       "SubscriptionPrismaService",
       "actorSatisfiesStep",
       "addMonthsClamped",
+      "applyDeadlineOf",
       "approvalExpiresAt",
       "approvedLegalDocument",
       "assertChainStillSatisfiableAtApply",
@@ -2297,11 +2307,13 @@
       "checkSupportExtension",
       "checkoutCutoverReport",
       "commercialPolicyChecksum",
+      "conversionPayloadErrors",
       "creditEscalation",
       "currentPublishedVersion",
       "discountEscalates",
       "effectivePlatformOwners",
       "effectiveProviderPrice",
+      "effectiveReleaseState",
       "formatCheckoutCutoverReport",
       "inAppContextRef",
       "isA6Applicable",
@@ -3424,6 +3436,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c2-conversion-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -4026,6 +4044,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-c1-billing-operations-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c2-conversion-routes.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -6355,6 +6379,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c2-conversion-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -7005,6 +7035,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-c1-command-inbox.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-c2-conversion.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -9265,6 +9301,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c2-conversion-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -11392,6 +11434,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-c1-billing-operations-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c2-conversion-routes.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },

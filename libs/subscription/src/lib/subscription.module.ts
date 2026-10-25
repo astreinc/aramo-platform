@@ -7,6 +7,8 @@ import { CommercialPolicyRepository } from './commercial/commercial-policy.repos
 import { CommercialChangeRequestService } from './commercial/commercial-change-request.service.js';
 import { CommercialApplyService } from './commercial/commercial-apply.service.js';
 import { CommercialOperatorRepository } from './commercial/commercial-operator.repository.js';
+import { CommercialConversionLedger } from './commercial/commercial-conversion.ledger.js';
+import { CommercialConversionService } from './commercial/commercial-conversion.service.js';
 import { FreePersonalSubscriptionService } from './free-personal-subscription.js';
 import { LegalAcceptanceService } from './legal/legal-acceptance.service.js';
 import { PlanVersionRepository } from './plan-version.repository.js';
@@ -26,6 +28,8 @@ import { PrismaService } from './prisma/prisma.service.js';
 // CCP-A6: the transactional apply of approved Aramo-owned change requests.
 // CCP-C1: the Stripe command outbox (BillingCommandService, the command port bound to the same
 // Stripe adapter) and the webhook inbox (BillingWebhookInboxService).
+// CCP-C2: the governed conversion — the in-transaction ledger (bound into the lifecycle: releases,
+// webhook-time conversion, confirmed-end completion) and the requester-only conversion apply.
 @Module({
   providers: [
     PrismaService,
@@ -43,9 +47,11 @@ import { PrismaService } from './prisma/prisma.service.js';
     CommercialOperatorRepository,
     CommercialChangeRequestService,
     CommercialApplyService,
+    CommercialConversionLedger,
+    CommercialConversionService,
     PlanVersionRepository,
   ],
-  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, PlanVersionRepository],
+  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialConversionLedger, CommercialConversionService, PlanVersionRepository],
 })
 export class SubscriptionModule {
   /**
@@ -72,10 +78,12 @@ export class SubscriptionModule {
         CommercialOperatorRepository,
         CommercialChangeRequestService,
     CommercialApplyService,
+        CommercialConversionLedger,
+        CommercialConversionService,
         PlanVersionRepository,
         ...(opts.providers ?? []),
       ],
-      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, PlanVersionRepository],
+      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialConversionLedger, CommercialConversionService, PlanVersionRepository],
     };
   }
 }

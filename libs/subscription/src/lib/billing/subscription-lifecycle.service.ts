@@ -4,6 +4,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { type AllowanceReadResult, AllowanceService, subscriptionSends } from '../allowance.service.js';
 import { addMonthsClamped } from '../billing-period.js';
 import { CapacityService, type CapacityStatus } from '../capacity.service.js';
+import { CommercialConversionLedger, type ConversionReleaseRow } from '../commercial/commercial-conversion.ledger.js';
 import { isFeatureAvailable } from '../feature-availability.js';
 import { LEGAL_DOCUMENTS, LEGAL_DOCUMENT_REGISTRY, approvedLegalDocument, type LegalDocumentVersion } from '../legal/legal-documents.js';
 import { PIN_REASON_PROVIDER_PLAN_CHANGE, planVersionTerms } from '../plan-version.js';
@@ -114,6 +115,19 @@ export { parsePlanPrices } from './provider-price.js';
 // APPLIED, never on its own local commit. A checkout.session.expired event re-fetches the session:
 // an expired session moves its CREATED CheckoutIntent to EXPIRED and confirms an expire command.
 // The A6 hold above is unchanged (the confirmation runs after it, in the same transaction).
+//
+// CCP-C2 (PBD §5.2 row C2; Conversion Rule C-11…C-15) — the governed conversion, through an applied
+// CONVERSION change request only (CommercialConversionLedger, bound by SubscriptionModule):
+//   checkout  C-1 exception: an unconsumed, unexpired release of the governed row for exactly this
+//             plan version admits ONE checkout; the release is consumed (bound to the CheckoutIntent)
+//             in the locked transaction that creates the intent. Without one: refused as before.
+//   webhook   C-12: a provider-confirmed SENDING activation bound by a valid release ends the
+//             governed row and opens the SELF_SERVICE row in this ONE locked transaction (linked,
+//             audited). An expired / non-matching release, or no release, falls back to the A6 hold.
+//   end       C-13: the transaction that applies a provider-confirmed end and confirms the C1 cancel
+//             command also opens the governed MANUAL row of the pending self-service → governed
+//             conversion (or records APPLY_FAILED on a failed re-check).
+// Unbound (no ledger): every path behaves exactly as in A6 / C1.
 
 export const PAST_DUE_GRACE_DAYS_DEFAULT = 7;
 
@@ -298,6 +312,9 @@ export class SubscriptionLifecycleService {
     // CCP-C1 — the checkout-session read (checkout.session.expired events). Unbound: such an
     // event is IGNORED as before.
     @Optional() @Inject(BILLING_PROVIDER_COMMAND_PORT) private readonly providerCommands?: BillingProviderCommandPort,
+    // CCP-C2 — the conversion ledger (releases, webhook-time conversion, confirmed-end completion).
+    // Unbound: no release is honoured (every governed checkout is refused or held, as in A6).
+    @Optional() @Inject(CommercialConversionLedger) private readonly conversions?: CommercialConversionLedger,
   ) {
     this.legal = legal ?? LEGAL_DOCUMENTS;
   }
@@ -487,7 +504,14 @@ export class SubscriptionLifecycleService {
     // CCP-A6 — early read, outside the lock: fail fast before any provider side effect. The
     // authoritative decision is re-taken under the billing lock below (C-2). A DEVELOPMENT row may
     // still be replaced by a self-service one; a governed (MANUAL) row never is (C-1).
-    assertCheckoutAllowed(await this.prisma.tenantSubscription.findFirst({ where: openBaseSubscription(input.tenant_id, product_key) }));
+    // CCP-C2 (C-1 exception) — an approved conversion release of exactly this governed row, plan and
+    // version admits the checkout; it is consumed under the lock below.
+    const releaseFor = (open: { id: string; source: string; ended_at: Date | null } | null, client: Parameters<CommercialConversionLedger['releaseForCheckout']>[0]) =>
+      open === null || !isGovernedSubscription(open) || this.conversions === undefined
+        ? Promise.resolve(null)
+        : this.conversions.releaseForCheckout(client, { tenant_id: input.tenant_id, product_key, governed_subscription_id: open.id, plan_id: plan.id, plan_version_id: version.id, at });
+    const early = await this.prisma.tenantSubscription.findFirst({ where: openBaseSubscription(input.tenant_id, product_key) });
+    if ((await releaseFor(early, this.prisma)) === null) assertCheckoutAllowed(early);
     // A1 §2.6 — an eligible (US) organization profile is required; unbound → refused.
     // P3 §4 — then an AUTHORITATIVE domain claim; both before any side effect.
     const profile = await this.lockedBillingProfile(input.tenant_id);
@@ -498,7 +522,9 @@ export class SubscriptionLifecycleService {
       // that creates the CheckoutIntent: a governed apply or a webhook for this tenant serializes
       // with it. The checkout session itself is created after commit, outside it (C-3).
       await takeBillingLock(tx, input.tenant_id);
-      assertCheckoutAllowed(await tx.tenantSubscription.findFirst({ where: openBaseSubscription(input.tenant_id, product_key) }));
+      const open = await tx.tenantSubscription.findFirst({ where: openBaseSubscription(input.tenant_id, product_key) });
+      const release = await releaseFor(open, tx);
+      if (release === null) assertCheckoutAllowed(open);
       await tx.checkoutIntent.create({
         data: {
           id: intent_id,
@@ -526,6 +552,8 @@ export class SubscriptionLifecycleService {
           },
         });
       }
+      // CCP-C2 (C-12) — consumed exactly once: bound to this checkout in this transaction.
+      if (release !== null) await (this.conversions as CommercialConversionLedger).consumeForCheckoutInTx(tx, release, { id: intent_id, user_id: input.user_id }, at);
     });
     const session = await this.billing.createCheckoutSession({
       intent_id,
@@ -732,14 +760,20 @@ export class SubscriptionLifecycleService {
     return this.prisma.$transaction(async (tx) => {
       await takeBillingLock(tx, tenant_id);
       const mapped = mapProviderStatus(state.provider_status);
-      const result = await this.applyLocked(tx, tenant_id, product_key, state, mapped, intent, domainOk, at);
+      const result = await this.applyLocked(tx, tenant_id, product_key, state, mapped, intent, domainOk, at, confirmation);
       // CCP-C1 (C-22, C-23) — the state is applied: confirm the cancel commands it proves, in the
       // same transaction (never before the state is applied, never on a command's own commit).
       // Only a lifecycle wired with the command port confirms (SubscriptionModule always binds it;
       // commands are dispatched only through it). Unwired, nothing is confirmed: fail-safe, a
       // command stays pending-provider (C-23), never reported committed.
       if (this.providerCommands !== undefined) {
-        await confirmSubscriptionCommandsInTx(tx, { tenant_id, product_key, state, ends: mapped.ends, confirmation, at });
+        const confirmed = await confirmSubscriptionCommandsInTx(tx, { tenant_id, product_key, state, ends: mapped.ends, confirmation, at });
+        // CCP-C2 (C-13) — a self-service → governed conversion whose provider end is now confirmed
+        // opens its governed row here, AFTER that end was applied, in this same transaction.
+        if (confirmed.length > 0 && this.conversions !== undefined) {
+          const done = await this.conversions.completeConfirmedInTx(tx, { command_ids: confirmed, at, correlation_id: `billing:${confirmation.source.toLowerCase()}:${confirmation.event_id ?? state.subscription_ref}` });
+          if (done.length > 0) return { ...result, detail: `${result.detail ?? ''}; conversion ${done.map((d) => `${d.change_request_id} ${d.outcome}`).join(', ')}` };
+        }
       }
       return result;
     });
@@ -752,9 +786,10 @@ export class SubscriptionLifecycleService {
     product_key: ProductKey,
     state: ProviderSubscriptionState,
     mapped: ReturnType<typeof mapProviderStatus>,
-    intent: { id: string; tenant_id: string; user_id: string; plan_id: string; plan: { key: string; product_key: string } } | null,
+    intent: { id: string; tenant_id: string; user_id: string; plan_id: string; status: string; plan: { key: string; product_key: string } } | null,
     domainOk: boolean,
     at: Date,
+    confirmation: BillingCommandConfirmation = REFETCH_CONFIRMATION,
   ): Promise<ApplyResult> {
     const row = await tx.tenantSubscription.findFirst({
       where: { billing_provider: state.provider, billing_subscription_ref: state.subscription_ref, product_key },
@@ -773,9 +808,28 @@ export class SubscriptionLifecycleService {
     // A provider subscription that has ended no longer conflicts (C-9: a webhook-confirmed end
     // resolves the flag). Composed beside the country and domain holds (C-10).
     const governed = await tx.tenantSubscription.findFirst({ where: openBaseSubscription(tenant_id, product_key) });
-    const governedConflict = governed !== null && isGovernedSubscription(governed) && !mapped.ends;
+    // CCP-C2 (C-12) — a valid conversion release that binds THIS activation lifts the hold; an
+    // expired, consumed-elsewhere or non-matching one does not (the hold stands, C-6/C-7).
+    let release: ConversionReleaseRow | null = null;
+    let releaseNote = '';
+    if (governed !== null && isGovernedSubscription(governed) && !mapped.ends && this.conversions !== undefined) {
+      const target = await this.activationTarget(tx, intent, state, product_key);
+      const verdict = await this.conversions.releaseForActivation(tx, {
+        tenant_id,
+        product_key,
+        governed,
+        intent,
+        subscription_ref: state.subscription_ref,
+        current_period_start: state.current_period_start,
+        target: { plan_id: target.plan_id, plan_version_id: target.version?.id ?? null },
+        at,
+      });
+      if (verdict.valid) release = verdict.release;
+      else releaseNote = verdict.reason;
+    }
+    const governedConflict = governed !== null && isGovernedSubscription(governed) && !mapped.ends && release === null;
     await this.guardFlag(tx, tenant_id, state, intent_id, GOVERNED_SUBSCRIPTION_OPEN, governedConflict, at);
-    const allHeld = [held, ...(governedConflict ? [GOVERNED_SUBSCRIPTION_HELD] : [])].filter((h) => h !== '').join('; ');
+    const allHeld = [held, ...(governedConflict ? [releaseNote === '' ? GOVERNED_SUBSCRIPTION_HELD : `${GOVERNED_SUBSCRIPTION_HELD}; ${releaseNote}`] : [])].filter((h) => h !== '').join('; ');
     if (allHeld !== '') {
       // C-7(c)/(d) — IGNORED with the hold named; openRow is not reached, so no SELF_SERVICE row
       // opens, the governed row is untouched and the CheckoutIntent stays CREATED.
@@ -784,7 +838,27 @@ export class SubscriptionLifecycleService {
       );
       return { outcome: 'IGNORED', detail: allHeld, tenant_id } as ApplyResult;
     }
-    return this.openRow(tx, tenant_id, product_key, intent, state, mapped, at);
+    return this.openRow(tx, tenant_id, product_key, intent, state, mapped, at, release === null ? undefined : { release, confirmation });
+  }
+
+  /**
+   * The plan and version an activation opens: the checkout plan, unless the provider price maps to
+   * another sellable plan (a plan change made in the provider); the version is the price's PUBLISHED
+   * version, else the plan's current one (CCP-A5).
+   */
+  private async activationTarget(
+    tx: Tx,
+    intent: { plan_id: string },
+    state: ProviderSubscriptionState,
+    product_key: ProductKey,
+  ) {
+    const resolved = await this.planForPrice(tx, state.price_ref, product_key);
+    const plan_id = resolved?.plan_id ?? intent.plan_id;
+    const version =
+      resolved !== null && resolved.version_status === 'PUBLISHED'
+        ? await tx.planVersion.findUniqueOrThrow({ where: { id: resolved.plan_version_id } })
+        : await currentPublishedVersion(tx, plan_id);
+    return { plan_id, version };
   }
 
   /**
@@ -906,25 +980,23 @@ export class SubscriptionLifecycleService {
     state: ProviderSubscriptionState,
     mapped: ReturnType<typeof mapProviderStatus>,
     at: Date,
+    conversion?: { release: ConversionReleaseRow; confirmation: BillingCommandConfirmation },
   ): Promise<ApplyResult> {
     if (mapped.ends) return { outcome: 'IGNORED', detail: 'checkout subscription already ended', tenant_id };
     // The plan is the one the owner chose at checkout; a provider price that maps
     // to a different sellable plan wins (plan change made in the provider).
     // CCP-A5 — the price resolves to a VERSION; else the checkout plan's current version.
-    const resolved = await this.planForPrice(tx, state.price_ref, product_key);
-    const plan_id = resolved?.plan_id ?? intent.plan_id;
+    const { plan_id, version } = await this.activationTarget(tx, intent, state, product_key);
     const plan = await tx.plan.findUniqueOrThrow({ where: { id: plan_id } });
     if (plan.product_key !== product_key) return { outcome: 'IGNORED', detail: `checkout plan belongs to another product than ${product_key}`, tenant_id };
-    const version =
-      resolved !== null && resolved.version_status === 'PUBLISHED'
-        ? await tx.planVersion.findUniqueOrThrow({ where: { id: resolved.plan_version_id } })
-        : await currentPublishedVersion(tx, plan_id);
     if (version === null) return { outcome: 'IGNORED', detail: `plan ${plan.key} has no published version`, tenant_id };
     const terms = planVersionTerms(version).plan;
     const open = await tx.tenantSubscription.findFirst({ where: openBaseSubscription(tenant_id, product_key) });
     // CCP-A6 (C-6) — defence in depth: applyProviderState holds a governed conflict before this
     // point; openRow itself never ends a governed row either.
-    if (open !== null && isGovernedSubscription(open)) {
+    // CCP-C2 (C-12) — except the one governed row a valid conversion release names for this activation.
+    const converts = open !== null && conversion !== undefined && conversion.release.governed_subscription_id === open.id && isGovernedSubscription(open);
+    if (open !== null && isGovernedSubscription(open) && !converts) {
       return { outcome: 'IGNORED', detail: GOVERNED_SUBSCRIPTION_HELD, tenant_id };
     }
     const sends = SENDING.has(mapped.status);
@@ -964,9 +1036,21 @@ export class SubscriptionLifecycleService {
       },
     });
     await tx.checkoutIntent.update({ where: { id: intent.id }, data: { status: 'COMPLETED', completed_at: at } });
+    if (converts && open !== null && conversion !== undefined) {
+      // C-12 / C-14 — both rows and the request are linked through the release, and audited.
+      await (this.conversions as CommercialConversionLedger).convertedInTx(tx, {
+        release: conversion.release,
+        governed: open,
+        self_service_subscription_id: id,
+        intent_id: intent.id,
+        subscription_ref: state.subscription_ref,
+        at,
+        correlation_id: `billing:${conversion.confirmation.source.toLowerCase()}:${conversion.confirmation.event_id ?? state.subscription_ref}`,
+      });
+    }
     return {
       outcome: 'APPLIED',
-      detail: `opened ${mapped.status}${open !== null ? ` (ended ${open.source})` : ''}`,
+      detail: `opened ${mapped.status}${open !== null ? ` (ended ${open.source}${converts ? `; conversion ${conversion?.release.change_request_id}` : ''})` : ''}`,
       tenant_id,
       subscription_id: id,
       ...(sends ? { activated_owner_user_id: intent.user_id } : {}),

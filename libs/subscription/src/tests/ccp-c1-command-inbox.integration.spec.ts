@@ -64,11 +64,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C1 Stripe com
 
   // ---- fixtures ---------------------------------------------------------------------------
 
+  /**
+   * CCP-C2 — a structurally valid CONVERSION payload (the C2 schema is enforced at create). These C1
+   * fixtures are never applied: they only carry provider commands.
+   */
+  const conversionFixture = () => ({ direction: 'TO_GOVERNED', subscription_id: randomUUID(), plan_key: INCLUDED, plan_version_id: randomUUID() });
   /** An APPROVED CONVERSION change request (Finance-only chain, TD-A3-2) for the tenant. */
   async function approvedConversion(t: string): Promise<string> {
     const r = await h.changeRequests.create(
       as(OPS, 'commercial_ops'),
-      { action_type: 'CONVERSION', tenant_id: t, product_key: 'sign', payload: { c1_fixture: 'self_service_to_governed' }, reason: 'c1 conversion fixture', idempotency_key: key() },
+      { action_type: 'CONVERSION', tenant_id: t, product_key: 'sign', payload: conversionFixture(), reason: 'c1 conversion fixture', idempotency_key: key() },
       A6_CTX,
     );
     await h.changeRequests.submit(as(OPS, 'commercial_ops'), r.request.id, A6_CTX);
@@ -138,7 +143,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C1 Stripe com
     const { t, ref } = await selfServiceTenant();
     const pending = await h.changeRequests.create(
       as(OPS, 'commercial_ops'),
-      { action_type: 'CONVERSION', tenant_id: t, product_key: 'sign', payload: {}, reason: 'pending', idempotency_key: key() },
+      { action_type: 'CONVERSION', tenant_id: t, product_key: 'sign', payload: conversionFixture(), reason: 'pending', idempotency_key: key() },
       A6_CTX,
     );
     await expect(cancel(pending.request.id, t, ref)).rejects.toMatchObject({ code: 'CHANGE_REQUEST_NOT_APPROVED' });
