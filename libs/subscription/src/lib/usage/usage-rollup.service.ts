@@ -16,13 +16,15 @@ import { USAGE_METRICS, usageMetricOf, usageMetricsOf, type UsageMetricDefinitio
 // Source of truth: the AllowanceUsage ledger (unchanged; this service only READS it). Every
 // roll-up row is DERIVED and recomputable: recovery is "disable the worker" or `rebuild`.
 //
-// Watermark (pre-execution D1-C4). Each AllowanceUsage write carries its transaction id
-// (rollup_xid, trigger). A run is ONE REPEATABLE READ transaction: it processes every row with
-// rollup_xid >= the watermark (every row on the first, FULL, run) plus every bucket a row left
-// (UsageRollupVacatedBucket: DELETE or a period move), then sets the watermark to
-// pg_snapshot_xmin of its own snapshot. Transactions below that xmin have finished (visible to
+// Watermark (pre-execution D1-C4, re-pointed by D1-R under the TD-D1-3 ruling). Every
+// AllowanceUsage INSERT / UPDATE / DELETE appends one provenance row to the append-only change log
+// AllowanceUsageChange (the ledger's AFTER trigger): the writing transaction id (change_xid) and the
+// bucket keys before and after. The ledger itself carries no D1 column. A run is ONE REPEATABLE READ
+// transaction: it recomputes every bucket named (old or new keys) by a change with
+// change_xid >= the watermark (every ledger bucket on the first, FULL, run), then sets the watermark
+// to pg_snapshot_xmin of its own snapshot. Transactions below that xmin have finished (visible to
 // the run if committed); transactions at or above it carry an xid the next run still selects.
-// So a late commit or a back-dated row is never skipped.
+// So a late commit, a back-dated row, a period move or a DELETE is never skipped.
 //
 // Idempotency (D1-C5). A dirty bucket (tenant × metric × period_start) is RECOMPUTED from the
 // source and its derived rows REPLACED; nothing is incremented. Re-runs and rewound / overlapping
@@ -31,7 +33,7 @@ import { USAGE_METRICS, usageMetricOf, usageMetricsOf, type UsageMetricDefinitio
 // nothing (CONFLICT).
 //
 // Reconciliation (D1-C7), exact, never approximate:
-//   R1  every bucket with no row at or above the watermark: daily rows and the period row equal
+//   R1  every bucket with no change at or above the watermark: daily rows and the period row equal
 //       the source counts (CONSUMED, CONSUMED SEND, CONSUMED HISTORICAL, RESERVED). A source
 //       bucket without roll-up, or a roll-up without source, is a mismatch. Buckets touched after
 //       the watermark are PENDING (reported, not compared).
@@ -224,19 +226,19 @@ export class UsageRollupService {
     let rows_scanned: number;
     if (mode === 'INCREMENTAL' && from !== null) {
       const fromText = from.toString();
-      const touched = await tx.$queryRaw<Array<{ tenant_id: string; period_start: Date; n: number }>>`
-        SELECT tenant_id::text AS tenant_id, period_start, count(*)::int AS n
-          FROM subscription."AllowanceUsage"
-         WHERE allowance_key = ${m.allowance_key} AND rollup_xid >= ${fromText}::xid8
-         GROUP BY tenant_id, period_start`;
-      const vacated = await tx.$queryRaw<Array<{ tenant_id: string; period_start: Date }>>`
-        SELECT DISTINCT tenant_id::text AS tenant_id, period_start
-          FROM subscription."UsageRollupVacatedBucket"
-         WHERE allowance_key = ${m.allowance_key} AND vacated_xid >= ${fromText}::xid8`;
-      const map = new Map<string, Bucket>();
-      for (const b of [...touched, ...vacated]) map.set(bucketId(b), { tenant_id: b.tenant_id, period_start: b.period_start });
-      buckets = [...map.values()];
-      rows_scanned = touched.reduce((s, r) => s + r.n, 0);
+      // Every bucket a change in the window touched: the row's bucket before (UPDATE / DELETE) and
+      // after (INSERT / UPDATE). rows_scanned = change records in the window.
+      const changed = await tx.$queryRaw<Array<{ tenant_id: string; period_start: Date }>>`
+        SELECT old_tenant_id::text AS tenant_id, old_period_start AS period_start FROM subscription."AllowanceUsageChange"
+         WHERE old_allowance_key = ${m.allowance_key} AND change_xid >= ${fromText}::xid8
+        UNION
+        SELECT new_tenant_id::text AS tenant_id, new_period_start AS period_start FROM subscription."AllowanceUsageChange"
+         WHERE new_allowance_key = ${m.allowance_key} AND change_xid >= ${fromText}::xid8`;
+      const n = await tx.$queryRaw<Array<{ n: number }>>`
+        SELECT count(*)::int AS n FROM subscription."AllowanceUsageChange"
+         WHERE (old_allowance_key = ${m.allowance_key} OR new_allowance_key = ${m.allowance_key}) AND change_xid >= ${fromText}::xid8`;
+      buckets = changed.map((b) => ({ tenant_id: b.tenant_id, period_start: b.period_start }));
+      rows_scanned = n[0]?.n ?? 0;
     } else {
       // FULL (first run) and REBUILD: every derived row of the metric is recomputed from the ledger.
       await tx.usageRollupDaily.deleteMany({ where: { metric_key: m.metric_key } });
@@ -252,10 +254,6 @@ export class UsageRollupService {
     for (let i = 0; i < buckets.length; i += BUCKET_BATCH) {
       await this.recomputeBuckets(tx, m, buckets.slice(i, i + BUCKET_BATCH), run_id, started_at);
     }
-
-    // Processed: prune the vacated-bucket log below the new watermark (every such row is visible here).
-    const xminText = xmin.toString();
-    await tx.$executeRaw`DELETE FROM subscription."UsageRollupVacatedBucket" WHERE allowance_key = ${m.allowance_key} AND vacated_xid < ${xminText}::xid8`;
 
     // The watermark row is written by EVERY run: a concurrent run whose snapshot predates this
     // commit fails serialization here (REPEATABLE READ) and writes nothing.
@@ -487,11 +485,11 @@ export class UsageRollupService {
                consumed_historical_count AS pch, reserved_count AS pr
           FROM subscription."UsageRollupPeriod" WHERE metric_key = ${m.metric_key}
       ), pend AS (
-        SELECT tenant_id, period_start FROM subscription."AllowanceUsage"
-         WHERE allowance_key = ${m.allowance_key} AND rollup_xid >= ${watermark}::xid8
+        SELECT old_tenant_id AS tenant_id, old_period_start AS period_start FROM subscription."AllowanceUsageChange"
+         WHERE old_allowance_key = ${m.allowance_key} AND change_xid >= ${watermark}::xid8
         UNION
-        SELECT tenant_id, period_start FROM subscription."UsageRollupVacatedBucket"
-         WHERE allowance_key = ${m.allowance_key} AND vacated_xid >= ${watermark}::xid8
+        SELECT new_tenant_id AS tenant_id, new_period_start AS period_start FROM subscription."AllowanceUsageChange"
+         WHERE new_allowance_key = ${m.allowance_key} AND change_xid >= ${watermark}::xid8
       )
       SELECT j.tenant_id::text AS tenant_id, j.period_start,
              coalesce(j.has_source, false) AS has_source, (j.pc IS NOT NULL) AS has_period,
@@ -666,10 +664,10 @@ export class UsageRollupService {
       const hit = await this.prisma.$queryRaw<Array<{ tenant_id: string; period_start: Date }>>`
         SELECT DISTINCT b.t::text AS tenant_id, b.p AS period_start
           FROM unnest(${tenants}::uuid[], ${periods}::timestamptz[]) AS b(t, p)
-         WHERE EXISTS (SELECT 1 FROM subscription."AllowanceUsage" au
-                        WHERE au.allowance_key = ${m.allowance_key} AND au.tenant_id = b.t AND au.period_start = b.p AND au.rollup_xid >= ${w}::xid8)
-            OR EXISTS (SELECT 1 FROM subscription."UsageRollupVacatedBucket" v
-                        WHERE v.allowance_key = ${m.allowance_key} AND v.tenant_id = b.t AND v.period_start = b.p AND v.vacated_xid >= ${w}::xid8)`;
+         WHERE EXISTS (SELECT 1 FROM subscription."AllowanceUsageChange" c
+                        WHERE c.change_xid >= ${w}::xid8
+                          AND ((c.old_allowance_key = ${m.allowance_key} AND c.old_tenant_id = b.t AND c.old_period_start = b.p)
+                            OR (c.new_allowance_key = ${m.allowance_key} AND c.new_tenant_id = b.t AND c.new_period_start = b.p)))`;
       for (const h of hit) out.add(`${metric_key}|${h.tenant_id}|${h.period_start.toISOString()}`);
     }
     return out;

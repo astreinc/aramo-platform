@@ -21,6 +21,7 @@ import {
   CCP_D1_MIGRATION,
   backfillUsageEventsForLedger,
   derivedSnapshot,
+  ledgerDefinition,
   ledgerFingerprint,
   ledgerTotals,
   rollupTotals,
@@ -71,6 +72,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D1 — usage 
   let prisma: PrismaService;
   let allowance: AllowanceService;
   let svc: UsageRollupService;
+  let ledgerBeforeD1: Awaited<ReturnType<typeof ledgerDefinition>>;
   const url = (): string => container.getConnectionUri();
   const metric = (r: UsageReconciliation) => r.metrics[0]!;
   const sign = { tenant_id: ASTRE, product_key: SIGN_PRODUCT_KEY, allowance_key: KEY } as const;
@@ -88,10 +90,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D1 — usage 
     container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
     pg = new Client({ connectionString: url() });
     await pg.connect();
-    // The A4 corpus is seeded on the pre-A4 schema (its ledger rows predate D1: rollup_xid NULL).
+    // The A4 corpus is seeded on the pre-A4 schema (its ledger rows predate D1: no change records).
     for (const f of PRE_A4) await pg.query(readFileSync(f, 'utf8'));
     await seedCorpus(pg);
-    for (const f of POST_A4) await pg.query(readFileSync(f, 'utf8'));
+    for (const f of POST_A4) {
+      // TD-D1-3 ruling evidence: the ledger's own definition just before D1.
+      if (f === CCP_D1_MIGRATION) ledgerBeforeD1 = await ledgerDefinition(pg);
+      await pg.query(readFileSync(f, 'utf8'));
+    }
     expect(POST_A4).toContain(CCP_D1_MIGRATION);
     // The corpus wrote the ledger directly; give its CONSUMED SEND rows their raw events.
     expect(await backfillUsageEventsForLedger(pg)).toBe(79 + 5 + 80 + 96 + 100 + 250 + 3 + 3);
@@ -161,9 +167,47 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D1 — usage 
     expect(p.ok).toBe(false);
   });
 
-  it('OFF-2 pre-D1 ledger rows carry no rollup_xid; rows written after D1 carry one', async () => {
-    const r = (await pg.query(`SELECT count(*) FILTER (WHERE rollup_xid IS NULL)::int AS pre, count(*) FILTER (WHERE rollup_xid IS NOT NULL)::int AS post FROM subscription."AllowanceUsage"`)).rows[0];
-    expect(r).toEqual({ pre: 79 + 5 + 80 + 96 + 2 + 3 + 100 + 250 + 3 + 3, post: 3 + 5 + 1 });
+  it('OFF-2 pre-D1 ledger rows have no change record; every post-D1 ledger write has exactly one', async () => {
+    const r = (await pg.query(
+      `SELECT (SELECT count(*)::int FROM subscription."AllowanceUsage" a WHERE NOT EXISTS (SELECT 1 FROM subscription."AllowanceUsageChange" c WHERE c.usage_id = a.id)) AS pre,
+              (SELECT count(DISTINCT usage_id)::int FROM subscription."AllowanceUsageChange") AS post_rows,
+              (SELECT count(*)::int FROM subscription."AllowanceUsageChange") AS changes,
+              (SELECT count(*)::int FROM subscription."AllowanceUsageChange" WHERE op = 'INSERT') AS inserts,
+              (SELECT count(*)::int FROM subscription."AllowanceUsageChange" WHERE op = 'UPDATE') AS updates`,
+    )).rows[0];
+    // Astre: 3 historical + 5 reserves (INSERT), 3 consumes + 1 release (UPDATE); the orphan row (INSERT).
+    expect(r).toEqual({ pre: 79 + 5 + 80 + 96 + 2 + 3 + 100 + 250 + 3 + 3, post_rows: 3 + 5 + 1, changes: 13, inserts: 9, updates: 4 });
+  });
+
+  // ── LEDGER (TD-D1-3 ruling: the change log preserves the ledger's semantics) ─────────────────
+
+  it('LEDGER-1 the ledger definition is byte-identical to before D1 (columns, constraints, indexes); D1 adds exactly one AFTER trigger', async () => {
+    const after = await ledgerDefinition(pg);
+    expect(after.columns).toEqual(ledgerBeforeD1.columns);
+    expect(after.constraints).toEqual(ledgerBeforeD1.constraints);
+    expect(after.indexes).toEqual(ledgerBeforeD1.indexes);
+    expect(after.columns.map((c) => c.column_name)).toEqual(['id', 'tenant_id', 'allowance_key', 'send_key', 'period_start', 'state', 'origin', 'reserved_at', 'reserved_until', 'finalized_at']);
+    const added = after.triggers.filter((t) => !ledgerBeforeD1.triggers.some((b) => b.tgname === t.tgname));
+    expect(after.triggers.length).toBe(ledgerBeforeD1.triggers.length + 1);
+    expect(added.map((t) => t.tgname)).toEqual(['allowance_usage_change_log']);
+    // AFTER (not BEFORE), ROW, INSERT OR UPDATE OR DELETE: it cannot alter the ledger row it observes.
+    expect(added[0]!.def).toBe('CREATE TRIGGER allowance_usage_change_log AFTER INSERT OR DELETE OR UPDATE ON subscription."AllowanceUsage" FOR EACH ROW EXECUTE FUNCTION subscription.ccp_d1_allowance_usage_change()');
+  });
+
+  it('LEDGER-2 the trigger function only appends to the change log: no ledger write, no refusal, no assignment to NEW', async () => {
+    const def = (await pg.query(`SELECT pg_get_functiondef('subscription.ccp_d1_allowance_usage_change()'::regprocedure) AS d`)).rows[0].d as string;
+    expect(def.match(/INSERT INTO "subscription"\."(\w+)"/g)).toEqual(Array(3).fill('INSERT INTO "subscription"."AllowanceUsageChange"'));
+    expect(def).not.toMatch(/\bUPDATE\s+"subscription"|\bDELETE\s+FROM|RAISE|NEW\."\w+"\s*:=/);
+    expect(def).toMatch(/RETURN NULL/);
+  });
+
+  it('LEDGER-3 the change log is provenance only (no quantity, state, count or balance) and append-only', async () => {
+    const cols = (await pg.query(`SELECT column_name FROM information_schema.columns WHERE table_schema = 'subscription' AND table_name = 'AllowanceUsageChange' ORDER BY ordinal_position`)).rows.map((c) => c.column_name);
+    expect(cols).toEqual(['id', 'usage_id', 'op', 'change_xid', 'old_tenant_id', 'old_allowance_key', 'old_period_start', 'new_tenant_id', 'new_allowance_key', 'new_period_start', 'changed_at']);
+    expect(cols.filter((c: string) => /quantity|state|count|balance|origin|used|remaining|limit|send_key/.test(c))).toEqual([]);
+    await expect(pg.query(`UPDATE subscription."AllowanceUsageChange" SET op = 'INSERT'`)).rejects.toThrow(/append-only/);
+    await expect(pg.query(`DELETE FROM subscription."AllowanceUsageChange"`)).rejects.toThrow(/append-only/);
+    await expect(pg.query(`TRUNCATE subscription."AllowanceUsageChange"`)).rejects.toThrow(/append-only/);
   });
 
   // ── REC ─────────────────────────────────────────────────────────────────────────────────────
@@ -304,7 +348,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D1 — usage 
     expect(p.periods.find((x) => x.period_start.toISOString() === '2026-09-30T00:00:00.000Z')?.stale).toBe(true);
     expect(p.periods.filter((x) => x.stale)).toHaveLength(1);
     const r = await svc.run();
-    expect(r.metrics[0]).toMatchObject({ mode: 'INCREMENTAL', buckets_recomputed: 1, rows_scanned: 1, pending_bucket_count: 0, reconciliation: 'RECONCILED' });
+    expect(r.metrics[0]).toMatchObject({ mode: 'INCREMENTAL', buckets_recomputed: 1, rows_scanned: 2, pending_bucket_count: 0, reconciliation: 'RECONCILED' }); // reserve (INSERT) + consume (UPDATE)
     await expectLedgerEqualsRollups();
   });
 
@@ -347,7 +391,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D1 — usage 
     await expectLedgerEqualsRollups();
   });
 
-  it('WM-4 a row that MOVES period (released, then re-reserved later) and a DELETE: the vacated bucket is recomputed', async () => {
+  it('WM-4 a row that MOVES period (released, then re-reserved later) and a DELETE: the old bucket (from the change log) is recomputed', async () => {
     await send('wm4:move', new Date('2026-10-22T10:00:00Z'), 'HOLD');
     await svc.run();
     const sepBefore = (await rollupTotals(pg)).find((x) => x.tenant_id === ASTRE && x.period_start === '2026-09-30T00:00:00.000Z')!;
@@ -355,7 +399,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D1 — usage 
     // Re-reserved in the next period (2026-10-31): the ledger row's period_start changes.
     const re = await allowance.reserve({ ...sign, send_key: 'wm4:move', at: new Date('2026-11-02T10:00:00Z') });
     expect(re.ok).toBe(true);
-    expect((await pg.query(`SELECT count(*)::int AS n FROM subscription."UsageRollupVacatedBucket"`)).rows[0].n).toBe(1);
+    const move = (await pg.query(
+      `SELECT c.op, to_char(c.old_period_start AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS o, to_char(c.new_period_start AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS n
+         FROM subscription."AllowanceUsageChange" c JOIN subscription."AllowanceUsage" a ON a.id = c.usage_id WHERE a.send_key = 'wm4:move' ORDER BY c.id`,
+    )).rows;
+    expect(move).toEqual([{ op: 'INSERT', o: null, n: '2026-09-30' }, { op: 'UPDATE', o: '2026-09-30', n: '2026-09-30' }, { op: 'UPDATE', o: '2026-09-30', n: '2026-10-31' }]);
     // Before the run both buckets are pending: never reported as a mismatch.
     const rec = await svc.reconcile('sign');
     // Sep 30 (vacated) and Oct 31 (the row's new bucket).
@@ -365,12 +413,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D1 — usage 
     const after = await rollupTotals(pg);
     expect(after.find((x) => x.tenant_id === ASTRE && x.period_start === '2026-09-30T00:00:00.000Z')!.reserved).toBe(sepBefore.reserved - 1);
     expect(after.find((x) => x.tenant_id === ASTRE && x.period_start === '2026-10-31T00:00:00.000Z')).toMatchObject({ reserved: 1, consumed: 0 });
-    // The processed vacated entry is pruned.
-    expect((await pg.query(`SELECT count(*)::int AS n FROM subscription."UsageRollupVacatedBucket"`)).rows[0].n).toBe(0);
     // DELETE of a RESERVED row (e.g. an operator correction): logged, recomputed.
     await pg.query(`DELETE FROM subscription."AllowanceUsage" WHERE tenant_id = $1 AND send_key = 'wm4:move'`, [ASTRE]);
-    expect((await svc.run()).metrics[0]).toMatchObject({ buckets_recomputed: 1, reconciliation: 'RECONCILED' });
+    expect((await svc.run()).metrics[0]).toMatchObject({ buckets_recomputed: 1, rows_scanned: 1, reconciliation: 'RECONCILED' });
     expect((await rollupTotals(pg)).find((x) => x.tenant_id === ASTRE && x.period_start === '2026-10-31T00:00:00.000Z')).toBeUndefined();
+    // The DELETE is logged although its ledger row is gone (usage_id has no FK by design).
+    expect((await pg.query(`SELECT count(*)::int AS n FROM subscription."AllowanceUsageChange" WHERE op = 'DELETE'`)).rows[0].n).toBe(1);
     await expectLedgerEqualsRollups();
   });
 
@@ -435,7 +483,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D1 — usage 
           if (!['node_modules', 'generated', 'tests', 'dist'].includes(e.name)) walk(p);
         } else if (/\.ts$/.test(e.name) && !/\.spec\.ts$/.test(e.name)) {
           const src = readFileSync(p, 'utf8');
-          if (/UsageRollup|usageRollup|UsageMetric\b|rollup_xid/.test(src)) offenders.push(p.slice(ROOT.length + 1));
+          if (/UsageRollup|usageRollup|UsageMetric\b|AllowanceUsageChange|allowanceUsageChange/.test(src)) offenders.push(p.slice(ROOT.length + 1));
         }
       }
     };
@@ -454,12 +502,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D1 — usage 
     const before = await ledgerFingerprint(pg);
     await pg.query(readFileSync(CCP_D1_COMPENSATING, 'utf8'));
     const left = (await pg.query(
-      `SELECT (SELECT count(*)::int FROM information_schema.tables WHERE table_schema = 'subscription' AND table_name LIKE 'Usage%') AS tables,
-              (SELECT count(*)::int FROM information_schema.columns WHERE table_schema = 'subscription' AND column_name = 'rollup_xid') AS columns,
+      `SELECT (SELECT count(*)::int FROM information_schema.tables WHERE table_schema = 'subscription' AND (table_name LIKE 'Usage%' OR table_name = 'AllowanceUsageChange')) AS tables,
               (SELECT count(*)::int FROM pg_proc WHERE proname LIKE 'ccp_d1_%') AS functions,
-              (SELECT count(*)::int FROM pg_trigger WHERE tgname LIKE 'allowance_usage_rollup%') AS triggers`,
+              (SELECT count(*)::int FROM pg_trigger WHERE tgname LIKE 'allowance_usage_change%') AS triggers`,
     )).rows[0];
-    expect(left).toEqual({ tables: 0, columns: 0, functions: 0, triggers: 0 });
+    expect(left).toEqual({ tables: 0, functions: 0, triggers: 0 });
+    expect(await ledgerDefinition(pg)).toEqual(ledgerBeforeD1);
     expect(await ledgerFingerprint(pg)).toEqual(before);
     await pg.query(readFileSync(CCP_D1_MIGRATION, 'utf8'));
     expect((await svc.reconcile('sign')).status).toBe('NOT_RUN');

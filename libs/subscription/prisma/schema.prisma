@@ -253,10 +253,6 @@ model AllowanceUsage {
   // A RESERVED row older than this is resolved by reconciliation before counting.
   reserved_until DateTime             @db.Timestamptz(6)
   finalized_at   DateTime?            @db.Timestamptz(6)
-  // CCP-D1 — the writing transaction id, set by trigger (migration 20261025240000) on every
-  // INSERT and UPDATE; read only by the usage roll-up watermark, never by an allowance decision.
-  // Unsupported in Prisma, so the generated client never selects or writes it.
-  rollup_xid     Unsupported("xid8")?
 
   @@unique([tenant_id, allowance_key, send_key])
   @@index([tenant_id, allowance_key, period_start])
@@ -686,16 +682,27 @@ model UsageRollupWatermark {
   @@schema("subscription")
 }
 
-// DERIVED bookkeeping written by the AllowanceUsage trigger: a bucket a row LEFT (DELETE, or an
-// UPDATE that changed tenant / allowance / period_start). The worker recomputes it and prunes it.
-model UsageRollupVacatedBucket {
-  id            BigInt              @id @default(autoincrement())
-  tenant_id     String              @db.Uuid
-  allowance_key String
-  period_start  DateTime            @db.Timestamptz(6)
-  vacated_xid   Unsupported("xid8")
+// CCP-D1 (TD-D1-3 ruling) — the APPEND-ONLY change log of the AllowanceUsage ledger, written only by
+// the ledger's AFTER trigger (migration 20261025240000); UPDATE / DELETE / TRUNCATE rejected. Provenance
+// only: which ledger row changed, how, in which transaction, and its bucket keys before and after. No
+// quantity, state or balance — not a second ledger; no allowance decision reads it. usage_id links the
+// ledger row by id with no FK (a DELETE is still logged). The roll-up worker watermarks over change_xid.
+model AllowanceUsageChange {
+  id                BigInt              @id @default(autoincrement())
+  usage_id          String              @db.Uuid
+  // CHECK: INSERT | UPDATE | DELETE
+  op                String
+  change_xid        Unsupported("xid8")
+  old_tenant_id     String?             @db.Uuid
+  old_allowance_key String?
+  old_period_start  DateTime?           @db.Timestamptz(6)
+  new_tenant_id     String?             @db.Uuid
+  new_allowance_key String?
+  new_period_start  DateTime?           @db.Timestamptz(6)
+  changed_at        DateTime            @db.Timestamptz(6)
 
-  @@index([allowance_key, tenant_id, period_start])
+  @@index([change_xid])
+  @@index([usage_id])
   @@schema("subscription")
 }
 

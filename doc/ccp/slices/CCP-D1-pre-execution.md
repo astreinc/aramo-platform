@@ -83,3 +83,12 @@ None has arisen: no unanticipated architectural change (D1 implements the archit
 
 ## 6. Addendum (during execution, before any commit)
 - **D1-C4a — vacated-bucket log.** A row that LEAVES a bucket (a DELETE, or an UPDATE that changes tenant, allowance or `period_start`, e.g. a RELEASED row re-reserved into a later period, `allowance.service.ts:231`) is invisible to the `rollup_xid` scan of its old bucket, which would leave that bucket stale and unreconcilable. The D1 migration therefore adds a sixth derived table, `UsageRollupVacatedBucket`, written by an `AFTER UPDATE OR DELETE` trigger on `AllowanceUsage` (old bucket + `pg_current_xact_id()`), read by the worker as part of the dirty set and by the reconciliation as part of the pending set, and pruned by the worker below the new watermark. Typed divergence TD-D1-2.
+
+## 7. Addendum D1-R (after merge `18b2c032`; Architect/PO ruling on TD-D1-3, `doc/ccp/decisions.md` "second disposition")
+The ruling prefers "a separate append-only change log linked to the ledger record, preserving the authoritative usage ledger's semantics". D1-R moves to it, **superseding D1-C4 and D1-C4a**:
+- `AllowanceUsage.rollup_xid` and its BEFORE trigger are **removed**: the ledger's columns, constraints and indexes are byte-identical to before D1.
+- `UsageRollupVacatedBucket` is **folded into** a new append-only `AllowanceUsageChange` (id, `usage_id`, `op` INSERT/UPDATE/DELETE, `change_xid` xid8, bucket keys before and after, `changed_at`), written by ONE `AFTER INSERT OR UPDATE OR DELETE` row trigger on the ledger; UPDATE / DELETE / TRUNCATE of the change log rejected. Provenance only: no quantity, state, count or balance.
+- The worker's dirty set and the reconciliation's pending set are the buckets (old and new keys) named by changes with `change_xid >= watermark`; the watermark rule (pg_snapshot_xmin of the run's REPEATABLE READ snapshot) is unchanged. No pruning (append-only).
+- `usage_id` links the ledger row by id **without a foreign key**, so that a DELETE can still be logged after its row is gone (TD-D1-R-2).
+- The undeployed migration `20261025240000_ccp_d1_usage_rollups` is edited in place (TD-D1-R-1, lead-authorized).
+- HALT judgement: the remaining AFTER trigger only appends provenance, cannot modify the observed ledger row, and contains no refusal; it preserves the ledger's semantics. No HALT.

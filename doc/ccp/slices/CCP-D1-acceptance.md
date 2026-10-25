@@ -7,7 +7,7 @@ Required by `Aramo-CCP-Program-Build-Directive-v1_0-LOCKED.md` (PBD) §6.3 and t
 | **Slice** | CCP-D1: usage roll-ups + consumption analytics |
 | **Branch / baseline** | `wip/ccp-d1` at `b4a3f5f0`. Built in parallel with A6, B1, B2 and B5. |
 | **Pre-execution record** | `doc/ccp/slices/CCP-D1-pre-execution.md` (choices D1-C1…C11, addendum §6 D1-C4a) |
-| **Local commit SHAs** | **pending (lead commits).** Nothing committed or pushed by the executor. |
+| **Local commit SHAs** | D1 merged as `73c33238` (merge `18b2c032`). **D1-R: pending (lead commits).** Nothing committed or pushed by the executor. |
 | **HALT conditions hit** | **None.** Totals reconcile exactly (§2). No pricing, rating or money column was needed. No allowance decision reads a roll-up. No registry value beyond `sign`. |
 | **UI** | **Not built.** Consumption analytics is not in the CCP-UI v1.0 design release (the handoff excludes revenue charts). **The D1 UI needs a new design release, as D2's does.** No design hashes pinned (no UI part executed). |
 
@@ -24,11 +24,11 @@ Required by `Aramo-CCP-Program-Build-Directive-v1_0-LOCKED.md` (PBD) §6.3 and t
 | D1-6 | `CCP-D1: platform-web consumer contracts + platform-admin provider states for the usage routes` | `pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts`; `pact/provider/src/verify-platform-admin.ts` |
 | D1-7 | `CCP-D1: acceptance evidence` + `CCP-D1: regenerate repo map` | `doc/ccp/slices/CCP-D1-acceptance.md` (new); `doc/generated/repo-map.{files,coupling,projects}.json` |
 
-Totals: **16 new files, 20 modified files** (36 paths). **Unchanged:** every existing migration; `libs/metering` (still the write path only, `record-usage.ts:18`); `AllowanceService` and every allowance / entitlement / billing reader; `pact/provider/src/verify-api.ts` (no `/v1` returned shape changes: the new `AllowanceUsage.rollup_xid` column is `Unsupported("xid8")`, never selected by the client); `doc/ccp/decisions.md`.
+Totals: **16 new files, 20 modified files** (36 paths). **Unchanged:** every existing migration; `libs/metering` (still the write path only, `record-usage.ts:18`); `AllowanceService` and every allowance / entitlement / billing reader; `pact/provider/src/verify-api.ts` (no `/v1` returned shape changes; after D1-R the ledger table is byte-identical to before D1); `doc/ccp/decisions.md`.
 
 ## 2. Reconciliation output (the D1 row's evidence)
 
-From `ccp-d1-usage-rollups.integration.spec.ts` REC-1/REC-2 (written by the spec to `D1_EVIDENCE_OUT`), on Postgres 17 over: the populated A4 Sign corpus (15 subscriptions; pre-D1 ledger rows with `rollup_xid` NULL), an **Astre-shaped MANUAL subscription** (included plan, anchor 2026-03-31, 3 HISTORICAL rows across 2 periods via `recordHistorical`, 3 consumed + 1 released + 1 held sends via the real `AllowanceService`), and one UNALIGNED bucket (a tenant with no subscription).
+From `ccp-d1-usage-rollups.integration.spec.ts` REC-1/REC-2 (written by the spec to `D1_EVIDENCE_OUT`), on Postgres 17 over: the populated A4 Sign corpus (15 subscriptions; pre-D1 ledger rows with no change record), an **Astre-shaped MANUAL subscription** (included plan, anchor 2026-03-31, 3 HISTORICAL rows across 2 periods via `recordHistorical`, 3 consumed + 1 released + 1 held sends via the real `AllowanceService`), and one UNALIGNED bucket (a tenant with no subscription).
 
 First run (`FULL`): `to_xid` `801`, **12 buckets recomputed, 630 ledger rows scanned, RECONCILED, 0 mismatches, 0 pending.**
 
@@ -108,8 +108,8 @@ Per (tenant, period), the roll-up rows equal an independent SQL recomputation of
 | ID | Type | Divergence | Disposition |
 |---|---|---|---|
 | TD-D1-1 | Design choice | Read scope `platform:subscription:read` (not `platform:billing:read`); identical holders under A1 §4.1. | Recorded (D1-C1) |
-| TD-D1-2 | Design addition | Sixth derived table `UsageRollupVacatedBucket` + AFTER UPDATE/DELETE trigger, so a period move or a DELETE never leaves a stale bucket. | Pre-execution addendum §6 |
-| TD-D1-3 | Ledger table touched (additive) | `AllowanceUsage` gains `rollup_xid xid8` (nullable, trigger-set) and two triggers. No allowance decision reads them; no returned shape changes. Lead may prefer a change-log table instead; reversible by the compensating SQL. | For Lead review |
+| TD-D1-2 | Design addition | (Superseded by D1-R.) The vacated-bucket table is folded into the append-only change log `AllowanceUsageChange`. | §9 |
+| TD-D1-3 | Ledger table touched | **Ruled (second disposition): prefer a separate append-only change log.** Implemented in D1-R: no ledger column; one AFTER trigger appending provenance. | **Resolved by D1-R (§9)** |
 | TD-D1-4 | Semantics | RELEASED rows are not rolled up (they never count toward an allowance and can move period). Counted: CONSUMED (SEND / HISTORICAL) and RESERVED. | Recorded (D1-C5) |
 | TD-D1-5 | Semantics | Raw-event check is per tenant lifetime (`UsageEvent` has no send identity or period), plus period-level reconciliation against the ledger. HISTORICAL rows have no raw event by design. | Recorded (D1-C7) |
 | TD-D1-6 | Semantics | A period carries the plan version in force at `period_start`; a mid-period re-pin is not split. | Recorded (D1-C6) |
@@ -122,3 +122,62 @@ Per (tenant, period), the roll-up rows equal an independent SQL recomputation of
 ## 8. Vocabulary result
 
 `scripts/verify-vocabulary.sh`: Tier 1 clean, Tier 2 clean, Front-Door clean. No exemption allowlist touched.
+
+## 9. D1-R — change-log re-design under the TD-D1-3 ruling
+
+Ruling (`doc/ccp/decisions.md`, second disposition): "PREFER a separate append-only change log linked to the ledger record, preserving the authoritative usage ledger's semantics … No second usage ledger, and no new balance or consumption authority." Design: pre-execution addendum §7.
+
+### 9.1 What changed (D1-R)
+| File | Change |
+|---|---|
+| `libs/subscription/prisma/migrations/20261025240000_ccp_d1_usage_rollups/migration.sql` | edited in place (TD-D1-R-1): `rollup_xid` column + BEFORE trigger + `UsageRollupVacatedBucket` removed; `AllowanceUsageChange` + one AFTER INSERT/UPDATE/DELETE trigger + append-only guard (UPDATE, DELETE, TRUNCATE) added |
+| `libs/subscription/prisma/schema.prisma` | `AllowanceUsage` model restored (identical to `b4a3f5f0`, whitespace-normalized); `UsageRollupVacatedBucket` → `AllowanceUsageChange` |
+| `libs/subscription/src/lib/usage/usage-rollup.service.ts` | dirty set, pending set and stale flag read the change log (old and new bucket keys); prune removed; INCREMENTAL `rows_scanned` = change records in the window |
+| `libs/subscription/src/tests/ccp-d1-usage-rollups.integration.spec.ts` | +3 tests (LEDGER-1…3); OFF-2, WM-1, WM-4, RO-4, COMP-1 re-pointed |
+| `libs/subscription/src/tests/fixtures/ccp-d1.ts` | `ledgerDefinition()` added |
+| `libs/subscription/src/tests/fixtures/ccp-d1-compensating.sql` | re-pointed to the D1-R objects |
+| `doc/ccp/slices/CCP-D1-pre-execution.md`, this file | addendum §7; this section |
+
+Totals (D1-R vs `18b2c032`): **0 new files, 9 modified files** (the 8 above + `doc/generated/repo-map.coupling.json`, regenerated; check ok). Unchanged: routes, DTOs, OpenAPI, error codes, Pact contracts, env, `AllowanceService`.
+
+### 9.2 Proof of the ruling's conditions
+| Condition | Evidence |
+|---|---|
+| Ledger semantics preserved: no new ledger column | LEDGER-1: the `AllowanceUsage` columns, constraints and indexes after D1 equal those captured in the same database just before the D1 migration; columns are exactly the 10 pre-D1 columns. COMP-1: after the compensating SQL the definition equals the pre-D1 one again. |
+| The one trigger cannot change the ledger | LEDGER-1: exactly one trigger added, `AFTER INSERT OR DELETE OR UPDATE … FOR EACH ROW` (an AFTER row trigger cannot modify the row). LEDGER-2: its function body contains exactly 3 `INSERT INTO "subscription"."AllowanceUsageChange"`, no UPDATE / DELETE, no RAISE, no assignment to `NEW`, `RETURN NULL`. |
+| Ledger rows untouched | REC-1 and COMP-1: ledger fingerprint (md5 of every column of every row) unchanged by the worker and by the compensation |
+| Allowance results unchanged | the A4/A5 goldens (`ccp-a4-sign-equality`, `ccp-a5-plan-version` in the subscription suite; `ccp-a4-ats-sign-consumption`; `ccp-a4-ats-sign-availability`) re-run with D1-R in place (§9.4) |
+| Not a second ledger; no competing totals | LEDGER-3: change-log columns are exactly `id, usage_id, op, change_xid, old/new tenant_id, old/new allowance_key, old/new period_start, changed_at`; none holds a quantity, state, count, balance, origin, limit or send key. The only totals remain the ledger (authority) and the derived roll-ups (read-only until reconciled). |
+| Never read by an allowance decision | RO-4 source scan (regex now includes `AllowanceUsageChange`): only `libs/subscription/src/lib/usage/*` and the module reference D1 objects; no allowance, entitlement, sign-service or api code |
+| Append-only | LEDGER-3: UPDATE, DELETE and TRUNCATE of the change log rejected |
+| Totals still reconcile exactly | §9.3 |
+| Idempotency and watermark still hold | IDEM-1…4, WM-1…5 pass on the change log, incl. WM-2 (transaction open during the run, committed after: picked up next run), WM-3 (back-dated historical row), WM-4 (period move: change rows `INSERT 09-30`, `UPDATE 09-30→09-30`, `UPDATE 09-30→10-31`; both buckets recomputed; a DELETE logged although its row is gone) |
+
+### 9.3 Reconciliation output (D1-R)
+First run FULL: `to_xid` 805, **12 buckets, 630 ledger rows, RECONCILED, 0 mismatches, 0 pending.** Compared totals, ledger = roll-up: **consumed 623, consumed SEND 620, consumed HISTORICAL 3, reserved 4.** Raw events: 620 `sign.envelope.sent` = 620 ledger CONSUMED SEND, 9 tenants, 0 mismatched. Identical to the D1 figures (§2). Change log after setup: 13 records (9 INSERT, 4 UPDATE) over 9 ledger rows; the 621 pre-D1 corpus rows have none (OFF-2).
+
+### 9.4 Tests run (D1-R)
+All with `ARAMO_RUN_INTEGRATION=1`, `--maxWorkers=2`, Docker healthy (12 GB). Exact counts:
+
+| Suite | Result |
+|---|---|
+| D1 lib spec `ccp-d1-usage-rollups.integration.spec.ts` | ✅ **26 / 26** (23 + LEDGER-1…3) |
+| `libs/subscription` full suite (unit + every integration spec: allowance, A4 product dimension + Sign equality golden, A5 plan version, A9, lifecycle, personal-free, catalog, change requests, D1) | ✅ 22 files, **450 / 450** |
+| `apps/platform-admin`: D1 routes, D1 authorization, D1 worker, `personal-signup`, `sign-signup` | ✅ 5 files, **79 / 79** |
+| `apps/sign-service` AppModule specs that write `AllowanceUsage`: `ccp-a4-ats-sign-consumption`, `personal-free`, `recipient-inbox`, `sign-account`, `sign-api`, `sign-event-grant`, `sign-legal`, `sign-webhooks` | ✅ 8 files, **52 / 52** |
+| `apps/api`: `ccp-a4-ats-sign-availability`, `s2-erasure-integrity`, `tenant-reset`, `tr15-b2-erasure`, `portal-p4b-rtbf` | ✅ 5 files, **35 / 35** |
+| Pact consumer `platform-web-consumer` | ✅ **45 / 45** (the program pact now holds 45 interactions after the A6 merge; 8 are D1). One earlier run had 1 transient mock-server miss on an A2 tenant-tier interaction ("expected but not received"); 2 re-runs 45 / 45. |
+| Pact provider `verify-platform-admin.ts` | ✅ **2 / 2 tests: coverage gate + 45 / 45 interactions verified, 0 failures** (incl. the 4 D1 interactions left unverified by the Docker outage, TD-D1-9 → **closed**) |
+| `nx run-many -t build lint -p subscription --skip-nx-cache` | ✅ 0 errors |
+| `orphan-scopes`, `openapi:drift-check`, `env:passthrough-check` (109), `repo-map:generate` / `check` | ✅ |
+| `verify-vocabulary.sh` | ❌ **one hit, not D1's:** `doc/ccp/decisions.md:54` ("72 h from s…ion (D5)", the TD-A6-5 line committed in `18b2c032`). Every D1-R file is clean. Left for the lead (a decision-register text edit). |
+| Not run: full `nx run api`; the all-provider Pact regression | — |
+
+### 9.5 Typed divergences (D1-R)
+| ID | Type | Divergence | Disposition |
+|---|---|---|---|
+| TD-D1-R-1 | Migration edited in place | `20261025240000_ccp_d1_usage_rollups` changed after merge (never deployed anywhere). | Lead-authorized |
+| TD-D1-R-2 | No FK | `AllowanceUsageChange.usage_id` links the ledger row by id **without** a foreign key: a FK would block (or require cascading) the logging of a DELETE, and any FK action would mutate the append-only log. Index on `usage_id`. | Recorded |
+| TD-D1-R-3 | Growth | The change log is append-only, so it is never pruned (the old vacated log was). About 2 records per Sign send (reserve + consume). A retention rule, if needed, is a later governed decision. | Recorded |
+| TD-D1-R-4 | Metric | INCREMENTAL `rows_scanned` now counts change records in the window (FULL / REBUILD still count ledger rows). | Recorded |
+| TD-D1-R-5 | A trigger on the ledger remains | It is AFTER, append-only and refusal-free (§9.2); judged to preserve the ledger's semantics, so no HALT. Its only failure mode is infrastructure (the change-log INSERT itself failing), which would fail the ledger write in the same transaction. | For Architect awareness |
