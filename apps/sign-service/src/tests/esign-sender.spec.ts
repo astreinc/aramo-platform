@@ -20,7 +20,9 @@ const READ = ['context', 'summary', 'list', 'detail', 'events', 'source', 'execu
 // Sign Unified Product S-1 — contacts and member administration carry their own Sign permissions.
 const CONTACTS = ['contacts'] as const;
 // ORG-UX-1 §6 — the Sign member routes are retired (no MEMBERS group).
-const CREATE = ['create', 'update', 'upload', 'reorder', 'rename', 'remove', 'recipients', 'fields'] as const;
+// Sign Mobile M-A3 §5 — contact writes (private per owner) need sign:envelope:create.
+// Sign Mobile D-W6-3 — deleting a draft is a draft write (sign:envelope:create).
+const CREATE = ['create', 'update', 'upload', 'reorder', 'rename', 'remove', 'recipients', 'fields', 'createContact', 'updateContact', 'deleteContact', 'deleteDraft'] as const;
 const SEND = ['send', 'remind', 'void'] as const;
 
 const handler = (name: string): object => (EsignSenderController.prototype as unknown as Record<string, object>)[name] ?? {};
@@ -43,7 +45,7 @@ describe('EsignSenderController — every route mounts the sender boundary', () 
     expect(Reflect.getMetadata(REQUIRED_SCOPES_KEY, handler('contacts'))).toEqual(['sign:contact:read']);
   });
   it('covers every route handler on the controller', () => {
-    const own = Object.getOwnPropertyNames(EsignSenderController.prototype).filter((n) => n !== 'constructor' && n !== 'run');
+    const own = Object.getOwnPropertyNames(EsignSenderController.prototype).filter((n) => n !== 'constructor' && n !== 'run' && n !== 'withEtag');
     expect(own.sort()).toEqual([...READ, ...CREATE, ...SEND, ...CONTACTS].sort());
   });
 });

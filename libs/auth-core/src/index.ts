@@ -10,7 +10,7 @@ export { AUDIT_SINK } from './lib/audit-sink.port.js';
 export type { AuditRecord, AuditSink } from './lib/audit-sink.port.js';
 export { AuthController } from './lib/auth.controller.js';
 export { CognitoVerificationError, CognitoVerifierService } from './lib/cognito-verifier.service.js';
-export type { CognitoIdTokenClaims, VerifiedCognitoIdToken } from './lib/cognito-verifier.service.js';
+export type { CognitoIdTokenClaims, CognitoVerifyOptions, VerifiedCognitoIdToken } from './lib/cognito-verifier.service.js';
 export { CookieVerifierService } from './lib/cookie-verifier.service.js';
 export type { CookieJwtPayload } from './lib/cookie-verifier.service.js';
 export { ELIGIBILITY_POLICY } from './lib/eligibility-policy.port.js';
@@ -52,8 +52,24 @@ export { PRINCIPAL_DIRECTORY } from './lib/principal-directory.port.js';
 export type { ResolveSessionInput, ResolveSessionResult, ResolveScopesInput, ResolveScopesResult, PrincipalDirectory } from './lib/principal-directory.port.js';
 export { isDevPosture, parseHost, isDevHostname, deriveBaseFromHost, classifyHostByEnv, resolvePublicBaseUrl, deriveRedirectUri, derivePostLoginRedirect, deriveSignoutRedirect, defaultPostLoginPath, sanitizeReturnTo, CONSUMER_APP_BASE } from './lib/redirect-uri.js';
 export type { ParsedHost, EnvHostClass } from './lib/redirect-uri.js';
-export { RefreshOrchestratorService } from './lib/refresh-orchestrator.service.js';
+export { RefreshOrchestratorService, runRefreshReuseCascade, readRefreshGraceSeconds } from './lib/refresh-orchestrator.service.js';
 export type { RefreshInput, RefreshResult } from './lib/refresh-orchestrator.service.js';
 export { PORTAL_SESSION_SCOPES, SessionOrchestratorService } from './lib/session-orchestrator.service.js';
 export type { CallbackInput, CallbackResult } from './lib/session-orchestrator.service.js';
 export type { SessionResponseDto } from './lib/dto/session-response.dto.js';
+// AUTH-SIGNIN-1 Amendment M-A1 — native authentication consumer (Aramo Sign mobile).
+export { NativeAuthController } from './lib/native-auth.controller.js';
+export {
+  NativeAuthService,
+  NATIVE_CONSUMER,
+  NATIVE_REFRESH_CONSUMER,
+  DEFAULT_NATIVE_REDIRECT_URIS,
+  readNativeClientId,
+  readNativeRedirectUris,
+  parseNativeTokenRequest,
+  parseRefreshTokenBody,
+  principalDenialError,
+} from './lib/native-auth.service.js';
+export type { NativeTokenRequest, NativeTokenResponse, NativeSessionItem, NativeCaller, NativeDeviceInput } from './lib/native-auth.service.js';
+export { NATIVE_CODE_EXCHANGE, CognitoNativeCodeExchangeAdapter } from './lib/native-code-exchange.port.js';
+export type { NativeCodeExchange, NativeCodeExchangeInput, NativeCodeExchangeResult } from './lib/native-code-exchange.port.js';

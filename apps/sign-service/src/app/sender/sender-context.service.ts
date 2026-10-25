@@ -1,7 +1,7 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
-import { ESIGN_SCOPE, IdentityRepository, TenantRepository, type TenantDto } from '@aramo/identity';
+import { ESIGN_SCOPE, IdentityProviderPolicyService, IdentityRepository, TenantRepository, normalizeIdp, type TenantDto } from '@aramo/identity';
 
 import { PersonalSendGate } from '../personal/personal-send.gate.js';
 import { SIGN_TEMPLATES_FEATURE, SignFeatureGate } from '../sign-feature.gate.js';
@@ -29,9 +29,13 @@ export const ESIGN_SEND_SCOPE = 'sign:envelope:send';
 export const DOCUMENT_TEMPLATE_READ_SCOPE = 'document_template:read';
 
 export type SenderWorkspace = 'sign' | 'personal';
+export type SignInProvider = 'google' | 'microsoft';
 
 export interface SenderContextView {
-  user: { id: string; email: string | null; display_name: string | null };
+  // Sign Mobile B-11 — identity_provider: the federated provider the user signs in
+  // with ('google' | 'microsoft'), for "Signed in with Google/Microsoft"; null when
+  // not recorded (a legacy link) or not one provider.
+  user: { id: string; email: string | null; display_name: string | null; identity_provider: SignInProvider | null };
   tenant: { id: string; name: string; kind: string };
   workspace: SenderWorkspace;
   // Sign Unified Product S-1 — the caller's effective Sign permissions (the UI
@@ -80,7 +84,32 @@ export class SenderContextService {
     // Personal Free v1.1 — optional so existing compositions/tests keep working;
     // absent ⇒ Personal authoring stays refused (today's behaviour).
     @Optional() private readonly personal?: PersonalSendGate,
+    // Sign Mobile B-11 — the provider recorded for the user's sign-in link.
+    @Optional() private readonly idps?: IdentityProviderPolicyService,
   ) {}
+
+  // Sign Mobile B-11 (directive §4) — "Signed in with Google/Microsoft". The source
+  // is the provider recorded on the user's identity link (AUTH-SIGNIN-1 R2,
+  // ExternalIdentityIdp): exactly one recorded provider names it. A user with no
+  // recorded provider (a link made before R2) in a tenant that ENFORCES its pin
+  // (R1) can only have signed in through that pin. Anything else is null — never
+  // a guess.
+  async identityProviderOf(user_id: string, tenant_id: string): Promise<SignInProvider | null> {
+    if (this.idps === undefined) return null;
+    try {
+      const recorded = [...new Set((await this.idps.recordedIdpsOf(user_id)).map((x) => normalizeIdp(x)))];
+      if (recorded.length === 1) {
+        const only = recorded[0];
+        return only === 'google' || only === 'microsoft' ? only : null;
+      }
+      if (recorded.length > 1) return null;
+      const policy = await this.idps.policyOf(tenant_id);
+      const pin = policy.enforced ? normalizeIdp(policy.pin) : null;
+      return pin === 'google' || pin === 'microsoft' ? pin : null;
+    } catch {
+      return null;
+    }
+  }
 
   async tenantOf(tenant_id: string, requestId: string): Promise<TenantDto> {
     const tenant = await this.tenants.findById(tenant_id);
@@ -150,7 +179,7 @@ export class SenderContextService {
     const roleKeys = membership !== null && membership.is_active ? await this.identity.findRoleKeysForMembership(membership.id) : [];
     const org_admin = business && roleKeys.some((k) => k === 'tenant_owner' || k === 'tenant_admin');
     return {
-      user: { id: auth.sub, email: user?.email ?? null, display_name: user?.display_name ?? null },
+      user: { id: auth.sub, email: user?.email ?? null, display_name: user?.display_name ?? null, identity_provider: await this.identityProviderOf(auth.sub, auth.tenant_id) },
       tenant: { id: tenant.id, name: (await this.tenants.findOrganizationNameById(tenant.id)) ?? tenant.name, kind: tenant.kind },
       workspace: business ? 'sign' : 'personal',
       permissions,

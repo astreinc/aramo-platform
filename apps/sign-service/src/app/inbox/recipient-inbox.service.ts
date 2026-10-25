@@ -1,8 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
-import { hashSigningToken, RecipientInboxRepository, type RecipientInboxRow, signBaseUrl } from '@aramo/sign';
+import { hashSigningToken, InboxSigningRefusedError, RecipientInboxRepository, type RecipientInboxRow, signBaseUrl } from '@aramo/sign';
 import { IdentityRepository } from '@aramo/identity';
+
+import { SIGNING_LINK_VALID_DAYS, senderHttp } from '../sender/envelope-contracts.js';
 
 // Sign Unified Product S-7 (Aramo-Sign-Unified-Product-Permission-Contract-
 // Platform-API-Directive-v1_0-LOCKED §4.6, mandatory refinement B) — "Waiting for
@@ -65,6 +67,8 @@ export class RecipientInboxService {
       user_id: auth.sub,
       user_tenant_id: auth.tenant_id,
       email: mine,
+      // Sign Mobile M-A2 §2.2 — inbox signing never outlives the link claimed with.
+      claim_session_id: session.id,
     });
     this.log.log(`recipient binding user=${auth.sub} signer=${session.signer_id} envelope=${session.envelope_id} binding=${b.id} request=${requestId}`);
     return { id: b.id };
@@ -80,7 +84,11 @@ export class RecipientInboxService {
       envelope_status: r.envelope.status,
       my_status: r.signer.status,
       sent_at: r.envelope.sent_at?.toISOString() ?? null,
+      // The envelope's own expiry (Sign Mobile C-14: the same value the sender
+      // detail reports as envelope_expires_at; the link window is separate).
       expires_at: r.envelope.expires_at?.toISOString() ?? null,
+      envelope_expires_at: r.envelope.expires_at?.toISOString() ?? null,
+      signing_link_valid_days: SIGNING_LINK_VALID_DAYS,
       completed_at: r.envelope.completed_at?.toISOString() ?? null,
       signed_at: r.signer.signed_at?.toISOString() ?? null,
       can_sign: signable,
@@ -98,15 +106,26 @@ export class RecipientInboxService {
     };
   }
 
+  // Sign Mobile M-A2 §2.2 — continuing authority: the repository revalidates the
+  // association, the envelope, the signer, the sequential turn and the claimed
+  // link in ONE transaction, then mints a session of at most 30 minutes and audits
+  // it on the ledger (RECIPIENT_INBOX_SESSION_ISSUED). Refusals carry a stable
+  // details.reason (see envelope-contracts.ts). A foreign binding is not found.
   async sign(auth: AuthContextType, id: string, requestId: string) {
-    const r = await this.repo.getForUser(auth.sub, id);
-    if (r === null) throw notFound(requestId);
-    if (!(await this.view(r)).can_sign) {
-      throw new AramoError('ENVELOPE_ILLEGAL_TRANSITION', 'This document can no longer be signed', 409, { requestId });
+    const base = this.base(requestId);
+    let issued: Awaited<ReturnType<RecipientInboxRepository['issueRevalidatedRecipientSession']>>;
+    try {
+      issued = await this.repo.issueRevalidatedRecipientSession(auth.sub, id);
+    } catch (e) {
+      if (e instanceof InboxSigningRefusedError) {
+        this.log.log(`recipient session refused user=${auth.sub} binding=${id} reason=${e.reason} request=${requestId}`);
+        throw senderHttp(e, requestId);
+      }
+      throw e;
     }
-    const raw = await this.repo.issueRecipientSession(r.envelope_tenant_id, r.envelope_id, r.signer_id);
-    this.log.log(`recipient session issued user=${auth.sub} binding=${id} request=${requestId}`);
-    return { signing_url: `${this.base(requestId)}/s/${raw}` };
+    if (issued === null) throw notFound(requestId);
+    this.log.log(`recipient session issued origin=inbox user=${auth.sub} binding=${id} session=${issued.session_id} client=${auth.client ?? 'browser'} request=${requestId}`);
+    return { signing_url: `${base}/s/${issued.raw_token}`, expires_at: issued.expires_at.toISOString() };
   }
 
   async signedCopy(auth: AuthContextType, id: string, requestId: string) {

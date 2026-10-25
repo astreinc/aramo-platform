@@ -15,7 +15,9 @@ import {
   isTerminalEnvelopeStatus,
   predecessorsOf,
 } from './domain/envelope-lifecycle.js';
+import { EnvelopeRevisionMismatchError } from './domain/envelope-contract-errors.js';
 import { type EnvelopeDocumentSourceMode } from './ports/document-source-provider.port.js';
+import { recordNotificationFact } from './notifications/notification-outbox.js';
 
 // DOC-3 boundary 1-2 — E-Sign persistence + append-only hash-chained event
 // ledger. ATS-neutral: Documents referenced by opaque UUID only. Any Prisma tx
@@ -142,6 +144,9 @@ export class EsignRepository {
         user_agent: input.user_agent ?? null,
       },
     });
+    // Sign Mobile M-A3 §1 — a notifiable fact also lands in the notification outbox,
+    // in THIS transaction (refs only; the fan-out worker never replays the ledger).
+    await recordNotificationFact(tx, input);
     return eventHash;
   }
 
@@ -318,6 +323,32 @@ export class EsignRepository {
     const row = rows[0];
     if (row === undefined) throw new EnvelopeNotFoundError(envelope_id);
     return row.status;
+  }
+
+  // Sign Mobile M-A3 §6 — take the envelope row lock and, when the caller sent a
+  // precondition, compare it with the revision read UNDER that lock. Two writers
+  // holding the same revision serialize here: the first commits and raises the
+  // revision (DB trigger), the second then reads the new value and is refused.
+  async lockEnvelopeRevision(tx: LockingTx, tenant_id: string, envelope_id: string, expected_revision?: number): Promise<{ status: string; revision: number }> {
+    const rows = await tx.$queryRaw<{ status: string; revision: number }[]>`
+      SELECT status, revision FROM "sign"."SignatureEnvelope"
+      WHERE id = ${envelope_id}::uuid AND tenant_id = ${tenant_id}::uuid
+      FOR UPDATE`;
+    const row = rows[0];
+    if (row === undefined) throw new EnvelopeNotFoundError(envelope_id);
+    if (expected_revision !== undefined && row.revision !== expected_revision) {
+      throw new EnvelopeRevisionMismatchError(envelope_id, row.revision, expected_revision);
+    }
+    return row;
+  }
+
+  // Sign Mobile M-A3 §6 — the envelope revision as this transaction sees it (after
+  // its own writes, so a caller can return the new ETag).
+  async revisionIn(tx: Pick<PrismaService, '$queryRaw'>, envelope_id: string): Promise<number> {
+    const rows = await tx.$queryRaw<{ revision: number }[]>`SELECT revision FROM "sign"."SignatureEnvelope" WHERE id = ${envelope_id}::uuid`;
+    const row = rows[0];
+    if (row === undefined) throw new EnvelopeNotFoundError(envelope_id);
+    return row.revision;
   }
 
   // ES-1 — lock the envelope and require that a signer may still act on it.

@@ -60,7 +60,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
     await container?.stop();
   });
 
-  it('creates the esign schema with the twenty-two tables', async () => {
+  it('creates the sign schema with its thirty-two tables', async () => {
     const r = await db.query(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = 'sign'`,
     );
@@ -93,6 +93,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
         'SignRecipientBinding',
         // Personal Free v1.1 §6.4 — abuse reports.
         'AbuseReport',
+        // Aramo Sign Mobile (M-A3 §4/§5/§7) — idempotency, saved signatures, contacts.
+        'SignIdempotencyKey',
+        'SignSavedSignature',
+        'SignContact',
+        // Aramo Sign Mobile (M-A3 §1/§2/§9) — notification feed, devices, preferences, push.
+        'SignNotificationOutbox',
+        'SignUserNotification',
+        'SignPushDevice',
+        'SignNotificationPreference',
+        'SignPushJob',
+        'SignConvenienceDataPurge',
+        // Aramo Sign Mobile (D-W6-2) — page sizes of a source document.
+        'SignEnvelopeDocumentPages',
       ].sort(),
     );
   });

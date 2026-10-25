@@ -89,8 +89,10 @@ FRONTDOOR_LEGACY_ALLOWLIST=(
 # Tier 2 — Vocabulary-discipline exclusions
 # =============================================================================
 # Paths/globs where Tier 2 forbidden vocabulary is permitted to appear.
-# Product source (apps/, libs/) is NEVER excluded — vocabulary discipline
-# applies to all source code.
+# Product source (apps/, libs/, mobile/) is NEVER excluded — vocabulary
+# discipline applies to all source code. mobile/ (the Aramo Sign native app,
+# mobile/sign/, outside the npm workspaces) is scanned exactly like apps/ and
+# libs/; the mobile coverage guard below fails the gate if it ever is not.
 TIER2_EXCLUDES=(
   "node_modules"                      # PR-1: vendored third-party code
   "dist"                              # PR-1: build output
@@ -592,6 +594,39 @@ TIER2_GLOBS=()
 for excl in "${TIER2_EXCLUDES[@]}"; do
   TIER2_GLOBS+=(--glob "!${excl}")
 done
+
+# -----------------------------------------------------------------------------
+# Mobile coverage guard (Aramo Sign Mobile directive v1.0 LOCKED §2 "Repo gates":
+# the vocabulary gate includes mobile/; product source is never excluded)
+# -----------------------------------------------------------------------------
+# The Tier 2 scan below walks the whole repo (`.`), so mobile/ is in scope the
+# same way apps/ and libs/ are. Two ways it could silently drop out:
+#   (1) a TIER2_EXCLUDES entry naming mobile/ (or all of it);
+#   (2) an ignore file (e.g. mobile/sign/.gitignore) hiding TRACKED files from
+#       ripgrep, which honours ignore files.
+# Both fail the gate. Generated output, vendored modules and lockfiles stay
+# excluded by the SAME shared entries that apply to apps/ and libs/.
+for excl in "${TIER2_EXCLUDES[@]}"; do
+  case "$excl" in
+    mobile|mobile/|mobile/*|./mobile*|"**/mobile"|"**/mobile/**")
+      echo "ERROR (Tier 2 — mobile coverage): TIER2_EXCLUDES entry '${excl}' excludes mobile/ product source." >&2
+      EXIT=1
+      ;;
+  esac
+done
+if [[ -d mobile ]] && git rev-parse --is-inside-work-tree >/dev/null 2>&1; then
+  mobile_unscanned="$(comm -23 \
+    <(comm -12 \
+        <(git ls-files mobile | LC_ALL=C sort) \
+        <(rg --files --no-ignore "${TIER2_GLOBS[@]}" mobile 2>/dev/null | LC_ALL=C sort)) \
+    <(rg --files "${TIER2_GLOBS[@]}" mobile 2>/dev/null | LC_ALL=C sort))"
+  if [[ -n "$mobile_unscanned" ]]; then
+    echo "ERROR (Tier 2 — mobile coverage): tracked mobile/ files are hidden from the vocabulary scan by an ignore file:" >&2
+    printf '%s\n' "$mobile_unscanned" >&2
+    echo "  Tracked product source must be scanned; remove the ignore rule (or untrack generated output)." >&2
+    EXIT=1
+  fi
+fi
 
 for entry in "${TIER2_TERMS_REGEX[@]}"; do
   term="${entry%%:*}"

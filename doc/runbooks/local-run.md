@@ -96,7 +96,7 @@ registered URLs, so the app client needs, per local origin you use:
 |---|---|---|
 | `http://localhost:4205` (App Home topology) | `/auth/org/callback`, `/auth/recruiter/callback` | `/signed-out` |
 | `http://localhost:4201` (ATS directly) | `/auth/recruiter/callback` (existing) | `/signed-out` |
-| `http://localhost:4206` (Aramo Sign sender console) | `/auth/esign/callback` | `/signed-out` |
+| `http://localhost:4206` (Aramo Sign sender console) | `/auth/sign/callback` | `/signed-out` |
 
 A missing one shows Cognito's `redirect_mismatch` page.
 
@@ -109,7 +109,7 @@ workspace the backend assigns: `/sign/` for a business tenant, `/personal/` for 
 
 - the tenant holds the Sign subscription (`entitlement."TenantEntitlement"` row `esign`) and the user a Sign role
   (Sign Owner / Admin / Sender to send — a Sender sees only their own envelopes; Sign Viewer reads every envelope);
-- `/auth/esign/callback` and `/signed-out` on `http://localhost:4206` are registered on the Cognito app client;
+- `/auth/sign/callback` and `/signed-out` on `http://localhost:4206` are registered on the Cognito app client;
 - PDF uploads use the same local object storage as résumés (`S3_RESUME_BUCKET` / `S3_ENDPOINT` from `.env`).
 
 Signers open `http://localhost:4206/s/<token>` (the guest-signing zone of the same app; no sign-in). Local email goes to a **local outbox** instead of any

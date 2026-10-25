@@ -149,6 +149,9 @@ export const AUTH_STORAGE_MIGRATIONS: readonly string[] = [
   // Auth-Decoupling PR-1 — host auth-profile registry (additive: a new table in
   // the SAME schema, independent of RefreshToken). Applied AFTER init.
   'libs/auth-storage/prisma/migrations/20260719000000_add_host_auth_profile/migration.sql',
+  // Aramo Sign Mobile M-A1 — native device sessions + redeemed-code ledger
+  // (additive: two new tables, RefreshToken untouched).
+  'libs/auth-storage/prisma/migrations/20261025120000_native_device_sessions/migration.sql',
 ];
 
 // Resolve the ordered auth-storage migration .sql paths against a repo root

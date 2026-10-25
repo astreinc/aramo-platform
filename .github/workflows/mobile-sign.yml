@@ -1,0 +1,212 @@
+# Aramo Sign Mobile — native build CI (Native Application Implementation Directive
+# v1.0 LOCKED §2 "Repo gates", §13 D-2, §14 P-10).
+#
+#   android               ubuntu: JDK 17 + Android SDK → npm ci → typecheck, lint, unit
+#                         tests → ./gradlew assembleDebug assembleRelease → APK artifacts
+#   ios                   macOS:  npm ci → pod install → xcodebuild for the iOS Simulator
+#                         (no signing) → zipped .app artifact
+#   openapi-client-drift  ubuntu: regenerate mobile/sign/src/api/generated from
+#                         openapi/*.yaml (mobile/sign/scripts/generate-api.mjs) → git diff
+#
+# Scope rules:
+#   • Runs only when mobile/**, openapi/** or this file change: on pull_request through
+#     the `paths` filter; in the merge queue (which has no `paths` support) through the
+#     `detect` job's diff against the queue base. workflow_dispatch always runs.
+#   • Every job is a no-op until mobile/sign/package.json exists.
+#   • No secrets, no signing credentials, no store upload, no hosted build service (D-2).
+#     The Android release APK is signed with the project's checked-in DEBUG keystore
+#     (Expo prebuild default), so it is not distributable. The iOS build is for the
+#     Simulator with CODE_SIGNING_ALLOWED=NO.
+#   • NOT a member of ci.yml `deployment-gate`: the macOS runner is a PO-cost item (P-10)
+#     and branch protection must not depend on it. Make these required checks only by a
+#     separate branch-protection decision.
+#   • Every action is pinned to a full commit SHA (tag in the trailing comment).
+#
+# npm script contract (mobile/sign/package.json): `typecheck`, `lint`, `test`.
+
+name: mobile-sign
+
+on:
+  pull_request:
+    paths:
+      - 'mobile/**'
+      - 'openapi/**'
+      - '.github/workflows/mobile-sign.yml'
+  merge_group:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: mobile-sign-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  MOBILE_DIR: mobile/sign
+
+jobs:
+  detect:
+    name: mobile:detect
+    runs-on: ubuntu-24.04
+    outputs:
+      run: ${{ steps.detect.outputs.run }}
+      node_version_file: ${{ steps.detect.outputs.node_version_file }}
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+        with:
+          fetch-depth: 0 # the merge-queue path check diffs against the queue base
+      - id: detect
+        env:
+          EVENT: ${{ github.event_name }}
+          MERGE_BASE: ${{ github.event.merge_group.base_sha }}
+        run: |
+          set -euo pipefail
+          run=false
+          if [ ! -f "$MOBILE_DIR/package.json" ]; then
+            echo "::notice::$MOBILE_DIR/package.json not present — mobile jobs no-op."
+          elif [ "$EVENT" = "merge_group" ]; then
+            if git diff --name-only "$MERGE_BASE" HEAD -- mobile openapi .github/workflows/mobile-sign.yml | grep -q .; then
+              run=true
+            else
+              echo "::notice::merge group touches no mobile/, openapi/ or workflow path — mobile jobs no-op."
+            fi
+          else
+            run=true # pull_request (already path-filtered) or workflow_dispatch
+          fi
+          if [ -f "$MOBILE_DIR/.nvmrc" ]; then nvf="$MOBILE_DIR/.nvmrc"; else nvf=".nvmrc"; fi
+          echo "run=$run" >> "$GITHUB_OUTPUT"
+          echo "node_version_file=$nvf" >> "$GITHUB_OUTPUT"
+
+  android:
+    name: mobile:android
+    needs: detect
+    if: ${{ needs.detect.outputs.run == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 60
+    defaults:
+      run:
+        working-directory: mobile/sign
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version-file: ${{ needs.detect.outputs.node_version_file }}
+          cache: npm
+          cache-dependency-path: mobile/sign/package-lock.json
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+      - uses: gradle/actions/setup-gradle@ac638b010cf58a27ee6c972d7336334ccaf61c96 # v4.4.1
+      - name: npm ci
+        run: npm ci
+      - name: typecheck
+        run: npm run typecheck
+      - name: lint
+        run: npm run lint
+      - name: unit tests
+        run: npm test -- --ci
+      - name: assembleDebug + assembleRelease (no signing credentials)
+        working-directory: mobile/sign/android
+        run: ./gradlew assembleDebug assembleRelease --no-daemon --stacktrace
+      - name: Upload APKs
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: aramo-sign-android-${{ github.sha }}
+          path: |
+            mobile/sign/android/app/build/outputs/apk/debug/*.apk
+            mobile/sign/android/app/build/outputs/apk/release/*.apk
+          if-no-files-found: error
+          retention-days: 14
+
+  ios:
+    name: mobile:ios
+    needs: detect
+    if: ${{ needs.detect.outputs.run == 'true' }}
+    runs-on: macos-15
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: mobile/sign
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version-file: ${{ needs.detect.outputs.node_version_file }}
+          cache: npm
+          cache-dependency-path: mobile/sign/package-lock.json
+      - name: npm ci
+        run: npm ci
+      - name: pod install
+        working-directory: mobile/sign/ios
+        run: pod install
+      - name: xcodebuild (iOS Simulator, Release, no signing)
+        working-directory: mobile/sign/ios
+        run: |
+          set -euo pipefail
+          xcodebuild -version
+          ws="$(ls -d *.xcworkspace | head -1)"
+          [ -n "$ws" ] || { echo "::error::no .xcworkspace in mobile/sign/ios"; exit 1; }
+          scheme="${ws%.xcworkspace}"
+          echo "workspace=$ws scheme=$scheme"
+          # Release for the Simulator embeds the JS bundle, so the .app runs standalone.
+          xcodebuild \
+            -workspace "$ws" \
+            -scheme "$scheme" \
+            -configuration Release \
+            -sdk iphonesimulator \
+            -destination 'generic/platform=iOS Simulator' \
+            -derivedDataPath build \
+            CODE_SIGNING_ALLOWED=NO \
+            build
+          app="$(ls -d build/Build/Products/Release-iphonesimulator/*.app | head -1)"
+          [ -n "$app" ] || { echo "::error::no .app produced"; exit 1; }
+          mkdir -p "$GITHUB_WORKSPACE/ios-artifact"
+          ditto -c -k --keepParent "$app" "$GITHUB_WORKSPACE/ios-artifact/$(basename "$app").zip"
+      - name: Upload Simulator .app
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: aramo-sign-ios-simulator-${{ github.sha }}
+          path: ios-artifact/*.zip
+          if-no-files-found: error
+          retention-days: 14
+
+  openapi-client-drift:
+    name: mobile:openapi-client-drift
+    needs: detect
+    if: ${{ needs.detect.outputs.run == 'true' }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: mobile/sign
+    steps:
+      - uses: actions/checkout@11bd71901bbe5b1630ceea73d27597364c9af683 # v4.2.2
+      - uses: actions/setup-node@2028fbc5c25fe9cf00d9f06a71cc4710d4507903 # v6.0.0
+        with:
+          node-version-file: ${{ needs.detect.outputs.node_version_file }}
+          cache: npm
+          cache-dependency-path: mobile/sign/package-lock.json
+      - name: npm ci
+        run: npm ci
+      - name: Regenerate the API client from openapi/
+        run: |
+          set -euo pipefail
+          [ -f scripts/generate-api.mjs ] || { echo "::error::mobile/sign/scripts/generate-api.mjs is missing (directive §2: the generated client has a CI drift check)"; exit 1; }
+          node scripts/generate-api.mjs
+      - name: Fail on drift (changed or new generated files)
+        run: |
+          set -euo pipefail
+          if ! git diff --exit-code -- src/api/generated; then
+            echo "::error::mobile/sign/src/api/generated is stale — run 'node scripts/generate-api.mjs' in mobile/sign and commit the result."
+            exit 1
+          fi
+          untracked="$(git ls-files --others --exclude-standard -- src/api/generated)"
+          if [ -n "$untracked" ]; then
+            echo "::error::the generator produced files that are not committed:"
+            echo "$untracked"
+            exit 1
+          fi
+          echo "generated API client matches openapi/."

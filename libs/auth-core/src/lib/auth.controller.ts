@@ -829,6 +829,17 @@ export class AuthController {
         { requestId },
       );
     }
+    // AUTH-SIGNIN-1 Amendment M-A1 — a native (Bearer-only) token is never a
+    // browser session cookie; refused here so the two credential families stay
+    // apart. Browser tokens carry no `client` claim (unchanged path).
+    if (payload.client !== undefined) {
+      throw new AramoError(
+        'INVALID_TOKEN',
+        'Native token presented as a browser session',
+        401,
+        { requestId, details: { reason: 'native_token_on_browser_route' } },
+      );
+    }
     // IC-2 PR-5 — /session host/tenant binding (closes the PR-4 residual gap
     // G-1). The token's tenant is compared with the request host under the
     // PR-4 session-surface policy BEFORE any authorization detail is returned:

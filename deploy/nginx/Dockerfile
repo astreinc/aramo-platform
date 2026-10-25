@@ -116,5 +116,16 @@ ENV NGINX_TENANT_SERVER_NAME=localhost \
     NGINX_CERT_DIR=/etc/letsencrypt/live/aramo.ai
 # Drop the base image's default server so only our block is included.
 RUN rm -f /etc/nginx/conf.d/default.conf
+# Aramo Sign Mobile (directive §4 B-13, M-A2 §3.2) — the app-association files
+# (/.well-known/apple-app-site-association, /.well-known/assetlinks.json) are
+# rendered from SIGN_IOS_APP_ID / SIGN_ANDROID_PACKAGE / SIGN_ANDROID_CERT_SHA256S
+# at EVERY container start by a dedicated entrypoint step (runs after
+# 20-envsubst-on-templates.sh). It is separate from the template envsubst, so the
+# ^NGINX_ filter above is untouched. Rendered once here with no env as well, so
+# the image always carries valid associate-nothing JSON even on a run path that
+# bypasses the entrypoint.
+COPY deploy/nginx/app-links/render-app-links.sh /docker-entrypoint.d/40-aramo-app-links.sh
+RUN chmod 0755 /docker-entrypoint.d/40-aramo-app-links.sh \
+ && /docker-entrypoint.d/40-aramo-app-links.sh
 
 EXPOSE 80 443

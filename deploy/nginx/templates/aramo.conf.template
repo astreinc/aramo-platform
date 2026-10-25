@@ -254,6 +254,22 @@ limit_req_zone $binary_remote_addr zone=sign_report:10m rate=10r/m;
 # (one record read plus a few "Check" clicks per visit; apps/api also budgets per
 # address and per token).
 limit_req_zone $binary_remote_addr zone=domain_delegate:10m rate=30r/m;
+# Aramo Sign Mobile (Native Application Implementation Directive v1.0 LOCKED §4 B-13,
+# §9 "nginx limits on all app-used locations"). Per client address; sized so a
+# carrier-NAT address shared by several phones is not starved. Budgets:
+#   sign_workspace    20r/s — the authenticated Sign surfaces (sender, inbox, legal,
+#                     account, billing, me). ONE shared zone, so a client address has
+#                     ONE workspace budget across them; per-location bursts absorb a
+#                     screen load (the sender editor fires one write per field).
+#   sign_auth         10r/s — browser /auth/ (login, callback, refresh, logout,
+#                     session reads); a page load makes a handful of calls.
+#   sign_native_auth  30r/m — /auth/native/ (code exchange, refresh, logout, device
+#                     sessions, callback relay). A device refreshes once per 900 s
+#                     access-token lifetime, so 30/min per address is generous for
+#                     real use and tight for code/refresh-token guessing.
+limit_req_zone $binary_remote_addr zone=sign_workspace:10m   rate=20r/s;
+limit_req_zone $binary_remote_addr zone=sign_auth:10m        rate=10r/s;
+limit_req_zone $binary_remote_addr zone=sign_native_auth:10m rate=30r/m;
 limit_req_status 429;
 
 # ── sign.aramo.ai — the ONE Aramo Sign application (Sign Unified Product S-2) ──
@@ -264,7 +280,11 @@ limit_req_status 429;
 #                   + /v1/sign/report ("Report this email", the same token)
 #   public entry    /login, /signed-out, /signup + /v1/signup/sign/  (no session)
 #   workspace       everything else + /v1/sign/sender/, /v1/sign/billing/,
-#                   /v1/sign/legal/, /v1/sign/account/, /auth/
+#                   /v1/sign/legal/, /v1/sign/account/, /v1/sign/inbox,
+#                   /v1/sign/me/, /auth/
+#   native app      /auth/native/ (Aramo Sign Mobile, M-A1) + the exact
+#                   /.well-known/apple-app-site-association and
+#                   /.well-known/assetlinks.json (M-A2 §3)
 #   public pages    /legal/<slug>[/<version>] (published legal texts, in the SPA)
 # Wildcard *.aramo.ai cert covers the host. Only the Sign surfaces are proxied:
 # never apps/api, never the internal envelopes surface; a stray /v1/<other>
@@ -302,6 +322,7 @@ server {
   }
   # Workspace — the authenticated sender zone.
   location /v1/sign/sender/ {
+    limit_req zone=sign_workspace burst=100 nodelay;
     client_max_body_size 40m;
     proxy_pass http://sign-service:3003;
   }
@@ -309,6 +330,7 @@ server {
   # billing-provider webhook. The webhook carries no session: sign-service
   # verifies the provider signature over the raw body (so no body rewriting here).
   location /v1/sign/billing/ {
+    limit_req zone=sign_workspace burst=20 nodelay;
     client_max_body_size 1m;
     proxy_pass http://sign-service:3003;
   }
@@ -316,19 +338,31 @@ server {
   # plus /claim and /:id/sign. Authenticated (Aramo SSO); the prefix has no
   # trailing slash so the bare list path matches too.
   location /v1/sign/inbox {
+    limit_req zone=sign_workspace burst=40 nodelay;
     client_max_body_size 16k;
     proxy_pass http://sign-service:3003;
   }
   # Workspace — Personal legal re-acceptance (GET status, POST accept).
   # Authenticated (Aramo SSO `sign` session); small JSON bodies only.
   location /v1/sign/legal/ {
+    limit_req zone=sign_workspace burst=20 nodelay;
     client_max_body_size 8k;
     proxy_pass http://sign-service:3003;
   }
   # Workspace — the account surface: GET status, POST close (Personal "Close
   # account"). Authenticated (Aramo SSO `sign` session); small JSON bodies only.
   location /v1/sign/account/ {
+    limit_req zone=sign_workspace burst=20 nodelay;
     client_max_body_size 8k;
+    proxy_pass http://sign-service:3003;
+  }
+  # Workspace — the per-user surface (Aramo Sign Mobile, M-A3): notification feed,
+  # devices, notification preferences, saved signature and initials. Authenticated
+  # (Bearer from the app, or the browser session). The largest body is a saved
+  # signature image as a PNG/JPEG data URL; sign-service enforces its own cap.
+  location /v1/sign/me/ {
+    limit_req zone=sign_workspace burst=40 nodelay;
+    client_max_body_size 2m;
     proxy_pass http://sign-service:3003;
   }
   # Public — "Report this email" (Personal Free v1.1 §6.4). Session-less: the
@@ -363,11 +397,52 @@ server {
     proxy_pass http://api:3000;
   }
   location /auth/ {
+    limit_req zone=sign_auth burst=40 nodelay;
     proxy_pass http://auth-service:3001;
     # HF1-A — the auth callback sets several cookies; widen the header buffers.
     proxy_buffer_size       32k;
     proxy_buffers           8 32k;
     proxy_busy_buffers_size 64k;
+  }
+  # Aramo Sign Mobile — native authentication (Amendment M-A1): the code exchange,
+  # refresh, logout and device-session routes plus the /auth/native/callback relay
+  # (the browser fallback when the verified app link does not open the app). Its
+  # own, tighter zone: these routes take authorization codes and refresh tokens.
+  # Tokens travel in JSON bodies, never cookies; the buffers match /auth/ anyway.
+  location /auth/native/ {
+    limit_req zone=sign_native_auth burst=20 nodelay;
+    client_max_body_size 16k;
+    proxy_pass http://auth-service:3001;
+    proxy_buffer_size       32k;
+    proxy_buffers           8 32k;
+    proxy_busy_buffers_size 64k;
+  }
+
+  # Aramo Sign Mobile — platform app-association files (M-A2 §3.2): EXACT
+  # locations, served as application/json from the files rendered at container
+  # start by /docker-entrypoint.d/40-aramo-app-links.sh (deploy/nginx/app-links/).
+  # No redirect and never the SPA fallback: a missing file is a 404. Unset mobile
+  # env renders a valid association that associates nothing. One hour of caching
+  # suits platform verification (Apple's CDN and Android's verifier re-fetch).
+  location = /.well-known/apple-app-site-association {
+    root /etc/nginx/aramo-app-links;
+    try_files /apple-app-site-association =404;
+    default_type application/json;
+    add_header Cache-Control "public, max-age=3600" always;
+    add_header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'" always;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer" always;
+  }
+  location = /.well-known/assetlinks.json {
+    root /etc/nginx/aramo-app-links;
+    try_files /assetlinks.json =404;
+    default_type application/json;
+    add_header Cache-Control "public, max-age=3600" always;
+    add_header Content-Security-Policy "default-src 'none'; frame-ancestors 'none'" always;
+    add_header Strict-Transport-Security "max-age=31536000" always;
+    add_header X-Content-Type-Options "nosniff" always;
+    add_header Referrer-Policy "no-referrer" always;
   }
 
   # Guest signing pages — the same SPA, a stricter policy: no third-party origin

@@ -180,3 +180,36 @@ describe('CognitoVerifierService.verify — email_verified fail-closed normaliza
     expect(out.email_verified).toBe(true);
   });
 });
+
+// AUTH-SIGNIN-1 Amendment M-A1 §3.3 — native-exchange verification options:
+// audience = the native app client, nonce byte-equal, and typed (4xx) issuer /
+// audience / expiry rejections. Without options the browser path is unchanged.
+describe('CognitoVerifierService.verify — native options (M-A1)', () => {
+  const mocked = mockedJwtVerify as unknown as ReturnType<typeof vi.fn>;
+  const good = { sub: SUB, email: 'u@e.com', email_verified: true, token_use: 'id', nonce: 'n-1' };
+
+  it('verifies against the NATIVE audience, not AUTH_COGNITO_CLIENT_ID', async () => {
+    mocked.mockResolvedValue({ payload: good });
+    await new CognitoVerifierService().verify('token', { audience: 'native-client', nonce: 'n-1' });
+    expect(mocked.mock.calls.at(-1)![2]).toMatchObject({ audience: 'native-client' });
+  });
+
+  it('refuses a nonce mismatch and a missing nonce', async () => {
+    mocked.mockResolvedValue({ payload: { ...good, nonce: 'other' } });
+    await expect(new CognitoVerifierService().verify('token', { audience: 'native-client', nonce: 'n-1' })).rejects.toMatchObject({ reason: 'nonce_mismatch' });
+    mocked.mockResolvedValue({ payload: { sub: SUB, email: 'u@e.com', email_verified: true, token_use: 'id' } });
+    await expect(new CognitoVerifierService().verify('token', { audience: 'native-client', nonce: 'n-1' })).rejects.toMatchObject({ reason: 'nonce_missing' });
+  });
+
+  it('classes aud / iss claim failures as typed rejections on the native path only', async () => {
+    const { errors } = await vi.importActual<typeof import('jose')>('jose');
+    mocked.mockRejectedValue(new errors.JWTClaimValidationFailed('unexpected "aud" claim value', {}, 'aud', 'check_failed'));
+    const native = new CognitoVerifierService().verify('token', { audience: 'native-client', nonce: 'n-1' });
+    await expect(native).rejects.toBeInstanceOf(CognitoVerificationError);
+    await expect(new CognitoVerifierService().verify('token', { audience: 'native-client', nonce: 'n-1' })).rejects.toMatchObject({ reason: 'id_token_audience_mismatch' });
+    // Browser path: the jose error passes through untyped (500 class, unchanged).
+    await expect(new CognitoVerifierService().verify('token')).rejects.not.toBeInstanceOf(CognitoVerificationError);
+    mocked.mockRejectedValue(new errors.JWTClaimValidationFailed('unexpected "iss" claim value', {}, 'iss', 'check_failed'));
+    await expect(new CognitoVerifierService().verify('token', { audience: 'native-client', nonce: 'n-1' })).rejects.toMatchObject({ reason: 'id_token_issuer_mismatch' });
+  });
+});

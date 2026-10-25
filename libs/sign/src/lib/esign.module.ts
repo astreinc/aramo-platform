@@ -9,6 +9,9 @@ import { RecipientInboxRepository } from './recipient-inbox.repository.js';
 import { EVIDENCE_MANIFEST_SIGNER_PORT, SoftwareEvidenceManifestSigner } from './ports/evidence-manifest-signer.port.js';
 import { SigningInvitationService } from './signing-invitation.service.js';
 import { AbuseReportService } from './abuse-report.service.js';
+import { SignIdempotencyRepository } from './sign-idempotency.repository.js';
+import { SignSavedSignatureRepository } from './sign-saved-signature.repository.js';
+import { SignContactRepository } from './sign-contact.repository.js';
 
 // DOC-3/DOC-4 — the ATS-neutral E-Sign domain module. The composition root
 // (apps/sign-service) supplies the EvidenceManifestSignerPort via forRoot:
@@ -52,10 +55,14 @@ export class EsignModule {
         SigningInvitationService,
         // Personal Free v1.1 §6.4 — abuse reports.
         AbuseReportService,
+        // Sign Mobile M-A3 §4/§5/§7 — request idempotency, saved signatures, contacts.
+        SignIdempotencyRepository,
+        SignSavedSignatureRepository,
+        SignContactRepository,
         opts?.evidenceSigner ?? DEFAULT_EVIDENCE_SIGNER,
         ...(opts?.extraProviders ?? []),
       ],
-      exports: [PrismaService, EsignRepository, EsignService, EsignSenderRepository, SignIntegrationRepository, SignWebhookRepository, RecipientInboxRepository, SigningInvitationService, AbuseReportService, ...(opts?.extraExports ?? [])],
+      exports: [PrismaService, EsignRepository, EsignService, EsignSenderRepository, SignIntegrationRepository, SignWebhookRepository, RecipientInboxRepository, SigningInvitationService, AbuseReportService, SignIdempotencyRepository, SignSavedSignatureRepository, SignContactRepository, ...(opts?.extraExports ?? [])],
     };
   }
 }
