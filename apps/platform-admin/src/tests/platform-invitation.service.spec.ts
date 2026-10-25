@@ -310,6 +310,31 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
     expect(mocks.identitySvc.resolveRoleIdsByKeys).not.toHaveBeenCalled();
   });
 
+  // CCP A1 §7.3(b) (Aramo-CCP-A1-Commercial-Roles-and-Scopes-Directive-v1_0) — each of the 6
+  // platform-tier commercial roles is refused on an invite INTO a tenant (pool !== 'platform')
+  // before any Cognito side effect and before any identity call. No service change: the
+  // guard keys off PLATFORM_ROLE_KEYS.
+  for (const key of ['platform_owner', 'finance_admin', 'commercial_ops', 'catalog_manager', 'support_admin', 'read_only_auditor']) {
+    it(`CCP A1 §7.3(b): inviteUserIntoTenant (tenant pool) with ${key} → 400 platform_role_not_assignable BEFORE Cognito`, async () => {
+      const mocks = makeMocks();
+      await expect(
+        buildService(mocks).inviteUserIntoTenant({
+          tenant_id: 'tenant-x',
+          email: 'ops@acme.io',
+          role_keys: ['recruiter', key],
+          display_name: null,
+          actor_user_id: 'super-admin-1',
+          pool: 'tenant',
+          request_id: TEST_REQUEST_ID,
+        }),
+      ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400, context: { details: { reason: 'platform_role_not_assignable', role_keys: [key] } } });
+      expect(mocks.cognito.adminCreateUser).not.toHaveBeenCalled();
+      expect(mocks.cognito.adminGetUser).not.toHaveBeenCalled();
+      expect(mocks.identitySvc.resolveRoleIdsByKeys).not.toHaveBeenCalled();
+      expect(mocks.identitySvc.createUserFromInvitation).not.toHaveBeenCalled();
+    });
+  }
+
   // IC-3 PR-7 — product-neutral provisioning: owner role and ATS projections
   // follow the product set; core is always held; ATS-only is unchanged.
   describe('IC-3 PR-7 — product-neutral provisioning', () => {
