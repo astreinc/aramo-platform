@@ -99,6 +99,11 @@ jobs:
           distribution: temurin
           java-version: '17'
       - uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407 # v3.2.2
+        with:
+          # The action's default list includes the retired 'tools' package, which
+          # sdkmanager now refuses. Install exactly what RN 0.86 / the app needs
+          # (compileSdk 36, build-tools 36.0.0, NDK 27.1, CMake 3.22.1).
+          packages: 'platform-tools platforms;android-36 build-tools;36.0.0 ndk;27.1.12297006 cmake;3.22.1'
       - uses: gradle/actions/setup-gradle@ac638b010cf58a27ee6c972d7336334ccaf61c96 # v4.4.1
       - name: npm ci
         run: npm ci
