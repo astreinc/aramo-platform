@@ -126,6 +126,12 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   'libs/identity/prisma/migrations/20261022150000_ats_qa_1_resume_select_grants/migration.sql',
   // Personal Free — GeoLite2 evidence + review-lifted phone step (additive).
   'libs/identity/prisma/migrations/20261024100000_sign_personal_geo_step_up/migration.sql',
+  // CCP A1 (Aramo-CCP-A1-Commercial-Roles-and-Scopes-Directive-v1_0 LOCKED §6.4) — 6 platform-tier
+  // commercial roles (0x2c0..0x2c5), 15 platform:* commercial scopes (0x326..0x334) and their 45
+  // role-scope rows. Catalog only: no user holds a new role, so the effective-scope bump set is
+  // empty (the block RAISEs otherwise). One guarded, fail-closed DO block on fixed ids (a no-op
+  // without a role catalog). No returned-shape change, so no pact verify-api registration.
+  'libs/identity/prisma/migrations/20261024120000_ccp_a1_commercial_role_catalog/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each
