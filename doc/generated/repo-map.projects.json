@@ -2221,12 +2221,24 @@
       "CATALOG_STORAGE_CAPACITY_KEY",
       "CATALOG_V1_BILLING_INTERVAL",
       "CATALOG_V1_CURRENCY",
+      "CCP_ALERT_APPROVAL_EXPIRY_LEAD_MINUTES_DEFAULT",
+      "CCP_ALERT_PENDING_PROVIDER_STUCK_MINUTES_DEFAULT",
+      "CCP_ALERT_RAISED_EVENT",
+      "CCP_ALERT_RESOLVED_EVENT",
+      "CCP_ALERT_SCAN_EVENT",
+      "CCP_ALERT_THRESHOLD_MAX_MINUTES",
       "COMMERCIAL_A3_TRANSITIONS",
       "COMMERCIAL_A6_APPLY_TRANSITIONS",
       "COMMERCIAL_A8_EXCEPTION_TRANSITIONS",
       "COMMERCIAL_A9_ROLE_APPLY_TRANSITIONS",
       "COMMERCIAL_ACTIONS",
       "COMMERCIAL_ACTION_TYPES",
+      "COMMERCIAL_ALERT_DEFINITIONS",
+      "COMMERCIAL_ALERT_FAMILIES",
+      "COMMERCIAL_ALERT_SCAN_LOCK",
+      "COMMERCIAL_ALERT_SOURCE_CAP",
+      "COMMERCIAL_ALERT_STATUSES",
+      "COMMERCIAL_ALERT_TYPES",
       "COMMERCIAL_APPLY_FAULT_HOOK",
       "COMMERCIAL_AUDIT_DEFAULT_LIMIT",
       "COMMERCIAL_AUDIT_EVENT_TYPE_PATTERN",
@@ -2260,6 +2272,8 @@
       "CatalogCreateDraftInput",
       "CatalogDraftEditError",
       "CatalogUpdateDraftInput",
+      "CommercialAlertQueryError",
+      "CommercialAlertService",
       "CommercialApplyFailedError",
       "CommercialApplyRefusedError",
       "CommercialApplyService",
@@ -2385,6 +2399,8 @@
       "checkProviderPriceParity",
       "checkSupportExtension",
       "checkoutCutoverReport",
+      "commercialAlertThresholds",
+      "commercialAlertTypesOf",
       "commercialPolicyChecksum",
       "conversionPayloadErrors",
       "creditEscalation",
@@ -2392,6 +2408,7 @@
       "currentPublishedVersion",
       "daysUntil",
       "decideSupportExtension",
+      "diffAlerts",
       "discountEscalates",
       "effectivePlatformOwners",
       "effectiveProviderPrice",
@@ -3604,6 +3621,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d3-observability-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -4278,6 +4301,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-d1-usage-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d3-observability-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -6697,6 +6726,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d3-observability-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -7413,6 +7448,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-d1-usage-rollups.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-d3-operational-alerts.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -9811,6 +9852,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d3-observability-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -12015,6 +12062,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-d1-usage-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d3-alert-scanner-worker.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d3-observability-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },

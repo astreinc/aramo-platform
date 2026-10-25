@@ -29,6 +29,10 @@ import { PlatformCommercialConversionController } from './platform-commercial-co
 import { PlatformCommercialBillingStatusController } from './platform-commercial-billing-status.controller.js';
 import { PlatformCommercialFinanceController } from './platform-commercial-finance.controller.js';
 import { PlatformCommercialSupportExtensionController } from './platform-commercial-support-extension.controller.js';
+// CCP-D3 — the operational alert register and counts-and-states metrics (read-only), and the
+// opt-in scanner (CCP_ALERTS_ENABLED=1).
+import { PlatformCommercialObservabilityController } from './platform-commercial-observability.controller.js';
+import { CommercialAlertScannerWorker } from './commercial-alert-scanner.service.js';
 import { PlatformPersonalController } from './platform-personal.controller.js';
 import { PlatformController } from './platform.controller.js';
 import { PlatformSignController } from './platform-sign.controller.js';
@@ -87,7 +91,8 @@ import { UsageRollupWorker } from './usage-rollup-worker.service.js';
   // CCP-C3 — read-through invoice / payment status and portal configuration (platform:billing:read).
   // CCP-C6 — the read-only Finance reports (platform:billing:read).
   // CCP-A8 — the support exception overlay (platform:subscription:support / :read gates).
-  controllers: [PlatformController, PlatformSignController, PlatformPersonalController, PlatformCommercialAuditController, PlatformCommercialChangeRequestController, PlatformCommercialApplyController, PlatformCommercialUsageController, PlatformCommercialCatalogController, PlatformCommercialGovernanceController, PlatformCommercialContractController, PlatformCommercialBillingController, PlatformCommercialConversionController, PlatformCommercialBillingStatusController, PlatformCommercialFinanceController, PlatformCommercialSupportExtensionController],
+  // CCP-D3 — read-only alert register and metrics (platform:billing:read / platform:approval:read).
+  controllers: [PlatformController, PlatformSignController, PlatformPersonalController, PlatformCommercialAuditController, PlatformCommercialChangeRequestController, PlatformCommercialApplyController, PlatformCommercialUsageController, PlatformCommercialCatalogController, PlatformCommercialGovernanceController, PlatformCommercialContractController, PlatformCommercialBillingController, PlatformCommercialConversionController, PlatformCommercialBillingStatusController, PlatformCommercialFinanceController, PlatformCommercialSupportExtensionController, PlatformCommercialObservabilityController],
   providers: [
     // Sign Personal (Free) v1.1 §6.4 — abuse-report outcomes (sign schema; its own
     // generated client, lazy DATABASE_URL — scope:platform → scope:boundary is wall-legal).
@@ -112,6 +117,8 @@ import { UsageRollupWorker } from './usage-rollup-worker.service.js';
     PersonalSignupAttemptPurgeSweeper,
     // CCP-D1 — opt-in usage roll-up worker (CCP_USAGE_ROLLUP_ENABLED=1; off by default).
     UsageRollupWorker,
+    // CCP-D3 — opt-in operational alert scanner (CCP_ALERTS_ENABLED=1; off by default).
+    CommercialAlertScannerWorker,
     // DOC-TEMPLATE-LIB-1 T-3 (§5.3) — the RTR-TEMPLATE-1 provisioning-time RTR template
     // COPY is retired: a new tenant gets no RTR template row and resolves to the Aramo
     // (PLATFORM) RTR default. platform-admin no longer touches the documents store.

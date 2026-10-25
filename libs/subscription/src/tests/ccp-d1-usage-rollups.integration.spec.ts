@@ -488,7 +488,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D1 — usage 
       }
     };
     for (const d of ['libs/subscription/src/lib', 'libs/metering/src', 'libs/entitlement/src', 'apps/sign-service/src', 'apps/api/src']) walk(resolve(ROOT, d));
-    expect(offenders.sort()).toEqual(['libs/subscription/src/lib/subscription.module.ts', 'libs/subscription/src/lib/usage/usage-metrics.ts', 'libs/subscription/src/lib/usage/usage-rollup.service.ts']);
+    // Merge train TD-MERGE-34: CCP-D3's alert scanner reads the D1 run log (USAGE_NOT_RECONCILED,
+    // TD-D3-1) — an observability read, not an allowance, entitlement or billing reader.
+    expect(offenders.sort()).toEqual([
+      'libs/subscription/src/lib/observability/commercial-alert.service.ts',
+      'libs/subscription/src/lib/subscription.module.ts',
+      'libs/subscription/src/lib/usage/usage-metrics.ts',
+      'libs/subscription/src/lib/usage/usage-rollup.service.ts',
+    ]);
   });
 
   it('RO-5 the run log is append-only', async () => {

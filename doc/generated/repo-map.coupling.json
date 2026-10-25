@@ -10868,6 +10868,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-observability.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform-commercial-support-extension.controller.ts"
     },
     {
@@ -16169,6 +16174,151 @@
     },
     {
       "from": "doc/ccp/slices/CCP-D1-pre-execution.md",
+      "status": "unscoped",
+      "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-observability.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-d3-alert-scanner-worker.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-d3-observability-authorization.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-acceptance.md",
+      "status": "unscoped",
+      "to": "ci/config/api-surface-manifest.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-acceptance.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-orphan-scopes.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-D3-pre-execution.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261026090000_ccp_d3_operational_alerts/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/index.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/observability/commercial-alert.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/subscription.module.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-d3-alerts.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-d3-operational-alerts.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-acceptance.md",
+      "status": "unscoped",
+      "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-platform-admin.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-acceptance.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/personal-signup-attempt-purge-sweeper.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-billing.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-pre-execution.md",
+      "status": "unscoped",
+      "to": "ci/config/api-surface-manifest.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A3-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A6-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-C1-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261025240000_ccp_d1_usage_rollups/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D3-pre-execution.md",
       "status": "unscoped",
       "to": "openapi/platform.yaml"
     },
@@ -29892,6 +30042,11 @@
       "to": "doc/ccp/slices/CCP-C2-acceptance.md"
     },
     {
+      "from": "libs/subscription/prisma/migrations/20261026090000_ccp_d3_operational_alerts/migration.sql",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-D3-acceptance.md"
+    },
+    {
       "from": "libs/subscription/project.json",
       "status": "unscoped",
       "to": "libs/subscription/src/index.ts"
@@ -30286,6 +30441,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "libs/subscription/src/tests/ccp-d1-usage-rollups.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/subscription/src/lib/observability/commercial-alert.service.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-d1-usage-rollups.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/subscription/src/lib/subscription.module.ts"
     },
     {
@@ -30299,6 +30460,12 @@
       "from": "libs/subscription/src/tests/ccp-d1-usage-rollups.integration.spec.ts",
       "status": "excluded",
       "to": "libs/subscription/src/lib/usage/usage-rollup.service.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-d3-operational-alerts.integration.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-D3-acceptance.md"
     },
     {
       "excludedBy": "src/tests/**/*",

@@ -575,3 +575,37 @@ export {
   type UsageRollupRunOptions,
   type UsageRollupRunResult,
 } from './lib/usage/usage-rollup.service.js';
+// CCP-D3 — observability: the operational alert register (exception management), the alert
+// scanner and the billing / approval counts-and-states metrics.
+export {
+  CCP_ALERT_APPROVAL_EXPIRY_LEAD_MINUTES_DEFAULT,
+  CCP_ALERT_PENDING_PROVIDER_STUCK_MINUTES_DEFAULT,
+  CCP_ALERT_RAISED_EVENT,
+  CCP_ALERT_RESOLVED_EVENT,
+  CCP_ALERT_SCAN_EVENT,
+  CCP_ALERT_THRESHOLD_MAX_MINUTES,
+  COMMERCIAL_ALERT_DEFINITIONS,
+  COMMERCIAL_ALERT_FAMILIES,
+  COMMERCIAL_ALERT_STATUSES,
+  COMMERCIAL_ALERT_TYPES,
+  commercialAlertThresholds,
+  commercialAlertTypesOf,
+  diffAlerts,
+  type CommercialAlertFamily,
+  type CommercialAlertStatus,
+  type CommercialAlertThresholds,
+  type CommercialAlertType,
+  type DetectedCondition,
+} from './lib/observability/commercial-alert.js';
+export {
+  COMMERCIAL_ALERT_SCAN_LOCK,
+  COMMERCIAL_ALERT_SOURCE_CAP,
+  CommercialAlertQueryError,
+  CommercialAlertService,
+  type ApprovalOperationsMetrics,
+  type BillingOperationsMetrics,
+  type CommercialAlertListQuery,
+  type CommercialAlertRow,
+  type CommercialAlertScanTally,
+  type CommercialAlertSourceState,
+} from './lib/observability/commercial-alert.service.js';
