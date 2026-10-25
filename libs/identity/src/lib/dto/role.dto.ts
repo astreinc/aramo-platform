@@ -75,6 +75,13 @@ export const SEED_ROLE_KEYS = [
   'tenant_admin',
   // AUTHZ-2 — 1 platform role (super_admin; platform:* scope namespace only).
   'super_admin',
+  // CCP A1 (Doc ID Aramo-CCP-A1-Commercial-Roles-and-Scopes-Directive-v1_0) — 6 platform-tier commercial roles; platform:* scopes only
+  'platform_owner',
+  'finance_admin',
+  'commercial_ops',
+  'catalog_manager',
+  'support_admin',
+  'read_only_auditor',
   // PX-V1 PX-3 — E-Sign SENDER product roles (esign.aramo.ai). Namespace-separate
   // from the ATS tenant roles (like super_admin): they hold ONLY esign:* scopes and
   // are excluded from the tenant ATS RolePicker (role-catalog exclusion by `sign:`
@@ -130,7 +137,17 @@ export const ORG_ADMIN_SCOPE_KEYS = [
 // invite INTO a tenant) refuses them with VALIDATION_ERROR
 // `platform_role_not_assignable`. TENANT_ASSIGNABLE_ROLE_KEYS is the DTO-level
 // allow-list for tenant-facing surfaces (SEED minus the platform partition).
-export const PLATFORM_ROLE_KEYS = ['super_admin'] as const;
+// CCP A1 adds the 6 platform-tier commercial roles (platform_owner, finance_admin,
+// commercial_ops, catalog_manager, support_admin, read_only_auditor): catalog only, no grant path.
+export const PLATFORM_ROLE_KEYS = [
+  'super_admin',
+  'platform_owner',
+  'finance_admin',
+  'commercial_ops',
+  'catalog_manager',
+  'support_admin',
+  'read_only_auditor',
+] as const;
 export const TENANT_ASSIGNABLE_ROLE_KEYS: readonly SeedRoleKey[] = SEED_ROLE_KEYS.filter(
   (k) => !(PLATFORM_ROLE_KEYS as readonly string[]).includes(k),
 );

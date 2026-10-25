@@ -154,16 +154,18 @@ export const SEED_SCOPE_KEYS = [
   // agency-economics tier: tenant_admin + tenant_owner + account_manager
   // (NOT base recruiter; NOT the delivery tier).
   'company:read_commercial',    // tenant_admin + tenant_owner + account_manager (agency margin = client economics)
-  // AUTHZ-2 — platform-tier scopes (a SEPARATE namespace from the 47 tenant
-  // scopes above; Lead ruling 5 — the 3-scope minimum set). The bundle is
-  // assigned only to the platform `super_admin` role; no tenant role holds
+  // AUTHZ-2 — platform-tier scopes (a SEPARATE namespace from the tenant
+  // scopes above). Held only by PLATFORM_ROLE_KEYS roles; no tenant role holds
   // any platform:* scope, and no platform role holds any tenant scope. The
   // DDR §13.1 tripwire is enforced by namespace partition + the consumer_type
-  // check at the guard layer. Deferrals (gap-and-noted to later platform
-  // PRs): platform:tenant:deactivate, platform:tenant:entitlement:edit,
-  // platform:billing:*, platform:audit:read.
+  // check at the guard layer. Deferral status (CCP A1): platform:billing:* has
+  // landed as platform:billing:{read,request,approve}; platform:tenant:
+  // entitlement:edit is superseded by the governed platform:entitlement:
+  // {request,approve}; platform:tenant:deactivate is superseded by
+  // platform:tenant:lifecycle:manage (Platform-Console Increment-2 PR-1);
+  // platform:audit:read stays deferred (CCP adds only platform:commercial:audit:read).
   'platform:tenant:provision',  // super_admin only — create tenant + entitlement seed + Tenant-Owner invite
-  'platform:tenant:read',       // super_admin only — list/read tenants for the platform view
+  'platform:tenant:read',       // super_admin + the 6 CCP platform roles (console entry gate)
   'platform:admin:invite',      // super_admin only — invite another platform admin (against the platform Cognito pool)
   // F-2 reconciliation — Platform-Console Increment-2 PR-1 added this to
   // PLATFORM_SCOPE_KEYS + SEED_IDS.scopes + upsertScope but never to this
@@ -187,6 +189,24 @@ export const SEED_SCOPE_KEYS = [
   // NO tenant role holds either and there is no tenant-tier policy route.
   'platform:matching_policy:read',   // super_admin only — read the active policy + version history
   'platform:matching_policy:write',  // super_admin only — create a policy version, activate a version
+  // CCP A1 (Doc ID Aramo-CCP-A1-Commercial-Roles-and-Scopes-Directive-v1_0) — 15 platform-tier
+  // commercial scopes. Held only by the 6 CCP platform roles (never super_admin, never a
+  // tenant role). Catalog only: no route enforces them until their CCP slice lands.
+  'platform:catalog:read',
+  'platform:catalog:draft',
+  'platform:catalog:approve',
+  'platform:catalog:publish',
+  'platform:subscription:read',
+  'platform:subscription:request',
+  'platform:subscription:approve',
+  'platform:subscription:support',
+  'platform:entitlement:request',
+  'platform:entitlement:approve',
+  'platform:billing:read',
+  'platform:billing:request',
+  'platform:billing:approve',
+  'platform:approval:read',
+  'platform:commercial:audit:read',
   // AUTHZ-D5 — 6 compensation:view:* scopes (the field-masking scope
   // family). The FINAL authorization PR — field-level masking of the
   // requisition read DTO's compensation surface (D4b masked WHICH
@@ -527,7 +547,7 @@ export const PLATFORM_SCOPE_KEYS = [
   // Platform-Console Increment-2 PR-1 — tenant lifecycle management, SEPARATE
   // from provision (provisioning power ≠ lifecycle power). Gates the
   // suspend/reactivate/start-offboarding/close operator endpoints. super_admin
-  // holds it; finer-grained platform roles are a future seed-only addition.
+  // holds it; the CCP platform roles (CCP A1) do not.
   'platform:tenant:lifecycle:manage',
   // SKILL-TAX-1F — platform taxonomy-governance scopes (super_admin only).
   'platform:skill:read',
@@ -538,6 +558,22 @@ export const PLATFORM_SCOPE_KEYS = [
   // ATI-SEP-1 A2 A-c (P1) — platform-owned matching calibration (super_admin only).
   'platform:matching_policy:read',
   'platform:matching_policy:write',
+  // CCP A1 — the 15 platform-tier commercial scopes (the 6 CCP platform roles only).
+  'platform:catalog:read',
+  'platform:catalog:draft',
+  'platform:catalog:approve',
+  'platform:catalog:publish',
+  'platform:subscription:read',
+  'platform:subscription:request',
+  'platform:subscription:approve',
+  'platform:subscription:support',
+  'platform:entitlement:request',
+  'platform:entitlement:approve',
+  'platform:billing:read',
+  'platform:billing:request',
+  'platform:billing:approve',
+  'platform:approval:read',
+  'platform:commercial:audit:read',
 ] as const;
 export type PlatformScopeKey = (typeof PLATFORM_SCOPE_KEYS)[number];
 
