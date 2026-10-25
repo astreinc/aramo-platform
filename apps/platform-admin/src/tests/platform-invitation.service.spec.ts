@@ -103,6 +103,12 @@ function makeMocks(): Mocks {
       isDomainHeld: vi.fn().mockResolvedValue(false),
       lapse: vi.fn().mockResolvedValue(undefined),
     },
+    // CCP-A9 — default inviter: an attested platform_owner; the human reference is free.
+    operators: {
+      readOperatorNow: vi.fn().mockResolvedValue({ user_id: 'sa', attested: true, attestation_id: 'att-sa', role_keys: ['platform_owner', 'super_admin'], scopes: [] }),
+      isHumanRefActive: vi.fn().mockResolvedValue(false),
+      recordAttestation: vi.fn().mockResolvedValue({ id: 'att-new' }),
+    },
   };
 }
 
@@ -114,6 +120,7 @@ function buildService(mocks: Mocks): PlatformInvitationService {
     mocks.entitlementRepo as never,
     mocks.policyProvisioning as never,
     mocks.domainClaims as never,
+    mocks.operators as never,
   );
 }
 
@@ -488,7 +495,8 @@ describe('PlatformInvitationService — provisionTenantAndInviteOwner (proof 2 +
     // The service has no documents dependency at all (constructor arity) and never
     // soft-disables for an RTR template reason.
     // Domain-Enforcement P3 adds the domain-claim dependency (5 → 6); still no documents dependency.
-    expect(PlatformInvitationService.length).toBe(6);
+    // CCP-A9 adds the commercial operator repository (6 → 7).
+    expect(PlatformInvitationService.length).toBe(7);
     expect(mocks.tenantSvc.deactivateTenant).not.toHaveBeenCalled();
     expect(mocks.policyProvisioning.publishDefaultLifecyclePackage).toHaveBeenCalledWith('tenant-z');
     expect(mocks.tenantSvc.recordOwnerInviteSent).toHaveBeenCalledTimes(1);
@@ -1401,5 +1409,133 @@ describe('PlatformInvitationService — Domain-Enforcement P3 pre-checks', () =>
     mocks.identitySvc.createUserFromInvitation.mockRejectedValue(new Error('boom'));
     await expect(buildService(mocks).provisionTenantAndInviteOwner(args)).rejects.toThrow('boom');
     expect(mocks.domainClaims.lapse).toHaveBeenCalledWith('orphan', 'provisioning_failed');
+  });
+});
+
+// CCP-A9 (PBD §5.1 row A9; Inc-1 Closure Amendment A1 A1-1, A1-5) — the platform-admin invite
+// accepts PLATFORM_ROLE_KEYS for a NEW arrival only; a CCP role arrives with its D9
+// attestation, attested by an attested platform_owner inviter.
+describe('CCP-A9 — platform-admin invite accepts platform role keys (new arrivals only)', () => {
+  const HUMAN = 'a'.repeat(64);
+  function greenfield(mocks: Mocks): void {
+    mocks.identitySvc.resolveRoleIdsByKeys.mockImplementation(async (keys: string[]) => keys.map((k) => `r-${k}`));
+    mocks.cognito.adminGetUser.mockResolvedValue(null);
+    mocks.cognito.adminCreateUser.mockResolvedValue({ cognito_sub: 'plat-sub' });
+    mocks.identitySvc.createUserFromInvitation.mockResolvedValue({
+      user: { id: 'new-u', email: 'fin@aramo.ai', display_name: null, is_active: true, deactivated_at: null, created_at: '', updated_at: '' },
+      membership_id: 'new-m',
+    });
+  }
+
+  it.each([['platform_owner'], ['finance_admin'], ['commercial_ops'], ['catalog_manager'], ['support_admin'], ['read_only_auditor']])(
+    'A9-INV-1 %s is accepted for a new arrival: minted on the sentinel, platform pool, and the D9 attestation is recorded (attested by the inviter)',
+    async (role) => {
+      const mocks = makeMocks();
+      greenfield(mocks);
+      const out = await buildService(mocks).invitePlatformAdmin({ email: 'fin@aramo.ai', role_keys: [role], human_ref_hash: HUMAN, actor_user_id: 'sa', request_id: TEST_REQUEST_ID });
+      expect(out.status).toBe('invitation_sent');
+      expect(mocks.identitySvc.createUserFromInvitation).toHaveBeenCalledWith(
+        expect.objectContaining({ tenant_id: '01900000-0000-7000-8000-000000000100', role_keys: [role], allow_platform_roles: true }),
+      );
+      expect(mocks.cognito.adminCreateUser).toHaveBeenCalledWith(expect.objectContaining({ pool: 'platform' }));
+      expect(mocks.operators.recordAttestation).toHaveBeenCalledWith(expect.objectContaining({ user_id: 'new-u', human_ref_hash: HUMAN, method: 'PLATFORM_OWNER', attested_by: 'sa' }));
+    },
+  );
+
+  it('A9-INV-2 role_keys omitted → ["super_admin"] (pre-A9 behaviour); no attestation and no inviter check', async () => {
+    const mocks = makeMocks();
+    greenfield(mocks);
+    await buildService(mocks).invitePlatformAdmin({ email: 'sa2@aramo.ai', actor_user_id: 'sa', request_id: TEST_REQUEST_ID });
+    expect(mocks.identitySvc.createUserFromInvitation).toHaveBeenCalledWith(expect.objectContaining({ role_keys: ['super_admin'] }));
+    expect(mocks.operators.readOperatorNow).not.toHaveBeenCalled();
+    expect(mocks.operators.recordAttestation).not.toHaveBeenCalled();
+  });
+
+  it('A9-INV-3 the @aramo.ai domain allowlist still applies to a commercial-role invite (refused before any side effect)', async () => {
+    const mocks = makeMocks();
+    greenfield(mocks);
+    await expect(
+      buildService(mocks).invitePlatformAdmin({ email: 'fin@example.com', role_keys: ['finance_admin'], human_ref_hash: HUMAN, actor_user_id: 'sa', request_id: TEST_REQUEST_ID }),
+    ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason: 'platform_admin_domain_not_allowed' } } });
+    expect(mocks.cognito.adminCreateUser).not.toHaveBeenCalled();
+    expect(mocks.operators.recordAttestation).not.toHaveBeenCalled();
+  });
+
+  it('A9-INV-4 a commercial role without human_ref_hash → 400 human_ref_required; human_ref_hash without one → 400 human_ref_not_applicable; both before Cognito', async () => {
+    const mocks = makeMocks();
+    greenfield(mocks);
+    const svc = buildService(mocks);
+    await expect(svc.invitePlatformAdmin({ email: 'fin@aramo.ai', role_keys: ['finance_admin'], actor_user_id: 'sa', request_id: TEST_REQUEST_ID })).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      context: { details: { reason: 'human_ref_required' } },
+    });
+    await expect(svc.invitePlatformAdmin({ email: 'sa2@aramo.ai', human_ref_hash: HUMAN, actor_user_id: 'sa', request_id: TEST_REQUEST_ID })).rejects.toMatchObject({
+      code: 'VALIDATION_ERROR',
+      context: { details: { reason: 'human_ref_not_applicable' } },
+    });
+    expect(mocks.cognito.adminCreateUser).not.toHaveBeenCalled();
+  });
+
+  it('A9-INV-5 the inviter must be an attested platform_owner to mint a commercial role (super_admin alone → 403 attester_not_platform_owner); an in-use human reference → 400', async () => {
+    const mocks = makeMocks();
+    greenfield(mocks);
+    mocks.operators.readOperatorNow.mockResolvedValueOnce({ user_id: 'sa', attested: false, attestation_id: null, role_keys: ['super_admin'], scopes: [] });
+    const svc = buildService(mocks);
+    await expect(svc.invitePlatformAdmin({ email: 'fin@aramo.ai', role_keys: ['finance_admin'], human_ref_hash: HUMAN, actor_user_id: 'sa', request_id: TEST_REQUEST_ID })).rejects.toMatchObject({
+      code: 'INSUFFICIENT_PERMISSIONS',
+      context: { details: { reason: 'attester_not_platform_owner' } },
+    });
+    mocks.operators.readOperatorNow.mockResolvedValueOnce({ user_id: 'sa', attested: false, attestation_id: null, role_keys: ['platform_owner', 'super_admin'], scopes: [] });
+    await expect(svc.invitePlatformAdmin({ email: 'fin@aramo.ai', role_keys: ['finance_admin'], human_ref_hash: HUMAN, actor_user_id: 'sa', request_id: TEST_REQUEST_ID })).rejects.toMatchObject({
+      context: { details: { reason: 'attester_not_platform_owner' } },
+    });
+    mocks.operators.isHumanRefActive.mockResolvedValueOnce(true);
+    await expect(svc.invitePlatformAdmin({ email: 'fin@aramo.ai', role_keys: ['finance_admin'], human_ref_hash: HUMAN, actor_user_id: 'sa', request_id: TEST_REQUEST_ID })).rejects.toMatchObject({
+      context: { details: { reason: 'human_ref_in_use' } },
+    });
+    expect(mocks.cognito.adminCreateUser).not.toHaveBeenCalled();
+  });
+
+  it('A9-INV-6 an EXISTING platform member is refused 409 existing_platform_admin whatever the role set (no role replacement, no Cognito call)', async () => {
+    for (const role_keys of [['finance_admin'], ['super_admin'], ['super_admin', 'platform_owner']]) {
+      const mocks = makeMocks();
+      greenfield(mocks);
+      mocks.identitySvc.classifyInviteEmailOwnership.mockResolvedValue({ kind: 'same_tenant', user: { id: 'u-existing' }, membership: { id: 'm-existing' } });
+      mocks.identitySvc.findRoleIdsForMembership.mockResolvedValue(['r-super_admin']);
+      await expect(
+        buildService(mocks).invitePlatformAdmin({ email: 'purush@aramo.ai', role_keys, ...(role_keys.includes('finance_admin') || role_keys.includes('platform_owner') ? { human_ref_hash: HUMAN } : {}), actor_user_id: 'sa', request_id: TEST_REQUEST_ID }),
+      ).rejects.toMatchObject({ code: 'INVITATION_ALREADY_EXISTS', context: { details: { reason: 'existing_platform_admin' } } });
+      expect(mocks.identitySvc.replaceMembershipRoles).not.toHaveBeenCalled();
+      expect(mocks.cognito.adminCreateUser).not.toHaveBeenCalled();
+      expect(mocks.operators.recordAttestation).not.toHaveBeenCalled();
+    }
+  });
+
+  it('A9-INV-8 without the commercial operator store a commercial-role invite is refused (fail closed) before Cognito; a super_admin invite is unaffected', async () => {
+    const mocks = makeMocks();
+    greenfield(mocks);
+    const svc = new PlatformInvitationService(
+      mocks.cognito as unknown as CognitoAdminService,
+      mocks.tenantSvc as never,
+      mocks.identitySvc as never,
+      mocks.entitlementRepo as never,
+      mocks.policyProvisioning as never,
+      mocks.domainClaims as never,
+    );
+    await expect(svc.invitePlatformAdmin({ email: 'fin@aramo.ai', role_keys: ['finance_admin'], human_ref_hash: HUMAN, actor_user_id: 'sa', request_id: TEST_REQUEST_ID })).rejects.toMatchObject({
+      code: 'INTERNAL_ERROR',
+      context: { details: { reason: 'commercial_operator_store_unavailable' } },
+    });
+    expect(mocks.cognito.adminCreateUser).not.toHaveBeenCalled();
+    expect((await svc.invitePlatformAdmin({ email: 'sa2@aramo.ai', actor_user_id: 'sa', request_id: TEST_REQUEST_ID })).status).toBe('invitation_sent');
+  });
+
+  it('A9-INV-7 a tenant-pool same-tenant re-invite keeps its pre-A9 reconcile (the arrival-only rule is platform-pool only)', async () => {
+    const mocks = makeMocks();
+    mocks.identitySvc.resolveRoleIdsByKeys.mockResolvedValue(['r-recruiter']);
+    mocks.identitySvc.classifyInviteEmailOwnership.mockResolvedValue({ kind: 'same_tenant', user: { id: 'u1' }, membership: { id: 'm1' } });
+    mocks.identitySvc.findRoleIdsForMembership.mockResolvedValue(['r-other']);
+    const out = await buildService(mocks).inviteUserIntoTenant({ tenant_id: 't1', email: 'r@acme.test', role_keys: ['recruiter'], actor_user_id: 'a', pool: 'tenant', request_id: TEST_REQUEST_ID });
+    expect(out.status).toBe('roles_updated');
   });
 });
