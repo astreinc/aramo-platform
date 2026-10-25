@@ -2172,10 +2172,14 @@
       "BASE_COMPOSITION",
       "BILLING_COUNTRY_NOT_SUPPORTED",
       "BILLING_PROVIDER_PORT",
+      "BOOTSTRAP_CLI_FLAGS",
+      "BOOTSTRAP_PLATFORM_TENANT_ID",
+      "BOOTSTRAP_TARGET_EMAIL",
       "BillingProviderUnavailableError",
       "BillingRefusedError",
       "BillingWebhookSignatureError",
       "COMMERCIAL_A3_TRANSITIONS",
+      "COMMERCIAL_A9_ROLE_APPLY_TRANSITIONS",
       "COMMERCIAL_ACTIONS",
       "COMMERCIAL_ACTION_TYPES",
       "COMMERCIAL_AUDIT_DEFAULT_LIMIT",
@@ -2188,6 +2192,8 @@
       "COMMERCIAL_POLICY_FORMAT_VERSION",
       "COMMERCIAL_POLICY_KEYS",
       "COMMERCIAL_REQUEST_PRODUCT_KEYS",
+      "COMMERCIAL_ROLE_CHANGE_ACTIONS",
+      "COMMERCIAL_ROLE_CHANGE_ROLE_KEYS",
       "COMMERCIAL_TERMINAL_STATES",
       "CapacityService",
       "CommercialApplyRefusedError",
@@ -2221,8 +2227,13 @@
       "PAST_DUE_GRACE_DAYS_DEFAULT",
       "PERSONAL_LEGAL_DOCUMENT_KEYS",
       "PLAN_ELIGIBILITY_PORT",
+      "PLATFORM_LAST_OWNER_DB_MARKER",
+      "PLATFORM_OWNER_BOOTSTRAP_EVENT",
+      "PLATFORM_OWNER_ROLE_KEY",
       "PRODUCT_KEYS",
+      "PlatformOwnerBootstrapRefusedError",
       "ProductContextError",
+      "RoleChangeApplyError",
       "SIGN_PRODUCT_KEY",
       "STORAGE_CAPACITY_KEY",
       "STRIPE_API_VERSION",
@@ -2240,6 +2251,7 @@
       "billingCountrySupported",
       "billingPeriodAt",
       "canTransition",
+      "canTransitionFor",
       "canonicalJson",
       "checkApprovalEligibility",
       "checkChainSatisfiable",
@@ -2247,15 +2259,18 @@
       "commercialPolicyChecksum",
       "creditEscalation",
       "discountEscalates",
+      "effectivePlatformOwners",
       "inAppContextRef",
       "isApprovalExpired",
       "isFeatureAvailable",
+      "isPlatformLastOwnerViolation",
       "isProductKey",
       "isWithinPastDueGrace",
       "legalRef",
       "mapProviderStatus",
       "openDevelopmentSubscription",
       "parseActiveCommercialPolicy",
+      "parseBootstrapArgs",
       "parseCommercialPolicyContent",
       "parsePlanPrices",
       "parseRequiredChain",
@@ -2264,7 +2279,9 @@
       "personalSignupMode",
       "postTerminationExportDays",
       "productOfMeteredKey",
+      "readPlatformSubject",
       "resolveRequiredChain",
+      "runPlatformOwnerBootstrap",
       "stripeEventSubscriptionRef",
       "stripeSubscriptionState",
       "subjectUserOf",
@@ -3330,6 +3347,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a9-role-change-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a9-role-change-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -3914,6 +3943,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a9-role-change-routes.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -5754,6 +5789,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/ccp-a9-platform-last-owner.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/d4a-reads.service-repo.spec.ts",
         "project": "identity",
         "status": "excluded"
@@ -6203,6 +6244,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a9-role-change-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a9-role-change-routes.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -6828,6 +6881,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-a4-sign-equality.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-a9-bootstrap-role-change.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -9063,6 +9122,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a9-role-change-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a9-role-change-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -11153,6 +11224,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a9-role-change-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a9-role-change-routes.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
