@@ -128,6 +128,15 @@ describe('Commercial routes — in-shell access denied, never a redirect', () =>
     expect(within(denied).getByText('platform:commercial:audit:read')).toBeInTheDocument();
   });
 
+  it('TD-B4-3 (merge train) catalog_manager: Contracts is not in the rail, and a deep link to /commercial/contracts is denied in the shell', async () => {
+    renderConsole('catalog_manager', '/commercial/contracts');
+    const denied = await screen.findByTestId('access-denied');
+    expect(within(denied).getByText('Your roles don’t include access to this page.')).toBeInTheDocument();
+    expect(within(denied).getByText('platform:subscription:read')).toBeInTheDocument();
+    expect(within(rail()).queryByRole('link', { name: 'Contracts' })).toBeNull();
+    expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('Commercial/Contracts');
+  });
+
   it('placeholders render the designed disabled state', async () => {
     // Merge train: Catalog is built (CCP-B2); Subscriptions stays a placeholder.
     renderConsole('platform_owner', '/commercial/subscriptions');

@@ -89,6 +89,13 @@ tags:
       `platform:commercial:audit:read`, held by the platform_owner, finance_admin and
       read_only_auditor commercial roles only; super_admin holds no commercial scope
       and is refused with 403 `INSUFFICIENT_PERMISSIONS`. Platform-tier only.
+  - name: Platform Commercial Contracts
+    description: |
+      CCP-B4 — read-only enterprise contract records (Charter L6: a record of what was
+      agreed, not a quoting tool). Requires `platform:subscription:read`, held by the
+      platform_owner, finance_admin, commercial_ops, support_admin and read_only_auditor
+      commercial roles; catalog_manager and super_admin are refused with 403
+      `INSUFFICIENT_PERMISSIONS`. Platform-tier only.
   - name: Platform Commercial Change Requests
     description: |
       CCP-A3 — governed commercial change requests and their distinct-human approvals.
@@ -2455,6 +2462,95 @@ paths:
         '503':
           $ref: '#/components/responses/CommercialPolicyUnavailable'
 
+  /platform/commercial/contracts:
+    get:
+      operationId: listPlatformCommercialContracts
+      tags: [Platform Commercial Contracts]
+      summary: List enterprise contract records (active first, then newest).
+      description: |
+        CCP-B4 — enterprise contracts: evidence-bearing records of governed MANUAL
+        subscriptions (negotiated terms and hashed evidence documents). Read-only: a
+        contract is recorded, amended or ended only by an applied change request
+        (`SUBSCRIPTION_OPEN` / `SUBSCRIPTION_CHANGE` with a `contract` or
+        `contract_amendment` block, `SUBSCRIPTION_END` with `contract_end`). `status`,
+        plan, version and commitment are read through the governed subscription; the
+        contract stores none of them. Requires `platform:subscription:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: tenant_id
+          in: query
+          required: false
+          description: Only contracts of this tenant.
+          schema:
+            type: string
+            format: uuid
+        - name: status
+          in: query
+          required: false
+          description: Only active (the governed subscription is open) or ended contracts.
+          schema:
+            type: string
+            enum: [ACTIVE, ENDED]
+        - name: limit
+          in: query
+          required: false
+          description: Maximum rows (default 100, max 200).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+      responses:
+        '200':
+          description: The contract records.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialContractListResponse'
+        '400':
+          $ref: '#/components/responses/CommercialContractValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
+  /platform/commercial/contracts/{id}:
+    get:
+      operationId: getPlatformCommercialContract
+      tags: [Platform Commercial Contracts]
+      summary: Get one contract record (terms, hashed documents, amendments).
+      description: |
+        CCP-B4 — the contract with its current negotiated terms, its evidence documents
+        (name and SHA-256; no bytes are stored) and its amendment timeline. Contract
+        invoicing is not enabled (`invoicing.enabled` is always false until the
+        enterprise invoicing choice is made). Requires `platform:subscription:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The contract record.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialContractDetail'
+        '400':
+          $ref: '#/components/responses/CommercialContractValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/CommercialContractNotFound'
+
   /platform/commercial/change-requests:
     post:
       operationId: createPlatformCommercialChangeRequest
@@ -4251,6 +4347,18 @@ components:
         application/json:
           schema:
             $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    CommercialContractValidation:
+      description: '`VALIDATION_ERROR` — a malformed contract id or query parameter.'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    CommercialContractNotFound:
+      description: '`NOT_FOUND` — no such contract.'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
     CommercialChangeRequestNotFound:
       description: '`NOT_FOUND` — no such change request.'
       content:
@@ -4742,6 +4850,145 @@ components:
         correlation_id:
           type: string
 
+    CommercialContractPerson:
+      type: object
+      additionalProperties: false
+      required: [user_id, display_name, email]
+      properties:
+        user_id: { type: string, format: uuid }
+        display_name: { type: [string, 'null'] }
+        email: { type: [string, 'null'] }
+    CommercialContractSubscription:
+      type: object
+      additionalProperties: false
+      description: The governed subscription row the contract references (the authority for state, plan and commitment).
+      required: [id, source, status, ended_at, commitment_start, commitment_end, plan, plan_version]
+      properties:
+        id: { type: string, format: uuid }
+        source: { type: string }
+        status: { type: string }
+        ended_at: { type: [string, 'null'], format: date-time }
+        commitment_start: { type: [string, 'null'], format: date-time }
+        commitment_end: { type: [string, 'null'], format: date-time }
+        plan:
+          type: object
+          additionalProperties: false
+          required: [key, name]
+          properties:
+            key: { type: string }
+            name: { type: string }
+        plan_version:
+          type: object
+          additionalProperties: false
+          required: [id, version_number, status]
+          properties:
+            id: { type: string, format: uuid }
+            version_number: { type: integer }
+            status: { type: string }
+    CommercialContractSummary:
+      type: object
+      additionalProperties: false
+      required: [id, contract_ref, tenant, product_key, status, subscription, provenance, recorded_at]
+      properties:
+        id: { type: string, format: uuid }
+        contract_ref: { type: string }
+        tenant:
+          type: object
+          additionalProperties: false
+          required: [id, name, slug]
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+            slug: { type: [string, 'null'] }
+        product_key: { type: string }
+        status:
+          type: string
+          enum: [ACTIVE, ENDED]
+          description: Derived from the governed subscription row (never stored on the contract).
+        subscription:
+          $ref: '#/components/schemas/CommercialContractSubscription'
+        provenance:
+          type: string
+          enum: [CHANGE_REQUEST, MIGRATION]
+        recorded_at: { type: string, format: date-time }
+    CommercialContractDocument:
+      type: object
+      additionalProperties: false
+      required: [name, sha256, byte_size, media_type, recorded_by, recorded_at, amendment_sequence]
+      properties:
+        name: { type: string }
+        sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+        byte_size: { type: [integer, 'null'] }
+        media_type: { type: [string, 'null'] }
+        recorded_by:
+          $ref: '#/components/schemas/CommercialContractPerson'
+        recorded_at: { type: string, format: date-time }
+        amendment_sequence:
+          type: [integer, 'null']
+          description: null when recorded with the contract; otherwise the amendment that recorded it.
+    CommercialContractAmendment:
+      type: object
+      additionalProperties: false
+      required: [sequence, kind, summary, terms, document_count, evidence_ref, change_request_id, recorded_by, recorded_at]
+      properties:
+        sequence: { type: integer, minimum: 1 }
+        kind:
+          type: string
+          enum: [AMENDMENT, END]
+        summary: { type: string }
+        terms:
+          type: [array, 'null']
+          items: { type: string }
+        document_count: { type: integer, minimum: 0 }
+        evidence_ref: { type: [string, 'null'] }
+        change_request_id: { type: string, format: uuid }
+        recorded_by:
+          $ref: '#/components/schemas/CommercialContractPerson'
+        recorded_at: { type: string, format: date-time }
+    CommercialContractDetail:
+      allOf:
+        - $ref: '#/components/schemas/CommercialContractSummary'
+        - type: object
+          required: [terms, recorded_terms, evidence_ref, recorded_by, recorded_by_change_request_id, documents, amendments, invoicing]
+          properties:
+            terms:
+              type: array
+              items: { type: string }
+            recorded_terms:
+              type: array
+              items: { type: string }
+            evidence_ref: { type: [string, 'null'] }
+            recorded_by:
+              $ref: '#/components/schemas/CommercialContractPerson'
+            recorded_by_change_request_id: { type: string, format: uuid }
+            documents:
+              type: array
+              items:
+                $ref: '#/components/schemas/CommercialContractDocument'
+            amendments:
+              type: array
+              items:
+                $ref: '#/components/schemas/CommercialContractAmendment'
+            invoicing:
+              type: object
+              additionalProperties: false
+              required: [enabled, reason]
+              properties:
+                enabled:
+                  type: boolean
+                  enum: [false]
+                reason:
+                  type: string
+                  enum: [enterprise_invoicing_choice_pending]
+    CommercialContractListResponse:
+      type: object
+      additionalProperties: false
+      required: [contracts]
+      properties:
+        contracts:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommercialContractSummary'
     CommercialAuditListResponse:
       type: object
       additionalProperties: false

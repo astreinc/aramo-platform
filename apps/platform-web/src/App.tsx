@@ -29,6 +29,8 @@ import { CommercialPlaceholderView, type CommercialPlaceholderPage } from './com
 import { CatalogView } from './commercial/catalog/CatalogView';
 import { PolicyView } from './commercial-governance/PolicyView';
 import { AuditExplorerView } from './commercial-governance/AuditExplorerView';
+import { ContractsView } from './contracts/ContractsView';
+import { CONTRACT_READ_SCOPE } from './contracts/contracts-api';
 
 // The platform console app. RouteGuard handles only loading, unauthenticated
 // (→ sign-in) and the TENANT_ACCESS_DENIED wrong-account redirect — it no longer
@@ -177,8 +179,8 @@ export function PlatformConsole({ session }: { readonly session: Session }) {
           }
         />
         {/* ── CCP-B1 — the Commercial group (handoff §2, directive R-12: never under
-            /platform/). Approvals is B1's, Catalog B2's, Policy and Audit B5's; the others render their
-            designed disabled state until B4 builds them. */}
+            /platform/). Approvals is B1's, Catalog B2's, Policy and Audit B5's, Contracts B4's; Subscriptions renders its
+            designed disabled state until its slice builds it. */}
         <Route path="/commercial" element={<Navigate to="/commercial/approvals" replace />} />
         <Route
           path="/commercial/approvals"
@@ -188,7 +190,9 @@ export function PlatformConsole({ session }: { readonly session: Session }) {
         {/* CCP-B2 (PBD §5.3 row B2) — the product and plan catalog; draft actions gate on
             platform:catalog:draft inside the view (merge train: replaces B1's placeholder). */}
         <Route path="/commercial/catalog" element={commercialGate(CP.catalogRead, 'catalog', <CatalogView session={session} />)} />
-        <Route path="/commercial/contracts" element={placeholder(CP.subscriptionRead, 'contracts')} />
+        {/* CCP-B4 — Commercial › Contracts (handoff §5.5), gated on platform:subscription:read
+            (CCP A1 §4.1; catalog_manager and super_admin get the Commercial card, TD-B4-3). */}
+        <Route path="/commercial/contracts" element={commercialGate(CONTRACT_READ_SCOPE, 'contracts', <ContractsView session={session} />)} />
         {/* CCP-B5 (handoff §5.6, §5.7; B5-P) — Commercial › Policy and Commercial › Audit, behind
             the Commercial access-denied card (merge train: replaces B1's placeholders). */}
         <Route path="/commercial/policy" element={commercialGate(CP.approvalRead, 'policy', <PolicyView />)} />

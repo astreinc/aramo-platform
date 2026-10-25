@@ -46,6 +46,8 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 //   POST /platform/commercial/change-requests/{id}/apply        (CCP-A6; CCP-B2-backend catalog publish)
 //   GET  /platform/commercial/usage/reconciliation              (CCP-D1)
 //   GET  /platform/commercial/usage/periods                     (CCP-D1)
+//   GET  /platform/commercial/contracts                         (CCP-B4)
+//   GET  /platform/commercial/contracts/{id}                    (CCP-B4)
 // For each route: the allowed call, super_admin refused (403, holds no commercial
 // scope), and the tenant tier refused (403 tier tripwire). Plus the role-level
 // refusals: a role missing the route scope (audit feed), a role missing the requester
@@ -98,6 +100,8 @@ const USAGE_PERIODS = '/platform/commercial/usage/periods';
 // CCP-D1 — the usage tenant the provider seeds (MANUAL Sign subscription, two periods of ledger usage).
 const USAGE_TENANT = 'cca10000-0000-7000-8000-0000000000d1';
 const USAGE_SUBSCRIPTION = 'cca10000-0000-7000-8000-0000000000d2';
+const CONTRACTS = '/platform/commercial/contracts';
+const EX_CONTRACT_ID = 'cca10000-0000-7000-8000-0000000000b4';
 
 const platformSession = (role: Role) => ({ 'X-Aramo-Consumer': 'platform', Cookie: `aramo_access_token_platform=pact-${role}` });
 const platformJson = (role: Role) => ({ ...platformSession(role), 'Content-Type': 'application/json' });
@@ -195,6 +199,8 @@ const GATE_ROUTES: readonly GateRoute[] = [
   { name: 'POST change-requests/{id}/apply', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/apply`, scope: 'platform:approval:read' },
   { name: 'GET usage/reconciliation', method: 'GET', path: USAGE_REC, scope: 'platform:subscription:read' },
   { name: 'GET usage/periods', method: 'GET', path: USAGE_PERIODS, scope: 'platform:subscription:read' },
+  { name: 'GET contracts', method: 'GET', path: CONTRACTS, scope: 'platform:subscription:read' },
+  { name: 'GET contracts/{id}', method: 'GET', path: `${CONTRACTS}/${EX_CONTRACT_ID}`, scope: 'platform:subscription:read' },
 ];
 
 // ── CCP-A2 — the commercial audit feed ────────────────────────────────────────
@@ -880,6 +886,143 @@ describe('platform-web → POST /platform/commercial/change-requests/{id}/apply 
 });
 
 // ── gate refusals on every CCP route: super_admin and the tenant tier ─────────
+
+// ── CCP-B4 — enterprise contract records (read-only) ──────────────────────────
+
+// CommercialContractSummaryDto (platform-commercial-contract.controller.ts summaryDto). The
+// provider state records the contract through the governed path (an applied
+// SUBSCRIPTION_OPEN carrying a `contract` block) on the included operator plan, which has
+// no commitment term.
+const CONTRACT_SUMMARY = {
+  id: uuid(EX_CONTRACT_ID),
+  contract_ref: regex('^[A-Z][A-Z0-9-]{2,39}$', 'CT-2026-021'),
+  tenant: { id: uuid('cca10000-0000-7000-8000-0000000000b5'), name: like('Pact Commercial 00b5'), slug: null },
+  product_key: 'sign',
+  status: 'ACTIVE',
+  subscription: {
+    id: uuid('cca10000-0000-7000-8000-0000000000b6'),
+    source: 'MANUAL',
+    status: 'ACTIVE',
+    ended_at: null,
+    commitment_start: null,
+    commitment_end: null,
+    plan: { key: 'aramo-sign-included-v1', name: like('Aramo Sign included') },
+    plan_version: { id: uuid('cca10000-0000-7000-8000-0000000000b7'), version_number: integer(1), status: 'PUBLISHED' },
+  },
+  provenance: 'CHANGE_REQUEST',
+  recorded_at: iso(),
+};
+const PERSON = { user_id: uuid(OP.commercial_ops), display_name: null, email: like(`${OP.commercial_ops}@ops.test`) };
+
+describe('platform-web → GET /platform/commercial/contracts (CCP-B4)', () => {
+  it('commercial_ops lists the contract records (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('an enterprise contract exists')
+      .uponReceiving('a contract list read by commercial_ops')
+      .withRequest('GET', CONTRACTS, (b) => {
+        b.headers(platformSession('commercial_ops')).query({ status: 'ACTIVE' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ contracts: eachLike(CONTRACT_SUMMARY) });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CONTRACTS}?status=ACTIVE`, 'GET', platformSession('commercial_ops'));
+        expect(res.status).toBe(200);
+        expect((res.body['contracts'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+
+  it('a role without platform:subscription:read (catalog_manager) is refused (403)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a contract list read by a role missing the subscription read scope')
+      .withRequest('GET', CONTRACTS, (b) => {
+        b.headers(platformSession('catalog_manager'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:subscription:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CONTRACTS}`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(403);
+        expect(errCode(res.body)).toBe('INSUFFICIENT_PERMISSIONS');
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/contracts/{id} (CCP-B4)', () => {
+  it('finance_admin reads a contract with its terms, hashed documents and amendments (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('an enterprise contract exists')
+      .uponReceiving('a contract detail read by finance_admin')
+      .withRequest('GET', fromProviderState(`${CONTRACTS}/\${contractId}`, `${CONTRACTS}/${EX_CONTRACT_ID}`), (b) => {
+        b.headers(platformSession('finance_admin'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          ...CONTRACT_SUMMARY,
+          terms: eachLike('Invoiced monthly, net 30'),
+          recorded_terms: eachLike('Invoiced monthly, net 30'),
+          evidence_ref: like('Order form OF-8034'),
+          recorded_by: PERSON,
+          recorded_by_change_request_id: uuid(EX_REQUEST_ID),
+          documents: eachLike({
+            name: like('Order form OF-8034.pdf'),
+            sha256: HEX64(),
+            byte_size: integer(1024),
+            media_type: like('application/pdf'),
+            recorded_by: PERSON,
+            recorded_at: iso(),
+            amendment_sequence: null,
+          }),
+          amendments: [],
+          invoicing: { enabled: false, reason: 'enterprise_invoicing_choice_pending' },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CONTRACTS}/${EX_CONTRACT_ID}`, 'GET', platformSession('finance_admin'));
+        expect(res.status).toBe(200);
+        expect((res.body['invoicing'] as { enabled: boolean }).enabled).toBe(false);
+      });
+  });
+
+  it('an unknown contract is 404', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a contract detail read for an unknown id')
+      .withRequest('GET', `${CONTRACTS}/${EX_CONTRACT_ID}`, (b) => {
+        b.headers(platformSession('read_only_auditor'));
+      })
+      .willRespondWith(404, (b) => {
+        b.jsonBody(errorBody('NOT_FOUND', { contract_id: EX_CONTRACT_ID }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CONTRACTS}/${EX_CONTRACT_ID}`, 'GET', platformSession('read_only_auditor'));
+        expect(res.status).toBe(404);
+      });
+  });
+
+  it('a role without platform:subscription:read (catalog_manager) is refused (403)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a contract detail read by a role missing the subscription read scope')
+      .withRequest('GET', `${CONTRACTS}/${EX_CONTRACT_ID}`, (b) => {
+        b.headers(platformSession('catalog_manager'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:subscription:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CONTRACTS}/${EX_CONTRACT_ID}`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(403);
+      });
+  });
+});
 
 describe('platform-web → every CCP route refuses super_admin (403, no commercial scope)', () => {
   for (const r of GATE_ROUTES) {

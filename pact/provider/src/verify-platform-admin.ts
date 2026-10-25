@@ -289,6 +289,41 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       return { planId, versionId: row.id, checksum: row.content_checksum };
     }
 
+    /**
+     * CCP-B4 — an enterprise contract recorded through the governed path: an APPLIED
+     * SUBSCRIPTION_OPEN carrying a `contract` block, on a fresh tenant (created and submitted by
+     * commercial_ops, approved by finance_admin, applied by commercial_ops).
+     */
+    async function recordedContract(): Promise<string> {
+      const tenant_id = await commercialTenant();
+      const v = await db.query(`SELECT v.id FROM subscription."PlanVersion" v JOIN subscription."Plan" p ON p.id = v.plan_id WHERE p.key = 'aramo-sign-included-v1' AND v.status = 'PUBLISHED'`);
+      const n = String(++seq).padStart(4, '0');
+      const out = await asRole<{ request: { id: string } }>('commercial_ops', 'POST', '/platform/commercial/change-requests', {
+        action_type: 'SUBSCRIPTION_OPEN',
+        tenant_id,
+        product_key: 'sign',
+        payload: {
+          plan_key: 'aramo-sign-included-v1',
+          plan_version_id: v.rows[0].id,
+          replaces_subscription_id: null,
+          contract: {
+            contract_ref: `CT-PACT-${n}`,
+            terms: ['Invoiced monthly, net 30'],
+            documents: [{ name: 'Order form OF-8034.pdf', sha256: 'a'.repeat(63) + (seq % 10), byte_size: 1024, media_type: 'application/pdf' }],
+            evidence_ref: 'Order form OF-8034',
+          },
+        },
+        reason: 'Record the enterprise contract with the governed open',
+        idempotency_key: `pact-b4-state-${n}`,
+      });
+      const id = out.request.id;
+      await asRole('commercial_ops', 'POST', `/platform/commercial/change-requests/${id}/submit`);
+      await asRole('finance_admin', 'POST', `/platform/commercial/change-requests/${id}/approvals`, { step_index: 0 });
+      await asRole('commercial_ops', 'POST', `/platform/commercial/change-requests/${id}/apply`);
+      const c = await db.query(`SELECT id FROM subscription."Contract" WHERE recorded_by_change_request_id = $1`, [id]);
+      return c.rows[0].id as string;
+    }
+
     beforeAll(async () => {
       container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
@@ -455,6 +490,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             const out = await asRole<{ version: { id: string } }>('finance_admin', 'POST', '/platform/commercial/policy-versions', { source_version_id: '019a0000-0000-7000-8000-0000000cc201' });
             return { versionId: out.version.id };
           },
+          // CCP-B4 — enterprise contract records.
+          'an enterprise contract exists': async () => ({ contractId: await recordedContract() }),
           'a pending change request exists': async () => {
             const requestId = await draftRequest();
             await asRole('commercial_ops', 'POST', `/platform/commercial/change-requests/${requestId}/submit`);

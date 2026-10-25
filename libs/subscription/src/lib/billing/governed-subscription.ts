@@ -20,7 +20,9 @@ export async function takeBillingLock(tx: RawExecutor, tenant_id: string): Promi
 
 /**
  * Conversion Rule §3.1 — an open subscription row is GOVERNED when (a) source = 'MANUAL'.
- * (b) contract-linked rows do not exist until CCP-B4 (O-5). (c) rows opened or last changed by
+ * (b) contract-linked rows (CCP-B4): the Contract insert guard (migration 20261026030000) admits
+ * a contract only on an open MANUAL BASE row with no provider link, so (b) ⊆ (a) by construction
+ * and this predicate needs no contract read. (c) rows opened or last changed by
  * an applied change request are MANUAL by construction in CCP-A6 (SUBSCRIPTION_OPEN writes a
  * MANUAL row; SUBSCRIPTION_CHANGE / _END act on MANUAL rows only). DEVELOPMENT and FREE rows
  * are not governed (§3.1).

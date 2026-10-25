@@ -11069,6 +11069,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-contract.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform-commercial-governance.controller.ts"
     },
     {
@@ -14622,6 +14627,156 @@
       "from": "doc/ccp/slices/CCP-B2-pre-execution.md",
       "status": "unscoped",
       "to": "libs/subscription/src/tests/support/ccp-a3-database.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-contract.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-b4-commercial-contract-authorization.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/visual/DIVERGENCES.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/visual/ccp-contracts.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/App.tsx"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/contracts/ContractsView.spec.tsx"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-acceptance.md",
+      "status": "unscoped",
+      "to": "ci/config/api-surface-manifest.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-B4-pre-execution.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261026030000_ccp_b4_enterprise_contracts/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/governed-subscription.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-contract.repository.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-contract.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-b4-contracts.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-acceptance.md",
+      "status": "unscoped",
+      "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-platform-admin.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-acceptance.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A6-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/documents/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261025200000_ccp_a6_transactional_apply/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261026030000_ccp_b4_enterprise_contracts/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/project.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/governed-subscription.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-apply.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B4-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-change-request.ts"
     },
     {
       "from": "doc/ccp/slices/CCP-B5-acceptance.md",
@@ -28580,6 +28735,11 @@
       "to": "libs/subscription/src/tests/fixtures/ccp-d1-compensating.sql"
     },
     {
+      "from": "libs/subscription/prisma/migrations/20261026030000_ccp_b4_enterprise_contracts/migration.sql",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-B4-acceptance.md"
+    },
+    {
       "from": "libs/subscription/prisma/migrations/20261026050000_ccp_a6r_apply_deadline/migration.sql",
       "status": "unscoped",
       "to": "doc/ccp/slices/CCP-A6-acceptance.md"
@@ -28747,6 +28907,54 @@
       "from": "libs/subscription/src/tests/ccp-b2-catalog-apply.integration.spec.ts",
       "status": "excluded",
       "to": "doc/ccp/slices/CCP-B2-backend-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-b4-contracts.integration.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-B4-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-b4-contracts.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/src/index.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-b4-contracts.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/src/lib/billing/governed-subscription.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-b4-contracts.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/src/lib/commercial/commercial-apply.service.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-b4-contracts.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/src/lib/commercial/commercial-change-request.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-b4-contracts.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/src/lib/commercial/commercial-contract.repository.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-b4-contracts.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/src/lib/commercial/commercial-contract.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-b4-contracts.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/src/lib/subscription.module.ts"
     },
     {
       "excludedBy": "src/tests/**/*",

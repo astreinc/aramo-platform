@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import type { CommercialPolicyContent } from './commercial-policy.js';
 import { canonicalJson } from './commercial-policy.js';
 import { creditEscalation, discountEscalates } from './commercial-policy-boundaries.js';
+import { CONTRACT_PAYLOAD_KEYS, validateContractBlocks } from './commercial-contract.js';
 
 // CCP-A3 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.1 row A3; Charter §5.1 D6, D8,
 // D9, §6.4; Recon Report §1 C2 and §2) — the PURE half of the change-request model: the
@@ -409,7 +410,9 @@ export function validatePayload(action_type: CommercialActionType, payload: unkn
     // exactly what the approvers approve: the plan VERSION (G3 pin), and the subscription row
     // the change acts on or replaces (G2), so a stale request is refused at apply.
     case 'SUBSCRIPTION_OPEN':
-      closedKeys(p, ['plan_key', 'plan_version_id', 'replaces_subscription_id', 'period_anchor'], errors);
+      // CCP-B4: an optional `contract` block records an enterprise contract with the open.
+      closedKeys(p, ['plan_key', 'plan_version_id', 'replaces_subscription_id', 'period_anchor', ...CONTRACT_PAYLOAD_KEYS.SUBSCRIPTION_OPEN], errors);
+      validateContractBlocks('SUBSCRIPTION_OPEN', p, errors);
       planRef(p, errors);
       if (p['replaces_subscription_id'] !== null && !(typeof p['replaces_subscription_id'] === 'string' && UUID.test(p['replaces_subscription_id']))) {
         errors.push('replaces_subscription_id must be a uuid or null (null: the tenant holds no open subscription of the product)');
@@ -417,12 +420,17 @@ export function validatePayload(action_type: CommercialActionType, payload: unkn
       if (p['period_anchor'] !== undefined && !isIsoInstant(p['period_anchor'])) errors.push('period_anchor must be an ISO-8601 UTC instant');
       break;
     case 'SUBSCRIPTION_CHANGE':
-      closedKeys(p, ['subscription_id', 'plan_key', 'plan_version_id'], errors);
+      // CCP-B4: an optional `contract` (record) or `contract_amendment` block; with either, the
+      // plan version may stay the same (a terms-only amendment).
+      closedKeys(p, ['subscription_id', 'plan_key', 'plan_version_id', ...CONTRACT_PAYLOAD_KEYS.SUBSCRIPTION_CHANGE], errors);
+      validateContractBlocks('SUBSCRIPTION_CHANGE', p, errors);
       if (typeof p['subscription_id'] !== 'string' || !UUID.test(p['subscription_id'])) errors.push('subscription_id must be a uuid');
       planRef(p, errors);
       break;
     case 'SUBSCRIPTION_END':
-      closedKeys(p, ['subscription_id'], errors);
+      // CCP-B4: `contract_end` names the contract a contract-linked row's end also ends.
+      closedKeys(p, ['subscription_id', ...CONTRACT_PAYLOAD_KEYS.SUBSCRIPTION_END], errors);
+      validateContractBlocks('SUBSCRIPTION_END', p, errors);
       if (typeof p['subscription_id'] !== 'string' || !UUID.test(p['subscription_id'])) errors.push('subscription_id must be a uuid');
       break;
     case 'ENTITLEMENT_GRANT': {
