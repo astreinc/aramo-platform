@@ -336,6 +336,7 @@ model CommercialPolicyVersion {
   activated_at     DateTime?              @db.Timestamptz
   retired_at       DateTime?              @db.Timestamptz
   audit_events     CommercialAuditEvent[]
+  change_requests  CommercialChangeRequest[]
 
   @@index([status])
   @@schema("subscription")
@@ -382,10 +383,100 @@ model CommercialAuditEvent {
   // Millisecond precision: the (created_at, id) keyset cursor round-trips through a Date.
   created_at        DateTime                @default(now()) @db.Timestamptz(3)
   policy_version    CommercialPolicyVersion @relation(fields: [policy_version_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  // CCP-A3 — the FK deferred from A2.
+  change_request    CommercialChangeRequest? @relation(fields: [change_request_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
   @@index([created_at(sort: Desc), id(sort: Desc)])
   @@index([actor_id, created_at(sort: Desc), id(sort: Desc)])
   @@index([tenant_id, created_at(sort: Desc), id(sort: Desc)])
   @@index([event_type, created_at(sort: Desc), id(sort: Desc)])
+  @@schema("subscription")
+}
+
+// CCP-A3 — a governed commercial change request (Recon Report §2). Payload, chain and
+// identity are immutable from INSERT; state moves only along the A3 transitions; APPROVED
+// needs one CommercialApproval per snapshotted step; DELETE is rejected (all by trigger).
+// One open request per tenant × product (Q14, partial unique index in the migration).
+model CommercialChangeRequest {
+  id                String                   @id @db.Uuid
+  // Closed set (CHECK); see COMMERCIAL_ACTION_TYPES.
+  action_type       String
+  // NORMAL | EXCEPTION | MIGRATION. CHECK.
+  kind              String
+  // DRAFT | PENDING_APPROVAL | APPROVED | APPLYING | APPLIED | APPLY_FAILED | REJECTED |
+  // EXPIRED | WITHDRAWN. CHECK + guard trigger.
+  state             String                   @default("DRAFT")
+  tenant_id         String?                  @db.Uuid
+  // No DB default (PBD §7.1). A3 interim closed set 'sign' (CHECK); A4 registry.
+  product_key       String?
+  payload           Json
+  payload_checksum  String
+  required_chain    Json
+  policy_version_id String                   @db.Uuid
+  policy_checksum   String
+  requested_by      String                   @db.Uuid
+  reason            String
+  idempotency_key   String                   @unique
+  created_at        DateTime                 @db.Timestamptz(3)
+  submitted_at      DateTime?                @db.Timestamptz(3)
+  expires_at        DateTime?                @db.Timestamptz(3)
+  approved_at       DateTime?                @db.Timestamptz(3)
+  rejected_at       DateTime?                @db.Timestamptz(3)
+  rejected_by       String?                  @db.Uuid
+  rejection_reason  String?
+  withdrawn_at      DateTime?                @db.Timestamptz(3)
+  expired_at        DateTime?                @db.Timestamptz(3)
+  apply_attempts    Int                      @default(0)
+  applied_at        DateTime?                @db.Timestamptz(3)
+  updated_at        DateTime                 @db.Timestamptz(3)
+  policy_version    CommercialPolicyVersion  @relation(fields: [policy_version_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  approvals         CommercialApproval[]
+  audit_events      CommercialAuditEvent[]
+
+  @@index([state, created_at(sort: Desc), id(sort: Desc)])
+  @@index([requested_by, created_at(sort: Desc), id(sort: Desc)])
+  @@index([created_at(sort: Desc), id(sort: Desc)])
+  @@schema("subscription")
+}
+
+// CCP-A3 — one approval of one step (append-only evidence; UPDATE and DELETE rejected).
+// D8: UNIQUE(change_request_id, approver_user_id) and UNIQUE(change_request_id, step_index).
+model CommercialApproval {
+  id                 String                        @id @db.Uuid
+  change_request_id  String                        @db.Uuid
+  step_index         Int
+  approver_user_id   String                        @db.Uuid
+  step_role_key      String
+  step_scope_keys    String[]
+  approver_role_keys String[]
+  attestation_id     String                        @db.Uuid
+  comment            String?
+  created_at         DateTime                      @db.Timestamptz(3)
+  change_request     CommercialChangeRequest       @relation(fields: [change_request_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  attestation        CommercialOperatorAttestation @relation(fields: [attestation_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([change_request_id, approver_user_id])
+  @@unique([change_request_id, step_index])
+  @@index([approver_user_id])
+  @@schema("subscription")
+}
+
+// CCP-A3 (D9) — one-account-per-human attestation for a platform operator. Never deleted;
+// one revocation allowed. At most one active row per user and per attested human.
+model CommercialOperatorAttestation {
+  id                String               @id @db.Uuid
+  user_id           String               @db.Uuid
+  // SHA-256 hex of the attested human reference (no PII).
+  human_ref_hash    String
+  statement_version String
+  // BOOTSTRAP | PLATFORM_OWNER. CHECK.
+  method            String
+  attested_by       String               @db.Uuid
+  attested_at       DateTime             @db.Timestamptz(3)
+  revoked_at        DateTime?            @db.Timestamptz(3)
+  revoked_by        String?              @db.Uuid
+  revoke_reason     String?
+  approvals         CommercialApproval[]
+
   @@schema("subscription")
 }
