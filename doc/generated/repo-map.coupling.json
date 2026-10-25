@@ -12986,6 +12986,16 @@
       "to": "tools/db-sync-local.sh"
     },
     {
+      "from": "doc/ccp/slices/CCP-A3-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A3-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A2-acceptance.md"
+    },
+    {
       "from": "doc/design-reference/platform-admin/github.md",
       "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform-personal.controller.ts"
