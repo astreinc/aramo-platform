@@ -28,27 +28,27 @@ datasource db {
 }
 
 model Plan {
-  id            String               @id @db.Uuid
+  id                            String                @id @db.Uuid
   // Stable catalog key (e.g. "aramo-sign-included-v1"); never a display name.
-  key           String               @unique
-  name          String
+  key                           String                @unique
+  name                          String
   // Offered for self-service purchase (only an ACTIVE SELF_SERVICE plan).
-  sellable      Boolean              @default(false)
-  description   String?
-  created_at    DateTime             @default(now()) @db.Timestamptz(6)
+  sellable                      Boolean               @default(false)
+  description                   String?
+  created_at                    DateTime              @default(now()) @db.Timestamptz(6)
   // Commercial Plans Amendment A1 — the catalog descriptor.
   // CHECK: BUSINESS | PERSONAL (null = any kind, e.g. the operator plan).
   tenant_kind                   String?
   // CHECK: SELF_SERVICE | FREE | CONTACT_SALES | OPERATOR
-  sales_model                   String  @default("OPERATOR")
+  sales_model                   String                @default("OPERATOR")
   // CHECK: ACTIVE | INACTIVE (an INACTIVE plan is catalogued, never assigned).
-  status                        String  @default("ACTIVE")
+  status                        String                @default("ACTIVE")
   // Display price in minor units; the charge itself is the provider price.
   list_price_minor              Int?
   currency                      String?
   // Stored comparison price; shown only when substantiated.
   reference_price_minor         Int?
-  reference_price_substantiated Boolean @default(false)
+  reference_price_substantiated Boolean               @default(false)
   // CHECK: MONTH (the invoice interval).
   billing_interval              String?
   // Commitment term, separate from the invoice interval (12 = annual).
@@ -59,19 +59,19 @@ model Plan {
   support_tier                  String?
   // Why an INACTIVE / contracted plan is not usable yet.
   activation_note               String?
-  display_order                 Int     @default(100)
+  display_order                 Int                   @default(100)
   // CCP-A4 (MP-A2 N-6) — the product this plan is sold for. Closed registry, enforced by
   // CHECK in migration 20261025140000 (v1: 'sign' only; code mirror PRODUCT_KEYS). NO default.
   product_key                   String
-  allowances    PlanAllowance[]
+  allowances                    PlanAllowance[]
   // Personal Free v1.1 — short-window caps (e.g. 2 envelopes per day).
-  allowance_windows PlanAllowanceWindow[]
-  capacities    PlanCapacity[]
-  features      PlanFeature[]
-  subscriptions TenantSubscription[]
-  checkouts     CheckoutIntent[]
+  allowance_windows             PlanAllowanceWindow[]
+  capacities                    PlanCapacity[]
+  features                      PlanFeature[]
+  subscriptions                 TenantSubscription[]
+  checkouts                     CheckoutIntent[]
   // CCP-A5 (MP-A2 N-15) — the plan's versioned commercial content.
-  versions      PlanVersion[]
+  versions                      PlanVersion[]
 
   // CCP-A4 (MP-A2 N-7) — the target of the composite FK TenantSubscription(plan_id, product_key).
   @@unique([id, product_key])
@@ -147,7 +147,7 @@ model SubscriptionVersionPinEvent {
 }
 
 model PlanAllowance {
-  plan_id           String @db.Uuid
+  plan_id           String  @db.Uuid
   // Metered feature, e.g. "sign.envelopes".
   allowance_key     String
   // Included quantity per period (null when unlimited). No rollover.
@@ -155,8 +155,8 @@ model PlanAllowance {
   // A1 — explicit unlimited (never a sentinel number); usage is still metered.
   unlimited         Boolean @default(false)
   // CHECK: MONTHLY (the only period V1 supports).
-  period            String @default("MONTHLY")
-  plan              Plan   @relation(fields: [plan_id], references: [id])
+  period            String  @default("MONTHLY")
+  plan              Plan    @relation(fields: [plan_id], references: [id])
 
   @@id([plan_id, allowance_key])
   @@schema("subscription")
@@ -178,43 +178,43 @@ model PlanAllowanceWindow {
 }
 
 model TenantSubscription {
-  id            String    @id @db.Uuid
-  tenant_id     String    @db.Uuid
-  plan_id       String    @db.Uuid
+  id                                 String      @id @db.Uuid
+  tenant_id                          String      @db.Uuid
+  plan_id                            String      @db.Uuid
   // Billing periods start at this instant and every calendar month after it
   // (day clamped to the month's length).
-  period_anchor DateTime  @db.Timestamptz(6)
+  period_anchor                      DateTime    @db.Timestamptz(6)
   // CHECK: MANUAL | DEVELOPMENT | SELF_SERVICE | FREE. DEVELOPMENT rows come only
   // from the governed local/test seed, which refuses to run in production. FREE
   // (Personal Free v1.1) is system-opened for an active PERSONAL tenant, never
   // provider-billed (CHECK: no billing linkage).
-  source        String
-  started_at    DateTime  @default(now()) @db.Timestamptz(6)
-  ended_at      DateTime? @db.Timestamptz(6)
-  created_by    String
+  source                             String
+  started_at                         DateTime    @default(now()) @db.Timestamptz(6)
+  ended_at                           DateTime?   @db.Timestamptz(6)
+  created_by                         String
   // Aramo Sign launch — CHECK: TRIALING | ACTIVE | PAST_DUE | CANCELED | INCOMPLETE.
-  status                   String    @default("ACTIVE")
+  status                             String      @default("ACTIVE")
   // CHECK: STRIPE (null for MANUAL / DEVELOPMENT).
-  billing_provider         String?
-  billing_account_ref     String?
-  billing_subscription_ref String?
-  current_period_end       DateTime? @db.Timestamptz(6)
-  cancel_at_period_end     Boolean   @default(false)
+  billing_provider                   String?
+  billing_account_ref                String?
+  billing_subscription_ref           String?
+  current_period_end                 DateTime?   @db.Timestamptz(6)
+  cancel_at_period_end               Boolean     @default(false)
   // PAST_DUE keeps sending until this instant (grace), then stops.
-  grace_until              DateTime? @db.Timestamptz(6)
+  grace_until                        DateTime?   @db.Timestamptz(6)
   // Provider event time of the last applied state (out-of-order protection).
-  provider_state_at        DateTime? @db.Timestamptz(6)
+  provider_state_at                  DateTime?   @db.Timestamptz(6)
   // The subscribing owner (user id) when self-service.
-  activated_by             String?
+  activated_by                       String?
   // A1 — the commitment term (e.g. 12 months), separate from the monthly
   // invoice period; a cancellation requested inside it is flagged, never
   // silently treated as month-to-month.
-  commitment_start                   DateTime? @db.Timestamptz(6)
-  commitment_end                     DateTime? @db.Timestamptz(6)
-  cancel_requested_within_commitment Boolean   @default(false)
+  commitment_start                   DateTime?   @db.Timestamptz(6)
+  commitment_end                     DateTime?   @db.Timestamptz(6)
+  cancel_requested_within_commitment Boolean     @default(false)
   // CHECK: OK | LAPSED — the plan's eligibility (e.g. ATS) at the last check.
   eligibility_state                  String?
-  eligibility_checked_at             DateTime? @db.Timestamptz(6)
+  eligibility_checked_at             DateTime?   @db.Timestamptz(6)
   // CCP-A4 (MP-A2 N-7) — equals the plan's product_key: composite FK (plan_id, product_key)
   // → Plan(id, product_key), SQL-only in migration 20261025140000. NO default.
   product_key                        String
@@ -226,9 +226,9 @@ model TenantSubscription {
   // (grandfathering). Composite FK (plan_version_id, plan_id) → PlanVersion(id, plan_id), SQL-only
   // in migration 20261025160000. A new or changed pin must be PUBLISHED; a change is recorded in
   // SubscriptionVersionPinEvent by trigger. NO default.
-  plan_version_id                    String    @db.Uuid
-  plan          Plan      @relation(fields: [plan_id], references: [id])
-  plan_version  PlanVersion @relation(fields: [plan_version_id], references: [id])
+  plan_version_id                    String      @db.Uuid
+  plan                               Plan        @relation(fields: [plan_id], references: [id])
+  plan_version                       PlanVersion @relation(fields: [plan_version_id], references: [id])
 
   // CCP-A4 (MP-A2 N-9) — at most one open BASE subscription per (tenant_id, product_key):
   // partial unique index TenantSubscription_one_open_base_per_tenant_product in SQL.
@@ -238,21 +238,25 @@ model TenantSubscription {
 }
 
 model AllowanceUsage {
-  id             String    @id @db.Uuid
-  tenant_id      String    @db.Uuid
+  id             String               @id @db.Uuid
+  tenant_id      String               @db.Uuid
   allowance_key  String
   // Stable send identity, e.g. "aramo-sign:envelope:<envelope_id>".
   send_key       String
   // The billing period the send is charged to (fixed at reservation).
-  period_start   DateTime  @db.Timestamptz(6)
+  period_start   DateTime             @db.Timestamptz(6)
   // CHECK: RESERVED | CONSUMED | RELEASED
   state          String
   // CHECK: SEND | HISTORICAL (backfilled from an existing sent record)
-  origin         String    @default("SEND")
-  reserved_at    DateTime  @default(now()) @db.Timestamptz(6)
+  origin         String               @default("SEND")
+  reserved_at    DateTime             @default(now()) @db.Timestamptz(6)
   // A RESERVED row older than this is resolved by reconciliation before counting.
-  reserved_until DateTime  @db.Timestamptz(6)
-  finalized_at   DateTime? @db.Timestamptz(6)
+  reserved_until DateTime             @db.Timestamptz(6)
+  finalized_at   DateTime?            @db.Timestamptz(6)
+  // CCP-D1 — the writing transaction id, set by trigger (migration 20261025240000) on every
+  // INSERT and UPDATE; read only by the usage roll-up watermark, never by an allowance decision.
+  // Unsupported in Prisma, so the generated client never selects or writes it.
+  rollup_xid     Unsupported("xid8")?
 
   @@unique([tenant_id, allowance_key, send_key])
   @@index([tenant_id, allowance_key, period_start])
@@ -374,8 +378,8 @@ model CapacityUsage {
 
 // A1 — legal acceptance evidence (document key + version + text sha256).
 model LegalAcceptance {
-  id            String   @id @db.Uuid
-  tenant_id     String?  @db.Uuid
+  id            String                 @id @db.Uuid
+  tenant_id     String?                @db.Uuid
   user_id       String?
   subject_email String?
   document_key  String
@@ -384,7 +388,7 @@ model LegalAcceptance {
   // CHECK: SIGNUP | CHECKOUT | IN_APP (Personal re-acceptance in the Sign workspace)
   context       String
   context_ref   String?
-  accepted_at   DateTime @default(now()) @db.Timestamptz(6)
+  accepted_at   DateTime               @default(now()) @db.Timestamptz(6)
   origin        LegalAcceptanceOrigin?
 
   @@index([tenant_id])
@@ -413,20 +417,20 @@ model LegalAcceptanceOrigin {
 // content shape and the fail-closed parser live in src/lib/commercial/commercial-policy.ts.
 // -------------------------------------------------------------------------
 model CommercialPolicyVersion {
-  id               String                 @id @db.Uuid
+  id               String                    @id @db.Uuid
   // 1, 2, 3 … — assigned under a transaction-scoped advisory lock. UNIQUE.
-  version_number   Int                    @unique
+  version_number   Int                       @unique
   // DRAFT | ACTIVE | RETIRED. CHECK + one-ACTIVE partial unique index in migration.
-  status           String                 @default("DRAFT")
+  status           String                    @default("DRAFT")
   content          Json
   // SHA-256 (hex) of the canonical JSON of content (commercialPolicyChecksum).
   content_checksum String
   note             String?
-  created_by       String?                @db.Uuid
-  created_at       DateTime               @default(now()) @db.Timestamptz
-  activated_by     String?                @db.Uuid
-  activated_at     DateTime?              @db.Timestamptz
-  retired_at       DateTime?              @db.Timestamptz
+  created_by       String?                   @db.Uuid
+  created_at       DateTime                  @default(now()) @db.Timestamptz
+  activated_by     String?                   @db.Uuid
+  activated_at     DateTime?                 @db.Timestamptz
+  retired_at       DateTime?                 @db.Timestamptz
   audit_events     CommercialAuditEvent[]
   change_requests  CommercialChangeRequest[]
 
@@ -456,25 +460,25 @@ model CommercialPolicyAuditEvent {
 // unconditionally at the DB). Read by GET /platform/commercial/audit-events
 // (platform:commercial:audit:read). change_request_id gains its FK in CCP-A3.
 model CommercialAuditEvent {
-  id                String                  @id @db.Uuid
-  actor_id          String?                 @db.Uuid
+  id                String                   @id @db.Uuid
+  actor_id          String?                  @db.Uuid
   // user | system. CHECK (a user actor carries actor_id).
   actor_type        String
   // Server-side snapshot of the actor's role keys at the time of the event.
-  actor_role_keys   String[]                @default([])
+  actor_role_keys   String[]                 @default([])
   // UPPER_SNAKE event type. CHECK (format).
   event_type        String
-  is_exception      Boolean                 @default(false)
-  tenant_id         String?                 @db.Uuid
+  is_exception      Boolean                  @default(false)
+  tenant_id         String?                  @db.Uuid
   // "<kind>:<id>". CHECK.
   subject           String
-  change_request_id String?                 @db.Uuid
-  policy_version_id String                  @db.Uuid
-  payload           Json                    @default("{}")
+  change_request_id String?                  @db.Uuid
+  policy_version_id String                   @db.Uuid
+  payload           Json                     @default("{}")
   correlation_id    String
   // Millisecond precision: the (created_at, id) keyset cursor round-trips through a Date.
-  created_at        DateTime                @default(now()) @db.Timestamptz(3)
-  policy_version    CommercialPolicyVersion @relation(fields: [policy_version_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  created_at        DateTime                 @default(now()) @db.Timestamptz(3)
+  policy_version    CommercialPolicyVersion  @relation(fields: [policy_version_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
   // CCP-A3 — the FK deferred from A2.
   change_request    CommercialChangeRequest? @relation(fields: [change_request_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
 
@@ -490,38 +494,38 @@ model CommercialAuditEvent {
 // needs one CommercialApproval per snapshotted step; DELETE is rejected (all by trigger).
 // One open request per tenant × product (Q14, partial unique index in the migration).
 model CommercialChangeRequest {
-  id                String                   @id @db.Uuid
+  id                String                  @id @db.Uuid
   // Closed set (CHECK); see COMMERCIAL_ACTION_TYPES.
   action_type       String
   // NORMAL | EXCEPTION | MIGRATION. CHECK.
   kind              String
   // DRAFT | PENDING_APPROVAL | APPROVED | APPLYING | APPLIED | APPLY_FAILED | REJECTED |
   // EXPIRED | WITHDRAWN. CHECK + guard trigger.
-  state             String                   @default("DRAFT")
-  tenant_id         String?                  @db.Uuid
+  state             String                  @default("DRAFT")
+  tenant_id         String?                 @db.Uuid
   // No DB default (PBD §7.1). A3 interim closed set 'sign' (CHECK); A4 registry.
   product_key       String?
   payload           Json
   payload_checksum  String
   required_chain    Json
-  policy_version_id String                   @db.Uuid
+  policy_version_id String                  @db.Uuid
   policy_checksum   String
-  requested_by      String                   @db.Uuid
+  requested_by      String                  @db.Uuid
   reason            String
-  idempotency_key   String                   @unique
-  created_at        DateTime                 @db.Timestamptz(3)
-  submitted_at      DateTime?                @db.Timestamptz(3)
-  expires_at        DateTime?                @db.Timestamptz(3)
-  approved_at       DateTime?                @db.Timestamptz(3)
-  rejected_at       DateTime?                @db.Timestamptz(3)
-  rejected_by       String?                  @db.Uuid
+  idempotency_key   String                  @unique
+  created_at        DateTime                @db.Timestamptz(3)
+  submitted_at      DateTime?               @db.Timestamptz(3)
+  expires_at        DateTime?               @db.Timestamptz(3)
+  approved_at       DateTime?               @db.Timestamptz(3)
+  rejected_at       DateTime?               @db.Timestamptz(3)
+  rejected_by       String?                 @db.Uuid
   rejection_reason  String?
-  withdrawn_at      DateTime?                @db.Timestamptz(3)
-  expired_at        DateTime?                @db.Timestamptz(3)
-  apply_attempts    Int                      @default(0)
-  applied_at        DateTime?                @db.Timestamptz(3)
-  updated_at        DateTime                 @db.Timestamptz(3)
-  policy_version    CommercialPolicyVersion  @relation(fields: [policy_version_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  withdrawn_at      DateTime?               @db.Timestamptz(3)
+  expired_at        DateTime?               @db.Timestamptz(3)
+  apply_attempts    Int                     @default(0)
+  applied_at        DateTime?               @db.Timestamptz(3)
+  updated_at        DateTime                @db.Timestamptz(3)
+  policy_version    CommercialPolicyVersion @relation(fields: [policy_version_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
   approvals         CommercialApproval[]
   audit_events      CommercialAuditEvent[]
 
@@ -598,5 +602,115 @@ model CommercialChangeApplication {
 
   @@index([tenant_id, product_key])
   @@index([subscription_id])
+  @@schema("subscription")
+}
+
+// -------------------------------------------------------------------------
+// CCP-D1 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.4 row D1; architecture metering
+// prerequisite) — usage roll-ups. UsageMetric is the governed metric registry (seeded by
+// migration 20261025240000; UPDATE / DELETE rejected). Everything else is DERIVED from the
+// AllowanceUsage ledger by the watermark worker (src/lib/usage/usage-rollup.service.ts) and is
+// read-only until it reconciles. No price, rate or amount anywhere (usage-based pricing is out).
+// -------------------------------------------------------------------------
+model UsageMetric {
+  metric_key       String   @id
+  // CHECK: the CCP-A4 product registry (sign only).
+  product_key      String
+  // CHECK: ALLOWANCE_USAGE.
+  source           String
+  allowance_key    String   @unique
+  // The metering UsageEvent type a CONSUMED SEND row writes (the raw-event cross-check).
+  usage_event_type String?
+  unit             String
+  description      String
+  created_at       DateTime @db.Timestamptz(3)
+
+  @@schema("subscription")
+}
+
+model UsageRollupDaily {
+  tenant_id                 String   @db.Uuid
+  metric_key                String
+  product_key               String
+  period_start              DateTime @db.Timestamptz(6)
+  // UTC day of AllowanceUsage.reserved_at.
+  usage_date                DateTime @db.Date
+  consumed_count            Int
+  consumed_send_count       Int
+  consumed_historical_count Int
+  reserved_count            Int
+  run_id                    String   @db.Uuid
+  computed_at               DateTime @db.Timestamptz(3)
+
+  @@id([tenant_id, metric_key, period_start, usage_date])
+  @@schema("subscription")
+}
+
+model UsageRollupPeriod {
+  tenant_id                 String    @db.Uuid
+  metric_key                String
+  product_key               String
+  period_start              DateTime  @db.Timestamptz(6)
+  period_end                DateTime? @db.Timestamptz(6)
+  // CHECK: ALIGNED (a BASE subscription's anchor produces period_start) | UNALIGNED.
+  alignment                 String
+  subscription_id           String?   @db.Uuid
+  // The plan version in force at period_start (TD-A5-1: terms from the pinned version).
+  plan_version_id           String?   @db.Uuid
+  included_quantity         Int?
+  unlimited                 Boolean?
+  consumed_count            Int
+  consumed_send_count       Int
+  consumed_historical_count Int
+  reserved_count            Int
+  run_id                    String    @db.Uuid
+  computed_at               DateTime  @db.Timestamptz(3)
+
+  @@id([tenant_id, metric_key, period_start])
+  @@index([metric_key, period_start(sort: Desc), tenant_id])
+  @@schema("subscription")
+}
+
+model UsageRollupWatermark {
+  metric_key     String   @id
+  // pg_snapshot_xmin of the last committed run (xid8 as bigint).
+  xmin_watermark BigInt
+  last_run_id    String   @db.Uuid
+  updated_at     DateTime @db.Timestamptz(3)
+
+  @@schema("subscription")
+}
+
+// DERIVED bookkeeping written by the AllowanceUsage trigger: a bucket a row LEFT (DELETE, or an
+// UPDATE that changed tenant / allowance / period_start). The worker recomputes it and prunes it.
+model UsageRollupVacatedBucket {
+  id            BigInt              @id @default(autoincrement())
+  tenant_id     String              @db.Uuid
+  allowance_key String
+  period_start  DateTime            @db.Timestamptz(6)
+  vacated_xid   Unsupported("xid8")
+
+  @@index([allowance_key, tenant_id, period_start])
+  @@schema("subscription")
+}
+
+// Append-only (UPDATE / DELETE rejected by trigger).
+model UsageRollupRun {
+  id                   String   @id @db.Uuid
+  metric_key           String
+  // CHECK: FULL | INCREMENTAL | REBUILD
+  mode                 String
+  from_xid             BigInt?
+  to_xid               BigInt
+  buckets_recomputed   Int
+  rows_scanned         Int
+  // CHECK: RECONCILED | NOT_RECONCILED (at the run's own snapshot)
+  reconciliation       String
+  mismatch_count       Int
+  pending_bucket_count Int
+  started_at           DateTime @db.Timestamptz(3)
+  finished_at          DateTime @db.Timestamptz(3)
+
+  @@index([metric_key, started_at(sort: Desc), id(sort: Desc)])
   @@schema("subscription")
 }

@@ -14,6 +14,7 @@ import { BILLING_PROVIDER_PORT } from './billing/billing-provider.port.js';
 import { StripeBillingProvider } from './billing/stripe-billing.provider.js';
 import { SubscriptionLifecycleService } from './billing/subscription-lifecycle.service.js';
 import { PrismaService } from './prisma/prisma.service.js';
+import { UsageRollupService } from './usage/usage-rollup.service.js';
 
 // SubscriptionModule — the plan/subscription/allowance authority (Multi-Provider
 // directive §B/§C). Kept apart from the signing engine and provider routing.
@@ -22,6 +23,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 // CCP-A3: change requests, approvals and the D9 operator attestation store.
 // CCP-A5: the plan-version store (repository only; A6 applies publish / retire).
 // CCP-A6: the transactional apply of approved Aramo-owned change requests.
+// CCP-D1: usage roll-ups (derived, read-only until reconciled).
 @Module({
   providers: [
     PrismaService,
@@ -37,8 +39,9 @@ import { PrismaService } from './prisma/prisma.service.js';
     CommercialChangeRequestService,
     CommercialApplyService,
     PlanVersionRepository,
+    UsageRollupService,
   ],
-  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, PlanVersionRepository],
+  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, PlanVersionRepository, UsageRollupService],
 })
 export class SubscriptionModule {
   /**
@@ -63,9 +66,10 @@ export class SubscriptionModule {
         CommercialChangeRequestService,
     CommercialApplyService,
         PlanVersionRepository,
+        UsageRollupService,
         ...(opts.providers ?? []),
       ],
-      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, PlanVersionRepository],
+      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, PlanVersionRepository, UsageRollupService],
     };
   }
 }

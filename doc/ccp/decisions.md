@@ -49,3 +49,15 @@
 - **All refusals:** a stable typed code, an operator-facing explanation, an audit row, test coverage, and no partial state.
 - **Still gated:** refund policy, Stripe Tax, legal terms, enterprise invoicing, live Stripe and unapproved product pricing.
 - **Not authorized:** no publication, merge to main, deployment or production activation.
+
+## Architect / PO decisions (2026-10-25, second disposition)
+- **TD-A6-5: APPROVED for drafting and LOCK.** The apply TTL is a distinct, policy-versioned value: 72 h from final approval. At exactly the deadline, an unstarted apply expires (half-open window, TD-A2-1). An apply already in APPLYING follows recovery semantics. Expired requests keep their audit and approval history, release the open-request slot and cannot be applied; recovery needs a fresh request. Policy clocks: the approval TTL runs 72 h from submission (D5); the apply TTL runs 72 h from final approval (amendment). **Implementation waits for the formal amendment to be LOCKED.**
+- **D5: CONFIRMED by the PO,** subject to the apply-TTL amendment being LOCKED.
+- **TD-A6-R-1: APPROVED.** A same-period downgrade is allowed only when authoritative consumed usage plus non-overlapping outstanding reservations is ≤ the new allowance. It is revalidated atomically at apply time; no reset, no proration. Example: 70 consumed + 10 reserved = 80 ≤ 100, leaving 20 available. Cross-period, proration and future-dated changes are not authorized.
+- **TD-B1-2: APPROVED.** Commercial roles keep Dashboard access, with backend-enforced, role-scoped data visibility. No monetary data on general dashboard widgets; money stays on authorized Finance surfaces.
+- **DV-B2-02: APPROVED.** Prototype-only SAMPLE labels are removed where real data is shown. Genuine demo or synthetic data stays explicitly labelled.
+- **TD-D1-3: PREFER a separate append-only change log** linked to the ledger record, preserving the authoritative usage ledger's semantics.
+  - A column-plus-trigger approach is acceptable only if D1 proves that it preserves ledger immutability, introduces no competing totals, and is simpler.
+  - There must be no second usage ledger and no new balance or consumption authority. Otherwise, return a bounded design divergence before implementation (HALT).
+- **TD-B2-3: APPROVED, requester-only (v1).** The Apply action is offered only to the original requester, only when the request is approved and actionable. Approvers do not gain apply authority by approving. The backend independently enforces the actor (= `requested_by`), the immutable payload, the approved state, the unexpired application authority (once the TTL is LOCKED) and current eligibility. **This narrows TD-A6-3 as built:** A6 admitted any holder of the action's requester scope.
+- **Still gated:** refund policy, Stripe Tax, approved legal terms, enterprise invoicing. No push, PR, merge, deployment, production migration or live Stripe.

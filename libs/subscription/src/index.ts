@@ -292,3 +292,32 @@ export {
   type PlatformOwnerBootstrapRefusal,
   type PlatformOwnerBootstrapResult,
 } from './lib/commercial/commercial-platform-owner-bootstrap.js';
+// CCP-D1 (PBD §5.4 row D1) — the usage metric registry, the watermark roll-up worker, the
+// reconciliation check and the read side (read-only until reconciled; no pricing).
+export {
+  USAGE_METRICS,
+  USAGE_METRIC_SOURCES,
+  usageMetricOf,
+  usageMetricsOf,
+  type UsageMetricDefinition,
+  type UsageMetricSource,
+} from './lib/usage/usage-metrics.js';
+export {
+  USAGE_PERIODS_DEFAULT_LIMIT,
+  USAGE_PERIODS_MAX_LIMIT,
+  USAGE_RECONCILIATION_MISMATCH_LIMIT,
+  USAGE_ROLLUP_LOCK_KEY,
+  UsageRollupService,
+  type UsageCounts,
+  type UsageMetricReconciliation,
+  type UsageMetricRunResult,
+  type UsageMismatch,
+  type UsagePeriodRow,
+  type UsagePeriodsQuery,
+  type UsagePeriodsResult,
+  type UsageReconciliation,
+  type UsageReconciliationStatus,
+  type UsageRollupMode,
+  type UsageRollupRunOptions,
+  type UsageRollupRunResult,
+} from './lib/usage/usage-rollup.service.js';

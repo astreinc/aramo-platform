@@ -1067,6 +1067,11 @@ export const ERROR_CODES = [
   // effective platform_owner (DB trigger identity.ccp_a9_assert_platform_keeps_owner, or the
   // governed ROLE_REVOKE pre-check). details.reason = 'platform_last_owner'. HTTP 409.
   'PLATFORM_LAST_OWNER',
+  // CCP-D1 (PBD §5.4 row D1) — usage roll-ups are read-only until their totals reconcile to the
+  // AllowanceUsage ledger (and the metering raw events): the consumption analytics read is
+  // refused while the reconciliation status is NOT_RUN or NOT_RECONCILED (details.status,
+  // details.mismatch_count). HTTP 409.
+  'USAGE_ROLLUP_NOT_RECONCILED',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
