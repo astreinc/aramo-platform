@@ -2205,6 +2205,12 @@
       "COMMERCIAL_ROLE_CHANGE_ROLE_KEYS",
       "COMMERCIAL_TERMINAL_STATES",
       "COMMERCIAL_TRANSITIONS",
+      "CONTRACT_LIST_DEFAULT_LIMIT",
+      "CONTRACT_LIST_MAX_LIMIT",
+      "CONTRACT_MAX_DOCUMENTS",
+      "CONTRACT_MAX_TERMS",
+      "CONTRACT_PAYLOAD_KEYS",
+      "CONTRACT_REF_PATTERN",
       "CapacityService",
       "CommercialApplyFailedError",
       "CommercialApplyRefusedError",
@@ -2222,6 +2228,7 @@
       "CommercialPolicyInputError",
       "CommercialPolicyRepository",
       "CommercialPolicyUnavailableError",
+      "ContractRepository",
       "D9_STATEMENT_VERSION",
       "DAY_WINDOW_MS",
       "DOMAIN_NOT_AUTHORITATIVE",
@@ -2275,6 +2282,7 @@
       "canTransition",
       "canTransitionFor",
       "canonicalJson",
+      "changeCarriesContract",
       "checkApprovalEligibility",
       "checkChainSatisfiable",
       "checkProviderPriceParity",
@@ -2322,6 +2330,7 @@
       "subscriptionSends",
       "takeBillingLock",
       "thresholdOf",
+      "validateContractBlocks",
       "validatePayload",
       "verifyStripeSignature"
     ],
@@ -3400,6 +3409,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b4-commercial-contract-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -3996,6 +4011,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a9-role-change-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b4-commercial-contract-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -6319,6 +6340,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b4-commercial-contract-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -6963,6 +6990,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-a9-bootstrap-role-change.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-b4-contracts.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -8752,6 +8785,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/contracts/ContractsView.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/platform-web/src/document-templates/TemplateVariablesView.spec.tsx",
         "project": "aramo-platform-web",
         "status": "excluded"
@@ -9212,6 +9251,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a9-role-change-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b4-commercial-contract-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -11332,6 +11377,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a9-role-change-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b4-commercial-contract-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },

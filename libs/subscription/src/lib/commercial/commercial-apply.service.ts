@@ -21,6 +21,8 @@ import {
   CommercialChangeRequestService,
 } from './commercial-change-request.service.js';
 import { CommercialOperatorRepository } from './commercial-operator.repository.js';
+import { changeCarriesContract, type ContractAmendmentBlock, type ContractEndBlock, type ContractRecordBlock } from './commercial-contract.js';
+import { ContractApplyConflict, type ContractEffect, amendContractInTx, contractOfSubscription, endContractInTx, recordContractInTx } from './commercial-contract.repository.js';
 
 // CCP-A6 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.1 row A6; Conversion Rule C-21…C-24;
 // MP-A2 G2/G3; Reconciliation Report §1 C3) — the transactional apply of an APPROVED commercial
@@ -84,6 +86,11 @@ export type CommercialApplyFailureCode =
   // No proration, reset, rollover or partial-period policy is implemented (decision requests
   // DR-A6-1…4, doc/ccp/slices/CCP-A6-acceptance.md).
   | 'USAGE_TREATMENT_UNDEFINED'
+  // CCP-B4 — the contract blocks of an OPEN / CHANGE / END payload (the contract rows are written
+  // in this same transaction; a conflict rolls everything back).
+  | 'CONTRACT_ALREADY_RECORDED' // the governed row already has a contract
+  | 'CONTRACT_REF_TAKEN' // contract_ref is unique across the platform
+  | 'CONTRACT_MISMATCH' // the named contract does not govern the row (or a contract-linked END names none)
   | 'UNEXPECTED'; // any other error (fault, DB error): rolled back, recorded, retryable
 
 class ApplyFailure extends Error {
@@ -231,6 +238,8 @@ export class CommercialApplyService {
 
         const payload = this.payloadOf(req);
         const effect = await this.applyDomain(tx, req, req.action_type as A6ApplicableAction, payload, tenant_id, product_key, now);
+        // CCP-B4 — the contract record, amendment or end evidence, in the same transaction.
+        effect.events.push(...(await this.applyContract(tx, req, req.action_type as A6ApplicableAction, payload, effect, now)));
         await this.fault?.('after_subscription_write', { change_request_id: id });
         const inserted = await grantCapabilitiesInTx(tx, { tenant_id, capabilities: effect.capabilities });
         await this.fault?.('after_entitlement_write', { change_request_id: id });
@@ -410,19 +419,25 @@ export class CommercialApplyService {
       case 'SUBSCRIPTION_CHANGE': {
         const row = await this.governedTarget(tx, tenant_id, product_key, p['subscription_id'] as string);
         const { plan, version } = await this.pinnedVersion(tx, tenant_id, product_key, p);
-        if (version.id === row.plan_version_id) throw new ApplyFailure('NO_CHANGE', { plan_version_id: version.id });
-        // T8 — immediately effective, same period (the anchor is kept): an upgrade only.
-        await this.assertUsageDefined(tx, tenant_id, product_key, row.plan_version_id, version);
-        // TD-A5-9 — the re-pin names its reason; the DB trigger records SubscriptionVersionPinEvent.
-        await tx.$executeRaw`SELECT set_config('aramo.subscription_pin_reason', ${PIN_REASON_CHANGE_REQUEST}, true), set_config('aramo.subscription_pin_price_ref', '', true)`;
-        await tx.tenantSubscription.update({ where: { id: row.id }, data: { plan_id: plan.id, plan_version_id: version.id } });
+        // CCP-B4 — a change that records or amends a contract may keep the pinned version (a
+        // terms-only amendment): the subscription row is then not written at all (no usage
+        // transition, no re-pin). Without a contract block, the same version is still NO_CHANGE.
+        const sameVersion = version.id === row.plan_version_id;
+        if (sameVersion && !changeCarriesContract(p)) throw new ApplyFailure('NO_CHANGE', { plan_version_id: version.id });
+        if (!sameVersion) {
+          // T8 — immediately effective, same period (the anchor is kept): an upgrade only.
+          await this.assertUsageDefined(tx, tenant_id, product_key, row.plan_version_id, version);
+          // TD-A5-9 — the re-pin names its reason; the DB trigger records SubscriptionVersionPinEvent.
+          await tx.$executeRaw`SELECT set_config('aramo.subscription_pin_reason', ${PIN_REASON_CHANGE_REQUEST}, true), set_config('aramo.subscription_pin_price_ref', '', true)`;
+          await tx.tenantSubscription.update({ where: { id: row.id }, data: { plan_id: plan.id, plan_version_id: version.id } });
+        }
         return {
           subscription_id: row.id,
           replaced_subscription_id: null,
           from_plan_version_id: row.plan_version_id,
           to_plan_version_id: version.id,
           capabilities: bundle,
-          events: [
+          events: sameVersion ? [] : [
             {
               event_type: 'COMMERCIAL_SUBSCRIPTION_CHANGED',
               subject: `tenant_subscription:${row.id}`,
@@ -460,6 +475,43 @@ export class CommercialApplyService {
         if (outside.length > 0) throw new ApplyFailure('CAPABILITY_NOT_IN_PRODUCT', { capabilities: outside, product_bundle: [...bundle] });
         return { subscription_id: null, replaced_subscription_id: null, from_plan_version_id: null, to_plan_version_id: null, capabilities: caps, events: [] };
       }
+    }
+  }
+
+  /**
+   * CCP-B4 — writes the contract side of an OPEN / CHANGE / END inside the apply transaction
+   * (after the subscription write, so the insert guards see the row in its applied state). A
+   * conflict is an APPLY_FAILED (the whole transaction rolls back; retryable).
+   */
+  private async applyContract(tx: Tx, req: CommercialChangeRequestRow, action: A6ApplicableAction, p: Record<string, unknown>, effect: DomainEffect, now: Date): Promise<ContractEffect[]> {
+    if (effect.subscription_id === null) return [];
+    const ctx = { change_request_id: req.id, change_request_kind: req.kind, requested_by: req.requested_by, now };
+    try {
+      switch (action) {
+        case 'SUBSCRIPTION_OPEN':
+        case 'SUBSCRIPTION_CHANGE': {
+          // A contract ends only by an explicit SUBSCRIPTION_END that names it (its approvers
+          // approved ending exactly that contract), never as a side effect of an open replacing
+          // its row.
+          if (effect.replaced_subscription_id !== null) {
+            const governed = await contractOfSubscription(tx, effect.replaced_subscription_id);
+            if (governed !== null) throw new ContractApplyConflict('CONTRACT_MISMATCH', { replaced_subscription_id: effect.replaced_subscription_id, contract_id: governed.id, reason: 'replaces_contract_subscription' });
+          }
+          const out: ContractEffect[] = [];
+          if (p['contract'] !== undefined) out.push(await recordContractInTx(tx, effect.subscription_id, p['contract'] as ContractRecordBlock, ctx));
+          if (p['contract_amendment'] !== undefined) out.push(await amendContractInTx(tx, effect.subscription_id, p['contract_amendment'] as ContractAmendmentBlock, ctx));
+          return out;
+        }
+        case 'SUBSCRIPTION_END': {
+          const e = await endContractInTx(tx, effect.subscription_id, p['contract_end'] as ContractEndBlock | undefined, ctx);
+          return e === null ? [] : [e];
+        }
+        default:
+          return [];
+      }
+    } catch (e) {
+      if (e instanceof ContractApplyConflict) throw new ApplyFailure(e.code, e.detail);
+      throw e;
     }
   }
 

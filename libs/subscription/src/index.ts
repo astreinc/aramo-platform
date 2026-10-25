@@ -231,6 +231,31 @@ export {
   type CommercialApplyResult,
   type CommercialChangeApplicationRow,
 } from './lib/commercial/commercial-apply.service.js';
+// CCP-B4 (PBD §5.3 row B4; MP-A2 N-3) — enterprise contract records (written only by the A6
+// apply; state, plan and commitment read through TenantSubscription) and their read model.
+export {
+  CONTRACT_MAX_DOCUMENTS,
+  CONTRACT_MAX_TERMS,
+  CONTRACT_PAYLOAD_KEYS,
+  CONTRACT_REF_PATTERN,
+  changeCarriesContract,
+  validateContractBlocks,
+  type ContractAmendmentBlock,
+  type ContractEndBlock,
+  type ContractEvidenceDocument,
+  type ContractRecordBlock,
+} from './lib/commercial/commercial-contract.js';
+export {
+  CONTRACT_LIST_DEFAULT_LIMIT,
+  CONTRACT_LIST_MAX_LIMIT,
+  ContractRepository,
+  type ContractAmendmentView,
+  type ContractDetailView,
+  type ContractDocumentView,
+  type ContractPerson,
+  type ContractStatus,
+  type ContractSummaryView,
+} from './lib/commercial/commercial-contract.repository.js';
 export { GOVERNED_SUBSCRIPTION_OPEN, billingLockKey, isGovernedSubscription, takeBillingLock } from './lib/billing/governed-subscription.js';
 export { C16_QUERY_A, checkoutCutoverReport, formatCheckoutCutoverReport, type CheckoutCutoverReport } from './lib/billing/checkout-cutover-check.js';
 // CCP-A5 (PBD §5.1 row A5; MP-A2 N-15…N-19; Charter D3) — plan versions, the provider price

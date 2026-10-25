@@ -600,3 +600,50 @@ model CommercialChangeApplication {
   @@index([subscription_id])
   @@schema("subscription")
 }
+
+// CCP-B4 (PBD §5.3 row B4; MP-A2 N-2, N-3; Charter L6) — the enterprise contract record: an
+// evidence-bearing record of a governed MANUAL subscription (negotiated terms + hashed evidence
+// documents). It carries NO subscription state (Active / Ended = the referenced
+// TenantSubscription.ended_at), NO plan / version / allowance / commitment (read through
+// TenantSubscription) and NO usage (N-3(c), (d)). Written only inside the A6 apply transaction
+// of a SUBSCRIPTION_OPEN / _CHANGE request (insert guard trigger); append-only. Plain UUID
+// references (FKs in SQL, migration 20261026030000); no Prisma relations.
+model Contract {
+  id                            String   @id @db.Uuid
+  contract_ref                  String   @unique
+  // N-3(b): the governed subscription row (FK → TenantSubscription, RESTRICT). One per row.
+  tenant_subscription_id        String   @unique @db.Uuid
+  // The negotiated terms as recorded (JSON array of strings; evidence text only).
+  terms                         Json
+  // JSON array of { name, sha256, byte_size?, media_type? } (metadata only; no bytes).
+  evidence_documents            Json
+  evidence_ref                  String?
+  // CHECK: CHANGE_REQUEST | MIGRATION (= the recording request's kind).
+  provenance                    String
+  recorded_by_change_request_id String   @unique @db.Uuid
+  recorded_by                   String   @db.Uuid
+  recorded_at                   DateTime @db.Timestamptz(3)
+
+  @@schema("subscription")
+}
+
+// CCP-B4 — one amendment (SUBSCRIPTION_CHANGE) or the end evidence (SUBSCRIPTION_END) of a
+// Contract. `kind` END is evidence of the end, never a state. Append-only; gap-free sequence.
+model ContractAmendment {
+  id                 String   @id @db.Uuid
+  contract_id        String   @db.Uuid
+  sequence           Int
+  // CHECK: AMENDMENT | END
+  kind               String
+  summary            String
+  // The full negotiated terms after an AMENDMENT; null = unchanged (always null for END).
+  terms              Json?
+  evidence_documents Json
+  evidence_ref       String?
+  change_request_id  String   @unique @db.Uuid
+  recorded_by        String   @db.Uuid
+  recorded_at        DateTime @db.Timestamptz(3)
+
+  @@unique([contract_id, sequence])
+  @@schema("subscription")
+}

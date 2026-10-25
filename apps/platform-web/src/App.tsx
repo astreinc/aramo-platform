@@ -22,6 +22,8 @@ import { MatchingPolicyView } from './matching/MatchingPolicyView';
 import { PersonalReviewView } from './personal/PersonalReviewView';
 import { PersonalInviteView } from './personal/PersonalInviteView';
 import { PlatformAdminsView } from './admins/PlatformAdminsView';
+import { ContractsView } from './contracts/ContractsView';
+import { CONTRACT_READ_SCOPE } from './contracts/contracts-api';
 
 // The platform console app. RouteGuard handles only loading, unauthenticated
 // (→ sign-in) and the TENANT_ACCESS_DENIED wrong-account redirect — it no longer
@@ -150,6 +152,9 @@ export function PlatformConsole({ session }: { readonly session: Session }) {
         {/* PLATFORM-UX-1 (directive R-12) — Platform admins at /admins (never under
             /platform/, which nginx proxies to the backend). */}
         <Route path="/admins" element={gate(P.adminInvite, 'Platform admins', <PlatformAdminsView />)} />
+        {/* CCP-B4 — Commercial › Contracts (handoff §5.5), gated on
+            platform:subscription:read (CCP A1 §4.1). The rail item is B1's. */}
+        <Route path="/commercial/contracts" element={gate(CONTRACT_READ_SCOPE, 'Contracts', <ContractsView session={session} />)} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </PlatformShell>
