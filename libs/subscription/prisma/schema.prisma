@@ -253,6 +253,10 @@ model AllowanceUsage {
   // A RESERVED row older than this is resolved by reconciliation before counting.
   reserved_until DateTime  @db.Timestamptz(6)
   finalized_at   DateTime? @db.Timestamptz(6)
+  // CCP-D1 — the writing transaction id, set by trigger (migration 20261025240000) on every
+  // INSERT and UPDATE; read only by the usage roll-up watermark, never by an allowance decision.
+  // Unsupported in Prisma, so the generated client never selects or writes it.
+  rollup_xid     Unsupported("xid8")?
 
   @@unique([tenant_id, allowance_key, send_key])
   @@index([tenant_id, allowance_key, period_start])
@@ -568,5 +572,115 @@ model CommercialOperatorAttestation {
   revoke_reason     String?
   approvals         CommercialApproval[]
 
+  @@schema("subscription")
+}
+
+// -------------------------------------------------------------------------
+// CCP-D1 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.4 row D1; architecture metering
+// prerequisite) — usage roll-ups. UsageMetric is the governed metric registry (seeded by
+// migration 20261025240000; UPDATE / DELETE rejected). Everything else is DERIVED from the
+// AllowanceUsage ledger by the watermark worker (src/lib/usage/usage-rollup.service.ts) and is
+// read-only until it reconciles. No price, rate or amount anywhere (usage-based pricing is out).
+// -------------------------------------------------------------------------
+model UsageMetric {
+  metric_key       String   @id
+  // CHECK: the CCP-A4 product registry (sign only).
+  product_key      String
+  // CHECK: ALLOWANCE_USAGE.
+  source           String
+  allowance_key    String   @unique
+  // The metering UsageEvent type a CONSUMED SEND row writes (the raw-event cross-check).
+  usage_event_type String?
+  unit             String
+  description      String
+  created_at       DateTime @db.Timestamptz(3)
+
+  @@schema("subscription")
+}
+
+model UsageRollupDaily {
+  tenant_id                 String   @db.Uuid
+  metric_key                String
+  product_key               String
+  period_start              DateTime @db.Timestamptz(6)
+  // UTC day of AllowanceUsage.reserved_at.
+  usage_date                DateTime @db.Date
+  consumed_count            Int
+  consumed_send_count       Int
+  consumed_historical_count Int
+  reserved_count            Int
+  run_id                    String   @db.Uuid
+  computed_at               DateTime @db.Timestamptz(3)
+
+  @@id([tenant_id, metric_key, period_start, usage_date])
+  @@schema("subscription")
+}
+
+model UsageRollupPeriod {
+  tenant_id                 String    @db.Uuid
+  metric_key                String
+  product_key               String
+  period_start              DateTime  @db.Timestamptz(6)
+  period_end                DateTime? @db.Timestamptz(6)
+  // CHECK: ALIGNED (a BASE subscription's anchor produces period_start) | UNALIGNED.
+  alignment                 String
+  subscription_id           String?   @db.Uuid
+  // The plan version in force at period_start (TD-A5-1: terms from the pinned version).
+  plan_version_id           String?   @db.Uuid
+  included_quantity         Int?
+  unlimited                 Boolean?
+  consumed_count            Int
+  consumed_send_count       Int
+  consumed_historical_count Int
+  reserved_count            Int
+  run_id                    String    @db.Uuid
+  computed_at               DateTime  @db.Timestamptz(3)
+
+  @@id([tenant_id, metric_key, period_start])
+  @@index([metric_key, period_start(sort: Desc), tenant_id])
+  @@schema("subscription")
+}
+
+model UsageRollupWatermark {
+  metric_key     String   @id
+  // pg_snapshot_xmin of the last committed run (xid8 as bigint).
+  xmin_watermark BigInt
+  last_run_id    String   @db.Uuid
+  updated_at     DateTime @db.Timestamptz(3)
+
+  @@schema("subscription")
+}
+
+// DERIVED bookkeeping written by the AllowanceUsage trigger: a bucket a row LEFT (DELETE, or an
+// UPDATE that changed tenant / allowance / period_start). The worker recomputes it and prunes it.
+model UsageRollupVacatedBucket {
+  id            BigInt                @id @default(autoincrement())
+  tenant_id     String                @db.Uuid
+  allowance_key String
+  period_start  DateTime              @db.Timestamptz(6)
+  vacated_xid   Unsupported("xid8")
+
+  @@index([allowance_key, tenant_id, period_start])
+  @@schema("subscription")
+}
+
+// Append-only (UPDATE / DELETE rejected by trigger).
+model UsageRollupRun {
+  id                   String   @id @db.Uuid
+  metric_key           String
+  // CHECK: FULL | INCREMENTAL | REBUILD
+  mode                 String
+  from_xid             BigInt?
+  to_xid               BigInt
+  buckets_recomputed   Int
+  rows_scanned         Int
+  // CHECK: RECONCILED | NOT_RECONCILED (at the run's own snapshot)
+  reconciliation       String
+  mismatch_count       Int
+  pending_bucket_count Int
+  started_at           DateTime @db.Timestamptz(3)
+  finished_at          DateTime @db.Timestamptz(3)
+
+  @@index([metric_key, started_at(sort: Desc), id(sort: Desc)])
   @@schema("subscription")
 }

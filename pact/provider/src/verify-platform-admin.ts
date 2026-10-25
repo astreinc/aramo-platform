@@ -15,9 +15,12 @@ import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { AppModule } from '@aramo/platform-admin';
+import { SubscriptionPrismaService, UsageRollupService } from '@aramo/subscription';
 
 // eslint-disable-next-line @nx/enforce-module-boundaries -- test-only real-Postgres support shared with the CCP-A3 specs (TD-A3-19 precedent; CLAUDE.md "one shared test helper")
-import { PLATFORM_TENANT, TENANT_2, addOperator, applyCcpA3Schema } from '../../../libs/subscription/src/tests/support/ccp-a3-database.js';
+import { PLATFORM_TENANT, TENANT_2, addOperator } from '../../../libs/subscription/src/tests/support/ccp-a3-database.js';
+// eslint-disable-next-line @nx/enforce-module-boundaries -- test-only real-Postgres support shared with the CCP-D1 specs (same precedent)
+import { applyCcpD1Schema, seedUsageTenant } from '../../../libs/subscription/src/tests/support/ccp-d1-database.js';
 
 // CCP-A10 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.1 row A10; D11;
 // PLATFORM-UX-1 Amendment A1, A1-3) — Pact provider verifier for apps/platform-admin.
@@ -29,8 +32,8 @@ import { PLATFORM_TENANT, TENANT_2, addOperator, applyCcpA3Schema } from '../../
 // platform-admin AppModule — real JwtAuthGuard, RolesGuard, the identity RBAC
 // resolver (no resolver override) and the real CommercialChangeRequestService —
 // against a Postgres testcontainer holding the identity, metering and subscription
-// chains (CCP-A2 and CCP-A3 included), applied whole-file in order by the shared CCP
-// helper (libs/subscription/src/tests/support/ccp-a3-database.ts). One attested
+// chains (CCP-A2, A3, A4, A5, A9 and D1 included), applied whole-file in order by the shared
+// CCP helper (libs/subscription/src/tests/support/ccp-d1-database.ts). One attested
 // operator per CCP role + super_admin is seeded in the platform sentinel tenant; the
 // consumer's placeholder session cookie (`pact-<role>`) is rewritten to a real RS256
 // token for that operator, so every allowed and refused interaction is decided by the
@@ -68,6 +71,9 @@ const RECRUITER_COOKIE = 'aramo_access_token_recruiter';
 const AUTH_ISSUER = 'Aramo Core Auth'; // the issuer JwtAuthGuard pins
 const AUTH_AUDIENCE = 'aramo-pact-provider-platform-admin-audience';
 const CCP_PREFIX = '/platform/commercial';
+// CCP-D1 — MUST match the consumer's USAGE_TENANT / USAGE_SUBSCRIPTION.
+const USAGE_TENANT = 'cca10000-0000-7000-8000-0000000000d1';
+const USAGE_SUBSCRIPTION = 'cca10000-0000-7000-8000-0000000000d2';
 const UUID_SEGMENT = /\/[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}(?=\/|$)/gi;
 
 type SigningKey = Awaited<ReturnType<typeof generateKeyPair>>['privateKey'];
@@ -145,6 +151,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     const tokens = new Map<string, string>();
     const savedEnv: Partial<Record<string, string | undefined>> = {};
     let seq = 0;
+    let usagePrisma: SubscriptionPrismaService;
+    let usage: UsageRollupService;
 
     async function signToken(sub: string, consumer_type: 'platform' | 'recruiter', tenant_id: string, key: SigningKey): Promise<string> {
       const now = Math.floor(Date.now() / 1000);
@@ -191,9 +199,15 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       const url = container.getConnectionUri();
       db = new Client({ connectionString: url });
       await db.connect();
-      // identity + metering + subscription (A2, A3) whole-file, plus the platform sentinel
-      // tenant, two commercial tenants and the CCP A1 §4.1 role/scope catalog.
-      await applyCcpA3Schema(db);
+      // identity + metering + subscription (A2, A3, A4, A5, A9, D1) whole-file, plus the platform
+      // sentinel tenant, two commercial tenants and the CCP A1 §4.1 role/scope catalog.
+      await applyCcpD1Schema(db);
+      // CCP-D1 — the usage tenant (MANUAL Sign subscription with ledger usage) and the worker
+      // the usage provider states drive (the AppModule's own worker stays off: unset env).
+      await seedUsageTenant(db, USAGE_TENANT, USAGE_SUBSCRIPTION);
+      usagePrisma = new SubscriptionPrismaService(url);
+      await usagePrisma.$connect();
+      usage = new UsageRollupService(usagePrisma);
       for (const role of Object.keys(OP) as Role[]) await addOperator(db, [role], { id: OP[role] });
 
       const kp = await generateKeyPair('RS256');
@@ -208,6 +222,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         SIGN_PERSONAL_SIGNUP_PURGE_ENABLED: '0',
         DOMAIN_CLAIM_SWEEP_ENABLED: undefined,
         SIGN_PERSONAL_LAPSE_SWEEP_ENABLED: undefined,
+        CCP_USAGE_ROLLUP_ENABLED: undefined,
       };
       for (const [k, v] of Object.entries(env)) {
         savedEnv[k] = process.env[k];
@@ -229,6 +244,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
 
     afterAll(async () => {
       await app?.close();
+      await usagePrisma?.$disconnect();
       await db?.end();
       await container?.stop();
       for (const [k, v] of Object.entries(savedEnv)) {
@@ -280,6 +296,17 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             return undefined;
           },
           'a draft change request exists': async () => ({ requestId: await draftRequest() }),
+          // CCP-D1 — a REBUILD makes the derived roll-ups equal the ledger again (each state sets itself).
+          'usage roll-ups are reconciled': async () => {
+            const r = await usage.run({ rebuild: true });
+            if (r.status !== 'COMPLETED' || r.metrics[0]?.reconciliation !== 'RECONCILED') throw new Error(`usage roll-ups did not reconcile: ${JSON.stringify(r)}`);
+            return undefined;
+          },
+          'usage roll-ups do not reconcile': async () => {
+            await usage.run({ rebuild: true });
+            await db.query(`UPDATE subscription."UsageRollupPeriod" SET reserved_count = reserved_count + 1 WHERE tenant_id = $1::uuid AND period_start = '2026-10-01T00:00:00Z'`, [USAGE_TENANT]);
+            return undefined;
+          },
           'a pending change request exists': async () => {
             const requestId = await draftRequest();
             await asRole('commercial_ops', 'POST', `/platform/commercial/change-requests/${requestId}/submit`);

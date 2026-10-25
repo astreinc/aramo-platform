@@ -353,6 +353,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   COMMERCIAL_POLICY_UNAVAILABLE: 503,
   // CCP-A9 — last-effective-platform_owner invariant.
   PLATFORM_LAST_OWNER: 409,
+  // CCP-D1 — usage analytics refused until the roll-ups reconcile.
+  USAGE_ROLLUP_NOT_RECONCILED: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

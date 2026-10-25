@@ -34,7 +34,7 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 // commercial tenant (change requests and approvals are append-only, and Q14 allows one
 // open request per tenant × product).
 //
-// Coverage — CCP routes (8):
+// Coverage — CCP routes (10):
 //   GET  /platform/commercial/audit-events                      (CCP-A2)
 //   POST /platform/commercial/change-requests                   (CCP-A3)
 //   GET  /platform/commercial/change-requests
@@ -43,6 +43,8 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 //   POST /platform/commercial/change-requests/{id}/withdraw
 //   POST /platform/commercial/change-requests/{id}/approvals
 //   POST /platform/commercial/change-requests/{id}/reject
+//   GET  /platform/commercial/usage/reconciliation              (CCP-D1)
+//   GET  /platform/commercial/usage/periods                     (CCP-D1)
 // For each route: the allowed call, super_admin refused (403, holds no commercial
 // scope), and the tenant tier refused (403 tier tripwire). Plus the role-level
 // refusals: a role missing the route scope (audit feed), a role missing the requester
@@ -88,6 +90,11 @@ const EX_REQUEST_ID = 'cca10000-0000-7000-8000-0000000000e1';
 
 const AUDIT = '/platform/commercial/audit-events';
 const CR = '/platform/commercial/change-requests';
+const USAGE_REC = '/platform/commercial/usage/reconciliation';
+const USAGE_PERIODS = '/platform/commercial/usage/periods';
+// CCP-D1 — the usage tenant the provider seeds (MANUAL Sign subscription, two periods of ledger usage).
+const USAGE_TENANT = 'cca10000-0000-7000-8000-0000000000d1';
+const USAGE_SUBSCRIPTION = 'cca10000-0000-7000-8000-0000000000d2';
 
 const platformSession = (role: Role) => ({ 'X-Aramo-Consumer': 'platform', Cookie: `aramo_access_token_platform=pact-${role}` });
 const platformJson = (role: Role) => ({ ...platformSession(role), 'Content-Type': 'application/json' });
@@ -182,6 +189,8 @@ const GATE_ROUTES: readonly GateRoute[] = [
   { name: 'POST change-requests/{id}/withdraw', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/withdraw`, scope: 'platform:approval:read' },
   { name: 'POST change-requests/{id}/approvals', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/approvals`, scope: 'platform:approval:read', body: { step_index: 0 } },
   { name: 'POST change-requests/{id}/reject', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/reject`, scope: 'platform:approval:read', body: { reason: 'Credit not justified' } },
+  { name: 'GET usage/reconciliation', method: 'GET', path: USAGE_REC, scope: 'platform:subscription:read' },
+  { name: 'GET usage/periods', method: 'GET', path: USAGE_PERIODS, scope: 'platform:subscription:read' },
 ];
 
 // ── CCP-A2 — the commercial audit feed ────────────────────────────────────────
@@ -510,6 +519,120 @@ describe('platform-web → POST /platform/commercial/change-requests/{id}/reject
       .executeTest(async (mock) => {
         const res = await call(`${mock.url}${CR}/${EX_REQUEST_ID}/reject`, 'POST', platformJson('support_admin'), REJECT_BODY);
         expect(res.status).toBe(409);
+      });
+  });
+});
+
+// ── CCP-D1 — usage roll-ups (read-only until reconciled) ──────────────────────
+
+const usageCounts = (c: number, r: number) => ({ consumed: integer(c), consumed_send: integer(c), consumed_historical: integer(0), reserved: integer(r) });
+
+describe('platform-web → GET /platform/commercial/usage/reconciliation (CCP-D1)', () => {
+  it('read_only_auditor reads the reconciliation (200 RECONCILED)', async () => {
+    await provider
+      .addInteraction()
+      .given('usage roll-ups are reconciled')
+      .uponReceiving('a usage reconciliation read by a read-only auditor')
+      .withRequest('GET', USAGE_REC, (b) => {
+        b.headers(platformSession('read_only_auditor')).query({ product_key: 'sign' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          product_key: 'sign',
+          status: 'RECONCILED',
+          checked_at: iso(),
+          metrics: eachLike({
+            metric_key: 'sign.envelopes',
+            product_key: 'sign',
+            status: 'RECONCILED',
+            watermark: regex('^[0-9]+$', '801'),
+            last_run_id: uuid('01a1730b-0099-70ec-a374-cb6339bc34fb'),
+            buckets: { source: integer(2), rollup: integer(2), pending: integer(0), compared: integer(2), mismatched: 0 },
+            compared_totals: { allowance_usage: usageCounts(5, 1), rollup: usageCounts(5, 1) },
+            usage_event: { event_type: 'sign.envelope.sent', tenants: integer(1), mismatched_tenants: 0, allowance_usage_consumed_send: integer(5), usage_event_quantity: integer(5) },
+            mismatch_count: 0,
+            mismatches: [],
+          }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${USAGE_REC}?product_key=sign`, 'GET', platformSession('read_only_auditor'));
+        expect(res.status).toBe(200);
+        expect(res.body['status']).toBe('RECONCILED');
+      });
+  });
+
+  it('a role without platform:subscription:read (catalog_manager) is refused (403)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a usage reconciliation read by a role missing the subscription read scope')
+      .withRequest('GET', USAGE_REC, (b) => {
+        b.headers(platformSession('catalog_manager'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:subscription:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${USAGE_REC}`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(403);
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/usage/periods (CCP-D1)', () => {
+  it('finance_admin reads a tenant\'s consumption per billing period (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('usage roll-ups are reconciled')
+      .uponReceiving('a usage periods read by a finance admin')
+      .withRequest('GET', USAGE_PERIODS, (b) => {
+        b.headers(platformSession('finance_admin')).query({ product_key: 'sign', metric_key: 'sign.envelopes', tenant_id: USAGE_TENANT });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          product_key: 'sign',
+          reconciliation: { status: 'RECONCILED', checked_at: iso() },
+          truncated: false,
+          periods: eachLike({
+            tenant_id: USAGE_TENANT,
+            metric_key: 'sign.envelopes',
+            product_key: 'sign',
+            period_start: iso('2026-10-01T00:00:00.000Z'),
+            period_end: iso('2026-11-01T00:00:00.000Z'),
+            alignment: 'ALIGNED',
+            subscription_id: USAGE_SUBSCRIPTION,
+            plan_version_id: uuid('cca10000-0000-7000-8000-0000000000d3'),
+            included_quantity: integer(100),
+            unlimited: false,
+            counts: usageCounts(3, 1),
+            stale: false,
+            computed_at: iso(),
+          }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${USAGE_PERIODS}?product_key=sign&metric_key=sign.envelopes&tenant_id=${USAGE_TENANT}`, 'GET', platformSession('finance_admin'));
+        expect(res.status).toBe(200);
+        expect((res.body['periods'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+
+  it('analytics are refused while the roll-ups do not reconcile (409 USAGE_ROLLUP_NOT_RECONCILED)', async () => {
+    await provider
+      .addInteraction()
+      .given('usage roll-ups do not reconcile')
+      .uponReceiving('a usage periods read while the roll-ups do not reconcile')
+      .withRequest('GET', USAGE_PERIODS, (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(409, (b) => {
+        b.jsonBody(errorBody('USAGE_ROLLUP_NOT_RECONCILED', { status: 'NOT_RECONCILED', mismatch_count: integer(1), checked_at: iso() }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${USAGE_PERIODS}`, 'GET', platformSession('commercial_ops'));
+        expect(res.status).toBe(409);
+        expect(errCode(res.body)).toBe('USAGE_ROLLUP_NOT_RECONCILED');
       });
   });
 });

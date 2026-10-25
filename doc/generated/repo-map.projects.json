@@ -2250,6 +2250,13 @@
       "SubscriptionLifecycleService",
       "SubscriptionModule",
       "SubscriptionPrismaService",
+      "USAGE_METRICS",
+      "USAGE_METRIC_SOURCES",
+      "USAGE_PERIODS_DEFAULT_LIMIT",
+      "USAGE_PERIODS_MAX_LIMIT",
+      "USAGE_RECONCILIATION_MISMATCH_LIMIT",
+      "USAGE_ROLLUP_LOCK_KEY",
+      "UsageRollupService",
       "actorSatisfiesStep",
       "addMonthsClamped",
       "approvalExpiresAt",
@@ -2304,6 +2311,8 @@
       "subjectUserOf",
       "subscriptionSends",
       "thresholdOf",
+      "usageMetricOf",
+      "usageMetricsOf",
       "validatePayload",
       "verifyStripeSignature"
     ],
@@ -3376,6 +3385,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d1-usage-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d1-usage-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -3966,6 +3987,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a9-role-change-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d1-usage-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d1-usage-routes.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -6283,6 +6316,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d1-usage-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d1-usage-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -6915,6 +6960,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-a9-bootstrap-role-change.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-d1-usage-rollups.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -9162,6 +9213,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d1-usage-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d1-usage-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -11239,6 +11302,11 @@
       },
       { "project": "api", "status": "production" },
       {
+        "from": "pact/provider/src/verify-platform-admin.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      },
+      {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a1-platform-role-authorization.spec.ts",
         "project": "platform-admin",
@@ -11271,6 +11339,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a9-role-change-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d1-usage-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d1-usage-routes.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },

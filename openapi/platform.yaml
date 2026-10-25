@@ -104,6 +104,17 @@ tags:
       409 `CCP_NOT_BOOTSTRAPPED`. The approval chain and the commercial policy version are
       snapshotted when the request is created. Every act is recorded in the commercial
       audit stream. Nothing is applied by these routes. Platform-tier only.
+  - name: Platform Commercial Usage
+    description: |
+      CCP-D1 — usage roll-ups and consumption analytics, derived from the Sign
+      allowance ledger (AllowanceUsage) by the opt-in watermark worker
+      (`CCP_USAGE_ROLLUP_ENABLED=1`). Read-only. Requires `platform:subscription:read`
+      (platform_owner, finance_admin, commercial_ops, support_admin, read_only_auditor);
+      catalog_manager and super_admin are refused with 403 `INSUFFICIENT_PERMISSIONS`.
+      The roll-ups stay read-only until their totals reconcile exactly to the ledger and
+      to the metering raw events: the analytics read is refused with 409
+      `USAGE_ROLLUP_NOT_RECONCILED` until then. Counts only; no price, amount or rate.
+      Platform-tier only.
 
 paths:
   /v1/signup/sign/terms:
@@ -2129,6 +2140,122 @@ paths:
         '403':
           $ref: '#/components/responses/PlatformForbidden'
 
+  /platform/commercial/usage/reconciliation:
+    get:
+      operationId: getPlatformCommercialUsageReconciliation
+      tags: [Platform Commercial Usage]
+      summary: Reconcile the usage roll-ups against the allowance ledger and raw events.
+      description: |
+        CCP-D1 — the live reconciliation, computed on one consistent snapshot. Status
+        `NOT_RUN` (the worker has never run), `RECONCILED` (every compared bucket and
+        tenant matches exactly) or `NOT_RECONCILED`. Buckets written after the last run
+        are `pending` and are not compared. Read-only. Requires `platform:subscription:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: product_key
+          in: query
+          required: false
+          description: The product (CCP-A4 registry). Default `sign`.
+          schema:
+            type: string
+            enum: [sign]
+      responses:
+        '200':
+          description: The reconciliation of every registered metric of the product.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialUsageReconciliation'
+        '400':
+          $ref: '#/components/responses/CommercialUsageValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
+  /platform/commercial/usage/periods:
+    get:
+      operationId: listPlatformCommercialUsagePeriods
+      tags: [Platform Commercial Usage]
+      summary: List per-tenant consumption per billing period (only when reconciled).
+      description: |
+        CCP-D1 — the period roll-ups (tenant × metric × billing period, aligned to the
+        tenant's subscription and the plan version in force at the period start), newest
+        period first. Refused with 409 `USAGE_ROLLUP_NOT_RECONCILED` unless the live
+        reconciliation is `RECONCILED`. A period written after the last run is returned with
+        `stale: true`. Counts only. Read-only. Requires `platform:subscription:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: product_key
+          in: query
+          required: false
+          description: The product (CCP-A4 registry). Default `sign`.
+          schema:
+            type: string
+            enum: [sign]
+        - name: metric_key
+          in: query
+          required: false
+          description: One registered metric of the product (e.g. `sign.envelopes`).
+          schema:
+            type: string
+            pattern: '^[a-z][a-z0-9_]*\.[a-z0-9_.]+$'
+        - name: tenant_id
+          in: query
+          required: false
+          description: Only this tenant.
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          required: false
+          description: Inclusive lower bound on `period_start` (ISO-8601).
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          description: Exclusive upper bound on `period_start` (ISO-8601). Must be later than `from`.
+          schema:
+            type: string
+            format: date-time
+        - name: include_daily
+          in: query
+          required: false
+          description: '`true` adds the per-day (UTC) breakdown of each period.'
+          schema:
+            type: string
+            enum: ['true', 'false']
+        - name: limit
+          in: query
+          required: false
+          description: Maximum periods returned (default 100, max 500); `truncated` says more exist.
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 500
+      responses:
+        '200':
+          description: The period roll-ups.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialUsagePeriodsResponse'
+        '400':
+          $ref: '#/components/responses/CommercialUsageValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '409':
+          $ref: '#/components/responses/CommercialUsageNotReconciled'
+
   /platform/commercial/change-requests:
     post:
       operationId: createPlatformCommercialChangeRequest
@@ -3704,6 +3831,24 @@ components:
         application/json:
           schema:
             $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    CommercialUsageValidation:
+      description: |
+        `VALIDATION_ERROR` — a malformed query, an unregistered metric (details.reason
+        `unknown_metric`), or `from` not earlier than `to` (details.reason
+        `invalid_date_range`).
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    CommercialUsageNotReconciled:
+      description: |
+        `USAGE_ROLLUP_NOT_RECONCILED` — the usage roll-ups are read-only until their totals
+        reconcile (details.status `NOT_RUN` or `NOT_RECONCILED`, details.mismatch_count,
+        details.checked_at). The reconciliation route shows why.
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
     CommercialChangeRequestValidation:
       description: |
         `VALIDATION_ERROR` — a malformed body, query or id; an invalid payload for the
@@ -4181,6 +4326,214 @@ components:
         next_cursor:
           type: [string, 'null']
           description: Opaque continuation cursor, or null on the last page.
+
+    UsageCounts:
+      type: object
+      additionalProperties: false
+      required: [consumed, consumed_send, consumed_historical, reserved]
+      description: Ledger row counts. consumed = consumed_send + consumed_historical. RELEASED rows are never counted.
+      properties:
+        consumed:
+          type: integer
+          minimum: 0
+        consumed_send:
+          type: integer
+          minimum: 0
+        consumed_historical:
+          type: integer
+          minimum: 0
+        reserved:
+          type: integer
+          minimum: 0
+
+    UsageMismatch:
+      type: object
+      additionalProperties: false
+      required: [kind, tenant_id, period_start, expected, actual]
+      properties:
+        kind:
+          type: string
+          enum: [PERIOD, DAILY, USAGE_EVENT, ROLLUP_USAGE_EVENT]
+        tenant_id:
+          type: string
+          format: uuid
+        period_start:
+          type: [string, 'null']
+          format: date-time
+        expected:
+          description: The ledger counts (PERIOD, DAILY) or the raw-event total (USAGE_EVENT, ROLLUP_USAGE_EVENT).
+          oneOf:
+            - $ref: '#/components/schemas/UsageCounts'
+            - type: integer
+        actual:
+          description: The roll-up counts or total that differ (null when the roll-up row is missing).
+          oneOf:
+            - $ref: '#/components/schemas/UsageCounts'
+            - type: integer
+            - type: 'null'
+
+    UsageMetricReconciliation:
+      type: object
+      additionalProperties: false
+      required: [metric_key, product_key, status, watermark, last_run_id, buckets, compared_totals, usage_event, mismatch_count, mismatches]
+      properties:
+        metric_key:
+          type: string
+        product_key:
+          type: string
+        status:
+          type: string
+          enum: [NOT_RUN, RECONCILED, NOT_RECONCILED]
+        watermark:
+          type: [string, 'null']
+          description: The last run's transaction-id watermark (decimal), or null before the first run.
+        last_run_id:
+          type: [string, 'null']
+          format: uuid
+        buckets:
+          type: object
+          additionalProperties: false
+          required: [source, rollup, pending, compared, mismatched]
+          properties:
+            source:
+              type: integer
+            rollup:
+              type: integer
+            pending:
+              type: integer
+            compared:
+              type: integer
+            mismatched:
+              type: integer
+        compared_totals:
+          type: object
+          additionalProperties: false
+          required: [allowance_usage, rollup]
+          properties:
+            allowance_usage:
+              $ref: '#/components/schemas/UsageCounts'
+            rollup:
+              $ref: '#/components/schemas/UsageCounts'
+        usage_event:
+          type: object
+          additionalProperties: false
+          required: [event_type, tenants, mismatched_tenants, allowance_usage_consumed_send, usage_event_quantity]
+          properties:
+            event_type:
+              type: [string, 'null']
+            tenants:
+              type: integer
+            mismatched_tenants:
+              type: integer
+            allowance_usage_consumed_send:
+              type: integer
+            usage_event_quantity:
+              type: integer
+        mismatch_count:
+          type: integer
+        mismatches:
+          type: array
+          maxItems: 50
+          items:
+            $ref: '#/components/schemas/UsageMismatch'
+
+    CommercialUsageReconciliation:
+      type: object
+      additionalProperties: false
+      required: [product_key, status, checked_at, metrics]
+      properties:
+        product_key:
+          type: string
+        status:
+          type: string
+          enum: [NOT_RUN, RECONCILED, NOT_RECONCILED]
+        checked_at:
+          type: string
+          format: date-time
+        metrics:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsageMetricReconciliation'
+
+    UsagePeriod:
+      type: object
+      additionalProperties: false
+      required: [tenant_id, metric_key, product_key, period_start, period_end, alignment, subscription_id, plan_version_id, included_quantity, unlimited, counts, stale, computed_at]
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        metric_key:
+          type: string
+        product_key:
+          type: string
+        period_start:
+          type: string
+          format: date-time
+        period_end:
+          type: [string, 'null']
+          format: date-time
+        alignment:
+          type: string
+          enum: [ALIGNED, UNALIGNED]
+          description: ALIGNED when a BASE subscription's anchor produces the period; UNALIGNED rows are still counted.
+        subscription_id:
+          type: [string, 'null']
+          format: uuid
+        plan_version_id:
+          type: [string, 'null']
+          format: uuid
+          description: The plan version in force at period_start.
+        included_quantity:
+          type: [integer, 'null']
+          description: The allowance of that plan version (null when unlimited or not included).
+        unlimited:
+          type: [boolean, 'null']
+        counts:
+          $ref: '#/components/schemas/UsageCounts'
+        stale:
+          type: boolean
+          description: A ledger row of this period was written after the last run.
+        computed_at:
+          type: string
+          format: date-time
+        days:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [usage_date, counts]
+            properties:
+              usage_date:
+                type: string
+                format: date
+              counts:
+                $ref: '#/components/schemas/UsageCounts'
+
+    CommercialUsagePeriodsResponse:
+      type: object
+      additionalProperties: false
+      required: [product_key, reconciliation, periods, truncated]
+      properties:
+        product_key:
+          type: string
+        reconciliation:
+          type: object
+          additionalProperties: false
+          required: [status, checked_at]
+          properties:
+            status:
+              type: string
+              enum: [RECONCILED]
+            checked_at:
+              type: string
+              format: date-time
+        periods:
+          type: array
+          items:
+            $ref: '#/components/schemas/UsagePeriod'
+        truncated:
+          type: boolean
 
     CommercialActionType:
       type: string

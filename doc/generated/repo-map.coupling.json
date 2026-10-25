@@ -10992,6 +10992,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-usage.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform-personal.controller.ts"
     },
     {
@@ -13931,6 +13936,196 @@
       "from": "doc/ccp/slices/CCP-A9-pre-execution.md",
       "status": "unscoped",
       "to": "libs/subscription/src/lib/commercial/commercial-operator.repository.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-usage.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-d1-usage-authorization.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-d1-usage-routes.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-acceptance.md",
+      "status": "unscoped",
+      "to": "ci/config/api-surface-manifest.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-acceptance.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-orphan-scopes.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-D1-pre-execution.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/common/src/lib/errors/error-codes.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/common/src/tests/error-codes.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261025240000_ccp_d1_usage_rollups/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/usage-rollup.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/index.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/usage/usage-metrics.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-d1-usage-rollups.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-d1-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-acceptance.md",
+      "status": "unscoped",
+      "to": "openapi/common.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-acceptance.md",
+      "status": "unscoped",
+      "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-platform-admin.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-acceptance.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform.module.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-pre-execution.md",
+      "status": "unscoped",
+      "to": "ci/config/api-surface-manifest.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-pre-execution.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-orphan-scopes.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/architecture/aramo-platform-console-enterprise-architecture.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/design-inputs.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A4-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A5-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/metering/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/metering/src/lib/record-usage.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/index.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/allowance.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/product-registry.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-pre-execution.md",
+      "status": "unscoped",
+      "to": "openapi/common.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-pre-execution.md",
+      "status": "unscoped",
+      "to": "openapi/platform.yaml"
     },
     {
       "from": "doc/design-reference/platform-admin/github.md",
@@ -27519,6 +27714,21 @@
       "to": "doc/ccp/slices/CCP-A9-pre-execution.md"
     },
     {
+      "from": "libs/subscription/prisma/migrations/20261025240000_ccp_d1_usage_rollups/migration.sql",
+      "status": "unscoped",
+      "to": "doc/architecture/aramo-platform-console-enterprise-architecture.md"
+    },
+    {
+      "from": "libs/subscription/prisma/migrations/20261025240000_ccp_d1_usage_rollups/migration.sql",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-D1-pre-execution.md"
+    },
+    {
+      "from": "libs/subscription/prisma/migrations/20261025240000_ccp_d1_usage_rollups/migration.sql",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-d1-compensating.sql"
+    },
+    {
       "from": "libs/subscription/project.json",
       "status": "unscoped",
       "to": "libs/subscription/src/index.ts"
@@ -27589,6 +27799,11 @@
       "to": "doc/legal/aramo/privacy-notice.md"
     },
     {
+      "from": "libs/subscription/src/lib/usage/usage-rollup.service.ts",
+      "status": "production",
+      "to": "doc/architecture/aramo-platform-console-enterprise-architecture.md"
+    },
+    {
       "excludedBy": "src/tests/**/*",
       "from": "libs/subscription/src/tests/ccp-a4-product-dimension.integration.spec.ts",
       "status": "excluded",
@@ -27638,6 +27853,30 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-d1-usage-rollups.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-d1-usage-rollups.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/src/lib/subscription.module.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-d1-usage-rollups.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/src/lib/usage/usage-metrics.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-d1-usage-rollups.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/src/lib/usage/usage-rollup.service.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/subscription/src/tests/commercial-change-request.integration.spec.ts",
       "status": "excluded",
       "to": "doc/ccp/slices/CCP-A3-acceptance.md"
@@ -27659,6 +27898,12 @@
       "from": "libs/subscription/src/tests/fixtures/ccp-a5-compensating.sql",
       "status": "excluded",
       "to": "doc/ccp/slices/CCP-A5-pre-execution.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/fixtures/ccp-d1-compensating.sql",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-D1-pre-execution.md"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -28002,6 +28247,11 @@
       "from": "package.json",
       "status": "unscoped",
       "to": "libs/subscription/prisma/seed-development-subscription.ts"
+    },
+    {
+      "from": "package.json",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/usage-rollup.ts"
     },
     {
       "from": "package.json",
@@ -29375,7 +29625,7 @@
     {
       "from": "pact/provider/src/verify-platform-admin.ts",
       "status": "unscoped",
-      "to": "libs/subscription/src/tests/support/ccp-a3-database.ts"
+      "to": "libs/subscription/src/tests/support/ccp-d1-database.ts"
     },
     {
       "from": "pact/provider/src/verify-platform-admin.ts",
@@ -31212,6 +31462,7 @@
         { "kind": "npm-run", "path": "ci/scripts/prepush.ts" }
       ]
     },
+    { "name": "usage:rollup", "references": [] },
     {
       "name": "verify:vocabulary",
       "references": [
@@ -31249,6 +31500,7 @@
     "prisma:seed-policy-lifecycle",
     "prisma:validate-auth-storage",
     "prisma:validate-identity",
-    "tests:integration"
+    "tests:integration",
+    "usage:rollup"
   ]
 }

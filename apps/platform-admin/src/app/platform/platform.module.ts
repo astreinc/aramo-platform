@@ -18,11 +18,13 @@ import { PersonalLapseSweeper } from './personal-lapse-sweeper.service.js';
 import { PersonalSignupAttemptPurgeSweeper } from './personal-signup-attempt-purge-sweeper.service.js';
 import { PlatformCommercialAuditController } from './platform-commercial-audit.controller.js';
 import { PlatformCommercialChangeRequestController } from './platform-commercial-change-request.controller.js';
+import { PlatformCommercialUsageController } from './platform-commercial-usage.controller.js';
 import { PlatformPersonalController } from './platform-personal.controller.js';
 import { PlatformController } from './platform.controller.js';
 import { PlatformSignController } from './platform-sign.controller.js';
 import { PlatformInvitationService } from './platform-invitation.service.js';
 import { TenantPolicyProvisioningService } from './tenant-policy-provisioning.service.js';
+import { UsageRollupWorker } from './usage-rollup-worker.service.js';
 
 // PlatformModule — wires the platform-admin app's HTTP surface +
 // orchestration. Imports:
@@ -65,7 +67,8 @@ import { TenantPolicyProvisioningService } from './tenant-policy-provisioning.se
   ],
   // CCP-A2 — the read-only commercial audit feed (platform:commercial:audit:read).
   // CCP-A3 — commercial change requests and approvals (platform:approval:read gate).
-  controllers: [PlatformController, PlatformSignController, PlatformPersonalController, PlatformCommercialAuditController, PlatformCommercialChangeRequestController],
+  // CCP-D1 — usage roll-up reconciliation + consumption analytics (platform:subscription:read).
+  controllers: [PlatformController, PlatformSignController, PlatformPersonalController, PlatformCommercialAuditController, PlatformCommercialChangeRequestController, PlatformCommercialUsageController],
   providers: [
     // Sign Personal (Free) v1.1 §6.4 — abuse-report outcomes (sign schema; its own
     // generated client, lazy DATABASE_URL — scope:platform → scope:boundary is wall-legal).
@@ -88,6 +91,8 @@ import { TenantPolicyProvisioningService } from './tenant-policy-provisioning.se
     // after expiry, refused attempts after 180 days (ON by default;
     // SIGN_PERSONAL_SIGNUP_PURGE_ENABLED=0 switches it off).
     PersonalSignupAttemptPurgeSweeper,
+    // CCP-D1 — opt-in usage roll-up worker (CCP_USAGE_ROLLUP_ENABLED=1; off by default).
+    UsageRollupWorker,
     // DOC-TEMPLATE-LIB-1 T-3 (§5.3) — the RTR-TEMPLATE-1 provisioning-time RTR template
     // COPY is retired: a new tenant gets no RTR template row and resolves to the Aramo
     // (PLATFORM) RTR default. platform-admin no longer touches the documents store.

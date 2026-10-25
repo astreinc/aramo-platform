@@ -645,6 +645,9 @@ services:
       # (unset ⇒ off; an expired claim still lapses on the next claim attempt).
       - DOMAIN_CLAIM_SWEEP_ENABLED
       - DOMAIN_CLAIM_SWEEP_INTERVAL_MS
+      # CCP-D1 — opt-in usage roll-up worker (unset ⇒ off; roll-ups are derived).
+      - CCP_USAGE_ROLLUP_ENABLED
+      - CCP_USAGE_ROLLUP_INTERVAL_MS
       # Sign Personal (Free) Launch v1.1 (LOCKED) — public Personal signup + operator
       # review. Dark unless SIGN_PERSONAL_SIGNUP_MODE is invite|open (ships off).
       # GeoLite2 databases are files on the box, kept current by MaxMind's updater
