@@ -13,6 +13,7 @@ import { CapacityService } from '../lib/capacity.service.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
 import { CCP_A4_MIGRATION } from './fixtures/ccp-a4.js';
+import { CCP_A5_MIGRATION } from './fixtures/ccp-a5.js';
 
 // A1 review — ordered migration replay of the UPGRADE path: a database that
 // applied the ORIGINAL 20261019100000 (which seeded the superseded
@@ -72,6 +73,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     await pg.query(readFileSync(PERSONAL_FREE, 'utf8'));
     // CCP-A4 — the product dimension backfills the pre-existing (legacy-plan) subscription to sign.
     await pg.query(readFileSync(CCP_A4_MIGRATION, 'utf8'));
+    // CCP-A5 — every plan (the legacy one included) gets its v1; the subscription is pinned to it.
+    await pg.query(readFileSync(CCP_A5_MIGRATION, 'utf8'));
     prisma = new PrismaService(container.getConnectionUri());
     await prisma.$connect();
   }, 180_000);

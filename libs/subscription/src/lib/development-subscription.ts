@@ -1,5 +1,6 @@
 import { v7 as uuidv7 } from 'uuid';
 
+import { currentPublishedVersion } from './plan-version.repository.js';
 import type { PrismaService } from './prisma/prisma.service.js';
 import { BASE_COMPOSITION, assertProductKey, openBaseSubscription, type ProductKey } from './product-registry.js';
 
@@ -40,12 +41,16 @@ export async function openDevelopmentSubscription(
   const plan = await prisma.plan.findUnique({ where: { key: input.plan_key ?? AramoSignIncludedPlanKey } });
   if (plan === null) throw new Error(`unknown plan ${input.plan_key ?? AramoSignIncludedPlanKey}`);
   if (plan.product_key !== product_key) throw new Error(`plan ${plan.key} is not a ${product_key} plan`);
+  // CCP-A5 (N-18) — pinned to the plan's current (PUBLISHED) version.
+  const version = await currentPublishedVersion(prisma, plan.id);
+  if (version === null) throw new Error(`plan ${plan.key} has no published version`);
   const id = uuidv7();
   await prisma.tenantSubscription.create({
     data: {
       id,
       tenant_id: input.tenant_id,
       plan_id: plan.id,
+      plan_version_id: version.id,
       product_key,
       composition_role: BASE_COMPOSITION,
       period_anchor: input.period_anchor ?? new Date(),

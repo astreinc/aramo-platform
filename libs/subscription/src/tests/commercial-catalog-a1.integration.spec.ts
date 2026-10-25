@@ -18,6 +18,7 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 
 import { FakeOrganizationBillingProfile } from './fixtures/organization-billing-profile.fake.js';
 import { CCP_A4_MIGRATION } from './fixtures/ccp-a4.js';
+import { CCP_A5_MIGRATION, publishTestPlanV1 } from './fixtures/ccp-a5.js';
 
 // Aramo-Sign-Commercial-Plans-Legal-Framework-Amendment-A1 — on real Postgres 17:
 // the canonical catalog exactly as approved; unlimited signing is explicit and
@@ -35,7 +36,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20261022100100_billing_account_country_guard/migration.sql',
   '../../prisma/migrations/20261022110100_billing_flag_domain_reason/migration.sql',
   '../../prisma/migrations/20261023100000_sign_personal_free/migration.sql',
-].map((p) => resolve(__dirname, p)).concat(CCP_A4_MIGRATION);
+].map((p) => resolve(__dirname, p)).concat(CCP_A4_MIGRATION, CCP_A5_MIGRATION);
 
 const KEY = 'sign.envelopes';
 const STORAGE = 'sign.storage_bytes';
@@ -285,7 +286,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
       const id = uuidv7();
       await pg.query(`INSERT INTO subscription."Plan" (id, key, name, product_key) VALUES ($1, $2, 'test', 'sign')`, [id, `test-${id}`]);
       await pg.query(`INSERT INTO subscription."PlanCapacity" (plan_id, capacity_key, limit_quantity, unlimited) VALUES ($1, $2, $3, false)`, [id, STORAGE, limit]);
-      await pg.query(`INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, product_key, composition_role, period_anchor, source, created_by) VALUES ($1, $2, $3, 'sign', 'BASE', now(), 'MANUAL', 'test')`, [uuidv7(), t, id]);
+      // CCP-A5 — a plan created after the A5 migration needs its v1 before a subscription can pin it.
+      const version = await publishTestPlanV1(pg, id);
+      await pg.query(
+        `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by) VALUES ($1, $2, $3, $4, 'sign', 'BASE', now(), 'MANUAL', 'test')`,
+        [uuidv7(), t, id, version],
+      );
     }
 
     it('concurrent uploads cannot both take the last free space; a retry of the same object counts once', async () => {

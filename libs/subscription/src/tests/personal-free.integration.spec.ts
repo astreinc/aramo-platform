@@ -12,6 +12,7 @@ import { FreePersonalPlanKey, FreePersonalSubscriptionService, personalSignupMod
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
 import { CCP_A4_MIGRATION } from './fixtures/ccp-a4.js';
+import { CCP_A5_MIGRATION } from './fixtures/ccp-a5.js';
 
 // Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED §1 / §4 — on real Postgres 17:
 // the FREE subscription opens only for an ACTIVE PERSONAL tenant while the mode is
@@ -29,7 +30,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20261022100100_billing_account_country_guard/migration.sql',
   '../../prisma/migrations/20261022110100_billing_flag_domain_reason/migration.sql',
   '../../prisma/migrations/20261023100000_sign_personal_free/migration.sql',
-].map((p) => resolve(__dirname, p)).concat(CCP_A4_MIGRATION);
+].map((p) => resolve(__dirname, p)).concat(CCP_A4_MIGRATION, CCP_A5_MIGRATION);
 
 const KEY = 'sign.envelopes';
 const EVENT = 'sign.envelope.sent';
@@ -170,11 +171,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     const s = await allowance.getStatus(t, 'sign', KEY, at);
     expect(s.subscribed && 'daily' in s).toBe(false);
     const b = tenant();
+    const business = await prisma.plan.findUniqueOrThrow({ where: { key: 'aramo-sign-standard-business-v1' } });
     await prisma.tenantSubscription.create({
       data: {
         id: `0190cccc-0000-7000-8000-${String(++seq).padStart(12, '0')}`,
         tenant_id: b,
-        plan_id: (await prisma.plan.findUniqueOrThrow({ where: { key: 'aramo-sign-standard-business-v1' } })).id,
+        plan_id: business.id,
+        // CCP-A5 — the pin is named explicitly (no DB default).
+        plan_version_id: (await prisma.planVersion.findFirstOrThrow({ where: { plan_id: business.id, status: 'PUBLISHED' } })).id,
         product_key: 'sign',
         composition_role: 'BASE',
         period_anchor: ANCHOR,

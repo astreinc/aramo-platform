@@ -114,7 +114,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign API — end 
       await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1, $2::entitlement."Capability")`, [TENANT, c]);
     }
     await db.query(
-      `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, product_key, composition_role, period_anchor, source, created_by) SELECT gen_random_uuid(), $1::uuid, p.id, p.product_key, 'BASE', now(), 'MANUAL', 'integration-test' FROM subscription."Plan" p WHERE p.key = 'aramo-sign-included-v1'`,
+      `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by) SELECT gen_random_uuid(), $1::uuid, p.id, (SELECT v.id FROM subscription."PlanVersion" v WHERE v.plan_id = p.id AND v.status = 'PUBLISHED'), p.product_key, 'BASE', now(), 'MANUAL', 'integration-test' FROM subscription."Plan" p WHERE p.key = 'aramo-sign-included-v1'`,
       [TENANT],
     );
     await role('recruiter', ['document:execute', 'talent:read']);

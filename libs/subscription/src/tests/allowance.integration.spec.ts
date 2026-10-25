@@ -11,6 +11,7 @@ import { openDevelopmentSubscription } from '../lib/development-subscription.js'
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
 import { CCP_A4_MIGRATION } from './fixtures/ccp-a4.js';
+import { CCP_A5_MIGRATION, publishedVersionOf } from './fixtures/ccp-a5.js';
 
 // Multi-Provider directive §C — the transactional allowance invariants, proven on
 // real Postgres 17: 99/100 concurrency, idempotency, release, stale resolution,
@@ -25,7 +26,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20261022100100_billing_account_country_guard/migration.sql',
   '../../prisma/migrations/20261022110100_billing_flag_domain_reason/migration.sql',
   '../../prisma/migrations/20261023100000_sign_personal_free/migration.sql',
-].map((p) => resolve(__dirname, p)).concat(CCP_A4_MIGRATION);
+].map((p) => resolve(__dirname, p)).concat(CCP_A4_MIGRATION, CCP_A5_MIGRATION);
 
 const KEY = 'sign.envelopes';
 const EVENT = 'sign.envelope.sent';
@@ -169,8 +170,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     expect(again.created).toBe(false);
     await expect(
       pg.query(
-        `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, product_key, composition_role, period_anchor, source, created_by)
-         VALUES (gen_random_uuid(), $1, '019a0000-5150-7000-8000-000000000001', 'sign', 'BASE', now(), 'MANUAL', 'x')`,
+        `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by)
+         VALUES (gen_random_uuid(), $1, '019a0000-5150-7000-8000-000000000001', ${publishedVersionOf(`'019a0000-5150-7000-8000-000000000001'::uuid`)}, 'sign', 'BASE', now(), 'MANUAL', 'x')`,
         [t],
       ),
     ).rejects.toThrow(/one_open_base_per_tenant_product/);

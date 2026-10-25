@@ -479,7 +479,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
   it('Business: sends as before — no report link, no day window, no Personal checks, reports not taken', async () => {
     const b = await tenant('BUSINESS');
     await db.query(
-      `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, product_key, composition_role, period_anchor, source, created_by) SELECT gen_random_uuid(), $1::uuid, p.id, p.product_key, 'BASE', now(), 'MANUAL', 'test' FROM subscription."Plan" p WHERE p.key = 'aramo-sign-included-v1'`,
+      `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by) SELECT gen_random_uuid(), $1::uuid, p.id, (SELECT v.id FROM subscription."PlanVersion" v WHERE v.plan_id = p.id AND v.status = 'PUBLISHED'), p.product_key, 'BASE', now(), 'MANUAL', 'test' FROM subscription."Plan" p WHERE p.key = 'aramo-sign-included-v1'`,
       [b.id],
     );
     const first = mails.length;
