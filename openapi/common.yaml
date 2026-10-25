@@ -1803,6 +1803,8 @@ components:
         409; details.refusal names one of the seven approval refusals),
         COMMERCIAL_CHANGE_REQUEST_CONFLICT (HTTP 409; details.reason) and
         COMMERCIAL_POLICY_UNAVAILABLE (HTTP 503; no valid ACTIVE commercial policy).
+        CCP-A9 adds PLATFORM_LAST_OWNER (HTTP 409; the write would leave the platform
+        without its last effective platform_owner; details.reason platform_last_owner).
         Declaration order in this enum matches ERROR_CODES tuple
         order in libs/common/src/lib/errors/error-codes.ts.
       enum:
@@ -2047,6 +2049,7 @@ components:
         - COMMERCIAL_APPROVAL_REFUSED
         - COMMERCIAL_CHANGE_REQUEST_CONFLICT
         - COMMERCIAL_POLICY_UNAVAILABLE
+        - PLATFORM_LAST_OWNER
 
     ErrorObject:
       type: object

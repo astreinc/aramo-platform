@@ -1063,6 +1063,10 @@ export const ERROR_CODES = [
   // CCP-A2/A3 — no valid ACTIVE CommercialPolicyVersion (missing, malformed or checksum
   // mismatch): no commercial decision proceeds (fail closed). HTTP 503.
   'COMMERCIAL_POLICY_UNAVAILABLE',
+  // CCP-A9 (T2-F1-H3 Amendment A1 A1-4) — the write would leave the platform without its last
+  // effective platform_owner (DB trigger identity.ccp_a9_assert_platform_keeps_owner, or the
+  // governed ROLE_REVOKE pre-check). details.reason = 'platform_last_owner'. HTTP 409.
+  'PLATFORM_LAST_OWNER',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];
