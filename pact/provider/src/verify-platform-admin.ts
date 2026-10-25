@@ -15,6 +15,7 @@ import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { AppModule } from '@aramo/platform-admin';
+import { BILLING_PROVIDER_READ_PORT, type BillingProviderReadPort, type ProviderInvoiceState, type ProviderPortalConfigurationState, type ProviderSubscriptionState } from '@aramo/subscription';
 
 // eslint-disable-next-line @nx/enforce-module-boundaries -- test-only real-Postgres support shared with the CCP-A3 specs (TD-A3-19 precedent; CLAUDE.md "one shared test helper")
 import { PLATFORM_TENANT, TENANT_2, addOperator, applyCcpA6Schema, revokeRole } from '../../../libs/subscription/src/tests/support/ccp-a3-database.js';
@@ -46,6 +47,12 @@ import { PLATFORM_TENANT, TENANT_2, addOperator, applyCcpA6Schema, revokeRole } 
 // booted AppModule registers under /platform/commercial and fails if any lacks an
 // allowed interaction, a super_admin refusal or a tenant-tier refusal in the pact
 // (the A10 HALT condition "a CCP route without a contract", made mechanical).
+//
+// CCP-C3 — the read-through billing-status routes read the provider through
+// BILLING_PROVIDER_READ_PORT. The verifier overrides that port with an in-memory, Aramo-shaped
+// reader (PactBillingReader below): no Stripe, no network, no key. The GET-only Stripe adapter and
+// its wire translation are proved separately (libs/subscription stripe-wire.spec.ts C3-W-4/5 and
+// ccp-c3-billing-read.spec.ts). Every other port is the real one.
 //
 // Gated on ARAMO_RUN_PACT_PROVIDER=1 (same as verify.ts / verify-api.ts / verify-sign.ts / verify-ti.ts).
 
@@ -135,6 +142,31 @@ function pactCoverage(): Map<string, { allowed: number; superAdmin: number; tena
   return out;
 }
 
+/** CCP-C3 — the in-memory read port (READ methods only; the provider states load it). */
+class PactBillingReader implements BillingProviderReadPort {
+  readonly provider = 'STRIPE' as const;
+  readonly subs = new Map<string, ProviderSubscriptionState>();
+  readonly invoices = new Map<string, ProviderInvoiceState[]>();
+  readonly portals = new Map<string, ProviderPortalConfigurationState>();
+  isConfigured(): boolean {
+    return true;
+  }
+  mode(): 'test' | 'live' {
+    return 'test';
+  }
+  async retrieveSubscription(ref: string): Promise<ProviderSubscriptionState> {
+    const s = this.subs.get(ref);
+    if (s === undefined) throw new Error(`pact reader: no subscription ${ref}`);
+    return s;
+  }
+  async listSubscriptionInvoices(ref: string, limit: number): Promise<ProviderInvoiceState[]> {
+    return (this.invoices.get(ref) ?? []).slice(0, limit);
+  }
+  async retrievePortalConfiguration(ref: string): Promise<ProviderPortalConfigurationState | null> {
+    return this.portals.get(ref) ?? null;
+  }
+}
+
 describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
   'pact provider verification — platform-admin (apps/platform-admin)',
   () => {
@@ -147,6 +179,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     const savedEnv: Partial<Record<string, string | undefined>> = {};
     let seq = 0;
     let signingKey: SigningKey;
+    const billingReader = new PactBillingReader();
 
     async function signToken(sub: string, consumer_type: 'platform' | 'recruiter', tenant_id: string, key: SigningKey): Promise<string> {
       const now = Math.floor(Date.now() / 1000);
@@ -233,6 +266,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         SIGN_PERSONAL_SIGNUP_PURGE_ENABLED: '0',
         DOMAIN_CLAIM_SWEEP_ENABLED: undefined,
         SIGN_PERSONAL_LAPSE_SWEEP_ENABLED: undefined,
+        // CCP-C3 — set by the 'a billing portal configuration is set' state.
+        STRIPE_PORTAL_CONFIGURATION: undefined,
       };
       for (const [k, v] of Object.entries(env)) {
         savedEnv[k] = process.env[k];
@@ -242,7 +277,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       for (const role of Object.keys(OP) as Role[]) tokens.set(role, await signToken(OP[role], 'platform', PLATFORM_TENANT, kp.privateKey));
       tokens.set('recruiter', await signToken(RECRUITER_ID, 'recruiter', TENANT_2, kp.privateKey));
 
-      module = await Test.createTestingModule({ imports: [AppModule] }).compile();
+      module = await Test.createTestingModule({ imports: [AppModule] }).overrideProvider(BILLING_PROVIDER_READ_PORT).useValue(billingReader).compile();
       app = module.createNestApplication<NestExpressApplication>({ logger: ['error', 'warn'] });
       // Mirror apps/platform-admin/src/main.ts: cookie-parser, then the ValidationPipe.
       app.use(cookieParser());
@@ -348,6 +383,76 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               `UPDATE subscription."BillingWebhookInbox" SET status = 'FAILED', lease_until = NULL, last_error = 'billing provider unavailable: down', next_attempt_at = now() + interval '1 minute', updated_at = now() WHERE id = $1`,
               [row],
             );
+            return undefined;
+          },
+          // CCP-C3 — a Stripe-owned (SELF_SERVICE) row for the consumer's tenant, and the provider's
+          // view of it in the in-memory read port (an open invoice past its due date, and a paid one).
+          'a tenant with a Stripe-owned subscription and invoices exists': async (params?: unknown) => {
+            const tenant_id = (params as { tenant_id?: unknown } | undefined)?.tenant_id;
+            if (typeof tenant_id !== 'string') throw new Error('provider state needs { tenant_id }');
+            await commercialTenant(tenant_id);
+            const ref = 'sub_pact_c3';
+            const account = 'acct_pact_c3';
+            await db.query(
+              `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by, status, billing_provider, billing_account_ref, billing_subscription_ref)
+               SELECT 'cca10000-0000-7000-8000-0000000000d3'::uuid, $1::uuid, p.id, (SELECT v.id FROM subscription."PlanVersion" v WHERE v.plan_id = p.id AND v.status = 'PUBLISHED'), p.product_key, 'BASE', '2026-10-01T00:00:00Z', 'SELF_SERVICE', 'pact-c3', 'PAST_DUE', 'STRIPE', $2, $3
+                 FROM subscription."Plan" p WHERE p.key = 'aramo-sign-standard-business-v1'
+               ON CONFLICT (id) DO NOTHING`,
+              [tenant_id, account, ref],
+            );
+            billingReader.subs.set(ref, {
+              provider: 'STRIPE',
+              subscription_ref: ref,
+              account_ref: account,
+              provider_status: 'past_due',
+              current_period_start: new Date('2026-10-01T00:00:00Z'),
+              current_period_end: new Date('2026-11-01T00:00:00Z'),
+              cancel_at_period_end: false,
+              price_ref: 'price_pact_business',
+              tenant_id,
+              intent_id: null,
+              account_country: 'US',
+            });
+            const invoice = (o: Partial<ProviderInvoiceState>): ProviderInvoiceState => ({
+              provider: 'STRIPE',
+              invoice_ref: 'in_pact_c3',
+              number: 'PACT-0001',
+              account_ref: account,
+              subscription_ref: ref,
+              provider_status: 'open',
+              currency: 'usd',
+              total_minor: 4900,
+              amount_due_minor: 4900,
+              amount_paid_minor: 0,
+              amount_remaining_minor: 4900,
+              created_at: new Date('2026-10-01T00:00:00Z'),
+              due_at: new Date('2026-10-15T00:00:00Z'),
+              period_start: new Date('2026-09-01T00:00:00Z'),
+              period_end: new Date('2026-10-01T00:00:00Z'),
+              attempt_count: 2,
+              next_attempt_at: null,
+              hosted_url: 'https://invoice.test/in_pact_c3',
+              document_url: null,
+              live: false,
+              ...o,
+            });
+            billingReader.invoices.set(ref, [invoice({}), invoice({ invoice_ref: 'in_pact_c3_0', number: 'PACT-0000', provider_status: 'paid', amount_paid_minor: 4900, amount_remaining_minor: 0 })]);
+            return undefined;
+          },
+          'a billing portal configuration is set': async () => {
+            process.env['STRIPE_PORTAL_CONFIGURATION'] = 'bpc_pact_c3';
+            billingReader.portals.set('bpc_pact_c3', {
+              provider: 'STRIPE',
+              configuration_ref: 'bpc_pact_c3',
+              active: true,
+              is_default: false,
+              live: false,
+              invoice_history_enabled: true,
+              payment_method_update_enabled: true,
+              subscription_cancel_enabled: true,
+              subscription_cancel_mode: 'at_period_end',
+              subscription_update_enabled: false,
+            });
             return undefined;
           },
           'an approved subscription-open change request whose approver lost eligibility exists': async () => {

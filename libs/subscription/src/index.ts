@@ -48,6 +48,30 @@ export {
   stripeSubscriptionState,
   verifyStripeSignature,
 } from './lib/billing/stripe-billing.provider.js';
+// CCP-C3 — the read-only provider port, its GET-only Stripe adapter and the read-through status service.
+export {
+  BILLING_PROVIDER_READ_PORT,
+  type BillingProviderReadPort,
+  type ProviderInvoiceState,
+  type ProviderPortalConfigurationState,
+} from './lib/billing/billing-provider.port.js';
+export { STRIPE_READ_ADAPTER_METHODS, StripeBillingReadAdapter } from './lib/billing/stripe-billing-read.adapter.js';
+export {
+  BILLING_STATUS_AVAILABILITY,
+  BILLING_STATUS_DEFAULT_INVOICE_LIMIT,
+  BILLING_STATUS_MAX_INVOICE_LIMIT,
+  BillingStatusQueryError,
+  BillingStatusReadService,
+  INVOICE_PAYMENT_STATES,
+  PORTAL_CONFIGURATION_STATES,
+  invoicePaymentState,
+  type BillingPortalConfigurationStatus,
+  type BillingStatusAvailability,
+  type BillingStatusInvoice,
+  type InvoicePaymentState,
+  type PortalConfigurationState,
+  type TenantBillingStatus,
+} from './lib/billing/billing-status-read.service.js';
 // CCP-C1 — the Stripe command outbox and the webhook inbox.
 export {
   BILLING_COMMAND_ACTIONS,

@@ -10,7 +10,9 @@ import { CommercialOperatorRepository } from './commercial/commercial-operator.r
 import { FreePersonalSubscriptionService } from './free-personal-subscription.js';
 import { LegalAcceptanceService } from './legal/legal-acceptance.service.js';
 import { PlanVersionRepository } from './plan-version.repository.js';
-import { BILLING_PROVIDER_COMMAND_PORT, BILLING_PROVIDER_PORT } from './billing/billing-provider.port.js';
+import { BILLING_PROVIDER_COMMAND_PORT, BILLING_PROVIDER_PORT, BILLING_PROVIDER_READ_PORT } from './billing/billing-provider.port.js';
+import { BillingStatusReadService } from './billing/billing-status-read.service.js';
+import { StripeBillingReadAdapter } from './billing/stripe-billing-read.adapter.js';
 import { BillingCommandService } from './billing/billing-command.service.js';
 import { BillingWebhookInboxService } from './billing/billing-webhook-inbox.service.js';
 import { StripeBillingProvider } from './billing/stripe-billing.provider.js';
@@ -26,6 +28,8 @@ import { PrismaService } from './prisma/prisma.service.js';
 // CCP-A6: the transactional apply of approved Aramo-owned change requests.
 // CCP-C1: the Stripe command outbox (BillingCommandService, the command port bound to the same
 // Stripe adapter) and the webhook inbox (BillingWebhookInboxService).
+// CCP-C3: the READ-ONLY provider port, bound to its own GET-only adapter (StripeBillingReadAdapter,
+// never the write-capable StripeBillingProvider), and the read-through BillingStatusReadService.
 @Module({
   providers: [
     PrismaService,
@@ -34,6 +38,8 @@ import { PrismaService } from './prisma/prisma.service.js';
     LegalAcceptanceService,
     { provide: BILLING_PROVIDER_PORT, useClass: StripeBillingProvider },
     { provide: BILLING_PROVIDER_COMMAND_PORT, useClass: StripeBillingProvider },
+    { provide: BILLING_PROVIDER_READ_PORT, useClass: StripeBillingReadAdapter },
+    BillingStatusReadService,
     SubscriptionLifecycleService,
     BillingCommandService,
     BillingWebhookInboxService,
@@ -45,7 +51,7 @@ import { PrismaService } from './prisma/prisma.service.js';
     CommercialApplyService,
     PlanVersionRepository,
   ],
-  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, PlanVersionRepository],
+  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, BILLING_PROVIDER_COMMAND_PORT, BILLING_PROVIDER_READ_PORT, BillingStatusReadService, BillingCommandService, BillingWebhookInboxService, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, PlanVersionRepository],
 })
 export class SubscriptionModule {
   /**
@@ -63,6 +69,8 @@ export class SubscriptionModule {
         LegalAcceptanceService,
         { provide: BILLING_PROVIDER_PORT, useClass: StripeBillingProvider },
         { provide: BILLING_PROVIDER_COMMAND_PORT, useClass: StripeBillingProvider },
+        { provide: BILLING_PROVIDER_READ_PORT, useClass: StripeBillingReadAdapter },
+        BillingStatusReadService,
         SubscriptionLifecycleService,
         BillingCommandService,
         BillingWebhookInboxService,
@@ -75,7 +83,7 @@ export class SubscriptionModule {
         PlanVersionRepository,
         ...(opts.providers ?? []),
       ],
-      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, PlanVersionRepository],
+      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, BILLING_PROVIDER_COMMAND_PORT, BILLING_PROVIDER_READ_PORT, BillingStatusReadService, BillingCommandService, BillingWebhookInboxService, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, PlanVersionRepository],
     };
   }
 }

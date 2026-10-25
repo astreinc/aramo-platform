@@ -21,6 +21,7 @@ import { PlatformCommercialChangeRequestController } from './platform-commercial
 // CCP-A6 — the transactional apply route (same base path; a separate controller).
 import { PlatformCommercialApplyController } from './platform-commercial-apply.controller.js';
 import { PlatformCommercialBillingController } from './platform-commercial-billing.controller.js';
+import { PlatformCommercialBillingStatusController } from './platform-commercial-billing-status.controller.js';
 import { PlatformPersonalController } from './platform-personal.controller.js';
 import { PlatformController } from './platform.controller.js';
 import { PlatformSignController } from './platform-sign.controller.js';
@@ -69,7 +70,8 @@ import { TenantPolicyProvisioningService } from './tenant-policy-provisioning.se
   // CCP-A2 — the read-only commercial audit feed (platform:commercial:audit:read).
   // CCP-A3 — commercial change requests and approvals (platform:approval:read gate).
   // CCP-C1 — read-only Stripe command outbox and webhook inbox views (platform:billing:read).
-  controllers: [PlatformController, PlatformSignController, PlatformPersonalController, PlatformCommercialAuditController, PlatformCommercialChangeRequestController, PlatformCommercialApplyController, PlatformCommercialBillingController],
+  // CCP-C3 — read-through invoice / payment status and portal configuration (platform:billing:read).
+  controllers: [PlatformController, PlatformSignController, PlatformPersonalController, PlatformCommercialAuditController, PlatformCommercialChangeRequestController, PlatformCommercialApplyController, PlatformCommercialBillingController, PlatformCommercialBillingStatusController],
   providers: [
     // Sign Personal (Free) v1.1 §6.4 — abuse-report outcomes (sign schema; its own
     // generated client, lazy DATABASE_URL — scope:platform → scope:boundary is wall-legal).

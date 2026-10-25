@@ -10998,6 +10998,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-billing-status.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform-commercial-billing.controller.ts"
     },
     {
@@ -14367,6 +14372,156 @@
       "from": "doc/ccp/slices/CCP-C1-pre-execution.md",
       "status": "unscoped",
       "to": "pact/provider/src/verify-platform-admin.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-billing-status.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-c3-billing-status-authorization.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-acceptance.md",
+      "status": "unscoped",
+      "to": "ci/config/api-surface-manifest.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-acceptance.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-orphan-scopes.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-C3-pre-execution.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-sign-standalone-billing.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/index.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/billing-provider.port.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/billing-status-read.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-c3-billing-read.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-c3-billing-status.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/stripe-wire.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-acceptance.md",
+      "status": "unscoped",
+      "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-platform-admin.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-acceptance.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-pre-execution.md",
+      "status": "unscoped",
+      "to": "ci/config/api-surface-manifest.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-pre-execution.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-orphan-scopes.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A6-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-C1-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-sign-standalone-billing.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/index.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/stripe-billing.provider.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/stripe-wire.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/subscription-lifecycle.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-pre-execution.md",
+      "status": "unscoped",
+      "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C3-pre-execution.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
     },
     {
       "from": "doc/design-reference/platform-admin/github.md",
@@ -28132,6 +28287,18 @@
       "from": "libs/subscription/src/tests/ccp-c1-stripe-commands.spec.ts",
       "status": "excluded",
       "to": "doc/ccp/slices/CCP-C1-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-c3-billing-read.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-C3-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-c3-billing-status.integration.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-C3-acceptance.md"
     },
     {
       "excludedBy": "src/tests/**/*",

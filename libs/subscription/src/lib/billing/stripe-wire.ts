@@ -72,3 +72,108 @@ export function wirePortalAccountParams(account_ref: string): Record<string, str
 export function isWireSubscriptionEvent(type: string): boolean {
   return type.startsWith('customer.subscription.');
 }
+
+// ---------------------------------------------------------------------------------------
+// CCP-C3 (PBD §5.2 row C3) — read-through invoice / payment status and the portal
+// configuration. Pure translation of Stripe READ shapes (paths, list query, object fields) to
+// Aramo's own names; no Aramo-owned logic (payment-state derivation lives in
+// billing-status-read.service.ts, which the gate fully enforces). Every path below is read with
+// GET only (stripe-billing-read.adapter.ts).
+// ---------------------------------------------------------------------------------------
+
+const wireRef = (v: unknown): string | null =>
+  typeof v === 'string' && v !== '' ? v : typeof (v as { id?: unknown } | null)?.id === 'string' ? ((v as { id: string }).id || null) : null;
+const wireStr = (v: unknown): string | null => (typeof v === 'string' && v !== '' ? v : null);
+const wireInt = (v: unknown): number => (typeof v === 'number' && Number.isFinite(v) ? Math.trunc(v) : 0);
+const wireTime = (v: unknown): Date | null => (typeof v === 'number' && Number.isFinite(v) && v > 0 ? new Date(v * 1000) : null);
+const wireFlag = (v: unknown): boolean => (v as { enabled?: unknown } | null | undefined)?.enabled === true;
+
+/** The Stripe invoice list for ONE subscription (newest first; Stripe caps `limit` at 100). */
+export function wireInvoiceListPath(subscription_ref: string, limit: number): string {
+  const n = Math.min(Math.max(Math.trunc(limit), 1), 100);
+  return `/v1/invoices?subscription=${encodeURIComponent(subscription_ref)}&limit=${n}`;
+}
+
+/** One Stripe billing-portal configuration. */
+export function wirePortalConfigurationPath(configuration_ref: string): string {
+  return `/v1/billing_portal/configurations/${encodeURIComponent(configuration_ref)}`;
+}
+
+/** A Stripe list envelope → its objects. */
+export function wireListData(obj: Record<string, unknown>): Array<Record<string, unknown>> {
+  const data = obj['data'];
+  return Array.isArray(data) ? data.filter((d): d is Record<string, unknown> => d !== null && typeof d === 'object') : [];
+}
+
+/** A Stripe invoice → Aramo's invoice status mirror (amounts in the currency's minor unit, as Stripe holds them). */
+export function wireInvoiceState(obj: Record<string, unknown>): {
+  invoice_ref: string;
+  number: string | null;
+  account_ref: string;
+  subscription_ref: string | null;
+  provider_status: string;
+  currency: string | null;
+  total_minor: number;
+  amount_due_minor: number;
+  amount_paid_minor: number;
+  amount_remaining_minor: number;
+  created_at: Date | null;
+  due_at: Date | null;
+  period_start: Date | null;
+  period_end: Date | null;
+  attempt_count: number;
+  next_attempt_at: Date | null;
+  hosted_url: string | null;
+  document_url: string | null;
+  live: boolean;
+} {
+  const parent = obj['parent'] as { subscription_details?: { subscription?: unknown } } | null | undefined;
+  return {
+    invoice_ref: String(obj['id'] ?? ''),
+    number: wireStr(obj['number']),
+    account_ref: wireAccountRef(obj),
+    // Pinned API version: invoice.subscription; newer versions: parent.subscription_details.subscription.
+    subscription_ref: wireRef(obj['subscription']) ?? wireRef(parent?.subscription_details?.subscription),
+    provider_status: String(obj['status'] ?? ''),
+    currency: wireStr(obj['currency']),
+    total_minor: wireInt(obj['total']),
+    amount_due_minor: wireInt(obj['amount_due']),
+    amount_paid_minor: wireInt(obj['amount_paid']),
+    amount_remaining_minor: wireInt(obj['amount_remaining']),
+    created_at: wireTime(obj['created']),
+    due_at: wireTime(obj['due_date']),
+    period_start: wireTime(obj['period_start']),
+    period_end: wireTime(obj['period_end']),
+    attempt_count: wireInt(obj['attempt_count']),
+    next_attempt_at: wireTime(obj['next_payment_attempt']),
+    hosted_url: wireStr(obj['hosted_invoice_url']),
+    document_url: wireStr(obj['invoice_pdf']),
+    live: obj['livemode'] === true,
+  };
+}
+
+/** A Stripe billing-portal configuration → Aramo's portal-configuration facts. */
+export function wirePortalConfigurationState(obj: Record<string, unknown>): {
+  configuration_ref: string;
+  active: boolean;
+  is_default: boolean;
+  live: boolean;
+  invoice_history_enabled: boolean;
+  payment_method_update_enabled: boolean;
+  subscription_cancel_enabled: boolean;
+  subscription_cancel_mode: string | null;
+  subscription_update_enabled: boolean;
+} {
+  const f = (obj['features'] as Record<string, unknown> | null | undefined) ?? {};
+  return {
+    configuration_ref: String(obj['id'] ?? ''),
+    active: obj['active'] === true,
+    is_default: obj['is_default'] === true,
+    live: obj['livemode'] === true,
+    invoice_history_enabled: wireFlag(f['invoice_history']),
+    payment_method_update_enabled: wireFlag(f['payment_method_update']),
+    subscription_cancel_enabled: wireFlag(f['subscription_cancel']),
+    subscription_cancel_mode: wireStr((f['subscription_cancel'] as { mode?: unknown } | null | undefined)?.mode),
+    subscription_update_enabled: wireFlag(f['subscription_update']),
+  };
+}

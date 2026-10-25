@@ -95,6 +95,9 @@ export const CLASSIFICATIONS: Record<string, Classification> = {
   // PlatformCommercialBillingController (GET /platform/commercial/billing-commands and
   // /billing-webhook-inbox), so its ACTIVE_RESERVED entry is REMOVED (2 read reservations
   // remain: catalog / subscription :read).
+  // CCP C3 — the billing status read routes the A1 reservation named ("C3/C4") also enforce it:
+  // PlatformCommercialBillingStatusController (GET /platform/commercial/tenants/{tenant_id}/
+  // billing-status and /billing-portal-configuration). No classification change.
   'platform:catalog:read': { cls: 'ACTIVE_RESERVED', reason: 'CCP A1 catalog-only reservation (Aramo-CCP-A1-Commercial-Roles-and-Scopes-Directive-v1_0 §6.6): granted to the CCP platform roles, enforced from CCP A3 + A5 by the catalog and plan-version read routes; this entry is removed when that enforcing route lands' },
   'platform:catalog:draft': { cls: 'SERVICE_ENFORCED', reason: 'requester scope for PLAN_VERSION_PUBLISH / PLAN_RETIRE change requests — CommercialChangeRequestService.create checks COMMERCIAL_ACTIONS[..].requester_scope against the server-resolved scopes (libs/subscription/src/lib/commercial/commercial-change-request.ts; CCP A3)' },
   'platform:catalog:approve': { cls: 'SERVICE_ENFORCED', reason: 'approval-step scope (finance and owner steps of a catalog chain) — checkApprovalEligibility reads it LIVE in the approve transaction (libs/subscription/src/lib/commercial/commercial-approval-eligibility.ts; CCP A3)' },

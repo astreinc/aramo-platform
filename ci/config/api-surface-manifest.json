@@ -111,6 +111,7 @@
     "apps/platform-admin/src/app/platform/platform-commercial-audit.controller.ts": "AP",
     "apps/platform-admin/src/app/platform/platform-commercial-apply.controller.ts": "AP",
     "apps/platform-admin/src/app/platform/platform-commercial-billing.controller.ts": "AP",
+    "apps/platform-admin/src/app/platform/platform-commercial-billing-status.controller.ts": "AP",
     "apps/platform-admin/src/app/platform/platform-commercial-change-request.controller.ts": "AP",
     "libs/activity/src/lib/activity.controller.ts": "AP",
     "libs/attachment/src/lib/attachment.controller.ts": "AP",

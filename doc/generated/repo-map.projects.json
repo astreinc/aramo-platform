@@ -2185,6 +2185,10 @@
       "BILLING_PRICE_PROVIDER",
       "BILLING_PROVIDER_COMMAND_PORT",
       "BILLING_PROVIDER_PORT",
+      "BILLING_PROVIDER_READ_PORT",
+      "BILLING_STATUS_AVAILABILITY",
+      "BILLING_STATUS_DEFAULT_INVOICE_LIMIT",
+      "BILLING_STATUS_MAX_INVOICE_LIMIT",
       "BILLING_WEBHOOK_INBOX_STATUSES",
       "BOOTSTRAP_CLI_FLAGS",
       "BOOTSTRAP_PLATFORM_TENANT_ID",
@@ -2193,6 +2197,8 @@
       "BillingCommandService",
       "BillingProviderUnavailableError",
       "BillingRefusedError",
+      "BillingStatusQueryError",
+      "BillingStatusReadService",
       "BillingWebhookInboxQueryError",
       "BillingWebhookInboxService",
       "BillingWebhookSignatureError",
@@ -2245,6 +2251,7 @@
       "FreePersonalSubscriptionService",
       "GOVERNED_SUBSCRIPTION_OPEN",
       "INBOX_MAX_AUTOMATIC_ATTEMPTS",
+      "INVOICE_PAYMENT_STATES",
       "LEGAL_DOCUMENTS",
       "LEGAL_DOCUMENT_REGISTRY",
       "LEGAL_DOCUMENT_TITLES",
@@ -2260,6 +2267,7 @@
       "PLATFORM_LAST_OWNER_DB_MARKER",
       "PLATFORM_OWNER_BOOTSTRAP_EVENT",
       "PLATFORM_OWNER_ROLE_KEY",
+      "PORTAL_CONFIGURATION_STATES",
       "PRODUCT_CAPABILITIES",
       "PRODUCT_KEYS",
       "PlanVersionContentError",
@@ -2271,8 +2279,10 @@
       "SIGN_PRODUCT_KEY",
       "STORAGE_CAPACITY_KEY",
       "STRIPE_API_VERSION",
+      "STRIPE_READ_ADAPTER_METHODS",
       "SUBSCRIPTION_CANCEL_MODES",
       "StripeBillingProvider",
+      "StripeBillingReadAdapter",
       "SubscriptionLifecycleService",
       "SubscriptionModule",
       "SubscriptionPrismaService",
@@ -2304,6 +2314,7 @@
       "effectiveProviderPrice",
       "formatCheckoutCutoverReport",
       "inAppContextRef",
+      "invoicePaymentState",
       "isA6Applicable",
       "isApprovalExpired",
       "isFeatureAvailable",
@@ -3424,6 +3435,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c3-billing-status-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -4026,6 +4043,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-c1-billing-operations-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c3-billing-status-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -6355,6 +6378,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c3-billing-status-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -7005,6 +7034,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-c1-command-inbox.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-c3-billing-status.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -9265,6 +9300,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c3-billing-status-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -11348,6 +11389,11 @@
       },
       { "project": "api", "status": "production" },
       {
+        "from": "pact/provider/src/verify-platform-admin.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      },
+      {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a1-platform-role-authorization.spec.ts",
         "project": "platform-admin",
@@ -11392,6 +11438,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-c1-billing-operations-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c3-billing-status-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },

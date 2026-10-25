@@ -132,3 +132,66 @@ export interface BillingProviderCommandPort {
   expireCheckoutSession(session_ref: string, idempotency_key: string): Promise<void>;
   retrieveCheckoutSession(session_ref: string): Promise<ProviderCheckoutSessionState>;
 }
+
+// ---------------------------------------------------------------------------------------
+// CCP-C3 (PBD §5.2 row C3; Charter §3 "Aramo SHALL mirror status only"; L5) — the READ-ONLY
+// provider port for invoice and payment status and the portal configuration. A separate port
+// bound to a separate adapter class (StripeBillingReadAdapter) that has no mutating method and
+// issues GET only, so no write to the provider is reachable through it. The existing
+// BillingProviderPort / BillingProviderCommandPort and their fakes are unchanged.
+// ---------------------------------------------------------------------------------------
+
+export const BILLING_PROVIDER_READ_PORT = 'BILLING_PROVIDER_READ_PORT';
+
+/** The provider's view of one invoice (a status mirror; amounts in the currency's minor unit). */
+export interface ProviderInvoiceState {
+  provider: BillingProviderKey;
+  invoice_ref: string;
+  number: string | null;
+  account_ref: string;
+  subscription_ref: string | null;
+  // Raw provider status (Stripe: draft | open | paid | uncollectible | void).
+  provider_status: string;
+  currency: string | null;
+  total_minor: number;
+  amount_due_minor: number;
+  amount_paid_minor: number;
+  amount_remaining_minor: number;
+  created_at: Date | null;
+  due_at: Date | null;
+  period_start: Date | null;
+  period_end: Date | null;
+  attempt_count: number;
+  next_attempt_at: Date | null;
+  // The provider-hosted invoice page and document (link-outs; Aramo renders no invoice).
+  hosted_url: string | null;
+  document_url: string | null;
+  live: boolean;
+}
+
+/** The provider's view of one billing-portal configuration. */
+export interface ProviderPortalConfigurationState {
+  provider: BillingProviderKey;
+  configuration_ref: string;
+  active: boolean;
+  is_default: boolean;
+  live: boolean;
+  invoice_history_enabled: boolean;
+  payment_method_update_enabled: boolean;
+  subscription_cancel_enabled: boolean;
+  // Stripe: at_period_end | immediately (null when absent).
+  subscription_cancel_mode: string | null;
+  subscription_update_enabled: boolean;
+}
+
+/** READ-ONLY. Every method is a provider read; none changes provider state. */
+export interface BillingProviderReadPort {
+  readonly provider: BillingProviderKey;
+  isConfigured(): boolean;
+  mode(): 'test' | 'live';
+  retrieveSubscription(subscription_ref: string): Promise<ProviderSubscriptionState>;
+  /** The subscription's invoices, newest first, at most `limit`. */
+  listSubscriptionInvoices(subscription_ref: string, limit: number): Promise<ProviderInvoiceState[]>;
+  /** The configuration, or null when the provider has no such configuration. */
+  retrievePortalConfiguration(configuration_ref: string): Promise<ProviderPortalConfigurationState | null>;
+}
