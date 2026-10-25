@@ -138,7 +138,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A3 — per-ro
     }
   }, 120_000);
 
-  it('A3-RI-CREATE per role: SUBSCRIPTION_OPEN only commercial_ops (201); catalog publish only catalog_manager; escalated extension only support_admin; POLICY_ACTIVATE nobody; super_admin refused at the gate', async () => {
+  it('A3-RI-CREATE per role: SUBSCRIPTION_OPEN only commercial_ops (201); catalog publish only catalog_manager; escalated extension only support_admin; POLICY_ACTIVATE only finance_admin (CCP-A9, TD-A3-5); super_admin refused at the gate', async () => {
     const sub = { action_type: 'SUBSCRIPTION_OPEN', tenant_id: TENANT_1, product_key: 'sign', payload: { plan_key: 'p' } };
     const out: Record<string, unknown[]> = {};
     for (const role of [...ROLES, 'super_admin']) out[role] = refusalOf(await createAs(role, sub));
@@ -155,8 +155,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A3 — per-ro
     for (const role of ROLES) expect((await createAs(role, publish)).status, role).toBe(role === 'catalog_manager' ? 201 : 403);
     const ext = { action_type: 'SUPPORT_EXTENSION', tenant_id: TENANT_2, product_key: 'sign', payload: { requested_days: 20 } };
     for (const role of ROLES) expect((await createAs(role, ext)).status, role).toBe(role === 'support_admin' ? 201 : 403);
+    // CCP-A9 re-point: the finance_admin passes the requester authority and reaches the target
+    // check (v1 is already ACTIVE → 400); every other role is refused 403 requester_role_missing.
     for (const role of ROLES) {
-      expect(refusalOf(await createAs(role, { action_type: 'POLICY_ACTIVATE', payload: { policy_version_id: '019a0000-0000-7000-8000-0000000cc201' } })), role).toEqual([403, 'INSUFFICIENT_PERMISSIONS', 'requester_authority_undefined']);
+      expect(refusalOf(await createAs(role, { action_type: 'POLICY_ACTIVATE', payload: { policy_version_id: '019a0000-0000-7000-8000-0000000cc201' } })), role).toEqual(
+        role === 'finance_admin' ? [400, 'VALIDATION_ERROR', 'policy_version_already_active'] : [403, 'INSUFFICIENT_PERMISSIONS', 'requester_role_missing'],
+      );
     }
     // Q14 over HTTP: a second open request for TENANT_1 × sign.
     expect(refusalOf(await createAs('commercial_ops', creditBody(5)))).toEqual([409, 'COMMERCIAL_CHANGE_REQUEST_CONFLICT', 'open_request_exists']);

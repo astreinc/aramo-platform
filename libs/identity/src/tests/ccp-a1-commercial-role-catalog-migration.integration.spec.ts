@@ -170,8 +170,11 @@ describe('CCP A1 — commercial role catalog migration (real PG)', () => {
     await container?.stop();
   }, 60_000);
 
-  it('registration — the last identity migration, after ATS-QA-1 and the geo step-up; stamps in apply order', () => {
-    expect(IDENTITY_MIGRATIONS.at(-1)).toBe(MIGRATION);
+  it('registration — after ATS-QA-1 and the geo step-up; only CCP-A9 (last-owner invariant) follows it; stamps in apply order', () => {
+    // CCP-A9 appended its last-effective-platform_owner trigger migration after this one.
+    expect(IDENTITY_MIGRATIONS.slice(IDENTITY_MIGRATIONS.indexOf(MIGRATION) + 1)).toEqual([
+      'libs/identity/prisma/migrations/20261025180000_ccp_a9_platform_last_owner_invariant/migration.sql',
+    ]);
     for (const dep of [
       'libs/identity/prisma/migrations/20261022150000_ats_qa_1_resume_select_grants/migration.sql',
       'libs/identity/prisma/migrations/20261024100000_sign_personal_geo_step_up/migration.sql',

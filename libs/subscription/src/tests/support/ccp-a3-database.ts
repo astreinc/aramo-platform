@@ -95,10 +95,16 @@ export function humanRef(human: string): string {
   return createHash('sha256').update(human).digest('hex');
 }
 
+/** A fixed fixture attester (method PLATFORM_OWNER needs a distinct attester; not a roster member). */
+export const FIXTURE_ATTESTER = '0190dddd-0000-7000-8000-0000000000af';
+
+// CCP-A9: fixture attestations use method PLATFORM_OWNER (a distinct attester). The A9
+// migration admits ONE BOOTSTRAP attestation ever (the D7 command's own), so fixtures no
+// longer use BOOTSTRAP.
 export async function attest(pg: Client, user_id: string, human: string): Promise<void> {
   await pg.query(
-    `INSERT INTO subscription."CommercialOperatorAttestation" (id, user_id, human_ref_hash, statement_version, method, attested_by, attested_at) VALUES ($1, $2, $3, 'D9-v1', 'BOOTSTRAP', $2, now())`,
-    [randomUUID(), user_id, humanRef(human)],
+    `INSERT INTO subscription."CommercialOperatorAttestation" (id, user_id, human_ref_hash, statement_version, method, attested_by, attested_at) VALUES ($1, $2, $3, 'D9-v1', 'PLATFORM_OWNER', $4, now())`,
+    [randomUUID(), user_id, humanRef(human), FIXTURE_ATTESTER],
   );
 }
 

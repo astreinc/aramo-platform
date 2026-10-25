@@ -10357,6 +10357,30 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/platform-admin/src/tests/ccp-a9-role-change-authorization.spec.ts",
+      "status": "excluded",
+      "to": "deploy/seed-prod.sh"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/platform-admin/src/tests/ccp-a9-role-change-authorization.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/seed-astre.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/platform-admin/src/tests/ccp-a9-role-change-authorization.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/seed-platform-owner.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/platform-admin/src/tests/ccp-a9-role-change-authorization.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
       "status": "excluded",
       "to": "libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql"
@@ -13687,6 +13711,226 @@
       "from": "doc/ccp/slices/CCP-A5-pre-execution.md",
       "status": "unscoped",
       "to": "tools/db-sync-local.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-invitation.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-routes.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-a9-role-change-routes.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "deploy/seed-prod.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A9-pre-execution.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/common/src/lib/errors/error-codes.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/common/src/lib/testing/identity-migrations.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/common/src/tests/error-codes.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/migrations/20261025180000_ccp_a9_platform_last_owner_invariant/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed-astre.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed-platform-owner.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/scripts/scope-catalog-consistency.mjs"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/util/tenant-last-owner.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/tests/ccp-a1-commercial-role-catalog-migration.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/tests/ccp-a9-platform-last-owner.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261025180100_ccp_a9_role_change_apply_bootstrap/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/scripts/ccp-bootstrap-platform-owner.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/index.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-change-request.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-platform-owner-bootstrap.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-a9-bootstrap-role-change.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/commercial-change-request.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "openapi/common.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-invitation.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-pre-execution.md",
+      "status": "unscoped",
+      "to": "deploy/seed-prod.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A1-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A2-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A3-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/auth/src/lib/auth-context.types.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/common/src/lib/testing/identity-migrations.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/migrations/20261021120100_roles1_last_owner_invariant/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed-astre.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed-platform-owner.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/dto/role.dto.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261025120000_ccp_a3_change_request_approval/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-change-request.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-change-request.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-operator.repository.ts"
     },
     {
       "from": "doc/design-reference/platform-admin/github.md",
@@ -24969,6 +25213,11 @@
       "to": "libs/identity/prisma/migrations/20261024120000_ccp_a1_commercial_role_catalog/migration.sql"
     },
     {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261025180000_ccp_a9_platform_last_owner_invariant/migration.sql"
+    },
+    {
       "from": "libs/common/src/lib/testing/skills-taxonomy-migrations.ts",
       "status": "production",
       "to": "libs/skills-taxonomy/prisma/migrations/20260915140000_init_skill_registry/migration.sql"
@@ -25755,6 +26004,24 @@
       "from": "libs/identity/src/tests/ccp-a1-commercial-role-catalog-migration.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261024120000_ccp_a1_commercial_role_catalog/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a1-commercial-role-catalog-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261025180000_ccp_a9_platform_last_owner_invariant/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a9-platform-last-owner.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261024120000_ccp_a1_commercial_role_catalog/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a9-platform-last-owner.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261025180000_ccp_a9_platform_last_owner_invariant/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -27242,6 +27509,16 @@
       "to": "libs/subscription/src/lib/commercial/commercial-policy.ts"
     },
     {
+      "from": "libs/subscription/prisma/migrations/20261025180100_ccp_a9_role_change_apply_bootstrap/migration.sql",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A9-acceptance.md"
+    },
+    {
+      "from": "libs/subscription/prisma/migrations/20261025180100_ccp_a9_role_change_apply_bootstrap/migration.sql",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A9-pre-execution.md"
+    },
+    {
       "from": "libs/subscription/project.json",
       "status": "unscoped",
       "to": "libs/subscription/src/index.ts"
@@ -27252,9 +27529,19 @@
       "to": "libs/subscription/tsconfig.lib.json"
     },
     {
+      "from": "libs/subscription/scripts/ccp-bootstrap-platform-owner.ts",
+      "status": "unscoped",
+      "to": "deploy/seed-prod.sh"
+    },
+    {
       "from": "libs/subscription/src/lib/commercial/commercial-change-request.ts",
       "status": "production",
       "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "libs/subscription/src/lib/commercial/commercial-platform-owner-bootstrap.ts",
+      "status": "production",
+      "to": "deploy/seed-prod.sh"
     },
     {
       "from": "libs/subscription/src/lib/commercial/commercial-policy-boundaries.ts",
@@ -27339,6 +27626,18 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-a9-bootstrap-role-change.integration.spec.ts",
+      "status": "excluded",
+      "to": "deploy/seed-prod.sh"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-a9-bootstrap-role-change.integration.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-A9-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/subscription/src/tests/commercial-change-request.integration.spec.ts",
       "status": "excluded",
       "to": "doc/ccp/slices/CCP-A3-acceptance.md"
@@ -27366,6 +27665,18 @@
       "from": "libs/subscription/src/tests/support/ccp-a3-database.ts",
       "status": "excluded",
       "to": "libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/support/ccp-a9-database.ts",
+      "status": "excluded",
+      "to": "deploy/seed-prod.sh"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/support/ccp-a9-database.ts",
+      "status": "excluded",
+      "to": "libs/subscription/prisma/migrations/20261025180100_ccp_a9_role_change_apply_bootstrap/migration.sql"
     },
     {
       "from": "libs/talent-embedding/prisma/schema.prisma",
@@ -27691,6 +28002,11 @@
       "from": "package.json",
       "status": "unscoped",
       "to": "libs/subscription/prisma/seed-development-subscription.ts"
+    },
+    {
+      "from": "package.json",
+      "status": "unscoped",
+      "to": "libs/subscription/scripts/ccp-bootstrap-platform-owner.ts"
     },
     {
       "from": "package.json",
@@ -30468,6 +30784,7 @@
         { "kind": "prose", "path": "tools/send-mailer-proof.ts" }
       ]
     },
+    { "name": "ccp:bootstrap-platform-owner", "references": [] },
     {
       "name": "contract-parity:check",
       "references": [
@@ -30921,6 +31238,7 @@
   ],
   "unreferenced": [
     "billing:price-parity",
+    "ccp:bootstrap-platform-owner",
     "db:sync:intelligence",
     "offer:sql:check",
     "prepare",

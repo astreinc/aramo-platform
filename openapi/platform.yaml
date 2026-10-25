@@ -1155,7 +1155,16 @@ paths:
       description: |
         Invites another platform administrator against the PLATFORM Cognito
         pool; the invitee is bound to the sentinel platform tenant with the
-        `super_admin` role. Idempotency mirrors the tenant-invite flow.
+        `super_admin` role, or (CCP-A9) the platform roles named in `role_keys`.
+
+        CCP-A9 (Inc-1 Closure Amendment A1 A1-1, A1-5): the invite is an
+        ARRIVAL only. An existing platform administrator is refused 409
+        `INVITATION_ALREADY_EXISTS` (`details.reason` `existing_platform_admin`)
+        whatever the role set; a role grant to an existing administrator is a
+        governed `ROLE_GRANT` change request. A commercial role needs
+        `human_ref_hash` and an inviter who is an attested `platform_owner`
+        (403 `attester_not_platform_owner`); the new administrator's D9
+        attestation is recorded with the inviter as attester.
 
         PLATFORM-UX-1 B-1c — the email's domain must be one of the allowed
         operator domains (`PLATFORM_ADMIN_EMAIL_DOMAINS`, a comma list,
@@ -1182,7 +1191,7 @@ paths:
               schema:
                 $ref: '#/components/schemas/InviteUserResponse'
         '400':
-          description: '`VALIDATION_ERROR` — invalid email, or the email domain is not an allowed operator domain (`details.reason` `platform_admin_domain_not_allowed`).'
+          description: '`VALIDATION_ERROR` — invalid email, or the email domain is not an allowed operator domain (`details.reason` `platform_admin_domain_not_allowed`); CCP-A9: `human_ref_required`, `human_ref_not_applicable`, `human_ref_in_use`, `attestation_not_recorded`.'
           content:
             application/json:
               schema:
@@ -1193,8 +1202,9 @@ paths:
           $ref: '#/components/responses/PlatformForbidden'
         '409':
           description: |
-            `INVITATION_ALREADY_EXISTS` — the admin already holds a platform
-            membership with the same role set; or `EMAIL_UNAVAILABLE` — the
+            `INVITATION_ALREADY_EXISTS` — the user is already a platform
+            administrator (`details.reason` `existing_platform_admin`, CCP-A9);
+            or `EMAIL_UNAVAILABLE` — the
             email is already registered to a user owned by another tenant
             (`details` is exactly `{}`; IC-1 PR-1).
           content:
@@ -2127,7 +2137,13 @@ paths:
       description: |
         Creates a DRAFT request and snapshots its approval chain from the ACTIVE commercial
         policy. Requires the action's requester scope (for example
-        `platform:subscription:request`). Tenant-scoped actions carry `tenant_id` and
+        `platform:subscription:request`). CCP-A9 (TD-A3-5): governance actions need the
+        requester's live role plus an active D9 attestation — `POLICY_ACTIVATE` a
+        `finance_admin`; `ROLE_GRANT` / `ROLE_REVOKE` (the governed role-change endpoint;
+        payload `subject_user_id`, `role_key` of the 6 CCP roles, and for a grant to an
+        unattested subject `human_ref_hash`) a `platform_owner`, approved by a different
+        `platform_owner`; the approval completing the chain applies the role change.
+        Otherwise 403 `requester_role_missing` / `not_human`. Tenant-scoped actions carry `tenant_id` and
         `product_key` (`sign`); at most one open request exists per tenant and product.
         Idempotent on `idempotency_key`: a replay of the same request returns 200 with
         `replayed: true`; the key reused for a different request returns 409
@@ -3708,7 +3724,9 @@ components:
     CommercialChangeRequestConflict:
       description: |
         `COMMERCIAL_CHANGE_REQUEST_CONFLICT` (details.reason `state_invalid`,
-        `open_request_exists` or `integrity`) or `IDEMPOTENCY_KEY_CONFLICT`.
+        `open_request_exists` or `integrity`), `IDEMPOTENCY_KEY_CONFLICT`, or (CCP-A9)
+        `PLATFORM_LAST_OWNER` — a `ROLE_REVOKE` of the platform's last effective
+        `platform_owner` (details.reason `platform_last_owner`).
       content:
         application/json:
           schema:
@@ -4244,7 +4262,7 @@ components:
     CommercialChangeRequest:
       type: object
       additionalProperties: false
-      required: [id, action_type, kind, state, tenant_id, product_key, payload, payload_checksum, required_chain, policy_version_id, policy_checksum, requested_by, reason, created_at, submitted_at, expires_at, approved_at, rejected_at, rejected_by, rejection_reason, withdrawn_at, expired_at]
+      required: [id, action_type, kind, state, tenant_id, product_key, payload, payload_checksum, required_chain, policy_version_id, policy_checksum, requested_by, reason, created_at, submitted_at, expires_at, approved_at, rejected_at, rejected_by, rejection_reason, withdrawn_at, expired_at, applied_at]
       properties:
         id:
           type: string
@@ -4318,6 +4336,10 @@ components:
         expired_at:
           type: [string, 'null']
           format: date-time
+        applied_at:
+          type: [string, 'null']
+          format: date-time
+          description: CCP-A9 — set when a governed role change was applied (state APPLIED).
 
     CommercialApproval:
       type: object
@@ -4370,12 +4392,38 @@ components:
     CommercialApprovalEnvelope:
       type: object
       additionalProperties: false
-      required: [request, approval]
+      required: [request, approval, apply]
       properties:
         request:
           $ref: '#/components/schemas/CommercialChangeRequest'
         approval:
           $ref: '#/components/schemas/CommercialApproval'
+        apply:
+          description: |
+            CCP-A9 — the role-change apply that follows an approval completing a `ROLE_GRANT`
+            / `ROLE_REVOKE` chain; null for every other approval. A refused apply leaves the
+            request APPROVED with its signatures untouched.
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/CommercialRoleChangeApply'
+
+    CommercialRoleChangeApply:
+      type: object
+      additionalProperties: false
+      required: [applied, reason, detail]
+      properties:
+        applied:
+          type: boolean
+        reason:
+          type: [string, 'null']
+          description: |
+            null when applied; else APPROVER_NO_LONGER_ELIGIBLE | APPROVER_NOT_DISTINCT |
+            APPROVALS_INCOMPLETE | NOT_APPROVED | ROLE_ALREADY_HELD | ROLE_NOT_HELD |
+            SUBJECT_NOT_PLATFORM_MEMBER | ROLE_NOT_IN_CATALOG | PLATFORM_LAST_OWNER |
+            ATTESTATION_CONFLICT | INTEGRITY | APPLY_ERROR.
+        detail:
+          type: object
+          additionalProperties: true
 
     CommercialChangeRequestListResponse:
       type: object
@@ -4786,6 +4834,22 @@ components:
           format: email
         display_name:
           type: string
+        role_keys:
+          type: array
+          minItems: 1
+          uniqueItems: true
+          description: |
+            CCP-A9 — the platform roles of the NEW administrator (PLATFORM_ROLE_KEYS).
+            Absent = `[super_admin]`.
+          items:
+            type: string
+            enum: [super_admin, platform_owner, finance_admin, commercial_ops, catalog_manager, support_admin, read_only_auditor]
+        human_ref_hash:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: |
+            CCP-A9 (D9) — SHA-256 hex of the attested human reference (no PII). Required
+            when `role_keys` carries a commercial role; refused otherwise.
 
     # ---- SKILL-TAX-1F-B2 — Platform Skill Governance schemas --------------
     SkillStatus:

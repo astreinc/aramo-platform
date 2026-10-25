@@ -132,6 +132,8 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   // empty (the block RAISEs otherwise). One guarded, fail-closed DO block on fixed ids (a no-op
   // without a role catalog). No returned-shape change, so no pact verify-api registration.
   'libs/identity/prisma/migrations/20261024120000_ccp_a1_commercial_role_catalog/migration.sql',
+  // CCP-A9 — last-effective-platform_owner invariant (triggers only; splitter-safe bodies).
+  'libs/identity/prisma/migrations/20261025180000_ccp_a9_platform_last_owner_invariant/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each

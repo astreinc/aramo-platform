@@ -369,6 +369,7 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'COMMERCIAL_APPROVAL_REFUSED',
       'COMMERCIAL_CHANGE_REQUEST_CONFLICT',
       'COMMERCIAL_POLICY_UNAVAILABLE',
+      'PLATFORM_LAST_OWNER',
     ]);
   });
 });

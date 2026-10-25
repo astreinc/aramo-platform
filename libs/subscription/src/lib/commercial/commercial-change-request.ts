@@ -55,27 +55,34 @@ export interface CommercialActionDefinition {
   /** Carries tenant_id + product_key, and falls under Q14 (one open per tenant × product). */
   tenant_scoped: boolean;
   /**
-   * The scope the requester must hold (A1 §4.1 matrix). `null` = no requester authority is
-   * defined by an instrument yet: the request cannot be created (fail closed; TD-A3-5).
+   * The scope the requester must hold (A1 §4.1 matrix). `null` = no requester scope; the
+   * requester authority is then `requester_role` (governance actions), and with neither the
+   * request cannot be created (fail closed; TD-A3-5).
    */
   requester_scope: string | null;
+  /**
+   * CCP-A9 (TD-A3-5, PO 2026-10-25): the CCP role the requester must hold, read LIVE in the
+   * create transaction, plus an active D9 attestation. Governance actions only: the A1
+   * catalog holds no governance request scope.
+   */
+  requester_role: 'platform_owner' | 'finance_admin' | null;
 }
 
 export const COMMERCIAL_ACTIONS: Readonly<Record<CommercialActionType, CommercialActionDefinition>> = {
-  SUBSCRIPTION_OPEN: { domain: 'subscription', tenant_scoped: true, requester_scope: 'platform:subscription:request' },
-  SUBSCRIPTION_CHANGE: { domain: 'subscription', tenant_scoped: true, requester_scope: 'platform:subscription:request' },
-  SUBSCRIPTION_END: { domain: 'subscription', tenant_scoped: true, requester_scope: 'platform:subscription:request' },
-  CONVERSION: { domain: 'subscription', tenant_scoped: true, requester_scope: 'platform:subscription:request' },
-  SUPPORT_EXTENSION: { domain: 'subscription', tenant_scoped: true, requester_scope: 'platform:subscription:support' },
-  ENTITLEMENT_GRANT: { domain: 'entitlement', tenant_scoped: true, requester_scope: 'platform:entitlement:request' },
-  ENTITLEMENT_REVOKE: { domain: 'entitlement', tenant_scoped: true, requester_scope: 'platform:entitlement:request' },
-  CREDIT: { domain: 'billing', tenant_scoped: true, requester_scope: 'platform:billing:request' },
-  DISCOUNT: { domain: 'billing', tenant_scoped: true, requester_scope: 'platform:billing:request' },
-  PLAN_VERSION_PUBLISH: { domain: 'catalog', tenant_scoped: false, requester_scope: 'platform:catalog:draft' },
-  PLAN_RETIRE: { domain: 'catalog', tenant_scoped: false, requester_scope: 'platform:catalog:draft' },
-  POLICY_ACTIVATE: { domain: 'governance', tenant_scoped: false, requester_scope: null },
-  ROLE_GRANT: { domain: 'governance', tenant_scoped: false, requester_scope: null },
-  ROLE_REVOKE: { domain: 'governance', tenant_scoped: false, requester_scope: null },
+  SUBSCRIPTION_OPEN: { domain: 'subscription', tenant_scoped: true, requester_scope: 'platform:subscription:request', requester_role: null },
+  SUBSCRIPTION_CHANGE: { domain: 'subscription', tenant_scoped: true, requester_scope: 'platform:subscription:request', requester_role: null },
+  SUBSCRIPTION_END: { domain: 'subscription', tenant_scoped: true, requester_scope: 'platform:subscription:request', requester_role: null },
+  CONVERSION: { domain: 'subscription', tenant_scoped: true, requester_scope: 'platform:subscription:request', requester_role: null },
+  SUPPORT_EXTENSION: { domain: 'subscription', tenant_scoped: true, requester_scope: 'platform:subscription:support', requester_role: null },
+  ENTITLEMENT_GRANT: { domain: 'entitlement', tenant_scoped: true, requester_scope: 'platform:entitlement:request', requester_role: null },
+  ENTITLEMENT_REVOKE: { domain: 'entitlement', tenant_scoped: true, requester_scope: 'platform:entitlement:request', requester_role: null },
+  CREDIT: { domain: 'billing', tenant_scoped: true, requester_scope: 'platform:billing:request', requester_role: null },
+  DISCOUNT: { domain: 'billing', tenant_scoped: true, requester_scope: 'platform:billing:request', requester_role: null },
+  PLAN_VERSION_PUBLISH: { domain: 'catalog', tenant_scoped: false, requester_scope: 'platform:catalog:draft', requester_role: null },
+  PLAN_RETIRE: { domain: 'catalog', tenant_scoped: false, requester_scope: 'platform:catalog:draft', requester_role: null },
+  POLICY_ACTIVATE: { domain: 'governance', tenant_scoped: false, requester_scope: null, requester_role: 'finance_admin' }, // TD-A3-5
+  ROLE_GRANT: { domain: 'governance', tenant_scoped: false, requester_scope: null, requester_role: 'platform_owner' }, // TD-A3-5 / Q2
+  ROLE_REVOKE: { domain: 'governance', tenant_scoped: false, requester_scope: null, requester_role: 'platform_owner' }, // TD-A3-5 / Q2
 };
 
 // ---- State machine --------------------------------------------------------------------
@@ -117,6 +124,23 @@ export const COMMERCIAL_A3_TRANSITIONS: Readonly<Record<CommercialChangeRequestS
 
 export function canTransition(from: CommercialChangeRequestState, to: CommercialChangeRequestState): boolean {
   return COMMERCIAL_A3_TRANSITIONS[from].includes(to);
+}
+
+/**
+ * CCP-A9 narrow apply path (TD-A9-1): only a governed role change is applied inside A9,
+ * APPROVED → APPLYING → APPLIED in one transaction. Every other action keeps the A3 table
+ * (its apply belongs to CCP-A6). APPLY_FAILED stays unreachable: a refused role-change apply
+ * rolls back and leaves the request APPROVED.
+ */
+export const COMMERCIAL_ROLE_CHANGE_ACTIONS: readonly CommercialActionType[] = ['ROLE_GRANT', 'ROLE_REVOKE'];
+export const COMMERCIAL_A9_ROLE_APPLY_TRANSITIONS: Readonly<Partial<Record<CommercialChangeRequestState, readonly CommercialChangeRequestState[]>>> = {
+  APPROVED: ['APPLYING'],
+  APPLYING: ['APPLIED'],
+};
+
+export function canTransitionFor(action_type: string, from: CommercialChangeRequestState, to: CommercialChangeRequestState): boolean {
+  if (canTransition(from, to)) return true;
+  return (COMMERCIAL_ROLE_CHANGE_ACTIONS as readonly string[]).includes(action_type) && (COMMERCIAL_A9_ROLE_APPLY_TRANSITIONS[from] ?? []).includes(to);
 }
 
 // ---- Approval chain -------------------------------------------------------------------
@@ -258,6 +282,14 @@ export class CommercialPayloadError extends Error {
 
 const MAX_PAYLOAD_BYTES = 65_536;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+const SHA256_HEX = /^[0-9a-f]{64}$/;
+
+/**
+ * CCP-A9: the roles a governed role change may name — the 6 CCP A1 platform roles, never
+ * super_admin (T2-F1-H3 Amendment A1 A1-1). Pinned to libs/identity PLATFORM_ROLE_KEYS by the
+ * platform-admin A9 spec (no identity import here, so no nx edge).
+ */
+export const COMMERCIAL_ROLE_CHANGE_ROLE_KEYS = ['platform_owner', 'finance_admin', 'commercial_ops', 'catalog_manager', 'support_admin', 'read_only_auditor'] as const;
 
 /**
  * A3 validates only what chain resolution and the eligibility rules read; the applying
@@ -285,10 +317,17 @@ export function validatePayload(action_type: CommercialActionType, payload: unkn
       int('requested_days', 1, 3650);
       break;
     case 'ROLE_GRANT':
-    case 'ROLE_REVOKE':
+    case 'ROLE_REVOKE': {
       if (typeof p['subject_user_id'] !== 'string' || !UUID.test(p['subject_user_id'])) errors.push('subject_user_id must be a uuid');
       if (typeof p['role_key'] !== 'string' || p['role_key'].length === 0) errors.push('role_key must be a role key');
+      else if (!(COMMERCIAL_ROLE_CHANGE_ROLE_KEYS as readonly string[]).includes(p['role_key'])) errors.push(`role_key must be one of ${COMMERCIAL_ROLE_CHANGE_ROLE_KEYS.join(', ')}`);
+      // CCP-A9: a closed key set. human_ref_hash (D9: SHA-256 hex of the attested human
+      // reference, no PII) is carried only by a grant, for a subject not yet attested.
+      const allowed = action_type === 'ROLE_GRANT' ? ['subject_user_id', 'role_key', 'human_ref_hash'] : ['subject_user_id', 'role_key'];
+      for (const k of Object.keys(p)) if (!allowed.includes(k)) errors.push(`${k} is not allowed in a ${action_type} payload`);
+      if (p['human_ref_hash'] !== undefined && (typeof p['human_ref_hash'] !== 'string' || !SHA256_HEX.test(p['human_ref_hash']))) errors.push('human_ref_hash must be a lowercase SHA-256 hex digest');
       break;
+    }
     case 'POLICY_ACTIVATE':
       if (typeof p['policy_version_id'] !== 'string' || !UUID.test(p['policy_version_id'])) errors.push('policy_version_id must be a uuid');
       break;

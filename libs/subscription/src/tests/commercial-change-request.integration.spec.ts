@@ -28,6 +28,7 @@ import {
   addOperator,
   applyCcpA3Schema,
   attest,
+  grantRole,
   humanRef,
   revokeAttestation,
   revokeRole,
@@ -154,9 +155,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A3 change req
     expect((await approve(r.id, FA, 0)).request.state).toBe('APPROVED');
   });
 
-  it('A3-INT-3 requester authority: missing request scope → REQUESTER_SCOPE_MISSING; governance actions → REQUESTER_AUTHORITY_UNDEFINED; non-NORMAL kind refused; 0 rows written', async () => {
+  // CCP-A9 (TD-A3-5) re-pointed the governance row: POLICY_ACTIVATE is requested by a
+  // finance_admin (a platform_owner is now REQUESTER_ROLE_MISSING, no longer
+  // REQUESTER_AUTHORITY_UNDEFINED). The A9 spec covers the governance requesters in full.
+  it('A3-INT-3 requester authority: missing request scope → REQUESTER_SCOPE_MISSING; a governance action without its requester role → REQUESTER_ROLE_MISSING (A9); non-NORMAL kind refused; 0 rows written', async () => {
     expect(await refusalOf(svc.create(as(FA, 'finance_admin'), { action_type: 'SUBSCRIPTION_OPEN', tenant_id: TENANT_1, product_key: 'sign', payload: {}, reason: 'x', idempotency_key: key() }, ctx))).toBe('REQUESTER_SCOPE_MISSING');
-    expect(await refusalOf(svc.create(as(PO, 'platform_owner'), { action_type: 'POLICY_ACTIVATE', payload: { policy_version_id: POLICY_V1 }, reason: 'x', idempotency_key: key() }, ctx))).toBe('REQUESTER_AUTHORITY_UNDEFINED');
+    expect(await refusalOf(svc.create(as(PO, 'platform_owner'), { action_type: 'POLICY_ACTIVATE', payload: { policy_version_id: POLICY_V1 }, reason: 'x', idempotency_key: key() }, ctx))).toBe('REQUESTER_ROLE_MISSING');
     expect(await refusalOf(svc.create(as(OPS, 'commercial_ops'), { action_type: 'SUBSCRIPTION_OPEN', kind: 'EXCEPTION', tenant_id: TENANT_1, product_key: 'sign', payload: {}, reason: 'x', idempotency_key: key() }, ctx))).toBe('KIND_NOT_SUPPORTED');
     expect(await refusalOf(svc.create(as(OPS, 'commercial_ops', { actor_kind: 'service_account' }), { action_type: 'SUBSCRIPTION_OPEN', tenant_id: TENANT_1, product_key: 'sign', payload: {}, reason: 'x', idempotency_key: key() }, ctx))).toBe('NOT_HUMAN');
     expect(await refusalOf(svc.create(as(OPS, 'commercial_ops'), { action_type: 'SUBSCRIPTION_OPEN', tenant_id: '0190dddd-0000-7000-8000-0000000000ff', product_key: 'sign', payload: {}, reason: 'x', idempotency_key: key() }, ctx))).toBe('TENANT_NOT_FOUND');
@@ -297,8 +301,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A3 change req
   });
 
   it('A3-NC2-2 a roster whose only owner is the finance approver cannot complete finance → owner: 409 CCP_NOT_BOOTSTRAPPED (chain-satisfiability, not a user count)', async () => {
-    await revokeRole(pg, PO, 'platform_owner');
+    // CCP-A9: BOTH is added first — the last-effective-platform_owner trigger refuses removing the only owner.
     const BOTH = await addOperator(pg, ['finance_admin', 'platform_owner']);
+    await revokeRole(pg, PO, 'platform_owner');
     const r = await publish();
     await submit(r.id, CAT, 'catalog_manager');
     // Five platform users exist; the chain still needs a distinct owner after BOTH takes finance.
@@ -347,6 +352,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A3 change req
     const r = await publish();
     await submit(r.id, CAT, 'catalog_manager');
     await approve(r.id, FA, 0);
+    // CCP-A9: the requester CAT also holds platform_owner (excluded from every step as the
+    // requester), so PO's revocation does not hit the last-owner trigger.
+    await grantRole(pg, CAT, 'platform_owner');
     await revokeRole(pg, PO, 'platform_owner');
     expect(await refusalOf(approve(r.id, PO, 1, 'platform_owner'))).toBe('CCP_NOT_BOOTSTRAPPED');
     expect(await state(r.id)).toBe('PENDING_APPROVAL');
@@ -374,6 +382,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A3 change req
     await submit(r.id);
     await approve(r.id, FA, 0);
     await approve(r.id, PO, 1, 'platform_owner');
+    await grantRole(pg, OPS, 'platform_owner'); // CCP-A9: keeps an effective owner (last-owner trigger)
     await revokeRole(pg, PO, 'platform_owner');
     expect(await refusalOf(svc.assertApplyEligible(r.id, PLATFORM_TENANT))).toBe('APPLY:APPROVER_NO_LONGER_ELIGIBLE');
     await revokeAttestation(pg, FA);

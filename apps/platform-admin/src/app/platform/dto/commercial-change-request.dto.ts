@@ -63,6 +63,16 @@ export interface CommercialChangeRequestDto {
   rejection_reason: string | null;
   withdrawn_at: string | null;
   expired_at: string | null;
+  /** CCP-A9: set when a governed role change was applied (state APPLIED). */
+  applied_at: string | null;
+}
+
+/** CCP-A9: the role-change apply that follows the completing approval (null otherwise). */
+export interface CommercialRoleChangeApplyDto {
+  applied: boolean;
+  /** null when applied; else why it was refused (the request stays APPROVED). */
+  reason: string | null;
+  detail: Record<string, unknown>;
 }
 
 export interface CommercialApprovalDto {

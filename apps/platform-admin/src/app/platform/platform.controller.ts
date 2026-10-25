@@ -513,6 +513,8 @@ export class PlatformController {
     const result = await this.invitations.invitePlatformAdmin({
       email: body.email,
       display_name: body.display_name ?? null,
+      role_keys: body.role_keys,
+      human_ref_hash: body.human_ref_hash ?? null,
       actor_user_id: authCtx.sub,
       request_id: requestId,
     });

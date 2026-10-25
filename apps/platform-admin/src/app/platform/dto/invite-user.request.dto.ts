@@ -1,12 +1,14 @@
 import {
   ArrayMinSize,
+  ArrayUnique,
   IsArray,
   IsEmail,
   IsIn,
   IsOptional,
   IsString,
+  Matches,
 } from 'class-validator';
-import { TENANT_ASSIGNABLE_ROLE_KEYS } from '@aramo/identity';
+import { PLATFORM_ROLE_KEYS, TENANT_ASSIGNABLE_ROLE_KEYS } from '@aramo/identity';
 
 // POST /platform/tenants/:tenant_id/invitations — invite a user into an
 // existing tenant with one or more AUTHZ-1 tenant roles. Lead ruling 8
@@ -48,6 +50,12 @@ export class InviteUserRequestDto {
 // POST /platform/admins/invitations — invite another platform admin against
 // the PLATFORM Cognito pool (Lead ruling 4 A1). No tenant context — the
 // invitee is bound to the sentinel platform_tenant + the super_admin role.
+//
+// CCP-A9 (PBD §5.1 row A9; Inc-1 Closure Amendment A1 A1-1, A1-5): the invite accepts
+// PLATFORM_ROLE_KEYS for a NEW arrival (default ['super_admin'], the pre-A9 behaviour). A CCP
+// role needs `human_ref_hash` (D9: SHA-256 hex of the attested human reference, no PII); the
+// inviter, an attested platform_owner, is the attester. An existing platform member is
+// refused: a role grant to an existing admin is a governed role-change request.
 export class InvitePlatformAdminRequestDto {
   @IsEmail()
   email!: string;
@@ -55,6 +63,19 @@ export class InvitePlatformAdminRequestDto {
   @IsOptional()
   @IsString()
   display_name?: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMinSize(1)
+  @ArrayUnique()
+  @IsString({ each: true })
+  @IsIn([...PLATFORM_ROLE_KEYS], { each: true })
+  role_keys?: string[];
+
+  @IsOptional()
+  @IsString()
+  @Matches(/^[0-9a-f]{64}$/)
+  human_ref_hash?: string;
 }
 
 export interface InviteUserResponseDto {
