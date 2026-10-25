@@ -8,6 +8,15 @@ import { BILLING_STATUS_MAX_INVOICE_LIMIT, PRODUCT_KEYS, type ProductKey } from 
 // 400-shape gate. Money (invoice amounts) appears only in the billing-status response, which serves
 // a dedicated billing (Finance) screen (PLATFORM-UX-1 A1-4a), never a dashboard.
 
+/**
+ * CCP-C5 (PBD §5.2 row C5, §10) — tax is a designed disabled state until Stripe Tax registration.
+ * Always `{ enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' }`; no flag enables it.
+ */
+export interface TaxAvailabilityDto {
+  enabled: false;
+  reason: 'STRIPE_TAX_NOT_REGISTERED';
+}
+
 export class TenantBillingStatusQueryDto {
   @IsIn([...PRODUCT_KEYS]) product_key!: ProductKey;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(BILLING_STATUS_MAX_INVOICE_LIMIT) invoice_limit?: number;
@@ -50,6 +59,7 @@ export interface TenantBillingStatusResponseDto {
   subscription: { id: string; source: string; status: string; open: boolean; account_ref: string; subscription_ref: string } | null;
   provider_subscription: { provider_status: string; current_period_start: string; current_period_end: string; cancel_at_period_end: boolean } | null;
   invoices: BillingStatusInvoiceDto[];
+  tax: TaxAvailabilityDto;
   detail: string | null;
   read_at: string;
 }

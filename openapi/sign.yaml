@@ -2639,10 +2639,27 @@ components:
                 description: Built and operational (launch availability).
         purchasable:
           type: boolean
+    TaxAvailability:
+      type: object
+      additionalProperties: false
+      description: >-
+        CCP-C5 (PBD §5.2 row C5, §10) — tax is a designed disabled state until Stripe Tax
+        registration. Always enabled=false with reason STRIPE_TAX_NOT_REGISTERED; no setting enables
+        it, and no tax is calculated, collected or shown.
+      required: [enabled, reason]
+      properties:
+        enabled:
+          type: boolean
+          enum: [false]
+        reason:
+          type: string
+          enum: [STRIPE_TAX_NOT_REGISTERED]
     BillingAccount:
       type: object
-      required: [subscription, allowance, storage, billing_available, tenant_kind, self_service_eligible, can_manage_billing]
+      required: [subscription, allowance, storage, billing_available, tax, tenant_kind, self_service_eligible, can_manage_billing]
       properties:
+        tax:
+          $ref: '#/components/schemas/TaxAvailability'
         pending_activation:
           type: [object, 'null']
           description: >-

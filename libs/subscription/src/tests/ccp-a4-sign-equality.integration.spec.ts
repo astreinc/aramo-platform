@@ -16,6 +16,7 @@ import { SIGN_PRODUCT_KEY } from '../lib/product-registry.js';
 import { CCP_A5_MIGRATION } from './fixtures/ccp-a5.js';
 import { applyRemainingSubscriptionMigrations } from './fixtures/ccp-a8.js';
 import { observe, rowCounts, seedCorpus, type SignOps } from './fixtures/ccp-a4-sign-corpus.js';
+import { withoutDisabledTax } from './fixtures/ccp-c5.js';
 
 // CCP-A4 (PBD §5.1 A4 row) — MP-A2 N-8 (deterministic backfill counts) and N-13 (Sign
 // allowance semantics preserved), proved ACROSS the A4 migration on real Postgres 17.
@@ -110,7 +111,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A4 — Sign a
       capacityStatus: (t, k) => capacity.status(t, P, k),
       capacityReserve: (i) => capacity.reserve({ ...i, product_key: P }),
       capacityRelease: (i) => capacity.release({ ...i, product_key: P }),
-      account: (t, k, at) => lifecycle.account(t, P, k, at),
+      // CCP-C5 — the additive disabled `tax` state is checked and stripped (fixtures/ccp-c5.ts).
+      account: async (t, k, at) => withoutDisabledTax(await lifecycle.account(t, P, k, at)),
       sendingOwner: (t, at) => lifecycle.sendingOwner(t, P, at),
     };
     observation = await observe(ops);

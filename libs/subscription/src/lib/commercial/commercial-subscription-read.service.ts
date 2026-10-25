@@ -3,6 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { billingPeriodAt, type BillingPeriod } from '../billing-period.js';
 import { assertProductKey, isProductKey, type ProductKey } from '../product-registry.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { taxAvailability, type TaxAvailability } from '../billing/tax-availability.js';
 
 import { COMMERCIAL_OPEN_STATES } from './commercial-change-request.js';
 
@@ -107,6 +108,8 @@ export interface TenantCommercialOverview {
   readonly as_of: Date;
   readonly tenant: { readonly id: string; readonly name: string; readonly slug: string | null; readonly kind: string };
   readonly products: OverviewProduct[];
+  /** CCP-C5 — tax is a designed disabled state until Stripe Tax registration (PBD §10). */
+  readonly tax: TaxAvailability;
 }
 
 type Tx = Pick<PrismaService, '$queryRawUnsafe' | '$executeRawUnsafe'>;
@@ -346,6 +349,6 @@ export class CommercialSubscriptionReadService {
             : { id: open.id, action_type: open.action_type, kind: open.kind, state: open.state, requested_by: open.requested_by, created_at: open.created_at },
       };
     });
-    return { as_of, tenant: data.tenant, products };
+    return { as_of, tenant: data.tenant, products, tax: taxAvailability() };
   }
 }

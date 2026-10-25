@@ -31,6 +31,7 @@ import { ORGANIZATION_BILLING_PROFILE_PORT, type OrganizationBillingProfile, typ
 import { PLAN_ELIGIBILITY_PORT, type PlanEligibilityPort, type PlanEligibilityRule } from './plan-eligibility.port.js';
 import { type PriceResolution, effectiveProviderPrice, parsePlanPrices, resolvePriceToVersion } from './provider-price.js';
 import { GOVERNED_SUBSCRIPTION_OPEN, isGovernedSubscription, takeBillingLock } from './governed-subscription.js';
+import { taxAvailability, type TaxAvailability } from './tax-availability.js';
 
 export { parsePlanPrices } from './provider-price.js';
 
@@ -243,6 +244,8 @@ export interface AccountView {
   allowance: AllowanceReadResult;
   storage: CapacityStatus | null;
   billing_available: boolean;
+  // CCP-C5 — tax is a designed disabled state until Stripe Tax registration (PBD §10).
+  tax: TaxAvailability;
 }
 
 export interface ApplyResult {
@@ -455,6 +458,7 @@ export class SubscriptionLifecycleService {
       allowance,
       storage: storage.subscribed ? { capacity_key: storage.capacity_key, limit: storage.limit, unlimited: storage.unlimited, used: storage.used } : null,
       billing_available: await this.billingAvailable(),
+      tax: taxAvailability(),
     };
   }
 

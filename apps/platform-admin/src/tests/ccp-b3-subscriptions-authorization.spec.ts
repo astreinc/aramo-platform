@@ -85,6 +85,8 @@ const SUB: WorkbenchSubscription = {
 };
 const ROW: WorkbenchRow = { ...SUB, tenant: { id: TENANT, name: 'Acme', slug: 'acme' } };
 const NONE_ENT = (capability: string) => ({ capability, state: 'NONE' as const, granted_source: null, granted_at: null, granted_by: null, change_request_id: null, revoked_at: null, revoked_by: null, revoke_change_request_id: null });
+// CCP-C5 — every billing read carries the designed disabled tax state.
+const TAX = { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' } as const;
 const OVERVIEW_RESULT: TenantCommercialOverview = {
   as_of: D('2026-10-25T00:00:00.000Z'),
   tenant: { id: TENANT, name: 'Acme', slug: 'acme', kind: 'BUSINESS' },
@@ -109,6 +111,7 @@ const OVERVIEW_RESULT: TenantCommercialOverview = {
     },
     ...(['ats', 'portal', 'intelligence'] as const).map((product_key) => ({ product_key, registered: false, entitlement: NONE_ENT(product_key), subscription: null, flags: [], open_request: null })),
   ],
+  tax: { ...TAX },
 };
 
 /** Every key anywhere in a JSON value (deep). */
@@ -209,6 +212,8 @@ describe('CCP-B3 — per-role authorization on the Subscriptions workbench and t
       const o = await get(role, OVERVIEW);
       expect(o.status, JSON.stringify(o.body)).toBe(200);
       expect(o.body.tenant).toEqual({ id: TENANT, name: 'Acme', slug: 'acme', kind: 'BUSINESS' });
+      // CCP-C5 — the designed disabled tax state is passed through exactly.
+      expect(o.body.tax).toEqual(TAX);
       expect(o.body.products.map((p: { product_key: string; registered: boolean }) => [p.product_key, p.registered])).toEqual([['sign', true], ['ats', false], ['portal', false], ['intelligence', false]]);
       expect(o.body.products[0].entitlement).toMatchObject({ state: 'ACTIVE', granted_source: 'PLAN', granted_at: '2026-09-01T00:00:00.000Z', revoked_at: null });
       expect(o.body.products[0].flags[0]).toEqual({ ...OVERVIEW_RESULT.products[0]!.flags[0], detected_at: '2026-10-20T00:00:00.000Z' });

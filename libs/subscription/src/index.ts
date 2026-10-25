@@ -72,6 +72,8 @@ export {
   type PortalConfigurationState,
   type TenantBillingStatus,
 } from './lib/billing/billing-status-read.service.js';
+// CCP-C5 — tax is a designed disabled state until Stripe Tax registration (no flag enables it).
+export { TAX_NOT_ENABLED_REASON, taxAvailability, type TaxAvailability } from './lib/billing/tax-availability.js';
 // CCP-C1 — the Stripe command outbox and the webhook inbox.
 export {
   BILLING_COMMAND_ACTIONS,

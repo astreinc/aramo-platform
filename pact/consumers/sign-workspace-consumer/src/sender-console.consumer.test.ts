@@ -536,6 +536,8 @@ describe('sign-workspace → GET /v1/sign/billing/account (held activation)', ()
         b.jsonBody({
           subscription: { plan_key: 'aramo-sign-included-v1', source: 'MANUAL', status: 'ACTIVE' },
           pending_activation: { state: 'PENDING', message: 'Subscription activation pending — contact support' },
+          // CCP-C5 — the designed disabled tax state.
+          tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' },
           tenant_kind: 'BUSINESS',
           can_manage_billing: true,
         });

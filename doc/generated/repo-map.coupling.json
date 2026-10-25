@@ -16159,6 +16159,121 @@
       "to": "scripts/verify-vocabulary.sh"
     },
     {
+      "from": "doc/ccp/slices/CCP-C5-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/tests/billing.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C5-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C5-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-C5-pre-execution.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C5-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-sign-naming.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C5-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/index.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C5-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/tax-availability.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C5-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C5-acceptance.md",
+      "status": "unscoped",
+      "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C5-acceptance.md",
+      "status": "unscoped",
+      "to": "openapi/sign.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C5-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C5-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/consumers/sign-workspace-consumer/src/sender-console.consumer.test.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C5-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C5-acceptance.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C5-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/signup/sign-signup.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C5-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/billing/esign-billing.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C5-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C5-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-C1-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C5-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-sign-naming.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C5-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/index.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C5-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/organization-billing-profile.port.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C5-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/stripe-billing.provider.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C5-pre-execution.md",
+      "status": "unscoped",
+      "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C5-pre-execution.md",
+      "status": "unscoped",
+      "to": "openapi/sign.yaml"
+    },
+    {
       "from": "doc/ccp/slices/CCP-C6-acceptance.md",
       "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform-commercial-finance.controller.ts"
@@ -30399,6 +30514,11 @@
       "to": "deploy/seed-prod.sh"
     },
     {
+      "from": "libs/subscription/src/lib/billing/tax-availability.ts",
+      "status": "production",
+      "to": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts"
+    },
+    {
       "from": "libs/subscription/src/lib/commercial/commercial-change-request.ts",
       "status": "production",
       "to": "doc/ccp/decisions.md"
@@ -30773,6 +30893,30 @@
       "from": "libs/subscription/src/tests/ccp-c3-billing-status.integration.spec.ts",
       "status": "excluded",
       "to": "doc/ccp/slices/CCP-C3-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts",
+      "status": "excluded",
+      "to": "apps/platform-admin/src/app/signup/sign-signup.service.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-C5-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/src/lib/billing/stripe-billing-read.adapter.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/src/lib/billing/stripe-billing.provider.ts"
     },
     {
       "excludedBy": "src/tests/**/*",

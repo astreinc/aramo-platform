@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 
 import { BILLING_PROVIDER_PORT, type BillingProviderPort } from './billing-provider.port.js';
 import { GOVERNED_SUBSCRIPTION_OPEN } from './governed-subscription.js';
+import { taxAvailability, type TaxAvailability } from './tax-availability.js';
 
 // CCP-C6 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.2 row C6; Conversion Rule C-8;
 // PLATFORM-UX-1 Amendment A1-4a) — the READ-ONLY Finance reports: the renewals queue, outstanding
@@ -77,6 +78,8 @@ export interface RenewalsReport {
   readonly within_days: number;
   readonly currency: typeof FINANCE_CURRENCY;
   readonly billing_provider_mode: 'test' | 'live' | 'unconfigured';
+  /** CCP-C5 — tax is a designed disabled state until Stripe Tax registration (PBD §10). */
+  readonly tax: TaxAvailability;
   readonly items: RenewalItem[];
   readonly counts: { readonly items: number; readonly lapsed: number; readonly commitment_end: number; readonly period_end: number };
 }
@@ -106,6 +109,8 @@ export interface OutstandingReport {
   readonly as_of: Date;
   readonly currency: typeof FINANCE_CURRENCY;
   readonly billing_provider_mode: 'test' | 'live' | 'unconfigured';
+  /** CCP-C5 — tax is a designed disabled state until Stripe Tax registration (PBD §10). */
+  readonly tax: TaxAvailability;
   readonly items: OutstandingItem[];
   readonly counts: { readonly items: number; readonly past_due: number; readonly incomplete: number; readonly in_grace: number; readonly grace_ended: number; readonly no_grace_date: number };
 }
@@ -177,6 +182,8 @@ export interface ReconciliationReport {
   readonly as_of: Date;
   readonly currency: typeof FINANCE_CURRENCY;
   readonly billing_provider_mode: 'test' | 'live' | 'unconfigured';
+  /** CCP-C5 — tax is a designed disabled state until Stripe Tax registration (PBD §10). */
+  readonly tax: TaxAvailability;
   readonly status: 'RECONCILED' | 'EXCEPTIONS';
   readonly subscriptions: ReconciledSubscription[];
   readonly entitled_without_subscription: EntitledWithoutSubscription[];
@@ -362,6 +369,7 @@ export class BillingFinanceReportService {
       within_days,
       currency: FINANCE_CURRENCY,
       billing_provider_mode: this.providerMode(),
+      tax: taxAvailability(),
       items,
       counts: {
         items: items.length,
@@ -401,6 +409,7 @@ export class BillingFinanceReportService {
       as_of,
       currency: FINANCE_CURRENCY,
       billing_provider_mode: this.providerMode(),
+      tax: taxAvailability(),
       items,
       counts: {
         items: items.length,
@@ -570,6 +579,7 @@ export class BillingFinanceReportService {
       as_of,
       currency: FINANCE_CURRENCY,
       billing_provider_mode: this.providerMode(),
+      tax: taxAvailability(),
       status: exceptions === 0 ? 'RECONCILED' : 'EXCEPTIONS',
       subscriptions,
       entitled_without_subscription,

@@ -6091,8 +6091,10 @@ components:
     CommercialTenantOverviewResponse:
       type: object
       additionalProperties: false
-      required: [as_of, tenant, products]
+      required: [as_of, tenant, products, tax]
       properties:
+        tax:
+          $ref: '#/components/schemas/TaxAvailability'
         as_of: { type: string, format: date-time }
         tenant:
           type: object
@@ -6896,11 +6898,28 @@ components:
         document_url:
           type: [string, 'null']
 
+    TaxAvailability:
+      type: object
+      additionalProperties: false
+      description: >-
+        CCP-C5 (PBD §5.2 row C5, §10) — tax is a designed disabled state until Stripe Tax
+        registration. Always enabled=false with reason STRIPE_TAX_NOT_REGISTERED; no setting enables
+        it, and no tax is calculated, collected or shown.
+      required: [enabled, reason]
+      properties:
+        enabled:
+          type: boolean
+          enum: [false]
+        reason:
+          type: string
+          enum: [STRIPE_TAX_NOT_REGISTERED]
     TenantBillingStatusResponse:
       type: object
       additionalProperties: false
-      required: [tenant_id, product_key, availability, provider, mode, subscription, provider_subscription, invoices, detail, read_at]
+      required: [tenant_id, product_key, availability, provider, mode, subscription, provider_subscription, invoices, tax, detail, read_at]
       properties:
+        tax:
+          $ref: '#/components/schemas/TaxAvailability'
         tenant_id:
           type: string
           format: uuid
@@ -7096,8 +7115,10 @@ components:
     FinanceRenewalsReport:
       type: object
       additionalProperties: false
-      required: [as_of, within_days, currency, billing_provider_mode, items, counts]
+      required: [as_of, within_days, currency, billing_provider_mode, tax, items, counts]
       properties:
+        tax:
+          $ref: '#/components/schemas/TaxAvailability'
         as_of:
           type: string
           format: date-time
@@ -7187,8 +7208,10 @@ components:
     FinanceOutstandingPaymentsReport:
       type: object
       additionalProperties: false
-      required: [as_of, currency, billing_provider_mode, items, counts]
+      required: [as_of, currency, billing_provider_mode, tax, items, counts]
       properties:
+        tax:
+          $ref: '#/components/schemas/TaxAvailability'
         as_of:
           type: string
           format: date-time
@@ -7355,8 +7378,10 @@ components:
     FinanceReconciliationReport:
       type: object
       additionalProperties: false
-      required: [as_of, currency, billing_provider_mode, status, subscriptions, entitled_without_subscription, held_activations, other_open_flags, counts]
+      required: [as_of, currency, billing_provider_mode, tax, status, subscriptions, entitled_without_subscription, held_activations, other_open_flags, counts]
       properties:
+        tax:
+          $ref: '#/components/schemas/TaxAvailability'
         as_of:
           type: string
           format: date-time

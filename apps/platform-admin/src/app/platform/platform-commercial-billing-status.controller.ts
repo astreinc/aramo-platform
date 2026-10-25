@@ -90,6 +90,7 @@ export function tenantBillingStatusDto(s: TenantBillingStatus): TenantBillingSta
             cancel_at_period_end: s.provider_subscription.cancel_at_period_end,
           },
     invoices: s.invoices.map(invoiceDto),
+    tax: { enabled: s.tax.enabled, reason: s.tax.reason },
     detail: s.detail,
     read_at: s.read_at.toISOString(),
   };

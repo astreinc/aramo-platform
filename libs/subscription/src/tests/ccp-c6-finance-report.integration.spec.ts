@@ -183,6 +183,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C6 Finance re
   it('C6-REN-1 renewals reproduce the oracle exactly (subscription, kind, date, USD list price of the PINNED version); lapsed commitment listed', async () => {
     const r = await reports.renewals({ as_of: T0, within_days: 90 });
     expect(r.billing_provider_mode).toBe('test');
+    // CCP-C5 — the designed disabled tax state on real Postgres.
+    expect(r.tax).toEqual({ enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' });
     expect(r.currency).toBe('USD');
     const got = r.items.map((i) => ({ subscription_id: i.subscription_id, kind: i.renewal_kind, at: i.renewal_at.toISOString(), amount_minor: i.list_price?.amount_minor ?? null }));
     expect(got).toEqual(await oracleRenewals(90));
@@ -207,6 +209,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C6 Finance re
 
   it('C6-OUT-1 outstanding payments reproduce the oracle (PAST_DUE in grace); amount due is never computed (C3 not delivered)', async () => {
     const r = await reports.outstandingPayments({ as_of: T0 });
+    expect(r.tax).toEqual({ enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' });
     expect(r.items.map((i) => ({ subscription_id: i.subscription_id, status: i.status, grace_state: i.grace_state, amount_minor: i.list_price?.amount_minor ?? null }))).toEqual(await oracleOutstanding());
     const c = r.items.find((i) => i.subscription_id === S['C'])!;
     expect(c).toMatchObject({ status: 'PAST_DUE', grace_state: 'IN_GRACE', amount_due: null, amount_due_reason: 'INVOICE_READ_NOT_DELIVERED', list_price: { amount_minor: 2000, currency: 'USD' } });
@@ -222,6 +225,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C6 Finance re
     const r: ReconciliationReport = await reports.reconciliationReport({ as_of: T0 });
     const o = await oracleReconciliation();
     expect(r.billing_provider_mode).toBe('test');
+    expect(r.tax).toEqual({ enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' });
     expect(r.subscriptions.map((s) => ({ subscription_id: s.subscription_id, tenant_id: s.tenant_id, source: s.source, status: s.status, missing: s.entitlement.missing }))).toEqual(
       o.subs.map((s) => ({ subscription_id: s.subscription_id, tenant_id: s.tenant_id, source: s.source, status: s.status, missing: s.missing })),
     );

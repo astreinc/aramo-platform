@@ -148,6 +148,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C3 read-throu
     expect(s).toMatchObject({ availability: 'AVAILABLE', product_key: 'sign', subscription: { id: sub_id, source: 'SELF_SERVICE', status: 'PAST_DUE', open: true, account_ref: `acct_${t}`, subscription_ref: ref } });
     expect(s.provider_subscription?.provider_status).toBe('past_due');
     expect(s.invoices.map((i) => i.payment_state)).toEqual(['OVERDUE', 'PAID']);
+    // CCP-C5 — the designed disabled tax state on real Postgres.
+    expect(s.tax).toEqual({ enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' });
     await svc.portalConfigurationStatus({ now: NOW });
     expect(await dbFingerprint()).toEqual(before);
   });
