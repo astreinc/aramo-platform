@@ -33,7 +33,7 @@ export const COMMERCIAL_ACTION_TYPES = [
   'ENTITLEMENT_GRANT', // A6 — non-default commercial capability grant (D4)
   'ENTITLEMENT_REVOKE', // A7 — governed revoke (D1)
   'PLAN_VERSION_PUBLISH', // A5 / B2 — publish a catalog plan version
-  'PLAN_RETIRE', // A5 / B2 — retire a plan or plan version
+  'PLAN_RETIRE', // A5 / B2 — retire ONE specified plan version (CCP-R3, TD-B2-1: never the whole plan)
   'POLICY_ACTIVATE', // activate (or roll back to) a CommercialPolicyVersion (Q1)
   'SUPPORT_EXTENSION', // A8 — a support extension overlay: bounded EXCEPTION, escalated (Q7), or removed (payload operation)
   'ROLE_GRANT', // A9 — grant a commercial platform role (Q2, D6)
@@ -452,11 +452,18 @@ export class CommercialChangeRequestIntegrityError extends Error {
 }
 
 export class CommercialPayloadError extends Error {
-  constructor(readonly errors: readonly string[]) {
+  constructor(
+    readonly errors: readonly string[],
+    /** The stable refusal reason (details.reason); `invalid_payload` unless a specific one applies. */
+    readonly reason = 'invalid_payload',
+  ) {
     super(`invalid change-request payload: ${errors.join('; ')}`);
     this.name = 'CommercialPayloadError';
   }
 }
+
+/** CCP-R3 (TD-B2-1) — PLAN_RETIRE names no plan version: refused; there is no whole-plan retire. */
+export const PLAN_VERSION_ID_REQUIRED = 'plan_version_id_required';
 
 const MAX_PAYLOAD_BYTES = 65_536;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -542,6 +549,12 @@ export function validatePayload(action_type: CommercialActionType, payload: unkn
       }
       break;
     case 'PLAN_RETIRE':
+      // CCP-R3 (TD-B2-1, Architect 2026-10-25): version-only retirement. The request retires the ONE
+      // plan version it names; without plan_version_id it is refused (stable reason
+      // plan_version_id_required). No payload retires a whole plan.
+      if (p['plan_version_id'] === undefined || p['plan_version_id'] === null) {
+        throw new CommercialPayloadError(['PLAN_RETIRE retires one specified plan version: plan_version_id is required (there is no whole-plan retire)'], PLAN_VERSION_ID_REQUIRED);
+      }
       closedKeys(p, ['plan_version_id'], errors);
       if (typeof p['plan_version_id'] !== 'string' || !UUID.test(p['plan_version_id'])) errors.push('plan_version_id must be a uuid');
       break;

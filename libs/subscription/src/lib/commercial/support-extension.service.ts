@@ -38,16 +38,26 @@ import { type SupportExtensionDecision, decideSupportExtension, overlayCovers } 
 //      then CommercialApplyService.applyBoundedExceptionInTx (the A6 core): DRAFT → APPLYING →
 //      APPLIED, the overlay, the CommercialChangeApplication, and every audit event with
 //      is_exception = true (SUPPORT_EXTENSION_EXCEPTION_APPLIED carries the counters).
-//   4. Any breach (LENGTH, FREQUENCY, CUMULATIVE, ELIGIBILITY) → ESCALATES: a NORMAL
+//   4. CCP-R3 (TD-A8-3 refined) — not eligible (the row is not PAST_DUE, or the requester holds no
+//      active D9 attestation) → REFUSED with the stable code SUPPORT_EXTENSION_INELIGIBLE: in the
+//      same transaction (under the billing lock) exactly ONE SUPPORT_EXTENSION_REFUSED_INELIGIBLE
+//      audit event is written; no change request, no overlay, no escalation to Finance.
+//   5. Eligible, a limit breach (LENGTH, FREQUENCY, CUMULATIVE) → ESCALATES: a NORMAL
 //      SUPPORT_EXTENSION request is created and submitted (Finance-only chain, Q7) and a
 //      SUPPORT_EXTENSION_ESCALATED event records the breaches. NOTHING applies: the approved
 //      request is applied later through POST /change-requests/{id}/apply (the A6 path).
+//      The generic create refuses a SUPPORT_EXTENSION EXTEND that did not come through here
+//      (CCP-R3: the eligibility refusal cannot be bypassed by a direct escalation).
 // Removal is a SUPPORT_EXTENSION request with operation REMOVE through the generic change-request
 // routes (Finance-only chain), applied by the A6 path; this service only reads overlays for it.
 //
 // No path here writes TenantSubscription (G1; HALT condition of the A8 row) or any usage row.
 
 export const SUPPORT_EXTENSION_SCOPE = 'platform:subscription:support';
+/** CCP-R3 (TD-A8-3 refined) — the stable refusal code of an ineligible support extension. */
+export const SUPPORT_EXTENSION_INELIGIBLE = 'SUPPORT_EXTENSION_INELIGIBLE' as const;
+/** CCP-R3 — the one audit event an eligibility refusal writes. */
+export const SUPPORT_EXTENSION_INELIGIBLE_EVENT = 'SUPPORT_EXTENSION_REFUSED_INELIGIBLE';
 
 export interface SupportExtensionRow {
   id: string;
@@ -186,7 +196,7 @@ export class SupportExtensionService {
     const policy = await this.policies.getActivePolicy();
     const tenant_id = input.tenant_id;
     const product_key = input.product_key;
-    const decided: { value: SupportExtensionDecision | null } = { value: null };
+    const decided: { value: SupportExtensionDecision | null; refused: boolean } = { value: null, refused: false };
     try {
       const applied = await this.prisma.$transaction(async (tx) => {
         await takeBillingLock(tx, tenant_id);
@@ -215,6 +225,35 @@ export class SupportExtensionService {
           requester_attested: requester.attested,
         });
         decided.value = decision;
+        if (!decision.eligible) {
+          // CCP-R3 (TD-A8-3 refined): an eligibility refusal. ONE audit row, committed with this
+          // transaction; nothing else is written. The caller is refused after the commit.
+          await this.audit.append(
+            {
+              actor: { id: actor.user_id, type: 'user', role_keys: requester.role_keys },
+              event_type: SUPPORT_EXTENSION_INELIGIBLE_EVENT,
+              tenant_id,
+              subject: `tenant_subscription:${row.id}`,
+              change_request_id: null,
+              policy_version_id: policy.version_id,
+              payload: {
+                action_type: 'SUPPORT_EXTENSION',
+                refusal: SUPPORT_EXTENSION_INELIGIBLE,
+                product_key,
+                subscription_id: row.id,
+                subscription_status: row.status,
+                requested_days: input.requested_days,
+                eligibility: decision.eligibility,
+                applied: false,
+                escalated: false,
+              },
+              correlation_id: ctx.correlation_id,
+            },
+            tx,
+          );
+          decided.refused = true;
+          return null;
+        }
         if (!decision.within_bounds) return null; // escalates below, outside this transaction
 
         const id = uuidv7();
@@ -272,6 +311,13 @@ export class SupportExtensionService {
       throw e;
     }
     if (decided.value === null) throw new Error('support extension: no decision was reached');
+    if (decided.refused) {
+      throw new CommercialChangeRequestError(SUPPORT_EXTENSION_INELIGIBLE, 'the support extension is not eligible; nothing was applied or escalated', {
+        reason: 'support_extension_ineligible',
+        eligibility: decided.value.eligibility,
+        subscription_id: input.subscription_id,
+      });
+    }
     return this.escalate(actor, input, payload, decided.value, ctx);
   }
 
@@ -287,6 +333,7 @@ export class SupportExtensionService {
       actor,
       { action_type: 'SUPPORT_EXTENSION', kind: 'NORMAL', tenant_id: input.tenant_id, product_key: input.product_key, payload, reason: input.reason, idempotency_key: input.idempotency_key },
       ctx,
+      { support_extension_decided: true },
     );
     if (created.replayed) return { outcome: 'ESCALATED', replayed: true, request: created.request, decision: null };
     const request = await this.changeRequests.submit(actor, created.request.id, ctx);

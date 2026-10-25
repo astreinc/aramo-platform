@@ -109,7 +109,7 @@ const EXT_ROW = {
   remove_change_request_id: null,
 };
 const APPLICATION = { id: 'app', change_request_id: REQ_ID, action_type: 'SUPPORT_EXTENSION', tenant_id: TENANT, product_key: 'sign', subscription_id: SUB, replaced_subscription_id: null, from_plan_version_id: null, to_plan_version_id: null, capabilities: [], capabilities_inserted: [], attempt: 1, applied_by: EXT_ROW.applied_by, applied_at: NOW };
-const DECISION = { within_bounds: true, breaches: [], eligibility: [], counters: { requested_days: 14, extensions_in_frequency_window: 0, cumulative_days_before: 0, cumulative_days_after: 14 }, clause: { support_extension_max_days: 14 } };
+const DECISION = { eligible: true, within_bounds: true, breaches: [], eligibility: [], counters: { requested_days: 14, extensions_in_frequency_window: 0, cumulative_days_before: 0, cumulative_days_after: 14 }, clause: { support_extension_max_days: 14 } };
 
 const svcMock = {
   request: vi.fn(async () => ({ outcome: 'APPLIED', replayed: false, request: REQUEST_ROW, extension: EXT_ROW, application: APPLICATION, decision: DECISION }) as unknown),
@@ -281,6 +281,21 @@ describe('CCP-A8 — route gates on /platform/commercial/support-extensions (rea
     ['not human', new CommercialChangeRequestError('NOT_HUMAN', 'm'), 403, 'INSUFFICIENT_PERMISSIONS', { reason: 'not_human' }],
     ['tenant not found', new CommercialChangeRequestError('TENANT_NOT_FOUND', 'm', {}), 400, 'VALIDATION_ERROR', { reason: 'tenant_not_found' }],
     ['policy unavailable', new CommercialPolicyUnavailableError('MISSING'), 503, 'COMMERCIAL_POLICY_UNAVAILABLE', { reason: 'MISSING' }],
+    // CCP-R3 (TD-A8-3 refined): eligibility is a refusal with a stable reason, never an escalation.
+    [
+      'ineligible (not PAST_DUE)',
+      new CommercialChangeRequestError('SUPPORT_EXTENSION_INELIGIBLE', 'm', { reason: 'support_extension_ineligible', eligibility: ['SUBSCRIPTION_NOT_PAST_DUE'], subscription_id: SUB }),
+      409,
+      'COMMERCIAL_CHANGE_REQUEST_CONFLICT',
+      { reason: 'support_extension_ineligible', eligibility: ['SUBSCRIPTION_NOT_PAST_DUE'] },
+    ],
+    [
+      'ineligible (no D9 attestation)',
+      new CommercialChangeRequestError('SUPPORT_EXTENSION_INELIGIBLE', 'm', { reason: 'support_extension_ineligible', eligibility: ['REQUESTER_NOT_ATTESTED'], subscription_id: SUB }),
+      409,
+      'COMMERCIAL_CHANGE_REQUEST_CONFLICT',
+      { reason: 'support_extension_ineligible', eligibility: ['REQUESTER_NOT_ATTESTED'] },
+    ],
   ];
   for (const [name, err, status, code, details] of mapping) {
     it(`A8-RT-MAP ${name} → ${status} ${code}`, async () => {

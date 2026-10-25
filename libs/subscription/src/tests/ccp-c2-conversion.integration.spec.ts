@@ -337,6 +337,98 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C2 governed m
     expect((await sub(gov)).ended_at).toBeNull();
   });
 
+  // ---- CCP-R3 item 4 — DR-C2-3 conditions (Architect 2026-10-25) ----------------------------
+  // "Prior MANUAL-period usage is not carried into a new self-service period. Historic usage is
+  // preserved; a period reset must never manufacture allowance or double-count reservations."
+
+  const usageRows = async (t: string) => (await pg.query(`SELECT row_to_json(u)::text j FROM subscription."AllowanceUsage" u WHERE tenant_id = $1 ORDER BY id`, [t])).rows.map((r) => r.j as string);
+  /** governed → self-service, the provider period starting at `start`; returns the new SELF_SERVICE row id. */
+  async function convertAt(t: string, gov: string, start: Date): Promise<string> {
+    const cr = await conversion(t, await toSelfService(gov));
+    await applyAs(cr);
+    expect(await refusal(checkout(t))).toBe('OK');
+    const s = h.billing.state(t, await lastIntent(t), { current_period_start: start });
+    expect(await deliver(s.subscription_ref, now)).toMatchObject({ outcome: 'APPLIED' });
+    return (await releaseOf(cr)).self_service_subscription_id as string;
+  }
+
+  it('C2-R3-1 (DR-C2-3) a self-service period starting after a MANUAL period never manufactures allowance: the new period counts 0 of exactly the plan\'s limit (a fresh self-service tenant\'s limit, not limit + unused MANUAL allowance); the MANUAL period\'s usage rows are byte-identical', async () => {
+    now = T0;
+    const { t, gov } = await governedTenant();
+    const before = await h.allowance.getStatus(t, 'sign', 'sign.envelopes', new Date(T0.getTime() + 60_000));
+    if (!before.subscribed) throw new Error('expected the governed row to send');
+    for (const [i, min] of [10, 11].entries()) {
+      const k = `c2-r3-1-${i}`;
+      expect((await h.allowance.reserve({ tenant_id: t, product_key: 'sign', allowance_key: 'sign.envelopes', send_key: k, at: new Date(T0.getTime() + min * 60_000) })).ok).toBe(true);
+      expect(await h.allowance.consume({ tenant_id: t, product_key: 'sign', allowance_key: 'sign.envelopes', send_key: k, usage_event_type: 'sign.envelope.sent', at: new Date(T0.getTime() + min * 60_000) })).toBe('CONSUMED');
+    }
+    const historic = await usageRows(t);
+    expect(historic).toHaveLength(2);
+    now = new Date(T0.getTime() + H);
+    const ss = await convertAt(t, gov, now);
+    const after = await h.allowance.getStatus(t, 'sign', 'sign.envelopes', new Date(now.getTime() + H));
+    // A control: a fresh self-service tenant on the same plan and period start, never used.
+    const control = await newTenant(pg);
+    await rawSubscription(pg, control, { source: 'SELF_SERVICE', plan: BUSINESS, ref: `sub_c2r3_${control}` });
+    await pg.query(`UPDATE subscription."TenantSubscription" SET period_anchor = $2 WHERE tenant_id = $1`, [control, now]);
+    const fresh = await h.allowance.getStatus(control, 'sign', 'sign.envelopes', new Date(now.getTime() + H));
+    if (!after.subscribed || !fresh.subscribed) throw new Error('expected both to send');
+    expect(after).toMatchObject({ plan_key: BUSINESS, used: 0, period_start: now });
+    expect([after.limit, after.remaining]).toEqual([fresh.limit, fresh.remaining]);
+    expect(after.remaining).toBe(after.limit === null ? null : after.limit);
+    expect(before.used).toBe(0);
+    expect(await usageRows(t)).toEqual(historic);
+    expect((await sub(ss)).period_anchor).toEqual(now);
+  });
+
+  it('C2-R3-2 (DR-C2-3) an outstanding MANUAL-period reservation is never double-counted: it stays on its own period (the new period counts 0), and when it is consumed after the conversion it counts once, in the MANUAL period only; the other historic rows are untouched', async () => {
+    now = T0;
+    const { t, gov } = await governedTenant();
+    const k = 'c2-r3-2-outstanding';
+    const reserved = await h.allowance.reserve({ tenant_id: t, product_key: 'sign', allowance_key: 'sign.envelopes', send_key: k, at: new Date(T0.getTime() + 20 * 60_000), ttl_ms: 6 * H });
+    if (!reserved.ok) throw new Error('expected the reservation');
+    const manualStart = reserved.status.period_start;
+    await pg.query(
+      `INSERT INTO subscription."AllowanceUsage" (id, tenant_id, allowance_key, send_key, period_start, state, reserved_at, reserved_until, finalized_at) VALUES (gen_random_uuid(), $1, 'sign.envelopes', 'c2-r3-2-old', $2, 'CONSUMED', $3, $3, $3)`,
+      [t, manualStart, new Date(T0.getTime() + 5 * 60_000)],
+    );
+    const oldRow = (await pg.query(`SELECT row_to_json(u)::text j FROM subscription."AllowanceUsage" u WHERE tenant_id = $1 AND send_key = 'c2-r3-2-old'`, [t])).rows[0].j as string;
+    now = new Date(T0.getTime() + H);
+    await convertAt(t, gov, now);
+    const at = new Date(now.getTime() + 30 * 60_000);
+    const mid = await h.allowance.getStatus(t, 'sign', 'sign.envelopes', at);
+    if (!mid.subscribed) throw new Error('expected the self-service row to send');
+    expect(mid.used).toBe(0);
+    expect(await h.allowance.consume({ tenant_id: t, product_key: 'sign', allowance_key: 'sign.envelopes', send_key: k, usage_event_type: 'sign.envelope.sent', at })).toBe('CONSUMED');
+    const end = await h.allowance.getStatus(t, 'sign', 'sign.envelopes', at);
+    if (!end.subscribed) throw new Error('expected the self-service row to send');
+    expect(end.used).toBe(0);
+    const byPeriod = (await pg.query(`SELECT period_start, state, count(*)::int n FROM subscription."AllowanceUsage" WHERE tenant_id = $1 GROUP BY 1, 2 ORDER BY 1, 2`, [t])).rows;
+    expect(byPeriod).toEqual([{ period_start: manualStart, state: 'CONSUMED', n: 2 }]);
+    expect((await pg.query(`SELECT row_to_json(u)::text j FROM subscription."AllowanceUsage" u WHERE tenant_id = $1 AND send_key = 'c2-r3-2-old'`, [t])).rows[0].j).toBe(oldRow);
+  });
+
+  it('C2-R3-3 (DR-C2-3) a reservation recorded inside the new period under the MANUAL alignment holds the activation (USAGE_TREATMENT_UNDEFINED, CROSS_PERIOD), so it can never be double-counted or dropped; the row is untouched', async () => {
+    now = T0;
+    const { t, gov } = await governedTenant();
+    const cr = await conversion(t, await toSelfService(gov));
+    await applyAs(cr);
+    expect(await refusal(checkout(t))).toBe('OK');
+    const intent = await lastIntent(t);
+    await pg.query(
+      `INSERT INTO subscription."AllowanceUsage" (id, tenant_id, allowance_key, send_key, period_start, state, reserved_at, reserved_until) VALUES (gen_random_uuid(), $1, 'sign.envelopes', 'c2-r3-3', $2, 'RESERVED', $3, $4)`,
+      [t, T0, new Date(T0.getTime() + 30 * 60_000), new Date(T0.getTime() + 6 * H)],
+    );
+    const row = await usageRows(t);
+    const s = h.billing.state(t, intent, { current_period_start: new Date('2026-10-25T00:00:00.000Z') });
+    const r = await deliver(s.subscription_ref, new Date(T0.getTime() + H));
+    expect(r).toMatchObject({ outcome: 'IGNORED' });
+    expect((r as { detail: string }).detail).toContain('USAGE_TREATMENT_UNDEFINED (CROSS_PERIOD');
+    expect(await openRows(t)).toEqual(['MANUAL']);
+    expect((await sub(gov)).ended_at).toBeNull();
+    expect(await usageRows(t)).toEqual(row);
+  });
+
   // ---- self-service → governed (C-13) -----------------------------------------------------
 
   it('C2-GOV-1 self-service → governed: apply enqueues the durable cancel and COMMITS IN APPLYING (pending-provider); the provider accepting it is not completion; the verified end opens the governed row in the applying transaction; replays and a late older event change nothing', async () => {

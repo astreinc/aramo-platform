@@ -242,6 +242,8 @@ export const SEED_IDS = {
     'platform:billing:approve': '01900000-0000-7000-8000-000000000332',
     'platform:approval:read': '01900000-0000-7000-8000-000000000333',
     'platform:commercial:audit:read': '01900000-0000-7000-8000-000000000334',
+    // CCP-A1 Amendment A1 (Finance amount scope, LOCKED 2026-10-25) — FA-1 / FA-2.
+    'platform:billing:amount:read': '01900000-0000-7000-8000-000000000335',
     // AUTHZ-D4a — 4 team-model scopes (Amendment §4/§6; Lead Gate-5 ruling 2
     // narrows company:read:all to TA+TO only — mirrors requisition:read:all).
     'company:assign': '01900000-0000-7000-8000-00000000008c',
@@ -3297,6 +3299,16 @@ export const CCP_PLATFORM_ROLE_SEED_BUNDLES: ReadonlyArray<readonly [string, rea
   ]],
 ];
 
+// CCP-A1 Amendment A1 (Aramo-CCP-A1-Amendment-A1-Finance-Amount-Scope-v1_0-LOCKED, FA-1, FA-2,
+// FA-8) — platform:billing:amount:read, required IN ADDITION TO platform:billing:read for any
+// tenant-specific monetary figure. Granted to exactly platform_owner, finance_admin and
+// read_only_auditor (3 rows). Kept apart from CCP_PLATFORM_ROLE_SEED_BUNDLES (the A1 matrix,
+// unchanged). Ids: ccpA1A1RoleScopeId (identical to 20261028060000_ccp_a1a1_finance_amount_scope).
+export const CCP_A1A1_FINANCE_AMOUNT_SCOPE = 'platform:billing:amount:read';
+export const CCP_A1A1_FINANCE_AMOUNT_SCOPE_DESCRIPTION =
+  'Platform-tier CCP: read tenant-specific monetary figures, invoice, payment, credit and revenue amounts, in addition to platform:billing:read (enforced from CCP-A1 Amendment A1)';
+export const CCP_A1A1_FINANCE_AMOUNT_HOLDERS = ['platform_owner', 'finance_admin', 'read_only_auditor'] as const;
+
 // CCP A1 §6.8 — role descriptions. Written by the seed on a fresh database and by the
 // 20261024120000 migration on an existing one (byte-equal).
 export const CCP_A1_ROLE_DESCRIPTIONS = {
@@ -3378,6 +3390,13 @@ export function orgUx1RoleScopeId(role_id: string, scope_id: string): string {
 // `md5(...)::uuid` cast in 20261024120000_ccp_a1_commercial_role_catalog.
 export function ccpA1RoleScopeId(role_id: string, scope_id: string): string {
   const h = createHash('md5').update(`ccp-a1:${role_id}:${scope_id}`).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
+// CCP-A1 Amendment A1 — md5('ccp-a1a1:' || role_id || ':' || scope_id) as a uuid, the SQL
+// `md5(...)::uuid` cast in 20261028060000_ccp_a1a1_finance_amount_scope.
+export function ccpA1A1RoleScopeId(role_id: string, scope_id: string): string {
+  const h = createHash('md5').update(`ccp-a1a1:${role_id}:${scope_id}`).digest('hex');
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
 
@@ -3667,6 +3686,8 @@ export async function runIdentitySeed(
   for (const [key, description] of Object.entries(CCP_A1_SCOPE_DESCRIPTIONS)) {
     await upsertScope(prisma, SEED_IDS.scopes[key as keyof typeof CCP_A1_SCOPE_DESCRIPTIONS], key, description);
   }
+  // CCP-A1 Amendment A1 — the Finance amount scope (FA-1). NO scope.created (scope-seed precedent).
+  await upsertScope(prisma, SEED_IDS.scopes[CCP_A1A1_FINANCE_AMOUNT_SCOPE], CCP_A1A1_FINANCE_AMOUNT_SCOPE, CCP_A1A1_FINANCE_AMOUNT_SCOPE_DESCRIPTION);
   // AUTHZ-D4a — 4 team-model scopes (Amendment §4/§6). Lead Gate-5 ruling 2
   // narrowed company:read:all to TA+TO only (mirrors requisition:read:all).
   await upsertScope(prisma, SEED_IDS.scopes['company:assign'], 'company:assign', 'Assign / unassign a user to a client (account_manager + tenant_admin + tenant_owner; mirrors requisition:assign as the AM act)');
@@ -4966,6 +4987,16 @@ export async function runIdentitySeed(
         create: { id: ccpA1RoleScopeId(role_id, scope_id), role_id, scope_id },
       });
     }
+  }
+  // CCP-A1 Amendment A1 (FA-2) — the 3 Finance amount grants. Ids: ccpA1A1RoleScopeId.
+  for (const roleKey of CCP_A1A1_FINANCE_AMOUNT_HOLDERS) {
+    const role_id = roleIdForKey(roleKey);
+    const scope_id = scopeIdForKey(CCP_A1A1_FINANCE_AMOUNT_SCOPE);
+    await prisma.roleScope.upsert({
+      where: { role_id_scope_id: { role_id, scope_id } },
+      update: {},
+      create: { id: ccpA1A1RoleScopeId(role_id, scope_id), role_id, scope_id },
+    });
   }
 
   // 3 + 8 + 4 + the four creation-audit rows below are ALL DEV-FIXTURE —

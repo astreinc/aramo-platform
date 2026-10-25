@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import { Injectable } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 
+import { financeAmountAccess, withholdAuditPayloadAmounts } from '../billing/finance-amount-withholding.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 
 import { COMMERCIAL_AUDIT_MAX_LIMIT, CommercialAuditRepository, type CommercialAuditEventRow, type CommercialAuditQuery } from './commercial-audit.repository.js';
@@ -60,13 +61,17 @@ export interface AuditExportNames {
   actors: ReadonlyMap<string, string>;
   /** tenant id → tenant name. */
   tenants: ReadonlyMap<string, string>;
+  /** CCP-R3 (CCP-A1 Amendment A1): the exporter holds platform:billing:read AND platform:billing:amount:read. */
+  amount_access?: boolean;
 }
 
 /** Pure: the CSV document (header + one line per event, CRLF line ends per RFC 4180). */
 export function buildAuditCsv(rows: readonly CommercialAuditEventRow[], names: AuditExportNames): string {
   const lines = [COMMERCIAL_AUDIT_EXPORT_COLUMNS.join(',')];
   for (const r of rows) {
-    const payload = (r.payload ?? {}) as Record<string, unknown>;
+    // CCP-R3 (CCP-A1 Amendment A1, FA-1 "invoice exports", FA-5): the `detail` column carries a
+    // tenant-specific amount only for a caller holding platform:billing:amount:read too.
+    const payload = withholdAuditPayloadAmounts((r.payload ?? {}) as Record<string, unknown>, names.amount_access === true);
     const product = typeof payload['product_key'] === 'string' ? (payload['product_key'] as string) : '';
     const actor = r.actor_id === null ? r.actor_type : (names.actors.get(r.actor_id) ?? r.actor_id);
     const tenant = r.tenant_id === null ? '' : (names.tenants.get(r.tenant_id) ?? r.tenant_id);
@@ -124,7 +129,8 @@ export class CommercialAuditExportService {
       const ts = await this.prisma.$queryRawUnsafe<Array<{ id: string; name: string }>>(`SELECT id::text AS id, name FROM identity."Tenant" WHERE id = ANY($1::uuid[])`, tenantIds);
       for (const t of ts) tenants.set(t.id, t.name);
     }
-    const csv = buildAuditCsv(rows, { actors, tenants });
+    const amount_access = financeAmountAccess(actor.scopes);
+    const csv = buildAuditCsv(rows, { actors, tenants, amount_access });
     const csv_sha256 = createHash('sha256').update(csv, 'utf8').digest('hex');
     const export_id = uuidv7();
     const policy = await this.policies.getActivePolicy();
@@ -137,7 +143,7 @@ export class CommercialAuditExportService {
       event_type: 'COMMERCIAL_AUDIT_EXPORTED',
       subject: `commercial_audit_export:${export_id}`,
       policy_version_id: policy.version_id,
-      payload: { format: 'csv', row_count: rows.length, filters, csv_sha256, columns: [...COMMERCIAL_AUDIT_EXPORT_COLUMNS] },
+      payload: { format: 'csv', row_count: rows.length, filters, csv_sha256, columns: [...COMMERCIAL_AUDIT_EXPORT_COLUMNS], amounts: amount_access ? 'INCLUDED' : 'WITHHELD' },
       correlation_id: ctx.correlation_id,
     });
     const stamp = now.toISOString().slice(0, 19).replace(/[-:]/g, '').replace('T', '-');

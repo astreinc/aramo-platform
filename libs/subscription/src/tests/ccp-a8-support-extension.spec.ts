@@ -84,29 +84,32 @@ describe('CCP-A8 breach table — cumulative ≤ 30 days in the rolling 365 days
   }
 });
 
-describe('CCP-A8 breach table — eligibility of the zero-approval act escalates', () => {
-  it('A8-B-ELIG-1 a row that is not PAST_DUE (ACTIVE, TRIALING, INCOMPLETE) → ELIGIBILITY / SUBSCRIPTION_NOT_PAST_DUE', () => {
+describe('CCP-A8 eligibility — CCP-R3 (TD-A8-3 refined): an eligibility refusal, never a breach or an escalation', () => {
+  it('A8-B-ELIG-1 a row that is not PAST_DUE (ACTIVE, TRIALING, INCOMPLETE, CANCELED) → not eligible / SUBSCRIPTION_NOT_PAST_DUE; no breach', () => {
     for (const status of ['ACTIVE', 'TRIALING', 'INCOMPLETE', 'CANCELED']) {
       const d = decide(7, [], { status });
-      expect(d.within_bounds, status).toBe(false);
-      expect(d.breaches).toEqual(['ELIGIBILITY']);
+      expect(d.eligible, status).toBe(false);
+      expect(d.within_bounds, status).toBe(true);
+      expect(d.breaches).toEqual([]);
       expect(d.eligibility).toEqual(['SUBSCRIPTION_NOT_PAST_DUE']);
     }
   });
-  it('A8-B-ELIG-2 a requester without an active D9 attestation → ELIGIBILITY / REQUESTER_NOT_ATTESTED', () => {
+  it('A8-B-ELIG-2 a requester without an active D9 attestation → not eligible / REQUESTER_NOT_ATTESTED; no breach', () => {
     const d = decide(7, [], { attested: false });
-    expect(d.breaches).toEqual(['ELIGIBILITY']);
+    expect(d.eligible).toBe(false);
+    expect(d.breaches).toEqual([]);
     expect(d.eligibility).toEqual(['REQUESTER_NOT_ATTESTED']);
   });
-  it('A8-B-ELIG-3 every breach is reported together, with the counter snapshot and the clause', () => {
+  it('A8-B-ELIG-3 the limit breaches and the eligibility reasons are reported apart, with the counter snapshot and the clause', () => {
     const d = decide(15, [ext(10 * DAY, 14), ext(200 * DAY, 14)], { status: 'ACTIVE', attested: false });
-    expect(d.breaches).toEqual(['LENGTH', 'FREQUENCY', 'CUMULATIVE', 'ELIGIBILITY']);
+    expect(d.eligible).toBe(false);
+    expect(d.breaches).toEqual(['LENGTH', 'FREQUENCY', 'CUMULATIVE']);
     expect(d.eligibility).toEqual(['SUBSCRIPTION_NOT_PAST_DUE', 'REQUESTER_NOT_ATTESTED']);
     expect(d.counters).toEqual({ requested_days: 15, extensions_in_frequency_window: 1, cumulative_days_before: 28, cumulative_days_after: 43 });
     expect(d.clause).toEqual({ support_extension_max_days: 14, support_extension_frequency_window_days: 90, support_extension_cumulative_max_days: 30, support_extension_cumulative_window_days: 365 });
   });
-  it('A8-B-ELIG-4 a PAST_DUE row and an attested requester, in bounds → within_bounds', () => {
-    expect(decide(14)).toMatchObject({ within_bounds: true, breaches: [], eligibility: [] });
+  it('A8-B-ELIG-4 a PAST_DUE row and an attested requester, in bounds → eligible and within_bounds', () => {
+    expect(decide(14)).toMatchObject({ eligible: true, within_bounds: true, breaches: [], eligibility: [] });
   });
 });
 

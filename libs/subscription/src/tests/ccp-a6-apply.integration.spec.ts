@@ -619,7 +619,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A6 transactio
   it('A6R-REQ-3 a refused apply by an unauthorized actor writes exactly ONE refusal audit row even when the check runs before the apply transaction: finance_admin applying a support_admin request', async () => {
     const SA = await addOperator(pg, ['support_admin']);
     const t = await newTenant(pg);
-    const r = await h.changeRequests.create(as(SA, 'support_admin'), { action_type: 'SUPPORT_EXTENSION', tenant_id: t, product_key: 'sign', payload: { operation: 'EXTEND', subscription_id: '019a0000-0000-7000-8000-0000000a6e03', requested_days: 30 }, reason: 'support', idempotency_key: key() }, A6_CTX);
+    // CCP-R3: an EXTEND is created only after the A8 eligibility decision (the generic create
+    // refuses it); this test needs the stored request only, so it passes the A8 service's flag.
+    const r = await h.changeRequests.create(as(SA, 'support_admin'), { action_type: 'SUPPORT_EXTENSION', tenant_id: t, product_key: 'sign', payload: { operation: 'EXTEND', subscription_id: '019a0000-0000-7000-8000-0000000a6e03', requested_days: 30 }, reason: 'support', idempotency_key: key() }, A6_CTX, { support_extension_decided: true });
     const refusedBy = async (user: string, role: string) => {
       try {
         await h.apply.apply(as(user, role), r.request.id, A6_CTX);

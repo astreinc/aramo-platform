@@ -19,6 +19,10 @@
 -- Idempotent: a re-run inserts nothing and bumps nobody.
 -- splitDdl-safe: no semicolons and no double hyphens inside the single-quoted DO body, no
 -- statement terminator at a line end inside it, and no semicolon in a comment line.
+-- CCP-R3 (Aramo-CCP-A1-Amendment-A1-Finance-Amount-Scope-v1_0 LOCKED): the bundle check covers the
+-- A1 scope set (the 15 commercial scopes and platform:tenant:read) only, so a successor amendment's
+-- grant (20261028060000 platform:billing:amount:read) does not make a re-run refuse. Edited in
+-- place: no CCP migration is deployed (the CCP-D1-R precedent), recorded in CCP-R3-acceptance.
 -- Rollback (schedule §10.4): a compensating migration deleting the 45 RoleScope rows, the 15
 -- Scope rows and the 6 Role rows, guarded to RAISE if any membership references a new role.
 
@@ -160,6 +164,7 @@ DECLARE
           JOIN "identity"."Role" r ON r."id" = rs."role_id"
           JOIN "identity"."Scope" s ON s."id" = rs."scope_id"
           WHERE r."id" IN (SELECT "id" FROM "_ccp_a1_role")
+            AND (s."key" IN (SELECT "key" FROM "_ccp_a1_scope") OR s."id" = c_tr)
         EXCEPT SELECT g."role_key", g."scope_key" FROM "_ccp_a1_grant" g)
        UNION ALL
        (SELECT g."role_key", g."scope_key" FROM "_ccp_a1_grant" g

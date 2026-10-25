@@ -201,7 +201,9 @@ tags:
       version is never edited (409 `COMMERCIAL_CATALOG_CONFLICT`, details.reason
       `not_draft`); a change of terms is a new draft. Publishing and retiring are
       `PLAN_VERSION_PUBLISH` / `PLAN_RETIRE` change requests (Finance → Owner) applied by a
-      later slice; these routes never publish, retire or pin. Platform-tier only.
+      later slice; these routes never publish, retire or pin. `PLAN_RETIRE` retires one
+      specified plan version only (CCP-R3, TD-B2-1); there is no whole-plan retire.
+      Platform-tier only.
 paths:
   /v1/signup/sign/terms:
     get:
@@ -2169,7 +2171,7 @@ paths:
           description: Only alerts of this type (a type of this route's family).
           schema:
             type: string
-            enum: [COMMAND_PENDING_PROVIDER_STUCK, COMMAND_FAILED, HELD_ACTIVATION, WEBHOOK_INBOX_FAILED, USAGE_NOT_RECONCILED]
+            enum: [COMMAND_PENDING_PROVIDER_STUCK, COMMAND_FAILED, HELD_ACTIVATION, WEBHOOK_INBOX_FAILED, USAGE_NOT_RECONCILED, ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION]
         - name: tenant_id
           in: query
           required: false
@@ -3136,7 +3138,9 @@ paths:
         CCP-C6 — every open MANUAL or SELF_SERVICE base subscription in `PAST_DUE` or
         `INCOMPLETE`, with its grace state from `grace_until` (`IN_GRACE`, `GRACE_ENDED`,
         `NO_GRACE_DATE`), ordered by the soonest grace end. `amount_due` is always null with
-        `amount_due_reason: INVOICE_READ_NOT_DELIVERED` (the invoice read-through is CCP-C3).
+        `amount_due_reason: INVOICE_READ_NOT_DELIVERED`, and is sent only to a caller holding
+        `platform:billing:amount:read` (otherwise `amount_withheld: FINANCE_SCOPE_REQUIRED`;
+        CCP-A1 Amendment A1). List prices are the catalog's and are unchanged.
         Read-only. Requires `platform:billing:read`.
       security:
         - BearerAuth: []
@@ -3492,7 +3496,7 @@ paths:
         Applies an APPROVED (or APPLY_FAILED, retry) request of action type SUBSCRIPTION_OPEN,
         SUBSCRIPTION_CHANGE, SUBSCRIPTION_END or ENTITLEMENT_GRANT (CCP-A6), ENTITLEMENT_REVOKE (CCP-A7), or PLAN_VERSION_PUBLISH or
         PLAN_RETIRE (CCP-B2-backend: the catalog lifecycle; publishing or retiring never moves a
-        subscription), or POLICY_ACTIVATE (CCP-B5-R: APPROVED → APPLYING → APPLIED in the transaction
+        subscription; PLAN_RETIRE retires the one plan version it names, never the whole plan), or POLICY_ACTIVATE (CCP-B5-R: APPROVED → APPLYING → APPLIED in the transaction
         that activates the policy version, after the NC-5 snapshot re-check; the requester must still
         hold finance_admin). Only the original requester, a person, with live requester authority may apply
         (CCP-A6-R). A6 actions run in ONE local transaction under the
@@ -3749,12 +3753,18 @@ paths:
         billing lock the request is decided against the ACTIVE commercial policy: within bounds
         (length ≤ `support_extension_max_days`; no extension in the rolling
         `support_extension_frequency_window_days`; cumulative days in the rolling
-        `support_extension_cumulative_window_days` ≤ `support_extension_cumulative_max_days`; a
-        PAST_DUE row and an attested requester) it is applied at once as a `kind: EXCEPTION`
-        request with zero approvals, and every audit event carries `is_exception: true`
-        (`outcome: APPLIED`). Any breach (LENGTH, FREQUENCY, CUMULATIVE, ELIGIBILITY) escalates: a
-        NORMAL request is created and submitted for Finance and NOTHING is applied
-        (`outcome: ESCALATED`); it is approved and applied through the change-request routes.
+        `support_extension_cumulative_window_days` ≤ `support_extension_cumulative_max_days`) it is
+        applied at once as a `kind: EXCEPTION` request with zero approvals, and every audit event
+        carries `is_exception: true` (`outcome: APPLIED`). A limit breach (LENGTH, FREQUENCY,
+        CUMULATIVE) escalates: a NORMAL request is created and submitted for Finance and NOTHING is
+        applied (`outcome: ESCALATED`); it is approved and applied through the change-request
+        routes. CCP-R3 (TD-A8-3 refined): eligibility is checked first and is a REFUSAL, not an
+        escalation — a row that is not PAST_DUE, or a requester without an active D9 attestation,
+        is refused with 409 `COMMERCIAL_CHANGE_REQUEST_CONFLICT`, `details.reason:
+        support_extension_ineligible` and `details.eligibility` (SUBSCRIPTION_NOT_PAST_DUE,
+        REQUESTER_NOT_ATTESTED); exactly one `SUPPORT_EXTENSION_REFUSED_INELIGIBLE` audit event is
+        written and nothing is applied or escalated. The generic change-request create refuses a
+        SUPPORT_EXTENSION `EXTEND` (400 `support_extension_dedicated_route`).
         Idempotent on `idempotency_key` (a replay returns 200 `replayed: true`).
       security:
         - BearerAuth: []
@@ -5205,7 +5215,10 @@ components:
         action (details.reason `invalid_payload`); a tenant or product rule
         (details.reason `tenant_product_required`, `unknown_product_key`,
         `tenant_not_found`); an unsupported kind (`kind_not_supported`); or a malformed
-        cursor (`invalid_cursor`).
+        cursor (`invalid_cursor`). CCP-R3: a `PLAN_RETIRE` without `plan_version_id`
+        (`plan_version_id_required`: PLAN_RETIRE retires one specified plan version; there is no
+        whole-plan retire); a SUPPORT_EXTENSION `EXTEND` on the generic create
+        (`support_extension_dedicated_route`).
       content:
         application/json:
           schema:
@@ -5237,7 +5250,8 @@ components:
     CommercialChangeRequestConflict:
       description: |
         `COMMERCIAL_CHANGE_REQUEST_CONFLICT` (details.reason `state_invalid`,
-        `open_request_exists` or `integrity`), `IDEMPOTENCY_KEY_CONFLICT`, or (CCP-A9)
+        `open_request_exists`, `integrity` or, CCP-R3, `support_extension_ineligible` with
+        details.eligibility), `IDEMPOTENCY_KEY_CONFLICT`, or (CCP-A9)
         `PLATFORM_LAST_OWNER` — a `ROLE_REVOKE` of the platform's last effective
         `platform_owner` (details.reason `platform_last_owner`).
       content:
@@ -5727,6 +5741,12 @@ components:
         payload:
           type: object
           additionalProperties: true
+          description: |
+            The event payload. CCP-R3 (CCP-A1 Amendment A1): a tenant-specific `amount_minor` (a
+            CREDIT's chain basis) is sent only with `platform:billing:read` and
+            `platform:billing:amount:read`; otherwise it is omitted with
+            `amount_withheld: FINANCE_SCOPE_REQUIRED`. The CSV export's `detail` column follows the
+            same rule, and its audit event records `amounts: INCLUDED | WITHHELD`.
         correlation_id:
           type: string
 
@@ -6845,6 +6865,11 @@ components:
     BillingStatusInvoice:
       type: object
       additionalProperties: false
+      description: |
+        CCP-R3 (Aramo-CCP-A1-Amendment-A1-Finance-Amount-Scope-v1_0, LOCKED): an invoice is a set of
+        tenant-specific Finance figures. It is sent only to a caller holding
+        `platform:billing:amount:read` in addition to `platform:billing:read` (FA-1); see
+        `TenantBillingStatusResponse.invoices`.
       required: [provider, invoice_ref, number, subscription_ref, provider_status, payment_state, currency, total_minor, amount_due_minor, amount_paid_minor, amount_remaining_minor, created_at, due_at, period_start, period_end, attempt_count, next_attempt_at, hosted_url, document_url]
       properties:
         provider:
@@ -6896,10 +6921,27 @@ components:
         document_url:
           type: [string, 'null']
 
+    FinanceAmountWithheld:
+      type: string
+      enum: [FINANCE_SCOPE_REQUIRED]
+      description: |
+        CCP-R3 (Aramo-CCP-A1-Amendment-A1-Finance-Amount-Scope-v1_0, LOCKED; FA-5) — the marker set
+        where a tenant-specific monetary figure is omitted because the caller does not hold
+        `platform:billing:amount:read` in addition to `platform:billing:read`. The figure is never
+        sent. Holders: platform_owner, finance_admin, read_only_auditor. Catalog list prices (a plan
+        version's published price) are governed by catalog read authority and never withheld (FA-3).
+
     TenantBillingStatusResponse:
       type: object
       additionalProperties: false
-      required: [tenant_id, product_key, availability, provider, mode, subscription, provider_subscription, invoices, detail, read_at]
+      description: |
+        CCP-R3 (CCP-A1 Amendment A1): `payment_due` / `payment_overdue` (FA-4) are derived for every
+        `platform:billing:read` holder from the newest 50 invoices (the same window for every caller,
+        whatever `invoice_limit` is). `invoices` is present ONLY for a caller that also holds
+        `platform:billing:amount:read`; otherwise it is absent (no amount, currency, line, link or
+        count) and `amount_withheld` is `FINANCE_SCOPE_REQUIRED`, and a provider error's text is
+        replaced by a fixed `detail` line (FA-6).
+      required: [tenant_id, product_key, availability, provider, mode, subscription, provider_subscription, payment_due, payment_overdue, detail, read_at]
       properties:
         tenant_id:
           type: string
@@ -6947,10 +6989,19 @@ components:
               format: date-time
             cancel_at_period_end:
               type: boolean
+        payment_due:
+          type: boolean
+          description: An invoice is open with an amount owed (payment_state DUE, OVERDUE or PAYMENT_FAILED).
+        payment_overdue:
+          type: boolean
+          description: An open invoice is past its due date (payment_state OVERDUE).
         invoices:
           type: array
+          description: Only with `platform:billing:amount:read` (FA-1).
           items:
             $ref: '#/components/schemas/BillingStatusInvoice'
+        amount_withheld:
+          $ref: '#/components/schemas/FinanceAmountWithheld'
         detail:
           type: [string, 'null']
         read_at:
@@ -7130,7 +7181,11 @@ components:
     FinanceOutstandingItem:
       type: object
       additionalProperties: false
-      required: [subscription_id, tenant_id, tenant_name, product_key, source, status, plan_key, version_number, billing_subscription_ref, status_since, grace_until, grace_state, current_period_end, amount_due, amount_due_reason, list_price, unpriced_reason, price_source, plan_version_id]
+      description: |
+        CCP-R3 (CCP-A1 Amendment A1): `amount_due` (always null here; see `amount_due_reason`) is
+        present only with `platform:billing:amount:read`; otherwise `amount_withheld` is set. The
+        list price is the plan version's catalog price (FA-3) and is shown to every reader.
+      required: [subscription_id, tenant_id, tenant_name, product_key, source, status, plan_key, version_number, billing_subscription_ref, status_since, grace_until, grace_state, current_period_end, amount_due_reason, list_price, unpriced_reason, price_source, plan_version_id]
       properties:
         subscription_id:
           type: string
@@ -7168,7 +7223,9 @@ components:
           format: date-time
         amount_due:
           type: 'null'
-          description: Never computed here (the invoice read-through is CCP-C3, not delivered).
+          description: Never computed here (the invoice read-through is CCP-C3). Only with `platform:billing:amount:read`.
+        amount_withheld:
+          $ref: '#/components/schemas/FinanceAmountWithheld'
         amount_due_reason:
           type: string
           enum: [INVOICE_READ_NOT_DELIVERED]
@@ -7378,7 +7435,7 @@ components:
           items:
             type: object
             additionalProperties: false
-            required: [tenant_id, tenant_name, product_key, capabilities]
+            required: [tenant_id, tenant_name, product_key, capabilities, residual_authority, residual_authority_until]
             properties:
               tenant_id:
                 type: string
@@ -7391,6 +7448,18 @@ components:
                 type: array
                 items:
                   type: string
+              residual_authority:
+                type: [string, 'null']
+                enum: [GRACE, SUPPORT_OVERLAY, null]
+                description: |
+                  CCP-R3 (TD-A7-5) — what still bounds the gap after `as_of`: the grace of an ended
+                  base row, or a live support-extension overlay. null = none remains, which is
+                  exactly the CCP-D3 `ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION` alert condition (one
+                  shared rule). Nothing is revoked automatically; access already fails closed
+                  without an open sending subscription.
+              residual_authority_until:
+                type: [string, 'null']
+                format: date-time
         held_activations:
           type: array
           items:
@@ -7465,16 +7534,22 @@ components:
           format: uuid
         alert_type:
           type: string
-          enum: [COMMAND_PENDING_PROVIDER_STUCK, COMMAND_FAILED, HELD_ACTIVATION, WEBHOOK_INBOX_FAILED, USAGE_NOT_RECONCILED, APPLY_FAILED, APPROVAL_NEARING_EXPIRY, APPROVAL_PAST_EXPIRY]
+          enum: [COMMAND_PENDING_PROVIDER_STUCK, COMMAND_FAILED, HELD_ACTIVATION, WEBHOOK_INBOX_FAILED, USAGE_NOT_RECONCILED, ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION, APPLY_FAILED, APPROVAL_NEARING_EXPIRY, APPROVAL_PAST_EXPIRY]
+          description: |
+            CCP-R3 (TD-A7-5): `ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION` (BILLING, subject_kind
+            `product_entitlement`, subject_id `<tenant_id>:<product_key>`) — a live product
+            entitlement with no open base subscription of that product, past grace and with no live
+            support-extension overlay. It resolves itself when the condition ends; the scanner never
+            revokes anything.
         family:
           type: string
           enum: [BILLING, APPROVAL]
         subject_kind:
           type: string
-          enum: [billing_command, reconciliation_flag, webhook_inbox, usage_metric, change_request]
+          enum: [billing_command, reconciliation_flag, webhook_inbox, usage_metric, product_entitlement, change_request]
         subject_id:
           type: string
-          description: The subject's id (a uuid, or a metric key for usage_metric).
+          description: The subject's id (a uuid, a metric key for usage_metric, or `<tenant_id>:<product_key>` for product_entitlement).
         tenant_id:
           type: [string, 'null']
           format: uuid
@@ -7594,7 +7669,7 @@ components:
         open_alerts_by_type:
           type: object
           additionalProperties: false
-          required: [COMMAND_PENDING_PROVIDER_STUCK, COMMAND_FAILED, HELD_ACTIVATION, WEBHOOK_INBOX_FAILED, USAGE_NOT_RECONCILED]
+          required: [COMMAND_PENDING_PROVIDER_STUCK, COMMAND_FAILED, HELD_ACTIVATION, WEBHOOK_INBOX_FAILED, USAGE_NOT_RECONCILED, ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION]
           properties:
             COMMAND_PENDING_PROVIDER_STUCK:
               type: integer
@@ -7609,6 +7684,9 @@ components:
               type: integer
               minimum: 0
             USAGE_NOT_RECONCILED:
+              type: integer
+              minimum: 0
+            ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION:
               type: integer
               minimum: 0
         thresholds:
@@ -7679,6 +7757,10 @@ components:
 
     CommercialActionType:
       type: string
+      description: |
+        CCP-R3 (TD-B2-1): `PLAN_RETIRE` retires ONE specified plan version (payload
+        `{ plan_version_id }`, required; 400 `plan_version_id_required` without it). It never
+        retires a whole plan; the plan and its other versions are unchanged.
       enum: [SUBSCRIPTION_OPEN, SUBSCRIPTION_CHANGE, SUBSCRIPTION_END, ENTITLEMENT_GRANT, ENTITLEMENT_REVOKE, PLAN_VERSION_PUBLISH, PLAN_RETIRE, POLICY_ACTIVATE, SUPPORT_EXTENSION, ROLE_GRANT, ROLE_REVOKE, CREDIT, DISCOUNT, CONVERSION]
 
     CommercialChangeRequestState:
@@ -7777,6 +7859,12 @@ components:
         payload:
           type: object
           additionalProperties: true
+          description: |
+            The stored payload. CCP-R3 (CCP-A1 Amendment A1): a CREDIT's tenant-specific
+            `amount_minor` is sent only to a caller holding `platform:billing:read` and
+            `platform:billing:amount:read`; otherwise it is omitted (here and in
+            `required_chain.basis`) with `amount_withheld: FINANCE_SCOPE_REQUIRED`.
+            `payload_checksum` is the stored row's checksum over the full payload.
         payload_checksum:
           type: string
         required_chain:
@@ -8167,15 +8255,19 @@ components:
     SupportExtensionDecision:
       type: object
       additionalProperties: false
-      required: [within_bounds, breaches, eligibility, counters, clause]
+      required: [eligible, within_bounds, breaches, eligibility, counters, clause]
       properties:
+        eligible:
+          type: boolean
+          description: CCP-R3 (TD-A8-3 refined) — always true on an outcome; an ineligible request is refused (409 `support_extension_ineligible`), never escalated.
         within_bounds:
           type: boolean
         breaches:
           type: array
+          description: The limit breaches (CCP-R3 — eligibility is not a breach; it is a refusal).
           items:
             type: string
-            enum: [LENGTH, FREQUENCY, CUMULATIVE, ELIGIBILITY]
+            enum: [LENGTH, FREQUENCY, CUMULATIVE]
         eligibility:
           type: array
           items:

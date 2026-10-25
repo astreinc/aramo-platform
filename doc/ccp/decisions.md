@@ -163,3 +163,13 @@ Post-merge fixes made on the integrated program branch (TD-MERGE-n). Each merge 
   - (b) amend the state machine so the requester may WITHDRAW an APPLY_FAILED request;
   - (c) amend AD-2.
 - Nothing is built until it is ruled.
+
+## CCP-R3 acceptance reconciliation (2026-10-25, on `41a0e3b5`; record `doc/ccp/slices/CCP-R3-acceptance.md`)
+- **Finance amount scope implemented** per `Aramo-CCP-A1-Amendment-A1-Finance-Amount-Scope-v1_0-LOCKED.md` (prefix `c3ce572ae19bba55`): `platform:billing:amount:read` (0x335) to platform_owner, finance_admin, read_only_auditor; identity migration `20261028060000_ccp_a1a1_finance_amount_scope`; totals 25 / 206 / 987. Field authorization on C3, C6 outstanding, A3 change requests, A2 audit and the B5 export; FA-4 `payment_due` / `payment_overdue` for every billing reader. The FA-9 interim was built first and is superseded.
+- **D-R3-1 (Architect to confirm):** C6 list prices are read as FA-3 catalog prices and stay visible to every billing reader; only the amount owed is withheld there.
+- **D-R3-2:** the CCP-A1 migration's exact-matrix check is scoped to A1's own scope set (edited in place; nothing deployed), so a successor grant does not make it refuse.
+- **TD-A8-3 implemented:** ineligibility is the refusal `SUPPORT_EXTENSION_INELIGIBLE` with one `SUPPORT_EXTENSION_REFUSED_INELIGIBLE` audit row; the generic create no longer accepts an EXTEND (bypass closed).
+- **TD-A7-5 implemented:** D3 alert `ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION` (migration `20261028050000_ccp_r3_entitlement_alert`), one rule shared with the C6 report (`residual_authority`). No automatic revoke.
+- **TD-R3-1 (Lead / PO decision request):** the capacity (upload) reserve of an OPEN, non-sending row (PAST_DUE past grace, INCOMPLETE) is still admitted, as the CCP-A4 Sign golden pins. Refusing it would change live Sign behaviour; not built.
+- **DR-C2-3 conditions proven** (C2-R3-1…3); no gap. **TD-B2-1:** `plan_version_id_required`; UI "Retire this version"; DV-R3-1. **TD-D3-9:** R3-D39-1 (no sweep).
+- **TD-C4-7 (Lead) designed in:** one shared redaction `withholdChangeRequestAmounts` / `withholdAuditPayloadAmounts`, keyed on `MONETARY_ACTION_TYPES` = CREDIT, DISCOUNT, REFUND (REFUND arrives with C4), serves the A3 list / detail / mutations, the A2 audit read and the B5 export. **D-R3-7:** DISCOUNT `discount_bps` is read as not monetary and stays visible.

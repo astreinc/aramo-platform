@@ -33,6 +33,8 @@ export const ROLE_SCOPES = {
     'platform:billing:approve',
     'platform:approval:read',
     'platform:commercial:audit:read',
+    // CCP-A1 Amendment A1 (FA-2).
+    'platform:billing:amount:read',
   ],
   finance_admin: [
     'platform:tenant:read',
@@ -45,6 +47,8 @@ export const ROLE_SCOPES = {
     'platform:billing:approve',
     'platform:approval:read',
     'platform:commercial:audit:read',
+    // CCP-A1 Amendment A1 (FA-2).
+    'platform:billing:amount:read',
   ],
   commercial_ops: [
     'platform:tenant:read',
@@ -72,6 +76,8 @@ export const ROLE_SCOPES = {
     'platform:billing:read',
     'platform:approval:read',
     'platform:commercial:audit:read',
+    // CCP-A1 Amendment A1 (FA-2).
+    'platform:billing:amount:read',
   ],
   super_admin: [...SUPER_ADMIN_SCOPES],
 } as const;

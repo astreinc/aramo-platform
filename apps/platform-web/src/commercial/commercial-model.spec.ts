@@ -3,6 +3,7 @@ import { describe, expect, it } from 'vitest';
 import { APPROVAL_REFUSALS } from './commercial-api';
 import {
   REFUSAL_LABEL,
+  amountWithheld,
   chainMarks,
   chainName,
   chainSummary,
@@ -157,6 +158,8 @@ describe('inbox tabs and sort (handoff §5.1)', () => {
 describe('summary and effect from the request payload', () => {
   it('credit / discount / extension / role change', () => {
     expect(summaryOf(request({ id: 'a' }), me)).toBe('$350 account credit');
+    // CCP-R3 (CCP-A1 Amendment A1): a caller without platform:billing:amount:read gets the marker, not the figure.
+    expect(summaryOf(request({ id: 'a', payload: { currency: 'USD', amount_withheld: 'FINANCE_SCOPE_REQUIRED' } }), me)).toBe('Amount withheld — Finance amount access required');
     expect(summaryOf(request({ id: 'a', action_type: 'DISCOUNT', payload: { discount_bps: 3000 } }), me)).toBe('30% discount');
     expect(summaryOf(request({ id: 'a', action_type: 'SUPPORT_EXTENSION', payload: { requested_days: 14 } }), me)).toBe('+14 day support extension (escalated)');
     expect(summaryOf(request({ id: 'a', action_type: 'ROLE_GRANT', payload: { subject_user_id: OTHER_ID, role_key: 'finance_admin' } }), me)).toBe('Grant Finance admin to 0190000…');
@@ -168,6 +171,9 @@ describe('summary and effect from the request payload', () => {
   });
   it('the before side is null unless the request fixes it', () => {
     expect(effectRows(request({ id: 'a' }), me)).toEqual([{ field: 'Account credit', before: null, after: '$350' }]);
+    expect(effectRows(request({ id: 'a', payload: { amount_withheld: 'FINANCE_SCOPE_REQUIRED' } }), me)).toEqual([{ field: 'Account credit', before: null, after: 'Amount withheld — Finance amount access required' }]);
+    expect(amountWithheld({ amount_withheld: 'FINANCE_SCOPE_REQUIRED' })).toBe(true);
+    expect(amountWithheld({ amount_minor: 1 })).toBe(false);
     expect(effectRows(request({ id: 'a', action_type: 'ROLE_REVOKE', payload: { subject_user_id: ME_ID, role_key: 'finance_admin' } }), me)).toEqual([
       { field: 'Priya Shah · Finance admin', before: 'Held', after: 'Not held' },
     ]);

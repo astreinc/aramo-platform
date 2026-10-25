@@ -5,6 +5,7 @@ import { PRODUCT_CAPABILITIES, assertProductKey, isProductKey, type ProductKey }
 import { PrismaService } from '../prisma/prisma.service.js';
 
 import { BILLING_PROVIDER_PORT, type BillingProviderPort } from './billing-provider.port.js';
+import { RESIDUAL_AUTHORITY_SQL, entitlementGaps, type ResidualAuthorityKind } from './entitlement-subscription-gap.js';
 import { GOVERNED_SUBSCRIPTION_OPEN } from './governed-subscription.js';
 
 // CCP-C6 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.2 row C6; Conversion Rule C-8;
@@ -142,6 +143,13 @@ export interface EntitledWithoutSubscription {
   readonly tenant_name: string | null;
   readonly product_key: string;
   readonly capabilities: string[];
+  /**
+   * CCP-R3 (TD-A7-5) — what still bounds the gap: the latest grace of an ended BASE row, or a live
+   * support-extension overlay, after `as_of`. null = none remains: exactly the CCP-D3
+   * ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION condition (the same pure rule, entitlementGaps).
+   */
+  readonly residual_authority: ResidualAuthorityKind | null;
+  readonly residual_authority_until: Date | null;
 }
 
 export interface HeldActivation {
@@ -469,7 +477,9 @@ export class BillingFinanceReportService {
       const inbox = await tx.$queryRawUnsafe<Array<{ failed: number; unprocessed: number }>>(
         `SELECT count(*) FILTER (WHERE status = 'FAILED')::int AS failed, count(*) FILTER (WHERE status IN ('RECEIVED', 'PROCESSING'))::int AS unprocessed FROM subscription."BillingWebhookInbox"`,
       );
-      return { subs, entitlements, flags, commands, inbox: inbox[0] ?? { failed: 0, unprocessed: 0 } };
+      // CCP-R3 (TD-A7-5) — residual authority of a tenant × product with no open row (the D3 rule).
+      const residual = await tx.$queryRawUnsafe<Array<{ tenant_id: string; product_key: string; kind: ResidualAuthorityKind; until: Date }>>(RESIDUAL_AUTHORITY_SQL, as_of);
+      return { subs, entitlements, flags, commands, residual, inbox: inbox[0] ?? { failed: 0, unprocessed: 0 } };
     });
 
     const capsOf = new Map<string, Set<string>>();
@@ -518,18 +528,17 @@ export class BillingFinanceReportService {
       };
     });
 
-    // Product capabilities held with no open subscription of that product ('core' is shared, never product-specific).
-    const entitled_without_subscription: EntitledWithoutSubscription[] = [];
+    // Product capabilities held with no open subscription of that product ('core' is shared, never
+    // product-specific). CCP-R3: the shared rule (entitlementGaps), so this list and the D3
+    // ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION alert agree; each gap names its residual authority.
     const products = opts.product_key === undefined ? (Object.keys(PRODUCT_CAPABILITIES) as ProductKey[]) : [opts.product_key];
-    for (const [tenant_id, caps] of capsOf) {
-      for (const product_key of products) {
-        const specific = PRODUCT_CAPABILITIES[product_key].filter((c) => c !== 'core' && caps.has(c));
-        if (specific.length === 0) continue;
-        if (subscriptions.some((s) => s.tenant_id === tenant_id && s.product_key === product_key)) continue;
-        entitled_without_subscription.push({ tenant_id, tenant_name: nameOf.get(tenant_id) ?? null, product_key, capabilities: [...specific].sort() });
-      }
-    }
-    entitled_without_subscription.sort((a, b) => (a.tenant_id < b.tenant_id ? -1 : a.tenant_id > b.tenant_id ? 1 : 0));
+    const entitled_without_subscription: EntitledWithoutSubscription[] = entitlementGaps({
+      entitlements: data.entitlements,
+      open_base: subscriptions,
+      residual: data.residual.map((r) => ({ ...r, until: new Date(r.until) })),
+      products,
+      at: as_of,
+    }).map((g) => ({ tenant_id: g.tenant_id, tenant_name: nameOf.get(g.tenant_id) ?? null, product_key: g.product_key, capabilities: g.capabilities, residual_authority: g.residual_authority, residual_authority_until: g.residual_authority_until }));
 
     const held_activations: HeldActivation[] = [];
     const other_open_flags: OtherOpenFlag[] = [];

@@ -30,7 +30,7 @@ export interface CommercialAlertDto {
   alert_type: string;
   // BILLING | APPROVAL
   family: string;
-  // billing_command | reconciliation_flag | webhook_inbox | usage_metric | change_request
+  // billing_command | reconciliation_flag | webhook_inbox | usage_metric | product_entitlement (CCP-R3) | change_request
   subject_kind: string;
   subject_id: string;
   tenant_id: string | null;

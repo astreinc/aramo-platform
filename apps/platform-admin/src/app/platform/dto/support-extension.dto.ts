@@ -70,7 +70,10 @@ export interface SupportExtensionListDto {
 }
 
 export interface SupportExtensionDecisionDto {
+  /** CCP-R3: always true on an outcome (an ineligible request is refused, 409 support_extension_ineligible). */
+  eligible: boolean;
   within_bounds: boolean;
+  /** CCP-R3: limit breaches only (LENGTH | FREQUENCY | CUMULATIVE). */
   breaches: string[];
   eligibility: string[];
   counters: { requested_days: number; extensions_in_frequency_window: number; cumulative_days_before: number; cumulative_days_after: number };

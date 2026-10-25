@@ -86,13 +86,20 @@ export function extensionUse(prior: readonly SupportExtension[], clause: Extensi
   return { uses: inFreq.length, cumulative, lastInWindow };
 }
 
-export type PreviewBreach = 'LENGTH' | 'FREQUENCY' | 'CUMULATIVE' | 'ELIGIBILITY';
+/** CCP-R3 (TD-A8-3 refined): only a limit breach escalates; eligibility is a separate refusal. */
+export type PreviewBreach = 'LENGTH' | 'FREQUENCY' | 'CUMULATIVE';
+
+/** The copy of an eligibility refusal (the server's SUPPORT_EXTENSION_INELIGIBLE). */
+export const INELIGIBLE_NOT_PAST_DUE = 'The subscription isn’t past due, so a support extension isn’t available. Nothing will be requested or escalated.';
+export const INELIGIBLE_NOT_ATTESTED = 'Your account has no active one-person attestation, so a support extension isn’t available. Nothing was requested or escalated.';
 
 export interface ExtensionPreview {
   readonly days: number;
+  /** CCP-R3: false → the request is refused (not escalated); the dialog cannot submit it. */
+  readonly eligible: boolean;
   readonly withinBounds: boolean;
   readonly breaches: readonly PreviewBreach[];
-  /** The first breach's line (design order: length, frequency, cumulative; then eligibility). */
+  /** The ineligibility line when not eligible; else the first breach's line (design order: length, frequency, cumulative). */
   readonly why: string;
   readonly use: ExtensionUse;
 }
@@ -116,30 +123,34 @@ export function previewExtension(input: {
   if (days > clause.support_extension_max_days) breaches.push('LENGTH');
   if (use.uses > 0) breaches.push('FREQUENCY');
   if (use.cumulative + days > clause.support_extension_cumulative_max_days) breaches.push('CUMULATIVE');
-  if (input.subscription?.status !== 'PAST_DUE') breaches.push('ELIGIBILITY');
+  // The attestation is the server's to check; the row's status is known here.
+  const eligible = input.subscription?.status === 'PAST_DUE';
   const first = breaches[0];
-  const why =
-    first === 'LENGTH'
+  const why = !eligible
+    ? INELIGIBLE_NOT_PAST_DUE
+    : first === 'LENGTH'
       ? `More than ${clause.support_extension_max_days} days in one extension.`
       : first === 'FREQUENCY'
         ? `A previous extension was used ${use.lastInWindow ? relLabel(use.lastInWindow.applied_at, input.now) : 'recently'}, inside the ${clause.support_extension_frequency_window_days}-day window.`
         : first === 'CUMULATIVE'
           ? `Cumulative days would exceed ${clause.support_extension_cumulative_max_days}.`
-          : first === 'ELIGIBILITY'
-            ? 'The subscription isn’t past due, so the extension can’t apply as an exception.'
-            : '';
-  return { days, withinBounds: breaches.length === 0, breaches, why, use };
+          : '';
+  return { days, eligible, withinBounds: breaches.length === 0, breaches, why, use };
 }
 
-/** The server's breach codes → the same first-match line (after a POST that escalated). */
-export function breachLine(breaches: readonly string[], eligibility: readonly string[], clause: Record<string, number> | null | undefined): string {
+/** The server's limit-breach codes → the same first-match line (after a POST that escalated). */
+export function breachLine(breaches: readonly string[], clause: Record<string, number> | null | undefined): string {
   const c = clause ?? {};
   if (breaches.includes('LENGTH')) return `More than ${c['support_extension_max_days'] ?? '—'} days in one extension.`;
   if (breaches.includes('FREQUENCY')) return `A previous extension was used inside the ${c['support_extension_frequency_window_days'] ?? '—'}-day window.`;
   if (breaches.includes('CUMULATIVE')) return `Cumulative days would exceed ${c['support_extension_cumulative_max_days'] ?? '—'}.`;
-  if (eligibility.includes('REQUESTER_NOT_ATTESTED')) return 'Your account has no active one-person attestation, so a zero-approval exception isn’t allowed.';
-  if (eligibility.includes('SUBSCRIPTION_NOT_PAST_DUE')) return 'The subscription isn’t past due, so the extension can’t apply as an exception.';
   return 'It is outside the policy bounds.';
+}
+
+/** CCP-R3 — the server's eligibility refusal (409 support_extension_ineligible) → one line. */
+export function ineligibleLine(eligibility: readonly string[]): string {
+  if (eligibility.includes('REQUESTER_NOT_ATTESTED')) return INELIGIBLE_NOT_ATTESTED;
+  return INELIGIBLE_NOT_PAST_DUE.replace('Nothing will be requested', 'Nothing was requested');
 }
 
 // ── subscription facts (handoff §5.9 "Subscription facts", §5.3 status) ──────────────────────

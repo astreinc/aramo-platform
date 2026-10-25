@@ -15,6 +15,7 @@ import {
   type CommercialApprovalRow,
   type CommercialCallContext,
   type CommercialChangeRequestRow,
+  withholdChangeRequestAmounts,
 } from '@aramo/subscription';
 
 import {
@@ -27,6 +28,7 @@ import {
   ListCommercialChangeRequestsQueryDto,
   RejectCommercialChangeRequestDto,
 } from './dto/commercial-change-request.dto.js';
+import { amountAccess } from './finance-amount-access.js';
 
 // CCP-A3 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.1 row A3) — the commercial
 // change-request and approval surface. Platform consumer only (the DDR §13.1 tripwire).
@@ -78,7 +80,7 @@ export class PlatformCommercialChangeRequestController {
       ),
     );
     res.status(out.replayed ? 200 : 201);
-    return { request: requestDto(out.request), replayed: out.replayed };
+    return { request: requestDto(out.request, amountAccess(auth)), replayed: out.replayed };
   }
 
   @Get()
@@ -102,7 +104,7 @@ export class PlatformCommercialChangeRequestController {
         ctxOf(requestId),
       ),
     );
-    return { requests: page.requests.map(requestDto), next_cursor: page.next_cursor };
+    return { requests: page.requests.map((r) => requestDto(r, amountAccess(auth))), next_cursor: page.next_cursor };
   }
 
   @Get(':id')
@@ -113,7 +115,7 @@ export class PlatformCommercialChangeRequestController {
     @RequestId() requestId: string,
   ): Promise<CommercialChangeRequestDetailDto> {
     this.platformOnly(auth, requestId);
-    return detailDto(await this.run(requestId, () => this.service.get(actorOf(auth), id, ctxOf(requestId))));
+    return detailDto(await this.run(requestId, () => this.service.get(actorOf(auth), id, ctxOf(requestId))), amountAccess(auth));
   }
 
   @Post(':id/submit')
@@ -121,7 +123,7 @@ export class PlatformCommercialChangeRequestController {
   @RequireScopes('platform:approval:read')
   async submit(@Param('id', new ParseUUIDPipe()) id: string, @AuthContext() auth: AuthContextType, @RequestId() requestId: string): Promise<{ request: CommercialChangeRequestDto }> {
     this.platformOnly(auth, requestId);
-    return { request: requestDto(await this.run(requestId, () => this.service.submit(actorOf(auth), id, ctxOf(requestId)))) };
+    return { request: requestDto(await this.run(requestId, () => this.service.submit(actorOf(auth), id, ctxOf(requestId))), amountAccess(auth)) };
   }
 
   @Post(':id/withdraw')
@@ -129,7 +131,7 @@ export class PlatformCommercialChangeRequestController {
   @RequireScopes('platform:approval:read')
   async withdraw(@Param('id', new ParseUUIDPipe()) id: string, @AuthContext() auth: AuthContextType, @RequestId() requestId: string): Promise<{ request: CommercialChangeRequestDto }> {
     this.platformOnly(auth, requestId);
-    return { request: requestDto(await this.run(requestId, () => this.service.withdraw(actorOf(auth), id, ctxOf(requestId)))) };
+    return { request: requestDto(await this.run(requestId, () => this.service.withdraw(actorOf(auth), id, ctxOf(requestId))), amountAccess(auth)) };
   }
 
   @Post(':id/approvals')
@@ -145,7 +147,7 @@ export class PlatformCommercialChangeRequestController {
     const out = await this.run(requestId, () => this.service.approve(actorOf(auth), id, { step_index: body.step_index, comment: body.comment ?? null }, ctxOf(requestId)));
     const apply = out.apply ?? null;
     return {
-      request: requestDto(out.request),
+      request: requestDto(out.request, amountAccess(auth)),
       approval: approvalDto(out.approval),
       apply: apply === null ? null : { applied: apply.applied, reason: apply.reason, detail: apply.detail },
     };
@@ -161,7 +163,7 @@ export class PlatformCommercialChangeRequestController {
     @RequestId() requestId: string,
   ): Promise<{ request: CommercialChangeRequestDto }> {
     this.platformOnly(auth, requestId);
-    return { request: requestDto(await this.run(requestId, () => this.service.reject(actorOf(auth), id, { reason: body.reason }, ctxOf(requestId)))) };
+    return { request: requestDto(await this.run(requestId, () => this.service.reject(actorOf(auth), id, { reason: body.reason }, ctxOf(requestId))), amountAccess(auth)) };
   }
 
   private platformOnly(auth: AuthContextType, requestId: string): void {
@@ -234,6 +236,9 @@ export function toAramoError(err: unknown, requestId: string): unknown {
         return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, { requestId, details: { reason: 'state_invalid', ...d } });
       case 'INTEGRITY':
         return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, { requestId, details: { reason: 'integrity', ...d } });
+      case 'SUPPORT_EXTENSION_INELIGIBLE':
+        // CCP-R3 (TD-A8-3 refined): an eligibility refusal, audited; nothing applied or escalated.
+        return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, { requestId, details: { ...d, reason: 'support_extension_ineligible' } });
     }
   }
   return err;
@@ -241,7 +246,7 @@ export function toAramoError(err: unknown, requestId: string): unknown {
 
 const iso = (d: Date | null): string | null => (d === null ? null : d.toISOString());
 
-export function requestDto(r: CommercialChangeRequestRow): CommercialChangeRequestDto {
+export function requestDto(r: CommercialChangeRequestRow, amount_access: boolean): CommercialChangeRequestDto {
   const chain = r.required_chain as CommercialChangeRequestDto['required_chain'];
   return {
     id: r.id,
@@ -250,9 +255,14 @@ export function requestDto(r: CommercialChangeRequestRow): CommercialChangeReque
     state: r.state,
     tenant_id: r.tenant_id,
     product_key: r.product_key,
-    payload: (r.payload ?? {}) as Record<string, unknown>,
+    // CCP-R3 (CCP-A1 Amendment A1, FA-1 / FA-5; TD-C4-7): a monetary action's (CREDIT, DISCOUNT,
+    // REFUND) tenant-specific amount is sent only to
+    // a caller holding platform:billing:read AND platform:billing:amount:read; otherwise it is
+    // omitted from the payload and the chain basis (`amount_withheld: "FINANCE_SCOPE_REQUIRED"`).
+    // payload_checksum stays the stored row's checksum (over the full payload).
+    payload: withholdChangeRequestAmounts(r.action_type, (r.payload ?? {}) as Record<string, unknown>, amount_access),
     payload_checksum: r.payload_checksum,
-    required_chain: { rule: chain.rule, basis: chain.basis ?? {}, steps: chain.steps },
+    required_chain: { rule: chain.rule, basis: withholdChangeRequestAmounts(r.action_type, chain.basis ?? {}, amount_access), steps: chain.steps },
     policy_version_id: r.policy_version_id,
     policy_checksum: r.policy_checksum,
     requested_by: r.requested_by,
@@ -283,9 +293,9 @@ export function approvalDto(a: CommercialApprovalRow): CommercialApprovalDto {
   };
 }
 
-function detailDto(v: ChangeRequestView): CommercialChangeRequestDetailDto {
+function detailDto(v: ChangeRequestView, amount_access: boolean): CommercialChangeRequestDetailDto {
   return {
-    request: requestDto(v.request),
+    request: requestDto(v.request, amount_access),
     approvals: v.approvals.map(approvalDto),
     is_expired: v.is_expired,
     chain_satisfiable: v.chain_satisfiable,

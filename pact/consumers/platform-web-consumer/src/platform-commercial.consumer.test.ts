@@ -171,6 +171,9 @@ const iso = (example = '2026-10-25T10:00:00.000Z') => regex(ISO, example);
 const HEX64 = (example = 'a'.repeat(64)) => regex('^[0-9a-f]{64}$', example);
 
 const CREDIT_PAYLOAD = { amount_minor: 100, currency: 'USD' };
+// CCP-R3 (Aramo-CCP-A1-Amendment-A1-Finance-Amount-Scope-v1_0, LOCKED; FA-5): a caller without
+// platform:billing:amount:read (commercial_ops here) receives the CREDIT payload without the amount.
+const CREDIT_PAYLOAD_WITHHELD = { currency: 'USD', amount_withheld: 'FINANCE_SCOPE_REQUIRED' };
 const CREATE_BODY = {
   action_type: 'CREDIT',
   tenant_id: CREATE_TENANT,
@@ -191,7 +194,7 @@ const FINANCE_ONLY_CHAIN = {
 // CommercialChangeRequestDto (platform-commercial-change-request.controller.ts requestDto).
 function requestBody(
   state: string,
-  o: { submitted?: boolean; approved?: boolean; rejected?: boolean; withdrawn?: boolean; tenant?: string } = {},
+  o: { submitted?: boolean; approved?: boolean; rejected?: boolean; withdrawn?: boolean; tenant?: string; withheld?: boolean } = {},
 ): Record<string, unknown> {
   return {
     id: uuid(EX_REQUEST_ID),
@@ -200,7 +203,7 @@ function requestBody(
     state,
     tenant_id: o.tenant === undefined ? uuid(CREATE_TENANT) : o.tenant,
     product_key: 'sign',
-    payload: like(CREDIT_PAYLOAD),
+    payload: o.withheld === true ? CREDIT_PAYLOAD_WITHHELD : like(CREDIT_PAYLOAD),
     payload_checksum: HEX64(),
     required_chain: FINANCE_ONLY_CHAIN,
     policy_version_id: POLICY_V1,
@@ -365,7 +368,7 @@ describe('platform-web → POST /platform/commercial/change-requests (CCP-A3)', 
         b.headers(platformJson('commercial_ops')).jsonBody(CREATE_BODY);
       })
       .willRespondWith(201, (b) => {
-        b.jsonBody({ request: requestBody('DRAFT', { tenant: CREATE_TENANT }), replayed: false });
+        b.jsonBody({ request: requestBody('DRAFT', { tenant: CREATE_TENANT, withheld: true }), replayed: false });
       })
       .executeTest(async (mock) => {
         const res = await call(`${mock.url}${CR}`, 'POST', platformJson('commercial_ops'), CREATE_BODY);
@@ -522,7 +525,7 @@ describe('platform-web → POST /platform/commercial/change-requests/{id}/submit
         b.headers(platformSession('commercial_ops'));
       })
       .willRespondWith(200, (b) => {
-        b.jsonBody({ request: requestBody('PENDING_APPROVAL', { submitted: true }) });
+        b.jsonBody({ request: requestBody('PENDING_APPROVAL', { submitted: true, withheld: true }) });
       })
       .executeTest(async (mock) => {
         const res = await call(`${mock.url}${CR}/${EX_REQUEST_ID}/submit`, 'POST', platformSession('commercial_ops'));
@@ -558,7 +561,7 @@ describe('platform-web → POST /platform/commercial/change-requests/{id}/withdr
         b.headers(platformSession('commercial_ops'));
       })
       .willRespondWith(200, (b) => {
-        b.jsonBody({ request: requestBody('WITHDRAWN', { withdrawn: true }) });
+        b.jsonBody({ request: requestBody('WITHDRAWN', { withdrawn: true, withheld: true }) });
       })
       .executeTest(async (mock) => {
         const res = await call(`${mock.url}${CR}/${EX_REQUEST_ID}/withdraw`, 'POST', platformSession('commercial_ops'));
@@ -1274,6 +1277,9 @@ describe('platform-web → GET /platform/commercial/tenants/{tenant_id}/billing-
             hosted_url: like('https://invoice.test/in_pact_c3'),
             document_url: null,
           }),
+          // CCP-R3 (CCP-A1 Amendment A1, FA-4): the derived booleans, for every billing reader.
+          payment_due: true,
+          payment_overdue: true,
           detail: null,
           read_at: iso(),
         });
@@ -1282,6 +1288,50 @@ describe('platform-web → GET /platform/commercial/tenants/{tenant_id}/billing-
         const res = await call(`${mock.url}${BILLING_STATUS}?product_key=sign&invoice_limit=12`, 'GET', platformSession('finance_admin'));
         expect(res.status).toBe(200);
         expect((res.body['invoices'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+
+  it('support_admin (platform:billing:read without platform:billing:amount:read) reads the due / overdue booleans only: no invoices, no amount, currency or link (CCP-R3, FA-4 / FA-5)', async () => {
+    await provider
+      .addInteraction()
+      .given('a tenant with a Stripe-owned subscription and invoices exists', { tenant_id: C3_TENANT })
+      .uponReceiving('a tenant billing status read by support_admin')
+      .withRequest('GET', BILLING_STATUS, (b) => {
+        b.headers(platformSession('support_admin')).query({ product_key: 'sign', invoice_limit: '1' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          tenant_id: uuid(C3_TENANT),
+          product_key: 'sign',
+          availability: 'AVAILABLE',
+          provider: 'STRIPE',
+          mode: 'test',
+          subscription: {
+            id: uuid('cca10000-0000-7000-8000-0000000000d3'),
+            source: 'SELF_SERVICE',
+            status: like('PAST_DUE'),
+            open: true,
+            account_ref: like('acct_pact_c3'),
+            subscription_ref: like('sub_pact_c3'),
+          },
+          provider_subscription: {
+            provider_status: like('past_due'),
+            current_period_start: iso(),
+            current_period_end: iso(),
+            cancel_at_period_end: false,
+          },
+          payment_due: true,
+          payment_overdue: true,
+          amount_withheld: 'FINANCE_SCOPE_REQUIRED',
+          detail: null,
+          read_at: iso(),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${BILLING_STATUS}?product_key=sign&invoice_limit=1`, 'GET', platformSession('support_admin'));
+        expect(res.status).toBe(200);
+        expect(res.body['invoices']).toBeUndefined();
+        expect(JSON.stringify(res.body)).not.toMatch(/_minor|hosted_url|currency/);
       });
   });
 
@@ -1432,7 +1482,7 @@ describe('platform-web → GET /platform/commercial/finance/renewals (CCP-C6)', 
 });
 
 describe('platform-web → GET /platform/commercial/finance/outstanding-payments (CCP-C6)', () => {
-  it('commercial_ops reads the outstanding payments (200; amount due never computed)', async () => {
+  it('commercial_ops reads the outstanding payments (200; the amount owed is withheld — no platform:billing:amount:read, CCP-R3)', async () => {
     await provider
       .addInteraction()
       .given('finance records exist')
@@ -1459,7 +1509,7 @@ describe('platform-web → GET /platform/commercial/finance/outstanding-payments
             grace_until: iso('2026-10-30T10:00:00.000Z'),
             grace_state: 'IN_GRACE',
             current_period_end: iso('2026-11-15T10:00:00.000Z'),
-            amount_due: null,
+            amount_withheld: 'FINANCE_SCOPE_REQUIRED',
             amount_due_reason: 'INVOICE_READ_NOT_DELIVERED',
             ...PRICED,
           }),
@@ -1603,7 +1653,7 @@ describe('platform-web → POST /platform/commercial/support-extensions (CCP-A8)
           }),
           extension: like(SE_EXTENSION(SE_TENANT_APPLY, SE_SUB_APPLY)),
           application: like({ action_type: 'SUPPORT_EXTENSION', capabilities: [], attempt: 1 }),
-          decision: like({ within_bounds: true, breaches: [] }),
+          decision: like({ eligible: true, within_bounds: true, breaches: [] }),
         });
       })
       .executeTest(async (mock) => {
@@ -1629,7 +1679,7 @@ describe('platform-web → POST /platform/commercial/support-extensions (CCP-A8)
           request: like({ action_type: 'SUPPORT_EXTENSION', kind: 'NORMAL', state: 'PENDING_APPROVAL', required_chain: like({ rule: 'FINANCE_ONLY' }) }),
           extension: null,
           application: null,
-          decision: like({ within_bounds: false, breaches: ['LENGTH'] }),
+          decision: like({ eligible: true, within_bounds: false, breaches: ['LENGTH'] }),
         });
       })
       .executeTest(async (mock) => {
@@ -1906,7 +1956,7 @@ describe('platform-web → GET /platform/commercial/metrics/billing (CCP-D3)', (
           commands_pending_provider_past_threshold: integer(0),
           webhook_inbox_by_status: counts(['RECEIVED', 'PROCESSING', 'PROCESSED', 'FAILED']),
           open_reconciliation_flags_by_reason: like({}),
-          open_alerts_by_type: counts(['COMMAND_PENDING_PROVIDER_STUCK', 'COMMAND_FAILED', 'HELD_ACTIVATION', 'WEBHOOK_INBOX_FAILED', 'USAGE_NOT_RECONCILED']),
+          open_alerts_by_type: counts(['COMMAND_PENDING_PROVIDER_STUCK', 'COMMAND_FAILED', 'HELD_ACTIVATION', 'WEBHOOK_INBOX_FAILED', 'USAGE_NOT_RECONCILED', 'ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION']),
           thresholds: THRESHOLDS,
         });
       })

@@ -19,14 +19,16 @@ import { SubscriptionModule } from '../lib/subscription.module.js';
 // CCP-D3 unit tests: the closed alert set mirrors the migration CHECK; thresholds are configuration
 // with documented defaults (never a policy constant); the register diff.
 
-const MIGRATION = resolve(__dirname, '../../prisma/migrations/20261026090000_ccp_d3_operational_alerts/migration.sql');
+// CCP-R3 re-asserts the type CHECK with ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION: the latest CHECK
+// body is the R3 one (the D3 migration's original CHECK is kept verbatim in its file).
+const MIGRATION = resolve(__dirname, '../../prisma/migrations/20261028050000_ccp_r3_entitlement_alert/migration.sql');
 
 const cond = (alert_type: DetectedCondition['alert_type'], subject_id: string): DetectedCondition => ({ alert_type, subject_id, tenant_id: null, product_key: null, detail: 'd', evidence: {}, threshold_minutes: null });
 
 describe('CCP-D3 alert model', () => {
-  it('D3-U-1 the closed set: 8 types in 2 families, each pinned to one subject kind, equal to the migration type CHECK', () => {
-    expect(COMMERCIAL_ALERT_TYPES).toHaveLength(8);
-    expect(commercialAlertTypesOf('BILLING')).toEqual(['COMMAND_PENDING_PROVIDER_STUCK', 'COMMAND_FAILED', 'HELD_ACTIVATION', 'WEBHOOK_INBOX_FAILED', 'USAGE_NOT_RECONCILED']);
+  it('D3-U-1 the closed set: 9 types in 2 families (CCP-R3 adds ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION), each pinned to one subject kind, equal to the migration type CHECK', () => {
+    expect(COMMERCIAL_ALERT_TYPES).toHaveLength(9);
+    expect(commercialAlertTypesOf('BILLING')).toEqual(['COMMAND_PENDING_PROVIDER_STUCK', 'COMMAND_FAILED', 'HELD_ACTIVATION', 'WEBHOOK_INBOX_FAILED', 'USAGE_NOT_RECONCILED', 'ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION']);
     expect(commercialAlertTypesOf('APPROVAL')).toEqual(['APPLY_FAILED', 'APPROVAL_NEARING_EXPIRY', 'APPROVAL_PAST_EXPIRY']);
     const sql = readFileSync(MIGRATION, 'utf8');
     const triples = [...sql.matchAll(/\("alert_type" = '([A-Z_]+)' AND "family" = '([A-Z]+)' AND "subject_kind" = '([a-z_]+)'\)/g)].map((m) => [m[1], m[2], m[3]]);

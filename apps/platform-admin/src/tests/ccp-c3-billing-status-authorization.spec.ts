@@ -37,16 +37,22 @@ import { generateTestKeyPair } from './test-keys.js';
 
 const SCOPE = 'platform:billing:read';
 const ENTRY = 'platform:tenant:read';
+// CCP-R3 — Aramo-CCP-A1-Amendment-A1-Finance-Amount-Scope-v1_0 (LOCKED) FA-2: the amount scope,
+// granted to exactly platform_owner, finance_admin and read_only_auditor.
+const AMOUNT = 'platform:billing:amount:read';
 const BUNDLES: Record<string, readonly string[]> = {
-  platform_owner: [ENTRY, 'platform:catalog:read', 'platform:catalog:approve', 'platform:catalog:publish', 'platform:subscription:read', 'platform:subscription:approve', 'platform:entitlement:approve', SCOPE, 'platform:billing:approve', 'platform:approval:read', 'platform:commercial:audit:read'],
-  finance_admin: [ENTRY, 'platform:catalog:read', 'platform:catalog:approve', 'platform:subscription:read', 'platform:subscription:approve', 'platform:entitlement:approve', SCOPE, 'platform:billing:approve', 'platform:approval:read', 'platform:commercial:audit:read'],
+  platform_owner: [ENTRY, 'platform:catalog:read', 'platform:catalog:approve', 'platform:catalog:publish', 'platform:subscription:read', 'platform:subscription:approve', 'platform:entitlement:approve', SCOPE, 'platform:billing:approve', 'platform:approval:read', 'platform:commercial:audit:read', AMOUNT],
+  finance_admin: [ENTRY, 'platform:catalog:read', 'platform:catalog:approve', 'platform:subscription:read', 'platform:subscription:approve', 'platform:entitlement:approve', SCOPE, 'platform:billing:approve', 'platform:approval:read', 'platform:commercial:audit:read', AMOUNT],
   commercial_ops: [ENTRY, 'platform:catalog:read', 'platform:subscription:read', 'platform:subscription:request', 'platform:entitlement:request', SCOPE, 'platform:billing:request', 'platform:approval:read'],
   catalog_manager: [ENTRY, 'platform:catalog:read', 'platform:catalog:draft', 'platform:approval:read'],
   support_admin: [ENTRY, 'platform:catalog:read', 'platform:subscription:read', 'platform:subscription:support', SCOPE, 'platform:approval:read'],
-  read_only_auditor: [ENTRY, 'platform:catalog:read', 'platform:subscription:read', SCOPE, 'platform:approval:read', 'platform:commercial:audit:read'],
+  read_only_auditor: [ENTRY, 'platform:catalog:read', 'platform:subscription:read', SCOPE, 'platform:approval:read', 'platform:commercial:audit:read', AMOUNT],
   super_admin: ['platform:tenant:provision', ENTRY, 'platform:admin:invite', 'platform:tenant:lifecycle:manage', 'platform:skill:read', 'platform:skill:manage', 'platform:document_template:read', 'platform:document_template:manage', 'platform:matching_policy:read', 'platform:matching_policy:write'],
 };
 const ALLOWED = ['platform_owner', 'finance_admin', 'commercial_ops', 'support_admin', 'read_only_auditor'] as const;
+// FA-2 / FAS-1 / FAS-3: the amount holders, and the billing readers that get the booleans only.
+const AMOUNT_HOLDERS = ['platform_owner', 'finance_admin', 'read_only_auditor'] as const;
+const BOOLEAN_ONLY = ['commercial_ops', 'support_admin'] as const;
 const REFUSED = ['catalog_manager', 'super_admin'] as const;
 const TENANT = '0190dddd-0000-7000-8000-0000000c3001';
 const STATUS = `/platform/commercial/tenants/${TENANT}/billing-status`;
@@ -181,13 +187,19 @@ describe('CCP-C3 — per-role authorization on the read-through billing-status r
     expect(BUNDLES['super_admin']?.some((s) => /^platform:(commercial|catalog|subscription|entitlement|billing|approval):/.test(s))).toBe(false);
   });
 
-  for (const role of ALLOWED) {
-    it(`C3-R-1 allowed — ${role} → 200 on both routes (invoice status mirrored; portal NOT_CONFIGURED)`, async () => {
+  it('C3-R-0b (CCP-A1 Amendment A1 FA-2) exactly platform_owner, finance_admin and read_only_auditor hold platform:billing:amount:read; each also holds platform:billing:read', () => {
+    expect(Object.keys(BUNDLES).filter((r) => BUNDLES[r]?.includes(AMOUNT)).sort()).toEqual([...AMOUNT_HOLDERS].sort());
+    for (const r of AMOUNT_HOLDERS) expect(BUNDLES[r]).toContain(SCOPE);
+  });
+
+  for (const role of AMOUNT_HOLDERS) {
+    it(`C3-R-1 allowed, amount holder — ${role} → 200 on both routes: the invoices with their amounts and links, and payment_due / payment_overdue`, async () => {
       const s = await get(STATUS, role, '?product_key=sign');
       expect(s.status, JSON.stringify(s.body)).toBe(200);
-      expect(s.body).toMatchObject({ tenant_id: TENANT, availability: 'AVAILABLE', mode: 'test', subscription: { subscription_ref: 'sub_c3', open: true }, provider_subscription: { provider_status: 'past_due', current_period_end: '2026-11-01T00:00:00.000Z' }, read_at: '2026-10-26T12:00:00.000Z' });
+      expect(s.body).toMatchObject({ tenant_id: TENANT, availability: 'AVAILABLE', mode: 'test', subscription: { subscription_ref: 'sub_c3', open: true }, provider_subscription: { provider_status: 'past_due', current_period_end: '2026-11-01T00:00:00.000Z' }, payment_due: true, payment_overdue: true, read_at: '2026-10-26T12:00:00.000Z' });
+      expect(s.body.amount_withheld).toBeUndefined();
       expect(s.body.invoices).toEqual([
-        expect.objectContaining({ invoice_ref: 'in_c3', payment_state: 'OVERDUE', provider_status: 'open', currency: 'usd', amount_remaining_minor: 4900, due_at: '2026-10-15T00:00:00.000Z', hosted_url: 'https://invoice.test/in_c3' }),
+        expect.objectContaining({ invoice_ref: 'in_c3', payment_state: 'OVERDUE', provider_status: 'open', currency: 'usd', total_minor: 4900, amount_due_minor: 4900, amount_paid_minor: 0, amount_remaining_minor: 4900, due_at: '2026-10-15T00:00:00.000Z', hosted_url: 'https://invoice.test/in_c3' }),
       ]);
       const p = await get(PORTAL, role);
       expect(p.status, JSON.stringify(p.body)).toBe(200);
@@ -196,6 +208,59 @@ describe('CCP-C3 — per-role authorization on the read-through billing-status r
       expect(status.portalConfigurationStatus).toHaveBeenCalledTimes(1);
     });
   }
+
+  for (const role of BOOLEAN_ONLY) {
+    it(`C3-R-1 allowed, no amount scope — ${role} → 200: payment_due / payment_overdue only; no invoices field, no amount, currency, link, invoice ref or count (FA-4, FA-5)`, async () => {
+      const s = await get(STATUS, role, '?product_key=sign');
+      expect(s.status, JSON.stringify(s.body)).toBe(200);
+      expect(s.body).toMatchObject({ tenant_id: TENANT, availability: 'AVAILABLE', payment_due: true, payment_overdue: true, amount_withheld: 'FINANCE_SCOPE_REQUIRED' });
+      expect('invoices' in s.body).toBe(false);
+      const raw = JSON.stringify(s.body);
+      for (const leak of ['4900', '49.00', '"usd"', 'invoice.test', 'in_c3', 'A-0001', '_minor', 'hosted_url', 'document_url', 'currency']) expect(raw, leak).not.toContain(leak);
+      const p = await get(PORTAL, role);
+      expect(p.status).toBe(200);
+    });
+  }
+
+  it('C3-R-6 (FA-4) the booleans: an OVERDUE invoice → due and overdue; DUE or PAYMENT_FAILED → due only; PAID / VOID / no invoice → neither; the same for every billing reader', async () => {
+    const cases: Array<[string[], boolean, boolean]> = [
+      [['OVERDUE'], true, true],
+      [['DUE'], true, false],
+      [['PAYMENT_FAILED'], true, false],
+      [['PAID', 'VOID', 'DRAFT', 'UNCOLLECTIBLE'], false, false],
+      [[], false, false],
+    ];
+    for (const [states, due, overdue] of cases) {
+      const inv = STATUS_RESULT.invoices[0]!;
+      status.tenantBillingStatus.mockResolvedValue({ ...STATUS_RESULT, invoices: states.map((payment_state, n) => ({ ...inv, invoice_ref: `in_${n}`, payment_state: payment_state as typeof inv.payment_state })) });
+      for (const role of ALLOWED) {
+        const s = await get(STATUS, role, '?product_key=sign');
+        expect([s.body.payment_due, s.body.payment_overdue], `${role} ${states.join(',')}`).toEqual([due, overdue]);
+      }
+    }
+    status.tenantBillingStatus.mockResolvedValue(STATUS_RESULT);
+  });
+
+  it('C3-R-7 (FA-6) no leakage through error text: a provider error message reaches an amount holder, never a caller without the amount scope', async () => {
+    status.tenantBillingStatus.mockResolvedValue({ ...STATUS_RESULT, availability: 'PROVIDER_UNAVAILABLE', provider_subscription: null, invoices: [], detail: 'Stripe: invoice in_c3 amount_due 4900 usd could not be read' });
+    const holder = await get(STATUS, 'finance_admin', '?product_key=sign');
+    expect(holder.body.detail).toContain('4900');
+    for (const role of BOOLEAN_ONLY) {
+      const s = await get(STATUS, role, '?product_key=sign');
+      expect(s.body).toMatchObject({ availability: 'PROVIDER_UNAVAILABLE', detail: 'the billing provider could not be read', amount_withheld: 'FINANCE_SCOPE_REQUIRED', payment_due: false, payment_overdue: false });
+      expect(JSON.stringify(s.body)).not.toMatch(/4900|usd|in_c3/);
+    }
+    status.tenantBillingStatus.mockResolvedValue(STATUS_RESULT);
+  });
+
+  it('C3-R-8 (FA-6) no alternate path: invoice_limit does not change what a caller without the amount scope receives (the read window is fixed), and the 400 shape carries no figure', async () => {
+    const a = await get(STATUS, 'support_admin', '?product_key=sign&invoice_limit=1');
+    const b = await get(STATUS, 'support_admin', '?product_key=sign&invoice_limit=50');
+    expect({ ...a.body }).toEqual({ ...b.body });
+    const bad = await get(STATUS, 'support_admin', '?product_key=sign&invoice_limit=51');
+    expect(bad.status).toBe(400);
+    expect(JSON.stringify(bad.body)).not.toMatch(/4900|usd/);
+  });
 
   for (const role of REFUSED) {
     it(`C3-R-2 refused — ${role} → 403 INSUFFICIENT_PERMISSIONS (missing ${SCOPE}) on both routes; no service reached`, async () => {
@@ -221,9 +286,13 @@ describe('CCP-C3 — per-role authorization on the read-through billing-status r
     expect(status.portalConfigurationStatus).not.toHaveBeenCalled();
   });
 
-  it('C3-R-4 passes the tenant, product and invoice_limit through, typed', async () => {
-    expect((await get(STATUS, 'read_only_auditor', '?product_key=sign&invoice_limit=25')).status).toBe(200);
-    expect(status.tenantBillingStatus).toHaveBeenCalledWith(TENANT, 'sign', { invoice_limit: 25 });
+  it('C3-R-4 passes the tenant and product through, typed; the service read window is always the max (50) and invoice_limit only trims what an amount holder receives (CCP-R3, FA-4)', async () => {
+    const inv = STATUS_RESULT.invoices[0]!;
+    status.tenantBillingStatus.mockResolvedValueOnce({ ...STATUS_RESULT, invoices: [inv, { ...inv, invoice_ref: 'in_2' }, { ...inv, invoice_ref: 'in_3' }] });
+    const r = await get(STATUS, 'read_only_auditor', '?product_key=sign&invoice_limit=2');
+    expect(r.status).toBe(200);
+    expect(status.tenantBillingStatus).toHaveBeenCalledWith(TENANT, 'sign', { invoice_limit: 50 });
+    expect(r.body.invoices.map((i: { invoice_ref: string }) => i.invoice_ref)).toEqual(['in_c3', 'in_2']);
   });
 
   it('C3-R-5 only GET exists: POST, PUT, PATCH and DELETE on both paths are 404 for an allowed role', async () => {

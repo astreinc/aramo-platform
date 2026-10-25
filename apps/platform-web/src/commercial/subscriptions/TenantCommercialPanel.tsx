@@ -114,7 +114,9 @@ export function TenantCommercialPanel({ session, tenantId, tenantName, sign, now
       setDetails(Object.fromEntries(pairs));
       const signRow = value.products.find((p) => p.product_key === 'sign')?.subscription ?? null;
       if (canBilling && signRow !== null && signRow.ended_at === null && isStripeOwned(signRow)) {
-        setInvoice(await subscriptionsApi.invoiceLink(tenantId).catch(() => ({ availability: 'BILLING_UNAVAILABLE', hosted_url: null })));
+        setInvoice(
+          await subscriptionsApi.invoiceLink(tenantId).catch(() => ({ availability: 'BILLING_UNAVAILABLE', hosted_url: null, amount_withheld: false, payment_due: false, payment_overdue: false })),
+        );
       } else {
         setInvoice(null);
       }
@@ -145,7 +147,7 @@ export function TenantCommercialPanel({ session, tenantId, tenantName, sign, now
       toast.show('Extension applied as an exception — zero approvals, flagged in audit.');
       setNotice(null);
     } else {
-      const why = out.decision ? breachLine(out.decision.breaches, out.decision.eligibility, out.decision.clause) : '';
+      const why = out.decision ? breachLine(out.decision.breaches, out.decision.clause) : '';
       setNotice({ tone: 'warn', text: `Escalated to Finance — nothing was applied. ${why}`.trim(), requestId: out.request.id });
       toast.show('Submitted for approval. Nothing applies until Finance signs.');
     }
@@ -404,10 +406,16 @@ function ProductCard(props: ProductCardProps) {
               <b>Managed in Stripe.</b> The tenant pays through self-service checkout. Aramo doesn't edit this subscription.
             </span>
             <span className="cs-self__links">
+              {/* CCP-R3 (CCP-A1 Amendment A1): a holder of platform:billing:amount:read gets the link;
+                  any other billing reader gets the withheld state and the due / overdue boolean only (FA-4). */}
               {invoice?.availability === 'AVAILABLE' && invoice.hosted_url ? (
                 <a className="cs-self__link" href={invoice.hosted_url} target="_blank" rel="noopener noreferrer">
                   Invoices ↗
                 </a>
+              ) : invoice?.availability === 'AVAILABLE' && invoice.amount_withheld ? (
+                <span className="cs-self__off" data-testid="invoices-withheld" title="Invoice amounts need the Finance amount permission.">
+                  Invoices · withheld · {invoice.payment_overdue ? 'payment overdue' : invoice.payment_due ? 'payment due' : 'no payment due'}
+                </span>
               ) : (
                 <span className="cs-self__off" title="Stripe link-outs aren’t enabled yet.">
                   Invoices

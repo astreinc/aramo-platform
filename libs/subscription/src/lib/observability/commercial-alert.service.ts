@@ -4,9 +4,11 @@ import { v7 as uuidv7 } from 'uuid';
 import type { Prisma } from '../../../prisma/generated/client/client.js';
 import { BILLING_COMMAND_STATES } from '../billing/billing-provider-command.js';
 import { BILLING_WEBHOOK_INBOX_STATUSES } from '../billing/billing-webhook-inbox.service.js';
+import { RESIDUAL_AUTHORITY_SQL, entitlementGapSubject, entitlementGaps, type ResidualAuthorityKind } from '../billing/entitlement-subscription-gap.js';
 import { GOVERNED_SUBSCRIPTION_OPEN } from '../billing/governed-subscription.js';
 import { COMMERCIAL_CHANGE_REQUEST_STATES } from '../commercial/commercial-change-request.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { BASE_COMPOSITION, PRODUCT_KEYS } from '../product-registry.js';
 
 import {
   CCP_ALERT_RAISED_EVENT,
@@ -352,6 +354,35 @@ export class CommercialAlertService {
       }
     }
 
+    // ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION (CCP-R3, TD-A7-5) — a live product entitlement with no
+    // open BASE subscription of the product, past grace and with no live overlay. The C6 report's
+    // rule (entitlementGaps) over the same three reads; residual_authority null is the condition.
+    // Read-only: nothing is revoked (deferred governed revocation).
+    const hasRevoke = await tx.$queryRawUnsafe<Array<{ n: number }>>(
+      `SELECT count(*)::int AS n FROM information_schema.columns WHERE table_schema = 'entitlement' AND table_name = 'TenantEntitlement' AND column_name = 'revoked_at'`,
+    );
+    const live = (hasRevoke[0]?.n ?? 0) > 0 ? 'e.revoked_at IS NULL' : 'TRUE';
+    const entitlements = await tx.$queryRawUnsafe<Array<{ tenant_id: string; capability: string }>>(
+      `SELECT e.tenant_id::text AS tenant_id, e.capability::text AS capability FROM entitlement."TenantEntitlement" e WHERE ${live} ORDER BY e.tenant_id, e.capability`,
+    );
+    const openBase = await tx.tenantSubscription.findMany({ where: { ended_at: null, composition_role: BASE_COMPOSITION }, select: { tenant_id: true, product_key: true } });
+    const residual = await tx.$queryRawUnsafe<Array<{ tenant_id: string; product_key: string; kind: ResidualAuthorityKind; until: Date }>>(RESIDUAL_AUTHORITY_SQL, at);
+    const gaps = capped(
+      'ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION',
+      entitlementGaps({ entitlements, open_base: openBase, residual: residual.map((r) => ({ ...r, until: new Date(r.until) })), products: [...PRODUCT_KEYS], at }).filter((g) => g.residual_authority === null),
+    );
+    for (const g of gaps) {
+      out.push({
+        alert_type: 'ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION',
+        subject_id: entitlementGapSubject(g),
+        tenant_id: g.tenant_id,
+        product_key: g.product_key,
+        detail: `${g.product_key} entitlement (${g.capabilities.join(', ')}) is active with no open subscription, past grace and with no live support overlay; access is refused, the entitlement is not revoked automatically`,
+        evidence: { capabilities: g.capabilities, open_base_subscription: false, residual_authority: null },
+        threshold_minutes: null,
+      });
+    }
+
     // APPLY_FAILED
     const applyFailed = capped(
       'APPLY_FAILED',
@@ -449,6 +480,10 @@ export class CommercialAlertService {
         }
         case 'usage_metric':
           d = 'latest usage roll-up run reconciled';
+          break;
+        case 'product_entitlement':
+          // CCP-R3: an open subscription, a renewed grace or overlay, or a governed revoke ended it.
+          d = 'entitlement is now backed by an open subscription, a residual grace or overlay, or is revoked';
           break;
         default:
           d = 'condition no longer observed';

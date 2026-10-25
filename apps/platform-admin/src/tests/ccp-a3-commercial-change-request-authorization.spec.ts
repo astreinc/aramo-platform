@@ -42,13 +42,16 @@ import { generateTestKeyPair } from './test-keys.js';
 
 const SCOPE = 'platform:approval:read';
 const ENTRY = 'platform:tenant:read';
+// CCP-R3 — CCP-A1 Amendment A1 (LOCKED) FA-2: the amount scope's 3 holders.
+const AMOUNT = 'platform:billing:amount:read';
+const AMOUNT_HOLDERS: readonly string[] = ['platform_owner', 'finance_admin', 'read_only_auditor'];
 const BUNDLES: Record<string, readonly string[]> = {
-  platform_owner: [ENTRY, 'platform:catalog:read', 'platform:catalog:approve', 'platform:catalog:publish', 'platform:subscription:read', 'platform:subscription:approve', 'platform:entitlement:approve', 'platform:billing:read', 'platform:billing:approve', SCOPE, 'platform:commercial:audit:read'],
-  finance_admin: [ENTRY, 'platform:catalog:read', 'platform:catalog:approve', 'platform:subscription:read', 'platform:subscription:approve', 'platform:entitlement:approve', 'platform:billing:read', 'platform:billing:approve', SCOPE, 'platform:commercial:audit:read'],
+  platform_owner: [ENTRY, 'platform:catalog:read', 'platform:catalog:approve', 'platform:catalog:publish', 'platform:subscription:read', 'platform:subscription:approve', 'platform:entitlement:approve', 'platform:billing:read', 'platform:billing:approve', SCOPE, 'platform:commercial:audit:read', AMOUNT],
+  finance_admin: [ENTRY, 'platform:catalog:read', 'platform:catalog:approve', 'platform:subscription:read', 'platform:subscription:approve', 'platform:entitlement:approve', 'platform:billing:read', 'platform:billing:approve', SCOPE, 'platform:commercial:audit:read', AMOUNT],
   commercial_ops: [ENTRY, 'platform:catalog:read', 'platform:subscription:read', 'platform:subscription:request', 'platform:entitlement:request', 'platform:billing:read', 'platform:billing:request', SCOPE],
   catalog_manager: [ENTRY, 'platform:catalog:read', 'platform:catalog:draft', SCOPE],
   support_admin: [ENTRY, 'platform:catalog:read', 'platform:subscription:read', 'platform:subscription:support', 'platform:billing:read', SCOPE],
-  read_only_auditor: [ENTRY, 'platform:catalog:read', 'platform:subscription:read', 'platform:billing:read', SCOPE, 'platform:commercial:audit:read'],
+  read_only_auditor: [ENTRY, 'platform:catalog:read', 'platform:subscription:read', 'platform:billing:read', SCOPE, 'platform:commercial:audit:read', AMOUNT],
   super_admin: ['platform:tenant:provision', ENTRY, 'platform:admin:invite', 'platform:tenant:lifecycle:manage', 'platform:skill:read', 'platform:skill:manage', 'platform:document_template:read', 'platform:document_template:manage', 'platform:matching_policy:read', 'platform:matching_policy:write'],
 };
 const CCP_ROLES = ['platform_owner', 'finance_admin', 'commercial_ops', 'catalog_manager', 'support_admin', 'read_only_auditor'] as const;
@@ -73,7 +76,7 @@ const ROW = {
   product_key: 'sign',
   payload: { amount_minor: 1, currency: 'USD' },
   payload_checksum: 'a'.repeat(64),
-  required_chain: { format_version: 1, rule: 'FINANCE_ONLY', basis: {}, steps: [{ step_index: 0, role_key: 'finance_admin', scope_keys: ['platform:billing:approve'] }] },
+  required_chain: { format_version: 1, rule: 'FINANCE_ONLY', basis: { amount_minor: 1, currency: 'USD', credit_escalation_threshold_minor: 50000, escalates: false }, steps: [{ step_index: 0, role_key: 'finance_admin', scope_keys: ['platform:billing:approve'] }] },
   policy_version_id: '019a0000-0000-7000-8000-0000000cc201',
   policy_checksum: 'b'.repeat(64),
   requested_by: '019a0000-0000-7000-8000-00000000a3ff',
@@ -191,6 +194,16 @@ describe('CCP-A3 — route gate on /platform/commercial/change-requests (real Jw
         const res = await call(r, role);
         expect(res.status, JSON.stringify(res.body)).toBe(r.ok);
         expect(svcMock[r.fn]).toHaveBeenCalledTimes(1);
+        // CCP-R3 (CCP-A1 Amendment A1, FA-1 / FA-5): the CREDIT amount, in the payload and the chain
+        // basis, only for a holder of platform:billing:read AND platform:billing:amount:read.
+        const req = (res.body.request ?? res.body.requests?.[0]) as { payload: Record<string, unknown>; required_chain: { basis: Record<string, unknown> } };
+        if (AMOUNT_HOLDERS.includes(role)) {
+          expect(req.payload).toEqual({ amount_minor: 1, currency: 'USD' });
+          expect(req.required_chain.basis).toMatchObject({ amount_minor: 1 });
+        } else {
+          expect(req.payload).toEqual({ currency: 'USD', amount_withheld: 'FINANCE_SCOPE_REQUIRED' });
+          expect(req.required_chain.basis).toEqual({ currency: 'USD', credit_escalation_threshold_minor: 50000, escalates: false, amount_withheld: 'FINANCE_SCOPE_REQUIRED' });
+        }
       });
     }
     it(`A3-RT-${r.name} refuses super_admin with 403 (missing ${SCOPE}); the service is never reached`, async () => {
@@ -207,6 +220,34 @@ describe('CCP-A3 — route gate on /platform/commercial/change-requests (real Jw
       expect(svcMock[r.fn]).not.toHaveBeenCalled();
     });
   }
+
+  it('A3-RT-FA-1 (CCP-R3, TD-C4-7) the approvers who must see the amount to approve (finance_admin, platform_owner) hold platform:billing:amount:read: the detail and the approve response carry the CREDIT amount; commercial_ops and support_admin get the marker on list and detail', async () => {
+    for (const role of ['finance_admin', 'platform_owner']) {
+      expect(BUNDLES[role], role).toContain(AMOUNT);
+      const detail = await call(ROUTES[2] as Route, role);
+      expect(detail.body.request.payload, role).toEqual({ amount_minor: 1, currency: 'USD' });
+      const approve = await call(ROUTES[5] as Route, role);
+      expect(approve.body.request.payload, role).toEqual({ amount_minor: 1, currency: 'USD' });
+    }
+    for (const role of ['commercial_ops', 'support_admin']) {
+      for (const r of [ROUTES[1], ROUTES[2]] as Route[]) {
+        const res = await call(r, role);
+        const req = res.body.request ?? res.body.requests[0];
+        expect(req.payload, `${role} ${r.name}`).toEqual({ currency: 'USD', amount_withheld: 'FINANCE_SCOPE_REQUIRED' });
+        expect(JSON.stringify(res.body)).not.toMatch(/"amount_minor"/);
+      }
+    }
+  });
+
+  it('A3-RT-FA-2 (CCP-R3, D-R3-7) a DISCOUNT keeps discount_bps for every reader (a percentage is not a tenant amount)', async () => {
+    const discount = { ...ROW, action_type: 'DISCOUNT', payload: { discount_bps: 3000 }, required_chain: { ...ROW.required_chain, basis: { discount_bps: 3000, discount_escalation_threshold_bps: 2500, escalates: true } } };
+    for (const role of ['finance_admin', 'commercial_ops']) {
+      svcMock.list.mockResolvedValueOnce({ requests: [discount], next_cursor: null });
+      const res = await call(ROUTES[1] as Route, role);
+      expect(res.body.requests[0].payload, role).toEqual({ discount_bps: 3000 });
+      expect(res.body.requests[0].required_chain.basis, role).toEqual({ discount_bps: 3000, discount_escalation_threshold_bps: 2500, escalates: true });
+    }
+  });
 
   it('A3-RT-create passes the actor (sub, actor_kind, server-resolved scopes) and the body through; a replay answers 200', async () => {
     svcMock.create.mockResolvedValueOnce({ request: ROW, replayed: true });

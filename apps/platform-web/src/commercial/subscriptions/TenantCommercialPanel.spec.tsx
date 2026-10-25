@@ -159,13 +159,13 @@ describe('CCP-B3 Tenant › Commercial — governed vs Stripe-owned (handoff §5
     expect(await action('Request conversion to MANUAL…')).toBeEnabled();
   });
 
-  it('B3-T-INVOICE with an AVAILABLE billing read, Invoices links to the provider-hosted page (TD-C3-1); the other three stay unlinked', async () => {
+  it('B3-T-INVOICE with an AVAILABLE billing read for an amount holder, Invoices links to the provider-hosted page (TD-C3-1); the other three stay unlinked; no figure is rendered', async () => {
     const w = world({ tenant: commercial({ subscription: STRIPE_ROW() }) });
     const spy = installFetch(w, 'commercial_ops');
     const base = spy.getMockImplementation()!;
     spy.mockImplementation(async (input, init) => {
       const url = String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
-      if (url.includes('/billing-status')) return new Response(JSON.stringify({ availability: 'AVAILABLE', invoices: [{ hosted_url: 'https://invoice.stripe.com/i/test_1', total_minor: 5900 }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (url.includes('/billing-status')) return new Response(JSON.stringify({ availability: 'AVAILABLE', payment_due: true, payment_overdue: false, invoices: [{ hosted_url: 'https://invoice.stripe.com/i/test_1', total_minor: 5900 }] }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       return base(input, init);
     });
     renderAt();
@@ -174,6 +174,37 @@ describe('CCP-B3 Tenant › Commercial — governed vs Stripe-owned (handoff §5
     expect(link).toHaveAttribute('rel', 'noopener noreferrer');
     expect((await card()).textContent).not.toMatch(/59|\$/);
     expect(within(await card()).queryByRole('link', { name: /Payment methods|Proration|Cancellation/ })).toBeNull();
+  });
+
+  for (const [due, overdue, label] of [
+    [true, true, 'payment overdue'],
+    [true, false, 'payment due'],
+    [false, false, 'no payment due'],
+  ] as const) {
+    it(`B3-T-INVOICE-WITHHELD (CCP-R3, CCP-A1 Amendment A1 FA-4) without the amount scope: no link, the withheld state with "${label}"; no figure, currency or count`, async () => {
+      const w = world({ tenant: commercial({ subscription: STRIPE_ROW() }) });
+      const spy = installFetch(w, 'commercial_ops');
+      const base = spy.getMockImplementation()!;
+      spy.mockImplementation(async (input, init) => {
+        const url = String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+        if (url.includes('/billing-status')) return new Response(JSON.stringify({ availability: 'AVAILABLE', payment_due: due, payment_overdue: overdue, amount_withheld: 'FINANCE_SCOPE_REQUIRED' }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        return base(input, init);
+      });
+      renderAt();
+      const withheld = await within(await card()).findByTestId('invoices-withheld');
+      expect(withheld).toHaveTextContent(`Invoices · withheld · ${label}`);
+      expect(within(await card()).queryByRole('link', { name: /Invoices/ })).toBeNull();
+      expect((await card()).textContent).not.toMatch(/\$|USD/);
+    });
+  }
+
+  it('B3-T-INVOICE-OFF with an unavailable billing read, Invoices stays the disabled link-out (no withheld state)', async () => {
+    const w = world({ tenant: commercial({ subscription: STRIPE_ROW() }) });
+    installFetch(w, 'commercial_ops');
+    renderAt();
+    await within(await card()).findByTestId('managed-in-stripe');
+    expect(within(await card()).queryByTestId('invoices-withheld')).toBeNull();
+    expect(within(await card()).getByTitle('Stripe link-outs aren’t enabled yet.')).toHaveTextContent('Invoices');
   });
 });
 

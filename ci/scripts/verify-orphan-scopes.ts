@@ -120,6 +120,11 @@ export const CLASSIFICATIONS: Record<string, Classification> = {
   'platform:entitlement:request': { cls: 'SERVICE_ENFORCED', reason: 'requester scope for ENTITLEMENT_GRANT / _REVOKE change requests — CommercialChangeRequestService.create (libs/subscription/src/lib/commercial/commercial-change-request.ts; CCP A3)' },
   'platform:entitlement:approve': { cls: 'SERVICE_ENFORCED', reason: 'approval-step scope of entitlement chains — checkApprovalEligibility reads it LIVE in the approve transaction (libs/subscription/src/lib/commercial/commercial-approval-eligibility.ts; CCP A3)' },
   'platform:billing:request': { cls: 'SERVICE_ENFORCED', reason: 'requester scope for CREDIT / DISCOUNT change requests — CommercialChangeRequestService.create (libs/subscription/src/lib/commercial/commercial-change-request.ts; CCP A3)' },
+  // CCP-A1 Amendment A1 (Finance amount scope, LOCKED 2026-10-25; FA-1, FA-5) — field
+  // authorization below the platform:billing:read route gate: every tenant-specific monetary field
+  // is omitted (amount_withheld FINANCE_SCOPE_REQUIRED) unless the caller also holds it. No route
+  // serves amounts only, so no @RequireScopes names it.
+  'platform:billing:amount:read': { cls: 'SERVICE_ENFORCED', reason: 'field authorization of tenant-specific monetary fields — financeAmountAccess(auth.scopes) in the platform-admin C3 billing-status, C6 finance, A3 change-request, A2 audit and B5 audit-export mappers (apps/platform-admin/src/app/platform/finance-amount-access.ts; libs/subscription finance-amount-withholding.ts)' },
   'platform:billing:approve': { cls: 'SERVICE_ENFORCED', reason: 'approval-step scope of billing chains (credit, discount) — checkApprovalEligibility reads it LIVE in the approve transaction (libs/subscription/src/lib/commercial/commercial-approval-eligibility.ts; CCP A3)' },
   // --- EXIT_HYG (owning-lane ruling required) ---
   'consent:read': { cls: 'EXIT_HYG', reason: 'live internal ConsentController surface; keep-or-gate is a Consent/Portal-lane ruling (Dead-Residue Ledger)' },

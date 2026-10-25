@@ -38,7 +38,7 @@ import './catalog.css';
 // grandfathering line, the v1 locks, and the actions:
 //   - a catalog manager (platform:catalog:draft) creates a DRAFT from a version and edits it
 //     (price, envelopes per month, storage; saved when a field loses focus);
-//   - "Request publish…" / "Request retire…" create a PLAN_VERSION_PUBLISH / PLAN_RETIRE change
+//   - "Request publish…" / "Retire this version…" create a PLAN_VERSION_PUBLISH / PLAN_RETIRE change
 //     request and submit it (Finance → Owner). The console never publishes or retires;
 //   - a PUBLISHED or RETIRED version is read-only: no field is editable and no edit action exists.
 // Other roles see the view-only note; their buttons are disabled with the reason as a tooltip.
@@ -490,7 +490,8 @@ export function CatalogView({ session }: { readonly session: Session }) {
           onOpenChange={(o) => {
             if (!o) setDialog(null);
           }}
-          title={`${dialog.kind === 'publish' ? 'Request publish · ' : 'Request retire · '}${versionTitle(dialog.plan, dialog.version)}`}
+          // CCP-R3 (TD-B2-1): the retire request names one plan version; the title says so.
+          title={`${dialog.kind === 'publish' ? 'Request publish · ' : 'Retire this version · '}${versionTitle(dialog.plan, dialog.version)}`}
           sub={
             dialog.kind === 'publish'
               ? `Once published, v${String(dialog.version.version_number)} can’t be edited. Existing subscriptions stay on their pinned version; new subscriptions use v${String(dialog.version.version_number)}.`

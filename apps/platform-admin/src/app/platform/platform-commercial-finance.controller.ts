@@ -4,6 +4,7 @@ import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import {
   BillingFinanceReportService,
+  FINANCE_AMOUNT_WITHHELD,
   type HeldActivation,
   type OutstandingItem,
   type PriceFigure,
@@ -23,6 +24,7 @@ import {
   type RenewalItemDto,
   type RenewalsResponseDto,
 } from './dto/commercial-finance.dto.js';
+import { amountAccess } from './finance-amount-access.js';
 
 // CCP-C6 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.2 row C6; Conversion Rule C-8;
 // PLATFORM-UX-1 Amendment A1-4a / ruling A0-C6) — the dedicated Finance READ routes: the renewals
@@ -74,7 +76,7 @@ export function renewalItemDto(i: RenewalItem): RenewalItemDto {
   };
 }
 
-export function outstandingItemDto(i: OutstandingItem): OutstandingItemDto {
+export function outstandingItemDto(i: OutstandingItem, amount_access: boolean): OutstandingItemDto {
   return {
     subscription_id: i.subscription_id,
     tenant_id: i.tenant_id,
@@ -89,7 +91,8 @@ export function outstandingItemDto(i: OutstandingItem): OutstandingItemDto {
     grace_until: iso(i.grace_until),
     grace_state: i.grace_state,
     current_period_end: iso(i.current_period_end),
-    amount_due: null,
+    // CCP-R3 (CCP-A1 Amendment A1, FA-5): the amount owed is a tenant-specific figure.
+    ...(amount_access ? { amount_due: null } : { amount_withheld: FINANCE_AMOUNT_WITHHELD }),
     amount_due_reason: i.amount_due_reason,
     ...price(i),
   };
@@ -155,7 +158,7 @@ export class PlatformCommercialFinanceController {
   async outstanding(@Query() query: FinanceReportQueryDto, @AuthContext() auth: AuthContextType, @RequestId() requestId: string): Promise<OutstandingPaymentsResponseDto> {
     assertPlatform(auth, requestId);
     const r = await this.reports.outstandingPayments({ tenant_id: query.tenant_id, product_key: query.product_key });
-    return { as_of: r.as_of.toISOString(), currency: r.currency, billing_provider_mode: r.billing_provider_mode, items: r.items.map(outstandingItemDto), counts: { ...r.counts } };
+    return { as_of: r.as_of.toISOString(), currency: r.currency, billing_provider_mode: r.billing_provider_mode, items: r.items.map((i) => outstandingItemDto(i, amountAccess(auth))), counts: { ...r.counts } };
   }
 
   @Get('reconciliation-report')
@@ -169,7 +172,14 @@ export class PlatformCommercialFinanceController {
       billing_provider_mode: r.billing_provider_mode,
       status: r.status,
       subscriptions: r.subscriptions.map(reconciledDto),
-      entitled_without_subscription: r.entitled_without_subscription.map((e) => ({ ...e, capabilities: [...e.capabilities] })),
+      entitled_without_subscription: r.entitled_without_subscription.map((e) => ({
+        tenant_id: e.tenant_id,
+        tenant_name: e.tenant_name,
+        product_key: e.product_key,
+        capabilities: [...e.capabilities],
+        residual_authority: e.residual_authority,
+        residual_authority_until: iso(e.residual_authority_until),
+      })),
       held_activations: r.held_activations.map(heldDto),
       other_open_flags: r.other_open_flags.map((f) => ({ ...f, detected_at: f.detected_at.toISOString() })),
       counts: { ...r.counts, by_source: { ...r.counts.by_source }, by_status: { ...r.counts.by_status }, discrepancies: { ...r.counts.discrepancies } },

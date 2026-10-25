@@ -134,6 +134,11 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   'libs/identity/prisma/migrations/20261024120000_ccp_a1_commercial_role_catalog/migration.sql',
   // CCP-A9 — last-effective-platform_owner invariant (triggers only; splitter-safe bodies).
   'libs/identity/prisma/migrations/20261025180000_ccp_a9_platform_last_owner_invariant/migration.sql',
+  // CCP-A1 Amendment A1 (Finance amount scope, LOCKED 2026-10-25; FA-8) — platform:billing:amount:read
+  // (0x335) granted to exactly platform_owner, finance_admin and read_only_auditor; bumps the
+  // AuthorizationVersion of any principal whose effective set changed. One guarded, fail-closed DO
+  // block on fixed ids (a no-op without a role catalog). No returned-shape change.
+  'libs/identity/prisma/migrations/20261028060000_ccp_a1a1_finance_amount_scope/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each

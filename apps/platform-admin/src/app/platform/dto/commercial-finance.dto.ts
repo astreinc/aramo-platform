@@ -5,7 +5,8 @@ import { PRODUCT_KEYS, RENEWAL_HORIZON_MAX_DAYS, type ProductKey } from '@aramo/
 // CCP-C6 — GET /platform/commercial/finance/{renewals, outstanding-payments, reconciliation-report}
 // (platform:billing:read): the dedicated Finance read routes (A0-C6; PLATFORM-UX-1 A1-4a). They are
 // the ONLY platform routes that carry a monetary field. READ-ONLY. Every monetary figure is a plan
-// version's USD list price (minor units) per billing interval; no amount owed and no sum is computed.
+// version's USD list price (minor units) per billing interval (catalog authority, FA-3); no amount
+// owed and no sum is computed; the amount-owed field needs platform:billing:amount:read (CCP-R3).
 
 export class FinanceReportQueryDto {
   @IsOptional() @IsUUID() tenant_id?: string;
@@ -76,7 +77,11 @@ export interface OutstandingItemDto extends PriceFigureDto {
   // IN_GRACE | GRACE_ENDED | NO_GRACE_DATE
   grace_state: string;
   current_period_end: string | null;
-  amount_due: null;
+  // CCP-R3 (CCP-A1 Amendment A1, FA-1 / FA-5): the amount owed is a tenant-specific figure. With
+  // platform:billing:amount:read it is `amount_due` (null: never computed here, see the reason);
+  // without it the field is absent and `amount_withheld` is set.
+  amount_due?: null;
+  amount_withheld?: 'FINANCE_SCOPE_REQUIRED';
   amount_due_reason: string;
 }
 
@@ -133,7 +138,16 @@ export interface ReconciliationReportResponseDto {
   // RECONCILED | EXCEPTIONS
   status: string;
   subscriptions: ReconciledSubscriptionDto[];
-  entitled_without_subscription: Array<{ tenant_id: string; tenant_name: string | null; product_key: string; capabilities: string[] }>;
+  // CCP-R3 (TD-A7-5): residual_authority null = no grace and no live overlay remain (the D3
+  // ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION condition; GRACE | SUPPORT_OVERLAY otherwise).
+  entitled_without_subscription: Array<{
+    tenant_id: string;
+    tenant_name: string | null;
+    product_key: string;
+    capabilities: string[];
+    residual_authority: string | null;
+    residual_authority_until: string | null;
+  }>;
   held_activations: HeldActivationDto[];
   other_open_flags: Array<{ flag_id: string; tenant_id: string; reason: string; provider: string; subscription_ref: string; detected_at: string }>;
   counts: {

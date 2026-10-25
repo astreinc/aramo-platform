@@ -20,6 +20,7 @@ import {
   COMMERCIAL_OPEN_STATES,
   COMMERCIAL_ROLE_CHANGE_ACTIONS,
   COMMERCIAL_REQUEST_PRODUCT_KEYS,
+  CommercialPayloadError,
   POLICY_TARGET_CHECKSUM_KEY,
   type CommercialActionType,
   type CommercialChangeRequestKind,
@@ -116,7 +117,9 @@ export type CommercialChangeRequestErrorCode =
   // CCP-A6-R (TD-A6-3) — the requester no longer holds the requester scope at apply time.
   | 'REQUESTER_NO_LONGER_AUTHORIZED'
   // CCP-A6-R (Charter Amendment A1, AD-7) — the apply authority has expired.
-  | 'APPLY_EXPIRED';
+  | 'APPLY_EXPIRED'
+  // CCP-R3 (TD-A8-3 refined) — a support extension that is not eligible (refused, not escalated).
+  | 'SUPPORT_EXTENSION_INELIGIBLE';
 
 export class CommercialChangeRequestError extends Error {
   constructor(
@@ -289,7 +292,13 @@ export class CommercialChangeRequestService {
   // ---- create ---------------------------------------------------------------------------
 
   /** DRAFT creation. Idempotent on `idempotency_key` (same requester + same request). */
-  async create(actor: CommercialActor, input: CreateChangeRequestInput, ctx: CommercialCallContext): Promise<{ request: CommercialChangeRequestRow; replayed: boolean }> {
+  async create(
+    actor: CommercialActor,
+    input: CreateChangeRequestInput,
+    ctx: CommercialCallContext,
+    /** CCP-R3 — set only by SupportExtensionService after its eligibility decision. */
+    opts: { support_extension_decided?: boolean } = {},
+  ): Promise<{ request: CommercialChangeRequestRow; replayed: boolean }> {
     if (actor.actor_kind !== 'user') throw new CommercialChangeRequestError('NOT_HUMAN', 'only a user principal can request a commercial change');
     const def = COMMERCIAL_ACTIONS[input.action_type];
     const kind = input.kind ?? 'NORMAL';
@@ -318,9 +327,16 @@ export class CommercialChangeRequestService {
       try {
         return validatePayload(input.action_type, input.payload);
       } catch (e) {
-        throw new CommercialChangeRequestError('INVALID_INPUT', (e as Error).message, { reason: 'invalid_payload', errors: (e as { errors?: unknown }).errors ?? [] });
+        const reason = e instanceof CommercialPayloadError ? e.reason : 'invalid_payload';
+        throw new CommercialChangeRequestError('INVALID_INPUT', (e as Error).message, { reason, errors: (e as { errors?: unknown }).errors ?? [] });
       }
     })();
+    // CCP-R3 (TD-A8-3 refined): a SUPPORT_EXTENSION EXTEND is created only by the CCP-A8 service,
+    // after its eligibility check (an ineligible request is refused, never escalated). A direct
+    // create would escalate it to Finance without that check, so it is refused.
+    if (input.action_type === 'SUPPORT_EXTENSION' && validated['operation'] === 'EXTEND' && opts.support_extension_decided !== true) {
+      throw new CommercialChangeRequestError('INVALID_INPUT', 'a support extension is requested through POST /platform/commercial/support-extensions', { reason: 'support_extension_dedicated_route' });
+    }
     // CCP-B5 (pre-execution C-3): every POLICY_ACTIVATE carries the NC-5 snapshot of its
     // target's content; filled from the target row when the client omits it (re-verified
     // inside the create transaction, validateGovernanceTarget).

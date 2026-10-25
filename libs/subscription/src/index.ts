@@ -72,6 +72,33 @@ export {
   type PortalConfigurationState,
   type TenantBillingStatus,
 } from './lib/billing/billing-status-read.service.js';
+// CCP-R3 (CCP-A1 Amendment A1, LOCKED) — field authorization of tenant-specific monetary figures.
+export {
+  BILLING_READ_SCOPE,
+  FINANCE_AMOUNT_SCOPE,
+  FINANCE_AMOUNT_WITHHELD,
+  INVOICE_AMOUNT_FIELDS,
+  INVOICE_AMOUNT_LINK_FIELDS,
+  MONETARY_ACTION_TYPES,
+  PAYMENT_DUE_STATES,
+  PAYMENT_OVERDUE_STATES,
+  TENANT_AMOUNT_KEYS,
+  financeAmountAccess,
+  paymentFlags,
+  withholdAuditPayloadAmounts,
+  withholdChangeRequestAmounts,
+  withholdTenantAmounts,
+  type FinanceAmountWithheld,
+} from './lib/billing/finance-amount-withholding.js';
+// CCP-R3 (TD-A7-5) — the one entitlement-without-subscription rule (C6 report and D3 alert).
+export {
+  RESIDUAL_AUTHORITY_SQL,
+  entitlementGapSubject,
+  entitlementGaps,
+  type EntitlementGap,
+  type EntitlementGapInput,
+  type ResidualAuthorityKind,
+} from './lib/billing/entitlement-subscription-gap.js';
 // CCP-C1 — the Stripe command outbox and the webhook inbox.
 export {
   BILLING_COMMAND_ACTIONS,
@@ -283,6 +310,7 @@ export {
   POLICY_TARGET_CHECKSUM_KEY,
   CommercialChangeRequestIntegrityError,
   CommercialPayloadError,
+  PLAN_VERSION_ID_REQUIRED,
   canTransition,
   canTransitionFor,
   isA6Applicable,
@@ -423,6 +451,8 @@ export { CommercialConversionLedger, type ConversionReleaseRow } from './lib/com
 export { CommercialConversionService, type ConversionApplyResult, type ConversionStatus, type ConversionView } from './lib/commercial/commercial-conversion.service.js';
 // CCP-A8 (PBD §5.1 row A8; DDR v1.2 §3.2(5)) — the support exception overlay.
 export {
+  SUPPORT_EXTENSION_INELIGIBLE,
+  SUPPORT_EXTENSION_INELIGIBLE_EVENT,
   SUPPORT_EXTENSION_SCOPE,
   SupportExtensionService,
   type RequestSupportExtensionInput,
