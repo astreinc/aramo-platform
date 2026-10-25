@@ -263,3 +263,7 @@ hand-edit the generated projects. What they configure:
 - **Web links.** `WEB_LINKS.help` (`/help`) is assumed to exist on the Sign host;
   `/legal/terms` and `/legal/privacy` match routes sign-web serves.
 - **App icon and splash** are Expo defaults until brand assets are supplied.
+
+## Dependency exception: `expo-modules-jsi` 57.1.2
+
+Pinned through `overrides` to 57.1.2 (published 2026-10-12), 13 days old when adopted on 2026-10-25. That is one day under the 14-day rule. It is a targeted fix: per the upstream changelog, 57.1.2 fixes "the xcframework failing to build with Xcode 26 (Swift 6.2): `RuntimeScheduler` constructors annotated with `SWIFT_RETURNS_RETAINED` were rejected". 57.1.1 does not build on Xcode 26, the minimum Xcode Expo SDK 57 needs. Every other package still resolves under `.npmrc` `before=2026-10-10`.

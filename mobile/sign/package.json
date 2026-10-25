@@ -67,7 +67,8 @@
   "overrides": {
     "openapi-typescript": {
       "typescript": "$typescript"
-    }
+    },
+    "expo-modules-jsi": "57.1.2"
   },
   "nx": {
     "includedScripts": []
