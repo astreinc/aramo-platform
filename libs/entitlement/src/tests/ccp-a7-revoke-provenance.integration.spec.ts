@@ -5,7 +5,7 @@ import { resolve } from 'node:path';
 import { Reflector } from '@nestjs/core';
 import type { ExecutionContext } from '@nestjs/common';
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE, ENTITLEMENT_MIGRATIONS, resolveEntitlementMigrations } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, ENTITLEMENT_MIGRATIONS, resolveEntitlementMigrations, seedTenantEntitlements, tenantEntitlementFixtureSql } from '@aramo/common';
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it, vi } from 'vitest';
 
@@ -45,6 +45,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A7 entitlemen
     // Every migration BEFORE A7 first, so the A7 backfill runs over a pre-A7 row (the init seeds one tenant).
     const all = resolveEntitlementMigrations(REPO_ROOT);
     for (const m of all.slice(0, -1)) await pg.query(readFileSync(m, 'utf8'));
+    // Pre-A7 schema: granted_source does not exist yet (CCP-R1 source-scan exemption).
     await pg.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1, 'sign')`, [SEEDED_TENANT]);
     await pg.query(readFileSync(all[all.length - 1] as string, 'utf8'));
     await pg.query('CREATE SCHEMA IF NOT EXISTS identity');
@@ -239,5 +240,29 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A7 entitlemen
     await pg.query(readFileSync(resolveEntitlementMigrations(REPO_ROOT).at(-1) as string, 'utf8'));
     expect((await pg.query(`SELECT count(*)::int n FROM entitlement."TenantEntitlementEvent"`)).rows[0].n).toBe(before);
     expect((await pg.query(`SELECT row_to_json(e)::text j FROM entitlement."TenantEntitlement" e ORDER BY tenant_id, capability`)).rows).toEqual(state);
+  });
+
+  it('R1-E-1 (CCP-R1, TD-A7-3) no default: granted_source is NOT NULL with no column default, so an INSERT that names no source fails NOT NULL (23502); the fixture helper requires a non-commercial source', async () => {
+    const col = (
+      await pg.query(
+        `SELECT is_nullable, column_default FROM information_schema.columns WHERE table_schema = 'entitlement' AND table_name = 'TenantEntitlement' AND column_name = 'granted_source'`,
+      )
+    ).rows;
+    expect(col).toEqual([{ is_nullable: 'NO', column_default: null }]);
+    const u = randomUUID();
+    // Deliberately names no source (CCP-R1 source-scan exemption): it must fail, never default.
+    const err = await pg.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1, 'sign')`, [u]).then(
+      () => null,
+      (e: Error & { code?: string; column?: string }) => e,
+    );
+    expect(err).toMatchObject({ code: '23502', column: 'granted_source' });
+    expect(err?.message).toMatch(/null value in column "granted_source"/);
+    expect((await pg.query(`SELECT count(*)::int n FROM entitlement."TenantEntitlement" WHERE tenant_id = $1`, [u])).rows[0].n).toBe(0);
+    expect(await ledger(u)).toEqual([]);
+    // The shared fixture helper names its source; a commercial source is refused before any SQL.
+    await seedTenantEntitlements((q, p) => pg.query(q, p), { tenant_id: u, capabilities: ['core', 'sign'], granted_source: 'PROVISIONING' });
+    expect((await rows(u)).map((r) => `${r.capability}:${r.granted_source}`)).toEqual(['core:PROVISIONING', 'sign:PROVISIONING']);
+    expect(await ledger(u)).toEqual(['core:GRANTED:PROVISIONING', 'sign:GRANTED:PROVISIONING']);
+    expect(() => tenantEntitlementFixtureSql('MANUAL' as never)).toThrow(/granted_source must be one of PROVISIONING, SIGNUP, MIGRATION/);
   });
 });

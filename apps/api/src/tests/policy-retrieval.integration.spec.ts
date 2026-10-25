@@ -123,7 +123,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await applyTalentRecordMigrations(db);
       for (const t of [TENANT_A, TENANT_B]) {
         await ensureWriteFreezeTenant((s) => db.query(s), t);
-        await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1,'ats') ON CONFLICT DO NOTHING`, [t]);
+        await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1,'ats', 'PROVISIONING') ON CONFLICT DO NOTHING`, [t]);
       }
       // TENANT_A gets the package; TENANT_B stays package-less (isolation).
       await publishLifecyclePackage(dbUrl, TENANT_A);
@@ -167,7 +167,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // windows so point-in-time selection cannot pass on insertion order.
       const T = '01900000-0000-7000-8000-0000000000e3';
       await ensureWriteFreezeTenant((s) => db.query(s), T);
-      await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1,'ats') ON CONFLICT DO NOTHING`, [T]);
+      await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1,'ats', 'PROVISIONING') ON CONFLICT DO NOTHING`, [T]);
 
       // Publish through the APP's OWN PolicyStore — the same singleton the
       // add-talent consumer retrieves through — so a republish invalidates the

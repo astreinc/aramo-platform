@@ -7,8 +7,9 @@
 --      and a revoke (revoked_at, revoked_by, revoke_change_request_id). A revoked row is KEPT;
 --      the readers (EntitlementRepository) count only rows with revoked_at IS NULL.
 --      Every pre-A7 row is backfilled granted_source = MIGRATION (provenance unknown, and
---      non-commercial). MIGRATION is also the DB default, so an out-of-band raw INSERT is
---      attributed to a data migration; every application writer names its source.
+--      non-commercial): explicit history, written by an UPDATE. There is NO column default
+--      (CCP-R1, TD-A7-3): every writer names its source, and an INSERT that omits it fails
+--      NOT NULL. Nothing falls back to MIGRATION.
 --   2. granted_source is a closed set: the Part IV values MANUAL, PLAN, PROMOTION, MIGRATION
 --      (kept, none renamed) plus PROVISIONING (D4 default bundle, seed reconcile) and SIGNUP
 --      (C-20 signup grant). The commercial values carry a change request, the others never.
@@ -32,7 +33,12 @@
 -- Design approval is not production migration authority (ruling A0-C15).
 
 -- 1. Provenance and revoke columns
-ALTER TABLE "entitlement"."TenantEntitlement" ADD COLUMN IF NOT EXISTS "granted_source" TEXT NOT NULL DEFAULT 'MIGRATION';
+-- CCP-R1 (TD-A7-3): add nullable, backfill the pre-A7 rows explicitly, then NOT NULL with no
+-- default. DROP DEFAULT also clears the default from a database that applied the pre-R1 text.
+ALTER TABLE "entitlement"."TenantEntitlement" ADD COLUMN IF NOT EXISTS "granted_source" TEXT;
+UPDATE "entitlement"."TenantEntitlement" SET "granted_source" = 'MIGRATION' WHERE "granted_source" IS NULL;
+ALTER TABLE "entitlement"."TenantEntitlement" ALTER COLUMN "granted_source" SET NOT NULL;
+ALTER TABLE "entitlement"."TenantEntitlement" ALTER COLUMN "granted_source" DROP DEFAULT;
 ALTER TABLE "entitlement"."TenantEntitlement" ADD COLUMN IF NOT EXISTS "granted_by" UUID;
 ALTER TABLE "entitlement"."TenantEntitlement" ADD COLUMN IF NOT EXISTS "change_request_id" UUID;
 ALTER TABLE "entitlement"."TenantEntitlement" ADD COLUMN IF NOT EXISTS "revoked_at" TIMESTAMPTZ(6);

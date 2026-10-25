@@ -211,3 +211,22 @@ Post-merge fixes made on the integrated program branch (TD-MERGE-n). Each merge 
   - investigate the isolated load timeout if it repeats; an intermittently failing integrated gate is not "fully green";
   - record the two e2e lint issues separately, with baseline evidence.
 - **Not authorized:** push, PR, main merge, production migration, deployment or live Stripe.
+
+## Architect ratification: commercial action catalog (2026-10-25)
+- **AC-1: RATIFIED, the full catalog.**
+  - LOCKED as `Aramo-CCP-Program-Build-Directive-Amendment-A1-Commercial-Action-Catalog-v1_0-LOCKED.md`, SHA-256 `ad862360aab001858d3eb093a97e3331e5360bffe46893a62bebdfb425e60e60` (sidecar verified).
+  - The closed set is exactly **15 canonical `action_type` values**, reconciled against `COMMERCIAL_ACTIONS`, `resolveRequiredChain`, `chainOf` and `CCP_PLATFORM_ROLE_SEED_BUNDLES` at C4 tip `20218e13`.
+  - There is no undocumented type and no authorization drift.
+  - Two drafting discrepancies were surfaced and resolved to the implemented chains, with nothing changed:
+    - **R-1:** the subscription and entitlement actions plus CONVERSION are Finance-only, with no threshold;
+    - **R-2:** PLAN_RETIRE is Finance → Owner.
+- **AC-2: RATIFIED, partial refunds allowed**, at most the refundable remainder.
+  - The remainder (RF-4) subtracts confirmed refunds, provider-pending refunds, AND outstanding Aramo REFUND requests or commands against the same payment, including uncertain ones.
+  - Binding RF-5 applies: tenant, product, payment identity and currency must match.
+  - Refunds stay disabled (RF-8) until: (a) the amendment is LOCKED (done); (b) the refund policy is approved; (c) the release gate authorizes it.
+  - DR-C2-1 is unchanged.
+
+## Merge train 2 (2026-10-25): R1 → R3 → D5 → D4 → D2 → C5 → C7 → C4 (C4-R) → ACC-1 → FIX1
+Gate rule (Architect): every affected Pact, integration, authorization, migration and contract gate is re-verified on the INTEGRATED branch after each merge; an intermittent failure is not green.
+
+- **TD-MERGE-36 (R1, TD-A7-3):** `wip/ccp-r1` merged with no conflict (generated repo map regenerated). R1 edits the A7 entitlement migration in place: no `granted_source` default, NOT NULL. Its 84 fixture sites are fixed. R1's source-scan spec (`libs/entitlement/src/tests/ccp-r1-granted-source-scan.spec.ts`) passes 4 / 4 on the integrated branch: none of the merge-train tests added since R1's base inserts a `TenantEntitlement` row without naming a source.

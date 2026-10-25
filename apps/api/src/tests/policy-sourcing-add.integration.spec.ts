@@ -118,7 +118,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const t of [TENANT, TENANT_NP]) {
         await ensureWriteFreezeTenant((s) => db.query(s), t);
         await db.query(
-          `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1,'core') ON CONFLICT DO NOTHING`,
+          `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1,'core', 'PROVISIONING') ON CONFLICT DO NOTHING`,
           [t],
         );
       }

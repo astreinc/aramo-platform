@@ -125,7 +125,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await db.connect();
       for (const p of MIGRATIONS) await db.query(readFileSync(p, 'utf8'));
       await ensureWriteFreezeTenant((s) => db.query(s), TENANT);
-      for (const cap of ['ats', 'core']) await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [TENANT, cap]);
+      for (const cap of ['ats', 'core']) await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1,$2, 'PROVISIONING') ON CONFLICT DO NOTHING`, [TENANT, cap]);
 
       storePrisma = new PolicyStorePrismaService(url);
       await storePrisma.$connect();
@@ -196,7 +196,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('§D17b — a decision made under the superseded v3.0.0 still names it after the T1-d v4.0.0 is republished (re-read from the DB)', async () => {
       const T = '01900000-0000-7000-8000-0000000000f6';
       await ensureWriteFreezeTenant((s) => db.query(s), T);
-      await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1,'ats') ON CONFLICT DO NOTHING`, [T]);
+      await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1,'ats', 'PROVISIONING') ON CONFLICT DO NOTHING`, [T]);
       // The superseded v3.0.0 published first, active window; make a decision under it.
       await store.publish({ tenant_id: T, definition: { ...REQUISITION_LIFECYCLE_PACKAGE, version: '3.0.0' }, published_by: SYSTEM_PUBLISHER, effective_from: new Date('2026-01-01T00:00:00Z') });
       const req = uuid();

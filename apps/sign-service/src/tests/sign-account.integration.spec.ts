@@ -70,7 +70,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     const slug = `a-${tenant.slice(0, 8)}`;
     await db.query(`INSERT INTO identity."Tenant" (id, name, slug, kind, status, is_active, updated_at) VALUES ($1,$2,$3,$4,'ACTIVE',true, now())`, [tenant, `T ${slug}`, slug, kind]);
     for (const c of kind === 'BUSINESS' ? ['core', 'sign', 'ats'] : ['core', 'sign']) {
-      await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1, $2::entitlement."Capability")`, [tenant, c]);
+      await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1, $2::entitlement."Capability", 'PROVISIONING')`, [tenant, c]);
     }
     const riskState = opts.riskState === undefined ? (kind === 'PERSONAL' ? 'clear' : null) : opts.riskState;
     if (riskState !== null) await db.query(`INSERT INTO identity."TenantRiskState" (tenant_id, state) VALUES ($1, $2)`, [tenant, riskState]);

@@ -2802,8 +2802,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // surfaces call the stub.
     async function grantAtsWebIntelligence(c: Client): Promise<void> {
       await c.query(
-        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
-         VALUES ($1::uuid, 'intelligence') ON CONFLICT DO NOTHING`,
+        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+         VALUES ($1::uuid, 'intelligence', 'PROVISIONING') ON CONFLICT DO NOTHING`,
         [TENANT_ID],
       );
     }
@@ -3964,8 +3964,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // (11111111-...111), so an explicit row is required for the
       // portal-thin pact interactions to traverse EntitlementGuard.
       await setup.query(
-        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
-         VALUES ($1::uuid, 'portal') ON CONFLICT DO NOTHING`,
+        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+         VALUES ($1::uuid, 'portal', 'PROVISIONING') ON CONFLICT DO NOTHING`,
         [TENANT_ID],
       );
       // PC-4 — the 'ats' capability so TENANT_ID traverses EntitlementGuard
@@ -3973,16 +3973,16 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // (mirrors the 'portal' seed above); the selection/submittal/examination
       // interactions don't use EntitlementGuard, so this is inert for them.
       await setup.query(
-        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
-         VALUES ($1::uuid, 'ats') ON CONFLICT DO NOTHING`,
+        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+         VALUES ($1::uuid, 'ats', 'PROVISIONING') ON CONFLICT DO NOTHING`,
         [TENANT_ID],
       );
       // PC-4b — the 'core' capability so TENANT_ID traverses EntitlementGuard
       // on the sourcing + advisory-resolution controllers'
       // @RequireCapability('core'). Additive; inert for prior interactions.
       await setup.query(
-        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
-         VALUES ($1::uuid, 'core') ON CONFLICT DO NOTHING`,
+        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+         VALUES ($1::uuid, 'core', 'PROVISIONING') ON CONFLICT DO NOTHING`,
         [TENANT_ID],
       );
       await setup.end();

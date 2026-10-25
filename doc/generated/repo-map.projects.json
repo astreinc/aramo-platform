@@ -375,6 +375,7 @@
       "ENTITLEMENT_MIGRATIONS",
       "ENTITLEMENT_PROVENANCE_MIGRATION",
       "ERROR_CODES",
+      "FIXTURE_GRANTED_SOURCES",
       "IDENTITY_ADMISSION_POLICIES",
       "IDENTITY_MIGRATIONS",
       "LOCAL_REVISION_SENTINEL",
@@ -415,7 +416,9 @@
       "resolveReleaseRevision",
       "resolveSkillsTaxonomyMigrations",
       "rethrowTransactionConflict",
-      "secretsManagerClientConfig"
+      "secretsManagerClientConfig",
+      "seedTenantEntitlements",
+      "tenantEntitlementFixtureSql"
     ],
     "@aramo/communications": [
       "CALL_STATE_TRANSITIONS",

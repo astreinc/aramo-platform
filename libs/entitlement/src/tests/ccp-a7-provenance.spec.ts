@@ -32,8 +32,14 @@ describe('CCP-A7 entitlement provenance', () => {
     const partIv = ['MANUAL', 'PLAN', 'PROMOTION', 'MIGRATION'];
     expect(GRANTED_SOURCES.slice(0, 4)).toEqual(partIv);
     expect(GRANTED_SOURCES.filter((v) => !partIv.includes(v))).toEqual(['PROVISIONING', 'SIGNUP']);
-    // The backfill / out-of-band default is the non-commercial MIGRATION value.
-    expect(MIGRATION).toMatch(/"granted_source" TEXT NOT NULL DEFAULT 'MIGRATION'/);
+    // CCP-R1 (TD-A7-3): the pre-A7 backfill is an explicit UPDATE to the non-commercial MIGRATION
+    // value; the column is NOT NULL with NO default (no silent fallback to MIGRATION).
+    expect(MIGRATION).toMatch(/ADD COLUMN IF NOT EXISTS "granted_source" TEXT;/);
+    expect(MIGRATION).toMatch(/UPDATE "entitlement"\."TenantEntitlement" SET "granted_source" = 'MIGRATION' WHERE "granted_source" IS NULL;/);
+    expect(MIGRATION).toMatch(/ALTER COLUMN "granted_source" SET NOT NULL;/);
+    expect(MIGRATION).toMatch(/ALTER COLUMN "granted_source" DROP DEFAULT;/);
+    expect(MIGRATION).not.toMatch(/"granted_source" TEXT[^;\n]*DEFAULT/);
+    expect(MIGRATION).not.toMatch(/SET DEFAULT/);
   });
 
   it('A7-U-3 Conv. C-20: only MANUAL, PLAN and PROMOTION are commercial; a signup or provisioning grant is never evidence of payment', () => {

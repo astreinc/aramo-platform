@@ -107,7 +107,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await db.connect();
       for (const p of MIGRATIONS) await db.query(readFileSync(p, 'utf8'));
       await ensureWriteFreezeTenant((s) => db.query(s), TENANT);
-      await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1,'ats') ON CONFLICT DO NOTHING`, [TENANT]);
+      await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1,'ats', 'PROVISIONING') ON CONFLICT DO NOTHING`, [TENANT]);
       storePrisma = new PolicyStorePrismaService(url);
       await storePrisma.$connect();
       store = new PolicyStore(storePrisma);
@@ -207,7 +207,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('§D17b — a SET_PRIORITY decision made under an earlier version still names it after v3.0.0 (re-read from DB)', async () => {
       const T = '01900000-0000-7000-8000-0000000000b7';
       await ensureWriteFreezeTenant((s) => db.query(s), T);
-      await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1,'ats') ON CONFLICT DO NOTHING`, [T]);
+      await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1,'ats', 'PROVISIONING') ON CONFLICT DO NOTHING`, [T]);
       await store.publish({ tenant_id: T, definition: { ...REQUISITION_LIFECYCLE_PACKAGE, version: '1.0.0' }, published_by: SYSTEM, effective_from: new Date('2026-01-01T00:00:00Z') });
       // L1-A — establish the is_hot 'open' req via the INTEGRATION floor path
       // (import:write), the same create() that records the SET_PRIORITY decision.

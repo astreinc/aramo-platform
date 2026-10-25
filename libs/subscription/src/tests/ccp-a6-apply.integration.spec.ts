@@ -716,7 +716,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A6 transactio
     const astre = await newTenant(pg);
     const v1 = await publishedVersion(pg, INCLUDED);
     const astreSub = await rawSubscription(pg, astre, { source: 'MANUAL' }); // pinned to v1, anchor 2026-10-01
-    for (const c of ['core', 'sign']) await pg.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1, $2::entitlement."Capability")`, [astre, c]);
+    for (const c of ['core', 'sign']) await pg.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1, $2::entitlement."Capability", 'PROVISIONING')`, [astre, c]);
     await consume(astre, 42, billingPeriodAt(new Date('2026-10-01T00:00:00Z'), T0).start);
     const astreState = async () => ({
       snapshot: await domainSnapshot(pg, astre),

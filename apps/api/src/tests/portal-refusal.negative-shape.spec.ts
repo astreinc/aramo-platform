@@ -236,8 +236,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // SEED_IDS.tenant (01900000-...001); this spec uses a distinct
       // TENANT_ID (11111111-...111), so the per-test seed is required.
       await setup.query(
-        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
-         VALUES ($1::uuid, 'portal') ON CONFLICT DO NOTHING`,
+        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+         VALUES ($1::uuid, 'portal', 'PROVISIONING') ON CONFLICT DO NOTHING`,
         [TENANT_ID],
       );
 

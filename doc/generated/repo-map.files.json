@@ -4033,6 +4033,7 @@
     "libs/entitlement/src/lib/require-capability.decorator.ts",
     "libs/entitlement/src/tests/ccp-a7-provenance.spec.ts",
     "libs/entitlement/src/tests/ccp-a7-revoke-provenance.integration.spec.ts",
+    "libs/entitlement/src/tests/ccp-r1-granted-source-scan.spec.ts",
     "libs/entitlement/src/tests/default-tenant-capabilities.spec.ts",
     "libs/entitlement/src/tests/entitlement-reconcile.integration.spec.ts",
     "libs/entitlement/src/tests/entitlement.guard.spec.ts",

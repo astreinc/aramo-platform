@@ -125,7 +125,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('ATI-SEP-1 — Tal
       [OTHER_TENANT, ['core', 'ats']],
     ] as const) {
       for (const c of caps) {
-        await recordPrisma.$executeRawUnsafe(`INSERT INTO "entitlement"."TenantEntitlement" (tenant_id, capability) VALUES ($1::uuid, $2::"entitlement"."Capability")`, tenant, c);
+        await recordPrisma.$executeRawUnsafe(`INSERT INTO "entitlement"."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1::uuid, $2::"entitlement"."Capability", 'PROVISIONING')`, tenant, c);
       }
     }
 

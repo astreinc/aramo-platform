@@ -245,8 +245,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       );
       for (const capability of ['core', 'sign']) {
         await db.query(
-          `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
-           VALUES ($1, $2::entitlement."Capability")
+          `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+           VALUES ($1, $2::entitlement."Capability", 'PROVISIONING')
            ON CONFLICT (tenant_id, capability) DO NOTHING`,
           [SENDER_TENANT_ID, capability],
         );
@@ -306,7 +306,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       );
       for (const capability of ['core', 'sign']) {
         await db.query(
-          `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1, $2::entitlement."Capability") ON CONFLICT (tenant_id, capability) DO NOTHING`,
+          `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1, $2::entitlement."Capability", 'PROVISIONING') ON CONFLICT (tenant_id, capability) DO NOTHING`,
           [GOV_TENANT_ID, capability],
         );
       }
@@ -596,7 +596,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         [ATS_TENANT_ID],
       );
       for (const capability of ['core', 'ats', 'sign']) {
-        await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1, $2::entitlement."Capability") ON CONFLICT (tenant_id, capability) DO NOTHING`, [ATS_TENANT_ID, capability]);
+        await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1, $2::entitlement."Capability", 'PROVISIONING') ON CONFLICT (tenant_id, capability) DO NOTHING`, [ATS_TENANT_ID, capability]);
       }
       await db.query(
         `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by)

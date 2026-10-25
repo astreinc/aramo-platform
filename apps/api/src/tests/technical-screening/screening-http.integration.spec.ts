@@ -195,7 +195,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         // 'ats' gates the screening routes; 'core' gates the TR-15 dispute routes.
         for (const capability of ['ats', 'core']) {
           await db.query(
-            `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1::uuid, $2) ON CONFLICT DO NOTHING`,
+            `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1::uuid, $2, 'PROVISIONING') ON CONFLICT DO NOTHING`,
             [t, capability],
           );
         }

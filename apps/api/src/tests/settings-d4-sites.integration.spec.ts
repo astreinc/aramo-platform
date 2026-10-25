@@ -196,8 +196,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       }
       for (const t of [TENANT_A, TENANT_B]) {
         await db.query(
-          `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
-           VALUES ($1::uuid, 'core') ON CONFLICT (tenant_id, capability) DO NOTHING`,
+          `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+           VALUES ($1::uuid, 'core', 'PROVISIONING') ON CONFLICT (tenant_id, capability) DO NOTHING`,
           [t],
         );
         await db.query(

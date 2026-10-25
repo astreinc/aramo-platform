@@ -149,3 +149,101 @@ ALTER TABLE entitlement."TenantEntitlement"
 ## 10. Vocabulary result
 
 `bash scripts/verify-vocabulary.sh`: exit 0; Tier 1, Tier 2 and front-door clean. No exemption added or touched.
+
+## R1. Correction TD-A7-3: no `granted_source` default (Architect program acceptance disposition)
+
+**Ruling (binding, `doc/ccp/decisions.md`, row TD-A7-3):** remove the `MIGRATION` default; provenance is explicit; fix the fixtures and verify every production write path first; no silent fallback. **Baseline:** `wip/ccp-r1` at `41a0e3b5`. Uncommitted (lead commits).
+
+### R1.1 Schema change
+
+- `20261026000000_ccp_a7_entitlement_revoke_provenance/migration.sql`, edited in place (undeployed; **TD-R1-1**). `ADD COLUMN … "granted_source" TEXT NOT NULL DEFAULT 'MIGRATION'` becomes four statements: `ADD COLUMN IF NOT EXISTS "granted_source" TEXT`, `UPDATE … SET "granted_source" = 'MIGRATION' WHERE "granted_source" IS NULL` (explicit backfill of the pre-A7 rows, which are history, not a default), `ALTER COLUMN … SET NOT NULL`, `ALTER COLUMN … DROP DEFAULT`. The `DROP DEFAULT` also clears the default from any database that applied the pre-R1 text. The statements remain replay-safe and splitter-safe. On replay, the `UPDATE` matches 0 rows, so no trigger fires.
+- `libs/entitlement/prisma/schema.prisma`: `granted_source String` (`@default("MIGRATION")` removed).
+- The result: `is_nullable = NO` and `column_default = NULL`. An INSERT that names no source fails with `23502 null value in column "granted_source"` (R1-E-1).
+
+### R1.2 Write-path inventory (`entitlement."TenantEntitlement"`, Prisma + raw SQL, apps/ libs/ pact/ tools/ deploy/ scripts/)
+
+**Production: exactly one INSERT statement.** `libs/entitlement/src/lib/entitlement-provenance.ts:101` (`upsertEntitlements`, `:88`) names `granted_source, granted_by, change_request_id`. Its value is validated against the closed list and the commercial-iff-governed rule before any SQL runs (`assertProvenance`). The source is required in both entry points:
+
+| Entry point | Source type (required) | Callers (`path:line` → source) |
+|---|---|---|
+| `EntitlementRepository.grantCapabilities` `libs/entitlement/src/lib/entitlement.repository.ts:58` | `UngovernedGrantSource` | `apps/platform-admin/src/app/signup/personal-signup.service.ts:490`, `:549`, `:580` → `SIGNUP`; `apps/platform-admin/src/app/signup/sign-signup.service.ts:391` → `SIGNUP`; `apps/platform-admin/src/app/platform/platform-invitation.service.ts:405` (`:408`) → `PROVISIONING`; `libs/entitlement/prisma/seed-entitlements.ts:63` (via `reconcile-entitlements.ts:89`; run by `deploy/seed-prod.sh`) → `PROVISIONING` |
+| `grantCapabilitiesInTx` `libs/entitlement/src/lib/grant-capabilities-in-tx.ts:29` | `GovernedGrantSource` + `change_request_id` | `libs/subscription/src/lib/commercial/commercial-apply.service.ts:385` → `MANUAL` (`ENTITLEMENT_GRANT`) / `PLAN`; `libs/subscription/src/lib/commercial/commercial-conversion.ledger.ts:423` → `PLAN` |
+
+Other writers:
+- The A7 migration backfill (`UPDATE`, explicit `MIGRATION`).
+- The A7 guard and ledger triggers. These are `UPDATE` paths only and never INSERT a row.
+- The revoke `UPDATE`, `entitlement-provenance.ts:154`, sets no source.
+
+There is no Prisma ORM write (`tenantEntitlement.create*` / `upsert` / `update*`), and `deploy/seed-prod.sh:240` only reads. These facts are pinned by `libs/entitlement/src/tests/ccp-r1-granted-source-scan.spec.ts`:
+- R1-U-1: every INSERT names the source, apart from a closed exemption list with exact counts.
+- R1-U-2: the production inventory is exactly `entitlement-provenance.ts`.
+- R1-U-3: there is no ORM write.
+- R1-U-4: `schema.prisma` has no `@default`.
+
+The scan was shown to fail on a real omission during development: it flagged a comment line until that line was reworded.
+
+### R1.3 Fixtures
+
+Before R1, 88 INSERT sites named no source.
+
+**84 fixture sites fixed, in 74 files.** Each now names `granted_source`. Sites by area:
+- apps/api: 66 sites in 61 files. 65 are inline. `apps/api/src/tests/ats-entitlement.ts` now calls the shared helper.
+- apps/sign-service: 6 sites in 6 files.
+- libs/subscription: 4 sites in 4 files (`ccp-a6-apply`, `ccp-a8-support-extension`, `ccp-b3-subscription-read`, `ccp-c6-finance-report`).
+- pact/provider: 8 sites in 3 files (`verify-api.ts` 4, `verify-platform-admin.ts` 1, `verify-sign.ts` 3).
+
+Sources: 83 sites use `PROVISIONING`. 1 site uses `MIGRATION`: `ccp-b3-subscription-read.integration.spec.ts:177`, whose B3-I-7 asserts that a pre-existing migrated row reads `granted_source: 'MIGRATION'`. No fixture uses a commercial source, because the DB CHECK requires a change request for one.
+
+**Exempt sites (closed list in the scan).** 4 of the 88 pre-R1 sites run against a pre-A7 schema, where the column does not exist yet. A fifth site is new in R1: the negative proof, which must omit the source. That makes 5 exempt sites in 4 files:
+1. The immutable init migration seed `20260601120000_init_entitlement_model/migration.sql:32`.
+2. The A7 integration spec's pre-A7 row, which the A7 backfill must stamp `MIGRATION`.
+3. The A7 integration spec's R1-E-1 negative INSERT (new in R1).
+4. `libs/subscription/src/tests/fixtures/ccp-a11-production-like.ts:150`: a production-like pre-CCP seed that the A7 backfill stamps `MIGRATION`.
+5. `tools/sign-naming/naming.pg-integration.sh:93`: the old-world pre-rename tree.
+
+**Shared fixture helper.** `libs/common/src/lib/testing/entitlement-migrations.ts` (exported from `@aramo/common`) adds the following:
+- `FIXTURE_GRANTED_SOURCES` (`PROVISIONING | SIGNUP | MIGRATION`) and the `FixtureGrantedSource` type.
+- `tenantEntitlementFixtureSql(granted_source)`, which rejects any other value.
+- `seedTenantEntitlements(query, { tenant_id, capabilities, granted_source })`, which takes the source as a required argument.
+
+### R1.4 Tests run (real Postgres 17 testcontainers, `ARAMO_RUN_INTEGRATION=1`, `--maxWorkers=2`)
+
+| Run | Result |
+|---|---|
+| `libs/entitlement` (all, incl. new R1-E-1 + R1-U-1…4, updated A7-U-2) | 8 files, 52 passed |
+| `libs/subscription` (all, incl. A6/A8/B3/C6 and A11) | 48 files, 737 passed |
+| `apps/sign-service` (all) | 34 files, 368 passed |
+| `apps/auth-service` (all) | 27 files, 353 passed |
+| `apps/platform-admin` (all) | 38 files, 743 tests: 740 passed and 3 failed in the full run. The failures were `ccp-a3-commercial-change-request-authorization` ("socket hang up") and `ccp-d1-usage-routes` RI-2/RI-3 (120 s timeouts); neither file writes entitlements. Re-run alone: 2 files, 87 passed |
+| `apps/api`: the 60 touched specs + the 7 `ensureAtsEntitlement` callers | 67 files, 655 passed |
+| `deploy/seed-prod.test.sh` | 22 passed, 0 failed |
+| Pact: `pact/pacts/` deleted, all 14 consumers regenerated (14 pact files), then providers `verify-api` / `verify-platform-admin` / `verify-sign` (`ARAMO_RUN_PACT_PROVIDER=1`) | consumers all passed; providers 1 / 2 / 1 passed |
+| `contract-parity:check` | 708 live routes (706 governed), 539 OpenAPI ops, 185 transitional-debt, 0 orphan, 0 unclassified |
+| `openapi:drift-check`, `error-codes:check`, `orphan-scopes:check`, `env:passthrough-check`, `tests:integration:check` | ok (49 integration roots) |
+| `bash scripts/verify-vocabulary.sh` | exit 0; Tier 1, Tier 2 and front-door clean; no exemption touched |
+| `repo-map:generate` / `repo-map:check` | regenerated (3 files); ok. Staged in a temporary `GIT_INDEX_FILE` (a copy of the real index, plus `git add -A` of the touched trees); the real index is untouched (A7 practice) |
+| `nx run-many -t build` (entitlement, common, subscription, platform-admin, auth-service, sign-service, api) `--skip-nx-cache` | 7 projects + 73 dependency tasks succeeded |
+| `nx run-many -t lint` (same 7) | 0 errors (warnings pre-existing) |
+| A11 golden `ccp-a11-dry-run.golden.txt` | unchanged; no regeneration needed (the A11 fixture keeps its pre-A7 shape, and the backfill still stamps `MIGRATION`) |
+
+**Not run:** the full `nx run api` (PBD §8: before the program push), and the apps/api specs that write no entitlement row.
+
+### R1.5 Compensating SQL
+
+§8 is unchanged, because it drops `granted_source` outright. If only R1 has to be reversed, while A7 is kept, the statement is:
+
+```sql
+ALTER TABLE entitlement."TenantEntitlement" ALTER COLUMN "granted_source" SET DEFAULT 'MIGRATION';
+```
+
+That reversal is not recommended, because it reinstates the silent fallback that the ruling forbids. Design approval is not production migration authority (A0-C15).
+
+### R1.6 Typed divergences
+
+| ID | Type | Divergence | Disposition |
+|---|---|---|---|
+| TD-R1-1 | Migration edited in place | `20261026000000…/migration.sql` was edited, not superseded by a new migration. It is undeployed, so the edit is authorized. `verify-api.ts` registration is unchanged (same path) | Recorded |
+| TD-R1-2 | Count | A7 recorded 83 sites. The exact count at `41a0e3b5` is 88 INSERT sites without a source: 84 fixtures fixed plus 4 pre-A7 sites exempted (the 5th exemption is R1's own negative proof). The difference includes sites added by slices that landed after A7 (A8, B3, C6, A11 fixtures). The A7-time denominator is not reconstructible from the record | Recorded |
+| TD-R1-3 | Helper use | Of the 84 sites, 1 (`ats-entitlement.ts`) moved to `seedTenantEntitlements`. 83 were kept inline, with `granted_source` added to the column list and to every VALUES tuple / SELECT. The inline form keeps per-site semantics, such as ON CONFLICT presence and multi-tenant VALUES lists; converting would change them. The scan enforces the source either way | For the lead |
+| TD-R1-4 | Exemption | The A11 production-like fixture first received `MIGRATION`. That failed (`column "granted_source" … does not exist`), because the fixture seeds the pre-CCP schema. It was reverted and exempted | Recorded |
+| TD-R1-5 | Flake | Under full-suite load, 3 platform-admin tests failed: 1 socket hang-up and 2 timeouts in files that do not write entitlements. All 3 passed on an isolated re-run | Recorded |

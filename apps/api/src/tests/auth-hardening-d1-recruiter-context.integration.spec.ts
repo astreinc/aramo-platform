@@ -739,8 +739,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // provably the RolesGuard SCOPE gate, not the EntitlementGuard gate.
       for (const capability of ['ats', 'core']) {
         await db.query(
-          `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
-           VALUES ($1::uuid, $2)
+          `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+           VALUES ($1::uuid, $2, 'PROVISIONING')
            ON CONFLICT (tenant_id, capability) DO NOTHING`,
           [TENANT_ATS, capability],
         );
