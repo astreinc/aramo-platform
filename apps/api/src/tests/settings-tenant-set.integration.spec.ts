@@ -160,8 +160,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Entitle both tenants with `core` (the baseline tenant capability).
       for (const tenant of [TENANT_A, TENANT_B]) {
         await setupClient.query(
-          `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
-           VALUES ($1::uuid, 'core')
+          `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+           VALUES ($1::uuid, 'core', 'PROVISIONING')
            ON CONFLICT (tenant_id, capability) DO NOTHING`,
           [tenant],
         );

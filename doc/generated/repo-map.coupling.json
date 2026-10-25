@@ -14111,6 +14111,16 @@
     {
       "from": "doc/ccp/slices/CCP-A7-acceptance.md",
       "status": "unscoped",
+      "to": "apps/platform-admin/src/app/signup/personal-signup.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A7-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/signup/sign-signup.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A7-acceptance.md",
+      "status": "unscoped",
       "to": "apps/platform-admin/src/tests/platform-invitation.service.spec.ts"
     },
     {
@@ -14127,6 +14137,11 @@
       "from": "doc/ccp/slices/CCP-A7-acceptance.md",
       "status": "unscoped",
       "to": "deploy/seed-prod.test.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A7-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
     },
     {
       "from": "doc/ccp/slices/CCP-A7-acceptance.md",
@@ -14171,7 +14186,22 @@
     {
       "from": "doc/ccp/slices/CCP-A7-acceptance.md",
       "status": "unscoped",
+      "to": "libs/entitlement/src/lib/entitlement.repository.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A7-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/entitlement/src/lib/grant-capabilities-in-tx.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A7-acceptance.md",
+      "status": "unscoped",
       "to": "libs/entitlement/src/tests/ccp-a7-revoke-provenance.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A7-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/entitlement/src/tests/ccp-r1-granted-source-scan.spec.ts"
     },
     {
       "from": "doc/ccp/slices/CCP-A7-acceptance.md",
@@ -14211,12 +14241,27 @@
     {
       "from": "doc/ccp/slices/CCP-A7-acceptance.md",
       "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-apply.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A7-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-conversion.ledger.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A7-acceptance.md",
+      "status": "unscoped",
       "to": "libs/subscription/src/tests/ccp-a7-entitlement-revoke.integration.spec.ts"
     },
     {
       "from": "doc/ccp/slices/CCP-A7-acceptance.md",
       "status": "unscoped",
       "to": "libs/subscription/src/tests/ccp-a9-role-change.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A7-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-a11-production-like.ts"
     },
     {
       "from": "doc/ccp/slices/CCP-A7-acceptance.md",
@@ -14232,6 +14277,11 @@
       "from": "doc/ccp/slices/CCP-A7-acceptance.md",
       "status": "unscoped",
       "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A7-acceptance.md",
+      "status": "unscoped",
+      "to": "tools/sign-naming/naming.pg-integration.sh"
     },
     {
       "from": "doc/ccp/slices/CCP-A7-pre-execution.md",
@@ -27799,6 +27849,11 @@
       "to": "libs/entitlement/prisma/migrations/20261026000000_ccp_a7_entitlement_revoke_provenance/migration.sql"
     },
     {
+      "from": "libs/common/src/lib/testing/entitlement-migrations.ts",
+      "status": "production",
+      "to": "libs/entitlement/src/tests/ccp-r1-granted-source-scan.spec.ts"
+    },
+    {
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
       "status": "production",
       "to": "libs/auth-storage/prisma/migrations/20260512100000_init_auth_storage/migration.sql"
@@ -28421,6 +28476,48 @@
       "from": "libs/entitlement/src/tests/ccp-a7-revoke-provenance.integration.spec.ts",
       "status": "excluded",
       "to": "doc/ccp/slices/CCP-A7-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/entitlement/src/tests/ccp-r1-granted-source-scan.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-A7-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/entitlement/src/tests/ccp-r1-granted-source-scan.spec.ts",
+      "status": "excluded",
+      "to": "libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/entitlement/src/tests/ccp-r1-granted-source-scan.spec.ts",
+      "status": "excluded",
+      "to": "libs/entitlement/prisma/schema.prisma"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/entitlement/src/tests/ccp-r1-granted-source-scan.spec.ts",
+      "status": "excluded",
+      "to": "libs/entitlement/src/lib/entitlement-provenance.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/entitlement/src/tests/ccp-r1-granted-source-scan.spec.ts",
+      "status": "excluded",
+      "to": "libs/entitlement/src/tests/ccp-a7-revoke-provenance.integration.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/entitlement/src/tests/ccp-r1-granted-source-scan.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/src/tests/fixtures/ccp-a11-production-like.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/entitlement/src/tests/ccp-r1-granted-source-scan.spec.ts",
+      "status": "excluded",
+      "to": "tools/sign-naming/naming.pg-integration.sh"
     },
     {
       "from": "libs/events/prisma/schema.prisma",

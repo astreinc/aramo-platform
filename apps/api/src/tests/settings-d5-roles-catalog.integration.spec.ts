@@ -150,8 +150,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         await db.query(readFileSync(p, 'utf8'));
       }
       await db.query(
-        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
-         VALUES ($1::uuid, 'core') ON CONFLICT (tenant_id, capability) DO NOTHING`,
+        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+         VALUES ($1::uuid, 'core', 'PROVISIONING') ON CONFLICT (tenant_id, capability) DO NOTHING`,
         [TENANT],
       );
 

@@ -258,7 +258,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('ATI-SEP-1 T10 WP3
   async function grant(tenant: string, ...caps: string[]): Promise<void> {
     for (const c of caps) {
       await db.query(
-        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1::uuid, $2::entitlement."Capability") ON CONFLICT DO NOTHING`,
+        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1::uuid, $2::entitlement."Capability", 'PROVISIONING') ON CONFLICT DO NOTHING`,
         [tenant, c],
       );
     }

@@ -65,7 +65,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     const email = `${slug}@gmail.com`;
     await db.query(`INSERT INTO identity."Tenant" (id, name, slug, kind, status, is_active, updated_at) VALUES ($1,$2,$3,$4,'ACTIVE',true, now())`, [tenant, `T ${slug}`, slug, kind]);
     for (const c of kind === 'BUSINESS' ? ['core', 'sign', 'ats'] : ['core', 'sign']) {
-      await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1, $2::entitlement."Capability")`, [tenant, c]);
+      await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1, $2::entitlement."Capability", 'PROVISIONING')`, [tenant, c]);
     }
     const m = randomUUID();
     await db.query(`INSERT INTO identity."User" (id, email, display_name, tenant_id, updated_at) VALUES ($1,$2,'Pat Example',$3, now())`, [user, email, tenant]);

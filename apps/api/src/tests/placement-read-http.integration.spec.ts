@@ -100,7 +100,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-d Placement RE
     // TENANT_ATS is entitled to 'ats' (the intended placement boundary).
     // TENANT_NOT_ATS is entitled to NOTHING → capability axis refusal.
     await setupClient.query(
-      `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1::uuid,'ats') ON CONFLICT DO NOTHING`,
+      `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1::uuid,'ats', 'PROVISIONING') ON CONFLICT DO NOTHING`,
       [TENANT_ATS],
     );
     // One visible placement for TENANT_ATS (see-all actor observes it).
@@ -217,7 +217,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('E1-d Placement RE
     // A fresh entitled tenant with no placement rows.
     const emptyTenant = randomUUID();
     await setupClient.query(
-      `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1::uuid,'ats') ON CONFLICT DO NOTHING`,
+      `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1::uuid,'ats', 'PROVISIONING') ON CONFLICT DO NOTHING`,
       [emptyTenant],
     );
     const jwt = await signJwtFn({ sub: randomUUID(), tenant_id: emptyTenant, scopes: ATS_READ_SCOPES });

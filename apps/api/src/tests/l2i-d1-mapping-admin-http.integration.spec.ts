@@ -71,7 +71,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const entitlementMigration of ENTITLEMENT_MIGRATIONS) await db.query(readFileSync(entitlementMigration, 'utf8'));
       for (const p of integrationMigrations()) await db.query(readFileSync(p, 'utf8'));
       await ensureWriteFreezeTenant((s) => db.query(s), TENANT_A);
-      await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1::uuid,'ats') ON CONFLICT DO NOTHING`, [TENANT_A]);
+      await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1::uuid,'ats', 'PROVISIONING') ON CONFLICT DO NOTHING`, [TENANT_A]);
       await db.query(`INSERT INTO integration."IntegrationConnection" (id, tenant_id, provider_key, status, updated_at) VALUES ($1,$2,'acme_ats','active', now())`, [CONN_A, TENANT_A]);
 
       const kp = await generateKeyPair(ALG);

@@ -659,7 +659,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             await sub(FIN.renewal, 'aramo-sign-standard-business-v1', 'MANUAL', { commitment_end: '20 days' });
             await sub(FIN.outstanding, 'aramo-sign-standard-business-v1', 'SELF_SERVICE', { status: 'PAST_DUE', ref: 'sub_pact_c6_outstanding', grace: '5 days', period_end: '20 days' });
             await sub(FIN.held, 'aramo-sign-included-v1', 'MANUAL', {});
-            await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1, 'core'), ($1, 'sign') ON CONFLICT DO NOTHING`, [FIN.held]);
+            await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1, 'core', 'PROVISIONING'), ($1, 'sign', 'PROVISIONING') ON CONFLICT DO NOTHING`, [FIN.held]);
             const intent = randomUUID();
             await db.query(
               `INSERT INTO subscription."CheckoutIntent" (id, tenant_id, user_id, plan_id, provider, provider_session_ref) SELECT $1::uuid, $2::uuid, 'pact-owner', p.id, 'STRIPE', 'cs_pact_c6_held' FROM subscription."Plan" p WHERE p.key = 'aramo-sign-standard-business-v1'`,

@@ -41,7 +41,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C6 Finance re
     h.lifecycle.startCheckout({ product_key: 'sign', tenant_id, user_id: 'owner-1', user_email: 'o@acme.test', plan_key: BUSINESS, success_url: 'https://e/ok', cancel_url: 'https://e/no', accept_terms: true });
   const lastCheckout = () => h.billing.checkouts[h.billing.checkouts.length - 1]!;
   const grant = (tenant_id: string, caps: string[]) =>
-    pg.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) SELECT $1::uuid, c::entitlement."Capability" FROM unnest($2::text[]) c ON CONFLICT DO NOTHING`, [tenant_id, caps]);
+    pg.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) SELECT $1::uuid, c::entitlement."Capability", 'PROVISIONING' FROM unnest($2::text[]) c ON CONFLICT DO NOTHING`, [tenant_id, caps]);
   async function governedOpen(t: string): Promise<string> {
     const r = await h.changeRequests.create(
       as(OPS, 'commercial_ops'),

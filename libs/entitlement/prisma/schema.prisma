@@ -65,10 +65,10 @@ model TenantEntitlement {
   // filters revoked_at = null. CHECK: granted_source IN (MANUAL | PLAN | PROMOTION | MIGRATION |
   // PROVISIONING | SIGNUP); the commercial values (MANUAL, PLAN, PROMOTION) exactly when
   // change_request_id is set; revoked_at, revoked_by and revoke_change_request_id together.
-  // The DB default MIGRATION attributes an out-of-band raw write; application writers always
-  // name their source. Trigger: a revoke is cleared only by a governed re-grant; a revoked row
-  // cannot be deleted (the resurrection guard).
-  granted_source           String    @default("MIGRATION")
+  // NO default (CCP-R1, TD-A7-3): every writer names its source; an INSERT that omits it fails
+  // NOT NULL (pre-A7 rows were backfilled MIGRATION explicitly). Trigger: a revoke is cleared
+  // only by a governed re-grant; a revoked row cannot be deleted (the resurrection guard).
+  granted_source           String
   granted_by               String?   @db.Uuid
   change_request_id        String?   @db.Uuid
   revoked_at               DateTime? @db.Timestamptz(6)

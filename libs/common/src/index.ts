@@ -119,8 +119,12 @@ export {
 export {
   ENTITLEMENT_MIGRATIONS,
   ENTITLEMENT_PROVENANCE_MIGRATION,
+  FIXTURE_GRANTED_SOURCES,
   resolveEntitlementMigrations,
+  seedTenantEntitlements,
+  tenantEntitlementFixtureSql,
 } from './lib/testing/entitlement-migrations.js';
+export type { FixtureGrantedSource } from './lib/testing/entitlement-migrations.js';
 export { TALENT_EVIDENCE_LATE_COLUMN_MIGRATIONS } from './lib/testing/talent-evidence-migrations.js';
 export {
   SKILLS_TAXONOMY_MIGRATIONS,

@@ -585,7 +585,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A8 support ex
     clock = T0;
     const t = await newTenant(pg);
     const sub = await stripeRowFull(t);
-    for (const c of ['core', 'sign']) await pg.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1, $2::entitlement."Capability")`, [t, c]);
+    for (const c of ['core', 'sign']) await pg.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1, $2::entitlement."Capability", 'PROVISIONING')`, [t, c]);
     await pg.query(`INSERT INTO subscription."BillingEvent" (id, provider, provider_event_id, event_type, event_created_at, tenant_id, outcome, detail) VALUES (gen_random_uuid(), 'STRIPE', $2, 'invoice.payment_failed', '2026-10-24T08:00:00Z', $1, 'APPLIED', 'past due')`, [t, `evt_${t}`]);
     await pg.query(`INSERT INTO subscription."BillingReconciliationFlag" (id, tenant_id, provider, subscription_ref, reason) VALUES (gen_random_uuid(), $1, 'STRIPE', $2, 'domain_not_authoritative')`, [t, `sub_${sub}`]);
     await pg.query(`INSERT INTO subscription."CheckoutIntent" (id, tenant_id, user_id, plan_id, provider, status) SELECT gen_random_uuid(), $1, 'owner-user-1', p.id, 'STRIPE', 'EXPIRED' FROM subscription."Plan" p WHERE p.key = $2`, [t, BUSINESS]);

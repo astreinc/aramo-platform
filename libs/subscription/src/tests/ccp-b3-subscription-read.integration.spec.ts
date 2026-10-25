@@ -174,7 +174,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B3 commercial
     clock = at(-10);
     F['D_revoke'] = await approved('ENTITLEMENT_REVOKE', F['D'], { capabilities: ['sign'] });
     await h.apply.apply(as(OPS, 'commercial_ops'), F['D_revoke'], A6_CTX);
-    await pg.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1, 'ats')`, [F['D']]);
+    await pg.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1, 'ats', 'MIGRATION')`, [F['D']]);
     clock = at(-1);
     F['D_change'] = await created('SUBSCRIPTION_CHANGE', F['D'], { subscription_id: F['D_sub'], plan_key: BUSINESS, plan_version_id: await publishedVersion(pg, BUSINESS) });
 

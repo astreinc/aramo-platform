@@ -69,7 +69,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Recipient inbox â
     }
     for (const [id, name] of [[TENANT_A, 'Northwind Staffing'], [TENANT_B, 'Bob Personal']] as const) {
       await db.query(`INSERT INTO identity."Tenant" (id, name, slug, kind, status, is_active, updated_at) VALUES ($1,$2,$3,'BUSINESS','ACTIVE',true, now())`, [id, name, `t-${id.slice(0, 8)}`]);
-      for (const c of ['core', 'sign']) await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1, $2::entitlement."Capability")`, [id, c]);
+      for (const c of ['core', 'sign']) await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1, $2::entitlement."Capability", 'PROVISIONING')`, [id, c]);
     }
     for (const [id, email, tenant] of [[BOB, 'Bob@Example.test', TENANT_B], [CAROL, 'carol@example.test', TENANT_B], [SENDER, 'sam@northwind.test', TENANT_A]] as const) {
       const m = randomUUID();

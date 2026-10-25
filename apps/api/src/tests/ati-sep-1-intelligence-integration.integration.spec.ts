@@ -143,7 +143,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('ATI-SEP-1 T8/T9 â
 
   async function grant(...caps: string[]): Promise<void> {
     for (const c of caps) {
-      await recordPrisma.$executeRawUnsafe(`INSERT INTO "entitlement"."TenantEntitlement" (tenant_id, capability) VALUES ($1::uuid, $2::"entitlement"."Capability")`, TENANT, c);
+      await recordPrisma.$executeRawUnsafe(`INSERT INTO "entitlement"."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1::uuid, $2::"entitlement"."Capability", 'PROVISIONING')`, TENANT, c);
     }
   }
 
