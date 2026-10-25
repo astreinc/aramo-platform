@@ -10,6 +10,7 @@ import {
   type ProviderInvoiceState,
   type ProviderPortalConfigurationState,
 } from './billing-provider.port.js';
+import { taxAvailability, type TaxAvailability } from './tax-availability.js';
 
 // CCP-C3 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.2 row C3; Charter §3 "Payments,
 // invoices … | Stripe | Aramo SHALL mirror status only. Aramo SHALL NOT build a competing payment
@@ -97,6 +98,9 @@ export interface TenantBillingStatus {
     cancel_at_period_end: boolean;
   } | null;
   invoices: BillingStatusInvoice[];
+  // CCP-C5 — tax is a designed disabled state until Stripe Tax registration (PBD §10), on every
+  // availability (no tax figure is read, derived or shown).
+  tax: TaxAvailability;
   detail: string | null;
   read_at: Date;
 }
@@ -162,6 +166,7 @@ export class BillingStatusReadService {
       subscription: null,
       provider_subscription: null,
       invoices: [],
+      tax: taxAvailability(),
       detail: null,
       read_at: now,
     };

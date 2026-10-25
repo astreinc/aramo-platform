@@ -1,6 +1,8 @@
 import { IsIn, IsOptional } from 'class-validator';
 import { PRODUCT_KEYS } from '@aramo/subscription';
 
+import type { TaxAvailabilityDto } from './commercial-billing-status.dto.js';
+
 // CCP-B3 (PBD §5.3 row B3; pre-execution record C-1) — GET /platform/commercial/subscriptions and
 // GET /platform/commercial/tenants/{tenant_id}/commercial (platform:subscription:read). The query
 // DTO is the 400-shape gate; CommercialSubscriptionReadService (libs/subscription) is the
@@ -85,4 +87,6 @@ export interface CommercialTenantOverviewResponseDto {
   as_of: string;
   tenant: { id: string; name: string; slug: string | null; kind: string };
   products: CommercialTenantProductDto[];
+  // CCP-C5 — always disabled until Stripe Tax registration.
+  tax: TaxAvailabilityDto;
 }

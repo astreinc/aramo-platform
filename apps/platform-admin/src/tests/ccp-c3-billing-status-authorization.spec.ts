@@ -68,6 +68,8 @@ class RoleBundleResolver implements EffectiveAuthorizationResolver {
 }
 
 const T = new Date('2026-10-26T12:00:00.000Z');
+// CCP-C5 — every billing read carries the designed disabled tax state.
+const TAX = { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' } as const;
 const STATUS_RESULT: TenantBillingStatus = {
   tenant_id: TENANT,
   product_key: 'sign',
@@ -101,6 +103,7 @@ const STATUS_RESULT: TenantBillingStatus = {
       live: false,
     },
   ],
+  tax: { ...TAX },
   detail: null,
   read_at: T,
 };
@@ -167,6 +170,8 @@ describe('CCP-C3 — per-role authorization on the read-through billing-status r
     app.use((req: never, res: never, next: () => void) => new RequestIdMiddleware().use(req, res, next));
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     await app.init();
+    // Merge train TD-MERGE-41: one bound loopback port for the file (see support/ccp-d4-harness.ts).
+    await app.listen(0, '127.0.0.1');
   }, 60_000);
 
   afterAll(async () => {
@@ -198,6 +203,8 @@ describe('CCP-C3 — per-role authorization on the read-through billing-status r
       expect(s.status, JSON.stringify(s.body)).toBe(200);
       expect(s.body).toMatchObject({ tenant_id: TENANT, availability: 'AVAILABLE', mode: 'test', subscription: { subscription_ref: 'sub_c3', open: true }, provider_subscription: { provider_status: 'past_due', current_period_end: '2026-11-01T00:00:00.000Z' }, payment_due: true, payment_overdue: true, read_at: '2026-10-26T12:00:00.000Z' });
       expect(s.body.amount_withheld).toBeUndefined();
+      // CCP-C5 — the designed disabled tax state is passed through exactly.
+      expect(s.body.tax).toEqual(TAX);
       expect(s.body.invoices).toEqual([
         expect.objectContaining({ invoice_ref: 'in_c3', payment_state: 'OVERDUE', provider_status: 'open', currency: 'usd', total_minor: 4900, amount_due_minor: 4900, amount_paid_minor: 0, amount_remaining_minor: 4900, due_at: '2026-10-15T00:00:00.000Z', hosted_url: 'https://invoice.test/in_c3' }),
       ]);

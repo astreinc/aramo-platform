@@ -36,6 +36,8 @@ export interface FinanceRevenueResponseDto {
   billing_interval: 'MONTH';
   basis: 'OPEN_SUBSCRIPTIONS_X_PINNED_LIST_PRICE';
   billing_provider_mode: string;
+  // CCP-C5: always { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' }.
+  tax: { enabled: false; reason: 'STRIPE_TAX_NOT_REGISTERED' };
   mrr_minor?: number;
   arr_minor?: number;
   amount_withheld?: AmountWithheld;

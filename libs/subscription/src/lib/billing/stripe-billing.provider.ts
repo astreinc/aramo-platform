@@ -215,7 +215,9 @@ export class StripeBillingProvider implements BillingProviderPort, BillingProvid
       'metadata[intent_id]': req.intent_id,
       'subscription_data[metadata][tenant_id]': req.tenant_id,
       'subscription_data[metadata][intent_id]': req.intent_id,
-      'automatic_tax[enabled]': process.env['STRIPE_AUTOMATIC_TAX'] === '1' ? 'true' : undefined,
+      // CCP-C5 (PBD §5.2 row C5, §10) — no tax parameter is sent: the provider is never asked to
+      // calculate or collect tax before Stripe Tax registration. The former env opt-in is removed,
+      // and no flag replaces it (enabling tax is a future release with its own authorization).
     });
     const s = await this.call('POST', '/v1/checkout/sessions', body, `aramo-checkout-${req.intent_id}`);
     const url = asString(s['url']);

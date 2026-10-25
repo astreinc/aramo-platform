@@ -163,6 +163,8 @@ describe('CCP-D2 — the revenue route returns amounts only to a Finance amount 
     app.use((req: never, res: never, next: () => void) => new RequestIdMiddleware().use(req, res, next));
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     await app.init();
+    // Merge train TD-MERGE-41: one bound loopback port for the file (see support/ccp-d4-harness.ts).
+    await app.listen(0, '127.0.0.1');
   }, 60_000);
 
   afterAll(async () => {
@@ -198,6 +200,7 @@ describe('CCP-D2 — the revenue route returns amounts only to a Finance amount 
         billing_interval: 'MONTH',
         basis: 'OPEN_SUBSCRIPTIONS_X_PINNED_LIST_PRICE',
         billing_provider_mode: 'test',
+        tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' },
         mrr_minor: MRR,
         arr_minor: MRR * 12,
         by_product: [{ product_key: 'sign', subscriptions: 4, mrr_minor: MRR, arr_minor: MRR * 12 }],
@@ -229,6 +232,7 @@ describe('CCP-D2 — the revenue route returns amounts only to a Finance amount 
         billing_interval: 'MONTH',
         basis: 'OPEN_SUBSCRIPTIONS_X_PINNED_LIST_PRICE',
         billing_provider_mode: 'test',
+        tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' },
         amount_withheld: 'FINANCE_SCOPE_REQUIRED',
         by_product: [{ product_key: 'sign', subscriptions: 4, amount_withheld: 'FINANCE_SCOPE_REQUIRED' }],
         counts: REPORT.counts,

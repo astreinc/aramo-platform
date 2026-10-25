@@ -2,7 +2,7 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
-import { BillingRevenueReportService, FINANCE_AMOUNT_WITHHELD, type RenewalBucket, type RevenueReport } from '@aramo/subscription';
+import { BillingRevenueReportService, FINANCE_AMOUNT_WITHHELD, taxAvailability, type RenewalBucket, type RevenueReport } from '@aramo/subscription';
 
 import { amountAccess } from './finance-amount-access.js';
 import { FinanceRevenueQueryDto, type FinanceRevenueResponseDto, type RevenueRenewalBucketDto } from './dto/commercial-revenue.dto.js';
@@ -57,6 +57,8 @@ export function revenueDto(r: RevenueReport, withAmounts: boolean): FinanceReven
     billing_interval: r.billing_interval,
     basis: r.basis,
     billing_provider_mode: r.billing_provider_mode,
+    // CCP-C5 (merge train TD-MERGE-41): the designed disabled tax state, as on every other billing read.
+    tax: taxAvailability(),
     ...amounts,
     by_product: r.by_product.map((p) =>
       withAmounts

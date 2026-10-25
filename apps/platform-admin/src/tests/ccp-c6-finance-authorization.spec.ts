@@ -66,12 +66,15 @@ class RoleBundleResolver implements EffectiveAuthorizationResolver {
 }
 
 const T = new Date('2026-10-26T12:00:00.000Z');
+// CCP-C5 — every billing read carries the designed disabled tax state.
+const TAX = { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' } as const;
 const PRICE = { list_price: { amount_minor: 2000, currency: 'USD' as const, billing_interval: 'MONTH' }, unpriced_reason: null, price_source: 'PINNED_PLAN_VERSION' as const, plan_version_id: '019a0000-0000-7000-8000-0000000cc6a9' };
 const RENEWALS_REPORT = {
   as_of: T,
   within_days: 90,
   currency: 'USD' as const,
   billing_provider_mode: 'test' as const,
+  tax: { ...TAX },
   items: [
     {
       subscription_id: '019a0000-0000-7000-8000-0000000cc6a1', tenant_id: TENANT, tenant_name: 'Acme', product_key: 'sign', source: 'MANUAL', status: 'ACTIVE', plan_key: 'aramo-sign-standard-business-v1', plan_name: 'Standard Business',
@@ -84,6 +87,7 @@ const OUTSTANDING_REPORT = {
   as_of: T,
   currency: 'USD' as const,
   billing_provider_mode: 'test' as const,
+  tax: { ...TAX },
   items: [
     {
       subscription_id: '019a0000-0000-7000-8000-0000000cc6a2', tenant_id: TENANT, tenant_name: 'Acme', product_key: 'sign', source: 'SELF_SERVICE', status: 'PAST_DUE', plan_key: 'aramo-sign-standard-business-v1', version_number: 1,
@@ -96,6 +100,7 @@ const RECONCILIATION_REPORT = {
   as_of: T,
   currency: 'USD' as const,
   billing_provider_mode: 'test' as const,
+  tax: { ...TAX },
   status: 'EXCEPTIONS' as const,
   subscriptions: [],
   entitled_without_subscription: [],
@@ -163,6 +168,8 @@ describe('CCP-C6 — per-role authorization on the Finance read routes (real Jwt
     app.use((req: never, res: never, next: () => void) => new RequestIdMiddleware().use(req, res, next));
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     await app.init();
+    // Merge train TD-MERGE-41: one bound loopback port for the file (see support/ccp-d4-harness.ts).
+    await app.listen(0, '127.0.0.1');
   }, 60_000);
 
   afterAll(async () => {
@@ -207,6 +214,8 @@ describe('CCP-C6 — per-role authorization on the Finance read routes (real Jwt
       expect(rec.status).toBe(200);
       expect(rec.body).toMatchObject({ status: 'EXCEPTIONS', counts: { held_activations: 1, exceptions: 1 } });
       expect(rec.body.held_activations[0]).toMatchObject({ subscription_ref: 'sub_held', intent_status: 'CREATED', detected_at: '2026-10-26T12:00:00.000Z', resolution: 'UNRESOLVED' });
+      // CCP-C5 — each Finance report carries the designed disabled tax state.
+      for (const r of [ren, out, rec]) expect(r.body.tax).toEqual(TAX);
       expect(calls()).toBe(3);
     });
   }

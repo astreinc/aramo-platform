@@ -136,6 +136,8 @@ describe('CCP-B2 — route gate on /platform/commercial/catalog (real JwtAuthGua
     app.use((req: never, res: never, next: () => void) => new RequestIdMiddleware().use(req, res, next));
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     await app.init();
+    // Merge train TD-MERGE-41: one bound loopback port for the file (see support/ccp-d4-harness.ts).
+    await app.listen(0, '127.0.0.1');
   }, 60_000);
 
   afterAll(async () => {

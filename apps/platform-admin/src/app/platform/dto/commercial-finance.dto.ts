@@ -2,6 +2,8 @@ import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsOptional, IsUUID, Max, Min } from 'class-validator';
 import { PRODUCT_KEYS, RENEWAL_HORIZON_MAX_DAYS, type ProductKey } from '@aramo/subscription';
 
+import type { TaxAvailabilityDto } from './commercial-billing-status.dto.js';
+
 // CCP-C6 — GET /platform/commercial/finance/{renewals, outstanding-payments, reconciliation-report}
 // (platform:billing:read): the dedicated Finance read routes (A0-C6; PLATFORM-UX-1 A1-4a). They are
 // the ONLY platform routes that carry a monetary field. READ-ONLY. Every monetary figure is a plan
@@ -58,6 +60,8 @@ export interface RenewalsResponseDto {
   within_days: number;
   currency: 'USD';
   billing_provider_mode: string;
+  // CCP-C5 — always disabled until Stripe Tax registration.
+  tax: TaxAvailabilityDto;
   items: RenewalItemDto[];
   counts: { items: number; lapsed: number; commitment_end: number; period_end: number };
 }
@@ -89,6 +93,8 @@ export interface OutstandingPaymentsResponseDto {
   as_of: string;
   currency: 'USD';
   billing_provider_mode: string;
+  // CCP-C5 — always disabled until Stripe Tax registration.
+  tax: TaxAvailabilityDto;
   items: OutstandingItemDto[];
   counts: { items: number; past_due: number; incomplete: number; in_grace: number; grace_ended: number; no_grace_date: number };
 }
@@ -135,6 +141,8 @@ export interface ReconciliationReportResponseDto {
   as_of: string;
   currency: 'USD';
   billing_provider_mode: string;
+  // CCP-C5 — always disabled until Stripe Tax registration.
+  tax: TaxAvailabilityDto;
   // RECONCILED | EXCEPTIONS
   status: string;
   subscriptions: ReconciledSubscriptionDto[];

@@ -6177,8 +6177,10 @@ components:
     CommercialTenantOverviewResponse:
       type: object
       additionalProperties: false
-      required: [as_of, tenant, products]
+      required: [as_of, tenant, products, tax]
       properties:
+        tax:
+          $ref: '#/components/schemas/TaxAvailability'
         as_of: { type: string, format: date-time }
         tenant:
           type: object
@@ -6997,6 +6999,22 @@ components:
         sent. Holders: platform_owner, finance_admin, read_only_auditor. Catalog list prices (a plan
         version's published price) are governed by catalog read authority and never withheld (FA-3).
 
+    TaxAvailability:
+      type: object
+      additionalProperties: false
+      description: >-
+        CCP-C5 (PBD §5.2 row C5, §10) — tax is a designed disabled state until Stripe Tax
+        registration. Always enabled=false with reason STRIPE_TAX_NOT_REGISTERED; no setting enables
+        it, and no tax is calculated, collected or shown.
+      required: [enabled, reason]
+      properties:
+        enabled:
+          type: boolean
+          enum: [false]
+        reason:
+          type: string
+          enum: [STRIPE_TAX_NOT_REGISTERED]
+
     TenantBillingStatusResponse:
       type: object
       additionalProperties: false
@@ -7007,8 +7025,10 @@ components:
         `platform:billing:amount:read`; otherwise it is absent (no amount, currency, line, link or
         count) and `amount_withheld` is `FINANCE_SCOPE_REQUIRED`, and a provider error's text is
         replaced by a fixed `detail` line (FA-6).
-      required: [tenant_id, product_key, availability, provider, mode, subscription, provider_subscription, payment_due, payment_overdue, detail, read_at]
+      required: [tenant_id, product_key, availability, provider, mode, subscription, provider_subscription, payment_due, payment_overdue, tax, detail, read_at]
       properties:
+        tax:
+          $ref: '#/components/schemas/TaxAvailability'
         tenant_id:
           type: string
           format: uuid
@@ -7213,8 +7233,10 @@ components:
     FinanceRenewalsReport:
       type: object
       additionalProperties: false
-      required: [as_of, within_days, currency, billing_provider_mode, items, counts]
+      required: [as_of, within_days, currency, billing_provider_mode, tax, items, counts]
       properties:
+        tax:
+          $ref: '#/components/schemas/TaxAvailability'
         as_of:
           type: string
           format: date-time
@@ -7310,8 +7332,10 @@ components:
     FinanceOutstandingPaymentsReport:
       type: object
       additionalProperties: false
-      required: [as_of, currency, billing_provider_mode, items, counts]
+      required: [as_of, currency, billing_provider_mode, tax, items, counts]
       properties:
+        tax:
+          $ref: '#/components/schemas/TaxAvailability'
         as_of:
           type: string
           format: date-time
@@ -7478,8 +7502,10 @@ components:
     FinanceReconciliationReport:
       type: object
       additionalProperties: false
-      required: [as_of, currency, billing_provider_mode, status, subscriptions, entitled_without_subscription, held_activations, other_open_flags, counts]
+      required: [as_of, currency, billing_provider_mode, tax, status, subscriptions, entitled_without_subscription, held_activations, other_open_flags, counts]
       properties:
+        tax:
+          $ref: '#/components/schemas/TaxAvailability'
         as_of:
           type: string
           format: date-time
@@ -7620,7 +7646,7 @@ components:
     FinanceRevenueReport:
       type: object
       additionalProperties: false
-      required: [as_of, currency, billing_interval, basis, billing_provider_mode, by_product, counts, renewal_pipeline]
+      required: [as_of, currency, billing_interval, basis, billing_provider_mode, tax, by_product, counts, renewal_pipeline]
       properties:
         as_of:
           type: string
@@ -7637,6 +7663,8 @@ components:
         billing_provider_mode:
           type: string
           enum: [test, live, unconfigured]
+        tax:
+          $ref: '#/components/schemas/TaxAvailability'
         mrr_minor:
           type: integer
           description: MRR in USD minor units. Present only with `platform:billing:amount:read`.

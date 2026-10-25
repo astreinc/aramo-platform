@@ -1284,6 +1284,8 @@ describe('platform-web → GET /platform/commercial/tenants/{tenant_id}/billing-
           // CCP-R3 (CCP-A1 Amendment A1, FA-4): the derived booleans, for every billing reader.
           payment_due: true,
           payment_overdue: true,
+          // CCP-C5 — the designed disabled tax state (exact; no setting enables it).
+          tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' },
           detail: null,
           read_at: iso(),
         });
@@ -1327,6 +1329,7 @@ describe('platform-web → GET /platform/commercial/tenants/{tenant_id}/billing-
           payment_due: true,
           payment_overdue: true,
           amount_withheld: 'FINANCE_SCOPE_REQUIRED',
+          tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' },
           detail: null,
           read_at: iso(),
         });
@@ -1452,6 +1455,7 @@ describe('platform-web → GET /platform/commercial/finance/renewals (CCP-C6)', 
           within_days: 90,
           currency: 'USD',
           billing_provider_mode: like('unconfigured'),
+          tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' },
           items: eachLike({
             subscription_id: uuid('cca10000-0000-7000-8000-0000000006c1'),
             tenant_id: FIN_RENEWAL_TENANT,
@@ -1499,6 +1503,7 @@ describe('platform-web → GET /platform/commercial/finance/outstanding-payments
           as_of: iso(),
           currency: 'USD',
           billing_provider_mode: like('unconfigured'),
+          tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' },
           items: eachLike({
             subscription_id: uuid('cca10000-0000-7000-8000-0000000006c2'),
             tenant_id: FIN_OUTSTANDING_TENANT,
@@ -1544,6 +1549,7 @@ describe('platform-web → GET /platform/commercial/finance/reconciliation-repor
           as_of: iso(),
           currency: 'USD',
           billing_provider_mode: like('unconfigured'),
+          tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' },
           status: 'EXCEPTIONS',
           subscriptions: eachLike({
             subscription_id: uuid('cca10000-0000-7000-8000-0000000006c3'),
@@ -1655,6 +1661,7 @@ describe('platform-web → GET /platform/commercial/finance/revenue (CCP-D2)', (
     billing_interval: 'MONTH',
     basis: 'OPEN_SUBSCRIPTIONS_X_PINNED_LIST_PRICE',
     billing_provider_mode: like('unconfigured'),
+    tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' },
     ...amounts,
     by_product: eachLike({ product_key: 'sign', subscriptions: integer(2), ...line }),
     counts: {
@@ -2290,6 +2297,8 @@ describe('platform-web → GET /platform/commercial/tenants/{tenant_id}/commerci
         b.jsonBody({
           as_of: iso(),
           tenant: { id: B3_TENANT, name: like('Pact Commercial 03b1'), slug: null, kind: 'BUSINESS' },
+          // CCP-C5 — the designed disabled tax state.
+          tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' },
           // The product order is fixed by the contract (sign, ats, portal, intelligence), so the
           // array is contracted per element (TD-B3-BE-1): every nullable field is pinned to the
           // fixture's value instead of being left out.

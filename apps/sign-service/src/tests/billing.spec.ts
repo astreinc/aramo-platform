@@ -26,7 +26,12 @@ const signed = (body: string) => {
 function setup(over: Partial<Record<string, unknown>> = {}) {
   const lifecycle = {
     handleEvent: vi.fn(async () => ({ outcome: 'APPLIED', tenant_id: 't-1', activated_owner_user_id: 'u-owner' })),
-    account: vi.fn(async () => ({ subscription: null, allowance: { subscribed: false, allowance_key: 'sign.envelopes', state: 'NONE' }, billing_available: true })),
+    account: vi.fn(async () => ({
+      subscription: null,
+      allowance: { subscribed: false, allowance_key: 'sign.envelopes', state: 'NONE' },
+      billing_available: true,
+      tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' },
+    })),
     sendingOwner: vi.fn(async () => null),
     // CCP-A6-R (C-8) — the tenant-facing held-activation state (null = nothing held).
     tenantActivationState: vi.fn(async () => null),
@@ -55,6 +60,21 @@ describe('EsignBillingController', () => {
     const out = (await controller.account(auth(['sign:billing:manage']), 'r')) as Record<string, unknown>;
     expect(out['pending_activation']).toEqual(pending);
     expect(JSON.stringify(out)).not.toMatch(/governed_subscription_open|reconciliation|flag/i);
+  });
+
+  it('C5-SIGN-1 the tenant billing account read carries the designed disabled tax state (no setting enables it)', async () => {
+    const before = process.env['STRIPE_AUTOMATIC_TAX'];
+    process.env['STRIPE_AUTOMATIC_TAX'] = '1';
+    try {
+      const { controller } = setup();
+      for (const scopes of [['sign:billing:manage'], ['sign:envelope:read']]) {
+        const out = (await controller.account(auth(scopes), 'r')) as Record<string, unknown>;
+        expect(out['tax']).toEqual({ enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' });
+      }
+    } finally {
+      if (before === undefined) delete process.env['STRIPE_AUTOMATIC_TAX'];
+      else process.env['STRIPE_AUTOMATIC_TAX'] = before;
+    }
   });
 
   const env = { ...process.env };

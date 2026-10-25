@@ -283,6 +283,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B3 commercial
   it('B3-I-6 (A) overview: the held activation flag links the NEWEST conversion naming its held ref; the open request is that conversion; registered only for sign', async () => {
     const o = await reads.tenantOverview(F['A']!, { as_of: T0 });
     expect(o?.tenant).toEqual({ id: F['A'], name: 'B3 Alpha', slug: 'b3-alpha', kind: 'BUSINESS' });
+    // CCP-C5 — the designed disabled tax state on real Postgres.
+    expect(o?.tax).toEqual({ enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' });
     expect(o?.products.map((p) => [p.product_key, p.registered])).toEqual([
       ['sign', true],
       ['ats', false],

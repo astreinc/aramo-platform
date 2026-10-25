@@ -131,6 +131,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A6 — the ap
     app.use((req: never, res: never, next: () => void) => new RequestIdMiddleware().use(req, res, next));
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     await app.init();
+    // Merge train TD-MERGE-41: one bound loopback port for the file (see support/ccp-d4-harness.ts).
+    await app.listen(0, '127.0.0.1');
     for (const role of [...ROLES, 'super_admin']) {
       user[role] = await addOperator(pg, [role]);
       resolver.roleOf.set(user[role] as string, role);

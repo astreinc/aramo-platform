@@ -108,6 +108,7 @@ export function tenantBillingStatusDto(s: TenantBillingStatus, amount_access: bo
           },
     payment_due: flags.payment_due,
     payment_overdue: flags.payment_overdue,
+    tax: { enabled: s.tax.enabled, reason: s.tax.reason },
     read_at: s.read_at.toISOString(),
   };
   if (amount_access) return { ...common, invoices: s.invoices.slice(0, invoice_limit).map(invoiceDto), detail: s.detail };

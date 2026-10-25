@@ -97,6 +97,7 @@ export class PlatformCommercialSubscriptionsController {
                 created_at: p.open_request.created_at.toISOString(),
               },
       })),
+      tax: { ...o.tax },
     };
   }
 }

@@ -8,6 +8,15 @@ import { BILLING_STATUS_MAX_INVOICE_LIMIT, PRODUCT_KEYS, type ProductKey } from 
 // 400-shape gate. Invoice amounts are tenant-specific Finance figures (CCP-A1 Amendment A1): the
 // invoice list needs platform:billing:amount:read in addition to platform:billing:read.
 
+/**
+ * CCP-C5 (PBD §5.2 row C5, §10) — tax is a designed disabled state until Stripe Tax registration.
+ * Always `{ enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' }`; no flag enables it.
+ */
+export interface TaxAvailabilityDto {
+  enabled: false;
+  reason: 'STRIPE_TAX_NOT_REGISTERED';
+}
+
 export class TenantBillingStatusQueryDto {
   @IsIn([...PRODUCT_KEYS]) product_key!: ProductKey;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(BILLING_STATUS_MAX_INVOICE_LIMIT) invoice_limit?: number;
@@ -56,6 +65,7 @@ export interface TenantBillingStatusResponseDto {
   invoices?: BillingStatusInvoiceDto[];
   // Present (and `invoices` absent) for a caller without platform:billing:amount:read.
   amount_withheld?: 'FINANCE_SCOPE_REQUIRED';
+  tax: TaxAvailabilityDto;
   detail: string | null;
   read_at: string;
 }

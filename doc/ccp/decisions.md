@@ -335,3 +335,12 @@ For an actor without `platform:billing:amount:read`, the whole free-text `Contra
 
 ### Implementation
 "R3-W": an extension of R3's shared redaction to the Contract and ChangeRequest projections, the exports, alerts and alternate read paths, with per-role tests (including commercial_ops viewing its own financial request). It follows the v1.2 screen build on the stable integrated HEAD after the merge train.
+- **TD-MERGE-41 (C5):** `wip/ccp-c5` (`da47a9d4`) merged.
+  - **Conflicts, all R3 × C5 on the same response objects.** Both sets of fields are kept: the C3 billing-status DTO, mapper, OpenAPI `TenantBillingStatusResponse` and authorization spec (R3's `payment_due` / `payment_overdue` / optional `invoices` + C5's required `tax`), the C6 outstanding-payments route (R3's per-caller `outstandingItemDto` + C5's `tax`), `@aramo/subscription` index exports and the platform-web Pact. R3's non-holder billing-status interaction (support_admin) now carries `tax` too.
+  - **D2 × C5.** The D2 revenue route (built in parallel, not in C5's list) is a billing read, so it now carries the same designed disabled state, `tax: taxAvailability()` (DTO, OpenAPI `FinanceRevenueReport.tax` required, D2 spec, Pact).
+  - **C5's no-tax-call guard** (C5-G-3 enumerates provider methods from the adapter prototypes) passes here. It is re-verified after C7 (cancel) and C4 (adjustment methods, C4-P `readPaymentPicture`) land.
+  - `STRIPE_AUTOMATIC_TAX` remains named only in `.env.prod.example`'s removal note and in the pre-existing `doc/runbooks/RELEASE-sign-naming.md` env list (main-branch doc; untouched). Deploy note: remove the key from the prod `.env` when this ships.
+  - **The supertest hang is not D4-specific.** In this merge's full platform-admin run the mocked, DB-free `ccp-b3-subscriptions-authorization.spec.ts` hung for 120 s on 7 consecutive tests: once the server wedged, every later request in the file stalled. Alone, it passed 12 / 12 three times.
+    - **Cause (consistent with every dump so far):** a spec that never binds a port lets supertest call `listen(0)` and `close()` on the same `http.Server` for every request. Under host load, a new listen can race the previous close.
+    - **Fix (test-only, behaviour-neutral):** extended TD-MERGE-40's `await app.listen(0, '127.0.0.1')` after `app.init()` to all 21 remaining platform-admin CCP spec files that use `request(app.getHttpServer())`. 23 files in total now bind one port.
+    - **Result:** platform-admin CCP 701 / 701 at host load 7–15, where the same run took 885 s with 7 failures before.

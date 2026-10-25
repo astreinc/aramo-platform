@@ -150,7 +150,7 @@ export class PlatformCommercialFinanceController {
   async renewals(@Query() query: FinanceRenewalsQueryDto, @AuthContext() auth: AuthContextType, @RequestId() requestId: string): Promise<RenewalsResponseDto> {
     assertPlatform(auth, requestId);
     const r = await this.reports.renewals({ tenant_id: query.tenant_id, product_key: query.product_key, within_days: query.within_days });
-    return { as_of: r.as_of.toISOString(), within_days: r.within_days, currency: r.currency, billing_provider_mode: r.billing_provider_mode, items: r.items.map(renewalItemDto), counts: { ...r.counts } };
+    return { as_of: r.as_of.toISOString(), within_days: r.within_days, currency: r.currency, billing_provider_mode: r.billing_provider_mode, tax: { ...r.tax }, items: r.items.map(renewalItemDto), counts: { ...r.counts } };
   }
 
   @Get('outstanding-payments')
@@ -158,7 +158,7 @@ export class PlatformCommercialFinanceController {
   async outstanding(@Query() query: FinanceReportQueryDto, @AuthContext() auth: AuthContextType, @RequestId() requestId: string): Promise<OutstandingPaymentsResponseDto> {
     assertPlatform(auth, requestId);
     const r = await this.reports.outstandingPayments({ tenant_id: query.tenant_id, product_key: query.product_key });
-    return { as_of: r.as_of.toISOString(), currency: r.currency, billing_provider_mode: r.billing_provider_mode, items: r.items.map((i) => outstandingItemDto(i, amountAccess(auth))), counts: { ...r.counts } };
+    return { as_of: r.as_of.toISOString(), currency: r.currency, billing_provider_mode: r.billing_provider_mode, tax: { ...r.tax }, items: r.items.map((i) => outstandingItemDto(i, amountAccess(auth))), counts: { ...r.counts } };
   }
 
   @Get('reconciliation-report')
@@ -170,6 +170,7 @@ export class PlatformCommercialFinanceController {
       as_of: r.as_of.toISOString(),
       currency: r.currency,
       billing_provider_mode: r.billing_provider_mode,
+      tax: { ...r.tax },
       status: r.status,
       subscriptions: r.subscriptions.map(reconciledDto),
       entitled_without_subscription: r.entitled_without_subscription.map((e) => ({
