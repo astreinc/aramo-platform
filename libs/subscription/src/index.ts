@@ -82,3 +82,49 @@ export {
   type FreeSubscriptionRefusal,
   type PersonalSignupMode,
 } from './lib/free-personal-subscription.js';
+// CCP-A2 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.1 row A2) — the commercial audit
+// stream, the versioned commercial policy (fail-closed parser) and its pure boundary checks.
+export {
+  COMMERCIAL_POLICY_FORMAT_VERSION,
+  COMMERCIAL_POLICY_KEYS,
+  CommercialPolicyUnavailableError,
+  canonicalJson,
+  commercialPolicyChecksum,
+  parseActiveCommercialPolicy,
+  parseCommercialPolicyContent,
+  type CommercialPolicy,
+  type CommercialPolicyContent,
+  type CommercialPolicyUnavailableReason,
+  type CommercialPolicyVersionRecord,
+} from './lib/commercial/commercial-policy.js';
+export {
+  CommercialPolicyInputError,
+  approvalExpiresAt,
+  checkSupportExtension,
+  creditEscalation,
+  discountEscalates,
+  isApprovalExpired,
+  isWithinPastDueGrace,
+  pastDueGraceUntil,
+  type AppliedSupportExtension,
+  type CreditEscalation,
+  type SupportExtensionBreach,
+  type SupportExtensionCheck,
+} from './lib/commercial/commercial-policy-boundaries.js';
+export {
+  CommercialPolicyRepository,
+  type CommercialPolicyActor,
+  type CommercialPolicyStatus,
+  type CommercialPolicyVersionRow,
+} from './lib/commercial/commercial-policy.repository.js';
+export {
+  COMMERCIAL_AUDIT_DEFAULT_LIMIT,
+  COMMERCIAL_AUDIT_EVENT_TYPE_PATTERN,
+  COMMERCIAL_AUDIT_MAX_LIMIT,
+  CommercialAuditCursorError,
+  CommercialAuditRepository,
+  type AppendCommercialAuditEventInput,
+  type CommercialAuditEventRow,
+  type CommercialAuditPage,
+  type CommercialAuditQuery,
+} from './lib/commercial/commercial-audit.repository.js';
