@@ -34,7 +34,7 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 // commercial tenant (change requests and approvals are append-only, and Q14 allows one
 // open request per tenant × product).
 //
-// Coverage — CCP routes (28):
+// Coverage — CCP routes (30):
 //   GET  /platform/commercial/audit-events                      (CCP-A2)
 //   POST /platform/commercial/change-requests                   (CCP-A3)
 //   GET  /platform/commercial/change-requests
@@ -63,6 +63,8 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 //   GET  /platform/commercial/alerts/approvals                  (CCP-D3)
 //   GET  /platform/commercial/metrics/billing                   (CCP-D3)
 //   GET  /platform/commercial/metrics/approvals                 (CCP-D3)
+//   GET  /platform/commercial/subscriptions                     (CCP-B3)
+//   GET  /platform/commercial/tenants/{tenant_id}/commercial    (CCP-B3)
 // For each route: the allowed call, super_admin refused (403, holds no commercial
 // scope), and the tenant tier refused (403 tier tripwire). Plus the role-level
 // refusals: a role missing the route scope (audit feed), a role missing the requester
@@ -151,6 +153,12 @@ const ALERTS_BILLING = '/platform/commercial/alerts/billing';
 const ALERTS_APPROVALS = '/platform/commercial/alerts/approvals';
 const METRICS_BILLING = '/platform/commercial/metrics/billing';
 const METRICS_APPROVALS = '/platform/commercial/metrics/approvals';
+// CCP-B3 — the Subscriptions workbench and the tenant Commercial tab. The provider state 'a tenant
+// with a governed Sign subscription and a held activation exists' seeds exactly this tenant.
+const SUBSCRIPTIONS = '/platform/commercial/subscriptions';
+const B3_TENANT = 'cca10000-0000-7000-8000-0000000003b1';
+const B3_UNKNOWN_TENANT = 'cca10000-0000-7000-8000-0000000003bf';
+const TENANT_COMMERCIAL = (tenant_id: string) => `/platform/commercial/tenants/${tenant_id}/commercial`;
 
 const platformSession = (role: Role) => ({ 'X-Aramo-Consumer': 'platform', Cookie: `aramo_access_token_platform=pact-${role}` });
 const platformJson = (role: Role) => ({ ...platformSession(role), 'Content-Type': 'application/json' });
@@ -265,6 +273,8 @@ const GATE_ROUTES: readonly GateRoute[] = [
   { name: 'GET alerts/approvals', method: 'GET', path: ALERTS_APPROVALS, scope: 'platform:approval:read' },
   { name: 'GET metrics/billing', method: 'GET', path: METRICS_BILLING, scope: 'platform:billing:read' },
   { name: 'GET metrics/approvals', method: 'GET', path: METRICS_APPROVALS, scope: 'platform:approval:read' },
+  { name: 'GET subscriptions', method: 'GET', path: SUBSCRIPTIONS, scope: 'platform:subscription:read' },
+  { name: 'GET tenants/{tenant_id}/commercial', method: 'GET', path: TENANT_COMMERCIAL(B3_TENANT), scope: 'platform:subscription:read' },
 ];
 
 // ── CCP-A2 — the commercial audit feed ────────────────────────────────────────
@@ -1148,6 +1158,25 @@ describe('platform-web → POST /platform/commercial/change-requests/{id}/conver
       .executeTest(async (mock) => {
         const res = await call(`${mock.url}${convert()}`, 'POST', platformSession('finance_admin'));
         expect(res.status).toBe(403);
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/change-requests/{id} — the conversion apply hint (CCP-B3 C-2)', () => {
+  it('the requester (commercial_ops) of an approved conversion reads apply_actionable true (the …/convert apply is requester-only)', async () => {
+    await provider
+      .addInteraction()
+      .given('an approved governed-to-self-service conversion exists')
+      .uponReceiving('an approved conversion detail read by its requester')
+      .withRequest('GET', fromProviderState(`${CR}/\${requestId}`, `${CR}/${EX_REQUEST_ID}`), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ request: { id: uuid(EX_REQUEST_ID), action_type: 'CONVERSION', state: 'APPROVED', requested_by: OP.commercial_ops }, apply_actionable: true });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}/${EX_REQUEST_ID}`, 'GET', platformSession('commercial_ops'));
+        expect(res.body['apply_actionable']).toBe(true);
       });
   });
 });
@@ -2051,6 +2080,178 @@ describe('platform-web → GET /platform/commercial/contracts/{id} (CCP-B4)', ()
       .executeTest(async (mock) => {
         const res = await call(`${mock.url}${CONTRACTS}/${EX_CONTRACT_ID}`, 'GET', platformSession('catalog_manager'));
         expect(res.status).toBe(403);
+      });
+  });
+});
+
+// ── CCP-B3 — the Subscriptions workbench and the tenant Commercial tab (read-only, no money) ──
+
+// A workbench page mixes every tenant's latest row (open or ended, governed or Stripe-owned), so
+// the row template names only the fields every row carries (TD-B1-15): the nullable dates,
+// contract and current_period are contracted on the tenant overview below, where the fixture is
+// fixed.
+const WORKBENCH_ROW = {
+  subscription_id: uuid('cca10000-0000-7000-8000-0000000003b2'),
+  tenant: { id: uuid(B3_TENANT) },
+  product_key: 'sign',
+  plan: { id: uuid('cca10000-0000-7000-8000-0000000003b3'), key: like('aramo-sign-included-v1'), name: like('Aramo Sign Included'), sales_model: like('OPERATOR') },
+  plan_version: { id: uuid('cca10000-0000-7000-8000-0000000003b4'), version_number: integer(1), status: like('PUBLISHED') },
+  source: regex('^(MANUAL|SELF_SERVICE|FREE|DEVELOPMENT)$', 'MANUAL'),
+  status: like('ACTIVE'),
+  started_at: iso(),
+  period_anchor: iso(),
+  provider_linked: like(false),
+  open_flags: eachLike('governed_subscription_open', 0),
+  active_extensions: { count: integer(0), exception: like(false) },
+};
+const NO_ENTITLEMENT = (capability: string) => ({
+  capability,
+  state: 'NONE',
+  granted_source: null,
+  granted_at: null,
+  granted_by: null,
+  change_request_id: null,
+  revoked_at: null,
+  revoked_by: null,
+  revoke_change_request_id: null,
+});
+const UNREGISTERED_PRODUCT = (product_key: string) => ({ product_key, registered: false, entitlement: NO_ENTITLEMENT(product_key), subscription: null, flags: [], open_request: null });
+
+describe('platform-web → GET /platform/commercial/subscriptions (CCP-B3)', () => {
+  it('read_only_auditor reads the Subscriptions workbench (200; the latest base row per tenant × product, no money)', async () => {
+    await provider
+      .addInteraction()
+      .given('a tenant with a governed Sign subscription and a held activation exists')
+      .uponReceiving('a subscriptions workbench read by read_only_auditor')
+      .withRequest('GET', SUBSCRIPTIONS, (b) => {
+        b.headers(platformSession('read_only_auditor'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ as_of: iso(), rows: eachLike(WORKBENCH_ROW) });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${SUBSCRIPTIONS}`, 'GET', platformSession('read_only_auditor'));
+        expect(res.status).toBe(200);
+        expect((res.body['rows'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/tenants/{tenant_id}/commercial (CCP-B3)', () => {
+  it('commercial_ops reads a tenant\'s Commercial tab (200; per product: entitlement + provenance, the base row, the held activation with its conversion, the open request)', async () => {
+    await provider
+      .addInteraction()
+      .given('a tenant with a governed Sign subscription and a held activation exists')
+      .uponReceiving('a tenant commercial overview read by commercial_ops')
+      .withRequest('GET', TENANT_COMMERCIAL(B3_TENANT), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          as_of: iso(),
+          tenant: { id: B3_TENANT, name: like('Pact Commercial 03b1'), slug: null, kind: 'BUSINESS' },
+          // The product order is fixed by the contract (sign, ats, portal, intelligence), so the
+          // array is contracted per element (TD-B3-BE-1): every nullable field is pinned to the
+          // fixture's value instead of being left out.
+          products: [
+            {
+              product_key: 'sign',
+              registered: true,
+              entitlement: {
+                capability: 'sign',
+                state: 'ACTIVE',
+                granted_source: 'PLAN',
+                granted_at: iso(),
+                granted_by: uuid(OP.commercial_ops),
+                change_request_id: uuid('cca10000-0000-7000-8000-0000000003b5'),
+                revoked_at: null,
+                revoked_by: null,
+                revoke_change_request_id: null,
+              },
+              subscription: {
+                subscription_id: uuid('cca10000-0000-7000-8000-0000000003b2'),
+                product_key: 'sign',
+                plan: { id: uuid('cca10000-0000-7000-8000-0000000003b3'), key: 'aramo-sign-included-v1', name: like('Aramo Sign Included'), sales_model: like('OPERATOR') },
+                plan_version: { id: uuid('cca10000-0000-7000-8000-0000000003b4'), version_number: integer(1), status: 'PUBLISHED' },
+                source: 'MANUAL',
+                status: 'ACTIVE',
+                started_at: iso(),
+                ended_at: null,
+                period_anchor: iso(),
+                current_period: { start: iso(), end: iso('2026-11-25T10:00:00.000Z') },
+                current_period_end: null,
+                grace_until: null,
+                commitment_end: null,
+                contract: { id: uuid('cca10000-0000-7000-8000-0000000003b6'), contract_ref: like('CT-PACT-0001') },
+                provider_linked: false,
+                open_flags: ['governed_subscription_open'],
+                active_extensions: { count: 0, exception: false },
+              },
+              flags: [
+                {
+                  id: uuid('cca10000-0000-7000-8000-0000000003b7'),
+                  reason: 'governed_subscription_open',
+                  provider: 'STRIPE',
+                  subscription_ref: 'sub_pact_b3_held',
+                  intent_id: uuid('cca10000-0000-7000-8000-0000000003b8'),
+                  detected_at: iso(),
+                  conversion: { change_request_id: uuid('cca10000-0000-7000-8000-0000000003b9'), state: 'PENDING_APPROVAL', direction: 'TO_GOVERNED' },
+                },
+              ],
+              open_request: {
+                id: uuid('cca10000-0000-7000-8000-0000000003b9'),
+                action_type: 'CONVERSION',
+                kind: 'NORMAL',
+                state: 'PENDING_APPROVAL',
+                requested_by: uuid(OP.commercial_ops),
+                created_at: iso(),
+              },
+            },
+            UNREGISTERED_PRODUCT('ats'),
+            UNREGISTERED_PRODUCT('portal'),
+            UNREGISTERED_PRODUCT('intelligence'),
+          ],
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${TENANT_COMMERCIAL(B3_TENANT)}`, 'GET', platformSession('commercial_ops'));
+        expect(res.status).toBe(200);
+        expect((res.body['products'] as unknown[]).length).toBe(4);
+      });
+  });
+
+  it('an unknown tenant is 404 NOT_FOUND', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a tenant commercial overview read for an unknown tenant')
+      .withRequest('GET', TENANT_COMMERCIAL(B3_UNKNOWN_TENANT), (b) => {
+        b.headers(platformSession('read_only_auditor'));
+      })
+      .willRespondWith(404, (b) => {
+        b.jsonBody(errorBody('NOT_FOUND', { tenant_id: B3_UNKNOWN_TENANT }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${TENANT_COMMERCIAL(B3_UNKNOWN_TENANT)}`, 'GET', platformSession('read_only_auditor'));
+        expect(res.status).toBe(404);
+      });
+  });
+
+  it('a role without platform:subscription:read (catalog_manager) is refused (403)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a tenant commercial overview read by a role missing the subscription read scope')
+      .withRequest('GET', TENANT_COMMERCIAL(B3_TENANT), (b) => {
+        b.headers(platformSession('catalog_manager'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:subscription:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${TENANT_COMMERCIAL(B3_TENANT)}`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(403);
+        expect(errCode(res.body)).toBe('INSUFFICIENT_PERMISSIONS');
       });
   });
 });

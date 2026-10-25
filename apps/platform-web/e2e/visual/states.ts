@@ -12,6 +12,7 @@ import { STUDIO_STATES } from './states-studio';
 import { CCP_STATES } from './states-ccp';
 import { CCP_CATALOG_STATES } from './states-ccp-catalog';
 import { CCP_SUPPORT_STATES } from './states-ccp-support';
+import { CCP_SUBSCRIPTION_STATES } from './states-ccp-subscriptions';
 
 export const STATES: readonly ScreenState[] = [
   ...SHELL_STATES,
@@ -26,4 +27,6 @@ export const STATES: readonly ScreenState[] = [
   ...CCP_CATALOG_STATES,
   // CCP-B6 — the support-extension workflow (Commercial Control Plane v1.0.dc.html).
   ...CCP_SUPPORT_STATES,
+  // CCP-B3 — the Subscriptions workbench and Tenant › Commercial.
+  ...CCP_SUBSCRIPTION_STATES,
 ];

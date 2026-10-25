@@ -10298,7 +10298,17 @@
     {
       "from": "apps/platform-web/e2e/visual/DIVERGENCES.md",
       "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "apps/platform-web/e2e/visual/DIVERGENCES.md",
+      "status": "unscoped",
       "to": "doc/ccp/slices/CCP-B1-pre-execution.md"
+    },
+    {
+      "from": "apps/platform-web/e2e/visual/DIVERGENCES.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-B3-pre-execution.md"
     },
     {
       "from": "apps/platform-web/e2e/visual/DIVERGENCES.md",
@@ -10349,6 +10359,11 @@
       "from": "apps/platform-web/src/commercial/catalog/catalog-api.ts",
       "status": "production",
       "to": "pact/consumers/platform-web-consumer/src/platform-commercial-catalog.consumer.test.ts"
+    },
+    {
+      "from": "apps/platform-web/src/commercial/subscriptions/subscriptions-test-data.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/seed.ts"
     },
     {
       "from": "apps/platform-web/src/commercial/test-fixtures.ts",
@@ -10869,6 +10884,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform-commercial-observability.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-subscriptions.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -14921,6 +14941,106 @@
       "from": "doc/ccp/slices/CCP-B2-pre-execution.md",
       "status": "unscoped",
       "to": "libs/subscription/src/tests/support/ccp-a3-database.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/dto/commercial-change-request.dto.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-conversion.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/App.tsx"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/components/CommercialRequestDialog.tsx"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/components/permissions.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/tenants/TenantDetailView.tsx"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A6-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A7-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-C1-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-C2-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-C3-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/entitlement/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/governed-subscription.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-change-request.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-change-request.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-contract.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-conversion.ts"
     },
     {
       "from": "doc/ccp/slices/CCP-B4-acceptance.md",

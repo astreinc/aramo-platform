@@ -25,7 +25,7 @@ import { PlatformAdminsView } from './admins/PlatformAdminsView';
 import { COMMERCIAL_PERMISSIONS as CP } from './components/permissions';
 import { ApprovalsInboxView } from './commercial/ApprovalsInboxView';
 import { CommercialAccessDenied } from './commercial/CommercialAccessDenied';
-import { CommercialPlaceholderView, type CommercialPlaceholderPage } from './commercial/CommercialPlaceholderView';
+import { SubscriptionsView } from './commercial/subscriptions/SubscriptionsView';
 import { CatalogView } from './commercial/catalog/CatalogView';
 import { PolicyView } from './commercial-governance/PolicyView';
 import { AuditExplorerView } from './commercial-governance/AuditExplorerView';
@@ -101,8 +101,6 @@ export function PlatformConsole({ session }: { readonly session: Session }) {
   // super_admin holds no commercial scope, so every Commercial deep link lands here).
   const commercialGate = (scope: string, page: string, element: ReactElement): ReactElement =>
     hasScope(session, scope) ? element : <CommercialAccessDenied session={session} scope={scope} page={page} />;
-  const placeholder = (scope: string, page: CommercialPlaceholderPage): ReactElement =>
-    commercialGate(scope, page, <CommercialPlaceholderView page={page} />);
 
   return (
     <PlatformShell session={session}>
@@ -180,14 +178,15 @@ export function PlatformConsole({ session }: { readonly session: Session }) {
           }
         />
         {/* ── CCP-B1 — the Commercial group (handoff §2, directive R-12: never under
-            /platform/). Approvals is B1's, Catalog B2's, Policy and Audit B5's, Contracts B4's; Subscriptions renders its
-            designed disabled state until its slice builds it. */}
+            /platform/). Approvals is B1's, Catalog B2's, Policy and Audit B5's, Contracts B4's, Subscriptions B3's. */}
         <Route path="/commercial" element={<Navigate to="/commercial/approvals" replace />} />
         <Route
           path="/commercial/approvals"
           element={commercialGate(CP.approvalRead, 'approvals', <ApprovalsInboxView session={session} />)}
         />
-        <Route path="/commercial/subscriptions" element={placeholder(CP.subscriptionRead, 'subscriptions')} />
+        {/* CCP-B3 (PBD §5.3 row B3) — the Subscriptions workbench (handoff §5.3), read-only; a row
+            opens Tenant › Commercial, where every action is a change request (replaces B1's placeholder). */}
+        <Route path="/commercial/subscriptions" element={commercialGate(CP.subscriptionRead, 'subscriptions', <SubscriptionsView />)} />
         {/* CCP-B2 (PBD §5.3 row B2) — the product and plan catalog; draft actions gate on
             platform:catalog:draft inside the view (merge train: replaces B1's placeholder). */}
         <Route path="/commercial/catalog" element={commercialGate(CP.catalogRead, 'catalog', <CatalogView session={session} />)} />

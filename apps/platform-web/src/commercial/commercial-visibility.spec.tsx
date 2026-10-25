@@ -50,6 +50,7 @@ function mockFetch(role: FixtureRole) {
     if (url.includes('/platform/commercial/change-requests')) {
       return hasScope(sessionFor(role), 'platform:approval:read') ? json({ requests: [], next_cursor: null }) : json({ error: { code: 'INSUFFICIENT_PERMISSIONS' } }, 403);
     }
+    if (url.includes('/platform/commercial/subscriptions')) return json({ as_of: '2026-10-24T14:00:00.000Z', rows: [] });
     if (url.includes('/platform/tenants')) return json({ tenants: [] });
     if (url.includes('/platform/dashboard')) return json({ status_counts: [], onboarding: [], recent_activity: [] });
     return json({}, 404);
@@ -139,10 +140,10 @@ describe('Commercial routes — in-shell access denied, never a redirect', () =>
     expect(screen.getByRole('navigation', { name: 'Breadcrumb' })).toHaveTextContent('Commercial/Contracts');
   });
 
-  it('placeholders render the designed disabled state', async () => {
-    // Merge train: Catalog is built (CCP-B2); Subscriptions stays a placeholder.
+  it('CCP-B3: /commercial/subscriptions renders the workbench (B1 placeholder replaced)', async () => {
     renderConsole('platform_owner', '/commercial/subscriptions');
-    expect(await screen.findByTestId('commercial-placeholder')).toBeInTheDocument();
+    expect(await screen.findByTestId('commercial-subscriptions')).toBeInTheDocument();
+    expect(screen.queryByTestId('commercial-placeholder')).toBeNull();
   });
 
   it('super_admin tenant operations are unchanged (the Tenants list still opens)', async () => {
