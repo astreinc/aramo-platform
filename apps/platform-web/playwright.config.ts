@@ -61,6 +61,7 @@ export default defineConfig({
     { name: 'visual', testMatch: /visual\/.*\.spec\.ts$/, retries: 2 },
     { name: 'a11y', testMatch: /a11y\/.*\.spec\.ts$/ },
     { name: 'keyboard', testMatch: /keyboard\/.*\.spec\.ts$/ },
+    { name: 'journeys', testMatch: /journeys\/.*\.spec\.ts$/ },
     { name: 'responsive', testMatch: /responsive\/.*\.spec\.ts$/ },
   ],
   webServer: {
