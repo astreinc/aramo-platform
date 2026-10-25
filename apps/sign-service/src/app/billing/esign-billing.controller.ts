@@ -209,6 +209,9 @@ export class EsignBillingController {
       if (owner === auth.sub && !scopes.has(ESIGN_READ_SCOPE)) await this.owners.activate(auth.tenant_id, auth.sub, requestId);
       return {
         ...view,
+        // CCP-A6-R (Conversion Rule C-8) — a held self-service activation, as a safe billing-support
+        // state only (no flag, reason or contract detail; never an activation).
+        pending_activation: await this.lifecycle.tenantActivationState(auth.tenant_id, SIGN_PRODUCT_KEY),
         tenant_kind: kind,
         // PERSONAL commercial sending stays deferred (fixed boundary).
         self_service_eligible: kind === 'BUSINESS',

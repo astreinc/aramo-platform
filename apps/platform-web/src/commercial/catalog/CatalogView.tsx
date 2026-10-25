@@ -120,6 +120,27 @@ export function CatalogView({ session }: { readonly session: Session }) {
     };
   }, [version, tenantNames]);
 
+  // CCP-A6-R (TD-B2-3, requester-only) — the Apply action shows only when the server says this
+  // caller may apply the open request now (`apply_actionable`). Merge train TD-MERGE-9.
+  const [applyActionable, setApplyActionable] = useState<Readonly<Record<string, boolean>>>({});
+  const openForApply = version ? openRequestOf(version) : null;
+  const openApplyId = openForApply !== null && applyActionOf(openForApply) !== null ? openForApply.id : null;
+  useEffect(() => {
+    if (openApplyId === null) return;
+    let live = true;
+    catalogApi
+      .isApplyActionable(openApplyId)
+      .then((ok) => {
+        if (live) setApplyActionable((m) => ({ ...m, [openApplyId]: ok }));
+      })
+      .catch(() => {
+        if (live) setApplyActionable((m) => ({ ...m, [openApplyId]: false }));
+      });
+    return () => {
+      live = false;
+    };
+  }, [openApplyId, catalog]);
+
   // A different version → fresh editor inputs.
   const versionId = version?.id;
   useEffect(() => {
@@ -416,7 +437,7 @@ export function CatalogView({ session }: { readonly session: Session }) {
                     const open = openRequestOf(version);
                     if (open === null) return null;
                     const s = openRequestSentence(open);
-                    const apply = applyActionOf(open);
+                    const apply = applyActionable[open.id] === true ? applyActionOf(open) : null;
                     return (
                       <>
                         <div className="pc-open" data-testid="open-request">

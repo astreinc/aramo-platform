@@ -54,6 +54,8 @@ export {
   postTerminationExportDays,
   type SubscriptionView,
   type WebhookResult,
+  TENANT_ACTIVATION_PENDING_MESSAGE,
+  type TenantActivationState,
 } from './lib/billing/subscription-lifecycle.service.js';
 export { addMonthsClamped, billingPeriodAt, type BillingPeriod } from './lib/billing-period.js';
 export { AramoSignStandardBusinessPlanKey, AramoSignStandardProfessionalPlanKey, AramoSignIncludedPlanKey, assertNotProduction, openDevelopmentSubscription } from './lib/development-subscription.js';
@@ -144,6 +146,8 @@ export {
 // CCP-A3 (PBD §5.1 row A3) — change request, approval, eligibility; the D9 attestation store.
 export {
   A6_APPLICABLE_ACTIONS,
+  B2_CATALOG_APPLY_ACTIONS,
+  isCatalogApplicable,
   COMMERCIAL_A3_TRANSITIONS,
   COMMERCIAL_TRANSITIONS,
   COMMERCIAL_ACTIONS,
@@ -231,6 +235,16 @@ export {
   type CommercialApplyResult,
   type CommercialChangeApplicationRow,
 } from './lib/commercial/commercial-apply.service.js';
+// CCP-A6-R — the shared apply refusal / failure records (stable codes + operator explanations).
+export { APPLY_EXPLANATIONS, explanationOf } from './lib/commercial/commercial-apply-records.js';
+// CCP-B2-backend — the governed catalog publish / retire apply.
+export {
+  COMMERCIAL_CATALOG_APPLY_FAULT_HOOK,
+  CommercialCatalogApplyService,
+  type CommercialCatalogApplicationRow,
+  type CommercialCatalogApplyFaultHook,
+  type CommercialCatalogApplyResult,
+} from './lib/commercial/commercial-catalog-apply.service.js';
 export { GOVERNED_SUBSCRIPTION_OPEN, billingLockKey, isGovernedSubscription, takeBillingLock } from './lib/billing/governed-subscription.js';
 export { C16_QUERY_A, checkoutCutoverReport, formatCheckoutCutoverReport, type CheckoutCutoverReport } from './lib/billing/checkout-cutover-check.js';
 // CCP-A5 (PBD §5.1 row A5; MP-A2 N-15…N-19; Charter D3) — plan versions, the provider price

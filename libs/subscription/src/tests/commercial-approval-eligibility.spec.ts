@@ -239,8 +239,11 @@ describe('CCP-A6 state-machine transition table (A3 + apply)', () => {
     'APPLY_FAILED>APPLYING',
     'APPLYING>APPLIED',
     'APPLYING>APPLY_FAILED',
+    // CCP-A6-R (Charter Amendment A1, AD-4)
+    'APPROVED>APPLY_EXPIRED',
+    'APPLY_FAILED>APPLY_EXPIRED',
   ]);
-  it('A6-SM-1 exactly 10 of the 81 state pairs are transitions; APPLIED is terminal; APPLY_FAILED only retries', () => {
+  it('A6-SM-1 exactly 12 of the 100 state pairs are transitions; APPLIED and APPLY_EXPIRED are terminal; APPLY_FAILED retries or expires', () => {
     let n = 0;
     for (const from of COMMERCIAL_CHANGE_REQUEST_STATES) {
       for (const to of COMMERCIAL_CHANGE_REQUEST_STATES) {
@@ -249,9 +252,11 @@ describe('CCP-A6 state-machine transition table (A3 + apply)', () => {
         if (ok) n += 1;
       }
     }
-    expect(n).toBe(10);
+    expect(n).toBe(12);
     expect(COMMERCIAL_TRANSITIONS.APPLIED).toEqual([]);
-    expect(COMMERCIAL_TRANSITIONS.APPLY_FAILED).toEqual(['APPLYING']);
+    expect(COMMERCIAL_TRANSITIONS.APPLY_EXPIRED).toEqual([]);
+    expect(COMMERCIAL_TRANSITIONS.APPLY_FAILED).toEqual(['APPLYING', 'APPLY_EXPIRED']);
+    expect(COMMERCIAL_TRANSITIONS.APPLYING).not.toContain('APPLY_EXPIRED');
   });
 });
 

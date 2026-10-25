@@ -43,7 +43,7 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 //   POST /platform/commercial/change-requests/{id}/withdraw
 //   POST /platform/commercial/change-requests/{id}/approvals
 //   POST /platform/commercial/change-requests/{id}/reject
-//   POST /platform/commercial/change-requests/{id}/apply        (CCP-A6)
+//   POST /platform/commercial/change-requests/{id}/apply        (CCP-A6; CCP-B2-backend catalog publish)
 //   GET  /platform/commercial/usage/reconciliation              (CCP-D1)
 //   GET  /platform/commercial/usage/periods                     (CCP-D1)
 // For each route: the allowed call, super_admin refused (403, holds no commercial
@@ -411,6 +411,7 @@ describe('platform-web → GET /platform/commercial/change-requests/{id} (CCP-A3
           approvals: [],
           is_expired: false,
           chain_satisfiable: true,
+          apply_actionable: false,
           steps: eachLike({
             step_index: integer(0),
             role_key: 'finance_admin',
@@ -672,16 +673,35 @@ describe('platform-web → POST /platform/commercial/change-requests/{id}/apply 
       });
   });
 
-  it('a role without the requester authority (finance_admin) is refused (403 requester_scope_missing)', async () => {
+  it('the requester reads an approved request with apply_actionable true; an approver reads it false (CCP-A6-R TD-B2-3)', async () => {
+    for (const [role, actionable] of [['commercial_ops', true], ['finance_admin', false]] as const) {
+      await provider
+        .addInteraction()
+        .given('an approved subscription-open change request exists')
+        .uponReceiving(`an approved change request detail read by ${role}`)
+        .withRequest('GET', fromProviderState(`${CR}/\${requestId}`, `${CR}/${EX_REQUEST_ID}`), (b) => {
+          b.headers(platformSession(role));
+        })
+        .willRespondWith(200, (b) => {
+          b.jsonBody({ request: { id: uuid(EX_REQUEST_ID), action_type: 'SUBSCRIPTION_OPEN', state: 'APPROVED', requested_by: OP.commercial_ops }, apply_actionable: actionable });
+        })
+        .executeTest(async (mock) => {
+          const res = await call(`${mock.url}${CR}/${EX_REQUEST_ID}`, 'GET', platformSession(role));
+          expect(res.body['apply_actionable']).toBe(actionable);
+        });
+    }
+  });
+
+  it('a user who is not the original requester (finance_admin) is refused (403 not_requester; CCP-A6-R TD-A6-3)', async () => {
     await provider
       .addInteraction()
       .given('an approved subscription-open change request exists')
-      .uponReceiving('a change request apply by a role without the requester scope')
+      .uponReceiving('a change request apply by a user who is not its requester')
       .withRequest('POST', fromProviderState(`${CR}/\${requestId}/apply`, apply()), (b) => {
         b.headers(platformSession('finance_admin'));
       })
       .willRespondWith(403, (b) => {
-        b.jsonBody(errorBody('INSUFFICIENT_PERMISSIONS', { reason: 'requester_scope_missing', missing_scopes: ['platform:subscription:request'] }));
+        b.jsonBody(errorBody('INSUFFICIENT_PERMISSIONS', { reason: 'not_requester', explanation: like('Only the person who requested this change can apply it.') }));
       })
       .executeTest(async (mock) => {
         const res = await call(`${mock.url}${apply()}`, 'POST', platformSession('finance_admin'));
@@ -698,7 +718,7 @@ describe('platform-web → POST /platform/commercial/change-requests/{id}/apply 
         b.headers(platformSession('commercial_ops'));
       })
       .willRespondWith(409, (b) => {
-        b.jsonBody(errorBody('COMMERCIAL_CHANGE_REQUEST_CONFLICT', { reason: 'apply_refused', refusal: 'APPROVER_NO_LONGER_ELIGIBLE' }));
+        b.jsonBody(errorBody('COMMERCIAL_CHANGE_REQUEST_CONFLICT', { reason: 'apply_refused', refusal: 'APPROVER_NO_LONGER_ELIGIBLE', explanation: like('An approver no longer holds the role.') }));
       })
       .executeTest(async (mock) => {
         const res = await call(`${mock.url}${apply()}`, 'POST', platformSession('commercial_ops'));
@@ -817,6 +837,44 @@ describe('platform-web → GET /platform/commercial/usage/periods (CCP-D1)', () 
         const res = await call(`${mock.url}${USAGE_PERIODS}`, 'GET', platformSession('commercial_ops'));
         expect(res.status).toBe(409);
         expect(errCode(res.body)).toBe('USAGE_ROLLUP_NOT_RECONCILED');
+      });
+  });
+});
+
+// ── CCP-B2-backend — the catalog publish through the same apply route ─────────
+
+describe('platform-web → POST /platform/commercial/change-requests/{id}/apply (CCP-B2-backend catalog publish)', () => {
+  it('the requester (catalog_manager) applies an approved plan-version publish (200, catalog_application)', async () => {
+    const path = `${CR}/${EX_REQUEST_ID}/apply`;
+    await provider
+      .addInteraction()
+      .given('an approved plan-version publish change request exists')
+      .uponReceiving('a plan-version publish apply by catalog_manager')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/apply`, path), (b) => {
+        b.headers(platformSession('catalog_manager'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          replayed: false,
+          application: null,
+          request: { id: uuid(EX_REQUEST_ID), action_type: 'PLAN_VERSION_PUBLISH', state: 'APPLIED', tenant_id: null, product_key: null, requested_by: OP.catalog_manager },
+          catalog_application: {
+            id: uuid('cca10000-0000-7000-8000-0000000000b7'),
+            change_request_id: uuid(EX_REQUEST_ID),
+            action_type: 'PLAN_VERSION_PUBLISH',
+            plan_id: uuid('cca10000-0000-7000-8000-0000000000b8'),
+            plan_version_id: uuid('cca10000-0000-7000-8000-0000000000b9'),
+            retired_plan_version_id: uuid('cca10000-0000-7000-8000-0000000000ba'),
+            provider_price_ref: null,
+            attempt: 1,
+            applied_by: OP.catalog_manager,
+            applied_at: iso(),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${path}`, 'POST', platformSession('catalog_manager'));
+        expect(res.status).toBe(200);
       });
   });
 });

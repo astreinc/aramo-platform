@@ -332,8 +332,8 @@ describe('platform-web → POST /platform/commercial/change-requests (PLAN_VERSI
       .withRequest('POST', CR, (b) => {
         b.headers(platformJson('catalog_manager')).jsonBody({
           action_type: 'PLAN_VERSION_PUBLISH',
-          payload: { plan_version_id: fromProviderState('${versionId}', EX_DRAFT_ID), evidence: 'Pricing review PR-2026-Q4' },
-          reason: 'Annual price review',
+          payload: { plan_version_id: fromProviderState('${versionId}', EX_DRAFT_ID) },
+          reason: 'Annual price review\n\nEvidence: Pricing review PR-2026-Q4',
           idempotency_key: 'pact-b2-publish-0001',
         });
       })
@@ -355,8 +355,8 @@ describe('platform-web → POST /platform/commercial/change-requests (PLAN_VERSI
       .executeTest(async (mock) => {
         const res = await call(`${mock.url}${CR}`, 'POST', platformJson('catalog_manager'), {
           action_type: 'PLAN_VERSION_PUBLISH',
-          payload: { plan_version_id: EX_DRAFT_ID, evidence: 'Pricing review PR-2026-Q4' },
-          reason: 'Annual price review',
+          payload: { plan_version_id: EX_DRAFT_ID },
+          reason: 'Annual price review\n\nEvidence: Pricing review PR-2026-Q4',
           idempotency_key: 'pact-b2-publish-0001',
         });
         expect(res.status).toBe(201);

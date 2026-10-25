@@ -7,10 +7,12 @@ import {
   CommercialApplyRefusedError,
   CommercialApplyService,
   CommercialChangeRequestError,
+  explanationOf,
+  type CommercialCatalogApplicationRow,
   type CommercialChangeApplicationRow,
 } from '@aramo/subscription';
 
-import type { CommercialChangeApplicationDto } from './dto/commercial-change-application.dto.js';
+import type { CommercialCatalogApplicationDto, CommercialChangeApplicationDto } from './dto/commercial-change-application.dto.js';
 import type { CommercialChangeRequestDto } from './dto/commercial-change-request.dto.js';
 import { requestDto, toAramoError } from './platform-commercial-change-request.controller.js';
 
@@ -23,7 +25,10 @@ import { requestDto, toAramoError } from './platform-commercial-change-request.c
 // route). Below the gate the service is the authority: the action's REQUESTER scope (TD-A6-3),
 // then the NC-5 re-check of every approval under the request's snapshotted chain.
 //   200  applied, or replayed (an APPLIED request: idempotent, nothing written)
-//   403  requester_scope_missing | not_human
+//   403  requester_scope_missing | not_human | not_requester | requester_no_longer_authorized
+//        (CCP-A6-R, TD-A6-3: only the ORIGINAL requester, with live authority)
+// CCP-B2-backend — PLAN_VERSION_PUBLISH / PLAN_RETIRE use the same route (catalog_application).
+// Every refusal and failure carries a stable code and an operator-facing `explanation`.
 //   409  COMMERCIAL_CHANGE_REQUEST_CONFLICT  reason apply_refused (NC-5 / not approved; no state
 //        change), apply_failed (rolled back, request now APPLY_FAILED, retryable),
 //        action_not_applicable, integrity
@@ -41,7 +46,7 @@ export class PlatformCommercialApplyController {
     @Param('id', new ParseUUIDPipe()) id: string,
     @AuthContext() auth: AuthContextType,
     @RequestId() requestId: string,
-  ): Promise<{ request: CommercialChangeRequestDto; application: CommercialChangeApplicationDto; replayed: boolean }> {
+  ): Promise<{ request: CommercialChangeRequestDto; application: CommercialChangeApplicationDto | null; catalog_application: CommercialCatalogApplicationDto | null; replayed: boolean }> {
     if (auth.consumer_type !== 'platform') {
       throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Platform routes require consumer_type=platform', 403, {
         requestId,
@@ -54,7 +59,12 @@ export class PlatformCommercialApplyController {
         id,
         { platform_tenant_id: PLATFORM_TENANT_SENTINEL_ID, correlation_id: requestId },
       );
-      return { request: requestDto(out.request), application: applicationDto(out.application), replayed: out.replayed };
+      return {
+        request: requestDto(out.request),
+        application: out.application === null ? null : applicationDto(out.application),
+        catalog_application: out.catalog_application === null ? null : catalogApplicationDto(out.catalog_application),
+        replayed: out.replayed,
+      };
     } catch (err) {
       throw applyHttpError(err, requestId);
     }
@@ -65,17 +75,27 @@ export function applyHttpError(err: unknown, requestId: string): unknown {
   if (err instanceof CommercialApplyRefusedError) {
     return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', `apply refused: ${err.reason}`, 409, {
       requestId,
-      details: { reason: 'apply_refused', refusal: err.reason, ...err.detail },
+      details: { reason: 'apply_refused', refusal: err.reason, explanation: explanationOf(err.reason), ...err.detail },
     });
   }
   if (err instanceof CommercialApplyFailedError) {
     return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, {
       requestId,
-      details: { reason: 'apply_failed', failure: err.code, attempt: err.attempt, request_state: err.request_state, ...err.detail },
+      details: { reason: 'apply_failed', failure: err.code, explanation: err.explanation, attempt: err.attempt, request_state: err.request_state, ...err.detail },
     });
   }
   if (err instanceof CommercialChangeRequestError && err.code === 'ACTION_NOT_APPLICABLE') {
-    return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, { requestId, details: { reason: 'action_not_applicable', ...err.details } });
+    return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, { requestId, details: { reason: 'action_not_applicable', explanation: explanationOf(err.code), ...err.details } });
+  }
+  if (err instanceof CommercialChangeRequestError && err.code === 'REQUESTER_NO_LONGER_AUTHORIZED') {
+    return new AramoError('INSUFFICIENT_PERMISSIONS', err.message, 403, { requestId, details: { reason: 'requester_no_longer_authorized', explanation: explanationOf(err.code), ...err.details } });
+  }
+  if (err instanceof CommercialChangeRequestError && err.code === 'APPLY_EXPIRED') {
+    // Charter Amendment A1 (AD-7) — the apply deadline passed; the request is APPLY_EXPIRED.
+    return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, { requestId, details: { reason: 'apply_expired', explanation: explanationOf(err.code), ...err.details } });
+  }
+  if (err instanceof CommercialChangeRequestError && err.code === 'NOT_REQUESTER') {
+    return new AramoError('INSUFFICIENT_PERMISSIONS', err.message, 403, { requestId, details: { reason: 'not_requester', explanation: explanationOf(err.code) } });
   }
   return toAramoError(err, requestId);
 }
@@ -93,6 +113,21 @@ export function applicationDto(a: CommercialChangeApplicationRow): CommercialCha
     to_plan_version_id: a.to_plan_version_id,
     capabilities: a.capabilities,
     capabilities_inserted: a.capabilities_inserted,
+    attempt: a.attempt,
+    applied_by: a.applied_by,
+    applied_at: a.applied_at.toISOString(),
+  };
+}
+
+export function catalogApplicationDto(a: CommercialCatalogApplicationRow): CommercialCatalogApplicationDto {
+  return {
+    id: a.id,
+    change_request_id: a.change_request_id,
+    action_type: a.action_type,
+    plan_id: a.plan_id,
+    plan_version_id: a.plan_version_id,
+    retired_plan_version_id: a.retired_plan_version_id,
+    provider_price_ref: a.provider_price_ref,
     attempt: a.attempt,
     applied_by: a.applied_by,
     applied_at: a.applied_at.toISOString(),

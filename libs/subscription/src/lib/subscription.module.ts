@@ -6,6 +6,8 @@ import { CommercialAuditRepository } from './commercial/commercial-audit.reposit
 import { CommercialPolicyRepository } from './commercial/commercial-policy.repository.js';
 import { CommercialChangeRequestService } from './commercial/commercial-change-request.service.js';
 import { CommercialApplyService } from './commercial/commercial-apply.service.js';
+// CCP-B2-backend — the governed catalog publish / retire apply.
+import { CommercialCatalogApplyService } from './commercial/commercial-catalog-apply.service.js';
 import { CommercialOperatorRepository } from './commercial/commercial-operator.repository.js';
 import { FreePersonalSubscriptionService } from './free-personal-subscription.js';
 import { LegalAcceptanceService } from './legal/legal-acceptance.service.js';
@@ -39,11 +41,12 @@ import { UsageRollupService } from './usage/usage-rollup.service.js';
     CommercialOperatorRepository,
     CommercialChangeRequestService,
     CommercialApplyService,
+    CommercialCatalogApplyService,
     PlanVersionRepository,
     UsageRollupService,
     CommercialCatalogService,
   ],
-  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, PlanVersionRepository, UsageRollupService, CommercialCatalogService],
+  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialCatalogApplyService, PlanVersionRepository, UsageRollupService, CommercialCatalogService],
 })
 export class SubscriptionModule {
   /**
@@ -67,12 +70,13 @@ export class SubscriptionModule {
         CommercialOperatorRepository,
         CommercialChangeRequestService,
     CommercialApplyService,
+    CommercialCatalogApplyService,
         PlanVersionRepository,
         UsageRollupService,
         CommercialCatalogService,
         ...(opts.providers ?? []),
       ],
-      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, PlanVersionRepository, UsageRollupService, CommercialCatalogService],
+      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialCatalogApplyService, PlanVersionRepository, UsageRollupService, CommercialCatalogService],
     };
   }
 }

@@ -88,6 +88,8 @@ export interface ChangeRequestDetail {
   is_expired: boolean;
   /** null when the chain is not evaluated (not pending). */
   chain_satisfiable: boolean | null;
+  /** CCP-A6-R (TD-B2-3, requester-only v1): true only when THIS caller may apply it now. */
+  apply_actionable: boolean;
   steps: Array<{
     step_index: number;
     role_key: string;

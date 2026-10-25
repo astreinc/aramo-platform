@@ -127,10 +127,13 @@ export const catalogApi = {
     evidence: string;
     idempotency_key: string;
   }): Promise<CatalogChangeRequest> {
+    // Merge train TD-MERGE-10: CCP-B2-backend gives these payloads a closed key set
+    // ({plan_version_id[, provider_price_ref]}), so the evidence travels in the reason, the
+    // convention CCP-B5 uses ("<reason>\n\nEvidence: <evidence>").
     const created = await apiClient.post<{ request: CatalogChangeRequest }>(CR, {
       action_type: input.action_type,
-      payload: { plan_version_id: input.plan_version_id, evidence: input.evidence },
-      reason: input.reason,
+      payload: { plan_version_id: input.plan_version_id },
+      reason: `${input.reason.trim()}\n\nEvidence: ${input.evidence.trim()}`,
       idempotency_key: input.idempotency_key,
     });
     const submitted = await apiClient.post<{ request: CatalogChangeRequest }>(`${CR}/${encodeURIComponent(created.request.id)}/submit`);
@@ -143,6 +146,15 @@ export const catalogApi = {
    * reports the resulting state; the console only renders it. Coded against that contract — the
    * B2 worktree base predates A6, so it is mocked in the specs and wired by the lead at merge.
    */
+  /**
+   * CCP-A6-R (Architect TD-B2-3: apply is requester-only in v1) — whether THIS caller may apply
+   * the request now, from the server's `apply_actionable` on the request read. Merge train
+   * TD-MERGE-9: the Apply button renders only when this is true.
+   */
+  async isApplyActionable(id: string): Promise<boolean> {
+    const out = await apiClient.get<{ apply_actionable?: boolean }>(`${CR}/${encodeURIComponent(id)}`);
+    return out.apply_actionable === true;
+  },
   async applyChangeRequest(id: string): Promise<CatalogChangeRequest> {
     const out = await apiClient.post<{ request: CatalogChangeRequest }>(`${CR}/${encodeURIComponent(id)}/apply`);
     return out.request;

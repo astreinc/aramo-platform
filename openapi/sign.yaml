@@ -2643,6 +2643,20 @@ components:
       type: object
       required: [subscription, allowance, storage, billing_available, tenant_kind, self_service_eligible, can_manage_billing]
       properties:
+        pending_activation:
+          type: [object, 'null']
+          description: >-
+            CCP-A6-R (Conversion Rule C-8) — a self-service activation is held because the organization's
+            subscription is managed by Aramo. A safe billing-support state only: it never reports an
+            activation and exposes no internal reason.
+          required: [state, message]
+          properties:
+            state:
+              type: string
+              enum: [PENDING]
+            message:
+              type: string
+              enum: ['Subscription activation pending — contact support']
         subscription:
           type: [object, 'null']
           required: [plan_key, plan_name, source, status, sending, started_at, cancel_at_period_end, billing_managed]

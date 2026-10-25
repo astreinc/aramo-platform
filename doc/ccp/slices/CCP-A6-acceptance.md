@@ -263,3 +263,137 @@ Host load: load averages 7 to 13 during the runs.
 ## 11. Vocabulary result
 
 `bash scripts/verify-vocabulary.sh`: OK — Tier 1, Tier 2 and front-door retirement clean. No exemption allowlist touched; the Stripe wire exemption (`stripe-wire.ts`) is unchanged and unused by A6.
+
+---
+
+## A6-R — follow-up on the Architect dispositions (2026-10-25)
+
+Governing: `doc/ccp/decisions.md` "Architect dispositions on A6 (2026-10-25)" (binding). Baseline: program HEAD `e0b050ca` (A9, A10 and A6 merged; the lead's merge fixes TD-A6-25 (generic APPLIED-needs-`applied_at`) and TD-A6-26 (`canTransitionFor` per action, A9-U-4 re-based) are kept). **Local commit SHAs: pending (lead commits).** **HALT:** none. TD-A6-5 (apply TTL) was a HALT until the Charter Amendment A1 was LOCKED; it is now implemented (§A6-R.4b).
+
+### A6-R.1 Commit map (proposed)
+
+| # | Proposed commit | Files |
+|---|---|---|
+| A6R-1 | `CCP-A6-R: apply-time revalidation (original requester, live authority), refusal/failure records with stable codes and explanations` | `libs/subscription/src/lib/commercial/commercial-apply-records.ts` (new); `commercial-apply.service.ts`; `commercial-change-request.service.ts` (`REQUESTER_NO_LONGER_AUTHORIZED`); `apps/platform-admin/src/app/platform/platform-commercial-apply.controller.ts` (`not_requester`, `requester_no_longer_authorized`, `explanation`); `openapi/platform.yaml` |
+| A6R-2 | `CCP-A6-R: DR-A6-1…4 usage rules (USAGE_EXCEEDS_NEW_LIMIT, USAGE_CROSS_PERIOD, RESERVATION_CONFLICT, FUTURE_EFFECTIVE_DATE)` | `commercial-apply.service.ts` (`changedTerms`, `assertUsageFits`, `assertNoStrandedUsage`) |
+| A6R-3 | `CCP-A6-R: tenant-facing pending activation state (Conversion Rule C-8)` | `libs/subscription/src/lib/billing/subscription-lifecycle.service.ts` (`tenantActivationState`), `src/index.ts`; `apps/sign-service/src/app/billing/esign-billing.controller.ts` (`pending_activation`); `openapi/sign.yaml`; `pact/consumers/sign-workspace-consumer/…` (+1 interaction), `pact/provider/src/verify-sign.ts` (state) |
+| A6R-4 | `CCP-A6-R: tests` | `libs/subscription/src/tests/ccp-a6-apply.integration.spec.ts`, `ccp-a6-hold.integration.spec.ts`, `support/ccp-a6.ts`; `apps/platform-admin/src/tests/ccp-a6-commercial-apply-routes.integration.spec.ts`; `apps/sign-service/src/tests/billing.spec.ts`; `pact/consumers/platform-web-consumer/…` (not_requester), `pact/provider/src/verify-platform-admin.ts` |
+| A6R-6 | `CCP-A6-R: apply deadline (Charter Amendment A1): APPLY_EXPIRED, apply_expiry_hours, lazy expiry` | `libs/subscription/prisma/migrations/20261026050000_ccp_a6r_apply_deadline/migration.sql` (new); `schema.prisma` (comment); `commercial-policy.ts` (optional key); `commercial-change-request.ts` (state, transitions); `commercial-change-request.service.ts` (`applyDeadlineOf`, `expireApplyIfDue`, lazy read / create expiry, `apply_actionable`); `commercial-apply-records.ts` (`applyDeadlineGate`); both apply services; the apply controller (`apply_expired`); `openapi/platform.yaml`; tests `ccp-a6r-apply-deadline.integration.spec.ts` (new), `commercial-policy.spec.ts`, `commercial-approval-eligibility.spec.ts`, `ccp-a9-role-change.spec.ts` |
+| A6R-7 | `CCP-A6-R: requester-only apply (TD-B2-3) and apply_actionable on the request read` | `commercial-change-request.service.ts` (`applyActionable`); `platform-commercial-change-request.controller.ts`, `dto/commercial-change-request.dto.ts`; `openapi/platform.yaml`; the platform-web consumer; tests A6R-REQ-1…3 |
+| A6R-5 | `CCP-A6-R: acceptance evidence (this section)` + repo map | `doc/ccp/slices/CCP-A6-acceptance.md`; `doc/generated/repo-map.*` |
+
+CCP-B2-backend rows are in `doc/ccp/slices/CCP-B2-backend-acceptance.md`.
+
+### A6-R.2 TD-A6-3 (approved): apply-time revalidation
+
+| Check | Where | Typed refusal | Test |
+|---|---|---|---|
+| A person, not a service principal | `preflightApply` | `NOT_HUMAN` | A6-AUTH-1, B2-AUTH-1 |
+| **The original requester** (approval and application are separate authorities) | `preflightApply` (`actor = requested_by`) | `NOT_REQUESTER` (**new behaviour**; A6 previously admitted any holder of the requester scope) | A6-AUTH-1, A6-RI-APPLY, B2-AUTH-1, Pact |
+| The requester scope on the session | `preflightApply` | `REQUESTER_SCOPE_MISSING` | A6-AUTH-1, B2-AUTH-1 |
+| The requester's **current** authority (live RBAC, `FOR SHARE`, in the apply transaction) | `assertRequesterStillAuthorized` | `REQUESTER_NO_LONGER_AUTHORIZED` (**new code**) | A6R-REV-1 |
+| Request state | `assertApplyEligible` | `NOT_APPROVED` | A6-AUTH-1, B2-AUTH-1 |
+| Approval validity: every step, distinct signers, NC-3 stale chain / NC-4 approver eligibility re-read in the transaction (role, scopes, D9 attestation) | `assertApplyEligible` | `APPROVALS_INCOMPLETE`, `APPROVER_NOT_DISTINCT`, `APPROVER_NO_LONGER_ELIGIBLE` | A6-NC5-a (role revoked), **A6R-REV-2** (attestation revoked), A6-NC5-c |
+| Eligibility and the current target subscription state | the A6 guards (G1/G2/G3, T2) | `STRIPE_OWNED`, `TARGET_STALE`, `TARGET_NOT_FOUND`, `TARGET_NOT_GOVERNED`, `PLAN_*`, `TENANT_NOT_FOUND` | A6-G1-1, A6-G2-2, A6-G3-1, A6-END-1 |
+| Idempotency | replay of an APPLIED request; UNIQUE application per request | — | A6-IDEM-1, A6-CONC-1 |
+| **Payload bound to its checksum**; any change needs a new approval | the A3 immutability trigger + `verifyIntegrity` | `INTEGRITY` | **A6R-REV-3** (UPDATE of payload and of the checksum refused by the DB; a superuser bypass refused at apply) |
+
+**Every refusal** writes exactly one `COMMERCIAL_CHANGE_REQUEST_APPLY_REFUSED` audit row with the code and an operator-facing `explanation`, changes nothing, and is returned with `details.explanation` (A6-AUTH-1 asserts 4 rows `NOT_REQUESTER`, `REQUESTER_SCOPE_MISSING`, `NOT_HUMAN`, `INTEGRITY`, each with an explanation). Pre-transaction refusals are now audited too. `NOT_FOUND` has no request to attach a row to (the audit FK) and is not audited. **Every failure** writes one `…APPLY_FAILED` row with code and explanation (A6R-DR-2/4).
+
+### A6-R.3 DR-A6-1…4 (usage)
+
+| Disposition | Implemented | Stable code | Test |
+|---|---|---|---|
+| **DR-A6-1** downgrade: refuse where consumed + reserved exceeds the new limit | lowered allowance, capacity and short-window terms are checked against consumed + RESERVED usage of the current period (capacity: ACTIVE storage; window: the day window), each under the same advisory lock the reserve path takes | `USAGE_EXCEEDS_NEW_LIMIT` (`details.exceeded` lists term, used, new limit) | A6-T8-2 / A6R-DR-1: 200 → 100 with 60 + 30 = 90 → applied, `limit 100, used 90, remaining 10`, ledger byte-identical; 80 + 30 = 110 → refused, nothing changed; exactly 100 = 100 → applied, remaining 0 |
+| **TD-A6-R-1** (interpretation, recorded) | a same-period downgrade where consumed + reserved ≤ the new limit is admissible, carrying usage exactly as the T8 upgrade rule does; no reset, no forgiveness, no negative allowance. No LOCKED text contradicting it was found (the Conversion Rule, MP-A2 N-13…N-19, Charter §7 and the PBD A6 row are silent on downgrades) | — | as above |
+| **DR-A6-2** cross-period: fail closed | a replacement with a different anchor; a fresh open that would strand recorded consumption | `USAGE_CROSS_PERIOD` | A6R-DR-2/4 |
+| **DR-A6-3** reservations: preserve every valid reservation; refuse invalidation / double consumption | the blanket open-reservation refusal is **removed**: reservations stay counted and untouched when the change fits; a fresh open that would strand valid reservations is refused | `RESERVATION_CONFLICT` | A6R-DR-3 (upgrade with 5 reservations: ledger byte-identical, `used 5` under the new limit); stranded reservations refused, nothing changed |
+| **DR-A6-4** future effective date: fail closed; never APPLIED early; no scheduler | | `FUTURE_EFFECTIVE_DATE` | A6R-DR-2/4 (request APPLY_FAILED, no row) |
+| (no treatment defined) | a version that drops an allowance or changes its period kind | `USAGE_TREATMENT_UNDEFINED` | A6R-DR-2/4 |
+
+### A6-R.4 TD-A6-12 (approved with clarification): the tenant-facing state
+
+The Conversion Rule covers the tenant surface: **C-8** (`Aramo/locked/Aramo-CCP-Sign-Billing-Manual-Subscription-Conversion-Rule-v1_0-LOCKED.md:130`): "It MUST also be surfaced to the tenant's billing owner as 'held, contact Aramo'." So it is built (TD-A6-R-2 not needed):
+
+- `SubscriptionLifecycleService.tenantActivationState(tenant, product)` (read-only) returns `{ state: 'PENDING', message: 'Subscription activation pending — contact support' }` while a `governed_subscription_open` hold is open for a checkout of that product, else `null`.
+- `GET /v1/sign/billing/account` adds `pending_activation` (sign-service). The account read is otherwise unchanged: it reports the governed subscription as it is and never an activation. No flag, reason or contract detail is exposed; the MANUAL row is never touched. Operators keep the detail (flags, events).
+- Tests: A6R-HOLD-1 (held → pending; the copy contains no internal term; the MANUAL row byte-identical; a webhook-confirmed end clears it), A6R-SIGN-1 (controller: the pending state only, no internal terms), Pact (sign-workspace +1 interaction, `verify-sign`).
+- **TD-A6-R-3:** the copy follows the Architect disposition ("Subscription activation pending — contact support"); C-8 quotes "held, contact Aramo". The meaning is the same (held/pending; contact Aramo support). Flagged for the lead, not a HALT.
+
+### A6-R.4a Second disposition (Architect / PO, 2026-10-25)
+
+**TD-A6-R-1 CONFIRMED.** A same-period downgrade applies only when consumed + outstanding reservations ≤ the new allowance. It is revalidated atomically at apply, under the billing lock and the per-key reservation lock, in the apply transaction. No reset, no proration. Each usage row is one send key (`AllowanceUsage` is UNIQUE per tenant × key × send_key), so consumed and reserved never overlap: a reservation that is consumed is the same row. Tests (A6-T8-2 / A6R-DR-1):
+- **the Architect's example:** 200 → 100 with 70 consumed + 10 reserved → applied, `limit 100, used 80, remaining 20`, ledger byte-identical;
+- **boundary:** 90 + 10 = 100 → applied, remaining 0;
+- **exceed:** 80 + 30 = 110 → `USAGE_EXCEEDS_NEW_LIMIT`, nothing changed.
+
+Cross-period, proration and future-dated changes stay refused (A6R-DR-2/4).
+
+**TD-B2-3: apply is REQUESTER-ONLY in v1.**
+- **Refusal:** any actor other than `requested_by` is refused `NOT_REQUESTER`, with one `COMMERCIAL_CHANGE_REQUEST_APPLY_REFUSED` row. This holds even when the actor holds the requester scope or approved the request.
+- **A6R-REQ-1:** another commercial_ops user, the approver (finance_admin) and a super_admin user, each called at the service, each refused `NOT_REQUESTER` with one row; nothing changes; the requester then applies.
+- **HTTP:** a super_admin is refused 403 at the route gate (no `platform:approval:read`) before the service. That is an authorization-gate refusal, as on every CCP route (A6-RI-APPLY).
+- **The read exposes `apply_actionable`** (`GET /platform/commercial/change-requests/{id}`). It is true only for the requester of an APPROVED / APPLY_FAILED request whose action the governed apply covers, while the session holds the requester scope (A6R-REQ-2: DRAFT, PENDING, approver, other requester-scope holder and scope-less session are all false; APPLIED is false).
+- **Contract changes:** OpenAPI `CommercialChangeRequestDetail.apply_actionable` (required). Pact: platform-web +2 interactions (requester true, approver false), plus `apply_actionable: false` on the pending detail read; `verify-platform-admin` green.
+
+**Early refusals are audited (lead item, from A8 verification).** Every apply refusal writes exactly one audit row of event type **`COMMERCIAL_CHANGE_REQUEST_APPLY_REFUSED`**, payload `{ action_type, refusal, explanation, detail, actor_kind }`. This includes the checks that run before the apply transaction (not human, not applicable, `NOT_REQUESTER`, requester scope), which are written in a separate short transaction. An expiry triggered by the apply itself writes its one `COMMERCIAL_CHANGE_REQUEST_APPLY_EXPIRED` event instead (AD-6). A6R-REQ-3: finance_admin applying a support_admin `SUPPORT_EXTENSION` request writes exactly one row.
+- In this tree, SUPPORT_EXTENSION has no governed apply, so the code is `ACTION_NOT_APPLICABLE`.
+- Once A8's apply path is merged, the same preflight yields `NOT_REQUESTER`, because the requester check comes before the scope check.
+
+### A6-R.4b Apply deadline (Charter Amendment A1, LOCKED; `Aramo-CCP-Charter-Amendment-A1-Apply-Deadline-v1_0-LOCKED.md`, SHA-256 prefix `58dac8ed94ccf43b`)
+
+TD-A6-5 was a HALT; the amendment now LOCKs it, and the earlier no-op seam is replaced by the implementation.
+
+| Rule | Implemented | Test |
+|---|---|---|
+| AD-1 the value is policy data | optional key **`apply_expiry_hours`** (named after `approval_expiry_hours`) in `commercial-policy.ts` (`COMMERCIAL_POLICY_OPTIONAL_KEYS`). v1 is unchanged (same shape, same checksum). A declared malformed key fails the whole document closed. **No policy version is seeded**: v2 arrives through POLICY_ACTIVATE (B5); the tests use a fixture v2 | A6R-POL-1…3 (unit); A6R-TTL-MAL (a malformed ACTIVE version: create fails closed `MALFORMED`) |
+| AD-2 snapshot | the deadline is read from the request's own `policy_version_id` (checksum re-verified). v1 → no deadline | **A6R-TTL-V1**: 10 000 h after approval, still APPROVED and applied |
+| AD-3 half-open boundary | authority while `approved_at ≤ t < approved_at + apply_expiry_hours` | **A6R-TTL-B**: deadline − 1 ms applies; exactly at the deadline → `APPLY_EXPIRED` |
+| AD-4 terminal `APPLY_EXPIRED`, only from APPROVED / APPLY_FAILED, never APPLYING; a retry only before the deadline | state + CHECK widening (additive) + guard block (migration `20261026050000_ccp_a6r_apply_deadline`); `canTransitionFor` / `COMMERCIAL_A6_APPLY_TRANSITIONS`; A6-SM-1 (12 of 100 pairs) and A9-U-4 mirror it | A6R-TTL-R (retry admitted before; APPLY_FAILED → APPLY_EXPIRED at the deadline); **A6R-TTL-DB** (APPLYING → APPLY_EXPIRED refused; terminal; a CREDIT cannot reach it; CHECK contains the value) |
+| AD-5 slot release | not an open state (the Q14 index lists the open states) | A6R-TTL-B, A6R-TTL-CREATE (admitted after; `OPEN_REQUEST_EXISTS` before) |
+| AD-6 history; one event | only `state` / `updated_at` change; one `COMMERCIAL_CHANGE_REQUEST_APPLY_EXPIRED` event (from state, final approval, deadline, check instant); a later apply of the expired request is a separate audited refusal | A6R-TTL-B |
+| AD-7 lazy, at apply, create contention and read; stable code | apply: `applyDeadlineGate` (both the A6 and the catalog apply) → `APPLY_EXPIRED` (409 `apply_expired`); create: `expireOpenFor` (same tenant × product); read: `get` and `list`. No sweep worker | A6R-TTL-B, A6R-TTL-CREATE, **A6R-TTL-READ**, **A6R-TTL-B2** (catalog apply) |
+| AD-8 apply authority | the requester-only rule, the immutable payload, the approved state, the unexpired authority and current eligibility are all checked (§A6-R.2) | as above |
+
+The guard migration keeps the current function body (A3 ∪ A9 ∪ A6 ∪ B2) verbatim and adds two clearly delimited `CCP-A6-R apply deadline` blocks (for the lead's union with A8's `20261026010000` EXCEPTION branch at merge).
+
+**Compensating migration (documented, not shipped):** RAISE if any request is APPLY_EXPIRED; restore the `20261025220000` body of `guard_commercial_change_request()`; restore the previous state CHECK.
+
+### A6-R.5 Test, Pact and gate outputs
+
+All runs are on the final state, after the Docker daemon restart (the lead reported a hang from about 08:50; nothing below is from the outage).
+
+| Run | Result |
+|---|---|
+| A6 / hold / B2 / apply-deadline specs (`ccp-a6-apply` 34, `ccp-a6-hold` 11, `ccp-b2-catalog-apply` 6, `ccp-a6r-apply-deadline` 8) | **4 files, 59 / 59** |
+| `libs/subscription` unit + `ARAMO_RUN_INTEGRATION=1` | **23 files, 450 / 450** |
+| `apps/platform-admin` unit + integration (AppModule-booting specs included) | **21 files, 451 / 451** |
+| `apps/sign-service` unit + integration (after the `pending_activation` change; no sign-service change since) | **33 files, 363 / 363** |
+| `apps/api` targeted (`ccp-a4-ats-sign-availability`, `s2-erasure-integrity`, `tenant-reset`, `tr15-b2-erasure`, `portal-p4b-rtbf`; they apply every lib's migrations, both new ones included) | **5 files, 35 / 35** |
+| Pact consumers (pact files regenerated from empty: PactV4 merges into an existing file, so a stale renamed interaction had survived once and was removed) | `sign-consumer` 11, `sign-web-consumer` 6, `sign-workspace-consumer` 13 (+1 `pending_activation`), `platform-web-consumer` 40 interactions (39 tests; +1 catalog publish, +2 `apply_actionable`, the not-requester refusal renamed) |
+| Pact provider `verify-sign` (`ARAMO_RUN_PACT_PROVIDER=1`) | **1 provider test passed** (30 interactions) |
+| Pact provider `verify-platform-admin` | **2 provider tests passed** (the CCP route coverage gate and the verification of 40 interactions) |
+| `nx run-many -t build -p subscription entitlement common sign-service platform-admin api --skip-nx-cache` | 6 projects + 73 dependency tasks |
+| `nx run-many -t lint -p subscription sign-service platform-admin` | 0 errors (warnings only) |
+| `contract-parity:check` | 678 live routes (676 governed), 509 OpenAPI ops, 0 orphan, 0 unclassified (no new route) |
+| `openapi:drift-check`, `orphan-scopes:check`, `env:passthrough-check`, `error-codes:check`, `dead-error-codes:check`, `tests:integration:check`, `pg-test-image:check` | ok |
+| `redocly lint` platform + sign | valid; 2 + 17 warnings (the baseline counts) |
+| `repo-map:generate` / `repo-map:check` | regenerated; ok (temporary `GIT_INDEX_FILE`) |
+| `scripts/verify-vocabulary.sh` | OK (the write hook caught one Tier-2 token in a comment during authoring; it was reworded before any gate run) |
+
+**Not run:** the full `nx run api` (instructed). `verify-api.ts` is not changed: no apps/api returned shape changed.
+
+### A6-R.6 Typed divergences
+
+| ID | Divergence | Disposition |
+|---|---|---|
+| TD-A6-R-1 | The DR-A6-1 interpretation above | Recorded per the lead's instruction |
+| TD-A6-R-3 | Tenant copy vs C-8 wording | For the lead |
+| TD-A6-R-4 | Apply is now restricted to the original requester (`NOT_REQUESTER`), per the TD-A6-3 approval text. The platform-web Pact refusal interaction changed from `requester_scope_missing` to `not_requester` | Recorded |
+| TD-A6-R-5 | Pre-transaction refusals (not human, not applicable, not the requester, scope) are now audited (one row each); `NOT_FOUND` is not (no request row for the audit FK) | Recorded |
+| TD-A6-R-6 | The refusal and failure recording moved to `commercial-apply-records.ts`, shared with the CCP-B2-backend apply; `CommercialApplyFailedError` is re-exported from `commercial-apply.service.ts` unchanged in shape (plus `explanation`) | Recorded |
+| TD-A6-R-7 | The apply response gains `catalog_application` (null for A6 actions) and `application` becomes nullable (null for a catalog apply); OpenAPI updated | Recorded |
+| TD-A6-R-8 | TD-A6-5 apply TTL: built per the LOCKED Charter Amendment A1 (§A6-R.4b); the HALT is discharged | Implemented |
+| TD-A6-R-9 | The apply deadline gates the governed apply's action types (A6, B2). The CCP-A9 role-change apply path is not wired to the deadline in this tree (A9's own service); the guard does not admit APPLY_EXPIRED for role actions | **For the lead** (A9 path or a ruling) |
+| TD-A6-R-10 | A malformed or unreadable policy snapshot fails closed at apply (`INTEGRITY` refusal); a read never fails on it (the request is shown as stored) | Recorded |
+| TD-A6-R-11 | The expiry time is recorded in the audit event and `updated_at`; no new column (a new column would break every spec that selects the request through Prisma without this migration) | Recorded |

@@ -86,14 +86,16 @@ describe('CCP-A9 narrow apply transitions (TD-A9-1)', () => {
     expect(base).toBe(6);
     expect(Object.values(COMMERCIAL_A3_TRANSITIONS).flat()).not.toContain('APPLYING');
     const A6 = ['SUBSCRIPTION_OPEN', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'ENTITLEMENT_GRANT'];
+    // CCP-B2-backend — the catalog publish / retire apply carries the A6 apply set too.
+    const B2 = ['PLAN_VERSION_PUBLISH', 'PLAN_RETIRE'];
     for (const action of Object.keys(COMMERCIAL_ACTIONS)) {
       const extra: string[] = [];
       for (const f of states) for (const t of states) if (canTransitionFor(action, f, t) && !a3(f, t)) extra.push(`${f}->${t}`);
       const role = action === 'ROLE_GRANT' || action === 'ROLE_REVOKE';
       expect(extra.sort(), action).toEqual(
-        role ? ['APPLYING->APPLIED', 'APPROVED->APPLYING'] : A6.includes(action) ? ['APPLYING->APPLIED', 'APPLYING->APPLY_FAILED', 'APPLY_FAILED->APPLYING', 'APPROVED->APPLYING'] : [],
+        role ? ['APPLYING->APPLIED', 'APPROVED->APPLYING'] : A6.includes(action) || B2.includes(action) ? ['APPLYING->APPLIED', 'APPLYING->APPLY_FAILED', 'APPLY_FAILED->APPLYING', 'APPLY_FAILED->APPLY_EXPIRED', 'APPROVED->APPLYING', 'APPROVED->APPLY_EXPIRED'] : [],
       );
-      if (!A6.includes(action)) for (const f of states) expect(canTransitionFor(action, f, 'APPLY_FAILED'), `${action} ${f}`).toBe(false);
+      if (!A6.includes(action) && !B2.includes(action)) for (const f of states) expect(canTransitionFor(action, f, 'APPLY_FAILED'), `${action} ${f}`).toBe(false);
     }
   });
 });

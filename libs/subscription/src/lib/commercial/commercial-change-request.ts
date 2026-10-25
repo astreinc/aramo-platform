@@ -97,10 +97,12 @@ export const COMMERCIAL_CHANGE_REQUEST_STATES = [
   'REJECTED',
   'EXPIRED',
   'WITHDRAWN',
+  // Charter Amendment A1 (Apply deadline, LOCKED, AD-4) — terminal; from APPROVED / APPLY_FAILED only.
+  'APPLY_EXPIRED',
 ] as const;
 export type CommercialChangeRequestState = (typeof COMMERCIAL_CHANGE_REQUEST_STATES)[number];
 
-export const COMMERCIAL_TERMINAL_STATES: readonly CommercialChangeRequestState[] = ['APPLIED', 'REJECTED', 'EXPIRED', 'WITHDRAWN'];
+export const COMMERCIAL_TERMINAL_STATES: readonly CommercialChangeRequestState[] = ['APPLIED', 'REJECTED', 'EXPIRED', 'WITHDRAWN', 'APPLY_EXPIRED'];
 
 /** States that hold the Q14 slot (one open request per tenant × product). */
 export const COMMERCIAL_OPEN_STATES: readonly CommercialChangeRequestState[] = ['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'APPLYING', 'APPLY_FAILED'];
@@ -119,6 +121,7 @@ export const COMMERCIAL_A3_TRANSITIONS: Readonly<Record<CommercialChangeRequestS
   REJECTED: [],
   EXPIRED: [],
   WITHDRAWN: [],
+  APPLY_EXPIRED: [],
 };
 
 /**
@@ -130,8 +133,8 @@ export const COMMERCIAL_A3_TRANSITIONS: Readonly<Record<CommercialChangeRequestS
  */
 export const COMMERCIAL_TRANSITIONS: Readonly<Record<CommercialChangeRequestState, readonly CommercialChangeRequestState[]>> = {
   ...COMMERCIAL_A3_TRANSITIONS,
-  APPROVED: ['APPLYING'],
-  APPLY_FAILED: ['APPLYING'],
+  APPROVED: ['APPLYING', 'APPLY_EXPIRED'],
+  APPLY_FAILED: ['APPLYING', 'APPLY_EXPIRED'],
   APPLYING: ['APPLIED', 'APPLY_FAILED'],
 };
 
@@ -160,20 +163,33 @@ export const COMMERCIAL_A9_ROLE_APPLY_TRANSITIONS: Readonly<Partial<Record<Comme
 
 /** CCP-A6 apply transitions, admitted only for the four A6 action types (DB guard, migration 20261025200000). */
 export const COMMERCIAL_A6_APPLY_TRANSITIONS: Readonly<Partial<Record<CommercialChangeRequestState, readonly CommercialChangeRequestState[]>>> = {
-  APPROVED: ['APPLYING'],
-  APPLY_FAILED: ['APPLYING'],
+  // CCP-A6-R (Charter Amendment A1, AD-4) — APPLY_EXPIRED from APPROVED / APPLY_FAILED, never APPLYING.
+  APPROVED: ['APPLYING', 'APPLY_EXPIRED'],
+  APPLY_FAILED: ['APPLYING', 'APPLY_EXPIRED'],
   APPLYING: ['APPLIED', 'APPLY_FAILED'],
 };
 
 /**
+ * CCP-B2-backend (Architect disposition TD-A6-13, 2026-10-25) — the governed catalog lifecycle
+ * applied on the A6 apply infrastructure: PLAN_VERSION_PUBLISH and PLAN_RETIRE (the CCP-A3 action
+ * types, retire = a plan VERSION). Same apply transitions as A6 (migration 20261025220000).
+ */
+export const B2_CATALOG_APPLY_ACTIONS = ['PLAN_VERSION_PUBLISH', 'PLAN_RETIRE'] as const;
+export type B2CatalogApplyAction = (typeof B2_CATALOG_APPLY_ACTIONS)[number];
+export function isCatalogApplicable(action_type: string): action_type is B2CatalogApplyAction {
+  return (B2_CATALOG_APPLY_ACTIONS as readonly string[]).includes(action_type);
+}
+
+/**
  * The per-action transition table, mirroring the DB guard exactly: the A3 base for every
- * action, plus the CCP-A9 role-change apply (role actions only) and the CCP-A6 apply (the
- * four A6 action types only). canTransition above is the action-agnostic union.
+ * action, plus the CCP-A9 role-change apply (role actions only), the CCP-A6 apply (the four A6
+ * action types only) and the CCP-B2-backend catalog apply (publish / retire only).
+ * canTransition above is the action-agnostic union.
  */
 export function canTransitionFor(action_type: string, from: CommercialChangeRequestState, to: CommercialChangeRequestState): boolean {
   if (COMMERCIAL_A3_TRANSITIONS[from].includes(to)) return true;
   if ((COMMERCIAL_ROLE_CHANGE_ACTIONS as readonly string[]).includes(action_type)) return (COMMERCIAL_A9_ROLE_APPLY_TRANSITIONS[from] ?? []).includes(to);
-  if (isA6Applicable(action_type)) return (COMMERCIAL_A6_APPLY_TRANSITIONS[from] ?? []).includes(to);
+  if (isA6Applicable(action_type) || isCatalogApplicable(action_type)) return (COMMERCIAL_A6_APPLY_TRANSITIONS[from] ?? []).includes(to);
   return false;
 }
 
@@ -364,6 +380,19 @@ export function validatePayload(action_type: CommercialActionType, payload: unkn
     }
     case 'POLICY_ACTIVATE':
       if (typeof p['policy_version_id'] !== 'string' || !UUID.test(p['policy_version_id'])) errors.push('policy_version_id must be a uuid');
+      break;
+    // CCP-B2-backend — the catalog apply's payloads: the plan VERSION acted on, and for a publish
+    // an optional provider price to pin to it (D3; the A5 PlanVersionRepository.pinProviderPrice).
+    case 'PLAN_VERSION_PUBLISH':
+      closedKeys(p, ['plan_version_id', 'provider_price_ref'], errors);
+      if (typeof p['plan_version_id'] !== 'string' || !UUID.test(p['plan_version_id'])) errors.push('plan_version_id must be a uuid');
+      if (p['provider_price_ref'] !== undefined && !(typeof p['provider_price_ref'] === 'string' && /^[A-Za-z0-9_]{3,200}$/.test(p['provider_price_ref']))) {
+        errors.push('provider_price_ref must be a provider price id');
+      }
+      break;
+    case 'PLAN_RETIRE':
+      closedKeys(p, ['plan_version_id'], errors);
+      if (typeof p['plan_version_id'] !== 'string' || !UUID.test(p['plan_version_id'])) errors.push('plan_version_id must be a uuid');
       break;
     // CCP-A6 — the applying slice owns the full payload schema of its actions. Each names
     // exactly what the approvers approve: the plan VERSION (G3 pin), and the subscription row

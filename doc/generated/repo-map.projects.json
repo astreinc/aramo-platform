@@ -2169,11 +2169,13 @@
     ],
     "@aramo/subscription": [
       "A6_APPLICABLE_ACTIONS",
+      "APPLY_EXPLANATIONS",
       "APPROVAL_REFUSALS",
       "AllowanceService",
       "AramoSignIncludedPlanKey",
       "AramoSignStandardBusinessPlanKey",
       "AramoSignStandardProfessionalPlanKey",
+      "B2_CATALOG_APPLY_ACTIONS",
       "BASE_COMPOSITION",
       "BILLING_COUNTRY_NOT_SUPPORTED",
       "BILLING_PRICE_PROVIDER",
@@ -2200,6 +2202,7 @@
       "COMMERCIAL_AUDIT_DEFAULT_LIMIT",
       "COMMERCIAL_AUDIT_EVENT_TYPE_PATTERN",
       "COMMERCIAL_AUDIT_MAX_LIMIT",
+      "COMMERCIAL_CATALOG_APPLY_FAULT_HOOK",
       "COMMERCIAL_CHANGE_REQUEST_KINDS",
       "COMMERCIAL_CHANGE_REQUEST_STATES",
       "COMMERCIAL_CLOCK",
@@ -2221,6 +2224,7 @@
       "CommercialApprovalRefusedError",
       "CommercialAuditCursorError",
       "CommercialAuditRepository",
+      "CommercialCatalogApplyService",
       "CommercialCatalogError",
       "CommercialCatalogPlanView",
       "CommercialCatalogService",
@@ -2275,6 +2279,7 @@
       "SubscriptionLifecycleService",
       "SubscriptionModule",
       "SubscriptionPrismaService",
+      "TENANT_ACTIVATION_PENDING_MESSAGE",
       "USAGE_METRICS",
       "USAGE_METRIC_SOURCES",
       "USAGE_PERIODS_DEFAULT_LIMIT",
@@ -2308,10 +2313,12 @@
       "discountEscalates",
       "effectivePlatformOwners",
       "effectiveProviderPrice",
+      "explanationOf",
       "formatCheckoutCutoverReport",
       "inAppContextRef",
       "isA6Applicable",
       "isApprovalExpired",
+      "isCatalogApplicable",
       "isContractPriced",
       "isFeatureAvailable",
       "isGovernedSubscription",
@@ -7059,13 +7066,31 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-a6r-apply-deadline.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-a9-bootstrap-role-change.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-b2-catalog-apply.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-d1-usage-rollups.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-guard-union.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },

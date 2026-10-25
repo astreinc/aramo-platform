@@ -45,6 +45,7 @@ const { like, uuid, integer, eachLike, regex } = MatchersV3;
 //  10. POST /v1/sign/billing/checkout (governed subscription) 409 ESIGN_BILLING_CONFLICT
 //      details.reason governed_subscription_open (CCP-A6, Conversion Rule C-1 / C-4: the
 //      Settings → Plan & billing checkout of apps/sign-web/src/workspace/api.ts)
+//  11. GET  /v1/sign/billing/account (held activation)      200 pending_activation (CCP-A6-R, C-8)
 
 const provider = new PactV4({
   consumer: 'sign-workspace',
@@ -513,6 +514,37 @@ describe('sign-workspace → POST /v1/sign/billing/checkout (governed subscripti
         expect(res.status).toBe(409);
         const out = (await res.json()) as { error: { code: string; details: { reason: string } } };
         expect(out.error.details.reason).toBe('governed_subscription_open');
+      });
+  });
+});
+
+// CCP-A6-R (Conversion Rule C-8; Architect disposition TD-A6-12) — a held self-service activation
+// reaches the tenant's billing owner as a SAFE pending state only: the account read keeps the
+// governed subscription as it is and adds `pending_activation` with the fixed support copy; no
+// flag, reason or contract detail is exposed, and nothing reports an activation.
+describe('sign-workspace → GET /v1/sign/billing/account (held activation)', () => {
+  it('returns the governed subscription and the safe pending_activation state', async () => {
+    const headers = { 'X-Aramo-Consumer': 'sign', Cookie: BILLING_OWNER_COOKIE };
+    await provider
+      .addInteraction()
+      .given('a business tenant with a governed subscription has a held self-service activation')
+      .uponReceiving('a billing account read by the billing owner of a tenant with a held activation')
+      .withRequest('GET', '/v1/sign/billing/account', (b) => {
+        b.headers(headers);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          subscription: { plan_key: 'aramo-sign-included-v1', source: 'MANUAL', status: 'ACTIVE' },
+          pending_activation: { state: 'PENDING', message: 'Subscription activation pending — contact support' },
+          tenant_kind: 'BUSINESS',
+          can_manage_billing: true,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/billing/account`, { headers });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { pending_activation: { state: string } };
+        expect(body.pending_activation.state).toBe('PENDING');
       });
   });
 });

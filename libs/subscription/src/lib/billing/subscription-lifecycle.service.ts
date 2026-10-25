@@ -228,6 +228,13 @@ export interface ApplyResult {
 
 export type WebhookResult = ApplyResult | { outcome: 'DUPLICATE'; tenant_id: null };
 
+/** CCP-A6-R (C-8, TD-A6-12) — the only tenant-facing copy of a held activation. */
+export const TENANT_ACTIVATION_PENDING_MESSAGE = 'Subscription activation pending — contact support';
+export interface TenantActivationState {
+  state: 'PENDING';
+  message: typeof TENANT_ACTIVATION_PENDING_MESSAGE;
+}
+
 type Tx = Parameters<Parameters<PrismaService['$transaction']>[0]>[0];
 
 const SENDING = new Set(['TRIALING', 'ACTIVE', 'PAST_DUE']);
@@ -414,6 +421,26 @@ export class SubscriptionLifecycleService {
       storage: storage.subscribed ? { capacity_key: storage.capacity_key, limit: storage.limit, unlimited: storage.unlimited, used: storage.used } : null,
       billing_available: await this.billingAvailable(),
     };
+  }
+
+  /**
+   * CCP-A6-R (Conversion Rule C-8; Architect disposition TD-A6-12, 2026-10-25) — the TENANT-facing
+   * state of a held self-service activation: a safe billing-support outcome only. It never reports
+   * an activation, never exposes the reconciliation flag, its reason or any manual-contract detail,
+   * and reads only (the MANUAL subscription is never touched). Operators keep the full detail.
+   */
+  async tenantActivationState(tenant_id: string, product_key: ProductKey): Promise<TenantActivationState | null> {
+    const held = await this.prisma.$queryRawUnsafe<Array<{ n: number }>>(
+      `SELECT count(*)::int AS n
+         FROM subscription."BillingReconciliationFlag" f
+         JOIN subscription."CheckoutIntent" ci ON ci.id = f.intent_id
+         JOIN subscription."Plan" p ON p.id = ci.plan_id
+        WHERE f.tenant_id = $1::uuid AND f.reason = $2 AND f.resolved_at IS NULL AND p.product_key = $3`,
+      tenant_id,
+      GOVERNED_SUBSCRIPTION_OPEN,
+      assertProductKey(product_key),
+    );
+    return (held[0]?.n ?? 0) > 0 ? { state: 'PENDING', message: TENANT_ACTIVATION_PENDING_MESSAGE } : null;
   }
 
   /** Operator support view — the tenant's most recent provider events (no payloads). */

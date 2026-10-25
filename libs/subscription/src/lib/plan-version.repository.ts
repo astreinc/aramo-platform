@@ -186,10 +186,11 @@ export class PlanVersionRepository {
    * existing pin is never changed: a different price is a new version. Re-pinning the SAME
    * price is idempotent. Applied by A6 (incl. the v1 cutover pins); A5 never calls it.
    */
-  async pinProviderPrice(input: { plan_version_id: string; provider: 'STRIPE'; provider_price_ref: string; created_by: string; at?: Date }): Promise<{ created: boolean }> {
+  async pinProviderPrice(input: { plan_version_id: string; provider: 'STRIPE'; provider_price_ref: string; created_by: string; at?: Date }, db?: Tx): Promise<{ created: boolean }> {
     const ref = input.provider_price_ref.trim();
     if (ref === '') throw new PlanVersionContentError('provider_price_ref must be non-empty');
-    return this.prisma.$transaction(async (tx) => {
+    // CCP-B2-backend — `db` runs the pin inside the caller's (governed apply) transaction.
+    const run = async (tx: Tx): Promise<{ created: boolean }> => {
       const existing = await tx.planVersionPrice.findUnique({ where: { plan_version_id_provider: { plan_version_id: input.plan_version_id, provider: input.provider } } });
       if (existing !== null) {
         if (existing.provider_price_ref !== ref) throw new PlanVersionStateError(`plan version ${input.plan_version_id} is already pinned to another ${input.provider} price`);
@@ -199,6 +200,7 @@ export class PlanVersionRepository {
         data: { id: uuidv7(), plan_version_id: input.plan_version_id, provider: input.provider, provider_price_ref: ref, created_by: input.created_by, created_at: input.at ?? new Date() },
       });
       return { created: true };
-    });
+    };
+    return db !== undefined ? run(db) : this.prisma.$transaction(run);
   }
 }

@@ -287,6 +287,8 @@ function detailDto(v: ChangeRequestView): CommercialChangeRequestDetailDto {
     approvals: v.approvals.map(approvalDto),
     is_expired: v.is_expired,
     chain_satisfiable: v.chain_satisfiable,
+    // CCP-A6-R (TD-B2-3) — true only for the requester of an APPROVED / APPLY_FAILED applicable request.
+    apply_actionable: v.apply_actionable,
     steps: v.steps.map((s) => ({
       step_index: s.step_index,
       role_key: s.role_key,

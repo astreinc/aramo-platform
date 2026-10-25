@@ -29,6 +29,14 @@ export const COMMERCIAL_POLICY_KEYS = [
   'past_due_grace_days',
 ] as const;
 
+/**
+ * Charter Amendment A1 (Apply deadline, LOCKED 2026-10-25, AD-1) — OPTIONAL keys of a format-1
+ * document. v1 carries none (it stays immutable and byte-identical); a v2 adds `apply_expiry_hours`
+ * (named after `approval_expiry_hours`). Absent → no apply deadline (AD-2); present but malformed →
+ * the whole document fails closed.
+ */
+export const COMMERCIAL_POLICY_OPTIONAL_KEYS = ['apply_expiry_hours'] as const;
+
 export interface CommercialPolicyContent {
   format_version: 1;
   /** ISO 4217 code the credit threshold is denominated in. */
@@ -49,6 +57,11 @@ export interface CommercialPolicyContent {
   approval_expiry_hours: number;
   /** Past-due grace, in days. */
   past_due_grace_days: number;
+  /**
+   * Charter Amendment A1 (AD-1) — an APPROVED / APPLY_FAILED request becomes APPLY_EXPIRED this many
+   * hours after its final approval. Absent (v1) = no apply deadline (AD-2).
+   */
+  apply_expiry_hours?: number;
 }
 
 /** The ACTIVE policy as the commercial engine consumes it. */
@@ -124,7 +137,7 @@ export function parseCommercialPolicyContent(raw: unknown): CommercialPolicyCont
   }
   const doc = raw as Record<string, unknown>;
   const errors: string[] = [];
-  const allowed = new Set<string>(COMMERCIAL_POLICY_KEYS);
+  const allowed = new Set<string>([...COMMERCIAL_POLICY_KEYS, ...COMMERCIAL_POLICY_OPTIONAL_KEYS]);
   for (const k of Object.keys(doc)) if (!allowed.has(k)) errors.push(`unknown key ${k}`);
   for (const k of COMMERCIAL_POLICY_KEYS) if (!(k in doc)) errors.push(`missing key ${k}`);
   if (errors.length > 0) throw new CommercialPolicyUnavailableError('MALFORMED', errors);
@@ -143,6 +156,7 @@ export function parseCommercialPolicyContent(raw: unknown): CommercialPolicyCont
   intIn(errors, doc, 'support_extension_cumulative_window_days', 1, MAX_DAYS);
   intIn(errors, doc, 'approval_expiry_hours', 1, MAX_HOURS);
   intIn(errors, doc, 'past_due_grace_days', 0, MAX_DAYS);
+  if ('apply_expiry_hours' in doc) intIn(errors, doc, 'apply_expiry_hours', 1, MAX_HOURS);
   if (errors.length === 0) {
     // Internal coherence: one extension cannot exceed the cumulative cap, and the cap's
     // window cannot be shorter than the frequency window.
@@ -165,6 +179,8 @@ export function parseCommercialPolicyContent(raw: unknown): CommercialPolicyCont
     support_extension_cumulative_window_days: doc['support_extension_cumulative_window_days'] as number,
     approval_expiry_hours: doc['approval_expiry_hours'] as number,
     past_due_grace_days: doc['past_due_grace_days'] as number,
+    // Only present when the version declares it (v1 parses to the exact v1 shape).
+    ...('apply_expiry_hours' in doc ? { apply_expiry_hours: doc['apply_expiry_hours'] as number } : {}),
   };
 }
 

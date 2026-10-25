@@ -12793,6 +12793,16 @@
       "status": "unscoped",
       "to": "doc/ccp/slices/CCP-A6-acceptance.md"
     },
+    {
+      "from": "doc/ccp/decisions.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261027000000_ccp_guard_union/migration.sql"
+    },
+    {
+      "from": "doc/ccp/decisions.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-guard-union.integration.spec.ts"
+    },
     { "from": "doc/ccp/decisions.md", "status": "unscoped", "to": "openapi/common.yaml" },
     { "from": "doc/ccp/decisions.md", "status": "unscoped", "to": "openapi/platform.yaml" },
     {
@@ -13830,6 +13840,11 @@
     {
       "from": "doc/ccp/slices/CCP-A6-acceptance.md",
       "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-B2-backend-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
       "to": "libs/common/src/lib/errors/aramo-error.ts"
     },
     {
@@ -13855,6 +13870,11 @@
     {
       "from": "doc/ccp/slices/CCP-A6-acceptance.md",
       "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261026050000_ccp_a6r_apply_deadline/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
       "to": "libs/subscription/prisma/schema.prisma"
     },
     {
@@ -13866,6 +13886,11 @@
       "from": "doc/ccp/slices/CCP-A6-acceptance.md",
       "status": "unscoped",
       "to": "libs/subscription/src/lib/billing/subscription-lifecycle.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-apply-records.ts"
     },
     {
       "from": "doc/ccp/slices/CCP-A6-acceptance.md",
@@ -14436,6 +14461,66 @@
       "from": "doc/ccp/slices/CCP-B2-acceptance.md",
       "status": "unscoped",
       "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B2-backend-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-apply.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B2-backend-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B2-backend-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261025120000_ccp_a3_change_request_approval/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B2-backend-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261025220000_ccp_b2_catalog_apply/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B2-backend-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B2-backend-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-catalog-apply.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B2-backend-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-change-request.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B2-backend-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/plan-version.repository.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B2-backend-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-b2-catalog-apply.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B2-backend-acceptance.md",
+      "status": "unscoped",
+      "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B2-backend-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B2-backend-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-platform-admin.ts"
     },
     {
       "from": "doc/ccp/slices/CCP-B2-pre-execution.md",
@@ -28294,6 +28379,11 @@
       "to": "doc/ccp/slices/CCP-A6-acceptance.md"
     },
     {
+      "from": "libs/subscription/prisma/migrations/20261025220000_ccp_b2_catalog_apply/migration.sql",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-B2-backend-acceptance.md"
+    },
+    {
       "from": "libs/subscription/prisma/migrations/20261025240000_ccp_d1_usage_rollups/migration.sql",
       "status": "unscoped",
       "to": "doc/architecture/aramo-platform-console-enterprise-architecture.md"
@@ -28309,6 +28399,11 @@
       "to": "libs/subscription/src/tests/fixtures/ccp-d1-compensating.sql"
     },
     {
+      "from": "libs/subscription/prisma/migrations/20261026050000_ccp_a6r_apply_deadline/migration.sql",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A6-acceptance.md"
+    },
+    {
       "from": "libs/subscription/project.json",
       "status": "unscoped",
       "to": "libs/subscription/src/index.ts"
@@ -28322,11 +28417,6 @@
       "from": "libs/subscription/scripts/ccp-bootstrap-platform-owner.ts",
       "status": "unscoped",
       "to": "deploy/seed-prod.sh"
-    },
-    {
-      "from": "libs/subscription/src/lib/commercial/commercial-apply.service.ts",
-      "status": "production",
-      "to": "doc/ccp/slices/CCP-A6-acceptance.md"
     },
     {
       "from": "libs/subscription/src/lib/commercial/commercial-change-request.ts",
@@ -28455,6 +28545,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-a6r-apply-deadline.integration.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-A6-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/subscription/src/tests/ccp-a9-bootstrap-role-change.integration.spec.ts",
       "status": "excluded",
       "to": "deploy/seed-prod.sh"
@@ -28464,6 +28560,12 @@
       "from": "libs/subscription/src/tests/ccp-a9-bootstrap-role-change.integration.spec.ts",
       "status": "excluded",
       "to": "doc/ccp/slices/CCP-A9-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-b2-catalog-apply.integration.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-B2-backend-acceptance.md"
     },
     {
       "excludedBy": "src/tests/**/*",

@@ -140,6 +140,8 @@ export function detail(r: ChangeRequest, o: { signed?: number; refusal?: string 
     approvals,
     is_expired: o.expired ?? false,
     chain_satisfiable: o.satisfiable === undefined ? (r.state === 'PENDING_APPROVAL' ? true : null) : o.satisfiable,
+    // CCP-A6-R (TD-B2-3): the request read's apply authority for the caller.
+    apply_actionable: false,
     steps: r.required_chain.steps.map((s) => {
       const isSigned = s.step_index < signed;
       return {

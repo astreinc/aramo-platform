@@ -500,9 +500,9 @@ model CommercialChangeRequest {
   // NORMAL | EXCEPTION | MIGRATION. CHECK.
   kind              String
   // DRAFT | PENDING_APPROVAL | APPROVED | APPLYING | APPLIED | APPLY_FAILED | REJECTED |
-  // EXPIRED | WITHDRAWN. CHECK + guard trigger.
-  state             String                  @default("DRAFT")
-  tenant_id         String?                 @db.Uuid
+  // EXPIRED | WITHDRAWN | APPLY_EXPIRED (Charter Amendment A1). CHECK + guard trigger.
+  state             String                   @default("DRAFT")
+  tenant_id         String?                  @db.Uuid
   // No DB default (PBD §7.1). A3 interim closed set 'sign' (CHECK); A4 registry.
   product_key       String?
   payload           Json
@@ -712,5 +712,25 @@ model UsageRollupRun {
   finished_at          DateTime @db.Timestamptz(3)
 
   @@index([metric_key, started_at(sort: Desc), id(sort: Desc)])
+  @@schema("subscription")
+}
+
+// CCP-B2-backend (Architect disposition TD-A6-13) — the durable record of one APPLIED catalog
+// change request (PLAN_VERSION_PUBLISH / PLAN_RETIRE), written in the same transaction as the
+// version transition and the APPLIED move; append-only; one per request (migration 20261025220000).
+model CommercialCatalogApplication {
+  id                      String   @id @db.Uuid
+  change_request_id       String   @unique @db.Uuid
+  // CHECK: PLAN_VERSION_PUBLISH | PLAN_RETIRE
+  action_type             String
+  plan_id                 String   @db.Uuid
+  plan_version_id         String   @db.Uuid
+  retired_plan_version_id String?  @db.Uuid
+  provider_price_ref      String?
+  attempt                 Int
+  applied_by              String   @db.Uuid
+  applied_at              DateTime @db.Timestamptz(3)
+
+  @@index([plan_id])
   @@schema("subscription")
 }

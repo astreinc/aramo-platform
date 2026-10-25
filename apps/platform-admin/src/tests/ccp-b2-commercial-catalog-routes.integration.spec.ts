@@ -122,7 +122,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B2 — catalo
 
   /** Creates and submits a catalog change request as catalog_manager. */
   async function requestCatalog(action_type: 'PLAN_VERSION_PUBLISH' | 'PLAN_RETIRE', plan_version_id: string): Promise<string> {
-    const c = await post('catalog_manager', CR, { action_type, payload: { plan_version_id, evidence: 'Pricing review PR-2026-Q4' }, reason: 'Annual price review', idempotency_key: key() });
+    const c = await post('catalog_manager', CR, { action_type, payload: { plan_version_id }, reason: 'Annual price review\n\nEvidence: Pricing review PR-2026-Q4', idempotency_key: key() });
     expect(c.status, JSON.stringify(c.body)).toBe(201);
     const s = await post('catalog_manager', `${CR}/${c.body.request.id}/submit`, {});
     expect(s.status, JSON.stringify(s.body)).toBe(200);

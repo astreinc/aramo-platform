@@ -2543,13 +2543,17 @@ paths:
       summary: Apply an APPROVED Aramo-owned change request in one transaction (CCP-A6).
       description: |
         Applies an APPROVED (or APPLY_FAILED, retry) request of action type SUBSCRIPTION_OPEN,
-        SUBSCRIPTION_CHANGE, SUBSCRIPTION_END or ENTITLEMENT_GRANT in ONE local transaction under the
+        SUBSCRIPTION_CHANGE, SUBSCRIPTION_END or ENTITLEMENT_GRANT (CCP-A6), or PLAN_VERSION_PUBLISH or
+        PLAN_RETIRE (CCP-B2-backend: the catalog lifecycle; publishing or retiring never moves a
+        subscription). Only the original requester, a person, with live requester authority may apply
+        (CCP-A6-R). A6 actions run in ONE local transaction under the
         tenant's billing lock: the NC-5 re-check of every approval under the request's snapshotted
         chain, the governed (MANUAL) subscription write pinned to a PUBLISHED plan version, the
         entitlement grant, the application record and the audit events, then APPLIED. Stripe-owned
         rows are refused (no external change is ever made or reported). Applying an APPLIED request
         replays it (idempotent, nothing written). The route requires `platform:approval:read`; the
-        caller must also hold the action's requester scope.
+        caller must also be the requester and hold the action's requester scope. Every refusal and
+        failure carries a stable code and an operator-facing `details.explanation`.
       security:
         - BearerAuth: []
         - CookieAccessAuth: []
@@ -4083,7 +4087,11 @@ components:
         NOT_APPROVED | APPROVALS_INCOMPLETE | APPROVER_NOT_DISTINCT | APPROVER_NO_LONGER_ELIGIBLE;
         nothing is written), `apply_failed` (the transaction rolled back in full; the request is
         APPLY_FAILED and retryable; details.failure names the guard, e.g. STRIPE_OWNED,
-        TARGET_STALE, PLAN_VERSION_NOT_PUBLISHED), `action_not_applicable` or `integrity`.
+        TARGET_STALE, PLAN_VERSION_NOT_PUBLISHED, USAGE_EXCEEDS_NEW_LIMIT, USAGE_CROSS_PERIOD,
+        RESERVATION_CONFLICT, FUTURE_EFFECTIVE_DATE, VERSION_NOT_DRAFT, VERSION_NOT_PUBLISHED,
+        PRICE_PIN_CONFLICT), `apply_expired` (Charter Amendment A1: the apply deadline passed; the
+        request is APPLY_EXPIRED), `action_not_applicable` or `integrity`. Every body carries
+        details.explanation (operator-facing).
       content:
         application/json:
           schema:
@@ -4775,7 +4783,7 @@ components:
 
     CommercialChangeRequestState:
       type: string
-      enum: [DRAFT, PENDING_APPROVAL, APPROVED, APPLYING, APPLIED, APPLY_FAILED, REJECTED, EXPIRED, WITHDRAWN]
+      enum: [DRAFT, PENDING_APPROVAL, APPROVED, APPLYING, APPLIED, APPLY_FAILED, REJECTED, EXPIRED, WITHDRAWN, APPLY_EXPIRED]
 
     CreateCommercialChangeRequest:
       type: object
@@ -4996,15 +5004,40 @@ components:
         applied_by: { type: string, format: uuid }
         applied_at: { type: string, format: date-time }
 
+    CommercialCatalogApplication:
+      type: object
+      additionalProperties: false
+      description: CCP-B2-backend — one applied plan-version publish or retire.
+      required: [id, change_request_id, action_type, plan_id, plan_version_id, retired_plan_version_id, provider_price_ref, attempt, applied_by, applied_at]
+      properties:
+        id: { type: string, format: uuid }
+        change_request_id: { type: string, format: uuid }
+        action_type: { type: string, enum: [PLAN_VERSION_PUBLISH, PLAN_RETIRE] }
+        plan_id: { type: string, format: uuid }
+        plan_version_id: { type: string, format: uuid }
+        retired_plan_version_id: { type: [string, 'null'], format: uuid }
+        provider_price_ref: { type: [string, 'null'] }
+        attempt: { type: integer, minimum: 1 }
+        applied_by: { type: string, format: uuid }
+        applied_at: { type: string, format: date-time }
+
     CommercialApplyEnvelope:
       type: object
       additionalProperties: false
-      required: [request, application, replayed]
+      required: [request, application, catalog_application, replayed]
       properties:
         request:
           $ref: '#/components/schemas/CommercialChangeRequest'
         application:
-          $ref: '#/components/schemas/CommercialChangeApplication'
+          description: The subscription / entitlement application (CCP-A6); null for a catalog apply.
+          oneOf:
+            - $ref: '#/components/schemas/CommercialChangeApplication'
+            - type: 'null'
+        catalog_application:
+          description: The catalog application (CCP-B2-backend); null otherwise.
+          oneOf:
+            - $ref: '#/components/schemas/CommercialCatalogApplication'
+            - type: 'null'
         replayed:
           type: boolean
 
@@ -5288,7 +5321,7 @@ components:
     CommercialChangeRequestDetail:
       type: object
       additionalProperties: false
-      required: [request, approvals, is_expired, chain_satisfiable, steps]
+      required: [request, approvals, is_expired, chain_satisfiable, apply_actionable, steps]
       properties:
         request:
           $ref: '#/components/schemas/CommercialChangeRequest'
@@ -5299,6 +5332,12 @@ components:
         is_expired:
           type: boolean
           description: PENDING_APPROVAL past expires_at (it becomes EXPIRED on the next act).
+        apply_actionable:
+          type: boolean
+          description: >-
+            CCP-A6-R (TD-B2-3) — the caller may apply this request now: the caller is its requester
+            (apply is requester-only in v1), it is APPROVED or APPLY_FAILED, and its action is applied
+            by the governed apply. A UI hint only; the apply re-checks every condition.
         chain_satisfiable:
           type: [boolean, 'null']
           description: For an open PENDING request, whether independent eligible humans can still fill the remaining steps.

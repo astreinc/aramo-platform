@@ -29,6 +29,8 @@ describe('CCP-B2 Catalog screen', () => {
 
   let failCatalog = false;
   let hangCatalog = false;
+  // CCP-A6-R (TD-B2-3): the request read's apply_actionable for the caller.
+  let applyActionable = true;
   function mockApi(role: string, catalog: Catalog = CATALOG) {
     calls = [];
     failCatalog = false;
@@ -52,6 +54,7 @@ describe('CCP-B2 Catalog screen', () => {
       if (url.endsWith('/platform/commercial/change-requests') && method === 'POST') {
         return json({ request: { id: '019a0000-0000-7000-8000-00000000c001', action_type: (body as { action_type: string }).action_type, state: 'DRAFT', required_chain: { rule: 'FINANCE_THEN_OWNER', steps: [] }, policy_version_id: 'pol-1' }, replayed: false }, 201);
       }
+      if (/\/platform\/commercial\/change-requests\/[^/]+$/.test(url) && method === 'GET') return json({ apply_actionable: applyActionable });
       if (url.endsWith('/apply') && method === 'POST') {
         // TD-A6-13: the A6 apply route (mocked; the B2 base predates A6).
         return json({ request: { id: '019a0000-0000-7000-8000-00000000c002', action_type: 'PLAN_VERSION_PUBLISH', state: 'APPLIED', required_chain: { rule: 'FINANCE_THEN_OWNER', steps: [] }, policy_version_id: 'pol-1' } });
@@ -72,6 +75,7 @@ describe('CCP-B2 Catalog screen', () => {
   }
 
   beforeEach(() => {
+    applyActionable = true;
     configureAuthConsumer('platform');
     Object.defineProperty(window, 'location', {
       configurable: true,
@@ -150,7 +154,8 @@ describe('CCP-B2 Catalog screen', () => {
     fireEvent.click(commit);
     await waitFor(() => expect(calls.some((c) => c.url.endsWith('/submit'))).toBe(true));
     const create = calls.find((c) => c.method === 'POST' && c.url.endsWith('/platform/commercial/change-requests'));
-    expect(create?.body).toMatchObject({ action_type: 'PLAN_VERSION_PUBLISH', payload: { plan_version_id: 'team-3', evidence: 'PR-2026-Q4' }, reason: 'Annual price review' });
+    expect(create?.body).toMatchObject({ action_type: 'PLAN_VERSION_PUBLISH', payload: { plan_version_id: 'team-3' }, reason: 'Annual price review\n\nEvidence: PR-2026-Q4' });
+    expect((create?.body as { payload: Record<string, unknown> }).payload).not.toHaveProperty('evidence');
     expect((create?.body as { idempotency_key: string }).idempotency_key).toMatch(/^catalog-/);
     // The console never publishes, retires or applies a version itself.
     expect(calls.filter((c) => /publish|retire|apply/i.test(new URL(c.url, 'http://x').pathname))).toEqual([]);
@@ -212,11 +217,23 @@ describe('CCP-B2 Catalog screen', () => {
     renderAt(`/commercial/catalog?plan=${TEAM.id}&version=3`);
     expect(await screen.findByTestId('open-request')).toHaveTextContent('Publish request 019a000… is approved.');
     expect(screen.getByRole('button', { name: 'Request publish…' })).toBeDisabled();
-    fireEvent.click(screen.getByRole('button', { name: 'Apply' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Apply' }));
     await waitFor(() => expect(calls.some((c) => c.method === 'POST' && c.url.endsWith('/apply'))).toBe(true));
     expect(calls.filter((c) => c.method !== 'GET').map((c) => `${c.method} ${new URL(c.url, 'http://x').pathname}`)).toEqual([
       'POST /platform/commercial/change-requests/019a0000-0000-7000-8000-00000000c002/apply',
     ]);
+  });
+
+  it('B2-W-APPLY-2 (TD-B2-3, merge train TD-MERGE-9) no Apply action when the request read says this caller may not apply it', async () => {
+    applyActionable = false;
+    const approved = { id: '019a0000-0000-7000-8000-00000000c002', action_type: 'PLAN_VERSION_PUBLISH' as const, state: 'APPROVED', expires_at: null };
+    const draft = { ...TEAM.versions[0]!, open_requests: [approved] };
+    const cat: Catalog = { ...CATALOG, products: [{ product_key: 'sign', plans: [{ ...TEAM, versions: [draft, ...TEAM.versions.slice(1)] }] }] };
+    mockApi('platform_owner', cat);
+    renderAt(`/commercial/catalog?plan=${TEAM.id}&version=3`);
+    expect(await screen.findByTestId('open-request')).toHaveTextContent('Publish request 019a000… is approved.');
+    await waitFor(() => expect(calls.some((c) => c.method === 'GET' && c.url.endsWith('/change-requests/019a0000-0000-7000-8000-00000000c002'))).toBe(true));
+    expect(screen.queryByRole('button', { name: 'Apply' })).toBeNull();
   });
 
   it('B2-W-LOAD a failed read shows the error with Try again, which reloads the catalog', async () => {

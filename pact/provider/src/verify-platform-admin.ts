@@ -201,6 +201,43 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
      * CCP-A6 — an APPROVED SUBSCRIPTION_OPEN on a fresh tenant, through the service's own HTTP
      * surface: created and submitted by commercial_ops, approved by `approver` (a finance_admin).
      */
+    /**
+     * CCP-B2-backend — an APPROVED PLAN_VERSION_PUBLISH of a fresh DRAFT version (a test-only plan
+     * copied from the included plan's live rows, its v1 PUBLISHED), requested by catalog_manager and
+     * approved finance_admin → platform_owner, through the service's own HTTP surface.
+     */
+    async function approvedPublish(): Promise<string> {
+      const plan = randomUUID();
+      await db.query(
+        `INSERT INTO subscription."Plan" (id, key, name, sellable, description, tenant_kind, sales_model, status, display_order, product_key)
+         SELECT $1::uuid, $2, 'Pact B2', false, description, tenant_kind, sales_model, 'ACTIVE', 980, product_key FROM subscription."Plan" WHERE key = 'aramo-sign-included-v1'`,
+        [plan, `aramo-sign-pact-b2-${plan.slice(0, 8)}`],
+      );
+      for (const [n, status] of [[1, 'PUBLISHED'], [2, 'DRAFT']] as const) {
+        const v = await db.query(
+          `INSERT INTO subscription."PlanVersion" (id, plan_id, version_number, status, content, content_checksum, created_by, created_at)
+           SELECT gen_random_uuid(), $1::uuid, $2, 'DRAFT', x.c, subscription.ccp_plan_version_checksum(x.c), 'pact', now()
+             FROM (SELECT subscription.ccp_plan_live_content($1::uuid) AS c) x RETURNING id`,
+          [plan, n],
+        );
+        if (status === 'PUBLISHED') await db.query(`UPDATE subscription."PlanVersion" SET status = 'PUBLISHED', published_at = now() WHERE id = $1`, [v.rows[0].id]);
+        else {
+          const out = await asRole<{ request: { id: string } }>('catalog_manager', 'POST', '/platform/commercial/change-requests', {
+            action_type: 'PLAN_VERSION_PUBLISH',
+            payload: { plan_version_id: v.rows[0].id },
+            reason: 'Publish version 2 of the plan',
+            idempotency_key: `pact-b2-state-${String(++seq).padStart(4, '0')}`,
+          });
+          const id = out.request.id;
+          await asRole('catalog_manager', 'POST', `/platform/commercial/change-requests/${id}/submit`);
+          await asRole('finance_admin', 'POST', `/platform/commercial/change-requests/${id}/approvals`, { step_index: 0 });
+          await asRole('platform_owner', 'POST', `/platform/commercial/change-requests/${id}/approvals`, { step_index: 1 });
+          return id;
+        }
+      }
+      throw new Error('unreachable');
+    }
+
     async function approvedOpen(approver: Role | { token: string } = 'finance_admin'): Promise<string> {
       const tenant_id = await commercialTenant();
       const v = await db.query(`SELECT v.id FROM subscription."PlanVersion" v JOIN subscription."Plan" p ON p.id = v.plan_id WHERE p.key = 'aramo-sign-included-v1' AND v.status = 'PUBLISHED'`);
@@ -350,6 +387,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'a draft change request exists': async () => ({ requestId: await draftRequest() }),
           // CCP-A6 — the transactional apply.
           'an approved subscription-open change request exists': async () => ({ requestId: await approvedOpen() }),
+          // CCP-B2-backend — the catalog publish through the same apply route.
+          'an approved plan-version publish change request exists': async () => ({ requestId: await approvedPublish() }),
           'an approved subscription-open change request whose approver lost eligibility exists': async () => {
             // A dedicated attested finance_admin signs, then loses the role (NC-5): the seeded
             // per-role operators are left untouched for every other interaction.

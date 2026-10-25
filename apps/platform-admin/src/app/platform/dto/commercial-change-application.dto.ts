@@ -15,3 +15,17 @@ export interface CommercialChangeApplicationDto {
   applied_by: string;
   applied_at: string;
 }
+
+// CCP-B2-backend — the durable record of one applied catalog change request (CommercialCatalogApplication).
+export interface CommercialCatalogApplicationDto {
+  id: string;
+  change_request_id: string;
+  action_type: string;
+  plan_id: string;
+  plan_version_id: string;
+  retired_plan_version_id: string | null;
+  provider_price_ref: string | null;
+  attempt: number;
+  applied_by: string;
+  applied_at: string;
+}

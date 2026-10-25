@@ -150,16 +150,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A6 — the ap
     }
   }, 60_000);
 
-  it('A6-RI-APPLY per role: only the requester authority (commercial_ops) applies (200); every other CCP role 403 requester_scope_missing; super_admin refused at the gate; a replay is 200 replayed', async () => {
+  it('A6-RI-APPLY per role: only the original requester (commercial_ops) applies (200); every other CCP role 403 not_requester; super_admin refused at the gate; a replay is 200 replayed', async () => {
     const id = await approvedOpen(await tenant());
     const results: Record<string, unknown[]> = {};
     for (const role of ['platform_owner', 'finance_admin', 'catalog_manager', 'support_admin', 'read_only_auditor', 'super_admin']) results[role] = out(await post(role, `${BASE}/${id}/apply`));
+    // CCP-A6-R (TD-A6-3) — only the ORIGINAL requester applies: every other CCP role is not_requester.
     expect(results).toEqual({
-      platform_owner: [403, 'INSUFFICIENT_PERMISSIONS', 'requester_scope_missing'],
-      finance_admin: [403, 'INSUFFICIENT_PERMISSIONS', 'requester_scope_missing'],
-      catalog_manager: [403, 'INSUFFICIENT_PERMISSIONS', 'requester_scope_missing'],
-      support_admin: [403, 'INSUFFICIENT_PERMISSIONS', 'requester_scope_missing'],
-      read_only_auditor: [403, 'INSUFFICIENT_PERMISSIONS', 'requester_scope_missing'],
+      platform_owner: [403, 'INSUFFICIENT_PERMISSIONS', 'not_requester'],
+      finance_admin: [403, 'INSUFFICIENT_PERMISSIONS', 'not_requester'],
+      catalog_manager: [403, 'INSUFFICIENT_PERMISSIONS', 'not_requester'],
+      support_admin: [403, 'INSUFFICIENT_PERMISSIONS', 'not_requester'],
+      read_only_auditor: [403, 'INSUFFICIENT_PERMISSIONS', 'not_requester'],
       super_admin: [403, 'INSUFFICIENT_PERMISSIONS', null],
     });
     const ok = await post('commercial_ops', `${BASE}/${id}/apply`);
@@ -186,7 +187,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A6 — the ap
     );
     const failed = await post('commercial_ops', `${BASE}/${stale}/apply`);
     expect(out(failed)).toEqual([409, 'COMMERCIAL_CHANGE_REQUEST_CONFLICT', 'TARGET_STALE']);
-    expect(failed.body.error.details).toMatchObject({ reason: 'apply_failed', attempt: 1, request_state: 'APPLY_FAILED' });
+    expect(failed.body.error.details).toMatchObject({ reason: 'apply_failed', attempt: 1, request_state: 'APPLY_FAILED', explanation: expect.stringContaining('no longer the current one') });
 
     const credit = await post('commercial_ops', BASE, { action_type: 'CREDIT', tenant_id: await tenant(), product_key: 'sign', payload: { amount_minor: 1, currency: 'USD' }, reason: 'credit', idempotency_key: key() });
     expect(out(await post('commercial_ops', `${BASE}/${credit.body.request.id}/apply`))).toEqual([409, 'COMMERCIAL_CHANGE_REQUEST_CONFLICT', 'action_not_applicable']);
