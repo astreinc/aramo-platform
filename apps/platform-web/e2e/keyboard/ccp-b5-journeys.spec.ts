@@ -20,7 +20,7 @@ function withWrites(o: CcpMockOptions, sent: Array<{ method: string; path: strin
   };
   return {
     overrides: [
-      { method: 'PATCH', path: /^\/platform\/commercial\/policy-versions\/[^/]+$/, reply: record(200, (b) => ({ version: ccpEditedDraft(((b as { content?: Record<string, unknown> }).content) ?? {}) })) },
+      { method: 'PATCH', path: /^\/platform\/commercial\/policy-versions\/[^/]+$/, reply: record(200, (b: unknown) => ({ version: ccpEditedDraft(((b as { content?: Record<string, unknown> }).content) ?? {}) })) },
       { method: 'POST', path: /^\/platform\/commercial\/change-requests$/, reply: record(201, { request: { id: '019a0000-0000-7000-8000-00000000c0de', action_type: 'X', state: 'DRAFT' }, replayed: false }) },
       { method: 'POST', path: /^\/platform\/commercial\/change-requests\/[^/]+\/submit$/, reply: record(200, { request: { id: '019a0000-0000-7000-8000-00000000c0de', action_type: 'X', state: 'PENDING_APPROVAL' } }) },
       { method: 'POST', path: /^\/platform\/commercial\/audit-events\/export$/, reply: record(200, { export_id: 'x', exported_at: '2026-10-24T14:00:00.000Z', row_count: 16, filename: 'commercial-audit.csv', content_type: 'text/csv', csv: 'id\r\n', csv_sha256: 'c'.repeat(64) }) },

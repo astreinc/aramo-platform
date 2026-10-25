@@ -7,18 +7,14 @@ import type { Page } from '@playwright/test';
 import { swap } from './masks-common';
 import type { Mask, ScreenState } from './state-types';
 
-/** DV-B2-01 — the shell regions CCP-B1 owns (built in parallel): the rail with its Commercial
- * group, the breadcrumb "Commercial / Catalog" (from the B1 nav item) and the environment bar's
- * CCP context line. B2 does not edit the shell; the lead removes these three masks at the
- * B1 + B2 merge and re-captures the parity run. */
+/** DV-B2-01 is CLOSED at the merge train (TD-MERGE-19): CCP-B1's shell is present, so the
+ * breadcrumb ("Commercial / Catalog") and the environment bar's CCP context line are compared.
+ * What stays masked is CCP-B1's own sanctioned shell divergences, the same masks the B1 states
+ * use: DV-C1 (the rail keeps Dashboard and the console's glyphs, so items shift) and DV-C2 (the
+ * ⌘K placeholder). */
 const PENDING_B1: readonly Mask[] = [
-  { proto: (p) => p.locator('nav[aria-label="Platform admin"]'), build: (p) => p.locator('.rc-rail'), divergence: 'DV-B2-01' },
-  { proto: (p) => p.getByRole('navigation', { name: 'Breadcrumb' }), build: (p) => p.getByRole('navigation', { name: 'Breadcrumb' }), divergence: 'DV-B2-01', padRight: 120 },
-  { proto: (p) => p.locator('[role="banner"] > span:nth-child(2)'), build: (p) => p.locator('.pw-envbar__context'), divergence: 'DV-B2-01', textBox: true, padRight: 40 },
-  // At 900px the CCP context line is long enough to truncate the identity text differently.
-  { proto: (p) => p.locator('[role="banner"] > span:nth-child(4)'), build: (p) => p.getByTestId('envbar-identity'), divergence: 'DV-B2-01', viewport: '900' },
-  // ⌘K: the CCP file searches "Tenants, requests, pages" (request results, handoff §5.11 → B1).
-  { proto: (p) => p.getByText('Tenants, requests, pages', { exact: true }), build: (p) => p.getByText('Tenants, skills, templates', { exact: true }), divergence: 'DV-B2-01', textBox: true, padRight: 16 },
+  { proto: (p) => p.locator('nav[aria-label="Platform admin"]'), build: (p) => p.locator('.rc-rail'), divergence: 'DV-C1' },
+  swap('DV-C2', 'Tenants, requests, pages', 'Tenants, skills, templates'),
 ];
 
 /** DV-B2-02 — the prototype's "SAMPLE" markers on its mock prices: the build shows real catalog

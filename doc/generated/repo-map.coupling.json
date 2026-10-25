@@ -12838,6 +12838,11 @@
     {
       "from": "doc/ccp/decisions.md",
       "status": "unscoped",
+      "to": "apps/platform-web/e2e/tsconfig.json"
+    },
+    {
+      "from": "doc/ccp/decisions.md",
+      "status": "unscoped",
       "to": "doc/ccp/slices/CCP-A6-acceptance.md"
     },
     {

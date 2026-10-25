@@ -2,10 +2,9 @@
 // pinned CCP design (CCP-UI v1.0), at 1440×900 and 900×900, on the fixture
 // dataset (e2e/fixtures/contracts.ts = the design's C0 data) and the frozen clock.
 //
-// Scope of the image: the page CONTENT (<main>, from its top to the bottom of the
-// viewport) or, for a dialog state, the dialog box. The shell (rail, top bar,
-// environment bar) is the PLATFORM-UX-1 shell plus the Commercial rail group,
-// which CCP-B1 owns and proves; B4 does not edit it (TD-B4-6).
+// Scope of the image: the FULL viewport for a page state (merge train TD-MERGE-19
+// retired TD-B4-6's <main> crop once CCP-B1's shell was present; B1's DV-C1 / DV-C2
+// shell masks apply), or, for a dialog state, the dialog box.
 //
 // PW_CAPTURE_REFERENCE=1 writes the reference images from the design file
 // (`ccp-contracts-<state>-<viewport>.png` + `.masks.json`); otherwise the build is
@@ -105,7 +104,16 @@ const STATES: readonly B4State[] = [
   },
 ];
 
+// Merge train TD-MERGE-19: with CCP-B1's shell present, the page states compare the FULL
+// viewport (TD-B4-6's <main> crop is retired); what stays masked is B1's own sanctioned shell
+// divergences, the same masks the B1 states use: DV-C1 (the rail) and DV-C2 (the ⌘K placeholder).
+const SHELL_B1: readonly B4Mask[] = [
+  { proto: (p) => p.locator('nav[aria-label="Platform admin"]'), build: (p) => p.locator('.rc-rail'), divergence: 'DV-C1' },
+  { proto: (p) => p.getByText('Tenants, requests, pages', { exact: true }), build: (p) => p.getByText('Tenants, skills, templates', { exact: true }), divergence: 'DV-C2' },
+];
+
 async function clipOf(page: Page, target: B4State['target'], vh: number): Promise<Rect> {
+  if (target === 'main') return { x: 0, y: 0, width: page.viewportSize()?.width ?? 1440, height: vh };
   const sel = target === 'dialog' ? '[role="dialog"]' : 'main';
   const b = await page.locator(sel).first().boundingBox();
   if (b === null) throw new Error(`no ${sel} to crop`);
@@ -128,7 +136,7 @@ for (const s of STATES) {
   for (const vp of VIEWPORTS) {
     test(`${CAPTURE ? 'reference ' : ''}${s.name} @${vp.name}`, async ({ page }) => {
       await page.setViewportSize({ width: vp.width, height: vp.height });
-      const masks = s.masks ?? [];
+      const masks = [...(s.masks ?? []), ...(s.target === 'main' ? SHELL_B1 : [])];
       if (CAPTURE) {
         await openCcpProto(page, s.proto.props);
         if (s.proto.state) await protoState(page, s.proto.state);

@@ -50,7 +50,7 @@ writing every unmasked screen-state is pixel-exact under `threshold 0.2`
 | DV-B4-2 | CCP-B4 dialogs: the approval-chain strip reads "Below threshold · Finance · chain fixed by the active policy" | The server resolves SUBSCRIPTION_CHANGE / _END to the Finance-only chain (PO ruling TD-A3-2); the design draws Finance → Owner for contract amend / end (TD-B4-2, needs PO confirmation). The policy version is not readable by any B4 route | ccp-contracts-amend-dialog, ccp-contracts-end-dialog |
 | DV-B4-3 | CCP-B4 End contract: the sub line and the second Before → after row say the MANUAL subscription ends and the entitlement is NOT revoked | A6 `SUBSCRIPTION_END` does not revoke (governed revoke is CCP-A7; TD-A6-8), so the design's "revokes the Sign entitlement" would be untrue (TD-B4-5) | ccp-contracts-end-dialog |
 
-CCP-B4 states are cropped to the page content (`<main>`, to the viewport bottom) or to the dialog box: the shell around them is CCP-B1's (the Commercial rail group). Images: `__screenshots__/ccp-contracts-*-{1440,900}.png`, captured from the pinned CCP-UI v1.0 file by `ccp-contracts.spec.ts` with `PW_CAPTURE_REFERENCE=1`.
+CCP-B4 page states are compared on the FULL viewport since the merge train (TD-MERGE-19: CCP-B1's shell is present; B1's DV-C1 rail and DV-C2 ⌘K masks apply, as in the B1 states); dialog states stay cropped to the dialog box. Images: `__screenshots__/ccp-contracts-*-{1440,900}.png`, captured from the pinned CCP-UI v1.0 file by `ccp-contracts.spec.ts` with `PW_CAPTURE_REFERENCE=1`.
 
 ## CCP-B1 — Commercial screens (Commercial Control Plane v1.0.dc.html, CCP-UI v1.0)
 
@@ -148,7 +148,7 @@ differ by 2–202 glyph-edge pixels.
 
 | ID | Divergence | Cause | Screen-states |
 |---|---|---|---|
-| DV-B2-01 | The rail (with the Commercial group), the breadcrumb ("Commercial / Catalog"), the environment bar's CCP context line ("commercial changes need approval from other people"), the ⌘K placeholder ("Tenants, requests, pages"), and at 900px the identity text the longer context line truncates | **Pending CCP-B1** (built in parallel): the shell, rail, crumbs and ⌘K belong to B1's Commercial rail group; B2 does not edit the shell. **The lead removes these masks at the B1 + B2 merge and re-captures** | every ccp-catalog state |
+| DV-B2-01 | The rail (with the Commercial group), the breadcrumb ("Commercial / Catalog"), the environment bar's CCP context line ("commercial changes need approval from other people"), the ⌘K placeholder ("Tenants, requests, pages"), and at 900px the identity text the longer context line truncates | **Pending CCP-B1** (built in parallel): the shell, rail, crumbs and ⌘K belong to B1's Commercial rail group; B2 does not edit the shell. **The lead removes these masks at the B1 + B2 merge and re-captures** | **CLOSED at the merge train (TD-MERGE-19):** the B1 shell is present; the breadcrumb, the environment bar's CCP context line and the 900px identity text are now compared full-page. Only B1's own DV-C1 (rail) and DV-C2 (⌘K placeholder) masks remain, as in the B1 states; references re-captured from the pinned file. |
 | DV-B2-02 | No "SAMPLE NAMES AND PRICES" tag on the plans card and no "· SAMPLE" on the Aramo Sign product card | The build shows the real catalog; "SAMPLE" marks the prototype's mock prices (handoff "Mock data only in the prototype"). Lead to confirm | every ccp-catalog state |
 | DV-B2-03 | Seats: an empty disabled field (tooltip "Not part of the Aramo Sign plan model…") and "—" → "—" in the diff, where the design shows seat counts | Data gap (R-13): the Sign plan model has no seat term (only `sign.envelopes`, `sign.forms`, `sign.templates`, `sign.storage_bytes`); no term is invented | draft, view only, published, retired, publish dialog, retire dialog |
 | DV-B2-04 | The open-request line names the change request by its short UUID ("cca1000…") where the design shows "CR-1044"; the id's width moves the rest of the line, so the line's text is masked (the box is not) | Real ids are UUIDs (CCP-A3); the human request number is not in the contract | draft, view only |
@@ -156,8 +156,8 @@ differ by 2–202 glyph-edge pixels.
 
 Not pixel-compared: the catalog's loading skeleton (the CCP file draws no catalog loading state;
 the build uses the PLATFORM-UX-1 `SkeletonPanel`, handoff §10 item 11 — covered by the unit spec)
-and the in-shell access-denied state for super_admin (its commercial variant naming the six roles
-is CCP-B1's, handoff §11; the build shows the PLATFORM-UX-1 per-route AccessDenied until then).
+and the in-shell access-denied state for super_admin (since the merge train it is CCP-B1's commercial
+card, compared in B1's states and asserted by the B2-W-ROLE unit test).
 
 ## CCP-B5 — governance screens vs the CCP-UI v1.0 design file (ccp-b5-parity.spec.ts)
 
@@ -165,7 +165,7 @@ Reference: `doc/design-reference/ccp/CCP-UI-v1_0/Commercial Control Plane v1.0.d
 
 | ID | Region | Cause |
 |---|---|---|
-| DV-B5-01 | Comparison clip = the slice-owned content (right of the rail, below the top bar) or the dialog box; dialog states allow 60 px for the rounded corners, which blend with the page behind (B1's chrome and bootstrap banner) | The rail, environment bar, top bar, breadcrumb and bootstrap banner are CCP-B1's (parallel slice); B1's parity record covers them. Unclip at the program merge. |
+| DV-B5-01 | Comparison clip = the slice-owned content (right of the rail, below the top bar) or the dialog box; dialog states allow 60 px for the rounded corners, which blend with the page behind (B1's chrome and bootstrap banner) | The rail, environment bar, top bar, breadcrumb and bootstrap banner are CCP-B1's (parallel slice); B1's parity record covers them. Unclip at the program merge. Merge train (TD-MERGE-19): a full-page trial with B1's DV-C1 / DV-C2 shell masks passed for the three policy states but not for Audit (53 px on the Export CSV glyph, every attempt) or Platform admins (the environment bar's CCP context line is not shown on /admins in the build; 571 / 1301 / 1412 px), so the content crop is KEPT for every B5 state. |
 | DV-B5-02 | Policy table: the two threshold help lines | PO ruling A2-B / TD-A2-2: at or above the threshold escalates. The design says "above … at or below". Same words, reordered. |
 | DV-B5-05 | Roster notes: "Finance admin removed {date}"; the pending request's id and summary; the Notes column head | No role-removal history is read (R-13); a request id is a uuid shown as `CR-XXXXXXXX` and its summary is built from the payload; the auto table layout sizes the column from these texts. |
 | DV-B5-06 | Audit: the filter row from the first select, and the event table | The rows are the real event stream (create and submit are two events; backend codes; uuids; details read from structured payloads). The selects size to option labels from that stream, and the auto table layout sizes every column from the rows. Compared: the page head and the "Export CSV (16)" count. |
