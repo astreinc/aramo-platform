@@ -403,6 +403,12 @@ describe('CCP A1 §10.2 — regression: every pre-A1 row byte-identical (fingerp
     expect(sha(rr)).toBe('e6aba93cecadec1f782a5e3caa90e4ce7745234807c8afd62a94f3b19c440bef');
     const sc = scopes.filter((s) => !(COMMERCIAL as readonly string[]).includes(s['key'] as string)).map((s) => `${s['id']}|${s['key']}|${s['description']}`);
     expect(sc).toHaveLength(190);
-    expect(sha(sc)).toBe('09508e83113503c5e2f2a55bf39db0bb3db2fc46559248a62996e21976ef9e74');
+    // The 190 pre-A1 scope rows are unchanged EXCEPT one deliberate description change:
+    // `platform:tenant:read` loses the stale "(super_admin only)" wording (TD-A1-12, PO ruling
+    // 2026-10-24). ids and keys are unchanged. At 78dbd6d3 this fingerprint was
+    // 09508e83113503c5e2f2a55bf39db0bb3db2fc46559248a62996e21976ef9e74.
+    expect(sha(sc)).toBe('c2c5926e68e5ab607b7b33b85e40cecb7bac4cc5d43fbab12c263cdfb00c1e92');
+    const idKey = scopes.filter((s) => !(COMMERCIAL as readonly string[]).includes(s['key'] as string)).map((s) => `${s['id']}|${s['key']}`);
+    expect(idKey).toHaveLength(190);
   });
 });

@@ -3652,7 +3652,7 @@ export async function runIdentitySeed(
   // AUTHZ-2 — 3 platform-namespace scopes (Lead ruling 5; separate from
   // the 47 tenant scopes above).
   await upsertScope(prisma, SEED_IDS.scopes['platform:tenant:provision'], 'platform:tenant:provision', 'Platform-tier: create a tenant + entitlement seed + Tenant-Owner invite (super_admin only)');
-  await upsertScope(prisma, SEED_IDS.scopes['platform:tenant:read'], 'platform:tenant:read', 'Platform-tier: list/read tenants for the platform-admin view (super_admin only)');
+  await upsertScope(prisma, SEED_IDS.scopes['platform:tenant:read'], 'platform:tenant:read', 'Platform-tier: list/read tenants for the platform-admin view; console entry for super_admin and the six commercial roles (CCP-A1, ruling A0-C5; least-privilege refinement tracked as CCP-FU-1)');
   await upsertScope(prisma, SEED_IDS.scopes['platform:admin:invite'], 'platform:admin:invite', 'Platform-tier: invite another platform admin against the platform Cognito pool (super_admin only)');
   await upsertScope(prisma, SEED_IDS.scopes['platform:tenant:lifecycle:manage'], 'platform:tenant:lifecycle:manage', 'Platform-tier: manage tenant lifecycle — suspend/reactivate/offboard/close (super_admin only)');
   await upsertScope(prisma, SEED_IDS.scopes['platform:skill:read'], 'platform:skill:read', 'Platform-tier: read canonical Skills taxonomy + unresolved review queue (super_admin only)');
