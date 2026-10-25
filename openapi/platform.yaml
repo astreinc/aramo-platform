@@ -96,6 +96,16 @@ tags:
       platform_owner, finance_admin, commercial_ops, support_admin and read_only_auditor
       commercial roles; catalog_manager and super_admin are refused with 403
       `INSUFFICIENT_PERMISSIONS`. Platform-tier only.
+  - name: Platform Commercial Billing Operations
+    description: |
+      CCP-C1 — read-only operator views of the Stripe command outbox (durable,
+      idempotent Stripe-owned operations keyed by change request and step) and the
+      webhook inbox (the durable receipt of every verified provider event). A command
+      stays pending-provider until the provider-confirmed state is applied; failed
+      commands and failed inbox events are listed here, never dropped. Requires
+      `platform:billing:read` (platform_owner, finance_admin, commercial_ops,
+      support_admin, read_only_auditor); catalog_manager and super_admin are refused
+      with 403 `INSUFFICIENT_PERMISSIONS`. Platform-tier only. No write route.
   - name: Platform Commercial Change Requests
     description: |
       CCP-A3 — governed commercial change requests and their distinct-human approvals.
@@ -2551,6 +2561,121 @@ paths:
         '404':
           $ref: '#/components/responses/CommercialContractNotFound'
 
+  /platform/commercial/billing-commands:
+    get:
+      operationId: listPlatformCommercialBillingCommands
+      tags: [Platform Commercial Billing Operations]
+      summary: List Stripe commands (newest first, cursor-paged).
+      description: |
+        CCP-C1 — one page of the Stripe command outbox, ordered `created_at DESC, id DESC`.
+        Filters are ANDed. `pending_provider` is true until the provider-confirmed state is
+        applied (Conversion Rule C-23). `state=FAILED` lists the failed commands (surfaced,
+        retryable, never dropped). The opaque `next_cursor` pins the filter set. Read-only.
+        Requires `platform:billing:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: state
+          in: query
+          required: false
+          description: Only commands in this state.
+          schema:
+            $ref: '#/components/schemas/BillingProviderCommandState'
+        - name: tenant_id
+          in: query
+          required: false
+          description: Only commands of this tenant.
+          schema:
+            type: string
+            format: uuid
+        - name: change_request_id
+          in: query
+          required: false
+          description: Only commands issued by this change request.
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          required: false
+          description: Page size (default 50, max 200).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque continuation cursor from a prior page's next_cursor.
+          schema:
+            type: string
+            maxLength: 2000
+      responses:
+        '200':
+          description: A page of Stripe commands.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingProviderCommandListResponse'
+        '400':
+          $ref: '#/components/responses/BillingOperationsValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
+  /platform/commercial/billing-webhook-inbox:
+    get:
+      operationId: listPlatformCommercialBillingWebhookInbox
+      tags: [Platform Commercial Billing Operations]
+      summary: List webhook inbox events (newest first, cursor-paged).
+      description: |
+        CCP-C1 — one page of the webhook inbox, ordered `received_at DESC, id DESC`. Each row
+        is the verified envelope of one provider event (never its payload) and its processing
+        state. `status=FAILED` lists the events whose processing failed (retried by the
+        provider's redelivery and the inbox worker). Read-only. Requires
+        `platform:billing:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Only events in this processing status.
+          schema:
+            type: string
+            enum: [RECEIVED, PROCESSING, PROCESSED, FAILED]
+        - name: limit
+          in: query
+          required: false
+          description: Page size (default 50, max 200).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque continuation cursor from a prior page's next_cursor.
+          schema:
+            type: string
+            maxLength: 2000
+      responses:
+        '200':
+          description: A page of webhook inbox events.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingWebhookInboxListResponse'
+        '400':
+          $ref: '#/components/responses/BillingOperationsValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
   /platform/commercial/change-requests:
     post:
       operationId: createPlatformCommercialChangeRequest
@@ -4336,6 +4461,14 @@ components:
         application/json:
           schema:
             $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    BillingOperationsValidation:
+      description: |
+        `VALIDATION_ERROR` — a filter is malformed, or the cursor is malformed or was
+        minted under different filters (details.reason `invalid_cursor`).
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
     CommercialChangeRequestValidation:
       description: |
         `VALIDATION_ERROR` — a malformed body, query or id; an invalid payload for the
@@ -5528,6 +5661,166 @@ components:
           type: array
           items:
             type: integer
+
+    BillingProviderCommandState:
+      type: string
+      enum: [PENDING, DISPATCHING, PENDING_PROVIDER, RETRY_WAIT, FAILED, CONFIRMED]
+
+    BillingProviderCommand:
+      type: object
+      additionalProperties: false
+      required: [id, provider, command_kind, change_request_id, step, idempotency_key, tenant_id, product_key, target_ref, params, state, pending_provider, attempts, next_attempt_at, failure, last_detail, provider_accepted_at, confirmed_at, confirmation_source, confirmation_event_id, failed_at, created_by, created_at, updated_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider:
+          type: string
+          enum: [STRIPE]
+        command_kind:
+          type: string
+          enum: [SUBSCRIPTION_CANCEL, CHECKOUT_SESSION_EXPIRE]
+        change_request_id:
+          type: string
+          format: uuid
+        step:
+          type: string
+          description: The step of the change request this command performs (snake_case).
+        idempotency_key:
+          type: string
+          description: Derived from the change request and the step; sent to the provider on every attempt.
+        tenant_id:
+          type: string
+          format: uuid
+        product_key:
+          type: string
+        target_ref:
+          type: string
+          description: The provider object acted on (a subscription or checkout session reference).
+        params:
+          type: object
+          additionalProperties: true
+          description: SUBSCRIPTION_CANCEL carries `mode` (IMMEDIATE | AT_PERIOD_END); CHECKOUT_SESSION_EXPIRE none.
+        state:
+          $ref: '#/components/schemas/BillingProviderCommandState'
+        pending_provider:
+          type: boolean
+          description: True until the provider-confirmed state has been applied (never reported committed earlier).
+        attempts:
+          type: integer
+          minimum: 0
+        next_attempt_at:
+          type: [string, 'null']
+          format: date-time
+        failure:
+          oneOf:
+            - type: 'null'
+            - type: object
+              additionalProperties: false
+              required: [code, detail]
+              properties:
+                code:
+                  type: string
+                detail:
+                  type: [string, 'null']
+        last_detail:
+          type: [string, 'null']
+        provider_accepted_at:
+          type: [string, 'null']
+          format: date-time
+        confirmed_at:
+          type: [string, 'null']
+          format: date-time
+        confirmation_source:
+          type: [string, 'null']
+          enum: [WEBHOOK, REFETCH, null]
+        confirmation_event_id:
+          type: [string, 'null']
+        failed_at:
+          type: [string, 'null']
+          format: date-time
+        created_by:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+
+    BillingProviderCommandListResponse:
+      type: object
+      additionalProperties: false
+      required: [commands, next_cursor]
+      properties:
+        commands:
+          type: array
+          items:
+            $ref: '#/components/schemas/BillingProviderCommand'
+        next_cursor:
+          type: [string, 'null']
+          description: Opaque continuation cursor, or null on the last page.
+
+    BillingWebhookInboxEvent:
+      type: object
+      additionalProperties: false
+      required: [id, provider, provider_event_id, event_type, event_created_at, subscription_ref, checkout_session_ref, product_key, status, attempts, next_attempt_at, outcome, detail, last_error, received_at, processed_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        provider:
+          type: string
+          enum: [STRIPE]
+        provider_event_id:
+          type: string
+        event_type:
+          type: string
+        event_created_at:
+          type: string
+          format: date-time
+        subscription_ref:
+          type: [string, 'null']
+        checkout_session_ref:
+          type: [string, 'null']
+        product_key:
+          type: string
+        status:
+          type: string
+          enum: [RECEIVED, PROCESSING, PROCESSED, FAILED]
+        attempts:
+          type: integer
+          minimum: 0
+        next_attempt_at:
+          type: [string, 'null']
+          format: date-time
+        outcome:
+          type: [string, 'null']
+          enum: [APPLIED, IGNORED, DUPLICATE, null]
+        detail:
+          type: [string, 'null']
+        last_error:
+          type: [string, 'null']
+        received_at:
+          type: string
+          format: date-time
+        processed_at:
+          type: [string, 'null']
+          format: date-time
+
+    BillingWebhookInboxListResponse:
+      type: object
+      additionalProperties: false
+      required: [events, next_cursor]
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/BillingWebhookInboxEvent'
+        next_cursor:
+          type: [string, 'null']
+          description: Opaque continuation cursor, or null on the last page.
 
     CommercialActionType:
       type: string

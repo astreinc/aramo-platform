@@ -58,6 +58,9 @@ export interface VerifiedBillingEvent {
   // the provider-specific payload), or null when the event carries none. The
   // lifecycle never trusts the payload's state: it re-fetches this subscription.
   subscription_ref: string | null;
+  // CCP-C1 — the checkout session the event concerns (checkout.session.* events), or null /
+  // absent. Used only to re-fetch the session (an expired session confirms an expire command).
+  checkout_session_ref?: string | null;
 }
 
 export class BillingWebhookSignatureError extends Error {
@@ -68,7 +71,13 @@ export class BillingWebhookSignatureError extends Error {
 }
 
 export class BillingProviderUnavailableError extends Error {
-  constructor(public readonly detail: string) {
+  // CCP-C1 — `retryable` false = the provider refused the request itself (a 4xx other than
+  // 429): a retry with the same input cannot succeed. Network failures, 429 and 5xx are
+  // transient (the default, so every existing caller keeps its behaviour).
+  constructor(
+    public readonly detail: string,
+    public readonly retryable = true,
+  ) {
     super(`billing provider unavailable: ${detail}`);
     this.name = 'BillingProviderUnavailableError';
   }
@@ -91,4 +100,35 @@ export interface BillingProviderPort {
   createPortalSession(account_ref: string, return_url: string, configuration?: string): Promise<{ url: string }>;
   retrieveSubscription(subscription_ref: string): Promise<ProviderSubscriptionState>;
   verifyWebhook(rawBody: Buffer, signatureHeader: string | undefined, nowSec: number): VerifiedBillingEvent;
+}
+
+// ---------------------------------------------------------------------------------------
+// CCP-C1 (PBD §5.2 row C1; Conversion Rule C-22) — the Stripe-owned operations Aramo issues as
+// durable commands. A separate port (bound to the same Stripe adapter) so the existing
+// BillingProviderPort implementations are unchanged. Every call runs OUTSIDE any local DB
+// transaction (BillingCommandService); each write carries the command's idempotency key.
+// ---------------------------------------------------------------------------------------
+
+export const BILLING_PROVIDER_COMMAND_PORT = 'BILLING_PROVIDER_COMMAND_PORT';
+
+/** The provider's view of one checkout session, as fetched from the provider. */
+export interface ProviderCheckoutSessionState {
+  provider: BillingProviderKey;
+  session_ref: string;
+  // Raw provider status (Stripe: open | complete | expired).
+  status: string;
+  // Aramo identifiers stamped into the session metadata at checkout.
+  tenant_id: string | null;
+  intent_id: string | null;
+}
+
+export interface BillingProviderCommandPort {
+  readonly provider: BillingProviderKey;
+  isConfigured(): boolean;
+  mode(): 'test' | 'live';
+  /** Cancel a provider subscription, now or at the end of the current period. */
+  cancelSubscription(subscription_ref: string, opts: { at_period_end: boolean }, idempotency_key: string): Promise<void>;
+  /** Expire an open checkout session (it can no longer be completed). */
+  expireCheckoutSession(session_ref: string, idempotency_key: string): Promise<void>;
+  retrieveCheckoutSession(session_ref: string): Promise<ProviderCheckoutSessionState>;
 }

@@ -24,6 +24,7 @@ import { PlatformCommercialUsageController } from './platform-commercial-usage.c
 import { PlatformCommercialCatalogController } from './platform-commercial-catalog.controller.js';
 import { PlatformCommercialGovernanceController } from './platform-commercial-governance.controller.js';
 import { PlatformCommercialContractController } from './platform-commercial-contract.controller.js';
+import { PlatformCommercialBillingController } from './platform-commercial-billing.controller.js';
 import { PlatformPersonalController } from './platform-personal.controller.js';
 import { PlatformController } from './platform.controller.js';
 import { PlatformSignController } from './platform-sign.controller.js';
@@ -77,7 +78,8 @@ import { UsageRollupWorker } from './usage-rollup-worker.service.js';
   // CCP-B2 — catalog reads + draft writes.
   // CCP-B5 — policy, audit export and the operator roster.
   // CCP-B4 — enterprise contract reads.
-  controllers: [PlatformController, PlatformSignController, PlatformPersonalController, PlatformCommercialAuditController, PlatformCommercialChangeRequestController, PlatformCommercialApplyController, PlatformCommercialUsageController, PlatformCommercialCatalogController, PlatformCommercialGovernanceController, PlatformCommercialContractController],
+  // CCP-C1 — read-only Stripe command outbox and webhook inbox views (platform:billing:read).
+  controllers: [PlatformController, PlatformSignController, PlatformPersonalController, PlatformCommercialAuditController, PlatformCommercialChangeRequestController, PlatformCommercialApplyController, PlatformCommercialUsageController, PlatformCommercialCatalogController, PlatformCommercialGovernanceController, PlatformCommercialContractController, PlatformCommercialBillingController],
   providers: [
     // Sign Personal (Free) v1.1 §6.4 — abuse-report outcomes (sign schema; its own
     // generated client, lazy DATABASE_URL — scope:platform → scope:boundary is wall-legal).

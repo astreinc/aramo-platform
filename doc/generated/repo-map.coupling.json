@@ -10671,6 +10671,12 @@
       "to": "libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql"
     },
     {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/sign-service/src/tests/ccp-c1-billing-commands.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-C1-acceptance.md"
+    },
+    {
       "from": "apps/sign-web/project.json",
       "status": "unscoped",
       "to": "apps/sign-web/vite.config.ts"
@@ -11055,6 +11061,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform-commercial-audit.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-billing.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -14927,6 +14938,206 @@
       "from": "doc/ccp/slices/CCP-B5-pre-execution.md",
       "status": "unscoped",
       "to": "libs/subscription/src/tests/ccp-a9-bootstrap-role-change.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-billing.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-c1-billing-operations-authorization.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/billing/esign-billing-command.worker.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/tests/ccp-c1-billing-commands.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-acceptance.md",
+      "status": "unscoped",
+      "to": "ci/config/api-surface-manifest.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-acceptance.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-orphan-scopes.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A6-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-C1-pre-execution.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261026020000_ccp_c1_stripe_command_inbox/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/billing-provider-command.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/billing-provider.port.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/stripe-billing.provider.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-c1-command-inbox.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-c1-stripe-commands.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-acceptance.md",
+      "status": "unscoped",
+      "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-platform-admin.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-sign.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-acceptance.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform.module.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/billing/esign-billing-reconcile.worker.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/billing/esign-billing.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-pre-execution.md",
+      "status": "unscoped",
+      "to": "ci/config/api-surface-manifest.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-pre-execution.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-orphan-scopes.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A6-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261019100000_subscription_lifecycle_billing/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/index.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/billing-provider.port.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/governed-subscription.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/stripe-billing.provider.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/subscription-lifecycle.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-change-request.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/support/ccp-a3-database.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-pre-execution.md",
+      "status": "unscoped",
+      "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C1-pre-execution.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-platform-admin.ts"
     },
     {
       "from": "doc/ccp/slices/CCP-D1-acceptance.md",
@@ -28735,6 +28946,11 @@
       "to": "libs/subscription/src/tests/fixtures/ccp-d1-compensating.sql"
     },
     {
+      "from": "libs/subscription/prisma/migrations/20261026020000_ccp_c1_stripe_command_inbox/migration.sql",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-C1-acceptance.md"
+    },
+    {
       "from": "libs/subscription/prisma/migrations/20261026030000_ccp_b4_enterprise_contracts/migration.sql",
       "status": "unscoped",
       "to": "doc/ccp/slices/CCP-B4-acceptance.md"
@@ -29009,6 +29225,18 @@
       "from": "libs/subscription/src/tests/ccp-b5-governance.spec.ts",
       "status": "excluded",
       "to": "libs/subscription/src/lib/commercial/commercial-policy-governance.service.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-c1-command-inbox.integration.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-C1-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-c1-stripe-commands.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-C1-acceptance.md"
     },
     {
       "excludedBy": "src/tests/**/*",

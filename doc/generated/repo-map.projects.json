@@ -2177,14 +2177,26 @@
       "AramoSignStandardProfessionalPlanKey",
       "B2_CATALOG_APPLY_ACTIONS",
       "BASE_COMPOSITION",
+      "BILLING_COMMAND_ACTIONS",
+      "BILLING_COMMAND_KINDS",
+      "BILLING_COMMAND_MAX_ATTEMPTS",
+      "BILLING_COMMAND_STATES",
+      "BILLING_COMMAND_TRANSITIONS",
+      "BILLING_COMMAND_UNCONFIRMED_STATES",
       "BILLING_COUNTRY_NOT_SUPPORTED",
       "BILLING_PRICE_PROVIDER",
+      "BILLING_PROVIDER_COMMAND_PORT",
       "BILLING_PROVIDER_PORT",
+      "BILLING_WEBHOOK_INBOX_STATUSES",
       "BOOTSTRAP_CLI_FLAGS",
       "BOOTSTRAP_PLATFORM_TENANT_ID",
       "BOOTSTRAP_TARGET_EMAIL",
+      "BillingCommandError",
+      "BillingCommandService",
       "BillingProviderUnavailableError",
       "BillingRefusedError",
+      "BillingWebhookInboxQueryError",
+      "BillingWebhookInboxService",
       "BillingWebhookSignatureError",
       "C16_QUERY_A",
       "CATALOG_ACTION_TYPES",
@@ -2262,6 +2274,7 @@
       "FreePersonalPlanKey",
       "FreePersonalSubscriptionService",
       "GOVERNED_SUBSCRIPTION_OPEN",
+      "INBOX_MAX_AUTOMATIC_ATTEMPTS",
       "LEGAL_DOCUMENTS",
       "LEGAL_DOCUMENT_REGISTRY",
       "LEGAL_DOCUMENT_TITLES",
@@ -2295,6 +2308,7 @@
       "SIGN_PRODUCT_KEY",
       "STORAGE_CAPACITY_KEY",
       "STRIPE_API_VERSION",
+      "SUBSCRIPTION_CANCEL_MODES",
       "StripeBillingProvider",
       "SubscriptionLifecycleService",
       "SubscriptionModule",
@@ -2316,11 +2330,13 @@
       "assertChainStillSatisfiableAtApply",
       "assertNotProduction",
       "assertProductKey",
+      "billingCommandIdempotencyKey",
       "billingCountrySupported",
       "billingLockKey",
       "billingPeriodAt",
       "buildAuditCsv",
       "canTransition",
+      "canTransitionBillingCommand",
       "canTransitionFor",
       "canonicalJson",
       "catalogTermsOf",
@@ -2372,6 +2388,8 @@
       "resolvePriceToVersion",
       "resolveRequiredChain",
       "runPlatformOwnerBootstrap",
+      "stripeCheckoutSessionState",
+      "stripeEventCheckoutSessionRef",
       "stripeEventSubscriptionRef",
       "stripeSubscriptionState",
       "subjectUserOf",
@@ -3489,6 +3507,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c1-billing-operations-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-d1-usage-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -4127,6 +4151,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-b5-governance-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c1-billing-operations-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -6492,6 +6522,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c1-billing-operations-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-d1-usage-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -7172,6 +7208,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-b5-governance.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-c1-command-inbox.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -9498,6 +9540,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c1-billing-operations-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-d1-usage-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -9567,6 +9615,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/billing.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/ccp-c1-billing-commands.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -11665,6 +11719,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c1-billing-operations-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-d1-usage-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -11709,6 +11769,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/ccp-a4-ats-sign-consumption.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/ccp-c1-billing-commands.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

@@ -4,10 +4,12 @@ import { Injectable } from '@nestjs/common';
 
 import {
   type BillingAccountDetails,
+  type BillingProviderCommandPort,
   type BillingProviderPort,
   BillingProviderUnavailableError,
   BillingWebhookSignatureError,
   type CheckoutSessionRequest,
+  type ProviderCheckoutSessionState,
   type ProviderSubscriptionState,
   type VerifiedBillingEvent,
 } from './billing-provider.port.js';
@@ -32,6 +34,10 @@ import {
 // Webhooks: Stripe-Signature `t=<unix>,v1=<hex>` = HMAC-SHA256(secret, `${t}.${raw}`),
 // verified in constant time within a ±300 s window before anything is parsed.
 // The API version is pinned so response shapes are stable.
+//
+// CCP-C1 — also the command port (cancel a subscription, expire a checkout session, read a
+// session). A provider refusal (4xx other than 429) is reported non-retryable; network
+// failures, 429 and 5xx stay retryable (BillingProviderUnavailableError.retryable).
 
 export const STRIPE_API_VERSION = '2024-06-20';
 export const STRIPE_WEBHOOK_TOLERANCE_SEC = 300;
@@ -89,6 +95,24 @@ export function stripeEventSubscriptionRef(type: string, o: Record<string, unkno
   return null;
 }
 
+/** CCP-C1 — the checkout session a checkout.session.* event concerns. */
+export function stripeEventCheckoutSessionRef(type: string, o: Record<string, unknown>): string | null {
+  if (!type.startsWith('checkout.session.')) return null;
+  return typeof o['id'] === 'string' && o['id'] !== '' ? o['id'] : null;
+}
+
+/** CCP-C1 — a Stripe checkout session object → the provider session state. */
+export function stripeCheckoutSessionState(obj: Record<string, unknown>): ProviderCheckoutSessionState {
+  const metadata = (obj['metadata'] as Record<string, unknown> | undefined) ?? {};
+  return {
+    provider: 'STRIPE',
+    session_ref: String(obj['id']),
+    status: String(obj['status']),
+    tenant_id: asString(metadata['tenant_id']),
+    intent_id: asString(metadata['intent_id']) ?? asString(obj['client_reference_id']),
+  };
+}
+
 export function verifyStripeSignature(rawBody: Buffer, header: string | undefined, secret: string | undefined, nowSec: number): void {
   if (secret === undefined || secret.length === 0) throw new BillingWebhookSignatureError('NO_SECRET');
   if (header === undefined || header.length === 0) throw new BillingWebhookSignatureError('MISSING');
@@ -113,7 +137,7 @@ export function verifyStripeSignature(rawBody: Buffer, header: string | undefine
 }
 
 @Injectable()
-export class StripeBillingProvider implements BillingProviderPort {
+export class StripeBillingProvider implements BillingProviderPort, BillingProviderCommandPort {
   readonly provider = 'STRIPE' as const;
 
   private secretKey(): string | undefined {
@@ -134,7 +158,7 @@ export class StripeBillingProvider implements BillingProviderPort {
     return this.secretKey() !== undefined && (process.env['STRIPE_WEBHOOK_SECRET'] ?? '').trim() !== '';
   }
 
-  private async call(method: 'GET' | 'POST', path: string, body?: string, idempotencyKey?: string): Promise<Record<string, unknown>> {
+  private async call(method: 'GET' | 'POST' | 'DELETE', path: string, body?: string, idempotencyKey?: string): Promise<Record<string, unknown>> {
     const key = this.secretKey();
     if (key === undefined) throw new BillingProviderUnavailableError('STRIPE_SECRET_KEY is not configured');
     let res: Response;
@@ -150,12 +174,14 @@ export class StripeBillingProvider implements BillingProviderPort {
         body,
       });
     } catch (err) {
-      throw new BillingProviderUnavailableError(`network: ${(err as Error).message}`);
+      throw new BillingProviderUnavailableError(`network: ${(err as Error).message}`, true);
     }
     const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (!res.ok) {
       const message = ((json['error'] as { message?: string } | undefined)?.message ?? `HTTP ${res.status}`).slice(0, 300);
-      throw new BillingProviderUnavailableError(`stripe ${method} ${path}: ${message}`);
+      // CCP-C1 — a 4xx (other than 429) is the provider refusing this request: not retryable.
+      const retryable = res.status === 429 || res.status >= 500;
+      throw new BillingProviderUnavailableError(`stripe ${method} ${path}: ${message}`, retryable);
     }
     return json;
   }
@@ -211,6 +237,22 @@ export class StripeBillingProvider implements BillingProviderPort {
     return stripeSubscriptionState(s);
   }
 
+  async cancelSubscription(subscription_ref: string, opts: { at_period_end: boolean }, idempotency_key: string): Promise<void> {
+    const path = `/v1/subscriptions/${encodeURIComponent(subscription_ref)}`;
+    // At period end: the subscription keeps running until the period ends (an update). Now: the
+    // provider's cancel (no proration or invoice parameters are sent: their defaults apply).
+    if (opts.at_period_end) await this.call('POST', path, form({ cancel_at_period_end: 'true' }), idempotency_key);
+    else await this.call('DELETE', path, undefined, idempotency_key);
+  }
+
+  async expireCheckoutSession(session_ref: string, idempotency_key: string): Promise<void> {
+    await this.call('POST', `/v1/checkout/sessions/${encodeURIComponent(session_ref)}/expire`, '', idempotency_key);
+  }
+
+  async retrieveCheckoutSession(session_ref: string): Promise<ProviderCheckoutSessionState> {
+    return stripeCheckoutSessionState(await this.call('GET', `/v1/checkout/sessions/${encodeURIComponent(session_ref)}`));
+  }
+
   verifyWebhook(rawBody: Buffer, signatureHeader: string | undefined, nowSec: number): VerifiedBillingEvent {
     verifyStripeSignature(rawBody, signatureHeader, process.env['STRIPE_WEBHOOK_SECRET']?.trim(), nowSec);
     let evt: Record<string, unknown>;
@@ -223,6 +265,14 @@ export class StripeBillingProvider implements BillingProviderPort {
     if (typeof evt['id'] !== 'string' || typeof evt['type'] !== 'string' || data === undefined) {
       throw new BillingWebhookSignatureError('MALFORMED');
     }
-    return { id: evt['id'], type: evt['type'], created: asDate(evt['created']), subscription_ref: stripeEventSubscriptionRef(evt['type'], data) };
+    const checkout_session_ref = stripeEventCheckoutSessionRef(evt['type'], data);
+    return {
+      id: evt['id'],
+      type: evt['type'],
+      created: asDate(evt['created']),
+      subscription_ref: stripeEventSubscriptionRef(evt['type'], data),
+      // CCP-C1 — present only for checkout.session.* events (the envelope shape is otherwise unchanged).
+      ...(checkout_session_ref !== null ? { checkout_session_ref } : {}),
+    };
   }
 }

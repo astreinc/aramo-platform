@@ -17,7 +17,9 @@ import { LegalAcceptanceService } from './legal/legal-acceptance.service.js';
 import { PlanVersionRepository } from './plan-version.repository.js';
 import { CommercialCatalogService } from './commercial/commercial-catalog.service.js';
 import { ContractRepository } from './commercial/commercial-contract.repository.js';
-import { BILLING_PROVIDER_PORT } from './billing/billing-provider.port.js';
+import { BILLING_PROVIDER_COMMAND_PORT, BILLING_PROVIDER_PORT } from './billing/billing-provider.port.js';
+import { BillingCommandService } from './billing/billing-command.service.js';
+import { BillingWebhookInboxService } from './billing/billing-webhook-inbox.service.js';
 import { StripeBillingProvider } from './billing/stripe-billing.provider.js';
 import { SubscriptionLifecycleService } from './billing/subscription-lifecycle.service.js';
 import { PrismaService } from './prisma/prisma.service.js';
@@ -32,6 +34,8 @@ import { UsageRollupService } from './usage/usage-rollup.service.js';
 // CCP-A6: the transactional apply of approved Aramo-owned change requests.
 // CCP-D1: usage roll-ups (derived, read-only until reconciled).
 // CCP-B5: policy drafts, the audit export and the operator roster (read-only).
+// CCP-C1: the Stripe command outbox (BillingCommandService, the command port bound to the same
+// Stripe adapter) and the webhook inbox (BillingWebhookInboxService).
 @Module({
   providers: [
     PrismaService,
@@ -39,7 +43,10 @@ import { UsageRollupService } from './usage/usage-rollup.service.js';
     CapacityService,
     LegalAcceptanceService,
     { provide: BILLING_PROVIDER_PORT, useClass: StripeBillingProvider },
+    { provide: BILLING_PROVIDER_COMMAND_PORT, useClass: StripeBillingProvider },
     SubscriptionLifecycleService,
+    BillingCommandService,
+    BillingWebhookInboxService,
     FreePersonalSubscriptionService,
     CommercialAuditRepository,
     CommercialPolicyRepository,
@@ -55,7 +62,7 @@ import { UsageRollupService } from './usage/usage-rollup.service.js';
     CommercialCatalogService,
     ContractRepository,
   ],
-  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialCatalogApplyService, PlanVersionRepository, UsageRollupService, CommercialCatalogService, CommercialPolicyGovernanceService, CommercialAuditExportService, CommercialOperatorRosterService, ContractRepository],
+  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialCatalogApplyService, PlanVersionRepository, UsageRollupService, CommercialCatalogService, CommercialPolicyGovernanceService, CommercialAuditExportService, CommercialOperatorRosterService, ContractRepository, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService],
 })
 export class SubscriptionModule {
   /**
@@ -72,7 +79,10 @@ export class SubscriptionModule {
         CapacityService,
         LegalAcceptanceService,
         { provide: BILLING_PROVIDER_PORT, useClass: StripeBillingProvider },
+        { provide: BILLING_PROVIDER_COMMAND_PORT, useClass: StripeBillingProvider },
         SubscriptionLifecycleService,
+        BillingCommandService,
+        BillingWebhookInboxService,
         FreePersonalSubscriptionService,
         CommercialAuditRepository,
         CommercialPolicyRepository,
@@ -89,7 +99,7 @@ export class SubscriptionModule {
         ContractRepository,
         ...(opts.providers ?? []),
       ],
-      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialCatalogApplyService, PlanVersionRepository, UsageRollupService, CommercialCatalogService, CommercialPolicyGovernanceService, CommercialAuditExportService, CommercialOperatorRosterService, ContractRepository],
+      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialCatalogApplyService, PlanVersionRepository, UsageRollupService, CommercialCatalogService, CommercialPolicyGovernanceService, CommercialAuditExportService, CommercialOperatorRosterService, ContractRepository, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService],
     };
   }
 }
