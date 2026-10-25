@@ -152,6 +152,31 @@ export function isA6Applicable(action_type: string): action_type is A6Applicable
 }
 
 /**
+ * CCP-A7 — the governed entitlement revoke (Charter D1), applied through the same transactional
+ * apply with the A6 transitions (DB guard, migration 20261026000100).
+ */
+export const A7_APPLICABLE_ACTIONS = ['ENTITLEMENT_REVOKE'] as const;
+export type A7ApplicableAction = (typeof A7_APPLICABLE_ACTIONS)[number];
+export function isA7Applicable(action_type: string): action_type is A7ApplicableAction {
+  return (A7_APPLICABLE_ACTIONS as readonly string[]).includes(action_type);
+}
+/**
+ * CCP-A7 revoke transitions (DB guard, migration 20261026000100): the A6 apply pairs. Not the
+ * A6-R APPLY_EXPIRED pairs: A6-R's guard branch names the A6 + B2-backend action types only, so a
+ * revoke never reaches APPLY_EXPIRED (merge train TD-MERGE-26; whether it should is for the Lead).
+ */
+export const COMMERCIAL_A7_REVOKE_TRANSITIONS: Readonly<Partial<Record<CommercialChangeRequestState, readonly CommercialChangeRequestState[]>>> = {
+  APPROVED: ['APPLYING'],
+  APPLY_FAILED: ['APPLYING'],
+  APPLYING: ['APPLIED', 'APPLY_FAILED'],
+};
+/** Every action the transactional apply (CommercialApplyService) applies: A6 ∪ A7. */
+export type CommercialApplicableAction = A6ApplicableAction | A7ApplicableAction;
+export function isCommercialApplicable(action_type: string): action_type is CommercialApplicableAction {
+  return isA6Applicable(action_type) || isA7Applicable(action_type);
+}
+
+/**
  * CCP-A9 narrow apply path (TD-A9-1): only a governed role change is applied inside A9,
  * APPROVED → APPLYING → APPLIED in one transaction. Every other action keeps the A3 table
  * (its apply belongs to CCP-A6). APPLY_FAILED stays unreachable: a refused role-change apply
@@ -163,7 +188,7 @@ export const COMMERCIAL_A9_ROLE_APPLY_TRANSITIONS: Readonly<Partial<Record<Comme
   APPLYING: ['APPLIED'],
 };
 
-/** CCP-A6 apply transitions, admitted only for the four A6 action types (DB guard, migration 20261025200000). */
+/** CCP-A6 apply transitions, admitted only for the four A6 action types (DB guard, migration 20261025200000) and, since CCP-A7, ENTITLEMENT_REVOKE (migration 20261026000100). */
 export const COMMERCIAL_A6_APPLY_TRANSITIONS: Readonly<Partial<Record<CommercialChangeRequestState, readonly CommercialChangeRequestState[]>>> = {
   // CCP-A6-R (Charter Amendment A1, AD-4) — APPLY_EXPIRED from APPROVED / APPLY_FAILED, never APPLYING.
   APPROVED: ['APPLYING', 'APPLY_EXPIRED'],
@@ -197,8 +222,8 @@ export const COMMERCIAL_C2_CONVERSION_TRANSITIONS: Readonly<Partial<Record<Comme
 /**
  * The per-action transition table, mirroring the DB guard exactly: the A3 base for every
  * action, plus the CCP-A9 role-change apply (role actions only), the CCP-A6 apply (the four A6
- * action types only), the CCP-B2-backend catalog apply (publish / retire only) and the CCP-C2
- * conversion apply (CONVERSION only).
+ * action types only), the CCP-B2-backend catalog apply (publish / retire only), the CCP-C2
+ * conversion apply (CONVERSION only) and the CCP-A7 revoke (ENTITLEMENT_REVOKE).
  * canTransition above is the action-agnostic union.
  */
 export function canTransitionFor(action_type: string, from: CommercialChangeRequestState, to: CommercialChangeRequestState): boolean {
@@ -206,6 +231,9 @@ export function canTransitionFor(action_type: string, from: CommercialChangeRequ
   if ((COMMERCIAL_ROLE_CHANGE_ACTIONS as readonly string[]).includes(action_type)) return (COMMERCIAL_A9_ROLE_APPLY_TRANSITIONS[from] ?? []).includes(to);
   if (isA6Applicable(action_type) || isCatalogApplicable(action_type)) return (COMMERCIAL_A6_APPLY_TRANSITIONS[from] ?? []).includes(to);
   if (action_type === 'CONVERSION') return (COMMERCIAL_C2_CONVERSION_TRANSITIONS[from] ?? []).includes(to);
+  // CCP-A7: the governed revoke — the A6 apply pairs, without A6-R's APPLY_EXPIRED (the guard
+  // admits APPLY_EXPIRED only for the A6 + B2-backend set; merge train TD-MERGE-26).
+  if (isA7Applicable(action_type)) return (COMMERCIAL_A7_REVOKE_TRANSITIONS[from] ?? []).includes(to);
   return false;
 }
 
@@ -448,7 +476,9 @@ export function validatePayload(action_type: CommercialActionType, payload: unkn
       validateContractBlocks('SUBSCRIPTION_END', p, errors);
       if (typeof p['subscription_id'] !== 'string' || !UUID.test(p['subscription_id'])) errors.push('subscription_id must be a uuid');
       break;
-    case 'ENTITLEMENT_GRANT': {
+    case 'ENTITLEMENT_GRANT':
+    case 'ENTITLEMENT_REVOKE': {
+      // CCP-A7 — the revoke names exactly the capabilities the approvers approve removing.
       closedKeys(p, ['capabilities'], errors);
       const caps = p['capabilities'];
       if (!Array.isArray(caps) || caps.length === 0 || caps.length > 16 || !caps.every((c) => typeof c === 'string' && /^[a-z][a-z_]{0,39}$/.test(c))) {

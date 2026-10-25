@@ -150,4 +150,18 @@ describe('reconcileTenantEntitlements — fail-closed + additive idempotent', ()
     expect(grantCalls.every((c) => c.tenant_id === ASTRE)).toBe(true);
     expect(grantCalls.some((c) => c.tenant_id === WRONG)).toBe(false);
   });
+
+  it('CCP-A7 A7-U-1: a capability under a governed revoke is never resurrected — reported withheld_revoked, never granted, and absent from final', async () => {
+    // The fake store models the provenance upsert: a revoked capability is not read as held,
+    // and a grant of it is a no-op (only a governed re-grant restores it).
+    const revoked = new Set<Capability>(['ats']);
+    const { deps, store } = makeDeps({ exists: new Set([ASTRE]), initial: { [ASTRE]: ['core', 'portal'] } });
+    deps.grantCapabilities = vi.fn(async (a) => {
+      const set = store.get(a.tenant_id) ?? new Set<Capability>();
+      for (const c of a.capabilities) if (!revoked.has(c)) set.add(c);
+      store.set(a.tenant_id, set);
+    });
+    const r = await reconcileTenantEntitlements(deps, { tenantId: ASTRE, required: DEFAULT_TENANT_CAPABILITIES });
+    expect(r).toMatchObject({ already_present: ['core', 'portal'], granted: [], withheld_revoked: ['ats'], final: ['core', 'portal'] });
+  });
 });

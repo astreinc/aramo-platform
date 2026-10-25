@@ -60,7 +60,40 @@ model TenantEntitlement {
   // Audit timestamp for the entitlement grant.
   granted_at DateTime   @default(now()) @db.Timestamptz(6)
 
+  // CCP-A7 (Charter D1; Conv. C-20; migration 20261026000000) — grant provenance and the
+  // governed revoke. A revoked row is KEPT (revoked_at set) and is NOT entitled: every reader
+  // filters revoked_at = null. CHECK: granted_source IN (MANUAL | PLAN | PROMOTION | MIGRATION |
+  // PROVISIONING | SIGNUP); the commercial values (MANUAL, PLAN, PROMOTION) exactly when
+  // change_request_id is set; revoked_at, revoked_by and revoke_change_request_id together.
+  // The DB default MIGRATION attributes an out-of-band raw write; application writers always
+  // name their source. Trigger: a revoke is cleared only by a governed re-grant; a revoked row
+  // cannot be deleted (the resurrection guard).
+  granted_source           String    @default("MIGRATION")
+  granted_by               String?   @db.Uuid
+  change_request_id        String?   @db.Uuid
+  revoked_at               DateTime? @db.Timestamptz(6)
+  revoked_by               String?   @db.Uuid
+  revoke_change_request_id String?   @db.Uuid
+
   @@id([tenant_id, capability])
   @@index([tenant_id])
+  @@schema("entitlement")
+}
+
+// CCP-A7 — the append-only entitlement ledger (UPDATE / DELETE raise). Written by an AFTER
+// trigger on TenantEntitlement (GRANTED, REVOKED, REGRANTED, REMOVED) for every writer, and by
+// EntitlementRepository for RESURRECTION_REFUSED (an ungoverned grant met a governed revoke).
+model TenantEntitlementEvent {
+  id                String     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  tenant_id         String     @db.Uuid
+  capability        Capability
+  // CHECK: GRANTED | REVOKED | REGRANTED | RESURRECTION_REFUSED | REMOVED
+  event_type        String
+  granted_source    String?
+  actor_id          String?    @db.Uuid
+  change_request_id String?    @db.Uuid
+  occurred_at       DateTime   @default(now()) @db.Timestamptz(6)
+
+  @@index([tenant_id, capability, occurred_at])
   @@schema("entitlement")
 }

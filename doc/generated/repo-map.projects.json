@@ -372,6 +372,8 @@
       "CrossSchemaConsistencyRepository",
       "DEFAULT_APP_TIME_ZONE",
       "E164NormalizationError",
+      "ENTITLEMENT_MIGRATIONS",
+      "ENTITLEMENT_PROVENANCE_MIGRATION",
       "ERROR_CODES",
       "IDENTITY_ADMISSION_POLICIES",
       "IDENTITY_MIGRATIONS",
@@ -408,6 +410,7 @@
       "normalizeToE164",
       "resolveAppTimeZone",
       "resolveAuthStorageMigrations",
+      "resolveEntitlementMigrations",
       "resolveIdentityMigrations",
       "resolveReleaseRevision",
       "resolveSkillsTaxonomyMigrations",
@@ -815,17 +818,22 @@
     ],
     "@aramo/entitlement": [
       "CAPABILITY_VALUES",
+      "COMMERCIAL_GRANTED_SOURCES",
       "DEFAULT_TENANT_CAPABILITIES",
       "EntitlementGuard",
       "EntitlementModule",
       "EntitlementRepository",
+      "GRANTED_SOURCES",
       "REQUIRED_CAPABILITIES_KEY",
       "RequireCapability",
       "UnknownCapabilityError",
       "grantCapabilitiesInTx",
       "isCapability",
+      "isCommercialGrantSource",
+      "isGrantedSource",
       "reconcileTenantEntitlements",
-      "resolveReconcileTarget"
+      "resolveReconcileTarget",
+      "revokeCapabilitiesInTx"
     ],
     "@aramo/events": ["EventsModule", "OUTBOX_PUBLISHER_PORT", "buildEventEnvelope"],
     "@aramo/evidence": ["EvidenceModule", "EvidenceRepository", "PrismaService"],
@@ -4628,6 +4636,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ats-entitlement.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ats-qa-1-resume-selection.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -5667,6 +5681,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/ccp-a7-revoke-refresh.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/auth-service/src/tests/portal-login.integration.spec.ts",
         "project": "auth-service",
         "status": "excluded"
@@ -5974,6 +5994,12 @@
         "status": "excluded"
       },
       { "project": "documents", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/entitlement/src/tests/ccp-a7-revoke-provenance.integration.spec.ts",
+        "project": "entitlement",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/entitlement/src/tests/entitlement-reconcile.integration.spec.ts",
@@ -7275,6 +7301,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-a7-entitlement-revoke.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-a9-bootstrap-role-change.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
@@ -8193,6 +8225,12 @@
       },
       { "project": "api", "status": "production" },
       { "project": "attachment", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/ccp-a7-revoke-refresh.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
       { "project": "calendar", "status": "production" },
       { "project": "client-selection", "status": "production" },
       {
@@ -9493,6 +9531,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/auth-service/src/tests/auth.site-axis.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/ccp-a7-revoke-refresh.integration.spec.ts",
         "project": "auth-service",
         "status": "excluded"
       },

@@ -6,7 +6,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveEntitlementMigrations } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -55,10 +55,8 @@ type SignKey = CryptoKey | KeyObject;
 
 const ROOT = resolve(__dirname, '../../../..');
 
-const ENTITLEMENT_INIT = resolve(
-  ROOT,
-  'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
-);
+// CCP-A7 — the full entitlement set (the shared helper; the repository reads A7 columns).
+const ENTITLEMENT_MIGRATIONS = resolveEntitlementMigrations(ROOT);
 const SETTINGS_INIT = resolve(
   ROOT,
   'libs/settings/prisma/migrations/20260605000000_init_settings_model/migration.sql',
@@ -111,7 +109,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await setupClient.connect();
 
       // Migration apply — the two schemas the endpoint touches.
-      for (const p of [ENTITLEMENT_INIT, SETTINGS_INIT]) {
+      for (const p of [...ENTITLEMENT_MIGRATIONS, SETTINGS_INIT]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
 

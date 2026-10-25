@@ -1126,6 +1126,15 @@ const ENTITLEMENT_INTELLIGENCE_CAPABILITY_MIGRATION = resolve(
   ROOT,
   'libs/entitlement/prisma/migrations/20261024150000_add_intelligence_capability/migration.sql',
 );
+// CCP-A7 (PBD §5.1 row A7; Charter D1: "The migration SHALL be registered in
+// pact/provider/src/verify-api.ts") — TenantEntitlement provenance + governed revoke columns,
+// the TenantEntitlementEvent ledger and the resurrection guard. A returned-shape change for the
+// EntitlementRepository reads (revoked_at filter) and writes (granted_source): without it every
+// @RequireCapability guard read 500s against the verifier schema.
+const ENTITLEMENT_CCP_A7_REVOKE_PROVENANCE_MIGRATION = resolve(
+  ROOT,
+  'libs/entitlement/prisma/migrations/20261026000000_ccp_a7_entitlement_revoke_provenance/migration.sql',
+);
 // TIP-E2E INC-3 — the technical_screening schema (sessions, findings, publication
 // intents, events); the screening provider states query it.
 const TECHNICAL_SCREENING_INIT_MIGRATION = resolve(
@@ -3752,6 +3761,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         ENTITLEMENT_INIT_MIGRATION,
         // ATI-SEP-1 T9 — the `intelligence` capability enum value.
         ENTITLEMENT_INTELLIGENCE_CAPABILITY_MIGRATION,
+        // CCP-A7 — provenance, revoke, ledger, resurrection guard (after the enum additions).
+        ENTITLEMENT_CCP_A7_REVOKE_PROVENANCE_MIGRATION,
         INTEGRATION_INIT_MIGRATION,
         // L1-D3-A — lifecycle-authority + versioned mapping-set schema (in order).
         INTEGRATION_LIFECYCLE_AUTHORITY_MIGRATION,

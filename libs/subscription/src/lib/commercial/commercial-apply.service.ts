@@ -1,5 +1,5 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { grantCapabilitiesInTx } from '@aramo/entitlement';
+import { grantCapabilitiesInTx, revokeCapabilitiesInTx } from '@aramo/entitlement';
 import { v7 as uuidv7 } from 'uuid';
 
 import { addMonthsClamped, billingPeriodAt } from '../billing-period.js';
@@ -9,7 +9,8 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { BASE_COMPOSITION, PRODUCT_CAPABILITIES, assertProductKey, openBaseSubscription, type ProductKey } from '../product-registry.js';
 
 import { CommercialAuditRepository } from './commercial-audit.repository.js';
-import { type A6ApplicableAction, isA6Applicable, validatePayload } from './commercial-change-request.js';
+import { CommercialApplyRefusedError } from './commercial-approval-eligibility.js';
+import { COMMERCIAL_ACTIONS, type A6ApplicableAction, type CommercialApplicableAction, isA6Applicable, isCommercialApplicable, validatePayload } from './commercial-change-request.js';
 import {
   COMMERCIAL_CLOCK,
   type CommercialActor,
@@ -69,7 +70,15 @@ export { ApplyFailure, CommercialApplyFailedError } from './commercial-apply-rec
 //
 // C-23: nothing here reports an external change as committed — every Stripe-owned operation is
 // refused (G1), never performed. C-24: signing continuity — no envelope, executed document or
-// usage row is read or written. Out of scope: Stripe commands (C1), conversion (C2), revoke (A7).
+// usage row is read or written. Out of scope: Stripe commands (C1), conversion (C2).
+//
+// CCP-A7 (Charter D1) — ENTITLEMENT_REVOKE is applied by the same transaction: the named
+// capabilities (the product bundle minus `core`, all currently active) are marked revoked
+// (revokeCapabilitiesInTx; the row is kept, its grant provenance untouched), recorded in
+// CommercialChangeApplication.capabilities_revoked and audited. Every governed grant records its
+// commercial provenance (PLAN for a subscription's product bundle, MANUAL for ENTITLEMENT_GRANT)
+// and is the ONLY path that re-grants (clears) a revoke. C-24: a revoke stops NEW sends (the
+// esign:* scopes are read live); in-flight signing is untouched.
 
 type Tx = Parameters<Parameters<PrismaService['$transaction']>[0]>[0];
 
@@ -91,7 +100,9 @@ export type CommercialApplyFailureCode =
   | 'PLAN_NOT_ASSIGNABLE' // an INACTIVE or FREE plan is never assigned by a change request
   | 'PLAN_TENANT_KIND_MISMATCH' // the plan is for another tenant kind
   | 'NO_CHANGE' // SUBSCRIPTION_CHANGE to the version already pinned
-  | 'CAPABILITY_NOT_IN_PRODUCT' // ENTITLEMENT_GRANT of a capability outside the product bundle
+  | 'CAPABILITY_NOT_IN_PRODUCT' // ENTITLEMENT_GRANT / _REVOKE of a capability outside the product bundle
+  | 'CAPABILITY_NOT_REVOCABLE' // CCP-A7: ENTITLEMENT_REVOKE of `core` (shared, non-commercial; C-20)
+  | 'CAPABILITY_NOT_HELD' // CCP-A7: ENTITLEMENT_REVOKE of a capability not active for the tenant (stale)
   | 'TENANT_NOT_FOUND'
   | 'INVALID_PAYLOAD' // the frozen payload does not meet the A6 schema
   | 'ONE_OPEN_BASE_VIOLATION' // G2 backstop: the partial unique index refused a second open row
@@ -118,6 +129,8 @@ export interface CommercialChangeApplicationRow {
   to_plan_version_id: string | null;
   capabilities: string[];
   capabilities_inserted: string[];
+  /** CCP-A7 — what an ENTITLEMENT_REVOKE revoked (empty for every other action). */
+  capabilities_revoked: string[];
   attempt: number;
   applied_by: string;
   applied_at: Date;
@@ -139,6 +152,8 @@ interface DomainEffect {
   from_plan_version_id: string | null;
   to_plan_version_id: string | null;
   capabilities: readonly string[];
+  /** CCP-A7 — the capabilities to revoke (ENTITLEMENT_REVOKE only). */
+  revoke: readonly string[];
   events: Array<{ event_type: string; subject: string; payload: Record<string, unknown> }>;
 }
 
@@ -213,7 +228,8 @@ export class CommercialApplyService {
   }
 
   /**
-   * Applies an APPROVED (or APPLY_FAILED, retry) change request of an A6 action type. The apply
+   * Applies an APPROVED (or APPLY_FAILED, retry) change request of an A6 action type, or a
+   * CCP-A7 ENTITLEMENT_REVOKE. The apply
    * authority is the action's REQUESTER scope (the maker who may ask for the change may also
    * execute it once the distinct checker chain has approved it; TD-A6-3).
    */
@@ -229,12 +245,13 @@ export class CommercialApplyService {
     // TD-A6-3 (approved) — the ORIGINAL requester, a human, holding the requester scope.
     let scope: string;
     try {
-      scope = preflightApply(actor, head, isA6Applicable);
+      // Merge train TD-MERGE-26: A6 ∪ A7 (ENTITLEMENT_REVOKE) are applied by this path.
+      scope = preflightApply(actor, head, isCommercialApplicable);
     } catch (e) {
       if (isApplyRefusal(e)) await auditApplyRefusal(this, actor, head, e, ctx);
       throw e;
     }
-    // Every A6 action is tenant-scoped (tenant_id + product_key are immutable from INSERT).
+    // Every applicable action (A6, A7) is tenant-scoped (tenant_id + product_key are immutable from INSERT).
     const tenant_id = head.tenant_id as string;
     const product_key = assertProductKey(head.product_key);
 
@@ -264,11 +281,23 @@ export class CommercialApplyService {
         await tx.commercialChangeRequest.update({ where: { id }, data: { state: 'APPLYING', apply_attempts: attempt, updated_at: now } });
 
         const payload = this.payloadOf(req);
-        const effect = await this.applyDomain(tx, req, req.action_type as A6ApplicableAction, payload, tenant_id, product_key, now);
+        const effect = await this.applyDomain(tx, req, req.action_type as CommercialApplicableAction, payload, tenant_id, product_key, now);
         // CCP-B4 — the contract record, amendment or end evidence, in the same transaction.
-        effect.events.push(...(await this.applyContract(tx, req, req.action_type as A6ApplicableAction, payload, effect, now)));
+        effect.events.push(...(await this.applyContract(tx, req, req.action_type as CommercialApplicableAction, payload, effect, now)));
         await this.fault?.('after_subscription_write', { change_request_id: id });
-        const inserted = await grantCapabilitiesInTx(tx, { tenant_id, capabilities: effect.capabilities });
+        // CCP-A7 — a governed grant records its commercial provenance and re-grants a revoked row.
+        const inserted = await grantCapabilitiesInTx(tx, {
+          tenant_id,
+          capabilities: effect.capabilities,
+          granted_source: req.action_type === 'ENTITLEMENT_GRANT' ? 'MANUAL' : 'PLAN',
+          granted_by: actor.user_id,
+          change_request_id: id,
+        });
+        // CCP-A7 — the governed revoke (rows kept, revoked by this request).
+        const revoked = await revokeCapabilitiesInTx(tx, { tenant_id, capabilities: effect.revoke, revoked_by: actor.user_id, change_request_id: id });
+        if (revoked.length !== new Set(effect.revoke).size) {
+          throw new ApplyFailure('CAPABILITY_NOT_HELD', { capabilities: effect.revoke.filter((c) => !(revoked as string[]).includes(c)) });
+        }
         await this.fault?.('after_entitlement_write', { change_request_id: id });
 
         const application = (await tx.commercialChangeApplication.create({
@@ -284,6 +313,7 @@ export class CommercialApplyService {
             to_plan_version_id: effect.to_plan_version_id,
             capabilities: [...effect.capabilities].sort(),
             capabilities_inserted: inserted,
+            capabilities_revoked: revoked,
             attempt,
             applied_by: actor.user_id,
             applied_at: now,
@@ -307,7 +337,15 @@ export class CommercialApplyService {
           );
         for (const e of effect.events) await append(e.event_type, e.subject, e.payload);
         if (effect.capabilities.length > 0) {
-          await append('COMMERCIAL_ENTITLEMENT_GRANTED', `tenant_entitlement:${tenant_id}`, { capabilities: [...effect.capabilities].sort(), inserted, source: 'CHANGE_REQUEST' });
+          await append('COMMERCIAL_ENTITLEMENT_GRANTED', `tenant_entitlement:${tenant_id}`, {
+            capabilities: [...effect.capabilities].sort(),
+            inserted,
+            source: 'CHANGE_REQUEST',
+            granted_source: req.action_type === 'ENTITLEMENT_GRANT' ? 'MANUAL' : 'PLAN',
+          });
+        }
+        if (revoked.length > 0) {
+          await append('COMMERCIAL_ENTITLEMENT_REVOKED', `tenant_entitlement:${tenant_id}`, { capabilities: revoked, source: 'CHANGE_REQUEST', effective_at: now.toISOString() });
         }
         // T10 — requester, reason, policy version (the event column), approval evidence, old and
         // new terms, the effective timestamp and the outcome.
@@ -324,6 +362,7 @@ export class CommercialApplyService {
           from_plan_version_id: effect.from_plan_version_id,
           to_plan_version_id: effect.to_plan_version_id,
           capabilities: [...effect.capabilities].sort(),
+          capabilities_revoked: revoked,
           effective_at: now.toISOString(),
         });
         await this.fault?.('before_applied', { change_request_id: id });
@@ -352,7 +391,7 @@ export class CommercialApplyService {
 
   private payloadOf(req: CommercialChangeRequestRow): Record<string, unknown> {
     try {
-      return validatePayload(req.action_type as A6ApplicableAction, req.payload);
+      return validatePayload(req.action_type as CommercialApplicableAction, req.payload);
     } catch (e) {
       throw new ApplyFailure('INVALID_PAYLOAD', { errors: (e as { errors?: unknown }).errors ?? [(e as Error).message] });
     }
@@ -361,7 +400,7 @@ export class CommercialApplyService {
   private async applyDomain(
     tx: Tx,
     req: CommercialChangeRequestRow,
-    action: A6ApplicableAction,
+    action: CommercialApplicableAction,
     p: Record<string, unknown>,
     tenant_id: string,
     product_key: ProductKey,
@@ -423,6 +462,7 @@ export class CommercialApplyService {
           from_plan_version_id: open?.plan_version_id ?? null,
           to_plan_version_id: version.id,
           capabilities: bundle,
+          revoke: [],
           events: [
             ...(open !== null
               ? [{ event_type: 'COMMERCIAL_SUBSCRIPTION_ENDED', subject: `tenant_subscription:${open.id}`, payload: { subscription_id: open.id, source: open.source, replaced_by: id } }]
@@ -466,6 +506,7 @@ export class CommercialApplyService {
           from_plan_version_id: row.plan_version_id,
           to_plan_version_id: version.id,
           capabilities: bundle,
+          revoke: [],
           events: sameVersion ? [] : [
             {
               event_type: 'COMMERCIAL_SUBSCRIPTION_CHANGED',
@@ -495,6 +536,7 @@ export class CommercialApplyService {
           from_plan_version_id: row.plan_version_id,
           to_plan_version_id: null,
           capabilities: [],
+          revoke: [],
           events: [{ event_type: 'COMMERCIAL_SUBSCRIPTION_ENDED', subject: `tenant_subscription:${row.id}`, payload: { subscription_id: row.id, source: row.source, from_plan_version_id: row.plan_version_id, effective_at: now.toISOString() } }],
         };
       }
@@ -502,7 +544,24 @@ export class CommercialApplyService {
         const caps = p['capabilities'] as string[];
         const outside = caps.filter((c) => !bundle.includes(c));
         if (outside.length > 0) throw new ApplyFailure('CAPABILITY_NOT_IN_PRODUCT', { capabilities: outside, product_bundle: [...bundle] });
-        return { subscription_id: null, replaced_subscription_id: null, from_plan_version_id: null, to_plan_version_id: null, capabilities: caps, events: [] };
+        return { subscription_id: null, replaced_subscription_id: null, from_plan_version_id: null, to_plan_version_id: null, capabilities: caps, revoke: [], events: [] };
+      }
+      case 'ENTITLEMENT_REVOKE': {
+        // CCP-A7 (Charter D1) — revoke the product's own capability. `core` is the shared,
+        // non-commercial default capability (D4; C-20: the owner needs it to reach billing): never
+        // revoked by a product request. Every named capability must be ACTIVE (else stale).
+        const caps = p['capabilities'] as string[];
+        const outside = caps.filter((c) => !bundle.includes(c));
+        if (outside.length > 0) throw new ApplyFailure('CAPABILITY_NOT_IN_PRODUCT', { capabilities: outside, product_bundle: [...bundle] });
+        if (caps.includes('core')) throw new ApplyFailure('CAPABILITY_NOT_REVOCABLE', { capabilities: ['core'] });
+        const held = await tx.$queryRawUnsafe<Array<{ capability: string }>>(
+          `SELECT capability::text AS capability FROM entitlement."TenantEntitlement" WHERE tenant_id = $1::uuid AND capability::text = ANY($2::text[]) AND revoked_at IS NULL`,
+          tenant_id,
+          caps,
+        );
+        const notHeld = caps.filter((c) => !held.some((h) => h.capability === c));
+        if (notHeld.length > 0) throw new ApplyFailure('CAPABILITY_NOT_HELD', { capabilities: notHeld });
+        return { subscription_id: null, replaced_subscription_id: null, from_plan_version_id: null, to_plan_version_id: null, capabilities: [], revoke: [...caps].sort(), events: [] };
       }
     }
   }
@@ -512,7 +571,7 @@ export class CommercialApplyService {
    * (after the subscription write, so the insert guards see the row in its applied state). A
    * conflict is an APPLY_FAILED (the whole transaction rolls back; retryable).
    */
-  private async applyContract(tx: Tx, req: CommercialChangeRequestRow, action: A6ApplicableAction, p: Record<string, unknown>, effect: DomainEffect, now: Date): Promise<ContractEffect[]> {
+  private async applyContract(tx: Tx, req: CommercialChangeRequestRow, action: CommercialApplicableAction, p: Record<string, unknown>, effect: DomainEffect, now: Date): Promise<ContractEffect[]> {
     if (effect.subscription_id === null) return [];
     const ctx = { change_request_id: req.id, change_request_kind: req.kind, requested_by: req.requested_by, now };
     try {

@@ -18,8 +18,9 @@ import { requestDto, toAramoError } from './platform-commercial-change-request.c
 
 // CCP-A6 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.1 row A6; Conversion Rule C-21…C-24)
 // — POST /platform/commercial/change-requests/{id}/apply: applies an APPROVED (or APPLY_FAILED,
-// retry) request of an A6 action type (SUBSCRIPTION_OPEN / _CHANGE / _END, ENTITLEMENT_GRANT) in
-// ONE local transaction under the shared billing lock (CommercialApplyService).
+// retry) request of an A6 action type (SUBSCRIPTION_OPEN / _CHANGE / _END, ENTITLEMENT_GRANT) or
+// the CCP-A7 governed revoke (ENTITLEMENT_REVOKE) in ONE local transaction under the shared
+// billing lock (CommercialApplyService).
 //
 // Route gate `platform:approval:read` (the 6 CCP roles, never super_admin; as every CCP-A3
 // route). Below the gate the service is the authority: the action's REQUESTER scope (TD-A6-3),
@@ -113,6 +114,7 @@ export function applicationDto(a: CommercialChangeApplicationRow): CommercialCha
     to_plan_version_id: a.to_plan_version_id,
     capabilities: a.capabilities,
     capabilities_inserted: a.capabilities_inserted,
+    capabilities_revoked: a.capabilities_revoked,
     attempt: a.attempt,
     applied_by: a.applied_by,
     applied_at: a.applied_at.toISOString(),

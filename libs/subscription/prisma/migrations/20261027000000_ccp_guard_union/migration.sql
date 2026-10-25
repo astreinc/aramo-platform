@@ -20,7 +20,7 @@
 -- from x to, so a dropped branch fails loudly.
 --
 -- Blocks, in order: A3 base; A9 role pair; A6; TD-A6-25 generic "APPLIED needs applied_at";
--- CCP-B2-backend catalog; A6-R APPLY_EXPIRED. C2 CONVERSION (20261026060000).
+-- CCP-B2-backend catalog; A6-R APPLY_EXPIRED. C2 CONVERSION (20261026060000); A7 ENTITLEMENT_REVOKE + the separate A7 active-row block, TD-A7-2 (20261026000100).
 -- Carries a dollar-quoted body: apply whole-file. Design approval is not production migration
 -- authority (ruling A0-C15).
 
@@ -91,6 +91,12 @@ BEGIN
              OR (NEW."action_type" IN ('SUBSCRIPTION_OPEN', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'ENTITLEMENT_GRANT')
                  AND ((OLD."state" IN ('APPROVED', 'APPLY_FAILED') AND NEW."state" = 'APPLYING')
                    OR (OLD."state" = 'APPLYING' AND NEW."state" IN ('APPLIED', 'APPLY_FAILED'))))
+             -- [union block: A7 ENTITLEMENT_REVOKE, 20261026000100]
+             -- CCP-A7: ENTITLEMENT_REVOKE (the governed revoke, Charter D1), with the A6 apply
+             -- transitions and the APPLY_FAILED -> APPLYING retry.
+             OR (NEW."action_type" = 'ENTITLEMENT_REVOKE'
+                 AND ((OLD."state" IN ('APPROVED', 'APPLY_FAILED') AND NEW."state" = 'APPLYING')
+                   OR (OLD."state" = 'APPLYING' AND NEW."state" IN ('APPLIED', 'APPLY_FAILED'))))
              -- [union block: CCP-B2-backend catalog, 20261025220000]
              -- CCP-B2-backend: the catalog publish / retire apply, the A6 apply set.
              OR (NEW."action_type" IN ('PLAN_VERSION_PUBLISH', 'PLAN_RETIRE')
@@ -117,6 +123,20 @@ BEGIN
         IF NEW."action_type" IN ('SUBSCRIPTION_OPEN', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'ENTITLEMENT_GRANT') THEN
         -- CCP-A6 only (the A9 role branch keeps its own rules): apply_attempts moves only on
         -- entering APPLYING, by exactly one; applied_at only on APPLIED.
+        IF NEW."state" = 'APPLYING' THEN
+            IF NEW."apply_attempts" <> OLD."apply_attempts" + 1 THEN
+                RAISE EXCEPTION 'CommercialChangeRequest APPLYING must count the attempt (apply_attempts % -> %)', OLD."apply_attempts", NEW."apply_attempts";
+            END IF;
+        ELSIF NEW."apply_attempts" IS DISTINCT FROM OLD."apply_attempts" THEN
+            RAISE EXCEPTION 'CommercialChangeRequest apply_attempts changes only on entering APPLYING';
+        END IF;
+        IF NEW."state" <> 'APPLIED' AND NEW."applied_at" IS DISTINCT FROM OLD."applied_at" THEN
+            RAISE EXCEPTION 'CommercialChangeRequest applied_at is set only by APPLIED';
+        END IF;
+        END IF;
+        -- [union block: A7 ENTITLEMENT_REVOKE attempt rules, 20261026000100]
+        IF NEW."action_type" = 'ENTITLEMENT_REVOKE' THEN
+        -- CCP-A7: the A6 apply rules, for the revoke.
         IF NEW."state" = 'APPLYING' THEN
             IF NEW."apply_attempts" <> OLD."apply_attempts" + 1 THEN
                 RAISE EXCEPTION 'CommercialChangeRequest APPLYING must count the attempt (apply_attempts % -> %)', OLD."apply_attempts", NEW."apply_attempts";
@@ -252,6 +272,44 @@ BEGIN
                 PERFORM 1 FROM "entitlement"."TenantEntitlement" e WHERE e."tenant_id" = NEW."tenant_id" AND e."capability"::text = cap;
                 IF NOT FOUND THEN
                     RAISE EXCEPTION 'CommercialChangeRequest APPLIED: entitlement % is missing', cap;
+                END IF;
+            END LOOP;
+        END IF;
+        -- [union block: A7 active-row backstop for A6 APPLIED (TD-A7-2) + ENTITLEMENT_REVOKE APPLIED checks, 20261026000100]
+        IF NEW."state" = 'APPLIED' AND NEW."action_type" IN ('SUBSCRIPTION_OPEN', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'ENTITLEMENT_GRANT') THEN
+            -- CCP-A7 (re-point of the A6 entitlement read above): a granted capability counts only
+            -- when its row is ACTIVE (a kept, revoked row is not an entitlement).
+            SELECT * INTO app FROM "subscription"."CommercialChangeApplication" WHERE "change_request_id" = NEW."id";
+            FOREACH cap IN ARRAY app."capabilities" LOOP
+                PERFORM 1 FROM "entitlement"."TenantEntitlement" e
+                 WHERE e."tenant_id" = NEW."tenant_id" AND e."capability"::text = cap AND e."revoked_at" IS NULL;
+                IF NOT FOUND THEN
+                    RAISE EXCEPTION 'CommercialChangeRequest APPLIED: entitlement % is not active', cap;
+                END IF;
+            END LOOP;
+        END IF;
+        IF NEW."state" = 'APPLIED' AND NEW."action_type" = 'ENTITLEMENT_REVOKE' THEN
+            -- CCP-A7: APPLIED exists only when the revoke committed with its application record.
+            IF NEW."applied_at" IS NULL THEN
+                RAISE EXCEPTION 'CommercialChangeRequest APPLIED needs applied_at';
+            END IF;
+            SELECT * INTO app FROM "subscription"."CommercialChangeApplication" WHERE "change_request_id" = NEW."id";
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'CommercialChangeRequest cannot be APPLIED without its CommercialChangeApplication';
+            END IF;
+            IF app."action_type" <> NEW."action_type" OR app."tenant_id" IS DISTINCT FROM NEW."tenant_id"
+               OR app."product_key" IS DISTINCT FROM NEW."product_key" OR app."attempt" <> NEW."apply_attempts" THEN
+                RAISE EXCEPTION 'CommercialChangeApplication does not match its request';
+            END IF;
+            IF cardinality(app."capabilities_revoked") = 0 THEN
+                RAISE EXCEPTION 'CommercialChangeRequest APPLIED: ENTITLEMENT_REVOKE revoked nothing';
+            END IF;
+            FOREACH cap IN ARRAY app."capabilities_revoked" LOOP
+                PERFORM 1 FROM "entitlement"."TenantEntitlement" e
+                 WHERE e."tenant_id" = NEW."tenant_id" AND e."capability"::text = cap
+                   AND e."revoked_at" IS NOT NULL AND e."revoke_change_request_id" = NEW."id";
+                IF NOT FOUND THEN
+                    RAISE EXCEPTION 'CommercialChangeRequest APPLIED: entitlement % is not revoked by this request', cap;
                 END IF;
             END LOOP;
         END IF;

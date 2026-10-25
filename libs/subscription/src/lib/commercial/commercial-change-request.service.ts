@@ -26,6 +26,7 @@ import {
   type CommercialChangeRequestState,
   type CommercialRequiredChain,
   isA6Applicable,
+  isA7Applicable,
   isCatalogApplicable,
   parseRequiredChain,
   payloadChecksum,
@@ -1139,7 +1140,8 @@ export class CommercialChangeRequestService {
 export function applyActionable(actor: CommercialActor, req: Pick<CommercialChangeRequestRow, 'action_type' | 'state' | 'requested_by'>): boolean {
   if (actor.actor_kind !== 'user' || actor.user_id !== req.requested_by) return false;
   if (req.state !== 'APPROVED' && req.state !== 'APPLY_FAILED') return false;
-  if (!isA6Applicable(req.action_type) && !isCatalogApplicable(req.action_type)) return false;
+  // Merge train TD-MERGE-26: the CCP-A7 revoke is applied by the same route (requester-only).
+  if (!isA6Applicable(req.action_type) && !isCatalogApplicable(req.action_type) && !isA7Applicable(req.action_type)) return false;
   const scope = COMMERCIAL_ACTIONS[req.action_type as CommercialActionType].requester_scope;
   return scope !== null && actor.scopes.includes(scope);
 }

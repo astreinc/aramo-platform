@@ -6,7 +6,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE, TALENT_EVIDENCE_LATE_COLUMN_MIGRATIONS } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, TALENT_EVIDENCE_LATE_COLUMN_MIGRATIONS, resolveEntitlementMigrations } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -58,7 +58,7 @@ const MIGRATIONS = [
   'libs/identity/prisma/migrations/20260627000000_add_tenant_identity_provider/migration.sql',
   'libs/identity/prisma/migrations/20260709130000_add_tenant_lifecycle_status/migration.sql',
   'libs/identity/prisma/migrations/20261015000002_ic4_tenant_kind/migration.sql',
-  'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
+  ...resolveEntitlementMigrations(ROOT),
 ].map(M)
   .concat(migrationsFor('ingestion'))
   .concat(migrationsFor('canonicalization'))

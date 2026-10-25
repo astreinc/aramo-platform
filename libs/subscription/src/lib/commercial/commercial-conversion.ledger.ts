@@ -418,7 +418,9 @@ export class CommercialConversionLedger {
         },
       });
       const capabilities = PRODUCT_CAPABILITIES[product_key];
-      const inserted = await grantCapabilitiesInTx(tx, { tenant_id, capabilities });
+      // Merge train TD-MERGE-26 (TD-A7-7): a governed subscription open by conversion grants its
+      // product bundle as PLAN provenance, recorded against the conversion request.
+      const inserted = await grantCapabilitiesInTx(tx, { tenant_id, capabilities, granted_source: 'PLAN', granted_by: req.requested_by, change_request_id: req.id });
       effect = { subscription_id: id, replaced: ss.id, from: ss.plan_version_id, to: version.id, capabilities, inserted: [...inserted].sort() };
       await this.append(tx, {
         ...base,

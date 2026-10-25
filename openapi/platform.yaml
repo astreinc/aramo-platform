@@ -3198,13 +3198,14 @@ paths:
       summary: Apply an APPROVED Aramo-owned change request in one transaction (CCP-A6).
       description: |
         Applies an APPROVED (or APPLY_FAILED, retry) request of action type SUBSCRIPTION_OPEN,
-        SUBSCRIPTION_CHANGE, SUBSCRIPTION_END or ENTITLEMENT_GRANT (CCP-A6), or PLAN_VERSION_PUBLISH or
+        SUBSCRIPTION_CHANGE, SUBSCRIPTION_END or ENTITLEMENT_GRANT (CCP-A6), ENTITLEMENT_REVOKE (CCP-A7), or PLAN_VERSION_PUBLISH or
         PLAN_RETIRE (CCP-B2-backend: the catalog lifecycle; publishing or retiring never moves a
         subscription). Only the original requester, a person, with live requester authority may apply
         (CCP-A6-R). A6 actions run in ONE local transaction under the
         tenant's billing lock: the NC-5 re-check of every approval under the request's snapshotted
         chain, the governed (MANUAL) subscription write pinned to a PUBLISHED plan version, the
-        entitlement grant, the application record and the audit events, then APPLIED. Stripe-owned
+        entitlement grant (or the governed revoke, which keeps the row and stops the capability on the
+        next request), the application record and the audit events, then APPLIED. Stripe-owned
         rows are refused (no external change is ever made or reported). Applying an APPLIED request
         replays it (idempotent, nothing written). The route requires `platform:approval:read`; the
         caller must also be the requester and hold the action's requester scope. Every refusal and
@@ -7013,11 +7014,11 @@ components:
     CommercialChangeApplication:
       type: object
       additionalProperties: false
-      required: [id, change_request_id, action_type, tenant_id, product_key, subscription_id, replaced_subscription_id, from_plan_version_id, to_plan_version_id, capabilities, capabilities_inserted, attempt, applied_by, applied_at]
+      required: [id, change_request_id, action_type, tenant_id, product_key, subscription_id, replaced_subscription_id, from_plan_version_id, to_plan_version_id, capabilities, capabilities_inserted, capabilities_revoked, attempt, applied_by, applied_at]
       properties:
         id: { type: string, format: uuid }
         change_request_id: { type: string, format: uuid }
-        action_type: { type: string, enum: [SUBSCRIPTION_OPEN, SUBSCRIPTION_CHANGE, SUBSCRIPTION_END, ENTITLEMENT_GRANT, CONVERSION] }
+        action_type: { type: string, enum: [SUBSCRIPTION_OPEN, SUBSCRIPTION_CHANGE, SUBSCRIPTION_END, ENTITLEMENT_GRANT, ENTITLEMENT_REVOKE, CONVERSION] }
         tenant_id: { type: string, format: uuid }
         product_key: { type: string }
         subscription_id: { type: [string, 'null'], format: uuid }
@@ -7026,6 +7027,8 @@ components:
         to_plan_version_id: { type: [string, 'null'], format: uuid }
         capabilities: { type: array, items: { type: string } }
         capabilities_inserted: { type: array, items: { type: string } }
+        # CCP-A7 — what an ENTITLEMENT_REVOKE revoked (empty for every other action).
+        capabilities_revoked: { type: array, items: { type: string } }
         attempt: { type: integer, minimum: 1 }
         applied_by: { type: string, format: uuid }
         applied_at: { type: string, format: date-time }

@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import type { AddressInfo } from 'node:net';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveEntitlementMigrations } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -32,9 +32,10 @@ const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-connector-authz-spec';
 const ALG = 'RS256';
 
-const ENTITLEMENT_INIT = resolve(ROOT, 'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql');
+// CCP-A7 — the full entitlement set (the shared helper; the repository reads A7 columns).
+const ENTITLEMENT_MIGRATIONS = resolveEntitlementMigrations(ROOT);
 const INTEGRATION_INIT = resolve(ROOT, 'libs/integration/prisma/migrations/20260814170000_init_integration_connection/migration.sql');
-const MIGRATIONS = [ENTITLEMENT_INIT, INTEGRATION_INIT];
+const MIGRATIONS = [...ENTITLEMENT_MIGRATIONS, INTEGRATION_INIT];
 
 const TENANT_A = '01900000-0000-7000-8000-0000000000a1';
 const TENANT_B = '01900000-0000-7000-8000-0000000000b2';

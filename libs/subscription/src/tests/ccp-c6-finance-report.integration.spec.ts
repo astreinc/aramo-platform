@@ -331,4 +331,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C6 Finance re
     expect(r.subscriptions).toEqual([expect.objectContaining({ subscription_id: id, list_price: null, unpriced_reason: 'NON_USD_CURRENCY', discrepancies: ['PRICE_NOT_USD'] })]);
     expect(JSON.stringify(r)).not.toContain('EUR');
   });
+
+  it('TD-C6-6 (merge train, after CCP-A7) a governed revoke takes the capability out of the reconciliation: the revoked row is kept but no longer counts as present', async () => {
+    const t = await newTenant(pg);
+    const sub = await governedOpen(t);
+    const before = await reports.reconciliationReport({ as_of: T0, tenant_id: t });
+    expect(before.subscriptions).toEqual([expect.objectContaining({ subscription_id: sub, entitlement: expect.objectContaining({ present: ['core', 'sign'], missing: [] }), discrepancies: [] })]);
+    const r = await h.changeRequests.create(as(OPS, 'commercial_ops'), { action_type: 'ENTITLEMENT_REVOKE', tenant_id: t, product_key: 'sign', payload: { capabilities: ['sign'] }, reason: 'revoke sign', idempotency_key: key() }, A6_CTX);
+    await h.changeRequests.submit(as(OPS, 'commercial_ops'), r.request.id, A6_CTX);
+    await h.changeRequests.approve(as(FA, 'finance_admin'), r.request.id, { step_index: 0 }, A6_CTX);
+    expect((await h.apply.apply(as(OPS, 'commercial_ops'), r.request.id, A6_CTX)).request.state).toBe('APPLIED');
+    const kept = await pg.query(`SELECT revoked_at IS NOT NULL AS revoked FROM entitlement."TenantEntitlement" WHERE tenant_id = $1 AND capability = 'sign'`, [t]);
+    expect(kept.rows).toEqual([{ revoked: true }]);
+    const after = await reports.reconciliationReport({ as_of: T0, tenant_id: t });
+    expect(after.subscriptions).toEqual([expect.objectContaining({ subscription_id: sub, entitlement: expect.objectContaining({ present: ['core'], missing: ['sign'] }), discrepancies: ['ENTITLEMENT_MISSING'] })]);
+  });
 });

@@ -13,10 +13,11 @@ import { IntelligenceClient } from './intelligence-client.js';
 //   * periodic full REPLACE (the worker, INTELLIGENCE_ENTITLEMENT_SYNC_INTERVAL_MS,
 //     default 15 min) — the authoritative reconcile: grants AND revocations.
 //
-// The capability is granted only at tenant provisioning today (platform-admin
-// grantCapabilities; there is no runtime grant / revoke surface for any
-// capability), so the REPLACE sync is what carries a revocation (a removed
-// TenantEntitlement row) to TI. Never on an ATS request path.
+// CCP-A7 (Charter D1) — a revocation is a governed revoke (TenantEntitlement.revoked_at set,
+// the row kept). listTenantIdsWithCapability counts ACTIVE rows only, so the next REPLACE drops
+// a revoked tenant and TI deactivates it; the publisher's live capability gate (also ACTIVE rows
+// only) stops the per-ingest UPSERT, so a revoked tenant is never re-activated in TI. A governed
+// re-grant makes it active again on the next UPSERT / REPLACE. Never on an ATS request path.
 
 const UPSERT_TTL_MS = 15 * 60_000;
 
