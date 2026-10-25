@@ -346,6 +346,11 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   TENANT_DOMAIN_UNAVAILABLE: 409,
   // Domain-Enforcement P3 — re-issue / delegation refused while VERIFIED.
   DOMAIN_ALREADY_VERIFIED: 409,
+  // CCP-A3 — commercial change request + approval.
+  CCP_NOT_BOOTSTRAPPED: 409,
+  COMMERCIAL_APPROVAL_REFUSED: 409,
+  COMMERCIAL_CHANGE_REQUEST_CONFLICT: 409,
+  COMMERCIAL_POLICY_UNAVAILABLE: 503,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

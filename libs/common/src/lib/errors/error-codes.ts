@@ -1049,6 +1049,20 @@ export const ERROR_CODES = [
   // re-issued (or verification delegated) once the domain is VERIFIED (VERIFIED is
   // sticky). details.reason = 'already_verified'. HTTP 409.
   'DOMAIN_ALREADY_VERIFIED',
+  // CCP-A3 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.1 row A3; Charter §6.3) — the
+  // approval chain of this request cannot be fulfilled by independent, eligible, attested
+  // humans (chain-satisfiability, never a user count). details.unfillable_steps. HTTP 409.
+  'CCP_NOT_BOOTSTRAPPED',
+  // CCP-A3 (Charter §6.4) — an approval or rejection refused by the eligibility engine;
+  // details.refusal is one of NOT_PENDING | EXPIRED | NOT_HUMAN | SELF_APPROVAL |
+  // USER_ALREADY_APPROVED | STEP_SCOPE_MISSING | OUT_OF_ORDER. HTTP 409.
+  'COMMERCIAL_APPROVAL_REFUSED',
+  // CCP-A3 — the change request cannot move (details.reason: state_invalid |
+  // open_request_exists (Q14) | integrity). HTTP 409.
+  'COMMERCIAL_CHANGE_REQUEST_CONFLICT',
+  // CCP-A2/A3 — no valid ACTIVE CommercialPolicyVersion (missing, malformed or checksum
+  // mismatch): no commercial decision proceeds (fail closed). HTTP 503.
+  'COMMERCIAL_POLICY_UNAVAILABLE',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

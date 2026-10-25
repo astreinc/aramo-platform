@@ -1798,6 +1798,11 @@ components:
         holds the owner's email domain (one organization per email domain;
         details.reason organization_domain_taken). Also returned when an operator
         revokes a shared-domain exception while another holder exists.
+        CCP-A3 adds CCP_NOT_BOOTSTRAPPED (HTTP 409; the request's approval chain cannot
+        be fulfilled by independent eligible humans), COMMERCIAL_APPROVAL_REFUSED (HTTP
+        409; details.refusal names one of the seven approval refusals),
+        COMMERCIAL_CHANGE_REQUEST_CONFLICT (HTTP 409; details.reason) and
+        COMMERCIAL_POLICY_UNAVAILABLE (HTTP 503; no valid ACTIVE commercial policy).
         Declaration order in this enum matches ERROR_CODES tuple
         order in libs/common/src/lib/errors/error-codes.ts.
       enum:
@@ -2038,6 +2043,10 @@ components:
         - RTR_STAGE_NOT_ELIGIBLE
         - TENANT_DOMAIN_UNAVAILABLE
         - DOMAIN_ALREADY_VERIFIED
+        - CCP_NOT_BOOTSTRAPPED
+        - COMMERCIAL_APPROVAL_REFUSED
+        - COMMERCIAL_CHANGE_REQUEST_CONFLICT
+        - COMMERCIAL_POLICY_UNAVAILABLE
 
     ErrorObject:
       type: object
