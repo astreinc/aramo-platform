@@ -105,6 +105,9 @@ export const CLASSIFICATIONS: Record<string, Classification> = {
   // PlatformCommercialBillingController (GET /platform/commercial/billing-commands and
   // /billing-webhook-inbox), so its ACTIVE_RESERVED entry is REMOVED. Merge-train union of the
   // D1 + B2 + C1 removals: no CCP read reservation remains.
+  // CCP C3 — the billing status read routes the A1 reservation named ("C3/C4") also enforce it:
+  // PlatformCommercialBillingStatusController (GET /platform/commercial/tenants/{tenant_id}/
+  // billing-status and /billing-portal-configuration). No classification change.
   'platform:catalog:draft': { cls: 'SERVICE_ENFORCED', reason: 'requester scope for PLAN_VERSION_PUBLISH / PLAN_RETIRE change requests — CommercialChangeRequestService.create checks COMMERCIAL_ACTIONS[..].requester_scope against the server-resolved scopes (libs/subscription/src/lib/commercial/commercial-change-request.ts; CCP A3); also literally enforced by the CCP B2 catalog draft routes (PlatformCommercialCatalogController) and re-checked by CommercialCatalogService' },
   'platform:catalog:approve': { cls: 'SERVICE_ENFORCED', reason: 'approval-step scope (finance and owner steps of a catalog chain) — checkApprovalEligibility reads it LIVE in the approve transaction (libs/subscription/src/lib/commercial/commercial-approval-eligibility.ts; CCP A3)' },
   'platform:catalog:publish': { cls: 'SERVICE_ENFORCED', reason: 'owner approval-step scope of a catalog-publish chain — checkApprovalEligibility reads it LIVE in the approve transaction (libs/subscription/src/lib/commercial/commercial-approval-eligibility.ts; CCP A3); the publish apply itself lands in CCP A5/B2' },

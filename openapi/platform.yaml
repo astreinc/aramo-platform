@@ -106,6 +106,18 @@ tags:
       `platform:billing:read` (platform_owner, finance_admin, commercial_ops,
       support_admin, read_only_auditor); catalog_manager and super_admin are refused
       with 403 `INSUFFICIENT_PERMISSIONS`. Platform-tier only. No write route.
+  - name: Platform Commercial Billing Status
+    description: |
+      CCP-C3 — READ-THROUGH invoice and payment status for a tenant's Stripe-owned
+      (self-service) subscription, and the billing-portal configuration facts. Aramo
+      mirrors provider status only (no ledger, no totals); invoices and payment methods
+      stay managed in the Stripe hosted portal. The provider is read through a GET-only
+      adapter; nothing is written to Stripe or to Aramo. Disabled states are
+      `availability` values, never a 5xx. Invoice amounts (minor units) appear only on
+      the billing-status route (a dedicated Finance screen, never the dashboard). Requires
+      `platform:billing:read` (platform_owner, finance_admin, commercial_ops,
+      support_admin, read_only_auditor); catalog_manager and super_admin are refused
+      with 403 `INSUFFICIENT_PERMISSIONS`. Platform-tier only.
   - name: Platform Commercial Change Requests
     description: |
       CCP-A3 — governed commercial change requests and their distinct-human approvals.
@@ -2676,6 +2688,88 @@ paths:
         '403':
           $ref: '#/components/responses/PlatformForbidden'
 
+  /platform/commercial/billing-portal-configuration:
+    get:
+      operationId: getPlatformCommercialBillingPortalConfiguration
+      tags: [Platform Commercial Billing Status]
+      summary: Read the billing-portal configuration facts (read-through).
+      description: |
+        CCP-C3 — `STRIPE_PORTAL_CONFIGURATION` as set, and what the provider holds for it:
+        `NOT_CONFIGURED`, `NOT_FOUND`, `INACTIVE` or `ACTIVE`, with its feature flags.
+        `ACTIVE` is a provider fact only; it is NOT the verification of the external
+        portal-configuration decision (Program Build Directive §10), which is recorded by a
+        person. Takes no parameters (the id is never caller-supplied). Read-only. Requires
+        `platform:billing:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      responses:
+        '200':
+          description: The portal-configuration facts (or a designed disabled state).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingPortalConfigurationResponse'
+        '400':
+          $ref: '#/components/responses/BillingStatusValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
+  /platform/commercial/tenants/{tenant_id}/billing-status:
+    get:
+      operationId: getPlatformCommercialTenantBillingStatus
+      tags: [Platform Commercial Billing Status]
+      summary: Read a tenant's invoice and payment status for one product (read-through).
+      description: |
+        CCP-C3 — the tenant's Stripe-owned subscription for the product (the open one, else
+        the most recent), the provider's subscription status, and its invoices (newest first)
+        with a payment state derived from the provider's own status and dates. Invoices are
+        read by subscription, so another product's invoices are never read. A provider
+        subscription or invoice that does not belong to this tenant and billing account is
+        `TENANT_MISMATCH`, and no provider data is returned. Governed (MANUAL) and contract
+        subscriptions are `NO_PROVIDER_SUBSCRIPTION`. Read-only. Requires
+        `platform:billing:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: tenant_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: product_key
+          in: query
+          required: true
+          description: A registered product (the v1 registry holds sign only).
+          schema:
+            type: string
+            enum: [sign]
+        - name: invoice_limit
+          in: query
+          required: false
+          description: Invoices to return (default 12, max 50).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 50
+      responses:
+        '200':
+          description: The billing status (or a designed disabled state).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/TenantBillingStatusResponse'
+        '400':
+          $ref: '#/components/responses/BillingStatusValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
   /platform/commercial/change-requests:
     post:
       operationId: createPlatformCommercialChangeRequest
@@ -4543,6 +4637,15 @@ components:
         application/json:
           schema:
             $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    BillingStatusValidation:
+      description: |
+        `VALIDATION_ERROR` — a malformed tenant id, a missing or unregistered product_key
+        (details.reason `unknown_product`), an invoice_limit outside 1..50
+        (details.reason `invalid_limit`), or an unknown query parameter.
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
     CommercialChangeRequestValidation:
       description: |
         `VALIDATION_ERROR` — a malformed body, query or id; an invalid payload for the
@@ -5906,6 +6009,177 @@ components:
         next_cursor:
           type: [string, 'null']
           description: Opaque continuation cursor, or null on the last page.
+
+    BillingStatusAvailability:
+      type: string
+      enum: [AVAILABLE, BILLING_UNAVAILABLE, LIVE_MODE_HELD, NO_PROVIDER_SUBSCRIPTION, PROVIDER_UNAVAILABLE, TENANT_MISMATCH]
+      description: |
+        CCP-C3 designed states. `BILLING_UNAVAILABLE` — the provider is not configured for this
+        service. `LIVE_MODE_HELD` — a live key is refused (Phase C runs in test mode until the
+        live-billing release is authorized). `NO_PROVIDER_SUBSCRIPTION` — no Stripe-owned
+        subscription. `PROVIDER_UNAVAILABLE` — a provider read failed. `TENANT_MISMATCH` — the
+        provider data does not belong to this tenant and billing account (no data returned).
+
+    BillingStatusInvoice:
+      type: object
+      additionalProperties: false
+      required: [provider, invoice_ref, number, subscription_ref, provider_status, payment_state, currency, total_minor, amount_due_minor, amount_paid_minor, amount_remaining_minor, created_at, due_at, period_start, period_end, attempt_count, next_attempt_at, hosted_url, document_url]
+      properties:
+        provider:
+          type: string
+          enum: [STRIPE]
+        invoice_ref:
+          type: string
+        number:
+          type: [string, 'null']
+        subscription_ref:
+          type: [string, 'null']
+        provider_status:
+          type: string
+          description: The provider's raw invoice status (draft, open, paid, uncollectible, void).
+        payment_state:
+          type: string
+          enum: [DRAFT, DUE, OVERDUE, PAYMENT_FAILED, PAID, UNCOLLECTIBLE, VOID, UNKNOWN]
+        currency:
+          type: [string, 'null']
+        total_minor:
+          type: integer
+          description: Amounts are the provider's, in the currency's minor unit (mirrored, never totalled).
+        amount_due_minor:
+          type: integer
+        amount_paid_minor:
+          type: integer
+        amount_remaining_minor:
+          type: integer
+        created_at:
+          type: [string, 'null']
+          format: date-time
+        due_at:
+          type: [string, 'null']
+          format: date-time
+        period_start:
+          type: [string, 'null']
+          format: date-time
+        period_end:
+          type: [string, 'null']
+          format: date-time
+        attempt_count:
+          type: integer
+        next_attempt_at:
+          type: [string, 'null']
+          format: date-time
+        hosted_url:
+          type: [string, 'null']
+          description: The provider-hosted invoice page (a link-out; Aramo renders no invoice).
+        document_url:
+          type: [string, 'null']
+
+    TenantBillingStatusResponse:
+      type: object
+      additionalProperties: false
+      required: [tenant_id, product_key, availability, provider, mode, subscription, provider_subscription, invoices, detail, read_at]
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        product_key:
+          type: string
+        availability:
+          $ref: '#/components/schemas/BillingStatusAvailability'
+        provider:
+          type: [string, 'null']
+          enum: [STRIPE, null]
+        mode:
+          type: [string, 'null']
+          enum: [test, live, null]
+        subscription:
+          type: [object, 'null']
+          additionalProperties: false
+          required: [id, source, status, open, account_ref, subscription_ref]
+          properties:
+            id:
+              type: string
+              format: uuid
+            source:
+              type: string
+            status:
+              type: string
+            open:
+              type: boolean
+            account_ref:
+              type: string
+            subscription_ref:
+              type: string
+        provider_subscription:
+          type: [object, 'null']
+          additionalProperties: false
+          required: [provider_status, current_period_start, current_period_end, cancel_at_period_end]
+          properties:
+            provider_status:
+              type: string
+            current_period_start:
+              type: string
+              format: date-time
+            current_period_end:
+              type: string
+              format: date-time
+            cancel_at_period_end:
+              type: boolean
+        invoices:
+          type: array
+          items:
+            $ref: '#/components/schemas/BillingStatusInvoice'
+        detail:
+          type: [string, 'null']
+        read_at:
+          type: string
+          format: date-time
+
+    BillingPortalConfigurationResponse:
+      type: object
+      additionalProperties: false
+      required: [provider, availability, mode, configuration_ref, configuration_state, configuration, detail, read_at]
+      properties:
+        provider:
+          type: string
+          enum: [STRIPE]
+        availability:
+          type: string
+          enum: [AVAILABLE, BILLING_UNAVAILABLE, LIVE_MODE_HELD, PROVIDER_UNAVAILABLE]
+        mode:
+          type: [string, 'null']
+          enum: [test, live, null]
+        configuration_ref:
+          type: [string, 'null']
+        configuration_state:
+          type: [string, 'null']
+          enum: [NOT_CONFIGURED, NOT_FOUND, INACTIVE, ACTIVE, null]
+        configuration:
+          type: [object, 'null']
+          additionalProperties: false
+          required: [active, is_default, live, invoice_history_enabled, payment_method_update_enabled, subscription_cancel_enabled, subscription_cancel_mode, subscription_update_enabled]
+          properties:
+            active:
+              type: boolean
+            is_default:
+              type: boolean
+            live:
+              type: boolean
+            invoice_history_enabled:
+              type: boolean
+            payment_method_update_enabled:
+              type: boolean
+            subscription_cancel_enabled:
+              type: boolean
+            subscription_cancel_mode:
+              type: [string, 'null']
+            subscription_update_enabled:
+              type: boolean
+        detail:
+          type: [string, 'null']
+        read_at:
+          type: string
+          format: date-time
 
     CommercialActionType:
       type: string

@@ -2187,6 +2187,10 @@
       "BILLING_PRICE_PROVIDER",
       "BILLING_PROVIDER_COMMAND_PORT",
       "BILLING_PROVIDER_PORT",
+      "BILLING_PROVIDER_READ_PORT",
+      "BILLING_STATUS_AVAILABILITY",
+      "BILLING_STATUS_DEFAULT_INVOICE_LIMIT",
+      "BILLING_STATUS_MAX_INVOICE_LIMIT",
       "BILLING_WEBHOOK_INBOX_STATUSES",
       "BOOTSTRAP_CLI_FLAGS",
       "BOOTSTRAP_PLATFORM_TENANT_ID",
@@ -2195,6 +2199,8 @@
       "BillingCommandService",
       "BillingProviderUnavailableError",
       "BillingRefusedError",
+      "BillingStatusQueryError",
+      "BillingStatusReadService",
       "BillingWebhookInboxQueryError",
       "BillingWebhookInboxService",
       "BillingWebhookSignatureError",
@@ -2283,6 +2289,7 @@
       "FreePersonalSubscriptionService",
       "GOVERNED_SUBSCRIPTION_OPEN",
       "INBOX_MAX_AUTOMATIC_ATTEMPTS",
+      "INVOICE_PAYMENT_STATES",
       "LEGAL_DOCUMENTS",
       "LEGAL_DOCUMENT_REGISTRY",
       "LEGAL_DOCUMENT_TITLES",
@@ -2303,6 +2310,7 @@
       "POLICY_EDIT_RANGES",
       "POLICY_LOCK_SQL",
       "POLICY_TARGET_CHECKSUM_KEY",
+      "PORTAL_CONFIGURATION_STATES",
       "PRODUCT_CAPABILITIES",
       "PRODUCT_KEYS",
       "PlanVersionContentError",
@@ -2316,8 +2324,10 @@
       "SIGN_PRODUCT_KEY",
       "STORAGE_CAPACITY_KEY",
       "STRIPE_API_VERSION",
+      "STRIPE_READ_ADAPTER_METHODS",
       "SUBSCRIPTION_CANCEL_MODES",
       "StripeBillingProvider",
+      "StripeBillingReadAdapter",
       "SubscriptionLifecycleService",
       "SubscriptionModule",
       "SubscriptionPrismaService",
@@ -2367,6 +2377,7 @@
       "explanationOf",
       "formatCheckoutCutoverReport",
       "inAppContextRef",
+      "invoicePaymentState",
       "isA6Applicable",
       "isApprovalExpired",
       "isCatalogApplicable",
@@ -3529,6 +3540,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c3-billing-status-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-d1-usage-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -4179,6 +4196,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-c2-conversion-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c3-billing-status-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -6556,6 +6579,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c3-billing-status-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-d1-usage-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -7248,6 +7277,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-c2-conversion.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-c3-billing-status.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -9586,6 +9621,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c3-billing-status-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-d1-usage-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -11766,6 +11807,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-c2-conversion-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c3-billing-status-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },

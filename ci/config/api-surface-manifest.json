@@ -112,6 +112,7 @@
     "apps/platform-admin/src/app/platform/platform-commercial-apply.controller.ts": "AP",
     "apps/platform-admin/src/app/platform/platform-commercial-catalog.controller.ts": "AP",
     "apps/platform-admin/src/app/platform/platform-commercial-billing.controller.ts": "AP",
+    "apps/platform-admin/src/app/platform/platform-commercial-billing-status.controller.ts": "AP",
     "apps/platform-admin/src/app/platform/platform-commercial-change-request.controller.ts": "AP",
     "apps/platform-admin/src/app/platform/platform-commercial-usage.controller.ts": "AP",
     "apps/platform-admin/src/app/platform/platform-commercial-governance.controller.ts": "AP",

@@ -34,7 +34,7 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 // commercial tenant (change requests and approvals are append-only, and Q14 allows one
 // open request per tenant × product).
 //
-// Coverage — CCP routes (10):
+// Coverage — CCP routes (19):
 //   GET  /platform/commercial/audit-events                      (CCP-A2)
 //   POST /platform/commercial/change-requests                   (CCP-A3)
 //   GET  /platform/commercial/change-requests
@@ -52,6 +52,8 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 //   GET  /platform/commercial/billing-webhook-inbox             (CCP-C1)
 //   POST /platform/commercial/change-requests/{id}/convert      (CCP-C2)
 //   GET  /platform/commercial/change-requests/{id}/conversion   (CCP-C2)
+//   GET  /platform/commercial/tenants/{tenant_id}/billing-status (CCP-C3)
+//   GET  /platform/commercial/billing-portal-configuration      (CCP-C3)
 // For each route: the allowed call, super_admin refused (403, holds no commercial
 // scope), and the tenant tier refused (403 tier tripwire). Plus the role-level
 // refusals: a role missing the route scope (audit feed), a role missing the requester
@@ -108,6 +110,11 @@ const CONTRACTS = '/platform/commercial/contracts';
 const EX_CONTRACT_ID = 'cca10000-0000-7000-8000-0000000000b4';
 const COMMANDS = '/platform/commercial/billing-commands';
 const INBOX = '/platform/commercial/billing-webhook-inbox';
+// CCP-C3 — the read-through billing status. The provider seeds this tenant's Stripe-owned row and
+// answers provider reads through a fake read port (no Stripe in the verifier).
+const C3_TENANT = 'cca10000-0000-7000-8000-0000000000c3';
+const BILLING_STATUS = `/platform/commercial/tenants/${C3_TENANT}/billing-status`;
+const PORTAL_CONFIG = '/platform/commercial/billing-portal-configuration';
 
 const platformSession = (role: Role) => ({ 'X-Aramo-Consumer': 'platform', Cookie: `aramo_access_token_platform=pact-${role}` });
 const platformJson = (role: Role) => ({ ...platformSession(role), 'Content-Type': 'application/json' });
@@ -211,6 +218,8 @@ const GATE_ROUTES: readonly GateRoute[] = [
   { name: 'GET billing-webhook-inbox', method: 'GET', path: INBOX, scope: 'platform:billing:read' },
   { name: 'POST change-requests/{id}/convert', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/convert`, scope: 'platform:approval:read' },
   { name: 'GET change-requests/{id}/conversion', method: 'GET', path: `${CR}/${EX_REQUEST_ID}/conversion`, scope: 'platform:approval:read' },
+  { name: 'GET tenants/{tenant_id}/billing-status', method: 'GET', path: BILLING_STATUS, scope: 'platform:billing:read' },
+  { name: 'GET billing-portal-configuration', method: 'GET', path: PORTAL_CONFIG, scope: 'platform:billing:read' },
 ];
 
 // ── CCP-A2 — the commercial audit feed ────────────────────────────────────────
@@ -1132,6 +1141,143 @@ describe('platform-web → GET /platform/commercial/change-requests/{id}/convers
       .executeTest(async (mock) => {
         const res = await call(`${mock.url}${read()}`, 'GET', platformSession('read_only_auditor'));
         expect(res.status).toBe(200);
+      });
+  });
+});
+
+// ── CCP-C3 — read-through invoice and payment status (read-only) ─────────────
+
+describe('platform-web → GET /platform/commercial/tenants/{tenant_id}/billing-status (CCP-C3)', () => {
+  it('finance_admin reads a tenant\'s invoice and payment status (200; provider status mirrored, money on a Finance screen)', async () => {
+    await provider
+      .addInteraction()
+      .given('a tenant with a Stripe-owned subscription and invoices exists', { tenant_id: C3_TENANT })
+      .uponReceiving('a tenant billing status read by finance_admin')
+      .withRequest('GET', BILLING_STATUS, (b) => {
+        b.headers(platformSession('finance_admin')).query({ product_key: 'sign', invoice_limit: '12' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          tenant_id: uuid(C3_TENANT),
+          product_key: 'sign',
+          availability: 'AVAILABLE',
+          provider: 'STRIPE',
+          mode: 'test',
+          subscription: {
+            id: uuid('cca10000-0000-7000-8000-0000000000d3'),
+            source: 'SELF_SERVICE',
+            status: like('PAST_DUE'),
+            open: true,
+            account_ref: like('acct_pact_c3'),
+            subscription_ref: like('sub_pact_c3'),
+          },
+          provider_subscription: {
+            provider_status: like('past_due'),
+            current_period_start: iso(),
+            current_period_end: iso(),
+            cancel_at_period_end: false,
+          },
+          invoices: eachLike({
+            provider: 'STRIPE',
+            invoice_ref: like('in_pact_c3'),
+            number: like('PACT-0001'),
+            subscription_ref: like('sub_pact_c3'),
+            provider_status: regex('^(draft|open|paid|uncollectible|void)$', 'open'),
+            payment_state: regex('^(DRAFT|DUE|OVERDUE|PAYMENT_FAILED|PAID|UNCOLLECTIBLE|VOID|UNKNOWN)$', 'OVERDUE'),
+            currency: like('usd'),
+            total_minor: integer(4900),
+            amount_due_minor: integer(4900),
+            amount_paid_minor: integer(0),
+            amount_remaining_minor: integer(4900),
+            created_at: iso(),
+            due_at: iso(),
+            period_start: iso(),
+            period_end: iso(),
+            attempt_count: integer(2),
+            next_attempt_at: null,
+            hosted_url: like('https://invoice.test/in_pact_c3'),
+            document_url: null,
+          }),
+          detail: null,
+          read_at: iso(),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${BILLING_STATUS}?product_key=sign&invoice_limit=12`, 'GET', platformSession('finance_admin'));
+        expect(res.status).toBe(200);
+        expect((res.body['invoices'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+
+  it('a role without platform:billing:read (catalog_manager) is refused (403)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a tenant billing status read by a role missing the billing read scope')
+      .withRequest('GET', BILLING_STATUS, (b) => {
+        b.headers(platformSession('catalog_manager')).query({ product_key: 'sign' });
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:billing:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${BILLING_STATUS}?product_key=sign`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(403);
+        expect(errCode(res.body)).toBe('INSUFFICIENT_PERMISSIONS');
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/billing-portal-configuration (CCP-C3)', () => {
+  it('read_only_auditor reads the portal-configuration facts (200; ACTIVE is a provider fact, not the §10 verification)', async () => {
+    await provider
+      .addInteraction()
+      .given('a billing portal configuration is set')
+      .uponReceiving('a billing portal configuration read by read_only_auditor')
+      .withRequest('GET', PORTAL_CONFIG, (b) => {
+        b.headers(platformSession('read_only_auditor'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          provider: 'STRIPE',
+          availability: 'AVAILABLE',
+          mode: 'test',
+          configuration_ref: like('bpc_pact_c3'),
+          configuration_state: regex('^(NOT_CONFIGURED|NOT_FOUND|INACTIVE|ACTIVE)$', 'ACTIVE'),
+          configuration: {
+            active: true,
+            is_default: false,
+            live: false,
+            invoice_history_enabled: true,
+            payment_method_update_enabled: true,
+            subscription_cancel_enabled: true,
+            subscription_cancel_mode: like('at_period_end'),
+            subscription_update_enabled: false,
+          },
+          detail: null,
+          read_at: iso(),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${PORTAL_CONFIG}`, 'GET', platformSession('read_only_auditor'));
+        expect(res.status).toBe(200);
+      });
+  });
+
+  it('a role without platform:billing:read (catalog_manager) is refused (403)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a billing portal configuration read by a role missing the billing read scope')
+      .withRequest('GET', PORTAL_CONFIG, (b) => {
+        b.headers(platformSession('catalog_manager'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:billing:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${PORTAL_CONFIG}`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(403);
       });
   });
 });

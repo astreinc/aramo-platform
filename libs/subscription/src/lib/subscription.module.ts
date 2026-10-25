@@ -19,7 +19,9 @@ import { LegalAcceptanceService } from './legal/legal-acceptance.service.js';
 import { PlanVersionRepository } from './plan-version.repository.js';
 import { CommercialCatalogService } from './commercial/commercial-catalog.service.js';
 import { ContractRepository } from './commercial/commercial-contract.repository.js';
-import { BILLING_PROVIDER_COMMAND_PORT, BILLING_PROVIDER_PORT } from './billing/billing-provider.port.js';
+import { BILLING_PROVIDER_COMMAND_PORT, BILLING_PROVIDER_PORT, BILLING_PROVIDER_READ_PORT } from './billing/billing-provider.port.js';
+import { BillingStatusReadService } from './billing/billing-status-read.service.js';
+import { StripeBillingReadAdapter } from './billing/stripe-billing-read.adapter.js';
 import { BillingCommandService } from './billing/billing-command.service.js';
 import { BillingWebhookInboxService } from './billing/billing-webhook-inbox.service.js';
 import { StripeBillingProvider } from './billing/stripe-billing.provider.js';
@@ -40,6 +42,8 @@ import { UsageRollupService } from './usage/usage-rollup.service.js';
 // Stripe adapter) and the webhook inbox (BillingWebhookInboxService).
 // CCP-C2: the governed conversion — the in-transaction ledger (bound into the lifecycle: releases,
 // webhook-time conversion, confirmed-end completion) and the requester-only conversion apply.
+// CCP-C3: the READ-ONLY provider port, bound to its own GET-only adapter (StripeBillingReadAdapter,
+// never the write-capable StripeBillingProvider), and the read-through BillingStatusReadService.
 @Module({
   providers: [
     PrismaService,
@@ -48,6 +52,8 @@ import { UsageRollupService } from './usage/usage-rollup.service.js';
     LegalAcceptanceService,
     { provide: BILLING_PROVIDER_PORT, useClass: StripeBillingProvider },
     { provide: BILLING_PROVIDER_COMMAND_PORT, useClass: StripeBillingProvider },
+    { provide: BILLING_PROVIDER_READ_PORT, useClass: StripeBillingReadAdapter },
+    BillingStatusReadService,
     SubscriptionLifecycleService,
     BillingCommandService,
     BillingWebhookInboxService,
@@ -68,7 +74,7 @@ import { UsageRollupService } from './usage/usage-rollup.service.js';
     CommercialCatalogService,
     ContractRepository,
   ],
-  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialCatalogApplyService, PlanVersionRepository, UsageRollupService, CommercialCatalogService, CommercialPolicyGovernanceService, CommercialAuditExportService, CommercialOperatorRosterService, ContractRepository, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialConversionLedger, CommercialConversionService],
+  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialCatalogApplyService, PlanVersionRepository, UsageRollupService, CommercialCatalogService, CommercialPolicyGovernanceService, CommercialAuditExportService, CommercialOperatorRosterService, ContractRepository, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialConversionLedger, CommercialConversionService, BILLING_PROVIDER_READ_PORT, BillingStatusReadService],
 })
 export class SubscriptionModule {
   /**
@@ -86,6 +92,8 @@ export class SubscriptionModule {
         LegalAcceptanceService,
         { provide: BILLING_PROVIDER_PORT, useClass: StripeBillingProvider },
         { provide: BILLING_PROVIDER_COMMAND_PORT, useClass: StripeBillingProvider },
+        { provide: BILLING_PROVIDER_READ_PORT, useClass: StripeBillingReadAdapter },
+        BillingStatusReadService,
         SubscriptionLifecycleService,
         BillingCommandService,
         BillingWebhookInboxService,
@@ -107,7 +115,7 @@ export class SubscriptionModule {
         ContractRepository,
         ...(opts.providers ?? []),
       ],
-      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialCatalogApplyService, PlanVersionRepository, UsageRollupService, CommercialCatalogService, CommercialPolicyGovernanceService, CommercialAuditExportService, CommercialOperatorRosterService, ContractRepository, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialConversionLedger, CommercialConversionService],
+      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialCatalogApplyService, PlanVersionRepository, UsageRollupService, CommercialCatalogService, CommercialPolicyGovernanceService, CommercialAuditExportService, CommercialOperatorRosterService, ContractRepository, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialConversionLedger, CommercialConversionService, BILLING_PROVIDER_READ_PORT, BillingStatusReadService],
     };
   }
 }
