@@ -74,7 +74,7 @@ describe('EsignBillingController', () => {
   it('a verified webhook is processed and activates the subscribing owner', async () => {
     const { controller, lifecycle, owners } = setup();
     expect(await controller.stripeWebhook(req(body), signed(body), 'r')).toEqual({ received: true, outcome: 'APPLIED' });
-    expect(lifecycle.handleEvent).toHaveBeenCalledWith(expect.objectContaining({ id: 'evt_1', type: 'checkout.session.completed', subscription_ref: 'sub_1' }));
+    expect(lifecycle.handleEvent).toHaveBeenCalledWith(expect.objectContaining({ id: 'evt_1', type: 'checkout.session.completed', subscription_ref: 'sub_1' }), 'sign');
     expect(owners.activate).toHaveBeenCalledWith('t-1', 'u-owner', 'r');
   });
 
@@ -90,6 +90,7 @@ describe('EsignBillingController', () => {
     const { controller, lifecycle, ctx } = setup();
     await controller.checkout(auth(['sign:billing:manage']), 'r', { plan_key: 'aramo-sign-business-v1' });
     expect(lifecycle.startCheckout).toHaveBeenCalledWith({
+      product_key: 'sign',
       tenant_id: 't-1',
       user_id: 'u-owner',
       user_email: 'owner@astre.test',

@@ -17,6 +17,7 @@ import { LEGAL_DOCUMENTS, type LegalDocumentVersion } from '../lib/legal/legal-d
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
 import { FakeOrganizationBillingProfile } from './fixtures/organization-billing-profile.fake.js';
+import { CCP_A4_MIGRATION } from './fixtures/ccp-a4.js';
 
 // Aramo-Sign-Commercial-Plans-Legal-Framework-Amendment-A1 — on real Postgres 17:
 // the canonical catalog exactly as approved; unlimited signing is explicit and
@@ -34,7 +35,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20261022100100_billing_account_country_guard/migration.sql',
   '../../prisma/migrations/20261022110100_billing_flag_domain_reason/migration.sql',
   '../../prisma/migrations/20261023100000_sign_personal_free/migration.sql',
-].map((p) => resolve(__dirname, p));
+].map((p) => resolve(__dirname, p)).concat(CCP_A4_MIGRATION);
 
 const KEY = 'sign.envelopes';
 const STORAGE = 'sign.storage_bytes';
@@ -134,17 +135,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
   });
 
   const checkout = (plan_key: string, s = svc(), extra: { accept_terms?: boolean } = {}) =>
-    s.startCheckout({ tenant_id: t, user_id: 'owner', user_email: 'o@acme.test', plan_key, success_url: 'https://e/ok', cancel_url: 'https://e/no', ...extra });
+    s.startCheckout({ product_key: 'sign', tenant_id: t, user_id: 'owner', user_email: 'o@acme.test', plan_key, success_url: 'https://e/ok', cancel_url: 'https://e/no', ...extra });
   const reason = (p: Promise<unknown>) => p.then(() => 'OK', (e: BillingRefusedError) => e.reason);
   async function subscribe(plan_key: string, price: string, over: Partial<ProviderSubscriptionState> = {}) {
     await checkout(plan_key);
     const sub = billing.complete(price, over);
-    await svc().syncSubscription(sub.subscription_ref, AT);
+    await svc().syncSubscription(sub.subscription_ref, 'sign', AT);
     return sub;
   }
 
   it('the catalog matches the approved matrix exactly', async () => {
-    const cat = await svc().catalog(t);
+    const cat = await svc().catalog('sign', t);
     const byKey = Object.fromEntries(cat.map((p) => [p.key, p]));
     expect(cat.map((p) => p.name)).toEqual(['Free Personal', 'Standard Business', 'Standard Professional', 'Enterprise']);
 
@@ -194,54 +195,54 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
   it('Standard Business has no envelope ceiling: 150 sends all go through, and every one is metered', async () => {
     await subscribe(BUSINESS, 'price_business');
     for (let i = 0; i < 150; i += 1) {
-      const r = await allowance.reserve({ tenant_id: t, allowance_key: KEY, send_key: `env:${i}`, at: AT });
+      const r = await allowance.reserve({ product_key: 'sign', tenant_id: t, allowance_key: KEY, send_key: `env:${i}`, at: AT });
       expect(r.ok).toBe(true);
     }
-    const s = await allowance.getStatus(t, KEY, AT);
+    const s = await allowance.getStatus(t, 'sign', KEY, AT);
     expect(s).toMatchObject({ subscribed: true, limit: null, unlimited: true, used: 150, remaining: null, threshold: 'OK' });
     const rows = await pg.query(`SELECT count(*)::int AS n FROM subscription."AllowanceUsage" WHERE tenant_id = $1`, [t]);
     expect(rows.rows[0].n).toBe(150);
   }, 30_000);
 
   it('the pre-catalog operator plan keeps its 100 ceiling (unchanged for existing MANUAL subscriptions)', async () => {
-    await openDevelopmentSubscription(prisma, { tenant_id: t, created_by: 'op' }, { ARAMO_ENV: 'test' });
-    expect(await allowance.getStatus(t, KEY, AT)).toMatchObject({ limit: 100, unlimited: false });
+    await openDevelopmentSubscription(prisma, { product_key: 'sign', tenant_id: t, created_by: 'op' }, { ARAMO_ENV: 'test' });
+    expect(await allowance.getStatus(t, 'sign', KEY, AT)).toMatchObject({ limit: 100, unlimited: false });
   });
 
   it('Standard Professional needs a qualifying ATS entitlement; a lapse is flagged, never auto-downgraded', async () => {
-    expect((await svc().catalog(t)).find((p) => p.key === PRO)!.purchasable).toBe(false);
+    expect((await svc().catalog('sign', t)).find((p) => p.key === PRO)!.purchasable).toBe(false);
     expect(await reason(checkout(PRO))).toBe('PLAN_NOT_ELIGIBLE');
     // No eligibility binding at all: fail closed.
-    expect(await reason(new SubscriptionLifecycleService(prisma, allowance, billing, capacity).startCheckout({ tenant_id: t, user_id: 'o', user_email: 'e', plan_key: PRO, success_url: 'x', cancel_url: 'y' }))).toBe('PLAN_NOT_ELIGIBLE');
+    expect(await reason(new SubscriptionLifecycleService(prisma, allowance, billing, capacity).startCheckout({ product_key: 'sign', tenant_id: t, user_id: 'o', user_email: 'e', plan_key: PRO, success_url: 'x', cancel_url: 'y' }))).toBe('PLAN_NOT_ELIGIBLE');
 
     atsTenants.add(t);
-    expect((await svc().catalog(t)).find((p) => p.key === PRO)!.purchasable).toBe(true);
+    expect((await svc().catalog('sign', t)).find((p) => p.key === PRO)!.purchasable).toBe(true);
     await subscribe(PRO, 'price_pro');
-    expect((await svc().account(t, KEY, AT)).subscription).toMatchObject({ plan_key: PRO, eligibility_state: 'OK' });
+    expect((await svc().account(t, 'sign', KEY, AT)).subscription).toMatchObject({ plan_key: PRO, eligibility_state: 'OK' });
 
     atsTenants.delete(t);
-    const r = await svc().refreshEligibility(AT);
+    const r = await svc().refreshEligibility('sign', AT);
     expect(r.lapsed).toBeGreaterThanOrEqual(1);
-    const acct = await svc().account(t, KEY, AT);
+    const acct = await svc().account(t, 'sign', KEY, AT);
     expect(acct.subscription).toMatchObject({ plan_key: PRO, eligibility_state: 'LAPSED', sending: true });
-    expect((await allowance.reserve({ tenant_id: t, allowance_key: KEY, send_key: 'after-lapse', at: AT })).ok).toBe(true);
+    expect((await allowance.reserve({ product_key: 'sign', tenant_id: t, allowance_key: KEY, send_key: 'after-lapse', at: AT })).ok).toBe(true);
   });
 
   it('the annual commitment is separate from the monthly invoice; an early cancel is flagged, not treated as month-to-month', async () => {
     const sub = await subscribe(BUSINESS, 'price_business');
-    const acct = await svc().account(t, KEY, AT);
+    const acct = await svc().account(t, 'sign', KEY, AT);
     expect(acct.subscription).toMatchObject({ commitment_months: 12, current_period_end: new Date('2026-11-19T00:00:00Z'), commitment_end: new Date('2027-10-19T00:00:00Z'), cancel_requested_within_commitment: false, list_price: { amount_minor: 2000, currency: 'USD', interval: 'MONTH' } });
     billing.subs.set(sub.subscription_ref, { ...sub, cancel_at_period_end: true });
-    await svc().syncSubscription(sub.subscription_ref, AT);
-    expect((await svc().account(t, KEY, AT)).subscription).toMatchObject({ cancel_at_period_end: true, cancel_requested_within_commitment: true, sending: true });
+    await svc().syncSubscription(sub.subscription_ref, 'sign', AT);
+    expect((await svc().account(t, 'sign', KEY, AT)).subscription).toMatchObject({ cancel_at_period_end: true, cancel_requested_within_commitment: true, sending: true });
   });
 
   it('a plan change made in the provider moves the subscription to the mapped catalog plan', async () => {
     atsTenants.add(t);
     const sub = await subscribe(BUSINESS, 'price_business');
     billing.subs.set(sub.subscription_ref, { ...sub, price_ref: 'price_pro' });
-    await svc().syncSubscription(sub.subscription_ref, AT);
-    expect((await svc().account(t, KEY, AT)).subscription?.plan_key).toBe(PRO);
+    await svc().syncSubscription(sub.subscription_ref, 'sign', AT);
+    expect((await svc().account(t, 'sign', KEY, AT)).subscription?.plan_key).toBe(PRO);
   });
 
   it('terms: test mode proceeds without approved terms; live mode refuses; an approved version must be accepted and is recorded', async () => {
@@ -267,9 +268,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     };
     await subscribe(BUSINESS, 'price_business');
     delete process.env['STRIPE_PORTAL_CONFIGURATION'];
-    expect(await reason(svc().portal(t, 'https://e/settings'))).toBe('PORTAL_NOT_CONFIGURED');
+    expect(await reason(svc().portal(t, 'sign', 'https://e/settings'))).toBe('PORTAL_NOT_CONFIGURED');
     process.env['STRIPE_PORTAL_CONFIGURATION'] = 'bpc_commitment_terms';
-    expect((await svc().portal(t, 'https://e/settings')).url).toBe('https://portal.test');
+    expect((await svc().portal(t, 'sign', 'https://e/settings')).url).toBe('https://portal.test');
     expect(calls).toEqual(['bpc_commitment_terms']);
     delete process.env['STRIPE_PORTAL_CONFIGURATION'];
   });
@@ -282,58 +283,58 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
   describe('storage quota', () => {
     async function smallPlan(limit: number): Promise<void> {
       const id = uuidv7();
-      await pg.query(`INSERT INTO subscription."Plan" (id, key, name) VALUES ($1, $2, 'test')`, [id, `test-${id}`]);
+      await pg.query(`INSERT INTO subscription."Plan" (id, key, name, product_key) VALUES ($1, $2, 'test', 'sign')`, [id, `test-${id}`]);
       await pg.query(`INSERT INTO subscription."PlanCapacity" (plan_id, capacity_key, limit_quantity, unlimited) VALUES ($1, $2, $3, false)`, [id, STORAGE, limit]);
-      await pg.query(`INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, period_anchor, source, created_by) VALUES ($1, $2, $3, now(), 'MANUAL', 'test')`, [uuidv7(), t, id]);
+      await pg.query(`INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, product_key, composition_role, period_anchor, source, created_by) VALUES ($1, $2, $3, 'sign', 'BASE', now(), 'MANUAL', 'test')`, [uuidv7(), t, id]);
     }
 
     it('concurrent uploads cannot both take the last free space; a retry of the same object counts once', async () => {
       await smallPlan(1000);
-      const results = await Promise.all(Array.from({ length: 5 }, (_, i) => capacity.reserve({ tenant_id: t, capacity_key: STORAGE, ref: `doc:${i}`, quantity: 300 })));
+      const results = await Promise.all(Array.from({ length: 5 }, (_, i) => capacity.reserve({ product_key: 'sign', tenant_id: t, capacity_key: STORAGE, ref: `doc:${i}`, quantity: 300 })));
       expect(results.filter((r) => r.ok)).toHaveLength(3);
       const refused = results.find((r) => !r.ok)!;
       expect(refused).toMatchObject({ ok: false, reason: 'CAPACITY_EXCEEDED', status: { limit: 1000, used: 900 } });
-      expect(await capacity.reserve({ tenant_id: t, capacity_key: STORAGE, ref: 'doc:0', quantity: 300 })).toMatchObject({ ok: true, already: true });
-      expect((await capacity.status(t, STORAGE)).used).toBe(900);
+      expect(await capacity.reserve({ product_key: 'sign', tenant_id: t, capacity_key: STORAGE, ref: 'doc:0', quantity: 300 })).toMatchObject({ ok: true, already: true });
+      expect((await capacity.status(t, 'sign', STORAGE)).used).toBe(900);
     });
 
     it('a release frees space; kept objects are recorded beyond the limit, never refused', async () => {
       await smallPlan(500);
-      expect((await capacity.reserve({ tenant_id: t, capacity_key: STORAGE, ref: 'a', quantity: 400 })).ok).toBe(true);
-      expect((await capacity.reserve({ tenant_id: t, capacity_key: STORAGE, ref: 'b', quantity: 200 })).ok).toBe(false);
-      expect(await capacity.release({ tenant_id: t, capacity_key: STORAGE, ref: 'a' })).toBe(true);
-      expect((await capacity.reserve({ tenant_id: t, capacity_key: STORAGE, ref: 'b', quantity: 200 })).ok).toBe(true);
-      expect((await capacity.reserve({ tenant_id: t, capacity_key: STORAGE, ref: 'signed-copy', quantity: 10_000, enforce: false })).ok).toBe(true);
-      expect((await capacity.status(t, STORAGE)).used).toBe(10_200);
+      expect((await capacity.reserve({ product_key: 'sign', tenant_id: t, capacity_key: STORAGE, ref: 'a', quantity: 400 })).ok).toBe(true);
+      expect((await capacity.reserve({ product_key: 'sign', tenant_id: t, capacity_key: STORAGE, ref: 'b', quantity: 200 })).ok).toBe(false);
+      expect(await capacity.release({ product_key: 'sign', tenant_id: t, capacity_key: STORAGE, ref: 'a' })).toBe(true);
+      expect((await capacity.reserve({ product_key: 'sign', tenant_id: t, capacity_key: STORAGE, ref: 'b', quantity: 200 })).ok).toBe(true);
+      expect((await capacity.reserve({ product_key: 'sign', tenant_id: t, capacity_key: STORAGE, ref: 'signed-copy', quantity: 10_000, enforce: false })).ok).toBe(true);
+      expect((await capacity.status(t, 'sign', STORAGE)).used).toBe(10_200);
     });
 
     it('no subscription refuses typed; the pre-catalog plan (no storage row) is not limited; tenants are isolated', async () => {
-      expect(await capacity.reserve({ tenant_id: t, capacity_key: STORAGE, ref: 'x', quantity: 1 })).toMatchObject({ ok: false, reason: 'NOT_SUBSCRIBED' });
-      await openDevelopmentSubscription(prisma, { tenant_id: t, created_by: 'op' }, { ARAMO_ENV: 'test' });
-      expect(await capacity.reserve({ tenant_id: t, capacity_key: STORAGE, ref: 'x', quantity: 50 * GiB })).toMatchObject({ ok: true, status: { limit: null, unlimited: true } });
+      expect(await capacity.reserve({ product_key: 'sign', tenant_id: t, capacity_key: STORAGE, ref: 'x', quantity: 1 })).toMatchObject({ ok: false, reason: 'NOT_SUBSCRIBED' });
+      await openDevelopmentSubscription(prisma, { product_key: 'sign', tenant_id: t, created_by: 'op' }, { ARAMO_ENV: 'test' });
+      expect(await capacity.reserve({ product_key: 'sign', tenant_id: t, capacity_key: STORAGE, ref: 'x', quantity: 50 * GiB })).toMatchObject({ ok: true, status: { limit: null, unlimited: true } });
       const other = tenant();
-      expect((await capacity.status(other, STORAGE)).used).toBe(0);
+      expect((await capacity.status(other, 'sign', STORAGE)).used).toBe(0);
     });
 
     it('the account view reports storage used against the plan', async () => {
       await subscribe(BUSINESS, 'price_business');
-      await capacity.reserve({ tenant_id: t, capacity_key: STORAGE, ref: 'doc', quantity: 1234 });
-      expect((await svc().account(t, KEY, AT)).storage).toEqual({ capacity_key: STORAGE, limit: 10 * GiB, unlimited: false, used: 1234 });
+      await capacity.reserve({ product_key: 'sign', tenant_id: t, capacity_key: STORAGE, ref: 'doc', quantity: 1234 });
+      expect((await svc().account(t, 'sign', KEY, AT)).storage).toEqual({ capacity_key: STORAGE, limit: 10 * GiB, unlimited: false, used: 1234 });
     });
   });
 
   it('ending a subscription deletes nothing: usage and evidence rows stay', async () => {
     const sub = await subscribe(BUSINESS, 'price_business');
-    await allowance.reserve({ tenant_id: t, allowance_key: KEY, send_key: 'kept', at: AT });
-    await capacity.reserve({ tenant_id: t, capacity_key: STORAGE, ref: 'kept-doc', quantity: 10 });
+    await allowance.reserve({ product_key: 'sign', tenant_id: t, allowance_key: KEY, send_key: 'kept', at: AT });
+    await capacity.reserve({ product_key: 'sign', tenant_id: t, capacity_key: STORAGE, ref: 'kept-doc', quantity: 10 });
     billing.subs.set(sub.subscription_ref, { ...sub, provider_status: 'canceled' });
-    await svc().syncSubscription(sub.subscription_ref, AT);
+    await svc().syncSubscription(sub.subscription_ref, 'sign', AT);
     const u = await pg.query(`SELECT (SELECT count(*)::int FROM subscription."AllowanceUsage" WHERE tenant_id = $1) AS a, (SELECT count(*)::int FROM subscription."CapacityUsage" WHERE tenant_id = $1 AND state = 'ACTIVE') AS c`, [t]);
     expect(u.rows[0]).toEqual({ a: 1, c: 1 });
-    const acct = await svc().account(t, KEY, AT);
+    const acct = await svc().account(t, 'sign', KEY, AT);
     expect(acct.subscription).toMatchObject({ status: 'CANCELED', export_access_until: null });
     process.env['SIGN_POST_TERMINATION_EXPORT_DAYS'] = '90';
-    const withWindow = await svc().account(t, KEY, AT);
+    const withWindow = await svc().account(t, 'sign', KEY, AT);
     expect(withWindow.subscription!.export_access_until!.getTime()).toBe(withWindow.subscription!.ended_at!.getTime() + 90 * 86_400_000);
     delete process.env['SIGN_POST_TERMINATION_EXPORT_DAYS'];
   });

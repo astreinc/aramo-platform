@@ -35,9 +35,9 @@ describe('AramoSignStorageGate', () => {
   it('kept artifacts are recorded with enforcement off; release frees the object', async () => {
     const { g, capacity } = gate(async () => ({ ok: true, already: false, status: { capacity_key: 'sign.storage_bytes', limit: 1, unlimited: false, used: 999 } }));
     await g.recordKept({ tenant_id: 't1', ref: 'esign:executed:d1', bytes: 999 });
-    expect(capacity.reserve).toHaveBeenCalledWith({ tenant_id: 't1', capacity_key: 'sign.storage_bytes', ref: 'esign:executed:d1', quantity: 999, enforce: false });
+    expect(capacity.reserve).toHaveBeenCalledWith({ tenant_id: 't1', product_key: 'sign', capacity_key: 'sign.storage_bytes', ref: 'esign:executed:d1', quantity: 999, enforce: false });
     await g.release('t1', 'esign/source/t1/e1/o1');
-    expect(capacity.release).toHaveBeenCalledWith({ tenant_id: 't1', capacity_key: 'sign.storage_bytes', ref: storageRef('esign/source/t1/e1/o1') });
+    expect(capacity.release).toHaveBeenCalledWith({ tenant_id: 't1', product_key: 'sign', capacity_key: 'sign.storage_bytes', ref: storageRef('esign/source/t1/e1/o1') });
   });
 });
 
