@@ -16,6 +16,7 @@ import { CognitoAdminService } from './cognito/cognito-admin.service.js';
 import { DomainClaimSweeper } from './domain-claim-sweeper.service.js';
 import { PersonalLapseSweeper } from './personal-lapse-sweeper.service.js';
 import { PersonalSignupAttemptPurgeSweeper } from './personal-signup-attempt-purge-sweeper.service.js';
+import { PlatformCommercialAuditController } from './platform-commercial-audit.controller.js';
 import { PlatformPersonalController } from './platform-personal.controller.js';
 import { PlatformController } from './platform.controller.js';
 import { PlatformSignController } from './platform-sign.controller.js';
@@ -47,7 +48,8 @@ import { TenantPolicyProvisioningService } from './tenant-policy-provisioning.se
     AuthorizationModule,
     IdentityCoreModule,
     EntitlementModule,
-    // Aramo Sign launch — the operator's read-only Sign account view.
+    // Aramo Sign launch — the operator's read-only Sign account view. CCP-A2 — also the
+    // CommercialAuditRepository behind the commercial audit feed.
     SubscriptionModule,
     // HF-AUTH-1 — the shared JwtAuthGuard (via AuthModule) resolves effective
     // scopes SERVER-SIDE through this port; without it every platform-admin route
@@ -59,7 +61,8 @@ import { TenantPolicyProvisioningService } from './tenant-policy-provisioning.se
       scopeCacheTtlSeconds: 300,
     }),
   ],
-  controllers: [PlatformController, PlatformSignController, PlatformPersonalController],
+  // CCP-A2 — the read-only commercial audit feed (platform:commercial:audit:read).
+  controllers: [PlatformController, PlatformSignController, PlatformPersonalController, PlatformCommercialAuditController],
   providers: [
     // Sign Personal (Free) v1.1 §6.4 — abuse-report outcomes (sign schema; its own
     // generated client, lazy DATABASE_URL — scope:platform → scope:boundary is wall-legal).

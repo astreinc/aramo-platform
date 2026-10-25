@@ -81,7 +81,9 @@ export const CLASSIFICATIONS: Record<string, Classification> = {
   // yet). Each names the CCP slice that will enforce it; the entry is REMOVED when that
   // slice's route lands (the SKILL-TAX-1F-B2 precedent above), so the script then detects
   // the real enforcement.
-  'platform:commercial:audit:read': { cls: 'ACTIVE_RESERVED', reason: 'CCP A1 catalog-only reservation (Aramo-CCP-A1-Commercial-Roles-and-Scopes-Directive-v1_0 §6.6): granted to the CCP platform roles, enforced from CCP A2 by the commercial audit read route; this entry is removed when that enforcing route lands' },
+  // CCP A2 — platform:commercial:audit:read is now LITERALLY enforced by
+  // PlatformCommercialAuditController (GET /platform/commercial/audit-events), so its
+  // ACTIVE_RESERVED entry is REMOVED (14 CCP reservations remain).
   'platform:approval:read': { cls: 'ACTIVE_RESERVED', reason: 'CCP A1 catalog-only reservation (Aramo-CCP-A1-Commercial-Roles-and-Scopes-Directive-v1_0 §6.6): granted to the CCP platform roles, enforced from CCP A3 by the change-request and approval read routes; this entry is removed when that enforcing route lands' },
   'platform:catalog:read': { cls: 'ACTIVE_RESERVED', reason: 'CCP A1 catalog-only reservation (Aramo-CCP-A1-Commercial-Roles-and-Scopes-Directive-v1_0 §6.6): granted to the CCP platform roles, enforced from CCP A3 + A5 by the catalog and plan-version read routes; this entry is removed when that enforcing route lands' },
   'platform:catalog:draft': { cls: 'ACTIVE_RESERVED', reason: 'CCP A1 catalog-only reservation (Aramo-CCP-A1-Commercial-Roles-and-Scopes-Directive-v1_0 §6.6): granted to the CCP platform roles, enforced from CCP A3 + A5 by the catalog-version draft request route; this entry is removed when that enforcing route lands' },

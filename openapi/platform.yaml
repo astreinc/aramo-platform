@@ -82,6 +82,13 @@ tags:
       tenant-tier token is refused with 403 `INSUFFICIENT_PERMISSIONS`. These are the
       only routes that write PLATFORM template rows or the catalog; PLATFORM rows carry
       no tenant data.
+  - name: Platform Commercial Audit
+    description: |
+      CCP-A2 — the read-only commercial audit feed over the append-only
+      CommercialAuditEvent stream (the database rejects UPDATE and DELETE). Requires
+      `platform:commercial:audit:read`, held by the platform_owner, finance_admin and
+      read_only_auditor commercial roles only; super_admin holds no commercial scope
+      and is refused with 403 `INSUFFICIENT_PERMISSIONS`. Platform-tier only.
 
 paths:
   /v1/signup/sign/terms:
@@ -2012,6 +2019,91 @@ paths:
         '404':
           $ref: '#/components/responses/MatchingPolicyNotFound'
 
+  /platform/commercial/audit-events:
+    get:
+      operationId: listPlatformCommercialAuditEvents
+      tags: [Platform Commercial Audit]
+      summary: List commercial audit events (newest first, cursor-paged).
+      description: |
+        CCP-A2 — one page of the commercial audit stream, ordered
+        `created_at DESC, id DESC`. Filters are ANDed. Live keyset paging: the opaque
+        `next_cursor` pins the filter set, and replaying it under different filters
+        is refused with 400. Read-only. Requires `platform:commercial:audit:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: actor_id
+          in: query
+          required: false
+          description: Only events by this actor (user id).
+          schema:
+            type: string
+            format: uuid
+        - name: event_type
+          in: query
+          required: false
+          description: Only events of this type (UPPER_SNAKE).
+          schema:
+            type: string
+            pattern: '^[A-Z][A-Z0-9_]{2,99}$'
+        - name: tenant_id
+          in: query
+          required: false
+          description: Only events about this tenant.
+          schema:
+            type: string
+            format: uuid
+        - name: from
+          in: query
+          required: false
+          description: Inclusive lower bound on `created_at` (ISO-8601).
+          schema:
+            type: string
+            format: date-time
+        - name: to
+          in: query
+          required: false
+          description: Exclusive upper bound on `created_at` (ISO-8601). Must be later than `from`.
+          schema:
+            type: string
+            format: date-time
+        - name: exception_only
+          in: query
+          required: false
+          description: '`true` returns only events recorded as a bounded exception (`is_exception`).'
+          schema:
+            type: string
+            enum: ['true', 'false']
+        - name: limit
+          in: query
+          required: false
+          description: Page size (default 50, max 200).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque continuation cursor from a prior page's next_cursor.
+          schema:
+            type: string
+            maxLength: 2000
+      responses:
+        '200':
+          description: A page of commercial audit events.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialAuditListResponse'
+        '400':
+          $ref: '#/components/responses/CommercialAuditValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
   # DOC-TEMPLATE-LIB-1 T-2 (§6.1, §8.1) — Aramo default document templates + the template
   # variable catalog. Served by apps/api (nginx routes these two prefixes to api:3000).
   /platform/document-templates/document-types:
@@ -3303,6 +3395,15 @@ components:
         application/json:
           schema:
             $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    CommercialAuditValidation:
+      description: |
+        `VALIDATION_ERROR` — a filter is malformed, `from` is not earlier than `to`
+        (details.reason `invalid_date_range`), or the cursor is malformed or was
+        minted under different filters (details.reason `invalid_cursor`).
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
     SkillValidation:
       description: '`VALIDATION_ERROR` — a request-shape or lifecycle invariant was violated.'
       content:
@@ -3676,6 +3777,66 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/PlatformTenantAuditEvent'
+
+    CommercialAuditEvent:
+      type: object
+      additionalProperties: false
+      required: [id, created_at, actor_id, actor_type, actor_role_keys, event_type, is_exception, tenant_id, subject, change_request_id, policy_version_id, payload, correlation_id]
+      properties:
+        id:
+          type: string
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        actor_id:
+          type: [string, 'null']
+          format: uuid
+          description: The acting user; null for a system actor.
+        actor_type:
+          type: string
+          enum: [user, system]
+        actor_role_keys:
+          type: array
+          description: Server-side snapshot of the actor's role keys when the event was recorded.
+          items:
+            type: string
+        event_type:
+          type: string
+        is_exception:
+          type: boolean
+          description: True when the event records a bounded exception applied under the active policy.
+        tenant_id:
+          type: [string, 'null']
+          format: uuid
+        subject:
+          type: string
+          description: What the event is about, as `<kind>:<id>`.
+        change_request_id:
+          type: [string, 'null']
+          format: uuid
+        policy_version_id:
+          type: string
+          format: uuid
+          description: The commercial policy version in force for the event.
+        payload:
+          type: object
+          additionalProperties: true
+        correlation_id:
+          type: string
+
+    CommercialAuditListResponse:
+      type: object
+      additionalProperties: false
+      required: [events, next_cursor]
+      properties:
+        events:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommercialAuditEvent'
+        next_cursor:
+          type: [string, 'null']
+          description: Opaque continuation cursor, or null on the last page.
 
     PlatformDashboardStatusCount:
       type: object
