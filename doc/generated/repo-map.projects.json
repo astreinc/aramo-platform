@@ -3275,6 +3275,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a2-commercial-audit-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -3835,6 +3841,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a1-platform-role-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a2-commercial-audit-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -6105,6 +6117,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a2-commercial-audit-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -6707,6 +6725,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/allowance.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/commercial-audit-policy.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -8894,6 +8918,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a2-commercial-audit-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -10948,6 +10978,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a1-platform-role-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a2-commercial-audit-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },

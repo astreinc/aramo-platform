@@ -10910,6 +10910,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-audit.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform-personal.controller.ts"
     },
     {
@@ -12764,6 +12769,96 @@
       "from": "doc/ccp/slices/CCP-A1-pre-execution.md",
       "status": "unscoped",
       "to": "libs/identity/src/tests/seed-scrub.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A2-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-audit.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A2-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform.module.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A2-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-a2-commercial-audit-authorization.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A2-acceptance.md",
+      "status": "unscoped",
+      "to": "ci/config/api-surface-manifest.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A2-acceptance.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-orphan-scopes.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A2-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A2-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A2-pre-execution.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A2-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261024180000_ccp_a2_commercial_audit_policy/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A2-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A2-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/index.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A2-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/subscription-lifecycle.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A2-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-policy.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A2-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/subscription.module.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A2-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/commercial-audit-policy.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A2-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/commercial-policy-boundaries.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A2-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/commercial-policy.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A2-acceptance.md",
+      "status": "unscoped",
+      "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A2-acceptance.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
     },
     {
       "from": "doc/ccp/slices/CCP-A2-pre-execution.md",
@@ -26404,6 +26499,16 @@
       "to": "pact/provider/src/verify-api.ts"
     },
     {
+      "from": "libs/subscription/prisma/migrations/20261024180000_ccp_a2_commercial_audit_policy/migration.sql",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A2-acceptance.md"
+    },
+    {
+      "from": "libs/subscription/prisma/migrations/20261024180000_ccp_a2_commercial_audit_policy/migration.sql",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/commercial-policy.spec.ts"
+    },
+    {
       "from": "libs/subscription/project.json",
       "status": "unscoped",
       "to": "libs/subscription/src/index.ts"
@@ -26412,6 +26517,16 @@
       "from": "libs/subscription/project.json",
       "status": "unscoped",
       "to": "libs/subscription/tsconfig.lib.json"
+    },
+    {
+      "from": "libs/subscription/src/lib/commercial/commercial-policy-boundaries.ts",
+      "status": "production",
+      "to": "doc/ccp/slices/CCP-A2-pre-execution.md"
+    },
+    {
+      "from": "libs/subscription/src/lib/commercial/commercial-policy.ts",
+      "status": "production",
+      "to": "doc/ccp/slices/CCP-A2-pre-execution.md"
     },
     {
       "from": "libs/subscription/src/lib/legal/legal-documents.ts",
@@ -26447,6 +26562,12 @@
       "from": "libs/subscription/src/lib/legal/legal-documents.ts",
       "status": "production",
       "to": "doc/legal/aramo/privacy-notice.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/commercial-policy-boundaries.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-A2-pre-execution.md"
     },
     {
       "from": "libs/talent-embedding/prisma/schema.prisma",
