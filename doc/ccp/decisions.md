@@ -126,3 +126,40 @@ Post-merge fixes made on the integrated program branch (TD-MERGE-n). Each merge 
     - COMP-3: the four migrations re-apply with 0 errors and the gated state is back.
   - Result: 4 / 4 tests.
 
+
+## Architect program acceptance disposition (2026-10-25, on local head 621f1678)
+**Status:** CONDITIONAL ENGINEERING ACCEPTANCE. Phases A and B are provisionally accepted; C and D are partial. Final program acceptance is NOT granted; push and the final PR are NOT authorized. Production migration, deploy, bootstrap, backfill and activation are NOT authorized. The one-branch, one-final-PR agreement stands: no intermediate PR.
+
+**Rulings on the 16 decision rows:**
+
+| ID | Ruling | Gate still pending |
+|---|---|---|
+| DR-C2-1 | Keep the `FINANCIAL_TREATMENT_UNDEFINED` refusal for committed self-service rows: no early cancellation, automatic credit or refund. This is a deliberate v1 product limitation. | Finance and PO, for any later commitment-end treatment |
+| TD-C3-5 / TD-C6-1 / TD-D3-13 | Catalog list prices stay readable under catalog authority. Invoice amounts, payment amounts and tenant-specific finance figures need a **dedicated Finance scope**; amend the A1 scope catalog BEFORE exposing them. | The scope-catalog amendment (draft → LOCK) |
+| TD-C3-2 | The architecture is approved, NOT issuance: a restricted, least-privilege, read-only Stripe credential for the platform-admin backend, in managed secrets, audited, rotatable, verified for the right account and mode. Never exposed to the browser, never logged, no write authority. C3 stays NOT DELIVERED until the portal configuration AND the credential/security evidence are verified. | Security, at the C3 release gate |
+| TD-A7-5 | Deferred governed revocation. Entitlement history is preserved; no destructive automatic revoke. Effective access still fails closed once grace or overlay authority ends, and reconciliation and revocation must never leave indefinite active access. | — |
+| TD-A7-3 | Remove the `MIGRATION` default. Provenance must be explicit; fix the 83 fixtures and verify every production write path first. No silent fallback. | — |
+| TD-B5R-3 | Accepted for v1, conditionally. The requester-controlled recovery path stays, and the apply-deadline amendment applies where it can. FAILED requests must not become permanently executable or silently release a slot while an operation can still commit. | See TD-ACC-1 |
+| DR-C2-2 | Accepted: the release expiry is an approved-request term, at most 30 days, immutable after approval. A policy-managed maximum is possible later. | — |
+| DR-C2-3 | Confirmed, conditionally: prior MANUAL-period usage is not carried into a new self-service period. Historic usage is preserved; a period reset must never manufacture allowance or double-count reservations. | — |
+| TD-C2-9 | Approved: the stricter v1 refusal stays. Conversion is unavailable with a downgrade or open reservation; the same-period downgrade ruling does not extend to billing-authority conversion. | — |
+| TD-MERGE-10 | Accepted for v1: text evidence in the immutable reason, required, auditable and preserved. A structured field comes when a governed use case needs it. | — |
+| TD-D3-2 | Confirmed: a stuck Stripe command alerts at 24 h, approval expiry warns 12 h before. Alerts never perform financial actions. | — |
+| TD-D3-9 | Accepted for v1 with monitoring: apply-time and read-time expiry are authoritative. A future sweep worker must never be required for an expired request to be refused. | — |
+| TD-A6-R-3 | Confirmed: "Subscription activation pending — contact support." It never reveals internal conflicts or implies activation. | — |
+| TD-B2-1 | Approved: version-only retirement for v1. PLAN_RETIRE retires a specified plan version, never silently the whole plan. Expose these semantics clearly in the UI and API. | — |
+| TD-B3-4 / TD-B6-1 / TD-B6-4 | Conditional design acceptance: existing components are an acceptable interim. Final visual acceptance needs the CCP-UI v1.1 review, including authorization and accessibility behaviour. | Design v1.1 |
+| TD-A8-3 | Refined: a non-PAST_DUE row or a missing D9 attestation is an **eligibility refusal**, not an escalation. Escalate only on evidence of attempted bypass, misrepresentation, or another defined policy violation (e.g. a limit breach). | — |
+
+**Other items in the disposition:**
+- **Template Studio visual failures** (`studio-preview-zoom @900`, `studio-compare-changes @1440`): handled as a documented baseline exception, provided they are reproducible and no CCP change affects those states.
+- **Remaining slices, per PBD §10:** C4, C5 and C7 SHALL be built in Stripe test mode with the designed disabled states and reported NOT DELIVERED until their external decision is verified. **No scope amendment is needed.** D2, D4 and D5 proceed now; D6 follows D1–D5.
+
+**TD-ACC-1 (lead, needs an Architect ruling): B5-R vs AD-2.**
+- Amendment A1 AD-2 says a request snapshotted under policy v1 has NO apply deadline. A v1-snapshotted APPLY_FAILED POLICY_ACTIVATE is therefore retryable indefinitely by its requester. The B5-R ruling asks that FAILED requests not become permanently executable.
+- Under the LOCKED text, the only in-authority closure is to activate a v2 policy carrying the apply deadline. Even then, the v2 activation request itself snapshots v1.
+- **Options:**
+  - (a) accept this single edge;
+  - (b) amend the state machine so the requester may WITHDRAW an APPLY_FAILED request;
+  - (c) amend AD-2.
+- Nothing is built until it is ruled.
