@@ -40,13 +40,18 @@ import { generateTestKeyPair } from './test-keys.js';
 
 const SCOPE = 'platform:commercial:audit:read';
 const ENTRY = 'platform:tenant:read';
+const AMOUNT = 'platform:billing:amount:read';
 const BUNDLES: Record<string, readonly string[]> = {
-  platform_owner: [ENTRY, 'platform:catalog:read', 'platform:catalog:approve', 'platform:catalog:publish', 'platform:subscription:read', 'platform:subscription:approve', 'platform:entitlement:approve', 'platform:billing:read', 'platform:billing:approve', 'platform:approval:read', SCOPE],
-  finance_admin: [ENTRY, 'platform:catalog:read', 'platform:catalog:approve', 'platform:subscription:read', 'platform:subscription:approve', 'platform:entitlement:approve', 'platform:billing:read', 'platform:billing:approve', 'platform:approval:read', SCOPE],
+  platform_owner: [ENTRY, 'platform:catalog:read', 'platform:catalog:approve', 'platform:catalog:publish', 'platform:subscription:read', 'platform:subscription:approve', 'platform:entitlement:approve', 'platform:billing:read', 'platform:billing:approve', 'platform:approval:read', SCOPE, AMOUNT],
+  finance_admin: [ENTRY, 'platform:catalog:read', 'platform:catalog:approve', 'platform:subscription:read', 'platform:subscription:approve', 'platform:entitlement:approve', 'platform:billing:read', 'platform:billing:approve', 'platform:approval:read', SCOPE, AMOUNT],
   commercial_ops: [ENTRY, 'platform:catalog:read', 'platform:subscription:read', 'platform:subscription:request', 'platform:entitlement:request', 'platform:billing:read', 'platform:billing:request', 'platform:approval:read'],
   catalog_manager: [ENTRY, 'platform:catalog:read', 'platform:catalog:draft', 'platform:approval:read'],
   support_admin: [ENTRY, 'platform:catalog:read', 'platform:subscription:read', 'platform:subscription:support', 'platform:billing:read', 'platform:approval:read'],
-  read_only_auditor: [ENTRY, 'platform:catalog:read', 'platform:subscription:read', 'platform:billing:read', 'platform:approval:read', SCOPE],
+  read_only_auditor: [ENTRY, 'platform:catalog:read', 'platform:subscription:read', 'platform:billing:read', 'platform:approval:read', SCOPE, AMOUNT],
+  // CCP-R3 — NOT a catalog role: a synthetic principal holding the audit scope without the amount
+  // scope, proving the field rule independently of today's bundles (every audit reader is an amount
+  // holder under FA-2).
+  audit_without_amount: [ENTRY, 'platform:billing:read', SCOPE],
   super_admin: ['platform:tenant:provision', ENTRY, 'platform:admin:invite', 'platform:tenant:lifecycle:manage', 'platform:skill:read', 'platform:skill:manage', 'platform:document_template:read', 'platform:document_template:manage', 'platform:matching_policy:read', 'platform:matching_policy:write'],
 };
 const ALLOWED = ['platform_owner', 'finance_admin', 'read_only_auditor'] as const;
@@ -139,8 +144,22 @@ describe('CCP-A2 — per-role authorization on GET /platform/commercial/audit-ev
 
   beforeEach(() => repo.list.mockClear());
 
+  it('CCP-R3 (CCP-A1 Amendment A1, FA-1 / FA-5) a CREDIT amount in an event (its chain basis) reaches an amount holder; a caller with the audit scope but without the amount scope gets the marker and no figure', async () => {
+    const credit = { ...ROW, id: '019a0000-0000-7000-8000-0000000cc204', event_type: 'COMMERCIAL_CHANGE_REQUEST_CREATED', payload: { action_type: 'CREDIT', chain_basis: { amount_minor: 35000, currency: 'USD', escalates: false } } };
+    repo.list.mockResolvedValue({ events: [credit], next_cursor: null });
+    for (const role of ALLOWED) {
+      const res = await get(role);
+      expect(res.body.events[0].payload.chain_basis, role).toEqual({ amount_minor: 35000, currency: 'USD', escalates: false });
+    }
+    const res = await get('audit_without_amount');
+    expect(res.status).toBe(200);
+    expect(res.body.events[0].payload).toEqual({ action_type: 'CREDIT', chain_basis: { currency: 'USD', escalates: false, amount_withheld: 'FINANCE_SCOPE_REQUIRED' } });
+    expect(JSON.stringify(res.body)).not.toContain('35000');
+    repo.list.mockResolvedValue({ events: [ROW], next_cursor: null });
+  });
+
   it('the matrix is the §4.1 one: exactly platform_owner, finance_admin and read_only_auditor hold the scope; super_admin holds no commercial scope', () => {
-    expect(Object.keys(BUNDLES).filter((r) => BUNDLES[r]?.includes(SCOPE)).sort()).toEqual([...ALLOWED].sort());
+    expect(Object.keys(BUNDLES).filter((r) => r !== 'audit_without_amount' && BUNDLES[r]?.includes(SCOPE)).sort()).toEqual([...ALLOWED].sort());
     expect(BUNDLES['super_admin']?.some((s) => /^platform:(commercial|catalog|subscription|entitlement|billing|approval):/.test(s))).toBe(false);
   });
 

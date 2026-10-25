@@ -117,6 +117,29 @@ describe('CCP-B6 support extensions — flows', () => {
     expect(screen.getByText('Extension · exception')).toBeInTheDocument();
   });
 
+  it('B6-F-INELIG (CCP-R3, TD-A8-3 refined) a row that is not PAST_DUE: the preview says "Not eligible — refused, not escalated", no Finance chain, and nothing can be submitted; no POST', async () => {
+    const w = world({ list: { ...world().list, subscriptions: [{ ...world().list.subscriptions[0]!, status: 'ACTIVE', grace_until: null }] } });
+    const dlg = await openDialog(w);
+    const status = within(dlg).getByRole('status');
+    expect(status).toHaveTextContent('Not eligible — refused, not escalated');
+    expect(status).toHaveTextContent('The subscription isn’t past due, so a support extension isn’t available. Nothing will be requested or escalated.');
+    expect(status).not.toHaveTextContent('Finance');
+    expect(within(dlg).queryByTestId('chain-preview')).toBeNull();
+    fireEvent.change(within(dlg).getByLabelText('Reason'), { target: { value: 'Tenant asked' } });
+    expect(within(dlg).getByRole('button', { name: 'Not eligible' })).toBeDisabled();
+    expect(w.calls.filter((c) => c.method === 'POST')).toEqual([]);
+  });
+
+  it('B6-F-INELIG-SERVER (CCP-R3) the server refuses an unattested requester (409 support_extension_ineligible): the dialog shows the eligibility refusal, not an escalation notice', async () => {
+    const w = world();
+    w.onExtend = () => ({ status: 409, body: { error: { code: 'COMMERCIAL_CHANGE_REQUEST_CONFLICT', message: 'not eligible', details: { reason: 'support_extension_ineligible', eligibility: ['REQUESTER_NOT_ATTESTED'] } } } });
+    const dlg = await openDialog(w);
+    fireEvent.change(within(dlg).getByLabelText('Reason'), { target: { value: 'Billing contact on leave' } });
+    fireEvent.click(within(dlg).getByRole('button', { name: 'Apply extension (exception)' }));
+    expect(await within(dlg).findByText(/^Not eligible: Your account has no active one-person attestation, so a support extension isn’t available\. Nothing was requested or escalated\. \(409 COMMERCIAL_CHANGE_REQUEST_CONFLICT · support_extension_ineligible\)$/)).toBeInTheDocument();
+    expect(screen.queryByText(/Escalated to Finance/)).toBeNull();
+  });
+
   it('B6-F-ESC a breach (20 days): the amber preview + Finance chain + "Submit for approval"; the server escalates; nothing applies; the request links to the Approvals drawer', async () => {
     const w = world();
     const esc = request({ id: '0190c000-0000-7000-8000-0000000b6a99' });

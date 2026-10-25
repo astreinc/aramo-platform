@@ -178,7 +178,8 @@ describe('ROLES-1 PR-2 §3.2 — the seeded bundles', () => {
     // (account_manager, recruiting_manager) → 934. ATS-QA-1 A4 +3 pipeline:resume:set (lead_recruiter, recruiting_manager, sourcer) → 937.
     // ATI-SEP-1 A2 A-c (P1): +2 super_admin × platform:matching_policy:{read,write} → 939.
     // CCP A1 +6 roles / +15 scopes / +45 grants → 25 / 205 / 984 (39 commercial + 6 × platform:tenant:read) → 939+45=984.
-    expect(pairs).toBe(984);
+    // CCP-A1-A1 +1 scope / +3 grants → 25 / 206 / 987 (platform:billing:amount:read × platform_owner/finance_admin/read_only_auditor, md5 ccp-a1a1 ids) → 984+3=987.
+    expect(pairs).toBe(987);
   });
 
   it('the ROLES-1 RoleScope rows carry the migration-identical deterministic id', async () => {

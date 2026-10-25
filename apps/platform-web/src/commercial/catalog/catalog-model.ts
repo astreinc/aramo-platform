@@ -8,7 +8,7 @@ import type { CatalogOpenRequest, CatalogPlan, CatalogVersion, CatalogVersionTer
 //
 // Published versions are read-only: `editorOf` never returns an editable field for a version
 // that is not a DRAFT, and `versionActions` never offers an edit action for one (the only
-// actions on a PUBLISHED version are "Create new draft from vN" and "Request retire…").
+// actions on a PUBLISHED version are "Create new draft from vN" and "Retire this version…").
 
 /** Products shown on the Catalog. `sign` is the governed registry (CCP A4); the other three are
  * entitlement capabilities with no approved pricing, shown as "No commercial plans yet" and never
@@ -283,8 +283,11 @@ export const NEEDS_CATALOG_MANAGER = 'Needs the Catalog manager role.';
 /**
  * The version's actions (handoff §5.4 "Actions"): a DRAFT → "Request publish…"; a non-draft
  * version of a plan without a DRAFT → "Create new draft from vN"; a PUBLISHED, list-priced
- * version → "Request retire…". There is NO edit action on a published version.
+ * version → "Retire this version…". There is NO edit action on a published version.
+ * CCP-R3 (TD-B2-1, Architect 2026-10-25): PLAN_RETIRE retires the ONE version it names, never the
+ * whole plan; the label says so. There is no whole-plan retire action.
  */
+export const RETIRE_VERSION_LABEL = 'Retire this version…';
 export function versionActions(plan: CatalogPlan, v: CatalogVersion, canDraft: boolean): CatalogActionModel[] {
   const out: CatalogActionModel[] = [];
   const open = v.open_requests;
@@ -305,10 +308,10 @@ export function versionActions(plan: CatalogPlan, v: CatalogVersion, canDraft: b
     const pending = open.some((r) => r.action_type === 'PLAN_RETIRE');
     out.push({
       kind: 'retire',
-      label: 'Request retire…',
+      label: RETIRE_VERSION_LABEL,
       tone: 'sec',
       disabled: !canDraft || pending,
-      why: !canDraft ? NEEDS_CATALOG_MANAGER : pending ? 'A retire request is already open.' : '',
+      why: !canDraft ? NEEDS_CATALOG_MANAGER : pending ? 'A retire request for this version is already open.' : '',
     });
   }
   return out;

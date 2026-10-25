@@ -6,7 +6,8 @@ import { apiClient } from '@aramo/fe-foundation';
 //        ACTIVE policy clause (CCP-B6 additive read)
 //   POST /platform/commercial/support-extensions                            platform:subscription:support
 //        in bounds → applied at once as a bounded EXCEPTION (zero approvals, audited);
-//        any breach → escalated to a Finance request (Q7), nothing applies
+//        a limit breach → escalated to a Finance request (Q7), nothing applies; not eligible
+//        (CCP-R3) → refused 409 support_extension_ineligible, nothing applies or escalates
 //   POST /platform/commercial/change-requests (+ /{id}/submit)              removal: SUPPORT_EXTENSION,
 //        payload { operation: REMOVE, support_extension_id } (TD-A8-5; Finance approves)
 //   GET  /platform/commercial/change-requests[/{id}]                        the open escalation / removal
@@ -81,6 +82,8 @@ export interface SupportExtensionList {
 }
 
 export interface SupportDecision {
+  /** CCP-R3: always true on an outcome (an ineligible request is refused, 409 support_extension_ineligible). */
+  eligible?: boolean;
   within_bounds: boolean;
   breaches: string[];
   eligibility: string[];

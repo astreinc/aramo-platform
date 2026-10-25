@@ -197,7 +197,16 @@ export class CcpWorld {
 
   constructor(private readonly o: CcpWorldOptions) {
     const seeds = o.policyRequest ? [...SEEDS.slice(0, 5), POLICY_SEED, ...SEEDS.slice(5)] : SEEDS;
-    this.requests = o.empty ? [] : seeds.map(toRequest);
+    // CCP-R3 (CCP-A1 Amendment A1, FA-5): the server omits a CREDIT's amount for a caller without
+    // platform:billing:read AND platform:billing:amount:read; the mock does the same per persona.
+    const scopes = PERSONAS[o.persona].scopes as readonly string[];
+    const amountAccess = scopes.includes('platform:billing:read') && scopes.includes('platform:billing:amount:read');
+    const withhold = (p: Record<string, unknown>): Record<string, unknown> => {
+      if (amountAccess || !('amount_minor' in p)) return p;
+      const { amount_minor: _omitted, ...rest } = p;
+      return { ...rest, amount_withheld: 'FINANCE_SCOPE_REQUIRED' };
+    };
+    this.requests = o.empty ? [] : seeds.map(toRequest).map((r) => ({ ...r, payload: withhold(r.payload) }));
     for (const s of seeds) {
       this.approvals.set(
         s.id,

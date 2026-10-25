@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 
-import { breachLine, clauseHelp, overlayView, previewExtension, relLabel, statusFact } from './support-extension-model';
+import { INELIGIBLE_NOT_ATTESTED, INELIGIBLE_NOT_PAST_DUE, breachLine, clauseHelp, ineligibleLine, overlayView, previewExtension, relLabel, statusFact } from './support-extension-model';
 import { ME, NOW, PAST_DUE, POLICY, extension } from './support-extension-test-data';
 
 // CCP-B6 — the live preview mirrors the CCP-A8 bound (A2-B inclusive limits, TD-A2-1 half-open
@@ -27,8 +27,11 @@ describe('CCP-B6 previewExtension (mirrors the A8 bound)', () => {
     expect(preview(3, prior)).toMatchObject({ withinBounds: false, breaches: ['CUMULATIVE'], why: 'Cumulative days would exceed 30.' });
   });
 
-  it('B6-M-ELIG a row that is not PAST_DUE escalates (ELIGIBILITY), never applies', () => {
-    expect(preview(3, [], { ...PAST_DUE, status: 'ACTIVE' })).toMatchObject({ withinBounds: false, breaches: ['ELIGIBILITY'] });
+  it('B6-M-ELIG (CCP-R3, TD-A8-3 refined) a row that is not PAST_DUE is NOT eligible: a refusal, never an escalation (no breach is reported for it)', () => {
+    expect(preview(3, [], { ...PAST_DUE, status: 'ACTIVE' })).toMatchObject({ eligible: false, withinBounds: true, breaches: [], why: INELIGIBLE_NOT_PAST_DUE });
+    // A limit breach on an ineligible row is still shown as the eligibility refusal.
+    expect(preview(20, [], { ...PAST_DUE, status: 'ACTIVE' })).toMatchObject({ eligible: false, breaches: ['LENGTH'], why: INELIGIBLE_NOT_PAST_DUE });
+    expect(preview(3)).toMatchObject({ eligible: true });
   });
 
   it('B6-M-NONE no preview without a positive whole number of days, or without a full policy clause (fail closed)', () => {
@@ -47,8 +50,9 @@ describe('CCP-B6 previewExtension (mirrors the A8 bound)', () => {
 describe('CCP-B6 copy helpers', () => {
   it('B6-M-COPY the clause help line, the server breach line, the status fact and the relative stamp', () => {
     expect(clauseHelp(POLICY)).toBe('Policy v1: up to 14 days, once per tenant per 90 days, 30 days cumulative.');
-    expect(breachLine(['ELIGIBILITY'], ['REQUESTER_NOT_ATTESTED'], POLICY.clause)).toMatch(/attestation/);
-    expect(breachLine(['LENGTH'], [], POLICY.clause)).toBe('More than 14 days in one extension.');
+    expect(breachLine(['LENGTH'], POLICY.clause)).toBe('More than 14 days in one extension.');
+    expect(ineligibleLine(['REQUESTER_NOT_ATTESTED'])).toBe(INELIGIBLE_NOT_ATTESTED);
+    expect(ineligibleLine(['SUBSCRIPTION_NOT_PAST_DUE'])).toMatch(/isn’t past due.*Nothing was requested or escalated\./);
     expect(statusFact(PAST_DUE, NOW)).toEqual({ label: 'Past due · in grace', tone: 'warn', sub: 'Grace ends 29 Oct 2026 (in 4 d)' });
     expect(statusFact({ ...PAST_DUE, grace_until: at(DAY) }, NOW).label).toBe('Past due');
     expect(relLabel(at(3 * 3_600_000), NOW)).toBe('3 h ago');

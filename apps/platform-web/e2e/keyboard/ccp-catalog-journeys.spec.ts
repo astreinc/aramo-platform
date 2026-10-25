@@ -58,14 +58,14 @@ test('B2-K1 · choose Team, then v3 (draft), request publish by keyboard → cha
   expect(log[1]).toContain(`/change-requests/${CR_ID}/submit`);
 });
 
-test('B2-K2 · retire dialog: typed confirmation gates the commit; Escape closes and focus returns to "Request retire…"', async ({ page }) => {
+test('B2-K2 · retire dialog: typed confirmation gates the commit; Escape closes and focus returns to "Retire this version…"', async ({ page }) => {
   const log: string[] = [];
   await openBuild(page, '/commercial/catalog?plan=team&version=2', withRequests(log));
-  const opener = page.getByRole('button', { name: 'Request retire…' });
+  const opener = page.getByRole('button', { name: 'Retire this version…' });
   await tabTo(page, opener);
   const before = await focusedHandle(page);
   await page.keyboard.press('Enter');
-  const dialog = page.getByRole('dialog', { name: 'Request retire · Sign Team v2' });
+  const dialog = page.getByRole('dialog', { name: 'Retire this version · Sign Team v2' });
   await expect(dialog).toBeVisible();
   await typeInto(page, dialog.getByLabel('Reason'), 'Replaced by v3');
   await typeInto(page, dialog.getByLabel('Evidence'), 'PR-2026-Q4');
@@ -79,7 +79,7 @@ test('B2-K2 · retire dialog: typed confirmation gates the commit; Escape closes
   expect(log).toEqual([]);
 });
 
-test('B2-K3 · published version: every field is disabled and skipped by Tab; the only stop is "Request retire…"', async ({ page }) => {
+test('B2-K3 · published version: every field is disabled and skipped by Tab; the only stop is "Retire this version…"', async ({ page }) => {
   await openBuild(page, '/commercial/catalog?plan=team&version=2', { persona: 'ccpCatalog' });
   const editor = page.getByTestId('version-editor');
   for (const input of await editor.getByRole('spinbutton').all()) await expect(input).toBeDisabled();
@@ -87,5 +87,5 @@ test('B2-K3 · published version: every field is disabled and skipped by Tab; th
   await page.keyboard.press('Tab');
   await expect(page.getByRole('button', { name: /^v3/ })).toBeFocused();
   await page.keyboard.press('Tab');
-  await expect(editor.getByRole('button', { name: 'Request retire…' })).toBeFocused();
+  await expect(editor.getByRole('button', { name: 'Retire this version…' })).toBeFocused();
 });

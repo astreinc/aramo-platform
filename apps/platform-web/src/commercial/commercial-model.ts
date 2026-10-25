@@ -316,6 +316,18 @@ export function money(amountMinor: number, currency: string): string {
   return `${major.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 })} ${currency}`;
 }
 
+/**
+ * CCP-R3 (Aramo-CCP-A1-Amendment-A1-Finance-Amount-Scope-v1_0, LOCKED; FA-5): the server omits a
+ * tenant-specific amount for a caller without platform:billing:amount:read and sends
+ * `amount_withheld: "FINANCE_SCOPE_REQUIRED"` instead. The console shows this state; it never has
+ * a figure to hide. Holders (platform_owner, finance_admin, read_only_auditor) see the amount.
+ */
+export const AMOUNT_WITHHELD_LABEL = 'withheld — Finance amount access required';
+
+export function amountWithheld(p: Record<string, unknown>): boolean {
+  return typeof p['amount_withheld'] === 'string';
+}
+
 /** "25%" from basis points. */
 export function percent(bps: number): string {
   return `${(bps / 100).toLocaleString('en-US', { maximumFractionDigits: 2 })}%`;
@@ -326,6 +338,7 @@ export function summaryOf(r: ChangeRequest, me: Me): string {
   const p = r.payload;
   switch (r.action_type) {
     case 'CREDIT': {
+      if (amountWithheld(p)) return `Amount ${AMOUNT_WITHHELD_LABEL}`;
       const a = num(p['amount_minor']);
       const c = typeof p['currency'] === 'string' ? p['currency'] : 'USD';
       return a === null ? 'Account credit' : `${money(a, c)} account credit`;
@@ -372,6 +385,7 @@ export function effectRows(r: ChangeRequest, me: Me): EffectRow[] {
   const p = r.payload;
   switch (r.action_type) {
     case 'CREDIT': {
+      if (amountWithheld(p)) return [{ field: 'Account credit', before: null, after: `Amount ${AMOUNT_WITHHELD_LABEL}` }];
       const a = num(p['amount_minor']);
       const c = typeof p['currency'] === 'string' ? p['currency'] : 'USD';
       return [{ field: 'Account credit', before: null, after: a === null ? '—' : money(a, c) }];

@@ -11425,6 +11425,11 @@
     {
       "from": "ci/scripts/verify-orphan-scopes.ts",
       "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/finance-amount-access.ts"
+    },
+    {
+      "from": "ci/scripts/verify-orphan-scopes.ts",
+      "status": "unscoped",
       "to": "apps/sign-service/src/app/billing/esign-billing.controller.ts"
     },
     {
@@ -12657,6 +12662,11 @@
       "from": "doc/ccp/decisions.md",
       "status": "unscoped",
       "to": "doc/ccp/slices/CCP-A6-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/decisions.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-R3-acceptance.md"
     },
     {
       "from": "doc/ccp/decisions.md",
@@ -16707,6 +16717,431 @@
       "from": "doc/ccp/slices/CCP-D3-pre-execution.md",
       "status": "unscoped",
       "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/dto/commercial-finance.dto.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/dto/commercial-observability.dto.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/dto/support-extension.dto.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/finance-amount-access.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-apply.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-audit.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-billing-status.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-change-request.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-conversion.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-finance.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-support-extension.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-a2-commercial-audit-authorization.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-authorization.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-a8-support-extension-authorization.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-c3-billing-status-authorization.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-c6-finance-authorization.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/fixtures/commercial.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/fixtures/session.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/keyboard/ccp-catalog-journeys.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/visual/DIVERGENCES.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/visual/__screenshots__/ccp-catalog-published-1440.masks.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/visual/__screenshots__/ccp-catalog-published-1440.png"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/visual/__screenshots__/ccp-catalog-published-900.masks.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/visual/__screenshots__/ccp-catalog-retire-dialog-1440.masks.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/visual/__screenshots__/ccp-catalog-retire-dialog-1440.png"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/visual/__screenshots__/ccp-catalog-retire-dialog-900.masks.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/visual/__screenshots__/ccp-catalog-retire-dialog-900.png"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/visual/states-ccp-catalog.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/commercial/ApprovalsInboxView.spec.tsx"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/commercial/catalog/CatalogView.spec.tsx"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/commercial/catalog/CatalogView.tsx"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/commercial/catalog/catalog-model.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/commercial/catalog/catalog-model.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/commercial/commercial-model.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/commercial/commercial-model.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/commercial/subscriptions/TenantCommercialPanel.spec.tsx"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/commercial/subscriptions/TenantCommercialPanel.tsx"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/commercial/subscriptions/subscriptions-api.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/commercial/support-extensions/SupportExtensionDialogs.tsx"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/commercial/support-extensions/SupportExtensionsView.spec.tsx"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/commercial/support-extensions/SupportExtensionsView.tsx"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/commercial/support-extensions/support-extension-api.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/commercial/support-extensions/support-extension-model.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/commercial/support-extensions/support-extension-model.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/commercial/test-fixtures.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-orphan-scopes.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/common/src/lib/testing/identity-migrations.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/migrations/20261024120000_ccp_a1_commercial_role_catalog/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/migrations/20261028060000_ccp_a1a1_finance_amount_scope/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/scripts/scope-catalog-consistency.mjs"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/dto/scope.dto.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/tests/ccp-a1-commercial-role-catalog-migration.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/tests/ccp-a1-commercial-role-catalog.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/tests/ccp-a1a1-finance-amount-scope-migration.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/tests/ccp-a9-platform-last-owner.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/tests/commercial-scope-seed.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/tests/fixtures/ccp-a1a1-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/tests/identity.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/tests/roles1-role-model.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/tests/search-pr1-seed.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/tests/seed-scrub.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/index.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/billing-finance-report.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/entitlement-subscription-gap.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/finance-amount-withholding.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-audit-export.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-change-request.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-change-request.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/support-extension.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/support-extension.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/observability/commercial-alert.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/observability/commercial-alert.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-a6-apply.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-a8-support-extension.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-a8-support-extension.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-c2-conversion.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-d3-alerts.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-d3-operational-alerts.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-r3-acceptance.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-r3-acceptance.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/support/ccp-a3-database.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts"
     },
     {
       "from": "doc/design-reference/platform-admin/github.md",
@@ -28024,6 +28459,11 @@
       "to": "libs/identity/prisma/migrations/20261025180000_ccp_a9_platform_last_owner_invariant/migration.sql"
     },
     {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261028060000_ccp_a1a1_finance_amount_scope/migration.sql"
+    },
+    {
       "from": "libs/common/src/lib/testing/skills-taxonomy-migrations.ts",
       "status": "production",
       "to": "libs/skills-taxonomy/prisma/migrations/20260915140000_init_skill_registry/migration.sql"
@@ -28899,6 +29339,24 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a1-commercial-role-catalog-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261028060000_ccp_a1a1_finance_amount_scope/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a1a1-finance-amount-scope-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261025180000_ccp_a9_platform_last_owner_invariant/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a1a1-finance-amount-scope-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261028060000_ccp_a1a1_finance_amount_scope/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/identity/src/tests/ccp-a9-platform-last-owner.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261024120000_ccp_a1_commercial_role_catalog/migration.sql"
@@ -28908,6 +29366,12 @@
       "from": "libs/identity/src/tests/ccp-a9-platform-last-owner.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261025180000_ccp_a9_platform_last_owner_invariant/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a9-platform-last-owner.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261028060000_ccp_a1a1_finance_amount_scope/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -28938,6 +29402,12 @@
       "from": "libs/identity/src/tests/fixtures/ccp-a1-compensating.sql",
       "status": "excluded",
       "to": "doc/ccp/slices/CCP-A1-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/fixtures/ccp-a1a1-compensating.sql",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-R3-acceptance.md"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -30486,6 +30956,11 @@
       "to": "doc/ccp/slices/CCP-D3-acceptance.md"
     },
     {
+      "from": "libs/subscription/prisma/migrations/20261028050000_ccp_r3_entitlement_alert/migration.sql",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-R3-acceptance.md"
+    },
+    {
       "from": "libs/subscription/project.json",
       "status": "unscoped",
       "to": "libs/subscription/src/index.ts"
@@ -30959,6 +31434,12 @@
       "from": "libs/subscription/src/tests/ccp-merge-train-compensation.integration.spec.ts",
       "status": "excluded",
       "to": "tools/db-sync-local.sh"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-r3-acceptance.integration.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/decisions.md"
     },
     {
       "excludedBy": "src/tests/**/*",

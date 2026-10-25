@@ -130,7 +130,7 @@ export function SupportExtensionsView({ session, now = () => new Date() }: Suppo
       toast.show('Extension applied as an exception — zero approvals, flagged in audit.');
       setNotice(null);
     } else {
-      const why = out.decision ? breachLine(out.decision.breaches, out.decision.eligibility, out.decision.clause) : '';
+      const why = out.decision ? breachLine(out.decision.breaches, out.decision.clause) : '';
       setNotice({ tone: 'warn', text: `Escalated to Finance — nothing was applied. ${why}`.trim(), requestId: out.request.id });
       toast.show('Submitted for approval. Nothing applies until Finance signs.');
     }

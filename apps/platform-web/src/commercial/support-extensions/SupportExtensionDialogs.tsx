@@ -12,7 +12,7 @@ import {
   type SupportPolicy,
   type SupportSubscription,
 } from './support-extension-api';
-import { clauseHelp, previewExtension, shortRef } from './support-extension-model';
+import { clauseHelp, ineligibleLine, previewExtension, shortRef } from './support-extension-model';
 
 // CCP-B6 — the two dialogs of the support workflow (CCP-UI v1.0 handoff §5.9, §5.10;
 // Commercial Control Plane v1.0.dc.html `dlgExt`).
@@ -20,7 +20,10 @@ import { clauseHelp, previewExtension, shortRef } from './support-extension-mode
 //   RequestExtensionDialog  days + reason, the live preview (within bounds → "Apply extension
 //                           (exception)"; out of bounds → the Finance chain strip and "Submit for
 //                           approval"). ONE call: POST /support-extensions. The server decides; a
-//                           breach is escalated, never applied (PBD §5.3 B6 row).
+//                           limit breach is escalated, never applied (PBD §5.3 B6 row). CCP-R3
+//                           (TD-A8-3 refined): a row that is not PAST_DUE is NOT eligible — the
+//                           preview says so and nothing can be submitted; the server refuses an
+//                           ineligible request (409 support_extension_ineligible), never escalates it.
 //   RemoveExtensionDialog   reason; a SUPPORT_EXTENSION change request with operation REMOVE,
 //                           submitted to Finance (TD-A8-5). Never removes anything itself.
 
@@ -32,6 +35,10 @@ export function refusalText(err: unknown): string {
   const reason = typeof err.details?.['reason'] === 'string' ? (err.details['reason'] as string) : null;
   const code = `${err.status} ${err.code ?? 'ERROR'}${reason ? ` · ${reason}` : ''}`;
   if (reason === 'open_request_exists') return `Refused: another request on this product is open. It must close first. (${code})`;
+  if (reason === 'support_extension_ineligible') {
+    const eligibility = Array.isArray(err.details?.['eligibility']) ? (err.details['eligibility'] as string[]) : [];
+    return `Not eligible: ${ineligibleLine(eligibility)} (${code})`;
+  }
   if (reason === 'subscription_not_open') return `Refused: the subscription is no longer open. Reload and try again. (${code})`;
   if (err.code === 'COMMERCIAL_POLICY_UNAVAILABLE') return `Refused: no commercial policy is active, so nothing can be decided. (${code})`;
   if (err.status === 403) return `Refused: your account doesn’t hold the permission for this. (${code})`;
@@ -64,8 +71,9 @@ export function RequestExtensionDialog({ open, onOpenChange, tenantId, tenantNam
     [n, prior, policy, subscription, now],
   );
   const clause = policy?.clause;
-  const within = preview?.withinBounds ?? false;
-  const valid = Number.isInteger(n) && n >= 1 && reason.trim().length > 0 && policy !== null;
+  const eligible = preview?.eligible ?? subscription.status === 'PAST_DUE';
+  const within = eligible && (preview?.withinBounds ?? false);
+  const valid = eligible && Number.isInteger(n) && n >= 1 && reason.trim().length > 0 && policy !== null;
 
   const commit = async (): Promise<void> => {
     setBusy(true);
@@ -99,7 +107,9 @@ export function RequestExtensionDialog({ open, onOpenChange, tenantId, tenantNam
       preview={
         preview === null
           ? null
-          : within
+          : !eligible
+            ? { tone: 'warn', title: 'Not eligible — refused, not escalated', lines: [preview.why] }
+            : within
             ? {
                 tone: 'ok',
                 title: 'Within bounds — applies now as an exception, with zero approvals',
@@ -117,10 +127,10 @@ export function RequestExtensionDialog({ open, onOpenChange, tenantId, tenantNam
                 lines: [preview.why, 'The request goes to Pending approval and applies only after it is signed.'],
               }
       }
-      chain={preview !== null && !within && policy !== null ? { ...FINANCE_CHAIN, policy: `v${policy.version_number}`, window: `${policy.approval_expiry_hours} h` } : null}
+      chain={preview !== null && eligible && !within && policy !== null ? { ...FINANCE_CHAIN, policy: `v${policy.version_number}`, window: `${policy.approval_expiry_hours} h` } : null}
       alert={alert ?? (policy === null ? 'No commercial policy is active, so an extension can’t be decided right now.' : null)}
       // Design `commitFn`: the exception commit only while the preview says within bounds.
-      commitLabel={within ? 'Apply extension (exception)' : 'Submit for approval'}
+      commitLabel={!eligible ? 'Not eligible' : within ? 'Apply extension (exception)' : 'Submit for approval'}
       tone="terra"
       canCommit={valid}
       busy={busy}

@@ -36,13 +36,16 @@ import { generateTestKeyPair } from './test-keys.js';
 
 const SCOPE = 'platform:billing:read';
 const ENTRY = 'platform:tenant:read';
+// CCP-R3 — CCP-A1 Amendment A1 (LOCKED) FA-2: the amount scope's 3 holders.
+const AMOUNT = 'platform:billing:amount:read';
+const AMOUNT_HOLDERS = ['platform_owner', 'finance_admin', 'read_only_auditor'] as const;
 const BUNDLES: Record<string, readonly string[]> = {
-  platform_owner: [ENTRY, 'platform:catalog:read', 'platform:catalog:approve', 'platform:catalog:publish', 'platform:subscription:read', 'platform:subscription:approve', 'platform:entitlement:approve', SCOPE, 'platform:billing:approve', 'platform:approval:read', 'platform:commercial:audit:read'],
-  finance_admin: [ENTRY, 'platform:catalog:read', 'platform:catalog:approve', 'platform:subscription:read', 'platform:subscription:approve', 'platform:entitlement:approve', SCOPE, 'platform:billing:approve', 'platform:approval:read', 'platform:commercial:audit:read'],
+  platform_owner: [ENTRY, 'platform:catalog:read', 'platform:catalog:approve', 'platform:catalog:publish', 'platform:subscription:read', 'platform:subscription:approve', 'platform:entitlement:approve', SCOPE, 'platform:billing:approve', 'platform:approval:read', 'platform:commercial:audit:read', AMOUNT],
+  finance_admin: [ENTRY, 'platform:catalog:read', 'platform:catalog:approve', 'platform:subscription:read', 'platform:subscription:approve', 'platform:entitlement:approve', SCOPE, 'platform:billing:approve', 'platform:approval:read', 'platform:commercial:audit:read', AMOUNT],
   commercial_ops: [ENTRY, 'platform:catalog:read', 'platform:subscription:read', 'platform:subscription:request', 'platform:entitlement:request', SCOPE, 'platform:billing:request', 'platform:approval:read'],
   catalog_manager: [ENTRY, 'platform:catalog:read', 'platform:catalog:draft', 'platform:approval:read'],
   support_admin: [ENTRY, 'platform:catalog:read', 'platform:subscription:read', 'platform:subscription:support', SCOPE, 'platform:approval:read'],
-  read_only_auditor: [ENTRY, 'platform:catalog:read', 'platform:subscription:read', SCOPE, 'platform:approval:read', 'platform:commercial:audit:read'],
+  read_only_auditor: [ENTRY, 'platform:catalog:read', 'platform:subscription:read', SCOPE, 'platform:approval:read', 'platform:commercial:audit:read', AMOUNT],
   super_admin: ['platform:tenant:provision', ENTRY, 'platform:admin:invite', 'platform:tenant:lifecycle:manage', 'platform:skill:read', 'platform:skill:manage', 'platform:document_template:read', 'platform:document_template:manage', 'platform:matching_policy:read', 'platform:matching_policy:write'],
 };
 const ALLOWED = ['platform_owner', 'finance_admin', 'commercial_ops', 'support_admin', 'read_only_auditor'] as const;
@@ -189,7 +192,17 @@ describe('CCP-C6 — per-role authorization on the Finance read routes (real Jwt
       expect(ren.body.items[0]).toMatchObject({ renewal_kind: 'COMMITMENT_END', renewal_at: '2026-11-15T12:00:00.000Z', days_until: 20, list_price: { amount_minor: 2000, currency: 'USD', billing_interval: 'MONTH' } });
       const out = await get(OUTSTANDING, role);
       expect(out.status).toBe(200);
-      expect(out.body.items[0]).toMatchObject({ status: 'PAST_DUE', grace_state: 'IN_GRACE', grace_until: '2026-11-02T12:00:00.000Z', amount_due: null, amount_due_reason: 'INVOICE_READ_NOT_DELIVERED' });
+      expect(out.body.items[0]).toMatchObject({ status: 'PAST_DUE', grace_state: 'IN_GRACE', grace_until: '2026-11-02T12:00:00.000Z', amount_due_reason: 'INVOICE_READ_NOT_DELIVERED' });
+      // CCP-R3 (CCP-A1 Amendment A1, FA-5): the amount-owed field only for an amount holder.
+      if ((AMOUNT_HOLDERS as readonly string[]).includes(role)) {
+        expect(out.body.items[0]).toHaveProperty('amount_due', null);
+        expect(out.body.items[0].amount_withheld).toBeUndefined();
+      } else {
+        expect('amount_due' in out.body.items[0]).toBe(false);
+        expect(out.body.items[0].amount_withheld).toBe('FINANCE_SCOPE_REQUIRED');
+      }
+      // FA-3: the plan version's catalog list price is unchanged for every reader.
+      expect(out.body.items[0].list_price).toEqual({ amount_minor: 2000, currency: 'USD', billing_interval: 'MONTH' });
       const rec = await get(RECONCILIATION, role);
       expect(rec.status).toBe(200);
       expect(rec.body).toMatchObject({ status: 'EXCEPTIONS', counts: { held_activations: 1, exceptions: 1 } });

@@ -1,6 +1,6 @@
 // CCP-B2 — the Catalog screen-states (CCP handoff §5.4) against the pinned CCP-UI v1.0 design
 // file (Commercial Control Plane v1.0.dc.html), at 1440×900 and 900×900. Every mask is a typed,
-// sanctioned divergence in DIVERGENCES.md (DV-B2-01…DV-B2-04).
+// sanctioned divergence in DIVERGENCES.md (DV-B2-01…DV-B2-04; CCP-R3 DV-R3-1).
 
 import type { Page } from '@playwright/test';
 
@@ -53,6 +53,24 @@ const CR_ID: Mask = {
   padRight: 40,
 };
 
+/** DV-R3-1 — CCP-R3 (TD-B2-1, Architect 2026-10-25): PLAN_RETIRE retires one specified plan
+ * version, so the action reads "Retire this version…" (the design: "Request retire…"). The longer
+ * label widens the button to the right (nothing follows it in the row). */
+const RETIRE_LABEL: Mask = {
+  proto: (p) => p.getByRole('button', { name: 'Request retire…' }),
+  build: (p) => p.getByRole('button', { name: 'Retire this version…' }),
+  divergence: 'DV-R3-1',
+  padRight: 48,
+};
+/** DV-R3-1 — the retire dialog's title names the version-only act: "Retire this version · Team v2". */
+const RETIRE_TITLE: Mask = {
+  proto: (p) => p.getByRole('dialog').getByText(/^Request retire · /),
+  build: (p) => p.getByRole('dialog').getByText(/^Retire this version · /),
+  divergence: 'DV-R3-1',
+  textBox: true,
+  padRight: 48,
+};
+
 const CAT = '/commercial/catalog';
 const at = (q: string) => `${CAT}?${q}`;
 
@@ -73,7 +91,7 @@ export const CCP_CATALOG_STATES: readonly ScreenState[] = [
     name: 'ccp-catalog-published',
     proto: { file: 'ccp', hash: 'catalog', ccp: { persona: 'lena' }, state: { cat: { prod: 'sign', plan: 'team', ver: 2 } } },
     build: { path: at('plan=team&version=2'), mock: { persona: 'ccpCatalog' } },
-    masks: [...PENDING_B1, ...SAMPLE, ...SEATS],
+    masks: [...PENDING_B1, ...SAMPLE, ...SEATS, RETIRE_LABEL],
   },
   {
     name: 'ccp-catalog-retired',
@@ -113,7 +131,7 @@ export const CCP_CATALOG_STATES: readonly ScreenState[] = [
       state: { cat: { prod: 'sign', plan: 'team', ver: 2 } },
       call: `const pl = c.plan('team'); c.dlgCatalog('retire', pl, pl.vers.find(v => v.v === 2));`,
     },
-    build: { path: at('plan=team&version=2'), mock: { persona: 'ccpCatalog' }, act: (p: Page) => p.getByRole('button', { name: 'Request retire…' }).click() },
-    masks: [...PENDING_B1, ...SAMPLE, ...SEATS],
+    build: { path: at('plan=team&version=2'), mock: { persona: 'ccpCatalog' }, act: (p: Page) => p.getByRole('button', { name: 'Retire this version…' }).click() },
+    masks: [...PENDING_B1, ...SAMPLE, ...SEATS, RETIRE_LABEL, RETIRE_TITLE],
   },
 ];

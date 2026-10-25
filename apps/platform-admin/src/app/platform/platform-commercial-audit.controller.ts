@@ -2,10 +2,11 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
-import { CommercialAuditCursorError, CommercialAuditRepository, type CommercialAuditEventRow } from '@aramo/subscription';
+import { CommercialAuditCursorError, CommercialAuditRepository, type CommercialAuditEventRow, withholdAuditPayloadAmounts } from '@aramo/subscription';
 
 import type { CommercialAuditEventDto, CommercialAuditListResponseDto } from './dto/commercial-audit.dto.js';
 import { CommercialAuditQueryDto } from './dto/commercial-audit.dto.js';
+import { amountAccess } from './finance-amount-access.js';
 
 // CCP-A2 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.1 row A2) — the READ-ONLY
 // commercial audit explorer feed over subscription."CommercialAuditEvent" (append-only at
@@ -57,7 +58,7 @@ export class PlatformCommercialAuditController {
         limit: query.limit,
         cursor: query.cursor,
       });
-      return { events: page.events.map(toDto), next_cursor: page.next_cursor };
+      return { events: page.events.map((e) => toDto(e, amountAccess(auth))), next_cursor: page.next_cursor };
     } catch (err) {
       if (err instanceof CommercialAuditCursorError) {
         throw new AramoError('VALIDATION_ERROR', err.message, 400, { requestId, details: { reason: 'invalid_cursor' } });
@@ -67,7 +68,7 @@ export class PlatformCommercialAuditController {
   }
 }
 
-function toDto(row: CommercialAuditEventRow): CommercialAuditEventDto {
+function toDto(row: CommercialAuditEventRow, amount_access: boolean): CommercialAuditEventDto {
   return {
     id: row.id,
     created_at: row.created_at.toISOString(),
@@ -80,7 +81,9 @@ function toDto(row: CommercialAuditEventRow): CommercialAuditEventDto {
     subject: row.subject,
     change_request_id: row.change_request_id,
     policy_version_id: row.policy_version_id,
-    payload: (row.payload ?? {}) as Record<string, unknown>,
+    // CCP-R3 (CCP-A1 Amendment A1, FA-5): a CREDIT's amount recorded in the event (its chain basis)
+    // is sent only with platform:billing:read AND platform:billing:amount:read.
+    payload: withholdAuditPayloadAmounts((row.payload ?? {}) as Record<string, unknown>, amount_access),
     correlation_id: row.correlation_id,
   };
 }

@@ -13,7 +13,10 @@ import { apiClient } from '@aramo/fe-foundation';
 // The console NEVER mutates commercial state itself (PLATFORM-UX-1 Amendment A1-2): every act is
 // a change request, or the requester's governed apply of an approved one, and the server decides.
 // No money is read for display (A1-4a): the billing-status read is used only for the provider's
-// hosted invoice link (TD-C3-1). Request shapes match the platform-web → platform-admin Pact consumer.
+// hosted invoice link (TD-C3-1) and the due / overdue state. CCP-R3 (CCP-A1 Amendment A1): the
+// server sends the invoices (and the link) only to a holder of platform:billing:amount:read; any
+// other billing reader gets `amount_withheld` and the payment_due / payment_overdue booleans (FA-4).
+// Request shapes match the platform-web → platform-admin Pact consumer.
 
 export const SIGN_PRODUCT = 'sign';
 export const PRODUCT_KEYS_SHOWN = ['sign', 'ats', 'portal', 'intelligence'] as const;
@@ -131,7 +134,13 @@ export interface ConversionRead {
 
 export interface BillingInvoiceLink {
   availability: string;
+  /** The newest invoice's provider-hosted page (only for a holder of platform:billing:amount:read). */
   hosted_url: string | null;
+  /** CCP-R3 (CCP-A1 Amendment A1, FA-5): the server withheld the invoices for this caller. */
+  amount_withheld: boolean;
+  /** FA-4: derived booleans every platform:billing:read holder receives. */
+  payment_due: boolean;
+  payment_overdue: boolean;
 }
 
 /** The action types the tab creates (CCP-A3 closed set). */
@@ -173,10 +182,16 @@ export const subscriptionsApi = {
 
   /** CCP-C3 (NOT DELIVERED): only the newest invoice's provider-hosted page is used; amounts are ignored. */
   async invoiceLink(tenantId: string): Promise<BillingInvoiceLink> {
-    const out = await apiClient.get<{ availability: string; invoices?: { hosted_url: string | null }[] }>(
+    const out = await apiClient.get<{ availability: string; invoices?: { hosted_url: string | null }[]; amount_withheld?: string; payment_due?: boolean; payment_overdue?: boolean }>(
       `${BASE}/tenants/${encodeURIComponent(tenantId)}/billing-status?product_key=${SIGN_PRODUCT}&invoice_limit=1`,
     );
-    return { availability: out.availability, hosted_url: out.invoices?.[0]?.hosted_url ?? null };
+    return {
+      availability: out.availability,
+      hosted_url: out.invoices?.[0]?.hosted_url ?? null,
+      amount_withheld: typeof out.amount_withheld === 'string',
+      payment_due: out.payment_due === true,
+      payment_overdue: out.payment_overdue === true,
+    };
   },
 
   /** Create the change request; submit it for approval unless it is saved as a draft. */

@@ -76,6 +76,20 @@ const tab = (name: RegExp) => screen.getByRole('tab', { name });
 describe('Approvals inbox (handoff §5.1)', () => {
   beforeEach(() => vi.restoreAllMocks());
 
+  it('CCP-R3 (CCP-A1 Amendment A1) a caller without platform:billing:amount:read: the server omits the CREDIT amount; the row and the drawer show the withheld state and no figure', async () => {
+    const withheldCredit = { ...credit, payload: { currency: 'USD', amount_withheld: 'FINANCE_SCOPE_REQUIRED' } };
+    const w = world();
+    mock({ ...w, list: [withheldCredit, discount, mine, done], details: { ...w.details, [credit.id]: detail(withheldCredit) } });
+    renderInbox();
+    const row = await screen.findByTestId(`cr-row-${credit.id}`);
+    expect(within(row).getByText('Amount withheld — Finance amount access required')).toBeInTheDocument();
+    expect(row.textContent).not.toMatch(/\$|350/);
+    fireEvent.click(row);
+    await screen.findByTestId('cr-drawer');
+    expect(screen.getByRole('dialog')).toHaveTextContent('Account credit · Amount withheld — Finance amount access required');
+    expect(screen.getByRole('dialog').textContent).not.toMatch(/\$350/);
+  });
+
   it('tabs carry counts; Waiting on me is the default and lists only the eligible request', async () => {
     mock(world());
     renderInbox();

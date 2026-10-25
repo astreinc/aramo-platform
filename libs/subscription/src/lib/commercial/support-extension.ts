@@ -13,13 +13,16 @@ import { type AppliedSupportExtension, type SupportExtensionBreach, checkSupport
 // (half-open, TD-A2-1). It changes no allowance limit, no usage row and no billing period:
 // allowance is never manufactured (T8).
 //
-// The bound (A2-B, TD-A2-1, Charter §7) is the A2 pure check over the ACTIVE policy; this module
-// adds the ELIGIBILITY facts of the zero-approval act. Any breach ESCALATES (a NORMAL request,
-// Finance per Q7) and NEVER applies (DDR v1.2 §3.2(5)).
+// The bound (A2-B, TD-A2-1, Charter §7) is the A2 pure check over the ACTIVE policy; a limit breach
+// (LENGTH, FREQUENCY, CUMULATIVE) ESCALATES (a NORMAL request, Finance per Q7) and NEVER applies
+// (DDR v1.2 §3.2(5)). CCP-R3 (TD-A8-3 refined, Architect 2026-10-25): ELIGIBILITY is NOT a breach.
+// A row that is not PAST_DUE, or a requester without an active D9 attestation, is an eligibility
+// REFUSAL: a stable code, one audit row, nothing applied and nothing escalated to Finance. Only a
+// defined policy violation (a limit breach) escalates.
 
 const DAY_MS = 86_400_000;
 
-/** Why a bounded (zero-approval) extension is not admissible as an EXCEPTION; escalates. */
+/** Why a support extension is not admissible at all (CCP-R3: refused, never escalated). */
 export type SupportExtensionEligibilityReason =
   // The row is not PAST_DUE: the overlay changes sending only for a PAST_DUE row (TD-A8).
   | 'SUBSCRIPTION_NOT_PAST_DUE'
@@ -27,9 +30,13 @@ export type SupportExtensionEligibilityReason =
   // needs a human-attested actor (D9; TD-A8).
   | 'REQUESTER_NOT_ATTESTED';
 
-export type SupportExtensionOutcomeBreach = SupportExtensionBreach | 'ELIGIBILITY';
+/** CCP-R3: only a limit breach is an outcome breach (it escalates); ELIGIBILITY is a refusal. */
+export type SupportExtensionOutcomeBreach = SupportExtensionBreach;
 
 export interface SupportExtensionDecision {
+  /** CCP-R3: false → refused (SUPPORT_EXTENSION_INELIGIBLE), whatever the bounds say. */
+  eligible: boolean;
+  /** The limits only (LENGTH, FREQUENCY, CUMULATIVE): true → the bounded exception applies. */
   within_bounds: boolean;
   breaches: SupportExtensionOutcomeBreach[];
   eligibility: SupportExtensionEligibilityReason[];
@@ -50,9 +57,9 @@ export interface SupportExtensionDecision {
 }
 
 /**
- * Decides a requested support extension: bounds (A2 check over `prior` = EVERY extension already
- * applied to this tenant × product, bounded or approved, removed or not; fail closed, TD-A8) and
- * eligibility. Pure.
+ * Decides a requested support extension: eligibility (CCP-R3: an ineligible request is refused) and
+ * bounds (A2 check over `prior` = EVERY extension already applied to this tenant × product, bounded
+ * or approved, removed or not; fail closed, TD-A8). Pure.
  */
 export function decideSupportExtension(
   policy: CommercialPolicyContent,
@@ -68,8 +75,9 @@ export function decideSupportExtension(
   const eligibility: SupportExtensionEligibilityReason[] = [];
   if (input.subscription_status !== 'PAST_DUE') eligibility.push('SUBSCRIPTION_NOT_PAST_DUE');
   if (!input.requester_attested) eligibility.push('REQUESTER_NOT_ATTESTED');
-  const breaches: SupportExtensionOutcomeBreach[] = [...bound.breaches, ...(eligibility.length > 0 ? (['ELIGIBILITY'] as const) : [])];
+  const breaches: SupportExtensionOutcomeBreach[] = [...bound.breaches];
   return {
+    eligible: eligibility.length === 0,
     within_bounds: breaches.length === 0,
     breaches,
     eligibility,

@@ -15,7 +15,7 @@ export type CommercialAlertFamily = (typeof COMMERCIAL_ALERT_FAMILIES)[number];
 export const COMMERCIAL_ALERT_STATUSES = ['OPEN', 'RESOLVED'] as const;
 export type CommercialAlertStatus = (typeof COMMERCIAL_ALERT_STATUSES)[number];
 
-export type CommercialAlertSubjectKind = 'billing_command' | 'reconciliation_flag' | 'webhook_inbox' | 'usage_metric' | 'change_request';
+export type CommercialAlertSubjectKind = 'billing_command' | 'reconciliation_flag' | 'webhook_inbox' | 'usage_metric' | 'product_entitlement' | 'change_request';
 
 /** The closed set (mirrors the migration's type CHECK, which also pins family and subject kind). */
 export const COMMERCIAL_ALERT_DEFINITIONS = {
@@ -30,6 +30,10 @@ export const COMMERCIAL_ALERT_DEFINITIONS = {
   WEBHOOK_INBOX_FAILED: { family: 'BILLING', subject_kind: 'webhook_inbox' },
   // The latest CCP-D1 roll-up run of a metric did not reconcile to the allowance ledger.
   USAGE_NOT_RECONCILED: { family: 'BILLING', subject_kind: 'usage_metric' },
+  // CCP-R3 (TD-A7-5; migration 20261028050000): a live product entitlement with no open BASE
+  // subscription of that product, past grace and with no live support-extension overlay. Subject
+  // `<tenant_id>:<product_key>`. Auto-resolving; never revokes (deferred governed revocation).
+  ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION: { family: 'BILLING', subject_kind: 'product_entitlement' },
   // A governed apply that failed and waits for a retry (A6).
   APPLY_FAILED: { family: 'APPROVAL', subject_kind: 'change_request' },
   // A request still awaiting approval whose expiry falls within the configured lead time (A3).

@@ -26,13 +26,15 @@ export const PLATFORM_TENANT_ID = 'tn_00ARAMOPLATFORM';
 
 // CCP-B1 — the six commercial roles' bundles (CCP A1 §4.1; libs/identity/prisma/
 // seed.ts CCP_PLATFORM_ROLE_SEED_BUNDLES), restated for the fixture (TD-A1-7).
+// CCP-R3: CCP-A1 Amendment A1 grants platform:billing:amount:read to exactly platform_owner,
+// finance_admin and read_only_auditor (FA-2).
 export const CCP_SCOPES = {
-  platform_owner: ['platform:tenant:read', 'platform:catalog:read', 'platform:catalog:approve', 'platform:catalog:publish', 'platform:subscription:read', 'platform:subscription:approve', 'platform:entitlement:approve', 'platform:billing:read', 'platform:billing:approve', 'platform:approval:read', 'platform:commercial:audit:read'],
-  finance_admin: ['platform:tenant:read', 'platform:catalog:read', 'platform:catalog:approve', 'platform:subscription:read', 'platform:subscription:approve', 'platform:entitlement:approve', 'platform:billing:read', 'platform:billing:approve', 'platform:approval:read', 'platform:commercial:audit:read'],
+  platform_owner: ['platform:tenant:read', 'platform:catalog:read', 'platform:catalog:approve', 'platform:catalog:publish', 'platform:subscription:read', 'platform:subscription:approve', 'platform:entitlement:approve', 'platform:billing:read', 'platform:billing:approve', 'platform:approval:read', 'platform:commercial:audit:read', 'platform:billing:amount:read'],
+  finance_admin: ['platform:tenant:read', 'platform:catalog:read', 'platform:catalog:approve', 'platform:subscription:read', 'platform:subscription:approve', 'platform:entitlement:approve', 'platform:billing:read', 'platform:billing:approve', 'platform:approval:read', 'platform:commercial:audit:read', 'platform:billing:amount:read'],
   commercial_ops: ['platform:tenant:read', 'platform:catalog:read', 'platform:subscription:read', 'platform:subscription:request', 'platform:entitlement:request', 'platform:billing:read', 'platform:billing:request', 'platform:approval:read'],
   catalog_manager: ['platform:tenant:read', 'platform:catalog:read', 'platform:catalog:draft', 'platform:approval:read'],
   support_admin: ['platform:tenant:read', 'platform:catalog:read', 'platform:subscription:read', 'platform:subscription:support', 'platform:billing:read', 'platform:approval:read'],
-  read_only_auditor: ['platform:tenant:read', 'platform:catalog:read', 'platform:subscription:read', 'platform:billing:read', 'platform:approval:read', 'platform:commercial:audit:read'],
+  read_only_auditor: ['platform:tenant:read', 'platform:catalog:read', 'platform:subscription:read', 'platform:billing:read', 'platform:approval:read', 'platform:commercial:audit:read', 'platform:billing:amount:read'],
 } as const;
 
 /** CCP-B1 — the CCP prototype's people (ccp-data.js PEOPLE), one per commercial role. */

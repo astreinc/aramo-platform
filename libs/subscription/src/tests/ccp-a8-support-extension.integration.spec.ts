@@ -255,19 +255,45 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A8 support ex
     expect(await run(3)).toEqual(['ESCALATED', ['CUMULATIVE'], 31, 2]);
   });
 
-  it('A8-ESC-ELIG-1 eligibility breaches escalate and never apply: a row that is not PAST_DUE; a support_admin without an active D9 attestation', async () => {
+  it('A8-ELIG-1 (CCP-R3, TD-A8-3 refined) eligibility is a REFUSAL, not an escalation: a row that is not PAST_DUE and a support_admin without an active D9 attestation are each refused with SUPPORT_EXTENSION_INELIGIBLE; exactly ONE audit row each; no change request, no overlay, no application; nothing reaches Finance', async () => {
     clock = T0;
     const t1 = await newTenant(pg);
     const active = await stripeRow(t1, { status: 'ACTIVE', grace_until: null });
-    const a = await extend(t1, active, 3);
-    expect([a.outcome, a.decision?.breaches, a.decision?.eligibility]).toEqual(['ESCALATED', ['ELIGIBILITY'], ['SUBSCRIPTION_NOT_PAST_DUE']]);
-    expect(await overlays(t1)).toEqual([]);
+    const before1 = await counts(t1);
+    const e1 = await extend(t1, active, 3).catch((e: unknown) => e);
+    expect(e1).toBeInstanceOf(CommercialChangeRequestError);
+    expect(e1).toMatchObject({ code: 'SUPPORT_EXTENSION_INELIGIBLE', details: { reason: 'support_extension_ineligible', eligibility: ['SUBSCRIPTION_NOT_PAST_DUE'], subscription_id: active } });
+    expect(await counts(t1)).toEqual({ ...before1, audit: before1.audit + 1 });
+    const a1 = (await pg.query(`SELECT * FROM subscription."CommercialAuditEvent" WHERE tenant_id = $1 ORDER BY created_at, id`, [t1])).rows;
+    expect(a1.map((r) => r.event_type)).toEqual(['SUPPORT_EXTENSION_REFUSED_INELIGIBLE']);
+    expect(a1[0]).toMatchObject({ actor_id: SA, change_request_id: null, is_exception: false, subject: `tenant_subscription:${active}` });
+    expect(a1[0].payload).toMatchObject({ refusal: 'SUPPORT_EXTENSION_INELIGIBLE', eligibility: ['SUBSCRIPTION_NOT_PAST_DUE'], applied: false, escalated: false, subscription_status: 'ACTIVE', requested_days: 3 });
+
     const t2 = await newTenant(pg);
     const sub = await stripeRow(t2);
-    const b = await extend(t2, sub, 3, SA_UNATTESTED);
-    expect([b.outcome, b.decision?.breaches, b.decision?.eligibility]).toEqual(['ESCALATED', ['ELIGIBILITY'], ['REQUESTER_NOT_ATTESTED']]);
+    const before2 = await counts(t2);
+    // A limit breach too (20 days > 14): eligibility is decided first, so it is still a refusal, never an escalation.
+    for (const days of [3, 20]) {
+      const e2 = await extend(t2, sub, days, SA_UNATTESTED).catch((e: unknown) => e);
+      expect(e2, String(days)).toMatchObject({ code: 'SUPPORT_EXTENSION_INELIGIBLE', details: { eligibility: ['REQUESTER_NOT_ATTESTED'] } });
+    }
+    expect(await counts(t2)).toEqual({ ...before2, audit: before2.audit + 2 });
     expect(await overlays(t2)).toEqual([]);
+    expect((await pg.query(`SELECT count(*)::int n FROM subscription."CommercialChangeRequest" WHERE tenant_id = ANY($1::uuid[]) AND state = 'PENDING_APPROVAL'`, [[t1, t2]])).rows[0].n).toBe(0);
     expect((await h.allowance.getStatus(t2, 'sign', KEY, T0)).subscribed).toBe(false);
+  });
+
+  it('A8-ELIG-2 (CCP-R3) the eligibility refusal cannot be bypassed: the generic change-request create refuses a SUPPORT_EXTENSION EXTEND (support_extension_dedicated_route) and writes nothing (REMOVE still goes there: A8-REMOVE-1)', async () => {
+    clock = T0;
+    const t = await newTenant(pg);
+    const active = await stripeRow(t, { status: 'ACTIVE', grace_until: null });
+    const before = await counts(t);
+    expect(
+      await outcome(
+        h.changeRequests.create(as(SA, 'support_admin'), { action_type: 'SUPPORT_EXTENSION', tenant_id: t, product_key: 'sign', payload: { operation: 'EXTEND', subscription_id: active, requested_days: 3 }, reason: 'direct', idempotency_key: key() }, A6_CTX),
+      ),
+    ).toBe('ERROR:INVALID_INPUT:support_extension_dedicated_route');
+    expect(await counts(t)).toEqual(before);
   });
 
   // ---- escalated → approved → applied (the A6 path, reused) -----------------------------

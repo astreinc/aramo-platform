@@ -5,8 +5,8 @@ import { BILLING_STATUS_MAX_INVOICE_LIMIT, PRODUCT_KEYS, type ProductKey } from 
 // CCP-C3 — GET /platform/commercial/tenants/{tenant_id}/billing-status and
 // GET /platform/commercial/billing-portal-configuration (platform:billing:read): READ-THROUGH
 // invoice and payment status and the portal-configuration facts. READ-ONLY. The query DTO is the
-// 400-shape gate. Money (invoice amounts) appears only in the billing-status response, which serves
-// a dedicated billing (Finance) screen (PLATFORM-UX-1 A1-4a), never a dashboard.
+// 400-shape gate. Invoice amounts are tenant-specific Finance figures (CCP-A1 Amendment A1): the
+// invoice list needs platform:billing:amount:read in addition to platform:billing:read.
 
 export class TenantBillingStatusQueryDto {
   @IsIn([...PRODUCT_KEYS]) product_key!: ProductKey;
@@ -49,7 +49,13 @@ export interface TenantBillingStatusResponseDto {
   mode: string | null;
   subscription: { id: string; source: string; status: string; open: boolean; account_ref: string; subscription_ref: string } | null;
   provider_subscription: { provider_status: string; current_period_start: string; current_period_end: string; cancel_at_period_end: boolean } | null;
-  invoices: BillingStatusInvoiceDto[];
+  // CCP-R3 (CCP-A1 Amendment A1, FA-4): derived for every platform:billing:read holder.
+  payment_due: boolean;
+  payment_overdue: boolean;
+  // FA-1 / FA-5: present ONLY for a caller holding platform:billing:amount:read too.
+  invoices?: BillingStatusInvoiceDto[];
+  // Present (and `invoices` absent) for a caller without platform:billing:amount:read.
+  amount_withheld?: 'FINANCE_SCOPE_REQUIRED';
   detail: string | null;
   read_at: string;
 }

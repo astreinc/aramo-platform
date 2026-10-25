@@ -67,11 +67,11 @@ describe('CCP-B2 catalog model', () => {
     ]);
   });
 
-  it('actions: a DRAFT offers only Request publish…; a published version offers a new draft (when none exists) and Request retire… — never an edit', () => {
+  it('actions: a DRAFT offers only Request publish…; a published version offers a new draft (when none exists) and Retire this version… — never an edit', () => {
     expect(versionActions(TEAM, draft, true).map((a) => [a.label, a.disabled])).toEqual([['Request publish…', false]]);
-    expect(versionActions(TEAM, published, true).map((a) => a.label)).toEqual(['Request retire…']);
+    expect(versionActions(TEAM, published, true).map((a) => a.label)).toEqual(['Retire this version…']);
     const noDraft = { ...TEAM, versions: [published, retired] };
-    expect(versionActions(noDraft, published, true).map((a) => a.label)).toEqual(['Create new draft from v2', 'Request retire…']);
+    expect(versionActions(noDraft, published, true).map((a) => a.label)).toEqual(['Create new draft from v2', 'Retire this version…']);
     expect(versionActions(noDraft, retired, true).map((a) => a.label)).toEqual(['Create new draft from v1']);
     expect(versionActions(ENTERPRISE, ENTERPRISE.versions[0]!, true).map((a) => a.label)).toEqual(['Create new draft from v1']);
     for (const a of [...versionActions(TEAM, draft, true), ...versionActions(noDraft, published, true)]) expect(a.label).not.toMatch(/edit|publish now|apply/i);

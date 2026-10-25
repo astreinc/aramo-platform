@@ -131,7 +131,7 @@ describe('CCP-B2 Catalog screen', () => {
     for (const input of within(editor).getAllByRole('spinbutton')) expect(input).toBeDisabled();
     for (const input of within(editor).getAllByRole('textbox')) expect(input).toBeDisabled();
     const labels = within(editor).getAllByRole('button').map((b) => b.textContent);
-    expect(labels).toEqual(['Request retire…']);
+    expect(labels).toEqual(['Retire this version…']);
     expect(labels.join(' ')).not.toMatch(/edit|save/i);
     expect(await within(editor).findByText('Northwind Logistics')).toBeInTheDocument();
     // Blurring a disabled field never sends a write.
@@ -165,11 +165,11 @@ describe('CCP-B2 Catalog screen', () => {
     ]);
   });
 
-  it('B2-W-RETIRE Request retire… needs the typed plan name and creates a PLAN_RETIRE change request', async () => {
+  it('B2-W-RETIRE Retire this version… needs the typed plan name and creates a PLAN_RETIRE change request', async () => {
     mockApi('catalog_manager');
     renderAt(`/commercial/catalog?plan=${TEAM.id}&version=2`);
-    fireEvent.click(await screen.findByRole('button', { name: 'Request retire…' }));
-    const dialog = await screen.findByRole('dialog', { name: 'Request retire · Sign Team v2' });
+    fireEvent.click(await screen.findByRole('button', { name: 'Retire this version…' }));
+    const dialog = await screen.findByRole('dialog', { name: 'Retire this version · Sign Team v2' });
     fireEvent.change(within(dialog).getByLabelText('Reason'), { target: { value: 'Replaced by v3' } });
     fireEvent.change(within(dialog).getByLabelText('Evidence'), { target: { value: 'PR-2026-Q4' } });
     const commit = within(dialog).getByRole('button', { name: 'Submit for approval' });

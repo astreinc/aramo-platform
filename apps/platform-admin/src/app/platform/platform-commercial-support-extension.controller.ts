@@ -8,6 +8,7 @@ import { SupportExtensionService, type SupportExtensionOutcome, type SupportExte
 import { RequestSupportExtensionDto, ListSupportExtensionsQueryDto, type SupportExtensionDto, type SupportExtensionListDto, type SupportExtensionOutcomeDto } from './dto/support-extension.dto.js';
 import { applicationDto, applyHttpError } from './platform-commercial-apply.controller.js';
 import { requestDto } from './platform-commercial-change-request.controller.js';
+import { amountAccess } from './finance-amount-access.js';
 
 // CCP-A8 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.1 row A8; DDR v1.2 §3.2(5); Q7) — the
 // support exception overlay. Platform consumer only (the DDR §13.1 tripwire).
@@ -15,11 +16,15 @@ import { requestDto } from './platform-commercial-change-request.controller.js';
 //   POST /platform/commercial/support-extensions   gate `platform:subscription:support`
 //        (support_admin only, A1 §4.1; never super_admin). In bounds → the bounded EXCEPTION is
 //        applied in one transaction (201, outcome APPLIED, is_exception = true on every audit
-//        event). Any breach (LENGTH, FREQUENCY, CUMULATIVE, ELIGIBILITY) → a NORMAL request is
-//        created and submitted for Finance (201, outcome ESCALATED); nothing applies. A replay of
-//        the same idempotency key → 200, replayed. Refusals: 400 validation / subscription_not_open
-//        / tenant_not_found / platform_tenant; 403 requester_scope_missing / not_human; 409
-//        open_request_exists / IDEMPOTENCY_KEY_CONFLICT; 503 COMMERCIAL_POLICY_UNAVAILABLE.
+//        event). A limit breach (LENGTH, FREQUENCY, CUMULATIVE) → a NORMAL request is created and
+//        submitted for Finance (201, outcome ESCALATED); nothing applies. CCP-R3 (TD-A8-3
+//        refined): not eligible (the row is not PAST_DUE, or no active D9 attestation) → 409
+//        COMMERCIAL_CHANGE_REQUEST_CONFLICT, reason support_extension_ineligible, with
+//        `eligibility`; one audit event, nothing applied, nothing escalated. A replay of the same
+//        idempotency key → 200, replayed. Refusals: 400 validation / subscription_not_open /
+//        tenant_not_found / platform_tenant; 403 requester_scope_missing / not_human; 409
+//        open_request_exists / support_extension_ineligible / IDEMPOTENCY_KEY_CONFLICT; 503
+//        COMMERCIAL_POLICY_UNAVAILABLE.
 //   GET  /platform/commercial/support-extensions?tenant_id=…[&product_key=…]   gate
 //        `platform:subscription:read` (platform_owner, finance_admin, commercial_ops,
 //        support_admin, read_only_auditor; never super_admin): the overlays of a tenant, newest
@@ -57,7 +62,7 @@ export class PlatformCommercialSupportExtensionController {
         { platform_tenant_id: PLATFORM_TENANT_SENTINEL_ID, correlation_id: requestId },
       );
       res.status(out.replayed ? 200 : 201);
-      return outcomeDto(out);
+      return outcomeDto(out, amountAccess(auth));
     } catch (err) {
       throw applyHttpError(err, requestId);
     }
@@ -114,11 +119,11 @@ export function extensionDto(r: SupportExtensionRow): SupportExtensionDto {
   };
 }
 
-function outcomeDto(out: SupportExtensionOutcome): SupportExtensionOutcomeDto {
+function outcomeDto(out: SupportExtensionOutcome, amount_access: boolean): SupportExtensionOutcomeDto {
   return {
     outcome: out.outcome,
     replayed: out.replayed,
-    request: requestDto(out.request),
+    request: requestDto(out.request, amount_access),
     extension: out.outcome === 'APPLIED' ? extensionDto(out.extension) : null,
     application: out.outcome === 'APPLIED' && out.application !== null ? applicationDto(out.application) : null, // merge train: B2-backend made the A6 application nullable
     decision: out.decision === null ? null : { ...out.decision, clause: { ...out.decision.clause } },
