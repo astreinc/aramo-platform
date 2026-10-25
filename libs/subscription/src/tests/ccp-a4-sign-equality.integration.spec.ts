@@ -13,6 +13,7 @@ import { CapacityService } from '../lib/capacity.service.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { SIGN_PRODUCT_KEY } from '../lib/product-registry.js';
 
+import { CCP_A5_MIGRATION } from './fixtures/ccp-a5.js';
 import { observe, rowCounts, seedCorpus, type SignOps } from './fixtures/ccp-a4-sign-corpus.js';
 
 // CCP-A4 (PBD §5.1 A4 row) — MP-A2 N-8 (deterministic backfill counts) and N-13 (Sign
@@ -24,6 +25,9 @@ import { observe, rowCounts, seedCorpus, type SignOps } from './fixtures/ccp-a4-
 // tables, records the counts again, and replays the same observation sequence through
 // the A4 code. The result must equal the golden byte for byte. Only the adapter below
 // (the explicit product context) differs from the capture run.
+// CCP-A5: the A5 migration (plan versions + v1 backfill + plan_version_id pin) is applied right
+// after A4, because the code under test now reads limits through the pinned version. The
+// golden therefore also proves A5 changes no Sign result (the A5 spec carries the N-19 detail).
 
 const ROOT = resolve(__dirname, '../../../..');
 const SUB_DIR = resolve(ROOT, 'libs/subscription/prisma/migrations');
@@ -82,6 +86,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A4 — Sign a
     if (!CAPTURE) {
       await pg.query(readFileSync(A4, 'utf8'));
       after = await rowCounts(pg);
+      await pg.query(readFileSync(CCP_A5_MIGRATION, 'utf8'));
     }
     prisma = new PrismaService(container.getConnectionUri());
     await prisma.$connect();

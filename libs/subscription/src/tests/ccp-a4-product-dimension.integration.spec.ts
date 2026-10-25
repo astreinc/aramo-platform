@@ -24,6 +24,7 @@ import {
 } from '../lib/product-registry.js';
 
 import { CCP_A4_COMPENSATING, CCP_A4_MIGRATION, ISOLATION_TEST_PRODUCT_KEY, registerIsolationTestProduct } from './fixtures/ccp-a4.js';
+import { publishTestPlanV1, publishedVersionOf } from './fixtures/ccp-a5.js';
 import { FakeOrganizationBillingProfile } from './fixtures/organization-billing-profile.fake.js';
 
 // CCP-A4 (PBD §5.1 A4 row; MP-A2 N-6, N-7, N-9, N-11, N-12; PBD §7.1 A0-C7) on real Postgres 17:
@@ -45,7 +46,8 @@ const ALL = [
     .sort()
     .map((n) => resolve(SUB_DIR, n, 'migration.sql')),
 ];
-const PRE_A4 = ALL.filter((p) => p !== CCP_A4_MIGRATION);
+// CCP-A5: the replay below exercises A4 alone, so only the migrations BEFORE A4 precede it.
+const PRE_A4 = ALL.slice(0, ALL.indexOf(CCP_A4_MIGRATION));
 const ISO = ISOLATION_TEST_PRODUCT_KEY;
 const KEY = 'sign.envelopes';
 const STORAGE = 'sign.storage_bytes';
@@ -155,8 +157,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A4 — produc
 
   async function signRow(t: string, source = 'MANUAL', anchor = '2026-10-01T00:00:00Z', plan = INCLUDED): Promise<string> {
     const r = await pg.query(
-      `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, product_key, composition_role, period_anchor, source, created_by)
-       VALUES (gen_random_uuid(), $1::uuid, $2::uuid, 'sign', 'BASE', $3::timestamptz, $4, 'ccp-a4') RETURNING id`,
+      `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by)
+       VALUES (gen_random_uuid(), $1::uuid, $2::uuid, ${publishedVersionOf('$2::uuid')}, 'sign', 'BASE', $3::timestamptz, $4, 'ccp-a4') RETURNING id`,
       [t, plan, anchor, source],
     );
     return r.rows[0].id as string;
@@ -183,8 +185,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A4 — produc
       ).rejects.toThrow(/Plan_product_key_registry_check/);
       await expect(
         pg.query(
-          `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, product_key, composition_role, period_anchor, source, created_by)
-           VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3, 'BASE', now(), 'MANUAL', 'x')`,
+          `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by)
+           VALUES (gen_random_uuid(), $1::uuid, $2::uuid, ${publishedVersionOf('$2::uuid')}, $3, 'BASE', now(), 'MANUAL', 'x')`,
           [tenant(), INCLUDED, ISO],
         ),
       ).rejects.toThrow(/TenantSubscription_product_key_registry_check|TenantSubscription_plan_id_product_key_fkey/);
@@ -236,15 +238,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A4 — produc
       await expect(pg.query(`INSERT INTO subscription."Plan" (id, key, name) VALUES (gen_random_uuid(), 'no-product', 'x')`)).rejects.toThrow(/product_key/);
       await expect(
         pg.query(
-          `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, composition_role, period_anchor, source, created_by)
-           VALUES (gen_random_uuid(), $1::uuid, $2::uuid, 'BASE', now(), 'MANUAL', 'x')`,
+          `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, composition_role, period_anchor, source, created_by)
+           VALUES (gen_random_uuid(), $1::uuid, $2::uuid, ${publishedVersionOf('$2::uuid')}, 'BASE', now(), 'MANUAL', 'x')`,
           [tenant(), INCLUDED],
         ),
       ).rejects.toThrow(/product_key/);
       await expect(
         pg.query(
-          `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, product_key, period_anchor, source, created_by)
-           VALUES (gen_random_uuid(), $1::uuid, $2::uuid, 'sign', now(), 'MANUAL', 'x')`,
+          `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, period_anchor, source, created_by)
+           VALUES (gen_random_uuid(), $1::uuid, $2::uuid, ${publishedVersionOf('$2::uuid')}, 'sign', now(), 'MANUAL', 'x')`,
           [tenant(), INCLUDED],
         ),
       ).rejects.toThrow(/composition_role/);
@@ -274,8 +276,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A4 — produc
 
     it('the Pact arbiter infers the new index (the INSERT is a no-op on a second run)', async () => {
       const t = tenant();
-      const sql = `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, product_key, composition_role, period_anchor, source, created_by)
-         SELECT gen_random_uuid(), $1::uuid, p.id, p.product_key, 'BASE', now(), 'DEVELOPMENT', 'pact-verify-sign'
+      const sql = `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by)
+         SELECT gen_random_uuid(), $1::uuid, p.id, ${publishedVersionOf('p.id')}, p.product_key, 'BASE', now(), 'DEVELOPMENT', 'pact-verify-sign'
            FROM subscription."Plan" p WHERE p.key = 'aramo-sign-included-v1' AND p.product_key = 'sign'
          ON CONFLICT (tenant_id, product_key) WHERE ended_at IS NULL AND composition_role = 'BASE' DO NOTHING`;
       expect((await pg.query(sql, [t])).rowCount).toBe(1);
@@ -304,8 +306,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A4 — produc
       expect((await pg.query(`SELECT count(*)::int AS n FROM subscription."TenantSubscription" WHERE tenant_id = $1`, [t])).rows[0].n).toBe(3);
       await expect(
         pg.query(
-          `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, product_key, composition_role, period_anchor, source, created_by)
-           VALUES (gen_random_uuid(), $1::uuid, $2::uuid, 'sign', 'ADD_ON', now(), 'MANUAL', 'x')`,
+          `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by)
+           VALUES (gen_random_uuid(), $1::uuid, $2::uuid, ${publishedVersionOf('$2::uuid')}, 'sign', 'ADD_ON', now(), 'MANUAL', 'x')`,
           [tenant(), INCLUDED],
         ),
       ).rejects.toThrow(/TenantSubscription_composition_role_check/);
@@ -389,14 +391,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A4 — produc
       // Same metered keys as Sign, different numbers: a product-blind read would be visible.
       await pg.query(`INSERT INTO subscription."PlanAllowance" (plan_id, allowance_key, included_quantity, unlimited, period) VALUES ($1::uuid, $2, 7, false, 'MONTHLY')`, [ISO_PLAN, KEY]);
       await pg.query(`INSERT INTO subscription."PlanCapacity" (plan_id, capacity_key, limit_quantity, unlimited) VALUES ($1::uuid, $2, 5, false)`, [ISO_PLAN, STORAGE]);
+      // CCP-A5 — a plan created after the A5 migration needs its v1 before a subscription can pin it.
+      await publishTestPlanV1(pg, ISO_PLAN);
     });
 
     async function isoRow(t: string, ref: string): Promise<void> {
       await pg.query(
         `INSERT INTO subscription."TenantSubscription"
-           (id, tenant_id, plan_id, product_key, composition_role, period_anchor, source, created_by, status, billing_provider,
+           (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by, status, billing_provider,
             billing_account_ref, billing_subscription_ref, current_period_end, provider_state_at, activated_by, eligibility_state, eligibility_checked_at)
-         VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3, 'BASE', '2026-10-09T00:00:00Z', 'SELF_SERVICE', 'ccp-a4', 'ACTIVE', 'STRIPE',
+         VALUES (gen_random_uuid(), $1::uuid, $2::uuid, ${publishedVersionOf('$2::uuid')}, $3, 'BASE', '2026-10-09T00:00:00Z', 'SELF_SERVICE', 'ccp-a4', 'ACTIVE', 'STRIPE',
                  $4, $5, '2026-11-09T00:00:00Z', '2026-10-09T00:00:00Z', 'iso-owner', 'OK', '2026-10-09T00:00:00Z')`,
         [t, ISO_PLAN, ISO, `cus_iso_${t}`, ref],
       );
@@ -431,19 +435,22 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A4 — produc
     it('N-7: a subscription whose product differs from its plan is refused by the DB', async () => {
       await expect(
         pg.query(
-          `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, product_key, composition_role, period_anchor, source, created_by)
-           VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3, 'BASE', now(), 'MANUAL', 'x')`,
+          `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by)
+           VALUES (gen_random_uuid(), $1::uuid, $2::uuid, ${publishedVersionOf('$2::uuid')}, $3, 'BASE', now(), 'MANUAL', 'x')`,
           [tenant(), INCLUDED, ISO],
         ),
       ).rejects.toThrow(/TenantSubscription_plan_id_product_key_fkey/);
       await expect(
         pg.query(
-          `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, product_key, composition_role, period_anchor, source, created_by)
-           VALUES (gen_random_uuid(), $1::uuid, $2::uuid, 'sign', 'BASE', now(), 'MANUAL', 'x')`,
+          `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by)
+           VALUES (gen_random_uuid(), $1::uuid, $2::uuid, ${publishedVersionOf('$2::uuid')}, 'sign', 'BASE', now(), 'MANUAL', 'x')`,
           [tenant(), ISO_PLAN],
         ),
       ).rejects.toThrow(/TenantSubscription_plan_id_product_key_fkey/);
-      await expect(pg.query(`UPDATE subscription."TenantSubscription" SET plan_id = $1::uuid WHERE tenant_id = $2 AND product_key = 'sign'`, [ISO_PLAN, iso.t])).rejects.toThrow(
+      // CCP-A5 — the pin moves with the plan (composite FK), so only the product FK is in question here.
+      await expect(
+        pg.query(`UPDATE subscription."TenantSubscription" SET plan_id = $1::uuid, plan_version_id = ${publishedVersionOf('$1::uuid')} WHERE tenant_id = $2 AND product_key = 'sign'`, [ISO_PLAN, iso.t]),
+      ).rejects.toThrow(
         /TenantSubscription_plan_id_product_key_fkey/,
       );
       await expect(pg.query(`UPDATE subscription."Plan" SET product_key = $1 WHERE id = $2::uuid`, [ISO, INCLUDED])).rejects.toThrow(/TenantSubscription_plan_id_product_key_fkey/);

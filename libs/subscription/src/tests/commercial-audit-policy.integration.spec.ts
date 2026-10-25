@@ -13,6 +13,7 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 
 import { CCP_A2_MIGRATION, seededPolicyV1 } from './fixtures/commercial-policy-seed.js';
 import { CCP_A4_MIGRATION } from './fixtures/ccp-a4.js';
+import { CCP_A5_MIGRATION } from './fixtures/ccp-a5.js';
 
 // CCP-A2 (PBD §5.1 row A2, mandatory tests) on real Postgres 17, with the A2 migration
 // applied on top of the FULL subscription chain (plus the metering init it depends on):
@@ -34,7 +35,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20261022110100_billing_flag_domain_reason/migration.sql',
   '../../prisma/migrations/20261023100000_sign_personal_free/migration.sql',
   '../../prisma/migrations/20261023120000_legal_acceptance_in_app/migration.sql',
-].map((p) => resolve(__dirname, p)).concat(CCP_A4_MIGRATION);
+].map((p) => resolve(__dirname, p)).concat(CCP_A4_MIGRATION, CCP_A5_MIGRATION);
 
 const V1 = '019a0000-0000-7000-8000-0000000cc201';
 const SEED_AUDIT = '019a0000-0000-7000-8000-0000000cc203';

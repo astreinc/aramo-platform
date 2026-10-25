@@ -28,6 +28,15 @@ const ROOT = resolve(__dirname, '../../../..');
 const SUB_DIR = resolve(ROOT, 'libs/subscription/prisma/migrations');
 const A4_NAME = '20261025140000_ccp_a4_product_dimension';
 const A4 = resolve(SUB_DIR, A4_NAME, 'migration.sql');
+// CCP-A5 — applied right after A4: the code under test reads limits through the pinned plan
+// version, so the golden also proves A5 changes no result (plan versions + v1 backfill).
+const A5 = resolve(SUB_DIR, '20261025160000_ccp_a5_plan_version', 'migration.sql');
+// A plan created after A5 needs its v1 (DRAFT, then PUBLISHED) before a subscription can pin it.
+const PUBLISH_V1 = `
+  INSERT INTO subscription."PlanVersion" (id, plan_id, version_number, status, content, content_checksum, created_by, created_at)
+  SELECT gen_random_uuid(), $1::uuid, 1, 'DRAFT', x.c, subscription.ccp_plan_version_checksum(x.c), 'test', now()
+    FROM (SELECT subscription.ccp_plan_live_content($1::uuid) AS c) x`;
+const PUBLISHED = (planSql: string): string => `(SELECT v.id FROM subscription."PlanVersion" v WHERE v.plan_id = ${planSql} AND v.status = 'PUBLISHED')`;
 const PRE_A4 = [
   resolve(ROOT, 'libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql'),
   ...readdirSync(SUB_DIR)
@@ -85,7 +94,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A4 N-13a — 
         );
       }
     }
-    if (!CAPTURE) await pg.query(readFileSync(A4, 'utf8'));
+    if (!CAPTURE) {
+      await pg.query(readFileSync(A4, 'utf8'));
+      await pg.query(readFileSync(A5, 'utf8'));
+    }
     prisma = new SubscriptionPrismaService(container.getConnectionUri());
     await prisma.$connect();
     const allowance = new AllowanceService(prisma);
@@ -158,6 +170,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A4 N-13a — 
     const plan = '019a0000-a4a4-7000-8000-0000000000e3';
     await pg.query(`INSERT INTO subscription."Plan" (id, key, name, product_key) VALUES ($1::uuid, 'ccp-a4-iso-sign-gate', 'iso', $2)`, [plan, ISO]);
     await pg.query(`INSERT INTO subscription."PlanAllowance" (plan_id, allowance_key, included_quantity, unlimited, period) VALUES ($1::uuid, 'sign.envelopes', 7, false, 'MONTHLY')`, [plan]);
+    await pg.query(PUBLISH_V1, [plan]);
+    await pg.query(`UPDATE subscription."PlanVersion" SET status = 'PUBLISHED', published_at = now() WHERE plan_id = $1::uuid`, [plan]);
     const golden = JSON.parse(readFileSync(GOLDEN, 'utf8')) as { observation: Record<string, unknown> };
     vi.useFakeTimers({ toFake: ['Date'] });
     vi.setSystemTime(NOW);
@@ -166,14 +180,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A4 N-13a — 
         const t = T(100 + n);
         if (signPlan !== null) {
           await pg.query(
-            `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, product_key, composition_role, period_anchor, source, created_by)
-             VALUES (gen_random_uuid(), $1::uuid, $2::uuid, 'sign', 'BASE', '2026-10-01T00:00:00Z', 'MANUAL', 'ccp-a4-ats')`,
+            `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by)
+             VALUES (gen_random_uuid(), $1::uuid, $2::uuid, ${PUBLISHED('$2::uuid')}, 'sign', 'BASE', '2026-10-01T00:00:00Z', 'MANUAL', 'ccp-a4-ats')`,
             [t, PLAN[signPlan]],
           );
         }
         await pg.query(
-          `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, product_key, composition_role, period_anchor, source, created_by)
-           VALUES (gen_random_uuid(), $1::uuid, $2::uuid, $3, 'BASE', '2026-10-09T00:00:00Z', 'MANUAL', 'ccp-a4-iso')`,
+          `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by)
+           VALUES (gen_random_uuid(), $1::uuid, $2::uuid, ${PUBLISHED('$2::uuid')}, $3, 'BASE', '2026-10-09T00:00:00Z', 'MANUAL', 'ccp-a4-iso')`,
           [t, plan, ISO],
         );
         if (used > 0) {
