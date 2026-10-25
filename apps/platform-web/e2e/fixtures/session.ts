@@ -24,11 +24,19 @@ export const READ_SCOPES = [
 
 export const PLATFORM_TENANT_ID = 'tn_00ARAMOPLATFORM';
 
-export type Persona = 'operator' | 'auditor' | 'tenantUser';
+// CCP-B2 — two CCP commercial personas from Commercial Control Plane v1.0.dc.html PEOPLE, with
+// their CCP A1 §4.1 scope bundles: Lena Fischer (catalog_manager), Daniel Reyes (platform_owner).
+const ENTRY = 'platform:tenant:read';
+export const CATALOG_MANAGER_SCOPES = [ENTRY, 'platform:catalog:read', 'platform:catalog:draft', 'platform:approval:read'] as const;
+export const PLATFORM_OWNER_SCOPES = [ENTRY, 'platform:catalog:read', 'platform:catalog:approve', 'platform:catalog:publish', 'platform:subscription:read', 'platform:subscription:approve', 'platform:entitlement:approve', 'platform:billing:read', 'platform:billing:approve', 'platform:approval:read', 'platform:commercial:audit:read'] as const;
+
+export type Persona = 'operator' | 'auditor' | 'tenantUser' | 'catalogManager' | 'platformOwner';
 
 export const PERSONAS: Record<Persona, { sub: string; email: string; name: string; tenantId: string; tenant: string; roles: string[]; scopes: readonly string[] }> = {
   operator: { sub: 'usr_7f3a91c2e48b', email: 'maya.okafor@aramo.ai', name: 'Maya Okafor', tenantId: PLATFORM_TENANT_ID, tenant: 'Aramo Platform', roles: ['super_admin'], scopes: ALL_SCOPES },
   auditor: { sub: 'usr_2b9d04e1c7aa', email: 'dev.raman@aramo.ai', name: 'Dev Raman', tenantId: PLATFORM_TENANT_ID, tenant: 'Aramo Platform', roles: ['read_only_auditor'], scopes: READ_SCOPES },
+  catalogManager: { sub: 'usr_5c1e0b7a9d24', email: 'lena.fischer@aramo.ai', name: 'Lena Fischer', tenantId: PLATFORM_TENANT_ID, tenant: 'Aramo Platform', roles: ['catalog_manager'], scopes: CATALOG_MANAGER_SCOPES },
+  platformOwner: { sub: 'usr_0d7a42c9e1b3', email: 'daniel.reyes@aramo.ai', name: 'Daniel Reyes', tenantId: PLATFORM_TENANT_ID, tenant: 'Aramo Platform', roles: ['platform_owner'], scopes: PLATFORM_OWNER_SCOPES },
   tenantUser: { sub: 'usr_91ac0d55e3f0', email: 'maya@northwind.com', name: 'Maya Okafor', tenantId: 'tn_01J8Q2NWX4', tenant: 'Northwind Logistics', roles: ['tenant_admin'], scopes: [] },
 };
 

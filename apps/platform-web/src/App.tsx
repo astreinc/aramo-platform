@@ -22,6 +22,7 @@ import { MatchingPolicyView } from './matching/MatchingPolicyView';
 import { PersonalReviewView } from './personal/PersonalReviewView';
 import { PersonalInviteView } from './personal/PersonalInviteView';
 import { PlatformAdminsView } from './admins/PlatformAdminsView';
+import { CatalogView } from './commercial/catalog/CatalogView';
 
 // The platform console app. RouteGuard handles only loading, unauthenticated
 // (→ sign-in) and the TENANT_ACCESS_DENIED wrong-account redirect — it no longer
@@ -150,6 +151,10 @@ export function PlatformConsole({ session }: { readonly session: Session }) {
         {/* PLATFORM-UX-1 (directive R-12) — Platform admins at /admins (never under
             /platform/, which nginx proxies to the backend). */}
         <Route path="/admins" element={gate(P.adminInvite, 'Platform admins', <PlatformAdminsView />)} />
+        {/* CCP-B2 (Program Build Directive §5.3 row B2) — the product and plan catalog, gated on
+            platform:catalog:read (the 6 CCP roles; never super_admin); draft actions gate on
+            platform:catalog:draft inside the view. The Commercial rail item comes with CCP-B1. */}
+        <Route path="/commercial/catalog" element={gate(P.catalogRead, 'Catalog', <CatalogView session={session} />)} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </PlatformShell>

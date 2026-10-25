@@ -4,6 +4,7 @@
 import type { Locator, Page } from '@playwright/test';
 
 import type { MockOptions } from '../fixtures/mock-api';
+import type { CcpProtoProps } from '../support/ccp-proto';
 import type { ProtoProps, StudioProtoProps } from '../support/proto';
 
 export interface ViewportSpec {
@@ -52,10 +53,12 @@ export interface ScreenState {
      * The design file: Platform Admin.dc.html (default) or Template Studio.dc.html
      * (the template library and the Studio, handoff §10).
      */
-    readonly file?: 'admin' | 'studio';
+    readonly file?: 'admin' | 'studio' | 'ccp';
     readonly props?: ProtoProps;
     /** Template Studio.dc.html props (persona manager / reader). */
     readonly studio?: StudioProtoProps;
+    /** CCP-B2 — Commercial Control Plane v1.0.dc.html props (persona). */
+    readonly ccp?: CcpProtoProps;
     /** Route deep link (`#tenants`). */
     readonly hash?: string;
     /** setState patch applied after load (route, ids, tabs, filters…). */

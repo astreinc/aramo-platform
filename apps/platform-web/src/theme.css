@@ -144,6 +144,13 @@
   --pw-tracking-label: 0.09em; /* rail group label */
   --pw-tracking-caps: 0.05em; /* table heads, Change label */
 
+  /* CCP-B2 — Commercial Control Plane v1.0.dc.html (CCP-UI v1.0) values not in the
+     PLATFORM-UX-1 file. */
+  --pw-fs-18: 18px; /* commercial request dialog title */
+  --pw-ccp-diff-bg: #fffbf2; /* a changed row in a draft diff */
+  --pw-ccp-empty-line: #c3cbd2; /* the dashed "No commercial plans yet" card */
+  --pw-shadow-dialog-ccp: 0 24px 64px rgba(15, 25, 40, 0.24);
+
   /* Shell geometry (handoff §3.1) */
   --pw-envbar-h: 30px;
   --pw-topbar-h: 56px;

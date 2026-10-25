@@ -9,7 +9,9 @@ import { resolve } from 'node:path';
 import { test } from '@playwright/test';
 
 import { boxesOf, paint, saveRects } from '../support/masks';
+import { openCcpProto } from '../support/ccp-proto';
 import { openProto, openStudioProto, protoCall, protoState, settle } from '../support/proto';
+
 import { VIEWPORTS } from './state-types';
 import { STATES } from './states';
 
@@ -33,7 +35,8 @@ for (const s of STATES) {
           }
         });
       }
-      if (s.proto.file === 'studio') await openStudioProto(page, s.proto.studio ?? {}, s.proto.hash ?? '');
+      if (s.proto.file === 'ccp') await openCcpProto(page, s.proto.ccp ?? {}, s.proto.hash ?? 'catalog');
+      else if (s.proto.file === 'studio') await openStudioProto(page, s.proto.studio ?? {}, s.proto.hash ?? '');
       else await openProto(page, s.proto.props ?? {}, s.proto.hash ?? '');
       if (s.proto.state) await protoState(page, s.proto.state);
       if (s.proto.call) await protoCall(page, s.proto.call);

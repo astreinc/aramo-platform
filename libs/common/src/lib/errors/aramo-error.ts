@@ -353,6 +353,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   COMMERCIAL_POLICY_UNAVAILABLE: 503,
   // CCP-A9 — last-effective-platform_owner invariant.
   PLATFORM_LAST_OWNER: 409,
+  // CCP-B2 — catalog draft writes (a published version is never edited).
+  COMMERCIAL_CATALOG_CONFLICT: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

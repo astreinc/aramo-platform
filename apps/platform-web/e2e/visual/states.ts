@@ -9,6 +9,7 @@ import { PERSONAL_STATES } from './states-personal';
 import { SKILL_STATES } from './states-skills';
 import { MISC_STATES } from './states-misc';
 import { STUDIO_STATES } from './states-studio';
+import { CCP_CATALOG_STATES } from './states-ccp-catalog';
 
 export const STATES: readonly ScreenState[] = [
   ...SHELL_STATES,
@@ -17,4 +18,5 @@ export const STATES: readonly ScreenState[] = [
   ...SKILL_STATES,
   ...MISC_STATES,
   ...STUDIO_STATES,
+  ...CCP_CATALOG_STATES,
 ];

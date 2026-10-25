@@ -1067,6 +1067,12 @@ export const ERROR_CODES = [
   // effective platform_owner (DB trigger identity.ccp_a9_assert_platform_keeps_owner, or the
   // governed ROLE_REVOKE pre-check). details.reason = 'platform_last_owner'. HTTP 409.
   'PLATFORM_LAST_OWNER',
+  // CCP-B2 (PBD §5.3 row B2; MP-A2 N-16) — a catalog draft write refused: the version is not a
+  // DRAFT (a PUBLISHED or RETIRED version is never edited; a change of terms is a new version),
+  // the plan already has a DRAFT, the draft changed since it was read, or the edit names a term
+  // the version does not carry. details.reason = not_draft | draft_exists | stale | plan_mismatch
+  // | contract_priced | term_missing. HTTP 409.
+  'COMMERCIAL_CATALOG_CONFLICT',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

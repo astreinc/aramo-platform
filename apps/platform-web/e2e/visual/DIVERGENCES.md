@@ -96,3 +96,26 @@ A state whose text rasterises differently on every run carries a per-state
 | ID | State | Allowance | Measured | Evidence |
 |---|---|---|---|---|
 | AA-01 | `studio-withdraw-dialog` | 160 px | 116 (900), 134 (1440) | diff = dialog title, field labels and live line glyph edges; boxes and positions identical |
+| AA-B2-01 | `ccp-catalog-publish-dialog`, `ccp-catalog-retire-dialog` (CCP-B2) | 300 px | 202 / 131 (publish-dialog 1440, two runs); 0 (retire-dialog, both viewports, `PW_STRICT=1`) | diff = dialog title, field labels, diff-row and chain-strip glyph edges; boxes and positions identical |
+
+## CCP-B2 — Catalog (`states-ccp-catalog.ts`) against the CCP-UI v1.0 release
+
+Reference: `doc/design-reference/platform-admin/ccp/CCP-UI-v1_0/Commercial Control Plane v1.0.dc.html`
+(byte copy of the pinned release; `e2e/support/ccp-proto.ts` re-verifies every served file against
+its `MANIFEST.sha256`). Seven screen-states × 1440 / 900 = 14 comparisons: draft (catalog
+manager), view only (platform owner), published, retired (grandfathered), no plans (ATS), the
+publish dialog and the retire dialog. Under `PW_STRICT=1` (0 px) 9 of 14 are pixel-exact; the rest
+differ by 2–202 glyph-edge pixels.
+
+| ID | Divergence | Cause | Screen-states |
+|---|---|---|---|
+| DV-B2-01 | The rail (with the Commercial group), the breadcrumb ("Commercial / Catalog"), the environment bar's CCP context line ("commercial changes need approval from other people"), the ⌘K placeholder ("Tenants, requests, pages"), and at 900px the identity text the longer context line truncates | **Pending CCP-B1** (built in parallel): the shell, rail, crumbs and ⌘K belong to B1's Commercial rail group; B2 does not edit the shell. **The lead removes these masks at the B1 + B2 merge and re-captures** | every ccp-catalog state |
+| DV-B2-02 | No "SAMPLE NAMES AND PRICES" tag on the plans card and no "· SAMPLE" on the Aramo Sign product card | The build shows the real catalog; "SAMPLE" marks the prototype's mock prices (handoff "Mock data only in the prototype"). Lead to confirm | every ccp-catalog state |
+| DV-B2-03 | Seats: an empty disabled field (tooltip "Not part of the Aramo Sign plan model…") and "—" → "—" in the diff, where the design shows seat counts | Data gap (R-13): the Sign plan model has no seat term (only `sign.envelopes`, `sign.forms`, `sign.templates`, `sign.storage_bytes`); no term is invented | draft, view only, published, retired, publish dialog, retire dialog |
+| DV-B2-04 | The open-request line names the change request by its short UUID ("cca1000…") where the design shows "CR-1044"; the id's width moves the rest of the line, so the line's text is masked (the box is not) | Real ids are UUIDs (CCP-A3); the human request number is not in the contract | draft, view only |
+| DV-B2-05 (fixture note, no mask) | The fixture reproduces the prototype's data, including two PUBLISHED versions of Starter and of Team at once | The A5 store admits one PUBLISHED version per plan (publishing retires the previous one), so the API never returns that state; the renderer is data-driven and the unit specs cover the real states | draft, view only, published, publish dialog, retire dialog |
+
+Not pixel-compared: the catalog's loading skeleton (the CCP file draws no catalog loading state;
+the build uses the PLATFORM-UX-1 `SkeletonPanel`, handoff §10 item 11 — covered by the unit spec)
+and the in-shell access-denied state for super_admin (its commercial variant naming the six roles
+is CCP-B1's, handoff §11; the build shows the PLATFORM-UX-1 per-route AccessDenied until then).

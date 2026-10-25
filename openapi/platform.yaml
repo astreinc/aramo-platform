@@ -105,6 +105,19 @@ tags:
       snapshotted when the request is created. Every act is recorded in the commercial
       audit stream. Nothing is applied by these routes. Platform-tier only.
 
+  - name: Platform Commercial Catalog
+    description: |
+      CCP-B2 — the product and plan catalog: the closed product registry (v1: `sign`), its
+      plans and every plan version (DRAFT, PUBLISHED, RETIRED) with its terms, the number of
+      open subscriptions pinned to each version (grandfathering: a subscription keeps its
+      pinned version) and the open publish/retire change requests that target it. Reads
+      require `platform:catalog:read` (the 6 CCP commercial roles; never super_admin, which
+      is refused with 403 `INSUFFICIENT_PERMISSIONS`). The only writes create and edit a
+      DRAFT and require `platform:catalog:draft` (catalog_manager). A PUBLISHED or RETIRED
+      version is never edited (409 `COMMERCIAL_CATALOG_CONFLICT`, details.reason
+      `not_draft`); a change of terms is a new draft. Publishing and retiring are
+      `PLAN_VERSION_PUBLISH` / `PLAN_RETIRE` change requests (Finance → Owner) applied by a
+      later slice; these routes never publish, retire or pin. Platform-tier only.
 paths:
   /v1/signup/sign/terms:
     get:
@@ -2396,6 +2409,141 @@ paths:
         '409':
           $ref: '#/components/responses/CommercialApprovalRefused'
 
+  /platform/commercial/catalog:
+    get:
+      operationId: getPlatformCommercialCatalog
+      tags: [Platform Commercial Catalog]
+      summary: Read the product and plan catalog (registry products, plans, versions, pin counts).
+      description: |
+        Read-only. Every registered product with its plans; each plan with its versions
+        (newest first), their terms, the open-subscription pin count and the open
+        publish/retire change requests; plus the approval chain a publish or retire request
+        gets under the ACTIVE commercial policy (`publish_chain`, null when no valid policy).
+        Requires `platform:catalog:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      responses:
+        '200':
+          description: The catalog.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialCatalog'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
+  /platform/commercial/catalog/versions/{versionId}:
+    get:
+      operationId: getPlatformCommercialCatalogVersion
+      tags: [Platform Commercial Catalog]
+      summary: Read one plan version (terms, content, pinned tenants, open requests).
+      description: Read-only. `pinned_tenants` lists the tenants whose open subscription is pinned to this version. Requires `platform:catalog:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CatalogPlanVersionId'
+      responses:
+        '200':
+          description: The plan version.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialCatalogVersionDetail'
+        '400':
+          $ref: '#/components/responses/CommercialCatalogValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/CommercialCatalogNotFound'
+    patch:
+      operationId: updatePlatformCommercialCatalogDraft
+      tags: [Platform Commercial Catalog]
+      summary: Edit a DRAFT plan version (price, envelopes per month, storage).
+      description: |
+        Edits a DRAFT only; a PUBLISHED or RETIRED version is refused with 409
+        `COMMERCIAL_CATALOG_CONFLICT` (details.reason `not_draft`). `expected_content_checksum`
+        must equal the draft's current checksum (`stale` otherwise). Only the version's
+        existing terms are editable (`term_missing` otherwise); a contract-priced plan has
+        no list price (`contract_priced`). The currency and billing interval are v1 locks
+        and have no field. Requires `platform:catalog:draft`; audited.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CatalogPlanVersionId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCommercialCatalogDraft'
+      responses:
+        '200':
+          description: The edited draft.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialCatalogVersionEnvelope'
+        '400':
+          $ref: '#/components/responses/CommercialCatalogValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/CommercialCatalogNotFound'
+        '409':
+          $ref: '#/components/responses/CommercialCatalogConflict'
+        '503':
+          $ref: '#/components/responses/CommercialPolicyUnavailable'
+
+  /platform/commercial/catalog/plans/{planId}/drafts:
+    post:
+      operationId: createPlatformCommercialCatalogDraft
+      tags: [Platform Commercial Catalog]
+      summary: Create a DRAFT plan version copied from one of the plan's versions.
+      description: |
+        Appends a DRAFT with the next version number, its content copied from
+        `from_version_id` (a version of the same plan; `plan_mismatch` otherwise). One DRAFT
+        per plan (`draft_exists`). The source version is not changed. Requires
+        `platform:catalog:draft`; audited.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CatalogPlanId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCommercialCatalogDraft'
+      responses:
+        '201':
+          description: The new draft.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialCatalogVersionEnvelope'
+        '400':
+          $ref: '#/components/responses/CommercialCatalogValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/CommercialCatalogNotFound'
+        '409':
+          $ref: '#/components/responses/CommercialCatalogConflict'
+        '503':
+          $ref: '#/components/responses/CommercialPolicyUnavailable'
+
   # DOC-TEMPLATE-LIB-1 T-2 (§6.1, §8.1) — Aramo default document templates + the template
   # variable catalog. Served by apps/api (nginx routes these two prefixes to api:3000).
   /platform/document-templates/document-types:
@@ -3550,6 +3698,22 @@ components:
       schema:
         type: string
         format: uuid
+    CatalogPlanVersionId:
+      name: versionId
+      in: path
+      required: true
+      description: The plan version's UUID.
+      schema:
+        type: string
+        format: uuid
+    CatalogPlanId:
+      name: planId
+      in: path
+      required: true
+      description: The plan's UUID.
+      schema:
+        type: string
+        format: uuid
     TenantIdParam:
       name: tenant_id
       in: path
@@ -3744,6 +3908,28 @@ components:
             $ref: 'common.yaml#/components/schemas/ErrorResponse'
     CommercialPolicyUnavailable:
       description: '`COMMERCIAL_POLICY_UNAVAILABLE` — no valid commercial policy version (fail closed).'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    CommercialCatalogValidation:
+      description: '`VALIDATION_ERROR` — a malformed id or body (an unknown field, a negative or non-integer term, a malformed checksum).'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    CommercialCatalogNotFound:
+      description: '`NOT_FOUND` — no such plan or plan version in a registered product.'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    CommercialCatalogConflict:
+      description: |
+        `COMMERCIAL_CATALOG_CONFLICT` — details.reason `not_draft` (the version is PUBLISHED or
+        RETIRED: published versions are immutable), `draft_exists` (the plan already has a
+        DRAFT), `stale` (the draft changed since it was read), `plan_mismatch` (the source
+        version belongs to another plan), `contract_priced` or `term_missing`.
       content:
         application/json:
           schema:
@@ -4436,6 +4622,235 @@ components:
             $ref: '#/components/schemas/CommercialChangeRequest'
         next_cursor:
           type: [string, 'null']
+
+    CommercialCatalogVersionTerms:
+      type: object
+      additionalProperties: false
+      required: [list_price_minor, currency, billing_interval, sales_model, contract_priced, envelopes_per_month, envelopes_unlimited, envelopes_present, storage_bytes, storage_unlimited, storage_present]
+      properties:
+        list_price_minor:
+          type: [integer, 'null']
+          description: Minor units (USD cents); null when contract-priced.
+        currency:
+          type: [string, 'null']
+        billing_interval:
+          type: [string, 'null']
+        sales_model:
+          type: string
+        contract_priced:
+          type: boolean
+        envelopes_per_month:
+          type: [integer, 'null']
+          description: The monthly `sign.envelopes` allowance; null when unlimited or absent.
+        envelopes_unlimited:
+          type: boolean
+        envelopes_present:
+          type: boolean
+        storage_bytes:
+          type: [integer, 'null']
+          description: The `sign.storage_bytes` capacity in bytes; null when unlimited or absent.
+        storage_unlimited:
+          type: boolean
+        storage_present:
+          type: boolean
+
+    CommercialCatalogOpenRequest:
+      type: object
+      additionalProperties: false
+      required: [id, action_type, state, expires_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        action_type:
+          type: string
+          enum: [PLAN_VERSION_PUBLISH, PLAN_RETIRE]
+        state:
+          type: string
+        expires_at:
+          type: [string, 'null']
+          format: date-time
+
+    CommercialCatalogVersion:
+      type: object
+      additionalProperties: false
+      required: [id, plan_id, version_number, status, content_checksum, note, created_by, created_at, published_at, retired_at, terms, pinned_subscriptions, open_requests]
+      properties:
+        id:
+          type: string
+          format: uuid
+        plan_id:
+          type: string
+          format: uuid
+        version_number:
+          type: integer
+        status:
+          type: string
+          enum: [DRAFT, PUBLISHED, RETIRED]
+        content_checksum:
+          type: string
+        note:
+          type: [string, 'null']
+        created_by:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        published_at:
+          type: [string, 'null']
+          format: date-time
+        retired_at:
+          type: [string, 'null']
+          format: date-time
+        terms:
+          $ref: '#/components/schemas/CommercialCatalogVersionTerms'
+        pinned_subscriptions:
+          type: integer
+          description: Open BASE subscriptions pinned to this version.
+        open_requests:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommercialCatalogOpenRequest'
+
+    CommercialCatalogPlan:
+      type: object
+      additionalProperties: false
+      required: [id, key, product_key, name, status, sales_model, sellable, display_order]
+      properties:
+        id:
+          type: string
+          format: uuid
+        key:
+          type: string
+        product_key:
+          type: string
+          enum: [sign]
+        name:
+          type: string
+        status:
+          type: string
+        sales_model:
+          type: string
+        sellable:
+          type: boolean
+        display_order:
+          type: integer
+
+    CommercialCatalog:
+      type: object
+      additionalProperties: false
+      required: [products, publish_chain]
+      properties:
+        products:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [product_key, plans]
+            properties:
+              product_key:
+                type: string
+                enum: [sign]
+              plans:
+                type: array
+                items:
+                  allOf:
+                    - $ref: '#/components/schemas/CommercialCatalogPlan'
+                    - type: object
+                      required: [versions]
+                      properties:
+                        versions:
+                          type: array
+                          items:
+                            $ref: '#/components/schemas/CommercialCatalogVersion'
+        publish_chain:
+          oneOf:
+            - type: 'null'
+            - type: object
+              additionalProperties: false
+              required: [rule, step_role_keys, policy_version_id, policy_version_number, approval_expiry_hours]
+              properties:
+                rule:
+                  type: string
+                step_role_keys:
+                  type: array
+                  items:
+                    type: string
+                policy_version_id:
+                  type: string
+                  format: uuid
+                policy_version_number:
+                  type: integer
+                approval_expiry_hours:
+                  type: integer
+
+    CommercialCatalogVersionDetail:
+      type: object
+      additionalProperties: false
+      required: [version, plan, content, pinned_tenants]
+      properties:
+        version:
+          $ref: '#/components/schemas/CommercialCatalogVersion'
+        plan:
+          $ref: '#/components/schemas/CommercialCatalogPlan'
+        content:
+          type: object
+          description: The version's format-1 content document (checksum-verified).
+        pinned_tenants:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [tenant_id, name]
+            properties:
+              tenant_id:
+                type: string
+                format: uuid
+              name:
+                type: string
+
+    CommercialCatalogVersionEnvelope:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        version:
+          $ref: '#/components/schemas/CommercialCatalogVersion'
+
+    CreateCommercialCatalogDraft:
+      type: object
+      additionalProperties: false
+      required: [from_version_id]
+      properties:
+        from_version_id:
+          type: string
+          format: uuid
+        note:
+          type: string
+          maxLength: 500
+
+    UpdateCommercialCatalogDraft:
+      type: object
+      additionalProperties: false
+      required: [expected_content_checksum]
+      properties:
+        expected_content_checksum:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        list_price_minor:
+          type: integer
+          minimum: 0
+          maximum: 100000000
+        envelopes_per_month:
+          type: [integer, 'null']
+          minimum: 0
+          maximum: 100000000
+        storage_bytes:
+          type: [integer, 'null']
+          minimum: 0
+        note:
+          type: string
+          maxLength: 500
 
     CommercialChangeRequestDetail:
       type: object

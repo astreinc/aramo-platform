@@ -109,6 +109,7 @@
     "apps/platform-admin/src/app/signup/personal-signup.controller.ts": "PZ",
     "apps/platform-admin/src/app/platform/platform-personal.controller.ts": "AP",
     "apps/platform-admin/src/app/platform/platform-commercial-audit.controller.ts": "AP",
+    "apps/platform-admin/src/app/platform/platform-commercial-catalog.controller.ts": "AP",
     "apps/platform-admin/src/app/platform/platform-commercial-change-request.controller.ts": "AP",
     "libs/activity/src/lib/activity.controller.ts": "AP",
     "libs/attachment/src/lib/attachment.controller.ts": "AP",

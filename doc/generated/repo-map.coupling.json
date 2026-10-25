@@ -10381,6 +10381,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/platform-admin/src/tests/ccp-b2-commercial-catalog-authorization.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/src/lib/commercial/commercial-catalog.service.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
       "status": "excluded",
       "to": "libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql"
@@ -10511,6 +10517,11 @@
       "to": "apps/platform-web/src/platform-api.ts"
     },
     {
+      "from": "apps/platform-web/e2e/support/ccp-proto.ts",
+      "status": "unscoped",
+      "to": "doc/ccp/design-inputs.md"
+    },
+    {
       "from": "apps/platform-web/e2e/visual/DIVERGENCES.md",
       "status": "unscoped",
       "to": "scripts/verify-vocabulary.sh"
@@ -10529,6 +10540,11 @@
       "from": "apps/platform-web/project.json",
       "status": "unscoped",
       "to": "apps/platform-web/vite.config.ts"
+    },
+    {
+      "from": "apps/platform-web/src/commercial/catalog/catalog-api.ts",
+      "status": "production",
+      "to": "pact/consumers/platform-web-consumer/src/platform-commercial-catalog.consumer.test.ts"
     },
     {
       "from": "apps/platform-web/src/tenants/tenant-roles.ts",
@@ -10983,6 +10999,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform-commercial-audit.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-catalog.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -13931,6 +13952,76 @@
       "from": "doc/ccp/slices/CCP-A9-pre-execution.md",
       "status": "unscoped",
       "to": "libs/subscription/src/lib/commercial/commercial-operator.repository.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B2-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/App.tsx"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B2-pre-execution.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-orphan-scopes.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B2-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B2-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/design-inputs.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B2-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A10-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B2-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A3-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B2-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A4-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B2-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A5-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B2-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/identity/scripts/scope-catalog-consistency.mjs"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B2-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261025160000_ccp_a5_plan_version/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B2-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-change-request.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B2-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/plan-version.repository.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B2-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/product-registry.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B2-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/support/ccp-a3-database.ts"
     },
     {
       "from": "doc/design-reference/platform-admin/github.md",
@@ -28151,6 +28242,16 @@
       "from": "pact/consumers/intelligence-integration-consumer/vitest.config.ts",
       "status": "unscoped",
       "to": "libs/intelligence-integration/src/client.ts"
+    },
+    {
+      "from": "pact/consumers/platform-web-consumer/src/platform-commercial-catalog.consumer.test.ts",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/commercial/catalog/catalog-api.ts"
+    },
+    {
+      "from": "pact/consumers/platform-web-consumer/src/platform-commercial-catalog.consumer.test.ts",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-platform-admin.ts"
     },
     {
       "from": "pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts",

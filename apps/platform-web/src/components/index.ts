@@ -1,6 +1,16 @@
 // PLATFORM-UX-1 F-1 (directive R-3) — the NEW platform-web components. Local to
 // platform-web; promoting any of them to fe-foundation needs a later ruling.
 export { AccessDenied, type AccessDeniedProps } from './AccessDenied';
+export { ChainPreview, type ChainPreviewProps } from './ChainPreview';
+export {
+  CommercialRequestDialog,
+  RequestField,
+  typedTokenMatches,
+  type CommercialCommitTone,
+  type CommercialDiffRow,
+  type CommercialRequestDialogProps,
+  type RequestFieldProps,
+} from './CommercialRequestDialog';
 export { ConfirmDialog, type ConfirmDialogProps, type ConfirmTone } from './ConfirmDialog';
 export {
   FieldAck,
