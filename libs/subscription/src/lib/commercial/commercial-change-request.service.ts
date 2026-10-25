@@ -1008,7 +1008,8 @@ export class CommercialChangeRequestService {
     return true;
   }
 
-  private async expireOpenFor(tx: Tx, tenant_id: string, product_key: string, now: Date, ctx: CommercialCallContext): Promise<void> {
+  /** Lazily expires the due PENDING requests of a tenant × product (CCP-A8 calls it in its own create transaction). */
+  async expireOpenFor(tx: Tx, tenant_id: string, product_key: string, now: Date, ctx: CommercialCallContext): Promise<void> {
     const due = (await tx.commercialChangeRequest.findMany({ where: { tenant_id, product_key, state: 'PENDING_APPROVAL', expires_at: { lte: now } } })) as CommercialChangeRequestRow[];
     for (const r of due) {
       await tx.$executeRawUnsafe(`SELECT 1 FROM subscription."CommercialChangeRequest" WHERE id = $1::uuid FOR UPDATE`, r.id);
@@ -1140,8 +1141,9 @@ export class CommercialChangeRequestService {
 export function applyActionable(actor: CommercialActor, req: Pick<CommercialChangeRequestRow, 'action_type' | 'state' | 'requested_by'>): boolean {
   if (actor.actor_kind !== 'user' || actor.user_id !== req.requested_by) return false;
   if (req.state !== 'APPROVED' && req.state !== 'APPLY_FAILED') return false;
-  // Merge train TD-MERGE-26: the CCP-A7 revoke is applied by the same route (requester-only).
-  if (!isA6Applicable(req.action_type) && !isCatalogApplicable(req.action_type) && !isA7Applicable(req.action_type)) return false;
+  // Merge train TD-MERGE-26 / -30: the CCP-A7 revoke and the CCP-A8 NORMAL support extension are
+  // applied by the same route (requester-only; a bounded EXCEPTION is APPLIED at creation).
+  if (!isA6Applicable(req.action_type) && !isCatalogApplicable(req.action_type) && !isA7Applicable(req.action_type) && req.action_type !== 'SUPPORT_EXTENSION') return false;
   const scope = COMMERCIAL_ACTIONS[req.action_type as CommercialActionType].requester_scope;
   return scope !== null && actor.scopes.includes(scope);
 }

@@ -268,6 +268,10 @@ export {
   canTransition,
   canTransitionFor,
   isA6Applicable,
+  APPLY_SERVICE_ACTIONS,
+  COMMERCIAL_A8_EXCEPTION_TRANSITIONS,
+  boundedExceptionChain,
+  isApplyServiceAction,
   parseRequiredChain,
   payloadChecksum,
   resolveRequiredChain,
@@ -334,6 +338,7 @@ export {
   type CommercialApplyFailureCode,
   type CommercialApplyFaultHook,
   type CommercialApplyFaultPoint,
+  type BoundedExceptionEvidence,
   type CommercialApplyResult,
   type CommercialChangeApplicationRow,
 } from './lib/commercial/commercial-apply.service.js';
@@ -390,6 +395,22 @@ export {
 } from './lib/commercial/commercial-conversion.js';
 export { CommercialConversionLedger, type ConversionReleaseRow } from './lib/commercial/commercial-conversion.ledger.js';
 export { CommercialConversionService, type ConversionApplyResult, type ConversionStatus, type ConversionView } from './lib/commercial/commercial-conversion.service.js';
+// CCP-A8 (PBD §5.1 row A8; DDR v1.2 §3.2(5)) — the support exception overlay.
+export {
+  SUPPORT_EXTENSION_SCOPE,
+  SupportExtensionService,
+  type RequestSupportExtensionInput,
+  type SupportExtensionOutcome,
+  type SupportExtensionRow,
+} from './lib/commercial/support-extension.service.js';
+export {
+  decideSupportExtension,
+  overlayCovers,
+  supportExtensionWindow,
+  type SupportExtensionDecision,
+  type SupportExtensionEligibilityReason,
+  type SupportExtensionOutcomeBreach,
+} from './lib/commercial/support-extension.js';
 export { C16_QUERY_A, checkoutCutoverReport, formatCheckoutCutoverReport, type CheckoutCutoverReport } from './lib/billing/checkout-cutover-check.js';
 // CCP-B5 (PBD §5.3 row B5; TD-A9-16) — the POLICY_ACTIVATE apply (NC-5 snapshot re-check),
 // policy drafts, the read-only audit export and the operator roster with chain state.

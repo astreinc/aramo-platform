@@ -242,8 +242,10 @@ describe('CCP-A6 state-machine transition table (A3 + apply)', () => {
     // CCP-A6-R (Charter Amendment A1, AD-4)
     'APPROVED>APPLY_EXPIRED',
     'APPLY_FAILED>APPLY_EXPIRED',
+    // CCP-A8: a bounded EXCEPTION support extension applies in its creating transaction.
+    'DRAFT>APPLYING',
   ]);
-  it('A6-SM-1 exactly 12 of the 100 state pairs are transitions; APPLIED and APPLY_EXPIRED are terminal; APPLY_FAILED retries or expires', () => {
+  it('A6-SM-1 exactly 13 of the 100 state pairs are transitions (12 + the CCP-A8 bounded DRAFT → APPLYING; merge train); APPLIED and APPLY_EXPIRED are terminal; APPLY_FAILED retries or expires', () => {
     let n = 0;
     for (const from of COMMERCIAL_CHANGE_REQUEST_STATES) {
       for (const to of COMMERCIAL_CHANGE_REQUEST_STATES) {
@@ -252,7 +254,7 @@ describe('CCP-A6 state-machine transition table (A3 + apply)', () => {
         if (ok) n += 1;
       }
     }
-    expect(n).toBe(12);
+    expect(n).toBe(13);
     expect(COMMERCIAL_TRANSITIONS.APPLIED).toEqual([]);
     expect(COMMERCIAL_TRANSITIONS.APPLY_EXPIRED).toEqual([]);
     expect(COMMERCIAL_TRANSITIONS.APPLY_FAILED).toEqual(['APPLYING', 'APPLY_EXPIRED']);

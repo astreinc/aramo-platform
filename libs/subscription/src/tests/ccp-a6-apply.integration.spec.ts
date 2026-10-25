@@ -619,7 +619,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A6 transactio
   it('A6R-REQ-3 a refused apply by an unauthorized actor writes exactly ONE refusal audit row even when the check runs before the apply transaction: finance_admin applying a support_admin request', async () => {
     const SA = await addOperator(pg, ['support_admin']);
     const t = await newTenant(pg);
-    const r = await h.changeRequests.create(as(SA, 'support_admin'), { action_type: 'SUPPORT_EXTENSION', tenant_id: t, product_key: 'sign', payload: { requested_days: 30 }, reason: 'support', idempotency_key: key() }, A6_CTX);
+    const r = await h.changeRequests.create(as(SA, 'support_admin'), { action_type: 'SUPPORT_EXTENSION', tenant_id: t, product_key: 'sign', payload: { operation: 'EXTEND', subscription_id: '019a0000-0000-7000-8000-0000000a6e03', requested_days: 30 }, reason: 'support', idempotency_key: key() }, A6_CTX);
     const refusedBy = async (user: string, role: string) => {
       try {
         await h.apply.apply(as(user, role), r.request.id, A6_CTX);
@@ -628,12 +628,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A6 transactio
       }
       return 'APPLIED';
     };
-    // In this tree SUPPORT_EXTENSION has no governed apply yet (CCP-A8): the first stable refusal is
-    // ACTION_NOT_APPLICABLE; once A8 adds its apply path the same preflight yields NOT_REQUESTER.
-    expect(await refusedBy(FA, 'finance_admin')).toBe('ACTION_NOT_APPLICABLE');
+    // Merge train TD-MERGE-31: CCP-A8 adds the SUPPORT_EXTENSION apply path (A8 payload schema), so
+    // the same preflight now yields NOT_REQUESTER (finance_admin did not request it).
+    expect(await refusedBy(FA, 'finance_admin')).toBe('NOT_REQUESTER');
     const rows = (await pg.query(`SELECT event_type, actor_id, payload FROM subscription."CommercialAuditEvent" WHERE change_request_id = $1 AND event_type LIKE 'COMMERCIAL_CHANGE_REQUEST_APPLY%' ORDER BY created_at, id`, [r.request.id])).rows;
     expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({ event_type: 'COMMERCIAL_CHANGE_REQUEST_APPLY_REFUSED', actor_id: FA, payload: { refusal: 'ACTION_NOT_APPLICABLE' } });
+    expect(rows[0]).toMatchObject({ event_type: 'COMMERCIAL_CHANGE_REQUEST_APPLY_REFUSED', actor_id: FA, payload: { refusal: 'NOT_REQUESTER' } });
     expect(typeof rows[0].payload.explanation).toBe('string');
   });
 

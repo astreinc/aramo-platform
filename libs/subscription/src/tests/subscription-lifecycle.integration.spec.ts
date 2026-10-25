@@ -17,6 +17,7 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { FakeOrganizationBillingProfile, US_PROFILE } from './fixtures/organization-billing-profile.fake.js';
 import { CCP_A4_MIGRATION } from './fixtures/ccp-a4.js';
 import { CCP_A5_MIGRATION } from './fixtures/ccp-a5.js';
+import { applyRemainingSubscriptionMigrations } from './fixtures/ccp-a8.js';
 
 // Aramo Sign launch — the commercial-authority invariants on real Postgres 17:
 // owner-attributed activation, replacement of an operator subscription, status +
@@ -112,6 +113,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     pg = new Client({ connectionString: container.getConnectionUri() });
     await pg.connect();
     for (const m of MIGRATIONS) await pg.query(readFileSync(m, 'utf8'));
+    // CCP-A8: the current allowance reader needs the HEAD schema (SupportExtension).
+    await applyRemainingSubscriptionMigrations(pg, MIGRATIONS);
     prisma = new PrismaService(container.getConnectionUri());
     await prisma.$connect();
     process.env['STRIPE_PLAN_PRICES'] = `${AramoSignStandardBusinessPlanKey}=price_business,aramo-sign-standard-professional-v1=price_professional`;

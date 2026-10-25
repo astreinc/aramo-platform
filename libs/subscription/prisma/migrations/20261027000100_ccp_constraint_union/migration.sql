@@ -13,7 +13,7 @@
 -- Every other constraint is left to its slice (checked at each merge: A7's subscription_check and
 -- revoke_check and C2's replaced_check are each re-created by one slice only).
 --
--- Merged so far: A6 base, A7 ENTITLEMENT_REVOKE, C2 CONVERSION.
+-- Merged so far: A6 base, A7 ENTITLEMENT_REVOKE, A8 SUPPORT_EXTENSION, C2 CONVERSION.
 -- Design approval is not production migration authority (ruling A0-C15).
 
 ALTER TABLE "subscription"."CommercialChangeApplication"
@@ -21,4 +21,5 @@ ALTER TABLE "subscription"."CommercialChangeApplication"
     ADD CONSTRAINT "CommercialChangeApplication_action_type_check" CHECK ("action_type" IN (
         'SUBSCRIPTION_OPEN', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'ENTITLEMENT_GRANT', -- A6
         'ENTITLEMENT_REVOKE',                                                               -- A7
+        'SUPPORT_EXTENSION',                                                                -- A8
         'CONVERSION'));                                                                     -- C2

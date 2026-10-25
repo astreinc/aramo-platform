@@ -78,7 +78,7 @@ describe('CCP-A9 role-change payload', () => {
 });
 
 describe('CCP-A9 narrow apply transitions (TD-A9-1)', () => {
-  it('A9-U-4 the A3 table is unchanged (exactly 6 allowed pairs); role actions add exactly APPROVED → APPLYING and APPLYING → APPLIED; the A6 actions add the A6 apply set (post-A6 merge); ENTITLEMENT_REVOKE (CCP-A7) adds the apply set without APPLY_EXPIRED; CONVERSION adds the same set (CCP-C2); no other action reaches APPLYING; APPLY_FAILED unreachable for role actions', () => {
+  it('A9-U-4 the A3 table is unchanged (exactly 6 allowed pairs); role actions add exactly APPROVED → APPLYING and APPLYING → APPLIED; the A6 and CCP-B2-backend actions add the A6 apply set with A6-R APPLY_EXPIRED; CONVERSION (C2), ENTITLEMENT_REVOKE (A7) and the NORMAL SUPPORT_EXTENSION (A8) add the apply set without it; a bounded EXCEPTION SUPPORT_EXTENSION makes exactly its two moves; no other action reaches APPLYING; APPLY_FAILED unreachable for role actions (merge train)', () => {
     const states = COMMERCIAL_CHANGE_REQUEST_STATES;
     const a3 = (f: (typeof states)[number], t: (typeof states)[number]) => COMMERCIAL_A3_TRANSITIONS[f].includes(t);
     let base = 0;
@@ -88,16 +88,27 @@ describe('CCP-A9 narrow apply transitions (TD-A9-1)', () => {
     const A6 = ['SUBSCRIPTION_OPEN', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'ENTITLEMENT_GRANT'];
     // CCP-B2-backend — the catalog publish / retire apply carries the A6 apply set too.
     const B2 = ['PLAN_VERSION_PUBLISH', 'PLAN_RETIRE'];
+    const A6_SET = ['APPLYING->APPLIED', 'APPLYING->APPLY_FAILED', 'APPLY_FAILED->APPLYING', 'APPROVED->APPLYING'];
+    const APPLY_SET = ['SUBSCRIPTION_OPEN', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'ENTITLEMENT_GRANT', 'SUPPORT_EXTENSION'];
     for (const action of Object.keys(COMMERCIAL_ACTIONS)) {
       const extra: string[] = [];
       for (const f of states) for (const t of states) if (canTransitionFor(action, f, t) && !a3(f, t)) extra.push(`${f}->${t}`);
       const role = action === 'ROLE_GRANT' || action === 'ROLE_REVOKE';
-      // CCP-C2 — CONVERSION adds the same apply set as the A6 actions (DB guard, migration 20261026060000).
-      const applySet = A6.includes(action) || action === 'CONVERSION' || action === 'ENTITLEMENT_REVOKE'; // + CCP-A7 (merge train)
+      // Merge train: CONVERSION (C2), ENTITLEMENT_REVOKE (A7) and the NORMAL SUPPORT_EXTENSION (A8) add the
+      // apply set without A6-R's APPLY_EXPIRED (the guard names only the A6 + B2-backend types).
+      const applySet = APPLY_SET.includes(action) || action === 'CONVERSION' || action === 'ENTITLEMENT_REVOKE';
       expect(extra.sort(), action).toEqual(
-        role ? ['APPLYING->APPLIED', 'APPROVED->APPLYING'] : A6.includes(action) || B2.includes(action) ? ['APPLYING->APPLIED', 'APPLYING->APPLY_FAILED', 'APPLY_FAILED->APPLYING', 'APPLY_FAILED->APPLY_EXPIRED', 'APPROVED->APPLYING', 'APPROVED->APPLY_EXPIRED'] : applySet ? ['APPLYING->APPLIED', 'APPLYING->APPLY_FAILED', 'APPLY_FAILED->APPLYING', 'APPROVED->APPLYING'] : [],
+        role ? ['APPLYING->APPLIED', 'APPROVED->APPLYING'] : A6.includes(action) || B2.includes(action) ? ['APPLYING->APPLIED', 'APPLYING->APPLY_FAILED', 'APPLY_FAILED->APPLYING', 'APPLY_FAILED->APPLY_EXPIRED', 'APPROVED->APPLYING', 'APPROVED->APPLY_EXPIRED'] : applySet ? A6_SET : [],
       );
-      if (!applySet && !B2.includes(action)) for (const f of states) expect(canTransitionFor(action, f, 'APPLY_FAILED'), `${action} ${f}`).toBe(false);
+      if (!applySet && !A6.includes(action) && !B2.includes(action)) for (const f of states) expect(canTransitionFor(action, f, 'APPLY_FAILED'), `${action} ${f}`).toBe(false);
+    }
+    // CCP-A8 — kind EXCEPTION: exactly the two bounded moves (no A3 base move, no APPLY_FAILED).
+    const exception: string[] = [];
+    for (const f of states) for (const t of states) if (canTransitionFor('SUPPORT_EXTENSION', f, t, 'EXCEPTION')) exception.push(`${f}->${t}`);
+    expect(exception.sort()).toEqual(['APPLYING->APPLIED', 'DRAFT->APPLYING']);
+    // kind EXCEPTION on any other action adds nothing beyond its NORMAL table.
+    for (const action of Object.keys(COMMERCIAL_ACTIONS).filter((a) => a !== 'SUPPORT_EXTENSION')) {
+      for (const f of states) for (const t of states) expect(canTransitionFor(action, f, t, 'EXCEPTION'), `${action} ${f}->${t}`).toBe(canTransitionFor(action, f, t));
     }
   });
 });

@@ -20,7 +20,7 @@
 -- from x to, so a dropped branch fails loudly.
 --
 -- Blocks, in order: A3 base; A9 role pair; A6; TD-A6-25 generic "APPLIED needs applied_at";
--- CCP-B2-backend catalog; A6-R APPLY_EXPIRED. C2 CONVERSION (20261026060000); A7 ENTITLEMENT_REVOKE + the separate A7 active-row block, TD-A7-2 (20261026000100).
+-- CCP-B2-backend catalog; A6-R APPLY_EXPIRED. C2 CONVERSION (20261026060000); A7 ENTITLEMENT_REVOKE + the separate A7 active-row block, TD-A7-2 (20261026000100); A8 SUPPORT_EXTENSION EXCEPTION + kind rules (20261026010000).
 -- Carries a dollar-quoted body: apply whole-file. Design approval is not production migration
 -- authority (ruling A0-C15).
 
@@ -34,6 +34,7 @@ DECLARE
     cap TEXT;
     capp RECORD;
     ver_status TEXT;
+    ext RECORD; -- CCP-A8
 BEGIN
     IF TG_OP = 'DELETE' THEN
         RAISE EXCEPTION 'CommercialChangeRequest is append-only (DELETE rejected)';
@@ -97,6 +98,15 @@ BEGIN
              OR (NEW."action_type" = 'ENTITLEMENT_REVOKE'
                  AND ((OLD."state" IN ('APPROVED', 'APPLY_FAILED') AND NEW."state" = 'APPLYING')
                    OR (OLD."state" = 'APPLYING' AND NEW."state" IN ('APPLIED', 'APPLY_FAILED'))))
+             -- [union block: A8 SUPPORT_EXTENSION (EXCEPTION + NORMAL), 20261026010000]
+             -- CCP-A8: SUPPORT_EXTENSION. A bounded EXCEPTION applies in its creating transaction;
+             -- an escalated or removal request (NORMAL) applies with the A6 set.
+             OR (NEW."action_type" = 'SUPPORT_EXTENSION' AND NEW."kind" = 'EXCEPTION'
+                 AND ((OLD."state" = 'DRAFT' AND NEW."state" = 'APPLYING')
+                   OR (OLD."state" = 'APPLYING' AND NEW."state" = 'APPLIED')))
+             OR (NEW."action_type" = 'SUPPORT_EXTENSION' AND NEW."kind" = 'NORMAL'
+                 AND ((OLD."state" IN ('APPROVED', 'APPLY_FAILED') AND NEW."state" = 'APPLYING')
+                   OR (OLD."state" = 'APPLYING' AND NEW."state" IN ('APPLIED', 'APPLY_FAILED'))))
              -- [union block: CCP-B2-backend catalog, 20261025220000]
              -- CCP-B2-backend: the catalog publish / retire apply, the A6 apply set.
              OR (NEW."action_type" IN ('PLAN_VERSION_PUBLISH', 'PLAN_RETIRE')
@@ -118,6 +128,35 @@ BEGIN
              -- ==== END CCP-A6-R apply deadline ====
         ) THEN
             RAISE EXCEPTION 'CommercialChangeRequest state % -> % is not allowed', OLD."state", NEW."state";
+        END IF;
+        -- [union block: A8 SUPPORT_EXTENSION kind / attempt rules, 20261026010000]
+        IF NEW."action_type" = 'SUPPORT_EXTENSION' THEN
+        -- CCP-A8 (DDR v1.2 §3.2(5)): a bounded EXCEPTION makes ONLY its two apply moves (never the
+        -- approval states) with a zero-step chain and zero approvals; a NORMAL one never skips the
+        -- chain. apply_attempts and applied_at follow the A6 rules.
+        IF NEW."kind" = 'EXCEPTION'
+           AND NOT ((OLD."state" = 'DRAFT' AND NEW."state" = 'APPLYING') OR (OLD."state" = 'APPLYING' AND NEW."state" = 'APPLIED')) THEN
+            RAISE EXCEPTION 'CommercialChangeRequest bounded EXCEPTION state % -> % is not allowed', OLD."state", NEW."state";
+        END IF;
+        IF NEW."kind" = 'EXCEPTION' AND NEW."state" = 'APPLYING' THEN
+            SELECT count(*) INTO approvals FROM "subscription"."CommercialApproval" WHERE "change_request_id" = NEW."id";
+            IF jsonb_array_length(NEW."required_chain" -> 'steps') <> 0 OR NEW."required_chain" ->> 'rule' IS DISTINCT FROM 'BOUNDED_EXCEPTION' OR approvals <> 0 THEN
+                RAISE EXCEPTION 'CommercialChangeRequest bounded EXCEPTION needs the zero-step BOUNDED_EXCEPTION chain and no approval';
+            END IF;
+        END IF;
+        IF NEW."kind" NOT IN ('EXCEPTION', 'NORMAL') THEN
+            RAISE EXCEPTION 'CommercialChangeRequest SUPPORT_EXTENSION kind % is not applied', NEW."kind";
+        END IF;
+        IF NEW."state" = 'APPLYING' THEN
+            IF NEW."apply_attempts" <> OLD."apply_attempts" + 1 THEN
+                RAISE EXCEPTION 'CommercialChangeRequest APPLYING must count the attempt (apply_attempts % -> %)', OLD."apply_attempts", NEW."apply_attempts";
+            END IF;
+        ELSIF NEW."apply_attempts" IS DISTINCT FROM OLD."apply_attempts" THEN
+            RAISE EXCEPTION 'CommercialChangeRequest apply_attempts changes only on entering APPLYING';
+        END IF;
+        IF NEW."state" <> 'APPLIED' AND NEW."applied_at" IS DISTINCT FROM OLD."applied_at" THEN
+            RAISE EXCEPTION 'CommercialChangeRequest applied_at is set only by APPLIED';
+        END IF;
         END IF;
         -- [union block: A6 attempt rules, 20261025200000]
         IF NEW."action_type" IN ('SUBSCRIPTION_OPEN', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'ENTITLEMENT_GRANT') THEN
@@ -312,6 +351,38 @@ BEGIN
                     RAISE EXCEPTION 'CommercialChangeRequest APPLIED: entitlement % is not revoked by this request', cap;
                 END IF;
             END LOOP;
+        END IF;
+        -- [union block: A8 SUPPORT_EXTENSION APPLIED checks, 20261026010000]
+        IF NEW."state" = 'APPLIED' AND NEW."action_type" = 'SUPPORT_EXTENSION' THEN
+            -- CCP-A8: APPLIED exists only with its application record and the overlay effect.
+            SELECT * INTO app FROM "subscription"."CommercialChangeApplication" WHERE "change_request_id" = NEW."id";
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'CommercialChangeRequest cannot be APPLIED without its CommercialChangeApplication';
+            END IF;
+            IF app."action_type" <> NEW."action_type" OR app."tenant_id" IS DISTINCT FROM NEW."tenant_id"
+               OR app."product_key" IS DISTINCT FROM NEW."product_key" OR app."attempt" <> NEW."apply_attempts" THEN
+                RAISE EXCEPTION 'CommercialChangeApplication does not match its request';
+            END IF;
+            IF cardinality(app."capabilities") <> 0 THEN
+                RAISE EXCEPTION 'CommercialChangeRequest APPLIED: a support extension grants no capability';
+            END IF;
+            IF NEW."payload" ->> 'operation' = 'EXTEND' THEN
+                SELECT * INTO ext FROM "subscription"."SupportExtension" WHERE "change_request_id" = NEW."id";
+                IF NOT FOUND OR ext."removed_at" IS NOT NULL OR ext."subscription_id" IS DISTINCT FROM app."subscription_id"
+                   OR ext."is_exception" <> (NEW."kind" = 'EXCEPTION') THEN
+                    RAISE EXCEPTION 'CommercialChangeRequest APPLIED: the support extension overlay is missing';
+                END IF;
+            ELSIF NEW."payload" ->> 'operation' = 'REMOVE' THEN
+                IF NEW."kind" <> 'NORMAL' THEN
+                    RAISE EXCEPTION 'CommercialChangeRequest APPLIED: a removal is never a bounded EXCEPTION';
+                END IF;
+                SELECT * INTO ext FROM "subscription"."SupportExtension" WHERE "remove_change_request_id" = NEW."id";
+                IF NOT FOUND OR ext."id"::text IS DISTINCT FROM NEW."payload" ->> 'support_extension_id' THEN
+                    RAISE EXCEPTION 'CommercialChangeRequest APPLIED: the support extension removal is missing';
+                END IF;
+            ELSE
+                RAISE EXCEPTION 'CommercialChangeRequest APPLIED: unknown support extension operation';
+            END IF;
         END IF;
         -- [union block: CCP-B2-backend APPLIED checks, 20261025220000]
         IF NEW."state" = 'APPLIED' AND NEW."action_type" IN ('PLAN_VERSION_PUBLISH', 'PLAN_RETIRE') THEN

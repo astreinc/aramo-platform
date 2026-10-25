@@ -9,8 +9,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { BASE_COMPOSITION, PRODUCT_CAPABILITIES, assertProductKey, openBaseSubscription, type ProductKey } from '../product-registry.js';
 
 import { CommercialAuditRepository } from './commercial-audit.repository.js';
-import { CommercialApplyRefusedError } from './commercial-approval-eligibility.js';
-import { COMMERCIAL_ACTIONS, type A6ApplicableAction, type CommercialApplicableAction, isA6Applicable, isCommercialApplicable, validatePayload } from './commercial-change-request.js';
+import { type ApplyServiceAction, isApplyServiceAction, validatePayload } from './commercial-change-request.js';
 import {
   COMMERCIAL_CLOCK,
   type CommercialActor,
@@ -36,6 +35,9 @@ import {
 import { CommercialCatalogApplyService, type CommercialCatalogApplicationRow, isCatalogApplicable } from './commercial-catalog-apply.service.js';
 import { changeCarriesContract, type ContractAmendmentBlock, type ContractEndBlock, type ContractRecordBlock } from './commercial-contract.js';
 import { ContractApplyConflict, type ContractEffect, amendContractInTx, contractOfSubscription, endContractInTx, recordContractInTx } from './commercial-contract.repository.js';
+import { approvalExpiresAt } from './commercial-policy-boundaries.js';
+import type { CommercialPolicyContent } from './commercial-policy.js';
+import { supportExtensionWindow } from './support-extension.js';
 
 export { ApplyFailure, CommercialApplyFailedError } from './commercial-apply-records.js';
 
@@ -79,6 +81,15 @@ export { ApplyFailure, CommercialApplyFailedError } from './commercial-apply-rec
 // commercial provenance (PLAN for a subscription's product bundle, MANUAL for ENTITLEMENT_GRANT)
 // and is the ONLY path that re-grants (clears) a revoke. C-24: a revoke stops NEW sends (the
 // esign:* scopes are read live); in-flight signing is untouched.
+// usage row is read or written. Out of scope: Stripe commands (C1), conversion (C2), revoke (A7).
+//
+// CCP-A8 (PBD §5.1 row A8) REUSES this service rather than forking it: SUPPORT_EXTENSION is the
+// fifth applied action. An escalated (Finance-approved, Q7) extension and an overlay removal run
+// `apply` unchanged (steps 1–8; the domain step writes the SupportExtension overlay, never the
+// subscription row, so G1 holds by construction). The bounded EXCEPTION (zero approvals, DDR
+// v1.2 §3.2(5)) runs `applyBoundedExceptionInTx` from SupportExtensionService inside ITS
+// transaction, which already holds the billing lock: DRAFT → APPLYING, then the SAME core
+// (`completeInTx`: domain, application row, audit with is_exception = true, APPLIED).
 
 type Tx = Parameters<Parameters<PrismaService['$transaction']>[0]>[0];
 
@@ -115,6 +126,8 @@ export type CommercialApplyFailureCode =
   | 'CONTRACT_ALREADY_RECORDED' // the governed row already has a contract
   | 'CONTRACT_REF_TAKEN' // contract_ref is unique across the platform
   | 'CONTRACT_MISMATCH' // the named contract does not govern the row (or a contract-linked END names none)
+  | 'EXTENSION_NOT_FOUND'
+  | 'EXTENSION_ALREADY_REMOVED'
   | 'UNEXPECTED'; // any other error (fault, DB error): rolled back, recorded, retryable
 
 export interface CommercialChangeApplicationRow {
@@ -158,6 +171,12 @@ interface DomainEffect {
 }
 
 const SUBJECT = (id: string): string => `commercial_change_request:${id}`;
+
+/** CCP-A8 — the bounded-exception evidence recorded on its audit events (Recon Report §1 C1). */
+export interface BoundedExceptionEvidence {
+  clause: Record<string, unknown>;
+  counters: Record<string, unknown>;
+}
 const TX_OPTIONS = { timeout: 15_000, maxWait: 10_000 } as const;
 
 function isUniqueViolation(e: unknown, target: string): boolean {
@@ -245,8 +264,10 @@ export class CommercialApplyService {
     // TD-A6-3 (approved) — the ORIGINAL requester, a human, holding the requester scope.
     let scope: string;
     try {
-      // Merge train TD-MERGE-26: A6 ∪ A7 (ENTITLEMENT_REVOKE) are applied by this path.
-      scope = preflightApply(actor, head, isCommercialApplicable);
+      // Merge train TD-MERGE-30: A6 ∪ A7 (ENTITLEMENT_REVOKE) ∪ A8 (SUPPORT_EXTENSION) are applied by this path.
+      scope = preflightApply(actor, head, isApplyServiceAction);
+      // CCP-A8: a bounded EXCEPTION is applied by the call that creates it, never here.
+      if (head.kind !== 'NORMAL') throw new CommercialChangeRequestError('ACTION_NOT_APPLICABLE', `a ${head.kind} request is not applied by this path`, { action_type: head.action_type, kind: head.kind });
     } catch (e) {
       if (isApplyRefusal(e)) await auditApplyRefusal(this, actor, head, e, ctx);
       throw e;
@@ -280,95 +301,7 @@ export class CommercialApplyService {
         const attempt = req.apply_attempts + 1;
         await tx.commercialChangeRequest.update({ where: { id }, data: { state: 'APPLYING', apply_attempts: attempt, updated_at: now } });
 
-        const payload = this.payloadOf(req);
-        const effect = await this.applyDomain(tx, req, req.action_type as CommercialApplicableAction, payload, tenant_id, product_key, now);
-        // CCP-B4 — the contract record, amendment or end evidence, in the same transaction.
-        effect.events.push(...(await this.applyContract(tx, req, req.action_type as CommercialApplicableAction, payload, effect, now)));
-        await this.fault?.('after_subscription_write', { change_request_id: id });
-        // CCP-A7 — a governed grant records its commercial provenance and re-grants a revoked row.
-        const inserted = await grantCapabilitiesInTx(tx, {
-          tenant_id,
-          capabilities: effect.capabilities,
-          granted_source: req.action_type === 'ENTITLEMENT_GRANT' ? 'MANUAL' : 'PLAN',
-          granted_by: actor.user_id,
-          change_request_id: id,
-        });
-        // CCP-A7 — the governed revoke (rows kept, revoked by this request).
-        const revoked = await revokeCapabilitiesInTx(tx, { tenant_id, capabilities: effect.revoke, revoked_by: actor.user_id, change_request_id: id });
-        if (revoked.length !== new Set(effect.revoke).size) {
-          throw new ApplyFailure('CAPABILITY_NOT_HELD', { capabilities: effect.revoke.filter((c) => !(revoked as string[]).includes(c)) });
-        }
-        await this.fault?.('after_entitlement_write', { change_request_id: id });
-
-        const application = (await tx.commercialChangeApplication.create({
-          data: {
-            id: uuidv7(),
-            change_request_id: id,
-            action_type: req.action_type,
-            tenant_id,
-            product_key,
-            subscription_id: effect.subscription_id,
-            replaced_subscription_id: effect.replaced_subscription_id,
-            from_plan_version_id: effect.from_plan_version_id,
-            to_plan_version_id: effect.to_plan_version_id,
-            capabilities: [...effect.capabilities].sort(),
-            capabilities_inserted: inserted,
-            capabilities_revoked: revoked,
-            attempt,
-            applied_by: actor.user_id,
-            applied_at: now,
-          },
-        })) as CommercialChangeApplicationRow;
-
-        const role_keys = (await this.operators.readOperator(tx, ctx.platform_tenant_id, actor.user_id)).role_keys;
-        const append = (event_type: string, subject: string, body: Record<string, unknown>) =>
-          this.audit.append(
-            {
-              actor: { id: actor.user_id, type: 'user', role_keys },
-              event_type,
-              tenant_id,
-              subject,
-              change_request_id: id,
-              policy_version_id: req.policy_version_id,
-              payload: { action_type: req.action_type, product_key, ...body },
-              correlation_id: ctx.correlation_id,
-            },
-            tx,
-          );
-        for (const e of effect.events) await append(e.event_type, e.subject, e.payload);
-        if (effect.capabilities.length > 0) {
-          await append('COMMERCIAL_ENTITLEMENT_GRANTED', `tenant_entitlement:${tenant_id}`, {
-            capabilities: [...effect.capabilities].sort(),
-            inserted,
-            source: 'CHANGE_REQUEST',
-            granted_source: req.action_type === 'ENTITLEMENT_GRANT' ? 'MANUAL' : 'PLAN',
-          });
-        }
-        if (revoked.length > 0) {
-          await append('COMMERCIAL_ENTITLEMENT_REVOKED', `tenant_entitlement:${tenant_id}`, { capabilities: revoked, source: 'CHANGE_REQUEST', effective_at: now.toISOString() });
-        }
-        // T10 — requester, reason, policy version (the event column), approval evidence, old and
-        // new terms, the effective timestamp and the outcome.
-        const approvals = await tx.commercialApproval.findMany({ where: { change_request_id: id }, orderBy: { step_index: 'asc' } });
-        await append('COMMERCIAL_CHANGE_REQUEST_APPLIED', SUBJECT(id), {
-          outcome: 'APPLIED',
-          application_id: application.id,
-          attempt,
-          requested_by: req.requested_by,
-          reason: req.reason,
-          policy_checksum: req.policy_checksum,
-          approvals: approvals.map((a) => ({ approval_id: a.id, step_index: a.step_index, approver_user_id: a.approver_user_id, attestation_id: a.attestation_id, approved_at: a.created_at.toISOString() })),
-          subscription_id: effect.subscription_id,
-          from_plan_version_id: effect.from_plan_version_id,
-          to_plan_version_id: effect.to_plan_version_id,
-          capabilities: [...effect.capabilities].sort(),
-          capabilities_revoked: revoked,
-          effective_at: now.toISOString(),
-        });
-        await this.fault?.('before_applied', { change_request_id: id });
-
-        const request = (await tx.commercialChangeRequest.update({ where: { id }, data: { state: 'APPLIED', applied_at: now, updated_at: now } })) as CommercialChangeRequestRow;
-        return { request, application, catalog_application: null, replayed: false };
+        return this.completeInTx(tx, actor, req, attempt, tenant_id, product_key, now, ctx, null);
       }, TX_OPTIONS);
     } catch (e) {
       if (isApplyRefusal(e)) {
@@ -387,11 +320,155 @@ export class CommercialApplyService {
     return out;
   }
 
+
+  /**
+   * CCP-A8 — the bounded EXCEPTION apply (DDR v1.2 §3.2(5): the only act that applies without
+   * approval). Runs INSIDE the caller's transaction, which already holds the billing lock and has
+   * just inserted `request_id` (SUPPORT_EXTENSION, kind EXCEPTION, the zero-step BOUNDED_EXCEPTION
+   * chain) in DRAFT after deciding it is within the active policy's bounds. DRAFT → APPLYING
+   * (attempt 1), then the same core as an approved apply. Any failure throws and rolls the whole
+   * transaction back: no request, no overlay, no audit row survives (the caller reports it).
+   */
+  async applyBoundedExceptionInTx(
+    tx: Tx,
+    actor: CommercialActor,
+    request_id: string,
+    ctx: CommercialCallContext,
+    policy: CommercialPolicyContent,
+    evidence: BoundedExceptionEvidence,
+  ): Promise<CommercialApplyResult> {
+    await tx.$executeRawUnsafe(`SELECT 1 FROM subscription."CommercialChangeRequest" WHERE id = $1::uuid FOR UPDATE`, request_id);
+    const req = (await tx.commercialChangeRequest.findUniqueOrThrow({ where: { id: request_id } })) as CommercialChangeRequestRow;
+    if (req.action_type !== 'SUPPORT_EXTENSION' || req.kind !== 'EXCEPTION' || req.state !== 'DRAFT' || req.tenant_id === null) {
+      throw new CommercialChangeRequestError('STATE_INVALID', 'only a DRAFT bounded SUPPORT_EXTENSION exception is applied by this path', { state: req.state, kind: req.kind });
+    }
+    const tenant_id = req.tenant_id;
+    await takeBillingLock(tx, tenant_id); // re-entrant: the caller already holds it
+    const product_key = assertProductKey(req.product_key);
+    const now = this.now();
+    // submitted_at / expires_at are set with the move out of DRAFT (A3 CHECKs); the expiry is moot
+    // for an act that commits APPLIED in this transaction (DB: it can commit only as APPLIED).
+    await tx.commercialChangeRequest.update({
+      where: { id: request_id },
+      data: { state: 'APPLYING', apply_attempts: 1, submitted_at: now, expires_at: approvalExpiresAt(policy, now), updated_at: now },
+    });
+    return this.completeInTx(tx, actor, req, 1, tenant_id, product_key, now, ctx, evidence);
+  }
+
+  /** Steps 5–8 inside the apply transaction, for a request already moved to APPLYING. */
+  private async completeInTx(
+    tx: Tx,
+    actor: CommercialActor,
+    req: CommercialChangeRequestRow,
+    attempt: number,
+    tenant_id: string,
+    product_key: ProductKey,
+    now: Date,
+    ctx: CommercialCallContext,
+    exception: BoundedExceptionEvidence | null,
+  ): Promise<CommercialApplyResult> {
+    const id = req.id;
+
+    const payload = this.payloadOf(req);
+    const effect = await this.applyDomain(tx, req, req.action_type as ApplyServiceAction, payload, tenant_id, product_key, now, actor);
+    // CCP-B4 — the contract record, amendment or end evidence, in the same transaction.
+    effect.events.push(...(await this.applyContract(tx, req, req.action_type as ApplyServiceAction, payload, effect, now)));
+    await this.fault?.('after_subscription_write', { change_request_id: id });
+    // CCP-A7 — a governed grant records its commercial provenance and re-grants a revoked row.
+    const inserted = await grantCapabilitiesInTx(tx, {
+      tenant_id,
+      capabilities: effect.capabilities,
+      granted_source: req.action_type === 'ENTITLEMENT_GRANT' ? 'MANUAL' : 'PLAN',
+      granted_by: actor.user_id,
+      change_request_id: id,
+    });
+    // CCP-A7 — the governed revoke (rows kept, revoked by this request).
+    const revoked = await revokeCapabilitiesInTx(tx, { tenant_id, capabilities: effect.revoke, revoked_by: actor.user_id, change_request_id: id });
+    if (revoked.length !== new Set(effect.revoke).size) {
+      throw new ApplyFailure('CAPABILITY_NOT_HELD', { capabilities: effect.revoke.filter((c) => !(revoked as string[]).includes(c)) });
+    }
+    await this.fault?.('after_entitlement_write', { change_request_id: id });
+
+    const application = (await tx.commercialChangeApplication.create({
+      data: {
+        id: uuidv7(),
+        change_request_id: id,
+        action_type: req.action_type,
+        tenant_id,
+        product_key,
+        subscription_id: effect.subscription_id,
+        replaced_subscription_id: effect.replaced_subscription_id,
+        from_plan_version_id: effect.from_plan_version_id,
+        to_plan_version_id: effect.to_plan_version_id,
+        capabilities: [...effect.capabilities].sort(),
+        capabilities_inserted: inserted,
+        capabilities_revoked: revoked,
+        attempt,
+        applied_by: actor.user_id,
+        applied_at: now,
+      },
+    })) as CommercialChangeApplicationRow;
+
+    const role_keys = (await this.operators.readOperator(tx, ctx.platform_tenant_id, actor.user_id)).role_keys;
+    const append = (event_type: string, subject: string, body: Record<string, unknown>) =>
+      this.audit.append(
+        {
+          actor: { id: actor.user_id, type: 'user', role_keys },
+          event_type,
+          tenant_id,
+          subject,
+          change_request_id: id,
+          policy_version_id: req.policy_version_id,
+          payload: { action_type: req.action_type, product_key, ...body },
+          correlation_id: ctx.correlation_id,
+          // CCP-A8 (DDR v1.2 §3.2(5)): every event of a bounded EXCEPTION carries is_exception.
+          is_exception: exception !== null,
+        },
+        tx,
+      );
+    for (const e of effect.events) await append(e.event_type, e.subject, e.payload);
+    if (effect.capabilities.length > 0) {
+      await append('COMMERCIAL_ENTITLEMENT_GRANTED', `tenant_entitlement:${tenant_id}`, {
+        capabilities: [...effect.capabilities].sort(),
+        inserted,
+        source: 'CHANGE_REQUEST',
+        granted_source: req.action_type === 'ENTITLEMENT_GRANT' ? 'MANUAL' : 'PLAN',
+      });
+    }
+    if (revoked.length > 0) {
+      await append('COMMERCIAL_ENTITLEMENT_REVOKED', `tenant_entitlement:${tenant_id}`, { capabilities: revoked, source: 'CHANGE_REQUEST', effective_at: now.toISOString() });
+    }
+    // T10 — requester, reason, policy version (the event column), approval evidence, old and
+    // new terms, the effective timestamp and the outcome.
+    const approvals = await tx.commercialApproval.findMany({ where: { change_request_id: id }, orderBy: { step_index: 'asc' } });
+    await append('COMMERCIAL_CHANGE_REQUEST_APPLIED', SUBJECT(id), {
+      outcome: 'APPLIED',
+      application_id: application.id,
+      attempt,
+      requested_by: req.requested_by,
+      reason: req.reason,
+      policy_checksum: req.policy_checksum,
+      approvals: approvals.map((a) => ({ approval_id: a.id, step_index: a.step_index, approver_user_id: a.approver_user_id, attestation_id: a.attestation_id, approved_at: a.created_at.toISOString() })),
+      subscription_id: effect.subscription_id,
+      from_plan_version_id: effect.from_plan_version_id,
+      to_plan_version_id: effect.to_plan_version_id,
+      capabilities: [...effect.capabilities].sort(),
+      capabilities_revoked: revoked,
+      effective_at: now.toISOString(),
+      kind: req.kind,
+      ...(exception !== null ? { exception: { zero_approvals: true, clause: exception.clause, counters: exception.counters } } : {}),
+    });
+    await this.fault?.('before_applied', { change_request_id: id });
+
+    const request = (await tx.commercialChangeRequest.update({ where: { id }, data: { state: 'APPLIED', applied_at: now, updated_at: now } })) as CommercialChangeRequestRow;
+    return { request, application, catalog_application: null, replayed: false };
+  }
+
   // ---- domain (inside the apply transaction) --------------------------------------------
 
   private payloadOf(req: CommercialChangeRequestRow): Record<string, unknown> {
     try {
-      return validatePayload(req.action_type as CommercialApplicableAction, req.payload);
+      return validatePayload(req.action_type as ApplyServiceAction, req.payload);
     } catch (e) {
       throw new ApplyFailure('INVALID_PAYLOAD', { errors: (e as { errors?: unknown }).errors ?? [(e as Error).message] });
     }
@@ -400,14 +477,17 @@ export class CommercialApplyService {
   private async applyDomain(
     tx: Tx,
     req: CommercialChangeRequestRow,
-    action: CommercialApplicableAction,
+    action: ApplyServiceAction,
     p: Record<string, unknown>,
     tenant_id: string,
     product_key: ProductKey,
     now: Date,
+    actor: CommercialActor,
   ): Promise<DomainEffect> {
     const bundle = PRODUCT_CAPABILITIES[product_key];
     switch (action) {
+      case 'SUPPORT_EXTENSION':
+        return this.supportExtensionEffect(tx, req, p, tenant_id, product_key, now, actor);
       case 'SUBSCRIPTION_OPEN': {
         const { plan, version } = await this.pinnedVersion(tx, tenant_id, product_key, p);
         const open = await tx.tenantSubscription.findFirst({ where: openBaseSubscription(tenant_id, product_key) });
@@ -571,7 +651,7 @@ export class CommercialApplyService {
    * (after the subscription write, so the insert guards see the row in its applied state). A
    * conflict is an APPLY_FAILED (the whole transaction rolls back; retryable).
    */
-  private async applyContract(tx: Tx, req: CommercialChangeRequestRow, action: CommercialApplicableAction, p: Record<string, unknown>, effect: DomainEffect, now: Date): Promise<ContractEffect[]> {
+  private async applyContract(tx: Tx, req: CommercialChangeRequestRow, action: ApplyServiceAction, p: Record<string, unknown>, effect: DomainEffect, now: Date): Promise<ContractEffect[]> {
     if (effect.subscription_id === null) return [];
     const ctx = { change_request_id: req.id, change_request_kind: req.kind, requested_by: req.requested_by, now };
     try {
@@ -601,6 +681,94 @@ export class CommercialApplyService {
       if (e instanceof ContractApplyConflict) throw new ApplyFailure(e.code, e.detail);
       throw e;
     }
+  }
+
+  /**
+   * CCP-A8 — the SUPPORT_EXTENSION domain step. EXTEND inserts the overlay on the named open BASE
+   * row of this tenant × product (stale otherwise); REMOVE records the single removal of the named
+   * overlay. Neither writes `TenantSubscription` (G1 by construction: a Stripe-owned row keeps
+   * every column, Recon G1), neither touches usage or limits (T8), and no capability is granted.
+   */
+  private async supportExtensionEffect(
+    tx: Tx,
+    req: CommercialChangeRequestRow,
+    p: Record<string, unknown>,
+    tenant_id: string,
+    product_key: ProductKey,
+    now: Date,
+    actor: CommercialActor,
+  ): Promise<DomainEffect> {
+    if (p['operation'] === 'REMOVE') {
+      const ext = await tx.supportExtension.findUnique({ where: { id: p['support_extension_id'] as string } });
+      if (ext === null || ext.tenant_id !== tenant_id || ext.product_key !== product_key) throw new ApplyFailure('EXTENSION_NOT_FOUND', { support_extension_id: p['support_extension_id'] });
+      if (ext.removed_at !== null) throw new ApplyFailure('EXTENSION_ALREADY_REMOVED', { support_extension_id: ext.id, removed_at: ext.removed_at.toISOString() });
+      await tx.supportExtension.update({ where: { id: ext.id }, data: { removed_at: now, removed_by: actor.user_id, remove_change_request_id: req.id } });
+      return {
+        subscription_id: ext.subscription_id,
+        replaced_subscription_id: null,
+        from_plan_version_id: null,
+        to_plan_version_id: null,
+        capabilities: [],
+        revoke: [],
+        events: [
+          {
+            event_type: 'SUPPORT_EXTENSION_REMOVED',
+            subject: `support_extension:${ext.id}`,
+            payload: { support_extension_id: ext.id, subscription_id: ext.subscription_id, days: ext.days, extends_until: ext.extends_until.toISOString(), effective_at: now.toISOString() },
+          },
+        ],
+      };
+    }
+    // EXTEND — the named row must still be the open BASE row of this tenant × product.
+    const row = await tx.tenantSubscription.findUnique({ where: { id: p['subscription_id'] as string } });
+    if (row === null || row.tenant_id !== tenant_id || row.product_key !== product_key) throw new ApplyFailure('TARGET_NOT_FOUND', { subscription_id: p['subscription_id'] });
+    if (row.ended_at !== null || row.composition_role !== BASE_COMPOSITION) throw new ApplyFailure('TARGET_STALE', { subscription_id: row.id, ended_at: row.ended_at?.toISOString() ?? null });
+    const days = p['requested_days'] as number;
+    const window = supportExtensionWindow(now, row.grace_until, days);
+    const id = uuidv7();
+    await tx.supportExtension.create({
+      data: {
+        id,
+        tenant_id,
+        product_key,
+        subscription_id: row.id,
+        change_request_id: req.id,
+        is_exception: req.kind === 'EXCEPTION',
+        days,
+        grace_until_at_apply: row.grace_until,
+        base_until: window.base_until,
+        extends_until: window.extends_until,
+        policy_version_id: req.policy_version_id,
+        applied_by: actor.user_id,
+        applied_at: now,
+      },
+    });
+    return {
+      subscription_id: row.id,
+      replaced_subscription_id: null,
+      from_plan_version_id: null,
+      to_plan_version_id: null,
+      capabilities: [],
+      revoke: [],
+      events: [
+        {
+          event_type: req.kind === 'EXCEPTION' ? 'SUPPORT_EXTENSION_EXCEPTION_APPLIED' : 'SUPPORT_EXTENSION_APPLIED',
+          subject: `support_extension:${id}`,
+          payload: {
+            support_extension_id: id,
+            subscription_id: row.id,
+            subscription_source: row.source,
+            subscription_status: row.status,
+            provider_linked: row.billing_subscription_ref !== null,
+            days,
+            grace_until_at_apply: row.grace_until?.toISOString() ?? null,
+            base_until: window.base_until.toISOString(),
+            extends_until: window.extends_until.toISOString(),
+            effective_at: now.toISOString(),
+          },
+        },
+      ],
+    };
   }
 
   /**

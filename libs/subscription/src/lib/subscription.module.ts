@@ -14,6 +14,7 @@ import { CommercialOperatorRosterService } from './commercial/commercial-operato
 import { CommercialPolicyGovernanceService } from './commercial/commercial-policy-governance.service.js';
 import { CommercialConversionLedger } from './commercial/commercial-conversion.ledger.js';
 import { CommercialConversionService } from './commercial/commercial-conversion.service.js';
+import { SupportExtensionService } from './commercial/support-extension.service.js';
 import { FreePersonalSubscriptionService } from './free-personal-subscription.js';
 import { LegalAcceptanceService } from './legal/legal-acceptance.service.js';
 import { PlanVersionRepository } from './plan-version.repository.js';
@@ -46,6 +47,7 @@ import { UsageRollupService } from './usage/usage-rollup.service.js';
 // CCP-C3: the READ-ONLY provider port, bound to its own GET-only adapter (StripeBillingReadAdapter,
 // never the write-capable StripeBillingProvider), and the read-through BillingStatusReadService.
 // CCP-C6: the read-only Finance reports (BillingFinanceReportService).
+// CCP-A8: the support exception overlay (bounded EXCEPTION apply, escalation, overlay read).
 @Module({
   providers: [
     PrismaService,
@@ -72,12 +74,13 @@ import { UsageRollupService } from './usage/usage-rollup.service.js';
     CommercialOperatorRosterService,
     CommercialConversionLedger,
     CommercialConversionService,
+    SupportExtensionService,
     PlanVersionRepository,
     UsageRollupService,
     CommercialCatalogService,
     ContractRepository,
   ],
-  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialCatalogApplyService, PlanVersionRepository, UsageRollupService, CommercialCatalogService, CommercialPolicyGovernanceService, CommercialAuditExportService, CommercialOperatorRosterService, ContractRepository, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialConversionLedger, CommercialConversionService, BILLING_PROVIDER_READ_PORT, BillingStatusReadService, BillingFinanceReportService],
+  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialCatalogApplyService, PlanVersionRepository, UsageRollupService, CommercialCatalogService, CommercialPolicyGovernanceService, CommercialAuditExportService, CommercialOperatorRosterService, ContractRepository, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialConversionLedger, CommercialConversionService, BILLING_PROVIDER_READ_PORT, BillingStatusReadService, BillingFinanceReportService, SupportExtensionService],
 })
 export class SubscriptionModule {
   /**
@@ -113,13 +116,14 @@ export class SubscriptionModule {
         CommercialOperatorRosterService,
         CommercialConversionLedger,
         CommercialConversionService,
+        SupportExtensionService,
         PlanVersionRepository,
         UsageRollupService,
         CommercialCatalogService,
         ContractRepository,
         ...(opts.providers ?? []),
       ],
-      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialCatalogApplyService, PlanVersionRepository, UsageRollupService, CommercialCatalogService, CommercialPolicyGovernanceService, CommercialAuditExportService, CommercialOperatorRosterService, ContractRepository, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialConversionLedger, CommercialConversionService, BILLING_PROVIDER_READ_PORT, BillingStatusReadService, BillingFinanceReportService],
+      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialCatalogApplyService, PlanVersionRepository, UsageRollupService, CommercialCatalogService, CommercialPolicyGovernanceService, CommercialAuditExportService, CommercialOperatorRosterService, ContractRepository, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialConversionLedger, CommercialConversionService, BILLING_PROVIDER_READ_PORT, BillingStatusReadService, BillingFinanceReportService, SupportExtensionService],
     };
   }
 }

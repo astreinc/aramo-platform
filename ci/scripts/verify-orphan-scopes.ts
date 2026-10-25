@@ -108,6 +108,10 @@ export const CLASSIFICATIONS: Record<string, Classification> = {
   // CCP C3 — the billing status read routes the A1 reservation named ("C3/C4") also enforce it:
   // PlatformCommercialBillingStatusController (GET /platform/commercial/tenants/{tenant_id}/
   // billing-status and /billing-portal-configuration). No classification change.
+  // CCP A8 — platform:subscription:support (POST /platform/commercial/support-extensions) and
+  // platform:subscription:read (GET /platform/commercial/support-extensions) are now LITERALLY
+  // enforced by PlatformCommercialSupportExtensionController, so both entries are REMOVED (the
+  // script detects the real enforcement). Merge-train union: no CCP read reservation remains.
   'platform:catalog:draft': { cls: 'SERVICE_ENFORCED', reason: 'requester scope for PLAN_VERSION_PUBLISH / PLAN_RETIRE change requests — CommercialChangeRequestService.create checks COMMERCIAL_ACTIONS[..].requester_scope against the server-resolved scopes (libs/subscription/src/lib/commercial/commercial-change-request.ts; CCP A3); also literally enforced by the CCP B2 catalog draft routes (PlatformCommercialCatalogController) and re-checked by CommercialCatalogService' },
   'platform:catalog:approve': { cls: 'SERVICE_ENFORCED', reason: 'approval-step scope (finance and owner steps of a catalog chain) — checkApprovalEligibility reads it LIVE in the approve transaction (libs/subscription/src/lib/commercial/commercial-approval-eligibility.ts; CCP A3)' },
   'platform:catalog:publish': { cls: 'SERVICE_ENFORCED', reason: 'owner approval-step scope of a catalog-publish chain — checkApprovalEligibility reads it LIVE in the approve transaction (libs/subscription/src/lib/commercial/commercial-approval-eligibility.ts; CCP A3); the publish apply itself lands in CCP A5/B2' },
@@ -115,7 +119,6 @@ export const CLASSIFICATIONS: Record<string, Classification> = {
   'platform:subscription:approve': { cls: 'SERVICE_ENFORCED', reason: 'approval-step scope of subscription-domain chains — checkApprovalEligibility reads it LIVE in the approve transaction (libs/subscription/src/lib/commercial/commercial-approval-eligibility.ts; CCP A3)' },
   'platform:entitlement:request': { cls: 'SERVICE_ENFORCED', reason: 'requester scope for ENTITLEMENT_GRANT / _REVOKE change requests — CommercialChangeRequestService.create (libs/subscription/src/lib/commercial/commercial-change-request.ts; CCP A3)' },
   'platform:entitlement:approve': { cls: 'SERVICE_ENFORCED', reason: 'approval-step scope of entitlement chains — checkApprovalEligibility reads it LIVE in the approve transaction (libs/subscription/src/lib/commercial/commercial-approval-eligibility.ts; CCP A3)' },
-  'platform:subscription:support': { cls: 'SERVICE_ENFORCED', reason: 'requester scope for an escalated SUPPORT_EXTENSION change request — CommercialChangeRequestService.create (libs/subscription/src/lib/commercial/commercial-change-request.ts; CCP A3); the bounded in-limit exception lands in CCP A8' },
   'platform:billing:request': { cls: 'SERVICE_ENFORCED', reason: 'requester scope for CREDIT / DISCOUNT change requests — CommercialChangeRequestService.create (libs/subscription/src/lib/commercial/commercial-change-request.ts; CCP A3)' },
   'platform:billing:approve': { cls: 'SERVICE_ENFORCED', reason: 'approval-step scope of billing chains (credit, discount) — checkApprovalEligibility reads it LIVE in the approve transaction (libs/subscription/src/lib/commercial/commercial-approval-eligibility.ts; CCP A3)' },
   // --- EXIT_HYG (owning-lane ruling required) ---

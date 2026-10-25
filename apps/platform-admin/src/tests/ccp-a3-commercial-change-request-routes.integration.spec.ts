@@ -153,7 +153,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A3 — per-ro
     });
     const publish = { action_type: 'PLAN_VERSION_PUBLISH', payload: { plan_version_id: '019a0000-0000-7000-8000-00000000b201' } };
     for (const role of ROLES) expect((await createAs(role, publish)).status, role).toBe(role === 'catalog_manager' ? 201 : 403);
-    const ext = { action_type: 'SUPPORT_EXTENSION', tenant_id: TENANT_2, product_key: 'sign', payload: { requested_days: 20 } };
+    // CCP-A8 owns the full SUPPORT_EXTENSION payload (operation EXTEND | REMOVE); a REMOVE is
+    // created here so no subscription row is needed (the overlay is checked at apply).
+    const ext = { action_type: 'SUPPORT_EXTENSION', tenant_id: TENANT_2, product_key: 'sign', payload: { operation: 'REMOVE', support_extension_id: '019a0000-0000-7000-8000-00000000a8e1' } };
     for (const role of ROLES) expect((await createAs(role, ext)).status, role).toBe(role === 'support_admin' ? 201 : 403);
     // CCP-A9 re-point: the finance_admin passes the requester authority and reaches the target
     // check (v1 is already ACTIVE → 400); every other role is refused 403 requester_role_missing.

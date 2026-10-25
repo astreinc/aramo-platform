@@ -35,7 +35,7 @@ export const COMMERCIAL_ACTION_TYPES = [
   'PLAN_VERSION_PUBLISH', // A5 / B2 — publish a catalog plan version
   'PLAN_RETIRE', // A5 / B2 — retire a plan or plan version
   'POLICY_ACTIVATE', // activate (or roll back to) a CommercialPolicyVersion (Q1)
-  'SUPPORT_EXTENSION', // A8 — an out-of-limit support extension, escalated (Q7)
+  'SUPPORT_EXTENSION', // A8 — a support extension overlay: bounded EXCEPTION, escalated (Q7), or removed (payload operation)
   'ROLE_GRANT', // A9 — grant a commercial platform role (Q2, D6)
   'ROLE_REVOKE', // A9 — remove a commercial platform role (Q2)
   'CREDIT', // C4 — account credit
@@ -135,6 +135,8 @@ export const COMMERCIAL_A3_TRANSITIONS: Readonly<Record<CommercialChangeRequestS
  */
 export const COMMERCIAL_TRANSITIONS: Readonly<Record<CommercialChangeRequestState, readonly CommercialChangeRequestState[]>> = {
   ...COMMERCIAL_A3_TRANSITIONS,
+  // CCP-A8 — a bounded EXCEPTION support extension applies in its creating transaction.
+  DRAFT: [...COMMERCIAL_A3_TRANSITIONS.DRAFT, 'APPLYING'],
   APPROVED: ['APPLYING', 'APPLY_EXPIRED'],
   APPLY_FAILED: ['APPLYING', 'APPLY_EXPIRED'],
   APPLYING: ['APPLIED', 'APPLY_FAILED'],
@@ -220,17 +222,49 @@ export const COMMERCIAL_C2_CONVERSION_TRANSITIONS: Readonly<Partial<Record<Comme
 };
 
 /**
+ * CCP-A8 — a bounded EXCEPTION SUPPORT_EXTENSION (DDR v1.2 §3.2(5)) makes ONLY these two moves,
+ * in its creating transaction; it never enters the approval states (DB guard, migration
+ * 20261026010000). An escalated or removal SUPPORT_EXTENSION (kind NORMAL) takes the A3 base
+ * plus COMMERCIAL_A6_APPLY_TRANSITIONS.
+ */
+export const COMMERCIAL_A8_EXCEPTION_TRANSITIONS: Readonly<Partial<Record<CommercialChangeRequestState, readonly CommercialChangeRequestState[]>>> = {
+  DRAFT: ['APPLYING'],
+  APPLYING: ['APPLIED'],
+};
+
+/** The action types CommercialApplyService applies: the four A6 actions, CCP-A7's ENTITLEMENT_REVOKE and CCP-A8's SUPPORT_EXTENSION (merge train TD-MERGE-30). */
+export const APPLY_SERVICE_ACTIONS = [...A6_APPLICABLE_ACTIONS, ...A7_APPLICABLE_ACTIONS, 'SUPPORT_EXTENSION'] as const;
+export type ApplyServiceAction = (typeof APPLY_SERVICE_ACTIONS)[number];
+export function isApplyServiceAction(action_type: string): action_type is ApplyServiceAction {
+  return (APPLY_SERVICE_ACTIONS as readonly string[]).includes(action_type);
+}
+
+/**
  * The per-action transition table, mirroring the DB guard exactly: the A3 base for every
  * action, plus the CCP-A9 role-change apply (role actions only), the CCP-A6 apply (the four A6
- * action types only), the CCP-B2-backend catalog apply (publish / retire only), the CCP-C2
- * conversion apply (CONVERSION only) and the CCP-A7 revoke (ENTITLEMENT_REVOKE).
- * canTransition above is the action-agnostic union.
+ * action types), the CCP-B2-backend catalog apply (publish / retire), the CCP-C2 conversion apply
+ * (CONVERSION), the CCP-A7 revoke (ENTITLEMENT_REVOKE), the CCP-A8 NORMAL SUPPORT_EXTENSION, and the
+ * CCP-A8 bounded-exception moves (SUPPORT_EXTENSION of kind EXCEPTION, which takes nothing else; a
+ * SUPPORT_EXTENSION of any other kind takes no transition at all, as the guard refuses it).
+ * `kind` defaults to NORMAL. canTransition above is the action-agnostic union.
  */
-export function canTransitionFor(action_type: string, from: CommercialChangeRequestState, to: CommercialChangeRequestState): boolean {
+export function canTransitionFor(
+  action_type: string,
+  from: CommercialChangeRequestState,
+  to: CommercialChangeRequestState,
+  kind: CommercialChangeRequestKind = 'NORMAL',
+): boolean {
+  if (action_type === 'SUPPORT_EXTENSION' && kind === 'EXCEPTION') return (COMMERCIAL_A8_EXCEPTION_TRANSITIONS[from] ?? []).includes(to);
+  // Mirror fix (merge train TD-MERGE-30): the A8 guard refuses every move of a SUPPORT_EXTENSION
+  // whose kind is neither EXCEPTION nor NORMAL ("kind % is not applied").
+  if (action_type === 'SUPPORT_EXTENSION' && kind !== 'NORMAL') return false;
   if (COMMERCIAL_A3_TRANSITIONS[from].includes(to)) return true;
   if ((COMMERCIAL_ROLE_CHANGE_ACTIONS as readonly string[]).includes(action_type)) return (COMMERCIAL_A9_ROLE_APPLY_TRANSITIONS[from] ?? []).includes(to);
   if (isA6Applicable(action_type) || isCatalogApplicable(action_type)) return (COMMERCIAL_A6_APPLY_TRANSITIONS[from] ?? []).includes(to);
   if (action_type === 'CONVERSION') return (COMMERCIAL_C2_CONVERSION_TRANSITIONS[from] ?? []).includes(to);
+  // CCP-A8: an escalated or removal SUPPORT_EXTENSION (NORMAL) takes the A6 apply pairs; like the
+  // revoke, not A6-R's APPLY_EXPIRED (the guard does not name it; merge train TD-MERGE-30).
+  if (action_type === 'SUPPORT_EXTENSION' && kind === 'NORMAL') return (COMMERCIAL_A7_REVOKE_TRANSITIONS[from] ?? []).includes(to);
   // CCP-A7: the governed revoke — the A6 apply pairs, without A6-R's APPLY_EXPIRED (the guard
   // admits APPLY_EXPIRED only for the A6 + B2-backend set; merge train TD-MERGE-26).
   if (isA7Applicable(action_type)) return (COMMERCIAL_A7_REVOKE_TRANSITIONS[from] ?? []).includes(to);
@@ -239,7 +273,9 @@ export function canTransitionFor(action_type: string, from: CommercialChangeRequ
 
 // ---- Approval chain -------------------------------------------------------------------
 
-export type CommercialChainRule = 'FINANCE_THEN_OWNER' | 'FINANCE_ONLY' | 'DISTINCT_PLATFORM_OWNER';
+// CCP-A8 — BOUNDED_EXCEPTION: the zero-step chain of a bounded EXCEPTION (DDR v1.2 §3.2(5):
+// "the only acts that apply without approval"); never resolved by resolveRequiredChain.
+export type CommercialChainRule = 'FINANCE_THEN_OWNER' | 'FINANCE_ONLY' | 'DISTINCT_PLATFORM_OWNER' | 'BOUNDED_EXCEPTION';
 
 export interface CommercialChainStep {
   step_index: number;
@@ -333,9 +369,23 @@ export function resolveRequiredChain(
     case 'ROLE_GRANT':
     case 'ROLE_REVOKE':
       return chainOf('DISTINCT_PLATFORM_OWNER', def.domain, { ruling: 'D6 / Q2 role change' });
+    case 'SUPPORT_EXTENSION':
+      // CCP-A8: an escalated extension (Q7) or a removal (TD-A8: Finance-only, as TD-A3-2's
+      // no-threshold actions). A bounded EXCEPTION never resolves a chain (boundedExceptionChain).
+      return chainOf('FINANCE_ONLY', def.domain, {
+        ruling: payload['operation'] === 'REMOVE' ? 'TD-A8 support extension removal' : 'Q7 escalated support extension',
+      });
     default:
-      return chainOf('FINANCE_ONLY', def.domain, { ruling: action_type === 'SUPPORT_EXTENSION' ? 'Q7 escalated support extension' : 'D6 below threshold' });
+      return chainOf('FINANCE_ONLY', def.domain, { ruling: 'D6 below threshold' });
   }
+}
+
+/**
+ * CCP-A8 — the zero-step chain of a bounded EXCEPTION. `basis` carries the policy clause and the
+ * counter snapshot that admitted it (evidence; never re-read).
+ */
+export function boundedExceptionChain(basis: Record<string, unknown>): CommercialRequiredChain {
+  return { format_version: 1, rule: 'BOUNDED_EXCEPTION', basis, steps: [] };
 }
 
 /** Strict parse of a stored chain snapshot (fail closed on anything unexpected). */
@@ -346,8 +396,9 @@ export function parseRequiredChain(raw: unknown): CommercialRequiredChain {
   if (raw === null || typeof raw !== 'object' || Array.isArray(raw)) fail('is not an object');
   const c = raw as Record<string, unknown>;
   if (c['format_version'] !== 1) fail('format_version');
-  if (c['rule'] !== 'FINANCE_THEN_OWNER' && c['rule'] !== 'FINANCE_ONLY' && c['rule'] !== 'DISTINCT_PLATFORM_OWNER') fail('rule');
-  if (!Array.isArray(c['steps']) || c['steps'].length === 0) fail('steps');
+  if (c['rule'] !== 'FINANCE_THEN_OWNER' && c['rule'] !== 'FINANCE_ONLY' && c['rule'] !== 'DISTINCT_PLATFORM_OWNER' && c['rule'] !== 'BOUNDED_EXCEPTION') fail('rule');
+  // CCP-A8: the bounded EXCEPTION chain has zero steps; every other chain has at least one.
+  if (!Array.isArray(c['steps']) || (c['rule'] === 'BOUNDED_EXCEPTION') !== (c['steps'].length === 0)) fail('steps');
   const steps = (c['steps'] as unknown[]).map((s, i) => {
     const st = s as Record<string, unknown>;
     if (st === null || typeof st !== 'object' || st['step_index'] !== i) fail(`step ${i} index`);
@@ -411,7 +462,19 @@ export function validatePayload(action_type: CommercialActionType, payload: unkn
       int('discount_bps', 0, 10_000);
       break;
     case 'SUPPORT_EXTENSION':
-      int('requested_days', 1, 3650);
+      // CCP-A8 owns the full schema: EXTEND names the subscription row and the days (the bound
+      // is decided by the bounded path, never by the payload); REMOVE names the overlay.
+      if (p['operation'] === 'EXTEND') {
+        closedKeys(p, ['operation', 'subscription_id', 'requested_days'], errors);
+        if (typeof p['subscription_id'] !== 'string' || !UUID.test(p['subscription_id'])) errors.push('subscription_id must be a uuid');
+        int('requested_days', 1, 3650);
+      } else if (p['operation'] === 'REMOVE') {
+        closedKeys(p, ['operation', 'support_extension_id'], errors);
+        if (typeof p['support_extension_id'] !== 'string' || !UUID.test(p['support_extension_id'])) errors.push('support_extension_id must be a uuid');
+      } else {
+        errors.push('operation must be EXTEND or REMOVE');
+        if (p['requested_days'] !== undefined) int('requested_days', 1, 3650);
+      }
       break;
     case 'ROLE_GRANT':
     case 'ROLE_REVOKE': {

@@ -32,7 +32,7 @@ import { seedUsageTenant } from '../../../libs/subscription/src/tests/support/cc
 // platform-admin AppModule — real JwtAuthGuard, RolesGuard, the identity RBAC
 // resolver (no resolver override) and the real CommercialChangeRequestService —
 // against a Postgres testcontainer holding the identity, entitlement, metering and EVERY
-// subscription migration (CCP-A2…A6: an apply writes the subscription and the entitlement
+// subscription migration (CCP-A2…A6, A8: an apply writes the subscription and the entitlement
 // in one transaction), applied whole-file in order by the shared CCP helper
 // (libs/subscription/src/tests/support/ccp-a3-database.ts, applyCcpA6Schema). One attested
 // operator per CCP role + super_admin is seeded in the platform sentinel tenant; the
@@ -389,6 +389,22 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       return id;
     }
 
+    /**
+     * CCP-A8 — a commercial tenant holding a Stripe-owned (SELF_SERVICE, provider-linked) Sign row,
+     * PAST_DUE, whose grace ended a day ago: the target of a support extension. Fixed ids from the
+     * consumer (its request body names them).
+     */
+    async function pastDueStripeRow(tenant_id: string, subscription_id: string): Promise<void> {
+      await commercialTenant(tenant_id);
+      await db.query(
+        `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by, status, grace_until, billing_provider, billing_account_ref, billing_subscription_ref)
+         SELECT $1::uuid, $2::uuid, p.id, (SELECT v.id FROM subscription."PlanVersion" v WHERE v.plan_id = p.id AND v.status = 'PUBLISHED'), p.product_key, 'BASE', now() - interval '20 days', 'SELF_SERVICE', 'pact-a8', 'PAST_DUE', now() - interval '1 day', 'STRIPE', $3, $4
+           FROM subscription."Plan" p WHERE p.key = 'aramo-sign-standard-business-v1'
+         ON CONFLICT (id) DO NOTHING`,
+        [subscription_id, tenant_id, `acct_${tenant_id}`, `sub_${subscription_id}`],
+      );
+    }
+
     beforeAll(async () => {
       container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
@@ -737,6 +753,29 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             const requestId = await approvedConversion(tenant_id, { direction: 'TO_GOVERNED', held_subscription_ref: ref, governed_subscription_id: gov });
             await asRole('commercial_ops', 'POST', `/platform/commercial/change-requests/${requestId}/convert`);
             return { requestId };
+          },
+          // CCP-A8 — the support exception overlay.
+          'a tenant with a past-due Stripe-owned Sign subscription exists': async (params?: unknown) => {
+            const p = params as { tenant_id?: unknown; subscription_id?: unknown } | undefined;
+            if (typeof p?.tenant_id !== 'string' || typeof p.subscription_id !== 'string') throw new Error('provider state needs { tenant_id, subscription_id }');
+            await pastDueStripeRow(p.tenant_id, p.subscription_id);
+            return undefined;
+          },
+          'a support extension has been applied': async (params?: unknown) => {
+            const tenant_id = (params as { tenant_id?: unknown } | undefined)?.tenant_id;
+            if (typeof tenant_id !== 'string') throw new Error('provider state needs { tenant_id }');
+            const subscription_id = randomUUID();
+            await pastDueStripeRow(tenant_id, subscription_id);
+            // Through the service's own HTTP surface, as support_admin (an in-bound extension).
+            await asRole('support_admin', 'POST', '/platform/commercial/support-extensions', {
+              tenant_id,
+              product_key: 'sign',
+              subscription_id,
+              requested_days: 7,
+              reason: 'Support goodwill: billing contact on leave',
+              idempotency_key: `pact-a8-state-${String(++seq).padStart(4, '0')}`,
+            });
+            return undefined;
           },
           'a pending change request exists': async () => {
             const requestId = await draftRequest();

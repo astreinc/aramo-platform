@@ -34,7 +34,7 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 // commercial tenant (change requests and approvals are append-only, and Q14 allows one
 // open request per tenant × product).
 //
-// Coverage — CCP routes (22):
+// Coverage — CCP routes (24):
 //   GET  /platform/commercial/audit-events                      (CCP-A2)
 //   POST /platform/commercial/change-requests                   (CCP-A3)
 //   GET  /platform/commercial/change-requests
@@ -57,6 +57,8 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 //   GET  /platform/commercial/finance/renewals                  (CCP-C6)
 //   GET  /platform/commercial/finance/outstanding-payments
 //   GET  /platform/commercial/finance/reconciliation-report
+//   POST /platform/commercial/support-extensions                 (CCP-A8)
+//   GET  /platform/commercial/support-extensions
 // For each route: the allowed call, super_admin refused (403, holds no commercial
 // scope), and the tenant tier refused (403 tier tripwire). Plus the role-level
 // refusals: a role missing the route scope (audit feed), a role missing the requester
@@ -125,6 +127,22 @@ const RECONCILIATION = '/platform/commercial/finance/reconciliation-report';
 const FIN_RENEWAL_TENANT = 'cca10000-0000-7000-8000-0000000006a1';
 const FIN_OUTSTANDING_TENANT = 'cca10000-0000-7000-8000-0000000006a2';
 const FIN_HELD_TENANT = 'cca10000-0000-7000-8000-0000000006a3';
+const SE = '/platform/commercial/support-extensions';
+// CCP-A8 fixtures: one tenant + Stripe-owned PAST_DUE Sign row per mutating interaction (MUST match
+// the provider state params; the provider inserts exactly these ids).
+const SE_TENANT_APPLY = 'cca10000-0000-7000-8000-0000000008a1';
+const SE_SUB_APPLY = 'cca10000-0000-7000-8000-0000000008b1';
+const SE_TENANT_ESC = 'cca10000-0000-7000-8000-0000000008a2';
+const SE_SUB_ESC = 'cca10000-0000-7000-8000-0000000008b2';
+const SE_TENANT_LIST = 'cca10000-0000-7000-8000-0000000008a3';
+const SE_BODY = (tenant_id: string, subscription_id: string, requested_days: number, idempotency_key: string) => ({
+  tenant_id,
+  product_key: 'sign',
+  subscription_id,
+  requested_days,
+  reason: 'Support goodwill: billing contact on leave',
+  idempotency_key,
+});
 
 const platformSession = (role: Role) => ({ 'X-Aramo-Consumer': 'platform', Cookie: `aramo_access_token_platform=pact-${role}` });
 const platformJson = (role: Role) => ({ ...platformSession(role), 'Content-Type': 'application/json' });
@@ -233,6 +251,8 @@ const GATE_ROUTES: readonly GateRoute[] = [
   { name: 'GET finance/renewals', method: 'GET', path: RENEWALS, scope: 'platform:billing:read' },
   { name: 'GET finance/outstanding-payments', method: 'GET', path: OUTSTANDING, scope: 'platform:billing:read' },
   { name: 'GET finance/reconciliation-report', method: 'GET', path: RECONCILIATION, scope: 'platform:billing:read' },
+  { name: 'POST support-extensions', method: 'POST', path: SE, scope: 'platform:subscription:support', body: SE_BODY(SE_TENANT_APPLY, SE_SUB_APPLY, 7, 'pact-a8-gate-0001') },
+  { name: 'GET support-extensions', method: 'GET', path: SE, scope: 'platform:subscription:read' },
 ];
 
 // ── CCP-A2 — the commercial audit feed ────────────────────────────────────────
@@ -386,9 +406,11 @@ const inboxRow = (state: ReturnType<typeof regex> | string) => ({
   // states, the B2 catalog requests whose product_key is null, …), so the payload is contracted
   // as an object only and product_key (nullable) is left to the per-action interactions.
   payload: like({}),
+  // Merge train TD-MERGE-31: a mixed page also carries CCP-A8 bounded exceptions (rule
+  // BOUNDED_EXCEPTION, zero steps), so the rule set includes it and the steps array may be empty.
   required_chain: {
-    rule: regex('^(FINANCE_ONLY|FINANCE_THEN_OWNER|DISTINCT_PLATFORM_OWNER)$', 'FINANCE_ONLY'),
-    steps: eachLike({ step_index: integer(0), role_key: regex('^(finance_admin|platform_owner)$', 'finance_admin') }),
+    rule: regex('^(FINANCE_ONLY|FINANCE_THEN_OWNER|DISTINCT_PLATFORM_OWNER|BOUNDED_EXCEPTION)$', 'FINANCE_ONLY'),
+    steps: eachLike({ step_index: integer(0), role_key: regex('^(finance_admin|platform_owner)$', 'finance_admin') }, 0),
   },
   policy_version_id: uuid(POLICY_V1),
   requested_by: uuid(OP.commercial_ops),
@@ -1494,6 +1516,141 @@ describe('platform-web → GET /platform/commercial/finance/reconciliation-repor
   });
 
   financeRefusal(RECONCILIATION, 'reconciliation report');
+});
+
+// ── CCP-A8 — the support exception overlay ────────────────────────────────────
+
+const SE_EXTENSION = (tenant_id: string, subscription_id: string) => ({
+  id: uuid('cca10000-0000-7000-8000-0000000008c1'),
+  tenant_id: uuid(tenant_id),
+  product_key: 'sign',
+  subscription_id: uuid(subscription_id),
+  change_request_id: uuid(EX_REQUEST_ID),
+  is_exception: true,
+  days: integer(7),
+  grace_until_at_apply: iso(),
+  base_until: iso(),
+  extends_until: iso(),
+  policy_version_id: POLICY_V1,
+  applied_by: OP.support_admin,
+  applied_at: iso(),
+  removed_at: null,
+  removed_by: null,
+  remove_change_request_id: null,
+});
+
+describe('platform-web → POST /platform/commercial/support-extensions (CCP-A8)', () => {
+  it('support_admin requests an in-bound extension: applied at once as a bounded EXCEPTION (201 APPLIED, zero-step chain)', async () => {
+    const body = SE_BODY(SE_TENANT_APPLY, SE_SUB_APPLY, 7, 'pact-a8-apply-0001');
+    await provider
+      .addInteraction()
+      .given('a tenant with a past-due Stripe-owned Sign subscription exists', { tenant_id: SE_TENANT_APPLY, subscription_id: SE_SUB_APPLY })
+      .uponReceiving('an in-bound support extension by support_admin')
+      .withRequest('POST', SE, (b) => {
+        b.headers(platformJson('support_admin')).jsonBody(body);
+      })
+      .willRespondWith(201, (b) => {
+        b.jsonBody({
+          outcome: 'APPLIED',
+          replayed: false,
+          request: like({
+            id: uuid(EX_REQUEST_ID),
+            action_type: 'SUPPORT_EXTENSION',
+            kind: 'EXCEPTION',
+            state: 'APPLIED',
+            required_chain: { rule: 'BOUNDED_EXCEPTION', basis: like({}), steps: [] },
+          }),
+          extension: like(SE_EXTENSION(SE_TENANT_APPLY, SE_SUB_APPLY)),
+          application: like({ action_type: 'SUPPORT_EXTENSION', capabilities: [], attempt: 1 }),
+          decision: like({ within_bounds: true, breaches: [] }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${SE}`, 'POST', platformJson('support_admin'), body);
+        expect(res.status).toBe(201);
+        expect(res.body['outcome']).toBe('APPLIED');
+      });
+  });
+
+  it('support_admin requests an out-of-bound extension (20 days): escalated to Finance, nothing applied (201 ESCALATED)', async () => {
+    const body = SE_BODY(SE_TENANT_ESC, SE_SUB_ESC, 20, 'pact-a8-escalate-0001');
+    await provider
+      .addInteraction()
+      .given('a tenant with a past-due Stripe-owned Sign subscription exists', { tenant_id: SE_TENANT_ESC, subscription_id: SE_SUB_ESC })
+      .uponReceiving('an out-of-bound support extension by support_admin')
+      .withRequest('POST', SE, (b) => {
+        b.headers(platformJson('support_admin')).jsonBody(body);
+      })
+      .willRespondWith(201, (b) => {
+        b.jsonBody({
+          outcome: 'ESCALATED',
+          replayed: false,
+          request: like({ action_type: 'SUPPORT_EXTENSION', kind: 'NORMAL', state: 'PENDING_APPROVAL', required_chain: like({ rule: 'FINANCE_ONLY' }) }),
+          extension: null,
+          application: null,
+          decision: like({ within_bounds: false, breaches: ['LENGTH'] }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${SE}`, 'POST', platformJson('support_admin'), body);
+        expect(res.status).toBe(201);
+        expect(res.body['outcome']).toBe('ESCALATED');
+      });
+  });
+
+  it('a role without platform:subscription:support (finance_admin) is refused (403)', async () => {
+    const body = SE_BODY(SE_TENANT_APPLY, SE_SUB_APPLY, 7, 'pact-a8-refused-0001');
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a support extension by a role missing the support scope')
+      .withRequest('POST', SE, (b) => {
+        b.headers(platformJson('finance_admin')).jsonBody(body);
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:subscription:support'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${SE}`, 'POST', platformJson('finance_admin'), body);
+        expect(res.status).toBe(403);
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/support-extensions (CCP-A8)', () => {
+  it('read_only_auditor lists a tenant\'s overlays (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('a support extension has been applied', { tenant_id: SE_TENANT_LIST })
+      .uponReceiving('a support extension list read by a read-only auditor')
+      .withRequest('GET', SE, (b) => {
+        b.headers(platformSession('read_only_auditor')).query({ tenant_id: SE_TENANT_LIST });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ extensions: eachLike({ ...SE_EXTENSION(SE_TENANT_LIST, 'cca10000-0000-7000-8000-0000000008b3'), active: true }) });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${SE}?tenant_id=${SE_TENANT_LIST}`, 'GET', platformSession('read_only_auditor'));
+        expect(res.status).toBe(200);
+      });
+  });
+
+  it('a role without platform:subscription:read (catalog_manager) is refused (403)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a support extension list read by a role missing the subscription read scope')
+      .withRequest('GET', SE, (b) => {
+        b.headers(platformSession('catalog_manager')).query({ tenant_id: SE_TENANT_LIST });
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:subscription:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${SE}?tenant_id=${SE_TENANT_LIST}`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(403);
+      });
+  });
 });
 
 // ── gate refusals on every CCP route: super_admin and the tenant tier ─────────
