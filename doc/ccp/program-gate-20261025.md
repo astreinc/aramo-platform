@@ -126,7 +126,7 @@ The other CCP migrations do not need registering:
 
 | # | Migration | Compensating SQL |
 |---|---|---|
-| 1 | `identity/20261024120000_ccp_a1_commercial_role_catalog` | **none documented** (see §7) |
+| 1 | `identity/20261024120000_ccp_a1_commercial_role_catalog` | `libs/identity/src/tests/fixtures/ccp-a1-compensating.sql` (`CCP-A1-acceptance.md` §9) |
 | 2 | `subscription/20261024180000_ccp_a2_commercial_audit_policy` | `doc/ccp/slices/CCP-A2-acceptance.md` §7 (line 151) |
 | 3 | `subscription/20261025120000_ccp_a3_change_request_approval` | `CCP-A3-acceptance.md` §9 (line 188) |
 | 4 | `subscription/20261025140000_ccp_a4_product_dimension` | `libs/subscription/src/tests/fixtures/ccp-a4-compensating.sql` (CCP-A4-pre-execution §5) |
@@ -144,15 +144,18 @@ The other CCP migrations do not need registering:
 | 16 | `subscription/20261026050000_ccp_a6r_apply_deadline` | `CCP-A6-acceptance.md` A6-R (line 360) |
 | 17 | `subscription/20261026060000_ccp_c2_conversion` | `CCP-C2-acceptance.md` §8 (line 125) |
 | 18 | `subscription/20261026090000_ccp_d3_operational_alerts` | `CCP-D3-acceptance.md` §6 (line 151) |
-| 19 | `subscription/20261027000000_ccp_guard_union` (integrator-owned, TD-MERGE-GUARD-1) | **none documented** (see §7) |
-| 20 | `subscription/20261027000100_ccp_constraint_union` (integrator-owned, TD-MERGE-CHECK-1) | **none documented** (see §7) |
-| 21 | `subscription/20261027000200_ccp_b5r_policy_activate_apply` | **none documented** (see §7) |
+| 19 | `subscription/20261027000000_ccp_guard_union` (integrator-owned, TD-MERGE-GUARD-1) | `libs/subscription/src/tests/fixtures/ccp-guard-union-compensating.sql` (restores CCP-C2's body; `decisions.md` TD-MERGE-GUARD-1) |
+| 20 | `subscription/20261027000100_ccp_constraint_union` (integrator-owned, TD-MERGE-CHECK-1) | `libs/subscription/src/tests/fixtures/ccp-constraint-union-compensating.sql` (`decisions.md` TD-MERGE-CHECK-1) |
+| 21 | `subscription/20261027000200_ccp_b5r_policy_activate_apply` | `libs/subscription/src/tests/fixtures/ccp-b5r-compensating.sql` (`CCP-B5-acceptance.md` B5-R.5) |
 
 A11 has no migration. Its backfill compensation is `libs/subscription/src/tests/fixtures/ccp-a11-compensating.sql` (CCP-A11-acceptance §6).
 
 ## 7. Unresolved
 
-1. **Missing compensating SQL.** Four CCP migrations have none documented: A1 (`20261024120000`), the two integrator union files (`20261027000000`, `20261027000100`) and B5-R (`20261027000200`). The union files replace one function and one CHECK each. Their natural compensation is re-creating the previous revision, but that is not written down. None of these four is deployed.
+1. **Missing compensating SQL — closed after the gate.** The four migrations the gate found without compensating SQL now have it, recorded in the table above. All four were proven on a fresh Postgres 17 by `ccp-merge-train-compensation.integration.spec.ts` (4 / 4 tests):
+   - each compensation is refused while dependent data exists;
+   - the four compensate in reverse order with 0 errors;
+   - the four migrations then re-apply with 0 errors.
 2. **Template Studio visual failures.** The two PLATFORM-UX-1 failures (§3) predate CCP.
 3. **Full apps/api suite.** CI-only by PO ruling; it was not run locally.
 4. **Open Lead questions from the merge train.** Carried forward in `doc/ccp/decisions.md` "Merge train": TD-MERGE-10 (catalog evidence travels in the reason), TD-C2-9 (the conversion keeps its own usage rule), and the BOUNDED_EXCEPTION chain label. B5-R since made APPLY_EXPIRED apply to every type, which closes the earlier APPLY_EXPIRED coverage question.

@@ -7503,6 +7503,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-merge-train-compensation.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/commercial-audit-policy.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"

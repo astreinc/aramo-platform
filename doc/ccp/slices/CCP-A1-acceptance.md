@@ -182,3 +182,18 @@ Docker 29.1.2 was available locally. Every count below is exact.
 - `:387-391` (`role.dto.ts`, `scope.dto.ts`, `prisma/seed.ts`, `seed.spec.ts`, `identity.integration.spec.ts`).
 
 All new text, including the text in exempt files, is clean. The new specs refer to the portal-user role through `SEED_ROLE_KEYS`, never by its literal key.
+
+## 9. Compensating SQL (added at the merge train, 2026-10-25; documented, not shipped)
+
+`libs/identity/src/tests/fixtures/ccp-a1-compensating.sql` reverses `20261024120000_ccp_a1_commercial_role_catalog` as its own header describes. In one block, it RAISEs with nothing deleted if:
+- any `UserTenantMembershipRole` holds one of the 6 commercial roles (ids `0x2c0`…`0x2c5`); or
+- any other role is granted one of the 15 commercial scopes (`0x326`…`0x334`).
+
+Otherwise it deletes the 45 RoleScope rows, the 15 Scope rows and the 6 Role rows.
+
+**Order and authority.** Run it after the compensation of every later CCP migration that uses these roles, together with a code revert of A1. Production execution needs separate PO authorization (A0-C15).
+
+**Proven** on a fresh Postgres 17 by `libs/subscription/src/tests/ccp-merge-train-compensation.integration.spec.ts`, after the full chain plus A1 run on a seeded catalog:
+- COMP-1: refused while a membership holds `platform_owner`, and nothing changed.
+- COMP-2: applies with 0 errors and leaves 0 / 0 / 0 rows.
+- COMP-3: A1 re-applies to 6 / 15 / 45.

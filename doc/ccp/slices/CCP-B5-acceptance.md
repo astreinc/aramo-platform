@@ -331,3 +331,17 @@ Baseline `debd033d` (the integrated program). Governing: `doc/ccp/decisions.md` 
 | TD-B5R-8 | `CommercialPolicyGovernanceService` takes `CommercialChangeRequestService` as an `@Optional()` 5th constructor argument (lazy expiry on the read and the draft edit). Nest injects it in `SubscriptionModule`; the manual constructions in specs pass it where expiry matters. | — |
 
 The rollback note in §9 is superseded for POLICY_ACTIVATE: a failed apply is now APPLY_FAILED and retryable by its requester through `POST …/apply`.
+
+### B5-R.5 Compensating SQL (added at the merge train, 2026-10-25; documented, not shipped)
+
+`libs/subscription/src/tests/fixtures/ccp-b5r-compensating.sql` reverses `20261027000200_ccp_b5r_policy_activate_apply`. It drops the deferred `commercial_change_request_no_applying_commit_b5r` trigger; A6's checking function stays.
+
+It is refused (RAISE, nothing changed) while a POLICY_ACTIVATE request is APPROVED, APPLYING or APPLY_FAILED.
+
+**Order and authority.** B5-R's guard branch lives in `20261027000000_ccp_guard_union`, whose compensation runs after this one (`doc/ccp/decisions.md`, TD-MERGE-GUARD-1). Run it with a code revert of B5-R. Production execution needs separate PO authorization (A0-C15).
+
+**Proven** on a fresh Postgres 17 by `ccp-merge-train-compensation.integration.spec.ts`:
+- COMP-1: refused with an APPROVED POLICY_ACTIVATE.
+- COMP-2: 0 errors, trigger gone.
+- COMP-3: the migration re-applies and the trigger is back.
+
