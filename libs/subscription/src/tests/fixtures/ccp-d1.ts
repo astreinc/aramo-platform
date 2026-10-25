@@ -120,11 +120,25 @@ export async function derivedSnapshot(pg: Client): Promise<{ daily: unknown[]; p
   return { daily, period };
 }
 
-/** md5 of every ledger column except rollup_xid — proves the worker never writes the ledger. */
+/** md5 of every ledger column of every ledger row — proves the worker never writes the ledger. */
 export async function ledgerFingerprint(pg: Client): Promise<{ rows: number; md5: string }> {
   const r = await pg.query(
     `SELECT count(*)::int AS rows, md5(coalesce(string_agg(concat_ws('|', id, tenant_id, allowance_key, send_key, period_start, state, origin, reserved_at, reserved_until, finalized_at), ',' ORDER BY id), '')) AS md5
        FROM subscription."AllowanceUsage"`,
   );
   return r.rows[0];
+}
+
+/** The AllowanceUsage table definition (columns, constraints, indexes, user triggers) — TD-D1-3 ruling evidence. */
+export async function ledgerDefinition(pg: Client): Promise<{
+  columns: Array<{ column_name: string; data_type: string; is_nullable: string; column_default: string | null }>;
+  constraints: Array<{ conname: string; def: string }>;
+  indexes: Array<{ indexname: string; indexdef: string }>;
+  triggers: Array<{ tgname: string; def: string }>;
+}> {
+  const columns = (await pg.query(`SELECT column_name, data_type, is_nullable, column_default FROM information_schema.columns WHERE table_schema = 'subscription' AND table_name = 'AllowanceUsage' ORDER BY ordinal_position`)).rows;
+  const constraints = (await pg.query(`SELECT conname, pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conrelid = 'subscription."AllowanceUsage"'::regclass ORDER BY conname`)).rows;
+  const indexes = (await pg.query(`SELECT indexname, indexdef FROM pg_indexes WHERE schemaname = 'subscription' AND tablename = 'AllowanceUsage' ORDER BY indexname`)).rows;
+  const triggers = (await pg.query(`SELECT tgname, pg_get_triggerdef(oid) AS def FROM pg_trigger WHERE tgrelid = 'subscription."AllowanceUsage"'::regclass AND NOT tgisinternal ORDER BY tgname`)).rows;
+  return { columns, constraints, indexes, triggers };
 }

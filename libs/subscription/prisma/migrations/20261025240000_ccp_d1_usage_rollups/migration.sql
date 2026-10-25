@@ -5,15 +5,16 @@
 --
 --   UsageMetric           the governed metric registry. Product = the CCP-A4 closed registry (sign only).
 --                         Seeded here. UPDATE and DELETE rejected. No price, rate or amount column.
---   AllowanceUsage        ADD rollup_xid (xid8, nullable) set by a BEFORE INSERT OR UPDATE trigger to the
---                         writing transaction id. The roll-up watermark reads it. No allowance decision does.
---                         Rows written before this migration keep NULL and are covered by the first FULL run.
+--   AllowanceUsageChange  APPEND-ONLY change log of the allowance ledger (TD-D1-3 ruling, second disposition):
+--                         one row per INSERT, UPDATE or DELETE of an AllowanceUsage row, written by an AFTER
+--                         trigger. It records only PROVENANCE: the ledger row id, the operation, the writing
+--                         transaction id (xid8) and the bucket keys (tenant, allowance key, period_start) before
+--                         and after. No quantity, state, count or balance: it is not a second ledger and no
+--                         allowance decision reads it. The ledger's own columns are unchanged by D1.
 --   UsageRollupDaily      DERIVED. Tenant x metric x period_start x UTC day counts.
 --   UsageRollupPeriod     DERIVED. Tenant x metric x period_start counts, aligned to the subscription and the
 --                         plan version in force at period_start.
 --   UsageRollupWatermark  DERIVED. One row per metric. The xid8 watermark (pg_snapshot_xmin), as bigint.
---   UsageRollupVacatedBucket  DERIVED bookkeeping. A bucket a row LEFT (DELETE, or an UPDATE of tenant, allowance
---                         or period_start), logged by trigger so the worker recomputes it. Pruned by the worker.
 --   UsageRollupRun        append-only run log (mode, xid window, buckets, reconciliation result).
 --
 -- Every derived row is recomputable from AllowanceUsage. Recovery = disable the worker, or rebuild.
@@ -58,51 +59,69 @@ CREATE TRIGGER "usage_metric_no_delete" BEFORE DELETE ON "subscription"."UsageMe
     FOR EACH ROW EXECUTE FUNCTION "subscription"."ccp_d1_usage_metric_guard"();
 
 -- ---------------------------------------------------------------------------------------------------
--- The watermark column on the allowance ledger (written by trigger, never by application code)
+-- The append-only change log of the allowance ledger (provenance only). The AFTER trigger never touches the
+-- ledger row (an AFTER ROW trigger cannot change it, and the function only INSERTs into the change log), and it
+-- has no conditional refusal: a ledger write succeeds or fails exactly as before D1. usage_id links the ledger
+-- row by id with NO foreign key, so that a DELETE can still be logged after its row is gone.
 -- ---------------------------------------------------------------------------------------------------
-ALTER TABLE "subscription"."AllowanceUsage" ADD COLUMN "rollup_xid" XID8;
-
-CREATE FUNCTION "subscription"."ccp_d1_allowance_usage_rollup_xid"()
-RETURNS TRIGGER AS $$
-BEGIN
-    NEW."rollup_xid" := pg_current_xact_id();
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER "allowance_usage_rollup_xid" BEFORE INSERT OR UPDATE ON "subscription"."AllowanceUsage"
-    FOR EACH ROW EXECUTE FUNCTION "subscription"."ccp_d1_allowance_usage_rollup_xid"();
-
--- A row that LEAVES a bucket (a DELETE, or an UPDATE that changes tenant, allowance or period_start, e.g. a
--- RELEASED row re-reserved into a later period) is invisible to the rollup_xid scan of its OLD bucket. The
--- trigger logs the vacated bucket here so the worker recomputes it. DERIVED bookkeeping, pruned by the
--- worker once the watermark passes it.
-CREATE TABLE "subscription"."UsageRollupVacatedBucket" (
+CREATE TABLE "subscription"."AllowanceUsageChange" (
     "id" BIGSERIAL NOT NULL,
-    "tenant_id" UUID NOT NULL,
-    "allowance_key" TEXT NOT NULL,
-    "period_start" TIMESTAMPTZ(6) NOT NULL,
-    "vacated_xid" XID8 NOT NULL,
-    CONSTRAINT "UsageRollupVacatedBucket_pkey" PRIMARY KEY ("id")
+    "usage_id" UUID NOT NULL,
+    "op" TEXT NOT NULL,
+    "change_xid" XID8 NOT NULL,
+    "old_tenant_id" UUID,
+    "old_allowance_key" TEXT,
+    "old_period_start" TIMESTAMPTZ(6),
+    "new_tenant_id" UUID,
+    "new_allowance_key" TEXT,
+    "new_period_start" TIMESTAMPTZ(6),
+    "changed_at" TIMESTAMPTZ(6) NOT NULL,
+    CONSTRAINT "AllowanceUsageChange_pkey" PRIMARY KEY ("id"),
+    CONSTRAINT "AllowanceUsageChange_op_check" CHECK ("op" IN ('INSERT', 'UPDATE', 'DELETE')),
+    CONSTRAINT "AllowanceUsageChange_keys_check" CHECK (
+        ("op" = 'INSERT' AND "old_tenant_id" IS NULL AND "old_allowance_key" IS NULL AND "old_period_start" IS NULL
+                         AND "new_tenant_id" IS NOT NULL AND "new_allowance_key" IS NOT NULL AND "new_period_start" IS NOT NULL)
+     OR ("op" = 'UPDATE' AND "old_tenant_id" IS NOT NULL AND "old_allowance_key" IS NOT NULL AND "old_period_start" IS NOT NULL
+                         AND "new_tenant_id" IS NOT NULL AND "new_allowance_key" IS NOT NULL AND "new_period_start" IS NOT NULL)
+     OR ("op" = 'DELETE' AND "old_tenant_id" IS NOT NULL AND "old_allowance_key" IS NOT NULL AND "old_period_start" IS NOT NULL
+                         AND "new_tenant_id" IS NULL AND "new_allowance_key" IS NULL AND "new_period_start" IS NULL))
 );
-CREATE INDEX "UsageRollupVacatedBucket_allowance_key_idx" ON "subscription"."UsageRollupVacatedBucket"("allowance_key", "tenant_id", "period_start");
+CREATE INDEX "AllowanceUsageChange_change_xid_idx" ON "subscription"."AllowanceUsageChange"("change_xid");
+CREATE INDEX "AllowanceUsageChange_usage_id_idx" ON "subscription"."AllowanceUsageChange"("usage_id");
 
-CREATE FUNCTION "subscription"."ccp_d1_allowance_usage_vacated"()
+CREATE FUNCTION "subscription"."ccp_d1_allowance_usage_change"()
 RETURNS TRIGGER AS $$
 BEGIN
-    IF TG_OP = 'DELETE'
-       OR OLD."tenant_id" IS DISTINCT FROM NEW."tenant_id"
-       OR OLD."allowance_key" IS DISTINCT FROM NEW."allowance_key"
-       OR OLD."period_start" IS DISTINCT FROM NEW."period_start" THEN
-        INSERT INTO "subscription"."UsageRollupVacatedBucket" ("tenant_id", "allowance_key", "period_start", "vacated_xid")
-        VALUES (OLD."tenant_id", OLD."allowance_key", OLD."period_start", pg_current_xact_id());
+    IF TG_OP = 'INSERT' THEN
+        INSERT INTO "subscription"."AllowanceUsageChange" ("usage_id", "op", "change_xid", "new_tenant_id", "new_allowance_key", "new_period_start", "changed_at")
+        VALUES (NEW."id", 'INSERT', pg_current_xact_id(), NEW."tenant_id", NEW."allowance_key", NEW."period_start", clock_timestamp());
+    ELSIF TG_OP = 'UPDATE' THEN
+        INSERT INTO "subscription"."AllowanceUsageChange" ("usage_id", "op", "change_xid", "old_tenant_id", "old_allowance_key", "old_period_start", "new_tenant_id", "new_allowance_key", "new_period_start", "changed_at")
+        VALUES (NEW."id", 'UPDATE', pg_current_xact_id(), OLD."tenant_id", OLD."allowance_key", OLD."period_start", NEW."tenant_id", NEW."allowance_key", NEW."period_start", clock_timestamp());
+    ELSE
+        INSERT INTO "subscription"."AllowanceUsageChange" ("usage_id", "op", "change_xid", "old_tenant_id", "old_allowance_key", "old_period_start", "changed_at")
+        VALUES (OLD."id", 'DELETE', pg_current_xact_id(), OLD."tenant_id", OLD."allowance_key", OLD."period_start", clock_timestamp());
     END IF;
     RETURN NULL;
 END;
 $$ LANGUAGE plpgsql;
 
-CREATE TRIGGER "allowance_usage_rollup_vacated" AFTER UPDATE OR DELETE ON "subscription"."AllowanceUsage"
-    FOR EACH ROW EXECUTE FUNCTION "subscription"."ccp_d1_allowance_usage_vacated"();
+CREATE TRIGGER "allowance_usage_change_log" AFTER INSERT OR UPDATE OR DELETE ON "subscription"."AllowanceUsage"
+    FOR EACH ROW EXECUTE FUNCTION "subscription"."ccp_d1_allowance_usage_change"();
+
+CREATE FUNCTION "subscription"."ccp_d1_allowance_usage_change_guard"()
+RETURNS TRIGGER AS $$
+BEGIN
+    RAISE EXCEPTION 'AllowanceUsageChange is an append-only change log (% rejected)', TG_OP;
+END;
+$$ LANGUAGE plpgsql;
+
+CREATE TRIGGER "allowance_usage_change_no_update" BEFORE UPDATE ON "subscription"."AllowanceUsageChange"
+    FOR EACH ROW EXECUTE FUNCTION "subscription"."ccp_d1_allowance_usage_change_guard"();
+CREATE TRIGGER "allowance_usage_change_no_delete" BEFORE DELETE ON "subscription"."AllowanceUsageChange"
+    FOR EACH ROW EXECUTE FUNCTION "subscription"."ccp_d1_allowance_usage_change_guard"();
+CREATE TRIGGER "allowance_usage_change_no_truncate" BEFORE TRUNCATE ON "subscription"."AllowanceUsageChange"
+    FOR EACH STATEMENT EXECUTE FUNCTION "subscription"."ccp_d1_allowance_usage_change_guard"();
 
 -- ---------------------------------------------------------------------------------------------------
 -- Derived roll-ups

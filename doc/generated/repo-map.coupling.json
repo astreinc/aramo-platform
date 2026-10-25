@@ -14235,12 +14235,22 @@
     {
       "from": "doc/ccp/slices/CCP-D1-acceptance.md",
       "status": "unscoped",
+      "to": "libs/subscription/src/lib/usage/usage-rollup.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-acceptance.md",
+      "status": "unscoped",
       "to": "libs/subscription/src/tests/ccp-d1-usage-rollups.integration.spec.ts"
     },
     {
       "from": "doc/ccp/slices/CCP-D1-acceptance.md",
       "status": "unscoped",
       "to": "libs/subscription/src/tests/fixtures/ccp-d1-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-d1.ts"
     },
     {
       "from": "doc/ccp/slices/CCP-D1-acceptance.md",
