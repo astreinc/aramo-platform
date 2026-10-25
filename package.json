@@ -38,6 +38,8 @@
     "billing:price-parity": "node deploy/jiti-tsconfig-runner.mjs libs/subscription/prisma/check-provider-price-parity.ts",
     "ccp:bootstrap-platform-owner": "node deploy/jiti-tsconfig-runner.mjs libs/subscription/scripts/ccp-bootstrap-platform-owner.ts",
     "billing:cutover-check": "node deploy/jiti-tsconfig-runner.mjs libs/subscription/prisma/check-checkout-cutover.ts",
+    "ccp:astre-backfill": "node deploy/jiti-tsconfig-runner.mjs libs/subscription/prisma/ccp-astre-backfill.ts",
+    "ccp:astre-fact-check": "node deploy/jiti-tsconfig-runner.mjs libs/subscription/prisma/ccp-astre-fact-check.ts",
     "db:sync:local": "bash tools/db-sync-local.sh",
     "db:sync:intelligence": "bash tools/db-sync-intelligence.sh",
     "format": "prettier --write .",

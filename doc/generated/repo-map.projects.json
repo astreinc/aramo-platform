@@ -6958,6 +6958,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-a11-astre-backfill.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-a4-product-dimension.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
@@ -7019,6 +7025,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/commercial-change-request.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/fixtures/ccp-a11-production-like.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -7960,6 +7972,12 @@
       },
       { "project": "sign-service", "status": "production" },
       { "project": "submittal", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-a11-astre-backfill.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
       { "project": "subscription", "status": "production" },
       { "project": "talent-record", "status": "production" },
       { "project": "task", "status": "production" }
