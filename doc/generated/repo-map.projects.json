@@ -821,6 +821,8 @@
       "EntitlementRepository",
       "REQUIRED_CAPABILITIES_KEY",
       "RequireCapability",
+      "UnknownCapabilityError",
+      "grantCapabilitiesInTx",
       "isCapability",
       "reconcileTenantEntitlements",
       "resolveReconcileTarget"
@@ -2166,6 +2168,7 @@
       "pipelineLinkVerdict"
     ],
     "@aramo/subscription": [
+      "A6_APPLICABLE_ACTIONS",
       "APPROVAL_REFUSALS",
       "AllowanceService",
       "AramoSignIncludedPlanKey",
@@ -2178,9 +2181,11 @@
       "BillingProviderUnavailableError",
       "BillingRefusedError",
       "BillingWebhookSignatureError",
+      "C16_QUERY_A",
       "COMMERCIAL_A3_TRANSITIONS",
       "COMMERCIAL_ACTIONS",
       "COMMERCIAL_ACTION_TYPES",
+      "COMMERCIAL_APPLY_FAULT_HOOK",
       "COMMERCIAL_AUDIT_DEFAULT_LIMIT",
       "COMMERCIAL_AUDIT_EVENT_TYPE_PATTERN",
       "COMMERCIAL_AUDIT_MAX_LIMIT",
@@ -2192,8 +2197,11 @@
       "COMMERCIAL_POLICY_KEYS",
       "COMMERCIAL_REQUEST_PRODUCT_KEYS",
       "COMMERCIAL_TERMINAL_STATES",
+      "COMMERCIAL_TRANSITIONS",
       "CapacityService",
+      "CommercialApplyFailedError",
       "CommercialApplyRefusedError",
+      "CommercialApplyService",
       "CommercialApprovalRefusedError",
       "CommercialAuditCursorError",
       "CommercialAuditRepository",
@@ -2216,6 +2224,7 @@
       "FREE_SUBSCRIPTION_SOURCE",
       "FreePersonalPlanKey",
       "FreePersonalSubscriptionService",
+      "GOVERNED_SUBSCRIPTION_OPEN",
       "LEGAL_DOCUMENTS",
       "LEGAL_DOCUMENT_REGISTRY",
       "LEGAL_DOCUMENT_TITLES",
@@ -2223,10 +2232,12 @@
       "ORGANIZATION_BILLING_PROFILE_PORT",
       "PAST_DUE_GRACE_DAYS_DEFAULT",
       "PERSONAL_LEGAL_DOCUMENT_KEYS",
+      "PIN_REASON_CHANGE_REQUEST",
       "PIN_REASON_PROVIDER_PLAN_CHANGE",
       "PLAN_ELIGIBILITY_PORT",
       "PLAN_VERSION_CONTENT_FORMAT",
       "PLAN_VERSION_STATUSES",
+      "PRODUCT_CAPABILITIES",
       "PRODUCT_KEYS",
       "PlanVersionContentError",
       "PlanVersionRepository",
@@ -2247,6 +2258,7 @@
       "assertNotProduction",
       "assertProductKey",
       "billingCountrySupported",
+      "billingLockKey",
       "billingPeriodAt",
       "canTransition",
       "canonicalJson",
@@ -2254,14 +2266,18 @@
       "checkChainSatisfiable",
       "checkProviderPriceParity",
       "checkSupportExtension",
+      "checkoutCutoverReport",
       "commercialPolicyChecksum",
       "creditEscalation",
       "currentPublishedVersion",
       "discountEscalates",
       "effectiveProviderPrice",
+      "formatCheckoutCutoverReport",
       "inAppContextRef",
+      "isA6Applicable",
       "isApprovalExpired",
       "isFeatureAvailable",
+      "isGovernedSubscription",
       "isProductKey",
       "isWithinPastDueGrace",
       "legalRef",
@@ -2286,6 +2302,7 @@
       "stripeSubscriptionState",
       "subjectUserOf",
       "subscriptionSends",
+      "takeBillingLock",
       "thresholdOf",
       "validatePayload",
       "verifyStripeSignature"
@@ -3347,6 +3364,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a6-commercial-apply-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -3931,6 +3954,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a6-commercial-apply-routes.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -6230,6 +6259,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a6-commercial-apply-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -6856,6 +6891,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-a5-plan-version.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-a6-apply.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-a6-hold.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -7815,6 +7862,7 @@
       },
       { "project": "sign-service", "status": "production" },
       { "project": "submittal", "status": "production" },
+      { "project": "subscription", "status": "production" },
       { "project": "talent-record", "status": "production" },
       { "project": "task", "status": "production" }
     ],
@@ -9086,6 +9134,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a6-commercial-apply-routes.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -11188,6 +11242,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a6-commercial-apply-routes.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },

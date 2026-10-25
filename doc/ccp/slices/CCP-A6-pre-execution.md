@@ -28,5 +28,48 @@
 ## Correction-1 trigger check
 None.
 
-## Path:line re-verification (executor)
-_To be appended._
+## Path:line re-verification (executor, 2026-10-25, worktree `wip/ccp-a6` at `a2468acf`)
+
+The Conversion Rule cites `subscription-lifecycle.service.ts` at `origin/main` `78dbd6d3`. A4 and A5 have since added code above the cited lines, so the line numbers moved. Each clause below was re-read at `a2468acf`. The **content** of every cited line is unchanged; only its position moved.
+
+| Conv. citation (`78dbd6d3`) | Now (`a2468acf`) | Content re-verified |
+|---|---|---|
+| `:31-32` header "activate → … ends any other open (MANUAL / DEVELOPMENT) one in the same tx." | `subscription-lifecycle.service.ts:37-38` | ✅ verbatim |
+| `:395` checkout open-row read (outside the lock) | `:433` (now product-scoped, `openBaseSubscription(input.tenant_id, product_key)`, CCP-A4) | ✅ still `this.prisma`, before the `$transaction` at `:444` |
+| `:396-399` "MANUAL / DEVELOPMENT subscription may be replaced…" + `ALREADY_SUBSCRIBED` | `:434-438` | ✅ verbatim |
+| `:406` checkout `$transaction` | `:444` | ✅ creates the `CheckoutIntent` (+ `LegalAcceptance`), no lock |
+| `:435` external checkout-session creation | `:473` | ✅ outside the transaction |
+| `:577-578` webhook `$transaction` + `pg_advisory_xact_lock(hashtextextended('billing:'‖tenant, 0))` | `:624-625` | ✅ verbatim |
+| `:584-597` country and domain guards, `IGNORED` when held | `:630-644` | ✅ |
+| `:606-630` `guardFlag` | `:653-677` | ✅ raise via `ON CONFLICT … WHERE resolved_at IS NULL DO NOTHING`, resolve via `updateMany` |
+| `:650` "An ended subscription is never reopened" | `:699` | ✅ verbatim |
+| `:720-728` webhook-time end of the open row | `:783-791` (product-scoped) | ✅ `open !== null && !sends` → IGNORED (`:785-788`); otherwise the open row is ended (`:789-791`) |
+| `schema.prisma:112-116` source CHECK comment | `libs/subscription/prisma/schema.prisma:187-191` | ✅ "CHECK: MANUAL \| DEVELOPMENT \| SELF_SERVICE \| FREE" |
+| `schema.prisma:181` CheckoutIntent statuses | `schema.prisma:271` | ✅ "CHECK: CREATED \| COMPLETED \| EXPIRED" |
+| `schema.prisma:206` BillingEvent idempotency | `schema.prisma:296` | ✅ `@@unique([provider, provider_event_id])` |
+| flag CHECK `20261022100100_billing_account_country_guard/migration.sql:38` | same `:38` | ✅ |
+| flag widening `20261022110100_billing_flag_domain_reason/migration.sql:8-10` | same `:8-10` | ✅ (DROP + ADD CONSTRAINT, additive) |
+| `sign-signup.service.ts:58`, `:59`, `:390` | same | ✅ `SIGN_SIGNUP_OWNER_ROLE_KEYS`, `SIGN_CAPABILITIES = ['core', 'sign']`, `grantCapabilities(...)` |
+
+Other substrate the A6 row and Reconciliation Report §1 C3 rely on:
+
+| Fact | `path:line` | Re-verified |
+|---|---|---|
+| A3 guard function A6 replaces ("CCP-A3 transitions only … until CCP-A6 replaces this function") | `libs/subscription/prisma/migrations/20261025120000_ccp_a3_change_request_approval/migration.sql:167-171` | ✅ |
+| A3 apply-time NC-5 re-check, read-only, takes the caller's `tx` | `libs/subscription/src/lib/commercial/commercial-change-request.service.ts:506` (`assertApplyEligible`) | ✅ |
+| The pure re-check refuses anything not `APPROVED` | `libs/subscription/src/lib/commercial/commercial-approval-eligibility.ts:206` | ✅ (A6 admits `APPLY_FAILED` for the retry, TD-A6-6) |
+| One open BASE per (tenant, product) (G2) | `libs/subscription/prisma/migrations/20261025140000_ccp_a4_product_dimension/migration.sql:81` | ✅ partial unique index |
+| Pin-reason CHECK A6 widens (TD-A5-9) | `libs/subscription/prisma/migrations/20261025160000_ccp_a5_plan_version/migration.sql:317` | ✅ `('PROVIDER_PLAN_CHANGE')` |
+| Raw cross-schema write in the caller's transaction (precedent for `grantCapabilitiesInTx`) | `libs/policy-store/src/lib/insert-decision-record.ts:39-45` | ✅ |
+| Entitlement grant shape (`createMany … skipDuplicates`) | `libs/entitlement/src/lib/entitlement.repository.ts:52-63` | ✅ |
+| New nx edge subscription → entitlement: base path exists | `tsconfig.base.json:61`; vitest alias `vitest.shared.ts:111` | ✅ present. The third place (`libs/subscription/tsconfig.lib.json` dist paths for `@aramo/entitlement` and its `@aramo/auth` type dependency) is added by A6. No cycle: `libs/entitlement` imports only `@aramo/common` and `@aramo/auth`, and neither imports `@aramo/subscription`. |
+
+## Names fixed by this record (Conv. C-4, C-7(b), O-3; checked against `scripts/verify-vocabulary.sh`)
+
+| Item | Name |
+|---|---|
+| New `BillingRefusal` value (C-4) | `GOVERNED_SUBSCRIPTION_OPEN`. Surfaced as 409 `ESIGN_BILLING_CONFLICT`, `details.reason` `governed_subscription_open`. `ALREADY_SUBSCRIBED` keeps its meaning (an open self-service row, C-5). |
+| New `BillingReconciliationFlag.reason` (C-7(b)) | `governed_subscription_open` (additive CHECK widening) |
+| New pin-history reason (TD-A5-9) | `CHANGE_REQUEST` (additive CHECK widening) |
+| Apply route | `POST /platform/commercial/change-requests/{id}/apply` |
+| Governed subscription (C-1, C-6) in A6 | an open BASE row with `source = 'MANUAL'`. Definition (b) has no rows until B4 (O-5). Definition (c) is contained in (a) by construction in A6: every applied open writes a MANUAL row, and change and end target MANUAL rows only. |

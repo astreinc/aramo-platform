@@ -140,6 +140,16 @@ const SENDER_SCOPES: readonly (readonly [string, string])[] = [
 ];
 // The consumer's placeholder session cookie; the requestFilter swaps in a real token.
 const SENDER_COOKIE_NAME = 'aramo_access_token_sign';
+
+// CCP-A6 (Conversion Rule C-1, C-4) — the billing owner of a BUSINESS tenant holding an open
+// governed (MANUAL) Sign subscription. MUST match the placeholder in
+// pact/consumers/sign-workspace-consumer/src/sender-console.consumer.test.ts.
+const BILLING_OWNER_PLACEHOLDER = 'sign-workspace-pact-billing-owner';
+const GOV_TENANT_ID = 'e6a60000-0000-7000-8000-000000000001';
+const GOV_USER_ID = 'e6a60000-0000-7000-8000-000000000002';
+const GOV_MEMBERSHIP_ID = 'e6a60000-0000-7000-8000-000000000003';
+const GOV_ROLE_ID = 'e6a60000-0000-7000-8000-000000000004';
+const GOV_SCOPE_ID = 'e6a60000-0000-7000-8000-000000000011';
 const AUTH_ISSUER = 'Aramo Core Auth'; // the issuer JwtAuthGuard pins
 const AUTH_AUDIENCE = 'aramo-pact-provider-esign-audience';
 // Per-fixture child ids derive from the envelope id's last two hex chars:
@@ -156,6 +166,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     let port = 0;
     let savedEnv: Partial<Record<string, string | undefined>> = {};
     let senderJwt = '';
+    let billingOwnerJwt = '';
     let letterPdf: Uint8Array = new Uint8Array();
 
     // PX-1 — in-memory OWNED source storage (DOCUMENT_STORAGE_PORT) so uploads and
@@ -254,6 +265,72 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         [SENDER_TENANT_ID],
       );
     }
+
+    // CCP-A6 — the governed-subscription billing owner (real RBAC: a role granting
+    // sign:billing:manage; the tenant entitled core + sign) and an open MANUAL Sign subscription.
+    async function seedGovernedBillingOwner(): Promise<void> {
+      await db.query(
+        `INSERT INTO identity."Tenant" (id, name, slug, kind, status, is_active, updated_at)
+         VALUES ($1,'Pact Governed Co','pact-governed','BUSINESS','ACTIVE',true, now()) ON CONFLICT (id) DO NOTHING`,
+        [GOV_TENANT_ID],
+      );
+      await db.query(
+        `INSERT INTO identity."User" (id, email, display_name, tenant_id, updated_at)
+         VALUES ($1,'bo.owner@example.com','Bo Owner',$2, now()) ON CONFLICT (id) DO NOTHING`,
+        [GOV_USER_ID, GOV_TENANT_ID],
+      );
+      await db.query(`INSERT INTO identity."UserTenantMembership" (id, user_id, tenant_id, updated_at) VALUES ($1,$2,$3, now()) ON CONFLICT (id) DO NOTHING`, [
+        GOV_MEMBERSHIP_ID,
+        GOV_USER_ID,
+        GOV_TENANT_ID,
+      ]);
+      await db.query(`INSERT INTO identity."Role" (id, key, description, updated_at) VALUES ($1,'pact_sign_billing_owner','Pact Sign billing owner', now()) ON CONFLICT (key) DO NOTHING`, [GOV_ROLE_ID]);
+      await db.query(`INSERT INTO identity."Scope" (id, key) VALUES ($1,'sign:billing:manage') ON CONFLICT (key) DO NOTHING`, [GOV_SCOPE_ID]);
+      await db.query(
+        `INSERT INTO identity."RoleScope" (id, role_id, scope_id)
+         SELECT gen_random_uuid(), r.id, s.id FROM identity."Role" r, identity."Scope" s
+          WHERE r.key = 'pact_sign_billing_owner' AND s.key = 'sign:billing:manage'
+         ON CONFLICT (role_id, scope_id) DO NOTHING`,
+      );
+      await db.query(
+        `INSERT INTO identity."UserTenantMembershipRole" (id, membership_id, role_id)
+         SELECT gen_random_uuid(), $1, r.id FROM identity."Role" r WHERE r.key = 'pact_sign_billing_owner'
+         ON CONFLICT (membership_id, role_id) DO NOTHING`,
+        [GOV_MEMBERSHIP_ID],
+      );
+      await db.query(
+        `INSERT INTO identity."AuthorizationVersion" (id, tenant_id, principal_id, version, updated_at)
+         VALUES (gen_random_uuid(),$1,$2,1, now()) ON CONFLICT (tenant_id, principal_id) DO NOTHING`,
+        [GOV_TENANT_ID, GOV_USER_ID],
+      );
+      for (const capability of ['core', 'sign']) {
+        await db.query(
+          `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1, $2::entitlement."Capability") ON CONFLICT (tenant_id, capability) DO NOTHING`,
+          [GOV_TENANT_ID, capability],
+        );
+      }
+      // The governed (MANUAL, Aramo-managed) subscription; explicit product, composition and pin.
+      await db.query(
+        `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by)
+         SELECT gen_random_uuid(), $1::uuid, p.id,
+                (SELECT v.id FROM subscription."PlanVersion" v WHERE v.plan_id = p.id AND v.status = 'PUBLISHED'),
+                p.product_key, 'BASE', now(), 'MANUAL', 'pact-verify-sign'
+           FROM subscription."Plan" p WHERE p.key = 'aramo-sign-included-v1' AND p.product_key = 'sign'
+         ON CONFLICT (tenant_id, product_key) WHERE ended_at IS NULL AND composition_role = 'BASE' DO NOTHING`,
+        [GOV_TENANT_ID],
+      );
+    }
+    // Billing must be configured for checkout to reach the governed-subscription decision (no
+    // provider call is made: the refusal precedes every side effect). Scoped to the one state.
+    // STRIPE_API_BASE points at a closed local port: should any provider call ever be reached, it
+    // fails (503) instead of leaving the harness.
+    const BILLING_ENV = {
+      STRIPE_SECRET_KEY: 'sk_test_pact_verify_sign',
+      STRIPE_WEBHOOK_SECRET: 'whsec_pact_verify_sign',
+      STRIPE_API_BASE: 'http://127.0.0.1:9',
+      STRIPE_PLAN_PRICES: 'aramo-sign-standard-business-v1=price_pact_business',
+    } as const;
+    const billingEnvSaved: Partial<Record<string, string | undefined>> = {};
 
     // PX-1 — one sender-authored (OWNED-source) envelope fixture. NO deletes:
     // SignatureEvent is append-only; each interaction names its own envelope id.
@@ -644,6 +721,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         .setIssuedAt(now)
         .setExpirationTime(now + 15 * 60)
         .sign(kp.privateKey);
+      billingOwnerJwt = await new SignJWT({ sub: GOV_USER_ID, actor_kind: 'user', consumer_type: 'sign', tenant_id: GOV_TENANT_ID, authz_version: 1 })
+        .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
+        .setIssuer(AUTH_ISSUER)
+        .setAudience(AUTH_AUDIENCE)
+        .setSubject(GOV_USER_ID)
+        .setIssuedAt(now)
+        .setExpirationTime(now + 15 * 60)
+        .sign(kp.privateKey);
 
       module = await Test.createTestingModule({ imports: [AppModule] })
         .overrideProvider(DOCUMENT_STORAGE_PORT)
@@ -682,7 +767,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // consumer's request) is forwarded untouched.
         requestFilter: (req, _res, next) => {
           const cookie = req.headers['cookie'];
-          if (typeof cookie === 'string' && cookie.includes(`${SENDER_COOKIE_NAME}=`)) {
+          if (typeof cookie === 'string' && cookie.includes(`${SENDER_COOKIE_NAME}=${BILLING_OWNER_PLACEHOLDER}`)) {
+            req.headers['cookie'] = `${SENDER_COOKIE_NAME}=${billingOwnerJwt}`;
+          } else if (typeof cookie === 'string' && cookie.includes(`${SENDER_COOKIE_NAME}=`)) {
             req.headers['cookie'] = `${SENDER_COOKIE_NAME}=${senderJwt}`;
           }
           next();
@@ -758,6 +845,25 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'a sender draft envelope is ready to send': async (params?: unknown) => {
             await seedSenderEnvelope({ envelopeId: envelopeParam(params), status: 'DRAFT', document: true, recipient: true, signatureField: true });
             return undefined;
+          },
+          // CCP-A6 — Conversion Rule C-1 / C-4: checkout refused while a governed subscription is open.
+          'a business tenant holds a governed Aramo-managed Sign subscription': {
+            setup: async () => {
+              await seedGovernedBillingOwner();
+              for (const [k, v] of Object.entries(BILLING_ENV)) {
+                billingEnvSaved[k] = process.env[k];
+                process.env[k] = v;
+              }
+              return undefined;
+            },
+            teardown: async () => {
+              for (const k of Object.keys(BILLING_ENV)) {
+                const v = billingEnvSaved[k];
+                if (v === undefined) delete process.env[k];
+                else process.env[k] = v;
+              }
+              return undefined;
+            },
           },
           'a sent sender envelope exists': async (params?: unknown) => {
             await seedSenderEnvelope({ envelopeId: envelopeParam(params), status: 'SENT', document: true, recipient: true, signatureField: true });

@@ -1,5 +1,5 @@
 import { createHash, randomUUID } from 'node:crypto';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 import { resolveIdentityMigrations } from '@aramo/common';
@@ -56,6 +56,33 @@ export async function applyCcpA3Schema(pg: Client): Promise<void> {
   for (const f of resolveIdentityMigrations(REPO_ROOT)) await pg.query(readFileSync(f, 'utf8'));
   for (const f of SUBSCRIPTION_CHAIN) await pg.query(readFileSync(f, 'utf8'));
   await pg.query(readFileSync(CCP_A3_MIGRATION, 'utf8'));
+  await seedCcpCatalog(pg);
+}
+
+/** Every migration of a lib, whole-file, in order (never a hand-kept list). */
+export function libMigrations(lib: string): string[] {
+  const dir = resolve(REPO_ROOT, 'libs', lib, 'prisma/migrations');
+  return readdirSync(dir)
+    .filter((n) => /^\d/.test(n))
+    .sort()
+    .map((n) => resolve(dir, n, 'migration.sql'));
+}
+
+/**
+ * CCP-A6 — the full chain an APPLY touches: identity, entitlement (the in-transaction grant),
+ * metering and EVERY subscription migration (A4 product dimension, A5 plan versions, A6 apply,
+ * and any later one), whole-file, then the same platform roster catalog as applyCcpA3Schema.
+ * The seeded plans and their PUBLISHED v1 come from the migrations themselves.
+ */
+export async function applyCcpA6Schema(pg: Client): Promise<void> {
+  for (const s of ['subscription', 'metering', 'entitlement', 'identity']) await pg.query(`DROP SCHEMA IF EXISTS ${s} CASCADE`);
+  for (const f of resolveIdentityMigrations(REPO_ROOT)) await pg.query(readFileSync(f, 'utf8'));
+  for (const f of libMigrations('entitlement')) await pg.query(readFileSync(f, 'utf8'));
+  for (const f of [...libMigrations('metering'), ...libMigrations('subscription')]) await pg.query(readFileSync(f, 'utf8'));
+  await seedCcpCatalog(pg);
+}
+
+async function seedCcpCatalog(pg: Client): Promise<void> {
   // The platform sentinel tenant, one commercial tenant, and the role/scope catalog.
   await pg.query(`INSERT INTO identity."Tenant" (id, name, updated_at) VALUES ($1, 'Aramo Platform', now()), ($2, 'Tenant One', now()), ($3, 'Tenant Two', now())`, [
     PLATFORM_TENANT,

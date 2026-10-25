@@ -99,9 +99,8 @@ export const COMMERCIAL_TERMINAL_STATES: readonly CommercialChangeRequestState[]
 export const COMMERCIAL_OPEN_STATES: readonly CommercialChangeRequestState[] = ['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'APPLYING', 'APPLY_FAILED'];
 
 /**
- * The A3 transition table. APPLYING / APPLIED / APPLY_FAILED are defined states but no
- * A3 transition reaches them (the DB guard refuses them too); CCP-A6 adds
- * APPROVED → APPLYING → APPLIED | APPLY_FAILED and APPLY_FAILED → APPLYING.
+ * The A3 transition table (kept as the A3 record). APPLYING / APPLIED / APPLY_FAILED are
+ * reached only through the CCP-A6 additions in COMMERCIAL_TRANSITIONS below.
  */
 export const COMMERCIAL_A3_TRANSITIONS: Readonly<Record<CommercialChangeRequestState, readonly CommercialChangeRequestState[]>> = {
   DRAFT: ['PENDING_APPROVAL', 'WITHDRAWN'],
@@ -115,8 +114,29 @@ export const COMMERCIAL_A3_TRANSITIONS: Readonly<Record<CommercialChangeRequestS
   WITHDRAWN: [],
 };
 
+/**
+ * CCP-A6 — the full transition table (the DB guard trigger replaced by migration
+ * 20261025200000 enforces the same): the A3 transitions plus the apply transitions
+ * APPROVED → APPLYING, APPLY_FAILED → APPLYING (retry), APPLYING → APPLIED | APPLY_FAILED.
+ * APPLYING never commits: the apply, or the recording of its failure, leaves it in the same
+ * local transaction (deferred constraint trigger).
+ */
+export const COMMERCIAL_TRANSITIONS: Readonly<Record<CommercialChangeRequestState, readonly CommercialChangeRequestState[]>> = {
+  ...COMMERCIAL_A3_TRANSITIONS,
+  APPROVED: ['APPLYING'],
+  APPLY_FAILED: ['APPLYING'],
+  APPLYING: ['APPLIED', 'APPLY_FAILED'],
+};
+
 export function canTransition(from: CommercialChangeRequestState, to: CommercialChangeRequestState): boolean {
-  return COMMERCIAL_A3_TRANSITIONS[from].includes(to);
+  return COMMERCIAL_TRANSITIONS[from].includes(to);
+}
+
+/** CCP-A6 — the action types A6 applies (Aramo-owned operations, Conversion Rule C-21). */
+export const A6_APPLICABLE_ACTIONS = ['SUBSCRIPTION_OPEN', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'ENTITLEMENT_GRANT'] as const;
+export type A6ApplicableAction = (typeof A6_APPLICABLE_ACTIONS)[number];
+export function isA6Applicable(action_type: string): action_type is A6ApplicableAction {
+  return (A6_APPLICABLE_ACTIONS as readonly string[]).includes(action_type);
 }
 
 // ---- Approval chain -------------------------------------------------------------------
@@ -292,11 +312,55 @@ export function validatePayload(action_type: CommercialActionType, payload: unkn
     case 'POLICY_ACTIVATE':
       if (typeof p['policy_version_id'] !== 'string' || !UUID.test(p['policy_version_id'])) errors.push('policy_version_id must be a uuid');
       break;
+    // CCP-A6 — the applying slice owns the full payload schema of its actions. Each names
+    // exactly what the approvers approve: the plan VERSION (G3 pin), and the subscription row
+    // the change acts on or replaces (G2), so a stale request is refused at apply.
+    case 'SUBSCRIPTION_OPEN':
+      closedKeys(p, ['plan_key', 'plan_version_id', 'replaces_subscription_id', 'period_anchor'], errors);
+      planRef(p, errors);
+      if (p['replaces_subscription_id'] !== null && !(typeof p['replaces_subscription_id'] === 'string' && UUID.test(p['replaces_subscription_id']))) {
+        errors.push('replaces_subscription_id must be a uuid or null (null: the tenant holds no open subscription of the product)');
+      }
+      if (p['period_anchor'] !== undefined && !isIsoInstant(p['period_anchor'])) errors.push('period_anchor must be an ISO-8601 UTC instant');
+      break;
+    case 'SUBSCRIPTION_CHANGE':
+      closedKeys(p, ['subscription_id', 'plan_key', 'plan_version_id'], errors);
+      if (typeof p['subscription_id'] !== 'string' || !UUID.test(p['subscription_id'])) errors.push('subscription_id must be a uuid');
+      planRef(p, errors);
+      break;
+    case 'SUBSCRIPTION_END':
+      closedKeys(p, ['subscription_id'], errors);
+      if (typeof p['subscription_id'] !== 'string' || !UUID.test(p['subscription_id'])) errors.push('subscription_id must be a uuid');
+      break;
+    case 'ENTITLEMENT_GRANT': {
+      closedKeys(p, ['capabilities'], errors);
+      const caps = p['capabilities'];
+      if (!Array.isArray(caps) || caps.length === 0 || caps.length > 16 || !caps.every((c) => typeof c === 'string' && /^[a-z][a-z_]{0,39}$/.test(c))) {
+        errors.push('capabilities must be a non-empty array of capability keys');
+      } else if (new Set(caps).size !== caps.length) {
+        errors.push('capabilities must not repeat');
+      }
+      break;
+    }
     default:
       break;
   }
   if (errors.length > 0) throw new CommercialPayloadError(errors);
   return p;
+}
+
+function closedKeys(p: Record<string, unknown>, allowed: readonly string[], errors: string[]): void {
+  for (const k of Object.keys(p)) if (!allowed.includes(k)) errors.push(`${k} is not a field of this action`);
+}
+
+function planRef(p: Record<string, unknown>, errors: string[]): void {
+  if (typeof p['plan_key'] !== 'string' || !/^[a-z0-9][a-z0-9-]{1,99}$/.test(p['plan_key'])) errors.push('plan_key must be a catalog plan key');
+  if (typeof p['plan_version_id'] !== 'string' || !UUID.test(p['plan_version_id'])) errors.push('plan_version_id must be a uuid (the version is pinned, G3)');
+}
+
+const ISO_INSTANT = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d{1,3})?Z$/;
+function isIsoInstant(v: unknown): boolean {
+  return typeof v === 'string' && ISO_INSTANT.test(v) && !Number.isNaN(new Date(v).getTime());
 }
 
 /** SHA-256 (hex) of the canonical JSON of the payload; recomputed on every approve. */

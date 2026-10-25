@@ -42,6 +42,9 @@ const { like, uuid, integer, eachLike, regex } = MatchersV3;
 //   7. POST /v1/sign/sender/envelopes/{id}/send             200 EnvelopeDetail (SENT)
 //   8. POST /v1/sign/sender/envelopes/{id}/void             200 EnvelopeDetail (VOIDED)
 //   9. GET  /v1/sign/sender/envelopes (no session)          401 AUTH_REQUIRED
+//  10. POST /v1/sign/billing/checkout (governed subscription) 409 ESIGN_BILLING_CONFLICT
+//      details.reason governed_subscription_open (CCP-A6, Conversion Rule C-1 / C-4: the
+//      Settings → Plan & billing checkout of apps/sign-web/src/workspace/api.ts)
 
 const provider = new PactV4({
   consumer: 'sign-workspace',
@@ -474,6 +477,42 @@ describe('esign-web → GET /v1/sign/sender/envelopes (no session)', () => {
         expect(res.status).toBe(401);
         const body = (await res.json()) as { error: { code: string } };
         expect(body.error.code).toBe('AUTH_REQUIRED');
+      });
+  });
+});
+
+// CCP-A6 (Conversion Rule C-1, C-4) — a tenant holding an open governed (MANUAL, Aramo-managed)
+// Sign subscription: the billing owner's self-service checkout is refused with the NEW typed
+// refusal (never ALREADY_SUBSCRIBED, whose meaning stays "an open self-service row"). The
+// billing owner is a DISTINCT seeded principal (placeholder cookie value below; the verifier
+// swaps in its real token). No provider call is made: the refusal precedes every side effect.
+const BILLING_OWNER_COOKIE = 'aramo_access_token_sign=sign-workspace-pact-billing-owner';
+describe('sign-workspace → POST /v1/sign/billing/checkout (governed subscription open)', () => {
+  it('is refused 409 ESIGN_BILLING_CONFLICT reason governed_subscription_open', async () => {
+    const headers = { 'X-Aramo-Consumer': 'sign', Cookie: BILLING_OWNER_COOKIE, 'Content-Type': 'application/json' };
+    const body = { plan_key: 'aramo-sign-standard-business-v1', accept_terms: true };
+    await provider
+      .addInteraction()
+      .given('a business tenant holds a governed Aramo-managed Sign subscription')
+      .uponReceiving('a self-service checkout by the billing owner of a tenant with a governed subscription')
+      .withRequest('POST', '/v1/sign/billing/checkout', (b) => {
+        b.headers(headers).jsonBody(body);
+      })
+      .willRespondWith(409, (b) => {
+        b.jsonBody({
+          error: {
+            code: 'ESIGN_BILLING_CONFLICT',
+            message: like('Your organization’s subscription is managed by Aramo. Contact Aramo to change it.'),
+            request_id: like('req-1'),
+            details: { reason: 'governed_subscription_open' },
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/billing/checkout`, { method: 'POST', headers, body: JSON.stringify(body) });
+        expect(res.status).toBe(409);
+        const out = (await res.json()) as { error: { code: string; details: { reason: string } } };
+        expect(out.error.details.reason).toBe('governed_subscription_open');
       });
   });
 });

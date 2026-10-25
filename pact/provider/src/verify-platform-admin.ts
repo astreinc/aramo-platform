@@ -17,7 +17,7 @@ import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { AppModule } from '@aramo/platform-admin';
 
 // eslint-disable-next-line @nx/enforce-module-boundaries -- test-only real-Postgres support shared with the CCP-A3 specs (TD-A3-19 precedent; CLAUDE.md "one shared test helper")
-import { PLATFORM_TENANT, TENANT_2, addOperator, applyCcpA3Schema } from '../../../libs/subscription/src/tests/support/ccp-a3-database.js';
+import { PLATFORM_TENANT, TENANT_2, addOperator, applyCcpA6Schema, revokeRole } from '../../../libs/subscription/src/tests/support/ccp-a3-database.js';
 
 // CCP-A10 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.1 row A10; D11;
 // PLATFORM-UX-1 Amendment A1, A1-3) — Pact provider verifier for apps/platform-admin.
@@ -28,9 +28,10 @@ import { PLATFORM_TENANT, TENANT_2, addOperator, applyCcpA3Schema } from '../../
 // A SEPARATE provider (mirrors verify-sign.ts / verify-ti.ts): boots the REAL
 // platform-admin AppModule — real JwtAuthGuard, RolesGuard, the identity RBAC
 // resolver (no resolver override) and the real CommercialChangeRequestService —
-// against a Postgres testcontainer holding the identity, metering and subscription
-// chains (CCP-A2 and CCP-A3 included), applied whole-file in order by the shared CCP
-// helper (libs/subscription/src/tests/support/ccp-a3-database.ts). One attested
+// against a Postgres testcontainer holding the identity, entitlement, metering and EVERY
+// subscription migration (CCP-A2…A6: an apply writes the subscription and the entitlement
+// in one transaction), applied whole-file in order by the shared CCP helper
+// (libs/subscription/src/tests/support/ccp-a3-database.ts, applyCcpA6Schema). One attested
 // operator per CCP role + super_admin is seeded in the platform sentinel tenant; the
 // consumer's placeholder session cookie (`pact-<role>`) is rewritten to a real RS256
 // token for that operator, so every allowed and refused interaction is decided by the
@@ -145,6 +146,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     const tokens = new Map<string, string>();
     const savedEnv: Partial<Record<string, string | undefined>> = {};
     let seq = 0;
+    let signingKey: SigningKey;
 
     async function signToken(sub: string, consumer_type: 'platform' | 'recruiter', tenant_id: string, key: SigningKey): Promise<string> {
       const now = Math.floor(Date.now() / 1000);
@@ -158,8 +160,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         .sign(key);
     }
 
-    async function asRole<T>(role: Role, method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
-      const headers: Record<string, string> = { authorization: `Bearer ${tokens.get(role) ?? ''}`, accept: 'application/json' };
+    async function asRole<T>(role: Role | { token: string }, method: 'GET' | 'POST', path: string, body?: unknown): Promise<T> {
+      const bearer = typeof role === 'string' ? (tokens.get(role) ?? '') : role.token;
+      const headers: Record<string, string> = { authorization: `Bearer ${bearer}`, accept: 'application/json' };
       if (body !== undefined) headers['content-type'] = 'application/json';
       const res = await fetch(`${baseUrl}${path}`, { method, headers, ...(body !== undefined ? { body: JSON.stringify(body) } : {}) });
       const text = await res.text();
@@ -186,6 +189,27 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       return out.request.id;
     }
 
+    /**
+     * CCP-A6 — an APPROVED SUBSCRIPTION_OPEN on a fresh tenant, through the service's own HTTP
+     * surface: created and submitted by commercial_ops, approved by `approver` (a finance_admin).
+     */
+    async function approvedOpen(approver: Role | { token: string } = 'finance_admin'): Promise<string> {
+      const tenant_id = await commercialTenant();
+      const v = await db.query(`SELECT v.id FROM subscription."PlanVersion" v JOIN subscription."Plan" p ON p.id = v.plan_id WHERE p.key = 'aramo-sign-included-v1' AND v.status = 'PUBLISHED'`);
+      const out = await asRole<{ request: { id: string } }>('commercial_ops', 'POST', '/platform/commercial/change-requests', {
+        action_type: 'SUBSCRIPTION_OPEN',
+        tenant_id,
+        product_key: 'sign',
+        payload: { plan_key: 'aramo-sign-included-v1', plan_version_id: v.rows[0].id, replaces_subscription_id: null },
+        reason: 'Open the governed Aramo Sign subscription',
+        idempotency_key: `pact-a6-state-${String(++seq).padStart(4, '0')}`,
+      });
+      const id = out.request.id;
+      await asRole('commercial_ops', 'POST', `/platform/commercial/change-requests/${id}/submit`);
+      await asRole(approver, 'POST', `/platform/commercial/change-requests/${id}/approvals`, { step_index: 0 });
+      return id;
+    }
+
     beforeAll(async () => {
       container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
@@ -193,10 +217,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       await db.connect();
       // identity + metering + subscription (A2, A3) whole-file, plus the platform sentinel
       // tenant, two commercial tenants and the CCP A1 §4.1 role/scope catalog.
-      await applyCcpA3Schema(db);
+      await applyCcpA6Schema(db);
       for (const role of Object.keys(OP) as Role[]) await addOperator(db, [role], { id: OP[role] });
 
       const kp = await generateKeyPair('RS256');
+      signingKey = kp.privateKey;
       const env: Record<string, string | undefined> = {
         DATABASE_URL: url,
         AUTH_AUDIENCE,
@@ -280,6 +305,16 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             return undefined;
           },
           'a draft change request exists': async () => ({ requestId: await draftRequest() }),
+          // CCP-A6 — the transactional apply.
+          'an approved subscription-open change request exists': async () => ({ requestId: await approvedOpen() }),
+          'an approved subscription-open change request whose approver lost eligibility exists': async () => {
+            // A dedicated attested finance_admin signs, then loses the role (NC-5): the seeded
+            // per-role operators are left untouched for every other interaction.
+            const signer = await addOperator(db, ['finance_admin']);
+            const requestId = await approvedOpen({ token: await signToken(signer, 'platform', PLATFORM_TENANT, signingKey) });
+            await revokeRole(db, signer, 'finance_admin');
+            return { requestId };
+          },
           'a pending change request exists': async () => {
             const requestId = await draftRequest();
             await asRole('commercial_ops', 'POST', `/platform/commercial/change-requests/${requestId}/submit`);

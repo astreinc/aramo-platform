@@ -171,7 +171,7 @@ export function checkChainSatisfiable(
 // ---- Apply-time re-check (NC-5; CCP-A6 calls it inside its apply transaction) ---------
 
 export type ApplyRefusalReason =
-  | 'NOT_APPROVED' // state is not APPROVED (an expired, rejected or withdrawn request never applies)
+  | 'NOT_APPROVED' // state is not APPROVED / APPLY_FAILED (an expired, rejected or withdrawn request never applies)
   | 'APPROVALS_INCOMPLETE' // the recorded approvals do not cover every snapshotted step exactly once
   | 'APPROVER_NOT_DISTINCT' // one user on two steps, or the requester / subject on a step
   | 'APPROVER_NO_LONGER_ELIGIBLE'; // a signer lost the step's role/scope or the D9 attestation
@@ -203,7 +203,9 @@ export interface ApplyCheckRequest {
  * the subject. It reads no policy: revalidation is under the request's own snapshot.
  */
 export function assertChainStillSatisfiableAtApply(request: ApplyCheckRequest, liveRoster: readonly RosterEntry[]): void {
-  if (request.state !== 'APPROVED') throw new CommercialApplyRefusedError('NOT_APPROVED', { state: request.state });
+  // CCP-A6 — APPLY_FAILED is an approved request whose earlier apply attempt failed: the retry
+  // is re-checked exactly like the first attempt (APPLY_FAILED → APPLYING).
+  if (request.state !== 'APPROVED' && request.state !== 'APPLY_FAILED') throw new CommercialApplyRefusedError('NOT_APPROVED', { state: request.state });
   const steps = request.required_chain.steps;
   const byStep = new Map<number, EligibilityApproval>();
   for (const a of request.approvals) {

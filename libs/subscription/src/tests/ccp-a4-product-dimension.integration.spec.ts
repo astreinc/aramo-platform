@@ -268,10 +268,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A4 — produc
         }
       }
       expect(offenders).toEqual([]);
-      // The two Pact arbiters (MP-A2 §1.4: verify-sign.ts:248, :521) are re-pointed.
+      // The two Pact arbiters (MP-A2 §1.4: verify-sign.ts:248, :521) are re-pointed; CCP-A6 adds
+      // a third (the governed-subscription checkout fixture), written on the new arbiter too.
       const pact = readFileSync(resolve(ROOT, 'pact/provider/src/verify-sign.ts'), 'utf8');
       expect(pact).not.toContain('ON CONFLICT (tenant_id) WHERE ended_at IS NULL');
-      expect(pact.match(/ON CONFLICT \(tenant_id, product_key\) WHERE ended_at IS NULL AND composition_role = 'BASE' DO NOTHING/g)?.length).toBe(2);
+      expect(pact.match(/ON CONFLICT \(tenant_id, product_key\) WHERE ended_at IS NULL AND composition_role = 'BASE' DO NOTHING/g)?.length).toBe(3);
     });
 
     it('the Pact arbiter infers the new index (the INSERT is a no-op on a second run)', async () => {
@@ -509,12 +510,20 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A4 — produc
 
     it('sign checkout + activation ends only the sign row; a price of the other product never re-points the sign row', async () => {
       const before = await isoSnapshot(iso.t);
+      // CCP-A6 (Conversion Rule C-1) — the governed MANUAL sign row refuses a sign checkout, and
+      // only the SIGN row decides it (the other product's SELF_SERVICE row is not consulted).
+      await expect(
+        lifecycle.startCheckout({ tenant_id: iso.t, product_key: SIGN_PRODUCT_KEY, user_id: 'sign-owner', user_email: 'o@acme.test', plan_key: BUSINESS_KEY, success_url: 'https://e/ok', cancel_url: 'https://e/no', accept_terms: true }),
+      ).rejects.toMatchObject({ reason: 'GOVERNED_SUBSCRIPTION_OPEN' });
+      // The product-isolation proof below needs a replaceable sign row: the fixture row becomes
+      // DEVELOPMENT (not governed), which a self-service activation may still end.
+      await pg.query(`UPDATE subscription."TenantSubscription" SET source = 'DEVELOPMENT' WHERE tenant_id = $1 AND product_key = 'sign' AND ended_at IS NULL`, [iso.t]);
       // Product-blind, the open SELF_SERVICE ACTIVE other-product row would refuse ALREADY_SUBSCRIBED.
       await lifecycle.startCheckout({ tenant_id: iso.t, product_key: SIGN_PRODUCT_KEY, user_id: 'sign-owner', user_email: 'o@acme.test', plan_key: BUSINESS_KEY, success_url: 'https://e/ok', cancel_url: 'https://e/no', accept_terms: true });
       const c = billing.checkouts[billing.checkouts.length - 1]!;
       const ref = `sub_sign_${iso.t}`;
       billing.subs.set(ref, state({ subscription_ref: ref, tenant_id: iso.t, intent_id: c.intent_id, price_ref: 'price_business' }));
-      expect(await lifecycle.syncSubscription(ref, SIGN_PRODUCT_KEY, AT)).toMatchObject({ outcome: 'APPLIED', detail: 'opened ACTIVE (ended MANUAL)' });
+      expect(await lifecycle.syncSubscription(ref, SIGN_PRODUCT_KEY, AT)).toMatchObject({ outcome: 'APPLIED', detail: 'opened ACTIVE (ended DEVELOPMENT)' });
       const rows = await pg.query(
         `SELECT p.key, s.product_key, s.source, s.ended_at IS NULL AS open FROM subscription."TenantSubscription" s JOIN subscription."Plan" p ON p.id = s.plan_id
           WHERE s.tenant_id = $1 ORDER BY s.product_key, s.started_at`,
@@ -522,7 +531,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A4 — produc
       );
       expect(rows.rows).toEqual([
         { key: ISO_PLAN_KEY, product_key: ISO, source: 'SELF_SERVICE', open: true },
-        { key: 'aramo-sign-included-v1', product_key: 'sign', source: 'MANUAL', open: false },
+        { key: 'aramo-sign-included-v1', product_key: 'sign', source: 'DEVELOPMENT', open: false },
         { key: BUSINESS_KEY, product_key: 'sign', source: 'SELF_SERVICE', open: true },
       ]);
       expect(await isoSnapshot(iso.t)).toEqual(before);

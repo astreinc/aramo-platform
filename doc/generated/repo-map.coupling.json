@@ -10958,6 +10958,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-apply.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform-commercial-audit.controller.ts"
     },
     {
@@ -13687,6 +13692,221 @@
       "from": "doc/ccp/slices/CCP-A5-pre-execution.md",
       "status": "unscoped",
       "to": "tools/db-sync-local.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-apply.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-routes.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-a6-commercial-apply-routes.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/billing/esign-billing.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/tests/billing.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/workspace/api.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "ci/config/api-surface-manifest.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A6-pre-execution.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/common/src/lib/errors/aramo-error.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/entitlement/src/index.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/entitlement/src/lib/grant-capabilities-in-tx.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/check-checkout-cutover.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261025200000_ccp_a6_transactional_apply/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/checkout-cutover-check.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/subscription-lifecycle.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-apply.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-a6-apply.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-a6-hold.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/support/ccp-a3-database.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/tsconfig.lib.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "openapi/sign.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/consumers/sign-workspace-consumer/src/sender-console.consumer.test.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-platform-admin.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-sign.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-acceptance.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A3-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A5-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/entitlement/src/lib/entitlement.repository.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/policy-store/src/lib/insert-decision-record.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261025120000_ccp_a3_change_request_approval/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261025140000_ccp_a4_product_dimension/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261025160000_ccp_a5_plan_version/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-approval-eligibility.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-change-request.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/tsconfig.lib.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A6-pre-execution.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
     },
     {
       "from": "doc/design-reference/platform-admin/github.md",
@@ -25385,6 +25605,11 @@
       "to": "libs/entitlement/tsconfig.lib.json"
     },
     {
+      "from": "libs/entitlement/src/lib/grant-capabilities-in-tx.ts",
+      "status": "production",
+      "to": "libs/policy-store/src/lib/insert-decision-record.ts"
+    },
+    {
       "from": "libs/entitlement/src/lib/reconcile-entitlements.ts",
       "status": "production",
       "to": "libs/entitlement/prisma/seed-entitlements.ts"
@@ -27242,6 +27467,11 @@
       "to": "libs/subscription/src/lib/commercial/commercial-policy.ts"
     },
     {
+      "from": "libs/subscription/prisma/migrations/20261025200000_ccp_a6_transactional_apply/migration.sql",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A6-acceptance.md"
+    },
+    {
       "from": "libs/subscription/project.json",
       "status": "unscoped",
       "to": "libs/subscription/src/index.ts"
@@ -27250,6 +27480,11 @@
       "from": "libs/subscription/project.json",
       "status": "unscoped",
       "to": "libs/subscription/tsconfig.lib.json"
+    },
+    {
+      "from": "libs/subscription/src/lib/commercial/commercial-apply.service.ts",
+      "status": "production",
+      "to": "doc/ccp/slices/CCP-A6-acceptance.md"
     },
     {
       "from": "libs/subscription/src/lib/commercial/commercial-change-request.ts",
@@ -27302,6 +27537,11 @@
       "to": "doc/legal/aramo/privacy-notice.md"
     },
     {
+      "from": "libs/subscription/src/lib/product-registry.ts",
+      "status": "production",
+      "to": "apps/platform-admin/src/app/signup/sign-signup.service.ts"
+    },
+    {
       "excludedBy": "src/tests/**/*",
       "from": "libs/subscription/src/tests/ccp-a4-product-dimension.integration.spec.ts",
       "status": "excluded",
@@ -27336,6 +27576,30 @@
       "from": "libs/subscription/src/tests/ccp-a5-plan-version.integration.spec.ts",
       "status": "excluded",
       "to": "libs/subscription/prisma/check-provider-price-parity.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-a6-apply.integration.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-A6-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-a6-hold.integration.spec.ts",
+      "status": "excluded",
+      "to": "deploy/jiti-tsconfig-runner.mjs"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-a6-hold.integration.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-A6-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-a6-hold.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/prisma/check-checkout-cutover.ts"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -27680,6 +27944,11 @@
     {
       "from": "package.json",
       "status": "unscoped",
+      "to": "libs/subscription/prisma/check-checkout-cutover.ts"
+    },
+    {
+      "from": "package.json",
+      "status": "unscoped",
       "to": "libs/subscription/prisma/check-provider-price-parity.ts"
     },
     {
@@ -27875,6 +28144,11 @@
       "from": "pact/consumers/sign-web-consumer/src/signer-session.consumer.test.ts",
       "status": "unscoped",
       "to": "pact/provider/src/verify-sign.ts"
+    },
+    {
+      "from": "pact/consumers/sign-workspace-consumer/src/sender-console.consumer.test.ts",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/workspace/api.ts"
     },
     {
       "from": "pact/consumers/sign-workspace-consumer/src/sender-console.consumer.test.ts",
@@ -30427,6 +30701,7 @@
         { "kind": "prose", "path": "ci/scripts/verify-ats-refusal.ts" }
       ]
     },
+    { "name": "billing:cutover-check", "references": [] },
     { "name": "billing:price-parity", "references": [] },
     {
       "name": "build",
@@ -30920,6 +31195,7 @@
     }
   ],
   "unreferenced": [
+    "billing:cutover-check",
     "billing:price-parity",
     "db:sync:intelligence",
     "offer:sql:check",

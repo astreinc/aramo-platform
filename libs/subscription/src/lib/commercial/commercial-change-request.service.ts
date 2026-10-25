@@ -73,7 +73,9 @@ export type CommercialChangeRequestErrorCode =
   | 'STATE_INVALID'
   | 'OPEN_REQUEST_EXISTS'
   | 'IDEMPOTENCY_KEY_CONFLICT'
-  | 'INTEGRITY';
+  | 'INTEGRITY'
+  // CCP-A6 — apply was asked for an action type A6 does not apply.
+  | 'ACTION_NOT_APPLICABLE';
 
 export class CommercialChangeRequestError extends Error {
   constructor(

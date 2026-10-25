@@ -2529,7 +2529,12 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     BillingConflict:
-      description: ESIGN_BILLING_CONFLICT — already subscribed, or no billing account yet (details.reason).
+      description: >-
+        ESIGN_BILLING_CONFLICT (details.reason) — already subscribed (ALREADY_SUBSCRIBED), no billing
+        account yet (NO_BILLING_ACCOUNT), an incomplete or non-US organization profile, an unverified
+        domain, a plan that needs ATS (PLAN_NOT_ELIGIBLE), or an open governed subscription managed by
+        Aramo (governed_subscription_open; CCP-A6, Conversion Rule C-1 and C-4: a conversion is a
+        governed change request, never a checkout).
       content:
         application/json:
           schema:
