@@ -12683,6 +12683,51 @@
     { "from": "doc/ccp/decisions.md", "status": "unscoped", "to": "pact/provider/tsconfig.json" },
     { "from": "doc/ccp/decisions.md", "status": "unscoped", "to": "scripts/verify-vocabulary.sh" },
     {
+      "from": "doc/ccp/program-gate-20261025.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/program-gate-20261025.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A2-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/program-gate-20261025.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-a11-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/program-gate-20261025.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-a4-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/program-gate-20261025.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-a5-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/program-gate-20261025.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-d1-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/program-gate-20261025.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "doc/ccp/program-gate-20261025.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/ccp/program-gate-20261025.md",
+      "status": "unscoped",
+      "to": "tools/db-sync-local.sh"
+    },
+    {
       "from": "doc/ccp/slices/CCP-A1-acceptance.md",
       "status": "unscoped",
       "to": "apps/api/src/tests/ccp-a1-platform-governance-authorization.spec.ts"
