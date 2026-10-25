@@ -68,7 +68,7 @@ export interface CommercialPolicyVersionDto {
   activated_at: string | null;
   retired_at: string | null;
   /** The open POLICY_ACTIVATE request targeting this version; `apply_actionable` is the caller's apply hint (CCP-B5-R). */
-  open_request: { id: string; state: string; apply_actionable: boolean } | null;
+  open_request: { id: string; state: string; apply_actionable: boolean; withdraw_actionable: boolean } | null;
   /** CCP-B5-R — the most recent POLICY_ACTIVATE request targeting this version, in any state. */
   latest_request: { id: string; state: string; applied_at: string | null } | null;
 }

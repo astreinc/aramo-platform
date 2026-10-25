@@ -2232,6 +2232,7 @@
       "COMMERCIAL_A6_APPLY_TRANSITIONS",
       "COMMERCIAL_A8_EXCEPTION_TRANSITIONS",
       "COMMERCIAL_A9_ROLE_APPLY_TRANSITIONS",
+      "COMMERCIAL_ACC1_POLICY_WITHDRAW_TRANSITIONS",
       "COMMERCIAL_ACTIONS",
       "COMMERCIAL_ACTION_TYPES",
       "COMMERCIAL_ALERT_DEFINITIONS",
@@ -7426,6 +7427,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-a9-bootstrap-role-change.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-acc1-policy-withdraw.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },

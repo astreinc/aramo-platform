@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Input, useOptionalToast } from '@aramo/fe-foundation';
 
-import { Pill, SkeletonPanel } from '../components';
+import { ConfirmDialog, Pill, SkeletonPanel } from '../components';
 import { GovernanceRequestDialog } from '../components/GovernanceRequestDialog';
 
 import {
@@ -44,6 +44,9 @@ export function PolicyView() {
   const [dlg, setDlg] = useState<Dlg>(null);
   const [busy, setBusy] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
+  // CCP-ACC-1 — the withdrawal confirm (the PLATFORM-UX-1 ConfirmDialog; CCP-UI v1.1 design gap).
+  const [withdrawing, setWithdrawing] = useState<{ id: string } | null>(null);
+  const [withdrawError, setWithdrawError] = useState<string | null>(null);
 
   const load = useCallback(async (): Promise<void> => {
     try {
@@ -153,6 +156,22 @@ export function PolicyView() {
     } finally {
       setBusy(false);
       await load();
+    }
+  };
+
+  const withdrawActivation = async (id: string): Promise<void> => {
+    setBusy(true);
+    setWithdrawError(null);
+    try {
+      await governanceApi.withdrawChange(id);
+      setWithdrawing(null);
+      toast.show(`${shortRequestId(id)} withdrawn`);
+      await load();
+    } catch (e) {
+      setWithdrawError(governanceErrorText(e));
+      void load();
+    } finally {
+      setBusy(false);
     }
   };
 
@@ -282,6 +301,19 @@ export function PolicyView() {
                 {applyable.state === 'APPLY_FAILED' ? 'Retry apply' : 'Apply activation'}
               </Button>
             ) : null}
+            {applyable !== null && applyable.withdraw_actionable ? (
+              <Button
+                unstyled
+                className="pw-gov-btn pw-gov-btn--secondary"
+                disabled={busy}
+                onClick={() => {
+                  setWithdrawError(null);
+                  setWithdrawing({ id: applyable.id });
+                }}
+              >
+                Withdraw…
+              </Button>
+            ) : null}
             {actions.map((a) => (
               <Button
                 key={a.label}
@@ -308,6 +340,24 @@ export function PolicyView() {
           </div>
         </section>
       </div>
+      {withdrawing !== null ? (
+        <ConfirmDialog
+          open
+          ccp
+          onOpenChange={(o) => {
+            if (!o) setWithdrawing(null);
+          }}
+          title={`Withdraw activation request ${shortRequestId(withdrawing.id)}`}
+          from={{ label: 'Apply failed', tone: 'warn' }}
+          to={{ label: 'Withdrawn', tone: 'muted' }}
+          consequence="The failed activation is closed for good and the draft can be requested again. Approvals and the failure record stay on file. If the activation is found to have taken effect, the request is marked applied instead."
+          error={withdrawError}
+          commitLabel="Withdraw request"
+          tone="danger"
+          busy={busy}
+          onCommit={() => void withdrawActivation(withdrawing.id)}
+        />
+      ) : null}
       {dlg !== null && active !== undefined ? (
         <ActivationDialog
           version={dlg.version}

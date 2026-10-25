@@ -345,3 +345,152 @@ It is refused (RAISE, nothing changed) while a POLICY_ACTIVATE request is APPROV
 - COMP-2: 0 errors, trigger gone.
 - COMP-3: the migration re-applies and the trigger is back.
 
+
+## ACC-1 — withdrawal of a failed policy activation (TD-ACC-1 Option B)
+
+**Governing ruling.** `doc/ccp/decisions.md`, "Architect final rulings (2026-10-25): Finance amount scope + TD-ACC-1" (binding).
+
+**Worktree.** `.claude/worktrees/ccp-acc1`, branch `wip/ccp-acc1b`, base `013bd6f3`. Nothing is committed or pushed. HALT conditions hit: none.
+
+### ACC-1.1 What changed
+
+**The route: the existing withdraw route, extended.** `POST /platform/commercial/change-requests/{id}/withdraw` now also takes an APPLY_FAILED POLICY_ACTIVATE, through `CommercialChangeRequestService.withdrawFailedActivation`. There is no new route: withdrawal is the same act, and it keeps the route's gate and requester rule. Every other request keeps the A3 rule (DRAFT / PENDING_APPROVAL only), and an APPROVED activation is still refused (`STATE_INVALID`).
+
+**The withdrawal transaction**, under the apply's own locks (policy advisory lock, then the request row, with `lock_timeout` of 3,000 ms):
+
+1. Authority:
+   - the actor must be a person (`NOT_HUMAN` otherwise);
+   - the original requester (`NOT_REQUESTER`, which includes the approvers);
+   - still holding `finance_admin` with a live D9 attestation, read in the transaction (`REQUESTER_NO_LONGER_AUTHORIZED`).
+2. Reconciliation (fail-closed):
+   - **Lock held by an executing apply**, or the request in APPLYING → `APPLY_IN_PROGRESS`.
+   - **APPLIED** → `ALREADY_APPLIED`, nothing written.
+   - **APPLY_FAILED with this request's activation evidence** (a `COMMERCIAL_POLICY_VERSION_ACTIVATED` policy-audit row naming this request) **and an ACTIVE target**: reconciled to APPLIED in the same transaction (APPLY_FAILED → APPLYING → APPLIED, `COMMERCIAL_CHANGE_REQUEST_APPLIED` with `reconciled: true`), never withdrawn, then `ALREADY_APPLIED`.
+   - **Evidence but no ACTIVE target**, or **no APPLY_FAILED record for the last attempt** → `APPLY_UNRESOLVED`.
+3. The deadline: the AD-4 apply deadline is evaluated first and is unchanged; AD-2 means a v1 snapshot has none. A request already past its deadline becomes APPLY_EXPIRED and the call is refused `APPLY_EXPIRED`. Withdrawal never extends validity.
+4. Otherwise: APPLY_FAILED → WITHDRAWN (terminal), with `withdrawn_at` and exactly one `COMMERCIAL_CHANGE_REQUEST_WITHDRAWN` event (`from_state: APPLY_FAILED`).
+5. What is preserved: signatures, payload, checksum, chain, policy snapshot, attempts and the APPLY_FAILED events. None of them is written.
+6. The slot: it is released by the WITHDRAWN commit, because the one-open rule counts `COMMERCIAL_OPEN_STATES` under the same policy lock.
+7. Replay: a repeated withdrawal of a request withdrawn from APPLY_FAILED returns the same row and writes no event.
+
+**One lock order.** `CommercialPolicyApplyService` now takes the policy lock before the row lock. The same order (policy, then row) is used by every policy write: create, draft edit, lazy expiry, apply and withdrawal. A retry, a withdrawal and a new activation request therefore serialize and cannot deadlock. Before this change the apply locked the row and then the policy, while the create locked the policy and then the rows.
+
+**Guard.** Only the union file changed, `20261027000000_ccp_guard_union/migration.sql`:
+- a labelled `[union block: CCP-ACC-1 …]` admitting POLICY_ACTIVATE APPLY_FAILED → WITHDRAWN;
+- a CCP-ACC-1 record check: that transition needs `withdrawn_at`;
+- a header line describing the block.
+
+The mirror is `COMMERCIAL_ACC1_POLICY_WITHDRAW_TRANSITIONS` in `canTransitionFor`. No other action type gains a withdrawal from APPLY_FAILED.
+
+Other DB objects:
+- **State CHECK:** unchanged. WITHDRAWN is already admitted, and `submitted_check` allows a submitted WITHDRAWN row.
+- **Constraint union:** unchanged (no application row).
+- **`ccp-guard-union-compensating.sql`:** unchanged. A WITHDRAWN row is terminal under the superseded body too.
+
+**API and UI.**
+- **HTTP mapping** in `toAramoError`:
+  - 403 `requester_no_longer_authorized`;
+  - 409 `apply_in_progress`, `apply_unresolved`, `already_applied` and `apply_expired`.
+- **Policy read:** `open_request.withdraw_actionable` (requester + APPLY_FAILED) in the governance service, the DTO and the OpenAPI schema; the withdraw operation's description is updated.
+- **PolicyView:** "Withdraw…" appears only when `withdraw_actionable` is true. It opens the existing PLATFORM-UX-1 `ConfirmDialog` (Change box Apply failed → Withdrawn, danger tone, "Withdraw request"). Refusals are shown in the dialog with operator copy.
+- **Design gap:** CCP-UI v1.0 has no withdrawal state; it is recorded for v1.1.
+
+### ACC-1.2 Files
+
+`git status --short -uall`: 22 paths, 21 modified + 1 new (counts this record). `git diff --shortstat` before this section: 20 files, 383 insertions, 17 deletions.
+
+- **New:** `libs/subscription/src/tests/ccp-acc1-policy-withdraw.integration.spec.ts`
+- **Backend:**
+  - `libs/subscription/prisma/migrations/20261027000000_ccp_guard_union/migration.sql`
+  - `libs/subscription/src/lib/commercial/{commercial-change-request.ts, commercial-change-request.service.ts, commercial-policy-apply.service.ts, commercial-policy-governance.service.ts}`
+  - `libs/subscription/src/index.ts`
+- **platform-admin:**
+  - `platform-commercial-change-request.controller.ts`
+  - `dto/commercial-governance.dto.ts`
+  - `openapi/platform.yaml`
+- **Web:** `apps/platform-web/src/commercial-governance/{PolicyView.tsx, governance-api.ts, governance-errors.ts, governance.spec.tsx}`
+- **Pact:** `pact/consumers/platform-web-consumer/src/platform-governance.consumer.test.ts` (+1 interaction; it reuses the existing provider state)
+- **Tests re-based:** `ccp-a9-role-change.spec.ts` (A9-U-4, plus the new ACC-U-1), `ccp-b5-governance.integration.spec.ts` (B5-CREATE-1), `apps/platform-admin/src/tests/ccp-b5-governance-routes.integration.spec.ts` (B5-RI-ACTIVATE, plus the new ACC-1-RI)
+- **Generated:** `doc/generated/repo-map.{files,coupling,projects}.json`; this record.
+
+### ACC-1.3 Tests
+
+All counts are exact. Docker was healthy. Results are the runs after the last source edit.
+
+| Run | Result |
+|---|---|
+| `ccp-acc1-policy-withdraw.integration.spec.ts` (new) | **7 / 7** (tests listed below) |
+| guard union (`ccp-guard-union.integration.spec.ts`) | **4 / 4**; GUARD-UNION-1: 4,200 probes |
+| ACC-1 negative control: the ACC-1 branch removed from a copy, then restored by copy | GUARD-UNION-1 fails on exactly `POLICY_ACTIVATE/{NORMAL,EXCEPTION,MIGRATION} APPLY_FAILED -> WITHDRAWN: db=false ts=true`. 7 of the 11 tests in the two files fail. File restored byte-identical (`cmp`). |
+| subscription, full incl. integration | 49 files, 745 tests: 744 passed, 1 failed (B5-CREATE-1's exact `open_request`, now with `withdraw_actionable`). Re-based and re-run: `ccp-b5-governance.integration.spec.ts` **13 / 13**. |
+| subscription unit | 18 passed, 31 skipped files; 304 passed, 441 skipped. Includes ACC-U-1: only POLICY_ACTIVATE admits APPLY_FAILED → WITHDRAWN (any kind); none from APPROVED or APPLYING; WITHDRAWN is terminal. |
+| platform-admin, full incl. integration | 38 files, 744 tests: 743 passed, 1 failed (B5-RI-ACTIVATE's exact `open_request`). Re-based and re-run: `ccp-b5-governance-routes.integration.spec.ts` **5 / 5**, including ACC-1-RI (below). |
+| platform-web unit (full) | **47 / 47 files, 543 / 543**, including ACC-W-1…3: the Withdraw… button follows `withdraw_actionable` (requester only, APPLY_FAILED only); the ConfirmDialog Apply failed → Withdrawn posts …/withdraw and reloads; `apply_in_progress` / `already_applied` copy shown in the dialog |
+| Pact consumer (`pact/pacts/platform-web-platform-admin.json` deleted first; `--maxWorkers=1`) | 169 / 169 tests; **170** interactions (+1: "a policy activation withdrawal refused for a non-requester") |
+| Pact provider (platform-admin verifier) | **170 / 170** verified; 2 / 2 tests |
+| B5 parity / axe / keyboard (`PW_E2E_PORT=4405`, file filters) | 30 / 30; 0 baselines modified |
+| lint (`--skip-nx-cache`, 5 projects) | 0 errors; 0 warnings in the files ACC-1 touched |
+| build, CI-simulated (`subscription platform-admin aramo-platform-web api sign-service`, `--skip-nx-cache`) | 5 projects + 77 dependency tasks succeeded; `dist` carries "Withdraw request" |
+| `contract-parity:check` (temporary index) | 708 live routes (706 governed), 539 OpenAPI ops, 185 transitional-debt, 0 orphan, 0 unclassified |
+| `openapi:drift-check` / `orphan-scopes:check` + self-test / `error-codes:check` / `redocly lint` | ok (9 files) / ok / ok / ok / valid, 2 pre-existing warnings |
+| `verify-vocabulary.sh` | exit 0 |
+| `repo-map:generate` / `repo-map:check` | regenerated; ok |
+
+**The 7 tests in `ccp-acc1-policy-withdraw.integration.spec.ts`:**
+- **ACC-1-AUTH:** these callers are refused `NOT_REQUESTER`: the finance approver, the owner approver and another finance_admin. A service principal is refused `NOT_HUMAN`. A requester without finance_admin is refused `REQUESTER_NO_LONGER_AUTHORIZED`. Once the role is restored the requester withdraws: WITHDRAWN with `withdrawn_at`. Ten request columns are unchanged and the signatures are byte-identical. The single APPLY_FAILED event and exactly one WITHDRAWN event remain, and the target is still DRAFT. A retry is refused `NOT_APPROVED`, the guard refuses any transition out (terminal), and an APPROVED withdrawal is still `STATE_INVALID`.
+- **ACC-1-REPLAY:** two concurrent withdrawals plus a third return the same row, with one event.
+- **ACC-1-RECONCILE:** a committed activation (ACTIVE target with this request's evidence) is reconciled to APPLIED (attempts 2, `applied_at` set, APPLIED event with `reconciled`), with no withdrawal event and signatures unchanged. A repeat is refused `ALREADY_APPLIED` and writes no audit row.
+- **ACC-1-INFLIGHT:** a held row lock gives `APPLY_IN_PROGRESS` after at least 3,000 ms, as does a held policy lock. An attempt with no failure record gives `APPLY_UNRESOLVED`. Nothing is written and the slot stays held.
+- **ACC-1-SLOT:** a create is refused before the withdrawal and while the withdrawal cannot commit; it is admitted after the commit.
+- **ACC-1-CONC:**
+  - 4 rounds of retry ∥ withdrawal, in alternating start order, each ending in exactly one of APPLIED (one activation, target ACTIVE, no withdrawal event) or WITHDRAWN (no activation, target DRAFT, one event).
+  - Then withdrawal ∥ a new activation request: at most one open request. A create that succeeds is ordered after the withdrawal commit; a refused one is `OPEN_REQUEST_EXISTS` and succeeds on retry.
+- **ACC-1-AD2:** a v1 snapshot has no deadline (`applyDeadlineOf` is null) and is withdrawn 10,000 h later. Under a v2 snapshot the deadline is `approved_at` + 72 h, unchanged. At the deadline a withdrawal expires the request (APPLY_EXPIRED, one event, no WITHDRAWN).
+
+**ACC-1-RI (HTTP), on the full chain:**
+- the target is changed after approval, so the apply fails with 409 `apply_failed`;
+- `open_request` reads `{APPLY_FAILED, apply_actionable: true, withdraw_actionable: true}` for the requester, and `withdraw_actionable` is false for the approver;
+- owner and second finance_admin get 403 `not_requester`;
+- the requester gets 200 WITHDRAWN; a repeat is 200 with the same `withdrawn_at` and still one event;
+- the slot is released (`open_request` null; `latest_request` WITHDRAWN; a new activation gets 201).
+
+**Not run:**
+- the full `nx run api` (no apps/api change; CI runs it);
+- the other Pact verifiers;
+- the full PLATFORM-UX-1 visual suites.
+
+### ACC-1.4 Typed divergences and decisions
+
+| ID | Item | Disposition |
+|---|---|---|
+| TD-ACC1-1 | The existing withdraw route is extended; no new route. | Choice stated (coordinator brief). |
+| TD-ACC1-2 | Reconcile-to-APPLIED commits the APPLIED transition and then **refuses** the withdrawal with 409 `already_applied` (`reconciled: true`) rather than returning 200 with an APPLIED body, so a withdrawal call never reports success for an applied request. | Fail-closed reading of "never withdraw". |
+| TD-ACC1-3 | **CLOSED (2026-10-25, Lead follow-up).** The window between a rolled-back apply and its separately recorded failure (the "awaiting uncertain reconciliation" window) is removed. **Approach:** the policy apply records its failure IN the apply transaction, so the locks span both steps. The sequence: the attempt runs under `SAVEPOINT ccp_policy_apply_attempt`, taken after the policy lock, the row lock and every refusal check; on a fault it is `ROLLBACK TO SAVEPOINT` (the activation write and the queued deferred-trigger events are discarded); then `recordApplyFailureInTx` writes APPLY_FAILED and its event in the same transaction. The transaction-scoped policy advisory lock and the row lock are held from the attempt until the failure record commits. One interactive `$transaction` is one connection, so no session-level advisory lock and no Prisma connection-pool pinning is needed, and a crash leaves no durable marker to clean up (an uncommitted attempt rolls back with its counter). **Fallback:** only a failure of the transaction itself (its COMMIT, or a database fault before the savepoint) uses the separate `recordApplyFailure`. That path now takes the same policy lock, then the row, and with `evidence_when_unchanged` always writes the APPLY_FAILED row, even if a withdrawal or an expiry closed the request meanwhile (`state_unchanged: true`). A withdrawal therefore waits on the locks (bounded by 3,000 ms → `APPLY_IN_PROGRESS`) or sees the recorded failure; the attempt's failure event always exists. Evidence: ACC-1-GAP (see ACC-1.5). | Closed. |
+| TD-ACC1-4 | A withdrawal past the apply deadline expires the request (APPLY_EXPIRED) instead of withdrawing it. Both are terminal and release the slot; the deadline is evaluated, never extended (AD-2/AD-4 unchanged). | Consistent with the lazy-expiry rule on every write. |
+| TD-ACC1-5 | The policy apply now takes the policy lock before the row lock (lock-order fix). This is a behaviour-neutral change to B5-R's apply; it removes a possible deadlock between apply and create or expiry. | Needed for the serialization requirement. |
+| TD-ACC1-6 | The Withdraw… dialog reuses the PLATFORM-UX-1 `ConfirmDialog`; CCP-UI v1.0 has no withdrawal design. | Design gap for CCP-UI v1.1. |
+| TD-ACC1-7 | The guard admits APPLY_FAILED → WITHDRAWN for POLICY_ACTIVATE of any kind, matching the B5-R POLICY_ACTIVATE branch, which has no kind check; only NORMAL is ever created. | Mirror = guard (GUARD-UNION-1). |
+
+### ACC-1.5 TD-ACC1-3 closure (Lead follow-up)
+
+**Files** (in addition to ACC-1.2):
+- `libs/subscription/src/lib/commercial/commercial-apply-records.ts`: the shared failure record is split into `recordApplyFailureInTx`, the in-transaction core used by the policy apply. The wrapper `recordApplyFailure` is unchanged for the A6 / A7 / A8 / B2 callers by default; it gains the opts `policy_lock` and `evidence_when_unchanged`.
+- `libs/subscription/src/lib/commercial/commercial-policy-apply.service.ts`: savepoint attempt with the in-transaction failure record; the fallback uses the same locks; new fault point `before_failure_record`.
+- `libs/subscription/src/tests/ccp-acc1-policy-withdraw.integration.spec.ts`: + ACC-1-GAP. The `failed()` fixture now faults only at `after_policy_write`.
+
+**ACC-1-GAP** (two rounds, each pausing the failure record of a retry after its rollback):
+- **Pause 4,500 ms** (longer than the lock timeout): a concurrent withdrawal is refused `APPLY_IN_PROGRESS` after at least 3,000 ms. The request stays APPLY_FAILED; a later withdrawal succeeds.
+- **Pause 1,500 ms:** the withdrawal waits for the locks, then withdraws after the record.
+- **Both rounds:** the APPLY_FAILED events are attempts `[1, 2]` and are ordered before the WITHDRAWN event.
+- **The fallback path:** called on a WITHDRAWN request, it writes the failure row (`state_unchanged: true`, `request_state: WITHDRAWN`) and leaves the state unchanged.
+
+**Negative control.** The service was copied aside and edited back to the old two-transaction behaviour: rollback, then the pause, then a separate failure transaction. ACC-1-GAP then fails: the failure attempts are `[1]` (the attempt-2 record is missing). The file was restored byte-identical (`cmp`).
+
+| Re-run after the change | Result |
+|---|---|
+| ACC-1 + B5-R + B5 governance + guard-union specs (`ccp-acc1-policy-withdraw`, `ccp-b5r-apply-expiry`, `ccp-b5-governance`, `ccp-guard-union`) | **4 / 4 files, 32 / 32** (8 + 7 + 13 + 4) |
+| subscription, full incl. integration | 49 files, 746 tests: 720 passed and 26 skipped, because `ccp-a5-plan-version.integration.spec.ts` failed in `beforeAll` with a testcontainers timeout ("Timed out after 10000ms while waiting for container ports to be bound to the host"), an infrastructure failure. Re-run alone: **26 / 26**. |
+| Pact provider (platform-admin verifier) | **170 / 170** verified; 2 / 2 tests |
+| platform-admin, full incl. integration (the shared failure-record refactor) | **38 / 38 files, 744 / 744** |
+| lint `subscription` (`--skip-nx-cache`) | 0 errors; 0 warnings in the 3 touched files |
+| `verify-vocabulary.sh` | exit 0 |

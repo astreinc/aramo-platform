@@ -30,6 +30,7 @@ import {
   CommercialPolicyGovernanceService,
   CommercialPolicyRepository,
   SubscriptionPrismaService,
+  commercialPolicyChecksum,
 } from '@aramo/subscription';
 
 import { PlatformCommercialApplyController } from '../app/platform/platform-commercial-apply.controller.js';
@@ -213,7 +214,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B5 — policy
     expect('effect_applied_at' in done.body.request).toBe(false);
     const pending = await get('finance_admin', PV);
     expect(pending.body.active_version_id).toBe(POLICY_V1);
-    expect(pending.body.versions.find((v: { id: string }) => v.id === V2).open_request).toEqual({ id, state: 'APPROVED', apply_actionable: true });
+    expect(pending.body.versions.find((v: { id: string }) => v.id === V2).open_request).toEqual({ id, state: 'APPROVED', apply_actionable: true, withdraw_actionable: false });
     expect((await get('finance_2', PV)).body.versions.find((v: { id: string }) => v.id === V2).open_request.apply_actionable).toBe(false);
     expect((await get('finance_admin', `${CR}/${id}`)).body.apply_actionable).toBe(true);
     // Requester-only (TD-B2-3): the approvers are refused.
@@ -230,6 +231,36 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B5 — policy
     expect(after.body.versions.find((v: { id: string }) => v.id === V2).latest_request).toEqual({ id, state: 'APPLIED', applied_at: applied.body.request.applied_at });
     const detail = await get('commercial_ops', `${CR}/${id}`);
     expect(detail.body.request).toMatchObject({ state: 'APPLIED', applied_at: applied.body.request.applied_at });
+  });
+
+  it('ACC-1-RI the requester withdraws an APPLY_FAILED activation over HTTP (TD-ACC-1 Option B): approvers 403 not_requester; 200 WITHDRAWN; the policy read shows withdraw_actionable before and the released slot after; a repeat is a replay', async () => {
+    const draft = await post('finance_admin', PV, { source_version_id: POLICY_V1 });
+    const V2 = draft.body.version.id as string;
+    const created = await post('finance_admin', CR, { action_type: 'POLICY_ACTIVATE', payload: { policy_version_id: V2 }, reason: 'activate v2', idempotency_key: key() });
+    const id = created.body.request.id as string;
+    await post('finance_admin', `${CR}/${id}/submit`, {});
+    await post('finance_2', `${CR}/${id}/approvals`, { step_index: 0 });
+    await post('platform_owner', `${CR}/${id}/approvals`, { step_index: 1 });
+    // The target changes behind the approvers' backs: the apply fails (APPLY_FAILED, retryable).
+    const v = (await pg.query(`SELECT content FROM subscription."CommercialPolicyVersion" WHERE id = $1`, [V2])).rows[0].content as Record<string, unknown>;
+    const edited = { ...v, approval_expiry_hours: 36 };
+    await pg.query(`UPDATE subscription."CommercialPolicyVersion" SET content = $2::jsonb, content_checksum = $3 WHERE id = $1`, [V2, JSON.stringify(edited), commercialPolicyChecksum(edited)]);
+    expect(reasonOf(await post('finance_admin', `${CR}/${id}/apply`, {}))).toEqual([409, 'COMMERCIAL_CHANGE_REQUEST_CONFLICT', 'apply_failed']);
+    const open = (await get('finance_admin', PV)).body.versions.find((x: { id: string }) => x.id === V2).open_request;
+    expect(open).toEqual({ id, state: 'APPLY_FAILED', apply_actionable: true, withdraw_actionable: true });
+    expect((await get('finance_2', PV)).body.versions.find((x: { id: string }) => x.id === V2).open_request.withdraw_actionable).toBe(false);
+    for (const who of ['platform_owner', 'finance_2']) expect(reasonOf(await post(who, `${CR}/${id}/withdraw`, {})), who).toEqual([403, 'INSUFFICIENT_PERMISSIONS', 'not_requester']);
+    const w = await post('finance_admin', `${CR}/${id}/withdraw`, {});
+    expect(w.status, JSON.stringify(w.body)).toBe(200);
+    expect(w.body.request).toMatchObject({ id, state: 'WITHDRAWN', applied_at: null });
+    const again = await post('finance_admin', `${CR}/${id}/withdraw`, {});
+    expect(again.status).toBe(200);
+    expect(again.body.request.withdrawn_at).toBe(w.body.request.withdrawn_at);
+    expect(Number((await pg.query(`SELECT count(*)::int n FROM subscription."CommercialAuditEvent" WHERE change_request_id = $1 AND event_type = 'COMMERCIAL_CHANGE_REQUEST_WITHDRAWN'`, [id])).rows[0].n)).toBe(1);
+    const after = (await get('finance_admin', PV)).body;
+    expect(after.open_request).toBeNull();
+    expect(after.versions.find((x: { id: string }) => x.id === V2).latest_request).toMatchObject({ id, state: 'WITHDRAWN' });
+    expect((await post('finance_admin', CR, { action_type: 'POLICY_ACTIVATE', payload: { policy_version_id: V2 }, reason: 'again', idempotency_key: key() })).status).toBe(201);
   });
 
   it('B5-RI-ROLE the roster reads per role; the last-owner refusal is surfaced as 409 PLATFORM_LAST_OWNER; a role change is a governed request that applies only after a distinct owner signs', async () => {

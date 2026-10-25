@@ -244,6 +244,15 @@ export const COMMERCIAL_B5R_POLICY_APPLY_TRANSITIONS: Readonly<Partial<Record<Co
 };
 
 /**
+ * CCP-ACC-1 (TD-ACC-1 Option B, Architect final ruling 2026-10-25) — the original requester may
+ * WITHDRAW an APPLY_FAILED POLICY_ACTIVATE once reconciliation proves nothing can still commit.
+ * WITHDRAWN is terminal. No other action type gains a withdrawal from APPLY_FAILED.
+ */
+export const COMMERCIAL_ACC1_POLICY_WITHDRAW_TRANSITIONS: Readonly<Partial<Record<CommercialChangeRequestState, readonly CommercialChangeRequestState[]>>> = {
+  APPLY_FAILED: ['WITHDRAWN'],
+};
+
+/**
  * Charter Amendment A1 AD-4 (CCP-A6-R; widened by CCP-B5-R to EVERY applyable action type, no
  * action-type exception): an APPROVED or APPLY_FAILED request may become APPLY_EXPIRED — the A6
  * and CCP-B2-backend types (A6-R), and POLICY_ACTIVATE, ROLE_GRANT, ROLE_REVOKE,
@@ -292,7 +301,11 @@ export function canTransitionFor(
   // APPROVED / APPLY_FAILED only.
   if (to === 'APPLY_EXPIRED') return (from === 'APPROVED' || from === 'APPLY_FAILED') && isApplyExpirable(action_type, kind);
   // CCP-B5-R (TD-B5-1): POLICY_ACTIVATE applies with the A6 pairs.
-  if (action_type === 'POLICY_ACTIVATE') return (COMMERCIAL_B5R_POLICY_APPLY_TRANSITIONS[from] ?? []).includes(to);
+  if (action_type === 'POLICY_ACTIVATE') {
+    // CCP-ACC-1: APPLY_FAILED → WITHDRAWN (requester, after reconciliation).
+    if ((COMMERCIAL_ACC1_POLICY_WITHDRAW_TRANSITIONS[from] ?? []).includes(to)) return true;
+    return (COMMERCIAL_B5R_POLICY_APPLY_TRANSITIONS[from] ?? []).includes(to);
+  }
   if ((COMMERCIAL_ROLE_CHANGE_ACTIONS as readonly string[]).includes(action_type)) return (COMMERCIAL_A9_ROLE_APPLY_TRANSITIONS[from] ?? []).includes(to);
   if (isA6Applicable(action_type) || isCatalogApplicable(action_type)) return (COMMERCIAL_A6_APPLY_TRANSITIONS[from] ?? []).includes(to);
   if (action_type === 'CONVERSION') return (COMMERCIAL_C2_CONVERSION_TRANSITIONS[from] ?? []).includes(to);

@@ -3385,8 +3385,19 @@ paths:
     post:
       operationId: withdrawPlatformCommercialChangeRequest
       tags: [Platform Commercial Change Requests]
-      summary: Withdraw a DRAFT or PENDING_APPROVAL request (requester only).
-      description: Moves the request to WITHDRAWN (terminal). An expired request returns 409.
+      summary: Withdraw a DRAFT or PENDING_APPROVAL request, or an APPLY_FAILED POLICY_ACTIVATE (requester only).
+      description: |
+        Moves the request to WITHDRAWN (terminal). An expired request returns 409.
+        CCP-ACC-1 (TD-ACC-1 Option B): the original requester (a person still holding finance_admin
+        with a live attestation; else 403 `requester_no_longer_authorized`) may also withdraw a
+        POLICY_ACTIVATE in APPLY_FAILED. Under the apply's own locks the request is first reconciled:
+        409 `apply_in_progress` while an apply holds them; 409 `already_applied` when the activation
+        committed (the request is, or is reconciled to, APPLIED; never withdrawn); 409
+        `apply_unresolved` when the last attempt has no failure record; 409 `apply_expired` when its
+        apply deadline passed (unchanged, never extended). Signatures, payload and failure records are
+        preserved; one COMMERCIAL_CHANGE_REQUEST_WITHDRAWN event; the policy slot is released by the
+        commit. A repeated withdrawal returns the WITHDRAWN request (no second event). No other action
+        type is withdrawn from APPLY_FAILED.
       security:
         - BearerAuth: []
         - CookieAccessAuth: []
@@ -6495,6 +6506,9 @@ components:
         apply_actionable:
           type: boolean
           description: CCP-B5-R — whether the caller may apply this request now (a UI hint; the apply re-checks).
+        withdraw_actionable:
+          type: boolean
+          description: CCP-ACC-1 — whether the caller may withdraw this APPLY_FAILED activation (a UI hint; the withdrawal re-checks and reconciles).
 
     CommercialPolicyList:
       type: object

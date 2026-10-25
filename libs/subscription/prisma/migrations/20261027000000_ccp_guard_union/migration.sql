@@ -26,6 +26,8 @@
 -- check; APPLY_EXPIRED from APPROVED / APPLY_FAILED for POLICY_ACTIVATE, ROLE_GRANT, ROLE_REVOKE,
 -- ENTITLEMENT_REVOKE, CONVERSION and a NORMAL SUPPORT_EXTENSION. Its deferred "never commit in
 -- APPLYING" trigger for POLICY_ACTIVATE is in 20261027000200_ccp_b5r_policy_activate_apply.
+-- CCP-ACC-1 (TD-ACC-1 Option B, Architect final ruling 2026-10-25; this file only): POLICY_ACTIVATE
+-- APPLY_FAILED -> WITHDRAWN (the requester's withdrawal after reconciliation), withdrawn_at required.
 -- Carries a dollar-quoted body: apply whole-file. Design approval is not production migration
 -- authority (ruling A0-C15).
 
@@ -147,6 +149,13 @@ BEGIN
              OR (NEW."action_type" = 'SUPPORT_EXTENSION' AND NEW."kind" = 'NORMAL'
                  AND OLD."state" IN ('APPROVED', 'APPLY_FAILED') AND NEW."state" = 'APPLY_EXPIRED')
              -- ==== END CCP-B5-R ====
+             -- [union block: CCP-ACC-1, 20261027000000 (this file)]
+             -- ==== BEGIN CCP-ACC-1 ====
+             -- TD-ACC-1 Option B: a failed, unapplied POLICY_ACTIVATE may be withdrawn (terminal).
+             -- No other action type gains APPLY_FAILED -> WITHDRAWN.
+             OR (NEW."action_type" = 'POLICY_ACTIVATE'
+                 AND OLD."state" = 'APPLY_FAILED' AND NEW."state" = 'WITHDRAWN')
+             -- ==== END CCP-ACC-1 ====
         ) THEN
             RAISE EXCEPTION 'CommercialChangeRequest state % -> % is not allowed', OLD."state", NEW."state";
         END IF;
@@ -434,6 +443,10 @@ BEGIN
             IF ver_status IS DISTINCT FROM (CASE NEW."action_type" WHEN 'PLAN_VERSION_PUBLISH' THEN 'PUBLISHED' ELSE 'RETIRED' END) THEN
                 RAISE EXCEPTION 'CommercialChangeRequest APPLIED: the plan version is % after %', coalesce(ver_status, 'missing'), NEW."action_type";
             END IF;
+        END IF;
+        -- [union block: CCP-ACC-1 POLICY_ACTIVATE withdrawal record, 20261027000000 (this file)]
+        IF NEW."action_type" = 'POLICY_ACTIVATE' AND OLD."state" = 'APPLY_FAILED' AND NEW."state" = 'WITHDRAWN' AND NEW."withdrawn_at" IS NULL THEN
+            RAISE EXCEPTION 'CommercialChangeRequest WITHDRAWN from APPLY_FAILED needs withdrawn_at';
         END IF;
         -- [union block: CCP-B5-R POLICY_ACTIVATE APPLIED check, 20261027000000 (this file)]
         IF NEW."state" = 'APPLIED' AND NEW."action_type" = 'POLICY_ACTIVATE' THEN

@@ -23,7 +23,8 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 // and a POLICY_ACTIVATE by a platform_owner (403 requester_role_missing; TD-A3-5).
 // CCP-B5-R (TD-B5-1): the policy screen's "Apply activation" calls the governed apply route
 // (POST /platform/commercial/change-requests/{id}/apply), requester-only: a non-requester is
-// refused (403 not_requester).
+// refused (403 not_requester). CCP-ACC-1: the screen's "Withdraw…" calls the withdraw route,
+// requester-only too (403 not_requester).
 //
 // Principals and placeholder cookies are as in the A10 file (`pact-<role>`; the verifier
 // seeds one attested operator per role — so OP.platform_owner is the platform's only owner).
@@ -465,6 +466,27 @@ describe('platform-web → POST /platform/commercial/change-requests/{id}/apply 
       })
       .executeTest(async (mock) => {
         expect((await call(`${mock.url}${CR}/${EX_REQ}/apply`, 'POST', platformSession('platform_owner'))).status).toBe(403);
+      });
+  });
+});
+
+// ── CCP-ACC-1: the requester-only withdrawal of a failed POLICY_ACTIVATE ────────
+
+describe('platform-web → POST /platform/commercial/change-requests/{id}/withdraw (CCP-ACC-1)', () => {
+  it('a platform_owner cannot withdraw a policy activation it did not request (403 not_requester; TD-ACC-1 Option B)', async () => {
+    const EX_REQ = 'ccb50000-0000-7000-8000-0000000000e2';
+    await provider
+      .addInteraction()
+      .given('a commercial policy activation request by a finance admin exists')
+      .uponReceiving('a policy activation withdrawal refused for a non-requester')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/withdraw`, `${CR}/${EX_REQ}/withdraw`), (b) => {
+        b.headers(platformSession('platform_owner'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(errorBody('INSUFFICIENT_PERMISSIONS', { reason: 'not_requester' }));
+      })
+      .executeTest(async (mock) => {
+        expect((await call(`${mock.url}${CR}/${EX_REQ}/withdraw`, 'POST', platformSession('platform_owner'))).status).toBe(403);
       });
   });
 });

@@ -347,7 +347,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B5 policy act
     expect(await outcome(create({ policy_version_id: V2 }))).toBe('OPEN_REQUEST_EXISTS:open_policy_request_exists');
     // The policy screen read: the open request with the caller's apply hint, and the latest request per version.
     const listed = (await gov.list(as(FA, ['finance_admin']), ctx)).versions.find((v) => v.row.id === V2);
-    expect(listed?.open_request).toEqual({ id: open, state: 'APPLY_FAILED', apply_actionable: true });
+    expect(listed?.open_request).toEqual({ id: open, state: 'APPLY_FAILED', apply_actionable: true, withdraw_actionable: true }); // CCP-ACC-1
     expect((await gov.list(as(FA2, ['finance_admin']), ctx)).versions.find((v) => v.row.id === V2)?.open_request?.apply_actionable).toBe(false);
     await applyAs(open, FA);
     const after = (await gov.list(as(FA, ['finance_admin']), ctx)).versions.find((v) => v.row.id === V2);

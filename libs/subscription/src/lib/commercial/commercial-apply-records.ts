@@ -3,6 +3,7 @@ import type { PrismaService } from '../prisma/prisma.service.js';
 
 import type { CommercialAuditRepository } from './commercial-audit.repository.js';
 import { CommercialApplyRefusedError } from './commercial-approval-eligibility.js';
+import { POLICY_LOCK_SQL } from './commercial-policy-activation.js';
 import { COMMERCIAL_ACTIONS, type CommercialActionType } from './commercial-change-request.js';
 import { type CommercialActor, type CommercialCallContext, CommercialChangeRequestError, type CommercialChangeRequestRow } from './commercial-change-request.service.js';
 import type { CommercialOperatorRepository } from './commercial-operator.repository.js';
@@ -183,6 +184,56 @@ export async function auditApplyRefusal(
   }
 }
 
+/**
+ * The APPLY_FAILED record INSIDE the caller's transaction (CCP-ACC-1: the policy apply records its
+ * failure in the apply transaction itself, after ROLLBACK TO SAVEPOINT, so its locks are held
+ * from the attempt to the committed failure record). The request row must already be locked.
+ * APPROVED | APPLY_FAILED → APPLYING (attempt + 1) → APPLY_FAILED plus ONE APPLY_FAILED audit row.
+ * Any other state: nothing changes; with `evidence_when_unchanged` the APPLY_FAILED audit row is
+ * still written (state_unchanged: true), so a failure is never left without its record.
+ */
+export async function recordApplyFailureInTx(
+  tx: Tx,
+  deps: { audit: CommercialAuditRepository; operators: CommercialOperatorRepository; now: () => Date },
+  actor: CommercialActor,
+  id: string,
+  failure: ApplyFailure,
+  ctx: CommercialCallContext,
+  opts: { evidence_when_unchanged?: boolean } = {},
+): Promise<CommercialApplyFailedError> {
+  const req = (await tx.commercialChangeRequest.findUniqueOrThrow({ where: { id } })) as CommercialChangeRequestRow;
+  const applyable = req.state === 'APPROVED' || req.state === 'APPLY_FAILED';
+  if (!applyable && opts.evidence_when_unchanged !== true) return new CommercialApplyFailedError(failure.code, req.apply_attempts, failure.detail, req.state);
+  const now = deps.now();
+  const attempt = applyable ? req.apply_attempts + 1 : req.apply_attempts;
+  if (applyable) {
+    await tx.commercialChangeRequest.update({ where: { id }, data: { state: 'APPLYING', apply_attempts: attempt, updated_at: now } });
+    await tx.commercialChangeRequest.update({ where: { id }, data: { state: 'APPLY_FAILED', updated_at: now } });
+  }
+  const role_keys = (await deps.operators.readOperator(tx, ctx.platform_tenant_id, actor.user_id)).role_keys;
+  await deps.audit.append(
+    {
+      actor: { id: actor.user_id, type: 'user', role_keys },
+      event_type: 'COMMERCIAL_CHANGE_REQUEST_APPLY_FAILED',
+      tenant_id: req.tenant_id,
+      subject: SUBJECT(id),
+      change_request_id: id,
+      policy_version_id: req.policy_version_id,
+      payload: {
+        action_type: req.action_type,
+        attempt,
+        failure: failure.code,
+        explanation: explanationOf(failure.code),
+        detail: failure.detail,
+        ...(applyable ? {} : { state_unchanged: true, request_state: req.state }),
+      },
+      correlation_id: ctx.correlation_id,
+    },
+    tx,
+  );
+  return new CommercialApplyFailedError(failure.code, attempt, failure.detail, applyable ? 'APPLY_FAILED' : req.state);
+}
+
 /** APPLY_FAILED in its own transaction (the apply transaction rolled back in full). */
 export async function recordApplyFailure(
   deps: { prisma: PrismaService; audit: CommercialAuditRepository; operators: CommercialOperatorRepository; now: () => Date },
@@ -191,35 +242,15 @@ export async function recordApplyFailure(
   billing_tenant_id: string | null,
   failure: ApplyFailure,
   ctx: CommercialCallContext,
+  opts: { policy_lock?: boolean; evidence_when_unchanged?: boolean } = {},
 ): Promise<CommercialApplyFailedError> {
   try {
     return await deps.prisma.$transaction(
       async (tx) => {
         if (billing_tenant_id !== null) await takeBillingLock(tx, billing_tenant_id);
+        if (opts.policy_lock === true) await tx.$executeRawUnsafe(POLICY_LOCK_SQL);
         await tx.$executeRawUnsafe(`SELECT 1 FROM subscription."CommercialChangeRequest" WHERE id = $1::uuid FOR UPDATE`, id);
-        const req = (await tx.commercialChangeRequest.findUniqueOrThrow({ where: { id } })) as CommercialChangeRequestRow;
-        if (req.state !== 'APPROVED' && req.state !== 'APPLY_FAILED') {
-          return new CommercialApplyFailedError(failure.code, req.apply_attempts, failure.detail, req.state);
-        }
-        const now = deps.now();
-        const attempt = req.apply_attempts + 1;
-        await tx.commercialChangeRequest.update({ where: { id }, data: { state: 'APPLYING', apply_attempts: attempt, updated_at: now } });
-        await tx.commercialChangeRequest.update({ where: { id }, data: { state: 'APPLY_FAILED', updated_at: now } });
-        const role_keys = (await deps.operators.readOperator(tx, ctx.platform_tenant_id, actor.user_id)).role_keys;
-        await deps.audit.append(
-          {
-            actor: { id: actor.user_id, type: 'user', role_keys },
-            event_type: 'COMMERCIAL_CHANGE_REQUEST_APPLY_FAILED',
-            tenant_id: req.tenant_id,
-            subject: SUBJECT(id),
-            change_request_id: id,
-            policy_version_id: req.policy_version_id,
-            payload: { action_type: req.action_type, attempt, failure: failure.code, explanation: explanationOf(failure.code), detail: failure.detail },
-            correlation_id: ctx.correlation_id,
-          },
-          tx,
-        );
-        return new CommercialApplyFailedError(failure.code, attempt, failure.detail, 'APPLY_FAILED');
+        return recordApplyFailureInTx(tx, deps, actor, id, failure, ctx, opts);
       },
       { timeout: 15_000, maxWait: 10_000 },
     );

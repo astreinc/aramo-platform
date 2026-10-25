@@ -30620,6 +30620,18 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-acc1-policy-withdraw.integration.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-acc1-policy-withdraw.integration.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-B5-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/subscription/src/tests/ccp-b2-catalog-apply.integration.spec.ts",
       "status": "excluded",
       "to": "doc/ccp/slices/CCP-B2-backend-acceptance.md"

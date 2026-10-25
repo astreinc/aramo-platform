@@ -337,11 +337,11 @@ describe('CCP-B5 PolicyView (handoff §5.6)', () => {
 
   // ---- CCP-B5-R (TD-B5-1; Charter Amendment A1) ----------------------------------------------
   const CR_ID = '019a0000-0000-7000-8000-0000000000bb';
-  const withOpen = (state: string, apply_actionable: boolean): PolicyList =>
+  const withOpen = (state: string, apply_actionable: boolean, withdraw_actionable = false): PolicyList =>
     list(
       { can_author: true, can_request_activation: true },
       {
-        versions: [{ ...DRAFT, open_request: { id: CR_ID, state, apply_actionable } }, ACTIVE],
+        versions: [{ ...DRAFT, open_request: { id: CR_ID, state, apply_actionable, withdraw_actionable } }, ACTIVE],
         open_request: { id: CR_ID, state, policy_version_id: V2 },
       },
     );
@@ -394,6 +394,52 @@ describe('CCP-B5 PolicyView (handoff §5.6)', () => {
     expect(screen.queryByRole('button', { name: /Apply activation|Retry apply/ })).toBeNull();
     expect(screen.getByRole('button', { name: 'Request activation…' })).toBeEnabled();
     expect(screen.getAllByRole('spinbutton').length).toBeGreaterThan(0);
+  });
+
+  // ---- CCP-ACC-1 (TD-ACC-1 Option B) -------------------------------------------------------
+  it('ACC-W-1 the requester of an APPLY_FAILED activation sees "Withdraw…": the confirm dialog shows Apply failed → Withdrawn, Withdraw request posts …/withdraw, then the screen reloads', async () => {
+    vi.spyOn(governanceApi, 'listOperators').mockResolvedValue(roster([]));
+    const listSpy = vi.spyOn(governanceApi, 'listPolicyVersions').mockResolvedValueOnce(withOpen('APPLY_FAILED', true, true)).mockResolvedValue(list({ can_author: true, can_request_activation: true }));
+    const withdraw = vi.spyOn(governanceApi, 'withdrawChange').mockResolvedValue({ request: { id: CR_ID, state: 'WITHDRAWN' } });
+    render(<PolicyView />);
+    expect(await screen.findByText('Open request CR-019A0000 · apply failed')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Withdraw…' }));
+    const dialog = await screen.findByRole('dialog');
+    expect(within(dialog).getByText('Apply failed')).toBeInTheDocument();
+    expect(within(dialog).getByText('Withdrawn')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Withdraw request' }));
+    await waitFor(() => expect(withdraw).toHaveBeenCalledWith(CR_ID));
+    await waitFor(() => expect(listSpy).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.queryByRole('dialog')).toBeNull());
+    expect(screen.queryByRole('button', { name: 'Withdraw…' })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Request activation…' })).toBeEnabled();
+  });
+
+  it('ACC-W-2 no "Withdraw…" for an approver (withdraw_actionable false) nor for an APPROVED request', async () => {
+    vi.spyOn(governanceApi, 'listOperators').mockResolvedValue(roster([]));
+    vi.spyOn(governanceApi, 'listPolicyVersions').mockResolvedValueOnce(withOpen('APPLY_FAILED', false, false)).mockResolvedValueOnce(withOpen('APPROVED', true, false));
+    const first = render(<PolicyView />);
+    expect(await screen.findByText('Open request CR-019A0000 · apply failed')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Withdraw…' })).toBeNull();
+    first.unmount();
+    render(<PolicyView />);
+    expect(await screen.findByText('Open request CR-019A0000 · approved')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Withdraw…' })).toBeNull();
+  });
+
+  it('ACC-W-3 a refused withdrawal keeps the dialog open with the reason (already_applied, apply_in_progress)', async () => {
+    vi.spyOn(governanceApi, 'listOperators').mockResolvedValue(roster([]));
+    vi.spyOn(governanceApi, 'listPolicyVersions').mockResolvedValue(withOpen('APPLY_FAILED', true, true));
+    vi.spyOn(governanceApi, 'withdrawChange')
+      .mockRejectedValueOnce(new ApiError(409, 'busy', 'COMMERCIAL_CHANGE_REQUEST_CONFLICT', { reason: 'apply_in_progress' }))
+      .mockRejectedValueOnce(new ApiError(409, 'applied', 'COMMERCIAL_CHANGE_REQUEST_CONFLICT', { reason: 'already_applied', reconciled: true }));
+    render(<PolicyView />);
+    fireEvent.click(await screen.findByRole('button', { name: 'Withdraw…' }));
+    const dialog = await screen.findByRole('dialog');
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Withdraw request' }));
+    expect(await within(dialog).findByText('An apply of this request is still running. Try again in a moment.')).toBeInTheDocument();
+    fireEvent.click(within(dialog).getByRole('button', { name: 'Withdraw request' }));
+    expect(await within(dialog).findByText('The activation took effect, so the request is marked applied and can’t be withdrawn.')).toBeInTheDocument();
   });
 });
 
