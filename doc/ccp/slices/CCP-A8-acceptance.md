@@ -62,7 +62,7 @@ Totals: **12 new files, 24 modified files (36 paths)**. **Unchanged:** every exi
 
 Also: window start = grace_until when grace is still running, else the apply instant (A8-W-1, -2); coverage is half-open and removal ends it (A8-W-3); payload schema (A8-PL-1, A8-PL-2.1…2.8); chains Q7 / removal and the zero-step chain round-trip (A8-CH-1, -2).
 
-**Through the real path on Postgres 17**, `libs/subscription/src/tests/ccp-a8-support-extension.integration.spec.ts`, **18 / 18** (after the Docker restart; §6):
+**Through the real path on Postgres 17**, `libs/subscription/src/tests/ccp-a8-support-extension.integration.spec.ts`, **21 / 21** (18 + the 3 Architect-condition tests; after the Docker restart; §6):
 
 | Obligation | Test ID | Output |
 |---|---|---|
@@ -83,6 +83,9 @@ Also: window start = grace_until when grace is still running, else the apply ins
 | Billing lock | A8-LOCK-1 | while a session holds `billing:<tenant>` the call waits (advisory waiter observed, 0 overlays); on release → `APPLIED` |
 | Overlay triggers | A8-TRG-1 | raw INSERT without an applying request, UPDATE of `extends_until`, a removal without an applying REMOVE request, DELETE: all raise; the APPLIED request is frozen |
 | Guard | A8-TRG-2 | EXCEPTION committed in DRAFT → `can commit only as APPLIED`; EXCEPTION `DRAFT → PENDING_APPROVAL` → refused; `APPLIED` without its application → refused; EXCEPTION with a non-empty chain → refused at APPLYING; NORMAL `DRAFT → APPLYING` → refused |
+| **Architect condition 1** (TD-A8-6 APPROVED) | A8-ARCH-1 | a Stripe-owned PAST_DUE row carrying every provider-sourced field (status, grace_until, billing refs, current_period_end, cancel_at_period_end, provider_state_at, activated_by, plan / version pin): `row_to_json` and the field set are byte-identical before, after the apply and after the removal; status stays `PAST_DUE` while Aramo reports it sending |
+| **Architect condition 2** (TD-A8-5 APPROVED) | A8-ARCH-2 | sole overlay: a send refused before, admitted under it, and the **next** `reserve` after the removal applies → `NOT_SUBSCRIBED` / `PAST_DUE` (same service instance, no cache). Two overlays (bounded A + Finance-approved B): removing A → the next send is still admitted (B covers); removing B → refused |
+| **Architect condition 3** (TD-A8-5 APPROVED) | A8-ARCH-3 | removal requested only by support_admin (commercial_ops → `REQUESTER_SCOPE_MISSING`), Finance-only chain; apply before approval → `REFUSED:NOT_APPROVED`; self-approval → `SELF_APPROVAL`; finance_admin applying → `REQUESTER_SCOPE_MISSING`; trail `CREATED, SUBMITTED, APPLY_REFUSED, APPROVAL_REFUSED, APPROVAL_RECORDED, APPROVED, SUPPORT_EXTENSION_REMOVED, APPLIED` (none `is_exception`; actor support_admin with role snapshot; the Finance approver in `approvals`); the original apply's evidence untouched; subscriptions, entitlements, BillingEvent, reconciliation flags, CheckoutIntent and usage rows byte-identical across the removal. Note: an apply attempt refused by the A6 requester-scope pre-check (before its transaction) writes no audit row; this is existing A6 behaviour, not part of the removal trail |
 | **G1 (HALT condition)** | A8-G1-1 | the tripwire is live (a direct write raises `A8 TRIPWIRE: UPDATE`); every test above ran under it |
 
 ## 4. Per-role matrix (6 roles + super_admin)
@@ -123,7 +126,7 @@ The orphan-scope, contract-parity and repo-map gates read `git ls-files` / `git 
 | Suite | Result |
 |---|---|
 | `libs/subscription` unit + `ARAMO_RUN_INTEGRATION=1`, `--maxWorkers=2` (full lib) | run 1: 20 / 23 files, 446 passed / 1 failed / 29 skipped: the 3 specs that apply a hand-kept chain prefix hit `subscription.SupportExtension does not exist` (TD-A8-15). After the shared helper: **23 / 23 files, 476 / 476 tests** |
-| A8 lib integration spec | **18 / 18** |
+| A8 lib integration spec | **21 / 21** (incl. A8-ARCH-1…3) |
 | A8 + touched unit specs (verbose) | 3 files, **133 / 133** (A8 unit 34; A9-U-4; A6-SM-1) |
 | The 3 rippled lib specs, after the helper | 3 files, **58 / 58** (the A4 equality and A5 goldens unchanged) |
 | `apps/platform-admin` unit + integration (full) | **23 / 23 files, 488 / 488 tests** |
@@ -190,6 +193,7 @@ The orphan-scope, contract-parity and repo-map gates read `git ls-files` / `git 
 | TD-A8-17 | Choice | The GET list route is gated on `platform:subscription:read`, capped at 200 rows, not paged | Recorded (B6 may page it) |
 | TD-A8-18 | Gates | Repo-map, orphan-scope and contract-parity ran under a temporary `GIT_INDEX_FILE` (as TD-A2-7) | Re-run `npm run repo-map:generate` if the staged set differs |
 | TD-A8-19 | Environment | The Docker outage (§6): outage-time results are discarded | Recorded |
+| TD-A8-21 | Ruling | TD-A8-5 and TD-A8-6 **APPROVED by the Architect** with 3 verification conditions → A8-ARCH-1…3, all pass; no gap found | Closed |
 | TD-A8-20 | HTTP | Both new outcomes answer 201 (a request was created); a replay answers 200; `decision` is null on replay | Recorded |
 
 ## 9. Vocabulary result

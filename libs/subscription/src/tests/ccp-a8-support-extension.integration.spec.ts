@@ -476,6 +476,152 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A8 support ex
     expect(await overlays(t)).toEqual([]);
   });
 
+  // ---- Architect conditions on TD-A8-5 / TD-A8-6 (APPROVED; verification required) ---------
+
+  /** A Stripe-owned PAST_DUE row carrying EVERY provider-sourced field (status, period, cancellation, refs, event time, owner). */
+  async function stripeRowFull(tenant_id: string): Promise<string> {
+    const id = randomUUID();
+    await pg.query(
+      `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by, status, grace_until,
+              billing_provider, billing_account_ref, billing_subscription_ref, current_period_end, cancel_at_period_end, provider_state_at, activated_by)
+       SELECT $1::uuid, $2::uuid, p.id, (SELECT v.id FROM subscription."PlanVersion" v WHERE v.plan_id = p.id AND v.status = 'PUBLISHED'), p.product_key, 'BASE', '2026-10-01T00:00:00Z', 'SELF_SERVICE', 'ccp-a8-spec', 'PAST_DUE', $3,
+              'STRIPE', $4, $5, '2026-11-01T00:00:00Z', true, '2026-10-24T08:00:00Z', 'owner-user-1'
+         FROM subscription."Plan" p WHERE p.key = $6`,
+      [id, tenant_id, new Date(T0.getTime() - DAY), `acct_${tenant_id}`, `sub_${id}`, BUSINESS],
+    );
+    return id;
+  }
+  /** Removal by change request: support_admin requests and submits, finance_admin approves, support_admin applies (TD-A8-5). */
+  async function removeExtension(tenant_id: string, support_extension_id: string): Promise<string> {
+    const r = await h.changeRequests.create(as(SA, 'support_admin'), { action_type: 'SUPPORT_EXTENSION', tenant_id, product_key: 'sign', payload: { operation: 'REMOVE', support_extension_id }, reason: 'Extension no longer warranted', idempotency_key: key() }, A6_CTX);
+    await h.changeRequests.submit(as(SA, 'support_admin'), r.request.id, A6_CTX);
+    const out = await approveAndApply(r.request.id);
+    expect(out.request.state).toBe('APPLIED');
+    return r.request.id;
+  }
+  /** Recorded billing and entitlement state of a tenant (everything a removal must not touch). */
+  const billingState = async (t: string) => {
+    const q = async (sql: string) => (await pg.query(sql, [t])).rows.map((r) => r.j as string);
+    return {
+      subscriptions: await q(`SELECT row_to_json(s)::text j FROM subscription."TenantSubscription" s WHERE tenant_id = $1 ORDER BY id`),
+      entitlements: await q(`SELECT (capability::text) j FROM entitlement."TenantEntitlement" WHERE tenant_id = $1 ORDER BY capability`),
+      billing_events: await q(`SELECT row_to_json(e)::text j FROM subscription."BillingEvent" e WHERE tenant_id = $1 ORDER BY id`),
+      flags: await q(`SELECT row_to_json(f)::text j FROM subscription."BillingReconciliationFlag" f WHERE tenant_id = $1 ORDER BY id`),
+      checkout_intents: await q(`SELECT row_to_json(c)::text j FROM subscription."CheckoutIntent" c WHERE tenant_id = $1 ORDER BY id`),
+      usage: await q(`SELECT row_to_json(u)::text j FROM subscription."AllowanceUsage" u WHERE tenant_id = $1 ORDER BY id`),
+    };
+  };
+  const send = (t: string, send_key: string) => h.allowance.reserve({ tenant_id: t, product_key: 'sign', allowance_key: KEY, send_key, at: clock });
+
+  it('A8-ARCH-1 (TD-A8-6) the overlay alters only Aramo\'s access interpretation: the Stripe-owned row (status PAST_DUE and every provider-sourced field) is byte-identical before, after apply and after removal', async () => {
+    clock = T0;
+    const t = await newTenant(pg);
+    const sub = await stripeRowFull(t);
+    const before = await rowJson(sub);
+    const providerFields = async () =>
+      (await pg.query(`SELECT status, grace_until, billing_provider, billing_account_ref, billing_subscription_ref, current_period_end, cancel_at_period_end, provider_state_at, activated_by, ended_at, plan_id, plan_version_id FROM subscription."TenantSubscription" WHERE id = $1`, [sub])).rows[0];
+    const fieldsBefore = await providerFields();
+    expect(fieldsBefore.status).toBe('PAST_DUE');
+    const applied = await extend(t, sub, 7);
+    if (applied.outcome !== 'APPLIED') throw new Error('expected APPLIED');
+    expect(await rowJson(sub)).toBe(before);
+    expect(await providerFields()).toEqual(fieldsBefore);
+    expect((await h.allowance.getStatus(t, 'sign', KEY, clock)).subscribed).toBe(true); // Aramo's interpretation only
+    clock = new Date(T0.getTime() + 3_600_000);
+    await removeExtension(t, applied.extension.id);
+    expect(await rowJson(sub)).toBe(before);
+    expect(await providerFields()).toEqual(fieldsBefore);
+    expect((await providerFields()).status).toBe('PAST_DUE');
+  });
+
+  it('A8-ARCH-2 (TD-A8-5) removal is recalculated IMMEDIATELY: a send admitted under the overlay; the very next allowance decision after the removal applies refuses it; while another unremoved overlay still covers the instant it still admits', async () => {
+    // Sole overlay: admitted → removed → the next decision refuses.
+    clock = T0;
+    const t1 = await newTenant(pg);
+    const sub1 = await stripeRow(t1);
+    expect((await send(t1, 'arch2-pre')).ok).toBe(false);
+    const a1 = await extend(t1, sub1, 7);
+    if (a1.outcome !== 'APPLIED') throw new Error('expected APPLIED');
+    expect((await send(t1, 'arch2-1')).ok).toBe(true);
+    clock = new Date(T0.getTime() + 3_600_000);
+    await removeExtension(t1, a1.extension.id);
+    const refused = await send(t1, 'arch2-2');
+    expect(refused).toMatchObject({ ok: false, reason: 'NOT_SUBSCRIBED', status: { subscribed: false, state: 'PAST_DUE' } });
+
+    // Two overlays (bounded A + Finance-approved B): removing A still admits under B; removing B refuses.
+    clock = T0;
+    const t2 = await newTenant(pg);
+    const sub2 = await stripeRow(t2);
+    const a = await extend(t2, sub2, 7);
+    if (a.outcome !== 'APPLIED') throw new Error('expected APPLIED');
+    const esc = await extend(t2, sub2, 20); // FREQUENCY + LENGTH → Finance
+    expect(esc.outcome).toBe('ESCALATED');
+    expect((await approveAndApply(esc.request.id)).request.state).toBe('APPLIED');
+    const b = (await overlays(t2)).find((o) => o.change_request_id === esc.request.id);
+    expect(b).toMatchObject({ is_exception: false, removed_at: null });
+    clock = new Date(T0.getTime() + 3_600_000);
+    await removeExtension(t2, a.extension.id);
+    expect((await send(t2, 'arch2-b-1')).ok).toBe(true);
+    clock = new Date(T0.getTime() + 2 * 3_600_000);
+    await removeExtension(t2, b.id as string);
+    expect(await send(t2, 'arch2-b-2')).toMatchObject({ ok: false, reason: 'NOT_SUBSCRIBED' });
+  });
+
+  it('A8-ARCH-3 (TD-A8-5) removal is audited and governed (support_admin requests, Finance approves; no self-approval, no apply before approval, no other applier) and leaves recorded billing and entitlement state untouched', async () => {
+    clock = T0;
+    const t = await newTenant(pg);
+    const sub = await stripeRowFull(t);
+    for (const c of ['core', 'sign']) await pg.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1, $2::entitlement."Capability")`, [t, c]);
+    await pg.query(`INSERT INTO subscription."BillingEvent" (id, provider, provider_event_id, event_type, event_created_at, tenant_id, outcome, detail) VALUES (gen_random_uuid(), 'STRIPE', $2, 'invoice.payment_failed', '2026-10-24T08:00:00Z', $1, 'APPLIED', 'past due')`, [t, `evt_${t}`]);
+    await pg.query(`INSERT INTO subscription."BillingReconciliationFlag" (id, tenant_id, provider, subscription_ref, reason) VALUES (gen_random_uuid(), $1, 'STRIPE', $2, 'domain_not_authoritative')`, [t, `sub_${sub}`]);
+    await pg.query(`INSERT INTO subscription."CheckoutIntent" (id, tenant_id, user_id, plan_id, provider, status) SELECT gen_random_uuid(), $1, 'owner-user-1', p.id, 'STRIPE', 'EXPIRED' FROM subscription."Plan" p WHERE p.key = $2`, [t, BUSINESS]);
+    const applied = await extend(t, sub, 7);
+    if (applied.outcome !== 'APPLIED') throw new Error('expected APPLIED');
+    expect((await send(t, 'arch3-1')).ok).toBe(true);
+    const before = await billingState(t);
+
+    clock = new Date(T0.getTime() + 3_600_000);
+    const r = await h.changeRequests.create(as(SA, 'support_admin'), { action_type: 'SUPPORT_EXTENSION', tenant_id: t, product_key: 'sign', payload: { operation: 'REMOVE', support_extension_id: applied.extension.id }, reason: 'Extension no longer warranted', idempotency_key: key() }, A6_CTX);
+    expect(r.request).toMatchObject({ kind: 'NORMAL', required_chain: { rule: 'FINANCE_ONLY', steps: [{ role_key: 'finance_admin' }] } });
+    // Only support_admin requests (A1: platform:subscription:support).
+    await expect(h.changeRequests.create(as(OPS, 'commercial_ops'), { action_type: 'SUPPORT_EXTENSION', tenant_id: t, product_key: 'sign', payload: { operation: 'REMOVE', support_extension_id: applied.extension.id }, reason: 'x', idempotency_key: key() }, A6_CTX)).rejects.toMatchObject({ code: 'REQUESTER_SCOPE_MISSING' });
+    await h.changeRequests.submit(as(SA, 'support_admin'), r.request.id, A6_CTX);
+    expect(await outcome(h.apply.apply(as(SA, 'support_admin'), r.request.id, A6_CTX))).toBe('REFUSED:NOT_APPROVED');
+    await expect(h.changeRequests.approve(as(SA, 'support_admin'), r.request.id, { step_index: 0 }, A6_CTX)).rejects.toMatchObject({ refusal: 'SELF_APPROVAL' });
+    expect((await overlays(t))[0].removed_at).toBeNull();
+    await h.changeRequests.approve(as(FA, 'finance_admin'), r.request.id, { step_index: 0 }, A6_CTX);
+    expect(await outcome(h.apply.apply(as(FA, 'finance_admin'), r.request.id, A6_CTX))).toBe('ERROR:REQUESTER_SCOPE_MISSING');
+    const out = await h.apply.apply(as(SA, 'support_admin'), r.request.id, A6_CTX);
+    expect(out.request.state).toBe('APPLIED');
+    expect(out.application).toMatchObject({ action_type: 'SUPPORT_EXTENSION', subscription_id: sub, capabilities: [], capabilities_inserted: [] });
+
+    // Audited: the full trail, with the approver evidence and no exception flag.
+    const ev = await events(r.request.id);
+    expect(ev.map((e) => e.event_type)).toEqual([
+      'COMMERCIAL_CHANGE_REQUEST_CREATED',
+      'COMMERCIAL_CHANGE_REQUEST_SUBMITTED',
+      'COMMERCIAL_CHANGE_REQUEST_APPLY_REFUSED',
+      'COMMERCIAL_APPROVAL_REFUSED',
+      'COMMERCIAL_APPROVAL_RECORDED',
+      'COMMERCIAL_CHANGE_REQUEST_APPROVED',
+      // (the finance_admin apply attempt is refused by the A6 requester-scope pre-check, before any transaction)
+      'SUPPORT_EXTENSION_REMOVED',
+      'COMMERCIAL_CHANGE_REQUEST_APPLIED',
+    ]);
+    expect(ev.some((e) => e.is_exception)).toBe(false);
+    expect(ev[6]?.payload).toMatchObject({ support_extension_id: applied.extension.id, subscription_id: sub, days: 7 });
+    expect(ev[7]?.payload).toMatchObject({ outcome: 'APPLIED', kind: 'NORMAL', requested_by: SA, approvals: [{ step_index: 0, approver_user_id: FA }] });
+    const roles = (await pg.query(`SELECT actor_id, actor_role_keys FROM subscription."CommercialAuditEvent" WHERE change_request_id = $1 AND event_type = 'SUPPORT_EXTENSION_REMOVED'`, [r.request.id])).rows[0];
+    expect(roles).toEqual({ actor_id: SA, actor_role_keys: ['support_admin'] });
+    // The removal is recorded on the overlay; the original apply evidence is untouched.
+    const [o] = await overlays(t);
+    expect(o).toMatchObject({ removed_by: SA, remove_change_request_id: r.request.id, change_request_id: applied.request.id, is_exception: true, days: 7 });
+    expect((await events(applied.request.id)).map((e) => e.event_type)).toEqual(['COMMERCIAL_CHANGE_REQUEST_CREATED', 'SUPPORT_EXTENSION_EXCEPTION_APPLIED', 'COMMERCIAL_CHANGE_REQUEST_APPLIED']);
+    // No bypass of recorded billing or entitlement state.
+    expect(await billingState(t)).toEqual(before);
+    expect((await send(t, 'arch3-2')).ok).toBe(false);
+  });
+
   it('A8-G1-1 every A8 path above ran under the Stripe-owned-row tripwire, and the tripwire is live (a direct write raises)', async () => {
     const t = await newTenant(pg);
     const sub = await stripeRow(t);
