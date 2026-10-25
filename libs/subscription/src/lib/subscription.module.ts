@@ -6,6 +6,9 @@ import { CommercialAuditRepository } from './commercial/commercial-audit.reposit
 import { CommercialPolicyRepository } from './commercial/commercial-policy.repository.js';
 import { CommercialChangeRequestService } from './commercial/commercial-change-request.service.js';
 import { CommercialOperatorRepository } from './commercial/commercial-operator.repository.js';
+import { CommercialAuditExportService } from './commercial/commercial-audit-export.service.js';
+import { CommercialOperatorRosterService } from './commercial/commercial-operator-roster.service.js';
+import { CommercialPolicyGovernanceService } from './commercial/commercial-policy-governance.service.js';
 import { FreePersonalSubscriptionService } from './free-personal-subscription.js';
 import { LegalAcceptanceService } from './legal/legal-acceptance.service.js';
 import { PlanVersionRepository } from './plan-version.repository.js';
@@ -20,6 +23,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 // CCP-A2: the commercial audit stream + the versioned commercial policy (read side).
 // CCP-A3: change requests, approvals and the D9 operator attestation store.
 // CCP-A5: the plan-version store (repository only; A6 applies publish / retire).
+// CCP-B5: policy drafts, the audit export and the operator roster (read-only).
 @Module({
   providers: [
     PrismaService,
@@ -33,9 +37,12 @@ import { PrismaService } from './prisma/prisma.service.js';
     CommercialPolicyRepository,
     CommercialOperatorRepository,
     CommercialChangeRequestService,
+    CommercialPolicyGovernanceService,
+    CommercialAuditExportService,
+    CommercialOperatorRosterService,
     PlanVersionRepository,
   ],
-  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, PlanVersionRepository],
+  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialPolicyGovernanceService, CommercialAuditExportService, CommercialOperatorRosterService, PlanVersionRepository],
 })
 export class SubscriptionModule {
   /**
@@ -58,10 +65,13 @@ export class SubscriptionModule {
         CommercialPolicyRepository,
         CommercialOperatorRepository,
         CommercialChangeRequestService,
+        CommercialPolicyGovernanceService,
+        CommercialAuditExportService,
+        CommercialOperatorRosterService,
         PlanVersionRepository,
         ...(opts.providers ?? []),
       ],
-      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, PlanVersionRepository],
+      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialPolicyGovernanceService, CommercialAuditExportService, CommercialOperatorRosterService, PlanVersionRepository],
     };
   }
 }

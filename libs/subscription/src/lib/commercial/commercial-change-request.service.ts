@@ -20,6 +20,7 @@ import {
   COMMERCIAL_OPEN_STATES,
   COMMERCIAL_ROLE_CHANGE_ACTIONS,
   COMMERCIAL_REQUEST_PRODUCT_KEYS,
+  POLICY_TARGET_CHECKSUM_KEY,
   type CommercialActionType,
   type CommercialChangeRequestKind,
   type CommercialChangeRequestState,
@@ -34,6 +35,7 @@ import { approvalExpiresAt } from './commercial-policy-boundaries.js';
 import { canonicalJson } from './commercial-policy.js';
 import { CommercialPolicyRepository } from './commercial-policy.repository.js';
 import { CommercialOperatorRepository, D9_STATEMENT_VERSION, type LiveOperator } from './commercial-operator.repository.js';
+import { POLICY_LOCK_SQL, PolicyActivationRefusedError, activatePolicyVersionInTx } from './commercial-policy-activation.js';
 import {
   PLATFORM_OWNER_ROLE_KEY,
   RoleChangeApplyError,
@@ -62,6 +64,14 @@ import {
 // apply path (TD-A9-1): the NC-5 apply-time re-check, then the identity write, then
 // APPROVED → APPLYING → APPLIED. A refused apply rolls back, leaves the request APPROVED with
 // its signatures untouched and records one COMMERCIAL_CHANGE_REQUEST_APPLY_REFUSED event.
+//
+// CCP-B5 (TD-A9-16): an approval that completes a POLICY_ACTIVATE chain is followed, in its
+// own transaction, by `applyPolicyActivation` — the NC-5 signature re-check, the NC-5
+// SNAPSHOT re-check (commercial-policy-activation.ts) and the policy write. The guard admits
+// no transition out of APPROVED for POLICY_ACTIVATE and B5 does not replace it (A6 owns that
+// function), so the request row stays APPROVED and its applied state is the
+// COMMERCIAL_CHANGE_REQUEST_APPLIED audit event, surfaced as `effect_applied_at`
+// (pre-execution C-1; TD-B5-1).
 
 type Tx = Parameters<Parameters<PrismaService['$transaction']>[0]>[0];
 
@@ -154,6 +164,12 @@ export interface CommercialChangeRequestRow {
   apply_attempts: number;
   applied_at: Date | null;
   updated_at: Date;
+  /**
+   * CCP-B5 — when the request's effect was applied: `applied_at` for a request that reached
+   * APPLIED, else the time of its COMMERCIAL_CHANGE_REQUEST_APPLIED event (a POLICY_ACTIVATE
+   * stays APPROVED, pre-execution C-1); null when nothing was applied. Read-only, derived.
+   */
+  effect_applied_at?: Date | null;
 }
 
 export interface CommercialApprovalRow {
@@ -230,6 +246,7 @@ const ELIGIBLE_FOR_ME_SCAN = 500;
 /** CCP-A9: the typed reason of a refused role-change apply. */
 function classifyApplyRefusal(e: unknown): { reason: string; detail: Record<string, unknown> } {
   if (e instanceof CommercialApplyRefusedError) return { reason: e.reason, detail: e.detail };
+  if (e instanceof PolicyActivationRefusedError) return { reason: e.reason, detail: e.detail };
   if (e instanceof RoleChangeApplyError) return { reason: e.reason, detail: e.detail };
   if (e instanceof CommercialChangeRequestError) return { reason: e.code, detail: e.details };
   if (isPlatformLastOwnerViolation(e)) return { reason: 'PLATFORM_LAST_OWNER', detail: {} };
@@ -286,13 +303,17 @@ export class CommercialChangeRequestService {
     } else if (tenant_id !== null || product_key !== null) {
       throw new CommercialChangeRequestError('INVALID_INPUT', `${input.action_type} carries no tenant_id or product_key`, { reason: 'tenant_product_not_allowed' });
     }
-    const payload = (() => {
+    const validated = (() => {
       try {
         return validatePayload(input.action_type, input.payload);
       } catch (e) {
         throw new CommercialChangeRequestError('INVALID_INPUT', (e as Error).message, { reason: 'invalid_payload', errors: (e as { errors?: unknown }).errors ?? [] });
       }
     })();
+    // CCP-B5 (pre-execution C-3): every POLICY_ACTIVATE carries the NC-5 snapshot of its
+    // target's content; filled from the target row when the client omits it (re-verified
+    // inside the create transaction, validateGovernanceTarget).
+    const payload = input.action_type === 'POLICY_ACTIVATE' ? await this.withPolicyTargetSnapshot(validated) : validated;
     const checksum = payloadChecksum(payload);
     const fingerprint = { action_type: input.action_type, kind, tenant_id, product_key, payload_checksum: checksum, reason: input.reason, requested_by: actor.user_id };
 
@@ -518,6 +539,11 @@ export class CommercialChangeRequestService {
       const apply = await this.applyRoleChange(actor, id, ctx);
       return { request: apply.request, approval: out.approval, apply };
     }
+    // CCP-B5 (TD-A9-16): a completed policy activation applies in its own transaction.
+    if (out.request.state === 'APPROVED' && out.request.action_type === 'POLICY_ACTIVATE') {
+      const apply = await this.applyPolicyActivation(actor, id, ctx);
+      return { request: apply.request, approval: out.approval, apply };
+    }
     return { request: out.request, approval: out.approval, apply: null };
   }
 
@@ -601,16 +627,120 @@ export class CommercialChangeRequestService {
     }
   }
 
+  // ---- CCP-B5 POLICY_ACTIVATE apply (TD-A9-16; pre-execution C-1, C-2) ------------------
+
+  /**
+   * Applies an APPROVED POLICY_ACTIVATE in ONE transaction: lock the request, integrity,
+   * idempotency (an existing COMMERCIAL_CHANGE_REQUEST_APPLIED event → no-op), the NC-5
+   * re-check of every signature against the snapshotted chain and the live roster, then the
+   * NC-5 snapshot re-check and the policy write (activatePolicyVersionInTx) and the audit
+   * rows. The request row is NOT written (the guard admits no transition out of APPROVED for
+   * POLICY_ACTIVATE): it stays APPROVED with its approval rows untouched, success or refusal.
+   * A refusal rolls the transaction back and records one COMMERCIAL_CHANGE_REQUEST_APPLY_REFUSED
+   * event in a separate transaction.
+   */
+  async applyPolicyActivation(actor: CommercialActor, id: string, ctx: CommercialCallContext): Promise<RoleChangeApplyOutcome> {
+    try {
+      const out = await this.tx(async (tx) => {
+        const req = await this.lock(tx, id);
+        this.verifyIntegrity(req);
+        if (req.action_type !== 'POLICY_ACTIVATE') {
+          throw new CommercialChangeRequestError('STATE_INVALID', `${req.action_type} is not applied by the policy activation path`, { action_type: req.action_type });
+        }
+        const prior = await tx.commercialAuditEvent.findFirst({ where: { change_request_id: id, event_type: 'COMMERCIAL_CHANGE_REQUEST_APPLIED' }, select: { id: true } });
+        if (prior !== null) return { req, already: true as const, detail: { applied_event_id: prior.id } };
+        const approvals = await this.approvalsOf(tx, id);
+        const roster = await this.operators.readRoster(tx, ctx.platform_tenant_id, { user_ids: approvals.map((a) => a.approver_user_id), lock: true });
+        assertChainStillSatisfiableAtApply(
+          { id, state: req.state, requested_by: req.requested_by, subject_user_id: null, required_chain: parseRequiredChain(req.required_chain), approvals },
+          roster,
+        );
+        const now = this.now();
+        const r = await activatePolicyVersionInTx(tx, { policy_version_id: req.policy_version_id, policy_checksum: req.policy_checksum, payload: req.payload }, { activated_by: actor.user_id, at: now, change_request_id: id });
+        const keys = (await this.operators.readOperator(tx, ctx.platform_tenant_id, actor.user_id)).role_keys;
+        await this.audit.append(
+          {
+            actor: { id: actor.user_id, type: 'user', role_keys: keys },
+            event_type: 'COMMERCIAL_POLICY_VERSION_ACTIVATED',
+            subject: `commercial_policy_version:${r.to_version_id}`,
+            change_request_id: id,
+            policy_version_id: r.to_version_id,
+            payload: { version_number: r.to_version_number, content_checksum: r.to_content_checksum, replaces: r.from_version_id, replaces_version_number: r.from_version_number, rollback: r.to_previous_status === 'RETIRED' },
+            correlation_id: ctx.correlation_id,
+          },
+          tx,
+        );
+        const detail = { change: 'POLICY_ACTIVATE', from_version_id: r.from_version_id, from_version_number: r.from_version_number, to_version_id: r.to_version_id, to_version_number: r.to_version_number, rollback: r.to_previous_status === 'RETIRED' };
+        await this.appendEvent(tx, actor, req, 'COMMERCIAL_CHANGE_REQUEST_APPLIED', detail, ctx, keys);
+        return { req, already: false as const, detail };
+      });
+      return { applied: true, request: { ...out.req, effect_applied_at: await this.effectAppliedAt(out.req) }, reason: null, detail: out.already ? { ...out.detail, replayed: true } : out.detail };
+    } catch (e) {
+      const { reason, detail } = classifyApplyRefusal(e);
+      const req = await this.tx(async (tx) => {
+        const current = await this.lock(tx, id);
+        await this.appendEvent(tx, actor, current, 'COMMERCIAL_CHANGE_REQUEST_APPLY_REFUSED', { reason, detail }, ctx);
+        return current;
+      });
+      return { applied: false, request: { ...req, effect_applied_at: null }, reason, detail };
+    }
+  }
+
+  /** CCP-B5: fills the NC-5 target snapshot of a POLICY_ACTIVATE payload when it is absent. */
+  private async withPolicyTargetSnapshot(payload: Record<string, unknown>): Promise<Record<string, unknown>> {
+    if (payload[POLICY_TARGET_CHECKSUM_KEY] !== undefined) return payload;
+    const row = await this.prisma.commercialPolicyVersion.findUnique({ where: { id: payload['policy_version_id'] as string }, select: { content_checksum: true } });
+    return row === null ? payload : { ...payload, [POLICY_TARGET_CHECKSUM_KEY]: row.content_checksum };
+  }
+
+  /** CCP-B5: `effect_applied_at` for one request (see CommercialChangeRequestRow). */
+  private async effectAppliedAt(r: CommercialChangeRequestRow): Promise<Date | null> {
+    return (await this.effectsOf([r])).get(r.id) ?? null;
+  }
+
+  /** CCP-B5: `effect_applied_at` for a page of requests — one audit read for the page. */
+  private async effectsOf(rows: readonly CommercialChangeRequestRow[]): Promise<Map<string, Date>> {
+    const out = new Map<string, Date>();
+    for (const r of rows) if (r.applied_at !== null && r.applied_at !== undefined) out.set(r.id, r.applied_at);
+    const pending = rows.filter((r) => !out.has(r.id) && r.state === 'APPROVED').map((r) => r.id);
+    if (pending.length === 0) return out;
+    const events = await this.prisma.commercialAuditEvent.findMany({
+      where: { change_request_id: { in: pending }, event_type: 'COMMERCIAL_CHANGE_REQUEST_APPLIED' },
+      select: { change_request_id: true, created_at: true },
+    });
+    for (const e of events) if (e.change_request_id !== null) out.set(e.change_request_id, e.created_at);
+    return out;
+  }
+
+  private async withEffects(rows: CommercialChangeRequestRow[]): Promise<CommercialChangeRequestRow[]> {
+    const fx = await this.effectsOf(rows);
+    return rows.map((r) => ({ ...r, effect_applied_at: fx.get(r.id) ?? null }));
+  }
+
   /** CCP-A9: the target checks of a governance request, inside the create transaction. */
   private async validateGovernanceTarget(tx: Tx, action_type: CommercialActionType, payload: Record<string, unknown>, ctx: CommercialCallContext): Promise<void> {
     const invalid = (reason: string, message: string, extra: Record<string, unknown> = {}): never => {
       throw new CommercialChangeRequestError('INVALID_INPUT', message, { reason, ...extra });
     };
     if (action_type === 'POLICY_ACTIVATE') {
-      const rows = await tx.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status FROM subscription."CommercialPolicyVersion" WHERE id = $1::uuid`, payload['policy_version_id']);
+      // CCP-B5: serialised with draft edits and other activation requests (one policy lock).
+      await tx.$executeRawUnsafe(POLICY_LOCK_SQL);
+      const rows = await tx.$queryRawUnsafe<Array<{ status: string; content_checksum: string }>>(
+        `SELECT status, content_checksum FROM subscription."CommercialPolicyVersion" WHERE id = $1::uuid`,
+        payload['policy_version_id'],
+      );
       const status = rows[0]?.status;
       if (status === undefined) invalid('policy_version_not_found', 'the policy version does not exist');
       if (status === 'ACTIVE') invalid('policy_version_already_active', 'the policy version is already ACTIVE');
+      // CCP-B5 (pre-execution C-3): the snapshot must be the target's content right now.
+      if (rows[0]?.content_checksum !== payload[POLICY_TARGET_CHECKSUM_KEY]) {
+        invalid('policy_version_changed', 'the policy version changed after it was read; review it again', { current_checksum: rows[0]?.content_checksum ?? null });
+      }
+      // Handoff §5.6: only one policy request open at a time (DRAFT or PENDING_APPROVAL).
+      const open = await tx.commercialChangeRequest.findFirst({ where: { action_type: 'POLICY_ACTIVATE', state: { in: ['DRAFT', 'PENDING_APPROVAL'] } }, select: { id: true, state: true } });
+      if (open !== null) {
+        throw new CommercialChangeRequestError('OPEN_REQUEST_EXISTS', 'a policy activation request is already open', { open_request_id: open.id, open_state: open.state, reason: 'open_policy_request_exists' });
+      }
       return;
     }
     const subject_user_id = payload['subject_user_id'] as string;
@@ -725,7 +855,8 @@ export class CommercialChangeRequestService {
       const exclude = new Set<string>([req.requested_by, ...approvals.map((a) => a.approver_user_id), ...(subject === null ? [] : [subject])]);
       satisfiable = checkChainSatisfiable(chain.steps.slice(approvals.length), roster, exclude).satisfiable;
     }
-    return { request: req, approvals, chain, is_expired, steps: this.stepViews(actor, live, req, chain, approvals, now), chain_satisfiable: satisfiable };
+    const [enriched] = await this.withEffects([req]);
+    return { request: enriched ?? req, approvals, chain, is_expired, steps: this.stepViews(actor, live, req, chain, approvals, now), chain_satisfiable: satisfiable };
   }
 
   async list(actor: CommercialActor, query: ListChangeRequestsQuery, ctx: CommercialCallContext): Promise<{ requests: CommercialChangeRequestRow[]; next_cursor: string | null }> {
@@ -748,7 +879,7 @@ export class CommercialChangeRequestService {
         if (v.eligible) out.push(r);
         if (out.length >= limit) break;
       }
-      return { requests: out, next_cursor: null };
+      return { requests: await this.withEffects(out), next_cursor: null };
     }
     const fp = createHash('sha256').update(canonicalJson({ s: query.state ?? null, r: query.requested_by ?? null }), 'utf8').digest('hex').slice(0, 16);
     const and: object[] = [];
@@ -775,7 +906,7 @@ export class CommercialChangeRequestService {
     const last = page[page.length - 1];
     const next_cursor =
       rows.length > limit && last !== undefined ? Buffer.from(JSON.stringify({ v: 1, c: last.created_at.toISOString(), i: last.id, fp }), 'utf8').toString('base64url') : null;
-    return { requests: page, next_cursor };
+    return { requests: await this.withEffects(page), next_cursor };
   }
 
   // ---- internals ------------------------------------------------------------------------

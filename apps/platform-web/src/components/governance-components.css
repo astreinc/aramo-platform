@@ -1,0 +1,238 @@
+/* CCP-B5 — the commercial console's change-request dialog (handoff §5.10) and the chain
+ * preview strip. Every value is copied from
+ * doc/design-reference/ccp/CCP-UI-v1_0/Commercial Control Plane v1.0.dc.html (the `dl`
+ * dialog block) and expressed through the platform token layer. Two values the theme does
+ * not carry are added to the token layer here (the CCP diff tint and the CCP dialog shadow);
+ * they are tokens, not literals in components. */
+
+:root {
+  --pw-gov-changed-bg: #fffbf2; /* changed setting rows (policy table, Before → after) */
+  --pw-gov-shadow-dialog: 0 24px 64px rgba(15, 25, 40, 0.24);
+  --pw-gov-chip-on-line: var(--pw-midnight);
+}
+
+body:has(.pw-gd) .tc-dialog__overlay {
+  z-index: 100;
+  background: var(--pw-overlay);
+  animation: none;
+}
+.tc-dialog__content:has(.pw-gd) {
+  inset: 0;
+  margin: auto;
+  height: fit-content;
+  transform: none;
+  z-index: 101;
+  display: flex;
+  flex-direction: column;
+  width: min(600px, 94vw);
+  max-height: 88vh;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  border: none;
+  border-radius: var(--pw-r-dialog);
+  background: var(--pw-surface);
+  box-shadow: var(--pw-gov-shadow-dialog);
+  font-family: var(--pw-font);
+}
+.tc-dialog__content:has(.pw-gd) .tc-dialog__title {
+  margin: 0;
+  padding: 18px 22px 0;
+  color: var(--pw-ink);
+  font-size: 18px;
+  font-weight: 700;
+}
+.tc-dialog__content:has(.pw-gd) .tc-dialog__description {
+  margin: 0;
+  padding: 6px 22px 12px;
+  color: var(--pw-ink-2);
+  font-size: var(--pw-fs-13-5);
+  line-height: 1.5;
+}
+.tc-dialog__content:has(.pw-gd) .tc-dialog__body {
+  display: block;
+  min-height: 0;
+  padding: 4px 22px 16px;
+  overflow-y: auto;
+}
+.tc-dialog__content:has(.pw-gd) .tc-dialog__footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 22px;
+  border-top: 1px solid var(--pw-line);
+  background: var(--pw-surface-2);
+}
+
+.pw-gd {
+  display: grid;
+  gap: 14px;
+}
+.pw-gd-field {
+  display: block;
+}
+.pw-gd-field__label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: var(--pw-fs-13);
+  font-weight: 600;
+}
+.pw-gd-input,
+.pw-gd-textarea {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--pw-line-2);
+  border-radius: var(--pw-r-md);
+  background: var(--pw-surface);
+  color: var(--pw-ink);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-13-5);
+}
+.pw-gd-input {
+  height: 38px;
+  padding: 0 10px;
+}
+.pw-gd-textarea {
+  padding: 8px 10px;
+  resize: vertical;
+}
+.pw-gd-input:focus-visible,
+.pw-gd-textarea:focus-visible {
+  outline: 2px solid var(--pw-focus);
+  outline-offset: 2px;
+}
+
+/* Role toggles (handoff §5.8 role change dialog) */
+.pw-gd-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pw-gd-toggle {
+  height: 32px;
+  padding: 0 10px;
+  border: 1.5px solid var(--pw-line-2);
+  border-radius: var(--pw-r-md);
+  background: var(--pw-surface);
+  color: var(--pw-ink);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-12-5);
+  font-weight: 600;
+  cursor: pointer;
+}
+.pw-gd-toggle[aria-pressed='true'] {
+  border-color: var(--pw-gov-chip-on-line);
+  background: var(--pw-surface-hover);
+}
+
+/* Before → after */
+.pw-gd-diff__cap {
+  margin-bottom: 6px;
+  color: var(--pw-faint);
+  font-size: var(--pw-fs-11);
+  font-weight: 600;
+  letter-spacing: var(--pw-tracking-caps);
+  text-transform: uppercase;
+}
+.pw-gd-diff {
+  overflow: hidden;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-box);
+  font-size: var(--pw-fs-13);
+}
+.pw-gd-diff__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--pw-rule);
+  background: var(--pw-surface);
+}
+.pw-gd-diff__row--changed {
+  background: var(--pw-gov-changed-bg);
+}
+.pw-gd-diff__field,
+.pw-gd-diff__before {
+  color: var(--pw-muted);
+}
+.pw-gd-diff__row--changed .pw-gd-diff__before {
+  text-decoration: line-through;
+}
+.pw-gd-diff__row--changed .pw-gd-diff__after {
+  font-weight: 700;
+}
+
+/* Chain preview strip */
+.pw-gd-chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-box);
+  background: var(--pw-surface-2);
+  font-size: var(--pw-fs-13);
+}
+.pw-gd-chain__lead {
+  color: var(--pw-muted);
+}
+.pw-gd-chain__steps {
+  color: var(--pw-ink-2);
+}
+.pw-gd-chain__policy {
+  margin-left: auto;
+  color: var(--pw-muted);
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-11-5);
+}
+
+.pw-gd-alert {
+  padding: 10px 14px;
+  border: 1px solid var(--pw-alert-error-line);
+  border-radius: var(--pw-r-box);
+  background: var(--pw-alert-error-bg);
+  color: var(--pw-alert-error-ink);
+  font-size: var(--pw-fs-13);
+}
+
+/* Footer buttons */
+.pw-gd-btn {
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--pw-line-2);
+  border-radius: var(--pw-r-md);
+  background: var(--pw-surface);
+  color: var(--pw-ink);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-13-5);
+  font-weight: 600;
+  cursor: pointer;
+}
+.pw-gd-btn:disabled {
+  cursor: not-allowed;
+}
+.pw-gd-btn--commit {
+  padding: 0 16px;
+  font-weight: 700;
+}
+.pw-gd-btn--privileged {
+  border-color: var(--pw-terracotta);
+  background: var(--pw-terracotta);
+  color: var(--pw-midnight);
+}
+.pw-gd-btn--danger {
+  border-color: var(--pw-danger);
+  background: var(--pw-danger);
+  color: #ffffff;
+}
+.pw-gd-btn--normal {
+  border-color: var(--pw-midnight);
+  background: var(--pw-midnight);
+  color: #ffffff;
+}
+.pw-gd-btn--dim {
+  opacity: 0.45;
+}

@@ -153,6 +153,7 @@ export {
   COMMERCIAL_ROLE_CHANGE_ACTIONS,
   COMMERCIAL_ROLE_CHANGE_ROLE_KEYS,
   COMMERCIAL_TERMINAL_STATES,
+  POLICY_TARGET_CHECKSUM_KEY,
   CommercialChangeRequestIntegrityError,
   CommercialPayloadError,
   canTransition,
@@ -213,6 +214,45 @@ export {
   type RoleChangeApplyOutcome,
   type StepView,
 } from './lib/commercial/commercial-change-request.service.js';
+// CCP-B5 (PBD §5.3 row B5; TD-A9-16) — the POLICY_ACTIVATE apply (NC-5 snapshot re-check),
+// policy drafts, the read-only audit export and the operator roster with chain state.
+export {
+  POLICY_LOCK_SQL,
+  PolicyActivationRefusedError,
+  activatePolicyVersionInTx,
+  type PolicyActivationRefusalReason,
+  type PolicyActivationResult,
+  type PolicyActivationSnapshot,
+} from './lib/commercial/commercial-policy-activation.js';
+export {
+  CommercialPolicyGovernanceService,
+  POLICY_AUTHOR_ROLES,
+  POLICY_EDITABLE_KEYS,
+  POLICY_EDIT_RANGES,
+  policyRangeErrors,
+  type PolicyListView,
+  type PolicyVersionView,
+} from './lib/commercial/commercial-policy-governance.service.js';
+export {
+  COMMERCIAL_AUDIT_EXPORT_COLUMNS,
+  COMMERCIAL_AUDIT_EXPORT_MAX_ROWS,
+  CommercialAuditExportService,
+  CommercialAuditExportTooLargeError,
+  buildAuditCsv,
+  csvField,
+  type AuditExportNames,
+  type CommercialAuditExportQuery,
+  type CommercialAuditExportResult,
+} from './lib/commercial/commercial-audit-export.service.js';
+export {
+  COMMERCIAL_CHAIN_PANEL,
+  CommercialOperatorRosterService,
+  chainFulfillability,
+  type ChainFulfillability,
+  type CommercialChainKey,
+  type CommercialRosterView,
+  type RosterOperatorView,
+} from './lib/commercial/commercial-operator-roster.service.js';
 // CCP-A5 (PBD §5.1 row A5; MP-A2 N-15…N-19; Charter D3) — plan versions, the provider price
 // pinned to the version, and the read-only cutover parity check. Publishing and retiring are
 // repository methods applied by CCP-A6 from approved change requests.

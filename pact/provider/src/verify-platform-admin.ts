@@ -46,6 +46,13 @@ import { PLATFORM_TENANT, TENANT_2, addOperator, applyCcpA3Schema } from '../../
 // allowed interaction, a super_admin refusal or a tenant-tier refusal in the pact
 // (the A10 HALT condition "a CCP route without a contract", made mechanical).
 //
+// CCP-B5 adds two provider states for the policy screen (one DRAFT may exist at a time,
+// globally): 'no draft commercial policy version exists' moves any DRAFT out of DRAFT using
+// only the transitions the A2 policy trigger permits (the DRAFT is activated and retired,
+// and v1 is re-activated, so v1 keeps its id, content and checksum); and 'a draft commercial
+// policy version exists' returns the DRAFT's id, creating one through the HTTP surface as
+// finance_admin when none exists.
+//
 // Gated on ARAMO_RUN_PACT_PROVIDER=1 (same as verify.ts / verify-api.ts / verify-sign.ts / verify-ti.ts).
 
 const ROOT = resolve(__dirname, '../../..');
@@ -280,6 +287,25 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             return undefined;
           },
           'a draft change request exists': async () => ({ requestId: await draftRequest() }),
+          // CCP-B5 — the policy screen states (see the header).
+          'no draft commercial policy version exists': async () => {
+            const drafts = (await db.query(`SELECT id FROM subscription."CommercialPolicyVersion" WHERE status = 'DRAFT'`)).rows as Array<{ id: string }>;
+            for (const d of drafts) {
+              await db.query('BEGIN');
+              const prev = (await db.query(`UPDATE subscription."CommercialPolicyVersion" SET status = 'RETIRED', retired_at = now() WHERE status = 'ACTIVE' RETURNING id`)).rows[0] as { id: string };
+              await db.query(`UPDATE subscription."CommercialPolicyVersion" SET status = 'ACTIVE', activated_at = now() WHERE id = $1`, [d.id]);
+              await db.query(`UPDATE subscription."CommercialPolicyVersion" SET status = 'RETIRED', retired_at = now() WHERE id = $1`, [d.id]);
+              await db.query(`UPDATE subscription."CommercialPolicyVersion" SET status = 'ACTIVE', activated_at = now(), retired_at = NULL WHERE id = $1`, [prev.id]);
+              await db.query('COMMIT');
+            }
+            return undefined;
+          },
+          'a draft commercial policy version exists': async () => {
+            const existing = (await db.query(`SELECT id FROM subscription."CommercialPolicyVersion" WHERE status = 'DRAFT'`)).rows[0] as { id: string } | undefined;
+            if (existing !== undefined) return { versionId: existing.id };
+            const out = await asRole<{ version: { id: string } }>('finance_admin', 'POST', '/platform/commercial/policy-versions', { source_version_id: '019a0000-0000-7000-8000-0000000cc201' });
+            return { versionId: out.version.id };
+          },
           'a pending change request exists': async () => {
             const requestId = await draftRequest();
             await asRole('commercial_ops', 'POST', `/platform/commercial/change-requests/${requestId}/submit`);

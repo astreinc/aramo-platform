@@ -18,6 +18,7 @@ import { PersonalLapseSweeper } from './personal-lapse-sweeper.service.js';
 import { PersonalSignupAttemptPurgeSweeper } from './personal-signup-attempt-purge-sweeper.service.js';
 import { PlatformCommercialAuditController } from './platform-commercial-audit.controller.js';
 import { PlatformCommercialChangeRequestController } from './platform-commercial-change-request.controller.js';
+import { PlatformCommercialGovernanceController } from './platform-commercial-governance.controller.js';
 import { PlatformPersonalController } from './platform-personal.controller.js';
 import { PlatformController } from './platform.controller.js';
 import { PlatformSignController } from './platform-sign.controller.js';
@@ -65,7 +66,7 @@ import { TenantPolicyProvisioningService } from './tenant-policy-provisioning.se
   ],
   // CCP-A2 — the read-only commercial audit feed (platform:commercial:audit:read).
   // CCP-A3 — commercial change requests and approvals (platform:approval:read gate).
-  controllers: [PlatformController, PlatformSignController, PlatformPersonalController, PlatformCommercialAuditController, PlatformCommercialChangeRequestController],
+  controllers: [PlatformController, PlatformSignController, PlatformPersonalController, PlatformCommercialAuditController, PlatformCommercialChangeRequestController, PlatformCommercialGovernanceController],
   providers: [
     // Sign Personal (Free) v1.1 §6.4 — abuse-report outcomes (sign schema; its own
     // generated client, lazy DATABASE_URL — scope:platform → scope:boundary is wall-legal).

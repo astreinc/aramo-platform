@@ -11,6 +11,9 @@ export default mergeConfig(
       testTimeout: 30_000,
       pool: 'forks',
       isolate: true,
+      // CCP-B5: two contract files write the ONE platform-web → platform-admin pact; run
+      // them one after the other so the pact writes never interleave.
+      fileParallelism: false,
     },
   }),
 );

@@ -60,6 +60,10 @@ export interface CommercialAuditQuery {
   /** Exclusive upper bound on created_at. */
   to?: Date;
   exception_only?: boolean;
+  /** CCP-B5 (handoff §5.7 "Change request" filter). */
+  change_request_id?: string;
+  /** CCP-B5 (handoff §5.7 "Product" filter): `payload.product_key`. */
+  product_key?: string;
   limit?: number;
   cursor?: string;
 }
@@ -93,6 +97,9 @@ function filterFingerprint(q: CommercialAuditQuery): string {
     f: q.from?.toISOString() ?? null,
     u: q.to?.toISOString() ?? null,
     x: q.exception_only === true,
+    // CCP-B5 filters join the fingerprint only when set, so an A2 cursor keeps its value.
+    ...(q.change_request_id !== undefined ? { r: q.change_request_id } : {}),
+    ...(q.product_key !== undefined ? { p: q.product_key } : {}),
   });
   return createHash('sha256').update(canonical, 'utf8').digest('hex').slice(0, 16);
 }
@@ -179,6 +186,8 @@ export class CommercialAuditRepository {
     if (query.from !== undefined) and.push({ created_at: { gte: query.from } });
     if (query.to !== undefined) and.push({ created_at: { lt: query.to } });
     if (query.exception_only === true) and.push({ is_exception: true });
+    if (query.change_request_id !== undefined) and.push({ change_request_id: query.change_request_id });
+    if (query.product_key !== undefined) and.push({ payload: { path: ['product_key'], equals: query.product_key } });
     if (after !== null) {
       const c = new Date(after.c);
       and.push({ OR: [{ created_at: { lt: c } }, { created_at: c, id: { lt: after.i } }] });

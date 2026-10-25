@@ -96,3 +96,16 @@ A state whose text rasterises differently on every run carries a per-state
 | ID | State | Allowance | Measured | Evidence |
 |---|---|---|---|---|
 | AA-01 | `studio-withdraw-dialog` | 160 px | 116 (900), 134 (1440) | diff = dialog title, field labels and live line glyph edges; boxes and positions identical |
+
+## CCP-B5 — governance screens vs the CCP-UI v1.0 design file (ccp-b5-parity.spec.ts)
+
+Reference: `doc/design-reference/ccp/CCP-UI-v1_0/Commercial Control Plane v1.0.dc.html` (pinned, `doc/ccp/slices/CCP-B5-pre-execution.md` §5), prototype-only elements stripped (`support/proto-ccp.ts`). 9 states × 1440 / 900.
+
+| ID | Region | Cause |
+|---|---|---|
+| DV-B5-01 | Comparison clip = the slice-owned content (right of the rail, below the top bar) or the dialog box; dialog states allow 60 px for the rounded corners, which blend with the page behind (B1's chrome and bootstrap banner) | The rail, environment bar, top bar, breadcrumb and bootstrap banner are CCP-B1's (parallel slice); B1's parity record covers them. Unclip at the program merge. |
+| DV-B5-02 | Policy table: the two threshold help lines | PO ruling A2-B / TD-A2-2: at or above the threshold escalates. The design says "above … at or below". Same words, reordered. |
+| DV-B5-05 | Roster notes: "Finance admin removed {date}"; the pending request's id and summary; the Notes column head | No role-removal history is read (R-13); a request id is a uuid shown as `CR-XXXXXXXX` and its summary is built from the payload; the auto table layout sizes the column from these texts. |
+| DV-B5-06 | Audit: the filter row from the first select, and the event table | The rows are the real event stream (create and submit are two events; backend codes; uuids; details read from structured payloads). The selects size to option labels from that stream, and the auto table layout sizes every column from the rows. Compared: the page head and the "Export CSV (16)" count. |
+
+Not a mask: DV-B5-04 — the chain panel renders the maker roles the API returns. The fixture carries the design's maker sets; the API's real sets (above threshold: Commercial ops only; policy change: Finance admin only, TD-A3-5) are proven by `libs/subscription` B5-U-7.

@@ -22,6 +22,14 @@ import { MatchingPolicyView } from './matching/MatchingPolicyView';
 import { PersonalReviewView } from './personal/PersonalReviewView';
 import { PersonalInviteView } from './personal/PersonalInviteView';
 import { PlatformAdminsView } from './admins/PlatformAdminsView';
+import { PolicyView } from './commercial-governance/PolicyView';
+import { AuditExplorerView } from './commercial-governance/AuditExplorerView';
+
+// CCP-B5 — the commercial governance scopes (CCP A1 §4.1): the six commercial roles hold
+// platform:approval:read; platform_owner, finance_admin and read_only_auditor also hold
+// platform:commercial:audit:read. super_admin holds neither (INV-1).
+const CCP_APPROVAL_READ = 'platform:approval:read';
+const CCP_AUDIT_READ = 'platform:commercial:audit:read';
 
 // The platform console app. RouteGuard handles only loading, unauthenticated
 // (→ sign-in) and the TENANT_ACCESS_DENIED wrong-account redirect — it no longer
@@ -149,7 +157,22 @@ export function PlatformConsole({ session }: { readonly session: Session }) {
         />
         {/* PLATFORM-UX-1 (directive R-12) — Platform admins at /admins (never under
             /platform/, which nginx proxies to the backend). */}
-        <Route path="/admins" element={gate(P.adminInvite, 'Platform admins', <PlatformAdminsView />)} />
+        {/* CCP-B5 (handoff §5.8) — Platform admins also opens for the commercial roles
+            (their commercial-roles view); super_admin keeps the invite view. */}
+        <Route
+          path="/admins"
+          element={
+            hasScope(session, P.adminInvite) || hasScope(session, CCP_APPROVAL_READ) ? (
+              <PlatformAdminsView session={session} />
+            ) : (
+              <PlatformAccessDenied session={session} scope={P.adminInvite} page="Platform admins" />
+            )
+          }
+        />
+        {/* CCP-B5 (handoff §5.6, §5.7; B5-P) — Commercial › Policy and Commercial › Audit.
+            The Commercial rail group that links them is CCP-B1's. */}
+        <Route path="/commercial/policy" element={gate(CCP_APPROVAL_READ, 'Commercial policy', <PolicyView />)} />
+        <Route path="/commercial/audit" element={gate(CCP_AUDIT_READ, 'Commercial audit', <AuditExplorerView />)} />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </PlatformShell>

@@ -15,6 +15,8 @@ import { CommercialAuditQueryDto } from './dto/commercial-audit.dto.js';
 //
 // Filters (ANDed): actor_id, event_type, tenant_id, from (inclusive), to (exclusive),
 // exception_only. Newest first; opaque keyset cursor pinned to the filter set.
+// CCP-B5 adds the filters change_request_id and product_key (handoff §5.7). The export
+// (POST audit-events/export) lives in PlatformCommercialGovernanceController.
 
 @Controller('platform/commercial')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -50,6 +52,8 @@ export class PlatformCommercialAuditController {
         from,
         to,
         exception_only: query.exception_only === 'true',
+        change_request_id: query.change_request_id,
+        product_key: query.product_key,
         limit: query.limit,
         cursor: query.cursor,
       });
