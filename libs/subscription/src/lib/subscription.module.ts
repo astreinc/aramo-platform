@@ -13,6 +13,7 @@ import { PlanVersionRepository } from './plan-version.repository.js';
 import { BILLING_PROVIDER_COMMAND_PORT, BILLING_PROVIDER_PORT } from './billing/billing-provider.port.js';
 import { BillingCommandService } from './billing/billing-command.service.js';
 import { BillingWebhookInboxService } from './billing/billing-webhook-inbox.service.js';
+import { BillingFinanceReportService } from './billing/billing-finance-report.service.js';
 import { StripeBillingProvider } from './billing/stripe-billing.provider.js';
 import { SubscriptionLifecycleService } from './billing/subscription-lifecycle.service.js';
 import { PrismaService } from './prisma/prisma.service.js';
@@ -26,6 +27,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 // CCP-A6: the transactional apply of approved Aramo-owned change requests.
 // CCP-C1: the Stripe command outbox (BillingCommandService, the command port bound to the same
 // Stripe adapter) and the webhook inbox (BillingWebhookInboxService).
+// CCP-C6: the read-only Finance reports (BillingFinanceReportService).
 @Module({
   providers: [
     PrismaService,
@@ -37,6 +39,7 @@ import { PrismaService } from './prisma/prisma.service.js';
     SubscriptionLifecycleService,
     BillingCommandService,
     BillingWebhookInboxService,
+    BillingFinanceReportService,
     FreePersonalSubscriptionService,
     CommercialAuditRepository,
     CommercialPolicyRepository,
@@ -45,7 +48,7 @@ import { PrismaService } from './prisma/prisma.service.js';
     CommercialApplyService,
     PlanVersionRepository,
   ],
-  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, PlanVersionRepository],
+  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, BillingFinanceReportService, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, PlanVersionRepository],
 })
 export class SubscriptionModule {
   /**
@@ -66,6 +69,8 @@ export class SubscriptionModule {
         SubscriptionLifecycleService,
         BillingCommandService,
         BillingWebhookInboxService,
+        BillingFinanceReportService,
+    BillingFinanceReportService,
         FreePersonalSubscriptionService,
         CommercialAuditRepository,
         CommercialPolicyRepository,
@@ -75,7 +80,7 @@ export class SubscriptionModule {
         PlanVersionRepository,
         ...(opts.providers ?? []),
       ],
-      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, PlanVersionRepository],
+      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, BillingFinanceReportService, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, PlanVersionRepository],
     };
   }
 }
