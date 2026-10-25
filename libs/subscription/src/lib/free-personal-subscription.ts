@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaService } from './prisma/prisma.service.js';
+import { BASE_COMPOSITION, assertProductKey, openBaseSubscription, type ProductKey } from './product-registry.js';
 
 // Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED §4 — the FREE subscription
 // of a Free Personal tenant.
@@ -13,6 +14,8 @@ import { PrismaService } from './prisma/prisma.service.js';
 //   when    only for a PERSONAL tenant that is ACTIVE (federated binding done,
 //           §3.6) and only while SIGN_PERSONAL_SIGNUP_MODE is not `off` (§10)
 // Idempotent: a tenant that already has an open subscription keeps it.
+// CCP-A4 (MP-A2 N-11) — the product is explicit (the FREE plan is a Sign plan; a plan of
+// another product is refused) and only that product's open BASE subscription is read.
 
 export const FreePersonalPlanKey = 'aramo-sign-free-personal-v1';
 export const FREE_SUBSCRIPTION_SOURCE = 'FREE';
@@ -38,6 +41,7 @@ export class FreePersonalSubscriptionService {
 
   async ensure(input: {
     tenant_id: string;
+    product_key: ProductKey;
     tenant_kind: string;
     tenant_status: string;
     mode: PersonalSignupMode;
@@ -46,10 +50,12 @@ export class FreePersonalSubscriptionService {
     if (input.mode === 'off') return { ok: false, reason: 'personal_mode_off' };
     if (input.tenant_kind !== 'PERSONAL') return { ok: false, reason: 'tenant_not_personal' };
     if (input.tenant_status !== 'ACTIVE') return { ok: false, reason: 'tenant_not_active' };
-    const open = await this.prisma.tenantSubscription.findFirst({ where: { tenant_id: input.tenant_id, ended_at: null } });
+    const product_key = assertProductKey(input.product_key);
+    const open = await this.prisma.tenantSubscription.findFirst({ where: openBaseSubscription(input.tenant_id, product_key) });
     if (open !== null) return { ok: true, opened: false, subscription_id: open.id, source: open.source };
     const plan = await this.prisma.plan.findUnique({ where: { key: FreePersonalPlanKey } });
     if (plan === null) return { ok: false, reason: 'plan_missing' };
+    if (plan.product_key !== product_key) throw new Error(`plan ${plan.key} is not a ${product_key} plan`);
     const id = uuidv7();
     try {
       await this.prisma.tenantSubscription.create({
@@ -57,6 +63,8 @@ export class FreePersonalSubscriptionService {
           id,
           tenant_id: input.tenant_id,
           plan_id: plan.id,
+          product_key,
+          composition_role: BASE_COMPOSITION,
           period_anchor: input.at ?? new Date(),
           source: FREE_SUBSCRIPTION_SOURCE,
           status: 'ACTIVE',
@@ -64,8 +72,8 @@ export class FreePersonalSubscriptionService {
         },
       });
     } catch (e) {
-      // A concurrent first read opened it (one open subscription per tenant).
-      const again = await this.prisma.tenantSubscription.findFirst({ where: { tenant_id: input.tenant_id, ended_at: null } });
+      // A concurrent first read opened it (one open BASE subscription per tenant and product).
+      const again = await this.prisma.tenantSubscription.findFirst({ where: openBaseSubscription(input.tenant_id, product_key) });
       if (again !== null) return { ok: true, opened: false, subscription_id: again.id, source: again.source };
       throw e;
     }

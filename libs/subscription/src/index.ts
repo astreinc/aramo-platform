@@ -1,4 +1,16 @@
 export { SubscriptionModule } from './lib/subscription.module.js';
+// CCP-A4 (MP-A2 N-6, N-10, N-11) — the closed product registry and the explicit product context.
+export {
+  BASE_COMPOSITION,
+  PRODUCT_KEYS,
+  ProductContextError,
+  SIGN_PRODUCT_KEY,
+  assertProductKey,
+  isProductKey,
+  productOfMeteredKey,
+  type CompositionRole,
+  type ProductKey,
+} from './lib/product-registry.js';
 export {
   AllowanceService,
   thresholdOf,
