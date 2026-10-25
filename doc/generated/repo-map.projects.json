@@ -2164,6 +2164,7 @@
       "pipelineLinkVerdict"
     ],
     "@aramo/subscription": [
+      "APPROVAL_REFUSALS",
       "AllowanceService",
       "AramoSignIncludedPlanKey",
       "AramoSignStandardBusinessPlanKey",
@@ -2173,17 +2174,36 @@
       "BillingProviderUnavailableError",
       "BillingRefusedError",
       "BillingWebhookSignatureError",
+      "COMMERCIAL_A3_TRANSITIONS",
+      "COMMERCIAL_ACTIONS",
+      "COMMERCIAL_ACTION_TYPES",
       "COMMERCIAL_AUDIT_DEFAULT_LIMIT",
       "COMMERCIAL_AUDIT_EVENT_TYPE_PATTERN",
       "COMMERCIAL_AUDIT_MAX_LIMIT",
+      "COMMERCIAL_CHANGE_REQUEST_KINDS",
+      "COMMERCIAL_CHANGE_REQUEST_STATES",
+      "COMMERCIAL_CLOCK",
+      "COMMERCIAL_OPEN_STATES",
       "COMMERCIAL_POLICY_FORMAT_VERSION",
       "COMMERCIAL_POLICY_KEYS",
+      "COMMERCIAL_REQUEST_PRODUCT_KEYS",
+      "COMMERCIAL_TERMINAL_STATES",
       "CapacityService",
+      "CommercialApplyRefusedError",
+      "CommercialApprovalRefusedError",
       "CommercialAuditCursorError",
       "CommercialAuditRepository",
+      "CommercialChangeRequestCursorError",
+      "CommercialChangeRequestError",
+      "CommercialChangeRequestIntegrityError",
+      "CommercialChangeRequestService",
+      "CommercialNotBootstrappedError",
+      "CommercialOperatorRepository",
+      "CommercialPayloadError",
       "CommercialPolicyInputError",
       "CommercialPolicyRepository",
       "CommercialPolicyUnavailableError",
+      "D9_STATEMENT_VERSION",
       "DAY_WINDOW_MS",
       "DOMAIN_NOT_AUTHORITATIVE",
       "ESIGN_ENVELOPE_ALLOWANCE",
@@ -2206,13 +2226,18 @@
       "SubscriptionLifecycleService",
       "SubscriptionModule",
       "SubscriptionPrismaService",
+      "actorSatisfiesStep",
       "addMonthsClamped",
       "approvalExpiresAt",
       "approvedLegalDocument",
+      "assertChainStillSatisfiableAtApply",
       "assertNotProduction",
       "billingCountrySupported",
       "billingPeriodAt",
+      "canTransition",
       "canonicalJson",
+      "checkApprovalEligibility",
+      "checkChainSatisfiable",
       "checkSupportExtension",
       "commercialPolicyChecksum",
       "creditEscalation",
@@ -2227,13 +2252,18 @@
       "parseActiveCommercialPolicy",
       "parseCommercialPolicyContent",
       "parsePlanPrices",
+      "parseRequiredChain",
       "pastDueGraceUntil",
+      "payloadChecksum",
       "personalSignupMode",
       "postTerminationExportDays",
+      "resolveRequiredChain",
       "stripeEventSubscriptionRef",
       "stripeSubscriptionState",
+      "subjectUserOf",
       "subscriptionSends",
       "thresholdOf",
+      "validatePayload",
       "verifyStripeSignature"
     ],
     "@aramo/talent-embedding": [
@@ -3281,6 +3311,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -3847,6 +3889,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a2-commercial-audit-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-routes.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -6123,6 +6177,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -6748,6 +6814,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/commercial-change-request.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/personal-free.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
@@ -6755,6 +6827,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/subscription-lifecycle.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/support/ccp-a3-database.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -8924,6 +9002,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -10984,6 +11074,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a2-commercial-audit-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-routes.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
