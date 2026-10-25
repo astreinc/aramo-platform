@@ -12,7 +12,8 @@ export default mergeConfig(
       // entry point for the apps/api provider target. auth-helpers.ts
       // and state-handlers.ts are imported by verify.ts; they are not
       // test files and are excluded from discovery.
-      include: ['src/verify.ts', 'src/verify-api.ts', 'src/verify-sign.ts', 'src/verify-ti.ts'],
+      // CCP-A10 adds `verify-platform-admin.ts` (apps/platform-admin provider, D11).
+      include: ['src/verify.ts', 'src/verify-api.ts', 'src/verify-sign.ts', 'src/verify-ti.ts', 'src/verify-platform-admin.ts'],
       // Provider verification starts a real Nest app + Postgres container.
       // Match the auth-service integration suite's wall-clock budget.
       testTimeout: 180_000,
