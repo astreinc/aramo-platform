@@ -4,6 +4,8 @@ import { AllowanceService } from './allowance.service.js';
 import { CapacityService } from './capacity.service.js';
 import { CommercialAuditRepository } from './commercial/commercial-audit.repository.js';
 import { CommercialPolicyRepository } from './commercial/commercial-policy.repository.js';
+import { CommercialChangeRequestService } from './commercial/commercial-change-request.service.js';
+import { CommercialOperatorRepository } from './commercial/commercial-operator.repository.js';
 import { FreePersonalSubscriptionService } from './free-personal-subscription.js';
 import { LegalAcceptanceService } from './legal/legal-acceptance.service.js';
 import { BILLING_PROVIDER_PORT } from './billing/billing-provider.port.js';
@@ -15,6 +17,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 // directive §B/§C). Kept apart from the signing engine and provider routing.
 // Aramo Sign launch: the subscription lifecycle + the Stripe billing provider.
 // CCP-A2: the commercial audit stream + the versioned commercial policy (read side).
+// CCP-A3: change requests, approvals and the D9 operator attestation store.
 @Module({
   providers: [
     PrismaService,
@@ -26,8 +29,10 @@ import { PrismaService } from './prisma/prisma.service.js';
     FreePersonalSubscriptionService,
     CommercialAuditRepository,
     CommercialPolicyRepository,
+    CommercialOperatorRepository,
+    CommercialChangeRequestService,
   ],
-  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository],
+  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService],
 })
 export class SubscriptionModule {
   /**
@@ -48,9 +53,11 @@ export class SubscriptionModule {
         FreePersonalSubscriptionService,
         CommercialAuditRepository,
         CommercialPolicyRepository,
+        CommercialOperatorRepository,
+        CommercialChangeRequestService,
         ...(opts.providers ?? []),
       ],
-      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository],
+      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService],
     };
   }
 }

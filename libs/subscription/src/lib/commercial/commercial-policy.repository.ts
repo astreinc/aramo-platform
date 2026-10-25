@@ -6,6 +6,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import {
   type CommercialPolicy,
   type CommercialPolicyContent,
+  CommercialPolicyUnavailableError,
   commercialPolicyChecksum,
   parseActiveCommercialPolicy,
   parseCommercialPolicyContent,
@@ -61,6 +62,18 @@ export class CommercialPolicyRepository {
    */
   async getActivePolicy(): Promise<CommercialPolicy> {
     return parseActiveCommercialPolicy(await this.getActiveRow());
+  }
+
+  /**
+   * CCP-A3 (NC-5) — a request's OWN snapshotted policy version, whatever its status now
+   * (ACTIVE or RETIRED; never DRAFT), parsed strictly with its checksum re-verified. Used
+   * to evaluate an in-flight request under the version fixed for it, never a newer one.
+   */
+  async getVersionPolicy(id: string, client: Pick<PrismaService, 'commercialPolicyVersion'> = this.prisma): Promise<CommercialPolicy> {
+    const row = await client.commercialPolicyVersion.findUnique({ where: { id } });
+    if (row === null) throw new CommercialPolicyUnavailableError('MISSING', [`version ${id}`]);
+    if (row.status === 'DRAFT') throw new CommercialPolicyUnavailableError('NOT_ACTIVE', [`status ${row.status}`]);
+    return parseActiveCommercialPolicy({ ...row, status: 'ACTIVE' });
   }
 
   // Newest first.
