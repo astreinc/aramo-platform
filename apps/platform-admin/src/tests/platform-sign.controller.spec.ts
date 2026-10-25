@@ -32,7 +32,7 @@ describe('PlatformSignController', () => {
     const res = await c.sign(T, auth('platform'), 'r');
     expect(res).toMatchObject({ tenant_id: T, tenant_kind: 'BUSINESS', capabilities: ['core', 'sign'], sign_entitled: true, allowance: { used: 3, limit: 100 } });
     expect(res.billing_events).toHaveLength(1);
-    expect(lifecycle.account).toHaveBeenCalledWith(T, 'sign.envelopes');
+    expect(lifecycle.account).toHaveBeenCalledWith(T, 'sign', 'sign.envelopes');
   });
 
   it('refuses a non-platform token and 404s an unknown tenant', async () => {

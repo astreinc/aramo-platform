@@ -7,6 +7,7 @@ import { CapacityService, type CapacityStatus } from '../capacity.service.js';
 import { isFeatureAvailable } from '../feature-availability.js';
 import { LEGAL_DOCUMENTS, LEGAL_DOCUMENT_REGISTRY, approvedLegalDocument, type LegalDocumentVersion } from '../legal/legal-documents.js';
 import { PrismaService } from '../prisma/prisma.service.js';
+import { BASE_COMPOSITION, assertProductKey, openBaseSubscription, type ProductKey } from '../product-registry.js';
 
 import {
   BILLING_PROVIDER_PORT,
@@ -59,6 +60,14 @@ import { PLAN_ELIGIBILITY_PORT, type PlanEligibilityPort, type PlanEligibilityRu
 // A1 country guard (hold + a 'domain_not_authoritative' reconciliation flag,
 // resolved by a later sync once authoritative). MANUAL subscriptions and the
 // shared send path are not gated here.
+//
+// CCP-A4 (MP-A2 N-9, N-11, N-12) — product context is explicit on every operation that
+// resolves or mutates a subscription (a required ProductKey, no defaulting overload):
+// catalog, account, subscribing-owner lookup, checkout, portal, webhook application,
+// eligibility refresh and reconciliation. Only the product's open BASE subscription is
+// read, ended or replaced; a provider subscription or checkout of another product is
+// IGNORED and left untouched; a provider price resolves only to a plan of the same
+// product (the composite FK refuses a cross-product plan at the DB as well).
 
 export const PAST_DUE_GRACE_DAYS_DEFAULT = 7;
 
@@ -261,11 +270,11 @@ export class SubscriptionLifecycleService {
    * The public plan catalog (the pre-catalog operator plan is excluded).
    * With a tenant, eligibility and purchasability are evaluated for it.
    */
-  async catalog(tenant_id: string | null = null): Promise<CatalogPlanView[]> {
+  async catalog(product_key: ProductKey, tenant_id: string | null = null): Promise<CatalogPlanView[]> {
     const prices = this.prices();
     const plans = await this.prisma.plan.findMany({
       // Public catalog only: operator / legacy plans are never presented.
-      where: { display_order: { lt: OPERATOR_DISPLAY_ORDER_FLOOR }, sales_model: { not: 'OPERATOR' } },
+      where: { product_key: assertProductKey(product_key), display_order: { lt: OPERATOR_DISPLAY_ORDER_FLOOR }, sales_model: { not: 'OPERATOR' } },
       include: { allowances: true, capacities: true, features: true },
       orderBy: [{ display_order: 'asc' }, { key: 'asc' }],
     });
@@ -307,18 +316,22 @@ export class SubscriptionLifecycleService {
     return out;
   }
 
-  /** The tenant's open subscription, else its most recent one (for display). */
-  private async currentRow(tenant_id: string) {
+  /** The tenant's open subscription of the product, else its most recent one (for display). */
+  private async currentRow(tenant_id: string, product_key: ProductKey) {
     const include = { plan: { include: { features: true } } } as const;
-    const open = await this.prisma.tenantSubscription.findFirst({ where: { tenant_id, ended_at: null }, include });
+    const open = await this.prisma.tenantSubscription.findFirst({ where: openBaseSubscription(tenant_id, product_key), include });
     if (open !== null) return open;
-    return this.prisma.tenantSubscription.findFirst({ where: { tenant_id }, include, orderBy: { started_at: 'desc' } });
+    return this.prisma.tenantSubscription.findFirst({
+      where: { tenant_id, product_key, composition_role: BASE_COMPOSITION },
+      include,
+      orderBy: { started_at: 'desc' },
+    });
   }
 
-  async account(tenant_id: string, allowance_key: string, at: Date = new Date()): Promise<AccountView> {
-    const row = await this.currentRow(tenant_id);
-    const allowance = await this.allowance.getStatus(tenant_id, allowance_key, at);
-    const storage = await this.capacity.status(tenant_id, STORAGE_CAPACITY_KEY);
+  async account(tenant_id: string, product_key: ProductKey, allowance_key: string, at: Date = new Date()): Promise<AccountView> {
+    const row = await this.currentRow(tenant_id, assertProductKey(product_key));
+    const allowance = await this.allowance.getStatus(tenant_id, product_key, allowance_key, at);
+    const storage = await this.capacity.status(tenant_id, product_key, STORAGE_CAPACITY_KEY);
     const exportDays = postTerminationExportDays();
     return {
       subscription:
@@ -363,15 +376,16 @@ export class SubscriptionLifecycleService {
     });
   }
 
-  /** The subscribing owner of the tenant's open, sending SELF_SERVICE subscription. */
-  async sendingOwner(tenant_id: string, at: Date = new Date()): Promise<string | null> {
-    const row = await this.prisma.tenantSubscription.findFirst({ where: { tenant_id, ended_at: null, source: 'SELF_SERVICE' } });
+  /** The subscribing owner of the tenant's open, sending SELF_SERVICE subscription of the product. */
+  async sendingOwner(tenant_id: string, product_key: ProductKey, at: Date = new Date()): Promise<string | null> {
+    const row = await this.prisma.tenantSubscription.findFirst({ where: { ...openBaseSubscription(tenant_id, product_key), source: 'SELF_SERVICE' } });
     if (row === null || row.activated_by === null) return null;
     return subscriptionSends(row, at) ? row.activated_by : null;
   }
 
   async startCheckout(input: {
     tenant_id: string;
+    product_key: ProductKey;
     user_id: string;
     user_email: string;
     plan_key: string;
@@ -381,10 +395,12 @@ export class SubscriptionLifecycleService {
     at?: Date;
   }): Promise<{ url: string }> {
     const at = input.at ?? new Date();
+    const product_key = assertProductKey(input.product_key);
     if (!this.billing.isConfigured()) throw new BillingRefusedError('BILLING_UNAVAILABLE');
     const plan = await this.prisma.plan.findUnique({ where: { key: input.plan_key } });
     const price = this.prices().get(input.plan_key);
-    if (plan === null || !plan.sellable || plan.status !== 'ACTIVE' || plan.sales_model !== 'SELF_SERVICE') throw new BillingRefusedError('PLAN_NOT_SELLABLE');
+    // CCP-A4 — a plan of another product is never sold through this product's checkout.
+    if (plan === null || plan.product_key !== product_key || !plan.sellable || plan.status !== 'ACTIVE' || plan.sales_model !== 'SELF_SERVICE') throw new BillingRefusedError('PLAN_NOT_SELLABLE');
     if (!(await this.eligible(input.tenant_id, plan.eligibility))) throw new BillingRefusedError('PLAN_NOT_ELIGIBLE');
     if (price === undefined) throw new BillingRefusedError('BILLING_UNAVAILABLE', 'no provider price configured for the plan');
     // A1 — terms evidence. No live charging without approved terms; an approved
@@ -392,7 +408,7 @@ export class SubscriptionLifecycleService {
     const terms = approvedLegalDocument('sign.terms_of_service', this.legal);
     if (terms === null && this.billing.mode() === 'live') throw new BillingRefusedError('TERMS_NOT_APPROVED');
     if (terms !== null && input.accept_terms !== true) throw new BillingRefusedError('TERMS_NOT_ACCEPTED');
-    const open = await this.prisma.tenantSubscription.findFirst({ where: { tenant_id: input.tenant_id, ended_at: null } });
+    const open = await this.prisma.tenantSubscription.findFirst({ where: openBaseSubscription(input.tenant_id, product_key) });
     // A tenant already paying through the provider manages it in the portal; a
     // MANUAL / DEVELOPMENT subscription may be replaced by a self-service one.
     if (open !== null && open.source === 'SELF_SERVICE' && open.status !== 'INCOMPLETE') {
@@ -401,7 +417,7 @@ export class SubscriptionLifecycleService {
     // A1 §2.6 — an eligible (US) organization profile is required; unbound → refused.
     // P3 §4 — then an AUTHORITATIVE domain claim; both before any side effect.
     const profile = await this.lockedBillingProfile(input.tenant_id);
-    const account_ref = await this.ensureBillingAccount(input.tenant_id, profile);
+    const account_ref = await this.ensureBillingAccount(input.tenant_id, product_key, profile);
     const intent_id = uuidv7();
     await this.prisma.$transaction(async (tx) => {
       await tx.checkoutIntent.create({
@@ -472,13 +488,13 @@ export class SubscriptionLifecycleService {
    * the organization profile. Reuses the mapped account, else the latest
    * subscription's account; the mapping is persisted in TenantBillingAccount.
    */
-  private async ensureBillingAccount(tenant_id: string, profile: OrganizationBillingProfile): Promise<string> {
+  private async ensureBillingAccount(tenant_id: string, product_key: ProductKey, profile: OrganizationBillingProfile): Promise<string> {
     const provider = this.billing.provider;
     const mapped = await this.prisma.tenantBillingAccount.findUnique({ where: { tenant_id } });
     let existing: string | null = mapped !== null && mapped.provider === provider ? mapped.account_ref : null;
     if (existing === null) {
       const prior = await this.prisma.tenantSubscription.findFirst({
-        where: { tenant_id, billing_provider: provider, billing_account_ref: { not: null } },
+        where: { tenant_id, product_key, billing_provider: provider, billing_account_ref: { not: null } },
         orderBy: { started_at: 'desc' },
       });
       existing = prior?.billing_account_ref ?? null;
@@ -497,10 +513,10 @@ export class SubscriptionLifecycleService {
     return account_ref;
   }
 
-  async portal(tenant_id: string, return_url: string): Promise<{ url: string }> {
+  async portal(tenant_id: string, product_key: ProductKey, return_url: string): Promise<{ url: string }> {
     if (!this.billing.isConfigured()) throw new BillingRefusedError('BILLING_UNAVAILABLE');
     const row = await this.prisma.tenantSubscription.findFirst({
-      where: { tenant_id, billing_account_ref: { not: null } },
+      where: { tenant_id, product_key: assertProductKey(product_key), billing_account_ref: { not: null } },
       orderBy: { started_at: 'desc' },
     });
     if (row?.billing_account_ref == null) throw new BillingRefusedError('NO_BILLING_ACCOUNT');
@@ -516,8 +532,9 @@ export class SubscriptionLifecycleService {
     return this.billing.createPortalSession(row.billing_account_ref, return_url, configuration);
   }
 
-  /** A verified provider event. At most once per provider event id. */
-  async handleEvent(evt: VerifiedBillingEvent, at: Date = new Date()): Promise<WebhookResult> {
+  /** A verified provider event for the product's billing webhook. At most once per provider event id. */
+  async handleEvent(evt: VerifiedBillingEvent, product_key: ProductKey, at: Date = new Date()): Promise<WebhookResult> {
+    assertProductKey(product_key);
     const seen = await this.prisma.billingEvent.findUnique({
       where: { provider_provider_event_id: { provider: this.billing.provider, provider_event_id: evt.id } },
     });
@@ -528,7 +545,7 @@ export class SubscriptionLifecycleService {
     const result: ApplyResult =
       ref === null
         ? { outcome: 'IGNORED', detail: `event ${evt.type} carries no subscription`, tenant_id: null }
-        : await this.syncSubscription(ref, at);
+        : await this.syncSubscription(ref, product_key, at);
 
     await this.prisma.billingEvent.createMany({
       data: [
@@ -549,12 +566,14 @@ export class SubscriptionLifecycleService {
   }
 
   /** Re-fetch one provider subscription and apply its current state. */
-  async syncSubscription(subscription_ref: string, at: Date = new Date()): Promise<ApplyResult> {
+  async syncSubscription(subscription_ref: string, product_key: ProductKey, at: Date = new Date()): Promise<ApplyResult> {
+    assertProductKey(product_key);
     const state = await this.billing.retrieveSubscription(subscription_ref);
-    return this.applyProviderState(state, at);
+    return this.applyProviderState(state, product_key, at);
   }
 
-  async applyProviderState(state: ProviderSubscriptionState, at: Date = new Date()): Promise<ApplyResult> {
+  async applyProviderState(state: ProviderSubscriptionState, product_key: ProductKey, at: Date = new Date()): Promise<ApplyResult> {
+    assertProductKey(product_key);
     const existing = await this.prisma.tenantSubscription.findFirst({
       where: { billing_provider: state.provider, billing_subscription_ref: state.subscription_ref },
     });
@@ -562,6 +581,11 @@ export class SubscriptionLifecycleService {
       state.intent_id === null ? null : await this.prisma.checkoutIntent.findUnique({ where: { id: state.intent_id }, include: { plan: true } });
     const tenant_id = existing?.tenant_id ?? intent?.tenant_id ?? null;
     if (tenant_id === null) return { outcome: 'IGNORED', detail: 'subscription is not linked to an Aramo checkout', tenant_id: null };
+    // CCP-A4 (MP-A2 N-12) — another product's subscription or checkout is never read,
+    // ended or re-pointed through this product's webhook.
+    if ((existing !== null && existing.product_key !== product_key) || (existing === null && intent !== null && intent.plan.product_key !== product_key)) {
+      return { outcome: 'IGNORED', detail: `subscription belongs to another product than ${product_key}`, tenant_id };
+    }
     // The provider metadata must agree with Aramo's own record: never let one
     // tenant's payment move another tenant's entitlement.
     if (state.tenant_id !== null && state.tenant_id !== tenant_id) {
@@ -578,7 +602,7 @@ export class SubscriptionLifecycleService {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`billing:${tenant_id}`}, 0))`;
       const mapped = mapProviderStatus(state.provider_status);
       const row = await tx.tenantSubscription.findFirst({
-        where: { billing_provider: state.provider, billing_subscription_ref: state.subscription_ref },
+        where: { billing_provider: state.provider, billing_subscription_ref: state.subscription_ref, product_key },
       });
       // A1 §2.6 — activation guard (fail closed: a missing country is not US).
       const countryOk = billingCountrySupported(state.account_country);
@@ -595,7 +619,7 @@ export class SubscriptionLifecycleService {
         );
         return { outcome: 'IGNORED', detail: held, tenant_id } as ApplyResult;
       }
-      return this.openRow(tx, tenant_id, intent, state, mapped, at);
+      return this.openRow(tx, tenant_id, product_key, intent, state, mapped, at);
     });
   }
 
@@ -635,6 +659,7 @@ export class SubscriptionLifecycleService {
       id: string;
       tenant_id: string;
       plan_id: string;
+      product_key: string;
       status: string;
       grace_until: Date | null;
       ended_at: Date | null;
@@ -666,7 +691,7 @@ export class SubscriptionLifecycleService {
           : new Date(at.getTime() + graceDays() * 86_400_000)
         : null;
     // A plan change made in the provider (its price maps to another catalog plan).
-    const plan_id = (await this.planForPrice(tx, state.price_ref)) ?? row.plan_id;
+    const plan_id = (await this.planForPrice(tx, state.price_ref, assertProductKey(row.product_key))) ?? row.plan_id;
     // A1 — a cancellation that would end the subscription before the commitment
     // term is flagged for the (pending) annual-commitment terms; it is never
     // silently treated as month-to-month and no fee is invented.
@@ -707,6 +732,7 @@ export class SubscriptionLifecycleService {
   private async openRow(
     tx: Tx,
     tenant_id: string,
+    product_key: ProductKey,
     intent: { id: string; user_id: string; plan_id: string; plan: { key: string } },
     state: ProviderSubscriptionState,
     mapped: ReturnType<typeof mapProviderStatus>,
@@ -715,9 +741,10 @@ export class SubscriptionLifecycleService {
     if (mapped.ends) return { outcome: 'IGNORED', detail: 'checkout subscription already ended', tenant_id };
     // The plan is the one the owner chose at checkout; a provider price that maps
     // to a different sellable plan wins (plan change made in the provider).
-    const plan_id = (await this.planForPrice(tx, state.price_ref)) ?? intent.plan_id;
+    const plan_id = (await this.planForPrice(tx, state.price_ref, product_key)) ?? intent.plan_id;
     const plan = await tx.plan.findUniqueOrThrow({ where: { id: plan_id } });
-    const open = await tx.tenantSubscription.findFirst({ where: { tenant_id, ended_at: null } });
+    if (plan.product_key !== product_key) return { outcome: 'IGNORED', detail: `checkout plan belongs to another product than ${product_key}`, tenant_id };
+    const open = await tx.tenantSubscription.findFirst({ where: openBaseSubscription(tenant_id, product_key) });
     const sends = SENDING.has(mapped.status);
     if (open !== null && !sends) {
       // Never end a working subscription for a payment that has not gone through.
@@ -733,6 +760,8 @@ export class SubscriptionLifecycleService {
         id,
         tenant_id,
         plan_id,
+        product_key,
+        composition_role: BASE_COMPOSITION,
         commitment_start: plan.commitment_months !== null ? anchor : null,
         commitment_end: plan.commitment_months !== null ? addMonthsClamped(anchor, plan.commitment_months) : null,
         eligibility_state: plan.eligibility !== null ? 'OK' : null,
@@ -761,12 +790,13 @@ export class SubscriptionLifecycleService {
     };
   }
 
-  private async planForPrice(tx: Tx, price_ref: string | null): Promise<string | null> {
+  /** A provider price → a sellable plan of the SAME product (CCP-A4), else null. */
+  private async planForPrice(tx: Tx, price_ref: string | null, product_key: ProductKey): Promise<string | null> {
     if (price_ref === null) return null;
     for (const [key, price] of this.prices()) {
       if (price !== price_ref) continue;
       const p = await tx.plan.findUnique({ where: { key } });
-      if (p !== null && p.sellable) return p.id;
+      if (p !== null && p.sellable && p.product_key === product_key) return p.id;
     }
     return null;
   }
@@ -777,9 +807,9 @@ export class SubscriptionLifecycleService {
    * current commitment are kept (no automatic downgrade or price change — that
    * is a commercial decision). Recovery clears it.
    */
-  async refreshEligibility(at: Date = new Date()): Promise<{ checked: number; lapsed: number; restored: number }> {
+  async refreshEligibility(product_key: ProductKey, at: Date = new Date()): Promise<{ checked: number; lapsed: number; restored: number }> {
     const rows = await this.prisma.tenantSubscription.findMany({
-      where: { ended_at: null, plan: { eligibility: { not: null } } },
+      where: { product_key: assertProductKey(product_key), composition_role: BASE_COMPOSITION, ended_at: null, plan: { eligibility: { not: null } } },
       include: { plan: true },
     });
     const tally = { checked: 0, lapsed: 0, restored: 0 };
@@ -797,10 +827,10 @@ export class SubscriptionLifecycleService {
     return tally;
   }
 
-  /** Re-fetch every open provider-linked subscription (missed webhooks heal). */
-  async reconcile(at: Date = new Date(), limit = 200): Promise<{ checked: number; applied: number; failed: number; results: ApplyResult[] }> {
+  /** Re-fetch every open provider-linked subscription of the product (missed webhooks heal). */
+  async reconcile(product_key: ProductKey, at: Date = new Date(), limit = 200): Promise<{ checked: number; applied: number; failed: number; results: ApplyResult[] }> {
     const rows = await this.prisma.tenantSubscription.findMany({
-      where: { ended_at: null, billing_subscription_ref: { not: null } },
+      where: { product_key: assertProductKey(product_key), ended_at: null, billing_subscription_ref: { not: null } },
       select: { billing_subscription_ref: true },
       orderBy: { provider_state_at: { sort: 'asc', nulls: 'first' } },
       take: limit,
@@ -809,7 +839,7 @@ export class SubscriptionLifecycleService {
     for (const r of rows) {
       tally.checked += 1;
       try {
-        const res = await this.syncSubscription(r.billing_subscription_ref as string, at);
+        const res = await this.syncSubscription(r.billing_subscription_ref as string, product_key, at);
         if (res.outcome === 'APPLIED') tally.applied += 1;
         tally.results.push(res);
       } catch (err) {

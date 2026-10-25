@@ -1,0 +1,3207 @@
+{
+  "captured_on": "b0e59aa6 (baseline code, pre-A4 schema)",
+  "counts": {
+    "plan": 5,
+    "subscription": 14,
+    "subscription_open": 13
+  },
+  "observation": {
+    "0190a4a4-0000-7000-8000-000000000001": {
+      "status": {
+        "subscribed": true,
+        "plan_key": "aramo-sign-included-v1",
+        "allowance_key": "sign.envelopes",
+        "limit": 100,
+        "unlimited": false,
+        "used": 0,
+        "remaining": 100,
+        "period_start": "2026-10-01T00:00:00.000Z",
+        "period_end": "2026-11-01T00:00:00.000Z",
+        "threshold": "OK"
+      },
+      "capacity": {
+        "capacity_key": "sign.storage_bytes",
+        "limit": null,
+        "unlimited": true,
+        "used": 0,
+        "subscribed": true
+      },
+      "account": {
+        "subscription": {
+          "plan_key": "aramo-sign-included-v1",
+          "plan_name": "Aramo Sign — included allowance",
+          "source": "DEVELOPMENT",
+          "status": "ACTIVE",
+          "sending": true,
+          "started_at": "2026-10-01T00:00:00.000Z",
+          "ended_at": null,
+          "current_period_end": null,
+          "cancel_at_period_end": false,
+          "grace_until": null,
+          "billing_managed": false,
+          "commitment_months": null,
+          "commitment_end": null,
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": null,
+          "list_price": null,
+          "features": [],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 0,
+          "remaining": 100,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "OK"
+        },
+        "storage": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 0
+        },
+        "billing_available": false
+      },
+      "owner": null,
+      "stale": [],
+      "resolve": {
+        "consumed": 0,
+        "released": 0,
+        "unknown": 0
+      },
+      "reserve_a": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 1,
+          "remaining": 99,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "reserve_a_retry": {
+        "ok": true,
+        "already": true,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 1,
+          "remaining": 99,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "consume_a": "CONSUMED",
+      "consume_a_retry": "ALREADY",
+      "reserve_b": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 2,
+          "remaining": 98,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "release_b": true,
+      "release_a_consumed": false,
+      "reserve_b_again": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 2,
+          "remaining": 98,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "historical": true,
+      "historical_retry": false,
+      "status_after": {
+        "subscribed": true,
+        "plan_key": "aramo-sign-included-v1",
+        "allowance_key": "sign.envelopes",
+        "limit": 100,
+        "unlimited": false,
+        "used": 3,
+        "remaining": 97,
+        "period_start": "2026-10-01T00:00:00.000Z",
+        "period_end": "2026-11-01T00:00:00.000Z",
+        "threshold": "OK"
+      },
+      "capacity_reserve": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 2048
+        }
+      },
+      "capacity_reserve_retry": {
+        "ok": true,
+        "already": true,
+        "status": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 2048
+        }
+      },
+      "capacity_release": true,
+      "account_after": {
+        "subscription": {
+          "plan_key": "aramo-sign-included-v1",
+          "plan_name": "Aramo Sign — included allowance",
+          "source": "DEVELOPMENT",
+          "status": "ACTIVE",
+          "sending": true,
+          "started_at": "2026-10-01T00:00:00.000Z",
+          "ended_at": null,
+          "current_period_end": null,
+          "cancel_at_period_end": false,
+          "grace_until": null,
+          "billing_managed": false,
+          "commitment_months": null,
+          "commitment_end": null,
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": null,
+          "list_price": null,
+          "features": [],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 3,
+          "remaining": 97,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "OK"
+        },
+        "storage": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 0
+        },
+        "billing_available": false
+      }
+    },
+    "0190a4a4-0000-7000-8000-000000000002": {
+      "status": {
+        "subscribed": true,
+        "plan_key": "aramo-sign-included-v1",
+        "allowance_key": "sign.envelopes",
+        "limit": 100,
+        "unlimited": false,
+        "used": 79,
+        "remaining": 21,
+        "period_start": "2026-10-15T00:00:00.000Z",
+        "period_end": "2026-11-15T00:00:00.000Z",
+        "threshold": "OK"
+      },
+      "capacity": {
+        "capacity_key": "sign.storage_bytes",
+        "limit": null,
+        "unlimited": true,
+        "used": 0,
+        "subscribed": true
+      },
+      "account": {
+        "subscription": {
+          "plan_key": "aramo-sign-included-v1",
+          "plan_name": "Aramo Sign — included allowance",
+          "source": "MANUAL",
+          "status": "ACTIVE",
+          "sending": true,
+          "started_at": "2026-09-15T00:00:00.000Z",
+          "ended_at": null,
+          "current_period_end": null,
+          "cancel_at_period_end": false,
+          "grace_until": null,
+          "billing_managed": false,
+          "commitment_months": null,
+          "commitment_end": null,
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": null,
+          "list_price": null,
+          "features": [],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 79,
+          "remaining": 21,
+          "period_start": "2026-10-15T00:00:00.000Z",
+          "period_end": "2026-11-15T00:00:00.000Z",
+          "threshold": "OK"
+        },
+        "storage": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 0
+        },
+        "billing_available": false
+      },
+      "owner": null,
+      "stale": [],
+      "resolve": {
+        "consumed": 0,
+        "released": 0,
+        "unknown": 0
+      },
+      "reserve_a": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 80,
+          "remaining": 20,
+          "period_start": "2026-10-15T00:00:00.000Z",
+          "period_end": "2026-11-15T00:00:00.000Z",
+          "threshold": "WARNING"
+        }
+      },
+      "reserve_a_retry": {
+        "ok": true,
+        "already": true,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 80,
+          "remaining": 20,
+          "period_start": "2026-10-15T00:00:00.000Z",
+          "period_end": "2026-11-15T00:00:00.000Z",
+          "threshold": "WARNING"
+        }
+      },
+      "consume_a": "CONSUMED",
+      "consume_a_retry": "ALREADY",
+      "reserve_b": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 81,
+          "remaining": 19,
+          "period_start": "2026-10-15T00:00:00.000Z",
+          "period_end": "2026-11-15T00:00:00.000Z",
+          "threshold": "WARNING"
+        }
+      },
+      "release_b": true,
+      "release_a_consumed": false,
+      "reserve_b_again": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 81,
+          "remaining": 19,
+          "period_start": "2026-10-15T00:00:00.000Z",
+          "period_end": "2026-11-15T00:00:00.000Z",
+          "threshold": "WARNING"
+        }
+      },
+      "historical": true,
+      "historical_retry": false,
+      "status_after": {
+        "subscribed": true,
+        "plan_key": "aramo-sign-included-v1",
+        "allowance_key": "sign.envelopes",
+        "limit": 100,
+        "unlimited": false,
+        "used": 81,
+        "remaining": 19,
+        "period_start": "2026-10-15T00:00:00.000Z",
+        "period_end": "2026-11-15T00:00:00.000Z",
+        "threshold": "WARNING"
+      },
+      "capacity_reserve": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 2048
+        }
+      },
+      "capacity_reserve_retry": {
+        "ok": true,
+        "already": true,
+        "status": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 2048
+        }
+      },
+      "capacity_release": true,
+      "account_after": {
+        "subscription": {
+          "plan_key": "aramo-sign-included-v1",
+          "plan_name": "Aramo Sign — included allowance",
+          "source": "MANUAL",
+          "status": "ACTIVE",
+          "sending": true,
+          "started_at": "2026-09-15T00:00:00.000Z",
+          "ended_at": null,
+          "current_period_end": null,
+          "cancel_at_period_end": false,
+          "grace_until": null,
+          "billing_managed": false,
+          "commitment_months": null,
+          "commitment_end": null,
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": null,
+          "list_price": null,
+          "features": [],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 81,
+          "remaining": 19,
+          "period_start": "2026-10-15T00:00:00.000Z",
+          "period_end": "2026-11-15T00:00:00.000Z",
+          "threshold": "WARNING"
+        },
+        "storage": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 0
+        },
+        "billing_available": false
+      }
+    },
+    "0190a4a4-0000-7000-8000-000000000003": {
+      "status": {
+        "subscribed": true,
+        "plan_key": "aramo-sign-included-v1",
+        "allowance_key": "sign.envelopes",
+        "limit": 100,
+        "unlimited": false,
+        "used": 80,
+        "remaining": 20,
+        "period_start": "2026-10-01T00:00:00.000Z",
+        "period_end": "2026-11-01T00:00:00.000Z",
+        "threshold": "WARNING"
+      },
+      "capacity": {
+        "capacity_key": "sign.storage_bytes",
+        "limit": null,
+        "unlimited": true,
+        "used": 0,
+        "subscribed": true
+      },
+      "account": {
+        "subscription": {
+          "plan_key": "aramo-sign-included-v1",
+          "plan_name": "Aramo Sign — included allowance",
+          "source": "MANUAL",
+          "status": "ACTIVE",
+          "sending": true,
+          "started_at": "2026-10-01T00:00:00.000Z",
+          "ended_at": null,
+          "current_period_end": null,
+          "cancel_at_period_end": false,
+          "grace_until": null,
+          "billing_managed": false,
+          "commitment_months": null,
+          "commitment_end": null,
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": null,
+          "list_price": null,
+          "features": [],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 80,
+          "remaining": 20,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "WARNING"
+        },
+        "storage": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 0
+        },
+        "billing_available": false
+      },
+      "owner": null,
+      "stale": [],
+      "resolve": {
+        "consumed": 0,
+        "released": 0,
+        "unknown": 0
+      },
+      "reserve_a": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 81,
+          "remaining": 19,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "WARNING"
+        }
+      },
+      "reserve_a_retry": {
+        "ok": true,
+        "already": true,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 81,
+          "remaining": 19,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "WARNING"
+        }
+      },
+      "consume_a": "CONSUMED",
+      "consume_a_retry": "ALREADY",
+      "reserve_b": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 82,
+          "remaining": 18,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "WARNING"
+        }
+      },
+      "release_b": true,
+      "release_a_consumed": false,
+      "reserve_b_again": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 82,
+          "remaining": 18,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "WARNING"
+        }
+      },
+      "historical": true,
+      "historical_retry": false,
+      "status_after": {
+        "subscribed": true,
+        "plan_key": "aramo-sign-included-v1",
+        "allowance_key": "sign.envelopes",
+        "limit": 100,
+        "unlimited": false,
+        "used": 83,
+        "remaining": 17,
+        "period_start": "2026-10-01T00:00:00.000Z",
+        "period_end": "2026-11-01T00:00:00.000Z",
+        "threshold": "WARNING"
+      },
+      "capacity_reserve": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 2048
+        }
+      },
+      "capacity_reserve_retry": {
+        "ok": true,
+        "already": true,
+        "status": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 2048
+        }
+      },
+      "capacity_release": true,
+      "account_after": {
+        "subscription": {
+          "plan_key": "aramo-sign-included-v1",
+          "plan_name": "Aramo Sign — included allowance",
+          "source": "MANUAL",
+          "status": "ACTIVE",
+          "sending": true,
+          "started_at": "2026-10-01T00:00:00.000Z",
+          "ended_at": null,
+          "current_period_end": null,
+          "cancel_at_period_end": false,
+          "grace_until": null,
+          "billing_managed": false,
+          "commitment_months": null,
+          "commitment_end": null,
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": null,
+          "list_price": null,
+          "features": [],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 83,
+          "remaining": 17,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "WARNING"
+        },
+        "storage": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 0
+        },
+        "billing_available": false
+      }
+    },
+    "0190a4a4-0000-7000-8000-000000000004": {
+      "status": {
+        "subscribed": true,
+        "plan_key": "aramo-sign-included-v1",
+        "allowance_key": "sign.envelopes",
+        "limit": 100,
+        "unlimited": false,
+        "used": 99,
+        "remaining": 1,
+        "period_start": "2026-10-01T00:00:00.000Z",
+        "period_end": "2026-11-01T00:00:00.000Z",
+        "threshold": "WARNING"
+      },
+      "capacity": {
+        "capacity_key": "sign.storage_bytes",
+        "limit": null,
+        "unlimited": true,
+        "used": 0,
+        "subscribed": true
+      },
+      "account": {
+        "subscription": {
+          "plan_key": "aramo-sign-included-v1",
+          "plan_name": "Aramo Sign — included allowance",
+          "source": "MANUAL",
+          "status": "ACTIVE",
+          "sending": true,
+          "started_at": "2026-10-01T00:00:00.000Z",
+          "ended_at": null,
+          "current_period_end": null,
+          "cancel_at_period_end": false,
+          "grace_until": null,
+          "billing_managed": false,
+          "commitment_months": null,
+          "commitment_end": null,
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": null,
+          "list_price": null,
+          "features": [],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 99,
+          "remaining": 1,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "WARNING"
+        },
+        "storage": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 0
+        },
+        "billing_available": false
+      },
+      "owner": null,
+      "stale": [
+        "stale:acc",
+        "stale:not",
+        "stale:unk"
+      ],
+      "resolve": {
+        "consumed": 1,
+        "released": 1,
+        "unknown": 1
+      },
+      "reserve_a": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 99,
+          "remaining": 1,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "WARNING"
+        }
+      },
+      "reserve_a_retry": {
+        "ok": true,
+        "already": true,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 99,
+          "remaining": 1,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "WARNING"
+        }
+      },
+      "consume_a": "CONSUMED",
+      "consume_a_retry": "ALREADY",
+      "reserve_b": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 100,
+          "remaining": 0,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "EXHAUSTED"
+        }
+      },
+      "release_b": true,
+      "release_a_consumed": false,
+      "reserve_b_again": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 100,
+          "remaining": 0,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "EXHAUSTED"
+        }
+      },
+      "historical": true,
+      "historical_retry": false,
+      "status_after": {
+        "subscribed": true,
+        "plan_key": "aramo-sign-included-v1",
+        "allowance_key": "sign.envelopes",
+        "limit": 100,
+        "unlimited": false,
+        "used": 101,
+        "remaining": 0,
+        "period_start": "2026-10-01T00:00:00.000Z",
+        "period_end": "2026-11-01T00:00:00.000Z",
+        "threshold": "EXHAUSTED"
+      },
+      "capacity_reserve": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 2048
+        }
+      },
+      "capacity_reserve_retry": {
+        "ok": true,
+        "already": true,
+        "status": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 2048
+        }
+      },
+      "capacity_release": true,
+      "account_after": {
+        "subscription": {
+          "plan_key": "aramo-sign-included-v1",
+          "plan_name": "Aramo Sign — included allowance",
+          "source": "MANUAL",
+          "status": "ACTIVE",
+          "sending": true,
+          "started_at": "2026-10-01T00:00:00.000Z",
+          "ended_at": null,
+          "current_period_end": null,
+          "cancel_at_period_end": false,
+          "grace_until": null,
+          "billing_managed": false,
+          "commitment_months": null,
+          "commitment_end": null,
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": null,
+          "list_price": null,
+          "features": [],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 101,
+          "remaining": 0,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "EXHAUSTED"
+        },
+        "storage": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 0
+        },
+        "billing_available": false
+      }
+    },
+    "0190a4a4-0000-7000-8000-000000000005": {
+      "status": {
+        "subscribed": true,
+        "plan_key": "aramo-sign-included-v1",
+        "allowance_key": "sign.envelopes",
+        "limit": 100,
+        "unlimited": false,
+        "used": 100,
+        "remaining": 0,
+        "period_start": "2026-10-01T00:00:00.000Z",
+        "period_end": "2026-11-01T00:00:00.000Z",
+        "threshold": "EXHAUSTED"
+      },
+      "capacity": {
+        "capacity_key": "sign.storage_bytes",
+        "limit": null,
+        "unlimited": true,
+        "used": 0,
+        "subscribed": true
+      },
+      "account": {
+        "subscription": {
+          "plan_key": "aramo-sign-included-v1",
+          "plan_name": "Aramo Sign — included allowance",
+          "source": "MANUAL",
+          "status": "ACTIVE",
+          "sending": true,
+          "started_at": "2026-10-01T00:00:00.000Z",
+          "ended_at": null,
+          "current_period_end": null,
+          "cancel_at_period_end": false,
+          "grace_until": null,
+          "billing_managed": false,
+          "commitment_months": null,
+          "commitment_end": null,
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": null,
+          "list_price": null,
+          "features": [],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 100,
+          "remaining": 0,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "EXHAUSTED"
+        },
+        "storage": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 0
+        },
+        "billing_available": false
+      },
+      "owner": null,
+      "stale": [],
+      "resolve": {
+        "consumed": 0,
+        "released": 0,
+        "unknown": 0
+      },
+      "reserve_a": {
+        "ok": false,
+        "reason": "LIMIT_REACHED",
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 100,
+          "remaining": 0,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "EXHAUSTED"
+        }
+      },
+      "reserve_a_retry": {
+        "ok": false,
+        "reason": "LIMIT_REACHED",
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 100,
+          "remaining": 0,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "EXHAUSTED"
+        }
+      },
+      "consume_a": "MISSING",
+      "consume_a_retry": "MISSING",
+      "reserve_b": {
+        "ok": false,
+        "reason": "LIMIT_REACHED",
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 100,
+          "remaining": 0,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "EXHAUSTED"
+        }
+      },
+      "release_b": false,
+      "release_a_consumed": false,
+      "reserve_b_again": {
+        "ok": false,
+        "reason": "LIMIT_REACHED",
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 100,
+          "remaining": 0,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "EXHAUSTED"
+        }
+      },
+      "historical": true,
+      "historical_retry": false,
+      "status_after": {
+        "subscribed": true,
+        "plan_key": "aramo-sign-included-v1",
+        "allowance_key": "sign.envelopes",
+        "limit": 100,
+        "unlimited": false,
+        "used": 101,
+        "remaining": 0,
+        "period_start": "2026-10-01T00:00:00.000Z",
+        "period_end": "2026-11-01T00:00:00.000Z",
+        "threshold": "EXHAUSTED"
+      },
+      "capacity_reserve": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 2048
+        }
+      },
+      "capacity_reserve_retry": {
+        "ok": true,
+        "already": true,
+        "status": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 2048
+        }
+      },
+      "capacity_release": true,
+      "account_after": {
+        "subscription": {
+          "plan_key": "aramo-sign-included-v1",
+          "plan_name": "Aramo Sign — included allowance",
+          "source": "MANUAL",
+          "status": "ACTIVE",
+          "sending": true,
+          "started_at": "2026-10-01T00:00:00.000Z",
+          "ended_at": null,
+          "current_period_end": null,
+          "cancel_at_period_end": false,
+          "grace_until": null,
+          "billing_managed": false,
+          "commitment_months": null,
+          "commitment_end": null,
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": null,
+          "list_price": null,
+          "features": [],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 101,
+          "remaining": 0,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "EXHAUSTED"
+        },
+        "storage": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 0
+        },
+        "billing_available": false
+      }
+    },
+    "0190a4a4-0000-7000-8000-000000000006": {
+      "status": {
+        "subscribed": true,
+        "plan_key": "aramo-sign-standard-business-v1",
+        "allowance_key": "sign.envelopes",
+        "limit": null,
+        "unlimited": true,
+        "used": 250,
+        "remaining": null,
+        "period_start": "2026-10-05T00:00:00.000Z",
+        "period_end": "2026-11-05T00:00:00.000Z",
+        "threshold": "OK"
+      },
+      "capacity": {
+        "capacity_key": "sign.storage_bytes",
+        "limit": 10737418240,
+        "unlimited": false,
+        "used": 5368709120,
+        "subscribed": true
+      },
+      "account": {
+        "subscription": {
+          "plan_key": "aramo-sign-standard-business-v1",
+          "plan_name": "Standard Business",
+          "source": "SELF_SERVICE",
+          "status": "ACTIVE",
+          "sending": true,
+          "started_at": "2026-10-05T00:00:00.000Z",
+          "ended_at": null,
+          "current_period_end": "2026-11-05T00:00:00.000Z",
+          "cancel_at_period_end": false,
+          "grace_until": null,
+          "billing_managed": true,
+          "commitment_months": 12,
+          "commitment_end": null,
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": null,
+          "list_price": {
+            "amount_minor": 2000,
+            "currency": "USD",
+            "interval": "MONTH"
+          },
+          "features": [
+            {
+              "feature_key": "sign.ai_assist_summary",
+              "enabled": true,
+              "available": false
+            },
+            {
+              "feature_key": "sign.advanced_analytics",
+              "enabled": false,
+              "available": false
+            },
+            {
+              "feature_key": "sign.team_collaboration",
+              "enabled": true,
+              "available": true
+            },
+            {
+              "feature_key": "sign.custom_domain",
+              "enabled": false,
+              "available": false
+            }
+          ],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-standard-business-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": null,
+          "unlimited": true,
+          "used": 250,
+          "remaining": null,
+          "period_start": "2026-10-05T00:00:00.000Z",
+          "period_end": "2026-11-05T00:00:00.000Z",
+          "threshold": "OK"
+        },
+        "storage": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": 10737418240,
+          "unlimited": false,
+          "used": 5368709120
+        },
+        "billing_available": false
+      },
+      "owner": "owner-06",
+      "stale": [],
+      "resolve": {
+        "consumed": 0,
+        "released": 0,
+        "unknown": 0
+      },
+      "reserve_a": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-standard-business-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": null,
+          "unlimited": true,
+          "used": 251,
+          "remaining": null,
+          "period_start": "2026-10-05T00:00:00.000Z",
+          "period_end": "2026-11-05T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "reserve_a_retry": {
+        "ok": true,
+        "already": true,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-standard-business-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": null,
+          "unlimited": true,
+          "used": 251,
+          "remaining": null,
+          "period_start": "2026-10-05T00:00:00.000Z",
+          "period_end": "2026-11-05T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "consume_a": "CONSUMED",
+      "consume_a_retry": "ALREADY",
+      "reserve_b": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-standard-business-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": null,
+          "unlimited": true,
+          "used": 252,
+          "remaining": null,
+          "period_start": "2026-10-05T00:00:00.000Z",
+          "period_end": "2026-11-05T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "release_b": true,
+      "release_a_consumed": false,
+      "reserve_b_again": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-standard-business-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": null,
+          "unlimited": true,
+          "used": 252,
+          "remaining": null,
+          "period_start": "2026-10-05T00:00:00.000Z",
+          "period_end": "2026-11-05T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "historical": true,
+      "historical_retry": false,
+      "status_after": {
+        "subscribed": true,
+        "plan_key": "aramo-sign-standard-business-v1",
+        "allowance_key": "sign.envelopes",
+        "limit": null,
+        "unlimited": true,
+        "used": 253,
+        "remaining": null,
+        "period_start": "2026-10-05T00:00:00.000Z",
+        "period_end": "2026-11-05T00:00:00.000Z",
+        "threshold": "OK"
+      },
+      "capacity_reserve": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": 10737418240,
+          "unlimited": false,
+          "used": 5368711168
+        }
+      },
+      "capacity_reserve_retry": {
+        "ok": true,
+        "already": true,
+        "status": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": 10737418240,
+          "unlimited": false,
+          "used": 5368711168
+        }
+      },
+      "capacity_release": true,
+      "account_after": {
+        "subscription": {
+          "plan_key": "aramo-sign-standard-business-v1",
+          "plan_name": "Standard Business",
+          "source": "SELF_SERVICE",
+          "status": "ACTIVE",
+          "sending": true,
+          "started_at": "2026-10-05T00:00:00.000Z",
+          "ended_at": null,
+          "current_period_end": "2026-11-05T00:00:00.000Z",
+          "cancel_at_period_end": false,
+          "grace_until": null,
+          "billing_managed": true,
+          "commitment_months": 12,
+          "commitment_end": null,
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": null,
+          "list_price": {
+            "amount_minor": 2000,
+            "currency": "USD",
+            "interval": "MONTH"
+          },
+          "features": [
+            {
+              "feature_key": "sign.ai_assist_summary",
+              "enabled": true,
+              "available": false
+            },
+            {
+              "feature_key": "sign.advanced_analytics",
+              "enabled": false,
+              "available": false
+            },
+            {
+              "feature_key": "sign.team_collaboration",
+              "enabled": true,
+              "available": true
+            },
+            {
+              "feature_key": "sign.custom_domain",
+              "enabled": false,
+              "available": false
+            }
+          ],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-standard-business-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": null,
+          "unlimited": true,
+          "used": 253,
+          "remaining": null,
+          "period_start": "2026-10-05T00:00:00.000Z",
+          "period_end": "2026-11-05T00:00:00.000Z",
+          "threshold": "OK"
+        },
+        "storage": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": 10737418240,
+          "unlimited": false,
+          "used": 5368709120
+        },
+        "billing_available": false
+      }
+    },
+    "0190a4a4-0000-7000-8000-000000000007": {
+      "status": {
+        "subscribed": true,
+        "plan_key": "aramo-sign-standard-business-v1",
+        "allowance_key": "sign.envelopes",
+        "limit": null,
+        "unlimited": true,
+        "used": 0,
+        "remaining": null,
+        "period_start": "2026-10-05T00:00:00.000Z",
+        "period_end": "2026-11-05T00:00:00.000Z",
+        "threshold": "OK"
+      },
+      "capacity": {
+        "capacity_key": "sign.storage_bytes",
+        "limit": 10737418240,
+        "unlimited": false,
+        "used": 0,
+        "subscribed": true
+      },
+      "account": {
+        "subscription": {
+          "plan_key": "aramo-sign-standard-business-v1",
+          "plan_name": "Standard Business",
+          "source": "SELF_SERVICE",
+          "status": "PAST_DUE",
+          "sending": true,
+          "started_at": "2026-10-05T00:00:00.000Z",
+          "ended_at": null,
+          "current_period_end": "2026-11-05T00:00:00.000Z",
+          "cancel_at_period_end": false,
+          "grace_until": "2026-10-20T12:00:00.000Z",
+          "billing_managed": true,
+          "commitment_months": 12,
+          "commitment_end": null,
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": null,
+          "list_price": {
+            "amount_minor": 2000,
+            "currency": "USD",
+            "interval": "MONTH"
+          },
+          "features": [
+            {
+              "feature_key": "sign.ai_assist_summary",
+              "enabled": true,
+              "available": false
+            },
+            {
+              "feature_key": "sign.advanced_analytics",
+              "enabled": false,
+              "available": false
+            },
+            {
+              "feature_key": "sign.team_collaboration",
+              "enabled": true,
+              "available": true
+            },
+            {
+              "feature_key": "sign.custom_domain",
+              "enabled": false,
+              "available": false
+            }
+          ],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-standard-business-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": null,
+          "unlimited": true,
+          "used": 0,
+          "remaining": null,
+          "period_start": "2026-10-05T00:00:00.000Z",
+          "period_end": "2026-11-05T00:00:00.000Z",
+          "threshold": "OK"
+        },
+        "storage": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": 10737418240,
+          "unlimited": false,
+          "used": 0
+        },
+        "billing_available": false
+      },
+      "owner": "owner-07",
+      "stale": [],
+      "resolve": {
+        "consumed": 0,
+        "released": 0,
+        "unknown": 0
+      },
+      "reserve_a": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-standard-business-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": null,
+          "unlimited": true,
+          "used": 1,
+          "remaining": null,
+          "period_start": "2026-10-05T00:00:00.000Z",
+          "period_end": "2026-11-05T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "reserve_a_retry": {
+        "ok": true,
+        "already": true,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-standard-business-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": null,
+          "unlimited": true,
+          "used": 1,
+          "remaining": null,
+          "period_start": "2026-10-05T00:00:00.000Z",
+          "period_end": "2026-11-05T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "consume_a": "CONSUMED",
+      "consume_a_retry": "ALREADY",
+      "reserve_b": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-standard-business-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": null,
+          "unlimited": true,
+          "used": 2,
+          "remaining": null,
+          "period_start": "2026-10-05T00:00:00.000Z",
+          "period_end": "2026-11-05T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "release_b": true,
+      "release_a_consumed": false,
+      "reserve_b_again": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-standard-business-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": null,
+          "unlimited": true,
+          "used": 2,
+          "remaining": null,
+          "period_start": "2026-10-05T00:00:00.000Z",
+          "period_end": "2026-11-05T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "historical": true,
+      "historical_retry": false,
+      "status_after": {
+        "subscribed": true,
+        "plan_key": "aramo-sign-standard-business-v1",
+        "allowance_key": "sign.envelopes",
+        "limit": null,
+        "unlimited": true,
+        "used": 3,
+        "remaining": null,
+        "period_start": "2026-10-05T00:00:00.000Z",
+        "period_end": "2026-11-05T00:00:00.000Z",
+        "threshold": "OK"
+      },
+      "capacity_reserve": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": 10737418240,
+          "unlimited": false,
+          "used": 2048
+        }
+      },
+      "capacity_reserve_retry": {
+        "ok": true,
+        "already": true,
+        "status": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": 10737418240,
+          "unlimited": false,
+          "used": 2048
+        }
+      },
+      "capacity_release": true,
+      "account_after": {
+        "subscription": {
+          "plan_key": "aramo-sign-standard-business-v1",
+          "plan_name": "Standard Business",
+          "source": "SELF_SERVICE",
+          "status": "PAST_DUE",
+          "sending": true,
+          "started_at": "2026-10-05T00:00:00.000Z",
+          "ended_at": null,
+          "current_period_end": "2026-11-05T00:00:00.000Z",
+          "cancel_at_period_end": false,
+          "grace_until": "2026-10-20T12:00:00.000Z",
+          "billing_managed": true,
+          "commitment_months": 12,
+          "commitment_end": null,
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": null,
+          "list_price": {
+            "amount_minor": 2000,
+            "currency": "USD",
+            "interval": "MONTH"
+          },
+          "features": [
+            {
+              "feature_key": "sign.ai_assist_summary",
+              "enabled": true,
+              "available": false
+            },
+            {
+              "feature_key": "sign.advanced_analytics",
+              "enabled": false,
+              "available": false
+            },
+            {
+              "feature_key": "sign.team_collaboration",
+              "enabled": true,
+              "available": true
+            },
+            {
+              "feature_key": "sign.custom_domain",
+              "enabled": false,
+              "available": false
+            }
+          ],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-standard-business-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": null,
+          "unlimited": true,
+          "used": 3,
+          "remaining": null,
+          "period_start": "2026-10-05T00:00:00.000Z",
+          "period_end": "2026-11-05T00:00:00.000Z",
+          "threshold": "OK"
+        },
+        "storage": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": 10737418240,
+          "unlimited": false,
+          "used": 0
+        },
+        "billing_available": false
+      }
+    },
+    "0190a4a4-0000-7000-8000-000000000008": {
+      "status": {
+        "subscribed": false,
+        "allowance_key": "sign.envelopes",
+        "state": "PAST_DUE"
+      },
+      "capacity": {
+        "capacity_key": "sign.storage_bytes",
+        "limit": 10737418240,
+        "unlimited": false,
+        "used": 0,
+        "subscribed": true
+      },
+      "account": {
+        "subscription": {
+          "plan_key": "aramo-sign-standard-business-v1",
+          "plan_name": "Standard Business",
+          "source": "SELF_SERVICE",
+          "status": "PAST_DUE",
+          "sending": false,
+          "started_at": "2026-10-05T00:00:00.000Z",
+          "ended_at": null,
+          "current_period_end": "2026-11-05T00:00:00.000Z",
+          "cancel_at_period_end": false,
+          "grace_until": "2026-10-17T12:00:00.000Z",
+          "billing_managed": true,
+          "commitment_months": 12,
+          "commitment_end": null,
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": null,
+          "list_price": {
+            "amount_minor": 2000,
+            "currency": "USD",
+            "interval": "MONTH"
+          },
+          "features": [
+            {
+              "feature_key": "sign.ai_assist_summary",
+              "enabled": true,
+              "available": false
+            },
+            {
+              "feature_key": "sign.advanced_analytics",
+              "enabled": false,
+              "available": false
+            },
+            {
+              "feature_key": "sign.team_collaboration",
+              "enabled": true,
+              "available": true
+            },
+            {
+              "feature_key": "sign.custom_domain",
+              "enabled": false,
+              "available": false
+            }
+          ],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "PAST_DUE"
+        },
+        "storage": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": 10737418240,
+          "unlimited": false,
+          "used": 0
+        },
+        "billing_available": false
+      },
+      "owner": null,
+      "stale": [],
+      "resolve": {
+        "consumed": 0,
+        "released": 0,
+        "unknown": 0
+      },
+      "reserve_a": {
+        "ok": false,
+        "reason": "NOT_SUBSCRIBED",
+        "status": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "PAST_DUE"
+        }
+      },
+      "reserve_a_retry": {
+        "ok": false,
+        "reason": "NOT_SUBSCRIBED",
+        "status": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "PAST_DUE"
+        }
+      },
+      "consume_a": "MISSING",
+      "consume_a_retry": "MISSING",
+      "reserve_b": {
+        "ok": false,
+        "reason": "NOT_SUBSCRIBED",
+        "status": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "PAST_DUE"
+        }
+      },
+      "release_b": false,
+      "release_a_consumed": false,
+      "reserve_b_again": {
+        "ok": false,
+        "reason": "NOT_SUBSCRIBED",
+        "status": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "PAST_DUE"
+        }
+      },
+      "historical": true,
+      "historical_retry": false,
+      "status_after": {
+        "subscribed": false,
+        "allowance_key": "sign.envelopes",
+        "state": "PAST_DUE"
+      },
+      "capacity_reserve": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": 10737418240,
+          "unlimited": false,
+          "used": 2048
+        }
+      },
+      "capacity_reserve_retry": {
+        "ok": true,
+        "already": true,
+        "status": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": 10737418240,
+          "unlimited": false,
+          "used": 2048
+        }
+      },
+      "capacity_release": true,
+      "account_after": {
+        "subscription": {
+          "plan_key": "aramo-sign-standard-business-v1",
+          "plan_name": "Standard Business",
+          "source": "SELF_SERVICE",
+          "status": "PAST_DUE",
+          "sending": false,
+          "started_at": "2026-10-05T00:00:00.000Z",
+          "ended_at": null,
+          "current_period_end": "2026-11-05T00:00:00.000Z",
+          "cancel_at_period_end": false,
+          "grace_until": "2026-10-17T12:00:00.000Z",
+          "billing_managed": true,
+          "commitment_months": 12,
+          "commitment_end": null,
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": null,
+          "list_price": {
+            "amount_minor": 2000,
+            "currency": "USD",
+            "interval": "MONTH"
+          },
+          "features": [
+            {
+              "feature_key": "sign.ai_assist_summary",
+              "enabled": true,
+              "available": false
+            },
+            {
+              "feature_key": "sign.advanced_analytics",
+              "enabled": false,
+              "available": false
+            },
+            {
+              "feature_key": "sign.team_collaboration",
+              "enabled": true,
+              "available": true
+            },
+            {
+              "feature_key": "sign.custom_domain",
+              "enabled": false,
+              "available": false
+            }
+          ],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "PAST_DUE"
+        },
+        "storage": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": 10737418240,
+          "unlimited": false,
+          "used": 0
+        },
+        "billing_available": false
+      }
+    },
+    "0190a4a4-0000-7000-8000-000000000009": {
+      "status": {
+        "subscribed": false,
+        "allowance_key": "sign.envelopes",
+        "state": "INCOMPLETE"
+      },
+      "capacity": {
+        "capacity_key": "sign.storage_bytes",
+        "limit": 10737418240,
+        "unlimited": false,
+        "used": 0,
+        "subscribed": true
+      },
+      "account": {
+        "subscription": {
+          "plan_key": "aramo-sign-standard-business-v1",
+          "plan_name": "Standard Business",
+          "source": "SELF_SERVICE",
+          "status": "INCOMPLETE",
+          "sending": false,
+          "started_at": "2026-10-05T00:00:00.000Z",
+          "ended_at": null,
+          "current_period_end": "2026-11-05T00:00:00.000Z",
+          "cancel_at_period_end": false,
+          "grace_until": null,
+          "billing_managed": true,
+          "commitment_months": 12,
+          "commitment_end": null,
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": null,
+          "list_price": {
+            "amount_minor": 2000,
+            "currency": "USD",
+            "interval": "MONTH"
+          },
+          "features": [
+            {
+              "feature_key": "sign.ai_assist_summary",
+              "enabled": true,
+              "available": false
+            },
+            {
+              "feature_key": "sign.advanced_analytics",
+              "enabled": false,
+              "available": false
+            },
+            {
+              "feature_key": "sign.team_collaboration",
+              "enabled": true,
+              "available": true
+            },
+            {
+              "feature_key": "sign.custom_domain",
+              "enabled": false,
+              "available": false
+            }
+          ],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "INCOMPLETE"
+        },
+        "storage": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": 10737418240,
+          "unlimited": false,
+          "used": 0
+        },
+        "billing_available": false
+      },
+      "owner": null,
+      "stale": [],
+      "resolve": {
+        "consumed": 0,
+        "released": 0,
+        "unknown": 0
+      },
+      "reserve_a": {
+        "ok": false,
+        "reason": "NOT_SUBSCRIBED",
+        "status": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "INCOMPLETE"
+        }
+      },
+      "reserve_a_retry": {
+        "ok": false,
+        "reason": "NOT_SUBSCRIBED",
+        "status": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "INCOMPLETE"
+        }
+      },
+      "consume_a": "MISSING",
+      "consume_a_retry": "MISSING",
+      "reserve_b": {
+        "ok": false,
+        "reason": "NOT_SUBSCRIBED",
+        "status": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "INCOMPLETE"
+        }
+      },
+      "release_b": false,
+      "release_a_consumed": false,
+      "reserve_b_again": {
+        "ok": false,
+        "reason": "NOT_SUBSCRIBED",
+        "status": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "INCOMPLETE"
+        }
+      },
+      "historical": true,
+      "historical_retry": false,
+      "status_after": {
+        "subscribed": false,
+        "allowance_key": "sign.envelopes",
+        "state": "INCOMPLETE"
+      },
+      "capacity_reserve": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": 10737418240,
+          "unlimited": false,
+          "used": 2048
+        }
+      },
+      "capacity_reserve_retry": {
+        "ok": true,
+        "already": true,
+        "status": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": 10737418240,
+          "unlimited": false,
+          "used": 2048
+        }
+      },
+      "capacity_release": true,
+      "account_after": {
+        "subscription": {
+          "plan_key": "aramo-sign-standard-business-v1",
+          "plan_name": "Standard Business",
+          "source": "SELF_SERVICE",
+          "status": "INCOMPLETE",
+          "sending": false,
+          "started_at": "2026-10-05T00:00:00.000Z",
+          "ended_at": null,
+          "current_period_end": "2026-11-05T00:00:00.000Z",
+          "cancel_at_period_end": false,
+          "grace_until": null,
+          "billing_managed": true,
+          "commitment_months": 12,
+          "commitment_end": null,
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": null,
+          "list_price": {
+            "amount_minor": 2000,
+            "currency": "USD",
+            "interval": "MONTH"
+          },
+          "features": [
+            {
+              "feature_key": "sign.ai_assist_summary",
+              "enabled": true,
+              "available": false
+            },
+            {
+              "feature_key": "sign.advanced_analytics",
+              "enabled": false,
+              "available": false
+            },
+            {
+              "feature_key": "sign.team_collaboration",
+              "enabled": true,
+              "available": true
+            },
+            {
+              "feature_key": "sign.custom_domain",
+              "enabled": false,
+              "available": false
+            }
+          ],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "INCOMPLETE"
+        },
+        "storage": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": 10737418240,
+          "unlimited": false,
+          "used": 0
+        },
+        "billing_available": false
+      }
+    },
+    "0190a4a4-0000-7000-8000-000000000010": {
+      "status": {
+        "subscribed": false,
+        "allowance_key": "sign.envelopes",
+        "state": "NONE"
+      },
+      "capacity": {
+        "capacity_key": "sign.storage_bytes",
+        "limit": null,
+        "unlimited": true,
+        "used": 0,
+        "subscribed": false
+      },
+      "account": {
+        "subscription": {
+          "plan_key": "aramo-sign-included-v1",
+          "plan_name": "Aramo Sign — included allowance",
+          "source": "MANUAL",
+          "status": "CANCELED",
+          "sending": false,
+          "started_at": "2026-09-01T00:00:00.000Z",
+          "ended_at": "2026-10-10T00:00:00.000Z",
+          "current_period_end": null,
+          "cancel_at_period_end": false,
+          "grace_until": null,
+          "billing_managed": false,
+          "commitment_months": null,
+          "commitment_end": null,
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": null,
+          "list_price": null,
+          "features": [],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "NONE"
+        },
+        "storage": null,
+        "billing_available": false
+      },
+      "owner": null,
+      "stale": [],
+      "resolve": {
+        "consumed": 0,
+        "released": 0,
+        "unknown": 0
+      },
+      "reserve_a": {
+        "ok": false,
+        "reason": "NOT_SUBSCRIBED",
+        "status": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "NONE"
+        }
+      },
+      "reserve_a_retry": {
+        "ok": false,
+        "reason": "NOT_SUBSCRIBED",
+        "status": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "NONE"
+        }
+      },
+      "consume_a": "MISSING",
+      "consume_a_retry": "MISSING",
+      "reserve_b": {
+        "ok": false,
+        "reason": "NOT_SUBSCRIBED",
+        "status": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "NONE"
+        }
+      },
+      "release_b": false,
+      "release_a_consumed": false,
+      "reserve_b_again": {
+        "ok": false,
+        "reason": "NOT_SUBSCRIBED",
+        "status": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "NONE"
+        }
+      },
+      "historical": false,
+      "historical_retry": false,
+      "status_after": {
+        "subscribed": false,
+        "allowance_key": "sign.envelopes",
+        "state": "NONE"
+      },
+      "capacity_reserve": {
+        "ok": false,
+        "reason": "NOT_SUBSCRIBED",
+        "status": null
+      },
+      "capacity_reserve_retry": {
+        "ok": false,
+        "reason": "NOT_SUBSCRIBED",
+        "status": null
+      },
+      "capacity_release": false,
+      "account_after": {
+        "subscription": {
+          "plan_key": "aramo-sign-included-v1",
+          "plan_name": "Aramo Sign — included allowance",
+          "source": "MANUAL",
+          "status": "CANCELED",
+          "sending": false,
+          "started_at": "2026-09-01T00:00:00.000Z",
+          "ended_at": "2026-10-10T00:00:00.000Z",
+          "current_period_end": null,
+          "cancel_at_period_end": false,
+          "grace_until": null,
+          "billing_managed": false,
+          "commitment_months": null,
+          "commitment_end": null,
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": null,
+          "list_price": null,
+          "features": [],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "NONE"
+        },
+        "storage": null,
+        "billing_available": false
+      }
+    },
+    "0190a4a4-0000-7000-8000-000000000011": {
+      "status": {
+        "subscribed": false,
+        "allowance_key": "sign.envelopes",
+        "state": "NONE"
+      },
+      "capacity": {
+        "capacity_key": "sign.storage_bytes",
+        "limit": null,
+        "unlimited": true,
+        "used": 0,
+        "subscribed": false
+      },
+      "account": {
+        "subscription": null,
+        "allowance": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "NONE"
+        },
+        "storage": null,
+        "billing_available": false
+      },
+      "owner": null,
+      "stale": [],
+      "resolve": {
+        "consumed": 0,
+        "released": 0,
+        "unknown": 0
+      },
+      "reserve_a": {
+        "ok": false,
+        "reason": "NOT_SUBSCRIBED",
+        "status": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "NONE"
+        }
+      },
+      "reserve_a_retry": {
+        "ok": false,
+        "reason": "NOT_SUBSCRIBED",
+        "status": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "NONE"
+        }
+      },
+      "consume_a": "MISSING",
+      "consume_a_retry": "MISSING",
+      "reserve_b": {
+        "ok": false,
+        "reason": "NOT_SUBSCRIBED",
+        "status": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "NONE"
+        }
+      },
+      "release_b": false,
+      "release_a_consumed": false,
+      "reserve_b_again": {
+        "ok": false,
+        "reason": "NOT_SUBSCRIBED",
+        "status": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "NONE"
+        }
+      },
+      "historical": false,
+      "historical_retry": false,
+      "status_after": {
+        "subscribed": false,
+        "allowance_key": "sign.envelopes",
+        "state": "NONE"
+      },
+      "capacity_reserve": {
+        "ok": false,
+        "reason": "NOT_SUBSCRIBED",
+        "status": null
+      },
+      "capacity_reserve_retry": {
+        "ok": false,
+        "reason": "NOT_SUBSCRIBED",
+        "status": null
+      },
+      "capacity_release": false,
+      "account_after": {
+        "subscription": null,
+        "allowance": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "NONE"
+        },
+        "storage": null,
+        "billing_available": false
+      }
+    },
+    "0190a4a4-0000-7000-8000-000000000012": {
+      "status": {
+        "subscribed": true,
+        "plan_key": "aramo-sign-free-personal-v1",
+        "allowance_key": "sign.envelopes",
+        "limit": 5,
+        "unlimited": false,
+        "used": 3,
+        "remaining": 2,
+        "period_start": "2026-10-01T00:00:00.000Z",
+        "period_end": "2026-11-01T00:00:00.000Z",
+        "threshold": "OK",
+        "daily": {
+          "window": "DAY",
+          "limit": 2,
+          "used": 2,
+          "remaining": 0,
+          "next_available_at": "2026-10-19T09:00:00.000Z"
+        }
+      },
+      "capacity": {
+        "capacity_key": "sign.storage_bytes",
+        "limit": 15728640,
+        "unlimited": false,
+        "used": 0,
+        "subscribed": true
+      },
+      "account": {
+        "subscription": {
+          "plan_key": "aramo-sign-free-personal-v1",
+          "plan_name": "Free Personal",
+          "source": "FREE",
+          "status": "ACTIVE",
+          "sending": true,
+          "started_at": "2026-10-01T00:00:00.000Z",
+          "ended_at": null,
+          "current_period_end": null,
+          "cancel_at_period_end": false,
+          "grace_until": null,
+          "billing_managed": false,
+          "commitment_months": null,
+          "commitment_end": null,
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": null,
+          "list_price": {
+            "amount_minor": 0,
+            "currency": "USD",
+            "interval": "MONTH"
+          },
+          "features": [
+            {
+              "feature_key": "sign.ai_assist_summary",
+              "enabled": false,
+              "available": false
+            },
+            {
+              "feature_key": "sign.advanced_analytics",
+              "enabled": false,
+              "available": false
+            },
+            {
+              "feature_key": "sign.team_collaboration",
+              "enabled": false,
+              "available": true
+            },
+            {
+              "feature_key": "sign.custom_domain",
+              "enabled": false,
+              "available": false
+            }
+          ],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-free-personal-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 5,
+          "unlimited": false,
+          "used": 3,
+          "remaining": 2,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "OK",
+          "daily": {
+            "window": "DAY",
+            "limit": 2,
+            "used": 2,
+            "remaining": 0,
+            "next_available_at": "2026-10-19T09:00:00.000Z"
+          }
+        },
+        "storage": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": 15728640,
+          "unlimited": false,
+          "used": 0
+        },
+        "billing_available": false
+      },
+      "owner": null,
+      "stale": [],
+      "resolve": {
+        "consumed": 0,
+        "released": 0,
+        "unknown": 0
+      },
+      "reserve_a": {
+        "ok": false,
+        "reason": "DAILY_LIMIT_REACHED",
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-free-personal-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 5,
+          "unlimited": false,
+          "used": 3,
+          "remaining": 2,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "OK",
+          "daily": {
+            "window": "DAY",
+            "limit": 2,
+            "used": 2,
+            "remaining": 0,
+            "next_available_at": "2026-10-19T09:00:00.000Z"
+          }
+        }
+      },
+      "reserve_a_retry": {
+        "ok": false,
+        "reason": "DAILY_LIMIT_REACHED",
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-free-personal-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 5,
+          "unlimited": false,
+          "used": 3,
+          "remaining": 2,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "OK",
+          "daily": {
+            "window": "DAY",
+            "limit": 2,
+            "used": 2,
+            "remaining": 0,
+            "next_available_at": "2026-10-19T09:00:00.000Z"
+          }
+        }
+      },
+      "consume_a": "MISSING",
+      "consume_a_retry": "MISSING",
+      "reserve_b": {
+        "ok": false,
+        "reason": "DAILY_LIMIT_REACHED",
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-free-personal-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 5,
+          "unlimited": false,
+          "used": 3,
+          "remaining": 2,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "OK",
+          "daily": {
+            "window": "DAY",
+            "limit": 2,
+            "used": 2,
+            "remaining": 0,
+            "next_available_at": "2026-10-19T09:00:00.000Z"
+          }
+        }
+      },
+      "release_b": false,
+      "release_a_consumed": false,
+      "reserve_b_again": {
+        "ok": false,
+        "reason": "DAILY_LIMIT_REACHED",
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-free-personal-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 5,
+          "unlimited": false,
+          "used": 3,
+          "remaining": 2,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "OK",
+          "daily": {
+            "window": "DAY",
+            "limit": 2,
+            "used": 2,
+            "remaining": 0,
+            "next_available_at": "2026-10-19T09:00:00.000Z"
+          }
+        }
+      },
+      "historical": true,
+      "historical_retry": false,
+      "status_after": {
+        "subscribed": true,
+        "plan_key": "aramo-sign-free-personal-v1",
+        "allowance_key": "sign.envelopes",
+        "limit": 5,
+        "unlimited": false,
+        "used": 4,
+        "remaining": 1,
+        "period_start": "2026-10-01T00:00:00.000Z",
+        "period_end": "2026-11-01T00:00:00.000Z",
+        "threshold": "WARNING",
+        "daily": {
+          "window": "DAY",
+          "limit": 2,
+          "used": 2,
+          "remaining": 0,
+          "next_available_at": "2026-10-19T09:00:00.000Z"
+        }
+      },
+      "capacity_reserve": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": 15728640,
+          "unlimited": false,
+          "used": 2048
+        }
+      },
+      "capacity_reserve_retry": {
+        "ok": true,
+        "already": true,
+        "status": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": 15728640,
+          "unlimited": false,
+          "used": 2048
+        }
+      },
+      "capacity_release": true,
+      "account_after": {
+        "subscription": {
+          "plan_key": "aramo-sign-free-personal-v1",
+          "plan_name": "Free Personal",
+          "source": "FREE",
+          "status": "ACTIVE",
+          "sending": true,
+          "started_at": "2026-10-01T00:00:00.000Z",
+          "ended_at": null,
+          "current_period_end": null,
+          "cancel_at_period_end": false,
+          "grace_until": null,
+          "billing_managed": false,
+          "commitment_months": null,
+          "commitment_end": null,
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": null,
+          "list_price": {
+            "amount_minor": 0,
+            "currency": "USD",
+            "interval": "MONTH"
+          },
+          "features": [
+            {
+              "feature_key": "sign.ai_assist_summary",
+              "enabled": false,
+              "available": false
+            },
+            {
+              "feature_key": "sign.advanced_analytics",
+              "enabled": false,
+              "available": false
+            },
+            {
+              "feature_key": "sign.team_collaboration",
+              "enabled": false,
+              "available": true
+            },
+            {
+              "feature_key": "sign.custom_domain",
+              "enabled": false,
+              "available": false
+            }
+          ],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-free-personal-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 5,
+          "unlimited": false,
+          "used": 4,
+          "remaining": 1,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "WARNING",
+          "daily": {
+            "window": "DAY",
+            "limit": 2,
+            "used": 2,
+            "remaining": 0,
+            "next_available_at": "2026-10-19T09:00:00.000Z"
+          }
+        },
+        "storage": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": 15728640,
+          "unlimited": false,
+          "used": 0
+        },
+        "billing_available": false
+      }
+    },
+    "0190a4a4-0000-7000-8000-000000000013": {
+      "status": {
+        "subscribed": true,
+        "plan_key": "aramo-sign-standard-professional-v1",
+        "allowance_key": "sign.envelopes",
+        "limit": null,
+        "unlimited": true,
+        "used": 0,
+        "remaining": null,
+        "period_start": "2026-10-02T00:00:00.000Z",
+        "period_end": "2026-11-02T00:00:00.000Z",
+        "threshold": "OK"
+      },
+      "capacity": {
+        "capacity_key": "sign.storage_bytes",
+        "limit": 26843545600,
+        "unlimited": false,
+        "used": 1024,
+        "subscribed": true
+      },
+      "account": {
+        "subscription": {
+          "plan_key": "aramo-sign-standard-professional-v1",
+          "plan_name": "Standard Professional",
+          "source": "SELF_SERVICE",
+          "status": "ACTIVE",
+          "sending": true,
+          "started_at": "2026-10-02T00:00:00.000Z",
+          "ended_at": null,
+          "current_period_end": "2026-11-05T00:00:00.000Z",
+          "cancel_at_period_end": true,
+          "grace_until": null,
+          "billing_managed": true,
+          "commitment_months": 12,
+          "commitment_end": "2027-10-02T00:00:00.000Z",
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": "OK",
+          "list_price": {
+            "amount_minor": 1500,
+            "currency": "USD",
+            "interval": "MONTH"
+          },
+          "features": [
+            {
+              "feature_key": "sign.ai_assist_summary",
+              "enabled": true,
+              "available": false
+            },
+            {
+              "feature_key": "sign.advanced_analytics",
+              "enabled": false,
+              "available": false
+            },
+            {
+              "feature_key": "sign.team_collaboration",
+              "enabled": true,
+              "available": true
+            },
+            {
+              "feature_key": "sign.custom_domain",
+              "enabled": false,
+              "available": false
+            }
+          ],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-standard-professional-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": null,
+          "unlimited": true,
+          "used": 0,
+          "remaining": null,
+          "period_start": "2026-10-02T00:00:00.000Z",
+          "period_end": "2026-11-02T00:00:00.000Z",
+          "threshold": "OK"
+        },
+        "storage": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": 26843545600,
+          "unlimited": false,
+          "used": 1024
+        },
+        "billing_available": false
+      },
+      "owner": "owner-13",
+      "stale": [],
+      "resolve": {
+        "consumed": 0,
+        "released": 0,
+        "unknown": 0
+      },
+      "reserve_a": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-standard-professional-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": null,
+          "unlimited": true,
+          "used": 1,
+          "remaining": null,
+          "period_start": "2026-10-02T00:00:00.000Z",
+          "period_end": "2026-11-02T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "reserve_a_retry": {
+        "ok": true,
+        "already": true,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-standard-professional-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": null,
+          "unlimited": true,
+          "used": 1,
+          "remaining": null,
+          "period_start": "2026-10-02T00:00:00.000Z",
+          "period_end": "2026-11-02T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "consume_a": "CONSUMED",
+      "consume_a_retry": "ALREADY",
+      "reserve_b": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-standard-professional-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": null,
+          "unlimited": true,
+          "used": 2,
+          "remaining": null,
+          "period_start": "2026-10-02T00:00:00.000Z",
+          "period_end": "2026-11-02T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "release_b": true,
+      "release_a_consumed": false,
+      "reserve_b_again": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-standard-professional-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": null,
+          "unlimited": true,
+          "used": 2,
+          "remaining": null,
+          "period_start": "2026-10-02T00:00:00.000Z",
+          "period_end": "2026-11-02T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "historical": true,
+      "historical_retry": false,
+      "status_after": {
+        "subscribed": true,
+        "plan_key": "aramo-sign-standard-professional-v1",
+        "allowance_key": "sign.envelopes",
+        "limit": null,
+        "unlimited": true,
+        "used": 3,
+        "remaining": null,
+        "period_start": "2026-10-02T00:00:00.000Z",
+        "period_end": "2026-11-02T00:00:00.000Z",
+        "threshold": "OK"
+      },
+      "capacity_reserve": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": 26843545600,
+          "unlimited": false,
+          "used": 3072
+        }
+      },
+      "capacity_reserve_retry": {
+        "ok": true,
+        "already": true,
+        "status": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": 26843545600,
+          "unlimited": false,
+          "used": 3072
+        }
+      },
+      "capacity_release": true,
+      "account_after": {
+        "subscription": {
+          "plan_key": "aramo-sign-standard-professional-v1",
+          "plan_name": "Standard Professional",
+          "source": "SELF_SERVICE",
+          "status": "ACTIVE",
+          "sending": true,
+          "started_at": "2026-10-02T00:00:00.000Z",
+          "ended_at": null,
+          "current_period_end": "2026-11-05T00:00:00.000Z",
+          "cancel_at_period_end": true,
+          "grace_until": null,
+          "billing_managed": true,
+          "commitment_months": 12,
+          "commitment_end": "2027-10-02T00:00:00.000Z",
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": "OK",
+          "list_price": {
+            "amount_minor": 1500,
+            "currency": "USD",
+            "interval": "MONTH"
+          },
+          "features": [
+            {
+              "feature_key": "sign.ai_assist_summary",
+              "enabled": true,
+              "available": false
+            },
+            {
+              "feature_key": "sign.advanced_analytics",
+              "enabled": false,
+              "available": false
+            },
+            {
+              "feature_key": "sign.team_collaboration",
+              "enabled": true,
+              "available": true
+            },
+            {
+              "feature_key": "sign.custom_domain",
+              "enabled": false,
+              "available": false
+            }
+          ],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-standard-professional-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": null,
+          "unlimited": true,
+          "used": 3,
+          "remaining": null,
+          "period_start": "2026-10-02T00:00:00.000Z",
+          "period_end": "2026-11-02T00:00:00.000Z",
+          "threshold": "OK"
+        },
+        "storage": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": 26843545600,
+          "unlimited": false,
+          "used": 1024
+        },
+        "billing_available": false
+      }
+    },
+    "0190a4a4-0000-7000-8000-000000000014": {
+      "status": {
+        "subscribed": true,
+        "plan_key": "aramo-sign-included-v1",
+        "allowance_key": "sign.envelopes",
+        "limit": 100,
+        "unlimited": false,
+        "used": 3,
+        "remaining": 97,
+        "period_start": "2026-09-30T00:00:00.000Z",
+        "period_end": "2026-10-31T00:00:00.000Z",
+        "threshold": "OK"
+      },
+      "capacity": {
+        "capacity_key": "sign.storage_bytes",
+        "limit": null,
+        "unlimited": true,
+        "used": 0,
+        "subscribed": true
+      },
+      "account": {
+        "subscription": {
+          "plan_key": "aramo-sign-included-v1",
+          "plan_name": "Aramo Sign — included allowance",
+          "source": "MANUAL",
+          "status": "ACTIVE",
+          "sending": true,
+          "started_at": "2026-01-31T00:00:00.000Z",
+          "ended_at": null,
+          "current_period_end": null,
+          "cancel_at_period_end": false,
+          "grace_until": null,
+          "billing_managed": false,
+          "commitment_months": null,
+          "commitment_end": null,
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": null,
+          "list_price": null,
+          "features": [],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 3,
+          "remaining": 97,
+          "period_start": "2026-09-30T00:00:00.000Z",
+          "period_end": "2026-10-31T00:00:00.000Z",
+          "threshold": "OK"
+        },
+        "storage": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 0
+        },
+        "billing_available": false
+      },
+      "owner": null,
+      "stale": [],
+      "resolve": {
+        "consumed": 0,
+        "released": 0,
+        "unknown": 0
+      },
+      "reserve_a": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 4,
+          "remaining": 96,
+          "period_start": "2026-09-30T00:00:00.000Z",
+          "period_end": "2026-10-31T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "reserve_a_retry": {
+        "ok": true,
+        "already": true,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 4,
+          "remaining": 96,
+          "period_start": "2026-09-30T00:00:00.000Z",
+          "period_end": "2026-10-31T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "consume_a": "CONSUMED",
+      "consume_a_retry": "ALREADY",
+      "reserve_b": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 5,
+          "remaining": 95,
+          "period_start": "2026-09-30T00:00:00.000Z",
+          "period_end": "2026-10-31T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "release_b": true,
+      "release_a_consumed": false,
+      "reserve_b_again": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 5,
+          "remaining": 95,
+          "period_start": "2026-09-30T00:00:00.000Z",
+          "period_end": "2026-10-31T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "historical": true,
+      "historical_retry": false,
+      "status_after": {
+        "subscribed": true,
+        "plan_key": "aramo-sign-included-v1",
+        "allowance_key": "sign.envelopes",
+        "limit": 100,
+        "unlimited": false,
+        "used": 5,
+        "remaining": 95,
+        "period_start": "2026-09-30T00:00:00.000Z",
+        "period_end": "2026-10-31T00:00:00.000Z",
+        "threshold": "OK"
+      },
+      "capacity_reserve": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 2048
+        }
+      },
+      "capacity_reserve_retry": {
+        "ok": true,
+        "already": true,
+        "status": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 2048
+        }
+      },
+      "capacity_release": true,
+      "account_after": {
+        "subscription": {
+          "plan_key": "aramo-sign-included-v1",
+          "plan_name": "Aramo Sign — included allowance",
+          "source": "MANUAL",
+          "status": "ACTIVE",
+          "sending": true,
+          "started_at": "2026-01-31T00:00:00.000Z",
+          "ended_at": null,
+          "current_period_end": null,
+          "cancel_at_period_end": false,
+          "grace_until": null,
+          "billing_managed": false,
+          "commitment_months": null,
+          "commitment_end": null,
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": null,
+          "list_price": null,
+          "features": [],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": true,
+          "plan_key": "aramo-sign-included-v1",
+          "allowance_key": "sign.envelopes",
+          "limit": 100,
+          "unlimited": false,
+          "used": 5,
+          "remaining": 95,
+          "period_start": "2026-09-30T00:00:00.000Z",
+          "period_end": "2026-10-31T00:00:00.000Z",
+          "threshold": "OK"
+        },
+        "storage": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 0
+        },
+        "billing_available": false
+      }
+    },
+    "0190a4a4-0000-7000-8000-000000000015": {
+      "status": {
+        "subscribed": false,
+        "allowance_key": "sign.envelopes",
+        "state": "NONE"
+      },
+      "capacity": {
+        "capacity_key": "sign.storage_bytes",
+        "limit": null,
+        "unlimited": true,
+        "used": 0,
+        "subscribed": true
+      },
+      "account": {
+        "subscription": {
+          "plan_key": "aramo-sign-enterprise-v1",
+          "plan_name": "Enterprise",
+          "source": "MANUAL",
+          "status": "ACTIVE",
+          "sending": false,
+          "started_at": "2026-10-01T00:00:00.000Z",
+          "ended_at": null,
+          "current_period_end": null,
+          "cancel_at_period_end": false,
+          "grace_until": null,
+          "billing_managed": false,
+          "commitment_months": null,
+          "commitment_end": null,
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": null,
+          "list_price": null,
+          "features": [],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "NONE"
+        },
+        "storage": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 0
+        },
+        "billing_available": false
+      },
+      "owner": null,
+      "stale": [],
+      "resolve": {
+        "consumed": 0,
+        "released": 0,
+        "unknown": 0
+      },
+      "reserve_a": {
+        "ok": false,
+        "reason": "NOT_SUBSCRIBED",
+        "status": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "NONE"
+        }
+      },
+      "reserve_a_retry": {
+        "ok": false,
+        "reason": "NOT_SUBSCRIBED",
+        "status": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "NONE"
+        }
+      },
+      "consume_a": "MISSING",
+      "consume_a_retry": "MISSING",
+      "reserve_b": {
+        "ok": false,
+        "reason": "NOT_SUBSCRIBED",
+        "status": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "NONE"
+        }
+      },
+      "release_b": false,
+      "release_a_consumed": false,
+      "reserve_b_again": {
+        "ok": false,
+        "reason": "NOT_SUBSCRIBED",
+        "status": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "NONE"
+        }
+      },
+      "historical": true,
+      "historical_retry": false,
+      "status_after": {
+        "subscribed": false,
+        "allowance_key": "sign.envelopes",
+        "state": "NONE"
+      },
+      "capacity_reserve": {
+        "ok": true,
+        "already": false,
+        "status": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 2048
+        }
+      },
+      "capacity_reserve_retry": {
+        "ok": true,
+        "already": true,
+        "status": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 2048
+        }
+      },
+      "capacity_release": true,
+      "account_after": {
+        "subscription": {
+          "plan_key": "aramo-sign-enterprise-v1",
+          "plan_name": "Enterprise",
+          "source": "MANUAL",
+          "status": "ACTIVE",
+          "sending": false,
+          "started_at": "2026-10-01T00:00:00.000Z",
+          "ended_at": null,
+          "current_period_end": null,
+          "cancel_at_period_end": false,
+          "grace_until": null,
+          "billing_managed": false,
+          "commitment_months": null,
+          "commitment_end": null,
+          "cancel_requested_within_commitment": false,
+          "eligibility_state": null,
+          "list_price": null,
+          "features": [],
+          "export_access_until": null
+        },
+        "allowance": {
+          "subscribed": false,
+          "allowance_key": "sign.envelopes",
+          "state": "NONE"
+        },
+        "storage": {
+          "capacity_key": "sign.storage_bytes",
+          "limit": null,
+          "unlimited": true,
+          "used": 0
+        },
+        "billing_available": false
+      }
+    }
+  }
+}

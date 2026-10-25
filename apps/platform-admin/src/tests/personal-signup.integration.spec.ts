@@ -80,6 +80,8 @@ const SUBSCRIPTION_MIGRATIONS = [
   'libs/subscription/prisma/migrations/20261019100000_subscription_lifecycle_billing/migration.sql',
   'libs/subscription/prisma/migrations/20261019140000_sign_commercial_catalog_a1/migration.sql',
   'libs/subscription/prisma/migrations/20261020130300_sign_naming_keys/migration.sql',
+  // CCP-A4 — the product dimension (the subscription Prisma client selects product_key).
+  'libs/subscription/prisma/migrations/20261025140000_ccp_a4_product_dimension/migration.sql',
 ].map((p) => resolve(ROOT, p));
 
 const TENANT_OWNER_ROLE_ID = '01900000-0000-7000-8000-000000000014';

@@ -27,6 +27,7 @@ import {
   BillingRefusedError,
   BillingWebhookSignatureError,
   ESIGN_ENVELOPE_ALLOWANCE,
+  SIGN_PRODUCT_KEY,
   SubscriptionLifecycleService,
   approvedLegalDocument,
   type WebhookResult,
@@ -170,7 +171,7 @@ export class EsignBillingController {
       // a checkout must accept (null while no version is approved).
       const terms = approvedLegalDocument('sign.terms_of_service');
       return {
-        plans: await this.lifecycle.catalog(auth.tenant_id),
+        plans: await this.lifecycle.catalog(SIGN_PRODUCT_KEY, auth.tenant_id),
         terms: terms === null ? null : { version: terms.version, url: terms.url },
         sales_contact_url: salesContactUrl(),
       };
@@ -193,10 +194,10 @@ export class EsignBillingController {
       const kind = tenant.kind;
       // Personal Free v1.1 §4 — a bound PERSONAL tenant's FREE subscription (mode not off).
       if (kind === 'PERSONAL' && this.ctx.personalAuthoringOpen(tenant)) await this.personal?.ensureFreeSubscription(tenant);
-      const view = await this.lifecycle.account(auth.tenant_id, ESIGN_ENVELOPE_ALLOWANCE);
+      const view = await this.lifecycle.account(auth.tenant_id, SIGN_PRODUCT_KEY, ESIGN_ENVELOPE_ALLOWANCE);
       // Heal path: the subscribing owner whose role grant did not land at the
       // webhook (e.g. a transient identity failure) receives it on their next read.
-      const owner = await this.lifecycle.sendingOwner(auth.tenant_id);
+      const owner = await this.lifecycle.sendingOwner(auth.tenant_id, SIGN_PRODUCT_KEY);
       if (owner === auth.sub && !scopes.has(ESIGN_READ_SCOPE)) await this.owners.activate(auth.tenant_id, auth.sub, requestId);
       return {
         ...view,
@@ -224,6 +225,7 @@ export class EsignBillingController {
       const base = consoleBase();
       return this.lifecycle.startCheckout({
         tenant_id: auth.tenant_id,
+        product_key: SIGN_PRODUCT_KEY,
         user_id: auth.sub,
         user_email: user.email,
         plan_key: body.plan_key,
@@ -240,7 +242,7 @@ export class EsignBillingController {
   portal(@AuthContext() auth: AuthContextType, @RequestId() requestId: string) {
     return this.run(requestId, async () => {
       assertCanManageBilling(auth, requestId);
-      return this.lifecycle.portal(auth.tenant_id, `${consoleBase()}/sign/settings/billing`);
+      return this.lifecycle.portal(auth.tenant_id, SIGN_PRODUCT_KEY, `${consoleBase()}/sign/settings/billing`);
     });
   }
 
@@ -264,7 +266,7 @@ export class EsignBillingController {
       throw billingHttpError(e, requestId);
     }
     // Failures propagate (5xx) so the provider redelivers; nothing was recorded.
-    const result = await this.run(requestId, () => this.lifecycle.handleEvent(evt));
+    const result = await this.run(requestId, () => this.lifecycle.handleEvent(evt, SIGN_PRODUCT_KEY));
     if (result.outcome === 'APPLIED' && result.activated_owner_user_id !== undefined && result.tenant_id !== null) {
       const outcome = await this.owners.activate(result.tenant_id, result.activated_owner_user_id, requestId);
       this.log.log(`subscription opened for tenant ${result.tenant_id}; subscribing-owner activation ${outcome}`);

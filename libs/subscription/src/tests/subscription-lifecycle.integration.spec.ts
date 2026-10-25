@@ -15,6 +15,7 @@ import { AramoSignStandardBusinessPlanKey, openDevelopmentSubscription } from '.
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
 import { FakeOrganizationBillingProfile, US_PROFILE } from './fixtures/organization-billing-profile.fake.js';
+import { CCP_A4_MIGRATION } from './fixtures/ccp-a4.js';
 
 // Aramo Sign launch — the commercial-authority invariants on real Postgres 17:
 // owner-attributed activation, replacement of an operator subscription, status +
@@ -31,7 +32,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20261022100100_billing_account_country_guard/migration.sql',
   '../../prisma/migrations/20261022110100_billing_flag_domain_reason/migration.sql',
   '../../prisma/migrations/20261023100000_sign_personal_free/migration.sql',
-].map((p) => resolve(__dirname, p));
+].map((p) => resolve(__dirname, p)).concat(CCP_A4_MIGRATION);
 
 const KEY = 'sign.envelopes';
 const AT = new Date('2026-10-18T12:00:00.000Z');
@@ -133,24 +134,24 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
   });
 
   const checkout = (tenant_id = t, user_id = 'owner-1') =>
-    svc.startCheckout({ tenant_id, user_id, user_email: 'o@acme.test', plan_key: AramoSignStandardBusinessPlanKey, success_url: 'https://e/ok', cancel_url: 'https://e/no' });
+    svc.startCheckout({ product_key: 'sign', tenant_id, user_id, user_email: 'o@acme.test', plan_key: AramoSignStandardBusinessPlanKey, success_url: 'https://e/ok', cancel_url: 'https://e/no' });
   const event = (id: string, ref: string, type = 'subscription.updated') => ({ id, type, created: AT, subscription_ref: ref });
 
   it('the catalog: Standard Business purchasable when a price is configured; the operator plan hidden', async () => {
-    const plans = await svc.catalog(t);
+    const plans = await svc.catalog('sign', t);
     expect(plans.map((p) => p.key)).toEqual(['aramo-sign-free-personal-v1', AramoSignStandardBusinessPlanKey, 'aramo-sign-standard-professional-v1', 'aramo-sign-enterprise-v1']);
     expect(plans.find((p) => p.key === AramoSignStandardBusinessPlanKey)).toMatchObject({ purchasable: true, allowances: expect.arrayContaining([{ allowance_key: KEY, included_quantity: null, unlimited: true, period: 'MONTHLY', available: true }]) });
     billing.configured = false;
-    expect((await svc.catalog(t)).find((p) => p.key === AramoSignStandardBusinessPlanKey)!.purchasable).toBe(false);
+    expect((await svc.catalog('sign', t)).find((p) => p.key === AramoSignStandardBusinessPlanKey)!.purchasable).toBe(false);
   });
 
   it('checkout → paid → a SELF_SERVICE subscription opens, attributed to the subscribing owner', async () => {
     expect((await checkout()).url).toMatch(/^https:\/\/checkout\.test\//);
-    expect((await svc.account(t, KEY, AT)).allowance.subscribed).toBe(false);
+    expect((await svc.account(t, 'sign', KEY, AT)).allowance.subscribed).toBe(false);
     const sub = billing.complete('active');
-    const res = await svc.handleEvent({ id: 'evt_a1', type: 'checkout.session.completed', created: AT, subscription_ref: sub.subscription_ref }, AT);
+    const res = await svc.handleEvent({ id: 'evt_a1', type: 'checkout.session.completed', created: AT, subscription_ref: sub.subscription_ref }, 'sign', AT);
     expect(res).toMatchObject({ outcome: 'APPLIED', tenant_id: t, activated_owner_user_id: 'owner-1' });
-    const acct = await svc.account(t, KEY, AT);
+    const acct = await svc.account(t, 'sign', KEY, AT);
     expect(acct.subscription).toMatchObject({ plan_key: AramoSignStandardBusinessPlanKey, source: 'SELF_SERVICE', status: 'ACTIVE', sending: true, billing_managed: true });
     expect(acct.allowance).toMatchObject({ subscribed: true, limit: null, unlimited: true, used: 0, remaining: null });
     const intent = await pg.query('SELECT status FROM subscription."CheckoutIntent" WHERE tenant_id = $1', [t]);
@@ -160,13 +161,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
   it('the same event twice is processed once; a different event for the same state does not re-activate', async () => {
     await checkout();
     const sub = billing.complete('active');
-    expect((await svc.handleEvent(event('evt_b1', sub.subscription_ref), AT)).outcome).toBe('APPLIED');
-    expect((await svc.handleEvent(event('evt_b1', sub.subscription_ref), AT)).outcome).toBe('DUPLICATE');
+    expect((await svc.handleEvent(event('evt_b1', sub.subscription_ref), 'sign', AT)).outcome).toBe('APPLIED');
+    expect((await svc.handleEvent(event('evt_b1', sub.subscription_ref), 'sign', AT)).outcome).toBe('DUPLICATE');
     // Operator view: the tenant's events, newest first, no payloads.
     const events = await svc.recentBillingEvents(t);
     expect(events).toHaveLength(1);
     expect(Object.keys(events[0]!).sort()).toEqual(['detail', 'event_created_at', 'event_type', 'outcome', 'received_at']);
-    const again = await svc.handleEvent(event('evt_b2', sub.subscription_ref), AT);
+    const again = await svc.handleEvent(event('evt_b2', sub.subscription_ref), 'sign', AT);
     expect(again).toMatchObject({ outcome: 'APPLIED' });
     expect('activated_owner_user_id' in again && again.activated_owner_user_id).toBeFalsy();
     const n = await pg.query('SELECT count(*)::int AS n FROM subscription."TenantSubscription" WHERE tenant_id = $1', [t]);
@@ -174,65 +175,65 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
   });
 
   it('an event that concerns no subscription is recorded IGNORED', async () => {
-    expect(await svc.handleEvent({ id: 'evt_n1', type: 'invoice.created', created: AT, subscription_ref: null }, AT)).toMatchObject({ outcome: 'IGNORED' });
-    expect((await svc.handleEvent({ id: 'evt_n1', type: 'invoice.created', created: AT, subscription_ref: null }, AT)).outcome).toBe('DUPLICATE');
+    expect(await svc.handleEvent({ id: 'evt_n1', type: 'invoice.created', created: AT, subscription_ref: null }, 'sign', AT)).toMatchObject({ outcome: 'IGNORED' });
+    expect((await svc.handleEvent({ id: 'evt_n1', type: 'invoice.created', created: AT, subscription_ref: null }, 'sign', AT)).outcome).toBe('DUPLICATE');
   });
 
   it('a provider failure is not recorded, so the redelivery is processed', async () => {
     await checkout();
     const sub = billing.complete('active');
     billing.failRetrieve = true;
-    await expect(svc.handleEvent(event('evt_c1', sub.subscription_ref), AT)).rejects.toThrow(BillingProviderUnavailableError);
+    await expect(svc.handleEvent(event('evt_c1', sub.subscription_ref), 'sign', AT)).rejects.toThrow(BillingProviderUnavailableError);
     billing.failRetrieve = false;
-    expect((await svc.handleEvent(event('evt_c1', sub.subscription_ref), AT)).outcome).toBe('APPLIED');
+    expect((await svc.handleEvent(event('evt_c1', sub.subscription_ref), 'sign', AT)).outcome).toBe('APPLIED');
   });
 
   it('replaces an operator-opened DEVELOPMENT subscription in the same transaction (still one open row)', async () => {
-    await openDevelopmentSubscription(prisma, { tenant_id: t, created_by: 'op' }, { ARAMO_ENV: 'test' });
+    await openDevelopmentSubscription(prisma, { product_key: 'sign', tenant_id: t, created_by: 'op' }, { ARAMO_ENV: 'test' });
     await checkout();
     const sub = billing.complete('active');
-    expect((await svc.syncSubscription(sub.subscription_ref, AT)).detail).toContain('ended DEVELOPMENT');
+    expect((await svc.syncSubscription(sub.subscription_ref, 'sign', AT)).detail).toContain('ended DEVELOPMENT');
     const open = await pg.query('SELECT source FROM subscription."TenantSubscription" WHERE tenant_id = $1 AND ended_at IS NULL', [t]);
     expect(open.rows).toEqual([{ source: 'SELF_SERVICE' }]);
   });
 
   it('an incomplete payment never ends a working subscription and never sends', async () => {
-    await openDevelopmentSubscription(prisma, { tenant_id: t, created_by: 'op' }, { ARAMO_ENV: 'test' });
+    await openDevelopmentSubscription(prisma, { product_key: 'sign', tenant_id: t, created_by: 'op' }, { ARAMO_ENV: 'test' });
     await checkout();
     const sub = billing.complete('incomplete');
-    expect((await svc.syncSubscription(sub.subscription_ref, AT)).outcome).toBe('IGNORED');
-    expect((await svc.account(t, KEY, AT)).subscription?.source).toBe('DEVELOPMENT');
+    expect((await svc.syncSubscription(sub.subscription_ref, 'sign', AT)).outcome).toBe('IGNORED');
+    expect((await svc.account(t, 'sign', KEY, AT)).subscription?.source).toBe('DEVELOPMENT');
   });
 
   it('past_due keeps sending through grace, then stops; recovery resumes; cancel ends and never reopens', async () => {
     await checkout();
     const sub = billing.complete('active');
-    await svc.syncSubscription(sub.subscription_ref, AT);
+    await svc.syncSubscription(sub.subscription_ref, 'sign', AT);
     billing.subs.set(sub.subscription_ref, { ...sub, provider_status: 'past_due' });
-    await svc.syncSubscription(sub.subscription_ref, AT);
+    await svc.syncSubscription(sub.subscription_ref, 'sign', AT);
     const inGrace = new Date(AT.getTime() + 6 * 86_400_000);
     const afterGrace = new Date(AT.getTime() + 8 * 86_400_000);
     // A second past_due sync must not extend the grace window.
-    await svc.syncSubscription(sub.subscription_ref, inGrace);
-    expect((await allowance.reserve({ tenant_id: t, allowance_key: KEY, send_key: 'g1', at: inGrace })).ok).toBe(true);
-    const refused = await allowance.reserve({ tenant_id: t, allowance_key: KEY, send_key: 'g2', at: afterGrace });
+    await svc.syncSubscription(sub.subscription_ref, 'sign', inGrace);
+    expect((await allowance.reserve({ product_key: 'sign', tenant_id: t, allowance_key: KEY, send_key: 'g1', at: inGrace })).ok).toBe(true);
+    const refused = await allowance.reserve({ product_key: 'sign', tenant_id: t, allowance_key: KEY, send_key: 'g2', at: afterGrace });
     expect(refused).toMatchObject({ ok: false, reason: 'NOT_SUBSCRIBED', status: { state: 'PAST_DUE' } });
 
     billing.subs.set(sub.subscription_ref, { ...sub, provider_status: 'active' });
-    const recovered = await svc.syncSubscription(sub.subscription_ref, afterGrace);
+    const recovered = await svc.syncSubscription(sub.subscription_ref, 'sign', afterGrace);
     // PAST_DUE is a lifecycle (not ended) state: the owner role was never revoked,
     // so recovery does not re-grant it.
     expect(recovered).toMatchObject({ outcome: 'APPLIED', detail: 'PAST_DUE -> ACTIVE' });
     expect('activated_owner_user_id' in recovered).toBe(false);
-    expect((await allowance.reserve({ tenant_id: t, allowance_key: KEY, send_key: 'g3', at: afterGrace })).ok).toBe(true);
+    expect((await allowance.reserve({ product_key: 'sign', tenant_id: t, allowance_key: KEY, send_key: 'g3', at: afterGrace })).ok).toBe(true);
 
     billing.subs.set(sub.subscription_ref, { ...sub, provider_status: 'canceled' });
-    await svc.syncSubscription(sub.subscription_ref, afterGrace);
-    const acct = await svc.account(t, KEY, afterGrace);
+    await svc.syncSubscription(sub.subscription_ref, 'sign', afterGrace);
+    const acct = await svc.account(t, 'sign', KEY, afterGrace);
     expect(acct.subscription).toMatchObject({ status: 'CANCELED', sending: false });
     expect(acct.allowance).toMatchObject({ subscribed: false, state: 'NONE' });
     billing.subs.set(sub.subscription_ref, { ...sub, provider_status: 'active' });
-    expect((await svc.syncSubscription(sub.subscription_ref, afterGrace)).detail).toBe('subscription already ended');
+    expect((await svc.syncSubscription(sub.subscription_ref, 'sign', afterGrace)).detail).toBe('subscription already ended');
     // A resubscription is a new checkout, reusing the provider billing account.
     await checkout();
     expect(billing.checkouts[billing.checkouts.length - 1]!.account_ref).toBe(`cus_${t}`);
@@ -241,13 +242,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
   it('refuses a provider subscription whose metadata names another tenant', async () => {
     await checkout();
     const sub = billing.complete('active', { tenant_id: tenant() });
-    expect(await svc.syncSubscription(sub.subscription_ref, AT)).toMatchObject({ outcome: 'IGNORED', detail: expect.stringContaining('does not match') });
-    expect((await svc.account(t, KEY, AT)).subscription).toBeNull();
+    expect(await svc.syncSubscription(sub.subscription_ref, 'sign', AT)).toMatchObject({ outcome: 'IGNORED', detail: expect.stringContaining('does not match') });
+    expect((await svc.account(t, 'sign', KEY, AT)).subscription).toBeNull();
   });
 
   it('ignores a provider subscription that no Aramo checkout started', async () => {
     billing.subs.set('sub_foreign', { ...billing.complete.call({ checkouts: [{ intent_id: 'none', tenant_id: t }], subs: new Map() } as unknown as FakeBilling, 'active'), intent_id: null, tenant_id: null, subscription_ref: 'sub_foreign' });
-    expect(await svc.syncSubscription('sub_foreign', AT)).toMatchObject({ outcome: 'IGNORED', tenant_id: null });
+    expect(await svc.syncSubscription('sub_foreign', 'sign', AT)).toMatchObject({ outcome: 'IGNORED', tenant_id: null });
   });
 
   it('refusals: billing unconfigured, unknown plan, already self-service subscribed, no billing account for the portal', async () => {
@@ -255,30 +256,30 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     billing.configured = false;
     expect(await reason(checkout())).toBe('BILLING_UNAVAILABLE');
     billing.configured = true;
-    expect(await reason(svc.startCheckout({ tenant_id: t, user_id: 'u', user_email: 'e', plan_key: 'aramo-sign-included-v1', success_url: 'x', cancel_url: 'y' }))).toBe('PLAN_NOT_SELLABLE');
-    expect(await reason(svc.portal(t, 'https://e/settings'))).toBe('NO_BILLING_ACCOUNT');
+    expect(await reason(svc.startCheckout({ product_key: 'sign', tenant_id: t, user_id: 'u', user_email: 'e', plan_key: 'aramo-sign-included-v1', success_url: 'x', cancel_url: 'y' }))).toBe('PLAN_NOT_SELLABLE');
+    expect(await reason(svc.portal(t, 'sign', 'https://e/settings'))).toBe('NO_BILLING_ACCOUNT');
     await checkout();
-    await svc.syncSubscription(billing.complete('active').subscription_ref, AT);
+    await svc.syncSubscription(billing.complete('active').subscription_ref, 'sign', AT);
     expect(await reason(checkout())).toBe('ALREADY_SUBSCRIBED');
     // A1 review: a commitment plan's portal needs an explicit configuration.
-    expect(await reason(svc.portal(t, 'https://e/settings'))).toBe('PORTAL_NOT_CONFIGURED');
+    expect(await reason(svc.portal(t, 'sign', 'https://e/settings'))).toBe('PORTAL_NOT_CONFIGURED');
     process.env['STRIPE_PORTAL_CONFIGURATION'] = 'bpc_test';
-    expect((await svc.portal(t, 'https://e/settings')).url).toBe(`https://portal.test/cus_${t}`);
+    expect((await svc.portal(t, 'sign', 'https://e/settings')).url).toBe(`https://portal.test/cus_${t}`);
     delete process.env['STRIPE_PORTAL_CONFIGURATION'];
   });
 
   it('reconcile re-fetches open provider-linked subscriptions and tolerates a provider outage', async () => {
     await checkout();
     const sub = billing.complete('active');
-    await svc.syncSubscription(sub.subscription_ref, AT);
+    await svc.syncSubscription(sub.subscription_ref, 'sign', AT);
     billing.subs.set(sub.subscription_ref, { ...sub, cancel_at_period_end: true });
     // Rows from earlier cases belong to other fake providers and fail to fetch
     // here: one failure never stops the sweep.
-    const r = await svc.reconcile(AT);
+    const r = await svc.reconcile('sign', AT);
     expect(r.results.some((x) => x.tenant_id === t && x.outcome === 'APPLIED')).toBe(true);
-    expect((await svc.account(t, KEY, AT)).subscription?.cancel_at_period_end).toBe(true);
+    expect((await svc.account(t, 'sign', KEY, AT)).subscription?.cancel_at_period_end).toBe(true);
     billing.failRetrieve = true;
-    const down = await svc.reconcile(AT);
+    const down = await svc.reconcile('sign', AT);
     expect(down.failed).toBe(down.checked);
   });
   // ── Sign Signup Amendment A1 (Organization Details, US only) §2.6 ──────────
@@ -294,7 +295,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     orgProfile.refused = 'organization_profile_incomplete';
     expect(await reasonOf(checkout())).toBe('ORGANIZATION_PROFILE_REQUIRED:organization_profile_incomplete');
     const unbound = new SubscriptionLifecycleService(prisma, allowance, billing, new CapacityService(prisma));
-    expect(await reasonOf(unbound.startCheckout({ tenant_id: t, user_id: 'o', user_email: 'e', plan_key: AramoSignStandardBusinessPlanKey, success_url: 'x', cancel_url: 'y' }))).toBe(
+    expect(await reasonOf(unbound.startCheckout({ product_key: 'sign', tenant_id: t, user_id: 'o', user_email: 'e', plan_key: AramoSignStandardBusinessPlanKey, success_url: 'x', cancel_url: 'y' }))).toBe(
       'ORGANIZATION_PROFILE_REQUIRED:organization_profile_incomplete',
     );
     // Nothing was started, locked or created.
@@ -325,10 +326,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
 
   it('A1: a pre-A1 subscription account is reused when no mapping exists yet', async () => {
     await checkout();
-    await svc.syncSubscription(billing.complete('active').subscription_ref, AT);
+    await svc.syncSubscription(billing.complete('active').subscription_ref, 'sign', AT);
     await pg.query('DELETE FROM subscription."TenantBillingAccount" WHERE tenant_id = $1', [t]);
     // The provider subscription ends; a resubscription starts a new checkout.
-    await svc.syncSubscription(billing.complete('canceled').subscription_ref, AT);
+    await svc.syncSubscription(billing.complete('canceled').subscription_ref, 'sign', AT);
     await checkout();
     expect(billing.accounts[1]!.account_ref).toBe(`cus_${t}`);
   });
@@ -336,13 +337,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
   it('A1 guard: a non-US billing country opens nothing; the event is IGNORED evidence; one flag across repeated syncs', async () => {
     await checkout();
     const sub = billing.complete('active', { account_country: 'CA' });
-    const res = await svc.handleEvent(event('evt_g1', sub.subscription_ref), AT);
+    const res = await svc.handleEvent(event('evt_g1', sub.subscription_ref), 'sign', AT);
     expect(res).toEqual({ outcome: 'IGNORED', detail: 'billing_country_not_supported: held for reconciliation', tenant_id: t });
     expect('activated_owner_user_id' in res).toBe(false);
-    await svc.handleEvent(event('evt_g2', sub.subscription_ref), AT);
-    await svc.syncSubscription(sub.subscription_ref, AT);
+    await svc.handleEvent(event('evt_g2', sub.subscription_ref), 'sign', AT);
+    await svc.syncSubscription(sub.subscription_ref, 'sign', AT);
     expect(await subRows(t)).toEqual([]);
-    expect((await svc.account(t, KEY, AT)).allowance.subscribed).toBe(false);
+    expect((await svc.account(t, 'sign', KEY, AT)).allowance.subscribed).toBe(false);
     const ev = await pg.query('SELECT outcome, detail FROM subscription."BillingEvent" WHERE tenant_id = $1 ORDER BY received_at', [t]);
     expect(ev.rows).toEqual([
       { outcome: 'IGNORED', detail: 'billing_country_not_supported: held for reconciliation' },
@@ -356,7 +357,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
   it('A1 guard: a missing billing country fails closed', async () => {
     await checkout();
     const sub = billing.complete('active', { account_country: null });
-    expect((await svc.syncSubscription(sub.subscription_ref, AT)).outcome).toBe('IGNORED');
+    expect((await svc.syncSubscription(sub.subscription_ref, 'sign', AT)).outcome).toBe('IGNORED');
     expect(await subRows(t)).toEqual([]);
     expect(await flags(t)).toMatchObject([{ account_country: null, resolved_at: null }]);
   });
@@ -364,9 +365,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
   it('A1 guard: a later US sync opens the subscription, activates the owner and resolves the flag', async () => {
     await checkout();
     const sub = billing.complete('active', { account_country: 'GB' });
-    await svc.syncSubscription(sub.subscription_ref, AT);
+    await svc.syncSubscription(sub.subscription_ref, 'sign', AT);
     billing.subs.set(sub.subscription_ref, { ...sub, account_country: 'us' });
-    const res = await svc.syncSubscription(sub.subscription_ref, AT);
+    const res = await svc.syncSubscription(sub.subscription_ref, 'sign', AT);
     expect(res).toMatchObject({ outcome: 'APPLIED', activated_owner_user_id: 'owner-1' });
     expect(await subRows(t)).toMatchObject([{ status: 'ACTIVE', ended_at: null }]);
     const f = await flags(t);
@@ -378,31 +379,31 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     await checkout();
     // Opened INCOMPLETE under a US country (no sending), then the country changes.
     const sub = billing.complete('incomplete');
-    await svc.syncSubscription(sub.subscription_ref, AT);
+    await svc.syncSubscription(sub.subscription_ref, 'sign', AT);
     expect(await subRows(t)).toMatchObject([{ status: 'INCOMPLETE' }]);
     billing.subs.set(sub.subscription_ref, { ...sub, provider_status: 'active', account_country: 'MX' });
-    const held = await svc.syncSubscription(sub.subscription_ref, AT);
+    const held = await svc.syncSubscription(sub.subscription_ref, 'sign', AT);
     expect(held).toMatchObject({ outcome: 'IGNORED', detail: expect.stringContaining('billing_country_not_supported: held for reconciliation') });
     expect('activated_owner_user_id' in held).toBe(false);
     expect(await subRows(t)).toMatchObject([{ status: 'INCOMPLETE', ended_at: null }]);
-    expect((await svc.account(t, KEY, AT)).allowance.subscribed).toBe(false);
-    await svc.syncSubscription(sub.subscription_ref, AT);
+    expect((await svc.account(t, 'sign', KEY, AT)).allowance.subscribed).toBe(false);
+    await svc.syncSubscription(sub.subscription_ref, 'sign', AT);
     expect(await flags(t)).toHaveLength(1);
     billing.subs.set(sub.subscription_ref, { ...sub, provider_status: 'canceled', account_country: 'MX' });
-    await svc.syncSubscription(sub.subscription_ref, AT);
+    await svc.syncSubscription(sub.subscription_ref, 'sign', AT);
     expect(await subRows(t)).toMatchObject([{ status: 'CANCELED', ended_at: AT }]);
   });
 
   it('A1 guard: an active subscription whose country turns non-US is kept as is and flagged; US again resolves', async () => {
     await checkout();
     const sub = billing.complete('active');
-    await svc.syncSubscription(sub.subscription_ref, AT);
+    await svc.syncSubscription(sub.subscription_ref, 'sign', AT);
     billing.subs.set(sub.subscription_ref, { ...sub, account_country: 'CA' });
-    expect((await svc.syncSubscription(sub.subscription_ref, AT)).outcome).toBe('IGNORED');
+    expect((await svc.syncSubscription(sub.subscription_ref, 'sign', AT)).outcome).toBe('IGNORED');
     expect(await subRows(t)).toMatchObject([{ status: 'ACTIVE', ended_at: null }]);
     expect(await flags(t)).toMatchObject([{ resolved_at: null }]);
     billing.subs.set(sub.subscription_ref, { ...sub, account_country: 'US' });
-    expect((await svc.syncSubscription(sub.subscription_ref, AT))).toMatchObject({ outcome: 'APPLIED', detail: 'ACTIVE -> ACTIVE' });
+    expect((await svc.syncSubscription(sub.subscription_ref, 'sign', AT))).toMatchObject({ outcome: 'APPLIED', detail: 'ACTIVE -> ACTIVE' });
     expect((await flags(t))[0].resolved_at).toEqual(AT);
   });
 
@@ -440,13 +441,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     await checkout();
     orgProfile.authoritative = false;
     const sub = billing.complete('active');
-    const res = await svc.handleEvent(event('evt_d1', sub.subscription_ref), AT);
+    const res = await svc.handleEvent(event('evt_d1', sub.subscription_ref), 'sign', AT);
     expect(res).toEqual({ outcome: 'IGNORED', detail: DOMAIN_HELD, tenant_id: t });
     expect('activated_owner_user_id' in res).toBe(false);
-    await svc.handleEvent(event('evt_d2', sub.subscription_ref), AT);
-    await svc.syncSubscription(sub.subscription_ref, AT);
+    await svc.handleEvent(event('evt_d2', sub.subscription_ref), 'sign', AT);
+    await svc.syncSubscription(sub.subscription_ref, 'sign', AT);
     expect(await subRows(t)).toEqual([]);
-    expect((await svc.account(t, KEY, AT)).allowance.subscribed).toBe(false);
+    expect((await svc.account(t, 'sign', KEY, AT)).allowance.subscribed).toBe(false);
     const ev = await pg.query('SELECT outcome, detail FROM subscription."BillingEvent" WHERE tenant_id = $1 ORDER BY received_at', [t]);
     expect(ev.rows).toEqual([
       { outcome: 'IGNORED', detail: DOMAIN_HELD },
@@ -461,9 +462,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     await checkout();
     orgProfile.authoritative = false;
     const sub = billing.complete('active');
-    await svc.syncSubscription(sub.subscription_ref, AT);
+    await svc.syncSubscription(sub.subscription_ref, 'sign', AT);
     orgProfile.authoritative = true;
-    const res = await svc.syncSubscription(sub.subscription_ref, AT);
+    const res = await svc.syncSubscription(sub.subscription_ref, 'sign', AT);
     expect(res).toMatchObject({ outcome: 'APPLIED', activated_owner_user_id: 'owner-1' });
     expect(await subRows(t)).toMatchObject([{ status: 'ACTIVE', ended_at: null }]);
     const f = await flags(t);
@@ -475,25 +476,25 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     await checkout();
     const sub = billing.complete('active');
     const unbound = new SubscriptionLifecycleService(prisma, allowance, billing, new CapacityService(prisma));
-    expect(await unbound.syncSubscription(sub.subscription_ref, AT)).toEqual({ outcome: 'IGNORED', detail: DOMAIN_HELD, tenant_id: t });
+    expect(await unbound.syncSubscription(sub.subscription_ref, 'sign', AT)).toEqual({ outcome: 'IGNORED', detail: DOMAIN_HELD, tenant_id: t });
     expect(await subRows(t)).toEqual([]);
   });
 
   it('P3 guard: an existing subscription is never (re)activated while not AUTHORITATIVE; cancellation still applies', async () => {
     await checkout();
     const sub = billing.complete('incomplete');
-    await svc.syncSubscription(sub.subscription_ref, AT);
+    await svc.syncSubscription(sub.subscription_ref, 'sign', AT);
     expect(await subRows(t)).toMatchObject([{ status: 'INCOMPLETE' }]);
     orgProfile.authoritative = false;
     billing.subs.set(sub.subscription_ref, { ...sub, provider_status: 'active' });
-    const held = await svc.syncSubscription(sub.subscription_ref, AT);
+    const held = await svc.syncSubscription(sub.subscription_ref, 'sign', AT);
     expect(held).toMatchObject({ outcome: 'IGNORED', detail: `${DOMAIN_HELD} (INCOMPLETE -> INCOMPLETE, ACTIVE withheld)` });
     expect('activated_owner_user_id' in held).toBe(false);
     expect(await subRows(t)).toMatchObject([{ status: 'INCOMPLETE', ended_at: null }]);
-    await svc.syncSubscription(sub.subscription_ref, AT);
+    await svc.syncSubscription(sub.subscription_ref, 'sign', AT);
     expect(await flags(t)).toMatchObject([{ reason: 'domain_not_authoritative', resolved_at: null }]);
     billing.subs.set(sub.subscription_ref, { ...sub, provider_status: 'canceled' });
-    await svc.syncSubscription(sub.subscription_ref, AT);
+    await svc.syncSubscription(sub.subscription_ref, 'sign', AT);
     expect(await subRows(t)).toMatchObject([{ status: 'CANCELED', ended_at: AT }]);
   });
 
@@ -501,21 +502,21 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     await checkout();
     orgProfile.authoritative = false;
     const sub = billing.complete('active', { account_country: 'CA' });
-    expect(await svc.syncSubscription(sub.subscription_ref, AT)).toEqual({ outcome: 'IGNORED', detail: `${COUNTRY_HELD}; ${DOMAIN_HELD}`, tenant_id: t });
+    expect(await svc.syncSubscription(sub.subscription_ref, 'sign', AT)).toEqual({ outcome: 'IGNORED', detail: `${COUNTRY_HELD}; ${DOMAIN_HELD}`, tenant_id: t });
     const both = await flags(t);
     expect(both.map((f) => f.reason).sort()).toEqual(['billing_country_not_supported', 'domain_not_authoritative']);
     expect(both.every((f) => f.resolved_at === null)).toBe(true);
     // Country fixed, domain still not authoritative: still held, only the country flag resolves.
     const AT2 = new Date(AT.getTime() + 60_000);
     billing.subs.set(sub.subscription_ref, { ...sub, account_country: 'US' });
-    expect(await svc.syncSubscription(sub.subscription_ref, AT2)).toEqual({ outcome: 'IGNORED', detail: DOMAIN_HELD, tenant_id: t });
+    expect(await svc.syncSubscription(sub.subscription_ref, 'sign', AT2)).toEqual({ outcome: 'IGNORED', detail: DOMAIN_HELD, tenant_id: t });
     expect(await subRows(t)).toEqual([]);
     const mid = Object.fromEntries((await flags(t)).map((f) => [f.reason, f.resolved_at]));
     expect(mid).toEqual({ billing_country_not_supported: AT2, domain_not_authoritative: null });
     // Domain now authoritative: opened, owner activated, the domain flag resolves.
     const AT3 = new Date(AT.getTime() + 120_000);
     orgProfile.authoritative = true;
-    expect(await svc.syncSubscription(sub.subscription_ref, AT3)).toMatchObject({ outcome: 'APPLIED', activated_owner_user_id: 'owner-1' });
+    expect(await svc.syncSubscription(sub.subscription_ref, 'sign', AT3)).toMatchObject({ outcome: 'APPLIED', activated_owner_user_id: 'owner-1' });
     const end = Object.fromEntries((await flags(t)).map((f) => [f.reason, f.resolved_at]));
     expect(end).toEqual({ billing_country_not_supported: AT2, domain_not_authoritative: AT3 });
     expect(await subRows(t)).toMatchObject([{ status: 'ACTIVE', ended_at: null }]);

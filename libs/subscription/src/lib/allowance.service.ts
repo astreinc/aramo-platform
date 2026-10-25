@@ -4,6 +4,7 @@ import { v7 as uuidv7 } from 'uuid';
 
 import { billingPeriodAt, type BillingPeriod } from './billing-period.js';
 import { PrismaService } from './prisma/prisma.service.js';
+import { assertMeteredKeyOf, openBaseSubscription, type ProductKey } from './product-registry.js';
 
 // Multi-Provider directive §B/§C — the tenant allowance authority.
 //
@@ -20,6 +21,10 @@ import { PrismaService } from './prisma/prisma.service.js';
 // (resolveStale), so an unknown outcome can never let the tenant exceed the limit.
 // The send identity is unique per tenant/allowance: retries and duplicate events
 // never charge twice.
+//
+// CCP-A4 (MP-A2 N-11) — every operation takes the product explicitly (a required
+// ProductKey, no defaulting overload) and resolves ONLY that product's open BASE
+// subscription. The allowance key must belong to that product (sign.envelopes → sign).
 
 // Personal Free v1.1 §4 — DAILY_LIMIT_REACHED: the plan's day-window cap (a plan
 // without a window row never returns it).
@@ -101,9 +106,10 @@ type PlanLookup = { ok: true; plan: ActivePlan } | { ok: false; state: Unsubscri
 export class AllowanceService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async activePlan(db: Tx | PrismaService, tenant_id: string, allowance_key: string, at: Date): Promise<PlanLookup> {
+  private async activePlan(db: Tx | PrismaService, tenant_id: string, product_key: ProductKey, allowance_key: string, at: Date): Promise<PlanLookup> {
+    assertMeteredKeyOf(product_key, allowance_key);
     const sub = await db.tenantSubscription.findFirst({
-      where: { tenant_id, ended_at: null },
+      where: openBaseSubscription(tenant_id, product_key),
       include: { plan: { include: { allowances: { where: { allowance_key } }, allowance_windows: { where: { allowance_key, window_kind: 'DAY' } } } } },
     });
     const allowance = sub?.plan.allowances[0];
@@ -166,8 +172,8 @@ export class AllowanceService {
   }
 
   /** Backend-owned read of the effective plan, period and consumption. */
-  async getStatus(tenant_id: string, allowance_key: string, at: Date = new Date()): Promise<AllowanceReadResult> {
-    const found = await this.activePlan(this.prisma, tenant_id, allowance_key, at);
+  async getStatus(tenant_id: string, product_key: ProductKey, allowance_key: string, at: Date = new Date()): Promise<AllowanceReadResult> {
+    const found = await this.activePlan(this.prisma, tenant_id, product_key, allowance_key, at);
     if (!found.ok) return { subscribed: false, allowance_key, state: found.state };
     const plan = found.plan;
     const daily = plan.daily_limit === null ? undefined : this.windowOf(plan.daily_limit, await this.dailyUsage(this.prisma, tenant_id, allowance_key, at));
@@ -176,6 +182,7 @@ export class AllowanceService {
 
   async reserve(input: {
     tenant_id: string;
+    product_key: ProductKey;
     allowance_key: string;
     send_key: string;
     at?: Date;
@@ -186,7 +193,7 @@ export class AllowanceService {
       // Serialize every reservation for this tenant + allowance: two concurrent sends
       // at 99/100 cannot both see a free slot.
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${input.tenant_id}:${input.allowance_key}`}, 0))`;
-      const found = await this.activePlan(tx, input.tenant_id, input.allowance_key, at);
+      const found = await this.activePlan(tx, input.tenant_id, input.product_key, input.allowance_key, at);
       if (!found.ok) {
         return { ok: false, reason: 'NOT_SUBSCRIBED', status: { subscribed: false, allowance_key: input.allowance_key, state: found.state } } as const;
       }
@@ -228,7 +235,8 @@ export class AllowanceService {
   }
 
   /** The provider accepted the send. Idempotent; writes the usage event once. */
-  async consume(input: { tenant_id: string; allowance_key: string; send_key: string; usage_event_type: string; at?: Date }): Promise<'CONSUMED' | 'ALREADY' | 'MISSING'> {
+  async consume(input: { tenant_id: string; product_key: ProductKey; allowance_key: string; send_key: string; usage_event_type: string; at?: Date }): Promise<'CONSUMED' | 'ALREADY' | 'MISSING'> {
+    assertMeteredKeyOf(input.product_key, input.allowance_key);
     const at = input.at ?? new Date();
     return this.prisma.$transaction(async (tx) => {
       const n = await tx.allowanceUsage.updateMany({
@@ -247,7 +255,8 @@ export class AllowanceService {
   }
 
   /** The send definitively failed before acceptance. Never releases a CONSUMED row. */
-  async release(input: { tenant_id: string; allowance_key: string; send_key: string; at?: Date }): Promise<boolean> {
+  async release(input: { tenant_id: string; product_key: ProductKey; allowance_key: string; send_key: string; at?: Date }): Promise<boolean> {
+    assertMeteredKeyOf(input.product_key, input.allowance_key);
     const n = await this.prisma.allowanceUsage.updateMany({
       where: { tenant_id: input.tenant_id, allowance_key: input.allowance_key, send_key: input.send_key, state: 'RESERVED' },
       data: { state: 'RELEASED', finalized_at: input.at ?? new Date() },
@@ -256,7 +265,8 @@ export class AllowanceService {
   }
 
   /** RESERVED rows whose outcome is overdue; the caller resolves each one. */
-  async staleReservations(tenant_id: string, allowance_key: string, at: Date = new Date()): Promise<string[]> {
+  async staleReservations(tenant_id: string, product_key: ProductKey, allowance_key: string, at: Date = new Date()): Promise<string[]> {
+    assertMeteredKeyOf(product_key, allowance_key);
     const rows = await this.prisma.allowanceUsage.findMany({
       where: { tenant_id, allowance_key, state: 'RESERVED', reserved_until: { lt: at } },
       select: { send_key: true },
@@ -270,15 +280,16 @@ export class AllowanceService {
    */
   async resolveStale(input: {
     tenant_id: string;
+    product_key: ProductKey;
     allowance_key: string;
     usage_event_type: string;
     outcome: (send_key: string) => Promise<'ACCEPTED' | 'NOT_ACCEPTED' | 'UNKNOWN'>;
     at?: Date;
   }): Promise<{ consumed: number; released: number; unknown: number }> {
     const tally = { consumed: 0, released: 0, unknown: 0 };
-    for (const send_key of await this.staleReservations(input.tenant_id, input.allowance_key, input.at)) {
+    for (const send_key of await this.staleReservations(input.tenant_id, input.product_key, input.allowance_key, input.at)) {
       const outcome = await input.outcome(send_key);
-      const key = { tenant_id: input.tenant_id, allowance_key: input.allowance_key, send_key };
+      const key = { tenant_id: input.tenant_id, product_key: input.product_key, allowance_key: input.allowance_key, send_key };
       if (outcome === 'ACCEPTED') {
         if ((await this.consume({ ...key, usage_event_type: input.usage_event_type })) === 'CONSUMED') tally.consumed += 1;
       } else if (outcome === 'NOT_ACCEPTED') {
@@ -294,8 +305,9 @@ export class AllowanceService {
    * Reconcile an already-sent record (sent before metering existed) into its own
    * period. Only real sent records may be passed; nothing is invented. Idempotent.
    */
-  async recordHistorical(input: { tenant_id: string; allowance_key: string; send_key: string; sent_at: Date }): Promise<boolean> {
-    const sub = await this.prisma.tenantSubscription.findFirst({ where: { tenant_id: input.tenant_id, ended_at: null } });
+  async recordHistorical(input: { tenant_id: string; product_key: ProductKey; allowance_key: string; send_key: string; sent_at: Date }): Promise<boolean> {
+    assertMeteredKeyOf(input.product_key, input.allowance_key);
+    const sub = await this.prisma.tenantSubscription.findFirst({ where: openBaseSubscription(input.tenant_id, input.product_key) });
     if (sub === null) return false;
     const period = billingPeriodAt(sub.period_anchor, input.sent_at);
     const res = await this.prisma.allowanceUsage.createMany({

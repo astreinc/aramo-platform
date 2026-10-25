@@ -1,6 +1,7 @@
 import { v7 as uuidv7 } from 'uuid';
 
 import type { PrismaService } from './prisma/prisma.service.js';
+import { BASE_COMPOSITION, assertProductKey, openBaseSubscription, type ProductKey } from './product-registry.js';
 
 // Multi-Provider directive §B — the governed development/test entitlement path.
 // It opens a DEVELOPMENT-source subscription for a local or test tenant so the
@@ -23,23 +24,30 @@ export function assertNotProduction(env: NodeJS.ProcessEnv): void {
   }
 }
 
-/** Idempotent: an existing open subscription is left as it is. */
+/**
+ * Idempotent: an existing open subscription of the product is left as it is.
+ * CCP-A4 (MP-A2 N-11) — the product is explicit; the plan must be that product's plan.
+ */
 export async function openDevelopmentSubscription(
   prisma: PrismaService,
-  input: { tenant_id: string; plan_key?: string; period_anchor?: Date; created_by: string },
+  input: { tenant_id: string; product_key: ProductKey; plan_key?: string; period_anchor?: Date; created_by: string },
   env: NodeJS.ProcessEnv = process.env,
 ): Promise<{ created: boolean; subscription_id: string }> {
   assertNotProduction(env);
-  const open = await prisma.tenantSubscription.findFirst({ where: { tenant_id: input.tenant_id, ended_at: null } });
+  const product_key = assertProductKey(input.product_key);
+  const open = await prisma.tenantSubscription.findFirst({ where: openBaseSubscription(input.tenant_id, product_key) });
   if (open !== null) return { created: false, subscription_id: open.id };
   const plan = await prisma.plan.findUnique({ where: { key: input.plan_key ?? AramoSignIncludedPlanKey } });
   if (plan === null) throw new Error(`unknown plan ${input.plan_key ?? AramoSignIncludedPlanKey}`);
+  if (plan.product_key !== product_key) throw new Error(`plan ${plan.key} is not a ${product_key} plan`);
   const id = uuidv7();
   await prisma.tenantSubscription.create({
     data: {
       id,
       tenant_id: input.tenant_id,
       plan_id: plan.id,
+      product_key,
+      composition_role: BASE_COMPOSITION,
       period_anchor: input.period_anchor ?? new Date(),
       source: 'DEVELOPMENT',
       created_by: input.created_by,

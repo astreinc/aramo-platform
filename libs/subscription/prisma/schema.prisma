@@ -60,6 +60,9 @@ model Plan {
   // Why an INACTIVE / contracted plan is not usable yet.
   activation_note               String?
   display_order                 Int     @default(100)
+  // CCP-A4 (MP-A2 N-6) — the product this plan is sold for. Closed registry, enforced by
+  // CHECK in migration 20261025140000 (v1: 'sign' only; code mirror PRODUCT_KEYS). NO default.
+  product_key                   String
   allowances    PlanAllowance[]
   // Personal Free v1.1 — short-window caps (e.g. 2 envelopes per day).
   allowance_windows PlanAllowanceWindow[]
@@ -68,6 +71,8 @@ model Plan {
   subscriptions TenantSubscription[]
   checkouts     CheckoutIntent[]
 
+  // CCP-A4 (MP-A2 N-7) — the target of the composite FK TenantSubscription(plan_id, product_key).
+  @@unique([id, product_key])
   @@schema("subscription")
 }
 
@@ -140,9 +145,17 @@ model TenantSubscription {
   // CHECK: OK | LAPSED — the plan's eligibility (e.g. ATS) at the last check.
   eligibility_state                  String?
   eligibility_checked_at             DateTime? @db.Timestamptz(6)
+  // CCP-A4 (MP-A2 N-7) — equals the plan's product_key: composite FK (plan_id, product_key)
+  // → Plan(id, product_key), SQL-only in migration 20261025140000. NO default.
+  product_key                        String
+  // CCP-A4 (MP-A2 N-10, shape (a)) — the commercial composition of this row. v1 CHECK: BASE
+  // only. A later add-on or usage package is a row with another role (an additive CHECK
+  // widening), never a re-keyed product_key or a second subscription authority. NO default.
+  composition_role                   String
   plan          Plan      @relation(fields: [plan_id], references: [id])
 
-  // At most one open subscription per tenant (partial unique index in SQL).
+  // CCP-A4 (MP-A2 N-9) — at most one open BASE subscription per (tenant_id, product_key):
+  // partial unique index TenantSubscription_one_open_base_per_tenant_product in SQL.
   @@index([tenant_id])
   @@schema("subscription")
 }

@@ -11,6 +11,8 @@ import { openDevelopmentSubscription } from '../lib/development-subscription.js'
 import { FreePersonalPlanKey, FreePersonalSubscriptionService, personalSignupMode } from '../lib/free-personal-subscription.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
+import { CCP_A4_MIGRATION } from './fixtures/ccp-a4.js';
+
 // Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED §1 / §4 — on real Postgres 17:
 // the FREE subscription opens only for an ACTIVE PERSONAL tenant while the mode is
 // not off, carries no billing linkage (no provider is ever called — the service
@@ -27,7 +29,7 @@ const MIGRATIONS = [
   '../../prisma/migrations/20261022100100_billing_account_country_guard/migration.sql',
   '../../prisma/migrations/20261022110100_billing_flag_domain_reason/migration.sql',
   '../../prisma/migrations/20261023100000_sign_personal_free/migration.sql',
-].map((p) => resolve(__dirname, p));
+].map((p) => resolve(__dirname, p)).concat(CCP_A4_MIGRATION);
 
 const KEY = 'sign.envelopes';
 const EVENT = 'sign.envelope.sent';
@@ -61,12 +63,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
   }, 60_000);
 
   const open = (tenant_id: string, over: Partial<{ tenant_kind: string; tenant_status: string; mode: 'off' | 'invite' | 'open' }> = {}) =>
-    free.ensure({ tenant_id, tenant_kind: 'PERSONAL', tenant_status: 'ACTIVE', mode: 'invite', at: ANCHOR, ...over });
+    free.ensure({ product_key: 'sign', tenant_id, tenant_kind: 'PERSONAL', tenant_status: 'ACTIVE', mode: 'invite', at: ANCHOR, ...over });
 
   async function send(tenant_id: string, envelope: string, at: Date) {
     const send_key = `aramo-sign:envelope:${envelope}`;
-    const r = await allowance.reserve({ tenant_id, allowance_key: KEY, send_key, at });
-    if (r.ok) await allowance.consume({ tenant_id, allowance_key: KEY, send_key, usage_event_type: EVENT, at });
+    const r = await allowance.reserve({ product_key: 'sign', tenant_id, allowance_key: KEY, send_key, at });
+    if (r.ok) await allowance.consume({ product_key: 'sign', tenant_id, allowance_key: KEY, send_key, usage_event_type: EVENT, at });
     return r;
   }
 
@@ -106,7 +108,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
 
   it('a tenant with another open subscription keeps it (no FREE row)', async () => {
     const t = tenant();
-    await openDevelopmentSubscription(prisma, { tenant_id: t, period_anchor: ANCHOR, created_by: 'test' }, { ARAMO_ENV: 'test' });
+    await openDevelopmentSubscription(prisma, { product_key: 'sign', tenant_id: t, period_anchor: ANCHOR, created_by: 'test' }, { ARAMO_ENV: 'test' });
     expect(await open(t)).toMatchObject({ ok: true, opened: false, source: 'DEVELOPMENT' });
   });
 
@@ -134,7 +136,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     expect(st?.subscribed && st.daily?.next_available_at?.toISOString()).toBe(new Date(day1.getTime() + DAY_WINDOW_MS).toISOString());
     // A rolling 24-hour window: once e1 is 24 h old a slot frees (calendar midnight resets nothing).
     expect((await send(t, 'e3', new Date(day1.getTime() + DAY_WINDOW_MS + 1000))).ok).toBe(true);
-    const status = await allowance.getStatus(t, KEY, new Date(day1.getTime() + DAY_WINDOW_MS + 2000));
+    const status = await allowance.getStatus(t, 'sign', KEY, new Date(day1.getTime() + DAY_WINDOW_MS + 2000));
     expect(status).toMatchObject({ subscribed: true, plan_key: FreePersonalPlanKey, limit: 5, used: 3, remaining: 2 });
   });
 
@@ -154,18 +156,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     await open(t);
     const at = new Date('2026-10-12T10:00:00.000Z');
     const k = 'aramo-sign:envelope:r1';
-    expect((await allowance.reserve({ tenant_id: t, allowance_key: KEY, send_key: k, at })).ok).toBe(true);
-    expect(await allowance.release({ tenant_id: t, allowance_key: KEY, send_key: k, at })).toBe(true);
+    expect((await allowance.reserve({ product_key: 'sign', tenant_id: t, allowance_key: KEY, send_key: k, at })).ok).toBe(true);
+    expect(await allowance.release({ product_key: 'sign', tenant_id: t, allowance_key: KEY, send_key: k, at })).toBe(true);
     expect((await send(t, 'r2', at)).ok).toBe(true);
     expect((await send(t, 'r3', at)).ok).toBe(true);
   });
 
   it('plans without a day window (operator / Business) have no daily cap and no daily field', async () => {
     const t = tenant();
-    await openDevelopmentSubscription(prisma, { tenant_id: t, period_anchor: ANCHOR, created_by: 'test' }, { ARAMO_ENV: 'test' });
+    await openDevelopmentSubscription(prisma, { product_key: 'sign', tenant_id: t, period_anchor: ANCHOR, created_by: 'test' }, { ARAMO_ENV: 'test' });
     const at = new Date('2026-10-05T09:00:00.000Z');
     for (let i = 0; i < 4; i += 1) expect((await send(t, `b${i}`, at)).ok).toBe(true);
-    const s = await allowance.getStatus(t, KEY, at);
+    const s = await allowance.getStatus(t, 'sign', KEY, at);
     expect(s.subscribed && 'daily' in s).toBe(false);
     const b = tenant();
     await prisma.tenantSubscription.create({
@@ -173,6 +175,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
         id: `0190cccc-0000-7000-8000-${String(++seq).padStart(12, '0')}`,
         tenant_id: b,
         plan_id: (await prisma.plan.findUniqueOrThrow({ where: { key: 'aramo-sign-standard-business-v1' } })).id,
+        product_key: 'sign',
+        composition_role: 'BASE',
         period_anchor: ANCHOR,
         source: 'MANUAL',
         created_by: 'test',

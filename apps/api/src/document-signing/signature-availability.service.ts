@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { EntitlementRepository } from '@aramo/entitlement';
 import { SignatureRoutingRepository, type SignatureProviderKey } from '@aramo/signature-routing';
-import { AllowanceService, ESIGN_ENVELOPE_ALLOWANCE, type AllowanceThreshold } from '@aramo/subscription';
+import { AllowanceService, ESIGN_ENVELOPE_ALLOWANCE, SIGN_PRODUCT_KEY, type AllowanceThreshold } from '@aramo/subscription';
 import type { SignatureActor } from '@aramo/documents-contracts';
 
 import { EsignServiceApiProvider } from '../sign/esign-service-api.provider.js';
@@ -99,7 +99,8 @@ export class SignatureAvailabilityService {
         return result('PROVIDER_UNAVAILABLE');
       }
     }
-    const status = await this.allowance.getStatus(tenant_id, ESIGN_ENVELOPE_ALLOWANCE);
+    // CCP-A4 (MP-A2 N-13a) — ATS RTR/Offer sends spend the tenant's SIGN allowance.
+    const status = await this.allowance.getStatus(tenant_id, SIGN_PRODUCT_KEY, ESIGN_ENVELOPE_ALLOWANCE);
     if (!status.subscribed) return result('NOT_SUBSCRIBED');
     const view: SignatureAllowanceView = {
       limit: status.limit,

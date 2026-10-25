@@ -2169,6 +2169,7 @@
       "AramoSignIncludedPlanKey",
       "AramoSignStandardBusinessPlanKey",
       "AramoSignStandardProfessionalPlanKey",
+      "BASE_COMPOSITION",
       "BILLING_COUNTRY_NOT_SUPPORTED",
       "BILLING_PROVIDER_PORT",
       "BillingProviderUnavailableError",
@@ -2220,6 +2221,9 @@
       "PAST_DUE_GRACE_DAYS_DEFAULT",
       "PERSONAL_LEGAL_DOCUMENT_KEYS",
       "PLAN_ELIGIBILITY_PORT",
+      "PRODUCT_KEYS",
+      "ProductContextError",
+      "SIGN_PRODUCT_KEY",
       "STORAGE_CAPACITY_KEY",
       "STRIPE_API_VERSION",
       "StripeBillingProvider",
@@ -2232,6 +2236,7 @@
       "approvedLegalDocument",
       "assertChainStillSatisfiableAtApply",
       "assertNotProduction",
+      "assertProductKey",
       "billingCountrySupported",
       "billingPeriodAt",
       "canTransition",
@@ -2245,6 +2250,7 @@
       "inAppContextRef",
       "isApprovalExpired",
       "isFeatureAvailable",
+      "isProductKey",
       "isWithinPastDueGrace",
       "legalRef",
       "mapProviderStatus",
@@ -2257,6 +2263,7 @@
       "payloadChecksum",
       "personalSignupMode",
       "postTerminationExportDays",
+      "productOfMeteredKey",
       "resolveRequiredChain",
       "stripeEventSubscriptionRef",
       "stripeSubscriptionState",
@@ -3407,6 +3414,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/ccp-a4-ats-sign-consumption.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/esign-sender.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -4365,6 +4378,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ccp-a1-platform-governance-authorization.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ccp-a4-ats-sign-availability.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -6594,6 +6613,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/ccp-a4-ats-sign-consumption.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/esign-provider-errors.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -6791,6 +6816,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/allowance.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-a4-product-dimension.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-a4-sign-equality.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -7409,6 +7446,12 @@
     "@aramo/documents-contracts": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ccp-a4-ats-sign-availability.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -7601,6 +7644,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ati-sep-1-t10-trust-surfaces.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ccp-a4-ats-sign-availability.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -10785,6 +10834,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/ccp-a4-ats-sign-consumption.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/envelope-document-source.resolver.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -10895,6 +10950,12 @@
       }
     ],
     "@aramo/signature-routing": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ccp-a4-ats-sign-availability.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/esignature-integration.spec.ts",
@@ -11054,6 +11115,12 @@
     "@aramo/subscription": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ccp-a4-ats-sign-availability.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/external-signature-providers.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -11117,6 +11184,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/billing.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/ccp-a4-ats-sign-consumption.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

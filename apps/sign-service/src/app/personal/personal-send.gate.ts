@@ -6,6 +6,7 @@ import {
   AllowanceService,
   ESIGN_ENVELOPE_ALLOWANCE,
   FreePersonalSubscriptionService,
+  SIGN_PRODUCT_KEY,
   type PersonalSignupMode,
 } from '@aramo/subscription';
 import { PDFDict, PDFName, PDFRawStream, PDFDocument, decodePDFRawStream } from 'pdf-lib';
@@ -207,7 +208,7 @@ export class PersonalSendGate {
 
   /** Lazily open the FREE subscription (account read and before send). Never calls a billing provider. */
   async ensureFreeSubscription(tenant: Pick<TenantDto, 'id' | 'kind' | 'status'>): Promise<void> {
-    const r = await this.free.ensure({ tenant_id: tenant.id, tenant_kind: tenant.kind, tenant_status: tenant.status, mode: this.mode() });
+    const r = await this.free.ensure({ tenant_id: tenant.id, product_key: SIGN_PRODUCT_KEY, tenant_kind: tenant.kind, tenant_status: tenant.status, mode: this.mode() });
     if (r.ok && r.opened) this.log.log(`FREE subscription opened for personal tenant ${tenant.id}`);
   }
 
@@ -245,7 +246,7 @@ export class PersonalSendGate {
   async assertMaySend(tenant: TenantDto, ip: string | null, input: YoungSendInput, requestId: string, now: Date = new Date()): Promise<void> {
     await this.ensureFreeSubscription(tenant);
     await this.assertRiskGate(tenant.id, ip, requestId, now);
-    const status = await this.allowance.getStatus(tenant.id, ESIGN_ENVELOPE_ALLOWANCE, now);
+    const status = await this.allowance.getStatus(tenant.id, SIGN_PRODUCT_KEY, ESIGN_ENVELOPE_ALLOWANCE, now);
     if (!status.subscribed || status.remaining === 0 || status.daily?.remaining === 0) return; // guardSend refuses it
     const findings = await this.youngAccountFindings(tenant, input, now);
     if (findings.length === 0) return;

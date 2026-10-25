@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import type { StorageAccountingPort } from '@aramo/sign';
-import { CapacityService, STORAGE_CAPACITY_KEY } from '@aramo/subscription';
+import { CapacityService, SIGN_PRODUCT_KEY, STORAGE_CAPACITY_KEY } from '@aramo/subscription';
 
 // Commercial Plans Amendment A1 — the tenant storage allocation at the upload
 // seam ("unlimited signing is not unlimited storage"). Uploads reserve their
@@ -18,7 +18,7 @@ export class AramoSignStorageGate implements StorageAccountingPort {
   constructor(private readonly capacity: CapacityService) {}
 
   async reserveUpload(tenant_id: string, source_object_key: string, bytes: number, requestId: string): Promise<void> {
-    const r = await this.capacity.reserve({ tenant_id, capacity_key: STORAGE_CAPACITY_KEY, ref: storageRef(source_object_key), quantity: bytes });
+    const r = await this.capacity.reserve({ tenant_id, product_key: SIGN_PRODUCT_KEY, capacity_key: STORAGE_CAPACITY_KEY, ref: storageRef(source_object_key), quantity: bytes });
     if (r.ok) return;
     if (r.reason === 'NOT_SUBSCRIBED') {
       throw new AramoError('ESIGN_NOT_SUBSCRIBED', 'Uploading documents needs an Aramo Sign plan', 403, { requestId, details: { reason: 'NOT_SUBSCRIBED' } });
@@ -30,10 +30,10 @@ export class AramoSignStorageGate implements StorageAccountingPort {
   }
 
   async release(tenant_id: string, source_object_key: string): Promise<void> {
-    await this.capacity.release({ tenant_id, capacity_key: STORAGE_CAPACITY_KEY, ref: storageRef(source_object_key) });
+    await this.capacity.release({ tenant_id, product_key: SIGN_PRODUCT_KEY, capacity_key: STORAGE_CAPACITY_KEY, ref: storageRef(source_object_key) });
   }
 
   async recordKept(input: { tenant_id: string; ref: string; bytes: number }): Promise<void> {
-    await this.capacity.reserve({ tenant_id: input.tenant_id, capacity_key: STORAGE_CAPACITY_KEY, ref: input.ref, quantity: input.bytes, enforce: false });
+    await this.capacity.reserve({ tenant_id: input.tenant_id, product_key: SIGN_PRODUCT_KEY, capacity_key: STORAGE_CAPACITY_KEY, ref: input.ref, quantity: input.bytes, enforce: false });
   }
 }
