@@ -34,7 +34,7 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 // commercial tenant (change requests and approvals are append-only, and Q14 allows one
 // open request per tenant × product).
 //
-// Coverage — CCP routes (30):
+// Coverage — CCP routes (31):
 //   GET  /platform/commercial/audit-events                      (CCP-A2)
 //   POST /platform/commercial/change-requests                   (CCP-A3)
 //   GET  /platform/commercial/change-requests
@@ -57,6 +57,7 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 //   GET  /platform/commercial/finance/renewals                  (CCP-C6)
 //   GET  /platform/commercial/finance/outstanding-payments
 //   GET  /platform/commercial/finance/reconciliation-report
+//   GET  /platform/commercial/finance/revenue                   (CCP-D2; every amount withheld)
 //   POST /platform/commercial/support-extensions                 (CCP-A8)
 //   GET  /platform/commercial/support-extensions
 //   GET  /platform/commercial/alerts/billing                    (CCP-D3)
@@ -129,6 +130,8 @@ const PORTAL_CONFIG = '/platform/commercial/billing-portal-configuration';
 const RENEWALS = '/platform/commercial/finance/renewals';
 const OUTSTANDING = '/platform/commercial/finance/outstanding-payments';
 const RECONCILIATION = '/platform/commercial/finance/reconciliation-report';
+// CCP-D2 — revenue reporting; amounts only with platform:billing:amount:read (CCP-R3), else FINANCE_SCOPE_REQUIRED.
+const REVENUE = '/platform/commercial/finance/revenue';
 // CCP-C6 — the Finance fixture tenants seeded by the provider state 'finance records exist'.
 const FIN_RENEWAL_TENANT = 'cca10000-0000-7000-8000-0000000006a1';
 const FIN_OUTSTANDING_TENANT = 'cca10000-0000-7000-8000-0000000006a2';
@@ -270,6 +273,7 @@ const GATE_ROUTES: readonly GateRoute[] = [
   { name: 'GET finance/renewals', method: 'GET', path: RENEWALS, scope: 'platform:billing:read' },
   { name: 'GET finance/outstanding-payments', method: 'GET', path: OUTSTANDING, scope: 'platform:billing:read' },
   { name: 'GET finance/reconciliation-report', method: 'GET', path: RECONCILIATION, scope: 'platform:billing:read' },
+  { name: 'GET finance/revenue', method: 'GET', path: REVENUE, scope: 'platform:billing:read' },
   { name: 'POST support-extensions', method: 'POST', path: SE, scope: 'platform:subscription:support', body: SE_BODY(SE_TENANT_APPLY, SE_SUB_APPLY, 7, 'pact-a8-gate-0001') },
   { name: 'GET support-extensions', method: 'GET', path: SE, scope: 'platform:subscription:read' },
   { name: 'GET alerts/billing', method: 'GET', path: ALERTS_BILLING, scope: 'platform:billing:read' },
@@ -1628,6 +1632,92 @@ const SE_EXTENSION = (tenant_id: string, subscription_id: string) => ({
   removed_at: null,
   removed_by: null,
   remove_change_request_id: null,
+});
+
+describe('platform-web → GET /platform/commercial/finance/revenue (CCP-D2)', () => {
+  // CCP-R3 (Finance amount scope, LOCKED; FA-1 / FA-5): finance_admin holds platform:billing:read
+  // AND platform:billing:amount:read and receives MRR / ARR and each bucket's MRR; commercial_ops
+  // holds platform:billing:read only and receives the counts with amount_withheld:
+  // FINANCE_SCOPE_REQUIRED on every money-bearing object (the amount fields absent).
+  const WITHHELD = 'FINANCE_SCOPE_REQUIRED';
+  const bucket = (month: unknown, amounts: Record<string, unknown>) => ({
+    month,
+    commitment_end: integer(0),
+    period_end: integer(0),
+    events: integer(0),
+    priced_events: integer(0),
+    unpriced_events: integer(0),
+    ...amounts,
+  });
+  const report = (amounts: Record<string, unknown>, line: Record<string, unknown>, bucketAmounts: Record<string, unknown>) => ({
+    as_of: iso(),
+    currency: 'USD',
+    billing_interval: 'MONTH',
+    basis: 'OPEN_SUBSCRIPTIONS_X_PINNED_LIST_PRICE',
+    billing_provider_mode: like('unconfigured'),
+    ...amounts,
+    by_product: eachLike({ product_key: 'sign', subscriptions: integer(2), ...line }),
+    counts: {
+      open_commercial_subscriptions: integer(3),
+      included: integer(2),
+      excluded: integer(1),
+      excluded_by_reason: {
+        STATUS_NOT_REVENUE_BEARING: integer(0),
+        PLAN_VERSION_INTEGRITY: integer(0),
+        CONTRACT_PRICED: integer(0),
+        NO_LIST_PRICE: integer(1),
+        NON_USD_CURRENCY: integer(0),
+        NON_MONTHLY_INTERVAL: integer(0),
+      },
+      not_commercial_by_source: like({}),
+    },
+    renewal_pipeline: {
+      months: 3,
+      from_month: regex('^\\d{4}-\\d{2}$', '2026-10'),
+      through_month: regex('^\\d{4}-\\d{2}$', '2026-12'),
+      lapsed: bucket('LAPSED', bucketAmounts),
+      by_month: eachLike(bucket(regex('^\\d{4}-\\d{2}$', '2026-10'), bucketAmounts), 3),
+    },
+  });
+  it('finance_admin (platform:billing:amount:read) reads the revenue report with MRR / ARR and the pipeline MRR (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('finance records exist')
+      .uponReceiving('a revenue report read by finance_admin')
+      .withRequest('GET', REVENUE, (b) => {
+        b.headers(platformSession('finance_admin')).query({ product_key: 'sign', months: '3' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody(report({ mrr_minor: integer(4900), arr_minor: integer(58800) }, { mrr_minor: integer(4900), arr_minor: integer(58800) }, { mrr_minor: integer(0) }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${REVENUE}?product_key=sign&months=3`, 'GET', platformSession('finance_admin'));
+        expect(res.status).toBe(200);
+        expect(typeof res.body['mrr_minor']).toBe('number');
+        expect(res.body['amount_withheld']).toBeUndefined();
+      });
+  });
+
+  it('commercial_ops (no platform:billing:amount:read) reads the revenue report: counts only, every amount withheld (200, CCP-R3)', async () => {
+    await provider
+      .addInteraction()
+      .given('finance records exist')
+      .uponReceiving('a revenue report read by commercial_ops')
+      .withRequest('GET', REVENUE, (b) => {
+        b.headers(platformSession('commercial_ops')).query({ product_key: 'sign', months: '3' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody(report({ amount_withheld: WITHHELD }, { amount_withheld: WITHHELD }, { amount_withheld: WITHHELD }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${REVENUE}?product_key=sign&months=3`, 'GET', platformSession('commercial_ops'));
+        expect(res.status).toBe(200);
+        expect(res.body['amount_withheld']).toBe(WITHHELD);
+        expect(JSON.stringify(res.body)).not.toMatch(/_minor|"mrr|"arr/);
+      });
+  });
+
+  financeRefusal(REVENUE, 'revenue');
 });
 
 describe('platform-web → POST /platform/commercial/support-extensions (CCP-A8)', () => {

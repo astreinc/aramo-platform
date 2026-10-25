@@ -170,6 +170,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B4 enterprise
       // Merge train TD-MERGE-35: CCP-B3's read-only workbench / tenant overview names the contract
       // linked to a row (display only; plan, allowance and status still come from the subscription).
       'libs/subscription/src/lib/commercial/commercial-subscription-read.service.ts',
+      // Merge train TD-MERGE-40: CCP-D2's read-only revenue report reads only whether a contract is
+      // linked to an open row, to EXCLUDE it from list-price MRR (reason CONTRACT_PRICED). It never
+      // reads a plan, allowance or status from the contract; those still come from the subscription.
+      'libs/subscription/src/lib/billing/billing-revenue-report.service.ts',
     ]);
     const hits: string[] = [];
     const walk = (dir: string): void => {

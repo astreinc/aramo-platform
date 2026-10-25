@@ -193,6 +193,11 @@ export async function startD4(): Promise<D4Harness> {
   app.use(cookieParser());
   app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
   await app.init();
+  // Merge train (TD-MERGE-40, D4 intermittent): bind ONE loopback port for the whole suite. Without
+  // it supertest opens and closes an ephemeral listener per request; under host load a request was
+  // occasionally never fully received (no database session, no socket left; the server's
+  // headers-timeout check closed it at 30–60 s as "socket hang up" / timeout).
+  await app.listen(0, '127.0.0.1');
 
   const recruiter = randomUUID();
   async function token(alias: string, consumer: 'platform' | 'recruiter' = 'platform', tenant_id = PLATFORM_TENANT): Promise<string> {

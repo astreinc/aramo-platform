@@ -29,6 +29,7 @@ import { PlatformCommercialBillingController } from './platform-commercial-billi
 import { PlatformCommercialConversionController } from './platform-commercial-conversion.controller.js';
 import { PlatformCommercialBillingStatusController } from './platform-commercial-billing-status.controller.js';
 import { PlatformCommercialFinanceController } from './platform-commercial-finance.controller.js';
+import { PlatformCommercialRevenueController } from './platform-commercial-revenue.controller.js';
 import { PlatformCommercialSupportExtensionController } from './platform-commercial-support-extension.controller.js';
 // CCP-D3 — the operational alert register and counts-and-states metrics (read-only), and the
 // opt-in scanner (CCP_ALERTS_ENABLED=1).
@@ -91,9 +92,10 @@ import { UsageRollupWorker } from './usage-rollup-worker.service.js';
   // CCP-C2 — the governed conversion apply and read (platform:approval:read gate; requester-only apply).
   // CCP-C3 — read-through invoice / payment status and portal configuration (platform:billing:read).
   // CCP-C6 — the read-only Finance reports (platform:billing:read).
+  // CCP-D2 — revenue reporting (platform:billing:read; amounts only with platform:billing:amount:read, else FINANCE_SCOPE_REQUIRED).
   // CCP-A8 — the support exception overlay (platform:subscription:support / :read gates).
   // CCP-D3 — read-only alert register and metrics (platform:billing:read / platform:approval:read).
-  controllers: [PlatformController, PlatformSignController, PlatformPersonalController, PlatformCommercialAuditController, PlatformCommercialChangeRequestController, PlatformCommercialApplyController, PlatformCommercialUsageController, PlatformCommercialCatalogController, PlatformCommercialGovernanceController, PlatformCommercialContractController, PlatformCommercialBillingController, PlatformCommercialConversionController, PlatformCommercialBillingStatusController, PlatformCommercialFinanceController, PlatformCommercialSupportExtensionController, PlatformCommercialObservabilityController, PlatformCommercialSubscriptionsController],
+  controllers: [PlatformController, PlatformSignController, PlatformPersonalController, PlatformCommercialAuditController, PlatformCommercialChangeRequestController, PlatformCommercialApplyController, PlatformCommercialUsageController, PlatformCommercialCatalogController, PlatformCommercialGovernanceController, PlatformCommercialContractController, PlatformCommercialBillingController, PlatformCommercialConversionController, PlatformCommercialBillingStatusController, PlatformCommercialFinanceController, PlatformCommercialRevenueController, PlatformCommercialSupportExtensionController, PlatformCommercialObservabilityController, PlatformCommercialSubscriptionsController],
   providers: [
     // Sign Personal (Free) v1.1 §6.4 — abuse-report outcomes (sign schema; its own
     // generated client, lazy DATABASE_URL — scope:platform → scope:boundary is wall-legal).

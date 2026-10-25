@@ -179,6 +179,29 @@ export {
   type RenewalsReport,
   type UnpricedReason,
 } from './lib/billing/billing-finance-report.service.js';
+// CCP-D2 — revenue reporting (MRR / ARR / renewal pipeline) derived from commercial records; no ledger.
+export {
+  ARR_MONTHS,
+  BillingRevenueReportService,
+  REVENUE_BASIS,
+  REVENUE_BEARING_STATUSES,
+  REVENUE_BILLING_INTERVAL,
+  REVENUE_EXCLUSION_REASONS,
+  REVENUE_PIPELINE_DEFAULT_MONTHS,
+  REVENUE_PIPELINE_MAX_MONTHS,
+  classifyRevenueRow,
+  computeRevenue,
+  formatRevenueReport,
+  monthKey,
+  type RenewalBucket,
+  type RevenueExclusion,
+  type RevenueExclusionReason,
+  type RevenueLine,
+  type RevenueOptions,
+  type RevenueProductLine,
+  type RevenueReport,
+  type RevenueSourceRow,
+} from './lib/billing/billing-revenue-report.service.js';
 export {
   SubscriptionLifecycleService,
   BillingRefusedError,

@@ -254,3 +254,84 @@ Gate rule (Architect): every affected Pact, integration, authorization, migratio
     - Nest / supertest socket handling under the AppModule's opt-in workers.
   - Every negative control that ran asserted correctly (no control passed when it should refuse).
   - Playwright `journeys`: 39 / 39.
+- **TD-MERGE-40 (D2, after R3):** `wip/ccp-d2` (`c9bf90e8`) merged. The only conflict was the generated repo map (regenerated).
+  - **Finance amount scope switch (Lead, after R3).** D2 was built under the FA-6 interim: every amount withheld for every caller with `FINANCE_SCOPE_PENDING`. It now applies R3's LOCKED rule through `apps/platform-admin/src/app/platform/finance-amount-access.ts` (`amountAccess`).
+    - Holders of `platform:billing:read` AND `platform:billing:amount:read` (platform_owner, finance_admin, read_only_auditor) receive `mrr_minor` / `arr_minor` on the report and each product line, and `mrr_minor` on each renewal bucket.
+    - commercial_ops and support_admin receive the counts with `amount_withheld: "FINANCE_SCOPE_REQUIRED"`, the amount fields omitted.
+    - The route is not refused for a non-holder: it also serves counts, and FA-5's 403 is for routes that exist only to serve amounts.
+    - `FINANCE_SCOPE_PENDING` is removed from `@aramo/subscription`.
+    - Updated: the DTO, controller and module comment; `ccp-d2-revenue-authorization.spec.ts` (3 holders with exact amounts, 2 non-holders with no amount anywhere, D2-R-0b scope matrix, D2-R-1b non-holder body = holder body minus amounts plus marker; 18 / 18); the OpenAPI schema; and the platform-web Pact (finance_admin holder + commercial_ops non-holder interactions).
+  - **OpenAPI duplicate key (silent auto-merge collision).** R3 and D2 each added a `components.schemas.FinanceAmountWithheld` (`[FINANCE_SCOPE_REQUIRED]` vs `[FINANCE_SCOPE_PENDING]`). Git merged both without conflict. D2's copy is removed; a strict YAML parse (`uniqueKeys`) reports 0 errors.
+  - **B4 × D2.** B4-N3-c's static scan (no source outside the contract module reads the contract tables) flagged `billing-revenue-report.service.ts`. It reads only whether a contract is linked to an open row, to EXCLUDE that row from list-price MRR (`CONTRACT_PRICED`). It never takes a plan, allowance or status from the contract. Allowlisted with that reason, the same nature as TD-MERGE-35.
+  - **W-1 interaction (flagged for the Architect, not changed).** D2's MRR basis is `OPEN_SUBSCRIPTIONS_X_PINNED_LIST_PRICE`: an aggregate derived from published list prices, with contract-priced rows excluded and the basis named in every response. The W-1 ruling of 2026-10-25 says "never derive effective billing amounts from list prices". The Architect should confirm whether a labelled list-price MRR basis is in scope of W-1.
+  - **D4 intermittent: cause found and fixed (test harness).** The hang dumps (no DB session, no socket left, a hang up at 30–60 s) pointed to a request not fully received by the server. Neither the D4 harness nor the C2 conversion-routes spec bound a port, so supertest opened and closed an ephemeral listener per request. In this merge's full run the hang hit `ccp-c2-conversion-routes` C2-RI-1 and D4-NC4. One rerun of the two files hit D4-GATE-1 at 62 s.
+    - **Fix (test-only, behaviour-neutral):** `await app.listen(0, '127.0.0.1')` after `app.init()` in `support/ccp-d4-harness.ts` and in `ccp-c2-conversion-routes.integration.spec.ts`.
+    - **After the fix:** negative controls 15 / 15 in 5 consecutive runs (host load 3–7), versus 1 clean run in 5 before.
+    - The full platform-admin CCP suite then passed 701 / 701.
+    - The B4 contract-authorization blip of TD-MERGE-37 (400 without `error.code`) is a different signature and stays on the watch list.
+
+## PO decision (2026-10-25): Enterprise invoicing
+**Enterprise invoicing: CCP records payment only.** The accounting integration is out of CCP scope. CCP will offer a manual, governed "record payment received" step: an enterprise contract's subscription activates only after payment is recorded, with evidence. That requires an action-catalog amendment, not yet drafted or LOCKED, so nothing is built until it is. An independent accounting service (program "ACCT": QuickBooks/Xero, serving both Aramo enterprise billing and tenant placement invoicing, with its own contract like Talent Intelligence and auth-service) is a separate program. Its integration with CCP is revisited once it exists. `invoicing.enabled: false` stays.
+
+## Architect ratification: PAYMENT_RECORD A2 + Charter A2 (2026-10-25)
+
+### LOCKED and filed (sidecars verified)
+| Instrument | SHA-256 |
+|---|---|
+| `Aramo-CCP-Charter-Amendment-A2-Refund-Execution-Policy-Keys-v1_0-LOCKED.md` | `800c89c3d9e661baec5807005fc214d0b8af187824102f304573ac5656e20e40` |
+| `Aramo-CCP-A1-Amendment-A2-Payment-Request-Scope-v1_0-LOCKED.md` | `20941cccf1f63cd37cea5819f94171d501ec43d5a8fb6f65787352f60a9b3d42` |
+| `Aramo-CCP-Program-Build-Directive-Amendment-A2-Payment-Record-v1_0-LOCKED.md` | `4409e3a146730e2a642921ebae736e164145bf637ada3357aa838cd2915b304a` |
+
+### Charter A2
+- **RX-D1 / RX-D2 / RX-D3: approved.**
+  - **The dual gate:** gate 1 is the operational switch `CCP_REFUND_EXECUTION_ENABLED` (refusal `REFUND_EXECUTION_NOT_RELEASED`); gate 2 is an ACTIVE policy with `refund_execution_enabled`, `refund_policy_ref` and `refund_policy_sha256` (refusal `REFUND_POLICY_NOT_APPROVED`).
+  - **Where it's checked:** at the initial apply, and immediately before the first dispatch or a permitted re-arm.
+  - **Snapshot vs ACTIVE:** both must carry the same refund-policy IDENTITY (ref and sha). Full policy checksums need not match.
+  - **Reconciliation, webhooks, recording a confirmed refund and terminal recovery** never depend on either gate.
+  - The keys are all present or all absent; missing or malformed fails closed.
+  - **PO D5 confirmation** of the new keys is pending; refunds stay disabled regardless.
+
+### PAYMENT_RECORD A2
+- **K-1:** record the INITIAL payment before SUBSCRIPTION_OPEN. No apply-deadline exemption.
+- **K-2:** resolved by §4.
+  - `CommercialPaymentReceipt` is anchored by a FK to its governing change request, linked by FK to `Contract` and `ContractPaymentObligation` inside the SUBSCRIPTION_OPEN apply transaction.
+  - The provisional identity is (tenant, product, `provisional_contract_ref`, INITIAL), with the ref unique and checked against existing contracts.
+  - **N-3 is not relaxed:** the contract FK to its subscription is kept, and no temporary subscription is invented.
+  - An unlinked receipt never auto-expires; it's listed and alerted, and neutralized only by CORRECT.
+- **K-3:** `platform:payment:request` for commercial_ops and finance_admin, giving 25 / 207 / 989.
+- **K-4:** Q14 with no exemption.
+- **Payment methods:** BANK_TRANSFER, CHEQUE, CARD_EXTERNAL, OTHER. OTHER requires an explanation.
+- **Grace:** absent `grace_days` means 0. Due-date boundaries are calendar dates in the contract's IANA timezone: due 2026-10-25 with g=0 is DUE on the 25th and PAST_DUE from the 26th.
+- **POSTPAID** needs an explicit immutable `postpaid_approval` marker; it is never inferred.
+- **The Platform Owner fallback** is resolved once at creation and snapshotted, never chosen later.
+
+### Implementation
+Authorized after the LOCK, on this branch, through the single writer:
+- **C8-PR** (PAYMENT_RECORD);
+- **the dual-gate remediation** (C4-P successor).
+
+They start after the current merge train. Refunds stay disabled, invoicing stays disabled, and ACCT is out of CCP.
+
+## Architect rulings: CCP-UI v1.2 Finance visibility (2026-10-25)
+
+### The v1.2 baseline
+CCP-UI v1.2 (`ccp/CCP-UI-v1_2/`, manifest 5/5, v1.0 and v1.1 unchanged) is APPROVED as the implementation baseline for the new Finance/Ops screens and the v1.0 amendments AM-1…AM-10, subject to W-1…W-3. A design amendment 1 is requested; the manifest gets re-verified after it.
+
+### W-1: RATIFIED
+- A published plan-version list price is catalog information. It is visible under catalog read, including beside a tenant's pinned version.
+- Negotiated or contracted rates, discounts, effective tenant prices and invoice amounts require `platform:billing:amount:read`.
+- Never derive effective billing amounts from list prices.
+
+### W-2: RATIFIED
+For an actor without `platform:billing:amount:read`, the whole free-text `Contract.terms` (and the `ContractAmendment.terms`) is redacted at the backend projection boundary, never only in the UI. The stored terms are unchanged.
+
+### W-3: RATIFIED, with a restricted requester exception
+- **Scope:** CREDIT, DISCOUNT, REFUND and PAYMENT_RECORD only.
+- **Non-holder, non-requester:** reason, notes and evidence redacted.
+- **The original requester:** sees their own submitted content. Provenance is established, because `CommercialChangeRequest.reason` and the payload evidence are requester-authored and immutable at create, while approver comments live in separate `CommercialApproval` rows.
+- **Always scope-protected:** approval notes, provider amounts and internal annotations.
+- **If provenance cannot be separated reliably,** fail closed.
+- **Non-financial request reasons:** never redacted globally.
+
+### Implementation
+"R3-W": an extension of R3's shared redaction to the Contract and ChangeRequest projections, the exports, alerts and alternate read paths, with per-role tests (including commercial_ops viewing its own financial request). It follows the v1.2 screen build on the stable integrated HEAD after the merge train.

@@ -139,6 +139,9 @@ tags:
       plan's current published version). No amount owed, invoice total or sum is computed
       (invoice status is CCP-C3, not delivered); a non-USD or missing price is withheld
       with `unpriced_reason`. Each report reads one consistent, read-only snapshot.
+      CCP-D2 adds the revenue route (MRR, ARR, renewal pipeline by month, derived from the
+      commercial records, no ledger); its amounts are returned only with
+      `platform:billing:amount:read` (otherwise `amount_withheld: FINANCE_SCOPE_REQUIRED`, CCP-R3).
       Requires `platform:billing:read` (platform_owner, finance_admin, commercial_ops,
       support_admin, read_only_auditor); catalog_manager and super_admin are refused with
       403 `INSUFFICIENT_PERMISSIONS`. Platform-tier only. No write route.
@@ -3220,6 +3223,61 @@ paths:
         '403':
           $ref: '#/components/responses/PlatformForbidden'
 
+  /platform/commercial/finance/revenue:
+    get:
+      operationId: getPlatformCommercialFinanceRevenue
+      tags: [Platform Commercial Finance]
+      summary: Revenue reporting (MRR, ARR, renewal pipeline by month); amounts need the Finance amount scope.
+      description: |
+        CCP-D2 — platform-wide revenue derived from the commercial records at read time (no
+        ledger, no stored figure): MRR is the sum, over open MANUAL or SELF_SERVICE base
+        subscriptions in `ACTIVE` or `PAST_DUE`, of the pinned plan version's USD list price per
+        `MONTH`; ARR is MRR × 12. Every other open commercial subscription is excluded and
+        counted with exactly one reason (`counts.excluded_by_reason`). The renewal pipeline
+        groups the renewal events (`COMMITMENT_END`; `PERIOD_END` for provider-billed rows) by
+        UTC month from the current month; events on or before `as_of` are `LAPSED`.
+
+        **Amounts need the Finance amount scope** (CCP-R3; Aramo-CCP-A1-Amendment-A1-Finance-
+        Amount-Scope-v1_0, LOCKED, FA-1 / FA-5). A caller holding `platform:billing:read` AND
+        `platform:billing:amount:read` (platform_owner, finance_admin, read_only_auditor) receives
+        `mrr_minor` / `arr_minor` on the report and each product line and `mrr_minor` on each
+        renewal bucket. For every other reader those fields are absent and each money-bearing
+        object carries `amount_withheld: FINANCE_SCOPE_REQUIRED`. Counts, states and exclusion
+        reasons are returned to every reader. No tenant filter and no per-tenant row.
+        Read-only. Requires `platform:billing:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: product_key
+          in: query
+          required: false
+          description: Only this product (the closed registry; `sign` in v1).
+          schema:
+            type: string
+            enum: [sign]
+        - name: months
+          in: query
+          required: false
+          description: The renewal pipeline horizon in calendar months, from the current month (default 12).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 24
+      responses:
+        '200':
+          description: The revenue report; amounts present only for a Finance amount scope holder.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceRevenueReport'
+        '400':
+          $ref: '#/components/responses/FinanceRevenueValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
   /platform/commercial/change-requests:
     post:
       operationId: createPlatformCommercialChangeRequest
@@ -5196,6 +5254,14 @@ components:
       description: |
         `VALIDATION_ERROR` — a malformed filter (`tenant_id` not a uuid, an unregistered
         `product_key`, `within_days` outside 1..365, or an unknown parameter).
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    FinanceRevenueValidation:
+      description: |
+        `VALIDATION_ERROR` — an unregistered `product_key`, `months` outside 1..24, or an
+        unknown parameter (including `tenant_id`: the route has no per-tenant view).
       content:
         application/json:
           schema:
@@ -7523,6 +7589,123 @@ components:
               type: integer
             exceptions:
               type: integer
+
+    FinanceRevenueRenewalBucket:
+      type: object
+      additionalProperties: false
+      required: [month, commitment_end, period_end, events, priced_events, unpriced_events]
+      properties:
+        month:
+          type: string
+          description: '`YYYY-MM` (UTC), or `LAPSED` for events on or before `as_of`.'
+          pattern: '^(\d{4}-\d{2}|LAPSED)$'
+        commitment_end:
+          type: integer
+        period_end:
+          type: integer
+        events:
+          type: integer
+        priced_events:
+          type: integer
+          description: Events of a subscription included in MRR.
+        unpriced_events:
+          type: integer
+          description: Events of an excluded subscription.
+        mrr_minor:
+          type: integer
+          description: The MRR (USD minor units) of the included subscriptions renewing in this bucket. Present only with `platform:billing:amount:read`.
+        amount_withheld:
+          $ref: '#/components/schemas/FinanceAmountWithheld'
+
+    FinanceRevenueReport:
+      type: object
+      additionalProperties: false
+      required: [as_of, currency, billing_interval, basis, billing_provider_mode, by_product, counts, renewal_pipeline]
+      properties:
+        as_of:
+          type: string
+          format: date-time
+        currency:
+          type: string
+          enum: [USD]
+        billing_interval:
+          type: string
+          enum: [MONTH]
+        basis:
+          type: string
+          enum: [OPEN_SUBSCRIPTIONS_X_PINNED_LIST_PRICE]
+        billing_provider_mode:
+          type: string
+          enum: [test, live, unconfigured]
+        mrr_minor:
+          type: integer
+          description: MRR in USD minor units. Present only with `platform:billing:amount:read`.
+        arr_minor:
+          type: integer
+          description: ARR (MRR × 12) in USD minor units. Present only with `platform:billing:amount:read`.
+        amount_withheld:
+          $ref: '#/components/schemas/FinanceAmountWithheld'
+        by_product:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [product_key, subscriptions]
+            properties:
+              product_key:
+                type: string
+              subscriptions:
+                type: integer
+                description: Subscriptions included in MRR.
+              mrr_minor:
+                type: integer
+                description: Present only with `platform:billing:amount:read`.
+              arr_minor:
+                type: integer
+                description: Present only with `platform:billing:amount:read`.
+              amount_withheld:
+                $ref: '#/components/schemas/FinanceAmountWithheld'
+        counts:
+          type: object
+          additionalProperties: false
+          required: [open_commercial_subscriptions, included, excluded, excluded_by_reason, not_commercial_by_source]
+          properties:
+            open_commercial_subscriptions:
+              type: integer
+            included:
+              type: integer
+            excluded:
+              type: integer
+            excluded_by_reason:
+              type: object
+              description: |
+                One reason per excluded subscription, first match in this order:
+                STATUS_NOT_REVENUE_BEARING, PLAN_VERSION_INTEGRITY, CONTRACT_PRICED, NO_LIST_PRICE,
+                NON_USD_CURRENCY, NON_MONTHLY_INTERVAL. Every reason is present (zero-filled).
+              additionalProperties:
+                type: integer
+            not_commercial_by_source:
+              type: object
+              description: Open base rows of a non-commercial source (FREE, DEVELOPMENT); neither revenue nor an exclusion.
+              additionalProperties:
+                type: integer
+        renewal_pipeline:
+          type: object
+          additionalProperties: false
+          required: [months, from_month, through_month, lapsed, by_month]
+          properties:
+            months:
+              type: integer
+            from_month:
+              type: string
+            through_month:
+              type: string
+            lapsed:
+              $ref: '#/components/schemas/FinanceRevenueRenewalBucket'
+            by_month:
+              type: array
+              items:
+                $ref: '#/components/schemas/FinanceRevenueRenewalBucket'
 
     CommercialAlert:
       type: object

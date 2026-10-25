@@ -132,6 +132,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C2 — the co
     app.use((req: never, res: never, next: () => void) => new RequestIdMiddleware().use(req, res, next));
     app.useGlobalPipes(new ValidationPipe({ whitelist: true, forbidNonWhitelisted: true, transform: true }));
     await app.init();
+    // Merge train TD-MERGE-40: one bound loopback port (no per-request ephemeral listener; see the D4 harness).
+    await app.listen(0, '127.0.0.1');
     for (const role of [...ROLES, 'super_admin']) {
       user[role] = await addOperator(pg, [role]);
       resolver.roleOf.set(user[role] as string, role);

@@ -64,3 +64,25 @@ describe('CCP-C6 — the dashboard renders no money (A0-C6)', () => {
     expect(callers.filter((f) => !/[\\/]finance[\\/]/.test(f))).toEqual([]);
   });
 });
+
+// CCP-D2 (PBD §5.4 row D2 "Out: monetary metrics on the dashboard"; HALT "any monetary metric on the
+// dashboard") — revenue (MRR, ARR, the renewal pipeline) is built behind GET
+// /platform/commercial/finance/revenue only (amounts only with the Finance amount scope). No Finance revenue screen
+// exists yet (it needs design release CCP-UI v1.1), so no console source reads it, and the dashboard
+// contract and view carry no revenue metric.
+describe('CCP-D2 — no revenue metric reaches the dashboard', () => {
+  it('D2-DASH-1 no console source calls the revenue route (no Finance revenue screen is built)', () => {
+    expect(sources(SRC).filter((f) => readFileSync(f, 'utf8').includes('/finance/revenue'))).toEqual([]);
+  });
+
+  it('D2-DASH-2 the dashboard view, its contract and its API call carry no revenue metric', () => {
+    const view = readFileSync(join(SRC, 'dashboard/DashboardView.tsx'), 'utf8');
+    expect(view).not.toMatch(/\bmrr\b|\barr\b|revenue|renewal_pipeline|amount_withheld|FINANCE_SCOPE_|_minor\b/i);
+    const api = readFileSync(join(SRC, 'platform-api.ts'), 'utf8');
+    const contract = api.slice(api.indexOf('export interface PlatformDashboardStatusCount'), api.indexOf('export interface ProvisionTenantResult'));
+    expect(contract.length).toBeGreaterThan(0);
+    expect(contract).not.toMatch(/amount|price|currency|revenue|mrr|\barr\b|_minor/i);
+    const call = api.slice(api.indexOf('getDashboard('), api.indexOf('getDashboard(') + 200);
+    expect(call).not.toMatch(/finance|revenue/);
+  });
+});
