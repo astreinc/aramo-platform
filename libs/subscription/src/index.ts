@@ -148,11 +148,15 @@ export {
   COMMERCIAL_CHANGE_REQUEST_KINDS,
   COMMERCIAL_CHANGE_REQUEST_STATES,
   COMMERCIAL_OPEN_STATES,
+  COMMERCIAL_A9_ROLE_APPLY_TRANSITIONS,
   COMMERCIAL_REQUEST_PRODUCT_KEYS,
+  COMMERCIAL_ROLE_CHANGE_ACTIONS,
+  COMMERCIAL_ROLE_CHANGE_ROLE_KEYS,
   COMMERCIAL_TERMINAL_STATES,
   CommercialChangeRequestIntegrityError,
   CommercialPayloadError,
   canTransition,
+  canTransitionFor,
   parseRequiredChain,
   payloadChecksum,
   resolveRequiredChain,
@@ -206,5 +210,30 @@ export {
   type CommercialClock,
   type CreateChangeRequestInput,
   type ListChangeRequestsQuery,
+  type RoleChangeApplyOutcome,
   type StepView,
 } from './lib/commercial/commercial-change-request.service.js';
+// CCP-A9 (PBD §5.1 row A9) — governed role change (identity writes), the last-owner marker
+// and the one-time D7 platform-owner bootstrap command.
+export {
+  PLATFORM_LAST_OWNER_DB_MARKER,
+  PLATFORM_OWNER_ROLE_KEY,
+  RoleChangeApplyError,
+  effectivePlatformOwners,
+  isPlatformLastOwnerViolation,
+  readPlatformSubject,
+  type PlatformSubjectFacts,
+  type RoleChangeApplyReason,
+} from './lib/commercial/commercial-role-change.js';
+export {
+  BOOTSTRAP_CLI_FLAGS,
+  BOOTSTRAP_PLATFORM_TENANT_ID,
+  BOOTSTRAP_TARGET_EMAIL,
+  PLATFORM_OWNER_BOOTSTRAP_EVENT,
+  PlatformOwnerBootstrapRefusedError,
+  parseBootstrapArgs,
+  runPlatformOwnerBootstrap,
+  type PlatformOwnerBootstrapInput,
+  type PlatformOwnerBootstrapRefusal,
+  type PlatformOwnerBootstrapResult,
+} from './lib/commercial/commercial-platform-owner-bootstrap.js';

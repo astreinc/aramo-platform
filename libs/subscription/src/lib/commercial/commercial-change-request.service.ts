@@ -8,6 +8,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { CommercialAuditRepository } from './commercial-audit.repository.js';
 import {
   type ApprovalRefusal,
+  CommercialApplyRefusedError,
   type EligibilityActor,
   type EligibilityResult,
   assertChainStillSatisfiableAtApply,
@@ -17,6 +18,7 @@ import {
 import {
   COMMERCIAL_ACTIONS,
   COMMERCIAL_OPEN_STATES,
+  COMMERCIAL_ROLE_CHANGE_ACTIONS,
   COMMERCIAL_REQUEST_PRODUCT_KEYS,
   type CommercialActionType,
   type CommercialChangeRequestKind,
@@ -31,7 +33,16 @@ import {
 import { approvalExpiresAt } from './commercial-policy-boundaries.js';
 import { canonicalJson } from './commercial-policy.js';
 import { CommercialPolicyRepository } from './commercial-policy.repository.js';
-import { CommercialOperatorRepository, type LiveOperator } from './commercial-operator.repository.js';
+import { CommercialOperatorRepository, D9_STATEMENT_VERSION, type LiveOperator } from './commercial-operator.repository.js';
+import {
+  PLATFORM_OWNER_ROLE_KEY,
+  RoleChangeApplyError,
+  effectivePlatformOwners,
+  grantPlatformRole,
+  isPlatformLastOwnerViolation,
+  readPlatformSubject,
+  revokePlatformRole,
+} from './commercial-role-change.js';
 
 // CCP-A3 (PBD §5.1 row A3) — the change-request and approval service. Every write runs in
 // ONE subscription transaction that locks the request row (`SELECT … FOR UPDATE`), reads
@@ -42,6 +53,15 @@ import { CommercialOperatorRepository, type LiveOperator } from './commercial-op
 //
 // A3 applies nothing (A6). No domain data mutates. `assertApplyEligible` is the NC-5
 // apply-time re-check A6 calls inside its own transaction; it is read-only.
+//
+// CCP-A9 (PBD §5.1 row A9; TD-A3-5; Q2): governance requests (POLICY_ACTIVATE by a
+// finance_admin; ROLE_GRANT / ROLE_REVOKE by a platform_owner, approved by a DIFFERENT
+// platform_owner) can now be created; the requester's role and D9 attestation are read live
+// in the create transaction. A governed role change is APPLIED by `applyRoleChange` in its
+// own transaction right after the approval that completes the chain commits — the narrow A9
+// apply path (TD-A9-1): the NC-5 apply-time re-check, then the identity write, then
+// APPROVED → APPLYING → APPLIED. A refused apply rolls back, leaves the request APPROVED with
+// its signatures untouched and records one COMMERCIAL_CHANGE_REQUEST_APPLY_REFUSED event.
 
 type Tx = Parameters<Parameters<PrismaService['$transaction']>[0]>[0];
 
@@ -67,6 +87,8 @@ export type CommercialChangeRequestErrorCode =
   | 'NOT_REQUESTER'
   | 'REQUESTER_SCOPE_MISSING'
   | 'REQUESTER_AUTHORITY_UNDEFINED'
+  | 'REQUESTER_ROLE_MISSING'
+  | 'LAST_OWNER'
   | 'KIND_NOT_SUPPORTED'
   | 'INVALID_INPUT'
   | 'TENANT_NOT_FOUND'
@@ -147,6 +169,15 @@ export interface CommercialApprovalRow {
   created_at: Date;
 }
 
+/** CCP-A9: the outcome of the role-change apply that follows the completing approval. */
+export interface RoleChangeApplyOutcome {
+  applied: boolean;
+  request: CommercialChangeRequestRow;
+  /** null when applied; else the refusal reason (the request stays APPROVED). */
+  reason: string | null;
+  detail: Record<string, unknown>;
+}
+
 export interface CreateChangeRequestInput {
   action_type: CommercialActionType;
   kind?: CommercialChangeRequestKind;
@@ -196,6 +227,16 @@ export class CommercialChangeRequestCursorError extends Error {
 const SUBJECT = (id: string): string => `commercial_change_request:${id}`;
 const ELIGIBLE_FOR_ME_SCAN = 500;
 
+/** CCP-A9: the typed reason of a refused role-change apply. */
+function classifyApplyRefusal(e: unknown): { reason: string; detail: Record<string, unknown> } {
+  if (e instanceof CommercialApplyRefusedError) return { reason: e.reason, detail: e.detail };
+  if (e instanceof RoleChangeApplyError) return { reason: e.reason, detail: e.detail };
+  if (e instanceof CommercialChangeRequestError) return { reason: e.code, detail: e.details };
+  if (isPlatformLastOwnerViolation(e)) return { reason: 'PLATFORM_LAST_OWNER', detail: {} };
+  if (isUniqueViolation(e, 'human')) return { reason: 'ATTESTATION_CONFLICT', detail: { reason: 'human_ref_in_use' } };
+  return { reason: 'APPLY_ERROR', detail: { message: String((e as Error)?.message ?? e).slice(0, 500) } };
+}
+
 function isUniqueViolation(e: unknown, target: string): boolean {
   const err = e as { code?: string; meta?: { target?: unknown; constraint?: unknown }; message?: string };
   if (err?.code !== 'P2002') return false;
@@ -228,10 +269,10 @@ export class CommercialChangeRequestService {
       // EXCEPTION is created by the CCP-A8 bounded path, MIGRATION by the CCP-A11 backfill.
       throw new CommercialChangeRequestError('KIND_NOT_SUPPORTED', `kind ${kind} is not created through this path`, { kind });
     }
-    if (def.requester_scope === null) {
+    if (def.requester_scope === null && def.requester_role === null) {
       throw new CommercialChangeRequestError('REQUESTER_AUTHORITY_UNDEFINED', `no requester authority is defined for ${input.action_type} yet`, { action_type: input.action_type });
     }
-    if (!actor.scopes.includes(def.requester_scope)) {
+    if (def.requester_scope !== null && !actor.scopes.includes(def.requester_scope)) {
       throw new CommercialChangeRequestError('REQUESTER_SCOPE_MISSING', `requesting ${input.action_type} requires ${def.requester_scope}`, { missing_scopes: [def.requester_scope] });
     }
     const tenant_id = input.tenant_id ?? null;
@@ -277,7 +318,16 @@ export class CommercialChangeRequestService {
             throw new CommercialChangeRequestError('OPEN_REQUEST_EXISTS', 'an open change request already exists for this tenant and product', { open_request_id: open.id, open_state: open.state });
           }
         }
-        const requester = await this.operators.readOperator(tx, ctx.platform_tenant_id, actor.user_id);
+        const requester = await this.operators.readOperator(tx, ctx.platform_tenant_id, actor.user_id, def.requester_role !== null);
+        if (def.requester_role !== null) {
+          // CCP-A9 (TD-A3-5): live role + D9 attestation (A1-3: the requester is one of the
+          // distinct independent humans of the chain).
+          if (!requester.attested) throw new CommercialChangeRequestError('NOT_HUMAN', 'the requester holds no active one-account-per-human attestation', { reason: 'not_human' });
+          if (!requester.role_keys.includes(def.requester_role)) {
+            throw new CommercialChangeRequestError('REQUESTER_ROLE_MISSING', `requesting ${input.action_type} requires the ${def.requester_role} role`, { required_role: def.requester_role });
+          }
+          await this.validateGovernanceTarget(tx, input.action_type, payload, ctx);
+        }
         const row = await tx.commercialChangeRequest.create({
           data: {
             id,
@@ -396,7 +446,12 @@ export class CommercialChangeRequestService {
    * gate for a PENDING request (409 CCP_NOT_BOOTSTRAPPED); the seven refusals with live
    * eligibility; then the append-only approval row, and APPROVED when the last step fills.
    */
-  async approve(actor: CommercialActor, id: string, input: { step_index: number; comment?: string | null }, ctx: CommercialCallContext): Promise<{ request: CommercialChangeRequestRow; approval: CommercialApprovalRow }> {
+  async approve(
+    actor: CommercialActor,
+    id: string,
+    input: { step_index: number; comment?: string | null },
+    ctx: CommercialCallContext,
+  ): Promise<{ request: CommercialChangeRequestRow; approval: CommercialApprovalRow; apply: RoleChangeApplyOutcome | null }> {
     const out = await this.tx(async (tx) => {
       const req = await this.lock(tx, id);
       this.verifyIntegrity(req);
@@ -458,7 +513,126 @@ export class CommercialChangeRequestService {
     });
     if (out.kind === 'not_bootstrapped') throw new CommercialNotBootstrappedError(out.detail);
     if (out.kind === 'refused') throw new CommercialApprovalRefusedError(out.refusal, out.detail);
-    return { request: out.request, approval: out.approval };
+    // CCP-A9: a completed role change applies in its own transaction (TD-A9-1).
+    if (out.request.state === 'APPROVED' && (COMMERCIAL_ROLE_CHANGE_ACTIONS as readonly string[]).includes(out.request.action_type)) {
+      const apply = await this.applyRoleChange(actor, id, ctx);
+      return { request: apply.request, approval: out.approval, apply };
+    }
+    return { request: out.request, approval: out.approval, apply: null };
+  }
+
+  // ---- CCP-A9 role-change apply (narrow apply path, TD-A9-1) ----------------------------
+
+  /**
+   * Applies an APPROVED ROLE_GRANT / ROLE_REVOKE in ONE transaction: lock the request,
+   * integrity, the NC-5 apply-time re-check of every signature against the snapshotted
+   * chain and the live roster, APPROVED → APPLYING, the identity write (the last-owner
+   * trigger is the DB authority for a removal), the D9 attestation of a not-yet-attested
+   * grant subject, APPLYING → APPLIED, and the audit event. Any refusal rolls the whole
+   * transaction back: the request stays APPROVED, the approval rows are untouched, and one
+   * COMMERCIAL_CHANGE_REQUEST_APPLY_REFUSED event is written in a separate transaction.
+   */
+  async applyRoleChange(actor: CommercialActor, id: string, ctx: CommercialCallContext): Promise<RoleChangeApplyOutcome> {
+    try {
+      const row = await this.tx(async (tx) => {
+        const req = await this.lock(tx, id);
+        this.verifyIntegrity(req);
+        if (!(COMMERCIAL_ROLE_CHANGE_ACTIONS as readonly string[]).includes(req.action_type)) {
+          throw new CommercialChangeRequestError('STATE_INVALID', `${req.action_type} is not applied by the role-change path`, { action_type: req.action_type });
+        }
+        const approvals = await this.approvalsOf(tx, id);
+        const roster = await this.operators.readRoster(tx, ctx.platform_tenant_id, { user_ids: approvals.map((a) => a.approver_user_id), lock: true });
+        const p = req.payload as { subject_user_id: string; role_key: string; human_ref_hash?: string };
+        assertChainStillSatisfiableAtApply(
+          { id, state: req.state, requested_by: req.requested_by, subject_user_id: p.subject_user_id, required_chain: parseRequiredChain(req.required_chain), approvals },
+          roster,
+        );
+        const now = this.now();
+        await tx.commercialChangeRequest.update({ where: { id }, data: { state: 'APPLYING', apply_attempts: { increment: 1 }, updated_at: now } });
+        const change =
+          req.action_type === 'ROLE_GRANT'
+            ? await grantPlatformRole(tx, ctx.platform_tenant_id, { user_id: p.subject_user_id, role_key: p.role_key })
+            : await revokePlatformRole(tx, ctx.platform_tenant_id, { user_id: p.subject_user_id, role_key: p.role_key });
+        let attestation_id: string | null = null;
+        if (req.action_type === 'ROLE_GRANT') {
+          const existing = await tx.commercialOperatorAttestation.findFirst({ where: { user_id: p.subject_user_id, revoked_at: null }, select: { id: true } });
+          if (existing === null) {
+            if (p.human_ref_hash === undefined) throw new RoleChangeApplyError('ATTESTATION_CONFLICT', { reason: 'human_ref_missing' });
+            // D9 (TD-A3-3 closed): attested by the distinct platform_owner who signed the grant.
+            const attester = approvals[approvals.length - 1]?.approver_user_id as string;
+            const a = await tx.commercialOperatorAttestation.create({
+              data: { id: uuidv7(), user_id: p.subject_user_id, human_ref_hash: p.human_ref_hash, statement_version: D9_STATEMENT_VERSION, method: 'PLATFORM_OWNER', attested_by: attester, attested_at: now },
+            });
+            attestation_id = a.id;
+            await this.audit.append(
+              {
+                actor: { id: attester, type: 'user', role_keys: roster.find((r) => r.user_id === attester)?.role_keys ?? [] },
+                event_type: 'COMMERCIAL_OPERATOR_ATTESTATION_RECORDED',
+                subject: `commercial_operator_attestation:${a.id}`,
+                change_request_id: id,
+                policy_version_id: req.policy_version_id,
+                payload: { user_id: p.subject_user_id, method: 'PLATFORM_OWNER', statement_version: D9_STATEMENT_VERSION },
+                correlation_id: ctx.correlation_id,
+              },
+              tx,
+            );
+          }
+        }
+        const done = (await tx.commercialChangeRequest.update({ where: { id }, data: { state: 'APPLIED', applied_at: now, updated_at: now } })) as CommercialChangeRequestRow;
+        await this.appendEvent(
+          tx,
+          actor,
+          req,
+          'COMMERCIAL_CHANGE_REQUEST_APPLIED',
+          { change: req.action_type === 'ROLE_GRANT' ? 'GRANT' : 'REVOKE', subject_user_id: p.subject_user_id, role_key: p.role_key, membership_role_id: change.membership_role_id, attestation_id },
+          ctx,
+        );
+        return done;
+      });
+      return { applied: true, request: row, reason: null, detail: {} };
+    } catch (e) {
+      const { reason, detail } = classifyApplyRefusal(e);
+      const req = await this.tx(async (tx) => {
+        const current = await this.lock(tx, id);
+        await this.appendEvent(tx, actor, current, 'COMMERCIAL_CHANGE_REQUEST_APPLY_REFUSED', { reason, detail }, ctx);
+        return current;
+      });
+      return { applied: false, request: req, reason, detail };
+    }
+  }
+
+  /** CCP-A9: the target checks of a governance request, inside the create transaction. */
+  private async validateGovernanceTarget(tx: Tx, action_type: CommercialActionType, payload: Record<string, unknown>, ctx: CommercialCallContext): Promise<void> {
+    const invalid = (reason: string, message: string, extra: Record<string, unknown> = {}): never => {
+      throw new CommercialChangeRequestError('INVALID_INPUT', message, { reason, ...extra });
+    };
+    if (action_type === 'POLICY_ACTIVATE') {
+      const rows = await tx.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status FROM subscription."CommercialPolicyVersion" WHERE id = $1::uuid`, payload['policy_version_id']);
+      const status = rows[0]?.status;
+      if (status === undefined) invalid('policy_version_not_found', 'the policy version does not exist');
+      if (status === 'ACTIVE') invalid('policy_version_already_active', 'the policy version is already ACTIVE');
+      return;
+    }
+    const subject_user_id = payload['subject_user_id'] as string;
+    const role_key = payload['role_key'] as string;
+    const subject = await readPlatformSubject(tx, ctx.platform_tenant_id, subject_user_id, true);
+    if (!subject.is_platform_member) invalid('subject_not_platform_member', 'the subject is not an active platform administrator (a new admin arrives only through the invite)');
+    if (action_type === 'ROLE_GRANT') {
+      if (subject.role_keys.includes(role_key)) invalid('role_already_held', `the subject already holds ${role_key}`);
+      const ref = payload['human_ref_hash'] as string | undefined;
+      if (subject.attestation_id === null && ref === undefined) invalid('human_ref_required', 'the subject has no D9 attestation; human_ref_hash is required');
+      if (subject.attestation_id !== null && ref !== undefined) invalid('subject_already_attested', 'the subject is already attested; omit human_ref_hash');
+      if (ref !== undefined) {
+        const used = await tx.commercialOperatorAttestation.findFirst({ where: { human_ref_hash: ref, revoked_at: null }, select: { id: true } });
+        if (used !== null) invalid('human_ref_in_use', 'the human reference is attested for another account (D9)');
+      }
+      return;
+    }
+    if (!subject.role_keys.includes(role_key)) invalid('role_not_held', `the subject does not hold ${role_key}`);
+    if (role_key === PLATFORM_OWNER_ROLE_KEY) {
+      const others = (await effectivePlatformOwners(tx, ctx.platform_tenant_id)).filter((u) => u !== subject_user_id);
+      if (others.length === 0) throw new CommercialChangeRequestError('LAST_OWNER', 'the platform must keep at least one active platform_owner', { reason: 'platform_last_owner' });
+    }
   }
 
   /** Rejection by a checker eligible for the next unfilled step (same seven refusals). */

@@ -21,9 +21,9 @@ import { CommercialPolicyRepository } from './commercial-policy.repository.js';
 // Attestation (D9; Charter §5.1 "required for every holder of a commercial role"): a
 // user counts as a human for approval only with an ACTIVE CommercialOperatorAttestation.
 // Rows are written by the governed paths that create commercial-role holders — the CCP-A9
-// bootstrap command (method BOOTSTRAP, self) and the A9 role-change grant (method
-// PLATFORM_OWNER, attested by a distinct platform_owner). A3 ships the store and the
-// fail-closed read; it exposes no HTTP route that writes it.
+// bootstrap command (method BOOTSTRAP, self), the A9 role-change grant apply and the A9
+// platform-admin invite carrying a CCP role (method PLATFORM_OWNER, attested by a distinct
+// platform_owner). TD-A3-3 is closed by those CCP-A9 paths.
 
 type Tx = Parameters<Parameters<PrismaService['$transaction']>[0]>[0];
 type Client = PrismaService | Tx;
@@ -111,6 +111,16 @@ export class CommercialOperatorRepository {
     if (entry !== undefined) return entry;
     const a = await client.commercialOperatorAttestation.findFirst({ where: { user_id, revoked_at: null }, select: { id: true } });
     return { user_id, attested: a !== null, attestation_id: a?.id ?? null, role_keys: [], scopes: [] };
+  }
+
+  /** CCP-A9: the live facts for one user, read outside any caller transaction. */
+  async readOperatorNow(platform_tenant_id: string, user_id: string): Promise<LiveOperator> {
+    return this.readOperator(this.prisma, platform_tenant_id, user_id);
+  }
+
+  /** CCP-A9: true when `human_ref_hash` is already actively attested for some account (D9). */
+  async isHumanRefActive(human_ref_hash: string): Promise<boolean> {
+    return (await this.prisma.commercialOperatorAttestation.findFirst({ where: { human_ref_hash, revoked_at: null }, select: { id: true } })) !== null;
   }
 
   /**
