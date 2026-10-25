@@ -21,6 +21,7 @@ import {
   ApproveCommercialChangeRequestDto,
   type CommercialApprovalDto,
   type CommercialChangeRequestDetailDto,
+  type CommercialRoleChangeApplyDto,
   type CommercialChangeRequestDto,
   CreateCommercialChangeRequestDto,
   ListCommercialChangeRequestsQueryDto,
@@ -34,12 +35,16 @@ import {
 // (CCP A1 §4.1; INV-1, PBD §12), so super_admin is refused on every route. Below the gate
 // the service is the authority:
 //   create        the action's requester scope (A1 §4.1: subscription/entitlement/billing
-//                 :request, catalog:draft, subscription:support); governance actions have
-//                 no requester authority yet and are refused (TD-A3-5)
+//                 :request, catalog:draft, subscription:support); CCP-A9 (TD-A3-5): governance
+//                 actions need the live requester ROLE plus a D9 attestation — POLICY_ACTIVATE
+//                 a finance_admin, ROLE_GRANT / ROLE_REVOKE a platform_owner (the governed
+//                 role-change endpoint, pre-execution C-3)
 //   submit/withdraw  the requester only
 //   approve/reject   live eligibility in the transaction: the seven refusals; approve also
 //                 runs the chain-satisfiability gate (409 CCP_NOT_BOOTSTRAPPED)
-// Every act writes CommercialAuditEvent rows (CCP-A2 stream). Nothing is applied (A6).
+// Every act writes CommercialAuditEvent rows (CCP-A2 stream). CCP-A9: an approval that
+// completes a ROLE_GRANT / ROLE_REVOKE chain applies the role change right after (the
+// response carries `apply`); nothing else is applied (A6).
 
 @Controller('platform/commercial/change-requests')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -133,10 +138,15 @@ export class PlatformCommercialChangeRequestController {
     @Body() body: ApproveCommercialChangeRequestDto,
     @AuthContext() auth: AuthContextType,
     @RequestId() requestId: string,
-  ): Promise<{ request: CommercialChangeRequestDto; approval: CommercialApprovalDto }> {
+  ): Promise<{ request: CommercialChangeRequestDto; approval: CommercialApprovalDto; apply: CommercialRoleChangeApplyDto | null }> {
     this.platformOnly(auth, requestId);
     const out = await this.run(requestId, () => this.service.approve(actorOf(auth), id, { step_index: body.step_index, comment: body.comment ?? null }, ctxOf(requestId)));
-    return { request: requestDto(out.request), approval: approvalDto(out.approval) };
+    const apply = out.apply ?? null;
+    return {
+      request: requestDto(out.request),
+      approval: approvalDto(out.approval),
+      apply: apply === null ? null : { applied: apply.applied, reason: apply.reason, detail: apply.detail },
+    };
   }
 
   @Post(':id/reject')
@@ -198,6 +208,10 @@ export function toAramoError(err: unknown, requestId: string): unknown {
         return new AramoError('NOT_FOUND', err.message, 404, { requestId, details: d });
       case 'REQUESTER_SCOPE_MISSING':
         return new AramoError('INSUFFICIENT_PERMISSIONS', err.message, 403, { requestId, details: { reason: 'requester_scope_missing', ...d } });
+      case 'REQUESTER_ROLE_MISSING':
+        return new AramoError('INSUFFICIENT_PERMISSIONS', err.message, 403, { requestId, details: { reason: 'requester_role_missing', ...d } });
+      case 'LAST_OWNER':
+        return new AramoError('PLATFORM_LAST_OWNER', err.message, 409, { requestId, details: { reason: 'platform_last_owner' } });
       case 'REQUESTER_AUTHORITY_UNDEFINED':
         return new AramoError('INSUFFICIENT_PERMISSIONS', err.message, 403, { requestId, details: { reason: 'requester_authority_undefined', ...d } });
       case 'NOT_REQUESTER':
@@ -250,6 +264,7 @@ export function requestDto(r: CommercialChangeRequestRow): CommercialChangeReque
     rejection_reason: r.rejection_reason,
     withdrawn_at: iso(r.withdrawn_at),
     expired_at: iso(r.expired_at),
+    applied_at: iso(r.applied_at ?? null),
   };
 }
 
