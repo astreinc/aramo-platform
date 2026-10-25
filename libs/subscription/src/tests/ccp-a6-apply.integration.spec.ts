@@ -774,11 +774,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A6 transactio
     expect(await raises(`UPDATE subscription."CommercialChangeRequest" SET state = 'APPLY_FAILED' WHERE id = $1`, [id])).toBe('CommercialChangeRequest in terminal state APPLIED is immutable');
     expect(await raises(`DELETE FROM subscription."CommercialChangeApplication" WHERE change_request_id = $1`, [id])).toBe('CommercialChangeApplication is append-only (DELETE rejected)');
     expect(await raises(`UPDATE subscription."CommercialChangeApplication" SET attempt = 9 WHERE change_request_id = $1`, [id])).toBe('CommercialChangeApplication is append-only (UPDATE rejected)');
-    // A CREDIT (C4) has no apply transition yet.
+    // A CREDIT (C4): CCP-C4 gave it the apply transition (expectation change, TD-C4-9); without its
+    // durable provider command it can never commit in APPLYING (the C4 deferred backstop).
     const credit = await h.changeRequests.create(as(OPS, 'commercial_ops'), { action_type: 'CREDIT', tenant_id: await newTenant(pg), product_key: 'sign', payload: { amount_minor: 100, currency: 'USD' }, reason: 'credit', idempotency_key: key() }, A6_CTX);
     await h.changeRequests.submit(as(OPS, 'commercial_ops'), credit.request.id, A6_CTX);
     await h.changeRequests.approve(as(FA2, 'finance_admin'), credit.request.id, { step_index: 0 }, A6_CTX);
-    expect(await raises(`UPDATE subscription."CommercialChangeRequest" SET state = 'APPLYING', apply_attempts = 1 WHERE id = $1`, [credit.request.id])).toBe('CommercialChangeRequest state APPROVED -> APPLYING is not allowed');
+    expect(await raises(`UPDATE subscription."CommercialChangeRequest" SET state = 'APPLYING', apply_attempts = 1 WHERE id = $1`, [credit.request.id])).toBe(`CommercialChangeRequest ${credit.request.id} (CREDIT) cannot commit in APPLYING without a provider command`);
   });
 
   it('A6-SM-A9 preserved from CCP-A9: ROLE_GRANT / ROLE_REVOKE still move APPROVED → APPLYING → APPLIED after the A6 migration; APPLY_FAILED stays unreachable for them', async () => {

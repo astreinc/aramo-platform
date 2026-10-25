@@ -50,6 +50,13 @@ export {
 } from './lib/billing/stripe-billing.provider.js';
 // CCP-C3 — the read-only provider port, its GET-only Stripe adapter and the read-through status service.
 export {
+  BILLING_PROVIDER_ADJUSTMENT_PORT,
+  type BillingProviderAdjustmentPort,
+  type ProviderAdjustmentEffect,
+  type ProviderAdjustmentOperation,
+  type ProviderAdjustmentRequest,
+} from './lib/billing/billing-provider.port.js';
+export {
   BILLING_PROVIDER_READ_PORT,
   type BillingProviderReadPort,
   type ProviderInvoiceState,
@@ -74,8 +81,14 @@ export {
 } from './lib/billing/billing-status-read.service.js';
 // CCP-C1 — the Stripe command outbox and the webhook inbox.
 export {
+  ADJUSTMENT_PARAM_KEYS,
   BILLING_COMMAND_ACTIONS,
   BILLING_COMMAND_KINDS,
+  BILLING_COMMAND_KINDS_BY_ACTION,
+  C4_ADJUSTMENT_COMMAND_KINDS,
+  isAdjustmentCommandKind,
+  type AdjustmentCommandKind,
+  type AdjustmentCommandParams,
   BILLING_COMMAND_MAX_ATTEMPTS,
   BILLING_COMMAND_STATES,
   BILLING_COMMAND_TRANSITIONS,
@@ -273,6 +286,10 @@ export {
   COMMERCIAL_A6_APPLY_TRANSITIONS,
   COMMERCIAL_A9_ROLE_APPLY_TRANSITIONS,
   COMMERCIAL_C2_CONVERSION_TRANSITIONS,
+  COMMERCIAL_C4_ADJUSTMENT_TRANSITIONS,
+  C4_BILLING_ADJUSTMENT_ACTIONS,
+  isBillingAdjustmentAction,
+  type C4BillingAdjustmentAction,
   COMMERCIAL_B5R_POLICY_APPLY_TRANSITIONS,
   APPLY_EXPIRABLE_ACTIONS,
   isApplyExpirable,
@@ -421,6 +438,29 @@ export {
 } from './lib/commercial/commercial-conversion.js';
 export { CommercialConversionLedger, type ConversionReleaseRow } from './lib/commercial/commercial-conversion.ledger.js';
 export { CommercialConversionService, type ConversionApplyResult, type ConversionStatus, type ConversionView } from './lib/commercial/commercial-conversion.service.js';
+// CCP-C4 — credits, discounts and refunds (Stripe test mode; NOT DELIVERED until the refund policy).
+export {
+  ADJUSTMENT_STEP,
+  AMOUNT_WITHHELD_MARKER,
+  BillingAdjustmentFailure,
+  type BillingAdjustmentFailureCode,
+  type BillingAdjustmentOperation,
+  BillingAdjustmentRefusedError,
+  type BillingAdjustmentRefusalCode,
+  REFUND_EXECUTION_FLAG,
+  REFUND_POLICY_NOT_APPROVED,
+  adjustmentOperationOf,
+  discountCouponRef,
+  refundExecutionEnabled,
+  withholdAmounts,
+} from './lib/commercial/commercial-billing-adjustment.js';
+export { CommercialBillingAdjustmentLedger, type AdjustmentConfirmOutcome, type CommercialBillingAdjustmentRow } from './lib/commercial/commercial-billing-adjustment.ledger.js';
+export {
+  CommercialBillingAdjustmentService,
+  type BillingAdjustmentApplyResult,
+  type BillingAdjustmentStatus,
+  type BillingAdjustmentView,
+} from './lib/commercial/commercial-billing-adjustment.service.js';
 // CCP-A8 (PBD §5.1 row A8; DDR v1.2 §3.2(5)) — the support exception overlay.
 export {
   SUPPORT_EXTENSION_SCOPE,

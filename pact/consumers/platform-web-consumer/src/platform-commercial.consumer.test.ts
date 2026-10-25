@@ -34,7 +34,7 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 // commercial tenant (change requests and approvals are append-only, and Q14 allows one
 // open request per tenant × product).
 //
-// Coverage — CCP routes (30):
+// Coverage — CCP routes (32):
 //   GET  /platform/commercial/audit-events                      (CCP-A2)
 //   POST /platform/commercial/change-requests                   (CCP-A3)
 //   GET  /platform/commercial/change-requests
@@ -52,6 +52,8 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 //   GET  /platform/commercial/billing-webhook-inbox             (CCP-C1)
 //   POST /platform/commercial/change-requests/{id}/convert      (CCP-C2)
 //   GET  /platform/commercial/change-requests/{id}/conversion   (CCP-C2)
+//   POST /platform/commercial/change-requests/{id}/billing-adjustment (CCP-C4)
+//   GET  /platform/commercial/change-requests/{id}/billing-adjustment (CCP-C4)
 //   GET  /platform/commercial/tenants/{tenant_id}/billing-status (CCP-C3)
 //   GET  /platform/commercial/billing-portal-configuration      (CCP-C3)
 //   GET  /platform/commercial/finance/renewals                  (CCP-C6)
@@ -262,6 +264,8 @@ const GATE_ROUTES: readonly GateRoute[] = [
   { name: 'GET billing-webhook-inbox', method: 'GET', path: INBOX, scope: 'platform:billing:read' },
   { name: 'POST change-requests/{id}/convert', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/convert`, scope: 'platform:approval:read' },
   { name: 'GET change-requests/{id}/conversion', method: 'GET', path: `${CR}/${EX_REQUEST_ID}/conversion`, scope: 'platform:approval:read' },
+  { name: 'POST change-requests/{id}/billing-adjustment', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/billing-adjustment`, scope: 'platform:approval:read' },
+  { name: 'GET change-requests/{id}/billing-adjustment', method: 'GET', path: `${CR}/${EX_REQUEST_ID}/billing-adjustment`, scope: 'platform:approval:read' },
   { name: 'GET tenants/{tenant_id}/billing-status', method: 'GET', path: BILLING_STATUS, scope: 'platform:billing:read' },
   { name: 'GET billing-portal-configuration', method: 'GET', path: PORTAL_CONFIG, scope: 'platform:billing:read' },
   { name: 'GET finance/renewals', method: 'GET', path: RENEWALS, scope: 'platform:billing:read' },
@@ -1211,6 +1215,121 @@ describe('platform-web → GET /platform/commercial/change-requests/{id}/convers
               confirmed_at: null,
             }),
             application: null,
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${read()}`, 'GET', platformSession('read_only_auditor'));
+        expect(res.status).toBe(200);
+      });
+  });
+});
+
+// ── CCP-C4 — credits, discounts and refunds (Stripe test mode; NOT DELIVERED until the refund policy)
+
+describe('platform-web → POST /platform/commercial/change-requests/{id}/billing-adjustment (CCP-C4)', () => {
+  const adjust = (requestId = EX_REQUEST_ID) => `${CR}/${requestId}/billing-adjustment`;
+
+  it('the requester (commercial_ops) applies an approved credit (200 PENDING_PROVIDER: one durable command, nothing reported applied; no tenant-specific amount in the body)', async () => {
+    await provider
+      .addInteraction()
+      .given('an approved credit on a self-service tenant exists')
+      .uponReceiving('a billing-adjustment apply by its requester')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/billing-adjustment`, adjust()), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          replayed: false,
+          request: {
+            id: uuid(EX_REQUEST_ID),
+            action_type: 'CREDIT',
+            state: 'APPLYING',
+            payload: { currency: 'USD', amount_withheld: 'FINANCE_SCOPE_PENDING' },
+            required_chain: like({ rule: 'FINANCE_ONLY' }),
+            requested_by: OP.commercial_ops,
+          },
+          adjustment: {
+            operation: 'CREDIT_GRANT',
+            status: 'PENDING_PROVIDER',
+            pending_provider: true,
+            refund_execution_disabled: false,
+            record: null,
+            commands: eachLike({
+              command_kind: 'CREDIT_GRANT',
+              change_request_id: uuid(EX_REQUEST_ID),
+              step: 'credit_grant',
+              idempotency_key: regex('^aramo-ccp-[0-9a-f-]{36}-credit_grant$', `aramo-ccp-${EX_REQUEST_ID}-credit_grant`),
+              params: like({ currency: 'USD', amount_withheld: 'FINANCE_SCOPE_PENDING' }),
+              state: 'PENDING',
+              pending_provider: true,
+              confirmed_at: null,
+            }),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${adjust()}`, 'POST', platformSession('commercial_ops'));
+        expect(res.status).toBe(200);
+      });
+  });
+
+  it('a role without the requester authority (finance_admin) is refused (403 requester_scope_missing)', async () => {
+    await provider
+      .addInteraction()
+      .given('an approved credit on a self-service tenant exists')
+      .uponReceiving('a billing-adjustment apply by a role without the requester scope')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/billing-adjustment`, adjust()), (b) => {
+        b.headers(platformSession('finance_admin'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(errorBody('INSUFFICIENT_PERMISSIONS', { reason: 'requester_scope_missing', missing_scopes: ['platform:billing:request'] }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${adjust()}`, 'POST', platformSession('finance_admin'));
+        expect(res.status).toBe(403);
+      });
+  });
+
+  it('an approved refund is refused by the designed disabled state (409 apply_refused REFUND_POLICY_NOT_APPROVED; nothing sent to Stripe)', async () => {
+    await provider
+      .addInteraction()
+      .given('an approved refund exists')
+      .uponReceiving('a refund apply while the refund policy is not approved')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/billing-adjustment`, adjust()), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(409, (b) => {
+        b.jsonBody(errorBody('COMMERCIAL_CHANGE_REQUEST_CONFLICT', { reason: 'apply_refused', refusal: 'REFUND_POLICY_NOT_APPROVED', explanation: like('Refunds are not available yet.') }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${adjust()}`, 'POST', platformSession('commercial_ops'));
+        expect(res.status).toBe(409);
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/change-requests/{id}/billing-adjustment (CCP-C4)', () => {
+  const read = (requestId = EX_REQUEST_ID) => `${CR}/${requestId}/billing-adjustment`;
+
+  it('read_only_auditor reads a credit pending at the provider (200 pending_provider: true; never reported applied; amounts withheld)', async () => {
+    await provider
+      .addInteraction()
+      .given('a credit is pending at the provider')
+      .uponReceiving('a pending-provider billing adjustment read by read_only_auditor')
+      .withRequest('GET', fromProviderState(`${CR}/\${requestId}/billing-adjustment`, read()), (b) => {
+        b.headers(platformSession('read_only_auditor'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          request: { id: uuid(EX_REQUEST_ID), action_type: 'CREDIT', state: 'APPLYING', payload: { currency: 'USD', amount_withheld: 'FINANCE_SCOPE_PENDING' }, requested_by: OP.commercial_ops },
+          adjustment: {
+            operation: 'CREDIT_GRANT',
+            status: 'PENDING_PROVIDER',
+            pending_provider: true,
+            refund_execution_disabled: false,
+            record: null,
+            commands: eachLike({ command_kind: 'CREDIT_GRANT', state: 'PENDING', pending_provider: true, params: like({ amount_withheld: 'FINANCE_SCOPE_PENDING' }) }),
           },
         });
       })

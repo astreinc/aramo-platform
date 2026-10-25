@@ -4,6 +4,7 @@ import { v7 as uuidv7 } from 'uuid';
 import { type AllowanceReadResult, AllowanceService, subscriptionSends } from '../allowance.service.js';
 import { addMonthsClamped } from '../billing-period.js';
 import { CapacityService, type CapacityStatus } from '../capacity.service.js';
+import { CommercialBillingAdjustmentLedger } from '../commercial/commercial-billing-adjustment.ledger.js';
 import { CommercialConversionLedger, type ConversionReleaseRow } from '../commercial/commercial-conversion.ledger.js';
 import { isFeatureAvailable } from '../feature-availability.js';
 import { LEGAL_DOCUMENTS, LEGAL_DOCUMENT_REGISTRY, approvedLegalDocument, type LegalDocumentVersion } from '../legal/legal-documents.js';
@@ -13,8 +14,10 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { BASE_COMPOSITION, assertProductKey, openBaseSubscription, type ProductKey } from '../product-registry.js';
 
 import {
+  BILLING_PROVIDER_ADJUSTMENT_PORT,
   BILLING_PROVIDER_COMMAND_PORT,
   BILLING_PROVIDER_PORT,
+  type BillingProviderAdjustmentPort,
   type BillingProviderCommandPort,
   type BillingProviderPort,
   BillingProviderUnavailableError,
@@ -22,10 +25,14 @@ import {
   type VerifiedBillingEvent,
 } from './billing-provider.port.js';
 import {
+  BILLING_COMMAND_UNCONFIRMED_STATES,
   type BillingCommandConfirmation,
+  C4_ADJUSTMENT_COMMAND_KINDS,
   REFETCH_CONFIRMATION,
   confirmSessionCommandsInTx,
   confirmSubscriptionCommandsInTx,
+  adjustmentRequestOf,
+  isAdjustmentCommandKind,
 } from './billing-provider-command.js';
 import { ORGANIZATION_BILLING_PROFILE_PORT, type OrganizationBillingProfile, type OrganizationBillingProfilePort } from './organization-billing-profile.port.js';
 import { PLAN_ELIGIBILITY_PORT, type PlanEligibilityPort, type PlanEligibilityRule } from './plan-eligibility.port.js';
@@ -322,6 +329,10 @@ export class SubscriptionLifecycleService {
     // CCP-C2 — the conversion ledger (releases, webhook-time conversion, confirmed-end completion).
     // Unbound: no release is honoured (every governed checkout is refused or held, as in A6).
     @Optional() @Inject(CommercialConversionLedger) private readonly conversions?: CommercialConversionLedger,
+    // CCP-C4 — the billing-adjustment re-read and its in-transaction completion. Unbound: an
+    // adjustment command is never confirmed here (fail-safe: it stays pending-provider, C-23).
+    @Optional() @Inject(BILLING_PROVIDER_ADJUSTMENT_PORT) private readonly adjustments?: BillingProviderAdjustmentPort,
+    @Optional() @Inject(CommercialBillingAdjustmentLedger) private readonly adjustmentLedger?: CommercialBillingAdjustmentLedger,
   ) {
     this.legal = legal ?? LEGAL_DOCUMENTS;
   }
@@ -679,12 +690,24 @@ export class SubscriptionLifecycleService {
     const confirmation: BillingCommandConfirmation = { source: 'WEBHOOK', event_id: evt.id };
     const session = evt.checkout_session_ref ?? null;
     // A provider failure throws here: nothing is recorded, the redelivery retries.
-    const result: ApplyResult =
+    let result: ApplyResult =
       ref !== null
         ? await this.syncSubscription(ref, product_key, at, confirmation)
         : evt.type === 'checkout.session.expired' && session !== null && this.providerCommands !== undefined
           ? await this.syncCheckoutSession(session, product_key, at, confirmation)
           : { outcome: 'IGNORED', detail: `event ${evt.type} carries no subscription`, tenant_id: null };
+    // CCP-C4 — a verified event about a provider object of a pending billing adjustment (its own
+    // object, or the subscription a discount acts on) re-reads that adjustment's effect and, when
+    // the provider shows it, completes the request in the applying transaction (C-22, C-23).
+    const adjusted = await this.syncAdjustmentsForEvent(evt, product_key, at, confirmation);
+    if (adjusted.length > 0) {
+      const applied = adjusted.filter((a) => a.outcome === 'APPLIED');
+      const detail = `billing adjustment(s) ${adjusted.map((a) => a.detail).join(', ')}`;
+      result =
+        result.outcome === 'IGNORED' && applied.length > 0
+          ? { outcome: 'APPLIED', detail, tenant_id: applied[0]?.tenant_id ?? result.tenant_id }
+          : { ...result, detail: `${result.detail ?? ''}; ${detail}` };
+    }
 
     await this.prisma.billingEvent.createMany({
       data: [
@@ -702,6 +725,54 @@ export class SubscriptionLifecycleService {
       skipDuplicates: true,
     });
     return result;
+  }
+
+  /** CCP-C4 — the pending adjustment commands a verified event concerns, each re-read and applied. */
+  private async syncAdjustmentsForEvent(evt: VerifiedBillingEvent, product_key: ProductKey, at: Date, confirmation: BillingCommandConfirmation): Promise<ApplyResult[]> {
+    if (this.adjustments === undefined || this.adjustmentLedger === undefined) return [];
+    const object_ref = evt.object_ref ?? null;
+    const ors = [
+      ...(object_ref !== null ? [{ provider_object_ref: object_ref }] : []),
+      ...(evt.subscription_ref !== null ? [{ command_kind: { in: ['DISCOUNT_APPLY', 'DISCOUNT_REMOVE'] }, target_ref: evt.subscription_ref }] : []),
+    ];
+    if (ors.length === 0) return [];
+    const cmds = await this.prisma.billingProviderCommand.findMany({
+      where: { provider: this.billing.provider, product_key, command_kind: { in: [...C4_ADJUSTMENT_COMMAND_KINDS] }, state: { in: [...BILLING_COMMAND_UNCONFIRMED_STATES] }, OR: ors },
+      orderBy: [{ created_at: 'asc' }, { id: 'asc' }],
+      take: 20,
+    });
+    const out: ApplyResult[] = [];
+    for (const c of cmds) out.push(await this.syncAdjustmentCommand(c.id, product_key, at, confirmation));
+    return out;
+  }
+
+  /**
+   * CCP-C4 — re-read one billing adjustment's effect at the provider (outside any transaction) and,
+   * when the provider shows it, CONFIRM the command, record the adjustment and apply the request in
+   * ONE transaction under the billing lock (CommercialBillingAdjustmentLedger). Until then the
+   * request stays APPLYING (pending-provider, C-23).
+   */
+  async syncAdjustmentCommand(command_id: string, product_key: ProductKey, at: Date = new Date(), confirmation: BillingCommandConfirmation = REFETCH_CONFIRMATION): Promise<ApplyResult> {
+    assertProductKey(product_key);
+    if (this.adjustments === undefined || this.adjustmentLedger === undefined) return { outcome: 'IGNORED', detail: 'billing adjustments are not configured', tenant_id: null };
+    const cmd = await this.prisma.billingProviderCommand.findUnique({ where: { id: command_id } });
+    if (cmd === null || !isAdjustmentCommandKind(cmd.command_kind) || cmd.product_key !== product_key) return { outcome: 'IGNORED', detail: 'not a billing adjustment of this product', tenant_id: null };
+    if (!(BILLING_COMMAND_UNCONFIRMED_STATES as readonly string[]).includes(cmd.state)) return { outcome: 'IGNORED', detail: `${cmd.command_kind} ${cmd.state}`, tenant_id: cmd.tenant_id };
+    // The provider read runs before (outside) the local transaction.
+    const effect = await this.adjustments.readAdjustmentEffect(adjustmentRequestOf(cmd), cmd.provider_object_ref);
+    if (effect.tenant_id !== null && effect.tenant_id !== cmd.tenant_id) {
+      this.log.warn(`billing adjustment tenant mismatch for command ${cmd.id}`);
+      return { outcome: 'IGNORED', detail: 'provider metadata tenant does not match the command', tenant_id: cmd.tenant_id };
+    }
+    if (!effect.present) return { outcome: 'IGNORED', detail: `${cmd.command_kind} not yet in effect at the provider`, tenant_id: cmd.tenant_id };
+    const ledger = this.adjustmentLedger;
+    const done = await this.prisma.$transaction(async (tx) => {
+      await takeBillingLock(tx, cmd.tenant_id);
+      return ledger.confirmInTx(tx, { command_id: cmd.id, effect, confirmation, at, correlation_id: `billing:${confirmation.source.toLowerCase()}:${confirmation.event_id ?? cmd.id}` });
+    });
+    return done.outcome === 'APPLIED'
+      ? { outcome: 'APPLIED', detail: `${cmd.command_kind} confirmed; request ${done.change_request_id} APPLIED`, tenant_id: cmd.tenant_id }
+      : { outcome: 'IGNORED', detail: done.detail, tenant_id: cmd.tenant_id };
   }
 
   /** Re-fetch one provider subscription and apply its current state. */

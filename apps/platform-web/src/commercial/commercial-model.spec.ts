@@ -125,6 +125,19 @@ describe('the stepper (handoff §4 CrStepper)', () => {
   it('applied: every chip done', () => {
     expect(stateSteps('APPLIED').map((s) => s.mark)).toEqual(['done', 'done', 'done', 'done', 'done']);
   });
+  // CCP-C4 — handoff §4: "While a Stripe-side request is Applying, that chip reads 'Sent to Stripe —
+  // awaiting confirmation'" (Conversion Rule C-23).
+  it('CCP-C4: a credit, discount or refund in Applying shows "Sent to Stripe — awaiting confirmation" on the current chip; other types and other states keep "Applying"', () => {
+    for (const a of ['CREDIT', 'DISCOUNT', 'REFUND']) {
+      const s = stateSteps('APPLYING', a);
+      expect(s.map((x) => x.mark)).toEqual(['done', 'done', 'done', 'current', 'todo']);
+      expect(s[3]?.label).toBe('Sent to Stripe — awaiting confirmation');
+      expect(stateSteps('APPLIED', a)[3]?.label).toBe('Applying');
+      expect(stateSteps('APPROVED', a)[3]?.label).toBe('Applying');
+    }
+    expect(stateSteps('APPLYING', 'SUBSCRIPTION_CHANGE')[3]?.label).toBe('Applying');
+    expect(stateSteps('APPLYING')[3]?.label).toBe('Applying');
+  });
   it('rejected: the reached chip ✕, later chips dimmed, a terminal chip appended', () => {
     const s = stateSteps('REJECTED');
     expect(s.map((x) => x.mark)).toEqual(['done', 'failed', 'todo', 'todo', 'todo', 'terminal']);

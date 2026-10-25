@@ -240,7 +240,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A6-R apply de
     const credit = await h.changeRequests.create(as(OPS, 'commercial_ops'), { action_type: 'CREDIT', tenant_id: await newTenant(pg), product_key: 'sign', payload: { amount_minor: 100, currency: 'USD' }, reason: 'credit', idempotency_key: key() }, A6_CTX);
     await h.changeRequests.submit(as(OPS, 'commercial_ops'), credit.request.id, A6_CTX);
     await h.changeRequests.approve(as(FA, 'finance_admin'), credit.request.id, { step_index: 0 }, A6_CTX);
-    expect(await raises(`UPDATE subscription."CommercialChangeRequest" SET state = 'APPLY_EXPIRED' WHERE id = $1`, [credit.request.id])).toBe('CommercialChangeRequest state APPROVED -> APPLY_EXPIRED is not allowed');
+    // CCP-C4 (expectation change, TD-C4-9): CREDIT is now an applyable type (the C4 billing
+    // adjustment), so AD-4 admits APPROVED -> APPLY_EXPIRED for it like every other applyable type; no
+    // action type remains outside AD-4. Probed in a rolled-back transaction.
+    await pg.query('BEGIN');
+    await pg.query(`UPDATE subscription."CommercialChangeRequest" SET state = 'APPLY_EXPIRED' WHERE id = $1`, [credit.request.id]);
+    expect((await pg.query(`SELECT state FROM subscription."CommercialChangeRequest" WHERE id = $1`, [credit.request.id])).rows[0].state).toBe('APPLY_EXPIRED');
+    await pg.query('ROLLBACK');
     // The state CHECK admits the new value (widened additively).
     const check = (await pg.query(`SELECT pg_get_constraintdef(oid) d FROM pg_constraint WHERE conname = 'CommercialChangeRequest_state_check'`)).rows[0].d as string;
     expect(check).toContain("'APPLY_EXPIRED'");

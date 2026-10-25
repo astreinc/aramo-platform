@@ -392,6 +392,35 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     }
 
     /**
+     * CCP-C4 — an APPROVED billing adjustment on a fresh tenant holding a Stripe-owned (SELF_SERVICE,
+     * provider-linked) Sign row: commercial_ops requests, finance_admin (and platform_owner when the
+     * snapshotted chain escalates) approves, through the HTTP surface.
+     */
+    async function approvedAdjustment(action_type: 'CREDIT' | 'DISCOUNT' | 'REFUND', payload: Record<string, unknown>): Promise<string> {
+      const tenant_id = await commercialTenant();
+      const ss = randomUUID();
+      await db.query(
+        `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by, billing_provider, billing_account_ref, billing_subscription_ref)
+         SELECT $1::uuid, $2::uuid, p.id, (SELECT v.id FROM subscription."PlanVersion" v WHERE v.plan_id = p.id AND v.status = 'PUBLISHED'), p.product_key, 'BASE', now(), 'SELF_SERVICE', 'pact-c4', 'STRIPE', $3, $4
+           FROM subscription."Plan" p WHERE p.key = 'aramo-sign-standard-business-v1'`,
+        [ss, tenant_id, `acct_${tenant_id}`, `sub_${ss}`],
+      );
+      const out = await asRole<{ request: { id: string; state: string } }>('commercial_ops', 'POST', '/platform/commercial/change-requests', {
+        action_type,
+        tenant_id,
+        product_key: 'sign',
+        payload,
+        reason: 'Credit for a service outage',
+        idempotency_key: `pact-c4-state-${String(++seq).padStart(4, '0')}`,
+      });
+      const id = out.request.id;
+      await asRole('commercial_ops', 'POST', `/platform/commercial/change-requests/${id}/submit`);
+      const a = await asRole<{ request: { state: string } }>('finance_admin', 'POST', `/platform/commercial/change-requests/${id}/approvals`, { step_index: 0 });
+      if (a.request.state !== 'APPROVED') await asRole('platform_owner', 'POST', `/platform/commercial/change-requests/${id}/approvals`, { step_index: 1 });
+      return id;
+    }
+
+    /**
      * CCP-A8 — a commercial tenant holding a Stripe-owned (SELF_SERVICE, provider-linked) Sign row,
      * PAST_DUE, whose grace ended a day ago: the target of a support extension. Fixed ids from the
      * consumer (its request body names them).
@@ -441,6 +470,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         STRIPE_PORTAL_CONFIGURATION: undefined,
         // CCP-D3 — the alert scanner stays off; the alert states below seed the register.
         CCP_ALERTS_ENABLED: undefined,
+        // CCP-C4 — the refund execution path stays in its designed disabled state (default off).
+        CCP_REFUND_EXECUTION_ENABLED: undefined,
       };
       for (const [k, v] of Object.entries(env)) {
         savedEnv[k] = process.env[k];
@@ -823,6 +854,15 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             await asRole('commercial_ops', 'POST', `/platform/commercial/change-requests/${requestId}/convert`);
             return { requestId };
           },
+          // CCP-C4 — billing adjustments on a Stripe-owned (SELF_SERVICE, provider-linked) Sign row.
+          // No provider is configured in the harness: a command is enqueued and never dispatched.
+          'an approved credit on a self-service tenant exists': async () => ({ requestId: await approvedAdjustment('CREDIT', { amount_minor: 100, currency: 'USD' }) }),
+          'a credit is pending at the provider': async () => {
+            const requestId = await approvedAdjustment('CREDIT', { amount_minor: 100, currency: 'USD' });
+            await asRole('commercial_ops', 'POST', `/platform/commercial/change-requests/${requestId}/billing-adjustment`);
+            return { requestId };
+          },
+          'an approved refund exists': async () => ({ requestId: await approvedAdjustment('REFUND', { amount_minor: 100, currency: 'USD', provider_invoice_ref: 'in_pactc4refund' }) }),
           // CCP-A8 — the support exception overlay.
           'a tenant with a past-due Stripe-owned Sign subscription exists': async (params?: unknown) => {
             const p = params as { tenant_id?: unknown; subscription_id?: unknown } | undefined;

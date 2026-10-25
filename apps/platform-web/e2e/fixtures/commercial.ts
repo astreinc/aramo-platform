@@ -185,6 +185,11 @@ export interface CcpWorldOptions {
   policyRequest?: boolean;
   /** The next approve of these ids answers this 409 (the backend refuses although the verdict said OK). */
   refuseApprove?: Readonly<Record<string, { code: string; details: Record<string, unknown> }>>;
+  /**
+   * CCP-C4 — these requests are fully signed, applied by their requester and pending at the provider
+   * (APPLYING; a Stripe-side credit / discount / refund — the prototype's "Sent to Stripe").
+   */
+  applying?: readonly string[];
 }
 
 /** A stateful Commercial API: approve / reject / submit / withdraw change what the next read returns. */
@@ -198,10 +203,12 @@ export class CcpWorld {
   constructor(private readonly o: CcpWorldOptions) {
     const seeds = o.policyRequest ? [...SEEDS.slice(0, 5), POLICY_SEED, ...SEEDS.slice(5)] : SEEDS;
     this.requests = o.empty ? [] : seeds.map(toRequest);
+    for (const r of this.requests) if ((o.applying ?? []).includes(r.id)) Object.assign(r, { state: 'APPLYING', approved_at: ago(1) });
     for (const s of seeds) {
+      const signed: ReadonlyArray<readonly [string, number]> = (o.applying ?? []).includes(s.id) && (s.signed ?? []).length === 0 ? [[PEOPLE.priya, 1]] : (s.signed ?? []);
       this.approvals.set(
         s.id,
-        (s.signed ?? []).map(([who, h], i) => ({
+        signed.map(([who, h], i) => ({
           id: `0c3aa${String(i)}00-0000-7000-8000-00000000${s.id.slice(-4)}`,
           step_index: i,
           approver_user_id: who,

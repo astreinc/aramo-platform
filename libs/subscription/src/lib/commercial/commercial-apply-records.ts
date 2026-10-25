@@ -68,6 +68,12 @@ export const APPLY_EXPLANATIONS: Readonly<Record<string, string>> = {
   POLICY_TARGET_MALFORMED: 'The policy version content does not parse as a commercial policy.',
   POLICY_ACTIVE_CHANGED: 'Another policy version became active after this request was raised; raise a new request against the current policy.',
   UNEXPECTED: 'The apply failed unexpectedly and was rolled back; it can be retried.',
+  // CCP-C4 — the Stripe-side billing adjustments (credits, discounts, refunds)
+  REFUND_POLICY_NOT_APPROVED: 'Refunds are not available yet: the refund policy has not been approved. Nothing was sent to Stripe.',
+  TARGET_NOT_SELF_SERVICE: 'The tenant has no self-service (Stripe-managed) subscription of this product; credits, discounts and refunds are sent to Stripe only for those.',
+  COMPENSATION_TARGET_INVALID: 'The request this one compensates is not an applied request of the same kind, tenant and product.',
+  COMPENSATION_MISMATCH: 'A compensation must reverse exactly the amount, currency or percentage of the request it compensates.',
+  ALREADY_COMPENSATED: 'The request named here has already been compensated.',
 };
 
 export const explanationOf = (code: string): string => APPLY_EXPLANATIONS[code] ?? 'The change could not be applied.';

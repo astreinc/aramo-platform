@@ -1,5 +1,6 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { adjustmentRequestOf } from '../lib/billing/billing-provider-command.js';
 import { StripeBillingProvider, stripeEventSubscriptionRef, stripeSubscriptionState } from '../lib/billing/stripe-billing.provider.js';
 import { StripeBillingReadAdapter } from '../lib/billing/stripe-billing-read.adapter.js';
 import {
@@ -10,6 +11,7 @@ import {
   wireAccountRef,
   wireCheckoutAccountParams,
   wireInvoiceListPath,
+  wireInvoicePayment,
   wireInvoiceState,
   wireListData,
   wirePortalAccountParams,
@@ -314,4 +316,51 @@ describe('CCP-C3 StripeBillingReadAdapter (GET-only) against a local stand-in', 
     process.env['STRIPE_SECRET_KEY'] = 'rk_live_x';
     expect(a.mode()).toBe('live');
   });
+});
+
+// CCP-C4 — the refund wire path against a stubbed fetch (no network; a sk_test_ placeholder). Kept
+// here because the invoice fixtures are Stripe-shaped (C4-U-11, cited by CCP-C4-acceptance.md).
+describe('CCP-C4 Stripe refund wire (stubbed fetch)', () => {
+  const U = '019a0000-0000-7000-8000-0000000c4001';
+  const env = { ...process.env };
+  let calls: { method: string; url: string; body: string | undefined; idem: string | undefined }[] = [];
+  let replies: Array<{ status: number; json: unknown }> = [];
+  const c4 = new StripeBillingProvider();
+  beforeEach(() => {
+    process.env['STRIPE_SECRET_KEY'] = 'sk_test_c4_placeholder';
+    process.env['STRIPE_API_BASE'] = 'http://stripe.c4.invalid';
+    calls = [];
+    replies = [];
+    vi.stubGlobal('fetch', async (url: string, init: { method: string; body?: string; headers: Record<string, string> }) => {
+      calls.push({ method: init.method, url, body: init.body, idem: init.headers['idempotency-key'] });
+      const r = replies.shift() ?? { status: 200, json: {} };
+      return { ok: r.status < 400, status: r.status, json: async () => r.json } as unknown as Response;
+    });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    process.env = { ...env };
+  });
+
+  it('C4-U-13 wireInvoicePayment reads the paying account and the payment', () => {
+    expect(wireInvoicePayment({ customer: 'cus_1', payment_intent: { id: 'pi_1' }, currency: 'usd', amount_paid: 900 })).toEqual({ account_ref: 'cus_1', payment_ref: 'pi_1', currency: 'usd', amount_paid_minor: 900 });
+  });
+
+  it('C4-U-11 refund: the invoice is read first and must have been paid from the tenant account; then ONE keyed refund POST on its payment', async () => {
+    const r = adjustmentRequestOf({ id: U, command_kind: 'REFUND_CREATE', tenant_id: 'ten-1', target_ref: 'in_1', params: { subscription_id: U, amount_minor: 4_000, currency: 'USD', account_ref: 'acct_1' } });
+    replies.push({ status: 200, json: { id: 'in_1', customer: 'acct_other', payment_intent: 'pi_1' } });
+    await expect(c4.executeAdjustment(r, 'k')).rejects.toMatchObject({ retryable: false });
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([]);
+    replies.push({ status: 200, json: { id: 'in_1', customer: 'acct_1', payment_intent: 'pi_1' } }, { status: 200, json: { id: 're_1', status: 'pending' } });
+    expect(await c4.executeAdjustment(r, 'k')).toEqual({ object_ref: 're_1' });
+    const post = calls.filter((c) => c.method === 'POST');
+    expect(post).toHaveLength(1);
+    expect(post[0]?.url).toMatch(/\/v1\/refunds$/);
+    expect(new URLSearchParams(post[0]?.body).get('payment_intent')).toBe('pi_1');
+    expect(new URLSearchParams(post[0]?.body).get('amount')).toBe('4000');
+    // a pending refund is not yet the effect (pending until the refund succeeds)
+    replies.push({ status: 200, json: { id: 're_1', status: 'pending', amount: 4_000, metadata: { aramo_command_id: U } } });
+    expect(await c4.readAdjustmentEffect(r, 're_1')).toMatchObject({ present: false, provider_status: 'pending' });
+  });
+
 });

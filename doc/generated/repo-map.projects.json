@@ -2177,6 +2177,9 @@
     ],
     "@aramo/subscription": [
       "A6_APPLICABLE_ACTIONS",
+      "ADJUSTMENT_PARAM_KEYS",
+      "ADJUSTMENT_STEP",
+      "AMOUNT_WITHHELD_MARKER",
       "APPLY_EXPIRABLE_ACTIONS",
       "APPLY_EXPLANATIONS",
       "APPLY_SERVICE_ACTIONS",
@@ -2189,12 +2192,14 @@
       "BASE_COMPOSITION",
       "BILLING_COMMAND_ACTIONS",
       "BILLING_COMMAND_KINDS",
+      "BILLING_COMMAND_KINDS_BY_ACTION",
       "BILLING_COMMAND_MAX_ATTEMPTS",
       "BILLING_COMMAND_STATES",
       "BILLING_COMMAND_TRANSITIONS",
       "BILLING_COMMAND_UNCONFIRMED_STATES",
       "BILLING_COUNTRY_NOT_SUPPORTED",
       "BILLING_PRICE_PROVIDER",
+      "BILLING_PROVIDER_ADJUSTMENT_PORT",
       "BILLING_PROVIDER_COMMAND_PORT",
       "BILLING_PROVIDER_PORT",
       "BILLING_PROVIDER_READ_PORT",
@@ -2205,6 +2210,8 @@
       "BOOTSTRAP_CLI_FLAGS",
       "BOOTSTRAP_PLATFORM_TENANT_ID",
       "BOOTSTRAP_TARGET_EMAIL",
+      "BillingAdjustmentFailure",
+      "BillingAdjustmentRefusedError",
       "BillingCommandError",
       "BillingCommandService",
       "BillingFinanceReportService",
@@ -2216,6 +2223,8 @@
       "BillingWebhookInboxService",
       "BillingWebhookSignatureError",
       "C16_QUERY_A",
+      "C4_ADJUSTMENT_COMMAND_KINDS",
+      "C4_BILLING_ADJUSTMENT_ACTIONS",
       "CATALOG_ACTION_TYPES",
       "CATALOG_DRAFT_SCOPE",
       "CATALOG_ENVELOPE_ALLOWANCE_KEY",
@@ -2248,6 +2257,7 @@
       "COMMERCIAL_AUDIT_MAX_LIMIT",
       "COMMERCIAL_B5R_POLICY_APPLY_TRANSITIONS",
       "COMMERCIAL_C2_CONVERSION_TRANSITIONS",
+      "COMMERCIAL_C4_ADJUSTMENT_TRANSITIONS",
       "COMMERCIAL_CATALOG_APPLY_FAULT_HOOK",
       "COMMERCIAL_CHAIN_PANEL",
       "COMMERCIAL_CHANGE_REQUEST_KINDS",
@@ -2285,6 +2295,8 @@
       "CommercialAuditExportService",
       "CommercialAuditExportTooLargeError",
       "CommercialAuditRepository",
+      "CommercialBillingAdjustmentLedger",
+      "CommercialBillingAdjustmentService",
       "CommercialCatalogApplyService",
       "CommercialCatalogError",
       "CommercialCatalogPlanView",
@@ -2356,6 +2368,8 @@
       "PlatformOwnerBootstrapRefusedError",
       "PolicyActivationRefusedError",
       "ProductContextError",
+      "REFUND_EXECUTION_FLAG",
+      "REFUND_POLICY_NOT_APPROVED",
       "RENEWAL_HORIZON_DEFAULT_DAYS",
       "RENEWAL_HORIZON_MAX_DAYS",
       "RoleChangeApplyError",
@@ -2382,6 +2396,7 @@
       "activatePolicyVersionInTx",
       "actorSatisfiesStep",
       "addMonthsClamped",
+      "adjustmentOperationOf",
       "applyCatalogDraftEdits",
       "approvalExpiresAt",
       "approvedLegalDocument",
@@ -2416,6 +2431,7 @@
       "daysUntil",
       "decideSupportExtension",
       "diffAlerts",
+      "discountCouponRef",
       "discountEscalates",
       "effectivePlatformOwners",
       "effectiveProviderPrice",
@@ -2427,9 +2443,11 @@
       "inAppContextRef",
       "invoicePaymentState",
       "isA6Applicable",
+      "isAdjustmentCommandKind",
       "isApplyExpirable",
       "isApplyServiceAction",
       "isApprovalExpired",
+      "isBillingAdjustmentAction",
       "isCatalogApplicable",
       "isContractPriced",
       "isFeatureAvailable",
@@ -2458,6 +2476,7 @@
       "priceFigure",
       "productOfMeteredKey",
       "readPlatformSubject",
+      "refundExecutionEnabled",
       "resolvePriceToVersion",
       "resolveRequiredChain",
       "runPlatformOwnerBootstrap",
@@ -2474,7 +2493,8 @@
       "usageMetricsOf",
       "validateContractBlocks",
       "validatePayload",
-      "verifyStripeSignature"
+      "verifyStripeSignature",
+      "withholdAmounts"
     ],
     "@aramo/talent-embedding": [
       "TALENT_EMBEDDING_REPOSITORY_PORT",
@@ -3617,6 +3637,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c4-billing-adjustment-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-c6-finance-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -4303,6 +4329,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-c3-billing-status-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c4-billing-adjustment-routes.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -6734,6 +6766,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c4-billing-adjustment-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-c6-finance-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -7474,6 +7512,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-c3-billing-status.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-c4-billing-adjustments.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -9902,6 +9946,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c4-billing-adjustment-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-c6-finance-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -12118,6 +12168,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-c3-billing-status-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c4-billing-adjustment-routes.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },

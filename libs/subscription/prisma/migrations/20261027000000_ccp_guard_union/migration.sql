@@ -26,6 +26,11 @@
 -- check; APPLY_EXPIRED from APPROVED / APPLY_FAILED for POLICY_ACTIVATE, ROLE_GRANT, ROLE_REVOKE,
 -- ENTITLEMENT_REVOKE, CONVERSION and a NORMAL SUPPORT_EXTENSION. Its deferred "never commit in
 -- APPLYING" trigger for POLICY_ACTIVATE is in 20261027000200_ccp_b5r_policy_activate_apply.
+-- CCP-C4 (this file only, as B5-R; the slice's own objects are in 20261028010000_ccp_c4_billing_adjustments):
+-- CREDIT, DISCOUNT and REFUND apply with the C2 pairs and the AD-4 expiry; their attempt rules; no
+-- APPLY_FAILED while a provider command is unconfirmed (C-23); and the APPLIED check (the
+-- CommercialBillingAdjustment record and only CONFIRMED commands). Its deferred "commits in
+-- APPLYING only with a provider command" trigger is in the C4 slice migration.
 -- Carries a dollar-quoted body: apply whole-file. Design approval is not production migration
 -- authority (ruling A0-C15).
 
@@ -147,6 +152,16 @@ BEGIN
              OR (NEW."action_type" = 'SUPPORT_EXTENSION' AND NEW."kind" = 'NORMAL'
                  AND OLD."state" IN ('APPROVED', 'APPLY_FAILED') AND NEW."state" = 'APPLY_EXPIRED')
              -- ==== END CCP-B5-R ====
+             -- [union block: CCP-C4, 20261027000000 (this file) + 20261028010000]
+             -- ==== BEGIN CCP-C4 billing adjustments: transitions ====
+             -- The C2 apply pairs (the request may commit in APPLYING while its provider command is
+             -- pending: deferred trigger in 20261028010000) and AD-4: APPLY_EXPIRED only from
+             -- APPROVED / APPLY_FAILED, never APPLYING.
+             OR (NEW."action_type" IN ('CREDIT', 'DISCOUNT', 'REFUND')
+                 AND ((OLD."state" IN ('APPROVED', 'APPLY_FAILED') AND NEW."state" = 'APPLYING')
+                   OR (OLD."state" = 'APPLYING' AND NEW."state" IN ('APPLIED', 'APPLY_FAILED'))
+                   OR (OLD."state" IN ('APPROVED', 'APPLY_FAILED') AND NEW."state" = 'APPLY_EXPIRED')))
+             -- ==== END CCP-C4 billing adjustments: transitions ====
         ) THEN
             RAISE EXCEPTION 'CommercialChangeRequest state % -> % is not allowed', OLD."state", NEW."state";
         END IF;
@@ -301,6 +316,42 @@ BEGIN
             END IF;
         END IF;
         -- <<< CCP-C2 CONVERSION branch <<<
+        -- [union block: CCP-C4 attempt rules + APPLIED checks, 20261027000000 (this file)]
+        -- ==== BEGIN CCP-C4 billing adjustments: attempt rules and APPLIED checks ====
+        IF NEW."action_type" IN ('CREDIT', 'DISCOUNT', 'REFUND') THEN
+            IF NEW."state" = 'APPLYING' THEN
+                IF NEW."apply_attempts" <> OLD."apply_attempts" + 1 THEN
+                    RAISE EXCEPTION 'CommercialChangeRequest APPLYING must count the attempt (apply_attempts % -> %)', OLD."apply_attempts", NEW."apply_attempts";
+                END IF;
+            ELSIF NEW."apply_attempts" IS DISTINCT FROM OLD."apply_attempts" THEN
+                RAISE EXCEPTION 'CommercialChangeRequest apply_attempts changes only on entering APPLYING';
+            END IF;
+            IF NEW."state" <> 'APPLIED' AND NEW."applied_at" IS DISTINCT FROM OLD."applied_at" THEN
+                RAISE EXCEPTION 'CommercialChangeRequest applied_at is set only by APPLIED';
+            END IF;
+            -- C-23: a Stripe operation in flight is never abandoned by a local failure record.
+            IF NEW."state" = 'APPLY_FAILED' AND EXISTS (
+                SELECT 1 FROM "subscription"."BillingProviderCommand" c
+                 WHERE c."change_request_id" = NEW."id" AND c."state" <> 'CONFIRMED') THEN
+                RAISE EXCEPTION 'CommercialChangeRequest % cannot be APPLY_FAILED while a provider command is unconfirmed', NEW."action_type";
+            END IF;
+            -- C-22 / C-23: APPLIED only with the provider-confirmed adjustment record.
+            IF NEW."state" = 'APPLIED' THEN
+                PERFORM 1 FROM "subscription"."CommercialBillingAdjustment" a
+                  WHERE a."change_request_id" = NEW."id" AND a."action_type" = NEW."action_type"
+                    AND a."tenant_id" = NEW."tenant_id" AND a."product_key" = NEW."product_key"
+                    AND a."attempt" = NEW."apply_attempts";
+                IF NOT FOUND THEN
+                    RAISE EXCEPTION 'CommercialChangeRequest APPLIED: the provider-confirmed billing adjustment is missing';
+                END IF;
+                PERFORM 1 FROM "subscription"."BillingProviderCommand" c WHERE c."change_request_id" = NEW."id";
+                IF NOT FOUND OR EXISTS (SELECT 1 FROM "subscription"."BillingProviderCommand" c
+                                         WHERE c."change_request_id" = NEW."id" AND c."state" <> 'CONFIRMED') THEN
+                    RAISE EXCEPTION 'CommercialChangeRequest APPLIED: a provider command of this billing adjustment is not confirmed';
+                END IF;
+            END IF;
+        END IF;
+        -- ==== END CCP-C4 billing adjustments: attempt rules and APPLIED checks ====
         IF NEW."state" = 'APPROVED' THEN
             steps := jsonb_array_length(NEW."required_chain" -> 'steps');
             SELECT count(*) INTO approvals FROM "subscription"."CommercialApproval" WHERE "change_request_id" = NEW."id";

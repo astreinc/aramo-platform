@@ -806,7 +806,8 @@ model BillingProviderCommand {
   id                    String    @id @db.Uuid
   // CHECK: STRIPE
   provider              String
-  // CHECK: SUBSCRIPTION_CANCEL | CHECKOUT_SESSION_EXPIRE
+  // CHECK: SUBSCRIPTION_CANCEL | CHECKOUT_SESSION_EXPIRE (C1) | CREDIT_GRANT | CREDIT_REVERSE |
+  // DISCOUNT_APPLY | DISCOUNT_REMOVE | REFUND_CREATE (CCP-C4, constraint union)
   command_kind          String
   change_request_id     String    @db.Uuid
   step                  String
@@ -828,11 +829,14 @@ model BillingProviderCommand {
   confirmation_source   String?
   confirmation_event_id String?
   failed_at             DateTime? @db.Timestamptz(3)
+  // CCP-C4 — the provider object carrying a billing adjustment's effect (written once).
+  provider_object_ref   String?
   created_by            String    @db.Uuid
   created_at            DateTime  @db.Timestamptz(3)
   updated_at            DateTime  @db.Timestamptz(3)
 
   @@unique([change_request_id, step])
+  @@index([provider, provider_object_ref])
   @@index([state, next_attempt_at])
   @@index([provider, target_ref])
   @@index([tenant_id, created_at(sort: Desc), id(sort: Desc)])
@@ -853,6 +857,8 @@ model BillingWebhookInbox {
   event_created_at     DateTime  @db.Timestamptz(6)
   subscription_ref     String?
   checkout_session_ref String?
+  // CCP-C4 — the provider object the event concerns (a billing adjustment's); immutable.
+  object_ref           String?
   product_key          String
   // CHECK: RECEIVED | PROCESSING | PROCESSED | FAILED
   status               String
@@ -971,5 +977,38 @@ model CommercialOperationalAlert {
   @@index([family, status, first_detected_at(sort: Desc), id(sort: Desc)])
   @@index([family, first_detected_at(sort: Desc), id(sort: Desc)])
   @@index([subject_kind, subject_id])
+  @@schema("subscription")
+}
+
+// CCP-C4 (PBD §5.2 row C4; Conversion Rule C-22, C-23) — the append-only record of a
+// provider-confirmed credit, discount or refund applied by a change request through a C1 durable
+// command. Written ONLY in the transaction that applies the provider-confirmed effect (guard: the
+// command CONFIRMED, the request APPLYING). A compensation names its original (UNIQUE).
+model CommercialBillingAdjustment {
+  id                            String   @id @db.Uuid
+  change_request_id             String   @unique @db.Uuid
+  // CHECK: CREDIT | DISCOUNT | REFUND
+  action_type                   String
+  // CHECK: CREDIT_GRANT | CREDIT_REVERSE | DISCOUNT_APPLY | DISCOUNT_REMOVE | REFUND_CREATE
+  operation                     String
+  tenant_id                     String   @db.Uuid
+  product_key                   String
+  subscription_id               String   @db.Uuid
+  provider                      String
+  provider_target_ref           String
+  provider_object_ref           String?
+  amount_minor                  BigInt?
+  currency                      String?
+  discount_bps                  Int?
+  compensates_change_request_id String?  @unique @db.Uuid
+  command_id                    String   @unique @db.Uuid
+  // CHECK: WEBHOOK | REFETCH
+  confirmation_source           String
+  confirmation_event_id         String?
+  attempt                       Int
+  requested_by                  String   @db.Uuid
+  applied_at                    DateTime @db.Timestamptz(3)
+
+  @@index([tenant_id, applied_at(sort: Desc), id(sort: Desc)])
   @@schema("subscription")
 }

@@ -7,6 +7,8 @@ import {
   BillingCommandService,
   BillingWebhookInboxQueryError,
   BillingWebhookInboxService,
+  isAdjustmentCommandKind,
+  withholdAmounts,
   type BillingCommandRow,
   type BillingWebhookInboxRow,
 } from '@aramo/subscription';
@@ -53,7 +55,8 @@ export function billingCommandDto(row: BillingCommandRow): BillingCommandDto {
     tenant_id: row.tenant_id,
     product_key: row.product_key,
     target_ref: row.target_ref,
-    params: (row.params ?? {}) as Record<string, unknown>,
+    // CCP-C4 (Finance amount interim) — a billing-adjustment command's amount is withheld.
+    params: isAdjustmentCommandKind(row.command_kind) ? withholdAmounts((row.params ?? {}) as Record<string, unknown>) : ((row.params ?? {}) as Record<string, unknown>),
     state: row.state,
     pending_provider: row.state !== 'CONFIRMED',
     attempts: row.attempts,

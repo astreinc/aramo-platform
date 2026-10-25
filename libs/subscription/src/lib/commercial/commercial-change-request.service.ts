@@ -28,6 +28,7 @@ import {
   isA6Applicable,
   isA7Applicable,
   isApplyExpirable,
+  isBillingAdjustmentAction,
   isCatalogApplicable,
   parseRequiredChain,
   payloadChecksum,
@@ -1096,7 +1097,8 @@ export function applyActionable(actor: CommercialActor, req: Pick<CommercialChan
   // applied by the same route (requester-only; a bounded EXCEPTION is APPLIED at creation).
   // CCP-B3 (pre-execution C-2; TD-B3) — the CCP-C2 conversion apply (`…/convert`) is requester-only
   // under the same rule, so the hint covers CONVERSION too.
-  if (!isA6Applicable(req.action_type) && !isCatalogApplicable(req.action_type) && !isA7Applicable(req.action_type) && req.action_type !== 'SUPPORT_EXTENSION' && req.action_type !== 'CONVERSION') return false;
+  // CCP-C4 — the billing adjustments (`…/billing-adjustment`) are requester-only under the same rule.
+  if (!isA6Applicable(req.action_type) && !isCatalogApplicable(req.action_type) && !isA7Applicable(req.action_type) && req.action_type !== 'SUPPORT_EXTENSION' && req.action_type !== 'CONVERSION' && !isBillingAdjustmentAction(req.action_type)) return false;
   const scope = COMMERCIAL_ACTIONS[req.action_type as CommercialActionType].requester_scope;
   return scope !== null && actor.scopes.includes(scope);
 }

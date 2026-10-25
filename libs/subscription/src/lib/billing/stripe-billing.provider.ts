@@ -4,11 +4,14 @@ import { Injectable } from '@nestjs/common';
 
 import {
   type BillingAccountDetails,
+  type BillingProviderAdjustmentPort,
   type BillingProviderCommandPort,
   type BillingProviderPort,
   BillingProviderUnavailableError,
   BillingWebhookSignatureError,
   type CheckoutSessionRequest,
+  type ProviderAdjustmentEffect,
+  type ProviderAdjustmentRequest,
   type ProviderCheckoutSessionState,
   type ProviderSubscriptionState,
   type VerifiedBillingEvent,
@@ -19,8 +22,17 @@ import {
   wireAccountParams,
   wireAccountPath,
   wireAccountRef,
+  wireBalanceAdjustmentParams,
+  wireBalanceAdjustmentState,
   wireCheckoutAccountParams,
+  wireCouponParams,
+  wireInvoicePayment,
+  wireListData,
   wirePortalAccountParams,
+  wireRefundParams,
+  wireRefundState,
+  wireSubscriptionDiscount,
+  wireSubscriptionDiscountParams,
   wireSubscriptionQuery,
 } from './stripe-wire.js';
 
@@ -137,7 +149,7 @@ export function verifyStripeSignature(rawBody: Buffer, header: string | undefine
 }
 
 @Injectable()
-export class StripeBillingProvider implements BillingProviderPort, BillingProviderCommandPort {
+export class StripeBillingProvider implements BillingProviderPort, BillingProviderCommandPort, BillingProviderAdjustmentPort {
   readonly provider = 'STRIPE' as const;
 
   private secretKey(): string | undefined {
@@ -253,6 +265,86 @@ export class StripeBillingProvider implements BillingProviderPort, BillingProvid
     return stripeCheckoutSessionState(await this.call('GET', `/v1/checkout/sessions/${encodeURIComponent(session_ref)}`));
   }
 
+  // ---- CCP-C4 — billing adjustments (credits, discounts, refunds) -------------------------------
+  // Every write carries the command's derived idempotency key and `aramo_command_id` / `tenant_id`
+  // metadata. Reads never change provider state. Paths and field names: stripe-wire.ts.
+
+  async executeAdjustment(req: ProviderAdjustmentRequest, idempotency_key: string): Promise<{ object_ref: string }> {
+    switch (req.operation) {
+      case 'CREDIT_GRANT':
+      case 'CREDIT_REVERSE': {
+        // A credit lowers the balance the next invoice draws on (negative); its reversal raises it.
+        const signed = (req.operation === 'CREDIT_GRANT' ? -1 : 1) * (req.amount_minor as number);
+        const t = await this.call('POST', `${wireAccountPath(req.target_ref)}/balance_transactions`, form(wireBalanceAdjustmentParams(signed, req.currency as string, req)), idempotency_key);
+        return { object_ref: requireId(t, 'balance adjustment') };
+      }
+      case 'DISCOUNT_APPLY': {
+        // A coupon with the deterministic id (a retry finds it), then attached to the subscription.
+        try {
+          await this.call('POST', '/v1/coupons', form(wireCouponParams(req.coupon_ref as string, req.discount_bps as number, req)), `${idempotency_key}-coupon`);
+        } catch (e) {
+          if (!(e instanceof BillingProviderUnavailableError) || e.retryable || !/already exists/i.test(e.detail)) throw e;
+        }
+        const sub = await this.call('POST', `/v1/subscriptions/${encodeURIComponent(req.target_ref)}`, form(wireSubscriptionDiscountParams(req.coupon_ref as string)), idempotency_key);
+        return { object_ref: wireSubscriptionDiscount(sub).discount_ref ?? (req.coupon_ref as string) };
+      }
+      case 'DISCOUNT_REMOVE': {
+        await this.call('DELETE', `/v1/subscriptions/${encodeURIComponent(req.target_ref)}/discount`, undefined, idempotency_key);
+        return { object_ref: req.target_ref };
+      }
+      case 'REFUND_CREATE': {
+        const inv = wireInvoicePayment(await this.call('GET', `/v1/invoices/${encodeURIComponent(req.target_ref)}`));
+        if (inv.account_ref !== req.account_ref) throw new BillingProviderUnavailableError('the invoice was not paid from the tenant billing account', false);
+        if (inv.payment_ref === null) throw new BillingProviderUnavailableError('the invoice has no payment to refund', false);
+        const r = await this.call('POST', '/v1/refunds', form(wireRefundParams(inv.payment_ref, req.amount_minor as number, req)), idempotency_key);
+        return { object_ref: requireId(r, 'refund') };
+      }
+    }
+  }
+
+  async readAdjustmentEffect(req: ProviderAdjustmentRequest, object_ref: string | null): Promise<ProviderAdjustmentEffect> {
+    const none = (o: Partial<ProviderAdjustmentEffect> = {}): ProviderAdjustmentEffect => ({ provider: 'STRIPE', operation: req.operation, object_ref: null, present: false, provider_status: null, tenant_id: null, live: this.mode() === 'live', ...o });
+    switch (req.operation) {
+      case 'CREDIT_GRANT':
+      case 'CREDIT_REVERSE': {
+        const signed = (req.operation === 'CREDIT_GRANT' ? -1 : 1) * (req.amount_minor as number);
+        const objs =
+          object_ref !== null
+            ? [await this.call('GET', `${wireAccountPath(req.target_ref)}/balance_transactions/${encodeURIComponent(object_ref)}`)]
+            : wireListData(await this.call('GET', `${wireAccountPath(req.target_ref)}/balance_transactions?limit=100`));
+        for (const o of objs) {
+          const t = wireBalanceAdjustmentState(o);
+          if (t.command_id !== req.command_id) continue;
+          const ok = t.amount_minor === signed && t.currency === (req.currency as string).toLowerCase();
+          return none({ object_ref: t.object_ref, present: ok, provider_status: ok ? 'applied' : 'mismatch', tenant_id: t.tenant_id, live: t.live });
+        }
+        return none();
+      }
+      case 'DISCOUNT_APPLY':
+      case 'DISCOUNT_REMOVE': {
+        const sub = await this.call('GET', `/v1/subscriptions/${encodeURIComponent(req.target_ref)}`);
+        const d = wireSubscriptionDiscount(sub);
+        const has = d.coupon_ref === req.coupon_ref;
+        const tenant_id = asString(((sub['metadata'] as Record<string, unknown> | undefined) ?? {})['tenant_id']);
+        return none({ object_ref: d.discount_ref ?? (req.operation === 'DISCOUNT_REMOVE' ? req.target_ref : null), present: req.operation === 'DISCOUNT_APPLY' ? has : !has, provider_status: d.coupon_ref === null ? 'none' : 'active', tenant_id, live: sub['livemode'] === true });
+      }
+      case 'REFUND_CREATE': {
+        let objs: Array<Record<string, unknown>>;
+        if (object_ref !== null) objs = [await this.call('GET', `/v1/refunds/${encodeURIComponent(object_ref)}`)];
+        else {
+          const inv = wireInvoicePayment(await this.call('GET', `/v1/invoices/${encodeURIComponent(req.target_ref)}`));
+          objs = inv.payment_ref === null ? [] : wireListData(await this.call('GET', `/v1/refunds?payment_intent=${encodeURIComponent(inv.payment_ref)}&limit=100`));
+        }
+        for (const o of objs) {
+          const r = wireRefundState(o);
+          if (r.command_id !== req.command_id) continue;
+          return none({ object_ref: r.object_ref, present: r.status === 'succeeded' && r.amount_minor === req.amount_minor, provider_status: r.status, tenant_id: r.tenant_id, live: r.live });
+        }
+        return none();
+      }
+    }
+  }
+
   verifyWebhook(rawBody: Buffer, signatureHeader: string | undefined, nowSec: number): VerifiedBillingEvent {
     verifyStripeSignature(rawBody, signatureHeader, process.env['STRIPE_WEBHOOK_SECRET']?.trim(), nowSec);
     let evt: Record<string, unknown>;
@@ -266,13 +358,26 @@ export class StripeBillingProvider implements BillingProviderPort, BillingProvid
       throw new BillingWebhookSignatureError('MALFORMED');
     }
     const checkout_session_ref = stripeEventCheckoutSessionRef(evt['type'], data);
+    const subscription_ref = stripeEventSubscriptionRef(evt['type'], data);
+    // CCP-C4 — any other event names its own object (a balance adjustment, discount or refund), so a
+    // pending billing adjustment whose object it is can be re-read. Absent otherwise (the C1
+    // envelope of subscription and checkout events is unchanged).
+    const object_ref = subscription_ref === null && checkout_session_ref === null ? asString(data['id']) : null;
     return {
       id: evt['id'],
       type: evt['type'],
       created: asDate(evt['created']),
-      subscription_ref: stripeEventSubscriptionRef(evt['type'], data),
+      subscription_ref,
       // CCP-C1 — present only for checkout.session.* events (the envelope shape is otherwise unchanged).
       ...(checkout_session_ref !== null ? { checkout_session_ref } : {}),
+      ...(object_ref !== null ? { object_ref } : {}),
     };
   }
 }
+
+function requireId(o: Record<string, unknown>, what: string): string {
+  const id = asString(o['id']);
+  if (id === null) throw new BillingProviderUnavailableError(`${what} without id`);
+  return id;
+}
+

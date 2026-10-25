@@ -3736,6 +3736,80 @@ paths:
         '409':
           $ref: '#/components/responses/CommercialConversionConflict'
 
+  # CCP-C4 (PBD §5.2 row C4, §10; Conversion Rule C-22, C-23) — credits, discounts and refunds as
+  # change requests executed in Stripe by durable command. NOT DELIVERED until the refund policy is
+  # verified; Stripe test mode only. Served by apps/platform-admin.
+  /platform/commercial/change-requests/{id}/billing-adjustment:
+    post:
+      operationId: applyPlatformCommercialBillingAdjustment
+      tags: [Platform Commercial Change Requests]
+      summary: Apply an APPROVED CREDIT, DISCOUNT or REFUND change request (CCP-C4).
+      description: |
+        Applies an APPROVED (or APPLY_FAILED, retry) billing adjustment under the tenant's billing lock.
+        REQUESTER-ONLY: the caller must be the request's requester and hold `platform:billing:request`;
+        every approval is re-checked under the request's snapshotted chain (NC-5) and the snapshotted
+        apply deadline applies. The apply records ONE durable provider command and returns
+        `status: PENDING_PROVIDER` with `pending_provider: true`: no provider call is made by this
+        request, and the request becomes APPLIED only when the provider-confirmed effect is applied
+        (verified webhook or provider re-fetch). A failed command keeps the request APPLYING
+        (`status: COMMAND_FAILED`); applying it again re-arms that same command (same idempotency key).
+        A REFUND is refused with `REFUND_POLICY_NOT_APPROVED` while the refund policy is not approved
+        (the designed disabled state). No tenant-specific amount is returned (Finance amount interim:
+        `amount_withheld: FINANCE_SCOPE_PENDING`). The route requires `platform:approval:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CommercialChangeRequestId'
+      responses:
+        '200':
+          description: The request and its billing-adjustment state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialBillingAdjustmentApplyEnvelope'
+        '400':
+          $ref: '#/components/responses/CommercialChangeRequestValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/CommercialChangeRequestNotFound'
+        '409':
+          $ref: '#/components/responses/CommercialBillingAdjustmentConflict'
+    get:
+      operationId: getPlatformCommercialBillingAdjustment
+      tags: [Platform Commercial Change Requests]
+      summary: Read the billing-adjustment state of a CREDIT, DISCOUNT or REFUND change request (CCP-C4).
+      description: |
+        The operation, status, `pending_provider` (true while a provider command of the request is not
+        confirmed), `refund_execution_disabled`, the provider commands and the provider-confirmed
+        adjustment record. Amounts are withheld (Finance amount interim). Read-only. Requires
+        `platform:approval:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CommercialChangeRequestId'
+      responses:
+        '200':
+          description: The request and its billing-adjustment state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialBillingAdjustmentStateEnvelope'
+        '400':
+          $ref: '#/components/responses/CommercialChangeRequestValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/CommercialChangeRequestNotFound'
+        '409':
+          $ref: '#/components/responses/CommercialBillingAdjustmentConflict'
+
   # CCP-A8 (PBD §5.1 row A8; DDR v1.2 §3.2(5); Q7) — the support exception overlay.
   /platform/commercial/support-extensions:
     post:
@@ -5270,6 +5344,19 @@ components:
         application/json:
           schema:
             $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    CommercialBillingAdjustmentConflict:
+      description: |
+        `COMMERCIAL_CHANGE_REQUEST_CONFLICT` with details.reason `apply_refused` (details.refusal
+        REFUND_POLICY_NOT_APPROVED — the refund designed disabled state — | APPLY_EXPIRED | NOT_APPROVED |
+        APPROVER_NO_LONGER_ELIGIBLE | …; nothing is written), `apply_failed` (rolled back before any
+        provider command; the request is APPLY_FAILED and retryable; details.failure e.g.
+        TARGET_NOT_FOUND, TARGET_NOT_SELF_SERVICE, TARGET_STALE, COMPENSATION_TARGET_INVALID,
+        COMPENSATION_MISMATCH, ALREADY_COMPENSATED), `action_not_applicable` (not a billing adjustment)
+        or `integrity`. Every refusal and failure carries details.explanation.
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
     CommercialApprovalRefused:
       description: |
         `COMMERCIAL_APPROVAL_REFUSED` (details.refusal: NOT_PENDING | EXPIRED | NOT_HUMAN |
@@ -6689,7 +6776,8 @@ components:
           enum: [STRIPE]
         command_kind:
           type: string
-          enum: [SUBSCRIPTION_CANCEL, CHECKOUT_SESSION_EXPIRE]
+          # CCP-C4 adds the billing-adjustment kinds.
+          enum: [SUBSCRIPTION_CANCEL, CHECKOUT_SESSION_EXPIRE, CREDIT_GRANT, CREDIT_REVERSE, DISCOUNT_APPLY, DISCOUNT_REMOVE, REFUND_CREATE]
         change_request_id:
           type: string
           format: uuid
@@ -6710,7 +6798,11 @@ components:
         params:
           type: object
           additionalProperties: true
-          description: SUBSCRIPTION_CANCEL carries `mode` (IMMEDIATE | AT_PERIOD_END); CHECKOUT_SESSION_EXPIRE none.
+          description: |
+            SUBSCRIPTION_CANCEL carries `mode` (IMMEDIATE | AT_PERIOD_END); CHECKOUT_SESSION_EXPIRE none.
+            CCP-C4 kinds carry `subscription_id` and their closed params (`currency`, `discount_bps`,
+            `coupon_ref`, `account_ref`); the amount is never returned (Finance amount interim:
+            `amount_withheld: FINANCE_SCOPE_PENDING`).
         state:
           $ref: '#/components/schemas/BillingProviderCommandState'
         pending_provider:
@@ -7679,7 +7771,7 @@ components:
 
     CommercialActionType:
       type: string
-      enum: [SUBSCRIPTION_OPEN, SUBSCRIPTION_CHANGE, SUBSCRIPTION_END, ENTITLEMENT_GRANT, ENTITLEMENT_REVOKE, PLAN_VERSION_PUBLISH, PLAN_RETIRE, POLICY_ACTIVATE, SUPPORT_EXTENSION, ROLE_GRANT, ROLE_REVOKE, CREDIT, DISCOUNT, CONVERSION]
+      enum: [SUBSCRIPTION_OPEN, SUBSCRIPTION_CHANGE, SUBSCRIPTION_END, ENTITLEMENT_GRANT, ENTITLEMENT_REVOKE, PLAN_VERSION_PUBLISH, PLAN_RETIRE, POLICY_ACTIVATE, SUPPORT_EXTENSION, ROLE_GRANT, ROLE_REVOKE, CREDIT, DISCOUNT, CONVERSION, REFUND]
 
     CommercialChangeRequestState:
       type: string
@@ -8012,6 +8104,76 @@ components:
           $ref: '#/components/schemas/CommercialChangeRequest'
         conversion:
           $ref: '#/components/schemas/CommercialConversion'
+
+    CommercialBillingAdjustmentRecord:
+      type: object
+      additionalProperties: false
+      description: The provider-confirmed record of the adjustment (written only when the provider-confirmed effect is applied). No amount (Finance amount interim).
+      required: [id, change_request_id, action_type, operation, tenant_id, product_key, subscription_id, provider, provider_target_ref, provider_object_ref, discount_bps, compensates_change_request_id, command_id, confirmation_source, confirmation_event_id, attempt, requested_by, applied_at]
+      properties:
+        id: { type: string, format: uuid }
+        change_request_id: { type: string, format: uuid }
+        action_type: { type: string, enum: [CREDIT, DISCOUNT, REFUND] }
+        operation: { type: string, enum: [CREDIT_GRANT, CREDIT_REVERSE, DISCOUNT_APPLY, DISCOUNT_REMOVE, REFUND_CREATE] }
+        tenant_id: { type: string, format: uuid }
+        product_key: { type: string }
+        subscription_id: { type: string, format: uuid }
+        provider: { type: string, enum: [STRIPE] }
+        provider_target_ref: { type: string }
+        provider_object_ref: { type: [string, 'null'] }
+        discount_bps: { type: [integer, 'null'], minimum: 1, maximum: 10000 }
+        compensates_change_request_id: { type: [string, 'null'], format: uuid }
+        command_id: { type: string, format: uuid }
+        confirmation_source: { type: string, enum: [WEBHOOK, REFETCH] }
+        confirmation_event_id: { type: [string, 'null'] }
+        attempt: { type: integer, minimum: 1 }
+        requested_by: { type: string, format: uuid }
+        applied_at: { type: string, format: date-time }
+        amount_withheld: { type: string, enum: [FINANCE_SCOPE_PENDING] }
+
+    CommercialBillingAdjustment:
+      type: object
+      additionalProperties: false
+      required: [operation, status, pending_provider, refund_execution_disabled, commands, record]
+      properties:
+        operation: { type: [string, 'null'], enum: [CREDIT_GRANT, CREDIT_REVERSE, DISCOUNT_APPLY, DISCOUNT_REMOVE, REFUND_CREATE, null] }
+        status: { type: string, enum: [NOT_APPLIED, APPLY_FAILED, PENDING_PROVIDER, COMMAND_FAILED, APPLIED] }
+        pending_provider:
+          type: boolean
+          description: True while a provider command of the request is not confirmed by applied provider state (Conv. C-23).
+        refund_execution_disabled:
+          type: boolean
+          description: True for a REFUND while the refund policy is not approved (the designed disabled state, PBD §10).
+        commands:
+          type: array
+          items:
+            $ref: '#/components/schemas/BillingProviderCommand'
+        record:
+          oneOf:
+            - $ref: '#/components/schemas/CommercialBillingAdjustmentRecord'
+            - type: 'null'
+
+    CommercialBillingAdjustmentApplyEnvelope:
+      type: object
+      additionalProperties: false
+      required: [request, adjustment, replayed]
+      properties:
+        request:
+          $ref: '#/components/schemas/CommercialChangeRequest'
+        adjustment:
+          $ref: '#/components/schemas/CommercialBillingAdjustment'
+        replayed:
+          type: boolean
+
+    CommercialBillingAdjustmentStateEnvelope:
+      type: object
+      additionalProperties: false
+      required: [request, adjustment]
+      properties:
+        request:
+          $ref: '#/components/schemas/CommercialChangeRequest'
+        adjustment:
+          $ref: '#/components/schemas/CommercialBillingAdjustment'
 
     RequestSupportExtension:
       type: object
