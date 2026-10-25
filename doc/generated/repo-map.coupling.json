@@ -3192,6 +3192,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/ccp-a1-platform-governance-authorization.spec.ts",
+      "status": "excluded",
+      "to": "apps/platform-admin/src/tests/ccp-a1-platform-role-authorization.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/client-selection-create-from-submittal.integration.spec.ts",
       "status": "excluded",
       "to": "libs/client-selection/prisma/migrations/20260829120000_l2f_init_client_selection/migration.sql"
@@ -10339,6 +10345,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/platform-admin/src/tests/ccp-a1-platform-role-authorization.spec.ts",
+      "status": "excluded",
+      "to": "apps/api/src/tests/ccp-a1-platform-governance-authorization.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
       "status": "excluded",
       "to": "libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql"
@@ -12627,6 +12639,31 @@
       "from": "doc/backlog/work-history-edit-audit-and-provenance.md",
       "status": "unscoped",
       "to": "libs/talent-record/src/lib/talent-record.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A1-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/fixtures/session.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A1-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/App.spec.tsx"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A1-pre-execution.md",
+      "status": "unscoped",
+      "to": "deploy/seed-prod.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A1-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/dto/role.dto.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A1-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/tests/seed-scrub.integration.spec.ts"
     },
     {
       "from": "doc/design-reference/platform-admin/github.md",
@@ -23904,6 +23941,11 @@
       "to": "libs/identity/prisma/migrations/20261024100000_sign_personal_geo_step_up/migration.sql"
     },
     {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261024120000_ccp_a1_commercial_role_catalog/migration.sql"
+    },
+    {
       "from": "libs/common/src/lib/testing/skills-taxonomy-migrations.ts",
       "status": "production",
       "to": "libs/skills-taxonomy/prisma/migrations/20260915140000_init_skill_registry/migration.sql"
@@ -24672,6 +24714,24 @@
       "from": "libs/identity/src/tests/ats-qa-1-resume-select-grants-migration.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261022150000_ats_qa_1_resume_select_grants/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a1-commercial-role-catalog-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261022150000_ats_qa_1_resume_select_grants/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a1-commercial-role-catalog-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261024100000_sign_personal_geo_step_up/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a1-commercial-role-catalog-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261024120000_ccp_a1_commercial_role_catalog/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",

@@ -2595,6 +2595,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ccp-a1-platform-governance-authorization.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/client-submittal-policy/client-submittal-policy-reads.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3242,6 +3248,12 @@
       { "project": "pipeline", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a1-platform-role-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -3710,6 +3722,12 @@
       { "project": "activity", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ccp-a1-platform-governance-authorization.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/create-submittal.unit.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3793,6 +3811,12 @@
         "status": "excluded"
       },
       { "project": "pipeline", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a1-platform-role-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
@@ -4248,6 +4272,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/cb-d2-r-reconciliation-drain.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ccp-a1-platform-governance-authorization.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -5612,6 +5642,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/ccp-a1-commercial-role-catalog-migration.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/d4a-reads.service-repo.spec.ts",
         "project": "identity",
         "status": "excluded"
@@ -6038,6 +6074,12 @@
         "excludedBy": "src/tests/**/*",
         "from": "libs/placement-pipeline-bridge/src/tests/inbox.integration.spec.ts",
         "project": "placement-pipeline-bridge",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a1-platform-role-authorization.spec.ts",
+        "project": "platform-admin",
         "status": "excluded"
       },
       {
@@ -7085,6 +7127,12 @@
     "@aramo/documents": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ccp-a1-platform-governance-authorization.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -7500,6 +7548,12 @@
       { "project": "integration", "status": "production" },
       { "project": "intelligence-integration", "status": "production" },
       { "project": "pipeline", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a1-platform-role-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
@@ -8644,6 +8698,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ccp-a1-platform-governance-authorization.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/doclib-t4-tenant-branding.unit.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -8805,6 +8865,12 @@
         "status": "excluded"
       },
       { "project": "company", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a1-platform-role-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
@@ -10553,6 +10619,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a1-platform-role-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -10711,6 +10783,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ccp-a1-platform-governance-authorization.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/matching-policy.controller.unit.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -10846,6 +10924,12 @@
         "status": "excluded"
       },
       { "project": "api", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a1-platform-role-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
