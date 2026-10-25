@@ -10,6 +10,7 @@ import { CommercialOperatorRepository } from './commercial-operator.repository.j
 import { POLICY_LOCK_SQL } from './commercial-policy-activation.js';
 import {
   COMMERCIAL_POLICY_KEYS,
+  COMMERCIAL_POLICY_OPTIONAL_KEYS,
   CommercialPolicyUnavailableError,
   commercialPolicyChecksum,
   parseCommercialPolicyContent,
@@ -55,8 +56,17 @@ export const POLICY_EDIT_RANGES: Readonly<Partial<Record<keyof CommercialPolicyC
   past_due_grace_days: [0, 30],
 };
 
-/** The keys a draft edit may change (format_version and currency are fixed in format 1). */
-export const POLICY_EDITABLE_KEYS = [...Object.keys(POLICY_EDIT_RANGES), 'support_extension_cumulative_window_days'] as const;
+/**
+ * The keys a draft edit may change (format_version and currency are fixed in format 1).
+ *
+ * CCP-FIX1 (D5-DEF-2; Charter Amendment A1 AD-1): `apply_expiry_hours`, the OPTIONAL apply-deadline
+ * key, is editable so the v2 that AD-1 requires ("v1 plus the key") can be authored as a DRAFT and
+ * activated through POLICY_ACTIVATE — the governed, no-SQL path. It carries no handoff §5.6 range:
+ * it is validated exactly as the strict A2 / A6-R parser validates it (an integer, 1 … 87,600 h;
+ * anything else, `null` included, is malformed and refused `policy_value_invalid`). It is never
+ * seeded and never defaulted; a draft that does not set it stays without it (AD-2).
+ */
+export const POLICY_EDITABLE_KEYS = [...Object.keys(POLICY_EDIT_RANGES), 'support_extension_cumulative_window_days', ...COMMERCIAL_POLICY_OPTIONAL_KEYS] as const;
 
 export interface PolicyVersionView {
   row: CommercialPolicyVersionRow;
@@ -204,7 +214,7 @@ export class CommercialPolicyGovernanceService {
       const content = this.strict(proposed, 'policy_value_invalid');
       const checksum = commercialPolicyChecksum(content);
       const note = input.note === undefined ? row.note : (input.note ?? '').trim() || null;
-      const changed = COMMERCIAL_POLICY_KEYS.filter((k) => (before as unknown as Record<string, unknown>)[k] !== (content as unknown as Record<string, unknown>)[k]);
+      const changed = [...COMMERCIAL_POLICY_KEYS, ...COMMERCIAL_POLICY_OPTIONAL_KEYS].filter((k) => (before as unknown as Record<string, unknown>)[k] !== (content as unknown as Record<string, unknown>)[k]);
       const updated = await tx.commercialPolicyVersion.update({ where: { id }, data: { content: content as object, content_checksum: checksum, note } });
       await this.appendAudit(
         tx,
@@ -215,8 +225,9 @@ export class CommercialPolicyGovernanceService {
         {
           version_number: row.version_number,
           changed_keys: changed,
-          before: Object.fromEntries(changed.map((k) => [k, (before as unknown as Record<string, unknown>)[k]])),
-          after: Object.fromEntries(changed.map((k) => [k, (content as unknown as Record<string, unknown>)[k]])),
+          // An optional key the old content did not declare is recorded as null (absent).
+          before: Object.fromEntries(changed.map((k) => [k, (before as unknown as Record<string, unknown>)[k] ?? null])),
+          after: Object.fromEntries(changed.map((k) => [k, (content as unknown as Record<string, unknown>)[k] ?? null])),
           note_changed: note !== row.note,
           content_checksum: checksum,
         },

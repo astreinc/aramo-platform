@@ -24,10 +24,10 @@ const MIGRATION = resolve(__dirname, '../../prisma/migrations/20261026090000_ccp
 const cond = (alert_type: DetectedCondition['alert_type'], subject_id: string): DetectedCondition => ({ alert_type, subject_id, tenant_id: null, product_key: null, detail: 'd', evidence: {}, threshold_minutes: null });
 
 describe('CCP-D3 alert model', () => {
-  it('D3-U-1 the closed set: 8 types in 2 families, each pinned to one subject kind, equal to the migration type CHECK', () => {
-    expect(COMMERCIAL_ALERT_TYPES).toHaveLength(8);
+  it('D3-U-1 the closed set: 10 types in 2 families (CCP-FIX1 adds APPLY_DEADLINE_NEARING / APPLY_DEADLINE_PASSED), each pinned to one subject kind, equal to the migration type CHECK', () => {
+    expect(COMMERCIAL_ALERT_TYPES).toHaveLength(10);
     expect(commercialAlertTypesOf('BILLING')).toEqual(['COMMAND_PENDING_PROVIDER_STUCK', 'COMMAND_FAILED', 'HELD_ACTIVATION', 'WEBHOOK_INBOX_FAILED', 'USAGE_NOT_RECONCILED']);
-    expect(commercialAlertTypesOf('APPROVAL')).toEqual(['APPLY_FAILED', 'APPROVAL_NEARING_EXPIRY', 'APPROVAL_PAST_EXPIRY']);
+    expect(commercialAlertTypesOf('APPROVAL')).toEqual(['APPLY_FAILED', 'APPROVAL_NEARING_EXPIRY', 'APPROVAL_PAST_EXPIRY', 'APPLY_DEADLINE_NEARING', 'APPLY_DEADLINE_PASSED']);
     const sql = readFileSync(MIGRATION, 'utf8');
     const triples = [...sql.matchAll(/\("alert_type" = '([A-Z_]+)' AND "family" = '([A-Z]+)' AND "subject_kind" = '([a-z_]+)'\)/g)].map((m) => [m[1], m[2], m[3]]);
     expect(triples).toEqual(COMMERCIAL_ALERT_TYPES.map((t) => [t, COMMERCIAL_ALERT_DEFINITIONS[t].family, COMMERCIAL_ALERT_DEFINITIONS[t].subject_kind]));

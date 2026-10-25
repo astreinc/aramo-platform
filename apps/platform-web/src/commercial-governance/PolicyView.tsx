@@ -20,6 +20,7 @@ import {
   policyRows,
   STATE_LABEL,
   shortRequestId,
+  NOT_SET,
   type PolicyRow,
 } from './governance-model';
 import { governanceErrorText } from './governance-errors';
@@ -77,6 +78,8 @@ export function PolicyView() {
   }, [people]);
 
   const saveField = async (v: PolicyVersion, row: PolicyRow, raw: string): Promise<void> => {
+    // CCP-FIX1: an optional setting left blank stays unset (the server never defaults it).
+    if (row.field.optional === true && raw.trim() === '') return;
     const ui = clampUi(row.field, raw);
     const value = row.field.fromUi(ui);
     if (v.content === null || v.content[row.field.key] === value) return;
@@ -117,9 +120,10 @@ export function PolicyView() {
     );
   }
 
-  const rows = current === undefined ? [] : policyRows(current, active);
-  const changedCount = rows.filter((r) => r.changed).length;
   const editable = current?.status === 'DRAFT' && canAuthor && current.open_request === null;
+  // CCP-FIX1: the draft editor also lists the optional apply deadline, so it can be set.
+  const rows = current === undefined ? [] : policyRows(current, active, { includeOptional: editable });
+  const changedCount = rows.filter((r) => r.changed).length;
   const why = !canRequest
     ? 'Needs the Finance admin role.'
     : open !== null
@@ -250,7 +254,8 @@ export function PolicyView() {
                           min={r.field.min}
                           max={r.field.max}
                           aria-label={r.field.label}
-                          defaultValue={String(r.raw)}
+                          defaultValue={r.declared ? String(r.raw) : ''}
+                          placeholder={r.declared ? undefined : NOT_SET}
                           key={`${current.id}:${current.content_checksum}:${r.field.key}`}
                           onBlur={(e) => void saveField(current, r, e.target.value)}
                           onKeyDown={(e) => {

@@ -10,7 +10,6 @@ import { CommercialApplyRefusedError } from '../lib/commercial/commercial-approv
 import { CommercialAuditRepository } from '../lib/commercial/commercial-audit.repository.js';
 import { payloadChecksum } from '../lib/commercial/commercial-change-request.js';
 import { CommercialChangeRequestError, type CommercialChangeRequestRow } from '../lib/commercial/commercial-change-request.service.js';
-import { ConversionApplyRefusedError } from '../lib/commercial/commercial-conversion.js';
 import { CommercialOperatorRepository } from '../lib/commercial/commercial-operator.repository.js';
 import { CommercialPolicyGovernanceService } from '../lib/commercial/commercial-policy-governance.service.js';
 import { CommercialPolicyRepository } from '../lib/commercial/commercial-policy.repository.js';
@@ -159,7 +158,6 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B5-R apply de
       return typeof reason === 'string' ? `OUTCOME:${reason}` : 'OK';
     } catch (e) {
       if (e instanceof CommercialApplyRefusedError) return `REFUSED:${e.reason}`;
-      if (e instanceof ConversionApplyRefusedError) return `REFUSED:${e.reason}`;
       if (e instanceof CommercialApplyFailedError) return `FAILED:${e.code}`;
       if (e instanceof CommercialChangeRequestError) return e.code;
       throw e;

@@ -233,6 +233,49 @@ describe('platform-web → PATCH /platform/commercial/policy-versions/{id} (CCP-
         expect(res.status).toBe(200);
       });
   });
+  // CCP-FIX1 (D5-DEF-2; Charter Amendment A1 AD-1): the optional apply deadline is an editable
+  // draft key, validated by the strict policy parser (a malformed value is 400 policy_value_invalid).
+  it('finance_admin sets the apply deadline on the DRAFT (200)', async () => {
+    const TTL = { content: { apply_expiry_hours: 72 } };
+    await provider
+      .addInteraction()
+      .given('a draft commercial policy version exists')
+      .uponReceiving('a policy draft given an apply deadline by a finance admin')
+      .withRequest('PATCH', DRAFT_PATH, (b) => {
+        b.headers(platformJson('finance_admin')).jsonBody(TTL);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          version: {
+            ...versionBody('DRAFT', { id: uuid(EX_DRAFT_ID) }),
+            version_number: integer(2),
+            note: like('Draft from v1'),
+            created_by: uuid(OP.finance_admin),
+            content: { ...CONTENT, apply_expiry_hours: integer(72) },
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${PV}/${EX_DRAFT_ID}`, 'PATCH', platformJson('finance_admin'), TTL);
+        expect(res.status).toBe(200);
+      });
+  });
+  it('a malformed apply deadline is refused (400 policy_value_invalid)', async () => {
+    const BAD = { content: { apply_expiry_hours: 0 } };
+    await provider
+      .addInteraction()
+      .given('a draft commercial policy version exists')
+      .uponReceiving('a policy draft apply deadline refused as malformed')
+      .withRequest('PATCH', DRAFT_PATH, (b) => {
+        b.headers(platformJson('finance_admin')).jsonBody(BAD);
+      })
+      .willRespondWith(400, (b) => {
+        b.jsonBody(errorBody('VALIDATION_ERROR', { reason: 'policy_value_invalid' }));
+      })
+      .executeTest(async (mock) => {
+        expect((await call(`${mock.url}${PV}/${EX_DRAFT_ID}`, 'PATCH', platformJson('finance_admin'), BAD)).status).toBe(400);
+      });
+  });
   it('read_only_auditor cannot edit a draft (403 requester_role_missing)', async () => {
     await provider
       .addInteraction()

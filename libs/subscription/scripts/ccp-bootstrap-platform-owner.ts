@@ -22,13 +22,21 @@ import {
 } from '../src/lib/commercial/commercial-platform-owner-bootstrap.js';
 import { PrismaService } from '../src/lib/prisma/prisma.service.js';
 
+// Through deploy/jiti-tsconfig-runner.mjs (the `npm run` path) the entry file is argv[2];
+// directly, argv[1]. The arguments are everything after this file's own entry (D5-DEF-3: a bare
+// argv.slice(2) handed the entry path to the parser, which refused it INVALID_ARGUMENT).
+function scriptArgs(argv: readonly string[] = process.argv): string[] {
+  const i = argv.findIndex((a) => /ccp-bootstrap-platform-owner\.(ts|js)$/.test(a));
+  return argv.slice(i < 0 ? 2 : i + 1);
+}
+
 async function main(): Promise<number> {
   const url = process.env['DATABASE_URL'];
   if (url === undefined || url.length === 0) {
     console.error('[ccp-bootstrap] FATAL: DATABASE_URL is not set.');
     return 1;
   }
-  const args = parseBootstrapArgs(process.argv.slice(2));
+  const args = parseBootstrapArgs(scriptArgs());
   const prisma = new PrismaService(url);
   await prisma.$connect();
   try {

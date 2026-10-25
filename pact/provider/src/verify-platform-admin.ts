@@ -376,6 +376,15 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     }
 
     /** CCP-C2 — an APPROVED CONVERSION on `tenant_id` through the HTTP surface (commercial_ops requests, finance_admin approves). */
+    /** CCP-FIX1 — an APPROVED request moved to APPLY_EXPIRED raw (fixture only; the lazy expiry is proved by the integration specs). */
+    async function expireRaw(id: string): Promise<void> {
+      await db.query('BEGIN');
+      await db.query(`SET LOCAL session_replication_role = replica`);
+      const r = await db.query(`UPDATE subscription."CommercialChangeRequest" SET state = 'APPLY_EXPIRED', updated_at = now() WHERE id = $1 AND state = 'APPROVED'`, [id]);
+      await db.query('COMMIT');
+      if (r.rowCount !== 1) throw new Error(`expireRaw: ${id} was not APPROVED`);
+    }
+
     async function approvedConversion(tenant_id: string, payload: Record<string, unknown>): Promise<string> {
       const out = await asRole<{ request: { id: string } }>('commercial_ops', 'POST', '/platform/commercial/change-requests', {
         action_type: 'CONVERSION',
@@ -809,6 +818,28 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               plan_version_id: v.rows[0].id,
               release_expires_at: new Date(Date.now() + 24 * 3_600_000).toISOString(),
             });
+            return { requestId };
+          },
+          // CCP-FIX1 (O-D4-2) — approved requests whose apply authority has lapsed (Charter Amendment
+          // A1): placed in APPLY_EXPIRED raw (triggers off for that one statement; the fixture policy
+          // is v1, which carries no deadline). Both apply routes then refuse with the same body.
+          'an apply-expired governed-to-self-service conversion exists': async () => {
+            const tenant_id = await commercialTenant();
+            const gov = await governedRow(tenant_id);
+            const v = await db.query(`SELECT v.id FROM subscription."PlanVersion" v JOIN subscription."Plan" p ON p.id = v.plan_id WHERE p.key = 'aramo-sign-standard-business-v1' AND v.status = 'PUBLISHED'`);
+            const requestId = await approvedConversion(tenant_id, {
+              direction: 'TO_SELF_SERVICE',
+              governed_subscription_id: gov,
+              plan_key: 'aramo-sign-standard-business-v1',
+              plan_version_id: v.rows[0].id,
+              release_expires_at: new Date(Date.now() + 24 * 3_600_000).toISOString(),
+            });
+            await expireRaw(requestId);
+            return { requestId };
+          },
+          'an apply-expired subscription-open change request exists': async () => {
+            const requestId = await approvedOpen();
+            await expireRaw(requestId);
             return { requestId };
           },
           // CCP-C2 — a self-service → governed conversion of a HELD activation, applied by its

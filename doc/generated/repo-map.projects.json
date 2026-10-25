@@ -2307,7 +2307,6 @@
       "CommercialSubscriptionReadService",
       "ContractRepository",
       "ConversionApplyFailedError",
-      "ConversionApplyRefusedError",
       "D9_STATEMENT_VERSION",
       "DAY_WINDOW_MS",
       "DOMAIN_NOT_AUTHORITATIVE",

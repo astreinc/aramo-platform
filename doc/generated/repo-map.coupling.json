@@ -30396,6 +30396,11 @@
     {
       "from": "libs/subscription/scripts/ccp-bootstrap-platform-owner.ts",
       "status": "unscoped",
+      "to": "deploy/jiti-tsconfig-runner.mjs"
+    },
+    {
+      "from": "libs/subscription/scripts/ccp-bootstrap-platform-owner.ts",
+      "status": "unscoped",
       "to": "deploy/seed-prod.sh"
     },
     {

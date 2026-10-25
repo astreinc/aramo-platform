@@ -418,7 +418,8 @@ describe('platform-web → GET /platform/commercial/change-requests (CCP-A3)', (
 // `eligible_for_me` set. A full page mixes states, so the row template names only the
 // fields every state carries (nullable timestamps are contracted by the interactions
 // above, per state).
-const ANY_STATE = '^(DRAFT|PENDING_APPROVAL|APPROVED|APPLYING|APPLIED|APPLY_FAILED|REJECTED|EXPIRED|WITHDRAWN)$';
+// CCP-FIX1: + APPLY_EXPIRED (OpenAPI CommercialChangeRequestState; the FIX1 provider states leave such rows).
+const ANY_STATE = '^(DRAFT|PENDING_APPROVAL|APPROVED|APPLYING|APPLIED|APPLY_FAILED|REJECTED|EXPIRED|WITHDRAWN|APPLY_EXPIRED)$';
 const inboxRow = (state: ReturnType<typeof regex> | string) => ({
   id: uuid(EX_REQUEST_ID),
   action_type: regex('^[A-Z_]+$', 'CREDIT'),
@@ -1158,6 +1159,43 @@ describe('platform-web → POST /platform/commercial/change-requests/{id}/conver
       .executeTest(async (mock) => {
         const res = await call(`${mock.url}${convert()}`, 'POST', platformSession('finance_admin'));
         expect(res.status).toBe(403);
+      });
+  });
+});
+
+// CCP-FIX1 (O-D4-2) — the apply-deadline refusal is spelled ONE way on both apply routes (the
+// CCP-A6-R convention): 409 COMMERCIAL_CHANGE_REQUEST_CONFLICT, details.reason apply_expired, an
+// operator explanation, the request state; never details.refusal.
+describe('platform-web → the apply-deadline refusal on POST …/apply and POST …/convert (CCP-FIX1)', () => {
+  const EXPIRED = errorBody('COMMERCIAL_CHANGE_REQUEST_CONFLICT', { reason: 'apply_expired', explanation: like('The apply authority of this approved request has expired.'), state: 'APPLY_EXPIRED' });
+  it('an apply-expired subscription open is refused at …/apply (409 apply_expired)', async () => {
+    await provider
+      .addInteraction()
+      .given('an apply-expired subscription-open change request exists')
+      .uponReceiving('an apply of an apply-expired request by its requester')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/apply`, `${CR}/${EX_REQUEST_ID}/apply`), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(409, (b) => {
+        b.jsonBody(EXPIRED);
+      })
+      .executeTest(async (mock) => {
+        expect((await call(`${mock.url}${CR}/${EX_REQUEST_ID}/apply`, 'POST', platformSession('commercial_ops'))).status).toBe(409);
+      });
+  });
+  it('an apply-expired conversion is refused at …/convert with the same body (409 apply_expired)', async () => {
+    await provider
+      .addInteraction()
+      .given('an apply-expired governed-to-self-service conversion exists')
+      .uponReceiving('a conversion apply of an apply-expired request by its requester')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/convert`, `${CR}/${EX_REQUEST_ID}/convert`), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(409, (b) => {
+        b.jsonBody(EXPIRED);
+      })
+      .executeTest(async (mock) => {
+        expect((await call(`${mock.url}${CR}/${EX_REQUEST_ID}/convert`, 'POST', platformSession('commercial_ops'))).status).toBe(409);
       });
   });
 });
@@ -1933,7 +1971,7 @@ describe('platform-web → GET /platform/commercial/metrics/approvals (CCP-D3)',
           change_requests_by_state: counts(['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'APPLYING', 'APPLIED', 'APPLY_FAILED', 'REJECTED', 'EXPIRED', 'WITHDRAWN']),
           pending_approval_nearing_expiry: integer(0),
           pending_approval_past_expiry: integer(0),
-          open_alerts_by_type: counts(['APPLY_FAILED', 'APPROVAL_NEARING_EXPIRY', 'APPROVAL_PAST_EXPIRY']),
+          open_alerts_by_type: counts(['APPLY_FAILED', 'APPROVAL_NEARING_EXPIRY', 'APPROVAL_PAST_EXPIRY', 'APPLY_DEADLINE_NEARING', 'APPLY_DEADLINE_PASSED']),
           thresholds: THRESHOLDS,
         });
       })

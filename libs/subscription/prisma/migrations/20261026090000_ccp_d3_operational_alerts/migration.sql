@@ -44,7 +44,11 @@ CREATE TABLE "subscription"."CommercialOperationalAlert" (
      OR ("alert_type" = 'USAGE_NOT_RECONCILED' AND "family" = 'BILLING' AND "subject_kind" = 'usage_metric')
      OR ("alert_type" = 'APPLY_FAILED' AND "family" = 'APPROVAL' AND "subject_kind" = 'change_request')
      OR ("alert_type" = 'APPROVAL_NEARING_EXPIRY' AND "family" = 'APPROVAL' AND "subject_kind" = 'change_request')
-     OR ("alert_type" = 'APPROVAL_PAST_EXPIRY' AND "family" = 'APPROVAL' AND "subject_kind" = 'change_request')),
+     OR ("alert_type" = 'APPROVAL_PAST_EXPIRY' AND "family" = 'APPROVAL' AND "subject_kind" = 'change_request')
+     -- CCP-FIX1 (closes TD-D3-10, Charter Amendment A1): the apply deadline of an APPROVED / APPLY_FAILED
+     -- request whose snapshotted policy declares apply_expiry_hours. Added in place (undeployed, as D1-R).
+     OR ("alert_type" = 'APPLY_DEADLINE_NEARING' AND "family" = 'APPROVAL' AND "subject_kind" = 'change_request')
+     OR ("alert_type" = 'APPLY_DEADLINE_PASSED' AND "family" = 'APPROVAL' AND "subject_kind" = 'change_request')),
     CONSTRAINT "CommercialOperationalAlert_subject_id_check" CHECK (length("subject_id") BETWEEN 1 AND 255),
     CONSTRAINT "CommercialOperationalAlert_product_key_registry_check" CHECK ("product_key" IS NULL OR "product_key" IN ('sign')),
     CONSTRAINT "CommercialOperationalAlert_status_check" CHECK ("status" IN ('OPEN', 'RESOLVED')),

@@ -6,7 +6,6 @@ import {
   CommercialChangeRequestError,
   CommercialConversionService,
   ConversionApplyFailedError,
-  ConversionApplyRefusedError,
   type ConversionView,
 } from '@aramo/subscription';
 
@@ -29,7 +28,8 @@ import { requestDto } from './platform-commercial-change-request.controller.js';
 //   200  applied / released, pending-provider (self-service → governed), or replayed
 //   403  requester_scope_missing | not_requester | not_human
 //   409  COMMERCIAL_CHANGE_REQUEST_CONFLICT  reason apply_refused (no state change), apply_failed
-//        (rolled back, APPLY_FAILED, retryable), action_not_applicable (not a CONVERSION)
+//        (rolled back, APPLY_FAILED, retryable), action_not_applicable (not a CONVERSION), apply_expired
+//        (Charter Amendment A1; CCP-FIX1 O-D4-2: the same body as POST …/apply, via applyHttpError)
 // No console mutation beyond the governed apply (PLATFORM-UX-1 A1-2); the console itself is B3's.
 // Nothing here reports an external (Stripe) change as committed before the provider confirmed it.
 
@@ -86,12 +86,6 @@ function assertPlatformTier(auth: AuthContextType, requestId: string): void {
 }
 
 function conversionHttpError(err: unknown, requestId: string): unknown {
-  if (err instanceof ConversionApplyRefusedError) {
-    return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', `apply refused: ${err.reason}`, 409, {
-      requestId,
-      details: { reason: 'apply_refused', refusal: err.reason, ...err.detail },
-    });
-  }
   if (err instanceof ConversionApplyFailedError) {
     return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, {
       requestId,

@@ -113,6 +113,65 @@ else
 fi
 rm -f "$ENV_FILE"
 
+# --- CCP-FIX1 (D5-DEF-1): a missing .env key under the script's own `set -euo pipefail` ---
+# Each case runs in a fresh `bash -c` with the script's shell options, sources the script, and
+# reports its exit code (`|| rc=$?`: sourcing migrate-prod.sh turns on its `set -e` here too).
+# Before the fix, read_env of an absent key exited 1 under pipefail.
+SCRIPT="$DIR/migrate-prod.sh"
+TMPD="$(mktemp -d)"
+okcase() { echo "  ok    $1"; pass=$((pass + 1)); }
+badcase() { echo "  FAIL  $1"; fail=$((fail + 1)); }
+strict() { # strict <env-file> <commands…> → stdout+stderr; exit code of the commands
+  ARAMO_ENV_FILE="$1" bash -c "set -euo pipefail; source '$SCRIPT'; $2" 2>&1
+}
+printf 'POSTGRES_PASSWORD=pw\nINTELLIGENCE_DB_PASSWORD=ti-secret-0123456789\n# INTELLIGENCE_DB_USER=aramo_intelligence\n' > "$TMPD/no-user.env"
+printf 'POSTGRES_PASSWORD=pw\nINTELLIGENCE_DB_USER=\nINTELLIGENCE_DB_PASSWORD=ti-secret-0123456789\n' > "$TMPD/empty-user.env"
+printf 'POSTGRES_PASSWORD=pw\nINTELLIGENCE_DB_USER=aramo_intelligence\n' > "$TMPD/no-password.env"
+printf 'POSTGRES_PASSWORD=pw\nINTELLIGENCE_DB_USER=Bad-Name\nINTELLIGENCE_DB_PASSWORD=ti-secret-0123456789\n' > "$TMPD/bad-user.env"
+
+rc=0; out="$(strict "$TMPD/no-user.env" 'v="$(read_env INTELLIGENCE_DB_USER)"; echo "rc=0 v=[$v]"')" || rc=$?
+[ "$rc" = 0 ] && [ "$out" = "rc=0 v=[]" ] && okcase "DEF1-1 read_env of an absent key under set -euo pipefail → empty, exit 0" || badcase "DEF1-1 read_env absent key (rc=$rc out=$out)"
+rc=0; out="$(strict "$TMPD/no-user.env" 'v="$(read_env POSTGRES_USER)"; echo "[$(build_dburl)]"')" || rc=$?
+[ "$rc" = 0 ] && [ "$out" = "[postgresql://aramo:pw@postgres:5432/aramo?schema=public]" ] && okcase "DEF1-2 absent POSTGRES_USER / POSTGRES_DB → the documented 'aramo' defaults (unchanged), exit 0" || badcase "DEF1-2 build_dburl (rc=$rc out=$out)"
+rc=0; out="$(strict "$TMPD/no-user.env" 'resolve_intelligence_env; echo "user=$TI_USER url=$TI_DBURL"')" || rc=$?
+[ "$rc" = 0 ] && printf '%s' "$out" | grep -q "INTELLIGENCE_DB_USER is not set in .* using the documented default 'aramo_intelligence'" \
+  && printf '%s' "$out" | grep -q "^user=aramo_intelligence url=postgresql://aramo_intelligence@postgres:5432/aramo_intelligence$" \
+  && okcase "DEF1-3 INTELLIGENCE_DB_USER absent (commented out, as .env.prod.example ships it) → explicit default, exit 0" || badcase "DEF1-3 (rc=$rc out=$out)"
+rc=0; out="$(strict "$TMPD/empty-user.env" 'resolve_intelligence_env; echo "user=$TI_USER"')" || rc=$?
+[ "$rc" = 0 ] && printf '%s' "$out" | grep -q "INTELLIGENCE_DB_USER is empty" && printf '%s' "$out" | grep -q "^user=aramo_intelligence$" && okcase "DEF1-4 INTELLIGENCE_DB_USER= (empty) → explicit default, exit 0" || badcase "DEF1-4 (rc=$rc out=$out)"
+rc=0; out="$(strict "$TMPD/no-password.env" 'resolve_intelligence_env; echo reached')" || rc=$?
+[ "$rc" = 2 ] && printf '%s' "$out" | grep -q "FATAL: INTELLIGENCE_DB_PASSWORD is not set" && printf '%s' "$out" | grep -q "Nothing was applied" && ! printf '%s' "$out" | grep -q reached && okcase "DEF1-5 INTELLIGENCE_DB_PASSWORD absent → FATAL exit 2" || badcase "DEF1-5 (rc=$rc out=$out)"
+rc=0; out="$(strict "$TMPD/bad-user.env" 'resolve_intelligence_env; echo reached')" || rc=$?
+[ "$rc" = 2 ] && printf '%s' "$out" | grep -q "is not a valid role name" && okcase "DEF1-6 an invalid INTELLIGENCE_DB_USER → FATAL exit 2" || badcase "DEF1-6 (rc=$rc out=$out)"
+
+# main() end to end with a fake `docker` on PATH (no container, no DB): it logs each call and
+# answers the status reads with an in-sync verdict. Proves the ordering: a missing TI password stops
+# BEFORE any shared apply; a missing TI user runs both steps to completion with the default role.
+mkdir -p "$TMPD/bin"
+cat > "$TMPD/bin/docker" <<'FAKE'
+#!/usr/bin/env bash
+printf '%s\n' "$*" >> "$FAKE_DOCKER_LOG"
+case "$*" in
+  *db-sync-local.sh*--status*) echo 'db:sync:local pending — 0 on-disk migration(s) not yet applied' ;;
+  *db-sync-intelligence.sh*--status*) printf '%s\n' 'db:sync:intelligence pending — 0 on-disk migration(s) not yet applied' 'db:sync:intelligence drift — 0 recorded migration(s) whose checksum changed' ;;
+esac
+exit 0
+FAKE
+chmod +x "$TMPD/bin/docker"
+runmain() { # runmain <env-file> <log-file>
+  : > "$2"
+  PATH="$TMPD/bin:$PATH" FAKE_DOCKER_LOG="$2" ARAMO_DIR="$TMPD" ARAMO_ENV_FILE="$1" bash "$SCRIPT" 2>&1
+}
+rc=0; out="$(runmain "$TMPD/no-password.env" "$TMPD/np.log")" || rc=$?
+applies="$(grep -c 'db-sync-local.sh$' "$TMPD/np.log" || true)"; calls="$(wc -l < "$TMPD/np.log" | tr -d ' ')"
+[ "$rc" = 2 ] && [ "$calls" = 0 ] && [ "$applies" = 0 ] && printf '%s' "$out" | grep -q "Nothing was applied" && okcase "DEF1-7 main(): missing TI password → exit 2 before ANY docker call (0 calls, 0 shared applies)" || badcase "DEF1-7 (rc=$rc calls=$calls applies=$applies out=$out)"
+rc=0; out="$(runmain "$TMPD/no-user.env" "$TMPD/nu.log")" || rc=$?
+[ "$rc" = 0 ] && printf '%s' "$out" | grep -q "OK — Talent Intelligence database: zero pending, zero drift." \
+  && grep -q "INTELLIGENCE_DB_USER=aramo_intelligence" "$TMPD/nu.log" && grep -q "ensure-intelligence-db.sh" "$TMPD/nu.log" \
+  && [ "$(grep -c 'db-sync-local.sh$' "$TMPD/nu.log")" = 1 ] && [ "$(grep -c 'db-sync-intelligence.sh$' "$TMPD/nu.log")" = 1 ] \
+  && okcase "DEF1-8 main(): INTELLIGENCE_DB_USER absent → shared apply + gate, then the TI step runs to its gate with the default role (exit 0)" || badcase "DEF1-8 (rc=$rc out=$out)"
+rm -rf "$TMPD"
+
 echo ""
 echo "gate parse: ${pass} passed, ${fail} failed"
 [ "$fail" = 0 ]

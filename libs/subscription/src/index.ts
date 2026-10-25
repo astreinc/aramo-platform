@@ -410,13 +410,11 @@ export {
   CONVERSION_RELEASE_STATES,
   CONVERSION_RELEASE_TRANSITIONS,
   ConversionApplyFailedError,
-  ConversionApplyRefusedError,
   conversionPayloadErrors,
   effectiveReleaseState,
   type ConversionDirection,
   type ConversionFailureCode,
   type ConversionPayload,
-  type ConversionRefusalCode,
   type ConversionReleaseState,
 } from './lib/commercial/commercial-conversion.js';
 export { CommercialConversionLedger, type ConversionReleaseRow } from './lib/commercial/commercial-conversion.ledger.js';
