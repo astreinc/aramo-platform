@@ -324,6 +324,33 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       return c.rows[0].id as string;
     }
 
+    /** CCP-C2 — an open governed (MANUAL) BASE row of the tenant, raw (a pre-existing subscription). */
+    async function governedRow(tenant_id: string): Promise<string> {
+      const id = randomUUID();
+      await db.query(
+        `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by)
+         SELECT $1::uuid, $2::uuid, p.id, (SELECT v.id FROM subscription."PlanVersion" v WHERE v.plan_id = p.id AND v.status = 'PUBLISHED'), 'sign', 'BASE', now(), 'MANUAL', 'pact-c2' FROM subscription."Plan" p WHERE p.key = 'aramo-sign-included-v1'`,
+        [id, tenant_id],
+      );
+      return id;
+    }
+
+    /** CCP-C2 — an APPROVED CONVERSION on `tenant_id` through the HTTP surface (commercial_ops requests, finance_admin approves). */
+    async function approvedConversion(tenant_id: string, payload: Record<string, unknown>): Promise<string> {
+      const out = await asRole<{ request: { id: string } }>('commercial_ops', 'POST', '/platform/commercial/change-requests', {
+        action_type: 'CONVERSION',
+        tenant_id,
+        product_key: 'sign',
+        payload,
+        reason: 'Convert the Aramo Sign subscription',
+        idempotency_key: `pact-c2-state-${String(++seq).padStart(4, '0')}`,
+      });
+      const id = out.request.id;
+      await asRole('commercial_ops', 'POST', `/platform/commercial/change-requests/${id}/submit`);
+      await asRole('finance_admin', 'POST', `/platform/commercial/change-requests/${id}/approvals`, { step_index: 0 });
+      return id;
+    }
+
     beforeAll(async () => {
       container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
@@ -439,7 +466,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               action_type: 'CONVERSION',
               tenant_id,
               product_key: 'sign',
-              payload: { pact_fixture: 'self_service_to_governed' },
+              // CCP-C2 — a structurally valid CONVERSION payload (the C2 schema is enforced at create).
+              payload: { direction: 'TO_GOVERNED', subscription_id: randomUUID(), plan_key: 'aramo-sign-included-v1', plan_version_id: randomUUID() },
               reason: 'Convert the self-service subscription to a governed one',
               idempotency_key: `pact-c1-state-${String(++seq).padStart(4, '0')}`,
             });
@@ -535,6 +563,32 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           },
           // CCP-B4 — enterprise contract records.
           'an enterprise contract exists': async () => ({ contractId: await recordedContract() }),
+          // CCP-C2 — an APPROVED governed → self-service conversion (release not yet applied).
+          'an approved governed-to-self-service conversion exists': async () => {
+            const tenant_id = await commercialTenant();
+            const gov = await governedRow(tenant_id);
+            const v = await db.query(`SELECT v.id FROM subscription."PlanVersion" v JOIN subscription."Plan" p ON p.id = v.plan_id WHERE p.key = 'aramo-sign-standard-business-v1' AND v.status = 'PUBLISHED'`);
+            const requestId = await approvedConversion(tenant_id, {
+              direction: 'TO_SELF_SERVICE',
+              governed_subscription_id: gov,
+              plan_key: 'aramo-sign-standard-business-v1',
+              plan_version_id: v.rows[0].id,
+              release_expires_at: new Date(Date.now() + 24 * 3_600_000).toISOString(),
+            });
+            return { requestId };
+          },
+          // CCP-C2 — a self-service → governed conversion of a HELD activation, applied by its
+          // requester: the durable provider cancel is enqueued and not dispatched (no provider is
+          // configured in the harness), so the request is pending-provider.
+          'a self-service-to-governed conversion is pending at the provider': async () => {
+            const tenant_id = await commercialTenant();
+            const gov = await governedRow(tenant_id);
+            const ref = `sub_pact_c2_${String(++seq).padStart(4, '0')}`;
+            await db.query(`INSERT INTO subscription."BillingReconciliationFlag" (id, tenant_id, provider, subscription_ref, reason) VALUES ($1, $2, 'STRIPE', $3, 'governed_subscription_open')`, [randomUUID(), tenant_id, ref]);
+            const requestId = await approvedConversion(tenant_id, { direction: 'TO_GOVERNED', held_subscription_ref: ref, governed_subscription_id: gov });
+            await asRole('commercial_ops', 'POST', `/platform/commercial/change-requests/${requestId}/convert`);
+            return { requestId };
+          },
           'a pending change request exists': async () => {
             const requestId = await draftRequest();
             await asRole('commercial_ops', 'POST', `/platform/commercial/change-requests/${requestId}/submit`);

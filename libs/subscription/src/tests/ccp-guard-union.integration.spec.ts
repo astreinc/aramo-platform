@@ -9,6 +9,7 @@ import {
   COMMERCIAL_CHANGE_REQUEST_STATES,
   canTransitionFor,
 } from '../lib/commercial/commercial-change-request.js';
+import { CommercialChangeRequestService, type CommercialChangeRequestRow } from '../lib/commercial/commercial-change-request.service.js';
 
 import { POLICY_V1, applyCcpA6Schema } from './support/ccp-a3-database.js';
 
@@ -109,5 +110,61 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TD-MERGE-GUARD-1 
     );
     expect(r.rows).toHaveLength(1);
     expect(r.rows[0]!.src).toContain('[union block: A3 base');
+  });
+
+  // TD-MERGE-21 (TD-C2-7): the deferred "cannot commit in APPLYING" triggers of the A6 / B2 / A7 / A8
+  // slices are scoped to their own action types, never CONVERSION: a CONVERSION may commit in
+  // APPLYING while its provider command is pending (Conversion Rule C-13).
+  async function commitInApplying(action: string, withCommand: boolean): Promise<string | null> {
+    const id = '019a0000-0000-7000-8000-0000000c0de2';
+    try {
+      await pg.query('BEGIN');
+      await pg.query(`SET LOCAL session_replication_role = replica`);
+      await pg.query(
+        `INSERT INTO subscription."CommercialChangeRequest"
+           (id, action_type, kind, state, tenant_id, product_key, payload, payload_checksum, required_chain, policy_version_id, policy_checksum,
+            requested_by, reason, idempotency_key, created_at, submitted_at, expires_at, updated_at)
+         VALUES ($1, $2, 'NORMAL', 'APPROVED', $1, 'sign', '{}'::jsonb, $3, '{"steps": []}'::jsonb, $4, $3, $1, 'commit probe', 'guard-union-commit', now(), now(), now() + interval '72 hours', now())`,
+        [id, action, CHECKSUM, POLICY_V1],
+      );
+      if (withCommand) {
+        await pg.query(
+          `INSERT INTO subscription."BillingProviderCommand" (id, provider, command_kind, change_request_id, step, idempotency_key, tenant_id, product_key, target_ref, params, state, attempts, created_by, created_at, updated_at)
+           VALUES (gen_random_uuid(), 'STRIPE', 'SUBSCRIPTION_CANCEL', $1::uuid, 'end_self_service', 'aramo-ccp-' || $1::text || '-end_self_service', $1, 'sign', 'sub_probe', '{"mode":"IMMEDIATE"}', 'PENDING', 0, $1, now(), now())`,
+          [id],
+        );
+      }
+      await pg.query(`SET LOCAL session_replication_role = origin`);
+      await pg.query(`UPDATE subscription."CommercialChangeRequest" SET state = 'APPLYING', apply_attempts = apply_attempts + 1 WHERE id = $1`, [id]);
+      await pg.query('COMMIT');
+      return null;
+    } catch (e) {
+      await pg.query('ROLLBACK').catch(() => undefined);
+      return (e as Error).message;
+    } finally {
+      // Remove the probe rows (append-only triggers off for the cleanup only).
+      await pg.query('BEGIN');
+      await pg.query(`SET LOCAL session_replication_role = replica`);
+      await pg.query(`DELETE FROM subscription."BillingProviderCommand" WHERE change_request_id = $1`, [id]);
+      await pg.query(`DELETE FROM subscription."CommercialChangeRequest" WHERE id = $1`, [id]);
+      await pg.query('COMMIT');
+    }
+  }
+
+  it('GUARD-UNION-3 a CONVERSION with a pending provider command commits in APPLYING; an A6 / CCP-B2-backend apply never does', async () => {
+    expect(await commitInApplying('CONVERSION', true)).toBeNull();
+    expect(await commitInApplying('CONVERSION', false)).toContain('cannot commit in APPLYING without a provider command');
+    for (const a of ['SUBSCRIPTION_OPEN', 'ENTITLEMENT_GRANT', 'PLAN_VERSION_PUBLISH']) {
+      expect(await commitInApplying(a, false), a).toContain('cannot commit in APPLYING');
+    }
+  });
+
+  it('GUARD-UNION-4 (TD-MERGE-21) the A6-R lazy expiry leaves every action outside the guard-admitted APPLY_EXPIRED set alone (no DB write is attempted)', async () => {
+    const svc = new CommercialChangeRequestService(null as never, null as never, null as never, null as never);
+    const req = (action_type: string) => ({ id: ID, action_type, state: 'APPROVED', approved_at: new Date(0) }) as unknown as CommercialChangeRequestRow;
+    for (const a of ['CONVERSION', 'POLICY_ACTIVATE', 'ROLE_GRANT', 'ENTITLEMENT_REVOKE', 'SUPPORT_EXTENSION']) {
+      // A null transaction would throw on any DB access: the early return proves none is made.
+      expect(await svc.expireApplyIfDue(null as never, req(a), new Date(), { platform_tenant_id: ID, correlation_id: 'guard-union' } as never), a).toBe(false);
+    }
   });
 });

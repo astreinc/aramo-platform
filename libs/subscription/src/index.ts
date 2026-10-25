@@ -203,6 +203,7 @@ export {
   COMMERCIAL_OPEN_STATES,
   COMMERCIAL_A6_APPLY_TRANSITIONS,
   COMMERCIAL_A9_ROLE_APPLY_TRANSITIONS,
+  COMMERCIAL_C2_CONVERSION_TRANSITIONS,
   COMMERCIAL_REQUEST_PRODUCT_KEYS,
   COMMERCIAL_ROLE_CHANGE_ACTIONS,
   COMMERCIAL_ROLE_CHANGE_ROLE_KEYS,
@@ -318,6 +319,23 @@ export {
   type ContractSummaryView,
 } from './lib/commercial/commercial-contract.repository.js';
 export { GOVERNED_SUBSCRIPTION_OPEN, billingLockKey, isGovernedSubscription, takeBillingLock } from './lib/billing/governed-subscription.js';
+// CCP-C2 (PBD §5.2 row C2; Conversion Rule C-11…C-15, C-29) — governed manual ↔ self-service conversion.
+export {
+  CONVERSION_DIRECTIONS,
+  CONVERSION_RELEASE_STATES,
+  CONVERSION_RELEASE_TRANSITIONS,
+  ConversionApplyFailedError,
+  ConversionApplyRefusedError,
+  conversionPayloadErrors,
+  effectiveReleaseState,
+  type ConversionDirection,
+  type ConversionFailureCode,
+  type ConversionPayload,
+  type ConversionRefusalCode,
+  type ConversionReleaseState,
+} from './lib/commercial/commercial-conversion.js';
+export { CommercialConversionLedger, type ConversionReleaseRow } from './lib/commercial/commercial-conversion.ledger.js';
+export { CommercialConversionService, type ConversionApplyResult, type ConversionStatus, type ConversionView } from './lib/commercial/commercial-conversion.service.js';
 export { C16_QUERY_A, checkoutCutoverReport, formatCheckoutCutoverReport, type CheckoutCutoverReport } from './lib/billing/checkout-cutover-check.js';
 // CCP-B5 (PBD §5.3 row B5; TD-A9-16) — the POLICY_ACTIVATE apply (NC-5 snapshot re-check),
 // policy drafts, the read-only audit export and the operator roster with chain state.

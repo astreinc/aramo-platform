@@ -4,6 +4,7 @@ import type { CommercialPolicyContent } from './commercial-policy.js';
 import { canonicalJson } from './commercial-policy.js';
 import { creditEscalation, discountEscalates } from './commercial-policy-boundaries.js';
 import { CONTRACT_PAYLOAD_KEYS, validateContractBlocks } from './commercial-contract.js';
+import { conversionPayloadErrors } from './commercial-conversion.js';
 
 // CCP-A3 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.1 row A3; Charter §5.1 D6, D8,
 // D9, §6.4; Recon Report §1 C2 and §2) — the PURE half of the change-request model: the
@@ -182,15 +183,29 @@ export function isCatalogApplicable(action_type: string): action_type is B2Catal
 }
 
 /**
+ * CCP-C2 apply transitions, admitted only for CONVERSION (DB guard, migration 20261026060000). The
+ * same pairs as A6; a CONVERSION may additionally COMMIT in APPLYING while a provider command is
+ * pending (self-service → governed, Conversion Rule C-13), and never enters APPLY_FAILED while one
+ * is unconfirmed (DB-only rules).
+ */
+export const COMMERCIAL_C2_CONVERSION_TRANSITIONS: Readonly<Partial<Record<CommercialChangeRequestState, readonly CommercialChangeRequestState[]>>> = {
+  APPROVED: ['APPLYING'],
+  APPLY_FAILED: ['APPLYING'],
+  APPLYING: ['APPLIED', 'APPLY_FAILED'],
+};
+
+/**
  * The per-action transition table, mirroring the DB guard exactly: the A3 base for every
  * action, plus the CCP-A9 role-change apply (role actions only), the CCP-A6 apply (the four A6
- * action types only) and the CCP-B2-backend catalog apply (publish / retire only).
+ * action types only), the CCP-B2-backend catalog apply (publish / retire only) and the CCP-C2
+ * conversion apply (CONVERSION only).
  * canTransition above is the action-agnostic union.
  */
 export function canTransitionFor(action_type: string, from: CommercialChangeRequestState, to: CommercialChangeRequestState): boolean {
   if (COMMERCIAL_A3_TRANSITIONS[from].includes(to)) return true;
   if ((COMMERCIAL_ROLE_CHANGE_ACTIONS as readonly string[]).includes(action_type)) return (COMMERCIAL_A9_ROLE_APPLY_TRANSITIONS[from] ?? []).includes(to);
   if (isA6Applicable(action_type) || isCatalogApplicable(action_type)) return (COMMERCIAL_A6_APPLY_TRANSITIONS[from] ?? []).includes(to);
+  if (action_type === 'CONVERSION') return (COMMERCIAL_C2_CONVERSION_TRANSITIONS[from] ?? []).includes(to);
   return false;
 }
 
@@ -443,6 +458,11 @@ export function validatePayload(action_type: CommercialActionType, payload: unkn
       }
       break;
     }
+    // CCP-C2 — the conversion payload: a closed direction with a closed key set per direction
+    // (commercial-conversion.ts). Validated at create and again at apply.
+    case 'CONVERSION':
+      errors.push(...conversionPayloadErrors(p));
+      break;
     default:
       break;
   }

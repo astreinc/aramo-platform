@@ -860,3 +860,37 @@ model BillingWebhookInbox {
   @@index([received_at(sort: Desc), id(sort: Desc)])
   @@schema("subscription")
 }
+
+// CCP-C2 (PBD §5.2 row C2; Conversion Rule C-12, C-14) — the release of exactly ONE self-service
+// checkout (or one held activation) by an applied CONVERSION change request, with an expiry.
+// RELEASED → CONSUMED (bound to its checkout under the billing lock) → CONVERTED (the webhook
+// transaction ended the governed row and opened the SELF_SERVICE row); RELEASED → CONVERTED (a held
+// activation adopted); RELEASED → EXPIRED. Consumption only before expires_at; CONVERTED only with
+// both rows in place; identity immutable; DELETE rejected (trigger, migration 20261026060000).
+// Plain UUID references (FKs in SQL); no Prisma relation.
+model CommercialConversionRelease {
+  id                           String    @id @db.Uuid
+  change_request_id            String    @unique @db.Uuid
+  tenant_id                    String    @db.Uuid
+  product_key                  String
+  governed_subscription_id     String    @db.Uuid
+  plan_id                      String    @db.Uuid
+  plan_version_id              String    @db.Uuid
+  held_subscription_ref        String?
+  // CHECK: RELEASED | CONSUMED | CONVERTED | EXPIRED
+  state                        String
+  expires_at                   DateTime  @db.Timestamptz(3)
+  intent_id                    String?   @unique @db.Uuid
+  consumed_at                  DateTime? @db.Timestamptz(3)
+  self_service_subscription_id String?   @db.Uuid
+  converted_at                 DateTime? @db.Timestamptz(3)
+  expired_at                   DateTime? @db.Timestamptz(3)
+  created_by                   String    @db.Uuid
+  created_at                   DateTime  @db.Timestamptz(3)
+  updated_at                   DateTime  @db.Timestamptz(3)
+
+  // Partial unique index CommercialConversionRelease_one_released_per_tenant_product in SQL.
+  @@index([tenant_id, product_key])
+  @@index([held_subscription_ref])
+  @@schema("subscription")
+}

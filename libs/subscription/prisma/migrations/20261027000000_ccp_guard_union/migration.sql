@@ -20,7 +20,7 @@
 -- from x to, so a dropped branch fails loudly.
 --
 -- Blocks, in order: A3 base; A9 role pair; A6; TD-A6-25 generic "APPLIED needs applied_at";
--- CCP-B2-backend catalog; A6-R APPLY_EXPIRED.
+-- CCP-B2-backend catalog; A6-R APPLY_EXPIRED. C2 CONVERSION (20261026060000).
 -- Carries a dollar-quoted body: apply whole-file. Design approval is not production migration
 -- authority (ruling A0-C15).
 
@@ -96,6 +96,12 @@ BEGIN
              OR (NEW."action_type" IN ('PLAN_VERSION_PUBLISH', 'PLAN_RETIRE')
                  AND ((OLD."state" IN ('APPROVED', 'APPLY_FAILED') AND NEW."state" = 'APPLYING')
                    OR (OLD."state" = 'APPLYING' AND NEW."state" IN ('APPLIED', 'APPLY_FAILED'))))
+             -- [union block: C2 CONVERSION, 20261026060000]
+             -- >>> CCP-C2 CONVERSION branch (20261026060000) >>>
+             OR (NEW."action_type" = 'CONVERSION'
+                 AND ((OLD."state" IN ('APPROVED', 'APPLY_FAILED') AND NEW."state" = 'APPLYING')
+                   OR (OLD."state" = 'APPLYING' AND NEW."state" IN ('APPLIED', 'APPLY_FAILED'))))
+             -- <<< CCP-C2 CONVERSION branch <<<
              -- [union block: A6-R APPLY_EXPIRED, 20261026050000]
              -- ==== BEGIN CCP-A6-R apply deadline (Charter Amendment A1, AD-4) ====
              -- APPLY_EXPIRED only from APPROVED / APPLY_FAILED (never APPLYING), for the governed
@@ -136,6 +142,71 @@ BEGIN
             RAISE EXCEPTION 'CommercialChangeRequest applied_at is set only by APPLIED';
         END IF;
         END IF;
+        -- [union block: C2 CONVERSION attempt rules + APPLIED checks, 20261026060000]
+        -- >>> CCP-C2 CONVERSION branch (20261026060000) >>>
+        IF NEW."action_type" = 'CONVERSION' THEN
+            IF NEW."state" = 'APPLYING' THEN
+                IF NEW."apply_attempts" <> OLD."apply_attempts" + 1 THEN
+                    RAISE EXCEPTION 'CommercialChangeRequest APPLYING must count the attempt (apply_attempts % -> %)', OLD."apply_attempts", NEW."apply_attempts";
+                END IF;
+            ELSIF NEW."apply_attempts" IS DISTINCT FROM OLD."apply_attempts" THEN
+                RAISE EXCEPTION 'CommercialChangeRequest apply_attempts changes only on entering APPLYING';
+            END IF;
+            IF NEW."state" <> 'APPLIED' AND NEW."applied_at" IS DISTINCT FROM OLD."applied_at" THEN
+                RAISE EXCEPTION 'CommercialChangeRequest applied_at is set only by APPLIED';
+            END IF;
+            -- C-23: a Stripe operation in flight is never abandoned by a local failure record.
+            IF NEW."state" = 'APPLY_FAILED' AND EXISTS (
+                SELECT 1 FROM "subscription"."BillingProviderCommand" c
+                 WHERE c."change_request_id" = NEW."id" AND c."state" <> 'CONFIRMED') THEN
+                RAISE EXCEPTION 'CommercialChangeRequest CONVERSION cannot be APPLY_FAILED while a provider command is unconfirmed';
+            END IF;
+            IF NEW."state" = 'APPLIED' THEN
+                SELECT * INTO app FROM "subscription"."CommercialChangeApplication" WHERE "change_request_id" = NEW."id";
+                IF NOT FOUND THEN
+                    RAISE EXCEPTION 'CommercialChangeRequest cannot be APPLIED without its CommercialChangeApplication';
+                END IF;
+                IF app."action_type" <> NEW."action_type" OR app."tenant_id" IS DISTINCT FROM NEW."tenant_id"
+                   OR app."product_key" IS DISTINCT FROM NEW."product_key" OR app."attempt" <> NEW."apply_attempts" THEN
+                    RAISE EXCEPTION 'CommercialChangeApplication does not match its request';
+                END IF;
+                IF NEW."payload" ->> 'direction' = 'TO_SELF_SERVICE' THEN
+                    -- C-12 / C-21: the release of one checkout is the Aramo-owned operation.
+                    PERFORM 1 FROM "subscription"."CommercialConversionRelease" r
+                      WHERE r."change_request_id" = NEW."id" AND r."governed_subscription_id" = app."subscription_id";
+                    IF NOT FOUND THEN
+                        RAISE EXCEPTION 'CommercialChangeRequest APPLIED: the CONVERSION release is missing';
+                    END IF;
+                ELSIF NEW."payload" ->> 'direction' = 'TO_GOVERNED' THEN
+                    -- C-13: only after the provider-confirmed end (every command CONFIRMED).
+                    PERFORM 1 FROM "subscription"."BillingProviderCommand" c WHERE c."change_request_id" = NEW."id";
+                    IF NOT FOUND OR EXISTS (SELECT 1 FROM "subscription"."BillingProviderCommand" c
+                                             WHERE c."change_request_id" = NEW."id" AND c."state" <> 'CONFIRMED') THEN
+                        RAISE EXCEPTION 'CommercialChangeRequest APPLIED: the provider-confirmed end is missing';
+                    END IF;
+                    SELECT * INTO sub FROM "subscription"."TenantSubscription" WHERE "id" = app."subscription_id";
+                    IF NOT FOUND OR sub."tenant_id" <> NEW."tenant_id" OR sub."product_key" <> NEW."product_key" OR sub."source" <> 'MANUAL'
+                       OR sub."ended_at" IS NOT NULL OR sub."plan_version_id" IS DISTINCT FROM app."to_plan_version_id" THEN
+                        RAISE EXCEPTION 'CommercialChangeRequest APPLIED: the governed row is not open on the applied version';
+                    END IF;
+                    IF app."replaced_subscription_id" IS NOT NULL THEN
+                        SELECT * INTO sub FROM "subscription"."TenantSubscription" WHERE "id" = app."replaced_subscription_id";
+                        IF NOT FOUND OR sub."ended_at" IS NULL THEN
+                            RAISE EXCEPTION 'CommercialChangeRequest APPLIED: the replaced self-service row is still open';
+                        END IF;
+                    END IF;
+                    FOREACH cap IN ARRAY app."capabilities" LOOP
+                        PERFORM 1 FROM "entitlement"."TenantEntitlement" e WHERE e."tenant_id" = NEW."tenant_id" AND e."capability"::text = cap;
+                        IF NOT FOUND THEN
+                            RAISE EXCEPTION 'CommercialChangeRequest APPLIED: entitlement % is missing', cap;
+                        END IF;
+                    END LOOP;
+                ELSE
+                    RAISE EXCEPTION 'CommercialChangeRequest APPLIED: unknown CONVERSION direction';
+                END IF;
+            END IF;
+        END IF;
+        -- <<< CCP-C2 CONVERSION branch <<<
         IF NEW."state" = 'APPROVED' THEN
             steps := jsonb_array_length(NEW."required_chain" -> 'steps');
             SELECT count(*) INTO approvals FROM "subscription"."CommercialApproval" WHERE "change_request_id" = NEW."id";

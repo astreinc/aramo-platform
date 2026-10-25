@@ -1060,6 +1060,11 @@ export class CommercialChangeRequestService {
    */
   async expireApplyIfDue(tx: Tx, req: CommercialChangeRequestRow, now: Date, ctx: CommercialCallContext): Promise<boolean> {
     if (req.state !== 'APPROVED' && req.state !== 'APPLY_FAILED') return false;
+    // Merge train TD-MERGE-21: only the action types whose DB guard admits APPLY_EXPIRED (the A6 and
+    // CCP-B2-backend apply set) expire. Any other APPROVED request (an applied POLICY_ACTIVATE, which
+    // stays APPROVED until TD-B5-1 lands; a CONVERSION, refused at its deadline by C2 without a state
+    // change) is left alone, so a read never fails on a transition the guard refuses.
+    if (!isApplyExpirable(req.action_type)) return false;
     const deadline = await this.applyDeadlineOf(req, tx);
     if (deadline === null || now.getTime() < deadline.getTime()) return false;
     await tx.commercialChangeRequest.update({ where: { id: req.id }, data: { state: 'APPLY_EXPIRED', updated_at: now } });
@@ -1088,6 +1093,7 @@ export class CommercialChangeRequestService {
   /** AD-7 — the read path: expire lazily (own transaction, row locked); a read never fails on it. */
   private async lazyExpireApply(req: CommercialChangeRequestRow, ctx: CommercialCallContext): Promise<CommercialChangeRequestRow> {
     if (req.state !== 'APPROVED' && req.state !== 'APPLY_FAILED') return req;
+    if (!isApplyExpirable(req.action_type)) return req;
     try {
       const deadline = await this.applyDeadlineOf(req);
       if (deadline === null || this.now().getTime() < deadline.getTime()) return req;
@@ -1136,4 +1142,9 @@ export function applyActionable(actor: CommercialActor, req: Pick<CommercialChan
   if (!isA6Applicable(req.action_type) && !isCatalogApplicable(req.action_type)) return false;
   const scope = COMMERCIAL_ACTIONS[req.action_type as CommercialActionType].requester_scope;
   return scope !== null && actor.scopes.includes(scope);
+}
+
+/** TD-MERGE-21 — the action types whose DB guard admits → APPLY_EXPIRED (A6-R: the A6 + CCP-B2-backend apply set). */
+function isApplyExpirable(action_type: string): boolean {
+  return isA6Applicable(action_type) || isCatalogApplicable(action_type);
 }

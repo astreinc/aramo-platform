@@ -3119,6 +3119,80 @@ paths:
         '503':
           $ref: '#/components/responses/CommercialPolicyUnavailable'
 
+  # CCP-C2 (PBD §5.2 row C2; Conversion Rule C-11…C-15, C-23) — governed manual <-> self-service
+  # conversion. Served by apps/platform-admin.
+  /platform/commercial/change-requests/{id}/convert:
+    post:
+      operationId: convertPlatformCommercialChangeRequest
+      tags: [Platform Commercial Change Requests]
+      summary: Apply an APPROVED CONVERSION change request (CCP-C2).
+      description: |
+        Applies an APPROVED (or APPLY_FAILED, retry) CONVERSION request under the tenant's billing
+        lock. REQUESTER-ONLY: the caller must be the request's requester and hold
+        `platform:subscription:request`; every approval is re-checked under the request's
+        snapshotted chain (NC-5). `TO_SELF_SERVICE` releases exactly one self-service checkout (or one
+        held activation) until the approved expiry; the governed subscription ends only when the
+        provider-confirmed paid activation is applied. `TO_GOVERNED` records a durable provider cancel
+        command and returns `status: PENDING_PROVIDER` with `pending_provider: true`; the governed
+        subscription opens only when the provider-confirmed end is applied. Nothing is reported as
+        changed at the provider before it is confirmed. Applying an applied or pending request replays
+        it (`replayed: true`, nothing written). The route requires `platform:approval:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CommercialChangeRequestId'
+      responses:
+        '200':
+          description: The request and its conversion state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialConversionApplyEnvelope'
+        '400':
+          $ref: '#/components/responses/CommercialChangeRequestValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/CommercialChangeRequestNotFound'
+        '409':
+          $ref: '#/components/responses/CommercialConversionConflict'
+
+  /platform/commercial/change-requests/{id}/conversion:
+    get:
+      operationId: getPlatformCommercialConversion
+      tags: [Platform Commercial Change Requests]
+      summary: Read the conversion state of a CONVERSION change request (CCP-C2).
+      description: |
+        Direction, status, `pending_provider` (true while a provider command of the request is not
+        confirmed), the checkout release (with the state a reader sees: an unconsumed release past
+        its expiry reads EXPIRED), the provider commands and the application record. Read-only.
+        Requires `platform:approval:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CommercialChangeRequestId'
+      responses:
+        '200':
+          description: The request and its conversion state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialConversionStateEnvelope'
+        '400':
+          $ref: '#/components/responses/CommercialChangeRequestValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/CommercialChangeRequestNotFound'
+        '409':
+          $ref: '#/components/responses/CommercialConversionConflict'
+
   # DOC-TEMPLATE-LIB-1 T-2 (§6.1, §8.1) — Aramo default document templates + the template
   # variable catalog. Served by apps/api (nginx routes these two prefixes to api:3000).
   /platform/document-templates/document-types:
@@ -4519,6 +4593,17 @@ components:
         PRICE_PIN_CONFLICT), `apply_expired` (Charter Amendment A1: the apply deadline passed; the
         request is APPLY_EXPIRED), `action_not_applicable` or `integrity`. Every body carries
         details.explanation (operator-facing).
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    CommercialConversionConflict:
+      description: |
+        `COMMERCIAL_CHANGE_REQUEST_CONFLICT` with details.reason `apply_refused` (details.refusal
+        NOT_APPROVED | APPROVER_NO_LONGER_ELIGIBLE | APPLY_EXPIRED | …; nothing is written),
+        `apply_failed` (rolled back; the request is APPLY_FAILED and retryable; details.failure e.g.
+        TARGET_NOT_GOVERNED, RELEASE_EXISTS, RELEASE_CHECKOUT_OPEN, USAGE_TREATMENT_UNDEFINED,
+        FINANCIAL_TREATMENT_UNDEFINED), `action_not_applicable` (not a CONVERSION) or `integrity`.
       content:
         application/json:
           schema:
@@ -6044,7 +6129,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         change_request_id: { type: string, format: uuid }
-        action_type: { type: string, enum: [SUBSCRIPTION_OPEN, SUBSCRIPTION_CHANGE, SUBSCRIPTION_END, ENTITLEMENT_GRANT] }
+        action_type: { type: string, enum: [SUBSCRIPTION_OPEN, SUBSCRIPTION_CHANGE, SUBSCRIPTION_END, ENTITLEMENT_GRANT, CONVERSION] }
         tenant_id: { type: string, format: uuid }
         product_key: { type: string }
         subscription_id: { type: [string, 'null'], format: uuid }
@@ -6093,6 +6178,75 @@ components:
             - type: 'null'
         replayed:
           type: boolean
+
+    CommercialConversionRelease:
+      type: object
+      additionalProperties: false
+      required: [id, change_request_id, tenant_id, product_key, governed_subscription_id, plan_id, plan_version_id, held_subscription_ref, state, effective_state, expires_at, intent_id, consumed_at, self_service_subscription_id, converted_at, expired_at, created_by, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        change_request_id: { type: string, format: uuid }
+        tenant_id: { type: string, format: uuid }
+        product_key: { type: string }
+        governed_subscription_id: { type: string, format: uuid }
+        plan_id: { type: string, format: uuid }
+        plan_version_id: { type: string, format: uuid }
+        held_subscription_ref: { type: [string, 'null'] }
+        state: { type: string, enum: [RELEASED, CONSUMED, CONVERTED, EXPIRED] }
+        effective_state: { type: string, enum: [RELEASED, CONSUMED, CONVERTED, EXPIRED] }
+        expires_at: { type: string, format: date-time }
+        intent_id: { type: [string, 'null'], format: uuid }
+        consumed_at: { type: [string, 'null'], format: date-time }
+        self_service_subscription_id: { type: [string, 'null'], format: uuid }
+        converted_at: { type: [string, 'null'], format: date-time }
+        expired_at: { type: [string, 'null'], format: date-time }
+        created_by: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+
+    CommercialConversion:
+      type: object
+      additionalProperties: false
+      required: [direction, status, pending_provider, release, commands, application]
+      properties:
+        direction: { type: [string, 'null'], enum: [TO_SELF_SERVICE, TO_GOVERNED, null] }
+        status: { type: string, enum: [NOT_APPLIED, APPLY_FAILED, RELEASED, CHECKOUT_STARTED, RELEASE_EXPIRED, CONVERTED, PENDING_PROVIDER, COMPLETED] }
+        pending_provider:
+          type: boolean
+          description: True while a provider command of the request is not confirmed by applied provider state (Conv. C-23).
+        release:
+          oneOf:
+            - $ref: '#/components/schemas/CommercialConversionRelease'
+            - type: 'null'
+        commands:
+          type: array
+          items:
+            $ref: '#/components/schemas/BillingProviderCommand'
+        application:
+          oneOf:
+            - $ref: '#/components/schemas/CommercialChangeApplication'
+            - type: 'null'
+
+    CommercialConversionApplyEnvelope:
+      type: object
+      additionalProperties: false
+      required: [request, conversion, replayed]
+      properties:
+        request:
+          $ref: '#/components/schemas/CommercialChangeRequest'
+        conversion:
+          $ref: '#/components/schemas/CommercialConversion'
+        replayed:
+          type: boolean
+
+    CommercialConversionStateEnvelope:
+      type: object
+      additionalProperties: false
+      required: [request, conversion]
+      properties:
+        request:
+          $ref: '#/components/schemas/CommercialChangeRequest'
+        conversion:
+          $ref: '#/components/schemas/CommercialConversion'
 
     CommercialApprovalEnvelope:
       type: object
