@@ -208,3 +208,37 @@ export {
   type ListChangeRequestsQuery,
   type StepView,
 } from './lib/commercial/commercial-change-request.service.js';
+// CCP-A5 (PBD §5.1 row A5; MP-A2 N-15…N-19; Charter D3) — plan versions, the provider price
+// pinned to the version, and the read-only cutover parity check. Publishing and retiring are
+// repository methods applied by CCP-A6 from approved change requests.
+export {
+  PIN_REASON_PROVIDER_PLAN_CHANGE,
+  PLAN_VERSION_CONTENT_FORMAT,
+  PLAN_VERSION_STATUSES,
+  PlanVersionContentError,
+  parsePlanVersionContent,
+  planVersionChecksum,
+  planVersionContentFromRows,
+  planVersionTerms,
+  type LivePlanRows,
+  type PlanVersionAllowance,
+  type PlanVersionAllowanceWindow,
+  type PlanVersionCapacity,
+  type PlanVersionContent,
+  type PlanVersionFeature,
+  type PlanVersionPlanTerms,
+  type PlanVersionStatus,
+} from './lib/plan-version.js';
+export { PlanVersionRepository, PlanVersionStateError, currentPublishedVersion, type PlanVersionRow } from './lib/plan-version.repository.js';
+export {
+  BILLING_PRICE_PROVIDER,
+  checkProviderPriceParity,
+  effectiveProviderPrice,
+  resolvePriceToVersion,
+  type BillingPriceProvider,
+  type EffectivePrice,
+  type PriceParityEntry,
+  type PriceParityReport,
+  type PriceParityStatus,
+  type PriceResolution,
+} from './lib/billing/provider-price.js';
