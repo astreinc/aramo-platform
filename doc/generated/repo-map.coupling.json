@@ -12834,6 +12834,56 @@
       "to": "libs/identity/src/tests/seed-scrub.integration.spec.ts"
     },
     {
+      "from": "doc/ccp/slices/CCP-A10-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A10-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A10-pre-execution.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A10-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/support/ccp-a3-database.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A10-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A10-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/consumers/platform-web-consumer/tsconfig.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A10-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A10-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-platform-admin.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A10-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/tsconfig.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A10-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/vitest.config.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A10-acceptance.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
       "from": "doc/ccp/slices/CCP-A10-pre-execution.md",
       "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform-commercial-audit.controller.ts"
@@ -13512,6 +13562,81 @@
       "from": "doc/ccp/slices/CCP-A4-pre-execution.md",
       "status": "unscoped",
       "to": "tools/db-sync-local.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A5-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/api/src/tests/ccp-a4-ats-sign-availability.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A5-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/tests/ccp-a4-ats-sign-consumption.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A5-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A5-pre-execution.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A5-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/check-provider-price-parity.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A5-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261025160000_ccp_a5_plan_version/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A5-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A5-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/allowance.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A5-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/plan-version.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A5-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-a4-sign-equality.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A5-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-a5-plan-version.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A5-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-a5-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A5-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-a5.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A5-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A5-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-sign.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A5-acceptance.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
     },
     {
       "from": "doc/ccp/slices/CCP-A5-pre-execution.md",
@@ -27710,6 +27835,11 @@
       "from": "pact/consumers/intelligence-integration-consumer/vitest.config.ts",
       "status": "unscoped",
       "to": "libs/intelligence-integration/src/client.ts"
+    },
+    {
+      "from": "pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A10-acceptance.md"
     },
     {
       "from": "pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts",
