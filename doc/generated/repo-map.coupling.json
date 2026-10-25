@@ -10141,6 +10141,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/platform-admin/src/tests/ccp-d4-a1-role-matrix.integration.spec.ts",
+      "status": "excluded",
+      "to": "apps/platform-admin/src/tests/ccp-a1-platform-role-authorization.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
       "status": "excluded",
       "to": "libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql"
@@ -10266,6 +10272,11 @@
       "to": "apps/auth-service/src/tests/test-keys.ts"
     },
     {
+      "from": "apps/platform-web/e2e/fixtures/ccp-d4-world.ts",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-approval-eligibility.ts"
+    },
+    {
       "from": "apps/platform-web/e2e/fixtures/ccp-support.ts",
       "status": "unscoped",
       "to": "apps/platform-web/src/commercial/support-extensions/support-extension-api.ts"
@@ -10289,6 +10300,11 @@
       "from": "apps/platform-web/e2e/fixtures/tenants.ts",
       "status": "unscoped",
       "to": "apps/platform-web/src/platform-api.ts"
+    },
+    {
+      "from": "apps/platform-web/e2e/journeys/ccp-d4-role-journeys.spec.ts",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
     },
     {
       "from": "apps/platform-web/e2e/support/proto-ccp.ts",
@@ -12647,6 +12663,11 @@
       "from": "doc/backlog/work-history-edit-audit-and-provenance.md",
       "status": "unscoped",
       "to": "libs/talent-record/src/lib/talent-record.controller.ts"
+    },
+    {
+      "from": "doc/ccp/decisions.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/support/ccp-d4-scenarios.ts"
     },
     {
       "from": "doc/ccp/decisions.md",
@@ -16819,6 +16840,66 @@
       "to": "openapi/platform.yaml"
     },
     {
+      "from": "doc/ccp/slices/CCP-D4-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/dto/commercial-governance.dto.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D4-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-d4-a1-role-matrix.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D4-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-d4-negative-controls.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D4-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-d4-tenant-isolation.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D4-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/support/ccp-d4-harness.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D4-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/support/ccp-d4-scenarios.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D4-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/fixtures/ccp-d4-world.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D4-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/journeys/ccp-d4-role-journeys.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D4-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/playwright.config.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D4-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D4-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/auth/src/lib/jwt-auth.guard.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D4-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-policy.ts"
+    },
+    {
       "from": "doc/ccp/slices/CCP-D5-acceptance.md",
       "status": "unscoped",
       "to": "deploy/migrate-prod.sh"
@@ -17302,6 +17383,41 @@
       "from": "doc/ccp/slices/CCP-R3-acceptance.md",
       "status": "unscoped",
       "to": "pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts"
+    },
+    {
+      "from": "doc/ccp/uat/CCP-UAT-catalog_manager.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/journeys/ccp-d4-role-journeys.spec.ts"
+    },
+    {
+      "from": "doc/ccp/uat/CCP-UAT-commercial_ops.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/journeys/ccp-d4-role-journeys.spec.ts"
+    },
+    {
+      "from": "doc/ccp/uat/CCP-UAT-finance_admin.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/journeys/ccp-d4-role-journeys.spec.ts"
+    },
+    {
+      "from": "doc/ccp/uat/CCP-UAT-platform_owner.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/journeys/ccp-d4-role-journeys.spec.ts"
+    },
+    {
+      "from": "doc/ccp/uat/CCP-UAT-read_only_auditor.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/journeys/ccp-d4-role-journeys.spec.ts"
+    },
+    {
+      "from": "doc/ccp/uat/CCP-UAT-super_admin.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/journeys/ccp-d4-role-journeys.spec.ts"
+    },
+    {
+      "from": "doc/ccp/uat/CCP-UAT-support_admin.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/journeys/ccp-d4-role-journeys.spec.ts"
     },
     {
       "from": "doc/design-reference/platform-admin/github.md",
