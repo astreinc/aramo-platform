@@ -118,6 +118,20 @@ tags:
       `platform:billing:read` (platform_owner, finance_admin, commercial_ops,
       support_admin, read_only_auditor); catalog_manager and super_admin are refused
       with 403 `INSUFFICIENT_PERMISSIONS`. Platform-tier only.
+  - name: Platform Commercial Finance
+    description: |
+      CCP-C6 — the dedicated Finance read routes (A0-C6; PLATFORM-UX-1 Amendment A1-4a):
+      the renewals queue, outstanding payments and the billing reconciliation report,
+      including held activations (Conversion Rule C-8). These are the only platform routes
+      that carry a monetary field. Every figure is derived from commercial records: the
+      only monetary figure is a plan version's list price per billing interval, in USD
+      minor units (the subscription's pinned version; for a held activation the held
+      plan's current published version). No amount owed, invoice total or sum is computed
+      (invoice status is CCP-C3, not delivered); a non-USD or missing price is withheld
+      with `unpriced_reason`. Each report reads one consistent, read-only snapshot.
+      Requires `platform:billing:read` (platform_owner, finance_admin, commercial_ops,
+      support_admin, read_only_auditor); catalog_manager and super_admin are refused with
+      403 `INSUFFICIENT_PERMISSIONS`. Platform-tier only. No write route.
   - name: Platform Commercial Change Requests
     description: |
       CCP-A3 — governed commercial change requests and their distinct-human approvals.
@@ -2770,6 +2784,146 @@ paths:
         '403':
           $ref: '#/components/responses/PlatformForbidden'
 
+  /platform/commercial/finance/renewals:
+    get:
+      operationId: getPlatformCommercialFinanceRenewals
+      tags: [Platform Commercial Finance]
+      summary: The renewals queue (commitment ends and provider period ends).
+      description: |
+        CCP-C6 — every open MANUAL or SELF_SERVICE base subscription with a commitment end
+        (`COMMITMENT_END`) or, when provider-billed, a period end (`PERIOD_END`) on or before
+        `as_of + within_days`. A date already passed is listed with `lapsed: true`. Ordered by
+        `renewal_at`. Each item carries the pinned version's USD list price. Read-only.
+        Requires `platform:billing:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: within_days
+          in: query
+          required: false
+          description: The horizon in days (default 90).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 365
+        - name: tenant_id
+          in: query
+          required: false
+          description: Only this tenant.
+          schema:
+            type: string
+            format: uuid
+        - name: product_key
+          in: query
+          required: false
+          description: Only this product (the closed registry; `sign` in v1).
+          schema:
+            type: string
+            enum: [sign]
+      responses:
+        '200':
+          description: The renewals queue.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceRenewalsReport'
+        '400':
+          $ref: '#/components/responses/FinanceReportValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
+  /platform/commercial/finance/outstanding-payments:
+    get:
+      operationId: getPlatformCommercialFinanceOutstandingPayments
+      tags: [Platform Commercial Finance]
+      summary: Outstanding payments (past due or incomplete subscriptions).
+      description: |
+        CCP-C6 — every open MANUAL or SELF_SERVICE base subscription in `PAST_DUE` or
+        `INCOMPLETE`, with its grace state from `grace_until` (`IN_GRACE`, `GRACE_ENDED`,
+        `NO_GRACE_DATE`), ordered by the soonest grace end. `amount_due` is always null with
+        `amount_due_reason: INVOICE_READ_NOT_DELIVERED` (the invoice read-through is CCP-C3).
+        Read-only. Requires `platform:billing:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: tenant_id
+          in: query
+          required: false
+          description: Only this tenant.
+          schema:
+            type: string
+            format: uuid
+        - name: product_key
+          in: query
+          required: false
+          description: Only this product (the closed registry; `sign` in v1).
+          schema:
+            type: string
+            enum: [sign]
+      responses:
+        '200':
+          description: The outstanding payments.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceOutstandingPaymentsReport'
+        '400':
+          $ref: '#/components/responses/FinanceReportValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
+  /platform/commercial/finance/reconciliation-report:
+    get:
+      operationId: getPlatformCommercialFinanceReconciliationReport
+      tags: [Platform Commercial Finance]
+      summary: The billing reconciliation report (records vs effective entitlements; held activations).
+      description: |
+        CCP-C6 — every open base subscription reconciled against its pinned plan version and
+        the tenant's effective entitlements (`discrepancies`), product capabilities held with
+        no open subscription, every open reconciliation flag (the `governed_subscription_open`
+        flags are listed as held activations, Conversion Rule C-8, with the governed row, the
+        checkout intent, the held plan and any unconfirmed Stripe command), and the command
+        and inbox exception counts. `status` is `RECONCILED` only when `counts.exceptions` is
+        0. Read-only: a held activation is resolved only by a governed conversion, a governed
+        end or a provider-confirmed end (C-9). Requires `platform:billing:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: tenant_id
+          in: query
+          required: false
+          description: Only this tenant.
+          schema:
+            type: string
+            format: uuid
+        - name: product_key
+          in: query
+          required: false
+          description: Only this product (the closed registry; `sign` in v1).
+          schema:
+            type: string
+            enum: [sign]
+      responses:
+        '200':
+          description: The billing reconciliation report.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/FinanceReconciliationReport'
+        '400':
+          $ref: '#/components/responses/FinanceReportValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
   /platform/commercial/change-requests:
     post:
       operationId: createPlatformCommercialChangeRequest
@@ -4646,6 +4800,14 @@ components:
         application/json:
           schema:
             $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    FinanceReportValidation:
+      description: |
+        `VALIDATION_ERROR` — a malformed filter (`tenant_id` not a uuid, an unregistered
+        `product_key`, `within_days` outside 1..365, or an unknown parameter).
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
     CommercialChangeRequestValidation:
       description: |
         `VALIDATION_ERROR` — a malformed body, query or id; an invalid payload for the
@@ -6180,6 +6342,458 @@ components:
         read_at:
           type: string
           format: date-time
+
+    FinanceListPrice:
+      type: object
+      additionalProperties: false
+      required: [amount_minor, currency, billing_interval]
+      properties:
+        amount_minor:
+          type: integer
+          minimum: 0
+          description: The plan version's list price per billing interval, in USD minor units (cents).
+        currency:
+          type: string
+          enum: [USD]
+        billing_interval:
+          type: [string, 'null']
+
+    FinancePriceFigure:
+      type: object
+      additionalProperties: false
+      required: [list_price, unpriced_reason, price_source, plan_version_id]
+      properties:
+        list_price:
+          oneOf:
+            - $ref: '#/components/schemas/FinanceListPrice'
+            - type: 'null'
+        unpriced_reason:
+          type: [string, 'null']
+          enum: [CONTRACT_PRICED, NO_LIST_PRICE, NON_USD_CURRENCY, PLAN_VERSION_INTEGRITY, null]
+        price_source:
+          type: string
+          enum: [PINNED_PLAN_VERSION, CURRENT_PUBLISHED_PLAN_VERSION]
+        plan_version_id:
+          type: [string, 'null']
+          format: uuid
+
+    FinanceRenewalItem:
+      type: object
+      additionalProperties: false
+      required: [subscription_id, tenant_id, tenant_name, product_key, source, status, plan_key, plan_name, version_number, grandfathered, renewal_kind, renewal_at, days_until, lapsed, commitment_months, cancel_at_period_end, cancel_requested_within_commitment, list_price, unpriced_reason, price_source, plan_version_id]
+      properties:
+        subscription_id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        tenant_name:
+          type: [string, 'null']
+        product_key:
+          type: string
+        source:
+          type: string
+          enum: [MANUAL, SELF_SERVICE]
+        status:
+          type: string
+        plan_key:
+          type: string
+        plan_name:
+          type: string
+        version_number:
+          type: integer
+        grandfathered:
+          type: boolean
+        renewal_kind:
+          type: string
+          enum: [COMMITMENT_END, PERIOD_END]
+        renewal_at:
+          type: string
+          format: date-time
+        days_until:
+          type: integer
+        lapsed:
+          type: boolean
+        commitment_months:
+          type: [integer, 'null']
+        cancel_at_period_end:
+          type: boolean
+        cancel_requested_within_commitment:
+          type: boolean
+        list_price:
+          oneOf:
+            - $ref: '#/components/schemas/FinanceListPrice'
+            - type: 'null'
+        unpriced_reason:
+          type: [string, 'null']
+        price_source:
+          type: string
+        plan_version_id:
+          type: [string, 'null']
+          format: uuid
+
+    FinanceRenewalsReport:
+      type: object
+      additionalProperties: false
+      required: [as_of, within_days, currency, billing_provider_mode, items, counts]
+      properties:
+        as_of:
+          type: string
+          format: date-time
+        within_days:
+          type: integer
+        currency:
+          type: string
+          enum: [USD]
+        billing_provider_mode:
+          type: string
+          enum: [test, live, unconfigured]
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FinanceRenewalItem'
+        counts:
+          type: object
+          additionalProperties: false
+          required: [items, lapsed, commitment_end, period_end]
+          properties:
+            items:
+              type: integer
+            lapsed:
+              type: integer
+            commitment_end:
+              type: integer
+            period_end:
+              type: integer
+
+    FinanceOutstandingItem:
+      type: object
+      additionalProperties: false
+      required: [subscription_id, tenant_id, tenant_name, product_key, source, status, plan_key, version_number, billing_subscription_ref, status_since, grace_until, grace_state, current_period_end, amount_due, amount_due_reason, list_price, unpriced_reason, price_source, plan_version_id]
+      properties:
+        subscription_id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        tenant_name:
+          type: [string, 'null']
+        product_key:
+          type: string
+        source:
+          type: string
+          enum: [MANUAL, SELF_SERVICE]
+        status:
+          type: string
+          enum: [PAST_DUE, INCOMPLETE]
+        plan_key:
+          type: string
+        version_number:
+          type: integer
+        billing_subscription_ref:
+          type: [string, 'null']
+        status_since:
+          type: [string, 'null']
+          format: date-time
+        grace_until:
+          type: [string, 'null']
+          format: date-time
+        grace_state:
+          type: string
+          enum: [IN_GRACE, GRACE_ENDED, NO_GRACE_DATE]
+        current_period_end:
+          type: [string, 'null']
+          format: date-time
+        amount_due:
+          type: 'null'
+          description: Never computed here (the invoice read-through is CCP-C3, not delivered).
+        amount_due_reason:
+          type: string
+          enum: [INVOICE_READ_NOT_DELIVERED]
+        list_price:
+          oneOf:
+            - $ref: '#/components/schemas/FinanceListPrice'
+            - type: 'null'
+        unpriced_reason:
+          type: [string, 'null']
+        price_source:
+          type: string
+        plan_version_id:
+          type: [string, 'null']
+          format: uuid
+
+    FinanceOutstandingPaymentsReport:
+      type: object
+      additionalProperties: false
+      required: [as_of, currency, billing_provider_mode, items, counts]
+      properties:
+        as_of:
+          type: string
+          format: date-time
+        currency:
+          type: string
+          enum: [USD]
+        billing_provider_mode:
+          type: string
+          enum: [test, live, unconfigured]
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/FinanceOutstandingItem'
+        counts:
+          type: object
+          additionalProperties: false
+          required: [items, past_due, incomplete, in_grace, grace_ended, no_grace_date]
+          properties:
+            items:
+              type: integer
+            past_due:
+              type: integer
+            incomplete:
+              type: integer
+            in_grace:
+              type: integer
+            grace_ended:
+              type: integer
+            no_grace_date:
+              type: integer
+
+    FinanceReconciledSubscription:
+      type: object
+      additionalProperties: false
+      required: [subscription_id, tenant_id, tenant_name, product_key, source, status, plan_key, version_number, version_status, grandfathered, billing_subscription_ref, provider_price_ref, entitlement, open_flag_reasons, unconfirmed_command_ids, discrepancies, list_price, unpriced_reason, price_source, plan_version_id]
+      properties:
+        subscription_id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        tenant_name:
+          type: [string, 'null']
+        product_key:
+          type: string
+        source:
+          type: string
+        status:
+          type: string
+        plan_key:
+          type: string
+        version_number:
+          type: integer
+        version_status:
+          type: string
+        grandfathered:
+          type: boolean
+        billing_subscription_ref:
+          type: [string, 'null']
+        provider_price_ref:
+          type: [string, 'null']
+        entitlement:
+          type: object
+          additionalProperties: false
+          required: [expected, present, missing]
+          properties:
+            expected:
+              type: array
+              items:
+                type: string
+            present:
+              type: array
+              items:
+                type: string
+            missing:
+              type: array
+              items:
+                type: string
+        open_flag_reasons:
+          type: array
+          items:
+            type: string
+        unconfirmed_command_ids:
+          type: array
+          items:
+            type: string
+            format: uuid
+        discrepancies:
+          type: array
+          items:
+            type: string
+            enum: [ENTITLEMENT_MISSING, PLAN_VERSION_INTEGRITY, PLAN_VERSION_NOT_PINNABLE, PRICE_NOT_USD, SELF_SERVICE_WITHOUT_PROVIDER_LINK, MANUAL_PROVIDER_LINKED]
+        list_price:
+          oneOf:
+            - $ref: '#/components/schemas/FinanceListPrice'
+            - type: 'null'
+        unpriced_reason:
+          type: [string, 'null']
+        price_source:
+          type: string
+        plan_version_id:
+          type: [string, 'null']
+          format: uuid
+
+    FinanceHeldActivation:
+      type: object
+      additionalProperties: false
+      required: [flag_id, tenant_id, tenant_name, product_key, provider, subscription_ref, detected_at, intent_id, intent_status, governed_subscription_id, governed_plan_key, held_plan_key, held_price, unconfirmed_commands, resolution]
+      properties:
+        flag_id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        tenant_name:
+          type: [string, 'null']
+        product_key:
+          type: [string, 'null']
+        provider:
+          type: string
+          enum: [STRIPE]
+        subscription_ref:
+          type: string
+        detected_at:
+          type: string
+          format: date-time
+        intent_id:
+          type: [string, 'null']
+          format: uuid
+        intent_status:
+          type: [string, 'null']
+        governed_subscription_id:
+          type: [string, 'null']
+          format: uuid
+        governed_plan_key:
+          type: [string, 'null']
+        held_plan_key:
+          type: [string, 'null']
+        held_price:
+          $ref: '#/components/schemas/FinancePriceFigure'
+        unconfirmed_commands:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, command_kind, state, change_request_id]
+            properties:
+              id:
+                type: string
+                format: uuid
+              command_kind:
+                type: string
+              state:
+                type: string
+              change_request_id:
+                type: string
+                format: uuid
+        resolution:
+          type: string
+          enum: [UNRESOLVED, PENDING_PROVIDER]
+
+    FinanceReconciliationReport:
+      type: object
+      additionalProperties: false
+      required: [as_of, currency, billing_provider_mode, status, subscriptions, entitled_without_subscription, held_activations, other_open_flags, counts]
+      properties:
+        as_of:
+          type: string
+          format: date-time
+        currency:
+          type: string
+          enum: [USD]
+        billing_provider_mode:
+          type: string
+          enum: [test, live, unconfigured]
+        status:
+          type: string
+          enum: [RECONCILED, EXCEPTIONS]
+        subscriptions:
+          type: array
+          items:
+            $ref: '#/components/schemas/FinanceReconciledSubscription'
+        entitled_without_subscription:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [tenant_id, tenant_name, product_key, capabilities]
+            properties:
+              tenant_id:
+                type: string
+                format: uuid
+              tenant_name:
+                type: [string, 'null']
+              product_key:
+                type: string
+              capabilities:
+                type: array
+                items:
+                  type: string
+        held_activations:
+          type: array
+          items:
+            $ref: '#/components/schemas/FinanceHeldActivation'
+        other_open_flags:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [flag_id, tenant_id, reason, provider, subscription_ref, detected_at]
+            properties:
+              flag_id:
+                type: string
+                format: uuid
+              tenant_id:
+                type: string
+                format: uuid
+              reason:
+                type: string
+              provider:
+                type: string
+              subscription_ref:
+                type: string
+              detected_at:
+                type: string
+                format: date-time
+        counts:
+          type: object
+          additionalProperties: false
+          required: [open_subscriptions, by_source, by_status, subscriptions_with_discrepancy, discrepancies, entitled_without_subscription, held_activations, other_open_flags, unconfirmed_commands, failed_commands, failed_inbox_events, unprocessed_inbox_events, exceptions]
+          properties:
+            open_subscriptions:
+              type: integer
+            by_source:
+              type: object
+              additionalProperties:
+                type: integer
+            by_status:
+              type: object
+              additionalProperties:
+                type: integer
+            subscriptions_with_discrepancy:
+              type: integer
+            discrepancies:
+              type: object
+              additionalProperties:
+                type: integer
+            entitled_without_subscription:
+              type: integer
+            held_activations:
+              type: integer
+            other_open_flags:
+              type: integer
+            unconfirmed_commands:
+              type: integer
+            failed_commands:
+              type: integer
+            failed_inbox_events:
+              type: integer
+            unprocessed_inbox_events:
+              type: integer
+            exceptions:
+              type: integer
 
     CommercialActionType:
       type: string

@@ -34,7 +34,7 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 // commercial tenant (change requests and approvals are append-only, and Q14 allows one
 // open request per tenant × product).
 //
-// Coverage — CCP routes (19):
+// Coverage — CCP routes (22):
 //   GET  /platform/commercial/audit-events                      (CCP-A2)
 //   POST /platform/commercial/change-requests                   (CCP-A3)
 //   GET  /platform/commercial/change-requests
@@ -54,6 +54,9 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 //   GET  /platform/commercial/change-requests/{id}/conversion   (CCP-C2)
 //   GET  /platform/commercial/tenants/{tenant_id}/billing-status (CCP-C3)
 //   GET  /platform/commercial/billing-portal-configuration      (CCP-C3)
+//   GET  /platform/commercial/finance/renewals                  (CCP-C6)
+//   GET  /platform/commercial/finance/outstanding-payments
+//   GET  /platform/commercial/finance/reconciliation-report
 // For each route: the allowed call, super_admin refused (403, holds no commercial
 // scope), and the tenant tier refused (403 tier tripwire). Plus the role-level
 // refusals: a role missing the route scope (audit feed), a role missing the requester
@@ -115,6 +118,13 @@ const INBOX = '/platform/commercial/billing-webhook-inbox';
 const C3_TENANT = 'cca10000-0000-7000-8000-0000000000c3';
 const BILLING_STATUS = `/platform/commercial/tenants/${C3_TENANT}/billing-status`;
 const PORTAL_CONFIG = '/platform/commercial/billing-portal-configuration';
+const RENEWALS = '/platform/commercial/finance/renewals';
+const OUTSTANDING = '/platform/commercial/finance/outstanding-payments';
+const RECONCILIATION = '/platform/commercial/finance/reconciliation-report';
+// CCP-C6 — the Finance fixture tenants seeded by the provider state 'finance records exist'.
+const FIN_RENEWAL_TENANT = 'cca10000-0000-7000-8000-0000000006a1';
+const FIN_OUTSTANDING_TENANT = 'cca10000-0000-7000-8000-0000000006a2';
+const FIN_HELD_TENANT = 'cca10000-0000-7000-8000-0000000006a3';
 
 const platformSession = (role: Role) => ({ 'X-Aramo-Consumer': 'platform', Cookie: `aramo_access_token_platform=pact-${role}` });
 const platformJson = (role: Role) => ({ ...platformSession(role), 'Content-Type': 'application/json' });
@@ -220,6 +230,9 @@ const GATE_ROUTES: readonly GateRoute[] = [
   { name: 'GET change-requests/{id}/conversion', method: 'GET', path: `${CR}/${EX_REQUEST_ID}/conversion`, scope: 'platform:approval:read' },
   { name: 'GET tenants/{tenant_id}/billing-status', method: 'GET', path: BILLING_STATUS, scope: 'platform:billing:read' },
   { name: 'GET billing-portal-configuration', method: 'GET', path: PORTAL_CONFIG, scope: 'platform:billing:read' },
+  { name: 'GET finance/renewals', method: 'GET', path: RENEWALS, scope: 'platform:billing:read' },
+  { name: 'GET finance/outstanding-payments', method: 'GET', path: OUTSTANDING, scope: 'platform:billing:read' },
+  { name: 'GET finance/reconciliation-report', method: 'GET', path: RECONCILIATION, scope: 'platform:billing:read' },
 ];
 
 // ── CCP-A2 — the commercial audit feed ────────────────────────────────────────
@@ -1280,6 +1293,207 @@ describe('platform-web → GET /platform/commercial/billing-portal-configuration
         expect(res.status).toBe(403);
       });
   });
+});
+
+// ── CCP-C6 — the dedicated Finance read routes (money only here; A0-C6) ───────
+
+const USD_MONTH = { amount_minor: integer(2000), currency: 'USD', billing_interval: 'MONTH' };
+const PRICED = { list_price: USD_MONTH, unpriced_reason: null, price_source: 'PINNED_PLAN_VERSION', plan_version_id: uuid('cca10000-0000-7000-8000-0000000006b1') };
+
+function financeRefusal(path: string, label: string): void {
+  it(`a role without platform:billing:read (catalog_manager) is refused ${label} (403)`, async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving(`a finance ${label} read by a role missing the billing read scope`)
+      .withRequest('GET', path, (b) => {
+        b.headers(platformSession('catalog_manager'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:billing:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${path}`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(403);
+        expect(JSON.stringify(res.body)).not.toContain('amount_minor');
+      });
+  });
+}
+
+describe('platform-web → GET /platform/commercial/finance/renewals (CCP-C6)', () => {
+  it('finance_admin reads the renewals queue (200; the pinned version\'s USD list price)', async () => {
+    await provider
+      .addInteraction()
+      .given('finance records exist')
+      .uponReceiving('a renewals queue read by finance_admin')
+      .withRequest('GET', RENEWALS, (b) => {
+        b.headers(platformSession('finance_admin')).query({ tenant_id: FIN_RENEWAL_TENANT, within_days: '90' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          as_of: iso(),
+          within_days: 90,
+          currency: 'USD',
+          billing_provider_mode: like('unconfigured'),
+          items: eachLike({
+            subscription_id: uuid('cca10000-0000-7000-8000-0000000006c1'),
+            tenant_id: FIN_RENEWAL_TENANT,
+            tenant_name: like('Pact Finance Renewal'),
+            product_key: 'sign',
+            source: 'MANUAL',
+            status: 'ACTIVE',
+            plan_key: 'aramo-sign-standard-business-v1',
+            plan_name: like('Standard Business'),
+            version_number: integer(1),
+            grandfathered: false,
+            renewal_kind: 'COMMITMENT_END',
+            renewal_at: iso('2026-11-15T10:00:00.000Z'),
+            days_until: integer(20),
+            lapsed: false,
+            commitment_months: integer(12),
+            cancel_at_period_end: false,
+            cancel_requested_within_commitment: false,
+            ...PRICED,
+          }),
+          counts: { items: integer(1), lapsed: integer(0), commitment_end: integer(1), period_end: integer(0) },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${RENEWALS}?tenant_id=${FIN_RENEWAL_TENANT}&within_days=90`, 'GET', platformSession('finance_admin'));
+        expect(res.status).toBe(200);
+        expect((res.body['items'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+
+  financeRefusal(RENEWALS, 'renewals');
+});
+
+describe('platform-web → GET /platform/commercial/finance/outstanding-payments (CCP-C6)', () => {
+  it('commercial_ops reads the outstanding payments (200; amount due never computed)', async () => {
+    await provider
+      .addInteraction()
+      .given('finance records exist')
+      .uponReceiving('an outstanding payments read by commercial_ops')
+      .withRequest('GET', OUTSTANDING, (b) => {
+        b.headers(platformSession('commercial_ops')).query({ tenant_id: FIN_OUTSTANDING_TENANT });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          as_of: iso(),
+          currency: 'USD',
+          billing_provider_mode: like('unconfigured'),
+          items: eachLike({
+            subscription_id: uuid('cca10000-0000-7000-8000-0000000006c2'),
+            tenant_id: FIN_OUTSTANDING_TENANT,
+            tenant_name: like('Pact Finance Outstanding'),
+            product_key: 'sign',
+            source: 'SELF_SERVICE',
+            status: 'PAST_DUE',
+            plan_key: 'aramo-sign-standard-business-v1',
+            version_number: integer(1),
+            billing_subscription_ref: like('sub_pact_c6_outstanding'),
+            status_since: iso(),
+            grace_until: iso('2026-10-30T10:00:00.000Z'),
+            grace_state: 'IN_GRACE',
+            current_period_end: iso('2026-11-15T10:00:00.000Z'),
+            amount_due: null,
+            amount_due_reason: 'INVOICE_READ_NOT_DELIVERED',
+            ...PRICED,
+          }),
+          counts: { items: integer(1), past_due: integer(1), incomplete: integer(0), in_grace: integer(1), grace_ended: integer(0), no_grace_date: integer(0) },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${OUTSTANDING}?tenant_id=${FIN_OUTSTANDING_TENANT}`, 'GET', platformSession('commercial_ops'));
+        expect(res.status).toBe(200);
+        expect((res.body['items'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+
+  financeRefusal(OUTSTANDING, 'outstanding payments');
+});
+
+describe('platform-web → GET /platform/commercial/finance/reconciliation-report (CCP-C6)', () => {
+  it('read_only_auditor reads the reconciliation report (200; the held activation listed, Conv. C-8)', async () => {
+    await provider
+      .addInteraction()
+      .given('finance records exist')
+      .uponReceiving('a billing reconciliation report read by read_only_auditor')
+      .withRequest('GET', RECONCILIATION, (b) => {
+        b.headers(platformSession('read_only_auditor')).query({ tenant_id: FIN_HELD_TENANT });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          as_of: iso(),
+          currency: 'USD',
+          billing_provider_mode: like('unconfigured'),
+          status: 'EXCEPTIONS',
+          subscriptions: eachLike({
+            subscription_id: uuid('cca10000-0000-7000-8000-0000000006c3'),
+            tenant_id: FIN_HELD_TENANT,
+            tenant_name: like('Pact Finance Held'),
+            product_key: 'sign',
+            source: 'MANUAL',
+            status: 'ACTIVE',
+            plan_key: 'aramo-sign-included-v1',
+            version_number: integer(1),
+            version_status: 'PUBLISHED',
+            grandfathered: false,
+            billing_subscription_ref: null,
+            provider_price_ref: null,
+            entitlement: { expected: ['core', 'sign'], present: ['core', 'sign'], missing: [] },
+            open_flag_reasons: ['governed_subscription_open'],
+            unconfirmed_command_ids: [],
+            discrepancies: [],
+            list_price: null,
+            unpriced_reason: 'NO_LIST_PRICE',
+            price_source: 'PINNED_PLAN_VERSION',
+            plan_version_id: uuid('cca10000-0000-7000-8000-0000000006b2'),
+          }),
+          entitled_without_subscription: [],
+          held_activations: eachLike({
+            flag_id: uuid('cca10000-0000-7000-8000-0000000006d1'),
+            tenant_id: FIN_HELD_TENANT,
+            tenant_name: like('Pact Finance Held'),
+            product_key: 'sign',
+            provider: 'STRIPE',
+            subscription_ref: like('sub_pact_c6_held'),
+            detected_at: iso(),
+            intent_id: uuid('cca10000-0000-7000-8000-0000000006d2'),
+            intent_status: 'CREATED',
+            governed_subscription_id: uuid('cca10000-0000-7000-8000-0000000006c3'),
+            governed_plan_key: 'aramo-sign-included-v1',
+            held_plan_key: 'aramo-sign-standard-business-v1',
+            held_price: { list_price: USD_MONTH, unpriced_reason: null, price_source: 'CURRENT_PUBLISHED_PLAN_VERSION', plan_version_id: uuid('cca10000-0000-7000-8000-0000000006b1') },
+            unconfirmed_commands: [],
+            resolution: 'UNRESOLVED',
+          }),
+          other_open_flags: [],
+          counts: {
+            open_subscriptions: integer(1),
+            by_source: like({ MANUAL: 1 }),
+            by_status: like({ ACTIVE: 1 }),
+            subscriptions_with_discrepancy: integer(0),
+            discrepancies: {},
+            entitled_without_subscription: integer(0),
+            held_activations: integer(1),
+            other_open_flags: integer(0),
+            unconfirmed_commands: integer(0),
+            failed_commands: integer(0),
+            failed_inbox_events: integer(0),
+            unprocessed_inbox_events: integer(0),
+            exceptions: integer(1),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${RECONCILIATION}?tenant_id=${FIN_HELD_TENANT}`, 'GET', platformSession('read_only_auditor'));
+        expect(res.status).toBe(200);
+        expect((res.body['held_activations'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+
+  financeRefusal(RECONCILIATION, 'reconciliation report');
 });
 
 // ── gate refusals on every CCP route: super_admin and the tenant tier ─────────

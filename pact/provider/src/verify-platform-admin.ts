@@ -80,6 +80,12 @@ const OP = {
 } as const;
 type Role = keyof typeof OP;
 const RECRUITER_ID = 'cca10000-0000-7000-8000-000000000010';
+// CCP-C6 — MUST match the consumer's FIN_* tenants.
+const FIN = {
+  renewal: 'cca10000-0000-7000-8000-0000000006a1',
+  outstanding: 'cca10000-0000-7000-8000-0000000006a2',
+  held: 'cca10000-0000-7000-8000-0000000006a3',
+} as const;
 const PLATFORM_COOKIE = 'aramo_access_token_platform';
 const RECRUITER_COOKIE = 'aramo_access_token_recruiter';
 const AUTH_ISSUER = 'Aramo Core Auth'; // the issuer JwtAuthGuard pins
@@ -604,6 +610,45 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               subscription_cancel_mode: 'at_period_end',
               subscription_update_enabled: false,
             });
+            return undefined;
+          },
+          // CCP-C6 — the Finance fixtures, one fixed tenant each (idempotent: seeded once):
+          //   renewal      a MANUAL Standard Business row whose commitment ends in 20 days;
+          //   outstanding  a SELF_SERVICE Standard Business row PAST_DUE, in grace;
+          //   held         a governed MANUAL row + a CREATED checkout intent + the open
+          //                governed_subscription_open flag (Conv. C-7 hold), core + sign granted.
+          // Rows are written as the lifecycle and the A6 hold write them (raw: the provider has no
+          // billing key, so no provider activation can run here).
+          'finance records exist': async () => {
+            const seeded = await db.query(`SELECT 1 FROM identity."Tenant" WHERE id = $1`, [FIN.held]);
+            if (seeded.rowCount !== 0) return undefined;
+            for (const [k, id] of Object.entries(FIN)) {
+              await db.query(`INSERT INTO identity."Tenant" (id, name, updated_at) VALUES ($1, $2, now())`, [id, `Pact Finance ${k}`]);
+            }
+            const sub = (tenant: string, plan: string, source: string, extra: { status?: string; ref?: string | null; commitment_end?: string; grace?: string; period_end?: string }) =>
+              db.query(
+                `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by, status, billing_provider, billing_account_ref, billing_subscription_ref,
+                                                              commitment_start, commitment_end, grace_until, current_period_end, provider_state_at)
+                 SELECT $1::uuid, $2::uuid, p.id, (SELECT v.id FROM subscription."PlanVersion" v WHERE v.plan_id = p.id AND v.status = 'PUBLISHED'), p.product_key, 'BASE', now() - interval '345 days', $3, 'pact-c6', $4,
+                        CASE WHEN $5::text IS NULL THEN NULL ELSE 'STRIPE' END, CASE WHEN $5::text IS NULL THEN NULL ELSE 'acct_pact_c6' END, $5::text,
+                        CASE WHEN $6::text IS NULL THEN NULL ELSE now() - interval '345 days' END, now() + ($6::text)::interval, now() + ($7::text)::interval, now() + ($8::text)::interval,
+                        CASE WHEN $5::text IS NULL THEN NULL ELSE now() END
+                   FROM subscription."Plan" p WHERE p.key = $9`,
+                [randomUUID(), tenant, source, extra.status ?? 'ACTIVE', extra.ref ?? null, extra.commitment_end ?? null, extra.grace ?? null, extra.period_end ?? null, plan],
+              );
+            await sub(FIN.renewal, 'aramo-sign-standard-business-v1', 'MANUAL', { commitment_end: '20 days' });
+            await sub(FIN.outstanding, 'aramo-sign-standard-business-v1', 'SELF_SERVICE', { status: 'PAST_DUE', ref: 'sub_pact_c6_outstanding', grace: '5 days', period_end: '20 days' });
+            await sub(FIN.held, 'aramo-sign-included-v1', 'MANUAL', {});
+            await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1, 'core'), ($1, 'sign') ON CONFLICT DO NOTHING`, [FIN.held]);
+            const intent = randomUUID();
+            await db.query(
+              `INSERT INTO subscription."CheckoutIntent" (id, tenant_id, user_id, plan_id, provider, provider_session_ref) SELECT $1::uuid, $2::uuid, 'pact-owner', p.id, 'STRIPE', 'cs_pact_c6_held' FROM subscription."Plan" p WHERE p.key = 'aramo-sign-standard-business-v1'`,
+              [intent, FIN.held],
+            );
+            await db.query(
+              `INSERT INTO subscription."BillingReconciliationFlag" (id, tenant_id, provider, subscription_ref, intent_id, reason, account_country) VALUES ($1, $2, 'STRIPE', 'sub_pact_c6_held', $3, 'governed_subscription_open', 'US')`,
+              [randomUUID(), FIN.held, intent],
+            );
             return undefined;
           },
           'an approved subscription-open change request whose approver lost eligibility exists': async () => {

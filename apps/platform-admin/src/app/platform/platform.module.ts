@@ -27,6 +27,7 @@ import { PlatformCommercialContractController } from './platform-commercial-cont
 import { PlatformCommercialBillingController } from './platform-commercial-billing.controller.js';
 import { PlatformCommercialConversionController } from './platform-commercial-conversion.controller.js';
 import { PlatformCommercialBillingStatusController } from './platform-commercial-billing-status.controller.js';
+import { PlatformCommercialFinanceController } from './platform-commercial-finance.controller.js';
 import { PlatformPersonalController } from './platform-personal.controller.js';
 import { PlatformController } from './platform.controller.js';
 import { PlatformSignController } from './platform-sign.controller.js';
@@ -83,7 +84,8 @@ import { UsageRollupWorker } from './usage-rollup-worker.service.js';
   // CCP-C1 — read-only Stripe command outbox and webhook inbox views (platform:billing:read).
   // CCP-C2 — the governed conversion apply and read (platform:approval:read gate; requester-only apply).
   // CCP-C3 — read-through invoice / payment status and portal configuration (platform:billing:read).
-  controllers: [PlatformController, PlatformSignController, PlatformPersonalController, PlatformCommercialAuditController, PlatformCommercialChangeRequestController, PlatformCommercialApplyController, PlatformCommercialUsageController, PlatformCommercialCatalogController, PlatformCommercialGovernanceController, PlatformCommercialContractController, PlatformCommercialBillingController, PlatformCommercialConversionController, PlatformCommercialBillingStatusController],
+  // CCP-C6 — the read-only Finance reports (platform:billing:read).
+  controllers: [PlatformController, PlatformSignController, PlatformPersonalController, PlatformCommercialAuditController, PlatformCommercialChangeRequestController, PlatformCommercialApplyController, PlatformCommercialUsageController, PlatformCommercialCatalogController, PlatformCommercialGovernanceController, PlatformCommercialContractController, PlatformCommercialBillingController, PlatformCommercialConversionController, PlatformCommercialBillingStatusController, PlatformCommercialFinanceController],
   providers: [
     // Sign Personal (Free) v1.1 §6.4 — abuse-report outcomes (sign schema; its own
     // generated client, lazy DATABASE_URL — scope:platform → scope:boundary is wall-legal).

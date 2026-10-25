@@ -2197,6 +2197,7 @@
       "BOOTSTRAP_TARGET_EMAIL",
       "BillingCommandError",
       "BillingCommandService",
+      "BillingFinanceReportService",
       "BillingProviderUnavailableError",
       "BillingRefusedError",
       "BillingStatusQueryError",
@@ -2284,17 +2285,21 @@
       "ESIGN_ENVELOPE_ALLOWANCE",
       "ESIGN_ENVELOPE_SENT_EVENT",
       "FEATURE_AVAILABILITY",
+      "FINANCE_CURRENCY",
+      "FINANCE_SOURCES",
       "FREE_SUBSCRIPTION_SOURCE",
       "FreePersonalPlanKey",
       "FreePersonalSubscriptionService",
       "GOVERNED_SUBSCRIPTION_OPEN",
       "INBOX_MAX_AUTOMATIC_ATTEMPTS",
       "INVOICE_PAYMENT_STATES",
+      "INVOICE_READ_NOT_DELIVERED",
       "LEGAL_DOCUMENTS",
       "LEGAL_DOCUMENT_REGISTRY",
       "LEGAL_DOCUMENT_TITLES",
       "LegalAcceptanceService",
       "ORGANIZATION_BILLING_PROFILE_PORT",
+      "OUTSTANDING_STATUSES",
       "PAST_DUE_GRACE_DAYS_DEFAULT",
       "PERSONAL_LEGAL_DOCUMENT_KEYS",
       "PIN_REASON_CHANGE_REQUEST",
@@ -2320,6 +2325,8 @@
       "PlatformOwnerBootstrapRefusedError",
       "PolicyActivationRefusedError",
       "ProductContextError",
+      "RENEWAL_HORIZON_DEFAULT_DAYS",
+      "RENEWAL_HORIZON_MAX_DAYS",
       "RoleChangeApplyError",
       "SIGN_PRODUCT_KEY",
       "STORAGE_CAPACITY_KEY",
@@ -2370,12 +2377,15 @@
       "creditEscalation",
       "csvField",
       "currentPublishedVersion",
+      "daysUntil",
       "discountEscalates",
       "effectivePlatformOwners",
       "effectiveProviderPrice",
       "effectiveReleaseState",
       "explanationOf",
       "formatCheckoutCutoverReport",
+      "formatReconciliationReport",
+      "graceStateAt",
       "inAppContextRef",
       "invoicePaymentState",
       "isA6Applicable",
@@ -2404,6 +2414,7 @@
       "planVersionTerms",
       "policyRangeErrors",
       "postTerminationExportDays",
+      "priceFigure",
       "productOfMeteredKey",
       "readPlatformSubject",
       "resolvePriceToVersion",
@@ -3546,6 +3557,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c6-finance-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-d1-usage-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -4202,6 +4219,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-c3-billing-status-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c6-finance-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -6585,6 +6608,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c6-finance-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-d1-usage-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -7283,6 +7312,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-c3-billing-status.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-c6-finance-report.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -9627,6 +9662,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c6-finance-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-d1-usage-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -11813,6 +11854,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-c3-billing-status-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c6-finance-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
