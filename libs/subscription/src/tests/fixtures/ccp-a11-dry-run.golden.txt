@@ -1,0 +1,44 @@
+[ccp-a11] DRY RUN: session BEGIN TRANSACTION READ ONLY (rolled back; nothing written)
+[ccp-a11] counts:
+[ccp-a11]   subscriptions_total: 5
+[ccp-a11]   subscriptions_open: 4
+[ccp-a11]   open_manual: 3
+[ccp-a11]   open_manual_governed_by_change_request: 1
+[ccp-a11]   open_manual_already_recorded: 0
+[ccp-a11]   open_manual_withdrawn: 0
+[ccp-a11]   open_manual_to_record: 2
+[ccp-a11]   open_self_service_not_in_scope: 1
+[ccp-a11]   open_free_not_in_scope: 0
+[ccp-a11]   open_development: 0
+[ccp-a11]   open_pinned_checksum_ok: 4
+[ccp-a11]   open_pinned_v1: 4
+[ccp-a11]   open_product_sign_base: 4
+[ccp-a11]   entitlement_rows: 15
+[ccp-a11]   entitlement_rows_active: 14
+[ccp-a11]   entitlement_rows_revoked: 1
+[ccp-a11]   checkout_intents: 0
+[ccp-a11]   checkout_intents_created_for_manual: 0
+[ccp-a11]   pre_ccp_records_existing: 0
+[ccp-a11]   exceptions_halt: 0
+[ccp-a11]   exceptions_review: 1
+[ccp-a11] open subscriptions by product / source / status: 2 groups
+[ccp-a11]   sign MANUAL ACTIVE: 3
+[ccp-a11]   sign SELF_SERVICE ACTIVE: 1
+[ccp-a11] entitlement rows by granted_source: 2 sources
+[ccp-a11]   MIGRATION: active 12, revoked 1
+[ccp-a11]   PLAN: active 2, revoked 0
+[ccp-a11] planned writes (if ever executed under separate PO authorization):
+[ccp-a11]   subscription."CommercialAuditEvent": 2
+[ccp-a11]   subscription."TenantSubscription": 0
+[ccp-a11]   subscription."CommercialChangeRequest": 0
+[ccp-a11]   subscription."SubscriptionVersionPinEvent": 0
+[ccp-a11]   subscription."AllowanceUsage": 0
+[ccp-a11]   subscription."CapacityUsage": 0
+[ccp-a11]   entitlement."TenantEntitlement": 0
+[ccp-a11]   entitlement."TenantEntitlementEvent": 0
+[ccp-a11] planned records: 2
+[ccp-a11]   COMMERCIAL_PRE_CCP_GRANT_RECORDED id=dacd7cb7-e557-72b6-8ac7-814fe3c48906 tenant=0190a11a-0000-7000-8000-00000000a57e subscription=0190a11b-0000-7000-8000-00000000a57e product=sign plan=aramo-sign-included-v1 v1 status=ACTIVE capabilities=ats:MIGRATION,core:MIGRATION,portal:MIGRATION,sign:MIGRATION state_checksum=5979c63a45046da81daf92b1841e1e88e6e35a8fa1bf33d94f2479dd15a6c282
+[ccp-a11]   COMMERCIAL_PRE_CCP_GRANT_RECORDED id=200c4778-0952-7677-8304-ea6753495cc9 tenant=0190a11a-0000-7000-8000-00000000e70c subscription=0190a11b-0000-7000-8000-00000000e70c product=sign plan=aramo-sign-included-v1 v1 status=ACTIVE capabilities=core:MIGRATION,sign:MIGRATION:revoked state_checksum=ca359cce4cc703c924fc552a2aedd999688b189662636dffa4005a0bc9295f73
+[ccp-a11] exceptions: 1 (HALT 0, REVIEW 1)
+[ccp-a11]   REVIEW PRODUCT_CAPABILITY_REVOKED tenant=0190a11a-0000-7000-8000-00000000e70c subscription=0190a11b-0000-7000-8000-00000000e70c: sign is revoked; the backfill never re-grants (resurrection guard)
+[ccp-a11] OK: no HALT exception. Effective-service writes planned: 0.

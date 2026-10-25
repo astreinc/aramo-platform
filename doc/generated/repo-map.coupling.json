@@ -12867,6 +12867,116 @@
       "to": "pact/provider/vitest.config.ts"
     },
     {
+      "from": "doc/ccp/slices/CCP-A11-acceptance.md",
+      "status": "unscoped",
+      "to": "deploy/jiti-tsconfig-runner.mjs"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A11-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A11-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A11-pre-execution.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A11-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/tenant-entitlement-reader.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A11-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/ccp-astre-backfill.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A11-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/ccp-astre-fact-check.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A11-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/ccp-fact-check.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A11-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/pre-ccp-backfill.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A11-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-a11-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A11-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-a11-dry-run.golden.txt"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A11-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-a11-production-like.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A11-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/support/ccp-a3-database.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A11-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A11-acceptance.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A11-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A11-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A5-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A11-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A6-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A11-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A7-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A11-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/entitlement/prisma/migrations/20261026000000_ccp_a7_entitlement_revoke_provenance/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A11-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261025140000_ccp_a4_product_dimension/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A11-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/checkout-cutover-check.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A11-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-change-request.service.ts"
+    },
+    {
       "from": "doc/ccp/slices/CCP-A2-acceptance.md",
       "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform-commercial-audit.controller.ts"
@@ -29381,6 +29491,16 @@
       "to": "pact/provider/src/verify-api.ts"
     },
     {
+      "from": "libs/subscription/prisma/ccp-astre-backfill.ts",
+      "status": "unscoped",
+      "to": "deploy/jiti-tsconfig-runner.mjs"
+    },
+    {
+      "from": "libs/subscription/prisma/ccp-astre-fact-check.ts",
+      "status": "unscoped",
+      "to": "deploy/jiti-tsconfig-runner.mjs"
+    },
+    {
       "from": "libs/subscription/prisma/migrations/20261024180000_ccp_a2_commercial_audit_policy/migration.sql",
       "status": "unscoped",
       "to": "doc/ccp/slices/CCP-A2-acceptance.md"
@@ -29516,6 +29636,11 @@
       "to": "doc/ccp/slices/CCP-A2-pre-execution.md"
     },
     {
+      "from": "libs/subscription/src/lib/commercial/pre-ccp-backfill.ts",
+      "status": "production",
+      "to": "doc/ccp/slices/CCP-A11-pre-execution.md"
+    },
+    {
       "from": "libs/subscription/src/lib/legal/legal-documents.ts",
       "status": "production",
       "to": "doc/legal/aramo-sign/esign-consent-disclosure.md"
@@ -29559,6 +29684,54 @@
       "from": "libs/subscription/src/lib/usage/usage-rollup.service.ts",
       "status": "production",
       "to": "doc/architecture/aramo-platform-console-enterprise-architecture.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-a11-astre-backfill.integration.spec.ts",
+      "status": "excluded",
+      "to": "deploy/jiti-tsconfig-runner.mjs"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-a11-astre-backfill.integration.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-A11-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-a11-astre-backfill.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/prisma/ccp-astre-backfill.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-a11-astre-backfill.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/prisma/ccp-astre-fact-check.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-a11-backfill-guards.spec.ts",
+      "status": "excluded",
+      "to": "deploy/jiti-tsconfig-runner.mjs"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-a11-backfill-guards.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-A11-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-a11-backfill-guards.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/prisma/ccp-astre-backfill.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-a11-backfill-guards.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/prisma/ccp-astre-fact-check.ts"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -29835,6 +30008,12 @@
       "from": "libs/subscription/src/tests/commercial-policy-boundaries.spec.ts",
       "status": "excluded",
       "to": "doc/ccp/slices/CCP-A2-pre-execution.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/fixtures/ccp-a11-compensating.sql",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-A11-acceptance.md"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -30182,6 +30361,16 @@
       "to": "libs/submittal-eligibility/prisma/schema.prisma"
     },
     { "from": "package.json", "status": "unscoped", "to": "libs/submittal/prisma/schema.prisma" },
+    {
+      "from": "package.json",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/ccp-astre-backfill.ts"
+    },
+    {
+      "from": "package.json",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/ccp-astre-fact-check.ts"
+    },
     {
       "from": "package.json",
       "status": "unscoped",
@@ -33019,6 +33208,8 @@
         { "kind": "prose", "path": "tools/send-mailer-proof.ts" }
       ]
     },
+    { "name": "ccp:astre-backfill", "references": [] },
+    { "name": "ccp:astre-fact-check", "references": [] },
     { "name": "ccp:bootstrap-platform-owner", "references": [] },
     {
       "name": "contract-parity:check",
@@ -33475,6 +33666,8 @@
   "unreferenced": [
     "billing:cutover-check",
     "billing:price-parity",
+    "ccp:astre-backfill",
+    "ccp:astre-fact-check",
     "ccp:bootstrap-platform-owner",
     "db:sync:intelligence",
     "offer:sql:check",

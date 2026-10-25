@@ -82,7 +82,7 @@ export async function applyCcpA6Schema(pg: Client): Promise<void> {
   await seedCcpCatalog(pg);
 }
 
-async function seedCcpCatalog(pg: Client): Promise<void> {
+export async function seedCcpCatalog(pg: Client): Promise<void> {
   // The platform sentinel tenant, one commercial tenant, and the role/scope catalog.
   await pg.query(`INSERT INTO identity."Tenant" (id, name, updated_at) VALUES ($1, 'Aramo Platform', now()), ($2, 'Tenant One', now()), ($3, 'Tenant Two', now())`, [
     PLATFORM_TENANT,
