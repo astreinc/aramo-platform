@@ -58,7 +58,12 @@ function renderBase(n: SigningNotification): Rendered {
       const url = safeUrl(n.signing_url);
       return {
         subject: `Please sign: ${doc}`,
-        lines: [`You've been asked to review and sign "${doc}".`, 'No account is needed — open the document from the button below.'],
+        lines: [
+          `You've been asked to review and sign "${doc}".`,
+          // Sign Mobile M-A3 §3 — the sender's message, as plain text (escaped below).
+          ...(n.sender_message ? [`Message from the sender: ${n.sender_message}`] : []),
+          'No account is needed — open the document from the button below.',
+        ],
         action: url ? { label: 'Review & sign', url } : undefined,
         footnote: 'This signing link is personal to you. Do not forward this email.',
       };

@@ -59,6 +59,9 @@ const PACT_FILE = resolve(ROOT, 'pact/pacts/aramo-core-sign-service.json');
 const SIGN_WEB_PACT_FILE = resolve(ROOT, 'pact/pacts/sign-web-sign-service.json');
 // PX-1 (PX-V1 §12) — the esign-web → sign-service sender-console pact.
 const ESIGN_WEB_PACT_FILE = resolve(ROOT, 'pact/pacts/sign-workspace-sign-service.json');
+// Aramo Sign Mobile — the native app → sign-service pact (directive §4 B-12). Its
+// consumer `sign-mobile` also has a separate pact with aramo-auth-service (verify.ts).
+const SIGN_MOBILE_PACT_FILE = resolve(ROOT, 'pact/pacts/sign-mobile-sign-service.json');
 
 // Fixed ids — MUST match pact/consumers/sign-consumer/src/esign.consumer.test.ts.
 const TENANT_ID = '11111111-1111-7111-8111-111111111111';
@@ -146,6 +149,20 @@ const AUTH_AUDIENCE = 'aramo-pact-provider-esign-audience';
 // …X1 envelope, …X2 document, …X3 signer, …X4 field (consumer uses …d2/…d3).
 const childId = (envelopeId: string, n: number): string => `${envelopeId.slice(0, -1)}${String(n)}`;
 
+// Aramo Sign Mobile — sign-mobile fixtures. MUST match
+// pact/consumers/sign-mobile/src/sign-service.consumer.test.ts. The consumer sends a
+// PLACEHOLDER bearer; the requestFilter swaps in a native access token (the `sign`
+// token above plus client 'native' and a device session id, M-A1 §3.6) for the
+// seeded sender. No auth_storage schema here, so the device session reads as
+// 'unknown' and push registration relies on the sign-side checks alone.
+const SIGN_MOBILE_BEARER = 'Bearer pact-native-sign-access-token';
+const SIGN_MOBILE_DSID = 'e6000000-0000-7000-8000-0000000000f0';
+const SIGN_MOBILE_NOTIFICATION_ID = 'e6000000-0000-7000-8000-000000000011';
+const SIGN_MOBILE_NOTIFIED_ENVELOPE_ID = 'e6000000-0000-7000-8000-0000000000a1';
+const SIGN_MOBILE_INBOX_ENVELOPE_ID = 'e6000000-0000-7000-8000-0000000000e1';
+const SIGN_MOBILE_INBOX_BINDING_ID = 'e6000000-0000-7000-8000-0000000000e9';
+const SIGN_MOBILE_PNG = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==';
+
 describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
   'pact provider verification — sign-service (apps/sign-service)',
   () => {
@@ -156,6 +173,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     let port = 0;
     let savedEnv: Partial<Record<string, string | undefined>> = {};
     let senderJwt = '';
+    let nativeJwt = '';
     let letterPdf: Uint8Array = new Uint8Array();
 
     // PX-1 — in-memory OWNED source storage (DOCUMENT_STORAGE_PORT) so uploads and
@@ -306,6 +324,61 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         [childId(f.envelopeId, 9), SENDER_TENANT_ID, f.envelopeId, sent ? 'ENVELOPE_SENT' : 'ENVELOPE_CREATED', SENDER_USER_ID, `ew-seed-${f.envelopeId}`],
       );
     }
+    // Aramo Sign Mobile — the sign-mobile states (fresh ids; idempotent).
+    async function seedMobileNotification(): Promise<void> {
+      await seedSender();
+      await db.query(
+        `INSERT INTO "sign"."SignUserNotification" (id, tenant_id, user_id, type, audience, envelope_id, envelope_subject, actor_name, dedupe_key)
+         VALUES ($1,$2,$3,'SIGNED','SENDER',$4,'Offer letter','Jane Doe','pact-sign-mobile-1')
+         ON CONFLICT (id) DO NOTHING`,
+        [SIGN_MOBILE_NOTIFICATION_ID, SENDER_TENANT_ID, SENDER_USER_ID, SIGN_MOBILE_NOTIFIED_ENVELOPE_ID],
+      );
+    }
+    async function seedMobileSavedSignature(): Promise<void> {
+      await seedSender();
+      await db.query(
+        `INSERT INTO "sign"."SignSavedSignature" (id, tenant_id, user_id, slot, kind, typed_name, font_key, image_data_url)
+         VALUES (gen_random_uuid(),$1,$2,'signature','TYPED','Sam Sender','caveat',$3)
+         ON CONFLICT (tenant_id, user_id, slot) DO NOTHING`,
+        [SENDER_TENANT_ID, SENDER_USER_ID, SIGN_MOBILE_PNG],
+      );
+    }
+    // A SENT sender envelope whose signer was reminded a moment ago (the 60-minute
+    // cooldown applies; M-A3 §7).
+    async function seedMobileRemindedEnvelope(envelopeId: string): Promise<void> {
+      await seedSenderEnvelope({ envelopeId, status: 'SENT', document: true, recipient: true, signatureField: true });
+      await db.query(
+        `INSERT INTO "sign"."SignatureEvent" (id, tenant_id, envelope_id, signer_id, event_type, actor_type, actor_ref, payload, previous_event_hash, event_hash, occurred_at)
+         VALUES ($1,$2,$3,$4,'SIGNATURE_REMINDER_SENT','SERVICE',$5,$6::jsonb,$7,$8, now())
+         ON CONFLICT (id) DO NOTHING`,
+        [childId(envelopeId, 8), SENDER_TENANT_ID, envelopeId, childId(envelopeId, 3), SENDER_USER_ID, JSON.stringify({ signer_ids: [childId(envelopeId, 3)] }), `ew-seed-${envelopeId}`, `ew-remind-${envelopeId}`],
+      );
+    }
+    // A document another organization sent to the sender's email, claimed into
+    // their inbox (a live recipient binding; Sign Unified Product S-7).
+    async function seedMobileInbox(): Promise<void> {
+      await seedSender();
+      const signer = childId(SIGN_MOBILE_INBOX_ENVELOPE_ID, 3);
+      await db.query(
+        `INSERT INTO "sign"."SignatureEnvelope" (id, tenant_id, subject, status, execution_mode, created_by, sent_at, expires_at)
+         VALUES ($1,$2,'Contractor agreement','SENT','SINGLE_SIGNATURE',$3, now(), now() + interval '30 days')
+         ON CONFLICT (id) DO NOTHING`,
+        [SIGN_MOBILE_INBOX_ENVELOPE_ID, TENANT_ID, CREATED_BY],
+      );
+      await db.query(
+        `INSERT INTO "sign"."Signer" (id, tenant_id, envelope_id, email, name, signing_order, status)
+         VALUES ($1,$2,$3,'sam.sender@example.com','Sam Sender',1,'PENDING')
+         ON CONFLICT (id) DO NOTHING`,
+        [signer, TENANT_ID, SIGN_MOBILE_INBOX_ENVELOPE_ID],
+      );
+      await db.query(
+        `INSERT INTO "sign"."SignRecipientBinding" (id, envelope_tenant_id, envelope_id, signer_id, user_id, user_tenant_id, email)
+         VALUES ($1,$2,$3,$4,$5,$6,'sam.sender@example.com')
+         ON CONFLICT (id) DO NOTHING`,
+        [SIGN_MOBILE_INBOX_BINDING_ID, TENANT_ID, SIGN_MOBILE_INBOX_ENVELOPE_ID, signer, SENDER_USER_ID, SENDER_TENANT_ID],
+      );
+    }
+
     const envelopeParam = (params: unknown): string => {
       const id = (params as { envelope_id?: unknown } | undefined)?.envelope_id;
       if (typeof id !== 'string') throw new Error('provider state requires an envelope_id param');
@@ -611,7 +684,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         AUTH_AUDIENCE: process.env['AUTH_AUDIENCE'],
         AUTH_PUBLIC_KEY: process.env['AUTH_PUBLIC_KEY'],
         REDIS_URL: process.env['REDIS_URL'],
+        SIGN_PUSH_TOKEN_KEY: process.env['SIGN_PUSH_TOKEN_KEY'],
       };
+      // Aramo Sign Mobile — push tokens are stored encrypted (a fixed test key).
+      process.env['SIGN_PUSH_TOKEN_KEY'] = Buffer.alloc(32, 7).toString('base64');
       process.env['DATABASE_URL'] = url;
       process.env['MAILER_PROVIDER'] = 'stub';
       process.env['AUTH_AUDIENCE'] = AUTH_AUDIENCE;
@@ -628,6 +704,23 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         consumer_type: 'sign',
         tenant_id: SENDER_TENANT_ID,
         authz_version: 1,
+      })
+        .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
+        .setIssuer(AUTH_ISSUER)
+        .setAudience(AUTH_AUDIENCE)
+        .setSubject(SENDER_USER_ID)
+        .setIssuedAt(now)
+        .setExpirationTime(now + 15 * 60)
+        .sign(kp.privateKey);
+      // Aramo Sign Mobile — the native access token (M-A1 §3.6 claims).
+      nativeJwt = await new SignJWT({
+        sub: SENDER_USER_ID,
+        actor_kind: 'user',
+        consumer_type: 'sign',
+        tenant_id: SENDER_TENANT_ID,
+        authz_version: 1,
+        client: 'native',
+        dsid: SIGN_MOBILE_DSID,
       })
         .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
         .setIssuer(AUTH_ISSUER)
@@ -663,11 +756,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       }
     }, 60_000);
 
-    it('verifies the aramo-core, sign-web and esign-web → sign-service pacts', async () => {
+    it('verifies the aramo-core, sign-web, esign-web and sign-mobile → sign-service pacts', async () => {
       const verifier = new Verifier({
         provider: 'sign-service',
         providerBaseUrl: `http://127.0.0.1:${port}`,
-        pactUrls: [PACT_FILE, SIGN_WEB_PACT_FILE, ESIGN_WEB_PACT_FILE],
+        pactUrls: [PACT_FILE, SIGN_WEB_PACT_FILE, ESIGN_WEB_PACT_FILE, SIGN_MOBILE_PACT_FILE],
         // PX-1 — the esign-web consumer sends a PLACEHOLDER consumer-isolated
         // session cookie (`aramo_access_token_sign`); swap in the real RS256 token.
         // A request without that cookie (the 401 interaction, and every other
@@ -676,6 +769,10 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           const cookie = req.headers['cookie'];
           if (typeof cookie === 'string' && cookie.includes(`${SENDER_COOKIE_NAME}=`)) {
             req.headers['cookie'] = `${SENDER_COOKIE_NAME}=${senderJwt}`;
+          }
+          // Aramo Sign Mobile — the sign-mobile placeholder bearer → a native token.
+          if (req.headers['authorization'] === SIGN_MOBILE_BEARER) {
+            req.headers['authorization'] = `Bearer ${nativeJwt}`;
           }
           next();
         },
@@ -753,6 +850,23 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           },
           'a sent sender envelope exists': async (params?: unknown) => {
             await seedSenderEnvelope({ envelopeId: envelopeParam(params), status: 'SENT', document: true, recipient: true, signatureField: true });
+            return undefined;
+          },
+          // Aramo Sign Mobile — the native app (sign-mobile → sign-service).
+          'a sign-mobile user has an unread notification': async () => {
+            await seedMobileNotification();
+            return undefined;
+          },
+          'a sign-mobile user has a saved signature': async () => {
+            await seedMobileSavedSignature();
+            return undefined;
+          },
+          'a sent sender envelope whose signer was just reminded': async (params?: unknown) => {
+            await seedMobileRemindedEnvelope(envelopeParam(params));
+            return undefined;
+          },
+          'a sign-mobile user has a document waiting in the inbox': async () => {
+            await seedMobileInbox();
             return undefined;
           },
         },

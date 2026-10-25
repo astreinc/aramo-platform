@@ -1,7 +1,7 @@
 import { createHash, randomBytes } from 'node:crypto';
 
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { RefreshTokenService, RotationRaceError } from '@aramo/auth-storage';
+import { RefreshTokenService, RotationRaceError, type RefreshTokenDto } from '@aramo/auth-storage';
 
 import { AUDIT_SINK, type AuditSink } from './audit-sink.port.js';
 import {
@@ -83,18 +83,10 @@ export class RefreshOrchestratorService {
     });
     if (isReuse) {
       // R.2 cascade: revoke ALL of user's tokens, emit ONE audit event.
-      try {
-        await this.refreshTokens.revokeAllForUser({ user_id: found.user_id });
-      } catch (err) {
-        this.logger.warn(`R.2 cascade revoke failed: ${(err as Error).message}`);
-      }
-      await this.auditSink.record({
-        event_type: 'identity.session.reuse_detected',
-        actor_id: found.user_id,
-        context_id: found.tenant_id,
-        subject_id: found.user_id,
-        payload: { presented_token_id: found.id },
-      });
+      await runRefreshReuseCascade(
+        { refreshTokens: this.refreshTokens, auditSink: this.auditSink, logger: this.logger },
+        found,
+      );
       return { kind: 'token_invalid', reason: 'reuse_detected' };
     }
 
@@ -222,8 +214,37 @@ export class RefreshOrchestratorService {
   }
 }
 
+// The R.2 reuse cascade — revoke ALL of the user's refresh tokens (best-effort)
+// and emit ONE `identity.session.reuse_detected` audit event. Shared by the
+// browser refresh above and the native refresh (AUTH-SIGNIN-1 Amendment M-A1
+// §3.4: "reuse of a rotated token triggers the existing reuse cascade"), so the
+// two cannot drift. `extraPayload` adds context (the native path records its
+// client + device session); the browser path passes none (payload unchanged).
+export async function runRefreshReuseCascade(
+  deps: { refreshTokens: RefreshTokenService; auditSink: AuditSink; logger: Logger },
+  found: RefreshTokenDto,
+  extraPayload?: Record<string, unknown>,
+): Promise<void> {
+  try {
+    await deps.refreshTokens.revokeAllForUser({ user_id: found.user_id });
+  } catch (err) {
+    deps.logger.warn(`R.2 cascade revoke failed: ${(err as Error).message}`);
+  }
+  await deps.auditSink.record({
+    event_type: 'identity.session.reuse_detected',
+    actor_id: found.user_id,
+    context_id: found.tenant_id,
+    subject_id: found.user_id,
+    payload: { presented_token_id: found.id, ...(extraPayload ?? {}) },
+  });
+}
+
 function sha256Base64Url(s: string): string {
   return createHash('sha256').update(s).digest('base64url');
+}
+
+export function readRefreshGraceSeconds(): number {
+  return readGraceSeconds();
 }
 
 function readGraceSeconds(): number {

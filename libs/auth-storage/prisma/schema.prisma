@@ -78,3 +78,47 @@ model RefreshToken {
   @@index([expires_at])
   @@schema("auth_storage")
 }
+
+// AUTH-SIGNIN-1 Amendment M-A1 §3.6/§3.8 — a SERVER-OWNED native device session
+// (Aramo Sign mobile). `id` is the opaque device_session_id carried in the
+// access token as claim `dsid`. The session is bound to the user, the tenant,
+// the native Cognito client and its refresh-token family:
+// `refresh_family_root_id` is the first token issued at the code exchange and
+// `current_refresh_token_id` the one live (unrevoked) member of the rotation
+// chain. `installation_id` / `platform` / `app_version` are DESCRIPTIVE only
+// (client supplied); they never authorize anything. UUID-only references, no
+// FK: a new table, no column added to an existing table.
+model NativeDeviceSession {
+  id                       String    @id @db.Uuid
+  user_id                  String    @db.Uuid
+  tenant_id                String    @db.Uuid
+  consumer_type            String
+  client_id                String
+  installation_id          String
+  platform                 String
+  app_version              String
+  refresh_family_root_id   String    @db.Uuid
+  current_refresh_token_id String    @unique @db.Uuid
+  created_at               DateTime  @default(now()) @db.Timestamptz
+  last_seen_at             DateTime  @default(now()) @db.Timestamptz
+  revoked_at               DateTime? @db.Timestamptz
+  revoke_reason            String?
+
+  @@index([user_id, tenant_id])
+  @@schema("auth_storage")
+}
+
+// AUTH-SIGNIN-1 Amendment M-A1 §3.3/§3.8 — the redeemed-code ledger. A one-way
+// hash of every authorization code the native exchange accepted (and of its ID
+// token nonce), so a second redemption is refused independently of Cognito's
+// own single-use rule. Short TTL: rows past `expires_at` are pruned.
+model NativeRedeemedCode {
+  code_hash   String   @id
+  nonce_hash  String   @unique
+  client_id   String
+  redeemed_at DateTime @default(now()) @db.Timestamptz
+  expires_at  DateTime @db.Timestamptz
+
+  @@index([expires_at])
+  @@schema("auth_storage")
+}

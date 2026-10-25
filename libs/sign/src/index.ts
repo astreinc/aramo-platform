@@ -10,6 +10,8 @@ export {
   type SenderRecipientInput,
   type SenderFieldInput,
   type SenderDocumentRow,
+  type DocumentPageSize,
+  DELETED_DRAFT_SUBJECT,
 } from './lib/sender-workspace.repository.js';
 export {
   EsignRepository,
@@ -166,3 +168,44 @@ export {
   type AbuseReportWeight,
   type RecordAbuseReportResult,
 } from './lib/abuse-report.service.js';
+
+// Aramo Sign Mobile — notification feed, devices, preferences, push (M-A3 §1, §2, §9).
+export * from './lib/notifications/index.js';
+
+// Aramo Sign Mobile — envelope contracts: revision preconditions, reminder limits,
+// request idempotency, inbox revalidation, saved signatures, contacts (M-A2 §2.2, M-A3 §3–§9).
+export {
+  EnvelopeRevisionMismatchError,
+  ReminderLimitError,
+  InboxSigningRefusedError,
+  IdempotencyKeyReuseError,
+  IdempotencyRequestInProgressError,
+  type ReminderLimitReason,
+  type InboxSigningRefusal,
+} from './lib/domain/envelope-contract-errors.js';
+export {
+  SIGN_REMINDER_LIMITS,
+  applyReminderLimits,
+  envelopeReminderAvailableAt,
+  nextReminderAt,
+  reminderHistory,
+  type ReminderLimits,
+  type ReminderHistoryEntry,
+} from './lib/reminder-limits.js';
+export {
+  SignIdempotencyRepository,
+  SIGN_IDEMPOTENCY_TTL_MS,
+  SIGN_IDEMPOTENCY_KEY_MAX,
+  idempotencyRequestHash,
+  type SignIdempotencyScope,
+  type SignIdempotencyBegin,
+} from './lib/sign-idempotency.repository.js';
+export {
+  SignSavedSignatureRepository,
+  type SavedSignatureSlot,
+  type SavedSignatureKind,
+  type SavedSignatureValue,
+  type SavedSignatureRow,
+} from './lib/sign-saved-signature.repository.js';
+export { SignContactRepository, SignContactDuplicateError, contactEmailKey, type SignContactRow } from './lib/sign-contact.repository.js';
+export { RECIPIENT_INBOX_SESSION_EVENT, type IssuedRecipientSession } from './lib/recipient-inbox.repository.js';

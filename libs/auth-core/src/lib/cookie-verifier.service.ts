@@ -24,6 +24,9 @@ export interface CookieJwtPayload {
   // list. /session resolves the effective scopes server-side for its response body.
   authz_version: number;
   site_id?: string;
+  // AUTH-SIGNIN-1 Amendment M-A1 — present only on a native token (never a
+  // browser cookie); surfaced so the browser /session route can refuse it.
+  client?: string;
   iat: number;
   exp: number;
 }
@@ -53,6 +56,7 @@ export class CookieVerifierService {
     const tenant_id = p['tenant_id'];
     const authz_version = p['authz_version'];
     const site_id = p['site_id'];
+    const client = p['client'];
     if (
       typeof p['sub'] !== 'string' ||
       typeof consumer_type !== 'string' ||
@@ -73,6 +77,7 @@ export class CookieVerifierService {
       tenant_id,
       authz_version,
       ...(typeof site_id === 'string' ? { site_id } : {}),
+      ...(typeof client === 'string' ? { client } : {}),
       iat: p['iat'],
       exp: p['exp'],
     };

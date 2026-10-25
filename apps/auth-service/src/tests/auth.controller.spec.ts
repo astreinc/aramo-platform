@@ -130,6 +130,29 @@ describe('AuthController.session', () => {
     });
   });
 
+  // AUTH-SIGNIN-1 Amendment M-A1 — a native (Bearer-only) token presented as the
+  // browser session cookie is refused; the two credential families stay apart.
+  it('refuses a native token presented as the browser session cookie (401 native_token_on_browser_route)', async () => {
+    const cookieVerifier = {
+      verify: vi.fn().mockResolvedValue({
+        sub: USER_ID,
+        consumer_type: 'sign',
+        tenant_id: TENANT_ID,
+        authz_version: 1,
+        client: 'native',
+        iat: 1,
+        exp: 2,
+      }),
+    } as unknown as CookieVerifierService;
+    const ctl = makeController({ cookieVerifier });
+    const req = { cookies: { aramo_access_token_sign: 'jwt' }, requestId: 'r' } as never;
+    await expect(ctl.session('sign', req)).rejects.toMatchObject({
+      code: 'INVALID_TOKEN',
+      statusCode: 401,
+      context: { details: { reason: 'native_token_on_browser_route' } },
+    });
+  });
+
   it('throws AramoError(INVALID_TOKEN, 401) when access cookie is missing', async () => {
     const cookieVerifier = {
       verify: vi.fn(),

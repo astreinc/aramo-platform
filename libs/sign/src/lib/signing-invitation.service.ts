@@ -94,7 +94,7 @@ export class SigningInvitationService {
         select: { id: true, name: true, email: true, status: true },
       });
       if (signer === null || (signer.status !== 'PENDING' && signer.status !== 'VIEWED')) return { kind: 'cancel', reason: 'signer no longer awaiting' } as const;
-      const env = await tx.signatureEnvelope.findFirstOrThrow({ where: { id: intent.envelope_id, tenant_id: intent.tenant_id }, select: { routing_mode: true, subject: true } });
+      const env = await tx.signatureEnvelope.findFirstOrThrow({ where: { id: intent.envelope_id, tenant_id: intent.tenant_id }, select: { routing_mode: true, subject: true, message: true } });
       if (env.routing_mode === 'SEQUENTIAL') {
         const current = await tx.signer.findFirst({
           where: { tenant_id: intent.tenant_id, envelope_id: intent.envelope_id, status: { not: 'SIGNED' } },
@@ -119,7 +119,7 @@ export class SigningInvitationService {
           expires_at: signingSessionExpiresAt(now),
         },
       });
-      return { kind: 'issued', raw: tok.raw, signer, subject: env.subject } as const;
+      return { kind: 'issued', raw: tok.raw, signer, subject: env.subject, message: env.message } as const;
     });
     if (issued.kind === 'cancel') {
       await this.prisma.notificationDelivery.update({ where: { id: intent.id }, data: { status: 'CANCELLED', last_error: issued.reason.slice(0, 500) } });
@@ -140,6 +140,8 @@ export class SigningInvitationService {
         envelope_subject: issued.subject,
         tenant_id: intent.tenant_id,
         signing_url: `${base}/s/${issued.raw}`,
+        // Sign Mobile M-A3 §3 — the sender's plain-text message.
+        ...(issued.message ? { sender_message: issued.message } : {}),
       });
       if (!result.delivered) {
         await this.fail(intent.id, 'provider reported not delivered');

@@ -212,9 +212,12 @@ export class EsignSignerController {
   async disclosureText(@Body() body: { token: string }, @RequestId() requestId: string) {
     validate(typeof body?.token === 'string' && body.token.length > 0, 'token is required', requestId);
     try {
-      await this.service.resolveSession(body.token);
+      const ctx = await this.service.resolveSession(body.token);
       const d = currentDisclosure();
-      return { disclosure_version: d.version, text: d.text, text_sha256: d.text_sha256 };
+      // Sign Mobile M-A3 §3 — the sender's plain-text message, shown on the consent
+      // screen (sender-supplied; not part of the disclosure text or its hash).
+      const message = await this.service.signerEnvelopeMessage(ctx);
+      return { disclosure_version: d.version, text: d.text, text_sha256: d.text_sha256, message };
     } catch (e) {
       throw toHttp(e, requestId);
     }

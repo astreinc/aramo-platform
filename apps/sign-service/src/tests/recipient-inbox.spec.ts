@@ -2,7 +2,7 @@ import 'reflect-metadata';
 import { GUARDS_METADATA } from '@nestjs/common/constants';
 import { JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { REQUIRED_SCOPES_KEY } from '@aramo/authorization';
-import { hashSigningToken } from '@aramo/sign';
+import { hashSigningToken, InboxSigningRefusedError, type InboxSigningRefusal } from '@aramo/sign';
 import { EsignSenderConsumerGuard } from '@aramo/identity';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -39,17 +39,20 @@ const row = (over: Record<string, unknown> = {}) => ({
   ...over,
 });
 
-function service(opts: { session?: Record<string, unknown> | null; email?: string | null; rows?: unknown[]; one?: unknown } = {}) {
+function service(opts: { session?: Record<string, unknown> | null; email?: string | null; rows?: unknown[]; one?: unknown; refuse?: InboxSigningRefusal } = {}) {
   const repo = {
     sessionForToken: vi.fn(async (h: string) =>
       h === hashSigningToken(TOKEN) && opts.session !== null
-        ? { tenant_id: SENDER_TENANT, envelope_id: 'e1', signer_id: 's1', status: 'ISSUED', expires_at: new Date(Date.now() + 60_000), signer_email: 'Bob@Example.TEST', ...opts.session }
+        ? { id: 'sess-claimed', tenant_id: SENDER_TENANT, envelope_id: 'e1', signer_id: 's1', status: 'ISSUED', expires_at: new Date(Date.now() + 60_000), signer_email: 'Bob@Example.TEST', ...opts.session }
         : null,
     ),
     bind: vi.fn(async () => ({ id: 'b1' })),
     listForUser: vi.fn(async () => opts.rows ?? [row()]),
     getForUser: vi.fn(async () => (opts.one === undefined ? row() : opts.one)),
-    issueRecipientSession: vi.fn(async () => 'rawsession'),
+    issueRevalidatedRecipientSession: vi.fn(async () => {
+      if (opts.refuse !== undefined) throw new InboxSigningRefusedError(opts.refuse);
+      return opts.one === null ? null : { raw_token: 'rawsession', session_id: 'sess-inbox', expires_at: new Date('2026-10-25T10:30:00.000Z') };
+    }),
     issueRecipientCopyAccess: vi.fn(async () => 'rawcopy'),
     revoke: vi.fn(async () => false),
   };
@@ -64,7 +67,10 @@ describe('binding — a live signing link AND the user’s verified email, never
   it('binds when both hold; tenant and envelope come from the signing session, the user’s tenant from the token', async () => {
     const { svc, repo } = service();
     await expect(svc.claim(auth, { token: TOKEN }, 'r')).resolves.toEqual({ id: 'b1' });
-    expect(repo.bind).toHaveBeenCalledWith({ envelope_tenant_id: SENDER_TENANT, envelope_id: 'e1', signer_id: 's1', user_id: USER, user_tenant_id: USER_TENANT, email: 'bob@example.test' });
+    // Sign Mobile M-A2 §2.2 — the claim records the emailed session it was made with.
+    expect(repo.bind).toHaveBeenCalledWith({
+      envelope_tenant_id: SENDER_TENANT, envelope_id: 'e1', signer_id: 's1', user_id: USER, user_tenant_id: USER_TENANT, email: 'bob@example.test', claim_session_id: 'sess-claimed',
+    });
   });
 
   it('a different email address is refused even with a valid link', async () => {
@@ -95,7 +101,7 @@ describe('recipient-only access', () => {
     const out = await svc.list(auth);
     expect(repo.listForUser).toHaveBeenCalledWith(USER);
     expect(Object.keys(out.waiting[0]!).sort()).toEqual(
-      ['can_download', 'can_sign', 'completed_at', 'envelope_status', 'expires_at', 'from', 'id', 'my_status', 'sent_at', 'signed_at', 'subject'].sort(),
+      ['can_download', 'can_sign', 'completed_at', 'envelope_expires_at', 'envelope_status', 'expires_at', 'from', 'id', 'my_status', 'sent_at', 'signed_at', 'signing_link_valid_days', 'subject'].sort(),
     );
     expect(JSON.stringify(out)).not.toContain(SENDER_TENANT);
     expect(JSON.stringify(out)).not.toContain('"e1"');
@@ -106,17 +112,25 @@ describe('recipient-only access', () => {
     await expect(service({ one: null }).svc.sign(auth, 'b9', 'r')).rejects.toMatchObject({ statusCode: 404 });
   });
 
-  it('signing issues a fresh short-lived link for that recipient only while signable', async () => {
+  it('signing issues a fresh short-lived link for that recipient, keyed by the caller', async () => {
     const { svc, repo } = service();
-    await expect(svc.sign(auth, 'b1', 'r')).resolves.toEqual({ signing_url: 'https://sign.example.test/s/rawsession' });
-    expect(repo.issueRecipientSession).toHaveBeenCalledWith(SENDER_TENANT, 'e1', 's1');
-    for (const one of [
-      row({ envelope: { ...row().envelope, status: 'VOIDED' } }),
-      row({ signer: { name: 'Bob', status: 'SIGNED', signed_at: new Date() } }),
-      row({ envelope: { ...row().envelope, expires_at: new Date(Date.now() - 1) } }),
-    ]) {
-      await expect(service({ one }).svc.sign(auth, 'b1', 'r')).rejects.toMatchObject({ statusCode: 409 });
-    }
+    await expect(svc.sign(auth, 'b1', 'r')).resolves.toEqual({ signing_url: 'https://sign.example.test/s/rawsession', expires_at: '2026-10-25T10:30:00.000Z' });
+    expect(repo.issueRevalidatedRecipientSession).toHaveBeenCalledWith(USER, 'b1');
+  });
+
+  // Sign Mobile M-A2 §2.2 — every refusal of the transactional revalidation is a 409
+  // with its stable reason; the C-21 recovery copy for a replaced or expired link.
+  it.each<InboxSigningRefusal>(['association_inactive', 'envelope_not_signable', 'signer_ineligible', 'not_your_turn', 'session_revoked', 'link_expired'])(
+    'revalidation refusal %s → 409 with that reason',
+    async (reason) => {
+      await expect(service({ refuse: reason }).svc.sign(auth, 'b1', 'r')).rejects.toMatchObject({ statusCode: 409, code: 'ENVELOPE_ILLEGAL_TRANSITION', context: { details: { reason } } });
+    },
+  );
+
+  it('a replaced or expired claimed link shows the recovery message', async () => {
+    await expect(service({ refuse: 'session_revoked' }).svc.sign(auth, 'b1', 'r')).rejects.toMatchObject({
+      message: 'This link was replaced or has expired. Open the newest email, or sign in to your inbox.',
+    });
   });
 
   it('a signed copy only once complete and signed by this recipient', async () => {

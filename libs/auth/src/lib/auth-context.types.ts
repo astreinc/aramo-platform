@@ -51,4 +51,16 @@ export interface AuthContext {
   // decorated with @RequireSiteMatch. AuthN behavior unchanged — the
   // claim is propagated verbatim, not validated against any catalog.
   site_id?: string;
+  // AUTH-SIGNIN-1 Amendment M-A1 §3.6/§3.7 — the native-client security context.
+  // Present ONLY on a token minted by the native exchange (Aramo Sign mobile):
+  // `client` is the literal 'native' and `dsid` the server-owned device session
+  // id. Absent on every browser token (the browser AuthContext shape is
+  // unchanged). Resource guards treat a native token as the `sign` consumer with
+  // no browser-host assertion and may record this context in audit.
+  client?: NativeClientKind;
+  dsid?: string;
 }
+
+// M-A1 — the closed set of non-browser client kinds a token may declare.
+export const NATIVE_CLIENT_KINDS = ['native'] as const;
+export type NativeClientKind = (typeof NATIVE_CLIENT_KINDS)[number];

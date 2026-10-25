@@ -1,6 +1,6 @@
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { ApiError, ToastProvider } from '@aramo/fe-foundation';
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 import { platformApi, type TenantDomain, type TenantDomainClaim } from '../platform-api';
 
@@ -48,7 +48,16 @@ describe('domain rules', () => {
 });
 
 describe('TenantDomainPanel', () => {
-  afterEach(() => vi.restoreAllMocks());
+  // The success toasts auto-dismiss on a 3 s Radix timer. With real timers it can fire
+  // after jsdom teardown ("document is not defined"), so own the clock and drop every
+  // pending timer once the trees are unmounted.
+  beforeEach(() => vi.useFakeTimers({ shouldAdvanceTime: true }));
+  afterEach(() => {
+    cleanup();
+    vi.clearAllTimers();
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
 
   it('renders the claim card with the countdown', async () => {
     vi.spyOn(platformApi, 'getTenantDomain').mockResolvedValue(DOMAIN(claim()));

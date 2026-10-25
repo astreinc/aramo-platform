@@ -42,6 +42,11 @@ const { like, uuid, integer, eachLike, regex } = MatchersV3;
 //   7. POST /v1/sign/sender/envelopes/{id}/send             200 EnvelopeDetail (SENT)
 //   8. POST /v1/sign/sender/envelopes/{id}/void             200 EnvelopeDetail (VOIDED)
 //   9. GET  /v1/sign/sender/envelopes (no session)          401 AUTH_REQUIRED
+// Aramo Sign Mobile (M-A3 §3/§5/§6) — the same contracts serve web and mobile:
+//  10. GET   /v1/sign/sender/envelopes/{id}                 200 EnvelopeDetail + ETag "{id}.{revision}"
+//  11. PATCH /v1/sign/sender/envelopes/{id} (If-Match)      200 sets the sender message
+//  12. PATCH /v1/sign/sender/envelopes/{id} (stale If-Match) 412 revision_mismatch
+//  13. POST  /v1/sign/sender/contacts                       201 SenderContact
 
 const provider = new PactV4({
   consumer: 'sign-workspace',
@@ -72,6 +77,12 @@ const FIELDS_SIGNER_ID = 'e5000000-0000-7000-8000-0000000000d3';
 const SEND_ENVELOPE_ID = 'e5000000-0000-7000-8000-0000000000e1';
 // void (SENT)
 const VOID_ENVELOPE_ID = 'e5000000-0000-7000-8000-0000000000f1';
+// Sign Mobile — detail + ETag, message with If-Match, stale If-Match. Each a fresh
+// fixture: a seeded DRAFT (envelope row + one ledger event) is at revision 2, the
+// sender-authored fixture (envelope, document, recipient, field, event) at revision 5.
+const ETAG_ENVELOPE_ID = 'e5000000-0000-7000-8000-000000000101';
+const MESSAGE_ENVELOPE_ID = 'e5000000-0000-7000-8000-000000000111';
+const STALE_ENVELOPE_ID = 'e5000000-0000-7000-8000-000000000121';
 
 const ISO = '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$';
 const iso = (example: string) => regex(ISO, example);
@@ -449,6 +460,121 @@ describe('esign-web → POST /v1/sign/sender/envelopes/{id}/void', () => {
         expect(body.status).toBe('VOIDED');
       });
   });
+});
+
+describe('Sign Mobile → GET /v1/sign/sender/envelopes/{id} (ETag)', () => {
+  it('returns the revision validator, the sender message and the two expiry fields', async () => {
+    await provider
+      .addInteraction()
+      .given('a sender-authored envelope exists', { envelope_id: ETAG_ENVELOPE_ID })
+      .uponReceiving('an envelope detail read with its ETag')
+      .withRequest('GET', `${BASE}/envelopes/${ETAG_ENVELOPE_ID}`, (b) => {
+        b.headers(AUTH_HEADERS);
+      })
+      .willRespondWith(200, (b) => {
+        b.headers({ ETag: regex(`^"${ETAG_ENVELOPE_ID}\\.\\d+"$`, `"${ETAG_ENVELOPE_ID}.5"`) });
+        b.jsonBody({
+          ...detailBody(ETAG_ENVELOPE_ID, 'DRAFT', { documents: true, recipients: true, fields: true }),
+          revision: integer(5),
+          message: null,
+          signing_link_valid_days: 7,
+          envelope_expires_at: null,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}${BASE}/envelopes/${ETAG_ENVELOPE_ID}`, { headers: AUTH_HEADERS });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { revision: number };
+        expect(res.headers.get('etag')).toBe(`"${ETAG_ENVELOPE_ID}.${body.revision}"`);
+      });
+  });
+});
+
+describe('Sign Mobile → PATCH /v1/sign/sender/envelopes/{id} (If-Match)', () => {
+  it('sets the sender message on a draft when If-Match is current', async () => {
+    const etag = `"${MESSAGE_ENVELOPE_ID}.2"`;
+    await provider
+      .addInteraction()
+      .given('a sender draft envelope exists', { envelope_id: MESSAGE_ENVELOPE_ID })
+      .uponReceiving('a sender message change with a current If-Match')
+      .withRequest('PATCH', `${BASE}/envelopes/${MESSAGE_ENVELOPE_ID}`, (b) => {
+        b.headers({ ...JSON_HEADERS, 'If-Match': etag }).jsonBody({ message: 'Please sign by Friday.' });
+      })
+      .willRespondWith(200, (b) => {
+        b.headers({ ETag: regex(`^"${MESSAGE_ENVELOPE_ID}\\.\\d+"$`, `"${MESSAGE_ENVELOPE_ID}.3"`) });
+        b.jsonBody({ id: MESSAGE_ENVELOPE_ID, status: 'DRAFT', message: 'Please sign by Friday.', revision: integer(3) });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}${BASE}/envelopes/${MESSAGE_ENVELOPE_ID}`, {
+          method: 'PATCH',
+          headers: { ...JSON_HEADERS, 'If-Match': etag },
+          body: JSON.stringify({ message: 'Please sign by Friday.' }),
+        });
+        expect(res.status).toBe(200);
+        expect(((await res.json()) as { message: string }).message).toBe('Please sign by Friday.');
+      });
+  });
+
+  it('refuses a stale If-Match with 412 revision_mismatch and the current revision', async () => {
+    const stale = `"${STALE_ENVELOPE_ID}.1"`;
+    await provider
+      .addInteraction()
+      .given('a sender draft envelope exists', { envelope_id: STALE_ENVELOPE_ID })
+      .uponReceiving('a draft change with a stale If-Match')
+      .withRequest('PATCH', `${BASE}/envelopes/${STALE_ENVELOPE_ID}`, (b) => {
+        b.headers({ ...JSON_HEADERS, 'If-Match': stale }).jsonBody({ subject: 'Renamed' });
+      })
+      .willRespondWith(412, (b) => {
+        b.jsonBody({
+          error: {
+            code: 'INVALID_REQUEST',
+            message: like('This envelope changed since you last read it. Reload and try again.'),
+            request_id: like('req-1'),
+            details: { reason: 'revision_mismatch', current_revision: integer(2) },
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}${BASE}/envelopes/${STALE_ENVELOPE_ID}`, {
+          method: 'PATCH',
+          headers: { ...JSON_HEADERS, 'If-Match': stale },
+          body: JSON.stringify({ subject: 'Renamed' }),
+        });
+        expect(res.status).toBe(412);
+        expect(((await res.json()) as { error: { details: { reason: string } } }).error.details.reason).toBe('revision_mismatch');
+      });
+  });
+});
+
+describe('Sign Mobile → /v1/sign/sender/contacts (saved contacts)', () => {
+  it('saves a private contact', async () => {
+    const body = { name: 'Priya Nair', email: 'priya.contact@example.com', organization: 'Northwind' };
+    await provider
+      .addInteraction()
+      .given('an esign sender session exists')
+      .uponReceiving('a saved contact create from the Aramo Sign console')
+      .withRequest('POST', `${BASE}/contacts`, (b) => {
+        b.headers(JSON_HEADERS).jsonBody(body);
+      })
+      .willRespondWith(201, (b) => {
+        b.jsonBody({
+          id: uuid('e5000000-0000-7000-8000-000000000201'),
+          name: 'Priya Nair',
+          email: 'priya.contact@example.com',
+          organization: 'Northwind',
+          source: 'saved',
+          created_at: iso('2026-10-25T10:00:00.000Z'),
+          updated_at: iso('2026-10-25T10:00:00.000Z'),
+          last_used_at: null,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}${BASE}/contacts`, { method: 'POST', headers: JSON_HEADERS, body: JSON.stringify(body) });
+        expect(res.status).toBe(201);
+        expect(((await res.json()) as { source: string }).source).toBe('saved');
+      });
+  });
+
 });
 
 describe('esign-web → GET /v1/sign/sender/envelopes (no session)', () => {

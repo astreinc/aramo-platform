@@ -25,6 +25,8 @@ import { PortalLoginBudget } from '@aramo/auth-core';
 import { PortalLoginService } from '@aramo/auth-core';
 import { RefreshOrchestratorService } from '@aramo/auth-core';
 import { SessionOrchestratorService } from '@aramo/auth-core';
+import { CognitoNativeCodeExchangeAdapter, NATIVE_CODE_EXCHANGE, NativeAuthController, NativeAuthService } from '@aramo/auth-core';
+import { JwtAuthGuard } from '@aramo/auth';
 
 import { PortalIdentityRepositoryAdapter } from './portal-identity-repository.adapter.js';
 import { MailerEmailSenderAdapter } from './mailer-email-sender.adapter.js';
@@ -61,7 +63,8 @@ import { IdentityAuditSinkAdapter } from './identity-audit-sink.adapter.js';
     PortalIdentityModule,
     MailerModule,
   ],
-  controllers: [AuthController, JwksController, PortalAuthController],
+  // AUTH-SIGNIN-1 Amendment M-A1 — NativeAuthController (Aramo Sign mobile).
+  controllers: [AuthController, JwksController, PortalAuthController, NativeAuthController],
   providers: [
     PkceService,
     JwtIssuerService,
@@ -97,6 +100,13 @@ import { IdentityAuditSinkAdapter } from './identity-audit-sink.adapter.js';
     PortalIdentityRepositoryAdapter,
     { provide: HOST_CONTEXT_DIRECTORY, useClass: IdentityHostContextAdapter },
     { provide: PORTAL_IDENTITY_STORE, useClass: PortalIdentityRepositoryAdapter },
+    // AUTH-SIGNIN-1 Amendment M-A1 — the native token lifecycle. The Cognito code
+    // exchange sits behind NATIVE_CODE_EXCHANGE (tests bind a fake); JwtAuthGuard
+    // verifies the native Bearer token on the device routes exactly as a resource
+    // route would (the @Global resolver is bound in AppModule).
+    NativeAuthService,
+    JwtAuthGuard,
+    { provide: NATIVE_CODE_EXCHANGE, useClass: CognitoNativeCodeExchangeAdapter },
     { provide: APP_FILTER, useClass: AramoExceptionFilter },
   ],
 })

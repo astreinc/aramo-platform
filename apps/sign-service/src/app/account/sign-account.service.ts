@@ -1,7 +1,10 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
 import { IdentityRepository, IdentityService, PersonalRiskService, TenantRepository, TENANT_OWNER_ROLE_KEY } from '@aramo/identity';
+
+import { ConvenienceDataPurgeService } from '../push/convenience-data-purge.service.js';
+import { SavedDataPurgeService } from '../me/signature/saved-data-purge.service.js';
 
 // Aramo Sign Personal (Free) — "Close account" in Sign settings (PO decision
 // 2026-10-22; Personal Terms: "You may close your account at any time from your
@@ -50,6 +53,10 @@ export class SignAccountService {
     private readonly repo: IdentityRepository,
     private readonly identity: IdentityService,
     private readonly risk: PersonalRiskService,
+    // Sign Mobile M-A3 §9 — the close revokes push devices and deletes notification convenience data.
+    @Optional() private readonly purge?: ConvenienceDataPurgeService,
+    // Sign Mobile M-A3 §9 — and deletes saved signatures and contacts.
+    @Optional() private readonly savedData?: SavedDataPurgeService,
   ) {}
 
   /** The account's close state for the workspace (never throws for a valid session). */
@@ -98,11 +105,17 @@ export class SignAccountService {
         details: { reason: 'personal_account_not_closable' },
       });
     }
-    if (current.state === 'closed') return { state: 'closed', closed_at: current.updated_at.toISOString() };
+    if (current.state === 'closed') {
+      await this.purge?.purgeForAccountClose({ tenant_id: auth.tenant_id, user_id: auth.sub });
+      await this.savedData?.purgeForAccountClose({ tenant_id: auth.tenant_id, user_id: auth.sub });
+      return { state: 'closed', closed_at: current.updated_at.toISOString() };
+    }
     const note = typeof body.reason === 'string' && body.reason.trim() !== '' ? body.reason.trim() : null;
     try {
       // Sessions are not revoked (Lead: "where applicable"): revocation is user-wide across tenants, so it is not applied here.
       const closed = await this.risk.close(auth.tenant_id, auth.sub, OWNER_CLOSE_REASON, new Date(), { closed_by: 'owner', note });
+      await this.purge?.purgeForAccountClose({ tenant_id: auth.tenant_id, user_id: auth.sub });
+      await this.savedData?.purgeForAccountClose({ tenant_id: auth.tenant_id, user_id: auth.sub });
       return { state: 'closed', closed_at: closed.updated_at.toISOString() };
     } catch (err) {
       // A concurrent close (operator or a second tab) won the race: answer the closed state.

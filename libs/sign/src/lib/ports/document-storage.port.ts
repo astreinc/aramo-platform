@@ -30,4 +30,8 @@ export interface DocumentStoragePort {
   putOwnedSource(input: PutOwnedSourceInput): Promise<PutOwnedSourceResult>;
   // Read frozen OWNED source bytes by their durable object key.
   getOwnedSource(source_object_key: string): Promise<Uint8Array>;
+  // Sign Mobile D-W6-3 — remove OWNED source bytes of a draft document that was
+  // deleted (never of a sent envelope). Idempotent. Optional so existing bindings
+  // keep compiling; without it the bytes stay until storage lifecycle removes them.
+  deleteOwnedSource?(source_object_key: string): Promise<void>;
 }

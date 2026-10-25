@@ -3,6 +3,8 @@ import { CommonModule } from '@aramo/common';
 
 import { HostAuthProfileRepository } from './host-auth-profile.repository.js';
 import { HostAuthProfileStore } from './host-auth-profile.store.js';
+import { NativeDeviceSessionRepository } from './native-device-session.repository.js';
+import { NativeDeviceSessionService } from './native-device-session.service.js';
 import { PrismaService } from './prisma/prisma.service.js';
 import { RefreshTokenRepository } from './refresh-token.repository.js';
 import { RefreshTokenService } from './refresh-token.service.js';
@@ -23,7 +25,10 @@ import { RefreshTokenService } from './refresh-token.service.js';
     RefreshTokenService,
     HostAuthProfileRepository,
     HostAuthProfileStore,
+    // AUTH-SIGNIN-1 Amendment M-A1 — native device sessions + redeemed-code ledger.
+    NativeDeviceSessionRepository,
+    NativeDeviceSessionService,
   ],
-  exports: [RefreshTokenService, HostAuthProfileStore],
+  exports: [RefreshTokenService, HostAuthProfileStore, NativeDeviceSessionService],
 })
 export class AuthStorageModule {}

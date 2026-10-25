@@ -1,0 +1,4 @@
+<resources>
+  <string name="app_name">Aramo Sign</string>
+  <string name="blob_provider_authority">ai.aramo.sign.blobs</string>
+</resources>

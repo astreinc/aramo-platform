@@ -203,13 +203,21 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
 
     // IC-2 PR-4 (F-5) — host binding: AFTER tenant selection, BEFORE the status
     // gate, so a mismatched host never learns another tenant's lifecycle state.
-    const binding = evaluateHostBinding({
-      host_class: input.host_class,
-      context_id: input.context_id,
-      consumer: input.consumer,
-      resolved_context_id: selectedTenant.id,
-      allow_unbound: allowUnboundHost(),
-    });
+    // AUTH-SIGNIN-1 Amendment M-A1 §3.7 — a native client is not a browser: no
+    // host was sealed and none is simulated, so browser host binding does not
+    // apply. Its explicit native context (audience, PKCE, nonce, redirect
+    // binding, code single-use) was enforced by the native exchange before this
+    // call; every rule below still runs.
+    const binding =
+      input.client === 'native'
+        ? ({ ok: true, bound: false } as const)
+        : evaluateHostBinding({
+            host_class: input.host_class,
+            context_id: input.context_id,
+            consumer: input.consumer,
+            resolved_context_id: selectedTenant.id,
+            allow_unbound: allowUnboundHost(),
+          });
     if (!binding.ok) {
       const mode = readHostBindingMode();
       // Structured diagnostic (F-6 log mode). Deliberately carries NO tenant or

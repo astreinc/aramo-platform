@@ -78,3 +78,65 @@ nginx publishes 80/443 and is the sole public ingress; the backends are never
 published to the host. `ci/scripts/verify-frontdoor-conf.ts` asserts the post-flip
 invariant (assertion f′): nginx has 80/443, no `profiles:` remain in compose, and
 exactly one service publishes each ingress port.
+
+## Sign host: rate limits
+
+Every Sign-host location used by the web app or the mobile app has a `limit_req`.
+This is required by the Aramo Sign Mobile directive (§4 B-13, §9, §12.12). The
+budgets are per client address, and a refusal returns `429`. The rates are sized
+so that several phones behind one carrier-NAT address are not starved.
+
+| Zone | Rate | Locations (burst) |
+|---|---|---|
+| `sign_guest` | 10 r/s | `/v1/sign/signing/` (60) |
+| `sign_report` | 10 r/m | `/v1/sign/report` (5) |
+| `sign_signup` | 10 r/m | `/v1/signup/sign/` (10) |
+| `domain_delegate` | 30 r/m | `/v1/domain-verification/delegate` (10) |
+| `sign_workspace` | 20 r/s | `/v1/sign/sender/` (100), `/v1/sign/inbox` (40), `/v1/sign/me/` (40), `/v1/sign/legal/` (20), `/v1/sign/account/` (20), `/v1/sign/billing/` (20) |
+| `sign_auth` | 10 r/s | `/auth/` (40) |
+| `sign_native_auth` | 30 r/m | `/auth/native/` (20) |
+
+`sign_workspace` is one shared zone, so each client address has one budget across
+all of the authenticated Sign surfaces. The sender editor writes once per field,
+which is why `/v1/sign/sender/` has the largest burst. On the native app, a device
+refreshes its token once per 900 s access-token lifetime, so 30 requests a minute
+is generous for real use and still tight against code or token guessing.
+
+`/v1/tenant/domain-verification` is the one proxied location without an edge
+limit. It is an authenticated settings page served by apps/api, which applies its
+own budgets.
+
+## Sign host: app-association files (Aramo Sign Mobile)
+
+The Sign host serves two exact locations, as `application/json`:
+
+- `/.well-known/apple-app-site-association` (iOS Universal Links)
+- `/.well-known/assetlinks.json` (Android App Links)
+
+Both follow M-A2 §3.2: no redirect, never the SPA fallback (a missing file is a
+`404`), and `Cache-Control: public, max-age=3600`.
+
+The files are rendered at every container start by
+`app-links/render-app-links.sh`, which the image installs as
+`/docker-entrypoint.d/40-aramo-app-links.sh`. It writes into
+`/etc/nginx/aramo-app-links/`, using:
+
+| Var | Example | Source |
+|---|---|---|
+| `SIGN_IOS_APP_ID` | `ABCDE12345.ai.aramo.sign` | Apple Team ID + bundle id (P-1) |
+| `SIGN_ANDROID_PACKAGE` | `ai.aramo.sign` | Play package (P-3) |
+| `SIGN_ANDROID_CERT_SHA256S` | `AA:BB:…,11:22:…` | Play app-signing and upload key SHA-256 (P-3) |
+
+This is a separate step from the template envsubst, which stays filtered to
+`^NGINX_`. The conf template never references these variables.
+
+An unset or malformed value renders valid JSON that associates nothing:
+`{"applinks":{"details":[]}}` and `[]`. A warning is logged, and nginx still
+starts. The iOS file claims exactly `/s/*`, `/d/*` and `/auth/native/callback`.
+
+After changing a value, restart nginx (a reload does not re-run the step).
+
+`verify-frontdoor-conf.ts` checks this wiring, rules (n) to (s). It also runs the
+render step under `sh`, and its built-in negative tests prove that each rule can
+fail. The boot smoke checks that both files are served with no `SIGN_*` env.
+Activation steps are in `doc/runbooks/RELEASE-sign-mobile.md`.

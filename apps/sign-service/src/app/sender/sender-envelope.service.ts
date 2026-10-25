@@ -10,8 +10,18 @@ import {
   type DocumentSourceProviderPort,
   type DocumentStoragePort,
   type EnvelopeDocumentSourceMode,
+  EnvelopeIllegalTransitionError,
   EsignSenderRepository,
   SIGNING_SESSION_TTL_MS,
+  type DocumentPageSize,
+  SIGN_REMINDER_LIMITS,
+  SignContactDuplicateError,
+  SignContactRepository,
+  SignIdempotencyRepository,
+  envelopeExpiresAt,
+  envelopeReminderAvailableAt,
+  idempotencyRequestHash,
+  nextReminderAt,
 } from '@aramo/sign';
 import { SafePdfPipeline, UnsafePdfError } from '@aramo/documents-rendering';
 import { PDFDocument } from 'pdf-lib';
@@ -21,6 +31,7 @@ import { NativeAramoSignatureProvider } from '../native-aramo-signature.provider
 import { PersonalSendGate } from '../personal/personal-send.gate.js';
 
 import { SenderContextService } from './sender-context.service.js';
+import { SIGNING_LINK_VALID_DAYS, expectedRevision, sanitizeMessage } from './envelope-contracts.js';
 
 // PX-1 — the authenticated sender workspace (esign.aramo.ai). tenant_id and the
 // acting user come ONLY from the verified auth context. Authoring writes are
@@ -88,7 +99,30 @@ export class SenderEnvelopeService {
     private readonly storageGate: AramoSignStorageGate,
     // Personal Free v1.1 §6 — the Personal sending gate (PERSONAL tenants only).
     @Optional() private readonly personal?: PersonalSendGate,
+    // Sign Mobile M-A3 §7/§8 — request idempotency for remind and document upload.
+    @Optional() private readonly idempotency?: SignIdempotencyRepository,
+    // Sign Mobile M-A3 §5 — the caller's private contacts.
+    @Optional() private readonly contactStore?: SignContactRepository,
   ) {}
+
+  // Sign Mobile M-A3 §7/§8 — run `fn` at most once per (tenant, actor, operation,
+  // Idempotency-Key). A replay with the same request returns the stored response
+  // without running again (a replayed reminder never counts against the limits);
+  // a different request with the same key is refused (422 idempotency_key_reuse).
+  private async idempotent<T>(auth: AuthContextType, operation: string, key: string | undefined, request: unknown, status: number, fn: () => Promise<T>): Promise<T> {
+    if (key === undefined || this.idempotency === undefined) return fn();
+    const begun = await this.idempotency.begin({ tenant_id: auth.tenant_id, actor_id: auth.sub, operation, key }, idempotencyRequestHash(request));
+    if (begun.kind === 'replay') return begun.body as T;
+    let out: T;
+    try {
+      out = await fn();
+    } catch (e) {
+      await this.idempotency.release(begun.id).catch(() => undefined);
+      throw e;
+    }
+    await this.idempotency.complete(begun.id, status, out);
+    return out;
+  }
 
   // Sign Unified Product S-1 (directive §4.3.5) — visibility. A member reads the
   // envelopes they own; the whole organization only with sign:envelope:read:all
@@ -106,7 +140,7 @@ export class SenderEnvelopeService {
   // envelope merely because they share a Business tenant. Visibility first: an
   // envelope the caller cannot see reads as not found.
   private async assertMayChange(auth: AuthContextType, envelope_id: string, requestId: string): Promise<void> {
-    const d = await this.detail(auth, envelope_id, requestId);
+    const d = await this.describe(auth, envelope_id, requestId, false);
     // Sign Unified Product S-3 — an envelope that another application created
     // (e.g. an ATS RTR or offer letter) is visible here but its lifecycle stays
     // with that application, whose workflow depends on it.
@@ -221,7 +255,15 @@ export class SenderEnvelopeService {
     };
   }
 
+  // The sender detail returned to the client: page sizes are filled for documents
+  // uploaded before they were stored (Sign Mobile D-W6-2).
   async detail(auth: AuthContextType, envelope_id: string, requestId: string) {
+    return this.describe(auth, envelope_id, requestId, true);
+  }
+
+  // `fillPages` false for the internal visibility / readiness reads, which never
+  // need page sizes (no source fetch on those paths).
+  private async describe(auth: AuthContextType, envelope_id: string, requestId: string, fillPages: boolean) {
     const createdBy = await this.ownerFilter(auth, requestId);
     const env = await this.repo.getEnvelopeDetail(auth.tenant_id, envelope_id);
     if (createdBy !== undefined && env.created_by !== createdBy) {
@@ -230,6 +272,24 @@ export class SenderEnvelopeService {
     const sender = await this.identity.findUserById(env.created_by);
     const open = env.status === 'SENT' || env.status === 'IN_PROGRESS';
     const nextSignerId = open && env.routing_mode === 'SEQUENTIAL' ? (env.signers.find((s) => s.status !== 'SIGNED')?.id ?? null) : null;
+    const canRemind = (s: { id: string; status: string }): boolean =>
+      open && (s.status === 'PENDING' || s.status === 'VIEWED') && (env.routing_mode !== 'SEQUENTIAL' || s.id === nextSignerId);
+    // Sign Mobile M-A3 §7 — when each remindable signer may next be reminded (the
+    // later of their 60-minute cooldown and the envelope's rolling 24-hour limit).
+    const now = new Date();
+    const history = env.signers.some(canRemind) ? await this.repo.reminderHistory(auth.tenant_id, env.id, now) : [];
+    const envelopeNext = envelopeReminderAvailableAt(history, now, SIGN_REMINDER_LIMITS);
+    const pagesOf = new Map<string, DocumentPageSize[] | null>();
+    for (const d of env.documents) {
+      const stored = storedPages(d.page_sizes?.pages);
+      pagesOf.set(d.id, stored ?? (fillPages ? await this.fillPageSizes(auth.tenant_id, envelope_id, d.id) : null));
+    }
+    const reminderAvailableAt = (s: { id: string; status: string }): string | null => {
+      if (!canRemind(s)) return null;
+      const signerNext = nextReminderAt(history, s.id, now, SIGN_REMINDER_LIMITS);
+      const later = [envelopeNext, signerNext].filter((d): d is Date => d !== null).sort((a, b) => b.getTime() - a.getTime())[0];
+      return later === undefined ? null : later.toISOString();
+    };
     return {
       id: env.id,
       subject: env.subject,
@@ -239,8 +299,18 @@ export class SenderEnvelopeService {
       completed_at: iso(env.completed_at),
       declined_at: iso(env.declined_at),
       voided_at: iso(env.voided_at),
+      // Deprecated (kept for web compatibility): sent_at + the 7-day link window.
+      // Sign Mobile C-14 / M-A3 §6 — the two distinct fields below replace it.
       expires_at: env.sent_at !== null ? new Date(env.sent_at.getTime() + SIGNING_SESSION_TTL_MS).toISOString() : null,
       signing_window_days: Math.round(SIGNING_SESSION_TTL_MS / 86_400_000),
+      // The constant signing-link TTL, and the envelope's own expiry (default 30 days;
+      // envelopes sent before expires_at existed: sent_at + the configured TTL).
+      signing_link_valid_days: SIGNING_LINK_VALID_DAYS,
+      envelope_expires_at: iso(env.expires_at ?? (env.sent_at !== null ? envelopeExpiresAt(env.sent_at) : null)),
+      // Sign Mobile M-A3 §6 — the revision validator (ETag "{id}.{revision}").
+      revision: env.revision,
+      // Sign Mobile M-A3 §3 — the sender's plain-text message (immutable after send).
+      message: env.message ?? null,
       sender: { id: env.created_by, name: sender?.display_name ?? sender?.email ?? null },
       // Sign Unified Product S-3 — where the envelope came from; envelopes from
       // another application are read-only here.
@@ -257,6 +327,11 @@ export class SenderEnvelopeService {
         byte_size: d.byte_size,
         source_sha256: d.source_sha256,
         field_count: d.fields.length,
+        // Sign Mobile D-W6-2 — each page's size in PDF points (MediaBox), 0-based by
+        // position: the frame field geometry is validated in. null only when the
+        // source could not be read.
+        page_count: pagesOf.get(d.id)?.length ?? null,
+        pages: pagesOf.get(d.id) ?? null,
       })),
       recipients: env.signers.map((s) => ({
         id: s.id,
@@ -269,7 +344,9 @@ export class SenderEnvelopeService {
         declined_at: iso(s.declined_at),
         decline_reason: s.decline_reason,
         // A reminder is possible for an unsigned signer who may sign now.
-        can_remind: open && (s.status === 'PENDING' || s.status === 'VIEWED') && (env.routing_mode !== 'SEQUENTIAL' || s.id === nextSignerId),
+        can_remind: canRemind(s),
+        // Sign Mobile M-A3 §7 — null when a reminder may be sent now (or never applies).
+        reminder_available_at: reminderAvailableAt(s),
       })),
       fields: env.documents.flatMap((d) =>
         d.fields.map((f) => ({
@@ -289,8 +366,29 @@ export class SenderEnvelopeService {
     };
   }
 
+  // Sign Mobile D-W6-2 — measure and store the page sizes of a document uploaded
+  // before they were recorded. Best effort: a source that cannot be read leaves
+  // pages null (the next read tries again).
+  private async fillPageSizes(tenant_id: string, envelope_id: string, document_id: string): Promise<DocumentPageSize[] | null> {
+    try {
+      const doc = await this.repo.getDocument(tenant_id, envelope_id, document_id);
+      const bytes = await this.sources.getSourcePdf({
+        tenant_id,
+        source_mode: doc.source_mode as EnvelopeDocumentSourceMode,
+        document_ref: doc.document_ref,
+        document_revision_ref: doc.document_revision_ref,
+        source_object_key: doc.source_object_key,
+      });
+      const pages = await measurePages(bytes);
+      await this.repo.savePageSizes(tenant_id, document_id, pages);
+      return pages;
+    } catch {
+      return null;
+    }
+  }
+
   async events(auth: AuthContextType, envelope_id: string, requestId: string) {
-    await this.detail(auth, envelope_id, requestId); // tenant + owner visibility check
+    await this.describe(auth, envelope_id, requestId, false); // tenant + owner visibility check
     const env = await this.repo.getEnvelopeDetail(auth.tenant_id, envelope_id);
     const signerNames = new Map(env.signers.map((s) => [s.id, s.name]));
     const events = await this.repo.listEnvelopeEvents(auth.tenant_id, envelope_id);
@@ -348,9 +446,14 @@ export class SenderEnvelopeService {
     };
   }
 
+  // Sign Mobile M-A3 §5 — the caller's saved contacts (source 'saved', with an id)
+  // merged with recent recipients derived from envelopes (source 'recent', id
+  // null). A recent recipient who is also saved appears once, as the saved contact.
+  // Recent recipients follow the envelope visibility rule (own envelopes, or the
+  // organization's with sign:envelope:read:all); saved contacts are the caller's only.
   async contacts(auth: AuthContextType, requestId: string) {
-    await this.ownerFilter(auth, requestId);
-    const rows = await this.repo.listPastRecipients(auth.tenant_id, 200);
+    const createdBy = await this.ownerFilter(auth, requestId);
+    const rows = await this.repo.listPastRecipients(auth.tenant_id, 200, createdBy);
     const byEmail = new Map<string, { name: string; email: string; envelope_count: number; last_used_at: string }>();
     for (const r of rows) {
       const k = r.email.toLowerCase();
@@ -361,11 +464,90 @@ export class SenderEnvelopeService {
         cur.envelope_count += 1;
       }
     }
-    return { items: [...byEmail.values()].slice(0, 200) };
+    const saved = (await this.contactStore?.list(auth.tenant_id, auth.sub)) ?? [];
+    const savedKeys = new Set(saved.map((c) => c.email.trim().toLowerCase()));
+    const items = [
+      ...saved.map((c) => {
+        const recent = byEmail.get(c.email.trim().toLowerCase());
+        const lastUsed = [c.last_used_at?.toISOString() ?? null, recent?.last_used_at ?? null].filter((x): x is string => x !== null).sort().pop() ?? null;
+        return { id: c.id, name: c.name, email: c.email, organization: c.organization, source: 'saved' as const, envelope_count: recent?.envelope_count ?? 0, last_used_at: lastUsed };
+      }),
+      ...[...byEmail.entries()]
+        .filter(([k]) => !savedKeys.has(k))
+        .map(([, r]) => ({ id: null, name: r.name, email: r.email, organization: null, source: 'recent' as const, envelope_count: r.envelope_count, last_used_at: r.last_used_at })),
+    ];
+    return { items: items.slice(0, 700) };
+  }
+
+  private contactsOrUnavailable(requestId: string): SignContactRepository {
+    if (this.contactStore === undefined) throw new AramoError('ESIGN_FEATURE_NOT_AVAILABLE', 'Contacts are not available', 503, { requestId, details: { reason: 'contacts_unavailable' } });
+    return this.contactStore;
+  }
+
+  private contactInput(body: Record<string, unknown> | undefined, requestId: string, partial: boolean): { name?: string; email?: string; organization?: string | null } {
+    const o = body ?? {};
+    const out: { name?: string; email?: string; organization?: string | null } = {};
+    if (o['name'] !== undefined || !partial) {
+      const name = typeof o['name'] === 'string' ? o['name'].trim() : '';
+      if (name.length === 0 || name.length > MAX_TITLE) throw bad(requestId, 'A contact needs a name of at most 200 characters', { field: 'name', reason: 'invalid_contact_name' });
+      out.name = name;
+    }
+    if (o['email'] !== undefined || !partial) {
+      const email = typeof o['email'] === 'string' ? o['email'].trim() : '';
+      if (!EMAIL_RE.test(email) || email.length > 254) throw bad(requestId, 'A contact needs a valid email', { field: 'email', reason: 'invalid_contact_email' });
+      out.email = email;
+    }
+    if (o['organization'] !== undefined) {
+      const org = o['organization'];
+      if (org !== null && (typeof org !== 'string' || org.trim().length > MAX_TITLE)) throw bad(requestId, 'organization must be text of at most 200 characters', { field: 'organization', reason: 'invalid_contact_organization' });
+      out.organization = org === null || org.trim().length === 0 ? null : org.trim();
+    }
+    if (partial && Object.keys(out).length === 0) throw bad(requestId, 'name, email or organization is required', { reason: 'empty_contact_update' });
+    return out;
+  }
+
+  private contactView(c: { id: string; name: string; email: string; organization: string | null; created_at: Date; updated_at: Date; last_used_at: Date | null }) {
+    return { id: c.id, name: c.name, email: c.email, organization: c.organization, source: 'saved' as const, created_at: c.created_at.toISOString(), updated_at: c.updated_at.toISOString(), last_used_at: iso(c.last_used_at) };
+  }
+
+  private duplicateContact(requestId: string): AramoError {
+    return new AramoError('VALIDATION_ERROR', 'You already have a contact with this email', 409, { requestId, details: { field: 'email', reason: 'contact_exists' } });
+  }
+
+  // M-A3 §5 — create / update / delete. Owner-isolated: a contact of another user or
+  // tenant reads as not found. A contact grants nothing (recipients are validated on send).
+  async createContact(auth: AuthContextType, body: Record<string, unknown> | undefined, requestId: string) {
+    const store = this.contactsOrUnavailable(requestId);
+    const input = this.contactInput(body, requestId, false);
+    try {
+      const c = await store.create(auth.tenant_id, auth.sub, { name: input.name!, email: input.email!, organization: input.organization ?? null });
+      return this.contactView(c);
+    } catch (e) {
+      if (e instanceof SignContactDuplicateError) throw this.duplicateContact(requestId);
+      throw e;
+    }
+  }
+
+  async updateContact(auth: AuthContextType, id: string, body: Record<string, unknown> | undefined, requestId: string) {
+    const store = this.contactsOrUnavailable(requestId);
+    const patch = this.contactInput(body, requestId, true);
+    try {
+      const c = await store.update(auth.tenant_id, auth.sub, id, patch);
+      if (c === null) throw new AramoError('NOT_FOUND', 'Contact not found', 404, { requestId });
+      return this.contactView(c);
+    } catch (e) {
+      if (e instanceof SignContactDuplicateError) throw this.duplicateContact(requestId);
+      throw e;
+    }
+  }
+
+  async deleteContact(auth: AuthContextType, id: string, requestId: string): Promise<void> {
+    const store = this.contactsOrUnavailable(requestId);
+    if (!(await store.remove(auth.tenant_id, auth.sub, id))) throw new AramoError('NOT_FOUND', 'Contact not found', 404, { requestId });
   }
 
   async source(auth: AuthContextType, envelope_id: string, document_id: string, requestId: string): Promise<Uint8Array> {
-    await this.detail(auth, envelope_id, requestId);
+    await this.describe(auth, envelope_id, requestId, false);
     const doc = await this.repo.getDocument(auth.tenant_id, envelope_id, document_id);
     return this.sources.getSourcePdf({
       tenant_id: auth.tenant_id,
@@ -377,7 +559,7 @@ export class SenderEnvelopeService {
   }
 
   async executed(auth: AuthContextType, envelope_id: string, requestId: string) {
-    const d = await this.detail(auth, envelope_id, requestId);
+    const d = await this.describe(auth, envelope_id, requestId, false);
     if (d.status !== 'COMPLETED') {
       throw new AramoError('ENVELOPE_ILLEGAL_TRANSITION', 'Executed documents exist only for a completed envelope', 409, { requestId });
     }
@@ -397,7 +579,7 @@ export class SenderEnvelopeService {
   }
 
   async evidence(auth: AuthContextType, envelope_id: string, requestId: string) {
-    await this.detail(auth, envelope_id, requestId);
+    await this.describe(auth, envelope_id, requestId, false);
     return this.provider.getEvidence(auth.tenant_id, envelope_id);
   }
 
@@ -411,12 +593,16 @@ export class SenderEnvelopeService {
     return { id: env.id, status: env.status, subject: env.subject };
   }
 
-  async update(auth: AuthContextType, envelope_id: string, body: { subject?: unknown; routing_mode?: unknown }, requestId: string) {
+  async update(auth: AuthContextType, envelope_id: string, body: { subject?: unknown; routing_mode?: unknown; message?: unknown }, requestId: string, ifMatch?: string) {
     await this.context.assertCanAuthor(auth, requestId);
+    const expected = expectedRevision(auth, ifMatch, envelope_id, requestId);
     await this.assertMayChange(auth, envelope_id, requestId);
     const hasSubject = body?.subject !== undefined;
     const hasRouting = body?.routing_mode !== undefined;
-    if (!hasSubject && !hasRouting) throw bad(requestId, 'subject or routing_mode is required');
+    // Sign Mobile M-A3 §3 — the sender message (DRAFT only; null or "" clears it).
+    const hasMessage = body?.message !== undefined;
+    if (!hasSubject && !hasRouting && !hasMessage) throw bad(requestId, 'subject, routing_mode or message is required');
+    const message = hasMessage ? sanitizeMessage(body.message, requestId) : undefined;
     if (hasSubject) {
       if (typeof body.subject !== 'string' || body.subject.trim().length === 0) throw bad(requestId, 'subject is required');
       if (body.subject.length > MAX_TITLE) throw bad(requestId, `subject must be at most ${MAX_TITLE} characters`);
@@ -430,18 +616,31 @@ export class SenderEnvelopeService {
       envelope_id,
       ...(hasSubject ? { subject: (body.subject as string).trim() } : {}),
       ...(hasRouting ? { routing_mode: body.routing_mode as string } : {}),
+      ...(message !== undefined ? { message } : {}),
+      ...(expected !== undefined ? { expected_revision: expected } : {}),
     });
     return this.detail(auth, envelope_id, requestId);
   }
 
-  async upload(auth: AuthContextType, envelope_id: string, body: UploadDocumentBody, requestId: string) {
+  // Sign Mobile M-A3 §8 — with an Idempotency-Key a retried upload returns the first
+  // result (no second document, no second storage reservation).
+  async upload(auth: AuthContextType, envelope_id: string, body: UploadDocumentBody, requestId: string, opts: { ifMatch?: string; idempotencyKey?: string } = {}) {
     await this.context.assertCanAuthor(auth, requestId);
+    const expected = expectedRevision(auth, opts.ifMatch, envelope_id, requestId);
     await this.assertMayChange(auth, envelope_id, requestId);
+    return this.idempotent(auth, `upload:${envelope_id}`, opts.idempotencyKey, { envelope_id, body }, 201, () => this.uploadOnce(auth, envelope_id, body, requestId, expected));
+  }
+
+  private async uploadOnce(auth: AuthContextType, envelope_id: string, body: UploadDocumentBody, requestId: string, expected: number | undefined) {
     if (typeof body?.content_base64 !== 'string' || body.content_base64.length === 0) throw bad(requestId, 'content_base64 is required');
+    // M-A3 §8 — PDF only; a Word document is refused with a stable reason.
+    const fname = typeof body.filename === 'string' ? body.filename.toLowerCase() : '';
+    if (/\.(docx?|dotx?|rtf|odt)$/.test(fname)) throw bad(requestId, 'Only PDF files can be signed. Save the document as a PDF and upload it again.', { reason: 'unsupported_file_type' });
     const filename = typeof body.filename === 'string' && body.filename.length > 0 ? body.filename : 'document.pdf';
     const rawTitle = typeof body.title === 'string' && body.title.trim().length > 0 ? body.title.trim() : filename.replace(/\.pdf$/i, '');
     const title = rawTitle.slice(0, MAX_TITLE);
     const bytes = new Uint8Array(Buffer.from(body.content_base64, 'base64'));
+    if (isWordDocument(bytes)) throw bad(requestId, 'Only PDF files can be signed. Save the document as a PDF and upload it again.', { reason: 'unsupported_file_type' });
     let accepted: Uint8Array;
     try {
       accepted = await this.safePdf.accept(bytes);
@@ -449,8 +648,7 @@ export class SenderEnvelopeService {
       if (e instanceof UnsafePdfError) throw bad(requestId, `This file can't be used: ${e.message}`, { reason: 'unsafe_pdf' });
       throw e;
     }
-    const pdf = await PDFDocument.load(accepted);
-    const pages = pdf.getPages().map((p) => ({ width: p.getWidth(), height: p.getHeight() }));
+    const pages = await measurePages(accepted);
     // A1 — the plan's storage allocation: reserve the bytes before writing the
     // object (the object id fixes the ledger reference), release on failure.
     const object_id = randomUUID();
@@ -475,41 +673,76 @@ export class SenderEnvelopeService {
         content_type: 'application/pdf',
         byte_size: stored.byte_size,
         source_sha256: stored.source_sha256,
+        pages,
+        ...(expected !== undefined ? { expected_revision: expected } : {}),
       });
     } catch (e) {
       await this.storageGate.release(auth.tenant_id, plannedKey).catch(() => undefined);
       throw e;
     }
-    return { id: row.id, title: row.title, ordinal: row.ordinal, byte_size: row.byte_size, page_count: pages.length, pages };
+    // Sign Mobile D-W6-1 — the envelope revision after this upload (the controller
+    // sets ETag "{envelope_id}.{revision}"), so the next write chains its If-Match.
+    return { id: row.id, envelope_id, title: row.title, ordinal: row.ordinal, byte_size: row.byte_size, page_count: pages.length, pages, revision: row.revision };
   }
 
-  async renameDocument(auth: AuthContextType, envelope_id: string, document_id: string, body: { title?: unknown }, requestId: string) {
+  async renameDocument(auth: AuthContextType, envelope_id: string, document_id: string, body: { title?: unknown }, requestId: string, ifMatch?: string) {
     await this.context.assertCanAuthor(auth, requestId);
+    const expected = expectedRevision(auth, ifMatch, envelope_id, requestId);
     await this.assertMayChange(auth, envelope_id, requestId);
     if (typeof body?.title !== 'string' || body.title.trim().length === 0) throw bad(requestId, 'title is required');
-    await this.repo.renameDraftDocument({ tenant_id: auth.tenant_id, envelope_id, document_id, title: body.title.trim().slice(0, MAX_TITLE) });
+    await this.repo.renameDraftDocument({ tenant_id: auth.tenant_id, envelope_id, document_id, title: body.title.trim().slice(0, MAX_TITLE), ...(expected !== undefined ? { expected_revision: expected } : {}) });
     return this.detail(auth, envelope_id, requestId);
   }
 
-  async reorderDocuments(auth: AuthContextType, envelope_id: string, body: { order?: unknown }, requestId: string) {
+  async reorderDocuments(auth: AuthContextType, envelope_id: string, body: { order?: unknown }, requestId: string, ifMatch?: string) {
     await this.context.assertCanAuthor(auth, requestId);
+    const expected = expectedRevision(auth, ifMatch, envelope_id, requestId);
     await this.assertMayChange(auth, envelope_id, requestId);
     if (!Array.isArray(body?.order) || body.order.some((x) => typeof x !== 'string')) throw bad(requestId, 'order must be an array of document ids');
-    await this.repo.reorderDraftDocuments({ tenant_id: auth.tenant_id, envelope_id, order: body.order as string[] });
+    await this.repo.reorderDraftDocuments({ tenant_id: auth.tenant_id, envelope_id, order: body.order as string[], ...(expected !== undefined ? { expected_revision: expected } : {}) });
     return this.detail(auth, envelope_id, requestId);
   }
 
-  async removeDocument(auth: AuthContextType, envelope_id: string, document_id: string, requestId: string) {
+  async removeDocument(auth: AuthContextType, envelope_id: string, document_id: string, requestId: string, ifMatch?: string) {
     await this.context.assertCanAuthor(auth, requestId);
+    const expected = expectedRevision(auth, ifMatch, envelope_id, requestId);
     await this.assertMayChange(auth, envelope_id, requestId);
-    const removed = await this.repo.removeDraftDocument({ tenant_id: auth.tenant_id, envelope_id, document_id, actor_ref: auth.sub });
-    // A1 — removing a draft document releases its storage.
-    if (removed.source_object_key !== null) await this.storageGate.release(auth.tenant_id, removed.source_object_key).catch(() => undefined);
+    const removed = await this.repo.removeDraftDocument({ tenant_id: auth.tenant_id, envelope_id, document_id, actor_ref: auth.sub, ...(expected !== undefined ? { expected_revision: expected } : {}) });
+    // A1 — removing a draft document releases its storage (and, D-W6-3, its bytes).
+    if (removed.source_object_key !== null) await this.discardSource(auth.tenant_id, removed.source_object_key);
     return this.detail(auth, envelope_id, requestId);
   }
 
-  async replaceRecipients(auth: AuthContextType, envelope_id: string, body: { recipients?: unknown }, requestId: string) {
+  // Sign Mobile D-W6-3 — delete a DRAFT envelope. The same authority as any draft
+  // change (visibility, then ownership or sign:envelope:manage:all; an envelope of
+  // another application is refused) and the same If-Match rule (428 / 412). A sent
+  // envelope is refused 409 envelope_not_draft. After the commit the stored source
+  // bytes are removed and their storage released; a failure there is logged by the
+  // storage layer and never resurrects the draft.
+  async deleteDraft(auth: AuthContextType, envelope_id: string, requestId: string, ifMatch?: string): Promise<void> {
     await this.context.assertCanAuthor(auth, requestId);
+    const expected = expectedRevision(auth, ifMatch, envelope_id, requestId);
+    await this.assertMayChange(auth, envelope_id, requestId);
+    let removed: Awaited<ReturnType<EsignSenderRepository['deleteDraft']>>;
+    try {
+      removed = await this.repo.deleteDraft({ tenant_id: auth.tenant_id, envelope_id, actor_ref: auth.sub, ...(expected !== undefined ? { expected_revision: expected } : {}) });
+    } catch (e) {
+      if (e instanceof EnvelopeIllegalTransitionError) {
+        throw new AramoError('ENVELOPE_ILLEGAL_TRANSITION', 'Only a draft can be deleted. Void a sent envelope instead.', 409, { requestId, details: { reason: 'envelope_not_draft' } });
+      }
+      throw e;
+    }
+    for (const key of removed.source_object_keys) await this.discardSource(auth.tenant_id, key);
+  }
+
+  private async discardSource(tenant_id: string, source_object_key: string): Promise<void> {
+    await this.storage.deleteOwnedSource?.(source_object_key).catch(() => undefined);
+    await this.storageGate.release(tenant_id, source_object_key).catch(() => undefined);
+  }
+
+  async replaceRecipients(auth: AuthContextType, envelope_id: string, body: { recipients?: unknown }, requestId: string, ifMatch?: string) {
+    await this.context.assertCanAuthor(auth, requestId);
+    const expected = expectedRevision(auth, ifMatch, envelope_id, requestId);
     await this.assertMayChange(auth, envelope_id, requestId);
     if (!Array.isArray(body?.recipients)) throw bad(requestId, 'recipients must be an array');
     if (body.recipients.length > MAX_SIGNERS) {
@@ -528,12 +761,13 @@ export class SenderEnvelopeService {
       const id = typeof o['id'] === 'string' && o['id'].length > 0 ? o['id'] : undefined;
       return { ...(id !== undefined ? { id } : {}), name, email };
     });
-    await this.repo.replaceDraftRecipients({ tenant_id: auth.tenant_id, envelope_id, recipients });
+    await this.repo.replaceDraftRecipients({ tenant_id: auth.tenant_id, envelope_id, recipients, ...(expected !== undefined ? { expected_revision: expected } : {}) });
     return this.detail(auth, envelope_id, requestId);
   }
 
-  async replaceFields(auth: AuthContextType, envelope_id: string, body: { fields?: unknown }, requestId: string) {
+  async replaceFields(auth: AuthContextType, envelope_id: string, body: { fields?: unknown }, requestId: string, ifMatch?: string) {
     await this.context.assertCanAuthor(auth, requestId);
+    const expected = expectedRevision(auth, ifMatch, envelope_id, requestId);
     await this.assertMayChange(auth, envelope_id, requestId);
     if (!Array.isArray(body?.fields)) throw bad(requestId, 'fields must be an array');
     if (body.fields.length > MAX_FIELDS) throw bad(requestId, `at most ${MAX_FIELDS} fields`);
@@ -584,7 +818,7 @@ export class SenderEnvelopeService {
         }
       }
     }
-    await this.repo.replaceDraftFields({ tenant_id: auth.tenant_id, envelope_id, fields });
+    await this.repo.replaceDraftFields({ tenant_id: auth.tenant_id, envelope_id, fields, ...(expected !== undefined ? { expected_revision: expected } : {}) });
     return this.detail(auth, envelope_id, requestId);
   }
 
@@ -592,7 +826,7 @@ export class SenderEnvelopeService {
 
   // Readiness the send step enforces (also returned to the UI): ≥1 document,
   // ≥1 recipient, and every recipient has at least one SIGNATURE field.
-  readiness(d: Awaited<ReturnType<SenderEnvelopeService['detail']>>): { ok: boolean; problems: string[] } {
+  readiness(d: Pick<Awaited<ReturnType<SenderEnvelopeService['detail']>>, 'documents' | 'recipients' | 'fields'>): { ok: boolean; problems: string[] } {
     const problems: string[] = [];
     if (d.documents.length === 0) problems.push('Add at least one document');
     if (d.recipients.length === 0) problems.push('Add at least one recipient');
@@ -602,14 +836,21 @@ export class SenderEnvelopeService {
     return { ok: problems.length === 0, problems };
   }
 
-  async send(auth: AuthContextType, envelope_id: string, body: { subject?: unknown }, requestId: string, meta: { ip?: string | null } = {}) {
+  // Sign Mobile M-A3 §6 — with If-Match every step of the send (subject, execution
+  // mode, the send itself) is a compare-and-set on the revision the previous step
+  // produced, each under the envelope row lock: a concurrent change anywhere in
+  // between refuses the send with 412 instead of sending an envelope the caller
+  // never saw.
+  async send(auth: AuthContextType, envelope_id: string, body: { subject?: unknown }, requestId: string, meta: { ip?: string | null; ifMatch?: string } = {}) {
     const tenant = await this.context.assertCanAuthorTenant(auth, requestId);
+    let expected = expectedRevision(auth, meta.ifMatch, envelope_id, requestId);
     await this.assertMayChange(auth, envelope_id, requestId);
-    let d = await this.detail(auth, envelope_id, requestId);
+    let d = await this.describe(auth, envelope_id, requestId, false);
     if (d.status !== 'DRAFT') throw new AramoError('ENVELOPE_ILLEGAL_TRANSITION', `envelope is ${d.status}`, 409, { requestId });
     if (typeof body?.subject === 'string' && body.subject.trim().length > 0 && body.subject.trim() !== d.subject) {
-      await this.repo.updateDraft({ tenant_id: auth.tenant_id, envelope_id, subject: body.subject.trim().slice(0, MAX_TITLE) });
-      d = await this.detail(auth, envelope_id, requestId);
+      const rev = await this.repo.updateDraft({ tenant_id: auth.tenant_id, envelope_id, subject: body.subject.trim().slice(0, MAX_TITLE), ...(expected !== undefined ? { expected_revision: expected } : {}) });
+      if (expected !== undefined) expected = rev;
+      d = await this.describe(auth, envelope_id, requestId, false);
     }
     const ready = this.readiness(d);
     if (!ready.ok) throw bad(requestId, 'This envelope is not ready to send', { reason: 'not_ready', problems: ready.problems });
@@ -631,37 +872,47 @@ export class SenderEnvelopeService {
         requestId,
       );
     }
-    await this.repo.updateDraft({
+    const rev = await this.repo.updateDraft({
       tenant_id: auth.tenant_id,
       envelope_id,
       execution_mode: d.recipients.length > 1 ? 'MULTI_SIGNATURE' : 'SINGLE_SIGNATURE',
+      ...(expected !== undefined ? { expected_revision: expected } : {}),
     });
-    await this.provider.sendEnvelope(auth.tenant_id, envelope_id, auth.sub);
+    if (expected !== undefined) expected = rev;
+    await this.provider.sendEnvelope(auth.tenant_id, envelope_id, auth.sub, undefined, expected !== undefined ? { expected_revision: expected } : {});
+    // M-A3 §5 — the sender's saved contacts for these recipients were just used.
+    await this.contactStore?.touchUsed(auth.tenant_id, auth.sub, d.recipients.map((r) => r.email)).catch(() => undefined);
     return this.detail(auth, envelope_id, requestId);
   }
 
-  async remind(auth: AuthContextType, envelope_id: string, body: { signer_id?: unknown }, requestId: string, meta: { ip?: string | null } = {}) {
+  // Sign Mobile M-A3 §7 — the reminder limits (60 minutes per signer, 5 per envelope
+  // per rolling 24 hours) are enforced by the engine under the envelope row lock.
+  // With an Idempotency-Key a retried reminder returns the first response and does
+  // not count again.
+  async remind(auth: AuthContextType, envelope_id: string, body: { signer_id?: unknown }, requestId: string, meta: { ip?: string | null; idempotencyKey?: string } = {}) {
     const tenant = await this.context.assertCanAuthorTenant(auth, requestId);
     await this.assertMayChange(auth, envelope_id, requestId);
-    // Personal Free v1.1 §6.3 / §6.6 — a reminder is a new email: the risk gate applies.
-    if (tenant?.kind === 'PERSONAL' && this.personal !== undefined) await this.personal.assertRiskGate(tenant.id, meta.ip ?? null, requestId);
-    await this.detail(auth, envelope_id, requestId);
     // Multi-Signer M-3a — remind one signer, or (omitted) everyone who may sign now.
     const signer_id = body?.signer_id;
     if (signer_id !== undefined && typeof signer_id !== 'string') throw bad(requestId, 'signer_id must be a string', { field: 'signer_id' });
-    await this.provider.remindEnvelopeSigner(auth.tenant_id, envelope_id, auth.sub, signer_id);
-    return this.detail(auth, envelope_id, requestId);
+    return this.idempotent(auth, `remind:${envelope_id}`, meta.idempotencyKey, { envelope_id, signer_id: signer_id ?? null }, 200, async () => {
+      // Personal Free v1.1 §6.3 / §6.6 — a reminder is a new email: the risk gate applies.
+      if (tenant?.kind === 'PERSONAL' && this.personal !== undefined) await this.personal.assertRiskGate(tenant.id, meta.ip ?? null, requestId);
+      await this.provider.remindEnvelopeSigner(auth.tenant_id, envelope_id, auth.sub, signer_id, { limits: SIGN_REMINDER_LIMITS });
+      return this.detail(auth, envelope_id, requestId);
+    });
   }
 
-  async void(auth: AuthContextType, envelope_id: string, body: { reason?: unknown }, requestId: string) {
+  async void(auth: AuthContextType, envelope_id: string, body: { reason?: unknown }, requestId: string, ifMatch?: string) {
     await this.context.assertCanAuthor(auth, requestId);
+    const expected = expectedRevision(auth, ifMatch, envelope_id, requestId);
     await this.assertMayChange(auth, envelope_id, requestId);
     const reason = typeof body?.reason === 'string' ? body.reason.trim() : '';
     if (reason.length === 0) throw bad(requestId, 'A reason is required to void an envelope');
     if (reason.length > 500) throw bad(requestId, 'reason must be at most 500 characters');
-    const d = await this.detail(auth, envelope_id, requestId);
+    const d = await this.describe(auth, envelope_id, requestId, false);
     if (TERMINAL.has(d.status)) throw new AramoError('ENVELOPE_ILLEGAL_TRANSITION', `envelope is ${d.status}`, 409, { requestId });
-    await this.provider.voidEnvelope(auth.tenant_id, envelope_id, reason, auth.sub);
+    await this.provider.voidEnvelope(auth.tenant_id, envelope_id, reason, auth.sub, expected !== undefined ? { expected_revision: expected } : {});
     return this.detail(auth, envelope_id, requestId);
   }
 
@@ -704,4 +955,30 @@ function eventDetail(payload: unknown): Record<string, string> | null {
     if (typeof p[k] === 'string') out[k] = p[k] as string;
   }
   return Object.keys(out).length > 0 ? out : null;
+}
+
+// M-A3 §8 — a Word document (OOXML zip or legacy OLE compound file) is refused with
+// a stable reason before the PDF pipeline.
+// Sign Mobile D-W6-2 — each page's size in points. pdf-lib's getWidth/getHeight
+// read the MediaBox, exactly what replaceFields validates field boxes against.
+async function measurePages(bytes: Uint8Array): Promise<DocumentPageSize[]> {
+  const pdf = await PDFDocument.load(bytes);
+  return pdf.getPages().map((p) => ({ width: p.getWidth(), height: p.getHeight() }));
+}
+
+function storedPages(raw: unknown): DocumentPageSize[] | null {
+  if (!Array.isArray(raw) || raw.length === 0) return null;
+  const out: DocumentPageSize[] = [];
+  for (const p of raw) {
+    const o = p as { width?: unknown; height?: unknown } | null;
+    if (o === null || typeof o !== 'object' || typeof o.width !== 'number' || typeof o.height !== 'number') return null;
+    out.push({ width: o.width, height: o.height });
+  }
+  return out;
+}
+
+function isWordDocument(b: Uint8Array): boolean {
+  const zip = b.length >= 4 && b[0] === 0x50 && b[1] === 0x4b && b[2] === 0x03 && b[3] === 0x04;
+  const ole = b.length >= 4 && b[0] === 0xd0 && b[1] === 0xcf && b[2] === 0x11 && b[3] === 0xe0;
+  return zip || ole;
 }

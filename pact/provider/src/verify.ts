@@ -17,16 +17,36 @@ import { afterAll, beforeAll, describe, it } from 'vitest';
 import { RequestIdMiddleware } from '@aramo/common';
 import {
   AuthorizationResolverModule,
+  AuthorizationVersionService,
+  IdentityProviderPolicyService,
   IdentityService,
   PrismaService as IdentityPrismaService,
   RoleService,
+  TenantEntitlementReader,
   TenantService,
 } from '@aramo/identity';
 import { AuthServiceModule } from '@aramo/auth-service';
-import { PORTAL_SESSION_SCOPES } from '@aramo/auth-core';
+import {
+  CognitoVerifierService,
+  JwtIssuerService,
+  NATIVE_CODE_EXCHANGE,
+  NATIVE_REFRESH_CONSUMER,
+  PORTAL_SESSION_SCOPES,
+} from '@aramo/auth-core';
+import { NativeDeviceSessionService } from '@aramo/auth-storage';
 
 import { generateTestKeyPair } from './auth-helpers.js';
 import { stateHandlers } from './state-handlers.js';
+import {
+  PACT_NATIVE_BEARER,
+  PACT_NATIVE_CLIENT_ID,
+  PACT_NATIVE_CODE,
+  PACT_NATIVE_NONCE,
+  PACT_NATIVE_REFRESH,
+  PACT_NATIVE_VERIFIER,
+  PactFakeCognito,
+  sha256Base64Url,
+} from './support/native-auth-states.js';
 
 // PR-M0R-1 Pact provider verifier.
 //
@@ -126,9 +146,23 @@ const AUTH_STORAGE_HOST_PROFILE_MIGRATION = resolve(
   ROOT,
   'libs/auth-storage/prisma/migrations/20260719000000_add_host_auth_profile/migration.sql',
 );
+// AUTH-SIGNIN-1 Amendment M-A1 — native device sessions + the redeemed-code
+// ledger (additive: two new auth_storage tables). The booted auth-service writes
+// both on the native routes the sign-mobile pact exercises.
+const AUTH_STORAGE_NATIVE_DEVICE_SESSIONS_MIGRATION = resolve(
+  ROOT,
+  'libs/auth-storage/prisma/migrations/20261025120000_native_device_sessions/migration.sql',
+);
 const PACT_FILE = resolve(
   ROOT,
   'pact/pacts/auth-service-consumer-aramo-auth-service.json',
+);
+// AUTH-SIGNIN-1 Amendment M-A1 §5 — the sign-mobile consumer (native auth
+// routes), verified by THIS provider but counted separately (its own pact file
+// and its own verification below).
+const SIGN_MOBILE_PACT_FILE = resolve(
+  ROOT,
+  'pact/pacts/sign-mobile-aramo-auth-service.json',
 );
 
 function splitDdl(sql: string): string[] {
@@ -142,6 +176,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     let app: INestApplication;
     let module: TestingModule;
     let port = 0;
+    let fakeCognito: PactFakeCognito;
+    let seededDsid: string | null = null;
     let savedEnv: Partial<Record<string, string | undefined>> = {};
 
     const FIXED_USER_ID = uuidv7();
@@ -169,6 +205,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         ...splitDdl(readFileSync(IDENTITY_TENANT_KIND_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(AUTH_STORAGE_MIGRATION, 'utf8')),
         ...splitDdl(readFileSync(AUTH_STORAGE_HOST_PROFILE_MIGRATION, 'utf8')),
+        ...splitDdl(readFileSync(AUTH_STORAGE_NATIVE_DEVICE_SESSIONS_MIGRATION, 'utf8')),
       ]) {
         const t = stmt.trim();
         if (t.length === 0) continue;
@@ -189,8 +226,15 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         AUTH_COGNITO_REDIRECT_URI: process.env['AUTH_COGNITO_REDIRECT_URI'],
         AUTH_REFRESH_GRACE_SECONDS: process.env['AUTH_REFRESH_GRACE_SECONDS'],
         AUTH_ALLOW_INSECURE_COOKIES: process.env['AUTH_ALLOW_INSECURE_COOKIES'],
+        AUTH_COGNITO_ISSUER: process.env['AUTH_COGNITO_ISSUER'],
+        SIGN_NATIVE_COGNITO_CLIENT_ID: process.env['SIGN_NATIVE_COGNITO_CLIENT_ID'],
+        SIGN_NATIVE_REDIRECT_URIS: process.env['SIGN_NATIVE_REDIRECT_URIS'],
       };
       process.env['DATABASE_URL'] = url;
+      // M-A1 — the native app client (fake Cognito; the default redirect allow-list).
+      process.env['SIGN_NATIVE_COGNITO_CLIENT_ID'] = PACT_NATIVE_CLIENT_ID;
+      delete process.env['SIGN_NATIVE_REDIRECT_URIS'];
+      delete process.env['AUTH_COGNITO_ISSUER'];
       process.env['AUTH_AUDIENCE'] = 'aramo-pact-provider-audience';
       process.env['AUTH_PRIVATE_KEY'] = privatePem;
       process.env['AUTH_PUBLIC_KEY'] = publicPem;
@@ -215,6 +259,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // AramoExceptionFilter (registered via APP_FILTER) so error responses
       // use the locked Phase 5 envelope shape that the consumer pact
       // expects. Overrides isolate identity/tenant/role lookups.
+      fakeCognito = new PactFakeCognito('auth.example.com');
+      const nativeVerifier = await fakeCognito.verifier();
       module = await Test.createTestingModule({
         // HF-AUTH-1 — production bootstraps AuthServiceModule via AppModule, which
         // @Global-binds the resolver; importing AuthServiceModule directly here
@@ -240,6 +286,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             created_at: '',
             updated_at: '',
           }),
+          // M-A1 — the native refresh re-proves eligibility (User.is_active).
+          findUserById: async () => ({ id: FIXED_USER_ID, is_active: true }),
         })
         .overrideProvider(TenantService)
         .useValue({
@@ -259,7 +307,21 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           // HF-AUTH-1 — the server-side resolver resolves via the site-aware
           // reader; return the same fixed session scope for the pact principal.
           getScopesByUserTenantAndSite: async () => ['auth:session:read'],
+          // M-A1 — the native mint/refresh paths stamp the site axis (tenant-wide here).
+          findActiveMembershipSite: async () => null,
         })
+        // M-A1 — the sign-mobile pact. Cognito is a fake behind the exchange port;
+        // the ID token is checked by the real verifier against the fake's local
+        // key set. The tenant holds `sign`; the provider policy admits Google
+        // (the pact identity) — its own behaviour is covered by the unit suites.
+        .overrideProvider(NATIVE_CODE_EXCHANGE)
+        .useValue(fakeCognito)
+        .overrideProvider(CognitoVerifierService)
+        .useValue(nativeVerifier)
+        .overrideProvider(TenantEntitlementReader)
+        .useValue({ getCapabilities: async () => new Set(['core', 'ats', 'sign']) })
+        .overrideProvider(IdentityProviderPolicyService)
+        .useValue({ evaluate: async () => ({ ok: true, pinned_now: false }), recordLinkIdp: async () => undefined })
         .compile();
 
       app = module.createNestApplication();
@@ -306,6 +368,85 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           },
         });
         await verifier.verifyProvider();
+      },
+      120_000,
+    );
+
+    // AUTH-SIGNIN-1 Amendment M-A1 §5 — the sign-mobile consumer, verified here
+    // and counted separately from auth-service-consumer. State handlers seed the
+    // native side through the REAL auth-storage service; the request filter swaps
+    // the consumer's placeholder Bearer for a freshly minted native access token
+    // of the seeded device session (no Host rewrite: native routes read none).
+    it(
+      'verifies all interactions from pact/pacts/sign-mobile-aramo-auth-service.json',
+      async () => {
+        // Raw-SQL resets through a short-lived client on the same database.
+        const storage = new IdentityPrismaService(container.getConnectionUri());
+        await storage.$connect();
+        const sessions = module.get(NativeDeviceSessionService);
+        const issuer = module.get(JwtIssuerService);
+        const versions = module.get(AuthorizationVersionService);
+        const resetNative = async (): Promise<void> => {
+          await storage.$executeRawUnsafe('DELETE FROM "auth_storage"."NativeDeviceSession"');
+          await storage.$executeRawUnsafe('DELETE FROM "auth_storage"."NativeRedeemedCode"');
+          await storage.$executeRawUnsafe(`DELETE FROM "auth_storage"."RefreshToken" WHERE "consumer_type" = '${NATIVE_REFRESH_CONSUMER}'`);
+          seededDsid = null;
+        };
+        const verifier = new Verifier({
+          providerBaseUrl: `http://127.0.0.1:${port}`,
+          pactUrls: [SIGN_MOBILE_PACT_FILE],
+          logLevel: 'warn',
+          stateHandlers: {
+            'no setup required': async () => {
+              await resetNative();
+            },
+            'a native authorization code is redeemable': async () => {
+              await resetNative();
+              fakeCognito.register(PACT_NATIVE_CODE, PACT_NATIVE_VERIFIER, PACT_NATIVE_NONCE);
+            },
+            'a native device session exists': async () => {
+              await resetNative();
+              const created = await sessions.createSession({
+                user_id: FIXED_USER_ID,
+                tenant_id: FIXED_TENANT_ID,
+                consumer_type: 'sign',
+                refresh_consumer_type: NATIVE_REFRESH_CONSUMER,
+                client_id: PACT_NATIVE_CLIENT_ID,
+                installation_id: 'pact-installation-1',
+                platform: 'ios',
+                app_version: '1.0.0',
+                token_hash: sha256Base64Url(PACT_NATIVE_REFRESH),
+                expires_at: new Date(Date.now() + 3600 * 1000),
+              });
+              seededDsid = created.session.id;
+            },
+          },
+          requestFilter: (req: Request, _res: Response, next: NextFunction) => {
+            if (req.headers.authorization !== PACT_NATIVE_BEARER || seededDsid === null) {
+              next();
+              return;
+            }
+            const dsid = seededDsid;
+            void (async () => {
+              const authz_version = await versions.getCurrentVersion({ tenant_id: FIXED_TENANT_ID, principal_id: FIXED_USER_ID });
+              const token = await issuer.sign({
+                sub: FIXED_USER_ID,
+                consumer_type: 'sign',
+                tenant_id: FIXED_TENANT_ID,
+                authz_version,
+                client: 'native',
+                dsid,
+              });
+              req.headers.authorization = `Bearer ${token}`;
+              next();
+            })().catch(next);
+          },
+        });
+        try {
+          await verifier.verifyProvider();
+        } finally {
+          await storage.$disconnect();
+        }
       },
       120_000,
     );

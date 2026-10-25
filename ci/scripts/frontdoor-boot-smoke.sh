@@ -113,4 +113,22 @@ https_code="$(curl -sk -o /dev/null -w '%{http_code}' "https://127.0.0.1:${HTTPS
 [ "$https_code" = "200" ] || fail "tenant HTTPS handshake did not return 200 (got '${https_code:-<none>}')"
 echo "  ✓ tenant-block HTTPS (curl -k) → 200"
 
+# --- Aramo Sign Mobile (M-A2 §3.2): the app-association files on the Sign host --
+# The entrypoint step 40-aramo-app-links.sh rendered them at start. With zero SIGN_*
+# env they must be 200, application/json, and associate NOTHING — never the SPA
+# shell, never a redirect. (The image default NGINX_SIGN_SERVER_NAME is sign.localhost.)
+for wk in apple-app-site-association assetlinks.json; do
+  wk_out="$(curl -sk --resolve "sign.localhost:${HTTPS_PORT}:127.0.0.1" \
+    -w '\n%{http_code} %{content_type}' "https://sign.localhost:${HTTPS_PORT}/.well-known/${wk}" 2>/dev/null || true)"
+  wk_meta="$(printf '%s' "$wk_out" | tail -1)"
+  wk_body="$(printf '%s' "$wk_out" | sed '$d')"
+  [ "$wk_meta" = "200 application/json" ] || fail "/.well-known/${wk} on the sign host: expected '200 application/json', got '${wk_meta:-<none>}'"
+  case "$wk" in
+    apple-app-site-association) wk_want='{"applinks":{"details":[]}}' ;;
+    *) wk_want='[]' ;;
+  esac
+  [ "$wk_body" = "$wk_want" ] || fail "/.well-known/${wk} with no SIGN_* env must be ${wk_want} (got '${wk_body:0:120}')"
+done
+echo "  ✓ sign-host /.well-known app-association files rendered (application/json, associate nothing with no SIGN_* env)"
+
 echo "FRONTDOOR BOOT SMOKE — PASS ($IMAGE): defaults applied with zero NGINX_* env, entrypoint chain rendered conf, TLS served."
