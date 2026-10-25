@@ -144,6 +144,16 @@ jobs:
           cache-dependency-path: mobile/sign/package-lock.json
       - name: npm ci
         run: npm ci
+      # Expo SDK 57 requires Swift 6.2 (Xcode 26). The macos-15 image defaults to an
+      # older Xcode; select the newest installed Xcode 26 explicitly and fail loudly
+      # if the image has none.
+      - name: select Xcode 26
+        run: |
+          x=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -1)
+          [ -n "$x" ] || { echo "::error::no Xcode 26 on this runner image"; ls -d /Applications/Xcode*.app; exit 1; }
+          sudo xcode-select -s "$x/Contents/Developer"
+          xcodebuild -version
+          swift --version
       - name: pod install
         working-directory: mobile/sign/ios
         run: pod install
