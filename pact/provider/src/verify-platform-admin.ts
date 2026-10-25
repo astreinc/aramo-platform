@@ -233,6 +233,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         SIGN_PERSONAL_SIGNUP_PURGE_ENABLED: '0',
         DOMAIN_CLAIM_SWEEP_ENABLED: undefined,
         SIGN_PERSONAL_LAPSE_SWEEP_ENABLED: undefined,
+        // CCP-D3 — the alert scanner stays off; the alert states below seed the register.
+        CCP_ALERTS_ENABLED: undefined,
       };
       for (const [k, v] of Object.entries(env)) {
         savedEnv[k] = process.env[k];
@@ -347,6 +349,24 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             await db.query(
               `UPDATE subscription."BillingWebhookInbox" SET status = 'FAILED', lease_until = NULL, last_error = 'billing provider unavailable: down', next_attempt_at = now() + interval '1 minute', updated_at = now() WHERE id = $1`,
               [row],
+            );
+            return undefined;
+          },
+          // CCP-D3 — an OPEN alert row (the register's INSERT rule: OPEN, one detection). The
+          // scanner is off in the verifier, so the row is what the route reads.
+          'an open billing alert exists': async () => {
+            await db.query(
+              `INSERT INTO subscription."CommercialOperationalAlert" (id, alert_type, family, subject_kind, subject_id, tenant_id, product_key, status, detail, evidence, detection_count, first_detected_at, last_detected_at, updated_at)
+               VALUES ($1, 'COMMAND_FAILED', 'BILLING', 'billing_command', $2, $3, 'sign', 'OPEN', 'SUBSCRIPTION_CANCEL FAILED PROVIDER_REFUSED after 1 attempt(s)', '{"state":"FAILED","failure_code":"PROVIDER_REFUSED"}', 1, now(), now(), now())`,
+              [randomUUID(), randomUUID(), await commercialTenant()],
+            );
+            return undefined;
+          },
+          'an open approval alert exists': async () => {
+            await db.query(
+              `INSERT INTO subscription."CommercialOperationalAlert" (id, alert_type, family, subject_kind, subject_id, tenant_id, product_key, status, detail, evidence, detection_count, first_detected_at, last_detected_at, updated_at)
+               VALUES ($1, 'APPLY_FAILED', 'APPROVAL', 'change_request', $2, $3, 'sign', 'OPEN', 'SUBSCRIPTION_OPEN apply failed after 1 attempt(s); retryable', '{"state":"APPLY_FAILED","apply_attempts":1}', 1, now(), now(), now())`,
+              [randomUUID(), randomUUID(), await commercialTenant()],
             );
             return undefined;
           },

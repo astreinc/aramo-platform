@@ -46,6 +46,10 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 //   POST /platform/commercial/change-requests/{id}/apply        (CCP-A6)
 //   GET  /platform/commercial/billing-commands                  (CCP-C1)
 //   GET  /platform/commercial/billing-webhook-inbox             (CCP-C1)
+//   GET  /platform/commercial/alerts/billing                    (CCP-D3)
+//   GET  /platform/commercial/alerts/approvals                  (CCP-D3)
+//   GET  /platform/commercial/metrics/billing                   (CCP-D3)
+//   GET  /platform/commercial/metrics/approvals                 (CCP-D3)
 // For each route: the allowed call, super_admin refused (403, holds no commercial
 // scope), and the tenant tier refused (403 tier tripwire). Plus the role-level
 // refusals: a role missing the route scope (audit feed), a role missing the requester
@@ -93,6 +97,10 @@ const AUDIT = '/platform/commercial/audit-events';
 const CR = '/platform/commercial/change-requests';
 const COMMANDS = '/platform/commercial/billing-commands';
 const INBOX = '/platform/commercial/billing-webhook-inbox';
+const ALERTS_BILLING = '/platform/commercial/alerts/billing';
+const ALERTS_APPROVALS = '/platform/commercial/alerts/approvals';
+const METRICS_BILLING = '/platform/commercial/metrics/billing';
+const METRICS_APPROVALS = '/platform/commercial/metrics/approvals';
 
 const platformSession = (role: Role) => ({ 'X-Aramo-Consumer': 'platform', Cookie: `aramo_access_token_platform=pact-${role}` });
 const platformJson = (role: Role) => ({ ...platformSession(role), 'Content-Type': 'application/json' });
@@ -190,6 +198,10 @@ const GATE_ROUTES: readonly GateRoute[] = [
   { name: 'POST change-requests/{id}/apply', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/apply`, scope: 'platform:approval:read' },
   { name: 'GET billing-commands', method: 'GET', path: COMMANDS, scope: 'platform:billing:read' },
   { name: 'GET billing-webhook-inbox', method: 'GET', path: INBOX, scope: 'platform:billing:read' },
+  { name: 'GET alerts/billing', method: 'GET', path: ALERTS_BILLING, scope: 'platform:billing:read' },
+  { name: 'GET alerts/approvals', method: 'GET', path: ALERTS_APPROVALS, scope: 'platform:approval:read' },
+  { name: 'GET metrics/billing', method: 'GET', path: METRICS_BILLING, scope: 'platform:billing:read' },
+  { name: 'GET metrics/approvals', method: 'GET', path: METRICS_APPROVALS, scope: 'platform:approval:read' },
 ];
 
 // ── CCP-A2 — the commercial audit feed ────────────────────────────────────────
@@ -730,6 +742,145 @@ describe('platform-web → GET /platform/commercial/billing-webhook-inbox (CCP-C
       .executeTest(async (mock) => {
         const res = await call(`${mock.url}${INBOX}`, 'GET', platformSession('catalog_manager'));
         expect(res.status).toBe(403);
+      });
+  });
+});
+
+// ── CCP-D3 — the operational alert register and metrics (read-only) ─────────
+
+// CommercialAlertDto (platform-commercial-observability.controller.ts commercialAlertDto).
+function alertBody(alert_type: string, family: string, subject_kind: string, evidence: Record<string, unknown>): Record<string, unknown> {
+  return {
+    id: uuid('cca10000-0000-7000-8000-0000000000d3'),
+    alert_type,
+    family,
+    subject_kind,
+    subject_id: uuid('cca10000-0000-7000-8000-0000000000d4'),
+    tenant_id: uuid(CREATE_TENANT),
+    product_key: 'sign',
+    status: 'OPEN',
+    detail: like('condition observed'),
+    evidence: like(evidence),
+    threshold_minutes: null,
+    detection_count: integer(1),
+    first_detected_at: iso(),
+    last_detected_at: iso(),
+    resolved_at: null,
+    resolution_detail: null,
+  };
+}
+const THRESHOLDS = { pending_provider_stuck_minutes: integer(1440), approval_expiry_lead_minutes: integer(720) };
+const counts = (keys: readonly string[]) => Object.fromEntries(keys.map((k) => [k, integer(0)]));
+
+describe('platform-web → GET /platform/commercial/alerts/billing (CCP-D3)', () => {
+  it('finance_admin lists the open billing alerts (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('an open billing alert exists')
+      .uponReceiving('an open billing alert list read by finance_admin')
+      .withRequest('GET', ALERTS_BILLING, (b) => {
+        b.headers(platformSession('finance_admin')).query({ status: 'OPEN', alert_type: 'COMMAND_FAILED' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ alerts: eachLike(alertBody('COMMAND_FAILED', 'BILLING', 'billing_command', { state: 'FAILED' })), next_cursor: null });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${ALERTS_BILLING}?status=OPEN&alert_type=COMMAND_FAILED`, 'GET', platformSession('finance_admin'));
+        expect(res.status).toBe(200);
+        expect((res.body['alerts'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+
+  it('a role without platform:billing:read (catalog_manager) is refused (403)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a billing alert list read by a role missing the billing read scope')
+      .withRequest('GET', ALERTS_BILLING, (b) => {
+        b.headers(platformSession('catalog_manager'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:billing:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${ALERTS_BILLING}`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(403);
+        expect(errCode(res.body)).toBe('INSUFFICIENT_PERMISSIONS');
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/alerts/approvals (CCP-D3)', () => {
+  it('catalog_manager lists the open approval alerts (200; platform:approval:read)', async () => {
+    await provider
+      .addInteraction()
+      .given('an open approval alert exists')
+      .uponReceiving('an open approval alert list read by catalog_manager')
+      .withRequest('GET', ALERTS_APPROVALS, (b) => {
+        b.headers(platformSession('catalog_manager')).query({ status: 'OPEN' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ alerts: eachLike(alertBody('APPLY_FAILED', 'APPROVAL', 'change_request', { state: 'APPLY_FAILED' })), next_cursor: null });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${ALERTS_APPROVALS}?status=OPEN`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(200);
+        expect((res.body['alerts'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/metrics/billing (CCP-D3)', () => {
+  it('read_only_auditor reads the billing operations counts (200; counts by state only)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('the billing operations metrics read by read_only_auditor')
+      .withRequest('GET', METRICS_BILLING, (b) => {
+        b.headers(platformSession('read_only_auditor'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          as_of: iso(),
+          commands_by_state: counts(['PENDING', 'DISPATCHING', 'PENDING_PROVIDER', 'RETRY_WAIT', 'FAILED', 'CONFIRMED']),
+          commands_pending_provider_past_threshold: integer(0),
+          webhook_inbox_by_status: counts(['RECEIVED', 'PROCESSING', 'PROCESSED', 'FAILED']),
+          open_reconciliation_flags_by_reason: like({}),
+          open_alerts_by_type: counts(['COMMAND_PENDING_PROVIDER_STUCK', 'COMMAND_FAILED', 'HELD_ACTIVATION', 'WEBHOOK_INBOX_FAILED', 'USAGE_NOT_RECONCILED']),
+          thresholds: THRESHOLDS,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${METRICS_BILLING}`, 'GET', platformSession('read_only_auditor'));
+        expect(res.status).toBe(200);
+        expect(res.body['commands_by_state']).toBeDefined();
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/metrics/approvals (CCP-D3)', () => {
+  it('support_admin reads the approval operations counts (200; counts by state only)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('the approval operations metrics read by support_admin')
+      .withRequest('GET', METRICS_APPROVALS, (b) => {
+        b.headers(platformSession('support_admin'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          as_of: iso(),
+          change_requests_by_state: counts(['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'APPLYING', 'APPLIED', 'APPLY_FAILED', 'REJECTED', 'EXPIRED', 'WITHDRAWN']),
+          pending_approval_nearing_expiry: integer(0),
+          pending_approval_past_expiry: integer(0),
+          open_alerts_by_type: counts(['APPLY_FAILED', 'APPROVAL_NEARING_EXPIRY', 'APPROVAL_PAST_EXPIRY']),
+          thresholds: THRESHOLDS,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${METRICS_APPROVALS}`, 'GET', platformSession('support_admin'));
+        expect(res.status).toBe(200);
+        expect(res.body['change_requests_by_state']).toBeDefined();
       });
   });
 });

@@ -644,6 +644,12 @@ services:
       - SIGN_SENDER_WEB_BASE_URL
       - MAILER_PROVIDER
       - SES_FROM_ADDRESS
+      # CCP-D3 — opt-in operational alert scanner (unset ⇒ off; the register is derived)
+      # and its operational thresholds (unset ⇒ documented defaults).
+      - CCP_ALERTS_ENABLED
+      - CCP_ALERTS_INTERVAL_MS
+      - CCP_ALERT_PENDING_PROVIDER_STUCK_MINUTES
+      - CCP_ALERT_APPROVAL_EXPIRY_LEAD_MINUTES
       # Domain-Enforcement P3 — opt-in expiry sweep of PROVISIONAL domain claims
       # (unset ⇒ off; an expired claim still lapses on the next claim attempt).
       - DOMAIN_CLAIM_SWEEP_ENABLED

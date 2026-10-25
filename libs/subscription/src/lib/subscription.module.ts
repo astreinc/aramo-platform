@@ -15,6 +15,7 @@ import { BillingCommandService } from './billing/billing-command.service.js';
 import { BillingWebhookInboxService } from './billing/billing-webhook-inbox.service.js';
 import { StripeBillingProvider } from './billing/stripe-billing.provider.js';
 import { SubscriptionLifecycleService } from './billing/subscription-lifecycle.service.js';
+import { CommercialAlertService } from './observability/commercial-alert.service.js';
 import { PrismaService } from './prisma/prisma.service.js';
 
 // SubscriptionModule — the plan/subscription/allowance authority (Multi-Provider
@@ -44,8 +45,10 @@ import { PrismaService } from './prisma/prisma.service.js';
     CommercialChangeRequestService,
     CommercialApplyService,
     PlanVersionRepository,
+    // CCP-D3 — the alert scanner, the exception register reads and the counts-and-states metrics.
+    CommercialAlertService,
   ],
-  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, PlanVersionRepository],
+  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, PlanVersionRepository, CommercialAlertService],
 })
 export class SubscriptionModule {
   /**
@@ -73,9 +76,10 @@ export class SubscriptionModule {
         CommercialChangeRequestService,
     CommercialApplyService,
         PlanVersionRepository,
+        CommercialAlertService,
         ...(opts.providers ?? []),
       ],
-      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, PlanVersionRepository],
+      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, PlanVersionRepository, CommercialAlertService],
     };
   }
 }

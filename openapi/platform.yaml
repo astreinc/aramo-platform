@@ -99,6 +99,18 @@ tags:
       `platform:billing:read` (platform_owner, finance_admin, commercial_ops,
       support_admin, read_only_auditor); catalog_manager and super_admin are refused
       with 403 `INSUFFICIENT_PERMISSIONS`. Platform-tier only. No write route.
+  - name: Platform Commercial Observability
+    description: |
+      CCP-D3 — read-only operator views of the operational alert register (the exception
+      register for billing and approval operations) and platform-wide counts-and-states
+      metrics. An alert names one subject (a Stripe command, a webhook inbox event, a
+      reconciliation flag, a usage metric or a change request) and the condition observed
+      on it; it is raised and resolved only by the opt-in alert scanner, which reads the
+      source tables and never changes them. No money, no per-tenant figure, no grade.
+      Billing-family routes require `platform:billing:read` (platform_owner, finance_admin,
+      commercial_ops, support_admin, read_only_auditor); approval-family routes require
+      `platform:approval:read` (the six CCP roles). super_admin is refused with 403
+      `INSUFFICIENT_PERMISSIONS`. Platform-tier only.
   - name: Platform Commercial Change Requests
     description: |
       CCP-A3 — governed commercial change requests and their distinct-human approvals.
@@ -2054,6 +2066,190 @@ paths:
         '404':
           $ref: '#/components/responses/MatchingPolicyNotFound'
 
+  /platform/commercial/alerts/billing:
+    get:
+      operationId: listPlatformCommercialBillingAlerts
+      tags: [Platform Commercial Observability]
+      summary: List billing-family operational alerts (newest first, cursor-paged).
+      description: |
+        CCP-D3 — one page of the alert register, billing family, ordered
+        `first_detected_at DESC, id DESC`. Types: a command pending at the provider past the
+        configured threshold, a failed command, a held activation, a failed webhook inbox
+        event, a usage roll-up that did not reconcile. Filters are ANDed; the opaque
+        `next_cursor` pins the filter set. Read-only. Requires `platform:billing:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Only alerts in this status.
+          schema:
+            type: string
+            enum: [OPEN, RESOLVED]
+        - name: alert_type
+          in: query
+          required: false
+          description: Only alerts of this type (a type of this route's family).
+          schema:
+            type: string
+            enum: [COMMAND_PENDING_PROVIDER_STUCK, COMMAND_FAILED, HELD_ACTIVATION, WEBHOOK_INBOX_FAILED, USAGE_NOT_RECONCILED]
+        - name: tenant_id
+          in: query
+          required: false
+          description: Only alerts about this tenant's subjects.
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          required: false
+          description: Page size (default 50, max 200).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque continuation cursor from a prior page's next_cursor.
+          schema:
+            type: string
+            maxLength: 2000
+      responses:
+        '200':
+          description: A page of billing-family alerts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialAlertListResponse'
+        '400':
+          $ref: '#/components/responses/CommercialAlertValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
+  /platform/commercial/alerts/approvals:
+    get:
+      operationId: listPlatformCommercialApprovalAlerts
+      tags: [Platform Commercial Observability]
+      summary: List approval-family operational alerts (newest first, cursor-paged).
+      description: |
+        CCP-D3 — one page of the alert register, approval family, ordered
+        `first_detected_at DESC, id DESC`. Types: a failed governed apply (retryable), a
+        request awaiting approval within the configured lead time of its expiry, a request
+        still awaiting approval after its expiry. Filters are ANDed; the opaque
+        `next_cursor` pins the filter set. Read-only. Requires `platform:approval:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          description: Only alerts in this status.
+          schema:
+            type: string
+            enum: [OPEN, RESOLVED]
+        - name: alert_type
+          in: query
+          required: false
+          description: Only alerts of this type (a type of this route's family).
+          schema:
+            type: string
+            enum: [APPLY_FAILED, APPROVAL_NEARING_EXPIRY, APPROVAL_PAST_EXPIRY]
+        - name: tenant_id
+          in: query
+          required: false
+          description: Only alerts about this tenant's subjects.
+          schema:
+            type: string
+            format: uuid
+        - name: limit
+          in: query
+          required: false
+          description: Page size (default 50, max 200).
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 200
+        - name: cursor
+          in: query
+          required: false
+          description: Opaque continuation cursor from a prior page's next_cursor.
+          schema:
+            type: string
+            maxLength: 2000
+      responses:
+        '200':
+          description: A page of approval-family alerts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialAlertListResponse'
+        '400':
+          $ref: '#/components/responses/CommercialAlertValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
+  /platform/commercial/metrics/billing:
+    get:
+      operationId: getPlatformCommercialBillingMetrics
+      tags: [Platform Commercial Observability]
+      summary: Billing operations metrics (counts by state).
+      description: |
+        CCP-D3 — platform-wide counts: Stripe commands by state (and those pending at the
+        provider past the configured threshold), webhook inbox events by status, open
+        reconciliation flags by reason and open billing-family alerts by type. Never per
+        tenant, never money. Takes no parameter. Read-only. Requires `platform:billing:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      responses:
+        '200':
+          description: The billing operations counts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/BillingOperationsMetrics'
+        '400':
+          $ref: '#/components/responses/CommercialAlertValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
+  /platform/commercial/metrics/approvals:
+    get:
+      operationId: getPlatformCommercialApprovalMetrics
+      tags: [Platform Commercial Observability]
+      summary: Approval operations metrics (counts by state).
+      description: |
+        CCP-D3 — platform-wide counts: change requests by state, requests awaiting approval
+        within the configured expiry lead or past their expiry, and open approval-family
+        alerts by type. Never per tenant, never money. Takes no parameter. Read-only.
+        Requires `platform:approval:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      responses:
+        '200':
+          description: The approval operations counts.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ApprovalOperationsMetrics'
+        '400':
+          $ref: '#/components/responses/CommercialAlertValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
   /platform/commercial/audit-events:
     get:
       operationId: listPlatformCommercialAuditEvents
@@ -3874,6 +4070,15 @@ components:
         application/json:
           schema:
             $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    CommercialAlertValidation:
+      description: |
+        `VALIDATION_ERROR` — a filter is malformed or names an alert type of the other
+        family, a metrics route was given a parameter, or the cursor is malformed or was
+        minted under different filters (details.reason `invalid_cursor`).
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
     CommercialChangeRequestValidation:
       description: |
         `VALIDATION_ERROR` — a malformed body, query or id; an invalid payload for the
@@ -4522,6 +4727,228 @@ components:
         next_cursor:
           type: [string, 'null']
           description: Opaque continuation cursor, or null on the last page.
+
+    CommercialAlert:
+      type: object
+      additionalProperties: false
+      required: [id, alert_type, family, subject_kind, subject_id, tenant_id, product_key, status, detail, evidence, threshold_minutes, detection_count, first_detected_at, last_detected_at, resolved_at, resolution_detail]
+      properties:
+        id:
+          type: string
+          format: uuid
+        alert_type:
+          type: string
+          enum: [COMMAND_PENDING_PROVIDER_STUCK, COMMAND_FAILED, HELD_ACTIVATION, WEBHOOK_INBOX_FAILED, USAGE_NOT_RECONCILED, APPLY_FAILED, APPROVAL_NEARING_EXPIRY, APPROVAL_PAST_EXPIRY]
+        family:
+          type: string
+          enum: [BILLING, APPROVAL]
+        subject_kind:
+          type: string
+          enum: [billing_command, reconciliation_flag, webhook_inbox, usage_metric, change_request]
+        subject_id:
+          type: string
+          description: The subject's id (a uuid, or a metric key for usage_metric).
+        tenant_id:
+          type: [string, 'null']
+          format: uuid
+        product_key:
+          type: [string, 'null']
+        status:
+          type: string
+          enum: [OPEN, RESOLVED]
+        detail:
+          type: string
+        evidence:
+          type: object
+          additionalProperties: true
+          description: The subject's observed state at the last detection.
+        threshold_minutes:
+          type: [integer, 'null']
+          description: The configured threshold the detection used (stuck and nearing-expiry types only).
+        detection_count:
+          type: integer
+          minimum: 1
+        first_detected_at:
+          type: string
+          format: date-time
+        last_detected_at:
+          type: string
+          format: date-time
+        resolved_at:
+          type: [string, 'null']
+          format: date-time
+        resolution_detail:
+          type: [string, 'null']
+          description: What the subject became when the condition was no longer observed.
+
+    CommercialAlertListResponse:
+      type: object
+      additionalProperties: false
+      required: [alerts, next_cursor]
+      properties:
+        alerts:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommercialAlert'
+        next_cursor:
+          type: [string, 'null']
+          description: Opaque continuation cursor, or null on the last page.
+
+    CommercialAlertThresholds:
+      type: object
+      additionalProperties: false
+      required: [pending_provider_stuck_minutes, approval_expiry_lead_minutes]
+      description: The configured operational thresholds (env; not commercial policy).
+      properties:
+        pending_provider_stuck_minutes:
+          type: integer
+          minimum: 1
+        approval_expiry_lead_minutes:
+          type: integer
+          minimum: 1
+
+    BillingOperationsMetrics:
+      type: object
+      additionalProperties: false
+      required: [as_of, commands_by_state, commands_pending_provider_past_threshold, webhook_inbox_by_status, open_reconciliation_flags_by_reason, open_alerts_by_type, thresholds]
+      properties:
+        as_of:
+          type: string
+          format: date-time
+        commands_by_state:
+          type: object
+          additionalProperties: false
+          required: [PENDING, DISPATCHING, PENDING_PROVIDER, RETRY_WAIT, FAILED, CONFIRMED]
+          properties:
+            PENDING:
+              type: integer
+              minimum: 0
+            DISPATCHING:
+              type: integer
+              minimum: 0
+            PENDING_PROVIDER:
+              type: integer
+              minimum: 0
+            RETRY_WAIT:
+              type: integer
+              minimum: 0
+            FAILED:
+              type: integer
+              minimum: 0
+            CONFIRMED:
+              type: integer
+              minimum: 0
+        commands_pending_provider_past_threshold:
+          type: integer
+          minimum: 0
+        webhook_inbox_by_status:
+          type: object
+          additionalProperties: false
+          required: [RECEIVED, PROCESSING, PROCESSED, FAILED]
+          properties:
+            RECEIVED:
+              type: integer
+              minimum: 0
+            PROCESSING:
+              type: integer
+              minimum: 0
+            PROCESSED:
+              type: integer
+              minimum: 0
+            FAILED:
+              type: integer
+              minimum: 0
+        open_reconciliation_flags_by_reason:
+          type: object
+          description: Open flags by reason (only reasons with at least one open flag appear).
+          additionalProperties:
+            type: integer
+            minimum: 0
+        open_alerts_by_type:
+          type: object
+          additionalProperties: false
+          required: [COMMAND_PENDING_PROVIDER_STUCK, COMMAND_FAILED, HELD_ACTIVATION, WEBHOOK_INBOX_FAILED, USAGE_NOT_RECONCILED]
+          properties:
+            COMMAND_PENDING_PROVIDER_STUCK:
+              type: integer
+              minimum: 0
+            COMMAND_FAILED:
+              type: integer
+              minimum: 0
+            HELD_ACTIVATION:
+              type: integer
+              minimum: 0
+            WEBHOOK_INBOX_FAILED:
+              type: integer
+              minimum: 0
+            USAGE_NOT_RECONCILED:
+              type: integer
+              minimum: 0
+        thresholds:
+          $ref: '#/components/schemas/CommercialAlertThresholds'
+
+    ApprovalOperationsMetrics:
+      type: object
+      additionalProperties: false
+      required: [as_of, change_requests_by_state, pending_approval_nearing_expiry, pending_approval_past_expiry, open_alerts_by_type, thresholds]
+      properties:
+        as_of:
+          type: string
+          format: date-time
+        change_requests_by_state:
+          type: object
+          additionalProperties: false
+          required: [DRAFT, PENDING_APPROVAL, APPROVED, APPLYING, APPLIED, APPLY_FAILED, REJECTED, EXPIRED, WITHDRAWN]
+          properties:
+            DRAFT:
+              type: integer
+              minimum: 0
+            PENDING_APPROVAL:
+              type: integer
+              minimum: 0
+            APPROVED:
+              type: integer
+              minimum: 0
+            APPLYING:
+              type: integer
+              minimum: 0
+            APPLIED:
+              type: integer
+              minimum: 0
+            APPLY_FAILED:
+              type: integer
+              minimum: 0
+            REJECTED:
+              type: integer
+              minimum: 0
+            EXPIRED:
+              type: integer
+              minimum: 0
+            WITHDRAWN:
+              type: integer
+              minimum: 0
+        pending_approval_nearing_expiry:
+          type: integer
+          minimum: 0
+        pending_approval_past_expiry:
+          type: integer
+          minimum: 0
+        open_alerts_by_type:
+          type: object
+          additionalProperties: false
+          required: [APPLY_FAILED, APPROVAL_NEARING_EXPIRY, APPROVAL_PAST_EXPIRY]
+          properties:
+            APPLY_FAILED:
+              type: integer
+              minimum: 0
+            APPROVAL_NEARING_EXPIRY:
+              type: integer
+              minimum: 0
+            APPROVAL_PAST_EXPIRY:
+              type: integer
+              minimum: 0
+        thresholds:
+          $ref: '#/components/schemas/CommercialAlertThresholds'
 
     CommercialActionType:
       type: string

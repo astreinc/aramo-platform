@@ -21,6 +21,10 @@ import { PlatformCommercialChangeRequestController } from './platform-commercial
 // CCP-A6 — the transactional apply route (same base path; a separate controller).
 import { PlatformCommercialApplyController } from './platform-commercial-apply.controller.js';
 import { PlatformCommercialBillingController } from './platform-commercial-billing.controller.js';
+// CCP-D3 — the operational alert register and counts-and-states metrics (read-only), and the
+// opt-in scanner (CCP_ALERTS_ENABLED=1).
+import { PlatformCommercialObservabilityController } from './platform-commercial-observability.controller.js';
+import { CommercialAlertScannerWorker } from './commercial-alert-scanner.service.js';
 import { PlatformPersonalController } from './platform-personal.controller.js';
 import { PlatformController } from './platform.controller.js';
 import { PlatformSignController } from './platform-sign.controller.js';
@@ -69,7 +73,8 @@ import { TenantPolicyProvisioningService } from './tenant-policy-provisioning.se
   // CCP-A2 — the read-only commercial audit feed (platform:commercial:audit:read).
   // CCP-A3 — commercial change requests and approvals (platform:approval:read gate).
   // CCP-C1 — read-only Stripe command outbox and webhook inbox views (platform:billing:read).
-  controllers: [PlatformController, PlatformSignController, PlatformPersonalController, PlatformCommercialAuditController, PlatformCommercialChangeRequestController, PlatformCommercialApplyController, PlatformCommercialBillingController],
+  // CCP-D3 — read-only alert register and metrics (platform:billing:read / platform:approval:read).
+  controllers: [PlatformController, PlatformSignController, PlatformPersonalController, PlatformCommercialAuditController, PlatformCommercialChangeRequestController, PlatformCommercialApplyController, PlatformCommercialBillingController, PlatformCommercialObservabilityController],
   providers: [
     // Sign Personal (Free) v1.1 §6.4 — abuse-report outcomes (sign schema; its own
     // generated client, lazy DATABASE_URL — scope:platform → scope:boundary is wall-legal).
@@ -92,6 +97,8 @@ import { TenantPolicyProvisioningService } from './tenant-policy-provisioning.se
     // after expiry, refused attempts after 180 days (ON by default;
     // SIGN_PERSONAL_SIGNUP_PURGE_ENABLED=0 switches it off).
     PersonalSignupAttemptPurgeSweeper,
+    // CCP-D3 — opt-in operational alert scanner (CCP_ALERTS_ENABLED=1; off by default).
+    CommercialAlertScannerWorker,
     // DOC-TEMPLATE-LIB-1 T-3 (§5.3) — the RTR-TEMPLATE-1 provisioning-time RTR template
     // COPY is retired: a new tenant gets no RTR template row and resolves to the Aramo
     // (PLATFORM) RTR default. platform-admin no longer touches the documents store.
