@@ -12641,6 +12641,106 @@
       "to": "libs/talent-record/src/lib/talent-record.controller.ts"
     },
     {
+      "from": "doc/ccp/slices/CCP-A1-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/api/src/tests/ccp-a1-platform-governance-authorization.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A1-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-a1-platform-role-authorization.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A1-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/platform-invitation.service.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A1-acceptance.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-orphan-scopes.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A1-acceptance.md",
+      "status": "unscoped",
+      "to": "deploy/seed-prod.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A1-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A1-pre-execution.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/common/src/lib/testing/identity-migrations.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/migrations/20261024120000_ccp_a1_commercial_role_catalog/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed-astre.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed-platform-owner.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/scripts/scope-catalog-consistency.mjs"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/dto/role.dto.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/dto/scope.dto.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/tests/ccp-a1-commercial-role-catalog-migration.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/tests/ccp-a1-commercial-role-catalog.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/tests/identity.service.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/tests/seed-scrub.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A1-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A1-acceptance.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
       "from": "doc/ccp/slices/CCP-A1-pre-execution.md",
       "status": "unscoped",
       "to": "apps/platform-web/e2e/fixtures/session.ts"
