@@ -5,7 +5,7 @@ import {
   ROLE_CATALOG_META,
 } from '../lib/role-catalog/role-catalog.view.js';
 import { RoleCatalogService } from '../lib/role-catalog/role-catalog.service.js';
-import { ESIGN_PRODUCT_ROLE_KEYS, SEED_ROLE_KEYS } from '../lib/dto/index.js';
+import { ESIGN_PRODUCT_ROLE_KEYS, PLATFORM_ROLE_KEYS, SEED_ROLE_KEYS } from '../lib/dto/index.js';
 
 // Settings Rebuild Directive 5 — roles-catalog service + metadata.
 
@@ -28,9 +28,10 @@ function makeService(rows: ReturnType<typeof roleRow>[], capabilities: readonly 
 const TENANT = '01900000-0000-7000-8000-000000000001';
 
 describe('roles-catalog metadata', () => {
-  it('every tenant SEED_ROLE_KEY (except super_admin) has catalog metadata — the E-Sign product roles included (IC-3 PR-8)', () => {
+  it('every tenant SEED_ROLE_KEY (except the platform tier) has catalog metadata — the E-Sign product roles included (IC-3 PR-8)', () => {
     for (const key of SEED_ROLE_KEYS) {
-      if (key === 'super_admin') continue; // platform tier — excluded
+      // Platform tier (PLATFORM_ROLE_KEYS: super_admin + the 6 CCP A1 platform roles) — excluded.
+      if ((PLATFORM_ROLE_KEYS as readonly string[]).includes(key)) continue;
       expect(ROLE_CATALOG_META[key], `meta for ${key}`).toBeDefined();
     }
     for (const key of ESIGN_PRODUCT_ROLE_KEYS) expect(ROLE_CATALOG_META[key]?.tier).toBe('Sign');

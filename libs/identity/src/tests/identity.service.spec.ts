@@ -770,9 +770,45 @@ describe('IdentityService — platform-tier roles not assignable tenant-side (IC
   });
   it('the tenant-assignable partition excludes exactly the platform keys', async () => {
     const { PLATFORM_ROLE_KEYS, SEED_ROLE_KEYS, TENANT_ASSIGNABLE_ROLE_KEYS } = await import('../lib/dto/role.dto.js');
-    expect([...PLATFORM_ROLE_KEYS]).toEqual(['super_admin']);
+    // CCP A1 +6 roles / +15 scopes / +45 grants → 25 / 205 / 984: the 6 platform-tier commercial roles join super_admin (1 → 7).
+    expect([...PLATFORM_ROLE_KEYS]).toEqual(['super_admin', 'platform_owner', 'finance_admin', 'commercial_ops', 'catalog_manager', 'support_admin', 'read_only_auditor']);
     expect(TENANT_ASSIGNABLE_ROLE_KEYS).not.toContain('super_admin');
     expect(TENANT_ASSIGNABLE_ROLE_KEYS.length).toBe(SEED_ROLE_KEYS.length - PLATFORM_ROLE_KEYS.length);
+  });
+  // CCP A1 §7.3(a) — each of the 6 platform-tier commercial roles is refused on the tenant
+  // invite and the role-replace path without allow_platform_roles (400 VALIDATION_ERROR
+  // platform_role_not_assignable), before any write. A1 changes no service code: the
+  // refusal keys off PLATFORM_ROLE_KEYS.
+  const CCP_ROLE_KEYS = ['platform_owner', 'finance_admin', 'commercial_ops', 'catalog_manager', 'support_admin', 'read_only_auditor'] as const;
+  for (const key of CCP_ROLE_KEYS) {
+    it(`CCP A1 §7.3(a) — ${key}: tenant invite and role replace refused (platform_role_not_assignable, 400), zero writes`, async () => {
+      const invite = buildInServiceFixture(SAFE_MULTI_ROLES);
+      await expect(
+        invite.identitySvc.createInvitedUserNoSub({ email: base.email, display_name: null, tenant_id: base.tenant_id, role_keys: ['recruiter', key], role_ids: ['r', `role-${key}`], actor_user_id: base.actor_user_id, request_id: REQUEST_ID }),
+      ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400, context: { details: { reason: 'platform_role_not_assignable', role_keys: [key] } } });
+      expect(invite.repoSpies.createUserWithExternalIdentityAndMembership).not.toHaveBeenCalled();
+      expect(invite.repoSpies.createUserWithMembership).not.toHaveBeenCalled();
+      const replace = buildInServiceFixture(SAFE_MULTI_ROLES);
+      await expect(
+        replace.identitySvc.replaceMembershipRoles({ membership_id: 'm-1', tenant_id: base.tenant_id, role_keys: [key], role_ids: [`role-${key}`], request_id: REQUEST_ID }),
+      ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400, context: { details: { reason: 'platform_role_not_assignable', role_keys: [key] } } });
+      expect(replace.repoSpies.replaceMembershipRoles).not.toHaveBeenCalled();
+      const fromInvitation = buildInServiceFixture(SAFE_MULTI_ROLES);
+      await expect(
+        fromInvitation.identitySvc.createUserFromInvitation({ ...base, role_keys: [key], role_ids: [`role-${key}`] }),
+      ).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason: 'platform_role_not_assignable', role_keys: [key] } } });
+      expect(fromInvitation.repoSpies.createUserWithExternalIdentityAndMembership).not.toHaveBeenCalled();
+    });
+  }
+  it('CCP A1 §7.1 — the 6 CCP keys are in PLATFORM_ROLE_KEYS and in no tenant, ATS, Sign or organization partition', async () => {
+    const { PLATFORM_ROLE_KEYS, TENANT_ASSIGNABLE_ROLE_KEYS, ATS_PRODUCT_ROLE_KEYS, ESIGN_PRODUCT_ROLE_KEYS, ORG_ROLE_KEYS } = await import('../lib/dto/role.dto.js');
+    for (const key of CCP_ROLE_KEYS) {
+      expect(PLATFORM_ROLE_KEYS as readonly string[]).toContain(key);
+      for (const part of [TENANT_ASSIGNABLE_ROLE_KEYS, ATS_PRODUCT_ROLE_KEYS, ESIGN_PRODUCT_ROLE_KEYS, ORG_ROLE_KEYS]) {
+        expect(part as readonly string[]).not.toContain(key);
+      }
+    }
+    expect(TENANT_ASSIGNABLE_ROLE_KEYS).toHaveLength(17);
   });
 });
 
@@ -925,10 +961,11 @@ describe('IdentityService — ATS roles assignable only in an ats-entitled tenan
     expect(ATS_PRODUCT_ROLE_KEYS).toContain('ats_admin');
     expect(ORG_ROLE_KEYS).toEqual(['tenant_owner', 'tenant_admin']);
     for (const k of [...ORG_ROLE_KEYS, 'org_admin', ...PLATFORM_ROLE_KEYS, ...ESIGN_PRODUCT_ROLE_KEYS]) expect(ATS_PRODUCT_ROLE_KEYS).not.toContain(k);
-    // The complement is exactly: the 2 organization roles + the platform role + the 3 Sign
-    // roles (ROLES-1 PR-3: sign_owner retired) + the portal-user role = 7.
+    // The complement is exactly: the 2 organization roles + the 7 platform roles + the 3 Sign
+    // roles (ROLES-1 PR-3: sign_owner retired) + the portal-user role = 13.
+    // CCP A1 +6 roles / +15 scopes / +45 grants → 25 / 205 / 984: +6 platform-tier commercial roles → 7+6=13.
     const { SEED_ROLE_KEYS } = await import('../lib/dto/role.dto.js');
-    expect(SEED_ROLE_KEYS.filter((k) => !ATS_PRODUCT_ROLE_KEYS.includes(k))).toHaveLength(7);
+    expect(SEED_ROLE_KEYS.filter((k) => !ATS_PRODUCT_ROLE_KEYS.includes(k))).toHaveLength(13);
     expect(SEED_ROLE_KEYS as readonly string[]).not.toContain('sign_owner');
     expect(SEED_ROLE_KEYS).not.toContain('org_admin');
   });

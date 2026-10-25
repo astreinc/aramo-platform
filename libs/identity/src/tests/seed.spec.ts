@@ -86,6 +86,7 @@ describe('seed role catalog (§6 closed set, PR-A1a expansion, AUTHZ-1 + AUTHZ-1
     // ROLES-1 PR-2 (§1) — row 0010 is ats_admin (formerly tenant_admin); row 02b0 is
     // tenant_admin (formerly org_admin). org_admin no longer exists. ROLES-1 PR-3: the
     // retired sign_owner is not a catalog key (RETIRED_ROLE_KEYS; its row stays inactive).
+    // CCP A1 +6 roles / +15 scopes / +45 grants → 25 / 205 / 984: the 6 platform-tier commercial roles (18 → 24 keys).
     expect([...SEED_ROLE_KEYS].sort()).toEqual([
       'account_manager',
       'ats_admin',
@@ -93,9 +94,14 @@ describe('seed role catalog (§6 closed set, PR-A1a expansion, AUTHZ-1 + AUTHZ-1
       'auditor_with_financials',
       'back_office',
       'candidate',
+      'catalog_manager', // CCP A1
+      'commercial_ops', // CCP A1
       'delivery_manager',
       'finance',
+      'finance_admin', // CCP A1
       'lead_recruiter',
+      'platform_owner', // CCP A1
+      'read_only_auditor', // CCP A1
       'recruiter',
       'recruiting_manager',
       // PX-V1 PX-3 — Sign product roles (namespace-separate from ATS tenant roles).
@@ -104,6 +110,7 @@ describe('seed role catalog (§6 closed set, PR-A1a expansion, AUTHZ-1 + AUTHZ-1
       'sign_viewer',
       'sourcer',
       'super_admin',
+      'support_admin', // CCP A1
       'tenant_admin',
       'tenant_owner',
     ]);
