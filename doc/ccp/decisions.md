@@ -31,3 +31,21 @@
 - **TD-A6-25 (post-merge lead fix, guard union):** A6 modelled the A9 role branch from a description. On merge it had dropped A9's "APPLIED requires `applied_at`" rule for role actions (A9-TRG-1 asserts it). Restored as a generic check for every action, with A9's exact message, in `20261025200000_ccp_a6_transactional_apply`. The A6 both-sides check still follows it.
 - **TD-A6-26 (post-merge lead fix, TS mirror):** A6 widened `canTransition` to an action-agnostic union, and A9's `canTransitionFor` built on it, so in TS every action could reach APPLYING / APPLY_FAILED. `canTransitionFor` now mirrors the DB guard per action: A3 base, plus the A9 set for role actions, plus `COMMERCIAL_A6_APPLY_TRANSITIONS` for the four A6 actions, and nothing for the others (POLICY_ACTIVATE stays unreachable until B5, per TD-A9-16). A9-U-4 has been re-based on the A3 table.
 - **Open TD-A6 items needing a ruling:** TD-A6-3 (who may apply), TD-A6-5 (an APPROVED request holds the open slot indefinitely), TD-A6-12 (held activation not shown to the tenant), TD-A6-13 (plan-version publish/retire apply unowned), TD-A6-18 (DR-A6-1…4 usage treatments). All are listed in `doc/ccp/slices/CCP-A6-acceptance.md`.
+
+## Architect dispositions on A6 (2026-10-25)
+- **TD-A6-3: APPROVED.** The original requester may run apply after the required independent approvals. Approval and application are separate authorities. At apply time, these are revalidated: request state, approval validity (chain, signatures, NC-3/NC-4 eligibility of the approvers), the requester's current authority, eligibility, the current target subscription state, and idempotency. The payload is immutable and bound to its checksum; any change needs a new approval. Service-principal apply is NOT authorized.
+- **TD-A6-5: REFINEMENT REQUIRED → HALT (policy amendment required).** The ruling proposes a separately configurable apply TTL, initially 72 h after final approval, with the request moving to APPLY_EXPIRED, its open-request slot released, and in-progress apply and recovery left untouched. Lead check against LOCKED authority:
+  - Charter §7 (D5, PO-MANDATE) enumerates the v1 policy keys exactly. "Approval expiry (TTL) 72 h" is defined as "a pending request expires after this". There is no apply-deadline key.
+  - Policy values must not be code constants (Charter §7; PBD A2 HALT row).
+  - No LOCKED instrument admits an `APPLY_EXPIRED` state.
+
+  So a distinct apply TTL needs a policy amendment (a new D5 key, carried by CommercialPolicyVersion v2 and activated through POLICY_ACTIVATE) plus a state-machine addition. Nothing is built until it is LOCKED. The draft amendment is at `Aramo/documents/CCP-A6-Apply-TTL-Policy-Amendment-DRAFT-20261025.md`. Interim: unchanged; APPROVED requests keep the slot.
+- **TD-A6-12: APPROVED WITH CLARIFICATION.** Held-activation details (reconciliation flags, manual-contract details, operator explanations) stay operator-only. The tenant-facing state must never report activation falsely and must not end the MANUAL subscription. It offers a safe billing-support outcome ("Subscription activation pending — contact support"). Built in A6-R only where the Conversion Rule covers the tenant surface; otherwise it is recorded.
+- **TD-A6-13: ASSIGNED to CCP-B2.** B2 owns the catalog publish/retire lifecycle. Its backend command (the governed apply of plan-version publish/retire through the approval engine) must land before B2 UI acceptance. It is built as **CCP-B2-backend** on the A6 apply infrastructure, in its own commit; A6 is not expanded.
+- **DR-A6-1 (downgrade):** refuse immediate application where consumed + reserved usage exceeds the new effective limit. No negative allowance, forgiveness or silent reset.
+- **DR-A6-2 (cross-period):** fail closed.
+- **DR-A6-3 (open reservations):** preserve every valid reservation; refuse any transition that would invalidate capacity commitments or cause double consumption.
+- **DR-A6-4 (future effective date):** fail closed; never APPLIED early; no scheduler.
+- **All refusals:** a stable typed code, an operator-facing explanation, an audit row, test coverage, and no partial state.
+- **Still gated:** refund policy, Stripe Tax, legal terms, enterprise invoicing, live Stripe and unapproved product pricing.
+- **Not authorized:** no publication, merge to main, deployment or production activation.
