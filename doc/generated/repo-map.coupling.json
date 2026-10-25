@@ -10298,7 +10298,17 @@
     {
       "from": "apps/platform-web/e2e/visual/DIVERGENCES.md",
       "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "apps/platform-web/e2e/visual/DIVERGENCES.md",
+      "status": "unscoped",
       "to": "doc/ccp/slices/CCP-B1-pre-execution.md"
+    },
+    {
+      "from": "apps/platform-web/e2e/visual/DIVERGENCES.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-B3-pre-execution.md"
     },
     {
       "from": "apps/platform-web/e2e/visual/DIVERGENCES.md",
@@ -10349,6 +10359,11 @@
       "from": "apps/platform-web/src/commercial/catalog/catalog-api.ts",
       "status": "production",
       "to": "pact/consumers/platform-web-consumer/src/platform-commercial-catalog.consumer.test.ts"
+    },
+    {
+      "from": "apps/platform-web/src/commercial/subscriptions/subscriptions-test-data.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/seed.ts"
     },
     {
       "from": "apps/platform-web/src/commercial/test-fixtures.ts",
@@ -10869,6 +10884,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform-commercial-observability.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-subscriptions.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -14923,6 +14943,201 @@
       "to": "libs/subscription/src/tests/support/ccp-a3-database.ts"
     },
     {
+      "from": "doc/ccp/slices/CCP-B3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-subscriptions.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-b3-subscriptions-authorization.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/fixtures/ccp-subscriptions.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/tsconfig.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/tsconfig.app.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-acceptance.md",
+      "status": "unscoped",
+      "to": "ci/config/api-surface-manifest.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-B3-pre-execution.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/index.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-change-request.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-subscription-read.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/subscription.module.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-b3-subscription-read.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-c2-conversion.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-acceptance.md",
+      "status": "unscoped",
+      "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-platform-admin.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-acceptance.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/dto/commercial-change-request.dto.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-conversion.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/App.tsx"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/components/CommercialRequestDialog.tsx"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/components/permissions.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/tenants/TenantDetailView.tsx"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A6-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A7-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-C1-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-C2-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-C3-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/entitlement/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/governed-subscription.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-change-request.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-change-request.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-contract.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B3-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-conversion.ts"
+    },
+    {
       "from": "doc/ccp/slices/CCP-B4-acceptance.md",
       "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform-commercial-contract.controller.ts"
@@ -15100,7 +15315,17 @@
     {
       "from": "doc/ccp/slices/CCP-B5-acceptance.md",
       "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B5-acceptance.md",
+      "status": "unscoped",
       "to": "doc/ccp/slices/CCP-B5-pre-execution.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B5-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261027000200_ccp_b5r_policy_activate_apply/migration.sql"
     },
     {
       "from": "doc/ccp/slices/CCP-B5-acceptance.md",
@@ -15115,12 +15340,22 @@
     {
       "from": "doc/ccp/slices/CCP-B5-acceptance.md",
       "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-policy-apply.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B5-acceptance.md",
+      "status": "unscoped",
       "to": "libs/subscription/src/lib/commercial/commercial-policy-governance.service.ts"
     },
     {
       "from": "doc/ccp/slices/CCP-B5-acceptance.md",
       "status": "unscoped",
       "to": "libs/subscription/src/tests/ccp-b5-governance.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B5-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-b5r-apply-expiry.integration.spec.ts"
     },
     {
       "from": "doc/ccp/slices/CCP-B5-acceptance.md",
@@ -30328,6 +30563,12 @@
       "from": "libs/subscription/src/tests/ccp-b4-contracts.integration.spec.ts",
       "status": "excluded",
       "to": "libs/subscription/src/lib/commercial/commercial-contract.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-b4-contracts.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/src/lib/commercial/commercial-subscription-read.service.ts"
     },
     {
       "excludedBy": "src/tests/**/*",

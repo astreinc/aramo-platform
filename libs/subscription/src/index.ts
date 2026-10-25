@@ -107,6 +107,21 @@ export {
   type BillingWebhookInboxStatus,
   type DrainTally,
 } from './lib/billing/billing-webhook-inbox.service.js';
+// CCP-B3 — the read-only Subscriptions workbench and tenant Commercial tab reads (no money).
+export {
+  CommercialSubscriptionReadService,
+  OVERVIEW_PRODUCT_KEYS,
+  type EntitlementState,
+  type OverviewFlag,
+  type OverviewOpenRequest,
+  type OverviewProduct,
+  type OverviewProductKey,
+  type ProductEntitlement,
+  type TenantCommercialOverview,
+  type WorkbenchResult,
+  type WorkbenchRow,
+  type WorkbenchSubscription,
+} from './lib/commercial/commercial-subscription-read.service.js';
 // CCP-C6 — the read-only Finance reports (renewals, outstanding payments, reconciliation).
 export {
   BillingFinanceReportService,

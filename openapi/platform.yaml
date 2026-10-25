@@ -96,6 +96,16 @@ tags:
       platform_owner, finance_admin, commercial_ops, support_admin and read_only_auditor
       commercial roles; catalog_manager and super_admin are refused with 403
       `INSUFFICIENT_PERMISSIONS`. Platform-tier only.
+  - name: Platform Commercial Subscriptions
+    description: |
+      CCP-B3 — the read-only Subscriptions workbench and the tenant Commercial tab: the
+      latest base subscription per tenant and product, entitlements with their grant and
+      revoke provenance, open reconciliation flags (held activations) with their linked
+      conversion request, and the open change request. No money: no price, amount or
+      currency is returned. Requires `platform:subscription:read`, held by the
+      platform_owner, finance_admin, commercial_ops, support_admin and read_only_auditor
+      commercial roles; catalog_manager and super_admin are refused with 403
+      `INSUFFICIENT_PERMISSIONS`. Platform-tier only.
   - name: Platform Commercial Billing Operations
     description: |
       CCP-C1 — read-only operator views of the Stripe command outbox (durable,
@@ -2791,6 +2801,84 @@ paths:
         '404':
           $ref: '#/components/responses/CommercialContractNotFound'
 
+  /platform/commercial/subscriptions:
+    get:
+      operationId: listPlatformCommercialSubscriptions
+      tags: [Platform Commercial Subscriptions]
+      summary: The Subscriptions workbench (latest base subscription per tenant and product).
+      description: |
+        CCP-B3 — for each tenant and product, the latest `BASE` subscription: the open row
+        when one exists, else the most recently ended row. Ordered by tenant name (nulls
+        last), product, id. Each row carries its plan and pinned plan version, the billing
+        period containing `as_of` (null when ended), its contract reference, whether a
+        provider subscription is linked (the reference itself is not returned), the reasons
+        of the tenant's open reconciliation flags attributed to the product, and its active
+        support extensions. Read-only; no money. Requires `platform:subscription:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: product_key
+          in: query
+          required: false
+          description: Only this registered product (the v1 registry holds sign only).
+          schema:
+            type: string
+            enum: [sign]
+      responses:
+        '200':
+          description: The workbench rows.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialSubscriptionsResponse'
+        '400':
+          $ref: '#/components/responses/CommercialSubscriptionsValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
+  /platform/commercial/tenants/{tenant_id}/commercial:
+    get:
+      operationId: getPlatformCommercialTenantOverview
+      tags: [Platform Commercial Subscriptions]
+      summary: A tenant's commercial overview per product (the Commercial tab).
+      description: |
+        CCP-B3 — per product (`sign`, `ats`, `portal`, `intelligence`, in that order): whether
+        it is in the product registry, the entitlement with its grant and revoke provenance
+        (`NONE` when no row exists), the latest `BASE` subscription (same rule as the
+        workbench), the open reconciliation flags attributed to the product with the newest
+        `CONVERSION` change request naming the flag's held provider subscription, and the
+        tenant and product's open change request (DRAFT, PENDING_APPROVAL, APPROVED,
+        APPLYING or APPLY_FAILED). Read-only; no money. Requires
+        `platform:subscription:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: tenant_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The tenant's commercial overview.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialTenantOverviewResponse'
+        '400':
+          $ref: '#/components/responses/CommercialSubscriptionsValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/PlatformTenantNotFound'
+
   /platform/commercial/billing-commands:
     get:
       operationId: listPlatformCommercialBillingCommands
@@ -5128,6 +5216,12 @@ components:
         application/json:
           schema:
             $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    CommercialSubscriptionsValidation:
+      description: '`VALIDATION_ERROR` — a malformed tenant id or an unregistered product_key.'
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
     CommercialContractNotFound:
       description: '`NOT_FOUND` — no such contract.'
       content:
@@ -5775,6 +5869,244 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/CommercialContractSummary'
+    CommercialSubscriptionSummary:
+      type: object
+      additionalProperties: false
+      description: CCP-B3 — one latest base subscription (no money; the provider reference is reduced to provider_linked).
+      required: [subscription_id, product_key, plan, plan_version, source, status, started_at, ended_at, period_anchor, current_period, current_period_end, grace_until, commitment_end, contract, provider_linked, open_flags, active_extensions]
+      properties:
+        subscription_id: { type: string, format: uuid }
+        product_key: { type: string }
+        plan:
+          type: object
+          additionalProperties: false
+          required: [id, key, name, sales_model]
+          properties:
+            id: { type: string, format: uuid }
+            key: { type: string }
+            name: { type: string }
+            sales_model: { type: string }
+        plan_version:
+          type: object
+          additionalProperties: false
+          required: [id, version_number, status]
+          properties:
+            id: { type: string, format: uuid }
+            version_number: { type: integer }
+            status: { type: string }
+        source: { type: string }
+        status: { type: string }
+        started_at: { type: string, format: date-time }
+        ended_at: { type: [string, 'null'], format: date-time }
+        period_anchor: { type: string, format: date-time }
+        current_period:
+          type: [object, 'null']
+          additionalProperties: false
+          description: The billing period containing as_of; null for an ended row.
+          required: [start, end]
+          properties:
+            start: { type: string, format: date-time }
+            end: { type: string, format: date-time }
+        current_period_end: { type: [string, 'null'], format: date-time }
+        grace_until: { type: [string, 'null'], format: date-time }
+        commitment_end: { type: [string, 'null'], format: date-time }
+        contract:
+          type: [object, 'null']
+          additionalProperties: false
+          required: [id, contract_ref]
+          properties:
+            id: { type: string, format: uuid }
+            contract_ref: { type: string }
+        provider_linked:
+          type: boolean
+          description: A provider subscription is linked (the reference is not returned here).
+        open_flags:
+          type: array
+          description: Reasons of the tenant's open reconciliation flags attributed to this product (sorted, distinct).
+          items: { type: string }
+        active_extensions:
+          type: object
+          additionalProperties: false
+          required: [count, exception]
+          properties:
+            count: { type: integer, minimum: 0 }
+            exception:
+              type: boolean
+              description: Any active extension is a bounded exception.
+    CommercialWorkbenchRow:
+      type: object
+      additionalProperties: false
+      description: CCP-B3 — one workbench row (CommercialSubscriptionSummary plus the tenant).
+      required: [tenant, subscription_id, product_key, plan, plan_version, source, status, started_at, ended_at, period_anchor, current_period, current_period_end, grace_until, commitment_end, contract, provider_linked, open_flags, active_extensions]
+      properties:
+        tenant:
+          type: object
+          additionalProperties: false
+          required: [id, name, slug]
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: [string, 'null'] }
+            slug: { type: [string, 'null'] }
+        subscription_id: { type: string, format: uuid }
+        product_key: { type: string }
+        plan:
+          type: object
+          additionalProperties: false
+          required: [id, key, name, sales_model]
+          properties:
+            id: { type: string, format: uuid }
+            key: { type: string }
+            name: { type: string }
+            sales_model: { type: string }
+        plan_version:
+          type: object
+          additionalProperties: false
+          required: [id, version_number, status]
+          properties:
+            id: { type: string, format: uuid }
+            version_number: { type: integer }
+            status: { type: string }
+        source: { type: string }
+        status: { type: string }
+        started_at: { type: string, format: date-time }
+        ended_at: { type: [string, 'null'], format: date-time }
+        period_anchor: { type: string, format: date-time }
+        current_period:
+          type: [object, 'null']
+          additionalProperties: false
+          description: The billing period containing as_of; null for an ended row.
+          required: [start, end]
+          properties:
+            start: { type: string, format: date-time }
+            end: { type: string, format: date-time }
+        current_period_end: { type: [string, 'null'], format: date-time }
+        grace_until: { type: [string, 'null'], format: date-time }
+        commitment_end: { type: [string, 'null'], format: date-time }
+        contract:
+          type: [object, 'null']
+          additionalProperties: false
+          required: [id, contract_ref]
+          properties:
+            id: { type: string, format: uuid }
+            contract_ref: { type: string }
+        provider_linked:
+          type: boolean
+          description: A provider subscription is linked (the reference is not returned here).
+        open_flags:
+          type: array
+          description: Reasons of the tenant's open reconciliation flags attributed to this product (sorted, distinct).
+          items: { type: string }
+        active_extensions:
+          type: object
+          additionalProperties: false
+          required: [count, exception]
+          properties:
+            count: { type: integer, minimum: 0 }
+            exception:
+              type: boolean
+              description: Any active extension is a bounded exception.
+    CommercialSubscriptionsResponse:
+      type: object
+      additionalProperties: false
+      required: [as_of, rows]
+      properties:
+        as_of: { type: string, format: date-time }
+        rows:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommercialWorkbenchRow'
+    CommercialProductEntitlement:
+      type: object
+      additionalProperties: false
+      required: [capability, state, granted_source, granted_at, granted_by, change_request_id, revoked_at, revoked_by, revoke_change_request_id]
+      properties:
+        capability: { type: string }
+        state:
+          type: string
+          enum: [ACTIVE, REVOKED, NONE]
+          description: NONE when the tenant has no entitlement row for the product.
+        granted_source: { type: [string, 'null'] }
+        granted_at: { type: [string, 'null'], format: date-time }
+        granted_by: { type: [string, 'null'], format: uuid }
+        change_request_id: { type: [string, 'null'], format: uuid }
+        revoked_at: { type: [string, 'null'], format: date-time }
+        revoked_by: { type: [string, 'null'], format: uuid }
+        revoke_change_request_id: { type: [string, 'null'], format: uuid }
+    CommercialTenantFlag:
+      type: object
+      additionalProperties: false
+      required: [id, reason, provider, subscription_ref, intent_id, detected_at, conversion]
+      properties:
+        id: { type: string, format: uuid }
+        reason: { type: string }
+        provider: { type: string }
+        subscription_ref: { type: string }
+        intent_id: { type: [string, 'null'], format: uuid }
+        detected_at: { type: string, format: date-time }
+        conversion:
+          type: [object, 'null']
+          additionalProperties: false
+          description: The newest CONVERSION change request of the tenant naming this flag's subscription_ref as held_subscription_ref.
+          required: [change_request_id, state, direction]
+          properties:
+            change_request_id: { type: string, format: uuid }
+            state: { type: string }
+            direction: { type: [string, 'null'] }
+    CommercialTenantOpenRequest:
+      type: object
+      additionalProperties: false
+      required: [id, action_type, kind, state, requested_by, created_at]
+      properties:
+        id: { type: string, format: uuid }
+        action_type: { type: string }
+        kind: { type: string }
+        state: { type: string }
+        requested_by: { type: string, format: uuid }
+        created_at: { type: string, format: date-time }
+    CommercialTenantProduct:
+      type: object
+      additionalProperties: false
+      required: [product_key, registered, entitlement, subscription, flags, open_request]
+      properties:
+        product_key:
+          type: string
+          enum: [sign, ats, portal, intelligence]
+        registered:
+          type: boolean
+          description: The product is in the product registry (v1 holds sign only).
+        entitlement:
+          $ref: '#/components/schemas/CommercialProductEntitlement'
+        subscription:
+          oneOf:
+            - $ref: '#/components/schemas/CommercialSubscriptionSummary'
+            - type: 'null'
+        flags:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommercialTenantFlag'
+        open_request:
+          oneOf:
+            - $ref: '#/components/schemas/CommercialTenantOpenRequest'
+            - type: 'null'
+    CommercialTenantOverviewResponse:
+      type: object
+      additionalProperties: false
+      required: [as_of, tenant, products]
+      properties:
+        as_of: { type: string, format: date-time }
+        tenant:
+          type: object
+          additionalProperties: false
+          required: [id, name, slug, kind]
+          properties:
+            id: { type: string, format: uuid }
+            name: { type: string }
+            slug: { type: [string, 'null'] }
+            kind: { type: string }
+        products:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommercialTenantProduct'
     CommercialAuditListResponse:
       type: object
       additionalProperties: false
@@ -8212,7 +8544,8 @@ components:
           description: >-
             CCP-A6-R (TD-B2-3) — the caller may apply this request now: the caller is its requester
             (apply is requester-only in v1), it is APPROVED or APPLY_FAILED, and its action is applied
-            by the governed apply. A UI hint only; the apply re-checks every condition.
+            by the governed apply, including the CCP-C2 conversion apply (`…/convert`; CCP-B3 C-2).
+            A UI hint only; the apply re-checks every condition.
         chain_satisfiable:
           type: [boolean, 'null']
           description: For an open PENDING request, whether independent eligible humans can still fill the remaining steps.

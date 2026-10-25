@@ -1,0 +1,316 @@
+/* CCP-B3 — the Subscriptions workbench and the Tenant › Commercial tab (CCP-UI v1.0 handoff
+ * §5.3, §5.9, §5.10). Every value is copied from the pinned Commercial Control Plane
+ * v1.0.dc.html (:150-182 the workbench, :360-400 the tab, :496-524 the dialog) and expressed
+ * through the theme.css token layer (--pw-*); no hex literals. Prefix `cs-`. The product card
+ * itself reuses CCP-B6's `sx-` card grammar (the same pinned element). */
+
+/* ── workbench filters (§5.3) ── */
+.cs-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.cs-seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-box);
+  background: var(--pw-surface);
+}
+.cs-seg__btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--pw-r-btn-sm);
+  background: transparent;
+  color: var(--pw-ink);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-12-5);
+  font-weight: 500;
+  cursor: pointer;
+}
+.cs-seg__btn--on {
+  background: var(--pw-midnight);
+  color: var(--pw-surface);
+  font-weight: 700;
+}
+.cs-seg__btn:focus-visible {
+  outline: 2px solid var(--pw-focus);
+  outline-offset: 2px;
+}
+.cs-seg__count {
+  color: var(--pw-faint);
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-11);
+}
+.cs-select {
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--pw-line-2);
+  border-radius: var(--pw-r-md);
+  background: var(--pw-surface);
+  color: var(--pw-ink);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-13);
+}
+.cs-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--pw-fs-13);
+  cursor: pointer;
+}
+.cs-check__box {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--pw-midnight);
+}
+.cs-count {
+  margin-left: auto;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12-5);
+}
+
+/* ── workbench table (§5.3 columns) ── */
+.cs-table {
+  min-width: 1040px;
+}
+.cs-strong {
+  font-weight: 600;
+}
+.cs-slug {
+  color: var(--pw-muted);
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-11-5);
+}
+.cs-plan {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--pw-ink-2);
+  font-size: var(--pw-fs-12-5);
+}
+.cs-mono12 {
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-12);
+}
+.cs-src {
+  padding: 2px 7px;
+  border: 1px solid var(--pw-line-2);
+  border-radius: var(--pw-r-sm);
+  background: var(--pw-surface);
+  color: var(--pw-ink-2);
+  font-size: var(--pw-fs-12);
+  font-weight: 600;
+}
+.cs-src--stripe {
+  border-color: var(--pw-sx-stripe-line);
+  background: var(--pw-sx-stripe-bg);
+  color: var(--pw-sx-stripe-fg);
+}
+.cs-sub {
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12);
+}
+.cs-sub--warn {
+  color: var(--pw-warn);
+}
+.cs-flags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+}
+.cs-flag {
+  padding: 2px 7px;
+  border-radius: var(--pw-r-sm);
+  font-size: var(--pw-fs-11-5);
+  font-weight: 600;
+}
+.cs-flag--recon {
+  background: var(--pw-alert-warn-bg);
+  color: var(--pw-alert-warn-ink);
+}
+.cs-flag--exception {
+  background: var(--pw-role-badge-bg);
+  color: var(--pw-role-badge-fg);
+}
+.cs-empty {
+  padding: 44px 20px;
+  text-align: center;
+}
+.cs-empty__body {
+  margin-top: 4px;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-13);
+}
+.cs-empty__action {
+  margin-top: 12px;
+}
+
+/* ── Tenant › Commercial (§5.9) ── */
+.cs-tab {
+  min-width: 0;
+}
+.cs-viewonly,
+.cs-notice {
+  margin-bottom: 14px;
+}
+.cs-cards {
+  display: grid;
+  gap: 16px;
+}
+.cs-prov {
+  margin-left: auto;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12-5);
+}
+.cs-fact--ok {
+  color: var(--pw-ok);
+}
+.cs-fact--warn {
+  color: var(--pw-warn);
+}
+.cs-fact--danger {
+  color: var(--pw-danger);
+}
+.cs-fact--muted {
+  color: var(--pw-muted-tone);
+}
+.cs-fact--neutral {
+  color: var(--pw-neutral);
+}
+.cs-allow {
+  margin-bottom: 14px;
+}
+.cs-allow__head {
+  display: flex;
+  margin-bottom: 5px;
+  font-size: var(--pw-fs-12-5);
+}
+.cs-allow__label {
+  font-weight: 600;
+}
+.cs-allow__value {
+  margin-left: auto;
+  color: var(--pw-muted);
+}
+.cs-allow__track {
+  height: 6px;
+  overflow: hidden;
+  border-radius: 3px;
+  background: var(--pw-rule);
+}
+.cs-allow__fill {
+  height: 6px;
+  background: var(--pw-midnight);
+}
+.cs-allow__fill--warn {
+  background: var(--pw-warn);
+}
+.cs-recon {
+  margin-bottom: 14px;
+  padding: 12px 14px;
+  border: 1px solid var(--pw-alert-warn-line);
+  border-radius: var(--pw-r-box);
+  background: var(--pw-alert-warn-bg);
+  color: var(--pw-alert-warn-ink);
+  font-size: var(--pw-fs-13);
+}
+.cs-recon__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-top: 6px;
+}
+.cs-recon__ref {
+  color: var(--pw-alert-warn-ink);
+  font-family: var(--pw-mono);
+  font-weight: 600;
+  text-decoration: underline;
+}
+.cs-recon__btn {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--pw-warn);
+  border-radius: var(--pw-r-btn-sm);
+  background: var(--pw-surface);
+  color: var(--pw-alert-warn-ink);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-12-5);
+  font-weight: 600;
+  cursor: pointer;
+}
+.cs-recon__btn:focus-visible {
+  outline: 2px solid var(--pw-focus);
+  outline-offset: 2px;
+}
+.cs-self {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-box);
+  background: var(--pw-surface-2);
+  color: var(--pw-ink-2);
+  font-size: var(--pw-fs-12-5);
+}
+.cs-self__links {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.cs-self__link {
+  color: var(--pw-link);
+  font-weight: 600;
+}
+.cs-self__off {
+  color: var(--pw-faint);
+  font-weight: 600;
+  cursor: not-allowed;
+}
+
+/* ── dialog fields beyond B2's text / area (§5.10: select 100% · number 160px · help line) ── */
+.cs-dlg-select {
+  box-sizing: border-box;
+  width: 100%;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--pw-line-2);
+  border-radius: var(--pw-r-md);
+  background: var(--pw-surface);
+  color: var(--pw-ink);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-13-5);
+}
+.cs-dlg-num {
+  box-sizing: border-box;
+  width: 160px;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--pw-line-2);
+  border-radius: var(--pw-r-md);
+  background: var(--pw-surface);
+  color: var(--pw-ink);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-13-5);
+}
+.cs-dlg-num:disabled {
+  cursor: not-allowed;
+}
+.cs-dlg-help {
+  display: block;
+  margin-top: 4px;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12);
+}

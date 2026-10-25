@@ -197,3 +197,40 @@ Reference: `doc/design-reference/ccp/CCP-UI-v1_0/Commercial Control Plane v1.0.d
 | DV-B5-06 | Audit: the filter row from the first select, and the event table | The rows are the real event stream (create and submit are two events; backend codes; uuids; details read from structured payloads). The selects size to option labels from that stream, and the auto table layout sizes every column from the rows. Compared: the page head and the "Export CSV (16)" count. |
 
 Not a mask: DV-B5-04 — the chain panel renders the maker roles the API returns. The fixture carries the design's maker sets; the API's real sets (above threshold: Commercial ops only; policy change: Finance admin only, TD-A3-5) are proven by `libs/subscription` B5-U-7.
+
+## CCP-B3 — Subscriptions workbench and Tenant › Commercial (`states-ccp-subscriptions.ts`) against the CCP-UI v1.0 release
+
+Reference = the pinned `Commercial Control Plane v1.0.dc.html` (`MANIFEST.sha256` 5/5 OK; pinned in
+`doc/ccp/slices/CCP-B3-pre-execution.md` §5) via `support/proto-ccp.ts openCcpProto`; build = the app
+on `fixtures/ccp-subscriptions.ts` (a port of `ccp-data.js` T0 into the CCP-B3 read shapes) at the
+prototype's clock. The three workbench states compare the full frame with B1's shell masks
+(DV-C1, DV-C2). The Tenant › Commercial states compare ONE element (a product card, a card header,
+the view-only note, a dialog box): the tenant page header and tab strip are PLATFORM-UX-1's (other
+tab labels; the prototype's NEW tag is prototype-only).
+
+| ID | Divergence | Cause | Screen-states |
+|---|---|---|---|
+| DV-B3-1 | No "SAMPLE" marker on plan names (the Plan fact, the plan select's options); the workbench table is masked whole because the auto table layout sizes every column from the cells (the prototype's plan cell carries the tag), so every column moves. The row content is asserted by `SubscriptionsView.spec.tsx` | The build shows real catalog data (as DV-B2-02; DV-B2-02 approved by the Architect/PO, `doc/ccp/decisions.md` DV-B2-02) | ccp-subs-workbench, ccp-tc-sign-held, ccp-tc-sign-stripe, ccp-tc-sign-ended, ccp-tc-dialog-plan |
+| DV-B3-2 | A change request is named `CR-<first 8 hex>` (a UUID; the B5 convention), not "CR-1051"; the open-request line names the real action type ("Subscription conversion", "Account credit") and, for a conversion awaiting Stripe, "sent to Stripe — awaiting confirmation" | Real values win (CCP-A3 ids; B1 action labels TD-B1-11; C1 / Conv. C-23) | ccp-tc-sign-held, ccp-tc-sign-stripe, ccp-tc-portal-revoked |
+| DV-B3-3 | The held-activation detail names no plan ("A self-service checkout would have ended the governed MANUAL subscription on contract …"); the release dialog's first row reads "Held (not activated)", not "Blocked (incomplete)" | The hold record carries the provider subscription, not the plan (R-13); a held provider subscription may be live and charging (Conv. C-8), so "incomplete" would be untrue | ccp-tc-sign-held, ccp-tc-dialog-recon |
+| DV-B3-4 | The Stripe-owned card: the link-outs and the actions row. Only "Invoices ↗" can link (the provider-hosted invoice page from the C3 read when AVAILABLE; C3 is NOT DELIVERED, so it shows unlinked); "Payment methods", "Proration", "Cancellation" are unlinked text (no operator link target is ruled). The row gains "Request conversion to MANUAL…" (the governed C2 path) | TD-C3-1; PBD B3 row prerequisites "C2 for conversion actions"; TD-B3-4 | ccp-tc-sign-stripe |
+| DV-B3-5 | The plan change dialog's Discount (%) is the designed disabled field with its own help line | SUBSCRIPTION_CHANGE has no discount term and DISCOUNT has no governed apply (R-13; TD-B3-5) | ccp-tc-dialog-plan |
+| DV-B3-6 | Cancel: the consequence line and the entitlement row say the entitlement is NOT revoked; the chain strip reads "Below threshold · Finance" | A6 SUBSCRIPTION_END does not revoke (TD-A6-8, as DV-B4-3); the server resolves SUBSCRIPTION_END to the Finance-only chain (TD-A3-2, as DV-B4-2) | ccp-tc-dialog-cancel |
+| DV-B3-7 | An ended row's allowance bar shows the designed empty state ("No current allowance period", empty track) | An ended subscription has no sending account to count against (R-13) | ccp-tc-sign-ended |
+| DV-B3-8 | The Portal card is compared at its header only: its body lists one more domain reason ("Grant product: No governed request covers this product yet."), so the card is taller | Request product keys are `sign` only (CCP-A3; A7 TD-A7-6): no governed grant for Portal | ccp-tc-portal-revoked |
+| DV-B3-9 | While the read is in flight the segment counts show "–" and the result count is empty | The build has no rows yet; the design counts its in-memory rows (R-13) | ccp-subs-loading |
+
+Fixture notes (no mask): the workbench rows come in the prototype's order (the server orders by
+tenant name; the design names no sort); Fernhill's and Quarry Lane's `current_period` reproduce
+the prototype's past (unpaid) period; Meridian's release CR-1051 is a CONVERSION in APPLYING with
+its Stripe command unconfirmed.
+
+| ID | State | Allowance | Measured | Evidence |
+|---|---|---|---|---|
+| AA-B3-1 | `ccp-tc-dialog-recon` | 140 px | 131 (1440), 79 (900) | diff = the dialog's rounded-corner edge rows, which blend the page behind (the PLATFORM-UX-1 tenant header, not compared); no box differs |
+| AA-B3-2 | `ccp-tc-portal-revoked` | 810 px | 804 (1440), 405 (900) | diff = the top and bottom edge rows of the DV-B3-2 mask only: the element-relative mask is re-anchored on a header whose box sits on another sub-pixel row; nothing else differs |
+
+Not compared (no design counterpart; unit-, keyboard- and axe-tested): the conversion dialog
+"Request conversion to MANUAL…", the grant dialog (no prototype tenant reaches it through a
+governed path), the Apply / Retry apply button on the open-request strip (TD-B2-3), the
+"Save as draft" result notice, the apply-refusal alert (DR-C2-1).

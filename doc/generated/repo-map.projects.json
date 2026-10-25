@@ -2304,6 +2304,7 @@
       "CommercialPolicyInputError",
       "CommercialPolicyRepository",
       "CommercialPolicyUnavailableError",
+      "CommercialSubscriptionReadService",
       "ContractRepository",
       "ConversionApplyFailedError",
       "ConversionApplyRefusedError",
@@ -2328,6 +2329,7 @@
       "LegalAcceptanceService",
       "ORGANIZATION_BILLING_PROFILE_PORT",
       "OUTSTANDING_STATUSES",
+      "OVERVIEW_PRODUCT_KEYS",
       "PAST_DUE_GRACE_DAYS_DEFAULT",
       "PERSONAL_LEGAL_DOCUMENT_KEYS",
       "PIN_REASON_CHANGE_REQUEST",
@@ -3573,6 +3575,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b3-subscriptions-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-b4-commercial-contract-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -4253,6 +4261,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-b2-commercial-catalog-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b3-subscriptions-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -6678,6 +6692,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b3-subscriptions-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-b4-commercial-contract-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -7412,6 +7432,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-b2-catalog-apply.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-b3-subscription-read.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -9297,6 +9323,24 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/commercial/subscriptions/SubscriptionsView.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/commercial/subscriptions/TenantCommercialPanel.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "apps/platform-web/src/commercial/subscriptions/subscriptions-model.spec.ts",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/platform-web/src/commercial/support-extensions/SupportExtensionsView.spec.tsx",
         "project": "aramo-platform-web",
         "status": "excluded"
@@ -9805,6 +9849,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-b2-commercial-catalog-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b3-subscriptions-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -12020,6 +12070,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-b2-commercial-catalog-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b3-subscriptions-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },

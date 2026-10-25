@@ -41,6 +41,11 @@ export interface CommercialRequestDialogProps {
   readonly canCommit: boolean;
   readonly busy?: boolean;
   readonly onCommit: () => void;
+  /**
+   * CCP-B3 — the design's "Save as draft" (handoff §5.10 footer: Cancel · Save as draft (where
+   * offered) · commit). Disabled with the commit's validity; additive (absent = not offered).
+   */
+  readonly secondary?: { readonly label: string; readonly disabled: boolean; readonly onClick: () => void } | null;
 }
 
 /** True when the typed value matches the token exactly (the design compares strictly). */
@@ -63,6 +68,7 @@ export function CommercialRequestDialog({
   canCommit,
   busy = false,
   onCommit,
+  secondary = null,
 }: CommercialRequestDialogProps) {
   useReturnFocus(open);
   const typedId = useId();
@@ -73,6 +79,18 @@ export function CommercialRequestDialog({
       <Button unstyled className="pw-crd__btn pw-crd__btn--cancel" onClick={() => onOpenChange(false)}>
         Cancel
       </Button>
+      {secondary ? (
+        <Button
+          unstyled
+          className={`pw-crd__btn${secondary.disabled || busy ? ' pw-crd__btn--dim' : ''}`}
+          disabled={secondary.disabled || busy}
+          onClick={() => {
+            if (!secondary.disabled && !busy) secondary.onClick();
+          }}
+        >
+          {secondary.label}
+        </Button>
+      ) : null}
       <Button
         unstyled
         className={`pw-crd__btn pw-crd__btn--commit pw-crd__btn--${tone}${enabled ? '' : ' pw-crd__btn--dim'}`}

@@ -167,6 +167,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B4 enterprise
       'libs/subscription/src/lib/subscription.module.ts',
       'libs/subscription/src/lib/billing/governed-subscription.ts',
       'libs/subscription/src/index.ts',
+      // Merge train TD-MERGE-35: CCP-B3's read-only workbench / tenant overview names the contract
+      // linked to a row (display only; plan, allowance and status still come from the subscription).
+      'libs/subscription/src/lib/commercial/commercial-subscription-read.service.ts',
     ]);
     const hits: string[] = [];
     const walk = (dir: string): void => {

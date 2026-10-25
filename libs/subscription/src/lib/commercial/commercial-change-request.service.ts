@@ -1094,7 +1094,9 @@ export function applyActionable(actor: CommercialActor, req: Pick<CommercialChan
   if (req.action_type === 'POLICY_ACTIVATE') return true;
   // Merge train TD-MERGE-26 / -30: the CCP-A7 revoke and the CCP-A8 NORMAL support extension are
   // applied by the same route (requester-only; a bounded EXCEPTION is APPLIED at creation).
-  if (!isA6Applicable(req.action_type) && !isCatalogApplicable(req.action_type) && !isA7Applicable(req.action_type) && req.action_type !== 'SUPPORT_EXTENSION') return false;
+  // CCP-B3 (pre-execution C-2; TD-B3) — the CCP-C2 conversion apply (`…/convert`) is requester-only
+  // under the same rule, so the hint covers CONVERSION too.
+  if (!isA6Applicable(req.action_type) && !isCatalogApplicable(req.action_type) && !isA7Applicable(req.action_type) && req.action_type !== 'SUPPORT_EXTENSION' && req.action_type !== 'CONVERSION') return false;
   const scope = COMMERCIAL_ACTIONS[req.action_type as CommercialActionType].requester_scope;
   return scope !== null && actor.scopes.includes(scope);
 }

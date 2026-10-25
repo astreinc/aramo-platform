@@ -17,6 +17,7 @@ import {
   effectiveReleaseState,
   releaseConsumable,
 } from '../lib/commercial/commercial-conversion.js';
+import { applyActionable } from '../lib/commercial/commercial-change-request.service.js';
 import { COMMERCIAL_POLICY_OPTIONAL_KEYS, parseCommercialPolicyContent } from '../lib/commercial/commercial-policy.js';
 
 // CCP-C2 — the pure half of the conversion: the TS mirrors of the DB guard (CONVERSION apply pairs)
@@ -115,5 +116,19 @@ describe('CCP-C2 conversion (pure)', () => {
       expect(ref.get(CommercialConversionService)).toBeInstanceOf(CommercialConversionService);
       await ref.close();
     }
+  });
+
+  it('B3-U-1 (CCP-B3 C-2) apply_actionable covers CONVERSION under the A6-R rule: the requester holding platform:subscription:request on an APPROVED / APPLY_FAILED conversion reads true; another user, a DRAFT and a scope-less session read false', () => {
+    const requester = randomUUID();
+    const req = (state: string) => ({ action_type: 'CONVERSION', state, requested_by: requester });
+    const user = (user_id: string, scopes: readonly string[] = ['platform:subscription:request']) => ({ user_id, actor_kind: 'user', scopes });
+    expect(applyActionable(user(requester), req('APPROVED'))).toBe(true);
+    expect(applyActionable(user(requester), req('APPLY_FAILED'))).toBe(true);
+    expect(applyActionable(user(randomUUID()), req('APPROVED'))).toBe(false);
+    expect(applyActionable(user(requester), req('DRAFT'))).toBe(false);
+    expect(applyActionable(user(requester), req('PENDING_APPROVAL'))).toBe(false);
+    expect(applyActionable(user(requester), req('APPLIED'))).toBe(false);
+    expect(applyActionable(user(requester, ['platform:subscription:read']), req('APPROVED'))).toBe(false);
+    expect(applyActionable({ ...user(requester), actor_kind: 'service' }, req('APPROVED'))).toBe(false);
   });
 });

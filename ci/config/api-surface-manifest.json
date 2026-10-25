@@ -121,6 +121,7 @@
     "apps/platform-admin/src/app/platform/platform-commercial-conversion.controller.ts": "AP",
     "apps/platform-admin/src/app/platform/platform-commercial-support-extension.controller.ts": "AP",
     "apps/platform-admin/src/app/platform/platform-commercial-observability.controller.ts": "AP",
+    "apps/platform-admin/src/app/platform/platform-commercial-subscriptions.controller.ts": "AP",
     "libs/activity/src/lib/activity.controller.ts": "AP",
     "libs/attachment/src/lib/attachment.controller.ts": "AP",
     "libs/auth-core/src/lib/auth.controller.ts": "SS",

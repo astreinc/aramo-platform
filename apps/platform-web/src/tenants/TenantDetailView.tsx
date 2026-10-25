@@ -3,6 +3,7 @@ import { useParams, useSearchParams } from 'react-router-dom';
 import { ApiError, Button, hasScope, useToast, type Session } from '@aramo/fe-foundation';
 
 import {
+  COMMERCIAL_PERMISSIONS as CP,
   EmptyState,
   LifecycleActionMenu,
   PLATFORM_PERMISSIONS as P,
@@ -21,6 +22,7 @@ import {
   type PlatformTenantSign,
 } from '../platform-api';
 import { useEntityCrumb } from '../shell/crumbs';
+import { TenantCommercialPanel } from '../commercial/subscriptions/TenantCommercialPanel';
 
 import { LifecycleDialog } from './LifecycleDialog';
 import { LIFECYCLE_ACTIONS, allowedActions, type LifecycleActionKey } from './lifecycle-reasons';
@@ -39,20 +41,26 @@ import './tenants.css';
 // `?tab=overview|lifecycle|sign|domain|people`. Domain is hidden without
 // platform:tenant:lifecycle:manage (its reads need it too); every other missing
 // permission shows a view-only note, never a silently missing control.
+// CCP-B3 (CCP-UI v1.0 handoff §2 "Overview · Lifecycle · Sign · Commercial (NEW, after Sign) ·
+// Domain · People") — the Commercial tab, shown only with platform:subscription:read (its read's
+// scope): never to super_admin or catalog_manager (TD-B4-3: RBAC preserved, no scope added).
 
-export type TenantTab = 'overview' | 'lifecycle' | 'sign' | 'domain' | 'people';
+export type TenantTab = 'overview' | 'lifecycle' | 'sign' | 'commercial' | 'domain' | 'people';
 
 const TAB_LABEL: Readonly<Record<TenantTab, string>> = {
   overview: 'Overview',
   lifecycle: 'Lifecycle & audit',
   sign: 'Aramo Sign',
+  commercial: 'Commercial',
   domain: 'Domain',
   people: 'People',
 };
 
-/** The tabs this operator sees (amendment 13: Domain needs lifecycle:manage). */
-export function visibleTabs(canLifecycle: boolean): TenantTab[] {
-  return (['overview', 'lifecycle', 'sign', 'domain', 'people'] as const).filter((t) => t !== 'domain' || canLifecycle);
+/** The tabs this operator sees (amendment 13: Domain needs lifecycle:manage; CCP-B3: Commercial needs subscription:read). */
+export function visibleTabs(canLifecycle: boolean, canCommercial = false): TenantTab[] {
+  return (['overview', 'lifecycle', 'sign', 'commercial', 'domain', 'people'] as const).filter(
+    (t) => (t !== 'domain' || canLifecycle) && (t !== 'commercial' || canCommercial),
+  );
 }
 
 /** `?tab=` → a visible tab; anything else falls back to Overview. */
@@ -68,6 +76,7 @@ export function TenantDetailView({ session }: { readonly session: Session }) {
   const toast = useToast();
   const canLifecycle = hasScope(session, P.tenantLifecycleManage);
   const canProvision = hasScope(session, P.tenantProvision);
+  const canCommercial = hasScope(session, CP.subscriptionRead);
 
   const [tenant, setTenant] = useState<Loaded<PlatformTenantDetail>>({ status: 'loading' });
   const [audit, setAudit] = useState<Loaded<PlatformAuditEvent[]>>({ status: 'loading' });
@@ -114,7 +123,7 @@ export function TenantDetailView({ session }: { readonly session: Session }) {
   const t = tenant.status === 'ready' ? tenant.value : null;
   useEntityCrumb(t?.name ?? null);
 
-  const tabs = visibleTabs(canLifecycle);
+  const tabs = visibleTabs(canLifecycle, canCommercial);
   const tab = resolveTab(params.get('tab'), tabs);
   const selectTab = (next: TenantTab): void => {
     const p = new URLSearchParams(params);
@@ -376,6 +385,10 @@ export function TenantDetailView({ session }: { readonly session: Session }) {
             failed={sign.status === 'error'}
             onRetry={() => void loadSign()}
           />
+        ) : null}
+
+        {tab === 'commercial' && canCommercial ? (
+          <TenantCommercialPanel session={session} tenantId={t.id} tenantName={t.name} sign={sign.status === 'ready' ? sign.value : null} />
         ) : null}
 
         {tab === 'domain' && canLifecycle ? <TenantDomainPanel tenantId={t.id} tenantName={t.name} kind={t.kind} /> : null}
