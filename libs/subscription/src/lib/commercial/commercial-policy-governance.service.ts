@@ -1,11 +1,11 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaService } from '../prisma/prisma.service.js';
 
 import { CommercialAuditRepository } from './commercial-audit.repository.js';
-import { POLICY_TARGET_CHECKSUM_KEY } from './commercial-change-request.js';
-import { CommercialChangeRequestError, type CommercialActor, type CommercialCallContext } from './commercial-change-request.service.js';
+import { COMMERCIAL_OPEN_STATES, POLICY_TARGET_CHECKSUM_KEY } from './commercial-change-request.js';
+import { CommercialChangeRequestError, CommercialChangeRequestService, applyActionable, type CommercialActor, type CommercialCallContext } from './commercial-change-request.service.js';
 import { CommercialOperatorRepository } from './commercial-operator.repository.js';
 import { POLICY_LOCK_SQL } from './commercial-policy-activation.js';
 import {
@@ -20,8 +20,8 @@ import { CommercialPolicyRepository, type CommercialPolicyVersionRow } from './c
 // CCP-B5 (B5-P; handoff §5.6; pre-execution C-4) — the commercial policy screen's backend:
 // the version list, and DRAFT authoring (create a draft from a version; edit a draft).
 // Activation and rollback are NOT here: they are POLICY_ACTIVATE change requests (A3
-// engine; requested by finance_admin, TD-A3-5; chain finance → owner, Q1) applied by
-// CommercialChangeRequestService.applyPolicyActivation (TD-A9-16).
+// engine; requested by finance_admin, TD-A3-5; chain finance → owner, Q1) applied by their
+// requester through the governed apply command (CommercialPolicyApplyService; CCP-B5-R, TD-B5-1).
 //
 // Authority. The A1 catalog holds no governance scope (TD-A3-5), so the routes are gated on
 // platform:approval:read and the AUTHOR is the live platform_owner or finance_admin role,
@@ -30,8 +30,8 @@ import { CommercialPolicyRepository, type CommercialPolicyVersionRow } from './c
 // (shared with the POLICY_ACTIVATE create and apply), so a draft cannot change between a
 // request's snapshot and its apply without the apply refusing (TARGET_CHANGED).
 //
-// Rules: exactly one DRAFT at a time; a DRAFT targeted by a DRAFT or PENDING_APPROVAL
-// POLICY_ACTIVATE is locked; only DRAFT content changes (the A2 trigger is the DB authority).
+// Rules: exactly one DRAFT at a time; a DRAFT targeted by an OPEN POLICY_ACTIVATE (CCP-B5-R:
+// COMMERCIAL_OPEN_STATES — DRAFT, PENDING_APPROVAL, APPROVED, APPLYING, APPLY_FAILED) is locked; only DRAFT content changes (the A2 trigger is the DB authority).
 // Edits are bounded by the handoff §5.6 allowed ranges on top of the strict A2 parser.
 // Audit: CommercialPolicyAuditEvent COMMERCIAL_POLICY_VERSION_CREATED (its closed CHECK) and
 // CommercialAuditEvent COMMERCIAL_POLICY_VERSION_DRAFTED / COMMERCIAL_POLICY_DRAFT_UPDATED.
@@ -62,14 +62,19 @@ export interface PolicyVersionView {
   row: CommercialPolicyVersionRow;
   /** The parsed content, or null when the stored document fails the strict parser. */
   content: CommercialPolicyContent | null;
-  /** The open (DRAFT / PENDING_APPROVAL) POLICY_ACTIVATE request targeting this version. */
-  open_request: { id: string; state: string } | null;
+  /**
+   * The open POLICY_ACTIVATE request targeting this version (COMMERCIAL_OPEN_STATES), with the
+   * caller's apply hint (CCP-B5-R: requester-only, APPROVED / APPLY_FAILED).
+   */
+  open_request: { id: string; state: string; apply_actionable: boolean } | null;
+  /** CCP-B5-R — the most recent POLICY_ACTIVATE request targeting this version, in any state. */
+  latest_request: { id: string; state: string; applied_at: Date | null } | null;
 }
 
 export interface PolicyListView {
   versions: PolicyVersionView[];
   active_version_id: string | null;
-  /** The one open policy request (DRAFT / PENDING_APPROVAL), whatever it targets. */
+  /** The one open policy request (COMMERCIAL_OPEN_STATES), whatever it targets. */
   open_request: { id: string; state: string; policy_version_id: string } | null;
   caller: { can_author: boolean; can_request_activation: boolean };
 }
@@ -91,15 +96,19 @@ export class CommercialPolicyGovernanceService {
     private readonly policies: CommercialPolicyRepository,
     private readonly audit: CommercialAuditRepository,
     private readonly operators: CommercialOperatorRepository,
+    @Optional() private readonly changeRequests?: CommercialChangeRequestService,
   ) {}
 
   async list(actor: CommercialActor, ctx: CommercialCallContext): Promise<PolicyListView> {
+    // Charter Amendment A1 (AD-7; CCP-B5-R) — the read evaluates the apply deadline lazily.
+    await this.changeRequests?.lazyExpirePolicyActivations(ctx);
     const rows = await this.policies.listVersions();
-    const open = await this.prisma.commercialChangeRequest.findMany({
-      where: { action_type: 'POLICY_ACTIVATE', state: { in: ['DRAFT', 'PENDING_APPROVAL'] } },
+    const all = await this.prisma.commercialChangeRequest.findMany({
+      where: { action_type: 'POLICY_ACTIVATE' },
       orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
-      select: { id: true, state: true, payload: true },
+      select: { id: true, state: true, payload: true, requested_by: true, action_type: true, applied_at: true },
     });
+    const open = all.filter((r) => (COMMERCIAL_OPEN_STATES as readonly string[]).includes(r.state));
     const target = (p: unknown): string => String((p as Record<string, unknown> | null)?.['policy_version_id'] ?? '');
     const live = await this.operators.readOperator(this.prisma, ctx.platform_tenant_id, actor.user_id);
     const versions = rows.map((row) => {
@@ -110,7 +119,13 @@ export class CommercialPolicyGovernanceService {
         content = null;
       }
       const o = open.find((r) => target(r.payload) === row.id);
-      return { row, content, open_request: o === undefined ? null : { id: o.id, state: o.state } };
+      const l = all.find((r) => target(r.payload) === row.id);
+      return {
+        row,
+        content,
+        open_request: o === undefined ? null : { id: o.id, state: o.state, apply_actionable: applyActionable(actor, o) },
+        latest_request: l === undefined ? null : { id: l.id, state: l.state, applied_at: l.applied_at },
+      };
     });
     const first = open[0];
     return {
@@ -170,7 +185,9 @@ export class CommercialPolicyGovernanceService {
       if (row.status !== 'DRAFT') {
         throw new CommercialChangeRequestError('STATE_INVALID', `a ${row.status} policy version is immutable; create a new draft`, { reason: 'policy_version_not_draft', status: row.status });
       }
-      const open = await tx.commercialChangeRequest.findMany({ where: { action_type: 'POLICY_ACTIVATE', state: { in: ['DRAFT', 'PENDING_APPROVAL'] } }, select: { id: true, state: true, payload: true } });
+      // CCP-B5-R: an approved activation whose apply authority lapsed releases its draft (AD-5, AD-7).
+      if (this.changeRequests !== undefined) await this.changeRequests.expireOpenPolicyActivations(tx, ctx);
+      const open = await tx.commercialChangeRequest.findMany({ where: { action_type: 'POLICY_ACTIVATE', state: { in: [...COMMERCIAL_OPEN_STATES] } }, select: { id: true, state: true, payload: true } });
       const lockedBy = open.find((r) => (r.payload as Record<string, unknown> | null)?.['policy_version_id'] === id);
       if (lockedBy !== undefined) {
         throw new CommercialChangeRequestError('STATE_INVALID', 'the draft is under an open activation request', { reason: 'policy_version_locked', open_request_id: lockedBy.id, open_state: lockedBy.state });

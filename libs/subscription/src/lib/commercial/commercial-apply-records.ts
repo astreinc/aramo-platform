@@ -60,6 +60,13 @@ export const APPLY_EXPLANATIONS: Readonly<Record<string, string>> = {
   VERSION_NOT_PUBLISHED: 'Only a published plan version can be retired.',
   PRODUCT_NOT_REGISTERED: 'The plan version belongs to a product outside the product registry.',
   PRICE_PIN_CONFLICT: 'The plan version is already pinned to a different provider price.',
+  // CCP-B5-R — the POLICY_ACTIVATE apply (the NC-5 snapshot re-check failed; nothing was activated)
+  POLICY_TARGET_SNAPSHOT_MISSING: 'The request carries no snapshot of the policy version the approvers saw; it cannot be activated.',
+  POLICY_TARGET_NOT_FOUND: 'The policy version named in the request no longer exists.',
+  POLICY_TARGET_NOT_ACTIVATABLE: 'The policy version named in the request is no longer a draft or retired version, so it cannot be activated.',
+  POLICY_TARGET_CHANGED: 'The policy version changed after it was approved; the approvers did not see this content.',
+  POLICY_TARGET_MALFORMED: 'The policy version content does not parse as a commercial policy.',
+  POLICY_ACTIVE_CHANGED: 'Another policy version became active after this request was raised; raise a new request against the current policy.',
   UNEXPECTED: 'The apply failed unexpectedly and was rolled back; it can be retried.',
 };
 

@@ -8,6 +8,7 @@ import {
   COMMERCIAL_CHANGE_REQUEST_KINDS,
   COMMERCIAL_CHANGE_REQUEST_STATES,
   canTransitionFor,
+  isApplyExpirable,
 } from '../lib/commercial/commercial-change-request.js';
 import { CommercialChangeRequestService, type CommercialChangeRequestRow } from '../lib/commercial/commercial-change-request.service.js';
 
@@ -151,20 +152,26 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TD-MERGE-GUARD-1 
     }
   }
 
-  it('GUARD-UNION-3 a CONVERSION with a pending provider command commits in APPLYING; an A6 / CCP-B2-backend apply never does', async () => {
+  it('GUARD-UNION-3 a CONVERSION with a pending provider command commits in APPLYING; an A6 / CCP-B2-backend / CCP-B5-R POLICY_ACTIVATE apply never does', async () => {
     expect(await commitInApplying('CONVERSION', true)).toBeNull();
     expect(await commitInApplying('CONVERSION', false)).toContain('cannot commit in APPLYING without a provider command');
-    for (const a of ['SUBSCRIPTION_OPEN', 'ENTITLEMENT_GRANT', 'PLAN_VERSION_PUBLISH']) {
+    for (const a of ['SUBSCRIPTION_OPEN', 'ENTITLEMENT_GRANT', 'PLAN_VERSION_PUBLISH', 'POLICY_ACTIVATE']) {
       expect(await commitInApplying(a, false), a).toContain('cannot commit in APPLYING');
     }
   });
 
-  it('GUARD-UNION-4 (TD-MERGE-21) the A6-R lazy expiry leaves every action outside the guard-admitted APPLY_EXPIRED set alone (no DB write is attempted)', async () => {
+  it('GUARD-UNION-4 (TD-MERGE-21; CCP-B5-R) the lazy expiry evaluates exactly the guard-admitted APPLY_EXPIRED set (every applyable type, a SUPPORT_EXTENSION only when NORMAL) and leaves every other action or kind alone (no DB access is attempted)', async () => {
     const svc = new CommercialChangeRequestService(null as never, null as never, null as never, null as never);
-    const req = (action_type: string) => ({ id: ID, action_type, state: 'APPROVED', approved_at: new Date(0) }) as unknown as CommercialChangeRequestRow;
-    for (const a of ['CONVERSION', 'POLICY_ACTIVATE', 'ROLE_GRANT', 'ENTITLEMENT_REVOKE', 'SUPPORT_EXTENSION']) {
-      // A null transaction would throw on any DB access: the early return proves none is made.
-      expect(await svc.expireApplyIfDue(null as never, req(a), new Date(), { platform_tenant_id: ID, correlation_id: 'guard-union' } as never), a).toBe(false);
-    }
+    const req = (action_type: string, kind = 'NORMAL', state = 'APPROVED') => ({ id: ID, action_type, kind, state, approved_at: new Date(0) }) as unknown as CommercialChangeRequestRow;
+    const ctx = { platform_tenant_id: ID, correlation_id: 'guard-union' } as never;
+    // A null transaction would throw on any DB access: the early return proves none is made.
+    const left = [req('CREDIT'), req('DISCOUNT'), req('SUPPORT_EXTENSION', 'EXCEPTION'), req('SUPPORT_EXTENSION', 'MIGRATION'), req('CONVERSION', 'NORMAL', 'APPLYING'), req('POLICY_ACTIVATE', 'NORMAL', 'APPLYING')];
+    for (const r of left) expect(await svc.expireApplyIfDue(null as never, r, new Date(), ctx), `${r.action_type}/${r.kind}/${r.state}`).toBe(false);
+    // Every type the guard admits → APPLY_EXPIRED for is evaluated (it reads the snapshotted policy: here the null client throws).
+    const evaluated = COMMERCIAL_ACTION_TYPES.filter((a) => isApplyExpirable(a));
+    expect([...evaluated].sort()).toEqual(['CONVERSION', 'ENTITLEMENT_GRANT', 'ENTITLEMENT_REVOKE', 'PLAN_RETIRE', 'PLAN_VERSION_PUBLISH', 'POLICY_ACTIVATE', 'ROLE_GRANT', 'ROLE_REVOKE', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'SUBSCRIPTION_OPEN', 'SUPPORT_EXTENSION']);
+    for (const a of evaluated) await expect(svc.expireApplyIfDue(null as never, req(a), new Date(), ctx), a).rejects.toThrow();
+    // The predicate is the guard's: for every action x kind, APPROVED -> APPLY_EXPIRED is admitted by the live guard iff isApplyExpirable.
+    for (const a of COMMERCIAL_ACTION_TYPES) for (const k of COMMERCIAL_CHANGE_REQUEST_KINDS) expect(await probe(a, k, 'APPROVED', 'APPLY_EXPIRED'), `${a}/${k}`).toBe(isApplyExpirable(a, k));
   });
 });

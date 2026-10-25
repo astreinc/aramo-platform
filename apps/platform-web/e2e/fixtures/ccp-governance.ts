@@ -69,6 +69,7 @@ function policyList(persona: CcpPersona) {
         activated_at: null,
         retired_at: null,
         open_request: null,
+        latest_request: null,
       },
       {
         id: V1,
@@ -83,6 +84,7 @@ function policyList(persona: CcpPersona) {
         activated_at: '2026-10-23T10:00:00.000Z',
         retired_at: null,
         open_request: null,
+        latest_request: null,
       },
     ],
     active_version_id: V1,

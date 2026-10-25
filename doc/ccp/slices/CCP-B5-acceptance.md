@@ -188,3 +188,146 @@ UI revert (PBD B5 row). Backend: revert the B5 commits; no migration to compensa
 ## 12. Vocabulary result
 
 `bash scripts/verify-vocabulary.sh`: exit 0. No exemption added. The write hook flagged one Tier-2 token in an identifier during authoring; it was renamed before any gate run.
+
+## B5-R — the integration-wave follow-up (TD-B5-1 + Charter Amendment A1 AD-4 for every applyable type)
+
+Baseline `debd033d` (the integrated program). Governing: `doc/ccp/decisions.md` "Architect disposition: integration wave" and "Merge train" (TD-MERGE-GUARD-1, TD-MERGE-21/26/30); `Aramo-CCP-Charter-Amendment-A1-Apply-Deadline-v1_0-LOCKED` (AD-1…AD-8). Not committed, not pushed. **HALT conditions hit: none.**
+
+### B5-R.1 What changed
+
+**TD-B5-1 (Architect APPROVED): POLICY_ACTIVATE reaches APPLIED.**
+- The approval that completes the chain no longer applies anything; `approve()` returns `apply: null` for it. Approval evidence stays distinct from execution: the approval rows are never written by an apply.
+- The REQUESTER applies it through the existing governed command and route, `CommercialApplyService.apply` and `POST /platform/commercial/change-requests/{id}/apply`. The call is delegated to the new `CommercialPolicyApplyService` (`libs/subscription/src/lib/commercial/commercial-policy-apply.service.ts`).
+- The transaction runs in this order:
+  1. lock the request row;
+  2. APPLIED → replay;
+  3. the A1 deadline gate (`applyDeadlineGate`);
+  4. NC-5 signature re-check (`assertApplyEligible`);
+  5. the requester's live `finance_admin` role and D9 attestation (`REQUESTER_NO_LONGER_AUTHORIZED`);
+  6. APPROVED | APPLY_FAILED → APPLYING (attempt + 1);
+  7. `activatePolicyVersionInTx`, which runs the NC-5 snapshot re-check and the policy write;
+  8. `COMMERCIAL_POLICY_VERSION_ACTIVATED`;
+  9. `COMMERCIAL_CHANGE_REQUEST_APPLIED` (carries the approval evidence by reference);
+  10. APPLYING → APPLIED with `applied_at`, the same instant as `activated_at`.
+- **Refusals** (NOT_HUMAN, NOT_REQUESTER, REQUESTER_NO_LONGER_AUTHORIZED, NOT_APPROVED / an NC-5 signature refusal, INTEGRITY, APPLY_EXPIRED) change nothing and write one APPLY_REFUSED row.
+- **Failures** roll back in full and record APPLY_FAILED in a separate transaction through the shared `recordApplyFailure`. The attempt is counted, one APPLY_FAILED row is written, and the request is retryable. Failures are the NC-5 snapshot refusals and faults.
+- Requester-only (TD-B2-3): `preflight` is custom, because POLICY_ACTIVATE's requester authority is a role (`requester_scope` null, TD-A3-5). `applyActionable` is true only for the requester while the request is APPROVED or APPLY_FAILED.
+- `CommercialChangeRequestService.applyPolicyActivation` and the approve-time hook are removed.
+
+**`effect_applied_at`: DROPPED** (my choice under the disposition). It is redundant now that `applied_at` is authoritative for POLICY_ACTIVATE. It is removed from the service row and enrichment (`effectsOf` / `withEffects`), the DTO, the controller, the OpenAPI `CommercialChangeRequest` schema (property and required list) and the consumer pact.
+
+**AD-4 for every applyable type.**
+- `isApplyExpirable(action_type, kind)` is now exported from `commercial-change-request.ts`. Its set is A6 ∪ B2-backend ∪ {POLICY_ACTIVATE, ROLE_GRANT, ROLE_REVOKE, ENTITLEMENT_REVOKE, CONVERSION, SUPPORT_EXTENSION}, with SUPPORT_EXTENSION only when its kind is NORMAL.
+- It gates A6-R's shared `expireApplyIfDue` and `lazyExpireApply` (TD-MERGE-21 scoping: still exactly the guard-admitted set; now passed `req.kind`).
+- `canTransitionFor` admits → APPLY_EXPIRED from APPROVED / APPLY_FAILED for that set, never from APPLYING. `COMMERCIAL_B5R_POLICY_APPLY_TRANSITIONS` holds the POLICY_ACTIVATE apply pairs.
+- Wiring:
+  - **A7 revoke and A8 NORMAL extension:** already behind `applyDeadlineGate` in `CommercialApplyService`; they now expire because the predicate widened.
+  - **A9 `applyRoleChange`:** a deadline gate right after lock and integrity. It refuses an APPLY_EXPIRED request; it commits an expiry that is due and returns `{applied: false, reason: 'APPLY_EXPIRED'}` with no second audit row.
+  - **C2:** `assertBeforeApplyDeadline` (a refusal with no state change) is replaced by the gate-commit-refuse pattern from APPROVED / APPLY_FAILED. It sits after the APPLYING branch, so a pending-provider CONVERSION never expires.
+  - **B5 policy path:** the gate in `CommercialPolicyApplyService`. Slot contention uses `expireOpenPolicyActivations`, called in the POLICY_ACTIVATE create and the draft edit under the policy lock. The policy screen read uses `lazyExpirePolicyActivations`, called by `CommercialPolicyGovernanceService.list`.
+  - **Reads and the tenant × product slot:** unchanged code paths (`lazyExpireApply`, `expireOpenFor`), now covering the new types.
+- The code is `APPLY_EXPIRED` and the event is `COMMERCIAL_CHANGE_REQUEST_APPLY_EXPIRED` (A6-R's), exactly one per expiry.
+
+**Guard (TD-MERGE-GUARD-1): edited only in the union file, in place.** `20261027000000_ccp_guard_union/migration.sql` gets a labelled `[union block: CCP-B5-R …]` set, and the header lists it:
+- POLICY_ACTIVATE APPROVED | APPLY_FAILED → APPLYING → APPLIED | APPLY_FAILED;
+- APPLY_EXPIRED from APPROVED / APPLY_FAILED for POLICY_ACTIVATE, ROLE_GRANT, ROLE_REVOKE, ENTITLEMENT_REVOKE and CONVERSION, and for SUPPORT_EXTENSION when `kind = 'NORMAL'`;
+- POLICY_ACTIVATE attempt / `applied_at` rules (the A6 rules);
+- POLICY_ACTIVATE APPLIED check: the target `payload->>'policy_version_id'` must be ACTIVE.
+
+**New migration `20261027000200_ccp_b5r_policy_activate_apply`.** One deferred constraint trigger, `commercial_change_request_no_applying_commit_b5r`, scoped to POLICY_ACTIVATE. It reuses A6's `guard_commercial_change_request_not_applying()`, so a POLICY_ACTIVATE never commits in APPLYING. Role changes are left as A9 defined them.
+
+**`20261027000100_ccp_constraint_union`: unchanged.** POLICY_ACTIVATE writes no `CommercialChangeApplication` row. The policy rows and the two audit ledgers are its record.
+
+**Policy screen (`PolicyView`).**
+- "Apply activation" (APPROVED) or "Retry apply" (APPLY_FAILED) appears only when the version's `open_request.apply_actionable` is true. It calls `POST …/{id}/apply`, then reloads; the server's `details.explanation` is shown on a refusal or failure.
+- The hint shows "Request CR-… · applied {day}" or "Request CR-… · apply expired, request activation again".
+- `STATE_LABEL` gains APPLY_EXPIRED.
+- The API adds per version `latest_request {id, state, applied_at}` and `open_request.apply_actionable`. Open now means `COMMERCIAL_OPEN_STATES`.
+
+### B5-R.2 Files (exact; `git status --short -uall`: 38 paths = 35 modified + 3 new; `git diff --shortstat` before this section: 34 files, 686 insertions, 293 deletions)
+
+- **New:**
+  - `libs/subscription/prisma/migrations/20261027000200_ccp_b5r_policy_activate_apply/migration.sql`
+  - `libs/subscription/src/lib/commercial/commercial-policy-apply.service.ts`
+  - `libs/subscription/src/tests/ccp-b5r-apply-expiry.integration.spec.ts`
+- **Modified, backend:**
+  - `prisma/migrations/20261027000000_ccp_guard_union/migration.sql`
+  - `src/lib/commercial/{commercial-change-request.ts, commercial-change-request.service.ts, commercial-apply.service.ts, commercial-apply-records.ts (6 POLICY_* explanations), commercial-conversion.service.ts, commercial-policy-governance.service.ts}`
+  - `src/lib/subscription.module.ts`
+  - `src/index.ts`
+- **Modified, platform-admin:** `platform-commercial-change-request.controller.ts`, `platform-commercial-governance.controller.ts`, `dto/commercial-change-request.dto.ts`, `dto/commercial-governance.dto.ts`; `openapi/platform.yaml` (new schema `CommercialPolicyLatestRequestRef`).
+- **Modified, web:** `apps/platform-web/src/commercial-governance/{PolicyView.tsx, governance-api.ts, governance-model.ts, governance-errors.ts, governance.spec.tsx}`, `e2e/fixtures/ccp-governance.ts`.
+- **Modified, Pact:** `pact/consumers/platform-web-consumer/src/platform-governance.consumer.test.ts` (+1 interaction; `effect_applied_at` removed; `latest_request` not pinned, TD-B5R-6), `pact/provider/src/verify-platform-admin.ts` (+1 state).
+- **Modified, tests:**
+  - `libs/subscription/src/tests/{ccp-b5-governance.integration.spec.ts, ccp-b5-governance.spec.ts, ccp-guard-union.integration.spec.ts, ccp-a9-role-change.spec.ts (A9-U-4), ccp-a9-bootstrap-role-change.integration.spec.ts (A9-POL-1), ccp-c2-conversion.spec.ts (C2-U-1), support/ccp-a6.ts (harness: policyApply)}`
+  - `apps/platform-admin/src/tests/{ccp-b5-governance-routes.integration.spec.ts, ccp-b5-governance-authorization.spec.ts}`
+- **Generated:** `doc/generated/repo-map.{files,coupling,projects}.json`; this record.
+
+### B5-R.3 Tests (all exact, Docker healthy, after the last source edit unless noted)
+
+| Run | Result |
+|---|---|
+| subscription, full incl. integration (`ARAMO_RUN_INTEGRATION=1 vitest run --root libs/subscription --maxWorkers=2`) | **46 / 46 files, 722 / 722** |
+| subscription unit only | 18 passed, 28 skipped files; 302 passed, 420 skipped |
+| guard union (`ccp-guard-union.integration.spec.ts`) | **4 / 4**. GUARD-UNION-1: 4,200 probes (14 × 3 × 10 × 10), live guard = `canTransitionFor`. GUARD-UNION-3 adds POLICY_ACTIVATE "cannot commit in APPLYING". GUARD-UNION-4 is inverted: every guard-admitted type is evaluated (12), and CREDIT / DISCOUNT / EXCEPTION / MIGRATION SUPPORT_EXTENSION / APPLYING rows are left alone; APPROVED → APPLY_EXPIRED is admitted by the live guard iff `isApplyExpirable`, over 14 × 3 pairs |
+| negative control (union file copied aside, the B5-R NORMAL SUPPORT_EXTENSION APPLY_EXPIRED branch removed, restored by copy) | GUARD-UNION-1 and -4 fail on exactly `SUPPORT_EXTENSION/NORMAL APPROVED/APPLY_FAILED -> APPLY_EXPIRED: db=false ts=true` |
+| `ccp-b5r-apply-expiry.integration.spec.ts` (new) | **7 / 7**. See the list below this table |
+| `ccp-b5-governance.integration.spec.ts` (now on the full chain) | **13 / 13**. See the list below this table |
+| platform-admin, full incl. integration | 37 files, 731 tests: 730 passed and 1 failed on the first run (B5-RI-ACTIVATE asserted `apply_attempts`, which the request DTO does not carry; assertion corrected). Re-run of `ccp-b5-governance-routes.integration.spec.ts`: **4 / 4**. B5-RI-ACTIVATE: the approval applies nothing; `open_request.apply_actionable` true for the requester only; owner and second finance_admin get 403 `not_requester`; the requester gets 200 APPLIED, then a replay; `latest_request` APPLIED |
+| platform-admin `ccp-b5-governance-authorization.spec.ts` | **44 / 44** (mock gains `latest_request`) |
+| platform-web unit (full) | **44 / 44 files, 479 / 479**, including B5R-W-1…4 (Apply button follows `apply_actionable`; APPLIED hint; Retry apply plus the server explanation; APPLY_EXPIRED hint with Request activation re-enabled) |
+| Pact consumer (generated `pact/pacts/platform-web-platform-admin.json` deleted first; `vitest run --root pact/consumers/platform-web-consumer --maxWorkers=1`) | 3 / 3 files, 159 / 159 tests; pact written with **160** interactions (+1 CCP-B5-R: "a policy activation apply refused for a non-requester", 403 `not_requester`) |
+| Pact provider (`ARAMO_RUN_PACT_PROVIDER=1 vitest run --root pact/provider src/verify-platform-admin.ts`) | **160 / 160** interactions verified; 2 / 2 tests (coverage gate pass) |
+| parity / axe / keyboard (`PW_E2E_PORT=4405`, file filters only) | 18 / 18; 9 / 9; 3 / 3 (= 30 / 30); 0 baselines modified |
+| lint (`aramo-platform-web platform-admin subscription aramo-pact-provider platform-web-consumer-pact`, `--skip-nx-cache`) | 0 errors (warnings pre-existing; 1 `eslint-disable` removed, 0 added) |
+| build, CI-simulated (`subscription platform-admin aramo-platform-web api sign-service`, `--skip-nx-cache`) | 5 projects + 77 dependency tasks succeeded; `dist` carries `commercial-policy-apply.service.js` and "Apply activation" |
+| `contract-parity:check` (temporary index) | 706 live routes (704 governed), 537 OpenAPI ops, 185 transitional-debt, 0 orphan, 0 unclassified (unchanged: no new route) |
+| `openapi:drift-check` / `orphan-scopes:check` + self-test / `error-codes:check` / `redocly lint` | ok (9 files) / ok / ok / ok / valid, 2 pre-existing warnings |
+| `verify-vocabulary.sh` | exit 0 (no exemption added) |
+| `repo-map:generate` / `repo-map:check` (temporary index) | 3 files regenerated (+21 lines); ok |
+
+**`ccp-b5r-apply-expiry.integration.spec.ts` (7 tests):**
+- **B5R-EXP-1:** 6 types × {APPROVED, APPLY_FAILED} = 12 expiries. Each is still open at deadline − 1 ms and becomes APPLY_EXPIRED at the deadline (the half-open window), with one event whose payload is checked. It is then terminal (the guard refuses any transition out), and a second pass writes nothing.
+- **B5R-NEVER-1:** a v1 snapshot never expires, for all 6 types (checked 10,000 h after approval).
+- **B5R-NEVER-2:** a CONVERSION in APPLYING never expires: not through the helper, the apply, a read or the guard. A bounded EXCEPTION is not evaluated, and the guard refuses it.
+- **B5R-WIRE-1:** each apply path:
+  - at deadline − 1 ms: passes the gate (refused later, with no state change);
+  - at the deadline: commits APPLY_EXPIRED and refuses with no APPLY_REFUSED row;
+  - on a later attempt: an audited APPLY_EXPIRED refusal.
+- **B5R-WIRE-2:** lazy expiry on `get` and `list`.
+- **B5R-WIRE-3:** tenant × product slot release for CONVERSION, ENTITLEMENT_REVOKE and NORMAL SUPPORT_EXTENSION.
+- **B5R-POL-1:** POLICY_ACTIVATE under the v2 snapshot:
+  - the governance read expires it and unlocks the draft;
+  - the expired request refuses its apply;
+  - an APPROVED request holds the slot until its deadline, and a create at the deadline expires it;
+  - applied at deadline − 1 ms → APPLIED.
+
+**`ccp-b5-governance.integration.spec.ts` (13 tests):**
+- **B5-APPLY-1:** requester-only apply. Owner, second finance_admin and a service principal are refused, one audit row each. APPLIED with `applied_at` = `activated_at`; signatures byte-identical; replay writes nothing; `effect_applied_at` absent.
+- **B5-APPLY-2:** two injected faults (after the policy write, before APPLIED) → APPLY_FAILED, with the policy rolled back each time. Then the retry → APPLIED (attempt 3). The DB backstops: no commit in APPLYING; no APPLIED while the target is DRAFT.
+- **B5-APPLY-3:** the requester's role is revoked and then restored.
+- **B5-NC5-a:** signature refusal; no state change.
+- **B5-NC5-b:** `POLICY_ACTIVE_CHANGED` → APPLY_FAILED, retry fails the same way.
+- **B5-NC5-c:** the draft is locked while PENDING and while APPROVED; a bypass write gives `POLICY_TARGET_CHANGED`.
+- **B5-ROLLBACK-1**, and **B5-CREATE-1** (the slot is held by APPROVED and APPLY_FAILED; `open_request.apply_actionable` per caller; `latest_request` APPLIED).
+- The 6 draft / export / roster / role tests, unchanged.
+
+**Not run:**
+- the full `ARAMO_RUN_INTEGRATION=1 nx run api` (no `apps/api` source change; standing PO rule: CI runs it);
+- the other 4 Pact verifiers (only the platform-admin verifier and its pact changed);
+- the full PLATFORM-UX-1 visual / a11y / keyboard suites.
+
+### B5-R.4 Typed divergences and decisions
+
+| ID | Item | Disposition |
+|---|---|---|
+| TD-B5R-1 | `effect_applied_at` **dropped** (not kept as a derived field): `applied_at` is authoritative for every applied request now. A DTO, OpenAPI and Pact shape change on `CommercialChangeRequest` (field removed). Only B5 introduced it, and only the B5 consumer interaction named it. | Disposition choice, recorded. |
+| TD-B5R-2 | The NC-5 **snapshot** refusals (`TARGET_*`, `POLICY_ACTIVE_CHANGED`) are now **failures** (APPLY_FAILED, retryable, attempt counted), following the A6-R taxonomy ("a guard refused its substance"). They carry distinct stable codes, `POLICY_TARGET_SNAPSHOT_MISSING / _NOT_FOUND / _NOT_ACTIVATABLE / _CHANGED / _MALFORMED` and `POLICY_ACTIVE_CHANGED`, so they never collide with the subscription `TARGET_*` explanations, plus `detail.snapshot_refusal`. The NC-5 **signature** refusals stay refusals (no state change). Nothing is activated in either case (fail closed, as B5 C-2). | Follows "keep the retry and APPLY_FAILED semantics". |
+| TD-B5R-3 | The one-open policy rule and the draft lock now use `COMMERCIAL_OPEN_STATES` (DRAFT, PENDING_APPROVAL, APPROVED, APPLYING, APPLY_FAILED), replacing DRAFT / PENDING only. An approved but not yet applied activation holds the slot until APPLIED, or APPLY_EXPIRED (lazy, AD-5). Consequence: under a v1 snapshot (no deadline) an APPLY_FAILED activation holds the slot until its requester retries it to APPLIED. Persistent failures are effectively unreachable while the draft lock and the slot hold (the target cannot change and no other activation can commit). Reported because a v1-era stuck failure needs a later policy (v2+) or a new disposition. | For the Lead's awareness. |
+| TD-B5R-4 | The A9 role apply has no HTTP retry route (TD-A9-3), so its expiry is reached by the in-process `applyRoleChange`, reads and nothing else. A role request holds no slot. The guard admits APPLY_FAILED → APPLY_EXPIRED for roles (per AD-4's "from APPROVED / APPLY_FAILED"), although APPLY_FAILED stays unreachable for them. | Mirror = guard (GUARD-UNION-1). |
+| TD-B5R-5 | C2's expiry check moved before `assertApplyEligible` (it ran after it), matching the A6 order ("the apply deadline, before anything else"). An expired CONVERSION now transitions to APPLY_EXPIRED; it no longer refuses with no state change. | AD-4 / AD-7. |
+| TD-B5R-6 | The consumer pact does not pin `latest_request` on the versions body: it depends on the request history the provider states leave, and the provider's extra keys are allowed. The OpenAPI schema requires it, and the route integration test asserts it. | Pact order-independence (as TD-B5-18). |
+| TD-B5R-7 | `ActivationDialog` copy ("becomes the active policy once approved") is unchanged, to keep the 18 pinned parity baselines. After approval the requester applies it (the screen shows "Apply activation"). | Copy follow-up if the design is updated. |
+| TD-B5R-8 | `CommercialPolicyGovernanceService` takes `CommercialChangeRequestService` as an `@Optional()` 5th constructor argument (lazy expiry on the read and the draft edit). Nest injects it in `SubscriptionModule`; the manual constructions in specs pass it where expiry matters. | — |
+
+The rollback note in §9 is superseded for POLICY_ACTIVATE: a failed apply is now APPLY_FAILED and retryable by its requester through `POST …/apply`.

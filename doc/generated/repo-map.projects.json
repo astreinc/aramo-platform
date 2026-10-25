@@ -2177,6 +2177,7 @@
     ],
     "@aramo/subscription": [
       "A6_APPLICABLE_ACTIONS",
+      "APPLY_EXPIRABLE_ACTIONS",
       "APPLY_EXPLANATIONS",
       "APPLY_SERVICE_ACTIONS",
       "APPROVAL_REFUSALS",
@@ -2245,6 +2246,7 @@
       "COMMERCIAL_AUDIT_EXPORT_COLUMNS",
       "COMMERCIAL_AUDIT_EXPORT_MAX_ROWS",
       "COMMERCIAL_AUDIT_MAX_LIMIT",
+      "COMMERCIAL_B5R_POLICY_APPLY_TRANSITIONS",
       "COMMERCIAL_C2_CONVERSION_TRANSITIONS",
       "COMMERCIAL_CATALOG_APPLY_FAULT_HOOK",
       "COMMERCIAL_CHAIN_PANEL",
@@ -2252,6 +2254,7 @@
       "COMMERCIAL_CHANGE_REQUEST_STATES",
       "COMMERCIAL_CLOCK",
       "COMMERCIAL_OPEN_STATES",
+      "COMMERCIAL_POLICY_APPLY_FAULT_HOOK",
       "COMMERCIAL_POLICY_FORMAT_VERSION",
       "COMMERCIAL_POLICY_KEYS",
       "COMMERCIAL_REQUEST_PRODUCT_KEYS",
@@ -2296,6 +2299,7 @@
       "CommercialOperatorRepository",
       "CommercialOperatorRosterService",
       "CommercialPayloadError",
+      "CommercialPolicyApplyService",
       "CommercialPolicyGovernanceService",
       "CommercialPolicyInputError",
       "CommercialPolicyRepository",
@@ -2334,6 +2338,7 @@
       "PLATFORM_LAST_OWNER_DB_MARKER",
       "PLATFORM_OWNER_BOOTSTRAP_EVENT",
       "PLATFORM_OWNER_ROLE_KEY",
+      "POLICY_APPLY_FAILURE_CODES",
       "POLICY_AUTHOR_ROLES",
       "POLICY_EDITABLE_KEYS",
       "POLICY_EDIT_RANGES",
@@ -2420,6 +2425,7 @@
       "inAppContextRef",
       "invoicePaymentState",
       "isA6Applicable",
+      "isApplyExpirable",
       "isApplyServiceAction",
       "isApprovalExpired",
       "isCatalogApplicable",
@@ -7418,6 +7424,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-b5-governance.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-b5r-apply-expiry.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },

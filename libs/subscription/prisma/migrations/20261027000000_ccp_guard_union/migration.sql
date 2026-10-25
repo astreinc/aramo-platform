@@ -21,6 +21,11 @@
 --
 -- Blocks, in order: A3 base; A9 role pair; A6; TD-A6-25 generic "APPLIED needs applied_at";
 -- CCP-B2-backend catalog; A6-R APPLY_EXPIRED. C2 CONVERSION (20261026060000); A7 ENTITLEMENT_REVOKE + the separate A7 active-row block, TD-A7-2 (20261026000100); A8 SUPPORT_EXTENSION EXCEPTION + kind rules (20261026010000).
+-- CCP-B5-R (TD-B5-1 + Charter Amendment A1 AD-4 for every applyable type; this file only, no slice
+-- migration re-creates the function for it): POLICY_ACTIVATE apply pairs, attempt rules and APPLIED
+-- check; APPLY_EXPIRED from APPROVED / APPLY_FAILED for POLICY_ACTIVATE, ROLE_GRANT, ROLE_REVOKE,
+-- ENTITLEMENT_REVOKE, CONVERSION and a NORMAL SUPPORT_EXTENSION. Its deferred "never commit in
+-- APPLYING" trigger for POLICY_ACTIVATE is in 20261027000200_ccp_b5r_policy_activate_apply.
 -- Carries a dollar-quoted body: apply whole-file. Design approval is not production migration
 -- authority (ruling A0-C15).
 
@@ -126,6 +131,22 @@ BEGIN
                                        'PLAN_VERSION_PUBLISH', 'PLAN_RETIRE')
                  AND OLD."state" IN ('APPROVED', 'APPLY_FAILED') AND NEW."state" = 'APPLY_EXPIRED')
              -- ==== END CCP-A6-R apply deadline ====
+             -- [union block: CCP-B5-R, 20261027000000 (this file) + 20261027000200]
+             -- ==== BEGIN CCP-B5-R ====
+             -- TD-B5-1: POLICY_ACTIVATE applies with the A6 apply set (APPLIED only in the
+             -- transaction that activates the version; the APPLY_FAILED -> APPLYING retry).
+             OR (NEW."action_type" = 'POLICY_ACTIVATE'
+                 AND ((OLD."state" IN ('APPROVED', 'APPLY_FAILED') AND NEW."state" = 'APPLYING')
+                   OR (OLD."state" = 'APPLYING' AND NEW."state" IN ('APPLIED', 'APPLY_FAILED'))))
+             -- Charter Amendment A1 AD-4, every remaining applyable type: APPLY_EXPIRED only from
+             -- APPROVED / APPLY_FAILED (never APPLYING — a CONVERSION pending its provider command
+             -- never expires); a SUPPORT_EXTENSION only when NORMAL (a bounded EXCEPTION is never
+             -- APPROVED).
+             OR (NEW."action_type" IN ('POLICY_ACTIVATE', 'ROLE_GRANT', 'ROLE_REVOKE', 'ENTITLEMENT_REVOKE', 'CONVERSION')
+                 AND OLD."state" IN ('APPROVED', 'APPLY_FAILED') AND NEW."state" = 'APPLY_EXPIRED')
+             OR (NEW."action_type" = 'SUPPORT_EXTENSION' AND NEW."kind" = 'NORMAL'
+                 AND OLD."state" IN ('APPROVED', 'APPLY_FAILED') AND NEW."state" = 'APPLY_EXPIRED')
+             -- ==== END CCP-B5-R ====
         ) THEN
             RAISE EXCEPTION 'CommercialChangeRequest state % -> % is not allowed', OLD."state", NEW."state";
         END IF;
@@ -190,6 +211,20 @@ BEGIN
         -- [union block: CCP-B2-backend attempt rules, 20261025220000]
         IF NEW."action_type" IN ('PLAN_VERSION_PUBLISH', 'PLAN_RETIRE') THEN
         -- CCP-B2-backend: the same attempt and applied_at rules as the A6 branch.
+        IF NEW."state" = 'APPLYING' THEN
+            IF NEW."apply_attempts" <> OLD."apply_attempts" + 1 THEN
+                RAISE EXCEPTION 'CommercialChangeRequest APPLYING must count the attempt (apply_attempts % -> %)', OLD."apply_attempts", NEW."apply_attempts";
+            END IF;
+        ELSIF NEW."apply_attempts" IS DISTINCT FROM OLD."apply_attempts" THEN
+            RAISE EXCEPTION 'CommercialChangeRequest apply_attempts changes only on entering APPLYING';
+        END IF;
+        IF NEW."state" <> 'APPLIED' AND NEW."applied_at" IS DISTINCT FROM OLD."applied_at" THEN
+            RAISE EXCEPTION 'CommercialChangeRequest applied_at is set only by APPLIED';
+        END IF;
+        END IF;
+        -- [union block: CCP-B5-R POLICY_ACTIVATE attempt rules, 20261027000000 (this file)]
+        IF NEW."action_type" = 'POLICY_ACTIVATE' THEN
+        -- CCP-B5-R: the A6 attempt and applied_at rules, for the policy activation apply.
         IF NEW."state" = 'APPLYING' THEN
             IF NEW."apply_attempts" <> OLD."apply_attempts" + 1 THEN
                 RAISE EXCEPTION 'CommercialChangeRequest APPLYING must count the attempt (apply_attempts % -> %)', OLD."apply_attempts", NEW."apply_attempts";
@@ -398,6 +433,15 @@ BEGIN
             SELECT "status" INTO ver_status FROM "subscription"."PlanVersion" WHERE "id" = capp."plan_version_id";
             IF ver_status IS DISTINCT FROM (CASE NEW."action_type" WHEN 'PLAN_VERSION_PUBLISH' THEN 'PUBLISHED' ELSE 'RETIRED' END) THEN
                 RAISE EXCEPTION 'CommercialChangeRequest APPLIED: the plan version is % after %', coalesce(ver_status, 'missing'), NEW."action_type";
+            END IF;
+        END IF;
+        -- [union block: CCP-B5-R POLICY_ACTIVATE APPLIED check, 20261027000000 (this file)]
+        IF NEW."state" = 'APPLIED' AND NEW."action_type" = 'POLICY_ACTIVATE' THEN
+            -- CCP-B5-R (TD-B5-1): APPLIED exists only when the target version is ACTIVE in the same
+            -- transaction (the activation committed with it).
+            SELECT "status" INTO ver_status FROM "subscription"."CommercialPolicyVersion" WHERE "id" = (NEW."payload" ->> 'policy_version_id')::uuid;
+            IF ver_status IS DISTINCT FROM 'ACTIVE' THEN
+                RAISE EXCEPTION 'CommercialChangeRequest APPLIED: the policy version is % after POLICY_ACTIVATE', coalesce(ver_status, 'missing');
             END IF;
         END IF;
     ELSE

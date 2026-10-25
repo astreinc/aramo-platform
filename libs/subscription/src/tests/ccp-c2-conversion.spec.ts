@@ -38,14 +38,15 @@ const V1_CONTENT = {
 };
 
 describe('CCP-C2 conversion (pure)', () => {
-  it('C2-U-1 CONVERSION adds exactly the four apply pairs to the A3 table (DB guard mirror); APPLIED stays terminal', () => {
+  it('C2-U-1 CONVERSION adds exactly the four apply pairs plus the Amendment A1 AD-4 expiry from APPROVED / APPLY_FAILED (CCP-B5-R; never from APPLYING) to the A3 table (DB guard mirror); APPLIED stays terminal', () => {
     const extra: string[] = [];
     for (const f of COMMERCIAL_CHANGE_REQUEST_STATES) {
       for (const t of COMMERCIAL_CHANGE_REQUEST_STATES) {
         if (canTransitionFor('CONVERSION', f as CommercialChangeRequestState, t as CommercialChangeRequestState) && !COMMERCIAL_A3_TRANSITIONS[f as CommercialChangeRequestState].includes(t as CommercialChangeRequestState)) extra.push(`${f}->${t}`);
       }
     }
-    expect(extra.sort()).toEqual(['APPLYING->APPLIED', 'APPLYING->APPLY_FAILED', 'APPLY_FAILED->APPLYING', 'APPROVED->APPLYING']);
+    expect(extra.sort()).toEqual(['APPLYING->APPLIED', 'APPLYING->APPLY_FAILED', 'APPLY_FAILED->APPLYING', 'APPLY_FAILED->APPLY_EXPIRED', 'APPROVED->APPLYING', 'APPROVED->APPLY_EXPIRED']);
+    expect(canTransitionFor('CONVERSION', 'APPLYING', 'APPLY_EXPIRED')).toBe(false);
     for (const t of COMMERCIAL_CHANGE_REQUEST_STATES) expect(canTransitionFor('CONVERSION', 'APPLIED', t as CommercialChangeRequestState)).toBe(false);
   });
 

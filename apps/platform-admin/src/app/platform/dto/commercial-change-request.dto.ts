@@ -63,14 +63,8 @@ export interface CommercialChangeRequestDto {
   rejection_reason: string | null;
   withdrawn_at: string | null;
   expired_at: string | null;
-  /** CCP-A9: set when a governed role change was applied (state APPLIED). */
+  /** Set when the request was applied (state APPLIED): a governed apply (A6, A7, A8, B2, C2), a role change (A9) or a policy activation (CCP-B5-R). */
   applied_at: string | null;
-  /**
-   * CCP-B5 — when the request's effect was applied: applied_at for a request that reached
-   * APPLIED, else the time of its COMMERCIAL_CHANGE_REQUEST_APPLIED event (an applied
-   * POLICY_ACTIVATE stays APPROVED; TD-B5-1). null when nothing was applied.
-   */
-  effect_applied_at: string | null;
 }
 
 /** CCP-A9: the role-change apply that follows the completing approval (null otherwise). */

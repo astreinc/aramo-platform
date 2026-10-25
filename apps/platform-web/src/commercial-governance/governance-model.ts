@@ -244,6 +244,7 @@ export const STATE_LABEL: Readonly<Record<string, string>> = {
   REJECTED: 'Rejected',
   EXPIRED: 'Expired',
   WITHDRAWN: 'Withdrawn',
+  APPLY_EXPIRED: 'Apply expired',
 };
 
 // ---- people -----------------------------------------------------------------------------

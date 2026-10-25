@@ -78,29 +78,28 @@ describe('CCP-A9 role-change payload', () => {
 });
 
 describe('CCP-A9 narrow apply transitions (TD-A9-1)', () => {
-  it('A9-U-4 the A3 table is unchanged (exactly 6 allowed pairs); role actions add exactly APPROVED → APPLYING and APPLYING → APPLIED; the A6 and CCP-B2-backend actions add the A6 apply set with A6-R APPLY_EXPIRED; CONVERSION (C2), ENTITLEMENT_REVOKE (A7) and the NORMAL SUPPORT_EXTENSION (A8) add the apply set without it; a bounded EXCEPTION SUPPORT_EXTENSION makes exactly its two moves; no other action reaches APPLYING; APPLY_FAILED unreachable for role actions (merge train)', () => {
+  it('A9-U-4 the A3 table is unchanged (exactly 6 allowed pairs); role actions add exactly APPROVED → APPLYING and APPLYING → APPLIED plus the AD-4 expiry; every other applyable action (A6, CCP-B2-backend, POLICY_ACTIVATE, CONVERSION, ENTITLEMENT_REVOKE, the NORMAL SUPPORT_EXTENSION) adds the A6 apply set with APPLY_EXPIRED (CCP-B5-R); a bounded EXCEPTION SUPPORT_EXTENSION makes exactly its two moves; no other action reaches APPLYING; APPLY_FAILED unreachable for role actions', () => {
     const states = COMMERCIAL_CHANGE_REQUEST_STATES;
     const a3 = (f: (typeof states)[number], t: (typeof states)[number]) => COMMERCIAL_A3_TRANSITIONS[f].includes(t);
     let base = 0;
     for (const f of states) for (const t of states) if (a3(f, t)) base += 1;
     expect(base).toBe(6);
     expect(Object.values(COMMERCIAL_A3_TRANSITIONS).flat()).not.toContain('APPLYING');
-    const A6 = ['SUBSCRIPTION_OPEN', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'ENTITLEMENT_GRANT'];
-    // CCP-B2-backend — the catalog publish / retire apply carries the A6 apply set too.
-    const B2 = ['PLAN_VERSION_PUBLISH', 'PLAN_RETIRE'];
+    // CCP-B5-R (TD-B5-1; Charter Amendment A1 AD-4 for every applyable type).
+    const APPLY_SET = ['SUBSCRIPTION_OPEN', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'ENTITLEMENT_GRANT', 'PLAN_VERSION_PUBLISH', 'PLAN_RETIRE', 'POLICY_ACTIVATE', 'CONVERSION', 'ENTITLEMENT_REVOKE', 'SUPPORT_EXTENSION'];
+    const EXPIRY = ['APPLY_FAILED->APPLY_EXPIRED', 'APPROVED->APPLY_EXPIRED'];
     const A6_SET = ['APPLYING->APPLIED', 'APPLYING->APPLY_FAILED', 'APPLY_FAILED->APPLYING', 'APPROVED->APPLYING'];
-    const APPLY_SET = ['SUBSCRIPTION_OPEN', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'ENTITLEMENT_GRANT', 'SUPPORT_EXTENSION'];
     for (const action of Object.keys(COMMERCIAL_ACTIONS)) {
       const extra: string[] = [];
       for (const f of states) for (const t of states) if (canTransitionFor(action, f, t) && !a3(f, t)) extra.push(`${f}->${t}`);
       const role = action === 'ROLE_GRANT' || action === 'ROLE_REVOKE';
-      // Merge train: CONVERSION (C2), ENTITLEMENT_REVOKE (A7) and the NORMAL SUPPORT_EXTENSION (A8) add the
-      // apply set without A6-R's APPLY_EXPIRED (the guard names only the A6 + B2-backend types).
-      const applySet = APPLY_SET.includes(action) || action === 'CONVERSION' || action === 'ENTITLEMENT_REVOKE';
+      const applySet = APPLY_SET.includes(action);
       expect(extra.sort(), action).toEqual(
-        role ? ['APPLYING->APPLIED', 'APPROVED->APPLYING'] : A6.includes(action) || B2.includes(action) ? ['APPLYING->APPLIED', 'APPLYING->APPLY_FAILED', 'APPLY_FAILED->APPLYING', 'APPLY_FAILED->APPLY_EXPIRED', 'APPROVED->APPLYING', 'APPROVED->APPLY_EXPIRED'] : applySet ? A6_SET : [],
+        role ? ['APPLYING->APPLIED', ...EXPIRY, 'APPROVED->APPLYING'].sort() : applySet ? [...A6_SET, ...EXPIRY].sort() : [],
       );
-      if (!applySet && !A6.includes(action) && !B2.includes(action)) for (const f of states) expect(canTransitionFor(action, f, 'APPLY_FAILED'), `${action} ${f}`).toBe(false);
+      if (!applySet) for (const f of states) expect(canTransitionFor(action, f, 'APPLY_FAILED'), `${action} ${f}`).toBe(false);
+      // AD-4: never from APPLYING, for any action.
+      expect(canTransitionFor(action, 'APPLYING', 'APPLY_EXPIRED'), action).toBe(false);
     }
     // CCP-A8 — kind EXCEPTION: exactly the two bounded moves (no A3 base move, no APPLY_FAILED).
     const exception: string[] = [];

@@ -34,5 +34,8 @@ export function governanceErrorText(e: unknown): string {
   const reason = e.details?.['reason'];
   if (typeof reason === 'string' && REASON_COPY[reason] !== undefined)
     return REASON_COPY[reason] as string;
+  // CCP-B5-R — the governed apply's refusals and failures carry operator copy.
+  const explanation = e.details?.['explanation'];
+  if (typeof explanation === 'string' && explanation.length > 0) return explanation;
   return typeof reason === 'string' && reason.length > 0 ? `${e.message} (${reason})` : e.message;
 }

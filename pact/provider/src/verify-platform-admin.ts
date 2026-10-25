@@ -746,6 +746,23 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             const out = await asRole<{ version: { id: string } }>('finance_admin', 'POST', '/platform/commercial/policy-versions', { source_version_id: '019a0000-0000-7000-8000-0000000cc201' });
             return { versionId: out.version.id };
           },
+          // CCP-B5-R — a POLICY_ACTIVATE requested by finance_admin and then withdrawn (it holds no
+          // policy slot and locks no draft); the apply route refuses any other caller (not_requester).
+          'a commercial policy activation request by a finance admin exists': async () => {
+            let draft = (await db.query(`SELECT id, content_checksum FROM subscription."CommercialPolicyVersion" WHERE status = 'DRAFT'`)).rows[0] as { id: string; content_checksum: string } | undefined;
+            if (draft === undefined) {
+              const out = await asRole<{ version: { id: string; content_checksum: string } }>('finance_admin', 'POST', '/platform/commercial/policy-versions', { source_version_id: '019a0000-0000-7000-8000-0000000cc201' });
+              draft = out.version;
+            }
+            const cr = await asRole<{ request: { id: string } }>('finance_admin', 'POST', '/platform/commercial/change-requests', {
+              action_type: 'POLICY_ACTIVATE',
+              payload: { policy_version_id: draft.id, target_content_checksum: draft.content_checksum },
+              reason: 'Activate the reviewed draft\n\nEvidence: pact',
+              idempotency_key: `pact-b5r-state-${String(++seq).padStart(4, '0')}`,
+            });
+            await asRole('finance_admin', 'POST', `/platform/commercial/change-requests/${cr.request.id}/withdraw`);
+            return { requestId: cr.request.id };
+          },
           // CCP-B4 — enterprise contract records.
           'an enterprise contract exists': async () => ({ contractId: await recordedContract() }),
           // CCP-C2 — an APPROVED governed → self-service conversion (release not yet applied).

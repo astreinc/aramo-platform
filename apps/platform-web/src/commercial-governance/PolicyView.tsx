@@ -29,7 +29,9 @@ import './governance.css';
 // platform_owner or finance_admin (server-enforced, live role); activation and rollback
 // are POLICY_ACTIVATE change requests (requested by finance_admin, TD-A3-5; chain
 // Finance → Owner, Q1) — this screen never activates a version itself (PLATFORM-UX-1
-// Amendment A1-2). The apply happens after the chain completes (TD-A9-16).
+// Amendment A1-2) — except the requester's own apply of an approved request (CCP-B5-R,
+// TD-B5-1): "Apply activation" / "Retry apply" shows only when the server's
+// `apply_actionable` hint is true; the server re-checks everything.
 
 type Dlg = { version: PolicyVersion; rollback: boolean } | null;
 
@@ -127,12 +129,32 @@ export function PolicyView() {
     current === undefined
       ? []
       : actionsFor(current, versions, canAuthor, canRequest, open !== null);
+  const latest = current?.latest_request ?? null;
   const hint =
     open !== null
       ? `Open request ${shortRequestId(open.id)} · ${(STATE_LABEL[open.state] ?? open.state).toLowerCase()}`
-      : current?.status === 'DRAFT'
-        ? `${changedCount} setting(s) differ from v${active?.version_number ?? '?'}`
-        : '';
+      : latest !== null && latest.state === 'APPLY_EXPIRED'
+        ? `Request ${shortRequestId(latest.id)} · apply expired, request activation again`
+        : latest !== null && latest.state === 'APPLIED' && latest.applied_at !== null
+          ? `Request ${shortRequestId(latest.id)} · applied ${fmtDay(latest.applied_at)}`
+          : current?.status === 'DRAFT'
+            ? `${changedCount} setting(s) differ from v${active?.version_number ?? '?'}`
+            : '';
+  const applyable = current?.open_request ?? null;
+
+  const applyActivation = async (id: string): Promise<void> => {
+    setBusy(true);
+    setEditError(null);
+    try {
+      await governanceApi.applyChange(id);
+      toast.show(`${shortRequestId(id)} applied`);
+    } catch (e) {
+      setEditError(governanceErrorText(e));
+    } finally {
+      setBusy(false);
+      await load();
+    }
+  };
 
   return (
     <div className="pw-gov" data-testid="commercial-policy">
@@ -250,6 +272,16 @@ export function PolicyView() {
             </div>
           ) : null}
           <div className="pw-gov-actions">
+            {applyable !== null && applyable.apply_actionable ? (
+              <Button
+                unstyled
+                className="pw-gov-btn pw-gov-btn--privileged"
+                disabled={busy}
+                onClick={() => void applyActivation(applyable.id)}
+              >
+                {applyable.state === 'APPLY_FAILED' ? 'Retry apply' : 'Apply activation'}
+              </Button>
+            ) : null}
             {actions.map((a) => (
               <Button
                 key={a.label}

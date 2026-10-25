@@ -138,6 +138,7 @@ describe('CCP-B5 chain fulfillability (handoff §3.2; the A3 gate, per chain)', 
 describe('CCP-B5 no grant path outside the governed request (PBD §5.3 B5 "Out: any direct role grant")', () => {
   const B5_SOURCES = [
     'libs/subscription/src/lib/commercial/commercial-policy-activation.ts',
+    'libs/subscription/src/lib/commercial/commercial-policy-apply.service.ts',
     'libs/subscription/src/lib/commercial/commercial-policy-governance.service.ts',
     'libs/subscription/src/lib/commercial/commercial-audit-export.service.ts',
     'libs/subscription/src/lib/commercial/commercial-operator-roster.service.ts',
@@ -149,7 +150,7 @@ describe('CCP-B5 no grant path outside the governed request (PBD §5.3 B5 "Out: 
     for (const f of B5_SOURCES) expect(WRITES.test(readFileSync(resolve(REPO, f), 'utf8')), f).toBe(false);
     const svc = readFileSync(resolve(REPO, 'libs/subscription/src/lib/commercial/commercial-change-request.service.ts'), 'utf8');
     // In the change-request service the writers appear only inside applyRoleChange (the A9 governed apply).
-    const body = svc.slice(svc.indexOf('async applyRoleChange('), svc.indexOf('// ---- CCP-B5 POLICY_ACTIVATE apply'));
+    const body = svc.slice(svc.indexOf('async applyRoleChange('), svc.indexOf('/** CCP-B5: fills the NC-5 target snapshot'));
     expect(body).toContain('grantPlatformRole(');
     expect(body).toContain('revokePlatformRole(');
     const rest = svc.replace(body, '');

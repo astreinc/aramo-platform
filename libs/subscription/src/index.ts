@@ -258,6 +258,9 @@ export {
   COMMERCIAL_A6_APPLY_TRANSITIONS,
   COMMERCIAL_A9_ROLE_APPLY_TRANSITIONS,
   COMMERCIAL_C2_CONVERSION_TRANSITIONS,
+  COMMERCIAL_B5R_POLICY_APPLY_TRANSITIONS,
+  APPLY_EXPIRABLE_ACTIONS,
+  isApplyExpirable,
   COMMERCIAL_REQUEST_PRODUCT_KEYS,
   COMMERCIAL_ROLE_CHANGE_ACTIONS,
   COMMERCIAL_ROLE_CHANGE_ROLE_KEYS,
@@ -352,6 +355,14 @@ export {
   type CommercialCatalogApplyFaultHook,
   type CommercialCatalogApplyResult,
 } from './lib/commercial/commercial-catalog-apply.service.js';
+// CCP-B5-R (TD-B5-1) — the governed POLICY_ACTIVATE apply (requester-only; APPROVED → APPLYING → APPLIED).
+export {
+  COMMERCIAL_POLICY_APPLY_FAULT_HOOK,
+  CommercialPolicyApplyService,
+  POLICY_APPLY_FAILURE_CODES,
+  type CommercialPolicyApplyFaultHook,
+  type CommercialPolicyApplyResult,
+} from './lib/commercial/commercial-policy-apply.service.js';
 // CCP-B4 (PBD §5.3 row B4; MP-A2 N-3) — enterprise contract records (written only by the A6
 // apply; state, plan and commitment read through TenantSubscription) and their read model.
 export {

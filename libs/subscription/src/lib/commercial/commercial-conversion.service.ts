@@ -142,7 +142,7 @@ export class CommercialConversionService {
     const tenant_id = head.tenant_id as string;
     const product_key = assertProductKey(head.product_key);
 
-    const after: { replayed: boolean; held_to_sync: string | null } = { replayed: false, held_to_sync: null };
+    const after: { replayed: boolean; held_to_sync: string | null; expired_now: boolean } = { replayed: false, held_to_sync: null, expired_now: false };
     try {
       await this.prisma.$transaction(async (tx) => {
         await takeBillingLock(tx, tenant_id);
@@ -164,11 +164,19 @@ export class CommercialConversionService {
           }
           return;
         }
+        // Charter Amendment A1 (AD-3, AD-4, AD-7; CCP-B5-R) — the apply deadline, before anything
+        // else (never reached from APPLYING, above): an APPLY_EXPIRED request is refused; an
+        // APPROVED / APPLY_FAILED one at or past its deadline becomes APPLY_EXPIRED NOW (its one
+        // APPLY_EXPIRED event is the record; the slot is released) and that commits.
+        if (req.state === 'APPLY_EXPIRED') throw new ConversionApplyRefusedError('APPLY_EXPIRED', { state: req.state });
+        if (await this.changeRequests.expireApplyIfDue(tx, req, this.now(), ctx)) {
+          after.expired_now = true;
+          return;
+        }
         // NC-5 — refuses NOT_APPROVED (any state but APPROVED / APPLY_FAILED), lost eligibility and
         // broken integrity, before anything is written.
         await this.changeRequests.assertApplyEligible(id, ctx.platform_tenant_id, tx);
         const now = this.now();
-        await this.assertBeforeApplyDeadline(tx, req, now);
         const attempt = req.apply_attempts + 1;
         await tx.commercialChangeRequest.update({ where: { id }, data: { state: 'APPLYING', apply_attempts: attempt, updated_at: now } });
         const applying = { ...req, state: 'APPLYING', apply_attempts: attempt };
@@ -201,6 +209,8 @@ export class CommercialConversionService {
               : new ConversionFailure('UNEXPECTED', { error: String((e as Error)?.message ?? e).slice(0, 300) });
       throw await this.recordFailure(actor, id, tenant_id, failure, ctx);
     }
+    // AD-6 — the expiry committed above is recorded by its one APPLY_EXPIRED event (not audited again).
+    if (after.expired_now) throw new ConversionApplyRefusedError('APPLY_EXPIRED', { state: 'APPLY_EXPIRED', expired_by_this_attempt: true });
     // C-29 — the release adopting a held activation: re-fetch the provider subscription (outside any
     // transaction; authoritative provider state) so the applying transaction converts it. A provider
     // failure leaves the release RELEASED: the next webhook or re-fetch converts it before expiry.
@@ -324,18 +334,6 @@ export class CommercialConversionService {
     );
     const append = await this.appender(tx, actor, req, tenant_id, ctx);
     await append('COMMERCIAL_CONVERSION_PENDING_PROVIDER', SUBJECT(req.id), { direction: 'TO_GOVERNED', attempt: req.apply_attempts, command_id: command.id, idempotency_key: command.idempotency_key, cancel_mode: 'IMMEDIATE', ...detail });
-  }
-
-  // ---- apply deadline (Charter Amendment A1-Apply-Deadline) --------------------------------
-
-  private async assertBeforeApplyDeadline(tx: Tx, req: CommercialChangeRequestRow, now: Date): Promise<void> {
-    // TD-MERGE-21 (TD-C2-7): CCP-A6-R's reader (`apply_expiry_hours` of the snapshotted, checksum-
-    // verified policy version; v1 → no deadline; unreadable → INTEGRITY) and its refusal code.
-    const deadline = await this.changeRequests.applyDeadlineOf(req, tx);
-    // AD-3 — half-open: authority exists for approved_at ≤ t < deadline.
-    if (deadline !== null && now.getTime() >= deadline.getTime()) {
-      throw new ConversionApplyRefusedError('APPLY_EXPIRED', { apply_deadline: deadline.toISOString(), at: now.toISOString() });
-    }
   }
 
   // ---- reads ----------------------------------------------------------------------------

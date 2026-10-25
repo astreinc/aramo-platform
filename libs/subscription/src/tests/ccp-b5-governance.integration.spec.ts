@@ -5,6 +5,9 @@ import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { Client } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
+import { CommercialApplyFailedError } from '../lib/commercial/commercial-apply-records.js';
+import { CommercialApplyService } from '../lib/commercial/commercial-apply.service.js';
+import { CommercialApplyRefusedError } from '../lib/commercial/commercial-approval-eligibility.js';
 import { CommercialAuditExportService, CommercialAuditExportTooLargeError } from '../lib/commercial/commercial-audit-export.service.js';
 import { CommercialAuditRepository } from '../lib/commercial/commercial-audit.repository.js';
 import {
@@ -16,20 +19,22 @@ import {
 } from '../lib/commercial/commercial-change-request.service.js';
 import { CommercialOperatorRepository } from '../lib/commercial/commercial-operator.repository.js';
 import { CommercialOperatorRosterService } from '../lib/commercial/commercial-operator-roster.service.js';
+import { CommercialPolicyApplyService } from '../lib/commercial/commercial-policy-apply.service.js';
 import { CommercialPolicyGovernanceService } from '../lib/commercial/commercial-policy-governance.service.js';
 import { CommercialPolicyRepository } from '../lib/commercial/commercial-policy.repository.js';
 import { commercialPolicyChecksum } from '../lib/commercial/commercial-policy.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
-import { CCP_BUNDLES, PLATFORM_TENANT, POLICY_V1, TENANT_1, addOperator, grantRole, revokeRole } from './support/ccp-a3-database.js';
-import { applyCcpA9Schema } from './support/ccp-a9-database.js';
+import { CCP_BUNDLES, PLATFORM_TENANT, POLICY_V1, TENANT_1, addOperator, applyCcpA6Schema, grantRole, revokeRole } from './support/ccp-a3-database.js';
 
-// CCP-B5 (PBD §5.3 row B5; TD-A9-16; TD-A3-0 NC-5 ratified) on real Postgres 17: the identity
-// chain (A9 last-owner trigger included), the subscription chain, A2, A3 and the A9
-// subscription migration — the guard is the A9 one, UNCHANGED by B5. Test IDs are cited by
-// doc/ccp/slices/CCP-B5-acceptance.md.
+// CCP-B5 (PBD §5.3 row B5; TD-A9-16; TD-A3-0 NC-5 ratified) on real Postgres 17. CCP-B5-R
+// (TD-B5-1, Architect APPROVED 2026-10-25): the FULL subscription chain (applyCcpA6Schema: every
+// migration, ending with the integrator-owned guard union and 20261027000200_ccp_b5r), so the
+// POLICY_ACTIVATE apply runs APPROVED → APPLYING → APPLIED under the live guard, applied by its
+// REQUESTER through the governed apply command (CommercialApplyService → CommercialPolicyApplyService).
+// Test IDs are cited by doc/ccp/slices/CCP-B5-acceptance.md.
 
-describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B5 policy activation apply (NC-5), policy drafts, audit export, roster (real Postgres 17)', { timeout: 120_000 }, () => {
+describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B5 policy activation apply (NC-5), policy drafts, audit export, roster (real Postgres 17)', { timeout: 180_000 }, () => {
   let container: StartedPostgreSqlContainer;
   let pg: Client;
   let prisma: PrismaService;
@@ -38,6 +43,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B5 policy act
   let exporter: CommercialAuditExportService;
   let roster: CommercialOperatorRosterService;
   let policies: CommercialPolicyRepository;
+  let applier: CommercialApplyService;
+  let fault: ((point: string) => void) | null = null;
   const ctx = { platform_tenant_id: PLATFORM_TENANT, correlation_id: 'ccp-b5-spec' };
   let keyN = 0;
   const key = () => `b5-key-${String(++keyN).padStart(6, '0')}`;
@@ -49,6 +56,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B5 policy act
     } catch (e) {
       if (e instanceof CommercialApprovalRefusedError) return e.refusal;
       if (e instanceof CommercialNotBootstrappedError) return 'CCP_NOT_BOOTSTRAPPED';
+      if (e instanceof CommercialApplyRefusedError) return `REFUSED:${e.reason}`;
+      if (e instanceof CommercialApplyFailedError) return `FAILED:${e.code}`;
       if (e instanceof CommercialChangeRequestError) return `${e.code}${typeof e.details['reason'] === 'string' ? `:${e.details['reason']}` : ''}`;
       if (e instanceof CommercialAuditExportTooLargeError) return 'EXPORT_TOO_LARGE';
       throw e;
@@ -60,10 +69,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B5 policy act
   const eventsOf = async (id: string): Promise<string[]> =>
     (await pg.query(`SELECT event_type FROM subscription."CommercialAuditEvent" WHERE change_request_id = $1 ORDER BY created_at, id`, [id])).rows.map((r) => r.event_type as string);
   const rowJson = async (sql: string, params: unknown[]) => JSON.stringify((await pg.query(sql, params)).rows);
-  const snapshotOf = async (id: string) => ({
-    request: await rowJson(`SELECT row_to_json(r)::text AS j FROM subscription."CommercialChangeRequest" r WHERE id = $1`, [id]),
-    approvals: await rowJson(`SELECT row_to_json(a)::text AS j FROM subscription."CommercialApproval" a WHERE change_request_id = $1 ORDER BY step_index`, [id]),
-  });
+  /** The approval evidence (byte-for-byte): approvals are never rewritten by an apply. */
+  const signaturesOf = async (id: string) => rowJson(`SELECT row_to_json(a)::text AS j FROM subscription."CommercialApproval" a WHERE change_request_id = $1 ORDER BY step_index`, [id]);
+  const reqOf = async (id: string) => (await pg.query(`SELECT state, apply_attempts, applied_at FROM subscription."CommercialChangeRequest" WHERE id = $1`, [id])).rows[0] as { state: string; apply_attempts: number; applied_at: Date | null };
   const count = async (sql: string, params: unknown[] = []) => Number((await pg.query(sql, params)).rows[0].n);
 
   /** The governance cast: two attested finance_admins and one attested platform_owner. */
@@ -84,6 +92,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B5 policy act
     await svc.submit(as(FA, ['finance_admin']), request.id, ctx);
     return request.id;
   }
+  /** finance (FA2) then owner (P) sign; the approval never applies a POLICY_ACTIVATE (CCP-B5-R). */
+  async function approveBoth(id: string, FA2: string, P: string) {
+    await svc.approve(as(FA2, ['finance_admin']), id, { step_index: 0 }, ctx);
+    return svc.approve(as(P, ['platform_owner']), id, { step_index: 1 }, ctx);
+  }
+  const applyAs = (id: string, user: string, roles: readonly string[] = ['finance_admin']) => applier.apply(as(user, roles), id, ctx);
 
   beforeAll(async () => {
     container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
@@ -96,10 +110,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B5 policy act
     policies = new CommercialPolicyRepository(prisma);
     const operators = new CommercialOperatorRepository(prisma, audit, policies);
     svc = new CommercialChangeRequestService(prisma, audit, policies, operators);
-    gov = new CommercialPolicyGovernanceService(prisma, policies, audit, operators);
+    gov = new CommercialPolicyGovernanceService(prisma, policies, audit, operators, svc);
     exporter = new CommercialAuditExportService(prisma, audit, policies, operators);
     roster = new CommercialOperatorRosterService(prisma, operators, policies);
-  }, 180_000);
+    const policyApply = new CommercialPolicyApplyService(prisma, audit, operators, svc, undefined, (point) => fault?.(point));
+    applier = new CommercialApplyService(prisma, audit, operators, svc, undefined, undefined, undefined, policyApply);
+  }, 300_000);
 
   afterAll(async () => {
     await prisma?.$disconnect();
@@ -108,29 +124,45 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B5 policy act
   }, 60_000);
 
   beforeEach(async () => {
-    await applyCcpA9Schema(pg);
-  }, 120_000);
+    fault = null;
+    await applyCcpA6Schema(pg);
+  }, 180_000);
 
-  // ---- the POLICY_ACTIVATE apply ------------------------------------------------------
+  // ---- the POLICY_ACTIVATE apply (CCP-B5-R, TD-B5-1) ---------------------------------------
 
-  it('B5-APPLY-1 an approved activation applies once the finance → owner chain completes: v2 ACTIVE, v1 RETIRED, audited; the request stays APPROVED with effect_applied_at; a re-apply is a no-op; new requests use v2', async () => {
+  it('B5-APPLY-1 the approval does not apply; the REQUESTER applies: APPROVED → APPLYING → APPLIED with applied_at in the activation transaction (v2 ACTIVE, v1 RETIRED, audited); approvers cannot apply; a re-apply replays; new requests use v2', async () => {
     const { FA, FA2, P } = await cast();
     const V2 = await draft(FA, ['finance_admin'], { credit_escalation_threshold_minor: 30_000, approval_expiry_hours: 48 });
     const id = await activationRequest(FA, V2);
     const stored = (await pg.query(`SELECT payload FROM subscription."CommercialChangeRequest" WHERE id = $1`, [id])).rows[0].payload;
     const v2checksum = (await pg.query(`SELECT content_checksum FROM subscription."CommercialPolicyVersion" WHERE id = $1`, [V2])).rows[0].content_checksum as string;
     expect(stored).toEqual({ policy_version_id: V2, target_content_checksum: v2checksum });
-    await svc.approve(as(FA2, ['finance_admin']), id, { step_index: 0 }, ctx);
-    const done = await svc.approve(as(P, ['platform_owner']), id, { step_index: 1 }, ctx);
-    expect(done.apply).toMatchObject({ applied: true, reason: null, detail: { change: 'POLICY_ACTIVATE', from_version_id: POLICY_V1, to_version_id: V2, rollback: false } });
+    const done = await approveBoth(id, FA2, P);
+    expect(done.apply).toBeNull();
     expect(done.request.state).toBe('APPROVED');
-    expect(done.request.effect_applied_at).toBeInstanceOf(Date);
+    expect(await statusOf(V2)).toBe('DRAFT'); // approval evidence is not execution
+    expect(await statusOf(POLICY_V1)).toBe('ACTIVE');
+    const view = await svc.get(as(FA, ['finance_admin']), id, ctx);
+    expect(view.apply_actionable).toBe(true);
+    expect((await svc.get(as(FA2, ['finance_admin']), id, ctx)).apply_actionable).toBe(false);
+    expect((await svc.get(as(P, ['platform_owner']), id, ctx)).apply_actionable).toBe(false);
+    // Requester-only (TD-B2-3): neither approver may apply; each refusal is one audit row, no state change.
+    expect(await outcome(applyAs(id, P, ['platform_owner']))).toBe('NOT_REQUESTER:not_requester');
+    expect(await outcome(applyAs(id, FA2))).toBe('NOT_REQUESTER:not_requester');
+    expect(await outcome(applier.apply({ ...as(FA, ['finance_admin']), actor_kind: 'service' }, id, ctx))).toBe('NOT_HUMAN');
+    expect(await reqOf(id)).toMatchObject({ state: 'APPROVED', apply_attempts: 0, applied_at: null });
+    const sig = await signaturesOf(id);
+    const out = await applyAs(id, FA);
+    expect(out).toMatchObject({ replayed: false, application: null, catalog_application: null, request: { state: 'APPLIED', apply_attempts: 1 } });
+    expect(out.request.applied_at).toBeInstanceOf(Date);
+    expect(await signaturesOf(id)).toBe(sig);
     expect(await versions()).toEqual([
       { id: POLICY_V1, version_number: 1, status: 'RETIRED' },
       { id: V2, version_number: 2, status: 'ACTIVE' },
     ]);
     const v2row = (await pg.query(`SELECT activated_by, activated_at, retired_at FROM subscription."CommercialPolicyVersion" WHERE id = $1`, [V2])).rows[0];
-    expect(v2row.activated_by).toBe(P);
+    expect(v2row.activated_by).toBe(FA);
+    expect(v2row.activated_at.getTime()).toBe((out.request.applied_at as Date).getTime());
     expect(v2row.retired_at).toBeNull();
     expect(await eventsOf(id)).toEqual([
       'COMMERCIAL_CHANGE_REQUEST_CREATED',
@@ -138,21 +170,26 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B5 policy act
       'COMMERCIAL_APPROVAL_RECORDED',
       'COMMERCIAL_APPROVAL_RECORDED',
       'COMMERCIAL_CHANGE_REQUEST_APPROVED',
+      'COMMERCIAL_CHANGE_REQUEST_APPLY_REFUSED',
+      'COMMERCIAL_CHANGE_REQUEST_APPLY_REFUSED',
+      'COMMERCIAL_CHANGE_REQUEST_APPLY_REFUSED',
       'COMMERCIAL_POLICY_VERSION_ACTIVATED',
       'COMMERCIAL_CHANGE_REQUEST_APPLIED',
     ]);
+    const applied = (await pg.query(`SELECT payload FROM subscription."CommercialAuditEvent" WHERE change_request_id = $1 AND event_type = 'COMMERCIAL_CHANGE_REQUEST_APPLIED'`, [id])).rows[0].payload;
+    expect(applied).toMatchObject({ action_type: 'POLICY_ACTIVATE', outcome: 'APPLIED', attempt: 1, requested_by: FA, from_version_id: POLICY_V1, to_version_id: V2, rollback: false });
+    expect(applied.approvals).toHaveLength(2);
     expect((await pg.query(`SELECT event_type, subject_id FROM subscription."CommercialPolicyAuditEvent" WHERE event_payload->>'change_request_id' = $1 ORDER BY event_type`, [id])).rows).toEqual([
       { event_type: 'COMMERCIAL_POLICY_VERSION_ACTIVATED', subject_id: V2 },
       { event_type: 'COMMERCIAL_POLICY_VERSION_RETIRED', subject_id: POLICY_V1 },
     ]);
-    const view = await svc.get(as(FA, ['finance_admin']), id, ctx);
-    expect(view.request.state).toBe('APPROVED');
-    expect(view.request.applied_at).toBeNull();
-    expect(view.request.effect_applied_at).toBeInstanceOf(Date);
-    // Idempotent: a second apply writes nothing.
+    const read = await svc.get(as(FA, ['finance_admin']), id, ctx);
+    expect(read.request.state).toBe('APPLIED');
+    expect(read.apply_actionable).toBe(false);
+    expect('effect_applied_at' in read.request).toBe(false); // dropped (CCP-B5-R): applied_at is the record
+    // Idempotent: a second apply replays and writes nothing.
     const before = await count(`SELECT count(*)::int AS n FROM subscription."CommercialAuditEvent"`);
-    const again = await svc.applyPolicyActivation(as(P, ['platform_owner']), id, ctx);
-    expect(again).toMatchObject({ applied: true, detail: { replayed: true } });
+    expect(await applyAs(id, FA)).toMatchObject({ replayed: true, request: { state: 'APPLIED' } });
     expect(await count(`SELECT count(*)::int AS n FROM subscription."CommercialAuditEvent"`)).toBe(before);
     // The active policy is v2: a $400 credit now escalates (threshold $300), finance → owner.
     expect((await policies.getActivePolicy()).content.credit_escalation_threshold_minor).toBe(30_000);
@@ -162,30 +199,76 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B5 policy act
     expect(credit.policy_version_id).toBe(V2);
   });
 
-  it('B5-NC5-a role revocation between approval and apply: the apply is refused (APPROVER_NO_LONGER_ELIGIBLE), fail closed, the signatures are byte-identical, nothing is activated; once eligibility returns the same approvals apply', async () => {
+  it('B5-APPLY-2 a failed activation is rolled back in full and records APPLY_FAILED in a separate transaction (attempt counted, one APPLY_FAILED event); the requester retries and it is APPLIED (attempt 2)', async () => {
     const { FA, FA2, P } = await cast();
     const V2 = await draft(FA, ['finance_admin'], { approval_expiry_hours: 48 });
     const id = await activationRequest(FA, V2);
-    await svc.approve(as(FA2, ['finance_admin']), id, { step_index: 0 }, ctx);
+    await approveBoth(id, FA2, P);
+    const sig = await signaturesOf(id);
+    for (const point of ['after_policy_write', 'before_applied']) {
+      fault = (p) => {
+        if (p === point) throw new Error(`injected fault at ${point}`);
+      };
+      expect(await outcome(applyAs(id, FA))).toBe('FAILED:UNEXPECTED');
+      expect(await statusOf(V2)).toBe('DRAFT'); // the policy write rolled back with it
+      expect(await statusOf(POLICY_V1)).toBe('ACTIVE');
+      expect((await reqOf(id)).state).toBe('APPLY_FAILED');
+    }
+    fault = null;
+    expect(await reqOf(id)).toMatchObject({ state: 'APPLY_FAILED', apply_attempts: 2, applied_at: null });
+    expect((await eventsOf(id)).filter((e) => e === 'COMMERCIAL_CHANGE_REQUEST_APPLY_FAILED')).toHaveLength(2);
+    expect((await eventsOf(id)).includes('COMMERCIAL_POLICY_VERSION_ACTIVATED')).toBe(false);
+    expect((await svc.get(as(FA, ['finance_admin']), id, ctx)).apply_actionable).toBe(true);
+    const out = await applyAs(id, FA);
+    expect(out.request).toMatchObject({ state: 'APPLIED', apply_attempts: 3 });
+    expect(await statusOf(V2)).toBe('ACTIVE');
+    expect(await signaturesOf(id)).toBe(sig);
+    // The DB backstop: a POLICY_ACTIVATE never commits in APPLYING, and is never APPLIED unless its version is ACTIVE.
+    const V3 = await draft(FA, ['finance_admin'], { approval_expiry_hours: 36 });
+    const id3 = await activationRequest(FA, V3);
+    await approveBoth(id3, FA2, P);
+    await expect(pg.query(`UPDATE subscription."CommercialChangeRequest" SET state = 'APPLYING', apply_attempts = 1, updated_at = now() WHERE id = $1`, [id3])).rejects.toThrow(/cannot commit in APPLYING/);
+    await pg.query('BEGIN');
+    await pg.query(`UPDATE subscription."CommercialChangeRequest" SET state = 'APPLYING', apply_attempts = 1, updated_at = now() WHERE id = $1`, [id3]);
+    await expect(pg.query(`UPDATE subscription."CommercialChangeRequest" SET state = 'APPLIED', applied_at = now(), updated_at = now() WHERE id = $1`, [id3])).rejects.toThrow(/the policy version is DRAFT after POLICY_ACTIVATE/);
+    await pg.query('ROLLBACK');
+    expect((await reqOf(id3)).state).toBe('APPROVED');
+  });
+
+  it('B5-APPLY-3 the requester must STILL hold finance_admin (live, in the apply transaction): otherwise REQUESTER_NO_LONGER_AUTHORIZED, no state change; restored, the same approvals apply', async () => {
+    const { FA, FA2, P } = await cast();
+    const V2 = await draft(FA, ['finance_admin'], { approval_expiry_hours: 48 });
+    const id = await activationRequest(FA, V2);
+    await approveBoth(id, FA2, P);
+    await revokeRole(pg, FA, 'finance_admin');
+    expect(await outcome(applyAs(id, FA))).toBe('REQUESTER_NO_LONGER_AUTHORIZED');
+    expect(await reqOf(id)).toMatchObject({ state: 'APPROVED', apply_attempts: 0 });
+    await grantRole(pg, FA, 'finance_admin');
+    expect((await applyAs(id, FA)).request.state).toBe('APPLIED');
+  });
+
+  it('B5-NC5-a role revocation between approval and apply: the apply is refused (APPROVER_NO_LONGER_ELIGIBLE), fail closed, the signatures are byte-identical, nothing is activated, the request stays APPROVED; once eligibility returns the same approvals apply', async () => {
+    const { FA, FA2, P } = await cast();
+    const V2 = await draft(FA, ['finance_admin'], { approval_expiry_hours: 48 });
+    const id = await activationRequest(FA, V2);
+    await approveBoth(id, FA2, P);
     await revokeRole(pg, FA2, 'finance_admin'); // the finance signer loses the role after signing
-    const done = await svc.approve(as(P, ['platform_owner']), id, { step_index: 1 }, ctx);
-    expect(done.apply).toMatchObject({ applied: false, reason: 'APPROVER_NO_LONGER_ELIGIBLE', detail: { step_index: 0, approver_user_id: FA2 } });
-    expect(done.request.state).toBe('APPROVED');
-    const snap = await snapshotOf(id);
-    const again = await svc.applyPolicyActivation(as(P, ['platform_owner']), id, ctx);
-    expect(again.reason).toBe('APPROVER_NO_LONGER_ELIGIBLE');
-    expect(await snapshotOf(id)).toEqual(snap); // the original signatures are never rewritten
+    const sig = await signaturesOf(id);
+    expect(await outcome(applyAs(id, FA))).toBe('REFUSED:APPROVER_NO_LONGER_ELIGIBLE');
+    expect(await outcome(applyAs(id, FA))).toBe('REFUSED:APPROVER_NO_LONGER_ELIGIBLE');
+    expect(await reqOf(id)).toMatchObject({ state: 'APPROVED', apply_attempts: 0 });
+    expect(await signaturesOf(id)).toBe(sig); // the original signatures are never rewritten
     expect(await statusOf(V2)).toBe('DRAFT');
     expect(await statusOf(POLICY_V1)).toBe('ACTIVE');
     expect((await eventsOf(id)).filter((e) => e === 'COMMERCIAL_CHANGE_REQUEST_APPLY_REFUSED')).toHaveLength(2);
     expect((await eventsOf(id)).includes('COMMERCIAL_CHANGE_REQUEST_APPLIED')).toBe(false);
     await grantRole(pg, FA2, 'finance_admin');
-    expect((await svc.applyPolicyActivation(as(P, ['platform_owner']), id, ctx)).applied).toBe(true);
-    expect(await snapshotOf(id)).toEqual(snap);
+    expect((await applyAs(id, FA)).request.state).toBe('APPLIED');
+    expect(await signaturesOf(id)).toBe(sig);
     expect(await statusOf(V2)).toBe('ACTIVE');
   });
 
-  it('B5-NC5-b a policy-version change after request creation: revalidation uses the SNAPSHOTTED version (v1 TTL and chain), and the apply is refused POLICY_ACTIVE_CHANGED with nothing written', async () => {
+  it('B5-NC5-b a policy-version change after request creation: revalidation uses the SNAPSHOTTED version (v1 TTL and chain); the NC-5 snapshot re-check fails the apply POLICY_ACTIVE_CHANGED (APPLY_FAILED, nothing activated, signatures untouched); a retry fails the same way', async () => {
     const { FA, FA2, P } = await cast();
     const V2 = await draft(FA, ['finance_admin'], { approval_expiry_hours: 48 });
     const { request } = await svc.create(as(FA, ['finance_admin']), { action_type: 'POLICY_ACTIVATE', payload: { policy_version_id: V2 }, reason: 'activate', idempotency_key: key() }, ctx);
@@ -201,48 +284,50 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B5 policy act
     const submitted = await svc.submit(as(FA, ['finance_admin']), request.id, ctx);
     expect((submitted.expires_at as Date).getTime() - (submitted.submitted_at as Date).getTime()).toBe(72 * 3_600_000); // v1, not v3's 24 h
     expect((submitted.required_chain as { rule: string }).rule).toBe('FINANCE_THEN_OWNER');
-    await svc.approve(as(FA2, ['finance_admin']), request.id, { step_index: 0 }, ctx);
-    const done = await svc.approve(as(P, ['platform_owner']), request.id, { step_index: 1 }, ctx);
-    expect(done.apply).toMatchObject({ applied: false, reason: 'POLICY_ACTIVE_CHANGED', detail: { request_policy_version_id: POLICY_V1, active_policy_version_id: V3 } });
-    const snap = await snapshotOf(request.id);
+    await approveBoth(request.id, FA2, P);
+    const sig = await signaturesOf(request.id);
+    expect(await outcome(applyAs(request.id, FA))).toBe('FAILED:POLICY_ACTIVE_CHANGED');
+    const failed = (await pg.query(`SELECT payload FROM subscription."CommercialAuditEvent" WHERE change_request_id = $1 AND event_type = 'COMMERCIAL_CHANGE_REQUEST_APPLY_FAILED'`, [request.id])).rows[0].payload;
+    expect(failed).toMatchObject({ failure: 'POLICY_ACTIVE_CHANGED', attempt: 1, detail: { snapshot_refusal: 'POLICY_ACTIVE_CHANGED', request_policy_version_id: POLICY_V1, active_policy_version_id: V3 } });
     expect(await statusOf(V2)).toBe('DRAFT');
     expect(await statusOf(V3)).toBe('ACTIVE');
-    await svc.applyPolicyActivation(as(P, ['platform_owner']), request.id, ctx);
-    expect(await snapshotOf(request.id)).toEqual(snap);
+    expect(await outcome(applyAs(request.id, FA))).toBe('FAILED:POLICY_ACTIVE_CHANGED');
+    expect(await reqOf(request.id)).toMatchObject({ state: 'APPLY_FAILED', apply_attempts: 2 });
+    expect(await signaturesOf(request.id)).toBe(sig);
   });
 
-  it('B5-NC5-c the target changed after the approvers saw it: the draft is locked through the service while the request is pending, and a write that bypasses it makes the apply refuse TARGET_CHANGED', async () => {
+  it('B5-NC5-c the target changed after the approvers saw it: the draft is locked through the service while the request is open (pending AND approved), and a write that bypasses it fails the apply POLICY_TARGET_CHANGED', async () => {
     const { FA, FA2, P } = await cast();
     const V2 = await draft(P, ['platform_owner'], { approval_expiry_hours: 48 });
     const id = await activationRequest(FA, V2);
     expect(await outcome(gov.updateDraft(as(P, ['platform_owner']), V2, { content: { approval_expiry_hours: 36 } }, ctx))).toBe('STATE_INVALID:policy_version_locked');
-    await svc.approve(as(FA2, ['finance_admin']), id, { step_index: 0 }, ctx);
+    await approveBoth(id, FA2, P);
+    expect(await outcome(gov.updateDraft(as(P, ['platform_owner']), V2, { content: { approval_expiry_hours: 36 } }, ctx))).toBe('STATE_INVALID:policy_version_locked');
     const v = (await pg.query(`SELECT content FROM subscription."CommercialPolicyVersion" WHERE id = $1`, [V2])).rows[0].content as Record<string, unknown>;
     const edited = { ...v, approval_expiry_hours: 36 };
     await pg.query(`UPDATE subscription."CommercialPolicyVersion" SET content = $2::jsonb, content_checksum = $3 WHERE id = $1`, [V2, JSON.stringify(edited), commercialPolicyChecksum(edited)]);
-    const done = await svc.approve(as(P, ['platform_owner']), id, { step_index: 1 }, ctx);
-    expect(done.apply).toMatchObject({ applied: false, reason: 'TARGET_CHANGED' });
+    expect(await outcome(applyAs(id, FA))).toBe('FAILED:POLICY_TARGET_CHANGED');
     expect(await statusOf(V2)).toBe('DRAFT');
     expect(await statusOf(POLICY_V1)).toBe('ACTIVE');
+    expect((await reqOf(id)).state).toBe('APPLY_FAILED');
   });
 
   it('B5-ROLLBACK-1 a RETIRED version is re-activated by a POLICY_ACTIVATE (rollback): v1 ACTIVE again, v2 RETIRED, the activation event says rollback', async () => {
     const { FA, FA2, P } = await cast();
     const V2 = await draft(FA, ['finance_admin'], { approval_expiry_hours: 48 });
     const a = await activationRequest(FA, V2);
-    await svc.approve(as(FA2, ['finance_admin']), a, { step_index: 0 }, ctx);
-    await svc.approve(as(P, ['platform_owner']), a, { step_index: 1 }, ctx);
+    await approveBoth(a, FA2, P);
+    await applyAs(a, FA);
     const b = await activationRequest(FA, POLICY_V1);
-    await svc.approve(as(FA2, ['finance_admin']), b, { step_index: 0 }, ctx);
-    const done = await svc.approve(as(P, ['platform_owner']), b, { step_index: 1 }, ctx);
-    expect(done.apply).toMatchObject({ applied: true, detail: { from_version_id: V2, to_version_id: POLICY_V1, rollback: true } });
+    await approveBoth(b, FA2, P);
+    expect((await applyAs(b, FA)).request.state).toBe('APPLIED');
     expect((await versions()).map((x) => x.status)).toEqual(['ACTIVE', 'RETIRED']);
     const ev = (await pg.query(`SELECT payload FROM subscription."CommercialAuditEvent" WHERE change_request_id = $1 AND event_type = 'COMMERCIAL_POLICY_VERSION_ACTIVATED'`, [b])).rows[0].payload;
     expect(ev).toMatchObject({ rollback: true, replaces: V2 });
   });
 
-  it('B5-CREATE-1 the activation request snapshot: a stale snapshot, an unknown payload key, an ACTIVE target and a second open request are refused', async () => {
-    const { FA } = await cast();
+  it('B5-CREATE-1 the activation request snapshot: a stale snapshot, an unknown payload key, an ACTIVE target and a second open request (pending, then APPROVED and APPLY_FAILED: open until APPLIED) are refused', async () => {
+    const { FA, FA2, P } = await cast();
     const V2 = await draft(FA, ['finance_admin']);
     const create = (payload: Record<string, unknown>) => svc.create(as(FA, ['finance_admin']), { action_type: 'POLICY_ACTIVATE', payload, reason: 'x', idempotency_key: key() }, ctx);
     expect(await outcome(create({ policy_version_id: V2, target_content_checksum: 'a'.repeat(64) }))).toBe('INVALID_INPUT:policy_version_changed');
@@ -250,6 +335,25 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B5 policy act
     expect(await outcome(create({ policy_version_id: POLICY_V1 }))).toBe('INVALID_INPUT:policy_version_already_active');
     expect(await outcome(create({ policy_version_id: V2 }))).toBe('OK');
     expect(await outcome(create({ policy_version_id: V2 }))).toBe('OPEN_REQUEST_EXISTS:open_policy_request_exists');
+    const open = (await pg.query(`SELECT id FROM subscription."CommercialChangeRequest" WHERE action_type = 'POLICY_ACTIVATE'`)).rows[0].id as string;
+    await svc.submit(as(FA, ['finance_admin']), open, ctx);
+    await approveBoth(open, FA2, P);
+    expect(await outcome(create({ policy_version_id: V2 }))).toBe('OPEN_REQUEST_EXISTS:open_policy_request_exists');
+    fault = () => {
+      throw new Error('injected');
+    };
+    expect(await outcome(applyAs(open, FA))).toBe('FAILED:UNEXPECTED');
+    fault = null;
+    expect(await outcome(create({ policy_version_id: V2 }))).toBe('OPEN_REQUEST_EXISTS:open_policy_request_exists');
+    // The policy screen read: the open request with the caller's apply hint, and the latest request per version.
+    const listed = (await gov.list(as(FA, ['finance_admin']), ctx)).versions.find((v) => v.row.id === V2);
+    expect(listed?.open_request).toEqual({ id: open, state: 'APPLY_FAILED', apply_actionable: true });
+    expect((await gov.list(as(FA2, ['finance_admin']), ctx)).versions.find((v) => v.row.id === V2)?.open_request?.apply_actionable).toBe(false);
+    await applyAs(open, FA);
+    const after = (await gov.list(as(FA, ['finance_admin']), ctx)).versions.find((v) => v.row.id === V2);
+    expect(after?.open_request).toBeNull();
+    expect(after?.latest_request).toMatchObject({ id: open, state: 'APPLIED' });
+    expect(after?.latest_request?.applied_at).toBeInstanceOf(Date);
   });
 
   // ---- drafts ---------------------------------------------------------------------------

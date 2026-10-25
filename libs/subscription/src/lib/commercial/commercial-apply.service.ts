@@ -33,6 +33,7 @@ import {
 } from './commercial-apply-records.js';
 // CCP-B2-backend — the catalog publish / retire apply rides the same command and route.
 import { CommercialCatalogApplyService, type CommercialCatalogApplicationRow, isCatalogApplicable } from './commercial-catalog-apply.service.js';
+import { CommercialPolicyApplyService } from './commercial-policy-apply.service.js';
 import { changeCarriesContract, type ContractAmendmentBlock, type ContractEndBlock, type ContractRecordBlock } from './commercial-contract.js';
 import { ContractApplyConflict, type ContractEffect, amendContractInTx, contractOfSubscription, endContractInTx, recordContractInTx } from './commercial-contract.repository.js';
 import { approvalExpiresAt } from './commercial-policy-boundaries.js';
@@ -242,6 +243,7 @@ export class CommercialApplyService {
     @Optional() @Inject(COMMERCIAL_CLOCK) clock?: CommercialClock,
     @Optional() @Inject(COMMERCIAL_APPLY_FAULT_HOOK) private readonly fault?: CommercialApplyFaultHook,
     @Optional() private readonly catalog?: CommercialCatalogApplyService,
+    @Optional() private readonly policy?: CommercialPolicyApplyService,
   ) {
     this.now = clock ?? (() => new Date());
   }
@@ -260,6 +262,11 @@ export class CommercialApplyService {
     if (this.catalog !== undefined && isCatalogApplicable(head.action_type)) {
       const c = await this.catalog.apply(actor, head, ctx);
       return { request: c.request, application: null, catalog_application: c.catalog_application, replayed: c.replayed };
+    }
+    // CCP-B5-R (TD-B5-1) — POLICY_ACTIVATE (governance, not tenant-scoped; requester-only).
+    if (this.policy !== undefined && head.action_type === 'POLICY_ACTIVATE') {
+      const p = await this.policy.apply(actor, head, ctx);
+      return { request: p.request, application: null, catalog_application: null, replayed: p.replayed };
     }
     // TD-A6-3 (approved) — the ORIGINAL requester, a human, holding the requester scope.
     let scope: string;

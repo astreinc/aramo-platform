@@ -30387,6 +30387,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "libs/subscription/src/tests/ccp-b5-governance.spec.ts",
       "status": "excluded",
+      "to": "libs/subscription/src/lib/commercial/commercial-policy-apply.service.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-b5-governance.spec.ts",
+      "status": "excluded",
       "to": "libs/subscription/src/lib/commercial/commercial-policy-governance.service.ts"
     },
     {

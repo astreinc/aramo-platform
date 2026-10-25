@@ -64,6 +64,7 @@ const version = (o: Partial<PolicyVersion>): PolicyVersion => ({
   activated_at: '2026-10-23T10:00:00.000Z',
   retired_at: null,
   open_request: null,
+  latest_request: null,
   ...o,
 });
 const ACTIVE = version({});
@@ -308,6 +309,7 @@ describe('CCP-B5 PolicyView (handoff §5.6)', () => {
               open_request: {
                 id: '019a0000-0000-7000-8000-0000000000aa',
                 state: 'PENDING_APPROVAL',
+                apply_actionable: false,
               },
             },
             ACTIVE,
@@ -329,6 +331,69 @@ describe('CCP-B5 PolicyView (handoff §5.6)', () => {
     fireEvent.click(screen.getByRole('button', { name: /^v1/ }));
     expect(screen.getByText('This is the active version')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Create draft/ })).toBeNull();
+    // CCP-B5-R: a pending request is not applyable (apply_actionable false → no Apply button).
+    expect(screen.queryByRole('button', { name: /Apply activation|Retry apply/ })).toBeNull();
+  });
+
+  // ---- CCP-B5-R (TD-B5-1; Charter Amendment A1) ----------------------------------------------
+  const CR_ID = '019a0000-0000-7000-8000-0000000000bb';
+  const withOpen = (state: string, apply_actionable: boolean): PolicyList =>
+    list(
+      { can_author: true, can_request_activation: true },
+      {
+        versions: [{ ...DRAFT, open_request: { id: CR_ID, state, apply_actionable } }, ACTIVE],
+        open_request: { id: CR_ID, state, policy_version_id: V2 },
+      },
+    );
+
+  it('B5R-W-1 the Apply button follows apply_actionable: shown for the requester of an APPROVED request (POST …/apply, then reload); hidden for an approver of the same request', async () => {
+    vi.spyOn(governanceApi, 'listOperators').mockResolvedValue(roster([]));
+    const listSpy = vi.spyOn(governanceApi, 'listPolicyVersions').mockResolvedValueOnce(withOpen('APPROVED', true)).mockResolvedValue(
+      list(
+        { can_author: true, can_request_activation: true },
+        { versions: [{ ...DRAFT, status: 'ACTIVE', latest_request: { id: CR_ID, state: 'APPLIED', applied_at: '2026-10-25T10:00:00.000Z' } }, { ...ACTIVE, status: 'RETIRED' }] },
+      ),
+    );
+    const apply = vi.spyOn(governanceApi, 'applyChange').mockResolvedValue({ request: { id: CR_ID, state: 'APPLIED', applied_at: '2026-10-25T10:00:00.000Z' } });
+    render(<PolicyView />);
+    expect(await screen.findByText('Open request CR-019A0000 · approved')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Apply activation' }));
+    await waitFor(() => expect(apply).toHaveBeenCalledWith(CR_ID));
+    await waitFor(() => expect(listSpy).toHaveBeenCalledTimes(2));
+    expect(await screen.findByText(/Request CR-019A0000 · applied /)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Apply activation|Retry apply/ })).toBeNull();
+  });
+
+  it('B5R-W-2 an approver (apply_actionable false) sees the approved request but no Apply button', async () => {
+    vi.spyOn(governanceApi, 'listOperators').mockResolvedValue(roster([]));
+    vi.spyOn(governanceApi, 'listPolicyVersions').mockResolvedValue(withOpen('APPROVED', false));
+    render(<PolicyView />);
+    expect(await screen.findByText('Open request CR-019A0000 · approved')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Apply activation|Retry apply/ })).toBeNull();
+  });
+
+  it('B5R-W-3 an APPLY_FAILED request offers "Retry apply" to its requester; a refused apply shows the server explanation', async () => {
+    vi.spyOn(governanceApi, 'listOperators').mockResolvedValue(roster([]));
+    vi.spyOn(governanceApi, 'listPolicyVersions').mockResolvedValue(withOpen('APPLY_FAILED', true));
+    vi.spyOn(governanceApi, 'applyChange').mockRejectedValue(
+      new ApiError(409, 'apply failed', 'COMMERCIAL_CHANGE_REQUEST_CONFLICT', { reason: 'apply_failed', explanation: 'The apply failed unexpectedly and was rolled back; it can be retried.' }),
+    );
+    render(<PolicyView />);
+    expect(await screen.findByText('Open request CR-019A0000 · apply failed')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Retry apply' }));
+    expect(await screen.findByText('The apply failed unexpectedly and was rolled back; it can be retried.')).toBeInTheDocument();
+  });
+
+  it('B5R-W-4 an APPLY_EXPIRED request releases the draft: no Apply button, the hint says so, and "Request activation…" is enabled again', async () => {
+    vi.spyOn(governanceApi, 'listOperators').mockResolvedValue(roster([]));
+    vi.spyOn(governanceApi, 'listPolicyVersions').mockResolvedValue(
+      list({ can_author: true, can_request_activation: true }, { versions: [{ ...DRAFT, latest_request: { id: CR_ID, state: 'APPLY_EXPIRED', applied_at: null } }, ACTIVE] }),
+    );
+    render(<PolicyView />);
+    expect(await screen.findByText('Request CR-019A0000 · apply expired, request activation again')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /Apply activation|Retry apply/ })).toBeNull();
+    expect(screen.getByRole('button', { name: 'Request activation…' })).toBeEnabled();
+    expect(screen.getAllByRole('spinbutton').length).toBeGreaterThan(0);
   });
 });
 

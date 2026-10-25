@@ -92,7 +92,7 @@ describe('CCP-B5 — per-role authorization on the policy, roster and export rou
   const resolver = new RoleBundleResolver();
   const principal = new Map<string, string>();
   const gov = {
-    list: vi.fn(async () => ({ versions: [{ row: versionRow(V1, 'ACTIVE'), content: { format_version: 1 }, open_request: null }], active_version_id: V1, open_request: null, caller: { can_author: false, can_request_activation: false } })),
+    list: vi.fn(async () => ({ versions: [{ row: versionRow(V1, 'ACTIVE'), content: { format_version: 1 }, open_request: null, latest_request: null }], active_version_id: V1, open_request: null, caller: { can_author: false, can_request_activation: false } })),
     createDraft: vi.fn(async () => versionRow(V2, 'DRAFT')),
     updateDraft: vi.fn(async () => versionRow(V2, 'DRAFT')),
   };

@@ -62,7 +62,7 @@ export class PlatformCommercialGovernanceController {
   async createPolicyDraft(@Body() body: CreatePolicyDraftDto, @AuthContext() auth: AuthContextType, @RequestId() requestId: string): Promise<{ version: CommercialPolicyVersionDto }> {
     platformOnly(auth, requestId);
     const row = await run(requestId, () => this.policies.createDraft(actorOf(auth), { source_version_id: body.source_version_id, note: body.note ?? null }, ctxOf(requestId)));
-    return { version: versionDto({ row, content: row.content, open_request: null }) };
+    return { version: versionDto({ row, content: row.content, open_request: null, latest_request: null }) };
   }
 
   @Patch('policy-versions/:id')
@@ -77,7 +77,7 @@ export class PlatformCommercialGovernanceController {
     const row = await run(requestId, () =>
       this.policies.updateDraft(actorOf(auth), id, { ...(body.content === undefined ? {} : { content: definedOnly(body.content) }), ...(body.note === undefined ? {} : { note: body.note }) }, ctxOf(requestId)),
     );
-    return { version: versionDto({ row, content: row.content, open_request: null }) };
+    return { version: versionDto({ row, content: row.content, open_request: null, latest_request: null }) };
   }
 
   @Post('audit-events/export')
@@ -156,7 +156,7 @@ function definedOnly(o: object): Record<string, unknown> {
 
 const iso = (d: Date | null): string | null => (d === null ? null : d.toISOString());
 
-function versionDto(v: Pick<PolicyVersionView, 'open_request'> & { row: CommercialPolicyVersionRow; content: unknown }): CommercialPolicyVersionDto {
+function versionDto(v: Pick<PolicyVersionView, 'open_request' | 'latest_request'> & { row: CommercialPolicyVersionRow; content: unknown }): CommercialPolicyVersionDto {
   const r = v.row;
   return {
     id: r.id,
@@ -171,5 +171,6 @@ function versionDto(v: Pick<PolicyVersionView, 'open_request'> & { row: Commerci
     activated_at: iso(r.activated_at),
     retired_at: iso(r.retired_at),
     open_request: v.open_request,
+    latest_request: v.latest_request === null ? null : { id: v.latest_request.id, state: v.latest_request.state, applied_at: iso(v.latest_request.applied_at) },
   };
 }

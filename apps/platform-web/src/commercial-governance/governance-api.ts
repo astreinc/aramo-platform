@@ -36,7 +36,10 @@ export interface PolicyVersion {
   activated_by: string | null;
   activated_at: string | null;
   retired_at: string | null;
-  open_request: { id: string; state: string } | null;
+  /** The open activation request targeting this version; `apply_actionable` = the caller may apply it now (CCP-B5-R). */
+  open_request: { id: string; state: string; apply_actionable: boolean } | null;
+  /** CCP-B5-R — the most recent activation request targeting this version, in any state. */
+  latest_request: { id: string; state: string; applied_at: string | null } | null;
 }
 
 export interface PolicyList {
@@ -177,6 +180,10 @@ export const governanceApi = {
   },
   exportAudit(f: AuditFilters): Promise<AuditExport> {
     return apiClient.post('/platform/commercial/audit-events/export', f);
+  },
+  /** CCP-B5-R — the requester applies an approved (or failed) activation request. */
+  applyChange(id: string): Promise<{ request: { id: string; state: string; applied_at: string | null } }> {
+    return apiClient.post(`${CR}/${id}/apply`);
   },
   /** A governed change request (created as DRAFT), then submitted for approval. */
   async requestChange(body: {

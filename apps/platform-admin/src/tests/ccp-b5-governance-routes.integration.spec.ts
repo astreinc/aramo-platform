@@ -20,31 +20,34 @@ import {
 import { AuthorizationModule } from '@aramo/authorization';
 import { filterScopesForConsumer } from '@aramo/identity';
 import {
+  CommercialApplyService,
   CommercialAuditExportService,
   CommercialAuditRepository,
   CommercialChangeRequestService,
   CommercialOperatorRepository,
   CommercialOperatorRosterService,
+  CommercialPolicyApplyService,
   CommercialPolicyGovernanceService,
   CommercialPolicyRepository,
   SubscriptionPrismaService,
 } from '@aramo/subscription';
 
+import { PlatformCommercialApplyController } from '../app/platform/platform-commercial-apply.controller.js';
 import { PlatformCommercialAuditController } from '../app/platform/platform-commercial-audit.controller.js';
 import { PlatformCommercialChangeRequestController } from '../app/platform/platform-commercial-change-request.controller.js';
 import { PlatformCommercialGovernanceController } from '../app/platform/platform-commercial-governance.controller.js';
 // eslint-disable-next-line @nx/enforce-module-boundaries -- test-only real-Postgres support shared with the libs/subscription A3/A9/B5 specs
-import { CCP_BUNDLES, POLICY_V1, addOperator, revokeRole } from '../../../../libs/subscription/src/tests/support/ccp-a3-database.js';
-// eslint-disable-next-line @nx/enforce-module-boundaries -- test-only real-Postgres support shared with the libs/subscription A9 spec
-import { applyCcpA9Schema } from '../../../../libs/subscription/src/tests/support/ccp-a9-database.js';
+import { CCP_BUNDLES, POLICY_V1, addOperator, applyCcpA6Schema, revokeRole } from '../../../../libs/subscription/src/tests/support/ccp-a3-database.js';
 
 import { generateTestKeyPair } from './test-keys.js';
 
 // CCP-B5 (PBD §5.3 row B5, mandatory tests: per-role allowed/refused for every action, the
 // last-owner refusal surfaced, the export read-only, the POLICY_ACTIVATE apply) — the B5
 // routes and the A3/A9 change-request route, through the REAL guard chain and the REAL
-// services on real Postgres (identity chain with the A9 last-owner trigger + subscription
-// chain + A2 + A3 + A9; the guard function is A9's, unchanged by B5).
+// services on real Postgres. CCP-B5-R: the FULL chain (applyCcpA6Schema: every identity, entitlement,
+// metering and subscription migration, ending with the guard union and 20261027000200_ccp_b5r), and
+// the governed apply route (PlatformCommercialApplyController) through which the requester applies an
+// approved POLICY_ACTIVATE (TD-B5-1).
 
 const ROLES = ['platform_owner', 'finance_admin', 'commercial_ops', 'catalog_manager', 'support_admin', 'read_only_auditor'] as const;
 const CR = '/platform/commercial/change-requests';
@@ -100,6 +103,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B5 — policy
     const audit = new CommercialAuditRepository(prisma);
     const policies = new CommercialPolicyRepository(prisma);
     const operators = new CommercialOperatorRepository(prisma, audit, policies);
+    const changeRequests = new CommercialChangeRequestService(prisma, audit, policies, operators);
     const keys = generateTestKeyPair();
     privatePem = keys.privatePem;
     for (const k of ['AUTH_AUDIENCE', 'AUTH_PUBLIC_KEY']) saved[k] = process.env[k];
@@ -107,13 +111,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B5 — policy
     process.env['AUTH_PUBLIC_KEY'] = keys.publicPem;
     const moduleRef = await Test.createTestingModule({
       imports: [AuthModule, AuthorizationModule],
-      controllers: [PlatformCommercialAuditController, PlatformCommercialChangeRequestController, PlatformCommercialGovernanceController],
+      controllers: [PlatformCommercialAuditController, PlatformCommercialChangeRequestController, PlatformCommercialGovernanceController, PlatformCommercialApplyController],
       providers: [
         { provide: EFFECTIVE_AUTHORIZATION_RESOLVER, useValue: resolver },
         { provide: APP_FILTER, useClass: AramoExceptionFilter },
         { provide: CommercialAuditRepository, useValue: audit },
-        { provide: CommercialChangeRequestService, useValue: new CommercialChangeRequestService(prisma, audit, policies, operators) },
-        { provide: CommercialPolicyGovernanceService, useValue: new CommercialPolicyGovernanceService(prisma, policies, audit, operators) },
+        { provide: CommercialChangeRequestService, useValue: changeRequests },
+        { provide: CommercialPolicyGovernanceService, useValue: new CommercialPolicyGovernanceService(prisma, policies, audit, operators, changeRequests) },
+        {
+          provide: CommercialApplyService,
+          useValue: new CommercialApplyService(prisma, audit, operators, changeRequests, undefined, undefined, undefined, new CommercialPolicyApplyService(prisma, audit, operators, changeRequests)),
+        },
         { provide: CommercialOperatorRosterService, useValue: new CommercialOperatorRosterService(prisma, operators, policies) },
         { provide: CommercialAuditExportService, useValue: new CommercialAuditExportService(prisma, audit, policies, operators) },
       ],
@@ -136,7 +144,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B5 — policy
   }, 60_000);
 
   beforeEach(async () => {
-    await applyCcpA9Schema(pg);
+    await applyCcpA6Schema(pg);
     resolver.roleOf.clear();
     for (const role of [...ROLES, 'super_admin']) {
       user[role] = await addOperator(pg, [role]);
@@ -181,7 +189,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B5 — policy
     expect(ok.body.version.content.approval_expiry_hours).toBe(48);
   });
 
-  it('B5-RI-ACTIVATE the policy screen end to end over HTTP: finance requests activation, a distinct finance_admin and an owner sign, the activation applies (the request stays APPROVED with effect_applied_at); a platform_owner cannot request it', async () => {
+  it('B5-RI-ACTIVATE the policy screen end to end over HTTP: finance requests activation, a distinct finance_admin and an owner sign (the approval applies nothing), and the REQUESTER applies it through POST …/apply (APPROVED → APPLYING → APPLIED); approvers are refused not_requester; a platform_owner cannot request it (CCP-B5-R)', async () => {
     const draft = await post('platform_owner', PV, { source_version_id: POLICY_V1 });
     const V2 = draft.body.version.id as string;
     const edited = await patch('finance_admin', `${PV}/${V2}`, { content: { approval_expiry_hours: 48 } });
@@ -200,15 +208,28 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B5 — policy
     expect((await post('finance_2', `${CR}/${id}/approvals`, { step_index: 0 })).status).toBe(201);
     const done = await post('platform_owner', `${CR}/${id}/approvals`, { step_index: 1 });
     expect(done.status).toBe(201);
-    expect(done.body.apply).toMatchObject({ applied: true, reason: null, detail: { to_version_id: V2, from_version_id: POLICY_V1 } });
+    expect(done.body.apply).toBeNull();
     expect(done.body.request.state).toBe('APPROVED');
-    expect(done.body.request.effect_applied_at).toMatch(/Z$/);
+    expect('effect_applied_at' in done.body.request).toBe(false);
+    const pending = await get('finance_admin', PV);
+    expect(pending.body.active_version_id).toBe(POLICY_V1);
+    expect(pending.body.versions.find((v: { id: string }) => v.id === V2).open_request).toEqual({ id, state: 'APPROVED', apply_actionable: true });
+    expect((await get('finance_2', PV)).body.versions.find((v: { id: string }) => v.id === V2).open_request.apply_actionable).toBe(false);
+    expect((await get('finance_admin', `${CR}/${id}`)).body.apply_actionable).toBe(true);
+    // Requester-only (TD-B2-3): the approvers are refused.
+    for (const who of ['platform_owner', 'finance_2']) expect(reasonOf(await post(who, `${CR}/${id}/apply`, {})), who).toEqual([403, 'INSUFFICIENT_PERMISSIONS', 'not_requester']);
+    const applied = await post('finance_admin', `${CR}/${id}/apply`, {});
+    expect(applied.status, JSON.stringify(applied.body)).toBe(200);
+    expect(applied.body).toMatchObject({ replayed: false, application: null, catalog_application: null, request: { id, state: 'APPLIED' } });
+    expect(applied.body.request.applied_at).toMatch(/Z$/);
+    expect((await post('finance_admin', `${CR}/${id}/apply`, {})).body).toMatchObject({ replayed: true, request: { state: 'APPLIED' } });
     const after = await get('read_only_auditor', PV);
     expect(after.body.active_version_id).toBe(V2);
     expect(after.body.versions.map((v: { version_number: number; status: string }) => [v.version_number, v.status])).toEqual([[2, 'ACTIVE'], [1, 'RETIRED']]);
     expect(after.body.open_request).toBeNull();
+    expect(after.body.versions.find((v: { id: string }) => v.id === V2).latest_request).toEqual({ id, state: 'APPLIED', applied_at: applied.body.request.applied_at });
     const detail = await get('commercial_ops', `${CR}/${id}`);
-    expect(detail.body.request.effect_applied_at).toBe(done.body.request.effect_applied_at);
+    expect(detail.body.request).toMatchObject({ state: 'APPLIED', applied_at: applied.body.request.applied_at });
   });
 
   it('B5-RI-ROLE the roster reads per role; the last-owner refusal is surfaced as 409 PLATFORM_LAST_OWNER; a role change is a governed request that applies only after a distinct owner signs', async () => {

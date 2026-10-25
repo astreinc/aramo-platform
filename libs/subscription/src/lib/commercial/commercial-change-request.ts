@@ -232,6 +232,35 @@ export const COMMERCIAL_A8_EXCEPTION_TRANSITIONS: Readonly<Partial<Record<Commer
   APPLYING: ['APPLIED'],
 };
 
+/**
+ * CCP-B5-R (TD-B5-1, Architect APPROVED 2026-10-25) — POLICY_ACTIVATE applies with the A6 apply
+ * pairs: APPROVED | APPLY_FAILED → APPLYING → APPLIED | APPLY_FAILED (DB guard, union block
+ * "CCP-B5-R"). The request is APPLIED only in the transaction that activates the policy version.
+ */
+export const COMMERCIAL_B5R_POLICY_APPLY_TRANSITIONS: Readonly<Partial<Record<CommercialChangeRequestState, readonly CommercialChangeRequestState[]>>> = {
+  APPROVED: ['APPLYING'],
+  APPLY_FAILED: ['APPLYING'],
+  APPLYING: ['APPLIED', 'APPLY_FAILED'],
+};
+
+/**
+ * Charter Amendment A1 AD-4 (CCP-A6-R; widened by CCP-B5-R to EVERY applyable action type, no
+ * action-type exception): an APPROVED or APPLY_FAILED request may become APPLY_EXPIRED — the A6
+ * and CCP-B2-backend types (A6-R), and POLICY_ACTIVATE, ROLE_GRANT, ROLE_REVOKE,
+ * ENTITLEMENT_REVOKE, CONVERSION and a NORMAL SUPPORT_EXTENSION (B5-R). Never from APPLYING (so a
+ * CONVERSION pending its provider command never expires), and never a bounded EXCEPTION (it never
+ * sits in APPROVED; any other SUPPORT_EXTENSION kind takes no transition at all).
+ */
+export const APPLY_EXPIRABLE_ACTIONS: readonly CommercialActionType[] = [
+  'SUBSCRIPTION_OPEN', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'ENTITLEMENT_GRANT', // A6 (A6-R)
+  'PLAN_VERSION_PUBLISH', 'PLAN_RETIRE', // CCP-B2-backend (A6-R)
+  'POLICY_ACTIVATE', 'ROLE_GRANT', 'ROLE_REVOKE', 'ENTITLEMENT_REVOKE', 'CONVERSION', 'SUPPORT_EXTENSION', // CCP-B5-R
+];
+export function isApplyExpirable(action_type: string, kind = 'NORMAL'): boolean {
+  if (!(APPLY_EXPIRABLE_ACTIONS as readonly string[]).includes(action_type)) return false;
+  return action_type !== 'SUPPORT_EXTENSION' || kind === 'NORMAL';
+}
+
 /** The action types CommercialApplyService applies: the four A6 actions, CCP-A7's ENTITLEMENT_REVOKE and CCP-A8's SUPPORT_EXTENSION (merge train TD-MERGE-30). */
 export const APPLY_SERVICE_ACTIONS = [...A6_APPLICABLE_ACTIONS, ...A7_APPLICABLE_ACTIONS, 'SUPPORT_EXTENSION'] as const;
 export type ApplyServiceAction = (typeof APPLY_SERVICE_ACTIONS)[number];
@@ -259,14 +288,18 @@ export function canTransitionFor(
   // whose kind is neither EXCEPTION nor NORMAL ("kind % is not applied").
   if (action_type === 'SUPPORT_EXTENSION' && kind !== 'NORMAL') return false;
   if (COMMERCIAL_A3_TRANSITIONS[from].includes(to)) return true;
+  // Charter Amendment A1 AD-4 (A6-R; CCP-B5-R for every applyable type): → APPLY_EXPIRED from
+  // APPROVED / APPLY_FAILED only.
+  if (to === 'APPLY_EXPIRED') return (from === 'APPROVED' || from === 'APPLY_FAILED') && isApplyExpirable(action_type, kind);
+  // CCP-B5-R (TD-B5-1): POLICY_ACTIVATE applies with the A6 pairs.
+  if (action_type === 'POLICY_ACTIVATE') return (COMMERCIAL_B5R_POLICY_APPLY_TRANSITIONS[from] ?? []).includes(to);
   if ((COMMERCIAL_ROLE_CHANGE_ACTIONS as readonly string[]).includes(action_type)) return (COMMERCIAL_A9_ROLE_APPLY_TRANSITIONS[from] ?? []).includes(to);
   if (isA6Applicable(action_type) || isCatalogApplicable(action_type)) return (COMMERCIAL_A6_APPLY_TRANSITIONS[from] ?? []).includes(to);
   if (action_type === 'CONVERSION') return (COMMERCIAL_C2_CONVERSION_TRANSITIONS[from] ?? []).includes(to);
-  // CCP-A8: an escalated or removal SUPPORT_EXTENSION (NORMAL) takes the A6 apply pairs; like the
-  // revoke, not A6-R's APPLY_EXPIRED (the guard does not name it; merge train TD-MERGE-30).
+  // CCP-A8: an escalated or removal SUPPORT_EXTENSION (NORMAL) takes the A6 apply pairs (its
+  // APPLY_EXPIRED pairs are the AD-4 branch above, CCP-B5-R).
   if (action_type === 'SUPPORT_EXTENSION' && kind === 'NORMAL') return (COMMERCIAL_A7_REVOKE_TRANSITIONS[from] ?? []).includes(to);
-  // CCP-A7: the governed revoke — the A6 apply pairs, without A6-R's APPLY_EXPIRED (the guard
-  // admits APPLY_EXPIRED only for the A6 + B2-backend set; merge train TD-MERGE-26).
+  // CCP-A7: the governed revoke — the A6 apply pairs (its APPLY_EXPIRED pairs: the AD-4 branch above).
   if (isA7Applicable(action_type)) return (COMMERCIAL_A7_REVOKE_TRANSITIONS[from] ?? []).includes(to);
   return false;
 }

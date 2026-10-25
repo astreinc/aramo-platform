@@ -21,6 +21,9 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 // Plus, on the A3 route the B5 screens call (POST /platform/commercial/change-requests):
 // a governed ROLE_GRANT (201), the last-owner ROLE_REVOKE refusal (409 PLATFORM_LAST_OWNER)
 // and a POLICY_ACTIVATE by a platform_owner (403 requester_role_missing; TD-A3-5).
+// CCP-B5-R (TD-B5-1): the policy screen's "Apply activation" calls the governed apply route
+// (POST /platform/commercial/change-requests/{id}/apply), requester-only: a non-requester is
+// refused (403 not_requester).
 //
 // Principals and placeholder cookies are as in the A10 file (`pact-<role>`; the verifier
 // seeds one attested operator per role — so OP.platform_owner is the platform's only owner).
@@ -122,6 +125,8 @@ const versionBody = (status: string, o: { id?: unknown } = {}) => ({
   activated_at: status === 'ACTIVE' ? iso() : null,
   retired_at: null,
   open_request: null,
+  // CCP-B5-R: `latest_request` (OpenAPI CommercialPolicyVersion) is not pinned here — it depends on
+  // the request history the provider states leave behind (the console reads it null-tolerantly).
 });
 
 const DRAFT_PATH = fromProviderState(`${PV}/\${versionId}`, `${PV}/${EX_DRAFT_ID}`);
@@ -380,7 +385,6 @@ describe('platform-web → POST /platform/commercial/change-requests from the B5
               }),
             },
             requested_by: OP.platform_owner,
-            effect_applied_at: null,
           }),
           replayed: false,
         });
@@ -440,6 +444,27 @@ describe('platform-web → POST /platform/commercial/change-requests from the B5
         expect(
           (await call(`${mock.url}${CR}`, 'POST', platformJson('platform_owner'), body)).status,
         ).toBe(403);
+      });
+  });
+});
+
+// ── CCP-B5-R: the requester-only apply of a POLICY_ACTIVATE ─────────────────────
+
+describe('platform-web → POST /platform/commercial/change-requests/{id}/apply (CCP-B5-R)', () => {
+  it('a platform_owner cannot apply a policy activation it did not request (403 not_requester; TD-B2-3)', async () => {
+    const EX_REQ = 'ccb50000-0000-7000-8000-0000000000e1';
+    await provider
+      .addInteraction()
+      .given('a commercial policy activation request by a finance admin exists')
+      .uponReceiving('a policy activation apply refused for a non-requester')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/apply`, `${CR}/${EX_REQ}/apply`), (b) => {
+        b.headers(platformSession('platform_owner'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(errorBody('INSUFFICIENT_PERMISSIONS', { reason: 'not_requester', explanation: like('Only the person who requested this change can apply it.') }));
+      })
+      .executeTest(async (mock) => {
+        expect((await call(`${mock.url}${CR}/${EX_REQ}/apply`, 'POST', platformSession('platform_owner'))).status).toBe(403);
       });
   });
 });

@@ -3404,7 +3404,9 @@ paths:
         Applies an APPROVED (or APPLY_FAILED, retry) request of action type SUBSCRIPTION_OPEN,
         SUBSCRIPTION_CHANGE, SUBSCRIPTION_END or ENTITLEMENT_GRANT (CCP-A6), ENTITLEMENT_REVOKE (CCP-A7), or PLAN_VERSION_PUBLISH or
         PLAN_RETIRE (CCP-B2-backend: the catalog lifecycle; publishing or retiring never moves a
-        subscription). Only the original requester, a person, with live requester authority may apply
+        subscription), or POLICY_ACTIVATE (CCP-B5-R: APPROVED → APPLYING → APPLIED in the transaction
+        that activates the policy version, after the NC-5 snapshot re-check; the requester must still
+        hold finance_admin). Only the original requester, a person, with live requester authority may apply
         (CCP-A6-R). A6 actions run in ONE local transaction under the
         tenant's billing lock: the NC-5 re-check of every approval under the request's snapshotted
         chain, the governed (MANUAL) subscription write pinned to a PUBLISHED plan version, the
@@ -6082,7 +6084,7 @@ components:
     CommercialPolicyVersion:
       type: object
       additionalProperties: false
-      required: [id, version_number, status, content, content_checksum, note, created_by, created_at, activated_by, activated_at, retired_at, open_request]
+      required: [id, version_number, status, content, content_checksum, note, created_by, created_at, activated_by, activated_at, retired_at, open_request, latest_request]
       properties:
         id:
           type: string
@@ -6118,10 +6120,32 @@ components:
           type: [string, 'null']
           format: date-time
         open_request:
-          description: The open (DRAFT / PENDING_APPROVAL) POLICY_ACTIVATE targeting this version.
+          description: |
+            The open POLICY_ACTIVATE targeting this version (DRAFT, PENDING_APPROVAL, APPROVED,
+            APPLYING or APPLY_FAILED; CCP-B5-R), with the caller's `apply_actionable` hint
+            (requester-only; APPROVED or APPLY_FAILED).
           oneOf:
             - type: 'null'
             - $ref: '#/components/schemas/CommercialOpenRequestRef'
+        latest_request:
+          description: CCP-B5-R — the most recent POLICY_ACTIVATE targeting this version, in any state (APPLIED, APPLY_EXPIRED, …).
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/CommercialPolicyLatestRequestRef'
+
+    CommercialPolicyLatestRequestRef:
+      type: object
+      additionalProperties: false
+      required: [id, state, applied_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        state:
+          $ref: '#/components/schemas/CommercialChangeRequestState'
+        applied_at:
+          type: [string, 'null']
+          format: date-time
 
     CommercialOpenRequestRef:
       type: object
@@ -6136,6 +6160,9 @@ components:
         policy_version_id:
           type: string
           format: uuid
+        apply_actionable:
+          type: boolean
+          description: CCP-B5-R — whether the caller may apply this request now (a UI hint; the apply re-checks).
 
     CommercialPolicyList:
       type: object
@@ -7398,7 +7425,7 @@ components:
     CommercialChangeRequest:
       type: object
       additionalProperties: false
-      required: [id, action_type, kind, state, tenant_id, product_key, payload, payload_checksum, required_chain, policy_version_id, policy_checksum, requested_by, reason, created_at, submitted_at, expires_at, approved_at, rejected_at, rejected_by, rejection_reason, withdrawn_at, expired_at, applied_at, effect_applied_at]
+      required: [id, action_type, kind, state, tenant_id, product_key, payload, payload_checksum, required_chain, policy_version_id, policy_checksum, requested_by, reason, created_at, submitted_at, expires_at, approved_at, rejected_at, rejected_by, rejection_reason, withdrawn_at, expired_at, applied_at]
       properties:
         id:
           type: string
@@ -7476,15 +7503,7 @@ components:
         applied_at:
           type: [string, 'null']
           format: date-time
-          description: CCP-A9 — set when a governed role change was applied (state APPLIED).
-        effect_applied_at:
-          type: [string, 'null']
-          format: date-time
-          description: |
-            CCP-B5 — when the request's effect was applied: `applied_at` for a request that
-            reached APPLIED, else the time of its COMMERCIAL_CHANGE_REQUEST_APPLIED event (an
-            applied `POLICY_ACTIVATE` stays APPROVED: the state guard admits no transition out
-            of APPROVED for it). null when nothing was applied.
+          description: Set when the request was applied (state APPLIED) — a governed apply, a role change (CCP-A9) or a policy activation (CCP-B5-R).
 
     CommercialApproval:
       type: object
