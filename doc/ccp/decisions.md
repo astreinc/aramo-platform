@@ -163,3 +163,32 @@ Post-merge fixes made on the integrated program branch (TD-MERGE-n). Each merge 
   - (b) amend the state machine so the requester may WITHDRAW an APPLY_FAILED request;
   - (c) amend AD-2.
 - Nothing is built until it is ruled.
+
+## Architect final rulings (2026-10-25): Finance amount scope + TD-ACC-1
+- **Finance amount scope: RATIFIED and LOCKED.** Filed as `Aramo-CCP-A1-Amendment-A1-Finance-Amount-Scope-v1_0-LOCKED.md`, SHA-256 prefix `c3ce572ae19bba55` (sidecar verified; references to A1 `44ac30ce…` and DDR v1.2 `9ef23194…` checked).
+  - **FAS-1:** read_only_auditor holds amount-read.
+  - **FAS-2:** the scope is `platform:billing:amount:read`.
+  - **FAS-3:** support_admin gets a due/overdue boolean only.
+  - **Grantees:** exactly platform_owner, finance_admin and read_only_auditor.
+  - **Enforcement:** backend-enforced, covering field omission, exports, alert payloads, search, counts, errors, logs and caches.
+  - **Catalog totals:** 25 / 205 / 984 → 25 / 206 / 987, recalculated from the seed at implementation.
+- **TD-ACC-1: Option B.** The original requester may WITHDRAW an APPLY_FAILED POLICY_ACTIVATE, provided:
+  - their current authority is revalidated;
+  - reconciliation proves no activation is executing, queued or uncertain;
+  - an activation that committed but whose response failed is reconciled to APPLIED, never withdrawn.
+
+  Conditions on the transition:
+  - WITHDRAWN is terminal.
+  - Signatures, payload and failure evidence are preserved.
+  - Withdrawal writes one audit event.
+  - The slot is released only when the withdrawal commits.
+  - Retry, withdrawal and a new activation are serialized and idempotent.
+
+  AD-2 and the 72 h apply TTL are unchanged; withdrawal is not an extension. Lead check: no LOCKED instrument fixes the transition table (WITHDRAWN appears in no CCP LOCKED text). The table lives in the A3 pre-execution record, so this addition is within program authority.
+- **Dependency disposition (same date):**
+  - CCP-UI v1.1 is the immediate design dependency, using the prepared prompt unchanged.
+  - C3 stays NOT DELIVERED until the restricted credential and portal-configuration evidence are verified. No credential is issued to unblock the schedule.
+  - Enterprise invoicing stays disabled (`invoicing.enabled: false`) pending a Finance/PO operating-model decision.
+  - C4, C5 and C7 are externally blocked.
+  - DR-C2-1 stays fail-closed.
+  - Each blocked slice reports engineering-complete, disabled-by-design and release-ready status separately.
