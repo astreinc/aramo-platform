@@ -1,0 +1,249 @@
+/* CCP-B6 — the support-extension components (CCP-UI v1.0 handoff §5.9, §5.10, §6): the
+ * exception overlay and the support request dialog. Values from Commercial Control Plane
+ * v1.0.dc.html; every colour is a platform token (theme.css). Prefix `pw-xo` / `pw-sxd`. */
+
+/* ─────────── ExceptionOverlay ─────────── */
+.pw-xo {
+  overflow: hidden;
+  border: 1.5px solid var(--pw-terracotta);
+  border-radius: var(--pw-r-box);
+}
+.pw-xo--approved {
+  border: 1px solid var(--pw-line);
+}
+.pw-xo__head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 14px;
+  background: var(--pw-role-badge-bg);
+  color: var(--pw-role-badge-fg);
+  font-size: var(--pw-fs-13);
+}
+.pw-xo--approved .pw-xo__head {
+  background: var(--pw-surface-2);
+  color: var(--pw-ink);
+}
+.pw-xo__tag {
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-10-5);
+  font-weight: 700;
+  letter-spacing: var(--pw-sx-tracking-tag);
+}
+.pw-xo__ref {
+  margin-left: auto;
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-11-5);
+}
+.pw-xo__rows {
+  display: grid;
+  grid-template-columns: 170px minmax(0, 1fr);
+  gap: 6px 14px;
+  margin: 0;
+  padding: 12px 14px;
+  font-size: var(--pw-fs-12-5);
+}
+.pw-xo__row {
+  display: contents;
+}
+.pw-xo__row dt {
+  color: var(--pw-muted);
+}
+.pw-xo__row dd {
+  margin: 0;
+}
+
+/* ─────────── SupportRequestDialog — scoped to dialogs holding .pw-sxd ─────────── */
+.tc-dialog__overlay:has(+ .tc-dialog__content .pw-sxd),
+body:has(.pw-sxd) .tc-dialog__overlay {
+  z-index: 95;
+  background: var(--pw-overlay);
+}
+.tc-dialog__content:has(.pw-sxd) {
+  /* Centred without a transform (the design's grid overlay, place-items:center). */
+  inset: 0;
+  margin: auto;
+  height: fit-content;
+  transform: none;
+  z-index: 96;
+  display: flex;
+  flex-direction: column;
+  width: min(600px, 94vw);
+  max-width: none;
+  max-height: 88vh;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  border: none;
+  border-radius: var(--pw-r-dialog);
+  background: var(--pw-surface);
+  box-shadow: var(--pw-sx-shadow-dialog);
+  font-family: var(--pw-font);
+}
+.tc-dialog__content:has(.pw-sxd) .tc-dialog__title {
+  margin: 0;
+  padding: 18px 22px 0;
+  color: var(--pw-ink);
+  font-size: var(--pw-sx-fs-title);
+  font-weight: 700;
+  line-height: normal;
+  letter-spacing: normal;
+}
+.tc-dialog__content:has(.pw-sxd) .tc-dialog__description {
+  margin: 0;
+  padding: 6px 22px 12px;
+  color: var(--pw-ink-2);
+  font-size: var(--pw-fs-13-5);
+  line-height: 1.5;
+}
+.tc-dialog__content:has(.pw-sxd) .tc-dialog__body {
+  display: block;
+  min-height: 0;
+  padding: 4px 22px 16px;
+  overflow-y: auto;
+}
+.tc-dialog__content:has(.pw-sxd) .tc-dialog__footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 22px;
+  border-top: 1px solid var(--pw-line);
+  background: var(--pw-surface-2);
+}
+.pw-sxd {
+  display: grid;
+  gap: 14px;
+  color: var(--pw-ink);
+}
+.pw-sxd__field {
+  display: block;
+}
+.pw-sxd__label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: var(--pw-fs-13);
+  font-weight: 600;
+}
+.pw-sxd__num,
+.pw-sxd__area {
+  box-sizing: border-box;
+  border: 1px solid var(--pw-line-2);
+  border-radius: var(--pw-r-md);
+  background: var(--pw-surface);
+  color: var(--pw-ink);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-13-5);
+}
+.pw-sxd__num {
+  width: 160px;
+  height: 38px;
+  padding: 0 10px;
+}
+.pw-sxd__area {
+  width: 100%;
+  padding: 8px 10px;
+  resize: vertical;
+}
+.pw-sxd__num:focus,
+.pw-sxd__area:focus {
+  border-color: var(--pw-focus);
+  outline: none;
+  box-shadow: var(--pw-focus-ring);
+}
+.pw-sxd__help {
+  display: block;
+  margin-top: 4px;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12);
+}
+.pw-sxd__preview {
+  padding: 12px 14px;
+  border: 1.5px solid;
+  border-radius: var(--pw-r-box);
+  font-size: var(--pw-fs-13);
+}
+.pw-sxd__preview ul {
+  margin: 6px 0 0;
+  padding-left: 18px;
+  line-height: 1.6;
+}
+.pw-sxd__preview--ok {
+  border-color: var(--pw-alert-success-line);
+  background: var(--pw-sx-ok-bg);
+  color: var(--pw-alert-success-ink);
+}
+.pw-sxd__preview--warn {
+  border-color: var(--pw-alert-warn-line);
+  background: var(--pw-alert-warn-bg);
+  color: var(--pw-alert-warn-ink);
+}
+.pw-sxd__chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-box);
+  background: var(--pw-surface-2);
+  font-size: var(--pw-fs-13);
+}
+.pw-sxd__chain-lead {
+  color: var(--pw-muted);
+}
+.pw-sxd__chain-steps {
+  color: var(--pw-ink-2);
+}
+.pw-sxd__chain-meta {
+  margin-left: auto;
+  color: var(--pw-muted);
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-11-5);
+}
+.pw-sxd__alert {
+  padding: 10px 14px;
+  border: 1px solid var(--pw-alert-error-line);
+  border-radius: var(--pw-r-box);
+  background: var(--pw-alert-error-bg);
+  color: var(--pw-alert-error-ink);
+  font-size: var(--pw-fs-13);
+}
+.pw-sxd__btn {
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--pw-line-2);
+  border-radius: var(--pw-r-md);
+  background: var(--pw-surface);
+  color: var(--pw-ink);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-13-5);
+  font-weight: 600;
+  cursor: pointer;
+}
+.pw-sxd__btn--commit {
+  padding: 0 16px;
+  font-weight: 700;
+}
+.pw-sxd__btn--terra {
+  border-color: var(--pw-terracotta);
+  background: var(--pw-terracotta);
+  color: var(--pw-midnight);
+}
+.pw-sxd__btn--danger {
+  border-color: var(--pw-danger);
+  background: var(--pw-danger);
+  color: var(--pw-surface);
+}
+.pw-sxd__btn--mid {
+  border-color: var(--pw-midnight);
+  background: var(--pw-midnight);
+  color: var(--pw-surface);
+}
+.pw-sxd__btn:disabled {
+  cursor: not-allowed;
+}
+.pw-sxd__btn--dim {
+  opacity: 0.45;
+}

@@ -7,8 +7,9 @@ import { mockApi, type MockOptions, type MockTracker } from '../fixtures/mock-ap
 import { NOW_ISO } from '../fixtures/tenants';
 import { loadFonts } from './fonts';
 
-export async function openBuild(page: Page, path: string, opts: MockOptions & { railCollapsed?: boolean } = {}): Promise<void> {
-  await page.clock.setFixedTime(new Date(NOW_ISO));
+export async function openBuild(page: Page, path: string, opts: MockOptions & { railCollapsed?: boolean; clock?: string } = {}): Promise<void> {
+  // CCP-B1: `clock` — a dataset with its own frozen clock (the CCP prototype's NOW).
+  await page.clock.setFixedTime(new Date(opts.clock ?? NOW_ISO));
   const tracker = await mockApi(page, opts);
   (page as unknown as { __mock?: MockTracker }).__mock = tracker;
   await page.addInitScript((collapsed) => {

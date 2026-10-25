@@ -44,3 +44,14 @@ export {
   formatTimestamp,
 } from './format-date';
 export { PERMISSION_LABEL, PLATFORM_PERMISSIONS, permissionLabel, type PlatformPermission } from './permissions';
+// CCP-B6 — the NEW support-extension components (CCP-UI v1.0 handoff §6 ExceptionOverlay; §5.10).
+export { ExceptionOverlay, type ExceptionOverlayProps, type ExceptionOverlayRow } from './ExceptionOverlay';
+export {
+  SupportField,
+  SupportRequestDialog,
+  type SupportChain,
+  type SupportCommitTone,
+  type SupportFieldProps,
+  type SupportPreview,
+  type SupportRequestDialogProps,
+} from './SupportRequestDialog';

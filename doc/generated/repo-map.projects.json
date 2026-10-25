@@ -8797,6 +8797,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/commercial/support-extensions/SupportExtensionsView.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/platform-web/src/components/interactive-components.spec.tsx",
         "project": "aramo-platform-web",
         "status": "excluded"

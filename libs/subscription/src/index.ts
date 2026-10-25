@@ -242,8 +242,11 @@ export {
   SUPPORT_EXTENSION_SCOPE,
   SupportExtensionService,
   type RequestSupportExtensionInput,
+  type SupportExtensionContext,
   type SupportExtensionOutcome,
+  type SupportExtensionOverview,
   type SupportExtensionRow,
+  type SupportExtensionSubscriptionRow,
 } from './lib/commercial/support-extension.service.js';
 export {
   decideSupportExtension,

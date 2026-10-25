@@ -144,6 +144,18 @@
   --pw-tracking-label: 0.09em; /* rail group label */
   --pw-tracking-caps: 0.05em; /* table heads, Change label */
 
+  /* ── CCP-B6: CCP-UI v1.0 values for the support-extension workflow
+     (Commercial Control Plane v1.0.dc.html dialog, preview box, exception overlay)
+     not in the PLATFORM-UX-1 file ── */
+  --pw-sx-fs-title: 18px; /* commercial request dialog title */
+  --pw-sx-ok-bg: #f1f8f4; /* "Within bounds" preview box */
+  --pw-sx-shadow-dialog: 0 24px 64px rgba(15, 25, 40, 0.24); /* commercial request dialog */
+  --pw-sx-tracking-tag: 0.06em; /* the EXCEPTION tag */
+  --pw-sx-stripe-bg: #e9edfb; /* "Managed in Stripe" source badge */
+  --pw-sx-stripe-fg: #011f8d;
+  --pw-sx-stripe-line: #c9d2f5;
+  --pw-sx-r-strip: 9px; /* the open-request strip */
+
   /* Shell geometry (handoff §3.1) */
   --pw-envbar-h: 30px;
   --pw-topbar-h: 56px;

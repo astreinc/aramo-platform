@@ -1,0 +1,240 @@
+/* CCP-B6 — the support-extension screen (CCP-UI v1.0 handoff §5.9; Commercial Control Plane
+ * v1.0.dc.html, the Tenant › Commercial product card). Every value is a platform token
+ * (theme.css). Prefix `sx-`. */
+
+.sx {
+  display: grid;
+  gap: 14px;
+  align-content: start;
+}
+.sx-head {
+  margin-bottom: 4px;
+}
+.sx-h1 {
+  margin: 0;
+  font-size: var(--pw-fs-24);
+  font-weight: 700;
+  letter-spacing: var(--pw-tracking-tight);
+}
+.sx-intro {
+  max-width: 720px;
+  margin: 6px 0 0;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-14);
+}
+.sx-pick {
+  max-width: 360px;
+}
+.sx-viewonly {
+  padding: 10px 14px;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-box);
+  background: var(--pw-surface-2);
+  color: var(--pw-ink-2);
+  font-size: var(--pw-fs-13);
+}
+.sx-notice {
+  padding: 10px 14px;
+  border: 1px solid;
+  border-radius: var(--pw-r-box);
+  font-size: var(--pw-fs-13);
+}
+.sx-notice--ok {
+  border-color: var(--pw-alert-success-line);
+  background: var(--pw-alert-success-bg);
+  color: var(--pw-alert-success-ink);
+}
+.sx-notice--warn {
+  border-color: var(--pw-alert-warn-line);
+  background: var(--pw-alert-warn-bg);
+  color: var(--pw-alert-warn-ink);
+}
+.sx-notice--error {
+  border-color: var(--pw-alert-error-line);
+  background: var(--pw-alert-error-bg);
+  color: var(--pw-alert-error-ink);
+}
+.sx-ref {
+  color: inherit;
+  font-family: var(--pw-mono);
+  font-weight: 600;
+  text-decoration: underline;
+}
+
+/* ── the product card (§5.9) ── */
+.sx-card {
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-card);
+  background: var(--pw-surface);
+}
+.sx-card__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--pw-rule);
+}
+.sx-card__title {
+  margin: 0;
+  font-size: var(--pw-fs-15);
+  font-weight: 700;
+}
+.sx-card__body {
+  padding: 16px 20px;
+}
+.sx-src {
+  padding: 2px 8px;
+  border: 1px solid var(--pw-line-2);
+  border-radius: var(--pw-r-sm);
+  background: var(--pw-surface);
+  color: var(--pw-ink-2);
+  font-size: var(--pw-fs-12);
+  font-weight: 600;
+}
+.sx-src--stripe {
+  border-color: var(--pw-sx-stripe-line);
+  background: var(--pw-sx-stripe-bg);
+  color: var(--pw-sx-stripe-fg);
+}
+.sx-flag {
+  padding: 2px 7px;
+  border-radius: var(--pw-r-sm);
+  background: var(--pw-role-badge-bg);
+  color: var(--pw-role-badge-fg);
+  font-size: var(--pw-fs-11-5);
+  font-weight: 600;
+}
+.sx-muted {
+  margin-bottom: 12px;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-13);
+}
+.sx-facts {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px 20px;
+  margin-bottom: 14px;
+}
+.sx-facts__k {
+  color: var(--pw-faint);
+  font-size: var(--pw-fs-11);
+  font-weight: 600;
+  letter-spacing: var(--pw-tracking-caps);
+  text-transform: uppercase;
+}
+.sx-facts__v {
+  margin-top: 2px;
+  color: var(--pw-ink);
+  font-weight: 600;
+}
+.sx-facts__v--ok {
+  color: var(--pw-ok);
+}
+.sx-facts__v--warn {
+  color: var(--pw-warn);
+}
+.sx-facts__v--danger {
+  color: var(--pw-danger);
+}
+.sx-facts__v--muted {
+  color: var(--pw-muted-tone);
+}
+.sx-facts__s {
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12);
+}
+.sx-overlay {
+  margin-bottom: 14px;
+}
+.sx-overlay__actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+.sx-btn-danger {
+  border-color: var(--pw-alert-error-line);
+  background: var(--pw-surface);
+  color: var(--pw-danger);
+}
+.sx-open {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 9px 12px;
+  border: 1px solid var(--pw-alert-info-line);
+  border-radius: var(--pw-sx-r-strip);
+  background: var(--pw-alert-info-bg);
+  color: var(--pw-alert-info-ink);
+  font-size: var(--pw-fs-13);
+}
+.sx-open__ref {
+  color: var(--pw-alert-info-ink);
+  font-family: var(--pw-mono);
+  font-weight: 600;
+  text-decoration: underline;
+}
+.sx-open__apply {
+  margin-left: auto;
+}
+.sx-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.sx-reasons {
+  display: grid;
+  gap: 2px;
+  margin: 8px 0 0;
+  padding: 0;
+  list-style: none;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12);
+}
+.sx-reasons b {
+  color: var(--pw-ink-2);
+  font-weight: 600;
+}
+
+/* ── earlier extensions (PLATFORM-UX-1 table grammar) ── */
+.sx-table-wrap {
+  overflow-x: auto;
+}
+.sx-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--pw-fs-13);
+}
+.sx-table th {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--pw-line);
+  background: var(--pw-surface-2);
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-11);
+  font-weight: 600;
+  letter-spacing: var(--pw-tracking-caps);
+  text-align: left;
+  text-transform: uppercase;
+}
+.sx-table td {
+  padding: 11px 16px;
+  border-bottom: 1px solid var(--pw-rule);
+  vertical-align: top;
+}
+.sx-table tr:last-child td {
+  border-bottom: none;
+}
+.sx-table td:first-child {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.sx-mono {
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-12);
+}

@@ -22,6 +22,8 @@ import { MatchingPolicyView } from './matching/MatchingPolicyView';
 import { PersonalReviewView } from './personal/PersonalReviewView';
 import { PersonalInviteView } from './personal/PersonalInviteView';
 import { PlatformAdminsView } from './admins/PlatformAdminsView';
+import { SupportExtensionsView } from './commercial/support-extensions/SupportExtensionsView';
+import { SUPPORT_SCOPES } from './commercial/support-extensions/support-extension-scopes';
 
 // The platform console app. RouteGuard handles only loading, unauthenticated
 // (→ sign-in) and the TENANT_ACCESS_DENIED wrong-account redirect — it no longer
@@ -150,6 +152,13 @@ export function PlatformConsole({ session }: { readonly session: Session }) {
         {/* PLATFORM-UX-1 (directive R-12) — Platform admins at /admins (never under
             /platform/, which nginx proxies to the backend). */}
         <Route path="/admins" element={gate(P.adminInvite, 'Platform admins', <PlatformAdminsView />)} />
+        {/* CCP-B6 — the support workflow (extensions and escalations), gated on the list route's
+            scope. B1 owns the Commercial rail item and its commercial access-denied card: at merge
+            this gate becomes B1's commercialGate. */}
+        <Route
+          path="/commercial/support-extensions"
+          element={gate(SUPPORT_SCOPES.subscriptionRead, 'Support extensions', <SupportExtensionsView session={session} />)}
+        />
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </PlatformShell>

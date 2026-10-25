@@ -47,6 +47,32 @@ writing every unmasked screen-state is pixel-exact under `threshold 0.2`
 | DV-30 | `:read` Studio panels describe the PUBLISHED version (outline, variable usage, checks, readiness pill) and the preview page header has no organization sample; the design file's describe the draft | Directive R-13 (`:read` sees the published version only; no sample render for `:read`) | studio-viewonly |
 | DV-31 | Unhighlighted preview: each sample value is its own span (shared SafeDoc), so the line's text is shaped per run (sub-pixel glyph differences, no layout shift) where the design file renders one text run | R-11 (SafeDoc is the only renderer; byte-compatible exports) | studio-preview-plain |
 
+## CCP-B6 — Support extensions (Commercial Control Plane v1.0.dc.html, CCP-UI v1.0)
+
+The B6 states (`states-ccp-support.ts`) compare the build against the pinned CCP design
+file (`doc/design-reference/ccp/CCP-UI-v1_0/`, `MANIFEST.sha256` 5/5 OK; pinned in
+`doc/ccp/slices/CCP-B6-pre-execution.md`), loaded by `support/proto-ccp.ts openCcpProto`
+(adopted byte-identical from CCP-B1). B1 owns the shell and the rail, which are not in
+B6's base, so every B6 state is ELEMENT-level: the support extension dialog (in bounds
+and escalated), the exception overlay card and the view-only note. An element state's
+design-file mask regions are stored relative to the element and re-anchored on the build
+element (`capture-reference.spec.ts`, `parity.spec.ts`; no change for frame states). The
+build runs on `fixtures/ccp-support.ts` at the prototype's clock (2026-10-24 14:00 UTC).
+
+| ID | Divergence | Cause | Screen-states |
+|---|---|---|---|
+| DV-B6-1 | The workflow is a routed view (`/commercial/support-extensions?tenant=`) built from the pinned Tenant › Commercial elements, not the Commercial tab itself; the page frame (header, tenant select, earlier-extensions table) has no design counterpart and is not compared | Lead brief: B3 owns the tab and B1 the shell; pre-execution C-1 | (frame not compared) |
+| DV-B6-2 | The clause help line and the preview's "Policy clause" line drop "§4.2" ("Policy v1: up to 14 days, …"); the overlay's clause names policy v1, not the retired pilot v0 | The commercial policy document has no section numbers (A2 format 1); v0 is "Don't build" | ccp-sx-dialog-in-bounds, ccp-sx-dialog-escalates, ccp-sx-overlay |
+| DV-B6-3 | The overlay reference is the A8 overlay row id, shown `EXT-<first 8 hex>`, not the prototype's `EXT-0042` | Real values win (A8 `SupportExtension.id` is a UUID) | ccp-sx-overlay |
+
+Not compared (no design counterpart; unit-, keyboard- and axe-tested): the removal dialog
+(TD-B6-4), the Apply button on the open-request strip (TD-B2-3), the escalation notice, the
+"Choose a tenant" empty state and the earlier-extensions table.
+
+| ID | State | Allowance | Measured | Evidence |
+|---|---|---|---|---|
+| AA-B6-1 | `ccp-sx-dialog-escalates` | 320 px | 293 (900), 293 (1440) | diff = the two field captions' glyphs, 1px apart; every box (dialog top 194.078, captions 83.250 / 177.250, inputs, preview) measured identical in both DOMs |
+
 ## States asserted on copy, not pixels
 
 | ID | States | Cause |

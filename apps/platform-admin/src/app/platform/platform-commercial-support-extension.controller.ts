@@ -5,7 +5,7 @@ import { AuthContext, JwtAuthGuard, PLATFORM_TENANT_SENTINEL_ID, type AuthContex
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { SupportExtensionService, type SupportExtensionOutcome, type SupportExtensionRow } from '@aramo/subscription';
 
-import { RequestSupportExtensionDto, ListSupportExtensionsQueryDto, type SupportExtensionDto, type SupportExtensionOutcomeDto } from './dto/support-extension.dto.js';
+import { RequestSupportExtensionDto, ListSupportExtensionsQueryDto, type SupportExtensionDto, type SupportExtensionListDto, type SupportExtensionOutcomeDto } from './dto/support-extension.dto.js';
 import { applicationDto, applyHttpError } from './platform-commercial-apply.controller.js';
 import { requestDto } from './platform-commercial-change-request.controller.js';
 
@@ -23,7 +23,8 @@ import { requestDto } from './platform-commercial-change-request.controller.js';
 //   GET  /platform/commercial/support-extensions?tenant_id=…[&product_key=…]   gate
 //        `platform:subscription:read` (platform_owner, finance_admin, commercial_ops,
 //        support_admin, read_only_auditor; never super_admin): the overlays of a tenant, newest
-//        first, with `active`.
+//        first, with `active`; CCP-B6 adds (read only) each overlay's recorded `context`, the
+//        tenant's open base `subscriptions` and the ACTIVE `policy` clause (null if none valid).
 // An escalated request is approved and applied through the existing change-request routes
 // (POST …/change-requests/{id}/approvals, …/apply); an overlay is removed by a SUPPORT_EXTENSION
 // change request with payload operation REMOVE through the same routes.
@@ -64,11 +65,17 @@ export class PlatformCommercialSupportExtensionController {
 
   @Get()
   @RequireScopes('platform:subscription:read')
-  async list(@Query() query: ListSupportExtensionsQueryDto, @AuthContext() auth: AuthContextType, @RequestId() requestId: string): Promise<{ extensions: SupportExtensionDto[] }> {
+  async list(@Query() query: ListSupportExtensionsQueryDto, @AuthContext() auth: AuthContextType, @RequestId() requestId: string): Promise<SupportExtensionListDto> {
     platformOnly(auth, requestId);
     try {
-      const rows = await this.service.list(query.tenant_id, query.product_key);
-      return { extensions: rows.map((r) => ({ ...extensionDto(r), active: r.active })) };
+      // CCP-B6 — one read for the console screen: the overlays with their recorded context, the
+      // open base rows (the POST names one) and the ACTIVE policy clause (the live preview).
+      const view = await this.service.overview(query.tenant_id, query.product_key);
+      return {
+        extensions: view.extensions.map((r) => ({ ...extensionDto(r), active: r.active, context: r.context })),
+        subscriptions: view.subscriptions.map((s) => ({ ...s, grace_until: iso(s.grace_until), current_period_end: iso(s.current_period_end) })),
+        policy: view.policy,
+      };
     } catch (err) {
       throw applyHttpError(err, requestId);
     }

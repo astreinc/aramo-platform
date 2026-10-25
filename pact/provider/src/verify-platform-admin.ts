@@ -344,7 +344,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             const subscription_id = randomUUID();
             await pastDueStripeRow(tenant_id, subscription_id);
             // Through the service's own HTTP surface, as support_admin (an in-bound extension).
-            await asRole('support_admin', 'POST', '/platform/commercial/support-extensions', {
+            const out = await asRole<{ extension: { id: string } }>('support_admin', 'POST', '/platform/commercial/support-extensions', {
               tenant_id,
               product_key: 'sign',
               subscription_id,
@@ -352,7 +352,26 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               reason: 'Support goodwill: billing contact on leave',
               idempotency_key: `pact-a8-state-${String(++seq).padStart(4, '0')}`,
             });
-            return undefined;
+            // CCP-B6: the removal interaction names the overlay.
+            return { extensionId: out.extension.id };
+          },
+          // CCP-B6 — an out-of-bound extension (20 days) escalated by support_admin and approved by
+          // finance_admin (Q7): its requester applies it.
+          'an approved escalated support extension exists': async (params?: unknown) => {
+            const tenant_id = (params as { tenant_id?: unknown } | undefined)?.tenant_id;
+            if (typeof tenant_id !== 'string') throw new Error('provider state needs { tenant_id }');
+            const subscription_id = randomUUID();
+            await pastDueStripeRow(tenant_id, subscription_id);
+            const out = await asRole<{ request: { id: string } }>('support_admin', 'POST', '/platform/commercial/support-extensions', {
+              tenant_id,
+              product_key: 'sign',
+              subscription_id,
+              requested_days: 20,
+              reason: 'Support goodwill: billing contact on leave',
+              idempotency_key: `pact-b6-state-${String(++seq).padStart(4, '0')}`,
+            });
+            await asRole('finance_admin', 'POST', `/platform/commercial/change-requests/${out.request.id}/approvals`, { step_index: 0 });
+            return { requestId: out.request.id };
           },
           'a pending change request exists': async () => {
             const requestId = await draftRequest();

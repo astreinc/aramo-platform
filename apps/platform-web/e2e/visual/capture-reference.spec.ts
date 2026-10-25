@@ -10,6 +10,7 @@ import { test } from '@playwright/test';
 
 import { boxesOf, paint, saveRects } from '../support/masks';
 import { openProto, openStudioProto, protoCall, protoState, settle } from '../support/proto';
+import { openCcpProto } from '../support/proto-ccp';
 import { VIEWPORTS } from './state-types';
 import { STATES } from './states';
 
@@ -34,6 +35,7 @@ for (const s of STATES) {
         });
       }
       if (s.proto.file === 'studio') await openStudioProto(page, s.proto.studio ?? {}, s.proto.hash ?? '');
+      else if (s.proto.file === 'ccp') await openCcpProto(page, s.proto.ccp ?? {}, s.proto.hash ?? '');
       else await openProto(page, s.proto.props ?? {}, s.proto.hash ?? '');
       if (s.proto.state) await protoState(page, s.proto.state);
       if (s.proto.call) await protoCall(page, s.proto.call);
@@ -62,15 +64,24 @@ for (const s of STATES) {
         r.width += 2;
         r.height += 2;
       }
-      await saveRects(resolve(OUT, `${s.name}-${vp.name}.masks.json`), rects);
+      // CCP-B6: an element-level state stores its regions relative to the element (the
+      // element sits elsewhere on the build's page); parity re-anchors them on the build element.
+      const origin = s.element ? await s.element.proto(page).boundingBox() : null;
+      await saveRects(
+        resolve(OUT, `${s.name}-${vp.name}.masks.json`),
+        origin ? rects.map((r) => ({ ...r, x: r.x - origin.x, y: r.y - origin.y })) : rects,
+      );
       await paint(page, rects);
       // Like toHaveScreenshot on the build side: shoot until two consecutive
       // frames are identical, so a transient raster (text drawn before the last
       // compositing pass) never becomes the baseline.
       let prev: Buffer | null = null;
       let shot: Buffer = Buffer.alloc(0);
+      const target = s.element ? s.element.proto(page) : null;
       for (let i = 0; i < 10; i += 1) {
-        shot = await page.screenshot({ animations: 'disabled', caret: 'hide', scale: 'css' });
+        shot = target
+          ? await target.screenshot({ animations: 'disabled', caret: 'hide', scale: 'css' })
+          : await page.screenshot({ animations: 'disabled', caret: 'hide', scale: 'css' });
         if (prev !== null && prev.equals(shot)) break;
         prev = shot;
         await page.waitForTimeout(100);

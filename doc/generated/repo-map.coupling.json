@@ -10512,9 +10512,24 @@
       "to": "apps/auth-service/src/tests/test-keys.ts"
     },
     {
+      "from": "apps/platform-web/e2e/fixtures/ccp-support.ts",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/commercial/support-extensions/support-extension-api.ts"
+    },
+    {
+      "from": "apps/platform-web/e2e/fixtures/ccp-support.ts",
+      "status": "unscoped",
+      "to": "doc/design-reference/ccp/CCP-UI-v1_0/ccp-data.js"
+    },
+    {
       "from": "apps/platform-web/e2e/fixtures/tenants.ts",
       "status": "unscoped",
       "to": "apps/platform-web/src/platform-api.ts"
+    },
+    {
+      "from": "apps/platform-web/e2e/visual/DIVERGENCES.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-B6-pre-execution.md"
     },
     {
       "from": "apps/platform-web/e2e/visual/DIVERGENCES.md",
@@ -14322,6 +14337,96 @@
       "from": "doc/ccp/slices/CCP-A9-pre-execution.md",
       "status": "unscoped",
       "to": "libs/subscription/src/lib/commercial/commercial-operator.repository.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B6-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-support-extension.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B6-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-a8-support-extension-authorization.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B6-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/support/proto-ccp.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B6-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/components/ExceptionOverlay.tsx"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B6-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B6-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-B6-pre-execution.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B6-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/index.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B6-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/support-extension.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B6-acceptance.md",
+      "status": "unscoped",
+      "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B6-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B6-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B6-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-platform-admin.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B6-acceptance.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B6-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-support-extension.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B6-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B6-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A8-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B6-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/identity/scripts/scope-catalog-consistency.mjs"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B6-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-change-request.ts"
     },
     {
       "from": "doc/design-reference/platform-admin/github.md",
