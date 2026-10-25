@@ -151,7 +151,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A3 — per-ro
       read_only_auditor: [403, 'INSUFFICIENT_PERMISSIONS', 'requester_scope_missing'],
       super_admin: [403, 'INSUFFICIENT_PERMISSIONS', null],
     });
-    const publish = { action_type: 'PLAN_VERSION_PUBLISH', payload: { plan_version_id: 'pv' } };
+    const publish = { action_type: 'PLAN_VERSION_PUBLISH', payload: { plan_version_id: '019a0000-0000-7000-8000-00000000b201' } };
     for (const role of ROLES) expect((await createAs(role, publish)).status, role).toBe(role === 'catalog_manager' ? 201 : 403);
     const ext = { action_type: 'SUPPORT_EXTENSION', tenant_id: TENANT_2, product_key: 'sign', payload: { requested_days: 20 } };
     for (const role of ROLES) expect((await createAs(role, ext)).status, role).toBe(role === 'support_admin' ? 201 : 403);

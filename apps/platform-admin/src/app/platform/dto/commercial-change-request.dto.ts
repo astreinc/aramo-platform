@@ -91,6 +91,8 @@ export interface CommercialChangeRequestDetailDto {
   approvals: CommercialApprovalDto[];
   is_expired: boolean;
   chain_satisfiable: boolean | null;
+  /** CCP-A6-R (TD-B2-3) — the caller may apply this request now (requester-only in v1). */
+  apply_actionable: boolean;
   steps: Array<{
     step_index: number;
     role_key: string;

@@ -28,6 +28,8 @@ function setup(over: Partial<Record<string, unknown>> = {}) {
     handleEvent: vi.fn(async () => ({ outcome: 'APPLIED', tenant_id: 't-1', activated_owner_user_id: 'u-owner' })),
     account: vi.fn(async () => ({ subscription: null, allowance: { subscribed: false, allowance_key: 'sign.envelopes', state: 'NONE' }, billing_available: true })),
     sendingOwner: vi.fn(async () => null),
+    // CCP-A6-R (C-8) — the tenant-facing held-activation state (null = nothing held).
+    tenantActivationState: vi.fn(async () => null),
     startCheckout: vi.fn(async () => ({ url: 'https://checkout.stripe.test/x' })),
     portal: vi.fn(async () => ({ url: 'https://billing.stripe.test/p' })),
     listSellablePlans: vi.fn(async () => []),
@@ -47,6 +49,14 @@ function setup(over: Partial<Record<string, unknown>> = {}) {
 }
 
 describe('EsignBillingController', () => {
+  it('A6R-SIGN-1 (C-8) a held activation reaches the tenant as the safe pending state only: no flag, reason or activation', async () => {
+    const pending = { state: 'PENDING', message: 'Subscription activation pending — contact support' };
+    const { controller } = setup({ tenantActivationState: vi.fn(async () => pending) });
+    const out = (await controller.account(auth(['sign:billing:manage']), 'r')) as Record<string, unknown>;
+    expect(out['pending_activation']).toEqual(pending);
+    expect(JSON.stringify(out)).not.toMatch(/governed_subscription_open|reconciliation|flag/i);
+  });
+
   const env = { ...process.env };
   beforeEach(() => {
     process.env['STRIPE_WEBHOOK_SECRET'] = SECRET;
@@ -126,6 +136,7 @@ describe('EsignBillingController', () => {
     expect(await controller.account(auth(['sign:envelope:read']), 'r')).toMatchObject({ can_manage_billing: false, self_service_eligible: true });
     expect(await controller.account(auth(['sign:envelope:read', 'tenant:admin:settings']), 'r')).toMatchObject({ can_manage_billing: false });
     expect(await controller.account(auth(['sign:billing:manage']), 'r')).toMatchObject({ can_manage_billing: true });
+    expect(await controller.account(auth(['sign:billing:manage']), 'r')).toMatchObject({ pending_activation: null });
   });
 
   it('heals a missed owner grant on the subscribing owner’s own read only', async () => {

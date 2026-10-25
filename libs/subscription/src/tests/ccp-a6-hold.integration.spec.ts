@@ -249,6 +249,28 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A6 governed-s
     expect(await openRows(t)).toEqual(['MANUAL']);
   });
 
+  it('A6R-HOLD-1 (C-8, TD-A6-12) the tenant sees only the safe pending state while an activation is held — never an activation, no flag or reason — and the MANUAL row is untouched; it clears when the conflict resolves', async () => {
+    const t = await newTenant(pg);
+    const intent = await rawIntent(t);
+    const gov = await rawSubscription(pg, t, { source: 'MANUAL' });
+    const before = await rowJson(gov);
+    expect(await h.lifecycle.tenantActivationState(t, 'sign')).toBeNull();
+    const s = h.billing.state(t, intent);
+    await h.lifecycle.syncSubscription(s.subscription_ref, 'sign', T0);
+    const pending = await h.lifecycle.tenantActivationState(t, 'sign');
+    expect(pending).toEqual({ state: 'PENDING', message: 'Subscription activation pending — contact support' });
+    expect(JSON.stringify(pending)).not.toMatch(/governed|flag|reconciliation|MANUAL/i);
+    // The tenant's account read still reports the governed subscription truthfully, not an activation.
+    const account = await h.lifecycle.account(t, 'sign', 'sign.envelopes', T0);
+    expect(account.subscription).toMatchObject({ source: 'MANUAL' });
+    expect(await rowJson(gov)).toBe(before);
+    // A webhook-confirmed end of the provider subscription resolves the hold: the state clears.
+    h.billing.state(t, intent, { provider_status: 'canceled' });
+    await h.lifecycle.syncSubscription(s.subscription_ref, 'sign', T0);
+    expect(await h.lifecycle.tenantActivationState(t, 'sign')).toBeNull();
+    expect(await rowJson(gov)).toBe(before);
+  });
+
   // ---- serialization: webhook and console under the one billing lock ----------------------
 
   it('A6-H-SER webhook activation and console apply for one tenant serialize under the billing lock; whichever commits second sees the first: never two open rows, never a governed row ended by a checkout', async () => {

@@ -9,8 +9,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { BASE_COMPOSITION, PRODUCT_CAPABILITIES, assertProductKey, openBaseSubscription, type ProductKey } from '../product-registry.js';
 
 import { CommercialAuditRepository } from './commercial-audit.repository.js';
-import { CommercialApplyRefusedError } from './commercial-approval-eligibility.js';
-import { COMMERCIAL_ACTIONS, type A6ApplicableAction, isA6Applicable, validatePayload } from './commercial-change-request.js';
+import { type A6ApplicableAction, isA6Applicable, validatePayload } from './commercial-change-request.js';
 import {
   COMMERCIAL_CLOCK,
   type CommercialActor,
@@ -21,6 +20,21 @@ import {
   CommercialChangeRequestService,
 } from './commercial-change-request.service.js';
 import { CommercialOperatorRepository } from './commercial-operator.repository.js';
+import {
+  ApplyFailure,
+  CommercialApplyFailedError,
+  applyDeadlineGate,
+  applyExpiredNow,
+  assertRequesterStillAuthorized,
+  auditApplyRefusal,
+  isApplyRefusal,
+  preflightApply,
+  recordApplyFailure,
+} from './commercial-apply-records.js';
+// CCP-B2-backend — the catalog publish / retire apply rides the same command and route.
+import { CommercialCatalogApplyService, type CommercialCatalogApplicationRow, isCatalogApplicable } from './commercial-catalog-apply.service.js';
+
+export { ApplyFailure, CommercialApplyFailedError } from './commercial-apply-records.js';
 
 // CCP-A6 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.1 row A6; Conversion Rule C-21…C-24;
 // MP-A2 G2/G3; Reconciliation Report §1 C3) — the transactional apply of an APPROVED commercial
@@ -79,35 +93,13 @@ export type CommercialApplyFailureCode =
   | 'TENANT_NOT_FOUND'
   | 'INVALID_PAYLOAD' // the frozen payload does not meet the A6 schema
   | 'ONE_OPEN_BASE_VIOLATION' // G2 backstop: the partial unique index refused a second open row
-  // T8 (Architect ruling 2026-10-25) — a transition whose usage treatment is undefined fails
-  // closed: details.kind DOWNGRADE | CROSS_PERIOD | OPEN_RESERVATIONS | FUTURE_EFFECTIVE_DATE.
-  // No proration, reset, rollover or partial-period policy is implemented (decision requests
-  // DR-A6-1…4, doc/ccp/slices/CCP-A6-acceptance.md).
-  | 'USAGE_TREATMENT_UNDEFINED'
+  // T8 + Architect dispositions DR-A6-1…4 (2026-10-25); no proration, reset or rollover exists:
+  | 'USAGE_EXCEEDS_NEW_LIMIT' // DR-A6-1: consumed + reserved exceed a lowered limit
+  | 'USAGE_CROSS_PERIOD' // DR-A6-2: the billing period would move under recorded consumption
+  | 'RESERVATION_CONFLICT' // DR-A6-3: valid reservations would stop counting (double consumption)
+  | 'FUTURE_EFFECTIVE_DATE' // DR-A6-4: future-dated; never APPLIED early, no scheduler
+  | 'USAGE_TREATMENT_UNDEFINED' // an allowance is dropped or its period kind changes (no treatment defined)
   | 'UNEXPECTED'; // any other error (fault, DB error): rolled back, recorded, retryable
-
-class ApplyFailure extends Error {
-  constructor(
-    readonly code: CommercialApplyFailureCode,
-    readonly detail: Record<string, unknown> = {},
-  ) {
-    super(`apply failed (${code})`);
-    this.name = 'ApplyFailure';
-  }
-}
-
-/** The apply attempt failed and was rolled back; the request is now APPLY_FAILED (retryable). */
-export class CommercialApplyFailedError extends Error {
-  constructor(
-    readonly code: CommercialApplyFailureCode,
-    readonly attempt: number,
-    readonly detail: Record<string, unknown>,
-    readonly request_state: string,
-  ) {
-    super(`apply failed (${code}); the request is ${request_state}`);
-    this.name = 'CommercialApplyFailedError';
-  }
-}
 
 export interface CommercialChangeApplicationRow {
   id: string;
@@ -128,7 +120,10 @@ export interface CommercialChangeApplicationRow {
 
 export interface CommercialApplyResult {
   request: CommercialChangeRequestRow;
-  application: CommercialChangeApplicationRow;
+  /** The CCP-A6 application (subscription / entitlement); null for a catalog apply. */
+  application: CommercialChangeApplicationRow | null;
+  /** CCP-B2-backend — the catalog application (plan-version publish / retire); null otherwise. */
+  catalog_application: CommercialCatalogApplicationRow | null;
   /** The request was already APPLIED: nothing was written (idempotent replay). */
   replayed: boolean;
 }
@@ -152,43 +147,62 @@ function isUniqueViolation(e: unknown, target: string): boolean {
 }
 
 /**
- * T8 — the usage treatment of a same-period, immediately-effective change is defined ONLY when it
- * is an upgrade: the usage ledger counts per (tenant, allowance key, period_start), so with the
- * period kept, remaining = the new limit − the existing consumption (nothing is reset or
- * manufactured). Every term of `from` must be met or exceeded by `to`: each allowance (same
- * period kind; unlimited ≥ any limit), each capacity, and each short-window cap (a new window cap
- * is a restriction). Anything else is a DOWNGRADE (undefined; fail closed).
+ * T8 + DR-A6-1 (Architect, 2026-10-25) — compare the terms of a same-period, immediately effective
+ * change. The usage ledger counts per (tenant, allowance key, period_start), so with the period
+ * kept the existing consumption and reservations carry over exactly (nothing reset or
+ * manufactured). Per term:
+ *   'undefined'  an allowance of `from` is missing in `to`, or its period kind changes;
+ *   'lowered'    a limit is lower (or limited where it was unlimited), or a short-window cap is
+ *                added or tightened: admissible only while consumed + reserved fit the new limit;
+ *   otherwise    the term is met or exceeded (an upgrade): no usage check needed.
  */
-export function downgradedTerms(from: PlanVersionContent, to: PlanVersionContent): string[] {
-  const out: string[] = [];
-  const meets = (f: { unlimited: boolean; q: number | null }, t: { unlimited: boolean; q: number | null } | undefined): boolean =>
-    t !== undefined && (t.unlimited || (!f.unlimited && f.q !== null && t.q !== null && t.q >= f.q));
+export interface TermChange {
+  kind: 'allowance' | 'capacity' | 'window';
+  key: string;
+  window_kind?: string;
+  change: 'undefined' | 'lowered';
+  new_limit: number | null;
+}
+export function changedTerms(from: PlanVersionContent, to: PlanVersionContent): TermChange[] {
+  const out: TermChange[] = [];
+  const lower = (f: { unlimited: boolean; q: number | null }, t: { unlimited: boolean; q: number | null }): boolean =>
+    !t.unlimited && (f.unlimited || f.q === null || t.q === null || t.q < f.q);
   for (const a of from.allowances) {
     const b = to.allowances.find((x) => x.allowance_key === a.allowance_key);
-    if (b === undefined || b.period !== a.period || !meets({ unlimited: a.unlimited, q: a.included_quantity }, { unlimited: b.unlimited, q: b.included_quantity })) out.push(`allowance:${a.allowance_key}`);
+    if (b === undefined || b.period !== a.period) out.push({ kind: 'allowance', key: a.allowance_key, change: 'undefined', new_limit: null });
+    else if (lower({ unlimited: a.unlimited, q: a.included_quantity }, { unlimited: b.unlimited, q: b.included_quantity })) {
+      out.push({ kind: 'allowance', key: a.allowance_key, change: 'lowered', new_limit: b.included_quantity ?? 0 });
+    }
   }
   for (const c of from.capacities) {
     const d = to.capacities.find((x) => x.capacity_key === c.capacity_key);
-    if (!meets({ unlimited: c.unlimited, q: c.limit_quantity }, d === undefined ? undefined : { unlimited: d.unlimited, q: d.limit_quantity })) out.push(`capacity:${c.capacity_key}`);
+    if (d === undefined) out.push({ kind: 'capacity', key: c.capacity_key, change: 'lowered', new_limit: 0 });
+    else if (lower({ unlimited: c.unlimited, q: c.limit_quantity }, { unlimited: d.unlimited, q: d.limit_quantity })) {
+      out.push({ kind: 'capacity', key: c.capacity_key, change: 'lowered', new_limit: d.limit_quantity ?? 0 });
+    }
   }
   for (const w of to.allowance_windows) {
     const v = from.allowance_windows.find((x) => x.allowance_key === w.allowance_key && x.window_kind === w.window_kind);
-    if (v === undefined || w.limit_quantity < v.limit_quantity) out.push(`window:${w.allowance_key}:${w.window_kind}`);
+    if (v === undefined || w.limit_quantity < v.limit_quantity) out.push({ kind: 'window', key: w.allowance_key, window_kind: w.window_kind, change: 'lowered', new_limit: w.limit_quantity });
   }
   return out;
 }
 
+/** The day window used by the short-window caps (AllowanceService DAY_WINDOW_MS). */
+const DAY_WINDOW_MS = 24 * 60 * 60 * 1000;
+
 @Injectable()
 export class CommercialApplyService {
-  private readonly now: CommercialClock;
+  readonly now: CommercialClock;
 
   constructor(
-    private readonly prisma: PrismaService,
-    private readonly audit: CommercialAuditRepository,
-    private readonly operators: CommercialOperatorRepository,
+    readonly prisma: PrismaService,
+    readonly audit: CommercialAuditRepository,
+    readonly operators: CommercialOperatorRepository,
     private readonly changeRequests: CommercialChangeRequestService,
     @Optional() @Inject(COMMERCIAL_CLOCK) clock?: CommercialClock,
     @Optional() @Inject(COMMERCIAL_APPLY_FAULT_HOOK) private readonly fault?: CommercialApplyFaultHook,
+    @Optional() private readonly catalog?: CommercialCatalogApplyService,
   ) {
     this.now = clock ?? (() => new Date());
   }
@@ -199,32 +213,47 @@ export class CommercialApplyService {
    * execute it once the distinct checker chain has approved it; TD-A6-3).
    */
   async apply(actor: CommercialActor, id: string, ctx: CommercialCallContext): Promise<CommercialApplyResult> {
-    if (actor.actor_kind !== 'user') throw new CommercialChangeRequestError('NOT_HUMAN', 'only a user principal can apply a commercial change');
     const head = (await this.prisma.commercialChangeRequest.findUnique({ where: { id } })) as CommercialChangeRequestRow | null;
+    // NOT_FOUND has no request to attach an audit row to (the CommercialAuditEvent FK).
     if (head === null) throw new CommercialChangeRequestError('NOT_FOUND', 'change request not found', { id });
-    if (!isA6Applicable(head.action_type)) {
-      throw new CommercialChangeRequestError('ACTION_NOT_APPLICABLE', `${head.action_type} is not applied by this path`, { action_type: head.action_type });
+    // CCP-B2-backend — PLAN_VERSION_PUBLISH / PLAN_RETIRE (catalog, not tenant-scoped).
+    if (this.catalog !== undefined && isCatalogApplicable(head.action_type)) {
+      const c = await this.catalog.apply(actor, head, ctx);
+      return { request: c.request, application: null, catalog_application: c.catalog_application, replayed: c.replayed };
     }
-    const scope = COMMERCIAL_ACTIONS[head.action_type].requester_scope as string;
-    if (!actor.scopes.includes(scope)) {
-      throw new CommercialChangeRequestError('REQUESTER_SCOPE_MISSING', `applying ${head.action_type} requires ${scope}`, { missing_scopes: [scope] });
+    // TD-A6-3 (approved) — the ORIGINAL requester, a human, holding the requester scope.
+    let scope: string;
+    try {
+      scope = preflightApply(actor, head, isA6Applicable);
+    } catch (e) {
+      if (isApplyRefusal(e)) await auditApplyRefusal(this, actor, head, e, ctx);
+      throw e;
     }
     // Every A6 action is tenant-scoped (tenant_id + product_key are immutable from INSERT).
     const tenant_id = head.tenant_id as string;
     const product_key = assertProductKey(head.product_key);
 
+    let expiredNow = false;
+    let out: CommercialApplyResult | null = null;
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      out = await this.prisma.$transaction(async (tx): Promise<CommercialApplyResult | null> => {
         await takeBillingLock(tx, tenant_id);
         await tx.$executeRawUnsafe(`SELECT 1 FROM subscription."CommercialChangeRequest" WHERE id = $1::uuid FOR UPDATE`, id);
         const req = (await tx.commercialChangeRequest.findUniqueOrThrow({ where: { id } })) as CommercialChangeRequestRow;
         if (req.state === 'APPLIED') {
           const application = (await tx.commercialChangeApplication.findUniqueOrThrow({ where: { change_request_id: id } })) as CommercialChangeApplicationRow;
-          return { request: req, application, replayed: true };
+          return { request: req, application, catalog_application: null, replayed: true };
+        }
+        // Charter Amendment A1 (AD-3, AD-4, AD-7) — the apply deadline, before anything else.
+        if ((await applyDeadlineGate(tx, this.changeRequests, req, this.now(), ctx)) === 'EXPIRED_NOW') {
+          expiredNow = true;
+          return null; // commit the expiry; refused below
         }
         // NC-5 — refuses NOT_APPROVED (any state but APPROVED / APPLY_FAILED), lost eligibility
         // and broken integrity, before anything is written.
         await this.changeRequests.assertApplyEligible(id, ctx.platform_tenant_id, tx);
+        // TD-A6-3 — the requester's CURRENT authority (live RBAC, in this transaction).
+        await assertRequesterStillAuthorized(tx, this.operators, ctx.platform_tenant_id, actor.user_id, scope);
         const now = this.now();
         const attempt = req.apply_attempts + 1;
         await tx.commercialChangeRequest.update({ where: { id }, data: { state: 'APPLYING', apply_attempts: attempt, updated_at: now } });
@@ -293,11 +322,11 @@ export class CommercialApplyService {
         await this.fault?.('before_applied', { change_request_id: id });
 
         const request = (await tx.commercialChangeRequest.update({ where: { id }, data: { state: 'APPLIED', applied_at: now, updated_at: now } })) as CommercialChangeRequestRow;
-        return { request, application, replayed: false };
+        return { request, application, catalog_application: null, replayed: false };
       }, TX_OPTIONS);
     } catch (e) {
-      if (e instanceof CommercialApplyRefusedError || e instanceof CommercialChangeRequestError) {
-        await this.auditRefusal(actor, head, e, ctx);
+      if (isApplyRefusal(e)) {
+        await auditApplyRefusal(this, actor, head, e, ctx);
         throw e;
       }
       const failure =
@@ -306,8 +335,10 @@ export class CommercialApplyService {
           : isUniqueViolation(e, 'TenantSubscription_one_open_base_per_tenant_product')
             ? new ApplyFailure('ONE_OPEN_BASE_VIOLATION', { index: 'TenantSubscription_one_open_base_per_tenant_product' })
             : new ApplyFailure('UNEXPECTED', { error: String((e as Error)?.message ?? e).slice(0, 300) });
-      throw await this.recordFailure(actor, id, tenant_id, failure, ctx);
+      throw await recordApplyFailure(this, actor, id, tenant_id, failure, ctx);
     }
+    if (expiredNow || out === null) throw applyExpiredNow(head);
+    return out;
   }
 
   // ---- domain (inside the apply transaction) --------------------------------------------
@@ -345,15 +376,15 @@ export class CommercialApplyService {
         // a past anchor, never a future one, and never one that strands usage of the current period.
         const requested = typeof p['period_anchor'] === 'string' ? new Date(p['period_anchor']) : null;
         if (requested !== null && requested.getTime() > now.getTime()) {
-          throw new ApplyFailure('USAGE_TREATMENT_UNDEFINED', { kind: 'FUTURE_EFFECTIVE_DATE', period_anchor: requested.toISOString(), effective_at: now.toISOString() });
+          throw new ApplyFailure('FUTURE_EFFECTIVE_DATE', { period_anchor: requested.toISOString(), effective_at: now.toISOString() });
         }
         let anchor: Date;
         if (open !== null) {
           if (requested !== null && requested.getTime() !== open.period_anchor.getTime()) {
-            throw new ApplyFailure('USAGE_TREATMENT_UNDEFINED', { kind: 'CROSS_PERIOD', period_anchor: requested.toISOString(), current_period_anchor: open.period_anchor.toISOString() });
+            throw new ApplyFailure('USAGE_CROSS_PERIOD', { period_anchor: requested.toISOString(), current_period_anchor: open.period_anchor.toISOString() });
           }
           anchor = open.period_anchor;
-          await this.assertUsageDefined(tx, tenant_id, product_key, open.plan_version_id, version);
+          await this.assertUsageFits(tx, tenant_id, product_key, open.plan_version_id, version, open.period_anchor, now);
         } else {
           anchor = requested ?? now;
           await this.assertNoStrandedUsage(tx, tenant_id, product_key, anchor, now);
@@ -411,8 +442,8 @@ export class CommercialApplyService {
         const row = await this.governedTarget(tx, tenant_id, product_key, p['subscription_id'] as string);
         const { plan, version } = await this.pinnedVersion(tx, tenant_id, product_key, p);
         if (version.id === row.plan_version_id) throw new ApplyFailure('NO_CHANGE', { plan_version_id: version.id });
-        // T8 — immediately effective, same period (the anchor is kept): an upgrade only.
-        await this.assertUsageDefined(tx, tenant_id, product_key, row.plan_version_id, version);
+        // T8 / DR-A6-1 / DR-A6-3 — immediately effective, same period (the anchor is kept).
+        await this.assertUsageFits(tx, tenant_id, product_key, row.plan_version_id, version, row.period_anchor, now);
         // TD-A5-9 — the re-pin names its reason; the DB trigger records SubscriptionVersionPinEvent.
         await tx.$executeRaw`SELECT set_config('aramo.subscription_pin_reason', ${PIN_REASON_CHANGE_REQUEST}, true), set_config('aramo.subscription_pin_price_ref', '', true)`;
         await tx.tenantSubscription.update({ where: { id: row.id }, data: { plan_id: plan.id, plan_version_id: version.id } });
@@ -463,32 +494,63 @@ export class CommercialApplyService {
     }
   }
 
-  /** T8 — a same-period change is defined only as an upgrade with no open reservation. */
-  private async assertUsageDefined(tx: Tx, tenant_id: string, product_key: ProductKey, from_version_id: string, to: { id: string; content: unknown; content_checksum: string }): Promise<void> {
+  /**
+   * T8 / DR-A6-1 / DR-A6-3 — a same-period change carries usage exactly (no reset): an upgrade
+   * always fits; a lowered term is admissible only while consumed + RESERVED usage fit the new
+   * limit (every valid reservation is preserved and stays counted). Each checked key is read under
+   * the same advisory lock AllowanceService.reserve / CapacityService.reserve take, so no concurrent
+   * reservation can slip past the check. A dropped allowance or a changed period kind has no
+   * defined treatment.
+   */
+  private async assertUsageFits(
+    tx: Tx,
+    tenant_id: string,
+    product_key: ProductKey,
+    from_version_id: string,
+    to: { id: string; content: unknown; content_checksum: string },
+    anchor: Date,
+    now: Date,
+  ): Promise<void> {
     const from = await tx.planVersion.findUniqueOrThrow({ where: { id: from_version_id } });
-    const down = downgradedTerms(planVersionTerms(from), planVersionTerms(to));
-    if (down.length > 0) throw new ApplyFailure('USAGE_TREATMENT_UNDEFINED', { kind: 'DOWNGRADE', terms: down, from_plan_version_id: from.id, to_plan_version_id: to.id });
-    const reserved = await tx.allowanceUsage.count({ where: { tenant_id, allowance_key: { startsWith: `${product_key}.` }, state: 'RESERVED' } });
-    if (reserved > 0) throw new ApplyFailure('USAGE_TREATMENT_UNDEFINED', { kind: 'OPEN_RESERVATIONS', reserved });
+    const changes = changedTerms(planVersionTerms(from), planVersionTerms(to));
+    const undefinedTerms = changes.filter((c) => c.change === 'undefined');
+    if (undefinedTerms.length > 0) {
+      throw new ApplyFailure('USAGE_TREATMENT_UNDEFINED', { terms: undefinedTerms.map((c) => `${c.kind}:${c.key}`), from_plan_version_id: from.id, to_plan_version_id: to.id });
+    }
+    const period = billingPeriodAt(anchor, now);
+    const exceeded: Array<Record<string, unknown>> = [];
+    for (const c of [...changes].sort((a, b) => `${a.kind}:${a.key}`.localeCompare(`${b.kind}:${b.key}`))) {
+      if (c.kind === 'capacity') {
+        await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`capacity:${tenant_id}:${c.key}`}, 0))`;
+        const agg = await tx.capacityUsage.aggregate({ where: { tenant_id, capacity_key: c.key, state: 'ACTIVE' }, _sum: { quantity: true } });
+        const used = Number(agg._sum.quantity ?? 0n);
+        if (used > (c.new_limit ?? 0)) exceeded.push({ term: `capacity:${c.key}`, used, new_limit: c.new_limit });
+        continue;
+      }
+      if (!c.key.startsWith(`${product_key}.`)) continue;
+      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`${tenant_id}:${c.key}`}, 0))`;
+      const used =
+        c.kind === 'allowance'
+          ? await tx.allowanceUsage.count({ where: { tenant_id, allowance_key: c.key, period_start: period.start, state: { in: ['RESERVED', 'CONSUMED'] } } })
+          : await tx.allowanceUsage.count({ where: { tenant_id, allowance_key: c.key, state: { in: ['RESERVED', 'CONSUMED'] }, reserved_at: { gt: new Date(now.getTime() - DAY_WINDOW_MS), lte: now } } });
+      if (used > (c.new_limit ?? 0)) exceeded.push({ term: c.kind === 'window' ? `window:${c.key}:${c.window_kind}` : `allowance:${c.key}`, used, new_limit: c.new_limit });
+    }
+    if (exceeded.length > 0) throw new ApplyFailure('USAGE_EXCEEDS_NEW_LIMIT', { exceeded, period_start: period.start.toISOString(), from_plan_version_id: from.id, to_plan_version_id: to.id });
   }
 
   /**
-   * T8 — a fresh open must not strand usage already recorded in its first period under another
-   * period alignment (the ledger counts by period_start: such usage would stop counting, i.e.
-   * allowance would be manufactured). Undefined → fail closed.
+   * T8 / DR-A6-2 / DR-A6-3 — a fresh open must not strand usage already recorded in its first
+   * period under another period alignment (the ledger counts by period_start): stranded valid
+   * reservations → RESERVATION_CONFLICT (they would stop counting: double consumption); stranded
+   * consumption → USAGE_CROSS_PERIOD (allowance would be manufactured).
    */
   private async assertNoStrandedUsage(tx: Tx, tenant_id: string, product_key: ProductKey, anchor: Date, now: Date): Promise<void> {
     const period = billingPeriodAt(anchor, now);
-    const stranded = await tx.allowanceUsage.count({
-      where: {
-        tenant_id,
-        allowance_key: { startsWith: `${product_key}.` },
-        state: { in: ['RESERVED', 'CONSUMED'] },
-        reserved_at: { gte: period.start },
-        NOT: { period_start: period.start },
-      },
-    });
-    if (stranded > 0) throw new ApplyFailure('USAGE_TREATMENT_UNDEFINED', { kind: 'CROSS_PERIOD', usage_rows: stranded, period_start: period.start.toISOString() });
+    const where = { tenant_id, allowance_key: { startsWith: `${product_key}.` }, reserved_at: { gte: period.start }, NOT: { period_start: period.start } };
+    const reserved = await tx.allowanceUsage.count({ where: { ...where, state: 'RESERVED' } });
+    if (reserved > 0) throw new ApplyFailure('RESERVATION_CONFLICT', { reserved_rows: reserved, period_start: period.start.toISOString() });
+    const consumed = await tx.allowanceUsage.count({ where: { ...where, state: 'CONSUMED' } });
+    if (consumed > 0) throw new ApplyFailure('USAGE_CROSS_PERIOD', { usage_rows: consumed, period_start: period.start.toISOString() });
   }
 
   /** G1 — a provider-owned row is changed only by a durable provider command (C-22), never here. */
@@ -522,69 +584,5 @@ export class CommercialApplyService {
       throw new ApplyFailure('PLAN_TENANT_KIND_MISMATCH', { plan_key: plan.key, plan_tenant_kind: plan.tenant_kind, tenant_kind: tenant[0]?.kind ?? null });
     }
     return { plan, version };
-  }
-
-  // ---- failure and refusal records (separate transactions) ------------------------------
-
-  /** APPLY_FAILED in its own transaction (the apply transaction rolled back in full). */
-  private async recordFailure(actor: CommercialActor, id: string, tenant_id: string, failure: ApplyFailure, ctx: CommercialCallContext): Promise<Error> {
-    try {
-      return await this.prisma.$transaction(async (tx) => {
-        await takeBillingLock(tx, tenant_id);
-        await tx.$executeRawUnsafe(`SELECT 1 FROM subscription."CommercialChangeRequest" WHERE id = $1::uuid FOR UPDATE`, id);
-        const req = (await tx.commercialChangeRequest.findUniqueOrThrow({ where: { id } })) as CommercialChangeRequestRow;
-        if (req.state !== 'APPROVED' && req.state !== 'APPLY_FAILED') {
-          return new CommercialApplyFailedError(failure.code, req.apply_attempts, failure.detail, req.state);
-        }
-        const now = this.now();
-        const attempt = req.apply_attempts + 1;
-        await tx.commercialChangeRequest.update({ where: { id }, data: { state: 'APPLYING', apply_attempts: attempt, updated_at: now } });
-        await tx.commercialChangeRequest.update({ where: { id }, data: { state: 'APPLY_FAILED', updated_at: now } });
-        const role_keys = (await this.operators.readOperator(tx, ctx.platform_tenant_id, actor.user_id)).role_keys;
-        await this.audit.append(
-          {
-            actor: { id: actor.user_id, type: 'user', role_keys },
-            event_type: 'COMMERCIAL_CHANGE_REQUEST_APPLY_FAILED',
-            tenant_id,
-            subject: SUBJECT(id),
-            change_request_id: id,
-            policy_version_id: req.policy_version_id,
-            payload: { action_type: req.action_type, attempt, failure: failure.code, detail: failure.detail },
-            correlation_id: ctx.correlation_id,
-          },
-          tx,
-        );
-        return new CommercialApplyFailedError(failure.code, attempt, failure.detail, 'APPLY_FAILED');
-      }, TX_OPTIONS);
-    } catch {
-      // The failure could not be recorded: report the original failure (nothing was applied).
-      return new CommercialApplyFailedError(failure.code, 0, failure.detail, 'UNRECORDED');
-    }
-  }
-
-  /** A refused apply (NC-5, not approved, integrity, authority) writes one audit row and nothing else. */
-  private async auditRefusal(actor: CommercialActor, req: CommercialChangeRequestRow, e: CommercialApplyRefusedError | CommercialChangeRequestError, ctx: CommercialCallContext): Promise<void> {
-    const refusal = e instanceof CommercialApplyRefusedError ? e.reason : e.code;
-    const detail = e instanceof CommercialApplyRefusedError ? e.detail : e.details;
-    try {
-      await this.prisma.$transaction(async (tx) => {
-        const role_keys = (await this.operators.readOperator(tx, ctx.platform_tenant_id, actor.user_id)).role_keys;
-        await this.audit.append(
-          {
-            actor: { id: actor.user_id, type: 'user', role_keys },
-            event_type: 'COMMERCIAL_CHANGE_REQUEST_APPLY_REFUSED',
-            tenant_id: req.tenant_id,
-            subject: SUBJECT(req.id),
-            change_request_id: req.id,
-            policy_version_id: req.policy_version_id,
-            payload: { action_type: req.action_type, refusal, detail },
-            correlation_id: ctx.correlation_id,
-          },
-          tx,
-        );
-      });
-    } catch {
-      // The refusal stands even if its audit row cannot be written.
-    }
   }
 }

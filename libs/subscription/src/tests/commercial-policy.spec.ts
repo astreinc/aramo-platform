@@ -154,3 +154,21 @@ describe('CCP-A2 strict parser (fail closed)', () => {
     expect(reasonOf(() => parseActiveCommercialPolicy(row({ content_checksum: '0'.repeat(64) })))).toBe('CHECKSUM_MISMATCH');
   });
 });
+
+// CCP-A6-R — Charter Amendment A1 (Apply deadline, LOCKED; AD-1, AD-2).
+describe('CCP-A6-R optional apply_expiry_hours key (Charter Amendment A1)', () => {
+  const v1 = () => ({ ...(seededPolicyV1().content as Record<string, unknown>) });
+  it('A6R-POL-1 v1 (no key) parses to the exact v1 shape: no apply deadline, checksum unchanged', () => {
+    const parsed = parseCommercialPolicyContent(v1());
+    expect('apply_expiry_hours' in parsed).toBe(false);
+    expect(commercialPolicyChecksum(parsed)).toBe(V1_CHECKSUM);
+  });
+  it('A6R-POL-2 a v2 that declares the key carries it', () => {
+    expect(parseCommercialPolicyContent({ ...v1(), apply_expiry_hours: 72 }).apply_expiry_hours).toBe(72);
+  });
+  it('A6R-POL-3 a declared but malformed key fails closed (MALFORMED)', () => {
+    for (const bad of [0, -1, 1.5, '72', null, 24 * 3650 + 1]) {
+      expect(() => parseCommercialPolicyContent({ ...v1(), apply_expiry_hours: bad })).toThrow(CommercialPolicyUnavailableError);
+    }
+  });
+});

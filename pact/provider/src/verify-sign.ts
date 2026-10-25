@@ -150,6 +150,7 @@ const GOV_USER_ID = 'e6a60000-0000-7000-8000-000000000002';
 const GOV_MEMBERSHIP_ID = 'e6a60000-0000-7000-8000-000000000003';
 const GOV_ROLE_ID = 'e6a60000-0000-7000-8000-000000000004';
 const GOV_SCOPE_ID = 'e6a60000-0000-7000-8000-000000000011';
+const GOV_INTENT_ID = 'e6a60000-0000-7000-8000-000000000021';
 const AUTH_ISSUER = 'Aramo Core Auth'; // the issuer JwtAuthGuard pins
 const AUTH_AUDIENCE = 'aramo-pact-provider-esign-audience';
 // Per-fixture child ids derive from the envelope id's last two hex chars:
@@ -864,6 +865,23 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
               }
               return undefined;
             },
+          },
+          // CCP-A6-R — Conversion Rule C-8: the tenant-facing pending state of a held activation.
+          'a business tenant with a governed subscription has a held self-service activation': async () => {
+            await seedGovernedBillingOwner();
+            await db.query(
+              `INSERT INTO subscription."CheckoutIntent" (id, tenant_id, user_id, plan_id, provider, provider_session_ref)
+               SELECT $1::uuid, $2::uuid, $3, p.id, 'STRIPE', 'cs_pact_held' FROM subscription."Plan" p WHERE p.key = 'aramo-sign-standard-business-v1'
+               ON CONFLICT (id) DO NOTHING`,
+              [GOV_INTENT_ID, GOV_TENANT_ID, GOV_USER_ID],
+            );
+            await db.query(
+              `INSERT INTO subscription."BillingReconciliationFlag" (id, tenant_id, provider, subscription_ref, intent_id, reason)
+               VALUES (gen_random_uuid(), $1::uuid, 'STRIPE', 'sub_pact_held', $2::uuid, 'governed_subscription_open')
+               ON CONFLICT ("provider", "subscription_ref", "reason") WHERE "resolved_at" IS NULL DO NOTHING`,
+              [GOV_TENANT_ID, GOV_INTENT_ID],
+            );
+            return undefined;
           },
           'a sent sender envelope exists': async (params?: unknown) => {
             await seedSenderEnvelope({ envelopeId: envelopeParam(params), status: 'SENT', document: true, recipient: true, signatureField: true });

@@ -18,7 +18,7 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { ISOLATION_TEST_PRODUCT_KEY, registerIsolationTestProduct } from './fixtures/ccp-a4.js';
 import { publishTestPlanV1 } from './fixtures/ccp-a5.js';
 import { seededPolicyV1 } from './fixtures/commercial-policy-seed.js';
-import { POLICY_V1, activatePolicyV2, addOperator, applyCcpA6Schema, grantRole, revokeRole } from './support/ccp-a3-database.js';
+import { POLICY_V1, activatePolicyV2, addOperator, applyCcpA6Schema, grantRole, revokeAttestation, revokeRole } from './support/ccp-a3-database.js';
 import { A6_CTX, BUSINESS, ENTERPRISE, FREE_PERSONAL, INCLUDED, a6Harness, as, domainSnapshot, newTenant, publishedVersion, rawSubscription, waitForAdvisoryWaiter, type A6Harness } from './support/ccp-a6.js';
 
 // CCP-A6 (PBD §5.1 row A6 mandatory tests; Architect A6 ruling: concurrent commands, retries,
@@ -83,9 +83,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A6 transactio
   }, 60_000);
 
   /** Create (commercial_ops) → submit → approve (finance_admin): an APPROVED request. */
-  async function approved(action_type: CommercialActionType, tenant_id: string, payload: Record<string, unknown>, approver = FA): Promise<string> {
-    const r = await h.changeRequests.create(as(OPS, 'commercial_ops'), { action_type, tenant_id, product_key: 'sign', payload, reason: 'governed change', idempotency_key: key() }, A6_CTX);
-    await h.changeRequests.submit(as(OPS, 'commercial_ops'), r.request.id, A6_CTX);
+  async function approved(action_type: CommercialActionType, tenant_id: string, payload: Record<string, unknown>, approver = FA, requester = OPS): Promise<string> {
+    const r = await h.changeRequests.create(as(requester, 'commercial_ops'), { action_type, tenant_id, product_key: 'sign', payload, reason: 'governed change', idempotency_key: key() }, A6_CTX);
+    await h.changeRequests.submit(as(requester, 'commercial_ops'), r.request.id, A6_CTX);
     const a = await h.changeRequests.approve(as(approver, 'finance_admin'), r.request.id, { step_index: 0 }, A6_CTX);
     expect(a.request.state).toBe('APPROVED');
     return r.request.id;
@@ -421,7 +421,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A6 transactio
   it('A6-AUTH-1 refusals before any write: requester scope, a non-human, a non-A6 action, a request not approved, a tampered payload', async () => {
     const t = await newTenant(pg);
     const id = await approved('SUBSCRIPTION_OPEN', t, await openPayload());
-    expect(await outcome(applyAs(id, FA, 'finance_admin'))).toBe('ERROR:REQUESTER_SCOPE_MISSING');
+    // CCP-A6-R (TD-A6-3) — only the ORIGINAL requester applies; then the requester scope.
+    expect(await outcome(applyAs(id, FA, 'finance_admin'))).toBe('ERROR:NOT_REQUESTER');
+    expect(await outcome(applyAs(id, OPS, 'read_only_auditor'))).toBe('ERROR:REQUESTER_SCOPE_MISSING');
     expect(await outcome(applyAs(id, OPS, 'commercial_ops', { actor_kind: 'service_account' }))).toBe('ERROR:NOT_HUMAN');
     expect(await outcome(applyAs(randomUUID()))).toBe('ERROR:NOT_FOUND');
     const credit = await h.changeRequests.create(as(OPS, 'commercial_ops'), { action_type: 'CREDIT', tenant_id: await newTenant(pg), product_key: 'sign', payload: { amount_minor: 100, currency: 'USD' }, reason: 'credit', idempotency_key: key() }, A6_CTX);
@@ -439,7 +441,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A6 transactio
     expect(await outcome(applyAs(id))).toBe('ERROR:INTEGRITY');
     expect(await request(id)).toMatchObject({ state: 'APPROVED', apply_attempts: 0 });
     expect(await openRows(t)).toEqual([]);
-    expect((await events(id)).filter((e) => e === 'COMMERCIAL_CHANGE_REQUEST_APPLY_REFUSED')).toHaveLength(1);
+    // CCP-A6-R — every refusal on this request wrote exactly ONE audit row (NOT_REQUESTER,
+    // REQUESTER_SCOPE_MISSING, NOT_HUMAN, INTEGRITY), each with its stable code and explanation.
+    const refusals = (await pg.query(`SELECT payload FROM subscription."CommercialAuditEvent" WHERE change_request_id = $1 AND event_type = 'COMMERCIAL_CHANGE_REQUEST_APPLY_REFUSED' ORDER BY created_at, id`, [id])).rows.map((r) => r.payload);
+    expect(refusals.map((r) => r.refusal)).toEqual(['NOT_REQUESTER', 'REQUESTER_SCOPE_MISSING', 'NOT_HUMAN', 'INTEGRITY']);
+    for (const r of refusals) expect(typeof r.explanation === 'string' && r.explanation.length > 10).toBe(true);
   });
 
   // ---- NC-5 through the real apply path (TD-A3-0, the three Architect tests) -------------
@@ -499,30 +505,189 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A6 transactio
     expect(await usageRows(t)).toEqual(ledger);
   });
 
-  it('A6-T8-2 undefined usage treatments fail closed with a typed refusal: DOWNGRADE, OPEN_RESERVATIONS, CROSS_PERIOD (replacement or stranded usage), FUTURE_EFFECTIVE_DATE; nothing changes', async () => {
-    // Downgrade 200 → 100.
+  it('A6-T8-2 / A6R-DR-1 (DR-A6-1, TD-A6-R-1) a same-period downgrade applies only while consumed + reserved fit the new limit (usage carried, reservations untouched); otherwise USAGE_EXCEEDS_NEW_LIMIT with nothing changed', async () => {
+    const p1 = new Date('2026-10-01T00:00:00Z');
+    // The Architect's example (TD-A6-R-1 CONFIRMED): 200 → 100 with 70 consumed + 10 reserved
+    // applies and leaves 20 available; the ledger (consumption and reservations) byte-identical.
     const t1 = await newTenant(pg);
     const s1 = await rawSubscription(pg, t1, { source: 'MANUAL', plan: PLAN_200 });
-    const b1 = await domainSnapshot(pg, t1);
-    expect(await outcome(applyAs(await approved('SUBSCRIPTION_CHANGE', t1, { subscription_id: s1, plan_key: INCLUDED, plan_version_id: await publishedVersion(pg, INCLUDED) })))).toBe('FAILED:USAGE_TREATMENT_UNDEFINED:DOWNGRADE');
-    expect(await domainSnapshot(pg, t1)).toEqual(b1);
-    // An open reservation during an upgrade.
+    await consume(t1, 70, p1);
+    await consume(t1, 10, p1, 'RESERVED');
+    const ledger1 = await usageRows(t1);
+    await applyAs(await approved('SUBSCRIPTION_CHANGE', t1, { subscription_id: s1, plan_key: INCLUDED, plan_version_id: await publishedVersion(pg, INCLUDED) }));
+    expect(await h.allowance.getStatus(t1, 'sign', 'sign.envelopes', T0)).toMatchObject({ limit: 100, used: 80, remaining: 20 });
+    expect(await usageRows(t1)).toEqual(ledger1);
+    // Boundary: consumed + reserved EXACTLY the new limit (90 + 10 = 100) applies; 0 available.
+    const tb = await newTenant(pg);
+    const sb = await rawSubscription(pg, tb, { source: 'MANUAL', plan: PLAN_200 });
+    await consume(tb, 90, p1);
+    await consume(tb, 10, p1, 'RESERVED');
+    expect(await outcome(applyAs(await approved('SUBSCRIPTION_CHANGE', tb, { subscription_id: sb, plan_key: INCLUDED, plan_version_id: await publishedVersion(pg, INCLUDED) })))).toBe('APPLIED');
+    expect(await h.allowance.getStatus(tb, 'sign', 'sign.envelopes', T0)).toMatchObject({ limit: 100, used: 100, remaining: 0 });
+    // 80 consumed + 30 reserved = 110 > 100: refused; nothing changed.
     const t2 = await newTenant(pg);
-    const s2 = await rawSubscription(pg, t2, { source: 'MANUAL' });
-    await consume(t2, 1, new Date('2026-10-01T00:00:00Z'), 'RESERVED');
-    expect(await outcome(applyAs(await approved('SUBSCRIPTION_CHANGE', t2, { subscription_id: s2, plan_key: PLAN_200, plan_version_id: await publishedVersion(pg, PLAN_200) })))).toBe('FAILED:USAGE_TREATMENT_UNDEFINED:OPEN_RESERVATIONS');
-    // A replacement that would move the period anchor.
+    const s2 = await rawSubscription(pg, t2, { source: 'MANUAL', plan: PLAN_200 });
+    await consume(t2, 80, p1);
+    await consume(t2, 30, p1, 'RESERVED');
+    const b2 = { snap: await domainSnapshot(pg, t2), usage: await usageRows(t2) };
+    let detail: Record<string, unknown> = {};
+    try {
+      await applyAs(await approved('SUBSCRIPTION_CHANGE', t2, { subscription_id: s2, plan_key: INCLUDED, plan_version_id: await publishedVersion(pg, INCLUDED) }));
+    } catch (e) {
+      expect(e).toBeInstanceOf(CommercialApplyFailedError);
+      expect((e as CommercialApplyFailedError).code).toBe('USAGE_EXCEEDS_NEW_LIMIT');
+      expect((e as CommercialApplyFailedError).explanation).toMatch(/exceed the new limit/);
+      detail = (e as CommercialApplyFailedError).detail;
+    }
+    expect(detail['exceeded']).toEqual([{ term: 'allowance:sign.envelopes', used: 110, new_limit: 100 }]);
+    expect({ snap: await domainSnapshot(pg, t2), usage: await usageRows(t2) }).toEqual(b2);
+    // Exactly at the limit (100 = 100) is admissible.
+    const t3 = await newTenant(pg);
+    const s3 = await rawSubscription(pg, t3, { source: 'MANUAL', plan: PLAN_200 });
+    await consume(t3, 100, p1);
+    expect(await outcome(applyAs(await approved('SUBSCRIPTION_CHANGE', t3, { subscription_id: s3, plan_key: INCLUDED, plan_version_id: await publishedVersion(pg, INCLUDED) })))).toBe('APPLIED');
+    expect(await h.allowance.getStatus(t3, 'sign', 'sign.envelopes', T0)).toMatchObject({ limit: 100, used: 100, remaining: 0 });
+  });
+
+  it('A6R-DR-3 (DR-A6-3) an upgrade with open reservations preserves every reservation (still counted, byte-identical); a fresh open that would strand valid reservations is RESERVATION_CONFLICT', async () => {
+    const t1 = await newTenant(pg);
+    const s1 = await rawSubscription(pg, t1, { source: 'MANUAL' });
+    await consume(t1, 5, new Date('2026-10-01T00:00:00Z'), 'RESERVED');
+    const ledger = await usageRows(t1);
+    await applyAs(await approved('SUBSCRIPTION_CHANGE', t1, { subscription_id: s1, plan_key: PLAN_200, plan_version_id: await publishedVersion(pg, PLAN_200) }));
+    expect(await usageRows(t1)).toEqual(ledger);
+    expect(await h.allowance.getStatus(t1, 'sign', 'sign.envelopes', T0)).toMatchObject({ limit: 200, used: 5 });
+    const t2 = await newTenant(pg);
+    await consume(t2, 2, new Date('2026-10-01T00:00:00Z'), 'RESERVED');
+    const before = { snap: await domainSnapshot(pg, t2), usage: await usageRows(t2) };
+    expect(await outcome(applyAs(await approved('SUBSCRIPTION_OPEN', t2, await openPayload(INCLUDED, null, { period_anchor: '2026-10-20T00:00:00.000Z' }))))).toBe('FAILED:RESERVATION_CONFLICT');
+    expect({ snap: await domainSnapshot(pg, t2), usage: await usageRows(t2) }).toEqual(before);
+  });
+
+  it('A6R-DR-2/4 (DR-A6-2, DR-A6-4) cross-period and future-dated changes fail closed with distinct stable codes; a dropped allowance has no defined treatment; nothing is APPLIED', async () => {
     const t3 = await newTenant(pg);
     const s3 = await rawSubscription(pg, t3, { source: 'DEVELOPMENT' });
-    expect(await outcome(applyAs(await approved('SUBSCRIPTION_OPEN', t3, await openPayload(PLAN_200, s3, { period_anchor: '2026-10-15T00:00:00.000Z' }))))).toBe('FAILED:USAGE_TREATMENT_UNDEFINED:CROSS_PERIOD');
-    // A fresh open whose first period would strand usage recorded under another alignment.
+    expect(await outcome(applyAs(await approved('SUBSCRIPTION_OPEN', t3, await openPayload(PLAN_200, s3, { period_anchor: '2026-10-15T00:00:00.000Z' }))))).toBe('FAILED:USAGE_CROSS_PERIOD');
     const t4 = await newTenant(pg);
     await consume(t4, 3, new Date('2026-10-01T00:00:00Z'));
-    expect(await outcome(applyAs(await approved('SUBSCRIPTION_OPEN', t4, await openPayload(INCLUDED, null, { period_anchor: '2026-10-20T00:00:00.000Z' }))))).toBe('FAILED:USAGE_TREATMENT_UNDEFINED:CROSS_PERIOD');
-    // A future effective date.
+    expect(await outcome(applyAs(await approved('SUBSCRIPTION_OPEN', t4, await openPayload(INCLUDED, null, { period_anchor: '2026-10-20T00:00:00.000Z' }))))).toBe('FAILED:USAGE_CROSS_PERIOD');
     const t5 = await newTenant(pg);
-    expect(await outcome(applyAs(await approved('SUBSCRIPTION_OPEN', t5, await openPayload(INCLUDED, null, { period_anchor: '2026-12-01T00:00:00.000Z' }))))).toBe('FAILED:USAGE_TREATMENT_UNDEFINED:FUTURE_EFFECTIVE_DATE');
+    const f5 = await approved('SUBSCRIPTION_OPEN', t5, await openPayload(INCLUDED, null, { period_anchor: '2026-12-01T00:00:00.000Z' }));
+    expect(await outcome(applyAs(f5))).toBe('FAILED:FUTURE_EFFECTIVE_DATE');
+    expect((await request(f5)).state).toBe('APPLY_FAILED'); // never APPLIED early; nothing scheduled
     for (const t of [t3, t4, t5]) expect((await openRows(t)).filter((r) => r.source === 'MANUAL')).toEqual([]);
+    // A version that drops the envelope allowance: no usage treatment is defined.
+    const noneId = randomUUID();
+    await pg.query(
+      `INSERT INTO subscription."Plan" (id, key, name, sellable, description, tenant_kind, sales_model, status, display_order, product_key)
+       SELECT $1::uuid, 'aramo-sign-a6-test-none', 'A6 test none', false, description, tenant_kind, sales_model, 'ACTIVE', 951, product_key FROM subscription."Plan" WHERE key = $2`,
+      [noneId, INCLUDED],
+    );
+    await publishTestPlanV1(pg, noneId);
+    const t6 = await newTenant(pg);
+    const s6 = await rawSubscription(pg, t6, { source: 'MANUAL' });
+    const b6 = await domainSnapshot(pg, t6);
+    expect(await outcome(applyAs(await approved('SUBSCRIPTION_CHANGE', t6, { subscription_id: s6, plan_key: 'aramo-sign-a6-test-none', plan_version_id: await publishedVersion(pg, 'aramo-sign-a6-test-none') })))).toBe('FAILED:USAGE_TREATMENT_UNDEFINED');
+    expect(await domainSnapshot(pg, t6)).toEqual(b6);
+    // Each failure wrote one APPLY_FAILED audit row carrying its code and explanation.
+    const failed = (await pg.query(`SELECT payload FROM subscription."CommercialAuditEvent" WHERE tenant_id = ANY($1::uuid[]) AND event_type = 'COMMERCIAL_CHANGE_REQUEST_APPLY_FAILED' ORDER BY created_at, id`, [[t3, t4, t5, t6]])).rows.map((r) => r.payload);
+    expect(failed.map((f) => f.failure)).toEqual(['USAGE_CROSS_PERIOD', 'USAGE_CROSS_PERIOD', 'FUTURE_EFFECTIVE_DATE', 'USAGE_TREATMENT_UNDEFINED']);
+    for (const f of failed) expect(f.explanation.length).toBeGreaterThan(10);
+  });
+
+  // ---- CCP-A6-R TD-A6-3: apply-time revalidation -----------------------------------------
+
+  it('A6R-REQ-1 (TD-B2-3) apply is REQUESTER-ONLY: another commercial_ops user (holding the requester scope), the approver and a super_admin are each refused NOT_REQUESTER with one audit row; nothing changes; the requester then applies', async () => {
+    const t = await newTenant(pg);
+    const id = await approved('SUBSCRIPTION_OPEN', t, await openPayload());
+    const otherOps = await addOperator(pg, ['commercial_ops']);
+    const superAdmin = await addOperator(pg, ['super_admin']);
+    expect(await outcome(applyAs(id, otherOps, 'commercial_ops'))).toBe('ERROR:NOT_REQUESTER');
+    expect(await outcome(applyAs(id, FA, 'finance_admin'))).toBe('ERROR:NOT_REQUESTER');
+    expect(await outcome(applyAs(id, superAdmin, 'super_admin'))).toBe('ERROR:NOT_REQUESTER');
+    expect(await openRows(t)).toEqual([]);
+    expect(await request(id)).toMatchObject({ state: 'APPROVED', apply_attempts: 0 });
+    const rows = (await pg.query(`SELECT actor_id, payload FROM subscription."CommercialAuditEvent" WHERE change_request_id = $1 AND event_type = 'COMMERCIAL_CHANGE_REQUEST_APPLY_REFUSED' ORDER BY created_at, id`, [id])).rows;
+    expect(rows.map((r) => [r.actor_id, r.payload.refusal])).toEqual([
+      [otherOps, 'NOT_REQUESTER'],
+      [FA, 'NOT_REQUESTER'],
+      [superAdmin, 'NOT_REQUESTER'],
+    ]);
+    expect(await outcome(applyAs(id))).toBe('APPLIED');
+  });
+
+  it('A6R-REQ-3 a refused apply by an unauthorized actor writes exactly ONE refusal audit row even when the check runs before the apply transaction: finance_admin applying a support_admin request', async () => {
+    const SA = await addOperator(pg, ['support_admin']);
+    const t = await newTenant(pg);
+    const r = await h.changeRequests.create(as(SA, 'support_admin'), { action_type: 'SUPPORT_EXTENSION', tenant_id: t, product_key: 'sign', payload: { requested_days: 30 }, reason: 'support', idempotency_key: key() }, A6_CTX);
+    const refusedBy = async (user: string, role: string) => {
+      try {
+        await h.apply.apply(as(user, role), r.request.id, A6_CTX);
+      } catch (e) {
+        return (e as { code?: string }).code;
+      }
+      return 'APPLIED';
+    };
+    // In this tree SUPPORT_EXTENSION has no governed apply yet (CCP-A8): the first stable refusal is
+    // ACTION_NOT_APPLICABLE; once A8 adds its apply path the same preflight yields NOT_REQUESTER.
+    expect(await refusedBy(FA, 'finance_admin')).toBe('ACTION_NOT_APPLICABLE');
+    const rows = (await pg.query(`SELECT event_type, actor_id, payload FROM subscription."CommercialAuditEvent" WHERE change_request_id = $1 AND event_type LIKE 'COMMERCIAL_CHANGE_REQUEST_APPLY%' ORDER BY created_at, id`, [r.request.id])).rows;
+    expect(rows).toHaveLength(1);
+    expect(rows[0]).toMatchObject({ event_type: 'COMMERCIAL_CHANGE_REQUEST_APPLY_REFUSED', actor_id: FA, payload: { refusal: 'ACTION_NOT_APPLICABLE' } });
+    expect(typeof rows[0].payload.explanation).toBe('string');
+  });
+
+  it('A6R-REQ-2 (TD-B2-3) the request read exposes apply_actionable for the caller: true only for the requester of an APPROVED / APPLY_FAILED applicable request', async () => {
+    const t = await newTenant(pg);
+    const r = await h.changeRequests.create(as(OPS, 'commercial_ops'), { action_type: 'SUBSCRIPTION_OPEN', tenant_id: t, product_key: 'sign', payload: await openPayload(), reason: 'actionable', idempotency_key: key() }, A6_CTX);
+    const view = (user: string, role: string) => h.changeRequests.get(as(user, role), r.request.id, A6_CTX).then((v) => v.apply_actionable);
+    expect(await view(OPS, 'commercial_ops')).toBe(false); // DRAFT
+    await h.changeRequests.submit(as(OPS, 'commercial_ops'), r.request.id, A6_CTX);
+    expect(await view(OPS, 'commercial_ops')).toBe(false); // PENDING_APPROVAL
+    await h.changeRequests.approve(as(FA, 'finance_admin'), r.request.id, { step_index: 0 }, A6_CTX);
+    expect(await view(OPS, 'commercial_ops')).toBe(true); // APPROVED, the requester
+    expect(await view(FA, 'finance_admin')).toBe(false); // the approver
+    expect(await view(await addOperator(pg, ['commercial_ops']), 'commercial_ops')).toBe(false); // another requester-scope holder
+    expect(await view(OPS, 'read_only_auditor')).toBe(false); // the requester without the scope on this session
+    await applyAs(r.request.id);
+    expect(await view(OPS, 'commercial_ops')).toBe(false); // APPLIED
+  });
+
+  it('A6R-REV-1 the requester’s CURRENT authority is re-read in the apply transaction: a requester who lost commercial_ops is refused REQUESTER_NO_LONGER_AUTHORIZED (token still carries the scope); nothing changes', async () => {
+    const maker = await addOperator(pg, ['commercial_ops']);
+    const t = await newTenant(pg);
+    const id = await approved('SUBSCRIPTION_OPEN', t, await openPayload(), FA, maker);
+    await revokeRole(pg, maker, 'commercial_ops');
+    const before = await domainSnapshot(pg, t, id);
+    expect(await outcome(applyAs(id, maker))).toBe('ERROR:REQUESTER_NO_LONGER_AUTHORIZED');
+    expect(await domainSnapshot(pg, t, id)).toEqual(before);
+    expect(await request(id)).toMatchObject({ state: 'APPROVED', apply_attempts: 0 });
+    await grantRole(pg, maker, 'commercial_ops');
+    expect(await outcome(applyAs(id, maker))).toBe('APPLIED');
+  });
+
+  it('A6R-REV-2 NC-3 / NC-4 at apply: an approver whose D9 attestation was revoked after approving is refused (the chain is stale); the approval row is untouched', async () => {
+    const signer = await addOperator(pg, ['finance_admin']);
+    const t = await newTenant(pg);
+    const id = await approved('SUBSCRIPTION_OPEN', t, await openPayload(), signer);
+    const approvals = async () => (await pg.query(`SELECT row_to_json(a)::text j FROM subscription."CommercialApproval" a WHERE change_request_id = $1`, [id])).rows;
+    const before = await approvals();
+    await revokeAttestation(pg, signer);
+    expect(await outcome(applyAs(id))).toBe('REFUSED:APPROVER_NO_LONGER_ELIGIBLE');
+    expect(await approvals()).toEqual(before);
+    expect(await openRows(t)).toEqual([]);
+  });
+
+  it('A6R-REV-3 the payload cannot change between approval and apply: the DB refuses an UPDATE of payload or checksum; a superuser bypass is caught by the bound checksum (INTEGRITY)', async () => {
+    const t = await newTenant(pg);
+    const id = await approved('SUBSCRIPTION_OPEN', t, await openPayload());
+    expect(await raises(`UPDATE subscription."CommercialChangeRequest" SET payload = payload || '{"period_anchor":"2026-10-02T00:00:00.000Z"}'::jsonb WHERE id = $1`, [id])).toBe('CommercialChangeRequest payload, chain and identity are immutable');
+    expect(await raises(`UPDATE subscription."CommercialChangeRequest" SET payload_checksum = repeat('0', 64) WHERE id = $1`, [id])).toBe('CommercialChangeRequest payload, chain and identity are immutable');
+    await pg.query(`ALTER TABLE subscription."CommercialChangeRequest" DISABLE TRIGGER commercial_change_request_guard_update`);
+    await pg.query(`UPDATE subscription."CommercialChangeRequest" SET payload = payload || '{"period_anchor":"2026-10-02T00:00:00.000Z"}'::jsonb WHERE id = $1`, [id]);
+    await pg.query(`ALTER TABLE subscription."CommercialChangeRequest" ENABLE TRIGGER commercial_change_request_guard_update`);
+    expect(await outcome(applyAs(id))).toBe('ERROR:INTEGRITY');
+    expect(await openRows(t)).toEqual([]);
   });
 
   it('A6-T12-1 tenant/product isolation: Sign open, change and end never read or touch the same tenant’s row of another product', async () => {

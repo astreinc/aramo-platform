@@ -136,7 +136,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A9 bootstrap 
     expect(await outcome(svc.create(as(BOOTSTRAP_OPERATOR_ID, ['super_admin']), { action_type: 'ROLE_GRANT', payload: { subject_user_id: FA, role_key: 'platform_owner' }, reason: 'x', idempotency_key: key() }, ctx))).toBe(
       'NOT_HUMAN:not_human',
     );
-    const { request: pub } = await svc.create(as(CAT, ['catalog_manager']), { action_type: 'PLAN_VERSION_PUBLISH', payload: { plan_version_id: 'pv' }, reason: 'x', idempotency_key: key() }, ctx);
+    const { request: pub } = await svc.create(as(CAT, ['catalog_manager']), { action_type: 'PLAN_VERSION_PUBLISH', payload: { plan_version_id: '019a0000-0000-7000-8000-00000000b201' }, reason: 'x', idempotency_key: key() }, ctx);
     await svc.submit(as(CAT, ['catalog_manager']), pub.id, ctx);
     expect(await outcome(svc.approve(as(FA, ['finance_admin']), pub.id, { step_index: 0 }, ctx))).toBe('CCP_NOT_BOOTSTRAPPED');
     const { request: cr } = await svc.create(as(OPS, ['commercial_ops']), { action_type: 'CREDIT', tenant_id: '0190dddd-0000-7000-8000-0000000000a1', product_key: 'sign', payload: { amount_minor: 1, currency: 'USD' }, reason: 'x', idempotency_key: key() }, ctx);

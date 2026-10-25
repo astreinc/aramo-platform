@@ -24,6 +24,8 @@ import {
   type CommercialChangeRequestKind,
   type CommercialChangeRequestState,
   type CommercialRequiredChain,
+  isA6Applicable,
+  isCatalogApplicable,
   parseRequiredChain,
   payloadChecksum,
   resolveRequiredChain,
@@ -97,7 +99,11 @@ export type CommercialChangeRequestErrorCode =
   | 'IDEMPOTENCY_KEY_CONFLICT'
   | 'INTEGRITY'
   // CCP-A6 — apply was asked for an action type A6 does not apply.
-  | 'ACTION_NOT_APPLICABLE';
+  | 'ACTION_NOT_APPLICABLE'
+  // CCP-A6-R (TD-A6-3) — the requester no longer holds the requester scope at apply time.
+  | 'REQUESTER_NO_LONGER_AUTHORIZED'
+  // CCP-A6-R (Charter Amendment A1, AD-7) — the apply authority has expired.
+  | 'APPLY_EXPIRED';
 
 export class CommercialChangeRequestError extends Error {
   constructor(
@@ -209,6 +215,13 @@ export interface ChangeRequestView {
   steps: StepView[];
   /** Chain satisfiability now (A9 gate) for an open PENDING request; null otherwise. */
   chain_satisfiable: boolean | null;
+  /**
+   * CCP-A6-R (TD-B2-3 narrows TD-A6-3: apply is REQUESTER-ONLY in v1) — whether the CALLER may
+   * apply this request now: the caller is its requester (a person holding the requester scope),
+   * the request is APPROVED or APPLY_FAILED, and its action is applied by the governed apply. A UI
+   * hint only: the apply re-checks every condition in its own transaction.
+   */
+  apply_actionable: boolean;
 }
 
 export interface ListChangeRequestsQuery {
@@ -713,8 +726,10 @@ export class CommercialChangeRequestService {
   // ---- reads ----------------------------------------------------------------------------
 
   async get(actor: CommercialActor, id: string, ctx: CommercialCallContext): Promise<ChangeRequestView> {
-    const req = (await this.prisma.commercialChangeRequest.findUnique({ where: { id } })) as CommercialChangeRequestRow | null;
-    if (req === null) throw new CommercialChangeRequestError('NOT_FOUND', 'change request not found', { id });
+    const found = (await this.prisma.commercialChangeRequest.findUnique({ where: { id } })) as CommercialChangeRequestRow | null;
+    if (found === null) throw new CommercialChangeRequestError('NOT_FOUND', 'change request not found', { id });
+    // Charter Amendment A1 (AD-7) — a read evaluates the apply deadline lazily.
+    const req = await this.lazyExpireApply(found, ctx);
     const approvals = await this.approvalsOf(this.prisma, id);
     const live = await this.operators.readOperator(this.prisma, ctx.platform_tenant_id, actor.user_id);
     let satisfiable: boolean | null = null;
@@ -727,7 +742,7 @@ export class CommercialChangeRequestService {
       const exclude = new Set<string>([req.requested_by, ...approvals.map((a) => a.approver_user_id), ...(subject === null ? [] : [subject])]);
       satisfiable = checkChainSatisfiable(chain.steps.slice(approvals.length), roster, exclude).satisfiable;
     }
-    return { request: req, approvals, chain, is_expired, steps: this.stepViews(actor, live, req, chain, approvals, now), chain_satisfiable: satisfiable };
+    return { request: req, approvals, chain, is_expired, steps: this.stepViews(actor, live, req, chain, approvals, now), chain_satisfiable: satisfiable, apply_actionable: applyActionable(actor, req) };
   }
 
   async list(actor: CommercialActor, query: ListChangeRequestsQuery, ctx: CommercialCallContext): Promise<{ requests: CommercialChangeRequestRow[]; next_cursor: string | null }> {
@@ -773,7 +788,8 @@ export class CommercialChangeRequestService {
       orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       take: limit + 1,
     })) as CommercialChangeRequestRow[];
-    const page = rows.slice(0, limit);
+    // Charter Amendment A1 (AD-7) — the listed rows evaluate the apply deadline lazily.
+    const page = await Promise.all(rows.slice(0, limit).map((r) => this.lazyExpireApply(r, ctx)));
     const last = page[page.length - 1];
     const next_cursor =
       rows.length > limit && last !== undefined ? Buffer.from(JSON.stringify({ v: 1, c: last.created_at.toISOString(), i: last.id, fp }), 'utf8').toString('base64url') : null;
@@ -866,6 +882,94 @@ export class CommercialChangeRequestService {
       await tx.$executeRawUnsafe(`SELECT 1 FROM subscription."CommercialChangeRequest" WHERE id = $1::uuid FOR UPDATE`, r.id);
       await this.expireIfDue(tx, r, now, ctx);
     }
+    // Charter Amendment A1 (AD-5, AD-7) — a create contending for the slot expires an approved
+    // request whose apply authority has lapsed, releasing the slot.
+    const approved = (await tx.commercialChangeRequest.findMany({ where: { tenant_id, product_key, state: { in: ['APPROVED', 'APPLY_FAILED'] } } })) as CommercialChangeRequestRow[];
+    for (const r of approved) {
+      await tx.$executeRawUnsafe(`SELECT 1 FROM subscription."CommercialChangeRequest" WHERE id = $1::uuid FOR UPDATE`, r.id);
+      const current = (await tx.commercialChangeRequest.findUniqueOrThrow({ where: { id: r.id } })) as CommercialChangeRequestRow;
+      try {
+        await this.expireApplyIfDue(tx, current, now, ctx);
+      } catch (e) {
+        // A malformed snapshot never expires a request silently; the apply fails closed on it.
+        if (!(e instanceof CommercialChangeRequestError)) throw e;
+      }
+    }
+  }
+
+  // ---- apply deadline (Charter Amendment A1, LOCKED 2026-10-25) ----------------------------
+
+  /**
+   * AD-2 / AD-3 — the apply deadline of an approved request: `approved_at` (the final approval) +
+   * `apply_expiry_hours` of the policy version the request SNAPSHOTTED (never the ACTIVE one). A
+   * version without the key (v1) gives no deadline (null). The window is half-open: authority
+   * exists while `now < deadline`. A snapshot that cannot be read or verified fails closed
+   * (INTEGRITY).
+   */
+  async applyDeadlineOf(req: CommercialChangeRequestRow, client: Pick<PrismaService, 'commercialPolicyVersion'> = this.prisma): Promise<Date | null> {
+    if (req.approved_at === null) return null;
+    let hours: number | undefined;
+    try {
+      const policy = await this.policies.getVersionPolicy(req.policy_version_id, client);
+      if (policy.checksum !== req.policy_checksum) throw new CommercialChangeRequestError('INTEGRITY', 'policy snapshot checksum mismatch', { reason: 'policy_checksum' });
+      hours = policy.content.apply_expiry_hours;
+    } catch (e) {
+      if (e instanceof CommercialChangeRequestError) throw e;
+      throw new CommercialChangeRequestError('INTEGRITY', 'the snapshotted policy version cannot be read', { reason: 'policy_unavailable', error: (e as Error).message });
+    }
+    return hours === undefined ? null : new Date(req.approved_at.getTime() + hours * 3_600_000);
+  }
+
+  /**
+   * AD-4 / AD-6 / AD-7 — inside the caller's transaction, AFTER the request row is locked: an
+   * APPROVED or APPLY_FAILED request at or past its apply deadline becomes APPLY_EXPIRED (terminal,
+   * not open: the Q14 slot is released) with exactly ONE audit event. Never from APPLYING (an apply
+   * in progress holds the row lock and moves the request out of APPLYING in its own transaction).
+   * Returns true when it expired the request now.
+   */
+  async expireApplyIfDue(tx: Tx, req: CommercialChangeRequestRow, now: Date, ctx: CommercialCallContext): Promise<boolean> {
+    if (req.state !== 'APPROVED' && req.state !== 'APPLY_FAILED') return false;
+    const deadline = await this.applyDeadlineOf(req, tx);
+    if (deadline === null || now.getTime() < deadline.getTime()) return false;
+    await tx.commercialChangeRequest.update({ where: { id: req.id }, data: { state: 'APPLY_EXPIRED', updated_at: now } });
+    await this.audit.append(
+      {
+        actor: { id: null, type: 'system', role_keys: [] },
+        event_type: 'COMMERCIAL_CHANGE_REQUEST_APPLY_EXPIRED',
+        tenant_id: req.tenant_id,
+        subject: SUBJECT(req.id),
+        change_request_id: req.id,
+        policy_version_id: req.policy_version_id,
+        payload: {
+          action_type: req.action_type,
+          from_state: req.state,
+          final_approved_at: (req.approved_at as Date).toISOString(),
+          apply_deadline: deadline.toISOString(),
+          evaluated_at: now.toISOString(),
+        },
+        correlation_id: ctx.correlation_id,
+      },
+      tx,
+    );
+    return true;
+  }
+
+  /** AD-7 — the read path: expire lazily (own transaction, row locked); a read never fails on it. */
+  private async lazyExpireApply(req: CommercialChangeRequestRow, ctx: CommercialCallContext): Promise<CommercialChangeRequestRow> {
+    if (req.state !== 'APPROVED' && req.state !== 'APPLY_FAILED') return req;
+    try {
+      const deadline = await this.applyDeadlineOf(req);
+      if (deadline === null || this.now().getTime() < deadline.getTime()) return req;
+      return await this.tx(async (tx) => {
+        await tx.$executeRawUnsafe(`SELECT 1 FROM subscription."CommercialChangeRequest" WHERE id = $1::uuid FOR UPDATE`, req.id);
+        const current = (await tx.commercialChangeRequest.findUniqueOrThrow({ where: { id: req.id } })) as CommercialChangeRequestRow;
+        await this.expireApplyIfDue(tx, current, this.now(), ctx);
+        return (await tx.commercialChangeRequest.findUniqueOrThrow({ where: { id: req.id } })) as CommercialChangeRequestRow;
+      });
+    } catch (e) {
+      if (e instanceof CommercialChangeRequestError) return req;
+      throw e;
+    }
   }
 
   private async appendEvent(
@@ -894,3 +998,11 @@ export class CommercialChangeRequestService {
   }
 }
 
+/** CCP-A6-R — the caller-side apply hint (requester-only in v1; TD-B2-3). */
+export function applyActionable(actor: CommercialActor, req: Pick<CommercialChangeRequestRow, 'action_type' | 'state' | 'requested_by'>): boolean {
+  if (actor.actor_kind !== 'user' || actor.user_id !== req.requested_by) return false;
+  if (req.state !== 'APPROVED' && req.state !== 'APPLY_FAILED') return false;
+  if (!isA6Applicable(req.action_type) && !isCatalogApplicable(req.action_type)) return false;
+  const scope = COMMERCIAL_ACTIONS[req.action_type as CommercialActionType].requester_scope;
+  return scope !== null && actor.scopes.includes(scope);
+}

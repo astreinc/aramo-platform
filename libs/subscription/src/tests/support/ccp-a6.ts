@@ -8,6 +8,8 @@ import { BillingProviderUnavailableError } from '../../lib/billing/billing-provi
 import { SubscriptionLifecycleService } from '../../lib/billing/subscription-lifecycle.service.js';
 import { CapacityService } from '../../lib/capacity.service.js';
 import { CommercialApplyService, type CommercialApplyFaultHook } from '../../lib/commercial/commercial-apply.service.js';
+import { CommercialCatalogApplyService, type CommercialCatalogApplyFaultHook } from '../../lib/commercial/commercial-catalog-apply.service.js';
+import { PlanVersionRepository } from '../../lib/plan-version.repository.js';
 import { CommercialAuditRepository } from '../../lib/commercial/commercial-audit.repository.js';
 import { type CommercialActor, CommercialChangeRequestService } from '../../lib/commercial/commercial-change-request.service.js';
 import { CommercialOperatorRepository } from '../../lib/commercial/commercial-operator.repository.js';
@@ -83,23 +85,27 @@ export class FakeBilling implements BillingProviderPort {
 export interface A6Harness {
   changeRequests: CommercialChangeRequestService;
   apply: CommercialApplyService;
+  catalog: CommercialCatalogApplyService;
+  versions: PlanVersionRepository;
   lifecycle: SubscriptionLifecycleService;
   billing: FakeBilling;
   orgProfile: FakeOrganizationBillingProfile;
   allowance: AllowanceService;
 }
 
-export function a6Harness(prisma: PrismaService, now: () => Date, fault?: CommercialApplyFaultHook): A6Harness {
+export function a6Harness(prisma: PrismaService, now: () => Date, fault?: CommercialApplyFaultHook, catalogFault?: CommercialCatalogApplyFaultHook): A6Harness {
   const audit = new CommercialAuditRepository(prisma);
   const policies = new CommercialPolicyRepository(prisma);
   const operators = new CommercialOperatorRepository(prisma, audit, policies);
   const changeRequests = new CommercialChangeRequestService(prisma, audit, policies, operators, now);
-  const apply = new CommercialApplyService(prisma, audit, operators, changeRequests, now, fault);
+  const versions = new PlanVersionRepository(prisma);
+  const catalog = new CommercialCatalogApplyService(prisma, audit, operators, changeRequests, versions, now, catalogFault);
+  const apply = new CommercialApplyService(prisma, audit, operators, changeRequests, now, fault, catalog);
   const billing = new FakeBilling();
   const orgProfile = new FakeOrganizationBillingProfile();
   const allowance = new AllowanceService(prisma);
   const lifecycle = new SubscriptionLifecycleService(prisma, allowance, billing, new CapacityService(prisma), undefined, undefined, orgProfile);
-  return { changeRequests, apply, lifecycle, billing, orgProfile, allowance };
+  return { changeRequests, apply, catalog, versions, lifecycle, billing, orgProfile, allowance };
 }
 
 export async function newTenant(pg: Client, kind: 'BUSINESS' | 'PERSONAL' = 'BUSINESS'): Promise<string> {
