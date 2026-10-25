@@ -70,9 +70,79 @@ model Plan {
   features      PlanFeature[]
   subscriptions TenantSubscription[]
   checkouts     CheckoutIntent[]
+  // CCP-A5 (MP-A2 N-15) — the plan's versioned commercial content.
+  versions      PlanVersion[]
 
   // CCP-A4 (MP-A2 N-7) — the target of the composite FK TenantSubscription(plan_id, product_key).
   @@unique([id, product_key])
+  @@schema("subscription")
+}
+
+// CCP-A5 (PBD §5.1 row A5; MP-A2 N-15…N-19; Charter D3) — a plan's commercial content,
+// versioned. DRAFT → PUBLISHED → RETIRED (no default; every write names it). Content is the
+// format-1 projection of the live Plan + child rows (src/lib/plan-version.ts); the checksum is
+// SHA-256 of its canonical JSON and is recomputed by a DB CHECK. Immutable once PUBLISHED and no
+// DELETE (trigger, migration 20261025160000). At most one PUBLISHED version per plan (the
+// plan's current version). Publishing and retiring are applied by CCP-A6 from approved
+// PLAN_VERSION_PUBLISH / PLAN_RETIRE change requests; A5 ships repository methods only.
+model PlanVersion {
+  id               String               @id @db.Uuid
+  plan_id          String               @db.Uuid
+  version_number   Int
+  status           String
+  content          Json
+  content_checksum String
+  note             String?
+  created_by       String
+  created_at       DateTime             @db.Timestamptz(3)
+  published_at     DateTime?            @db.Timestamptz(3)
+  retired_at       DateTime?            @db.Timestamptz(3)
+  plan             Plan                 @relation(fields: [plan_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  prices           PlanVersionPrice[]
+  subscriptions    TenantSubscription[]
+
+  @@unique([plan_id, version_number])
+  // The composite FK target of TenantSubscription(plan_version_id, plan_id).
+  @@unique([id, plan_id])
+  @@schema("subscription")
+}
+
+// CCP-A5 (MP-A2 N-17, D3) — the provider price pinned to a plan version (it replaces
+// STRIPE_PLAN_PRICES as the authority; the env is a cutover fallback with a parity check).
+// Immutable from INSERT; one pin per (version, provider); a provider price belongs to one version.
+model PlanVersionPrice {
+  id                 String      @id @db.Uuid
+  plan_version_id    String      @db.Uuid
+  // CHECK: STRIPE
+  provider           String
+  provider_price_ref String
+  created_by         String
+  created_at         DateTime    @db.Timestamptz(3)
+  plan_version       PlanVersion @relation(fields: [plan_version_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([plan_version_id, provider])
+  @@unique([provider, provider_price_ref])
+  @@schema("subscription")
+}
+
+// CCP-A5 (MP-A2 N-17) — append-only history of TenantSubscription.plan_version_id changes.
+// Written by the DB trigger on the re-pin itself (the re-pinning transaction names its reason),
+// never inserted by application code. Never read to decide a limit.
+model SubscriptionVersionPinEvent {
+  id                   String   @id @db.Uuid
+  subscription_id      String   @db.Uuid
+  tenant_id            String   @db.Uuid
+  product_key          String
+  from_plan_id         String   @db.Uuid
+  from_plan_version_id String   @db.Uuid
+  to_plan_id           String   @db.Uuid
+  to_plan_version_id   String   @db.Uuid
+  // CHECK: PROVIDER_PLAN_CHANGE
+  reason               String
+  provider_price_ref   String?
+  recorded_at          DateTime @db.Timestamptz(3)
+
+  @@index([subscription_id, recorded_at])
   @@schema("subscription")
 }
 
@@ -152,11 +222,18 @@ model TenantSubscription {
   // only. A later add-on or usage package is a row with another role (an additive CHECK
   // widening), never a re-keyed product_key or a second subscription authority. NO default.
   composition_role                   String
+  // CCP-A5 (MP-A2 N-18) — the plan version this subscription was sold or applied on
+  // (grandfathering). Composite FK (plan_version_id, plan_id) → PlanVersion(id, plan_id), SQL-only
+  // in migration 20261025160000. A new or changed pin must be PUBLISHED; a change is recorded in
+  // SubscriptionVersionPinEvent by trigger. NO default.
+  plan_version_id                    String    @db.Uuid
   plan          Plan      @relation(fields: [plan_id], references: [id])
+  plan_version  PlanVersion @relation(fields: [plan_version_id], references: [id])
 
   // CCP-A4 (MP-A2 N-9) — at most one open BASE subscription per (tenant_id, product_key):
   // partial unique index TenantSubscription_one_open_base_per_tenant_product in SQL.
   @@index([tenant_id])
+  @@index([plan_version_id])
   @@schema("subscription")
 }
 
