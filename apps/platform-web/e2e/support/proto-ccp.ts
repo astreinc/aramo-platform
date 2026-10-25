@@ -21,6 +21,7 @@ import { resolve } from 'node:path';
 
 import type { Page } from '@playwright/test';
 
+import { loadFonts } from './fonts';
 import { settle } from './proto';
 
 const DIR = resolve(__dirname, '../../../../doc/design-reference/ccp/CCP-UI-v1_0');
@@ -32,6 +33,8 @@ export interface CcpProtoProps {
   persona?: 'daniel' | 'priya' | 'tomas' | 'lena' | 'kwame' | 'ines' | 'arjun' | 'maya';
   bootstrap?: 'ready' | 'notBootstrapped';
   demoState?: 'normal' | 'loading' | 'empty';
+  /** CCP-B5 (folded in at the merge train, TD-MERGE-13): the prototype's start route Tweak. */
+  startRoute?: 'approvals' | 'subs' | 'catalog' | 'contracts' | 'policy' | 'audit' | 'admins';
 }
 
 const STRIPS: readonly (readonly [string, string])[] = [
@@ -76,6 +79,7 @@ function patchHtml(src: string, props: CcpProtoProps): string {
   if (props.persona) setDefault('persona', `${q}daniel${q}`, `${q}${props.persona}${q}`);
   if (props.bootstrap) setDefault('bootstrap', `${q}ready${q}`, `${q}${props.bootstrap}${q}`);
   if (props.demoState) setDefault('demoState', `${q}normal${q}`, `${q}${props.demoState}${q}`);
+  if (props.startRoute) setDefault('startRoute', `${q}approvals${q}`, `${q}${props.startRoute}${q}`);
   for (const [from, to] of STRIPS) {
     if (!s.includes(from)) throw new Error(`CCP prototype strip target not found: ${from.slice(0, 60)}`);
     s = s.split(from).join(to);
@@ -120,4 +124,23 @@ export async function openCcpProto(page: Page, props: CcpProtoProps = {}, hash =
     inst.setState({ crs: inst.state.crs.filter((c) => c.policy !== 0), pol: inst.state.pol.filter((p) => p.v !== 0) });
   });
   await settle(page);
+}
+
+/**
+ * CCP-B5 (folded in at the merge train, TD-MERGE-13) — runs a function against the prototype's
+ * logic instance `c` (open a dialog, select a version…), then settles.
+ */
+export async function ccpCall(page: Page, fnSrc: string): Promise<void> {
+  await page.evaluate((src) => {
+    const inst = (window as unknown as { __pi: unknown }).__pi;
+    new Function('c', src)(inst);
+  }, fnSrc);
+  await settleCcp(page);
+}
+
+/** CCP-B5 — fonts loaded, two animation frames, fonts ready. */
+export async function settleCcp(page: Page): Promise<void> {
+  await loadFonts(page);
+  await page.evaluate(() => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(() => r(null)))));
+  await page.evaluate(() => document.fonts.ready);
 }

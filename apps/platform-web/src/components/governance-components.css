@@ -1,0 +1,40 @@
+/* CCP-B5 — the field and toggle styles of the commercial-roles request (CommercialRolesSection).
+ * Merge train TD-MERGE-13: the dialog shell, the Before → after rows, the chain strip and the
+ * commit buttons are CCP-B2's CommercialRequestDialog / ChainPreview (commercial-components.css);
+ * B5's two token additions duplicated theme.css (--pw-ccp-diff-bg, --pw-shadow-dialog-ccp,
+ * TD-B5-20) and are removed. Values from Commercial Control Plane v1.0.dc.html. */
+
+.pw-gd-field {
+  display: block;
+}
+
+.pw-gd-field__label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: var(--pw-fs-13);
+  font-weight: 600;
+}
+
+.pw-gd-toggles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pw-gd-toggle {
+  height: 32px;
+  padding: 0 10px;
+  border: 1.5px solid var(--pw-line-2);
+  border-radius: var(--pw-r-md);
+  background: var(--pw-surface);
+  color: var(--pw-ink);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-12-5);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.pw-gd-toggle[aria-pressed='true'] {
+  border-color: var(--pw-midnight);
+  background: var(--pw-surface-hover);
+}

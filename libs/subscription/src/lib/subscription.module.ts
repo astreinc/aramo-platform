@@ -9,6 +9,9 @@ import { CommercialApplyService } from './commercial/commercial-apply.service.js
 // CCP-B2-backend — the governed catalog publish / retire apply.
 import { CommercialCatalogApplyService } from './commercial/commercial-catalog-apply.service.js';
 import { CommercialOperatorRepository } from './commercial/commercial-operator.repository.js';
+import { CommercialAuditExportService } from './commercial/commercial-audit-export.service.js';
+import { CommercialOperatorRosterService } from './commercial/commercial-operator-roster.service.js';
+import { CommercialPolicyGovernanceService } from './commercial/commercial-policy-governance.service.js';
 import { FreePersonalSubscriptionService } from './free-personal-subscription.js';
 import { LegalAcceptanceService } from './legal/legal-acceptance.service.js';
 import { PlanVersionRepository } from './plan-version.repository.js';
@@ -27,6 +30,7 @@ import { UsageRollupService } from './usage/usage-rollup.service.js';
 // CCP-A5: the plan-version store (repository only; A6 applies publish / retire).
 // CCP-A6: the transactional apply of approved Aramo-owned change requests.
 // CCP-D1: usage roll-ups (derived, read-only until reconciled).
+// CCP-B5: policy drafts, the audit export and the operator roster (read-only).
 @Module({
   providers: [
     PrismaService,
@@ -42,11 +46,14 @@ import { UsageRollupService } from './usage/usage-rollup.service.js';
     CommercialChangeRequestService,
     CommercialApplyService,
     CommercialCatalogApplyService,
+    CommercialPolicyGovernanceService,
+    CommercialAuditExportService,
+    CommercialOperatorRosterService,
     PlanVersionRepository,
     UsageRollupService,
     CommercialCatalogService,
   ],
-  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialCatalogApplyService, PlanVersionRepository, UsageRollupService, CommercialCatalogService],
+  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialCatalogApplyService, PlanVersionRepository, UsageRollupService, CommercialCatalogService, CommercialPolicyGovernanceService, CommercialAuditExportService, CommercialOperatorRosterService],
 })
 export class SubscriptionModule {
   /**
@@ -69,14 +76,17 @@ export class SubscriptionModule {
         CommercialPolicyRepository,
         CommercialOperatorRepository,
         CommercialChangeRequestService,
-    CommercialApplyService,
-    CommercialCatalogApplyService,
+        CommercialApplyService,
+        CommercialCatalogApplyService,
+        CommercialPolicyGovernanceService,
+        CommercialAuditExportService,
+        CommercialOperatorRosterService,
         PlanVersionRepository,
         UsageRollupService,
         CommercialCatalogService,
         ...(opts.providers ?? []),
       ],
-      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialCatalogApplyService, PlanVersionRepository, UsageRollupService, CommercialCatalogService],
+      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, CommercialCatalogApplyService, PlanVersionRepository, UsageRollupService, CommercialCatalogService, CommercialPolicyGovernanceService, CommercialAuditExportService, CommercialOperatorRosterService],
     };
   }
 }

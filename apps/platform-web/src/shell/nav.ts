@@ -50,6 +50,8 @@ export interface NavItem {
   readonly to: string;
   /** The permission the item (and its route) needs (handoff §2 + amendment 3). */
   readonly scope: string;
+  /** Further permissions any one of which also shows the item (CCP-B5: Platform admins). */
+  readonly orScopes?: readonly string[];
   readonly icon: NavIconKey;
 }
 
@@ -110,13 +112,15 @@ export const NAV_GROUPS: readonly NavGroup[] = [
   // ── end CCP-B1
   {
     label: 'Platform',
-    items: [{ key: 'admins', label: 'Platform admins', to: '/admins', scope: P.adminInvite, icon: 'key' }],
+    // CCP-B5 (handoff §5.8; merge train TD-MERGE-14): Platform admins also opens for the
+    // commercial roles (their commercial-roles view), as its route does.
+    items: [{ key: 'admins', label: 'Platform admins', to: '/admins', scope: P.adminInvite, orScopes: [CP.approvalRead], icon: 'key' }],
   },
 ];
 
 /** The groups the operator may see: items filtered by permission, empty groups hidden. */
 export function visibleNavGroups(can: (scope: string) => boolean): NavGroup[] {
-  return NAV_GROUPS.map((g) => ({ label: g.label, items: g.items.filter((i) => can(i.scope)) })).filter(
+  return NAV_GROUPS.map((g) => ({ label: g.label, items: g.items.filter((i) => can(i.scope) || (i.orScopes ?? []).some(can)) })).filter(
     (g) => g.items.length > 0,
   );
 }

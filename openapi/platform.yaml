@@ -2124,6 +2124,20 @@ paths:
           schema:
             type: string
             enum: ['true', 'false']
+        - name: change_request_id
+          in: query
+          required: false
+          description: CCP-B5 — only events about this change request.
+          schema:
+            type: string
+            format: uuid
+        - name: product_key
+          in: query
+          required: false
+          description: CCP-B5 — only events whose payload names this product (`payload.product_key`).
+          schema:
+            type: string
+            pattern: '^[a-z][a-z0-9_]{0,39}$'
         - name: limit
           in: query
           required: false
@@ -2268,6 +2282,178 @@ paths:
           $ref: '#/components/responses/PlatformForbidden'
         '409':
           $ref: '#/components/responses/CommercialUsageNotReconciled'
+
+  /platform/commercial/audit-events/export:
+    post:
+      operationId: exportPlatformCommercialAuditEvents
+      tags: [Platform Commercial Audit]
+      summary: Export the filtered commercial audit events as CSV (read-only; the export is audited).
+      description: |
+        CCP-B5 — renders every event matching the filters (newest first) as CSV with the
+        columns `id,time_utc,event,actor,roles,tenant,product,change_request,exception,detail`
+        and appends exactly ONE `COMMERCIAL_AUDIT_EXPORTED` event (filters, row count, the
+        SHA-256 of the file). Nothing else is written. At most 10,000 events; a larger result
+        is refused (details.reason `export_too_large`), never truncated. Requires
+        `platform:commercial:audit:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CommercialAuditExportRequest'
+      responses:
+        '200':
+          description: The CSV document and the id of the audit event that records the export.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialAuditExport'
+        '400':
+          $ref: '#/components/responses/CommercialAuditValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '503':
+          $ref: '#/components/responses/CommercialPolicyUnavailable'
+
+  /platform/commercial/policy-versions:
+    get:
+      operationId: listPlatformCommercialPolicyVersions
+      tags: [Platform Commercial Policy]
+      summary: List commercial policy versions (newest first) with the open activation request.
+      description: |
+        CCP-B5 (B5-P) — every CommercialPolicyVersion with its parsed content, the one open
+        (DRAFT / PENDING_APPROVAL) `POLICY_ACTIVATE` request, and what the caller may do
+        (`can_author`: live platform_owner or finance_admin; `can_request_activation`: live,
+        attested finance_admin). Activation and rollback are `POLICY_ACTIVATE` change
+        requests. Requires `platform:approval:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      responses:
+        '200':
+          description: The policy versions.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialPolicyList'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+    post:
+      operationId: createPlatformCommercialPolicyDraft
+      tags: [Platform Commercial Policy]
+      summary: Create a DRAFT policy version copied from a version.
+      description: |
+        CCP-B5 — one DRAFT at a time (details.reason `policy_draft_exists`). The author must
+        hold the live platform_owner or finance_admin role (403 `requester_role_missing`).
+        Audited (`COMMERCIAL_POLICY_VERSION_DRAFTED`). Requires `platform:approval:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateCommercialPolicyDraft'
+      responses:
+        '201':
+          description: The new DRAFT.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialPolicyVersionEnvelope'
+        '400':
+          $ref: '#/components/responses/CommercialChangeRequestValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/CommercialChangeRequestNotFound'
+        '409':
+          $ref: '#/components/responses/CommercialChangeRequestConflict'
+
+  /platform/commercial/policy-versions/{id}:
+    patch:
+      operationId: updatePlatformCommercialPolicyDraft
+      tags: [Platform Commercial Policy]
+      summary: Edit a DRAFT policy version.
+      description: |
+        CCP-B5 — only a DRAFT changes (409 `policy_version_not_draft`), and not while an open
+        activation request targets it (409 `policy_version_locked`). Each value must be in
+        its allowed range (400 `policy_value_out_of_range`) and the document must pass the
+        strict policy parser (400 `policy_value_invalid`). The author must hold the live
+        platform_owner or finance_admin role. Audited (`COMMERCIAL_POLICY_DRAFT_UPDATED`).
+        Requires `platform:approval:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          description: The policy version's UUID.
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCommercialPolicyDraft'
+      responses:
+        '200':
+          description: The edited DRAFT.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialPolicyVersionEnvelope'
+        '400':
+          $ref: '#/components/responses/CommercialChangeRequestValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/CommercialChangeRequestNotFound'
+        '409':
+          $ref: '#/components/responses/CommercialChangeRequestConflict'
+
+  /platform/commercial/operators:
+    get:
+      operationId: listPlatformCommercialOperators
+      tags: [Platform Commercial Roles]
+      summary: The platform roster with commercial roles, and the fulfillability of each approval chain.
+      description: |
+        CCP-B5 — read-only. Each platform operator's live roles, D9 attestation, the
+        last-owner flag and pending role-change requests; and, per approval chain, whether a
+        maker plus distinct eligible approvers exist now (the same rule as the approve gate,
+        409 `CCP_NOT_BOOTSTRAPPED`). Role changes are `ROLE_GRANT` / `ROLE_REVOKE` change
+        requests only. Requires `platform:approval:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      responses:
+        '200':
+          description: The roster and chain state.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialRoster'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '503':
+          $ref: '#/components/responses/CommercialPolicyUnavailable'
 
   /platform/commercial/change-requests:
     post:
@@ -4777,6 +4963,325 @@ components:
         truncated:
           type: boolean
 
+    CommercialAuditExportRequest:
+      type: object
+      additionalProperties: false
+      description: CCP-B5 — the same filters as the audit list (ANDed); all optional.
+      properties:
+        actor_id:
+          type: string
+          format: uuid
+        event_type:
+          type: string
+          pattern: '^[A-Z][A-Z0-9_]{2,99}$'
+        tenant_id:
+          type: string
+          format: uuid
+        from:
+          type: string
+          format: date-time
+        to:
+          type: string
+          format: date-time
+        exception_only:
+          type: boolean
+        change_request_id:
+          type: string
+          format: uuid
+        product_key:
+          type: string
+          pattern: '^[a-z][a-z0-9_]{0,39}$'
+
+    CommercialAuditExport:
+      type: object
+      additionalProperties: false
+      required: [export_id, exported_at, row_count, filename, content_type, csv, csv_sha256]
+      properties:
+        export_id:
+          type: string
+          format: uuid
+          description: The id in the subject of the COMMERCIAL_AUDIT_EXPORTED event.
+        exported_at:
+          type: string
+          format: date-time
+        row_count:
+          type: integer
+          minimum: 0
+        filename:
+          type: string
+        content_type:
+          type: string
+          enum: [text/csv]
+        csv:
+          type: string
+          description: RFC 4180 CSV (CRLF), every field quoted, formula-safe.
+        csv_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+
+    CommercialPolicyContent:
+      type: object
+      additionalProperties: false
+      description: A format-1 commercial policy document (basis points, USD minor units, days, hours).
+      required: [format_version, currency, discount_escalation_threshold_bps, credit_escalation_threshold_minor, support_extension_max_days, support_extension_frequency_window_days, support_extension_cumulative_max_days, support_extension_cumulative_window_days, approval_expiry_hours, past_due_grace_days]
+      properties:
+        format_version:
+          type: integer
+          enum: [1]
+        currency:
+          type: string
+          pattern: '^[A-Z]{3}$'
+        discount_escalation_threshold_bps:
+          type: integer
+        credit_escalation_threshold_minor:
+          type: integer
+        support_extension_max_days:
+          type: integer
+        support_extension_frequency_window_days:
+          type: integer
+        support_extension_cumulative_max_days:
+          type: integer
+        support_extension_cumulative_window_days:
+          type: integer
+        approval_expiry_hours:
+          type: integer
+        past_due_grace_days:
+          type: integer
+
+    CommercialPolicyVersion:
+      type: object
+      additionalProperties: false
+      required: [id, version_number, status, content, content_checksum, note, created_by, created_at, activated_by, activated_at, retired_at, open_request]
+      properties:
+        id:
+          type: string
+          format: uuid
+        version_number:
+          type: integer
+        status:
+          type: string
+          enum: [DRAFT, ACTIVE, RETIRED]
+        content:
+          description: null when the stored document fails the strict policy parser.
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/CommercialPolicyContent'
+        content_checksum:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        note:
+          type: [string, 'null']
+        created_by:
+          type: [string, 'null']
+          format: uuid
+        created_at:
+          type: string
+          format: date-time
+        activated_by:
+          type: [string, 'null']
+          format: uuid
+        activated_at:
+          type: [string, 'null']
+          format: date-time
+        retired_at:
+          type: [string, 'null']
+          format: date-time
+        open_request:
+          description: The open (DRAFT / PENDING_APPROVAL) POLICY_ACTIVATE targeting this version.
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/CommercialOpenRequestRef'
+
+    CommercialOpenRequestRef:
+      type: object
+      additionalProperties: true
+      required: [id, state]
+      properties:
+        id:
+          type: string
+          format: uuid
+        state:
+          type: string
+        policy_version_id:
+          type: string
+          format: uuid
+
+    CommercialPolicyList:
+      type: object
+      additionalProperties: false
+      required: [versions, active_version_id, open_request, caller]
+      properties:
+        versions:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommercialPolicyVersion'
+        active_version_id:
+          type: [string, 'null']
+          format: uuid
+        open_request:
+          oneOf:
+            - type: 'null'
+            - $ref: '#/components/schemas/CommercialOpenRequestRef'
+        caller:
+          type: object
+          additionalProperties: false
+          required: [can_author, can_request_activation]
+          properties:
+            can_author:
+              type: boolean
+            can_request_activation:
+              type: boolean
+
+    CommercialPolicyVersionEnvelope:
+      type: object
+      additionalProperties: false
+      required: [version]
+      properties:
+        version:
+          $ref: '#/components/schemas/CommercialPolicyVersion'
+
+    CreateCommercialPolicyDraft:
+      type: object
+      additionalProperties: false
+      required: [source_version_id]
+      properties:
+        source_version_id:
+          type: string
+          format: uuid
+        note:
+          type: string
+          maxLength: 500
+
+    UpdateCommercialPolicyDraft:
+      type: object
+      additionalProperties: false
+      properties:
+        content:
+          type: object
+          additionalProperties: false
+          description: Any of the editable settings (integers in the document's units).
+          properties:
+            discount_escalation_threshold_bps:
+              type: integer
+              minimum: 0
+              maximum: 10000
+            credit_escalation_threshold_minor:
+              type: integer
+              minimum: 0
+              maximum: 10000000
+            support_extension_max_days:
+              type: integer
+              minimum: 1
+              maximum: 60
+            support_extension_frequency_window_days:
+              type: integer
+              minimum: 30
+              maximum: 365
+            support_extension_cumulative_max_days:
+              type: integer
+              minimum: 1
+              maximum: 120
+            support_extension_cumulative_window_days:
+              type: integer
+            approval_expiry_hours:
+              type: integer
+              minimum: 12
+              maximum: 168
+            past_due_grace_days:
+              type: integer
+              minimum: 0
+              maximum: 30
+        note:
+          type: string
+          maxLength: 500
+
+    CommercialRoster:
+      type: object
+      additionalProperties: false
+      required: [operators, chains, all_fulfillable]
+      properties:
+        operators:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommercialRosterOperator'
+        chains:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommercialChainFulfillability'
+        all_fulfillable:
+          type: boolean
+
+    CommercialRosterOperator:
+      type: object
+      additionalProperties: false
+      required: [user_id, email, display_name, role_keys, commercial_role_keys, attested, is_last_owner, pending_role_requests]
+      properties:
+        user_id:
+          type: string
+          format: uuid
+        email:
+          type: [string, 'null']
+        display_name:
+          type: [string, 'null']
+        role_keys:
+          type: array
+          items:
+            type: string
+        commercial_role_keys:
+          type: array
+          items:
+            type: string
+        attested:
+          type: boolean
+        is_last_owner:
+          type: boolean
+        pending_role_requests:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, action_type, role_key, state]
+            properties:
+              id:
+                type: string
+                format: uuid
+              action_type:
+                type: string
+                enum: [ROLE_GRANT, ROLE_REVOKE]
+              role_key:
+                type: string
+              state:
+                type: string
+
+    CommercialChainFulfillability:
+      type: object
+      additionalProperties: false
+      required: [key, rule, maker_roles, step_roles, fulfillable, missing, unfillable_steps]
+      properties:
+        key:
+          type: string
+          enum: [ABOVE_THRESHOLD, BELOW_THRESHOLD, CATALOG_PUBLISH, ROLE_CHANGE, POLICY_CHANGE]
+        rule:
+          type: string
+          enum: [FINANCE_THEN_OWNER, FINANCE_ONLY, DISTINCT_PLATFORM_OWNER]
+        maker_roles:
+          type: array
+          items:
+            type: string
+        step_roles:
+          type: array
+          items:
+            type: string
+        fulfillable:
+          type: boolean
+        missing:
+          type: [string, 'null']
+          enum: [maker, steps, null]
+        unfillable_steps:
+          type: array
+          items:
+            type: integer
+
     CommercialActionType:
       type: string
       enum: [SUBSCRIPTION_OPEN, SUBSCRIPTION_CHANGE, SUBSCRIPTION_END, ENTITLEMENT_GRANT, ENTITLEMENT_REVOKE, PLAN_VERSION_PUBLISH, PLAN_RETIRE, POLICY_ACTIVATE, SUPPORT_EXTENSION, ROLE_GRANT, ROLE_REVOKE, CREDIT, DISCOUNT, CONVERSION]
@@ -4857,7 +5362,7 @@ components:
     CommercialChangeRequest:
       type: object
       additionalProperties: false
-      required: [id, action_type, kind, state, tenant_id, product_key, payload, payload_checksum, required_chain, policy_version_id, policy_checksum, requested_by, reason, created_at, submitted_at, expires_at, approved_at, rejected_at, rejected_by, rejection_reason, withdrawn_at, expired_at, applied_at]
+      required: [id, action_type, kind, state, tenant_id, product_key, payload, payload_checksum, required_chain, policy_version_id, policy_checksum, requested_by, reason, created_at, submitted_at, expires_at, approved_at, rejected_at, rejected_by, rejection_reason, withdrawn_at, expired_at, applied_at, effect_applied_at]
       properties:
         id:
           type: string
@@ -4935,6 +5440,14 @@ components:
           type: [string, 'null']
           format: date-time
           description: CCP-A9 — set when a governed role change was applied (state APPLIED).
+        effect_applied_at:
+          type: [string, 'null']
+          format: date-time
+          description: |
+            CCP-B5 — when the request's effect was applied: `applied_at` for a request that
+            reached APPLIED, else the time of its COMMERCIAL_CHANGE_REQUEST_APPLIED event (an
+            applied `POLICY_ACTIVATE` stays APPROVED: the state guard admits no transition out
+            of APPROVED for it). null when nothing was applied.
 
     CommercialApproval:
       type: object
@@ -5053,8 +5566,9 @@ components:
         apply:
           description: |
             CCP-A9 — the role-change apply that follows an approval completing a `ROLE_GRANT`
-            / `ROLE_REVOKE` chain; null for every other approval. A refused apply leaves the
-            request APPROVED with its signatures untouched.
+            / `ROLE_REVOKE` chain; CCP-B5 — the policy activation that follows an approval
+            completing a `POLICY_ACTIVATE` chain; null for every other approval. A refused
+            apply leaves the request APPROVED with its signatures untouched.
           oneOf:
             - type: 'null'
             - $ref: '#/components/schemas/CommercialRoleChangeApply'
@@ -5072,7 +5586,9 @@ components:
             null when applied; else APPROVER_NO_LONGER_ELIGIBLE | APPROVER_NOT_DISTINCT |
             APPROVALS_INCOMPLETE | NOT_APPROVED | ROLE_ALREADY_HELD | ROLE_NOT_HELD |
             SUBJECT_NOT_PLATFORM_MEMBER | ROLE_NOT_IN_CATALOG | PLATFORM_LAST_OWNER |
-            ATTESTATION_CONFLICT | INTEGRITY | APPLY_ERROR.
+            ATTESTATION_CONFLICT | INTEGRITY | APPLY_ERROR; CCP-B5 (POLICY_ACTIVATE, the NC-5
+            snapshot re-check) POLICY_ACTIVE_CHANGED | TARGET_CHANGED | TARGET_NOT_ACTIVATABLE |
+            TARGET_NOT_FOUND | TARGET_SNAPSHOT_MISSING | TARGET_MALFORMED.
         detail:
           type: object
           additionalProperties: true

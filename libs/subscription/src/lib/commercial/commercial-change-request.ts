@@ -341,6 +341,9 @@ const SHA256_HEX = /^[0-9a-f]{64}$/;
  */
 export const COMMERCIAL_ROLE_CHANGE_ROLE_KEYS = ['platform_owner', 'finance_admin', 'commercial_ops', 'catalog_manager', 'support_admin', 'read_only_auditor'] as const;
 
+/** CCP-B5: the POLICY_ACTIVATE payload key holding the target version's content checksum (NC-5 snapshot). */
+export const POLICY_TARGET_CHECKSUM_KEY = 'target_content_checksum';
+
 /**
  * A3 validates only what chain resolution and the eligibility rules read; the applying
  * slice (A4–A9, C1–C4) owns the full payload schema of its action. The payload is frozen
@@ -378,9 +381,17 @@ export function validatePayload(action_type: CommercialActionType, payload: unkn
       if (p['human_ref_hash'] !== undefined && (typeof p['human_ref_hash'] !== 'string' || !SHA256_HEX.test(p['human_ref_hash']))) errors.push('human_ref_hash must be a lowercase SHA-256 hex digest');
       break;
     }
-    case 'POLICY_ACTIVATE':
+    case 'POLICY_ACTIVATE': {
       if (typeof p['policy_version_id'] !== 'string' || !UUID.test(p['policy_version_id'])) errors.push('policy_version_id must be a uuid');
+      // CCP-B5 (TD-A9-16, pre-execution C-3): a closed key set. target_content_checksum is the
+      // NC-5 snapshot of the target version's content (SHA-256 hex); the service fills it from
+      // the target row when the client omits it, so every stored request carries it.
+      for (const k of Object.keys(p)) if (k !== 'policy_version_id' && k !== POLICY_TARGET_CHECKSUM_KEY) errors.push(`${k} is not allowed in a POLICY_ACTIVATE payload`);
+      if (p[POLICY_TARGET_CHECKSUM_KEY] !== undefined && (typeof p[POLICY_TARGET_CHECKSUM_KEY] !== 'string' || !SHA256_HEX.test(p[POLICY_TARGET_CHECKSUM_KEY]))) {
+        errors.push(`${POLICY_TARGET_CHECKSUM_KEY} must be a lowercase SHA-256 hex digest`);
+      }
       break;
+    }
     // CCP-B2-backend — the catalog apply's payloads: the plan VERSION acted on, and for a publish
     // an optional provider price to pin to it (D3; the A5 PlanVersionRepository.pinProviderPrice).
     case 'PLAN_VERSION_PUBLISH':

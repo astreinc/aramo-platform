@@ -44,7 +44,9 @@ import {
 //                 runs the chain-satisfiability gate (409 CCP_NOT_BOOTSTRAPPED)
 // Every act writes CommercialAuditEvent rows (CCP-A2 stream). CCP-A9: an approval that
 // completes a ROLE_GRANT / ROLE_REVOKE chain applies the role change right after (the
-// response carries `apply`); nothing else is applied (A6).
+// response carries `apply`); nothing else is applied (A6). CCP-B5 (TD-A9-16): an approval
+// that completes a POLICY_ACTIVATE chain applies the activation the same way (`apply`); the
+// request stays APPROVED and `effect_applied_at` records the apply (TD-B5-1).
 
 @Controller('platform/commercial/change-requests')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -265,6 +267,7 @@ export function requestDto(r: CommercialChangeRequestRow): CommercialChangeReque
     withdrawn_at: iso(r.withdrawn_at),
     expired_at: iso(r.expired_at),
     applied_at: iso(r.applied_at ?? null),
+    effect_applied_at: iso(r.effect_applied_at ?? r.applied_at ?? null),
   };
 }
 

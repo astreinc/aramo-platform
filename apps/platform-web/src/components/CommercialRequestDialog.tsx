@@ -26,7 +26,7 @@ export interface CommercialRequestDialogProps {
   readonly onOpenChange: (open: boolean) => void;
   readonly title: string;
   /** The consequence line under the title. */
-  readonly sub: string;
+  readonly sub: ReactNode;
   /** The fields (Reason, Evidence …). */
   readonly children?: ReactNode;
   readonly diff?: readonly CommercialDiffRow[];
@@ -100,9 +100,11 @@ export function CommercialRequestDialog({
                     {d.changed ? `~ ${d.field}` : ` ${d.field}`}
                   </span>
                   <span role="cell" className="pw-crd__diff-before">
+                    {d.changed ? <span className="pw-sr-only">Before: </span> : null}
                     {d.before}
                   </span>
                   <span role="cell" className="pw-crd__diff-after">
+                    {d.changed ? <span className="pw-sr-only">After: </span> : null}
                     {d.after}
                   </span>
                 </div>

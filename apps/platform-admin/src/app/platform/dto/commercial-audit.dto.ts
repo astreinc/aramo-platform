@@ -13,6 +13,9 @@ export class CommercialAuditQueryDto {
   // Exclusive upper bound on created_at.
   @IsOptional() @IsISO8601({ strict: true }) to?: string;
   @IsOptional() @IsIn(['true', 'false']) exception_only?: 'true' | 'false';
+  // CCP-B5 (handoff §5.7): the "Change request" and "Product" filters.
+  @IsOptional() @IsUUID() change_request_id?: string;
+  @IsOptional() @IsString() @Matches(/^[a-z][a-z0-9_]{0,39}$/) product_key?: string;
   @IsOptional() @Type(() => Number) @IsInt() @Min(1) @Max(200) limit?: number;
   @IsOptional() @IsString() @MaxLength(2000) cursor?: string;
 }

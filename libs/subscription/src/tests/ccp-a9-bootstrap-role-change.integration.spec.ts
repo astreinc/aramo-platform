@@ -415,7 +415,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A9 bootstrap 
 
   // ---- POLICY_ACTIVATE (TD-A3-5) ------------------------------------------------------
 
-  it('A9-POL-1 POLICY_ACTIVATE is requested by a finance_admin (live role + D9), resolves finance → owner, is approved by a distinct finance_admin then an owner, and is NOT applied in A9 (APPROVED; the guard refuses APPLYING for it)', async () => {
+  // CCP-B5 (TD-A9-16) re-pointed the tail of this test: B5 applies the activation after the
+  // chain completes, WITHOUT a state transition (the guard still refuses APPLYING for it), so
+  // the request stays APPROVED and the target version becomes ACTIVE.
+  it('A9-POL-1 POLICY_ACTIVATE is requested by a finance_admin (live role + D9), resolves finance → owner, is approved by a distinct finance_admin then an owner; CCP-B5 applies it while the request stays APPROVED (the guard refuses APPLYING for it)', async () => {
     const FA = await addOperator(pg, ['finance_admin']);
     const FA2 = await addOperator(pg, ['finance_admin']);
     const P = await addOperator(pg, ['platform_owner']);
@@ -434,7 +437,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A9 bootstrap 
     await svc.approve(as(FA2, ['finance_admin']), request.id, { step_index: 0 }, ctx);
     const done = await svc.approve(as(P, ['platform_owner']), request.id, { step_index: 1 }, ctx);
     expect(done.request.state).toBe('APPROVED');
-    expect(done.apply).toBeNull();
+    expect(done.apply).toMatchObject({ applied: true, reason: null });
+    expect((await pg.query(`SELECT id, status FROM subscription."CommercialPolicyVersion" ORDER BY version_number`)).rows).toEqual([
+      { id: POLICY_V1, status: 'RETIRED' },
+      { id: V2, status: 'ACTIVE' },
+    ]);
     expect(await raises(`UPDATE subscription."CommercialChangeRequest" SET state = 'APPLYING', updated_at = now() WHERE id = $1`, [request.id])).toContain('APPROVED -> APPLYING is not allowed');
   });
 

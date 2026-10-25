@@ -27,6 +27,8 @@ import { ApprovalsInboxView } from './commercial/ApprovalsInboxView';
 import { CommercialAccessDenied } from './commercial/CommercialAccessDenied';
 import { CommercialPlaceholderView, type CommercialPlaceholderPage } from './commercial/CommercialPlaceholderView';
 import { CatalogView } from './commercial/catalog/CatalogView';
+import { PolicyView } from './commercial-governance/PolicyView';
+import { AuditExplorerView } from './commercial-governance/AuditExplorerView';
 
 // The platform console app. RouteGuard handles only loading, unauthenticated
 // (→ sign-in) and the TENANT_ACCESS_DENIED wrong-account redirect — it no longer
@@ -162,10 +164,21 @@ export function PlatformConsole({ session }: { readonly session: Session }) {
         />
         {/* PLATFORM-UX-1 (directive R-12) — Platform admins at /admins (never under
             /platform/, which nginx proxies to the backend). */}
-        <Route path="/admins" element={gate(P.adminInvite, 'Platform admins', <PlatformAdminsView />)} />
+        {/* CCP-B5 (handoff §5.8) — Platform admins also opens for the commercial roles
+            (their commercial-roles view); super_admin keeps the invite view. */}
+        <Route
+          path="/admins"
+          element={
+            hasScope(session, P.adminInvite) || hasScope(session, CP.approvalRead) ? (
+              <PlatformAdminsView session={session} />
+            ) : (
+              <PlatformAccessDenied session={session} scope={P.adminInvite} page="Platform admins" />
+            )
+          }
+        />
         {/* ── CCP-B1 — the Commercial group (handoff §2, directive R-12: never under
-            /platform/). Approvals is the B1 screen, Catalog is B2's; the others render their
-            designed disabled state until B4/B5 build them. */}
+            /platform/). Approvals is B1's, Catalog B2's, Policy and Audit B5's; the others render their
+            designed disabled state until B4 builds them. */}
         <Route path="/commercial" element={<Navigate to="/commercial/approvals" replace />} />
         <Route
           path="/commercial/approvals"
@@ -176,8 +189,10 @@ export function PlatformConsole({ session }: { readonly session: Session }) {
             platform:catalog:draft inside the view (merge train: replaces B1's placeholder). */}
         <Route path="/commercial/catalog" element={commercialGate(CP.catalogRead, 'catalog', <CatalogView session={session} />)} />
         <Route path="/commercial/contracts" element={placeholder(CP.subscriptionRead, 'contracts')} />
-        <Route path="/commercial/policy" element={placeholder(CP.approvalRead, 'policy')} />
-        <Route path="/commercial/audit" element={placeholder(CP.commercialAuditRead, 'audit')} />
+        {/* CCP-B5 (handoff §5.6, §5.7; B5-P) — Commercial › Policy and Commercial › Audit, behind
+            the Commercial access-denied card (merge train: replaces B1's placeholders). */}
+        <Route path="/commercial/policy" element={commercialGate(CP.approvalRead, 'policy', <PolicyView />)} />
+        <Route path="/commercial/audit" element={commercialGate(CP.commercialAuditRead, 'audit', <AuditExplorerView />)} />
         {/* ── end CCP-B1 */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
