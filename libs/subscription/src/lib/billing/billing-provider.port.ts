@@ -244,6 +244,15 @@ export interface ProviderAdjustmentEffect {
   /** The Aramo tenant stamped on the object (metadata), when present: a mismatch is refused. */
   tenant_id: string | null;
   live: boolean;
+  /**
+   * CCP-C4-R (REFUND only) — the amount of the refund found for this command (null when none), the
+   * payment's remaining refundable amount (paid − refunds succeeded or pending; null when unknown)
+   * and the payment's currency. Used to refuse an over-refund before any write and to tell a
+   * confirmed refund from a partial / mismatched one.
+   */
+  observed_amount_minor?: number | null;
+  refundable_remainder_minor?: number | null;
+  payment_currency?: string | null;
 }
 
 export interface BillingProviderAdjustmentPort {

@@ -12,6 +12,7 @@ import { CommercialAuditRepository } from '../../lib/commercial/commercial-audit
 import { CommercialBillingAdjustmentLedger } from '../../lib/commercial/commercial-billing-adjustment.ledger.js';
 import { CommercialBillingAdjustmentService } from '../../lib/commercial/commercial-billing-adjustment.service.js';
 import { CommercialConversionLedger } from '../../lib/commercial/commercial-conversion.ledger.js';
+import { CommercialConversionService } from '../../lib/commercial/commercial-conversion.service.js';
 import { CommercialOperatorRepository } from '../../lib/commercial/commercial-operator.repository.js';
 import { CommercialPolicyRepository } from '../../lib/commercial/commercial-policy.repository.js';
 import type { PrismaService } from '../../lib/prisma/prisma.service.js';
@@ -50,8 +51,10 @@ export class FakeAdjustmentStripe extends FakeStripe implements BillingProviderA
   balance: BalanceTxn[] = [];
   discounts = new Map<string, { coupon_ref: string; discount_ref: string; tenant_id: string }>();
   refunds: FakeRefund[] = [];
-  /** invoice_ref → the account that paid it. */
-  invoices = new Map<string, { account_ref: string }>();
+  /** invoice_ref → the account that paid it, the amount paid and its currency (defaults: 1 000 000 USD minor). */
+  invoices = new Map<string, { account_ref: string; amount_paid?: number; currency?: string }>();
+  /** CCP-C4-R — command ids whose provider READ fails (an uncertain reconciliation). */
+  readFailures = new Set<string>();
   /** The status a new refund reports (Stripe: pending | succeeded | failed). */
   refundStatus = 'succeeded';
   adjustmentCalls: { op: 'executeAdjustment' | 'readAdjustmentEffect'; operation: string; ref: string; command_id: string; idempotency_key?: string }[] = [];
@@ -116,6 +119,7 @@ export class FakeAdjustmentStripe extends FakeStripe implements BillingProviderA
   async readAdjustmentEffect(req: ProviderAdjustmentRequest, object_ref: string | null): Promise<ProviderAdjustmentEffect> {
     await this.probe(`readAdjustmentEffect ${req.operation} ${req.target_ref}`);
     this.adjustmentCalls.push({ op: 'readAdjustmentEffect', operation: req.operation, ref: req.target_ref, command_id: req.command_id });
+    if (this.readFailures.has(req.command_id)) throw new BillingProviderUnavailableError('stripe GET: HTTP 503', true);
     const base: ProviderAdjustmentEffect = { provider: 'STRIPE', operation: req.operation, object_ref: null, present: false, provider_status: null, tenant_id: null, live: false };
     switch (req.operation) {
       case 'CREDIT_GRANT':
@@ -132,9 +136,12 @@ export class FakeAdjustmentStripe extends FakeStripe implements BillingProviderA
         return { ...base, object_ref: d?.discount_ref ?? (req.operation === 'DISCOUNT_REMOVE' ? req.target_ref : null), present: req.operation === 'DISCOUNT_APPLY' ? has : !has, tenant_id: d?.tenant_id ?? null };
       }
       case 'REFUND_CREATE': {
+        const inv = this.invoices.get(req.target_ref);
+        const committed = this.refunds.filter((x) => x.invoice_ref === req.target_ref && (x.status === 'succeeded' || x.status === 'pending')).reduce((n, x) => n + x.amount, 0);
+        const facts = { refundable_remainder_minor: inv === undefined ? 0 : Math.max((inv.amount_paid ?? 1_000_000) - committed, 0), payment_currency: inv === undefined ? null : (inv.currency ?? 'usd') };
         const r = this.refunds.find((x) => (object_ref !== null ? x.id === object_ref : x.command_id === req.command_id));
-        if (r === undefined) return base;
-        return { ...base, object_ref: r.id, present: r.status === 'succeeded' && r.amount === req.amount_minor, provider_status: r.status, tenant_id: r.tenant_id };
+        if (r === undefined) return { ...base, ...facts, observed_amount_minor: null };
+        return { ...base, ...facts, object_ref: r.id, present: r.status === 'succeeded' && r.amount === req.amount_minor, provider_status: r.status, tenant_id: r.tenant_id, observed_amount_minor: r.amount };
       }
     }
   }
@@ -148,6 +155,8 @@ export interface C4Harness extends Omit<C1Harness, 'billing'> {
   billing: FakeAdjustmentStripe;
   adjustmentLedger: CommercialBillingAdjustmentLedger;
   adjustments: CommercialBillingAdjustmentService;
+  /** CCP-C4-R (TD-C4-18) — the C2 conversion on the same services. */
+  conversions: CommercialConversionService;
 }
 
 export function c4Harness(prisma: PrismaService, now: () => Date): C4Harness {
@@ -157,9 +166,11 @@ export function c4Harness(prisma: PrismaService, now: () => Date): C4Harness {
   const policies = new CommercialPolicyRepository(prisma);
   const operators = new CommercialOperatorRepository(prisma, audit, policies);
   const adjustmentLedger = new CommercialBillingAdjustmentLedger(audit);
-  const lifecycle = new SubscriptionLifecycleService(prisma, base.allowance, billing, new CapacityService(prisma), undefined, undefined, base.orgProfile, billing, new CommercialConversionLedger(audit), billing, adjustmentLedger);
+  const conversionLedger = new CommercialConversionLedger(audit);
+  const lifecycle = new SubscriptionLifecycleService(prisma, base.allowance, billing, new CapacityService(prisma), undefined, undefined, base.orgProfile, billing, conversionLedger, billing, adjustmentLedger);
   const commands = new BillingCommandService(prisma, billing, lifecycle, billing, billing);
   const inbox = new BillingWebhookInboxService(prisma, billing, lifecycle);
-  const adjustments = new CommercialBillingAdjustmentService(prisma, audit, operators, base.changeRequests, commands, now);
-  return { ...base, billing, lifecycle, commands, inbox, adjustmentLedger, adjustments };
+  const adjustments = new CommercialBillingAdjustmentService(prisma, audit, operators, base.changeRequests, commands, now, lifecycle, billing);
+  const conversions = new CommercialConversionService(prisma, audit, operators, base.changeRequests, conversionLedger, commands, lifecycle, now);
+  return { ...base, billing, lifecycle, commands, inbox, adjustmentLedger, adjustments, conversions };
 }

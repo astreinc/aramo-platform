@@ -187,3 +187,81 @@ No correction-1 trigger (PBD §2.4) arose.
 ## 8. Vocabulary result
 
 `bash scripts/verify-vocabulary.sh`: **OK** (Tier 1, Tier 2 and front-door clean). Exemption inventory (CLAUDE.md law): no allowlist entry was added or changed. The existing file-scoped Stripe wire exemption (`scripts/verify-vocabulary.sh:193-194`: `stripe-wire.ts` and `stripe-wire.spec.ts`) is used for C4's Stripe translations (balance-adjustment, coupon, discount, invoice-payment and refund shapes) and for the Stripe-shaped invoice fixtures of C4-U-11 / C4-U-13; the C4 adapter reuses `wireAccountPath` for the account path, so no Stripe field or path literal appears in `stripe-billing.provider.ts`. C4 test event types are neutral strings. The write hook blocked one Tier-2 token in `ccp-c4-billing-adjustments.spec.ts` during authoring (a Stripe invoice fixture field); the test was moved into the exempt wire spec before any gate run.
+
+## C4-R — follow-up to the Architect C4 disposition (2026-10-25)
+
+Implements the disposition recorded in `doc/ccp/decisions.md` "Architect C4 disposition" (program branch `fe7377b8`) on top of `fb94afe8`. Status is unchanged: **NOT DELIVERED**, Stripe test mode, REFUND disabled for real use. Nothing committed or pushed.
+
+### C4-R.1 TD-C4-12 safety condition: the flag blocks only NEW external execution
+- **Dispatcher** (`billing-command.service.ts` `performAdjustment`). The order is now:
+  1. port configured;
+  2. request APPLYING;
+  3. the authoritative provider re-read (a read: it runs whatever the flag says);
+  4. effect present → "already in effect", recorded PENDING_PROVIDER, no write;
+  5. for REFUND, **a refund already initiated for this command (any status, any amount) is never sent again**;
+  6. only then, with the flag off, `REFUND_POLICY_NOT_APPROVED`, before any write;
+  7. remainder and currency checks;
+  8. the one keyed write.
+
+  Before C4-R, the flag check came first, so a RETRY_WAIT refund whose response had been lost would have been FAILED without reconciliation.
+- **Reconciliation:** the verified webhook (inbox) and `reconcilePending` re-fetch never consulted the flag. A provider-confirmed refund is recorded APPLIED with its `CommercialBillingAdjustment` (C4R-1, C4R-2).
+- **Governed terminal resolution:** `POST /platform/commercial/change-requests/{id}/billing-adjustment/resolve`, through `CommercialBillingAdjustmentService.resolveRefund`. It applies to REFUND only, from APPLYING.
+  - **Who:** requester-only and revalidated (user principal, `platform:billing:request`, actor = `requested_by`).
+  - **Reconcile first:** an authoritative provider read per command, outside any transaction (PBD §12), by its refund object, else by the command identity (`aramo_command_id` metadata; the idempotency key is derived from the same request + step).
+  - **CONFIRMED** → completed APPLIED through the normal confirmation, never withdrawn.
+  - **PENDING / PARTIAL / a failed read / a send in flight** → refused `REFUND_OUTCOME_UNCERTAIN`. Nothing changes and the request holds its slot; one APPLY_REFUSED audit row is written.
+  - **Every command NOT_FOUND or FAILED_AT_PROVIDER** → one transaction under the billing lock and the request row lock, **fenced** on every command's `(state, attempts, updated_at)` as read. A dispatch, re-arm or confirmation in between refuses as uncertain. It writes ONE `COMMERCIAL_REFUND_RESOLVED_NOT_EXECUTED` audit event, then APPLYING → WITHDRAWN. The slot is released when that commits. Signatures, payload, commands and failure evidence are kept.
+  - A command row left behind is refused by the dispatcher (`REQUEST_NOT_APPLYING`) before any provider call.
+- **Guard:** a labelled `CCP-C4-R` block in `20261027000000_ccp_guard_union`.
+  - The transition is REFUND APPLYING → WITHDRAWN.
+  - Checks: `withdrawn_at` set; no command DISPATCHING or CONFIRMED; the resolution audit event present in the same transaction.
+  - Mirrored in `canTransitionFor` and re-based in A9-U-4.
+  - **GUARD-UNION-1..4 green: 4 500 probes, REFUND APPLYING → WITHDRAWN included.**
+
+### C4-R.2 REFUND identity (TD-C4-1)
+| Element | Implemented |
+|---|---|
+| Payload | `{amount_minor ≥ 1, currency, provider_invoice_ref, subscription_id?}`, a closed key set with no compensation. The invoice names the payment it refunds (one payment per invoice). The amount must be ≤ the payment's **refundable remainder** (amount paid − refunds succeeded or pending), checked against the provider before any write: `REFUND_EXCEEDS_REMAINDER`, plus `REFUND_CURRENCY_MISMATCH`. **Partial refunds are allowed within the remainder** (C4R-5). This is recorded as pending the catalog amendment's decision point 2. |
+| Provider references | the invoice (target), the paying account (verified against the tenant's row), the payment, and the refund object (`provider_object_ref`, written once) |
+| Audit events | `COMMERCIAL_REFUND_PENDING_PROVIDER`, `COMMERCIAL_REFUND_CONFIRMED`, `COMMERCIAL_REFUND_REARMED`, `COMMERCIAL_REFUND_RESOLVED_NOT_EXECUTED` (CREDIT and DISCOUNT keep `COMMERCIAL_BILLING_ADJUSTMENT_*`) |
+| Reconciliation outcomes | `refundReconciliationOutcome`: **CONFIRMED** (succeeded for exactly the approved amount), **PENDING**, **PARTIAL** (exists for another amount: never APPLIED, held), **FAILED_AT_PROVIDER**, **NOT_FOUND**. Only the last two prove that no refund can still complete. |
+| Provider read | the Stripe adapter's refund read now returns the payment's whole picture (invoice, then every refund of its payment): the observed amount, the remainder and the currency |
+
+### C4-R.3 TD-C4-18
+C4R-7: an approved manual CREDIT (5 000) on a self-service subscription with an open commitment term is applied and provider-confirmed.
+- The subscription row is **byte-identical** before and after (commitment start and end, period, status, cancel flag: the inputs of C7's cancel refusal).
+- A CONVERSION TO_GOVERNED on the same row is then still refused `FINANCIAL_TREATMENT_UNDEFINED`, with no command and the row unchanged.
+
+### C4-R tests and gates (exact counts)
+| Run | Result |
+|---|---|
+| `ccp-c4-billing-adjustments.integration.spec.ts` | **27 / 27** (20 + C4R-1…C4R-7) |
+| | **C4R-1**, the Architect's example: a $300 refund is sent, Stripe processes it and the response is lost (RETRY_WAIT); the flag is disabled; the due dispatch re-reads and records it (PENDING_PROVIDER, "already in effect"); the re-fetch confirms APPLIED with its adjustment. **0 additional provider writes**, 1 command, 1 refund; `COMMERCIAL_REFUND_PENDING_PROVIDER` and `COMMERCIAL_REFUND_CONFIRMED` once each. |
+| | **C4R-2**: the same case resolved by the requester. The resolution reconciles first, finds CONFIRMED and records APPLIED (0 writes). A verified refund webhook also confirms with the flag off. |
+| | **C4R-3**, re-fetch proves nothing exists: another commercial_ops → `NOT_REQUESTER`; the Finance approver → `REQUESTER_SCOPE_MISSING`. The requester → `RESOLVED_NOT_EXECUTED` (outcomes `[NOT_FOUND]`), WITHDRAWN with `withdrawn_at`, exactly 1 resolution event, signatures byte-identical, no adjustment, the command kept. **The slot is released** (a new REFUND on the tenant is created). A 2nd resolution → `NOT_RESOLVABLE`; an operator retry of the old command → FAILED `REQUEST_NOT_APPLYING`, 0 writes. Two more cases also resolve: a command queued while the flag was on (later FAILED `REFUND_POLICY_NOT_APPROVED`), and a refund the provider reports `failed` (`FAILED_AT_PROVIDER`). |
+| | **C4R-4**, uncertain cases: the re-fetch errors → `REFUND_OUTCOME_UNCERTAIN`; the request stays APPLYING with `withdrawn_at` null and **the slot is held** (`OPEN_REQUEST_EXISTS`); 0 resolution events, 1 refusal row. A pending refund and a PARTIAL refund (5 000 found for a 6 000 approval: recorded PENDING_PROVIDER, never APPLIED) are also uncertain. Nothing is re-sent. |
+| | **C4R-5**: an over-refund (30 000 against 20 000 paid) → FAILED `REFUND_EXCEEDS_REMAINDER`, 0 writes; a partial 10 000 of 20 000 → APPLIED. |
+| | **C4R-6** DB: WITHDRAWN without the audit event is refused; a CREDIT in APPLYING cannot be withdrawn. |
+| | **C4R-7**: TD-C4-18 (above). |
+| C4 unit + `stripe-wire.spec` + A9-U + A3-CH | 128 / 128 (C4R-U-1 outcomes; C4R-U-2 audit names and the mirror; C4-U-11 re-based to the new refund read) |
+| `ccp-guard-union` + `ccp-merge-train-compensation` | **8 / 8** (4 500 probes) |
+| `ccp-c1-command-inbox` + `ccp-c2-conversion` + C4 integration (re-run after the last service edit) | 3 files, 71 / 71 |
+| platform-admin `ccp-c4-billing-adjustment-routes` | **5 / 5**. C4-RI-5, resolve per role: only the requester; the others 403 `requester_scope_missing`; another commercial_ops `not_requester`; super_admin at the gate. APPROVED → 409 `NOT_RESOLVABLE`; a refund sent nowhere → 200 `RESOLVED_NOT_EXECUTED` with no amount in the body; slot released; a CREDIT → 409 `action_not_applicable`. |
+| Pact consumer (pacts deleted; serial) | **181 / 181 tests, 182 interactions** (+5: resolve 200 by the requester, 409 uncertain, 403 finance_admin, and the super_admin and tenant-tier gate refusals) |
+| Pact provider `verify-platform-admin` | **2 / 2** (the coverage gate with 33 CCP routes, and 182 interactions). New states: `a refund is being applied` (its read fails: unproven) and `a refund that was never executed is being applied`. The verifier overrides `BILLING_PROVIDER_ADJUSTMENT_PORT` with an in-memory read-only reader that never executes. The first C4-R provider run failed: the coverage gate (no 2xx interaction yet), and a `details.reason` collision (the refusal detail key `reason` overwrote the HTTP `reason`). The key is now `basis` (TD-C4R-4). |
+| Gates | contract-parity: 711 live routes (709 governed), 542 ops, 0 orphan, 0 unclassified. openapi drift ok. redocly valid. orphan-scopes, error-codes, env-passthrough (unchanged; the flag is still not wired), integration-roots, repo-map (no change) and vocabulary all OK. ESLint on the 20 changed files: 0 errors. `nx build typecheck` for subscription, platform-admin and both pact projects: 4 projects + 28 dependency tasks OK. |
+
+Files: **20 modified** plus this record. `git diff --stat`: 773 insertions, 39 deletions.
+- Code: `billing-command.service.ts`, `billing-provider.port.ts`, `stripe-billing.provider.ts`, `commercial-billing-adjustment.ts`, `.ledger.ts`, `.service.ts`, `commercial-apply-records.ts`, `commercial-change-request.ts`, the guard union migration, the platform-admin controller and DTO, `openapi/platform.yaml`.
+- Tests: `ccp-c4-billing-adjustments{.spec,.integration.spec}.ts`, `support/ccp-c4.ts`, `stripe-wire.spec.ts`, `ccp-a9-role-change.spec.ts`, the platform-admin routes spec, the Pact consumer and the provider.
+
+### C4-R typed divergences
+| ID | Type | Divergence | Disposition |
+|---|---|---|---|
+| **TD-C4R-1** | Pattern reading | "Lock across the attempt, reconcile first" (ACC-1). The authoritative provider read cannot run inside a DB transaction (PBD §12). So the lock is taken AFTER the reads, and the reads are bound to the write by a fence on every command's `(state, attempts, updated_at)` plus the request row lock. A dispatcher claims (DISPATCHING) before it checks the request, so every interleaving either fails the fence or finds the request WITHDRAWN. The ACC-1 code is not on this branch (not merged at `fb94afe8`); the pattern was taken from its ruling text. | **Confirm** (Lead) |
+| TD-C4R-2 | Terminal state | The resolution uses WITHDRAWN (terminal, not open: releases the slot), with a REFUND-only APPLYING → WITHDRAWN edge, rather than a new state. The view reports `status: RESOLVED_NOT_EXECUTED` for a WITHDRAWN REFUND with commands. | Recorded |
+| TD-C4R-3 | Choice | A refund that exists for another amount than approved is `PARTIAL`. It is never confirmed or resolved and stays held. An operator investigation path is not built. | For D3 / the refund policy |
+| TD-C4R-4 | Fix | The C4 refusal and failure detail key `reason` collided with the HTTP `details.reason` (`apply_refused` / `apply_failed`) once spread. Renamed to `basis` (also on C4's existing `TARGET_NOT_FOUND` failure detail) | Recorded |
+| TD-C4R-5 | Partial scope | TD-C4-18's C7 half: C7 (`wip/ccp-c7` `1b41f78c`) is not on this branch. C4R-7 proves the C7 refusal's inputs unchanged (the subscription row byte-identical: `commitment_end`, period, status). The direct assertion (C7 cancel → `FINANCIAL_TREATMENT_UNDEFINED` with `COMMITMENT_TERM_DETAIL` after a manual credit) must be added at the C4 + C7 integration, together with the integrator-owned union for `guard_billing_provider_command()` (both C4 and C7 re-create it). | **For the integrator** |
+| TD-C4R-6 | Test timing | C4-U-14 (Nest module compile) timed out at the 5 s default under load (the same as C1-U-10 in the earlier full run); it now has an explicit 60 s timeout. The isolated `commercial-catalog-a1` 150-sends timeout did not repeat in the targeted runs; it was not re-investigated here. | Recorded (Architect asked to watch it) |
+| TD-C4R-7 | Decision point | Partial refunds are allowed within the provider-reported remainder, pending the catalog amendment's decision point 2. | **Architect / PO** |

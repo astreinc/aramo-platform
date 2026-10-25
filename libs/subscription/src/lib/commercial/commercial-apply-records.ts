@@ -74,6 +74,11 @@ export const APPLY_EXPLANATIONS: Readonly<Record<string, string>> = {
   COMPENSATION_TARGET_INVALID: 'The request this one compensates is not an applied request of the same kind, tenant and product.',
   COMPENSATION_MISMATCH: 'A compensation must reverse exactly the amount, currency or percentage of the request it compensates.',
   ALREADY_COMPENSATED: 'The request named here has already been compensated.',
+  // CCP-C4-R — the refund resolution and the refund identity checks
+  REFUND_OUTCOME_UNCERTAIN: 'Whether this refund happened at Stripe is not proven yet (a provider read failed, a refund is pending or for another amount, or a send is in progress). The request stays open; try again later.',
+  NOT_RESOLVABLE: 'Only a refund that is being applied and has not been confirmed can be resolved this way.',
+  REFUND_EXCEEDS_REMAINDER: 'The refund is larger than what is still refundable on that payment; nothing was sent to Stripe.',
+  REFUND_CURRENCY_MISMATCH: 'The refund currency is not the currency of that payment; nothing was sent to Stripe.',
 };
 
 export const explanationOf = (code: string): string => APPLY_EXPLANATIONS[code] ?? 'The change could not be applied.';

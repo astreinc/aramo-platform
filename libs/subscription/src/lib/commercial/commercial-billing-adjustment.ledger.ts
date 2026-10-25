@@ -7,6 +7,7 @@ import type { ProviderAdjustmentEffect } from '../billing/billing-provider.port.
 import type { PrismaService } from '../prisma/prisma.service.js';
 
 import { CommercialAuditRepository } from './commercial-audit.repository.js';
+import { adjustmentAuditEvent } from './commercial-billing-adjustment.js';
 import { isBillingAdjustmentAction } from './commercial-change-request.js';
 import type { CommercialChangeRequestRow } from './commercial-change-request.service.js';
 
@@ -122,7 +123,7 @@ export class CommercialBillingAdjustmentLedger {
     await this.audit.append(
       {
         actor: SYSTEM,
-        event_type: 'COMMERCIAL_BILLING_ADJUSTMENT_CONFIRMED',
+        event_type: adjustmentAuditEvent(req.action_type, 'CONFIRMED'),
         subject: `billing_adjustment:${adjustment_id}`,
         payload: { action_type: req.action_type, product_key: req.product_key, operation: cmd.command_kind, command_id: cmd.id, idempotency_key: cmd.idempotency_key, provider_object_ref: object_ref, confirmation_source: q.confirmation.source, confirmation_event_id: q.confirmation.event_id },
         ...base,

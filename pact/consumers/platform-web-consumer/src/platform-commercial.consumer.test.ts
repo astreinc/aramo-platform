@@ -34,7 +34,7 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 // commercial tenant (change requests and approvals are append-only, and Q14 allows one
 // open request per tenant × product).
 //
-// Coverage — CCP routes (32):
+// Coverage — CCP routes (33):
 //   GET  /platform/commercial/audit-events                      (CCP-A2)
 //   POST /platform/commercial/change-requests                   (CCP-A3)
 //   GET  /platform/commercial/change-requests
@@ -54,6 +54,7 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 //   GET  /platform/commercial/change-requests/{id}/conversion   (CCP-C2)
 //   POST /platform/commercial/change-requests/{id}/billing-adjustment (CCP-C4)
 //   GET  /platform/commercial/change-requests/{id}/billing-adjustment (CCP-C4)
+//   POST /platform/commercial/change-requests/{id}/billing-adjustment/resolve (CCP-C4-R)
 //   GET  /platform/commercial/tenants/{tenant_id}/billing-status (CCP-C3)
 //   GET  /platform/commercial/billing-portal-configuration      (CCP-C3)
 //   GET  /platform/commercial/finance/renewals                  (CCP-C6)
@@ -266,6 +267,7 @@ const GATE_ROUTES: readonly GateRoute[] = [
   { name: 'GET change-requests/{id}/conversion', method: 'GET', path: `${CR}/${EX_REQUEST_ID}/conversion`, scope: 'platform:approval:read' },
   { name: 'POST change-requests/{id}/billing-adjustment', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/billing-adjustment`, scope: 'platform:approval:read' },
   { name: 'GET change-requests/{id}/billing-adjustment', method: 'GET', path: `${CR}/${EX_REQUEST_ID}/billing-adjustment`, scope: 'platform:approval:read' },
+  { name: 'POST change-requests/{id}/billing-adjustment/resolve', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/billing-adjustment/resolve`, scope: 'platform:approval:read' },
   { name: 'GET tenants/{tenant_id}/billing-status', method: 'GET', path: BILLING_STATUS, scope: 'platform:billing:read' },
   { name: 'GET billing-portal-configuration', method: 'GET', path: PORTAL_CONFIG, scope: 'platform:billing:read' },
   { name: 'GET finance/renewals', method: 'GET', path: RENEWALS, scope: 'platform:billing:read' },
@@ -1305,6 +1307,66 @@ describe('platform-web → POST /platform/commercial/change-requests/{id}/billin
       .executeTest(async (mock) => {
         const res = await call(`${mock.url}${adjust()}`, 'POST', platformSession('commercial_ops'));
         expect(res.status).toBe(409);
+      });
+  });
+});
+
+describe('platform-web → POST /platform/commercial/change-requests/{id}/billing-adjustment/resolve (CCP-C4-R)', () => {
+  const resolvePath = (requestId = EX_REQUEST_ID) => `${CR}/${requestId}/billing-adjustment/resolve`;
+
+  it('the requester (commercial_ops) resolves a refund the provider proves was never executed (200 RESOLVED_NOT_EXECUTED: WITHDRAWN, the slot released; no amount in the body)', async () => {
+    await provider
+      .addInteraction()
+      .given('a refund that was never executed is being applied')
+      .uponReceiving('a refund resolution by its requester after the provider proves no refund exists')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/billing-adjustment/resolve`, resolvePath()), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          resolution: 'RESOLVED_NOT_EXECUTED',
+          outcomes: ['NOT_FOUND'],
+          request: { id: uuid(EX_REQUEST_ID), action_type: 'REFUND', state: 'WITHDRAWN', payload: like({ amount_withheld: 'FINANCE_SCOPE_PENDING' }), requested_by: OP.commercial_ops },
+          adjustment: { operation: 'REFUND_CREATE', status: 'RESOLVED_NOT_EXECUTED', record: null, commands: eachLike({ command_kind: 'REFUND_CREATE', step: 'refund_create' }) },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${resolvePath()}`, 'POST', platformSession('commercial_ops'));
+        expect(res.status).toBe(200);
+      });
+  });
+
+  it('the requester (commercial_ops) cannot resolve a refund whose outcome is not proven (409 apply_refused REFUND_OUTCOME_UNCERTAIN; the request and its slot are held)', async () => {
+    await provider
+      .addInteraction()
+      .given('a refund is being applied')
+      .uponReceiving('a refund resolution while its outcome is not proven')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/billing-adjustment/resolve`, resolvePath()), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(409, (b) => {
+        b.jsonBody(errorBody('COMMERCIAL_CHANGE_REQUEST_CONFLICT', { reason: 'apply_refused', refusal: 'REFUND_OUTCOME_UNCERTAIN', explanation: like('Whether this refund happened at Stripe is not proven yet.') }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${resolvePath()}`, 'POST', platformSession('commercial_ops'));
+        expect(res.status).toBe(409);
+      });
+  });
+
+  it('a role without the requester authority (finance_admin) is refused (403 requester_scope_missing)', async () => {
+    await provider
+      .addInteraction()
+      .given('a refund is being applied')
+      .uponReceiving('a refund resolution by a role without the requester scope')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/billing-adjustment/resolve`, resolvePath()), (b) => {
+        b.headers(platformSession('finance_admin'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(errorBody('INSUFFICIENT_PERMISSIONS', { reason: 'requester_scope_missing', missing_scopes: ['platform:billing:request'] }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${resolvePath()}`, 'POST', platformSession('finance_admin'));
+        expect(res.status).toBe(403);
       });
   });
 });

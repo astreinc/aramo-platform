@@ -10,7 +10,11 @@ import {
   REFUND_EXECUTION_FLAG,
   adjustmentOperationOf,
   discountCouponRef,
+  REFUND_AUDIT_EVENTS,
+  adjustmentAuditEvent,
+  refundCannotComplete,
   refundExecutionEnabled,
+  refundReconciliationOutcome,
   withholdAmounts,
 } from '../lib/commercial/commercial-billing-adjustment.js';
 import { APPLY_EXPLANATIONS } from '../lib/commercial/commercial-apply-records.js';
@@ -131,6 +135,30 @@ describe('CCP-C4 pure model', () => {
   });
 });
 
+describe('CCP-C4-R refund identity', () => {
+  it('C4R-U-1 reconciliation outcomes from an authoritative read: CONFIRMED only for a succeeded refund of exactly the approved amount; NOT_FOUND and FAILED_AT_PROVIDER are the only outcomes proving no refund can still complete', () => {
+    const e = (object_ref: string | null, provider_status: string | null, observed_amount_minor: number | null) => ({ object_ref, provider_status, observed_amount_minor });
+    expect(refundReconciliationOutcome(e(null, null, null), 30_000)).toBe('NOT_FOUND');
+    expect(refundReconciliationOutcome(e('re_1', 'succeeded', 30_000), 30_000)).toBe('CONFIRMED');
+    expect(refundReconciliationOutcome(e('re_1', 'pending', 30_000), 30_000)).toBe('PENDING');
+    expect(refundReconciliationOutcome(e('re_1', 'requires_action', 30_000), 30_000)).toBe('PENDING');
+    expect(refundReconciliationOutcome(e('re_1', 'succeeded', 29_999), 30_000)).toBe('PARTIAL');
+    expect(refundReconciliationOutcome(e('re_1', 'failed', 30_000), 30_000)).toBe('FAILED_AT_PROVIDER');
+    expect(refundReconciliationOutcome(e('re_1', 'canceled', 1), 30_000)).toBe('FAILED_AT_PROVIDER');
+    expect((['CONFIRMED', 'PENDING', 'PARTIAL', 'FAILED_AT_PROVIDER', 'NOT_FOUND'] as const).filter(refundCannotComplete)).toEqual(['FAILED_AT_PROVIDER', 'NOT_FOUND']);
+  });
+
+  it('C4R-U-2 REFUND has its own audit event names; the other C4 types keep COMMERCIAL_BILLING_ADJUSTMENT_*; the resolution is REFUND-only in the transition mirror', () => {
+    expect(REFUND_AUDIT_EVENTS).toEqual({ PENDING_PROVIDER: 'COMMERCIAL_REFUND_PENDING_PROVIDER', CONFIRMED: 'COMMERCIAL_REFUND_CONFIRMED', REARMED: 'COMMERCIAL_REFUND_REARMED', RESOLVED_NOT_EXECUTED: 'COMMERCIAL_REFUND_RESOLVED_NOT_EXECUTED' });
+    expect(adjustmentAuditEvent('REFUND', 'CONFIRMED')).toBe('COMMERCIAL_REFUND_CONFIRMED');
+    expect(adjustmentAuditEvent('CREDIT', 'CONFIRMED')).toBe('COMMERCIAL_BILLING_ADJUSTMENT_CONFIRMED');
+    expect(canTransitionFor('REFUND', 'APPLYING', 'WITHDRAWN')).toBe(true);
+    for (const a of ['CREDIT', 'DISCOUNT', 'CONVERSION']) expect(canTransitionFor(a, 'APPLYING', 'WITHDRAWN')).toBe(false);
+    expect(canTransitionFor('REFUND', 'APPLY_FAILED', 'WITHDRAWN')).toBe(false);
+    expect(canTransitionFor('REFUND', 'APPROVED', 'WITHDRAWN')).toBe(false);
+  });
+});
+
 describe('CCP-C4 Stripe adapter (stubbed fetch; no network)', () => {
   const env = { ...process.env };
   let calls: { method: string; url: string; body: string | undefined; idem: string | undefined }[] = [];
@@ -224,5 +252,5 @@ describe('CCP-C4 module wiring', () => {
       expect(ref.get(CommercialBillingAdjustmentService)).toBeInstanceOf(CommercialBillingAdjustmentService);
       await ref.close();
     }
-  });
+  }, 60_000); // cold Nest + module imports exceed the 5 s default under host load
 });

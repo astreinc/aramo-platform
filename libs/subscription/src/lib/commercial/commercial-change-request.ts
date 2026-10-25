@@ -320,6 +320,9 @@ export function canTransitionFor(
   if ((COMMERCIAL_ROLE_CHANGE_ACTIONS as readonly string[]).includes(action_type)) return (COMMERCIAL_A9_ROLE_APPLY_TRANSITIONS[from] ?? []).includes(to);
   if (isA6Applicable(action_type) || isCatalogApplicable(action_type)) return (COMMERCIAL_A6_APPLY_TRANSITIONS[from] ?? []).includes(to);
   if (action_type === 'CONVERSION') return (COMMERCIAL_C2_CONVERSION_TRANSITIONS[from] ?? []).includes(to);
+  // CCP-C4-R (Architect C4 disposition, TD-C4-12): a REFUND proven not executed is resolved by its
+  // requester APPLYING → WITHDRAWN (terminal; the DB also requires the resolution audit event).
+  if (action_type === 'REFUND' && from === 'APPLYING' && to === 'WITHDRAWN') return true;
   // CCP-C4: the billing adjustments (CREDIT, DISCOUNT, REFUND) — the C2 apply pairs (their
   // APPLY_EXPIRED pairs: the AD-4 branch above).
   if (isBillingAdjustmentAction(action_type)) return (COMMERCIAL_C4_ADJUSTMENT_TRANSITIONS[from] ?? []).includes(to);

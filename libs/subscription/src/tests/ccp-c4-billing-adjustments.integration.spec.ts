@@ -10,12 +10,13 @@ import { CommercialApplyFailedError } from '../lib/commercial/commercial-apply-r
 import { CommercialApplyRefusedError } from '../lib/commercial/commercial-approval-eligibility.js';
 import { BillingAdjustmentRefusedError, REFUND_EXECUTION_FLAG, discountCouponRef } from '../lib/commercial/commercial-billing-adjustment.js';
 import { CommercialApprovalRefusedError, CommercialChangeRequestError, CommercialNotBootstrappedError } from '../lib/commercial/commercial-change-request.service.js';
+import { ConversionApplyFailedError } from '../lib/commercial/commercial-conversion.js';
 import { commercialPolicyChecksum } from '../lib/commercial/commercial-policy.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
 import { seededPolicyV1 } from './fixtures/commercial-policy-seed.js';
 import { CCP_BUNDLES, POLICY_V1, activatePolicyV2, addOperator, applyCcpA6Schema, grantRole, revokeRole } from './support/ccp-a3-database.js';
-import { A6_CTX, as, newTenant, rawSubscription } from './support/ccp-a6.js';
+import { A6_CTX, INCLUDED, as, newTenant, publishedVersion, rawSubscription } from './support/ccp-a6.js';
 import { type C4Harness, c4Harness } from './support/ccp-c4.js';
 
 // CCP-C4 (PBD §5.2 row C4, §10; Conversion Rule C-22, C-23; Charter §6.4 NC-1…NC-5, §7 D5) — credits,
@@ -112,6 +113,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 credits, d
       if (e instanceof CommercialNotBootstrappedError) return 'NOT_BOOTSTRAPPED';
       if (e instanceof CommercialChangeRequestError) return e.code;
       if (e instanceof BillingCommandError) return `COMMAND:${e.code}`;
+      if (e instanceof ConversionApplyFailedError) return `CONVERSION_FAILED:${e.code}`;
       throw e;
     }
   }
@@ -583,6 +585,238 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 credits, d
     expect(await dbError(`DELETE FROM subscription."CommercialBillingAdjustment" WHERE change_request_id = $1`, [id])).toContain('append-only');
     // The request action list admits REFUND (constraint union) and nothing invented.
     expect(await dbError(`UPDATE subscription."CommercialChangeRequest" SET action_type = 'REFUND_TYPO' WHERE id = $1`, [id])).toMatch(/action_type_check|immutable/);
+  });
+
+  // ---- CCP-C4-R (Architect C4 disposition 2026-10-25, TD-C4-12 / TD-C4-1 / TD-C4-18) ------------
+
+  /** An APPROVED REFUND (Finance → Owner) on a fresh self-service tenant whose invoice the fake knows. */
+  async function approvedRefund(amount_minor: number, invoice: { amount_paid?: number } = {}): Promise<{ id: string; t: string; acct: string; inv: string }> {
+    const s = await selfServiceTenant();
+    const inv = `in_c4r${String(++keyN).padStart(6, '0')}`;
+    h.billing.invoices.set(inv, { account_ref: s.acct, ...invoice });
+    const id = await approved('REFUND', s.t, { amount_minor, currency: 'USD', provider_invoice_ref: inv });
+    return { id, t: s.t, acct: s.acct, inv };
+  }
+  const withFlag = async <T>(f: () => Promise<T>): Promise<T> => {
+    process.env[REFUND_EXECUTION_FLAG] = '1';
+    try {
+      return await f();
+    } finally {
+      delete process.env[REFUND_EXECUTION_FLAG];
+    }
+  };
+  const resolve = (id: string, user = OPS) => h.adjustments.resolveRefund(as(user, 'commercial_ops'), id, A6_CTX);
+  const later = (min: number) => {
+    now = new Date(now.getTime() + min * 60_000);
+  };
+  const auditCount = async (id: string, type: string) => Number((await one(`SELECT count(*)::int n FROM subscription."CommercialAuditEvent" WHERE change_request_id = $1 AND event_type = $2`, [id, type])).n);
+
+  it('C4R-1 (the Architect\'s example) a $300 refund is sent, Stripe processes it, the response is lost, then the flag is DISABLED: the reconciliation still runs — the dispatcher re-reads and records it (0 further writes), the re-fetch confirms it APPLIED with its adjustment; never a second command or refund', async () => {
+    const { id, inv } = await approvedRefund(30_000);
+    const t0 = now;
+    try {
+      await withFlag(async () => {
+        await applyAs(id);
+        const [c] = await commandsOf(id);
+        h.billing.lostResponses.set(c.id, 1);
+        await dispatch(); // Stripe executes, the response is lost
+      });
+      const [c] = await commandsOf(id);
+      expect(c).toMatchObject({ state: 'RETRY_WAIT', last_error_code: 'PROVIDER_UNAVAILABLE' });
+      expect(h.billing.refunds.filter((r) => r.invoice_ref === inv)).toHaveLength(1);
+      const writes = h.billing.writes;
+      // Flag OFF from here. The due retry re-reads first: the refund exists → recorded, never re-sent.
+      later(2);
+      await dispatch();
+      expect((await commandsOf(id))[0]).toMatchObject({ state: 'PENDING_PROVIDER', last_error_detail: 'already in effect at the provider' });
+      expect((await reqRow(id)).state).toBe('APPLYING');
+      await h.commands.reconcilePending('sign', now);
+      expect((await reqRow(id)).state).toBe('APPLIED');
+      expect(await adjustmentOf(id)).toMatchObject({ action_type: 'REFUND', operation: 'REFUND_CREATE', provider_target_ref: inv, confirmation_source: 'REFETCH' });
+      expect(h.billing.writes - writes).toBe(0);
+      expect(await commandsOf(id)).toHaveLength(1);
+      expect(h.billing.refunds.filter((r) => r.invoice_ref === inv)).toHaveLength(1);
+      expect(await auditCount(id, 'COMMERCIAL_REFUND_CONFIRMED')).toBe(1);
+      expect(await auditCount(id, 'COMMERCIAL_REFUND_PENDING_PROVIDER')).toBe(1);
+    } finally {
+      now = t0;
+    }
+  });
+
+  it('C4R-2 the same lost-response refund, flag off, resolved by its requester: the resolution reconciles FIRST, finds the refund CONFIRMED and records it APPLIED (never withdrawn); a verified refund webhook also confirms while the flag is off', async () => {
+    const t0 = now;
+    try {
+      const a = await approvedRefund(30_000);
+      await withFlag(async () => {
+        await applyAs(a.id);
+        h.billing.lostResponses.set((await commandsOf(a.id))[0].id, 1);
+        await dispatch();
+      });
+      const w = h.billing.writes;
+      const out = await resolve(a.id);
+      expect(out).toMatchObject({ resolution: 'CONFIRMED', outcomes: ['CONFIRMED'], status: 'APPLIED', request: { state: 'APPLIED' } });
+      expect(h.billing.writes - w).toBe(0);
+      // Webhook path, flag off.
+      const b = await approvedRefund(5_000);
+      await withFlag(async () => {
+        await applyAs(b.id);
+        await dispatch();
+      });
+      const [c] = await commandsOf(b.id);
+      expect(await deliverObject(c.provider_object_ref, 'refund.updated')).toMatchObject({ outcome: 'APPLIED' });
+      expect((await reqRow(b.id)).state).toBe('APPLIED');
+    } finally {
+      now = t0;
+    }
+  });
+
+  it('C4R-3 the re-fetch proves NO refund exists: only the revalidated requester may resolve; one COMMERCIAL_REFUND_RESOLVED_NOT_EXECUTED event; APPLYING → WITHDRAWN; the slot is released on commit; the command stays as evidence and is never sent afterwards', async () => {
+    // (a) a provider refusal (nothing created), then the flag is disabled
+    const a = await approvedRefund(30_000);
+    await withFlag(async () => {
+      await applyAs(a.id);
+      h.billing.adjustmentFailures.set((await commandsOf(a.id))[0].id, { kind: 'refused', times: 1 });
+      await dispatch();
+    });
+    expect((await commandsOf(a.id))[0]).toMatchObject({ state: 'FAILED', last_error_code: 'PROVIDER_REFUSED' });
+    expect(await refusal(resolve(a.id, OPS2))).toBe('NOT_REQUESTER');
+    expect(await refusal(h.adjustments.resolveRefund(as(FA, 'finance_admin'), a.id, A6_CTX))).toBe('REQUESTER_SCOPE_MISSING');
+    const sigs = await approvalsJson(a.id);
+    const w = h.billing.writes;
+    const out = await resolve(a.id);
+    expect(out).toMatchObject({ resolution: 'RESOLVED_NOT_EXECUTED', outcomes: ['NOT_FOUND'], status: 'RESOLVED_NOT_EXECUTED', request: { state: 'WITHDRAWN' } });
+    expect((await reqRow(a.id)).withdrawn_at).not.toBeNull();
+    expect(await auditCount(a.id, 'COMMERCIAL_REFUND_RESOLVED_NOT_EXECUTED')).toBe(1);
+    expect(await approvalsJson(a.id)).toEqual(sigs);
+    expect(await commandsOf(a.id)).toHaveLength(1);
+    expect(await adjustmentOf(a.id)).toBeUndefined();
+    // The slot is free: a new REFUND on the same tenant is accepted.
+    const again = await create('REFUND', a.t, { amount_minor: 100, currency: 'USD', provider_invoice_ref: a.inv });
+    expect(again.request.state).toBe('DRAFT');
+    // Terminal: a second resolution / apply is refused; the old command is never sent.
+    expect(await refusal(resolve(a.id))).toBe('REFUSED:NOT_RESOLVABLE');
+    await withFlag(async () => {
+      await pg.query(`UPDATE subscription."BillingProviderCommand" SET state = 'PENDING' WHERE change_request_id = $1`, [a.id]); // an operator retry of the old command …
+      await dispatch(); // … is refused before any provider call: the request is no longer APPLYING
+    });
+    expect((await commandsOf(a.id))[0]).toMatchObject({ state: 'FAILED', last_error_code: 'REQUEST_NOT_APPLYING' });
+    expect(h.billing.writes - w).toBe(0);
+    // (b) applied while the flag was on but never sent; the flag goes off; dispatch makes no new refund
+    const b = await approvedRefund(2_000);
+    await withFlag(() => applyAs(b.id));
+    await dispatch();
+    expect((await commandsOf(b.id))[0]).toMatchObject({ state: 'FAILED', last_error_code: 'REFUND_POLICY_NOT_APPROVED' });
+    expect(await resolve(b.id)).toMatchObject({ resolution: 'RESOLVED_NOT_EXECUTED', outcomes: ['NOT_FOUND'] });
+    // (c) a refund the provider reports FAILED can no longer complete: resolvable too
+    const c = await approvedRefund(3_000);
+    h.billing.refundStatus = 'failed';
+    try {
+      await withFlag(async () => {
+        await applyAs(c.id);
+        await dispatch();
+      });
+    } finally {
+      h.billing.refundStatus = 'succeeded';
+    }
+    expect(await resolve(c.id)).toMatchObject({ resolution: 'RESOLVED_NOT_EXECUTED', outcomes: ['FAILED_AT_PROVIDER'] });
+  });
+
+  it('C4R-4 the outcome is uncertain — the re-fetch errors, the refund is still pending, or it exists for another amount (PARTIAL): the resolution is refused REFUND_OUTCOME_UNCERTAIN, the request stays APPLYING and holds its slot; nothing is released, nothing re-sent', async () => {
+    const a = await approvedRefund(30_000);
+    await withFlag(async () => {
+      await applyAs(a.id);
+      h.billing.adjustmentFailures.set((await commandsOf(a.id))[0].id, { kind: 'refused', times: 1 });
+      await dispatch();
+    });
+    const [c] = await commandsOf(a.id);
+    h.billing.readFailures.add(c.id);
+    const w = h.billing.writes;
+    try {
+      expect(await refusal(resolve(a.id))).toBe(`REFUSED:REFUND_OUTCOME_UNCERTAIN`);
+    } finally {
+      h.billing.readFailures.delete(c.id);
+    }
+    expect(await reqRow(a.id)).toMatchObject({ state: 'APPLYING', withdrawn_at: null });
+    expect(await refusal(create('REFUND', a.t, { amount_minor: 1, currency: 'USD', provider_invoice_ref: a.inv }))).toBe('OPEN_REQUEST_EXISTS');
+    expect(await auditCount(a.id, 'COMMERCIAL_REFUND_RESOLVED_NOT_EXECUTED')).toBe(0);
+    expect(await auditCount(a.id, 'COMMERCIAL_CHANGE_REQUEST_APPLY_REFUSED')).toBe(1);
+    // pending at the provider
+    const p = await approvedRefund(4_000);
+    h.billing.refundStatus = 'pending';
+    try {
+      await withFlag(async () => {
+        await applyAs(p.id);
+        await dispatch();
+      });
+    } finally {
+      h.billing.refundStatus = 'succeeded';
+    }
+    expect(await refusal(resolve(p.id))).toBe('REFUSED:REFUND_OUTCOME_UNCERTAIN');
+    expect((await reqRow(p.id)).state).toBe('APPLYING');
+    // a refund of this command for another amount (PARTIAL) is never applied nor resolved
+    const q = await approvedRefund(6_000);
+    await withFlag(() => applyAs(q.id));
+    const [qc] = await commandsOf(q.id);
+    h.billing.refunds.push({ id: 're_c4r_partial', invoice_ref: q.inv, amount: 5_000, status: 'succeeded', command_id: qc.id, tenant_id: q.t });
+    await dispatch(); // the pre-read finds a refund for this command: recorded, never re-sent
+    expect((await commandsOf(q.id))[0]).toMatchObject({ state: 'PENDING_PROVIDER', provider_object_ref: 're_c4r_partial' });
+    await h.commands.reconcilePending('sign', now);
+    expect((await reqRow(q.id)).state).toBe('APPLYING');
+    expect(await refusal(resolve(q.id))).toBe('REFUSED:REFUND_OUTCOME_UNCERTAIN');
+    // The only write in this test is the pending refund's own first send (flag on); nothing re-sent.
+    expect(h.billing.writes - w).toBe(1);
+    expect(h.billing.refunds.filter((r) => r.invoice_ref === p.inv)).toHaveLength(1);
+    expect(h.billing.refunds.filter((r) => r.invoice_ref === q.inv)).toHaveLength(1);
+    expect(h.billing.refunds.filter((r) => r.invoice_ref === a.inv)).toHaveLength(0);
+  });
+
+  it('C4R-5 refund identity: the amount is bounded by the payment\'s refundable remainder (an over-refund is FAILED REFUND_EXCEEDS_REMAINDER before any write); a PARTIAL refund within the remainder is allowed and confirmed', async () => {
+    const over = await approvedRefund(30_000, { amount_paid: 20_000 });
+    const w = h.billing.writes;
+    await withFlag(async () => {
+      await applyAs(over.id);
+      await dispatch();
+    });
+    expect((await commandsOf(over.id))[0]).toMatchObject({ state: 'FAILED', last_error_code: 'REFUND_EXCEEDS_REMAINDER' });
+    expect(h.billing.writes - w).toBe(0);
+    const part = await approvedRefund(10_000, { amount_paid: 20_000 });
+    await withFlag(async () => {
+      await applyAs(part.id);
+      await dispatch();
+    });
+    await h.commands.reconcilePending('sign', now);
+    expect((await reqRow(part.id)).state).toBe('APPLIED');
+    expect(Number((await adjustmentOf(part.id)).amount_minor)).toBe(10_000);
+  });
+
+  it('C4R-6 DB backstops of the resolution: no WITHDRAWN without its resolution audit event; never while a command is in flight; only REFUND (a CREDIT in APPLYING cannot be withdrawn)', async () => {
+    const a = await approvedRefund(1_000);
+    await withFlag(() => applyAs(a.id));
+    expect(await dbError(`UPDATE subscription."CommercialChangeRequest" SET state = 'WITHDRAWN', withdrawn_at = now() WHERE id = $1`, [a.id])).toContain('needs its COMMERCIAL_REFUND_RESOLVED_NOT_EXECUTED audit event');
+    const { t } = await selfServiceTenant();
+    const cr = await approved('CREDIT', t, { amount_minor: 100, currency: 'USD' });
+    await applyAs(cr);
+    expect(await dbError(`UPDATE subscription."CommercialChangeRequest" SET state = 'WITHDRAWN', withdrawn_at = now() WHERE id = $1`, [cr])).toContain('APPLYING -> WITHDRAWN is not allowed');
+    await dispatch();
+    await h.commands.reconcilePending('sign', now);
+  });
+
+  it('C4R-7 (TD-C4-18) an approved manual CREDIT on a COMMITTED self-service subscription is applied without touching the subscription: the row (commitment term, period, status — the inputs of C7\'s cancel refusal) is byte-identical, and C2\'s conversion is still refused FINANCIAL_TREATMENT_UNDEFINED', async () => {
+    const { t, ss } = await selfServiceTenant();
+    await pg.query(`UPDATE subscription."TenantSubscription" SET commitment_start = $2, commitment_end = $3 WHERE id = $1`, [ss, new Date(T0.getTime() - 30 * 24 * H), new Date(T0.getTime() + 300 * 24 * H)]);
+    const before = (await one(`SELECT row_to_json(s)::text j FROM subscription."TenantSubscription" s WHERE id = $1`, [ss])).j as string;
+    const credit = await approved('CREDIT', t, { amount_minor: 5_000, currency: 'USD', subscription_id: ss });
+    await applyAs(credit);
+    await dispatch();
+    await h.commands.reconcilePending('sign', now);
+    expect((await reqRow(credit)).state).toBe('APPLIED');
+    expect((await one(`SELECT row_to_json(s)::text j FROM subscription."TenantSubscription" s WHERE id = $1`, [ss])).j).toBe(before);
+    const conv = await h.changeRequests.create(as(OPS, 'commercial_ops'), { action_type: 'CONVERSION', tenant_id: t, product_key: 'sign', payload: { direction: 'TO_GOVERNED', subscription_id: ss, plan_key: INCLUDED, plan_version_id: await publishedVersion(pg, INCLUDED) }, reason: 'convert after a credit', idempotency_key: key() }, A6_CTX);
+    await submit(conv.request.id);
+    await approveFa(conv.request.id);
+    expect(await refusal(h.conversions.apply(as(OPS, 'commercial_ops'), conv.request.id, A6_CTX))).toBe('CONVERSION_FAILED:FINANCIAL_TREATMENT_UNDEFINED');
+    expect(await commandsOf(conv.request.id)).toEqual([]);
+    expect((await one(`SELECT row_to_json(s)::text j FROM subscription."TenantSubscription" s WHERE id = $1`, [ss])).j).toBe(before);
   });
 
   it('C4-TX-1 no provider call ran inside a local DB transaction across this spec (the fake\'s probe saw no open transaction and no locked command row on every call)', () => {

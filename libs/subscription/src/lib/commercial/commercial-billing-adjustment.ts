@@ -1,4 +1,5 @@
 import type { AdjustmentCommandKind } from '../billing/billing-provider-command.js';
+import type { ProviderAdjustmentEffect } from '../billing/billing-provider.port.js';
 
 import type { C4BillingAdjustmentAction } from './commercial-change-request.js';
 
@@ -76,7 +77,49 @@ export function adjustmentOperationOf(action_type: C4BillingAdjustmentAction, pa
 // ---- refusals and failures ------------------------------------------------------------------
 
 /** Refusals (nothing changes; one APPLY_REFUSED audit row). */
-export type BillingAdjustmentRefusalCode = typeof REFUND_POLICY_NOT_APPROVED | 'APPLY_EXPIRED';
+export type BillingAdjustmentRefusalCode = typeof REFUND_POLICY_NOT_APPROVED | 'APPLY_EXPIRED' | typeof REFUND_OUTCOME_UNCERTAIN | 'NOT_RESOLVABLE';
+
+// ---- CCP-C4-R: REFUND identity (Architect C4 disposition, TD-C4-1 / TD-C4-12) -----------------
+//
+// A REFUND names the provider invoice whose payment it refunds (`provider_invoice_ref`; the invoice
+// carries exactly one payment) and an amount (≥ 1 minor unit, ≤ the payment's refundable remainder,
+// checked against the provider before any write: a PARTIAL refund is allowed, pending the catalog
+// amendment's decision point 2). Its provider references: the invoice (target), the paying account,
+// the payment, and the refund object. Its own audit events and reconciliation outcomes below.
+
+/** The REFUND-specific audit event names (the other C4 types keep the COMMERCIAL_BILLING_ADJUSTMENT_* names). */
+export const REFUND_AUDIT_EVENTS = {
+  PENDING_PROVIDER: 'COMMERCIAL_REFUND_PENDING_PROVIDER',
+  CONFIRMED: 'COMMERCIAL_REFUND_CONFIRMED',
+  REARMED: 'COMMERCIAL_REFUND_REARMED',
+  RESOLVED_NOT_EXECUTED: 'COMMERCIAL_REFUND_RESOLVED_NOT_EXECUTED',
+} as const;
+export function adjustmentAuditEvent(action_type: string, step: 'PENDING_PROVIDER' | 'CONFIRMED' | 'REARMED'): string {
+  return action_type === 'REFUND' ? REFUND_AUDIT_EVENTS[step] : `COMMERCIAL_BILLING_ADJUSTMENT_${step}`;
+}
+
+/**
+ * The reconciliation outcome of one refund command, from an AUTHORITATIVE provider read:
+ *   CONFIRMED           the refund of this command succeeded for exactly the approved amount
+ *   PENDING             it exists and may still complete (pending / requires_action)
+ *   PARTIAL             it exists for another amount than approved (never recorded APPLIED; held)
+ *   FAILED_AT_PROVIDER  it exists and can no longer complete (failed / canceled)
+ *   NOT_FOUND           no refund exists for this command at the provider
+ * Only NOT_FOUND and FAILED_AT_PROVIDER prove that no refund can still complete.
+ */
+export type RefundReconciliationOutcome = 'CONFIRMED' | 'PENDING' | 'PARTIAL' | 'FAILED_AT_PROVIDER' | 'NOT_FOUND';
+export function refundReconciliationOutcome(effect: Pick<ProviderAdjustmentEffect, 'object_ref' | 'provider_status' | 'observed_amount_minor'>, approved_amount_minor: number): RefundReconciliationOutcome {
+  if (effect.object_ref === null) return 'NOT_FOUND';
+  if (effect.provider_status === 'failed' || effect.provider_status === 'canceled') return 'FAILED_AT_PROVIDER';
+  if (effect.observed_amount_minor !== approved_amount_minor) return 'PARTIAL';
+  return effect.provider_status === 'succeeded' ? 'CONFIRMED' : 'PENDING';
+}
+export function refundCannotComplete(o: RefundReconciliationOutcome): boolean {
+  return o === 'NOT_FOUND' || o === 'FAILED_AT_PROVIDER';
+}
+
+/** The outcome is not proven (a provider read failed, a refund is pending or mismatched, a dispatch is in flight). */
+export const REFUND_OUTCOME_UNCERTAIN = 'REFUND_OUTCOME_UNCERTAIN';
 
 export class BillingAdjustmentRefusedError extends Error {
   constructor(

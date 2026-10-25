@@ -470,18 +470,30 @@ export class BillingCommandService {
    * Then the one write, carrying the derived idempotency key.
    */
   private async performAdjustment(cmd: BillingCommandRow): Promise<{ detail: string; object_ref: string | null }> {
-    if (cmd.command_kind === 'REFUND_CREATE' && !refundExecutionEnabled()) {
-      throw new CommandRefusal(REFUND_POLICY_NOT_APPROVED, 'the refund policy is not approved; refunds are not sent to the provider');
-    }
     if (this.adjustments === undefined || !this.adjustments.isConfigured()) throw new CommandRefusal('ADJUSTMENTS_NOT_CONFIGURED', 'the billing-adjustment provider port is not configured');
     const req = await this.prisma.commercialChangeRequest.findUnique({ where: { id: cmd.change_request_id }, select: { state: true, action_type: true } });
     if (req === null || req.state !== 'APPLYING' || !(BILLING_COMMAND_KINDS_BY_ACTION[req.action_type] ?? []).includes(cmd.command_kind as BillingCommandKind)) {
       throw new CommandRefusal('REQUEST_NOT_APPLYING', `the change request is ${req?.state ?? 'missing'}; an adjustment is sent only for an approved request being applied`);
     }
     const r = adjustmentRequestOf(cmd);
+    // Reconcile first (a read; allowed whatever the refund flag says, CCP-C4-R / TD-C4-12).
     const before = await this.adjustments.readAdjustmentEffect(r, cmd.provider_object_ref);
     if (before.tenant_id !== null && before.tenant_id !== cmd.tenant_id) throw new CommandRefusal('TENANT_MISMATCH', 'provider metadata tenant does not match the command');
     if (before.present) return { detail: 'already in effect at the provider', object_ref: before.object_ref };
+    if (cmd.command_kind === 'REFUND_CREATE') {
+      // CCP-C4-R — a refund already initiated for this command (any status, any amount) is never sent
+      // again: it is reconciled (pending-provider) until the provider settles it.
+      if (before.object_ref !== null) return { detail: `refund already initiated at the provider (${before.provider_status ?? 'unknown'})`, object_ref: before.object_ref };
+      // The disabled flag blocks only NEW external execution (Architect C4 disposition, TD-C4-12).
+      if (!refundExecutionEnabled()) throw new CommandRefusal(REFUND_POLICY_NOT_APPROVED, 'the refund policy is not approved; no new refund is sent to the provider');
+      // TD-C4-1 identity: the amount is bounded by the payment's refundable remainder, in its currency.
+      if (before.payment_currency !== undefined && before.payment_currency !== null && before.payment_currency.toUpperCase() !== String(r.currency)) {
+        throw new CommandRefusal('REFUND_CURRENCY_MISMATCH', `the refund currency ${String(r.currency)} is not the payment currency ${before.payment_currency}`);
+      }
+      if (before.refundable_remainder_minor !== undefined && before.refundable_remainder_minor !== null && (r.amount_minor as number) > before.refundable_remainder_minor) {
+        throw new CommandRefusal('REFUND_EXCEEDS_REMAINDER', 'the refund exceeds the payment\'s refundable remainder');
+      }
+    }
     const { object_ref } = await this.adjustments.executeAdjustment(r, cmd.idempotency_key);
     return { detail: `${cmd.command_kind} accepted by the provider`, object_ref };
   }

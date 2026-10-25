@@ -329,18 +329,16 @@ export class StripeBillingProvider implements BillingProviderPort, BillingProvid
         return none({ object_ref: d.discount_ref ?? (req.operation === 'DISCOUNT_REMOVE' ? req.target_ref : null), present: req.operation === 'DISCOUNT_APPLY' ? has : !has, provider_status: d.coupon_ref === null ? 'none' : 'active', tenant_id, live: sub['livemode'] === true });
       }
       case 'REFUND_CREATE': {
-        let objs: Array<Record<string, unknown>>;
-        if (object_ref !== null) objs = [await this.call('GET', `/v1/refunds/${encodeURIComponent(object_ref)}`)];
-        else {
-          const inv = wireInvoicePayment(await this.call('GET', `/v1/invoices/${encodeURIComponent(req.target_ref)}`));
-          objs = inv.payment_ref === null ? [] : wireListData(await this.call('GET', `/v1/refunds?payment_intent=${encodeURIComponent(inv.payment_ref)}&limit=100`));
-        }
-        for (const o of objs) {
-          const r = wireRefundState(o);
-          if (r.command_id !== req.command_id) continue;
-          return none({ object_ref: r.object_ref, present: r.status === 'succeeded' && r.amount_minor === req.amount_minor, provider_status: r.status, tenant_id: r.tenant_id, live: r.live });
-        }
-        return none();
+        // CCP-C4-R — always the authoritative picture of the payment: the invoice (paying account,
+        // payment, currency, amount paid) and every refund of that payment; the command's refund is
+        // found by its object ref, else by the command id in its metadata.
+        const inv = wireInvoicePayment(await this.call('GET', `/v1/invoices/${encodeURIComponent(req.target_ref)}`));
+        const refunds = inv.payment_ref === null ? [] : wireListData(await this.call('GET', `/v1/refunds?payment_intent=${encodeURIComponent(inv.payment_ref)}&limit=100`)).map(wireRefundState);
+        const committed = refunds.filter((r) => r.status === 'succeeded' || r.status === 'pending' || r.status === 'requires_action').reduce((n, r) => n + r.amount_minor, 0);
+        const facts = { refundable_remainder_minor: inv.payment_ref === null ? 0 : Math.max(inv.amount_paid_minor - committed, 0), payment_currency: inv.currency };
+        const mine = refunds.find((r) => (object_ref !== null ? r.object_ref === object_ref : r.command_id === req.command_id));
+        if (mine === undefined) return none({ ...facts, observed_amount_minor: null });
+        return none({ ...facts, object_ref: mine.object_ref, present: mine.status === 'succeeded' && mine.amount_minor === req.amount_minor, provider_status: mine.status, tenant_id: mine.tenant_id, live: mine.live, observed_amount_minor: mine.amount_minor });
       }
     }
   }

@@ -359,8 +359,9 @@ describe('CCP-C4 Stripe refund wire (stubbed fetch)', () => {
     expect(new URLSearchParams(post[0]?.body).get('payment_intent')).toBe('pi_1');
     expect(new URLSearchParams(post[0]?.body).get('amount')).toBe('4000');
     // a pending refund is not yet the effect (pending until the refund succeeds)
-    replies.push({ status: 200, json: { id: 're_1', status: 'pending', amount: 4_000, metadata: { aramo_command_id: U } } });
-    expect(await c4.readAdjustmentEffect(r, 're_1')).toMatchObject({ present: false, provider_status: 'pending' });
+    // CCP-C4-R: the read is the payment's whole picture (invoice, then every refund of its payment).
+    replies.push({ status: 200, json: { id: 'in_1', customer: 'acct_1', payment_intent: 'pi_1', amount_paid: 10_000, currency: 'usd' } }, { status: 200, json: { data: [{ id: 're_0', status: 'succeeded', amount: 1_000, metadata: {} }, { id: 're_1', status: 'pending', amount: 4_000, metadata: { aramo_command_id: U } }] } });
+    expect(await c4.readAdjustmentEffect(r, 're_1')).toMatchObject({ present: false, provider_status: 'pending', object_ref: 're_1', observed_amount_minor: 4_000, refundable_remainder_minor: 5_000, payment_currency: 'usd' });
   });
 
 });

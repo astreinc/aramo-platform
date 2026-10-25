@@ -5,8 +5,12 @@ import {
   type AdjustmentCommandParams,
   BILLING_COMMAND_UNCONFIRMED_STATES,
   type BillingCommandState,
+  REFETCH_CONFIRMATION,
+  adjustmentRequestOf,
   isAdjustmentCommandKind,
 } from '../billing/billing-provider-command.js';
+import { BILLING_PROVIDER_ADJUSTMENT_PORT, type BillingProviderAdjustmentPort } from '../billing/billing-provider.port.js';
+import { SubscriptionLifecycleService } from '../billing/subscription-lifecycle.service.js';
 import { takeBillingLock } from '../billing/governed-subscription.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { BASE_COMPOSITION, assertProductKey, openBaseSubscription, type ProductKey } from '../product-registry.js';
@@ -20,9 +24,15 @@ import {
   type BillingAdjustmentOperation,
   BillingAdjustmentRefusedError,
   REFUND_POLICY_NOT_APPROVED,
+  REFUND_AUDIT_EVENTS,
+  REFUND_OUTCOME_UNCERTAIN,
+  type RefundReconciliationOutcome,
+  adjustmentAuditEvent,
   adjustmentOperationOf,
   discountCouponRef,
+  refundCannotComplete,
   refundExecutionEnabled,
+  refundReconciliationOutcome,
 } from './commercial-billing-adjustment.js';
 import type { CommercialBillingAdjustmentRow } from './commercial-billing-adjustment.ledger.js';
 import { COMMERCIAL_ACTIONS, type C4BillingAdjustmentAction, CommercialPayloadError, isBillingAdjustmentAction, validatePayload } from './commercial-change-request.js';
@@ -68,7 +78,8 @@ export type BillingAdjustmentStatus =
   | 'APPLY_FAILED'
   | 'PENDING_PROVIDER' // APPLYING: the command is queued, sent or awaiting the provider-confirmed effect
   | 'COMMAND_FAILED' // APPLYING: the command FAILED (visible; the requester's apply re-arms it)
-  | 'APPLIED'; // the provider-confirmed effect is recorded
+  | 'APPLIED' // the provider-confirmed effect is recorded
+  | 'RESOLVED_NOT_EXECUTED'; // CCP-C4-R: a REFUND proven not executed, resolved by its requester (WITHDRAWN)
 
 export interface BillingAdjustmentView {
   request: CommercialChangeRequestRow;
@@ -98,6 +109,10 @@ export class CommercialBillingAdjustmentService {
     private readonly changeRequests: CommercialChangeRequestService,
     private readonly commands: BillingCommandService,
     @Optional() @Inject(COMMERCIAL_CLOCK) clock?: CommercialClock,
+    // CCP-C4-R — the refund resolution reconciles first (the authoritative provider read and the
+    // in-transaction completion of a confirmed refund). Unbound: the resolution is refused (uncertain).
+    @Optional() @Inject(SubscriptionLifecycleService) private readonly lifecycle?: SubscriptionLifecycleService,
+    @Optional() @Inject(BILLING_PROVIDER_ADJUSTMENT_PORT) private readonly adjustmentPort?: BillingProviderAdjustmentPort,
   ) {
     this.now = clock ?? (() => new Date());
   }
@@ -147,7 +162,7 @@ export class CommercialBillingAdjustmentService {
               if (n.count !== 1) throw new CommercialChangeRequestError('STATE_INVALID', 'the provider command changed concurrently', { command_id: c.id });
             }
             const append = await this.appender(tx, actor, req, tenant_id, ctx);
-            await append('COMMERCIAL_BILLING_ADJUSTMENT_REARMED', SUBJECT(id), { attempt: req.apply_attempts, command_ids: failed.map((c) => c.id), failures: failed.map((c) => c.last_error_code) });
+            await append(adjustmentAuditEvent(req.action_type, 'REARMED'), SUBJECT(id), { attempt: req.apply_attempts, command_ids: failed.map((c) => c.id), failures: failed.map((c) => c.last_error_code) });
             after.replayed = false;
           }
           return;
@@ -204,7 +219,7 @@ export class CommercialBillingAdjustmentService {
     // C4-D7 — the tenant × product's open self-service (Stripe-owned) base row. A governed (MANUAL /
     // contract) row is never a C4 target (contract invoicing is gated, PBD §10).
     const row = await tx.tenantSubscription.findFirst({ where: openBaseSubscription(tenant_id, product_key) });
-    if (row === null) throw new BillingAdjustmentFailure('TARGET_NOT_FOUND', { reason: 'no open subscription of this product' });
+    if (row === null) throw new BillingAdjustmentFailure('TARGET_NOT_FOUND', { basis: 'no open subscription of this product' });
     if (typeof p['subscription_id'] === 'string' && p['subscription_id'] !== row.id) throw new BillingAdjustmentFailure('TARGET_STALE', { subscription_id: p['subscription_id'], open_subscription_id: row.id });
     if (row.source !== 'SELF_SERVICE' || row.billing_subscription_ref === null || row.billing_account_ref === null || row.composition_role !== BASE_COMPOSITION) {
       throw new BillingAdjustmentFailure('TARGET_NOT_SELF_SERVICE', { subscription_id: row.id, source: row.source });
@@ -246,7 +261,7 @@ export class CommercialBillingAdjustmentService {
     const { command } = await this.commands.enqueue({ change_request_id: req.id, step: ADJUSTMENT_STEP[operation], command_kind: operation, tenant_id, product_key, target_ref, params, created_by: actor.user_id, at: now }, tx);
     const append = await this.appender(tx, actor, req, tenant_id, ctx);
     // No amount in the audit body (Finance amount interim); the request payload is the record.
-    await append('COMMERCIAL_BILLING_ADJUSTMENT_PENDING_PROVIDER', SUBJECT(req.id), {
+    await append(adjustmentAuditEvent(req.action_type, 'PENDING_PROVIDER'), SUBJECT(req.id), {
       attempt: req.apply_attempts,
       operation,
       command_id: command.id,
@@ -254,6 +269,109 @@ export class CommercialBillingAdjustmentService {
       subscription_id,
       ...(typeof p['compensates_change_request_id'] === 'string' ? { compensates_change_request_id: p['compensates_change_request_id'] } : {}),
     });
+  }
+
+  // ---- CCP-C4-R: the governed terminal resolution of an unconfirmed REFUND (TD-C4-12) ----------
+
+  /**
+   * The requester (revalidated: user principal, requester scope, actor = requested_by) closes an
+   * APPLYING REFUND whose refund is proven NOT to exist or to be unable to complete. Reconcile first:
+   *   1. outside any transaction, an authoritative provider read per command (by its object ref, else
+   *      by the command id = idempotency identity in the provider metadata);
+   *   2. CONFIRMED → the request is completed APPLIED through the normal confirmation (never withdrawn);
+   *      PENDING / PARTIAL / a failed read / a send in flight → REFUND_OUTCOME_UNCERTAIN: nothing changes,
+   *      the request and its slot are held;
+   *   3. every command NOT_FOUND or FAILED_AT_PROVIDER → in ONE transaction under the billing lock and
+   *      the request row lock, fenced on every command's (state, attempts, updated_at) as read in step 1
+   *      (a dispatch, re-arm or confirmation in between refuses as uncertain): one
+   *      COMMERCIAL_REFUND_RESOLVED_NOT_EXECUTED audit event, then APPLYING → WITHDRAWN (terminal). The
+   *      slot is released only when that commits; signatures, payload and failure evidence are kept.
+   * The command rows stay as evidence; a dispatcher that later finds one refuses it (request not
+   * APPLYING) before any provider call. Applies to REFUND only.
+   */
+  async resolveRefund(actor: CommercialActor, id: string, ctx: CommercialCallContext): Promise<BillingAdjustmentView & { resolution: 'RESOLVED_NOT_EXECUTED' | 'CONFIRMED'; outcomes: RefundReconciliationOutcome[] }> {
+    if (actor.actor_kind !== 'user') throw new CommercialChangeRequestError('NOT_HUMAN', 'only a user principal can resolve a commercial change');
+    const head = (await this.prisma.commercialChangeRequest.findUnique({ where: { id } })) as CommercialChangeRequestRow | null;
+    if (head === null) throw new CommercialChangeRequestError('NOT_FOUND', 'change request not found', { id });
+    if (head.action_type !== 'REFUND') throw new CommercialChangeRequestError('ACTION_NOT_APPLICABLE', `${head.action_type} is not resolved by the refund resolution`, { action_type: head.action_type });
+    const scope = COMMERCIAL_ACTIONS.REFUND.requester_scope as string;
+    if (!actor.scopes.includes(scope)) throw new CommercialChangeRequestError('REQUESTER_SCOPE_MISSING', `resolving REFUND requires ${scope}`, { missing_scopes: [scope] });
+    if (actor.user_id !== head.requested_by) throw new CommercialChangeRequestError('NOT_REQUESTER', 'only the original requester may resolve this change request');
+    const refuse = async (reason: typeof REFUND_OUTCOME_UNCERTAIN | 'NOT_RESOLVABLE', detail: Record<string, unknown>): Promise<never> => {
+      const e = new BillingAdjustmentRefusedError(reason, detail);
+      await this.auditRefusal(actor, head, e, ctx);
+      throw e;
+    };
+    if (head.state !== 'APPLYING') return refuse('NOT_RESOLVABLE', { state: head.state });
+    if (this.lifecycle === undefined || this.adjustmentPort === undefined || !this.adjustmentPort.isConfigured()) return refuse(REFUND_OUTCOME_UNCERTAIN, { basis: 'provider_not_configured' });
+    const product_key = assertProductKey(head.product_key);
+    const amount = Number((head.payload as Record<string, unknown>)['amount_minor']);
+    const cmds = (await this.prisma.billingProviderCommand.findMany({ where: { change_request_id: id }, orderBy: [{ created_at: 'asc' }, { id: 'asc' }] })).filter((c) => isAdjustmentCommandKind(c.command_kind));
+    const now = this.now();
+    if (cmds.length === 0) return refuse(REFUND_OUTCOME_UNCERTAIN, { basis: 'no_command' });
+    if (cmds.some((c) => c.state === 'DISPATCHING')) return refuse(REFUND_OUTCOME_UNCERTAIN, { basis: 'dispatch_in_flight' });
+    // 1. Reconcile first: the authoritative provider read, outside any transaction.
+    const outcomes: RefundReconciliationOutcome[] = [];
+    for (const c of cmds) {
+      try {
+        const effect = await this.adjustmentPort.readAdjustmentEffect(adjustmentRequestOf(c), c.provider_object_ref);
+        if (effect.tenant_id !== null && effect.tenant_id !== c.tenant_id) return refuse(REFUND_OUTCOME_UNCERTAIN, { basis: 'tenant_mismatch', command_id: c.id });
+        outcomes.push(refundReconciliationOutcome(effect, amount));
+      } catch (e) {
+        if (e instanceof BillingAdjustmentRefusedError) throw e;
+        return refuse(REFUND_OUTCOME_UNCERTAIN, { basis: 'provider_read_failed', command_id: c.id, error: String((e as Error)?.message ?? e).slice(0, 200) });
+      }
+    }
+    // 2. A confirmed refund is recorded APPLIED (with its adjustment), never withdrawn.
+    if (outcomes.includes('CONFIRMED')) {
+      for (const c of cmds) await this.lifecycle.syncAdjustmentCommand(c.id, product_key, now, REFETCH_CONFIRMATION);
+      const v = await this.view(id);
+      if (v.request.state === 'APPLIED') return { ...v, resolution: 'CONFIRMED', outcomes };
+      return refuse(REFUND_OUTCOME_UNCERTAIN, { basis: 'confirmation_not_recorded', outcomes });
+    }
+    if (!outcomes.every(refundCannotComplete)) return refuse(REFUND_OUTCOME_UNCERTAIN, { outcomes });
+    // 3. Proven: no refund exists or can still complete. Fenced, one transaction, one audit event.
+    const fence = new Map(cmds.map((c) => [c.id, `${c.state}|${c.attempts}|${c.updated_at.toISOString()}`]));
+    try {
+      await this.prisma.$transaction(async (tx) => {
+        await takeBillingLock(tx, head.tenant_id as string);
+        await tx.$executeRawUnsafe(`SELECT 1 FROM subscription."CommercialChangeRequest" WHERE id = $1::uuid FOR UPDATE`, id);
+        const req = (await tx.commercialChangeRequest.findUniqueOrThrow({ where: { id } })) as CommercialChangeRequestRow;
+        if (req.state !== 'APPLYING') throw new BillingAdjustmentRefusedError('NOT_RESOLVABLE', { state: req.state });
+        const again = await tx.$queryRawUnsafe<Array<{ id: string; state: string; attempts: number; updated_at: Date }>>(
+          `SELECT id::text, state, attempts, updated_at FROM subscription."BillingProviderCommand" WHERE change_request_id = $1::uuid FOR UPDATE`,
+          id,
+        );
+        const moved = again.length !== cmds.length || again.some((c) => fence.get(c.id) !== `${c.state}|${c.attempts}|${c.updated_at.toISOString()}`);
+        if (moved) throw new BillingAdjustmentRefusedError(REFUND_OUTCOME_UNCERTAIN, { basis: 'command_changed_since_reconciliation' });
+        const role_keys = (await this.operators.readOperator(tx, ctx.platform_tenant_id, actor.user_id)).role_keys;
+        await this.audit.append(
+          {
+            actor: { id: actor.user_id, type: 'user', role_keys },
+            event_type: REFUND_AUDIT_EVENTS.RESOLVED_NOT_EXECUTED,
+            tenant_id: req.tenant_id,
+            subject: SUBJECT(id),
+            change_request_id: id,
+            policy_version_id: req.policy_version_id,
+            payload: {
+              action_type: 'REFUND',
+              product_key: req.product_key,
+              attempt: req.apply_attempts,
+              outcomes,
+              commands: cmds.map((c) => ({ command_id: c.id, idempotency_key: c.idempotency_key, state: c.state, provider_object_ref: c.provider_object_ref, last_error_code: c.last_error_code })),
+              resolved_at: now.toISOString(),
+            },
+            correlation_id: ctx.correlation_id,
+          },
+          tx,
+        );
+        await tx.commercialChangeRequest.update({ where: { id }, data: { state: 'WITHDRAWN', withdrawn_at: now, updated_at: now } });
+      }, TX_OPTIONS);
+    } catch (e) {
+      if (e instanceof BillingAdjustmentRefusedError) return refuse(e.reason as typeof REFUND_OUTCOME_UNCERTAIN | 'NOT_RESOLVABLE', e.detail);
+      throw e;
+    }
+    return { ...(await this.view(id)), resolution: 'RESOLVED_NOT_EXECUTED', outcomes };
   }
 
   // ---- reads ----------------------------------------------------------------------------
@@ -278,6 +396,7 @@ export class CommercialBillingAdjustmentService {
     if (request.state === 'APPLIED') status = 'APPLIED';
     else if (request.state === 'APPLY_FAILED') status = 'APPLY_FAILED';
     else if (request.state === 'APPLYING') status = commands.length > 0 && commands.every((c) => c.state === 'FAILED') ? 'COMMAND_FAILED' : 'PENDING_PROVIDER';
+    else if (request.state === 'WITHDRAWN' && commands.length > 0) status = 'RESOLVED_NOT_EXECUTED';
     else status = 'NOT_APPLIED';
     return { request, operation, status, pending_provider, refund_execution_disabled: request.action_type === 'REFUND' && !refundExecutionEnabled(), commands, adjustment };
   }

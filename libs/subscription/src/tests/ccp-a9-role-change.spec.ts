@@ -94,8 +94,10 @@ describe('CCP-A9 narrow apply transitions (TD-A9-1)', () => {
       for (const f of states) for (const t of states) if (canTransitionFor(action, f, t) && !a3(f, t)) extra.push(`${f}->${t}`);
       const role = action === 'ROLE_GRANT' || action === 'ROLE_REVOKE';
       const applySet = APPLY_SET.includes(action);
+      // CCP-C4-R: a REFUND also has the governed resolution APPLYING -> WITHDRAWN (TD-C4-12).
+      const resolution = action === 'REFUND' ? ['APPLYING->WITHDRAWN'] : [];
       expect(extra.sort(), action).toEqual(
-        role ? ['APPLYING->APPLIED', ...EXPIRY, 'APPROVED->APPLYING'].sort() : applySet ? [...A6_SET, ...EXPIRY].sort() : [],
+        role ? ['APPLYING->APPLIED', ...EXPIRY, 'APPROVED->APPLYING'].sort() : applySet ? [...A6_SET, ...EXPIRY, ...resolution].sort() : [],
       );
       if (!applySet) for (const f of states) expect(canTransitionFor(action, f, 'APPLY_FAILED'), `${action} ${f}`).toBe(false);
       // AD-4: never from APPLYING, for any action.

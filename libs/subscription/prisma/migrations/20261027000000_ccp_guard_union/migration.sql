@@ -31,6 +31,8 @@
 -- APPLY_FAILED while a provider command is unconfirmed (C-23); and the APPLIED check (the
 -- CommercialBillingAdjustment record and only CONFIRMED commands). Its deferred "commits in
 -- APPLYING only with a provider command" trigger is in the C4 slice migration.
+-- CCP-C4-R (this file only): REFUND APPLYING -> WITHDRAWN, the governed resolution of a refund proven
+-- not executed (Architect C4 disposition, TD-C4-12), with its checks.
 -- Carries a dollar-quoted body: apply whole-file. Design approval is not production migration
 -- authority (ruling A0-C15).
 
@@ -162,6 +164,11 @@ BEGIN
                    OR (OLD."state" = 'APPLYING' AND NEW."state" IN ('APPLIED', 'APPLY_FAILED'))
                    OR (OLD."state" IN ('APPROVED', 'APPLY_FAILED') AND NEW."state" = 'APPLY_EXPIRED')))
              -- ==== END CCP-C4 billing adjustments: transitions ====
+             -- [union block: CCP-C4-R, 20261027000000 (this file)]
+             -- ==== BEGIN CCP-C4-R refund resolution: transition (Architect C4 disposition, TD-C4-12) ====
+             -- A REFUND proven not executed is resolved by its requester: APPLYING -> WITHDRAWN.
+             OR (NEW."action_type" = 'REFUND' AND OLD."state" = 'APPLYING' AND NEW."state" = 'WITHDRAWN')
+             -- ==== END CCP-C4-R refund resolution: transition ====
         ) THEN
             RAISE EXCEPTION 'CommercialChangeRequest state % -> % is not allowed', OLD."state", NEW."state";
         END IF;
@@ -352,6 +359,25 @@ BEGIN
             END IF;
         END IF;
         -- ==== END CCP-C4 billing adjustments: attempt rules and APPLIED checks ====
+        -- [union block: CCP-C4-R refund resolution checks, 20261027000000 (this file)]
+        -- ==== BEGIN CCP-C4-R refund resolution: checks ====
+        -- Never a silent slot release: only with its one resolution audit event (written first, in the
+        -- same transaction), never while a send is in flight or after a confirmation.
+        IF NEW."action_type" = 'REFUND' AND OLD."state" = 'APPLYING' AND NEW."state" = 'WITHDRAWN' THEN
+            IF NEW."withdrawn_at" IS NULL THEN
+                RAISE EXCEPTION 'CommercialChangeRequest REFUND resolution needs withdrawn_at';
+            END IF;
+            IF EXISTS (SELECT 1 FROM "subscription"."BillingProviderCommand" c
+                        WHERE c."change_request_id" = NEW."id" AND c."state" IN ('DISPATCHING', 'CONFIRMED')) THEN
+                RAISE EXCEPTION 'CommercialChangeRequest REFUND resolution refused: a provider command is in flight or confirmed';
+            END IF;
+            PERFORM 1 FROM "subscription"."CommercialAuditEvent" e
+              WHERE e."change_request_id" = NEW."id" AND e."event_type" = 'COMMERCIAL_REFUND_RESOLVED_NOT_EXECUTED';
+            IF NOT FOUND THEN
+                RAISE EXCEPTION 'CommercialChangeRequest REFUND resolution needs its COMMERCIAL_REFUND_RESOLVED_NOT_EXECUTED audit event';
+            END IF;
+        END IF;
+        -- ==== END CCP-C4-R refund resolution: checks ====
         IF NEW."state" = 'APPROVED' THEN
             steps := jsonb_array_length(NEW."required_chain" -> 'steps');
             SELECT count(*) INTO approvals FROM "subscription"."CommercialApproval" WHERE "change_request_id" = NEW."id";

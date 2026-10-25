@@ -219,4 +219,37 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 — the bi
     expect(out(await post('commercial_ops', `${BASE}/${id}/billing-adjustment`))).toEqual([409, 'COMMERCIAL_CHANGE_REQUEST_CONFLICT', 'TARGET_NOT_FOUND']);
     expect((await get('commercial_ops', `${BASE}/${id}/billing-adjustment`)).body).toMatchObject({ request: { state: 'APPLY_FAILED' }, adjustment: { status: 'APPLY_FAILED' } });
   });
+
+  it('C4-RI-5 (CCP-C4-R) POST …/billing-adjustment/resolve per role: only the requester; an APPROVED refund is 409 NOT_RESOLVABLE; a refund sent nowhere (FAILED before any provider write, flag then off) is resolved 200 RESOLVED_NOT_EXECUTED (WITHDRAWN) and the slot is released; a non-REFUND is 409 action_not_applicable', async () => {
+    const { t } = await selfService();
+    const id = await approved('REFUND', t, { amount_minor: 30_000, currency: 'USD', provider_invoice_ref: 'in_c4routeres' });
+    const path = `${BASE}/${id}/billing-adjustment/resolve`;
+    expect(out(await post('commercial_ops', path))).toEqual([409, 'COMMERCIAL_CHANGE_REQUEST_CONFLICT', 'NOT_RESOLVABLE']);
+    process.env['CCP_REFUND_EXECUTION_ENABLED'] = '1';
+    try {
+      expect((await post('commercial_ops', `${BASE}/${id}/billing-adjustment`)).status).toBe(200);
+      await h.commands.dispatchDue(new Date());
+    } finally {
+      delete process.env['CCP_REFUND_EXECUTION_ENABLED'];
+    }
+    const results: Record<string, unknown[]> = {};
+    for (const role of ['platform_owner', 'finance_admin', 'catalog_manager', 'support_admin', 'read_only_auditor', 'commercial_ops_2', 'super_admin']) results[role] = out(await post(role, path));
+    expect(results).toEqual({
+      platform_owner: [403, 'INSUFFICIENT_PERMISSIONS', 'requester_scope_missing'],
+      finance_admin: [403, 'INSUFFICIENT_PERMISSIONS', 'requester_scope_missing'],
+      catalog_manager: [403, 'INSUFFICIENT_PERMISSIONS', 'requester_scope_missing'],
+      support_admin: [403, 'INSUFFICIENT_PERMISSIONS', 'requester_scope_missing'],
+      read_only_auditor: [403, 'INSUFFICIENT_PERMISSIONS', 'requester_scope_missing'],
+      commercial_ops_2: [403, 'INSUFFICIENT_PERMISSIONS', 'not_requester'],
+      super_admin: [403, 'INSUFFICIENT_PERMISSIONS', null],
+    });
+    const ok = await post('commercial_ops', path);
+    expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+    expect(ok.body).toMatchObject({ resolution: 'RESOLVED_NOT_EXECUTED', outcomes: ['NOT_FOUND'], request: { id, state: 'WITHDRAWN', payload: { amount_withheld: 'FINANCE_SCOPE_PENDING' } }, adjustment: { status: 'RESOLVED_NOT_EXECUTED', record: null } });
+    expect(JSON.stringify(ok.body)).not.toContain('30000');
+    expect((await post('commercial_ops', BASE, { action_type: 'REFUND', tenant_id: t, product_key: 'sign', payload: { amount_minor: 1, currency: 'USD', provider_invoice_ref: 'in_c4routeres' }, reason: 'after resolution', idempotency_key: key() })).status).toBe(201);
+    const { t: t2 } = await selfService();
+    const credit = await approved('CREDIT', t2, { amount_minor: 10, currency: 'USD' });
+    expect(out(await post('commercial_ops', `${BASE}/${credit}/billing-adjustment/resolve`))).toEqual([409, 'COMMERCIAL_CHANGE_REQUEST_CONFLICT', 'action_not_applicable']);
+  });
 });

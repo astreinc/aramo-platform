@@ -3810,6 +3810,45 @@ paths:
         '409':
           $ref: '#/components/responses/CommercialBillingAdjustmentConflict'
 
+  /platform/commercial/change-requests/{id}/billing-adjustment/resolve:
+    post:
+      operationId: resolvePlatformCommercialRefund
+      tags: [Platform Commercial Change Requests]
+      summary: Resolve an unconfirmed REFUND proven not executed (CCP-C4-R).
+      description: |
+        Architect C4 disposition (TD-C4-12). REQUESTER-ONLY (`platform:billing:request`, the request's
+        requester), REFUND only, from APPLYING. Reconciles first: an authoritative provider read per
+        command (by its refund object, else by the command identity). A refund the provider confirms is
+        recorded APPLIED with its adjustment (`resolution: CONFIRMED`), never withdrawn. Only when every
+        command's refund is proven `NOT_FOUND` or `FAILED_AT_PROVIDER` is the request resolved
+        (`resolution: RESOLVED_NOT_EXECUTED`): one `COMMERCIAL_REFUND_RESOLVED_NOT_EXECUTED` audit event,
+        then APPLYING → WITHDRAWN; the open-request slot is released when that commits. A failed read, a
+        pending or mismatched (`PARTIAL`) refund, or a send in flight is refused
+        `REFUND_OUTCOME_UNCERTAIN`: nothing changes and the slot stays held. Runs whatever the refund
+        execution flag says (it blocks only new provider execution). Requires `platform:approval:read`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CommercialChangeRequestId'
+      responses:
+        '200':
+          description: The request, its billing-adjustment state and the resolution.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialRefundResolutionEnvelope'
+        '400':
+          $ref: '#/components/responses/CommercialChangeRequestValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/CommercialChangeRequestNotFound'
+        '409':
+          $ref: '#/components/responses/CommercialBillingAdjustmentConflict'
+
   # CCP-A8 (PBD §5.1 row A8; DDR v1.2 §3.2(5); Q7) — the support exception overlay.
   /platform/commercial/support-extensions:
     post:
@@ -5347,7 +5386,8 @@ components:
     CommercialBillingAdjustmentConflict:
       description: |
         `COMMERCIAL_CHANGE_REQUEST_CONFLICT` with details.reason `apply_refused` (details.refusal
-        REFUND_POLICY_NOT_APPROVED — the refund designed disabled state — | APPLY_EXPIRED | NOT_APPROVED |
+        REFUND_POLICY_NOT_APPROVED — the refund designed disabled state — | REFUND_OUTCOME_UNCERTAIN |
+        NOT_RESOLVABLE (CCP-C4-R resolution) | APPLY_EXPIRED | NOT_APPROVED |
         APPROVER_NO_LONGER_ELIGIBLE | …; nothing is written), `apply_failed` (rolled back before any
         provider command; the request is APPLY_FAILED and retryable; details.failure e.g.
         TARGET_NOT_FOUND, TARGET_NOT_SELF_SERVICE, TARGET_STALE, COMPENSATION_TARGET_INVALID,
@@ -8137,7 +8177,7 @@ components:
       required: [operation, status, pending_provider, refund_execution_disabled, commands, record]
       properties:
         operation: { type: [string, 'null'], enum: [CREDIT_GRANT, CREDIT_REVERSE, DISCOUNT_APPLY, DISCOUNT_REMOVE, REFUND_CREATE, null] }
-        status: { type: string, enum: [NOT_APPLIED, APPLY_FAILED, PENDING_PROVIDER, COMMAND_FAILED, APPLIED] }
+        status: { type: string, enum: [NOT_APPLIED, APPLY_FAILED, PENDING_PROVIDER, COMMAND_FAILED, APPLIED, RESOLVED_NOT_EXECUTED] }
         pending_provider:
           type: boolean
           description: True while a provider command of the request is not confirmed by applied provider state (Conv. C-23).
@@ -8164,6 +8204,21 @@ components:
           $ref: '#/components/schemas/CommercialBillingAdjustment'
         replayed:
           type: boolean
+
+    CommercialRefundResolutionEnvelope:
+      type: object
+      additionalProperties: false
+      required: [request, adjustment, resolution, outcomes]
+      properties:
+        request:
+          $ref: '#/components/schemas/CommercialChangeRequest'
+        adjustment:
+          $ref: '#/components/schemas/CommercialBillingAdjustment'
+        resolution: { type: string, enum: [RESOLVED_NOT_EXECUTED, CONFIRMED] }
+        outcomes:
+          type: array
+          description: The reconciliation outcome of each refund command (authoritative provider read).
+          items: { type: string, enum: [CONFIRMED, PENDING, PARTIAL, FAILED_AT_PROVIDER, NOT_FOUND] }
 
     CommercialBillingAdjustmentStateEnvelope:
       type: object

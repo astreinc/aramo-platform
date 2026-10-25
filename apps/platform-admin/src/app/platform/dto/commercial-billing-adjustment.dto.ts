@@ -34,7 +34,7 @@ export interface BillingAdjustmentRecordDto {
 export interface BillingAdjustmentDto {
   // CREDIT_GRANT | CREDIT_REVERSE | DISCOUNT_APPLY | DISCOUNT_REMOVE | REFUND_CREATE (null: unreadable payload)
   operation: string | null;
-  // NOT_APPLIED | APPLY_FAILED | PENDING_PROVIDER | COMMAND_FAILED | APPLIED
+  // NOT_APPLIED | APPLY_FAILED | PENDING_PROVIDER | COMMAND_FAILED | APPLIED | RESOLVED_NOT_EXECUTED (CCP-C4-R)
   status: string;
   pending_provider: boolean;
   // true for a REFUND while the refund policy is not approved (the designed disabled state, PBD §10)

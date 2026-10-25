@@ -24,6 +24,8 @@ import { requestDto } from './platform-commercial-change-request.controller.js';
 // refuses a live key, TD-C1-3).
 //   POST /platform/commercial/change-requests/{id}/billing-adjustment  apply it (requester-only)
 //   GET  /platform/commercial/change-requests/{id}/billing-adjustment  read its state
+//   POST /platform/commercial/change-requests/{id}/billing-adjustment/resolve  CCP-C4-R: resolve an
+//        unconfirmed REFUND proven not executed (requester-only; reconcile first; REFUND only)
 //
 // Route gate `platform:approval:read` (the 6 CCP roles, never super_admin; as every CCP request
 // route). Below the gate the service is the authority: REQUESTER-ONLY apply (TD-A6-3 narrowed by
@@ -60,6 +62,33 @@ export class PlatformCommercialBillingAdjustmentController {
         { platform_tenant_id: PLATFORM_TENANT_SENTINEL_ID, correlation_id: requestId },
       );
       return { request: adjustmentRequestDto(out.request), adjustment: billingAdjustmentDto(out), replayed: out.replayed };
+    } catch (err) {
+      throw adjustmentHttpError(err, requestId);
+    }
+  }
+
+  /**
+   * CCP-C4-R (Architect C4 disposition, TD-C4-12) — the governed terminal resolution of an APPLYING
+   * REFUND by its requester: reconcile first (an authoritative provider read); a confirmed refund is
+   * recorded APPLIED; only a refund proven not to exist or unable to complete is resolved
+   * (APPLYING → WITHDRAWN, one audit event, the slot released on commit). Uncertain → 409, held.
+   */
+  @Post(':id/billing-adjustment/resolve')
+  @HttpCode(200)
+  @RequireScopes('platform:approval:read')
+  async resolveRefund(
+    @Param('id', new ParseUUIDPipe()) id: string,
+    @AuthContext() auth: AuthContextType,
+    @RequestId() requestId: string,
+  ): Promise<{ request: CommercialChangeRequestDto; adjustment: BillingAdjustmentDto; resolution: string; outcomes: string[] }> {
+    assertPlatformTier(auth, requestId);
+    try {
+      const out = await this.adjustments.resolveRefund(
+        { user_id: auth.sub, actor_kind: auth.actor_kind, scopes: auth.scopes },
+        id,
+        { platform_tenant_id: PLATFORM_TENANT_SENTINEL_ID, correlation_id: requestId },
+      );
+      return { request: adjustmentRequestDto(out.request), adjustment: billingAdjustmentDto(out), resolution: out.resolution, outcomes: [...out.outcomes] };
     } catch (err) {
       throw adjustmentHttpError(err, requestId);
     }
