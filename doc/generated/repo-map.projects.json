@@ -2169,6 +2169,7 @@
     ],
     "@aramo/subscription": [
       "A6_APPLICABLE_ACTIONS",
+      "APPLY_SERVICE_ACTIONS",
       "APPROVAL_REFUSALS",
       "AllowanceService",
       "AramoSignIncludedPlanKey",
@@ -2187,6 +2188,7 @@
       "C16_QUERY_A",
       "COMMERCIAL_A3_TRANSITIONS",
       "COMMERCIAL_A6_APPLY_TRANSITIONS",
+      "COMMERCIAL_A8_EXCEPTION_TRANSITIONS",
       "COMMERCIAL_A9_ROLE_APPLY_TRANSITIONS",
       "COMMERCIAL_ACTIONS",
       "COMMERCIAL_ACTION_TYPES",
@@ -2258,10 +2260,12 @@
       "SIGN_PRODUCT_KEY",
       "STORAGE_CAPACITY_KEY",
       "STRIPE_API_VERSION",
+      "SUPPORT_EXTENSION_SCOPE",
       "StripeBillingProvider",
       "SubscriptionLifecycleService",
       "SubscriptionModule",
       "SubscriptionPrismaService",
+      "SupportExtensionService",
       "actorSatisfiesStep",
       "addMonthsClamped",
       "approvalExpiresAt",
@@ -2272,6 +2276,7 @@
       "billingCountrySupported",
       "billingLockKey",
       "billingPeriodAt",
+      "boundedExceptionChain",
       "canTransition",
       "canTransitionFor",
       "canonicalJson",
@@ -2283,12 +2288,14 @@
       "commercialPolicyChecksum",
       "creditEscalation",
       "currentPublishedVersion",
+      "decideSupportExtension",
       "discountEscalates",
       "effectivePlatformOwners",
       "effectiveProviderPrice",
       "formatCheckoutCutoverReport",
       "inAppContextRef",
       "isA6Applicable",
+      "isApplyServiceAction",
       "isApprovalExpired",
       "isFeatureAvailable",
       "isGovernedSubscription",
@@ -2298,6 +2305,7 @@
       "legalRef",
       "mapProviderStatus",
       "openDevelopmentSubscription",
+      "overlayCovers",
       "parseActiveCommercialPolicy",
       "parseBootstrapArgs",
       "parseCommercialPolicyContent",
@@ -2320,6 +2328,7 @@
       "stripeSubscriptionState",
       "subjectUserOf",
       "subscriptionSends",
+      "supportExtensionWindow",
       "takeBillingLock",
       "thresholdOf",
       "validatePayload",
@@ -3388,6 +3397,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a8-support-extension-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a8-support-extension-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a9-role-change-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -3990,6 +4011,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a6-commercial-apply-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a8-support-extension-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a8-support-extension-routes.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -6307,6 +6340,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a8-support-extension-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a8-support-extension-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a9-role-change-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -6957,6 +7002,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-a6-hold.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-a8-support-extension.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -9205,6 +9256,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a8-support-extension-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a8-support-extension-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a9-role-change-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -11320,6 +11383,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a6-commercial-apply-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a8-support-extension-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a8-support-extension-routes.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },

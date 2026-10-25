@@ -12,6 +12,7 @@ import { CommercialAuditRepository } from '../../lib/commercial/commercial-audit
 import { type CommercialActor, CommercialChangeRequestService } from '../../lib/commercial/commercial-change-request.service.js';
 import { CommercialOperatorRepository } from '../../lib/commercial/commercial-operator.repository.js';
 import { CommercialPolicyRepository } from '../../lib/commercial/commercial-policy.repository.js';
+import { SupportExtensionService } from '../../lib/commercial/support-extension.service.js';
 import type { PrismaService } from '../../lib/prisma/prisma.service.js';
 import { FakeOrganizationBillingProfile } from '../fixtures/organization-billing-profile.fake.js';
 
@@ -87,6 +88,8 @@ export interface A6Harness {
   billing: FakeBilling;
   orgProfile: FakeOrganizationBillingProfile;
   allowance: AllowanceService;
+  /** CCP-A8 — the support exception overlay on the same services (the shared harness). */
+  supportExtensions: SupportExtensionService;
 }
 
 export function a6Harness(prisma: PrismaService, now: () => Date, fault?: CommercialApplyFaultHook): A6Harness {
@@ -99,7 +102,8 @@ export function a6Harness(prisma: PrismaService, now: () => Date, fault?: Commer
   const orgProfile = new FakeOrganizationBillingProfile();
   const allowance = new AllowanceService(prisma);
   const lifecycle = new SubscriptionLifecycleService(prisma, allowance, billing, new CapacityService(prisma), undefined, undefined, orgProfile);
-  return { changeRequests, apply, lifecycle, billing, orgProfile, allowance };
+  const supportExtensions = new SupportExtensionService(prisma, audit, policies, operators, changeRequests, apply, now);
+  return { changeRequests, apply, lifecycle, billing, orgProfile, allowance, supportExtensions };
 }
 
 export async function newTenant(pg: Client, kind: 'BUSINESS' | 'PERSONAL' = 'BUSINESS'): Promise<string> {

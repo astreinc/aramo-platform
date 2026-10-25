@@ -582,7 +582,8 @@ model CommercialOperatorAttestation {
 model CommercialChangeApplication {
   id                       String   @id @db.Uuid
   change_request_id        String   @unique @db.Uuid
-  // CHECK: SUBSCRIPTION_OPEN | SUBSCRIPTION_CHANGE | SUBSCRIPTION_END | ENTITLEMENT_GRANT
+  // CHECK: SUBSCRIPTION_OPEN | SUBSCRIPTION_CHANGE | SUBSCRIPTION_END | ENTITLEMENT_GRANT |
+  // SUPPORT_EXTENSION (CCP-A8, migration 20261026010000)
   action_type              String
   tenant_id                String   @db.Uuid
   product_key              String
@@ -597,6 +598,37 @@ model CommercialChangeApplication {
   applied_at               DateTime @db.Timestamptz(3)
 
   @@index([tenant_id, product_key])
+  @@index([subscription_id])
+  @@schema("subscription")
+}
+
+// CCP-A8 (PBD §5.1 row A8; DDR v1.2 §3.2(5); Recon Report G1) — a support extension overlay.
+// It extends the SENDING window of ONE PAST_DUE subscription row to `extends_until`
+// (half-open) without writing that row (a Stripe-owned row's grace_until is recomputed by
+// every sync). base_until = max(applied_at, grace_until_at_apply); extends_until =
+// base_until + days (CHECKs). Never deleted; the only UPDATE is one removal by an applied
+// SUPPORT_EXTENSION (REMOVE) change request (trigger, migration 20261026010000). An INSERT
+// needs its SUPPORT_EXTENSION (EXTEND) request in APPLYING. No relation fields: the FKs are
+// SQL-only (the CommercialChangeApplication precedent).
+model SupportExtension {
+  id                       String    @id @db.Uuid
+  tenant_id                String    @db.Uuid
+  product_key              String
+  subscription_id          String    @db.Uuid
+  change_request_id        String    @unique @db.Uuid
+  is_exception             Boolean
+  days                     Int
+  grace_until_at_apply     DateTime? @db.Timestamptz(3)
+  base_until               DateTime  @db.Timestamptz(3)
+  extends_until            DateTime  @db.Timestamptz(3)
+  policy_version_id        String    @db.Uuid
+  applied_by               String    @db.Uuid
+  applied_at               DateTime  @db.Timestamptz(3)
+  removed_at               DateTime? @db.Timestamptz(3)
+  removed_by               String?   @db.Uuid
+  remove_change_request_id String?   @unique @db.Uuid
+
+  @@index([tenant_id, product_key, applied_at(sort: Desc)])
   @@index([subscription_id])
   @@schema("subscription")
 }

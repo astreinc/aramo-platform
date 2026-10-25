@@ -121,7 +121,11 @@ export class AllowanceService {
     const terms = planVersionTerms(sub.plan_version);
     const allowance = terms.allowances.find((a) => a.allowance_key === allowance_key);
     if (allowance === undefined) return { ok: false, state: 'NONE' };
-    if (!subscriptionSends(sub, at)) {
+    // CCP-A8 — a PAST_DUE row past its grace still sends while an unremoved support extension
+    // overlay of THIS row covers `at` (half-open). The overlay changes only whether the row
+    // sends: the limit, the period and the counted usage below are the row's own (T8: no
+    // allowance is manufactured). With no overlay row the result is exactly the pre-A8 one.
+    if (!subscriptionSends(sub, at) && !(sub.status === 'PAST_DUE' && (await this.supportExtensionCovers(db, sub.id, at)))) {
       return { ok: false, state: sub.status === 'PAST_DUE' ? 'PAST_DUE' : sub.status === 'INCOMPLETE' ? 'INCOMPLETE' : 'CANCELED' };
     }
     return {
@@ -133,6 +137,12 @@ export class AllowanceService {
         daily_limit: terms.allowance_windows.find((w) => w.allowance_key === allowance_key && w.window_kind === 'DAY')?.limit_quantity ?? null,
       },
     };
+  }
+
+  /** CCP-A8 — an unremoved support extension overlay of this subscription row covers `at` (extends_until > at). */
+  private async supportExtensionCovers(db: Tx | PrismaService, subscription_id: string, at: Date): Promise<boolean> {
+    const hit = await db.supportExtension.findFirst({ where: { subscription_id, removed_at: null, extends_until: { gt: at } }, select: { id: true } });
+    return hit !== null;
   }
 
   private async used(db: Tx | PrismaService, tenant_id: string, allowance_key: string, period_start: Date): Promise<number> {

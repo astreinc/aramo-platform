@@ -14,6 +14,7 @@ import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { SIGN_PRODUCT_KEY } from '../lib/product-registry.js';
 
 import { CCP_A5_MIGRATION } from './fixtures/ccp-a5.js';
+import { applyRemainingSubscriptionMigrations } from './fixtures/ccp-a8.js';
 import { observe, rowCounts, seedCorpus, type SignOps } from './fixtures/ccp-a4-sign-corpus.js';
 
 // CCP-A4 (PBD §5.1 A4 row) — MP-A2 N-8 (deterministic backfill counts) and N-13 (Sign
@@ -87,6 +88,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A4 — Sign a
       await pg.query(readFileSync(A4, 'utf8'));
       after = await rowCounts(pg);
       await pg.query(readFileSync(CCP_A5_MIGRATION, 'utf8'));
+      // CCP-A8: the rest of the chain, so the current allowance reader runs on the HEAD schema.
+      await applyRemainingSubscriptionMigrations(pg, [...PRE_A4, A4, CCP_A5_MIGRATION]);
     }
     prisma = new PrismaService(container.getConnectionUri());
     await prisma.$connect();

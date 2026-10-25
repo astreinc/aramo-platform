@@ -7,6 +7,7 @@ import { CommercialPolicyRepository } from './commercial/commercial-policy.repos
 import { CommercialChangeRequestService } from './commercial/commercial-change-request.service.js';
 import { CommercialApplyService } from './commercial/commercial-apply.service.js';
 import { CommercialOperatorRepository } from './commercial/commercial-operator.repository.js';
+import { SupportExtensionService } from './commercial/support-extension.service.js';
 import { FreePersonalSubscriptionService } from './free-personal-subscription.js';
 import { LegalAcceptanceService } from './legal/legal-acceptance.service.js';
 import { PlanVersionRepository } from './plan-version.repository.js';
@@ -22,6 +23,7 @@ import { PrismaService } from './prisma/prisma.service.js';
 // CCP-A3: change requests, approvals and the D9 operator attestation store.
 // CCP-A5: the plan-version store (repository only; A6 applies publish / retire).
 // CCP-A6: the transactional apply of approved Aramo-owned change requests.
+// CCP-A8: the support exception overlay (bounded EXCEPTION apply, escalation, overlay read).
 @Module({
   providers: [
     PrismaService,
@@ -36,9 +38,10 @@ import { PrismaService } from './prisma/prisma.service.js';
     CommercialOperatorRepository,
     CommercialChangeRequestService,
     CommercialApplyService,
+    SupportExtensionService,
     PlanVersionRepository,
   ],
-  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, PlanVersionRepository],
+  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, SupportExtensionService, PlanVersionRepository],
 })
 export class SubscriptionModule {
   /**
@@ -62,10 +65,11 @@ export class SubscriptionModule {
         CommercialOperatorRepository,
         CommercialChangeRequestService,
     CommercialApplyService,
+        SupportExtensionService,
         PlanVersionRepository,
         ...(opts.providers ?? []),
       ],
-      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, PlanVersionRepository],
+      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, SupportExtensionService, PlanVersionRepository],
     };
   }
 }

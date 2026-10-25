@@ -860,7 +860,8 @@ export class CommercialChangeRequestService {
     return true;
   }
 
-  private async expireOpenFor(tx: Tx, tenant_id: string, product_key: string, now: Date, ctx: CommercialCallContext): Promise<void> {
+  /** Lazily expires the due PENDING requests of a tenant × product (CCP-A8 calls it in its own create transaction). */
+  async expireOpenFor(tx: Tx, tenant_id: string, product_key: string, now: Date, ctx: CommercialCallContext): Promise<void> {
     const due = (await tx.commercialChangeRequest.findMany({ where: { tenant_id, product_key, state: 'PENDING_APPROVAL', expires_at: { lte: now } } })) as CommercialChangeRequestRow[];
     for (const r of due) {
       await tx.$executeRawUnsafe(`SELECT 1 FROM subscription."CommercialChangeRequest" WHERE id = $1::uuid FOR UPDATE`, r.id);

@@ -24,6 +24,7 @@ import { SIGN_PRODUCT_KEY } from '../lib/product-registry.js';
 import { CCP_A4_MIGRATION } from './fixtures/ccp-a4.js';
 import { observe, rowCounts, seedCorpus, type SignOps } from './fixtures/ccp-a4-sign-corpus.js';
 import { CCP_A5_COMPENSATING, CCP_A5_MIGRATION, publishedVersionOf } from './fixtures/ccp-a5.js';
+import { applyRemainingSubscriptionMigrations } from './fixtures/ccp-a8.js';
 import { FakeOrganizationBillingProfile } from './fixtures/organization-billing-profile.fake.js';
 
 // CCP-A5 (PBD §5.1 row A5; MP-A2 N-15…N-19; Charter D3) on real Postgres 17:
@@ -182,6 +183,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A5 — PlanVe
     liveBefore = await liveContents(pg);
     await pg.query(readFileSync(CCP_A5_MIGRATION, 'utf8'));
     countsAfter = await rowCounts(pg);
+    // CCP-A8: the rest of the chain, so the current allowance reader runs on the HEAD schema.
+    await applyRemainingSubscriptionMigrations(pg, [...PRE_A4, CCP_A4_MIGRATION, CCP_A5_MIGRATION]);
     prisma = new PrismaService(container.getConnectionUri());
     await prisma.$connect();
     allowance = new AllowanceService(prisma);

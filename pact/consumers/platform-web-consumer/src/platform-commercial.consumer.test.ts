@@ -44,6 +44,8 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 //   POST /platform/commercial/change-requests/{id}/approvals
 //   POST /platform/commercial/change-requests/{id}/reject
 //   POST /platform/commercial/change-requests/{id}/apply        (CCP-A6)
+//   POST /platform/commercial/support-extensions                 (CCP-A8)
+//   GET  /platform/commercial/support-extensions
 // For each route: the allowed call, super_admin refused (403, holds no commercial
 // scope), and the tenant tier refused (403 tier tripwire). Plus the role-level
 // refusals: a role missing the route scope (audit feed), a role missing the requester
@@ -89,6 +91,22 @@ const EX_REQUEST_ID = 'cca10000-0000-7000-8000-0000000000e1';
 
 const AUDIT = '/platform/commercial/audit-events';
 const CR = '/platform/commercial/change-requests';
+const SE = '/platform/commercial/support-extensions';
+// CCP-A8 fixtures: one tenant + Stripe-owned PAST_DUE Sign row per mutating interaction (MUST match
+// the provider state params; the provider inserts exactly these ids).
+const SE_TENANT_APPLY = 'cca10000-0000-7000-8000-0000000008a1';
+const SE_SUB_APPLY = 'cca10000-0000-7000-8000-0000000008b1';
+const SE_TENANT_ESC = 'cca10000-0000-7000-8000-0000000008a2';
+const SE_SUB_ESC = 'cca10000-0000-7000-8000-0000000008b2';
+const SE_TENANT_LIST = 'cca10000-0000-7000-8000-0000000008a3';
+const SE_BODY = (tenant_id: string, subscription_id: string, requested_days: number, idempotency_key: string) => ({
+  tenant_id,
+  product_key: 'sign',
+  subscription_id,
+  requested_days,
+  reason: 'Support goodwill: billing contact on leave',
+  idempotency_key,
+});
 
 const platformSession = (role: Role) => ({ 'X-Aramo-Consumer': 'platform', Cookie: `aramo_access_token_platform=pact-${role}` });
 const platformJson = (role: Role) => ({ ...platformSession(role), 'Content-Type': 'application/json' });
@@ -184,6 +202,8 @@ const GATE_ROUTES: readonly GateRoute[] = [
   { name: 'POST change-requests/{id}/approvals', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/approvals`, scope: 'platform:approval:read', body: { step_index: 0 } },
   { name: 'POST change-requests/{id}/reject', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/reject`, scope: 'platform:approval:read', body: { reason: 'Credit not justified' } },
   { name: 'POST change-requests/{id}/apply', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/apply`, scope: 'platform:approval:read' },
+  { name: 'POST support-extensions', method: 'POST', path: SE, scope: 'platform:subscription:support', body: SE_BODY(SE_TENANT_APPLY, SE_SUB_APPLY, 7, 'pact-a8-gate-0001') },
+  { name: 'GET support-extensions', method: 'GET', path: SE, scope: 'platform:subscription:read' },
 ];
 
 // ── CCP-A2 — the commercial audit feed ────────────────────────────────────────
@@ -599,6 +619,141 @@ describe('platform-web → POST /platform/commercial/change-requests/{id}/apply 
       .executeTest(async (mock) => {
         const res = await call(`${mock.url}${apply()}`, 'POST', platformSession('commercial_ops'));
         expect(res.status).toBe(409);
+      });
+  });
+});
+
+// ── CCP-A8 — the support exception overlay ────────────────────────────────────
+
+const SE_EXTENSION = (tenant_id: string, subscription_id: string) => ({
+  id: uuid('cca10000-0000-7000-8000-0000000008c1'),
+  tenant_id: uuid(tenant_id),
+  product_key: 'sign',
+  subscription_id: uuid(subscription_id),
+  change_request_id: uuid(EX_REQUEST_ID),
+  is_exception: true,
+  days: integer(7),
+  grace_until_at_apply: iso(),
+  base_until: iso(),
+  extends_until: iso(),
+  policy_version_id: POLICY_V1,
+  applied_by: OP.support_admin,
+  applied_at: iso(),
+  removed_at: null,
+  removed_by: null,
+  remove_change_request_id: null,
+});
+
+describe('platform-web → POST /platform/commercial/support-extensions (CCP-A8)', () => {
+  it('support_admin requests an in-bound extension: applied at once as a bounded EXCEPTION (201 APPLIED, zero-step chain)', async () => {
+    const body = SE_BODY(SE_TENANT_APPLY, SE_SUB_APPLY, 7, 'pact-a8-apply-0001');
+    await provider
+      .addInteraction()
+      .given('a tenant with a past-due Stripe-owned Sign subscription exists', { tenant_id: SE_TENANT_APPLY, subscription_id: SE_SUB_APPLY })
+      .uponReceiving('an in-bound support extension by support_admin')
+      .withRequest('POST', SE, (b) => {
+        b.headers(platformJson('support_admin')).jsonBody(body);
+      })
+      .willRespondWith(201, (b) => {
+        b.jsonBody({
+          outcome: 'APPLIED',
+          replayed: false,
+          request: like({
+            id: uuid(EX_REQUEST_ID),
+            action_type: 'SUPPORT_EXTENSION',
+            kind: 'EXCEPTION',
+            state: 'APPLIED',
+            required_chain: { rule: 'BOUNDED_EXCEPTION', basis: like({}), steps: [] },
+          }),
+          extension: like(SE_EXTENSION(SE_TENANT_APPLY, SE_SUB_APPLY)),
+          application: like({ action_type: 'SUPPORT_EXTENSION', capabilities: [], attempt: 1 }),
+          decision: like({ within_bounds: true, breaches: [] }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${SE}`, 'POST', platformJson('support_admin'), body);
+        expect(res.status).toBe(201);
+        expect(res.body['outcome']).toBe('APPLIED');
+      });
+  });
+
+  it('support_admin requests an out-of-bound extension (20 days): escalated to Finance, nothing applied (201 ESCALATED)', async () => {
+    const body = SE_BODY(SE_TENANT_ESC, SE_SUB_ESC, 20, 'pact-a8-escalate-0001');
+    await provider
+      .addInteraction()
+      .given('a tenant with a past-due Stripe-owned Sign subscription exists', { tenant_id: SE_TENANT_ESC, subscription_id: SE_SUB_ESC })
+      .uponReceiving('an out-of-bound support extension by support_admin')
+      .withRequest('POST', SE, (b) => {
+        b.headers(platformJson('support_admin')).jsonBody(body);
+      })
+      .willRespondWith(201, (b) => {
+        b.jsonBody({
+          outcome: 'ESCALATED',
+          replayed: false,
+          request: like({ action_type: 'SUPPORT_EXTENSION', kind: 'NORMAL', state: 'PENDING_APPROVAL', required_chain: like({ rule: 'FINANCE_ONLY' }) }),
+          extension: null,
+          application: null,
+          decision: like({ within_bounds: false, breaches: ['LENGTH'] }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${SE}`, 'POST', platformJson('support_admin'), body);
+        expect(res.status).toBe(201);
+        expect(res.body['outcome']).toBe('ESCALATED');
+      });
+  });
+
+  it('a role without platform:subscription:support (finance_admin) is refused (403)', async () => {
+    const body = SE_BODY(SE_TENANT_APPLY, SE_SUB_APPLY, 7, 'pact-a8-refused-0001');
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a support extension by a role missing the support scope')
+      .withRequest('POST', SE, (b) => {
+        b.headers(platformJson('finance_admin')).jsonBody(body);
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:subscription:support'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${SE}`, 'POST', platformJson('finance_admin'), body);
+        expect(res.status).toBe(403);
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/support-extensions (CCP-A8)', () => {
+  it('read_only_auditor lists a tenant\'s overlays (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('a support extension has been applied', { tenant_id: SE_TENANT_LIST })
+      .uponReceiving('a support extension list read by a read-only auditor')
+      .withRequest('GET', SE, (b) => {
+        b.headers(platformSession('read_only_auditor')).query({ tenant_id: SE_TENANT_LIST });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ extensions: eachLike({ ...SE_EXTENSION(SE_TENANT_LIST, 'cca10000-0000-7000-8000-0000000008b3'), active: true }) });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${SE}?tenant_id=${SE_TENANT_LIST}`, 'GET', platformSession('read_only_auditor'));
+        expect(res.status).toBe(200);
+      });
+  });
+
+  it('a role without platform:subscription:read (catalog_manager) is refused (403)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a support extension list read by a role missing the subscription read scope')
+      .withRequest('GET', SE, (b) => {
+        b.headers(platformSession('catalog_manager')).query({ tenant_id: SE_TENANT_LIST });
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:subscription:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${SE}?tenant_id=${SE_TENANT_LIST}`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(403);
       });
   });
 });

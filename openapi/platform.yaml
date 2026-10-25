@@ -89,6 +89,14 @@ tags:
       `platform:commercial:audit:read`, held by the platform_owner, finance_admin and
       read_only_auditor commercial roles only; super_admin holds no commercial scope
       and is refused with 403 `INSUFFICIENT_PERMISSIONS`. Platform-tier only.
+  - name: Platform Commercial Support Extensions
+    description: |
+      CCP-A8 — the support exception overlay. A support_admin
+      (`platform:subscription:support`) extends the sending window of a PAST_DUE
+      subscription; within the ACTIVE policy's bounds it applies at once as the only
+      zero-approval act (`is_exception: true`), otherwise it escalates to Finance and never
+      applies. The subscription row is never written. Listing needs
+      `platform:subscription:read`. super_admin holds neither scope (403). Platform-tier only.
   - name: Platform Commercial Change Requests
     description: |
       CCP-A3 — governed commercial change requests and their distinct-human approvals.
@@ -2433,6 +2441,93 @@ paths:
         '409':
           $ref: '#/components/responses/CommercialApplyConflict'
 
+  # CCP-A8 (PBD §5.1 row A8; DDR v1.2 §3.2(5); Q7) — the support exception overlay.
+  /platform/commercial/support-extensions:
+    post:
+      operationId: requestPlatformSupportExtension
+      tags: [Platform Commercial Support Extensions]
+      summary: Request a support extension (applied as a bounded EXCEPTION, or escalated) (CCP-A8).
+      description: |
+        Requires `platform:subscription:support` (support_admin). Extends the SENDING window of
+        the named open base subscription while it is PAST_DUE, as an overlay row; the subscription
+        row itself is never written (a Stripe-owned row keeps every column). Under the tenant's
+        billing lock the request is decided against the ACTIVE commercial policy: within bounds
+        (length ≤ `support_extension_max_days`; no extension in the rolling
+        `support_extension_frequency_window_days`; cumulative days in the rolling
+        `support_extension_cumulative_window_days` ≤ `support_extension_cumulative_max_days`; a
+        PAST_DUE row and an attested requester) it is applied at once as a `kind: EXCEPTION`
+        request with zero approvals, and every audit event carries `is_exception: true`
+        (`outcome: APPLIED`). Any breach (LENGTH, FREQUENCY, CUMULATIVE, ELIGIBILITY) escalates: a
+        NORMAL request is created and submitted for Finance and NOTHING is applied
+        (`outcome: ESCALATED`); it is approved and applied through the change-request routes.
+        Idempotent on `idempotency_key` (a replay returns 200 `replayed: true`).
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/RequestSupportExtension'
+      responses:
+        '201':
+          description: Applied as a bounded exception, or escalated for approval.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportExtensionOutcome'
+        '200':
+          description: Idempotent replay of an earlier call.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportExtensionOutcome'
+        '400':
+          $ref: '#/components/responses/CommercialChangeRequestValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '409':
+          $ref: '#/components/responses/CommercialChangeRequestConflict'
+        '503':
+          $ref: '#/components/responses/CommercialPolicyUnavailable'
+    get:
+      operationId: listPlatformSupportExtensions
+      tags: [Platform Commercial Support Extensions]
+      summary: List a tenant's support extension overlays (CCP-A8).
+      description: 'The overlays of a tenant (optionally one product), newest first, with whether each keeps the row sending now. Requires `platform:subscription:read`.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: tenant_id
+          in: query
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: product_key
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [sign]
+      responses:
+        '200':
+          description: The overlays.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SupportExtensionList'
+        '400':
+          $ref: '#/components/responses/CommercialChangeRequestValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+
   # DOC-TEMPLATE-LIB-1 T-2 (§6.1, §8.1) — Aramo default document templates + the template
   # variable catalog. Served by apps/api (nginx routes these two prefixes to api:3000).
   /platform/document-templates/document-types:
@@ -4340,7 +4435,8 @@ components:
           properties:
             rule:
               type: string
-              enum: [FINANCE_THEN_OWNER, FINANCE_ONLY, DISTINCT_PLATFORM_OWNER]
+              # CCP-A8: BOUNDED_EXCEPTION = the zero-step chain of a bounded support extension.
+              enum: [FINANCE_THEN_OWNER, FINANCE_ONLY, DISTINCT_PLATFORM_OWNER, BOUNDED_EXCEPTION]
             basis:
               type: object
               additionalProperties: true
@@ -4468,6 +4564,162 @@ components:
           $ref: '#/components/schemas/CommercialChangeApplication'
         replayed:
           type: boolean
+
+    RequestSupportExtension:
+      type: object
+      additionalProperties: false
+      required: [tenant_id, product_key, subscription_id, requested_days, reason, idempotency_key]
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        product_key:
+          type: string
+          enum: [sign]
+        subscription_id:
+          type: string
+          format: uuid
+          description: The open base subscription of the tenant and product the extension overlays.
+        requested_days:
+          type: integer
+          minimum: 1
+          maximum: 3650
+        reason:
+          type: string
+          minLength: 1
+          maxLength: 2000
+        idempotency_key:
+          type: string
+          minLength: 8
+          maxLength: 200
+          pattern: '^[A-Za-z0-9._:-]+$'
+
+    SupportExtension:
+      type: object
+      additionalProperties: false
+      required: [id, tenant_id, product_key, subscription_id, change_request_id, is_exception, days, grace_until_at_apply, base_until, extends_until, policy_version_id, applied_by, applied_at, removed_at, removed_by, remove_change_request_id]
+      properties:
+        id:
+          type: string
+          format: uuid
+        tenant_id:
+          type: string
+          format: uuid
+        product_key:
+          type: string
+        subscription_id:
+          type: string
+          format: uuid
+        change_request_id:
+          type: string
+          format: uuid
+        is_exception:
+          type: boolean
+          description: true when applied as a bounded exception (zero approvals); false when approved by Finance.
+        days:
+          type: integer
+        grace_until_at_apply:
+          type: [string, 'null']
+          format: date-time
+        base_until:
+          type: string
+          format: date-time
+        extends_until:
+          type: string
+          format: date-time
+          description: The PAST_DUE row sends until this instant (exclusive), unless removed.
+        policy_version_id:
+          type: string
+          format: uuid
+        applied_by:
+          type: string
+          format: uuid
+        applied_at:
+          type: string
+          format: date-time
+        removed_at:
+          type: [string, 'null']
+          format: date-time
+        removed_by:
+          type: [string, 'null']
+          format: uuid
+        remove_change_request_id:
+          type: [string, 'null']
+          format: uuid
+        active:
+          type: boolean
+          description: Present on the list route — the overlay keeps the row sending now.
+
+    SupportExtensionDecision:
+      type: object
+      additionalProperties: false
+      required: [within_bounds, breaches, eligibility, counters, clause]
+      properties:
+        within_bounds:
+          type: boolean
+        breaches:
+          type: array
+          items:
+            type: string
+            enum: [LENGTH, FREQUENCY, CUMULATIVE, ELIGIBILITY]
+        eligibility:
+          type: array
+          items:
+            type: string
+            enum: [SUBSCRIPTION_NOT_PAST_DUE, REQUESTER_NOT_ATTESTED]
+        counters:
+          type: object
+          additionalProperties: false
+          required: [requested_days, extensions_in_frequency_window, cumulative_days_before, cumulative_days_after]
+          properties:
+            requested_days:
+              type: integer
+            extensions_in_frequency_window:
+              type: integer
+            cumulative_days_before:
+              type: integer
+            cumulative_days_after:
+              type: integer
+        clause:
+          type: object
+          additionalProperties:
+            type: integer
+
+    SupportExtensionOutcome:
+      type: object
+      additionalProperties: false
+      required: [outcome, replayed, request, extension, application, decision]
+      properties:
+        outcome:
+          type: string
+          enum: [APPLIED, ESCALATED]
+        replayed:
+          type: boolean
+        request:
+          $ref: '#/components/schemas/CommercialChangeRequest'
+        extension:
+          oneOf:
+            - $ref: '#/components/schemas/SupportExtension'
+            - type: 'null'
+        application:
+          oneOf:
+            - $ref: '#/components/schemas/CommercialChangeApplication'
+            - type: 'null'
+        decision:
+          description: null on an idempotent replay.
+          oneOf:
+            - $ref: '#/components/schemas/SupportExtensionDecision'
+            - type: 'null'
+
+    SupportExtensionList:
+      type: object
+      additionalProperties: false
+      required: [extensions]
+      properties:
+        extensions:
+          type: array
+          items:
+            $ref: '#/components/schemas/SupportExtension'
 
     CommercialApprovalEnvelope:
       type: object
