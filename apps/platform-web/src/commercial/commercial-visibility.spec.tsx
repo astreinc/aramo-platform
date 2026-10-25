@@ -129,8 +129,9 @@ describe('Commercial routes — in-shell access denied, never a redirect', () =>
   });
 
   it('placeholders render the designed disabled state', async () => {
-    renderConsole('platform_owner', '/commercial/catalog');
-    expect(await screen.findByTestId('commercial-placeholder')).toHaveTextContent('The catalog isn’t available in the console yet');
+    // Merge train: Catalog is built (CCP-B2); Subscriptions stays a placeholder.
+    renderConsole('platform_owner', '/commercial/subscriptions');
+    expect(await screen.findByTestId('commercial-placeholder')).toBeInTheDocument();
   });
 
   it('super_admin tenant operations are unchanged (the Tenants list still opens)', async () => {

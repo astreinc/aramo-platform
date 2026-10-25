@@ -1,4 +1,4 @@
-// PLATFORM-UX-1 F-1 — the 10 platform permissions (handoff §2) with the plain
+// PLATFORM-UX-1 F-1 — the platform permissions (10) (handoff §2) with the plain
 // labels the design shows next to the mono code (Platform Admin.dc.html PLABEL):
 // the view-only note, the access-denied "Missing" row.
 
@@ -24,6 +24,9 @@ export const COMMERCIAL_PERMISSIONS = {
   approvalRead: 'platform:approval:read',
   subscriptionRead: 'platform:subscription:read',
   catalogRead: 'platform:catalog:read',
+  // CCP-B2 — drafting plan versions (CCP A1 §4.1: catalog_manager). Merge train TD-MERGE-6:
+  // B2's catalog pair folded into this one commercial map.
+  catalogDraft: 'platform:catalog:draft',
   commercialAuditRead: 'platform:commercial:audit:read',
 } as const;
 
@@ -44,6 +47,7 @@ export const PERMISSION_LABEL: Readonly<Record<PlatformPermission | CommercialPe
   'platform:subscription:read': 'View subscriptions',
   'platform:catalog:read': 'View the commercial catalog',
   'platform:commercial:audit:read': 'View the commercial audit',
+  'platform:catalog:draft': 'Draft plan versions',
 };
 
 /** The plain label for a permission code; an unknown code returns the code. */

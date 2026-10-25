@@ -356,6 +356,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   PLATFORM_LAST_OWNER: 409,
   // CCP-D1 — usage analytics refused until the roll-ups reconcile.
   USAGE_ROLLUP_NOT_RECONCILED: 409,
+  // CCP-B2 — catalog draft writes (a published version is never edited).
+  COMMERCIAL_CATALOG_CONFLICT: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

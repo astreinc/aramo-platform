@@ -26,6 +26,7 @@ import { COMMERCIAL_PERMISSIONS as CP } from './components/permissions';
 import { ApprovalsInboxView } from './commercial/ApprovalsInboxView';
 import { CommercialAccessDenied } from './commercial/CommercialAccessDenied';
 import { CommercialPlaceholderView, type CommercialPlaceholderPage } from './commercial/CommercialPlaceholderView';
+import { CatalogView } from './commercial/catalog/CatalogView';
 
 // The platform console app. RouteGuard handles only loading, unauthenticated
 // (→ sign-in) and the TENANT_ACCESS_DENIED wrong-account redirect — it no longer
@@ -163,15 +164,17 @@ export function PlatformConsole({ session }: { readonly session: Session }) {
             /platform/, which nginx proxies to the backend). */}
         <Route path="/admins" element={gate(P.adminInvite, 'Platform admins', <PlatformAdminsView />)} />
         {/* ── CCP-B1 — the Commercial group (handoff §2, directive R-12: never under
-            /platform/). Approvals is the B1 screen; the other five render their
-            designed disabled state until B2–B5 build them. */}
+            /platform/). Approvals is the B1 screen, Catalog is B2's; the others render their
+            designed disabled state until B4/B5 build them. */}
         <Route path="/commercial" element={<Navigate to="/commercial/approvals" replace />} />
         <Route
           path="/commercial/approvals"
           element={commercialGate(CP.approvalRead, 'approvals', <ApprovalsInboxView session={session} />)}
         />
         <Route path="/commercial/subscriptions" element={placeholder(CP.subscriptionRead, 'subscriptions')} />
-        <Route path="/commercial/catalog" element={placeholder(CP.catalogRead, 'catalog')} />
+        {/* CCP-B2 (PBD §5.3 row B2) — the product and plan catalog; draft actions gate on
+            platform:catalog:draft inside the view (merge train: replaces B1's placeholder). */}
+        <Route path="/commercial/catalog" element={commercialGate(CP.catalogRead, 'catalog', <CatalogView session={session} />)} />
         <Route path="/commercial/contracts" element={placeholder(CP.subscriptionRead, 'contracts')} />
         <Route path="/commercial/policy" element={placeholder(CP.approvalRead, 'policy')} />
         <Route path="/commercial/audit" element={placeholder(CP.commercialAuditRead, 'audit')} />

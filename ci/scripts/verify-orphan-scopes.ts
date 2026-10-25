@@ -93,10 +93,15 @@ export const CLASSIFICATIONS: Record<string, Classification> = {
   // to SERVICE_ENFORCED. 3 read reservations remain (catalog / subscription / billing :read).
   // CCP D1 — platform:subscription:read is now LITERALLY enforced by
   // PlatformCommercialUsageController (GET /platform/commercial/usage/reconciliation and
-  // /usage/periods), so its ACTIVE_RESERVED entry is REMOVED (2 read reservations remain:
-  // catalog / billing :read).
-  'platform:catalog:read': { cls: 'ACTIVE_RESERVED', reason: 'CCP A1 catalog-only reservation (Aramo-CCP-A1-Commercial-Roles-and-Scopes-Directive-v1_0 §6.6): granted to the CCP platform roles, enforced from CCP A3 + A5 by the catalog and plan-version read routes; this entry is removed when that enforcing route lands' },
-  'platform:catalog:draft': { cls: 'SERVICE_ENFORCED', reason: 'requester scope for PLAN_VERSION_PUBLISH / PLAN_RETIRE change requests — CommercialChangeRequestService.create checks COMMERCIAL_ACTIONS[..].requester_scope against the server-resolved scopes (libs/subscription/src/lib/commercial/commercial-change-request.ts; CCP A3)' },
+  // /usage/periods), so its ACTIVE_RESERVED entry is REMOVED.
+  // CCP B2 — platform:catalog:read is now LITERALLY enforced by
+  // PlatformCommercialCatalogController (GET /platform/commercial/catalog and
+  // GET /platform/commercial/catalog/versions/:versionId), so its ACTIVE_RESERVED entry is
+  // REMOVED (merge-train union of D1 + B2: 1 read reservation remains, billing :read).
+  // platform:catalog:draft is now also literally enforced (the two draft routes); its
+  // SERVICE_ENFORCED entry stays because the change-request service still enforces it below
+  // the change-request route gate.
+  'platform:catalog:draft': { cls: 'SERVICE_ENFORCED', reason: 'requester scope for PLAN_VERSION_PUBLISH / PLAN_RETIRE change requests — CommercialChangeRequestService.create checks COMMERCIAL_ACTIONS[..].requester_scope against the server-resolved scopes (libs/subscription/src/lib/commercial/commercial-change-request.ts; CCP A3); also literally enforced by the CCP B2 catalog draft routes (PlatformCommercialCatalogController) and re-checked by CommercialCatalogService' },
   'platform:catalog:approve': { cls: 'SERVICE_ENFORCED', reason: 'approval-step scope (finance and owner steps of a catalog chain) — checkApprovalEligibility reads it LIVE in the approve transaction (libs/subscription/src/lib/commercial/commercial-approval-eligibility.ts; CCP A3)' },
   'platform:catalog:publish': { cls: 'SERVICE_ENFORCED', reason: 'owner approval-step scope of a catalog-publish chain — checkApprovalEligibility reads it LIVE in the approve transaction (libs/subscription/src/lib/commercial/commercial-approval-eligibility.ts; CCP A3); the publish apply itself lands in CCP A5/B2' },
   'platform:subscription:request': { cls: 'SERVICE_ENFORCED', reason: 'requester scope for SUBSCRIPTION_OPEN / _CHANGE / _END and CONVERSION change requests — CommercialChangeRequestService.create (libs/subscription/src/lib/commercial/commercial-change-request.ts; CCP A3)' },

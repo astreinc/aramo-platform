@@ -45,6 +45,17 @@ export class PlanVersionStateError extends Error {
   }
 }
 
+/** CCP-B2: an exclusive draft was asked for while the plan already holds a DRAFT. */
+export class PlanVersionDraftExistsError extends PlanVersionStateError {
+  constructor(
+    readonly plan_id: string,
+    readonly draft_id: string,
+  ) {
+    super(`plan ${plan_id} already has a DRAFT version (${draft_id})`);
+    this.name = 'PlanVersionDraftExistsError';
+  }
+}
+
 /** The PUBLISHED (current) version of a plan, or null. At most one exists (partial unique index). */
 export async function currentPublishedVersion(db: Db, plan_id: string): Promise<PlanVersionRow | null> {
   const row = await db.planVersion.findFirst({ where: { plan_id, status: 'PUBLISHED' } });
@@ -86,11 +97,23 @@ export class PlanVersionRepository {
     });
   }
 
-  /** Appends a DRAFT with the next version number (under a per-plan advisory lock). */
-  async createDraft(input: { plan_id: string; content: PlanVersionContent; created_by: string; note?: string | null; at?: Date }): Promise<PlanVersionRow> {
+  /**
+   * Appends a DRAFT with the next version number (under a per-plan advisory lock). CCP-B2:
+   * `exclusive` refuses (PlanVersionDraftExistsError) when the plan already holds a DRAFT,
+   * checked under the same lock; `db` runs inside the caller's transaction (its audit row
+   * commits or rolls back with the draft).
+   */
+  async createDraft(
+    input: { plan_id: string; content: PlanVersionContent; created_by: string; note?: string | null; at?: Date; exclusive?: boolean },
+    db?: Tx,
+  ): Promise<PlanVersionRow> {
     const content = parsePlanVersionContent(input.content);
-    return this.prisma.$transaction(async (tx) => {
+    const run = async (tx: Tx): Promise<PlanVersionRow> => {
       await tx.$executeRawUnsafe(lockSql(input.plan_id));
+      if (input.exclusive === true) {
+        const draft = await tx.planVersion.findFirst({ where: { plan_id: input.plan_id, status: 'DRAFT' }, select: { id: true } });
+        if (draft !== null) throw new PlanVersionDraftExistsError(input.plan_id, draft.id);
+      }
       const latest = await tx.planVersion.aggregate({ where: { plan_id: input.plan_id }, _max: { version_number: true } });
       return (await tx.planVersion.create({
         data: {
@@ -105,7 +128,8 @@ export class PlanVersionRepository {
           created_at: input.at ?? new Date(),
         },
       })) as PlanVersionRow;
-    });
+    };
+    return db !== undefined ? run(db) : this.prisma.$transaction(run);
   }
 
   /** A DRAFT copied from the plan's live rows. */
@@ -113,10 +137,10 @@ export class PlanVersionRepository {
     return this.createDraft({ ...input, content: await this.liveContent(input.plan_id) });
   }
 
-  /** Replace a DRAFT's content. A PUBLISHED or RETIRED version is never edited. */
-  async updateDraft(id: string, content: PlanVersionContent, note?: string | null): Promise<PlanVersionRow> {
+  /** Replace a DRAFT's content. A PUBLISHED or RETIRED version is never edited. CCP-B2: `db` = the caller's transaction. */
+  async updateDraft(id: string, content: PlanVersionContent, note?: string | null, db?: Tx): Promise<PlanVersionRow> {
     const parsed = parsePlanVersionContent(content);
-    return this.prisma.$transaction(async (tx) => {
+    const run = async (tx: Tx): Promise<PlanVersionRow> => {
       const row = await tx.planVersion.findUnique({ where: { id } });
       if (row === null) throw new PlanVersionStateError(`unknown plan version ${id}`);
       if (row.status !== 'DRAFT') throw new PlanVersionStateError(`plan version ${id} is ${row.status}: only a DRAFT is edited; a change of terms is a new version`);
@@ -124,7 +148,8 @@ export class PlanVersionRepository {
         where: { id },
         data: { content: parsed as object, content_checksum: planVersionChecksum(parsed), ...(note !== undefined ? { note } : {}) },
       })) as PlanVersionRow;
-    });
+    };
+    return db !== undefined ? run(db) : this.prisma.$transaction(run);
   }
 
   /**

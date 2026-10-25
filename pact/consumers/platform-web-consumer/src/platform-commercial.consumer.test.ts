@@ -344,10 +344,9 @@ const inboxRow = (state: ReturnType<typeof regex> | string) => ({
   action_type: regex('^[A-Z_]+$', 'CREDIT'),
   kind: 'NORMAL',
   state,
-  product_key: 'sign',
   // TD-MERGE-1: a mixed page carries every action type (CREDIT, SUBSCRIPTION_OPEN from the A6
-  // states, …), so the payload is contracted as an object only; per-action payload keys are
-  // contracted by the per-action interactions.
+  // states, the B2 catalog requests whose product_key is null, …), so the payload is contracted
+  // as an object only and product_key (nullable) is left to the per-action interactions.
   payload: like({}),
   required_chain: {
     rule: regex('^(FINANCE_ONLY|FINANCE_THEN_OWNER|DISTINCT_PLATFORM_OWNER)$', 'FINANCE_ONLY'),

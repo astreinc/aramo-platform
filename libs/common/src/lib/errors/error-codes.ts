@@ -1072,6 +1072,12 @@ export const ERROR_CODES = [
   // refused while the reconciliation status is NOT_RUN or NOT_RECONCILED (details.status,
   // details.mismatch_count). HTTP 409.
   'USAGE_ROLLUP_NOT_RECONCILED',
+  // CCP-B2 (PBD §5.3 row B2; MP-A2 N-16) — a catalog draft write refused: the version is not a
+  // DRAFT (a PUBLISHED or RETIRED version is never edited; a change of terms is a new version),
+  // the plan already has a DRAFT, the draft changed since it was read, or the edit names a term
+  // the version does not carry. details.reason = not_draft | draft_exists | stale | plan_mismatch
+  // | contract_priced | term_missing. HTTP 409.
+  'COMMERCIAL_CATALOG_CONFLICT',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

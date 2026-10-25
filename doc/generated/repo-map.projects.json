@@ -2185,6 +2185,12 @@
       "BillingRefusedError",
       "BillingWebhookSignatureError",
       "C16_QUERY_A",
+      "CATALOG_ACTION_TYPES",
+      "CATALOG_DRAFT_SCOPE",
+      "CATALOG_ENVELOPE_ALLOWANCE_KEY",
+      "CATALOG_STORAGE_CAPACITY_KEY",
+      "CATALOG_V1_BILLING_INTERVAL",
+      "CATALOG_V1_CURRENCY",
       "COMMERCIAL_A3_TRANSITIONS",
       "COMMERCIAL_A6_APPLY_TRANSITIONS",
       "COMMERCIAL_A9_ROLE_APPLY_TRANSITIONS",
@@ -2206,12 +2212,18 @@
       "COMMERCIAL_TERMINAL_STATES",
       "COMMERCIAL_TRANSITIONS",
       "CapacityService",
+      "CatalogCreateDraftInput",
+      "CatalogDraftEditError",
+      "CatalogUpdateDraftInput",
       "CommercialApplyFailedError",
       "CommercialApplyRefusedError",
       "CommercialApplyService",
       "CommercialApprovalRefusedError",
       "CommercialAuditCursorError",
       "CommercialAuditRepository",
+      "CommercialCatalogError",
+      "CommercialCatalogPlanView",
+      "CommercialCatalogService",
       "CommercialChangeRequestCursorError",
       "CommercialChangeRequestError",
       "CommercialChangeRequestIntegrityError",
@@ -2250,6 +2262,7 @@
       "PRODUCT_CAPABILITIES",
       "PRODUCT_KEYS",
       "PlanVersionContentError",
+      "PlanVersionDraftExistsError",
       "PlanVersionRepository",
       "PlanVersionStateError",
       "PlatformOwnerBootstrapRefusedError",
@@ -2271,6 +2284,7 @@
       "UsageRollupService",
       "actorSatisfiesStep",
       "addMonthsClamped",
+      "applyCatalogDraftEdits",
       "approvalExpiresAt",
       "approvedLegalDocument",
       "assertChainStillSatisfiableAtApply",
@@ -2282,6 +2296,7 @@
       "canTransition",
       "canTransitionFor",
       "canonicalJson",
+      "catalogTermsOf",
       "checkApprovalEligibility",
       "checkChainSatisfiable",
       "checkProviderPriceParity",
@@ -2297,6 +2312,7 @@
       "inAppContextRef",
       "isA6Applicable",
       "isApprovalExpired",
+      "isContractPriced",
       "isFeatureAvailable",
       "isGovernedSubscription",
       "isPlatformLastOwnerViolation",
@@ -3409,6 +3425,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b2-commercial-catalog-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b2-commercial-catalog-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-d1-usage-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -4017,6 +4045,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a9-role-change-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b2-commercial-catalog-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b2-commercial-catalog-routes.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -6347,6 +6387,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a9-role-change-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b2-commercial-catalog-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b2-commercial-catalog-routes.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -8803,6 +8855,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/commercial/catalog/CatalogView.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/platform-web/src/commercial/commercial-visibility.spec.tsx",
         "project": "aramo-platform-web",
         "status": "excluded"
@@ -9275,6 +9333,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a9-role-change-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b2-commercial-catalog-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b2-commercial-catalog-routes.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -11412,6 +11482,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-a9-role-change-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b2-commercial-catalog-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b2-commercial-catalog-routes.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },

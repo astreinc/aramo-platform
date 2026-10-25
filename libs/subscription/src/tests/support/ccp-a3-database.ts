@@ -99,6 +99,18 @@ async function seedCcpCatalog(pg: Client): Promise<void> {
   }
 }
 
+/**
+ * CCP-B2 — the catalog schema: the A3 schema above, then the A4 product dimension and the A5
+ * plan versions (whole files, in migration order), so every A1 catalog plan carries its
+ * migration-published v1. One helper for the B2 route spec and the platform-admin Pact
+ * provider (CLAUDE.md: one shared helper, not N duplicated edits).
+ */
+export const CCP_CATALOG_MIGRATIONS: readonly string[] = [SUB('20261025140000_ccp_a4_product_dimension'), SUB('20261025160000_ccp_a5_plan_version')];
+export async function applyCcpCatalogSchema(pg: Client): Promise<void> {
+  await applyCcpA3Schema(pg);
+  for (const f of CCP_CATALOG_MIGRATIONS) await pg.query(readFileSync(f, 'utf8'));
+}
+
 /** Creates a platform operator holding `roles`; attests them (D9) unless `attested: false`. */
 export async function addOperator(pg: Client, roles: readonly string[], opts: { attested?: boolean; id?: string; human?: string } = {}): Promise<string> {
   const id = opts.id ?? randomUUID();

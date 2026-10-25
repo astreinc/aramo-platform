@@ -255,7 +255,40 @@ export {
   type PlanVersionPlanTerms,
   type PlanVersionStatus,
 } from './lib/plan-version.js';
-export { PlanVersionRepository, PlanVersionStateError, currentPublishedVersion, type PlanVersionRow } from './lib/plan-version.repository.js';
+export { PlanVersionDraftExistsError, PlanVersionRepository, PlanVersionStateError, currentPublishedVersion, type PlanVersionRow } from './lib/plan-version.repository.js';
+// CCP-B2 (PBD §5.3 row B2) — the product and plan catalog read, and the DRAFT-only catalog writes
+// (publish and retire are change requests applied by CCP-A6).
+export {
+  CATALOG_ENVELOPE_ALLOWANCE_KEY,
+  CATALOG_STORAGE_CAPACITY_KEY,
+  CATALOG_V1_BILLING_INTERVAL,
+  CATALOG_V1_CURRENCY,
+  CatalogDraftEditError,
+  applyCatalogDraftEdits,
+  catalogTermsOf,
+  isContractPriced,
+  type CatalogConflictReason,
+  type CatalogDraftEdits,
+  type CatalogVersionTerms,
+} from './lib/commercial/commercial-catalog.js';
+export {
+  CATALOG_ACTION_TYPES,
+  CATALOG_DRAFT_SCOPE,
+  CommercialCatalogError,
+  CommercialCatalogService,
+  type CatalogActionType,
+  type CatalogChainPreview,
+  type CatalogOpenRequest,
+  type CatalogPinnedTenant,
+  type CatalogPlanView as CommercialCatalogPlanView,
+  type CatalogProductView,
+  type CatalogVersionDetail,
+  type CatalogVersionSummary,
+  type CatalogView,
+  type CommercialCatalogErrorCode,
+  type CreateDraftInput as CatalogCreateDraftInput,
+  type UpdateDraftInput as CatalogUpdateDraftInput,
+} from './lib/commercial/commercial-catalog.service.js';
 export {
   BILLING_PRICE_PROVIDER,
   checkProviderPriceParity,

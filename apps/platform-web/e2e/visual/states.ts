@@ -10,6 +10,7 @@ import { SKILL_STATES } from './states-skills';
 import { MISC_STATES } from './states-misc';
 import { STUDIO_STATES } from './states-studio';
 import { CCP_STATES } from './states-ccp';
+import { CCP_CATALOG_STATES } from './states-ccp-catalog';
 
 export const STATES: readonly ScreenState[] = [
   ...SHELL_STATES,
@@ -20,4 +21,6 @@ export const STATES: readonly ScreenState[] = [
   ...STUDIO_STATES,
   // CCP-B1 — the Commercial screens (Commercial Control Plane v1.0.dc.html).
   ...CCP_STATES,
+  // CCP-B2 — the Catalog screen.
+  ...CCP_CATALOG_STATES,
 ];

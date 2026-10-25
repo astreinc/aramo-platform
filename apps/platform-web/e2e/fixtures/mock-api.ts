@@ -9,6 +9,7 @@ import { meBody, sessionBody, type Persona } from './session';
 import { dashboard, tenantAudit, tenantDetail, tenantDomain, tenantSign, tenantSummaries } from './tenants';
 import { REST_HANDLERS } from './rest';
 import { TEMPLATE_HANDLERS } from './templates';
+import { catalogHandlers, type CatalogFixtureOptions } from './ccp-catalog';
 
 export type Reply = { status?: number; body?: unknown } | 'hang';
 export type Handler = (req: { method: string; path: string; query: URLSearchParams; body: unknown }) => Reply | undefined;
@@ -21,6 +22,8 @@ export interface MockOptions {
   meRefused?: boolean;
   /** Session is unauthenticated (401). */
   signedOut?: boolean;
+  /** CCP-B2 — the Catalog fixture options. */
+  catalog?: CatalogFixtureOptions;
 }
 
 const json = (body: unknown, status = 200): Reply => ({ status, body });
@@ -78,7 +81,7 @@ export async function mockApi(page: Page, opts: MockOptions = {}): Promise<MockT
       } else if (path === '/platform/me') {
         reply = opts.meRefused || persona === 'tenantUser' ? json({ error: { code: 'FORBIDDEN' } }, 403) : json(meBody(persona));
       } else {
-        for (const [m, re, h] of [...TENANT_HANDLERS, ...TEMPLATE_HANDLERS, ...REST_HANDLERS]) {
+        for (const [m, re, h] of [...TENANT_HANDLERS, ...TEMPLATE_HANDLERS, ...REST_HANDLERS, ...catalogHandlers(opts.catalog)]) {
           if (m === method && re.test(path)) {
             reply = h(ctx);
             if (reply !== undefined) break;

@@ -151,6 +151,12 @@
   --pw-diff-after-bg: #d3ebdd; /* effect: after value */
   --pw-step-badge-idle-bg: #f0f2f4; /* approval-chain step badge, not reached */
   --pw-shadow-drawer-ccp: -12px 0 32px rgba(15, 25, 40, 0.14); /* change-request drawer */
+  /* CCP-B2 — Commercial Control Plane v1.0.dc.html (CCP-UI v1.0) values not in the
+     PLATFORM-UX-1 file. */
+  --pw-fs-18: 18px; /* commercial request dialog title */
+  --pw-ccp-diff-bg: #fffbf2; /* a changed row in a draft diff */
+  --pw-ccp-empty-line: #c3cbd2; /* the dashed "No commercial plans yet" card */
+  --pw-shadow-dialog-ccp: 0 24px 64px rgba(15, 25, 40, 0.24);
 
   /* Shell geometry (handoff §3.1) */
   --pw-envbar-h: 30px;

@@ -15,6 +15,7 @@
 // The account-menu persona switcher and the "simulate Stripe webhook" button are
 // never opened by a captured state.
 
+import { createHash } from 'node:crypto';
 import { readFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
@@ -46,6 +47,21 @@ const STRIPS: readonly (readonly [string, string])[] = [
   ],
 ];
 
+/**
+ * The release pin (doc/ccp/design-inputs.md): every byte served is checked against the
+ * copy's MANIFEST.sha256 (folded in from the CCP-B2 opener at the merge train, TD-MERGE-5).
+ */
+async function verifiedBytes(name: string): Promise<Buffer> {
+  const buf = await readFile(resolve(DIR, name));
+  const manifest = await readFile(resolve(DIR, 'MANIFEST.sha256'), 'utf8');
+  const want = manifest
+    .split('\n')
+    .map((l) => l.trim().split(/\s+/, 2))
+    .find(([, f]) => f === name)?.[0];
+  if (want !== undefined && createHash('sha256').update(buf).digest('hex') !== want) throw new Error(`${name} does not match the pinned CCP-UI v1.0 manifest`);
+  return buf;
+}
+
 function patchHtml(src: string, props: CcpProtoProps): string {
   let s = src;
   const q = '&quot;';
@@ -71,7 +87,7 @@ function patchHtml(src: string, props: CcpProtoProps): string {
 export async function openCcpProto(page: Page, props: CcpProtoProps = {}, hash = ''): Promise<void> {
   await page.route(`${ORIGIN}/**`, async (route) => {
     const name = decodeURIComponent(new URL(route.request().url()).pathname.slice(1));
-    const buf = await readFile(resolve(DIR, name));
+    const buf = await verifiedBytes(name);
     if (name.endsWith('.html')) {
       await route.fulfill({ body: patchHtml(buf.toString('utf8'), props), contentType: 'text/html; charset=utf-8' });
     } else {

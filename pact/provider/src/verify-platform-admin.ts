@@ -218,6 +218,33 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       return id;
     }
 
+    /**
+     * CCP-B2 — a fresh Sign plan (its own key, so one-DRAFT-per-plan never collides across
+     * interactions) with a monthly envelope allowance and a storage capacity, and its v1
+     * published from the live rows (DRAFT then PUBLISHED, as the A5 guard trigger requires).
+     */
+    async function freshPlan(): Promise<{ planId: string; versionId: string; checksum: string }> {
+      const planId = randomUUID();
+      const n = String(++seq).padStart(4, '0');
+      await db.query(
+        `INSERT INTO subscription."Plan" (id, key, name, product_key, sales_model, status, sellable, list_price_minor, currency, billing_interval, display_order)
+         VALUES ($1, $2, $3, 'sign', 'SELF_SERVICE', 'ACTIVE', false, 1900, 'USD', 'MONTH', 500)`,
+        [planId, `pact-b2-plan-${n}`, `Pact Plan ${n}`],
+      );
+      await db.query(`INSERT INTO subscription."PlanAllowance" (plan_id, allowance_key, included_quantity, unlimited, period) VALUES ($1, 'sign.envelopes', 100, false, 'MONTHLY')`, [planId]);
+      await db.query(`INSERT INTO subscription."PlanCapacity" (plan_id, capacity_key, limit_quantity, unlimited) VALUES ($1, 'sign.storage_bytes', 5368709120, false)`, [planId]);
+      const v = await db.query<{ id: string; content_checksum: string }>(
+        `INSERT INTO subscription."PlanVersion" (id, plan_id, version_number, status, content, content_checksum, created_by, created_at)
+         SELECT gen_random_uuid(), $1::uuid, 1, 'DRAFT', x.c, subscription.ccp_plan_version_checksum(x.c), 'pact', now()
+           FROM (SELECT subscription.ccp_plan_live_content($1::uuid) AS c) x
+         RETURNING id, content_checksum`,
+        [planId],
+      );
+      const row = v.rows[0]!;
+      await db.query(`UPDATE subscription."PlanVersion" SET status = 'PUBLISHED', published_at = now() WHERE id = $1`, [row.id]);
+      return { planId, versionId: row.id, checksum: row.content_checksum };
+    }
+
     beforeAll(async () => {
       container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
@@ -341,6 +368,27 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             await usage.run({ rebuild: true });
             await db.query(`UPDATE subscription."UsageRollupPeriod" SET reserved_count = reserved_count + 1 WHERE tenant_id = $1::uuid AND period_start = '2026-10-01T00:00:00Z'`, [USAGE_TENANT]);
             return undefined;
+          },
+          // CCP-B2 — the catalog. The A5 migration publishes v1 of every A1 catalog plan.
+          'the Sign catalog holds its published v1 versions': async () => undefined,
+          'a published plan version with a pinned subscription exists': async () => {
+            const plan = await freshPlan();
+            const tenant = await commercialTenant();
+            await db.query(
+              `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by)
+               VALUES ($1, $2, $3, $4, 'sign', 'BASE', now(), 'MANUAL', 'pact')`,
+              [randomUUID(), tenant, plan.planId, plan.versionId],
+            );
+            return { versionId: plan.versionId, checksum: plan.checksum };
+          },
+          'a plan without a draft version exists': async () => {
+            const plan = await freshPlan();
+            return { planId: plan.planId, versionId: plan.versionId };
+          },
+          'a draft plan version exists': async () => {
+            const plan = await freshPlan();
+            const out = await asRole<{ version: { id: string; content_checksum: string } }>('catalog_manager', 'POST', `/platform/commercial/catalog/plans/${plan.planId}/drafts`, { from_version_id: plan.versionId });
+            return { planId: plan.planId, versionId: out.version.id, checksum: out.version.content_checksum, publishedVersionId: plan.versionId };
           },
           'a pending change request exists': async () => {
             const requestId = await draftRequest();
