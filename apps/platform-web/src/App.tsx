@@ -22,6 +22,10 @@ import { MatchingPolicyView } from './matching/MatchingPolicyView';
 import { PersonalReviewView } from './personal/PersonalReviewView';
 import { PersonalInviteView } from './personal/PersonalInviteView';
 import { PlatformAdminsView } from './admins/PlatformAdminsView';
+import { COMMERCIAL_PERMISSIONS as CP } from './components/permissions';
+import { ApprovalsInboxView } from './commercial/ApprovalsInboxView';
+import { CommercialAccessDenied } from './commercial/CommercialAccessDenied';
+import { CommercialPlaceholderView, type CommercialPlaceholderPage } from './commercial/CommercialPlaceholderView';
 
 // The platform console app. RouteGuard handles only loading, unauthenticated
 // (→ sign-in) and the TENANT_ACCESS_DENIED wrong-account redirect — it no longer
@@ -85,6 +89,14 @@ export function PlatformConsole({ session }: { readonly session: Session }) {
   // page and its missing permission (with "Back to dashboard").
   const gate = (scope: string, page: string, element: ReactElement): ReactElement =>
     hasScope(session, scope) ? element : <PlatformAccessDenied session={session} scope={scope} page={page} />;
+
+  // CCP-B1 — a Commercial route's gate: the screen, or the in-shell Commercial
+  // access-denied state naming the six commercial roles (CCP-UI v1.0 handoff §2;
+  // super_admin holds no commercial scope, so every Commercial deep link lands here).
+  const commercialGate = (scope: string, page: string, element: ReactElement): ReactElement =>
+    hasScope(session, scope) ? element : <CommercialAccessDenied session={session} scope={scope} page={page} />;
+  const placeholder = (scope: string, page: CommercialPlaceholderPage): ReactElement =>
+    commercialGate(scope, page, <CommercialPlaceholderView page={page} />);
 
   return (
     <PlatformShell session={session}>
@@ -150,6 +162,20 @@ export function PlatformConsole({ session }: { readonly session: Session }) {
         {/* PLATFORM-UX-1 (directive R-12) — Platform admins at /admins (never under
             /platform/, which nginx proxies to the backend). */}
         <Route path="/admins" element={gate(P.adminInvite, 'Platform admins', <PlatformAdminsView />)} />
+        {/* ── CCP-B1 — the Commercial group (handoff §2, directive R-12: never under
+            /platform/). Approvals is the B1 screen; the other five render their
+            designed disabled state until B2–B5 build them. */}
+        <Route path="/commercial" element={<Navigate to="/commercial/approvals" replace />} />
+        <Route
+          path="/commercial/approvals"
+          element={commercialGate(CP.approvalRead, 'approvals', <ApprovalsInboxView session={session} />)}
+        />
+        <Route path="/commercial/subscriptions" element={placeholder(CP.subscriptionRead, 'subscriptions')} />
+        <Route path="/commercial/catalog" element={placeholder(CP.catalogRead, 'catalog')} />
+        <Route path="/commercial/contracts" element={placeholder(CP.subscriptionRead, 'contracts')} />
+        <Route path="/commercial/policy" element={placeholder(CP.approvalRead, 'policy')} />
+        <Route path="/commercial/audit" element={placeholder(CP.commercialAuditRead, 'audit')} />
+        {/* ── end CCP-B1 */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </PlatformShell>

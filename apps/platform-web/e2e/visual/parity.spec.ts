@@ -45,17 +45,18 @@ for (const s of STATES) {
       );
       const protoRects = await loadRects(resolve(SHOTS, `${s.name}-${vp.name}.masks.json`));
       await paint(page, [...protoRects, ...buildRects]);
-      await expect(page).toHaveScreenshot(
-        `${s.name}-${vp.name}.png`,
-        process.env['PW_STRICT']
-          ? {
-              maxDiffPixels: 0,
-              ...(process.env['PW_THRESHOLD'] ? { threshold: Number(process.env['PW_THRESHOLD']) } : {}),
-            }
-          : s.aaAllowance !== undefined
-            ? { maxDiffPixels: s.aaAllowance }
-            : {},
-      );
+      const name = `${s.name}-${vp.name}.png`;
+      const opts = process.env['PW_STRICT']
+        ? {
+            maxDiffPixels: 0,
+            ...(process.env['PW_THRESHOLD'] ? { threshold: Number(process.env['PW_THRESHOLD']) } : {}),
+          }
+        : s.aaAllowance !== undefined
+          ? { maxDiffPixels: s.aaAllowance }
+          : {};
+      // CCP-B1: an element-level state compares that element only.
+      if (s.element) await expect(s.element.build(page)).toHaveScreenshot(name, opts);
+      else await expect(page).toHaveScreenshot(name, opts);
     });
   }
 }

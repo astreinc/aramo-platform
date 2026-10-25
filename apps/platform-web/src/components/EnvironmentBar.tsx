@@ -5,7 +5,7 @@ import './platform-components.css';
 // signed-in identity so an operator can never mistake where they are or who
 // they are signed in as.
 
-export type EnvironmentContext = 'console' | 'studio';
+export type EnvironmentContext = 'console' | 'studio' | 'commercial';
 
 export interface EnvironmentBarProps {
   /** The signed-in email (or the session subject while /platform/me is unresolved). */
@@ -14,13 +14,15 @@ export interface EnvironmentBarProps {
   readonly tenant: string;
   /** The role label ("Super admin"); omitted while unresolved. */
   readonly role?: string | null;
-  /** The Studio swaps the middle line (handoff §3.2). Default: console. */
+  /** The Studio and the Commercial screens swap the middle line (handoff §3.2). Default: console. */
   readonly context?: EnvironmentContext;
 }
 
 const CONTEXT_LINE: Readonly<Record<EnvironmentContext, string>> = {
   console: 'admin.aramo.ai · actions here apply across every tenant',
   studio: 'Template changes apply to every tenant that uses the default',
+  // CCP-B1 — the Commercial screens (Commercial Control Plane v1.0.dc.html env bar).
+  commercial: 'admin.aramo.ai · commercial changes need approval from other people',
 };
 
 export function EnvironmentBar({ email, tenant, role, context = 'console' }: EnvironmentBarProps) {

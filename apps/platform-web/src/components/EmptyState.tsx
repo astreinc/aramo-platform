@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react';
 
 import './platform-components.css';
+import './ccp-components.css';
 
 // PLATFORM-UX-1 F-1 — the empty state (handoff §3.6): centred in the card, a
 // 600 title, one 13px muted line, and an optional action.
@@ -11,8 +12,11 @@ export interface EmptyStateProps {
   readonly body?: ReactNode;
   /** An action (e.g. a "Clear filters" Button). */
   readonly action?: ReactNode;
-  /** md = 36px 20px (panels), lg = 40px 20px (tables). Default: md. */
-  readonly size?: 'md' | 'lg';
+  /**
+   * md = 36px 20px (panels), lg = 40px 20px (tables), xl = 44px 20px with a 700
+   * title (CCP-B1: the CCP-UI v1.0 table empty states). Default: md.
+   */
+  readonly size?: 'md' | 'lg' | 'xl';
 }
 
 export function EmptyState({ title, body, action, size = 'md' }: EmptyStateProps) {

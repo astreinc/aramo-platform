@@ -5,6 +5,7 @@ import type { Locator, Page } from '@playwright/test';
 
 import type { MockOptions } from '../fixtures/mock-api';
 import type { ProtoProps, StudioProtoProps } from '../support/proto';
+import type { CcpProtoProps } from '../support/proto-ccp';
 
 export interface ViewportSpec {
   readonly name: '1440' | '900';
@@ -52,8 +53,10 @@ export interface ScreenState {
      * The design file: Platform Admin.dc.html (default) or Template Studio.dc.html
      * (the template library and the Studio, handoff §10).
      */
-    readonly file?: 'admin' | 'studio';
+    readonly file?: 'admin' | 'studio' | 'ccp';
     readonly props?: ProtoProps;
+    /** CCP-B1: Commercial Control Plane v1.0.dc.html props (persona, bootstrap, demoState). */
+    readonly ccp?: CcpProtoProps;
     /** Template Studio.dc.html props (persona manager / reader). */
     readonly studio?: StudioProtoProps;
     /** Route deep link (`#tenants`). */
@@ -68,7 +71,7 @@ export interface ScreenState {
   readonly build: {
     readonly path: string;
     /** A function gives each test its own (stateful) mock. */
-    readonly mock?: MockOptions | (() => MockOptions);
+    readonly mock?: (MockOptions & { clock?: string }) | (() => MockOptions & { clock?: string });
     readonly act?: (page: Page) => Promise<void>;
   };
   readonly masks?: readonly Mask[];
@@ -97,4 +100,10 @@ export interface ScreenState {
   readonly blur?: boolean;
   /** Rail collapsed by the operator (both sides). */
   readonly railCollapsed?: boolean;
+  /**
+   * CCP-B1: compare ONE element instead of the frame (both sides' locators; the
+   * images are element screenshots). For a region whose surroundings carry a
+   * sanctioned divergence that shifts it (the rail's Commercial group).
+   */
+  readonly element?: { readonly proto: (page: Page) => Locator; readonly build: (page: Page) => Locator };
 }

@@ -8697,6 +8697,18 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/commercial/ApprovalsInboxView.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/commercial/commercial-visibility.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/platform-web/src/components/interactive-components.spec.tsx",
         "project": "aramo-platform-web",
         "status": "excluded"

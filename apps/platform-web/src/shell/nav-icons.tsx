@@ -16,6 +16,13 @@ const PATH: Readonly<Record<NavIconKey, string>> = {
   braces:
     'M8 4c-2 0-3 1-3 3v2c0 1-1 2-2 3 1 1 2 2 2 3v2c0 2 1 3 3 3M16 4c2 0 3 1 3 3v2c0 1 1 2 2 3-1 1-2 2-2 3v2c0 2-1 3-3 3',
   key: 'M14.5 4a5.5 5.5 0 1 1-4.6 8.5L3 19.4V21h3v-2h2v-2h2l1.3-1.3A5.5 5.5 0 0 1 14.5 4zM16 8.5h.01',
+  // CCP-B1 — Commercial Control Plane v1.0.dc.html IC (check, repeat, tag, contract, scale, audit).
+  check: 'M9 12l2 2 4-4M4 4h16v16H4z',
+  repeat: 'M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3',
+  tag: 'M3 3h8l10 10-8 8L3 11zM7.5 7.5h.01',
+  contract: 'M14 3H6v18h12V7zM14 3v4h4M9 17c1.5-2 2.5-2 3 0s1.5 1 3-1',
+  scale: 'M12 3v18M5 7h14M5 7l-3 7a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0zM8 21h8',
+  audit: 'M8 4h11v14a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-2h11v2a3 3 0 0 0 3 3M8 4a3 3 0 0 0-3 3v9M11 8h5M11 12h5',
 };
 
 export function NavIcon({ name }: { readonly name: NavIconKey }) {

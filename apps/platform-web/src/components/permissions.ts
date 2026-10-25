@@ -17,7 +17,19 @@ export const PLATFORM_PERMISSIONS = {
 
 export type PlatformPermission = (typeof PLATFORM_PERMISSIONS)[keyof typeof PLATFORM_PERMISSIONS];
 
-export const PERMISSION_LABEL: Readonly<Record<PlatformPermission, string>> = {
+// CCP-B1 — the commercial read scopes the Commercial rail group filters on (CCP A1
+// catalog, libs/identity/prisma/seed.ts CCP_PLATFORM_ROLE_SEED_BUNDLES). super_admin
+// holds none of them (INV-1). The server stays authoritative on every route.
+export const COMMERCIAL_PERMISSIONS = {
+  approvalRead: 'platform:approval:read',
+  subscriptionRead: 'platform:subscription:read',
+  catalogRead: 'platform:catalog:read',
+  commercialAuditRead: 'platform:commercial:audit:read',
+} as const;
+
+export type CommercialPermission = (typeof COMMERCIAL_PERMISSIONS)[keyof typeof COMMERCIAL_PERMISSIONS];
+
+export const PERMISSION_LABEL: Readonly<Record<PlatformPermission | CommercialPermission, string>> = {
   'platform:tenant:read': 'View tenants',
   'platform:tenant:provision': 'Provision tenants',
   'platform:tenant:lifecycle:manage': 'Manage tenant lifecycle',
@@ -28,6 +40,10 @@ export const PERMISSION_LABEL: Readonly<Record<PlatformPermission, string>> = {
   'platform:document_template:manage': 'Manage templates',
   'platform:matching_policy:read': 'View matching policy',
   'platform:matching_policy:write': 'Change matching policy',
+  'platform:approval:read': 'View commercial change requests',
+  'platform:subscription:read': 'View subscriptions',
+  'platform:catalog:read': 'View the commercial catalog',
+  'platform:commercial:audit:read': 'View the commercial audit',
 };
 
 /** The plain label for a permission code; an unknown code returns the code. */

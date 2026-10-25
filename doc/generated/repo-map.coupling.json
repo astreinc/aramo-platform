@@ -10506,9 +10506,24 @@
       "to": "apps/auth-service/src/tests/test-keys.ts"
     },
     {
+      "from": "apps/platform-web/e2e/fixtures/commercial.ts",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/commercial/commercial-api.ts"
+    },
+    {
+      "from": "apps/platform-web/e2e/fixtures/commercial.ts",
+      "status": "unscoped",
+      "to": "doc/design-reference/ccp/CCP-UI-v1_0/ccp-data.js"
+    },
+    {
       "from": "apps/platform-web/e2e/fixtures/tenants.ts",
       "status": "unscoped",
       "to": "apps/platform-web/src/platform-api.ts"
+    },
+    {
+      "from": "apps/platform-web/e2e/visual/DIVERGENCES.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-B1-pre-execution.md"
     },
     {
       "from": "apps/platform-web/e2e/visual/DIVERGENCES.md",
@@ -10529,6 +10544,16 @@
       "from": "apps/platform-web/project.json",
       "status": "unscoped",
       "to": "apps/platform-web/vite.config.ts"
+    },
+    {
+      "from": "apps/platform-web/src/commercial/test-fixtures.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "from": "apps/platform-web/src/components/permissions.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/seed.ts"
     },
     {
       "from": "apps/platform-web/src/tenants/tenant-roles.ts",
@@ -13931,6 +13956,146 @@
       "from": "doc/ccp/slices/CCP-A9-pre-execution.md",
       "status": "unscoped",
       "to": "libs/subscription/src/lib/commercial/commercial-operator.repository.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/fixtures/commercial.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/tsconfig.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/App.tsx"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/commercial/CommercialAccessDenied.tsx"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/identity/identity.tsx"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/shell/nav.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/theme.css"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/tsconfig.app.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/design-inputs.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-B1-pre-execution.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-platform-admin.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-acceptance.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-change-request.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/support/proto.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/App.tsx"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/identity/identity.tsx"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/shell/nav.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/design-inputs.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A10-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A3-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A9-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/common/src/lib/errors/error-codes.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-approval-eligibility.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B1-pre-execution.md",
+      "status": "unscoped",
+      "to": "pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts"
     },
     {
       "from": "doc/design-reference/platform-admin/github.md",
@@ -28151,6 +28316,11 @@
       "from": "pact/consumers/intelligence-integration-consumer/vitest.config.ts",
       "status": "unscoped",
       "to": "libs/intelligence-integration/src/client.ts"
+    },
+    {
+      "from": "pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/commercial/commercial-api.ts"
     },
     {
       "from": "pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts",

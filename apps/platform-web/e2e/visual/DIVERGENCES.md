@@ -47,6 +47,39 @@ writing every unmasked screen-state is pixel-exact under `threshold 0.2`
 | DV-30 | `:read` Studio panels describe the PUBLISHED version (outline, variable usage, checks, readiness pill) and the preview page header has no organization sample; the design file's describe the draft | Directive R-13 (`:read` sees the published version only; no sample render for `:read`) | studio-viewonly |
 | DV-31 | Unhighlighted preview: each sample value is its own span (shared SafeDoc), so the line's text is shaped per run (sub-pixel glyph differences, no layout shift) where the design file renders one text run | R-11 (SafeDoc is the only renderer; byte-compatible exports) | studio-preview-plain |
 
+## CCP-B1 — Commercial screens (Commercial Control Plane v1.0.dc.html, CCP-UI v1.0)
+
+The CCP states (`states-ccp.ts`) compare the build against the pinned CCP design
+file (`doc/design-reference/ccp/CCP-UI-v1_0/Commercial Control Plane v1.0.dc.html`,
+`MANIFEST.sha256` 5/5 OK; pinned in `doc/ccp/slices/CCP-B1-pre-execution.md`),
+loaded by `support/proto-ccp.ts openCcpProto`. Prototype-only elements are stripped
+before render (handoff "Don't build"): the "PROTOTYPE — NOT AUTHORIZED FOR BUILD"
+chip, the Prototype rail group, the ↗ link-out marks and the rail NEW tag, and the
+retired pilot policy v0 with every request created under it. The build runs on
+`fixtures/commercial.ts` at the prototype's clock (2026-10-24 14:00 UTC). The
+element-level state `ccp-rail-group` compares the Commercial group alone.
+
+| ID | Divergence | Cause | Screen-states |
+|---|---|---|---|
+| DV-C1 | The rail: the build keeps the Dashboard item for commercial roles and draws the console's own rail glyphs, so every item below Operations shifts (the Commercial group itself is compared element-level: `ccp-rail-group`, unmasked) | Pre-execution C-2: the Dashboard item keeps its `platform:tenant:read` gate (the six roles hold it); hiding it is the handoff §2 "assumption", for the PO. Glyphs: the console shell's (as DV-20) | every ccp-* frame state |
+| DV-C2 | The ⌘K trigger keeps the console placeholder ("Tenants, skills, templates") | ⌘K request results are not in the B1 brief (pre-execution C-8) | ccp-approvals, ccp-approvals-pending, ccp-approvals-empty, ccp-approvals-history-empty, ccp-approvals-loading, ccp-approvals-bootstrap, ccp-denied-super-admin |
+| DV-C3 | Inbox table (masked whole: the auto layout sizes every column, head included, from the rows) and the request reference: the A3 DTO carries a UUID (shown short in the table, full in the drawer, which moves the state pill), the requester's id, the policy version id and payload-derived summaries, not the prototype's sample rows | Real values win (A3 `CommercialChangeRequestDto`); data gaps R-13 | ccp-approvals, ccp-approvals-pending, ccp-approvals-bootstrap, ccp-drawer, ccp-dialog-reject |
+| DV-C4 | Drawer facts "Requested by" (no name or roles: ids only) and "Policy" (no version number: the version id, plus the window length) | Data gap: the A3 routes carry user ids and `policy_version_id` only (R-13) | ccp-drawer, ccp-dialog-reject |
+| DV-C5 | Drawer from the effect down: the request carries the after side only (before = "—"), no evidence field, no per-admin roster ("Who can sign" shows its designed empty line), no apply panel (A6 not delivered); every section below the effect shifts | Data gaps (R-13); pre-execution C-7, C-8 | ccp-drawer, ccp-dialog-reject |
+| DV-C6 | Access denied: the card keeps R-5's **Missing** row and **Sign out**, and offers **Back to dashboard** (the design: no Missing row, no Sign out, "Back to tenants") | PLATFORM-UX-1 R-5, bound by Amendment A1-4, outranks the design file (handoff order of authority) | ccp-denied-super-admin |
+| DV-C7 | The reject dialog is the platform ConfirmDialog with the from → to Change box (the lead's brief), so it is taller and centres lower than the design's plain dialog; the dialog box is masked whole, its copy and controls are asserted by the unit and keyboard suites. The Approve confirmation has no design counterpart (the design approves on click) and has no visual state | Lead brief (approve and reject on ConfirmDialog with from → to + consequence); pre-execution C-5 | ccp-dialog-reject |
+| DV-C8 | Bootstrap banner: no "View chains" link (its target is B5's Platform admins page); the chains come from the loaded pending requests' `chain_satisfiable` and from 409 responses, so the fixture adds the pending policy activation the design's banner names (All pending 7 vs 6, the count badge masked) | The A3 routes expose no roster-wide chain fulfillability (R-13); B5 owns the page | ccp-approvals-bootstrap |
+
+Not compared (no design counterpart, unit- and keyboard-tested): the Approve
+confirmation dialog; the five placeholder pages (Subscriptions, Catalog, Contracts,
+Policy, Audit), whose designed disabled state replaces screens later slices build;
+the commercial-role access-denied variant ("Your roles don't include access to
+this page.").
+
+DV-03 note (CCP-B1): `identity.tsx` now labels the six commercial role keys with the
+handoff §3 labels, so the auditor persona's role reads "Read-only auditor", as the
+design does. The DV-03 masks are kept (harmless) until the lead re-baselines.
+
 ## States asserted on copy, not pixels
 
 | ID | States | Cause |

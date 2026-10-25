@@ -144,6 +144,14 @@
   --pw-tracking-label: 0.09em; /* rail group label */
   --pw-tracking-caps: 0.05em; /* table heads, Change label */
 
+  /* ── CCP-B1: CCP-UI v1.0 values not used by PLATFORM-UX-1
+     (Commercial Control Plane v1.0.dc.html; handoff §4, §5.2) ── */
+  --pw-verdict-ok-bg: #f1f8f4; /* "Your eligibility" OK box */
+  --pw-diff-before-bg: #f6d9d2; /* effect: struck before value */
+  --pw-diff-after-bg: #d3ebdd; /* effect: after value */
+  --pw-step-badge-idle-bg: #f0f2f4; /* approval-chain step badge, not reached */
+  --pw-shadow-drawer-ccp: -12px 0 32px rgba(15, 25, 40, 0.14); /* change-request drawer */
+
   /* Shell geometry (handoff §3.1) */
   --pw-envbar-h: 30px;
   --pw-topbar-h: 56px;
