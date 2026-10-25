@@ -22,6 +22,7 @@ import { ESIGN_SCOPE, EsignSenderConsumerGuard, IdentityRepository } from '@aram
 import { DEFAULT_SIGN_BASE_URL, signBaseUrl } from '@aramo/sign';
 import {
   BILLING_PROVIDER_PORT,
+  BillingWebhookInboxService,
   type BillingProviderPort,
   BillingProviderUnavailableError,
   BillingRefusedError,
@@ -47,7 +48,10 @@ import { EsignOwnerActivationService } from './esign-owner-activation.service.js
 //   POST checkout         start a provider checkout       (billing authority)
 //   POST portal           open the provider billing portal (billing authority)
 //   POST webhook/stripe   provider → Aramo; NO session: authenticity is the
-//                         verified Stripe-Signature over the raw body only.
+//                         verified Stripe-Signature over the raw body only. CCP-C1: the
+//                         verified event is recorded in the webhook inbox before it is
+//                         processed (BillingWebhookInboxService; a failure is recorded and
+//                         answered 5xx so the provider redelivers).
 // tenant_id and the acting user come only from the verified auth context. The
 // success / cancel / return URLs are server-built (never taken from the body):
 // no open redirect, and the browser never asserts a payment.
@@ -161,6 +165,8 @@ export class EsignBillingController {
     private readonly identity: IdentityRepository,
     // Personal Free v1.1 §4 — opens the FREE subscription lazily on account read.
     @Optional() private readonly personal?: PersonalSendGate,
+    // CCP-C1 — the webhook inbox (SubscriptionModule provides it; unbound only in unit specs).
+    @Optional() private readonly inbox?: BillingWebhookInboxService,
   ) {}
 
   private async run<T>(requestId: string, fn: () => Promise<T>): Promise<T> {
@@ -274,7 +280,9 @@ export class EsignBillingController {
       throw billingHttpError(e, requestId);
     }
     // Failures propagate (5xx) so the provider redelivers; nothing was recorded.
-    const result = await this.run(requestId, () => this.lifecycle.handleEvent(evt, SIGN_PRODUCT_KEY));
+    const result = await this.run(requestId, () =>
+      this.inbox !== undefined ? this.inbox.receive(evt, SIGN_PRODUCT_KEY) : this.lifecycle.handleEvent(evt, SIGN_PRODUCT_KEY),
+    );
     if (result.outcome === 'APPLIED' && result.activated_owner_user_id !== undefined && result.tenant_id !== null) {
       const outcome = await this.owners.activate(result.tenant_id, result.activated_owner_user_id, requestId);
       this.log.log(`subscription opened for tenant ${result.tenant_id}; subscribing-owner activation ${outcome}`);

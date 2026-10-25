@@ -44,6 +44,8 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 //   POST /platform/commercial/change-requests/{id}/approvals
 //   POST /platform/commercial/change-requests/{id}/reject
 //   POST /platform/commercial/change-requests/{id}/apply        (CCP-A6)
+//   GET  /platform/commercial/billing-commands                  (CCP-C1)
+//   GET  /platform/commercial/billing-webhook-inbox             (CCP-C1)
 // For each route: the allowed call, super_admin refused (403, holds no commercial
 // scope), and the tenant tier refused (403 tier tripwire). Plus the role-level
 // refusals: a role missing the route scope (audit feed), a role missing the requester
@@ -89,6 +91,8 @@ const EX_REQUEST_ID = 'cca10000-0000-7000-8000-0000000000e1';
 
 const AUDIT = '/platform/commercial/audit-events';
 const CR = '/platform/commercial/change-requests';
+const COMMANDS = '/platform/commercial/billing-commands';
+const INBOX = '/platform/commercial/billing-webhook-inbox';
 
 const platformSession = (role: Role) => ({ 'X-Aramo-Consumer': 'platform', Cookie: `aramo_access_token_platform=pact-${role}` });
 const platformJson = (role: Role) => ({ ...platformSession(role), 'Content-Type': 'application/json' });
@@ -184,6 +188,8 @@ const GATE_ROUTES: readonly GateRoute[] = [
   { name: 'POST change-requests/{id}/approvals', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/approvals`, scope: 'platform:approval:read', body: { step_index: 0 } },
   { name: 'POST change-requests/{id}/reject', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/reject`, scope: 'platform:approval:read', body: { reason: 'Credit not justified' } },
   { name: 'POST change-requests/{id}/apply', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/apply`, scope: 'platform:approval:read' },
+  { name: 'GET billing-commands', method: 'GET', path: COMMANDS, scope: 'platform:billing:read' },
+  { name: 'GET billing-webhook-inbox', method: 'GET', path: INBOX, scope: 'platform:billing:read' },
 ];
 
 // ── CCP-A2 — the commercial audit feed ────────────────────────────────────────
@@ -599,6 +605,131 @@ describe('platform-web → POST /platform/commercial/change-requests/{id}/apply 
       .executeTest(async (mock) => {
         const res = await call(`${mock.url}${apply()}`, 'POST', platformSession('commercial_ops'));
         expect(res.status).toBe(409);
+      });
+  });
+});
+
+// ── CCP-C1 — the Stripe command outbox and webhook inbox (read-only) ─────────
+
+describe('platform-web → GET /platform/commercial/billing-commands (CCP-C1)', () => {
+  it('finance_admin lists the failed Stripe commands (200; visible, pending-provider, never dropped)', async () => {
+    await provider
+      .addInteraction()
+      .given('a failed billing command exists')
+      .uponReceiving('a failed billing command list read by finance_admin')
+      .withRequest('GET', COMMANDS, (b) => {
+        b.headers(platformSession('finance_admin')).query({ state: 'FAILED', limit: '50' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          commands: eachLike({
+            id: uuid('cca10000-0000-7000-8000-0000000000f1'),
+            provider: 'STRIPE',
+            command_kind: 'SUBSCRIPTION_CANCEL',
+            change_request_id: uuid(EX_REQUEST_ID),
+            step: like('end_self_service'),
+            idempotency_key: regex('^aramo-ccp-[0-9a-f-]{36}-[a-z][a-z0-9_]*$', `aramo-ccp-${EX_REQUEST_ID}-end_self_service`),
+            tenant_id: uuid(CREATE_TENANT),
+            product_key: 'sign',
+            target_ref: like('sub_pact_c1'),
+            params: { mode: 'IMMEDIATE' },
+            state: 'FAILED',
+            pending_provider: true,
+            attempts: integer(1),
+            next_attempt_at: null,
+            failure: { code: like('PROVIDER_REFUSED'), detail: like('billing provider unavailable') },
+            last_detail: like('billing provider unavailable'),
+            provider_accepted_at: null,
+            confirmed_at: null,
+            confirmation_source: null,
+            confirmation_event_id: null,
+            failed_at: iso(),
+            created_by: uuid(OP.commercial_ops),
+            created_at: iso(),
+            updated_at: iso(),
+          }),
+          next_cursor: null,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${COMMANDS}?state=FAILED&limit=50`, 'GET', platformSession('finance_admin'));
+        expect(res.status).toBe(200);
+        expect((res.body['commands'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+
+  it('a role without platform:billing:read (catalog_manager) is refused (403)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a billing command list read by a role missing the billing read scope')
+      .withRequest('GET', COMMANDS, (b) => {
+        b.headers(platformSession('catalog_manager'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:billing:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${COMMANDS}`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(403);
+        expect(errCode(res.body)).toBe('INSUFFICIENT_PERMISSIONS');
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/billing-webhook-inbox (CCP-C1)', () => {
+  it('support_admin lists the failed webhook inbox events (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('a failed billing webhook event exists')
+      .uponReceiving('a failed webhook inbox read by support_admin')
+      .withRequest('GET', INBOX, (b) => {
+        b.headers(platformSession('support_admin')).query({ status: 'FAILED' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          events: eachLike({
+            id: uuid('cca10000-0000-7000-8000-0000000000f2'),
+            provider: 'STRIPE',
+            provider_event_id: like('evt_pact_c1'),
+            event_type: like('invoice.paid'),
+            event_created_at: iso(),
+            subscription_ref: like('sub_pact_c1'),
+            checkout_session_ref: null,
+            product_key: 'sign',
+            status: 'FAILED',
+            attempts: integer(1),
+            next_attempt_at: iso(),
+            outcome: null,
+            detail: null,
+            last_error: like('billing provider unavailable'),
+            received_at: iso(),
+            processed_at: null,
+          }),
+          next_cursor: null,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${INBOX}?status=FAILED`, 'GET', platformSession('support_admin'));
+        expect(res.status).toBe(200);
+        expect((res.body['events'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+
+  it('a role without platform:billing:read (catalog_manager) is refused (403)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a webhook inbox read by a role missing the billing read scope')
+      .withRequest('GET', INBOX, (b) => {
+        b.headers(platformSession('catalog_manager'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:billing:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${INBOX}`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(403);
       });
   });
 });

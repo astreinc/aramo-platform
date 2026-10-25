@@ -27,8 +27,11 @@ export {
 } from './lib/allowance.service.js';
 // Aramo Sign launch — subscription lifecycle + billing provider.
 export {
+  BILLING_PROVIDER_COMMAND_PORT,
   BILLING_PROVIDER_PORT,
   type BillingAccountDetails,
+  type BillingProviderCommandPort,
+  type ProviderCheckoutSessionState,
   BillingProviderUnavailableError,
   BillingWebhookSignatureError,
   type BillingProviderPort,
@@ -36,7 +39,50 @@ export {
   type ProviderSubscriptionState,
   type VerifiedBillingEvent,
 } from './lib/billing/billing-provider.port.js';
-export { StripeBillingProvider, STRIPE_API_VERSION, stripeEventSubscriptionRef, stripeSubscriptionState, verifyStripeSignature } from './lib/billing/stripe-billing.provider.js';
+export {
+  StripeBillingProvider,
+  STRIPE_API_VERSION,
+  stripeCheckoutSessionState,
+  stripeEventCheckoutSessionRef,
+  stripeEventSubscriptionRef,
+  stripeSubscriptionState,
+  verifyStripeSignature,
+} from './lib/billing/stripe-billing.provider.js';
+// CCP-C1 — the Stripe command outbox and the webhook inbox.
+export {
+  BILLING_COMMAND_ACTIONS,
+  BILLING_COMMAND_KINDS,
+  BILLING_COMMAND_MAX_ATTEMPTS,
+  BILLING_COMMAND_STATES,
+  BILLING_COMMAND_TRANSITIONS,
+  BILLING_COMMAND_UNCONFIRMED_STATES,
+  SUBSCRIPTION_CANCEL_MODES,
+  billingCommandIdempotencyKey,
+  canTransitionBillingCommand,
+  type BillingCommandConfirmation,
+  type BillingCommandKind,
+  type BillingCommandState,
+  type SubscriptionCancelMode,
+} from './lib/billing/billing-provider-command.js';
+export {
+  BillingCommandError,
+  BillingCommandService,
+  type BillingCommandErrorCode,
+  type BillingCommandListQuery,
+  type BillingCommandRow,
+  type DispatchTally,
+  type EnqueueBillingCommandInput,
+  type ReconcileTally,
+} from './lib/billing/billing-command.service.js';
+export {
+  BILLING_WEBHOOK_INBOX_STATUSES,
+  BillingWebhookInboxQueryError,
+  BillingWebhookInboxService,
+  INBOX_MAX_AUTOMATIC_ATTEMPTS,
+  type BillingWebhookInboxRow,
+  type BillingWebhookInboxStatus,
+  type DrainTally,
+} from './lib/billing/billing-webhook-inbox.service.js';
 export {
   SubscriptionLifecycleService,
   BillingRefusedError,

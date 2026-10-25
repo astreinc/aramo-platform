@@ -307,6 +307,49 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'a draft change request exists': async () => ({ requestId: await draftRequest() }),
           // CCP-A6 — the transactional apply.
           'an approved subscription-open change request exists': async () => ({ requestId: await approvedOpen() }),
+          // CCP-C1 — a FAILED Stripe command (an approved CONVERSION request on a fresh tenant,
+          // through the HTTP surface; the command row through its own state machine).
+          'a failed billing command exists': async () => {
+            const tenant_id = await commercialTenant();
+            const out = await asRole<{ request: { id: string } }>('commercial_ops', 'POST', '/platform/commercial/change-requests', {
+              action_type: 'CONVERSION',
+              tenant_id,
+              product_key: 'sign',
+              payload: { pact_fixture: 'self_service_to_governed' },
+              reason: 'Convert the self-service subscription to a governed one',
+              idempotency_key: `pact-c1-state-${String(++seq).padStart(4, '0')}`,
+            });
+            const id = out.request.id;
+            await asRole('commercial_ops', 'POST', `/platform/commercial/change-requests/${id}/submit`);
+            await asRole('finance_admin', 'POST', `/platform/commercial/change-requests/${id}/approvals`, { step_index: 0 });
+            const cmd = randomUUID();
+            await db.query(
+              `INSERT INTO subscription."BillingProviderCommand" (id, provider, command_kind, change_request_id, step, idempotency_key, tenant_id, product_key, target_ref, params, state, attempts, created_by, created_at, updated_at)
+               VALUES ($1, 'STRIPE', 'SUBSCRIPTION_CANCEL', $2::uuid, 'end_self_service', 'aramo-ccp-' || $2::text || '-end_self_service', $3, 'sign', 'sub_pact_c1', '{"mode":"IMMEDIATE"}', 'PENDING', 0, $4, now(), now())`,
+              [cmd, id, tenant_id, OP.commercial_ops],
+            );
+            await db.query(`UPDATE subscription."BillingProviderCommand" SET state = 'DISPATCHING', attempts = 1, lease_until = now() + interval '5 minutes', updated_at = now() WHERE id = $1`, [cmd]);
+            await db.query(
+              `UPDATE subscription."BillingProviderCommand" SET state = 'FAILED', failed_at = now(), lease_until = NULL, last_error_code = 'PROVIDER_REFUSED', last_error_detail = 'billing provider unavailable: No such subscription', updated_at = now() WHERE id = $1`,
+              [cmd],
+            );
+            return undefined;
+          },
+          // CCP-C1 — a FAILED webhook inbox event (its own state machine: RECEIVED → PROCESSING → FAILED).
+          'a failed billing webhook event exists': async () => {
+            const row = randomUUID();
+            await db.query(
+              `INSERT INTO subscription."BillingWebhookInbox" (id, provider, provider_event_id, event_type, event_created_at, subscription_ref, product_key, status, attempts, received_at, updated_at)
+               VALUES ($1, 'STRIPE', $2, 'invoice.paid', now(), 'sub_pact_c1', 'sign', 'RECEIVED', 0, now(), now())`,
+              [row, `evt_pact_c1_${String(++seq).padStart(4, '0')}`],
+            );
+            await db.query(`UPDATE subscription."BillingWebhookInbox" SET status = 'PROCESSING', attempts = 1, lease_until = now() + interval '5 minutes', updated_at = now() WHERE id = $1`, [row]);
+            await db.query(
+              `UPDATE subscription."BillingWebhookInbox" SET status = 'FAILED', lease_until = NULL, last_error = 'billing provider unavailable: down', next_attempt_at = now() + interval '1 minute', updated_at = now() WHERE id = $1`,
+              [row],
+            );
+            return undefined;
+          },
           'an approved subscription-open change request whose approver lost eligibility exists': async () => {
             // A dedicated attested finance_admin signs, then loses the role (NC-5): the seeded
             // per-role operators are left untouched for every other interaction.

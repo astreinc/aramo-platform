@@ -12,12 +12,20 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { BASE_COMPOSITION, assertProductKey, openBaseSubscription, type ProductKey } from '../product-registry.js';
 
 import {
+  BILLING_PROVIDER_COMMAND_PORT,
   BILLING_PROVIDER_PORT,
+  type BillingProviderCommandPort,
   type BillingProviderPort,
   BillingProviderUnavailableError,
   type ProviderSubscriptionState,
   type VerifiedBillingEvent,
 } from './billing-provider.port.js';
+import {
+  type BillingCommandConfirmation,
+  REFETCH_CONFIRMATION,
+  confirmSessionCommandsInTx,
+  confirmSubscriptionCommandsInTx,
+} from './billing-provider-command.js';
 import { ORGANIZATION_BILLING_PROFILE_PORT, type OrganizationBillingProfile, type OrganizationBillingProfilePort } from './organization-billing-profile.port.js';
 import { PLAN_ELIGIBILITY_PORT, type PlanEligibilityPort, type PlanEligibilityRule } from './plan-eligibility.port.js';
 import { type PriceResolution, effectiveProviderPrice, parsePlanPrices, resolvePriceToVersion } from './provider-price.js';
@@ -99,6 +107,13 @@ export { parsePlanPrices } from './provider-price.js';
 //             flag only when the conflict is gone. C-10: the hold composes with the country and
 //             domain holds; each reason keeps its own open flag.
 //   No release exists until CCP-C2 (C-11/C-12): every such checkout is refused or held.
+//
+// CCP-C1 (PBD §5.2 row C1; Conversion Rule C-22, C-23) — the transaction that applies a provider
+// state (webhook or re-fetch) also CONFIRMS the Stripe commands whose effect that state shows
+// (billing-provider-command.ts), so a command is pending-provider until the confirming state is
+// APPLIED, never on its own local commit. A checkout.session.expired event re-fetches the session:
+// an expired session moves its CREATED CheckoutIntent to EXPIRED and confirms an expire command.
+// The A6 hold above is unchanged (the confirmation runs after it, in the same transaction).
 
 export const PAST_DUE_GRACE_DAYS_DEFAULT = 7;
 
@@ -280,6 +295,9 @@ export class SubscriptionLifecycleService {
     @Optional() @Inject(PLAN_ELIGIBILITY_PORT) private readonly eligibility?: PlanEligibilityPort,
     @Optional() @Inject(LEGAL_DOCUMENT_REGISTRY) legal?: readonly LegalDocumentVersion[],
     @Optional() @Inject(ORGANIZATION_BILLING_PROFILE_PORT) private readonly orgProfile?: OrganizationBillingProfilePort,
+    // CCP-C1 — the checkout-session read (checkout.session.expired events). Unbound: such an
+    // event is IGNORED as before.
+    @Optional() @Inject(BILLING_PROVIDER_COMMAND_PORT) private readonly providerCommands?: BillingProviderCommandPort,
   ) {
     this.legal = legal ?? LEGAL_DOCUMENTS;
   }
@@ -603,11 +621,15 @@ export class SubscriptionLifecycleService {
     if (seen !== null) return { outcome: 'DUPLICATE', tenant_id: null };
 
     const ref = evt.subscription_ref;
+    const confirmation: BillingCommandConfirmation = { source: 'WEBHOOK', event_id: evt.id };
+    const session = evt.checkout_session_ref ?? null;
     // A provider failure throws here: nothing is recorded, the redelivery retries.
     const result: ApplyResult =
-      ref === null
-        ? { outcome: 'IGNORED', detail: `event ${evt.type} carries no subscription`, tenant_id: null }
-        : await this.syncSubscription(ref, product_key, at);
+      ref !== null
+        ? await this.syncSubscription(ref, product_key, at, confirmation)
+        : evt.type === 'checkout.session.expired' && session !== null && this.providerCommands !== undefined
+          ? await this.syncCheckoutSession(session, product_key, at, confirmation)
+          : { outcome: 'IGNORED', detail: `event ${evt.type} carries no subscription`, tenant_id: null };
 
     await this.prisma.billingEvent.createMany({
       data: [
@@ -628,13 +650,60 @@ export class SubscriptionLifecycleService {
   }
 
   /** Re-fetch one provider subscription and apply its current state. */
-  async syncSubscription(subscription_ref: string, product_key: ProductKey, at: Date = new Date()): Promise<ApplyResult> {
+  async syncSubscription(
+    subscription_ref: string,
+    product_key: ProductKey,
+    at: Date = new Date(),
+    confirmation: BillingCommandConfirmation = REFETCH_CONFIRMATION,
+  ): Promise<ApplyResult> {
     assertProductKey(product_key);
+    // The provider read runs before (outside) the local transaction.
     const state = await this.billing.retrieveSubscription(subscription_ref);
-    return this.applyProviderState(state, product_key, at);
+    return this.applyProviderState(state, product_key, at, confirmation);
   }
 
-  async applyProviderState(state: ProviderSubscriptionState, product_key: ProductKey, at: Date = new Date()): Promise<ApplyResult> {
+  /**
+   * CCP-C1 — re-fetch one checkout session and apply it: an EXPIRED session moves its CREATED
+   * CheckoutIntent (same tenant, same product) to EXPIRED and confirms the expire commands on it,
+   * in one transaction under the billing lock. Any other session status changes nothing here (a
+   * completed session is applied through its subscription).
+   */
+  async syncCheckoutSession(
+    session_ref: string,
+    product_key: ProductKey,
+    at: Date = new Date(),
+    confirmation: BillingCommandConfirmation = REFETCH_CONFIRMATION,
+  ): Promise<ApplyResult> {
+    assertProductKey(product_key);
+    if (this.providerCommands === undefined) return { outcome: 'IGNORED', detail: 'checkout session reads are not configured', tenant_id: null };
+    const session = await this.providerCommands.retrieveCheckoutSession(session_ref);
+    const intent = await this.prisma.checkoutIntent.findFirst({
+      where: { provider: session.provider, provider_session_ref: session.session_ref },
+      include: { plan: true },
+    });
+    if (intent === null) return { outcome: 'IGNORED', detail: 'checkout session is not linked to an Aramo checkout', tenant_id: null };
+    const tenant_id = intent.tenant_id;
+    if (intent.plan.product_key !== product_key) return { outcome: 'IGNORED', detail: `checkout session belongs to another product than ${product_key}`, tenant_id };
+    if ((session.tenant_id !== null && session.tenant_id !== tenant_id) || (session.intent_id !== null && session.intent_id !== intent.id)) {
+      this.log.warn(`checkout session metadata mismatch for ${session.session_ref}`);
+      return { outcome: 'IGNORED', detail: 'provider session metadata does not match the Aramo record', tenant_id };
+    }
+    if (session.status !== 'expired') return { outcome: 'IGNORED', detail: `checkout session ${session.status}`, tenant_id };
+    return this.prisma.$transaction(async (tx) => {
+      await takeBillingLock(tx, tenant_id);
+      const expired = await tx.checkoutIntent.updateMany({ where: { id: intent.id, status: 'CREATED' }, data: { status: 'EXPIRED' } });
+      const confirmed = await confirmSessionCommandsInTx(tx, { tenant_id, product_key, session, confirmation, at });
+      const detail = `checkout session expired${expired.count > 0 ? '; intent EXPIRED' : ''}${confirmed.length > 0 ? `; ${confirmed.length} command(s) confirmed` : ''}`;
+      return { outcome: expired.count > 0 || confirmed.length > 0 ? 'APPLIED' : 'IGNORED', detail, tenant_id } as ApplyResult;
+    });
+  }
+
+  async applyProviderState(
+    state: ProviderSubscriptionState,
+    product_key: ProductKey,
+    at: Date = new Date(),
+    confirmation: BillingCommandConfirmation = REFETCH_CONFIRMATION,
+  ): Promise<ApplyResult> {
     assertProductKey(product_key);
     const existing = await this.prisma.tenantSubscription.findFirst({
       where: { billing_provider: state.provider, billing_subscription_ref: state.subscription_ref },
@@ -663,36 +732,59 @@ export class SubscriptionLifecycleService {
     return this.prisma.$transaction(async (tx) => {
       await takeBillingLock(tx, tenant_id);
       const mapped = mapProviderStatus(state.provider_status);
-      const row = await tx.tenantSubscription.findFirst({
-        where: { billing_provider: state.provider, billing_subscription_ref: state.subscription_ref, product_key },
-      });
-      // A1 §2.6 — activation guard (fail closed: a missing country is not US).
-      const countryOk = billingCountrySupported(state.account_country);
-      // P3 §4 — and the domain guard (fail closed: not AUTHORITATIVE holds).
-      const intent_id = intent?.id ?? null;
-      await this.guardFlag(tx, tenant_id, state, intent_id, BILLING_COUNTRY_NOT_SUPPORTED, !countryOk, at);
-      await this.guardFlag(tx, tenant_id, state, intent_id, DOMAIN_NOT_AUTHORITATIVE, !domainOk, at);
-      const held = [...(countryOk ? [] : [BILLING_COUNTRY_HELD]), ...(domainOk ? [] : [DOMAIN_VERIFICATION_HELD])].join('; ');
-      if (row !== null) return this.updateRow(tx, row, state, mapped, at, held);
-      if (intent === null) return { outcome: 'IGNORED', detail: 'unknown subscription without a checkout intent', tenant_id } as ApplyResult;
-      // CCP-A6 (C-6, C-7) — a NEW activation never ends an open governed subscription, in any
-      // provider state and whenever its CheckoutIntent was created. Read under the billing lock.
-      // A provider subscription that has ended no longer conflicts (C-9: a webhook-confirmed end
-      // resolves the flag). Composed beside the country and domain holds (C-10).
-      const governed = await tx.tenantSubscription.findFirst({ where: openBaseSubscription(tenant_id, product_key) });
-      const governedConflict = governed !== null && isGovernedSubscription(governed) && !mapped.ends;
-      await this.guardFlag(tx, tenant_id, state, intent_id, GOVERNED_SUBSCRIPTION_OPEN, governedConflict, at);
-      const allHeld = [held, ...(governedConflict ? [GOVERNED_SUBSCRIPTION_HELD] : [])].filter((h) => h !== '').join('; ');
-      if (allHeld !== '') {
-        // C-7(c)/(d) — IGNORED with the hold named; openRow is not reached, so no SELF_SERVICE row
-        // opens, the governed row is untouched and the CheckoutIntent stays CREATED.
-        this.log.warn(
-          `${state.subscription_ref} held for reconciliation (country ${state.account_country ?? 'none'}${countryOk ? '' : ' not supported'}${domainOk ? '' : '; domain not authoritative'}${governedConflict ? '; governed subscription open' : ''})`,
-        );
-        return { outcome: 'IGNORED', detail: allHeld, tenant_id } as ApplyResult;
+      const result = await this.applyLocked(tx, tenant_id, product_key, state, mapped, intent, domainOk, at);
+      // CCP-C1 (C-22, C-23) — the state is applied: confirm the cancel commands it proves, in the
+      // same transaction (never before the state is applied, never on a command's own commit).
+      // Only a lifecycle wired with the command port confirms (SubscriptionModule always binds it;
+      // commands are dispatched only through it). Unwired, nothing is confirmed: fail-safe, a
+      // command stays pending-provider (C-23), never reported committed.
+      if (this.providerCommands !== undefined) {
+        await confirmSubscriptionCommandsInTx(tx, { tenant_id, product_key, state, ends: mapped.ends, confirmation, at });
       }
-      return this.openRow(tx, tenant_id, product_key, intent, state, mapped, at);
+      return result;
     });
+  }
+
+  /** The provider-state application under the billing lock (A1, P3 and A6 guards; unchanged). */
+  private async applyLocked(
+    tx: Tx,
+    tenant_id: string,
+    product_key: ProductKey,
+    state: ProviderSubscriptionState,
+    mapped: ReturnType<typeof mapProviderStatus>,
+    intent: { id: string; tenant_id: string; user_id: string; plan_id: string; plan: { key: string; product_key: string } } | null,
+    domainOk: boolean,
+    at: Date,
+  ): Promise<ApplyResult> {
+    const row = await tx.tenantSubscription.findFirst({
+      where: { billing_provider: state.provider, billing_subscription_ref: state.subscription_ref, product_key },
+    });
+    // A1 §2.6 — activation guard (fail closed: a missing country is not US).
+    const countryOk = billingCountrySupported(state.account_country);
+    // P3 §4 — and the domain guard (fail closed: not AUTHORITATIVE holds).
+    const intent_id = intent?.id ?? null;
+    await this.guardFlag(tx, tenant_id, state, intent_id, BILLING_COUNTRY_NOT_SUPPORTED, !countryOk, at);
+    await this.guardFlag(tx, tenant_id, state, intent_id, DOMAIN_NOT_AUTHORITATIVE, !domainOk, at);
+    const held = [...(countryOk ? [] : [BILLING_COUNTRY_HELD]), ...(domainOk ? [] : [DOMAIN_VERIFICATION_HELD])].join('; ');
+    if (row !== null) return this.updateRow(tx, row, state, mapped, at, held);
+    if (intent === null) return { outcome: 'IGNORED', detail: 'unknown subscription without a checkout intent', tenant_id } as ApplyResult;
+    // CCP-A6 (C-6, C-7) — a NEW activation never ends an open governed subscription, in any
+    // provider state and whenever its CheckoutIntent was created. Read under the billing lock.
+    // A provider subscription that has ended no longer conflicts (C-9: a webhook-confirmed end
+    // resolves the flag). Composed beside the country and domain holds (C-10).
+    const governed = await tx.tenantSubscription.findFirst({ where: openBaseSubscription(tenant_id, product_key) });
+    const governedConflict = governed !== null && isGovernedSubscription(governed) && !mapped.ends;
+    await this.guardFlag(tx, tenant_id, state, intent_id, GOVERNED_SUBSCRIPTION_OPEN, governedConflict, at);
+    const allHeld = [held, ...(governedConflict ? [GOVERNED_SUBSCRIPTION_HELD] : [])].filter((h) => h !== '').join('; ');
+    if (allHeld !== '') {
+      // C-7(c)/(d) — IGNORED with the hold named; openRow is not reached, so no SELF_SERVICE row
+      // opens, the governed row is untouched and the CheckoutIntent stays CREATED.
+      this.log.warn(
+        `${state.subscription_ref} held for reconciliation (country ${state.account_country ?? 'none'}${countryOk ? '' : ' not supported'}${domainOk ? '' : '; domain not authoritative'}${governedConflict ? '; governed subscription open' : ''})`,
+      );
+      return { outcome: 'IGNORED', detail: allHeld, tenant_id } as ApplyResult;
+    }
+    return this.openRow(tx, tenant_id, product_key, intent, state, mapped, at);
   }
 
   /**

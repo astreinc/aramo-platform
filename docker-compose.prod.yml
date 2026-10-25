@@ -471,6 +471,9 @@ services:
       - BILLING_PAST_DUE_GRACE_DAYS
       - SIGN_BILLING_RECONCILE_ENABLED
       - SIGN_BILLING_RECONCILE_INTERVAL_MS
+      # CCP-C1 — the Stripe command outbox + webhook inbox worker (opt-in; unset ⇒ off).
+      - SIGN_BILLING_COMMANDS_ENABLED
+      - SIGN_BILLING_COMMANDS_INTERVAL_MS
       # Aramo Sign launch — evidence-manifest signing in KMS (asymmetric SIGN_VERIFY
       # key). Unset ⇒ the software signer (unchanged behaviour). The key is IaC.
       - SIGN_KMS_KEY_ID

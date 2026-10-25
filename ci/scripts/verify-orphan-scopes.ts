@@ -91,6 +91,10 @@ export const CLASSIFICATIONS: Record<string, Classification> = {
   // matrix; COMMERCIAL_ACTIONS and the step scopes in
   // libs/subscription/src/lib/commercial/commercial-change-request.ts), so those 10 move
   // to SERVICE_ENFORCED. 3 read reservations remain (catalog / subscription / billing :read).
+  // CCP C1 — platform:billing:read is now LITERALLY enforced by
+  // PlatformCommercialBillingController (GET /platform/commercial/billing-commands and
+  // /billing-webhook-inbox), so its ACTIVE_RESERVED entry is REMOVED (2 read reservations
+  // remain: catalog / subscription :read).
   'platform:catalog:read': { cls: 'ACTIVE_RESERVED', reason: 'CCP A1 catalog-only reservation (Aramo-CCP-A1-Commercial-Roles-and-Scopes-Directive-v1_0 §6.6): granted to the CCP platform roles, enforced from CCP A3 + A5 by the catalog and plan-version read routes; this entry is removed when that enforcing route lands' },
   'platform:catalog:draft': { cls: 'SERVICE_ENFORCED', reason: 'requester scope for PLAN_VERSION_PUBLISH / PLAN_RETIRE change requests — CommercialChangeRequestService.create checks COMMERCIAL_ACTIONS[..].requester_scope against the server-resolved scopes (libs/subscription/src/lib/commercial/commercial-change-request.ts; CCP A3)' },
   'platform:catalog:approve': { cls: 'SERVICE_ENFORCED', reason: 'approval-step scope (finance and owner steps of a catalog chain) — checkApprovalEligibility reads it LIVE in the approve transaction (libs/subscription/src/lib/commercial/commercial-approval-eligibility.ts; CCP A3)' },
@@ -101,7 +105,6 @@ export const CLASSIFICATIONS: Record<string, Classification> = {
   'platform:entitlement:request': { cls: 'SERVICE_ENFORCED', reason: 'requester scope for ENTITLEMENT_GRANT / _REVOKE change requests — CommercialChangeRequestService.create (libs/subscription/src/lib/commercial/commercial-change-request.ts; CCP A3)' },
   'platform:entitlement:approve': { cls: 'SERVICE_ENFORCED', reason: 'approval-step scope of entitlement chains — checkApprovalEligibility reads it LIVE in the approve transaction (libs/subscription/src/lib/commercial/commercial-approval-eligibility.ts; CCP A3)' },
   'platform:subscription:support': { cls: 'SERVICE_ENFORCED', reason: 'requester scope for an escalated SUPPORT_EXTENSION change request — CommercialChangeRequestService.create (libs/subscription/src/lib/commercial/commercial-change-request.ts; CCP A3); the bounded in-limit exception lands in CCP A8' },
-  'platform:billing:read': { cls: 'ACTIVE_RESERVED', reason: 'CCP A1 catalog-only reservation (Aramo-CCP-A1-Commercial-Roles-and-Scopes-Directive-v1_0 §6.6): granted to the CCP platform roles, enforced from CCP Phase C (C3/C4) by the billing status read routes; this entry is removed when that enforcing route lands' },
   'platform:billing:request': { cls: 'SERVICE_ENFORCED', reason: 'requester scope for CREDIT / DISCOUNT change requests — CommercialChangeRequestService.create (libs/subscription/src/lib/commercial/commercial-change-request.ts; CCP A3)' },
   'platform:billing:approve': { cls: 'SERVICE_ENFORCED', reason: 'approval-step scope of billing chains (credit, discount) — checkApprovalEligibility reads it LIVE in the approve transaction (libs/subscription/src/lib/commercial/commercial-approval-eligibility.ts; CCP A3)' },
   // --- EXIT_HYG (owning-lane ruling required) ---

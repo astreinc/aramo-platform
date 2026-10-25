@@ -600,3 +600,82 @@ model CommercialChangeApplication {
   @@index([subscription_id])
   @@schema("subscription")
 }
+
+// CCP-C1 (PBD §5.2 row C1; Conversion Rule C-22, C-23) — one durable, idempotent Stripe-owned
+// operation (the command outbox). Keyed by (change_request_id, step); idempotency_key is derived
+// ('aramo-ccp-<change_request_id>-<step>', CHECK). PENDING → DISPATCHING → PENDING_PROVIDER →
+// CONFIRMED, with RETRY_WAIT / FAILED; the provider call never runs inside a local transaction,
+// and CONFIRMED is written only in the transaction that applies the provider-confirmed state.
+// State machine, immutability and the "completed approval chain" INSERT rule by trigger
+// (migration 20261026020000); DELETE rejected. Plain UUID reference to the change request (FK in
+// SQL); no Prisma relation.
+model BillingProviderCommand {
+  id                    String    @id @db.Uuid
+  // CHECK: STRIPE
+  provider              String
+  // CHECK: SUBSCRIPTION_CANCEL | CHECKOUT_SESSION_EXPIRE
+  command_kind          String
+  change_request_id     String    @db.Uuid
+  step                  String
+  idempotency_key       String    @unique
+  tenant_id             String    @db.Uuid
+  product_key           String
+  target_ref            String
+  params                Json
+  // CHECK: PENDING | DISPATCHING | PENDING_PROVIDER | RETRY_WAIT | FAILED | CONFIRMED
+  state                 String
+  attempts              Int
+  lease_until           DateTime? @db.Timestamptz(3)
+  next_attempt_at       DateTime? @db.Timestamptz(3)
+  last_error_code       String?
+  last_error_detail     String?
+  provider_accepted_at  DateTime? @db.Timestamptz(3)
+  confirmed_at          DateTime? @db.Timestamptz(3)
+  // CHECK: WEBHOOK | REFETCH
+  confirmation_source   String?
+  confirmation_event_id String?
+  failed_at             DateTime? @db.Timestamptz(3)
+  created_by            String    @db.Uuid
+  created_at            DateTime  @db.Timestamptz(3)
+  updated_at            DateTime  @db.Timestamptz(3)
+
+  @@unique([change_request_id, step])
+  @@index([state, next_attempt_at])
+  @@index([provider, target_ref])
+  @@index([tenant_id, created_at(sort: Desc), id(sort: Desc)])
+  @@index([created_at(sort: Desc), id(sort: Desc)])
+  @@schema("subscription")
+}
+
+// CCP-C1 — the webhook inbox: the durable receipt of every VERIFIED provider event (the
+// verified envelope only; never the raw payload), claimed with a lease while processed.
+// BillingEvent stays the outcome evidence and the dedupe. Envelope immutable, PROCESSED
+// terminal, DELETE rejected (trigger, migration 20261026020000).
+model BillingWebhookInbox {
+  id                   String    @id @db.Uuid
+  // CHECK: STRIPE
+  provider             String
+  provider_event_id    String
+  event_type           String
+  event_created_at     DateTime  @db.Timestamptz(6)
+  subscription_ref     String?
+  checkout_session_ref String?
+  product_key          String
+  // CHECK: RECEIVED | PROCESSING | PROCESSED | FAILED
+  status               String
+  attempts             Int
+  lease_until          DateTime? @db.Timestamptz(3)
+  next_attempt_at      DateTime? @db.Timestamptz(3)
+  // CHECK: APPLIED | IGNORED | DUPLICATE
+  outcome              String?
+  detail               String?
+  last_error           String?
+  received_at          DateTime  @db.Timestamptz(3)
+  processed_at         DateTime? @db.Timestamptz(3)
+  updated_at           DateTime  @db.Timestamptz(3)
+
+  @@unique([provider, provider_event_id])
+  @@index([status, next_attempt_at])
+  @@index([received_at(sort: Desc), id(sort: Desc)])
+  @@schema("subscription")
+}

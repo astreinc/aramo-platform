@@ -10,7 +10,9 @@ import { CommercialOperatorRepository } from './commercial/commercial-operator.r
 import { FreePersonalSubscriptionService } from './free-personal-subscription.js';
 import { LegalAcceptanceService } from './legal/legal-acceptance.service.js';
 import { PlanVersionRepository } from './plan-version.repository.js';
-import { BILLING_PROVIDER_PORT } from './billing/billing-provider.port.js';
+import { BILLING_PROVIDER_COMMAND_PORT, BILLING_PROVIDER_PORT } from './billing/billing-provider.port.js';
+import { BillingCommandService } from './billing/billing-command.service.js';
+import { BillingWebhookInboxService } from './billing/billing-webhook-inbox.service.js';
 import { StripeBillingProvider } from './billing/stripe-billing.provider.js';
 import { SubscriptionLifecycleService } from './billing/subscription-lifecycle.service.js';
 import { PrismaService } from './prisma/prisma.service.js';
@@ -22,6 +24,8 @@ import { PrismaService } from './prisma/prisma.service.js';
 // CCP-A3: change requests, approvals and the D9 operator attestation store.
 // CCP-A5: the plan-version store (repository only; A6 applies publish / retire).
 // CCP-A6: the transactional apply of approved Aramo-owned change requests.
+// CCP-C1: the Stripe command outbox (BillingCommandService, the command port bound to the same
+// Stripe adapter) and the webhook inbox (BillingWebhookInboxService).
 @Module({
   providers: [
     PrismaService,
@@ -29,7 +33,10 @@ import { PrismaService } from './prisma/prisma.service.js';
     CapacityService,
     LegalAcceptanceService,
     { provide: BILLING_PROVIDER_PORT, useClass: StripeBillingProvider },
+    { provide: BILLING_PROVIDER_COMMAND_PORT, useClass: StripeBillingProvider },
     SubscriptionLifecycleService,
+    BillingCommandService,
+    BillingWebhookInboxService,
     FreePersonalSubscriptionService,
     CommercialAuditRepository,
     CommercialPolicyRepository,
@@ -38,7 +45,7 @@ import { PrismaService } from './prisma/prisma.service.js';
     CommercialApplyService,
     PlanVersionRepository,
   ],
-  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, PlanVersionRepository],
+  exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, PlanVersionRepository],
 })
 export class SubscriptionModule {
   /**
@@ -55,7 +62,10 @@ export class SubscriptionModule {
         CapacityService,
         LegalAcceptanceService,
         { provide: BILLING_PROVIDER_PORT, useClass: StripeBillingProvider },
+        { provide: BILLING_PROVIDER_COMMAND_PORT, useClass: StripeBillingProvider },
         SubscriptionLifecycleService,
+        BillingCommandService,
+        BillingWebhookInboxService,
         FreePersonalSubscriptionService,
         CommercialAuditRepository,
         CommercialPolicyRepository,
@@ -65,7 +75,7 @@ export class SubscriptionModule {
         PlanVersionRepository,
         ...(opts.providers ?? []),
       ],
-      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, PlanVersionRepository],
+      exports: [AllowanceService, CapacityService, LegalAcceptanceService, SubscriptionLifecycleService, FreePersonalSubscriptionService, BILLING_PROVIDER_PORT, BILLING_PROVIDER_COMMAND_PORT, BillingCommandService, BillingWebhookInboxService, CommercialAuditRepository, CommercialPolicyRepository, CommercialOperatorRepository, CommercialChangeRequestService, CommercialApplyService, PlanVersionRepository],
     };
   }
 }
