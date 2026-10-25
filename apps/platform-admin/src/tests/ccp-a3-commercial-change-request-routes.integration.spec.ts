@@ -139,7 +139,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A3 — per-ro
   }, 120_000);
 
   it('A3-RI-CREATE per role: SUBSCRIPTION_OPEN only commercial_ops (201); catalog publish only catalog_manager; escalated extension only support_admin; POLICY_ACTIVATE only finance_admin (CCP-A9, TD-A3-5); super_admin refused at the gate', async () => {
-    const sub = { action_type: 'SUBSCRIPTION_OPEN', tenant_id: TENANT_1, product_key: 'sign', payload: { plan_key: 'p' } };
+    const sub = { action_type: 'SUBSCRIPTION_OPEN', tenant_id: TENANT_1, product_key: 'sign', payload: { plan_key: 'aramo-sign-included-v1', plan_version_id: '019a0000-0000-7000-8000-00000000a601', replaces_subscription_id: null } }; // CCP-A6 payload schema
     const out: Record<string, unknown[]> = {};
     for (const role of [...ROLES, 'super_admin']) out[role] = refusalOf(await createAs(role, sub));
     expect(out).toEqual({

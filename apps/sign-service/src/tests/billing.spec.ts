@@ -145,6 +145,8 @@ describe('EsignBillingController', () => {
     expect(billingHttpError(new BillingRefusedError('TERMS_NOT_ACCEPTED'), 'r')).toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
     expect(billingHttpError(new BillingRefusedError('ALREADY_SUBSCRIBED'), 'r')).toMatchObject({ code: 'ESIGN_BILLING_CONFLICT', statusCode: 409, context: { details: { reason: 'ALREADY_SUBSCRIBED' } } });
     expect(billingHttpError(new BillingRefusedError('NO_BILLING_ACCOUNT'), 'r')).toMatchObject({ code: 'ESIGN_BILLING_CONFLICT', context: { details: { reason: 'NO_BILLING_ACCOUNT' } } });
+    // CCP-A6 (Conversion Rule C-4) — a new typed refusal; ALREADY_SUBSCRIBED keeps its meaning.
+    expect(billingHttpError(new BillingRefusedError('GOVERNED_SUBSCRIPTION_OPEN'), 'r')).toMatchObject({ code: 'ESIGN_BILLING_CONFLICT', statusCode: 409, context: { details: { reason: 'governed_subscription_open' } } });
     expect(billingHttpError(new Error('secret detail'), 'r')).toMatchObject({ code: 'INTERNAL_ERROR', message: 'Billing request failed' });
   });
 

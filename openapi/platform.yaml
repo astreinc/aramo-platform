@@ -2396,6 +2396,43 @@ paths:
         '409':
           $ref: '#/components/responses/CommercialApprovalRefused'
 
+  /platform/commercial/change-requests/{id}/apply:
+    post:
+      operationId: applyPlatformCommercialChangeRequest
+      tags: [Platform Commercial Change Requests]
+      summary: Apply an APPROVED Aramo-owned change request in one transaction (CCP-A6).
+      description: |
+        Applies an APPROVED (or APPLY_FAILED, retry) request of action type SUBSCRIPTION_OPEN,
+        SUBSCRIPTION_CHANGE, SUBSCRIPTION_END or ENTITLEMENT_GRANT in ONE local transaction under the
+        tenant's billing lock: the NC-5 re-check of every approval under the request's snapshotted
+        chain, the governed (MANUAL) subscription write pinned to a PUBLISHED plan version, the
+        entitlement grant, the application record and the audit events, then APPLIED. Stripe-owned
+        rows are refused (no external change is ever made or reported). Applying an APPLIED request
+        replays it (idempotent, nothing written). The route requires `platform:approval:read`; the
+        caller must also hold the action's requester scope.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - $ref: '#/components/parameters/CommercialChangeRequestId'
+      responses:
+        '200':
+          description: The applied (or replayed) request and its application record.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialApplyEnvelope'
+        '400':
+          $ref: '#/components/responses/CommercialChangeRequestValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/CommercialChangeRequestNotFound'
+        '409':
+          $ref: '#/components/responses/CommercialApplyConflict'
+
   # DOC-TEMPLATE-LIB-1 T-2 (§6.1, §8.1) — Aramo default document templates + the template
   # variable catalog. Served by apps/api (nginx routes these two prefixes to api:3000).
   /platform/document-templates/document-types:
@@ -3731,6 +3768,17 @@ components:
         application/json:
           schema:
             $ref: 'common.yaml#/components/schemas/ErrorResponse'
+    CommercialApplyConflict:
+      description: |
+        `COMMERCIAL_CHANGE_REQUEST_CONFLICT` with details.reason `apply_refused` (details.refusal
+        NOT_APPROVED | APPROVALS_INCOMPLETE | APPROVER_NOT_DISTINCT | APPROVER_NO_LONGER_ELIGIBLE;
+        nothing is written), `apply_failed` (the transaction rolled back in full; the request is
+        APPLY_FAILED and retryable; details.failure names the guard, e.g. STRIPE_OWNED,
+        TARGET_STALE, PLAN_VERSION_NOT_PUBLISHED), `action_not_applicable` or `integrity`.
+      content:
+        application/json:
+          schema:
+            $ref: 'common.yaml#/components/schemas/ErrorResponse'
     CommercialApprovalRefused:
       description: |
         `COMMERCIAL_APPROVAL_REFUSED` (details.refusal: NOT_PENDING | EXPIRED | NOT_HUMAN |
@@ -4388,6 +4436,38 @@ components:
       properties:
         request:
           $ref: '#/components/schemas/CommercialChangeRequest'
+
+    CommercialChangeApplication:
+      type: object
+      additionalProperties: false
+      required: [id, change_request_id, action_type, tenant_id, product_key, subscription_id, replaced_subscription_id, from_plan_version_id, to_plan_version_id, capabilities, capabilities_inserted, attempt, applied_by, applied_at]
+      properties:
+        id: { type: string, format: uuid }
+        change_request_id: { type: string, format: uuid }
+        action_type: { type: string, enum: [SUBSCRIPTION_OPEN, SUBSCRIPTION_CHANGE, SUBSCRIPTION_END, ENTITLEMENT_GRANT] }
+        tenant_id: { type: string, format: uuid }
+        product_key: { type: string }
+        subscription_id: { type: [string, 'null'], format: uuid }
+        replaced_subscription_id: { type: [string, 'null'], format: uuid }
+        from_plan_version_id: { type: [string, 'null'], format: uuid }
+        to_plan_version_id: { type: [string, 'null'], format: uuid }
+        capabilities: { type: array, items: { type: string } }
+        capabilities_inserted: { type: array, items: { type: string } }
+        attempt: { type: integer, minimum: 1 }
+        applied_by: { type: string, format: uuid }
+        applied_at: { type: string, format: date-time }
+
+    CommercialApplyEnvelope:
+      type: object
+      additionalProperties: false
+      required: [request, application, replayed]
+      properties:
+        request:
+          $ref: '#/components/schemas/CommercialChangeRequest'
+        application:
+          $ref: '#/components/schemas/CommercialChangeApplication'
+        replayed:
+          type: boolean
 
     CommercialApprovalEnvelope:
       type: object

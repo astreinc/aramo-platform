@@ -41,6 +41,9 @@ import {
 const H = 3_600_000;
 const T0 = new Date('2026-10-25T00:00:00.000Z');
 
+// CCP-A6 — SUBSCRIPTION_OPEN now carries its full payload schema (validated at create).
+const OPEN_PAYLOAD = { plan_key: 'aramo-sign-included-v1', plan_version_id: '019a0000-0000-7000-8000-00000000a601', replaces_subscription_id: null };
+
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A3 change request + approval + eligibility (real Postgres 17)', { timeout: 120_000 }, () => {
   let container: StartedPostgreSqlContainer;
   let pg: Client;
@@ -159,12 +162,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A3 change req
   // finance_admin (a platform_owner is now REQUESTER_ROLE_MISSING, no longer
   // REQUESTER_AUTHORITY_UNDEFINED). The A9 spec covers the governance requesters in full.
   it('A3-INT-3 requester authority: missing request scope → REQUESTER_SCOPE_MISSING; a governance action without its requester role → REQUESTER_ROLE_MISSING (A9); non-NORMAL kind refused; 0 rows written', async () => {
-    expect(await refusalOf(svc.create(as(FA, 'finance_admin'), { action_type: 'SUBSCRIPTION_OPEN', tenant_id: TENANT_1, product_key: 'sign', payload: {}, reason: 'x', idempotency_key: key() }, ctx))).toBe('REQUESTER_SCOPE_MISSING');
+    expect(await refusalOf(svc.create(as(FA, 'finance_admin'), { action_type: 'SUBSCRIPTION_OPEN', tenant_id: TENANT_1, product_key: 'sign', payload: OPEN_PAYLOAD, reason: 'x', idempotency_key: key() }, ctx))).toBe('REQUESTER_SCOPE_MISSING');
     expect(await refusalOf(svc.create(as(PO, 'platform_owner'), { action_type: 'POLICY_ACTIVATE', payload: { policy_version_id: POLICY_V1 }, reason: 'x', idempotency_key: key() }, ctx))).toBe('REQUESTER_ROLE_MISSING');
-    expect(await refusalOf(svc.create(as(OPS, 'commercial_ops'), { action_type: 'SUBSCRIPTION_OPEN', kind: 'EXCEPTION', tenant_id: TENANT_1, product_key: 'sign', payload: {}, reason: 'x', idempotency_key: key() }, ctx))).toBe('KIND_NOT_SUPPORTED');
-    expect(await refusalOf(svc.create(as(OPS, 'commercial_ops', { actor_kind: 'service_account' }), { action_type: 'SUBSCRIPTION_OPEN', tenant_id: TENANT_1, product_key: 'sign', payload: {}, reason: 'x', idempotency_key: key() }, ctx))).toBe('NOT_HUMAN');
-    expect(await refusalOf(svc.create(as(OPS, 'commercial_ops'), { action_type: 'SUBSCRIPTION_OPEN', tenant_id: '0190dddd-0000-7000-8000-0000000000ff', product_key: 'sign', payload: {}, reason: 'x', idempotency_key: key() }, ctx))).toBe('TENANT_NOT_FOUND');
-    expect(await refusalOf(svc.create(as(OPS, 'commercial_ops'), { action_type: 'SUBSCRIPTION_OPEN', tenant_id: TENANT_1, product_key: 'ats', payload: {}, reason: 'x', idempotency_key: key() }, ctx))).toBe('INVALID_INPUT');
+    expect(await refusalOf(svc.create(as(OPS, 'commercial_ops'), { action_type: 'SUBSCRIPTION_OPEN', kind: 'EXCEPTION', tenant_id: TENANT_1, product_key: 'sign', payload: OPEN_PAYLOAD, reason: 'x', idempotency_key: key() }, ctx))).toBe('KIND_NOT_SUPPORTED');
+    expect(await refusalOf(svc.create(as(OPS, 'commercial_ops', { actor_kind: 'service_account' }), { action_type: 'SUBSCRIPTION_OPEN', tenant_id: TENANT_1, product_key: 'sign', payload: OPEN_PAYLOAD, reason: 'x', idempotency_key: key() }, ctx))).toBe('NOT_HUMAN');
+    expect(await refusalOf(svc.create(as(OPS, 'commercial_ops'), { action_type: 'SUBSCRIPTION_OPEN', tenant_id: '0190dddd-0000-7000-8000-0000000000ff', product_key: 'sign', payload: OPEN_PAYLOAD, reason: 'x', idempotency_key: key() }, ctx))).toBe('TENANT_NOT_FOUND');
+    expect(await refusalOf(svc.create(as(OPS, 'commercial_ops'), { action_type: 'SUBSCRIPTION_OPEN', tenant_id: TENANT_1, product_key: 'ats', payload: OPEN_PAYLOAD, reason: 'x', idempotency_key: key() }, ctx))).toBe('INVALID_INPUT');
     expect((await pg.query(`SELECT count(*)::int n FROM subscription."CommercialChangeRequest"`)).rows[0].n).toBe(0);
   });
 

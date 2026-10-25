@@ -21,6 +21,7 @@ import {
 import { ORGANIZATION_BILLING_PROFILE_PORT, type OrganizationBillingProfile, type OrganizationBillingProfilePort } from './organization-billing-profile.port.js';
 import { PLAN_ELIGIBILITY_PORT, type PlanEligibilityPort, type PlanEligibilityRule } from './plan-eligibility.port.js';
 import { type PriceResolution, effectiveProviderPrice, parsePlanPrices, resolvePriceToVersion } from './provider-price.js';
+import { GOVERNED_SUBSCRIPTION_OPEN, isGovernedSubscription, takeBillingLock } from './governed-subscription.js';
 
 export { parsePlanPrices } from './provider-price.js';
 
@@ -35,9 +36,10 @@ export { parsePlanPrices } from './provider-price.js';
 //               RE-FETCHED from the provider under a per-tenant lock, so a late
 //               or reordered event can never apply an older state.
 //   activate  → the first sending state opens a SELF_SERVICE subscription and
-//               ends any other open (MANUAL / DEVELOPMENT) one in the same tx.
-//               The caller grants the subscribing-owner role (identity lives in
-//               the service layer, not here).
+//               ends an open DEVELOPMENT one in the same tx. It NEVER ends an open
+//               governed (MANUAL) subscription: that activation is held (CCP-A6,
+//               Conversion Rule C-6/C-7). The caller grants the subscribing-owner
+//               role (identity lives in the service layer, not here).
 //   reconcile → open provider-linked subscriptions are re-fetched periodically
 //               (missed webhooks heal).
 // In-flight signing is never gated by any of this: only NEW sends read the
@@ -82,6 +84,21 @@ export { parsePlanPrices } from './provider-price.js';
 // change re-pins plan_version_id under a named reason, and the DB trigger records it
 // (SubscriptionVersionPinEvent); an env-mapped price of the SAME plan keeps the row's version
 // (grandfathering: the env cannot tell versions apart).
+//
+// CCP-A6 (Aramo-CCP-Sign-Billing-Manual-Subscription-Conversion-Rule-v1_0-LOCKED, rulings D2/H5)
+// — a self-service checkout never ends a governed (MANUAL) subscription, at both points:
+//   checkout  C-1/C-2: refused (GOVERNED_SUBSCRIPTION_OPEN) while the tenant holds an open
+//             governed row of the product. The decision is taken UNDER the shared billing lock in
+//             the transaction that creates the CheckoutIntent (an early read only fails fast before
+//             any provider side effect). The checkout session stays outside it (C-3). The
+//             open self-service refusal (ALREADY_SUBSCRIBED) is preserved (C-5).
+//   webhook   C-6/C-7: an activation that would end an open governed row is HELD — no
+//             SELF_SERVICE row, the governed row unchanged, a 'governed_subscription_open'
+//             reconciliation flag, the event recorded IGNORED, the CheckoutIntent kept CREATED —
+//             also for a CheckoutIntent created before this rule. C-9: a later sync resolves the
+//             flag only when the conflict is gone. C-10: the hold composes with the country and
+//             domain holds; each reason keeps its own open flag.
+//   No release exists until CCP-C2 (C-11/C-12): every such checkout is refused or held.
 
 export const PAST_DUE_GRACE_DAYS_DEFAULT = 7;
 
@@ -95,7 +112,10 @@ export type BillingRefusal =
   | 'ALREADY_SUBSCRIBED'
   | 'NO_BILLING_ACCOUNT'
   | 'ORGANIZATION_PROFILE_REQUIRED'
-  | 'DOMAIN_VERIFICATION_REQUIRED';
+  | 'DOMAIN_VERIFICATION_REQUIRED'
+  // CCP-A6 (Conversion Rule C-1, C-4) — the tenant holds an open governed (MANUAL) subscription
+  // of the product; self-service checkout is refused (a conversion is a governed change request).
+  | 'GOVERNED_SUBSCRIPTION_OPEN';
 
 /** A1 §2.6 — the activation-guard reason (BillingReconciliationFlag.reason). */
 export const BILLING_COUNTRY_NOT_SUPPORTED = 'billing_country_not_supported';
@@ -106,7 +126,23 @@ const BILLING_COUNTRY_ALLOWED = 'US';
 export const DOMAIN_NOT_AUTHORITATIVE = 'domain_not_authoritative';
 const DOMAIN_VERIFICATION_HELD = 'domain_verification_required: held for reconciliation';
 
-type ActivationGuardReason = typeof BILLING_COUNTRY_NOT_SUPPORTED | typeof DOMAIN_NOT_AUTHORITATIVE;
+/** CCP-A6 (Conversion Rule C-7(b)) — the governed-subscription hold reason. */
+export { GOVERNED_SUBSCRIPTION_OPEN };
+const GOVERNED_SUBSCRIPTION_HELD = `${GOVERNED_SUBSCRIPTION_OPEN}: held for reconciliation (an open governed subscription is never ended by a checkout)`;
+
+type ActivationGuardReason = typeof BILLING_COUNTRY_NOT_SUPPORTED | typeof DOMAIN_NOT_AUTHORITATIVE | typeof GOVERNED_SUBSCRIPTION_OPEN;
+
+/**
+ * CCP-A6 — the checkout gate on the tenant's open BASE row of the product (C-1, C-5). Taken twice:
+ * early (fail fast, before any provider side effect) and authoritatively under the billing lock (C-2).
+ */
+function assertCheckoutAllowed(open: { source: string; status: string; ended_at: Date | null } | null): void {
+  if (open === null) return;
+  // C-5 — a tenant already paying through the provider manages it in the portal.
+  if (open.source === 'SELF_SERVICE' && open.status !== 'INCOMPLETE') throw new BillingRefusedError('ALREADY_SUBSCRIBED');
+  // C-1 / C-4 — a governed subscription is converted only through a governed change request (C-11).
+  if (isGovernedSubscription(open)) throw new BillingRefusedError('GOVERNED_SUBSCRIPTION_OPEN', GOVERNED_SUBSCRIPTION_OPEN);
+}
 
 /** Fail closed: only an explicit US billing country may activate. */
 export function billingCountrySupported(account_country: string | null): boolean {
@@ -430,18 +466,21 @@ export class SubscriptionLifecycleService {
     const terms = approvedLegalDocument('sign.terms_of_service', this.legal);
     if (terms === null && this.billing.mode() === 'live') throw new BillingRefusedError('TERMS_NOT_APPROVED');
     if (terms !== null && input.accept_terms !== true) throw new BillingRefusedError('TERMS_NOT_ACCEPTED');
-    const open = await this.prisma.tenantSubscription.findFirst({ where: openBaseSubscription(input.tenant_id, product_key) });
-    // A tenant already paying through the provider manages it in the portal; a
-    // MANUAL / DEVELOPMENT subscription may be replaced by a self-service one.
-    if (open !== null && open.source === 'SELF_SERVICE' && open.status !== 'INCOMPLETE') {
-      throw new BillingRefusedError('ALREADY_SUBSCRIBED');
-    }
+    // CCP-A6 — early read, outside the lock: fail fast before any provider side effect. The
+    // authoritative decision is re-taken under the billing lock below (C-2). A DEVELOPMENT row may
+    // still be replaced by a self-service one; a governed (MANUAL) row never is (C-1).
+    assertCheckoutAllowed(await this.prisma.tenantSubscription.findFirst({ where: openBaseSubscription(input.tenant_id, product_key) }));
     // A1 §2.6 — an eligible (US) organization profile is required; unbound → refused.
     // P3 §4 — then an AUTHORITATIVE domain claim; both before any side effect.
     const profile = await this.lockedBillingProfile(input.tenant_id);
     const account_ref = await this.ensureBillingAccount(input.tenant_id, product_key, profile);
     const intent_id = uuidv7();
     await this.prisma.$transaction(async (tx) => {
+      // CCP-A6 (C-2) — the C-1 / C-5 decision under the shared billing lock, in the transaction
+      // that creates the CheckoutIntent: a governed apply or a webhook for this tenant serializes
+      // with it. The checkout session itself is created after commit, outside it (C-3).
+      await takeBillingLock(tx, input.tenant_id);
+      assertCheckoutAllowed(await tx.tenantSubscription.findFirst({ where: openBaseSubscription(input.tenant_id, product_key) }));
       await tx.checkoutIntent.create({
         data: {
           id: intent_id,
@@ -622,7 +661,7 @@ export class SubscriptionLifecycleService {
     const domainOk = await this.domainAuthoritative(tenant_id);
 
     return this.prisma.$transaction(async (tx) => {
-      await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`billing:${tenant_id}`}, 0))`;
+      await takeBillingLock(tx, tenant_id);
       const mapped = mapProviderStatus(state.provider_status);
       const row = await tx.tenantSubscription.findFirst({
         where: { billing_provider: state.provider, billing_subscription_ref: state.subscription_ref, product_key },
@@ -636,11 +675,21 @@ export class SubscriptionLifecycleService {
       const held = [...(countryOk ? [] : [BILLING_COUNTRY_HELD]), ...(domainOk ? [] : [DOMAIN_VERIFICATION_HELD])].join('; ');
       if (row !== null) return this.updateRow(tx, row, state, mapped, at, held);
       if (intent === null) return { outcome: 'IGNORED', detail: 'unknown subscription without a checkout intent', tenant_id } as ApplyResult;
-      if (held !== '') {
+      // CCP-A6 (C-6, C-7) — a NEW activation never ends an open governed subscription, in any
+      // provider state and whenever its CheckoutIntent was created. Read under the billing lock.
+      // A provider subscription that has ended no longer conflicts (C-9: a webhook-confirmed end
+      // resolves the flag). Composed beside the country and domain holds (C-10).
+      const governed = await tx.tenantSubscription.findFirst({ where: openBaseSubscription(tenant_id, product_key) });
+      const governedConflict = governed !== null && isGovernedSubscription(governed) && !mapped.ends;
+      await this.guardFlag(tx, tenant_id, state, intent_id, GOVERNED_SUBSCRIPTION_OPEN, governedConflict, at);
+      const allHeld = [held, ...(governedConflict ? [GOVERNED_SUBSCRIPTION_HELD] : [])].filter((h) => h !== '').join('; ');
+      if (allHeld !== '') {
+        // C-7(c)/(d) — IGNORED with the hold named; openRow is not reached, so no SELF_SERVICE row
+        // opens, the governed row is untouched and the CheckoutIntent stays CREATED.
         this.log.warn(
-          `${state.subscription_ref} held for reconciliation (country ${state.account_country ?? 'none'}${countryOk ? '' : ' not supported'}${domainOk ? '' : '; domain not authoritative'})`,
+          `${state.subscription_ref} held for reconciliation (country ${state.account_country ?? 'none'}${countryOk ? '' : ' not supported'}${domainOk ? '' : '; domain not authoritative'}${governedConflict ? '; governed subscription open' : ''})`,
         );
-        return { outcome: 'IGNORED', detail: held, tenant_id } as ApplyResult;
+        return { outcome: 'IGNORED', detail: allHeld, tenant_id } as ApplyResult;
       }
       return this.openRow(tx, tenant_id, product_key, intent, state, mapped, at);
     });
@@ -781,6 +830,11 @@ export class SubscriptionLifecycleService {
     if (version === null) return { outcome: 'IGNORED', detail: `plan ${plan.key} has no published version`, tenant_id };
     const terms = planVersionTerms(version).plan;
     const open = await tx.tenantSubscription.findFirst({ where: openBaseSubscription(tenant_id, product_key) });
+    // CCP-A6 (C-6) — defence in depth: applyProviderState holds a governed conflict before this
+    // point; openRow itself never ends a governed row either.
+    if (open !== null && isGovernedSubscription(open)) {
+      return { outcome: 'IGNORED', detail: GOVERNED_SUBSCRIPTION_HELD, tenant_id };
+    }
     const sends = SENDING.has(mapped.status);
     if (open !== null && !sends) {
       // Never end a working subscription for a payment that has not gone through.

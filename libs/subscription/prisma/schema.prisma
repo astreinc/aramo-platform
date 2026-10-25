@@ -137,7 +137,7 @@ model SubscriptionVersionPinEvent {
   from_plan_version_id String   @db.Uuid
   to_plan_id           String   @db.Uuid
   to_plan_version_id   String   @db.Uuid
-  // CHECK: PROVIDER_PLAN_CHANGE
+  // CHECK: PROVIDER_PLAN_CHANGE | CHANGE_REQUEST (CCP-A6: an applied SUBSCRIPTION_CHANGE)
   reason               String
   provider_price_ref   String?
   recorded_at          DateTime @db.Timestamptz(3)
@@ -314,7 +314,9 @@ model TenantBillingAccount {
 // Sign Signup Amendment A1 §2.6 — activation guard: a subscription whose provider
 // billing country is not US is held here for reconciliation. One OPEN flag per
 // (provider, subscription_ref, reason) — a partial unique index in the migration.
-// CHECK reason: billing_country_not_supported.
+// CHECK reason: billing_country_not_supported | domain_not_authoritative (P3) |
+// governed_subscription_open (CCP-A6, Conversion Rule C-7: a self-service activation that
+// would end an open governed MANUAL subscription is held).
 model BillingReconciliationFlag {
   id               String    @id @db.Uuid
   tenant_id        String    @db.Uuid
@@ -568,5 +570,33 @@ model CommercialOperatorAttestation {
   revoke_reason     String?
   approvals         CommercialApproval[]
 
+  @@schema("subscription")
+}
+
+// CCP-A6 (PBD §5.1 row A6; Conversion Rule C-21; Recon Report §1 C3) — the durable record of
+// one APPLIED change request (Aramo-owned operations: MANUAL subscription open / change / end
+// and the entitlement grant). Written in the SAME local transaction as the subscription and
+// entitlement writes and the APPLIED transition; the guard trigger refuses APPLIED without it
+// and re-checks both domain sides. Append-only (UPDATE and DELETE rejected); one per request.
+// Plain UUID references (FKs in SQL, migration 20261025200000); no Prisma relations.
+model CommercialChangeApplication {
+  id                       String   @id @db.Uuid
+  change_request_id        String   @unique @db.Uuid
+  // CHECK: SUBSCRIPTION_OPEN | SUBSCRIPTION_CHANGE | SUBSCRIPTION_END | ENTITLEMENT_GRANT
+  action_type              String
+  tenant_id                String   @db.Uuid
+  product_key              String
+  subscription_id          String?  @db.Uuid
+  replaced_subscription_id String?  @db.Uuid
+  from_plan_version_id     String?  @db.Uuid
+  to_plan_version_id       String?  @db.Uuid
+  capabilities             String[]
+  capabilities_inserted    String[]
+  attempt                  Int
+  applied_by               String   @db.Uuid
+  applied_at               DateTime @db.Timestamptz(3)
+
+  @@index([tenant_id, product_key])
+  @@index([subscription_id])
   @@schema("subscription")
 }

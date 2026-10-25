@@ -15,3 +15,5 @@ export {
   type EntitlementReconcileDeps,
   type EntitlementReconcileResult,
 } from './lib/reconcile-entitlements.js';
+// CCP-A6 — the in-transaction entitlement grant (raw cross-schema write on the caller's client).
+export { grantCapabilitiesInTx, UnknownCapabilityError } from './lib/grant-capabilities-in-tx.js';

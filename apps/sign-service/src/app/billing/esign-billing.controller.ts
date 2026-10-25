@@ -126,6 +126,14 @@ export function billingHttpError(e: unknown, requestId: string): AramoError {
         { requestId, details: { reason: 'domain_verification_required' } },
       );
     }
+    if (e.reason === 'GOVERNED_SUBSCRIPTION_OPEN') {
+      // CCP-A6 (Conversion Rule C-1, C-4) — the organization's subscription is managed by Aramo;
+      // changing it to self-service is a governed conversion, not a checkout.
+      return new AramoError('ESIGN_BILLING_CONFLICT', 'Your organization’s subscription is managed by Aramo. Contact Aramo to change it.', 409, {
+        requestId,
+        details: { reason: 'governed_subscription_open' },
+      });
+    }
     if (e.reason === 'PLAN_NOT_ELIGIBLE') {
       return new AramoError('ESIGN_BILLING_CONFLICT', 'This plan requires an Aramo ATS subscription', 409, { requestId, details: { reason: e.reason } });
     }

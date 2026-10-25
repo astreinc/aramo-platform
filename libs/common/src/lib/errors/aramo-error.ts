@@ -126,7 +126,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   ESIGN_SEND_UNAVAILABLE: 409,
   // Aramo Sign launch — self-service billing: provider not configured/reachable
   // (503), and a billing action that conflicts with the tenant's state (409,
-  // details.reason ALREADY_SUBSCRIBED | NO_BILLING_ACCOUNT).
+  // details.reason ALREADY_SUBSCRIBED | NO_BILLING_ACCOUNT | governed_subscription_open
+  // (CCP-A6: an open governed subscription; Conversion Rule C-1, C-4)).
   ESIGN_BILLING_UNAVAILABLE: 503,
   ESIGN_BILLING_CONFLICT: 409,
   // Commercial Plans Amendment A1 — the plan's storage allocation is full

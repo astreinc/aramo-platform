@@ -26,6 +26,8 @@ export type PlanVersionStatus = (typeof PLAN_VERSION_STATUSES)[number];
 
 /** The pin reason the TenantSubscription trigger requires on a re-pin (closed CHECK). */
 export const PIN_REASON_PROVIDER_PLAN_CHANGE = 'PROVIDER_PLAN_CHANGE';
+/** CCP-A6 — the pin reason of an applied SUBSCRIPTION_CHANGE (CHECK widened by migration 20261025200000). */
+export const PIN_REASON_CHANGE_REQUEST = 'CHANGE_REQUEST';
 
 export interface PlanVersionPlanTerms {
   readonly key: string;

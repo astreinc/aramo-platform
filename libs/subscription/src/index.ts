@@ -4,6 +4,7 @@ export {
   BASE_COMPOSITION,
   PRODUCT_KEYS,
   ProductContextError,
+  PRODUCT_CAPABILITIES,
   SIGN_PRODUCT_KEY,
   assertProductKey,
   isProductKey,
@@ -142,12 +143,15 @@ export {
 } from './lib/commercial/commercial-audit.repository.js';
 // CCP-A3 (PBD §5.1 row A3) — change request, approval, eligibility; the D9 attestation store.
 export {
+  A6_APPLICABLE_ACTIONS,
   COMMERCIAL_A3_TRANSITIONS,
+  COMMERCIAL_TRANSITIONS,
   COMMERCIAL_ACTIONS,
   COMMERCIAL_ACTION_TYPES,
   COMMERCIAL_CHANGE_REQUEST_KINDS,
   COMMERCIAL_CHANGE_REQUEST_STATES,
   COMMERCIAL_OPEN_STATES,
+  COMMERCIAL_A6_APPLY_TRANSITIONS,
   COMMERCIAL_A9_ROLE_APPLY_TRANSITIONS,
   COMMERCIAL_REQUEST_PRODUCT_KEYS,
   COMMERCIAL_ROLE_CHANGE_ACTIONS,
@@ -157,11 +161,13 @@ export {
   CommercialPayloadError,
   canTransition,
   canTransitionFor,
+  isA6Applicable,
   parseRequiredChain,
   payloadChecksum,
   resolveRequiredChain,
   subjectUserOf,
   validatePayload,
+  type A6ApplicableAction,
   type CommercialActionDefinition,
   type CommercialActionType,
   type CommercialChainRule,
@@ -213,10 +219,25 @@ export {
   type RoleChangeApplyOutcome,
   type StepView,
 } from './lib/commercial/commercial-change-request.service.js';
+// CCP-A6 (PBD §5.1 row A6; Conversion Rule C-21…C-24) — the transactional apply and the shared
+// billing lock / governed-subscription predicate.
+export {
+  COMMERCIAL_APPLY_FAULT_HOOK,
+  CommercialApplyFailedError,
+  CommercialApplyService,
+  type CommercialApplyFailureCode,
+  type CommercialApplyFaultHook,
+  type CommercialApplyFaultPoint,
+  type CommercialApplyResult,
+  type CommercialChangeApplicationRow,
+} from './lib/commercial/commercial-apply.service.js';
+export { GOVERNED_SUBSCRIPTION_OPEN, billingLockKey, isGovernedSubscription, takeBillingLock } from './lib/billing/governed-subscription.js';
+export { C16_QUERY_A, checkoutCutoverReport, formatCheckoutCutoverReport, type CheckoutCutoverReport } from './lib/billing/checkout-cutover-check.js';
 // CCP-A5 (PBD §5.1 row A5; MP-A2 N-15…N-19; Charter D3) — plan versions, the provider price
 // pinned to the version, and the read-only cutover parity check. Publishing and retiring are
 // repository methods applied by CCP-A6 from approved change requests.
 export {
+  PIN_REASON_CHANGE_REQUEST,
   PIN_REASON_PROVIDER_PLAN_CHANGE,
   PLAN_VERSION_CONTENT_FORMAT,
   PLAN_VERSION_STATUSES,

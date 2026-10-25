@@ -75,3 +75,12 @@ export function openBaseSubscription(tenant_id: string, product_key: ProductKey)
 } {
   return { tenant_id, product_key: assertProductKey(product_key), composition_role: BASE_COMPOSITION, ended_at: null };
 }
+
+/**
+ * CCP-A6 (Conversion Rule C-21) — the entitlement capabilities a governed subscription of each
+ * registered product carries, granted in the same transaction as the subscription write. Sign:
+ * the Business Sign capability bundle (`apps/platform-admin/src/app/signup/sign-signup.service.ts:59`
+ * SIGN_CAPABILITIES = ['core', 'sign']). An ENTITLEMENT_GRANT for a product may grant only a
+ * subset of this bundle.
+ */
+export const PRODUCT_CAPABILITIES: Readonly<Record<ProductKey, readonly string[]>> = { sign: ['core', 'sign'] };

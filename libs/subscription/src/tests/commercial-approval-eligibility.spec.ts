@@ -12,6 +12,7 @@ import {
 } from '../lib/commercial/commercial-approval-eligibility.js';
 import {
   COMMERCIAL_A3_TRANSITIONS,
+  COMMERCIAL_TRANSITIONS,
   COMMERCIAL_ACTIONS,
   COMMERCIAL_ACTION_TYPES,
   COMMERCIAL_CHANGE_REQUEST_STATES,
@@ -213,7 +214,8 @@ describe('CCP-A3 state-machine transition table (A3 transitions only)', () => {
     let n = 0;
     for (const from of COMMERCIAL_CHANGE_REQUEST_STATES) {
       for (const to of COMMERCIAL_CHANGE_REQUEST_STATES) {
-        const ok = canTransition(from as CommercialChangeRequestState, to as CommercialChangeRequestState);
+        // CCP-A6 — canTransition now reads the full table; the A3 record is COMMERCIAL_A3_TRANSITIONS.
+        const ok = COMMERCIAL_A3_TRANSITIONS[from as CommercialChangeRequestState].includes(to as CommercialChangeRequestState);
         expect(ok, `${from} -> ${to}`).toBe(allowed.has(`${from}>${to}`));
         if (ok) n += 1;
       }
@@ -223,6 +225,58 @@ describe('CCP-A3 state-machine transition table (A3 transitions only)', () => {
       expect(COMMERCIAL_CHANGE_REQUEST_STATES.some((f) => COMMERCIAL_A3_TRANSITIONS[f].includes(s))).toBe(false);
     }
   });
+});
+
+describe('CCP-A6 state-machine transition table (A3 + apply)', () => {
+  const allowed = new Set([
+    'DRAFT>PENDING_APPROVAL',
+    'DRAFT>WITHDRAWN',
+    'PENDING_APPROVAL>APPROVED',
+    'PENDING_APPROVAL>REJECTED',
+    'PENDING_APPROVAL>EXPIRED',
+    'PENDING_APPROVAL>WITHDRAWN',
+    'APPROVED>APPLYING',
+    'APPLY_FAILED>APPLYING',
+    'APPLYING>APPLIED',
+    'APPLYING>APPLY_FAILED',
+  ]);
+  it('A6-SM-1 exactly 10 of the 81 state pairs are transitions; APPLIED is terminal; APPLY_FAILED only retries', () => {
+    let n = 0;
+    for (const from of COMMERCIAL_CHANGE_REQUEST_STATES) {
+      for (const to of COMMERCIAL_CHANGE_REQUEST_STATES) {
+        const ok = canTransition(from as CommercialChangeRequestState, to as CommercialChangeRequestState);
+        expect(ok, `${from} -> ${to}`).toBe(allowed.has(`${from}>${to}`));
+        if (ok) n += 1;
+      }
+    }
+    expect(n).toBe(10);
+    expect(COMMERCIAL_TRANSITIONS.APPLIED).toEqual([]);
+    expect(COMMERCIAL_TRANSITIONS.APPLY_FAILED).toEqual(['APPLYING']);
+  });
+});
+
+describe('CCP-A6 payload schemas of the applied actions', () => {
+  const V = '019a0000-0000-7000-8000-00000000a601';
+  const ok: Array<[CommercialActionType, unknown]> = [
+    ['SUBSCRIPTION_OPEN', { plan_key: 'aramo-sign-included-v1', plan_version_id: V, replaces_subscription_id: null }],
+    ['SUBSCRIPTION_OPEN', { plan_key: 'aramo-sign-included-v1', plan_version_id: V, replaces_subscription_id: V, period_anchor: '2026-11-01T00:00:00.000Z' }],
+    ['SUBSCRIPTION_CHANGE', { subscription_id: V, plan_key: 'aramo-sign-enterprise-v1', plan_version_id: V }],
+    ['SUBSCRIPTION_END', { subscription_id: V }],
+    ['ENTITLEMENT_GRANT', { capabilities: ['sign'] }],
+  ];
+  ok.forEach(([a, p], i) => it(`A6-PL-1.${i + 1} ${a} admits ${JSON.stringify(p)}`, () => expect(validatePayload(a, p)).toEqual(p)));
+  const bad: Array<[CommercialActionType, unknown]> = [
+    ['SUBSCRIPTION_OPEN', {}],
+    ['SUBSCRIPTION_OPEN', { plan_key: 'p', plan_version_id: V }], // replaces_subscription_id is required (null or a uuid)
+    ['SUBSCRIPTION_OPEN', { plan_key: 'aramo-sign-included-v1', plan_version_id: 'v1', replaces_subscription_id: null }],
+    ['SUBSCRIPTION_OPEN', { plan_key: 'aramo-sign-included-v1', plan_version_id: V, replaces_subscription_id: null, period_anchor: '2026-11-01' }],
+    ['SUBSCRIPTION_OPEN', { plan_key: 'aramo-sign-included-v1', plan_version_id: V, replaces_subscription_id: null, extra: 1 }],
+    ['SUBSCRIPTION_CHANGE', { plan_key: 'aramo-sign-included-v1', plan_version_id: V }],
+    ['SUBSCRIPTION_END', {}],
+    ['ENTITLEMENT_GRANT', { capabilities: [] }],
+    ['ENTITLEMENT_GRANT', { capabilities: ['sign', 'sign'] }],
+  ];
+  bad.forEach(([a, p], i) => it(`A6-PL-2.${i + 1} ${a} refuses ${JSON.stringify(p)}`, () => expect(() => validatePayload(a, p)).toThrow(CommercialPayloadError)));
 });
 
 describe('CCP-A3 payload validation and checksum', () => {

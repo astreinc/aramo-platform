@@ -43,6 +43,7 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 //   POST /platform/commercial/change-requests/{id}/withdraw
 //   POST /platform/commercial/change-requests/{id}/approvals
 //   POST /platform/commercial/change-requests/{id}/reject
+//   POST /platform/commercial/change-requests/{id}/apply        (CCP-A6)
 // For each route: the allowed call, super_admin refused (403, holds no commercial
 // scope), and the tenant tier refused (403 tier tripwire). Plus the role-level
 // refusals: a role missing the route scope (audit feed), a role missing the requester
@@ -182,6 +183,7 @@ const GATE_ROUTES: readonly GateRoute[] = [
   { name: 'POST change-requests/{id}/withdraw', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/withdraw`, scope: 'platform:approval:read' },
   { name: 'POST change-requests/{id}/approvals', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/approvals`, scope: 'platform:approval:read', body: { step_index: 0 } },
   { name: 'POST change-requests/{id}/reject', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/reject`, scope: 'platform:approval:read', body: { reason: 'Credit not justified' } },
+  { name: 'POST change-requests/{id}/apply', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/apply`, scope: 'platform:approval:read' },
 ];
 
 // ── CCP-A2 — the commercial audit feed ────────────────────────────────────────
@@ -509,6 +511,93 @@ describe('platform-web → POST /platform/commercial/change-requests/{id}/reject
       })
       .executeTest(async (mock) => {
         const res = await call(`${mock.url}${CR}/${EX_REQUEST_ID}/reject`, 'POST', platformJson('support_admin'), REJECT_BODY);
+        expect(res.status).toBe(409);
+      });
+  });
+});
+
+// ── CCP-A6 — the transactional apply ──────────────────────────────────────────
+
+describe('platform-web → POST /platform/commercial/change-requests/{id}/apply (CCP-A6)', () => {
+  const apply = (requestId = EX_REQUEST_ID) => `${CR}/${requestId}/apply`;
+  const applied = {
+    replayed: false,
+    request: {
+      id: uuid(EX_REQUEST_ID),
+      action_type: 'SUBSCRIPTION_OPEN',
+      kind: 'NORMAL',
+      state: 'APPLIED',
+      tenant_id: uuid('cca10000-0000-7000-8000-0000000000a6'),
+      product_key: 'sign',
+      payload: like({ plan_key: 'aramo-sign-included-v1' }),
+      requested_by: OP.commercial_ops,
+      approved_at: iso(),
+    },
+    application: {
+      id: uuid('cca10000-0000-7000-8000-0000000000a7'),
+      change_request_id: uuid(EX_REQUEST_ID),
+      action_type: 'SUBSCRIPTION_OPEN',
+      tenant_id: uuid('cca10000-0000-7000-8000-0000000000a6'),
+      product_key: 'sign',
+      subscription_id: uuid('cca10000-0000-7000-8000-0000000000a8'),
+      replaced_subscription_id: null,
+      from_plan_version_id: null,
+      to_plan_version_id: uuid('cca10000-0000-7000-8000-0000000000a9'),
+      capabilities: ['core', 'sign'],
+      capabilities_inserted: eachLike('sign'),
+      attempt: 1,
+      applied_by: OP.commercial_ops,
+      applied_at: iso(),
+    },
+  };
+
+  it('the requester authority (commercial_ops) applies an approved subscription open (200 APPLIED)', async () => {
+    await provider
+      .addInteraction()
+      .given('an approved subscription-open change request exists')
+      .uponReceiving('a change request apply by commercial_ops')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/apply`, apply()), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody(applied);
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${apply()}`, 'POST', platformSession('commercial_ops'));
+        expect(res.status).toBe(200);
+      });
+  });
+
+  it('a role without the requester authority (finance_admin) is refused (403 requester_scope_missing)', async () => {
+    await provider
+      .addInteraction()
+      .given('an approved subscription-open change request exists')
+      .uponReceiving('a change request apply by a role without the requester scope')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/apply`, apply()), (b) => {
+        b.headers(platformSession('finance_admin'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(errorBody('INSUFFICIENT_PERMISSIONS', { reason: 'requester_scope_missing', missing_scopes: ['platform:subscription:request'] }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${apply()}`, 'POST', platformSession('finance_admin'));
+        expect(res.status).toBe(403);
+      });
+  });
+
+  it('an approval whose signer lost eligibility is refused at apply (409 apply_refused, NC-5)', async () => {
+    await provider
+      .addInteraction()
+      .given('an approved subscription-open change request whose approver lost eligibility exists')
+      .uponReceiving('a change request apply after its approver lost eligibility')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/apply`, apply()), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(409, (b) => {
+        b.jsonBody(errorBody('COMMERCIAL_CHANGE_REQUEST_CONFLICT', { reason: 'apply_refused', refusal: 'APPROVER_NO_LONGER_ELIGIBLE' }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${apply()}`, 'POST', platformSession('commercial_ops'));
         expect(res.status).toBe(409);
       });
   });

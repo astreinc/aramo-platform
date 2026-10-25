@@ -471,6 +471,8 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
     }
     if (e.code === 'ESIGN_BILLING_UNAVAILABLE') return 'Online billing isn’t available right now. Try again later, or contact Aramo support.';
     if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'ALREADY_SUBSCRIBED') return 'Your organization already has a subscription. Use Manage billing to change it.';
+    // CCP-A6 (Conversion Rule C-1) — a governed (Aramo-managed) subscription is changed only by Aramo.
+    if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'governed_subscription_open') return 'Your organization’s subscription is managed by Aramo. Contact Aramo to change it.';
     if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'PLAN_NOT_ELIGIBLE') return 'Standard Professional is for organizations with an Aramo ATS subscription.';
     // Sign Signup A1 §2.6 — checkout needs a complete US organization profile.
     if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'organization_country_not_supported') return 'Aramo Sign is currently available to organizations registered in the United States.';
