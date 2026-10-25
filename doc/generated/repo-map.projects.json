@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 0, "libs": 0, "total": 84 },
+  "aliasTotals": { "apps": 0, "libs": 0, "total": 85 },
   "aliases": {
     "@aramo/activity": "./libs/activity/src/index.ts",
     "@aramo/ai-draft": "./libs/ai-draft/src/index.ts",
@@ -56,6 +56,7 @@
     "@aramo/pipeline": "./libs/pipeline/src/index.ts",
     "@aramo/placement": "./libs/placement/src/index.ts",
     "@aramo/placement-pipeline-bridge": "./libs/placement-pipeline-bridge/src/index.ts",
+    "@aramo/platform-admin": "./apps/platform-admin/src/app/app.module.ts",
     "@aramo/policy-engine": "./libs/policy-engine/src/index.ts",
     "@aramo/policy-store": "./libs/policy-store/src/index.ts",
     "@aramo/portal": "./libs/portal/src/index.ts",
@@ -1844,6 +1845,7 @@
       "PlacementPipelineBridgePrismaService",
       "PlacementPipelineInboxRepository"
     ],
+    "@aramo/platform-admin": ["AppModule"],
     "@aramo/policy-engine": [
       "DECISION_PRECEDENCE",
       "EFFECT_KINDS",
@@ -5283,6 +5285,11 @@
       { "project": "api", "status": "production" },
       {
         "from": "pact/provider/src/verify-api.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      },
+      {
+        "from": "pact/provider/src/verify-platform-admin.ts",
         "project": "aramo-pact-provider",
         "status": "unscoped"
       },
@@ -10140,6 +10147,13 @@
       },
       { "project": "api", "status": "production" }
     ],
+    "@aramo/platform-admin": [
+      {
+        "from": "pact/provider/src/verify-platform-admin.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      }
+    ],
     "@aramo/policy-engine": [
       {
         "excludedBy": "src/tests/**/*",
@@ -12097,6 +12111,13 @@
       "name": "platform-governance-consumer-pact",
       "root": "pact/consumers/platform-governance-consumer",
       "sourceRoot": "pact/consumers/platform-governance-consumer/src",
+      "tags": ["pact-consumer"],
+      "targets": ["lint", "pact-test", "test"]
+    },
+    {
+      "name": "platform-web-consumer-pact",
+      "root": "pact/consumers/platform-web-consumer",
+      "sourceRoot": "pact/consumers/platform-web-consumer/src",
       "tags": ["pact-consumer"],
       "targets": ["lint", "pact-test", "test"]
     },
