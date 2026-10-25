@@ -2181,6 +2181,7 @@
       "APPLY_EXPLANATIONS",
       "APPLY_SERVICE_ACTIONS",
       "APPROVAL_REFUSALS",
+      "ARR_MONTHS",
       "AllowanceService",
       "AramoSignIncludedPlanKey",
       "AramoSignStandardBusinessPlanKey",
@@ -2210,6 +2211,7 @@
       "BillingFinanceReportService",
       "BillingProviderUnavailableError",
       "BillingRefusedError",
+      "BillingRevenueReportService",
       "BillingStatusQueryError",
       "BillingStatusReadService",
       "BillingWebhookInboxQueryError",
@@ -2315,6 +2317,7 @@
       "ESIGN_ENVELOPE_SENT_EVENT",
       "FEATURE_AVAILABILITY",
       "FINANCE_CURRENCY",
+      "FINANCE_SCOPE_PENDING",
       "FINANCE_SOURCES",
       "FREE_SUBSCRIPTION_SOURCE",
       "FreePersonalPlanKey",
@@ -2358,6 +2361,12 @@
       "ProductContextError",
       "RENEWAL_HORIZON_DEFAULT_DAYS",
       "RENEWAL_HORIZON_MAX_DAYS",
+      "REVENUE_BASIS",
+      "REVENUE_BEARING_STATUSES",
+      "REVENUE_BILLING_INTERVAL",
+      "REVENUE_EXCLUSION_REASONS",
+      "REVENUE_PIPELINE_DEFAULT_MONTHS",
+      "REVENUE_PIPELINE_MAX_MONTHS",
       "RoleChangeApplyError",
       "SIGN_PRODUCT_KEY",
       "STORAGE_CAPACITY_KEY",
@@ -2406,9 +2415,11 @@
       "checkProviderPriceParity",
       "checkSupportExtension",
       "checkoutCutoverReport",
+      "classifyRevenueRow",
       "commercialAlertThresholds",
       "commercialAlertTypesOf",
       "commercialPolicyChecksum",
+      "computeRevenue",
       "conversionPayloadErrors",
       "creditEscalation",
       "csvField",
@@ -2423,6 +2434,7 @@
       "explanationOf",
       "formatCheckoutCutoverReport",
       "formatReconciliationReport",
+      "formatRevenueReport",
       "graceStateAt",
       "inAppContextRef",
       "invoicePaymentState",
@@ -2439,6 +2451,7 @@
       "isWithinPastDueGrace",
       "legalRef",
       "mapProviderStatus",
+      "monthKey",
       "openDevelopmentSubscription",
       "overlayCovers",
       "parseActiveCommercialPolicy",
@@ -3635,6 +3648,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d2-revenue-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-d3-observability-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -4321,6 +4340,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-d1-usage-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d2-revenue-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -6752,6 +6777,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d2-revenue-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-d3-observability-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -7486,6 +7517,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-d1-usage-rollups.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-d2-revenue-report.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -9920,6 +9957,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d2-revenue-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-d3-observability-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -12136,6 +12179,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-d1-usage-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d2-revenue-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },

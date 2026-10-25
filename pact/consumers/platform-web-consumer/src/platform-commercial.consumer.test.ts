@@ -34,7 +34,7 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 // commercial tenant (change requests and approvals are append-only, and Q14 allows one
 // open request per tenant × product).
 //
-// Coverage — CCP routes (30):
+// Coverage — CCP routes (31):
 //   GET  /platform/commercial/audit-events                      (CCP-A2)
 //   POST /platform/commercial/change-requests                   (CCP-A3)
 //   GET  /platform/commercial/change-requests
@@ -57,6 +57,7 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 //   GET  /platform/commercial/finance/renewals                  (CCP-C6)
 //   GET  /platform/commercial/finance/outstanding-payments
 //   GET  /platform/commercial/finance/reconciliation-report
+//   GET  /platform/commercial/finance/revenue                   (CCP-D2; every amount withheld)
 //   POST /platform/commercial/support-extensions                 (CCP-A8)
 //   GET  /platform/commercial/support-extensions
 //   GET  /platform/commercial/alerts/billing                    (CCP-D3)
@@ -129,6 +130,8 @@ const PORTAL_CONFIG = '/platform/commercial/billing-portal-configuration';
 const RENEWALS = '/platform/commercial/finance/renewals';
 const OUTSTANDING = '/platform/commercial/finance/outstanding-payments';
 const RECONCILIATION = '/platform/commercial/finance/reconciliation-report';
+// CCP-D2 — revenue reporting; every amount withheld (FINANCE_SCOPE_PENDING) for every caller.
+const REVENUE = '/platform/commercial/finance/revenue';
 // CCP-C6 — the Finance fixture tenants seeded by the provider state 'finance records exist'.
 const FIN_RENEWAL_TENANT = 'cca10000-0000-7000-8000-0000000006a1';
 const FIN_OUTSTANDING_TENANT = 'cca10000-0000-7000-8000-0000000006a2';
@@ -267,6 +270,7 @@ const GATE_ROUTES: readonly GateRoute[] = [
   { name: 'GET finance/renewals', method: 'GET', path: RENEWALS, scope: 'platform:billing:read' },
   { name: 'GET finance/outstanding-payments', method: 'GET', path: OUTSTANDING, scope: 'platform:billing:read' },
   { name: 'GET finance/reconciliation-report', method: 'GET', path: RECONCILIATION, scope: 'platform:billing:read' },
+  { name: 'GET finance/revenue', method: 'GET', path: REVENUE, scope: 'platform:billing:read' },
   { name: 'POST support-extensions', method: 'POST', path: SE, scope: 'platform:subscription:support', body: SE_BODY(SE_TENANT_APPLY, SE_SUB_APPLY, 7, 'pact-a8-gate-0001') },
   { name: 'GET support-extensions', method: 'GET', path: SE, scope: 'platform:subscription:read' },
   { name: 'GET alerts/billing', method: 'GET', path: ALERTS_BILLING, scope: 'platform:billing:read' },
@@ -1578,6 +1582,70 @@ const SE_EXTENSION = (tenant_id: string, subscription_id: string) => ({
   removed_at: null,
   removed_by: null,
   remove_change_request_id: null,
+});
+
+describe('platform-web → GET /platform/commercial/finance/revenue (CCP-D2)', () => {
+  // Counts and states only: until the Finance amount scope is LOCKED (draft CCP-A1 FA-6) no caller
+  // receives an amount; each money-bearing object says amount_withheld: FINANCE_SCOPE_PENDING.
+  const WITHHELD = 'FINANCE_SCOPE_PENDING';
+  const bucket = (month: unknown) => ({
+    month,
+    commitment_end: integer(0),
+    period_end: integer(0),
+    events: integer(0),
+    priced_events: integer(0),
+    unpriced_events: integer(0),
+    amount_withheld: WITHHELD,
+  });
+  it('finance_admin reads the revenue report (200; counts only, every amount withheld)', async () => {
+    await provider
+      .addInteraction()
+      .given('finance records exist')
+      .uponReceiving('a revenue report read by finance_admin')
+      .withRequest('GET', REVENUE, (b) => {
+        b.headers(platformSession('finance_admin')).query({ product_key: 'sign', months: '3' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          as_of: iso(),
+          currency: 'USD',
+          billing_interval: 'MONTH',
+          basis: 'OPEN_SUBSCRIPTIONS_X_PINNED_LIST_PRICE',
+          billing_provider_mode: like('unconfigured'),
+          amount_withheld: WITHHELD,
+          by_product: eachLike({ product_key: 'sign', subscriptions: integer(2), amount_withheld: WITHHELD }),
+          counts: {
+            open_commercial_subscriptions: integer(3),
+            included: integer(2),
+            excluded: integer(1),
+            excluded_by_reason: {
+              STATUS_NOT_REVENUE_BEARING: integer(0),
+              PLAN_VERSION_INTEGRITY: integer(0),
+              CONTRACT_PRICED: integer(0),
+              NO_LIST_PRICE: integer(1),
+              NON_USD_CURRENCY: integer(0),
+              NON_MONTHLY_INTERVAL: integer(0),
+            },
+            not_commercial_by_source: like({}),
+          },
+          renewal_pipeline: {
+            months: 3,
+            from_month: regex('^\\d{4}-\\d{2}$', '2026-10'),
+            through_month: regex('^\\d{4}-\\d{2}$', '2026-12'),
+            lapsed: bucket('LAPSED'),
+            by_month: eachLike(bucket(regex('^\\d{4}-\\d{2}$', '2026-10')), 3),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${REVENUE}?product_key=sign&months=3`, 'GET', platformSession('finance_admin'));
+        expect(res.status).toBe(200);
+        expect(res.body['amount_withheld']).toBe(WITHHELD);
+        expect(JSON.stringify(res.body)).not.toMatch(/_minor|"mrr|"arr/);
+      });
+  });
+
+  financeRefusal(REVENUE, 'revenue');
 });
 
 describe('platform-web → POST /platform/commercial/support-extensions (CCP-A8)', () => {

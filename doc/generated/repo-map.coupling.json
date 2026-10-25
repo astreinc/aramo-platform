@@ -10888,6 +10888,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-revenue.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform-commercial-subscriptions.controller.ts"
     },
     {
@@ -16507,6 +16512,161 @@
       "from": "doc/ccp/slices/CCP-D1-pre-execution.md",
       "status": "unscoped",
       "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-revenue.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-d2-revenue-authorization.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/dashboard/DashboardView.no-money.spec.tsx"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-acceptance.md",
+      "status": "unscoped",
+      "to": "ci/config/api-surface-manifest.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-acceptance.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-orphan-scopes.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-D2-pre-execution.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/index.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/billing-revenue-report.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/subscription.module.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-d2-revenue-report.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-d2-revenue-report.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-acceptance.md",
+      "status": "unscoped",
+      "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-platform-admin.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-acceptance.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-finance.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-pre-execution.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/dashboard/DashboardView.no-money.spec.tsx"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A5-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A6-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-B4-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-C6-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261019140000_sign_commercial_catalog_a1/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261026030000_ccp_b4_enterprise_contracts/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/billing-finance-report.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/plan-version.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/product-registry.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-D2-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/support/ccp-a3-database.ts"
     },
     {
       "from": "doc/ccp/slices/CCP-D3-acceptance.md",
@@ -30809,6 +30969,18 @@
       "from": "libs/subscription/src/tests/ccp-d1-usage-rollups.integration.spec.ts",
       "status": "excluded",
       "to": "libs/subscription/src/lib/usage/usage-rollup.service.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-d2-revenue-report.integration.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-D2-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-d2-revenue-report.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-D2-acceptance.md"
     },
     {
       "excludedBy": "src/tests/**/*",
