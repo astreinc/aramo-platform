@@ -258,6 +258,10 @@ export default [
             // AppModule to verify the intelligence-integration → talent-intelligence-service
             // pact. Production ATS reaches TI ONLY over HTTP (IntelligenceClient).
             '@aramo/talent-intelligence-service',
+            // CCP-A10 (D11): verify-platform-admin.ts test-bootstraps apps/platform-admin's
+            // AppModule to verify the platform-web → platform-admin pact. Authorized by the
+            // LOCKED PLATFORM-UX-1 Amendment A1 (A1-3), the separate amendment this block asks for.
+            '@aramo/platform-admin',
           ],
           depConstraints: SCOPE_DEP_CONSTRAINTS,
         },
