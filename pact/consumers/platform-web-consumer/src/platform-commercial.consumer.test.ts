@@ -51,6 +51,8 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 // refusals: a role missing the route scope (audit feed), a role missing the requester
 // or step authority (create, submit, approve, reject), self-approval, and no session.
 // Non-CCP: GET /platform/me (allowed only; optional per the A10 row).
+// CCP-B1 adds the Approvals inbox's call shapes on the same routes: the full list
+// (`?limit=200`), the `eligible_for_me` list, and an approve without a comment.
 //
 // HOW LATER SLICES EXTEND THIS CONTRACT: see the "Extending" section of
 // doc/ccp/slices/CCP-A10-acceptance.md. In short — add a `describe` block per new CCP
@@ -331,6 +333,70 @@ describe('platform-web → GET /platform/commercial/change-requests (CCP-A3)', (
   });
 });
 
+// CCP-B1 — the Approvals inbox reads (apps/platform-web/src/commercial/commercial-api.ts
+// listChangeRequests): every request, one page of 200, and the caller's
+// `eligible_for_me` set. A full page mixes states, so the row template names only the
+// fields every state carries (nullable timestamps are contracted by the interactions
+// above, per state).
+const ANY_STATE = '^(DRAFT|PENDING_APPROVAL|APPROVED|APPLYING|APPLIED|APPLY_FAILED|REJECTED|EXPIRED|WITHDRAWN)$';
+const inboxRow = (state: ReturnType<typeof regex> | string) => ({
+  id: uuid(EX_REQUEST_ID),
+  action_type: regex('^[A-Z_]+$', 'CREDIT'),
+  kind: 'NORMAL',
+  state,
+  product_key: 'sign',
+  // TD-MERGE-1: a mixed page carries every action type (CREDIT, SUBSCRIPTION_OPEN from the A6
+  // states, …), so the payload is contracted as an object only; per-action payload keys are
+  // contracted by the per-action interactions.
+  payload: like({}),
+  required_chain: {
+    rule: regex('^(FINANCE_ONLY|FINANCE_THEN_OWNER|DISTINCT_PLATFORM_OWNER)$', 'FINANCE_ONLY'),
+    steps: eachLike({ step_index: integer(0), role_key: regex('^(finance_admin|platform_owner)$', 'finance_admin') }),
+  },
+  policy_version_id: uuid(POLICY_V1),
+  requested_by: uuid(OP.commercial_ops),
+  reason: like('Goodwill credit for a service outage'),
+  created_at: iso(),
+});
+
+describe('platform-web → GET /platform/commercial/change-requests — the Approvals inbox reads (CCP-B1)', () => {
+  it('finance_admin reads every request, one page of 200 (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('a pending change request exists')
+      .uponReceiving('an inbox read of every change request by finance_admin')
+      .withRequest('GET', CR, (b) => {
+        b.headers(platformSession('finance_admin')).query({ limit: '200' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ requests: eachLike(inboxRow(regex(ANY_STATE, 'PENDING_APPROVAL'))), next_cursor: null });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}?limit=200`, 'GET', platformSession('finance_admin'));
+        expect(res.status).toBe(200);
+        expect((res.body['requests'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+
+  it('finance_admin reads the requests waiting on them (eligible_for_me, 200)', async () => {
+    await provider
+      .addInteraction()
+      .given('a pending change request exists')
+      .uponReceiving('an inbox read of the requests eligible for finance_admin')
+      .withRequest('GET', CR, (b) => {
+        b.headers(platformSession('finance_admin')).query({ eligible_for_me: 'true', limit: '200' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ requests: eachLike(inboxRow('PENDING_APPROVAL')), next_cursor: null });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}?eligible_for_me=true&limit=200`, 'GET', platformSession('finance_admin'));
+        expect(res.status).toBe(200);
+        expect((res.body['requests'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+});
+
 describe('platform-web → GET /platform/commercial/change-requests/{id} (CCP-A3)', () => {
   it('finance_admin reads a pending request with its own step verdict (200)', async () => {
     await provider
@@ -448,6 +514,36 @@ describe('platform-web → POST /platform/commercial/change-requests/{id}/approv
       })
       .executeTest(async (mock) => {
         const res = await call(`${mock.url}${approve()}`, 'POST', platformJson('finance_admin'), APPROVE_BODY);
+        expect(res.status).toBe(201);
+      });
+  });
+
+  it('finance_admin approves step 0 without a comment, as the console sends it (201 APPROVED, CCP-B1)', async () => {
+    await provider
+      .addInteraction()
+      .given('a pending change request exists')
+      .uponReceiving('a change request approval by finance_admin from the Approvals inbox')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/approvals`, approve()), (b) => {
+        b.headers(platformJson('finance_admin')).jsonBody({ step_index: 0 });
+      })
+      .willRespondWith(201, (b) => {
+        b.jsonBody({
+          request: requestBody('APPROVED', { submitted: true, approved: true }),
+          approval: {
+            id: uuid('cca10000-0000-7000-8000-0000000000f2'),
+            step_index: 0,
+            approver_user_id: OP.finance_admin,
+            step_role_key: 'finance_admin',
+            step_scope_keys: eachLike('platform:billing:approve'),
+            approver_role_keys: ['finance_admin'],
+            comment: null,
+            created_at: iso(),
+          },
+          apply: null,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${approve()}`, 'POST', platformJson('finance_admin'), { step_index: 0 });
         expect(res.status).toBe(201);
       });
   });

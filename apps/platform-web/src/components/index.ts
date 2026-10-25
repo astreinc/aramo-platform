@@ -43,4 +43,17 @@ export {
   formatRelative,
   formatTimestamp,
 } from './format-date';
-export { PERMISSION_LABEL, PLATFORM_PERMISSIONS, permissionLabel, type PlatformPermission } from './permissions';
+export {
+  COMMERCIAL_PERMISSIONS,
+  PERMISSION_LABEL,
+  PLATFORM_PERMISSIONS,
+  permissionLabel,
+  type CommercialPermission,
+  type PlatformPermission,
+} from './permissions';
+// CCP-B1 — the NEW CCP components (CCP-UI v1.0 handoff §6; R-3).
+export { ApprovalChain, ChainProgress, type ApprovalChainProps, type ApprovalChainStep, type ChainProgressProps, type ChainStepState } from './ApprovalChain';
+export { BeforeAfterDiff, type BeforeAfterDiffProps, type BeforeAfterRow } from './BeforeAfterDiff';
+export { BootstrapBanner, type BootstrapBannerProps } from './BootstrapBanner';
+export { CrStepper, type CrStep, type CrStepMark, type CrStepperProps } from './CrStepper';
+export { EligibilityVerdict, RosterVerdicts, type EligibilityVerdictProps, type RosterVerdict, type RosterVerdictsProps } from './EligibilityVerdict';

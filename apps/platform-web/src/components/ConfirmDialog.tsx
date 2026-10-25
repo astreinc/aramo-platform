@@ -41,6 +41,8 @@ export interface ConfirmDialogProps {
   readonly onCommit: () => void;
   /** 720px instead of 580px (a dialog that holds a diff). */
   readonly wide?: boolean;
+  /** CCP-B1: the CCP-UI v1.0 dialog size, min(600px, 94vw), with its 18px title (handoff §5.10). */
+  readonly ccp?: boolean;
   /** Default: "Cancel". */
   readonly cancelLabel?: string;
 }
@@ -60,6 +62,7 @@ export function ConfirmDialog({
   busy = false,
   onCommit,
   wide = false,
+  ccp = false,
   cancelLabel = 'Cancel',
 }: ConfirmDialogProps) {
   useReturnFocus(open);
@@ -84,7 +87,7 @@ export function ConfirmDialog({
   );
   return (
     <Dialog open={open} onOpenChange={onOpenChange} title={title} footer={footer}>
-      <div className={`pw-cd${wide ? ' pw-cd--wide' : ''}`}>
+      <div className={`pw-cd${wide ? ' pw-cd--wide' : ''}${ccp ? ' pw-cd--ccp' : ''}`}>
         {from && to ? (
           <div className="pw-cd__change">
             <span className="pw-cd__change-label">Change</span>

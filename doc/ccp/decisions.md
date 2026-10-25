@@ -51,7 +51,7 @@
 - **Not authorized:** no publication, merge to main, deployment or production activation.
 
 ## Architect / PO decisions (2026-10-25, second disposition)
-- **TD-A6-5: APPROVED for drafting and LOCK.** The apply TTL is a distinct, policy-versioned value: 72 h from final approval. At exactly the deadline, an unstarted apply expires (half-open window, TD-A2-1). An apply already in APPLYING follows recovery semantics. Expired requests keep their audit and approval history, release the open-request slot and cannot be applied; recovery needs a fresh request. Policy clocks: the approval TTL runs 72 h from submission (D5); the apply TTL runs 72 h from final approval (amendment). **Implementation waits for the formal amendment to be LOCKED.**
+- **TD-A6-5: APPROVED for drafting and LOCK.** The apply TTL is a distinct, policy-versioned value: 72 h from final approval. At exactly the deadline, an unstarted apply expires (half-open window, TD-A2-1). An apply already in APPLYING follows recovery semantics. Expired requests keep their audit and approval history, release the open-request slot and cannot be applied; recovery needs a fresh request. Policy clocks: the approval TTL runs 72 h from the moment the request is submitted (D5); the apply TTL runs 72 h from final approval (amendment). **Implementation waits for the formal amendment to be LOCKED.**
 - **D5: CONFIRMED by the PO,** subject to the apply-TTL amendment being LOCKED.
 - **TD-A6-R-1: APPROVED.** A same-period downgrade is allowed only when authoritative consumed usage plus non-overlapping outstanding reservations is ≤ the new allowance. It is revalidated atomically at apply time; no reset, no proration. Example: 70 consumed + 10 reserved = 80 ≤ 100, leaving 20 available. Cross-period, proration and future-dated changes are not authorized.
 - **TD-B1-2: APPROVED.** Commercial roles keep Dashboard access, with backend-enforced, role-scoped data visibility. No monetary data on general dashboard widgets; money stays on authorized Finance surfaces.
@@ -61,3 +61,25 @@
   - There must be no second usage ledger and no new balance or consumption authority. Otherwise, return a bounded design divergence before implementation (HALT).
 - **TD-B2-3: APPROVED, requester-only (v1).** The Apply action is offered only to the original requester, only when the request is approved and actionable. Approvers do not gain apply authority by approving. The backend independently enforces the actor (= `requested_by`), the immutable payload, the approved state, the unexpired application authority (once the TTL is LOCKED) and current eligibility. **This narrows TD-A6-3 as built:** A6 admitted any holder of the action's requester scope.
 - **Still gated:** refund policy, Stripe Tax, approved legal terms, enterprise invoicing. No push, PR, merge, deployment, production migration or live Stripe.
+
+## Architect disposition: integration wave (2026-10-25)
+- **TD-B5-1 APPROVED:** POLICY_ACTIVATE uses APPROVED → APPLYING → APPLIED. The request is APPLIED only after the policy activation commits. Retry and APPLY_FAILED semantics are preserved. Approval evidence is distinct from completed execution: an applied activation never stays APPROVED. (Implemented after the B5 merge, by the B5 owner, as a follow-up; not by the merge executor.)
+- **TD-B4-2 CONFIRMED:** contract amend/end stays Finance-only under TD-A3-2. No Finance → Owner chain to match the prototype.
+- **TD-B4-3 APPROVED (preserve RBAC):** catalog_manager gets no `platform:subscription:read`. Contracts is hidden or disabled for that role, and the backend still enforces it.
+- **TD-C1-4 APPROVED:** a verified, provider-authoritative expired checkout session may move its matching intent to EXPIRED.
+  - The original events are preserved.
+  - Late or out-of-order webhooks cannot activate or erase a governed subscription.
+  - Expiry comes from Stripe evidence, never a local timer.
+  - Replay is idempotent.
+  - It never bypasses the MANUAL conversion rule.
+- **TD-A8-6 APPROVED:** support overlays may apply to Stripe-owned PAST_DUE subscriptions through the separate overlay only. They never mutate Stripe-owned rows, and Stripe's PAST_DUE status stays accurate.
+- **TD-A8-5 APPROVED:** support_admin requests removal, Finance approves independently. Removal is audited, does not bypass recorded billing or entitlement state, and effective eligibility is recalculated at once.
+- **Gate rule:** after each merge, verify the affected Pact, integration, authorization, migration and contract gates **on the integrated branch**. Worktree-only results are not proof that the integrated branch is green.
+- **Still not authorized:** push, PR, merge to main, production migration, deployment, live billing.
+
+## Merge train (2026-10-25): B1 → B2 → B5 → B4 → C1 → A7 → A8
+Post-merge fixes made on the integrated program branch (TD-MERGE-n). Each merge is its own commit.
+
+- **TD-MERGE-1 (B1, pact):** B1's inbox interaction "an inbox read of every change request by finance_admin" matched every row of a mixed page against the CREDIT payload template (`amount_minor`, `currency`). On the integrated branch the A6 provider states also leave SUBSCRIPTION_OPEN rows, so verification failed (3 rows). The inbox row now contracts `payload` as an object only (`like({})`); per-action payload keys stay contracted by the per-action interactions.
+- **TD-MERGE-2 (B1, vocabulary):** `doc/ccp/decisions.md` (TD-A6-5 second disposition) carried a Tier-2 term from `scripts/verify-vocabulary.sh` (pre-existing at `18b2c032`); reworded ("from the moment the request is submitted"). No exemption added.
+- **TD-MERGE-3 (pre-existing, not fixed):** `npx tsc --noEmit -p pact/provider/tsconfig.json` fails at `pact/provider/src/verify-sign.ts:850` (an A6 state handler using `{ setup, teardown }` does not fit the inferred handler-map type). Present at `18b2c032` (A6 commit `b03bdbde`); runtime verification is unaffected. Left for the A6 owner.

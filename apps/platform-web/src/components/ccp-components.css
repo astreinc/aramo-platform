@@ -1,0 +1,383 @@
+/* CCP-B1 — styles for the NEW CCP components (apps/platform-web/src/components,
+ * PLATFORM-UX-1 R-3): CrStepper, ApprovalChain / ChainProgress,
+ * EligibilityVerdict / RosterVerdicts, BeforeAfterDiff, BootstrapBanner. Every
+ * value is copied from the pinned Commercial Control Plane v1.0.dc.html (CCP-UI
+ * v1.0) and expressed through the theme.css token layer (--pw-*). The design's
+ * fixed-height elements are content-box (no box-sizing reset), so they are
+ * declared content-box here. */
+
+/* ─────────── section caps label ("Effect · before → after", "Approval chain") ─────────── */
+
+.pw-ccp-caps {
+  margin-bottom: 6px;
+  color: var(--pw-faint);
+  font-size: var(--pw-fs-11);
+  font-weight: 600;
+  letter-spacing: var(--pw-tracking-caps);
+  text-transform: uppercase;
+}
+
+/* ─────────── CrStepper (handoff §4) ─────────── */
+
+.pw-crstep {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pw-crstep__chip {
+  box-sizing: content-box;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--pw-line);
+  border-radius: 14px;
+  background: var(--pw-surface);
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12);
+  font-weight: 600;
+}
+.pw-crstep__chip--done {
+  border-color: var(--pw-alert-success-line);
+  background: var(--pw-ok-bg);
+  color: var(--pw-alert-success-ink);
+}
+.pw-crstep__chip--current {
+  border-color: var(--pw-alert-info-line);
+  background: var(--pw-alert-info-bg);
+  color: var(--pw-alert-info-ink);
+}
+.pw-crstep__chip--failed,
+.pw-crstep__chip--terminal {
+  border-color: var(--pw-alert-error-line);
+  background: var(--pw-alert-error-bg);
+  color: var(--pw-alert-error-ink);
+}
+.pw-crstep__chip--dim {
+  opacity: 0.45;
+}
+
+/* ─────────── ApprovalChain (handoff §5.2 item 6) ─────────── */
+
+.pw-chain {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pw-chain__step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 9px 12px;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-box);
+  font-size: var(--pw-fs-13);
+}
+.pw-chain__badge {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--pw-step-badge-idle-bg);
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12);
+  font-weight: 700;
+}
+.pw-chain__badge--signed {
+  background: var(--pw-ok-bg);
+  color: var(--pw-alert-success-ink);
+}
+.pw-chain__badge--current {
+  background: var(--pw-alert-info-bg);
+  color: var(--pw-alert-info-ink);
+}
+.pw-chain__title {
+  font-weight: 600;
+}
+.pw-chain__who {
+  margin-left: auto;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12-5);
+  text-align: right;
+}
+
+/* ─────────── ChainProgress (handoff §5.1 "Chain") ─────────── */
+
+.pw-chainp {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: var(--pw-fs-12-5);
+}
+.pw-chainp__item {
+  display: contents;
+}
+.pw-chainp__step {
+  color: var(--pw-muted);
+  font-weight: 600;
+}
+.pw-chainp__step--signed {
+  color: var(--pw-ok);
+}
+.pw-chainp__sep {
+  color: var(--pw-crumb-sep);
+}
+
+/* ─────────── EligibilityVerdict (handoff §5.2 item 7) ─────────── */
+
+.pw-verdict {
+  padding: 12px 14px;
+  border: 1.5px solid var(--pw-line);
+  border-radius: var(--pw-r-box);
+  background: var(--pw-surface-2);
+}
+.pw-verdict--ok {
+  border-color: var(--pw-alert-success-line);
+  background: var(--pw-verdict-ok-bg);
+}
+.pw-verdict__caps {
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-11);
+  font-weight: 600;
+  letter-spacing: var(--pw-tracking-caps);
+  text-transform: uppercase;
+}
+.pw-verdict__label {
+  margin-top: 3px;
+  color: var(--pw-ink-2);
+  font-weight: 700;
+}
+.pw-verdict--ok .pw-verdict__label {
+  color: var(--pw-alert-success-ink);
+}
+.pw-verdict__why {
+  margin-top: 2px;
+  color: var(--pw-ink-2);
+  font-size: var(--pw-fs-12-5);
+}
+
+/* ─────────── RosterVerdicts (handoff §5.2 item 8) ─────────── */
+
+.pw-roster__box {
+  overflow: hidden;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-box);
+}
+.pw-roster__row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--pw-rule);
+  font-size: var(--pw-fs-12-5);
+}
+.pw-roster__mark {
+  width: 16px;
+  color: var(--pw-muted);
+  font-weight: 700;
+}
+.pw-roster__mark--ok,
+.pw-roster__label--ok {
+  color: var(--pw-alert-success-ink);
+}
+.pw-roster__name {
+  min-width: 120px;
+  font-weight: 600;
+}
+.pw-roster__roles {
+  color: var(--pw-muted);
+}
+.pw-roster__label {
+  margin-left: auto;
+  color: var(--pw-muted);
+  font-weight: 600;
+  text-align: right;
+}
+.pw-roster__empty {
+  padding: 10px 12px;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12-5);
+}
+
+/* ─────────── BeforeAfterDiff (handoff §5.2 item 4) ─────────── */
+
+.pw-badiff {
+  overflow: hidden;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-box);
+  font-size: var(--pw-fs-13);
+  list-style: none;
+}
+.pw-badiff__row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--pw-rule);
+}
+.pw-badiff__field,
+.pw-badiff__none {
+  color: var(--pw-muted);
+}
+.pw-badiff__before,
+.pw-badiff__after {
+  justify-self: start;
+  padding: 0 5px;
+  border-radius: var(--pw-r-xs);
+}
+.pw-badiff__before {
+  background: var(--pw-diff-before-bg);
+  color: var(--pw-alert-error-ink);
+  text-decoration: line-through;
+}
+.pw-badiff__after {
+  background: var(--pw-diff-after-bg);
+  color: var(--pw-alert-success-ink);
+  font-weight: 600;
+}
+
+/* ─────────── BootstrapBanner (handoff §3.2) ─────────── */
+
+.pw-bootbanner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 24px;
+  border-bottom: 1px solid var(--pw-alert-warn-line);
+  background: var(--pw-alert-warn-bg);
+  color: var(--pw-alert-warn-ink);
+  font-size: var(--pw-fs-13);
+}
+.pw-bootbanner__lead {
+  font-weight: 700;
+}
+.pw-bootbanner__action {
+  margin-left: auto;
+}
+
+/* ─────────── DetailDrawer `ccp` variant (handoff §5.2) ─────────── */
+/* The subtitle row (mono id + state pill) sits above the 18px title, as in the
+ * design's drawer header; the base drawer (PLATFORM-UX-1 §8.1) is unchanged. */
+
+.tc-dialog__content:has(.pw-drawer--ccp) {
+  width: min(640px, 96vw);
+  box-shadow: var(--pw-shadow-drawer-ccp);
+}
+.tc-dialog__content:has(.pw-drawer--ccp) .tc-dialog__description {
+  order: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 64px 0 20px;
+  border-bottom: none;
+  color: var(--pw-ink);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-13);
+}
+.tc-dialog__content:has(.pw-drawer--ccp) .tc-dialog__title {
+  order: 2;
+  display: block;
+  margin: 0;
+  padding: 4px 64px 16px 20px;
+  border-bottom: 1px solid var(--pw-line);
+  font-size: 18px;
+  font-weight: 700;
+}
+.tc-dialog__content:has(.pw-drawer--ccp) .tc-dialog__body {
+  order: 3;
+  padding: 16px 20px;
+}
+.tc-dialog__content:has(.pw-drawer--ccp) .tc-dialog__footer {
+  order: 4;
+  align-items: center;
+  padding: 12px 20px;
+  background: var(--pw-surface-2);
+}
+.pw-drawer--ccp > .pw-drawer__close {
+  top: 16px;
+  right: 20px;
+  border-radius: var(--pw-r-md);
+}
+
+/* ─────────── ConfirmDialog `ccp` size (handoff §5.10) ─────────── */
+
+.tc-dialog__content:has(.pw-cd--ccp) {
+  width: min(600px, 94vw);
+}
+.tc-dialog__content:has(.pw-cd--ccp) .tc-dialog__title {
+  font-size: 18px;
+}
+
+/* ─────────── AccessDenied `ccp` variant (handoff §2 "Deep links") ─────────── */
+
+.pw-denied--ccp .pw-denied__pill {
+  gap: 6px;
+  height: 22px;
+  padding: 0 9px;
+  background: var(--pw-danger-bg);
+  font-weight: 600;
+}
+.pw-denied--ccp .pw-denied__pill::before {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  content: '';
+}
+.pw-denied--ccp .pw-denied__title {
+  margin: 14px 0 6px;
+  font-size: var(--pw-fs-22);
+}
+.pw-denied--ccp .pw-denied__why {
+  margin: 0 0 18px;
+  color: var(--pw-ink-2);
+}
+.pw-denied--ccp .pw-denied__facts {
+  gap: 8px 14px;
+  margin: 0 0 18px;
+}
+.pw-denied--ccp .pw-denied__email {
+  font-weight: 400;
+}
+.pw-denied__grants {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pw-denied__chip {
+  padding: 1px 7px;
+  border: 1px solid var(--pw-line-2);
+  border-radius: var(--pw-r-sm);
+  background: var(--pw-surface);
+  font-size: var(--pw-fs-12);
+}
+.pw-denied--ccp .pw-denied__actions .pw-btn {
+  padding: 0 14px;
+}
+
+/* ─────────── EmptyState `xl` (CCP-UI v1.0 table empty states, 44px 20px, bold title) ─────────── */
+
+.pw-empty--xl {
+  padding: 44px 20px;
+}
+.pw-empty--xl .pw-empty__title {
+  font-weight: 700;
+}
+.pw-denied--ccp .pw-denied__facts {
+  font-size: var(--pw-fs-13);
+}
+.pw-denied--ccp .pw-denied__email {
+  font-size: var(--pw-fs-13);
+}

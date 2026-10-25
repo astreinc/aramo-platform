@@ -2,7 +2,7 @@
 // R-12): the rail groups and items, the permission each item needs, which item a
 // route highlights, and the breadcrumb trail a route starts with.
 
-import { PLATFORM_PERMISSIONS as P } from '../components/permissions';
+import { COMMERCIAL_PERMISSIONS as CP, PLATFORM_PERMISSIONS as P } from '../components/permissions';
 
 export type NavIconKey =
   | 'dash'
@@ -15,7 +15,14 @@ export type NavIconKey =
   | 'sliders'
   | 'doc'
   | 'braces'
-  | 'key';
+  | 'key'
+  // CCP-B1 — the Commercial group's glyphs (Commercial Control Plane v1.0.dc.html IC).
+  | 'check'
+  | 'repeat'
+  | 'tag'
+  | 'contract'
+  | 'scale'
+  | 'audit';
 
 export type NavKey =
   | 'dashboard'
@@ -28,7 +35,14 @@ export type NavKey =
   | 'matching'
   | 'templates'
   | 'variables'
-  | 'admins';
+  | 'admins'
+  // CCP-B1 — the Commercial group.
+  | 'approvals'
+  | 'subscriptions'
+  | 'catalog'
+  | 'contracts'
+  | 'policy'
+  | 'audit';
 
 export interface NavItem {
   readonly key: NavKey;
@@ -78,6 +92,22 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { key: 'variables', label: 'Template variables', to: '/template-variables', scope: P.documentTemplateRead, icon: 'braces' },
     ],
   },
+  // ── CCP-B1 — the Commercial group (CCP-UI v1.0 handoff §2), between Documents and
+  // Platform. Each item needs its commercial READ scope (super_admin holds none, so
+  // the group is hidden for it). Contracts and Policy have no scope of their own in
+  // the A1 catalog: provisional subscription:read / approval:read (B4 / B5 own them).
+  {
+    label: 'Commercial',
+    items: [
+      { key: 'approvals', label: 'Approvals', to: '/commercial/approvals', scope: CP.approvalRead, icon: 'check' },
+      { key: 'subscriptions', label: 'Subscriptions', to: '/commercial/subscriptions', scope: CP.subscriptionRead, icon: 'repeat' },
+      { key: 'catalog', label: 'Catalog', to: '/commercial/catalog', scope: CP.catalogRead, icon: 'tag' },
+      { key: 'contracts', label: 'Contracts', to: '/commercial/contracts', scope: CP.subscriptionRead, icon: 'contract' },
+      { key: 'policy', label: 'Policy', to: '/commercial/policy', scope: CP.approvalRead, icon: 'scale' },
+      { key: 'audit', label: 'Audit', to: '/commercial/audit', scope: CP.commercialAuditRead, icon: 'audit' },
+    ],
+  },
+  // ── end CCP-B1
   {
     label: 'Platform',
     items: [{ key: 'admins', label: 'Platform admins', to: '/admins', scope: P.adminInvite, icon: 'key' }],
@@ -108,6 +138,13 @@ export function navKeyFor(pathname: string): NavKey | null {
   if (p.startsWith('/document-templates')) return 'templates';
   if (p.startsWith('/template-variables')) return 'variables';
   if (p.startsWith('/admins')) return 'admins';
+  // CCP-B1 — the Commercial group (/commercial → Approvals).
+  if (p === '/commercial' || p.startsWith('/commercial/approvals')) return 'approvals';
+  if (p.startsWith('/commercial/subscriptions')) return 'subscriptions';
+  if (p.startsWith('/commercial/catalog')) return 'catalog';
+  if (p.startsWith('/commercial/contracts')) return 'contracts';
+  if (p.startsWith('/commercial/policy')) return 'policy';
+  if (p.startsWith('/commercial/audit')) return 'audit';
   return null;
 }
 
