@@ -5,6 +5,7 @@ import {
   AllowanceService,
   ESIGN_ENVELOPE_ALLOWANCE,
   ESIGN_ENVELOPE_SENT_EVENT,
+  SIGN_PRODUCT_KEY,
   type AllowanceReadResult,
   type AllowanceUnavailableReason,
 } from '@aramo/subscription';
@@ -71,7 +72,7 @@ export class AramoSignAllowanceGate {
   }
 
   async guardSend<T>(tenant_id: string, envelope_id: string, send: () => Promise<T>): Promise<T> {
-    const key = { tenant_id, allowance_key: ESIGN_ENVELOPE_ALLOWANCE };
+    const key = { tenant_id, product_key: SIGN_PRODUCT_KEY, allowance_key: ESIGN_ENVELOPE_ALLOWANCE };
     // Overdue reservations are settled from the envelope record before counting.
     await this.allowance.resolveStale({
       ...key,
