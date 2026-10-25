@@ -310,3 +310,82 @@ model LegalAcceptanceOrigin {
 
   @@schema("subscription")
 }
+
+// -------------------------------------------------------------------------
+// CCP-A2 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.1 row A2; Charter §7, D10)
+// — the versioned commercial policy. A clone of the MatchingPolicyVersion pattern
+// (never an import of it, and never the ADR-0024 policy store). Platform-global: no
+// tenant_id. DRAFT | ACTIVE | RETIRED; at most one ACTIVE (partial unique index); content
+// immutable at the DB once the row leaves DRAFT; DELETE rejected (trigger). v1 ACTIVE is
+// seeded by migration 20261024180000 with the Charter §7 (D5) values as DATA. The
+// content shape and the fail-closed parser live in src/lib/commercial/commercial-policy.ts.
+// -------------------------------------------------------------------------
+model CommercialPolicyVersion {
+  id               String                 @id @db.Uuid
+  // 1, 2, 3 … — assigned under a transaction-scoped advisory lock. UNIQUE.
+  version_number   Int                    @unique
+  // DRAFT | ACTIVE | RETIRED. CHECK + one-ACTIVE partial unique index in migration.
+  status           String                 @default("DRAFT")
+  content          Json
+  // SHA-256 (hex) of the canonical JSON of content (commercialPolicyChecksum).
+  content_checksum String
+  note             String?
+  created_by       String?                @db.Uuid
+  created_at       DateTime               @default(now()) @db.Timestamptz
+  activated_by     String?                @db.Uuid
+  activated_at     DateTime?              @db.Timestamptz
+  retired_at       DateTime?              @db.Timestamptz
+  audit_events     CommercialAuditEvent[]
+
+  @@index([status])
+  @@schema("subscription")
+}
+
+// CCP-A2 — append-only policy-lifecycle stream (UPDATE and DELETE rejected at the DB).
+model CommercialPolicyAuditEvent {
+  id            String   @id @db.Uuid
+  actor_id      String?  @db.Uuid
+  // user | system. CHECK.
+  actor_type    String
+  // COMMERCIAL_POLICY_VERSION_CREATED | _ACTIVATED | _RETIRED. CHECK.
+  event_type    String
+  // The CommercialPolicyVersion id the event is about.
+  subject_id    String   @db.Uuid
+  event_payload Json
+  created_at    DateTime @default(now()) @db.Timestamptz
+
+  @@index([subject_id, created_at(sort: Desc), id(sort: Desc)])
+  @@index([created_at(sort: Desc), id(sort: Desc)])
+  @@schema("subscription")
+}
+
+// CCP-A2 — the append-only commercial audit stream (UPDATE and DELETE rejected
+// unconditionally at the DB). Read by GET /platform/commercial/audit-events
+// (platform:commercial:audit:read). change_request_id gains its FK in CCP-A3.
+model CommercialAuditEvent {
+  id                String                  @id @db.Uuid
+  actor_id          String?                 @db.Uuid
+  // user | system. CHECK (a user actor carries actor_id).
+  actor_type        String
+  // Server-side snapshot of the actor's role keys at the time of the event.
+  actor_role_keys   String[]                @default([])
+  // UPPER_SNAKE event type. CHECK (format).
+  event_type        String
+  is_exception      Boolean                 @default(false)
+  tenant_id         String?                 @db.Uuid
+  // "<kind>:<id>". CHECK.
+  subject           String
+  change_request_id String?                 @db.Uuid
+  policy_version_id String                  @db.Uuid
+  payload           Json                    @default("{}")
+  correlation_id    String
+  // Millisecond precision: the (created_at, id) keyset cursor round-trips through a Date.
+  created_at        DateTime                @default(now()) @db.Timestamptz(3)
+  policy_version    CommercialPolicyVersion @relation(fields: [policy_version_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([created_at(sort: Desc), id(sort: Desc)])
+  @@index([actor_id, created_at(sort: Desc), id(sort: Desc)])
+  @@index([tenant_id, created_at(sort: Desc), id(sort: Desc)])
+  @@index([event_type, created_at(sort: Desc), id(sort: Desc)])
+  @@schema("subscription")
+}
