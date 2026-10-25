@@ -192,3 +192,22 @@ Post-merge fixes made on the integrated program branch (TD-MERGE-n). Each merge 
   - C4, C5 and C7 are externally blocked.
   - DR-C2-1 stays fail-closed.
   - Each blocked slice reports engineering-complete, disabled-by-design and release-ready status separately.
+
+## Architect C4 disposition (2026-10-25): implementation conditionally accepted at fb94afe8, NOT DELIVERED
+- **TD-C4-1: APPROVED WITH AMENDMENT.** REFUND is a first-class governed action with its own identity: payload, provider references, audit events, reconciliation outcomes. No LOCKED instrument enumerates the action types (the PBD A3 row says only "closed `action_type`"). The successor amendment drafted in `Aramo/documents/CCP-Commercial-Action-Catalog-REFUND-Amendment-DRAFT-20261025.md` LOCKs the full catalog with REFUND in it. REFUND stays disabled for real use until that is LOCKED and the other release gates pass.
+- **TD-C4-2: APPROVED.** Every refund goes Finance Admin → Platform Owner: distinct humans, apply-time revalidation, no amount-based bypass.
+- **TD-C4-6: APPROVED for v1.** A discount is a one-off percentage on the next eligible invoice only, within policy limits and confirmed by Stripe. Nothing recurring, indefinite or retroactive.
+- **TD-C4-12: APPROVED with a safety condition.** The disabled flag blocks NEW external execution only.
+  - Reconciliation (webhook or re-fetch, by idempotency key and provider references) of previously initiated commands continues.
+  - The request and its slot are held while the outcome is uncertain.
+  - Terminal resolution or withdrawal is allowed only after authoritative proof that no refund can still complete.
+  - A confirmed refund is recorded as applied.
+  - Never a second command, a duplicate effect or a silent slot release.
+- **TD-C4-18: CONDITIONALLY ALLOWED.** A separately governed manual credit is distinct from DR-C2-1's prohibition on automatic conversion credits. It does not authorize early cancellation, end a commitment, or lift `FINANCIAL_TREATMENT_UNDEFINED`, and it needs its own approval and an approved credit policy.
+- **R3: REQUIRED.** Centralize authorized monetary read redaction under `platform:billing:amount:read`, at each backend projection: change-request reads, audit reads and exports, notifications, financial projections. It produces authorized read representations while retaining complete internal immutable audit evidence. Never redact the stored record itself.
+- **Integration requirements:**
+  - one integrator-owned union for the Stripe command guard `guard_billing_provider_command()` (C4 and C7), with its DB/TS equivalence verified;
+  - re-validate Pact, authorization, provider idempotency, the outbox/inbox and the affected integration suites;
+  - investigate the isolated load timeout if it repeats; an intermittently failing integrated gate is not "fully green";
+  - record the two e2e lint issues separately, with baseline evidence.
+- **Not authorized:** push, PR, main merge, production migration, deployment or live Stripe.
