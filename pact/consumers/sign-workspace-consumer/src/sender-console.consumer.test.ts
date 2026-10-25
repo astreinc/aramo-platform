@@ -46,6 +46,11 @@ const { like, uuid, integer, eachLike, regex } = MatchersV3;
 //      details.reason governed_subscription_open (CCP-A6, Conversion Rule C-1 / C-4: the
 //      Settings → Plan & billing checkout of apps/sign-web/src/workspace/api.ts)
 //  11. GET  /v1/sign/billing/account (held activation)      200 pending_activation (CCP-A6-R, C-8)
+//  12. GET  /v1/sign/billing/self-service                   200 every action unavailable,
+//      reason SELF_SERVICE_TERMS_NOT_APPROVED (CCP-C7: the designed disabled state, PBD §10;
+//      billingApi.selfService of apps/sign-web/src/workspace/api.ts)
+//  13. POST /v1/sign/billing/self-service/cancel            503 ESIGN_BILLING_UNAVAILABLE
+//      details.reason self_service_terms_not_approved (CCP-C7; billingApi.selfServiceCancel)
 
 const provider = new PactV4({
   consumer: 'sign-workspace',
@@ -545,6 +550,68 @@ describe('sign-workspace → GET /v1/sign/billing/account (held activation)', ()
         expect(res.status).toBe(200);
         const body = (await res.json()) as { pending_activation: { state: string } };
         expect(body.pending_activation.state).toBe('PENDING');
+      });
+  });
+});
+
+// CCP-C7 (PBD §5.2 row C7, §10) — tenant self-service while the Sign Terms of Service are not
+// APPROVED (the shipped legal registry): the view offers no action and names the stable reason; the
+// owner's cancel is refused with the designed disabled state before any write or provider call. The
+// terms gate precedes the governed-subscription gate, so this tenant (governed) reads the terms state.
+describe('sign-workspace → GET /v1/sign/billing/self-service (terms not approved)', () => {
+  it('returns every self-service action unavailable with reason SELF_SERVICE_TERMS_NOT_APPROVED', async () => {
+    const headers = { 'X-Aramo-Consumer': 'sign', Cookie: BILLING_OWNER_COOKIE };
+    const off = { available: false, reason: 'SELF_SERVICE_TERMS_NOT_APPROVED' };
+    await provider
+      .addInteraction()
+      .given('a business tenant holds a governed Aramo-managed Sign subscription')
+      .uponReceiving('a self-service billing read by the billing owner while the Sign terms are not approved')
+      .withRequest('GET', '/v1/sign/billing/self-service', (b) => {
+        b.headers(headers);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          product_key: 'sign',
+          terms: { state: 'NOT_APPROVED', document_key: 'sign.terms_of_service', version: null, url: null },
+          pending_provider: false,
+          actions: { cancel: off, upgrade: off },
+          can_manage_billing: true,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/billing/self-service`, { headers });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { actions: { cancel: { available: boolean } } };
+        expect(body.actions.cancel.available).toBe(false);
+      });
+  });
+});
+
+describe('sign-workspace → POST /v1/sign/billing/self-service/cancel (terms not approved)', () => {
+  it('is refused 503 ESIGN_BILLING_UNAVAILABLE reason self_service_terms_not_approved', async () => {
+    const headers = { 'X-Aramo-Consumer': 'sign', Cookie: BILLING_OWNER_COOKIE, 'Content-Type': 'application/json' };
+    await provider
+      .addInteraction()
+      .given('a business tenant holds a governed Aramo-managed Sign subscription')
+      .uponReceiving('a self-service cancel by the billing owner while the Sign terms are not approved')
+      .withRequest('POST', '/v1/sign/billing/self-service/cancel', (b) => {
+        b.headers(headers).jsonBody({});
+      })
+      .willRespondWith(503, (b) => {
+        b.jsonBody({
+          error: {
+            code: 'ESIGN_BILLING_UNAVAILABLE',
+            message: like('Changing your plan online isn’t available yet. Contact Aramo to change your subscription.'),
+            request_id: like('req-1'),
+            details: { reason: 'self_service_terms_not_approved' },
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/billing/self-service/cancel`, { method: 'POST', headers, body: '{}' });
+        expect(res.status).toBe(503);
+        const out = (await res.json()) as { error: { details: { reason: string } } };
+        expect(out.error.details.reason).toBe('self_service_terms_not_approved');
       });
   });
 });

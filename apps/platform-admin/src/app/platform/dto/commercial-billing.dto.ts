@@ -24,7 +24,9 @@ export interface BillingCommandDto {
   id: string;
   provider: string;
   command_kind: string;
-  change_request_id: string;
+  // CCP-C7 — exactly one origin: a change request, or a tenant owner's self-service request.
+  change_request_id: string | null;
+  self_service_request_id: string | null;
   step: string;
   idempotency_key: string;
   tenant_id: string;

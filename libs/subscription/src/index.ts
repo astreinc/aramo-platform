@@ -82,6 +82,7 @@ export {
   BILLING_COMMAND_UNCONFIRMED_STATES,
   SUBSCRIPTION_CANCEL_MODES,
   billingCommandIdempotencyKey,
+  selfServiceCommandIdempotencyKey,
   canTransitionBillingCommand,
   type BillingCommandConfirmation,
   type BillingCommandKind,
@@ -98,6 +99,24 @@ export {
   type EnqueueBillingCommandInput,
   type ReconcileTally,
 } from './lib/billing/billing-command.service.js';
+// CCP-C7 — tenant self-service visibility and the owner's cancel / upgrade (gated by APPROVED terms).
+export {
+  COMMITMENT_TERM_DETAIL,
+  PRICE_CHANGE_UNDEFINED_DETAIL,
+  SELF_SERVICE_ACTIONS,
+  SELF_SERVICE_CANCEL_STEP,
+  SELF_SERVICE_PRODUCTS,
+  SELF_SERVICE_PRODUCT_REGISTRY,
+  SelfServiceBillingService,
+  SelfServiceRefusedError,
+  type SelfServiceAction,
+  type SelfServiceActionState,
+  type SelfServiceCancelResult,
+  type SelfServicePendingChange,
+  type SelfServiceProductEntry,
+  type SelfServiceRefusal,
+  type SelfServiceView,
+} from './lib/billing/self-service-billing.service.js';
 export {
   BILLING_WEBHOOK_INBOX_STATUSES,
   BillingWebhookInboxQueryError,

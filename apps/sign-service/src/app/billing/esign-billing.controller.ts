@@ -14,7 +14,7 @@ import {
   UseFilters,
   UseGuards,
 } from '@nestjs/common';
-import { AramoError, AramoExceptionFilter, RequestId } from '@aramo/common';
+import { AramoError, AramoExceptionFilter, type ErrorCode, RequestId } from '@aramo/common';
 import { AuthContext, type AuthContextType, JwtAuthGuard } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
@@ -29,7 +29,11 @@ import {
   BillingWebhookSignatureError,
   ESIGN_ENVELOPE_ALLOWANCE,
   SIGN_PRODUCT_KEY,
+  SelfServiceBillingService,
+  SelfServiceRefusedError,
+  type SelfServiceRefusal,
   SubscriptionLifecycleService,
+  TENANT_ACTIVATION_PENDING_MESSAGE,
   approvedLegalDocument,
   type WebhookResult,
 } from '@aramo/subscription';
@@ -47,6 +51,13 @@ import { EsignOwnerActivationService } from './esign-owner-activation.service.js
 //   GET  account          plan, status, period, usage (Sign read OR billing authority)
 //   POST checkout         start a provider checkout       (billing authority)
 //   POST portal           open the provider billing portal (billing authority)
+//   GET  self-service     CCP-C7: the product's self-service state (terms, pending provider
+//                         changes, per-action availability) (Sign read OR billing authority)
+//   POST self-service/cancel   CCP-C7: the owner's at-period-end cancel, a CCP-C1 durable command
+//                              (202, pending-provider until the applied provider state confirms it)
+//   POST self-service/upgrade  CCP-C7: gated; refused FINANCIAL_TREATMENT_UNDEFINED (DR-C7-1)
+//   Both POSTs are owner-only (sign:billing:manage) and BUSINESS-only, and refused with the stable
+//   reason `self_service_terms_not_approved` while the Sign terms are not APPROVED (PBD §10).
 //   POST webhook/stripe   provider → Aramo; NO session: authenticity is the
 //                         verified Stripe-Signature over the raw body only. CCP-C1: the
 //                         verified event is recorded in the webhook inbox before it is
@@ -152,6 +163,30 @@ export function billingHttpError(e: unknown, requestId: string): AramoError {
   return e instanceof AramoError ? e : new AramoError('INTERNAL_ERROR', 'Billing request failed', 500, { requestId });
 }
 
+// CCP-C7 — the tenant-facing copy of each self-service refusal: a stable reason, never an internal
+// conflict, flag or contract detail (TD-A6-R-3). The terms-not-approved state is the designed
+// disabled state (PBD §10).
+const SELF_SERVICE_HTTP: Readonly<Record<SelfServiceRefusal, { code: ErrorCode; status: number; message: string }>> = {
+  PRODUCT_NOT_SELF_SERVICE: { code: 'ESIGN_BILLING_UNAVAILABLE', status: 503, message: 'Changing your plan online isn’t available. Contact Aramo to change your subscription.' },
+  SELF_SERVICE_TERMS_NOT_APPROVED: { code: 'ESIGN_BILLING_UNAVAILABLE', status: 503, message: 'Changing your plan online isn’t available yet. Contact Aramo to change your subscription.' },
+  GOVERNED_SUBSCRIPTION_OPEN: { code: 'ESIGN_BILLING_CONFLICT', status: 409, message: 'Your organization’s subscription is managed by Aramo. Contact Aramo to change it.' },
+  ACTIVATION_PENDING: { code: 'ESIGN_BILLING_CONFLICT', status: 409, message: TENANT_ACTIVATION_PENDING_MESSAGE },
+  CONVERSION_IN_PROGRESS: { code: 'ESIGN_BILLING_CONFLICT', status: 409, message: 'Aramo is changing your subscription. Contact Aramo for details.' },
+  NO_SELF_SERVICE_SUBSCRIPTION: { code: 'ESIGN_BILLING_CONFLICT', status: 409, message: 'Your organization has no online subscription to change.' },
+  PROVIDER_CHANGE_PENDING: { code: 'ESIGN_BILLING_CONFLICT', status: 409, message: 'A change to your subscription is still being confirmed. Try again later.' },
+  ALREADY_CANCELING: { code: 'ESIGN_BILLING_CONFLICT', status: 409, message: 'Your subscription is already set to end at the end of the period.' },
+  PLAN_NOT_AVAILABLE: { code: 'VALIDATION_ERROR', status: 400, message: 'That plan is not available for a change.' },
+  FINANCIAL_TREATMENT_UNDEFINED: { code: 'ESIGN_BILLING_CONFLICT', status: 409, message: 'This change can’t be made online. Contact Aramo to change your subscription.' },
+};
+
+export function selfServiceHttpError(e: unknown, requestId: string): AramoError {
+  if (e instanceof SelfServiceRefusedError) {
+    const m = SELF_SERVICE_HTTP[e.reason];
+    return new AramoError(m.code, m.message, m.status, { requestId, details: { reason: e.reason.toLowerCase() } });
+  }
+  return billingHttpError(e, requestId);
+}
+
 @Controller('v1/sign/billing')
 @UseFilters(AramoExceptionFilter)
 export class EsignBillingController {
@@ -167,7 +202,22 @@ export class EsignBillingController {
     @Optional() private readonly personal?: PersonalSendGate,
     // CCP-C1 — the webhook inbox (SubscriptionModule provides it; unbound only in unit specs).
     @Optional() private readonly inbox?: BillingWebhookInboxService,
+    // CCP-C7 — tenant self-service (SubscriptionModule provides it; unbound only in unit specs).
+    @Optional() private readonly selfService?: SelfServiceBillingService,
   ) {}
+
+  private selfServiceOf(requestId: string): SelfServiceBillingService {
+    if (this.selfService === undefined) throw new AramoError('ESIGN_BILLING_UNAVAILABLE', 'Online billing is not available right now', 503, { requestId, details: { reason: 'BILLING_UNAVAILABLE' } });
+    return this.selfService;
+  }
+
+  private async runSelfService<T>(requestId: string, fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (e) {
+      throw selfServiceHttpError(e, requestId);
+    }
+  }
 
   private async run<T>(requestId: string, fn: () => Promise<T>): Promise<T> {
     try {
@@ -260,6 +310,50 @@ export class EsignBillingController {
     return this.run(requestId, async () => {
       assertCanManageBilling(auth, requestId);
       return this.lifecycle.portal(auth.tenant_id, SIGN_PRODUCT_KEY, `${consoleBase()}/sign/settings/billing`);
+    });
+  }
+
+  @Get('self-service')
+  @BillingBoundary()
+  selfServiceView(@AuthContext() auth: AuthContextType, @RequestId() requestId: string) {
+    return this.runSelfService(requestId, async () => {
+      const can_manage = canManageBilling(auth.scopes);
+      if (!can_manage && !auth.scopes.includes(ESIGN_READ_SCOPE)) {
+        throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Viewing the plan needs Sign access or billing authority', 403, {
+          requestId,
+          details: { reason: 'billing_read_scope_missing' },
+        });
+      }
+      const tenant = await this.ctx.tenantOf(auth.tenant_id, requestId);
+      const view = await this.selfServiceOf(requestId).view(auth.tenant_id, SIGN_PRODUCT_KEY);
+      return { ...view, can_manage_billing: can_manage && tenant.kind === 'BUSINESS' };
+    });
+  }
+
+  @Post('self-service/cancel')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @BillingBoundary()
+  selfServiceCancel(@AuthContext() auth: AuthContextType, @RequestId() requestId: string) {
+    return this.runSelfService(requestId, async () => {
+      assertCanManageBilling(auth, requestId);
+      await this.ctx.assertBusiness(auth, requestId);
+      const r = await this.selfServiceOf(requestId).cancel({ tenant_id: auth.tenant_id, product_key: SIGN_PRODUCT_KEY, user_id: auth.sub });
+      // C-23: never reported as done on local commit; only the request and its pending state.
+      return { request_id: r.request_id, action: r.action, status: r.status, pending_provider: r.pending_provider, replayed: r.replayed };
+    });
+  }
+
+  @Post('self-service/upgrade')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @BillingBoundary()
+  selfServiceUpgrade(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Body() body: { plan_key?: unknown }) {
+    return this.runSelfService(requestId, async () => {
+      assertCanManageBilling(auth, requestId);
+      await this.ctx.assertBusiness(auth, requestId);
+      if (typeof body?.plan_key !== 'string' || body.plan_key.length === 0 || body.plan_key.length > 100) {
+        throw new AramoError('VALIDATION_ERROR', 'plan_key is required', 400, { requestId });
+      }
+      return this.selfServiceOf(requestId).upgrade({ tenant_id: auth.tenant_id, product_key: SIGN_PRODUCT_KEY, plan_key: body.plan_key });
     });
   }
 

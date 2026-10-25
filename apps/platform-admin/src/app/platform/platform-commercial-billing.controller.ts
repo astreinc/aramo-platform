@@ -48,6 +48,7 @@ export function billingCommandDto(row: BillingCommandRow): BillingCommandDto {
     provider: row.provider,
     command_kind: row.command_kind,
     change_request_id: row.change_request_id,
+    self_service_request_id: row.self_service_request_id,
     step: row.step,
     idempotency_key: row.idempotency_key,
     tenant_id: row.tenant_id,

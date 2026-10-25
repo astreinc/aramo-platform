@@ -2383,6 +2383,92 @@ paths:
           $ref: '#/components/responses/BillingConflict'
         '503':
           $ref: '#/components/responses/BillingUnavailable'
+  /v1/sign/billing/self-service:
+    get:
+      operationId: getSelfServiceBilling
+      summary: CCP-C7 — the organization's Aramo Sign self-service state.
+      description: >
+        Requires sign:envelope:read or sign:billing:manage. Read only. The product's legal-terms state, its open self-service subscription, every self-service change still pending at the provider (pending_provider; Conversion Rule C-23) and, per action, whether it is available and the stable reason when it is not. The view and the actions run the same gates. While the Sign Terms of Service have no APPROVED version, every action reads available false with reason SELF_SERVICE_TERMS_NOT_APPROVED (the designed disabled state; PBD §10, NOT DELIVERED until approved legal terms).
+      tags: [billing]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelfServiceBilling'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '503':
+          $ref: '#/components/responses/BillingUnavailable'
+  /v1/sign/billing/self-service/cancel:
+    post:
+      operationId: cancelSelfServiceSubscription
+      summary: CCP-C7 — the owner's at-period-end cancel of the self-service subscription.
+      description: >
+        Requires sign:billing:manage (tenant_owner only, ADR-0035 D-3) in a BUSINESS tenant. Refused 503 ESIGN_BILLING_UNAVAILABLE reason self_service_terms_not_approved while the Sign Terms of Service are not APPROVED. Otherwise it records the owner's request and a durable Stripe command (CCP-C1 outbox, idempotency key derived from the request) in one local transaction; the provider call happens later, outside it. 202: pending_provider is true until the applied provider state confirms the cancel. Refused 409 (details.reason) while a governed subscription is open, an activation is held, a conversion is in progress, a provider change is pending, the subscription already ends at the period end, or inside a commitment term (financial_treatment_undefined). A repeat returns the recorded request (replayed true).
+      tags: [billing]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '202':
+          description: Accepted; pending at the provider.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelfServiceBillingAccepted'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '409':
+          $ref: '#/components/responses/BillingConflict'
+        '503':
+          $ref: '#/components/responses/BillingUnavailable'
+  /v1/sign/billing/self-service/upgrade:
+    post:
+      operationId: upgradeSelfServiceSubscription
+      summary: CCP-C7 — the owner's plan change of the self-service subscription (gated; not yet available).
+      description: >
+        Requires sign:billing:manage (tenant_owner only) in a BUSINESS tenant. Refused 503 reason self_service_terms_not_approved while the Sign Terms of Service are not APPROVED; refused 400 plan_not_available for a plan that is not an eligible, active self-service plan other than the current one; otherwise refused 409 financial_treatment_undefined, because a provider price change has no approved proration or usage-transition treatment (decision request DR-C7-1). Nothing is written and no provider call is made. 202 is reserved for the ruled path.
+      tags: [billing]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [plan_key]
+              properties:
+                plan_key:
+                  type: string
+                  maxLength: 100
+      responses:
+        '202':
+          description: Reserved (not returned until DR-C7-1 is ruled).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SelfServiceBillingAccepted'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '409':
+          $ref: '#/components/responses/BillingConflict'
+        '503':
+          $ref: '#/components/responses/BillingUnavailable'
   /v1/sign/billing/webhook/stripe:
     post:
       operationId: receiveStripeBillingWebhook
@@ -2534,13 +2620,16 @@ components:
         account yet (NO_BILLING_ACCOUNT), an incomplete or non-US organization profile, an unverified
         domain, a plan that needs ATS (PLAN_NOT_ELIGIBLE), or an open governed subscription managed by
         Aramo (governed_subscription_open; CCP-A6, Conversion Rule C-1 and C-4: a conversion is a
-        governed change request, never a checkout).
+        governed change request, never a checkout). CCP-C7 self-service actions add (lower-case
+        reasons): governed_subscription_open, activation_pending, conversion_in_progress,
+        no_self_service_subscription, provider_change_pending, already_canceling and
+        financial_treatment_undefined.
       content:
         application/json:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
     BillingUnavailable:
-      description: ESIGN_BILLING_UNAVAILABLE — online billing is not configured or the provider is unreachable.
+      description: ESIGN_BILLING_UNAVAILABLE — online billing is not configured or the provider is unreachable. CCP-C7 self-service actions also answer it with details.reason self_service_terms_not_approved (the designed disabled state while the Sign Terms of Service are not APPROVED) or product_not_self_service.
       content:
         application/json:
           schema:
@@ -2745,6 +2834,106 @@ components:
         self_service_eligible:
           type: boolean
         can_manage_billing:
+          type: boolean
+    SelfServiceActionState:
+      type: object
+      additionalProperties: false
+      required: [available, reason]
+      properties:
+        available:
+          type: boolean
+        reason:
+          type: [string, 'null']
+          enum: [PRODUCT_NOT_SELF_SERVICE, SELF_SERVICE_TERMS_NOT_APPROVED, GOVERNED_SUBSCRIPTION_OPEN, ACTIVATION_PENDING, CONVERSION_IN_PROGRESS, NO_SELF_SERVICE_SUBSCRIPTION, PROVIDER_CHANGE_PENDING, ALREADY_CANCELING, PLAN_NOT_AVAILABLE, FINANCIAL_TREATMENT_UNDEFINED, null]
+    SelfServiceBilling:
+      type: object
+      additionalProperties: false
+      description: CCP-C7 — the self-service state of one registered product (v1 registry, sign only).
+      required: [product_key, terms, subscription, pending_provider, pending_changes, actions, can_manage_billing]
+      properties:
+        product_key:
+          type: string
+          enum: [sign]
+        terms:
+          type: object
+          additionalProperties: false
+          required: [state, document_key, version, url]
+          properties:
+            state:
+              type: string
+              enum: [APPROVED, NOT_APPROVED]
+            document_key:
+              type: string
+            version:
+              type: [string, 'null']
+            url:
+              type: [string, 'null']
+        subscription:
+          type: [object, 'null']
+          additionalProperties: false
+          required: [plan_key, status, current_period_end, cancel_at_period_end, commitment_end]
+          properties:
+            plan_key:
+              type: string
+            status:
+              type: string
+            current_period_end:
+              type: [string, 'null']
+              format: date-time
+            cancel_at_period_end:
+              type: boolean
+            commitment_end:
+              type: [string, 'null']
+              format: date-time
+        pending_provider:
+          type: boolean
+        pending_changes:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [action, state, requested_at, confirmed_at]
+            properties:
+              action:
+                type: string
+                enum: [CANCEL_AT_PERIOD_END]
+              state:
+                type: string
+                enum: [PENDING_PROVIDER, CONFIRMED]
+              requested_at:
+                type: string
+                format: date-time
+              confirmed_at:
+                type: [string, 'null']
+                format: date-time
+        actions:
+          type: object
+          additionalProperties: false
+          required: [cancel, upgrade]
+          properties:
+            cancel:
+              $ref: '#/components/schemas/SelfServiceActionState'
+            upgrade:
+              $ref: '#/components/schemas/SelfServiceActionState'
+        can_manage_billing:
+          type: boolean
+    SelfServiceBillingAccepted:
+      type: object
+      additionalProperties: false
+      required: [request_id, action, status, pending_provider, replayed]
+      properties:
+        request_id:
+          type: string
+          format: uuid
+        action:
+          type: string
+          enum: [CANCEL_AT_PERIOD_END]
+        status:
+          type: string
+          enum: [PENDING_PROVIDER, CONFIRMED]
+        pending_provider:
+          type: boolean
+        replayed:
           type: boolean
     BillingRedirect:
       type: object

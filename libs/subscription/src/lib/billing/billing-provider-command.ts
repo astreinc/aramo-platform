@@ -39,6 +39,15 @@ export function billingCommandIdempotencyKey(change_request_id: string, step: st
   return `aramo-ccp-${change_request_id}-${step}`;
 }
 
+/**
+ * CCP-C7 — the key of a TENANT-originated command (an owner-made SelfServiceBillingRequest, Charter
+ * :99), derived the same way from that request and the step (C-22; DB CHECK
+ * BillingProviderCommand_idempotency_key_check, migration 20261028030000).
+ */
+export function selfServiceCommandIdempotencyKey(self_service_request_id: string, step: string): string {
+  return `aramo-ccp-ss-${self_service_request_id}-${step}`;
+}
+
 /** The DB transition table (guard_billing_provider_command), for the unit mirror test. */
 export const BILLING_COMMAND_TRANSITIONS: Readonly<Record<BillingCommandState, readonly BillingCommandState[]>> = {
   PENDING: ['DISPATCHING', 'CONFIRMED'],
