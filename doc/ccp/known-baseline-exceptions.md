@@ -26,3 +26,12 @@ After the fix, both files lint with 0 errors. Five pre-existing warnings remain:
 - **Not CCP code:** `git diff origin/main...41a0e3b5` shows no change under `apps/platform-web/src/document-templates`, `libs/document-templates-web` or `libs/fe-foundation`. The CCP program does not touch the Template Studio sources.
 - **Diagnosis:** the differing pixels are anti-aliased glyph edges. That is consistent with font rasterisation on this host differing from the host that captured the PLATFORM-UX-1 baselines.
 - **Status:** the baselines are **not** re-captured (standing instruction: do not re-capture PLATFORM-UX-1 baselines). Owner: PLATFORM-UX-1 / platform-web. Re-check on the CI runner before any baseline action.
+
+## 3. Template Studio `studio-preview-zoom @900`, `studio-compare-changes @1440`, `studio-properties @900` at the final gate: OPEN, not CCP-caused
+
+At the final integrated gate (`105b382e`, `doc/ccp/program-gate-final.md` §7), each state was re-run alone, serially, with no retry:
+- `studio-preview-zoom @900`: 61 px, failed both attempts;
+- `studio-compare-changes @1440`: 66 px, failed both attempts;
+- `studio-properties @900`: 39 px, failed 1 attempt in 8, then passed 7.
+
+All three are glyph edges only. `git diff origin/main...HEAD` is still empty for the Template Studio sources (§2). Not re-captured; not called green. Owner: PLATFORM-UX-1 / platform-web.

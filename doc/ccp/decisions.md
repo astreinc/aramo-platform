@@ -627,3 +627,8 @@ HALT after the final engineering acceptance and return the single-PR publication
   - **No change to:** migrations, roles, scopes, chains or fixtures.
   - **Divergence recorded for the Architect:** the distinct-human check counts every human reference an account was EVER attested for, revoked attestations included. That is stricter than instructed, and fail-closed.
   - The whole program is validated at the final integrated gate on this merge (`doc/ccp/program-gate-final.md`).
+- **Final integrated gate (2026-10-26) on `105b382e`:** recorded in `doc/ccp/program-gate-final.md`. The D6 ⟪FINAL⟫ placeholders are filled from it.
+  - **Not green:**
+    - 1 non-CCP intermittent: platform-admin `sign-signup.integration.spec.ts` terms test. It failed in 1 of 2 full runs and passed 30 / 30 alone in 7 runs; the cause is not identified.
+    - The Template Studio visual states in `known-baseline-exceptions.md` §3.
+  - **HALT:** the single-PR publication request goes to the Lead. Push, PR, merge, migration, deploy, bootstrap, backfill and activation are not authorized.

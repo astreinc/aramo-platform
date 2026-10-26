@@ -61,10 +61,10 @@ Classes:
 | 12 | Astre backfill: dry run | A11 | EC (local only) | no | PO | step 7a |
 | 13 | Astre backfill: execution | A11 | not built (no execute path) | no | **PO / Architect**: DR-A11-1, DR-A11-2 | step 7b + a reviewed change |
 | 14 | Commercial console (rail, Approvals, Catalog, Subscriptions, Contracts, Policy / Audit / Admins, Support extensions) | B1–B6 | EC; final visual acceptance conditional on design v1.1 | no | **Architect** (design v1.1 review) | step 4 |
-| 15 | Finance, Usage, Alerts screens; AM-1…AM-10 | UI-V12 | EC once merged (BUILT now) | no | **Architect / design** (amendment 1 not delivered) | merge ⟪FINAL: UI-V12 merge SHA⟫ |
+| 15 | Finance, Usage, Alerts screens; AM-1…AM-10 | UI-V12 | EC (merged) | no | **Architect / design** (amendment 1 not delivered) | merge `c8034b4d` |
 | 16 | Policy governance: POLICY_ACTIVATE, rollback, withdraw | B5, B5-R, ACC-1, FIX1 | RRD (bootstrap) | no | PO | step 6 |
 | 17 | Enterprise contracts (N-3) | B4 | RRD (bootstrap) | no | PO | step 6 |
-| 18 | Enterprise payment record (PAYMENT_RECORD) + payment-gated activation | C8-PR | EC once merged (BUILT now); production use needs its own authorization (PAYMENT_RECORD A2 §6) | no | PO | merge ⟪FINAL: C8-PR merge SHA⟫, then step 8 |
+| 18 | Enterprise payment record (PAYMENT_RECORD) + payment-gated activation | C8-PR | EC (merged); production use needs its own authorization (PAYMENT_RECORD A2 §6) | no | PO | merge `3b779004`, then step 8 |
 | 19 | Enterprise invoicing | B4 | out of CCP (`invoicing.enabled: false`) | no | **Finance / PO**; ACCT program | — |
 | 20 | Stripe command outbox / inbox | C1 | RRD (`SIGN_BILLING_COMMANDS_ENABLED`, test mode; live key refused) | no | PO (§7.3) | step 8 |
 | 21 | Governed conversion (incl. the §7.2 held-activation resolution) | C2 | RRD (needs the C1 worker) | no | PO | step 8 |
@@ -225,7 +225,7 @@ Classes per the freeze directive (`doc/ccp/decisions.md:504-508`):
 
 **Class counts (table rows in §2; one row may group several IDs):** A 1 (proposed: TD-A9-7) · B 12 · C 37 · D every other row, plus every ID in the "Recorded as built" rows. Production-time and external items are tracked in register §1 and in the rollout plan step 8.
 
-## 3. ⟪FINAL⟫ placeholders in this file
+## 3. Final values (the ⟪FINAL⟫ placeholders, filled at the final integrated gate `105b382e`)
 
-- ⟪FINAL: UI-V12 merge SHA⟫ (§1 row 15)
-- ⟪FINAL: C8-PR merge SHA⟫ (§1 row 18)
+- `c8034b4d` (§1 row 15)
+- `3b779004` (§1 row 18)
