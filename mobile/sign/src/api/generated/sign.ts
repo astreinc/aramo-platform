@@ -1387,6 +1387,46 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/legal/notices": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Upcoming legal-document versions to show the signed-in user (in-service notice).
+         * @description Privacy Notice 1.1 remediation E-6. Every announced change to a legal document whose new version takes effect after today (UTC date) and that concerns this account (a document that binds only Personal accounts is not listed for a BUSINESS tenant), minus the notices this user has dismissed. Empty while nothing is announced. Requires a Sign session of a tenant entitled to `sign`.
+         */
+        get: operations["getSignLegalNotices"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/legal/notices/record": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Record that an upcoming-version notice was shown to, or dismissed by, the user.
+         * @description Privacy Notice 1.1 remediation E-6 — in-service delivery evidence. SHOWN records the delivery once (channel IN_SERVICE, the first time it was shown); ACKNOWLEDGED records the dismissal once, after which the notice is no longer listed for this user. Idempotent. The notice must be one currently listed for this account, otherwise refused (details.reason = legal_notice_not_upcoming). Answers the notices still to show.
+         */
+        post: operations["recordSignLegalNotice"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/account/status": {
         parameters: {
             query?: never;
@@ -1983,6 +2023,27 @@ export interface components {
                  */
                 url: string;
                 title: string;
+            }[];
+        };
+        SignLegalNotices: {
+            /** @description Upcoming legal-document versions (future effective date) this user has not dismissed. */
+            notices: {
+                key: string;
+                title: string;
+                version: string;
+                /**
+                 * Format: date
+                 * @description The first day the new version applies.
+                 */
+                effective_date: string;
+                /**
+                 * Format: uri
+                 * @description The new version on the Sign host (https://sign.aramo.ai/legal/<slug>/<version>).
+                 */
+                url: string;
+                current_version: string;
+                /** Format: uri */
+                current_url: string;
             }[];
         };
         SignAccountStatus: {
@@ -5000,6 +5061,60 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["SignLegalStatus"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    getSignLegalNotices: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignLegalNotices"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    recordSignLegalNotice: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    key: string;
+                    version: string;
+                    /** @enum {string} */
+                    event: "SHOWN" | "ACKNOWLEDGED";
+                };
+            };
+        };
+        responses: {
+            /** @description Recorded; the notices still to show. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignLegalNotices"];
                 };
             };
             400: components["responses"]["BadRequest"];

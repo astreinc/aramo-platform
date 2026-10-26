@@ -5,9 +5,12 @@ import { RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, RequireCapability } from '@aramo/entitlement';
 import { EsignSenderConsumerGuard } from '@aramo/identity';
 import type { Request } from 'express';
+import type { UpcomingLegalNotice } from '@aramo/subscription';
 
 import { clientIp } from '../personal/personal-send.gate.js';
 
+
+import { LegalChangeBannerService } from './legal-change-banner.service.js';
 import { PersonalLegalStatusService, type PendingLegalDocument } from './personal-legal-status.service.js';
 
 // Aramo Sign Personal (Free) — legal re-acceptance in the Sign workspace
@@ -16,6 +19,12 @@ import { PersonalLegalStatusService, type PendingLegalDocument } from './persona
 //
 //   GET  status   { pending: [{ key, version, url, title }] }  (Business: [])
 //   POST accept   { accept: [{ key, version }] } → { pending }  (current versions only)
+//
+// Privacy Notice 1.1 remediation E-6 — the in-service notice of an upcoming legal version
+// (every account, Business and Personal):
+//
+//   GET  notices          { notices: [{ key, title, version, effective_date, url, current_version, current_url }] }
+//   POST notices/record   { key, version, event: SHOWN | ACKNOWLEDGED } → { notices }
 //
 // Same boundary as the workspace's billing reads: an Aramo SSO `sign` session
 // (EsignSenderConsumerGuard) of a tenant entitled to `sign`. tenant_id and the
@@ -29,7 +38,10 @@ function LegalBoundary(): MethodDecorator {
 @Controller('v1/sign/legal')
 @UseFilters(AramoExceptionFilter)
 export class SignLegalController {
-  constructor(private readonly legal: PersonalLegalStatusService) {}
+  constructor(
+    private readonly legal: PersonalLegalStatusService,
+    private readonly banner: LegalChangeBannerService,
+  ) {}
 
   @Get('status')
   @LegalBoundary()
@@ -49,5 +61,22 @@ export class SignLegalController {
     const ua = req.headers['user-agent'];
     const pending = await this.legal.accept(auth.tenant_id, auth.sub, body?.accept, { ip: clientIp(req), user_agent: typeof ua === 'string' ? ua : null }, requestId);
     return { pending };
+  }
+
+  @Get('notices')
+  @LegalBoundary()
+  async notices(@AuthContext() auth: AuthContextType): Promise<{ notices: UpcomingLegalNotice[] }> {
+    return { notices: await this.banner.notices(auth.tenant_id, auth.sub) };
+  }
+
+  @Post('notices/record')
+  @HttpCode(HttpStatus.OK)
+  @LegalBoundary()
+  async recordNotice(
+    @AuthContext() auth: AuthContextType,
+    @Body() body: unknown,
+    @RequestId() requestId: string,
+  ): Promise<{ notices: UpcomingLegalNotice[] }> {
+    return { notices: await this.banner.record(auth.tenant_id, auth.sub, body, requestId) };
   }
 }

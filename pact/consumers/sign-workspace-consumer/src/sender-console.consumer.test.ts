@@ -56,6 +56,9 @@ const { like, uuid, integer, eachLike, regex } = MatchersV3;
 //  15. PATCH /v1/sign/sender/envelopes/{id} (If-Match)      200 sets the sender message
 //  16. PATCH /v1/sign/sender/envelopes/{id} (stale If-Match) 412 revision_mismatch
 //  17. POST  /v1/sign/sender/contacts                       201 SenderContact
+// Privacy Notice 1.1 remediation E-6 — the in-service notice of an upcoming legal version:
+//  18. GET   /v1/sign/legal/notices                         200 { notices: [] } (nothing announced:
+//      the shipped upcoming-change list is empty; legalApi.notices of apps/sign-web/src/workspace/api.ts)
 
 const provider = new PactV4({
   consumer: 'sign-workspace',
@@ -740,6 +743,26 @@ describe('sign-workspace → POST /v1/sign/billing/self-service/cancel (terms no
         expect(res.status).toBe(503);
         const out = (await res.json()) as { error: { details: { reason: string } } };
         expect(out.error.details.reason).toBe('self_service_terms_not_approved');
+      });
+  });
+});
+
+describe('sign-workspace → GET /v1/sign/legal/notices (nothing announced)', () => {
+  it('answers an empty notice list while no upcoming legal version is announced', async () => {
+    await provider
+      .addInteraction()
+      .given('an esign sender session exists')
+      .uponReceiving('an upcoming legal-version notice read from the Aramo Sign workspace')
+      .withRequest('GET', '/v1/sign/legal/notices', (b) => {
+        b.headers(AUTH_HEADERS);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ notices: [] });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/legal/notices`, { headers: AUTH_HEADERS });
+        expect(res.status).toBe(200);
+        expect(await res.json()).toEqual({ notices: [] });
       });
   });
 });

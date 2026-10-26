@@ -399,7 +399,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP full compensa
     pg = new Client({ connectionString: container.getConnectionUri() });
     await pg.connect();
     const ccp = new Map(STEPS.map((s, k) => [s.migration, k]));
-    for (const f of chain()) {
+    // The chain ends at the last CCP migration. Later migrations that are not part of CCP (for
+    // example Privacy Notice 1.1 E-6, subscription 20261030020000_legal_change_notice_delivery)
+    // depend on no CCP migration and have no CCP compensation; applying them here would put their
+    // objects into every fingerprint and no CCP compensation could restore an earlier one.
+    const files = chain();
+    const lastCcp = Math.max(...STEPS.map((s) => files.indexOf(s.migration)));
+    for (const f of files.slice(0, lastCcp + 1)) {
       const k = ccp.get(f);
       if (k !== undefined) before[k] = await fingerprint();
       await pg.query(sql(f));

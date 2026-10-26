@@ -23,7 +23,7 @@ import {
 import { DOCUMENT_RENDERING_PORT, PdfLibDocumentRenderingAdapter } from '@aramo/documents-rendering';
 import { MailerModule } from '@aramo/mailer';
 import { ObjectStorageModule } from '@aramo/object-storage';
-import { ORGANIZATION_BILLING_PROFILE_PORT, PLAN_ELIGIBILITY_PORT, SubscriptionModule } from '@aramo/subscription';
+import { ORGANIZATION_BILLING_PROFILE_PORT, PLAN_ELIGIBILITY_PORT, StaticUpcomingLegalChangeSource, SubscriptionModule, UPCOMING_LEGAL_CHANGE_SOURCE } from '@aramo/subscription';
 import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
@@ -71,6 +71,7 @@ import { SignReportController } from './personal/sign-report.controller.js';
 import { ReportBudget, SignReportService } from './personal/sign-report.service.js';
 import { SignLegalController } from './legal/sign-legal.controller.js';
 import { PersonalLegalStatusService } from './legal/personal-legal-status.service.js';
+import { LegalChangeBannerService } from './legal/legal-change-banner.service.js';
 import { SignAccountController } from './account/sign-account.controller.js';
 import { SignAccountService } from './account/sign-account.service.js';
 // Aramo Sign Mobile (M-A3 §4, §9) — saved signatures and the account-close purge of saved data.
@@ -201,6 +202,11 @@ import { SignRetentionWorker } from './retention/sign-retention.worker.js';
     // Aramo Sign Personal (Free) — the Personal legal documents still to accept
     // (v1/sign/legal; consulted by the Personal send gate).
     PersonalLegalStatusService,
+    // Privacy Notice 1.1 E-6 — the in-service notice of an upcoming legal version (v1/sign/legal/notices).
+    // The upcoming-change source defaults to the governed (empty) UPCOMING_LEGAL_CHANGES list; the
+    // future-effective legal-version resolver (E-5) is meant to bind this token instead.
+    LegalChangeBannerService,
+    { provide: UPCOMING_LEGAL_CHANGE_SOURCE, useFactory: () => new StaticUpcomingLegalChangeSource() },
     // Aramo Sign Personal (Free) — Settings → Close account (v1/sign/account).
     SignAccountService,
     // Aramo Sign Mobile (M-A3 §4, §9) — saved signatures (v1/sign/me/signature, /initials)

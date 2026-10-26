@@ -379,7 +379,22 @@ export interface PendingLegalDocument {
   title: string;
 }
 
+// Privacy Notice 1.1 E-6 — an upcoming version of a legal document (future effective date),
+// shown as a dismissible notice. `recordNotice` logs that it was shown or dismissed (delivery evidence).
+export interface UpcomingLegalNotice {
+  key: string;
+  title: string;
+  version: string;
+  effective_date: string;
+  url: string;
+  current_version: string;
+  current_url: string;
+}
+
 export const legalApi = {
+  notices: () => apiClient.get<{ notices: UpcomingLegalNotice[] }>('/v1/sign/legal/notices'),
+  recordNotice: (n: { key: string; version: string }, event: 'SHOWN' | 'ACKNOWLEDGED') =>
+    apiClient.post<{ notices: UpcomingLegalNotice[] }>('/v1/sign/legal/notices/record', { key: n.key, version: n.version, event }),
   status: () => apiClient.get<{ pending: PendingLegalDocument[] }>('/v1/sign/legal/status'),
   accept: (docs: readonly { key: string; version: string }[]) =>
     apiClient.post<{ pending: PendingLegalDocument[] }>('/v1/sign/legal/accept', { accept: docs.map((d) => ({ key: d.key, version: d.version })) }),

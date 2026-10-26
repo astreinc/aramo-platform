@@ -1350,3 +1350,22 @@ a.sg-row:hover {
   margin: 0 0 12px;
   padding-left: 18px;
 }
+/* Privacy Notice 1.1 E-6 — the dismissible notice of an upcoming legal-document version. */
+.sg-legal-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-size: 13px;
+}
+.sg-legal-notice__text {
+  flex: 1;
+  min-width: 0;
+}
+.sg-legal-notice a {
+  color: var(--accent);
+}
