@@ -246,6 +246,59 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/auth/native/callback": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Browser fallback for the native OAuth callback
+         * @description The registered https OAuth callback of the `aramo-sign-native` Cognito
+         *     client. The app normally receives this URL before any page loads
+         *     (verified app link on Android; the auth session on iOS 17.4+). A browser
+         *     reaches the server only when the app did not open, and gets a fixed
+         *     HTML page telling the user to sign in from the app. No query
+         *     parameter (including `code` and `state`) is read, echoed or forwarded;
+         *     the only link is the fixed app address `aramosign://`. Uncached, no
+         *     script, cannot be framed, `Referrer-Policy: no-referrer`.
+         */
+        get: operations["nativeCallbackFallbackPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/auth/native/signed-out": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * Signed-out page for the native app
+         * @description The registered sign-out URL of the `aramo-sign-native` Cognito client.
+         *     A fixed HTML page confirming sign-out, with one link back to the fixed
+         *     app address `aramosign://`. It accepts no redirect destination: no
+         *     query parameter is read, echoed or followed. Uncached, no script,
+         *     cannot be framed, `Referrer-Policy: no-referrer`. Revoking the device
+         *     session and discarding local credentials is the app's job
+         *     (`POST /auth/native/sign/logout`), done before sign-out completes.
+         */
+        get: operations["nativeSignedOutPage"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/auth/native/sign/sessions": {
         parameters: {
             query?: never;
@@ -1029,6 +1082,46 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    nativeCallbackFallbackPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The fixed fallback page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
+                };
+            };
+        };
+    };
+    nativeSignedOutPage: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description The fixed signed-out page. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "text/html": string;
                 };
             };
         };

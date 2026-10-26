@@ -197,10 +197,13 @@
       "JwksController",
       "JwksService",
       "JwtIssuerService",
+      "NATIVE_CALLBACK_FALLBACK_PAGE",
       "NATIVE_CODE_EXCHANGE",
       "NATIVE_CONSUMER",
       "NATIVE_REFRESH_CONSUMER",
+      "NATIVE_SIGNED_OUT_PAGE",
       "NativeAuthController",
+      "NativeAuthPagesController",
       "NativeAuthService",
       "PORTAL_IDENTITY_STORE",
       "PORTAL_SESSION_SCOPES",
@@ -4189,6 +4192,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/auth-service/src/tests/jwt-issuer.service.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/native-auth-pages.module-order.spec.ts",
         "project": "auth-service",
         "status": "excluded"
       },

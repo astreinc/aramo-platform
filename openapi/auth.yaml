@@ -648,6 +648,51 @@ paths:
               schema:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
 
+  /auth/native/callback:
+    get:
+      operationId: nativeCallbackFallbackPage
+      tags: [Auth]
+      summary: Browser fallback for the native OAuth callback
+      description: |
+        The registered https OAuth callback of the `aramo-sign-native` Cognito
+        client. The app normally receives this URL before any page loads
+        (verified app link on Android; the auth session on iOS 17.4+). A browser
+        reaches the server only when the app did not open, and gets a fixed
+        HTML page telling the user to sign in from the app. No query
+        parameter (including `code` and `state`) is read, echoed or forwarded;
+        the only link is the fixed app address `aramosign://`. Uncached, no
+        script, cannot be framed, `Referrer-Policy: no-referrer`.
+      security: []
+      responses:
+        '200':
+          description: The fixed fallback page.
+          content:
+            text/html:
+              schema:
+                type: string
+
+  /auth/native/signed-out:
+    get:
+      operationId: nativeSignedOutPage
+      tags: [Auth]
+      summary: Signed-out page for the native app
+      description: |
+        The registered sign-out URL of the `aramo-sign-native` Cognito client.
+        A fixed HTML page confirming sign-out, with one link back to the fixed
+        app address `aramosign://`. It accepts no redirect destination: no
+        query parameter is read, echoed or followed. Uncached, no script,
+        cannot be framed, `Referrer-Policy: no-referrer`. Revoking the device
+        session and discarding local credentials is the app's job
+        (`POST /auth/native/sign/logout`), done before sign-out completes.
+      security: []
+      responses:
+        '200':
+          description: The fixed signed-out page.
+          content:
+            text/html:
+              schema:
+                type: string
+
   /auth/native/sign/sessions:
     get:
       operationId: listNativeSignSessions

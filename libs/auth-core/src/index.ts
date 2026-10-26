@@ -58,7 +58,12 @@ export { PORTAL_SESSION_SCOPES, SessionOrchestratorService } from './lib/session
 export type { CallbackInput, CallbackResult } from './lib/session-orchestrator.service.js';
 export type { SessionResponseDto } from './lib/dto/session-response.dto.js';
 // AUTH-SIGNIN-1 Amendment M-A1 — native authentication consumer (Aramo Sign mobile).
-export { NativeAuthController } from './lib/native-auth.controller.js';
+export {
+  NATIVE_CALLBACK_FALLBACK_PAGE,
+  NATIVE_SIGNED_OUT_PAGE,
+  NativeAuthController,
+  NativeAuthPagesController,
+} from './lib/native-auth.controller.js';
 export {
   NativeAuthService,
   NATIVE_CONSUMER,
