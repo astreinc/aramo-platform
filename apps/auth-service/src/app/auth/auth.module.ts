@@ -25,7 +25,7 @@ import { PortalLoginBudget } from '@aramo/auth-core';
 import { PortalLoginService } from '@aramo/auth-core';
 import { RefreshOrchestratorService } from '@aramo/auth-core';
 import { SessionOrchestratorService } from '@aramo/auth-core';
-import { CognitoNativeCodeExchangeAdapter, NATIVE_CODE_EXCHANGE, NativeAuthController, NativeAuthService } from '@aramo/auth-core';
+import { CognitoNativeCodeExchangeAdapter, NATIVE_CODE_EXCHANGE, NativeAuthController, NativeAuthPagesController, NativeAuthService } from '@aramo/auth-core';
 import { JwtAuthGuard } from '@aramo/auth';
 
 import { PortalIdentityRepositoryAdapter } from './portal-identity-repository.adapter.js';
@@ -64,7 +64,9 @@ import { IdentityAuditSinkAdapter } from './identity-audit-sink.adapter.js';
     MailerModule,
   ],
   // AUTH-SIGNIN-1 Amendment M-A1 — NativeAuthController (Aramo Sign mobile).
-  controllers: [AuthController, JwksController, PortalAuthController, NativeAuthController],
+  // NativeAuthPagesController FIRST: its GET /auth/native/callback must win over
+  // AuthController's GET /auth/:consumer/callback (Express matches in order).
+  controllers: [NativeAuthPagesController, AuthController, JwksController, PortalAuthController, NativeAuthController],
   providers: [
     PkceService,
     JwtIssuerService,
