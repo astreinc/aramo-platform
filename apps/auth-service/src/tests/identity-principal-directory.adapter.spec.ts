@@ -627,3 +627,49 @@ describe('D-ORG — org consumer mint and refresh', () => {
     expect(noCore).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
   });
 });
+
+// AUTH-SIGNIN-1 Amendment M-A1 §3.7 — the native-client security context is
+// tested INDEPENDENTLY of browser host binding: a native resolution carries no
+// host (none is simulated), is not refused as host_unbound even under enforce,
+// and still gets every other rule (provider pin, IC-1, status, capability).
+describe('resolveSession — native client context (M-A1)', () => {
+  const NATIVE = { ...SESSION_INPUT, consumer: 'sign' as const, client: 'native' as const };
+  const saved: Record<string, string | undefined> = {};
+  beforeEach(() => {
+    for (const k of ['AUTH_HOST_TENANT_BINDING', 'AUTH_ALLOW_UNBOUND_HOST']) saved[k] = process.env[k];
+    process.env['AUTH_HOST_TENANT_BINDING'] = 'enforce';
+    delete process.env['AUTH_ALLOW_UNBOUND_HOST'];
+  });
+  afterEach(() => {
+    for (const [k, v] of Object.entries(saved)) {
+      if (v === undefined) delete process.env[k];
+      else process.env[k] = v;
+    }
+  });
+
+  it('enforce + no host: native → resolved; the same browser input → denied host_unbound', async () => {
+    const native = await adapter(makeDeps({ capabilities: ['core', 'sign'] })).resolveSession(NATIVE);
+    expect(native.kind).toBe('resolved');
+    const browser = await adapter(makeDeps({ capabilities: ['core', 'sign'] })).resolveSession({ ...SESSION_INPUT, consumer: 'sign' });
+    expect(browser).toEqual({ kind: 'denied', reason: 'host_unbound' });
+  });
+
+  it('native still applies the provider policy (Personal Google-only refuses Microsoft)', async () => {
+    const d = makeDeps({ capabilities: ['core', 'sign'] });
+    d.idpPolicy = {
+      evaluate: async ({ idp }: { idp: string | null }) => (idp === 'google' ? { ok: true, pinned_now: false } : { ok: false, reason: 'idp_not_permitted_for_tenant' }),
+      recordLinkIdp: async () => undefined,
+    } as unknown as IdentityProviderPolicyService;
+    expect(await adapter(d).resolveSession({ ...NATIVE, idp: 'microsoft' })).toEqual({ kind: 'denied', reason: 'idp_not_permitted_for_tenant' });
+    expect((await adapter(d).resolveSession({ ...NATIVE, idp: 'google' })).kind).toBe('resolved');
+  });
+
+  it('native still applies the capability gate (no `sign` capability → consumer_not_entitled) and the status gate', async () => {
+    expect(await adapter(makeDeps({ capabilities: ['core', 'ats'] })).resolveSession(NATIVE)).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
+    expect(await adapter(makeDeps({ capabilities: ['core', 'sign'], status: 'SUSPENDED' })).resolveSession(NATIVE)).toEqual({ kind: 'denied', reason: 'tenant_suspended' });
+  });
+
+  it('native still has no JIT: an unknown verified email is user_not_provisioned', async () => {
+    expect(await adapter(makeDeps({ resolveUser: null, findUserByEmail: null })).resolveSession(NATIVE)).toEqual({ kind: 'denied', reason: 'user_not_provisioned' });
+  });
+});

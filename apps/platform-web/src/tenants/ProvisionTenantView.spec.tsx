@@ -123,7 +123,9 @@ describe('ProvisionTenantView', () => {
       }),
     );
     expect(await screen.findByText('Halvorsen Clinics provisioned · owner invite sent.')).toBeInTheDocument();
-    expect(screen.getByTestId('location')).toHaveTextContent('/tenants/tn-new?tab=overview');
+    // The toast renders before the post-provision navigation commits; wait for it
+    // rather than reading the location synchronously (flaked under CI load).
+    await waitFor(() => expect(screen.getByTestId('location')).toHaveTextContent('/tenants/tn-new?tab=overview'));
   });
 
   it('locks Personal to Core + Sign with the note', () => {

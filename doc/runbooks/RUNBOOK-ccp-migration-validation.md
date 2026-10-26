@@ -66,8 +66,10 @@ on a fresh Postgres 17 by `libs/subscription/src/tests/ccp-full-compensation-cha
     HALTs until the PO decides the ATI-SEP-1 drop separately.
   - **`origin/main` after the program branch was cut** (at `ac24e234`): `auth-storage/20261025120000_native_device_sessions`
     sorts between CCP-A2 and CCP-A3, and the four `sign/20261026100000…100300_sign_mobile_*` migrations sort
-    between CCP-D3 and the guard union. After the sync-forward they are in the same global order. Each needs
-    its own release authority or must already be applied.
+    between CCP-D3 and the guard union. After the sync-forward (R-SYNC, TD-MERGE-46) they are on the program
+    branch in the same global order. All 5 sort before the first integrator union (`20261027000000`) and touch
+    only the `auth_storage` and `sign` schemas, so the bounded stop point is unchanged. Each needs its own release
+    authority or must already be applied (production `52ea8de6` predates them).
 - The Talent Intelligence database has pending migrations (`deploy/migrate-prod.sh` applies them after the
   shared database). That is ATI-SEP-1 scope, not CCP.
 - The `.env` has no `INTELLIGENCE_DB_USER=` line (§4, known defect D5-DEF-1).
@@ -214,7 +216,8 @@ cd /opt/aramo
 sudo bash deploy/migrate-prod.sh --until 20261029000100_ccp_alert_type_union
 ```
 
-**Gate:** `db:sync:local — 27 applied`, then `pending-before-stop — 0`, `verified — no migration beyond the
+**Gate:** `db:sync:local — 27 applied` (27 + the number of the 5 main migrations of §2 still pending, when the PO has
+authorized them for the same run), then `pending-before-stop — 0`, `verified — no migration beyond the
 stop point was applied by this run`, `[migrate] OK — zero pending …`, and `[migrate] Safe to build + recreate
 containers.` Any `FAILED <name>` stops the run: each migration is applied with `--single-transaction`, so the
 failing one left nothing, and every earlier one is applied and recorded. Do not build or recreate; go to §6.

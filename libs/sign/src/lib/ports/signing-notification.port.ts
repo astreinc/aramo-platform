@@ -42,6 +42,9 @@ export interface SigningNotification {
   signer_count?: number;
   // SIGNER_SIGNED in a SEQUENTIAL envelope — who is invited next.
   next_signer_name?: string;
+  // Sign Mobile M-A3 §3 — SIGNATURE_REQUEST: the sender's plain-text message
+  // (sanitized at write; the renderer escapes it like every dynamic value).
+  sender_message?: string;
 }
 
 export interface SigningNotificationResult {

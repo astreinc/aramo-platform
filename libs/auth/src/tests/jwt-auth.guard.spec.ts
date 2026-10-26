@@ -585,3 +585,62 @@ describe('JwtAuthGuard — consumer-isolated session cookies (D-ORG-4)', () => {
     expect(bearer.authContext?.consumer_type).toBe('org');
   });
 });
+
+// AUTH-SIGNIN-1 Amendment M-A1 §3.7 — the native-client security context. A
+// native token is a `sign` token carrying `client: 'native'` + `dsid`; the guard
+// surfaces both on AuthContext and applies no browser host assertion (it never
+// reads a Host). A browser token's AuthContext shape is unchanged.
+describe('JwtAuthGuard — native client context (M-A1)', () => {
+  let guard: JwtAuthGuard;
+  const originalEnv = { ...process.env };
+  const DSID = '0190d5a4-7e01-7e2a-a4d3-3d4f1c2b1a99';
+  beforeEach(() => {
+    guard = new JwtAuthGuard(new StubResolver());
+    process.env['AUTH_PUBLIC_KEY'] = keyPair.publicPem;
+    process.env['AUTH_AUDIENCE'] = AUDIENCE;
+  });
+  afterEach(() => {
+    process.env = { ...originalEnv };
+  });
+
+  it('a native sign Bearer token exposes client + dsid on AuthContext, with no Host header on the request', async () => {
+    const token = await makeToken({ consumer_type: 'sign', client: 'native', dsid: DSID });
+    const req = makeRequest({ Authorization: `Bearer ${token}`, 'X-Aramo-Consumer': 'sign' });
+    expect(req.header('host')).toBeUndefined();
+    expect(await guard.canActivate(makeContext(req))).toBe(true);
+    expect(req.authContext).toMatchObject({ consumer_type: 'sign', client: 'native', dsid: DSID });
+  });
+
+  it('a browser token carries neither client nor dsid (shape unchanged)', async () => {
+    const req = makeRequest({ Authorization: `Bearer ${await makeToken({ consumer_type: 'sign' })}` });
+    expect(await guard.canActivate(makeContext(req))).toBe(true);
+    const ctx = req.authContext as Record<string, unknown>;
+    expect('client' in ctx).toBe(false);
+    expect('dsid' in ctx).toBe(false);
+  });
+
+  it('refuses an unknown client kind, a native token without dsid, and a native token for another consumer (401 native_context_invalid)', async () => {
+    for (const claims of [
+      { consumer_type: 'sign', client: 'desktop', dsid: DSID },
+      { consumer_type: 'sign', client: 'native' },
+      { consumer_type: 'sign', dsid: DSID },
+      { consumer_type: 'recruiter', client: 'native', dsid: DSID },
+    ]) {
+      const req = makeRequest({ Authorization: `Bearer ${await makeToken(claims)}` });
+      await expect(guard.canActivate(makeContext(req))).rejects.toMatchObject({
+        code: 'INVALID_TOKEN',
+        statusCode: 401,
+        context: { details: { reason: 'native_context_invalid' } },
+      });
+    }
+  });
+
+  it('a native token still gets the consumer check: declared X-Aramo-Consumer must match', async () => {
+    const token = await makeToken({ consumer_type: 'sign', client: 'native', dsid: DSID });
+    const req = makeRequest({ Authorization: `Bearer ${token}`, 'X-Aramo-Consumer': 'recruiter' });
+    await expect(guard.canActivate(makeContext(req))).rejects.toMatchObject({
+      code: 'INVALID_TOKEN',
+      context: { details: { reason: 'consumer_header_mismatch' } },
+    });
+  });
+});

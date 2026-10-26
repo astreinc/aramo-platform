@@ -351,6 +351,10 @@ paths:
                         value:
                           type: [string, 'null']
                           description: The signer's own entered value for their field (typed text, date, or drawn-signature data URL); null otherwise.
+                  message:
+                    type: [string, 'null']
+                    maxLength: 1000
+                    description: Sign Mobile M-A3 §3 — the sender's plain-text message (sender-supplied; not part of the signed document). Render as text, never markup.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '409':
@@ -417,6 +421,10 @@ paths:
                   disclosure_version: { type: string }
                   text: { type: string }
                   text_sha256: { type: string, pattern: '^[0-9a-f]{64}$' }
+                  message:
+                    type: [string, 'null']
+                    maxLength: 1000
+                    description: Sign Mobile M-A3 §3 — the sender's plain-text message for the consent screen (not part of the disclosure text or its hash). Render as text, never markup.
         '401':
           $ref: '#/components/responses/Unauthorized'
         '409':
@@ -463,6 +471,194 @@ paths:
                   certificate_base64: { type: [string, 'null'] }
         '401':
           $ref: '#/components/responses/Unauthorized'
+  # Sign Mobile B-12 — the signer operations the guest transport (web and the Aramo
+  # Sign app) calls; tenant context comes from the capability token only.
+  /v1/sign/signing/disclosure:
+    post:
+      operationId: acceptSignerDisclosure
+      security: []
+      summary: Accept the electronic-records-and-signature disclosure for this signer.
+      description: >-
+        Token-authorized. Send back the disclosure_version and the text_sha256 that
+        /disclosure-text returned; a version E-Sign does not hold, or a hash that does
+        not match, is refused 400. Records the acceptance (with the caller's IP and
+        user agent) and DISCLOSURE_ACCEPTED on the ledger. Fields can be filled, and
+        the signer can complete, only after this.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, disclosure_version, disclosure_text_hash]
+              properties:
+                token: { type: string }
+                disclosure_version: { type: string }
+                disclosure_text_hash: { type: string, pattern: '^[0-9a-f]{64}$' }
+      responses:
+        '200':
+          description: The disclosure was accepted.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [accepted]
+                properties:
+                  accepted: { type: boolean, const: true }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: >-
+            The envelope is no longer signable (ENVELOPE_ALREADY_EXECUTED / ENVELOPE_ILLEGAL_TRANSITION), or it is not this
+            signer's turn in a sequential envelope (SIGNER_NOT_YET_ELIGIBLE).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/signing/fields/{fieldId}/fill:
+    post:
+      operationId: fillSignerField
+      security: []
+      summary: Fill one of the signer's own fields.
+      description: >-
+        Token-authorized and disclosure-gated, under the envelope row lock with a live
+        session; only this signer's field can be filled, and the value replaces any
+        earlier one until the signer completes. value is the typed text, the date, or
+        the signature / initials image as a PNG or JPEG data URL; signature_method
+        records how a SIGNATURE or INITIALS value was made. A saved signature (/v1/sign/me/signature)
+        is a convenience only: the value is always sent here and copied into the signing record.
+      parameters:
+        - name: fieldId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, value]
+              properties:
+                token: { type: string }
+                value: { type: string }
+                signature_method:
+                  type: string
+                  enum: [TYPED, DRAWN]
+      responses:
+        '200':
+          description: The field was filled.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [filled]
+                properties:
+                  filled: { type: boolean, const: true }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '404':
+          description: SIGNER_NOT_FOUND — the field is not one of this signer's.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+        '409':
+          description: >-
+            DISCLOSURE_NOT_ACCEPTED, SIGNER_NOT_YET_ELIGIBLE (not this signer's turn), or the envelope is no longer
+            signable (ENVELOPE_ALREADY_EXECUTED / ENVELOPE_ILLEGAL_TRANSITION).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/signing/complete:
+    post:
+      operationId: completeSigner
+      security: []
+      summary: Finish signing for this signer.
+      description: >-
+        Token-authorized and disclosure-gated. Every required field of this signer must
+        be filled (409 SIGNATURE_FIELD_INCOMPLETE otherwise). When this was the last
+        signer the envelope is executed and envelope_status is COMPLETED; otherwise it
+        is IN_PROGRESS and, when signing in order, the next signer is invited.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        '200':
+          description: The signer completed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [envelope_status]
+                properties:
+                  envelope_status:
+                    type: string
+                    enum: [IN_PROGRESS, COMPLETED]
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: >-
+            SIGNATURE_FIELD_INCOMPLETE, DISCLOSURE_NOT_ACCEPTED, SIGNER_NOT_YET_ELIGIBLE (not this signer's turn), or the
+            envelope is no longer signable (ENVELOPE_ALREADY_EXECUTED / ENVELOPE_ILLEGAL_TRANSITION).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/signing/decline:
+    post:
+      operationId: declineSigning
+      security: []
+      summary: Decline to sign, with a reason.
+      description: >-
+        Token-authorized. Ends the envelope as DECLINED with the signer's reason (shown to
+        the sender; the other open signers learn the envelope ended). When signing in
+        order, a signer may decline only on their turn.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, reason]
+              properties:
+                token: { type: string }
+                reason: { type: string, minLength: 1 }
+      responses:
+        '200':
+          description: The envelope was declined.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [declined]
+                properties:
+                  declined: { type: boolean, const: true }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '409':
+          description: The envelope is no longer open (ENVELOPE_ILLEGAL_TRANSITION), or it is not this signer's turn (SIGNER_NOT_YET_ELIGIBLE).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /v1/sign/sender/context:
     get:
       operationId: getSenderContext
@@ -572,7 +768,7 @@ paths:
   /v1/sign/sender/envelopes/{id}:
     get:
       operationId: getSenderEnvelope
-      summary: Envelope detail with documents, recipients and positioned fields.
+      summary: Envelope detail with documents, recipients and positioned fields (ETag "{id}.{revision}").
       description: >
         Field geometry is PDF-native - page_number 0-based, points, bottom-left origin. Requires sign:envelope:read, plus ownership or sign:envelope:read:all. source_application names where the envelope came from; draft changes and send/remind/void need ownership or sign:envelope:manage:all, and an envelope from another application is refused (409 managed_by_source_application).
       tags: [sender]
@@ -588,6 +784,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SenderEnvelopeDetail'
+          headers:
+            ETag:
+              $ref: '#/components/headers/EnvelopeETag'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -598,22 +797,25 @@ paths:
           $ref: '#/components/responses/NotFound'
     patch:
       operationId: updateSenderEnvelope
-      summary: Rename a DRAFT envelope.
+      summary: Change a DRAFT envelope's subject, routing or sender message.
       description: >
-        DRAFT only. Requires sign:envelope:create.
+        DRAFT only. Requires sign:envelope:create. Sign Mobile M-A3 §3/§6 — also sets the sender message (plain text,
+        control characters stripped, at most 1000 characters; null or empty clears it; immutable after send). If-Match is
+        required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
       tags: [sender]
       security:
         - senderSession: []
         - senderBearer: []
       parameters:
         - $ref: '#/components/parameters/EnvelopeId'
+        - $ref: '#/components/parameters/IfMatch'
       requestBody:
         required: true
         content:
           application/json:
             schema:
               type: object
-              description: At least one of subject or routing_mode.
+              description: At least one of subject, routing_mode or message.
               properties:
                 subject:
                   type: string
@@ -622,6 +824,10 @@ paths:
                   type: string
                   enum: [PARALLEL, SEQUENTIAL]
                   description: Multi-signer routing - PARALLEL (sign in any order, default) or SEQUENTIAL (sign in order).
+                message:
+                  type: [string, 'null']
+                  maxLength: 1000
+                  description: The sender message shown to signers (invitation email and consent screen). 400 message_too_long.
       responses:
         '200':
           description: OK.
@@ -629,6 +835,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SenderEnvelopeDetail'
+          headers:
+            ETag:
+              $ref: '#/components/headers/EnvelopeETag'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -639,6 +848,44 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/RevisionMismatch'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+    delete:
+      operationId: deleteSenderDraft
+      summary: Delete a DRAFT envelope.
+      description: >
+        Sign Mobile D-W6-3. DRAFT only (409 envelope_not_draft for any other status - void a sent envelope instead) and only
+        for an envelope Aramo Sign created (409 managed_by_source_application). Requires sign:envelope:create, plus ownership
+        or sign:envelope:manage:all; an envelope the caller cannot see is 404 (another member's without sign:envelope:read:all,
+        or another tenant's). If-Match is required for native tokens (428 precondition_required) and enforced whenever sent
+        (412 revision_mismatch). The documents, recipients, fields and stored source files are removed; the ledger keeps its
+        history (append-only) with DRAFT_DELETED, and the envelope is no longer returned by any read.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+        - $ref: '#/components/parameters/IfMatch'
+      responses:
+        '204':
+          description: The draft was deleted.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/RevisionMismatch'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
   /v1/sign/sender/envelopes/{id}/events:
     get:
       operationId: listSenderEnvelopeEvents
@@ -678,12 +925,16 @@ paths:
       summary: Upload a PDF to a DRAFT envelope (E-Sign-owned source).
       description: >
         Base64 PDF up to 25 MiB through the safe-PDF pipeline (type, size, encryption and active-content gates), stored as an OWNED source. DRAFT only. Requires sign:envelope:create.
+        Sign Mobile M-A3 §8 — PDF only: a Word document is refused (400 unsupported_file_type). With an Idempotency-Key a retried upload
+        returns the first result (422 idempotency_key_reuse for a different body). If-Match as for every draft write.
       tags: [sender]
       security:
         - senderSession: []
         - senderBearer: []
       parameters:
         - $ref: '#/components/parameters/EnvelopeId'
+        - $ref: '#/components/parameters/IfMatch'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: true
         content:
@@ -700,11 +951,14 @@ paths:
                   type: string
       responses:
         '201':
-          description: The attached document with its page geometry.
+          description: The attached document with its page geometry and the envelope's new revision.
           content:
             application/json:
               schema:
                 $ref: '#/components/schemas/SenderUploadedDocument'
+          headers:
+            ETag:
+              $ref: '#/components/headers/EnvelopeETag'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -715,18 +969,26 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/RevisionMismatch'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReuse'
   /v1/sign/sender/envelopes/{id}/documents/order:
     put:
       operationId: reorderSenderDocuments
       summary: Reorder the documents of a DRAFT envelope.
       description: >
         The order lists every document id exactly once. DRAFT only. Requires sign:envelope:create.
+        Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
       tags: [sender]
       security:
         - senderSession: []
         - senderBearer: []
       parameters:
         - $ref: '#/components/parameters/EnvelopeId'
+        - $ref: '#/components/parameters/IfMatch'
       requestBody:
         required: true
         content:
@@ -747,6 +1009,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SenderEnvelopeDetail'
+          headers:
+            ETag:
+              $ref: '#/components/headers/EnvelopeETag'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -757,18 +1022,24 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/RevisionMismatch'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
   /v1/sign/sender/envelopes/{id}/documents/{documentId}:
     patch:
       operationId: renameSenderDocument
       summary: Rename a document of a DRAFT envelope.
       description: >
         DRAFT only. Requires sign:envelope:create.
+        Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
       tags: [sender]
       security:
         - senderSession: []
         - senderBearer: []
       parameters:
         - $ref: '#/components/parameters/EnvelopeId'
+        - $ref: '#/components/parameters/IfMatch'
         - $ref: '#/components/parameters/DocumentId'
       requestBody:
         required: true
@@ -787,6 +1058,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SenderEnvelopeDetail'
+          headers:
+            ETag:
+              $ref: '#/components/headers/EnvelopeETag'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -797,17 +1071,23 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/RevisionMismatch'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
     delete:
       operationId: removeSenderDocument
       summary: Remove a document (and its fields) from a DRAFT envelope.
       description: >
         DRAFT only. Requires sign:envelope:create.
+        Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
       tags: [sender]
       security:
         - senderSession: []
         - senderBearer: []
       parameters:
         - $ref: '#/components/parameters/EnvelopeId'
+        - $ref: '#/components/parameters/IfMatch'
         - $ref: '#/components/parameters/DocumentId'
       responses:
         '200':
@@ -816,6 +1096,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SenderEnvelopeDetail'
+          headers:
+            ETag:
+              $ref: '#/components/headers/EnvelopeETag'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -826,6 +1109,10 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/RevisionMismatch'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
   /v1/sign/sender/envelopes/{id}/documents/{documentId}/source:
     get:
       operationId: getSenderDocumentSource
@@ -861,12 +1148,14 @@ paths:
       summary: Replace the recipients of a DRAFT envelope.
       description: >
         Keeps listed existing ids, creates new recipients, deletes the rest with their fields. List position is the signing order (used when the envelope signs in order). 1 to 10 recipients with distinct emails. DRAFT only. Requires sign:envelope:create.
+        Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
       tags: [sender]
       security:
         - senderSession: []
         - senderBearer: []
       parameters:
         - $ref: '#/components/parameters/EnvelopeId'
+        - $ref: '#/components/parameters/IfMatch'
       requestBody:
         required: true
         content:
@@ -897,6 +1186,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SenderEnvelopeDetail'
+          headers:
+            ETag:
+              $ref: '#/components/headers/EnvelopeETag'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -907,18 +1199,24 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/RevisionMismatch'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
   /v1/sign/sender/envelopes/{id}/fields:
     put:
       operationId: replaceSenderFields
       summary: Replace the positioned fields of a DRAFT envelope.
       description: >
         Each field box must lie inside its real source page. PDF-native geometry. DRAFT only. Requires sign:envelope:create.
+        Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
       tags: [sender]
       security:
         - senderSession: []
         - senderBearer: []
       parameters:
         - $ref: '#/components/parameters/EnvelopeId'
+        - $ref: '#/components/parameters/IfMatch'
       requestBody:
         required: true
         content:
@@ -939,6 +1237,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SenderEnvelopeDetail'
+          headers:
+            ETag:
+              $ref: '#/components/headers/EnvelopeETag'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -949,18 +1250,25 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/RevisionMismatch'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
   /v1/sign/sender/envelopes/{id}/send:
     post:
       operationId: sendSenderEnvelope
       summary: Send a DRAFT envelope for signature.
       description: >
         Requires at least one document, one recipient and a SIGNATURE field per recipient; issues signer capability sessions and emails each signer a secure link. Requires sign:envelope:send.
+        Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
+        Every step of the send is a compare-and-set on the revision. The invitation email carries the sender message (escaped plain text).
       tags: [sender]
       security:
         - senderSession: []
         - senderBearer: []
       parameters:
         - $ref: '#/components/parameters/EnvelopeId'
+        - $ref: '#/components/parameters/IfMatch'
       requestBody:
         required: true
         content:
@@ -977,6 +1285,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SenderEnvelopeDetail'
+          headers:
+            ETag:
+              $ref: '#/components/headers/EnvelopeETag'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -987,6 +1298,10 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/RevisionMismatch'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
   /v1/sign/sender/envelopes/{id}/remind:
     post:
       operationId: remindSenderEnvelope
@@ -994,12 +1309,17 @@ paths:
       description: >
         Same envelope; prior links are revoked and a fresh link is emailed. With signer_id, only that signer; without, every
         unsigned signer who may sign now (when signing in order, only the signer whose turn it is). Requires sign:envelope:send.
+        Sign Mobile M-A3 §7 — at least 60 minutes between reminders to the same signer and at most 5 reminders per envelope in any
+        rolling 24 hours, web and mobile alike, enforced atomically under the envelope row lock (429 reminder_cooldown |
+        reminder_daily_limit, with retry_after_seconds and retry_at). Without signer_id, signers still in their cooldown are skipped.
+        With an Idempotency-Key a replay returns the first response and does not count again.
       tags: [sender]
       security:
         - senderSession: []
         - senderBearer: []
       parameters:
         - $ref: '#/components/parameters/EnvelopeId'
+        - $ref: '#/components/parameters/IdempotencyKey'
       requestBody:
         required: false
         content:
@@ -1017,6 +1337,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SenderEnvelopeDetail'
+          headers:
+            ETag:
+              $ref: '#/components/headers/EnvelopeETag'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1027,18 +1350,24 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '422':
+          $ref: '#/components/responses/IdempotencyKeyReuse'
+        '429':
+          $ref: '#/components/responses/ReminderLimited'
   /v1/sign/sender/envelopes/{id}/void:
     post:
       operationId: voidSenderEnvelope
       summary: Void a non-terminal envelope.
       description: >
         A reason is required. Requires sign:envelope:send.
+        Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
       tags: [sender]
       security:
         - senderSession: []
         - senderBearer: []
       parameters:
         - $ref: '#/components/parameters/EnvelopeId'
+        - $ref: '#/components/parameters/IfMatch'
       requestBody:
         required: true
         content:
@@ -1057,6 +1386,9 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/SenderEnvelopeDetail'
+          headers:
+            ETag:
+              $ref: '#/components/headers/EnvelopeETag'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1067,6 +1399,10 @@ paths:
           $ref: '#/components/responses/NotFound'
         '409':
           $ref: '#/components/responses/Conflict'
+        '412':
+          $ref: '#/components/responses/RevisionMismatch'
+        '428':
+          $ref: '#/components/responses/PreconditionRequired'
   /v1/sign/sender/envelopes/{id}/executed:
     get:
       operationId: getSenderExecutedDocuments
@@ -1085,7 +1421,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
+                $ref: '#/components/schemas/SenderExecutedDocuments'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1149,9 +1485,11 @@ paths:
   /v1/sign/sender/contacts:
     get:
       operationId: listSenderContacts
-      summary: Past recipients (derived; no contact store).
+      summary: The caller's saved contacts merged with recent recipients.
       description: >
-        Requires sign:contact:read (Sign Sender, Sign Admin, Tenant Admin, Tenant Owner).
+        Requires sign:contact:read (Sign Sender, Sign Admin, Tenant Admin, Tenant Owner). Sign Mobile M-A3 §5 — saved contacts are
+        private to the caller (tenant + user) and carry an id (source saved); recent recipients are derived from envelopes the
+        caller may read (source recent, id null). A recent recipient who is also saved is listed once, as the saved contact.
       tags: [sender]
       security:
         - senderSession: []
@@ -1163,12 +1501,50 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SenderContactListItem'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/SenderUnauthorized'
         '403':
           $ref: '#/components/responses/SenderForbidden'
+    post:
+      operationId: createSenderContact
+      summary: Save a private contact (Sign Mobile M-A3 §5).
+      description: >
+        Requires sign:envelope:create. The contact is private to the caller (tenant + user) and grants no authority - recipients are
+        still validated when an envelope is sent. Refusals - 400 invalid_contact_name | invalid_contact_email | invalid_contact_organization;
+        409 contact_exists (the caller already has a contact with this email, case-insensitive).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SenderContactInput'
+      responses:
+        '201':
+          description: The saved contact.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderContact'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /v1/sign/sender/templates:
     get:
       operationId: listSenderTemplates
@@ -1926,7 +2302,7 @@ paths:
           content:
             application/json:
               schema:
-                type: object
+                $ref: '#/components/schemas/RecipientInbox'
         '401':
           $ref: '#/components/responses/SenderUnauthorized'
         '403':
@@ -1952,11 +2328,18 @@ paths:
                   type: string
       responses:
         '201':
-          description: OK.
+          description: The binding (the id to use with /v1/sign/inbox/{id}/*).
           content:
             application/json:
               schema:
                 type: object
+                required: [id]
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+        '400':
+          $ref: '#/components/responses/BadRequest'
         '401':
           $ref: '#/components/responses/SenderUnauthorized'
         '403':
@@ -1965,7 +2348,13 @@ paths:
     post:
       operationId: signFromInbox
       summary: 'A fresh short-lived signing link for this recipient while signable; the emailed link stays valid.'
-      description: Session (esign consumer) only; no Sign scope required; every read is keyed by the signed-in user.
+      description: >
+        Session (esign consumer) only; no Sign scope required; every read is keyed by the signed-in user. Sign Mobile M-A2 §2.2 —
+        every call revalidates in one transaction - the association is active and the caller's, the envelope is signable, the
+        signer is eligible (PENDING or VIEWED, same email as at claim), it is their turn when signing in order, and the link the
+        claim was made with has not been replaced or expired. 409 details.reason association_inactive | envelope_not_signable |
+        signer_ineligible | not_your_turn | session_revoked | link_expired. The session lasts at most 30 minutes, never outlives
+        the claimed link or the envelope, and is recorded on the ledger (RECIPIENT_INBOX_SESSION_ISSUED).
       tags: [inbox]
       security:
         - senderSession: []
@@ -1979,10 +2368,22 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [signing_url, expires_at]
+                properties:
+                  signing_url:
+                    type: string
+                    description: The guest signing link (holds a capability token - keep it in memory only; never persist or log it).
+                  expires_at:
+                    type: string
+                    format: date-time
         '401':
           $ref: '#/components/responses/SenderUnauthorized'
         '403':
           $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /v1/sign/inbox/{id}/signed-copy:
     post:
       operationId: signedCopyFromInbox
@@ -2001,10 +2402,23 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [download_url]
+                properties:
+                  download_url:
+                    type: string
+                    description: The signed-copy link (holds an access token - keep it in memory only; never persist or log it).
         '401':
           $ref: '#/components/responses/SenderUnauthorized'
         '403':
           $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          description: A signed copy is available once everyone has signed (ENVELOPE_ILLEGAL_TRANSITION).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /v1/sign/inbox/{id}:
     delete:
       operationId: removeFromInbox
@@ -2023,6 +2437,9 @@ paths:
             application/json:
               schema:
                 type: object
+                required: [removed]
+                properties:
+                  removed: { type: boolean, const: true }
         '401':
           $ref: '#/components/responses/SenderUnauthorized'
         '403':
@@ -2511,6 +2928,499 @@ paths:
                 $ref: '#/components/schemas/ErrorResponse'
         '503':
           $ref: '#/components/responses/BillingUnavailable'
+  # ── Aramo Sign Mobile — saved signatures and private contacts (W2b) ──
+  # (Aramo-Sign-Unified-Product-Amendment-M-A3-Mobile-Owned-Data-Contracts-v1_0-LOCKED §4, §5, §9)
+  /v1/sign/me/signature:
+    get:
+      operationId: getSavedSignatures
+      summary: The signed-in user's saved default signature and initials (null when none).
+      description: >
+        Sign Mobile M-A3 §4. Session (sign consumer) only, like the inbox - signing is a recipient right; keyed by the token's
+        tenant and user. A convenience only - every signing still submits its value through the fill call, so deleting a saved
+        value never changes an executed or in-progress document. Web and mobile alike.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [signature, initials]
+                properties:
+                  signature:
+                    oneOf:
+                      - $ref: '#/components/schemas/SavedSignature'
+                      - type: 'null'
+                  initials:
+                    oneOf:
+                      - $ref: '#/components/schemas/SavedSignature'
+                      - type: 'null'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+    put:
+      operationId: putSavedSignature
+      summary: Save (or replace) the default signature.
+      description: >
+        PNG or JPEG data URL only (C-19), at most 256 KiB and 2048 x 2048 pixels. 400 details.reason invalid_signature_kind |
+        invalid_typed_name | invalid_font_key | invalid_image | image_too_large.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SavedSignatureInput'
+      responses:
+        '200':
+          description: The saved value.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedSignature'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+    delete:
+      operationId: deleteSavedSignature
+      summary: Delete the default signature (executed records keep the value they were signed with).
+      description: >
+        Removes only the convenience record (M-A3 §9). Idempotent.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '204':
+          description: Deleted (or there was none).
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/me/initials:
+    put:
+      operationId: putSavedInitials
+      summary: Save (or replace) the default initials.
+      description: >
+        Same body and refusals as PUT /v1/sign/me/signature.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SavedSignatureInput'
+      responses:
+        '200':
+          description: The saved value.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SavedSignature'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+    delete:
+      operationId: deleteSavedInitials
+      summary: Delete the default initials (executed records keep the value they were signed with).
+      description: >
+        Removes only the convenience record (M-A3 §9). Idempotent.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '204':
+          description: Deleted (or there were none).
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/sender/contacts/{contactId}:
+    patch:
+      operationId: updateSenderContact
+      summary: Update one of the caller's saved contacts.
+      description: >
+        Requires sign:envelope:create. Owner-isolated - another user's or tenant's contact is 404. Refusals - 400 invalid_contact_name |
+        invalid_contact_email | invalid_contact_organization | empty_contact_update; 409 contact_exists.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/ContactId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SenderContactPatch'
+      responses:
+        '200':
+          description: The updated contact.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderContact'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+    delete:
+      operationId: deleteSenderContact
+      summary: Delete one of the caller's saved contacts.
+      description: >
+        Requires sign:envelope:create. Owner-isolated - another user's or tenant's contact is 404.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/ContactId'
+      responses:
+        '204':
+          description: Deleted.
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+  # ── Aramo Sign Mobile — notification feed, push device, push preferences ──
+  # (Aramo-Sign-Unified-Product-Amendment-M-A3-Mobile-Owned-Data-Contracts-v1_0-LOCKED §1, §2, §9)
+  /v1/sign/me/notifications:
+    get:
+      operationId: listSignNotifications
+      summary: The signed-in user's notification feed, newest first (cursor-paged).
+      description: >
+        Aramo Sign Mobile (M-A3 §1). Web and mobile alike. Only the caller's own notifications
+        (tenant and user from the token). Events the user caused, and routine create / attach /
+        send events, are never listed. A recipient is notified only for envelopes they claimed in
+        their inbox; their items carry inbox_item_id and never the sender's envelope_id. No document
+        content and no capability token. Today / Earlier grouping is a client concern. Refusals:
+        400 details.reason invalid_cursor | invalid_limit.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - name: cursor
+          in: query
+          required: false
+          description: The next_cursor of the previous page.
+          schema:
+            type: string
+            maxLength: 200
+        - name: limit
+          in: query
+          required: false
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+      responses:
+        '200':
+          description: One page of the feed.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, next_cursor]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      type: object
+                      required: [id, type, envelope_id, inbox_item_id, envelope_subject, actor_name, created_at, read_at]
+                      properties:
+                        id:
+                          type: string
+                          format: uuid
+                        type:
+                          type: string
+                          enum: [SIGNED, VIEWED, DECLINED, SIGNATURE_NEEDED, COMPLETED, EXPIRED, REMINDER]
+                        envelope_id:
+                          type: [string, 'null']
+                          format: uuid
+                          description: The caller's own envelope (sender items). Null on a recipient item.
+                        inbox_item_id:
+                          type: [string, 'null']
+                          format: uuid
+                          description: The recipient's inbox item (GET /v1/sign/inbox). Null on a sender item.
+                        envelope_subject:
+                          type: string
+                        actor_name:
+                          type: [string, 'null']
+                          description: The signer (sender items) or the sending organization (recipient items).
+                        created_at:
+                          type: string
+                          format: date-time
+                        read_at:
+                          type: [string, 'null']
+                          format: date-time
+                  next_cursor:
+                    type: [string, 'null']
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/me/notifications/unread-count:
+    get:
+      operationId: getSignNotificationUnreadCount
+      summary: The number of unread notifications (the badge).
+      description: Count of the caller's own unread feed items (tenant and user scoped). Drives the tab badge on every device.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [count]
+                properties:
+                  count:
+                    type: integer
+                    minimum: 0
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/me/notifications/{id}/read:
+    post:
+      operationId: markSignNotificationRead
+      summary: Mark one of the caller's notifications read (idempotent).
+      description: Sets read_at on one of the caller's feed items. An item owned by another user or tenant answers 404.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Read.
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          description: No such notification for the caller (another user's id answers the same).
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+  /v1/sign/me/notifications/read-all:
+    post:
+      operationId: markAllSignNotificationsRead
+      summary: Mark every notification of the caller read.
+      description: Sets read_at on all of the caller's unread feed items. Scoped to the caller's tenant and user.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '204':
+          description: All read.
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/me/devices/current:
+    put:
+      operationId: registerSignPushDevice
+      summary: Register or rotate the push token of the caller's own native device session.
+      description: >
+        Aramo Sign Mobile (M-A3 §2, M-A1 §3.6). Native access tokens only (client = native): the
+        registration attaches to the token's own device session (dsid); no request field identifies
+        a device. The token is stored encrypted; the same token registered on another device session
+        is unregistered there. Refusals: 400 details.reason invalid_push_registration; 403
+        native_session_required (not a native token) | session_revoked (the device session was
+        signed out); 503 push_registration_unavailable (push is not configured).
+      tags: [sender]
+      security:
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [platform, provider, push_token, app_version]
+              properties:
+                platform:
+                  type: string
+                  enum: [ios, android]
+                provider:
+                  type: string
+                  enum: [apns, fcm]
+                push_token:
+                  type: string
+                  maxLength: 4096
+                  description: APNs device token (hex) or FCM registration token.
+                app_version:
+                  type: string
+                  maxLength: 64
+      responses:
+        '204':
+          description: Registered.
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '503':
+          description: Push notifications are not configured.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
+    delete:
+      operationId: removeSignPushDevice
+      summary: Remove the push registration of the caller's own native device session.
+      description: >
+        Revokes the registration, deletes its token and cancels its queued pushes. Idempotent.
+        403 details.reason native_session_required for a non-native token.
+      tags: [sender]
+      security:
+        - senderBearer: []
+      responses:
+        '204':
+          description: Removed (or nothing was registered).
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/me/notification-preferences:
+    get:
+      operationId: getSignNotificationPreferences
+      summary: The caller's push preferences.
+      description: >
+        Per type push on/off (default on) and whether the envelope subject may show on the lock
+        screen (default off: pushes use generic text). COMPLETED follows `signed`; EXPIRED has no
+        switch. The feed is written regardless of these.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [signed, viewed, declined, signature_needed, reminders, lock_screen_subject]
+                additionalProperties: false
+                properties:
+                  signed:
+                    type: boolean
+                  viewed:
+                    type: boolean
+                  declined:
+                    type: boolean
+                  signature_needed:
+                    type: boolean
+                  reminders:
+                    type: boolean
+                  lock_screen_subject:
+                    type: boolean
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+    put:
+      operationId: putSignNotificationPreferences
+      summary: Replace the caller's push preferences (all six fields).
+      description: Refusal 400 details.reason invalid_notification_preferences.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [signed, viewed, declined, signature_needed, reminders, lock_screen_subject]
+              additionalProperties: false
+              properties:
+                signed:
+                  type: boolean
+                viewed:
+                  type: boolean
+                declined:
+                  type: boolean
+                signature_needed:
+                  type: boolean
+                reminders:
+                  type: boolean
+                lock_screen_subject:
+                  type: boolean
+      responses:
+        '200':
+          description: The saved preferences.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [signed, viewed, declined, signature_needed, reminders, lock_screen_subject]
+                additionalProperties: false
+                properties:
+                  signed:
+                    type: boolean
+                  viewed:
+                    type: boolean
+                  declined:
+                    type: boolean
+                  signature_needed:
+                    type: boolean
+                  reminders:
+                    type: boolean
+                  lock_screen_subject:
+                    type: boolean
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
 components:
   securitySchemes:
     senderSession:
@@ -2577,7 +3487,72 @@ components:
       schema:
         type: string
         format: uuid
+    # Sign Mobile M-A3 §5–§8 (W2b)
+    IfMatch:
+      name: If-Match
+      in: header
+      required: false
+      description: >
+        The envelope's last-read ETag "{envelope_id}.{revision}". Required for native (mobile) tokens on draft writes, send and
+        void (428 precondition_required); enforced whenever sent (412 revision_mismatch, details.current_revision).
+      schema:
+        type: string
+        example: '"e5000000-0000-7000-8000-0000000000a1.3"'
+    IdempotencyKey:
+      name: Idempotency-Key
+      in: header
+      required: false
+      description: >
+        1 to 255 printable characters, scoped to (tenant, authenticated user, operation, key) for 24 hours. A replay with the same
+        body returns the first response; a different body is 422 idempotency_key_reuse; 409 idempotency_request_in_progress while
+        the first request runs.
+      schema:
+        type: string
+        minLength: 1
+        maxLength: 255
+    ContactId:
+      name: contactId
+      in: path
+      required: true
+      description: A saved contact id (UUID).
+      schema:
+        type: string
+        format: uuid
+  headers:
+    # Sign Mobile M-A3 §6 (W2b)
+    EnvelopeETag:
+      description: The strong validator "{envelope_id}.{revision}" - send it back as If-Match.
+      schema:
+        type: string
   responses:
+    # Sign Mobile M-A3 §6–§8 (W2b)
+    RevisionMismatch:
+      description: 412 — details.reason revision_mismatch; details.current_revision is the envelope's revision now. Re-read and retry.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    PreconditionRequired:
+      description: 428 — details.reason precondition_required; a native token must send If-Match on this write.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    IdempotencyKeyReuse:
+      description: 422 — details.reason idempotency_key_reuse; the Idempotency-Key was used with a different request.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
+    ReminderLimited:
+      description: >
+        429 ESIGN_REMINDER_NOT_ALLOWED — details.reason reminder_cooldown (under 60 minutes since this signer was reminded) or
+        reminder_daily_limit (5 reminders on this envelope in the rolling 24 hours); details.retry_after_seconds and
+        details.retry_at (ISO 8601) tell when to try again.
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorResponse'
     SenderUnauthorized:
       description: No valid esign session.
       content:
@@ -3009,6 +3984,22 @@ components:
       properties:
         user:
           type: object
+          required: [id, email, display_name, identity_provider]
+          properties:
+            id:
+              type: string
+              format: uuid
+            email:
+              type: [string, 'null']
+            display_name:
+              type: [string, 'null']
+            identity_provider:
+              type: [string, 'null']
+              enum: [google, microsoft, null]
+              description: >-
+                Sign Mobile B-11 — the federated provider the user signs in with ("Signed in with Google/Microsoft"), from the
+                provider recorded on the user's sign-in link (or the enforced pin of the tenant for a link made before
+                providers were recorded). null when not known; never a guess.
         tenant:
           type: object
           properties:
@@ -3209,9 +4200,260 @@ components:
         items:
           type: array
           items:
-            type: object
+            $ref: '#/components/schemas/SenderEnvelopeListItem'
         counts:
-          type: object
+          $ref: '#/components/schemas/SenderEnvelopeCounts'
+    SenderEnvelopeListItem:
+      type: object
+      required: [id, subject, status, created_at, sent_at, completed_at, last_activity_at, document_count, source_application, recipients]
+      properties:
+        id:
+          type: string
+          format: uuid
+        subject:
+          type: string
+        status:
+          $ref: '#/components/schemas/SenderEnvelopeStatus'
+        created_at:
+          type: string
+          format: date-time
+        sent_at:
+          type: [string, 'null']
+          format: date-time
+        completed_at:
+          type: [string, 'null']
+          format: date-time
+        last_activity_at:
+          type: [string, 'null']
+          format: date-time
+          description: The latest ledger event, or the last update when there is none.
+        document_count:
+          type: integer
+          minimum: 0
+        source_application:
+          type: string
+          description: Where the envelope came from (aramo-sign, aramo-ats or a registered application); only aramo-sign envelopes are editable here.
+        recipients:
+          type: array
+          items:
+            type: object
+            required: [id, name, email, status]
+            properties:
+              id:
+                type: string
+                format: uuid
+              name:
+                type: string
+              email:
+                type: string
+              status:
+                $ref: '#/components/schemas/SenderRecipientStatus'
+    SenderEnvelopeCounts:
+      type: object
+      description: >-
+        Envelopes the caller may see, by status, over every tab (the same visibility as the list). A status with no envelope
+        is absent (read it as 0).
+      properties:
+        DRAFT: { type: integer, minimum: 0 }
+        SENT: { type: integer, minimum: 0 }
+        IN_PROGRESS: { type: integer, minimum: 0 }
+        COMPLETED: { type: integer, minimum: 0 }
+        DECLINED: { type: integer, minimum: 0 }
+        VOIDED: { type: integer, minimum: 0 }
+        EXPIRED: { type: integer, minimum: 0 }
+      additionalProperties:
+        type: integer
+        minimum: 0
+    SenderEnvelopeStatus:
+      type: string
+      enum: [DRAFT, SENT, IN_PROGRESS, COMPLETED, DECLINED, VOIDED, EXPIRED]
+    SenderRecipientStatus:
+      type: string
+      enum: [PENDING, VIEWED, SIGNED, DECLINED]
+    SenderPageSize:
+      type: object
+      description: >-
+        One page of a source PDF in PDF points - the page's MediaBox, the frame field geometry is placed and validated in
+        (origin bottom-left). Pages are 0-based by position (pages[page_number]).
+      required: [width, height]
+      properties:
+        width:
+          type: number
+          exclusiveMinimum: 0
+        height:
+          type: number
+          exclusiveMinimum: 0
+    SenderEnvelopeDocument:
+      type: object
+      required: [id, title, ordinal, content_type, byte_size, source_sha256, field_count, page_count, pages]
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        ordinal:
+          type: integer
+          minimum: 0
+        content_type:
+          type: [string, 'null']
+        byte_size:
+          type: [integer, 'null']
+        source_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+        field_count:
+          type: integer
+          minimum: 0
+        page_count:
+          type: [integer, 'null']
+          minimum: 1
+          description: Sign Mobile D-W6-2 — the number of pages; null only when the source could not be read.
+        pages:
+          type: [array, 'null']
+          description: >-
+            Sign Mobile D-W6-2 — each page's size (computed from the source at upload; measured on first read for older
+            documents). null only when the source could not be read.
+          items:
+            $ref: '#/components/schemas/SenderPageSize'
+    SenderEnvelopeRecipient:
+      type: object
+      required: [id, name, email, status, signing_order, viewed_at, signed_at, declined_at, decline_reason, can_remind, reminder_available_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+        status:
+          $ref: '#/components/schemas/SenderRecipientStatus'
+        signing_order:
+          type: integer
+          minimum: 1
+          description: The position in the signing order (used when the envelope signs in order).
+        viewed_at:
+          type: [string, 'null']
+          format: date-time
+        signed_at:
+          type: [string, 'null']
+          format: date-time
+        declined_at:
+          type: [string, 'null']
+          format: date-time
+        decline_reason:
+          type: [string, 'null']
+        can_remind:
+          type: boolean
+          description: An unsigned signer who may sign now (in an open envelope).
+        reminder_available_at:
+          type: [string, 'null']
+          format: date-time
+          description: Sign Mobile M-A3 §7 — when a reminder to this signer is next allowed; null when allowed now or not remindable.
+    SenderExecutedDocuments:
+      type: object
+      required: [envelope_id, documents, certificate]
+      properties:
+        envelope_id:
+          type: string
+          format: uuid
+        documents:
+          type: array
+          items:
+            type: object
+            required: [envelope_document_id, title, executed_sha256, byte_size, executed_base64]
+            properties:
+              envelope_document_id:
+                type: string
+                format: uuid
+              title:
+                type: string
+              executed_sha256:
+                type: string
+                pattern: '^[0-9a-f]{64}$'
+              byte_size:
+                type: integer
+              executed_base64:
+                type: string
+                description: The executed PDF, base64.
+        certificate:
+          type: [object, 'null']
+          required: [certificate_sha256, byte_size, certificate_base64]
+          properties:
+            certificate_sha256:
+              type: string
+              pattern: '^[0-9a-f]{64}$'
+            byte_size:
+              type: integer
+            certificate_base64:
+              type: string
+              description: The certificate of completion (PDF), base64.
+    RecipientInbox:
+      type: object
+      description: The signed-in user's bound documents, split by what they can do now.
+      required: [waiting, completed, other]
+      properties:
+        waiting:
+          type: array
+          description: Documents the user can sign now (can_sign).
+          items:
+            $ref: '#/components/schemas/RecipientInboxItem'
+        completed:
+          type: array
+          description: Completed documents the user signed (can_download).
+          items:
+            $ref: '#/components/schemas/RecipientInboxItem'
+        other:
+          type: array
+          description: Everything else (declined, voided, expired, or someone else's turn).
+          items:
+            $ref: '#/components/schemas/RecipientInboxItem'
+    RecipientInboxItem:
+      type: object
+      description: >-
+        Recipient facts only (Sign Unified Product §4.6) - never other recipients' data, sender administration or the
+        activity log.
+      required: [id, subject, from, envelope_status, my_status, sent_at, expires_at, envelope_expires_at, signing_link_valid_days, completed_at, signed_at, can_sign, can_download]
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: The binding id (path parameter of /v1/sign/inbox/{id}/*).
+        subject:
+          type: string
+        from:
+          type: [string, 'null']
+          description: The sending organization's name.
+        envelope_status:
+          $ref: '#/components/schemas/SenderEnvelopeStatus'
+        my_status:
+          $ref: '#/components/schemas/SenderRecipientStatus'
+        sent_at:
+          type: [string, 'null']
+          format: date-time
+        expires_at:
+          type: [string, 'null']
+          format: date-time
+          deprecated: true
+          description: Deprecated - the same value as envelope_expires_at.
+        envelope_expires_at:
+          type: [string, 'null']
+          format: date-time
+          description: Sign Mobile C-14 — when the envelope itself expires.
+        signing_link_valid_days:
+          type: integer
+          description: Sign Mobile C-14 — the constant signing-link TTL (7 days).
+        completed_at:
+          type: [string, 'null']
+          format: date-time
+        signed_at:
+          type: [string, 'null']
+          format: date-time
+        can_sign:
+          type: boolean
+        can_download:
+          type: boolean
     SenderDraftCreated:
       type: object
       required: [id, status, subject]
@@ -3235,6 +4477,34 @@ components:
         status:
           type: string
           enum: [DRAFT, SENT, IN_PROGRESS, COMPLETED, DECLINED, VOIDED, EXPIRED]
+        created_at:
+          type: string
+          format: date-time
+        sent_at:
+          type: [string, 'null']
+          format: date-time
+        completed_at:
+          type: [string, 'null']
+          format: date-time
+        declined_at:
+          type: [string, 'null']
+          format: date-time
+        voided_at:
+          type: [string, 'null']
+          format: date-time
+        signing_window_days:
+          type: integer
+        sender:
+          type: object
+          required: [id, name]
+          properties:
+            id:
+              type: string
+              format: uuid
+            name:
+              type: [string, 'null']
+        source_application:
+          type: string
         editable:
           type: boolean
         routing_mode:
@@ -3243,15 +4513,34 @@ components:
         next_signer_id:
           type: [string, 'null']
           description: When signing in order and the envelope is open, the signer whose turn it is.
+        revision:
+          type: integer
+          minimum: 1
+          description: Sign Mobile M-A3 §6 — raised by every change to the envelope or its children; the ETag is "{id}.{revision}".
+        message:
+          type: [string, 'null']
+          maxLength: 1000
+          description: Sign Mobile M-A3 §3 — the sender's plain-text message (settable in DRAFT, immutable after send).
+        signing_link_valid_days:
+          type: integer
+          description: Sign Mobile C-14 — the constant signing-link TTL (7 days).
+        envelope_expires_at:
+          type: [string, 'null']
+          format: date-time
+          description: Sign Mobile C-14 — when the envelope itself expires (default 30 days after send).
+        expires_at:
+          type: [string, 'null']
+          format: date-time
+          deprecated: true
+          description: Deprecated - sent_at + the 7-day link window. Use signing_link_valid_days and envelope_expires_at.
         documents:
           type: array
           items:
-            type: object
+            $ref: '#/components/schemas/SenderEnvelopeDocument'
         recipients:
           type: array
           items:
-            type: object
-            description: Includes signing_order and can_remind (an unsigned signer who may sign now).
+            $ref: '#/components/schemas/SenderEnvelopeRecipient'
         fields:
           type: array
           items:
@@ -3289,24 +4578,34 @@ components:
           type: boolean
     SenderUploadedDocument:
       type: object
-      required: [id, title, page_count, pages]
+      required: [id, envelope_id, title, ordinal, byte_size, page_count, pages, revision]
       properties:
         id:
           type: string
           format: uuid
+        envelope_id:
+          type: string
+          format: uuid
         title:
           type: string
+        ordinal:
+          type: integer
+          minimum: 0
+        byte_size:
+          type: [integer, 'null']
         page_count:
           type: integer
+          minimum: 1
         pages:
           type: array
           items:
-            type: object
-            properties:
-              width:
-                type: number
-              height:
-                type: number
+            $ref: '#/components/schemas/SenderPageSize'
+        revision:
+          type: integer
+          minimum: 1
+          description: >-
+            Sign Mobile D-W6-1 — the envelope revision after this upload (the response's ETag is "{envelope_id}.{revision}");
+            send it as the next If-Match. A replay with the same Idempotency-Key returns the first response unchanged.
     SenderLedgerEvent:
       type: object
       required: [id, event_type, occurred_at, actor, event_hash]
@@ -3323,6 +4622,119 @@ components:
           type: string
         event_hash:
           type: string
+    # Sign Mobile M-A3 §4/§5 (W2b)
+    SenderContactInput:
+      type: object
+      required: [name, email]
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        organization:
+          type: [string, 'null']
+          maxLength: 200
+    SenderContactPatch:
+      type: object
+      description: At least one of name, email or organization.
+      properties:
+        name:
+          type: string
+          minLength: 1
+          maxLength: 200
+        email:
+          type: string
+          format: email
+          maxLength: 254
+        organization:
+          type: [string, 'null']
+          maxLength: 200
+    SenderContact:
+      type: object
+      required: [id, name, email, organization, source, created_at, updated_at, last_used_at]
+      properties:
+        id:
+          type: string
+          format: uuid
+        name:
+          type: string
+        email:
+          type: string
+        organization:
+          type: [string, 'null']
+        source:
+          type: string
+          enum: [saved]
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        last_used_at:
+          type: [string, 'null']
+          format: date-time
+    SenderContactListItem:
+      type: object
+      required: [id, name, email, organization, source, envelope_count, last_used_at]
+      properties:
+        id:
+          type: [string, 'null']
+          format: uuid
+          description: The saved contact id; null for a recent recipient.
+        name:
+          type: string
+        email:
+          type: string
+        organization:
+          type: [string, 'null']
+        source:
+          type: string
+          enum: [saved, recent]
+        envelope_count:
+          type: integer
+        last_used_at:
+          type: [string, 'null']
+          format: date-time
+    SavedSignatureInput:
+      type: object
+      required: [kind, image_data_url]
+      properties:
+        kind:
+          type: string
+          enum: [TYPED, DRAWN]
+        typed_name:
+          type: string
+          maxLength: 100
+          description: Required for TYPED.
+        font_key:
+          type: string
+          pattern: '^[a-z0-9][a-z0-9_-]{0,39}$'
+          description: Required for TYPED.
+        image_data_url:
+          type: string
+          pattern: '^data:image/(png|jpeg);base64,'
+          description: The rendered image - PNG or JPEG only (drawn strokes are rasterized on the device).
+    SavedSignature:
+      type: object
+      required: [kind, typed_name, font_key, image_data_url, updated_at]
+      properties:
+        kind:
+          type: string
+          enum: [TYPED, DRAWN]
+        typed_name:
+          type: [string, 'null']
+        font_key:
+          type: [string, 'null']
+        image_data_url:
+          type: string
+        updated_at:
+          type: string
+          format: date-time
     ErrorResponse:
       type: object
       description: The canonical Aramo error envelope.

@@ -42,6 +42,19 @@ model SignatureEnvelope {
   source_application String  @default("aramo-sign")
   installation_id    String? @db.Uuid
   origin_actor_kind  String  @default("USER") // CHECK: USER|APPLICATION
+  // Sign Mobile M-A3 §6 — the strong revision validator (ETag "{id}.{revision}").
+  // Maintained ONLY by DB triggers (migration 20261026100100): once per transaction
+  // that writes the envelope or a child row. The application never writes either column.
+  revision      Int     @default(1)
+  revision_txid String?
+  // Sign Mobile M-A3 §3 — sender message: sanitized plain text, <= 1000 chars,
+  // settable in DRAFT only (DB-enforced), never part of the signed payload.
+  message       String?
+  // Sign Mobile D-W6-3 — a deleted DRAFT (migration 20261026100300). The ledger is
+  // append-only and every envelope has events, so the row stays as an empty,
+  // scrubbed tombstone; documents, recipients, fields and stored objects are gone.
+  // CHECK: set only while DRAFT, and never cleared or moved out of DRAFT after.
+  deleted_at    DateTime? @db.Timestamptz
 
   documents EnvelopeDocument[]
   signers   Signer[]
@@ -76,8 +89,9 @@ model EnvelopeDocument {
   source_sha256         String
   ordinal               Int
 
-  envelope SignatureEnvelope @relation(fields: [envelope_id], references: [id], onDelete: Cascade)
-  fields   SignatureField[]
+  envelope   SignatureEnvelope @relation(fields: [envelope_id], references: [id], onDelete: Cascade)
+  fields     SignatureField[]
+  page_sizes SignEnvelopeDocumentPages?
 
   @@unique([envelope_id, document_ref])
   @@index([tenant_id])
@@ -515,6 +529,9 @@ model SignRecipientBinding {
   email              String
   created_at         DateTime  @default(now()) @db.Timestamptz
   revoked_at         DateTime? @db.Timestamptz
+  // Sign Mobile M-A2 §2.2 — the emailed signing session the claim was made with.
+  // Inbox signing never outlives it (revoked by a reminder or expired ⇒ re-claim).
+  claim_session_id   String?   @db.Uuid
 
   envelope SignatureEnvelope @relation(fields: [envelope_id], references: [id], onDelete: Cascade)
   signer   Signer            @relation(fields: [signer_id], references: [id], onDelete: Cascade)
@@ -558,5 +575,231 @@ model AbuseReport {
   @@unique([envelope_id, signer_id])
   @@index([tenant_id, created_at])
   @@index([reporter_key])
+  @@schema("sign")
+}
+
+// ── Aramo Sign Mobile (M-A3 §4/§5/§7/§8) — W2b mobile-owned envelope contracts ──
+
+/// Request idempotency for sender operations (remind, document upload). Scoped to
+/// (tenant, authenticated actor, operation, key); a replay with the same body
+/// returns the stored response, a different body is refused. Keys live 24 hours.
+model SignIdempotencyKey {
+  id              String   @id @db.Uuid
+  tenant_id       String   @db.Uuid
+  actor_id        String   @db.Uuid
+  operation       String
+  key             String
+  request_hash    String
+  response_status Int?
+  response_body   Json?
+  created_at      DateTime @default(now()) @db.Timestamptz
+
+  @@unique([tenant_id, actor_id, operation, key], map: "SignIdempotencyKey_scope_key")
+  @@index([created_at])
+  @@schema("sign")
+}
+
+/// A user's saved default signature / initials (a convenience only). Each signing
+/// still submits its own value through the fill call, so deleting this row never
+/// changes an executed record. CHECK slot: signature|initials. CHECK kind: TYPED|DRAWN.
+model SignSavedSignature {
+  id             String   @id @db.Uuid
+  tenant_id      String   @db.Uuid
+  user_id        String   @db.Uuid
+  slot           String
+  kind           String
+  typed_name     String?
+  font_key       String?
+  image_data_url String
+  created_at     DateTime @default(now()) @db.Timestamptz
+  updated_at     DateTime @default(now()) @db.Timestamptz
+
+  @@unique([tenant_id, user_id, slot], map: "SignSavedSignature_owner_slot_key")
+  @@schema("sign")
+}
+
+/// A sender's private contact (per tenant and owner user). Gives no authority:
+/// recipients are validated when the envelope is sent. email_key = lower(trim(email)).
+model SignContact {
+  id            String    @id @db.Uuid
+  tenant_id     String    @db.Uuid
+  owner_user_id String    @db.Uuid
+  name          String
+  email         String
+  email_key     String
+  organization  String?
+  created_at    DateTime  @default(now()) @db.Timestamptz
+  updated_at    DateTime  @default(now()) @db.Timestamptz
+  last_used_at  DateTime? @db.Timestamptz
+
+  @@unique([tenant_id, owner_user_id, email_key], map: "SignContact_owner_email_key")
+  @@index([tenant_id, owner_user_id])
+  @@schema("sign")
+}
+
+// ── Aramo Sign Mobile — notification feed, devices, preferences, push ──
+// (Aramo-Sign-Unified-Product-Amendment-M-A3-Mobile-Owned-Data-Contracts-v1_0-LOCKED §1, §2, §9)
+
+/// The notification fan-out source: one row per notifiable signing fact, written IN
+/// THE SAME transaction as the ledger event (EsignRepository.appendEvent). Refs only:
+/// no document content, no capability token. Drained by the sign-service fan-out
+/// worker; processed_at makes processing idempotent, attempt_count / next_attempt_at
+/// give it a backoff. CHECK kind: SIGNED|VIEWED|DECLINED|SIGNATURE_NEEDED|COMPLETED|EXPIRED|REMINDER.
+model SignNotificationOutbox {
+  id              String    @id @db.Uuid
+  tenant_id       String    @db.Uuid
+  envelope_id     String    @db.Uuid
+  signer_id       String?   @db.Uuid
+  kind            String
+  actor_type      String
+  actor_ref       String?   @db.Uuid
+  // REMINDER: the signers the reminder went to.
+  signer_ids      String[]  @default([]) @db.Uuid
+  created_at      DateTime  @default(now()) @db.Timestamptz
+  processed_at    DateTime? @db.Timestamptz
+  attempt_count   Int       @default(0)
+  next_attempt_at DateTime? @db.Timestamptz
+  last_error_code String?   @db.VarChar(64)
+
+  @@index([processed_at, next_attempt_at])
+  @@schema("sign")
+}
+
+/// One notification in one user's feed. Owned by exactly one (tenant_id, user_id).
+/// audience SENDER: the user sent the envelope (envelope_id is theirs). audience
+/// RECIPIENT: the user claimed the envelope in their inbox; envelope_id is internal
+/// only and never returned — the client gets inbox_item_id (the binding). dedupe_key
+/// is unique per source event and user. CHECK type: SIGNED|VIEWED|DECLINED|
+/// SIGNATURE_NEEDED|COMPLETED|EXPIRED|REMINDER. CHECK audience: SENDER|RECIPIENT.
+model SignUserNotification {
+  id               String    @id @db.Uuid
+  tenant_id        String    @db.Uuid
+  user_id          String    @db.Uuid
+  type             String
+  audience         String
+  envelope_id      String    @db.Uuid
+  inbox_item_id    String?   @db.Uuid
+  envelope_subject String
+  actor_name       String?
+  dedupe_key       String
+  source_outbox_id String?   @db.Uuid
+  created_at       DateTime  @default(now()) @db.Timestamptz
+  read_at          DateTime? @db.Timestamptz
+
+  push_jobs SignPushJob[]
+
+  @@unique([user_id, dedupe_key], map: "SignUserNotification_user_dedupe_key")
+  @@index([tenant_id, user_id, created_at])
+  @@schema("sign")
+}
+
+/// A push registration, attached ONLY to the caller's own native device session
+/// (device_session_id = the access token's dsid). The provider token is held
+/// ENCRYPTED (AES-256-GCM, SIGN_PUSH_TOKEN_KEY) and removed on revocation;
+/// push_token_digest (sha256) finds the same token registered elsewhere.
+/// CHECK platform: ios|android. CHECK provider: apns|fcm.
+model SignPushDevice {
+  id                    String    @id @db.Uuid
+  tenant_id             String    @db.Uuid
+  user_id               String    @db.Uuid
+  device_session_id     String    @db.Uuid
+  platform              String
+  provider              String
+  push_token_ciphertext String?
+  push_token_digest     String?
+  app_version           String
+  created_at            DateTime  @default(now()) @db.Timestamptz
+  updated_at            DateTime  @default(now()) @db.Timestamptz
+  last_seen_at          DateTime  @default(now()) @db.Timestamptz
+  revoked_at            DateTime? @db.Timestamptz
+  revoke_reason         String?
+
+  push_jobs SignPushJob[]
+
+  @@unique([device_session_id], map: "SignPushDevice_device_session_key")
+  @@index([tenant_id, user_id])
+  @@index([push_token_digest])
+  @@schema("sign")
+}
+
+/// Per-user push preferences (absent row = the defaults: every type on, subject
+/// on the lock screen off).
+model SignNotificationPreference {
+  id                  String   @id @db.Uuid
+  tenant_id           String   @db.Uuid
+  user_id             String   @db.Uuid
+  signed              Boolean  @default(true)
+  viewed              Boolean  @default(true)
+  declined            Boolean  @default(true)
+  signature_needed    Boolean  @default(true)
+  reminders           Boolean  @default(true)
+  lock_screen_subject Boolean  @default(false)
+  created_at          DateTime @default(now()) @db.Timestamptz
+  updated_at          DateTime @default(now()) @db.Timestamptz
+
+  @@unique([tenant_id, user_id], map: "SignNotificationPreference_owner_key")
+  @@schema("sign")
+}
+
+/// One push of one notification to one device, with its own retry state.
+/// CHECK status: PENDING|SENT|CANCELLED|FAILED|DEAD.
+model SignPushJob {
+  id              String    @id @db.Uuid
+  tenant_id       String    @db.Uuid
+  user_id         String    @db.Uuid
+  device_id       String    @db.Uuid
+  notification_id String    @db.Uuid
+  payload_kind    String
+  status          String    @default("PENDING")
+  attempts        Int       @default(0)
+  next_attempt_at DateTime  @default(now()) @db.Timestamptz
+  last_error_code String?   @db.VarChar(64)
+  created_at      DateTime  @default(now()) @db.Timestamptz
+  updated_at      DateTime  @default(now()) @db.Timestamptz
+  sent_at         DateTime? @db.Timestamptz
+
+  device       SignPushDevice       @relation(fields: [device_id], references: [id], onDelete: Cascade)
+  notification SignUserNotification @relation(fields: [notification_id], references: [id], onDelete: Cascade)
+
+  @@unique([device_id, notification_id], map: "SignPushJob_device_notification_key")
+  @@index([status, next_attempt_at])
+  @@index([tenant_id, user_id, created_at])
+  @@schema("sign")
+}
+
+/// The audit of a convenience-data removal (account close, M-A3 §9): counts only.
+model SignConvenienceDataPurge {
+  id                    String   @id @db.Uuid
+  tenant_id             String   @db.Uuid
+  user_id               String   @db.Uuid
+  reason                String
+  devices_revoked       Int
+  push_jobs_cancelled   Int
+  devices_deleted       Int
+  notifications_deleted Int
+  preferences_deleted   Int
+  created_at            DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenant_id, user_id])
+  @@schema("sign")
+}
+
+// ── Aramo Sign Mobile (D-W6-2) — page sizes of a source document ──
+
+/// The page sizes of a document's source PDF, in PDF points (each page's MediaBox,
+/// the frame the server validates field geometry in), 0-based by position. Derived
+/// from the frozen source bytes: written at upload, and on first read for documents
+/// that predate it. A side table, not a column on EnvelopeDocument: a write to an
+/// EnvelopeDocument row raises the envelope revision (M-A3 §6 trigger), and filling
+/// this cache on a read must never change the envelope's ETag.
+model SignEnvelopeDocumentPages {
+  envelope_document_id String   @id @db.Uuid
+  tenant_id            String   @db.Uuid
+  pages                Json
+  created_at           DateTime @default(now()) @db.Timestamptz
+
+  document EnvelopeDocument @relation(fields: [envelope_document_id], references: [id], onDelete: Cascade)
+
+  @@index([tenant_id])
   @@schema("sign")
 }

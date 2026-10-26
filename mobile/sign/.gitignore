@@ -1,0 +1,28 @@
+# Aramo Sign mobile — local-only artifacts. ios/ and android/ ARE checked in
+# (expo prebuild output, directive §2); their build outputs are not.
+node_modules/
+.expo/
+dist/
+web-build/
+coverage/
+*.jks
+*.p8
+*.p12
+*.key
+*.mobileprovision
+*.orig.*
+.env*.local
+
+# iOS
+ios/Pods/
+ios/build/
+ios/*.xcworkspace/xcuserdata/
+ios/*.xcodeproj/xcuserdata/
+ios/.xcode.env.local
+
+# Android
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties
+android/.kotlin/

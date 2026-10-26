@@ -52,6 +52,9 @@ interface AramoJwtPayload extends JWTPayload {
   // resolver and compared against this version for immediate revocation.
   authz_version?: number;
   site_id?: string;
+  // AUTH-SIGNIN-1 Amendment M-A1 — native-client context (absent on browser tokens).
+  client?: string;
+  dsid?: string;
 }
 
 // PR-2 precedent #16: real JWS verification. PR-2 verifies tokens only —
@@ -265,7 +268,7 @@ export class JwtAuthGuard implements CanActivate {
     payload: AramoJwtPayload,
     requestId: string,
   ): Promise<AuthContext> {
-    const { sub, consumer_type, actor_kind, tenant_id, authz_version, iat, exp, site_id } =
+    const { sub, consumer_type, actor_kind, tenant_id, authz_version, iat, exp, site_id, client, dsid } =
       payload;
     if (
       sub === undefined ||
@@ -303,6 +306,24 @@ export class JwtAuthGuard implements CanActivate {
       throw new AramoError('INVALID_TOKEN', 'Invalid authz_version claim', 401, {
         requestId,
       });
+    }
+    // AUTH-SIGNIN-1 Amendment M-A1 §3.7 — the native-client context. A token that
+    // declares a client must declare the ONE known kind ('native'), carry its
+    // server-owned device session id, and be a `sign` token (the native contract
+    // exists for the sign consumer only). A browser token declares neither claim.
+    const native = client !== undefined || dsid !== undefined;
+    if (native) {
+      if (
+        client !== 'native' ||
+        typeof dsid !== 'string' ||
+        dsid.length === 0 ||
+        consumer_type !== 'sign'
+      ) {
+        throw new AramoError('INVALID_TOKEN', 'Invalid native client context', 401, {
+          requestId,
+          details: { reason: 'native_context_invalid' },
+        });
+      }
     }
 
     if (this.resolver === undefined) {
@@ -355,6 +376,7 @@ export class JwtAuthGuard implements CanActivate {
       iat,
       exp,
       ...(site_id !== undefined ? { site_id } : {}),
+      ...(native ? { client: 'native' as const, dsid: dsid as string } : {}),
     };
   }
 }

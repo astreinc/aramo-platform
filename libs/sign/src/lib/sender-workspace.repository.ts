@@ -5,6 +5,8 @@ import { Injectable } from '@nestjs/common';
 import { PrismaService } from './prisma/prisma.service.js';
 import { EsignRepository } from './esign.repository.js';
 import { EnvelopeIllegalTransitionError, EnvelopeNotFoundError } from './domain/errors.js';
+import { EnvelopeRevisionMismatchError } from './domain/envelope-contract-errors.js';
+import { SIGN_REMINDER_LIMITS, reminderHistory, type ReminderHistoryEntry } from './reminder-limits.js';
 
 // PX-V1 PX-1 — the authenticated SENDER workspace reads + DRAFT authoring writes.
 //
@@ -66,6 +68,15 @@ export interface SenderFieldInput {
   required: boolean;
 }
 
+// Sign Mobile D-W6-2 — one page of a source PDF, in points (MediaBox).
+export interface DocumentPageSize {
+  width: number;
+  height: number;
+}
+
+// Sign Mobile D-W6-3 — the subject a deleted draft's tombstone keeps.
+export const DELETED_DRAFT_SUBJECT = 'Deleted draft';
+
 export interface SenderDocumentRow {
   id: string;
   title: string;
@@ -90,6 +101,8 @@ export class EsignSenderRepository {
     return this.prisma.signatureEnvelope.findMany({
       where: {
         tenant_id: filter.tenant_id,
+        // Sign Mobile D-W6-3 — a deleted draft is never listed.
+        deleted_at: null,
         ...(filter.statuses !== undefined && filter.statuses.length > 0 ? { status: { in: [...filter.statuses] } } : {}),
         ...(filter.created_since !== undefined ? { created_at: { gte: filter.created_since } } : {}),
         ...(filter.created_by !== undefined ? { created_by: filter.created_by } : {}),
@@ -114,7 +127,7 @@ export class EsignSenderRepository {
   async countByStatus(tenant_id: string, created_by?: string): Promise<Record<string, number>> {
     const rows = await this.prisma.signatureEnvelope.groupBy({
       by: ['status'],
-      where: { tenant_id, ...(created_by !== undefined ? { created_by } : {}) },
+      where: { tenant_id, deleted_at: null, ...(created_by !== undefined ? { created_by } : {}) },
       _count: { _all: true },
     });
     const out: Record<string, number> = {};
@@ -137,11 +150,23 @@ export class EsignSenderRepository {
 
   async getEnvelopeDetail(tenant_id: string, envelope_id: string) {
     const env = await this.prisma.signatureEnvelope.findFirst({
-      where: { tenant_id, id: envelope_id },
+      // Sign Mobile D-W6-3 — a deleted draft reads as not found.
+      where: { tenant_id, id: envelope_id, deleted_at: null },
       include: {
         documents: {
           orderBy: { ordinal: 'asc' },
-          select: { id: true, title: true, ordinal: true, source_mode: true, content_type: true, byte_size: true, source_sha256: true, fields: true },
+          select: {
+            id: true,
+            title: true,
+            ordinal: true,
+            source_mode: true,
+            content_type: true,
+            byte_size: true,
+            source_sha256: true,
+            fields: true,
+            // Sign Mobile D-W6-2 — the stored page sizes (null until computed).
+            page_sizes: { select: { pages: true } },
+          },
         },
         signers: { orderBy: { signing_order: 'asc' } },
       },
@@ -169,7 +194,8 @@ export class EsignSenderRepository {
     const events = await this.prisma.signatureEvent.findMany({
       where: {
         tenant_id,
-        ...(envelope_created_by !== undefined ? { envelope: { created_by: envelope_created_by } } : {}),
+        // Sign Mobile D-W6-3 — the history of a deleted draft is not shown.
+        envelope: { deleted_at: null, ...(envelope_created_by !== undefined ? { created_by: envelope_created_by } : {}) },
       },
       orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
       take: limit,
@@ -191,7 +217,7 @@ export class EsignSenderRepository {
 
   async listTenantDocuments(tenant_id: string, limit: number, created_by?: string) {
     return this.prisma.envelopeDocument.findMany({
-      where: { tenant_id, source_mode: 'OWNED', envelope: { ...SENDER_AUTHORED, ...(created_by !== undefined ? { created_by } : {}) } },
+      where: { tenant_id, source_mode: 'OWNED', envelope: { ...SENDER_AUTHORED, deleted_at: null, ...(created_by !== undefined ? { created_by } : {}) } },
       orderBy: [{ envelope: { created_at: 'desc' } }, { ordinal: 'asc' }],
       take: limit,
       select: {
@@ -206,13 +232,21 @@ export class EsignSenderRepository {
   }
 
   // Contacts derived from past recipients (no separate contact store exists).
-  async listPastRecipients(tenant_id: string, limit: number) {
+  // Sign Mobile M-A3 §5 — `created_by` keeps the list to the caller's own
+  // envelopes unless they may read the whole organization (the visibility rule).
+  async listPastRecipients(tenant_id: string, limit: number, created_by?: string) {
     return this.prisma.signer.findMany({
-      where: { tenant_id, envelope: SENDER_AUTHORED },
+      where: { tenant_id, envelope: { ...SENDER_AUTHORED, deleted_at: null, ...(created_by !== undefined ? { created_by } : {}) } },
       orderBy: [{ envelope: { created_at: 'desc' } }],
       take: limit * 4,
       select: { name: true, email: true, envelope: { select: { id: true, created_at: true } } },
     });
+  }
+
+  // Sign Mobile M-A3 §7 — the reminder history the limits count (for the detail's
+  // per-recipient reminder_available_at; the enforcing read is under the lock).
+  reminderHistory(tenant_id: string, envelope_id: string, now: Date): Promise<ReminderHistoryEntry[]> {
+    return reminderHistory(this.prisma, tenant_id, envelope_id, now, SIGN_REMINDER_LIMITS);
   }
 
   // ── DRAFT authoring writes ─────────────────────────────────────────────────
@@ -231,10 +265,15 @@ export class EsignSenderRepository {
   // envelope holding a CORE_REF (ATS/Core) document is outside the sender
   // workspace and reads as not found — unless the Sign console itself started it from
   // a template (DOC-TEMPLATE-LIB-1 T-5: source_application 'aramo-sign').
-  private async assertDraft(tx: Pick<PrismaService, '$queryRaw'>, tenant_id: string, envelope_id: string): Promise<void> {
-    const rows = await tx.$queryRaw<{ status: string }[]>`
-      SELECT e.status FROM sign."SignatureEnvelope" e
+  //
+  // Sign Mobile M-A3 §6 — with `expected_revision` (the caller's If-Match) the
+  // revision read UNDER this lock must match, so two writers holding the same
+  // revision can never both pass. Returns the locked revision.
+  private async assertDraft(tx: Pick<PrismaService, '$queryRaw'>, tenant_id: string, envelope_id: string, expected_revision?: number): Promise<number> {
+    const rows = await tx.$queryRaw<{ status: string; revision: number }[]>`
+      SELECT e.status, e.revision FROM sign."SignatureEnvelope" e
       WHERE e.id = ${envelope_id}::uuid AND e.tenant_id = ${tenant_id}::uuid
+        AND e.deleted_at IS NULL
         AND (
           e.source_application = ${SIGN_CONSOLE_APPLICATION}
           OR NOT EXISTS (
@@ -246,19 +285,36 @@ export class EsignSenderRepository {
     const row = rows[0];
     if (row === undefined) throw new EnvelopeNotFoundError(envelope_id);
     if (row.status !== 'DRAFT') throw new EnvelopeIllegalTransitionError(row.status, 'edit(DRAFT-only)');
+    if (expected_revision !== undefined && row.revision !== expected_revision) {
+      throw new EnvelopeRevisionMismatchError(envelope_id, row.revision, expected_revision);
+    }
+    return row.revision;
   }
 
-  async updateDraft(input: { tenant_id: string; envelope_id: string; subject?: string; execution_mode?: string; routing_mode?: string }): Promise<void> {
-    await this.prisma.$transaction(async (tx) => {
-      await this.assertDraft(tx, input.tenant_id, input.envelope_id);
+  // Returns the envelope revision after the write (M-A3 §6), so a multi-step caller
+  // can chain its next precondition. `message` null clears it (DRAFT only — the
+  // database refuses any change once sent).
+  async updateDraft(input: {
+    tenant_id: string;
+    envelope_id: string;
+    subject?: string;
+    execution_mode?: string;
+    routing_mode?: string;
+    message?: string | null;
+    expected_revision?: number;
+  }): Promise<number> {
+    return this.prisma.$transaction(async (tx) => {
+      await this.assertDraft(tx, input.tenant_id, input.envelope_id, input.expected_revision);
       await tx.signatureEnvelope.update({
         where: { id: input.envelope_id },
         data: {
           ...(input.subject !== undefined ? { subject: input.subject } : {}),
           ...(input.execution_mode !== undefined ? { execution_mode: input.execution_mode } : {}),
           ...(input.routing_mode !== undefined ? { routing_mode: input.routing_mode } : {}),
+          ...(input.message !== undefined ? { message: input.message } : {}),
         },
       });
+      return this.repo.revisionIn(tx, input.envelope_id);
     });
   }
 
@@ -271,9 +327,12 @@ export class EsignSenderRepository {
     content_type: string;
     byte_size: number;
     source_sha256: string;
-  }): Promise<SenderDocumentRow> {
+    expected_revision?: number;
+    // Sign Mobile D-W6-2 — the page sizes the caller measured from the accepted bytes.
+    pages?: readonly DocumentPageSize[];
+  }): Promise<SenderDocumentRow & { revision: number }> {
     return this.prisma.$transaction(async (tx) => {
-      await this.assertDraft(tx, input.tenant_id, input.envelope_id);
+      await this.assertDraft(tx, input.tenant_id, input.envelope_id, input.expected_revision);
       const last = await tx.envelopeDocument.findFirst({
         where: { tenant_id: input.tenant_id, envelope_id: input.envelope_id },
         orderBy: { ordinal: 'desc' },
@@ -301,7 +360,62 @@ export class EsignSenderRepository {
         actor_ref: input.actor_ref,
         payload: { envelope_document_id: row.id, title: row.title },
       });
-      return row;
+      if (input.pages !== undefined && input.pages.length > 0) {
+        await tx.signEnvelopeDocumentPages.create({ data: { envelope_document_id: row.id, tenant_id: input.tenant_id, pages: input.pages.map((p) => ({ width: p.width, height: p.height })) } });
+      }
+      // Sign Mobile D-W6-1 — the revision this write produced, so the caller can
+      // chain its next If-Match without re-reading the envelope.
+      return { ...row, revision: await this.repo.revisionIn(tx, input.envelope_id) };
+    });
+  }
+
+  // Sign Mobile D-W6-2 — record the page sizes of a document uploaded before they
+  // were stored (filled on first read). Idempotent; never touches the document or
+  // envelope row, so it never changes the envelope revision.
+  async savePageSizes(tenant_id: string, envelope_document_id: string, pages: readonly DocumentPageSize[]): Promise<void> {
+    if (pages.length === 0) return;
+    await this.prisma.signEnvelopeDocumentPages.createMany({
+      data: [{ envelope_document_id, tenant_id, pages: pages.map((p) => ({ width: p.width, height: p.height })) }],
+      skipDuplicates: true,
+    });
+  }
+
+  // Sign Mobile D-W6-3 — delete a DRAFT. Under the envelope row lock (DRAFT, not yet
+  // deleted, the expected revision): its fields, documents and recipients are
+  // deleted, the subject and message scrubbed, deleted_at set, and DRAFT_DELETED
+  // appended to the ledger (counts only). The ledger rows themselves stay: they are
+  // append-only and hold no signing evidence for a draft. Returns the OWNED source
+  // object keys so the caller removes the stored bytes and releases their storage.
+  async deleteDraft(input: { tenant_id: string; envelope_id: string; actor_ref: string; expected_revision?: number }): Promise<{ source_object_keys: string[]; document_count: number; recipient_count: number }> {
+    return this.prisma.$transaction(async (tx) => {
+      await this.assertDraft(tx, input.tenant_id, input.envelope_id, input.expected_revision);
+      const docs = await tx.envelopeDocument.findMany({ where: { tenant_id: input.tenant_id, envelope_id: input.envelope_id }, select: { id: true, source_object_key: true } });
+      const signers = await tx.signer.findMany({ where: { tenant_id: input.tenant_id, envelope_id: input.envelope_id }, select: { id: true } });
+      if (docs.length > 0) {
+        await tx.signatureField.deleteMany({ where: { tenant_id: input.tenant_id, envelope_document_id: { in: docs.map((d) => d.id) } } });
+      }
+      if (signers.length > 0) {
+        await tx.signatureField.deleteMany({ where: { tenant_id: input.tenant_id, signer_id: { in: signers.map((x) => x.id) } } });
+      }
+      await tx.envelopeDocument.deleteMany({ where: { tenant_id: input.tenant_id, envelope_id: input.envelope_id } });
+      await tx.signer.deleteMany({ where: { tenant_id: input.tenant_id, envelope_id: input.envelope_id } });
+      await tx.signatureEnvelope.update({
+        where: { id: input.envelope_id },
+        data: { deleted_at: new Date(), subject: DELETED_DRAFT_SUBJECT, message: null },
+      });
+      await this.repo.appendEvent(tx, {
+        tenant_id: input.tenant_id,
+        envelope_id: input.envelope_id,
+        event_type: 'DRAFT_DELETED',
+        actor_type: 'SERVICE',
+        actor_ref: input.actor_ref,
+        payload: { document_count: docs.length, recipient_count: signers.length },
+      });
+      return {
+        source_object_keys: docs.map((d) => d.source_object_key).filter((k): k is string => k !== null),
+        document_count: docs.length,
+        recipient_count: signers.length,
+      };
     });
   }
 
@@ -350,9 +464,9 @@ export class EsignSenderRepository {
     });
   }
 
-  async renameDraftDocument(input: { tenant_id: string; envelope_id: string; document_id: string; title: string }): Promise<void> {
+  async renameDraftDocument(input: { tenant_id: string; envelope_id: string; document_id: string; title: string; expected_revision?: number }): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
-      await this.assertDraft(tx, input.tenant_id, input.envelope_id);
+      await this.assertDraft(tx, input.tenant_id, input.envelope_id, input.expected_revision);
       const n = await tx.envelopeDocument.updateMany({
         where: { tenant_id: input.tenant_id, envelope_id: input.envelope_id, id: input.document_id },
         data: { title: input.title },
@@ -363,9 +477,9 @@ export class EsignSenderRepository {
 
   // Applies a full ordering (document ids, first = ordinal 0). Every document of
   // the envelope must appear exactly once.
-  async reorderDraftDocuments(input: { tenant_id: string; envelope_id: string; order: readonly string[] }): Promise<void> {
+  async reorderDraftDocuments(input: { tenant_id: string; envelope_id: string; order: readonly string[]; expected_revision?: number }): Promise<void> {
     await this.prisma.$transaction(async (tx) => {
-      await this.assertDraft(tx, input.tenant_id, input.envelope_id);
+      await this.assertDraft(tx, input.tenant_id, input.envelope_id, input.expected_revision);
       const docs = await tx.envelopeDocument.findMany({ where: { tenant_id: input.tenant_id, envelope_id: input.envelope_id }, select: { id: true } });
       const ids = new Set(docs.map((d) => d.id));
       if (input.order.length !== ids.size || new Set(input.order).size !== ids.size || input.order.some((id) => !ids.has(id))) {
@@ -383,9 +497,9 @@ export class EsignSenderRepository {
 
   // Removes a draft document and its fields. Returns the removed object key so the
   // caller may clean up storage (the key is never exposed to the browser).
-  async removeDraftDocument(input: { tenant_id: string; envelope_id: string; document_id: string; actor_ref: string }): Promise<{ source_object_key: string | null }> {
+  async removeDraftDocument(input: { tenant_id: string; envelope_id: string; document_id: string; actor_ref: string; expected_revision?: number }): Promise<{ source_object_key: string | null }> {
     return this.prisma.$transaction(async (tx) => {
-      await this.assertDraft(tx, input.tenant_id, input.envelope_id);
+      await this.assertDraft(tx, input.tenant_id, input.envelope_id, input.expected_revision);
       const doc = await tx.envelopeDocument.findFirst({ where: { tenant_id: input.tenant_id, envelope_id: input.envelope_id, id: input.document_id } });
       if (doc === null) throw new EnvelopeNotFoundError(`${input.envelope_id}/${input.document_id}`);
       await tx.signatureField.deleteMany({ where: { tenant_id: input.tenant_id, envelope_document_id: doc.id } });
@@ -415,9 +529,9 @@ export class EsignSenderRepository {
   // list position (1..N). Multi-Signer §6 — reorder-safe: the kept signers are first
   // parked on temporary positions beyond any final one, so rewriting the order never
   // collides with the (envelope, signing_order) unique index mid-way.
-  async replaceDraftRecipients(input: { tenant_id: string; envelope_id: string; recipients: readonly SenderRecipientInput[] }) {
+  async replaceDraftRecipients(input: { tenant_id: string; envelope_id: string; recipients: readonly SenderRecipientInput[]; expected_revision?: number }) {
     return this.prisma.$transaction(async (tx) => {
-      await this.assertDraft(tx, input.tenant_id, input.envelope_id);
+      await this.assertDraft(tx, input.tenant_id, input.envelope_id, input.expected_revision);
       const existing = await tx.signer.findMany({ where: { tenant_id: input.tenant_id, envelope_id: input.envelope_id }, select: { id: true } });
       const keep = new Set(input.recipients.map((r) => r.id).filter((id): id is string => id !== undefined));
       const existingIds = new Set(existing.map((s) => s.id));
@@ -456,9 +570,9 @@ export class EsignSenderRepository {
   }
 
   // Replaces every field of the envelope. Documents and signers must belong to it.
-  async replaceDraftFields(input: { tenant_id: string; envelope_id: string; fields: readonly SenderFieldInput[] }): Promise<number> {
+  async replaceDraftFields(input: { tenant_id: string; envelope_id: string; fields: readonly SenderFieldInput[]; expected_revision?: number }): Promise<number> {
     return this.prisma.$transaction(async (tx) => {
-      await this.assertDraft(tx, input.tenant_id, input.envelope_id);
+      await this.assertDraft(tx, input.tenant_id, input.envelope_id, input.expected_revision);
       const docs = await tx.envelopeDocument.findMany({ where: { tenant_id: input.tenant_id, envelope_id: input.envelope_id }, select: { id: true } });
       const signers = await tx.signer.findMany({ where: { tenant_id: input.tenant_id, envelope_id: input.envelope_id }, select: { id: true } });
       const docIds = new Set(docs.map((d) => d.id));

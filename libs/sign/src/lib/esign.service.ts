@@ -27,6 +27,7 @@ import {
   type EvidenceManifestSignerPort,
   type SignedEvidenceManifest,
 } from './ports/evidence-manifest-signer.port.js';
+import { applyReminderLimits, reminderHistory, type ReminderLimits } from './reminder-limits.js';
 
 // Aramo Sign launch — how long a sent envelope stays signable before the expiry
 // sweep moves it to EXPIRED (SIGN_ENVELOPE_TTL_DAYS, default 30). Individual
@@ -90,6 +91,9 @@ export interface SignerDocumentMeta {
 export interface SignerDocumentView {
   documents: SignerDocumentMeta[];
   fields: SignerFieldView[];
+  // Sign Mobile M-A3 §3 — the sender's plain-text message (sender-supplied; not
+  // part of the signed document content). Null when none was given.
+  message: string | null;
 }
 
 // Server-side source descriptor (NOT returned to the client) used by the
@@ -122,13 +126,19 @@ export class EsignService {
   // ── Send: DRAFT -> SENT. Issues a signing session per signer (raw tokens
   // returned ONCE). Requires >=1 signer and >=1 document. ES-1: the transition
   // and the session mint commit together — a lost race mints nothing. ──
-  async send(tenant_id: string, envelope_id: string, actor_ref: string): Promise<{ envelope: unknown; sessions: IssuedSession[] }> {
+  // Sign Mobile M-A3 §6 — `expected_revision` (the caller's If-Match) is compared
+  // under the envelope row lock in the send transaction. M-A3 §3 — the sender
+  // message is recorded in the ENVELOPE_SENT ledger payload as sender-supplied text
+  // (never in the evidence manifest fields or the certificate).
+  async send(tenant_id: string, envelope_id: string, actor_ref: string, opts: { expected_revision?: number } = {}): Promise<{ envelope: unknown; sessions: IssuedSession[] }> {
     const full = await this.repo.getEnvelopeFull(tenant_id, envelope_id);
     if (full.signers.length === 0) throw new SigningSessionInvalidError('envelope has no signers');
     if (full.documents.length === 0) throw new SigningSessionInvalidError('envelope has no documents');
 
     const now = new Date();
     return this.prisma.$transaction(async (tx) => {
+      await this.repo.lockEnvelopeRevision(tx, tenant_id, envelope_id, opts.expected_revision);
+      const message = await tx.signatureEnvelope.findFirst({ where: { id: envelope_id, tenant_id }, select: { message: true } });
       const envelope = await this.repo.transitionEnvelopeIn(tx, {
         tenant_id,
         envelope_id,
@@ -137,6 +147,7 @@ export class EsignService {
         actor_type: 'SERVICE',
         actor_ref,
         timestampField: 'sent_at',
+        ...(message?.message ? { payload: { sender_message: message.message, sender_message_source: 'SENDER_SUPPLIED' } } : {}),
       });
       await tx.signatureEnvelope.update({ where: { id: envelope_id }, data: { expires_at: envelopeExpiresAt(now) } });
       const sessions: IssuedSession[] = [];
@@ -357,7 +368,14 @@ export class EsignService {
         })),
     );
     fields.sort((a, b) => a.page_number - b.page_number || a.y - b.y || a.x - b.x);
-    return { documents, fields };
+    return { documents, fields, message: full.message ?? null };
+  }
+
+  // Sign Mobile M-A3 §3 — the sender message for the signer consent screen. Read
+  // with an already-resolved session (token-authorized); no tenant id leaves here.
+  async signerEnvelopeMessage(ctx: SessionContext): Promise<string | null> {
+    const env = await this.prisma.signatureEnvelope.findFirst({ where: { id: ctx.envelope_id, tenant_id: ctx.tenant_id }, select: { message: true } });
+    return env?.message ?? null;
   }
 
   // ── PX-V1 F3 — resolve the server-side source descriptor for a document in the
@@ -480,9 +498,19 @@ export class EsignService {
     });
   }
 
-  async voidEnvelope(tenant_id: string, envelope_id: string, actor_ref: string, reason: string): Promise<void> {
-    await this.repo.transitionEnvelope({
-      tenant_id, envelope_id, to: 'VOIDED', event_type: 'ENVELOPE_VOIDED', actor_type: 'SERVICE', actor_ref, timestampField: 'voided_at', payload: { reason },
+  // Sign Mobile M-A3 §6 — with `expected_revision` the void runs under the envelope
+  // row lock and is refused when the revision moved (If-Match).
+  async voidEnvelope(tenant_id: string, envelope_id: string, actor_ref: string, reason: string, opts: { expected_revision?: number } = {}): Promise<void> {
+    const input = {
+      tenant_id, envelope_id, to: 'VOIDED', event_type: 'ENVELOPE_VOIDED', actor_type: 'SERVICE', actor_ref, timestampField: 'voided_at' as const, payload: { reason },
+    };
+    if (opts.expected_revision === undefined) {
+      await this.repo.transitionEnvelope(input);
+      return;
+    }
+    await this.prisma.$transaction(async (tx) => {
+      await this.repo.lockEnvelopeRevision(tx, tenant_id, envelope_id, opts.expected_revision);
+      await this.repo.transitionEnvelopeIn(tx, input);
     });
   }
 
@@ -598,6 +626,11 @@ export class EsignService {
     actor_ref: string,
     // Multi-Signer M-3a — remind ONE signer. Omitted: every signer who may sign now.
     signer_id?: string,
+    // Sign Mobile M-A3 §7 — the Sign console's limits (web and mobile alike). When
+    // given they are checked under the SAME envelope row lock as the re-mint, by
+    // counting SIGNATURE_REMINDER_SENT events, so two concurrent reminders can never
+    // both pass a limit. Omitted (ATS internal / integration API): no limit, as before.
+    opts: { limits?: ReminderLimits } = {},
   ): Promise<{ sessions: IssuedSession[] }> {
     const now = new Date();
     // ES-1 — status check and re-mint under the envelope row lock, so a reminder
@@ -618,11 +651,17 @@ export class EsignService {
       // holds a link, so only they can be reminded.
       const env = await tx.signatureEnvelope.findFirstOrThrow({ where: { id: envelope_id, tenant_id }, select: { routing_mode: true } });
       const eligible = env.routing_mode === 'SEQUENTIAL' ? incomplete.slice(0, 1) : incomplete;
-      const targets = signer_id === undefined ? eligible : eligible.filter((s) => s.id === signer_id);
+      let targets = signer_id === undefined ? eligible : eligible.filter((s) => s.id === signer_id);
       if (targets.length === 0) {
         throw new ReminderNotAllowedError(
           env.routing_mode === 'SEQUENTIAL' ? 'only the signer whose turn it is can be reminded' : 'that signer has already signed or is not on this envelope',
         );
+      }
+      if (opts.limits !== undefined) {
+        const history = await reminderHistory(tx, tenant_id, envelope_id, now, opts.limits);
+        const verdict = applyReminderLimits(history, targets.map((s) => s.id), now, opts.limits);
+        if (verdict.refused !== undefined) throw verdict.refused;
+        targets = targets.filter((s) => verdict.allowed.includes(s.id));
       }
       const minted: IssuedSession[] = [];
       for (const signer of targets) {
@@ -651,12 +690,15 @@ export class EsignService {
         });
         minted.push({ session_id: sessionId, signer_id: signer.id, raw_token: tok.raw });
       }
+      // M-A3 §7 — the reminded signers are recorded so the per-signer cooldown can
+      // be counted from the ledger.
       await this.repo.appendEvent(tx, {
         tenant_id,
         envelope_id,
         event_type: 'SIGNATURE_REMINDER_SENT',
         actor_type: 'SERVICE',
         actor_ref,
+        payload: { signer_ids: targets.map((s) => s.id) },
       });
       return minted;
     });

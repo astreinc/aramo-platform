@@ -33,4 +33,12 @@ export class EsignObjectStorageDocumentAdapter implements DocumentStoragePort {
     const buf = await this.storage.getObjectBytes({ storage_key: source_object_key, requestId, maxBytes: MAX_SOURCE_BYTES });
     return new Uint8Array(buf);
   }
+
+  // Sign Mobile D-W6-3 — the source bytes of a deleted draft document. Only keys
+  // under E-Sign's own source prefix are ever removed.
+  async deleteOwnedSource(source_object_key: string): Promise<void> {
+    if (!source_object_key.startsWith('esign/source/')) throw new Error('not an E-Sign source object key');
+    const requestId = `esign-owned-source-delete-${randomUUID()}`;
+    await this.storage.deleteObjectByKey({ storage_key: source_object_key, requestId });
+  }
 }

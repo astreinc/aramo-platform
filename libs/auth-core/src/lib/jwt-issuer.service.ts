@@ -35,6 +35,12 @@ export interface JwtIssuancePayload {
   // tenant-wide memberships. When absent the JWT claim is OMITTED, not
   // emitted as null — preserves tenant-wide token byte-shape (Ruling 2).
   site_id?: string;
+  // AUTH-SIGNIN-1 Amendment M-A1 §3.3/§3.6 — the native-client context, minted
+  // ONLY by the native exchange/refresh: `client: 'native'` and the server-owned
+  // device session id as `dsid`. Both OMITTED on browser tokens (byte-shape
+  // unchanged), the same omit-not-null rule as site_id.
+  client?: 'native';
+  dsid?: string;
 }
 
 @Injectable()
@@ -59,6 +65,8 @@ export class JwtIssuerService {
       // `scopes` claim is emitted; the guard resolves effective scopes server-side.
       authz_version: payload.authz_version,
       ...(payload.site_id !== undefined ? { site_id: payload.site_id } : {}),
+      ...(payload.client !== undefined ? { client: payload.client } : {}),
+      ...(payload.dsid !== undefined ? { dsid: payload.dsid } : {}),
     })
       .setProtectedHeader({ alg: ALG, kid, typ: 'JWT' })
       .setIssuer(ISSUER)

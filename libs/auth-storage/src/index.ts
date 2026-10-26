@@ -3,6 +3,11 @@ export { RefreshTokenService } from './lib/refresh-token.service.js';
 export { RotationRaceError } from './lib/refresh-token.repository.js';
 export type { RefreshTokenDto } from './lib/dto/refresh-token.dto.js';
 
+// AUTH-SIGNIN-1 Amendment M-A1 — native device sessions + redeemed-code ledger.
+export { NativeDeviceSessionService } from './lib/native-device-session.service.js';
+export { NATIVE_PLATFORMS } from './lib/dto/native-device-session.dto.js';
+export type { NativeDeviceSessionDto, NativePlatform, CodeRedemptionOutcome } from './lib/dto/native-device-session.dto.js';
+
 // Auth-Decoupling PR-1 — host auth-profile registry surface.
 export { HostAuthProfileStore } from './lib/host-auth-profile.store.js';
 export { HOST_CLASSES } from './lib/dto/host-auth-profile.dto.js';

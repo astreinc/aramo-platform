@@ -1,0 +1,112 @@
+{
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "name": "sign-mobile",
+  "projectType": "application",
+  "sourceRoot": "mobile/sign/src",
+  "tags": ["scope:sign", "type:app", "platform:mobile"],
+  "implicitDependencies": [],
+  "namedInputs": {
+    "mobileSource": [
+      "{projectRoot}/src/**/*",
+      "{projectRoot}/*.{js,ts,json}",
+      "{projectRoot}/package-lock.json",
+      "!{projectRoot}/node_modules/**/*"
+    ]
+  },
+  "targets": {
+    "install": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "mobile/sign",
+        "command": "[ node_modules/.package-lock.json -nt package-lock.json ] || npm ci --no-audit --no-fund"
+      },
+      "cache": false
+    },
+    "typecheck": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "mobile/sign",
+        "command": "npm run typecheck"
+      },
+      "inputs": ["mobileSource"],
+      "cache": true,
+      "dependsOn": ["install"]
+    },
+    "lint": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "mobile/sign",
+        "command": "npm run lint"
+      },
+      "inputs": ["mobileSource"],
+      "cache": true,
+      "dependsOn": ["install"]
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "mobile/sign",
+        "command": "npm test"
+      },
+      "inputs": ["mobileSource"],
+      "cache": true,
+      "dependsOn": ["install"]
+    },
+    "check-api": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "mobile/sign",
+        "command": "npm run check:api"
+      },
+      "inputs": [
+        "mobileSource",
+        "{workspaceRoot}/openapi/sign.yaml",
+        "{workspaceRoot}/openapi/auth.yaml",
+        "{workspaceRoot}/openapi/common.yaml",
+        "{workspaceRoot}/scripts/verify-vocabulary.sh"
+      ],
+      "cache": true,
+      "dependsOn": ["install"]
+    },
+    "generate-api": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "mobile/sign",
+        "command": "npm run generate:api"
+      },
+      "cache": false,
+      "dependsOn": ["install"]
+    },
+    "prebuild": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "mobile/sign",
+        "command": "npx expo prebuild --no-install"
+      },
+      "cache": false,
+      "dependsOn": ["install"]
+    },
+    "build-android": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "mobile/sign/android",
+        "command": "./gradlew :app:assemble{args.variant}",
+        "args": "--variant=Release"
+      },
+      "cache": false
+    },
+    "build-ios": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "mobile/sign/ios",
+        "commands": [
+          "pod install",
+          "xcodebuild -workspace AramoSign.xcworkspace -scheme AramoSign -configuration {args.configuration} -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build CODE_SIGNING_ALLOWED={args.signing} build"
+        ],
+        "parallel": false,
+        "args": "--configuration=Release --signing=NO"
+      },
+      "cache": false
+    }
+  }
+}

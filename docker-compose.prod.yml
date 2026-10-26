@@ -85,6 +85,13 @@ services:
       # DOC-4 (R-4-10) — external-signer SPA host (DEPLOY=NO until provisioned).
       - NGINX_SIGN_SERVER_NAME=${NGINX_SIGN_SERVER_NAME:-sign.localhost}
       - NGINX_CERT_DIR=${NGINX_CERT_DIR:-/etc/letsencrypt/live/aramo.ai}
+      # Aramo Sign Mobile (directive §14 P-1/P-3/P-6, M-A2 §3.2) — the app-association
+      # files are rendered from these at container start (40-aramo-app-links.sh).
+      # Optional: empty ⇒ valid JSON that associates nothing (no app opens links).
+      # Public identifiers, not secrets.
+      - SIGN_IOS_APP_ID=${SIGN_IOS_APP_ID:-}
+      - SIGN_ANDROID_PACKAGE=${SIGN_ANDROID_PACKAGE:-}
+      - SIGN_ANDROID_CERT_SHA256S=${SIGN_ANDROID_CERT_SHA256S:-}
     ports:
       - '80:80'
       - '443:443'
@@ -397,6 +404,14 @@ services:
       - AUTH_HOST_TENANT_BINDING
       - AUTH_ALLOW_UNBOUND_HOST
       - AUTH_PRODUCT_HOSTS
+      # AUTH-SIGNIN-1 Amendment M-A1 — native authentication consumer (Aramo Sign
+      # mobile). The PUBLIC Cognito app client `aramo-sign-native` (no secret,
+      # PKCE) and the byte-exact native callback allow-list (comma list; unset →
+      # https://sign.aramo.ai/auth/native/callback,aramosign://auth/callback).
+      # Unset client id → the /auth/native/sign/* routes refuse (500
+      # native_client_not_configured); browser sign-in is unaffected.
+      - SIGN_NATIVE_COGNITO_CLIENT_ID
+      - SIGN_NATIVE_REDIRECT_URIS
       # Eligibility rides aperture 1 (the PII-free fingerprint → ClusterFingerprint
       # lookup), so auth-service needs the SAME pepper as api. Single-sourced via
       # the *identity_pepper YAML anchor (defined on api's entry) — one var name,
@@ -520,8 +535,24 @@ services:
       - SIGN_SMS_PROVIDER
       - SIGN_GEOIP_DB_PATH=${SIGN_GEOIP_DB_PATH:-/geoip/GeoLite2-Country.mmdb}
       - SIGN_GEOIP_ASN_DB_PATH=${SIGN_GEOIP_ASN_DB_PATH:-/geoip/GeoLite2-ASN.mmdb}
+      # Aramo Sign Mobile (M-A3 §2) — push delivery. SIGN_PUSH_DELIVERY: disabled (the
+      # default; no push is sent) | log | apns | fcm | apns,fcm. SIGN_PUSH_TOKEN_KEY
+      # (32 bytes, base64) encrypts device push tokens at rest; unset ⇒ no device can
+      # register (fail closed). The APNs .p8 key and the FCM service-account JSON are
+      # read from the read-only secrets mount below. A provider whose settings are
+      # incomplete stays off. Production use needs separate authorization (§14).
+      - SIGN_PUSH_DELIVERY
+      - SIGN_PUSH_TOKEN_KEY
+      - APNS_KEY_ID
+      - APNS_TEAM_ID
+      - APNS_TOPIC
+      - APNS_ENVIRONMENT
+      - APNS_KEY_PATH=${APNS_KEY_PATH:-/opt/aramo/secrets/apns-key.p8}
+      - FCM_PROJECT_ID
+      - FCM_SERVICE_ACCOUNT_PATH=${FCM_SERVICE_ACCOUNT_PATH:-/opt/aramo/secrets/fcm-service-account.json}
     volumes:
       - /opt/aramo/geoip:/geoip:ro
+      - /opt/aramo/secrets:/opt/aramo/secrets:ro
     depends_on:
       postgres:
         condition: service_healthy

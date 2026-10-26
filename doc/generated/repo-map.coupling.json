@@ -29,6 +29,16 @@
     {
       "from": ".env.prod.example",
       "status": "unscoped",
+      "to": "deploy/nginx/app-links/render-app-links.sh"
+    },
+    {
+      "from": ".env.prod.example",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-sign-mobile.md"
+    },
+    {
+      "from": ".env.prod.example",
+      "status": "unscoped",
       "to": "doc/runbooks/frontdoor-pr0-apply.md"
     },
     {
@@ -132,6 +142,21 @@
       "from": ".github/workflows/ci.yml",
       "status": "unscoped",
       "to": "tools/ensure-intelligence-db.sh"
+    },
+    {
+      "from": ".github/workflows/mobile-sign.yml",
+      "status": "unscoped",
+      "to": "mobile/sign/package-lock.json"
+    },
+    {
+      "from": ".github/workflows/mobile-sign.yml",
+      "status": "unscoped",
+      "to": "mobile/sign/package.json"
+    },
+    {
+      "from": ".github/workflows/mobile-sign.yml",
+      "status": "unscoped",
+      "to": "mobile/sign/scripts/generate-api.mjs"
     },
     { "from": ".gitignore", "status": "unscoped", "to": "tools/local-stack.sh" },
     { "from": ".redocly.lint-ignore.yaml", "status": "unscoped", "to": "openapi/ats.yaml" },
@@ -10994,6 +11019,16 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/sign-service/src/app/me/notifications/sign-me-notifications.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/me/signature/saved-signature.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/sign-service/src/app/personal/sign-report.controller.ts"
     },
     {
@@ -11070,6 +11105,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "libs/auth-core/src/lib/jwks.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "libs/auth-core/src/lib/native-auth.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -11436,6 +11476,11 @@
     {
       "from": "ci/scripts/verify-frontdoor-conf.ts",
       "status": "unscoped",
+      "to": "deploy/nginx/app-links/render-app-links.sh"
+    },
+    {
+      "from": "ci/scripts/verify-frontdoor-conf.ts",
+      "status": "unscoped",
       "to": "deploy/nginx/nginx.conf"
     },
     {
@@ -11553,6 +11598,11 @@
       "to": "tools/ensure-intelligence-db.sh"
     },
     { "from": "deploy/migrate-prod.test.sh", "status": "unscoped", "to": "deploy/migrate-prod.sh" },
+    {
+      "from": "deploy/nginx/Dockerfile",
+      "status": "unscoped",
+      "to": "deploy/nginx/app-links/render-app-links.sh"
+    },
     { "from": "deploy/nginx/Dockerfile", "status": "unscoped", "to": "deploy/nginx/nginx.conf" },
     {
       "from": "deploy/nginx/Dockerfile",
@@ -11563,6 +11613,11 @@
       "from": "deploy/nginx/README.md",
       "status": "unscoped",
       "to": "ci/scripts/verify-frontdoor-conf.ts"
+    },
+    {
+      "from": "deploy/nginx/README.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-sign-mobile.md"
     },
     {
       "from": "deploy/nginx/templates/aramo.conf.template",
@@ -28145,6 +28200,36 @@
       "to": "deploy/seed-prod.sh"
     },
     {
+      "from": "doc/runbooks/RELEASE-sign-mobile.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-env-passthrough.ts"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-sign-mobile.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-frontdoor-conf.ts"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-sign-mobile.md",
+      "status": "unscoped",
+      "to": "deploy/nginx/README.md"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-sign-mobile.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-auth-signin-1.md"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-sign-mobile.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-box.md"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-sign-mobile.md",
+      "status": "unscoped",
+      "to": "infrastructure/cognito-triggers/CUTOVER.md"
+    },
+    {
       "from": "doc/runbooks/RELEASE-sign-naming.md",
       "status": "unscoped",
       "to": "deploy/build-images.sh"
@@ -29628,6 +29713,11 @@
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
       "status": "production",
       "to": "libs/auth-storage/prisma/migrations/20260719000000_add_host_auth_profile/migration.sql"
+    },
+    {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/auth-storage/prisma/migrations/20261025120000_native_device_sessions/migration.sql"
     },
     {
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
@@ -33257,6 +33347,92 @@
       "status": "unscoped",
       "to": "libs/visibility/tsconfig.lib.json"
     },
+    { "from": "mobile/sign/README.md", "status": "unscoped", "to": "openapi/auth.yaml" },
+    { "from": "mobile/sign/README.md", "status": "unscoped", "to": "openapi/sign.yaml" },
+    { "from": "mobile/sign/project.json", "status": "unscoped", "to": "openapi/auth.yaml" },
+    { "from": "mobile/sign/project.json", "status": "unscoped", "to": "openapi/common.yaml" },
+    { "from": "mobile/sign/project.json", "status": "unscoped", "to": "openapi/sign.yaml" },
+    {
+      "from": "mobile/sign/project.json",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "mobile/sign/scripts/generate-api.mjs",
+      "status": "unscoped",
+      "to": "openapi/auth.yaml"
+    },
+    {
+      "from": "mobile/sign/scripts/generate-api.mjs",
+      "status": "unscoped",
+      "to": "openapi/sign.yaml"
+    },
+    {
+      "from": "mobile/sign/scripts/generate-api.mjs",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    { "from": "mobile/sign/src/api/errors.ts", "status": "unscoped", "to": "openapi/common.yaml" },
+    {
+      "from": "mobile/sign/src/api/generated/auth.ts",
+      "status": "unscoped",
+      "to": "openapi/auth.yaml"
+    },
+    {
+      "from": "mobile/sign/src/api/generated/sign.ts",
+      "status": "unscoped",
+      "to": "openapi/sign.yaml"
+    },
+    {
+      "from": "mobile/sign/src/api/guestSigningClient.ts",
+      "status": "unscoped",
+      "to": "openapi/sign.yaml"
+    },
+    {
+      "from": "mobile/sign/src/auth/installation.ts",
+      "status": "unscoped",
+      "to": "openapi/auth.yaml"
+    },
+    {
+      "from": "mobile/sign/src/auth/nativeAuthApi.ts",
+      "status": "unscoped",
+      "to": "openapi/auth.yaml"
+    },
+    {
+      "from": "mobile/sign/src/features/editor/__tests__/geometry.test.ts",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/workspace/geometry.ts"
+    },
+    {
+      "from": "mobile/sign/src/features/editor/geometry.ts",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/sender/sender-envelope.service.ts"
+    },
+    {
+      "from": "mobile/sign/src/features/editor/geometry.ts",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/workspace/geometry.ts"
+    },
+    {
+      "from": "mobile/sign/src/features/inbox/types.ts",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/sender/sender-envelope.service.ts"
+    },
+    {
+      "from": "mobile/sign/src/features/inbox/types.ts",
+      "status": "unscoped",
+      "to": "openapi/sign.yaml"
+    },
+    {
+      "from": "mobile/sign/src/features/send/fileValidation.ts",
+      "status": "unscoped",
+      "to": "openapi/sign.yaml"
+    },
+    {
+      "from": "mobile/sign/src/features/signing/signingApi.ts",
+      "status": "unscoped",
+      "to": "openapi/sign.yaml"
+    },
     { "from": "openapi/ats.yaml", "status": "unscoped", "to": "openapi/common.yaml" },
     { "from": "openapi/auth.yaml", "status": "unscoped", "to": "openapi/common.yaml" },
     {
@@ -33684,6 +33860,21 @@
       "to": "pact/provider/src/verify-sign.ts"
     },
     {
+      "from": "pact/consumers/sign-mobile/src/native-auth.consumer.test.ts",
+      "status": "unscoped",
+      "to": "pact/provider/src/support/native-auth-states.ts"
+    },
+    {
+      "from": "pact/consumers/sign-mobile/src/native-auth.consumer.test.ts",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify.ts"
+    },
+    {
+      "from": "pact/consumers/sign-mobile/src/sign-service.consumer.test.ts",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-sign.ts"
+    },
+    {
       "from": "pact/consumers/sign-source-consumer/src/webhook.consumer.test.ts",
       "status": "unscoped",
       "to": "pact/provider/src/verify-api.ts"
@@ -33707,6 +33898,11 @@
       "from": "pact/provider/src/state-handlers.ts",
       "status": "unscoped",
       "to": "pact/consumers/auth-service-consumer/src/auth.consumer.test.ts"
+    },
+    {
+      "from": "pact/provider/src/support/native-auth-states.ts",
+      "status": "unscoped",
+      "to": "pact/consumers/sign-mobile/src/native-auth.consumer.test.ts"
     },
     {
       "from": "pact/provider/src/verify-api.ts",
@@ -34906,6 +35102,11 @@
     {
       "from": "pact/provider/src/verify-sign.ts",
       "status": "unscoped",
+      "to": "pact/consumers/sign-mobile/src/sign-service.consumer.test.ts"
+    },
+    {
+      "from": "pact/provider/src/verify-sign.ts",
+      "status": "unscoped",
       "to": "pact/consumers/sign-web-consumer/src/signer-session.consumer.test.ts"
     },
     {
@@ -34947,6 +35148,11 @@
       "from": "pact/provider/src/verify.ts",
       "status": "unscoped",
       "to": "libs/auth-storage/prisma/migrations/20260719000000_add_host_auth_profile/migration.sql"
+    },
+    {
+      "from": "pact/provider/src/verify.ts",
+      "status": "unscoped",
+      "to": "libs/auth-storage/prisma/migrations/20261025120000_native_device_sessions/migration.sql"
     },
     {
       "from": "pact/provider/src/verify.ts",
@@ -35570,6 +35776,11 @@
       "from": "scripts/verify-vocabulary.sh",
       "status": "unscoped",
       "to": "libs/talent-evidence/src/lib/talent-evidence.repository.ts"
+    },
+    {
+      "from": "scripts/verify-vocabulary.sh",
+      "status": "unscoped",
+      "to": "mobile/sign/.gitignore"
     },
     { "from": "scripts/verify-vocabulary.sh", "status": "unscoped", "to": "openapi/ats.yaml" },
     { "from": "scripts/verify-vocabulary.sh", "status": "unscoped", "to": "openapi/common.yaml" },
@@ -36216,7 +36427,7 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 100,
+    "files": 102,
     "huskyPresent": false
   },
   "scripts": [
@@ -36262,6 +36473,7 @@
         { "kind": "nx-target", "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "path": ".github/workflows/deploy-public-staging.yml" },
+        { "kind": "prose", "path": ".github/workflows/mobile-sign.yml" },
         { "kind": "prose", "path": "ci/scripts/check-api-spec-location.ts" },
         { "kind": "prose", "path": "ci/scripts/check-integration-roots.ts" },
         { "kind": "prose", "path": "ci/scripts/frontdoor-boot-smoke.sh" },
@@ -36396,6 +36608,8 @@
       "references": [
         { "kind": "nx-target", "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
+        { "kind": "npm-run", "path": ".github/workflows/mobile-sign.yml" },
+        { "kind": "prose", "path": ".github/workflows/mobile-sign.yml" },
         { "kind": "nx-target", "path": "ci/scripts/generate-repo-map.ts" },
         { "kind": "prose", "path": "ci/scripts/generate-repo-map.ts" },
         { "kind": "prose", "path": "ci/scripts/prepush.ts" },
@@ -36663,6 +36877,7 @@
       "references": [
         { "kind": "nx-target", "path": ".github/workflows/ci.yml" },
         { "kind": "prose", "path": ".github/workflows/ci.yml" },
+        { "kind": "prose", "path": ".github/workflows/mobile-sign.yml" },
         { "kind": "prose", "path": "ci/scripts/boot-smoke-loader.cjs" },
         { "kind": "prose", "path": "ci/scripts/check-api-spec-location.ts" },
         { "kind": "prose", "path": "ci/scripts/check-integration-roots.ts" },

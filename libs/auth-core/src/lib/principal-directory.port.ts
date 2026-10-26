@@ -29,6 +29,12 @@ export interface ResolveSessionInput {
   // ('google' | 'microsoft' | 'ambiguous' | null). The adapter applies the
   // provider policy (no cross-provider merge; the enforced-pin cohort).
   idp?: string | null;
+  // AUTH-SIGNIN-1 Amendment M-A1 §3.7 — the client kind. 'native' (the Aramo Sign
+  // mobile exchange) is NOT passed through browser host binding and no browser
+  // Host is simulated: the adapter skips the host-binding step for it and applies
+  // every other rule (reconcile, no JIT, provider policy R1/R2, IC-1, status,
+  // capability) unchanged. undefined = browser (today's behaviour).
+  client?: 'native';
 }
 
 // `principal_id` / `context_id` are opaque to auth (they happen to be a user id and

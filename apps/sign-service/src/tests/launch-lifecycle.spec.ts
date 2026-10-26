@@ -87,9 +87,11 @@ describe('EsignSignerController — launch routes', () => {
   const ctx: SessionContext = { session_id: 's1', tenant_id: 'TENANT-SECRET', envelope_id: 'e1', signer_id: 'sg1' };
 
   it('disclosure-text returns the current server-held version, text and hash', async () => {
-    const service = { resolveSession: vi.fn(async () => ctx) } as unknown as EsignService;
+    const service = { resolveSession: vi.fn(async () => ctx), signerEnvelopeMessage: vi.fn(async () => 'Please sign by Friday.') } as unknown as EsignService;
     const res = await new EsignSignerController(service, {} as EsignRepository, {} as DocumentSourceProviderPort).disclosureText({ token: 't' }, 'r');
     expect(res.disclosure_version).toBe('v1');
+    // Sign Mobile M-A3 §3 — the sender message is shown on the consent screen.
+    expect(res.message).toBe('Please sign by Friday.');
     expect(res.text_sha256).toMatch(/^[0-9a-f]{64}$/);
     expect(JSON.stringify(res)).not.toContain('TENANT-SECRET');
   });

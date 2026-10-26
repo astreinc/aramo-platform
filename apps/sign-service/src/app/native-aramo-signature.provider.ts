@@ -12,6 +12,7 @@ import {
   EsignRepository,
   EsignService,
   type IssuedSession,
+  type ReminderLimits,
   SIGNING_NOTIFICATION_PORT,
   type SigningNotificationPort,
   signBaseUrl,
@@ -94,10 +95,13 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
   // send and charged once it is accepted (AramoSignAllowanceGate), for every caller
   // (ATS RTR/Offer and the sender console). Signer emails go out after the charge:
   // a delivery failure never un-charges an accepted send.
-  async sendEnvelope(tenant_id: string, envelope_id: string, actor_ref?: string): Promise<EnvelopeSummary> {
+  // Sign Mobile M-A3 §6 — `opts.expected_revision` (the sender's If-Match) is
+  // checked under the envelope row lock in the send transaction. (The 4th
+  // parameter is the port's typed actor, unused inside sign-service.)
+  async sendEnvelope(tenant_id: string, envelope_id: string, actor_ref?: string, _actor?: SignatureActor, opts: { expected_revision?: number } = {}): Promise<EnvelopeSummary> {
     const env = await this.repo.getEnvelope(tenant_id, envelope_id);
     const { sessions } = await this.allowance.guardSend(tenant_id, envelope_id, () =>
-      this.service.send(tenant_id, envelope_id, actor_ref ?? env.created_by),
+      this.service.send(tenant_id, envelope_id, actor_ref ?? env.created_by, opts),
     );
     await this.dispatchSigningRequests(tenant_id, envelope_id, sessions);
     return this.summarize(tenant_id, envelope_id);
@@ -127,6 +131,8 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
           envelope_subject: full.subject,
           tenant_id,
           signing_url,
+          // Sign Mobile M-A3 §3 — the sender's plain-text message (escaped by the mailer).
+          ...(full.message ? { sender_message: full.message } : {}),
         });
         if (!result.delivered) {
           // Never falsely imply success; never log the token/url.
@@ -159,10 +165,10 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
   // Inside sign-service the acting party is a resolved actor ref (string); the
   // port's typed actor credential (Addendum S6) is an api-side concern and is
   // never used here.
-  async voidEnvelope(tenant_id: string, envelope_id: string, reason: string, actor?: string | SignatureActor): Promise<EnvelopeSummary> {
+  async voidEnvelope(tenant_id: string, envelope_id: string, reason: string, actor?: string | SignatureActor, opts: { expected_revision?: number } = {}): Promise<EnvelopeSummary> {
     const actor_ref = typeof actor === 'string' ? actor : undefined;
     const env = await this.repo.getEnvelope(tenant_id, envelope_id);
-    await this.service.voidEnvelope(tenant_id, envelope_id, actor_ref ?? env.created_by, reason);
+    await this.service.voidEnvelope(tenant_id, envelope_id, actor_ref ?? env.created_by, reason, opts);
     // Aramo Sign launch — recipients who had not finished learn it was withdrawn.
     try {
       await this.notifications?.envelopeVoided(tenant_id, envelope_id, reason);
@@ -190,10 +196,18 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
   // attempt. The raw capability token stays ENTIRELY inside E-Sign (used only
   // in-memory here to build the signer URL; never persisted/logged/returned).
   // signer_id (Multi-Signer M-3a) — remind one signer; omitted, everyone who may sign now.
-  async remindEnvelopeSigner(tenant_id: string, envelope_id: string, actor?: string | SignatureActor, signer_id?: string): Promise<EnvelopeSummary> {
+  // Sign Mobile M-A3 §7 — `opts.limits` (the Sign console) applies the reminder
+  // limits atomically in the engine; the ATS and integration paths pass none.
+  async remindEnvelopeSigner(
+    tenant_id: string,
+    envelope_id: string,
+    actor?: string | SignatureActor,
+    signer_id?: string,
+    opts: { limits?: ReminderLimits } = {},
+  ): Promise<EnvelopeSummary> {
     const actor_ref = typeof actor === 'string' ? actor : undefined;
     const env = await this.repo.getEnvelope(tenant_id, envelope_id);
-    const { sessions } = await this.service.remindSigner(tenant_id, envelope_id, actor_ref ?? env.created_by, signer_id);
+    const { sessions } = await this.service.remindSigner(tenant_id, envelope_id, actor_ref ?? env.created_by, signer_id, opts);
     await this.dispatchReminders(tenant_id, envelope_id, sessions);
     return this.summarize(tenant_id, envelope_id);
   }

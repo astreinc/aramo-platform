@@ -163,6 +163,7 @@
       "LEGACY_ACCESS_COOKIE",
       "LEGACY_PKCE_COOKIE",
       "LEGACY_REFRESH_COOKIE",
+      "NATIVE_CLIENT_KINDS",
       "PLATFORM_TENANT_SENTINEL_ID",
       "accessCookieName",
       "allAccessCookieNames",
@@ -181,9 +182,11 @@
       "AUDIT_SINK",
       "AuthController",
       "CONSUMER_APP_BASE",
+      "CognitoNativeCodeExchangeAdapter",
       "CognitoVerificationError",
       "CognitoVerifierService",
       "CookieVerifierService",
+      "DEFAULT_NATIVE_REDIRECT_URIS",
       "ELIGIBILITY_POLICY",
       "EMAIL_SENDER",
       "HOST_BINDING_MODE_ENV",
@@ -194,6 +197,11 @@
       "JwksController",
       "JwksService",
       "JwtIssuerService",
+      "NATIVE_CODE_EXCHANGE",
+      "NATIVE_CONSUMER",
+      "NATIVE_REFRESH_CONSUMER",
+      "NativeAuthController",
+      "NativeAuthService",
       "PORTAL_IDENTITY_STORE",
       "PORTAL_SESSION_SCOPES",
       "PRINCIPAL_DIRECTORY",
@@ -219,9 +227,16 @@
       "isDevHostname",
       "isDevPosture",
       "parseHost",
+      "parseNativeTokenRequest",
+      "parseRefreshTokenBody",
+      "principalDenialError",
       "readHostBindingMode",
+      "readNativeClientId",
+      "readNativeRedirectUris",
+      "readRefreshGraceSeconds",
       "renderPortalLoginEmail",
       "resolvePublicBaseUrl",
+      "runRefreshReuseCascade",
       "sanitizeReturnTo"
     ],
     "@aramo/auth-service": ["AuthServiceModule"],
@@ -232,6 +247,8 @@
       "DEFAULT_PRODUCT_HOST",
       "HOST_CLASSES",
       "HostAuthProfileStore",
+      "NATIVE_PLATFORMS",
+      "NativeDeviceSessionService",
       "RefreshTokenService",
       "RotationRaceError",
       "SEED_POOL_ID",
@@ -2036,6 +2053,7 @@
       "CURRENT_DISCLOSURE_VERSION",
       "DEFAULT_ABUSE_REPORT_CONFIG",
       "DEFAULT_SIGN_BASE_URL",
+      "DELETED_DRAFT_SUBJECT",
       "DISCLOSURE_V2_TEXT",
       "DOCUMENT_SOURCE_PROVIDER_PORT",
       "DOCUMENT_STORAGE_PORT",
@@ -2054,27 +2072,40 @@
       "EnvelopeIllegalTransitionError",
       "EnvelopeNotFoundError",
       "EnvelopeNotificationService",
+      "EnvelopeRevisionMismatchError",
       "EsignIdempotencyConflictError",
       "EsignModule",
       "EsignRepository",
       "EsignSenderRepository",
       "EsignService",
       "ExecutionService",
+      "IdempotencyKeyReuseError",
+      "IdempotencyRequestInProgressError",
+      "InboxSigningRefusedError",
       "LocalEventPublisher",
       "OutboxDeliveryService",
       "OutboxService",
       "PrismaService",
       "RECIPIENT_COPY_TTL_MS",
+      "RECIPIENT_INBOX_SESSION_EVENT",
       "RECIPIENT_SESSION_TTL_MS",
       "RecipientInboxRepository",
+      "ReminderLimitError",
       "ReminderNotAllowedError",
       "SENDER_DIRECTORY_PORT",
       "SIGNING_INVITATION_MAX_ATTEMPTS",
       "SIGNING_NOTIFICATION_PORT",
       "SIGNING_SESSION_TTL_MS",
       "SIGNING_TOKEN_BYTES",
+      "SIGN_IDEMPOTENCY_KEY_MAX",
+      "SIGN_IDEMPOTENCY_TTL_MS",
+      "SIGN_REMINDER_LIMITS",
       "STORAGE_ACCOUNTING_PORT",
+      "SignContactDuplicateError",
+      "SignContactRepository",
+      "SignIdempotencyRepository",
       "SignIntegrationRepository",
+      "SignSavedSignatureRepository",
       "SignWebhookRepository",
       "SignatureFieldIncompleteError",
       "SignerNotFoundError",
@@ -2086,17 +2117,23 @@
       "WEBHOOK_DELIVERY_PORT",
       "abuseReportConfig",
       "abuseReporterKey",
+      "applyReminderLimits",
       "backoffMs",
       "canonicalSignEventType",
       "computeEventHash",
+      "contactEmailKey",
       "currentDisclosure",
       "emailDomainOf",
       "envelopeExpiresAt",
+      "envelopeReminderAvailableAt",
       "findDisclosure",
       "generateSigningToken",
       "hashSigningToken",
+      "idempotencyRequestHash",
       "isAbuseReportReason",
       "listDisclosures",
+      "nextReminderAt",
+      "reminderHistory",
       "signBaseUrl",
       "signingSessionExpiresAt",
       "toLifecycleEvent",
@@ -3430,6 +3467,13 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/native-auth.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      { "project": "auth-service", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/authorization/src/tests/roles.guard.spec.ts",
         "project": "authorization",
         "status": "excluded"
@@ -3860,6 +3904,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-mobile-envelope-contracts.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-mobile-sender-drafts.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-permission-contract.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -4012,6 +4068,11 @@
     "@aramo/auth-core": [
       { "project": "api", "status": "production" },
       {
+        "from": "pact/provider/src/support/native-auth-states.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      },
+      {
         "from": "pact/provider/src/verify.ts",
         "project": "aramo-pact-provider",
         "status": "unscoped"
@@ -4078,6 +4139,24 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/native-auth.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/native-auth.service.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/native-auth.test-fixtures.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/auth-service/src/tests/portal-login.integration.spec.ts",
         "project": "auth-service",
         "status": "excluded"
@@ -4129,6 +4208,11 @@
     ],
     "@aramo/auth-storage": [
       { "project": "api", "status": "production" },
+      {
+        "from": "pact/provider/src/verify.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      },
       { "project": "auth-core", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -4187,6 +4271,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/auth-service/src/tests/identity-audit-sink.adapter.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/native-auth.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/native-auth.service.spec.ts",
         "project": "auth-service",
         "status": "excluded"
       },
@@ -4528,6 +4624,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-integrations.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-mobile-envelope-contracts.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -5886,6 +5988,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/native-auth.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/native-auth.service.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/auth-service/src/tests/portal-login.integration.spec.ts",
         "project": "auth-service",
         "status": "excluded"
@@ -5900,6 +6014,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/auth-storage/src/tests/host-auth-profile.integration.spec.ts",
+        "project": "auth-storage",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/auth-storage/src/tests/native-device-session.integration.spec.ts",
         "project": "auth-storage",
         "status": "excluded"
       },
@@ -7226,6 +7346,12 @@
       { "project": "settings", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/envelope-contracts.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/sign/src/tests/envelope-provenance.integration.spec.ts",
         "project": "sign",
         "status": "excluded"
@@ -7365,6 +7491,24 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-legal.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-mobile-contracts.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-mobile-notifications.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-mobile-sender-drafts.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -9969,6 +10113,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/native-auth.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/auth-service/src/tests/portal-login.integration.spec.ts",
         "project": "auth-service",
         "status": "excluded"
@@ -10286,6 +10436,24 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-legal.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-mobile-contracts.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-mobile-envelope-contracts.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-mobile-sender-drafts.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -12031,6 +12199,42 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-mobile-contracts.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-mobile-envelope-contracts.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-mobile-notifications.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-mobile-push.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-mobile-sender-drafts.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-mobile-sender-drafts.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-webhooks.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -13544,6 +13748,30 @@
       "name": "sign-consumer-pact",
       "root": "pact/consumers/sign-consumer",
       "sourceRoot": "pact/consumers/sign-consumer/src",
+      "tags": ["pact-consumer"],
+      "targets": ["lint", "pact-test", "test"]
+    },
+    {
+      "name": "sign-mobile",
+      "root": "mobile/sign",
+      "sourceRoot": "mobile/sign/src",
+      "tags": ["platform:mobile", "scope:sign", "type:app"],
+      "targets": [
+        "build-android",
+        "build-ios",
+        "check-api",
+        "generate-api",
+        "install",
+        "lint",
+        "prebuild",
+        "test",
+        "typecheck"
+      ]
+    },
+    {
+      "name": "sign-mobile-pact",
+      "root": "pact/consumers/sign-mobile",
+      "sourceRoot": "pact/consumers/sign-mobile/src",
       "tags": ["pact-consumer"],
       "targets": ["lint", "pact-test", "test"]
     },

@@ -15,6 +15,7 @@ import {
   SENDER_DIRECTORY_PORT,
   SIGNING_NOTIFICATION_PORT,
   STORAGE_ACCOUNTING_PORT,
+  SignNotificationRepository,
   SoftwareEvidenceManifestSigner,
   WEBHOOK_DELIVERY_PORT,
 } from '@aramo/sign';
@@ -71,6 +72,20 @@ import { SignLegalController } from './legal/sign-legal.controller.js';
 import { PersonalLegalStatusService } from './legal/personal-legal-status.service.js';
 import { SignAccountController } from './account/sign-account.controller.js';
 import { SignAccountService } from './account/sign-account.service.js';
+// Aramo Sign Mobile (M-A3 §4, §9) — saved signatures and the account-close purge of saved data.
+import { SavedSignatureController } from './me/signature/saved-signature.controller.js';
+import { SavedSignatureService } from './me/signature/saved-signature.service.js';
+import { SavedDataPurgeService } from './me/signature/saved-data-purge.service.js';
+// Aramo Sign Mobile (M-A3 §1, §2, §9) — notification feed, push devices, preferences, push delivery.
+import { SignMeNotificationsController } from './me/notifications/sign-me-notifications.controller.js';
+import { SignMeNotificationsService } from './me/notifications/sign-me-notifications.service.js';
+import { PUSH_DELIVERY_PORT } from './push/push-delivery.port.js';
+import { pushDeliveryFromEnv } from './push/push-delivery.adapters.js';
+import { AuthStorageDeviceSessionLiveness, DEVICE_SESSION_LIVENESS } from './push/device-session-liveness.js';
+import { NotificationFanoutService } from './push/notification-fanout.service.js';
+import { PushDeliveryService } from './push/push-delivery.service.js';
+import { NotificationPushWorker } from './push/notification-push.worker.js';
+import { ConvenienceDataPurgeService } from './push/convenience-data-purge.service.js';
 
 // DOC-3/DOC-4 — apps/sign-service composition root. Composes the ATS-neutral
 // E-Sign domain (EsignModule.forRoot) and binds the full DOC-4 executed-document
@@ -153,7 +168,7 @@ import { SignAccountService } from './account/sign-account.service.js';
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
   // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController],
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,
@@ -184,6 +199,21 @@ import { SignAccountService } from './account/sign-account.service.js';
     PersonalLegalStatusService,
     // Aramo Sign Personal (Free) — Settings → Close account (v1/sign/account).
     SignAccountService,
+    // Aramo Sign Mobile (M-A3 §4, §9) — saved signatures (v1/sign/me/signature, /initials)
+    // and the account-close purge of saved signatures and contacts.
+    SavedSignatureService,
+    SavedDataPurgeService,
+    // Aramo Sign Mobile (M-A3 §1, §2, §9) — feed, devices, preferences; the outbox
+    // fan-out + push delivery worker (PUSH_DELIVERY_PORT, SIGN_PUSH_DELIVERY, default
+    // disabled); the account-close convenience-data purge.
+    SignNotificationRepository,
+    SignMeNotificationsService,
+    { provide: PUSH_DELIVERY_PORT, useFactory: () => pushDeliveryFromEnv(process.env) },
+    { provide: DEVICE_SESSION_LIVENESS, useClass: AuthStorageDeviceSessionLiveness },
+    NotificationFanoutService,
+    PushDeliveryService,
+    NotificationPushWorker,
+    ConvenienceDataPurgeService,
   ],
 })
 export class AppModule implements NestModule {

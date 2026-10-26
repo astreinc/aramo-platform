@@ -1,5 +1,5 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { createRemoteJWKSet, jwtVerify, type JWTPayload } from 'jose';
+import { createRemoteJWKSet, errors as joseErrors, jwtVerify, type JWTPayload } from 'jose';
 
 // Per directive §3 + §8.2 step 9. Cognito ID token verification:
 //   - Signature against Cognito JWKS (fetched + cached per
@@ -55,6 +55,19 @@ export interface CognitoIdTokenClaims extends JWTPayload {
   // scope the string-normalization to trusted federation.
   identities?: CognitoFederatedIdentity[];
   'cognito:username'?: string;
+  // OIDC nonce (echoed from the authorize request; checked on the native path).
+  nonce?: string;
+}
+
+// AUTH-SIGNIN-1 Amendment M-A1 §3.3 — native-exchange verification options. When
+// given, the ID token's audience must be `audience` (the native app client, NOT
+// AUTH_COGNITO_CLIENT_ID) and its `nonce` claim must equal `nonce` byte for byte.
+// On this path an issuer / audience claim failure is a typed token-content
+// rejection (4xx, debuggable). Without options the browser behaviour is
+// unchanged.
+export interface CognitoVerifyOptions {
+  audience: string;
+  nonce: string;
 }
 
 export interface VerifiedCognitoIdToken {
@@ -75,9 +88,9 @@ export class CognitoVerifierService {
   private cachedJwks: ReturnType<typeof createRemoteJWKSet> | undefined;
   private cachedIssuer: string | undefined;
 
-  async verify(idToken: string): Promise<VerifiedCognitoIdToken> {
+  async verify(idToken: string, opts?: CognitoVerifyOptions): Promise<VerifiedCognitoIdToken> {
     const domain = process.env['AUTH_COGNITO_DOMAIN'];
-    const clientId = process.env['AUTH_COGNITO_CLIENT_ID'];
+    const clientId = opts !== undefined ? opts.audience : process.env['AUTH_COGNITO_CLIENT_ID'];
     if (domain === undefined || domain.length === 0) {
       throw new Error('AUTH_COGNITO_DOMAIN is not configured');
     }
@@ -87,12 +100,32 @@ export class CognitoVerifierService {
     const expectedIssuer = this.deriveIssuer(domain);
     const jwks = this.resolveJwks(expectedIssuer);
 
-    const result = await jwtVerify<CognitoIdTokenClaims>(idToken, jwks, {
-      issuer: expectedIssuer,
-      audience: clientId,
-      algorithms: ['RS256'],
-    });
+    let result;
+    try {
+      result = await jwtVerify<CognitoIdTokenClaims>(idToken, jwks, {
+        issuer: expectedIssuer,
+        audience: clientId,
+        algorithms: ['RS256'],
+      });
+    } catch (err) {
+      if (opts !== undefined && err instanceof joseErrors.JWTClaimValidationFailed) {
+        if (err.claim === 'aud') throw new CognitoVerificationError('id_token_audience_mismatch');
+        if (err.claim === 'iss') throw new CognitoVerificationError('id_token_issuer_mismatch');
+      }
+      if (opts !== undefined && err instanceof joseErrors.JWTExpired) {
+        throw new CognitoVerificationError('id_token_expired');
+      }
+      throw err;
+    }
     const p = result.payload;
+    if (opts !== undefined) {
+      if (typeof p.nonce !== 'string' || p.nonce.length === 0) {
+        throw new CognitoVerificationError('nonce_missing');
+      }
+      if (p.nonce !== opts.nonce) {
+        throw new CognitoVerificationError('nonce_mismatch');
+      }
+    }
     if (typeof p.sub !== 'string' || p.sub.length === 0) {
       throw new CognitoVerificationError('missing_sub');
     }
@@ -191,7 +224,8 @@ export class CognitoVerifierService {
   // JWKS URL is derived from the (issuer) base so it tracks a real pool's
   // cognito-idp endpoint when AUTH_COGNITO_ISSUER is set, and the hosted-UI
   // domain when it is not. Cache keyed on the issuer base.
-  private resolveJwks(issuer: string): ReturnType<typeof createRemoteJWKSet> {
+  // protected: a test harness may substitute a local key set (never a network call).
+  protected resolveJwks(issuer: string): ReturnType<typeof createRemoteJWKSet> {
     if (this.cachedJwks !== undefined && this.cachedIssuer === issuer) {
       return this.cachedJwks;
     }

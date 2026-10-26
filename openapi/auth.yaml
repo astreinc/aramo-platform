@@ -470,6 +470,252 @@ paths:
               schema:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
 
+  # ── AUTH-SIGNIN-1 Amendment M-A1 — native authentication consumer (sign) ──
+  # Aramo Sign mobile. Tokens travel ONLY in JSON bodies (never cookies, never
+  # URLs); every response is `Cache-Control: no-store`. No browser host binding
+  # applies (no Host is resolved or simulated): the native-client context is
+  # enforced instead — native-client audience, PKCE, nonce, redirect-URI binding,
+  # single-use code, consumer `sign`, tenant/provider policy, device-session
+  # ownership.
+  /auth/native/sign/token:
+    post:
+      operationId: nativeSignTokenExchange
+      tags: [Auth]
+      summary: Exchange a native authorization code for an Aramo token pair
+      description: |
+        The app ran Authorization Code + PKCE (S256) against the public Cognito
+        app client `aramo-sign-native` in the OS external authentication
+        session and validated `state` itself. auth-service records a one-way
+        hash of the code (and of the nonce) in the redeemed-code ledger BEFORE
+        exchanging it — a second redemption, from any device, client or
+        redirect URI, is refused. It exchanges the code with Cognito (native
+        client id, no secret), validates the ID token (issuer, audience = the
+        native client, nonce), runs the same principal resolution as the
+        browser callback (provider pin — Personal is Google-only — no JIT,
+        IC-1, capability `sign`), creates a server-owned device session and
+        returns the existing Aramo access JWT (900 s, consumer `sign`) with the
+        claims `client: "native"` and `dsid`.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NativeTokenRequest'
+      responses:
+        '200':
+          description: Token pair issued; a device session was created.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: 'no-store'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NativeTokenResponse'
+        '400':
+          description: |
+            `VALIDATION_ERROR`. `error.details.reason`: `invalid_request` (with
+            `details.field`: a missing/malformed field, including a
+            `code_verifier` outside RFC 7636's 43-128 unreserved characters) or
+            `redirect_uri_not_allowed` (not byte-equal to an entry of
+            SIGN_NATIVE_REDIRECT_URIS).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          description: |
+            `INVALID_TOKEN`. `error.details.reason`: `code_already_redeemed`,
+            `nonce_replayed`, `code_exchange_rejected` (Cognito refused the
+            grant: PKCE verifier mismatch, used/expired code, redirect differing
+            from the authorize request, another client's code; `details.oauth_error`
+            carries the OAuth error code), `id_token_audience_mismatch`,
+            `id_token_issuer_mismatch`, `id_token_expired`, `nonce_mismatch`,
+            `nonce_missing`, `email_not_verified`, `missing_email`,
+            `missing_sub`, `wrong_token_use`.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '403':
+          description: |
+            Principal resolution refused, with the browser callback's codes:
+            `TENANT_ACCESS_DENIED` (`idp_not_permitted_for_tenant`,
+            `idp_identity_conflict`, `no_active_tenant`,
+            `tenant_resolution_ambiguous`), `TENANT_SUSPENDED`, `TENANT_CLOSED`,
+            `TENANT_CAPABILITY_NOT_ENTITLED` (`consumer_not_entitled`),
+            `INSUFFICIENT_PERMISSIONS` (`user_not_provisioned`, `user_inactive`).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '500':
+          description: |
+            `INTERNAL_ERROR`. `error.details.reason`: `native_client_not_configured`
+            (SIGN_NATIVE_COGNITO_CLIENT_ID unset), `cognito_exchange_failed`,
+            `cognito_verification_failed`, `refresh_token_persist_failed`,
+            `jwt_sign_failed`.
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
+  /auth/native/sign/refresh:
+    post:
+      operationId: nativeSignTokenRefresh
+      tags: [Auth]
+      summary: Rotate a native refresh token
+      description: |
+        The refresh token is the only credential; the device session is
+        resolved server-side from it (no device id is read from the request).
+        Single-use and bound to the device record: a successful call returns a
+        rotated pair. Reuse of a rotated token past the grace window triggers
+        the existing reuse cascade (every refresh token of the user is revoked,
+        `identity.session.reuse_detected` is audited, and the user's native
+        device sessions are closed). Eligibility and capability `sign` are
+        re-proven at every refresh; a denial revokes the device session.
+        Validity: 30 days sliding.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NativeRefreshTokenRequest'
+      responses:
+        '200':
+          description: Rotated token pair.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: 'no-store'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NativeTokenResponse'
+        '400':
+          description: '`VALIDATION_ERROR` (`invalid_request`, `details.field` = `refresh_token`).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          description: |
+            `REFRESH_TOKEN_INVALID`. `error.details.reason`: `not_found`,
+            `expired`, `consumer_mismatch` (not a native token), `explicitly_revoked`
+            (logout / device revoke / eligibility revoke), `reuse_detected`,
+            `rotation_race`, `device_session_revoked`, `client_mismatch`, or an
+            eligibility reason (`user_inactive`, `membership_inactive`,
+            `tenant_suspended`, `tenant_closed`, `consumer_not_entitled`,
+            `consumer_not_supported`).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '500':
+          description: '`INTERNAL_ERROR` (`native_client_not_configured`, `refresh_rotate_failed`, `jwt_sign_failed`).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
+  /auth/native/sign/logout:
+    post:
+      operationId: nativeSignLogout
+      tags: [Auth]
+      summary: Revoke this device's native session
+      description: |
+        Revokes the device session that owns the presented refresh token and
+        its refresh-token family. Idempotent: an unknown, non-native or already
+        revoked token is a silent 204.
+      security: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/NativeRefreshTokenRequest'
+      responses:
+        '204':
+          description: Logged out (or nothing to revoke).
+        '400':
+          description: '`VALIDATION_ERROR` (`invalid_request`, `details.field` = `refresh_token`).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
+  /auth/native/sign/sessions:
+    get:
+      operationId: listNativeSignSessions
+      tags: [Auth]
+      summary: List the caller's native device sessions
+      description: |
+        Requires a native `sign` Bearer token whose own device session is still
+        live. Returns only the caller's user + tenant sessions; `current` marks
+        the caller's own device (`dsid`).
+      security:
+        - NativeBearerAuth: []
+      responses:
+        '200':
+          description: The caller's live native device sessions.
+          headers:
+            Cache-Control:
+              schema:
+                type: string
+              description: 'no-store'
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/NativeSessionList'
+        '401':
+          description: |
+            `AUTH_REQUIRED` (`bearer_required`) or `INVALID_TOKEN`
+            (`native_token_required`, `native_context_invalid`,
+            `device_session_revoked`, `consumer_header_mismatch`,
+            `authz_version_stale`, `authz_unresolvable`).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
+  /auth/native/sign/sessions/{device_session_id}:
+    delete:
+      operationId: revokeNativeSignSession
+      tags: [Auth]
+      summary: Revoke one of the caller's native device sessions
+      description: |
+        Owner only. Revokes the device session and its refresh-token family.
+        Any id that is not a live session of the caller's user + tenant
+        (another user's, another tenant's, revoked, malformed, absent) is the
+        same 404, revealing nothing.
+      security:
+        - NativeBearerAuth: []
+      parameters:
+        - name: device_session_id
+          in: path
+          required: true
+          schema:
+            type: string
+      responses:
+        '204':
+          description: Revoked.
+        '401':
+          description: 'Same as GET /auth/native/sign/sessions.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '404':
+          description: '`NOT_FOUND` (`device_session_not_found`).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+
   /.well-known/jwks.json:
     get:
       operationId: getJwks
@@ -518,6 +764,13 @@ components:
       type: apiKey
       in: cookie
       name: aramo_refresh_token
+    # AUTH-SIGNIN-1 Amendment M-A1 — the native `sign` access JWT (claims
+    # client: "native" + dsid) presented as a Bearer header, used ONLY by the
+    # native device-session routes.
+    NativeBearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
 
   schemas:
     SessionResponse:
@@ -630,3 +883,118 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/JwksKey'
+
+    # AUTH-SIGNIN-1 Amendment M-A1 — native authentication consumer shapes.
+    NativeDevice:
+      type: object
+      additionalProperties: false
+      description: |
+        Descriptive only (client supplied). `installation_id` is an identifier,
+        not a credential: it never authorizes revoke, rotate, refresh or push
+        registration.
+      required: [installation_id, platform, app_version]
+      properties:
+        installation_id:
+          type: string
+          minLength: 1
+          maxLength: 200
+        platform:
+          type: string
+          enum: [ios, android]
+        app_version:
+          type: string
+          minLength: 1
+          maxLength: 64
+
+    NativeTokenRequest:
+      type: object
+      additionalProperties: false
+      required: [code, code_verifier, redirect_uri, nonce, device]
+      properties:
+        code:
+          type: string
+          minLength: 1
+          maxLength: 2048
+        code_verifier:
+          type: string
+          pattern: '^[A-Za-z0-9\-._~]{43,128}$'
+          description: The PKCE verifier the app generated (RFC 7636, S256).
+        redirect_uri:
+          type: string
+          description: |
+            Byte-equal to an allow-listed native callback
+            (SIGN_NATIVE_REDIRECT_URIS; default
+            `https://sign.aramo.ai/auth/native/callback`,
+            `aramosign://auth/callback`).
+        nonce:
+          type: string
+          minLength: 1
+          maxLength: 512
+          description: The nonce sent on the authorize request; must equal the ID token's.
+        device:
+          $ref: '#/components/schemas/NativeDevice'
+
+    NativeRefreshTokenRequest:
+      type: object
+      additionalProperties: false
+      required: [refresh_token]
+      properties:
+        refresh_token:
+          type: string
+          minLength: 1
+          maxLength: 512
+
+    NativeTokenResponse:
+      type: object
+      additionalProperties: false
+      required: [access_token, token_type, expires_in, refresh_token, device_session_id]
+      properties:
+        access_token:
+          type: string
+          description: The Aramo access JWT (consumer `sign`, 900 s) with claims `client` = `native` and `dsid`.
+        token_type:
+          type: string
+          const: Bearer
+        expires_in:
+          type: integer
+          description: Access-token lifetime in seconds (900).
+        refresh_token:
+          type: string
+          description: Opaque, single-use, rotated on every refresh; stored hashed server-side.
+        device_session_id:
+          type: string
+          format: uuid
+          description: The server-owned device session (equals the access token's `dsid`).
+
+    NativeSessionItem:
+      type: object
+      additionalProperties: false
+      required: [device_session_id, platform, app_version, created_at, last_seen_at, current]
+      properties:
+        device_session_id:
+          type: string
+          format: uuid
+        platform:
+          type: string
+          enum: [ios, android]
+        app_version:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        last_seen_at:
+          type: string
+          format: date-time
+        current:
+          type: boolean
+          description: True for the caller's own device session.
+
+    NativeSessionList:
+      type: object
+      additionalProperties: false
+      required: [items]
+      properties:
+        items:
+          type: array
+          items:
+            $ref: '#/components/schemas/NativeSessionItem'

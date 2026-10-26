@@ -451,3 +451,30 @@ For an actor without `platform:billing:amount:read`, the whole free-text `Contra
     - scope pins 25 / 206 / 987: identity suite 961 / 961;
     - the CHECK lists of both unions and the new alert union: as recorded in TD-MERGE-43 and above;
     - R3's leak tests (A2 / A3 / C3 / C6 authorization, R3 acceptance) re-run green after D2, C7 and C4, inside the platform-admin and subscription suite counts of each merge.
+
+## R-SYNC (2026-10-25): origin/main `ac24e234` into the program branch at `5edabc0f`
+- **TD-MERGE-46.** `origin/main` (9 commits since the program base `78dbd6d3`, ending with PR #1010, Aramo Sign mobile) was merged `--no-ff`.
+  - **Conflicts:**
+    - `package.json` `pact:consumer`: main's `sign-mobile` consumer + the branch's `platform-web-consumer`;
+    - `sender-console.consumer.test.ts` header list: CCP items 10–13 kept, main's mobile items renumbered 14–17;
+    - `verify-sign.ts`: the CCP `billingOwnerJwt` + main's `nativeJwt`, both kept, with the shared suffix duplicated;
+    - the generated repo map (regenerated).
+  - **Migration interleaving.** main's 5 migrations against the 27 CCP migrations, global sort order:
+
+    | Main migration | Sorts between | Objects touched | CCP objects touched |
+    |---|---|---|---|
+    | `auth-storage/20261025120000_native_device_sessions` | CCP-A2 `20261024180000` … CCP-A3 `20261025120000` (name tie-break: `auth-storage` < `subscription`) | `auth_storage` native device sessions + redeemed-code ledger | none |
+    | `sign/20261026100000_sign_mobile_notifications` | CCP-D3 `20261026090000` … guard union `20261027000000` | `sign` schema | none |
+    | `sign/20261026100100_sign_mobile_envelope_contracts` | same | `sign` schema | none |
+    | `sign/20261026100200_sign_mobile_page_sizes` | same | `sign` schema | none |
+    | `sign/20261026100300_sign_mobile_draft_delete` | same | `sign` schema | none |
+
+    - None of the 5 sorts after an integrator union file.
+    - None references the subscription, identity or entitlement schemas, a CCP CHECK or a CCP function.
+    - The 4 integrator unions (`20261027000000`, `20261027000100`, `20261029000000`, `20261029000100`) still sort last for their objects. No HALT condition.
+    - The full compensation chain runs over the merged set: every lib migration, with main's 5 interleaved. All 27 CCP steps refuse, compensate and re-apply with 0 errors (inside subscription 826 / 826).
+  - **Identity catalog:** main changes no identity migration or seed. Scope pins are unchanged at 25 / 206 / 987 (identity 961 / 961); delta 0.
+  - **R1 × main (`granted_source`).** main's 3 new sign-mobile integration specs inserted `TenantEntitlement` without `granted_source`; R1-U-1 flagged them. Now `PROVISIONING` (3 sites).
+  - **CCP-A4 / A5 × main.** 2 of those specs (contracts, sender drafts) inserted a `TenantSubscription` without `product_key` / `plan_version_id` / `composition_role`, so the whole suites failed. Their inserts now pin the PUBLISHED version, the plan's product key and BASE, the same fix earlier CCP merges applied to `sign-api.integration.spec.ts`. Result: sign-mobile specs 30 / 30.
+  - **D5 runbook:** the stop point is unchanged (`20261029000100_ccp_alert_type_union` stays last). The note on main's 5 migrations and the gate count (27 + any of the 5 still pending, when separately authorized) are updated. Production `52ea8de6` predates them.
+  - **`mobile/sign` (#1010):** its own gate contract passes on the merged tree: `npm ci`, `typecheck`, `lint`, and `test` 253 / 253 in 28 suites. The repo vocabulary script, which main extended for mobile, passes. Its `node_modules` stays untracked.

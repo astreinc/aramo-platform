@@ -27,12 +27,33 @@
 //       catch-all `location /` roots /srv/home with an `/index.html` fallback
 //       (App Home + `/org/*`). The tenant catch-all must NOT root /srv/ats any
 //       more (the ATS app never owns the product-neutral host root, §3.A).
+//   (k) the Sign host's EXACT /v1 location map (incl. /v1/sign/me/, Aramo Sign Mobile).
+//   Aramo Sign Mobile (Native Application Implementation Directive v1.0 LOCKED §4 B-13,
+//   §9, §12.12; Amendments M-A1, M-A2 §3):
+//   (n) every Sign-host location in SIGN_LIMITS carries `limit_req` in its named zone.
+//   (o) `/auth/native/` proxies to auth-service with a body cap.
+//   (p) every referenced limit_req zone is defined; refusals are 429.
+//   (q) `= /.well-known/apple-app-site-association` and `= /.well-known/assetlinks.json`
+//       are exact, application/json, served from the rendered dir, 404 when absent (no
+//       redirect / proxy / SPA fallback), cacheable, nosniff; Sign host only.
+//   (r) the render wiring: the Dockerfile installs the dedicated entrypoint step, the
+//       envsubst filter stays ^NGINX_, the template never references ${SIGN_*}, compose
+//       passes the three SIGN_* vars defaulted empty.
+//   (s) the render step's behaviour, executed under sh: unset / malformed input ⇒ valid
+//       associate-nothing JSON; valid input ⇒ exactly the three M-A2 §3.1 paths.
+//
+// Negative tests: `--self-test` (also run before every default run) mutates the real
+// repo text once per rule above and requires that rule to fire. Set
+// FRONTDOOR_SELFTEST_VERBOSE=1 to print each mutation's violations.
 //
 // PATH-COUPLING (standing lesson): this script references files by literal path.
 // Any future move of deploy/nginx/** or the constants file must grep for it.
 
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { spawnSync } from 'node:child_process';
+import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { isDeepStrictEqual } from 'node:util';
 
 const ROOT = resolve(__dirname, '../..');
 const R = (p: string): string => resolve(ROOT, p);
@@ -40,6 +61,15 @@ const R = (p: string): string => resolve(ROOT, p);
 const CONSTANTS = 'apps/api/src/webhooks/indeed-apply.constants.ts';
 const TEMPLATE = 'deploy/nginx/templates/aramo.conf.template';
 const COMPOSE = 'docker-compose.prod.yml';
+const NGINX_CONF = 'deploy/nginx/nginx.conf';
+const DOCKERFILE = 'deploy/nginx/Dockerfile';
+// Aramo Sign Mobile — the app-association render step (M-A2 §3.2).
+const RENDER_SCRIPT = 'deploy/nginx/app-links/render-app-links.sh';
+const APP_LINKS_DIR = '/etc/nginx/aramo-app-links';
+const ENTRYPOINT_STEP = '/docker-entrypoint.d/40-aramo-app-links.sh';
+const APP_LINK_ENV = ['SIGN_IOS_APP_ID', 'SIGN_ANDROID_PACKAGE', 'SIGN_ANDROID_CERT_SHA256S'];
+// M-A2 §3.1 — the ONLY paths the app claims on the Sign host.
+const AASA_PATHS = ['/s/*', '/d/*', '/auth/native/callback'];
 
 const HEADER_LINES = [
   'proxy_set_header Host',
@@ -47,6 +77,22 @@ const HEADER_LINES = [
   'proxy_set_header X-Forwarded-Host',
   'proxy_set_header X-Forwarded-Proto',
 ];
+
+// (n) Sign-host location → its limit_req zone (directive §4 B-13, §9, §12.12).
+const SIGN_LIMITS = new Map<string, string>([
+  ['/v1/sign/signing/', 'sign_guest'],
+  ['/v1/sign/report', 'sign_report'],
+  ['/v1/signup/sign/', 'sign_signup'],
+  ['/v1/domain-verification/delegate', 'domain_delegate'],
+  ['/v1/sign/sender/', 'sign_workspace'],
+  ['/v1/sign/billing/', 'sign_workspace'],
+  ['/v1/sign/inbox', 'sign_workspace'],
+  ['/v1/sign/legal/', 'sign_workspace'],
+  ['/v1/sign/account/', 'sign_workspace'],
+  ['/v1/sign/me/', 'sign_workspace'],
+  ['/auth/', 'sign_auth'],
+  ['/auth/native/', 'sign_native_auth'],
+]);
 
 interface Issue {
   where: string;
@@ -102,6 +148,15 @@ function locationBody(blockBody: string, header: string): string | null {
   return blockBody.slice(braceStart, k);
 }
 
+// Like locationBody, but the header must be EXACTLY `location <spec> {` — so
+// `/auth/` never resolves to `/auth/native/` (or any longer prefix) by accident.
+function exactLocationBody(blockBody: string, spec: string): string | null {
+  const esc = spec.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const m = new RegExp(`location\\s+${esc}\\s*\\{`).exec(blockBody);
+  if (m === null) return null;
+  return locationBody(blockBody.slice(m.index), 'location');
+}
+
 function parseWebhookRoute(constantsSrc: string): string | null {
   const m = constantsSrc.match(
     /INDEED_APPLY_WEBHOOK_ROUTE\s*=\s*'([^']+)'/,
@@ -109,14 +164,33 @@ function parseWebhookRoute(constantsSrc: string): string | null {
   return m ? m[1] : null;
 }
 
-function checkRepo(): Issue[] {
+// Everything the wall reads, as TEXT. The self-test feeds mutated copies of these
+// through the same checks (negative tests), so every check reads only from here.
+interface Inputs {
+  constantsSrc: string;
+  template: string;
+  compose: string;
+  nginxConf: string;
+  dockerfile: string;
+  renderScript: string;
+}
+
+function readRepoInputs(): Inputs {
+  return {
+    constantsSrc: readFileSync(R(CONSTANTS), 'utf8'),
+    template: readFileSync(R(TEMPLATE), 'utf8'),
+    compose: readFileSync(R(COMPOSE), 'utf8'),
+    nginxConf: readFileSync(R(NGINX_CONF), 'utf8'),
+    dockerfile: readFileSync(R(DOCKERFILE), 'utf8'),
+    renderScript: readFileSync(R(RENDER_SCRIPT), 'utf8'),
+  };
+}
+
+function checkRepo(inputs: Inputs = readRepoInputs()): Issue[] {
   const issues: Issue[] = [];
-  const constantsSrc = readFileSync(R(CONSTANTS), 'utf8');
-  const template = readFileSync(R(TEMPLATE), 'utf8');
-  const compose = readFileSync(R(COMPOSE), 'utf8');
+  const { constantsSrc, template, compose, nginxConf } = inputs;
   // (m) ES-module assets (.mjs, e.g. the pdf.js worker) must be served as JavaScript:
   // the host sends `nosniff`, so an octet-stream .mjs is refused by the browser.
-  const nginxConf = readFileSync(R('deploy/nginx/nginx.conf'), 'utf8');
   if (!/types\s*\{[^}]*application\/javascript\s+[^;]*\bmjs\b[^;]*;/.test(nginxConf)) {
     issues.push({ where: 'deploy/nginx/nginx.conf', reason: '(m) .mjs must map to application/javascript (types { application/javascript mjs; })' });
   }
@@ -156,6 +230,9 @@ function checkRepo(): Issue[] {
     ['/v1/sign/legal/', 'sign-service:3003'],
     // Personal Free — the workspace account surface (status / close).
     ['/v1/sign/account/', 'sign-service:3003'],
+    // Aramo Sign Mobile (M-A3) — the per-user surface (feed, devices, preferences,
+    // saved signature).
+    ['/v1/sign/me/', 'sign-service:3003'],
     ['/v1/signup/sign/', 'platform-admin:3002'],
     ['/v1/tenant/domain-verification', 'api:3000'],
     ['/v1/domain-verification/delegate', 'api:3000'],
@@ -166,21 +243,20 @@ function checkRepo(): Issue[] {
     issues.push({ where: TEMPLATE, reason: `(k) sign block must expose exactly the /v1 locations ${expected.join(', ')} (found: ${signV1.join(', ') || 'none'})` });
   } else {
     for (const [path, upstream] of SIGN_V1) {
-      const loc = locationBody(sign.body, `location ${path}`) ?? '';
+      const loc = exactLocationBody(sign.body, path) ?? '';
       if (!loc.includes(`proxy_pass http://${upstream};`)) issues.push({ where: TEMPLATE, reason: `(k) ${path} must proxy_pass to ${upstream}` });
       if (!/client_max_body_size\s+\d+[mk];/.test(loc)) issues.push({ where: TEMPLATE, reason: `(k) ${path} must set client_max_body_size` });
     }
-    if (!/limit_req\s+zone=sign_guest\b/.test(locationBody(sign.body, 'location /v1/sign/signing/') ?? '')) {
-      issues.push({ where: TEMPLATE, reason: '(k) /v1/sign/signing/ must be rate-limited (limit_req zone=sign_guest)' });
-    }
-    if (!/limit_req\s+zone=sign_report\b/.test(locationBody(sign.body, 'location /v1/sign/report') ?? '')) {
-      issues.push({ where: TEMPLATE, reason: '(k) /v1/sign/report must be rate-limited (limit_req zone=sign_report)' });
-    }
-    if (!/limit_req\s+zone=sign_signup\b/.test(locationBody(sign.body, 'location /v1/signup/sign/') ?? '')) {
-      issues.push({ where: TEMPLATE, reason: '(k) /v1/signup/sign/ must be rate-limited (limit_req zone=sign_signup)' });
-    }
-    if (!/limit_req\s+zone=domain_delegate\b/.test(locationBody(sign.body, 'location /v1/domain-verification/delegate') ?? '')) {
-      issues.push({ where: TEMPLATE, reason: '(k) /v1/domain-verification/delegate must be rate-limited (limit_req zone=domain_delegate)' });
+  }
+  // (n) every Sign-host location the app or the web uses is rate-limited at the
+  // edge, each in its NAMED zone (directive §4 B-13, §9; §12.12 "nginx limits are
+  // active on all app-used locations"). The /v1/tenant/domain-verification
+  // exception (apps/api, settings pages only) is the one proxied location left to
+  // the upstream's own budgets.
+  for (const [path, zone] of SIGN_LIMITS) {
+    const loc = exactLocationBody(sign.body, path) ?? '';
+    if (!new RegExp(`limit_req\\s+zone=${zone}\\s+burst=\\d+\\s+nodelay;`).test(loc)) {
+      issues.push({ where: TEMPLATE, reason: `(n) ${path} must be rate-limited (limit_req zone=${zone} burst=<n> nodelay)` });
     }
   }
   if (!/limit_req_zone\s+\$binary_remote_addr\s+zone=sign_guest:/.test(template) || !/limit_req_zone\s+\$binary_remote_addr\s+zone=sign_signup:/.test(template)) {
@@ -219,6 +295,70 @@ function checkRepo(): Issue[] {
   if (template.includes('NGINX_ESIGN_SERVER_NAME') || /server_name[^;]*\besign\./.test(template)) {
     issues.push({ where: TEMPLATE, reason: '(k2) the retired esign host must not appear in the front door (no server block, no redirect)' });
   }
+
+  // (o) Aramo Sign Mobile (M-A1) — native authentication reaches auth-service on the
+  // Sign host through its own exact prefix, with a body cap.
+  const nativeAuth = exactLocationBody(sign.body, '/auth/native/');
+  if (nativeAuth === null) {
+    issues.push({ where: TEMPLATE, reason: '(o) sign block missing `location /auth/native/` (native authentication, M-A1)' });
+  } else {
+    if (!nativeAuth.includes('proxy_pass http://auth-service:3001;')) issues.push({ where: TEMPLATE, reason: '(o) /auth/native/ must proxy_pass to auth-service:3001' });
+    if (!/client_max_body_size\s+\d+[mk];/.test(nativeAuth)) issues.push({ where: TEMPLATE, reason: '(o) /auth/native/ must set client_max_body_size' });
+  }
+
+  // (p) every `limit_req zone=X` names a DEFINED `limit_req_zone … zone=X:`, and a
+  // refusal is a 429 (the app renders it as rate limited, never as a server error).
+  for (const m of template.matchAll(/limit_req\s+zone=([a-z_]+)/g)) {
+    const zone = m[1] ?? '';
+    if (!new RegExp(`limit_req_zone\\s+\\$binary_remote_addr\\s+zone=${zone}:\\d+m\\s+rate=\\d+r/[sm];`).test(template)) {
+      issues.push({ where: TEMPLATE, reason: `(p) limit_req zone=${zone} has no limit_req_zone definition` });
+    }
+  }
+  if (!/^limit_req_status\s+429;/m.test(template)) issues.push({ where: TEMPLATE, reason: '(p) limit_req_status 429; is missing' });
+
+  // (q) M-A2 §3.2 — the two app-association files: EXACT locations on the Sign
+  // host, application/json, served from the rendered directory, a 404 when absent
+  // (no redirect, never the SPA fallback, never proxied), cacheable, nosniff.
+  for (const file of ['apple-app-site-association', 'assetlinks.json']) {
+    const loc = exactLocationBody(sign.body, `= /.well-known/${file}`);
+    const tag = `(q) /.well-known/${file}`;
+    if (loc === null) {
+      issues.push({ where: TEMPLATE, reason: `${tag} must be an exact location (\`location = /.well-known/${file}\`) in the sign block` });
+      continue;
+    }
+    if (!/default_type\s+application\/json;/.test(loc)) issues.push({ where: TEMPLATE, reason: `${tag} must set \`default_type application/json;\`` });
+    if (!loc.includes(`root ${APP_LINKS_DIR};`)) issues.push({ where: TEMPLATE, reason: `${tag} must \`root ${APP_LINKS_DIR};\` (the rendered files)` });
+    if (!loc.includes(`try_files /${file} =404;`)) issues.push({ where: TEMPLATE, reason: `${tag} must \`try_files /${file} =404;\` (a missing file is a 404, never the SPA)` });
+    if (/\b(return|rewrite|proxy_pass|alias)\b|index\.html|\$uri/.test(loc)) issues.push({ where: TEMPLATE, reason: `${tag} must not redirect, rewrite, proxy or fall back to the SPA` });
+    if (/^\s*types\b/m.test(loc)) issues.push({ where: TEMPLATE, reason: `${tag} must not declare a types block (default_type alone decides; nested braces also break the server-level header scan)` });
+    if (!/add_header\s+Cache-Control\s+"public, max-age=\d+"\s+always;/.test(loc)) issues.push({ where: TEMPLATE, reason: `${tag} must set a public Cache-Control (platform verification fetches it)` });
+    if (!/add_header\s+X-Content-Type-Options\s+"nosniff"\s+always;/.test(loc)) issues.push({ where: TEMPLATE, reason: `${tag} must repeat X-Content-Type-Options nosniff (add_header is not inherited)` });
+  }
+  // Only the Sign host claims the app: no other server block serves either file.
+  for (const b of blocks.filter((x) => x.tag !== 'sign')) {
+    if (/apple-app-site-association|assetlinks\.json/.test(b.body)) issues.push({ where: TEMPLATE, reason: `(q) the ${b.tag} block must not serve an app-association file (Sign host only)` });
+  }
+
+  // (r) the render wiring: a DEDICATED entrypoint step renders the files at every
+  // container start from the three SIGN_* vars; the conf template's envsubst stays
+  // filtered to ^NGINX_ and never references them (an unsubstituted ${SIGN_*} would
+  // be left literal in the conf).
+  const { dockerfile, renderScript } = inputs;
+  const nginxSvcEnv = extractComposeService(compose, 'nginx');
+  if (!dockerfile.includes(`COPY ${RENDER_SCRIPT} ${ENTRYPOINT_STEP}`)) issues.push({ where: DOCKERFILE, reason: `(r) the runtime image must COPY ${RENDER_SCRIPT} to ${ENTRYPOINT_STEP}` });
+  if (!dockerfile.includes(`chmod 0755 ${ENTRYPOINT_STEP}`)) issues.push({ where: DOCKERFILE, reason: `(r) ${ENTRYPOINT_STEP} must be executable (the entrypoint skips non-executable steps)` });
+  if (!/^ENV NGINX_ENVSUBST_FILTER=\^NGINX_$/m.test(dockerfile)) issues.push({ where: DOCKERFILE, reason: '(r) NGINX_ENVSUBST_FILTER must stay exactly ^NGINX_' });
+  if (/\$\{SIGN_/.test(template)) issues.push({ where: TEMPLATE, reason: '(r) the conf template must not reference ${SIGN_*} (envsubst is filtered to ^NGINX_)' });
+  if (!renderScript.includes(`\${ARAMO_APP_LINKS_DIR:-${APP_LINKS_DIR}}`)) issues.push({ where: RENDER_SCRIPT, reason: `(r) the render step must write to ${APP_LINKS_DIR} by default` });
+  for (const v of APP_LINK_ENV) {
+    if (!renderScript.includes(`\${${v}:-}`)) issues.push({ where: RENDER_SCRIPT, reason: `(r) the render step must read ${v}` });
+    if (nginxSvcEnv === null || !nginxSvcEnv.includes(`- ${v}=\${${v}:-}`)) issues.push({ where: COMPOSE, reason: `(r) nginx environment must pass \`${v}=\${${v}:-}\` (optional, defaulted empty)` });
+  }
+
+  // (s) the render step's BEHAVIOUR (executed under sh): unset or malformed input
+  // renders valid associate-nothing JSON; valid input renders exactly the M-A2 §3.1
+  // paths for the one app.
+  issues.push(...checkRender(inputs.renderScript));
 
   // (a) webhook parity — constant appears in the tenant block as an exact-match
   // location carrying client_max_body_size 3m.
@@ -306,7 +446,7 @@ function checkRepo(): Issue[] {
     [/proxy_busy_buffers_size\s+64k\b/, 'proxy_busy_buffers_size 64k'],
   ];
   for (const b of sslAuth) {
-    const authLoc = locationBody(b.body, 'location /auth/');
+    const authLoc = exactLocationBody(b.body, '/auth/');
     if (authLoc === null) {
       issues.push({ where: TEMPLATE, reason: `(j) ${b.tag} block missing /auth/ location` });
       continue;
@@ -382,6 +522,76 @@ function checkRepo(): Issue[] {
   return issues;
 }
 
+// (s) Executes the render step (the given script TEXT) in a scratch dir and checks
+// what it writes. Returns issues; never throws on a script defect.
+const FP_A = Array.from({ length: 32 }, (_, i) => (i * 7 + 16).toString(16).toUpperCase().padStart(2, '0').slice(-2)).join(':');
+const FP_B = 'ab:'.repeat(31) + 'cd';
+function checkRender(scriptText: string): Issue[] {
+  const issues: Issue[] = [];
+  const dir = mkdtempSync(join(tmpdir(), 'aramo-app-links-'));
+  const script = join(dir, 'render.sh');
+  writeFileSync(script, scriptText);
+  const render = (label: string, env: Record<string, string>): { aasa: unknown; links: unknown } | null => {
+    const out = join(dir, label);
+    const base: Record<string, string> = { PATH: process.env['PATH'] ?? '/usr/bin:/bin', ARAMO_APP_LINKS_DIR: out };
+    const r = spawnSync('sh', [script], { env: { ...base, ...env }, encoding: 'utf8' });
+    if (r.status !== 0) {
+      issues.push({ where: RENDER_SCRIPT, reason: `(s) [${label}] the render step exited ${String(r.status)}: ${(r.stderr ?? '').trim().slice(0, 200)}` });
+      return null;
+    }
+    try {
+      return {
+        aasa: JSON.parse(readFileSync(join(out, 'apple-app-site-association'), 'utf8')) as unknown,
+        links: JSON.parse(readFileSync(join(out, 'assetlinks.json'), 'utf8')) as unknown,
+      };
+    } catch (e) {
+      issues.push({ where: RENDER_SCRIPT, reason: `(s) [${label}] the rendered files are missing or not valid JSON (${(e as Error).message})` });
+      return null;
+    }
+  };
+  const EMPTY_AASA = { applinks: { details: [] } };
+  const expectEmpty = (label: string, env: Record<string, string>): void => {
+    const got = render(label, env);
+    if (got === null) return;
+    if (!isDeepStrictEqual(got.aasa, EMPTY_AASA)) issues.push({ where: RENDER_SCRIPT, reason: `(s) [${label}] apple-app-site-association must associate nothing (got ${JSON.stringify(got.aasa)})` });
+    if (!isDeepStrictEqual(got.links, [])) issues.push({ where: RENDER_SCRIPT, reason: `(s) [${label}] assetlinks.json must be [] (got ${JSON.stringify(got.links)})` });
+  };
+  try {
+    expectEmpty('unset', {});
+    expectEmpty('malformed', {
+      SIGN_IOS_APP_ID: 'ABCDE12345.ai.aramo.sign"],"x":["y',
+      SIGN_ANDROID_PACKAGE: 'ai.aramo.sign',
+      SIGN_ANDROID_CERT_SHA256S: `${FP_A},not-a-fingerprint`,
+    });
+    expectEmpty('package-without-certs', { SIGN_ANDROID_PACKAGE: 'ai.aramo.sign' });
+    expectEmpty('bad-package', { SIGN_ANDROID_PACKAGE: 'ai.aramo.sign"', SIGN_ANDROID_CERT_SHA256S: FP_A });
+    const got = render('valid', {
+      SIGN_IOS_APP_ID: 'ABCDE12345.ai.aramo.sign',
+      SIGN_ANDROID_PACKAGE: 'ai.aramo.sign',
+      SIGN_ANDROID_CERT_SHA256S: ` ${FP_A} , ${FP_B} `,
+    });
+    if (got !== null) {
+      const details = (got.aasa as { applinks?: { details?: Array<{ appIDs?: unknown; components?: Array<Record<string, unknown>> }> } }).applinks?.details ?? [];
+      const d0 = details[0];
+      if (details.length !== 1 || !isDeepStrictEqual(d0?.appIDs, ['ABCDE12345.ai.aramo.sign'])) {
+        issues.push({ where: RENDER_SCRIPT, reason: `(s) [valid] apple-app-site-association must carry exactly one detail for ABCDE12345.ai.aramo.sign (got ${JSON.stringify(got.aasa)})` });
+      } else {
+        const paths = (d0?.components ?? []).map((c) => c['/']);
+        if (!isDeepStrictEqual(paths, AASA_PATHS)) issues.push({ where: RENDER_SCRIPT, reason: `(s) [valid] applinks paths must be exactly ${AASA_PATHS.join(', ')} (got ${JSON.stringify(paths)})` });
+        if ((d0?.components ?? []).some((c) => 'exclude' in c || '?' in c || '#' in c)) issues.push({ where: RENDER_SCRIPT, reason: '(s) [valid] applinks components must be plain path matches' });
+      }
+      const expectLinks = [{
+        relation: ['delegate_permission/common.handle_all_urls'],
+        target: { namespace: 'android_app', package_name: 'ai.aramo.sign', sha256_cert_fingerprints: [FP_A, FP_B.toUpperCase()] },
+      }];
+      if (!isDeepStrictEqual(got.links, expectLinks)) issues.push({ where: RENDER_SCRIPT, reason: `(s) [valid] assetlinks.json must be exactly ${JSON.stringify(expectLinks)} (got ${JSON.stringify(got.links)})` });
+    }
+  } finally {
+    rmSync(dir, { recursive: true, force: true });
+  }
+  return issues;
+}
+
 // Extract a top-level compose service body (from `  <name>:` to the next
 // same-indent `  <key>:` or the `volumes:` block).
 function extractComposeService(compose: string, name: string): string | null {
@@ -405,10 +615,109 @@ function extractComposeService(compose: string, name: string): string | null {
   return lines.slice(start, end).join('\n');
 }
 
+// ── Self-test (negative tests): each Aramo Sign Mobile rule must FIRE on a mutation
+// of the real repo text that breaks exactly that rule. A fixture string that no
+// longer exists fails the self-test itself (the mutation silently stopped testing).
+type Mutation = { name: string; tag: string; apply: (i: Inputs) => Inputs };
+
+function swap(text: string, from: string, to: string, name: string): string {
+  if (!text.includes(from)) throw new Error(`self-test fixture drift [${name}]: ${JSON.stringify(from.slice(0, 80))} not found`);
+  return text.replace(from, to);
+}
+// Apply `from → to` INSIDE one exact location of the SIGN server block only.
+function swapInLocation(template: string, spec: string, from: string, to: string, name: string): string {
+  const signAt = template.indexOf('server_name ${NGINX_SIGN_SERVER_NAME};');
+  const re = new RegExp(`location\\s+${spec.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\s*\\{`, 'g');
+  re.lastIndex = signAt;
+  const m = signAt === -1 ? null : re.exec(template);
+  if (m === null) throw new Error(`self-test fixture drift [${name}]: location ${spec} not found in the sign block`);
+  const body = locationBody(template.slice(m.index), 'location') ?? '';
+  const start = m.index + template.slice(m.index).indexOf(body);
+  return template.slice(0, start) + swap(body, from, to, name) + template.slice(start + body.length);
+}
+const T = (name: string, tag: string, f: (t: string) => string): Mutation => ({ name, tag, apply: (i) => ({ ...i, template: f(i.template) }) });
+
+function mutations(): Mutation[] {
+  const out: Mutation[] = [];
+  // (n) — one negative per rate-limited location: drop its limit_req line.
+  for (const [path, zone] of SIGN_LIMITS) {
+    out.push(T(`unlimited ${path}`, `(n) ${path}`, (t) => swapInLocation(t, path, `limit_req zone=${zone}`, '#limit_req_removed', path)));
+  }
+  // (n) — the right location in the WRONG zone.
+  out.push(T('native auth in the browser zone', '(n) /auth/native/', (t) => swapInLocation(t, '/auth/native/', 'zone=sign_native_auth', 'zone=sign_auth', 'native zone')));
+  // (k) — the /v1/sign/me/ location is missing / mis-proxied.
+  out.push(T('no /v1/sign/me/', '(k) sign block must expose exactly', (t) => swap(t, 'location /v1/sign/me/ {', 'location /v1/sign/me-gone/ {', 'me')));
+  out.push(T('/v1/sign/me/ to api', '(k) /v1/sign/me/ must proxy_pass', (t) => swapInLocation(t, '/v1/sign/me/', 'http://sign-service:3003', 'http://api:3000', 'me upstream')));
+  // (o) — native auth missing / mis-proxied / uncapped.
+  out.push(T('no /auth/native/', '(o) sign block missing', (t) => swap(t, 'location /auth/native/ {', 'location /auth/nativ/ {', 'native')));
+  out.push(T('/auth/native/ to api', '(o) /auth/native/ must proxy_pass', (t) => swapInLocation(t, '/auth/native/', 'http://auth-service:3001', 'http://api:3000', 'native upstream')));
+  out.push(T('/auth/native/ uncapped', '(o) /auth/native/ must set client_max_body_size', (t) => swapInLocation(t, '/auth/native/', 'client_max_body_size', '#cmbs', 'native cap')));
+  // (p) — a referenced zone with no definition; the 429 status dropped.
+  out.push(T('undefined sign_workspace zone', '(p) limit_req zone=sign_workspace', (t) => swap(t, 'zone=sign_workspace:10m', 'zone=sign_workspace_gone:10m', 'zone def')));
+  out.push(T('undefined sign_native_auth zone', '(p) limit_req zone=sign_native_auth', (t) => swap(t, 'zone=sign_native_auth:10m', 'zone=other_native:10m', 'zone def')));
+  out.push(T('no 429', '(p) limit_req_status 429', (t) => swap(t, 'limit_req_status 429;', 'limit_req_status 503;', 'status')));
+  // (q) — one negative per well-known rule, on each file.
+  for (const file of ['apple-app-site-association', 'assetlinks.json']) {
+    const spec = `= /.well-known/${file}`;
+    const tag = `(q) /.well-known/${file}`;
+    out.push(T(`${file} prefix not exact`, tag, (t) => swap(t, `location ${spec} {`, `location /.well-known/${file} {`, file)));
+    out.push(T(`${file} no json type`, tag, (t) => swapInLocation(t, spec, 'default_type application/json;', 'default_type text/plain;', file)));
+    out.push(T(`${file} SPA fallback`, tag, (t) => swapInLocation(t, spec, `try_files /${file} =404;`, 'try_files $uri /index.html;', file)));
+    out.push(T(`${file} redirect`, tag, (t) => swapInLocation(t, spec, 'default_type application/json;', 'default_type application/json;\n    return 301 https://$host/;', file)));
+    out.push(T(`${file} proxied`, tag, (t) => swapInLocation(t, spec, 'default_type application/json;', 'default_type application/json;\n    proxy_pass http://sign-service:3003;', file)));
+    out.push(T(`${file} wrong root`, tag, (t) => swapInLocation(t, spec, `root ${APP_LINKS_DIR};`, 'root /srv/sign;', file)));
+    out.push(T(`${file} types block`, tag, (t) => swapInLocation(t, spec, 'default_type application/json;', 'types { }\n    default_type application/json;', file)));
+    out.push(T(`${file} no cache policy`, tag, (t) => swapInLocation(t, spec, 'add_header Cache-Control', 'add_header X-Cache-Gone', file)));
+    out.push(T(`${file} no nosniff`, tag, (t) => swapInLocation(t, spec, 'add_header X-Content-Type-Options', 'add_header X-Nosniff-Gone', file)));
+  }
+  out.push(T('AASA on the tenant host', '(q) the tenant block must not serve', (t) => swap(t, '  location = /.well-known/jwks.json {', '  location = /.well-known/apple-app-site-association { return 404; }\n  location = /.well-known/jwks.json {', 'tenant')));
+  // (r) — the render wiring.
+  out.push({ name: 'render step not installed', tag: '(r) the runtime image must COPY', apply: (i) => ({ ...i, dockerfile: swap(i.dockerfile, `COPY ${RENDER_SCRIPT} ${ENTRYPOINT_STEP}`, '# copy removed', 'dockerfile copy') }) });
+  out.push({ name: 'render step not executable', tag: '(r) /docker-entrypoint.d/40-aramo-app-links.sh must be executable', apply: (i) => ({ ...i, dockerfile: swap(i.dockerfile, `chmod 0755 ${ENTRYPOINT_STEP}`, `chmod 0644 ${ENTRYPOINT_STEP}`, 'chmod') }) });
+  out.push({ name: 'envsubst filter widened', tag: '(r) NGINX_ENVSUBST_FILTER', apply: (i) => ({ ...i, dockerfile: swap(i.dockerfile, 'ENV NGINX_ENVSUBST_FILTER=^NGINX_', 'ENV NGINX_ENVSUBST_FILTER=^(NGINX|SIGN)_', 'filter') }) });
+  out.push(T('template references SIGN_*', '(r) the conf template must not reference', (t) => swap(t, 'default_type application/json;', 'default_type application/json; # ${SIGN_IOS_APP_ID}', 'template var')));
+  for (const v of APP_LINK_ENV) {
+    out.push({ name: `compose drops ${v}`, tag: `(r) nginx environment must pass \`${v}=`, apply: (i) => ({ ...i, compose: swap(i.compose, `- ${v}=\${${v}:-}`, `- ${v}_GONE=\${${v}:-}`, v) }) });
+    out.push({ name: `render ignores ${v}`, tag: `(r) the render step must read ${v}`, apply: (i) => ({ ...i, renderScript: i.renderScript.split(`\${${v}:-}`).join('') }) });
+  }
+  // (s) — the render step's behaviour.
+  out.push({ name: 'render accepts any iOS id', tag: '(s) [malformed] apple-app-site-association', apply: (i) => ({ ...i, renderScript: swap(i.renderScript, "grep -Eq '^[A-Z0-9]{10}", "grep -Eq '^.*|[A-Z0-9]{10}", 'ios regex') }) });
+  out.push({ name: 'render drops /d/*', tag: '(s) [valid] applinks paths', apply: (i) => ({ ...i, renderScript: swap(i.renderScript, '{"/":"/d/*","comment":"guest signing link"},', '', 'd path') }) });
+  out.push({ name: 'render claims every path', tag: '(s) [valid] applinks paths', apply: (i) => ({ ...i, renderScript: swap(i.renderScript, '{"/":"/s/*"', '{"/":"*"', 's path') }) });
+  out.push({ name: 'render keeps a bad fingerprint list', tag: '(s) [malformed] assetlinks.json', apply: (i) => ({ ...i, renderScript: swap(i.renderScript, 'if [ "$bad" -eq 1 ] || [ -z "$fps" ]; then', 'if [ -z "$fps" ]; then', 'fp gate') }) });
+  out.push({ name: 'render leaves fingerprints lower-case', tag: '(s) [valid] assetlinks.json', apply: (i) => ({ ...i, renderScript: swap(i.renderScript, " | tr 'abcdef' 'ABCDEF'", '', 'upper') }) });
+  out.push({ name: 'render emits invalid JSON when unset', tag: '(s) [unset]', apply: (i) => ({ ...i, renderScript: swap(i.renderScript, "android_json='[]'", "android_json='['", 'json') }) });
+  return out;
+}
+
+function runSelfTest(): void {
+  const base = readRepoInputs();
+  const baseIssues = checkRepo(base);
+  if (baseIssues.length !== 0) throw new Error(`self-test: the repo itself must pass first (${baseIssues.length} violation(s)): ${JSON.stringify(baseIssues)}`);
+  const failures: string[] = [];
+  const ms = mutations();
+  for (const m of ms) {
+    const issues = checkRepo(m.apply(base));
+    if (process.env['FRONTDOOR_SELFTEST_VERBOSE'] === '1') console.log(`  [${m.name}] → ${issues.map((i) => i.reason).join(' | ')}`);
+    if (!issues.some((i) => i.reason.startsWith(m.tag) || i.reason.includes(m.tag))) {
+      failures.push(`[${m.name}] expected a violation matching ${JSON.stringify(m.tag)}; got ${JSON.stringify(issues.map((i) => i.reason))}`);
+    }
+  }
+  if (failures.length > 0) throw new Error(`self-test FAILED — ${failures.length} of ${ms.length} negative test(s) did not fire:\n  ${failures.join('\n  ')}`);
+  console.log(`frontdoor:conf-check self-test ok (${ms.length} negative tests fired)`);
+}
+
+// Default run: the negative tests first (the wall must still be able to fail), then
+// the repo check. `--self-test` runs only the negative tests.
 function main(): void {
+  if (process.env['SELF_TEST'] === '1' || process.argv.includes('--self-test')) {
+    runSelfTest();
+    return;
+  }
   const issues = checkRepo();
   if (issues.length === 0) {
-    console.log(`frontdoor:conf-check ok (${TEMPLATE} + ${COMPOSE} vs ${CONSTANTS})`);
+    runSelfTest();
+    console.log(`frontdoor:conf-check ok (${TEMPLATE} + ${COMPOSE} + ${DOCKERFILE} + ${RENDER_SCRIPT} vs ${CONSTANTS})`);
     return;
   }
   console.error(`frontdoor:conf-check FAILED — ${issues.length} violation(s):`);

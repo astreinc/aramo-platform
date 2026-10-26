@@ -18,6 +18,8 @@ export { AuthContext } from './lib/auth-context.decorator.js';
 export {
   ACTOR_KINDS,
   CONSUMER_TYPES,
+  NATIVE_CLIENT_KINDS,
+  type NativeClientKind,
   PLATFORM_TENANT_SENTINEL_ID,
   type ActorKind,
   type AuthContext as AuthContextType,
