@@ -7,6 +7,8 @@ import {
   BillingCommandService,
   BillingWebhookInboxQueryError,
   BillingWebhookInboxService,
+  FINANCE_AMOUNT_WITHHELD,
+  isFinancialCommandKind,
   withholdMonetaryAmounts,
   type BillingCommandRow,
   type BillingWebhookInboxRow,
@@ -64,8 +66,12 @@ export function billingCommandDto(row: BillingCommandRow, amount_access: boolean
     pending_provider: row.state !== 'CONFIRMED',
     attempts: row.attempts,
     next_attempt_at: iso(row.next_attempt_at),
-    failure: row.last_error_code === null ? null : { code: row.last_error_code, detail: row.last_error_detail },
-    last_detail: row.last_error_detail,
+    // CCP-R3-W item 3: the provider's error text of a CREDIT / DISCOUNT / REFUND command (e.g. the
+    // REFUND_REMAINDER_UNVERIFIABLE read failure) reaches only a Finance amount holder; a non-holder
+    // gets the code and `detail_withheld`. Other kinds (cancel, checkout expire) as stored.
+    ...(amount_access || !isFinancialCommandKind(row.command_kind)
+      ? { failure: row.last_error_code === null ? null : { code: row.last_error_code, detail: row.last_error_detail }, last_detail: row.last_error_detail }
+      : { failure: row.last_error_code === null ? null : { code: row.last_error_code, detail_withheld: FINANCE_AMOUNT_WITHHELD }, detail_withheld: FINANCE_AMOUNT_WITHHELD }),
     provider_accepted_at: iso(row.provider_accepted_at),
     confirmed_at: iso(row.confirmed_at),
     confirmation_source: row.confirmation_source,

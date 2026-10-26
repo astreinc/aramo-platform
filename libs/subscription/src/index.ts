@@ -97,6 +97,25 @@ export {
   withholdMonetaryAmounts,
   withholdTenantAmounts,
   type FinanceAmountWithheld,
+  // CCP-R3-W (Architect W-2 / W-3; the C4 refusal-detail residual) — the same projection boundary.
+  CONTRACT_TERMS_BLOCK_KEYS,
+  CONTRACT_TERMS_KEYS,
+  FINANCIAL_EVIDENCE_KEYS,
+  FINANCIAL_NOTE_KEYS,
+  FINANCIAL_REQUEST_ACTION_TYPES,
+  PROVIDER_TEXT_KEYS,
+  evidenceVisible,
+  isFinancialCommandKind,
+  isFinancialRequestAction,
+  projectApprovalNotes,
+  projectChangeRequestFinance,
+  withholdContractTerms,
+  withholdContractTermsDeep,
+  withholdEvidence,
+  withholdProviderText,
+  type ChangeRequestFinanceProjection,
+  type ChangeRequestProjectionInput,
+  type FinanceReader,
 } from './lib/billing/finance-amount-withholding.js';
 // CCP-R3 (TD-A7-5) — the one entitlement-without-subscription rule (C6 report and D3 alert).
 export {

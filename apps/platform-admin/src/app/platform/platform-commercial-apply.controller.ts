@@ -15,7 +15,7 @@ import {
 import type { CommercialCatalogApplicationDto, CommercialChangeApplicationDto } from './dto/commercial-change-application.dto.js';
 import type { CommercialChangeRequestDto } from './dto/commercial-change-request.dto.js';
 import { requestDto, toAramoError } from './platform-commercial-change-request.controller.js';
-import { amountAccess } from './finance-amount-access.js';
+import { amountAccess, financeReader } from './finance-amount-access.js';
 
 // CCP-A6 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.1 row A6; Conversion Rule C-21…C-24)
 // — POST /platform/commercial/change-requests/{id}/apply: applies an APPROVED (or APPLY_FAILED,
@@ -62,18 +62,18 @@ export class PlatformCommercialApplyController {
         { platform_tenant_id: PLATFORM_TENANT_SENTINEL_ID, correlation_id: requestId },
       );
       return {
-        request: requestDto(out.request, amountAccess(auth)),
+        request: requestDto(out.request, financeReader(auth)),
         application: out.application === null ? null : applicationDto(out.application),
         catalog_application: out.catalog_application === null ? null : catalogApplicationDto(out.catalog_application),
         replayed: out.replayed,
       };
     } catch (err) {
-      throw applyHttpError(err, requestId);
+      throw applyHttpError(err, requestId, amountAccess(auth));
     }
   }
 }
 
-export function applyHttpError(err: unknown, requestId: string): unknown {
+export function applyHttpError(err: unknown, requestId: string, amount_access = false): unknown {
   if (err instanceof CommercialApplyRefusedError) {
     return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', `apply refused: ${err.reason}`, 409, {
       requestId,
@@ -99,7 +99,7 @@ export function applyHttpError(err: unknown, requestId: string): unknown {
   if (err instanceof CommercialChangeRequestError && err.code === 'NOT_REQUESTER') {
     return new AramoError('INSUFFICIENT_PERMISSIONS', err.message, 403, { requestId, details: { reason: 'not_requester', explanation: explanationOf(err.code) } });
   }
-  return toAramoError(err, requestId);
+  return toAramoError(err, requestId, amount_access);
 }
 
 export function applicationDto(a: CommercialChangeApplicationRow): CommercialChangeApplicationDto {

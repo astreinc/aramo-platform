@@ -39,8 +39,11 @@ export interface BillingCommandDto {
   pending_provider: boolean;
   attempts: number;
   next_attempt_at: string | null;
-  failure: { code: string; detail: string | null } | null;
-  last_detail: string | null;
+  // CCP-R3-W item 3: a CREDIT / DISCOUNT / REFUND command read without the Finance amount scope has
+  // `detail_withheld` (top level and in `failure`) in place of `last_detail` / `failure.detail`.
+  failure: { code: string; detail?: string | null; detail_withheld?: 'FINANCE_SCOPE_REQUIRED' } | null;
+  last_detail?: string | null;
+  detail_withheld?: 'FINANCE_SCOPE_REQUIRED';
   provider_accepted_at: string | null;
   confirmed_at: string | null;
   confirmation_source: string | null;

@@ -200,10 +200,16 @@ const FINANCE_ONLY_CHAIN = {
 };
 
 // CommercialChangeRequestDto (platform-commercial-change-request.controller.ts requestDto).
+// CCP-R3-W (Architect W-3): `withheld` = read by commercial_ops, the requester, without
+// platform:billing:amount:read — its OWN reason stays; the rejection note is replaced by
+// `notes_withheld` (and the amount by `amount_withheld`, R3). `nonRequester` = read by a non-holder
+// who did not request it (support_admin): the reason is replaced by `reason_withheld` too.
+const W = 'FINANCE_SCOPE_REQUIRED';
 function requestBody(
   state: string,
-  o: { submitted?: boolean; approved?: boolean; rejected?: boolean; withdrawn?: boolean; tenant?: string; withheld?: boolean } = {},
+  o: { submitted?: boolean; approved?: boolean; rejected?: boolean; withdrawn?: boolean; tenant?: string; withheld?: boolean; nonRequester?: boolean } = {},
 ): Record<string, unknown> {
+  const nonHolder = o.withheld === true || o.nonRequester === true;
   return {
     id: uuid(EX_REQUEST_ID),
     action_type: 'CREDIT',
@@ -211,20 +217,20 @@ function requestBody(
     state,
     tenant_id: o.tenant === undefined ? uuid(CREATE_TENANT) : o.tenant,
     product_key: 'sign',
-    payload: o.withheld === true ? CREDIT_PAYLOAD_WITHHELD : like(CREDIT_PAYLOAD),
+    payload: nonHolder ? CREDIT_PAYLOAD_WITHHELD : like(CREDIT_PAYLOAD),
     payload_checksum: HEX64(),
     required_chain: FINANCE_ONLY_CHAIN,
     policy_version_id: POLICY_V1,
     policy_checksum: HEX64(),
     requested_by: OP.commercial_ops,
-    reason: like('Goodwill credit for a service outage'),
+    ...(o.nonRequester === true ? { reason_withheld: W } : { reason: like('Goodwill credit for a service outage') }),
     created_at: iso(),
     submitted_at: o.submitted === true ? iso() : null,
     expires_at: o.submitted === true ? iso('2026-10-28T10:00:00.000Z') : null,
     approved_at: o.approved === true ? iso() : null,
     rejected_at: o.rejected === true ? iso() : null,
     rejected_by: o.rejected === true ? OP.finance_admin : null,
-    rejection_reason: o.rejected === true ? like('Credit not justified') : null,
+    ...(nonHolder ? { notes_withheld: W } : { rejection_reason: o.rejected === true ? like('Credit not justified') : null }),
     withdrawn_at: o.withdrawn === true ? iso() : null,
     expired_at: null,
   };
@@ -525,6 +531,49 @@ describe('platform-web → GET /platform/commercial/change-requests/{id} (CCP-A3
         const res = await call(`${mock.url}${CR}/${EX_REQUEST_ID}`, 'GET', platformSession('finance_admin'));
         expect(res.status).toBe(200);
         expect((res.body['request'] as { state: string }).state).toBe('PENDING_APPROVAL');
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/change-requests/{id} — Finance visibility (CCP-R3-W)', () => {
+  it('support_admin (no platform:billing:amount:read, not the requester) reads a pending credit: the reason and notes withheld, the amount withheld (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('a pending change request exists')
+      .uponReceiving('a pending credit detail read by support_admin')
+      .withRequest('GET', fromProviderState(`${CR}/\${requestId}`, `${CR}/${EX_REQUEST_ID}`), (b) => {
+        b.headers(platformSession('support_admin'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ request: requestBody('PENDING_APPROVAL', { submitted: true, nonRequester: true }), approvals: [], apply_actionable: false });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}/${EX_REQUEST_ID}`, 'GET', platformSession('support_admin'));
+        expect(res.status).toBe(200);
+        const req = res.body['request'] as Record<string, unknown>;
+        expect(req['reason_withheld']).toBe(W);
+        expect(req).not.toHaveProperty('reason');
+        expect(JSON.stringify(res.body)).not.toContain('Goodwill credit');
+      });
+  });
+
+  it('the requester (commercial_ops, no amount scope) reads its own pending credit: its own reason; the notes and amount withheld (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('a pending change request exists')
+      .uponReceiving('a pending credit detail read by its requester')
+      .withRequest('GET', fromProviderState(`${CR}/\${requestId}`, `${CR}/${EX_REQUEST_ID}`), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ request: requestBody('PENDING_APPROVAL', { submitted: true, withheld: true }), approvals: [], apply_actionable: false });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}/${EX_REQUEST_ID}`, 'GET', platformSession('commercial_ops'));
+        expect(res.status).toBe(200);
+        const req = res.body['request'] as Record<string, unknown>;
+        expect(req['notes_withheld']).toBe(W);
+        expect(req).not.toHaveProperty('rejection_reason');
       });
   });
 });
@@ -1440,11 +1489,13 @@ describe('platform-web → POST /platform/commercial/change-requests/{id}/billin
 
 describe('platform-web → GET /platform/commercial/finance/refunds (CCP-C4-P)', () => {
   // TD-C4P-6 (merge train): the decision is CCP-R3's shared amountAccess, against the seeded grants.
-  const row = (amount: Record<string, unknown>) => ({
+  // CCP-R3-W (W-3): `category` is the refund's requester-authored provenance — a non-holder who did
+  // not request it (support_admin) gets `evidence_withheld` instead.
+  const row = (amount: Record<string, unknown>, evidence: Record<string, unknown> = { category: like('R4_SERVICE_FAILURE') }) => ({
     change_request_id: uuid(EX_REQUEST_ID),
     refund_state: regex('^(requested|approved|pending|confirmed|failed|reconciled|closed)$', 'approved'),
     reconciliation_status: regex('^(NOT_SENT|PENDING_PROVIDER|COMMAND_FAILED|CONFIRMED|RESOLVED_NOT_EXECUTED)$', 'NOT_SENT'),
-    category: like('R4_SERVICE_FAILURE'),
+    ...evidence,
     currency: like('USD'),
     ...amount,
   });
@@ -1475,12 +1526,13 @@ describe('platform-web → GET /platform/commercial/finance/refunds (CCP-C4-P)',
         b.headers(platformSession('support_admin')).query({ limit: '50' });
       })
       .willRespondWith(200, (b) => {
-        b.jsonBody({ refunds: eachLike(row({ amount_withheld: 'FINANCE_SCOPE_REQUIRED' })), next_cursor: null });
+        b.jsonBody({ refunds: eachLike(row({ amount_withheld: 'FINANCE_SCOPE_REQUIRED' }, { evidence_withheld: 'FINANCE_SCOPE_REQUIRED' })), next_cursor: null });
       })
       .executeTest(async (mock) => {
         const res = await call(`${mock.url}${REFUND_REPORT}?limit=50`, 'GET', platformSession('support_admin'));
         expect(res.status).toBe(200);
         expect(JSON.stringify(res.body)).not.toContain('amount_minor');
+        expect(JSON.stringify(res.body)).not.toContain('"category"');
       });
   });
 });
@@ -2483,6 +2535,33 @@ describe('platform-web → GET /platform/commercial/contracts/{id} (CCP-B4)', ()
         const res = await call(`${mock.url}${CONTRACTS}/${EX_CONTRACT_ID}`, 'GET', platformSession('finance_admin'));
         expect(res.status).toBe(200);
         expect((res.body['invoicing'] as { enabled: boolean }).enabled).toBe(false);
+      });
+  });
+
+  it('commercial_ops (no platform:billing:amount:read) reads the contract: the free-text terms withheld (200; CCP-R3-W, Architect W-2)', async () => {
+    await provider
+      .addInteraction()
+      .given('an enterprise contract exists')
+      .uponReceiving('a contract detail read by commercial_ops')
+      .withRequest('GET', fromProviderState(`${CONTRACTS}/\${contractId}`, `${CONTRACTS}/${EX_CONTRACT_ID}`), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          ...CONTRACT_SUMMARY,
+          terms_withheld: 'FINANCE_SCOPE_REQUIRED',
+          evidence_ref: like('Order form OF-8034'),
+          recorded_by: PERSON,
+          recorded_by_change_request_id: uuid(EX_REQUEST_ID),
+          amendments: [],
+          invoicing: { enabled: false, reason: 'enterprise_invoicing_choice_pending' },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CONTRACTS}/${EX_CONTRACT_ID}`, 'GET', platformSession('commercial_ops'));
+        expect(res.status).toBe(200);
+        expect(res.body).not.toHaveProperty('terms');
+        expect(res.body).not.toHaveProperty('recorded_terms');
       });
   });
 

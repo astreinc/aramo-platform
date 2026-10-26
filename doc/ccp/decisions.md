@@ -549,3 +549,24 @@ HALT after the final engineering acceptance and return the single-PR publication
     - R1 scan 4 / 4.
   - **Gates:** tsc (5), lint, contract-parity, openapi-drift, orphan-scopes, env-passthrough, error-codes, tests:integration, vocabulary and repo-map all pass (rc=0).
   - **For D6:** DG's G-2, the release-checklist step from Charter A2 dependency row 6 / RX-4 that verifies the ACTIVE policy's `refund_policy_sha256` against the LOCKED refund-policy sidecar, is carried into the D6 checklist.
+- **TD-MERGE-49 (R3-W, `d8ab480d`; W-2 contract terms + W-3 financial request redaction):** `wip/ccp-r3w` merged with no source conflict. The generated repo map was regenerated. No migration; scope catalog unchanged at 25 / 206 / 987 (identity 961 / 961).
+  - **R3-W's 3 new specs on the integrated head:**
+    - `ccp-r3w-finance-visibility.spec.ts` (subscription) 20 / 20;
+    - `ccp-r3w-finance-visibility-authorization.spec.ts` + `ccp-r3w-serializer-scan.spec.ts` (platform-admin) 75 / 75.
+  - **Serializer scan × DG:** the scan passes with DG's refusal details in place. DG's gate detail (`refundGateDetail`) carries only `gate_1_released` and the `gate_2` basis code: no provider text, no policy content, no amount.
+  - **Provider error text:** R3-W withholds it from non-holders in the billing-adjustment error path. This closes the TD-MERGE-43 residual (`REFUND_REMAINDER_UNVERIFIABLE` with basis `provider_read_failed`).
+  - **R3-W gaps for the acceptance register:**
+    - G-1 (C): the amendment `summary` is visible;
+    - G-2 (C): the webhook inbox `last_error`;
+    - G-3 (D): D2's list-price basis, resolved by TD-MERGE-47;
+    - G-5 (C): `payload_checksum`.
+  - **Integrated:**
+    - subscription CCP 867 / 867;
+    - platform-admin CCP 787 / 787;
+    - D4 negative controls 15 / 15 × 3;
+    - platform-web unit 555 / 555;
+    - platform-web consumer 202 / 202;
+    - providers: platform-admin 2 / 2, verify-api 1 / 1, verify-sign 1 / 1;
+    - sign-service 504 / 504;
+    - R1 scan 4 / 4.
+  - **Gates:** tsc (5), lint, contract-parity, openapi-drift, orphan-scopes, env-passthrough, error-codes, tests:integration, vocabulary and repo-map all pass (rc=0).

@@ -2322,6 +2322,7 @@
       "CONTRACT_MAX_TERMS",
       "CONTRACT_PAYLOAD_KEYS",
       "CONTRACT_REF_PATTERN",
+      "CONTRACT_TERMS_KEYS",
       "CONVERSION_DIRECTIONS",
       "CONVERSION_RELEASE_STATES",
       "CONVERSION_RELEASE_TRANSITIONS",
@@ -2374,6 +2375,9 @@
       "FINANCE_AMOUNT_WITHHELD",
       "FINANCE_CURRENCY",
       "FINANCE_SOURCES",
+      "FINANCIAL_EVIDENCE_KEYS",
+      "FINANCIAL_NOTE_KEYS",
+      "FINANCIAL_REQUEST_ACTION_TYPES",
       "FREE_SUBSCRIPTION_SOURCE",
       "FreePersonalPlanKey",
       "FreePersonalSubscriptionService",
@@ -2414,6 +2418,7 @@
       "PRICE_CHANGE_UNDEFINED_DETAIL",
       "PRODUCT_CAPABILITIES",
       "PRODUCT_KEYS",
+      "PROVIDER_TEXT_KEYS",
       "PlanVersionContentError",
       "PlanVersionDraftExistsError",
       "PlanVersionRepository",
@@ -2526,6 +2531,7 @@
       "entitlementGapSubject",
       "entitlementGaps",
       "evaluateRefundExecution",
+      "evidenceVisible",
       "explanationOf",
       "financeAmountAccess",
       "formatCheckoutCutoverReport",
@@ -2543,6 +2549,8 @@
       "isCatalogApplicable",
       "isContractPriced",
       "isFeatureAvailable",
+      "isFinancialCommandKind",
+      "isFinancialRequestAction",
       "isGovernedSubscription",
       "isPlatformLastOwnerViolation",
       "isProductKey",
@@ -2569,6 +2577,8 @@
       "postTerminationExportDays",
       "priceFigure",
       "productOfMeteredKey",
+      "projectApprovalNotes",
+      "projectChangeRequestFinance",
       "readPlatformSubject",
       "refundBindingOf",
       "refundExecutionEnabled",
@@ -2598,7 +2608,11 @@
       "verifyStripeSignature",
       "withholdAuditPayloadAmounts",
       "withholdChangeRequestAmounts",
+      "withholdContractTerms",
+      "withholdContractTermsDeep",
+      "withholdEvidence",
       "withholdMonetaryAmounts",
+      "withholdProviderText",
       "withholdTenantAmounts"
     ],
     "@aramo/talent-embedding": [
@@ -3785,6 +3799,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-r3w-finance-visibility-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -4541,6 +4561,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-d3-observability-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-r3w-finance-visibility-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -7015,6 +7041,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-d3-observability-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-r3w-finance-visibility-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -10308,6 +10340,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-r3w-finance-visibility-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -12614,6 +12652,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-d4-tenant-isolation.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-r3w-finance-visibility-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },

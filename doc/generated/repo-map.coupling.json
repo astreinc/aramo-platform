@@ -10172,6 +10172,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/platform-admin/src/tests/ccp-r3w-serializer-scan.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/src/lib/billing/finance-amount-withholding.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
       "status": "excluded",
       "to": "libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql"
@@ -18288,6 +18294,21 @@
       "from": "doc/ccp/slices/CCP-R3-acceptance.md",
       "status": "unscoped",
       "to": "pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3W-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/finance-amount-access.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3W-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-R3W-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/finance-amount-withholding.ts"
     },
     {
       "from": "doc/ccp/uat/CCP-UAT-catalog_manager.md",

@@ -31,7 +31,9 @@ export interface CommercialContractAmendmentDto {
   sequence: number;
   kind: 'AMENDMENT' | 'END';
   summary: string;
-  terms: string[] | null;
+  /** CCP-R3-W (W-2): exactly one of `terms` / `terms_withheld` (always the marker without the Finance amount scope). */
+  terms?: string[] | null;
+  terms_withheld?: 'FINANCE_SCOPE_REQUIRED';
   document_count: number;
   evidence_ref: string | null;
   change_request_id: string;
@@ -61,8 +63,10 @@ export interface CommercialContractSummaryDto {
 }
 
 export interface CommercialContractDetailDto extends CommercialContractSummaryDto {
-  terms: string[];
-  recorded_terms: string[];
+  /** CCP-R3-W (W-2): `terms` and `recorded_terms` are omitted without the Finance amount scope; `terms_withheld` instead. */
+  terms?: string[];
+  recorded_terms?: string[];
+  terms_withheld?: 'FINANCE_SCOPE_REQUIRED';
   evidence_ref: string | null;
   recorded_by: CommercialContractPersonDto;
   recorded_by_change_request_id: string;
