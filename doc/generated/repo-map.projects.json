@@ -9807,6 +9807,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/admins/PlatformAdminsView.commercial-invite.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/platform-web/src/admins/PlatformAdminsView.spec.tsx",
         "project": "aramo-platform-web",
         "status": "excluded"
