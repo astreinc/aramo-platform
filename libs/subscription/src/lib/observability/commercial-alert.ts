@@ -40,6 +40,13 @@ export const COMMERCIAL_ALERT_DEFINITIONS = {
   APPROVAL_NEARING_EXPIRY: { family: 'APPROVAL', subject_kind: 'change_request' },
   // A request still PENDING_APPROVAL at or after its expiry (A3 expiry is lazy, TD-A3-10).
   APPROVAL_PAST_EXPIRY: { family: 'APPROVAL', subject_kind: 'change_request' },
+  // CCP-FIX1 (closes TD-D3-10; Charter Amendment A1 AD-1 … AD-4): an APPROVED or APPLY_FAILED request
+  // whose SNAPSHOTTED policy declares apply_expiry_hours, with its apply deadline within the approval
+  // expiry lead (CCP_ALERT_APPROVAL_EXPIRY_LEAD_MINUTES) …
+  APPLY_DEADLINE_NEARING: { family: 'APPROVAL', subject_kind: 'change_request' },
+  // … or at or past it (half-open, AD-3) while it still reads APPROVED / APPLY_FAILED (the expiry
+  // itself is lazy, AD-7: the next apply, slot-contending create or read moves it to APPLY_EXPIRED).
+  APPLY_DEADLINE_PASSED: { family: 'APPROVAL', subject_kind: 'change_request' },
 } as const satisfies Record<string, { family: CommercialAlertFamily; subject_kind: CommercialAlertSubjectKind }>;
 
 export type CommercialAlertType = keyof typeof COMMERCIAL_ALERT_DEFINITIONS;
@@ -59,7 +66,7 @@ export const CCP_ALERT_THRESHOLD_MAX_MINUTES = 43_200;
 export interface CommercialAlertThresholds {
   /** COMMAND_PENDING_PROVIDER_STUCK: minutes since the provider accepted the command. */
   pending_provider_stuck_minutes: number;
-  /** APPROVAL_NEARING_EXPIRY: minutes before `expires_at`. */
+  /** APPROVAL_NEARING_EXPIRY: minutes before `expires_at`; APPLY_DEADLINE_NEARING: minutes before the apply deadline (CCP-FIX1 reuses it). */
   approval_expiry_lead_minutes: number;
 }
 

@@ -12,7 +12,6 @@ import {
 import {
   CONVERSION_RELEASE_STATES,
   CONVERSION_RELEASE_TRANSITIONS,
-  ConversionApplyRefusedError,
   conversionPayloadErrors,
   effectiveReleaseState,
   releaseConsumable,
@@ -93,13 +92,12 @@ describe('CCP-C2 conversion (pure)', () => {
     expect(effectiveReleaseState({ state: 'CONSUMED', expires_at }, new Date(expires_at.getTime() + 1e9))).toBe('CONSUMED');
   });
 
-  it('C2-U-5 apply deadline (AD-1…AD-3; merge train TD-MERGE-21): one policy key, apply_expiry_hours (A6-R), validated by the A2 parser; the conversion refusal is APPLY_EXPIRED', () => {
+  it('C2-U-5 apply deadline (AD-1…AD-3; merge train TD-MERGE-21): one policy key, apply_expiry_hours (A6-R), validated by the A2 parser (the conversion deadline refusal is the A6-R one, CCP-FIX1 O-D4-2)', () => {
     expect(COMMERCIAL_POLICY_OPTIONAL_KEYS).toEqual(['apply_expiry_hours']);
     expect(parseCommercialPolicyContent(V1_CONTENT).apply_expiry_hours).toBeUndefined();
     expect(parseCommercialPolicyContent({ ...V1_CONTENT, apply_expiry_hours: 72 }).apply_expiry_hours).toBe(72);
     for (const v of [0, -1, 1.5, '72', null]) expect(() => parseCommercialPolicyContent({ ...V1_CONTENT, apply_expiry_hours: v }), String(v)).toThrow();
     expect(() => parseCommercialPolicyContent({ ...V1_CONTENT, apply_deadline_hours: 72 })).toThrow();
-    expect(new ConversionApplyRefusedError('APPLY_EXPIRED').reason).toBe('APPLY_EXPIRED');
   });
 
   it('C2-U-6 SubscriptionModule binds the conversion ledger into the lifecycle (so checkout, webhook and confirmed-end paths honour releases and complete conversions) and provides the conversion service', async () => {

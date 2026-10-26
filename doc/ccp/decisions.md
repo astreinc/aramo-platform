@@ -413,3 +413,41 @@ For an actor without `platform:billing:amount:read`, the whole free-text `Contra
     - The C4 audit row now also carries the shared `explanation`.
   - **TD-C4R-5 (4) / TD-C4R-1:** ACC-1's savepoint is confined to the policy apply. The Stripe read/write fence (command state, attempts, `updated_at`) in `billing-command.service.ts` is untouched, and C4R-1…7 and C4-RACE / C4-TX pass on the integrated branch.
   - **Specs the Lead named, on the integrated branch:** ACC-1 (`ccp-acc1-policy-withdraw`), B5-R, B5 governance, and GUARD-UNION-1…4 (probes cover the ACC-1 pair and REFUND) all pass inside the suite counts below. The platform-admin provider passes 2 / 2. The platform-governance consumer, verified by verify-api, passes 1 / 1.
+- **TD-MERGE-45 (FIX1, `7a9d375d`):** `wip/ccp-fix1` merged.
+  - **Conflicts, both sides kept:**
+    - `ccp-b5-governance-routes.integration.spec.ts`: ACC-1-RI and FIX1-RI-APPLY-TTL, two tests (suffix trap: both closed);
+    - the D3 alert specs (D3-U-1 and the metrics keys);
+    - OpenAPI `CommercialAlert.alert_type`: R3's description + all 11 types.
+  - **TD-MERGE-ALERT-1: alert-type union.** `CommercialOperationalAlert_type_check` is written by D3 (`20261026090000`; FIX1 added its 2 apply-deadline types there in place, giving 10) and re-asserted by R3 (`20261028050000`, the 8 D3 types + `ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION` = 9). Applied in order, R3's re-assertion silently dropped FIX1's two types, and the scanner's APPLY_DEADLINE_* raises would have failed the CHECK.
+    - **Fix:** the integrator-owned `20261029000100_ccp_alert_type_union` (sorts last) re-asserts the union: 11 labelled triples in the order of `COMMERCIAL_ALERT_DEFINITIONS` (D3 8 + R3 1 + FIX1 2).
+    - **Compensation:** `fixtures/ccp-alert-type-union-compensating.sql` restores R3's 9 and is refused while an apply-deadline row exists.
+    - **D3-U-1** now reads the union file and pins 11 types; the D3 metric keys carry R3's billing type and FIX1's two approval types.
+  - **Watch-out 1: full compensation chain extended 21 → 27.** `ccp-full-compensation-chain.integration.spec.ts` gains:
+    - C4 `20261028010000`;
+    - C7 `20261028030000`;
+    - R3 alert `20261028050000`, with new `fixtures/ccp-r3-alert-compensating.sql`: refused while an ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION row exists; re-asserts D3's CHECK as edited by FIX1;
+    - R3 identity A1-A1 `20261028060000`: data only, checked by catalog rows 16 / 48 → 15 / 45;
+    - the command-guard union `20261029000000`;
+    - the alert-type union `20261029000100`.
+
+    Each new step is refused while its dependent data exists (nothing changed), then compensates with 0 errors to the exact pre-migration fingerprint, and all 27 re-apply. Result: 30 / 30. R1's in-place A7 edit is covered by the existing A7 steps (fingerprints equal both ways). C4-P adds no migration.
+  - **Watch-out 2:** the alert types are unioned to 11 (above). The D3 metric keys and D3-U-1 reflect 11. The constraint-union file sorts before R3, so it could not hold the CHECK, hence the separate integrator file.
+  - **Watch-out 3: FIX1 policy draft editor × ACC-1.** They merged without conflict:
+    - FIX1 adds `apply_expiry_hours` to `POLICY_EDITABLE_KEYS`, records optional keys in the edit audit, and adds the PolicyView field;
+    - ACC-1 adds `open_request.withdraw_actionable` and the withdraw route.
+    - They touch different functions. B5 governance (unit + routes) and platform-web governance specs pass, and the platform-governance consumer is verified by verify-api.
+  - **Watch-out 4: D5 runbook** `RUNBOOK-ccp-migration-validation.md` brought to the integrated chain:
+    - 27 migrations, every one with its SQL compensation file;
+    - `--until 20261029000100_ccp_alert_type_union` and gate `27 applied`;
+    - Q1 + 6 / + 16 / + 48 (25 / 210 / 1021 from production's 19 / 194 / 973);
+    - Q7 `union_blocks = 28`; Q8 6 APPLYING backstops; Q9 + billing adjustments and self-service requests = 0;
+    - new Q11 (command-guard markers 3, alert types 11);
+    - §6 reverse order 27 → 1, all executable, with refusal conditions.
+  - **D4 on the final head** (after the TD-MERGE-40/41 port binding), host load 4–7:
+    - negative controls 15 / 15, 15 / 15, 15 / 15;
+    - A1 role matrix + tenant isolation 116 / 116;
+    - Playwright journeys + keyboard 73 / 73 (at the C4 merge).
+  - **Final checks across the train:**
+    - scope pins 25 / 206 / 987: identity suite 961 / 961;
+    - the CHECK lists of both unions and the new alert union: as recorded in TD-MERGE-43 and above;
+    - R3's leak tests (A2 / A3 / C3 / C6 authorization, R3 acceptance) re-run green after D2, C7 and C4, inside the platform-admin and subscription suite counts of each merge.

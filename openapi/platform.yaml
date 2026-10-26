@@ -2239,7 +2239,7 @@ paths:
           description: Only alerts of this type (a type of this route's family).
           schema:
             type: string
-            enum: [APPLY_FAILED, APPROVAL_NEARING_EXPIRY, APPROVAL_PAST_EXPIRY]
+            enum: [APPLY_FAILED, APPROVAL_NEARING_EXPIRY, APPROVAL_PAST_EXPIRY, APPLY_DEADLINE_NEARING, APPLY_DEADLINE_PASSED]
         - name: tenant_id
           in: query
           required: false
@@ -5522,10 +5522,12 @@ components:
     CommercialConversionConflict:
       description: |
         `COMMERCIAL_CHANGE_REQUEST_CONFLICT` with details.reason `apply_refused` (details.refusal
-        NOT_APPROVED | APPROVER_NO_LONGER_ELIGIBLE | APPLY_EXPIRED | …; nothing is written),
+        NOT_APPROVED | APPROVER_NO_LONGER_ELIGIBLE | …; nothing is written),
         `apply_failed` (rolled back; the request is APPLY_FAILED and retryable; details.failure e.g.
         TARGET_NOT_GOVERNED, RELEASE_EXISTS, RELEASE_CHECKOUT_OPEN, USAGE_TREATMENT_UNDEFINED,
-        FINANCIAL_TREATMENT_UNDEFINED), `action_not_applicable` (not a CONVERSION) or `integrity`.
+        FINANCIAL_TREATMENT_UNDEFINED), `apply_expired` (Charter Amendment A1: the apply deadline
+        passed; the request is APPLY_EXPIRED; the same body as CommercialApplyConflict, no
+        details.refusal), `action_not_applicable` (not a CONVERSION) or `integrity`.
       content:
         application/json:
           schema:
@@ -6696,6 +6698,11 @@ components:
           type: integer
         past_due_grace_days:
           type: integer
+        apply_expiry_hours:
+          type: integer
+          minimum: 1
+          maximum: 87600
+          description: Optional (Charter Amendment A1, AD-1). An APPROVED or APPLY_FAILED request snapshotted under this version becomes APPLY_EXPIRED this many hours after its final approval (half-open window). Absent = no apply deadline (AD-2).
 
     CommercialPolicyVersion:
       type: object
@@ -6868,6 +6875,11 @@ components:
               type: integer
               minimum: 0
               maximum: 30
+            apply_expiry_hours:
+              type: integer
+              minimum: 1
+              maximum: 87600
+              description: Optional apply deadline (Charter Amendment A1, AD-1), validated exactly as the strict policy parser validates it; never defaulted. A non-integer, null or out-of-range value is refused (400 policy_value_invalid).
         note:
           type: string
           maxLength: 500
@@ -7956,7 +7968,7 @@ components:
           format: uuid
         alert_type:
           type: string
-          enum: [COMMAND_PENDING_PROVIDER_STUCK, COMMAND_FAILED, HELD_ACTIVATION, WEBHOOK_INBOX_FAILED, USAGE_NOT_RECONCILED, ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION, APPLY_FAILED, APPROVAL_NEARING_EXPIRY, APPROVAL_PAST_EXPIRY]
+          enum: [COMMAND_PENDING_PROVIDER_STUCK, COMMAND_FAILED, HELD_ACTIVATION, WEBHOOK_INBOX_FAILED, USAGE_NOT_RECONCILED, ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION, APPLY_FAILED, APPROVAL_NEARING_EXPIRY, APPROVAL_PAST_EXPIRY, APPLY_DEADLINE_NEARING, APPLY_DEADLINE_PASSED]
           description: |
             CCP-R3 (TD-A7-5): `ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION` (BILLING, subject_kind
             `product_entitlement`, subject_id `<tenant_id>:<product_key>`) — a live product
@@ -8163,7 +8175,7 @@ components:
         open_alerts_by_type:
           type: object
           additionalProperties: false
-          required: [APPLY_FAILED, APPROVAL_NEARING_EXPIRY, APPROVAL_PAST_EXPIRY]
+          required: [APPLY_FAILED, APPROVAL_NEARING_EXPIRY, APPROVAL_PAST_EXPIRY, APPLY_DEADLINE_NEARING, APPLY_DEADLINE_PASSED]
           properties:
             APPLY_FAILED:
               type: integer
@@ -8172,6 +8184,12 @@ components:
               type: integer
               minimum: 0
             APPROVAL_PAST_EXPIRY:
+              type: integer
+              minimum: 0
+            APPLY_DEADLINE_NEARING:
+              type: integer
+              minimum: 0
+            APPLY_DEADLINE_PASSED:
               type: integer
               minimum: 0
         thresholds:

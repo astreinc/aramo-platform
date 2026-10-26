@@ -265,6 +265,24 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B5 — policy
     expect((await post('finance_admin', CR, { action_type: 'POLICY_ACTIVATE', payload: { policy_version_id: V2 }, reason: 'again', idempotency_key: key() })).status).toBe(201);
   });
 
+  it('FIX1-RI-APPLY-TTL (D5-DEF-2; Charter Amendment A1 AD-1) the apply deadline is authored over HTTP: PATCH sets apply_expiry_hours on the DRAFT (200, returned in content); malformed values are refused 400 (policy_value_invalid from the parser, or the DTO gate) and change nothing; the list returns it', async () => {
+    const draft = await post('finance_admin', PV, { source_version_id: POLICY_V1 });
+    const V2 = draft.body.version.id as string;
+    expect('apply_expiry_hours' in draft.body.version.content).toBe(false);
+    for (const bad of [0, 87_601, null]) {
+      expect(reasonOf(await patch('finance_admin', `${PV}/${V2}`, { content: { apply_expiry_hours: bad } })), String(bad)).toEqual([400, 'VALIDATION_ERROR', 'policy_value_invalid']);
+    }
+    for (const bad of [1.5, '72']) expect((await patch('finance_admin', `${PV}/${V2}`, { content: { apply_expiry_hours: bad } })).status, String(bad)).toBe(400);
+    expect(reasonOf(await patch('read_only_auditor', `${PV}/${V2}`, { content: { apply_expiry_hours: 72 } }))).toEqual([403, 'INSUFFICIENT_PERMISSIONS', 'requester_role_missing']);
+    const unchanged = (await get('finance_admin', PV)).body.versions.find((v: { id: string }) => v.id === V2);
+    expect(unchanged.content_checksum).toBe(draft.body.version.content_checksum);
+    const ok = await patch('finance_admin', `${PV}/${V2}`, { content: { apply_expiry_hours: 72 } });
+    expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+    expect(ok.body.version.content).toEqual({ ...draft.body.version.content, apply_expiry_hours: 72 });
+    const listed = (await get('read_only_auditor', PV)).body.versions.find((v: { id: string }) => v.id === V2);
+    expect(listed.content.apply_expiry_hours).toBe(72);
+  });
+
   it('B5-RI-ROLE the roster reads per role; the last-owner refusal is surfaced as 409 PLATFORM_LAST_OWNER; a role change is a governed request that applies only after a distinct owner signs', async () => {
     for (const role of ROLES) expect((await get(role, '/platform/commercial/operators')).status, role).toBe(200);
     expect(reasonOf(await get('super_admin', '/platform/commercial/operators'))).toEqual([403, 'INSUFFICIENT_PERMISSIONS', null]);

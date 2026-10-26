@@ -122,28 +122,28 @@ The other CCP migrations do not need registering:
 
 ### Every CCP migration, in apply order (21)
 
-"Not deployed" applies to every row. "Compensation" points at the documented, not-shipped compensating SQL.
+"Not deployed" applies to every row. Every row now points at executable, not-shipped compensating SQL (test fixtures, never a forward migration). The prose record it was written from is in parentheses. Where a slice re-created `guard_commercial_change_request()` or a replaced CHECK, its compensation restores the definition written by the preceding migration in this apply order, copied verbatim.
 
 | # | Migration | Compensating SQL |
 |---|---|---|
 | 1 | `identity/20261024120000_ccp_a1_commercial_role_catalog` | `libs/identity/src/tests/fixtures/ccp-a1-compensating.sql` (`CCP-A1-acceptance.md` §9) |
-| 2 | `subscription/20261024180000_ccp_a2_commercial_audit_policy` | `doc/ccp/slices/CCP-A2-acceptance.md` §7 (line 151) |
-| 3 | `subscription/20261025120000_ccp_a3_change_request_approval` | `CCP-A3-acceptance.md` §9 (line 188) |
+| 2 | `subscription/20261024180000_ccp_a2_commercial_audit_policy` | `libs/subscription/src/tests/fixtures/ccp-a2-compensating.sql` (`doc/ccp/slices/CCP-A2-acceptance.md` §7, line 151) |
+| 3 | `subscription/20261025120000_ccp_a3_change_request_approval` | `libs/subscription/src/tests/fixtures/ccp-a3-compensating.sql` (`CCP-A3-acceptance.md` §9, line 188) |
 | 4 | `subscription/20261025140000_ccp_a4_product_dimension` | `libs/subscription/src/tests/fixtures/ccp-a4-compensating.sql` (CCP-A4-pre-execution §5) |
 | 5 | `subscription/20261025160000_ccp_a5_plan_version` | `libs/subscription/src/tests/fixtures/ccp-a5-compensating.sql` (CCP-A5-pre-execution §4) |
-| 6 | `identity/20261025180000_ccp_a9_platform_last_owner_invariant` | `CCP-A9-acceptance.md` §6 (line 142) |
-| 7 | `subscription/20261025180100_ccp_a9_role_change_apply_bootstrap` | `CCP-A9-acceptance.md` §6 (line 142) |
-| 8 | `subscription/20261025200000_ccp_a6_transactional_apply` | `CCP-A6-acceptance.md` (line 212) |
-| 9 | `subscription/20261025220000_ccp_b2_catalog_apply` | `CCP-B2-backend-acceptance.md` (line 73) |
+| 6 | `identity/20261025180000_ccp_a9_platform_last_owner_invariant` | `libs/identity/src/tests/fixtures/ccp-a9-compensating.sql` (`CCP-A9-acceptance.md` §6, line 142) |
+| 7 | `subscription/20261025180100_ccp_a9_role_change_apply_bootstrap` | `libs/subscription/src/tests/fixtures/ccp-a9-compensating.sql` (`CCP-A9-acceptance.md` §6, line 142) |
+| 8 | `subscription/20261025200000_ccp_a6_transactional_apply` | `libs/subscription/src/tests/fixtures/ccp-a6-compensating.sql` (`CCP-A6-acceptance.md`, line 212) |
+| 9 | `subscription/20261025220000_ccp_b2_catalog_apply` | `libs/subscription/src/tests/fixtures/ccp-b2-compensating.sql` (`CCP-B2-backend-acceptance.md`, line 73) |
 | 10 | `subscription/20261025240000_ccp_d1_usage_rollups` (edited in place by D1-R) | `libs/subscription/src/tests/fixtures/ccp-d1-compensating.sql` |
-| 11 | `entitlement/20261026000000_ccp_a7_entitlement_revoke_provenance` | `CCP-A7-acceptance.md` §8 (line 93) |
-| 12 | `subscription/20261026000100_ccp_a7_entitlement_revoke_apply` | `CCP-A7-acceptance.md` §8 (line 93) |
-| 13 | `subscription/20261026010000_ccp_a8_support_extension_overlay` | `CCP-A8-acceptance.md` (line 149) |
-| 14 | `subscription/20261026020000_ccp_c1_stripe_command_inbox` | `CCP-C1-acceptance.md` (line 145) |
-| 15 | `subscription/20261026030000_ccp_b4_enterprise_contracts` | `CCP-B4-acceptance.md` §6 (line 94) |
-| 16 | `subscription/20261026050000_ccp_a6r_apply_deadline` | `CCP-A6-acceptance.md` A6-R (line 360) |
-| 17 | `subscription/20261026060000_ccp_c2_conversion` | `CCP-C2-acceptance.md` §8 (line 125) |
-| 18 | `subscription/20261026090000_ccp_d3_operational_alerts` | `CCP-D3-acceptance.md` §6 (line 151) |
+| 11 | `entitlement/20261026000000_ccp_a7_entitlement_revoke_provenance` | `libs/entitlement/src/tests/fixtures/ccp-a7-compensating.sql` (`CCP-A7-acceptance.md` §8, line 93) |
+| 12 | `subscription/20261026000100_ccp_a7_entitlement_revoke_apply` | `libs/subscription/src/tests/fixtures/ccp-a7-compensating.sql` (`CCP-A7-acceptance.md` §8, line 93) |
+| 13 | `subscription/20261026010000_ccp_a8_support_extension_overlay` | `libs/subscription/src/tests/fixtures/ccp-a8-compensating.sql` (`CCP-A8-acceptance.md`, line 149) |
+| 14 | `subscription/20261026020000_ccp_c1_stripe_command_inbox` | `libs/subscription/src/tests/fixtures/ccp-c1-compensating.sql` (`CCP-C1-acceptance.md`, line 145) |
+| 15 | `subscription/20261026030000_ccp_b4_enterprise_contracts` | `libs/subscription/src/tests/fixtures/ccp-b4-compensating.sql` (`CCP-B4-acceptance.md` §6, line 94) |
+| 16 | `subscription/20261026050000_ccp_a6r_apply_deadline` | `libs/subscription/src/tests/fixtures/ccp-a6r-compensating.sql` (`CCP-A6-acceptance.md` A6-R, line 360) |
+| 17 | `subscription/20261026060000_ccp_c2_conversion` | `libs/subscription/src/tests/fixtures/ccp-c2-compensating.sql` (`CCP-C2-acceptance.md` §8, line 125) |
+| 18 | `subscription/20261026090000_ccp_d3_operational_alerts` | `libs/subscription/src/tests/fixtures/ccp-d3-compensating.sql` (`CCP-D3-acceptance.md` §6, line 151) |
 | 19 | `subscription/20261027000000_ccp_guard_union` (integrator-owned, TD-MERGE-GUARD-1) | `libs/subscription/src/tests/fixtures/ccp-guard-union-compensating.sql` (restores CCP-C2's body; `decisions.md` TD-MERGE-GUARD-1) |
 | 20 | `subscription/20261027000100_ccp_constraint_union` (integrator-owned, TD-MERGE-CHECK-1) | `libs/subscription/src/tests/fixtures/ccp-constraint-union-compensating.sql` (`decisions.md` TD-MERGE-CHECK-1) |
 | 21 | `subscription/20261027000200_ccp_b5r_policy_activate_apply` | `libs/subscription/src/tests/fixtures/ccp-b5r-compensating.sql` (`CCP-B5-acceptance.md` B5-R.5) |
@@ -152,10 +152,15 @@ A11 has no migration. Its backfill compensation is `libs/subscription/src/tests/
 
 ## 7. Unresolved
 
-1. **Missing compensating SQL — closed after the gate.** The four migrations the gate found without compensating SQL now have it, recorded in the table above. All four were proven on a fresh Postgres 17 by `ccp-merge-train-compensation.integration.spec.ts` (4 / 4 tests):
-   - each compensation is refused while dependent data exists;
-   - the four compensate in reverse order with 0 errors;
-   - the four migrations then re-apply with 0 errors.
+1. **Missing compensating SQL — closed after the gate (CCP FIX1 TD-D5-4).** Every one of the 21 CCP migrations now has executable compensating SQL, recorded in the table above (the gate found 4 without any, and 14 had prose only).
+   - `ccp-merge-train-compensation.integration.spec.ts` (4 / 4 tests) proves the first four (A1, the two unions, B5-R).
+   - `ccp-full-compensation-chain.integration.spec.ts` (24 / 24 tests) proves the full reverse chain on a fresh Postgres 17 after the full chain:
+     - each of the 21 compensations, from B5-R (21) down to A1 (1), applies with 0 errors;
+     - after each one, the identity, subscription and entitlement schemas equal the fingerprint taken just before that migration in the forward chain (A1 is data only and is checked by its 6 / 15 / 45 row counts);
+     - 19 compensations are refused, with nothing changed, while dependent data is seeded. A9 identity is refused while the A9 subscription role apply is installed. D1 has no refusal (everything it drops is derived);
+     - 12 compensations are refused on the full chain until the later compensation they depend on has run;
+     - the 21 migrations then re-apply in order with 0 errors, each restoring the forward-chain state after it.
+   - The run corrected one existing file: `ccp-a4-compensating.sql` restored the A3 interim product CHECK as `product_key = 'sign'`. It now restores A3's text, `product_key IS NULL OR product_key IN ('sign')`. The two forms accept the same rows, because a NULL passes either CHECK.
 2. **Template Studio visual failures.** The two PLATFORM-UX-1 failures (§3) predate CCP.
 3. **Full apps/api suite.** CI-only by PO ruling; it was not run locally.
 4. **Open Lead questions from the merge train.** Carried forward in `doc/ccp/decisions.md` "Merge train": TD-MERGE-10 (catalog evidence travels in the reason), TD-C2-9 (the conversion keeps its own usage rule), and the BOUNDED_EXCEPTION chain label. B5-R since made APPLY_EXPIRED apply to every type, which closes the earlier APPLY_EXPIRED coverage question.

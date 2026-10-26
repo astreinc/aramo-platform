@@ -21,12 +21,15 @@ import {
 } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { filterScopesForConsumer } from '@aramo/identity';
-import { CommercialChangeRequestService, CommercialConversionService, SubscriptionPrismaService } from '@aramo/subscription';
+import { CommercialApplyService, CommercialChangeRequestService, CommercialConversionService, SubscriptionPrismaService, commercialPolicyChecksum } from '@aramo/subscription';
 
+import { PlatformCommercialApplyController } from '../app/platform/platform-commercial-apply.controller.js';
 import { PlatformCommercialChangeRequestController } from '../app/platform/platform-commercial-change-request.controller.js';
 import { PlatformCommercialConversionController } from '../app/platform/platform-commercial-conversion.controller.js';
 // eslint-disable-next-line @nx/enforce-module-boundaries -- test-only real-Postgres support shared with the libs/subscription CCP specs (TD-A3-19 precedent)
-import { CCP_BUNDLES, addOperator, applyCcpA6Schema, revokeRole } from '../../../../libs/subscription/src/tests/support/ccp-a3-database.js';
+import { CCP_BUNDLES, activatePolicyV2, addOperator, applyCcpA6Schema, revokeRole } from '../../../../libs/subscription/src/tests/support/ccp-a3-database.js';
+// eslint-disable-next-line @nx/enforce-module-boundaries -- test-only: the seeded v1 policy content (the v2 apply-deadline fixture is v1 + the key)
+import { seededPolicyV1 } from '../../../../libs/subscription/src/tests/fixtures/commercial-policy-seed.js';
 // eslint-disable-next-line @nx/enforce-module-boundaries -- test-only: the one shared C2 harness (fake Stripe, no network, no key)
 import { c2Harness } from '../../../../libs/subscription/src/tests/support/ccp-c2.js';
 
@@ -120,12 +123,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C2 — the co
     process.env['AUTH_PUBLIC_KEY'] = keys.publicPem;
     const moduleRef = await Test.createTestingModule({
       imports: [AuthModule, AuthorizationModule],
-      controllers: [PlatformCommercialChangeRequestController, PlatformCommercialConversionController],
+      controllers: [PlatformCommercialChangeRequestController, PlatformCommercialConversionController, PlatformCommercialApplyController],
       providers: [
         { provide: EFFECTIVE_AUTHORIZATION_RESOLVER, useValue: resolver },
         { provide: APP_FILTER, useClass: AramoExceptionFilter },
         { provide: CommercialChangeRequestService, useValue: h.changeRequests },
         { provide: CommercialConversionService, useValue: h.conversions },
+        { provide: CommercialApplyService, useValue: h.apply },
       ],
     }).compile();
     app = moduleRef.createNestApplication({ logger: false });
@@ -230,5 +234,41 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C2 — the co
     const tenantTier = await request(app.getHttpServer()).post(`${BASE}/${nc5}/convert`).set('Authorization', `Bearer ${await token('commercial_ops', 'recruiter')}`).send({});
     expect(tenantTier.status).toBe(403);
     expect((await request(app.getHttpServer()).post(`${BASE}/not-a-uuid/convert`).set('Authorization', `Bearer ${await token('commercial_ops')}`).send({})).status).toBe(400);
+  });
+
+  // Runs LAST: it activates the v2 apply-deadline fixture (v1 + apply_expiry_hours), which every later request would snapshot.
+  it('FIX1-RI-EXPIRED (O-D4-2) the apply-deadline refusal is spelled ONE way on both apply routes: POST …/apply and POST …/convert both answer 409 COMMERCIAL_CHANGE_REQUEST_CONFLICT, details.reason apply_expired, the same explanation, no details.refusal — at the expiring attempt and on a later attempt', async () => {
+    const content = { ...(seededPolicyV1().content as Record<string, unknown>), apply_expiry_hours: 72 };
+    await activatePolicyV2(pg, content, commercialPolicyChecksum(content));
+    const tc = await tenant();
+    const conv = await approved(tc, await toSelfService(await row(tc, 'MANUAL')));
+    const to = await tenant();
+    const c = await post('commercial_ops', BASE, { action_type: 'SUBSCRIPTION_OPEN', tenant_id: to, product_key: 'sign', payload: { plan_key: INCLUDED, plan_version_id: await version(INCLUDED), replaces_subscription_id: null }, reason: 'fix1 expiry', idempotency_key: key() });
+    expect(c.status, JSON.stringify(c.body)).toBe(201);
+    const open = c.body.request.id as string;
+    expect((await post('commercial_ops', `${BASE}/${open}/submit`)).status).toBe(200);
+    expect((await post('finance_admin', `${BASE}/${open}/approvals`, { step_index: 0 })).status).toBe(201);
+    // Test-only: move both final approvals 73 h into the past (triggers off for this one statement).
+    await pg.query('BEGIN');
+    await pg.query(`SET LOCAL session_replication_role = replica`);
+    await pg.query(`UPDATE subscription."CommercialChangeRequest" SET approved_at = approved_at - interval '73 hours' WHERE id = ANY($1::uuid[])`, [[conv, open]]);
+    await pg.query('COMMIT');
+    const shape = (res: request.Response, id: string) => {
+      const d = { ...(res.body?.error?.details ?? {}) } as Record<string, unknown>;
+      if (d['change_request_id'] === id) d['change_request_id'] = '<id>';
+      return { status: res.status, code: res.body?.error?.code, details: d };
+    };
+    const a1 = shape(await post('commercial_ops', `${BASE}/${open}/apply`), open);
+    const c1 = shape(await post('commercial_ops', `${BASE}/${conv}/convert`), conv);
+    expect(a1).toMatchObject({ status: 409, code: 'COMMERCIAL_CHANGE_REQUEST_CONFLICT', details: { reason: 'apply_expired', state: 'APPLY_EXPIRED', expired_by_this_attempt: true } });
+    expect(typeof a1.details['explanation']).toBe('string');
+    expect('refusal' in a1.details).toBe(false);
+    expect(c1).toEqual(a1);
+    const a2 = shape(await post('commercial_ops', `${BASE}/${open}/apply`), open);
+    const c2 = shape(await post('commercial_ops', `${BASE}/${conv}/convert`), conv);
+    expect(a2).toMatchObject({ status: 409, code: 'COMMERCIAL_CHANGE_REQUEST_CONFLICT', details: { reason: 'apply_expired', state: 'APPLY_EXPIRED' } });
+    expect('refusal' in a2.details).toBe(false);
+    expect(c2).toEqual(a2);
+    for (const id of [open, conv]) expect((await pg.query(`SELECT state FROM subscription."CommercialChangeRequest" WHERE id = $1`, [id])).rows[0].state).toBe('APPLY_EXPIRED');
   });
 });

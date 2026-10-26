@@ -152,24 +152,15 @@ export type ConversionFailureCode =
   | 'ONE_OPEN_BASE_VIOLATION'
   | 'UNEXPECTED';
 
-/** A refusal of the apply itself: no state change, no domain write (one audit row). */
 // Merge train TD-MERGE-21 (TD-C2-7): the apply deadline uses CCP-A6-R's names — the policy key
 // `apply_expiry_hours`, read and verified from the SNAPSHOTTED policy by
-// CommercialChangeRequestService.applyDeadlineOf, and the refusal code `APPLY_EXPIRED`. C2's own
-// key (`apply_deadline_hours`), parser and codes are removed. A CONVERSION is refused at its
-// deadline with no state change (the guard admits APPLY_EXPIRED only for the A6 / B2-backend
-// action types), and an APPLYING conversion (pending at the provider) never expires.
-export type ConversionRefusalCode = 'APPLY_EXPIRED';
-
-export class ConversionApplyRefusedError extends Error {
-  constructor(
-    readonly reason: ConversionRefusalCode,
-    readonly detail: Record<string, unknown> = {},
-  ) {
-    super(`conversion apply refused (${reason})`);
-    this.name = 'ConversionApplyRefusedError';
-  }
-}
+// CommercialChangeRequestService.applyDeadlineOf. A CONVERSION in APPLYING (pending at the provider)
+// never expires. CCP-FIX1 (O-D4-2): the deadline refusal is no longer a conversion-only error class
+// (`ConversionApplyRefusedError('APPLY_EXPIRED')`, reported as reason `apply_refused` + refusal
+// `APPLY_EXPIRED`); the conversion apply throws exactly the A6-R refusal
+// (`CommercialChangeRequestError('APPLY_EXPIRED')`, commercial-apply-records.ts), so both apply routes
+// report code COMMERCIAL_CHANGE_REQUEST_CONFLICT, details.reason `apply_expired`, the same
+// details.explanation and no details.refusal.
 
 export class ConversionApplyFailedError extends Error {
   constructor(

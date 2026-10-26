@@ -21,6 +21,8 @@ export interface PolicyContent {
   support_extension_cumulative_window_days: number;
   approval_expiry_hours: number;
   past_due_grace_days: number;
+  /** CCP-FIX1 (Charter Amendment A1 AD-1): optional; present only when the version declares an apply deadline. */
+  apply_expiry_hours?: number;
 }
 export type PolicyEditableKey = Exclude<keyof PolicyContent, 'format_version' | 'currency'>;
 

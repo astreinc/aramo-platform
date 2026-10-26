@@ -12792,12 +12792,32 @@
     {
       "from": "doc/ccp/program-gate-20261025.md",
       "status": "unscoped",
+      "to": "libs/entitlement/src/tests/fixtures/ccp-a7-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/program-gate-20261025.md",
+      "status": "unscoped",
       "to": "libs/identity/src/tests/fixtures/ccp-a1-compensating.sql"
     },
     {
       "from": "doc/ccp/program-gate-20261025.md",
       "status": "unscoped",
+      "to": "libs/identity/src/tests/fixtures/ccp-a9-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/program-gate-20261025.md",
+      "status": "unscoped",
       "to": "libs/subscription/src/tests/fixtures/ccp-a11-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/program-gate-20261025.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-a2-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/program-gate-20261025.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-a3-compensating.sql"
     },
     {
       "from": "doc/ccp/program-gate-20261025.md",
@@ -12812,7 +12832,52 @@
     {
       "from": "doc/ccp/program-gate-20261025.md",
       "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-a6-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/program-gate-20261025.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-a6r-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/program-gate-20261025.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-a7-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/program-gate-20261025.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-a8-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/program-gate-20261025.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-a9-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/program-gate-20261025.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-b2-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/program-gate-20261025.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-b4-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/program-gate-20261025.md",
+      "status": "unscoped",
       "to": "libs/subscription/src/tests/fixtures/ccp-b5r-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/program-gate-20261025.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-c1-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/program-gate-20261025.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-c2-compensating.sql"
     },
     {
       "from": "doc/ccp/program-gate-20261025.md",
@@ -12823,6 +12888,11 @@
       "from": "doc/ccp/program-gate-20261025.md",
       "status": "unscoped",
       "to": "libs/subscription/src/tests/fixtures/ccp-d1-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/program-gate-20261025.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-d3-compensating.sql"
     },
     {
       "from": "doc/ccp/program-gate-20261025.md",
@@ -17643,6 +17713,81 @@
       "from": "doc/ccp/slices/CCP-D5-acceptance.md",
       "status": "unscoped",
       "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-FIX1-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/dto/commercial-governance.dto.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-FIX1-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-b5-governance-routes.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-FIX1-acceptance.md",
+      "status": "unscoped",
+      "to": "deploy/jiti-tsconfig-runner.mjs"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-FIX1-acceptance.md",
+      "status": "unscoped",
+      "to": "deploy/migrate-prod.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-FIX1-acceptance.md",
+      "status": "unscoped",
+      "to": "deploy/migrate-prod.test.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-FIX1-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-FIX1-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/program-gate-20261025.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-FIX1-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/runbook-dry-runs-20261025.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-FIX1-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-D5-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-FIX1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/entitlement/src/tests/fixtures/ccp-a7-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-FIX1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/tests/fixtures/ccp-a9-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-FIX1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/scripts/ccp-bootstrap-platform-owner.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-FIX1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-fix1-script-runner.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-FIX1-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-full-compensation-chain.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-FIX1-acceptance.md",
+      "status": "unscoped",
+      "to": "tools/ensure-intelligence-db.sh"
     },
     {
       "from": "doc/ccp/slices/CCP-R3-acceptance.md",
@@ -28127,17 +28272,42 @@
     {
       "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
       "status": "unscoped",
-      "to": "doc/ccp/slices/CCP-A2-acceptance.md"
-    },
-    {
-      "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
-      "status": "unscoped",
       "to": "doc/runbooks/RELEASE-box.md"
     },
     {
       "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
       "status": "unscoped",
+      "to": "libs/entitlement/src/tests/fixtures/ccp-a7-compensating.sql"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
+      "status": "unscoped",
       "to": "libs/identity/src/tests/fixtures/ccp-a1-compensating.sql"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/tests/fixtures/ccp-a1a1-compensating.sql"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/tests/fixtures/ccp-a9-compensating.sql"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-full-compensation-chain.integration.spec.ts"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-a2-compensating.sql"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-a3-compensating.sql"
     },
     {
       "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
@@ -28152,7 +28322,72 @@
     {
       "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
       "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-a6-compensating.sql"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-a6r-compensating.sql"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-a7-compensating.sql"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-a8-compensating.sql"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-a9-compensating.sql"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-alert-type-union-compensating.sql"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-b2-compensating.sql"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-b4-compensating.sql"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
+      "status": "unscoped",
       "to": "libs/subscription/src/tests/fixtures/ccp-b5r-compensating.sql"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-c1-compensating.sql"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-c2-compensating.sql"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-c4-compensating.sql"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-c7-compensating.sql"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-command-guard-union-compensating.sql"
     },
     {
       "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
@@ -28167,7 +28402,17 @@
     {
       "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
       "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-d3-compensating.sql"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
+      "status": "unscoped",
       "to": "libs/subscription/src/tests/fixtures/ccp-guard-union-compensating.sql"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-r3-alert-compensating.sql"
     },
     {
       "from": "doc/runbooks/RUNBOOK-ccp-platform-owner-bootstrap.md",
@@ -30046,6 +30291,12 @@
       "to": "tools/sign-naming/naming.pg-integration.sh"
     },
     {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/entitlement/src/tests/fixtures/ccp-a7-compensating.sql",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-A7-acceptance.md"
+    },
+    {
       "from": "libs/events/prisma/schema.prisma",
       "status": "unscoped",
       "to": "doc/05-conventions.md"
@@ -30489,6 +30740,12 @@
       "from": "libs/identity/src/tests/fixtures/ccp-a1a1-compensating.sql",
       "status": "excluded",
       "to": "doc/ccp/slices/CCP-R3-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/fixtures/ccp-a9-compensating.sql",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-A9-acceptance.md"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -32057,6 +32314,11 @@
       "to": "libs/subscription/src/tests/ccp-command-guard-union.integration.spec.ts"
     },
     {
+      "from": "libs/subscription/prisma/migrations/20261029000100_ccp_alert_type_union/migration.sql",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/observability/commercial-alert.ts"
+    },
+    {
       "from": "libs/subscription/project.json",
       "status": "unscoped",
       "to": "libs/subscription/src/index.ts"
@@ -32065,6 +32327,11 @@
       "from": "libs/subscription/project.json",
       "status": "unscoped",
       "to": "libs/subscription/tsconfig.lib.json"
+    },
+    {
+      "from": "libs/subscription/scripts/ccp-bootstrap-platform-owner.ts",
+      "status": "unscoped",
+      "to": "deploy/jiti-tsconfig-runner.mjs"
     },
     {
       "from": "libs/subscription/scripts/ccp-bootstrap-platform-owner.ts",
@@ -32586,6 +32853,108 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-fix1-script-runner.integration.spec.ts",
+      "status": "excluded",
+      "to": "deploy/jiti-tsconfig-runner.mjs"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-fix1-script-runner.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/prisma/ccp-astre-backfill.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-fix1-script-runner.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/prisma/ccp-astre-fact-check.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-fix1-script-runner.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/prisma/check-checkout-cutover.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-fix1-script-runner.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/prisma/check-provider-price-parity.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-fix1-script-runner.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/prisma/usage-rollup.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-fix1-script-runner.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/scripts/ccp-bootstrap-platform-owner.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-full-compensation-chain.integration.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/program-gate-20261025.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-full-compensation-chain.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/entitlement/prisma/migrations/20261026000000_ccp_a7_entitlement_revoke_provenance/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-full-compensation-chain.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/entitlement/src/tests/fixtures/ccp-a7-compensating.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-full-compensation-chain.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261024120000_ccp_a1_commercial_role_catalog/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-full-compensation-chain.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261025180000_ccp_a9_platform_last_owner_invariant/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-full-compensation-chain.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261028060000_ccp_a1a1_finance_amount_scope/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-full-compensation-chain.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/src/tests/fixtures/ccp-a1-compensating.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-full-compensation-chain.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/src/tests/fixtures/ccp-a1a1-compensating.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-full-compensation-chain.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/src/tests/fixtures/ccp-a9-compensating.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-full-compensation-chain.integration.spec.ts",
+      "status": "excluded",
+      "to": "tools/db-sync-local.sh"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/subscription/src/tests/ccp-merge-train-compensation.integration.spec.ts",
       "status": "excluded",
       "to": "doc/ccp/program-gate-20261025.md"
@@ -32658,6 +33027,18 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/fixtures/ccp-a2-compensating.sql",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-A2-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/fixtures/ccp-a3-compensating.sql",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-A3-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/subscription/src/tests/fixtures/ccp-a4-compensating.sql",
       "status": "excluded",
       "to": "doc/ccp/slices/CCP-A4-pre-execution.md"
@@ -32670,15 +33051,75 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/fixtures/ccp-a6-compensating.sql",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-A6-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/fixtures/ccp-a6r-compensating.sql",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-A6-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/fixtures/ccp-a7-compensating.sql",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-A7-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/fixtures/ccp-a8-compensating.sql",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-A8-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/fixtures/ccp-a9-compensating.sql",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-A9-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/fixtures/ccp-b2-compensating.sql",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-B2-backend-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/fixtures/ccp-b4-compensating.sql",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-B4-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/subscription/src/tests/fixtures/ccp-b5r-compensating.sql",
       "status": "excluded",
       "to": "doc/ccp/slices/CCP-B5-acceptance.md"
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/fixtures/ccp-c1-compensating.sql",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-C1-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/fixtures/ccp-c2-compensating.sql",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-C2-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/subscription/src/tests/fixtures/ccp-d1-compensating.sql",
       "status": "excluded",
       "to": "doc/ccp/slices/CCP-D1-pre-execution.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/fixtures/ccp-d3-compensating.sql",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-D3-acceptance.md"
     },
     {
       "excludedBy": "src/tests/**/*",

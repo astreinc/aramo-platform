@@ -21,15 +21,16 @@ import { SubscriptionModule } from '../lib/subscription.module.js';
 
 // CCP-R3 re-asserts the type CHECK with ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION: the latest CHECK
 // body is the R3 one (the D3 migration's original CHECK is kept verbatim in its file).
-const MIGRATION = resolve(__dirname, '../../prisma/migrations/20261028050000_ccp_r3_entitlement_alert/migration.sql');
+// Merge train TD-MERGE-ALERT-1: the last migration that writes the type CHECK.
+const MIGRATION = resolve(__dirname, '../../prisma/migrations/20261029000100_ccp_alert_type_union/migration.sql');
 
 const cond = (alert_type: DetectedCondition['alert_type'], subject_id: string): DetectedCondition => ({ alert_type, subject_id, tenant_id: null, product_key: null, detail: 'd', evidence: {}, threshold_minutes: null });
 
 describe('CCP-D3 alert model', () => {
-  it('D3-U-1 the closed set: 9 types in 2 families (CCP-R3 adds ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION), each pinned to one subject kind, equal to the migration type CHECK', () => {
-    expect(COMMERCIAL_ALERT_TYPES).toHaveLength(9);
+  it('D3-U-1 the closed set: 11 types in 2 families (CCP-D3 8, CCP-R3 ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION, CCP-FIX1 APPLY_DEADLINE_NEARING / APPLY_DEADLINE_PASSED), each pinned to one subject kind, equal to the type CHECK of the last migration that writes it (the integrator-owned alert-type union)', () => {
+    expect(COMMERCIAL_ALERT_TYPES).toHaveLength(11);
     expect(commercialAlertTypesOf('BILLING')).toEqual(['COMMAND_PENDING_PROVIDER_STUCK', 'COMMAND_FAILED', 'HELD_ACTIVATION', 'WEBHOOK_INBOX_FAILED', 'USAGE_NOT_RECONCILED', 'ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION']);
-    expect(commercialAlertTypesOf('APPROVAL')).toEqual(['APPLY_FAILED', 'APPROVAL_NEARING_EXPIRY', 'APPROVAL_PAST_EXPIRY']);
+    expect(commercialAlertTypesOf('APPROVAL')).toEqual(['APPLY_FAILED', 'APPROVAL_NEARING_EXPIRY', 'APPROVAL_PAST_EXPIRY', 'APPLY_DEADLINE_NEARING', 'APPLY_DEADLINE_PASSED']);
     const sql = readFileSync(MIGRATION, 'utf8');
     const triples = [...sql.matchAll(/\("alert_type" = '([A-Z_]+)' AND "family" = '([A-Z]+)' AND "subject_kind" = '([a-z_]+)'\)/g)].map((m) => [m[1], m[2], m[3]]);
     expect(triples).toEqual(COMMERCIAL_ALERT_TYPES.map((t) => [t, COMMERCIAL_ALERT_DEFINITIONS[t].family, COMMERCIAL_ALERT_DEFINITIONS[t].subject_kind]));

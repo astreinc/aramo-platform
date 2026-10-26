@@ -21,11 +21,13 @@ ALTER TABLE "subscription"."Plan" DROP CONSTRAINT "Plan_id_product_key_key";
 ALTER TABLE "subscription"."TenantSubscription" DROP COLUMN "composition_role", DROP COLUMN "product_key";
 ALTER TABLE "subscription"."Plan" DROP COLUMN "product_key";
 -- CCP-A3 interplay: restore the A3 interim CHECK when the A4 registry CHECK is present (no-op otherwise).
+-- Exactly as 20261025120000_ccp_a3_change_request_approval wrote it: NULL stays admitted (catalog, policy
+-- and role requests carry no product). CCP FIX1 TD-D5-4 corrected the earlier sign-only form.
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM pg_constraint WHERE conname = 'CommercialChangeRequest_product_key_registry_check') THEN
     ALTER TABLE "subscription"."CommercialChangeRequest" DROP CONSTRAINT "CommercialChangeRequest_product_key_registry_check";
-    ALTER TABLE "subscription"."CommercialChangeRequest" ADD CONSTRAINT "CommercialChangeRequest_product_key_check" CHECK ("product_key" = 'sign');
+    ALTER TABLE "subscription"."CommercialChangeRequest" ADD CONSTRAINT "CommercialChangeRequest_product_key_check" CHECK ("product_key" IS NULL OR "product_key" IN ('sign'));
   END IF;
 END
 $$;

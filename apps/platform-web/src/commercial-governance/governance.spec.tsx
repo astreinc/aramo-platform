@@ -152,6 +152,16 @@ describe('CCP-B5 governance model', () => {
     );
   });
 
+  it('FIX1-W-1 the optional apply deadline (Charter Amendment A1 AD-1): no row while neither version declares it; listed as "Not set" in the draft editor; shown and diffed once a version declares it', () => {
+    expect(policyRows(DRAFT, ACTIVE).map((r) => r.field.key)).not.toContain('apply_expiry_hours');
+    const editor = policyRows(DRAFT, ACTIVE, { includeOptional: true });
+    expect(editor.at(-1)).toMatchObject({ active: 'Not set', mine: 'Not set', declared: false, changed: false });
+    expect(editor.at(-1)?.field).toMatchObject({ key: 'apply_expiry_hours', label: 'Apply deadline (TTL)', min: 1, max: 87_600, optional: true });
+    const v2 = version({ id: V2, version_number: 2, status: 'DRAFT', content: { ...CONTENT, apply_expiry_hours: 72 } });
+    expect(policyRows(v2, ACTIVE).at(-1)).toMatchObject({ active: 'Not set', mine: '72 h', raw: 72, declared: true, changed: true });
+    expect(activationDiff(v2, ACTIVE)).toEqual([['Apply deadline (TTL)', 'Not set', '72 h']]);
+  });
+
   it('B5-W-2 a role change is one request per toggled role; removing Platform owner from the last owner is refused', () => {
     const last = op({
       user_id: 'u-arjun',
@@ -277,6 +287,25 @@ describe('CCP-B5 PolicyView (handoff §5.6)', () => {
     });
   });
 
+  it('FIX1-W-2 the draft editor sets the optional apply deadline through PATCH; left blank it stays unset (nothing sent)', async () => {
+    vi.spyOn(governanceApi, 'listPolicyVersions').mockResolvedValue(
+      list({ can_author: true, can_request_activation: true }),
+    );
+    vi.spyOn(governanceApi, 'listOperators').mockResolvedValue(roster([]));
+    const update = vi
+      .spyOn(governanceApi, 'updatePolicyDraft')
+      .mockResolvedValue({ version: { ...DRAFT, content: { ...DRAFT.content!, apply_expiry_hours: 72 } } });
+    render(<PolicyView />);
+    const ttl = await screen.findByLabelText('Apply deadline (TTL)');
+    expect(ttl).toHaveValue(null);
+    expect(ttl).toHaveAttribute('placeholder', 'Not set');
+    fireEvent.blur(ttl);
+    expect(update).not.toHaveBeenCalled();
+    fireEvent.change(ttl, { target: { value: '72' } });
+    fireEvent.blur(ttl);
+    await waitFor(() => expect(update).toHaveBeenCalledWith(V2, { content: { apply_expiry_hours: 72 } }));
+  });
+
   it('B5-W-5 platform_owner can draft but not request activation (TD-A3-5): the button is disabled with the reason; read_only_auditor sees the view-only note and no inputs', async () => {
     vi.spyOn(governanceApi, 'listOperators').mockResolvedValue(roster([]));
     const lv = vi
@@ -286,7 +315,8 @@ describe('CCP-B5 PolicyView (handoff §5.6)', () => {
     const btn = await screen.findByRole('button', { name: 'Request activation…' });
     expect(btn).toBeDisabled();
     expect(btn).toHaveAttribute('title', 'Needs the Finance admin role.');
-    expect(screen.getAllByRole('spinbutton')).toHaveLength(7);
+    // CCP-FIX1: 7 design settings + the optional apply deadline in the draft editor.
+    expect(screen.getAllByRole('spinbutton')).toHaveLength(8);
     unmount();
     lv.mockResolvedValue(list({ can_author: false, can_request_activation: false }));
     render(<PolicyView />);

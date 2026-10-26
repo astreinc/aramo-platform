@@ -99,6 +99,11 @@ export interface PolicyField {
   /** Allowed range in UI units (handoff §5.6). */
   readonly min: number;
   readonly max: number;
+  /**
+   * CCP-FIX1 — an OPTIONAL key (absent = not set, never defaulted). Its row is shown when this
+   * version or the active one declares it, or while a draft is being edited.
+   */
+  readonly optional?: boolean;
 }
 
 const id = (v: number): number => v;
@@ -177,28 +182,64 @@ export const POLICY_FIELDS: readonly PolicyField[] = [
     min: 0,
     max: 30,
   },
+  // CCP-FIX1 (D5-DEF-2; Charter Amendment A1 AD-1) — the optional apply deadline. Not in the
+  // CCP-UI v1.0 design (it predates the amendment); the range is the strict policy parser's
+  // (1 … 87,600 h), never a handoff range. Absent = no apply deadline (AD-2).
+  {
+    key: 'apply_expiry_hours',
+    label: 'Apply deadline (TTL)',
+    help: 'An approved request must be applied within this time of its final approval.',
+    toUi: id,
+    fromUi: id,
+    format: (v) => `${v} h`,
+    min: 1,
+    max: 87_600,
+    optional: true,
+  },
 ];
+
+/** The label an optional setting shows when a version does not declare it. */
+export const NOT_SET = 'Not set';
 
 export interface PolicyRow {
   readonly field: PolicyField;
   readonly active: string;
   readonly mine: string;
   readonly raw: number;
+  /** False only for an optional setting this version does not declare (CCP-FIX1). */
+  readonly declared: boolean;
   readonly changed: boolean;
 }
 
-/** The settings table of `v` against the active version (handoff §5.6). */
-export function policyRows(v: PolicyVersion, active: PolicyVersion | undefined): PolicyRow[] {
+/**
+ * The settings table of `v` against the active version (handoff §5.6). An optional setting
+ * (CCP-FIX1) has a row only when `v` or the active version declares it, or when
+ * `includeOptional` (the draft editor) asks for it; an undeclared value reads "Not set".
+ */
+export function policyRows(
+  v: PolicyVersion,
+  active: PolicyVersion | undefined,
+  opts: { includeOptional?: boolean } = {},
+): PolicyRow[] {
   const vc = v.content;
   const ac = active?.content ?? null;
-  return POLICY_FIELDS.map((f) => {
-    const mine = vc === null ? null : f.toUi(vc[f.key]);
-    const act = ac === null ? null : f.toUi(ac[f.key]);
+  const declares = (c: PolicyContent | null, f: PolicyField): boolean =>
+    c !== null && typeof c[f.key] === 'number';
+  return POLICY_FIELDS.filter(
+    (f) => f.optional !== true || opts.includeOptional === true || declares(vc, f) || declares(ac, f),
+  ).map((f) => {
+    const value = (c: PolicyContent | null): number | null | undefined =>
+      c === null ? null : declares(c, f) ? f.toUi(c[f.key] as number) : undefined;
+    const mine = value(vc);
+    const act = value(ac);
+    const show = (x: number | null | undefined): string =>
+      x === null ? '—' : x === undefined ? NOT_SET : f.format(x);
     return {
       field: f,
-      active: act === null ? '—' : f.format(act),
-      mine: mine === null ? '—' : f.format(mine),
+      active: show(act),
+      mine: show(mine),
       raw: mine ?? 0,
+      declared: mine !== null && mine !== undefined,
       changed: mine !== null && act !== null && mine !== act,
     };
   });

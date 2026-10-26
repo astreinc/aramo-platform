@@ -6,7 +6,8 @@ import { BILLING_COMMAND_STATES } from '../billing/billing-provider-command.js';
 import { BILLING_WEBHOOK_INBOX_STATUSES } from '../billing/billing-webhook-inbox.service.js';
 import { RESIDUAL_AUTHORITY_SQL, entitlementGapSubject, entitlementGaps, type ResidualAuthorityKind } from '../billing/entitlement-subscription-gap.js';
 import { GOVERNED_SUBSCRIPTION_OPEN } from '../billing/governed-subscription.js';
-import { COMMERCIAL_CHANGE_REQUEST_STATES } from '../commercial/commercial-change-request.js';
+import { COMMERCIAL_CHANGE_REQUEST_STATES, isApplyExpirable } from '../commercial/commercial-change-request.js';
+import { parseActiveCommercialPolicy } from '../commercial/commercial-policy.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { BASE_COMPOSITION, PRODUCT_KEYS } from '../product-registry.js';
 
@@ -121,6 +122,13 @@ function decodeCursor(cursor: string, filter: string): { at: Date; id: string } 
 }
 
 const iso = (d: Date | null | undefined): string | null => (d === null || d === undefined ? null : d.toISOString());
+/** The apply deadline an APPLY_DEADLINE_* alert recorded in its evidence (null when absent or malformed). */
+function applyDeadlineIn(evidence: unknown): Date | null {
+  const v = (evidence as Record<string, unknown> | null)?.['apply_deadline'];
+  if (typeof v !== 'string') return null;
+  const d = new Date(v);
+  return Number.isNaN(d.getTime()) ? null : d;
+}
 const minutesBetween = (from: Date, to: Date): number => Math.floor((to.getTime() - from.getTime()) / 60_000);
 
 function zeroCounts<K extends string>(keys: readonly K[]): Record<K, number> {
@@ -440,6 +448,75 @@ export class CommercialAlertService {
         threshold_minutes: null,
       });
     }
+
+    // APPLY_DEADLINE_NEARING / APPLY_DEADLINE_PASSED (CCP-FIX1, closes TD-D3-10) — APPROVED or
+    // APPLY_FAILED requests whose SNAPSHOTTED policy version declares apply_expiry_hours (AD-1, AD-2).
+    // The deadline is computed exactly as CommercialChangeRequestService.applyDeadlineOf computes it:
+    // final approval + the snapshotted version's apply_expiry_hours, the version read through the
+    // strict parser and its checksum equal to the request's snapshot. A request under a version
+    // without the key (v1) has no deadline and is never alerted; a snapshot that cannot be read or
+    // does not match is not alerted here (its apply is refused INTEGRITY). Half-open (AD-3): at the
+    // deadline it has passed. Never APPLYING (AD-4). Both types share one source (and one cap).
+    const deadlineRows = await tx.commercialChangeRequest.findMany({
+      where: { state: { in: ['APPROVED', 'APPLY_FAILED'] }, approved_at: { not: null } },
+      select: { id: true, action_type: true, kind: true, state: true, tenant_id: true, product_key: true, approved_at: true, policy_version_id: true, policy_checksum: true },
+      orderBy: [{ approved_at: 'asc' }, { id: 'asc' }],
+      take: cap + 1,
+    });
+    if (deadlineRows.length > cap) {
+      sources.APPLY_DEADLINE_NEARING = 'truncated';
+      sources.APPLY_DEADLINE_PASSED = 'truncated';
+    }
+    const expirable = deadlineRows.slice(0, cap).filter((r) => isApplyExpirable(r.action_type, r.kind));
+    const versionIds = [...new Set(expirable.map((r) => r.policy_version_id))];
+    const versions = new Map((await tx.commercialPolicyVersion.findMany({ where: { id: { in: versionIds } } })).map((v) => [v.id, v]));
+    const hoursOf = new Map<string, { hours: number | undefined; checksum: string } | null>();
+    for (const id of versionIds) {
+      const v = versions.get(id);
+      try {
+        if (v === undefined || v.status === 'DRAFT') throw new Error('unreadable');
+        const p = parseActiveCommercialPolicy({ ...v, status: 'ACTIVE' });
+        hoursOf.set(id, { hours: p.content.apply_expiry_hours, checksum: p.checksum });
+      } catch {
+        hoursOf.set(id, null);
+      }
+    }
+    const applyLeadUntil = at.getTime() + th.approval_expiry_lead_minutes * 60_000;
+    for (const r of expirable) {
+      const snap = hoursOf.get(r.policy_version_id);
+      if (snap === null || snap === undefined || snap.hours === undefined || snap.checksum !== r.policy_checksum) continue;
+      const approved = r.approved_at as Date;
+      const deadline = new Date(approved.getTime() + snap.hours * 3_600_000);
+      const evidence = {
+        state: r.state,
+        action_type: r.action_type,
+        final_approved_at: iso(approved),
+        apply_deadline: iso(deadline),
+        apply_expiry_hours: snap.hours,
+        policy_version_id: r.policy_version_id,
+      };
+      if (deadline.getTime() <= at.getTime()) {
+        out.push({
+          alert_type: 'APPLY_DEADLINE_PASSED',
+          subject_id: r.id,
+          tenant_id: r.tenant_id,
+          product_key: r.product_key,
+          detail: `${r.action_type} still ${r.state} ${minutesBetween(deadline, at)} min after its apply deadline (apply authority has expired; a fresh request is needed)`,
+          evidence,
+          threshold_minutes: null,
+        });
+      } else if (deadline.getTime() <= applyLeadUntil) {
+        out.push({
+          alert_type: 'APPLY_DEADLINE_NEARING',
+          subject_id: r.id,
+          tenant_id: r.tenant_id,
+          product_key: r.product_key,
+          detail: `${r.action_type} ${r.state} must be applied within ${Math.ceil((deadline.getTime() - at.getTime()) / 60_000)} min (lead ${th.approval_expiry_lead_minutes} min)`,
+          evidence,
+          threshold_minutes: th.approval_expiry_lead_minutes,
+        });
+      }
+    }
     return out;
   }
 
@@ -465,6 +542,7 @@ export class CommercialAlertService {
           if (r === undefined) d = 'change request no longer present';
           else if (a.alert_type === 'APPROVAL_NEARING_EXPIRY' && r.state === 'PENDING_APPROVAL' && r.expires_at !== null && r.expires_at <= at) d = 'expiry reached (see APPROVAL_PAST_EXPIRY)';
           else if (a.alert_type === 'APPROVAL_NEARING_EXPIRY' && r.state === 'PENDING_APPROVAL') d = `no longer within the ${th.approval_expiry_lead_minutes} min lead`;
+          else if (a.alert_type === 'APPLY_DEADLINE_NEARING' && (r.state === 'APPROVED' || r.state === 'APPLY_FAILED') && applyDeadlineIn(a.evidence) !== null && (applyDeadlineIn(a.evidence) as Date) <= at) d = 'apply deadline reached (see APPLY_DEADLINE_PASSED)';
           else d = `change request state now ${r.state}`;
           break;
         }

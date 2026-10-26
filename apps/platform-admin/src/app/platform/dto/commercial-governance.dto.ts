@@ -21,6 +21,8 @@ export class PolicyDraftContentPatchDto {
   @IsOptional() @IsInt() support_extension_cumulative_window_days?: number;
   @IsOptional() @IsInt() approval_expiry_hours?: number;
   @IsOptional() @IsInt() past_due_grace_days?: number;
+  /** CCP-FIX1 (D5-DEF-2; Charter Amendment A1 AD-1) — the optional apply deadline; the strict parser bounds it. */
+  @IsOptional() @IsInt() apply_expiry_hours?: number;
 }
 
 /** PATCH /platform/commercial/policy-versions/:id — edit a DRAFT. */
@@ -52,6 +54,8 @@ export interface CommercialPolicyContentDto {
   support_extension_cumulative_window_days: number;
   approval_expiry_hours: number;
   past_due_grace_days: number;
+  /** Charter Amendment A1 (AD-1) — present only when the version declares an apply deadline. */
+  apply_expiry_hours?: number;
 }
 
 export interface CommercialPolicyVersionDto {

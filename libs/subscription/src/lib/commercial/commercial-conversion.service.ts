@@ -9,6 +9,7 @@ import { PrismaService } from '../prisma/prisma.service.js';
 import { BASE_COMPOSITION, assertProductKey, type ProductKey } from '../product-registry.js';
 
 import type { CommercialChangeApplicationRow } from './commercial-apply.service.js';
+import { applyExpiredNow, explanationOf } from './commercial-apply-records.js';
 import { CommercialAuditRepository } from './commercial-audit.repository.js';
 import { CommercialApplyRefusedError } from './commercial-approval-eligibility.js';
 import { COMMERCIAL_ACTIONS } from './commercial-change-request.js';
@@ -26,7 +27,6 @@ import {
   CONVERSION_STEP_CANCEL_HELD,
   CONVERSION_STEP_END_SELF_SERVICE,
   ConversionApplyFailedError,
-  ConversionApplyRefusedError,
   type ConversionDirection,
   type ConversionPayload,
   type ConversionReleaseState,
@@ -168,7 +168,8 @@ export class CommercialConversionService {
         // else (never reached from APPLYING, above): an APPLY_EXPIRED request is refused; an
         // APPROVED / APPLY_FAILED one at or past its deadline becomes APPLY_EXPIRED NOW (its one
         // APPLY_EXPIRED event is the record; the slot is released) and that commits.
-        if (req.state === 'APPLY_EXPIRED') throw new ConversionApplyRefusedError('APPLY_EXPIRED', { state: req.state });
+        // CCP-FIX1 (O-D4-2): the A6-R refusal, byte-for-byte (code APPLY_EXPIRED → HTTP reason apply_expired).
+        if (req.state === 'APPLY_EXPIRED') throw new CommercialChangeRequestError('APPLY_EXPIRED', explanationOf('APPLY_EXPIRED'), { state: req.state });
         if (await this.changeRequests.expireApplyIfDue(tx, req, this.now(), ctx)) {
           after.expired_now = true;
           return;
@@ -195,7 +196,7 @@ export class CommercialConversionService {
         await this.requestProviderEnd(tx, applying, p, tenant_id, product_key, actor, ctx, now);
       }, TX_OPTIONS);
     } catch (e) {
-      if (e instanceof CommercialApplyRefusedError || e instanceof CommercialChangeRequestError || e instanceof ConversionApplyRefusedError) {
+      if (e instanceof CommercialApplyRefusedError || e instanceof CommercialChangeRequestError) {
         await this.auditRefusal(actor, head, e, ctx);
         throw e;
       }
@@ -210,7 +211,7 @@ export class CommercialConversionService {
       throw await this.recordFailure(actor, id, tenant_id, failure, ctx);
     }
     // AD-6 — the expiry committed above is recorded by its one APPLY_EXPIRED event (not audited again).
-    if (after.expired_now) throw new ConversionApplyRefusedError('APPLY_EXPIRED', { state: 'APPLY_EXPIRED', expired_by_this_attempt: true });
+    if (after.expired_now) throw applyExpiredNow(head);
     // C-29 — the release adopting a held activation: re-fetch the provider subscription (outside any
     // transaction; authoritative provider state) so the applying transaction converts it. A provider
     // failure leaves the release RELEASED: the next webhook or re-fetch converts it before expiry.
@@ -440,7 +441,7 @@ export class CommercialConversionService {
     }
   }
 
-  private async auditRefusal(actor: CommercialActor, req: CommercialChangeRequestRow, e: CommercialApplyRefusedError | CommercialChangeRequestError | ConversionApplyRefusedError, ctx: CommercialCallContext): Promise<void> {
+  private async auditRefusal(actor: CommercialActor, req: CommercialChangeRequestRow, e: CommercialApplyRefusedError | CommercialChangeRequestError, ctx: CommercialCallContext): Promise<void> {
     const refusal = e instanceof CommercialChangeRequestError ? e.code : e.reason;
     const detail = e instanceof CommercialChangeRequestError ? e.details : e.detail;
     try {

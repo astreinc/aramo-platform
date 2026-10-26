@@ -2327,7 +2327,6 @@
       "CommercialSubscriptionReadService",
       "ContractRepository",
       "ConversionApplyFailedError",
-      "ConversionApplyRefusedError",
       "D9_STATEMENT_VERSION",
       "DAY_WINDOW_MS",
       "DOMAIN_NOT_AUTHORITATIVE",
@@ -7670,6 +7669,30 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-d3-operational-alerts.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-fix1-apply-deadline-alerts.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-fix1-policy-apply-deadline.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-fix1-script-runner.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-full-compensation-chain.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },

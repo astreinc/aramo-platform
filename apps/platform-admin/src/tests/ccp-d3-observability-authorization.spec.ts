@@ -111,7 +111,7 @@ const APPROVAL_METRICS = {
   change_requests_by_state: { DRAFT: 0, PENDING_APPROVAL: 2, APPROVED: 1, APPLYING: 0, APPLIED: 5, APPLY_FAILED: 1, REJECTED: 0, EXPIRED: 1, WITHDRAWN: 0 },
   pending_approval_nearing_expiry: 1,
   pending_approval_past_expiry: 1,
-  open_alerts_by_type: { APPLY_FAILED: 1, APPROVAL_NEARING_EXPIRY: 1, APPROVAL_PAST_EXPIRY: 1 },
+  open_alerts_by_type: { APPLY_FAILED: 1, APPROVAL_NEARING_EXPIRY: 1, APPROVAL_PAST_EXPIRY: 1, APPLY_DEADLINE_NEARING: 0, APPLY_DEADLINE_PASSED: 0 },
   thresholds: THRESHOLDS,
 };
 
