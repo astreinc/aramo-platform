@@ -29737,6 +29737,31 @@
     },
     { "from": "infrastructure/README.md", "status": "unscoped", "to": "doc/step4-compute-iac.md" },
     {
+      "from": "infrastructure/cognito-native-client/README.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-sign-mobile.md"
+    },
+    {
+      "from": "infrastructure/cognito-native-client/README.md",
+      "status": "unscoped",
+      "to": "infrastructure/cognito-triggers/CUTOVER.md"
+    },
+    {
+      "from": "infrastructure/cognito-native-client/main.tf",
+      "status": "unscoped",
+      "to": "libs/auth-core/src/lib/native-auth.service.ts"
+    },
+    {
+      "from": "infrastructure/cognito-native-client/main.tf",
+      "status": "unscoped",
+      "to": "mobile/sign/src/auth/authorize.ts"
+    },
+    {
+      "from": "infrastructure/cognito-triggers/CUTOVER.md",
+      "status": "unscoped",
+      "to": "apps/auth-service/src/app/auth/identity-principal-directory.adapter.ts"
+    },
+    {
       "from": "infrastructure/cognito-triggers/CUTOVER.md",
       "status": "unscoped",
       "to": "infrastructure/cognito-triggers/pre-signup/v2/harness/replay.test.mjs"
@@ -29745,6 +29770,11 @@
       "from": "infrastructure/cognito-triggers/CUTOVER.md",
       "status": "unscoped",
       "to": "infrastructure/cognito-triggers/pre-signup/v2/index.test.mjs"
+    },
+    {
+      "from": "infrastructure/cognito-triggers/CUTOVER.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/identity-provider-policy.service.ts"
     },
     {
       "from": "infrastructure/environments/prod/compute.tf",

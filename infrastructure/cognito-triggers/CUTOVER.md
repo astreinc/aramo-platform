@@ -2,7 +2,13 @@
 
 Governing: the Production-First Validation Ruling (Lead Architect, 2026-10-20); `Aramo-AUTH-SIGNIN-1-…-v1_0-LOCKED` R2/R7.
 
-**Nothing below has been run.** Every command in §3 and §4 changes production and needs explicit approval at the cutover checkpoint.
+**Status: §3 executed 2026-10-26 08:26 UTC** under the Lead Architect and PO authorization of 2026-10-26. C1–C7 passed
+and were re-checked immediately before the change. The rollback point is **Version 1**
+(`CodeSha256 P0+kBl0aFjN/BrfJkjE39FkBC0tfEvt9OclsntJt1aY=`); `$LATEST` now runs v2
+(`CodeSha256 J8BKm6/4YBBdYm8dC2zhCXbhQCptZYnj+OWZ/L91M/I=`, built from `685f8ede`). S1–S4 passed. §4 was not needed.
+The evidence report is kept with the Aramo documents, not in this repository.
+
+Every command in §3 and §4 changes production and needs explicit approval at the cutover checkpoint.
 
 ## 1. Design: change the code, never the pool
 
@@ -16,11 +22,38 @@ Governing: the Production-First Validation Ruling (Lead Architect, 2026-10-20); 
 
 Cognito cannot scope a trigger to particular users. Per the ruling, this is therefore a **shared-production cutover**. Its reach is narrow by construction:
 - PreSignUp runs only when Cognito **creates** a user. That means a first federated sign-in, or an admin-created user (`PreSignUp_AdminCreateUser`, which v2 passes through untouched).
-- **Existing users never invoke it.** That covers the 5 `microsoft_*` users, the existing Google link and the 3 native users. Their sign-ins, subjects and links cannot be changed by v2.
+- An **established** provider identity never invokes it: a returning `microsoft_*` user, a returning `google_*` user, the
+  existing Google→Microsoft link and the native users. Their sign-ins, subjects and links cannot be changed by v2.
+- An **existing person** can still invoke it (Lead Architect correction, 2026-10-26). When someone who already has a
+  Cognito user signs in through a provider identity Cognito has never seen (for example, a Microsoft user's first Google
+  sign-in), Cognito creates a new federated user and runs PreSignUp for it. That is exactly the path v2 changes.
 - What changes for **new** federated users:
   - no automatic linking to an existing user with the same email;
   - no manufactured `email_verified`;
   - refusal when the provider has not verified the email.
+
+### Identity cases (Lead Architect, 2026-10-26)
+
+v2 governs the Cognito layer. Whether a new Cognito user reaches an existing **Aramo** user is decided separately, by the
+auth-service email reconcile (`apps/auth-service/src/app/auth/identity-principal-directory.adapter.ts`) and the provider
+policy R2 (`libs/identity/src/lib/identity-provider-policy.service.ts`). Both layers are listed.
+
+| # | Case | PreSignUp runs? | Cognito outcome under v2 | Aramo outcome | Evidence |
+|---|---|---|---|---|---|
+| I-1 | Existing Microsoft identity signs in again | No | Same user, same `sub` | Resolves by sub, unchanged | S1 |
+| I-2 | Existing Google identity signs in again | No | Same user, same `sub` | Resolves by sub, unchanged | S6 |
+| I-3 | New Google identity, email matches an existing Microsoft user | Yes | New, separate Cognito user with its own `sub`; no link; `email_verified` only from Google | Email reconcile runs. **Refused** (`idp_identity_conflict`) when the existing Aramo user's links have a recorded provider. **Linked to the existing Aramo user** when its links are legacy (no recorded provider) and its tenant is not in the enforced-pin cohort: see the gap below | C3 replay (Cognito); S7 (Aramo) |
+| I-4 | New Microsoft identity, email matches an existing Google user | Yes | As I-3, mirrored | As I-3, mirrored | C3 replay; S7 |
+| I-5 | Existing manually linked identities (the Google→Microsoft link) | No | Link untouched; v2 has no code path that edits links | Resolves by sub, unchanged | S2; C3 replay |
+| I-6 | Previously provisioned Aramo user with no Cognito user yet | Yes | New Cognito user, provider-verified email required | Email reconcile links it, subject to R2 and the enforced-pin cohort; no JIT for unknown emails (`user_not_provisioned`) | S5 |
+
+**Aramo-layer gap (found 2026-10-26, needs a ruling; not changed by this cutover).** R2 treats links created before
+AUTH-SIGNIN-1 as legacy and does not refuse a second provider for them. On 2026-10-26 production held 4 federated links:
+1 with a recorded provider and 3 legacy (all `cognito` links, all in BUSINESS tenants, none in an enforced-pin tenant).
+For those 3 users, case I-3/I-4 links the new provider's sign-in to their existing Aramo user, with its tenant
+permissions. This is not a regression from v2: today the deployed trigger links the identity inside Cognito instead.
+v2 removes the Cognito-level link; closing the Aramo-level path (for example, recording the provider on the 3 legacy
+links) is a separate, authorized change.
 
 ## 2. Preconditions (all must hold; record each result)
 
@@ -56,6 +89,14 @@ aws lambda get-function-configuration --function-name "$F" --region "$R" \
 
 ## 4. Rollback (immediately executable; one command, about 10 seconds)
 
+`update-function-code` is not atomic across requests already in flight: a sign-in that starts while the update is
+propagating can run either version. Watch the decision log and the Lambda `Errors` metric through the transition and
+judge by the rollback criteria below, not by the reported update time.
+
+Since the cutover, Version 1 also holds the pre-v2 code, so a rollback can use the published version as a source
+(`aws lambda get-function --function-name "$F:1"`) as well as the backup zip. The pool keeps invoking the unqualified
+ARN either way.
+
 ```bash
 R=us-east-1; F=cognito-pre-signup-auto-link
 aws lambda update-function-code --function-name "$F" --region "$R" \
@@ -81,13 +122,16 @@ aws lambda get-function-configuration --function-name "$F" --region "$R" --query
 |---|---|---|
 | S1 | An Astre Microsoft user signs in at `astre.aramo.ai` (ATS) and at App Home | Signs in. Their `sub` (`aws cognito-idp admin-get-user … --query 'UserAttributes[?Name==\`sub\`]'`) equals the C5 baseline. No `pre-signup-v2` log line for them |
 | S2 | The user with the existing Google→Microsoft link signs in with Microsoft | Same `sub`; `identities` still holds both entries (link preserved, not edited) |
-| S3 | User count and links unchanged after S1–S2 | `aws cognito-idp list-users … --query 'length(Users)'` = 8; no identities changed |
+| S3 | User count and links unchanged after S1–S2 | `aws cognito-idp list-users … --query 'length(Users)'` equals the live count recorded at C5 (9 on 2026-10-26: the 8 backup users plus one `google_*` user created after the backup); no identities changed |
 | S4 | Decision log reachable | `aws logs filter-log-events --region us-east-1 --log-group-name /aws/lambda/cognito-pre-signup-auto-link --filter-pattern '"pre-signup-v2"' --start-time <cutover epoch ms>` shows only expected lines (none from S1–S3) |
 | S5 (optional, creates one Cognito user) | An operator-controlled Google test account that has no Aramo user signs in once on `sign.aramo.ai` | v2 logs `allowed`; Aramo refuses with `user_not_provisioned` (no JIT); no link is made to any existing user. The created Cognito user is listed in the evidence (deleting it needs separate approval) |
+| S6 (optional) | A user whose established identity is `google_*` signs in again (I-2) | Same `sub`; no `pre-signup-v2` log line for them |
+| S7 (optional, creates one Cognito user) | An operator-controlled account of the other provider, whose provider-verified email matches an existing user, signs in once (I-3/I-4) | Cognito: a new, separate user with its own `sub`, no link (v2 logs `allowed`). Aramo: `idp_identity_conflict` when that user's links have a recorded provider; for a legacy-linked user this links to the existing Aramo user (the Aramo-layer gap in §1), so run S7 against a legacy-linked user only after that gap is closed |
 
 ## 6. Not part of this cutover
 
-- Unlinking the existing Google→Microsoft association (pending individual review).
+- Unlinking the existing Google→Microsoft association (preserved, pending separate review).
+- Closing the Aramo-layer legacy-link gap in §1 (needs a ruling).
 - Trimming the function role's Cognito admin permissions (v2 no longer needs them; a separate, later change).
 - Any pool, app-client or provider change.
 - Deploying the new signup code; public signup; live Stripe.
