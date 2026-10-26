@@ -121,7 +121,7 @@
     "reflect-metadata": "~0.2.2",
     "rxjs": "~7.8.0",
     "sanitize-html": "2.18.0",
-    "uuid": "~14.0.0"
+    "uuid": "~14.0.3"
   },
   "devDependencies": {
     "@apidevtools/swagger-cli": "~4.0.4",
