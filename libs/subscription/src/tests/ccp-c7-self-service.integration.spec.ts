@@ -41,7 +41,7 @@ const ISO_PLAN = '019a0000-5150-7000-8000-0000000c7002';
 
 /** TEST ONLY — the shipped Sign ToS entry marked APPROVED, to exercise the path behind the gate. */
 const APPROVED_TERMS: readonly LegalDocumentVersion[] = LEGAL_DOCUMENTS.map((d) =>
-  d.key === 'sign.terms_of_service' ? { ...d, status: 'APPROVED' as const, url: 'https://sign.test/legal/terms/0.1.1' } : d,
+  d.key === 'sign.terms_of_service' ? { ...d, status: 'APPROVED' as const, url: 'https://sign.test/legal/terms/0.1.1', effective_from: '2026-01-01T00:00:00Z' } : d,
 );
 
 describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C7 multi-product self-service (real Postgres 17)', { timeout: 120_000 }, () => {

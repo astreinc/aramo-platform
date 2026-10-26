@@ -2,18 +2,22 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import { IdentityRepository, TenantRepository, type TenantDto } from '@aramo/identity';
 import {
+  LEGAL_CLOCK,
   LEGAL_DOCUMENTS,
   LEGAL_DOCUMENT_REGISTRY,
   LEGAL_DOCUMENT_TITLES,
   LegalAcceptanceService,
   PERSONAL_LEGAL_DOCUMENT_KEYS,
-  approvedLegalDocument,
+  effectiveLegalDocument,
+  systemLegalClock,
+  type LegalClock,
   type LegalDocumentVersion,
 } from '@aramo/subscription';
 
 // Aramo Sign Personal (Free) — the Personal legal documents a signed-in user still
-// has to accept. A document is pending when its current APPROVED version (the
-// registry in @aramo/subscription) has no acceptance by this user in this tenant
+// has to accept. A document is pending when its currently EFFECTIVE version (the
+// registry in @aramo/subscription; E-5 — an approved upcoming version is never
+// owed before its effective_from) has no acceptance by this user in this tenant
 // for that exact version and text (sha256) — whether it was accepted at signup
 // (context SIGNUP) or later in the workspace (context IN_APP). Business tenants
 // accept no Personal documents: always nothing pending.
@@ -46,21 +50,24 @@ export interface AcceptItem {
 @Injectable()
 export class PersonalLegalStatusService {
   private readonly legal: readonly LegalDocumentVersion[];
+  private readonly clock: LegalClock;
 
   constructor(
     private readonly acceptances: LegalAcceptanceService,
     private readonly tenants: TenantRepository,
     private readonly identity: IdentityRepository,
     @Optional() @Inject(LEGAL_DOCUMENT_REGISTRY) legal?: readonly LegalDocumentVersion[],
+    @Optional() @Inject(LEGAL_CLOCK) clock?: LegalClock,
   ) {
     this.legal = legal ?? LEGAL_DOCUMENTS;
+    this.clock = clock ?? systemLegalClock;
   }
 
-  /** The current APPROVED Personal documents (a key with no APPROVED published version is skipped). */
-  current(): LegalDocumentVersion[] {
+  /** The Personal documents in effect now (a key with no effective version is skipped). */
+  current(now: Date = this.clock()): LegalDocumentVersion[] {
     const docs: LegalDocumentVersion[] = [];
     for (const key of PERSONAL_LEGAL_DOCUMENT_KEYS) {
-      const d = approvedLegalDocument(key, this.legal);
+      const d = effectiveLegalDocument(key, this.legal, now);
       if (d !== null) docs.push(d);
     }
     return docs;
@@ -74,9 +81,9 @@ export class PersonalLegalStatusService {
   }
 
   /** pending() for an already-loaded tenant (the send path has it in hand). */
-  async pendingFor(tenant: Pick<TenantDto, 'id' | 'kind'>, user_id: string): Promise<PendingLegalDocument[]> {
+  async pendingFor(tenant: Pick<TenantDto, 'id' | 'kind'>, user_id: string, now: Date = this.clock()): Promise<PendingLegalDocument[]> {
     if (tenant.kind !== 'PERSONAL') return [];
-    const docs = this.current();
+    const docs = this.current(now);
     if (docs.length === 0) return [];
     const accepted = await this.acceptances.acceptedBy({ tenant_id: tenant.id, user_id, keys: docs.map((d) => d.key) });
     const done = new Set(accepted.map((a) => `${a.document_key}@${a.version}#${a.sha256}`));
@@ -86,7 +93,7 @@ export class PersonalLegalStatusService {
   }
 
   /**
-   * Record the user's acceptance of the CURRENT approved versions. Every item must
+   * Record the user's acceptance of the currently EFFECTIVE versions. Every item must
    * name a Personal document and its current approved version exactly; anything
    * else refuses the whole request (nothing recorded). Idempotent per version.
    */
@@ -96,7 +103,7 @@ export class PersonalLegalStatusService {
     items: unknown,
     origin: { ip: string | null; user_agent: string | null },
     requestId: string,
-    now: Date = new Date(),
+    now: Date = this.clock(),
   ): Promise<PendingLegalDocument[]> {
     const tenant = await this.tenants.findById(tenant_id);
     if (tenant === null || tenant.kind !== 'PERSONAL') {
@@ -106,7 +113,7 @@ export class PersonalLegalStatusService {
       });
     }
     const wanted = parseItems(items, requestId);
-    const current = new Map(this.current().map((d) => [d.key as string, d] as const));
+    const current = new Map(this.current(now).map((d) => [d.key as string, d] as const));
     const docs: LegalDocumentVersion[] = [];
     for (const it of wanted) {
       const d = current.get(it.key);
@@ -130,7 +137,7 @@ export class PersonalLegalStatusService {
         accepted_at: now,
       });
     }
-    return this.pendingFor(tenant, user_id);
+    return this.pendingFor(tenant, user_id, now);
   }
 }
 

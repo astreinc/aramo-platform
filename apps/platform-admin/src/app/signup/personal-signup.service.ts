@@ -46,6 +46,7 @@ import {
   LEGAL_DOCUMENTS,
   LEGAL_DOCUMENT_REGISTRY,
   LegalAcceptanceService,
+  effectiveLegalDocument,
   type LegalDocumentVersion,
 } from '@aramo/subscription';
 
@@ -187,17 +188,16 @@ export class PersonalSignupService {
   // ── terms (§3.4) ───────────────────────────────────────────────────────────
 
   /**
-   * The exact APPROVED versions of the three Personal documents, or null while
-   * any of them is not APPROVED (nothing unapproved is ever presented). The
-   * registry is read by key; a key with no APPROVED published version counts as
-   * not approved.
+   * The exact versions of the three Personal documents in effect at `now`, or
+   * null while any of them has none (nothing unapproved is ever presented). The
+   * registry is read by key; an approved version that is only upcoming (E-5:
+   * effective_from in the future) is not presented until it takes effect.
    */
-  currentTerms(): PersonalTermsDocument[] | null {
+  currentTerms(now: Date = new Date()): PersonalTermsDocument[] | null {
     const docs: PersonalTermsDocument[] = [];
     for (const key of PERSONAL_LEGAL_KEYS) {
-      const approved = this.legal.filter((d) => (d.key as string) === key && d.status === 'APPROVED' && d.url !== null);
-      const doc = approved[approved.length - 1];
-      if (doc === undefined || doc.url === null) return null;
+      const doc = effectiveLegalDocument(key, this.legal, now);
+      if (doc === null || doc.url === null) return null;
       docs.push({ key, version: doc.version, url: doc.url, sha256: doc.sha256 });
     }
     return docs;
@@ -443,7 +443,7 @@ export class PersonalSignupService {
     if (row.decision === 'refuse') throw neutralRefusal(rid);
 
     // §3.4 / §10 — the exact APPROVED versions, all three, or nothing completes.
-    const terms = this.currentTerms();
+    const terms = this.currentTerms(now);
     if (terms === null) {
       throw refusal(rid, 'legal_documents_not_approved', 'Personal accounts are not open yet.');
     }

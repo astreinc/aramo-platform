@@ -2,14 +2,30 @@ import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
-import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
+import { cleanup as cleanupRender, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { App } from '../App';
 
-import { LEGAL_CATALOG, MAXMIND_ATTRIBUTION, PUBLIC_SIGN_ORIGIN, SUBPROCESSORS, footerLegalLinks, legalPath } from './catalog';
+import {
+  LEGAL_CATALOG,
+  MAXMIND_ATTRIBUTION,
+  PUBLIC_SIGN_ORIGIN,
+  SUBPROCESSOR_LISTS,
+  currentLegal,
+  currentSubprocessors,
+  effectiveTime,
+  footerLegalLinks,
+  formatEffective,
+  legalEntryStatus,
+  legalPath,
+  upcomingSubprocessors,
+  type LegalCatalogEntry,
+  type SubprocessorList,
+} from './catalog';
 import { LegalAcceptanceGate } from './LegalAcceptance';
+import { LegalEnvContext, type LegalEnv } from './LegalPage';
 import { Markdown, parseMarkdown } from './markdown';
 import { LEGAL_TEXTS } from './texts';
 
@@ -31,17 +47,21 @@ interface RegistryEntry {
   path: string;
   sha256: string;
   url: string | null;
+  effective_from: string | null;
 }
 
 function registry(): RegistryEntry[] {
-  const re = /\{\s*key: '([^']+)',\s*version: '([^']+)',\s*status: '(\w+)',\s*path: '([^']+)',\s*sha256: '([0-9a-f]{64})',\s*url: (null|'[^']*'),?\s*\}/g;
+  const re =
+    /\{\s*key: '([^']+)',\s*version: '([^']+)',\s*status: '(\w+)',\s*path: '([^']+)',\s*sha256: '([0-9a-f]{64})',\s*url: (null|'[^']*'),\s*(?:\/\/[^\n]*\n\s*)*effective_from: (null|'[^']*'),?\s*\}/g;
+  const unquote = (v: string) => (v === 'null' ? null : v.slice(1, -1));
   return [...REGISTRY_SRC.matchAll(re)].map((m) => ({
     key: m[1]!,
     version: m[2]!,
     status: m[3]!,
     path: m[4]!,
     sha256: m[5]!,
-    url: m[6] === 'null' ? null : m[6]!.slice(1, -1),
+    url: unquote(m[6]!),
+    effective_from: unquote(m[7]!),
   }));
 }
 
@@ -63,9 +83,10 @@ function at(path: string) {
 describe('legal texts — build-time integrity against the registry', () => {
   it('the registry source parses (all entries found)', () => {
     expect(registry().length).toBeGreaterThanOrEqual(7);
+    expect(registry().length).toBe((REGISTRY_SRC.match(/\bsha256: '/g) ?? []).length);
   });
 
-  it.each(LEGAL_CATALOG.map((d) => [`${d.slug}@${d.version}`, d] as const))('%s: bundled text hashes to the APPROVED registry sha256, same key/version/URL', (_id, d) => {
+  it.each(LEGAL_CATALOG.map((d) => [`${d.slug}@${d.version}`, d] as const))('%s: bundled text hashes to the APPROVED registry sha256, same key/version/URL/effective_from', (_id, d) => {
     const bundled = LEGAL_TEXTS[`${d.slug}@${d.version}`];
     expect(bundled).toBeDefined();
     const entry = registry().find((r) => r.path === bundled!.path && r.version === d.version);
@@ -73,15 +94,28 @@ describe('legal texts — build-time integrity against the registry', () => {
     expect(entry!.status).toBe('APPROVED');
     expect(entry!.key).toBe(d.key);
     expect(entry!.url).toBe(`${PUBLIC_SIGN_ORIGIN}${legalPath(d.slug, d.version)}`);
+    // E-5 — the catalog serves a version from the same instant the registry makes it effective.
+    expect(d.effective_from).toBe(entry!.effective_from);
+    expect(effectiveTime(d.effective_from)).not.toBeNull();
     expect(sha256(bundled!.text)).toBe(entry!.sha256);
     // And the bundle is the file on disk, byte for byte.
     expect(bundled!.text).toBe(readFileSync(resolve(ROOT, bundled!.path), 'utf8'));
   });
 
-  it('every APPROVED registry entry is published here, and nothing else is', () => {
-    const approved = registry().filter((r) => r.status === 'APPROVED');
+  it('every APPROVED, scheduled registry entry is published here, and nothing else is', () => {
+    const approved = registry().filter((r) => r.status === 'APPROVED' && r.url !== null && r.effective_from !== null);
     expect(approved.map((r) => `${r.key}@${r.version}`).sort()).toEqual(LEGAL_CATALOG.map((d) => `${d.key}@${d.version}`).sort());
     expect(Object.keys(LEGAL_TEXTS).sort()).toEqual(LEGAL_CATALOG.map((d) => `${d.slug}@${d.version}`).sort());
+  });
+
+  it('Privacy Notice 1.0 is byte-for-byte unchanged: the bundled text still hashes to 18fcc1aa386a06c0…', () => {
+    expect(sha256(LEGAL_TEXTS['privacy@1.0']!.text)).toBe('18fcc1aa386a06c0c9a15b8c60232aca6f0fbb1cdc100b288e524617f6e446b6');
+    expect(registry().find((r) => r.key === 'aramo.privacy_notice' && r.version === '1.0')!.sha256).toBe('18fcc1aa386a06c0c9a15b8c60232aca6f0fbb1cdc100b288e524617f6e446b6');
+  });
+
+  it('no 1.1 is registered or published (its text is not approved)', () => {
+    expect(registry().some((r) => r.version === '1.1')).toBe(false);
+    expect(LEGAL_CATALOG.some((d) => d.version === '1.1')).toBe(false);
   });
 });
 
@@ -121,9 +155,13 @@ describe('/legal pages (public)', () => {
     at('/legal/subprocessors');
     const page = await screen.findByTestId('legal-subprocessors');
     expect(screen.getByTestId('subprocessors-updated')).toHaveTextContent('Last updated 2026-10-22');
+    expect(screen.getByTestId('subprocessors-scope')).toHaveTextContent('The service providers that process personal information for Aramo Sign Personal accounts, on our instructions.');
     const rows = within(screen.getByTestId('subprocessors-table')).getAllByRole('row').slice(1);
     expect(rows.map((r) => within(r).getAllByRole('cell')[0]!.textContent)).toEqual(['Amazon Web Services', 'Cloudflare', 'Google', 'Text-message (SMS) provider']);
-    expect(rows).toHaveLength(SUBPROCESSORS.length);
+    expect(rows).toHaveLength(currentSubprocessors()!.rows.length);
+    // E-7 — the 1.1 list is unscheduled: nothing upcoming is shown publicly.
+    expect(screen.queryByTestId('subprocessors-upcoming')).toBeNull();
+    expect(page).not.toHaveTextContent('Apple');
     expect(page).toHaveTextContent('no phone numbers are shared until one is');
     expect(within(page).getByRole('link', { name: 'Subprocessors' })).toHaveAttribute('href', '/legal/subprocessors');
     expect(LEGAL_TEXTS['privacy@1.0']!.text).toContain('https://sign.aramo.ai/legal/subprocessors');
@@ -217,5 +255,161 @@ describe('workspace legal links and re-acceptance', () => {
     expect(await screen.findByText('We couldn’t record your acceptance. Try again.')).toBeInTheDocument();
     expect(screen.getByTestId('legal-accept-dialog')).toBeInTheDocument();
     await waitFor(() => expect(load).toHaveBeenCalledTimes(2));
+  });
+});
+
+// Privacy Notice 1.1 Remediation Directive §3 / decision 6 (E-5) — future-effective
+// versions, against a FIXTURE catalog (no 1.1 text is approved or registered).
+const P10 = LEGAL_CATALOG.find((d) => d.slug === 'privacy' && d.version === '1.0')!;
+const P11: LegalCatalogEntry = { ...P10, version: '1.1', effective_from: '2026-11-25T00:00:00Z' };
+const FIXTURE_CATALOG: readonly LegalCatalogEntry[] = [...LEGAL_CATALOG, P11];
+const FIXTURE_TEXTS = { ...LEGAL_TEXTS, 'privacy@1.1': { path: 'test/privacy-1.1.md', text: '# Aramo Privacy Notice 1.1 (fixture)\n\nFixture text.\n' } };
+const BEFORE = new Date('2026-11-24T23:59:59.999Z');
+const AT = new Date('2026-11-25T00:00:00Z');
+
+function atWith(path: string, env: Partial<LegalEnv>) {
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async () => json({}, 401)),
+  );
+  const value: LegalEnv = { catalog: LEGAL_CATALOG, texts: LEGAL_TEXTS, subprocessors: SUBPROCESSOR_LISTS, now: () => new Date(), ...env };
+  return render(
+    <LegalEnvContext.Provider value={value}>
+      <MemoryRouter initialEntries={[path]}>
+        <App />
+      </MemoryRouter>
+    </LegalEnvContext.Provider>,
+  );
+}
+
+describe('E-5 effective version — resolver over the catalog', () => {
+  it('the current version is the latest effective_from <= now, never merely the last entry', () => {
+    expect(currentLegal('privacy', FIXTURE_CATALOG, BEFORE)).toBe(P10);
+    expect(currentLegal('privacy', FIXTURE_CATALOG, AT)).toBe(P11);
+    expect(legalEntryStatus(P11, FIXTURE_CATALOG, BEFORE).state).toBe('upcoming');
+    expect(legalEntryStatus(P10, FIXTURE_CATALOG, BEFORE).state).toBe('effective');
+    expect(legalEntryStatus(P10, FIXTURE_CATALOG, AT)).toEqual({ state: 'superseded', superseded_by: P11 });
+    expect(legalPath('privacy', undefined, FIXTURE_CATALOG, BEFORE)).toBe('/legal/privacy/1.0');
+    expect(legalPath('privacy', undefined, FIXTURE_CATALOG, AT)).toBe('/legal/privacy/1.1');
+  });
+
+  it('timezone: an offset effective_from is an instant; the banner date is shown as authored', () => {
+    const est: LegalCatalogEntry = { ...P11, effective_from: '2026-11-25T00:00:00-05:00' };
+    const cat = [...LEGAL_CATALOG, est];
+    expect(currentLegal('privacy', cat, new Date('2026-11-25T04:59:59Z'))).toBe(P10);
+    expect(currentLegal('privacy', cat, new Date('2026-11-25T05:00:00Z'))).toBe(est);
+    expect(formatEffective('2026-11-25T00:00:00Z')).toBe('2026-11-25 00:00 UTC');
+    expect(formatEffective('2026-11-25T00:00:00-05:00')).toBe('2026-11-25 00:00 UTC-05:00');
+  });
+
+  it('footer and "current" links resolve to the effective version (before: 1.0; at the instant: 1.1)', () => {
+    expect(footerLegalLinks(false, FIXTURE_CATALOG, BEFORE)).toEqual([
+      { label: 'Privacy', href: '/legal/privacy/1.0' },
+      { label: 'Acceptable Use', href: '/legal/acceptable-use/1.0' },
+    ]);
+    expect(footerLegalLinks(false, FIXTURE_CATALOG, AT)[0]).toEqual({ label: 'Privacy', href: '/legal/privacy/1.1' });
+  });
+});
+
+describe('E-5 effective version — /legal routing', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('before the effective date /legal/privacy serves 1.0 with no banner', async () => {
+    atWith('/legal/privacy', { catalog: FIXTURE_CATALOG, texts: FIXTURE_TEXTS, now: () => BEFORE });
+    expect(await screen.findByTestId('legal-meta')).toHaveTextContent('Version 1.0 · Permanent link: https://sign.aramo.ai/legal/privacy/1.0');
+    expect(screen.getByTestId('legal-meta')).not.toHaveTextContent('This is not the current version');
+    expect(screen.queryByTestId('legal-upcoming')).toBeNull();
+    expect(screen.queryByTestId('legal-superseded')).toBeNull();
+  });
+
+  it('/legal/privacy/1.1 before its date: "Upcoming — effective {date}; the current version is 1.0" with a link', async () => {
+    atWith('/legal/privacy/1.1', { catalog: FIXTURE_CATALOG, texts: FIXTURE_TEXTS, now: () => BEFORE });
+    const banner = await screen.findByTestId('legal-upcoming');
+    expect(banner).toHaveTextContent('Upcoming — effective 2026-11-25 00:00 UTC; the current version is 1.0.');
+    expect(screen.getByTestId('legal-current-link')).toHaveAttribute('href', '/legal/privacy/1.0');
+    expect(screen.getByTestId('legal-meta')).toHaveTextContent('Version 1.1');
+    expect(screen.getByRole('heading', { level: 1, name: 'Aramo Privacy Notice 1.1 (fixture)' })).toBeInTheDocument();
+  });
+
+  it('at exactly the effective instant /legal/privacy serves 1.1, and 1.0 shows "No longer in effect since {date}"', async () => {
+    atWith('/legal/privacy', { catalog: FIXTURE_CATALOG, texts: FIXTURE_TEXTS, now: () => AT });
+    expect(await screen.findByTestId('legal-meta')).toHaveTextContent('Version 1.1');
+    expect(screen.queryByTestId('legal-upcoming')).toBeNull();
+    cleanupRender();
+    atWith('/legal/privacy/1.0', { catalog: FIXTURE_CATALOG, texts: FIXTURE_TEXTS, now: () => AT });
+    expect(await screen.findByTestId('legal-superseded')).toHaveTextContent('No longer in effect since 2026-11-25 00:00 UTC; the current version is 1.1.');
+    expect(screen.getByTestId('legal-current-link')).toHaveAttribute('href', '/legal/privacy/1.1');
+    expect(screen.getByTestId('legal-meta')).toHaveTextContent('This is not the current version.');
+    // The superseded 1.0 is still served (retained for historical access).
+    expect(screen.getByRole('heading', { level: 2, name: '1. Summary' })).toBeInTheDocument();
+  });
+
+  it('the legal page footer links the effective version', async () => {
+    atWith('/legal/acceptable-use', { catalog: FIXTURE_CATALOG, texts: FIXTURE_TEXTS, now: () => BEFORE });
+    const page = await screen.findByTestId('legal-document');
+    expect(within(page).getByRole('link', { name: 'Aramo Privacy Notice' })).toHaveAttribute('href', '/legal/privacy/1.0');
+  });
+});
+
+// Privacy Notice 1.1 Remediation Directive decision 8 (E-7) — the versioned subprocessor list.
+describe('E-7 subprocessor list', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  const proposed = SUBPROCESSOR_LISTS.find((l) => l.id === 'privacy-1.1')!;
+
+  it('the current list is unchanged; the 1.1 list is unscheduled (never shown) until counsel items are resolved', () => {
+    expect(currentSubprocessors()!.id).toBe('2026-10-22');
+    expect(upcomingSubprocessors()).toBeNull();
+    expect(proposed.effective_from).toBeNull();
+    expect(upcomingSubprocessors(SUBPROCESSOR_LISTS, new Date('2099-01-01T00:00:00Z'))).toBeNull();
+    expect(currentSubprocessors(SUBPROCESSOR_LISTS, new Date('2099-01-01T00:00:00Z'))!.id).toBe('2026-10-22');
+  });
+
+  it('a list is scheduled only with a valid effective_from, a publication date and no open counsel items', () => {
+    for (const l of SUBPROCESSOR_LISTS) {
+      if (l.effective_from === null) continue;
+      expect(effectiveTime(l.effective_from)).not.toBeNull();
+      expect(l.updated).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+      expect(l.pending_review).toEqual([]);
+    }
+  });
+
+  it('the proposed list carries the validation report §6.1 rows and wording', () => {
+    expect(proposed.scope).toBe('Aramo Sign (personal and business accounts, signers and the Aramo Sign mobile app)');
+    const byPurpose = (p: string) => proposed.rows.find((r) => r.purpose.startsWith(p))!;
+    expect(byPurpose('Sign-in with Google').purpose).toBe('Sign-in with Google (web and mobile app)');
+    expect(byPurpose('Sign-in with Microsoft')).toMatchObject({ name: 'Microsoft', purpose: 'Sign-in with Microsoft for organizations (web and mobile app)' });
+    expect(byPurpose('Apple Push Notification service')).toMatchObject({
+      name: 'Apple',
+      purpose: 'Apple Push Notification service: delivers notifications to iPhones running the Aramo Sign app, when the user allows notifications',
+      note: 'Used only when notifications are switched on.',
+    });
+    expect(byPurpose('Firebase Cloud Messaging')).toMatchObject({
+      name: 'Google',
+      purpose: 'Firebase Cloud Messaging: delivers notifications to Android phones running the Aramo Sign app, when the user allows notifications',
+      note: 'Used only when notifications are switched on.',
+    });
+    expect(proposed.rows.filter((r) => r.note !== undefined)).toHaveLength(2);
+    expect(proposed.pending_review.length).toBeGreaterThan(0);
+  });
+
+  it('with a dated upcoming list the page shows "Upcoming changes, effective {date}"; from that instant it is the current list', async () => {
+    const scheduled: SubprocessorList = { ...proposed, effective_from: '2026-11-25T00:00:00Z', updated: '2026-10-27', pending_review: [] };
+    const lists = [SUBPROCESSOR_LISTS[0]!, scheduled];
+    atWith('/legal/subprocessors', { subprocessors: lists, now: () => BEFORE });
+    const upcoming = await screen.findByTestId('subprocessors-upcoming');
+    expect(within(upcoming).getByRole('heading', { level: 2 })).toHaveTextContent('Upcoming changes, effective 2026-11-25 00:00 UTC');
+    expect(upcoming).toHaveTextContent('Aramo Sign (personal and business accounts, signers and the Aramo Sign mobile app)');
+    expect(within(screen.getByTestId('subprocessors-upcoming-table')).getAllByRole('row').slice(1)).toHaveLength(scheduled.rows.length);
+    expect(screen.getByTestId('subprocessors-scope')).toHaveTextContent('for Aramo Sign Personal accounts, on our instructions');
+    expect(screen.getByTestId('subprocessors-updated')).toHaveTextContent('Last updated 2026-10-22');
+    cleanupRender();
+    atWith('/legal/subprocessors', { subprocessors: lists, now: () => AT });
+    expect(await screen.findByTestId('subprocessors-scope')).toHaveTextContent(
+      'The service providers that process personal information for Aramo Sign (personal and business accounts, signers and the Aramo Sign mobile app), on our instructions.',
+    );
+    expect(screen.getByTestId('subprocessors-updated')).toHaveTextContent('Last updated 2026-10-27');
+    expect(screen.queryByTestId('subprocessors-upcoming')).toBeNull();
+    expect(screen.getAllByTestId('subprocessor-note').map((n) => n.textContent)).toEqual(['Used only when notifications are switched on.', 'Used only when notifications are switched on.']);
   });
 });

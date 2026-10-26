@@ -834,7 +834,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 credits, d
     // own detail, after the manual credit (checked before C2's conversion request opens: an open
     // CONVERSION refuses C7 first); nothing is recorded and no command is queued. The terms gate is
     // opened TEST-ONLY (the shipped Sign ToS is DRAFT), so the commitment gate is reached.
-    const terms: readonly LegalDocumentVersion[] = LEGAL_DOCUMENTS.map((d) => (d.key === 'sign.terms_of_service' ? { ...d, status: 'APPROVED' as const, url: 'https://sign.test/legal/terms/0.1.1' } : d));
+    const terms: readonly LegalDocumentVersion[] = LEGAL_DOCUMENTS.map((d) => (d.key === 'sign.terms_of_service' ? { ...d, status: 'APPROVED' as const, url: 'https://sign.test/legal/terms/0.1.1', effective_from: '2026-01-01T00:00:00Z' } : d));
     const c7 = new SelfServiceBillingService(prisma, h.commands, h.lifecycle, terms);
     const cancel = await c7.cancel({ tenant_id: t, product_key: 'sign', user_id: randomUUID(), at: now }).then(
       () => null,

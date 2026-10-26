@@ -1264,6 +1264,15 @@ a.sg-row:hover {
   margin: 0 0 16px;
   overflow-wrap: anywhere;
 }
+/* E-5 — an upcoming or superseded version of a legal text. */
+.sg-legal__banner {
+  font-size: 14px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line, currentColor);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
 .sg-legal__doc {
   overflow-wrap: anywhere;
 }

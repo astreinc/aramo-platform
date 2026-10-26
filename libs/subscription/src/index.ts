@@ -287,14 +287,22 @@ export const ESIGN_ENVELOPE_SENT_EVENT = 'sign.envelope.sent';
 export { CapacityService, type CapacityStatus, type CapacityRefusal, type CapacityReserveResult } from './lib/capacity.service.js';
 export { PLAN_ELIGIBILITY_PORT, type PlanEligibilityPort, type PlanEligibilityRule } from './lib/billing/plan-eligibility.port.js';
 export {
+  LEGAL_CLOCK,
   LEGAL_DOCUMENTS,
   LEGAL_DOCUMENT_REGISTRY,
   LEGAL_DOCUMENT_TITLES,
   PERSONAL_LEGAL_DOCUMENT_KEYS,
   approvedLegalDocument,
+  effectiveLegalDocument,
+  legalEffectiveFrom,
   legalRef,
+  legalVersionStatus,
+  systemLegalClock,
+  type LegalClock,
   type LegalDocumentKey,
   type LegalDocumentVersion,
+  type LegalVersionState,
+  type LegalVersionStatus,
 } from './lib/legal/legal-documents.js';
 export { LegalAcceptanceService, inAppContextRef } from './lib/legal/legal-acceptance.service.js';
 export { FEATURE_AVAILABILITY, isFeatureAvailable, type FeatureAvailability } from './lib/feature-availability.js';

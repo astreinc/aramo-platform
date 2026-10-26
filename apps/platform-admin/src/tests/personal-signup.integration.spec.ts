@@ -100,6 +100,7 @@ const APPROVED: LegalDocumentVersion[] = PERSONAL_LEGAL_KEYS.map((key, i) => ({
   path: `test/${key}.md`,
   sha256: String(i + 1).repeat(64),
   url: `https://aramo.ai/legal/${key}/1.0.0`,
+  effective_from: '2026-01-01T00:00:00Z',
 }));
 const registryDocs: LegalDocumentVersion[] = [...LEGAL_DOCUMENTS];
 const useRegistry = (docs: readonly LegalDocumentVersion[]) => registryDocs.splice(0, registryDocs.length, ...docs);
