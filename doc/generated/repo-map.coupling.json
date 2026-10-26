@@ -29759,12 +29759,22 @@
     {
       "from": "infrastructure/cognito-triggers/CUTOVER.md",
       "status": "unscoped",
+      "to": "apps/auth-service/src/app/auth/identity-principal-directory.adapter.ts"
+    },
+    {
+      "from": "infrastructure/cognito-triggers/CUTOVER.md",
+      "status": "unscoped",
       "to": "infrastructure/cognito-triggers/pre-signup/v2/harness/replay.test.mjs"
     },
     {
       "from": "infrastructure/cognito-triggers/CUTOVER.md",
       "status": "unscoped",
       "to": "infrastructure/cognito-triggers/pre-signup/v2/index.test.mjs"
+    },
+    {
+      "from": "infrastructure/cognito-triggers/CUTOVER.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/identity-provider-policy.service.ts"
     },
     {
       "from": "infrastructure/environments/prod/compute.tf",
