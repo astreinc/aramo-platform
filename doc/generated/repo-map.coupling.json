@@ -12856,6 +12856,26 @@
     { "from": "doc/ccp/decisions.md", "status": "unscoped", "to": "scripts/verify-vocabulary.sh" },
     { "from": "doc/ccp/decisions.md", "status": "unscoped", "to": "tools/db-sync-local.sh" },
     {
+      "from": "doc/ccp/delivered-not-delivered-register.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/delivered-not-delivered-register.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A9-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/delivered-not-delivered-register.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-approval-eligibility.ts"
+    },
+    {
+      "from": "doc/ccp/delivered-not-delivered-register.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-change-request.service.ts"
+    },
+    {
       "from": "doc/ccp/known-baseline-exceptions.md",
       "status": "unscoped",
       "to": "apps/platform-web/e2e/fixtures/commercial.ts"
@@ -12869,6 +12889,126 @@
       "from": "doc/ccp/known-baseline-exceptions.md",
       "status": "unscoped",
       "to": "apps/platform-web/e2e/visual/states-ccp.ts"
+    },
+    {
+      "from": "doc/ccp/production-rollout-plan.md",
+      "status": "unscoped",
+      "to": "deploy/migrate-prod.sh"
+    },
+    {
+      "from": "doc/ccp/production-rollout-plan.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/production-rollout-plan.md",
+      "status": "unscoped",
+      "to": "doc/ccp/delivered-not-delivered-register.md"
+    },
+    {
+      "from": "doc/ccp/production-rollout-plan.md",
+      "status": "unscoped",
+      "to": "doc/ccp/program-completion-checklist.md"
+    },
+    {
+      "from": "doc/ccp/production-rollout-plan.md",
+      "status": "unscoped",
+      "to": "doc/ccp/program-gate-20261025.md"
+    },
+    {
+      "from": "doc/ccp/production-rollout-plan.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-box.md"
+    },
+    {
+      "from": "doc/ccp/production-rollout-plan.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RUNBOOK-ccp-dark-state-verification.md"
+    },
+    {
+      "from": "doc/ccp/production-rollout-plan.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RUNBOOK-ccp-migration-validation.md"
+    },
+    {
+      "from": "doc/ccp/production-rollout-plan.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RUNBOOK-ccp-platform-owner-bootstrap.md"
+    },
+    {
+      "from": "doc/ccp/production-rollout-plan.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-a11-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/program-completion-checklist.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/program-completion-checklist.md",
+      "status": "unscoped",
+      "to": "doc/ccp/delivered-not-delivered-register.md"
+    },
+    {
+      "from": "doc/ccp/program-completion-checklist.md",
+      "status": "unscoped",
+      "to": "doc/ccp/known-baseline-exceptions.md"
+    },
+    {
+      "from": "doc/ccp/program-completion-checklist.md",
+      "status": "unscoped",
+      "to": "doc/ccp/production-rollout-plan.md"
+    },
+    {
+      "from": "doc/ccp/program-completion-checklist.md",
+      "status": "unscoped",
+      "to": "doc/ccp/program-gate-20261025.md"
+    },
+    {
+      "from": "doc/ccp/program-completion-checklist.md",
+      "status": "unscoped",
+      "to": "doc/ccp/runbook-dry-runs-20261025.md"
+    },
+    {
+      "from": "doc/ccp/program-completion-checklist.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-C8PR-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/program-completion-checklist.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-UI-V12-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/program-completion-checklist.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RUNBOOK-ccp-dark-state-verification.md"
+    },
+    {
+      "from": "doc/ccp/program-completion-checklist.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RUNBOOK-ccp-migration-validation.md"
+    },
+    {
+      "from": "doc/ccp/program-completion-checklist.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RUNBOOK-ccp-platform-owner-bootstrap.md"
+    },
+    {
+      "from": "doc/ccp/program-completion-checklist.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-billing-adjustment.ts"
+    },
+    {
+      "from": "doc/ccp/program-completion-checklist.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-change-request.ts"
+    },
+    {
+      "from": "doc/ccp/program-completion-checklist.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
     },
     {
       "from": "doc/ccp/program-gate-20261025.md",
