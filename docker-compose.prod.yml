@@ -475,6 +475,11 @@ services:
       # (0 disables; interval default 60000 ms).
       - SIGN_INVITATION_WORKER_ENABLED
       - SIGN_INVITATION_INTERVAL_MS
+      # Aramo Sign Mobile — the notification worker (outbox → feed rows + push jobs).
+      # 0 pauses it (Privacy Notice 1.1 safeguard, Lead Architect 2026-10-26); the
+      # outbox keeps recording events and the worker resumes from them when re-enabled.
+      - SIGN_NOTIFICATION_WORKER_ENABLED
+      - SIGN_NOTIFICATION_INTERVAL_MS
       # Aramo Sign launch — self-service billing (Stripe). Unset key ⇒ billing is
       # unavailable (503) and nothing is charged; live keys need separate
       # authorization. STRIPE_PLAN_PRICES maps sellable plan keys to provider price
