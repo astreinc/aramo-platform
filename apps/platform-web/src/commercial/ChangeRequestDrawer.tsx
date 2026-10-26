@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { Button, useOptionalToast } from '@aramo/fe-foundation';
+import { ApiError, Button, useOptionalToast } from '@aramo/fe-foundation';
 
 import {
   ApprovalChain,
@@ -13,6 +13,9 @@ import {
   RosterVerdicts,
   SkeletonPanel,
   Timeline,
+  WithdrawFailedActivationDialog,
+  WithheldAmount,
+  applyDeadlineText,
   formatTimestamp,
   shortId,
   type ApprovalChainStep,
@@ -24,6 +27,11 @@ import {
   actionLabel,
   approvalWindow,
   chainSummary,
+  MONETARY_ACTIONS,
+  splitEvidence,
+  summaryWithheld,
+  windowLabel,
+  withdrawnAfterFail,
   commercialRoleLabel,
   effectRows,
   isPending,
@@ -39,8 +47,19 @@ import {
   windowHours,
   type Me,
 } from './commercial-model';
+import { deadlineOf, policyOf, withdrawActionable, type DeadlineSources } from './deadline';
 import './commercial.css';
 
+// CCP-UI-V12 additions (CCP-UI v1.1 AM-3, AM-5, AM-6, AM-8; v1.2 §17.1 D-1, D-4, §17.2; W-3):
+// the "Apply window" fact and the Approved chip / timeline event name the apply deadline of the
+// request's creation policy ("No apply deadline (policy v{n})" when it declares none); Apply
+// ("Apply activation" for a policy) and Retry apply render ONLY when the read says
+// `apply_actionable` (requester-only, TD-B2-3), with the requester-only footnotes otherwise;
+// Withdraw… on a failed policy activation only when the policy read says `withdraw_actionable`
+// (ACC-1); a money row the server withheld renders WithheldAmount; and, for a CREDIT / DISCOUNT /
+// REFUND / PAYMENT_RECORD request read without Finance amount access, the reason and evidence are
+// "restricted" (`reason_withheld`, R3-W contract) or, for the requester, labelled as their own.
+//
 // CCP-B1 — the change-request drawer (CCP-UI v1.0 handoff §5.2, on DetailDrawer):
 // facts, the state stepper, refusal alerts, the effect, reason and evidence, the
 // approval chain, the caller's eligibility (the A3 engine's per-step verdict), who
@@ -63,17 +82,35 @@ export interface ChangeRequestDrawerProps {
   readonly onBootstrapRefused?: (request: ChangeRequest) => void;
   /** Clock seam (tests, the visual fixture). */
   readonly now?: () => Date;
+  /** CCP-UI-V12: the policy versions and the configured near-expiry lead (deadline.ts). */
+  readonly sources?: DeadlineSources;
+  /** CCP-UI-V12 (W-3): the caller holds platform:billing:amount:read. */
+  readonly amountHolder?: boolean;
 }
 
-type Busy = 'submit' | 'withdraw' | null;
+type Busy = 'submit' | 'withdraw' | 'apply' | null;
 
-export function ChangeRequestDrawer({ id, me, tenantName, initial, onClose, onChanged, onBootstrapRefused, now = () => new Date() }: ChangeRequestDrawerProps) {
+export const RESTRICTED_FINANCIAL = 'Financial details restricted — Finance access required';
+export const YOUR_DETAILS = 'Your request details';
+export const FINANCE_NOTES_RESTRICTED = 'Finance notes on this request are restricted';
+
+function applyErrorText(e: unknown): string {
+  if (e instanceof ApiError) {
+    const ex = e.details?.['explanation'];
+    if (typeof ex === 'string' && ex.length > 0) return ex;
+    return e.message;
+  }
+  return 'The request couldn’t be applied. Try again.';
+}
+
+export function ChangeRequestDrawer({ id, me, tenantName, initial, onClose, onChanged, onBootstrapRefused, now = () => new Date(), sources, amountHolder = true }: ChangeRequestDrawerProps) {
   const toast = useOptionalToast();
   const [detail, setDetail] = useState<ChangeRequestDetail | null>(initial ?? null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [alert, setAlert] = useState<RefusalCopy | null>(null);
   const [applyNote, setApplyNote] = useState<{ ok: boolean; text: string } | null>(null);
-  const [dialog, setDialog] = useState<'approve' | 'reject' | null>(null);
+  const [dialog, setDialog] = useState<'approve' | 'reject' | 'withdrawFailed' | null>(null);
+  const [applyError, setApplyError] = useState<string | null>(null);
   const [busy, setBusy] = useState<Busy>(null);
   // After an action the footer changes (Approve / Reject… leave it), so the element
   // that held focus is gone: focus moves to the drawer body (WCAG 2.4.3), never to
@@ -129,7 +166,21 @@ export function ChangeRequestDrawer({ id, me, tenantName, initial, onClose, onCh
   const step = nextStep(detail);
   const isRequester = r.requested_by === me.id;
   const lastStep = step !== null && step.step_index === r.required_chain.steps.length - 1;
-  const win = approvalWindow(r, ctx.now);
+  const dl = sources === undefined ? undefined : deadlineOf(r, sources);
+  const pol = sources === undefined ? null : policyOf(r.policy_version_id, sources.policies);
+  const win = approvalWindow(r, ctx.now, dl);
+  const actionable = detail.apply_actionable === true;
+  const canWithdrawFailed = r.state === 'APPLY_FAILED' && r.action_type === 'POLICY_ACTIVATE' && isRequester && withdrawActionable(r.id, sources?.policies ?? null);
+  const approvedLabel = dl === undefined ? undefined : applyDeadlineText({ applyBy: dl.applyBy, policyVersion: dl.policyVersion, state: 'APPROVED', variant: 'stepper', now: ctx.now, nearHours: dl.nearHours }).text;
+  // W-3 (CCP-R3-W contract): the markers decide. `reason_withheld` (or a REFUND's
+  // `payload.evidence_withheld`) → restricted; the requester without amount access sees their own
+  // text labelled "Your request details"; `notes_withheld` → the Finance-notes notice.
+  const monetary = MONETARY_ACTIONS.includes(r.action_type);
+  const restricted = r.reason_withheld !== undefined;
+  const evidenceRestricted = restricted || typeof r.payload['evidence_withheld'] === 'string';
+  const ownRestricted = monetary && !amountHolder && isRequester && !restricted;
+  const notesWithheld = r.notes_withheld !== undefined;
+  const { reason: reasonText, evidence: evidenceText } = splitEvidence(r.reason ?? '');
   const hours = windowHours(r);
   const tenant = r.tenant_id === null ? 'Platform-wide' : (tenantName(r.tenant_id) ?? shortId(r.tenant_id));
 
@@ -191,7 +242,32 @@ export function ChangeRequestDrawer({ id, me, tenantName, initial, onClose, onCh
           : { ok: false, text: `Approved, but the role change wasn’t applied (${out.apply.reason ?? 'refused'}). The request stays Approved.` },
       );
     }
-    await after(fresh, out.request.state === 'PENDING_APPROVAL' ? `${signed} step signed. Waiting on the next approver.` : `${shortId(r.id)} approved.`);
+    // D-1: the approval toast names who applies, and until when.
+    const by = dl?.applyBy ?? null;
+    // Until the request's policy version is read, the deadline is unknown: the plain toast.
+    const approvedText =
+      dl === undefined
+        ? `${shortId(r.id)} approved.`
+        : by !== null
+        ? `${shortId(r.id)} approved. ${personLabel(r.requested_by, me)} can apply it until ${formatTimestamp(by.toISOString())}.`
+          : `${shortId(r.id)} approved. ${personLabel(r.requested_by, me)} can apply it (no apply deadline under ${dl.policyVersion !== null ? `policy v${dl.policyVersion}` : 'its policy'}).`;
+    await after(fresh, out.request.state === 'PENDING_APPROVAL' ? `${signed} step signed. Waiting on the next approver.` : approvedText);
+  };
+
+  const doApply = async (): Promise<void> => {
+    setBusy('apply');
+    setApplyError(null);
+    try {
+      await commercialApi.apply(r.id, r.action_type);
+      const fresh = await load();
+      await after(fresh, `${shortId(r.id)} applied.`);
+    } catch (e) {
+      setApplyError(applyErrorText(e));
+      const fresh = await load();
+      onChanged(fresh);
+    } finally {
+      setBusy(null);
+    }
   };
 
   const reason = (verdict.code === 'OK' ? null : `${verdict.label}.`) ?? undefined;
@@ -229,9 +305,39 @@ export function ChangeRequestDrawer({ id, me, tenantName, initial, onClose, onCh
           Withdraw
         </Button>
       ) : null}
+      {r.state === 'APPROVED' && actionable ? (
+        <Button unstyled className="pw-btn pw-btn--privileged pc-btn36" disabled={busy !== null} aria-busy={busy === 'apply' || undefined} onClick={() => void doApply()}>
+          {r.action_type === 'POLICY_ACTIVATE' ? 'Apply activation' : 'Apply'}
+        </Button>
+      ) : null}
+      {r.state === 'APPLY_FAILED' && actionable ? (
+        <Button unstyled className="pw-btn pw-btn--normal pc-btn36" disabled={busy !== null} aria-busy={busy === 'apply' || undefined} onClick={() => void doApply()}>
+          Retry apply
+        </Button>
+      ) : null}
+      {canWithdrawFailed ? (
+        <Button unstyled className="pw-btn pw-btn--danger pc-btn36" disabled={busy !== null} onClick={() => setDialog('withdrawFailed')}>
+          Withdraw…
+        </Button>
+      ) : null}
       {pending && !canSign ? (
         <span className="pc-dr-foot" data-testid="cr-footnote">
           {verdict.label}.
+        </span>
+      ) : null}
+      {r.state === 'APPROVED' && !isRequester ? (
+        <span className="pc-dr-foot" data-testid="cr-footnote">
+          Only the requester, {personLabel(r.requested_by, me)}, can apply this request.
+        </span>
+      ) : null}
+      {r.state === 'APPLY_FAILED' && !isRequester ? (
+        <span className="pc-dr-foot" data-testid="cr-footnote">
+          Only the requester, {personLabel(r.requested_by, me)}, can retry.
+        </span>
+      ) : null}
+      {r.state === 'APPLY_EXPIRED' ? (
+        <span className="pc-dr-foot" data-testid="cr-footnote">
+          The apply window closed. Make a new request to try again.
         </span>
       ) : null}
     </>
@@ -264,20 +370,25 @@ export function ChangeRequestDrawer({ id, me, tenantName, initial, onClose, onCh
           <dd>{personLabel(r.requested_by, me)}</dd>
           <dt>Created</dt>
           <dd className="pc-mono12">{formatTimestamp(r.created_at)}</dd>
-          <dt>Approval window</dt>
+          <dt>{windowLabel(r)}</dt>
           <dd className={`pc-dr-win pc-tone--${win.tone}`}>{win.text}</dd>
           <dt>Policy</dt>
           <dd>
             <span className="pc-mono12" title={r.policy_version_id}>
-              {shortId(r.policy_version_id)}
+              {pol !== null ? `v${pol.number}${!pol.active && pol.activeNumber !== null ? ` (active is v${pol.activeNumber})` : ''}` : shortId(r.policy_version_id)}
             </span>{' '}
             · chain {chainSummary(r)} (fixed at creation){hours !== null ? ` · ${hours} h window` : ''}
           </dd>
         </dl>
-        <CrStepper steps={stateSteps(r.state, r.action_type)} />
+        <CrStepper steps={stateSteps(r.state, r.action_type, { approvedLabel, afterFail: withdrawnAfterFail(r) })} />
         {alert !== null ? (
           <div role="alert" className="pw-alert pw-alert--error" data-testid="cr-refusal">
             <b>{alert.lead}</b> {alert.message} <span className="pc-mono12">({alert.code})</span>
+          </div>
+        ) : null}
+        {applyError !== null ? (
+          <div role="alert" className="pw-alert pw-alert--error" data-testid="cr-apply-error">
+            {applyError}
           </div>
         ) : null}
         {applyNote !== null ? (
@@ -287,14 +398,25 @@ export function ChangeRequestDrawer({ id, me, tenantName, initial, onClose, onCh
         ) : null}
         <div>
           <div className="pw-ccp-caps">Effect · before → after</div>
-          <BeforeAfterDiff rows={effectRows(r, me).map((e, i) => ({ key: String(i), field: e.field, before: e.before, after: e.after }))} />
+          <BeforeAfterDiff rows={effectRows(r, me).map((e, i) => ({ key: String(i), field: e.field, before: e.before, after: e.after, withheld: e.withheld }))} />
+          {summaryWithheld(r) ? (
+            <div className="pc-row__chip">
+              <WithheldAmount reason="FINANCE_SCOPE_REQUIRED" size="cell" />
+            </div>
+          ) : null}
         </div>
-        <dl className="pc-dr-facts">
+        {ownRestricted ? <div className="pw-ccp-caps">{YOUR_DETAILS}</div> : null}
+        <dl className="pc-dr-facts" data-testid="cr-reason-block">
           <dt>Reason</dt>
-          <dd>{r.reason || '—'}</dd>
+          <dd>{restricted ? <span className="pc-dr-restricted">{RESTRICTED_FINANCIAL}</span> : reasonText || '—'}</dd>
           <dt>Evidence</dt>
-          <dd data-testid="cr-evidence">—</dd>
+          <dd data-testid="cr-evidence">{evidenceRestricted ? <span className="pc-dr-restricted">{RESTRICTED_FINANCIAL}</span> : evidenceText || '—'}</dd>
         </dl>
+        {notesWithheld ? (
+          <div className="pw-alert pw-alert--info" role="note" data-testid="cr-finance-notes-restricted">
+            {FINANCE_NOTES_RESTRICTED}
+          </div>
+        ) : null}
         <div>
           <div className="pw-ccp-caps">Approval chain</div>
           <ApprovalChain steps={chainSteps} />
@@ -311,7 +433,7 @@ export function ChangeRequestDrawer({ id, me, tenantName, initial, onClose, onCh
         ) : null}
         <div>
           <div className="pw-ccp-caps pc-caps8">Timeline</div>
-          <Timeline events={timelineOf(detail, me)} now={ctx.now} />
+          <Timeline events={timelineOf(detail, me, dl)} now={ctx.now} />
         </div>
       </div>
       {dialog === 'approve' && step !== null ? (
@@ -329,6 +451,35 @@ export function ChangeRequestDrawer({ id, me, tenantName, initial, onClose, onCh
             setDialog(null);
             setAlert(await fail(e, 'approve'));
           }}
+        />
+      ) : null}
+      {dialog === 'withdrawFailed' ? (
+        <WithdrawFailedActivationDialog
+          open
+          onOpenChange={(o) => {
+            if (!o) setDialog(null);
+          }}
+          requestLabel={shortId(r.id)}
+          policyVersion={(() => {
+            const target = r.payload['policy_version_id'];
+            return typeof target === 'string' ? (policyOf(target, sources?.policies ?? null)?.number ?? null) : null;
+          })()}
+          onWithdraw={async () => {
+            try {
+              await commercialApi.withdraw(r.id);
+              return 'WITHDRAWN';
+            } catch (e) {
+              const reasonCode = e instanceof ApiError ? e.details?.['reason'] : undefined;
+              if (reasonCode === 'already_applied') return 'ALREADY_APPLIED';
+              if (reasonCode === 'apply_in_progress') return 'APPLY_IN_PROGRESS';
+              throw new Error(applyErrorText(e));
+            }
+          }}
+          onWithdrawn={() => {
+            setDialog(null);
+            void load().then((fresh) => after(fresh, `${shortId(r.id)} withdrawn. Activating this version again needs a new request.`));
+          }}
+          onReconciled={() => void load().then((fresh) => onChanged(fresh))}
         />
       ) : null}
       {dialog === 'reject' ? (

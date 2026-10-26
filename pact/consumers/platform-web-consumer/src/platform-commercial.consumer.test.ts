@@ -2958,3 +2958,106 @@ describe('platform-web → GET /platform/me', () => {
       });
   });
 });
+
+// ── CCP-UI-V12 — the exact reads the CCP-UI v1.2 screens make (Finance › Renewals, Outstanding
+// payments, Billing reconciliation, Revenue; Usage › Consumption; Operations › Alerts). The slices'
+// own interactions above filter by tenant or type; the console reads the whole register, so these
+// interactions pin its query strings and the fields it renders (loose `like` values: the provider
+// state holds other rows too). No new route and no new field: W-2 / W-3 markers (R3-W) are not on
+// this base and are not contracted here (missing backend contract MBC-V12-4 / MBC-V12-5).
+describe('platform-web → CCP-UI v1.2 screen reads (CCP-UI-V12)', () => {
+  const read = async (label: string, given: string, role: Role, path: string, query: Record<string, string>, body: Record<string, unknown>, check: (b: Record<string, unknown>) => void): Promise<void> => {
+    const qs = new URLSearchParams(query).toString();
+    await provider
+      .addInteraction()
+      .given(given)
+      .uponReceiving(label)
+      .withRequest('GET', path, (b) => {
+        b.headers(platformSession(role));
+        if (qs) b.query(query);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody(body);
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${path}${qs ? `?${qs}` : ''}`, 'GET', platformSession(role));
+        expect(res.status).toBe(200);
+        check(res.body);
+      });
+  };
+  // Nullable per row (a contract-priced row has no list price): only the always-present key is pinned.
+  const price = { price_source: like('PINNED_PLAN_VERSION') };
+
+  it('V12-P-1 Renewals: the whole queue at the default 90-day horizon (finance_admin)', async () => {
+    await read('a v1.2 renewals screen read by finance_admin', 'finance records exist', 'finance_admin', RENEWALS, { within_days: '90' }, {
+      as_of: iso(),
+      within_days: 90,
+      tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' },
+      items: eachLike({ subscription_id: like('s'), tenant_id: like('t'), tenant_name: like('Tenant'), product_key: like('sign'), source: like('MANUAL'), status: like('ACTIVE'), plan_name: like('Plan'), version_number: integer(1), renewal_kind: like('COMMITMENT_END'), renewal_at: iso(), days_until: integer(20), lapsed: like(false), ...price }),
+      counts: like({ items: 1 }),
+    }, (b) => expect(Array.isArray(b['items'])).toBe(true));
+  });
+
+  it('V12-P-2 Outstanding payments: the whole list, amounts withheld for commercial_ops', async () => {
+    await read('a v1.2 outstanding payments screen read by commercial_ops', 'finance records exist', 'commercial_ops', OUTSTANDING, {}, {
+      as_of: iso(),
+      items: eachLike({ subscription_id: like('s'), tenant_id: like('t'), tenant_name: like('Tenant'), source: like('SELF_SERVICE'), status: like('PAST_DUE'), plan_key: like('plan'), version_number: integer(1), grace_state: like('IN_GRACE'), amount_withheld: 'FINANCE_SCOPE_REQUIRED', amount_due_reason: like('INVOICE_READ_NOT_DELIVERED'), ...price }),
+    }, (b) => expect(JSON.stringify(b)).not.toContain('amount_due"'));
+  });
+
+  it('V12-P-3 Billing reconciliation: the whole report with the server exception count (read_only_auditor)', async () => {
+    await read('a v1.2 billing reconciliation screen read by read_only_auditor', 'finance records exist', 'read_only_auditor', RECONCILIATION, {}, {
+      as_of: iso(),
+      status: like('EXCEPTIONS'),
+      subscriptions: like([]),
+      entitled_without_subscription: like([]),
+      held_activations: like([]),
+      counts: like({ exceptions: 1 }),
+    }, (b) => expect(typeof (b['counts'] as Record<string, unknown>)['exceptions']).toBe('number'));
+  });
+
+  it('V12-P-4 Revenue: the six-month horizon, holder (finance_admin) and non-holder (commercial_ops)', async () => {
+    const bucket = { month: like('2026-11'), events: integer(1), priced_events: integer(1), unpriced_events: integer(0) };
+    await read('a v1.2 revenue screen read by finance_admin', 'finance records exist', 'finance_admin', REVENUE, { months: '6' }, {
+      mrr_minor: integer(0),
+      arr_minor: integer(0),
+      counts: like({ open_commercial_subscriptions: 1, included: 1, excluded_by_reason: {} }),
+      renewal_pipeline: { months: 6, from_month: like('2026-10'), through_month: like('2027-03'), lapsed: like({}), by_month: eachLike({ ...bucket, mrr_minor: integer(0) }) },
+    }, (b) => expect(typeof b['mrr_minor']).toBe('number'));
+    await read('a v1.2 revenue screen read by commercial_ops', 'finance records exist', 'commercial_ops', REVENUE, { months: '6' }, {
+      amount_withheld: 'FINANCE_SCOPE_REQUIRED',
+      counts: like({ open_commercial_subscriptions: 1, included: 1, excluded_by_reason: {} }),
+      renewal_pipeline: { months: 6, from_month: like('2026-10'), through_month: like('2027-03'), lapsed: like({}), by_month: eachLike({ ...bucket, amount_withheld: 'FINANCE_SCOPE_REQUIRED' }) },
+    }, (b) => expect(b['mrr_minor']).toBeUndefined());
+  });
+
+  it('V12-P-5 Consumption: the Sign envelopes periods of every tenant (finance_admin)', async () => {
+    await read('a v1.2 consumption screen periods read by finance_admin', 'usage roll-ups are reconciled', 'finance_admin', USAGE_PERIODS, { product_key: 'sign', metric_key: 'sign.envelopes', limit: '500' }, {
+      reconciliation: { status: 'RECONCILED', checked_at: iso() },
+      periods: eachLike({ tenant_id: like('t'), period_start: iso(), alignment: like('ALIGNED'), counts: { consumed: integer(1), consumed_send: integer(1), consumed_historical: integer(0), reserved: integer(0) } }),
+      truncated: like(false),
+    }, (b) => expect(Array.isArray(b['periods'])).toBe(true));
+  });
+
+  it('V12-P-6 Billing reconciliation §3: failed commands and the failed inbox, one page each', async () => {
+    await read('a v1.2 failed command page read by finance_admin', 'a failed billing command exists', 'finance_admin', COMMANDS, { state: 'FAILED', limit: '200' }, {
+      commands: eachLike({ id: like('c'), command_kind: like('SUBSCRIPTION_CANCEL'), params: like({}), state: 'FAILED', created_at: iso() }),
+      next_cursor: like(null),
+    }, (b) => expect(Array.isArray(b['commands'])).toBe(true));
+    await read('a v1.2 failed inbox page read by support_admin', 'a failed billing webhook event exists', 'support_admin', INBOX, { status: 'FAILED', limit: '200' }, {
+      events: eachLike({ id: like('e'), provider_event_id: like('evt'), event_type: like('invoice.payment_failed'), status: 'FAILED', attempts: integer(1), received_at: iso() }),
+      next_cursor: like(null),
+    }, (b) => expect(Array.isArray(b['events'])).toBe(true));
+  });
+
+  it('V12-P-7 Alerts: both families, one page each, unfiltered', async () => {
+    await read('a v1.2 alerts screen billing read by finance_admin', 'an open billing alert exists', 'finance_admin', ALERTS_BILLING, { limit: '200' }, {
+      alerts: eachLike({ id: like('a'), alert_type: like('COMMAND_FAILED'), subject_kind: like('billing_command'), subject_id: like('s'), status: like('OPEN'), detail: like('d'), evidence: like({}), first_detected_at: iso() }),
+      next_cursor: like(null),
+    }, (b) => expect(Array.isArray(b['alerts'])).toBe(true));
+    await read('a v1.2 alerts screen approvals read by finance_admin', 'an open approval alert exists', 'finance_admin', ALERTS_APPROVALS, { limit: '200' }, {
+      alerts: eachLike({ id: like('a'), alert_type: like('APPLY_FAILED'), subject_kind: like('change_request'), subject_id: like('s'), status: like('OPEN'), detail: like('d'), evidence: like({}), first_detected_at: iso() }),
+      next_cursor: like(null),
+    }, (b) => expect(Array.isArray(b['alerts'])).toBe(true));
+  });
+});

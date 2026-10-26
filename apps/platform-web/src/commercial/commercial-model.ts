@@ -90,6 +90,9 @@ export const STATE_PILL: Readonly<Record<string, PillSpec>> = {
   REJECTED: { label: 'Rejected', tone: 'muted' },
   EXPIRED: { label: 'Expired', tone: 'muted' },
   WITHDRAWN: { label: 'Withdrawn', tone: 'muted' },
+  // CCP-UI-V12 (AM-3, AM-5; Charter Amendment A1 AD-4): the terminal state of an approved request
+  // whose apply deadline passed unapplied.
+  APPLY_EXPIRED: { label: 'Apply expired', tone: 'muted' },
 };
 
 export function statePill(state: string): PillSpec {
@@ -124,20 +127,61 @@ export function hoursLeft(r: Pick<ChangeRequest, 'expires_at'>, now: Date): numb
 
 export type ExpiresTone = 'ink' | 'warn' | 'danger';
 
-/** The inbox "Expires" cell (handoff §4 TTL). */
-export function expiresCell(r: ChangeRequest, now: Date): { readonly text: string; readonly tone: ExpiresTone } {
+/**
+ * CCP-UI-V12 — the apply-deadline context of a request (Charter Amendment A1 AD-2): `applyBy` is the
+ * final approval + the creation policy's `apply_expiry_hours` (null when that version declares none),
+ * `policyVersion` its number, `nearHours` the configured near-expiry lead (TD-D3-2, 12 h; read from
+ * GET /platform/commercial/metrics/approvals `thresholds`). The A3 read carries no deadline
+ * (MBC-V12-2): it is resolved from the request's snapshotted policy version, display only; the
+ * server decides apply authority (`apply_actionable`).
+ */
+export interface DeadlineContext {
+  readonly applyBy: Date | null;
+  readonly policyVersion: number | null;
+  readonly nearHours: number;
+}
+
+/** The design's default lead until configuration is read (the inbox renders before metrics). */
+export const DEFAULT_NEAR_HOURS = 12;
+
+/** The inbox "Expires" cell (handoff §4 TTL; CCP-UI v1.1 AM-4, v1.2 §17.1 D-1). */
+export function expiresCell(r: ChangeRequest, now: Date, dl?: DeadlineContext): { readonly text: string; readonly tone: ExpiresTone } {
+  const near = dl?.nearHours ?? DEFAULT_NEAR_HOURS;
+  if (r.state === 'APPROVED') {
+    const by = dl?.applyBy ?? null;
+    if (by === null) return { text: 'No apply deadline', tone: 'ink' };
+    const left = Math.max(0, Math.round((by.getTime() - now.getTime()) / H));
+    return { text: `Apply within ${left} h`, tone: by.getTime() - now.getTime() < near * H ? 'warn' : 'ink' };
+  }
+  if (r.state === 'APPLY_EXPIRED') return { text: 'Apply expired', tone: 'danger' };
   if (isPending(r)) {
     const h = hoursLeft(r, now);
     if (h === null) return { text: '—', tone: 'ink' };
-    return { text: `${Math.max(0, h)} h left`, tone: h < 12 ? 'warn' : 'ink' };
+    return { text: `${Math.max(0, h)} h left`, tone: h < near ? 'warn' : 'ink' };
   }
   if (r.state === 'DRAFT') return { text: 'Not submitted', tone: 'ink' };
   if (r.state === 'EXPIRED') return { text: `Expired ${relativeShort(r.expires_at ?? r.expired_at, now)}`, tone: 'danger' };
   return { text: '—', tone: 'ink' };
 }
 
-/** The drawer "Approval window" fact. */
-export function approvalWindow(r: ChangeRequest, now: Date): { readonly text: string; readonly tone: ExpiresTone } {
+/** The drawer fact: "Approval window", relabelled "Apply window" once approved (AM-5). */
+export function windowLabel(r: Pick<ChangeRequest, 'approved_at'>): string {
+  return r.approved_at !== null ? 'Apply window' : 'Approval window';
+}
+
+/** The drawer "Approval window" / "Apply window" fact (handoff §5.2; AM-5; v1.2 D-1). */
+export function approvalWindow(r: ChangeRequest, now: Date, dl?: DeadlineContext): { readonly text: string; readonly tone: ExpiresTone } {
+  const pv = dl?.policyVersion ?? null;
+  const pvText = pv === null ? 'policy' : `policy v${pv}`;
+  const by = dl?.applyBy ?? null;
+  if (r.state === 'APPROVED') {
+    if (by === null) return { text: `No apply deadline (${pvText}) · requester applies`, tone: 'ink' };
+    const left = Math.max(0, Math.round((by.getTime() - now.getTime()) / H));
+    const near = by.getTime() - now.getTime() < (dl?.nearHours ?? DEFAULT_NEAR_HOURS) * H;
+    return { text: `Apply by ${formatTimestamp(by.toISOString())} · ${left} h left · requester applies`, tone: near ? 'warn' : 'ink' };
+  }
+  if (r.state === 'APPLY_EXPIRED') return { text: `Apply window closed ${by !== null ? formatTimestamp(by.toISOString()) : ''} — make a new request`, tone: 'danger' };
+  if (r.approved_at !== null && by === null && dl !== undefined) return { text: `No apply deadline (${pvText})`, tone: 'ink' };
   if (isPending(r)) {
     const h = hoursLeft(r, now);
     return { text: `Expires ${formatTimestamp(r.expires_at)} · ${Math.max(0, h ?? 0)} h left`, tone: 'ink' };
@@ -157,13 +201,21 @@ export function windowHours(r: ChangeRequest): number | null {
 // ── chains ────────────────────────────────────────────────────────────────────
 
 /** The handoff §3 chain name for a request's snapshotted chain. */
-export function chainName(r: Pick<ChangeRequest, 'action_type' | 'required_chain'>): string {
+export function chainName(r: Pick<ChangeRequest, 'action_type' | 'required_chain'> & { readonly payload?: Record<string, unknown> }): string {
   const rule = r.required_chain.rule;
   if (rule === 'DISTINCT_PLATFORM_OWNER') return 'Role change (privileged)';
   if (r.action_type === 'POLICY_ACTIVATE') return 'Policy change';
   if (r.action_type === 'PLAN_VERSION_PUBLISH' || r.action_type === 'PLAN_RETIRE') return 'Catalog publish';
+  // CCP-UI-V12 (AM-8; TD-MERGE-31 open item): an escalated support extension (not a removal)
+  // carries the "Extension outside policy bounds" chain (Finance; maker Support admin).
+  if (isEscalatedExtension(r)) return 'Extension outside policy bounds';
   if (rule === 'FINANCE_THEN_OWNER') return 'Above threshold';
   return 'Below threshold';
+}
+
+/** An out-of-bounds support extension escalated to a Finance request (AM-4 tag, AM-8 chain). */
+export function isEscalatedExtension(r: Pick<ChangeRequest, 'action_type'> & { readonly payload?: Record<string, unknown> }): boolean {
+  return r.action_type === 'SUPPORT_EXTENSION' && r.payload?.['operation'] !== 'REMOVE';
 }
 
 /** "Finance → Owner". */
@@ -172,7 +224,7 @@ export function chainSteps(r: Pick<ChangeRequest, 'required_chain'>): string {
 }
 
 /** "Above threshold: Finance → Owner". */
-export function chainSummary(r: Pick<ChangeRequest, 'action_type' | 'required_chain'>): string {
+export function chainSummary(r: Pick<ChangeRequest, 'action_type' | 'required_chain'> & { readonly payload?: Record<string, unknown> }): string {
   return `${chainName(r)}: ${chainSteps(r)}`;
 }
 
@@ -324,8 +376,30 @@ export function money(amountMinor: number, currency: string): string {
  */
 export const AMOUNT_WITHHELD_LABEL = 'withheld — Finance amount access required';
 
+/**
+ * CCP-UI-V12 (v1.2 §17.2): a tenant-scoped summary whose amount the server withheld reads
+ * "[withheld] …" and carries a WithheldAmount chip (inbox and drawer title).
+ */
+export const MASK = '[withheld]';
+export function summaryWithheld(r: Pick<ChangeRequest, 'payload' | 'tenant_id'>): boolean {
+  return r.tenant_id !== null && amountWithheld(r.payload);
+}
+
 export function amountWithheld(p: Record<string, unknown>): boolean {
   return typeof p['amount_withheld'] === 'string';
+}
+
+/** W-3 (Architect ruling, 2026-10-25): the request types whose reason and evidence are Finance-scoped. */
+export const MONETARY_ACTIONS: readonly string[] = ['CREDIT', 'DISCOUNT', 'REFUND', 'PAYMENT_RECORD'];
+
+/**
+ * The reason and the evidence of a request: the evidence travels in the immutable reason after
+ * "\n\nEvidence: " (TD-MERGE-10, accepted for v1). Without that marker it is all reason.
+ */
+export function splitEvidence(reason: string): { readonly reason: string; readonly evidence: string } {
+  const i = reason.lastIndexOf('\n\nEvidence: ');
+  if (i < 0) return { reason, evidence: '' };
+  return { reason: reason.slice(0, i), evidence: reason.slice(i + '\n\nEvidence: '.length) };
 }
 
 /** "25%" from basis points. */
@@ -338,7 +412,7 @@ export function summaryOf(r: ChangeRequest, me: Me): string {
   const p = r.payload;
   switch (r.action_type) {
     case 'CREDIT': {
-      if (amountWithheld(p)) return `Amount ${AMOUNT_WITHHELD_LABEL}`;
+      if (amountWithheld(p)) return `${MASK} account credit`;
       const a = num(p['amount_minor']);
       const c = typeof p['currency'] === 'string' ? p['currency'] : 'USD';
       return a === null ? 'Account credit' : `${money(a, c)} account credit`;
@@ -373,6 +447,8 @@ export interface EffectRow {
   readonly field: string;
   readonly before: string | null;
   readonly after: string;
+  /** CCP-UI-V12: the server withheld this money row (WithheldAmount on both sides). */
+  readonly withheld?: boolean;
 }
 
 /**
@@ -385,7 +461,7 @@ export function effectRows(r: ChangeRequest, me: Me): EffectRow[] {
   const p = r.payload;
   switch (r.action_type) {
     case 'CREDIT': {
-      if (amountWithheld(p)) return [{ field: 'Account credit', before: null, after: `Amount ${AMOUNT_WITHHELD_LABEL}` }];
+      if (amountWithheld(p)) return [{ field: 'Account credit', before: null, after: MASK, withheld: true }];
       const a = num(p['amount_minor']);
       const c = typeof p['currency'] === 'string' ? p['currency'] : 'USD';
       return [{ field: 'Account credit', before: null, after: a === null ? '—' : money(a, c) }];
@@ -431,17 +507,21 @@ export const TAB_EMPTY: Readonly<Record<InboxTab, { readonly title: string; read
   history: { title: 'No history yet', body: 'Applied, rejected, expired and withdrawn requests appear here.' },
 };
 
-/** The rows of a tab. "Waiting on me" is the server's `eligible_for_me` set (live verdict). */
+/**
+ * The rows of a tab. "Waiting on me" is the server's `eligible_for_me` set (live verdict) plus
+ * (AM-4) the Approved requests the caller made, which are theirs to apply; "All pending" includes
+ * Approved; History excludes it.
+ */
 export function tabRows(tab: InboxTab, all: readonly ChangeRequest[], eligibleIds: ReadonlySet<string>, meId: string): ChangeRequest[] {
   switch (tab) {
     case 'me':
-      return all.filter((r) => isPending(r) && eligibleIds.has(r.id));
+      return all.filter((r) => (isPending(r) && eligibleIds.has(r.id)) || (r.state === 'APPROVED' && r.requested_by === meId));
     case 'pending':
-      return all.filter(isPending);
+      return all.filter((r) => isPending(r) || r.state === 'APPROVED');
     case 'mine':
       return all.filter((r) => r.requested_by === meId);
     case 'history':
-      return all.filter((r) => !isPending(r) && r.state !== 'DRAFT');
+      return all.filter((r) => !isPending(r) && r.state !== 'DRAFT' && r.state !== 'APPROVED');
   }
 }
 
@@ -471,7 +551,7 @@ export function unfulfillableChains(details: readonly ChangeRequestDetail[], ref
 }
 
 /** Handoff §3 "Approval chains" order. */
-export const CHAIN_ORDER: readonly string[] = ['Above threshold', 'Below threshold', 'Catalog publish', 'Role change (privileged)', 'Policy change'];
+export const CHAIN_ORDER: readonly string[] = ['Above threshold', 'Below threshold', 'Catalog publish', 'Role change (privileged)', 'Policy change', 'Extension outside policy bounds'];
 
 // ── the request-state stepper (handoff §4, CrStepper) ────────────────────────
 
@@ -492,11 +572,17 @@ const REACH: Readonly<Record<string, number>> = {
   APPLYING: 3,
   APPLIED: 4,
   APPLY_FAILED: 3,
+  APPLY_EXPIRED: 3,
   REJECTED: 1,
   EXPIRED: 1,
   WITHDRAWN: 1,
 };
-const TERMINAL = ['REJECTED', 'EXPIRED', 'WITHDRAWN', 'APPLY_FAILED'];
+const TERMINAL = ['REJECTED', 'EXPIRED', 'WITHDRAWN', 'APPLY_FAILED', 'APPLY_EXPIRED'];
+
+/** A request withdrawn after its approval (ACC-1: a failed policy activation) reached Applying. */
+export function withdrawnAfterFail(r: Pick<ChangeRequest, 'state' | 'approved_at'>): boolean {
+  return r.state === 'WITHDRAWN' && r.approved_at !== null;
+}
 
 /**
  * CCP-C4 — the Stripe-side request types: their Applying chip reads "Sent to Stripe — awaiting
@@ -508,9 +594,9 @@ export const STRIPE_SIDE_ACTIONS: readonly string[] = ['CREDIT', 'DISCOUNT', 'RE
 export const STRIPE_SENT_LABEL = 'Sent to Stripe — awaiting confirmation';
 
 /** The design's stepper model (Commercial Control Plane v1.0.dc.html, drawer `stepper`). */
-export function stateSteps(state: string, actionType?: string): StateStep[] {
+export function stateSteps(state: string, actionType?: string, opts: { readonly approvedLabel?: string; readonly afterFail?: boolean } = {}): StateStep[] {
   const stripeSent = state === 'APPLYING' && actionType !== undefined && STRIPE_SIDE_ACTIONS.includes(actionType);
-  const reach = REACH[state] ?? 0;
+  const reach = state === 'WITHDRAWN' && opts.afterFail === true ? 3 : (REACH[state] ?? 0);
   const term = TERMINAL.includes(state);
   // A request withdrawn while still a draft never reached Pending approval.
   const steps: StateStep[] = MAIN.map((k, i) => {
@@ -518,7 +604,8 @@ export function stateSteps(state: string, actionType?: string): StateStep[] {
     const failed = term && i === reach;
     const current = !term && i === reach && !done;
     return {
-      label: k === 'APPLYING' && stripeSent ? STRIPE_SENT_LABEL : statePill(k).label,
+      // AM-5 / D-1: the Approved chip names the apply deadline while the request is Approved.
+      label: k === 'APPLYING' && stripeSent ? STRIPE_SENT_LABEL : k === 'APPROVED' && state === 'APPROVED' && opts.approvedLabel !== undefined ? opts.approvedLabel : statePill(k).label,
       mark: done ? 'done' : failed ? 'failed' : current ? 'current' : 'todo',
       dim: term && i > reach,
     };
@@ -530,7 +617,7 @@ export function stateSteps(state: string, actionType?: string): StateStep[] {
 // ── timeline (handoff §5.2 item 10) ──────────────────────────────────────────
 
 /** Submitted, steps signed, the terminal event — newest first. */
-export function timelineOf(detail: ChangeRequestDetail, me: Me): TimelineEvent[] {
+export function timelineOf(detail: ChangeRequestDetail, me: Me, dl?: DeadlineContext): TimelineEvent[] {
   const r = detail.request;
   const ev: TimelineEvent[] = [];
   const requester = { label: r.requested_by === me.id ? (me.name ?? 'You') : 'Requester', id: r.requested_by };
@@ -543,10 +630,19 @@ export function timelineOf(detail: ChangeRequestDetail, me: Me): TimelineEvent[]
       at: a.created_at,
       tone: 'ok',
       actor: { label: a.approver_user_id === me.id ? `${me.name ?? 'You'} · as ${commercialRoleLabel(a.step_role_key)}` : `As ${commercialRoleLabel(a.step_role_key)}`, id: a.approver_user_id },
-      note: a.comment ?? undefined,
+      note: a.notes_withheld !== undefined ? 'Finance notes restricted' : (a.comment ?? undefined),
     });
   }
-  if (r.approved_at) ev.push({ id: 'approved', label: 'Approved', at: r.approved_at, tone: 'info', actor: { label: 'System' } });
+  if (r.approved_at) {
+    // AM-5 / D-1: "Approved · apply by {UTC}" (or no deadline), only the requester can apply.
+    const label =
+      dl === undefined
+        ? 'Approved'
+        : dl.applyBy !== null
+          ? `Approved · apply by ${formatTimestamp(dl.applyBy.toISOString())}`
+          : `Approved · no apply deadline (${dl.policyVersion === null ? 'policy' : `policy v${dl.policyVersion}`})`;
+    ev.push({ id: 'approved', label, at: r.approved_at, tone: 'info', actor: { label: dl === undefined ? 'System' : 'All steps signed · only the requester can apply' } });
+  }
   if (r.applied_at) ev.push({ id: 'applied', label: 'Applied', at: r.applied_at, tone: 'ok', actor: { label: 'System' } });
   if (r.rejected_at) {
     ev.push({
@@ -555,10 +651,10 @@ export function timelineOf(detail: ChangeRequestDetail, me: Me): TimelineEvent[]
       at: r.rejected_at,
       tone: 'danger',
       actor: { label: r.rejected_by === me.id ? (me.name ?? 'You') : 'Approver', id: r.rejected_by },
-      note: r.rejection_reason ?? undefined,
+      note: r.notes_withheld !== undefined ? 'Finance notes restricted' : (r.rejection_reason ?? undefined),
     });
   }
-  if (r.withdrawn_at) ev.push({ id: 'withdrawn', label: 'Withdrawn', at: r.withdrawn_at, tone: 'muted', actor: requester });
+  if (r.withdrawn_at) ev.push({ id: 'withdrawn', label: withdrawnAfterFail(r) ? 'Withdrawn by requester after failed apply' : 'Withdrawn', at: r.withdrawn_at, tone: 'muted', actor: requester });
   if (r.expired_at) ev.push({ id: 'expired', label: 'Expired', at: r.expired_at, tone: 'muted', actor: { label: 'System' } });
   return ev.sort((a, b) => (ms(b.at) ?? 0) - (ms(a.at) ?? 0));
 }

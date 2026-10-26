@@ -228,3 +228,23 @@
 .pc-dr:focus {
   outline: none;
 }
+
+/* CCP-UI-V12 — inbox additions (Commercial Control Plane v1.2.dc.html, approvals rows). */
+.pc-row__chip {
+  margin-top: 4px;
+}
+.pc-row__tag {
+  padding: 1px 6px;
+  border-radius: var(--pw-r-xs);
+  background: var(--pw-role-badge-bg);
+  color: var(--pw-role-badge-fg);
+  font-size: var(--pw-fs-11);
+  font-weight: 600;
+}
+.pc-row__older {
+  color: var(--pw-warn);
+  font-size: var(--pw-fs-11-5);
+}
+.pc-dr-restricted {
+  color: var(--pw-muted);
+}

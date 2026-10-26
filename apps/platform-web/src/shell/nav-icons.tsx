@@ -23,6 +23,14 @@ const PATH: Readonly<Record<NavIconKey, string>> = {
   contract: 'M14 3H6v18h12V7zM14 3v4h4M9 17c1.5-2 2.5-2 3 0s1.5 1 3-1',
   scale: 'M12 3v18M5 7h14M5 7l-3 7a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0zM8 21h8',
   audit: 'M8 4h11v14a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-2h11v2a3 3 0 0 0 3 3M8 4a3 3 0 0 0-3 3v9M11 8h5M11 12h5',
+  // CCP-UI-V12 — Commercial Control Plane v1.2.dc.html IC (bell, cal, renew, due, rec, bars, pulse).
+  bell: 'M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9M10.3 21a1.94 1.94 0 0 0 3.4 0',
+  cal: 'M3 5h18v16H3zM16 3v4M8 3v4M3 10h18M12 13v5M9.5 15.5h5',
+  renew: 'M21 12a9 9 0 1 1-3-6.7L21 8M21 3v5h-5',
+  due: 'M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18zM12 7v5l3 2',
+  rec: 'M7 7h10l-3-3M17 17H7l3 3',
+  bars: 'M3 21h18M6 17v-5M11 17V7M16 17v-8M21 17V4',
+  pulse: 'M3 12h4l3-8 4 16 3-8h4',
 };
 
 export function NavIcon({ name }: { readonly name: NavIconKey }) {

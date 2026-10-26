@@ -11,6 +11,7 @@ import type { Locator, Page } from '@playwright/test';
 
 import type { CcpMockOptions } from '../fixtures/ccp-governance';
 import type { CcpProtoProps } from '../support/proto-ccp';
+
 import type { ViewportSpec } from './state-types';
 
 export interface CcpMask {
@@ -68,24 +69,26 @@ const AUDIT_FILTERS: CcpMask = { proto: (p) => p.locator('main select').first().
 
 export const CCP_B5_STATES: readonly CcpState[] = [
   // ---- Policy (§5.6) ------------------------------------------------------------------
+  // CCP-UI-V12 (AM-7, v1.2 D-1): the policy states are compared with CCP-UI v1.2 (the Apply window
+  // (TTL) row on every version, the AM-7 activation copy); their references are re-captured from it.
   {
     name: 'ccp-policy-draft',
     clip: 'content',
-    proto: { props: { persona: 'priya', startRoute: 'policy' } },
+    proto: { props: { release: 'v1_2', persona: 'priya', startRoute: 'policy' } },
     build: { path: '/commercial/policy', mock: { persona: 'priya' } },
     masks: THRESHOLD_HELP,
   },
   {
     name: 'ccp-policy-active',
     clip: 'content',
-    proto: { props: { persona: 'priya', startRoute: 'policy' }, call: 'c.setState({ pv: 1 })' },
+    proto: { props: { release: 'v1_2', persona: 'priya', startRoute: 'policy' }, call: 'c.setState({ pv: 1 })' },
     build: { path: '/commercial/policy', mock: { persona: 'priya' }, act: (p) => p.getByRole('button', { name: /^v1/ }).click() },
     masks: THRESHOLD_HELP,
   },
   {
     name: 'ccp-policy-viewonly',
     clip: 'content',
-    proto: { props: { persona: 'ines', startRoute: 'policy' } },
+    proto: { props: { release: 'v1_2', persona: 'ines', startRoute: 'policy' } },
     build: { path: '/commercial/policy', mock: { persona: 'ines' } },
     masks: THRESHOLD_HELP,
   },
@@ -94,7 +97,9 @@ export const CCP_B5_STATES: readonly CcpState[] = [
     clip: 'dialog',
     blur: true,
     aaAllowance: 60,
-    proto: { props: { persona: 'priya', startRoute: 'policy' }, call: 'c.renderVals().po.d.actions[0].onClick()' },
+    // v1.2's draft carries the failed activation CR-1053 (its panel offers Retry apply / Withdraw…):
+    // the activation dialog is opened directly.
+    proto: { props: { release: 'v1_2', persona: 'priya', startRoute: 'policy' }, call: 'c.dlgPolicy(c.state.pol.find((x) => x.v === 2))' },
     build: { path: '/commercial/policy', mock: { persona: 'priya' }, act: (p) => p.getByRole('button', { name: 'Request activation…' }).click() },
   },
   // ---- Audit (§5.7) ---------------------------------------------------------------------

@@ -82,11 +82,13 @@ describe('Approvals inbox (handoff §5.1)', () => {
     mock({ ...w, list: [withheldCredit, discount, mine, done], details: { ...w.details, [credit.id]: detail(withheldCredit) } });
     renderInbox();
     const row = await screen.findByTestId(`cr-row-${credit.id}`);
-    expect(within(row).getByText('Amount withheld — Finance amount access required')).toBeInTheDocument();
+    // CCP-UI-V12 (v1.2 §17.2): the masked summary and the WithheldAmount chip.
+    expect(within(row).getByText('[withheld] account credit')).toBeInTheDocument();
+    expect(within(row).getByLabelText('Amount withheld: finance access required')).toBeInTheDocument();
     expect(row.textContent).not.toMatch(/\$|350/);
     fireEvent.click(row);
     await screen.findByTestId('cr-drawer');
-    expect(screen.getByRole('dialog')).toHaveTextContent('Account credit · Amount withheld — Finance amount access required');
+    expect(screen.getByRole('dialog')).toHaveTextContent('Account credit · [withheld] account credit');
     expect(screen.getByRole('dialog').textContent).not.toMatch(/\$350/);
   });
 

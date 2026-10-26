@@ -314,3 +314,8 @@
   color: var(--pw-muted);
   font-size: var(--pw-fs-12);
 }
+
+/* CCP-UI-V12 (v1.2 §17.2) — the Payment / Amount due facts' pill row (design: margin-top 3px). */
+.cs-fact__due {
+  margin-top: 3px;
+}

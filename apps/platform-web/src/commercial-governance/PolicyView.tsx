@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Button, Input, useOptionalToast } from '@aramo/fe-foundation';
+import { ApiError } from '@aramo/fe-foundation';
 
-import { ConfirmDialog, Pill, SkeletonPanel } from '../components';
+import { Pill, SkeletonPanel, WithdrawFailedActivationDialog, formatTimestamp } from '../components';
+import { commercialApi, type ChangeRequestDetail } from '../commercial/commercial-api';
 import { GovernanceRequestDialog } from '../components/GovernanceRequestDialog';
 
 import {
@@ -45,9 +47,12 @@ export function PolicyView() {
   const [dlg, setDlg] = useState<Dlg>(null);
   const [busy, setBusy] = useState(false);
   const [editError, setEditError] = useState<string | null>(null);
-  // CCP-ACC-1 — the withdrawal confirm (the PLATFORM-UX-1 ConfirmDialog; CCP-UI v1.1 design gap).
+  // CCP-ACC-1 — the withdrawal of a failed activation. CCP-UI-V12 (v1.2 §17.3 D-4): the designed
+  // WithdrawFailedActivationDialog with its two refusals inline (was the ConfirmDialog).
   const [withdrawing, setWithdrawing] = useState<{ id: string } | null>(null);
-  const [withdrawError, setWithdrawError] = useState<string | null>(null);
+  // CCP-UI-V12 (AM-7, D-1): the open activation request's read (approval time, requester, the
+  // snapshotted policy) for the apply-deadline hints.
+  const [openRead, setOpenRead] = useState<ChangeRequestDetail | null>(null);
 
   const load = useCallback(async (): Promise<void> => {
     try {
@@ -70,6 +75,25 @@ export function PolicyView() {
     versions.find((v) => v.status === 'DRAFT') ??
     active ??
     versions[0];
+  // The request read behind the hints: the open activation request, else (for the
+  // "withdrawn after a failed apply" hint) this version's latest request when it was withdrawn.
+  const readId = data?.open_request?.id ?? (current?.latest_request?.state === 'WITHDRAWN' ? current.latest_request.id : null);
+  useEffect(() => {
+    if (readId === null) {
+      setOpenRead(null);
+      return;
+    }
+    let cancelled = false;
+    commercialApi.getChangeRequest(readId).then(
+      (d) => {
+        if (!cancelled) setOpenRead(d);
+      },
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [readId]);
   const canAuthor = data?.caller.can_author === true;
   const canRequest = data?.caller.can_request_activation === true;
   const open = data?.open_request ?? null;
@@ -148,6 +172,37 @@ export function PolicyView() {
             ? `${changedCount} setting(s) differ from v${active?.version_number ?? '?'}`
             : '';
   const applyable = current?.open_request ?? null;
+  const applyId = applyable?.id ?? null;
+  // The hints per design (Commercial Control Plane v1.2.dc.html policy `hint`).
+  const deadline = (() => {
+    if (openRead === null || openRead.request.id !== applyId || openRead.request.approved_at === null) return null;
+    const snap = versions.find((x) => x.id === openRead.request.policy_version_id);
+    const h = snap?.content?.apply_expiry_hours;
+    return { by: typeof h === 'number' ? new Date(Date.parse(openRead.request.approved_at) + h * 3_600_000) : null, snapshot: snap?.version_number ?? null };
+  })();
+  const vNum = current?.version_number ?? 0;
+  const v12Hint = (() => {
+    if (applyable === null) return null;
+    if (applyable.state === 'APPROVED') {
+      if (applyable.apply_actionable) {
+        return `Approved — v${vNum} becomes active only when you apply it${deadline?.by != null ? `. Apply by ${formatTimestamp(deadline.by.toISOString())}` : ` (no apply deadline under policy v${deadline?.snapshot ?? '?'})`}.`;
+      }
+      return `Approved — waiting for ${openRead?.request.id === applyId ? nameOf(openRead.request.requested_by) : 'the requester'} to apply it${deadline?.by != null ? ` by ${formatTimestamp(deadline.by.toISOString())}` : ''}.`;
+    }
+    if (applyable.state === 'APPLY_FAILED') {
+      return applyable.apply_actionable ? 'Apply failed. Retry when ready.' : `Apply failed. Only ${openRead?.request.id === applyId ? nameOf(openRead.request.requested_by) : 'the requester'} can retry.`;
+    }
+    return null;
+  })();
+  const latestHint =
+    open === null && latest !== null && latest.state === 'WITHDRAWN' && openRead?.request.id === latest.id && openRead.request.approved_at !== null
+      ? `Withdrawn after a failed apply — activating v${vNum} again needs a new request.`
+      : open === null && latest !== null && latest.state === 'APPLY_EXPIRED'
+        ? 'Apply expired — request activation again.'
+        : null;
+  const shownHint = v12Hint ?? latestHint ?? hint;
+  // An approved or failed activation on this version replaces the version's own actions (design `polActs`).
+  const applyPhase = applyable !== null && (applyable.state === 'APPROVED' || applyable.state === 'APPLY_FAILED');
 
   const applyActivation = async (id: string): Promise<void> => {
     setBusy(true);
@@ -160,22 +215,6 @@ export function PolicyView() {
     } finally {
       setBusy(false);
       await load();
-    }
-  };
-
-  const withdrawActivation = async (id: string): Promise<void> => {
-    setBusy(true);
-    setWithdrawError(null);
-    try {
-      await governanceApi.withdrawChange(id);
-      setWithdrawing(null);
-      toast.show(`${shortRequestId(id)} withdrawn`);
-      await load();
-    } catch (e) {
-      setWithdrawError(governanceErrorText(e));
-      void load();
-    } finally {
-      setBusy(false);
     }
   };
 
@@ -299,7 +338,7 @@ export function PolicyView() {
             {applyable !== null && applyable.apply_actionable ? (
               <Button
                 unstyled
-                className="pw-gov-btn pw-gov-btn--privileged"
+                className={`pw-gov-btn ${applyable.state === 'APPLY_FAILED' ? 'pw-gov-btn--mid' : 'pw-gov-btn--privileged'}`}
                 disabled={busy}
                 onClick={() => void applyActivation(applyable.id)}
               >
@@ -307,19 +346,11 @@ export function PolicyView() {
               </Button>
             ) : null}
             {applyable !== null && applyable.withdraw_actionable ? (
-              <Button
-                unstyled
-                className="pw-gov-btn pw-gov-btn--secondary"
-                disabled={busy}
-                onClick={() => {
-                  setWithdrawError(null);
-                  setWithdrawing({ id: applyable.id });
-                }}
-              >
+              <Button unstyled className="pw-gov-btn pw-gov-btn--danger" disabled={busy} onClick={() => setWithdrawing({ id: applyable.id })}>
                 Withdraw…
               </Button>
             ) : null}
-            {actions.map((a) => (
+            {(applyPhase ? [] : actions).map((a) => (
               <Button
                 key={a.label}
                 unstyled
@@ -341,26 +372,35 @@ export function PolicyView() {
                 {a.label}
               </Button>
             ))}
-            <span className="pw-gov-actions__hint">{hint}</span>
+            <span className="pw-gov-actions__hint">{shownHint}</span>
           </div>
         </section>
       </div>
       {withdrawing !== null ? (
-        <ConfirmDialog
+        <WithdrawFailedActivationDialog
           open
-          ccp
           onOpenChange={(o) => {
             if (!o) setWithdrawing(null);
           }}
-          title={`Withdraw activation request ${shortRequestId(withdrawing.id)}`}
-          from={{ label: 'Apply failed', tone: 'warn' }}
-          to={{ label: 'Withdrawn', tone: 'muted' }}
-          consequence="The failed activation is closed for good and the draft can be requested again. Approvals and the failure record stay on file. If the activation is found to have taken effect, the request is marked applied instead."
-          error={withdrawError}
-          commitLabel="Withdraw request"
-          tone="danger"
-          busy={busy}
-          onCommit={() => void withdrawActivation(withdrawing.id)}
+          requestLabel={shortRequestId(withdrawing.id)}
+          policyVersion={current?.version_number ?? null}
+          onWithdraw={async () => {
+            try {
+              await governanceApi.withdrawChange(withdrawing.id);
+              return 'WITHDRAWN';
+            } catch (e) {
+              const r = e instanceof ApiError ? e.details?.['reason'] : undefined;
+              if (r === 'already_applied') return 'ALREADY_APPLIED';
+              if (r === 'apply_in_progress') return 'APPLY_IN_PROGRESS';
+              throw new Error(governanceErrorText(e));
+            }
+          }}
+          onWithdrawn={() => {
+            setWithdrawing(null);
+            toast.show(`${shortRequestId(withdrawing.id)} withdrawn. Activating this version again needs a new request.`);
+            void load();
+          }}
+          onReconciled={() => void load()}
         />
       ) : null}
       {dlg !== null && active !== undefined ? (
@@ -482,7 +522,7 @@ function ActivationDialog({
           ? `Request rollback to policy v${version.version_number}`
           : `Request activation · policy v${version.version_number}`
       }
-      sub={`v${version.version_number} becomes the active policy once approved; v${active.version_number} is retired. Requests already open keep the chain they were created with.`}
+      sub={`v${version.version_number} becomes active only when you, the requester, apply it after approval (${typeof active.content?.apply_expiry_hours === 'number' ? `within ${active.content.apply_expiry_hours} h` : `no apply deadline under policy v${active.version_number}`}). Then v${active.version_number} is retired. Requests already open keep the chain they were created with.`}
       reason={reason}
       onReason={setReason}
       evidence={evidence}

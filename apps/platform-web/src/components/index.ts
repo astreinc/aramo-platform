@@ -78,3 +78,18 @@ export {
   type SupportPreview,
   type SupportRequestDialogProps,
 } from './SupportRequestDialog';
+// CCP-UI-V12 — the NEW v1.1 / v1.2 components (CCP-UI v1.1 handoff §13.10; v1.2 §17.4; R-3).
+export { ApplyDeadline, applyDeadlineText, type ApplyDeadlineProps, type ApplyDeadlineState, type ApplyDeadlineText } from './ApplyDeadline';
+export { ExceptionCountTile, type ExceptionCountTileProps } from './ExceptionCountTile';
+export { NotEnabledState, TAX_NOT_ENABLED, type NotEnabledStateProps } from './NotEnabledState';
+export { PaymentDueIndicator, paymentDueState, type PaymentDueIndicatorProps, type PaymentDueState } from './PaymentDueIndicator';
+export { RenewalRemainingPill, daysLeft, renewalRemaining, type RenewalRemainingPillProps } from './RenewalRemainingPill';
+export { UsageReconBanner, type UsageReconBannerProps, type UsageReconStatus, type UsageRunMode } from './UsageReconBanner';
+export {
+  WithdrawFailedActivationDialog,
+  WITHDRAW_REFUSAL,
+  type WithdrawFailedActivationDialogProps,
+  type WithdrawOutcome,
+} from './WithdrawFailedActivationDialog';
+export { WithheldAmount, WITHHELD_ARIA, WITHHELD_TOOLTIP, type WithheldAmountProps, type WithheldAmountReason } from './WithheldAmount';
+export { WithheldPrice, withheldPriceReason, type WithheldPriceProps, type WithheldPriceReason } from './WithheldPrice';

@@ -141,6 +141,17 @@
 .pw-gov-btn--dim {
   opacity: 0.45;
 }
+/* CCP-UI-V12 (AM-7, D-4): Retry apply (midnight) and Withdraw… (danger), design BTN mid / danger. */
+.pw-gov-btn--mid {
+  border-color: var(--pw-midnight);
+  background: var(--pw-midnight);
+  color: var(--pw-surface);
+}
+.pw-gov-btn--danger {
+  border-color: var(--pw-danger);
+  background: var(--pw-danger);
+  color: var(--pw-surface);
+}
 .pw-gov-actions {
   display: flex;
   flex-wrap: wrap;
@@ -469,4 +480,9 @@
 .pw-roles-act {
   text-align: right;
   white-space: nowrap;
+}
+
+/* CCP-UI-V12 (v1.2 §17.2) — the WithheldAmount chip under an audit detail. */
+.pw-aud-chip {
+  margin-top: 4px;
 }

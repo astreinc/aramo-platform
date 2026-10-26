@@ -235,3 +235,41 @@ Not compared (no design counterpart; unit-, keyboard- and axe-tested): the conve
 "Request conversion to MANUAL…", the grant dialog (no prototype tenant reaches it through a
 governed path), the Apply / Retry apply button on the open-request strip (TD-B2-3), the
 "Save as draft" result notice, the apply-refusal alert (DR-C2-1).
+
+## CCP-UI-V12 — Finance, Usage, Alerts and the v1.0 amendments (`states-ccp-v12.ts`) against the CCP-UI v1.2 release
+
+Reference: `doc/design-reference/ccp/CCP-UI-v1_2/` (manifest 5/5, prototype `e3dad017…`), opened by
+`support/proto-ccp.ts` with `release: 'v1_2'`. Holder = Priya Shah (finance_admin, amount-read);
+non-holder = Tomás Silva (commercial_ops). B1's shell masks DV-C1 (rail) and DV-C2 (⌘K text) apply
+to every full-frame state; DV-C6 (B1) to the access-denied card. Full record:
+`doc/ccp/slices/CCP-UI-V12-acceptance.md`.
+
+| ID | Divergence | Cause | States |
+|---|---|---|---|
+| DV-V12-W1 | Renewals shows the published list price to a non-holder (the v1.2 file shows WithheldAmount); the narrower chip resizes the auto table, so the table is masked for the non-holder | Architect ruling W-1 (2026-10-25) | v12-renewals-nonholder |
+| DV-V12-REV-1 | Revenue never labels the list-price figures MRR / ARR / revenue: "Illustrative list-price value (monthly / annualized)", "Monthly value × 12", the reworded intro and view-only note, the visible note "Derived from published list prices; not recognized revenue."; the two-line labels make the tile row taller (tiles masked to the bottom; the months card compared element-level); the Renewals intro points to "list-price values" | Lead correction (W-1 vs D2, 2026-10-25) | v12-revenue*, v12-renewals* |
+| DV-V12-9 | No "Design only" banner on Revenue | D2 is delivered (the banner is prototype copy) | v12-revenue* |
+| DV-V12-13 | The Withheld tile names the exclusion reasons with counts ("2 contract-priced"), not tenant names | D2 returns no per-tenant row (by design) | v12-revenue, v12-revenue-nonholder |
+| DV-V12-T | Table rows of Outstanding payments, Billing reconciliation, Consumption and Alerts: UUID references (`EXT-CC7E0000`, `CB300000`), the server's own detail text, the held plan line, no alignment reason; the auto layout sizes every column from the rows, so each table is masked to the bottom | R-13 (data the reads carry) | v12-outstanding*, v12-recon, v12-recon-nonholder, v12-usage, v12-usage-pending, v12-alerts, v12-alerts-resolved |
+| DV-V12-15 | The Exceptions tile is the server's `counts.exceptions` (5 for the fixture; stuck commands are listed but not counted) where the design sums its rows (7) | C6 counts exceptions (failed commands and failed inbox events only) | v12-recon* |
+| DV-V12-6 | The usage banner line ends at the last-run time (no run mode); the withdraw dialog has no Reason field | The D1 reconciliation read carries no run mode (MBC-V12-6); the ACC-1 withdraw route takes no body (MBC-V12-1) | v12-usage*, v12-withdraw-dialog |
+| DV-V12-8 / DV-V12-11 | No Roll-up runs card; the refused card names the real code `409 USAGE_ROLLUP_NOT_RECONCILED` (the design says `USAGE_NOT_RECONCILED`) | No route lists the roll-up runs (MBC-V12-7); the code is the server's | v12-usage-refused (masked to the bottom from the refused card) |
+| DV-V12-10 | Alerts footer: "Alerts never grade, rate or order tenants or people." | The design's two words fail `scripts/verify-vocabulary.sh` (PLATFORM-UX-1 R-18) | v12-alerts-empty (the populated states mask it inside DV-V12-T) |
+| DV-V12-12 | The Open / Resolved / All counts are the server register's | The design counts its sample (and its pilot v0 rows) | v12-alerts, v12-alerts-resolved |
+
+Re-pointed v1.0 states (their references are now the v1.2 file; the four images are the only
+modified existing baselines; no PLATFORM-UX-1 baseline is touched):
+`ccp-rail-group` (AM-1: Support extensions after Policy, `cal` glyph; the v1.0 DV-MERGE-1 hide is
+retired) and `ccp-policy-activation-dialog` (AM-7 copy; v1.2 draft diff). `ccp-policy-draft`,
+`ccp-policy-active` and `ccp-policy-viewonly` also compare against v1.2 now (their images are
+byte-identical). New element states: `ccp-rail-finance`, `ccp-rail-usage`, `v12-drawer-stepper-*`,
+`v12-drawer-footer-*`, `v12-withdraw-dialog` (its Before → after box), `v12-revenue-months*`,
+`v12-tc-payment-*` (the Sign card facts grid; B3's DV-B3-1 Plan mask).
+
+`v12-alerts-resolved` keeps the prototype's pilot v0 rows (`keepPilotV0`): its Resolved view names
+CR-1055 / CR-1047, which the v0 filter removes, and the rows are masked.
+
+| ID | State | Allowance | Measured | Evidence |
+|---|---|---|---|---|
+| AA-V12-1 | `v12-renewals` | 100 px | 80 (1440) | 1-px glyph edges in the Plan · version, End date and List price columns (sub-pixel column offsets of the auto layout); every run; no box differs |
+| AA-V12-2 | `v12-alerts`, `v12-alerts-resolved` | 40 px | 27 (1440) | glyph edges in the segmented filter next to the masked count spans |

@@ -600,3 +600,25 @@ HALT after the final engineering acceptance and return the single-PR publication
     - all pacts deleted and regenerated (platform-web consumer 207 / 207) and all 5 providers 7 / 7;
     - R1 scan 4 / 4.
   - **Gates:** tsc, lint (9 projects), contract-parity, openapi-drift, orphan-scopes, env-passthrough, error-codes, tests:integration, vocabulary and repo-map all pass (rc=0).
+- **TD-MERGE-51 (UI-V12, `64e455b6`; CCP-UI v1.2 screens and AM-1…AM-10):** `wip/ccp-v12` merged with no source conflict. The generated repo map was regenerated.
+  - **Baselines:** exactly the 4 changed CCP baselines are modified (`ccp-rail-group-{900,1440}` for AM-1, `ccp-policy-activation-dialog-{900,1440}` for AM-7). The other v1.2 baselines are new files. No PLATFORM-UX-1 baseline is touched.
+  - **R3-W markers:** UI-V12's unit mocks of the W-2 / W-3 markers run against the integrated types: platform-web unit 619 / 619. The Pact consumer has no duplicate marker interactions: consumer 214 / 214, platform-admin provider 2 / 2, verify-api 1 / 1.
+  - **C8-PR payment terms:** C8-PR's payment-terms shape is in the integrated Pact (`payment_terms`) and the provider fixtures (D-C8PR-8). UI-V12 builds no contract-create form; the B4 Payments panel is G-C8PR-1, class C.
+  - **The other MBC-V12 backend contracts** (MBC-V12-1/2/3/6–14) are class C (deferred) under the scope freeze. Not implemented.
+  - **D4 journeys × UI-V12 (copy).** 6 D4 role journeys pinned pre-v1.2 copy that UI-V12's approved amendments changed. The expectations now follow the UI, with no behaviour change (39 / 39):
+    - AM-2: a page gated on `platform:billing:read` / `platform:subscription:read` names the scope it needs (`scopeGatedWhy`) instead of the generic line;
+    - D-1: the approval toast continues with who applies and until when;
+    - AM-5: the drawer's approval event reads "Approved · apply by …".
+  - **Full Playwright under host load 15–42 (other sessions' suites).**
+    - First run: 795 passed, 23 flaky, 7 failed (the 6 journeys above + `studio-compare-changes` @1440).
+    - Visual re-run alone (`--workers=2`): 349 passed, 14 flaky, 2 failed.
+    - Every failure was a ≤ 0.01-ratio glyph-edge difference on a **different** state each run, PLATFORM-UX-1 states included (`ccp-admins` @1440, `dashboard-skeleton` @900, …). This is load-dependent rendering, not a merge regression. Re-verified at the final gate.
+  - **Infra:** one subscription suite (`commercial-audit-policy.integration.spec.ts`) timed out binding its testcontainer port under load. Re-run alone: 22 / 22.
+  - **Integrated:**
+    - subscription CCP 905 / 905 (883 + the re-run 22);
+    - platform-admin CCP 796 / 796;
+    - platform-web unit 619 / 619;
+    - platform-web consumer 214 / 214;
+    - providers: platform-admin 2 / 2, verify-api 1 / 1;
+    - journeys 39 / 39.
+  - **Gates:** tsc (incl. e2e), lint, contract-parity, openapi-drift, orphan-scopes, env-passthrough, error-codes, tests:integration, vocabulary and repo-map all pass (rc=0).

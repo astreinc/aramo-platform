@@ -139,6 +139,8 @@ describe('CCP-B5 governance model', () => {
       ['Support extension, cumulative cap', '30 days', '30 days', false],
       ['Approval window (TTL)', '72 h', '48 h', true],
       ['Past-due grace', '7 days', '7 days', false],
+      // CCP-UI-V12 (v1.2 D-1): the apply window is always listed.
+      ['Apply window (TTL)', 'Not set', 'Not set', false],
     ]);
     expect(POLICY_FIELDS[0]?.help).toBe(
       'Discounts at or above this need Finance → Owner; below, Finance only.',
@@ -152,14 +154,14 @@ describe('CCP-B5 governance model', () => {
     );
   });
 
-  it('FIX1-W-1 the optional apply deadline (Charter Amendment A1 AD-1): no row while neither version declares it; listed as "Not set" in the draft editor; shown and diffed once a version declares it', () => {
-    expect(policyRows(DRAFT, ACTIVE).map((r) => r.field.key)).not.toContain('apply_expiry_hours');
+  it('FIX1-W-1 / V12 D-1 the apply window (Charter Amendment A1 AD-1): always listed, "Not set" while a version does not declare it; shown and diffed once one does', () => {
+    expect(policyRows(DRAFT, ACTIVE).at(-1)).toMatchObject({ active: 'Not set', mine: 'Not set', declared: false, changed: false });
     const editor = policyRows(DRAFT, ACTIVE, { includeOptional: true });
     expect(editor.at(-1)).toMatchObject({ active: 'Not set', mine: 'Not set', declared: false, changed: false });
-    expect(editor.at(-1)?.field).toMatchObject({ key: 'apply_expiry_hours', label: 'Apply deadline (TTL)', min: 1, max: 87_600, optional: true });
+    expect(editor.at(-1)?.field).toMatchObject({ key: 'apply_expiry_hours', label: 'Apply window (TTL)', min: 1, max: 336, optional: true });
     const v2 = version({ id: V2, version_number: 2, status: 'DRAFT', content: { ...CONTENT, apply_expiry_hours: 72 } });
     expect(policyRows(v2, ACTIVE).at(-1)).toMatchObject({ active: 'Not set', mine: '72 h', raw: 72, declared: true, changed: true });
-    expect(activationDiff(v2, ACTIVE)).toEqual([['Apply deadline (TTL)', 'Not set', '72 h']]);
+    expect(activationDiff(v2, ACTIVE)).toEqual([['Apply window (TTL)', 'Not set', '72 h']]);
   });
 
   it('B5-W-2 a role change is one request per toggled role; removing Platform owner from the last owner is refused', () => {
@@ -296,7 +298,7 @@ describe('CCP-B5 PolicyView (handoff §5.6)', () => {
       .spyOn(governanceApi, 'updatePolicyDraft')
       .mockResolvedValue({ version: { ...DRAFT, content: { ...DRAFT.content!, apply_expiry_hours: 72 } } });
     render(<PolicyView />);
-    const ttl = await screen.findByLabelText('Apply deadline (TTL)');
+    const ttl = await screen.findByLabelText('Apply window (TTL)');
     expect(ttl).toHaveValue(null);
     expect(ttl).toHaveAttribute('placeholder', 'Not set');
     fireEvent.blur(ttl);
@@ -386,7 +388,8 @@ describe('CCP-B5 PolicyView (handoff §5.6)', () => {
     );
     const apply = vi.spyOn(governanceApi, 'applyChange').mockResolvedValue({ request: { id: CR_ID, state: 'APPLIED', applied_at: '2026-10-25T10:00:00.000Z' } });
     render(<PolicyView />);
-    expect(await screen.findByText('Open request CR-019A0000 · approved')).toBeInTheDocument();
+    // CCP-UI-V12 (AM-7): the requester's hint.
+    expect(await screen.findByText(/^Approved — v2 becomes active only when you apply it/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Apply activation' }));
     await waitFor(() => expect(apply).toHaveBeenCalledWith(CR_ID));
     await waitFor(() => expect(listSpy).toHaveBeenCalledTimes(2));
@@ -398,7 +401,9 @@ describe('CCP-B5 PolicyView (handoff §5.6)', () => {
     vi.spyOn(governanceApi, 'listOperators').mockResolvedValue(roster([]));
     vi.spyOn(governanceApi, 'listPolicyVersions').mockResolvedValue(withOpen('APPROVED', false));
     render(<PolicyView />);
-    expect(await screen.findByText('Open request CR-019A0000 · approved')).toBeInTheDocument();
+    // CCP-UI-V12 (AM-7): the approver's hint; the version's own actions give way to the apply phase.
+    expect(await screen.findByText(/^Approved — waiting for the requester to apply it/)).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Request activation…' })).toBeNull();
     expect(screen.queryByRole('button', { name: /Apply activation|Retry apply/ })).toBeNull();
   });
 
@@ -409,7 +414,7 @@ describe('CCP-B5 PolicyView (handoff §5.6)', () => {
       new ApiError(409, 'apply failed', 'COMMERCIAL_CHANGE_REQUEST_CONFLICT', { reason: 'apply_failed', explanation: 'The apply failed unexpectedly and was rolled back; it can be retried.' }),
     );
     render(<PolicyView />);
-    expect(await screen.findByText('Open request CR-019A0000 · apply failed')).toBeInTheDocument();
+    expect(await screen.findByText('Apply failed. Retry when ready.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Retry apply' }));
     expect(await screen.findByText('The apply failed unexpectedly and was rolled back; it can be retried.')).toBeInTheDocument();
   });
@@ -420,19 +425,19 @@ describe('CCP-B5 PolicyView (handoff §5.6)', () => {
       list({ can_author: true, can_request_activation: true }, { versions: [{ ...DRAFT, latest_request: { id: CR_ID, state: 'APPLY_EXPIRED', applied_at: null } }, ACTIVE] }),
     );
     render(<PolicyView />);
-    expect(await screen.findByText('Request CR-019A0000 · apply expired, request activation again')).toBeInTheDocument();
+    expect(await screen.findByText('Apply expired — request activation again.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /Apply activation|Retry apply/ })).toBeNull();
     expect(screen.getByRole('button', { name: 'Request activation…' })).toBeEnabled();
     expect(screen.getAllByRole('spinbutton').length).toBeGreaterThan(0);
   });
 
   // ---- CCP-ACC-1 (TD-ACC-1 Option B) -------------------------------------------------------
-  it('ACC-W-1 the requester of an APPLY_FAILED activation sees "Withdraw…": the confirm dialog shows Apply failed → Withdrawn, Withdraw request posts …/withdraw, then the screen reloads', async () => {
+  it('ACC-W-1 the requester of an APPLY_FAILED activation sees "Withdraw…": the v1.2 withdraw dialog shows Request state: Apply failed → Withdrawn, Withdraw request posts …/withdraw, then the screen reloads', async () => {
     vi.spyOn(governanceApi, 'listOperators').mockResolvedValue(roster([]));
     const listSpy = vi.spyOn(governanceApi, 'listPolicyVersions').mockResolvedValueOnce(withOpen('APPLY_FAILED', true, true)).mockResolvedValue(list({ can_author: true, can_request_activation: true }));
     const withdraw = vi.spyOn(governanceApi, 'withdrawChange').mockResolvedValue({ request: { id: CR_ID, state: 'WITHDRAWN' } });
     render(<PolicyView />);
-    expect(await screen.findByText('Open request CR-019A0000 · apply failed')).toBeInTheDocument();
+    expect(await screen.findByText('Apply failed. Retry when ready.')).toBeInTheDocument();
     fireEvent.click(screen.getByRole('button', { name: 'Withdraw…' }));
     const dialog = await screen.findByRole('dialog');
     expect(within(dialog).getByText('Apply failed')).toBeInTheDocument();
@@ -449,11 +454,11 @@ describe('CCP-B5 PolicyView (handoff §5.6)', () => {
     vi.spyOn(governanceApi, 'listOperators').mockResolvedValue(roster([]));
     vi.spyOn(governanceApi, 'listPolicyVersions').mockResolvedValueOnce(withOpen('APPLY_FAILED', false, false)).mockResolvedValueOnce(withOpen('APPROVED', true, false));
     const first = render(<PolicyView />);
-    expect(await screen.findByText('Open request CR-019A0000 · apply failed')).toBeInTheDocument();
+    expect(await screen.findByText('Apply failed. Only the requester can retry.')).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Withdraw…' })).toBeNull();
     first.unmount();
     render(<PolicyView />);
-    expect(await screen.findByText('Open request CR-019A0000 · approved')).toBeInTheDocument();
+    expect(await screen.findByText(/^Approved — v2 becomes active only when you apply it/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Withdraw…' })).toBeNull();
   });
 
@@ -467,9 +472,11 @@ describe('CCP-B5 PolicyView (handoff §5.6)', () => {
     fireEvent.click(await screen.findByRole('button', { name: 'Withdraw…' }));
     const dialog = await screen.findByRole('dialog');
     fireEvent.click(within(dialog).getByRole('button', { name: 'Withdraw request' }));
-    expect(await within(dialog).findByText('An apply of this request is still running. Try again in a moment.')).toBeInTheDocument();
+    expect(await within(dialog).findByText('An apply is still in progress. Try again shortly.')).toBeInTheDocument();
     fireEvent.click(within(dialog).getByRole('button', { name: 'Withdraw request' }));
-    expect(await within(dialog).findByText('The activation took effect, so the request is marked applied and can’t be withdrawn.')).toBeInTheDocument();
+    expect(await within(dialog).findByText('This activation was applied. It can’t be withdrawn.')).toBeInTheDocument();
+    // CCP-UI-V12 (v1.2 §17.3): after "already applied" the commit stays disabled.
+    expect(within(dialog).getByRole('button', { name: 'Withdraw request' })).toBeDisabled();
   });
 });
 

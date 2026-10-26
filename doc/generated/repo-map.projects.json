@@ -9771,7 +9771,19 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/commercial/ccp-v12-drawer.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/platform-web/src/commercial/commercial-visibility.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/commercial/finance/finance-v12.spec.tsx",
         "project": "aramo-platform-web",
         "status": "excluded"
       },

@@ -475,3 +475,10 @@
   white-space: nowrap;
   border: 0;
 }
+
+/* CCP-UI-V12 (W-2) — the restricted terms line (no design yet: design amendment 1 pending). */
+.ccp-terms-restricted {
+  margin: 0 0 14px;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-13);
+}

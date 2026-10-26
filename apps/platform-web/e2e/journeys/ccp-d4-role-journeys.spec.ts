@@ -63,6 +63,11 @@ const SCOPE: Readonly<Record<Item, string>> = {
 
 const SUPER_ADMIN_WHY = 'Super admin holds no commercial authority. Commercial screens are open only to people with a commercial role.';
 const MISSING_PAGE_WHY = 'Your roles don’t include access to this page.';
+// Merge train TD-MERGE-51 (CCP-UI-V12 AM-2): a page gated on platform:billing:read or
+// platform:subscription:read names the scope it needs (CommercialAccessDenied scopeGatedWhy).
+const SCOPE_GATED = ['platform:billing:read', 'platform:subscription:read'];
+const whyFor = (role: string, scope: string): string =>
+  role === 'super_admin' ? SUPER_ADMIN_WHY : SCOPE_GATED.includes(scope) ? `This page needs the ${scope} scope, which your role doesn’t hold.` : MISSING_PAGE_WHY;
 
 // ── helpers ──────────────────────────────────────────────────────────────────
 
@@ -104,7 +109,7 @@ async function expectRoutes(page: Page, w: D4World, role: D4Role): Promise<void>
     } else {
       await expect(denied, `${role} is denied ${item}`).toBeVisible();
       await expect(denied.getByRole('heading', { level: 1 })).toHaveText(`This account can't open Commercial ${item.toLowerCase()}`);
-      await expect(denied.getByText(role === 'super_admin' ? SUPER_ADMIN_WHY : MISSING_PAGE_WHY)).toBeVisible();
+      await expect(denied.getByText(whyFor(role, SCOPE[item]))).toBeVisible();
       await expect(denied.getByText(SCOPE[item], { exact: true })).toBeVisible();
       await expect(page).toHaveURL(new RegExp(`${ROUTE[item]}$`)); // never a redirect
     }
@@ -154,7 +159,7 @@ test.describe('platform_owner', () => {
     await expectRefused(page, w, 'daniel', r.id, 'Out of order');
     w.sign('priya', r);
     await approveInDrawer(page, w, 'daniel', r.id, 'Owner');
-    await toast(page, /approved\.$/);
+    await toast(page, / approved\./); // CCP-UI-V12 D-1: the toast goes on to name who applies, and until when
     expect(w.find(r.id)?.state).toBe('APPROVED');
     // The Owner approved but is not the requester: no Apply on the catalog (TD-B2-3).
     await as(page, w, 'daniel', catalogV3);
@@ -235,7 +240,7 @@ test.describe('finance_admin', () => {
     const w = new D4World();
     const r = w.seedEscalatedExtension();
     await approveInDrawer(page, w, 'priya', r.id, 'Finance');
-    await toast(page, /approved\.$/);
+    await toast(page, / approved\./); // CCP-UI-V12 D-1: the toast goes on to name who applies, and until when
     expect(w.find(r.id)?.state).toBe('APPROVED');
     await as(page, w, 'priya', sxFernhill);
     await expect(page.getByText(/Open request/)).toBeVisible();
@@ -246,7 +251,7 @@ test.describe('finance_admin', () => {
     const w = new D4World();
     const r = seedConversion(w);
     await approveInDrawer(page, w, 'priya', r.id, 'Finance');
-    await toast(page, /approved\.$/);
+    await toast(page, / approved\./); // CCP-UI-V12 D-1: the toast goes on to name who applies, and until when
     await as(page, w, 'priya', tenantPath('fernhill'));
     await expect(signCard(page).getByTestId('open-request')).toBeVisible();
     await expect(signCard(page).getByRole('button', { name: 'Apply', exact: true })).toHaveCount(0);
@@ -376,15 +381,16 @@ test.describe('catalog_manager', () => {
     // The drawer's timeline carries the whole trail.
     await as(page, w, 'lena', drawerPath(r.id));
     const drawer = page.getByTestId('cr-drawer');
-    for (const label of ['Submitted for approval', 'Finance step signed', 'Owner step signed', 'Approved', 'Applied']) {
-      await expect(drawer.getByText(label, { exact: true }).first(), label).toBeVisible();
+    // CCP-UI-V12 AM-5 / D-1: the approval event names the apply deadline ("Approved · apply by …").
+    for (const label of ['Submitted for approval', 'Finance step signed', 'Owner step signed', /^Approved( · .*)?$/, 'Applied']) {
+      await expect(drawer.getByText(label, { exact: true }).first(), String(label)).toBeVisible();
     }
   });
 
   test('CM-4 · Contracts: not in the rail, and the deep link names platform:subscription:read', async ({ page }) => {
     await as(page, new D4World(), 'lena', '/commercial/contracts');
     const denied = page.getByTestId('access-denied');
-    await expect(denied.getByText(MISSING_PAGE_WHY)).toBeVisible();
+    await expect(denied.getByText(whyFor('catalog_manager', 'platform:subscription:read'))).toBeVisible();
     await expect(denied.getByText('platform:subscription:read', { exact: true })).toBeVisible();
     await expect(page.getByRole('navigation', { name: 'Primary' }).getByRole('link', { name: 'Contracts', exact: true })).toHaveCount(0);
   });

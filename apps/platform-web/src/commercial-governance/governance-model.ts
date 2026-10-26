@@ -182,18 +182,18 @@ export const POLICY_FIELDS: readonly PolicyField[] = [
     min: 0,
     max: 30,
   },
-  // CCP-FIX1 (D5-DEF-2; Charter Amendment A1 AD-1) — the optional apply deadline. Not in the
-  // CCP-UI v1.0 design (it predates the amendment); the range is the strict policy parser's
-  // (1 … 87,600 h), never a handoff range. Absent = no apply deadline (AD-2).
+  // CCP-FIX1 (D5-DEF-2; Charter Amendment A1 AD-1) — the optional apply deadline. CCP-UI-V12
+  // (v1.2 §17.1 D-1; ccp-data.js PFIELDS `applyTtl`): "Apply window (TTL)", editable on a draft,
+  // "Not set" when absent, range 1–336 h (the server's parser is the wider authority).
   {
     key: 'apply_expiry_hours',
-    label: 'Apply deadline (TTL)',
-    help: 'An approved request must be applied within this time of its final approval.',
+    label: 'Apply window (TTL)',
+    help: 'Time after final approval for the requester to apply. Not set: approved requests have no apply deadline.',
     toUi: id,
     fromUi: id,
     format: (v) => `${v} h`,
     min: 1,
-    max: 87_600,
+    max: 336,
     optional: true,
   },
 ];
@@ -225,9 +225,11 @@ export function policyRows(
   const ac = active?.content ?? null;
   const declares = (c: PolicyContent | null, f: PolicyField): boolean =>
     c !== null && typeof c[f.key] === 'number';
-  return POLICY_FIELDS.filter(
-    (f) => f.optional !== true || opts.includeOptional === true || declares(vc, f) || declares(ac, f),
-  ).map((f) => {
+  // CCP-UI-V12 (v1.2 §17.1 D-1; ccp-data.js PFIELDS): the apply window is a policy field like the
+  // others, shown on every version ("Not set" when the version does not declare it). `opts` is kept
+  // for the call sites; every row is listed.
+  void opts;
+  return POLICY_FIELDS.map((f) => {
     const value = (c: PolicyContent | null): number | null | undefined =>
       c === null ? null : declares(c, f) ? f.toUi(c[f.key] as number) : undefined;
     const mine = value(vc);

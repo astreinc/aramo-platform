@@ -166,6 +166,11 @@
   --pw-sx-stripe-line: #c9d2f5;
   --pw-sx-r-strip: 9px; /* the open-request strip */
 
+  /* CCP-UI-V12 — Commercial Control Plane v1.2.dc.html (Finance, Usage, Alerts) */
+  --pw-fs-26: 26px; /* stat tiles: MRR, ARR, the Exceptions count */
+  --pw-v12-withheld-line: #c3cbd2; /* WithheldAmount / NotEnabledState dashed line */
+  --pw-v12-bar: #0b1022; /* Revenue renewals-by-month bar */
+
   /* Shell geometry (handoff §3.1) */
   --pw-envbar-h: 30px;
   --pw-topbar-h: 56px;

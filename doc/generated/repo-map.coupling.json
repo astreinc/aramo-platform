@@ -10318,6 +10318,11 @@
       "to": "doc/design-reference/ccp/CCP-UI-v1_0/ccp-data.js"
     },
     {
+      "from": "apps/platform-web/e2e/fixtures/ccp-v12.ts",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
       "from": "apps/platform-web/e2e/fixtures/commercial.ts",
       "status": "unscoped",
       "to": "apps/platform-web/src/commercial/commercial-api.ts"
@@ -10370,6 +10375,11 @@
     {
       "from": "apps/platform-web/e2e/visual/DIVERGENCES.md",
       "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-UI-V12-acceptance.md"
+    },
+    {
+      "from": "apps/platform-web/e2e/visual/DIVERGENCES.md",
+      "status": "unscoped",
       "to": "scripts/verify-vocabulary.sh"
     },
     {
@@ -10403,6 +10413,16 @@
       "to": "doc/ccp/slices/CCP-B5-acceptance.md"
     },
     {
+      "from": "apps/platform-web/src/commercial/alerts/AlertsView.tsx",
+      "status": "production",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "apps/platform-web/src/commercial/alerts/alerts-api.ts",
+      "status": "production",
+      "to": "apps/platform-admin/src/app/platform/dto/commercial-observability.dto.ts"
+    },
+    {
       "from": "apps/platform-web/src/commercial/catalog/catalog-api.ts",
       "status": "production",
       "to": "pact/consumers/platform-web-consumer/src/platform-commercial-catalog.consumer.test.ts"
@@ -10416,6 +10436,11 @@
       "from": "apps/platform-web/src/commercial/test-fixtures.ts",
       "status": "production",
       "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "from": "apps/platform-web/src/commercial/usage/usage-api.ts",
+      "status": "production",
+      "to": "apps/platform-admin/src/app/platform/dto/commercial-usage.dto.ts"
     },
     {
       "from": "apps/platform-web/src/components/permissions.ts",
@@ -18416,6 +18441,36 @@
       "to": "libs/subscription/src/lib/billing/finance-amount-withholding.ts"
     },
     {
+      "from": "doc/ccp/slices/CCP-UI-V12-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/known-baseline-exceptions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-UI-V12-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-UI-V12-pre-execution.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-UI-V12-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-UI-V12-acceptance.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-UI-V12-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-UI-V12-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-UI-V12-acceptance.md"
+    },
+    {
       "from": "doc/ccp/uat/CCP-UAT-catalog_manager.md",
       "status": "unscoped",
       "to": "apps/platform-web/e2e/journeys/ccp-d4-role-journeys.spec.ts"
@@ -18449,6 +18504,11 @@
       "from": "doc/ccp/uat/CCP-UAT-support_admin.md",
       "status": "unscoped",
       "to": "apps/platform-web/e2e/journeys/ccp-d4-role-journeys.spec.ts"
+    },
+    {
+      "from": "doc/design-reference/ccp/CCP-UI-v1_2/handoff/Commercial Control Plane - Claude Code handoff v1.2.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
     },
     {
       "from": "doc/design-reference/platform-admin/github.md",

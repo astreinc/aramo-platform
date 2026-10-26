@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { ApiError, Button, hasScope, useToast, type Session } from '@aramo/fe-foundation';
 
-import { COMMERCIAL_PERMISSIONS as CP, EmptyState, Pill, SkeletonPanel } from '../../components';
+import { COMMERCIAL_PERMISSIONS as CP, EmptyState, PaymentDueIndicator, Pill, SkeletonPanel, WithheldAmount, paymentDueState } from '../../components';
 import { ExceptionOverlay } from '../../components/ExceptionOverlay';
 import { useIdentity } from '../../identity/identity';
 import type { PlatformTenantSign } from '../../platform-api';
@@ -113,9 +113,11 @@ export function TenantCommercialPanel({ session, tenantId, tenantName, sign, now
       );
       setDetails(Object.fromEntries(pairs));
       const signRow = value.products.find((p) => p.product_key === 'sign')?.subscription ?? null;
-      if (canBilling && signRow !== null && signRow.ended_at === null && isStripeOwned(signRow)) {
+      // CCP-UI-V12 (AM-9): read for every open Sign row (the C5 tax state and the FA-4 due booleans);
+      // the invoice link-out itself stays on the self-service box only.
+      if (canBilling && signRow !== null && signRow.ended_at === null) {
         setInvoice(
-          await subscriptionsApi.invoiceLink(tenantId).catch(() => ({ availability: 'BILLING_UNAVAILABLE', hosted_url: null, amount_withheld: false, payment_due: false, payment_overdue: false })),
+          await subscriptionsApi.invoiceLink(tenantId).catch(() => ({ availability: 'BILLING_UNAVAILABLE', hosted_url: null, amount_withheld: false, payment_due: false, payment_overdue: false, tax: null })),
         );
       } else {
         setInvoice(null);
@@ -341,6 +343,48 @@ function ProductCard(props: ProductCardProps) {
                   <div className="sx-facts__s">{f.s}</div>
                 </div>
               ))}
+              {/* CCP-UI-V12 (AM-9; C5): the designed disabled tax state, from the billing-status `tax` field. */}
+              {p.product_key === 'sign' && props.invoice?.tax?.enabled === false ? (
+                <div data-testid="fact-tax">
+                  <div className="sx-facts__k">Tax</div>
+                  <div className="sx-facts__v">Not enabled</div>
+                  <div className="sx-facts__s">Pending Stripe Tax registration</div>
+                </div>
+              ) : null}
+              {/* CCP-UI-V12 (v1.2 §17.2; FA-4): Payment (the server's due booleans, shown only when the
+                  invoice read is AVAILABLE) and, when due or overdue, Amount due (withheld without amount-read). */}
+              {p.product_key === 'sign' && props.invoice !== null && props.invoice.availability === 'AVAILABLE' ? (
+                <>
+                  <div data-testid="fact-payment">
+                    <div className="sx-facts__k">Payment</div>
+                    <div className="sx-facts__v" />
+                    <div className="cs-fact__due">
+                      <PaymentDueIndicator state={paymentDueState(props.invoice)} />
+                    </div>
+                    <div className="sx-facts__s">{props.invoice.amount_withheld ? 'Due status only' : ''}</div>
+                  </div>
+                  {paymentDueState(props.invoice) !== 'NOT_DUE' ? (
+                    <div data-testid="fact-amount-due">
+                      <div className="sx-facts__k">Amount due</div>
+                      {props.invoice.amount_withheld ? (
+                        <>
+                          <div className="sx-facts__v" />
+                          <div className="cs-fact__due">
+                            <WithheldAmount reason="FINANCE_SCOPE_REQUIRED" size="cell" />
+                          </div>
+                          <div className="sx-facts__s">Finance access required</div>
+                        </>
+                      ) : (
+                        <>
+                          {/* C3 is NOT DELIVERED: the amount is not read for display (A1-4a). */}
+                          <div className="sx-facts__v">Not yet available</div>
+                          <div className="sx-facts__s">Invoice read pending provider configuration</div>
+                        </>
+                      )}
+                    </div>
+                  ) : null}
+                </>
+              ) : null}
             </div>
             {allowance ? (
               <div className="cs-allow">

@@ -206,6 +206,29 @@ describe('CCP-B3 Tenant › Commercial — governed vs Stripe-owned (handoff §5
     expect(within(await card()).queryByTestId('invoices-withheld')).toBeNull();
     expect(within(await card()).getByTitle('Stripe link-outs aren’t enabled yet.')).toHaveTextContent('Invoices');
   });
+
+  // CCP-UI-V12 (AM-9; v1.2 §17.2; FA-4)
+  for (const [role, holder] of [['finance_admin', true], ['commercial_ops', false]] as const) {
+    it(`V12-T-PAY ${role}: Tax · Not enabled (C5 tax field); Payment = the server's due status; Amount due ${holder ? '"Not yet available"' : 'WithheldAmount'}`, async () => {
+      const w = world({ tenant: commercial({ subscription: STRIPE_ROW() }) });
+      const spy = installFetch(w, role);
+      const base = spy.getMockImplementation()!;
+      spy.mockImplementation(async (input, init) => {
+        const url = String(typeof input === 'string' ? input : input instanceof URL ? input.href : input.url);
+        if (url.includes('/billing-status'))
+          return new Response(JSON.stringify({ availability: 'AVAILABLE', payment_due: true, payment_overdue: false, tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' }, ...(holder ? { invoices: [] } : { amount_withheld: 'FINANCE_SCOPE_REQUIRED' }) }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+        return base(input, init);
+      });
+      renderAt();
+      const c = await card();
+      expect(await within(c).findByTestId('fact-tax')).toHaveTextContent('TaxNot enabledPending Stripe Tax registration');
+      expect(within(c).getByTestId('fact-payment')).toHaveTextContent(holder ? 'PaymentDue' : 'PaymentDueDue status only');
+      const amt = within(c).getByTestId('fact-amount-due');
+      if (holder) expect(amt).toHaveTextContent('Not yet available');
+      else expect(within(amt).getByLabelText('Amount withheld: finance access required')).toBeInTheDocument();
+      expect(c.textContent).not.toMatch(/\$/);
+    });
+  }
 });
 
 describe('CCP-B3 Tenant › Commercial — held activation (Conversion Rule C-8, operator side)', () => {

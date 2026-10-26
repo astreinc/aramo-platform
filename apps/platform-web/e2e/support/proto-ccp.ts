@@ -24,9 +24,14 @@ import type { Page } from '@playwright/test';
 import { loadFonts } from './fonts';
 import { settle } from './proto';
 
-const DIR = resolve(__dirname, '../../../../doc/design-reference/ccp/CCP-UI-v1_0');
-const ORIGIN = 'http://proto-ccp.test';
-const FILE = 'Commercial Control Plane v1.0.dc.html';
+// CCP-UI-V12: two pinned releases. v1.0 stays the reference of every v1.0 state; v1.2 (manifest
+// 5/5, prototype e3dad017…) is the reference of the Finance / Usage / Alerts screens, the v1.0
+// amendments AM-1…AM-10 and the v1.2 delta.
+const RELEASES = {
+  v1_0: { dir: resolve(__dirname, '../../../../doc/design-reference/ccp/CCP-UI-v1_0'), origin: 'http://proto-ccp.test', file: 'Commercial Control Plane v1.0.dc.html' },
+  v1_2: { dir: resolve(__dirname, '../../../../doc/design-reference/ccp/CCP-UI-v1_2'), origin: 'http://proto-ccp12.test', file: 'Commercial Control Plane v1.2.dc.html' },
+} as const;
+export type CcpRelease = keyof typeof RELEASES;
 
 export interface CcpProtoProps {
   /** ccp-data.js PEOPLE: daniel (owner, default), priya (finance), tomas, lena, kwame, ines, arjun, maya (super admin). */
@@ -34,7 +39,19 @@ export interface CcpProtoProps {
   bootstrap?: 'ready' | 'notBootstrapped';
   demoState?: 'normal' | 'loading' | 'empty';
   /** CCP-B5 (folded in at the merge train, TD-MERGE-13): the prototype's start route Tweak. */
-  startRoute?: 'approvals' | 'subs' | 'catalog' | 'contracts' | 'policy' | 'audit' | 'admins';
+  startRoute?: 'approvals' | 'subs' | 'catalog' | 'contracts' | 'policy' | 'audit' | 'admins' | 'extensions' | 'renewals' | 'outstanding' | 'recon' | 'revenue' | 'usage' | 'alerts' | 'tenant';
+  /** CCP-UI-V12 — the pinned release (default v1.0). The props below exist in v1.2 only (prototype Tweaks, never built). */
+  release?: CcpRelease;
+  amountRead?: 'byRole' | 'holder' | 'nonHolder';
+  applyWindow?: 'none' | 'set';
+  withdrawOutcome?: 'success' | 'alreadyApplied' | 'inProgress';
+  usageRecon?: 'reconciled' | 'pending' | 'notReconciled';
+  invoiceReads?: 'pending' | 'available';
+  /**
+   * CCP-UI-V12: keep the retired pilot v0 rows. Only for a state whose design view dereferences them
+   * (Alerts › Resolved names CR-1055 / CR-1047, both v0) and whose rows are masked anyway.
+   */
+  keepPilotV0?: boolean;
 }
 
 const STRIPS: readonly (readonly [string, string])[] = [
@@ -54,14 +71,15 @@ const STRIPS: readonly (readonly [string, string])[] = [
  * The release pin (doc/ccp/design-inputs.md): every byte served is checked against the
  * copy's MANIFEST.sha256 (folded in from the CCP-B2 opener at the merge train, TD-MERGE-5).
  */
-async function verifiedBytes(name: string): Promise<Buffer> {
+async function verifiedBytes(name: string, release: CcpRelease): Promise<Buffer> {
+  const DIR = RELEASES[release].dir;
   const buf = await readFile(resolve(DIR, name));
   const manifest = await readFile(resolve(DIR, 'MANIFEST.sha256'), 'utf8');
   const want = manifest
     .split('\n')
     .map((l) => l.trim().split(/\s+/, 2))
     .find(([, f]) => f === name)?.[0];
-  if (want !== undefined && createHash('sha256').update(buf).digest('hex') !== want) throw new Error(`${name} does not match the pinned CCP-UI v1.0 manifest`);
+  if (want !== undefined && createHash('sha256').update(buf).digest('hex') !== want) throw new Error(`${name} does not match the pinned CCP-UI ${release} manifest`);
   return buf;
 }
 
@@ -80,6 +98,11 @@ function patchHtml(src: string, props: CcpProtoProps): string {
   if (props.bootstrap) setDefault('bootstrap', `${q}ready${q}`, `${q}${props.bootstrap}${q}`);
   if (props.demoState) setDefault('demoState', `${q}normal${q}`, `${q}${props.demoState}${q}`);
   if (props.startRoute) setDefault('startRoute', `${q}approvals${q}`, `${q}${props.startRoute}${q}`);
+  if (props.amountRead) setDefault('amountRead', `${q}byRole${q}`, `${q}${props.amountRead}${q}`);
+  if (props.applyWindow) setDefault('applyWindow', `${q}none${q}`, `${q}${props.applyWindow}${q}`);
+  if (props.withdrawOutcome) setDefault('withdrawOutcome', `${q}success${q}`, `${q}${props.withdrawOutcome}${q}`);
+  if (props.usageRecon) setDefault('usageRecon', `${q}reconciled${q}`, `${q}${props.usageRecon}${q}`);
+  if (props.invoiceReads) setDefault('invoiceReads', `${q}pending${q}`, `${q}${props.invoiceReads}${q}`);
   for (const [from, to] of STRIPS) {
     if (!s.includes(from)) throw new Error(`CCP prototype strip target not found: ${from.slice(0, 60)}`);
     s = s.split(from).join(to);
@@ -89,9 +112,11 @@ function patchHtml(src: string, props: CcpProtoProps): string {
 
 /** Opens the CCP design file at `hash` (approvals by default) and captures its logic instance. */
 export async function openCcpProto(page: Page, props: CcpProtoProps = {}, hash = ''): Promise<void> {
+  const release = props.release ?? 'v1_0';
+  const { origin: ORIGIN, file: FILE } = RELEASES[release];
   await page.route(`${ORIGIN}/**`, async (route) => {
     const name = decodeURIComponent(new URL(route.request().url()).pathname.slice(1));
-    const buf = await verifiedBytes(name);
+    const buf = await verifiedBytes(name, release);
     if (name.endsWith('.html')) {
       await route.fulfill({ body: patchHtml(buf.toString('utf8'), props), contentType: 'text/html; charset=utf-8' });
     } else {
@@ -119,7 +144,7 @@ export async function openCcpProto(page: Page, props: CcpProtoProps = {}, hash =
     return false;
   });
   // Drop the retired pilot policy v0 and the requests created under it (Don't build).
-  await page.evaluate(() => {
+  if (props.keepPilotV0 !== true) await page.evaluate(() => {
     const inst = (window as unknown as { __pi: { state: { crs: { policy: number }[]; pol: { v: number }[] }; setState: (x: unknown) => void } }).__pi;
     inst.setState({ crs: inst.state.crs.filter((c) => c.policy !== 0), pol: inst.state.pol.filter((p) => p.v !== 0) });
   });

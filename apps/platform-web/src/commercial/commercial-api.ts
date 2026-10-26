@@ -18,6 +18,8 @@ export const CHANGE_REQUEST_STATES = [
   'REJECTED',
   'EXPIRED',
   'WITHDRAWN',
+  // CCP-UI-V12 (Charter Amendment A1 AD-4).
+  'APPLY_EXPIRED',
 ] as const;
 export type ChangeRequestState = (typeof CHANGE_REQUEST_STATES)[number];
 
@@ -52,18 +54,28 @@ export interface ChangeRequest {
   policy_version_id: string;
   policy_checksum: string;
   requested_by: string;
-  reason: string;
+  /**
+   * CCP-R3-W (`wip/ccp-r3w`; W-3): visible to holders of platform:billing:amount:read and to the
+   * requester. Another non-holder on a financial request (CREDIT, DISCOUNT, REFUND, PAYMENT_RECORD)
+   * gets `reason_withheld` instead; exactly one of the two is present.
+   */
+  reason?: string;
   created_at: string;
   submitted_at: string | null;
   expires_at: string | null;
   approved_at: string | null;
   rejected_at: string | null;
   rejected_by: string | null;
-  rejection_reason: string | null;
+  /** CCP-R3-W: absent on a financial request for any non-holder (the requester included): `notes_withheld`. */
+  rejection_reason?: string | null;
   withdrawn_at: string | null;
   expired_at: string | null;
   /** CCP-A9: set when the request was applied. Absent on older responses. */
   applied_at?: string | null;
+  /** CCP-R3-W (W-3): set in place of `reason` for a non-holder non-requester on a financial request. */
+  reason_withheld?: 'FINANCE_SCOPE_REQUIRED';
+  /** CCP-R3-W: set for every non-holder on a financial request (rejection reason and approval notes). */
+  notes_withheld?: 'FINANCE_SCOPE_REQUIRED';
 }
 
 export interface Approval {
@@ -73,7 +85,9 @@ export interface Approval {
   step_role_key: string;
   step_scope_keys: string[];
   approver_role_keys: string[];
-  comment: string | null;
+  /** CCP-R3-W: absent on a financial request for a non-holder, with `notes_withheld`. */
+  comment?: string | null;
+  notes_withheld?: 'FINANCE_SCOPE_REQUIRED';
   created_at: string;
 }
 
@@ -147,5 +161,16 @@ export const commercialApi = {
 
   reject(id: string, reason: string): Promise<{ request: ChangeRequest }> {
     return apiClient.post(`${BASE}/${encodeURIComponent(id)}/reject`, { reason });
+  },
+
+  /**
+   * CCP-UI-V12 (AM-6; TD-B2-3) — the requester's governed apply of an approved (or failed) request,
+   * offered only when the read says `apply_actionable`. The route by action: a CONVERSION applies on
+   * /convert (C2), a CREDIT / DISCOUNT / REFUND on /billing-adjustment (C4), everything else on
+   * /apply (A6, B2-backend, A7, A8, B5-R).
+   */
+  apply(id: string, actionType: string): Promise<{ request: ChangeRequest }> {
+    const route = actionType === 'CONVERSION' ? 'convert' : ['CREDIT', 'DISCOUNT', 'REFUND'].includes(actionType) ? 'billing-adjustment' : 'apply';
+    return apiClient.post(`${BASE}/${encodeURIComponent(id)}/${route}`);
   },
 };
