@@ -12795,6 +12795,7 @@
       "status": "unscoped",
       "to": "doc/ccp/known-baseline-exceptions.md"
     },
+    { "from": "doc/ccp/decisions.md", "status": "unscoped", "to": "doc/ccp/program-gate-final.md" },
     {
       "from": "doc/ccp/decisions.md",
       "status": "unscoped",
@@ -12891,6 +12892,11 @@
       "to": "apps/platform-web/e2e/visual/states-ccp.ts"
     },
     {
+      "from": "doc/ccp/known-baseline-exceptions.md",
+      "status": "unscoped",
+      "to": "doc/ccp/program-gate-final.md"
+    },
+    {
       "from": "doc/ccp/production-rollout-plan.md",
       "status": "unscoped",
       "to": "deploy/migrate-prod.sh"
@@ -12914,6 +12920,11 @@
       "from": "doc/ccp/production-rollout-plan.md",
       "status": "unscoped",
       "to": "doc/ccp/program-gate-20261025.md"
+    },
+    {
+      "from": "doc/ccp/production-rollout-plan.md",
+      "status": "unscoped",
+      "to": "doc/ccp/program-gate-final.md"
     },
     {
       "from": "doc/ccp/production-rollout-plan.md",
@@ -12964,6 +12975,11 @@
       "from": "doc/ccp/program-completion-checklist.md",
       "status": "unscoped",
       "to": "doc/ccp/program-gate-20261025.md"
+    },
+    {
+      "from": "doc/ccp/program-completion-checklist.md",
+      "status": "unscoped",
+      "to": "doc/ccp/program-gate-final.md"
     },
     {
       "from": "doc/ccp/program-completion-checklist.md",
@@ -13144,6 +13160,27 @@
       "from": "doc/ccp/program-gate-20261025.md",
       "status": "unscoped",
       "to": "tools/db-sync-local.sh"
+    },
+    {
+      "from": "doc/ccp/program-gate-final.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/tsconfig.json"
+    },
+    { "from": "doc/ccp/program-gate-final.md", "status": "unscoped", "to": "doc/ccp/decisions.md" },
+    {
+      "from": "doc/ccp/program-gate-final.md",
+      "status": "unscoped",
+      "to": "doc/ccp/known-baseline-exceptions.md"
+    },
+    {
+      "from": "doc/ccp/program-gate-final.md",
+      "status": "unscoped",
+      "to": "doc/ccp/program-completion-checklist.md"
+    },
+    {
+      "from": "doc/ccp/program-gate-final.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
     },
     {
       "from": "doc/ccp/runbook-dry-runs-20261025.md",
