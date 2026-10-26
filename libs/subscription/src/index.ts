@@ -287,16 +287,72 @@ export const ESIGN_ENVELOPE_SENT_EVENT = 'sign.envelope.sent';
 export { CapacityService, type CapacityStatus, type CapacityRefusal, type CapacityReserveResult } from './lib/capacity.service.js';
 export { PLAN_ELIGIBILITY_PORT, type PlanEligibilityPort, type PlanEligibilityRule } from './lib/billing/plan-eligibility.port.js';
 export {
+  LEGAL_CLOCK,
   LEGAL_DOCUMENTS,
   LEGAL_DOCUMENT_REGISTRY,
   LEGAL_DOCUMENT_TITLES,
   PERSONAL_LEGAL_DOCUMENT_KEYS,
   approvedLegalDocument,
+  effectiveLegalDocument,
+  legalEffectiveFrom,
   legalRef,
+  legalVersionStatus,
+  systemLegalClock,
+  type LegalClock,
   type LegalDocumentKey,
   type LegalDocumentVersion,
+  type LegalVersionState,
+  type LegalVersionStatus,
 } from './lib/legal/legal-documents.js';
 export { LegalAcceptanceService, inAppContextRef } from './lib/legal/legal-acceptance.service.js';
+// Privacy Notice 1.1 remediation E-6 — account-holder change notice and delivery evidence.
+export {
+  LEGAL_CHANGE_CONTACT,
+  LEGAL_CHANGE_MIN_NOTICE_DAYS,
+  LEGAL_CHANGE_NOTICE_TEMPLATE,
+  LEGAL_CHANGE_SUMMARIES,
+  LegalChangeNoticeRefusedError,
+  assertTemplateSendable,
+  calendarDaysUntil,
+  describeLegalChange,
+  formatNoticeDate,
+  legalChangeAudience,
+  parseCalendarDate,
+  renderLegalChangeNotice,
+  resolveLegalChangeNotice,
+  templateSha256,
+  type LegalChangeLinks,
+  type LegalChangeNoticeSubject,
+  type LegalChangeNoticeTemplate,
+  type RenderedLegalChangeNotice,
+} from './lib/legal/legal-change-notice.template.js';
+export {
+  LegalChangeNoticeRepository,
+  type EmailClaim,
+  type LegalNoticeChannel,
+  type LegalNoticeDeliveryStatus,
+  type LegalNoticeRunCounts,
+} from './lib/legal/legal-change-notice.repository.js';
+export {
+  LegalChangeNoticeService,
+  sendErrorCode,
+  type AccountHolder,
+  type AccountHolderSource,
+  type LegalChangeNoticeDeps,
+  type LegalChangeNoticeRunOptions,
+  type LegalChangeNoticeRunResult,
+  type LegalNoticeMailer,
+} from './lib/legal/legal-change-notice.service.js';
+export {
+  StaticUpcomingLegalChangeSource,
+  RegistryUpcomingLegalChangeSource,
+  UPCOMING_LEGAL_CHANGES,
+  UPCOMING_LEGAL_CHANGE_SOURCE,
+  upcomingLegalNotices,
+  type UpcomingLegalChange,
+  type UpcomingLegalChangeSource,
+  type UpcomingLegalNotice,
+} from './lib/legal/upcoming-legal-changes.js';
 export { FEATURE_AVAILABILITY, isFeatureAvailable, type FeatureAvailability } from './lib/feature-availability.js';
 // Sign Signup Amendment A1 (Organization Details, US only) §2.6 — the organization billing profile port.
 export {

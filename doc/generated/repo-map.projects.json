@@ -2394,10 +2394,18 @@
       "INVOICE_AMOUNT_LINK_FIELDS",
       "INVOICE_PAYMENT_STATES",
       "INVOICE_READ_NOT_DELIVERED",
+      "LEGAL_CHANGE_CONTACT",
+      "LEGAL_CHANGE_MIN_NOTICE_DAYS",
+      "LEGAL_CHANGE_NOTICE_TEMPLATE",
+      "LEGAL_CHANGE_SUMMARIES",
+      "LEGAL_CLOCK",
       "LEGAL_DOCUMENTS",
       "LEGAL_DOCUMENT_REGISTRY",
       "LEGAL_DOCUMENT_TITLES",
       "LegalAcceptanceService",
+      "LegalChangeNoticeRefusedError",
+      "LegalChangeNoticeRepository",
+      "LegalChangeNoticeService",
       "MONETARY_ACTION_TYPES",
       "OBLIGATION_PAYMENT_STATUSES",
       "ORGANIZATION_BILLING_PROFILE_PORT",
@@ -2463,6 +2471,7 @@
       "RefundRemainderGate",
       "RefundRemainderRefusedError",
       "RefundReportQueryError",
+      "RegistryUpcomingLegalChangeSource",
       "RoleChangeApplyError",
       "SELF_SERVICE_ACTIONS",
       "SELF_SERVICE_CANCEL_STEP",
@@ -2478,6 +2487,7 @@
       "SUPPORT_EXTENSION_SCOPE",
       "SelfServiceBillingService",
       "SelfServiceRefusedError",
+      "StaticUpcomingLegalChangeSource",
       "StripeBillingProvider",
       "StripeBillingReadAdapter",
       "SubscriptionLifecycleService",
@@ -2487,6 +2497,8 @@
       "TAX_NOT_ENABLED_REASON",
       "TENANT_ACTIVATION_PENDING_MESSAGE",
       "TENANT_AMOUNT_KEYS",
+      "UPCOMING_LEGAL_CHANGES",
+      "UPCOMING_LEGAL_CHANGE_SOURCE",
       "USAGE_METRICS",
       "USAGE_METRIC_SOURCES",
       "USAGE_PERIODS_DEFAULT_LIMIT",
@@ -2506,6 +2518,7 @@
       "assertChainStillSatisfiableAtApply",
       "assertNotProduction",
       "assertProductKey",
+      "assertTemplateSendable",
       "assessRefundAmount",
       "billingCommandIdempotencyKey",
       "billingCountrySupported",
@@ -2514,6 +2527,7 @@
       "boundedExceptionChain",
       "buildAuditCsv",
       "calendarDateIn",
+      "calendarDaysUntil",
       "canTransition",
       "canTransitionBillingCommand",
       "canTransitionFor",
@@ -2538,9 +2552,11 @@
       "daysUntil",
       "decideRefundExecution",
       "decideSupportExtension",
+      "describeLegalChange",
       "diffAlerts",
       "discountCouponRef",
       "discountEscalates",
+      "effectiveLegalDocument",
       "effectivePlatformOwners",
       "effectiveProviderPrice",
       "effectiveReleaseState",
@@ -2552,6 +2568,7 @@
       "explanationOf",
       "financeAmountAccess",
       "formatCheckoutCutoverReport",
+      "formatNoticeDate",
       "formatReconciliationReport",
       "formatRevenueReport",
       "graceStateAt",
@@ -2574,7 +2591,10 @@
       "isPlatformLastOwnerViolation",
       "isProductKey",
       "isWithinPastDueGrace",
+      "legalChangeAudience",
+      "legalEffectiveFrom",
       "legalRef",
+      "legalVersionStatus",
       "mapProviderStatus",
       "monthKey",
       "obligationPaymentStatus",
@@ -2582,6 +2602,7 @@
       "overlayCovers",
       "parseActiveCommercialPolicy",
       "parseBootstrapArgs",
+      "parseCalendarDate",
       "parseCommercialPolicyContent",
       "parsePlanPrices",
       "parsePlanVersionContent",
@@ -2610,11 +2631,14 @@
       "refundReportState",
       "refundReservations",
       "refundableRemainder",
+      "renderLegalChangeNotice",
+      "resolveLegalChangeNotice",
       "resolvePaymentRecordChain",
       "resolvePriceToVersion",
       "resolveRequiredChain",
       "runPlatformOwnerBootstrap",
       "selfServiceCommandIdempotencyKey",
+      "sendErrorCode",
       "stripeCheckoutSessionState",
       "stripeEventCheckoutSessionRef",
       "stripeEventSubscriptionRef",
@@ -2622,10 +2646,13 @@
       "subjectUserOf",
       "subscriptionSends",
       "supportExtensionWindow",
+      "systemLegalClock",
       "takeBillingLock",
       "taxAvailability",
+      "templateSha256",
       "thresholdOf",
       "unlinkedReceipts",
+      "upcomingLegalNotices",
       "usageMetricOf",
       "usageMetricsOf",
       "validateContractBlocks",
@@ -7113,6 +7140,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/legal-change-notice.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -7584,6 +7617,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-legal-notices.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-legal.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -7609,6 +7648,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-permission-contract.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-retention.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -10437,6 +10482,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/legal-change-notice.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/personal-signup-attempt-purge-sweeper.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -10566,6 +10617,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-integrations.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-legal-notices.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -11062,6 +11119,12 @@
         "status": "excluded"
       },
       { "project": "intelligence-core", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/legal-change-notice.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
@@ -12371,6 +12434,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-retention.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-webhooks.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -12754,6 +12823,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/legal-change-notice.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -12810,6 +12885,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/personal-legal-status.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-legal-notices.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

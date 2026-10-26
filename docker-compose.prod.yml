@@ -555,6 +555,14 @@ services:
       - APNS_KEY_PATH=${APNS_KEY_PATH:-/opt/aramo/secrets/apns-key.p8}
       - FCM_PROJECT_ID
       - FCM_SERVICE_ACCOUNT_PATH=${FCM_SERVICE_ACCOUNT_PATH:-/opt/aramo/secrets/fcm-service-account.json}
+      # Privacy Notice 1.1 remediation (E-1 to E-4) — the retention cleanup worker.
+      # OFF unless SIGN_RETENTION_WORKER_ENABLED=1; E-4 (processed notification outbox,
+      # finished push jobs) also needs SIGN_RETENTION_QUEUE_CLEANUP_ENABLED=1.
+      # SIGN_RETENTION_INTERVAL_MS: default 3600000 (minimum 60000). Enabling it in
+      # production needs separate PO authorization.
+      - SIGN_RETENTION_WORKER_ENABLED
+      - SIGN_RETENTION_QUEUE_CLEANUP_ENABLED
+      - SIGN_RETENTION_INTERVAL_MS
     volumes:
       - /opt/aramo/geoip:/geoip:ro
       - /opt/aramo/secrets:/opt/aramo/secrets:ro

@@ -2610,6 +2610,75 @@ paths:
           $ref: '#/components/responses/SenderUnauthorized'
         '403':
           $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/legal/notices:
+    get:
+      operationId: getSignLegalNotices
+      summary: Upcoming legal-document versions to show the signed-in user (in-service notice).
+      description: >
+        Privacy Notice 1.1 remediation E-6. Every announced change to a legal document whose new
+        version takes effect after today (UTC date) and that concerns this account (a document
+        that binds only Personal accounts is not listed for a BUSINESS tenant), minus the notices
+        this user has dismissed. Empty while nothing is announced. Requires a Sign session of a
+        tenant entitled to `sign`.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      responses:
+        '200':
+          description: OK.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignLegalNotices'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/legal/notices/record:
+    post:
+      operationId: recordSignLegalNotice
+      summary: Record that an upcoming-version notice was shown to, or dismissed by, the user.
+      description: >
+        Privacy Notice 1.1 remediation E-6 — in-service delivery evidence. SHOWN records the
+        delivery once (channel IN_SERVICE, the first time it was shown); ACKNOWLEDGED records the
+        dismissal once, after which the notice is no longer listed for this user. Idempotent. The
+        notice must be one currently listed for this account, otherwise refused (details.reason =
+        legal_notice_not_upcoming). Answers the notices still to show.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [key, version, event]
+              properties:
+                key:
+                  type: string
+                  maxLength: 100
+                version:
+                  type: string
+                  maxLength: 20
+                event:
+                  type: string
+                  enum: [SHOWN, ACKNOWLEDGED]
+      responses:
+        '200':
+          description: Recorded; the notices still to show.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SignLegalNotices'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
   /v1/sign/account/status:
     get:
       operationId: getSignAccountStatus
@@ -3956,6 +4025,36 @@ components:
                 description: The published text on the Sign host (https://sign.aramo.ai/legal/<slug>/<version>).
               title:
                 type: string
+    SignLegalNotices:
+      type: object
+      required: [notices]
+      properties:
+        notices:
+          type: array
+          description: Upcoming legal-document versions (future effective date) this user has not dismissed.
+          items:
+            type: object
+            required: [key, title, version, effective_date, url, current_version, current_url]
+            properties:
+              key:
+                type: string
+              title:
+                type: string
+              version:
+                type: string
+              effective_date:
+                type: string
+                format: date
+                description: The first day the new version applies.
+              url:
+                type: string
+                format: uri
+                description: The new version on the Sign host (https://sign.aramo.ai/legal/<slug>/<version>).
+              current_version:
+                type: string
+              current_url:
+                type: string
+                format: uri
     SignAccountStatus:
       type: object
       required: [closable, closed, closed_at]

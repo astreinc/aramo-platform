@@ -68,7 +68,7 @@ const SUBSCRIPTION_MIGRATIONS = [
   // CCP-A5 — plan versions + the v1 backfill (the subscription Prisma client selects plan_version_id).
   'libs/subscription/prisma/migrations/20261025160000_ccp_a5_plan_version/migration.sql',
 ].map((p) => resolve(__dirname, '../../../..', p));
-const APPROVED_TERMS: LegalDocumentVersion = { ...LEGAL_DOCUMENTS[0]!, version: '1.0.0', status: 'APPROVED', url: 'https://aramo.ai/legal/sign/terms/1.0.0' };
+const APPROVED_TERMS: LegalDocumentVersion = { ...LEGAL_DOCUMENTS[0]!, version: '1.0.0', status: 'APPROVED', url: 'https://aramo.ai/legal/sign/terms/1.0.0', effective_from: '2026-01-01T00:00:00Z' };
 // Mutable per test: the registry array the signup service holds.
 const registryDocs: LegalDocumentVersion[] = [...LEGAL_DOCUMENTS];
 const useRegistry = (docs: readonly LegalDocumentVersion[]) => registryDocs.splice(0, registryDocs.length, ...docs);

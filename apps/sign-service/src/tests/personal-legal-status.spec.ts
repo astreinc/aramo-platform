@@ -19,7 +19,7 @@ interface Row {
   ip: string | null;
 }
 
-function harness(registry: readonly LegalDocumentVersion[] = LEGAL_DOCUMENTS) {
+function harness(registry: readonly LegalDocumentVersion[] = LEGAL_DOCUMENTS, clock?: () => Date) {
   const rows: Row[] = [];
   const kinds = new Map<string, string>([
     ['t-personal', 'PERSONAL'],
@@ -37,7 +37,7 @@ function harness(registry: readonly LegalDocumentVersion[] = LEGAL_DOCUMENTS) {
   } as unknown as LegalAcceptanceService;
   const tenants = { findById: async (id: string) => (kinds.has(id) ? { id, kind: kinds.get(id) } : null) } as unknown as TenantRepository;
   const identity = { findUserById: async () => ({ email: 'pat@gmail.com' }) } as unknown as IdentityRepository;
-  return { rows, svc: new PersonalLegalStatusService(acceptances, tenants, identity, registry) };
+  return { rows, svc: new PersonalLegalStatusService(acceptances, tenants, identity, registry, clock) };
 }
 
 const approved = (key: string) => LEGAL_DOCUMENTS.find((d) => d.key === key && d.status === 'APPROVED')!;
@@ -104,6 +104,38 @@ describe('PersonalLegalStatusService', () => {
   it('a key with no APPROVED version is never pending', async () => {
     const { svc } = harness(LEGAL_DOCUMENTS.filter((d) => d.key !== 'aramo.acceptable_use_policy'));
     expect((await svc.pending('t-personal', 'u1')).map((d) => d.key)).toEqual(['sign.personal_terms_of_service', 'aramo.privacy_notice']);
+  });
+
+  // Privacy Notice 1.1 Remediation Directive §3 / decision 6 (E-5): an approved
+  // UPCOMING version is never owed (nor acceptable) before its effective_from.
+  it('E-5: an upcoming version is not pending and cannot be accepted until it takes effect (injected clock)', async () => {
+    const privacy = approved('aramo.privacy_notice');
+    const v11: LegalDocumentVersion = { ...privacy, version: '1.1', sha256: 'e'.repeat(64), url: 'https://sign.aramo.ai/legal/privacy/1.1', effective_from: '2026-11-25T00:00:00Z' };
+    let now = new Date('2026-11-24T23:59:59.999Z');
+    const { svc, rows } = harness([...LEGAL_DOCUMENTS, v11], () => now);
+    for (const k of ALL) rows.push({ tenant_id: 't-personal', user_id: 'u1', document_key: k, version: '1.0', sha256: approved(k).sha256, ip: null });
+    expect(await svc.pending('t-personal', 'u1')).toEqual([]);
+    expect(svc.current().find((d) => d.key === 'aramo.privacy_notice')!.version).toBe('1.0');
+    await expect(svc.accept('t-personal', 'u1', [{ key: 'aramo.privacy_notice', version: '1.1' }], { ip: null, user_agent: null }, 'r')).rejects.toMatchObject({
+      context: { details: { reason: 'legal_version_not_current' } },
+    });
+    // AT the effective instant, 1.1 is owed; accepting it clears the gate.
+    now = new Date('2026-11-25T00:00:00Z');
+    expect((await svc.pending('t-personal', 'u1')).map((d) => `${d.key}@${d.version}`)).toEqual(['aramo.privacy_notice@1.1']);
+    expect(await svc.accept('t-personal', 'u1', [{ key: 'aramo.privacy_notice', version: '1.1' }], { ip: null, user_agent: null }, 'r')).toEqual([]);
+    // 1.0 is no longer acceptable once superseded.
+    await expect(svc.accept('t-personal', 'u1', [{ key: 'aramo.privacy_notice', version: '1.0' }], { ip: null, user_agent: null }, 'r')).rejects.toBeInstanceOf(AramoError);
+  });
+
+  it('E-5: a new user before the effective date is offered 1.0, not the upcoming 1.1', async () => {
+    const privacy = approved('aramo.privacy_notice');
+    const v11: LegalDocumentVersion = { ...privacy, version: '1.1', sha256: 'e'.repeat(64), url: 'https://sign.aramo.ai/legal/privacy/1.1', effective_from: '2026-11-25T00:00:00Z' };
+    const { svc } = harness([...LEGAL_DOCUMENTS, v11], () => new Date('2026-11-01T00:00:00Z'));
+    expect((await svc.pending('t-personal', 'u9')).map((d) => `${d.key}@${d.version}`)).toEqual([
+      'sign.personal_terms_of_service@1.0',
+      'aramo.privacy_notice@1.0',
+      'aramo.acceptable_use_policy@1.0',
+    ]);
   });
 
   it('the send refusal while documents are pending is a 403 with reason legal_acceptance_required', () => {

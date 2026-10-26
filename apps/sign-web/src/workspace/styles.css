@@ -1264,6 +1264,15 @@ a.sg-row:hover {
   margin: 0 0 16px;
   overflow-wrap: anywhere;
 }
+/* E-5 — an upcoming or superseded version of a legal text. */
+.sg-legal__banner {
+  font-size: 14px;
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border: 1px solid var(--line, currentColor);
+  border-radius: 8px;
+  overflow-wrap: anywhere;
+}
 .sg-legal__doc {
   overflow-wrap: anywhere;
 }
@@ -1340,4 +1349,23 @@ a.sg-row:hover {
 .sg-legal-accept__list {
   margin: 0 0 12px;
   padding-left: 18px;
+}
+/* Privacy Notice 1.1 E-6 — the dismissible notice of an upcoming legal-document version. */
+.sg-legal-notice {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin: 0 0 16px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: var(--accent-soft);
+  color: var(--ink);
+  font-size: 13px;
+}
+.sg-legal-notice__text {
+  flex: 1;
+  min-width: 0;
+}
+.sg-legal-notice a {
+  color: var(--accent);
 }

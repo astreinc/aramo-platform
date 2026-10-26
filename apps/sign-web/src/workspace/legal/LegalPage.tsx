@@ -1,24 +1,50 @@
-import { useEffect, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, type ReactNode } from 'react';
 import { useParams } from 'react-router-dom';
 
 import {
   LEGAL_CATALOG,
   MAXMIND_ATTRIBUTION,
   PUBLIC_SIGN_ORIGIN,
-  SUBPROCESSORS,
   SUBPROCESSORS_PATH,
   SUBPROCESSORS_SLUG,
-  SUBPROCESSORS_UPDATED,
+  SUBPROCESSOR_LISTS,
   THIRD_PARTY_NOTICES_PATH,
+  currentLegal,
+  currentSubprocessors,
   findLegal,
-  latestLegal,
+  formatEffective,
+  legalEntryStatus,
   legalPath,
+  upcomingSubprocessors,
+  type LegalCatalogEntry,
+  type SubprocessorList,
 } from './catalog';
 import { Markdown } from './markdown';
-import { LEGAL_TEXTS } from './texts';
+import { LEGAL_TEXTS, type LegalText } from './texts';
+
+/**
+ * What the legal pages resolve against: the catalog, the bundled texts, the
+ * subprocessor lists and the clock. Production uses the bundled values and the
+ * system clock; tests provide fixtures (E-5: upcoming/superseded versions are
+ * exercised without registering an unapproved text).
+ */
+export interface LegalEnv {
+  catalog: readonly LegalCatalogEntry[];
+  texts: Readonly<Record<string, LegalText>>;
+  subprocessors: readonly SubprocessorList[];
+  now: () => Date;
+}
+
+export const LegalEnvContext = createContext<LegalEnv>({
+  catalog: LEGAL_CATALOG,
+  texts: LEGAL_TEXTS,
+  subprocessors: SUBPROCESSOR_LISTS,
+  now: () => new Date(),
+});
 
 // Aramo Sign Personal (Free) — the published legal texts on sign.aramo.ai
-// (public, no sign-in): /legal/:slug (latest) and /legal/:slug/:version (exact).
+// (public, no sign-in): /legal/:slug (the version in effect) and
+// /legal/:slug/:version (exact; an upcoming or superseded version carries a banner).
 // /legal/subprocessors (no version) is the subprocessor list, not a registry text.
 // The page shows the bundled text exactly as approved (rendered safely, never as
 // HTML); an unknown document or version is a not-found page, never a fallback to
@@ -45,13 +71,16 @@ function Shell({ title, children, testId }: { title: string; children: ReactNode
 }
 
 function LegalFooter() {
-  const slugs = [...new Set(LEGAL_CATALOG.map((d) => d.slug))];
+  const { catalog, now } = useContext(LegalEnvContext);
+  const at = now();
+  const slugs = [...new Set(catalog.map((d) => d.slug))];
   return (
     <footer className="sg-legal__foot" aria-label="Legal">
       {slugs.map((s) => {
-        const d = latestLegal(s)!;
+        const d = currentLegal(s, catalog, at);
+        if (d === null) return null;
         return (
-          <a key={s} href={legalPath(d.slug, d.version)}>
+          <a key={s} href={legalPath(d.slug, d.version, catalog, at)}>
             {d.title}
           </a>
         );
@@ -73,20 +102,41 @@ export function LegalNotFound() {
 
 export function LegalDocumentPage() {
   const { slug = '', version } = useParams<{ slug: string; version?: string }>();
+  const { catalog, texts, now } = useContext(LegalEnvContext);
   if (slug === SUBPROCESSORS_SLUG && version === undefined) return <SubprocessorsPage />;
-  const doc = findLegal(slug, version);
-  const text = doc === null ? undefined : LEGAL_TEXTS[`${doc.slug}@${doc.version}`];
+  const at = now();
+  const doc = findLegal(slug, version, catalog, at);
+  const text = doc === null ? undefined : texts[`${doc.slug}@${doc.version}`];
   if (doc === null || text === undefined) return <LegalNotFound />;
-  const latest = latestLegal(doc.slug)!;
-  const stable = legalPath(doc.slug, doc.version);
+  const status = legalEntryStatus(doc, catalog, at);
+  const current = currentLegal(doc.slug, catalog, at);
+  const stable = legalPath(doc.slug, doc.version, catalog, at);
+  const currentLink =
+    current === null ? null : (
+      <a href={legalPath(current.slug, current.version, catalog, at)} data-testid="legal-current-link">
+        {current.version}
+      </a>
+    );
   return (
     <Shell title={doc.title} testId="legal-document">
+      {status.state === 'upcoming' ? (
+        <p className="sg-legal__banner" role="note" data-testid="legal-upcoming">
+          Upcoming — effective {formatEffective(doc.effective_from)}
+          {currentLink !== null ? <>; the current version is {currentLink}.</> : '.'}
+        </p>
+      ) : null}
+      {status.state === 'superseded' && status.superseded_by !== null ? (
+        <p className="sg-legal__banner" role="note" data-testid="legal-superseded">
+          No longer in effect since {formatEffective(status.superseded_by.effective_from)}
+          {currentLink !== null ? <>; the current version is {currentLink}.</> : '.'}
+        </p>
+      ) : null}
       <p className="sg-legal__meta" data-testid="legal-meta">
         Version {doc.version} · Permanent link: <a href={stable}>{`${PUBLIC_SIGN_ORIGIN}${stable}`}</a>
-        {latest.version !== doc.version ? (
+        {status.state !== 'effective' && current !== null ? (
           <>
             {' '}
-            · This is not the current version. <a href={legalPath(doc.slug)}>Read the current version</a>.
+            · This is not the current version. <a href={legalPath(doc.slug, undefined, catalog, at)}>Read the current version</a>.
           </>
         ) : null}
       </p>
@@ -115,36 +165,67 @@ export function ThirdPartyNoticesPage() {
   );
 }
 
+function SubprocessorTable({ list, testId }: { list: SubprocessorList; testId: string }) {
+  return (
+    <table data-testid={testId}>
+      <thead>
+        <tr>
+          <th scope="col">Provider</th>
+          <th scope="col">What it does</th>
+          <th scope="col">Location</th>
+        </tr>
+      </thead>
+      <tbody>
+        {list.rows.map((s) => (
+          <tr key={`${s.name}|${s.purpose}`}>
+            <td>{s.name}</td>
+            <td>
+              {s.purpose}
+              {s.note !== undefined ? (
+                <>
+                  <br />
+                  <span className="sg-muted" data-testid="subprocessor-note">
+                    {s.note}
+                  </span>
+                </>
+              ) : null}
+            </td>
+            <td>{s.location}</td>
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  );
+}
+
 export function SubprocessorsPage() {
+  const { catalog, subprocessors, now } = useContext(LegalEnvContext);
+  const at = now();
+  const current = currentSubprocessors(subprocessors, at);
+  const upcoming = upcomingSubprocessors(subprocessors, at);
+  if (current === null) return <LegalNotFound />;
+  const privacy = legalPath('privacy', undefined, catalog, at);
   return (
     <Shell title="Subprocessors" testId="legal-subprocessors">
       <h1 className="sg-h1">Aramo Sign subprocessors</h1>
       <p className="sg-legal__meta" data-testid="subprocessors-updated">
-        Last updated {SUBPROCESSORS_UPDATED}
+        Last updated {current.updated ?? current.effective_from}
       </p>
       <div className="sg-legal__doc">
-        <p>
-          The service providers that process personal information for Aramo Sign Personal accounts, on our instructions. See the{' '}
-          <a href={legalPath('privacy')}>Aramo Privacy Notice</a>.
+        <p data-testid="subprocessors-scope">
+          The service providers that process personal information for {current.scope}, on our instructions. See the{' '}
+          <a href={privacy}>Aramo Privacy Notice</a>.
         </p>
-        <table data-testid="subprocessors-table">
-          <thead>
-            <tr>
-              <th scope="col">Provider</th>
-              <th scope="col">What it does</th>
-              <th scope="col">Location</th>
-            </tr>
-          </thead>
-          <tbody>
-            {SUBPROCESSORS.map((s) => (
-              <tr key={s.name}>
-                <td>{s.name}</td>
-                <td>{s.purpose}</td>
-                <td>{s.location}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <SubprocessorTable list={current} testId="subprocessors-table" />
+        {upcoming !== null && upcoming.effective_from !== null ? (
+          <section data-testid="subprocessors-upcoming">
+            <h2>Upcoming changes, effective {formatEffective(upcoming.effective_from)}</h2>
+            <p>
+              From that date, the service providers that process personal information for {upcoming.scope}, on our instructions:
+            </p>
+            <SubprocessorTable list={upcoming} testId="subprocessors-upcoming-table" />
+          </section>
+        ) : null}
       </div>
     </Shell>
   );

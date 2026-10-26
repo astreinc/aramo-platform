@@ -16,13 +16,14 @@ import {
   SIGNING_NOTIFICATION_PORT,
   STORAGE_ACCOUNTING_PORT,
   SignNotificationRepository,
+  SignRetentionRepository,
   SoftwareEvidenceManifestSigner,
   WEBHOOK_DELIVERY_PORT,
 } from '@aramo/sign';
 import { DOCUMENT_RENDERING_PORT, PdfLibDocumentRenderingAdapter } from '@aramo/documents-rendering';
 import { MailerModule } from '@aramo/mailer';
 import { ObjectStorageModule } from '@aramo/object-storage';
-import { ORGANIZATION_BILLING_PROFILE_PORT, PLAN_ELIGIBILITY_PORT, SubscriptionModule } from '@aramo/subscription';
+import { ORGANIZATION_BILLING_PROFILE_PORT, PLAN_ELIGIBILITY_PORT, RegistryUpcomingLegalChangeSource, SubscriptionModule, UPCOMING_LEGAL_CHANGE_SOURCE } from '@aramo/subscription';
 import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
@@ -70,6 +71,7 @@ import { SignReportController } from './personal/sign-report.controller.js';
 import { ReportBudget, SignReportService } from './personal/sign-report.service.js';
 import { SignLegalController } from './legal/sign-legal.controller.js';
 import { PersonalLegalStatusService } from './legal/personal-legal-status.service.js';
+import { LegalChangeBannerService } from './legal/legal-change-banner.service.js';
 import { SignAccountController } from './account/sign-account.controller.js';
 import { SignAccountService } from './account/sign-account.service.js';
 // Aramo Sign Mobile (M-A3 §4, §9) — saved signatures and the account-close purge of saved data.
@@ -86,6 +88,9 @@ import { NotificationFanoutService } from './push/notification-fanout.service.js
 import { PushDeliveryService } from './push/push-delivery.service.js';
 import { NotificationPushWorker } from './push/notification-push.worker.js';
 import { ConvenienceDataPurgeService } from './push/convenience-data-purge.service.js';
+// Privacy Notice 1.1 remediation (E-1 to E-4) — retention cleanup worker (default off).
+import { SignRetentionService } from './retention/sign-retention.service.js';
+import { SignRetentionWorker } from './retention/sign-retention.worker.js';
 
 // DOC-3/DOC-4 — apps/sign-service composition root. Composes the ATS-neutral
 // E-Sign domain (EsignModule.forRoot) and binds the full DOC-4 executed-document
@@ -197,6 +202,11 @@ import { ConvenienceDataPurgeService } from './push/convenience-data-purge.servi
     // Aramo Sign Personal (Free) — the Personal legal documents still to accept
     // (v1/sign/legal; consulted by the Personal send gate).
     PersonalLegalStatusService,
+    // Privacy Notice 1.1 E-6 — the in-service notice of an upcoming legal version (v1/sign/legal/notices).
+    // The upcoming-change source is the E-5 registry resolver (versions in state 'upcoming'),
+    // merged with the governed UPCOMING_LEGAL_CHANGES list — one source of truth.
+    LegalChangeBannerService,
+    { provide: UPCOMING_LEGAL_CHANGE_SOURCE, useFactory: () => new RegistryUpcomingLegalChangeSource() },
     // Aramo Sign Personal (Free) — Settings → Close account (v1/sign/account).
     SignAccountService,
     // Aramo Sign Mobile (M-A3 §4, §9) — saved signatures (v1/sign/me/signature, /initials)
@@ -214,6 +224,11 @@ import { ConvenienceDataPurgeService } from './push/convenience-data-purge.servi
     PushDeliveryService,
     NotificationPushWorker,
     ConvenienceDataPurgeService,
+    // Privacy Notice 1.1 remediation (E-1 to E-4) — retention cleanup. The worker is OFF
+    // unless SIGN_RETENTION_WORKER_ENABLED=1 (E-4 also needs SIGN_RETENTION_QUEUE_CLEANUP_ENABLED=1).
+    SignRetentionRepository,
+    SignRetentionService,
+    SignRetentionWorker,
   ],
 })
 export class AppModule implements NestModule {

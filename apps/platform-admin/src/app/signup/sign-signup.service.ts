@@ -165,8 +165,8 @@ export class SignSignupService {
   private readonly legal: readonly LegalDocumentVersion[];
 
   /** The terms a signup must accept — null while no version is APPROVED (no unapproved terms are ever presented). */
-  currentTerms(): { version: string; url: string } | null {
-    const t = approvedLegalDocument('sign.terms_of_service', this.legal);
+  currentTerms(now: Date = new Date()): { version: string; url: string } | null {
+    const t = approvedLegalDocument('sign.terms_of_service', this.legal, now);
     return t === null || t.url === null ? null : { version: t.version, url: t.url };
   }
 
@@ -178,7 +178,7 @@ export class SignSignupService {
     if (email === null || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || organization_name === null || organization_name.length < 2 || (input.display_name && display_name === null)) {
       throw new AramoError('VALIDATION_ERROR', 'Enter your work email, your organization name and your name', 400, { requestId: input.request_id });
     }
-    const terms = approvedLegalDocument('sign.terms_of_service', this.legal);
+    const terms = approvedLegalDocument('sign.terms_of_service', this.legal, now);
     const terms_ref = terms === null ? null : legalRef(terms);
     if (terms !== null && input.accept_terms !== true) {
       throw new AramoError('VALIDATION_ERROR', 'Accept the terms to continue', 400, { requestId: input.request_id, details: { reason: 'terms_not_accepted' } });

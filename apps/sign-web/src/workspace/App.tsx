@@ -21,6 +21,7 @@ import { AccountClosedPage, ClosedAccountGuard } from './pages/AccountClose';
 import { ConsoleShell } from './shell';
 import { Btn, Loading } from './ui';
 import { LegalAcceptanceGate } from './legal/LegalAcceptance';
+import { LegalChangeNotice } from './legal/LegalChangeNotice';
 import { WorkspaceProvider, useSenderContext, type Workspace } from './workspace';
 import type { SenderContext } from './api';
 
@@ -167,6 +168,8 @@ function Gate({ expected, actual, scopes }: { expected: Workspace; actual: Works
     <ConsoleShell scopes={scopes}>
       {/* Personal — the current legal documents must be accepted before sending. */}
       {expected === 'personal' ? <LegalAcceptanceGate /> : null}
+      {/* Privacy Notice 1.1 E-6 — a dismissible notice of an upcoming legal-document version (every account). */}
+      <LegalChangeNotice />
       <Routes>
         <Route index element={<Dashboard />} />
         <Route path="envelopes" element={<EnvelopeList />} />

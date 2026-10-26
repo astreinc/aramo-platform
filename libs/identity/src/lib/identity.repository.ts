@@ -119,6 +119,38 @@ export class IdentityRepository {
     return row === null ? null : toUserDto(row);
   }
 
+  // Privacy Notice 1.1 remediation E-6 — the ACTIVE ACCOUNT HOLDERS, across ALL tenants
+  // (BUSINESS and PERSONAL, including the platform sentinel tenant's operators), for the
+  // operator-triggered legal-change notice. One row per user (IC-1: one membership per user).
+  // Active = the User is active and not deactivated, its membership is active, not deactivated
+  // and accepted (invite_status ACCEPTED or ACTIVE — an outstanding INVITED membership is not an
+  // account yet), and its tenant is active and not CLOSED. `audience: 'PERSONAL'` keeps
+  // PERSONAL tenants only. Keyset-paged by user_id ascending (stable across a resumed run).
+  async listActiveAccountHolders(args: {
+    after_user_id: string | null;
+    limit: number;
+    audience: 'ALL' | 'PERSONAL';
+  }): Promise<{ user_id: string; tenant_id: string; email: string; tenant_kind: string }[]> {
+    const rows = await this.prisma.userTenantMembership.findMany({
+      where: {
+        is_active: true,
+        deactivated_at: null,
+        invite_status: { in: ['ACCEPTED', 'ACTIVE'] },
+        user: { is_active: true, deactivated_at: null },
+        tenant: {
+          is_active: true,
+          status: { not: 'CLOSED' },
+          ...(args.audience === 'PERSONAL' ? { kind: 'PERSONAL' } : {}),
+        },
+        ...(args.after_user_id !== null ? { user_id: { gt: args.after_user_id } } : {}),
+      },
+      orderBy: { user_id: 'asc' },
+      take: Math.min(Math.max(1, Math.trunc(args.limit)), 1000),
+      select: { user_id: true, tenant_id: true, user: { select: { email: true } }, tenant: { select: { kind: true } } },
+    });
+    return rows.map((r) => ({ user_id: r.user_id, tenant_id: r.tenant_id, email: r.user.email, tenant_kind: r.tenant.kind }));
+  }
+
   // Invite-S2 — minimal tenant label read for the invite/acceptance emails.
   // Returns the workspace `name` + the optional branding `display_name`
   // (the email greeting prefers display_name and falls back to name, the

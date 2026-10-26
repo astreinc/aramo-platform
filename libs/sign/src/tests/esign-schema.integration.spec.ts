@@ -60,7 +60,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
     await container?.stop();
   });
 
-  it('creates the sign schema with its thirty-two tables', async () => {
+  it('creates the sign schema with its thirty-four tables', async () => {
     const r = await db.query(
       `SELECT table_name FROM information_schema.tables WHERE table_schema = 'sign'`,
     );
@@ -106,6 +106,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-3 esign schem
         'SignConvenienceDataPurge',
         // Aramo Sign Mobile (D-W6-2) — page sizes of a source document.
         'SignEnvelopeDocumentPages',
+        // Privacy Notice 1.1 remediation (E-1 to E-4) — verified deletion requests, sweep audit.
+        'SignConvenienceDeletionRequest',
+        'SignRetentionSweep',
       ].sort(),
     );
   });
