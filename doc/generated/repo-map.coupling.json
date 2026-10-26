@@ -33739,6 +33739,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/legal-documents.spec.ts",
+      "status": "excluded",
+      "to": "doc/legal/aramo/privacy-notice.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/subscription/src/tests/support/ccp-a3-database.ts",
       "status": "excluded",
       "to": "libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql"
