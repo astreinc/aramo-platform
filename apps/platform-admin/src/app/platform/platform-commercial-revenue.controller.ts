@@ -8,7 +8,9 @@ import { amountAccess } from './finance-amount-access.js';
 import { FinanceRevenueQueryDto, type FinanceRevenueResponseDto, type RevenueRenewalBucketDto } from './dto/commercial-revenue.dto.js';
 
 // CCP-D2 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.4 row D2; ruling A0-C6; PLATFORM-UX-1
-// Amendment A1-4a) — the dedicated Finance revenue READ route: MRR / ARR and the renewal pipeline by
+// Amendment A1-4a) — the dedicated Finance revenue READ route: the illustrative list-price monthly
+// value (mrr_minor) and its annualized value (arr_minor; NOT recognized MRR / ARR, Architect W-1,
+// recognized_revenue: false) and the renewal pipeline by
 // month, derived from the commercial records (BillingRevenueReportService; no ledger).
 //
 //   GET finance/revenue   product_key, months (1..24, default 12)
@@ -17,7 +19,8 @@ import { FinanceRevenueQueryDto, type FinanceRevenueResponseDto, type RevenueRen
 // support_admin, read_only_auditor; never catalog_manager, never super_admin), platform tier only.
 //
 // AMOUNTS (CCP-R3; Aramo-CCP-A1-Amendment-A1-Finance-Amount-Scope-v1_0 LOCKED, FA-1 / FA-5 / FA-6):
-// platform-wide aggregate revenue (MRR, ARR, the renewal pipeline's MRR) is a Finance amount. A
+// the platform-wide illustrative list-price values (mrr_minor, arr_minor, the buckets' mrr_minor;
+// never recognized revenue, Architect W-1) are a Finance amount. A
 // caller holding platform:billing:read AND platform:billing:amount:read (platform_owner,
 // finance_admin, read_only_auditor) receives mrr_minor / arr_minor on the report and each product
 // line and mrr_minor on each renewal bucket. Every other reader receives the counts only: the
@@ -56,6 +59,8 @@ export function revenueDto(r: RevenueReport, withAmounts: boolean): FinanceReven
     currency: r.currency,
     billing_interval: r.billing_interval,
     basis: r.basis,
+    // Architect W-1 (merge train TD-MERGE-47): an illustrative list-price value, never recognized revenue.
+    recognized_revenue: false,
     billing_provider_mode: r.billing_provider_mode,
     // CCP-C5 (merge train TD-MERGE-41): the designed disabled tax state, as on every other billing read.
     tax: taxAvailability(),

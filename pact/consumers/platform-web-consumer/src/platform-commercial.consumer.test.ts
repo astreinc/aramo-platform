@@ -1929,6 +1929,8 @@ describe('platform-web → GET /platform/commercial/finance/revenue (CCP-D2)', (
     currency: 'USD',
     billing_interval: 'MONTH',
     basis: 'OPEN_SUBSCRIPTIONS_X_PINNED_LIST_PRICE',
+    // Architect W-1: an illustrative list-price value, never recognized revenue.
+    recognized_revenue: false,
     billing_provider_mode: like('unconfigured'),
     tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' },
     ...amounts,

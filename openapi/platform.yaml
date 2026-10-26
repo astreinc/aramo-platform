@@ -139,8 +139,9 @@ tags:
       plan's current published version). No amount owed, invoice total or sum is computed
       (invoice status is CCP-C3, not delivered); a non-USD or missing price is withheld
       with `unpriced_reason`. Each report reads one consistent, read-only snapshot.
-      CCP-D2 adds the revenue route (MRR, ARR, renewal pipeline by month, derived from the
-      commercial records, no ledger); its amounts are returned only with
+      CCP-D2 adds the revenue route (an illustrative list-price monthly value and its annualized
+      value, and the renewal pipeline by month, derived from the commercial records, no ledger;
+      never recognized revenue); its amounts are returned only with
       `platform:billing:amount:read` (otherwise `amount_withheld: FINANCE_SCOPE_REQUIRED`, CCP-R3).
       Requires `platform:billing:read` (platform_owner, finance_admin, commercial_ops,
       support_admin, read_only_auditor); catalog_manager and super_admin are refused with
@@ -3278,12 +3279,16 @@ paths:
     get:
       operationId: getPlatformCommercialFinanceRevenue
       tags: [Platform Commercial Finance]
-      summary: Revenue reporting (MRR, ARR, renewal pipeline by month); amounts need the Finance amount scope.
+      summary: Illustrative list-price value and renewal pipeline by month (not recognized revenue); amounts need the Finance amount scope.
       description: |
-        CCP-D2 — platform-wide revenue derived from the commercial records at read time (no
-        ledger, no stored figure): MRR is the sum, over open MANUAL or SELF_SERVICE base
-        subscriptions in `ACTIVE` or `PAST_DUE`, of the pinned plan version's USD list price per
-        `MONTH`; ARR is MRR × 12. Every other open commercial subscription is excluded and
+        CCP-D2 — a platform-wide **illustrative list-price value** derived from the commercial
+        records at read time (no ledger, no stored figure). It is NOT recognized revenue and NOT
+        actual MRR (Architect W-1, 2026-10-25): `recognized_revenue` is always `false` and `basis`
+        names the list-price derivation. The illustrative list-price monthly value (`mrr_minor`)
+        is the sum, over open MANUAL or SELF_SERVICE base subscriptions in `ACTIVE` or
+        `PAST_DUE`, of the pinned plan version's USD list price per `MONTH`; its annualized value
+        (`arr_minor`) is that × 12. The field names are kept for contract stability; they do not
+        denote recognized MRR / ARR. Contract-priced rows are excluded. Every other open commercial subscription is excluded and
         counted with exactly one reason (`counts.excluded_by_reason`). The renewal pipeline
         groups the renewal events (`COMMITMENT_END`; `PERIOD_END` for provider-billed rows) by
         UTC month from the current month; events on or before `as_of` are `LAPSED`.
@@ -7856,20 +7861,20 @@ components:
           type: integer
         priced_events:
           type: integer
-          description: Events of a subscription included in MRR.
+          description: Events of a subscription included in the illustrative list-price value.
         unpriced_events:
           type: integer
           description: Events of an excluded subscription.
         mrr_minor:
           type: integer
-          description: The MRR (USD minor units) of the included subscriptions renewing in this bucket. Present only with `platform:billing:amount:read`.
+          description: The illustrative list-price monthly value (USD minor units, not recognized revenue) of the included subscriptions renewing in this bucket. Present only with `platform:billing:amount:read`.
         amount_withheld:
           $ref: '#/components/schemas/FinanceAmountWithheld'
 
     FinanceRevenueReport:
       type: object
       additionalProperties: false
-      required: [as_of, currency, billing_interval, basis, billing_provider_mode, tax, by_product, counts, renewal_pipeline]
+      required: [as_of, currency, billing_interval, basis, recognized_revenue, billing_provider_mode, tax, by_product, counts, renewal_pipeline]
       properties:
         as_of:
           type: string
@@ -7883,6 +7888,11 @@ components:
         basis:
           type: string
           enum: [OPEN_SUBSCRIPTIONS_X_PINNED_LIST_PRICE]
+          description: The list-price derivation of every amount (illustrative; never recognized revenue).
+        recognized_revenue:
+          type: boolean
+          enum: [false]
+          description: Always false. The amounts are an illustrative list-price value, never recognized revenue (Architect W-1).
         billing_provider_mode:
           type: string
           enum: [test, live, unconfigured]
@@ -7890,10 +7900,10 @@ components:
           $ref: '#/components/schemas/TaxAvailability'
         mrr_minor:
           type: integer
-          description: MRR in USD minor units. Present only with `platform:billing:amount:read`.
+          description: The illustrative list-price monthly value in USD minor units (not recognized revenue, not actual MRR). Present only with `platform:billing:amount:read`.
         arr_minor:
           type: integer
-          description: ARR (MRR × 12) in USD minor units. Present only with `platform:billing:amount:read`.
+          description: The illustrative list-price annualized value (the monthly value × 12) in USD minor units (not recognized revenue, not actual ARR). Present only with `platform:billing:amount:read`.
         amount_withheld:
           $ref: '#/components/schemas/FinanceAmountWithheld'
         by_product:
@@ -7907,13 +7917,13 @@ components:
                 type: string
               subscriptions:
                 type: integer
-                description: Subscriptions included in MRR.
+                description: Subscriptions included in the illustrative list-price value.
               mrr_minor:
                 type: integer
-                description: Present only with `platform:billing:amount:read`.
+                description: The product's illustrative list-price monthly value (not recognized revenue). Present only with `platform:billing:amount:read`.
               arr_minor:
                 type: integer
-                description: Present only with `platform:billing:amount:read`.
+                description: The product's illustrative list-price annualized value (not recognized revenue). Present only with `platform:billing:amount:read`.
               amount_withheld:
                 $ref: '#/components/schemas/FinanceAmountWithheld'
         counts:

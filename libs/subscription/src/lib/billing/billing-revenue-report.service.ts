@@ -8,7 +8,9 @@ import { FINANCE_CURRENCY, FINANCE_SOURCES, priceFigure } from './billing-financ
 import { BILLING_PROVIDER_PORT, type BillingProviderPort } from './billing-provider.port.js';
 
 // CCP-D2 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.4 row D2; ruling A0-C6; PLATFORM-UX-1
-// Amendment A1-4a) — revenue reporting: MRR, ARR and the renewal pipeline by month, DERIVED from the
+// Amendment A1-4a) — revenue reporting: an ILLUSTRATIVE LIST-PRICE monthly value (field mrr_minor) and
+// its annualized value (arr_minor), never recognized revenue or actual MRR / ARR (Architect W-1,
+// 2026-10-25), and the renewal pipeline by month, DERIVED from the
 // commercial records at read time. There is no ledger and no stored figure: nothing here writes, and
 // no table holds a revenue amount.
 //
@@ -325,11 +327,12 @@ const usd = (minor: number): string => `USD ${(minor / 100).toFixed(2)}`;
 /** The revenue output as stable text lines (service-level acceptance evidence only; never a route). */
 export function formatRevenueReport(r: RevenueReport): string[] {
   const c = r.counts;
-  const bucket = (b: RenewalBucket) => `[revenue]   ${b.month}: events=${b.events} commitment_end=${b.commitment_end} period_end=${b.period_end} priced=${b.priced_events} unpriced=${b.unpriced_events} mrr=${usd(b.mrr_minor)}`;
+  const bucket = (b: RenewalBucket) => `[revenue]   ${b.month}: events=${b.events} commitment_end=${b.commitment_end} period_end=${b.period_end} priced=${b.priced_events} unpriced=${b.unpriced_events} illustrative_list_price_monthly=${usd(b.mrr_minor)}`;
   return [
     `[revenue] as_of=${r.as_of.toISOString()} basis=${r.basis} currency=${r.currency} interval=${r.billing_interval} provider_mode=${r.billing_provider_mode}`,
-    `[revenue] MRR=${usd(r.mrr_minor)} ARR=${usd(r.arr_minor)} (ARR = MRR x ${ARR_MONTHS})`,
-    ...r.by_product.map((p) => `[revenue]   product=${p.product_key} subscriptions=${p.subscriptions} MRR=${usd(p.mrr_minor)} ARR=${usd(p.arr_minor)}`),
+    // Architect W-1 (2026-10-25): an illustrative list-price value, never recognized revenue or actual MRR.
+    `[revenue] illustrative list-price monthly value=${usd(r.mrr_minor)} annualized=${usd(r.arr_minor)} (annualized = monthly x ${ARR_MONTHS}; recognized_revenue=false)`,
+    ...r.by_product.map((p) => `[revenue]   product=${p.product_key} subscriptions=${p.subscriptions} illustrative_list_price_monthly=${usd(p.mrr_minor)} annualized=${usd(p.arr_minor)}`),
     `[revenue] open commercial subscriptions: ${c.open_commercial_subscriptions} included=${c.included} excluded=${c.excluded} ${JSON.stringify(c.excluded_by_reason)}`,
     `[revenue] not commercial (not counted as revenue): ${JSON.stringify(c.not_commercial_by_source)}`,
     `[revenue] renewal pipeline ${r.renewal_pipeline.from_month}..${r.renewal_pipeline.through_month} (${r.renewal_pipeline.months} months)`,

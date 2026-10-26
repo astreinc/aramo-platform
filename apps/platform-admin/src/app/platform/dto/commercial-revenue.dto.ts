@@ -34,7 +34,10 @@ export interface FinanceRevenueResponseDto {
   as_of: string;
   currency: 'USD';
   billing_interval: 'MONTH';
+  // Architect W-1 (2026-10-25): every amount is an illustrative list-price value, never recognized
+  // revenue. mrr_minor / arr_minor keep their names for contract stability only.
   basis: 'OPEN_SUBSCRIPTIONS_X_PINNED_LIST_PRICE';
+  recognized_revenue: false;
   billing_provider_mode: string;
   // CCP-C5: always { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' }.
   tax: { enabled: false; reason: 'STRIPE_TAX_NOT_REGISTERED' };

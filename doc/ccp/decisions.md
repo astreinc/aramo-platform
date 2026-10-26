@@ -478,3 +478,60 @@ For an actor without `platform:billing:amount:read`, the whole free-text `Contra
   - **CCP-A4 / A5 × main.** 2 of those specs (contracts, sender drafts) inserted a `TenantSubscription` without `product_key` / `plan_version_id` / `composition_role`, so the whole suites failed. Their inserts now pin the PUBLISHED version, the plan's product key and BASE, the same fix earlier CCP merges applied to `sign-api.integration.spec.ts`. Result: sign-mobile specs 30 / 30.
   - **D5 runbook:** the stop point is unchanged (`20261029000100_ccp_alert_type_union` stays last). The note on main's 5 migrations and the gate count (27 + any of the 5 still pending, when separately authorized) are updated. Production `52ea8de6` predates them.
   - **`mobile/sign` (#1010):** its own gate contract passes on the merged tree: `npm ci`, `typecheck`, `lint`, and `test` 253 / 253 in 28 suites. The repo vocabulary script, which main extended for mobile, passes. Its `node_modules` stays untracked.
+
+## Architect scope freeze and program closure directive (2026-10-25)
+
+### The ruling
+**CCP feature scope is FROZEN.** The objective is to complete and publish the already-authorized CCP.
+
+### What may still be finished
+- UI-V12, R3-W, C8-PR (the already-authorized slice, frozen after it) and DG;
+- then D6, the program acceptance register and the final integrated gate;
+- corrections strictly necessary to pass the existing acceptance and security gates.
+
+### What is not authorized without a new explicit PO decision
+- new action types, roles, scopes, workflows, dashboards or integrations;
+- functionality-expanding amendments;
+- convenience features.
+
+### The 3 exceptions
+1. a demonstrated security or tenant-isolation defect;
+2. a demonstrated financial-integrity or unauthorized-commercial-effect defect;
+3. a LOCKED obligation that is otherwise impossible to satisfy.
+
+Each needs a bounded, evidence-based request before implementation, and the smallest defensible change.
+
+### Classification of open findings
+- **A, BLOCKING:** violates an existing acceptance, security or financial invariant. **Only A may be implemented.**
+- **B, EXTERNAL:** needs Finance, Legal, Stripe, Tax or another external authority.
+- **C, DEFERRED:** an optional improvement or an unsupported v1 feature.
+- **D, RESOLVED:** the implementation and evidence already satisfy it.
+
+### Interim directions
+- **TD-R3-1:** keep the fail-closed send enforcement; no upload restriction (C).
+- **TD-C5-1:** reconcile with the disabled tax configuration; no activation. The prod `.env` removal happens at deploy (B / ops).
+- **TD-D2-1/2:** only authoritative inputs; contract-priced revenue excluded; no invented MRR (D, as built).
+- **TD-D5-2:** privileged emergency access stays disabled unless a LOCKED requirement mandates it. The D5 break-glass runbook is documentation only (C).
+- **W-1 vs D2:** a list-price-derived figure is never labelled actual MRR. If shown, it is "illustrative list-price value", never recognized revenue. This is the smallest correction: labels and field descriptions only (A, labelling).
+- **Remaining R3/C4 findings:** only genuine authorization or financial-integrity discrepancies.
+- **C7:** keep the legal fail-closed gate; defer the improvements (C).
+- **GV-07:** separate from CCP.
+- **Outside CCP:** PROD-SEC-1, website and app legal copy, GV-07, ACCT, legal drafting and Finance policy.
+
+### Publication
+HALT after the final engineering acceptance and return the single-PR publication request. Push, PR, merge, migration, deploy, bootstrap, backfill and activation are all NOT authorized.
+
+### Integration queue (Lead, 2026-10-25)
+- Merge order from `eefa795d`: DG (`wip/ccp-dg`; no guard-union change, no migration), then R3-W, C8-PR, UI-V12.
+- **For D6:** Charter A2 dependency row 6 requires a release-checklist step that verifies the ACTIVE policy's `refund_policy_sha256` against the LOCKED refund-policy sidecar (RX-4). This is D6 checklist content, not a new feature; DG records it as G-2.
+
+- **TD-MERGE-47 (W-1 vs D2, class A labelling; smallest correction).**
+  - **Human-facing labels:** the D2 revenue figures are relabelled "illustrative list-price monthly value" and "… annualized" in:
+    - the OpenAPI summary, description and field descriptions;
+    - the DTO, controller and service comments;
+    - the service-level text output `formatRevenueReport` (`illustrative list-price monthly value=… annualized=… recognized_revenue=false`).
+  - **Contract:** the field names `mrr_minor` / `arr_minor` are kept (no contract churn), with descriptions that say they are not recognized revenue and not actual MRR / ARR.
+    - The response already carried a list-price basis marker (`basis: OPEN_SUBSCRIPTIONS_X_PINNED_LIST_PRICE`), so it is kept, not replaced, and now has a description.
+    - A new required `recognized_revenue: false` (OpenAPI `enum: [false]`) was added, with the DTO, controller, D2 spec (18 / 18) and the platform-web Pact interaction (pact regenerated, 196 / 196) updated.
+    - The platform-admin provider passes 2 / 2.
+  - **Gates:** D2 service specs 12 / 12; platform-web dashboard no-money specs 15 / 15. openapi-drift, contract-parity, orphan-scopes, env-passthrough, error-codes, tsc, lint, vocabulary and repo-map all pass (rc=0).
