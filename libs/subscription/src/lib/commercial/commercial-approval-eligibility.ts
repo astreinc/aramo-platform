@@ -23,6 +23,13 @@ import type { CommercialChainStep, CommercialRequiredChain } from './commercial-
 // still unfilled be filled by DISTINCT eligible attested humans other than the requester,
 // the subject and the prior approvers? Never a user count.
 //
+// CCP-A9-FIX (TD-A9-7): "distinct human" is decided by the D9 attested human reference
+// (`human_ref_hash`) as well as by `user_id`. Where the caller supplies the human references
+// (the requester's and the subject's attestation history, the attestation each approval was
+// signed under, the actor's active attestation), one human holding two accounts is the SAME
+// human: SELF_APPROVAL / USER_ALREADY_APPROVED / excluded from the gate / APPROVER_NOT_DISTINCT.
+// The user_id comparison always applies; the human-reference comparison is additive.
+//
 // assertChainStillSatisfiableAtApply is the apply-time re-check (NC-5, ratified by the
 // Lead Architect 2026-10-25): every recorded approval is re-checked against the chain
 // SNAPSHOTTED on the request — never a newer policy version, so the function takes no
@@ -48,11 +55,17 @@ export interface EligibilityRequest {
   required_chain: CommercialRequiredChain;
   /** The user a role change is about; null for every other action. */
   subject_user_id: string | null;
+  /** CCP-A9-FIX: every human reference the requester's account was ever attested for. */
+  requester_human_refs?: readonly string[];
+  /** CCP-A9-FIX: every human reference the subject's account was ever attested for. */
+  subject_human_refs?: readonly string[];
 }
 
 export interface EligibilityApproval {
   step_index: number;
   approver_user_id: string;
+  /** CCP-A9-FIX: the human reference of the attestation the approval was signed under. */
+  approver_human_ref?: string | null;
 }
 
 /** The actor as read LIVE in the transaction. */
@@ -62,6 +75,8 @@ export interface EligibilityActor {
   actor_kind: string;
   /** An active D9 attestation exists for this user. */
   attested: boolean;
+  /** CCP-A9-FIX: the human reference of that active attestation (null when unattested). */
+  human_ref_hash?: string | null;
   role_keys: readonly string[];
   scopes: readonly string[];
 }
@@ -103,8 +118,18 @@ export function checkApprovalEligibility(
   if (request.subject_user_id !== null && actor.user_id === request.subject_user_id) {
     return { eligible: false, refusal: 'SELF_APPROVAL', detail: { subject_user_id: request.subject_user_id } };
   }
-  const mine = approvals.find((a) => a.approver_user_id === actor.user_id);
-  if (mine !== undefined) return { eligible: false, refusal: 'USER_ALREADY_APPROVED', detail: { step_index: mine.step_index } };
+  // CCP-A9-FIX: the same attested human behind a second account.
+  const human = actor.human_ref_hash ?? null;
+  if (human !== null && (request.requester_human_refs ?? []).includes(human)) {
+    return { eligible: false, refusal: 'SELF_APPROVAL', detail: { requested_by: request.requested_by, same_human: true } };
+  }
+  if (human !== null && request.subject_user_id !== null && (request.subject_human_refs ?? []).includes(human)) {
+    return { eligible: false, refusal: 'SELF_APPROVAL', detail: { subject_user_id: request.subject_user_id, same_human: true } };
+  }
+  const mine = approvals.find((a) => a.approver_user_id === actor.user_id || (human !== null && (a.approver_human_ref ?? null) === human));
+  if (mine !== undefined) {
+    return { eligible: false, refusal: 'USER_ALREADY_APPROVED', detail: { step_index: mine.step_index, ...(mine.approver_user_id === actor.user_id ? {} : { same_human: true }) } };
+  }
 
   const steps = request.required_chain.steps;
   const next = approvals.length;
@@ -125,6 +150,8 @@ export function checkApprovalEligibility(
 export interface RosterEntry {
   user_id: string;
   attested: boolean;
+  /** CCP-A9-FIX: the human reference of the active attestation (null / absent when unattested). */
+  human_ref_hash?: string | null;
   role_keys: readonly string[];
   scopes: readonly string[];
 }
@@ -139,14 +166,16 @@ export interface ChainSatisfiability {
 
 /**
  * Bipartite matching of the unfilled steps to distinct attested humans who hold the
- * step's role and scopes, excluding `exclude` (requester, subject, prior approvers).
+ * step's role and scopes, excluding `exclude` (requester, subject, prior approvers) and,
+ * CCP-A9-FIX, any account attested for one of `excludeHumanRefs` (the same humans).
  */
 export function checkChainSatisfiable(
   steps: readonly CommercialChainStep[],
   roster: readonly RosterEntry[],
   exclude: ReadonlySet<string>,
+  excludeHumanRefs: ReadonlySet<string> = new Set(),
 ): ChainSatisfiability {
-  const humans = roster.filter((r) => r.attested && !exclude.has(r.user_id));
+  const humans = roster.filter((r) => r.attested && !exclude.has(r.user_id) && !(r.human_ref_hash != null && excludeHumanRefs.has(r.human_ref_hash)));
   const eligibleFor = steps.map((s) => humans.filter((h) => actorSatisfiesStep(h, s)).map((h) => h.user_id));
   const owner = new Map<string, number>();
   const tryAssign = (i: number, seen: Set<string>): boolean => {
@@ -194,6 +223,9 @@ export interface ApplyCheckRequest {
   /** The chain SNAPSHOTTED at creation (with the request's own policy version). */
   required_chain: CommercialRequiredChain;
   approvals: readonly EligibilityApproval[];
+  /** CCP-A9-FIX: the requester's / subject's attested human references (all history). */
+  requester_human_refs?: readonly string[];
+  subject_human_refs?: readonly string[];
 }
 
 /**
@@ -216,12 +248,22 @@ export function assertChainStillSatisfiableAtApply(request: ApplyCheckRequest, l
     throw new CommercialApplyRefusedError('APPROVALS_INCOMPLETE', { steps: steps.length, approvals: request.approvals.length });
   }
   const signers = new Set<string>();
+  // CCP-A9-FIX: signers are distinct humans too (by the attestation each approval was signed
+  // under), and none is the requester's or the subject's attested human.
+  const humans = new Set<string>([...(request.requester_human_refs ?? []), ...(request.subject_human_refs ?? [])]);
   for (const step of steps) {
     const a = byStep.get(step.step_index) as EligibilityApproval;
-    if (signers.has(a.approver_user_id) || a.approver_user_id === request.requested_by || a.approver_user_id === request.subject_user_id) {
+    const human = a.approver_human_ref ?? null;
+    if (
+      signers.has(a.approver_user_id) ||
+      a.approver_user_id === request.requested_by ||
+      a.approver_user_id === request.subject_user_id ||
+      (human !== null && humans.has(human))
+    ) {
       throw new CommercialApplyRefusedError('APPROVER_NOT_DISTINCT', { step_index: step.step_index, approver_user_id: a.approver_user_id });
     }
     signers.add(a.approver_user_id);
+    if (human !== null) humans.add(human);
   }
   for (const step of steps) {
     const a = byStep.get(step.step_index) as EligibilityApproval;

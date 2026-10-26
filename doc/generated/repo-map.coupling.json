@@ -14948,6 +14948,11 @@
     {
       "from": "doc/ccp/slices/CCP-A9-acceptance.md",
       "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-a9fix-requester-attestation.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-A9-acceptance.md",
+      "status": "unscoped",
       "to": "libs/subscription/src/tests/commercial-change-request.integration.spec.ts"
     },
     {
@@ -32846,6 +32851,12 @@
     {
       "excludedBy": "src/tests/**/*",
       "from": "libs/subscription/src/tests/ccp-a9-bootstrap-role-change.integration.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-A9-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-a9fix-requester-attestation.integration.spec.ts",
       "status": "excluded",
       "to": "doc/ccp/slices/CCP-A9-acceptance.md"
     },

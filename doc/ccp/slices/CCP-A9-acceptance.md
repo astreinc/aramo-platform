@@ -183,3 +183,66 @@ A9-SEED-1 also asserts that none of these four files references the bootstrap co
 ## 9. Vocabulary result
 
 `bash scripts/verify-vocabulary.sh`: exit 0; Tier 1, Tier 2 and front-door clean. No exemption added.
+
+## 10. A9-FIX (TD-A9-7): requester D9 attestation for every action; distinct human by human reference
+
+**Basis.** CCP scope freeze exception 1 (a demonstrated unauthorized-action defect). The LOCKED authority already requires distinct-human approval: A0-C4; PBD §12; `Aramo-T2-F1-H3-…-Amendment-A1-CCP-Confirmation` (D9 attestation). Classification: **A (blocking)**. No role, scope, chain, route, migration or error code changed.
+
+### The defect, demonstrated before the fix
+
+- Only the governance actions (POLICY_ACTIVATE, ROLE_GRANT, ROLE_REVOKE) checked the requester's D9 attestation at create (`commercial-change-request.service.ts:425-429` before the fix).
+- Self-approval and the chain gate compared `user_id` only (`commercial-approval-eligibility.ts:102`, `:149` before the fix).
+- So one human with two accounts could request and approve the same non-governance request.
+
+Spec: `libs/subscription/src/tests/ccp-a9fix-requester-attestation.integration.spec.ts` (real Postgres 17, full migration chain, `ARAMO_RUN_INTEGRATION=1`).
+
+**A9FIX-1** sets up one human reference `H` with two accounts. Account 1 is a commercial_ops requester whose attestation for `H` was revoked, so it is unattested. Account 2 is a finance_admin approver attested for `H`. Before the fix, account 1 created and submitted a CREDIT and account 2 recorded the approval (1 approval row). The run before the fix showed 4 failed of 4:
+
+```
+× A9FIX-1 one human, two accounts: … → the CREDIT is never approved by that human
+AssertionError: expected 'OK' not to be 'OK' // Object.is equality
+× A9FIX-2 a never-attested requester is refused NOT_HUMAN at create … (CREDIT, SUBSCRIPTION_OPEN, PLAN_VERSION_PUBLISH)
+Expected: "NOT_HUMAN"  Received: "OK"
+× A9FIX-3 distinct human by human reference … → that account is refused SELF_APPROVAL (not compared by user_id only)
+Expected: "SELF_APPROVAL"  Received: "OK"
+× A9FIX-4 distinct human across approval steps … → USER_ALREADY_APPROVED
+Expected: "USER_ALREADY_APPROVED"  Received: "OK"
+Tests  4 failed (4)
+```
+
+### The fix
+
+1. **Create** (`CommercialChangeRequestService.create`). The requester of **every** commercial action type needs an active D9 attestation. Otherwise the create is refused `NOT_HUMAN` (`reason: not_human`), the same refusal the governance path used, and nothing is written. The governance branch keeps only its role and target checks.
+   - The A8 bounded support extension already refused an unattested support_admin (`REQUESTER_NOT_ATTESTED`, no write); its escalation goes through `create` and is covered.
+   - PAYMENT_RECORD goes through `create` and is covered.
+2. **Distinct human** (`commercial-approval-eligibility.ts`). The `user_id` comparison is kept, and a comparison by the attested human reference is added:
+   - `checkApprovalEligibility`:
+     - `SELF_APPROVAL` when the actor's active `human_ref_hash` is one the requester's (or the role-change subject's) account was ever attested for;
+     - `USER_ALREADY_APPROVED` when a prior approval was signed under an attestation with the actor's human reference.
+     - Both carry `same_human: true` in the detail.
+   - `checkChainSatisfiable`: an optional `excludeHumanRefs` parameter. Accounts attested for an excluded human are not eligible.
+   - `assertChainStillSatisfiableAtApply`: `APPROVER_NOT_DISTINCT` when two signers share a human reference, or a signer is the requester's or subject's human.
+   - The new fields are optional on the pure engine. The service always supplies them.
+3. **Inputs** (`CommercialOperatorRepository`):
+   - `LiveOperator.human_ref_hash` (from the active attestation);
+   - `humanRefsOfUsers` returns every human reference an account was ever attested for (active and revoked; the table is append-only);
+   - `humanRefsOfAttestations` returns each approval's signing attestation (`CommercialApproval.attestation_id`).
+   - The service's `humanFacts` feeds them into approve, reject, the read verdicts (`get`, `eligible_for_me`), `applyRoleChange` and `assertApplyEligible`.
+
+### Counts after the fix
+
+| Run | Result |
+|---|---|
+| A9-FIX spec (4 integration + 3 pure engine) | **7 / 7** |
+| subscription full, `ARAMO_RUN_INTEGRATION=1 vitest run --root libs/subscription --maxWorkers=2` | **68 / 68 files, 1003 / 1003 tests** |
+| platform-admin full, `ARAMO_RUN_INTEGRATION=1 vitest run --root apps/platform-admin --maxWorkers=2` | **46 / 46 files, 996 / 996 tests** |
+| D4 negative controls × 3 (host load 15.30 / 12.51 / 9.56) | **15 / 15, 15 / 15, 15 / 15** |
+| Pact consumers (pacts deleted, regenerated serially, 15 projects) | **656 / 656** (platform-web 207 / 207) |
+| Pact providers | **5 / 5 files, 7 / 7** |
+| build (subscription, platform-admin, api + 75 dependency tasks, `--skip-nx-cache`) | rc=0 |
+| lint (110 projects) | rc=0 |
+| vocabulary, repo-map (regenerated, check), error-codes, contract-parity | rc=0 |
+
+### Fixtures changed
+
+**None.** Every existing requester in the subscription and platform-admin CCP fixtures was already attested (`addOperator` attests by default). No assertion was changed or weakened. The only new test file is the A9-FIX spec.
