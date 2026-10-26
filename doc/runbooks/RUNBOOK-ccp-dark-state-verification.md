@@ -28,7 +28,10 @@ activation and record its output.
 | Live Stripe | `STRIPE_SECRET_KEY` prefix (sign); `sk_live_` / `rk_live_` is live | TEST or UNSET, never LIVE |
 | Stripe key in platform-admin | `STRIPE_SECRET_KEY` (not passed by `docker-compose.prod.yml`; C3 stays NOT DELIVERED) | UNSET |
 | Checkout | `STRIPE_PLAN_PRICES` empty (sign) **and** no `PlanVersionPrice` pin | UNSET and 0 pins |
-| Stripe command worker | `SIGN_BILLING_COMMANDS_ENABLED` (sign) | UNSET |
+| Stripe command worker | `SIGN_BILLING_COMMANDS_ENABLED` (sign; `esign-billing-command.worker.ts:23`, on only when exactly `1`) | UNSET |
+| Operational alert scanner | `CCP_ALERTS_ENABLED` (platform-admin; `commercial-alert-scanner.service.ts:19`, on only when exactly `1`) | UNSET |
+| Usage roll-up worker | `CCP_USAGE_ROLLUP_ENABLED` (platform-admin; `usage-rollup-worker.service.ts:14`, on only when exactly `1`) | UNSET |
+| Refund execution, gate 1 | `CCP_REFUND_EXECUTION_ENABLED` (read by `refundExecutionEnabled`, `commercial-billing-adjustment.ts:36-37`, in platform-admin at apply and in sign at dispatch; on only when exactly `1`). `docker-compose.prod.yml` passes it to no container, so a container reads it UNSET even if `.env` sets it; both are checked. Gate 2 (an ACTIVE policy with the refund keys) is separate (Charter Amendment A2). | UNSET |
 | Astre MANUAL intact | the data row: MANUAL, ACTIVE, `aramo-sign-included-v1`, no provider link | one row |
 
 The check prints a class only: **SET / UNSET** for switches and lists, **TEST / LIVE / UNSET** for the Stripe key.
@@ -79,6 +82,10 @@ row "Stripe key (sign)"        "STRIPE_SECRET_KEY"          "$(cls_container "$S
 row "Stripe key (platform-admin)" "STRIPE_SECRET_KEY"       "$(cls_container "$PA_C" STRIPE_SECRET_KEY stripe)" "-" UNSET
 row "checkout prices"          "STRIPE_PLAN_PRICES"         "$(cls_container "$SIGN_C" STRIPE_PLAN_PRICES list)" "$(cls_envfile STRIPE_PLAN_PRICES list)" UNSET
 row "Stripe command worker"    "SIGN_BILLING_COMMANDS_ENABLED" "$(cls_container "$SIGN_C" SIGN_BILLING_COMMANDS_ENABLED flag)" "$(cls_envfile SIGN_BILLING_COMMANDS_ENABLED flag)" UNSET
+row "alert scanner"            "CCP_ALERTS_ENABLED"         "$(cls_container "$PA_C" CCP_ALERTS_ENABLED flag)" "$(cls_envfile CCP_ALERTS_ENABLED flag)" UNSET
+row "usage roll-up worker"     "CCP_USAGE_ROLLUP_ENABLED"   "$(cls_container "$PA_C" CCP_USAGE_ROLLUP_ENABLED flag)" "$(cls_envfile CCP_USAGE_ROLLUP_ENABLED flag)" UNSET
+row "refund gate 1 (platform-admin)" "CCP_REFUND_EXECUTION_ENABLED" "$(cls_container "$PA_C" CCP_REFUND_EXECUTION_ENABLED flag)" "$(cls_envfile CCP_REFUND_EXECUTION_ENABLED flag)" UNSET
+row "refund gate 1 (sign)"     "CCP_REFUND_EXECUTION_ENABLED" "$(cls_container "$SIGN_C" CCP_REFUND_EXECUTION_ENABLED flag)" "-" UNSET
 SH
 bash /tmp/ccp-dark-state-check.sh
 rm /tmp/ccp-dark-state-check.sh

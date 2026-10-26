@@ -28873,12 +28873,22 @@
     {
       "from": "doc/runbooks/RUNBOOK-ccp-platform-owner-bootstrap.md",
       "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-FIX1-acceptance.md"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-ccp-platform-owner-bootstrap.md",
+      "status": "unscoped",
       "to": "libs/subscription/scripts/ccp-bootstrap-platform-owner.ts"
     },
     {
       "from": "doc/runbooks/RUNBOOK-ccp-platform-owner-bootstrap.md",
       "status": "unscoped",
       "to": "libs/subscription/src/lib/commercial/commercial-platform-owner-bootstrap.ts"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-ccp-platform-owner-bootstrap.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-fix1-script-runner.integration.spec.ts"
     },
     {
       "from": "doc/runbooks/RUNBOOK-ccp-recovery.md",

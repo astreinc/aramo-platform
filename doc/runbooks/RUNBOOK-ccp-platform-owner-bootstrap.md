@@ -12,22 +12,21 @@ A1-1, A1-2, A1-4, §6; Program Build Directive §5.1 row A9, §7.6, §12. **Code
 `libs/subscription/src/lib/commercial/commercial-platform-owner-bootstrap.ts`.
 **Dry run:** `doc/ccp/runbook-dry-runs-20261025.md` §4.
 
-## 1. Current blocker — known defect D5-DEF-3 (HALT)
+## 1. D5-DEF-3 — FIXED (CCP-FIX1)
 
-**The shipped command cannot run.** `npm run ccp:bootstrap-platform-owner` starts the script through
-`deploy/jiti-tsconfig-runner.mjs`, which leaves the script path at `process.argv[2]`. The script parses
-`process.argv.slice(2)` (`ccp-bootstrap-platform-owner.ts:31`), so its first "argument" is its own path and
-every invocation is refused:
+The defect: `npm run ccp:bootstrap-platform-owner` runs the script through `deploy/jiti-tsconfig-runner.mjs`, which
+leaves the script path at `process.argv[2]`. The script parsed `process.argv.slice(2)`, so every invocation was
+refused `INVALID_ARGUMENT` (fail closed, nothing written).
 
-```
-[ccp-bootstrap] REFUSED: INVALID_ARGUMENT {"unknown_argument":"libs/subscription/scripts/ccp-bootstrap-platform-owner.ts", …}
-```
+**Fixed by CCP-FIX1** (`doc/ccp/slices/CCP-FIX1-acceptance.md` §1): `scriptArgs()`
+(`libs/subscription/scripts/ccp-bootstrap-platform-owner.ts:28`, used at `:39`) takes the arguments after the
+script's own entry in `argv`, the rule the CCP-A11 scripts use. The CLI path is now proven through the real runner
+by `libs/subscription/src/tests/ccp-fix1-script-runner.integration.spec.ts`:
+- FIX1-RUN-1: an invalid invocation is refused `INVALID_ARGUMENT` (exit 2), naming the bad flag, never the entry
+  path, and writes nothing;
+- FIX1-RUN-2: a valid invocation grants platform_owner (exit 0, one audit event), and a re-run is a no-op.
 
-It fails closed (exit 2, nothing written). Running it through `node --import jiti/register` instead fails to load
-(`Cannot find module '@aramo/common'`). The CCP-A11 scripts avoid this by locating their own entry in `argv`
-(`ccp-astre-fact-check.ts:15-16`). Until the script is fixed in a reviewed change, **do not run the bootstrap
-in any environment and do not work around it**. The dry run exercised the bootstrap logic directly (§4); the
-CLI path itself is unproven.
+This section is no longer a HALT. Every production run still needs its own PO authorization (§3, §4).
 
 ## 2. What the command does
 
@@ -50,9 +49,10 @@ refused `ALREADY_BOOTSTRAPPED` once a bootstrap event exists.
 ## 3. Preconditions (all read-only checks; HALT on any miss)
 
 1. A recorded PO authorization for this production run.
-2. The 21 CCP migrations are applied and post-checked (`RUNBOOK-ccp-migration-validation.md` §5). In particular
+2. The 29 CCP migrations are applied and post-checked (`RUNBOOK-ccp-migration-validation.md` §5, stop point
+   `20261030010000_ccp_c8pr_payment_record`). In particular
    an ACTIVE commercial policy exists: without it the command stops `FATAL` (exit 1) before its transaction.
-3. D5-DEF-3 is fixed (§1).
+3. D5-DEF-3 is fixed (§1: fixed by CCP-FIX1; the deployed build must carry that fix).
 4. The checks below match:
 
 ```bash
@@ -91,7 +91,7 @@ Expect `super_admin_holders = 1` and `active_holders = 1` (A1-1); `platform_owne
 printf '%s' '<the operator's private human reference>' | shasum -a 256 | cut -d' ' -f1
 ```
 
-## 4. Run (only once D5-DEF-3 is fixed, and only with the PO authorization)
+## 4. Run (only with the PO authorization; D5-DEF-3 is fixed, §1)
 
 From `/opt/aramo`, in the box form used by `deploy/seed-prod.sh` (node container on the compose network; `DBURL`
 as in `RUNBOOK-ccp-migration-validation.md` §3 P3, never echoed):
