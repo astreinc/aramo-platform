@@ -7807,6 +7807,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-a9fix-requester-attestation.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-acc1-policy-withdraw.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"

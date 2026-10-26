@@ -428,10 +428,13 @@ export class CommercialChangeRequestService {
           }
         }
         const requester = await this.operators.readOperator(tx, ctx.platform_tenant_id, actor.user_id, def.requester_role !== null);
+        // CCP-A9-FIX (TD-A9-7; A0-C4, PBD §12, A1-3): the requester of EVERY commercial action is
+        // one of the distinct independent humans of the chain, so it holds an active D9
+        // attestation — not only the governance actions (CCP-A9 TD-A3-5).
+        if (!requester.attested) throw new CommercialChangeRequestError('NOT_HUMAN', 'the requester holds no active one-account-per-human attestation', { reason: 'not_human' });
         if (def.requester_role !== null) {
-          // CCP-A9 (TD-A3-5): live role + D9 attestation (A1-3: the requester is one of the
-          // distinct independent humans of the chain).
-          if (!requester.attested) throw new CommercialChangeRequestError('NOT_HUMAN', 'the requester holds no active one-account-per-human attestation', { reason: 'not_human' });
+          // CCP-A9 (TD-A3-5): live role (A1-3: the requester is one of the distinct independent
+          // humans of the chain; the D9 attestation is checked above for every action).
           if (!requester.role_keys.includes(def.requester_role)) {
             throw new CommercialChangeRequestError('REQUESTER_ROLE_MISSING', `requesting ${input.action_type} requires the ${def.requester_role} role`, { required_role: def.requester_role });
           }
@@ -743,11 +746,12 @@ export class CommercialChangeRequestService {
       const chain = parseRequiredChain(current.required_chain);
       const approvals = await this.approvalsOf(tx, id);
       const subject = subjectUserOf(current.action_type, current.payload);
+      const humans = await this.humanFacts(tx, current, approvals);
 
       if (current.state === 'PENDING_APPROVAL') {
         const roster = await this.operators.readRoster(tx, ctx.platform_tenant_id, { lock: true });
         const exclude = new Set<string>([current.requested_by, ...approvals.map((a) => a.approver_user_id), ...(subject === null ? [] : [subject])]);
-        const gate = checkChainSatisfiable(chain.steps.slice(approvals.length), roster, exclude);
+        const gate = checkChainSatisfiable(chain.steps.slice(approvals.length), roster, exclude, humans.exclude_refs);
         if (!gate.satisfiable) {
           const detail = { action_type: current.action_type, chain_rule: chain.rule, unfillable_steps: gate.unfillable_steps, filled_steps: approvals.length };
           await this.appendEvent(tx, actor, current, 'COMMERCIAL_APPROVAL_REFUSED', { refusal: 'CCP_NOT_BOOTSTRAPPED', ...detail, requested_step: input.step_index }, ctx, live.role_keys);
@@ -756,8 +760,8 @@ export class CommercialChangeRequestService {
       }
 
       const verdict = checkApprovalEligibility(
-        { state: current.state, requested_by: current.requested_by, expires_at: current.expires_at, required_chain: chain, subject_user_id: subject },
-        approvals,
+        { state: current.state, requested_by: current.requested_by, expires_at: current.expires_at, required_chain: chain, subject_user_id: subject, ...humans.refs },
+        humans.approvals,
         this.eligibilityActor(actor, live),
         now,
         input.step_index,
@@ -826,8 +830,9 @@ export class CommercialChangeRequestService {
         const approvals = await this.approvalsOf(tx, id);
         const roster = await this.operators.readRoster(tx, ctx.platform_tenant_id, { user_ids: approvals.map((a) => a.approver_user_id), lock: true });
         const p = req.payload as { subject_user_id: string; role_key: string; human_ref_hash?: string };
+        const humans = await this.humanFacts(tx, req, approvals);
         assertChainStillSatisfiableAtApply(
-          { id, state: req.state, requested_by: req.requested_by, subject_user_id: p.subject_user_id, required_chain: parseRequiredChain(req.required_chain), approvals },
+          { id, state: req.state, requested_by: req.requested_by, subject_user_id: p.subject_user_id, required_chain: parseRequiredChain(req.required_chain), approvals: humans.approvals, ...humans.refs },
           roster,
         );
         const now = this.now();
@@ -957,9 +962,10 @@ export class CommercialChangeRequestService {
       const current = req;
       const chain = parseRequiredChain(current.required_chain);
       const approvals = await this.approvalsOf(tx, id);
+      const humans = await this.humanFacts(tx, current, approvals);
       const verdict = checkApprovalEligibility(
-        { state: current.state, requested_by: current.requested_by, expires_at: current.expires_at, required_chain: chain, subject_user_id: subjectUserOf(current.action_type, current.payload) },
-        approvals,
+        { state: current.state, requested_by: current.requested_by, expires_at: current.expires_at, required_chain: chain, subject_user_id: subjectUserOf(current.action_type, current.payload), ...humans.refs },
+        humans.approvals,
         this.eligibilityActor(actor, live),
         now,
       );
@@ -991,8 +997,9 @@ export class CommercialChangeRequestService {
       this.verifyIntegrity(req);
       const approvals = await this.approvalsOf(t, id);
       const roster = await this.operators.readRoster(t, platform_tenant_id, { user_ids: approvals.map((a) => a.approver_user_id), lock: true });
+      const humans = await this.humanFacts(t, req, approvals);
       assertChainStillSatisfiableAtApply(
-        { id, state: req.state, requested_by: req.requested_by, subject_user_id: subjectUserOf(req.action_type, req.payload), required_chain: parseRequiredChain(req.required_chain), approvals },
+        { id, state: req.state, requested_by: req.requested_by, subject_user_id: subjectUserOf(req.action_type, req.payload), required_chain: parseRequiredChain(req.required_chain), approvals: humans.approvals, ...humans.refs },
         roster,
       );
     };
@@ -1033,9 +1040,9 @@ export class CommercialChangeRequestService {
       const roster = await this.operators.readRoster(this.prisma, ctx.platform_tenant_id);
       const subject = subjectUserOf(req.action_type, req.payload);
       const exclude = new Set<string>([req.requested_by, ...approvals.map((a) => a.approver_user_id), ...(subject === null ? [] : [subject])]);
-      satisfiable = checkChainSatisfiable(chain.steps.slice(approvals.length), roster, exclude).satisfiable;
+      satisfiable = checkChainSatisfiable(chain.steps.slice(approvals.length), roster, exclude, (await this.humanFacts(this.prisma, req, approvals)).exclude_refs).satisfiable;
     }
-    return { request: req, approvals, chain, is_expired, steps: this.stepViews(actor, live, req, chain, approvals, now), chain_satisfiable: satisfiable, apply_actionable: applyActionable(actor, req) };
+    return { request: req, approvals, chain, is_expired, steps: await this.stepViews(actor, live, req, chain, approvals, now), chain_satisfiable: satisfiable, apply_actionable: applyActionable(actor, req) };
   }
 
   async list(actor: CommercialActor, query: ListChangeRequestsQuery, ctx: CommercialCallContext): Promise<{ requests: CommercialChangeRequestRow[]; next_cursor: string | null }> {
@@ -1054,7 +1061,7 @@ export class CommercialChangeRequestService {
       const out: CommercialChangeRequestRow[] = [];
       for (const r of rows) {
         const approvals = await this.approvalsOf(this.prisma, r.id);
-        const v = this.verdictFor(actor, live, r, parseRequiredChain(r.required_chain), approvals, now);
+        const v = await this.verdictFor(actor, live, r, parseRequiredChain(r.required_chain), approvals, now);
         if (v.eligible) out.push(r);
         if (out.length >= limit) break;
       }
@@ -1097,30 +1104,57 @@ export class CommercialChangeRequestService {
   }
 
   private eligibilityActor(actor: CommercialActor, live: LiveOperator): EligibilityActor {
-    return { user_id: actor.user_id, actor_kind: actor.actor_kind, attested: live.attested, role_keys: live.role_keys, scopes: live.scopes };
+    return { user_id: actor.user_id, actor_kind: actor.actor_kind, attested: live.attested, human_ref_hash: live.human_ref_hash ?? null, role_keys: live.role_keys, scopes: live.scopes };
   }
 
-  private verdictFor(actor: CommercialActor, live: LiveOperator, req: CommercialChangeRequestRow, chain: CommercialRequiredChain, approvals: CommercialApprovalRow[], now: Date, step?: number): EligibilityResult {
+  /**
+   * CCP-A9-FIX (TD-A9-7): the D9 human references behind a request — the requester's and the
+   * subject's attestation history, and the attestation each approval was signed under — so the
+   * distinct-human checks compare humans, not only user ids.
+   */
+  private async humanFacts(
+    client: Tx | PrismaService,
+    req: Pick<CommercialChangeRequestRow, 'requested_by' | 'action_type' | 'payload'>,
+    approvals: readonly CommercialApprovalRow[],
+  ): Promise<{
+    refs: { requester_human_refs: string[]; subject_human_refs: string[] };
+    approvals: Array<CommercialApprovalRow & { approver_human_ref: string | null }>;
+    exclude_refs: Set<string>;
+  }> {
+    const subject = subjectUserOf(req.action_type, req.payload);
+    const byUser = await this.operators.humanRefsOfUsers(client, subject === null ? [req.requested_by] : [req.requested_by, subject]);
+    const byAttestation = await this.operators.humanRefsOfAttestations(client, approvals.map((a) => a.attestation_id));
+    const requester_human_refs = byUser.get(req.requested_by) ?? [];
+    const subject_human_refs = subject === null ? [] : (byUser.get(subject) ?? []);
+    const signed = approvals.map((a) => ({ ...a, approver_human_ref: byAttestation.get(a.attestation_id) ?? null }));
+    const exclude_refs = new Set<string>([...requester_human_refs, ...subject_human_refs, ...signed.flatMap((a) => (a.approver_human_ref === null ? [] : [a.approver_human_ref]))]);
+    return { refs: { requester_human_refs, subject_human_refs }, approvals: signed, exclude_refs };
+  }
+
+  private async verdictFor(actor: CommercialActor, live: LiveOperator, req: CommercialChangeRequestRow, chain: CommercialRequiredChain, approvals: CommercialApprovalRow[], now: Date, step?: number): Promise<EligibilityResult> {
+    const humans = await this.humanFacts(this.prisma, req, approvals);
     return checkApprovalEligibility(
-      { state: req.state, requested_by: req.requested_by, expires_at: req.expires_at, required_chain: chain, subject_user_id: subjectUserOf(req.action_type, req.payload) },
-      approvals,
+      { state: req.state, requested_by: req.requested_by, expires_at: req.expires_at, required_chain: chain, subject_user_id: subjectUserOf(req.action_type, req.payload), ...humans.refs },
+      humans.approvals,
       this.eligibilityActor(actor, live),
       now,
       step,
     );
   }
 
-  private stepViews(actor: CommercialActor, live: LiveOperator, req: CommercialChangeRequestRow, chain: CommercialRequiredChain, approvals: CommercialApprovalRow[], now: Date): StepView[] {
-    return chain.steps.map((s) => {
+  private async stepViews(actor: CommercialActor, live: LiveOperator, req: CommercialChangeRequestRow, chain: CommercialRequiredChain, approvals: CommercialApprovalRow[], now: Date): Promise<StepView[]> {
+    const views: StepView[] = [];
+    for (const s of chain.steps) {
       const approval = approvals.find((a) => a.step_index === s.step_index) ?? null;
       const status: StepView['status'] = approval !== null ? 'APPROVED' : s.step_index === approvals.length ? 'NEXT' : 'WAITING';
       let caller: StepView['caller'] = null;
       if (approval === null) {
-        const v = this.verdictFor(actor, live, req, chain, approvals, now, s.step_index);
+        const v = await this.verdictFor(actor, live, req, chain, approvals, now, s.step_index);
         caller = v.eligible ? { eligible: true, refusal: null } : { eligible: false, refusal: v.refusal };
       }
-      return { step_index: s.step_index, role_key: s.role_key, scope_keys: s.scope_keys, status, approval, caller };
-    });
+      views.push({ step_index: s.step_index, role_key: s.role_key, scope_keys: s.scope_keys, status, approval, caller });
+    }
+    return views;
   }
 
   private async lock(tx: Tx, id: string): Promise<CommercialChangeRequestRow> {

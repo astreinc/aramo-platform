@@ -91,14 +91,16 @@ export class CommercialOperatorRepository {
     const attestations =
       users.length === 0
         ? []
-        : await client.commercialOperatorAttestation.findMany({ where: { user_id: { in: users }, revoked_at: null }, select: { id: true, user_id: true } });
+        : await client.commercialOperatorAttestation.findMany({ where: { user_id: { in: users }, revoked_at: null }, select: { id: true, user_id: true, human_ref_hash: true } });
     const att = new Map(attestations.map((a) => [a.user_id, a.id]));
+    const ref = new Map(attestations.map((a) => [a.user_id, a.human_ref_hash]));
     return users.sort().map((user_id) => {
       const e = byUser.get(user_id) as { roles: Set<string>; scopes: Set<string> };
       return {
         user_id,
         attested: att.has(user_id),
         attestation_id: att.get(user_id) ?? null,
+        human_ref_hash: ref.get(user_id) ?? null,
         role_keys: [...e.roles].sort(),
         scopes: [...e.scopes].sort(),
       };
@@ -109,8 +111,32 @@ export class CommercialOperatorRepository {
   async readOperator(client: Client, platform_tenant_id: string, user_id: string, lock = false): Promise<LiveOperator> {
     const [entry] = await this.readRoster(client, platform_tenant_id, { user_ids: [user_id], lock });
     if (entry !== undefined) return entry;
-    const a = await client.commercialOperatorAttestation.findFirst({ where: { user_id, revoked_at: null }, select: { id: true } });
-    return { user_id, attested: a !== null, attestation_id: a?.id ?? null, role_keys: [], scopes: [] };
+    const a = await client.commercialOperatorAttestation.findFirst({ where: { user_id, revoked_at: null }, select: { id: true, human_ref_hash: true } });
+    return { user_id, attested: a !== null, attestation_id: a?.id ?? null, human_ref_hash: a?.human_ref_hash ?? null, role_keys: [], scopes: [] };
+  }
+
+  /**
+   * CCP-A9-FIX (TD-A9-7): every human reference each account was EVER attested for (active and
+   * revoked rows; the history is append-only), so "distinct human" survives an attestation
+   * moved to a second account. Users with no attestation map to [].
+   */
+  async humanRefsOfUsers(client: Client, user_ids: readonly string[]): Promise<Map<string, string[]>> {
+    const out = new Map<string, string[]>(user_ids.map((u) => [u, []]));
+    if (user_ids.length === 0) return out;
+    const rows = await client.commercialOperatorAttestation.findMany({ where: { user_id: { in: [...user_ids] } }, select: { user_id: true, human_ref_hash: true } });
+    for (const r of rows) {
+      const refs = out.get(r.user_id) ?? [];
+      if (!refs.includes(r.human_ref_hash)) refs.push(r.human_ref_hash);
+      out.set(r.user_id, refs);
+    }
+    return out;
+  }
+
+  /** CCP-A9-FIX: the human reference of each attestation id (an approval's signing attestation). */
+  async humanRefsOfAttestations(client: Client, ids: readonly string[]): Promise<Map<string, string>> {
+    if (ids.length === 0) return new Map();
+    const rows = await client.commercialOperatorAttestation.findMany({ where: { id: { in: [...ids] } }, select: { id: true, human_ref_hash: true } });
+    return new Map(rows.map((r) => [r.id, r.human_ref_hash]));
   }
 
   /** CCP-A9: the live facts for one user, read outside any caller transaction. */

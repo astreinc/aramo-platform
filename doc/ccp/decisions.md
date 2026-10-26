@@ -622,3 +622,8 @@ HALT after the final engineering acceptance and return the single-PR publication
     - providers: platform-admin 2 / 2, verify-api 1 / 1;
     - journeys 39 / 39.
   - **Gates:** tsc (incl. e2e), lint, contract-parity, openapi-drift, orphan-scopes, env-passthrough, error-codes, tests:integration, vocabulary and repo-map all pass (rc=0).
+- **TD-MERGE-52 (A9-FIX, `50f01680`; TD-A9-7, class A security correction, demonstrated + fixed):** `wip/ccp-a9fix` merged onto `95f8bc7a` with no conflict. The generated repo map was regenerated.
+  - **What it changes:** every commercial requester must hold a D9 attestation, and the distinct-human comparison is by human reference, so one human cannot request and approve with two accounts. The change is in the service, the approval eligibility and the operator repository, plus a new spec (`ccp-a9fix-requester-attestation.integration.spec.ts`, 7 / 7) and §10 of `CCP-A9-acceptance.md`.
+  - **No change to:** migrations, roles, scopes, chains or fixtures.
+  - **Divergence recorded for the Architect:** the distinct-human check counts every human reference an account was EVER attested for, revoked attestations included. That is stricter than instructed, and fail-closed.
+  - The whole program is validated at the final integrated gate on this merge (`doc/ccp/program-gate-final.md`).
