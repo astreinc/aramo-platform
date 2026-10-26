@@ -719,6 +719,7 @@ model SignPushDevice {
   @@unique([device_session_id], map: "SignPushDevice_device_session_key")
   @@index([tenant_id, user_id])
   @@index([push_token_digest])
+  @@index([revoked_at])
   @@schema("sign")
 }
 
@@ -764,10 +765,12 @@ model SignPushJob {
   @@unique([device_id, notification_id], map: "SignPushJob_device_notification_key")
   @@index([status, next_attempt_at])
   @@index([tenant_id, user_id, created_at])
+  @@index([status, updated_at])
   @@schema("sign")
 }
 
-/// The audit of a convenience-data removal (account close, M-A3 §9): counts only.
+/// The audit of a convenience-data removal (account close, M-A3 §9; the Privacy
+/// Notice 1.1 E-1 retention purge): counts only.
 model SignConvenienceDataPurge {
   id                    String   @id @db.Uuid
   tenant_id             String   @db.Uuid
@@ -779,8 +782,49 @@ model SignConvenienceDataPurge {
   notifications_deleted Int
   preferences_deleted   Int
   created_at            DateTime @default(now()) @db.Timestamptz
+  // Privacy Notice 1.1 E-1 (ADD-only; account-close rows read 0).
+  saved_signatures_deleted Int @default(0)
+  contacts_deleted         Int @default(0)
 
   @@index([tenant_id, user_id])
+  @@schema("sign")
+}
+
+// ── Privacy Notice 1.1 remediation (E-1 to E-4) — retention cleanup ──
+// (Aramo-Privacy-Notice-1_1-Remediation-Directive-v1_0-LOCKED §4)
+
+/// An operator-recorded, VERIFIED request to delete one user's convenience data in
+/// one tenant (E-1 trigger c). Recorded by an operator after the requester's
+/// identity was verified (verified_by = the operator, verification_ref = the ticket
+/// or case reference). The retention worker completes it (completed_at, purge_id =
+/// the SignConvenienceDataPurge row); a tenant under legal hold leaves it open.
+model SignConvenienceDeletionRequest {
+  id               String    @id @db.Uuid
+  tenant_id        String    @db.Uuid
+  user_id          String    @db.Uuid
+  verified_by      String
+  verification_ref String
+  recorded_at      DateTime  @default(now()) @db.Timestamptz
+  completed_at     DateTime? @db.Timestamptz
+  purge_id         String?   @db.Uuid
+
+  @@index([completed_at, recorded_at], map: "SignConvenienceDeletionRequest_open_idx")
+  @@index([tenant_id, user_id])
+  @@schema("sign")
+}
+
+/// The counts-only audit of a time-based retention sweep (E-2, E-3, E-4): one row
+/// per job and tenant for each run that deleted something. No identifiers of the
+/// deleted rows are kept. CHECK job: native_sessions|revoked_push_devices|
+/// idempotency_keys|notification_outbox|push_jobs.
+model SignRetentionSweep {
+  id         String   @id @db.Uuid
+  job        String
+  tenant_id  String   @db.Uuid
+  deleted    Int
+  created_at DateTime @default(now()) @db.Timestamptz
+
+  @@index([tenant_id, job, created_at])
   @@schema("sign")
 }
 

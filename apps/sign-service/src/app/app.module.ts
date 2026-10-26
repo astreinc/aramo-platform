@@ -16,6 +16,7 @@ import {
   SIGNING_NOTIFICATION_PORT,
   STORAGE_ACCOUNTING_PORT,
   SignNotificationRepository,
+  SignRetentionRepository,
   SoftwareEvidenceManifestSigner,
   WEBHOOK_DELIVERY_PORT,
 } from '@aramo/sign';
@@ -86,6 +87,9 @@ import { NotificationFanoutService } from './push/notification-fanout.service.js
 import { PushDeliveryService } from './push/push-delivery.service.js';
 import { NotificationPushWorker } from './push/notification-push.worker.js';
 import { ConvenienceDataPurgeService } from './push/convenience-data-purge.service.js';
+// Privacy Notice 1.1 remediation (E-1 to E-4) — retention cleanup worker (default off).
+import { SignRetentionService } from './retention/sign-retention.service.js';
+import { SignRetentionWorker } from './retention/sign-retention.worker.js';
 
 // DOC-3/DOC-4 — apps/sign-service composition root. Composes the ATS-neutral
 // E-Sign domain (EsignModule.forRoot) and binds the full DOC-4 executed-document
@@ -214,6 +218,11 @@ import { ConvenienceDataPurgeService } from './push/convenience-data-purge.servi
     PushDeliveryService,
     NotificationPushWorker,
     ConvenienceDataPurgeService,
+    // Privacy Notice 1.1 remediation (E-1 to E-4) — retention cleanup. The worker is OFF
+    // unless SIGN_RETENTION_WORKER_ENABLED=1 (E-4 also needs SIGN_RETENTION_QUEUE_CLEANUP_ENABLED=1).
+    SignRetentionRepository,
+    SignRetentionService,
+    SignRetentionWorker,
   ],
 })
 export class AppModule implements NestModule {
