@@ -2,7 +2,13 @@
 
 Governing: the Production-First Validation Ruling (Lead Architect, 2026-10-20); `Aramo-AUTH-SIGNIN-1-…-v1_0-LOCKED` R2/R7.
 
-**Nothing below has been run.** Every command in §3 and §4 changes production and needs explicit approval at the cutover checkpoint.
+**Status: §3 executed 2026-10-26 08:26 UTC** under the Lead Architect and PO authorization of 2026-10-26. C1–C7 passed
+and were re-checked immediately before the change. The rollback point is **Version 1**
+(`CodeSha256 P0+kBl0aFjN/BrfJkjE39FkBC0tfEvt9OclsntJt1aY=`); `$LATEST` now runs v2
+(`CodeSha256 J8BKm6/4YBBdYm8dC2zhCXbhQCptZYnj+OWZ/L91M/I=`, built from `685f8ede`). S1–S4 passed. §4 was not needed.
+The evidence report is kept with the Aramo documents, not in this repository.
+
+Every command in §3 and §4 changes production and needs explicit approval at the cutover checkpoint.
 
 ## 1. Design: change the code, never the pool
 
@@ -82,6 +88,14 @@ aws lambda get-function-configuration --function-name "$F" --region "$R" \
 ```
 
 ## 4. Rollback (immediately executable; one command, about 10 seconds)
+
+`update-function-code` is not atomic across requests already in flight: a sign-in that starts while the update is
+propagating can run either version. Watch the decision log and the Lambda `Errors` metric through the transition and
+judge by the rollback criteria below, not by the reported update time.
+
+Since the cutover, Version 1 also holds the pre-v2 code, so a rollback can use the published version as a source
+(`aws lambda get-function --function-name "$F:1"`) as well as the backup zip. The pool keeps invoking the unqualified
+ARN either way.
 
 ```bash
 R=us-east-1; F=cognito-pre-signup-auto-link
