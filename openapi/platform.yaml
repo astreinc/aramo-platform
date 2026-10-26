@@ -5499,7 +5499,11 @@ components:
         `platform_owner` (details.reason `platform_last_owner`). CCP-C4-P: a REFUND whose amount is not
         refundable now — details.reason `refund_not_refundable` with details.refusal
         REFUND_EXCEEDS_REMAINDER | REFUND_PAYMENT_DISPUTED | REFUND_REMAINDER_UNVERIFIABLE |
-        REFUND_PAYMENT_MISMATCH | REFUND_CURRENCY_MISMATCH (no amount in the body).
+        REFUND_PAYMENT_MISMATCH | REFUND_CURRENCY_MISMATCH (no amount in the body). CCP-R3-W: the
+        provider-derived text of a refusal (`details.error` / `details.message`, e.g.
+        REFUND_REMAINDER_UNVERIFIABLE with basis `provider_read_failed`) is sent only to a holder of
+        `platform:billing:amount:read`; anyone else (the requester included) gets
+        `details.detail_withheld: FINANCE_SCOPE_REQUIRED` instead.
       content:
         application/json:
           schema:
@@ -5543,7 +5547,11 @@ components:
         provider command; the request is APPLY_FAILED and retryable; details.failure e.g.
         TARGET_NOT_FOUND, TARGET_NOT_SELF_SERVICE, TARGET_STALE, COMPENSATION_TARGET_INVALID,
         COMPENSATION_MISMATCH, ALREADY_COMPENSATED), `action_not_applicable` (not a billing adjustment)
-        or `integrity`. Every refusal and failure carries details.explanation.
+        or `integrity`. Every refusal and failure carries details.explanation. CCP-R3-W: provider-derived
+        text in the details (`error`, `message`; e.g. REFUND_REMAINDER_UNVERIFIABLE /
+        REFUND_OUTCOME_UNCERTAIN with basis `provider_read_failed`, an UNEXPECTED failure) is sent
+        only to a holder of `platform:billing:amount:read`; anyone else gets
+        `details.detail_withheld: FINANCE_SCOPE_REQUIRED` (at the level of the object that lost it).
       content:
         application/json:
           schema:
@@ -6093,7 +6101,11 @@ components:
     CommercialContractAmendment:
       type: object
       additionalProperties: false
-      required: [sequence, kind, summary, terms, document_count, evidence_ref, change_request_id, recorded_by, recorded_at]
+      required: [sequence, kind, summary, document_count, evidence_ref, change_request_id, recorded_by, recorded_at]
+      description: |
+        CCP-R3-W (Architect W-2): exactly one of `terms` / `terms_withheld`. Without
+        `platform:billing:amount:read` the terms are omitted and `terms_withheld` is ALWAYS set
+        (also on an amendment that left the terms unchanged).
       properties:
         sequence: { type: integer, minimum: 1 }
         kind:
@@ -6103,6 +6115,9 @@ components:
         terms:
           type: [array, 'null']
           items: { type: string }
+          description: Holders of `platform:billing:amount:read` only. null = unchanged.
+        terms_withheld:
+          $ref: '#/components/schemas/FinanceAmountWithheld'
         document_count: { type: integer, minimum: 0 }
         evidence_ref: { type: [string, 'null'] }
         change_request_id: { type: string, format: uuid }
@@ -6113,14 +6128,23 @@ components:
       allOf:
         - $ref: '#/components/schemas/CommercialContractSummary'
         - type: object
-          required: [terms, recorded_terms, evidence_ref, recorded_by, recorded_by_change_request_id, documents, amendments, invoicing]
+          required: [evidence_ref, recorded_by, recorded_by_change_request_id, documents, amendments, invoicing]
+          description: |
+            CCP-R3-W (Architect W-2): the free-text negotiated terms (`terms`, `recorded_terms` and
+            every amendment's `terms`) are sent only to a caller holding `platform:billing:read` AND
+            `platform:billing:amount:read`; otherwise both are omitted and `terms_withheld` is set.
+            The stored terms are unchanged.
           properties:
             terms:
               type: array
               items: { type: string }
+              description: Holders of `platform:billing:amount:read` only.
             recorded_terms:
               type: array
               items: { type: string }
+              description: Holders of `platform:billing:amount:read` only.
+            terms_withheld:
+              $ref: '#/components/schemas/FinanceAmountWithheld'
             evidence_ref: { type: [string, 'null'] }
             recorded_by:
               $ref: '#/components/schemas/CommercialContractPerson'
@@ -6978,7 +7002,13 @@ components:
     BillingProviderCommand:
       type: object
       additionalProperties: false
-      required: [id, provider, command_kind, change_request_id, self_service_request_id, step, idempotency_key, tenant_id, product_key, target_ref, params, state, pending_provider, attempts, next_attempt_at, failure, last_detail, provider_accepted_at, confirmed_at, confirmation_source, confirmation_event_id, failed_at, created_by, created_at, updated_at]
+      required: [id, provider, command_kind, change_request_id, self_service_request_id, step, idempotency_key, tenant_id, product_key, target_ref, params, state, pending_provider, attempts, next_attempt_at, failure, provider_accepted_at, confirmed_at, confirmation_source, confirmation_event_id, failed_at, created_by, created_at, updated_at]
+      description: |
+        CCP-R3-W (item 3): a CREDIT / DISCOUNT / REFUND command (kinds CREDIT_GRANT, CREDIT_REVERSE,
+        DISCOUNT_APPLY, DISCOUNT_REMOVE, REFUND_CREATE) read without `platform:billing:amount:read`
+        carries `detail_withheld` in place of `last_detail` (and in place of `failure.detail`): the
+        provider's error text is sent only to a holder. SUBSCRIPTION_CANCEL and
+        CHECKOUT_SESSION_EXPIRE always carry `last_detail`.
       properties:
         id:
           type: string
@@ -7037,14 +7067,18 @@ components:
             - type: 'null'
             - type: object
               additionalProperties: false
-              required: [code, detail]
+              required: [code]
               properties:
                 code:
                   type: string
                 detail:
                   type: [string, 'null']
+                detail_withheld:
+                  $ref: '#/components/schemas/FinanceAmountWithheld'
         last_detail:
           type: [string, 'null']
+        detail_withheld:
+          $ref: '#/components/schemas/FinanceAmountWithheld'
         provider_accepted_at:
           type: [string, 'null']
           format: date-time
@@ -7220,6 +7254,10 @@ components:
         `platform:billing:amount:read` in addition to `platform:billing:read`. The figure is never
         sent. Holders: platform_owner, finance_admin, read_only_auditor. Catalog list prices (a plan
         version's published price) are governed by catalog read authority and never withheld (FA-3).
+        CCP-R3-W (Architect W-2 / W-3, 2026-10-25) uses the same value for `terms_withheld` (contract
+        terms), `reason_withheld` / `evidence_withheld` / `notes_withheld` (CREDIT, DISCOUNT, REFUND,
+        PAYMENT_RECORD request text) and `detail_withheld` (provider error text of a C4 refusal or
+        command), each set on the object that lost the field.
 
     TaxAvailability:
       type: object
@@ -8279,7 +8317,13 @@ components:
     CommercialChangeRequest:
       type: object
       additionalProperties: false
-      required: [id, action_type, kind, state, tenant_id, product_key, payload, payload_checksum, required_chain, policy_version_id, policy_checksum, requested_by, reason, created_at, submitted_at, expires_at, approved_at, rejected_at, rejected_by, rejection_reason, withdrawn_at, expired_at, applied_at]
+      required: [id, action_type, kind, state, tenant_id, product_key, payload, payload_checksum, required_chain, policy_version_id, policy_checksum, requested_by, created_at, submitted_at, expires_at, approved_at, rejected_at, rejected_by, withdrawn_at, expired_at, applied_at]
+      description: |
+        CCP-R3-W (Architect W-3) — for CREDIT, DISCOUNT, REFUND (and PAYMENT_RECORD once it exists)
+        read by a caller without `platform:billing:amount:read`: exactly one of `reason` /
+        `reason_withheld` (the reason is kept only for the request's own requester, `requested_by`
+        = the caller), and `rejection_reason` is always replaced by `notes_withheld`. Every other
+        action type always carries `reason` and `rejection_reason`.
       properties:
         id:
           type: string
@@ -8305,6 +8349,10 @@ components:
             `platform:billing:amount:read`; otherwise it is omitted (here and in
             `required_chain.basis`) with `amount_withheld: FINANCE_SCOPE_REQUIRED`.
             `payload_checksum` is the stored row's checksum over the full payload.
+            CCP-R3-W: without that scope, every `contract` / `contract_amendment` block loses its
+            `terms` and carries `terms_withheld` (W-2, any action type, the requester included); a
+            financial request's evidence keys (`category`, `basis`, `refund_policy_ref`) are kept
+            only for its requester, otherwise omitted with `evidence_withheld` (W-3).
         payload_checksum:
           type: string
         required_chain:
@@ -8334,6 +8382,9 @@ components:
           format: uuid
         reason:
           type: string
+          description: Omitted (with `reason_withheld`) only for a financial request read by a non-holder who is not its requester.
+        reason_withheld:
+          $ref: '#/components/schemas/FinanceAmountWithheld'
         created_at:
           type: string
           format: date-time
@@ -8354,6 +8405,9 @@ components:
           format: uuid
         rejection_reason:
           type: [string, 'null']
+          description: Omitted (with `notes_withheld`) for a financial request read by any non-holder, the requester included.
+        notes_withheld:
+          $ref: '#/components/schemas/FinanceAmountWithheld'
         withdrawn_at:
           type: [string, 'null']
           format: date-time
@@ -8368,7 +8422,11 @@ components:
     CommercialApproval:
       type: object
       additionalProperties: false
-      required: [id, step_index, approver_user_id, step_role_key, step_scope_keys, approver_role_keys, comment, created_at]
+      required: [id, step_index, approver_user_id, step_role_key, step_scope_keys, approver_role_keys, created_at]
+      description: |
+        CCP-R3-W (W-3): on a CREDIT / DISCOUNT / REFUND (/ PAYMENT_RECORD) request read without
+        `platform:billing:amount:read` the approver's `comment` is omitted and `notes_withheld` is
+        set (the requester included). Every other action type always carries `comment`.
       properties:
         id:
           type: string
@@ -8391,6 +8449,8 @@ components:
             type: string
         comment:
           type: [string, 'null']
+        notes_withheld:
+          $ref: '#/components/schemas/FinanceAmountWithheld'
         created_at:
           type: string
           format: date-time
@@ -8607,7 +8667,11 @@ components:
     FinanceRefundReportRow:
       type: object
       additionalProperties: false
-      required: [change_request_id, tenant_id, product_key, request_state, refund_state, reconciliation_status, category, provider_invoice_ref, provider_payment_ref, provider_refund_ref, currency, effective_at, accounting_period, requested_by, created_at, applied_at]
+      required: [change_request_id, tenant_id, product_key, request_state, refund_state, reconciliation_status, provider_invoice_ref, provider_payment_ref, provider_refund_ref, currency, effective_at, accounting_period, requested_by, created_at, applied_at]
+      description: |
+        CCP-R3-W (W-3): `category` is the refund's requester-authored provenance. Without
+        `platform:billing:amount:read` it is sent only on the caller's own request (`requested_by`);
+        otherwise it is omitted with `evidence_withheld`.
       properties:
         change_request_id: { type: string, format: uuid }
         tenant_id: { type: string, format: uuid }
@@ -8619,6 +8683,8 @@ components:
         provider_invoice_ref: { type: [string, 'null'] }
         provider_payment_ref: { type: [string, 'null'] }
         provider_refund_ref: { type: [string, 'null'] }
+        evidence_withheld:
+          $ref: '#/components/schemas/FinanceAmountWithheld'
         currency: { type: [string, 'null'] }
         amount_minor:
           type: [integer, 'null']

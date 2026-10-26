@@ -2,9 +2,9 @@ import { Controller, Get, Query, UseGuards } from '@nestjs/common';
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
-import { CommercialRefundReportService, RefundReportQueryError, type RefundReportRow } from '@aramo/subscription';
+import { CommercialRefundReportService, RefundReportQueryError, evidenceVisible, type FinanceReader, type RefundReportRow } from '@aramo/subscription';
 
-import { amountAccess } from './finance-amount-access.js';
+import { financeReader } from './finance-amount-access.js';
 import { RefundReportQueryDto, type RefundReportResponseDto, type RefundReportRowDto } from './dto/commercial-refund-report.dto.js';
 
 // CCP-C4-P (Amendment A1 RF-2, RF-10; Architect C4-P gap 3) — GET /platform/commercial/finance/refunds:
@@ -16,10 +16,14 @@ import { RefundReportQueryDto, type RefundReportResponseDto, type RefundReportRo
 // Merge train TD-C4P-6: the decision is CCP-R3's shared amountAccess (platform:billing:read AND
 // platform:billing:amount:read), replacing C4-P's local check.
 // Platform consumer only. No mutation.
+// CCP-R3-W (Architect W-3): `category` is the REFUND's requester-authored provenance (payload
+// evidence, RF-2). Without the Finance amount scope it is returned only on the caller's OWN request;
+// on anyone else's it is omitted with `evidence_withheld: "FINANCE_SCOPE_REQUIRED"`.
 
 const iso = (d: Date | null): string | null => (d === null ? null : d.toISOString());
 
-export function refundReportRowDto(r: RefundReportRow, amounts: boolean): RefundReportRowDto {
+export function refundReportRowDto(r: RefundReportRow, reader: FinanceReader): RefundReportRowDto {
+  const amounts = reader.amount_access;
   return {
     change_request_id: r.change_request_id,
     tenant_id: r.tenant_id,
@@ -27,7 +31,7 @@ export function refundReportRowDto(r: RefundReportRow, amounts: boolean): Refund
     request_state: r.request_state,
     refund_state: r.refund_state,
     reconciliation_status: r.reconciliation_status,
-    category: r.category,
+    ...(evidenceVisible(r.requested_by, reader) ? { category: r.category } : { evidence_withheld: 'FINANCE_SCOPE_REQUIRED' as const }),
     provider_invoice_ref: r.provider_invoice_ref,
     provider_payment_ref: r.provider_payment_ref,
     provider_refund_ref: r.provider_refund_ref,
@@ -57,8 +61,8 @@ export class PlatformCommercialRefundReportController {
     }
     try {
       const out = await this.refunds.list(q);
-      const amounts = amountAccess(auth);
-      return { refunds: out.refunds.map((r) => refundReportRowDto(r, amounts)), next_cursor: out.next_cursor };
+      const reader = financeReader(auth);
+      return { refunds: out.refunds.map((r) => refundReportRowDto(r, reader)), next_cursor: out.next_cursor };
     } catch (err) {
       if (err instanceof RefundReportQueryError) throw new AramoError('VALIDATION_ERROR', err.message, 400, { requestId, details: { reason: 'invalid_cursor' } });
       throw err;

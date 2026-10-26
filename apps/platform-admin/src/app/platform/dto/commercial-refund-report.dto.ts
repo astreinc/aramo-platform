@@ -21,7 +21,9 @@ export interface RefundReportRowDto {
   refund_state: string;
   // NOT_SENT | PENDING_PROVIDER | COMMAND_FAILED | CONFIRMED | RESOLVED_NOT_EXECUTED
   reconciliation_status: string;
-  category: string | null;
+  /** CCP-R3-W (W-3): exactly one of `category` / `evidence_withheld` (withheld for a non-holder on another requester's refund). */
+  category?: string | null;
+  evidence_withheld?: 'FINANCE_SCOPE_REQUIRED';
   provider_invoice_ref: string | null;
   provider_payment_ref: string | null;
   provider_refund_ref: string | null;

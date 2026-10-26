@@ -37,13 +37,15 @@ import { generateTestKeyPair } from './test-keys.js';
 const SCOPE = 'platform:subscription:read';
 const AUDIT = 'platform:commercial:audit:read';
 const ENTRY = 'platform:tenant:read';
+// CCP-R3-W (W-2): the Finance amount scope's 3 holders (CCP-A1 Amendment A1 FA-2) read the terms.
+const AMOUNT = 'platform:billing:amount:read';
 const BUNDLES: Record<string, readonly string[]> = {
-  platform_owner: [ENTRY, 'platform:catalog:read', 'platform:catalog:approve', 'platform:catalog:publish', SCOPE, 'platform:subscription:approve', 'platform:entitlement:approve', 'platform:billing:read', 'platform:billing:approve', 'platform:approval:read', AUDIT],
-  finance_admin: [ENTRY, 'platform:catalog:read', 'platform:catalog:approve', SCOPE, 'platform:subscription:approve', 'platform:entitlement:approve', 'platform:billing:read', 'platform:billing:approve', 'platform:approval:read', AUDIT],
+  platform_owner: [ENTRY, 'platform:catalog:read', 'platform:catalog:approve', 'platform:catalog:publish', SCOPE, 'platform:subscription:approve', 'platform:entitlement:approve', 'platform:billing:read', 'platform:billing:approve', 'platform:approval:read', AUDIT, AMOUNT],
+  finance_admin: [ENTRY, 'platform:catalog:read', 'platform:catalog:approve', SCOPE, 'platform:subscription:approve', 'platform:entitlement:approve', 'platform:billing:read', 'platform:billing:approve', 'platform:approval:read', AUDIT, AMOUNT],
   commercial_ops: [ENTRY, 'platform:catalog:read', SCOPE, 'platform:subscription:request', 'platform:entitlement:request', 'platform:billing:read', 'platform:billing:request', 'platform:approval:read'],
   catalog_manager: [ENTRY, 'platform:catalog:read', 'platform:catalog:draft', 'platform:approval:read'],
   support_admin: [ENTRY, 'platform:catalog:read', SCOPE, 'platform:subscription:support', 'platform:billing:read', 'platform:approval:read'],
-  read_only_auditor: [ENTRY, 'platform:catalog:read', SCOPE, 'platform:billing:read', 'platform:approval:read', AUDIT],
+  read_only_auditor: [ENTRY, 'platform:catalog:read', SCOPE, 'platform:billing:read', 'platform:approval:read', AUDIT, AMOUNT],
   super_admin: ['platform:tenant:provision', ENTRY, 'platform:admin:invite', 'platform:tenant:lifecycle:manage', 'platform:skill:read', 'platform:skill:manage', 'platform:document_template:read', 'platform:document_template:manage', 'platform:matching_policy:read', 'platform:matching_policy:write'],
 };
 const ALLOWED = ['platform_owner', 'finance_admin', 'commercial_ops', 'support_admin', 'read_only_auditor'] as const;
@@ -171,6 +173,16 @@ describe('CCP-B4 — per-role authorization on the contract read routes (real Jw
       const one = await get(role, `${PATH}/${CONTRACT_ID}`);
       expect(one.status, JSON.stringify(one.body)).toBe(200);
       expect(one.body).toMatchObject({ id: CONTRACT_ID, invoicing: { enabled: false, reason: 'enterprise_invoicing_choice_pending' }, documents: [{ sha256: '0'.repeat(64), byte_size: null, media_type: null, recorded_at: '2026-04-28T00:00:00.000Z' }] });
+      // CCP-R3-W (W-2): the free-text terms only with platform:billing:amount:read.
+      if (BUNDLES[role]?.includes(AMOUNT)) {
+        expect(one.body.terms).toEqual(['Invoiced monthly, net 30']);
+        expect(one.body.recorded_terms).toEqual(['Invoiced monthly, net 30']);
+        expect(one.body).not.toHaveProperty('terms_withheld');
+      } else {
+        expect(one.body).not.toHaveProperty('terms');
+        expect(one.body).not.toHaveProperty('recorded_terms');
+        expect(one.body.terms_withheld).toBe('FINANCE_SCOPE_REQUIRED');
+      }
     });
   }
 

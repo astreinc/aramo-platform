@@ -285,7 +285,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 — the bi
     for (const role of ['commercial_ops', 'support_admin']) {
       const r = await get(role, path);
       expect(r.status, role).toBe(200);
-      expect(r.body, role).toEqual({ refunds: [expect.objectContaining({ change_request_id: id, refund_state: 'approved', reconciliation_status: 'NOT_SENT', category: 'R4_SERVICE_FAILURE', currency: 'USD', amount_withheld: 'FINANCE_SCOPE_REQUIRED', effective_at: null, accounting_period: null })], next_cursor: null });
+      // CCP-R3-W (W-3): the category (requester-authored provenance) only on the caller's own request —
+      // commercial_ops requested it; support_admin gets evidence_withheld.
+      const evidence = role === 'commercial_ops' ? { category: 'R4_SERVICE_FAILURE' } : { evidence_withheld: 'FINANCE_SCOPE_REQUIRED' };
+      expect(r.body, role).toEqual({ refunds: [expect.objectContaining({ change_request_id: id, refund_state: 'approved', reconciliation_status: 'NOT_SENT', ...evidence, currency: 'USD', amount_withheld: 'FINANCE_SCOPE_REQUIRED', effective_at: null, accounting_period: null })], next_cursor: null });
+      if (role !== 'commercial_ops') expect(r.body.refunds[0], role).not.toHaveProperty('category');
       expect(r.body.refunds[0], role).not.toHaveProperty('amount_minor');
       expect(JSON.stringify(r.body), role).not.toContain('4321');
     }

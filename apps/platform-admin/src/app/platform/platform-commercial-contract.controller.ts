@@ -2,15 +2,17 @@ import { Controller, Get, Param, ParseUUIDPipe, Query, UseGuards } from '@nestjs
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
-import { ContractRepository, type ContractDetailView, type ContractPerson, type ContractSummaryView } from '@aramo/subscription';
+import { ContractRepository, withholdContractTerms, type ContractDetailView, type ContractPerson, type ContractSummaryView } from '@aramo/subscription';
 
 import type {
+  CommercialContractAmendmentDto,
   CommercialContractDetailDto,
   CommercialContractListResponseDto,
   CommercialContractPersonDto,
   CommercialContractSummaryDto,
 } from './dto/commercial-contract.dto.js';
 import { ListCommercialContractsQueryDto } from './dto/commercial-contract.dto.js';
+import { amountAccess } from './finance-amount-access.js';
 
 // CCP-B4 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.3 row B4; MP-A2 N-3; Charter L6) —
 // the READ-ONLY enterprise contract surface. Contracts are recorded, amended and ended ONLY
@@ -20,6 +22,12 @@ import { ListCommercialContractsQueryDto } from './dto/commercial-contract.dto.j
 // Gate `platform:subscription:read` (CCP A1 §4.1: platform_owner, finance_admin,
 // commercial_ops, support_admin, read_only_auditor; NOT catalog_manager, NOT super_admin — INV-1,
 // PBD §12). Platform consumer only (the DDR §13.1 tripwire).
+//
+// CCP-R3-W (Architect W-2, 2026-10-25): the free-text negotiated terms (`terms`, `recorded_terms`,
+// every amendment's `terms`) are sent only to a caller holding platform:billing:read AND
+// platform:billing:amount:read (platform_owner, finance_admin, read_only_auditor); for anyone else
+// they are omitted at this projection boundary with `terms_withheld: "FINANCE_SCOPE_REQUIRED"`. The
+// summary list carries no terms. The stored terms are unchanged.
 
 @Controller('platform/commercial/contracts')
 @UseGuards(JwtAuthGuard, RolesGuard)
@@ -48,7 +56,7 @@ export class PlatformCommercialContractController {
     platformOnly(auth, requestId);
     const c = await this.contracts.get(id);
     if (c === null) throw new AramoError('NOT_FOUND', 'Contract not found', 404, { requestId, details: { contract_id: id } });
-    return detailDto(c);
+    return detailDto(c, amountAccess(auth));
   }
 }
 
@@ -86,8 +94,8 @@ function summaryDto(c: ContractSummaryView): CommercialContractSummaryDto {
   };
 }
 
-function detailDto(c: ContractDetailView): CommercialContractDetailDto {
-  return {
+function detailDto(c: ContractDetailView, amount_access: boolean): CommercialContractDetailDto {
+  const detail = {
     ...summaryDto(c),
     terms: c.terms,
     recorded_terms: c.recorded_terms,
@@ -103,17 +111,24 @@ function detailDto(c: ContractDetailView): CommercialContractDetailDto {
       recorded_at: d.recorded_at.toISOString(),
       amendment_sequence: d.amendment_sequence,
     })),
-    amendments: c.amendments.map((a) => ({
-      sequence: a.sequence,
-      kind: a.kind,
-      summary: a.summary,
-      terms: a.terms,
-      document_count: a.documents.length,
-      evidence_ref: a.evidence_ref,
-      change_request_id: a.change_request_id,
-      recorded_by: person(a.recorded_by),
-      recorded_at: a.recorded_at.toISOString(),
-    })),
+    amendments: c.amendments.map(
+      (a) =>
+        withholdContractTerms(
+          {
+            sequence: a.sequence,
+            kind: a.kind,
+            summary: a.summary,
+            terms: a.terms,
+            document_count: a.documents.length,
+            evidence_ref: a.evidence_ref,
+            change_request_id: a.change_request_id,
+            recorded_by: person(a.recorded_by),
+            recorded_at: a.recorded_at.toISOString(),
+          },
+          amount_access,
+        ) as unknown as CommercialContractAmendmentDto,
+    ),
     invoicing: c.invoicing,
   };
+  return withholdContractTerms(detail, amount_access) as unknown as CommercialContractDetailDto;
 }

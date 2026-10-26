@@ -15,7 +15,10 @@ import {
   type CommercialApprovalRow,
   type CommercialCallContext,
   type CommercialChangeRequestRow,
-  withholdChangeRequestAmounts,
+  type FinanceReader,
+  projectApprovalNotes,
+  projectChangeRequestFinance,
+  withholdProviderText,
 } from '@aramo/subscription';
 
 import {
@@ -28,7 +31,7 @@ import {
   ListCommercialChangeRequestsQueryDto,
   RejectCommercialChangeRequestDto,
 } from './dto/commercial-change-request.dto.js';
-import { amountAccess } from './finance-amount-access.js';
+import { amountAccess, financeReader } from './finance-amount-access.js';
 
 // CCP-A3 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.1 row A3) — the commercial
 // change-request and approval surface. Platform consumer only (the DDR §13.1 tripwire).
@@ -79,9 +82,10 @@ export class PlatformCommercialChangeRequestController {
         },
         ctxOf(requestId),
       ),
+      amountAccess(auth),
     );
     res.status(out.replayed ? 200 : 201);
-    return { request: requestDto(out.request, amountAccess(auth)), replayed: out.replayed };
+    return { request: requestDto(out.request, financeReader(auth)), replayed: out.replayed };
   }
 
   @Get()
@@ -104,8 +108,9 @@ export class PlatformCommercialChangeRequestController {
         },
         ctxOf(requestId),
       ),
+      amountAccess(auth),
     );
-    return { requests: page.requests.map((r) => requestDto(r, amountAccess(auth))), next_cursor: page.next_cursor };
+    return { requests: page.requests.map((r) => requestDto(r, financeReader(auth))), next_cursor: page.next_cursor };
   }
 
   @Get(':id')
@@ -116,7 +121,7 @@ export class PlatformCommercialChangeRequestController {
     @RequestId() requestId: string,
   ): Promise<CommercialChangeRequestDetailDto> {
     this.platformOnly(auth, requestId);
-    return detailDto(await this.run(requestId, () => this.service.get(actorOf(auth), id, ctxOf(requestId))), amountAccess(auth));
+    return detailDto(await this.run(requestId, () => this.service.get(actorOf(auth), id, ctxOf(requestId)), amountAccess(auth)), financeReader(auth));
   }
 
   @Post(':id/submit')
@@ -124,7 +129,7 @@ export class PlatformCommercialChangeRequestController {
   @RequireScopes('platform:approval:read')
   async submit(@Param('id', new ParseUUIDPipe()) id: string, @AuthContext() auth: AuthContextType, @RequestId() requestId: string): Promise<{ request: CommercialChangeRequestDto }> {
     this.platformOnly(auth, requestId);
-    return { request: requestDto(await this.run(requestId, () => this.service.submit(actorOf(auth), id, ctxOf(requestId))), amountAccess(auth)) };
+    return { request: requestDto(await this.run(requestId, () => this.service.submit(actorOf(auth), id, ctxOf(requestId)), amountAccess(auth)), financeReader(auth)) };
   }
 
   @Post(':id/withdraw')
@@ -132,7 +137,7 @@ export class PlatformCommercialChangeRequestController {
   @RequireScopes('platform:approval:read')
   async withdraw(@Param('id', new ParseUUIDPipe()) id: string, @AuthContext() auth: AuthContextType, @RequestId() requestId: string): Promise<{ request: CommercialChangeRequestDto }> {
     this.platformOnly(auth, requestId);
-    return { request: requestDto(await this.run(requestId, () => this.service.withdraw(actorOf(auth), id, ctxOf(requestId))), amountAccess(auth)) };
+    return { request: requestDto(await this.run(requestId, () => this.service.withdraw(actorOf(auth), id, ctxOf(requestId)), amountAccess(auth)), financeReader(auth)) };
   }
 
   @Post(':id/approvals')
@@ -145,11 +150,11 @@ export class PlatformCommercialChangeRequestController {
     @RequestId() requestId: string,
   ): Promise<{ request: CommercialChangeRequestDto; approval: CommercialApprovalDto; apply: CommercialRoleChangeApplyDto | null }> {
     this.platformOnly(auth, requestId);
-    const out = await this.run(requestId, () => this.service.approve(actorOf(auth), id, { step_index: body.step_index, comment: body.comment ?? null }, ctxOf(requestId)));
+    const out = await this.run(requestId, () => this.service.approve(actorOf(auth), id, { step_index: body.step_index, comment: body.comment ?? null }, ctxOf(requestId)), amountAccess(auth));
     const apply = out.apply ?? null;
     return {
-      request: requestDto(out.request, amountAccess(auth)),
-      approval: approvalDto(out.approval),
+      request: requestDto(out.request, financeReader(auth)),
+      approval: approvalDto(out.approval, out.request.action_type, financeReader(auth)),
       apply: apply === null ? null : { applied: apply.applied, reason: apply.reason, detail: apply.detail },
     };
   }
@@ -164,7 +169,7 @@ export class PlatformCommercialChangeRequestController {
     @RequestId() requestId: string,
   ): Promise<{ request: CommercialChangeRequestDto }> {
     this.platformOnly(auth, requestId);
-    return { request: requestDto(await this.run(requestId, () => this.service.reject(actorOf(auth), id, { reason: body.reason }, ctxOf(requestId))), amountAccess(auth)) };
+    return { request: requestDto(await this.run(requestId, () => this.service.reject(actorOf(auth), id, { reason: body.reason }, ctxOf(requestId)), amountAccess(auth)), financeReader(auth)) };
   }
 
   private platformOnly(auth: AuthContextType, requestId: string): void {
@@ -176,11 +181,11 @@ export class PlatformCommercialChangeRequestController {
     }
   }
 
-  private async run<T>(requestId: string, fn: () => Promise<T>): Promise<T> {
+  private async run<T>(requestId: string, fn: () => Promise<T>, amount_access: boolean): Promise<T> {
     try {
       return await fn();
     } catch (err) {
-      throw toAramoError(err, requestId);
+      throw toAramoError(err, requestId, amount_access);
     }
   }
 }
@@ -193,7 +198,12 @@ function ctxOf(requestId: string): CommercialCallContext {
   return { platform_tenant_id: PLATFORM_TENANT_SENTINEL_ID, correlation_id: requestId };
 }
 
-export function toAramoError(err: unknown, requestId: string): unknown {
+/**
+ * `amount_access` (CCP-R3-W item 3): a C4 refusal's provider-derived text (REFUND_NOT_REFUNDABLE /
+ * REFUND_REMAINDER_UNVERIFIABLE `error`) is sent only to a holder of the Finance amount scope.
+ * Default false: a caller that does not decide withholds (fail closed).
+ */
+export function toAramoError(err: unknown, requestId: string, amount_access = false): unknown {
   if (err instanceof CommercialApprovalRefusedError) {
     return new AramoError('COMMERCIAL_APPROVAL_REFUSED', `approval refused: ${err.refusal}`, 409, { requestId, details: { refusal: err.refusal, ...err.detail } });
   }
@@ -243,7 +253,7 @@ export function toAramoError(err: unknown, requestId: string): unknown {
       // CCP-C4-P (Amendment A1 RF-3…RF-5) — details.refusal: REFUND_EXCEEDS_REMAINDER |
       // REFUND_PAYMENT_DISPUTED | REFUND_REMAINDER_UNVERIFIABLE | REFUND_PAYMENT_MISMATCH | REFUND_CURRENCY_MISMATCH.
       case 'REFUND_NOT_REFUNDABLE':
-        return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, { requestId, details: { reason: 'refund_not_refundable', ...d } });
+        return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, { requestId, details: withholdProviderText({ reason: 'refund_not_refundable', ...d }, amount_access) });
       // CCP-ACC-1 — the withdrawal of an APPLY_FAILED POLICY_ACTIVATE (TD-ACC-1 Option B).
       case 'REQUESTER_NO_LONGER_AUTHORIZED':
         return new AramoError('INSUFFICIENT_PERMISSIONS', err.message, 403, { requestId, details: { reason: 'requester_no_longer_authorized', ...d } });
@@ -262,8 +272,17 @@ export function toAramoError(err: unknown, requestId: string): unknown {
 
 const iso = (d: Date | null): string | null => (d === null ? null : d.toISOString());
 
-export function requestDto(r: CommercialChangeRequestRow, amount_access: boolean): CommercialChangeRequestDto {
+export function requestDto(r: CommercialChangeRequestRow, reader: FinanceReader): CommercialChangeRequestDto {
   const chain = r.required_chain as CommercialChangeRequestDto['required_chain'];
+  // CCP-R3 + CCP-R3-W — THE shared projection (finance-amount-withholding.ts
+  // projectChangeRequestFinance). For a caller without platform:billing:read AND
+  // platform:billing:amount:read: a monetary action's amount is omitted from the payload and the
+  // chain basis (`amount_withheld`, R3); every contract block's terms are omitted (`terms_withheld`,
+  // W-2); for CREDIT / DISCOUNT / REFUND (/ PAYMENT_RECORD) the reason and the payload evidence are
+  // kept only for the request's own requester (else `reason_withheld` / `evidence_withheld`) and the
+  // rejection note is always omitted (`notes_withheld`, W-3). Other action types keep their text.
+  // payload_checksum stays the stored row's checksum (over the full payload).
+  const f = projectChangeRequestFinance(r, reader);
   return {
     id: r.id,
     action_type: r.action_type,
@@ -271,33 +290,29 @@ export function requestDto(r: CommercialChangeRequestRow, amount_access: boolean
     state: r.state,
     tenant_id: r.tenant_id,
     product_key: r.product_key,
-    // CCP-R3 (CCP-A1 Amendment A1, FA-1 / FA-5; TD-C4-7): a monetary action's (CREDIT, DISCOUNT,
-    // REFUND) tenant-specific amount is sent only to
-    // a caller holding platform:billing:read AND platform:billing:amount:read; otherwise it is
-    // omitted from the payload and the chain basis (`amount_withheld: "FINANCE_SCOPE_REQUIRED"`).
-    // payload_checksum stays the stored row's checksum (over the full payload).
-    payload: withholdChangeRequestAmounts(r.action_type, (r.payload ?? {}) as Record<string, unknown>, amount_access),
+    payload: f.payload,
     payload_checksum: r.payload_checksum,
-    required_chain: { rule: chain.rule, basis: withholdChangeRequestAmounts(r.action_type, chain.basis ?? {}, amount_access), steps: chain.steps },
+    required_chain: { rule: chain.rule, basis: f.basis, steps: chain.steps },
     policy_version_id: r.policy_version_id,
     policy_checksum: r.policy_checksum,
     requested_by: r.requested_by,
-    reason: r.reason,
+    ...(f.reason_withheld === undefined ? { reason: f.reason as string } : { reason_withheld: f.reason_withheld }),
     created_at: r.created_at.toISOString(),
     submitted_at: iso(r.submitted_at),
     expires_at: iso(r.expires_at),
     approved_at: iso(r.approved_at),
     rejected_at: iso(r.rejected_at),
     rejected_by: r.rejected_by,
-    rejection_reason: r.rejection_reason,
+    ...(f.notes_withheld === undefined ? { rejection_reason: f.rejection_reason ?? null } : { notes_withheld: f.notes_withheld }),
     withdrawn_at: iso(r.withdrawn_at),
     expired_at: iso(r.expired_at),
     applied_at: iso(r.applied_at ?? null),
   };
 }
 
-export function approvalDto(a: CommercialApprovalRow): CommercialApprovalDto {
-  return {
+/** CCP-R3-W (W-3): a financial request's approver comment reaches only a Finance amount holder. */
+export function approvalDto(a: CommercialApprovalRow, action_type: string, reader: FinanceReader): CommercialApprovalDto {
+  return projectApprovalNotes(action_type, {
     id: a.id,
     step_index: a.step_index,
     approver_user_id: a.approver_user_id,
@@ -306,13 +321,13 @@ export function approvalDto(a: CommercialApprovalRow): CommercialApprovalDto {
     approver_role_keys: a.approver_role_keys,
     comment: a.comment,
     created_at: a.created_at.toISOString(),
-  };
+  }, reader);
 }
 
-function detailDto(v: ChangeRequestView, amount_access: boolean): CommercialChangeRequestDetailDto {
+function detailDto(v: ChangeRequestView, reader: FinanceReader): CommercialChangeRequestDetailDto {
   return {
-    request: requestDto(v.request, amount_access),
-    approvals: v.approvals.map(approvalDto),
+    request: requestDto(v.request, reader),
+    approvals: v.approvals.map((a) => approvalDto(a, v.request.action_type, reader)),
     is_expired: v.is_expired,
     chain_satisfiable: v.chain_satisfiable,
     // CCP-A6-R (TD-B2-3) — true only for the requester of an APPROVED / APPLY_FAILED applicable request.

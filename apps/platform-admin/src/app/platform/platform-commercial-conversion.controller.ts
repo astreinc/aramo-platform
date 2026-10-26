@@ -14,7 +14,7 @@ import type { ConversionDto } from './dto/commercial-conversion.dto.js';
 import { applicationDto, applyHttpError } from './platform-commercial-apply.controller.js';
 import { billingCommandDto } from './platform-commercial-billing.controller.js';
 import { requestDto } from './platform-commercial-change-request.controller.js';
-import { amountAccess } from './finance-amount-access.js';
+import { amountAccess, financeReader } from './finance-amount-access.js';
 
 // CCP-C2 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.2 row C2; Conversion Rule C-11…C-15, C-23)
 // — the governed manual ↔ self-service conversion of an APPROVED CONVERSION change request.
@@ -54,7 +54,7 @@ export class PlatformCommercialConversionController {
         id,
         { platform_tenant_id: PLATFORM_TENANT_SENTINEL_ID, correlation_id: requestId },
       );
-      return { request: requestDto(out.request, amountAccess(auth)), conversion: conversionDto(out, amountAccess(auth)), replayed: out.replayed };
+      return { request: requestDto(out.request, financeReader(auth)), conversion: conversionDto(out, amountAccess(auth)), replayed: out.replayed };
     } catch (err) {
       throw conversionHttpError(err, requestId);
     }
@@ -70,7 +70,7 @@ export class PlatformCommercialConversionController {
     assertPlatformTier(auth, requestId);
     try {
       const view = await this.conversions.view(id);
-      return { request: requestDto(view.request, amountAccess(auth)), conversion: conversionDto(view, amountAccess(auth)) };
+      return { request: requestDto(view.request, financeReader(auth)), conversion: conversionDto(view, amountAccess(auth)) };
     } catch (err) {
       throw conversionHttpError(err, requestId);
     }

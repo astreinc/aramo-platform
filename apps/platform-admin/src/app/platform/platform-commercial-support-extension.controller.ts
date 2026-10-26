@@ -3,12 +3,12 @@ import type { Response } from 'express';
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, PLATFORM_TENANT_SENTINEL_ID, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
-import { SupportExtensionService, type SupportExtensionOutcome, type SupportExtensionRow } from '@aramo/subscription';
+import { SupportExtensionService, type FinanceReader, type SupportExtensionOutcome, type SupportExtensionRow } from '@aramo/subscription';
 
 import { RequestSupportExtensionDto, ListSupportExtensionsQueryDto, type SupportExtensionDto, type SupportExtensionListDto, type SupportExtensionOutcomeDto } from './dto/support-extension.dto.js';
 import { applicationDto, applyHttpError } from './platform-commercial-apply.controller.js';
 import { requestDto } from './platform-commercial-change-request.controller.js';
-import { amountAccess } from './finance-amount-access.js';
+import { financeReader } from './finance-amount-access.js';
 
 // CCP-A8 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.1 row A8; DDR v1.2 §3.2(5); Q7) — the
 // support exception overlay. Platform consumer only (the DDR §13.1 tripwire).
@@ -62,7 +62,7 @@ export class PlatformCommercialSupportExtensionController {
         { platform_tenant_id: PLATFORM_TENANT_SENTINEL_ID, correlation_id: requestId },
       );
       res.status(out.replayed ? 200 : 201);
-      return outcomeDto(out, amountAccess(auth));
+      return outcomeDto(out, financeReader(auth));
     } catch (err) {
       throw applyHttpError(err, requestId);
     }
@@ -119,11 +119,11 @@ export function extensionDto(r: SupportExtensionRow): SupportExtensionDto {
   };
 }
 
-function outcomeDto(out: SupportExtensionOutcome, amount_access: boolean): SupportExtensionOutcomeDto {
+function outcomeDto(out: SupportExtensionOutcome, reader: FinanceReader): SupportExtensionOutcomeDto {
   return {
     outcome: out.outcome,
     replayed: out.replayed,
-    request: requestDto(out.request, amount_access),
+    request: requestDto(out.request, reader),
     extension: out.outcome === 'APPLIED' ? extensionDto(out.extension) : null,
     application: out.outcome === 'APPLIED' && out.application !== null ? applicationDto(out.application) : null, // merge train: B2-backend made the A6 application nullable
     decision: out.decision === null ? null : { ...out.decision, clause: { ...out.decision.clause } },

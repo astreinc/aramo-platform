@@ -1,6 +1,6 @@
 import { Type } from 'class-transformer';
 import { IsIn, IsInt, IsObject, IsOptional, IsString, IsUUID, Length, Matches, Max, MaxLength, Min } from 'class-validator';
-import { COMMERCIAL_ACTION_TYPES, COMMERCIAL_CHANGE_REQUEST_KINDS, COMMERCIAL_CHANGE_REQUEST_STATES } from '@aramo/subscription';
+import { COMMERCIAL_ACTION_TYPES, COMMERCIAL_CHANGE_REQUEST_KINDS, COMMERCIAL_CHANGE_REQUEST_STATES, type FinanceAmountWithheld } from '@aramo/subscription';
 
 // CCP-A3 — /platform/commercial/change-requests. The DTOs are the 400-shape gate; the
 // CommercialChangeRequestService is the authority for requester scope, state, Q14,
@@ -53,14 +53,22 @@ export interface CommercialChangeRequestDto {
   policy_version_id: string;
   policy_checksum: string;
   requested_by: string;
-  reason: string;
+  /**
+   * CCP-R3-W (W-3): exactly one of `reason` / `reason_withheld`. A CREDIT / DISCOUNT / REFUND
+   * (/ PAYMENT_RECORD) request's reason is omitted for a caller without the Finance amount scope
+   * unless the caller is its requester; every other action type always carries `reason`.
+   */
+  reason?: string;
+  reason_withheld?: FinanceAmountWithheld;
   created_at: string;
   submitted_at: string | null;
   expires_at: string | null;
   approved_at: string | null;
   rejected_at: string | null;
   rejected_by: string | null;
-  rejection_reason: string | null;
+  /** CCP-R3-W (W-3): exactly one of `rejection_reason` / `notes_withheld` (a financial request, non-holder: always the marker). */
+  rejection_reason?: string | null;
+  notes_withheld?: FinanceAmountWithheld;
   withdrawn_at: string | null;
   expired_at: string | null;
   /** Set when the request was applied (state APPLIED): a governed apply (A6, A7, A8, B2, C2), a role change (A9) or a policy activation (CCP-B5-R). */
@@ -82,7 +90,9 @@ export interface CommercialApprovalDto {
   step_role_key: string;
   step_scope_keys: string[];
   approver_role_keys: string[];
-  comment: string | null;
+  /** CCP-R3-W (W-3): exactly one of `comment` / `notes_withheld` (a financial request, non-holder: always the marker). */
+  comment?: string | null;
+  notes_withheld?: FinanceAmountWithheld;
   created_at: string;
 }
 

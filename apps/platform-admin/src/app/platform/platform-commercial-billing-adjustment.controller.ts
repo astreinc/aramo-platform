@@ -9,6 +9,7 @@ import {
   explanationOf,
   type BillingAdjustmentView,
   type CommercialChangeRequestRow,
+  type FinanceReader,
 } from '@aramo/subscription';
 
 import type { BillingAdjustmentDto } from './dto/commercial-billing-adjustment.dto.js';
@@ -16,7 +17,7 @@ import type { CommercialChangeRequestDto } from './dto/commercial-change-request
 import { applyHttpError } from './platform-commercial-apply.controller.js';
 import { billingCommandDto } from './platform-commercial-billing.controller.js';
 import { requestDto } from './platform-commercial-change-request.controller.js';
-import { amountAccess } from './finance-amount-access.js';
+import { amountAccess, financeReader, withholdErrorProviderText } from './finance-amount-access.js';
 
 // CCP-C4 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.2 row C4, §10; Conversion Rule C-22, C-23)
 // — credits, discounts and refunds as change requests executed in Stripe by C1 durable command.
@@ -63,9 +64,9 @@ export class PlatformCommercialBillingAdjustmentController {
         id,
         { platform_tenant_id: PLATFORM_TENANT_SENTINEL_ID, correlation_id: requestId },
       );
-      return { request: adjustmentRequestDto(out.request, amountAccess(auth)), adjustment: billingAdjustmentDto(out, amountAccess(auth)), replayed: out.replayed };
+      return { request: adjustmentRequestDto(out.request, financeReader(auth)), adjustment: billingAdjustmentDto(out, amountAccess(auth)), replayed: out.replayed };
     } catch (err) {
-      throw adjustmentHttpError(err, requestId);
+      throw adjustmentHttpError(err, requestId, amountAccess(auth));
     }
   }
 
@@ -90,9 +91,9 @@ export class PlatformCommercialBillingAdjustmentController {
         id,
         { platform_tenant_id: PLATFORM_TENANT_SENTINEL_ID, correlation_id: requestId },
       );
-      return { request: adjustmentRequestDto(out.request, amountAccess(auth)), adjustment: billingAdjustmentDto(out, amountAccess(auth)), resolution: out.resolution, outcomes: [...out.outcomes] };
+      return { request: adjustmentRequestDto(out.request, financeReader(auth)), adjustment: billingAdjustmentDto(out, amountAccess(auth)), resolution: out.resolution, outcomes: [...out.outcomes] };
     } catch (err) {
-      throw adjustmentHttpError(err, requestId);
+      throw adjustmentHttpError(err, requestId, amountAccess(auth));
     }
   }
 
@@ -106,9 +107,9 @@ export class PlatformCommercialBillingAdjustmentController {
     assertPlatformTier(auth, requestId);
     try {
       const view = await this.adjustments.view(id);
-      return { request: adjustmentRequestDto(view.request, amountAccess(auth)), adjustment: billingAdjustmentDto(view, amountAccess(auth)) };
+      return { request: adjustmentRequestDto(view.request, financeReader(auth)), adjustment: billingAdjustmentDto(view, amountAccess(auth)) };
     } catch (err) {
-      throw adjustmentHttpError(err, requestId);
+      throw adjustmentHttpError(err, requestId, amountAccess(auth));
     }
   }
 }
@@ -122,7 +123,17 @@ function assertPlatformTier(auth: AuthContextType, requestId: string): void {
   }
 }
 
-function adjustmentHttpError(err: unknown, requestId: string): unknown {
+/**
+ * CCP-R3-W item 3 (TD-MERGE-43 residual): every refusal / failure of a C4 route (REFUND_REMAINDER_UNVERIFIABLE
+ * basis provider_read_failed, REFUND_OUTCOME_UNCERTAIN, an UNEXPECTED apply failure) keeps its code,
+ * refusal and explanation; its provider-derived text (`error`, `message`) reaches only a holder of the
+ * Finance amount scope, a non-holder (the requester included) gets `detail_withheld`.
+ */
+function adjustmentHttpError(err: unknown, requestId: string, amount_access: boolean): unknown {
+  return withholdErrorProviderText(adjustmentHttpErrorOf(err, requestId, amount_access), amount_access);
+}
+
+function adjustmentHttpErrorOf(err: unknown, requestId: string, amount_access: boolean): unknown {
   if (err instanceof BillingAdjustmentRefusedError) {
     return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', `apply refused: ${err.reason}`, 409, {
       requestId,
@@ -132,12 +143,12 @@ function adjustmentHttpError(err: unknown, requestId: string): unknown {
   if (err instanceof CommercialChangeRequestError && err.code === 'ACTION_NOT_APPLICABLE') {
     return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, { requestId, details: { reason: 'action_not_applicable', explanation: explanationOf(err.code), ...err.details } });
   }
-  return applyHttpError(err, requestId);
+  return applyHttpError(err, requestId, amount_access);
 }
 
 /** The change-request read of a C4 route: R3's shared redaction (payload and chain basis) applies. */
-export function adjustmentRequestDto(r: CommercialChangeRequestRow, amount_access: boolean): CommercialChangeRequestDto {
-  return requestDto(r, amount_access);
+export function adjustmentRequestDto(r: CommercialChangeRequestRow, reader: FinanceReader): CommercialChangeRequestDto {
+  return requestDto(r, reader);
 }
 
 const iso = (d: Date | null): string | null => (d === null ? null : d.toISOString());
