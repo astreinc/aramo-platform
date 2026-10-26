@@ -25,7 +25,8 @@ function renderAt(path = PATH) {
   );
 }
 
-const card = () => screen.findByRole('region', { name: 'Aramo Sign' });
+// The first test pays the cold lazy-route import of the whole App (1260ms on a loaded CI runner).
+const card = () => screen.findByRole('region', { name: 'Aramo Sign' }, { timeout: 5000 });
 const extendButton = async () => within(await card()).getByRole('button', { name: 'Request support extension…' });
 
 describe('CCP-B6 support extensions — per-role visibility (6 commercial roles + super_admin)', () => {
