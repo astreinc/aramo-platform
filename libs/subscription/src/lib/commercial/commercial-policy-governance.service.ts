@@ -70,6 +70,13 @@ export const POLICY_EDIT_RANGES: Readonly<Partial<Record<keyof CommercialPolicyC
  * it is validated exactly as the strict A2 / A6-R parser validates it (an integer, 1 … 87,600 h;
  * anything else, `null` included, is malformed and refused `policy_value_invalid`). It is never
  * seeded and never defaulted; a draft that does not set it stays without it (AD-2).
+ *
+ * CCP-DG (Charter Amendment A2 RX-1, RX-11): the three refund keys (`refund_execution_enabled`,
+ * `refund_policy_ref`, `refund_policy_sha256`) are editable the same way — validated only by the strict
+ * parser (all present or all absent, the RX-D3 formats). A patch must therefore set all three at once
+ * on a draft without them; a partial or malformed patch is refused `policy_value_invalid` and changes
+ * nothing. Revocation is `refund_execution_enabled: false` (RX-9); like `apply_expiry_hours`, a key
+ * once set is not removed by a draft edit (a new draft copied from a version without the keys is).
  */
 export const POLICY_EDITABLE_KEYS = [...Object.keys(POLICY_EDIT_RANGES), 'support_extension_cumulative_window_days', ...COMMERCIAL_POLICY_OPTIONAL_KEYS] as const;
 

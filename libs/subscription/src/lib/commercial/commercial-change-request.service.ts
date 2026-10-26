@@ -45,6 +45,7 @@ import { canonicalJson } from './commercial-policy.js';
 import { CommercialPolicyRepository } from './commercial-policy.repository.js';
 import { CommercialOperatorRepository, D9_STATEMENT_VERSION, type LiveOperator } from './commercial-operator.repository.js';
 import { POLICY_LOCK_SQL } from './commercial-policy-activation.js';
+import { refundPolicyRefBindingError } from './refund-execution-gate.js';
 import { RefundRemainderGate, RefundRemainderRefusedError, refundBindingOf } from './refund-remainder.gate.js';
 import {
   PLATFORM_OWNER_ROLE_KEY,
@@ -373,12 +374,25 @@ export class CommercialChangeRequestService {
 
     const replay = await this.replayOf(input.idempotency_key, fingerprint);
     if (replay !== null) return { request: replay, replayed: true };
+    const policy = await this.policies.getActivePolicy();
+    // CCP-DG (Charter Amendment A2 RX-8) — a REFUND created under a policy that declares the refund
+    // keys must name exactly that policy's refund_policy_ref (the version it snapshots). Refused before
+    // any provider read. Under a policy without the keys the payload ref is a proposal only.
+    if (input.action_type === 'REFUND') {
+      const unbound = refundPolicyRefBindingError(policy.content, (payload as Record<string, unknown>)['refund_policy_ref']);
+      if (unbound !== null) {
+        throw new CommercialChangeRequestError('INVALID_INPUT', 'refund_policy_ref must equal the refund policy reference of the active commercial policy', {
+          reason: 'refund_policy_ref_mismatch',
+          codes: ['REFUND_POLICY_REF_MISMATCH'],
+          policy_version_id: policy.version_id,
+          ...unbound,
+        });
+      }
+    }
     // CCP-C4-P — a REFUND reads the provider's payment picture BEFORE the create transaction (never a
     // provider call inside it); the remainder is decided inside it, under the billing lock.
     const refundPicture =
       input.action_type === 'REFUND' ? await this.readRefundPicture(String((payload as Record<string, unknown>)['provider_invoice_ref'])) : null;
-
-    const policy = await this.policies.getActivePolicy();
     const chain = resolveRequiredChain(input.action_type, payload, policy.content);
     const now = this.now();
     const id = uuidv7();

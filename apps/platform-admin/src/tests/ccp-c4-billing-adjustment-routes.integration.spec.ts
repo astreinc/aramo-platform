@@ -31,6 +31,8 @@ import { PlatformCommercialRefundReportController } from '../app/platform/platfo
 import { CCP_BUNDLES, addOperator, applyCcpA6Schema } from '../../../../libs/subscription/src/tests/support/ccp-a3-database.js';
 // eslint-disable-next-line @nx/enforce-module-boundaries -- test-only: the one shared C4 harness (fake Stripe, no network, no key)
 import { c4Harness, refundPayload, type C4Harness } from '../../../../libs/subscription/src/tests/support/ccp-c4.js';
+// eslint-disable-next-line @nx/enforce-module-boundaries -- test-only: the one shared CCP-DG policy helper
+import { TEST_REFUND_KEYS, activatePolicyContent, reactivatePolicy, v1With } from '../../../../libs/subscription/src/tests/support/ccp-dg.js';
 
 import { generateTestKeyPair } from './test-keys.js';
 
@@ -67,6 +69,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 — the bi
   const resolver = new RoleBundleResolver();
   const user: Record<string, string> = {};
   let keyN = 0;
+  let RELEASED: string;
   const key = () => `c4-route-key-${String(++keyN).padStart(6, '0')}`;
 
   async function token(role: string, consumer_type = 'platform'): Promise<string> {
@@ -113,6 +116,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 — the bi
     pg = new Client({ connectionString: url });
     await pg.connect();
     await applyCcpA6Schema(pg);
+    // CCP-DG (Charter Amendment A2): the ACTIVE policy declares the test refund keys (gate 2 approved),
+    // so the switch (gate 1) decides; DG-RI-1 revokes it.
+    RELEASED = await activatePolicyContent(pg, v1With(TEST_REFUND_KEYS));
     prisma = new SubscriptionPrismaService(url);
     await prisma.$connect();
     h = c4Harness(prisma, () => new Date());
@@ -217,13 +223,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 — the bi
     expect(out(await post('commercial_ops', `${BASE}/${end.body.request.id}/billing-adjustment`))).toEqual([409, 'COMMERCIAL_CHANGE_REQUEST_CONFLICT', 'action_not_applicable']);
   });
 
-  it('C4-RI-3 the refund designed disabled state: an approved REFUND → 409 apply_refused REFUND_POLICY_NOT_APPROVED with an explanation; the request stays APPROVED; no command; the read says refund_execution_disabled', async () => {
+  it('C4-RI-3 the refund designed disabled state: an approved REFUND → 409 apply_refused REFUND_EXECUTION_NOT_RELEASED (CCP-DG gate 1: the switch is off) with an explanation; the request stays APPROVED; no command; the read says refund_execution_disabled', async () => {
     const { t } = await selfService();
     h.billing.invoices.set('in_c4route', { account_ref: `acct_${t}` });
     const id = await approved('REFUND', t, refundPayload(4_000, 'in_c4route'));
     const res = await post('commercial_ops', `${BASE}/${id}/billing-adjustment`);
-    expect(out(res)).toEqual([409, 'COMMERCIAL_CHANGE_REQUEST_CONFLICT', 'REFUND_POLICY_NOT_APPROVED']);
-    expect(res.body.error.details.explanation).toMatch(/refund policy has not been approved/);
+    expect(out(res)).toEqual([409, 'COMMERCIAL_CHANGE_REQUEST_CONFLICT', 'REFUND_EXECUTION_NOT_RELEASED']);
+    expect(res.body.error.details).toMatchObject({ gate_1_released: false, gate_2: 'APPROVED' });
+    expect(res.body.error.details.explanation).toMatch(/refund execution has not been released/);
     // CCP-R3: read_only_auditor holds the Finance amount scope (the REFUND amount is shown); the
     // REFUND identity fields stay visible to every reader; support_admin gets the marker, no amount.
     const r = await get('read_only_auditor', `${BASE}/${id}/billing-adjustment`);
@@ -231,6 +238,30 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 — the bi
     const nr = await get('support_admin', `${BASE}/${id}/billing-adjustment`);
     expect(nr.body).toMatchObject({ request: { state: 'APPROVED', payload: { amount_withheld: 'FINANCE_SCOPE_REQUIRED', provider_invoice_ref: 'in_c4route' } }, adjustment: { operation: 'REFUND_CREATE', refund_execution_disabled: true, commands: [] } });
     expect(JSON.stringify(nr.body)).not.toContain('4000');
+  });
+
+  it('DG-RI-1 (CCP-DG, Charter Amendment A2) gate 2 over HTTP: the switch ON but the ACTIVE policy revoked (refund_execution_enabled false) → 409 apply_refused REFUND_POLICY_NOT_APPROVED with both gate outcomes, nothing sent; RX-8: a REFUND naming another refund policy than the ACTIVE one → 400 refund_policy_ref_mismatch', async () => {
+    const { t } = await selfService();
+    h.billing.invoices.set('in_dgroute', { account_ref: `acct_${t}` });
+    const id = await approved('REFUND', t, refundPayload(4_000, 'in_dgroute'));
+    const mismatch = await post('commercial_ops', BASE, { action_type: 'REFUND', tenant_id: (await selfService()).t, product_key: 'sign', payload: refundPayload(1, 'in_dgroute', { refund_policy_ref: 'ARAMO-COM-REFUND-POL-999@9.9' }), reason: 'dg', idempotency_key: key() });
+    expect(out(mismatch)).toEqual([400, 'VALIDATION_ERROR', 'refund_policy_ref_mismatch']);
+    expect(mismatch.body.error.details.codes).toEqual(['REFUND_POLICY_REF_MISMATCH']);
+    const calls = h.billing.adjustmentCalls.length;
+    const revoked = await activatePolicyContent(pg, v1With({ ...TEST_REFUND_KEYS, refund_execution_enabled: false }));
+    process.env['CCP_REFUND_EXECUTION_ENABLED'] = '1';
+    try {
+      const res = await post('commercial_ops', `${BASE}/${id}/billing-adjustment`);
+      expect(out(res)).toEqual([409, 'COMMERCIAL_CHANGE_REQUEST_CONFLICT', 'REFUND_POLICY_NOT_APPROVED']);
+      expect(res.body.error.details).toMatchObject({ gate_1_released: true, gate_2: 'ACTIVE_POLICY_NOT_ENABLED' });
+      expect(res.body.error.details.explanation).toMatch(/refund policy has not been approved/);
+      expect((await get('commercial_ops', `${BASE}/${id}/billing-adjustment`)).body).toMatchObject({ request: { state: 'APPROVED' }, adjustment: { refund_execution_disabled: true, commands: [] } });
+    } finally {
+      delete process.env['CCP_REFUND_EXECUTION_ENABLED'];
+      await reactivatePolicy(pg, RELEASED);
+    }
+    expect(revoked).not.toBe(RELEASED);
+    expect(h.billing.adjustmentCalls.length - calls).toBe(0);
   });
 
   it('C4-RI-4 a pre-command failure → 409 apply_failed (APPLY_FAILED, retryable): a tenant without a self-service subscription', async () => {

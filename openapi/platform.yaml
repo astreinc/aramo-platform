@@ -3347,7 +3347,11 @@ paths:
         `product_key` (`sign`); at most one open request exists per tenant and product.
         Idempotent on `idempotency_key`: a replay of the same request returns 200 with
         `replayed: true`; the key reused for a different request returns 409
-        `IDEMPOTENCY_KEY_CONFLICT`.
+        `IDEMPOTENCY_KEY_CONFLICT`. CCP-DG (Charter Amendment A2 RX-8): a `REFUND` raised while the
+        ACTIVE policy declares the refund keys must carry exactly that policy's `refund_policy_ref`;
+        otherwise 400 `VALIDATION_ERROR` with details.reason `refund_policy_ref_mismatch` (details.codes
+        `[REFUND_POLICY_REF_MISMATCH]`, details.declared_ref), before any provider read. Under a policy
+        without the keys the reference is a proposal only.
       security:
         - BearerAuth: []
         - CookieAccessAuth: []
@@ -3877,8 +3881,11 @@ paths:
         request, and the request becomes APPLIED only when the provider-confirmed effect is applied
         (verified webhook or provider re-fetch). A failed command keeps the request APPLYING
         (`status: COMMAND_FAILED`); applying it again re-arms that same command (same idempotency key).
-        A REFUND is refused with `REFUND_POLICY_NOT_APPROVED` while the refund policy is not approved
-        (the designed disabled state). A tenant-specific amount (payload, chain basis, command params,
+        A REFUND is refused by the CCP-DG dual gate (Charter Amendment A2), checked at the initial apply
+        and again before a permitted re-arm, with zero provider calls and one audit row:
+        `REFUND_EXECUTION_NOT_RELEASED` while the operational switch is off (gate 1), and
+        `REFUND_POLICY_NOT_APPROVED` unless the ACTIVE and the request's snapshotted policy both enable
+        refunds under the same refund-policy identity named by the payload (gate 2). A tenant-specific amount (payload, chain basis, command params,
         adjustment record) is returned only to a holder of `platform:billing:read` AND
         `platform:billing:amount:read`; otherwise it is omitted with
         `amount_withheld: FINANCE_SCOPE_REQUIRED` (CCP-R3). The route requires `platform:approval:read`.
@@ -5535,7 +5542,9 @@ components:
     CommercialBillingAdjustmentConflict:
       description: |
         `COMMERCIAL_CHANGE_REQUEST_CONFLICT` with details.reason `apply_refused` (details.refusal
-        REFUND_POLICY_NOT_APPROVED — the refund designed disabled state — | REFUND_OUTCOME_UNCERTAIN |
+        REFUND_EXECUTION_NOT_RELEASED — gate 1, the operational switch — | REFUND_POLICY_NOT_APPROVED
+        — gate 2, the approved refund policy (CCP-DG; details.gate_1_released, details.gate_2) — |
+        REFUND_OUTCOME_UNCERTAIN |
         the CCP-C4-P remainder refusals REFUND_EXCEEDS_REMAINDER | REFUND_PAYMENT_DISPUTED |
         REFUND_REMAINDER_UNVERIFIABLE | REFUND_PAYMENT_MISMATCH | REFUND_CURRENCY_MISMATCH |
         NOT_RESOLVABLE (CCP-C4-R resolution) | APPLY_EXPIRED | NOT_APPROVED |
@@ -6703,6 +6712,17 @@ components:
           minimum: 1
           maximum: 87600
           description: Optional (Charter Amendment A1, AD-1). An APPROVED or APPLY_FAILED request snapshotted under this version becomes APPLY_EXPIRED this many hours after its final approval (half-open window). Absent = no apply deadline (AD-2).
+        refund_execution_enabled:
+          type: boolean
+          description: Optional (Charter Amendment A2, RX-1). The commercial gate (gate 2) for new refund execution. Present together with refund_policy_ref and refund_policy_sha256, or all three absent; absent = refund execution disabled.
+        refund_policy_ref:
+          type: string
+          pattern: '^[A-Z0-9-]+@[0-9]+\.[0-9]+$'
+          description: Optional (Charter Amendment A2, RX-2, RX-D3). The approved refund policy document and version, e.g. ARAMO-COM-REFUND-POL-001@1.0.
+        refund_policy_sha256:
+          type: string
+          pattern: '^[0-9a-f]{64}$'
+          description: Optional (Charter Amendment A2, RX-2, RX-D3). The SHA-256 (64 lowercase hex) of that LOCKED refund policy document.
 
     CommercialPolicyVersion:
       type: object
@@ -6880,6 +6900,17 @@ components:
               minimum: 1
               maximum: 87600
               description: Optional apply deadline (Charter Amendment A1, AD-1), validated exactly as the strict policy parser validates it; never defaulted. A non-integer, null or out-of-range value is refused (400 policy_value_invalid).
+            refund_execution_enabled:
+              type: boolean
+              description: Optional refund execution gate (Charter Amendment A2, RX-1, RX-11). The three refund keys are present together or not at all; a patch leaving the draft with only some of them, or a malformed value (null included), is refused (400 policy_value_invalid). false revokes new refund execution (RX-9).
+            refund_policy_ref:
+              type: string
+              pattern: '^[A-Z0-9-]+@[0-9]+\.[0-9]+$'
+              description: Optional (Charter Amendment A2, RX-D3), validated by the strict policy parser (400 policy_value_invalid).
+            refund_policy_sha256:
+              type: string
+              pattern: '^[0-9a-f]{64}$'
+              description: Optional (Charter Amendment A2, RX-D3), validated by the strict policy parser (400 policy_value_invalid).
         note:
           type: string
           maxLength: 500

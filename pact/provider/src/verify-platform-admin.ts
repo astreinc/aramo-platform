@@ -20,6 +20,7 @@ import {
   BILLING_PROVIDER_READ_PORT,
   SubscriptionPrismaService,
   UsageRollupService,
+  commercialPolicyChecksum,
   type BillingProviderAdjustmentPort,
   type BillingProviderReadPort,
   type ProviderAdjustmentEffect,
@@ -450,22 +451,62 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
      * provider-linked) Sign row: commercial_ops requests, finance_admin (and platform_owner when the
      * snapshotted chain escalates) approves, through the HTTP surface.
      */
-    /** CCP-C4-R — an APPROVED REFUND applied by its requester (the flag set only for this seed call). */
-    async function appliedRefund(invoice: string): Promise<{ requestId: string; tenant_id: string }> {
-      const requestId = await approvedAdjustment('REFUND', refundPayload(invoice));
+    /**
+     * CCP-DG (Charter Amendment A2) — the test-only refund-policy identity, and a version carrying it
+     * (the ACTIVE content plus the three refund keys), created once and re-activated raw for one seed
+     * call (fixture only; the governed path is POLICY_ACTIVATE). The previously ACTIVE version is
+     * restored afterwards, so every other state sees the seeded v1 (refunds disabled).
+     */
+    const PACT_REFUND_POLICY_REF = 'ARAMO-COM-REFUND-POL-TEST@1.0';
+    let releasedPolicyId: string | null = null;
+    async function activateRaw(id: string): Promise<void> {
+      await db.query('BEGIN');
+      try {
+        await db.query(`UPDATE subscription."CommercialPolicyVersion" SET status = 'RETIRED', retired_at = now() WHERE status = 'ACTIVE' AND id <> $1`, [id]);
+        await db.query(`UPDATE subscription."CommercialPolicyVersion" SET status = 'ACTIVE', activated_at = now() WHERE id = $1 AND status <> 'ACTIVE'`, [id]);
+        await db.query('COMMIT');
+      } catch (e) {
+        await db.query('ROLLBACK');
+        throw e;
+      }
+    }
+    async function withRefundsReleased<T>(f: () => Promise<T>): Promise<T> {
+      const active = (await db.query(`SELECT id::text AS id, content FROM subscription."CommercialPolicyVersion" WHERE status = 'ACTIVE'`)).rows[0] as { id: string; content: Record<string, unknown> };
+      if (releasedPolicyId === null) {
+        const content = { ...active.content, refund_execution_enabled: true, refund_policy_ref: PACT_REFUND_POLICY_REF, refund_policy_sha256: 'a'.repeat(64) };
+        const n = (await db.query(`SELECT COALESCE(MAX(version_number), 0)::int + 1 AS n FROM subscription."CommercialPolicyVersion"`)).rows[0].n as number;
+        releasedPolicyId = randomUUID();
+        await db.query(`INSERT INTO subscription."CommercialPolicyVersion" (id, version_number, status, content, content_checksum, note) VALUES ($1, $2, 'DRAFT', $3::jsonb, $4, 'pact: refunds released (test identity)')`, [
+          releasedPolicyId,
+          n,
+          JSON.stringify(content),
+          commercialPolicyChecksum(content),
+        ]);
+      }
+      await activateRaw(releasedPolicyId);
       process.env['CCP_REFUND_EXECUTION_ENABLED'] = '1';
       try {
-        await asRole('commercial_ops', 'POST', `/platform/commercial/change-requests/${requestId}/billing-adjustment`);
+        return await f();
       } finally {
         delete process.env['CCP_REFUND_EXECUTION_ENABLED'];
+        await activateRaw(active.id);
       }
+    }
+
+    /** CCP-C4-R — an APPROVED REFUND applied by its requester (CCP-DG: both gates released only for this seed call). */
+    async function appliedRefund(invoice: string): Promise<{ requestId: string; tenant_id: string }> {
+      const requestId = await withRefundsReleased(async () => {
+        const id = await approvedAdjustment('REFUND', refundPayload(invoice));
+        await asRole('commercial_ops', 'POST', `/platform/commercial/change-requests/${id}/billing-adjustment`);
+        return id;
+      });
       const t = await db.query(`SELECT tenant_id::text AS t FROM subscription."CommercialChangeRequest" WHERE id = $1`, [requestId]);
       return { requestId, tenant_id: t.rows[0].t as string };
     }
 
     /** CCP-C4-P — a complete REFUND payload (the invoice, its payment and the provenance). */
     function refundPayload(invoice: string): Record<string, unknown> {
-      return { amount_minor: 100, currency: 'USD', provider_invoice_ref: invoice, provider_payment_ref: `pi_${invoice.replace(/^in_/, '')}`, category: 'R4_SERVICE_FAILURE', basis: 'Service outage under the order form', refund_policy_ref: 'aramo-refund-policy@v1-draft' };
+      return { amount_minor: 100, currency: 'USD', provider_invoice_ref: invoice, provider_payment_ref: `pi_${invoice.replace(/^in_/, '')}`, category: 'R4_SERVICE_FAILURE', basis: 'Service outage under the order form', refund_policy_ref: PACT_REFUND_POLICY_REF };
     }
 
     async function approvedAdjustment(action_type: 'CREDIT' | 'DISCOUNT' | 'REFUND', payload: Record<string, unknown>): Promise<string> {
@@ -964,6 +1005,19 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             return { requestId };
           },
           'an approved refund exists': async () => ({ requestId: await approvedAdjustment('REFUND', refundPayload('in_pactc4refund')) }),
+          // CCP-DG (Charter Amendment A2) — gate 1 released for this interaction only (teardown restores
+          // it), the seeded v1 ACTIVE (no refund keys): the apply is refused by gate 2.
+          'an approved refund exists while refund execution is released without an approved refund policy': {
+            setup: async () => {
+              const requestId = await approvedAdjustment('REFUND', refundPayload('in_pactdgpolicy'));
+              process.env['CCP_REFUND_EXECUTION_ENABLED'] = '1';
+              return { requestId };
+            },
+            teardown: async () => {
+              delete process.env['CCP_REFUND_EXECUTION_ENABLED'];
+              return undefined;
+            },
+          },
           // CCP-C4-R — a REFUND applied by its requester (the flag set only for this seed call): its
           // command is queued and never dispatched (no provider in the harness), so its outcome is unproven.
           'a refund is being applied': async () => {

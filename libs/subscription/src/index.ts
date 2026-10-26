@@ -525,6 +525,20 @@ export {
   refundExecutionEnabled,
 } from './lib/commercial/commercial-billing-adjustment.js';
 export { CommercialBillingAdjustmentLedger, type AdjustmentConfirmOutcome, type CommercialBillingAdjustmentRow } from './lib/commercial/commercial-billing-adjustment.ledger.js';
+// CCP-DG — the refund dual gate (Charter Amendment A2 RX-5…RX-9).
+export {
+  REFUND_DISPATCH_REFUSED_EVENT,
+  REFUND_EXECUTION_NOT_RELEASED,
+  decideRefundExecution,
+  enabledRefundPolicyIdentity,
+  evaluateRefundExecution,
+  refundPolicyGate,
+  refundPolicyRefBindingError,
+  type RefundExecutionDecision,
+  type RefundExecutionRefusal,
+  type RefundPolicyGateBasis,
+  type RefundPolicyIdentity,
+} from './lib/commercial/refund-execution-gate.js';
 // CCP-C4-P — the refundable remainder (Amendment A1 RF-3…RF-5) and the refund report.
 export {
   REFUND_REMAINDER_REFUSALS,

@@ -34,8 +34,9 @@ import { amountAccess } from './finance-amount-access.js';
 //   200  pending-provider (the command is queued; APPLIED only after the provider-confirmed effect),
 //        a re-armed failed command, or replayed
 //   403  requester_scope_missing | not_requester | not_human
-//   409  COMMERCIAL_CHANGE_REQUEST_CONFLICT  reason apply_refused (REFUND_POLICY_NOT_APPROVED — the
-//        refund designed disabled state —, APPLY_EXPIRED, NC-5; no state change), apply_failed
+//   409  COMMERCIAL_CHANGE_REQUEST_CONFLICT  reason apply_refused (the CCP-DG refund dual gate:
+//        REFUND_EXECUTION_NOT_RELEASED — gate 1, the operational switch — or REFUND_POLICY_NOT_APPROVED
+//        — gate 2, the approved refund policy —; APPLY_EXPIRED, NC-5; no state change), apply_failed
 //        (rolled back, APPLY_FAILED, retryable), action_not_applicable (not a billing adjustment)
 // Finance amounts (CCP-R3, LOCKED Finance amount scope; merge train TD-MERGE-43): the request
 // payload's amount, the chain basis amount, the command params' amount and the adjustment record's

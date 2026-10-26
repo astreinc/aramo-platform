@@ -23,6 +23,14 @@ export class PolicyDraftContentPatchDto {
   @IsOptional() @IsInt() past_due_grace_days?: number;
   /** CCP-FIX1 (D5-DEF-2; Charter Amendment A1 AD-1) — the optional apply deadline; the strict parser bounds it. */
   @IsOptional() @IsInt() apply_expiry_hours?: number;
+  /**
+   * CCP-DG (Charter Amendment A2 RX-1, RX-11) — the refund execution keys. The DTO checks only the
+   * JSON type; the strict parser enforces all-or-none, the reference format and the 64-hex hash
+   * (anything else, `null` included, is 400 policy_value_invalid).
+   */
+  @IsOptional() @IsBoolean() refund_execution_enabled?: boolean;
+  @IsOptional() @IsString() refund_policy_ref?: string;
+  @IsOptional() @IsString() refund_policy_sha256?: string;
 }
 
 /** PATCH /platform/commercial/policy-versions/:id — edit a DRAFT. */
@@ -56,6 +64,10 @@ export interface CommercialPolicyContentDto {
   past_due_grace_days: number;
   /** Charter Amendment A1 (AD-1) — present only when the version declares an apply deadline. */
   apply_expiry_hours?: number;
+  /** Charter Amendment A2 (RX-1) — the three refund keys, present together or not at all. */
+  refund_execution_enabled?: boolean;
+  refund_policy_ref?: string;
+  refund_policy_sha256?: string;
 }
 
 export interface CommercialPolicyVersionDto {

@@ -11,9 +11,11 @@ import type { C4BillingAdjustmentAction } from './commercial-change-request.js';
 //
 // Delivery status: NOT DELIVERED until the refund policy (legal) is verified (PBD §10). Credits and
 // discounts run end to end in Stripe TEST mode (the C1 dispatcher refuses a live key, TD-C1-3);
-// REFUND is built and DISABLED by design (REFUND_POLICY_NOT_APPROVED) unless the explicit flag
-// CCP_REFUND_EXECUTION_ENABLED=1 is set (default off; set only in tests; not in any compose or
-// .env example).
+// REFUND is built and DISABLED by design. CCP-DG (Charter Amendment A2): new refund execution needs
+// BOTH the operational switch CCP_REFUND_EXECUTION_ENABLED=1 (default off; set only in tests; not in
+// any compose or .env example; refusal REFUND_EXECUTION_NOT_RELEASED) AND an approved refund policy
+// in the ACTIVE and the snapshotted policy version (refusal REFUND_POLICY_NOT_APPROVED);
+// refund-execution-gate.ts.
 
 /** The operation one billing-adjustment request performs at the provider. */
 export type BillingAdjustmentOperation = AdjustmentCommandKind;
@@ -27,9 +29,9 @@ export const ADJUSTMENT_STEP: Readonly<Record<BillingAdjustmentOperation, string
   REFUND_CREATE: 'refund_create',
 };
 
-/** The refund designed disabled state (PBD §10): the stable refusal code. */
+/** The refund designed disabled state (PBD §10; Charter A2 RX-D1): gate 2's (commercial policy) stable refusal code. */
 export const REFUND_POLICY_NOT_APPROVED = 'REFUND_POLICY_NOT_APPROVED';
-/** The explicit opt-in flag (default OFF). Only `1` enables the refund execution path. */
+/** Gate 1 (Charter A2 RX-5): the operational release switch (default OFF). Only `1` releases it. */
 export const REFUND_EXECUTION_FLAG = 'CCP_REFUND_EXECUTION_ENABLED';
 export function refundExecutionEnabled(env: Readonly<Record<string, string | undefined>> = process.env): boolean {
   return env[REFUND_EXECUTION_FLAG] === '1';
@@ -78,7 +80,7 @@ export function adjustmentOperationOf(action_type: C4BillingAdjustmentAction, pa
 // ---- refusals and failures ------------------------------------------------------------------
 
 /** Refusals (nothing changes; one APPLY_REFUSED audit row). */
-export type BillingAdjustmentRefusalCode = typeof REFUND_POLICY_NOT_APPROVED | 'APPLY_EXPIRED' | typeof REFUND_OUTCOME_UNCERTAIN | 'NOT_RESOLVABLE' | RefundRemainderRefusal;
+export type BillingAdjustmentRefusalCode = typeof REFUND_POLICY_NOT_APPROVED | 'REFUND_EXECUTION_NOT_RELEASED' | 'APPLY_EXPIRED' | typeof REFUND_OUTCOME_UNCERTAIN | 'NOT_RESOLVABLE' | RefundRemainderRefusal;
 
 // ---- CCP-C4-R: REFUND identity (Architect C4 disposition, TD-C4-1 / TD-C4-12) -----------------
 //

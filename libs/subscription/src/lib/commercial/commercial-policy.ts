@@ -30,12 +30,24 @@ export const COMMERCIAL_POLICY_KEYS = [
 ] as const;
 
 /**
+ * Charter Amendment A2 (Refund execution policy keys, LOCKED 2026-10-25, RX-1) — the three OPTIONAL
+ * refund keys: the commercial gate (gate 2) and the identity of the approved refund policy document.
+ * All present or all absent: partial presence, a wrong type or a bad format fails the whole document
+ * closed (MALFORMED). Absent = refund execution disabled; never seeded, never defaulted.
+ */
+export const REFUND_POLICY_KEYS = ['refund_execution_enabled', 'refund_policy_ref', 'refund_policy_sha256'] as const;
+/** RX-D3 — `<DOCUMENT-ID>@<major>.<minor>`, e.g. `ARAMO-COM-REFUND-POL-001@1.0`. */
+export const REFUND_POLICY_REF_FORMAT = /^[A-Z0-9-]+@[0-9]+\.[0-9]+$/;
+/** RX-D3 — the SHA-256 of the LOCKED refund policy document: exactly 64 lowercase hex characters. */
+export const REFUND_POLICY_SHA256_FORMAT = /^[0-9a-f]{64}$/;
+
+/**
  * Charter Amendment A1 (Apply deadline, LOCKED 2026-10-25, AD-1) — OPTIONAL keys of a format-1
  * document. v1 carries none (it stays immutable and byte-identical); a v2 adds `apply_expiry_hours`
  * (named after `approval_expiry_hours`). Absent → no apply deadline (AD-2); present but malformed →
- * the whole document fails closed.
+ * the whole document fails closed. Charter Amendment A2 adds the three refund keys (REFUND_POLICY_KEYS).
  */
-export const COMMERCIAL_POLICY_OPTIONAL_KEYS = ['apply_expiry_hours'] as const;
+export const COMMERCIAL_POLICY_OPTIONAL_KEYS = ['apply_expiry_hours', ...REFUND_POLICY_KEYS] as const;
 
 export interface CommercialPolicyContent {
   format_version: 1;
@@ -62,6 +74,12 @@ export interface CommercialPolicyContent {
    * hours after its final approval. Absent (v1) = no apply deadline (AD-2).
    */
   apply_expiry_hours?: number;
+  /** Charter Amendment A2 (RX-1) — gate 2: this version permits new refund execution. Absent = disabled. */
+  refund_execution_enabled?: boolean;
+  /** Charter Amendment A2 (RX-2, RX-D3) — the approved refund policy document and version. */
+  refund_policy_ref?: string;
+  /** Charter Amendment A2 (RX-2, RX-D3) — the SHA-256 of that LOCKED document (its sidecar). */
+  refund_policy_sha256?: string;
 }
 
 /** The ACTIVE policy as the commercial engine consumes it. */
@@ -127,6 +145,21 @@ function intIn(errors: string[], doc: Record<string, unknown>, key: string, min:
   if (v < min || v > max) errors.push(`${key} must be between ${min} and ${max}`);
 }
 
+/** Charter Amendment A2 (RX-1, RX-D3) — all present or all absent; each strictly typed and formatted. */
+function refundKeyErrors(errors: string[], doc: Record<string, unknown>): void {
+  const present = REFUND_POLICY_KEYS.filter((k) => k in doc);
+  if (present.length === 0) return;
+  if (present.length !== REFUND_POLICY_KEYS.length) {
+    errors.push(`${REFUND_POLICY_KEYS.join(', ')} must be all present or all absent (present: ${present.join(', ')})`);
+    return;
+  }
+  if (typeof doc['refund_execution_enabled'] !== 'boolean') errors.push('refund_execution_enabled must be a boolean');
+  const ref = doc['refund_policy_ref'];
+  if (typeof ref !== 'string' || !REFUND_POLICY_REF_FORMAT.test(ref)) errors.push('refund_policy_ref must match <DOCUMENT-ID>@<major>.<minor>');
+  const sha = doc['refund_policy_sha256'];
+  if (typeof sha !== 'string' || !REFUND_POLICY_SHA256_FORMAT.test(sha)) errors.push('refund_policy_sha256 must be 64 lowercase hex characters');
+}
+
 /**
  * Strict parser. Accepts exactly a format-1 document; anything else throws
  * CommercialPolicyUnavailableError('MALFORMED') listing every problem found.
@@ -157,6 +190,7 @@ export function parseCommercialPolicyContent(raw: unknown): CommercialPolicyCont
   intIn(errors, doc, 'approval_expiry_hours', 1, MAX_HOURS);
   intIn(errors, doc, 'past_due_grace_days', 0, MAX_DAYS);
   if ('apply_expiry_hours' in doc) intIn(errors, doc, 'apply_expiry_hours', 1, MAX_HOURS);
+  refundKeyErrors(errors, doc);
   if (errors.length === 0) {
     // Internal coherence: one extension cannot exceed the cumulative cap, and the cap's
     // window cannot be shorter than the frequency window.
@@ -181,6 +215,14 @@ export function parseCommercialPolicyContent(raw: unknown): CommercialPolicyCont
     past_due_grace_days: doc['past_due_grace_days'] as number,
     // Only present when the version declares it (v1 parses to the exact v1 shape).
     ...('apply_expiry_hours' in doc ? { apply_expiry_hours: doc['apply_expiry_hours'] as number } : {}),
+    // Charter Amendment A2 (RX-1) — all three, or none (validated above).
+    ...('refund_execution_enabled' in doc
+      ? {
+          refund_execution_enabled: doc['refund_execution_enabled'] as boolean,
+          refund_policy_ref: doc['refund_policy_ref'] as string,
+          refund_policy_sha256: doc['refund_policy_sha256'] as string,
+        }
+      : {}),
   };
 }
 

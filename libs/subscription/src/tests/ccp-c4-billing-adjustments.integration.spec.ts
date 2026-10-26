@@ -19,9 +19,10 @@ import { COMMITMENT_TERM_DETAIL, SelfServiceBillingService, SelfServiceRefusedEr
 import { LEGAL_DOCUMENTS, type LegalDocumentVersion } from '../lib/legal/legal-documents.js';
 
 import { seededPolicyV1 } from './fixtures/commercial-policy-seed.js';
-import { CCP_BUNDLES, POLICY_V1, activatePolicyV2, addOperator, applyCcpA6Schema, grantRole, revokeRole } from './support/ccp-a3-database.js';
+import { CCP_BUNDLES, activatePolicyV2, addOperator, applyCcpA6Schema, grantRole, revokeRole } from './support/ccp-a3-database.js';
 import { A6_CTX, INCLUDED, as, newTenant, publishedVersion, rawSubscription } from './support/ccp-a6.js';
 import { type C4Harness, c4Harness, refundPayload } from './support/ccp-c4.js';
+import { TEST_REFUND_KEYS, TEST_REFUND_POLICY_REF, activatePolicyContent, v1With } from './support/ccp-dg.js';
 
 // CCP-C4 (PBD §5.2 row C4, §10; Conversion Rule C-22, C-23; Charter §6.4 NC-1…NC-5, §7 D5) — credits,
 // discounts and refunds executed in Stripe by C1 durable command, on real Postgres 17 with the real
@@ -52,6 +53,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 credits, d
   let FA2: string;
   let PO: string;
   let PO2: string;
+  /** CCP-DG — the ACTIVE policy of this suite: v1 + the test refund keys (gate 2 approved). */
+  let RELEASED: string;
   let now = T0;
   let keyN = 0;
   let evtN = 0;
@@ -79,6 +82,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 credits, d
     FA2 = await addOperator(pg, ['finance_admin']);
     PO = await addOperator(pg, ['platform_owner']);
     PO2 = await addOperator(pg, ['platform_owner']);
+    // CCP-DG (Charter Amendment A2): the suite's ACTIVE policy is v1 plus the test refund keys, so its
+    // REFUNDs are snapshotted under an approved refund policy and the switch (gate 1) alone decides
+    // whether a refund executes. The same values as v1 otherwise (thresholds unchanged).
+    RELEASED = await activatePolicyContent(pg, v1With(TEST_REFUND_KEYS));
   }, 300_000);
 
   afterAll(async () => {
@@ -179,7 +186,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 credits, d
     h.billing.invoices.set('in_c4small', { account_ref: small.acct });
     const r = await create('REFUND', small.t, refundPayload(1, 'in_c4small'));
     expect(r.request.required_chain).toMatchObject({ rule: 'FINANCE_THEN_OWNER', steps: [{ role_key: 'finance_admin', scope_keys: ['platform:billing:approve'] }, { role_key: 'platform_owner', scope_keys: ['platform:billing:approve'] }] });
-    expect(r.request.policy_version_id).toBe(POLICY_V1);
+    expect(r.request.policy_version_id).toBe(RELEASED);
   });
 
   // ---- no money movement before the chain completes (PBD C4 HALT row) ------------------------
@@ -384,25 +391,25 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 credits, d
 
   // ---- refund: the designed disabled state (PBD §10) ------------------------------------------
 
-  it('C4-REFUND-1 with the flag OFF (the default): a REFUND is created on Finance → Owner and fully approved, but its apply is refused REFUND_POLICY_NOT_APPROVED — no state change, no command, no provider call, ONE APPLY_REFUSED audit row; the read reports refund_execution_disabled', async () => {
+  it('C4-REFUND-1 with the flag OFF (the default): a REFUND is created on Finance → Owner and fully approved, but its apply is refused REFUND_EXECUTION_NOT_RELEASED (CCP-DG gate 1; the refund policy is approved) — no state change, no command, no provider call, ONE APPLY_REFUSED audit row; the read reports refund_execution_disabled', async () => {
     expect(process.env[REFUND_EXECUTION_FLAG]).toBeUndefined();
     const { t, acct } = await selfServiceTenant();
     h.billing.invoices.set('in_c4refund1', { account_ref: acct });
     const id = await approved('REFUND', t, refundPayload(4_000, 'in_c4refund1'));
     const w = h.billing.adjustmentCalls.length;
     const sigs = await approvalsJson(id);
-    expect(await refusal(applyAs(id))).toBe('REFUSED:REFUND_POLICY_NOT_APPROVED');
+    expect(await refusal(applyAs(id))).toBe('REFUSED:REFUND_EXECUTION_NOT_RELEASED');
     expect(await reqRow(id)).toMatchObject({ state: 'APPROVED', apply_attempts: 0 });
     expect(await commandsOf(id)).toEqual([]);
     expect(h.billing.adjustmentCalls.length - w).toBe(0);
     expect(await approvalsJson(id)).toEqual(sigs);
     const refused = (await pg.query(`SELECT payload FROM subscription."CommercialAuditEvent" WHERE change_request_id = $1 AND event_type = 'COMMERCIAL_CHANGE_REQUEST_APPLY_REFUSED'`, [id])).rows;
     expect(refused).toHaveLength(1);
-    expect(refused[0].payload).toMatchObject({ action_type: 'REFUND', refusal: 'REFUND_POLICY_NOT_APPROVED' });
+    expect(refused[0].payload).toMatchObject({ action_type: 'REFUND', refusal: 'REFUND_EXECUTION_NOT_RELEASED', detail: { gate_1_released: false, gate_2: 'APPROVED' } });
     expect(await h.adjustments.view(id)).toMatchObject({ status: 'NOT_APPLIED', refund_execution_disabled: true, operation: 'REFUND_CREATE' });
   });
 
-  it('C4-REFUND-2 with the flag ON (tests only): the same path runs end to end (one refund write, pending until the refund webhook); a refund command found by the dispatcher after the flag is switched OFF again is FAILED REFUND_POLICY_NOT_APPROVED with no provider call', async () => {
+  it('C4-REFUND-2 with the flag ON (tests only): the same path runs end to end (one refund write, pending until the refund webhook); a refund command found by the dispatcher after the flag is switched OFF again is FAILED REFUND_EXECUTION_NOT_RELEASED (CCP-DG gate 1) with no provider call', async () => {
     const { t, acct } = await selfServiceTenant();
     h.billing.invoices.set('in_c4refund2', { account_ref: acct });
     const id = await approved('REFUND', t, refundPayload(4_500, 'in_c4refund2'));
@@ -426,10 +433,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 credits, d
     }
     const w = h.billing.writes;
     await dispatch(); // … and found after it is switched off
-    expect((await commandsOf(held))[0]).toMatchObject({ state: 'FAILED', last_error_code: 'REFUND_POLICY_NOT_APPROVED' });
+    expect((await commandsOf(held))[0]).toMatchObject({ state: 'FAILED', last_error_code: 'REFUND_EXECUTION_NOT_RELEASED' });
     expect(h.billing.writes - w).toBe(0);
     expect((await reqRow(held)).state).toBe('APPLYING');
-    expect(await refusal(applyAs(held))).toBe('REFUSED:REFUND_POLICY_NOT_APPROVED'); // and cannot be re-armed while off
+    expect(await refusal(applyAs(held))).toBe('REFUSED:REFUND_EXECUTION_NOT_RELEASED'); // and cannot be re-armed while off
   });
 
   // ---- recovery: compensation through a new change request ------------------------------------
@@ -711,7 +718,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 credits, d
     const b = await approvedRefund(2_000);
     await withFlag(() => applyAs(b.id));
     await dispatch();
-    expect((await commandsOf(b.id))[0]).toMatchObject({ state: 'FAILED', last_error_code: 'REFUND_POLICY_NOT_APPROVED' });
+    expect((await commandsOf(b.id))[0]).toMatchObject({ state: 'FAILED', last_error_code: 'REFUND_EXECUTION_NOT_RELEASED' });
     expect(await resolve(b.id)).toMatchObject({ resolution: 'RESOLVED_NOT_EXECUTED', outcomes: ['NOT_FOUND'] });
     // (c) a refund the provider reports FAILED can no longer complete: resolvable too
     const c = await approvedRefund(3_000);
@@ -887,7 +894,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 credits, d
     await confirmedRefund(p.t, p.inv, 30_000);
     expect(await refusal(create('REFUND', p.t, refundPayload(70_001, p.inv)))).toBe('NOT_REFUNDABLE:REFUND_EXCEEDS_REMAINDER');
     const ok = await create('REFUND', p.t, refundPayload(70_000, p.inv));
-    expect(ok.request).toMatchObject({ state: 'DRAFT', payload: { amount_minor: 70_000, category: 'R4_SERVICE_FAILURE', refund_policy_ref: 'aramo-refund-policy@v1-draft' } });
+    expect(ok.request).toMatchObject({ state: 'DRAFT', payload: { amount_minor: 70_000, category: 'R4_SERVICE_FAILURE', refund_policy_ref: TEST_REFUND_POLICY_REF } });
   });
 
   it('C4P-2 an uncertain $200 command still held reserves its amount (never refundable again while uncertain); excluding that request shows the reservation is the only difference', async () => {
@@ -954,7 +961,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 credits, d
     expect((await pg.query(`SELECT count(*)::int n FROM subscription."CommercialChangeRequest" WHERE tenant_id = ANY($1::uuid[])`, [[p.t, eur.t]])).rows[0].n).toBe(0);
   });
 
-  it('C4P-6 payload provenance (gap 2): a closed category, a non-empty basis and a refund_policy_ref are required, with stable codes; they are immutable under the checksum; a policy ref NEVER makes a refund executable (still REFUND_POLICY_NOT_APPROVED, 0 Stripe refund calls)', async () => {
+  it('C4P-6 payload provenance (gap 2): a closed category, a non-empty basis and a refund_policy_ref are required, with stable codes; they are immutable under the checksum; a policy ref NEVER makes a refund executable by itself (switch off: REFUND_EXECUTION_NOT_RELEASED, 0 Stripe refund calls)', async () => {
     const p = await paidInvoice(100_000);
     const codes = async (payload: Record<string, unknown>): Promise<unknown> => {
       try {
@@ -974,7 +981,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 credits, d
     const id = await approved('REFUND', p.t, refundPayload(5_000, p.inv, { category: 'R7_GOODWILL' }));
     expect(await dbError(`UPDATE subscription."CommercialChangeRequest" SET payload = jsonb_set(payload, '{category}', '"R1_DUPLICATE"') WHERE id = $1`, [id])).toContain('immutable');
     const calls = h.billing.adjustmentCalls.length;
-    expect(await refusal(applyAs(id))).toBe('REFUSED:REFUND_POLICY_NOT_APPROVED');
+    expect(await refusal(applyAs(id))).toBe('REFUSED:REFUND_EXECUTION_NOT_RELEASED');
     expect(h.billing.adjustmentCalls.length - calls).toBe(0);
     expect(h.billing.refunds.filter((r) => r.invoice_ref === p.inv)).toHaveLength(0);
   });
@@ -1037,7 +1044,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C4 credits, d
     await submit(inflight.request.id);
     const v2content = { ...(seededPolicyV1().content as Record<string, unknown>), credit_escalation_threshold_minor: 100_000, apply_expiry_hours: 72 };
     const v2 = await activatePolicyV2(pg, v2content, commercialPolicyChecksum(v2content));
-    expect((await approveFa(inflight.request.id)).request).toMatchObject({ state: 'PENDING_APPROVAL', policy_version_id: POLICY_V1 });
+    expect((await approveFa(inflight.request.id)).request).toMatchObject({ state: 'PENDING_APPROVAL', policy_version_id: RELEASED });
     await approvePo(inflight.request.id);
     expect((await applyAs(inflight.request.id)).request.state).toBe('APPLYING');
 

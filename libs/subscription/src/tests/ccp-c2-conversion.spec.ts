@@ -93,7 +93,8 @@ describe('CCP-C2 conversion (pure)', () => {
   });
 
   it('C2-U-5 apply deadline (AD-1…AD-3; merge train TD-MERGE-21): one policy key, apply_expiry_hours (A6-R), validated by the A2 parser (the conversion deadline refusal is the A6-R one, CCP-FIX1 O-D4-2)', () => {
-    expect(COMMERCIAL_POLICY_OPTIONAL_KEYS).toEqual(['apply_expiry_hours']);
+    // CCP-DG (Charter Amendment A2 RX-1) adds the three refund keys after apply_expiry_hours.
+    expect(COMMERCIAL_POLICY_OPTIONAL_KEYS).toEqual(['apply_expiry_hours', 'refund_execution_enabled', 'refund_policy_ref', 'refund_policy_sha256']);
     expect(parseCommercialPolicyContent(V1_CONTENT).apply_expiry_hours).toBeUndefined();
     expect(parseCommercialPolicyContent({ ...V1_CONTENT, apply_expiry_hours: 72 }).apply_expiry_hours).toBe(72);
     for (const v of [0, -1, 1.5, '72', null]) expect(() => parseCommercialPolicyContent({ ...V1_CONTENT, apply_expiry_hours: v }), String(v)).toThrow();
