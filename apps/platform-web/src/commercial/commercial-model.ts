@@ -498,8 +498,18 @@ const REACH: Readonly<Record<string, number>> = {
 };
 const TERMINAL = ['REJECTED', 'EXPIRED', 'WITHDRAWN', 'APPLY_FAILED'];
 
+/**
+ * CCP-C4 — the Stripe-side request types: their Applying chip reads "Sent to Stripe — awaiting
+ * confirmation" (handoff §4 "While a Stripe-side request is Applying …"; Conversion Rule C-23: never
+ * reported done before the provider confirms). A credit, discount or refund in APPLYING is always
+ * pending at the provider (it commits in APPLYING only with its durable command).
+ */
+export const STRIPE_SIDE_ACTIONS: readonly string[] = ['CREDIT', 'DISCOUNT', 'REFUND'];
+export const STRIPE_SENT_LABEL = 'Sent to Stripe — awaiting confirmation';
+
 /** The design's stepper model (Commercial Control Plane v1.0.dc.html, drawer `stepper`). */
-export function stateSteps(state: string): StateStep[] {
+export function stateSteps(state: string, actionType?: string): StateStep[] {
+  const stripeSent = state === 'APPLYING' && actionType !== undefined && STRIPE_SIDE_ACTIONS.includes(actionType);
   const reach = REACH[state] ?? 0;
   const term = TERMINAL.includes(state);
   // A request withdrawn while still a draft never reached Pending approval.
@@ -508,7 +518,7 @@ export function stateSteps(state: string): StateStep[] {
     const failed = term && i === reach;
     const current = !term && i === reach && !done;
     return {
-      label: statePill(k).label,
+      label: k === 'APPLYING' && stripeSent ? STRIPE_SENT_LABEL : statePill(k).label,
       mark: done ? 'done' : failed ? 'failed' : current ? 'current' : 'todo',
       dim: term && i > reach,
     };

@@ -86,7 +86,7 @@ describe('CCP-A9 narrow apply transitions (TD-A9-1)', () => {
     expect(base).toBe(6);
     expect(Object.values(COMMERCIAL_A3_TRANSITIONS).flat()).not.toContain('APPLYING');
     // CCP-B5-R (TD-B5-1; Charter Amendment A1 AD-4 for every applyable type).
-    const APPLY_SET = ['SUBSCRIPTION_OPEN', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'ENTITLEMENT_GRANT', 'PLAN_VERSION_PUBLISH', 'PLAN_RETIRE', 'POLICY_ACTIVATE', 'CONVERSION', 'ENTITLEMENT_REVOKE', 'SUPPORT_EXTENSION'];
+    const APPLY_SET = ['SUBSCRIPTION_OPEN', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'ENTITLEMENT_GRANT', 'PLAN_VERSION_PUBLISH', 'PLAN_RETIRE', 'POLICY_ACTIVATE', 'CONVERSION', 'ENTITLEMENT_REVOKE', 'SUPPORT_EXTENSION', 'CREDIT', 'DISCOUNT', 'REFUND']; // CCP-C4 adds the billing adjustments
     const EXPIRY = ['APPLY_FAILED->APPLY_EXPIRED', 'APPROVED->APPLY_EXPIRED'];
     const A6_SET = ['APPLYING->APPLIED', 'APPLYING->APPLY_FAILED', 'APPLY_FAILED->APPLYING', 'APPROVED->APPLYING'];
     for (const action of Object.keys(COMMERCIAL_ACTIONS)) {
@@ -94,8 +94,10 @@ describe('CCP-A9 narrow apply transitions (TD-A9-1)', () => {
       for (const f of states) for (const t of states) if (canTransitionFor(action, f, t) && !a3(f, t)) extra.push(`${f}->${t}`);
       const role = action === 'ROLE_GRANT' || action === 'ROLE_REVOKE';
       const applySet = APPLY_SET.includes(action);
+      // CCP-C4-R: a REFUND also has the governed resolution APPLYING -> WITHDRAWN (TD-C4-12).
+      const resolution = action === 'REFUND' ? ['APPLYING->WITHDRAWN'] : [];
       expect(extra.sort(), action).toEqual(
-        role ? ['APPLYING->APPLIED', ...EXPIRY, 'APPROVED->APPLYING'].sort() : applySet ? [...A6_SET, ...EXPIRY].sort() : [],
+        role ? ['APPLYING->APPLIED', ...EXPIRY, 'APPROVED->APPLYING'].sort() : applySet ? [...A6_SET, ...EXPIRY, ...resolution].sort() : [],
       );
       if (!applySet) for (const f of states) expect(canTransitionFor(action, f, 'APPLY_FAILED'), `${action} ${f}`).toBe(false);
       // AD-4: never from APPLYING, for any action.

@@ -35,6 +35,8 @@ export interface BillingWebhookInboxRow {
   event_created_at: Date;
   subscription_ref: string | null;
   checkout_session_ref: string | null;
+  /** CCP-C4 — the provider object the event concerns (a billing adjustment's), or null. */
+  object_ref: string | null;
   product_key: string;
   status: string;
   attempts: number;
@@ -104,6 +106,8 @@ export class BillingWebhookInboxService {
           event_created_at: evt.created,
           subscription_ref: evt.subscription_ref,
           checkout_session_ref: evt.checkout_session_ref ?? null,
+          // CCP-C4 — written only when present (a narrowed pre-C4 schema keeps working).
+          ...(evt.object_ref !== undefined && evt.object_ref !== null ? { object_ref: evt.object_ref } : {}),
           product_key,
           status: 'RECEIVED',
           attempts: 0,
@@ -173,6 +177,7 @@ export class BillingWebhookInboxService {
       created: row.event_created_at,
       subscription_ref: row.subscription_ref,
       ...(row.checkout_session_ref !== null ? { checkout_session_ref: row.checkout_session_ref } : {}),
+      ...(row.object_ref !== undefined && row.object_ref !== null ? { object_ref: row.object_ref } : {}),
     };
     let result: WebhookResult;
     try {

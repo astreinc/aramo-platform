@@ -13,8 +13,11 @@ DO $$ BEGIN
   END IF;
 END $$;
 
--- 1. The CCP-C1 body of guard_billing_provider_command(), verbatim from
---    20261026020000_ccp_c1_stripe_command_inbox (the CCP-C7 blocks are the only difference).
+-- 1. The body that precedes CCP-C7 on the integrated chain: guard_billing_provider_command() verbatim
+--    from 20261028010000_ccp_c4_billing_adjustments (the C1 body plus the CCP-C4 block). Merge train
+--    TD-MERGE-CMDGUARD-1: on the integrated branch this compensation runs AFTER the command-guard-union
+--    compensation (fixtures/ccp-command-guard-union-compensating.sql) and BEFORE CCP-C4's own (which
+--    restores the C1 body). The slice-branch version restored the C1 body (no C4 on that branch).
 CREATE OR REPLACE FUNCTION "subscription"."guard_billing_provider_command"()
 RETURNS TRIGGER AS $$
 DECLARE
@@ -38,10 +41,18 @@ BEGIN
         IF req."state" NOT IN ('APPROVED', 'APPLYING', 'APPLY_FAILED') THEN
             RAISE EXCEPTION 'BillingProviderCommand: change request % is % (needs a completed approval chain)', NEW."change_request_id", req."state";
         END IF;
-        -- C1 command-issuing actions (C4 widens with CREDIT / DISCOUNT).
-        IF req."action_type" NOT IN ('CONVERSION') THEN
+        -- C1 command-issuing actions; >>> CCP-C4: + CREDIT, DISCOUNT, REFUND >>>
+        IF req."action_type" NOT IN ('CONVERSION', 'CREDIT', 'DISCOUNT', 'REFUND') THEN
             RAISE EXCEPTION 'BillingProviderCommand: action % does not issue provider commands', req."action_type";
         END IF;
+        -- CCP-C4: each action issues only its own kinds.
+        IF NOT ((req."action_type" = 'CONVERSION' AND NEW."command_kind" IN ('SUBSCRIPTION_CANCEL', 'CHECKOUT_SESSION_EXPIRE'))
+             OR (req."action_type" = 'CREDIT' AND NEW."command_kind" IN ('CREDIT_GRANT', 'CREDIT_REVERSE'))
+             OR (req."action_type" = 'DISCOUNT' AND NEW."command_kind" IN ('DISCOUNT_APPLY', 'DISCOUNT_REMOVE'))
+             OR (req."action_type" = 'REFUND' AND NEW."command_kind" = 'REFUND_CREATE')) THEN
+            RAISE EXCEPTION 'BillingProviderCommand: action % does not issue % commands', req."action_type", NEW."command_kind";
+        END IF;
+        -- <<< CCP-C4 <<<
         IF req."tenant_id" IS DISTINCT FROM NEW."tenant_id" OR req."product_key" IS DISTINCT FROM NEW."product_key" THEN
             RAISE EXCEPTION 'BillingProviderCommand: tenant / product differ from change request %', NEW."change_request_id";
         END IF;

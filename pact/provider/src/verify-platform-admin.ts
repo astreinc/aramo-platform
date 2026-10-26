@@ -15,7 +15,20 @@ import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { AppModule } from '@aramo/platform-admin';
-import { BILLING_PROVIDER_READ_PORT, SubscriptionPrismaService, UsageRollupService, type BillingProviderReadPort, type ProviderInvoiceState, type ProviderPortalConfigurationState, type ProviderSubscriptionState } from '@aramo/subscription';
+import {
+  BILLING_PROVIDER_ADJUSTMENT_PORT,
+  BILLING_PROVIDER_READ_PORT,
+  SubscriptionPrismaService,
+  UsageRollupService,
+  type BillingProviderAdjustmentPort,
+  type BillingProviderReadPort,
+  type ProviderAdjustmentEffect,
+  type ProviderAdjustmentRequest,
+  type ProviderInvoiceState,
+  type ProviderPaymentPicture,
+  type ProviderPortalConfigurationState,
+  type ProviderSubscriptionState,
+} from '@aramo/subscription';
 
 // eslint-disable-next-line @nx/enforce-module-boundaries -- test-only real-Postgres support shared with the CCP-A3 specs (TD-A3-19 precedent; CLAUDE.md "one shared test helper")
 import { PLATFORM_TENANT, TENANT_2, addOperator, applyCcpA6Schema, revokeRole } from '../../../libs/subscription/src/tests/support/ccp-a3-database.js';
@@ -187,6 +200,37 @@ class PactBillingReader implements BillingProviderReadPort {
   }
 }
 
+/**
+ * CCP-C4-R — an in-memory billing-adjustment port: reads answer "no refund exists for this command"
+ * (NOT_FOUND), except for the tenants whose reads are set to fail (an unproven outcome). It never
+ * executes anything (the harness never dispatches; executeAdjustment throws).
+ */
+class PactAdjustmentReader implements BillingProviderAdjustmentPort {
+  readonly provider = 'STRIPE' as const;
+  readonly failingTenants = new Set<string>();
+  /** CCP-C4-P — invoice → the paying account (the states register their tenant's account). */
+  readonly invoices = new Map<string, string>();
+  isConfigured(): boolean {
+    return true;
+  }
+  mode(): 'test' | 'live' {
+    return 'test';
+  }
+  async executeAdjustment(): Promise<{ object_ref: string }> {
+    throw new Error('pact adjustment reader: no provider execution in the verifier');
+  }
+  async readAdjustmentEffect(req: ProviderAdjustmentRequest): Promise<ProviderAdjustmentEffect> {
+    if (this.failingTenants.has(req.tenant_id)) throw new Error('pact adjustment reader: provider read unavailable');
+    return { provider: 'STRIPE', operation: req.operation, object_ref: null, present: false, provider_status: null, tenant_id: null, live: false, observed_amount_minor: null, refundable_remainder_minor: null, payment_currency: null };
+  }
+  /** CCP-C4-P — a paid invoice with no refund and no dispute (its payment: pi_<invoice body>). */
+  async readPaymentPicture(invoice_ref: string): Promise<ProviderPaymentPicture> {
+    const account_ref = this.invoices.get(invoice_ref);
+    if (account_ref === undefined) throw new Error(`pact adjustment reader: unknown invoice ${invoice_ref}`);
+    return { provider: 'STRIPE', invoice_ref, account_ref, payment_ref: `pi_${invoice_ref.replace(/^in_/, '')}`, currency: 'usd', captured_minor: 1_000_000, refunds: [], disputes: [], complete: true, live: false };
+  }
+}
+
 describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
   'pact provider verification — platform-admin (apps/platform-admin)',
   () => {
@@ -202,6 +246,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     let usagePrisma: SubscriptionPrismaService;
     let usage: UsageRollupService;
     const billingReader = new PactBillingReader();
+    const adjustmentReader = new PactAdjustmentReader();
 
     async function signToken(sub: string, consumer_type: 'platform' | 'recruiter', tenant_id: string, key: SigningKey): Promise<string> {
       const now = Math.floor(Date.now() / 1000);
@@ -392,6 +437,54 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     }
 
     /**
+     * CCP-C4 — an APPROVED billing adjustment on a fresh tenant holding a Stripe-owned (SELF_SERVICE,
+     * provider-linked) Sign row: commercial_ops requests, finance_admin (and platform_owner when the
+     * snapshotted chain escalates) approves, through the HTTP surface.
+     */
+    /** CCP-C4-R — an APPROVED REFUND applied by its requester (the flag set only for this seed call). */
+    async function appliedRefund(invoice: string): Promise<{ requestId: string; tenant_id: string }> {
+      const requestId = await approvedAdjustment('REFUND', refundPayload(invoice));
+      process.env['CCP_REFUND_EXECUTION_ENABLED'] = '1';
+      try {
+        await asRole('commercial_ops', 'POST', `/platform/commercial/change-requests/${requestId}/billing-adjustment`);
+      } finally {
+        delete process.env['CCP_REFUND_EXECUTION_ENABLED'];
+      }
+      const t = await db.query(`SELECT tenant_id::text AS t FROM subscription."CommercialChangeRequest" WHERE id = $1`, [requestId]);
+      return { requestId, tenant_id: t.rows[0].t as string };
+    }
+
+    /** CCP-C4-P — a complete REFUND payload (the invoice, its payment and the provenance). */
+    function refundPayload(invoice: string): Record<string, unknown> {
+      return { amount_minor: 100, currency: 'USD', provider_invoice_ref: invoice, provider_payment_ref: `pi_${invoice.replace(/^in_/, '')}`, category: 'R4_SERVICE_FAILURE', basis: 'Service outage under the order form', refund_policy_ref: 'aramo-refund-policy@v1-draft' };
+    }
+
+    async function approvedAdjustment(action_type: 'CREDIT' | 'DISCOUNT' | 'REFUND', payload: Record<string, unknown>): Promise<string> {
+      const tenant_id = await commercialTenant();
+      if (action_type === 'REFUND') adjustmentReader.invoices.set(String(payload['provider_invoice_ref']), `acct_${tenant_id}`);
+      const ss = randomUUID();
+      await db.query(
+        `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by, billing_provider, billing_account_ref, billing_subscription_ref)
+         SELECT $1::uuid, $2::uuid, p.id, (SELECT v.id FROM subscription."PlanVersion" v WHERE v.plan_id = p.id AND v.status = 'PUBLISHED'), p.product_key, 'BASE', now(), 'SELF_SERVICE', 'pact-c4', 'STRIPE', $3, $4
+           FROM subscription."Plan" p WHERE p.key = 'aramo-sign-standard-business-v1'`,
+        [ss, tenant_id, `acct_${tenant_id}`, `sub_${ss}`],
+      );
+      const out = await asRole<{ request: { id: string; state: string } }>('commercial_ops', 'POST', '/platform/commercial/change-requests', {
+        action_type,
+        tenant_id,
+        product_key: 'sign',
+        payload,
+        reason: 'Credit for a service outage',
+        idempotency_key: `pact-c4-state-${String(++seq).padStart(4, '0')}`,
+      });
+      const id = out.request.id;
+      await asRole('commercial_ops', 'POST', `/platform/commercial/change-requests/${id}/submit`);
+      const a = await asRole<{ request: { state: string } }>('finance_admin', 'POST', `/platform/commercial/change-requests/${id}/approvals`, { step_index: 0 });
+      if (a.request.state !== 'APPROVED') await asRole('platform_owner', 'POST', `/platform/commercial/change-requests/${id}/approvals`, { step_index: 1 });
+      return id;
+    }
+
+    /**
      * CCP-A8 — a commercial tenant holding a Stripe-owned (SELF_SERVICE, provider-linked) Sign row,
      * PAST_DUE, whose grace ended a day ago: the target of a support extension. Fixed ids from the
      * consumer (its request body names them).
@@ -441,6 +534,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         STRIPE_PORTAL_CONFIGURATION: undefined,
         // CCP-D3 — the alert scanner stays off; the alert states below seed the register.
         CCP_ALERTS_ENABLED: undefined,
+        // CCP-C4 — the refund execution path stays in its designed disabled state (default off).
+        CCP_REFUND_EXECUTION_ENABLED: undefined,
       };
       for (const [k, v] of Object.entries(env)) {
         savedEnv[k] = process.env[k];
@@ -450,7 +545,13 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       for (const role of Object.keys(OP) as Role[]) tokens.set(role, await signToken(OP[role], 'platform', PLATFORM_TENANT, kp.privateKey));
       tokens.set('recruiter', await signToken(RECRUITER_ID, 'recruiter', TENANT_2, kp.privateKey));
 
-      module = await Test.createTestingModule({ imports: [AppModule] }).overrideProvider(BILLING_PROVIDER_READ_PORT).useValue(billingReader).compile();
+      module = await Test.createTestingModule({ imports: [AppModule] })
+        .overrideProvider(BILLING_PROVIDER_READ_PORT)
+        .useValue(billingReader)
+        // CCP-C4-R — the refund resolution's authoritative read (no execution).
+        .overrideProvider(BILLING_PROVIDER_ADJUSTMENT_PORT)
+        .useValue(adjustmentReader)
+        .compile();
       app = module.createNestApplication<NestExpressApplication>({ logger: ['error', 'warn'] });
       // Mirror apps/platform-admin/src/main.ts: cookie-parser, then the ValidationPipe.
       app.use(cookieParser());
@@ -823,6 +924,25 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             await asRole('commercial_ops', 'POST', `/platform/commercial/change-requests/${requestId}/convert`);
             return { requestId };
           },
+          // CCP-C4 — billing adjustments on a Stripe-owned (SELF_SERVICE, provider-linked) Sign row.
+          // No provider is configured in the harness: a command is enqueued and never dispatched.
+          'an approved credit on a self-service tenant exists': async () => ({ requestId: await approvedAdjustment('CREDIT', { amount_minor: 100, currency: 'USD' }) }),
+          'a credit is pending at the provider': async () => {
+            const requestId = await approvedAdjustment('CREDIT', { amount_minor: 100, currency: 'USD' });
+            await asRole('commercial_ops', 'POST', `/platform/commercial/change-requests/${requestId}/billing-adjustment`);
+            return { requestId };
+          },
+          'an approved refund exists': async () => ({ requestId: await approvedAdjustment('REFUND', refundPayload('in_pactc4refund')) }),
+          // CCP-C4-R — a REFUND applied by its requester (the flag set only for this seed call): its
+          // command is queued and never dispatched (no provider in the harness), so its outcome is unproven.
+          'a refund is being applied': async () => {
+            const { requestId, tenant_id } = await appliedRefund('in_pactc4resolve');
+            adjustmentReader.failingTenants.add(tenant_id); // its provider read fails: the outcome is unproven
+            return { requestId };
+          },
+          'a refund that was never executed is being applied': async () => ({ requestId: (await appliedRefund('in_pactc4notrun')).requestId }),
+          // CCP-C4-P — the refund report reads an approved REFUND (no amount for a non-holder).
+          'refund records exist': async () => ({ requestId: await approvedAdjustment('REFUND', refundPayload('in_pactc4report')) }),
           // CCP-A8 — the support exception overlay.
           'a tenant with a past-due Stripe-owned Sign subscription exists': async (params?: unknown) => {
             const p = params as { tenant_id?: unknown; subscription_id?: unknown } | undefined;

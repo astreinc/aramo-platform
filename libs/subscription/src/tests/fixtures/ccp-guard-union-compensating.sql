@@ -2,8 +2,8 @@
 -- Compensating the union means re-applying the body it superseded: the guard as the LAST-SORTING slice
 -- migration that re-creates it wrote it, which is CCP-C2 (20261026060000: the A6 body plus the CONVERSION
 -- blocks). The function below is copied verbatim from that migration.
--- That body has no branch for PLAN_VERSION_PUBLISH, PLAN_RETIRE, ENTITLEMENT_REVOKE, SUPPORT_EXTENSION or
--- POLICY_ACTIVATE applies and no APPLY_EXPIRED rules. The compensation is therefore refused (RAISE, nothing
+-- That body has no branch for PLAN_VERSION_PUBLISH, PLAN_RETIRE, ENTITLEMENT_REVOKE, SUPPORT_EXTENSION,
+-- POLICY_ACTIVATE or (CCP-C4) CREDIT / DISCOUNT / REFUND applies and no APPLY_EXPIRED rules. The compensation is therefore refused (RAISE, nothing
 -- changed) while a request of those types is in an apply state, or any request is APPLY_EXPIRED: it is
 -- valid only as the first step of rolling back the slices that added those branches (B5-R, A6-R, A8, A7,
 -- CCP-B2-backend), each with its own compensation, in reverse order. Otherwise the right recovery is to
@@ -13,7 +13,7 @@ SET LOCAL lock_timeout = '5s';
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM "subscription"."CommercialChangeRequest"
-              WHERE "action_type" IN ('PLAN_VERSION_PUBLISH', 'PLAN_RETIRE', 'ENTITLEMENT_REVOKE', 'SUPPORT_EXTENSION', 'POLICY_ACTIVATE')
+              WHERE "action_type" IN ('PLAN_VERSION_PUBLISH', 'PLAN_RETIRE', 'ENTITLEMENT_REVOKE', 'SUPPORT_EXTENSION', 'POLICY_ACTIVATE', 'CREDIT', 'DISCOUNT', 'REFUND')
                 AND "state" IN ('APPROVED', 'APPLYING', 'APPLY_FAILED')) THEN
     RAISE EXCEPTION 'CCP guard-union compensation refused: a request whose apply branch the preceding body lacks is in an apply state';
   END IF;

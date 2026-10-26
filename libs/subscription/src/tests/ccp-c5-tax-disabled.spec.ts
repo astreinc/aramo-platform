@@ -11,6 +11,7 @@ import {
   type ProviderSubscriptionState,
 } from '../lib/billing/billing-provider.port.js';
 import { BillingFinanceReportService } from '../lib/billing/billing-finance-report.service.js';
+import type { ProviderAdjustmentRequest } from '../lib/billing/billing-provider.port.js';
 import { BillingStatusReadService } from '../lib/billing/billing-status-read.service.js';
 import { STRIPE_READ_ADAPTER_METHODS, StripeBillingReadAdapter } from '../lib/billing/stripe-billing-read.adapter.js';
 import { StripeBillingProvider } from '../lib/billing/stripe-billing.provider.js';
@@ -193,7 +194,10 @@ describe('CCP-C5 the no-tax-call guard — fake provider client on every provide
         });
         if (u.pathname === '/v1/invoices') return new Response(JSON.stringify({ object: 'list', data: [] }), { status: 200 });
         return new Response(
-          JSON.stringify({ id: 'obj_c5', url: 'https://provider.c5.test/session', status: 'active', active: true, metadata: { tenant_id: 't-c5' }, items: { data: [] } }),
+          // Merge train (TD-MERGE-43): the generic object also carries a payment and an amount paid,
+          // so the CCP-C4 refund calls reach every request they make. It names no paying account, so
+          // the refund request below binds the empty account the wire mapper then reads.
+          JSON.stringify({ id: 'obj_c5', url: 'https://provider.c5.test/session', status: 'active', active: true, metadata: { tenant_id: 't-c5' }, items: { data: [] }, payment_intent: 'pi_c5', currency: 'usd', amount_paid: 4900 }),
           { status: 200 },
         );
       }),
@@ -204,6 +208,14 @@ describe('CCP-C5 the no-tax-call guard — fake provider client on every provide
     vi.unstubAllGlobals();
   });
 
+  const ADJ = { command_id: 'cmd-c5', tenant_id: 't-c5', currency: 'USD' };
+  const ADJUSTMENTS: ProviderAdjustmentRequest[] = [
+    { ...ADJ, operation: 'CREDIT_GRANT', target_ref: 'acct_c5', amount_minor: 500 },
+    { ...ADJ, operation: 'CREDIT_REVERSE', target_ref: 'acct_c5', amount_minor: 500 },
+    { ...ADJ, operation: 'DISCOUNT_APPLY', target_ref: 'sub_c5', discount_bps: 1000, coupon_ref: 'aramo-c5' },
+    { ...ADJ, operation: 'DISCOUNT_REMOVE', target_ref: 'sub_c5', coupon_ref: 'aramo-c5' },
+    { ...ADJ, operation: 'REFUND_CREATE', target_ref: 'in_c5', account_ref: '', amount_minor: 500 },
+  ];
   // The provider calls each adapter can make, keyed by method (one or more invocations each).
   const PROVIDER_CALLS: Record<string, (p: StripeBillingProvider) => Promise<unknown>> = {
     upsertBillingAccount: async (p) => {
@@ -227,6 +239,18 @@ describe('CCP-C5 the no-tax-call guard — fake provider client on every provide
     },
     expireCheckoutSession: (p) => p.expireCheckoutSession('cs_c5', 'k-3'),
     retrieveCheckoutSession: (p) => p.retrieveCheckoutSession('cs_c5'),
+    // Merge train (TD-MERGE-43, C5 x C4 / C4-P): the CCP-C4 billing-adjustment write, its re-read and
+    // the C4-P payment picture, on every operation.
+    executeAdjustment: async (p) => {
+      for (const r of ADJUSTMENTS) await p.executeAdjustment(r, `k-${r.operation}`);
+    },
+    readAdjustmentEffect: async (p) => {
+      for (const r of ADJUSTMENTS) {
+        await p.readAdjustmentEffect(r, null);
+        await p.readAdjustmentEffect(r, 'obj_c5');
+      }
+    },
+    readPaymentPicture: (p) => p.readPaymentPicture('in_c5'),
   };
   const READ_CALLS: Record<string, (a: StripeBillingReadAdapter) => Promise<unknown>> = {
     retrieveSubscription: (a) => a.retrieveSubscription('sub_c5'),
@@ -251,8 +275,13 @@ describe('CCP-C5 the no-tax-call guard — fake provider client on every provide
     const a = new StripeBillingReadAdapter();
     for (const call of Object.values(READ_CALLS)) await call(a);
 
-    // Every call above reached the fake client (11 provider requests + 3 read requests).
-    expect(recorded.length).toBe(14);
+    // Every call above reached the fake client: the C1-era 11 provider requests + 3 read requests,
+    // plus (merge train TD-MERGE-43) the CCP-C4 / C4-P 22: executeAdjustment 7 (credit grant /
+    // reverse 1 each, discount apply 2 (coupon + subscription), discount remove 1, refund 2 (invoice
+    // re-verify + refund)), readAdjustmentEffect 12 (2 reads each for the 2 credit, 2 discount and
+    // refund operations: credit 1 + 1, discount 1 + 1, refund 2 + 2) and readPaymentPicture 3.
+    expect(recorded.length).toBe(36);
+    for (const w of ['POST /v1/refunds', 'POST /v1/coupons', 'GET /v1/disputes', 'GET /v1/refunds']) expect(recorded.map((r) => `${r.method} ${r.path}`), w).toContain(w);
     expect(new Set(recorded.map((r) => `${r.method} ${r.path}`)).size).toBeGreaterThanOrEqual(9);
     for (const r of recorded) {
       const where = `${r.method} ${r.path}`;

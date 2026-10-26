@@ -68,6 +68,21 @@ export const APPLY_EXPLANATIONS: Readonly<Record<string, string>> = {
   POLICY_TARGET_MALFORMED: 'The policy version content does not parse as a commercial policy.',
   POLICY_ACTIVE_CHANGED: 'Another policy version became active after this request was raised; raise a new request against the current policy.',
   UNEXPECTED: 'The apply failed unexpectedly and was rolled back; it can be retried.',
+  // CCP-C4 — the Stripe-side billing adjustments (credits, discounts, refunds)
+  REFUND_POLICY_NOT_APPROVED: 'Refunds are not available yet: the refund policy has not been approved. Nothing was sent to Stripe.',
+  TARGET_NOT_SELF_SERVICE: 'The tenant has no self-service (Stripe-managed) subscription of this product; credits, discounts and refunds are sent to Stripe only for those.',
+  COMPENSATION_TARGET_INVALID: 'The request this one compensates is not an applied request of the same kind, tenant and product.',
+  COMPENSATION_MISMATCH: 'A compensation must reverse exactly the amount, currency or percentage of the request it compensates.',
+  ALREADY_COMPENSATED: 'The request named here has already been compensated.',
+  // CCP-C4-R — the refund resolution and the refund identity checks
+  REFUND_OUTCOME_UNCERTAIN: 'Whether this refund happened at Stripe is not proven yet (a provider read failed, a refund is pending or for another amount, or a send is in progress). The request stays open; try again later.',
+  NOT_RESOLVABLE: 'Only a refund that is being applied and has not been confirmed can be resolved this way.',
+  REFUND_EXCEEDS_REMAINDER: 'The refund is larger than what is still refundable on that payment; nothing was sent to Stripe.',
+  REFUND_CURRENCY_MISMATCH: 'The refund currency is not the currency of that payment; nothing was sent to Stripe.',
+  // CCP-C4-P (Amendment A1 RF-4, RF-5)
+  REFUND_PAYMENT_DISPUTED: 'A dispute on that payment is open or unresolved; no refund can be made until it is settled.',
+  REFUND_REMAINDER_UNVERIFIABLE: 'The refundable amount of that payment could not be verified at Stripe, so the refund is refused rather than guessed.',
+  REFUND_PAYMENT_MISMATCH: 'The invoice or payment is not one this tenant paid for this product.',
 };
 
 export const explanationOf = (code: string): string => APPLY_EXPLANATIONS[code] ?? 'The change could not be applied.';

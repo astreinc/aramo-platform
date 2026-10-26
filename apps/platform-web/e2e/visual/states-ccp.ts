@@ -7,6 +7,7 @@
 import type { Page } from '@playwright/test';
 
 import { CR, ccpMock } from '../fixtures/commercial';
+
 import type { Mask, ScreenState } from './state-types';
 import { swap } from './masks-common';
 
@@ -150,6 +151,24 @@ export const CCP_STATES: readonly ScreenState[] = [
       },
     },
     masks: [RAIL, ROWS, DRAWER_ID, fact('Requested by'), fact('Policy'), EFFECT_DOWN, DIALOG],
+    blur: true,
+  },
+  {
+    // CCP-C4 — handoff §4: "While a Stripe-side request is Applying, that chip reads 'Sent to Stripe —
+    // awaiting confirmation'". The prototype's finance persona signs CR-1042 (a below-threshold
+    // credit), which it sends to Stripe; the build shows the same request applied by its requester and
+    // pending at the provider. Element-level: the stepper only (the drawer's Apply panel and toast are
+    // not built, recorded for CCP-UI v1.1).
+    name: 'ccp-drawer-stripe-sent',
+    proto: { file: 'ccp', ccp: { persona: 'priya' }, hash: 'approvals', state: { crOpen: 'CR-1042' }, call: "c.approve('CR-1042')" },
+    build: { path: '/commercial/approvals', mock: ccpMock({ persona: 'ccpFinance', applying: [CR.c1042] }), act: async (p: Page) => {
+      await p.getByRole('tab', { name: /^History/ }).click();
+      await openDrawer(CR.c1042)(p);
+    } },
+    element: {
+      proto: (p) => p.locator('aside[role="dialog"] ol[aria-label="Request state"]'),
+      build: (p) => p.getByTestId('cr-drawer').locator('ol[aria-label="Request state"]'),
+    },
     blur: true,
   },
   {

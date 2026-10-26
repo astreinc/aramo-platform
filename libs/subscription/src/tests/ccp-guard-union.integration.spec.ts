@@ -165,11 +165,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TD-MERGE-GUARD-1 
     const req = (action_type: string, kind = 'NORMAL', state = 'APPROVED') => ({ id: ID, action_type, kind, state, approved_at: new Date(0) }) as unknown as CommercialChangeRequestRow;
     const ctx = { platform_tenant_id: ID, correlation_id: 'guard-union' } as never;
     // A null transaction would throw on any DB access: the early return proves none is made.
-    const left = [req('CREDIT'), req('DISCOUNT'), req('SUPPORT_EXTENSION', 'EXCEPTION'), req('SUPPORT_EXTENSION', 'MIGRATION'), req('CONVERSION', 'NORMAL', 'APPLYING'), req('POLICY_ACTIVATE', 'NORMAL', 'APPLYING')];
+    // CCP-C4 (expectation change, TD-C4-9): CREDIT and DISCOUNT (and the new REFUND) are applyable, so
+    // they are evaluated now; no action type is left outside AD-4 except by kind or by APPLYING.
+    const left = [req('SUPPORT_EXTENSION', 'EXCEPTION'), req('SUPPORT_EXTENSION', 'MIGRATION'), req('CONVERSION', 'NORMAL', 'APPLYING'), req('POLICY_ACTIVATE', 'NORMAL', 'APPLYING')];
     for (const r of left) expect(await svc.expireApplyIfDue(null as never, r, new Date(), ctx), `${r.action_type}/${r.kind}/${r.state}`).toBe(false);
     // Every type the guard admits → APPLY_EXPIRED for is evaluated (it reads the snapshotted policy: here the null client throws).
     const evaluated = COMMERCIAL_ACTION_TYPES.filter((a) => isApplyExpirable(a));
-    expect([...evaluated].sort()).toEqual(['CONVERSION', 'ENTITLEMENT_GRANT', 'ENTITLEMENT_REVOKE', 'PLAN_RETIRE', 'PLAN_VERSION_PUBLISH', 'POLICY_ACTIVATE', 'ROLE_GRANT', 'ROLE_REVOKE', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'SUBSCRIPTION_OPEN', 'SUPPORT_EXTENSION']);
+    expect([...evaluated].sort()).toEqual(['CONVERSION', 'CREDIT', 'DISCOUNT', 'ENTITLEMENT_GRANT', 'ENTITLEMENT_REVOKE', 'PLAN_RETIRE', 'PLAN_VERSION_PUBLISH', 'POLICY_ACTIVATE', 'REFUND', 'ROLE_GRANT', 'ROLE_REVOKE', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'SUBSCRIPTION_OPEN', 'SUPPORT_EXTENSION']);
     for (const a of evaluated) await expect(svc.expireApplyIfDue(null as never, req(a), new Date(), ctx), a).rejects.toThrow();
     // The predicate is the guard's: for every action x kind, APPROVED -> APPLY_EXPIRED is admitted by the live guard iff isApplyExpirable.
     for (const a of COMMERCIAL_ACTION_TYPES) for (const k of COMMERCIAL_CHANGE_REQUEST_KINDS) expect(await probe(a, k, 'APPROVED', 'APPLY_EXPIRED'), `${a}/${k}`).toBe(isApplyExpirable(a, k));

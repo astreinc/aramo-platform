@@ -7,10 +7,12 @@ import {
   BillingCommandService,
   BillingWebhookInboxQueryError,
   BillingWebhookInboxService,
+  withholdMonetaryAmounts,
   type BillingCommandRow,
   type BillingWebhookInboxRow,
 } from '@aramo/subscription';
 
+import { amountAccess } from './finance-amount-access.js';
 import {
   BillingCommandQueryDto,
   BillingWebhookInboxQueryDto,
@@ -42,7 +44,7 @@ function assertPlatform(auth: AuthContextType, requestId: string): void {
 
 const iso = (d: Date | null): string | null => (d === null ? null : d.toISOString());
 
-export function billingCommandDto(row: BillingCommandRow): BillingCommandDto {
+export function billingCommandDto(row: BillingCommandRow, amount_access: boolean): BillingCommandDto {
   return {
     id: row.id,
     provider: row.provider,
@@ -54,7 +56,10 @@ export function billingCommandDto(row: BillingCommandRow): BillingCommandDto {
     tenant_id: row.tenant_id,
     product_key: row.product_key,
     target_ref: row.target_ref,
-    params: (row.params ?? {}) as Record<string, unknown>,
+    // CCP-C4 × R3 (merge train TD-MERGE-43): a billing-adjustment command's amount is sent only to a
+    // holder of platform:billing:read AND platform:billing:amount:read; otherwise every amount-like
+    // param is omitted with amount_withheld: FINANCE_SCOPE_REQUIRED (any kind; fail closed).
+    params: withholdMonetaryAmounts((row.params ?? {}) as Record<string, unknown>, amount_access),
     state: row.state,
     pending_provider: row.state !== 'CONFIRMED',
     attempts: row.attempts,
@@ -107,7 +112,7 @@ export class PlatformCommercialBillingController {
     assertPlatform(auth, requestId);
     try {
       const page = await this.commands.list({ state: query.state, tenant_id: query.tenant_id, change_request_id: query.change_request_id, limit: query.limit, cursor: query.cursor });
-      return { commands: page.commands.map(billingCommandDto), next_cursor: page.next_cursor };
+      return { commands: page.commands.map((c) => billingCommandDto(c, amountAccess(auth))), next_cursor: page.next_cursor };
     } catch (err) {
       if (err instanceof BillingCommandError && err.code === 'INVALID_CURSOR') {
         throw new AramoError('VALIDATION_ERROR', err.message, 400, { requestId, details: { reason: 'invalid_cursor' } });

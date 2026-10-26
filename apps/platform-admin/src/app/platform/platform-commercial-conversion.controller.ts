@@ -54,7 +54,7 @@ export class PlatformCommercialConversionController {
         id,
         { platform_tenant_id: PLATFORM_TENANT_SENTINEL_ID, correlation_id: requestId },
       );
-      return { request: requestDto(out.request, amountAccess(auth)), conversion: conversionDto(out), replayed: out.replayed };
+      return { request: requestDto(out.request, amountAccess(auth)), conversion: conversionDto(out, amountAccess(auth)), replayed: out.replayed };
     } catch (err) {
       throw conversionHttpError(err, requestId);
     }
@@ -70,7 +70,7 @@ export class PlatformCommercialConversionController {
     assertPlatformTier(auth, requestId);
     try {
       const view = await this.conversions.view(id);
-      return { request: requestDto(view.request, amountAccess(auth)), conversion: conversionDto(view) };
+      return { request: requestDto(view.request, amountAccess(auth)), conversion: conversionDto(view, amountAccess(auth)) };
     } catch (err) {
       throw conversionHttpError(err, requestId);
     }
@@ -107,7 +107,7 @@ function conversionHttpError(err: unknown, requestId: string): unknown {
 
 const iso = (d: Date | null): string | null => (d === null ? null : d.toISOString());
 
-export function conversionDto(v: ConversionView): ConversionDto {
+export function conversionDto(v: ConversionView, amount_access: boolean): ConversionDto {
   const r = v.release;
   return {
     direction: v.direction,
@@ -136,7 +136,7 @@ export function conversionDto(v: ConversionView): ConversionDto {
             created_by: r.created_by,
             created_at: r.created_at.toISOString(),
           },
-    commands: v.commands.map(billingCommandDto),
+    commands: v.commands.map((c) => billingCommandDto(c, amount_access)),
     application: v.application === null ? null : applicationDto(v.application),
   };
 }

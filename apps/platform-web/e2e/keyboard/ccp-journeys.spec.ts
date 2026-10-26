@@ -105,3 +105,25 @@ test('KC5 · Escape closes the drawer and focus returns to the row that opened i
   await expectFocusReturned(page, opener);
   await expectFocusVisible(page);
 });
+
+// CCP-C4 — handoff §4: a Stripe-side request in Applying reads "Sent to Stripe — awaiting
+// confirmation" (Conversion Rule C-23: never shown done before the provider confirms).
+test('KC-C4 · a credit pending at the provider: History tab → row → drawer; the current chip reads "Sent to Stripe — awaiting confirmation" (aria-current="step"); Escape returns focus to the row', async ({ page }) => {
+  const w = new CcpWorld({ persona: 'ccpFinance', applying: [CR.c1042] });
+  await openBuild(page, '/commercial/approvals', w.mock());
+  await activate(page, page.getByRole('tab', { name: /^History/ }));
+  await expect(page.getByRole('tab', { name: /^History/ })).toHaveAttribute('aria-selected', 'true');
+  const row = page.getByRole('row').filter({ has: page.getByText('$350 account credit') });
+  await tabTo(page, row);
+  const opener = await focusedHandle(page);
+  await page.keyboard.press('Enter');
+  await expect(drawer(page)).toBeVisible();
+  const current = drawer(page).getByRole('list', { name: 'Request state' }).locator('[aria-current="step"]');
+  await expect(current).toHaveText(/Sent to Stripe — awaiting confirmation/);
+  await expect(current).toContainText('(current)');
+  // No approve or apply action: the chain is complete and the provider has not confirmed.
+  await expect(page.getByRole('button', { name: 'Approve' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+  await expect(drawer(page)).toBeHidden();
+  await expectFocusReturned(page, opener);
+});

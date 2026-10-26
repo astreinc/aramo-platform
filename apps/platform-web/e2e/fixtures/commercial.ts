@@ -185,6 +185,11 @@ export interface CcpWorldOptions {
   policyRequest?: boolean;
   /** The next approve of these ids answers this 409 (the backend refuses although the verdict said OK). */
   refuseApprove?: Readonly<Record<string, { code: string; details: Record<string, unknown> }>>;
+  /**
+   * CCP-C4 — these requests are fully signed, applied by their requester and pending at the provider
+   * (APPLYING; a Stripe-side credit / discount / refund — the prototype's "Sent to Stripe").
+   */
+  applying?: readonly string[];
 }
 
 /** A stateful Commercial API: approve / reject / submit / withdraw change what the next read returns. */
@@ -207,10 +212,12 @@ export class CcpWorld {
       return { ...rest, amount_withheld: 'FINANCE_SCOPE_REQUIRED' };
     };
     this.requests = o.empty ? [] : seeds.map(toRequest).map((r) => ({ ...r, payload: withhold(r.payload) }));
+    for (const r of this.requests) if ((o.applying ?? []).includes(r.id)) Object.assign(r, { state: 'APPLYING', approved_at: ago(1) });
     for (const s of seeds) {
+      const signed: ReadonlyArray<readonly [string, number]> = (o.applying ?? []).includes(s.id) && (s.signed ?? []).length === 0 ? [[PEOPLE.priya, 1]] : (s.signed ?? []);
       this.approvals.set(
         s.id,
-        (s.signed ?? []).map(([who, h], i) => ({
+        signed.map(([who, h], i) => ({
           id: `0c3aa${String(i)}00-0000-7000-8000-00000000${s.id.slice(-4)}`,
           step_index: i,
           approver_user_id: who,
@@ -259,7 +266,6 @@ export class CcpWorld {
   }
 
   mock(extra: MockOptions = {}): MockOptions & { clock: string } {
-    const w = this;
     return {
       ...extra,
       clock: CCP_NOW,
@@ -276,41 +282,41 @@ export class CcpWorld {
         {
           path: /^\/platform\/commercial\/change-requests$/,
           reply: ({ query }) => {
-            if (w.o.loading) return 'hang';
+            if (this.o.loading) return 'hang';
             const mine = query.get('eligible_for_me') === 'true';
-            const rows = mine ? w.requests.filter((r) => r.state === 'PENDING_APPROVAL' && w.verdicts.get(r.id) === null) : w.requests;
+            const rows = mine ? this.requests.filter((r) => r.state === 'PENDING_APPROVAL' && this.verdicts.get(r.id) === null) : this.requests;
             return ok({ requests: rows, next_cursor: null });
           },
         },
         {
           path: /^\/platform\/commercial\/change-requests\/[^/]+$/,
           reply: ({ path }) => {
-            const r = w.find(path);
-            return r ? ok(w.detail(r)) : err(404, 'NOT_FOUND', {});
+            const r = this.find(path);
+            return r ? ok(this.detail(r)) : err(404, 'NOT_FOUND', {});
           },
         },
         {
           method: 'POST',
           path: /^\/platform\/commercial\/change-requests\/[^/]+\/approvals$/,
           reply: ({ path, body }) => {
-            const r = w.find(path);
+            const r = this.find(path);
             if (!r) return err(404, 'NOT_FOUND', {});
             const step = (body as { step_index?: number } | null)?.step_index ?? -1;
-            w.log.push(`approve ${r.id} step=${String(step)}`);
-            const forced = w.o.refuseApprove?.[r.id];
+            this.log.push(`approve ${r.id} step=${String(step)}`);
+            const forced = this.o.refuseApprove?.[r.id];
             if (forced) return err(409, forced.code, forced.details);
-            const v = w.verdicts.get(r.id);
+            const v = this.verdicts.get(r.id);
             if (r.state !== 'PENDING_APPROVAL') return err(409, 'COMMERCIAL_APPROVAL_REFUSED', { refusal: 'NOT_PENDING' });
             if (v !== null) return err(409, 'COMMERCIAL_APPROVAL_REFUSED', { refusal: v ?? 'STEP_SCOPE_MISSING' });
-            const list = w.approvals.get(r.id) ?? [];
+            const list = this.approvals.get(r.id) ?? [];
             const s = r.required_chain.steps[step];
             if (!s || step !== list.length) return err(409, 'COMMERCIAL_APPROVAL_REFUSED', { refusal: 'OUT_OF_ORDER' });
-            const at = w.tick();
-            const a: Approval = { id: `0c3aaf00-0000-7000-8000-0000000${String(list.length)}${r.id.slice(-4)}`, step_index: step, approver_user_id: w.me, step_role_key: s.role_key, step_scope_keys: s.scope_keys, approver_role_keys: [...PERSONAS[w.o.persona].roles], comment: null, created_at: at };
+            const at = this.tick();
+            const a: Approval = { id: `0c3aaf00-0000-7000-8000-0000000${String(list.length)}${r.id.slice(-4)}`, step_index: step, approver_user_id: this.me, step_role_key: s.role_key, step_scope_keys: s.scope_keys, approver_role_keys: [...PERSONAS[this.o.persona].roles], comment: null, created_at: at };
             list.push(a);
-            w.approvals.set(r.id, list);
+            this.approvals.set(r.id, list);
             if (list.length === r.required_chain.steps.length) Object.assign(r, { state: 'APPROVED', approved_at: at });
-            w.verdicts.set(r.id, 'USER_ALREADY_APPROVED');
+            this.verdicts.set(r.id, 'USER_ALREADY_APPROVED');
             return ok({ request: r, approval: a, apply: null }, 201);
           },
         },
@@ -318,13 +324,13 @@ export class CcpWorld {
           method: 'POST',
           path: /^\/platform\/commercial\/change-requests\/[^/]+\/reject$/,
           reply: ({ path, body }) => {
-            const r = w.find(path);
+            const r = this.find(path);
             if (!r) return err(404, 'NOT_FOUND', {});
             const reason = (body as { reason?: string } | null)?.reason ?? '';
-            w.log.push(`reject ${r.id} reason=${reason}`);
-            const v = w.verdicts.get(r.id);
+            this.log.push(`reject ${r.id} reason=${reason}`);
+            const v = this.verdicts.get(r.id);
             if (r.state !== 'PENDING_APPROVAL' || v !== null) return err(409, 'COMMERCIAL_APPROVAL_REFUSED', { refusal: r.state !== 'PENDING_APPROVAL' ? 'NOT_PENDING' : (v ?? 'STEP_SCOPE_MISSING') });
-            Object.assign(r, { state: 'REJECTED', rejected_at: w.tick(), rejected_by: w.me, rejection_reason: reason });
+            Object.assign(r, { state: 'REJECTED', rejected_at: this.tick(), rejected_by: this.me, rejection_reason: reason });
             return ok({ request: r });
           },
         },
@@ -332,12 +338,12 @@ export class CcpWorld {
           method: 'POST',
           path: /^\/platform\/commercial\/change-requests\/[^/]+\/(submit|withdraw)$/,
           reply: ({ path }) => {
-            const r = w.find(path);
+            const r = this.find(path);
             if (!r) return err(404, 'NOT_FOUND', {});
             const act = path.endsWith('/submit') ? 'submit' : 'withdraw';
-            w.log.push(`${act} ${r.id}`);
-            if (r.requested_by !== w.me) return err(403, 'INSUFFICIENT_PERMISSIONS', { reason: 'not_requester' });
-            const at = w.tick();
+            this.log.push(`${act} ${r.id}`);
+            if (r.requested_by !== this.me) return err(403, 'INSUFFICIENT_PERMISSIONS', { reason: 'not_requester' });
+            const at = this.tick();
             if (act === 'submit') Object.assign(r, { state: 'PENDING_APPROVAL', submitted_at: at, expires_at: plus(at, 72) });
             else Object.assign(r, { state: 'WITHDRAWN', withdrawn_at: at });
             return ok({ request: r });

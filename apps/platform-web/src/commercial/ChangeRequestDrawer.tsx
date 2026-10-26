@@ -274,7 +274,7 @@ export function ChangeRequestDrawer({ id, me, tenantName, initial, onClose, onCh
             · chain {chainSummary(r)} (fixed at creation){hours !== null ? ` · ${hours} h window` : ''}
           </dd>
         </dl>
-        <CrStepper steps={stateSteps(r.state)} />
+        <CrStepper steps={stateSteps(r.state, r.action_type)} />
         {alert !== null ? (
           <div role="alert" className="pw-alert pw-alert--error" data-testid="cr-refusal">
             <b>{alert.lead}</b> {alert.message} <span className="pc-mono12">({alert.code})</span>

@@ -610,7 +610,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C7 multi-prod
     expect((await one(`SELECT count(*)::int n FROM information_schema.columns WHERE table_schema = 'subscription' AND table_name = 'BillingProviderCommand' AND column_name = 'self_service_request_id'`)).n).toBe(1);
   });
 
-  it('C7-COMP-2 on a fresh full chain: the compensation applies with 0 errors and restores the CCP-C1 shape (guard body byte-equal to C1); the migration re-applies with 0 errors', async () => {
+  it('C7-COMP-2 on a fresh full chain: after the command-guard-union compensation, the C7 compensation applies with 0 errors and restores the preceding shape (guard body byte-equal to CCP-C4\'s, merge train TD-MERGE-CMDGUARD-1); C7 and the union re-apply with 0 errors', async () => {
     await pg.query('CREATE DATABASE c7_comp');
     const url = container.getConnectionUri().replace(/\/[^/?]+(\?|$)/, '/c7_comp$1');
     const c = new Client({ connectionString: url });
@@ -620,16 +620,22 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C7 multi-prod
       const guardSrc = async () => (await c.query(`SELECT prosrc FROM pg_proc WHERE proname = 'guard_billing_provider_command'`)).rows[0].prosrc as string;
       const c7Src = await guardSrc();
       expect(c7Src).toContain('>>> CCP-C7 self-service origin');
+      // Merge train TD-MERGE-CMDGUARD-1: the reverse chain starts with the command-guard union.
+      await c.query('BEGIN');
+      await c.query(readFileSync(resolve(__dirname, 'fixtures/ccp-command-guard-union-compensating.sql'), 'utf8'));
+      await c.query('COMMIT');
       await c.query('BEGIN');
       await c.query(readFileSync(C7_COMPENSATING, 'utf8'));
       await c.query('COMMIT');
-      const c1 = readFileSync(resolve(__dirname, '../../prisma/migrations/20261026020000_ccp_c1_stripe_command_inbox/migration.sql'), 'utf8');
-      const c1Body = c1.slice(c1.indexOf('AS $$', c1.indexOf('guard_billing_provider_command')) + 5, c1.indexOf('$$ LANGUAGE plpgsql;', c1.indexOf('guard_billing_provider_command')));
-      expect(await guardSrc()).toBe(c1Body);
+      const c4 = readFileSync(resolve(__dirname, '../../prisma/migrations/20261028010000_ccp_c4_billing_adjustments/migration.sql'), 'utf8');
+      const at = c4.indexOf('FUNCTION "subscription"."guard_billing_provider_command"()');
+      const c4Body = c4.slice(c4.indexOf('AS $$', at) + 5, c4.indexOf('$$ LANGUAGE plpgsql;', at));
+      expect(await guardSrc()).toBe(c4Body);
       expect((await c.query(`SELECT to_regclass('subscription."SelfServiceBillingRequest"') r`)).rows[0].r).toBeNull();
       expect((await c.query(`SELECT is_nullable FROM information_schema.columns WHERE table_schema = 'subscription' AND table_name = 'BillingProviderCommand' AND column_name = 'change_request_id'`)).rows[0].is_nullable).toBe('NO');
       expect((await c.query(`SELECT count(*)::int n FROM information_schema.columns WHERE table_schema = 'subscription' AND table_name = 'BillingProviderCommand' AND column_name = 'self_service_request_id'`)).rows[0].n).toBe(0);
       await c.query(readFileSync(C7_MIGRATION, 'utf8'));
+      await c.query(readFileSync(resolve(__dirname, '../../prisma/migrations/20261029000000_ccp_command_guard_union/migration.sql'), 'utf8'));
       expect(await guardSrc()).toBe(c7Src);
       expect((await c.query(`SELECT to_regclass('subscription."SelfServiceBillingRequest"') r`)).rows[0].r).not.toBeNull();
     } finally {

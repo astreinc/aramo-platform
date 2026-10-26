@@ -20,11 +20,14 @@ const A1 = resolve(ROOT, 'libs/identity/prisma/migrations/20261024120000_ccp_a1_
 const GUARD_UNION = resolve(SUB, '20261027000000_ccp_guard_union/migration.sql');
 const CHECK_UNION = resolve(SUB, '20261027000100_ccp_constraint_union/migration.sql');
 const B5R = resolve(SUB, '20261027000200_ccp_b5r_policy_activate_apply/migration.sql');
+// CCP-C4 — the billing adjustments (sorts last; compensated first).
+const C4 = resolve(SUB, '20261028010000_ccp_c4_billing_adjustments/migration.sql');
 const COMP = {
   a1: resolve(ROOT, 'libs/identity/src/tests/fixtures/ccp-a1-compensating.sql'),
   guard: resolve(ROOT, 'libs/subscription/src/tests/fixtures/ccp-guard-union-compensating.sql'),
   check: resolve(ROOT, 'libs/subscription/src/tests/fixtures/ccp-constraint-union-compensating.sql'),
   b5r: resolve(ROOT, 'libs/subscription/src/tests/fixtures/ccp-b5r-compensating.sql'),
+  c4: resolve(ROOT, 'libs/subscription/src/tests/fixtures/ccp-c4-compensating.sql'),
 };
 const sql = (p: string) => readFileSync(p, 'utf8');
 
@@ -81,6 +84,18 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP merge train c
   const guardSrc = async () => (await pg.query(`SELECT p.prosrc AS s FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'subscription' AND p.proname = 'guard_commercial_change_request'`)).rows[0].s as string;
   const checkDef = async () => (await pg.query(`SELECT pg_get_constraintdef(oid) AS d FROM pg_constraint WHERE conname = 'CommercialChangeApplication_action_type_check'`)).rows[0].d as string;
   const b5rTrigger = async () => Number((await pg.query(`SELECT count(*) AS n FROM pg_trigger WHERE tgname = 'commercial_change_request_no_applying_commit_b5r'`)).rows[0].n);
+  // CCP-C4 — the slice's own objects and the union-held lists.
+  const c4State = async () =>
+    (
+      await pg.query(
+        `SELECT (SELECT count(*)::int FROM pg_class c JOIN pg_namespace n ON n.oid = c.relnamespace WHERE n.nspname = 'subscription' AND c.relname = 'CommercialBillingAdjustment') AS adjustment_table,
+                (SELECT count(*)::int FROM information_schema.columns WHERE table_schema = 'subscription' AND table_name = 'BillingProviderCommand' AND column_name = 'provider_object_ref') AS object_ref_column,
+                (SELECT count(*)::int FROM pg_trigger WHERE tgname = 'commercial_change_request_billing_adjustment_applying_commit') AS applying_trigger,
+                position('REFUND_CREATE' IN (SELECT p.prosrc FROM pg_proc p JOIN pg_namespace n ON n.oid = p.pronamespace WHERE n.nspname = 'subscription' AND p.proname = 'guard_billing_provider_command')) > 0 AS command_guard_c4,
+                position('REFUND' IN (SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'CommercialChangeRequest_action_type_check')) > 0 AS refund_action,
+                position('CREDIT_GRANT' IN (SELECT pg_get_constraintdef(oid) FROM pg_constraint WHERE conname = 'BillingProviderCommand_kind_check')) > 0 AS c4_kinds`,
+      )
+    ).rows[0];
 
   /** Runs `file` in its own transaction; returns the error message, or null when it committed. */
   async function run(file: string): Promise<string | null> {
@@ -121,9 +136,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP merge train c
     expect(await guardSrc()).toContain('[union block: A3 base');
     expect(await checkDef()).toContain('SUPPORT_EXTENSION');
     expect(await b5rTrigger()).toBe(1);
+    expect(await c4State()).toEqual({ adjustment_table: 1, object_ref_column: 1, applying_trigger: 1, command_guard_c4: true, refund_action: true, c4_kinds: true });
   });
 
   it('COMP-1 each compensation is refused (nothing changed) while data depending on it exists', async () => {
+    expect(await refusedWith(REQUEST('CREDIT', 'PENDING_APPROVAL'), [CHECKSUM, policy], COMP.c4)).toContain('CCP-C4 compensation refused');
+    expect(await refusedWith(REQUEST('REFUND', 'PENDING_APPROVAL'), [CHECKSUM, policy], COMP.check)).toContain('a REFUND request or a CCP-C4 billing-adjustment command exists');
+    expect(await refusedWith(REQUEST('DISCOUNT', 'APPROVED'), [CHECKSUM, policy], COMP.guard)).toContain('CCP guard-union compensation refused');
     expect(await refusedWith(REQUEST('POLICY_ACTIVATE', 'APPROVED'), [CHECKSUM, policy], COMP.b5r)).toContain('CCP-B5-R compensation refused');
     expect(
       await refusedWith(
@@ -144,12 +163,15 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP merge train c
     expect(await b5rTrigger()).toBe(1);
   });
 
-  it('COMP-2 compensating in reverse order (B5-R, constraint union, guard union, A1) applies with 0 errors and restores the preceding state', async () => {
+  it('COMP-2 compensating in reverse order (CCP-C4, B5-R, constraint union, guard union, A1) applies with 0 errors and restores the preceding state', async () => {
+    expect(await run(COMP.c4)).toBeNull();
+    expect(await c4State()).toMatchObject({ adjustment_table: 0, object_ref_column: 0, applying_trigger: 0, command_guard_c4: false });
     expect(await run(COMP.b5r)).toBeNull();
     expect(await b5rTrigger()).toBe(0);
     expect(await run(COMP.check)).toBeNull();
     expect(await checkDef()).not.toContain('SUPPORT_EXTENSION');
     expect(await checkDef()).toContain('CONVERSION');
+    expect(await c4State()).toMatchObject({ refund_action: false, c4_kinds: false });
     expect(await run(COMP.guard)).toBeNull();
     const src = await guardSrc();
     expect(src).not.toContain('[union block');
@@ -158,11 +180,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP merge train c
     expect(await a1Counts()).toEqual({ roles: 0, scopes: 0, grants: 0 });
   });
 
-  it('COMP-3 the four migrations re-apply with 0 errors and the state is the gated one again', async () => {
+  it('COMP-3 the five migrations re-apply with 0 errors and the state is the gated one again', async () => {
     expect(await run(A1)).toBeNull();
     expect(await run(GUARD_UNION)).toBeNull();
     expect(await run(CHECK_UNION)).toBeNull();
     expect(await run(B5R)).toBeNull();
+    expect(await run(C4)).toBeNull();
+    expect(await c4State()).toEqual({ adjustment_table: 1, object_ref_column: 1, applying_trigger: 1, command_guard_c4: true, refund_action: true, c4_kinds: true });
     expect(await a1Counts()).toEqual({ roles: 6, scopes: 15, grants: 45 });
     expect(await guardSrc()).toContain('[union block: A3 base');
     expect(await checkDef()).toContain('SUPPORT_EXTENSION');

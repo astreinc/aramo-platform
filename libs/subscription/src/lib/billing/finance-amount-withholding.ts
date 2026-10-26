@@ -99,6 +99,15 @@ export function withholdChangeRequestAmounts(action_type: string | null | undefi
   return stripRecord(obj);
 }
 
+/**
+ * Merge train (TD-MERGE-43, CCP-C4 × R3) — a provider command's params (a C4 billing-adjustment
+ * command carries the CREDIT / REFUND amount it sends). Every amount-like key is withheld without
+ * access, whatever the command kind (fail closed; cancel / expire params carry none).
+ */
+export function withholdMonetaryAmounts(obj: Record<string, unknown>, access: boolean): Record<string, unknown> {
+  return access ? (structuredClone(obj) as Record<string, unknown>) : (stripMonetary(obj) as Record<string, unknown>);
+}
+
 /** An audit event body: the action type it names (A3 events carry `action_type`). */
 export function withholdAuditPayloadAmounts(payload: Record<string, unknown>, access: boolean): Record<string, unknown> {
   const action = typeof payload['action_type'] === 'string' ? payload['action_type'] : null;

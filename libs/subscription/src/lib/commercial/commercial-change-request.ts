@@ -41,6 +41,10 @@ export const COMMERCIAL_ACTION_TYPES = [
   'CREDIT', // C4 — account credit
   'DISCOUNT', // C4 — discount
   'CONVERSION', // C2 — governed MANUAL ↔ self-service conversion (D2)
+  // CCP-C4 (TD-C4-1) — a refund of a paid invoice. DDR v1.2 §3.2 and the PBD C4 row name refunds;
+  // the A3 set had no type for them (a refund is not an account credit). Apply is the designed
+  // disabled state until the refund policy (legal) is verified (PBD §10; REFUND_POLICY_NOT_APPROVED).
+  'REFUND',
 ] as const;
 export type CommercialActionType = (typeof COMMERCIAL_ACTION_TYPES)[number];
 
@@ -80,6 +84,7 @@ export const COMMERCIAL_ACTIONS: Readonly<Record<CommercialActionType, Commercia
   ENTITLEMENT_REVOKE: { domain: 'entitlement', tenant_scoped: true, requester_scope: 'platform:entitlement:request', requester_role: null },
   CREDIT: { domain: 'billing', tenant_scoped: true, requester_scope: 'platform:billing:request', requester_role: null },
   DISCOUNT: { domain: 'billing', tenant_scoped: true, requester_scope: 'platform:billing:request', requester_role: null },
+  REFUND: { domain: 'billing', tenant_scoped: true, requester_scope: 'platform:billing:request', requester_role: null }, // CCP-C4
   PLAN_VERSION_PUBLISH: { domain: 'catalog', tenant_scoped: false, requester_scope: 'platform:catalog:draft', requester_role: null },
   PLAN_RETIRE: { domain: 'catalog', tenant_scoped: false, requester_scope: 'platform:catalog:draft', requester_role: null },
   POLICY_ACTIVATE: { domain: 'governance', tenant_scoped: false, requester_scope: null, requester_role: 'finance_admin' }, // TD-A3-5
@@ -222,6 +227,24 @@ export const COMMERCIAL_C2_CONVERSION_TRANSITIONS: Readonly<Partial<Record<Comme
 };
 
 /**
+ * CCP-C4 — the Stripe-side billing adjustments (CREDIT, DISCOUNT, REFUND), applied through a C1
+ * durable command (DB guard, union block "CCP-C4"). The same pairs as C2: APPROVED | APPLY_FAILED →
+ * APPLYING → APPLIED | APPLY_FAILED. The request COMMITS in APPLYING while its command is pending
+ * (deferred trigger, migration 20261028010000); APPLIED only in the transaction that applies the
+ * provider-confirmed effect; APPLY_FAILED only while no command is unconfirmed (DB-only rules).
+ */
+export const C4_BILLING_ADJUSTMENT_ACTIONS = ['CREDIT', 'DISCOUNT', 'REFUND'] as const;
+export type C4BillingAdjustmentAction = (typeof C4_BILLING_ADJUSTMENT_ACTIONS)[number];
+export function isBillingAdjustmentAction(action_type: string): action_type is C4BillingAdjustmentAction {
+  return (C4_BILLING_ADJUSTMENT_ACTIONS as readonly string[]).includes(action_type);
+}
+export const COMMERCIAL_C4_ADJUSTMENT_TRANSITIONS: Readonly<Partial<Record<CommercialChangeRequestState, readonly CommercialChangeRequestState[]>>> = {
+  APPROVED: ['APPLYING'],
+  APPLY_FAILED: ['APPLYING'],
+  APPLYING: ['APPLIED', 'APPLY_FAILED'],
+};
+
+/**
  * CCP-A8 — a bounded EXCEPTION SUPPORT_EXTENSION (DDR v1.2 §3.2(5)) makes ONLY these two moves,
  * in its creating transaction; it never enters the approval states (DB guard, migration
  * 20261026010000). An escalated or removal SUPPORT_EXTENSION (kind NORMAL) takes the A3 base
@@ -255,6 +278,7 @@ export const APPLY_EXPIRABLE_ACTIONS: readonly CommercialActionType[] = [
   'SUBSCRIPTION_OPEN', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'ENTITLEMENT_GRANT', // A6 (A6-R)
   'PLAN_VERSION_PUBLISH', 'PLAN_RETIRE', // CCP-B2-backend (A6-R)
   'POLICY_ACTIVATE', 'ROLE_GRANT', 'ROLE_REVOKE', 'ENTITLEMENT_REVOKE', 'CONVERSION', 'SUPPORT_EXTENSION', // CCP-B5-R
+  'CREDIT', 'DISCOUNT', 'REFUND', // CCP-C4 (AD-4: every applyable type)
 ];
 export function isApplyExpirable(action_type: string, kind = 'NORMAL'): boolean {
   if (!(APPLY_EXPIRABLE_ACTIONS as readonly string[]).includes(action_type)) return false;
@@ -296,6 +320,12 @@ export function canTransitionFor(
   if ((COMMERCIAL_ROLE_CHANGE_ACTIONS as readonly string[]).includes(action_type)) return (COMMERCIAL_A9_ROLE_APPLY_TRANSITIONS[from] ?? []).includes(to);
   if (isA6Applicable(action_type) || isCatalogApplicable(action_type)) return (COMMERCIAL_A6_APPLY_TRANSITIONS[from] ?? []).includes(to);
   if (action_type === 'CONVERSION') return (COMMERCIAL_C2_CONVERSION_TRANSITIONS[from] ?? []).includes(to);
+  // CCP-C4-R (Architect C4 disposition, TD-C4-12): a REFUND proven not executed is resolved by its
+  // requester APPLYING → WITHDRAWN (terminal; the DB also requires the resolution audit event).
+  if (action_type === 'REFUND' && from === 'APPLYING' && to === 'WITHDRAWN') return true;
+  // CCP-C4: the billing adjustments (CREDIT, DISCOUNT, REFUND) — the C2 apply pairs (their
+  // APPLY_EXPIRED pairs: the AD-4 branch above).
+  if (isBillingAdjustmentAction(action_type)) return (COMMERCIAL_C4_ADJUSTMENT_TRANSITIONS[from] ?? []).includes(to);
   // CCP-A8: an escalated or removal SUPPORT_EXTENSION (NORMAL) takes the A6 apply pairs (its
   // APPLY_EXPIRED pairs are the AD-4 branch above, CCP-B5-R).
   if (action_type === 'SUPPORT_EXTENSION' && kind === 'NORMAL') return (COMMERCIAL_A7_REVOKE_TRANSITIONS[from] ?? []).includes(to);
@@ -359,6 +389,8 @@ function chainOf(rule: CommercialChainRule, domain: CommercialDomain, basis: Rec
 /**
  * D6 / Q1 / Q2 chain resolution against a policy document (the ACTIVE one at creation):
  *   CREDIT, DISCOUNT          at or above the policy threshold → Finance → Owner; else Finance
+ *   REFUND (CCP-C4, TD-C4-2)  → Finance → Owner (Charter §7 defines no refund threshold; none is
+ *                               invented — the escalated chain until the refund policy sets one)
  *   PLAN_VERSION_PUBLISH, PLAN_RETIRE (catalog publish)          → Finance → Owner
  *   POLICY_ACTIVATE (Q1)                                         → Finance → Owner
  *   ROLE_GRANT, ROLE_REVOKE (D6 owner/finance grants; Q2 others) → a distinct platform_owner
@@ -394,6 +426,8 @@ export function resolveRequiredChain(
         escalates,
       });
     }
+    case 'REFUND':
+      return chainOf('FINANCE_THEN_OWNER', def.domain, { ruling: 'TD-C4-2 refund (no policy threshold; escalated chain)' });
     case 'PLAN_VERSION_PUBLISH':
     case 'PLAN_RETIRE':
       return chainOf('FINANCE_THEN_OWNER', def.domain, { ruling: 'D6 catalog publish' });
@@ -466,6 +500,25 @@ export class CommercialPayloadError extends Error {
 export const PLAN_VERSION_ID_REQUIRED = 'plan_version_id_required';
 
 const MAX_PAYLOAD_BYTES = 65_536;
+
+/**
+ * CCP-C4-P — the closed refund categories (recorded, never used to decide: no eligibility algorithm).
+ */
+export const REFUND_CATEGORIES = [
+  'R1_DUPLICATE',
+  'R2_OVERCHARGE',
+  'R3_UNAUTHORIZED',
+  'R4_SERVICE_FAILURE',
+  'R5_COMMITMENT_CANCELLATION',
+  'R6_NONCOMMITTED_CANCELLATION',
+  'R7_GOODWILL',
+  'R8_TAX',
+] as const;
+export type RefundCategory = (typeof REFUND_CATEGORIES)[number];
+/** `<document-id>@<version>`, e.g. `aramo-refund-policy@v1-draft`. */
+export const REFUND_POLICY_REF = /^[A-Za-z0-9][A-Za-z0-9._-]{1,120}@[A-Za-z0-9][A-Za-z0-9._-]{0,40}$/;
+/** CCP-C4-P — the stable codes of a refused REFUND payload (the prefix of each error line). */
+export const REFUND_PAYLOAD_CODES = ['REFUND_CATEGORY_INVALID', 'REFUND_BASIS_REQUIRED', 'REFUND_POLICY_REF_REQUIRED', 'REFUND_PAYMENT_REF_INVALID'] as const;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SHA256_HEX = /^[0-9a-f]{64}$/;
 
@@ -494,12 +547,40 @@ export function validatePayload(action_type: CommercialActionType, payload: unkn
     if (typeof v !== 'number' || !Number.isSafeInteger(v) || v < min || v > max) errors.push(`${k} must be an integer between ${min} and ${max}`);
   };
   switch (action_type) {
+    // CCP-C4 owns the full schema of the billing adjustments (closed key sets). An amount is at
+    // least one minor unit; `subscription_id` (optional) names the self-service row the approvers
+    // approve acting on; `compensates_change_request_id` (optional) makes the request the
+    // compensation of an APPLIED one (PBD C4 recovery). A refund has no compensation.
     case 'CREDIT':
-      int('amount_minor', 0, Number.MAX_SAFE_INTEGER);
+      closedKeys(p, ['amount_minor', 'currency', 'subscription_id', 'compensates_change_request_id'], errors);
+      int('amount_minor', 1, Number.MAX_SAFE_INTEGER);
       if (typeof p['currency'] !== 'string' || !/^[A-Z]{3}$/.test(p['currency'])) errors.push('currency must be an ISO 4217 code');
+      optionalUuid(p, 'subscription_id', errors);
+      optionalUuid(p, 'compensates_change_request_id', errors);
       break;
     case 'DISCOUNT':
-      int('discount_bps', 0, 10_000);
+      closedKeys(p, ['discount_bps', 'subscription_id', 'compensates_change_request_id'], errors);
+      int('discount_bps', 1, 10_000);
+      optionalUuid(p, 'subscription_id', errors);
+      optionalUuid(p, 'compensates_change_request_id', errors);
+      break;
+    case 'REFUND':
+      // CCP-C4-P (Amendment A1 RF-2; Architect C4-P gap 2): the referenced invoice AND payment, the
+      // amount, the currency, and the structured provenance — `category` (closed), `basis` (the
+      // contractual or legal basis) and `refund_policy_ref` (the governing refund policy document and
+      // version). All immutable, bound by the payload checksum. `refund_policy_ref` only IDENTIFIES the
+      // proposed policy: it never makes a refund executable (RF-8; REFUND_POLICY_NOT_APPROVED stays).
+      closedKeys(p, ['amount_minor', 'currency', 'provider_invoice_ref', 'provider_payment_ref', 'category', 'basis', 'refund_policy_ref', 'subscription_id'], errors);
+      int('amount_minor', 1, Number.MAX_SAFE_INTEGER);
+      if (typeof p['currency'] !== 'string' || !/^[A-Z]{3}$/.test(p['currency'])) errors.push('currency must be an ISO 4217 code');
+      if (typeof p['provider_invoice_ref'] !== 'string' || !/^in_[A-Za-z0-9]{3,200}$/.test(p['provider_invoice_ref'])) errors.push('provider_invoice_ref must be a provider invoice id');
+      if (typeof p['provider_payment_ref'] !== 'string' || !/^pi_[A-Za-z0-9]{3,200}$/.test(p['provider_payment_ref'])) errors.push('REFUND_PAYMENT_REF_INVALID: provider_payment_ref must be a provider payment id');
+      if (typeof p['category'] !== 'string' || !(REFUND_CATEGORIES as readonly string[]).includes(p['category'])) errors.push(`REFUND_CATEGORY_INVALID: category must be one of ${REFUND_CATEGORIES.join(', ')}`);
+      if (typeof p['basis'] !== 'string' || p['basis'].trim().length === 0) errors.push('REFUND_BASIS_REQUIRED: basis must state the contractual or legal basis');
+      else if (p['basis'].length > 2000) errors.push('REFUND_BASIS_REQUIRED: basis must be at most 2000 characters');
+      if (typeof p['refund_policy_ref'] !== 'string' || p['refund_policy_ref'].trim().length === 0) errors.push('REFUND_POLICY_REF_REQUIRED: refund_policy_ref must identify the refund policy document and version');
+      else if (!REFUND_POLICY_REF.test(p['refund_policy_ref'])) errors.push('REFUND_POLICY_REF_REQUIRED: refund_policy_ref must be <document-id>@<version>');
+      optionalUuid(p, 'subscription_id', errors);
       break;
     case 'SUPPORT_EXTENSION':
       // CCP-A8 owns the full schema: EXTEND names the subscription row and the days (the bound
@@ -607,6 +688,10 @@ export function validatePayload(action_type: CommercialActionType, payload: unkn
   }
   if (errors.length > 0) throw new CommercialPayloadError(errors);
   return p;
+}
+
+function optionalUuid(p: Record<string, unknown>, k: string, errors: string[]): void {
+  if (p[k] !== undefined && !(typeof p[k] === 'string' && UUID.test(p[k] as string))) errors.push(`${k} must be a uuid`);
 }
 
 function closedKeys(p: Record<string, unknown>, allowed: readonly string[], errors: string[]): void {

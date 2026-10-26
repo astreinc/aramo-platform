@@ -177,3 +177,85 @@ export function wirePortalConfigurationState(obj: Record<string, unknown>): {
     subscription_update_enabled: wireFlag(f['subscription_update']),
   };
 }
+
+// ---------------------------------------------------------------------------------------
+// CCP-C4 (PBD §5.2 row C4) — the billing adjustments (credits, discounts, refunds). Pure
+// translation of Stripe WRITE params and READ shapes to Aramo's own names; no Aramo-owned logic
+// (the adjustment rules live in billing-command.service.ts and the commercial C4 files). Every
+// write's metadata names the Aramo command (the re-read key) and the tenant (the tenant check).
+// ---------------------------------------------------------------------------------------
+
+/** Aramo command + tenant → Stripe metadata params. */
+export function wireAdjustmentMetadata(command_id: string, tenant_id: string): Record<string, string> {
+  return { 'metadata[aramo_command_id]': command_id, 'metadata[tenant_id]': tenant_id };
+}
+
+const wireMeta = (obj: Record<string, unknown>): Record<string, unknown> => (obj['metadata'] as Record<string, unknown> | null | undefined) ?? {};
+
+/** A signed balance adjustment (negative = a credit the next invoice draws on). */
+export function wireBalanceAdjustmentParams(signed_amount_minor: number, currency: string, req: { command_id: string; tenant_id: string }): Record<string, string> {
+  return { amount: String(signed_amount_minor), currency: currency.toLowerCase(), ...wireAdjustmentMetadata(req.command_id, req.tenant_id) };
+}
+
+/** A Stripe balance transaction → Aramo's adjustment facts. */
+export function wireBalanceAdjustmentState(obj: Record<string, unknown>): { object_ref: string | null; amount_minor: number; currency: string | null; command_id: string | null; tenant_id: string | null; live: boolean } {
+  const m = wireMeta(obj);
+  return {
+    object_ref: wireStr(obj['id']),
+    amount_minor: wireInt(obj['amount']),
+    currency: wireStr(obj['currency']),
+    command_id: wireStr(m['aramo_command_id']),
+    tenant_id: wireStr(m['tenant_id']),
+    live: obj['livemode'] === true,
+  };
+}
+
+/** A percent-off coupon with Aramo's deterministic id, for the next invoice only. */
+export function wireCouponParams(coupon_ref: string, discount_bps: number, req: { command_id: string; tenant_id: string }): Record<string, string> {
+  return { id: coupon_ref, percent_off: String(discount_bps / 100), duration: 'once', ...wireAdjustmentMetadata(req.command_id, req.tenant_id) };
+}
+
+/** Attach the coupon to the subscription. */
+export function wireSubscriptionDiscountParams(coupon_ref: string): Record<string, string> {
+  return { 'discounts[0][coupon]': coupon_ref };
+}
+
+/** A Stripe subscription → its current discount (coupon id and discount object id), or nulls. */
+export function wireSubscriptionDiscount(obj: Record<string, unknown>): { coupon_ref: string | null; discount_ref: string | null } {
+  const d = obj['discount'] as { id?: unknown; coupon?: unknown } | null | undefined;
+  if (d === null || d === undefined || typeof d !== 'object') return { coupon_ref: null, discount_ref: null };
+  return { coupon_ref: wireRef(d.coupon), discount_ref: wireStr(d.id) };
+}
+
+/** A Stripe invoice → the account that paid it and the payment a refund draws on. */
+export function wireInvoicePayment(obj: Record<string, unknown>): { account_ref: string; payment_ref: string | null; currency: string | null; amount_paid_minor: number } {
+  return { account_ref: wireAccountRef(obj), payment_ref: wireRef(obj['payment_intent']), currency: wireStr(obj['currency']), amount_paid_minor: wireInt(obj['amount_paid']) };
+}
+
+/** A refund of `amount_minor` of one payment. */
+export function wireRefundParams(payment_ref: string, amount_minor: number, req: { command_id: string; tenant_id: string }): Record<string, string> {
+  return { payment_intent: payment_ref, amount: String(amount_minor), ...wireAdjustmentMetadata(req.command_id, req.tenant_id) };
+}
+
+/** A Stripe refund → Aramo's refund facts. */
+export function wireRefundState(obj: Record<string, unknown>): { object_ref: string | null; status: string | null; amount_minor: number; command_id: string | null; tenant_id: string | null; live: boolean } {
+  const m = wireMeta(obj);
+  return {
+    object_ref: wireStr(obj['id']),
+    status: wireStr(obj['status']),
+    amount_minor: wireInt(obj['amount']),
+    command_id: wireStr(m['aramo_command_id']),
+    tenant_id: wireStr(m['tenant_id']),
+    live: obj['livemode'] === true,
+  };
+}
+
+/** CCP-C4-P — a Stripe list envelope: false when Stripe reports more items than were returned. */
+export function wireListComplete(obj: Record<string, unknown>): boolean {
+  return obj['has_more'] !== true;
+}
+
+/** CCP-C4-P — a Stripe dispute (chargeback) → Aramo's dispute facts. */
+export function wireDisputeState(obj: Record<string, unknown>): { object_ref: string | null; amount_minor: number; status: string | null } {
+  return { object_ref: wireStr(obj['id']), amount_minor: wireInt(obj['amount']), status: wireStr(obj['status']) };
+}

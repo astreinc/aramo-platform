@@ -10859,6 +10859,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-billing-adjustment.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform-commercial-billing-status.controller.ts"
     },
     {
@@ -10900,6 +10905,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform-commercial-observability.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-refund-report.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -12749,6 +12759,21 @@
     { "from": "doc/ccp/decisions.md", "status": "unscoped", "to": "pact/provider/tsconfig.json" },
     { "from": "doc/ccp/decisions.md", "status": "unscoped", "to": "scripts/verify-vocabulary.sh" },
     { "from": "doc/ccp/decisions.md", "status": "unscoped", "to": "tools/db-sync-local.sh" },
+    {
+      "from": "doc/ccp/known-baseline-exceptions.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/fixtures/commercial.ts"
+    },
+    {
+      "from": "doc/ccp/known-baseline-exceptions.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/tsconfig.json"
+    },
+    {
+      "from": "doc/ccp/known-baseline-exceptions.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/visual/states-ccp.ts"
+    },
     {
       "from": "doc/ccp/program-gate-20261025.md",
       "status": "unscoped",
@@ -16356,6 +16381,216 @@
     },
     {
       "from": "doc/ccp/slices/CCP-C3-pre-execution.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-billing-adjustment.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-refund-report.controller.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-c4-billing-adjustment-routes.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/fixtures/commercial.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/tsconfig.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/visual/states-ccp.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/src/commercial/commercial-model.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "ci/config/api-surface-manifest.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-C4-pre-execution.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261027000000_ccp_guard_union/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/schema.prisma"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/index.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/billing-provider-command.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-billing-adjustment.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-change-request.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/refund-remainder.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/subscription.module.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-c4-billing-adjustments.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-c4-billing-adjustments.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-c4-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/stripe-wire.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/support/ccp-c4.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/consumers/platform-web-consumer/src/platform-commercial.consumer.test.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-api.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "pact/provider/src/verify-platform-admin.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-acceptance.md",
+      "status": "unscoped",
+      "to": "scripts/verify-vocabulary.sh"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-A3-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-C1-acceptance.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261026020000_ccp_c1_stripe_command_inbox/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261027000000_ccp_guard_union/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261027000100_ccp_constraint_union/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/billing-command.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/billing-provider-command.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/billing/subscription-lifecycle.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-change-request.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-change-request.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-conversion.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-policy-boundaries.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C4-pre-execution.md",
       "status": "unscoped",
       "to": "scripts/verify-vocabulary.sh"
     },
@@ -31777,6 +32012,11 @@
       "to": "doc/ccp/slices/CCP-D3-acceptance.md"
     },
     {
+      "from": "libs/subscription/prisma/migrations/20261028010000_ccp_c4_billing_adjustments/migration.sql",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-C4-acceptance.md"
+    },
+    {
       "from": "libs/subscription/prisma/migrations/20261028030000_ccp_c7_self_service_commands/migration.sql",
       "status": "unscoped",
       "to": "doc/ccp/slices/CCP-C7-acceptance.md"
@@ -31785,6 +32025,11 @@
       "from": "libs/subscription/prisma/migrations/20261028050000_ccp_r3_entitlement_alert/migration.sql",
       "status": "unscoped",
       "to": "doc/ccp/slices/CCP-R3-acceptance.md"
+    },
+    {
+      "from": "libs/subscription/prisma/migrations/20261029000000_ccp_command_guard_union/migration.sql",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-command-guard-union.integration.spec.ts"
     },
     {
       "from": "libs/subscription/project.json",
@@ -32190,6 +32435,18 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-c4-billing-adjustments.integration.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-C4-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-c4-billing-adjustments.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-C4-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/subscription/src/tests/ccp-c5-tax-disabled.spec.ts",
       "status": "excluded",
       "to": "apps/platform-admin/src/app/signup/sign-signup.service.ts"
@@ -32223,6 +32480,24 @@
       "from": "libs/subscription/src/tests/ccp-c7-self-service.integration.spec.ts",
       "status": "excluded",
       "to": "doc/ccp/slices/CCP-C7-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-command-guard-union.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/prisma/migrations/20261028030000_ccp_c7_self_service_commands/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-command-guard-union.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/prisma/migrations/20261029000000_ccp_command_guard_union/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-command-guard-union.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/src/tests/fixtures/ccp-command-guard-union-compensating.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -32295,6 +32570,12 @@
       "from": "libs/subscription/src/tests/ccp-merge-train-compensation.integration.spec.ts",
       "status": "excluded",
       "to": "libs/subscription/src/tests/fixtures/ccp-b5r-compensating.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-merge-train-compensation.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/src/tests/fixtures/ccp-c4-compensating.sql"
     },
     {
       "excludedBy": "src/tests/**/*",

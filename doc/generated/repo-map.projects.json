@@ -2180,6 +2180,8 @@
     ],
     "@aramo/subscription": [
       "A6_APPLICABLE_ACTIONS",
+      "ADJUSTMENT_PARAM_KEYS",
+      "ADJUSTMENT_STEP",
       "APPLY_EXPIRABLE_ACTIONS",
       "APPLY_EXPLANATIONS",
       "APPLY_SERVICE_ACTIONS",
@@ -2193,12 +2195,14 @@
       "BASE_COMPOSITION",
       "BILLING_COMMAND_ACTIONS",
       "BILLING_COMMAND_KINDS",
+      "BILLING_COMMAND_KINDS_BY_ACTION",
       "BILLING_COMMAND_MAX_ATTEMPTS",
       "BILLING_COMMAND_STATES",
       "BILLING_COMMAND_TRANSITIONS",
       "BILLING_COMMAND_UNCONFIRMED_STATES",
       "BILLING_COUNTRY_NOT_SUPPORTED",
       "BILLING_PRICE_PROVIDER",
+      "BILLING_PROVIDER_ADJUSTMENT_PORT",
       "BILLING_PROVIDER_COMMAND_PORT",
       "BILLING_PROVIDER_PORT",
       "BILLING_PROVIDER_READ_PORT",
@@ -2210,6 +2214,8 @@
       "BOOTSTRAP_CLI_FLAGS",
       "BOOTSTRAP_PLATFORM_TENANT_ID",
       "BOOTSTRAP_TARGET_EMAIL",
+      "BillingAdjustmentFailure",
+      "BillingAdjustmentRefusedError",
       "BillingCommandError",
       "BillingCommandService",
       "BillingFinanceReportService",
@@ -2222,6 +2228,8 @@
       "BillingWebhookInboxService",
       "BillingWebhookSignatureError",
       "C16_QUERY_A",
+      "C4_ADJUSTMENT_COMMAND_KINDS",
+      "C4_BILLING_ADJUSTMENT_ACTIONS",
       "CATALOG_ACTION_TYPES",
       "CATALOG_DRAFT_SCOPE",
       "CATALOG_ENVELOPE_ALLOWANCE_KEY",
@@ -2254,6 +2262,7 @@
       "COMMERCIAL_AUDIT_MAX_LIMIT",
       "COMMERCIAL_B5R_POLICY_APPLY_TRANSITIONS",
       "COMMERCIAL_C2_CONVERSION_TRANSITIONS",
+      "COMMERCIAL_C4_ADJUSTMENT_TRANSITIONS",
       "COMMERCIAL_CATALOG_APPLY_FAULT_HOOK",
       "COMMERCIAL_CHAIN_PANEL",
       "COMMERCIAL_CHANGE_REQUEST_KINDS",
@@ -2292,6 +2301,8 @@
       "CommercialAuditExportService",
       "CommercialAuditExportTooLargeError",
       "CommercialAuditRepository",
+      "CommercialBillingAdjustmentLedger",
+      "CommercialBillingAdjustmentService",
       "CommercialCatalogApplyService",
       "CommercialCatalogError",
       "CommercialCatalogPlanView",
@@ -2311,6 +2322,7 @@
       "CommercialPolicyInputError",
       "CommercialPolicyRepository",
       "CommercialPolicyUnavailableError",
+      "CommercialRefundReportService",
       "CommercialSubscriptionReadService",
       "ContractRepository",
       "ConversionApplyFailedError",
@@ -2372,6 +2384,14 @@
       "PlatformOwnerBootstrapRefusedError",
       "PolicyActivationRefusedError",
       "ProductContextError",
+      "REFUND_CATEGORIES",
+      "REFUND_EXECUTION_FLAG",
+      "REFUND_OUTSTANDING_STATES",
+      "REFUND_PAYLOAD_CODES",
+      "REFUND_POLICY_NOT_APPROVED",
+      "REFUND_POLICY_REF",
+      "REFUND_REMAINDER_REFUSALS",
+      "REFUND_REPORT_STATES",
       "RENEWAL_HORIZON_DEFAULT_DAYS",
       "RENEWAL_HORIZON_MAX_DAYS",
       "RESIDUAL_AUTHORITY_SQL",
@@ -2381,6 +2401,9 @@
       "REVENUE_EXCLUSION_REASONS",
       "REVENUE_PIPELINE_DEFAULT_MONTHS",
       "REVENUE_PIPELINE_MAX_MONTHS",
+      "RefundRemainderGate",
+      "RefundRemainderRefusedError",
+      "RefundReportQueryError",
       "RoleChangeApplyError",
       "SELF_SERVICE_ACTIONS",
       "SELF_SERVICE_CANCEL_STEP",
@@ -2412,15 +2435,18 @@
       "USAGE_RECONCILIATION_MISMATCH_LIMIT",
       "USAGE_ROLLUP_LOCK_KEY",
       "UsageRollupService",
+      "accountingPeriodOf",
       "activatePolicyVersionInTx",
       "actorSatisfiesStep",
       "addMonthsClamped",
+      "adjustmentOperationOf",
       "applyCatalogDraftEdits",
       "approvalExpiresAt",
       "approvedLegalDocument",
       "assertChainStillSatisfiableAtApply",
       "assertNotProduction",
       "assertProductKey",
+      "assessRefundAmount",
       "billingCommandIdempotencyKey",
       "billingCountrySupported",
       "billingLockKey",
@@ -2451,6 +2477,7 @@
       "daysUntil",
       "decideSupportExtension",
       "diffAlerts",
+      "discountCouponRef",
       "discountEscalates",
       "effectivePlatformOwners",
       "effectiveProviderPrice",
@@ -2466,9 +2493,11 @@
       "inAppContextRef",
       "invoicePaymentState",
       "isA6Applicable",
+      "isAdjustmentCommandKind",
       "isApplyExpirable",
       "isApplyServiceAction",
       "isApprovalExpired",
+      "isBillingAdjustmentAction",
       "isCatalogApplicable",
       "isContractPriced",
       "isFeatureAvailable",
@@ -2499,6 +2528,11 @@
       "priceFigure",
       "productOfMeteredKey",
       "readPlatformSubject",
+      "refundBindingOf",
+      "refundExecutionEnabled",
+      "refundReportState",
+      "refundReservations",
+      "refundableRemainder",
       "resolvePriceToVersion",
       "resolveRequiredChain",
       "runPlatformOwnerBootstrap",
@@ -2520,6 +2554,7 @@
       "verifyStripeSignature",
       "withholdAuditPayloadAmounts",
       "withholdChangeRequestAmounts",
+      "withholdMonetaryAmounts",
       "withholdTenantAmounts"
     ],
     "@aramo/talent-embedding": [
@@ -3663,6 +3698,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c4-billing-adjustment-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-c6-finance-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -4361,6 +4402,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-c3-billing-status-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c4-billing-adjustment-routes.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -6810,6 +6857,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c4-billing-adjustment-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-c6-finance-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -7573,6 +7626,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-c4-billing-adjustments.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-c6-finance-report.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
@@ -7580,6 +7639,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-c7-self-service.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-command-guard-union.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -10014,6 +10079,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c4-billing-adjustment-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-c6-finance-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -12242,6 +12313,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-c3-billing-status-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c4-billing-adjustment-routes.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },

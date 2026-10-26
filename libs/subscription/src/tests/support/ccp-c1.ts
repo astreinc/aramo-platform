@@ -44,7 +44,7 @@ export class FakeStripe extends FakeBilling implements BillingProviderCommandPor
     return this.liveMode ? 'live' : 'test';
   }
 
-  private async probe(op: string): Promise<void> {
+  protected async probe(op: string): Promise<void> {
     if (this.probeClient === null) return;
     this.probes += 1;
     const open = await this.probeClient.query(

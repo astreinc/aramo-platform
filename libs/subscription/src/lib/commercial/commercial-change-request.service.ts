@@ -4,6 +4,9 @@ import { Inject, Injectable, Optional } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 
 import { PrismaService } from '../prisma/prisma.service.js';
+import { takeBillingLock } from '../billing/governed-subscription.js';
+import type { ProviderPaymentPicture } from '../billing/billing-provider.port.js';
+import type { ProductKey } from '../product-registry.js';
 
 import { CommercialAuditRepository } from './commercial-audit.repository.js';
 import {
@@ -29,6 +32,7 @@ import {
   isA6Applicable,
   isA7Applicable,
   isApplyExpirable,
+  isBillingAdjustmentAction,
   isCatalogApplicable,
   parseRequiredChain,
   payloadChecksum,
@@ -41,6 +45,7 @@ import { canonicalJson } from './commercial-policy.js';
 import { CommercialPolicyRepository } from './commercial-policy.repository.js';
 import { CommercialOperatorRepository, D9_STATEMENT_VERSION, type LiveOperator } from './commercial-operator.repository.js';
 import { POLICY_LOCK_SQL } from './commercial-policy-activation.js';
+import { RefundRemainderGate, RefundRemainderRefusedError, refundBindingOf } from './refund-remainder.gate.js';
 import {
   PLATFORM_OWNER_ROLE_KEY,
   RoleChangeApplyError,
@@ -119,7 +124,9 @@ export type CommercialChangeRequestErrorCode =
   // CCP-A6-R (Charter Amendment A1, AD-7) — the apply authority has expired.
   | 'APPLY_EXPIRED'
   // CCP-R3 (TD-A8-3 refined) — a support extension that is not eligible (refused, not escalated).
-  | 'SUPPORT_EXTENSION_INELIGIBLE';
+  | 'SUPPORT_EXTENSION_INELIGIBLE'
+  // CCP-C4-P (Amendment A1 RF-3…RF-5) — the refund is not refundable now (details.refusal).
+  | 'REFUND_NOT_REFUNDABLE';
 
 export class CommercialChangeRequestError extends Error {
   constructor(
@@ -285,6 +292,9 @@ export class CommercialChangeRequestService {
     private readonly policies: CommercialPolicyRepository,
     private readonly operators: CommercialOperatorRepository,
     @Optional() @Inject(COMMERCIAL_CLOCK) clock?: CommercialClock,
+    // CCP-C4-P (Amendment A1 RF-4/RF-5) — the refundable-remainder gate for REFUND creation. Unbound:
+    // a REFUND cannot be created (REFUND_REMAINDER_UNVERIFIABLE, fail closed).
+    @Optional() @Inject(RefundRemainderGate) private readonly refundGate?: RefundRemainderGate,
   ) {
     this.now = clock ?? (() => new Date());
   }
@@ -328,7 +338,10 @@ export class CommercialChangeRequestService {
         return validatePayload(input.action_type, input.payload);
       } catch (e) {
         const reason = e instanceof CommercialPayloadError ? e.reason : 'invalid_payload';
-        throw new CommercialChangeRequestError('INVALID_INPUT', (e as Error).message, { reason, errors: (e as { errors?: unknown }).errors ?? [] });
+        const errors = ((e as { errors?: unknown }).errors ?? []) as string[];
+        // CCP-C4-P — the stable codes of a refused REFUND payload (the error-line prefixes).
+        const codes = [...new Set(errors.map((x) => /^([A-Z][A-Z_]+):/.exec(String(x))?.[1]).filter((x): x is string => x !== undefined))];
+        throw new CommercialChangeRequestError('INVALID_INPUT', (e as Error).message, { reason, errors, ...(codes.length > 0 ? { codes } : {}) });
       }
     })();
     // CCP-R3 (TD-A8-3 refined): a SUPPORT_EXTENSION EXTEND is created only by the CCP-A8 service,
@@ -346,6 +359,10 @@ export class CommercialChangeRequestService {
 
     const replay = await this.replayOf(input.idempotency_key, fingerprint);
     if (replay !== null) return { request: replay, replayed: true };
+    // CCP-C4-P — a REFUND reads the provider's payment picture BEFORE the create transaction (never a
+    // provider call inside it); the remainder is decided inside it, under the billing lock.
+    const refundPicture =
+      input.action_type === 'REFUND' ? await this.readRefundPicture(String((payload as Record<string, unknown>)['provider_invoice_ref'])) : null;
 
     const policy = await this.policies.getActivePolicy();
     const chain = resolveRequiredChain(input.action_type, payload, policy.content);
@@ -364,6 +381,17 @@ export class CommercialChangeRequestService {
           });
           if (open !== null) {
             throw new CommercialChangeRequestError('OPEN_REQUEST_EXISTS', 'an open change request already exists for this tenant and product', { open_request_id: open.id, open_state: open.state });
+          }
+        }
+        if (refundPicture !== null) {
+          // CCP-C4-P (RF-3…RF-5) — under the tenant's billing lock: binding + remainder (outstanding
+          // reservations on the same payment counted once).
+          await takeBillingLock(tx, tenant_id as string);
+          try {
+            await (this.refundGate as RefundRemainderGate).assertInTx(tx, refundPicture, refundBindingOf(tenant_id as string, product_key as ProductKey, payload as Record<string, unknown>));
+          } catch (e) {
+            if (e instanceof RefundRemainderRefusedError) throw new CommercialChangeRequestError('REFUND_NOT_REFUNDABLE', `refund refused: ${e.refusal}`, { refusal: e.refusal, ...e.detail });
+            throw e;
           }
         }
         const requester = await this.operators.readOperator(tx, ctx.platform_tenant_id, actor.user_id, def.requester_role !== null);
@@ -429,6 +457,16 @@ export class CommercialChangeRequestService {
       if (isUniqueViolation(e, 'one_open_per_tenant_product') || isUniqueViolation(e, 'tenant_id')) {
         throw new CommercialChangeRequestError('OPEN_REQUEST_EXISTS', 'an open change request already exists for this tenant and product', {});
       }
+      throw e;
+    }
+  }
+
+  private async readRefundPicture(invoice_ref: string): Promise<ProviderPaymentPicture> {
+    if (this.refundGate === undefined) throw new CommercialChangeRequestError('REFUND_NOT_REFUNDABLE', 'refund refused: REFUND_REMAINDER_UNVERIFIABLE', { refusal: 'REFUND_REMAINDER_UNVERIFIABLE', basis: 'gate_not_bound' });
+    try {
+      return await this.refundGate.readPicture(invoice_ref);
+    } catch (e) {
+      if (e instanceof RefundRemainderRefusedError) throw new CommercialChangeRequestError('REFUND_NOT_REFUNDABLE', `refund refused: ${e.refusal}`, { refusal: e.refusal, ...e.detail });
       throw e;
     }
   }
@@ -1112,7 +1150,8 @@ export function applyActionable(actor: CommercialActor, req: Pick<CommercialChan
   // applied by the same route (requester-only; a bounded EXCEPTION is APPLIED at creation).
   // CCP-B3 (pre-execution C-2; TD-B3) — the CCP-C2 conversion apply (`…/convert`) is requester-only
   // under the same rule, so the hint covers CONVERSION too.
-  if (!isA6Applicable(req.action_type) && !isCatalogApplicable(req.action_type) && !isA7Applicable(req.action_type) && req.action_type !== 'SUPPORT_EXTENSION' && req.action_type !== 'CONVERSION') return false;
+  // CCP-C4 — the billing adjustments (`…/billing-adjustment`) are requester-only under the same rule.
+  if (!isA6Applicable(req.action_type) && !isCatalogApplicable(req.action_type) && !isA7Applicable(req.action_type) && req.action_type !== 'SUPPORT_EXTENSION' && req.action_type !== 'CONVERSION' && !isBillingAdjustmentAction(req.action_type)) return false;
   const scope = COMMERCIAL_ACTIONS[req.action_type as CommercialActionType].requester_scope;
   return scope !== null && actor.scopes.includes(scope);
 }

@@ -351,3 +351,52 @@ For an actor without `platform:billing:amount:read`, the whole free-text `Contra
   - **Nullable `change_request_id` across later slices:** tsc is clean for all 5 projects, and every consumer that reads it (D3 alerts, R3, D2, C6 held activations, the conversion ledger) compiles and passes.
   - **C5 no-tax-call guard** with C7 in: `ccp-c5-tax-disabled.spec.ts` 15 / 15. C7 issues its cancel through the existing `SUBSCRIPTION_CANCEL` provider method, so the prototype enumeration (C5-G-3) covers it.
   - R1 granted_source scan 4 / 4.
+- **TD-MERGE-43 (C4 tip = C4 + C4-R + C4-P, `c79e9c90`):** `wip/ccp-c4` merged.
+  - **Conflicts resolved, both sides kept:**
+    - `platform.module.ts` controllers (union);
+    - `subscription.module.ts` (C7 `SelfServiceBillingService` + C4 adjustment port, ledger, `RefundRemainderGate`, refund report);
+    - `schema.prisma`: C7's `@@unique([self_service_request_id, step])` + C4's `@@index([provider, provider_object_ref])`, and C7's `SelfServiceBillingRequest` + C4's `CommercialBillingAdjustment` (suffix trap: both models closed);
+    - `commercial-change-request.service.ts`: R3's `SUPPORT_EXTENSION_INELIGIBLE` + C4-P's `REFUND_NOT_REFUNDABLE`; R3's payload `reason` + C4-P's `codes`;
+    - the change-request controller error map (both cases);
+    - OpenAPI `CommercialActionType` (R3's description + `REFUND`);
+    - the platform-web Pact (coverage 35 routes; D2 `REVENUE` + C4-P `REFUND_REPORT`);
+    - the e2e fixture (R3's per-persona withholding + C4's `applying`).
+  - **`billing-command.service.ts` (C7 × C4, semantic merge).** C7 refactored the enqueue into `changeRequestOrigin` / `selfServiceOrigin`; C4 added the per-action kind check and canonical-JSON replay. C4's kind check (`BILLING_COMMAND_KINDS_BY_ACTION`, the DB mirror) now lives in `changeRequestOrigin`. The replay compares `canonicalJson`. `assertTargetOwned` takes both C4's `params` and C7's `allowHeld`. With C7's change request now nullable, the C4 dispatcher (`performAdjustment`) and the adjustment ledger refuse / ignore a command without one; only C7 cancels have none.
+  - **TD-MERGE-CMDGUARD-1: command-guard union.** C1 (`20261026020000`), C4 (`20261028010000`) and C7 (`20261028030000`) each re-create `guard_billing_provider_command()`. Applied in order, C7's body silently dropped the C4 block, so CREDIT / DISCOUNT / REFUND commands could not be inserted and the per-action kind pin was gone.
+    - **Fix:** the integrator-owned `20261029000000_ccp_command_guard_union` (sorts after C7) re-creates it as the C1 body + the labelled C7 and C4 blocks, verbatim. It is a 3-way `git merge-file` of the C4 and C7 bodies over C1, with 0 conflicts.
+    - **C4-R:** its fence (command state, attempts, `updated_at`) is app-side. Its DB needs are the C4 body, which the union carries unchanged.
+    - **Probe spec** `ccp-command-guard-union.integration.spec.ts`, 5 / 5:
+      - CMDGUARD-1: INSERT, 15 action types × 7 kinds = 105 probes; admitted exactly the 7 `BILLING_COMMAND_KINDS_BY_ACTION` pairs.
+      - CMDGUARD-2: self-service origin admits only SUBSCRIPTION_CANCEL AT_PERIOD_END; none / both origins refused.
+      - CMDGUARD-3: UPDATE, 6 × 6 = `canTransitionBillingCommand`.
+      - CMDGUARD-4: the live body = the union file's.
+      - CMDGUARD-5: the compensation.
+    - **Compensating SQL:** `fixtures/ccp-command-guard-union-compensating.sql` restores C7's body verbatim. It is refused while a C4 command is unconfirmed.
+    - **C7's own compensation now restores C4's body,** not C1's: on the integrated chain C4 precedes C7. C7-COMP-2 follows that reverse order: union compensation, then C7 compensation, then re-apply C7 + union.
+  - **Change-request guard / constraint unions.** C4's branch already folded its labelled blocks into `20261027000000_ccp_guard_union` (CCP-C4 apply pairs + attempt / APPLIED checks; CCP-C4-R REFUND APPLYING → WITHDRAWN with `withdrawn_at`, no in-flight / confirmed command, and its audit event) and into `20261027000100_ccp_constraint_union` (`REFUND` in `CommercialChangeRequest_action_type_check`; the 5 adjustment kinds in `BillingProviderCommand_kind_check`). HEAD had not touched either file since C4's base, so they merged cleanly. `canTransitionFor` is mirrored and GUARD-UNION-1…4 pass with REFUND.
+    - **CHECK lists:** `CommercialChangeRequest` = the 15 `COMMERCIAL_ACTION_TYPES`; `BillingProviderCommand_kind` = the 7 `BILLING_COMMAND_KINDS`; `CommercialChangeApplication` = A6 + A7 + A8 + C2 (C4 writes `CommercialBillingAdjustment`, not an application).
+    - C7 changes only the origin and idempotency CHECKs, which no other slice redefines.
+  - **Finance scope switch (C4 × R3).** The C4 interim (`FINANCE_SCOPE_PENDING` for every caller, `withholdAmounts` / `AMOUNT_WITHHELD_MARKER`) is removed. The billing-adjustment routes (apply, read, resolve), the C1 billing-commands list and the C2 conversion read now use `amountAccess(auth)`:
+    - the request payload and chain basis use R3's `withholdChangeRequestAmounts` (MONETARY_ACTION_TYPES includes REFUND);
+    - command params use a new shared `withholdMonetaryAmounts` (any kind, fail closed);
+    - the adjustment record shows `amount_minor` / `currency` to a holder, else `amount_withheld: FINANCE_SCOPE_REQUIRED`.
+    - Policy thresholds stay visible, per R3 / FA-3. C4's interim had hidden `credit_escalation_threshold_minor`.
+    - **Tests:** C4-U-7 rewritten (REFUND identity fields stay, amount withheld; holder copy unchanged); C4-RI-1 / RI-3 / RI-5 and the billing-commands read: holder vs non-holder; OpenAPI (3 descriptions; the record's `amount_withheld` now refs R3's `FinanceAmountWithheld`); Pact (commercial_ops interactions get the marker; the read_only_auditor read shows the amount).
+  - **REFUND redaction coverage confirmed:**
+    - payload / basis / refund identity (`provider_invoice_ref`, `provider_payment_ref`, category, `refund_policy_ref` stay, amount withheld);
+    - the `COMMERCIAL_REFUND_*` audit bodies, which carry `action_type`, so R3's `withholdAuditPayloadAmounts` applies; C4 writes no amount into them anyway;
+    - C4-P's refusal details (`REFUND_EXCEEDS_REMAINDER` carries `remainder_known` only).
+  - **D3 alert payloads (FA-6):** the command alerts carry state, kind, refs, attempts and an error code. They carry no params and no amount.
+  - **Residual for R3-W:** `REFUND_REMAINDER_UNVERIFIABLE` with basis `provider_read_failed` passes up to 200 characters of the provider error text in 409 details. A non-holder requester receives it. Provider read errors are not expected to quote amounts, but this alternate path is not redacted. Flagged for the R3-W extension.
+  - **TD-C4P-6:** the refund report controller uses R3's `amountAccess` (both scopes). C4-P's local `canReadFinanceAmounts` (amount scope only) and its duplicate `FINANCE_AMOUNT_SCOPE` export are removed. C4P-RI-1 runs against the integrated bundles, which carry the seeded grant (the `+amount` test principals are gone): platform_owner, finance_admin and read_only_auditor see `amount_minor`; commercial_ops and support_admin get the marker. Pact has a finance_admin holder interaction and a support_admin non-holder interaction.
+  - **TD-MERGE "RF-4 satisfied by C4-P (implements AC-2 / RF-4)":** not re-implemented.
+    - C4P-1…9 and C4P-U-1…4 pass on the integrated branch.
+    - RF-5 binding is verified through `REFUND_PAYMENT_MISMATCH` (invoice / paying account / payment) in C4P-3 and the gate tests.
+  - **TD-C4R-5:**
+    1. Added the direct C7 assertion to C4R-7. After the approved manual CREDIT on a committed self-service row, C7's owner cancel is refused `FINANCIAL_TREATMENT_UNDEFINED` with `COMMITMENT_TERM_DETAIL`, writes no request or command, and leaves the row byte-identical. It is asserted before C2's conversion opens, because an open CONVERSION refuses C7 first with `CONVERSION_IN_PROGRESS`.
+    2. The `commercial-apply-records.ts` reconciliation happens at ACC-1. C4 only adds explanations.
+    3. Done (command-guard union).
+    4. Re-checked at ACC-1.
+  - **C5 × C4 / C4-P.** C5-G-3's prototype enumeration found C4's `executeAdjustment`, `readAdjustmentEffect` and C4-P's `readPaymentPicture`. All three are now exercised on every operation in C5-G-4: recorded requests 14 → 36, refund / coupon / dispute / refund-list requests asserted present, none carrying a tax token. C7's cancel uses the existing `cancelSubscription`. 15 / 15.
+  - **TD-C4-21:** both e2e lint errors fixed (trivial, behaviour-neutral). Recorded with baseline evidence in `doc/ccp/known-baseline-exceptions.md`, together with the 2 Template Studio visual failures (not re-captured).
+  - **Supertest port binding:** the new C4 route spec now binds a port too (TD-MERGE-41).
