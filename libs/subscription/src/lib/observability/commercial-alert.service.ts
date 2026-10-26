@@ -7,6 +7,7 @@ import { BILLING_WEBHOOK_INBOX_STATUSES } from '../billing/billing-webhook-inbox
 import { RESIDUAL_AUTHORITY_SQL, entitlementGapSubject, entitlementGaps, type ResidualAuthorityKind } from '../billing/entitlement-subscription-gap.js';
 import { GOVERNED_SUBSCRIPTION_OPEN } from '../billing/governed-subscription.js';
 import { COMMERCIAL_CHANGE_REQUEST_STATES, isApplyExpirable } from '../commercial/commercial-change-request.js';
+import { unlinkedReceipts } from '../commercial/commercial-payment-record.js';
 import { parseActiveCommercialPolicy } from '../commercial/commercial-policy.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { BASE_COMPOSITION, PRODUCT_KEYS } from '../product-registry.js';
@@ -391,6 +392,26 @@ export class CommercialAlertService {
       });
     }
 
+    // PAYMENT_RECEIPT_UNLINKED (CCP-C8-PR, PAYMENT_RECORD §4.3 step 5) — an applied, uncorrected prepaid
+    // INITIAL receipt not yet linked to a contract. The C6 report lists the same rows (unlinkedReceipts).
+    // No amount in the alert; nothing is expired or neutralized here (only a governed CORRECT does that).
+    const unlinked = await unlinkedReceipts(tx, {}, cap + 1);
+    if (unlinked === null) {
+      sources.PAYMENT_RECEIPT_UNLINKED = 'unavailable';
+    } else {
+      for (const r of capped('PAYMENT_RECEIPT_UNLINKED', unlinked)) {
+        out.push({
+          alert_type: 'PAYMENT_RECEIPT_UNLINKED',
+          subject_id: r.receipt_id,
+          tenant_id: r.tenant_id,
+          product_key: r.product_key,
+          detail: `prepaid INITIAL payment recorded ${minutesBetween(r.recorded_at, at)} min ago for contract ${r.provisional_contract_ref} is not linked to a contract; it never expires and is neutralized only by a governed CORRECT`,
+          evidence: { receipt_id: r.receipt_id, change_request_id: r.change_request_id, provisional_contract_ref: r.provisional_contract_ref, recorded_at: iso(r.recorded_at) },
+          threshold_minutes: null,
+        });
+      }
+    }
+
     // APPLY_FAILED
     const applyFailed = capped(
       'APPLY_FAILED',
@@ -558,6 +579,10 @@ export class CommercialAlertService {
         }
         case 'usage_metric':
           d = 'latest usage roll-up run reconciled';
+          break;
+        case 'payment_receipt':
+          // CCP-C8-PR: a SUBSCRIPTION_OPEN linked it, or a governed CORRECT superseded it.
+          d = 'receipt is now linked to its contract or superseded by a correction';
           break;
         case 'product_entitlement':
           // CCP-R3: an open subscription, a renewed grace or overlay, or a governed revoke ended it.

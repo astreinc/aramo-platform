@@ -35,6 +35,11 @@
 -- not executed (Architect C4 disposition, TD-C4-12), with its checks.
 -- CCP-ACC-1 (TD-ACC-1 Option B, Architect final ruling 2026-10-25; this file only): POLICY_ACTIVATE
 -- APPLY_FAILED -> WITHDRAWN (the requester's withdrawal after reconciliation), withdrawn_at required.
+-- CCP-C8-PR (Aramo-CCP-Program-Build-Directive-Amendment-A2-Payment-Record-v1_0-LOCKED PR-4, §4.3; this
+-- file only; the slice's own objects are in 20261030010000_ccp_c8pr_payment_record): PAYMENT_RECORD applies
+-- with the A6 pairs and the AD-4 expiry; its attempt rules; and the APPLIED check (the application row and
+-- the receipt written, or superseded, by this request). Its deferred "never commit in APPLYING" trigger is
+-- in the slice migration. Self-contained: three labelled CCP-C8-PR blocks, no edit to any other block.
 -- Carries a dollar-quoted body: apply whole-file. Design approval is not production migration
 -- authority (ruling A0-C15).
 
@@ -178,6 +183,15 @@ BEGIN
              OR (NEW."action_type" = 'POLICY_ACTIVATE'
                  AND OLD."state" = 'APPLY_FAILED' AND NEW."state" = 'WITHDRAWN')
              -- ==== END CCP-ACC-1 ====
+             -- [union block: CCP-C8-PR, 20261027000000 (this file) + 20261030010000]
+             -- ==== BEGIN CCP-C8-PR payment record: transitions ====
+             -- PR-4: the A6 apply pairs (APPLIED only in the transaction that writes the receipt; the
+             -- APPLY_FAILED -> APPLYING retry) and AD-4: APPLY_EXPIRED only from APPROVED / APPLY_FAILED.
+             OR (NEW."action_type" = 'PAYMENT_RECORD'
+                 AND ((OLD."state" IN ('APPROVED', 'APPLY_FAILED') AND NEW."state" = 'APPLYING')
+                   OR (OLD."state" = 'APPLYING' AND NEW."state" IN ('APPLIED', 'APPLY_FAILED'))
+                   OR (OLD."state" IN ('APPROVED', 'APPLY_FAILED') AND NEW."state" = 'APPLY_EXPIRED')))
+             -- ==== END CCP-C8-PR payment record: transitions ====
         ) THEN
             RAISE EXCEPTION 'CommercialChangeRequest state % -> % is not allowed', OLD."state", NEW."state";
         END IF;
@@ -368,6 +382,60 @@ BEGIN
             END IF;
         END IF;
         -- ==== END CCP-C4 billing adjustments: attempt rules and APPLIED checks ====
+        -- [union block: CCP-C8-PR attempt rules + APPLIED checks, 20261027000000 (this file)]
+        -- ==== BEGIN CCP-C8-PR payment record: attempt rules and APPLIED checks ====
+        IF NEW."action_type" = 'PAYMENT_RECORD' THEN
+            IF NEW."state" = 'APPLYING' THEN
+                IF NEW."apply_attempts" <> OLD."apply_attempts" + 1 THEN
+                    RAISE EXCEPTION 'CommercialChangeRequest APPLYING must count the attempt (apply_attempts % -> %)', OLD."apply_attempts", NEW."apply_attempts";
+                END IF;
+            ELSIF NEW."apply_attempts" IS DISTINCT FROM OLD."apply_attempts" THEN
+                RAISE EXCEPTION 'CommercialChangeRequest apply_attempts changes only on entering APPLYING';
+            END IF;
+            IF NEW."state" <> 'APPLIED' AND NEW."applied_at" IS DISTINCT FROM OLD."applied_at" THEN
+                RAISE EXCEPTION 'CommercialChangeRequest applied_at is set only by APPLIED';
+            END IF;
+            IF NEW."state" = 'APPLIED' THEN
+                -- PR-4: APPLIED exists only with its application row and its receipt effect.
+                SELECT * INTO app FROM "subscription"."CommercialChangeApplication" WHERE "change_request_id" = NEW."id";
+                IF NOT FOUND THEN
+                    RAISE EXCEPTION 'CommercialChangeRequest cannot be APPLIED without its CommercialChangeApplication';
+                END IF;
+                IF app."action_type" <> NEW."action_type" OR app."tenant_id" IS DISTINCT FROM NEW."tenant_id"
+                   OR app."product_key" IS DISTINCT FROM NEW."product_key" OR app."attempt" <> NEW."apply_attempts" THEN
+                    RAISE EXCEPTION 'CommercialChangeApplication does not match its request';
+                END IF;
+                IF cardinality(app."capabilities") <> 0 OR cardinality(app."capabilities_revoked") <> 0 THEN
+                    RAISE EXCEPTION 'CommercialChangeRequest APPLIED: a payment record grants or revokes no capability';
+                END IF;
+                IF NEW."payload" ->> 'operation' = 'RECORD' THEN
+                    PERFORM 1 FROM "subscription"."CommercialPaymentReceipt" r
+                      WHERE r."change_request_id" = NEW."id" AND r."entry_kind" = 'RECORD' AND r."corrected_at" IS NULL;
+                    IF NOT FOUND THEN
+                        RAISE EXCEPTION 'CommercialChangeRequest APPLIED: the payment receipt is missing';
+                    END IF;
+                ELSIF NEW."payload" ->> 'operation' = 'CORRECT' THEN
+                    PERFORM 1 FROM "subscription"."CommercialPaymentReceipt" r
+                      WHERE r."id"::text = NEW."payload" ->> 'corrects_receipt_id' AND r."corrected_by_change_request_id" = NEW."id";
+                    IF NOT FOUND THEN
+                        RAISE EXCEPTION 'CommercialChangeRequest APPLIED: the corrected receipt is not superseded by this request';
+                    END IF;
+                    IF NEW."payload" ->> 'correction' = 'REPLACE' THEN
+                        PERFORM 1 FROM "subscription"."CommercialPaymentReceipt" r
+                          WHERE r."change_request_id" = NEW."id" AND r."entry_kind" = 'CORRECTION'
+                            AND r."corrects_receipt_id"::text = NEW."payload" ->> 'corrects_receipt_id';
+                        IF NOT FOUND THEN
+                            RAISE EXCEPTION 'CommercialChangeRequest APPLIED: the replacement receipt is missing';
+                        END IF;
+                    ELSIF EXISTS (SELECT 1 FROM "subscription"."CommercialPaymentReceipt" r WHERE r."change_request_id" = NEW."id") THEN
+                        RAISE EXCEPTION 'CommercialChangeRequest APPLIED: a VOID correction writes no receipt';
+                    END IF;
+                ELSE
+                    RAISE EXCEPTION 'CommercialChangeRequest APPLIED: unknown PAYMENT_RECORD operation';
+                END IF;
+            END IF;
+        END IF;
+        -- ==== END CCP-C8-PR payment record: attempt rules and APPLIED checks ====
         -- [union block: CCP-C4-R refund resolution checks, 20261027000000 (this file)]
         -- ==== BEGIN CCP-C4-R refund resolution: checks ====
         -- Never a silent slot release: only with its one resolution audit event (written first, in the

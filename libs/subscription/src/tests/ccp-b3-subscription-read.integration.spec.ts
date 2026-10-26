@@ -124,7 +124,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B3 commercial
       plan_key: INCLUDED,
       plan_version_id: await publishedVersion(pg, INCLUDED),
       replaces_subscription_id: null,
-      contract: { contract_ref: 'CT-B3-0001', terms: ['Sign at negotiated terms'], documents: [DOC], evidence_ref: 'Order form OF-9001' },
+      contract: { contract_ref: 'CT-B3-0001', terms: ['Sign at negotiated terms'], documents: [DOC], evidence_ref: 'Order form OF-9001', payment_terms: { billing_mode: 'POSTPAID', postpaid_approval: { statement: 'Postpaid per the signed order form', evidence_ref: 'Order form postpaid clause' }, currency: 'USD', timezone: 'America/New_York', obligations: [] } },
     });
     F['A_sub'] = (await h.apply.apply(as(OPS, 'commercial_ops'), openA, A6_CTX)).application.subscription_id as string;
     F['A_contract'] = (await one(`SELECT id::text AS id FROM subscription."Contract" WHERE tenant_subscription_id = $1`, [F['A_sub']])).id;

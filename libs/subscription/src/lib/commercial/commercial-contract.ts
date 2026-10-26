@@ -18,6 +18,14 @@
 //
 // This file is the PURE half (payload blocks and their validation; no I/O). The writes and
 // the read model are in commercial-contract.repository.ts.
+//
+// CCP-C8-PR (Aramo-CCP-Program-Build-Directive-Amendment-A2-Payment-Record-v1_0-LOCKED PR-1): a
+// contract recorded under B4 now carries a structured, immutable `payment_terms` block (billing mode,
+// POSTPAID marker, currency, IANA timezone, obligations, grace days), separate from the free-text
+// `terms` and bound by the payload checksum. A contract record without it is refused; an amendment may
+// carry it (commercial-payment-terms.ts validates the block).
+
+import { type PaymentTermsBlock, paymentTermsErrors } from './commercial-payment-terms.js';
 
 // ---- Payload blocks (validated at create and again at apply, frozen with the payload) ----
 
@@ -35,6 +43,8 @@ export interface ContractRecordBlock {
   terms: string[];
   documents: ContractEvidenceDocument[];
   evidence_ref?: string;
+  /** CCP-C8-PR PR-1 — required on a contract record. */
+  payment_terms: PaymentTermsBlock;
 }
 
 /** `contract_amendment` on SUBSCRIPTION_CHANGE. `terms` = the full terms after; omitted = unchanged. */
@@ -44,6 +54,12 @@ export interface ContractAmendmentBlock {
   terms?: string[];
   documents: ContractEvidenceDocument[];
   evidence_ref?: string;
+  /**
+   * CCP-C8-PR PR-1 — the payment terms after the amendment (full block). v1 admits only ADDED
+   * obligations (every recorded obligation, the billing mode, currency, timezone, grace and marker kept
+   * byte-equal); any other change fails closed at apply (PAYMENT_TERMS_CHANGE_UNDEFINED).
+   */
+  payment_terms?: PaymentTermsBlock;
 }
 
 /** `contract_end` on SUBSCRIPTION_END of a contract-linked row (required for such a row). */
@@ -123,11 +139,12 @@ export function validateContractBlocks(action_type: 'SUBSCRIPTION_OPEN' | 'SUBSC
     const c = p['contract'];
     if (!isObject(c)) errors.push('contract must be an object');
     else {
-      closed(c, ['contract_ref', 'terms', 'documents', 'evidence_ref'], 'contract', errors);
+      closed(c, ['contract_ref', 'terms', 'documents', 'evidence_ref', 'payment_terms'], 'contract', errors);
       if (typeof c['contract_ref'] !== 'string' || !CONTRACT_REF_PATTERN.test(c['contract_ref'])) errors.push('contract.contract_ref must match ^[A-Z][A-Z0-9-]{2,39}$ (e.g. CT-2026-021)');
       terms(c['terms'], 'contract.terms', errors);
       documents(c['documents'], 'contract.documents', errors);
       text(c['evidence_ref'], 'contract.evidence_ref', 500, errors, true);
+      paymentTermsErrors(c['payment_terms'], 'contract.payment_terms', errors, true);
     }
   }
   if (p['contract_amendment'] !== undefined) {
@@ -135,12 +152,13 @@ export function validateContractBlocks(action_type: 'SUBSCRIPTION_OPEN' | 'SUBSC
     if (action_type === 'SUBSCRIPTION_CHANGE' && p['contract'] !== undefined) errors.push('a change carries either contract or contract_amendment, not both');
     if (!isObject(a)) errors.push('contract_amendment must be an object');
     else {
-      closed(a, ['contract_id', 'summary', 'terms', 'documents', 'evidence_ref'], 'contract_amendment', errors);
+      closed(a, ['contract_id', 'summary', 'terms', 'documents', 'evidence_ref', 'payment_terms'], 'contract_amendment', errors);
       uuid(a['contract_id'], 'contract_amendment.contract_id', errors);
       text(a['summary'], 'contract_amendment.summary', 500, errors);
       if (a['terms'] !== undefined) terms(a['terms'], 'contract_amendment.terms', errors);
       documents(a['documents'], 'contract_amendment.documents', errors);
       text(a['evidence_ref'], 'contract_amendment.evidence_ref', 500, errors, true);
+      paymentTermsErrors(a['payment_terms'], 'contract_amendment.payment_terms', errors, false);
     }
   }
   if (p['contract_end'] !== undefined) {

@@ -66,7 +66,9 @@ export function withholdTenantAmounts(obj: Record<string, unknown>, access: bool
  * redaction below covers it on merge. DISCOUNT carries `discount_bps`: a percentage is NOT a tenant
  * amount (D-R3-7), so a DISCOUNT payload keeps it; any amount key it might carry is still withheld.
  */
-export const MONETARY_ACTION_TYPES: readonly string[] = ['CREDIT', 'DISCOUNT', 'REFUND'];
+// CCP-C8-PR (PAYMENT_RECORD amendment PR-11; W-3 financial action types): PAYMENT_RECORD carries the
+// received amount and the expected INITIAL amount (`amount_minor`, `expected_amount_minor`).
+export const MONETARY_ACTION_TYPES: readonly string[] = ['CREDIT', 'DISCOUNT', 'REFUND', 'PAYMENT_RECORD'];
 /** Policy thresholds and catalog prices are not tenant amounts (FA-3) even inside a monetary payload. */
 const NON_TENANT_AMOUNT_KEYS: readonly string[] = ['credit_escalation_threshold_minor', 'discount_escalation_threshold_bps', 'list_price_minor', 'reference_price_minor'];
 const isMonetaryKey = (k: string): boolean => !NON_TENANT_AMOUNT_KEYS.includes(k) && (TENANT_AMOUNT_KEYS.includes(k) || k.endsWith('_minor') || /^amount(_|$)/.test(k));
@@ -188,7 +190,9 @@ export function withholdContractTermsDeep(v: unknown, access: boolean): unknown 
  * day it lands. Every other action type is never masked (W-3 "non-financial request reasons:
  * never redacted globally").
  */
-export const FINANCIAL_REQUEST_ACTION_TYPES: readonly string[] = ['CREDIT', 'DISCOUNT', 'REFUND', 'PAYMENT_RECORD'];
+// Merge train TD-MERGE-50 (R3-W × C8-PR): ONE list. The financial request types (W-3) are exactly the
+// monetary action types (CREDIT, DISCOUNT, REFUND, PAYMENT_RECORD); an alias, never a second copy.
+export const FINANCIAL_REQUEST_ACTION_TYPES: readonly string[] = MONETARY_ACTION_TYPES;
 export const isFinancialRequestAction = (a: string | null | undefined): boolean => typeof a === 'string' && FINANCIAL_REQUEST_ACTION_TYPES.includes(a);
 
 /**

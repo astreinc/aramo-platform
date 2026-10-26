@@ -244,6 +244,8 @@ export const SEED_IDS = {
     'platform:commercial:audit:read': '01900000-0000-7000-8000-000000000334',
     // CCP-A1 Amendment A1 (Finance amount scope, LOCKED 2026-10-25) — FA-1 / FA-2.
     'platform:billing:amount:read': '01900000-0000-7000-8000-000000000335',
+    // CCP-A1 Amendment A2 (Payment request scope, LOCKED 2026-10-25) — PS-1 / PS-2.
+    'platform:payment:request': '01900000-0000-7000-8000-000000000336',
     // AUTHZ-D4a — 4 team-model scopes (Amendment §4/§6; Lead Gate-5 ruling 2
     // narrows company:read:all to TA+TO only — mirrors requisition:read:all).
     'company:assign': '01900000-0000-7000-8000-00000000008c',
@@ -3309,6 +3311,16 @@ export const CCP_A1A1_FINANCE_AMOUNT_SCOPE_DESCRIPTION =
   'Platform-tier CCP: read tenant-specific monetary figures, invoice, payment, credit and revenue amounts, in addition to platform:billing:read (enforced from CCP-A1 Amendment A1)';
 export const CCP_A1A1_FINANCE_AMOUNT_HOLDERS = ['platform_owner', 'finance_admin', 'read_only_auditor'] as const;
 
+// CCP-A1 Amendment A2 (Aramo-CCP-A1-Amendment-A2-Payment-Request-Scope-v1_0-LOCKED, PS-1, PS-2,
+// PS-3, PS-5) — platform:payment:request, the requester scope of the PAYMENT_RECORD action only.
+// Granted to exactly commercial_ops and finance_admin (2 rows). finance_admin does NOT gain
+// platform:billing:request (PS-3). Kept apart from CCP_PLATFORM_ROLE_SEED_BUNDLES (the A1 matrix,
+// unchanged). Ids: ccpA1A2RoleScopeId (identical to 20261028070000_ccp_a1a2_payment_request_scope).
+export const CCP_A1A2_PAYMENT_REQUEST_SCOPE = 'platform:payment:request';
+export const CCP_A1A2_PAYMENT_REQUEST_SCOPE_DESCRIPTION =
+  'Platform-tier CCP: request the PAYMENT_RECORD action (record an enterprise payment received outside Aramo); authorizes no other action, read or approval (CCP-A1 Amendment A2)';
+export const CCP_A1A2_PAYMENT_REQUEST_HOLDERS = ['commercial_ops', 'finance_admin'] as const;
+
 // CCP A1 §6.8 — role descriptions. Written by the seed on a fresh database and by the
 // 20261024120000 migration on an existing one (byte-equal).
 export const CCP_A1_ROLE_DESCRIPTIONS = {
@@ -3397,6 +3409,13 @@ export function ccpA1RoleScopeId(role_id: string, scope_id: string): string {
 // `md5(...)::uuid` cast in 20261028060000_ccp_a1a1_finance_amount_scope.
 export function ccpA1A1RoleScopeId(role_id: string, scope_id: string): string {
   const h = createHash('md5').update(`ccp-a1a1:${role_id}:${scope_id}`).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
+// CCP-A1 Amendment A2 — md5('ccp-a1a2:' || role_id || ':' || scope_id) as a uuid, the SQL
+// `md5(...)::uuid` cast in 20261028070000_ccp_a1a2_payment_request_scope.
+export function ccpA1A2RoleScopeId(role_id: string, scope_id: string): string {
+  const h = createHash('md5').update(`ccp-a1a2:${role_id}:${scope_id}`).digest('hex');
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
 
@@ -3688,6 +3707,8 @@ export async function runIdentitySeed(
   }
   // CCP-A1 Amendment A1 — the Finance amount scope (FA-1). NO scope.created (scope-seed precedent).
   await upsertScope(prisma, SEED_IDS.scopes[CCP_A1A1_FINANCE_AMOUNT_SCOPE], CCP_A1A1_FINANCE_AMOUNT_SCOPE, CCP_A1A1_FINANCE_AMOUNT_SCOPE_DESCRIPTION);
+  // CCP-A1 Amendment A2 — the payment request scope (PS-1). NO scope.created (scope-seed precedent).
+  await upsertScope(prisma, SEED_IDS.scopes[CCP_A1A2_PAYMENT_REQUEST_SCOPE], CCP_A1A2_PAYMENT_REQUEST_SCOPE, CCP_A1A2_PAYMENT_REQUEST_SCOPE_DESCRIPTION);
   // AUTHZ-D4a — 4 team-model scopes (Amendment §4/§6). Lead Gate-5 ruling 2
   // narrowed company:read:all to TA+TO only (mirrors requisition:read:all).
   await upsertScope(prisma, SEED_IDS.scopes['company:assign'], 'company:assign', 'Assign / unassign a user to a client (account_manager + tenant_admin + tenant_owner; mirrors requisition:assign as the AM act)');
@@ -4996,6 +5017,16 @@ export async function runIdentitySeed(
       where: { role_id_scope_id: { role_id, scope_id } },
       update: {},
       create: { id: ccpA1A1RoleScopeId(role_id, scope_id), role_id, scope_id },
+    });
+  }
+  // CCP-A1 Amendment A2 (PS-2) — the 2 payment request grants. Ids: ccpA1A2RoleScopeId.
+  for (const roleKey of CCP_A1A2_PAYMENT_REQUEST_HOLDERS) {
+    const role_id = roleIdForKey(roleKey);
+    const scope_id = scopeIdForKey(CCP_A1A2_PAYMENT_REQUEST_SCOPE);
+    await prisma.roleScope.upsert({
+      where: { role_id_scope_id: { role_id, scope_id } },
+      update: {},
+      create: { id: ccpA1A2RoleScopeId(role_id, scope_id), role_id, scope_id },
     });
   }
 

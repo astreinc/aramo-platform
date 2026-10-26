@@ -48,6 +48,7 @@ const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 //   GET  /platform/commercial/usage/periods                     (CCP-D1)
 //   GET  /platform/commercial/contracts                         (CCP-B4)
 //   GET  /platform/commercial/contracts/{id}                    (CCP-B4)
+//   GET  /platform/commercial/contracts/{id}/payments           (CCP-C8-PR; amounts to holders only)
 //   GET  /platform/commercial/billing-commands                  (CCP-C1)
 //   GET  /platform/commercial/billing-webhook-inbox             (CCP-C1)
 //   POST /platform/commercial/change-requests/{id}/convert      (CCP-C2)
@@ -275,6 +276,7 @@ const GATE_ROUTES: readonly GateRoute[] = [
   { name: 'GET usage/periods', method: 'GET', path: USAGE_PERIODS, scope: 'platform:subscription:read' },
   { name: 'GET contracts', method: 'GET', path: CONTRACTS, scope: 'platform:subscription:read' },
   { name: 'GET contracts/{id}', method: 'GET', path: `${CONTRACTS}/${EX_CONTRACT_ID}`, scope: 'platform:subscription:read' },
+  { name: 'GET contracts/{id}/payments', method: 'GET', path: `${CONTRACTS}/${EX_CONTRACT_ID}/payments`, scope: 'platform:billing:read' },
   { name: 'GET billing-commands', method: 'GET', path: COMMANDS, scope: 'platform:billing:read' },
   { name: 'GET billing-webhook-inbox', method: 'GET', path: INBOX, scope: 'platform:billing:read' },
   { name: 'POST change-requests/{id}/convert', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/convert`, scope: 'platform:approval:read' },
@@ -1932,6 +1934,7 @@ describe('platform-web → GET /platform/commercial/finance/reconciliation-repor
             resolution: 'UNRESOLVED',
           }),
           other_open_flags: [],
+          unlinked_receipts: [],
           counts: {
             open_subscriptions: integer(1),
             by_source: like({ MANUAL: 1 }),
@@ -1941,6 +1944,7 @@ describe('platform-web → GET /platform/commercial/finance/reconciliation-repor
             entitled_without_subscription: integer(0),
             held_activations: integer(1),
             other_open_flags: integer(0),
+            unlinked_receipts: integer(0),
             unconfirmed_commands: integer(0),
             failed_commands: integer(0),
             failed_inbox_events: integer(0),
@@ -2395,7 +2399,7 @@ describe('platform-web → GET /platform/commercial/metrics/billing (CCP-D3)', (
           commands_pending_provider_past_threshold: integer(0),
           webhook_inbox_by_status: counts(['RECEIVED', 'PROCESSING', 'PROCESSED', 'FAILED']),
           open_reconciliation_flags_by_reason: like({}),
-          open_alerts_by_type: counts(['COMMAND_PENDING_PROVIDER_STUCK', 'COMMAND_FAILED', 'HELD_ACTIVATION', 'WEBHOOK_INBOX_FAILED', 'USAGE_NOT_RECONCILED', 'ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION']),
+          open_alerts_by_type: counts(['COMMAND_PENDING_PROVIDER_STUCK', 'COMMAND_FAILED', 'HELD_ACTIVATION', 'WEBHOOK_INBOX_FAILED', 'USAGE_NOT_RECONCILED', 'ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION', 'PAYMENT_RECEIPT_UNLINKED']),
           thresholds: THRESHOLDS,
         });
       })
@@ -2497,6 +2501,111 @@ describe('platform-web → GET /platform/commercial/contracts (CCP-B4)', () => {
         const res = await call(`${mock.url}${CONTRACTS}`, 'GET', platformSession('catalog_manager'));
         expect(res.status).toBe(403);
         expect(errCode(res.body)).toBe('INSUFFICIENT_PERMISSIONS');
+      });
+  });
+});
+
+// ── CCP-C8-PR — the contract payment status (PR-10, PR-11) ─────────────────────────────────────────
+
+describe('platform-web → GET /platform/commercial/contracts/{id}/payments (CCP-C8-PR)', () => {
+  it('finance_admin (an amount holder) reads the obligations with amounts, the payment terms and the records (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('a prepaid enterprise contract with its initial payment recorded exists')
+      .uponReceiving('a contract payment-status read by finance_admin')
+      .withRequest('GET', fromProviderState(`${CONTRACTS}/\${contractId}/payments`, `${CONTRACTS}/${EX_CONTRACT_ID}/payments`), (b) => {
+        b.headers(platformSession('finance_admin'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          contract_id: uuid(EX_CONTRACT_ID),
+          contract_ref: like('CT-PACT-0001'),
+          as_of: iso(),
+          as_of_date: regex('^\\d{4}-\\d{2}-\\d{2}$', '2026-10-25'),
+          payment_due: like(false),
+          payment_overdue: like(false),
+          payment_terms: { billing_mode: 'PREPAID', currency: 'USD', timezone: 'America/New_York', grace_days: null, effective_grace_days: 0, postpaid_approval: null },
+          obligations: eachLike({
+            obligation_ref: 'INITIAL',
+            due_date: regex('^\\d{4}-\\d{2}-\\d{2}$', '2026-11-01'),
+            status: 'PAID',
+            description: like('Year 1 prepaid fee'),
+            amount_minor: integer(1200000),
+            currency: 'USD',
+            effective_receipt_id: uuid('cca10000-0000-7000-8000-0000000008a1'),
+          }),
+          records: eachLike({
+            id: uuid('cca10000-0000-7000-8000-0000000008a1'),
+            change_request_id: uuid(EX_REQUEST_ID),
+            entry_kind: 'RECORD',
+            corrects_receipt_id: null,
+            obligation_ref: 'INITIAL',
+            external_invoice_ref: like('INV-PACT-0001'),
+            amount_minor: integer(1200000),
+            currency: 'USD',
+            received_on: regex('^\\d{4}-\\d{2}-\\d{2}$', '2026-10-20'),
+            payment_method: 'BANK_TRANSFER',
+            payment_reference: like('WIRE-PACT-0001'),
+            verification: like('Matched on the bank statement'),
+            evidence_documents: eachLike({ name: like('Remittance.pdf'), sha256: HEX64() }),
+            origin: 'MANUAL',
+            recorded_by: uuid(OP.commercial_ops),
+            recorded_at: iso(),
+            linked_at: iso(),
+            corrected_at: null,
+            corrected_by_change_request_id: null,
+            effective: true,
+          }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CONTRACTS}/${EX_CONTRACT_ID}/payments`, 'GET', platformSession('finance_admin'));
+        expect(res.status).toBe(200);
+        expect((res.body['obligations'] as Array<{ status: string }>)[0]?.status).toBe('PAID');
+      });
+  });
+
+  it('commercial_ops (billing read, no amount scope) gets the statuses and the two booleans only (200, amount_withheld)', async () => {
+    await provider
+      .addInteraction()
+      .given('a prepaid enterprise contract with its initial payment recorded exists')
+      .uponReceiving('a contract payment-status read by commercial_ops')
+      .withRequest('GET', fromProviderState(`${CONTRACTS}/\${contractId}/payments`, `${CONTRACTS}/${EX_CONTRACT_ID}/payments`), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          contract_id: uuid(EX_CONTRACT_ID),
+          contract_ref: like('CT-PACT-0001'),
+          as_of: iso(),
+          as_of_date: regex('^\\d{4}-\\d{2}-\\d{2}$', '2026-10-25'),
+          payment_due: like(false),
+          payment_overdue: like(false),
+          obligations: eachLike({ obligation_ref: 'INITIAL', due_date: regex('^\\d{4}-\\d{2}-\\d{2}$', '2026-11-01'), status: 'PAID' }),
+          amount_withheld: 'FINANCE_SCOPE_REQUIRED',
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CONTRACTS}/${EX_CONTRACT_ID}/payments`, 'GET', platformSession('commercial_ops'));
+        expect(res.status).toBe(200);
+        expect(res.body['records']).toBeUndefined();
+      });
+  });
+
+  it('catalog_manager (no billing read) is refused (403)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a contract payment-status read by catalog_manager')
+      .withRequest('GET', `${CONTRACTS}/${EX_CONTRACT_ID}/payments`, (b) => {
+        b.headers(platformSession('catalog_manager'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:billing:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CONTRACTS}/${EX_CONTRACT_ID}/payments`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(403);
       });
   });
 });

@@ -106,9 +106,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-A1 Amendment 
     await container?.stop();
   });
 
-  it('A1A1-M-0 registration — the last identity migration, after CCP-A9; one statement, no $$', () => {
-    expect(IDENTITY_MIGRATIONS.at(-1)).toBe(MIGRATION);
-    expect(IDENTITY_MIGRATIONS.at(-2)).toBe('libs/identity/prisma/migrations/20261025180000_ccp_a9_platform_last_owner_invariant/migration.sql');
+  it('A1A1-M-0 registration — after CCP-A9, followed only by the CCP-A1 Amendment A2 payment request scope; one statement, no $$', () => {
+    expect(IDENTITY_MIGRATIONS.at(-2)).toBe(MIGRATION);
+    expect(IDENTITY_MIGRATIONS.at(-1)).toBe('libs/identity/prisma/migrations/20261028070000_ccp_a1a2_payment_request_scope/migration.sql');
+    expect(IDENTITY_MIGRATIONS.at(-3)).toBe('libs/identity/prisma/migrations/20261025180000_ccp_a9_platform_last_owner_invariant/migration.sql');
     const sql = migrationSql();
     expect(sql).not.toContain('$$');
     expect(sql.replace(/--[^\n]*$/gm, '').split(/;\s*\n/).map((x) => x.trim()).filter((x) => x.length > 0)).toHaveLength(1);

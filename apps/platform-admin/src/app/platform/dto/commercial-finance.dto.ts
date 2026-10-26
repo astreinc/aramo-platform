@@ -158,6 +158,8 @@ export interface ReconciliationReportResponseDto {
   }>;
   held_activations: HeldActivationDto[];
   other_open_flags: Array<{ flag_id: string; tenant_id: string; reason: string; provider: string; subscription_ref: string; detected_at: string }>;
+  /** CCP-C8-PR — applied, uncorrected prepaid INITIAL receipts not linked to a contract (never expired; no amount). */
+  unlinked_receipts: Array<{ receipt_id: string; change_request_id: string; tenant_id: string; product_key: string; provisional_contract_ref: string; recorded_at: string }>;
   counts: {
     open_subscriptions: number;
     by_source: Record<string, number>;
@@ -167,6 +169,7 @@ export interface ReconciliationReportResponseDto {
     entitled_without_subscription: number;
     held_activations: number;
     other_open_flags: number;
+    unlinked_receipts: number;
     unconfirmed_commands: number;
     failed_commands: number;
     failed_inbox_events: number;

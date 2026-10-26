@@ -2175,7 +2175,7 @@ paths:
           description: Only alerts of this type (a type of this route's family).
           schema:
             type: string
-            enum: [COMMAND_PENDING_PROVIDER_STUCK, COMMAND_FAILED, HELD_ACTIVATION, WEBHOOK_INBOX_FAILED, USAGE_NOT_RECONCILED, ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION]
+            enum: [COMMAND_PENDING_PROVIDER_STUCK, COMMAND_FAILED, HELD_ACTIVATION, WEBHOOK_INBOX_FAILED, USAGE_NOT_RECONCILED, ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION, PAYMENT_RECEIPT_UNLINKED]
         - name: tenant_id
           in: query
           required: false
@@ -2798,6 +2798,46 @@ paths:
             application/json:
               schema:
                 $ref: '#/components/schemas/CommercialContractDetail'
+        '400':
+          $ref: '#/components/responses/CommercialContractValidation'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          $ref: '#/components/responses/CommercialContractNotFound'
+
+  /platform/commercial/contracts/{id}/payments:
+    get:
+      operationId: getPlatformCommercialContractPayments
+      tags: [Platform Commercial Contracts]
+      summary: A contract's payment obligations with their derived status, and its payment records.
+      description: |
+        CCP-C8-PR (PAYMENT_RECORD amendment PR-10, PR-11) — each obligation's status, derived and
+        display only: PAID (an applied, uncorrected record exists), NOT_DUE (today < due_date), DUE
+        (due_date ≤ today ≤ due_date + grace_days), PAST_DUE (after), with "today" the calendar date
+        in the contract's IANA timezone and absent grace = 0. It never sets the subscription status
+        and has no automatic consequence. Payments are recorded only through PAYMENT_RECORD change
+        requests. Requires `platform:billing:read`; amounts, the payment terms and the records are
+        returned only with `platform:billing:amount:read` as well (otherwise the statuses and the
+        `payment_due` / `payment_overdue` booleans, with `amount_withheld`).
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The payment status of the contract.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommercialContractPayments'
         '400':
           $ref: '#/components/responses/CommercialContractValidation'
         '401':
@@ -7799,7 +7839,7 @@ components:
     FinanceReconciliationReport:
       type: object
       additionalProperties: false
-      required: [as_of, currency, billing_provider_mode, tax, status, subscriptions, entitled_without_subscription, held_activations, other_open_flags, counts]
+      required: [as_of, currency, billing_provider_mode, tax, status, subscriptions, entitled_without_subscription, held_activations, other_open_flags, unlinked_receipts, counts]
       properties:
         tax:
           $ref: '#/components/schemas/TaxAvailability'
@@ -7875,10 +7915,36 @@ components:
               detected_at:
                 type: string
                 format: date-time
+        unlinked_receipts:
+          type: array
+          description: |
+            CCP-C8-PR (PAYMENT_RECORD §4.3 step 5) — applied, uncorrected prepaid INITIAL receipts not
+            linked to a contract. Never expired; neutralized only by a governed CORRECT. No amount.
+          items:
+            type: object
+            additionalProperties: false
+            required: [receipt_id, change_request_id, tenant_id, product_key, provisional_contract_ref, recorded_at]
+            properties:
+              receipt_id:
+                type: string
+                format: uuid
+              change_request_id:
+                type: string
+                format: uuid
+              tenant_id:
+                type: string
+                format: uuid
+              product_key:
+                type: string
+              provisional_contract_ref:
+                type: string
+              recorded_at:
+                type: string
+                format: date-time
         counts:
           type: object
           additionalProperties: false
-          required: [open_subscriptions, by_source, by_status, subscriptions_with_discrepancy, discrepancies, entitled_without_subscription, held_activations, other_open_flags, unconfirmed_commands, failed_commands, failed_inbox_events, unprocessed_inbox_events, exceptions]
+          required: [open_subscriptions, by_source, by_status, subscriptions_with_discrepancy, discrepancies, entitled_without_subscription, held_activations, other_open_flags, unlinked_receipts, unconfirmed_commands, failed_commands, failed_inbox_events, unprocessed_inbox_events, exceptions]
           properties:
             open_subscriptions:
               type: integer
@@ -7901,6 +7967,8 @@ components:
             held_activations:
               type: integer
             other_open_flags:
+              type: integer
+            unlinked_receipts:
               type: integer
             unconfirmed_commands:
               type: integer
@@ -8047,19 +8115,23 @@ components:
           format: uuid
         alert_type:
           type: string
-          enum: [COMMAND_PENDING_PROVIDER_STUCK, COMMAND_FAILED, HELD_ACTIVATION, WEBHOOK_INBOX_FAILED, USAGE_NOT_RECONCILED, ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION, APPLY_FAILED, APPROVAL_NEARING_EXPIRY, APPROVAL_PAST_EXPIRY, APPLY_DEADLINE_NEARING, APPLY_DEADLINE_PASSED]
+          enum: [COMMAND_PENDING_PROVIDER_STUCK, COMMAND_FAILED, HELD_ACTIVATION, WEBHOOK_INBOX_FAILED, USAGE_NOT_RECONCILED, ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION, APPLY_FAILED, APPROVAL_NEARING_EXPIRY, APPROVAL_PAST_EXPIRY, APPLY_DEADLINE_NEARING, APPLY_DEADLINE_PASSED, PAYMENT_RECEIPT_UNLINKED]
           description: |
             CCP-R3 (TD-A7-5): `ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION` (BILLING, subject_kind
             `product_entitlement`, subject_id `<tenant_id>:<product_key>`) — a live product
             entitlement with no open base subscription of that product, past grace and with no live
             support-extension overlay. It resolves itself when the condition ends; the scanner never
             revokes anything.
+            CCP-C8-PR: `PAYMENT_RECEIPT_UNLINKED` (BILLING, subject_kind `payment_receipt`, subject_id
+            the receipt id) — an applied, uncorrected prepaid INITIAL receipt not linked to a contract.
+            It never expires; it resolves when a SUBSCRIPTION_OPEN links it or a governed CORRECT
+            supersedes it. No amount is carried.
         family:
           type: string
           enum: [BILLING, APPROVAL]
         subject_kind:
           type: string
-          enum: [billing_command, reconciliation_flag, webhook_inbox, usage_metric, product_entitlement, change_request]
+          enum: [billing_command, reconciliation_flag, webhook_inbox, usage_metric, product_entitlement, change_request, payment_receipt]
         subject_id:
           type: string
           description: The subject's id (a uuid, a metric key for usage_metric, or `<tenant_id>:<product_key>` for product_entitlement).
@@ -8182,7 +8254,7 @@ components:
         open_alerts_by_type:
           type: object
           additionalProperties: false
-          required: [COMMAND_PENDING_PROVIDER_STUCK, COMMAND_FAILED, HELD_ACTIVATION, WEBHOOK_INBOX_FAILED, USAGE_NOT_RECONCILED, ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION]
+          required: [COMMAND_PENDING_PROVIDER_STUCK, COMMAND_FAILED, HELD_ACTIVATION, WEBHOOK_INBOX_FAILED, USAGE_NOT_RECONCILED, ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION, PAYMENT_RECEIPT_UNLINKED]
           properties:
             COMMAND_PENDING_PROVIDER_STUCK:
               type: integer
@@ -8200,6 +8272,9 @@ components:
               type: integer
               minimum: 0
             ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION:
+              type: integer
+              minimum: 0
+            PAYMENT_RECEIPT_UNLINKED:
               type: integer
               minimum: 0
         thresholds:
@@ -8274,13 +8349,118 @@ components:
         thresholds:
           $ref: '#/components/schemas/CommercialAlertThresholds'
 
+    CommercialContractPayments:
+      type: object
+      additionalProperties: false
+      required: [contract_id, contract_ref, as_of, as_of_date, payment_due, payment_overdue, obligations]
+      properties:
+        contract_id:
+          type: string
+          format: uuid
+        contract_ref:
+          type: string
+        as_of:
+          type: string
+          format: date-time
+        as_of_date:
+          type: [string, 'null']
+          format: date
+          description: Today in the contract timezone (null for a contract recorded without payment terms).
+        payment_due:
+          type: boolean
+        payment_overdue:
+          type: boolean
+        obligations:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [obligation_ref, due_date, status]
+            properties:
+              obligation_ref:
+                type: string
+              due_date:
+                type: string
+                format: date
+              status:
+                type: string
+                enum: [PAID, NOT_DUE, DUE, PAST_DUE]
+              description:
+                type: string
+              amount_minor:
+                type: integer
+              currency:
+                type: string
+              effective_receipt_id:
+                type: [string, 'null']
+                format: uuid
+        payment_terms:
+          type: [object, 'null']
+          additionalProperties: false
+          required: [billing_mode, currency, timezone, grace_days, effective_grace_days, postpaid_approval]
+          properties:
+            billing_mode:
+              type: string
+              enum: [PREPAID, POSTPAID]
+            currency:
+              type: string
+            timezone:
+              type: string
+            grace_days:
+              type: [integer, 'null']
+            effective_grace_days:
+              type: integer
+            postpaid_approval:
+              type: [object, 'null']
+        records:
+          type: array
+          items:
+            type: object
+            additionalProperties: false
+            required: [id, change_request_id, entry_kind, corrects_receipt_id, obligation_ref, external_invoice_ref, amount_minor, currency, received_on, payment_method, payment_reference, verification, evidence_documents, origin, recorded_by, recorded_at, linked_at, corrected_at, corrected_by_change_request_id, effective]
+            properties:
+              id: { type: string, format: uuid }
+              change_request_id: { type: string, format: uuid }
+              entry_kind: { type: string, enum: [RECORD, CORRECTION] }
+              corrects_receipt_id: { type: [string, 'null'], format: uuid }
+              obligation_ref: { type: [string, 'null'] }
+              external_invoice_ref: { type: string }
+              amount_minor: { type: integer }
+              currency: { type: string }
+              received_on: { type: string, format: date }
+              payment_method: { type: string, enum: [BANK_TRANSFER, CHEQUE, CARD_EXTERNAL, OTHER] }
+              payment_reference: { type: string }
+              verification: { type: [string, 'null'] }
+              evidence_documents: { type: array, items: { type: object } }
+              origin: { type: string, enum: [MANUAL] }
+              recorded_by: { type: string, format: uuid }
+              recorded_at: { type: string, format: date-time }
+              linked_at: { type: [string, 'null'], format: date-time }
+              corrected_at: { type: [string, 'null'], format: date-time }
+              corrected_by_change_request_id: { type: [string, 'null'], format: uuid }
+              effective: { type: boolean }
+        amount_withheld:
+          $ref: '#/components/schemas/FinanceAmountWithheld'
+
     CommercialActionType:
       type: string
       description: |
         CCP-R3 (TD-B2-1): `PLAN_RETIRE` retires ONE specified plan version (payload
         `{ plan_version_id }`, required; 400 `plan_version_id_required` without it). It never
         retires a whole plan; the plan and its other versions are unchanged.
-      enum: [SUBSCRIPTION_OPEN, SUBSCRIPTION_CHANGE, SUBSCRIPTION_END, ENTITLEMENT_GRANT, ENTITLEMENT_REVOKE, PLAN_VERSION_PUBLISH, PLAN_RETIRE, POLICY_ACTIVATE, SUPPORT_EXTENSION, ROLE_GRANT, ROLE_REVOKE, CREDIT, DISCOUNT, CONVERSION, REFUND]
+        CCP-C8-PR (catalog row 16): `PAYMENT_RECORD` records, with evidence, an enterprise payment
+        received outside Aramo (`operation` RECORD) or corrects an earlier record (CORRECT). Requested
+        with `platform:payment:request` (commercial_ops, finance_admin); chain resolved once at
+        creation (commercial_ops → Finance; finance_admin → a different finance_admin, else the
+        Platform Owner exception; CORRECT → Finance → Owner). A create refusal is 409
+        `COMMERCIAL_CHANGE_REQUEST_CONFLICT` with `details.reason: payment_refused` and
+        `details.refusal` (PAYMENT_ALREADY_RECORDED, PAYMENT_REFERENCE_DUPLICATE, PAYMENT_NOT_RECORDED,
+        PAYMENT_OBLIGATION_MISMATCH, PAYMENT_AMOUNT_UNSUPPORTED, PAYMENT_RECORD_NOT_GOVERNED,
+        CONTRACT_REF_TAKEN, PAYMENT_CORRECTION_TARGET_INVALID). A `contract` block now requires
+        `payment_terms` (billing_mode, POSTPAID postpaid_approval, currency USD, IANA timezone,
+        obligations with INITIAL for PREPAID, optional grace_days); a PREPAID SUBSCRIPTION_OPEN needs
+        its applied INITIAL receipt.
+      enum: [SUBSCRIPTION_OPEN, SUBSCRIPTION_CHANGE, SUBSCRIPTION_END, ENTITLEMENT_GRANT, ENTITLEMENT_REVOKE, PLAN_VERSION_PUBLISH, PLAN_RETIRE, POLICY_ACTIVATE, SUPPORT_EXTENSION, ROLE_GRANT, ROLE_REVOKE, CREDIT, DISCOUNT, CONVERSION, REFUND, PAYMENT_RECORD]
 
     CommercialChangeRequestState:
       type: string
@@ -8521,7 +8701,7 @@ components:
       properties:
         id: { type: string, format: uuid }
         change_request_id: { type: string, format: uuid }
-        action_type: { type: string, enum: [SUBSCRIPTION_OPEN, SUBSCRIPTION_CHANGE, SUBSCRIPTION_END, ENTITLEMENT_GRANT, ENTITLEMENT_REVOKE, SUPPORT_EXTENSION, CONVERSION] }
+        action_type: { type: string, enum: [SUBSCRIPTION_OPEN, SUBSCRIPTION_CHANGE, SUBSCRIPTION_END, ENTITLEMENT_GRANT, ENTITLEMENT_REVOKE, SUPPORT_EXTENSION, CONVERSION, PAYMENT_RECORD] }
         tenant_id: { type: string, format: uuid }
         product_key: { type: string }
         subscription_id: { type: [string, 'null'], format: uuid }

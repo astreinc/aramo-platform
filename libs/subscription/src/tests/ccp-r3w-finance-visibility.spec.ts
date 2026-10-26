@@ -108,12 +108,12 @@ describe('CCP-R3-W W-2 — contract terms', () => {
 });
 
 describe('CCP-R3-W W-3 — financial request text', () => {
-  it('R3W-R-1 the scope list is CREDIT, DISCOUNT, REFUND, PAYMENT_RECORD (keyed on a list; PAYMENT_RECORD not yet an action); every other action type of the 15 is never masked', () => {
+  it('R3W-R-1 the scope list is CREDIT, DISCOUNT, REFUND, PAYMENT_RECORD (keyed on a list; PAYMENT_RECORD an action since CCP-C8-PR, merge train TD-MERGE-50); every other action type of the 16 is never masked', () => {
     expect([...FINANCIAL_REQUEST_ACTION_TYPES]).toEqual(['CREDIT', 'DISCOUNT', 'REFUND', 'PAYMENT_RECORD']);
-    expect((COMMERCIAL_ACTION_TYPES as readonly string[]).includes('PAYMENT_RECORD')).toBe(false);
+    expect((COMMERCIAL_ACTION_TYPES as readonly string[]).includes('PAYMENT_RECORD')).toBe(true);
     expect(isFinancialRequestAction('PAYMENT_RECORD')).toBe(true);
     const others = COMMERCIAL_ACTION_TYPES.filter((a) => !FINANCIAL_REQUEST_ACTION_TYPES.includes(a));
-    expect(others.length).toBe(COMMERCIAL_ACTION_TYPES.length - 3);
+    expect(others.length).toBe(COMMERCIAL_ACTION_TYPES.length - 4);
     expect(others.length).toBe(12);
     for (const action_type of others) {
       const f = projectChangeRequestFinance({ ...credit, action_type, payload: { note: 'x' }, required_chain: { basis: {} } }, nonRequester);

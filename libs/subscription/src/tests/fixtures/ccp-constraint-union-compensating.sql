@@ -7,6 +7,8 @@
 -- CCP-C4 block: re-asserts the A3 action list (no REFUND, 20261025120000) and the C1 command kinds
 -- (20261026020000), refused while a REFUND request or a billing-adjustment command exists (run
 -- ccp-c4-compensating.sql first). Production execution needs separate PO authorization (A0-C15).
+-- CCP-C8-PR block: re-asserts A7's CommercialChangeApplication_subscription_check (20261026000100), refused
+-- while a PAYMENT_RECORD request or application row exists (run ccp-c8pr-compensating.sql first).
 -- splitDdl-safe: no semicolons in comment lines.
 SET LOCAL lock_timeout = '5s';
 DO $$
@@ -18,12 +20,20 @@ BEGIN
      OR EXISTS (SELECT 1 FROM "subscription"."BillingProviderCommand" WHERE "command_kind" NOT IN ('SUBSCRIPTION_CANCEL', 'CHECKOUT_SESSION_EXPIRE')) THEN
     RAISE EXCEPTION 'CCP constraint-union compensation refused: a REFUND request or a CCP-C4 billing-adjustment command exists';
   END IF;
+  IF EXISTS (SELECT 1 FROM "subscription"."CommercialChangeRequest" WHERE "action_type" = 'PAYMENT_RECORD')
+     OR EXISTS (SELECT 1 FROM "subscription"."CommercialChangeApplication" WHERE "action_type" = 'PAYMENT_RECORD') THEN
+    RAISE EXCEPTION 'CCP constraint-union compensation refused: a CCP-C8-PR PAYMENT_RECORD request or application row exists';
+  END IF;
 END
 $$;
 ALTER TABLE "subscription"."CommercialChangeApplication"
     DROP CONSTRAINT "CommercialChangeApplication_action_type_check",
     ADD CONSTRAINT "CommercialChangeApplication_action_type_check" CHECK ("action_type" IN (
         'SUBSCRIPTION_OPEN', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'ENTITLEMENT_GRANT', 'CONVERSION'));
+ALTER TABLE "subscription"."CommercialChangeApplication"
+    DROP CONSTRAINT "CommercialChangeApplication_subscription_check",
+    ADD CONSTRAINT "CommercialChangeApplication_subscription_check" CHECK (
+        ("action_type" IN ('ENTITLEMENT_GRANT', 'ENTITLEMENT_REVOKE')) = ("subscription_id" IS NULL));
 ALTER TABLE "subscription"."CommercialChangeRequest"
     DROP CONSTRAINT "CommercialChangeRequest_action_type_check",
     ADD CONSTRAINT "CommercialChangeRequest_action_type_check" CHECK ("action_type" IN (

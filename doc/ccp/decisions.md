@@ -570,3 +570,33 @@ HALT after the final engineering acceptance and return the single-PR publication
     - sign-service 504 / 504;
     - R1 scan 4 / 4.
   - **Gates:** tsc (5), lint, contract-parity, openapi-drift, orphan-scopes, env-passthrough, error-codes, tests:integration, vocabulary and repo-map all pass (rc=0).
+- **TD-MERGE-50 (C8-PR, `746afa1a`; PAYMENT_RECORD per LOCKED Amendment A2):** `wip/ccp-c8pr` merged.
+  - **Conflicts (R3-W × C8-PR):**
+    - `requestDto` keeps R3-W's projection (`f.payload` from `projectChangeRequestFinance`). C8-PR's direct `withholdChangeRequestAmounts` line is superseded by it; the projection uses the same helper.
+    - Change-request create keeps DG's single `policy` read, with C8-PR's `let chain`.
+    - Repo map regenerated.
+  - **One action-type list.** R3-W's `FINANCIAL_REQUEST_ACTION_TYPES` is now an alias of C8-PR's `MONETARY_ACTION_TYPES` (CREDIT, DISCOUNT, REFUND, PAYMENT_RECORD), never a second copy. W-3 therefore covers PAYMENT_RECORD's reason, notes and evidence, and R3's amount redaction covers its amounts.
+  - **R3-W scans brought to the integrated head (classification only; no behaviour change):**
+    - R3W-R-1: PAYMENT_RECORD is now one of the 16 action types; the 12 others are never masked.
+    - R3W-SCAN-3: C8-PR's `platform-commercial-contract-payments.controller.ts` (`GET /platform/commercial/contracts/{id}/payments`) is classified. Its payment terms, amounts and receipt records (evidence included) go only to a Finance amount holder; others get statuses and the FA-4 booleans. 18 controllers, 45 handlers.
+    - R3W-SCAN-5: 10 alert evidence objects. C8-PR's PAYMENT_RECEIPT_UNLINKED carries receipt id, refs and `recorded_at`: no amount, no evidence. The C6 `unlinked_receipts` rows carry the same, with no amount.
+  - **Lint:** import order in `billing-finance-report.service.ts`.
+  - **Union order (Lead watch-out 3):** `20261030010000_ccp_c8pr_payment_record` sorts after the integrator unions, but it creates only new objects (contract payment terms, obligations, receipts, their guards, one APPLYING backstop). It re-creates no union-owned function or CHECK. Its labelled CCP-C8-PR blocks are inside the guard, constraint and alert-type union files, which stay authoritative; no re-timing needed.
+    - The guard-union probe now runs over 16 action types; the command-guard probe is unchanged (PAYMENT_RECORD issues no provider command).
+    - The full compensation chain is 29 steps (C8-PR added A1-A2 and C8-PR); all pass.
+  - **D5 runbook** updated:
+    - 29 migrations; `--until 20261030010000_ccp_c8pr_payment_record`; gate `29 applied`;
+    - Q1 + 6 / + 17 / + 50 (production 25 / 211 / 1023); Q7 `union_blocks = 30`; Q8 7 APPLYING backstops; Q9 + payment receipts / obligations = 0; Q11 alert types 12;
+    - compensation order 29 → 1, renumbered newest first.
+  - **Scope pins:** 25 / 207 / 989 (C8-PR's `platform:payment:request` for commercial_ops + finance_admin); identity 976 / 976.
+  - **Integrated:**
+    - subscription CCP 905 / 905;
+    - platform-admin CCP 796 / 796 (R3-W per-role + scan 75 / 75);
+    - D4 negative controls (now with PAYMENT_RECORD) 15 / 15 × 3;
+    - entitlement 52 / 52;
+    - auth-service 394 / 394;
+    - sign-service 504 / 504;
+    - platform-web unit 555 / 555;
+    - all pacts deleted and regenerated (platform-web consumer 207 / 207) and all 5 providers 7 / 7;
+    - R1 scan 4 / 4.
+  - **Gates:** tsc, lint (9 projects), contract-parity, openapi-drift, orphan-scopes, env-passthrough, error-codes, tests:integration, vocabulary and repo-map all pass (rc=0).

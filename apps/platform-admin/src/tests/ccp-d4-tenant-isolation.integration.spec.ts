@@ -57,7 +57,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D4 tenant and
         plan_key: INCLUDED,
         plan_version_id: await version(h, INCLUDED),
         replaces_subscription_id: null,
-        contract: { contract_ref: `CT-D4-${name.slice(-1)}-${t.slice(0, 6).toUpperCase()}`, terms: ['Invoiced monthly, net 30'], documents: [{ name: 'Order form.pdf', sha256: (randomUUID() + randomUUID()).replace(/-/g, '').slice(0, 64), byte_size: 1024, media_type: 'application/pdf' }], evidence_ref: `Order form ${name}` },
+        contract: { contract_ref: `CT-D4-${name.slice(-1)}-${t.slice(0, 6).toUpperCase()}`, terms: ['Invoiced monthly, net 30'], documents: [{ name: 'Order form.pdf', sha256: (randomUUID() + randomUUID()).replace(/-/g, '').slice(0, 64), byte_size: 1024, media_type: 'application/pdf' }], evidence_ref: `Order form ${name}`, payment_terms: { billing_mode: 'POSTPAID', postpaid_approval: { statement: 'Postpaid per the signed order form', evidence_ref: 'Order form postpaid clause' }, currency: 'USD', timezone: 'America/New_York', obligations: [] } },
       },
     });
     expect(c.status, JSON.stringify(c.body)).toBe(201);

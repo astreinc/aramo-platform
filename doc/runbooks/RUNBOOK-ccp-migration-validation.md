@@ -1,4 +1,4 @@
-# Runbook — CCP migration validation (the 27 CCP migrations)
+# Runbook — CCP migration validation (the 29 CCP migrations)
 
 > **Design approval is not production migration authority (ruling A0-C15).** Approving the CCP
 > schema designs, this runbook or any CCP instrument does not authorize running a migration against
@@ -16,8 +16,9 @@ box git and docker need `sudo`; build ≠ recreate; `nginx -t` in its own ssh ca
 
 ## 1. What this covers
 
-The CCP program ships 27 migrations (21 at the program gate; 6 more from merge train 2: CCP-C4, CCP-C7,
-CCP-R3's alert type and Finance amount scope, and the integrator-owned command-guard and alert-type unions). They are applied **before any CCP code is built or recreated**
+The CCP program ships 29 migrations (21 at the program gate; 6 more from merge train 2: CCP-C4, CCP-C7,
+CCP-R3's alert type and Finance amount scope, and the integrator-owned command-guard and alert-type unions;
+2 from CCP-C8-PR: the `platform:payment:request` scope and the PAYMENT_RECORD tables). They are applied **before any CCP code is built or recreated**
 (`deploy/migrate-prod.sh` runs after `git pull` and before the image build, `RELEASE-box.md` STEP 3).
 
 | # | Migration | Compensation (documented, not shipped) | Form |
@@ -47,11 +48,15 @@ CCP-R3's alert type and Finance amount scope, and the integrator-owned command-g
 | 23 | `subscription/20261028030000_ccp_c7_self_service_commands` | `libs/subscription/src/tests/fixtures/ccp-c7-compensating.sql` | SQL file |
 | 24 | `subscription/20261028050000_ccp_r3_entitlement_alert` | `libs/subscription/src/tests/fixtures/ccp-r3-alert-compensating.sql` | SQL file |
 | 25 | `identity/20261028060000_ccp_a1a1_finance_amount_scope` | `libs/identity/src/tests/fixtures/ccp-a1a1-compensating.sql` | SQL file |
-| 26 | `subscription/20261029000000_ccp_command_guard_union` | `libs/subscription/src/tests/fixtures/ccp-command-guard-union-compensating.sql` | SQL file |
-| 27 | `subscription/20261029000100_ccp_alert_type_union` | `libs/subscription/src/tests/fixtures/ccp-alert-type-union-compensating.sql` | SQL file |
+| 26 | `identity/20261028070000_ccp_a1a2_payment_request_scope` | `libs/identity/src/tests/fixtures/ccp-a1a2-compensating.sql` | SQL file |
+| 27 | `subscription/20261029000000_ccp_command_guard_union` | `libs/subscription/src/tests/fixtures/ccp-command-guard-union-compensating.sql` | SQL file |
+| 28 | `subscription/20261029000100_ccp_alert_type_union` | `libs/subscription/src/tests/fixtures/ccp-alert-type-union-compensating.sql` | SQL file |
+| 29 | `subscription/20261030010000_ccp_c8pr_payment_record` | `libs/subscription/src/tests/fixtures/ccp-c8pr-compensating.sql` | SQL file |
 
-All 27 have an executable compensating SQL file (CCP-FIX1 wrote the 14 that were prose; merge train 2 added
-the R3 alert and the two new unions). The full reverse chain 27 → 1 and the re-apply are proven with 0 errors
+All 29 have an executable compensating SQL file (CCP-FIX1 wrote the 14 that were prose; merge train 2 added
+the R3 alert and the two new unions; CCP-C8-PR its two). C8-PR's `20261030010000` sorts after the integrator
+unions but creates only new objects; its labelled CCP-C8-PR blocks live inside the guard, constraint and
+alert-type union files, which stay authoritative. The full reverse chain 29 → 1 and the re-apply are proven with 0 errors
 on a fresh Postgres 17 by `libs/subscription/src/tests/ccp-full-compensation-chain.integration.spec.ts` (§6).
 
 ## 2. HALT conditions (stop and report; do not improvise)
@@ -109,7 +114,7 @@ cat /tmp/ccp-pending.txt
 echo "pending=$(wc -l < /tmp/ccp-pending.txt) ccp=$(grep -c _ccp_ /tmp/ccp-pending.txt) non_ccp=$(grep -vc _ccp_ /tmp/ccp-pending.txt)"
 ```
 
-Expect the 27 names of §1 in that order and `non_ccp=0`, unless the PO has separately authorized the
+Expect the 29 names of §1 in that order and `non_ccp=0`, unless the PO has separately authorized the
 non-CCP names listed. Any other result is a HALT.
 
 **P3 — the read-only fact-check (CCP-A11).** It refuses a non-local database unless it is given a
@@ -213,10 +218,10 @@ Then apply, bounded at the last CCP migration:
 
 ```bash
 cd /opt/aramo
-sudo bash deploy/migrate-prod.sh --until 20261029000100_ccp_alert_type_union
+sudo bash deploy/migrate-prod.sh --until 20261030010000_ccp_c8pr_payment_record
 ```
 
-**Gate:** `db:sync:local — 27 applied` (27 + the number of the 5 main migrations of §2 still pending, when the PO has
+**Gate:** `db:sync:local — 29 applied` (29 + the number of the 5 main migrations of §2 still pending, when the PO has
 authorized them for the same run), then `pending-before-stop — 0`, `verified — no migration beyond the
 stop point was applied by this run`, `[migrate] OK — zero pending …`, and `[migrate] Safe to build + recreate
 containers.` Any `FAILED <name>` stops the run: each migration is applied with `--single-transaction`, so the
@@ -227,7 +232,7 @@ failing one left nothing, and every earlier one is applied and recorded. Do not 
 ```bash
 PG <<'SQL'
 BEGIN TRANSACTION READ ONLY;
--- Q1 identity catalog after A1 + A1-A1: +6 roles, +16 scopes, +48 role-scopes
+-- Q1 identity catalog after A1 + A1-A1 + A1-A2: +6 roles, +17 scopes, +50 role-scopes
 SELECT (SELECT count(*) FROM identity."Role") AS roles,
        (SELECT count(*) FROM identity."Scope") AS scopes,
        (SELECT count(*) FROM identity."RoleScope") AS role_scopes,
@@ -259,7 +264,9 @@ SELECT (SELECT count(*) FROM subscription."CommercialChangeRequest") AS change_r
        (SELECT count(*) FROM subscription."CommercialOperatorAttestation") AS attestations,
        (SELECT count(*) FROM subscription."CommercialAuditEvent") AS audit_events,
        (SELECT count(*) FROM subscription."CommercialBillingAdjustment") AS billing_adjustments,
-       (SELECT count(*) FROM subscription."SelfServiceBillingRequest") AS self_service_requests;
+       (SELECT count(*) FROM subscription."SelfServiceBillingRequest") AS self_service_requests,
+       (SELECT count(*) FROM subscription."CommercialPaymentReceipt") AS payment_receipts,
+       (SELECT count(*) FROM subscription."ContractPaymentObligation") AS payment_obligations;
 -- Q11 the live command guard and alert-type CHECK are the integrator unions
 SELECT (SELECT count(*) FROM regexp_matches(pg_get_functiondef('subscription.guard_billing_provider_command()'::regprocedure), '>>> CCP-C(4|7)', 'g')) AS command_guard_blocks,
        (SELECT count(*) FROM regexp_matches(pg_get_constraintdef((SELECT oid FROM pg_constraint WHERE conname = 'CommercialOperationalAlert_type_check')), 'alert_type = ', 'g')) AS alert_types;
@@ -271,17 +278,17 @@ SQL
 
 | Query | Expected in production |
 |---|---|
-| Q1 catalog | the P3 counts + 6 roles, + 16 scopes, + 48 role-scopes (A1 15 / 45 + CCP-R3's `platform:billing:amount:read` 1 / 3; from 19 / 194 / 973: 25 / 210 / 1021); `ccp_roles = 6` |
+| Q1 catalog | the P3 counts + 6 roles, + 17 scopes, + 50 role-scopes (A1 15 / 45 + CCP-R3's `platform:billing:amount:read` 1 / 3 + CCP-C8-PR's `platform:payment:request` 1 / 2; from 19 / 194 / 973: 25 / 211 / 1023); `ccp_roles = 6` |
 | Q2 commercial role grants | 0 (no grant ships with any migration) |
 | Q3 policy | exactly one row: version 1, ACTIVE, checksum `bdc36ef2f1cde82945139efffdac03c999d98a026113b4dde6e13f0ce05752f5` |
 | Q4 open subscriptions | every open row has `product_key = sign` and `unpinned = 0` |
 | Q5 plan versions | one PUBLISHED v1 per plan |
 | Q6 A9 guard | 5 triggers, all `A` |
-| Q7 guard union | `union_blocks = 28` (22 at the gate + CCP-C4 2, CCP-C4-R 2, CCP-ACC-1 2) |
-| Q8 APPLYING backstops | 6 triggers (`…_billing_adjustment_applying_commit`, `…_conversion_applying_commit`, `…_no_applying_commit`, `_a7`, `_a8`, `_b5r`) |
-| Q9 operational tables | 0 change requests, 0 commands, 0 inbox rows, 0 alerts, 0 roll-up runs, 0 attestations, 0 billing adjustments, 0 self-service requests; 1 audit event (the A2 seed row for v1) |
+| Q7 guard union | `union_blocks = 30` (22 at the gate + CCP-C4 2, CCP-C4-R 2, CCP-ACC-1 2, CCP-C8-PR 2) |
+| Q8 APPLYING backstops | 7 triggers (`…_no_applying_commit_c8pr`, `…_billing_adjustment_applying_commit`, `…_conversion_applying_commit`, `…_no_applying_commit`, `_a7`, `_a8`, `_b5r`) |
+| Q9 operational tables | 0 change requests, 0 commands, 0 inbox rows, 0 alerts, 0 roll-up runs, 0 attestations, 0 billing adjustments, 0 self-service requests, 0 payment receipts, 0 payment obligations; 1 audit event (the A2 seed row for v1) |
 | Q10 entitlement provenance | every row has an explicit `granted_source` (`MIGRATION` for pre-existing rows) |
-| Q11 unions | `command_guard_blocks = 3` (2 CCP-C7 markers, 1 CCP-C4 marker; C7 alone gives 2, C4 alone 1); `alert_types = 11` |
+| Q11 unions | `command_guard_blocks = 3` (2 CCP-C7 markers, 1 CCP-C4 marker; C7 alone gives 2, C4 alone 1); `alert_types = 12` (+ CCP-C8-PR PAYMENT_RECEIPT_UNLINKED) |
 
 Then:
 - P5 again: the same four results as before the apply.
@@ -295,40 +302,42 @@ Then:
 
 A failed apply is first recovered from the P1 backup (`RELEASE-box.md` "Rollback": the backup is the floor).
 A compensating SQL is used only with its own PO authorization, and only in this order: **newest first**,
-27 → 1. A compensation for migration N runs only after every migration after N has been compensated.
+29 → 1. A compensation for migration N runs only after every migration after N has been compensated.
 
 | Step | Compensate | Form | Refused while |
 |---|---|---|---|
-| 1 | 27 alert-type union | file | an APPLY_DEADLINE_NEARING / APPLY_DEADLINE_PASSED alert row exists |
-| 2 | 26 command-guard union | file | a CCP-C4 provider command is not CONFIRMED |
-| 3 | 25 A1-A1 (identity) | file | a role other than the 3 grantees holds `platform:billing:amount:read` |
-| 4 | 24 R3 alert | file | an ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION alert row exists |
-| 5 | 23 C7 | file | a self-service billing request or a self-service-origin command exists |
-| 6 | 22 C4 | file | a CREDIT, DISCOUNT or REFUND request, a billing-adjustment command or an adjustment record exists |
-| 7 | 21 B5-R | file | a POLICY_ACTIVATE request is APPROVED, APPLYING or APPLY_FAILED |
-| 8 | 20 constraint union | file | an ENTITLEMENT_REVOKE or SUPPORT_EXTENSION application row exists |
-| 9 | 19 guard union | file | a request of a type whose branch the C2 body lacks is in an apply state, or any request is APPLY_EXPIRED |
-| 10 | 18 D3 | file | an OPEN operational alert exists |
-| 11 | 17 C2 | file | conversion state exists |
-| 12 | 16 A6-R | file | an APPLY_EXPIRED request exists |
-| 13 | 15 B4 | file | contract records exist |
-| 14 | 14 C1 | file | an unconfirmed command or an unprocessed inbox event exists |
-| 15 | 13 A8 | file | A8 state exists |
-| 16 | 12, then 11 A7 | file | governed revokes exist; then revoked or commercially sourced entitlement rows exist |
-| 17 | 10 D1 | file | nothing (the roll-ups are derived; the change log and run log are dropped with it) |
-| 18 | 9 B2-backend | file | catalog apply state exists |
-| 19 | 8 A6 | file | A6 state exists |
-| 20 | 7, then 6 A9 | file | a change request is APPLYING or APPLIED; the identity half while the role-change apply path is installed |
-| 21 | 5 A5 | file | a plan version other than the migration v1, a pinned provider price, re-pin history, or a row not on its plan's v1 exists |
-| 22 | 4 A4 | file | a non-`sign` or non-BASE row exists, or a tenant has more than one open subscription |
-| 23 | 3 A3 | file | any change request exists |
-| 24 | 2 A2 | file | any audit row other than the v1 seed row exists |
-| 25 | 1 A1 | file | a membership holds a CCP commercial role, or a non-CCP role holds a CCP scope |
+| 1 | 29 C8-PR | file | a PAYMENT_RECORD request, a payment receipt, an obligation or a contract with payment terms exists |
+| 2 | 28 alert-type union | file | an APPLY_DEADLINE_NEARING / APPLY_DEADLINE_PASSED (or PAYMENT_RECEIPT_UNLINKED) alert row exists |
+| 3 | 27 command-guard union | file | a CCP-C4 provider command is not CONFIRMED |
+| 4 | 26 A1-A2 (identity) | file | a role other than the 2 grantees holds `platform:payment:request` |
+| 5 | 25 A1-A1 (identity) | file | a role other than the 3 grantees holds `platform:billing:amount:read` |
+| 6 | 24 R3 alert | file | an ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION alert row exists |
+| 7 | 23 C7 | file | a self-service billing request or a self-service-origin command exists |
+| 8 | 22 C4 | file | a CREDIT, DISCOUNT or REFUND request, a billing-adjustment command or an adjustment record exists |
+| 9 | 21 B5-R | file | a POLICY_ACTIVATE request is APPROVED, APPLYING or APPLY_FAILED |
+| 10 | 20 constraint union | file | an ENTITLEMENT_REVOKE or SUPPORT_EXTENSION application row exists |
+| 11 | 19 guard union | file | a request of a type whose branch the C2 body lacks is in an apply state, or any request is APPLY_EXPIRED |
+| 12 | 18 D3 | file | an OPEN operational alert exists |
+| 13 | 17 C2 | file | conversion state exists |
+| 14 | 16 A6-R | file | an APPLY_EXPIRED request exists |
+| 15 | 15 B4 | file | contract records exist |
+| 16 | 14 C1 | file | an unconfirmed command or an unprocessed inbox event exists |
+| 17 | 13 A8 | file | A8 state exists |
+| 18 | 12, then 11 A7 | file | governed revokes exist; then revoked or commercially sourced entitlement rows exist |
+| 19 | 10 D1 | file | nothing (the roll-ups are derived; the change log and run log are dropped with it) |
+| 20 | 9 B2-backend | file | catalog apply state exists |
+| 21 | 8 A6 | file | A6 state exists |
+| 22 | 7, then 6 A9 | file | a change request is APPLYING or APPLIED; the identity half while the role-change apply path is installed |
+| 23 | 5 A5 | file | a plan version other than the migration v1, a pinned provider price, re-pin history, or a row not on its plan's v1 exists |
+| 24 | 4 A4 | file | a non-`sign` or non-BASE row exists, or a tenant has more than one open subscription |
+| 25 | 3 A3 | file | any change request exists |
+| 26 | 2 A2 | file | any audit row other than the v1 seed row exists |
+| 27 | 1 A1 | file | a membership holds a CCP commercial role, or a non-CCP role holds a CCP scope |
 
 Every compensation is executable SQL. The full chain is proven on a fresh Postgres 17: each step is refused
 while its dependent data exists (nothing changed), then applies with 0 errors and restores the schema
-fingerprint taken just before its migration; then all 27 migrations re-apply with 0 errors
-(`ccp-full-compensation-chain.integration.spec.ts`, 30 / 30). Production recovery still starts from the P1
+fingerprint taken just before its migration; then all 29 migrations re-apply with 0 errors
+(`ccp-full-compensation-chain.integration.spec.ts`). Production recovery still starts from the P1
 backup; a compensation is the reviewed alternative for one step, authorized on its own.
 
 **The ledger.** `deploy/migrate-prod.sh` never re-runs a migration recorded in `public._local_migrations`.

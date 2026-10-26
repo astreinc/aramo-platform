@@ -10915,6 +10915,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-commercial-contract-payments.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform-commercial-contract.controller.ts"
     },
     {
@@ -17154,6 +17159,106 @@
       "from": "doc/ccp/slices/CCP-C7-pre-execution.md",
       "status": "unscoped",
       "to": "libs/subscription/src/tests/fixtures/ccp-a4.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C8PR-acceptance.md",
+      "status": "unscoped",
+      "to": "apps/platform-web/e2e/fixtures/session.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C8PR-acceptance.md",
+      "status": "unscoped",
+      "to": "ci/config/api-surface-manifest.json"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C8PR-acceptance.md",
+      "status": "unscoped",
+      "to": "ci/scripts/verify-orphan-scopes.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C8PR-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C8PR-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-C8PR-pre-execution.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C8PR-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RUNBOOK-ccp-migration-validation.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C8PR-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/common/src/lib/testing/identity-migrations.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C8PR-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C8PR-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/lib/dto/scope.dto.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C8PR-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/identity/src/tests/fixtures/ccp-a1a2-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C8PR-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-c8pr-compensating.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C8PR-acceptance.md",
+      "status": "unscoped",
+      "to": "openapi/platform.yaml"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C8PR-pre-execution.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C8PR-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/identity/prisma/migrations/20261028070000_ccp_a1a2_payment_request_scope/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C8PR-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261026030000_ccp_b4_enterprise_contracts/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C8PR-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261030010000_ccp_c8pr_payment_record/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C8PR-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-apply.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C8PR-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-payment-record.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C8PR-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-payment-terms.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-C8PR-pre-execution.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-b4-contracts.integration.spec.ts"
     },
     {
       "from": "doc/ccp/slices/CCP-D1-acceptance.md",
@@ -28418,6 +28523,11 @@
     {
       "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
       "status": "unscoped",
+      "to": "libs/identity/src/tests/fixtures/ccp-a1a2-compensating.sql"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
+      "status": "unscoped",
       "to": "libs/identity/src/tests/fixtures/ccp-a9-compensating.sql"
     },
     {
@@ -28509,6 +28619,11 @@
       "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
       "status": "unscoped",
       "to": "libs/subscription/src/tests/fixtures/ccp-c7-compensating.sql"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/fixtures/ccp-c8pr-compensating.sql"
     },
     {
       "from": "doc/runbooks/RUNBOOK-ccp-migration-validation.md",
@@ -29921,6 +30036,11 @@
       "to": "libs/identity/prisma/migrations/20261028060000_ccp_a1a1_finance_amount_scope/migration.sql"
     },
     {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261028070000_ccp_a1a2_payment_request_scope/migration.sql"
+    },
+    {
       "from": "libs/common/src/lib/testing/skills-taxonomy-migrations.ts",
       "status": "production",
       "to": "libs/skills-taxonomy/prisma/migrations/20260915140000_init_skill_registry/migration.sql"
@@ -30808,6 +30928,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a1-commercial-role-catalog-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261028070000_ccp_a1a2_payment_request_scope/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/identity/src/tests/ccp-a1a1-finance-amount-scope-migration.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261025180000_ccp_a9_platform_last_owner_invariant/migration.sql"
@@ -30817,6 +30943,24 @@
       "from": "libs/identity/src/tests/ccp-a1a1-finance-amount-scope-migration.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261028060000_ccp_a1a1_finance_amount_scope/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a1a1-finance-amount-scope-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261028070000_ccp_a1a2_payment_request_scope/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a1a2-payment-request-scope-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261028060000_ccp_a1a1_finance_amount_scope/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a1a2-payment-request-scope-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261028070000_ccp_a1a2_payment_request_scope/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -30835,6 +30979,12 @@
       "from": "libs/identity/src/tests/ccp-a9-platform-last-owner.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261028060000_ccp_a1a1_finance_amount_scope/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a9-platform-last-owner.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261028070000_ccp_a1a2_payment_request_scope/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -32450,6 +32600,11 @@
       "to": "libs/subscription/src/lib/observability/commercial-alert.ts"
     },
     {
+      "from": "libs/subscription/prisma/migrations/20261030010000_ccp_c8pr_payment_record/migration.sql",
+      "status": "unscoped",
+      "to": "doc/ccp/slices/CCP-C8PR-pre-execution.md"
+    },
+    {
       "from": "libs/subscription/project.json",
       "status": "unscoped",
       "to": "libs/subscription/src/index.ts"
@@ -32764,6 +32919,18 @@
       "excludedBy": "src/tests/**/*",
       "from": "libs/subscription/src/tests/ccp-b4-contracts.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/subscription/src/lib/commercial/commercial-payment-record.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-b4-contracts.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/subscription/src/lib/commercial/commercial-payment-terms.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-b4-contracts.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/subscription/src/lib/commercial/commercial-subscription-read.service.ts"
     },
     {
@@ -32915,6 +33082,12 @@
       "from": "libs/subscription/src/tests/ccp-c7-self-service.integration.spec.ts",
       "status": "excluded",
       "to": "doc/ccp/slices/CCP-C7-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-c8pr-payment-record.integration.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-C8PR-acceptance.md"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -33076,6 +33249,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "libs/subscription/src/tests/ccp-full-compensation-chain.integration.spec.ts",
       "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261028070000_ccp_a1a2_payment_request_scope/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-full-compensation-chain.integration.spec.ts",
+      "status": "excluded",
       "to": "libs/identity/src/tests/fixtures/ccp-a1-compensating.sql"
     },
     {
@@ -33083,6 +33262,12 @@
       "from": "libs/subscription/src/tests/ccp-full-compensation-chain.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/src/tests/fixtures/ccp-a1a1-compensating.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-full-compensation-chain.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/src/tests/fixtures/ccp-a1a2-compensating.sql"
     },
     {
       "excludedBy": "src/tests/**/*",

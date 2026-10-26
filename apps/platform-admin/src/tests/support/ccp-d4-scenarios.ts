@@ -27,6 +27,8 @@ export interface Scenario {
   /** The role each chain step requires. */
   stepRoles: string[];
   apply: ApplyRoute;
+  /** CCP-C8-PR — other roles that also hold the requester scope (PAYMENT_RECORD: finance_admin, PS-2). */
+  alsoRequesters?: string[];
   /** Creates the request (DRAFT, or PENDING for the support-extension escalation) as `who`. */
   create(h: D4Harness, who?: string): Promise<{ res: { status: number; body: Record<string, unknown> }; tenant_id: string | null }>;
 }
@@ -213,6 +215,28 @@ export const SCENARIOS: Scenario[] = [
     action: 'DISCOUNT', requester: 'commercial_ops', chain: ['finance_admin'], stepRoles: ['finance_admin'], apply: null,
     async create(h, who = 'commercial_ops') {
       return createVia(h, who, body('DISCOUNT', await tenant(h), { discount_bps: 500 }));
+    },
+  },
+  {
+    // CCP-C8-PR (catalog row 16; CCP-A1 Amendment A2 PS-2): platform:payment:request → commercial_ops (the
+    // scenario's requester, chain Finance, PR-3) and finance_admin (alsoRequesters). A provisional prepaid
+    // INITIAL record on a fresh tenant (unique contract ref and payment reference per create).
+    action: 'PAYMENT_RECORD', requester: 'commercial_ops', alsoRequesters: ['finance_admin'], chain: ['finance_admin'], stepRoles: ['finance_admin'], apply: 'apply',
+    async create(h, who = 'commercial_ops') {
+      const n = key('pr').toUpperCase().replace(/[^A-Z0-9]/g, '').slice(0, 24);
+      return createVia(h, who, body('PAYMENT_RECORD', await tenant(h), {
+        operation: 'RECORD',
+        target: { kind: 'PROVISIONAL_INITIAL', contract_ref: `CT-D4-${n}`, obligation_ref: 'INITIAL', expected_amount_minor: 500_000, expected_currency: 'USD' },
+        external_invoice_ref: `INV-D4-${n}`,
+        amount_minor: 500_000,
+        currency: 'USD',
+        received_on: '2026-10-20',
+        payment_method: 'BANK_TRANSFER',
+        payment_reference: `WIRE-D4-${n}`,
+        verification: 'Matched on the bank statement',
+        evidence_documents: [],
+        origin: 'MANUAL',
+      }));
     },
   },
   {

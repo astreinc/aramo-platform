@@ -132,12 +132,16 @@ describe('CCP-R3-W — no bypass: source scan and route enumeration', () => {
     'platform-commercial-subscriptions.controller.ts': { handlers: ['list', 'tenant'], serializes: 'B3 (no money, no terms, no reason)' },
     'platform-commercial-catalog.controller.ts': { handlers: ['read', 'readVersion', 'createDraft', 'updateDraft'], serializes: 'catalog (W-1 list prices; plan terms are catalog information)' },
     'platform-commercial-usage.controller.ts': { handlers: ['reconciliation', 'periods'], serializes: 'D1 usage (no W field)' },
+    // Merge train TD-MERGE-50 (C8-PR): the contract payments read. Payment terms, amounts and the receipt
+    // records (evidence included) go only to a Finance amount holder (contractPaymentsDto amount_access);
+    // every other billing reader gets obligation statuses and the FA-4 booleans.
+    'platform-commercial-contract-payments.controller.ts': { handlers: ['contractPayments'], serializes: 'C8-PR obligations / receipts (contractPaymentsDto amount_access: terms, amounts and evidence holder-only)' },
   };
 
   it('R3W-SCAN-3 route enumeration: every commercial controller is classified, and the handler set of each classified controller is exactly the listed one', () => {
     const controllers = appFiles.filter((f) => /^platform-commercial-.*\.controller\.ts$/.test(f)).sort();
     expect(controllers).toEqual(Object.keys(ROUTES).sort());
-    expect(controllers.length).toBe(17);
+    expect(controllers.length).toBe(18);
     let total = 0;
     for (const f of controllers) {
       const src = code(read(resolve(APP, f)));
@@ -146,7 +150,7 @@ describe('CCP-R3-W — no bypass: source scan and route enumeration', () => {
       expect(handlers.sort(), f).toEqual([...ROUTES[f]!.handlers].sort());
     }
     expect(total).toBe(Object.values(ROUTES).reduce((n, r) => n + r.handlers.length, 0));
-    expect(total).toBe(44);
+    expect(total).toBe(45); // 44 + C8-PR contractPayments (TD-MERGE-50)
   });
 
   it('R3W-SCAN-4 lib side: the audit stream is read out only by the A2 repository (feed + export, both through withholdAuditPayloadAmounts); the other readers select no requester text', () => {
@@ -165,7 +169,8 @@ describe('CCP-R3-W — no bypass: source scan and route enumeration', () => {
   it('R3W-SCAN-5 D3 alert payloads carry no request reason, note, evidence, contract term or C4 provider text (every evidence object, by key)', () => {
     const src = code(read(resolve(LIB, 'observability/commercial-alert.service.ts')));
     const evidence = [...src.matchAll(/evidence: \{([^}]*)\}/g)].map((m) => m[1] as string);
-    expect(evidence.length).toBe(9);
+    // 10: CCP-C8-PR adds PAYMENT_RECEIPT_UNLINKED (receipt id, refs and recorded_at; no amount, no evidence).
+    expect(evidence.length).toBe(10);
     for (const e of evidence) {
       const keys = [...e.matchAll(/(\w+):/g)].map((m) => m[1] as string);
       for (const k of ['terms', 'recorded_terms', 'comment', 'rejection_reason', 'category', 'basis', 'error', 'last_error_detail', 'message', 'amount_minor']) expect(keys, e).not.toContain(k);

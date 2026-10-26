@@ -171,8 +171,8 @@ describe('CCP-A3 chain resolution from the policy (D6, Q1, Q2, Q7) — the chain
   for (const [name, a, p, r, roles] of table) it(name, () => expect(rule(a, p)).toEqual([r, roles]));
 
   // CCP-C4 (TD-C4-1): REFUND joins the closed set (14 -> 15).
-  it('A3-CH-15 every action type resolves a chain (closed set of 15, CCP-C4 REFUND) and every step names a role and at least one scope', () => {
-    expect(COMMERCIAL_ACTION_TYPES).toHaveLength(15);
+  it('A3-CH-15 every action type resolves a chain (closed set of 16, CCP-C4 REFUND, CCP-C8-PR PAYMENT_RECORD) and every step names a role and at least one scope', () => {
+    expect(COMMERCIAL_ACTION_TYPES).toHaveLength(16);
     for (const a of COMMERCIAL_ACTION_TYPES) {
       const p: Record<string, unknown> =
         a === 'CREDIT' || a === 'REFUND' ? { amount_minor: 1, currency: 'USD' } : a === 'DISCOUNT' ? { discount_bps: 1 } : {};

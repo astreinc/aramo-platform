@@ -64,7 +64,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D4 program ne
     const violations: string[] = [];
     for (const s of SCENARIOS) {
       const row: Record<string, string> = {};
-      for (const role of [...ALL_ROLES].filter((r) => r !== s.requester)) {
+      // CCP-C8-PR: a second requester role (PAYMENT_RECORD: finance_admin) creates too.
+      for (const also of s.alsoRequesters ?? []) {
+        const c = await s.create(h, also);
+        row[also] = String(c.res.status);
+        if (c.res.status !== 201) violations.push(`${s.action} also-requester ${also} → ${c.res.status} ${JSON.stringify(c.res.body)}`);
+        else await h.post(also, `${CR}/${idOf(c)}/withdraw`);
+      }
+      for (const role of [...ALL_ROLES].filter((r) => r !== s.requester && !(s.alsoRequesters ?? []).includes(r))) {
         const before = Number((await h.pg.query(`SELECT count(*)::int n FROM subscription."CommercialChangeRequest"`)).rows[0].n);
         const c = await s.create(h, role);
         const after = Number((await h.pg.query(`SELECT count(*)::int n FROM subscription."CommercialChangeRequest"`)).rows[0].n);
@@ -81,7 +88,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D4 program ne
     }
     console.log(`D4-CREATE-1\n${JSON.stringify(results, null, 1)}`);
     expect(violations).toEqual([]);
-    expect(Object.keys(results)).toHaveLength(14);
+    expect(Object.keys(results)).toHaveLength(15); // CCP-C8-PR + PAYMENT_RECORD
   });
 
   it('D4-SELF-1 self-approval is refused on every action type, even when the requester ALSO holds every step role (one person holding several roles); the subject of a role change cannot approve it; no approval row is written', async () => {
@@ -98,7 +105,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D4 program ne
       await h.post(alias, `${CR}/${c.id}/withdraw`);
     }
     console.log(`D4-SELF-1\n${JSON.stringify(results, null, 1)}`);
-    expect(Object.keys(results)).toHaveLength(14);
+    expect(Object.keys(results)).toHaveLength(15); // CCP-C8-PR + PAYMENT_RECORD
     expect(CCP_ROLES).toHaveLength(6);
   });
 
@@ -168,7 +175,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D4 program ne
     }
     console.log(`D4-NC1\n${JSON.stringify(results, null, 1)}`);
     // 11 one-step + 3 two-step action types, plus the 2 escalated (two-step) money actions.
-    expect(Object.keys(results)).toHaveLength(11 + 3 * 2 + 2 * 2);
+    expect(Object.keys(results)).toHaveLength(12 + 3 * 2 + 2 * 2); // CCP-C8-PR: + PAYMENT_RECORD (one step)
   });
 
   it('D4-NC1-APPLY concurrent apply by the requester on every applyable type: 3 parallel applies produce exactly one application row and the request ends applied once', async () => {
@@ -182,7 +189,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D4 program ne
       expect(await applications(c.id), s.action).toBe(1);
     }
     console.log(`D4-NC1-APPLY\n${JSON.stringify(results, null, 1)}`);
-    expect(Object.keys(results)).toHaveLength(10);
+    expect(Object.keys(results)).toHaveLength(11); // CCP-C8-PR + PAYMENT_RECORD
   });
 
   it('D4-NC2 one person holding several roles fills at most one step: a finance_admin + platform_owner user, and a user holding all 6 CCP roles, fill step 0 of every two-step chain and are refused step 1 (USER_ALREADY_APPROVED); a distinct owner completes', async () => {
@@ -226,7 +233,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D4 program ne
     await h.operator('human_x_account_1', ['finance_admin'], { human: 'human:x' });
     await expect(h.operator('human_x_account_2', ['platform_owner'], { human: 'human:x' })).rejects.toThrow(/CommercialOperatorAttestation_active_human_key|duplicate key/);
     console.log(`D4-NC2-D9\n${JSON.stringify(results, null, 1)}`);
-    expect(Object.keys(results)).toHaveLength(14);
+    expect(Object.keys(results)).toHaveLength(15); // CCP-C8-PR + PAYMENT_RECORD
   });
 
   it('D4-NC3 stale chains at approve: (a) on every action type the request expires at exactly expires_at (1 ms before is admitted); (b) a chain no distinct eligible human can still fill is refused CCP_NOT_BOOTSTRAPPED on every action type, state unchanged', async () => {
@@ -278,7 +285,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D4 program ne
       await withdraw(s, c.id);
     }
     console.log(`D4-NC3\n${JSON.stringify(results, null, 1)}`);
-    expect(Object.keys(results)).toHaveLength(14 + 14 + 5);
+    expect(Object.keys(results)).toHaveLength(15 + 15 + 5); // CCP-C8-PR: + PAYMENT_RECORD
   });
 
   it('D4-NC4 role revoked between request and approval, on every action type and every step: eligibility is read live in the approve transaction (STEP_SCOPE_MISSING when the gate still admits; refused at the gate when the revoked role was the only one); no approval row', async () => {
@@ -303,7 +310,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D4 program ne
       }
     }
     console.log(`D4-NC4\n${JSON.stringify(results, null, 1)}`);
-    expect(Object.keys(results)).toHaveLength(11 + 3 * 2 + 2 * 2);
+    expect(Object.keys(results)).toHaveLength(12 + 3 * 2 + 2 * 2); // CCP-C8-PR: + PAYMENT_RECORD (one step)
   });
 
   it('D4-NC5-ROLE approver eligibility lost between approval and apply, on every applyable type: the requester\'s apply is refused APPROVER_NO_LONGER_ELIGIBLE, fail closed (state APPROVED, no application row) and the signature is byte-identical; restoring the role lets the same request apply', async () => {
@@ -328,7 +335,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D4 program ne
       expect(await approvalRows(h, c.id)).toEqual(before);
     }
     console.log(`D4-NC5-ROLE\n${JSON.stringify(results, null, 1)}`);
-    expect(Object.keys(results)).toHaveLength(10);
+    expect(Object.keys(results)).toHaveLength(11); // CCP-C8-PR + PAYMENT_RECORD
   });
 
   it('D4-NC5-POLICY a policy version activated (through the governed POLICY_ACTIVATE HTTP flow) after requests were created does not re-threshold them: an in-flight escalated DISCOUNT keeps its Finance → Owner chain and snapshotted version; a new DISCOUNT of the same size is Finance-only under the new version; an in-flight SUBSCRIPTION_OPEN approves and applies under its snapshot', async () => {
@@ -403,7 +410,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D4 program ne
       expect(await requestState(h, c.id), s.action).toBe(s.apply === 'approval' ? 'APPLIED' : 'APPROVED');
     }
     console.log(`D4-APPLY-1\n${JSON.stringify(results, null, 1)}\n${JSON.stringify(nonApplyable, null, 1)}`);
-    expect(Object.keys(results)).toHaveLength(10);
+    expect(Object.keys(results)).toHaveLength(11); // CCP-C8-PR + PAYMENT_RECORD
     expect(Object.keys(nonApplyable)).toHaveLength(4);
   });
 
@@ -449,7 +456,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D4 program ne
       clock.fixed = null;
     }
     console.log(`D4-TTL-1 policy=${vid}\n${JSON.stringify(results, null, 1)}`);
-    expect(Object.keys(results)).toHaveLength(10);
+    expect(Object.keys(results)).toHaveLength(11); // CCP-C8-PR + PAYMENT_RECORD
   });
 
   it('D4-LAST-1 the last-owner invariant: with one effective platform_owner, the governed ROLE_REVOKE is refused (409 PLATFORM_LAST_OWNER) and the DB refuses role removal, membership deactivation and user deactivation; with two owners, revoking one needs the OTHER as checker, who is its subject (chain unfillable)', async () => {

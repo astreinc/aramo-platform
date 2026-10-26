@@ -111,7 +111,9 @@ const RECONCILIATION_REPORT = {
     },
   ],
   other_open_flags: [],
-  counts: { open_subscriptions: 0, by_source: {}, by_status: {}, subscriptions_with_discrepancy: 0, discrepancies: {}, entitled_without_subscription: 0, held_activations: 1, other_open_flags: 0, unconfirmed_commands: 0, failed_commands: 0, failed_inbox_events: 0, unprocessed_inbox_events: 0, exceptions: 1 },
+  // CCP-C8-PR — unlinked prepaid INITIAL receipts (none here).
+  unlinked_receipts: [],
+  counts: { open_subscriptions: 0, by_source: {}, by_status: {}, subscriptions_with_discrepancy: 0, discrepancies: {}, entitled_without_subscription: 0, held_activations: 1, other_open_flags: 0, unlinked_receipts: 0, unconfirmed_commands: 0, failed_commands: 0, failed_inbox_events: 0, unprocessed_inbox_events: 0, exceptions: 1 },
 };
 
 describe('CCP-C6 — per-role authorization on the Finance read routes (real JwtAuthGuard + RolesGuard)', () => {

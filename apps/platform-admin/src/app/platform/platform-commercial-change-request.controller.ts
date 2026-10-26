@@ -265,6 +265,11 @@ export function toAramoError(err: unknown, requestId: string, amount_access = fa
         return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, { requestId, details: { reason: 'apply_unresolved', ...d } });
       case 'ALREADY_APPLIED':
         return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, { requestId, details: { reason: 'already_applied', ...d } });
+      // CCP-C8-PR (PAYMENT_RECORD amendment PR-5…PR-9, §4.2, K-1) — details.refusal: PAYMENT_ALREADY_RECORDED |
+      // PAYMENT_REFERENCE_DUPLICATE | PAYMENT_NOT_RECORDED | PAYMENT_OBLIGATION_MISMATCH | PAYMENT_AMOUNT_UNSUPPORTED |
+      // PAYMENT_RECORD_NOT_GOVERNED | CONTRACT_REF_TAKEN | PAYMENT_CORRECTION_TARGET_INVALID; audited.
+      case 'PAYMENT_REFUSED':
+        return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, { requestId, details: { reason: 'payment_refused', ...d } });
     }
   }
   return err;

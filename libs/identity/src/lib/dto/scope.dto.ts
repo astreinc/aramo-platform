@@ -209,6 +209,8 @@ export const SEED_SCOPE_KEYS = [
   'platform:commercial:audit:read',
   // CCP-A1 Amendment A1 (LOCKED 2026-10-25, FA-1) — tenant-specific monetary figures, in addition to platform:billing:read.
   'platform:billing:amount:read',
+  // CCP-A1 Amendment A2 (LOCKED 2026-10-25, PS-1) — requester scope of the PAYMENT_RECORD action only.
+  'platform:payment:request',
   // AUTHZ-D5 — 6 compensation:view:* scopes (the field-masking scope
   // family). The FINAL authorization PR — field-level masking of the
   // requisition read DTO's compensation surface (D4b masked WHICH
@@ -578,6 +580,8 @@ export const PLATFORM_SCOPE_KEYS = [
   'platform:commercial:audit:read',
   // CCP-A1 Amendment A1 (LOCKED 2026-10-25, FA-1) — tenant-specific monetary figures, in addition to platform:billing:read.
   'platform:billing:amount:read',
+  // CCP-A1 Amendment A2 (LOCKED 2026-10-25, PS-1) — requester scope of the PAYMENT_RECORD action only.
+  'platform:payment:request',
 ] as const;
 export type PlatformScopeKey = (typeof PLATFORM_SCOPE_KEYS)[number];
 

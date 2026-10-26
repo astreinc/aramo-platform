@@ -139,6 +139,11 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   // AuthorizationVersion of any principal whose effective set changed. One guarded, fail-closed DO
   // block on fixed ids (a no-op without a role catalog). No returned-shape change.
   'libs/identity/prisma/migrations/20261028060000_ccp_a1a1_finance_amount_scope/migration.sql',
+  // CCP-A1 Amendment A2 (Payment request scope, LOCKED 2026-10-25; PS-5) — platform:payment:request
+  // (0x336) granted to exactly commercial_ops and finance_admin; bumps the AuthorizationVersion of
+  // any principal whose effective set changed. One guarded, fail-closed DO block on fixed ids (a
+  // no-op without a role catalog). No returned-shape change.
+  'libs/identity/prisma/migrations/20261028070000_ccp_a1a2_payment_request_scope/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each

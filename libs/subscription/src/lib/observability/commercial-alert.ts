@@ -15,7 +15,7 @@ export type CommercialAlertFamily = (typeof COMMERCIAL_ALERT_FAMILIES)[number];
 export const COMMERCIAL_ALERT_STATUSES = ['OPEN', 'RESOLVED'] as const;
 export type CommercialAlertStatus = (typeof COMMERCIAL_ALERT_STATUSES)[number];
 
-export type CommercialAlertSubjectKind = 'billing_command' | 'reconciliation_flag' | 'webhook_inbox' | 'usage_metric' | 'product_entitlement' | 'change_request';
+export type CommercialAlertSubjectKind = 'billing_command' | 'reconciliation_flag' | 'webhook_inbox' | 'usage_metric' | 'product_entitlement' | 'change_request' | 'payment_receipt';
 
 /** The closed set (mirrors the migration's type CHECK, which also pins family and subject kind). */
 export const COMMERCIAL_ALERT_DEFINITIONS = {
@@ -47,6 +47,11 @@ export const COMMERCIAL_ALERT_DEFINITIONS = {
   // … or at or past it (half-open, AD-3) while it still reads APPROVED / APPLY_FAILED (the expiry
   // itself is lazy, AD-7: the next apply, slot-contending create or read moves it to APPLY_EXPIRED).
   APPLY_DEADLINE_PASSED: { family: 'APPROVAL', subject_kind: 'change_request' },
+  // CCP-C8-PR (PAYMENT_RECORD amendment §4.3 step 5; alert-type union block "CCP-C8-PR"): an applied,
+  // uncorrected prepaid INITIAL receipt not linked to a contract (the deal has not opened). Subject = the
+  // receipt id. Auto-resolving (a SUBSCRIPTION_OPEN links it, or a CORRECT neutralizes it); the receipt is
+  // never expired or deleted, and the alert carries no amount.
+  PAYMENT_RECEIPT_UNLINKED: { family: 'BILLING', subject_kind: 'payment_receipt' },
 } as const satisfies Record<string, { family: CommercialAlertFamily; subject_kind: CommercialAlertSubjectKind }>;
 
 export type CommercialAlertType = keyof typeof COMMERCIAL_ALERT_DEFINITIONS;

@@ -143,16 +143,19 @@ async function seeded(includeDevFixtures = false) {
   // CCP-R3: this spec pins the A1 schedule. The successor CCP-A1 Amendment A1 scope
   // (platform:billing:amount:read, 0x335, 3 grants) is proven by its own describe below and is
   // left out of the A1 views (`unique`, `bundles`, `scopes`); `uniqueAll` / `allScopes` are the seed.
-  const unique = new Map([...uniqueAll].filter(([, r]) => r.scope_id !== AMOUNT_SCOPE_ID));
+  // CCP-C8-PR: likewise the CCP-A1 Amendment A2 scope (platform:payment:request, 0x336, 2 grants).
+  const unique = new Map([...uniqueAll].filter(([, r]) => !AMENDMENT_SCOPE_IDS.has(r.scope_id)));
   const bundles = new Map<string, Set<string>>();
   for (const r of unique.values()) {
     const role = roleIdToKey.get(r.role_id) ?? r.role_id;
     if (!bundles.has(role)) bundles.set(role, new Set());
     bundles.get(role)?.add(scopeIdToKey.get(r.scope_id) ?? r.scope_id);
   }
-  return { ...rec, scopes: rec.scopes.filter((x) => x['id'] !== AMOUNT_SCOPE_ID), allScopes: rec.scopes, unique, uniqueAll, bundles };
+  return { ...rec, scopes: rec.scopes.filter((x) => !AMENDMENT_SCOPE_IDS.has(x['id'] as string)), allScopes: rec.scopes, unique, uniqueAll, bundles };
 }
 const AMOUNT_SCOPE_ID = SEED_IDS.scopes['platform:billing:amount:read'];
+const PAYMENT_REQUEST_SCOPE_ID = SEED_IDS.scopes['platform:payment:request'];
+const AMENDMENT_SCOPE_IDS: ReadonlySet<string> = new Set([AMOUNT_SCOPE_ID, PAYMENT_REQUEST_SCOPE_ID]);
 const sha = (lines: string[]): string => createHash('sha256').update([...lines].sort().join('\n')).digest('hex');
 const ccpRoleIds = new Set(CCP_ROLES.map((k) => SEED_IDS.roles[k]));
 
@@ -236,7 +239,8 @@ describe('CCP A1 §4.3 — bundle invariants', () => {
 });
 
 describe('CCP A1 §5 / §7.1 — partitions and totals', () => {
-  it('measured: 25 role rows / 24 / 7 / 17 / 11 / 13 / 206 / 26 / 180 / 987 / 10 (CCP-A1-A1 +1 scope / +3 grants)', async () => {
+  it('measured: 25 role rows / 24 / 7 / 17 / 11 / 13 / 207 / 27 / 180 / 989 / 10 (CCP-A1-A1 +1 scope / +3 grants; CCP-A1-A2 +1 scope / +2 grants)', async () => {
+    // CCP-A1-A2 +1 scope / +2 grants → 25 / 207 / 989 (platform:payment:request, 0x336).
     // CCP-A1-A1 +1 scope / +3 grants → 25 / 206 / 987 (platform:billing:amount:read, 0x335).
     const { roles, uniqueAll: unique, allScopes: scopes, bundles } = await seeded();
     expect(new Set(roles.map((r) => r['id'])).size).toBe(25);
@@ -245,11 +249,11 @@ describe('CCP A1 §5 / §7.1 — partitions and totals', () => {
     expect(TENANT_ASSIGNABLE_ROLE_KEYS).toHaveLength(17);
     expect(ATS_PRODUCT_ROLE_KEYS).toHaveLength(11);
     expect(SEED_ROLE_KEYS.filter((k) => !ATS_PRODUCT_ROLE_KEYS.includes(k))).toHaveLength(13);
-    expect(SEED_SCOPE_KEYS).toHaveLength(206);
-    expect(new Set(scopes.map((s) => s['id'])).size).toBe(206);
-    expect(PLATFORM_SCOPE_KEYS).toHaveLength(26);
+    expect(SEED_SCOPE_KEYS).toHaveLength(207);
+    expect(new Set(scopes.map((s) => s['id'])).size).toBe(207);
+    expect(PLATFORM_SCOPE_KEYS).toHaveLength(27);
     expect(SEED_SCOPE_KEYS.filter((k) => !k.startsWith('platform:'))).toHaveLength(180);
-    expect(unique.size).toBe(987);
+    expect(unique.size).toBe(989);
     expect(bundles.get('super_admin')?.size).toBe(10);
   });
 
@@ -358,6 +362,14 @@ describe('CCP A1 §7.3(d)(e) — tenant-side surfaces never carry the new roles 
         }
       }
       expect(filterScopesForConsumer({ consumer: 'platform', scopes, tenantHasEsign: false }).sort()).toEqual(expectedBundle(role));
+      // CCP-A1-A2: the payment request scope is platform-only too (the 2 holders).
+      if (role === 'commercial_ops' || role === 'finance_admin') {
+        const withPayment = [...scopes, 'platform:payment:request'];
+        expect(filterScopesForConsumer({ consumer: 'platform', scopes: withPayment, tenantHasEsign: false })).toContain('platform:payment:request');
+        for (const consumer of ['recruiter', 'org', 'sign', 'portal', 'ingestion']) {
+          expect(filterScopesForConsumer({ consumer, scopes: withPayment, tenantHasEsign: true }), consumer).not.toContain('platform:payment:request');
+        }
+      }
       // CCP-A1-A1: the Finance amount scope is platform-only too (the 3 holders).
       if (role === 'platform_owner' || role === 'finance_admin' || role === 'read_only_auditor') {
         const withAmount = [...scopes, 'platform:billing:amount:read'];
@@ -450,5 +462,43 @@ describe('CCP-A1 Amendment A1 (Finance amount scope, LOCKED 2026-10-25) — FA-1
       const billingRead = [...uniqueAll.values()].some((x) => x.role_id === SEED_IDS.roles[r] && x.scope_id === SEED_IDS.scopes['platform:billing:read']);
       expect(billingRead, r).toBe(true);
     }
+  });
+});
+
+describe('CCP-A1 Amendment A2 (Payment request scope, LOCKED 2026-10-25) — PS-1, PS-2, PS-3, PS-5', () => {
+  const HOLDERS = ['commercial_ops', 'finance_admin'] as const;
+  const roleKey = (id: string): string | undefined => (roleIdToKey as ReadonlyMap<string, string>).get(id);
+  const scopeKey = (id: string): string | undefined => (scopeIdToKey as ReadonlyMap<string, string>).get(id);
+  it('PS-2 the seed grants platform:payment:request to exactly commercial_ops and finance_admin (2 rows), with the migration-identical md5 ccp-a1a2 ids', async () => {
+    const { uniqueAll, allScopes } = await seeded();
+    const rows = [...uniqueAll.values()].filter((r) => r.scope_id === PAYMENT_REQUEST_SCOPE_ID);
+    expect(rows).toHaveLength(2);
+    expect(rows.map((r) => roleKey(r.role_id)).sort()).toEqual([...HOLDERS].sort());
+    for (const r of rows) {
+      const h = createHash('md5').update(`ccp-a1a2:${r.role_id}:${r.scope_id}`).digest('hex');
+      expect(r.id).toBe(`${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`);
+    }
+    const sc = allScopes.filter((x) => x['id'] === PAYMENT_REQUEST_SCOPE_ID);
+    expect(sc).toHaveLength(1);
+    expect(sc[0]?.['key']).toBe('platform:payment:request');
+    expect(PAYMENT_REQUEST_SCOPE_ID).toBe('01900000-0000-7000-8000-000000000336');
+  });
+  it('PS-2 no other role holds it: platform_owner, catalog_manager, support_admin, read_only_auditor, super_admin and every tenant role do not', async () => {
+    const { uniqueAll } = await seeded();
+    const holders = new Set([...uniqueAll.values()].filter((r) => r.scope_id === PAYMENT_REQUEST_SCOPE_ID).map((r) => roleKey(r.role_id)));
+    for (const r of Object.keys(SEED_IDS.roles)) {
+      if (!(HOLDERS as readonly string[]).includes(r)) expect(holders.has(r), r).toBe(false);
+    }
+  });
+  it('PS-3 finance_admin does not gain platform:billing:request (cannot request CREDIT, DISCOUNT or REFUND); its A1 bundle is otherwise unchanged', async () => {
+    const { uniqueAll, bundles } = await seeded();
+    const faBillingRequest = [...uniqueAll.values()].some((x) => x.role_id === SEED_IDS.roles.finance_admin && x.scope_id === SEED_IDS.scopes['platform:billing:request']);
+    expect(faBillingRequest).toBe(false);
+    expect([...(bundles.get('finance_admin') ?? [])].sort()).toEqual(expectedBundle('finance_admin'));
+  });
+  it('PS-2 super_admin holds no commercial scope (neither the 15 A1 scopes nor either amendment scope)', async () => {
+    const { uniqueAll } = await seeded();
+    const sa = new Set([...uniqueAll.values()].filter((r) => r.role_id === SEED_IDS.roles.super_admin).map((r) => scopeKey(r.scope_id)));
+    for (const k of [...COMMERCIAL, 'platform:billing:amount:read', 'platform:payment:request']) expect(sa.has(k), k).toBe(false);
   });
 });

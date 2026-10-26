@@ -250,6 +250,17 @@ const STEPS: readonly Step[] = [
       refusal: 'CCP-A1-A1 compensation refused',
     },
   },
+  // CCP-C8-PR — CCP-A1 Amendment A2 (platform:payment:request, 0x336; data only).
+  {
+    label: 'A1-A2 identity',
+    migration: resolve(ROOT, 'libs/identity/prisma/migrations/20261028070000_ccp_a1a2_payment_request_scope/migration.sql'),
+    compensation: resolve(ROOT, 'libs/identity/src/tests/fixtures/ccp-a1a2-compensating.sql'),
+    dataOnly: true,
+    probe: {
+      seed: `INSERT INTO "identity"."RoleScope" (id, role_id, scope_id) VALUES (gen_random_uuid(), '${CCP_ROLES[0]}', '01900000-0000-7000-8000-000000000336')`,
+      refusal: 'CCP-A1-A2 compensation refused',
+    },
+  },
   {
     label: 'command guard union',
     migration: SUB_M('20261029000000_ccp_command_guard_union'),
@@ -271,6 +282,13 @@ const STEPS: readonly Step[] = [
              VALUES (gen_random_uuid(), 'APPLY_DEADLINE_NEARING', 'APPROVAL', 'change_request', 'probe', 'OPEN', 'probe', '{}'::jsonb, 1, now(), now(), now())`,
       refusal: 'CCP alert-type-union compensation refused',
     },
+  },
+  // CCP-C8-PR — PAYMENT_RECORD: contract payment terms, obligations, the receipt attestation.
+  {
+    label: 'C8-PR',
+    migration: SUB_M('20261030010000_ccp_c8pr_payment_record'),
+    compensation: SUB_C('ccp-c8pr'),
+    probe: { seed: REQUEST('PAYMENT_RECORD', 'APPROVED'), request: true, refusal: 'CCP-C8-PR compensation refused' },
   },
 ];
 const N = STEPS.length;
@@ -326,10 +344,10 @@ const FINGERPRINT = `
    WHERE r.relnamespace IN (SELECT oid FROM s)
   ORDER BY 1`;
 
-/** The A1 catalog (6 roles, 15 scopes, 45 grants) plus A1-A1's scope and its 3 grants. */
-const FULL_CATALOG = { roles: 6, scopes: 16, grants: 48 };
+/** The A1 catalog (6 roles, 15 scopes, 45 grants) plus A1-A1's scope and its 3 grants, plus (CCP-C8-PR) A1-A2's scope and its 2 grants. */
+const FULL_CATALOG = { roles: 6, scopes: 17, grants: 50 };
 
-describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP full compensation chain 27 -> 1 (real Postgres 17, full chain)', { timeout: 900_000 }, () => {
+describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP full compensation chain 29 -> 1 (real Postgres 17, full chain)', { timeout: 900_000 }, () => {
   let container: StartedPostgreSqlContainer;
   let pg: Client;
   let policy: string;
@@ -394,6 +412,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP full compensa
     await pg.query(sql(STEPS[0]!.migration));
     // A1-A1 (CCP-R3) likewise grants platform:billing:amount:read (0x335) to its 3 roles only once they exist.
     await pg.query(sql(STEPS.find((s) => s.label === 'A1-A1 identity')!.migration));
+    // CCP-C8-PR — A1-A2 likewise grants platform:payment:request (0x336) to commercial_ops and finance_admin.
+    await pg.query(sql(STEPS.find((s) => s.label === 'A1-A2 identity')!.migration));
     policy = (await pg.query(`SELECT id::text FROM subscription."CommercialPolicyVersion" WHERE status = 'ACTIVE'`)).rows[0].id as string;
   }, 900_000);
 
@@ -402,8 +422,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP full compensa
     await container?.stop();
   });
 
-  it('FULL-0 the full chain applied every one of the 27 CCP migrations, and A1 + A1-A1 wrote their catalog (6 roles, 16 scopes, 48 grants)', async () => {
-    expect(STEPS).toHaveLength(27);
+  it('FULL-0 the full chain applied every one of the 29 CCP migrations, and A1 + A1-A1 + A1-A2 wrote their catalog (6 roles, 17 scopes, 50 grants)', async () => {
+    expect(STEPS).toHaveLength(29);
     expect(before.filter(Boolean)).toHaveLength(N + 1);
     expect(await a1Counts()).toEqual(FULL_CATALOG);
     expect(await fingerprint()).toEqual(before[N]);
@@ -441,16 +461,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP full compensa
         expect(await fingerprint()).toEqual(now);
         expect(await a1Counts()).toEqual({ roles: 0, scopes: 0, grants: 0 });
       } else if (step.dataOnly === true) {
-        // A1-A1 is data only: the DDL is unchanged and the A1 catalog alone remains.
+        // A1-A1 / A1-A2 are data only: the DDL is unchanged. After A1-A2 (CCP-C8-PR) the A1 + A1-A1 catalog
+        // remains; after A1-A1 the A1 catalog alone remains.
         expect(await fingerprint()).toEqual(now);
-        expect(await a1Counts()).toEqual({ roles: 6, scopes: 15, grants: 45 });
+        expect(await a1Counts()).toEqual(step.label === 'A1-A2 identity' ? { roles: 6, scopes: 16, grants: 48 } : { roles: 6, scopes: 15, grants: 45 });
       } else {
         expect(await fingerprint()).toEqual(before[k]);
       }
     });
   }
 
-  it('REAPPLY the 27 CCP migrations re-apply in order with 0 errors, each restoring the forward-chain state after it', async () => {
+  it('REAPPLY the 29 CCP migrations re-apply in order with 0 errors, each restoring the forward-chain state after it', async () => {
     for (let k = 0; k < STEPS.length; k += 1) {
       const step = STEPS[k]!;
       expect(await run(step.migration), step.label).toBeNull();

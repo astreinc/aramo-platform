@@ -397,6 +397,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
             terms: ['Invoiced monthly, net 30'],
             documents: [{ name: 'Order form OF-8034.pdf', sha256: 'a'.repeat(63) + (seq % 10), byte_size: 1024, media_type: 'application/pdf' }],
             evidence_ref: 'Order form OF-8034',
+            // CCP-C8-PR (PR-1): a contract record carries its payment terms.
+            payment_terms: { billing_mode: 'POSTPAID', postpaid_approval: { statement: 'Postpaid per the signed order form', evidence_ref: 'Order form postpaid clause' }, currency: 'USD', timezone: 'America/New_York', obligations: [] },
           },
         },
         reason: 'Record the enterprise contract with the governed open',
@@ -407,6 +409,67 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       await asRole('finance_admin', 'POST', `/platform/commercial/change-requests/${id}/approvals`, { step_index: 0 });
       await asRole('commercial_ops', 'POST', `/platform/commercial/change-requests/${id}/apply`);
       const c = await db.query(`SELECT id FROM subscription."Contract" WHERE recorded_by_change_request_id = $1`, [id]);
+      return c.rows[0].id as string;
+    }
+
+    /**
+     * CCP-C8-PR — the K-2 sequence through the governed HTTP surface on a fresh tenant: a PAYMENT_RECORD
+     * of the prepaid INITIAL (provisional identity; commercial_ops requests, finance_admin approves,
+     * commercial_ops applies), then the SUBSCRIPTION_OPEN with the PREPAID contract, whose apply links
+     * the receipt. Returns the contract id.
+     */
+    async function prepaidContractWithPayment(): Promise<string> {
+      const tenant_id = await commercialTenant();
+      const v = await db.query(`SELECT v.id FROM subscription."PlanVersion" v JOIN subscription."Plan" p ON p.id = v.plan_id WHERE p.key = 'aramo-sign-included-v1' AND v.status = 'PUBLISHED'`);
+      const n = String(++seq).padStart(4, '0');
+      const contract_ref = `CT-PACT-PR${n}`;
+      const govern = async (body: Record<string, unknown>): Promise<string> => {
+        const out = await asRole<{ request: { id: string } }>('commercial_ops', 'POST', '/platform/commercial/change-requests', body);
+        const id = out.request.id;
+        await asRole('commercial_ops', 'POST', `/platform/commercial/change-requests/${id}/submit`);
+        await asRole('finance_admin', 'POST', `/platform/commercial/change-requests/${id}/approvals`, { step_index: 0 });
+        await asRole('commercial_ops', 'POST', `/platform/commercial/change-requests/${id}/apply`);
+        return id;
+      };
+      await govern({
+        action_type: 'PAYMENT_RECORD',
+        tenant_id,
+        product_key: 'sign',
+        payload: {
+          operation: 'RECORD',
+          target: { kind: 'PROVISIONAL_INITIAL', contract_ref, obligation_ref: 'INITIAL', expected_amount_minor: 1200000, expected_currency: 'USD' },
+          external_invoice_ref: `INV-PACT-${n}`,
+          amount_minor: 1200000,
+          currency: 'USD',
+          received_on: '2026-10-20',
+          payment_method: 'BANK_TRANSFER',
+          payment_reference: `WIRE-PACT-${n}`,
+          verification: 'Matched on the bank statement',
+          evidence_documents: [{ name: 'Remittance.pdf', sha256: 'b'.repeat(64) }],
+          origin: 'MANUAL',
+        },
+        reason: 'Record the prepaid initial payment received outside Aramo',
+        idempotency_key: `pact-c8pr-record-${n}`,
+      });
+      const open = await govern({
+        action_type: 'SUBSCRIPTION_OPEN',
+        tenant_id,
+        product_key: 'sign',
+        payload: {
+          plan_key: 'aramo-sign-included-v1',
+          plan_version_id: v.rows[0].id,
+          replaces_subscription_id: null,
+          contract: {
+            contract_ref,
+            terms: ['Prepaid annually'],
+            documents: [],
+            payment_terms: { billing_mode: 'PREPAID', currency: 'USD', timezone: 'America/New_York', obligations: [{ obligation_ref: 'INITIAL', due_date: '2026-11-01', amount_minor: 1200000, description: 'Year 1 prepaid fee' }] },
+          },
+        },
+        reason: 'Open the prepaid enterprise contract',
+        idempotency_key: `pact-c8pr-open-${n}`,
+      });
+      const c = await db.query(`SELECT id FROM subscription."Contract" WHERE recorded_by_change_request_id = $1`, [open]);
       return c.rows[0].id as string;
     }
 
@@ -918,6 +981,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           },
           // CCP-B4 — enterprise contract records.
           'an enterprise contract exists': async () => ({ contractId: await recordedContract() }),
+          // CCP-C8-PR — a PREPAID contract opened after its INITIAL payment was recorded (K-2).
+          'a prepaid enterprise contract with its initial payment recorded exists': async () => ({ contractId: await prepaidContractWithPayment() }),
           // CCP-B3 — the Commercial tab fixture (seeded once; every read is read-only): a governed
           // MANUAL Sign row with its contract (SUBSCRIPTION_OPEN + contract, through the HTTP
           // surface; the plan grants core + sign as PLAN), a HELD activation (an older checkout
