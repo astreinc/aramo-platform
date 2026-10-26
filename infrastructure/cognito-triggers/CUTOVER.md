@@ -55,6 +55,15 @@ permissions. This is not a regression from v2: today the deployed trigger links 
 v2 removes the Cognito-level link; closing the Aramo-level path (for example, recording the provider on the 3 legacy
 links) is a separate, authorized change.
 
+**Gap closed 2026-10-26 (PO ruling).** The provider was read from Cognito for each legacy `sub`: all 3 are Microsoft
+users. One of them also has Google linked inside the same Cognito user (case I-5). That user's Google sign-in reuses the
+same `sub`, so it is not a new link and R2 does not evaluate it. `microsoft` was recorded on the 3 links in one
+transaction, after a full database backup (`/opt/aramo-backups/pre-legacy-link-idp-backup-20261026-155559.sql`). The
+transaction refused to commit unless every federated link then carried a recorded provider. Production now holds 4
+federated links, all `microsoft`, none legacy. Effect: a new, separate identity from another provider whose email
+matches one of these users is refused (`idp_identity_conflict`) instead of being linked. Existing sign-ins are
+unchanged. Rollback deletes exactly the 3 rows (`/opt/aramo-backups/rollback-legacy-link-idp-20261026.sql`).
+
 ## 2. Preconditions (all must hold; record each result)
 
 | # | Check | Command / evidence |
@@ -131,7 +140,7 @@ aws lambda get-function-configuration --function-name "$F" --region "$R" --query
 ## 6. Not part of this cutover
 
 - Unlinking the existing Google→Microsoft association (preserved, pending separate review).
-- Closing the Aramo-layer legacy-link gap in §1 (needs a ruling).
+- Closing the Aramo-layer legacy-link gap in §1 (closed separately, 2026-10-26; see §1).
 - Trimming the function role's Cognito admin permissions (v2 no longer needs them; a separate, later change).
 - Any pool, app-client or provider change.
 - Deploying the new signup code; public signup; live Stripe.

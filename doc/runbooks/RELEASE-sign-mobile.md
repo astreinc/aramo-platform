@@ -138,6 +138,13 @@ This is a production Cognito change. G-089 must already be done.
 
 **Unblocks:** native sign-in, refresh rotation and device sessions against production.
 
+**Status 2026-10-26: done.**
+- Created by `terraform apply` of the reviewed saved plan for `infrastructure/cognito-native-client` (main `ace5499f`).
+  The plan was 1 to add, 0 to change, 0 to destroy, and a re-plan showed no changes.
+- Client id: `5g5uo1n5rdvuv1k98jt1lvv90h`.
+- The browser client `aramo` was not changed.
+- The Aramo-layer legacy-link gap was closed first (`CUTOVER.md` §1).
+
 ## P-9 — Legal (before any production use)
 
 1. Publish **Privacy Notice 1.1** with re-acceptance. Version 1.0 is never edited silently (A1-11 item 6). The notice
@@ -192,6 +199,22 @@ Edit `/opt/aramo/.env` on the box with `sudo`. Every name below is documented in
 Before deploying, run the local-only guard from the Mac: `node --import jiti/register ci/scripts/verify-env-passthrough.ts`.
 
 **Unblocks:** the containers can see P-2, P-4 and P-5.
+
+**Status 2026-10-26: `SIGN_NATIVE_COGNITO_CLIENT_ID` only (PO-authorized, for an internal device test).**
+- **Change:** only `SIGN_NATIVE_COGNITO_CLIENT_ID` was set, after an `.env` backup.
+  `SIGN_NATIVE_REDIRECT_URIS` was left unset, so the default pair applies.
+- **Recreated:** auth-service only. The other containers were not touched.
+- **Verified:** `POST /auth/native/sign/token` refused before the change (`native_client_not_configured`). After the
+  change it reached the Cognito exchange (`code_exchange_rejected` for a dummy code). Browser sign-in was unchanged.
+- **Pre-check:** nothing user-facing starts the native flow.
+  - No web app links to it.
+  - The app-association files are still empty.
+  - There is no published app.
+  - The native pages were not yet deployed.
+  - The token route applies the same principal resolution as browser sign-in, so the result is never more access
+    than the browser already gives.
+- **Still pending:** P-9 legal (Privacy Notice 1.1, subprocessors) remains a precondition for any production use
+  beyond internal testing. The push and app-link variables are unset.
 
 ## P-6 — nginx on the Sign host
 
