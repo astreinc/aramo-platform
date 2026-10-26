@@ -403,6 +403,72 @@ model LegalAcceptanceOrigin {
   @@schema("subscription")
 }
 
+// Privacy Notice 1.1 remediation E-6 — one operator run of the legal-document change
+// notice command (dry run or send). Counts only: the run-level audit event.
+// Migration 20261030020000_legal_change_notice_delivery (CHECKs live there).
+model LegalChangeNoticeRun {
+  id                 String                      @id @db.Uuid
+  // DRY_RUN | SEND
+  mode               String
+  document_key       String
+  version            String
+  effective_date     DateTime                    @db.Date
+  template_id        String
+  template_version   String
+  template_sha256    String
+  // DRAFT | APPROVED — the template's status when the run started.
+  template_status    String
+  authorization_ref  String?
+  // RUNNING | COMPLETED | ABORTED
+  status             String                      @default("RUNNING")
+  eligible_count     Int                         @default(0)
+  sent_count         Int                         @default(0)
+  failed_count       Int                         @default(0)
+  suppressed_count   Int                         @default(0)
+  already_done_count Int                         @default(0)
+  in_doubt_count     Int                         @default(0)
+  started_at         DateTime                    @default(now()) @db.Timestamptz(3)
+  finished_at        DateTime?                   @db.Timestamptz(3)
+  deliveries         LegalChangeNoticeDelivery[]
+
+  @@index([document_key, version, started_at(sort: Desc)])
+  @@schema("subscription")
+}
+
+// Privacy Notice 1.1 remediation E-6 — delivery evidence, one row per (document, version,
+// channel, recipient user). Never stores the email body or the address. A trigger refuses
+// DELETE, identity changes and any change out of a terminal status (SENT, SUPPRESSED).
+model LegalChangeNoticeDelivery {
+  id                  String                @id @db.Uuid
+  document_key        String
+  version             String
+  effective_date      DateTime              @db.Date
+  // EMAIL | IN_SERVICE
+  channel             String
+  user_id             String                @db.Uuid
+  tenant_id           String                @db.Uuid
+  run_id              String?               @db.Uuid
+  template_id         String?
+  template_version    String?
+  template_sha256     String?
+  provider            String?
+  provider_message_id String?
+  // PENDING | SENT | FAILED | SUPPRESSED
+  status              String
+  error_code          String?
+  attempt_count       Int                   @default(1)
+  created_at          DateTime              @default(now()) @db.Timestamptz(3)
+  updated_at          DateTime              @default(now()) @db.Timestamptz(3)
+  sent_at             DateTime?             @db.Timestamptz(3)
+  acknowledged_at     DateTime?             @db.Timestamptz(3)
+  run                 LegalChangeNoticeRun? @relation(fields: [run_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([document_key, version, channel, user_id])
+  @@index([tenant_id])
+  @@index([document_key, version, status])
+  @@schema("subscription")
+}
+
 // -------------------------------------------------------------------------
 // CCP-A2 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.1 row A2; Charter §7, D10)
 // — the versioned commercial policy. A clone of the MatchingPolicyVersion pattern
