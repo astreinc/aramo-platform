@@ -7125,6 +7125,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/legal-change-notice.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -7591,6 +7597,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-event-grant.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-legal-notices.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -10449,6 +10461,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/legal-change-notice.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/personal-signup-attempt-purge-sweeper.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -10578,6 +10596,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-integrations.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-legal-notices.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -11074,6 +11098,12 @@
         "status": "excluded"
       },
       { "project": "intelligence-core", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/legal-change-notice.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
@@ -12766,6 +12796,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/legal-change-notice.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -12822,6 +12858,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/personal-legal-status.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-legal-notices.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

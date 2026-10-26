@@ -10106,6 +10106,11 @@
       "to": "apps/platform-admin/tsconfig.app.json"
     },
     {
+      "from": "apps/platform-admin/src/app/legal-notice/legal-change-notice.args.ts",
+      "status": "production",
+      "to": "apps/platform-admin/src/legal-change-notice.main.ts"
+    },
+    {
       "from": "apps/platform-admin/src/app/platform/tenant-policy-provisioning.service.ts",
       "status": "production",
       "to": "apps/api/src/policy/seed-lifecycle.ts"
