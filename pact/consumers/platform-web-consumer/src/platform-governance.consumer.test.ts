@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { MatchersV3, PactV4 } from '@pact-foundation/pact';
 import { describe, expect, it } from 'vitest';
 
-const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
+const { boolean, eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
 
 // CCP-B5 (PBD §5.3 row B5; CCP-A10 §5 "Extending the contracts") — the platform console's
 // contract for the B5 routes and the governed role / policy requests the B5 screens send,
@@ -275,6 +275,49 @@ describe('platform-web → PATCH /platform/commercial/policy-versions/{id} (CCP-
       })
       .executeTest(async (mock) => {
         expect((await call(`${mock.url}${PV}/${EX_DRAFT_ID}`, 'PATCH', platformJson('finance_admin'), BAD)).status).toBe(400);
+      });
+  });
+  // CCP-DG (Charter Amendment A2 RX-1, RX-11): the three refund execution keys are editable draft keys,
+  // set together and validated by the strict policy parser (a partial edit is 400 policy_value_invalid).
+  it('finance_admin sets the refund execution keys on the DRAFT (200)', async () => {
+    const KEYS = { content: { refund_execution_enabled: true, refund_policy_ref: 'ARAMO-COM-REFUND-POL-001@1.0', refund_policy_sha256: 'c'.repeat(64) } };
+    await provider
+      .addInteraction()
+      .given('a draft commercial policy version exists')
+      .uponReceiving('a policy draft given the refund execution keys by a finance admin')
+      .withRequest('PATCH', DRAFT_PATH, (b) => {
+        b.headers(platformJson('finance_admin')).jsonBody(KEYS);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          version: {
+            ...versionBody('DRAFT', { id: uuid(EX_DRAFT_ID) }),
+            version_number: integer(2),
+            note: like('Draft from v1'),
+            created_by: uuid(OP.finance_admin),
+            content: { ...CONTENT, refund_execution_enabled: boolean(true), refund_policy_ref: regex('^[A-Z0-9-]+@[0-9]+\\.[0-9]+$', 'ARAMO-COM-REFUND-POL-001@1.0'), refund_policy_sha256: HEX64('c'.repeat(64)) },
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${PV}/${EX_DRAFT_ID}`, 'PATCH', platformJson('finance_admin'), KEYS);
+        expect(res.status).toBe(200);
+      });
+  });
+  it('a partial set of refund execution keys is refused (400 policy_value_invalid)', async () => {
+    const PARTIAL = { content: { refund_execution_enabled: true } };
+    await provider
+      .addInteraction()
+      .given('a draft commercial policy version exists')
+      .uponReceiving('a policy draft given only one refund execution key, refused as malformed')
+      .withRequest('PATCH', DRAFT_PATH, (b) => {
+        b.headers(platformJson('finance_admin')).jsonBody(PARTIAL);
+      })
+      .willRespondWith(400, (b) => {
+        b.jsonBody(errorBody('VALIDATION_ERROR', { reason: 'policy_value_invalid' }));
+      })
+      .executeTest(async (mock) => {
+        expect((await call(`${mock.url}${PV}/${EX_DRAFT_ID}`, 'PATCH', platformJson('finance_admin'), PARTIAL)).status).toBe(400);
       });
   });
   it('read_only_auditor cannot edit a draft (403 requester_role_missing)', async () => {

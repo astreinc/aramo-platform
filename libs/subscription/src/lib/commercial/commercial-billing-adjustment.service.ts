@@ -23,7 +23,6 @@ import {
   BillingAdjustmentFailure,
   type BillingAdjustmentOperation,
   BillingAdjustmentRefusedError,
-  REFUND_POLICY_NOT_APPROVED,
   REFUND_AUDIT_EVENTS,
   REFUND_OUTCOME_UNCERTAIN,
   type RefundReconciliationOutcome,
@@ -31,7 +30,6 @@ import {
   adjustmentOperationOf,
   discountCouponRef,
   refundCannotComplete,
-  refundExecutionEnabled,
   refundReconciliationOutcome,
 } from './commercial-billing-adjustment.js';
 import type { CommercialBillingAdjustmentRow } from './commercial-billing-adjustment.ledger.js';
@@ -47,6 +45,7 @@ import {
 } from './commercial-change-request.service.js';
 import { CommercialOperatorRepository } from './commercial-operator.repository.js';
 import { RefundRemainderGate, RefundRemainderRefusedError, refundBindingOf } from './refund-remainder.gate.js';
+import { evaluateRefundExecution, refundGateDetail } from './refund-execution-gate.js';
 
 // CCP-C4 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.2 row C4, §10; Conversion Rule C-22, C-23;
 // Charter Amendment A1-Apply-Deadline AD-2…AD-8) — the requester-only apply of an APPROVED credit,
@@ -57,8 +56,13 @@ import { RefundRemainderGate, RefundRemainderRefusedError, refundBindingOf } fro
 // deadline of the snapshotted policy (AD-7, lazily), then the NC-5 re-check of every approval under the
 // snapshotted chain (assertApplyEligible) in the apply transaction. Approvers gain no apply authority.
 //
-// Refund designed disabled state (PBD §10): a REFUND apply is refused REFUND_POLICY_NOT_APPROVED
-// (nothing changes; one audit row; zero provider calls) unless CCP_REFUND_EXECUTION_ENABLED=1.
+// CCP-DG (Charter Amendment A2 RX-5…RX-9) — the refund dual gate: a REFUND apply (the initial apply
+// and the re-arm of a FAILED command) needs gate 1 (CCP_REFUND_EXECUTION_ENABLED=1, else
+// REFUND_EXECUTION_NOT_RELEASED) AND gate 2 (the ACTIVE and the snapshotted policy both enable refunds
+// with the same refund-policy identity, and the payload names it; else REFUND_POLICY_NOT_APPROVED).
+// Checked before anything else (nothing changes; one audit row; zero provider calls), then again inside
+// the apply transaction just before the command is created or re-armed. The dispatcher checks both once
+// more immediately before the provider write. The resolution (resolveRefund) is never gated (RX-10).
 //
 // ONE local transaction under the shared billing lock: APPROVED → APPLYING and the C1 durable command
 // (the outbox). The request COMMITS IN APPLYING (pending-provider, C-23). No provider call here: the
@@ -88,7 +92,7 @@ export interface BillingAdjustmentView {
   status: BillingAdjustmentStatus;
   /** C-23: true while a Stripe-owned operation of this request is not provider-confirmed. */
   pending_provider: boolean;
-  /** The refund designed disabled state: true for a REFUND while the refund policy is not approved. */
+  /** CCP-DG: true for a REFUND while either gate (switch, approved refund policy) refuses new execution. */
   refund_execution_disabled: boolean;
   commands: BillingCommandRow[];
   adjustment: CommercialBillingAdjustmentRow | null;
@@ -132,12 +136,15 @@ export class CommercialBillingAdjustmentService {
     if (!actor.scopes.includes(scope)) throw new CommercialChangeRequestError('REQUESTER_SCOPE_MISSING', `applying ${action} requires ${scope}`, { missing_scopes: [scope] });
     // TD-B2-3 (narrowing TD-A6-3) / AD-8 — requester-only. Approvers gain no apply authority.
     if (actor.user_id !== head.requested_by) throw new CommercialChangeRequestError('NOT_REQUESTER', 'only the original requester may apply this change request');
-    // PBD §10 — the refund designed disabled state, before anything else: nothing is written but
-    // the refusal's audit row, and nothing reaches the provider.
-    if (action === 'REFUND' && !refundExecutionEnabled()) {
-      const e = new BillingAdjustmentRefusedError(REFUND_POLICY_NOT_APPROVED, { state: head.state });
-      await this.auditRefusal(actor, head, e, ctx);
-      throw e;
+    // CCP-DG (RX-5…RX-7) — the dual gate, before anything else: nothing is written but the refusal's
+    // audit row, and nothing reaches the provider (not even the payment-picture read below).
+    if (action === 'REFUND') {
+      const gate = await evaluateRefundExecution(this.prisma, head);
+      if (!gate.ok) {
+        const e = new BillingAdjustmentRefusedError(gate.refusal, { state: head.state, ...refundGateDetail(gate) });
+        await this.auditRefusal(actor, head, e, ctx);
+        throw e;
+      }
     }
     const tenant_id = head.tenant_id as string;
     const product_key = assertProductKey(head.product_key);
@@ -173,6 +180,8 @@ export class CommercialBillingAdjustmentService {
           const cmds = await tx.billingProviderCommand.findMany({ where: { change_request_id: id } });
           const failed = cmds.filter((c) => c.state === 'FAILED');
           if (failed.length > 0 && failed.length === cmds.length) {
+            // CCP-DG (RX-5…RX-7) — again immediately before a permitted re-arm, in this transaction.
+            if (action === 'REFUND') await this.assertRefundGate(tx, req);
             const now = this.now();
             for (const c of failed) {
               const n = await tx.billingProviderCommand.updateMany({ where: { id: c.id, state: 'FAILED' }, data: { state: 'PENDING', next_attempt_at: null, lease_until: null, updated_at: now } });
@@ -204,6 +213,9 @@ export class CommercialBillingAdjustmentService {
             if (e instanceof RefundRemainderRefusedError) throw new BillingAdjustmentRefusedError(e.refusal, e.detail);
             throw e;
           }
+          // CCP-DG (RX-5…RX-7) — again just before the command is created (a policy activated since the
+          // entry check is seen here; the dispatcher checks once more before the provider write).
+          await this.assertRefundGate(tx, req);
         }
         const now = this.now();
         const attempt = req.apply_attempts + 1;
@@ -425,7 +437,15 @@ export class CommercialBillingAdjustmentService {
     else if (request.state === 'APPLYING') status = commands.length > 0 && commands.every((c) => c.state === 'FAILED') ? 'COMMAND_FAILED' : 'PENDING_PROVIDER';
     else if (request.state === 'WITHDRAWN' && commands.length > 0) status = 'RESOLVED_NOT_EXECUTED';
     else status = 'NOT_APPLIED';
-    return { request, operation, status, pending_provider, refund_execution_disabled: request.action_type === 'REFUND' && !refundExecutionEnabled(), commands, adjustment };
+    // CCP-DG — true for a REFUND while either gate refuses new execution (a read; nothing is gated by it).
+    const refund_execution_disabled = request.action_type === 'REFUND' && !(await evaluateRefundExecution(this.prisma, request)).ok;
+    return { request, operation, status, pending_provider, refund_execution_disabled, commands, adjustment };
+  }
+
+  /** CCP-DG — the dual gate inside the apply transaction (throws the refusal; the caller audits it). */
+  private async assertRefundGate(tx: Tx, req: CommercialChangeRequestRow): Promise<void> {
+    const gate = await evaluateRefundExecution(tx, req);
+    if (!gate.ok) throw new BillingAdjustmentRefusedError(gate.refusal, { state: req.state, ...refundGateDetail(gate) });
   }
 
   // ---- audit helpers, failure and refusal records (separate transactions) -------------------

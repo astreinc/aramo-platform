@@ -283,6 +283,27 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B5 — policy
     expect(listed.content.apply_expiry_hours).toBe(72);
   });
 
+  it('DG-RI-EDIT (CCP-DG; Charter Amendment A2 RX-1, RX-11) the refund execution keys are authored over HTTP on the DRAFT: all three together (200, returned in content and the list); a partial edit, null or a malformed reference / hash is 400 policy_value_invalid (the parser); a wrong JSON type is 400 at the DTO; nothing changes on a refusal; false revokes', async () => {
+    const V2 = (await post('finance_admin', PV, { source_version_id: POLICY_V1 })).body.version as { id: string; content_checksum: string; content: Record<string, unknown> };
+    expect('refund_execution_enabled' in V2.content).toBe(false);
+    const path = `${PV}/${V2.id}`;
+    const KEYS = { refund_execution_enabled: true, refund_policy_ref: 'ARAMO-COM-REFUND-POL-001@1.0', refund_policy_sha256: 'c'.repeat(64) };
+    for (const bad of [{ refund_execution_enabled: true }, { refund_policy_ref: KEYS.refund_policy_ref, refund_policy_sha256: KEYS.refund_policy_sha256 }, { ...KEYS, refund_execution_enabled: null }, { ...KEYS, refund_policy_ref: 'aramo-refund-policy@1.0' }, { ...KEYS, refund_policy_sha256: 'C'.repeat(64) }]) {
+      expect(reasonOf(await patch('finance_admin', path, { content: bad })), JSON.stringify(bad)).toEqual([400, 'VALIDATION_ERROR', 'policy_value_invalid']);
+    }
+    for (const bad of [{ ...KEYS, refund_execution_enabled: 'true' }, { ...KEYS, refund_policy_ref: 7 }, { ...KEYS, refund_policy_sha256: false }]) {
+      expect((await patch('finance_admin', path, { content: bad })).status, JSON.stringify(bad)).toBe(400);
+    }
+    const unchanged = (await get('finance_admin', PV)).body.versions.find((v: { id: string }) => v.id === V2.id);
+    expect(unchanged.content_checksum).toBe(V2.content_checksum);
+    const ok = await patch('finance_admin', path, { content: KEYS });
+    expect(ok.status, JSON.stringify(ok.body)).toBe(200);
+    expect(ok.body.version.content).toEqual({ ...V2.content, ...KEYS });
+    expect((await patch('finance_admin', path, { content: { refund_execution_enabled: false } })).body.version.content).toMatchObject({ ...KEYS, refund_execution_enabled: false });
+    const listed = (await get('read_only_auditor', PV)).body.versions.find((v: { id: string }) => v.id === V2.id);
+    expect(listed.content).toMatchObject({ ...KEYS, refund_execution_enabled: false });
+  });
+
   it('B5-RI-ROLE the roster reads per role; the last-owner refusal is surfaced as 409 PLATFORM_LAST_OWNER; a role change is a governed request that applies only after a distinct owner signs', async () => {
     for (const role of ROLES) expect((await get(role, '/platform/commercial/operators')).status, role).toBe(200);
     expect(reasonOf(await get('super_admin', '/platform/commercial/operators'))).toEqual([403, 'INSUFFICIENT_PERMISSIONS', null]);

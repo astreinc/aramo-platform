@@ -1341,16 +1341,35 @@ describe('platform-web → POST /platform/commercial/change-requests/{id}/billin
       });
   });
 
-  it('an approved refund is refused by the designed disabled state (409 apply_refused REFUND_POLICY_NOT_APPROVED; nothing sent to Stripe)', async () => {
+  // CCP-DG (Charter Amendment A2 RX-5…RX-7): the dual gate. Gate 1 (the operational switch) is off in
+  // the provider by default; gate 2 (the approved refund policy) is refused under the seeded v1.
+  it('an approved refund is refused while refund execution is not released (409 apply_refused REFUND_EXECUTION_NOT_RELEASED; nothing sent to Stripe)', async () => {
     await provider
       .addInteraction()
       .given('an approved refund exists')
+      .uponReceiving('a refund apply while refund execution is not released')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/billing-adjustment`, adjust()), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(409, (b) => {
+        b.jsonBody(errorBody('COMMERCIAL_CHANGE_REQUEST_CONFLICT', { reason: 'apply_refused', refusal: 'REFUND_EXECUTION_NOT_RELEASED', gate_1_released: false, explanation: like('Refunds are not available yet.') }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${adjust()}`, 'POST', platformSession('commercial_ops'));
+        expect(res.status).toBe(409);
+      });
+  });
+
+  it('an approved refund is refused by the commercial gate while execution is released (409 apply_refused REFUND_POLICY_NOT_APPROVED; nothing sent to Stripe)', async () => {
+    await provider
+      .addInteraction()
+      .given('an approved refund exists while refund execution is released without an approved refund policy')
       .uponReceiving('a refund apply while the refund policy is not approved')
       .withRequest('POST', fromProviderState(`${CR}/\${requestId}/billing-adjustment`, adjust()), (b) => {
         b.headers(platformSession('commercial_ops'));
       })
       .willRespondWith(409, (b) => {
-        b.jsonBody(errorBody('COMMERCIAL_CHANGE_REQUEST_CONFLICT', { reason: 'apply_refused', refusal: 'REFUND_POLICY_NOT_APPROVED', explanation: like('Refunds are not available yet.') }));
+        b.jsonBody(errorBody('COMMERCIAL_CHANGE_REQUEST_CONFLICT', { reason: 'apply_refused', refusal: 'REFUND_POLICY_NOT_APPROVED', gate_1_released: true, explanation: like('Refunds are not available yet.') }));
       })
       .executeTest(async (mock) => {
         const res = await call(`${mock.url}${adjust()}`, 'POST', platformSession('commercial_ops'));

@@ -535,3 +535,17 @@ HALT after the final engineering acceptance and return the single-PR publication
     - A new required `recognized_revenue: false` (OpenAPI `enum: [false]`) was added, with the DTO, controller, D2 spec (18 / 18) and the platform-web Pact interaction (pact regenerated, 196 / 196) updated.
     - The platform-admin provider passes 2 / 2.
   - **Gates:** D2 service specs 12 / 12; platform-web dashboard no-money specs 15 / 15. openapi-drift, contract-parity, orphan-scopes, env-passthrough, error-codes, tsc, lint, vocabulary and repo-map all pass (rc=0).
+- **TD-MERGE-48 (DG, `d44f9df2`, refund dual gate per Charter Amendment A2):** `wip/ccp-dg` merged onto `30df7a36` with no conflict. DG adds no migration and does not touch the guard unions.
+  - **Fix:** `tsc -p pact/provider` refused DG's new `{ setup, teardown }` provider state handler. Pact's runtime accepts that shape (StateFuncWithSetup), but the `stateHandlers` map is typed as plain state functions. The handler is now cast to the map's function type, which changes types only. The provider passes 2 / 2 before and after the cast.
+  - **Integrated:**
+    - subscription CCP 847 / 847 (includes the DG specs, both guard probes and the full compensation chain);
+    - platform-admin CCP 712 / 712;
+    - D4 negative controls 15 / 15 × 3 (host load 23–42);
+    - platform-web unit 555 / 555;
+    - platform-web consumer 199 / 199;
+    - providers: platform-admin 2 / 2, verify-api 1 / 1 (platform-governance), verify-sign 1 / 1;
+    - sign consumers 11 + 6 + 19;
+    - sign-service 504 / 504;
+    - R1 scan 4 / 4.
+  - **Gates:** tsc (5), lint, contract-parity, openapi-drift, orphan-scopes, env-passthrough, error-codes, tests:integration, vocabulary and repo-map all pass (rc=0).
+  - **For D6:** DG's G-2, the release-checklist step from Charter A2 dependency row 6 / RX-4 that verifies the ACTIVE policy's `refund_policy_sha256` against the LOCKED refund-policy sidecar, is carried into the D6 checklist.

@@ -21,6 +21,7 @@ import { CommercialPolicyRepository } from '../../lib/commercial/commercial-poli
 import type { PrismaService } from '../../lib/prisma/prisma.service.js';
 
 import { type C1Harness, FakeStripe, type ProviderFailure, c1Harness } from './ccp-c1.js';
+import { TEST_REFUND_POLICY_REF } from './ccp-dg.js';
 
 // CCP-C4 — ONE shared harness for the C4 specs (CLAUDE.md: one shared test helper): the C1 harness
 // (change requests, the fake Stripe with its no-transaction probe) with a fake that ALSO implements
@@ -38,8 +39,12 @@ export function paymentRefOf(invoice_ref: string): string {
   return `pi_${invoice_ref.replace(/^in_/, '')}`;
 }
 
-/** CCP-C4-P — the provenance every test REFUND payload carries (the policy ref identifies a DRAFT policy). */
-export const REFUND_PROVENANCE = { category: 'R4_SERVICE_FAILURE', basis: 'Service outage credit under section 4.2 of the order form', refund_policy_ref: 'aramo-refund-policy@v1-draft' } as const;
+/**
+ * CCP-C4-P — the provenance every test REFUND payload carries. CCP-DG (RX-8): the reference is the test
+ * refund-policy identity, so a REFUND raised while a test policy declaring that identity is ACTIVE is
+ * bound to it; under v1 (no refund keys) it stays a proposal only.
+ */
+export const REFUND_PROVENANCE = { category: 'R4_SERVICE_FAILURE', basis: 'Service outage credit under section 4.2 of the order form', refund_policy_ref: TEST_REFUND_POLICY_REF } as const;
 /** A complete REFUND payload for an invoice the fake knows. */
 export function refundPayload(amount_minor: number, invoice_ref: string, extra: Record<string, unknown> = {}): Record<string, unknown> {
   return { amount_minor, currency: 'USD', provider_invoice_ref: invoice_ref, provider_payment_ref: paymentRefOf(invoice_ref), ...REFUND_PROVENANCE, ...extra };

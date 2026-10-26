@@ -17770,6 +17770,26 @@
       "to": "scripts/verify-vocabulary.sh"
     },
     {
+      "from": "doc/ccp/slices/CCP-DG-acceptance.md",
+      "status": "unscoped",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-DG-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-policy.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-DG-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-dg-refund-gate.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-DG-acceptance.md",
+      "status": "unscoped",
+      "to": "openapi/platform.yaml"
+    },
+    {
       "from": "doc/ccp/slices/CCP-FIX1-acceptance.md",
       "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/dto/commercial-governance.dto.ts"
@@ -32940,6 +32960,18 @@
       "from": "libs/subscription/src/tests/ccp-d3-operational-alerts.integration.spec.ts",
       "status": "excluded",
       "to": "doc/ccp/slices/CCP-D3-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-dg-refund-gate.integration.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-DG-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-dg-refund-gate.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-DG-acceptance.md"
     },
     {
       "excludedBy": "src/tests/**/*",

@@ -4,7 +4,8 @@ import { v7 as uuidv7 } from 'uuid';
 import type { Prisma } from '../../../prisma/generated/client/client.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { assertProductKey, type ProductKey } from '../product-registry.js';
-import { REFUND_POLICY_NOT_APPROVED, refundExecutionEnabled } from '../commercial/commercial-billing-adjustment.js';
+import { CommercialAuditRepository } from '../commercial/commercial-audit.repository.js';
+import { REFUND_DISPATCH_REFUSED_EVENT, evaluateRefundExecution, refundGateDetail } from '../commercial/refund-execution-gate.js';
 import { canonicalJson } from '../commercial/commercial-policy.js';
 import { refundReservations } from '../commercial/refund-remainder.gate.js';
 import { assessRefundAmount } from '../commercial/refund-remainder.js';
@@ -78,7 +79,10 @@ export type BillingCommandErrorCode =
   | 'IDEMPOTENCY_CONFLICT'
   | 'NOT_FOUND'
   | 'NOT_FAILED'
-  | 'INVALID_CURSOR';
+  | 'INVALID_CURSOR'
+  // CCP-DG (Charter Amendment A2 RX-5…RX-7) — the runbook re-arm of a FAILED REFUND_CREATE is gated.
+  | 'REFUND_EXECUTION_NOT_RELEASED'
+  | 'REFUND_POLICY_NOT_APPROVED';
 
 export class BillingCommandError extends Error {
   constructor(
@@ -376,8 +380,21 @@ export class BillingCommandService {
     return { commands: page, next_cursor: rows.length > limit && last !== undefined ? encodeListCursor(last, filter) : null };
   }
 
-  /** Explicit retry of a FAILED command (FAILED → PENDING; the attempt count is kept). */
+  /**
+   * Explicit retry of a FAILED command (FAILED → PENDING; the attempt count is kept).
+   * CCP-DG (Charter Amendment A2 §4): re-arming a FAILED REFUND_CREATE is new refund execution, so it
+   * needs both gates (the dispatcher checks them again before any provider write).
+   */
   async retryFailed(id: string, at: Date): Promise<BillingCommandRow> {
+    const cmd = await this.prisma.billingProviderCommand.findUnique({ where: { id } });
+    if (cmd !== null && cmd.state === 'FAILED' && cmd.command_kind === 'REFUND_CREATE' && cmd.change_request_id !== null) {
+      const req = await this.prisma.commercialChangeRequest.findUnique({ where: { id: cmd.change_request_id }, select: { policy_version_id: true, policy_checksum: true, payload: true } });
+      const gate = req === null ? null : await evaluateRefundExecution(this.prisma, req);
+      if (gate === null || !gate.ok) {
+        const code = gate === null || gate.ok ? 'REFUND_POLICY_NOT_APPROVED' : gate.refusal;
+        throw new BillingCommandError(code, 'a refund command is re-armed only while refund execution is released and the refund policy is approved', { command_id: id, ...(gate !== null && !gate.ok ? refundGateDetail(gate) : {}) });
+      }
+    }
     const r = await this.prisma.billingProviderCommand.updateMany({
       where: { id, state: 'FAILED' },
       data: { state: 'PENDING', next_attempt_at: null, lease_until: null, updated_at: at },
@@ -499,8 +516,11 @@ export class BillingCommandService {
 
   /**
    * CCP-C4 — one billing adjustment. Before any provider call (all outside any transaction):
-   *   - REFUND_CREATE while the refund execution path is disabled → FAILED REFUND_POLICY_NOT_APPROVED
-   *     (the designed disabled state, PBD §10), never a provider call;
+   *   - REFUND_CREATE (CCP-DG, Charter Amendment A2 RX-5…RX-7) — immediately before the first
+   *     provider write: gate 1 off → FAILED REFUND_EXECUTION_NOT_RELEASED; gate 2 not passed (the
+   *     ACTIVE and the snapshotted policy, one refund-policy identity, the payload ref) → FAILED
+   *     REFUND_POLICY_NOT_APPROVED; one COMMERCIAL_REFUND_DISPATCH_REFUSED audit row, no provider write
+   *     and no payment-picture read (the reconcile-first read above it is RX-10 reconciliation);
    *   - the change request must be APPLYING (it completed its chain and its requester applied it):
    *     no money movement without a completed chain (PBD C4 HALT row), whatever the queue holds;
    *   - the provider is re-read by the command id: another tenant's object is refused, and an effect
@@ -513,7 +533,7 @@ export class BillingCommandService {
     // self-service-origin row (C7, cancel only) never reaches here, and is refused if it does.
     const change_request_id = cmd.change_request_id;
     if (change_request_id === null) throw new CommandRefusal('REQUEST_NOT_APPLYING', 'a billing adjustment is sent only for a change request being applied');
-    const req = await this.prisma.commercialChangeRequest.findUnique({ where: { id: change_request_id }, select: { state: true, action_type: true, payload: true } });
+    const req = await this.prisma.commercialChangeRequest.findUnique({ where: { id: change_request_id }, select: { state: true, action_type: true, payload: true, tenant_id: true, product_key: true, policy_version_id: true, policy_checksum: true } });
     if (req === null || req.state !== 'APPLYING' || !(BILLING_COMMAND_KINDS_BY_ACTION[req.action_type] ?? []).includes(cmd.command_kind as BillingCommandKind)) {
       throw new CommandRefusal('REQUEST_NOT_APPLYING', `the change request is ${req?.state ?? 'missing'}; an adjustment is sent only for an approved request being applied`);
     }
@@ -526,8 +546,12 @@ export class BillingCommandService {
       // CCP-C4-R — a refund already initiated for this command (any status, any amount) is never sent
       // again: it is reconciled (pending-provider) until the provider settles it.
       if (before.object_ref !== null) return { detail: `refund already initiated at the provider (${before.provider_status ?? 'unknown'})`, object_ref: before.object_ref };
-      // The disabled flag blocks only NEW external execution (Architect C4 disposition, TD-C4-12).
-      if (!refundExecutionEnabled()) throw new CommandRefusal(REFUND_POLICY_NOT_APPROVED, 'the refund policy is not approved; no new refund is sent to the provider');
+      // CCP-DG — the dual gate blocks only NEW external execution (TD-C4-12; Charter A2 RX-10).
+      const gate = await evaluateRefundExecution(this.prisma, req);
+      if (!gate.ok) {
+        await this.auditRefundDispatchRefusal(cmd, req, gate.refusal, refundGateDetail(gate));
+        throw new CommandRefusal(gate.refusal, gate.refusal === 'REFUND_EXECUTION_NOT_RELEASED' ? 'refund execution is not released; no new refund is sent to the provider' : 'the refund policy is not approved; no new refund is sent to the provider');
+      }
       // CCP-C4-P (RF-3…RF-5) — the remainder once more, just before the write: the provider's payment
       // picture (disputes, refunds, captured amount; read outside any transaction) and every OTHER
       // outstanding Aramo reservation on the payment, counted once. A failed read refuses; never guessed.
@@ -547,6 +571,32 @@ export class BillingCommandService {
     }
     const { object_ref } = await this.adjustments.executeAdjustment(r, cmd.idempotency_key);
     return { detail: `${cmd.command_kind} accepted by the provider`, object_ref };
+  }
+
+  /**
+   * CCP-DG (RX-7) — the one audit row of a dispatcher-side gate refusal (system actor). The refusal
+   * stands even if the row cannot be written (the FAILED command carries the code).
+   */
+  private async auditRefundDispatchRefusal(
+    cmd: BillingCommandRow,
+    req: { tenant_id: string | null; product_key: string | null; policy_version_id: string },
+    refusal: string,
+    detail: Record<string, unknown>,
+  ): Promise<void> {
+    try {
+      await new CommercialAuditRepository(this.prisma).append({
+        actor: { id: null, type: 'system', role_keys: [] },
+        event_type: REFUND_DISPATCH_REFUSED_EVENT,
+        tenant_id: req.tenant_id,
+        subject: `commercial_change_request:${String(cmd.change_request_id)}`,
+        change_request_id: cmd.change_request_id,
+        policy_version_id: req.policy_version_id,
+        payload: { action_type: 'REFUND', product_key: req.product_key, command_id: cmd.id, attempt: cmd.attempts, refusal, detail },
+        correlation_id: `billing-dispatch:${cmd.id}:${String(cmd.attempts)}`,
+      });
+    } catch (e) {
+      this.log.warn(`refund dispatch refusal audit not written for ${cmd.id}: ${(e as Error).message}`);
+    }
   }
 
   /**
