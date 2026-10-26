@@ -27,6 +27,7 @@ import {
   billingCommandBackoffMs,
   billingCommandIdempotencyKey,
   cancelModeOf,
+  selfServiceCommandIdempotencyKey,
   subscriptionCancelConfirmed,
 } from './billing-provider-command.js';
 import { takeBillingLock } from './governed-subscription.js';
@@ -58,6 +59,7 @@ type Tx = Parameters<Parameters<PrismaService['$transaction']>[0]>[0];
 export type BillingCommandErrorCode =
   | 'INVALID_COMMAND'
   | 'CHANGE_REQUEST_NOT_FOUND'
+  | 'SELF_SERVICE_REQUEST_NOT_FOUND'
   | 'CHANGE_REQUEST_NOT_APPROVED'
   | 'ACTION_NOT_COMMAND_ISSUING'
   | 'TENANT_PRODUCT_MISMATCH'
@@ -92,7 +94,9 @@ export interface BillingCommandRow {
   id: string;
   provider: string;
   command_kind: string;
-  change_request_id: string;
+  // CCP-C7 — exactly one origin: a change request (C1/C2) or an owner-made self-service request.
+  change_request_id: string | null;
+  self_service_request_id: string | null;
   step: string;
   idempotency_key: string;
   tenant_id: string;
@@ -116,7 +120,10 @@ export interface BillingCommandRow {
 }
 
 export interface EnqueueBillingCommandInput {
-  change_request_id: string;
+  /** Exactly one origin: the change request (C1/C2) … */
+  change_request_id?: string;
+  /** … or (CCP-C7) the owner-made self-service request (SUBSCRIPTION_CANCEL AT_PERIOD_END only). */
+  self_service_request_id?: string;
   step: string;
   command_kind: BillingCommandKind;
   tenant_id: string;
@@ -193,7 +200,11 @@ export class BillingCommandService {
     if (!(BILLING_COMMAND_KINDS as readonly string[]).includes(input.command_kind)) errors.push(`command_kind must be one of ${BILLING_COMMAND_KINDS.join(', ')}`);
     if (!BILLING_COMMAND_STEP.test(input.step)) errors.push('step must be a snake_case key (1-63 characters)');
     if (typeof input.target_ref !== 'string' || input.target_ref.length < 1 || input.target_ref.length > 255) errors.push('target_ref must be 1-255 characters');
-    if (!UUID.test(input.change_request_id)) errors.push('change_request_id must be a uuid');
+    const selfService = input.self_service_request_id !== undefined;
+    if ((input.change_request_id === undefined) === !selfService) errors.push('exactly one of change_request_id / self_service_request_id is required');
+    if (input.change_request_id !== undefined && !UUID.test(input.change_request_id)) errors.push('change_request_id must be a uuid');
+    if (selfService && !UUID.test(input.self_service_request_id as string)) errors.push('self_service_request_id must be a uuid');
+    if (selfService && (input.command_kind !== 'SUBSCRIPTION_CANCEL' || input.mode !== 'AT_PERIOD_END')) errors.push('a self-service request issues only SUBSCRIPTION_CANCEL AT_PERIOD_END');
     if (!UUID.test(input.tenant_id)) errors.push('tenant_id must be a uuid');
     if (input.command_kind === 'SUBSCRIPTION_CANCEL' && cancelModeOf({ mode: input.mode }) === null) errors.push('mode must be IMMEDIATE or AT_PERIOD_END');
     if (input.command_kind === 'CHECKOUT_SESSION_EXPIRE' && input.mode !== undefined) errors.push('a CHECKOUT_SESSION_EXPIRE command takes no mode');
@@ -203,35 +214,30 @@ export class BillingCommandService {
     const run = async (t: Tx) => {
       // Serialize with the webhook application and the governed apply for this tenant.
       await takeBillingLock(t, input.tenant_id);
-      const request = await t.commercialChangeRequest.findUnique({
-        where: { id: input.change_request_id },
-        select: { id: true, action_type: true, state: true, tenant_id: true, product_key: true },
+      const origin = selfService
+        ? await this.selfServiceOrigin(t, input.self_service_request_id as string, input.tenant_id, product_key, input.target_ref)
+        : await this.changeRequestOrigin(t, input.change_request_id as string, input.tenant_id, product_key);
+      const existing = await t.billingProviderCommand.findFirst({
+        where: selfService ? { self_service_request_id: input.self_service_request_id as string, step: input.step } : { change_request_id: input.change_request_id as string, step: input.step },
       });
-      if (request === null) throw new BillingCommandError('CHANGE_REQUEST_NOT_FOUND', 'change request not found', { change_request_id: input.change_request_id });
-      if (!BILLING_COMMAND_REQUEST_STATES.includes(request.state)) {
-        throw new BillingCommandError('CHANGE_REQUEST_NOT_APPROVED', `the change request is ${request.state}; a provider command needs a completed approval chain`, { state: request.state });
-      }
-      if (!BILLING_COMMAND_ACTIONS.includes(request.action_type)) {
-        throw new BillingCommandError('ACTION_NOT_COMMAND_ISSUING', `${request.action_type} does not issue provider commands`, { action_type: request.action_type });
-      }
-      if (request.tenant_id !== input.tenant_id || request.product_key !== product_key) {
-        throw new BillingCommandError('TENANT_PRODUCT_MISMATCH', 'the command names another tenant or product than its change request');
-      }
-      const existing = await t.billingProviderCommand.findUnique({ where: { change_request_id_step: { change_request_id: input.change_request_id, step: input.step } } });
       if (existing !== null) {
         const same = existing.command_kind === input.command_kind && existing.target_ref === input.target_ref && JSON.stringify(existing.params) === JSON.stringify(params);
-        if (!same) throw new BillingCommandError('IDEMPOTENCY_CONFLICT', 'this change request step already holds a different command', { command_id: existing.id });
+        if (!same) throw new BillingCommandError('IDEMPOTENCY_CONFLICT', `this ${origin} step already holds a different command`, { command_id: existing.id });
         return { command: existing as BillingCommandRow, replayed: true };
       }
-      await this.assertTargetOwned(t, input.command_kind, input.tenant_id, product_key, input.target_ref);
+      // A self-service request targets its own open SELF_SERVICE row only (never a held activation).
+      await this.assertTargetOwned(t, input.command_kind, input.tenant_id, product_key, input.target_ref, !selfService);
       const command = await t.billingProviderCommand.create({
         data: {
           id: uuidv7(),
           provider: this.billing.provider,
           command_kind: input.command_kind,
-          change_request_id: input.change_request_id,
+          change_request_id: input.change_request_id ?? null,
+          self_service_request_id: input.self_service_request_id ?? null,
           step: input.step,
-          idempotency_key: billingCommandIdempotencyKey(input.change_request_id, input.step),
+          idempotency_key: selfService
+            ? selfServiceCommandIdempotencyKey(input.self_service_request_id as string, input.step)
+            : billingCommandIdempotencyKey(input.change_request_id as string, input.step),
           tenant_id: input.tenant_id,
           product_key,
           target_ref: input.target_ref,
@@ -248,8 +254,37 @@ export class BillingCommandService {
     return tx !== undefined ? run(tx) : this.prisma.$transaction(run);
   }
 
+  /** C1 origin: a request that completed its approval chain, of a command-issuing action, same tenant and product. */
+  private async changeRequestOrigin(t: Tx, change_request_id: string, tenant_id: string, product_key: ProductKey): Promise<'change request'> {
+    const request = await t.commercialChangeRequest.findUnique({
+      where: { id: change_request_id },
+      select: { id: true, action_type: true, state: true, tenant_id: true, product_key: true },
+    });
+    if (request === null) throw new BillingCommandError('CHANGE_REQUEST_NOT_FOUND', 'change request not found', { change_request_id });
+    if (!BILLING_COMMAND_REQUEST_STATES.includes(request.state)) {
+      throw new BillingCommandError('CHANGE_REQUEST_NOT_APPROVED', `the change request is ${request.state}; a provider command needs a completed approval chain`, { state: request.state });
+    }
+    if (!BILLING_COMMAND_ACTIONS.includes(request.action_type)) {
+      throw new BillingCommandError('ACTION_NOT_COMMAND_ISSUING', `${request.action_type} does not issue provider commands`, { action_type: request.action_type });
+    }
+    if (request.tenant_id !== tenant_id || request.product_key !== product_key) {
+      throw new BillingCommandError('TENANT_PRODUCT_MISMATCH', 'the command names another tenant or product than its change request');
+    }
+    return 'change request';
+  }
+
+  /** CCP-C7 origin: the owner-made self-service request, same tenant, product and provider target. */
+  private async selfServiceOrigin(t: Tx, id: string, tenant_id: string, product_key: ProductKey, target_ref: string): Promise<'self-service request'> {
+    const request = await t.selfServiceBillingRequest.findUnique({ where: { id } });
+    if (request === null) throw new BillingCommandError('SELF_SERVICE_REQUEST_NOT_FOUND', 'self-service request not found', { self_service_request_id: id });
+    if (request.tenant_id !== tenant_id || request.product_key !== product_key || request.target_ref !== target_ref) {
+      throw new BillingCommandError('TENANT_PRODUCT_MISMATCH', 'the command names another tenant, product or target than its self-service request');
+    }
+    return 'self-service request';
+  }
+
   /** The target must be a provider object of THIS tenant and product (never another tenant's). */
-  private async assertTargetOwned(t: Tx, kind: BillingCommandKind, tenant_id: string, product_key: ProductKey, target_ref: string): Promise<void> {
+  private async assertTargetOwned(t: Tx, kind: BillingCommandKind, tenant_id: string, product_key: ProductKey, target_ref: string, allowHeld = true): Promise<void> {
     const provider = this.billing.provider;
     if (kind === 'SUBSCRIPTION_CANCEL') {
       // An open Stripe-owned (SELF_SERVICE) row, or a held activation (an open reconciliation
@@ -259,6 +294,7 @@ export class BillingCommandService {
         select: { id: true },
       });
       if (row !== null) return;
+      if (!allowHeld) throw new BillingCommandError('TARGET_NOT_FOUND', 'no open self-service subscription of this tenant and product has this provider reference');
       const held = await t.billingReconciliationFlag.findFirst({ where: { tenant_id, provider, subscription_ref: target_ref, resolved_at: null }, select: { id: true } });
       if (held !== null) return;
       throw new BillingCommandError('TARGET_NOT_FOUND', 'no open self-service subscription or held activation of this tenant and product has this provider reference');

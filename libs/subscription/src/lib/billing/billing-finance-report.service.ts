@@ -172,7 +172,7 @@ export interface HeldActivation {
   readonly held_plan_key: string | null;
   /** The held self-service plan's price, from its current PUBLISHED version (no pin exists yet). */
   readonly held_price: PriceFigure;
-  readonly unconfirmed_commands: Array<{ readonly id: string; readonly command_kind: string; readonly state: string; readonly change_request_id: string }>;
+  readonly unconfirmed_commands: Array<{ readonly id: string; readonly command_kind: string; readonly state: string; readonly change_request_id: string | null }>;
   /** Conv. C-9: resolved only by a conversion, a governed end or a provider-confirmed end. */
   readonly resolution: 'UNRESOLVED' | 'PENDING_PROVIDER';
 }
@@ -477,7 +477,7 @@ export class BillingFinanceReportService {
           ORDER BY f.detected_at, f.id`,
         ...tenantParam,
       );
-      const commands = await tx.$queryRawUnsafe<Array<{ id: string; tenant_id: string; target_ref: string; command_kind: string; state: string; change_request_id: string }>>(
+      const commands = await tx.$queryRawUnsafe<Array<{ id: string; tenant_id: string; target_ref: string; command_kind: string; state: string; change_request_id: string | null }>>(
         `SELECT id::text AS id, tenant_id::text AS tenant_id, target_ref, command_kind, state, change_request_id::text AS change_request_id
            FROM subscription."BillingProviderCommand" WHERE state <> 'CONFIRMED'${byTenant('tenant_id')} ORDER BY created_at, id`,
         ...tenantParam,

@@ -338,7 +338,8 @@ export class CommercialConversionLedger {
     if (q.command_ids.length === 0) return [];
     const cmds = await tx.billingProviderCommand.findMany({ where: { id: { in: [...q.command_ids] } }, select: { change_request_id: true } });
     const out: Array<{ change_request_id: string; outcome: 'APPLIED' | 'APPLY_FAILED' }> = [];
-    for (const id of [...new Set(cmds.map((c) => c.change_request_id))].sort()) {
+    // CCP-C7 — a self-service-origin command has no change request (nothing to complete here).
+    for (const id of [...new Set(cmds.map((c) => c.change_request_id).filter((c): c is string => c !== null))].sort()) {
       await tx.$executeRawUnsafe(`SELECT 1 FROM subscription."CommercialChangeRequest" WHERE id = $1::uuid FOR UPDATE`, id);
       const req = (await tx.commercialChangeRequest.findUniqueOrThrow({ where: { id } })) as CommercialChangeRequestRow;
       if (req.action_type !== 'CONVERSION' || req.state !== 'APPLYING') continue;

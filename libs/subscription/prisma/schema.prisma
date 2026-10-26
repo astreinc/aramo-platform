@@ -808,7 +808,10 @@ model BillingProviderCommand {
   provider              String
   // CHECK: SUBSCRIPTION_CANCEL | CHECKOUT_SESSION_EXPIRE
   command_kind          String
-  change_request_id     String    @db.Uuid
+  // CCP-C7: nullable; exactly one of change_request_id / self_service_request_id (CHECK
+  // BillingProviderCommand_origin_check). Self-service key: 'aramo-ccp-ss-<request>-<step>'.
+  change_request_id       String?   @db.Uuid
+  self_service_request_id String?   @db.Uuid
   step                  String
   idempotency_key       String    @unique
   tenant_id             String    @db.Uuid
@@ -833,6 +836,7 @@ model BillingProviderCommand {
   updated_at            DateTime  @db.Timestamptz(3)
 
   @@unique([change_request_id, step])
+  @@unique([self_service_request_id, step])
   @@index([state, next_attempt_at])
   @@index([provider, target_ref])
   @@index([tenant_id, created_at(sort: Desc), id(sort: Desc)])
@@ -971,5 +975,32 @@ model CommercialOperationalAlert {
   @@index([family, status, first_detected_at(sort: Desc), id(sort: Desc)])
   @@index([family, first_detected_at(sort: Desc), id(sort: Desc)])
   @@index([subject_kind, subject_id])
+  @@schema("subscription")
+}
+
+// CCP-C7 (PBD §5.2 row C7; Charter :95, :99; Conversion Rule C-15, C-22, C-23) — one owner-made,
+// tenant-tier self-service billing action on ONE open provider-linked SELF_SERVICE base row of ONE
+// product, carried to Stripe by a CCP-C1 BillingProviderCommand (self_service_request_id). v1
+// action set: CANCEL_AT_PERIOD_END. terms_ref names the APPROVED terms in force (key@version#sha256).
+// Append-only; the INSERT trigger (migration 20261028030000) refuses a target that is not this
+// tenant's open SELF_SERVICE base row of the product, and any request while the tenant holds an
+// open governed (MANUAL) row of the product. Plain UUID reference to the subscription (FK in SQL).
+model SelfServiceBillingRequest {
+  id              String   @id @db.Uuid
+  tenant_id       String   @db.Uuid
+  // CHECK: sign (the product registry)
+  product_key     String
+  // CHECK: CANCEL_AT_PERIOD_END
+  action          String
+  subscription_id String   @db.Uuid
+  // CHECK: STRIPE
+  provider        String
+  target_ref      String
+  terms_ref       String
+  requested_by    String   @db.Uuid
+  created_at      DateTime @db.Timestamptz(3)
+
+  @@unique([subscription_id, action])
+  @@index([tenant_id, product_key, created_at(sort: Desc)])
   @@schema("subscription")
 }

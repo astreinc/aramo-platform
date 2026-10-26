@@ -132,7 +132,7 @@ export interface HeldActivationDto {
   governed_plan_key: string | null;
   held_plan_key: string | null;
   held_price: PriceFigureDto;
-  unconfirmed_commands: Array<{ id: string; command_kind: string; state: string; change_request_id: string }>;
+  unconfirmed_commands: Array<{ id: string; command_kind: string; state: string; change_request_id: string | null }>;
   // UNRESOLVED | PENDING_PROVIDER
   resolution: string;
 }

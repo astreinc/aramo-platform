@@ -2268,6 +2268,7 @@
       "COMMERCIAL_ROLE_CHANGE_ROLE_KEYS",
       "COMMERCIAL_TERMINAL_STATES",
       "COMMERCIAL_TRANSITIONS",
+      "COMMITMENT_TERM_DETAIL",
       "CONTRACT_LIST_DEFAULT_LIMIT",
       "CONTRACT_LIST_MAX_LIMIT",
       "CONTRACT_MAX_DOCUMENTS",
@@ -2361,6 +2362,7 @@
       "POLICY_LOCK_SQL",
       "POLICY_TARGET_CHECKSUM_KEY",
       "PORTAL_CONFIGURATION_STATES",
+      "PRICE_CHANGE_UNDEFINED_DETAIL",
       "PRODUCT_CAPABILITIES",
       "PRODUCT_KEYS",
       "PlanVersionContentError",
@@ -2380,6 +2382,10 @@
       "REVENUE_PIPELINE_DEFAULT_MONTHS",
       "REVENUE_PIPELINE_MAX_MONTHS",
       "RoleChangeApplyError",
+      "SELF_SERVICE_ACTIONS",
+      "SELF_SERVICE_CANCEL_STEP",
+      "SELF_SERVICE_PRODUCTS",
+      "SELF_SERVICE_PRODUCT_REGISTRY",
       "SIGN_PRODUCT_KEY",
       "STORAGE_CAPACITY_KEY",
       "STRIPE_API_VERSION",
@@ -2388,6 +2394,8 @@
       "SUPPORT_EXTENSION_INELIGIBLE",
       "SUPPORT_EXTENSION_INELIGIBLE_EVENT",
       "SUPPORT_EXTENSION_SCOPE",
+      "SelfServiceBillingService",
+      "SelfServiceRefusedError",
       "StripeBillingProvider",
       "StripeBillingReadAdapter",
       "SubscriptionLifecycleService",
@@ -2494,6 +2502,7 @@
       "resolvePriceToVersion",
       "resolveRequiredChain",
       "runPlatformOwnerBootstrap",
+      "selfServiceCommandIdempotencyKey",
       "stripeCheckoutSessionState",
       "stripeEventCheckoutSessionRef",
       "stripeEventSubscriptionRef",
@@ -3769,6 +3778,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/ccp-a4-ats-sign-consumption.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/ccp-c7-self-service.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -7242,6 +7257,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/ccp-c7-self-service.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/esign-provider-errors.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -7553,6 +7574,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-c6-finance-report.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-c7-self-service.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -10085,6 +10112,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/ccp-c7-self-service.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/esign-sender.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -12306,6 +12339,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/ccp-c1-billing-commands.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/ccp-c7-self-service.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

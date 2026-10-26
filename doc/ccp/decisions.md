@@ -344,3 +344,10 @@ For an actor without `platform:billing:amount:read`, the whole free-text `Contra
     - **Cause (consistent with every dump so far):** a spec that never binds a port lets supertest call `listen(0)` and `close()` on the same `http.Server` for every request. Under host load, a new listen can race the previous close.
     - **Fix (test-only, behaviour-neutral):** extended TD-MERGE-40's `await app.listen(0, '127.0.0.1')` after `app.init()` to all 21 remaining platform-admin CCP spec files that use `request(app.getHttpServer())`. 23 files in total now bind one port.
     - **Result:** platform-admin CCP 701 / 701 at host load 7–15, where the same run took 885 s with 7 failures before.
+- **TD-MERGE-42 (C7):** `wip/ccp-c7` (`1b41f78c`) merged.
+  - **Conflicts:** the generated repo map (regenerated) and `subscription.module.ts` exports (D2's `BillingRevenueReportService` + C7's `SelfServiceBillingService`, both kept).
+  - **Migration `20261028030000_ccp_c7_self_service_commands`** re-creates `guard_billing_provider_command()` as the C1 body + C7 block, makes `BillingProviderCommand.change_request_id` nullable and adds `self_service_request_id` (exactly one origin). Here it is the last writer of that function, and HEAD has no other block in it yet. C4 adds one, so the command-guard union is built at the C4 merge (TD-MERGE-CMDGUARD-1).
+  - **Amounts (Lead check):** C7 adds no monetary field. The platform reads gain only the nullable `change_request_id` / `self_service_request_id`. The Sign self-service routes return state, refs and refusals; the upgrade is refused `financial_treatment_undefined` before any price is read. No finance-scope change is needed.
+  - **Nullable `change_request_id` across later slices:** tsc is clean for all 5 projects, and every consumer that reads it (D3 alerts, R3, D2, C6 held activations, the conversion ledger) compiles and passes.
+  - **C5 no-tax-call guard** with C7 in: `ccp-c5-tax-disabled.spec.ts` 15 / 15. C7 issues its cancel through the existing `SUBSCRIPTION_CANCEL` provider method, so the prototype enumeration (C5-G-3) covers it.
+  - R1 granted_source scan 4 / 4.
