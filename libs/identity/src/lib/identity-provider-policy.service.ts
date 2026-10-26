@@ -9,8 +9,10 @@ import { PrismaService } from './prisma/prisma.service.js';
 //
 //   R2 (all tenants) — no cross-provider merge on email equality: a User that
 //      already holds a link recorded for one federated provider is never
-//      linked to an identity from another provider. Links created before this
-//      rule have no recorded provider (legacy) and keep today's behaviour.
+//      linked to an identity from another provider. Fail closed (legacy-link gap
+//      ruling, 2026-10-26): a link is never written for an unresolved or
+//      ambiguous provider, and a User holding a legacy link (no recorded
+//      provider) is never linked to a new identity.
 //
 //   R1 (NARROW cohort) — a tenant with a TenantIdentityProviderPolicy row (only
 //      new Sign Business signup tenants) enforces its pin
@@ -85,6 +87,15 @@ export class IdentityProviderPolicyService {
     return rows.map((r) => r.idp);
   }
 
+  /** True when the user holds a link with no recorded provider (created before R2). */
+  async hasUnrecordedLink(user_id: string): Promise<boolean> {
+    const rows = await this.prisma.$queryRaw<{ n: bigint }[]>`
+      SELECT count(*)::bigint AS n FROM "identity"."ExternalIdentity" e
+      WHERE e.user_id = ${user_id}::uuid
+        AND NOT EXISTS (SELECT 1 FROM "identity"."ExternalIdentityIdp" p WHERE p.external_identity_id = e.id)`;
+    return (rows[0]?.n ?? 0n) > 0n;
+  }
+
   /** Record which provider authenticated a newly created link (idempotent). */
   async recordLinkIdp(external_identity_id: string, idp: FederatedIdp): Promise<void> {
     await this.prisma.externalIdentityIdp.createMany({ data: [{ external_identity_id, idp }], skipDuplicates: true });
@@ -116,14 +127,29 @@ export class IdentityProviderPolicyService {
     const tenant_id = input.tenant_id ?? (await this.membershipTenantOf(input.user_id));
 
     // R2 — never merge a second provider into a user on email equality.
-    if (input.linking && idp !== null && idp !== 'ambiguous') {
+    // Legacy-link gap ruling (v1.0 LOCKED, 2026-10-26, decision 2): fail closed.
+    //   - A link whose own provider cannot be resolved (null, or 'ambiguous' from a
+    //     Cognito user that carries several providers) is never written: it would be
+    //     unrecorded, and an unrecorded link cannot be defended by R2 later.
+    //   - A user who already holds a link WITHOUT a recorded provider (a legacy link)
+    //     is treated as conflicting with any new provider, instead of keeping the
+    //     pre-R2 behaviour of linking anything with a matching email.
+    // Returning users resolve by subject and never reach this (linking=false).
+    // (The enforced-pin cohort below refuses an unresolved provider with its own
+    // reason, idp_not_permitted_for_tenant; every other path refuses it here.)
+    const unresolvedLink = input.linking && (idp === null || idp === 'ambiguous');
+    if (input.linking && !unresolvedLink) {
       const recorded = await this.recordedIdpsOf(input.user_id);
       if (recorded.some((r) => r !== idp)) return { ok: false, reason: 'idp_identity_conflict' };
+      if (await this.hasUnrecordedLink(input.user_id)) return { ok: false, reason: 'idp_identity_conflict' };
     }
 
-    if (tenant_id === null) return { ok: true, pinned_now: false };
+    if (tenant_id === null) {
+      return unresolvedLink ? { ok: false, reason: 'idp_identity_conflict' } : { ok: true, pinned_now: false };
+    }
     const { enforced, pin } = await this.policyOf(tenant_id);
     if (!enforced) {
+      if (unresolvedLink) return { ok: false, reason: 'idp_identity_conflict' };
       // Subdomain-Identity-B fail-open hint: observability only, never refused.
       if (pin !== null && idp !== null && pin.toLowerCase() !== idp) {
         this.logger.warn(JSON.stringify({ event: 'auth.idp_pin', mode: 'log', outcome: 'mismatch', pin: pin.toLowerCase(), idp }));

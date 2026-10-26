@@ -121,17 +121,37 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('AUTH-SIGNIN-1 pro
     expect(await pinOf(pinned)).toBe('microsoft');
   });
 
-  it('R2 (all tenants): a second provider is never merged into a user; legacy links keep today\'s behaviour', async () => {
+  it('R2 (all tenants): a second provider is never merged into a user; legacy links fail closed', async () => {
     const t = await tenant({ enforced: false });
     const u = await member(t, OWNER_ROLE);
     const link = await repo.linkExternalIdentity({ user_id: u, provider: 'cognito', provider_subject: `ms-${u}`, email_snapshot: null });
     await policy.recordLinkIdp(link.id, 'microsoft');
     expect(await policy.evaluate({ user_id: u, idp: 'google', linking: true })).toEqual({ ok: false, reason: 'idp_identity_conflict' });
     expect(await policy.evaluate({ user_id: u, idp: 'microsoft', linking: true })).toEqual({ ok: true, pinned_now: false });
-    // A legacy link (no recorded provider) does not block — today's behaviour.
+    // Legacy-link gap ruling (2026-10-26, decision 2): a legacy link (no recorded
+    // provider) now BLOCKS any new link, whatever the provider.
     const legacy = await member(t, OWNER_ROLE);
     await repo.linkExternalIdentity({ user_id: legacy, provider: 'cognito', provider_subject: `legacy-${legacy}`, email_snapshot: null });
-    expect(await policy.evaluate({ user_id: legacy, idp: 'google', linking: true })).toEqual({ ok: true, pinned_now: false });
+    expect(await policy.evaluate({ user_id: legacy, idp: 'google', linking: true })).toEqual({ ok: false, reason: 'idp_identity_conflict' });
+    expect(await policy.evaluate({ user_id: legacy, idp: 'microsoft', linking: true })).toEqual({ ok: false, reason: 'idp_identity_conflict' });
+    // A returning user resolves by subject (linking=false): never refused by R2.
+    expect(await policy.evaluate({ user_id: legacy, idp: 'google', linking: false })).toEqual({ ok: true, pinned_now: false });
+    // Once the legacy link carries its provider, R2 behaves as for any recorded link.
+    const legacyLinks = await db.query(`SELECT id FROM identity."ExternalIdentity" WHERE user_id = $1`, [legacy]);
+    await policy.recordLinkIdp(legacyLinks.rows[0].id, 'microsoft');
+    expect(await policy.evaluate({ user_id: legacy, idp: 'google', linking: true })).toEqual({ ok: false, reason: 'idp_identity_conflict' });
+    expect(await policy.evaluate({ user_id: legacy, idp: 'microsoft', linking: true })).toEqual({ ok: true, pinned_now: false });
+  });
+
+  it('R2 (all tenants): a link is never written for an unresolved or ambiguous provider', async () => {
+    const t = await tenant({ enforced: false });
+    const fresh = await member(t, OWNER_ROLE);
+    expect(await policy.evaluate({ user_id: fresh, idp: 'ambiguous', linking: true })).toEqual({ ok: false, reason: 'idp_identity_conflict' });
+    expect(await policy.evaluate({ user_id: fresh, idp: null, linking: true })).toEqual({ ok: false, reason: 'idp_identity_conflict' });
+    // A resolved provider still links a user with no links at all.
+    expect(await policy.evaluate({ user_id: fresh, idp: 'google', linking: true })).toEqual({ ok: true, pinned_now: false });
+    // Session checks (returning users, linking=false) are unchanged for an ambiguous provider.
+    expect(await policy.evaluate({ user_id: fresh, idp: 'ambiguous', linking: false })).toEqual({ ok: true, pinned_now: false });
   });
 
   it('recordLinkIdp is idempotent and rejects unknown providers at the database', async () => {
