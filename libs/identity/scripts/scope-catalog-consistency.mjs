@@ -12,6 +12,10 @@
 //      seed-scrub.integration.spec.ts (so a scope-add that forgets to bump the
 //      locked constant fails here, locally, instead of only in CI).
 //
+//   6. CCP A1: CCP_PLATFORM_ROLE_SEED_BUNDLES equals the approved §4.1 matrix exactly
+//      (45 rows), super_admin holds none of the 15 commercial scopes (INV-1), and no
+//      bundle is both initiator and decider in one domain (INV-2).
+//
 // Exit 0 = consistent; exit 1 = a drift the seed-scrub integration suite would
 // also catch. Run: node libs/identity/scripts/scope-catalog-consistency.mjs
 import { readFileSync } from 'node:fs';
@@ -104,6 +108,7 @@ while ((t = tupleRe.exec(wholeSeed)) !== null) {
 // ROLE_SCOPE_ASSIGNMENTS object block
 let inRSA = false;
 let rsaRole = null;
+const rsaBundles = new Map(); // role -> Set(scope), ROLE_SCOPE_ASSIGNMENTS only
 for (const line of seedSrc) {
   if (!inRSA) {
     if (/ROLE_SCOPE_ASSIGNMENTS\s*=\s*\{/.test(line)) inRSA = true;
@@ -112,7 +117,11 @@ for (const line of seedSrc) {
   if (/^\};/.test(line) || /^\s*\}\s*as const/.test(line)) break;
   const open = line.match(/^\s{2,4}([a-z_]+):\s*\[/);
   if (open) { rsaRole = open[1]; }
-  if (rsaRole) for (const sm of line.matchAll(/'([a-z0-9:_-]+)'/g)) add(rsaRole, sm[1]);
+  if (rsaRole) for (const sm of line.matchAll(/'([a-z0-9:_-]+)'/g)) {
+    add(rsaRole, sm[1]);
+    if (!rsaBundles.has(rsaRole)) rsaBundles.set(rsaRole, new Set());
+    rsaBundles.get(rsaRole).add(sm[1]);
+  }
   if (/^\s{2,4}\],/.test(line)) rsaRole = null;
 }
 // super_admin is a PLATFORM-tier role bound ONLY to the platform:* scope namespace
@@ -194,6 +203,105 @@ if (openAt < 0 || endAt < 0) {
   console.log(
     `examination:create authorized set = 6 explicit roles (super_admin is platform-tier, NOT a holder); excluded: ${EXAM_CREATE_EXCLUDED.join(', ')}`,
   );
+}
+
+// --- 6. CCP A1: the platform-tier commercial role matrix (static, fail-closed) ---
+// AUTHORITATIVE parse of the CCP_PLATFORM_ROLE_SEED_BUNDLES block in seed.ts against the
+// approved matrix of Aramo-CCP-A1-Commercial-Roles-and-Scopes-Directive-v1_0 §4.1 (ruling
+// A0-C4). Also asserts INV-1 (super_admin holds none of the 15 commercial scopes, read from
+// the ROLE_SCOPE_ASSIGNMENTS parse above) and INV-2 (no bundle is both initiator and decider
+// in one domain). Any drift fails.
+const CCP_COMMERCIAL_SCOPES = [
+  'platform:catalog:read',
+  'platform:catalog:draft',
+  'platform:catalog:approve',
+  'platform:catalog:publish',
+  'platform:subscription:read',
+  'platform:subscription:request',
+  'platform:subscription:approve',
+  'platform:subscription:support',
+  'platform:entitlement:request',
+  'platform:entitlement:approve',
+  'platform:billing:read',
+  'platform:billing:request',
+  'platform:billing:approve',
+  'platform:approval:read',
+  'platform:commercial:audit:read',
+];
+const ENTRY = 'platform:tenant:read';
+const CCP_EXPECTED = {
+  platform_owner: [ENTRY, 'platform:catalog:read', 'platform:catalog:approve', 'platform:catalog:publish', 'platform:subscription:read', 'platform:subscription:approve', 'platform:entitlement:approve', 'platform:billing:read', 'platform:billing:approve', 'platform:approval:read', 'platform:commercial:audit:read'],
+  finance_admin: [ENTRY, 'platform:catalog:read', 'platform:catalog:approve', 'platform:subscription:read', 'platform:subscription:approve', 'platform:entitlement:approve', 'platform:billing:read', 'platform:billing:approve', 'platform:approval:read', 'platform:commercial:audit:read'],
+  commercial_ops: [ENTRY, 'platform:catalog:read', 'platform:subscription:read', 'platform:subscription:request', 'platform:entitlement:request', 'platform:billing:read', 'platform:billing:request', 'platform:approval:read'],
+  catalog_manager: [ENTRY, 'platform:catalog:read', 'platform:catalog:draft', 'platform:approval:read'],
+  support_admin: [ENTRY, 'platform:catalog:read', 'platform:subscription:read', 'platform:subscription:support', 'platform:billing:read', 'platform:approval:read'],
+  read_only_auditor: [ENTRY, 'platform:catalog:read', 'platform:subscription:read', 'platform:billing:read', 'platform:approval:read', 'platform:commercial:audit:read'],
+};
+// INV-2: initiating vs deciding scopes, per domain.
+const CCP_DOMAINS = {
+  catalog: { initiate: ['platform:catalog:draft'], decide: ['platform:catalog:approve', 'platform:catalog:publish'] },
+  subscription: { initiate: ['platform:subscription:request', 'platform:subscription:support'], decide: ['platform:subscription:approve'] },
+  entitlement: { initiate: ['platform:entitlement:request'], decide: ['platform:entitlement:approve'] },
+  billing: { initiate: ['platform:billing:request'], decide: ['platform:billing:approve'] },
+};
+{
+  const name = 'CCP_PLATFORM_ROLE_SEED_BUNDLES';
+  const nameAt6 = wholeSeed.indexOf(`export const ${name}`);
+  const eqAt6 = nameAt6 >= 0 ? wholeSeed.indexOf('= [', nameAt6) : -1;
+  const openAt6 = eqAt6 >= 0 ? wholeSeed.indexOf('[', eqAt6) : -1;
+  const endAt6 = openAt6 >= 0 ? wholeSeed.indexOf('\n];', openAt6) : -1;
+  if (openAt6 < 0 || endAt6 < 0) {
+    fail(`${name} value block not found`);
+  } else {
+    const block = wholeSeed.slice(openAt6, endAt6);
+    const parsed = new Map();
+    for (const m of block.matchAll(/\[\s*'([a-z_]+)'\s*,\s*\[([\s\S]*?)\]\s*\]/g)) {
+      if (parsed.has(m[1])) fail(`${name}: duplicate role ${m[1]}`);
+      parsed.set(m[1], [...m[2].matchAll(/'([a-z0-9:_-]+)'/g)].map((x) => x[1]));
+    }
+    const expRoles = Object.keys(CCP_EXPECTED).sort();
+    if (JSON.stringify([...parsed.keys()].sort()) !== JSON.stringify(expRoles)) {
+      fail(`${name} roles ${JSON.stringify([...parsed.keys()].sort())} != expected ${JSON.stringify(expRoles)}`);
+    }
+    let rows = 0;
+    for (const [role, scopes] of parsed) {
+      rows += scopes.length;
+      if (new Set(scopes).size !== scopes.length) fail(`${name}: ${role} lists a scope twice`);
+      const exp = CCP_EXPECTED[role];
+      if (exp && JSON.stringify([...scopes].sort()) !== JSON.stringify([...exp].sort())) {
+        fail(`${name}: ${role} bundle ${JSON.stringify([...scopes].sort())} != approved matrix ${JSON.stringify([...exp].sort())}`);
+      }
+      for (const sc of scopes) {
+        if (!sc.startsWith('platform:')) fail(`${name}: ${role} holds a non-platform scope ${sc} (INV-3)`);
+        if (!idMap.has(sc)) fail(`${name}: ${role} grants ${sc}, absent from the scope id-map`);
+      }
+      for (const [domain, { initiate, decide }] of Object.entries(CCP_DOMAINS)) {
+        const i = initiate.filter((x) => scopes.includes(x));
+        const d = decide.filter((x) => scopes.includes(x));
+        if (i.length && d.length) fail(`${name}: ${role} is both initiator (${i.join(', ')}) and decider (${d.join(', ')}) in ${domain} (INV-2)`);
+      }
+    }
+    if (rows !== 45) fail(`${name}: ${rows} role-scope rows != 45`);
+    for (const sc of CCP_COMMERCIAL_SCOPES) {
+      if (!idMap.has(sc)) fail(`CCP commercial scope ${sc} absent from the scope id-map`);
+      const holders = [...parsed].filter(([, ss]) => ss.includes(sc)).length;
+      if (holders === 0) fail(`CCP commercial scope ${sc} has no holder`);
+    }
+    const sa = rsaBundles.get('super_admin');
+    if (!sa) {
+      fail('ROLE_SCOPE_ASSIGNMENTS.super_admin not found');
+    } else {
+      const held = CCP_COMMERCIAL_SCOPES.filter((x) => sa.has(x));
+      if (held.length) fail(`super_admin holds commercial scope(s) ${held.join(', ')} (INV-1)`);
+      if (sa.size !== 10) fail(`super_admin bundle size ${sa.size} != 10 (INV-1)`);
+    }
+    for (const [role, ss] of grants) {
+      if (CCP_EXPECTED[role]) continue;
+      const leaked = CCP_COMMERCIAL_SCOPES.filter((x) => ss.has(x));
+      if (leaked.length) fail(`${role} (not a CCP role) holds commercial scope(s) ${leaked.join(', ')}`);
+    }
+    console.log(`CCP A1 matrix: ${parsed.size} roles, ${rows} role-scope rows; INV-1 super_admin commercial scopes: ${sa ? CCP_COMMERCIAL_SCOPES.filter((x) => sa.has(x)).length : 'n/a'}; INV-2 checked`);
+  }
 }
 
 if (process.exitCode === 1) console.error('scope-catalog consistency: FAIL');

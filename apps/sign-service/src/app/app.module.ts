@@ -47,6 +47,7 @@ import { SenderContextService } from './sender/sender-context.service.js';
 import { SenderEnvelopeService } from './sender/sender-envelope.service.js';
 import { EsignBillingController } from './billing/esign-billing.controller.js';
 import { EsignBillingReconcileWorker } from './billing/esign-billing-reconcile.worker.js';
+import { EsignBillingCommandWorker } from './billing/esign-billing-command.worker.js';
 import { EsignOwnerActivationService } from './billing/esign-owner-activation.service.js';
 import { AramoSignStorageGate } from './billing/aramo-sign-storage.gate.js';
 import { AtsPlanEligibilityAdapter } from './billing/ats-plan-eligibility.adapter.js';
@@ -175,6 +176,8 @@ import { ConvenienceDataPurgeService } from './push/convenience-data-purge.servi
     SenderEnvelopeService,
     EsignOwnerActivationService,
     EsignBillingReconcileWorker,
+    // CCP-C1 — Stripe command outbox + webhook inbox worker (SIGN_BILLING_COMMANDS_ENABLED=1; off by default).
+    EsignBillingCommandWorker,
     AramoSignStorageGate,
     SignTokenService,
     SignApiGuard,

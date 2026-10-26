@@ -4,10 +4,16 @@ import { Injectable } from '@nestjs/common';
 
 import {
   type BillingAccountDetails,
+  type BillingProviderAdjustmentPort,
+  type BillingProviderCommandPort,
   type BillingProviderPort,
   BillingProviderUnavailableError,
   BillingWebhookSignatureError,
   type CheckoutSessionRequest,
+  type ProviderAdjustmentEffect,
+  type ProviderAdjustmentRequest,
+  type ProviderCheckoutSessionState,
+  type ProviderPaymentPicture,
   type ProviderSubscriptionState,
   type VerifiedBillingEvent,
 } from './billing-provider.port.js';
@@ -17,8 +23,19 @@ import {
   wireAccountParams,
   wireAccountPath,
   wireAccountRef,
+  wireBalanceAdjustmentParams,
+  wireBalanceAdjustmentState,
   wireCheckoutAccountParams,
+  wireCouponParams,
+  wireDisputeState,
+  wireInvoicePayment,
+  wireListComplete,
+  wireListData,
   wirePortalAccountParams,
+  wireRefundParams,
+  wireRefundState,
+  wireSubscriptionDiscount,
+  wireSubscriptionDiscountParams,
   wireSubscriptionQuery,
 } from './stripe-wire.js';
 
@@ -32,6 +49,10 @@ import {
 // Webhooks: Stripe-Signature `t=<unix>,v1=<hex>` = HMAC-SHA256(secret, `${t}.${raw}`),
 // verified in constant time within a ±300 s window before anything is parsed.
 // The API version is pinned so response shapes are stable.
+//
+// CCP-C1 — also the command port (cancel a subscription, expire a checkout session, read a
+// session). A provider refusal (4xx other than 429) is reported non-retryable; network
+// failures, 429 and 5xx stay retryable (BillingProviderUnavailableError.retryable).
 
 export const STRIPE_API_VERSION = '2024-06-20';
 export const STRIPE_WEBHOOK_TOLERANCE_SEC = 300;
@@ -89,6 +110,24 @@ export function stripeEventSubscriptionRef(type: string, o: Record<string, unkno
   return null;
 }
 
+/** CCP-C1 — the checkout session a checkout.session.* event concerns. */
+export function stripeEventCheckoutSessionRef(type: string, o: Record<string, unknown>): string | null {
+  if (!type.startsWith('checkout.session.')) return null;
+  return typeof o['id'] === 'string' && o['id'] !== '' ? o['id'] : null;
+}
+
+/** CCP-C1 — a Stripe checkout session object → the provider session state. */
+export function stripeCheckoutSessionState(obj: Record<string, unknown>): ProviderCheckoutSessionState {
+  const metadata = (obj['metadata'] as Record<string, unknown> | undefined) ?? {};
+  return {
+    provider: 'STRIPE',
+    session_ref: String(obj['id']),
+    status: String(obj['status']),
+    tenant_id: asString(metadata['tenant_id']),
+    intent_id: asString(metadata['intent_id']) ?? asString(obj['client_reference_id']),
+  };
+}
+
 export function verifyStripeSignature(rawBody: Buffer, header: string | undefined, secret: string | undefined, nowSec: number): void {
   if (secret === undefined || secret.length === 0) throw new BillingWebhookSignatureError('NO_SECRET');
   if (header === undefined || header.length === 0) throw new BillingWebhookSignatureError('MISSING');
@@ -113,7 +152,7 @@ export function verifyStripeSignature(rawBody: Buffer, header: string | undefine
 }
 
 @Injectable()
-export class StripeBillingProvider implements BillingProviderPort {
+export class StripeBillingProvider implements BillingProviderPort, BillingProviderCommandPort, BillingProviderAdjustmentPort {
   readonly provider = 'STRIPE' as const;
 
   private secretKey(): string | undefined {
@@ -134,7 +173,7 @@ export class StripeBillingProvider implements BillingProviderPort {
     return this.secretKey() !== undefined && (process.env['STRIPE_WEBHOOK_SECRET'] ?? '').trim() !== '';
   }
 
-  private async call(method: 'GET' | 'POST', path: string, body?: string, idempotencyKey?: string): Promise<Record<string, unknown>> {
+  private async call(method: 'GET' | 'POST' | 'DELETE', path: string, body?: string, idempotencyKey?: string): Promise<Record<string, unknown>> {
     const key = this.secretKey();
     if (key === undefined) throw new BillingProviderUnavailableError('STRIPE_SECRET_KEY is not configured');
     let res: Response;
@@ -150,12 +189,14 @@ export class StripeBillingProvider implements BillingProviderPort {
         body,
       });
     } catch (err) {
-      throw new BillingProviderUnavailableError(`network: ${(err as Error).message}`);
+      throw new BillingProviderUnavailableError(`network: ${(err as Error).message}`, true);
     }
     const json = (await res.json().catch(() => ({}))) as Record<string, unknown>;
     if (!res.ok) {
       const message = ((json['error'] as { message?: string } | undefined)?.message ?? `HTTP ${res.status}`).slice(0, 300);
-      throw new BillingProviderUnavailableError(`stripe ${method} ${path}: ${message}`);
+      // CCP-C1 — a 4xx (other than 429) is the provider refusing this request: not retryable.
+      const retryable = res.status === 429 || res.status >= 500;
+      throw new BillingProviderUnavailableError(`stripe ${method} ${path}: ${message}`, retryable);
     }
     return json;
   }
@@ -189,7 +230,9 @@ export class StripeBillingProvider implements BillingProviderPort {
       'metadata[intent_id]': req.intent_id,
       'subscription_data[metadata][tenant_id]': req.tenant_id,
       'subscription_data[metadata][intent_id]': req.intent_id,
-      'automatic_tax[enabled]': process.env['STRIPE_AUTOMATIC_TAX'] === '1' ? 'true' : undefined,
+      // CCP-C5 (PBD §5.2 row C5, §10) — no tax parameter is sent: the provider is never asked to
+      // calculate or collect tax before Stripe Tax registration. The former env opt-in is removed,
+      // and no flag replaces it (enabling tax is a future release with its own authorization).
     });
     const s = await this.call('POST', '/v1/checkout/sessions', body, `aramo-checkout-${req.intent_id}`);
     const url = asString(s['url']);
@@ -211,6 +254,127 @@ export class StripeBillingProvider implements BillingProviderPort {
     return stripeSubscriptionState(s);
   }
 
+  async cancelSubscription(subscription_ref: string, opts: { at_period_end: boolean }, idempotency_key: string): Promise<void> {
+    const path = `/v1/subscriptions/${encodeURIComponent(subscription_ref)}`;
+    // At period end: the subscription keeps running until the period ends (an update). Now: the
+    // provider's cancel (no proration or invoice parameters are sent: their defaults apply).
+    if (opts.at_period_end) await this.call('POST', path, form({ cancel_at_period_end: 'true' }), idempotency_key);
+    else await this.call('DELETE', path, undefined, idempotency_key);
+  }
+
+  async expireCheckoutSession(session_ref: string, idempotency_key: string): Promise<void> {
+    await this.call('POST', `/v1/checkout/sessions/${encodeURIComponent(session_ref)}/expire`, '', idempotency_key);
+  }
+
+  async retrieveCheckoutSession(session_ref: string): Promise<ProviderCheckoutSessionState> {
+    return stripeCheckoutSessionState(await this.call('GET', `/v1/checkout/sessions/${encodeURIComponent(session_ref)}`));
+  }
+
+  // ---- CCP-C4 — billing adjustments (credits, discounts, refunds) -------------------------------
+  // Every write carries the command's derived idempotency key and `aramo_command_id` / `tenant_id`
+  // metadata. Reads never change provider state. Paths and field names: stripe-wire.ts.
+
+  async executeAdjustment(req: ProviderAdjustmentRequest, idempotency_key: string): Promise<{ object_ref: string }> {
+    switch (req.operation) {
+      case 'CREDIT_GRANT':
+      case 'CREDIT_REVERSE': {
+        // A credit lowers the balance the next invoice draws on (negative); its reversal raises it.
+        const signed = (req.operation === 'CREDIT_GRANT' ? -1 : 1) * (req.amount_minor as number);
+        const t = await this.call('POST', `${wireAccountPath(req.target_ref)}/balance_transactions`, form(wireBalanceAdjustmentParams(signed, req.currency as string, req)), idempotency_key);
+        return { object_ref: requireId(t, 'balance adjustment') };
+      }
+      case 'DISCOUNT_APPLY': {
+        // A coupon with the deterministic id (a retry finds it), then attached to the subscription.
+        try {
+          await this.call('POST', '/v1/coupons', form(wireCouponParams(req.coupon_ref as string, req.discount_bps as number, req)), `${idempotency_key}-coupon`);
+        } catch (e) {
+          if (!(e instanceof BillingProviderUnavailableError) || e.retryable || !/already exists/i.test(e.detail)) throw e;
+        }
+        const sub = await this.call('POST', `/v1/subscriptions/${encodeURIComponent(req.target_ref)}`, form(wireSubscriptionDiscountParams(req.coupon_ref as string)), idempotency_key);
+        return { object_ref: wireSubscriptionDiscount(sub).discount_ref ?? (req.coupon_ref as string) };
+      }
+      case 'DISCOUNT_REMOVE': {
+        await this.call('DELETE', `/v1/subscriptions/${encodeURIComponent(req.target_ref)}/discount`, undefined, idempotency_key);
+        return { object_ref: req.target_ref };
+      }
+      case 'REFUND_CREATE': {
+        const inv = wireInvoicePayment(await this.call('GET', `/v1/invoices/${encodeURIComponent(req.target_ref)}`));
+        if (inv.account_ref !== req.account_ref) throw new BillingProviderUnavailableError('the invoice was not paid from the tenant billing account', false);
+        if (inv.payment_ref === null) throw new BillingProviderUnavailableError('the invoice has no payment to refund', false);
+        const r = await this.call('POST', '/v1/refunds', form(wireRefundParams(inv.payment_ref, req.amount_minor as number, req)), idempotency_key);
+        return { object_ref: requireId(r, 'refund') };
+      }
+    }
+  }
+
+  async readAdjustmentEffect(req: ProviderAdjustmentRequest, object_ref: string | null): Promise<ProviderAdjustmentEffect> {
+    const none = (o: Partial<ProviderAdjustmentEffect> = {}): ProviderAdjustmentEffect => ({ provider: 'STRIPE', operation: req.operation, object_ref: null, present: false, provider_status: null, tenant_id: null, live: this.mode() === 'live', ...o });
+    switch (req.operation) {
+      case 'CREDIT_GRANT':
+      case 'CREDIT_REVERSE': {
+        const signed = (req.operation === 'CREDIT_GRANT' ? -1 : 1) * (req.amount_minor as number);
+        const objs =
+          object_ref !== null
+            ? [await this.call('GET', `${wireAccountPath(req.target_ref)}/balance_transactions/${encodeURIComponent(object_ref)}`)]
+            : wireListData(await this.call('GET', `${wireAccountPath(req.target_ref)}/balance_transactions?limit=100`));
+        for (const o of objs) {
+          const t = wireBalanceAdjustmentState(o);
+          if (t.command_id !== req.command_id) continue;
+          const ok = t.amount_minor === signed && t.currency === (req.currency as string).toLowerCase();
+          return none({ object_ref: t.object_ref, present: ok, provider_status: ok ? 'applied' : 'mismatch', tenant_id: t.tenant_id, live: t.live });
+        }
+        return none();
+      }
+      case 'DISCOUNT_APPLY':
+      case 'DISCOUNT_REMOVE': {
+        const sub = await this.call('GET', `/v1/subscriptions/${encodeURIComponent(req.target_ref)}`);
+        const d = wireSubscriptionDiscount(sub);
+        const has = d.coupon_ref === req.coupon_ref;
+        const tenant_id = asString(((sub['metadata'] as Record<string, unknown> | undefined) ?? {})['tenant_id']);
+        return none({ object_ref: d.discount_ref ?? (req.operation === 'DISCOUNT_REMOVE' ? req.target_ref : null), present: req.operation === 'DISCOUNT_APPLY' ? has : !has, provider_status: d.coupon_ref === null ? 'none' : 'active', tenant_id, live: sub['livemode'] === true });
+      }
+      case 'REFUND_CREATE': {
+        // CCP-C4-R — always the authoritative picture of the payment: the invoice (paying account,
+        // payment, currency, amount paid) and every refund of that payment; the command's refund is
+        // found by its object ref, else by the command id in its metadata.
+        const inv = wireInvoicePayment(await this.call('GET', `/v1/invoices/${encodeURIComponent(req.target_ref)}`));
+        const refunds = inv.payment_ref === null ? [] : wireListData(await this.call('GET', `/v1/refunds?payment_intent=${encodeURIComponent(inv.payment_ref)}&limit=100`)).map(wireRefundState);
+        const committed = refunds.filter((r) => r.status === 'succeeded' || r.status === 'pending' || r.status === 'requires_action').reduce((n, r) => n + r.amount_minor, 0);
+        const facts = { refundable_remainder_minor: inv.payment_ref === null ? 0 : Math.max(inv.amount_paid_minor - committed, 0), payment_currency: inv.currency };
+        const mine = refunds.find((r) => (object_ref !== null ? r.object_ref === object_ref : r.command_id === req.command_id));
+        if (mine === undefined) return none({ ...facts, observed_amount_minor: null });
+        return none({ ...facts, object_ref: mine.object_ref, present: mine.status === 'succeeded' && mine.amount_minor === req.amount_minor, provider_status: mine.status, tenant_id: mine.tenant_id, live: mine.live, observed_amount_minor: mine.amount_minor });
+      }
+    }
+  }
+
+  async readPaymentPicture(invoice_ref: string): Promise<ProviderPaymentPicture> {
+    // CCP-C4-P — GET only: the invoice, every refund of its payment, every dispute on it.
+    const inv = wireInvoicePayment(await this.call('GET', `/v1/invoices/${encodeURIComponent(invoice_ref)}`));
+    let refunds: Array<Record<string, unknown>> = [];
+    let disputes: Array<Record<string, unknown>> = [];
+    let complete = true;
+    if (inv.payment_ref !== null) {
+      const r = await this.call('GET', `/v1/refunds?payment_intent=${encodeURIComponent(inv.payment_ref)}&limit=100`);
+      const d = await this.call('GET', `/v1/disputes?payment_intent=${encodeURIComponent(inv.payment_ref)}&limit=100`);
+      refunds = wireListData(r);
+      disputes = wireListData(d);
+      complete = wireListComplete(r) && wireListComplete(d);
+    }
+    return {
+      provider: 'STRIPE',
+      invoice_ref,
+      account_ref: inv.account_ref,
+      payment_ref: inv.payment_ref,
+      currency: inv.currency,
+      captured_minor: inv.amount_paid_minor,
+      refunds: refunds.map(wireRefundState).map((x) => ({ object_ref: x.object_ref, amount_minor: x.amount_minor, status: x.status, command_id: x.command_id })),
+      disputes: disputes.map(wireDisputeState),
+      complete,
+      live: this.mode() === 'live',
+    };
+  }
+
   verifyWebhook(rawBody: Buffer, signatureHeader: string | undefined, nowSec: number): VerifiedBillingEvent {
     verifyStripeSignature(rawBody, signatureHeader, process.env['STRIPE_WEBHOOK_SECRET']?.trim(), nowSec);
     let evt: Record<string, unknown>;
@@ -223,6 +387,27 @@ export class StripeBillingProvider implements BillingProviderPort {
     if (typeof evt['id'] !== 'string' || typeof evt['type'] !== 'string' || data === undefined) {
       throw new BillingWebhookSignatureError('MALFORMED');
     }
-    return { id: evt['id'], type: evt['type'], created: asDate(evt['created']), subscription_ref: stripeEventSubscriptionRef(evt['type'], data) };
+    const checkout_session_ref = stripeEventCheckoutSessionRef(evt['type'], data);
+    const subscription_ref = stripeEventSubscriptionRef(evt['type'], data);
+    // CCP-C4 — any other event names its own object (a balance adjustment, discount or refund), so a
+    // pending billing adjustment whose object it is can be re-read. Absent otherwise (the C1
+    // envelope of subscription and checkout events is unchanged).
+    const object_ref = subscription_ref === null && checkout_session_ref === null ? asString(data['id']) : null;
+    return {
+      id: evt['id'],
+      type: evt['type'],
+      created: asDate(evt['created']),
+      subscription_ref,
+      // CCP-C1 — present only for checkout.session.* events (the envelope shape is otherwise unchanged).
+      ...(checkout_session_ref !== null ? { checkout_session_ref } : {}),
+      ...(object_ref !== null ? { object_ref } : {}),
+    };
   }
 }
+
+function requireId(o: Record<string, unknown>, what: string): string {
+  const id = asString(o['id']);
+  if (id === null) throw new BillingProviderUnavailableError(`${what} without id`);
+  return id;
+}
+

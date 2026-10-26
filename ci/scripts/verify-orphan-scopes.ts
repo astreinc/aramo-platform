@@ -77,6 +77,58 @@ export const CLASSIFICATIONS: Record<string, Classification> = {
   // enforced by the SkillGovernanceController @RequireScopes handlers (the platform
   // taxonomy-governance admin API), so their ACTIVE_RESERVED classification entries
   // are REMOVED (the script now detects the real enforcement). No seed/grant change.
+  // CCP A1 — the 15 platform-tier commercial scopes ship catalog-only (no @RequireScopes
+  // yet). Each names the CCP slice that will enforce it; the entry is REMOVED when that
+  // slice's route lands (the SKILL-TAX-1F-B2 precedent above), so the script then detects
+  // the real enforcement.
+  // CCP A2 — platform:commercial:audit:read is now LITERALLY enforced by
+  // PlatformCommercialAuditController (GET /platform/commercial/audit-events), so its
+  // ACTIVE_RESERVED entry is REMOVED (14 CCP reservations remain).
+  // CCP A3 — platform:approval:read is now LITERALLY enforced by
+  // PlatformCommercialChangeRequestController (/platform/commercial/change-requests, all 7
+  // routes), so its ACTIVE_RESERVED entry is REMOVED. The A3 change-request service
+  // enforces the requester and approval-step scopes below the route gate (CCP A1 §4.1
+  // matrix; COMMERCIAL_ACTIONS and the step scopes in
+  // libs/subscription/src/lib/commercial/commercial-change-request.ts), so those 10 move
+  // to SERVICE_ENFORCED. 3 read reservations remain (catalog / subscription / billing :read).
+  // CCP D1 — platform:subscription:read is now LITERALLY enforced by
+  // PlatformCommercialUsageController (GET /platform/commercial/usage/reconciliation and
+  // /usage/periods), so its ACTIVE_RESERVED entry is REMOVED.
+  // CCP B2 — platform:catalog:read is now LITERALLY enforced by
+  // PlatformCommercialCatalogController (GET /platform/commercial/catalog and
+  // GET /platform/commercial/catalog/versions/:versionId), so its ACTIVE_RESERVED entry is
+  // REMOVED.
+  // platform:catalog:draft is now also literally enforced (the two draft routes); its
+  // SERVICE_ENFORCED entry stays because the change-request service still enforces it below
+  // the change-request route gate.
+  // CCP C1 — platform:billing:read is now LITERALLY enforced by
+  // PlatformCommercialBillingController (GET /platform/commercial/billing-commands and
+  // /billing-webhook-inbox), so its ACTIVE_RESERVED entry is REMOVED. Merge-train union of the
+  // D1 + B2 + C1 removals: no CCP read reservation remains.
+  // CCP C3 — the billing status read routes the A1 reservation named ("C3/C4") also enforce it:
+  // PlatformCommercialBillingStatusController (GET /platform/commercial/tenants/{tenant_id}/
+  // billing-status and /billing-portal-configuration). No classification change.
+  // CCP A8 — platform:subscription:support (POST /platform/commercial/support-extensions) and
+  // platform:subscription:read (GET /platform/commercial/support-extensions) are now LITERALLY
+  // enforced by PlatformCommercialSupportExtensionController, so both entries are REMOVED (the
+  // script detects the real enforcement). Merge-train union: no CCP read reservation remains.
+  'platform:catalog:draft': { cls: 'SERVICE_ENFORCED', reason: 'requester scope for PLAN_VERSION_PUBLISH / PLAN_RETIRE change requests — CommercialChangeRequestService.create checks COMMERCIAL_ACTIONS[..].requester_scope against the server-resolved scopes (libs/subscription/src/lib/commercial/commercial-change-request.ts; CCP A3); also literally enforced by the CCP B2 catalog draft routes (PlatformCommercialCatalogController) and re-checked by CommercialCatalogService' },
+  'platform:catalog:approve': { cls: 'SERVICE_ENFORCED', reason: 'approval-step scope (finance and owner steps of a catalog chain) — checkApprovalEligibility reads it LIVE in the approve transaction (libs/subscription/src/lib/commercial/commercial-approval-eligibility.ts; CCP A3)' },
+  'platform:catalog:publish': { cls: 'SERVICE_ENFORCED', reason: 'owner approval-step scope of a catalog-publish chain — checkApprovalEligibility reads it LIVE in the approve transaction (libs/subscription/src/lib/commercial/commercial-approval-eligibility.ts; CCP A3); the publish apply itself lands in CCP A5/B2' },
+  'platform:subscription:request': { cls: 'SERVICE_ENFORCED', reason: 'requester scope for SUBSCRIPTION_OPEN / _CHANGE / _END and CONVERSION change requests — CommercialChangeRequestService.create (libs/subscription/src/lib/commercial/commercial-change-request.ts; CCP A3)' },
+  'platform:subscription:approve': { cls: 'SERVICE_ENFORCED', reason: 'approval-step scope of subscription-domain chains — checkApprovalEligibility reads it LIVE in the approve transaction (libs/subscription/src/lib/commercial/commercial-approval-eligibility.ts; CCP A3)' },
+  'platform:entitlement:request': { cls: 'SERVICE_ENFORCED', reason: 'requester scope for ENTITLEMENT_GRANT / _REVOKE change requests — CommercialChangeRequestService.create (libs/subscription/src/lib/commercial/commercial-change-request.ts; CCP A3)' },
+  'platform:entitlement:approve': { cls: 'SERVICE_ENFORCED', reason: 'approval-step scope of entitlement chains — checkApprovalEligibility reads it LIVE in the approve transaction (libs/subscription/src/lib/commercial/commercial-approval-eligibility.ts; CCP A3)' },
+  'platform:billing:request': { cls: 'SERVICE_ENFORCED', reason: 'requester scope for CREDIT / DISCOUNT change requests — CommercialChangeRequestService.create (libs/subscription/src/lib/commercial/commercial-change-request.ts; CCP A3)' },
+  // CCP-A1 Amendment A1 (Finance amount scope, LOCKED 2026-10-25; FA-1, FA-5) — field
+  // authorization below the platform:billing:read route gate: every tenant-specific monetary field
+  // is omitted (amount_withheld FINANCE_SCOPE_REQUIRED) unless the caller also holds it. No route
+  // serves amounts only, so no @RequireScopes names it.
+  'platform:billing:amount:read': { cls: 'SERVICE_ENFORCED', reason: 'field authorization of tenant-specific monetary fields — financeAmountAccess(auth.scopes) in the platform-admin C3 billing-status, C6 finance, A3 change-request, A2 audit and B5 audit-export mappers (apps/platform-admin/src/app/platform/finance-amount-access.ts; libs/subscription finance-amount-withholding.ts)' },
+  // CCP-A1 Amendment A2 (Payment request scope, LOCKED 2026-10-25; PS-1, PS-6) — requester scope of
+  // the PAYMENT_RECORD action only; read live by the change-request service at create time.
+  'platform:payment:request': { cls: 'SERVICE_ENFORCED', reason: 'requester scope for PAYMENT_RECORD change requests — CommercialChangeRequestService.create reads COMMERCIAL_ACTIONS.PAYMENT_RECORD.requester_scope (libs/subscription/src/lib/commercial/commercial-change-request.ts; CCP-C8-PR, CCP-A1 Amendment A2 PS-6)' },
+  'platform:billing:approve': { cls: 'SERVICE_ENFORCED', reason: 'approval-step scope of billing chains (credit, discount) — checkApprovalEligibility reads it LIVE in the approve transaction (libs/subscription/src/lib/commercial/commercial-approval-eligibility.ts; CCP A3)' },
   // --- EXIT_HYG (owning-lane ruling required) ---
   'consent:read': { cls: 'EXIT_HYG', reason: 'live internal ConsentController surface; keep-or-gate is a Consent/Portal-lane ruling (Dead-Residue Ledger)' },
   'consent:write': { cls: 'EXIT_HYG', reason: 'same' },

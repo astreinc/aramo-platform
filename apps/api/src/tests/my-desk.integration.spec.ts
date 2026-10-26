@@ -373,8 +373,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Grant the `ats` capability to TENANT_A only (TENANT_B stays unentitled
       // → its recruiter is the RBAC capability-reject fixture).
       await db.query(
-        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
-         VALUES ($1::uuid, 'ats') ON CONFLICT (tenant_id, capability) DO NOTHING`,
+        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+         VALUES ($1::uuid, 'ats', 'PROVISIONING') ON CONFLICT (tenant_id, capability) DO NOTHING`,
         [TENANT_A],
       );
 

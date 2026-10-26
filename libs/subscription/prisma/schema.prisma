@@ -28,27 +28,27 @@ datasource db {
 }
 
 model Plan {
-  id            String               @id @db.Uuid
+  id                            String                @id @db.Uuid
   // Stable catalog key (e.g. "aramo-sign-included-v1"); never a display name.
-  key           String               @unique
-  name          String
+  key                           String                @unique
+  name                          String
   // Offered for self-service purchase (only an ACTIVE SELF_SERVICE plan).
-  sellable      Boolean              @default(false)
-  description   String?
-  created_at    DateTime             @default(now()) @db.Timestamptz(6)
+  sellable                      Boolean               @default(false)
+  description                   String?
+  created_at                    DateTime              @default(now()) @db.Timestamptz(6)
   // Commercial Plans Amendment A1 — the catalog descriptor.
   // CHECK: BUSINESS | PERSONAL (null = any kind, e.g. the operator plan).
   tenant_kind                   String?
   // CHECK: SELF_SERVICE | FREE | CONTACT_SALES | OPERATOR
-  sales_model                   String  @default("OPERATOR")
+  sales_model                   String                @default("OPERATOR")
   // CHECK: ACTIVE | INACTIVE (an INACTIVE plan is catalogued, never assigned).
-  status                        String  @default("ACTIVE")
+  status                        String                @default("ACTIVE")
   // Display price in minor units; the charge itself is the provider price.
   list_price_minor              Int?
   currency                      String?
   // Stored comparison price; shown only when substantiated.
   reference_price_minor         Int?
-  reference_price_substantiated Boolean @default(false)
+  reference_price_substantiated Boolean               @default(false)
   // CHECK: MONTH (the invoice interval).
   billing_interval              String?
   // Commitment term, separate from the invoice interval (12 = annual).
@@ -59,20 +59,95 @@ model Plan {
   support_tier                  String?
   // Why an INACTIVE / contracted plan is not usable yet.
   activation_note               String?
-  display_order                 Int     @default(100)
-  allowances    PlanAllowance[]
+  display_order                 Int                   @default(100)
+  // CCP-A4 (MP-A2 N-6) — the product this plan is sold for. Closed registry, enforced by
+  // CHECK in migration 20261025140000 (v1: 'sign' only; code mirror PRODUCT_KEYS). NO default.
+  product_key                   String
+  allowances                    PlanAllowance[]
   // Personal Free v1.1 — short-window caps (e.g. 2 envelopes per day).
-  allowance_windows PlanAllowanceWindow[]
-  capacities    PlanCapacity[]
-  features      PlanFeature[]
-  subscriptions TenantSubscription[]
-  checkouts     CheckoutIntent[]
+  allowance_windows             PlanAllowanceWindow[]
+  capacities                    PlanCapacity[]
+  features                      PlanFeature[]
+  subscriptions                 TenantSubscription[]
+  checkouts                     CheckoutIntent[]
+  // CCP-A5 (MP-A2 N-15) — the plan's versioned commercial content.
+  versions                      PlanVersion[]
 
+  // CCP-A4 (MP-A2 N-7) — the target of the composite FK TenantSubscription(plan_id, product_key).
+  @@unique([id, product_key])
+  @@schema("subscription")
+}
+
+// CCP-A5 (PBD §5.1 row A5; MP-A2 N-15…N-19; Charter D3) — a plan's commercial content,
+// versioned. DRAFT → PUBLISHED → RETIRED (no default; every write names it). Content is the
+// format-1 projection of the live Plan + child rows (src/lib/plan-version.ts); the checksum is
+// SHA-256 of its canonical JSON and is recomputed by a DB CHECK. Immutable once PUBLISHED and no
+// DELETE (trigger, migration 20261025160000). At most one PUBLISHED version per plan (the
+// plan's current version). Publishing and retiring are applied by CCP-A6 from approved
+// PLAN_VERSION_PUBLISH / PLAN_RETIRE change requests; A5 ships repository methods only.
+model PlanVersion {
+  id               String               @id @db.Uuid
+  plan_id          String               @db.Uuid
+  version_number   Int
+  status           String
+  content          Json
+  content_checksum String
+  note             String?
+  created_by       String
+  created_at       DateTime             @db.Timestamptz(3)
+  published_at     DateTime?            @db.Timestamptz(3)
+  retired_at       DateTime?            @db.Timestamptz(3)
+  plan             Plan                 @relation(fields: [plan_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  prices           PlanVersionPrice[]
+  subscriptions    TenantSubscription[]
+
+  @@unique([plan_id, version_number])
+  // The composite FK target of TenantSubscription(plan_version_id, plan_id).
+  @@unique([id, plan_id])
+  @@schema("subscription")
+}
+
+// CCP-A5 (MP-A2 N-17, D3) — the provider price pinned to a plan version (it replaces
+// STRIPE_PLAN_PRICES as the authority; the env is a cutover fallback with a parity check).
+// Immutable from INSERT; one pin per (version, provider); a provider price belongs to one version.
+model PlanVersionPrice {
+  id                 String      @id @db.Uuid
+  plan_version_id    String      @db.Uuid
+  // CHECK: STRIPE
+  provider           String
+  provider_price_ref String
+  created_by         String
+  created_at         DateTime    @db.Timestamptz(3)
+  plan_version       PlanVersion @relation(fields: [plan_version_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([plan_version_id, provider])
+  @@unique([provider, provider_price_ref])
+  @@schema("subscription")
+}
+
+// CCP-A5 (MP-A2 N-17) — append-only history of TenantSubscription.plan_version_id changes.
+// Written by the DB trigger on the re-pin itself (the re-pinning transaction names its reason),
+// never inserted by application code. Never read to decide a limit.
+model SubscriptionVersionPinEvent {
+  id                   String   @id @db.Uuid
+  subscription_id      String   @db.Uuid
+  tenant_id            String   @db.Uuid
+  product_key          String
+  from_plan_id         String   @db.Uuid
+  from_plan_version_id String   @db.Uuid
+  to_plan_id           String   @db.Uuid
+  to_plan_version_id   String   @db.Uuid
+  // CHECK: PROVIDER_PLAN_CHANGE | CHANGE_REQUEST (CCP-A6: an applied SUBSCRIPTION_CHANGE)
+  reason               String
+  provider_price_ref   String?
+  recorded_at          DateTime @db.Timestamptz(3)
+
+  @@index([subscription_id, recorded_at])
   @@schema("subscription")
 }
 
 model PlanAllowance {
-  plan_id           String @db.Uuid
+  plan_id           String  @db.Uuid
   // Metered feature, e.g. "sign.envelopes".
   allowance_key     String
   // Included quantity per period (null when unlimited). No rollover.
@@ -80,8 +155,8 @@ model PlanAllowance {
   // A1 — explicit unlimited (never a sentinel number); usage is still metered.
   unlimited         Boolean @default(false)
   // CHECK: MONTHLY (the only period V1 supports).
-  period            String @default("MONTHLY")
-  plan              Plan   @relation(fields: [plan_id], references: [id])
+  period            String  @default("MONTHLY")
+  plan              Plan    @relation(fields: [plan_id], references: [id])
 
   @@id([plan_id, allowance_key])
   @@schema("subscription")
@@ -103,66 +178,81 @@ model PlanAllowanceWindow {
 }
 
 model TenantSubscription {
-  id            String    @id @db.Uuid
-  tenant_id     String    @db.Uuid
-  plan_id       String    @db.Uuid
+  id                                 String      @id @db.Uuid
+  tenant_id                          String      @db.Uuid
+  plan_id                            String      @db.Uuid
   // Billing periods start at this instant and every calendar month after it
   // (day clamped to the month's length).
-  period_anchor DateTime  @db.Timestamptz(6)
+  period_anchor                      DateTime    @db.Timestamptz(6)
   // CHECK: MANUAL | DEVELOPMENT | SELF_SERVICE | FREE. DEVELOPMENT rows come only
   // from the governed local/test seed, which refuses to run in production. FREE
   // (Personal Free v1.1) is system-opened for an active PERSONAL tenant, never
   // provider-billed (CHECK: no billing linkage).
-  source        String
-  started_at    DateTime  @default(now()) @db.Timestamptz(6)
-  ended_at      DateTime? @db.Timestamptz(6)
-  created_by    String
+  source                             String
+  started_at                         DateTime    @default(now()) @db.Timestamptz(6)
+  ended_at                           DateTime?   @db.Timestamptz(6)
+  created_by                         String
   // Aramo Sign launch — CHECK: TRIALING | ACTIVE | PAST_DUE | CANCELED | INCOMPLETE.
-  status                   String    @default("ACTIVE")
+  status                             String      @default("ACTIVE")
   // CHECK: STRIPE (null for MANUAL / DEVELOPMENT).
-  billing_provider         String?
-  billing_account_ref     String?
-  billing_subscription_ref String?
-  current_period_end       DateTime? @db.Timestamptz(6)
-  cancel_at_period_end     Boolean   @default(false)
+  billing_provider                   String?
+  billing_account_ref                String?
+  billing_subscription_ref           String?
+  current_period_end                 DateTime?   @db.Timestamptz(6)
+  cancel_at_period_end               Boolean     @default(false)
   // PAST_DUE keeps sending until this instant (grace), then stops.
-  grace_until              DateTime? @db.Timestamptz(6)
+  grace_until                        DateTime?   @db.Timestamptz(6)
   // Provider event time of the last applied state (out-of-order protection).
-  provider_state_at        DateTime? @db.Timestamptz(6)
+  provider_state_at                  DateTime?   @db.Timestamptz(6)
   // The subscribing owner (user id) when self-service.
-  activated_by             String?
+  activated_by                       String?
   // A1 — the commitment term (e.g. 12 months), separate from the monthly
   // invoice period; a cancellation requested inside it is flagged, never
   // silently treated as month-to-month.
-  commitment_start                   DateTime? @db.Timestamptz(6)
-  commitment_end                     DateTime? @db.Timestamptz(6)
-  cancel_requested_within_commitment Boolean   @default(false)
+  commitment_start                   DateTime?   @db.Timestamptz(6)
+  commitment_end                     DateTime?   @db.Timestamptz(6)
+  cancel_requested_within_commitment Boolean     @default(false)
   // CHECK: OK | LAPSED — the plan's eligibility (e.g. ATS) at the last check.
   eligibility_state                  String?
-  eligibility_checked_at             DateTime? @db.Timestamptz(6)
-  plan          Plan      @relation(fields: [plan_id], references: [id])
+  eligibility_checked_at             DateTime?   @db.Timestamptz(6)
+  // CCP-A4 (MP-A2 N-7) — equals the plan's product_key: composite FK (plan_id, product_key)
+  // → Plan(id, product_key), SQL-only in migration 20261025140000. NO default.
+  product_key                        String
+  // CCP-A4 (MP-A2 N-10, shape (a)) — the commercial composition of this row. v1 CHECK: BASE
+  // only. A later add-on or usage package is a row with another role (an additive CHECK
+  // widening), never a re-keyed product_key or a second subscription authority. NO default.
+  composition_role                   String
+  // CCP-A5 (MP-A2 N-18) — the plan version this subscription was sold or applied on
+  // (grandfathering). Composite FK (plan_version_id, plan_id) → PlanVersion(id, plan_id), SQL-only
+  // in migration 20261025160000. A new or changed pin must be PUBLISHED; a change is recorded in
+  // SubscriptionVersionPinEvent by trigger. NO default.
+  plan_version_id                    String      @db.Uuid
+  plan                               Plan        @relation(fields: [plan_id], references: [id])
+  plan_version                       PlanVersion @relation(fields: [plan_version_id], references: [id])
 
-  // At most one open subscription per tenant (partial unique index in SQL).
+  // CCP-A4 (MP-A2 N-9) — at most one open BASE subscription per (tenant_id, product_key):
+  // partial unique index TenantSubscription_one_open_base_per_tenant_product in SQL.
   @@index([tenant_id])
+  @@index([plan_version_id])
   @@schema("subscription")
 }
 
 model AllowanceUsage {
-  id             String    @id @db.Uuid
-  tenant_id      String    @db.Uuid
+  id             String               @id @db.Uuid
+  tenant_id      String               @db.Uuid
   allowance_key  String
   // Stable send identity, e.g. "aramo-sign:envelope:<envelope_id>".
   send_key       String
   // The billing period the send is charged to (fixed at reservation).
-  period_start   DateTime  @db.Timestamptz(6)
+  period_start   DateTime             @db.Timestamptz(6)
   // CHECK: RESERVED | CONSUMED | RELEASED
   state          String
   // CHECK: SEND | HISTORICAL (backfilled from an existing sent record)
-  origin         String    @default("SEND")
-  reserved_at    DateTime  @default(now()) @db.Timestamptz(6)
+  origin         String               @default("SEND")
+  reserved_at    DateTime             @default(now()) @db.Timestamptz(6)
   // A RESERVED row older than this is resolved by reconciliation before counting.
-  reserved_until DateTime  @db.Timestamptz(6)
-  finalized_at   DateTime? @db.Timestamptz(6)
+  reserved_until DateTime             @db.Timestamptz(6)
+  finalized_at   DateTime?            @db.Timestamptz(6)
 
   @@unique([tenant_id, allowance_key, send_key])
   @@index([tenant_id, allowance_key, period_start])
@@ -224,7 +314,9 @@ model TenantBillingAccount {
 // Sign Signup Amendment A1 §2.6 — activation guard: a subscription whose provider
 // billing country is not US is held here for reconciliation. One OPEN flag per
 // (provider, subscription_ref, reason) — a partial unique index in the migration.
-// CHECK reason: billing_country_not_supported.
+// CHECK reason: billing_country_not_supported | domain_not_authoritative (P3) |
+// governed_subscription_open (CCP-A6, Conversion Rule C-7: a self-service activation that
+// would end an open governed MANUAL subscription is held).
 model BillingReconciliationFlag {
   id               String    @id @db.Uuid
   tenant_id        String    @db.Uuid
@@ -282,8 +374,8 @@ model CapacityUsage {
 
 // A1 — legal acceptance evidence (document key + version + text sha256).
 model LegalAcceptance {
-  id            String   @id @db.Uuid
-  tenant_id     String?  @db.Uuid
+  id            String                 @id @db.Uuid
+  tenant_id     String?                @db.Uuid
   user_id       String?
   subject_email String?
   document_key  String
@@ -292,7 +384,7 @@ model LegalAcceptance {
   // CHECK: SIGNUP | CHECKOUT | IN_APP (Personal re-acceptance in the Sign workspace)
   context       String
   context_ref   String?
-  accepted_at   DateTime @default(now()) @db.Timestamptz(6)
+  accepted_at   DateTime               @default(now()) @db.Timestamptz(6)
   origin        LegalAcceptanceOrigin?
 
   @@index([tenant_id])
@@ -308,5 +400,717 @@ model LegalAcceptanceOrigin {
   created_at    DateTime        @default(now()) @db.Timestamptz(6)
   acceptance    LegalAcceptance @relation(fields: [acceptance_id], references: [id], onDelete: Restrict)
 
+  @@schema("subscription")
+}
+
+// -------------------------------------------------------------------------
+// CCP-A2 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.1 row A2; Charter §7, D10)
+// — the versioned commercial policy. A clone of the MatchingPolicyVersion pattern
+// (never an import of it, and never the ADR-0024 policy store). Platform-global: no
+// tenant_id. DRAFT | ACTIVE | RETIRED; at most one ACTIVE (partial unique index); content
+// immutable at the DB once the row leaves DRAFT; DELETE rejected (trigger). v1 ACTIVE is
+// seeded by migration 20261024180000 with the Charter §7 (D5) values as DATA. The
+// content shape and the fail-closed parser live in src/lib/commercial/commercial-policy.ts.
+// -------------------------------------------------------------------------
+model CommercialPolicyVersion {
+  id               String                    @id @db.Uuid
+  // 1, 2, 3 … — assigned under a transaction-scoped advisory lock. UNIQUE.
+  version_number   Int                       @unique
+  // DRAFT | ACTIVE | RETIRED. CHECK + one-ACTIVE partial unique index in migration.
+  status           String                    @default("DRAFT")
+  content          Json
+  // SHA-256 (hex) of the canonical JSON of content (commercialPolicyChecksum).
+  content_checksum String
+  note             String?
+  created_by       String?                   @db.Uuid
+  created_at       DateTime                  @default(now()) @db.Timestamptz
+  activated_by     String?                   @db.Uuid
+  activated_at     DateTime?                 @db.Timestamptz
+  retired_at       DateTime?                 @db.Timestamptz
+  audit_events     CommercialAuditEvent[]
+  change_requests  CommercialChangeRequest[]
+
+  @@index([status])
+  @@schema("subscription")
+}
+
+// CCP-A2 — append-only policy-lifecycle stream (UPDATE and DELETE rejected at the DB).
+model CommercialPolicyAuditEvent {
+  id            String   @id @db.Uuid
+  actor_id      String?  @db.Uuid
+  // user | system. CHECK.
+  actor_type    String
+  // COMMERCIAL_POLICY_VERSION_CREATED | _ACTIVATED | _RETIRED. CHECK.
+  event_type    String
+  // The CommercialPolicyVersion id the event is about.
+  subject_id    String   @db.Uuid
+  event_payload Json
+  created_at    DateTime @default(now()) @db.Timestamptz
+
+  @@index([subject_id, created_at(sort: Desc), id(sort: Desc)])
+  @@index([created_at(sort: Desc), id(sort: Desc)])
+  @@schema("subscription")
+}
+
+// CCP-A2 — the append-only commercial audit stream (UPDATE and DELETE rejected
+// unconditionally at the DB). Read by GET /platform/commercial/audit-events
+// (platform:commercial:audit:read). change_request_id gains its FK in CCP-A3.
+model CommercialAuditEvent {
+  id                String                   @id @db.Uuid
+  actor_id          String?                  @db.Uuid
+  // user | system. CHECK (a user actor carries actor_id).
+  actor_type        String
+  // Server-side snapshot of the actor's role keys at the time of the event.
+  actor_role_keys   String[]                 @default([])
+  // UPPER_SNAKE event type. CHECK (format).
+  event_type        String
+  is_exception      Boolean                  @default(false)
+  tenant_id         String?                  @db.Uuid
+  // "<kind>:<id>". CHECK.
+  subject           String
+  change_request_id String?                  @db.Uuid
+  policy_version_id String                   @db.Uuid
+  payload           Json                     @default("{}")
+  correlation_id    String
+  // Millisecond precision: the (created_at, id) keyset cursor round-trips through a Date.
+  created_at        DateTime                 @default(now()) @db.Timestamptz(3)
+  policy_version    CommercialPolicyVersion  @relation(fields: [policy_version_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  // CCP-A3 — the FK deferred from A2.
+  change_request    CommercialChangeRequest? @relation(fields: [change_request_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@index([created_at(sort: Desc), id(sort: Desc)])
+  @@index([actor_id, created_at(sort: Desc), id(sort: Desc)])
+  @@index([tenant_id, created_at(sort: Desc), id(sort: Desc)])
+  @@index([event_type, created_at(sort: Desc), id(sort: Desc)])
+  @@schema("subscription")
+}
+
+// CCP-A3 — a governed commercial change request (Recon Report §2). Payload, chain and
+// identity are immutable from INSERT; state moves only along the A3 transitions; APPROVED
+// needs one CommercialApproval per snapshotted step; DELETE is rejected (all by trigger).
+// One open request per tenant × product (Q14, partial unique index in the migration).
+model CommercialChangeRequest {
+  id                String                  @id @db.Uuid
+  // Closed set (CHECK); see COMMERCIAL_ACTION_TYPES.
+  action_type       String
+  // NORMAL | EXCEPTION | MIGRATION. CHECK.
+  kind              String
+  // DRAFT | PENDING_APPROVAL | APPROVED | APPLYING | APPLIED | APPLY_FAILED | REJECTED |
+  // EXPIRED | WITHDRAWN | APPLY_EXPIRED (Charter Amendment A1). CHECK + guard trigger.
+  state             String                   @default("DRAFT")
+  tenant_id         String?                  @db.Uuid
+  // No DB default (PBD §7.1). A3 interim closed set 'sign' (CHECK); A4 registry.
+  product_key       String?
+  payload           Json
+  payload_checksum  String
+  required_chain    Json
+  policy_version_id String                  @db.Uuid
+  policy_checksum   String
+  requested_by      String                  @db.Uuid
+  reason            String
+  idempotency_key   String                  @unique
+  created_at        DateTime                @db.Timestamptz(3)
+  submitted_at      DateTime?               @db.Timestamptz(3)
+  expires_at        DateTime?               @db.Timestamptz(3)
+  approved_at       DateTime?               @db.Timestamptz(3)
+  rejected_at       DateTime?               @db.Timestamptz(3)
+  rejected_by       String?                 @db.Uuid
+  rejection_reason  String?
+  withdrawn_at      DateTime?               @db.Timestamptz(3)
+  expired_at        DateTime?               @db.Timestamptz(3)
+  apply_attempts    Int                     @default(0)
+  applied_at        DateTime?               @db.Timestamptz(3)
+  updated_at        DateTime                @db.Timestamptz(3)
+  policy_version    CommercialPolicyVersion @relation(fields: [policy_version_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  approvals         CommercialApproval[]
+  audit_events      CommercialAuditEvent[]
+
+  @@index([state, created_at(sort: Desc), id(sort: Desc)])
+  @@index([requested_by, created_at(sort: Desc), id(sort: Desc)])
+  @@index([created_at(sort: Desc), id(sort: Desc)])
+  @@schema("subscription")
+}
+
+// CCP-A3 — one approval of one step (append-only evidence; UPDATE and DELETE rejected).
+// D8: UNIQUE(change_request_id, approver_user_id) and UNIQUE(change_request_id, step_index).
+model CommercialApproval {
+  id                 String                        @id @db.Uuid
+  change_request_id  String                        @db.Uuid
+  step_index         Int
+  approver_user_id   String                        @db.Uuid
+  step_role_key      String
+  step_scope_keys    String[]
+  approver_role_keys String[]
+  attestation_id     String                        @db.Uuid
+  comment            String?
+  created_at         DateTime                      @db.Timestamptz(3)
+  change_request     CommercialChangeRequest       @relation(fields: [change_request_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+  attestation        CommercialOperatorAttestation @relation(fields: [attestation_id], references: [id], onDelete: Restrict, onUpdate: Restrict)
+
+  @@unique([change_request_id, approver_user_id])
+  @@unique([change_request_id, step_index])
+  @@index([approver_user_id])
+  @@schema("subscription")
+}
+
+// CCP-A3 (D9) — one-account-per-human attestation for a platform operator. Never deleted;
+// one revocation allowed. At most one active row per user and per attested human.
+model CommercialOperatorAttestation {
+  id                String               @id @db.Uuid
+  user_id           String               @db.Uuid
+  // SHA-256 hex of the attested human reference (no PII).
+  human_ref_hash    String
+  statement_version String
+  // BOOTSTRAP | PLATFORM_OWNER. CHECK.
+  method            String
+  attested_by       String               @db.Uuid
+  attested_at       DateTime             @db.Timestamptz(3)
+  revoked_at        DateTime?            @db.Timestamptz(3)
+  revoked_by        String?              @db.Uuid
+  revoke_reason     String?
+  approvals         CommercialApproval[]
+
+  @@schema("subscription")
+}
+
+// CCP-A6 (PBD §5.1 row A6; Conversion Rule C-21; Recon Report §1 C3) — the durable record of
+// one APPLIED change request (Aramo-owned operations: MANUAL subscription open / change / end
+// and the entitlement grant). Written in the SAME local transaction as the subscription and
+// entitlement writes and the APPLIED transition; the guard trigger refuses APPLIED without it
+// and re-checks both domain sides. Append-only (UPDATE and DELETE rejected); one per request.
+// Plain UUID references (FKs in SQL, migration 20261025200000); no Prisma relations.
+model CommercialChangeApplication {
+  id                       String   @id @db.Uuid
+  change_request_id        String   @unique @db.Uuid
+  // CHECK: SUBSCRIPTION_OPEN | SUBSCRIPTION_CHANGE | SUBSCRIPTION_END | ENTITLEMENT_GRANT |
+  // ENTITLEMENT_REVOKE (CCP-A7, migration 20261026000100) | CONVERSION (CCP-C2, migration 20261026060000) |
+  // SUPPORT_EXTENSION (CCP-A8, migration 20261026010000); the union is re-asserted by 20261027000100
+  action_type              String
+  tenant_id                String   @db.Uuid
+  product_key              String
+  subscription_id          String?  @db.Uuid
+  replaced_subscription_id String?  @db.Uuid
+  from_plan_version_id     String?  @db.Uuid
+  to_plan_version_id       String?  @db.Uuid
+  capabilities             String[]
+  capabilities_inserted    String[]
+  // CCP-A7 — the capabilities an ENTITLEMENT_REVOKE application revoked (empty for every other
+  // action; CHECK). ADDED rather than overloading `capabilities`.
+  capabilities_revoked     String[] @default([])
+  attempt                  Int
+  applied_by               String   @db.Uuid
+  applied_at               DateTime @db.Timestamptz(3)
+
+  @@index([tenant_id, product_key])
+  @@index([subscription_id])
+  @@schema("subscription")
+}
+
+// -------------------------------------------------------------------------
+// CCP-D1 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.4 row D1; architecture metering
+// prerequisite) — usage roll-ups. UsageMetric is the governed metric registry (seeded by
+// migration 20261025240000; UPDATE / DELETE rejected). Everything else is DERIVED from the
+// AllowanceUsage ledger by the watermark worker (src/lib/usage/usage-rollup.service.ts) and is
+// read-only until it reconciles. No price, rate or amount anywhere (usage-based pricing is out).
+// -------------------------------------------------------------------------
+model UsageMetric {
+  metric_key       String   @id
+  // CHECK: the CCP-A4 product registry (sign only).
+  product_key      String
+  // CHECK: ALLOWANCE_USAGE.
+  source           String
+  allowance_key    String   @unique
+  // The metering UsageEvent type a CONSUMED SEND row writes (the raw-event cross-check).
+  usage_event_type String?
+  unit             String
+  description      String
+  created_at       DateTime @db.Timestamptz(3)
+
+  @@schema("subscription")
+}
+
+model UsageRollupDaily {
+  tenant_id                 String   @db.Uuid
+  metric_key                String
+  product_key               String
+  period_start              DateTime @db.Timestamptz(6)
+  // UTC day of AllowanceUsage.reserved_at.
+  usage_date                DateTime @db.Date
+  consumed_count            Int
+  consumed_send_count       Int
+  consumed_historical_count Int
+  reserved_count            Int
+  run_id                    String   @db.Uuid
+  computed_at               DateTime @db.Timestamptz(3)
+
+  @@id([tenant_id, metric_key, period_start, usage_date])
+  @@schema("subscription")
+}
+
+model UsageRollupPeriod {
+  tenant_id                 String    @db.Uuid
+  metric_key                String
+  product_key               String
+  period_start              DateTime  @db.Timestamptz(6)
+  period_end                DateTime? @db.Timestamptz(6)
+  // CHECK: ALIGNED (a BASE subscription's anchor produces period_start) | UNALIGNED.
+  alignment                 String
+  subscription_id           String?   @db.Uuid
+  // The plan version in force at period_start (TD-A5-1: terms from the pinned version).
+  plan_version_id           String?   @db.Uuid
+  included_quantity         Int?
+  unlimited                 Boolean?
+  consumed_count            Int
+  consumed_send_count       Int
+  consumed_historical_count Int
+  reserved_count            Int
+  run_id                    String    @db.Uuid
+  computed_at               DateTime  @db.Timestamptz(3)
+
+  @@id([tenant_id, metric_key, period_start])
+  @@index([metric_key, period_start(sort: Desc), tenant_id])
+  @@schema("subscription")
+}
+
+model UsageRollupWatermark {
+  metric_key     String   @id
+  // pg_snapshot_xmin of the last committed run (xid8 as bigint).
+  xmin_watermark BigInt
+  last_run_id    String   @db.Uuid
+  updated_at     DateTime @db.Timestamptz(3)
+
+  @@schema("subscription")
+}
+
+// CCP-D1 (TD-D1-3 ruling) — the APPEND-ONLY change log of the AllowanceUsage ledger, written only by
+// the ledger's AFTER trigger (migration 20261025240000); UPDATE / DELETE / TRUNCATE rejected. Provenance
+// only: which ledger row changed, how, in which transaction, and its bucket keys before and after. No
+// quantity, state or balance — not a second ledger; no allowance decision reads it. usage_id links the
+// ledger row by id with no FK (a DELETE is still logged). The roll-up worker watermarks over change_xid.
+model AllowanceUsageChange {
+  id                BigInt              @id @default(autoincrement())
+  usage_id          String              @db.Uuid
+  // CHECK: INSERT | UPDATE | DELETE
+  op                String
+  change_xid        Unsupported("xid8")
+  old_tenant_id     String?             @db.Uuid
+  old_allowance_key String?
+  old_period_start  DateTime?           @db.Timestamptz(6)
+  new_tenant_id     String?             @db.Uuid
+  new_allowance_key String?
+  new_period_start  DateTime?           @db.Timestamptz(6)
+  changed_at        DateTime            @db.Timestamptz(6)
+
+  @@index([change_xid])
+  @@index([usage_id])
+  @@schema("subscription")
+}
+
+// Append-only (UPDATE / DELETE rejected by trigger).
+model UsageRollupRun {
+  id                   String   @id @db.Uuid
+  metric_key           String
+  // CHECK: FULL | INCREMENTAL | REBUILD
+  mode                 String
+  from_xid             BigInt?
+  to_xid               BigInt
+  buckets_recomputed   Int
+  rows_scanned         Int
+  // CHECK: RECONCILED | NOT_RECONCILED (at the run's own snapshot)
+  reconciliation       String
+  mismatch_count       Int
+  pending_bucket_count Int
+  started_at           DateTime @db.Timestamptz(3)
+  finished_at          DateTime @db.Timestamptz(3)
+
+  @@index([metric_key, started_at(sort: Desc), id(sort: Desc)])
+  @@schema("subscription")
+}
+
+// CCP-B2-backend (Architect disposition TD-A6-13) — the durable record of one APPLIED catalog
+// change request (PLAN_VERSION_PUBLISH / PLAN_RETIRE), written in the same transaction as the
+// version transition and the APPLIED move; append-only; one per request (migration 20261025220000).
+model CommercialCatalogApplication {
+  id                      String   @id @db.Uuid
+  change_request_id       String   @unique @db.Uuid
+  // CHECK: PLAN_VERSION_PUBLISH | PLAN_RETIRE
+  action_type             String
+  plan_id                 String   @db.Uuid
+  plan_version_id         String   @db.Uuid
+  retired_plan_version_id String?  @db.Uuid
+  provider_price_ref      String?
+  attempt                 Int
+  applied_by              String   @db.Uuid
+  applied_at              DateTime @db.Timestamptz(3)
+
+  @@index([plan_id])
+  @@schema("subscription")
+}
+
+// CCP-B4 (PBD §5.3 row B4; MP-A2 N-2, N-3; Charter L6) — the enterprise contract record: an
+// evidence-bearing record of a governed MANUAL subscription (negotiated terms + hashed evidence
+// documents). It carries NO subscription state (Active / Ended = the referenced
+// TenantSubscription.ended_at), NO plan / version / allowance / commitment (read through
+// TenantSubscription) and NO usage (N-3(c), (d)). Written only inside the A6 apply transaction
+// of a SUBSCRIPTION_OPEN / _CHANGE request (insert guard trigger); append-only. Plain UUID
+// references (FKs in SQL, migration 20261026030000); no Prisma relations.
+model Contract {
+  id                            String   @id @db.Uuid
+  contract_ref                  String   @unique
+  // N-3(b): the governed subscription row (FK → TenantSubscription, RESTRICT). One per row.
+  tenant_subscription_id        String   @unique @db.Uuid
+  // The negotiated terms as recorded (JSON array of strings; evidence text only).
+  terms                         Json
+  // JSON array of { name, sha256, byte_size?, media_type? } (metadata only; no bytes).
+  evidence_documents            Json
+  evidence_ref                  String?
+  // CHECK: CHANGE_REQUEST | MIGRATION (= the recording request's kind).
+  provenance                    String
+  recorded_by_change_request_id String   @unique @db.Uuid
+  recorded_by                   String   @db.Uuid
+  recorded_at                   DateTime @db.Timestamptz(3)
+  // CCP-C8-PR (PAYMENT_RECORD amendment PR-1; migration 20261030010000) — the structured payment
+  // terms, ADDED (never a rename of `terms`). All-or-nothing; required for a CHANGE_REQUEST contract
+  // (insert trigger). PREPAID | POSTPAID.
+  billing_mode                  String?
+  payment_currency              String?
+  // IANA zone; every due-date comparison uses it (PR-10).
+  payment_timezone              String?
+  // NULL = absent = 0 grace days (no default invented).
+  grace_days                    Int?
+  // POSTPAID only: the explicit marker with its evidence.
+  postpaid_approval             Json?
+
+  @@schema("subscription")
+}
+
+// CCP-C8-PR (PR-1; MP-A2 N-3) — one contractual payment obligation. NOT NULL FK to its Contract
+// (which keeps its NOT NULL FK to the TenantSubscription it governs). Append-only; written only in the
+// A6 apply of a SUBSCRIPTION_OPEN / _CHANGE. Carries no state: its payment status is derived (PR-10).
+model ContractPaymentObligation {
+  id                            String   @id @db.Uuid
+  contract_id                   String   @db.Uuid
+  obligation_ref                String
+  due_date                      DateTime @db.Date
+  amount_minor                  BigInt
+  currency                      String
+  description                   String
+  recorded_by_change_request_id String   @db.Uuid
+  recorded_at                   DateTime @db.Timestamptz(3)
+
+  @@unique([contract_id, obligation_ref])
+  @@schema("subscription")
+}
+
+// CCP-C8-PR (§4.1) — the append-only commercial receipt attestation: "Finance verified that payment X
+// was received against obligation Y". Never a ledger entry, a balance or a subscription state. NOT
+// NULL FK to its governing PAYMENT_RECORD request; nullable FKs to Contract / obligation until linked
+// (§4.3, inside the SUBSCRIPTION_OPEN apply). Only the link and the PR-9 correction mark are ever set.
+model CommercialPaymentReceipt {
+  id                             String    @id @db.Uuid
+  change_request_id              String    @unique @db.Uuid
+  tenant_id                      String    @db.Uuid
+  product_key                    String
+  // RECORD | CORRECTION
+  entry_kind                     String
+  corrects_receipt_id            String?   @unique @db.Uuid
+  contract_id                    String?   @db.Uuid
+  obligation_id                  String?   @db.Uuid
+  linked_at                      DateTime? @db.Timestamptz(3)
+  linked_by_change_request_id    String?   @db.Uuid
+  provisional_contract_ref       String?
+  provisional_obligation_ref     String?
+  provisional_amount_minor       BigInt?
+  provisional_currency           String?
+  external_invoice_ref           String
+  amount_minor                   BigInt
+  currency                       String
+  received_on                    DateTime  @db.Date
+  // BANK_TRANSFER | CHEQUE | CARD_EXTERNAL | OTHER
+  payment_method                 String
+  payment_reference              String
+  verification                   String?
+  evidence_documents             Json
+  // MANUAL (ACCT reserved, PR-13)
+  origin                         String
+  external_evidence_ref          String?
+  corrected_at                   DateTime? @db.Timestamptz(3)
+  corrected_by_change_request_id String?   @db.Uuid
+  recorded_by                    String    @db.Uuid
+  recorded_at                    DateTime  @db.Timestamptz(3)
+
+  @@index([contract_id])
+  @@index([tenant_id, product_key])
+  @@schema("subscription")
+}
+
+// CCP-B4 — one amendment (SUBSCRIPTION_CHANGE) or the end evidence (SUBSCRIPTION_END) of a
+// Contract. `kind` END is evidence of the end, never a state. Append-only; gap-free sequence.
+model ContractAmendment {
+  id                 String   @id @db.Uuid
+  contract_id        String   @db.Uuid
+  sequence           Int
+  // CHECK: AMENDMENT | END
+  kind               String
+  summary            String
+  // The full negotiated terms after an AMENDMENT; null = unchanged (always null for END).
+  terms              Json?
+  evidence_documents Json
+  evidence_ref       String?
+  change_request_id  String   @unique @db.Uuid
+  recorded_by        String   @db.Uuid
+  recorded_at        DateTime @db.Timestamptz(3)
+
+  @@unique([contract_id, sequence])
+  @@schema("subscription")
+}
+
+// CCP-C1 (PBD §5.2 row C1; Conversion Rule C-22, C-23) — one durable, idempotent Stripe-owned
+// operation (the command outbox). Keyed by (change_request_id, step); idempotency_key is derived
+// ('aramo-ccp-<change_request_id>-<step>', CHECK). PENDING → DISPATCHING → PENDING_PROVIDER →
+// CONFIRMED, with RETRY_WAIT / FAILED; the provider call never runs inside a local transaction,
+// and CONFIRMED is written only in the transaction that applies the provider-confirmed state.
+// State machine, immutability and the "completed approval chain" INSERT rule by trigger
+// (migration 20261026020000); DELETE rejected. Plain UUID reference to the change request (FK in
+// SQL); no Prisma relation.
+model BillingProviderCommand {
+  id                    String    @id @db.Uuid
+  // CHECK: STRIPE
+  provider              String
+  // CHECK: SUBSCRIPTION_CANCEL | CHECKOUT_SESSION_EXPIRE (C1) | CREDIT_GRANT | CREDIT_REVERSE |
+  // DISCOUNT_APPLY | DISCOUNT_REMOVE | REFUND_CREATE (CCP-C4, constraint union)
+  command_kind          String
+  // CCP-C7: nullable; exactly one of change_request_id / self_service_request_id (CHECK
+  // BillingProviderCommand_origin_check). Self-service key: 'aramo-ccp-ss-<request>-<step>'.
+  change_request_id       String?   @db.Uuid
+  self_service_request_id String?   @db.Uuid
+  step                  String
+  idempotency_key       String    @unique
+  tenant_id             String    @db.Uuid
+  product_key           String
+  target_ref            String
+  params                Json
+  // CHECK: PENDING | DISPATCHING | PENDING_PROVIDER | RETRY_WAIT | FAILED | CONFIRMED
+  state                 String
+  attempts              Int
+  lease_until           DateTime? @db.Timestamptz(3)
+  next_attempt_at       DateTime? @db.Timestamptz(3)
+  last_error_code       String?
+  last_error_detail     String?
+  provider_accepted_at  DateTime? @db.Timestamptz(3)
+  confirmed_at          DateTime? @db.Timestamptz(3)
+  // CHECK: WEBHOOK | REFETCH
+  confirmation_source   String?
+  confirmation_event_id String?
+  failed_at             DateTime? @db.Timestamptz(3)
+  // CCP-C4 — the provider object carrying a billing adjustment's effect (written once).
+  provider_object_ref   String?
+  created_by            String    @db.Uuid
+  created_at            DateTime  @db.Timestamptz(3)
+  updated_at            DateTime  @db.Timestamptz(3)
+
+  @@unique([change_request_id, step])
+  @@unique([self_service_request_id, step])
+  @@index([provider, provider_object_ref])
+  @@index([state, next_attempt_at])
+  @@index([provider, target_ref])
+  @@index([tenant_id, created_at(sort: Desc), id(sort: Desc)])
+  @@index([created_at(sort: Desc), id(sort: Desc)])
+  @@schema("subscription")
+}
+
+// CCP-C1 — the webhook inbox: the durable receipt of every VERIFIED provider event (the
+// verified envelope only; never the raw payload), claimed with a lease while processed.
+// BillingEvent stays the outcome evidence and the dedupe. Envelope immutable, PROCESSED
+// terminal, DELETE rejected (trigger, migration 20261026020000).
+model BillingWebhookInbox {
+  id                   String    @id @db.Uuid
+  // CHECK: STRIPE
+  provider             String
+  provider_event_id    String
+  event_type           String
+  event_created_at     DateTime  @db.Timestamptz(6)
+  subscription_ref     String?
+  checkout_session_ref String?
+  // CCP-C4 — the provider object the event concerns (a billing adjustment's); immutable.
+  object_ref           String?
+  product_key          String
+  // CHECK: RECEIVED | PROCESSING | PROCESSED | FAILED
+  status               String
+  attempts             Int
+  lease_until          DateTime? @db.Timestamptz(3)
+  next_attempt_at      DateTime? @db.Timestamptz(3)
+  // CHECK: APPLIED | IGNORED | DUPLICATE
+  outcome              String?
+  detail               String?
+  last_error           String?
+  received_at          DateTime  @db.Timestamptz(3)
+  processed_at         DateTime? @db.Timestamptz(3)
+  updated_at           DateTime  @db.Timestamptz(3)
+
+  @@unique([provider, provider_event_id])
+  @@index([status, next_attempt_at])
+  @@index([received_at(sort: Desc), id(sort: Desc)])
+  @@schema("subscription")
+}
+
+// CCP-C2 (PBD §5.2 row C2; Conversion Rule C-12, C-14) — the release of exactly ONE self-service
+// checkout (or one held activation) by an applied CONVERSION change request, with an expiry.
+// RELEASED → CONSUMED (bound to its checkout under the billing lock) → CONVERTED (the webhook
+// transaction ended the governed row and opened the SELF_SERVICE row); RELEASED → CONVERTED (a held
+// activation adopted); RELEASED → EXPIRED. Consumption only before expires_at; CONVERTED only with
+// both rows in place; identity immutable; DELETE rejected (trigger, migration 20261026060000).
+// Plain UUID references (FKs in SQL); no Prisma relation.
+model CommercialConversionRelease {
+  id                           String    @id @db.Uuid
+  change_request_id            String    @unique @db.Uuid
+  tenant_id                    String    @db.Uuid
+  product_key                  String
+  governed_subscription_id     String    @db.Uuid
+  plan_id                      String    @db.Uuid
+  plan_version_id              String    @db.Uuid
+  held_subscription_ref        String?
+  // CHECK: RELEASED | CONSUMED | CONVERTED | EXPIRED
+  state                        String
+  expires_at                   DateTime  @db.Timestamptz(3)
+  intent_id                    String?   @unique @db.Uuid
+  consumed_at                  DateTime? @db.Timestamptz(3)
+  self_service_subscription_id String?   @db.Uuid
+  converted_at                 DateTime? @db.Timestamptz(3)
+  expired_at                   DateTime? @db.Timestamptz(3)
+  created_by                   String    @db.Uuid
+  created_at                   DateTime  @db.Timestamptz(3)
+  updated_at                   DateTime  @db.Timestamptz(3)
+
+  // Partial unique index CommercialConversionRelease_one_released_per_tenant_product in SQL.
+  @@index([tenant_id, product_key])
+  @@index([held_subscription_ref])
+  @@schema("subscription")
+}
+
+// CCP-A8 (PBD §5.1 row A8; DDR v1.2 §3.2(5); Recon Report G1) — a support extension overlay.
+// It extends the SENDING window of ONE PAST_DUE subscription row to `extends_until`
+// (half-open) without writing that row (a Stripe-owned row's grace_until is recomputed by
+// every sync). base_until = max(applied_at, grace_until_at_apply); extends_until =
+// base_until + days (CHECKs). Never deleted; the only UPDATE is one removal by an applied
+// SUPPORT_EXTENSION (REMOVE) change request (trigger, migration 20261026010000). An INSERT
+// needs its SUPPORT_EXTENSION (EXTEND) request in APPLYING. No relation fields: the FKs are
+// SQL-only (the CommercialChangeApplication precedent).
+model SupportExtension {
+  id                       String    @id @db.Uuid
+  tenant_id                String    @db.Uuid
+  product_key              String
+  subscription_id          String    @db.Uuid
+  change_request_id        String    @unique @db.Uuid
+  is_exception             Boolean
+  days                     Int
+  grace_until_at_apply     DateTime? @db.Timestamptz(3)
+  base_until               DateTime  @db.Timestamptz(3)
+  extends_until            DateTime  @db.Timestamptz(3)
+  policy_version_id        String    @db.Uuid
+  applied_by               String    @db.Uuid
+  applied_at               DateTime  @db.Timestamptz(3)
+  removed_at               DateTime? @db.Timestamptz(3)
+  removed_by               String?   @db.Uuid
+  remove_change_request_id String?   @unique @db.Uuid
+
+  @@index([tenant_id, product_key, applied_at(sort: Desc)])
+  @@index([subscription_id])
+  @@schema("subscription")
+}
+
+// CCP-D3 (PBD §5.4 row D3) — the operator-visible exception register for billing and approval
+// operations. One OPEN row per (alert_type, subject_id) (partial unique index); OPEN → RESOLVED
+// only, RESOLVED terminal, identity immutable, DELETE rejected (trigger, migration
+// 20261026090000). Written only by CommercialAlertScanner, which reads the source tables and never
+// changes them. No money and no per-tenant grade (PLATFORM-UX-1 :139).
+model CommercialOperationalAlert {
+  id                String    @id @db.Uuid
+  // CHECK (closed set, with family and subject_kind): see COMMERCIAL_ALERT_TYPES.
+  alert_type        String
+  // BILLING | APPROVAL
+  family            String
+  // billing_command | reconciliation_flag | webhook_inbox | usage_metric | change_request
+  subject_kind      String
+  subject_id        String
+  tenant_id         String?   @db.Uuid
+  product_key       String?
+  // OPEN | RESOLVED
+  status            String
+  detail            String
+  // The subject's observed state at the last detection.
+  evidence          Json
+  // The configured threshold the detection used (stuck / nearing-expiry types only).
+  threshold_minutes Int?
+  detection_count   Int
+  first_detected_at DateTime  @db.Timestamptz(3)
+  last_detected_at  DateTime  @db.Timestamptz(3)
+  resolved_at       DateTime? @db.Timestamptz(3)
+  resolution_detail String?
+  updated_at        DateTime  @db.Timestamptz(3)
+
+  @@index([family, status, first_detected_at(sort: Desc), id(sort: Desc)])
+  @@index([family, first_detected_at(sort: Desc), id(sort: Desc)])
+  @@index([subject_kind, subject_id])
+  @@schema("subscription")
+}
+
+// CCP-C7 (PBD §5.2 row C7; Charter :95, :99; Conversion Rule C-15, C-22, C-23) — one owner-made,
+// tenant-tier self-service billing action on ONE open provider-linked SELF_SERVICE base row of ONE
+// product, carried to Stripe by a CCP-C1 BillingProviderCommand (self_service_request_id). v1
+// action set: CANCEL_AT_PERIOD_END. terms_ref names the APPROVED terms in force (key@version#sha256).
+// Append-only; the INSERT trigger (migration 20261028030000) refuses a target that is not this
+// tenant's open SELF_SERVICE base row of the product, and any request while the tenant holds an
+// open governed (MANUAL) row of the product. Plain UUID reference to the subscription (FK in SQL).
+model SelfServiceBillingRequest {
+  id              String   @id @db.Uuid
+  tenant_id       String   @db.Uuid
+  // CHECK: sign (the product registry)
+  product_key     String
+  // CHECK: CANCEL_AT_PERIOD_END
+  action          String
+  subscription_id String   @db.Uuid
+  // CHECK: STRIPE
+  provider        String
+  target_ref      String
+  terms_ref       String
+  requested_by    String   @db.Uuid
+  created_at      DateTime @db.Timestamptz(3)
+
+  @@unique([subscription_id, action])
+  @@index([tenant_id, product_key, created_at(sort: Desc)])
+  @@schema("subscription")
+}
+
+// CCP-C4 (PBD §5.2 row C4; Conversion Rule C-22, C-23) — the append-only record of a
+// provider-confirmed credit, discount or refund applied by a change request through a C1 durable
+// command. Written ONLY in the transaction that applies the provider-confirmed effect (guard: the
+// command CONFIRMED, the request APPLYING). A compensation names its original (UNIQUE).
+model CommercialBillingAdjustment {
+  id                            String   @id @db.Uuid
+  change_request_id             String   @unique @db.Uuid
+  // CHECK: CREDIT | DISCOUNT | REFUND
+  action_type                   String
+  // CHECK: CREDIT_GRANT | CREDIT_REVERSE | DISCOUNT_APPLY | DISCOUNT_REMOVE | REFUND_CREATE
+  operation                     String
+  tenant_id                     String   @db.Uuid
+  product_key                   String
+  subscription_id               String   @db.Uuid
+  provider                      String
+  provider_target_ref           String
+  provider_object_ref           String?
+  amount_minor                  BigInt?
+  currency                      String?
+  discount_bps                  Int?
+  compensates_change_request_id String?  @unique @db.Uuid
+  command_id                    String   @unique @db.Uuid
+  // CHECK: WEBHOOK | REFETCH
+  confirmation_source           String
+  confirmation_event_id         String?
+  attempt                       Int
+  requested_by                  String   @db.Uuid
+  applied_at                    DateTime @db.Timestamptz(3)
+
+  @@index([tenant_id, applied_at(sort: Desc), id(sort: Desc)])
   @@schema("subscription")
 }

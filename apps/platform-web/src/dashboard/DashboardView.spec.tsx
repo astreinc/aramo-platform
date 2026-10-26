@@ -66,7 +66,8 @@ describe('DashboardView', () => {
     vi.spyOn(platformApi, 'getDashboard').mockResolvedValue(FULL);
     renderDash();
     const tile = await screen.findByRole('button', { name: /^Provisioned/ });
-    expect(within(tile).getByText('3')).toBeInTheDocument();
+    // The tile renders (skeleton) before getDashboard resolves; wait for the count.
+    expect(await within(tile).findByText('3')).toBeInTheDocument();
     expect(within(tile).getByText('View tenants →')).toBeInTheDocument();
     fireEvent.click(tile);
     expect(screen.getByTestId('location')).toHaveTextContent('/tenants?status=PROVISIONED');

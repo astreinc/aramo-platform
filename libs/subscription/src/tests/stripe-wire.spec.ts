@@ -1,6 +1,8 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+import { adjustmentRequestOf } from '../lib/billing/billing-provider-command.js';
 import { StripeBillingProvider, stripeEventSubscriptionRef, stripeSubscriptionState } from '../lib/billing/stripe-billing.provider.js';
+import { StripeBillingReadAdapter } from '../lib/billing/stripe-billing-read.adapter.js';
 import {
   isWireSubscriptionEvent,
   wireAccountCountry,
@@ -8,7 +10,13 @@ import {
   wireAccountPath,
   wireAccountRef,
   wireCheckoutAccountParams,
+  wireInvoiceListPath,
+  wireInvoicePayment,
+  wireInvoiceState,
+  wireListData,
   wirePortalAccountParams,
+  wirePortalConfigurationPath,
+  wirePortalConfigurationState,
   wireSubscriptionQuery,
 } from '../lib/billing/stripe-wire.js';
 
@@ -144,4 +152,216 @@ describe('Aramo → Stripe wire', () => {
     expect(await new StripeBillingProvider().retrieveSubscription('sub_1')).toMatchObject({ account_ref: 'cus_1', account_country: 'US' });
     expect(new URL(urls[0]!).searchParams.getAll('expand[]')).toEqual(['customer']);
   });
+});
+
+// CCP-C3 (PBD §5.2 row C3) — boundary CONTRACT tests for the read-through translation and the
+// GET-only read adapter. The fixtures are Stripe-shaped (they carry Stripe's own account field),
+// which is why they live in this exempt spec. Test IDs are cited by CCP-C3-acceptance.md.
+
+const STRIPE_INVOICE = {
+  id: 'in_1',
+  object: 'invoice',
+  number: 'ARAMO-0001',
+  customer: 'cus_1',
+  subscription: 'sub_1',
+  status: 'open',
+  currency: 'usd',
+  total: 4900,
+  amount_due: 4900,
+  amount_paid: 0,
+  amount_remaining: 4900,
+  created: 1_790_000_000,
+  due_date: 1_790_600_000,
+  period_start: 1_789_000_000,
+  period_end: 1_790_000_000,
+  attempt_count: 1,
+  next_payment_attempt: 1_790_100_000,
+  hosted_invoice_url: 'https://invoice.stripe.test/i/in_1',
+  invoice_pdf: 'https://pay.stripe.test/in_1.pdf',
+  livemode: false,
+};
+
+const STRIPE_PORTAL_CONFIGURATION = {
+  id: 'bpc_terms',
+  object: 'billing_portal.configuration',
+  active: true,
+  is_default: false,
+  livemode: false,
+  features: {
+    customer_update: { enabled: true },
+    invoice_history: { enabled: true },
+    payment_method_update: { enabled: true },
+    subscription_cancel: { enabled: true, mode: 'at_period_end' },
+    subscription_update: { enabled: false },
+  },
+};
+
+describe('CCP-C3 Stripe read wire → Aramo', () => {
+  it('C3-W-1 a Stripe invoice becomes an Aramo status mirror with account_ref (pinned and newer API shapes)', () => {
+    const inv = wireInvoiceState(STRIPE_INVOICE);
+    expect(inv).toEqual({
+      invoice_ref: 'in_1',
+      number: 'ARAMO-0001',
+      account_ref: 'cus_1',
+      subscription_ref: 'sub_1',
+      provider_status: 'open',
+      currency: 'usd',
+      total_minor: 4900,
+      amount_due_minor: 4900,
+      amount_paid_minor: 0,
+      amount_remaining_minor: 4900,
+      created_at: new Date(1_790_000_000_000),
+      due_at: new Date(1_790_600_000_000),
+      period_start: new Date(1_789_000_000_000),
+      period_end: new Date(1_790_000_000_000),
+      attempt_count: 1,
+      next_attempt_at: new Date(1_790_100_000_000),
+      hosted_url: 'https://invoice.stripe.test/i/in_1',
+      document_url: 'https://pay.stripe.test/in_1.pdf',
+      live: false,
+    });
+    // No vendor account key survives the translation.
+    expect(Object.keys(inv)).not.toContain('customer');
+    // Newer API: the subscription sits under parent.subscription_details; the account may be expanded.
+    const newer = wireInvoiceState({ id: 'in_2', status: 'paid', customer: { id: 'cus_1' }, parent: { subscription_details: { subscription: 'sub_1' } } });
+    expect(newer).toMatchObject({ account_ref: 'cus_1', subscription_ref: 'sub_1', provider_status: 'paid', due_at: null, total_minor: 0, currency: null });
+    // Missing or malformed fields fail to null / 0, never to a guess.
+    expect(wireInvoiceState({ id: 'in_3', amount_due: 'x', created: -1 })).toMatchObject({ subscription_ref: null, amount_due_minor: 0, created_at: null, account_ref: '' });
+  });
+
+  it('C3-W-2 a Stripe portal configuration becomes Aramo facts (the account-details feature is not mapped)', () => {
+    const c = wirePortalConfigurationState(STRIPE_PORTAL_CONFIGURATION);
+    expect(c).toEqual({
+      configuration_ref: 'bpc_terms',
+      active: true,
+      is_default: false,
+      live: false,
+      invoice_history_enabled: true,
+      payment_method_update_enabled: true,
+      subscription_cancel_enabled: true,
+      subscription_cancel_mode: 'at_period_end',
+      subscription_update_enabled: false,
+    });
+    expect(wirePortalConfigurationState({ id: 'bpc_x' })).toMatchObject({ active: false, invoice_history_enabled: false, subscription_cancel_mode: null });
+  });
+
+  it('C3-W-3 read paths: invoices are listed by subscription (never by account), limit clamped 1..100; list data filtered to objects', () => {
+    expect(wireInvoiceListPath('sub_1', 12)).toBe('/v1/invoices?subscription=sub_1&limit=12');
+    expect(wireInvoiceListPath('sub_1', 0)).toBe('/v1/invoices?subscription=sub_1&limit=1');
+    expect(wireInvoiceListPath('sub_1', 500)).toBe('/v1/invoices?subscription=sub_1&limit=100');
+    expect(wireInvoiceListPath('sub_1', 3)).not.toContain('customer');
+    expect(wirePortalConfigurationPath('bpc/../x')).toBe('/v1/billing_portal/configurations/bpc%2F..%2Fx');
+    expect(wireListData({ data: [{ id: 'a' }, null, 7] })).toEqual([{ id: 'a' }]);
+    expect(wireListData({})).toEqual([]);
+  });
+});
+
+describe('CCP-C3 StripeBillingReadAdapter (GET-only) against a local stand-in', () => {
+  const env = { ...process.env };
+  type Seen = { method: string; path: string; body: unknown; headers: Record<string, string> };
+  let seen: Seen[] = [];
+  afterEach(() => {
+    process.env = { ...env };
+    vi.unstubAllGlobals();
+  });
+  function standIn(routes: Record<string, { status?: number; json: unknown }>): void {
+    process.env['STRIPE_SECRET_KEY'] = 'sk_test_local';
+    process.env['STRIPE_API_BASE'] = 'http://stripe.test';
+    seen = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init: RequestInit) => {
+      const u = new URL(url);
+      seen.push({ method: String(init.method), path: `${u.pathname}${u.search}`, body: init.body, headers: init.headers as Record<string, string> });
+      const r = routes[u.pathname] ?? { status: 404, json: { error: { message: 'No such object' } } };
+      return new Response(JSON.stringify(r.json), { status: r.status ?? 200 });
+    }));
+  }
+
+  it('C3-W-4 every provider request is GET with no body and no idempotency key; results are translated', async () => {
+    standIn({
+      '/v1/subscriptions/sub_1': { json: { id: 'sub_1', status: 'past_due', customer: { id: 'cus_1', address: { country: 'US' } }, metadata: { tenant_id: 't1' }, current_period_start: 10, current_period_end: 20 } },
+      '/v1/invoices': { json: { object: 'list', data: [STRIPE_INVOICE, { ...STRIPE_INVOICE, id: 'in_0', status: 'paid', amount_remaining: 0 }] } },
+      '/v1/billing_portal/configurations/bpc_terms': { json: STRIPE_PORTAL_CONFIGURATION },
+    });
+    const a = new StripeBillingReadAdapter();
+    expect(a.isConfigured()).toBe(true);
+    expect(a.mode()).toBe('test');
+    expect(await a.retrieveSubscription('sub_1')).toMatchObject({ subscription_ref: 'sub_1', account_ref: 'cus_1', provider_status: 'past_due', tenant_id: 't1' });
+    const invoices = await a.listSubscriptionInvoices('sub_1', 5);
+    expect(invoices.map((i) => [i.provider, i.invoice_ref, i.account_ref, i.provider_status])).toEqual([
+      ['STRIPE', 'in_1', 'cus_1', 'open'],
+      ['STRIPE', 'in_0', 'cus_1', 'paid'],
+    ]);
+    expect(await a.retrievePortalConfiguration('bpc_terms')).toMatchObject({ provider: 'STRIPE', configuration_ref: 'bpc_terms', active: true, subscription_cancel_mode: 'at_period_end' });
+    expect(seen.map((r) => r.path)).toEqual(['/v1/subscriptions/sub_1?expand%5B%5D=customer', '/v1/invoices?subscription=sub_1&limit=5', '/v1/billing_portal/configurations/bpc_terms']);
+    for (const r of seen) {
+      expect(r.method).toBe('GET');
+      expect(r.body).toBeUndefined();
+      expect(Object.keys(r.headers).map((h) => h.toLowerCase())).not.toContain('idempotency-key');
+      expect(Object.keys(r.headers).map((h) => h.toLowerCase())).not.toContain('content-type');
+    }
+  });
+
+  it('C3-W-5 a missing portal configuration is null, a missing invoice list is empty; refusals, 429 and 5xx are typed; no key = unconfigured', async () => {
+    standIn({ '/v1/subscriptions/sub_busy': { status: 429, json: { error: { message: 'Too many' } } }, '/v1/subscriptions/sub_bad': { status: 400, json: { error: { message: 'bad' } } } });
+    const a = new StripeBillingReadAdapter();
+    expect(await a.retrievePortalConfiguration('bpc_missing')).toBeNull();
+    expect(await a.listSubscriptionInvoices('sub_missing', 3)).toEqual([]);
+    await expect(a.retrieveSubscription('sub_missing')).rejects.toMatchObject({ name: 'BillingProviderUnavailableError', retryable: false });
+    await expect(a.retrieveSubscription('sub_busy')).rejects.toMatchObject({ retryable: true });
+    await expect(a.retrieveSubscription('sub_bad')).rejects.toMatchObject({ retryable: false });
+    expect(seen.every((r) => r.method === 'GET')).toBe(true);
+    delete process.env['STRIPE_SECRET_KEY'];
+    expect(a.isConfigured()).toBe(false);
+    await expect(a.retrievePortalConfiguration('bpc_terms')).rejects.toMatchObject({ name: 'BillingProviderUnavailableError' });
+    process.env['STRIPE_SECRET_KEY'] = 'rk_live_x';
+    expect(a.mode()).toBe('live');
+  });
+});
+
+// CCP-C4 — the refund wire path against a stubbed fetch (no network; a sk_test_ placeholder). Kept
+// here because the invoice fixtures are Stripe-shaped (C4-U-11, cited by CCP-C4-acceptance.md).
+describe('CCP-C4 Stripe refund wire (stubbed fetch)', () => {
+  const U = '019a0000-0000-7000-8000-0000000c4001';
+  const env = { ...process.env };
+  let calls: { method: string; url: string; body: string | undefined; idem: string | undefined }[] = [];
+  let replies: Array<{ status: number; json: unknown }> = [];
+  const c4 = new StripeBillingProvider();
+  beforeEach(() => {
+    process.env['STRIPE_SECRET_KEY'] = 'sk_test_c4_placeholder';
+    process.env['STRIPE_API_BASE'] = 'http://stripe.c4.invalid';
+    calls = [];
+    replies = [];
+    vi.stubGlobal('fetch', async (url: string, init: { method: string; body?: string; headers: Record<string, string> }) => {
+      calls.push({ method: init.method, url, body: init.body, idem: init.headers['idempotency-key'] });
+      const r = replies.shift() ?? { status: 200, json: {} };
+      return { ok: r.status < 400, status: r.status, json: async () => r.json } as unknown as Response;
+    });
+  });
+  afterEach(() => {
+    vi.unstubAllGlobals();
+    process.env = { ...env };
+  });
+
+  it('C4-U-13 wireInvoicePayment reads the paying account and the payment', () => {
+    expect(wireInvoicePayment({ customer: 'cus_1', payment_intent: { id: 'pi_1' }, currency: 'usd', amount_paid: 900 })).toEqual({ account_ref: 'cus_1', payment_ref: 'pi_1', currency: 'usd', amount_paid_minor: 900 });
+  });
+
+  it('C4-U-11 refund: the invoice is read first and must have been paid from the tenant account; then ONE keyed refund POST on its payment', async () => {
+    const r = adjustmentRequestOf({ id: U, command_kind: 'REFUND_CREATE', tenant_id: 'ten-1', target_ref: 'in_1', params: { subscription_id: U, amount_minor: 4_000, currency: 'USD', account_ref: 'acct_1' } });
+    replies.push({ status: 200, json: { id: 'in_1', customer: 'acct_other', payment_intent: 'pi_1' } });
+    await expect(c4.executeAdjustment(r, 'k')).rejects.toMatchObject({ retryable: false });
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([]);
+    replies.push({ status: 200, json: { id: 'in_1', customer: 'acct_1', payment_intent: 'pi_1' } }, { status: 200, json: { id: 're_1', status: 'pending' } });
+    expect(await c4.executeAdjustment(r, 'k')).toEqual({ object_ref: 're_1' });
+    const post = calls.filter((c) => c.method === 'POST');
+    expect(post).toHaveLength(1);
+    expect(post[0]?.url).toMatch(/\/v1\/refunds$/);
+    expect(new URLSearchParams(post[0]?.body).get('payment_intent')).toBe('pi_1');
+    expect(new URLSearchParams(post[0]?.body).get('amount')).toBe('4000');
+    // a pending refund is not yet the effect (pending until the refund succeeds)
+    // CCP-C4-R: the read is the payment's whole picture (invoice, then every refund of its payment).
+    replies.push({ status: 200, json: { id: 'in_1', customer: 'acct_1', payment_intent: 'pi_1', amount_paid: 10_000, currency: 'usd' } }, { status: 200, json: { data: [{ id: 're_0', status: 'succeeded', amount: 1_000, metadata: {} }, { id: 're_1', status: 'pending', amount: 4_000, metadata: { aramo_command_id: U } }] } });
+    expect(await c4.readAdjustmentEffect(r, 're_1')).toMatchObject({ present: false, provider_status: 'pending', object_ref: 're_1', observed_amount_minor: 4_000, refundable_remainder_minor: 5_000, payment_currency: 'usd' });
+  });
+
 });

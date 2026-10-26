@@ -1,5 +1,5 @@
 import { Injectable, Logger, type OnApplicationBootstrap, type OnApplicationShutdown } from '@nestjs/common';
-import { SubscriptionLifecycleService } from '@aramo/subscription';
+import { SIGN_PRODUCT_KEY, SubscriptionLifecycleService } from '@aramo/subscription';
 
 import { EsignOwnerActivationService } from './esign-owner-activation.service.js';
 
@@ -40,7 +40,7 @@ export class EsignBillingReconcileWorker implements OnApplicationBootstrap, OnAp
     if (this.running) return 0;
     this.running = true;
     try {
-      const r = await this.lifecycle.reconcile(at);
+      const r = await this.lifecycle.reconcile(SIGN_PRODUCT_KEY, at);
       for (const res of r.results) {
         if (res.activated_owner_user_id !== undefined && res.tenant_id !== null) {
           await this.owners.activate(res.tenant_id, res.activated_owner_user_id, 'billing-reconcile');
@@ -48,7 +48,7 @@ export class EsignBillingReconcileWorker implements OnApplicationBootstrap, OnAp
       }
       if (r.checked > 0) this.log.log(`billing reconcile: checked ${r.checked}, applied ${r.applied}, failed ${r.failed}`);
       // A1 — eligibility-bound plans (Standard Professional ⇐ ATS): record lapses.
-      const e = await this.lifecycle.refreshEligibility(at);
+      const e = await this.lifecycle.refreshEligibility(SIGN_PRODUCT_KEY, at);
       if (e.lapsed > 0 || e.restored > 0) this.log.warn(`plan eligibility: ${e.lapsed} lapsed, ${e.restored} restored`);
       return r.applied;
     } catch (err) {

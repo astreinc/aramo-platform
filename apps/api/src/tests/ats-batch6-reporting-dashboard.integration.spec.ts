@@ -6,7 +6,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveEntitlementMigrations } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -61,10 +61,8 @@ type SignKey = CryptoKey | KeyObject;
 
 const ROOT = resolve(__dirname, '../../../..');
 
-const ENTITLEMENT_INIT = resolve(
-  ROOT,
-  'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
-);
+// CCP-A7 — the full entitlement set (the shared helper; the repository reads A7 columns).
+const ENTITLEMENT_MIGRATIONS = resolveEntitlementMigrations(ROOT);
 const COMPANY_INIT = resolve(
   ROOT,
   'libs/company/prisma/migrations/20260601160000_init_company_model/migration.sql',
@@ -478,7 +476,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // header note: the absence of selection/submittal/examination/etc.
       // is the seam-exclusion structural proof.
       for (const p of [
-        ENTITLEMENT_INIT,
+        ...ENTITLEMENT_MIGRATIONS,
         COMPANY_INIT,
         COMPANY_FIELD_EXPANSION,
         COMPANY_ADDRESS_PLACE_REF,
@@ -556,8 +554,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await ensureWriteFreezeTenant((s) => setupClient.query(s), TENANT_NOT_ATS);
 
       await setupClient.query(
-        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
-         VALUES ($1::uuid, 'ats')
+        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+         VALUES ($1::uuid, 'ats', 'PROVISIONING')
          ON CONFLICT (tenant_id, capability) DO NOTHING`,
         [TENANT_ATS],
       );

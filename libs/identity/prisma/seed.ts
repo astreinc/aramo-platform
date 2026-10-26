@@ -34,6 +34,9 @@
 //     surface (all GLOBAL — actor=system, tenant_id=null).
 //   - 1 tenant.created audit event for the sentinel Tenant (the only
 //     tenant-scoped platform-seed event, carrying its own tenant_id).
+// CCP A1 (Aramo-CCP-A1-Commercial-Roles-and-Scopes-Directive-v1_0) adds 6 platform-tier
+// commercial roles, 15 platform:* commercial scopes and their 45 role-scope rows
+// (CCP_PLATFORM_ROLE_SEED_BUNDLES): catalog definitions only, no role granted to any user.
 // The tenant catalog is the AUTHZ-1b 12-role set (the staffing vertical);
 // the kept roles' bundles stay byte-identical (DDR D7 additive discipline
 // where applicable — no Recruiter bundle change, etc).
@@ -107,6 +110,13 @@ export const SEED_IDS = {
     // IC-3 PR-7 — the 0x2b0 row (was org_admin). ROLES-1 PR-2: `tenant_admin`, the
     // organization administrator (a TENANT role, assignable in any tenant).
     tenant_admin: '01900000-0000-7000-8000-0000000002b0',
+    // CCP A1 — 6 platform-tier commercial roles (dedicated 0x2c0+ range; platform:* only).
+    platform_owner: '01900000-0000-7000-8000-0000000002c0',
+    finance_admin: '01900000-0000-7000-8000-0000000002c1',
+    commercial_ops: '01900000-0000-7000-8000-0000000002c2',
+    catalog_manager: '01900000-0000-7000-8000-0000000002c3',
+    support_admin: '01900000-0000-7000-8000-0000000002c4',
+    read_only_auditor: '01900000-0000-7000-8000-0000000002c5',
   },
   scopes: {
     'consent:read': '01900000-0000-7000-8000-000000000020',
@@ -216,6 +226,26 @@ export const SEED_IDS = {
     // ATI-SEP-1 A2 A-c (P1) — platform-owned matching calibration. super_admin only.
     'platform:matching_policy:read': '01900000-0000-7000-8000-000000000324',
     'platform:matching_policy:write': '01900000-0000-7000-8000-000000000325',
+    // CCP A1 — 15 platform-tier commercial scopes (0x326..0x334). The 6 CCP roles only.
+    'platform:catalog:read': '01900000-0000-7000-8000-000000000326',
+    'platform:catalog:draft': '01900000-0000-7000-8000-000000000327',
+    'platform:catalog:approve': '01900000-0000-7000-8000-000000000328',
+    'platform:catalog:publish': '01900000-0000-7000-8000-000000000329',
+    'platform:subscription:read': '01900000-0000-7000-8000-00000000032a',
+    'platform:subscription:request': '01900000-0000-7000-8000-00000000032b',
+    'platform:subscription:approve': '01900000-0000-7000-8000-00000000032c',
+    'platform:subscription:support': '01900000-0000-7000-8000-00000000032d',
+    'platform:entitlement:request': '01900000-0000-7000-8000-00000000032e',
+    'platform:entitlement:approve': '01900000-0000-7000-8000-00000000032f',
+    'platform:billing:read': '01900000-0000-7000-8000-000000000330',
+    'platform:billing:request': '01900000-0000-7000-8000-000000000331',
+    'platform:billing:approve': '01900000-0000-7000-8000-000000000332',
+    'platform:approval:read': '01900000-0000-7000-8000-000000000333',
+    'platform:commercial:audit:read': '01900000-0000-7000-8000-000000000334',
+    // CCP-A1 Amendment A1 (Finance amount scope, LOCKED 2026-10-25) — FA-1 / FA-2.
+    'platform:billing:amount:read': '01900000-0000-7000-8000-000000000335',
+    // CCP-A1 Amendment A2 (Payment request scope, LOCKED 2026-10-25) — PS-1 / PS-2.
+    'platform:payment:request': '01900000-0000-7000-8000-000000000336',
     // AUTHZ-D4a — 4 team-model scopes (Amendment §4/§6; Lead Gate-5 ruling 2
     // narrows company:read:all to TA+TO only — mirrors requisition:read:all).
     'company:assign': '01900000-0000-7000-8000-00000000008c',
@@ -3203,6 +3233,131 @@ export const ORGUX1_TEMPLATE_AUTHOR_BUNDLES: ReadonlyArray<readonly [string, rea
   ['lead_recruiter', ['document_template:author']],
 ];
 
+// CCP A1 (Aramo-CCP-A1-Commercial-Roles-and-Scopes-Directive-v1_0 §4.1, ruling A0-C4) — the
+// 6 platform-tier commercial role bundles. Catalog definitions only (ruling A0-C1): no seed,
+// fixture or migration grants any of these roles to any user. Every bundle holds
+// platform:tenant:read (the v1 console-entry dependency, ruling A0-C5; least-privilege
+// replacement tracked as CCP-FU-1) plus platform:* commercial scopes only. super_admin holds
+// none of the 15 commercial scopes (INV-1); no bundle is both initiator and decider in one
+// domain (INV-2). NOT listed in ROLES1_ATS_GRANT_SOURCES (no ats_admin scope). 45 rows.
+// Ids: ccpA1RoleScopeId (identical to the 20261024120000 migration's for the same pair).
+export const CCP_PLATFORM_ROLE_SEED_BUNDLES: ReadonlyArray<readonly [string, readonly string[]]> = [
+  ['platform_owner', [
+    'platform:tenant:read',
+    'platform:catalog:read',
+    'platform:catalog:approve',
+    'platform:catalog:publish',
+    'platform:subscription:read',
+    'platform:subscription:approve',
+    'platform:entitlement:approve',
+    'platform:billing:read',
+    'platform:billing:approve',
+    'platform:approval:read',
+    'platform:commercial:audit:read',
+  ]],
+  ['finance_admin', [
+    'platform:tenant:read',
+    'platform:catalog:read',
+    'platform:catalog:approve',
+    'platform:subscription:read',
+    'platform:subscription:approve',
+    'platform:entitlement:approve',
+    'platform:billing:read',
+    'platform:billing:approve',
+    'platform:approval:read',
+    'platform:commercial:audit:read',
+  ]],
+  ['commercial_ops', [
+    'platform:tenant:read',
+    'platform:catalog:read',
+    'platform:subscription:read',
+    'platform:subscription:request',
+    'platform:entitlement:request',
+    'platform:billing:read',
+    'platform:billing:request',
+    'platform:approval:read',
+  ]],
+  ['catalog_manager', [
+    'platform:tenant:read',
+    'platform:catalog:read',
+    'platform:catalog:draft',
+    'platform:approval:read',
+  ]],
+  ['support_admin', [
+    'platform:tenant:read',
+    'platform:catalog:read',
+    'platform:subscription:read',
+    'platform:subscription:support',
+    'platform:billing:read',
+    'platform:approval:read',
+  ]],
+  ['read_only_auditor', [
+    'platform:tenant:read',
+    'platform:catalog:read',
+    'platform:subscription:read',
+    'platform:billing:read',
+    'platform:approval:read',
+    'platform:commercial:audit:read',
+  ]],
+];
+
+// CCP-A1 Amendment A1 (Aramo-CCP-A1-Amendment-A1-Finance-Amount-Scope-v1_0-LOCKED, FA-1, FA-2,
+// FA-8) — platform:billing:amount:read, required IN ADDITION TO platform:billing:read for any
+// tenant-specific monetary figure. Granted to exactly platform_owner, finance_admin and
+// read_only_auditor (3 rows). Kept apart from CCP_PLATFORM_ROLE_SEED_BUNDLES (the A1 matrix,
+// unchanged). Ids: ccpA1A1RoleScopeId (identical to 20261028060000_ccp_a1a1_finance_amount_scope).
+export const CCP_A1A1_FINANCE_AMOUNT_SCOPE = 'platform:billing:amount:read';
+export const CCP_A1A1_FINANCE_AMOUNT_SCOPE_DESCRIPTION =
+  'Platform-tier CCP: read tenant-specific monetary figures, invoice, payment, credit and revenue amounts, in addition to platform:billing:read (enforced from CCP-A1 Amendment A1)';
+export const CCP_A1A1_FINANCE_AMOUNT_HOLDERS = ['platform_owner', 'finance_admin', 'read_only_auditor'] as const;
+
+// CCP-A1 Amendment A2 (Aramo-CCP-A1-Amendment-A2-Payment-Request-Scope-v1_0-LOCKED, PS-1, PS-2,
+// PS-3, PS-5) — platform:payment:request, the requester scope of the PAYMENT_RECORD action only.
+// Granted to exactly commercial_ops and finance_admin (2 rows). finance_admin does NOT gain
+// platform:billing:request (PS-3). Kept apart from CCP_PLATFORM_ROLE_SEED_BUNDLES (the A1 matrix,
+// unchanged). Ids: ccpA1A2RoleScopeId (identical to 20261028070000_ccp_a1a2_payment_request_scope).
+export const CCP_A1A2_PAYMENT_REQUEST_SCOPE = 'platform:payment:request';
+export const CCP_A1A2_PAYMENT_REQUEST_SCOPE_DESCRIPTION =
+  'Platform-tier CCP: request the PAYMENT_RECORD action (record an enterprise payment received outside Aramo); authorizes no other action, read or approval (CCP-A1 Amendment A2)';
+export const CCP_A1A2_PAYMENT_REQUEST_HOLDERS = ['commercial_ops', 'finance_admin'] as const;
+
+// CCP A1 §6.8 — role descriptions. Written by the seed on a fresh database and by the
+// 20261024120000 migration on an existing one (byte-equal).
+export const CCP_A1_ROLE_DESCRIPTIONS = {
+  platform_owner:
+    'Platform Owner — CCP final approver: approves and publishes catalog versions; approves subscription, entitlement and billing changes. Platform tier; platform:* scopes only.',
+  finance_admin:
+    'Finance Admin — CCP financial approver for catalog, subscription, entitlement and billing changes; reads the commercial audit. Platform tier; platform:* scopes only.',
+  commercial_ops:
+    'Commercial Ops — CCP requester for subscription, entitlement and billing changes; never approves. Platform tier; platform:* scopes only.',
+  catalog_manager:
+    'Catalog Manager — CCP catalog author: drafts catalog versions; never approves or publishes. Platform tier; platform:* scopes only.',
+  support_admin:
+    'Support Admin — CCP support: applies bounded support exceptions under the active commercial policy; reads subscriptions and billing status. Platform tier; platform:* scopes only.',
+  read_only_auditor:
+    'Read-only Auditor — CCP read access to catalog, subscriptions, billing status, approvals and the commercial audit. No write. Platform tier; platform:* scopes only.',
+} as const;
+
+// CCP A1 §6.8 — scope descriptions ("Platform-tier CCP: <verb phrase> (enforced from CCP
+// <slice>)"), in the §1 order. Byte-equal in the 20261024120000 migration.
+export const CCP_A1_SCOPE_DESCRIPTIONS = {
+  'platform:catalog:read': 'Platform-tier CCP: read catalog products, plans and plan versions (enforced from CCP A3 + A5)',
+  'platform:catalog:draft': 'Platform-tier CCP: draft a catalog version change request (enforced from CCP A3 + A5)',
+  'platform:catalog:approve': 'Platform-tier CCP: approve a catalog version change request (enforced from CCP A3 + A5)',
+  'platform:catalog:publish': 'Platform-tier CCP: publish an approved catalog version (enforced from CCP A3 + A5)',
+  'platform:subscription:read': 'Platform-tier CCP: read tenant subscriptions across products (enforced from CCP A3 + A6)',
+  'platform:subscription:request': 'Platform-tier CCP: request a subscription change (enforced from CCP A3 + A6)',
+  'platform:subscription:approve': 'Platform-tier CCP: approve a subscription change request (enforced from CCP A3 + A6)',
+  'platform:subscription:support': 'Platform-tier CCP: apply a bounded support exception to a subscription (enforced from CCP A8)',
+  'platform:entitlement:request': 'Platform-tier CCP: request a product entitlement grant or revoke (enforced from CCP A6 + A7)',
+  'platform:entitlement:approve': 'Platform-tier CCP: approve a product entitlement change request (enforced from CCP A6 + A7)',
+  'platform:billing:read': 'Platform-tier CCP: read billing status, invoices and payments (enforced from CCP C3 + C4)',
+  'platform:billing:request': 'Platform-tier CCP: request a billing change such as a credit, refund or discount (enforced from CCP C3 + C4)',
+  'platform:billing:approve': 'Platform-tier CCP: approve a billing change request (enforced from CCP C3 + C4)',
+  'platform:approval:read': 'Platform-tier CCP: read commercial change requests and their approvals (enforced from CCP A3)',
+  'platform:commercial:audit:read': 'Platform-tier CCP: read the commercial audit trail (enforced from CCP A2)',
+} as const;
+
 // The display names (leading phrase) — written by the seed on a fresh database and
 // by the 20261021130000_roles1_role_model migration on an existing one (byte-equal).
 export const ROLES1_ROLE_DESCRIPTIONS = {
@@ -3240,6 +3395,27 @@ export function atsQa1RoleScopeId(role_id: string, scope_id: string): string {
 // `md5(...)::uuid` cast in 20261022140000_org_ux_1_template_author_grants.
 export function orgUx1RoleScopeId(role_id: string, scope_id: string): string {
   const h = createHash('md5').update(`org-ux-1:${role_id}:${scope_id}`).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
+// CCP A1 — md5('ccp-a1:' || role_id || ':' || scope_id) as a uuid, the SQL
+// `md5(...)::uuid` cast in 20261024120000_ccp_a1_commercial_role_catalog.
+export function ccpA1RoleScopeId(role_id: string, scope_id: string): string {
+  const h = createHash('md5').update(`ccp-a1:${role_id}:${scope_id}`).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
+// CCP-A1 Amendment A1 — md5('ccp-a1a1:' || role_id || ':' || scope_id) as a uuid, the SQL
+// `md5(...)::uuid` cast in 20261028060000_ccp_a1a1_finance_amount_scope.
+export function ccpA1A1RoleScopeId(role_id: string, scope_id: string): string {
+  const h = createHash('md5').update(`ccp-a1a1:${role_id}:${scope_id}`).digest('hex');
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
+}
+
+// CCP-A1 Amendment A2 — md5('ccp-a1a2:' || role_id || ':' || scope_id) as a uuid, the SQL
+// `md5(...)::uuid` cast in 20261028070000_ccp_a1a2_payment_request_scope.
+export function ccpA1A2RoleScopeId(role_id: string, scope_id: string): string {
+  const h = createHash('md5').update(`ccp-a1a2:${role_id}:${scope_id}`).digest('hex');
   return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`;
 }
 
@@ -3410,6 +3586,10 @@ export async function runIdentitySeed(
   await upsertRole(prisma, SEED_IDS.roles.auditor_with_financials, 'auditor_with_financials', 'Auditor with Financials — compliance reads + every compensation:view:* (the see-all-comp grant; gated by audit.financials_enabled)');
   // AUTHZ-2 — 1 platform role (super_admin; platform:* scope namespace).
   await upsertRole(prisma, SEED_IDS.roles.super_admin, 'super_admin', 'Super Admin — platform-tier operator (Aramo SaaS). Provisions tenants, invites Tenant Owners + platform admins. Holds ONLY platform:* scopes; never a tenant scope.');
+  // CCP A1 — 6 platform-tier commercial roles (catalog only; no user holds them, ruling A0-C1).
+  for (const key of ['platform_owner', 'finance_admin', 'commercial_ops', 'catalog_manager', 'support_admin', 'read_only_auditor'] as const) {
+    await upsertRole(prisma, SEED_IDS.roles[key], key, CCP_A1_ROLE_DESCRIPTIONS[key]);
+  }
   // PX-V1 PX-3 — E-Sign sender product roles. Namespace-separate from the ATS
   // tenant roles (like super_admin): they hold ONLY esign:* scopes and are excluded
   // from the tenant ATS RolePicker. Shared Aramo identity; independent E-Sign product.
@@ -3510,7 +3690,7 @@ export async function runIdentitySeed(
   // AUTHZ-2 — 3 platform-namespace scopes (Lead ruling 5; separate from
   // the 47 tenant scopes above).
   await upsertScope(prisma, SEED_IDS.scopes['platform:tenant:provision'], 'platform:tenant:provision', 'Platform-tier: create a tenant + entitlement seed + Tenant-Owner invite (super_admin only)');
-  await upsertScope(prisma, SEED_IDS.scopes['platform:tenant:read'], 'platform:tenant:read', 'Platform-tier: list/read tenants for the platform-admin view (super_admin only)');
+  await upsertScope(prisma, SEED_IDS.scopes['platform:tenant:read'], 'platform:tenant:read', 'Platform-tier: list/read tenants for the platform-admin view; console entry for super_admin and the six commercial roles (CCP-A1, ruling A0-C5; least-privilege refinement tracked as CCP-FU-1)');
   await upsertScope(prisma, SEED_IDS.scopes['platform:admin:invite'], 'platform:admin:invite', 'Platform-tier: invite another platform admin against the platform Cognito pool (super_admin only)');
   await upsertScope(prisma, SEED_IDS.scopes['platform:tenant:lifecycle:manage'], 'platform:tenant:lifecycle:manage', 'Platform-tier: manage tenant lifecycle — suspend/reactivate/offboard/close (super_admin only)');
   await upsertScope(prisma, SEED_IDS.scopes['platform:skill:read'], 'platform:skill:read', 'Platform-tier: read canonical Skills taxonomy + unresolved review queue (super_admin only)');
@@ -3521,6 +3701,14 @@ export async function runIdentitySeed(
   // ATI-SEP-1 A2 A-c (P1) — platform-owned matching calibration (MatchingPolicy store).
   await upsertScope(prisma, SEED_IDS.scopes['platform:matching_policy:read'], 'platform:matching_policy:read', 'Platform-tier: read the active matching policy (role-family evidence thresholds) + its version history (super_admin only)');
   await upsertScope(prisma, SEED_IDS.scopes['platform:matching_policy:write'], 'platform:matching_policy:write', 'Platform-tier: create a matching policy version and activate a version (super_admin only; tenants consume, never edit)');
+  // CCP A1 — 15 platform-tier commercial scopes. NO scope.created (scope-seed precedent).
+  for (const [key, description] of Object.entries(CCP_A1_SCOPE_DESCRIPTIONS)) {
+    await upsertScope(prisma, SEED_IDS.scopes[key as keyof typeof CCP_A1_SCOPE_DESCRIPTIONS], key, description);
+  }
+  // CCP-A1 Amendment A1 — the Finance amount scope (FA-1). NO scope.created (scope-seed precedent).
+  await upsertScope(prisma, SEED_IDS.scopes[CCP_A1A1_FINANCE_AMOUNT_SCOPE], CCP_A1A1_FINANCE_AMOUNT_SCOPE, CCP_A1A1_FINANCE_AMOUNT_SCOPE_DESCRIPTION);
+  // CCP-A1 Amendment A2 — the payment request scope (PS-1). NO scope.created (scope-seed precedent).
+  await upsertScope(prisma, SEED_IDS.scopes[CCP_A1A2_PAYMENT_REQUEST_SCOPE], CCP_A1A2_PAYMENT_REQUEST_SCOPE, CCP_A1A2_PAYMENT_REQUEST_SCOPE_DESCRIPTION);
   // AUTHZ-D4a — 4 team-model scopes (Amendment §4/§6). Lead Gate-5 ruling 2
   // narrowed company:read:all to TA+TO only (mirrors requisition:read:all).
   await upsertScope(prisma, SEED_IDS.scopes['company:assign'], 'company:assign', 'Assign / unassign a user to a client (account_manager + tenant_admin + tenant_owner; mirrors requisition:assign as the AM act)');
@@ -4806,6 +4994,40 @@ export async function runIdentitySeed(
         create: { id: orgUx1RoleScopeId(role_id, scope_id), role_id, scope_id },
       });
     }
+  }
+
+  // CCP A1 (§4.1) — the 6 platform-tier commercial role bundles (45 rows). Catalog only: the
+  // roles are granted to no user. Ids: ccpA1RoleScopeId (identical to the migration's).
+  for (const [roleKey, scopeKeys] of CCP_PLATFORM_ROLE_SEED_BUNDLES) {
+    const role_id = roleIdForKey(roleKey);
+    for (const scopeKey of scopeKeys) {
+      const scope_id = scopeIdForKey(scopeKey);
+      await prisma.roleScope.upsert({
+        where: { role_id_scope_id: { role_id, scope_id } },
+        update: {},
+        create: { id: ccpA1RoleScopeId(role_id, scope_id), role_id, scope_id },
+      });
+    }
+  }
+  // CCP-A1 Amendment A1 (FA-2) — the 3 Finance amount grants. Ids: ccpA1A1RoleScopeId.
+  for (const roleKey of CCP_A1A1_FINANCE_AMOUNT_HOLDERS) {
+    const role_id = roleIdForKey(roleKey);
+    const scope_id = scopeIdForKey(CCP_A1A1_FINANCE_AMOUNT_SCOPE);
+    await prisma.roleScope.upsert({
+      where: { role_id_scope_id: { role_id, scope_id } },
+      update: {},
+      create: { id: ccpA1A1RoleScopeId(role_id, scope_id), role_id, scope_id },
+    });
+  }
+  // CCP-A1 Amendment A2 (PS-2) — the 2 payment request grants. Ids: ccpA1A2RoleScopeId.
+  for (const roleKey of CCP_A1A2_PAYMENT_REQUEST_HOLDERS) {
+    const role_id = roleIdForKey(roleKey);
+    const scope_id = scopeIdForKey(CCP_A1A2_PAYMENT_REQUEST_SCOPE);
+    await prisma.roleScope.upsert({
+      where: { role_id_scope_id: { role_id, scope_id } },
+      update: {},
+      create: { id: ccpA1A2RoleScopeId(role_id, scope_id), role_id, scope_id },
+    });
   }
 
   // 3 + 8 + 4 + the four creation-audit rows below are ALL DEV-FIXTURE —

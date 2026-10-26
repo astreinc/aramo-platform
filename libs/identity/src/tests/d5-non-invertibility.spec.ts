@@ -351,7 +351,9 @@ describe('AUTHZ-D5 — per-role view-set matches the LOCKED matrix', () => {
     // no compensation scope either → 9 absent roles. ROLES-1 PR-2: org_admin is now
     // tenant_admin (see-all via the ROLES-1 bundle) → 8 absent roles. ROLES-1 PR-3:
     // sign_owner is retired (not a catalog key) → 7 absent roles.
-    expect(absentRoles.length).toBe(7);
+    // CCP A1 +6 roles / +15 scopes / +45 grants → 25 / 205 / 984: the 6 platform-tier
+    // commercial roles hold only platform:* scopes, no compensation scope → 7+6=13 absent roles.
+    expect(absentRoles.length).toBe(13);
     for (const role of absentRoles) {
       expect(maskedKeys(role).size, `${role} (absent role) leaked comp fields`).toBe(0);
     }

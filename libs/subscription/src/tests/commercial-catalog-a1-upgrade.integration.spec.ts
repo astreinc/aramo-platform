@@ -12,6 +12,9 @@ import { SubscriptionLifecycleService } from '../lib/billing/subscription-lifecy
 import { CapacityService } from '../lib/capacity.service.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
+import { CCP_A4_MIGRATION } from './fixtures/ccp-a4.js';
+import { CCP_A5_MIGRATION } from './fixtures/ccp-a5.js';
+
 // A1 review — ordered migration replay of the UPGRADE path: a database that
 // applied the ORIGINAL 20261019100000 (which seeded the superseded
 // aramo-sign-business-v1, 100/month, sellable) and has a subscription on it.
@@ -68,6 +71,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
     await pg.query(readFileSync(A1, 'utf8'));
     await pg.query(readFileSync(SIGN_NAMING, 'utf8'));
     await pg.query(readFileSync(PERSONAL_FREE, 'utf8'));
+    // CCP-A4 — the product dimension backfills the pre-existing (legacy-plan) subscription to sign.
+    await pg.query(readFileSync(CCP_A4_MIGRATION, 'utf8'));
+    // CCP-A5 — every plan (the legacy one included) gets its v1; the subscription is pinned to it.
+    await pg.query(readFileSync(CCP_A5_MIGRATION, 'utf8'));
     prisma = new PrismaService(container.getConnectionUri());
     await prisma.$connect();
   }, 180_000);
@@ -92,12 +99,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('subscription — 
 
   it('the public catalog is exactly the four approved plans', async () => {
     const svc = new SubscriptionLifecycleService(prisma, new AllowanceService(prisma), billing, new CapacityService(prisma));
-    expect((await svc.catalog()).map((p) => p.key)).toEqual(FOUR);
+    expect((await svc.catalog('sign')).map((p) => p.key)).toEqual(FOUR);
   });
 
   it('the existing subscription and its 100/month allowance are preserved', async () => {
     const sub = await pg.query(`SELECT plan_id, ended_at, status FROM subscription."TenantSubscription" WHERE id = $1`, [SUB]);
     expect(sub.rows).toEqual([{ plan_id: '019a0000-5150-7000-8000-000000000002', ended_at: null, status: 'ACTIVE' }]);
-    expect(await new AllowanceService(prisma).getStatus(TENANT, 'sign.envelopes', new Date('2026-10-19T00:00:00Z'))).toMatchObject({ subscribed: true, plan_key: 'aramo-sign-business-v1', limit: 100, unlimited: false });
+    expect(await new AllowanceService(prisma).getStatus(TENANT, 'sign', 'sign.envelopes', new Date('2026-10-19T00:00:00Z'))).toMatchObject({ subscribed: true, plan_key: 'aramo-sign-business-v1', limit: 100, unlimited: false });
   });
 });

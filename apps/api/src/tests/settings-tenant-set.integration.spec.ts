@@ -6,7 +6,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveEntitlementMigrations } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -88,10 +88,8 @@ const IDENTITY_PROFILE = resolve(
   ROOT,
   'libs/identity/prisma/migrations/20260619000000_add_tenant_profile/migration.sql',
 );
-const ENTITLEMENT_INIT = resolve(
-  ROOT,
-  'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
-);
+// CCP-A7 — the full entitlement set (the shared helper; the repository reads A7 columns).
+const ENTITLEMENT_MIGRATIONS = resolveEntitlementMigrations(ROOT);
 const SETTINGS_INIT = resolve(
   ROOT,
   'libs/settings/prisma/migrations/20260605000000_init_settings_model/migration.sql',
@@ -150,7 +148,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       //   - entitlement  → @RequireCapability('core') gate
       //   - settings     → TenantSettingService read+write
       //   - identity     → IdentityAuditEvent (the audit two-call seam)
-      for (const p of [IDENTITY_INIT, IDENTITY_ALLOWED_DOMAIN, IDENTITY_DOMAIN_VERIFICATION, IDENTITY_SLUG, IDENTITY_IDP, IDENTITY_IDP_LC, IDENTITY_IC4_TENANT_KIND, IDENTITY_INVITATION_MIG, IDENTITY_PROFILE, ENTITLEMENT_INIT, SETTINGS_INIT]) {
+      for (const p of [IDENTITY_INIT, IDENTITY_ALLOWED_DOMAIN, IDENTITY_DOMAIN_VERIFICATION, IDENTITY_SLUG, IDENTITY_IDP, IDENTITY_IDP_LC, IDENTITY_IC4_TENANT_KIND, IDENTITY_INVITATION_MIG, IDENTITY_PROFILE, ...ENTITLEMENT_MIGRATIONS, SETTINGS_INIT]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
 
@@ -162,8 +160,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Entitle both tenants with `core` (the baseline tenant capability).
       for (const tenant of [TENANT_A, TENANT_B]) {
         await setupClient.query(
-          `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
-           VALUES ($1::uuid, 'core')
+          `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+           VALUES ($1::uuid, 'core', 'PROVISIONING')
            ON CONFLICT (tenant_id, capability) DO NOTHING`,
           [tenant],
         );

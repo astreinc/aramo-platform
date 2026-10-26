@@ -1049,6 +1049,35 @@ export const ERROR_CODES = [
   // re-issued (or verification delegated) once the domain is VERIFIED (VERIFIED is
   // sticky). details.reason = 'already_verified'. HTTP 409.
   'DOMAIN_ALREADY_VERIFIED',
+  // CCP-A3 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.1 row A3; Charter §6.3) — the
+  // approval chain of this request cannot be fulfilled by independent, eligible, attested
+  // humans (chain-satisfiability, never a user count). details.unfillable_steps. HTTP 409.
+  'CCP_NOT_BOOTSTRAPPED',
+  // CCP-A3 (Charter §6.4) — an approval or rejection refused by the eligibility engine;
+  // details.refusal is one of NOT_PENDING | EXPIRED | NOT_HUMAN | SELF_APPROVAL |
+  // USER_ALREADY_APPROVED | STEP_SCOPE_MISSING | OUT_OF_ORDER. HTTP 409.
+  'COMMERCIAL_APPROVAL_REFUSED',
+  // CCP-A3 — the change request cannot move (details.reason: state_invalid |
+  // open_request_exists (Q14) | integrity). HTTP 409.
+  'COMMERCIAL_CHANGE_REQUEST_CONFLICT',
+  // CCP-A2/A3 — no valid ACTIVE CommercialPolicyVersion (missing, malformed or checksum
+  // mismatch): no commercial decision proceeds (fail closed). HTTP 503.
+  'COMMERCIAL_POLICY_UNAVAILABLE',
+  // CCP-A9 (T2-F1-H3 Amendment A1 A1-4) — the write would leave the platform without its last
+  // effective platform_owner (DB trigger identity.ccp_a9_assert_platform_keeps_owner, or the
+  // governed ROLE_REVOKE pre-check). details.reason = 'platform_last_owner'. HTTP 409.
+  'PLATFORM_LAST_OWNER',
+  // CCP-D1 (PBD §5.4 row D1) — usage roll-ups are read-only until their totals reconcile to the
+  // AllowanceUsage ledger (and the metering raw events): the consumption analytics read is
+  // refused while the reconciliation status is NOT_RUN or NOT_RECONCILED (details.status,
+  // details.mismatch_count). HTTP 409.
+  'USAGE_ROLLUP_NOT_RECONCILED',
+  // CCP-B2 (PBD §5.3 row B2; MP-A2 N-16) — a catalog draft write refused: the version is not a
+  // DRAFT (a PUBLISHED or RETIRED version is never edited; a change of terms is a new version),
+  // the plan already has a DRAFT, the draft changed since it was read, or the edit names a term
+  // the version does not carry. details.reason = not_draft | draft_exists | stale | plan_mismatch
+  // | contract_priced | term_missing. HTTP 409.
+  'COMMERCIAL_CATALOG_CONFLICT',
 ] as const;
 
 export type ErrorCode = (typeof ERROR_CODES)[number];

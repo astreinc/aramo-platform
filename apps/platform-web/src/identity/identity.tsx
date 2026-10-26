@@ -30,6 +30,13 @@ export interface OperatorIdentity {
 
 const ROLE_LABEL: Readonly<Record<string, string>> = {
   super_admin: 'Super admin',
+  // CCP-B1 — the six commercial platform roles (CCP-UI v1.0 handoff §3).
+  platform_owner: 'Platform owner',
+  finance_admin: 'Finance admin',
+  commercial_ops: 'Commercial ops',
+  catalog_manager: 'Catalog manager',
+  support_admin: 'Support admin',
+  read_only_auditor: 'Read-only auditor',
 };
 
 /** Human label for a role key: known keys from the table, others "snake_case" → "Snake case". */

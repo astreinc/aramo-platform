@@ -33,6 +33,7 @@
       "@aramo/auth-service": ["./apps/auth-service/src/app/auth/auth.module.ts"],
       "@aramo/sign-service": ["./apps/sign-service/src/app/app.module.ts"],
       "@aramo/talent-intelligence-service": ["./apps/talent-intelligence-service/src/app/app.module.ts"],
+      "@aramo/platform-admin": ["./apps/platform-admin/src/app/app.module.ts"],
       "@aramo/auth-storage": ["./libs/auth-storage/src/index.ts"],
       "@aramo/authorization": ["./libs/authorization/src/index.ts"],
       "@aramo/calendar": ["./libs/calendar/src/index.ts"],

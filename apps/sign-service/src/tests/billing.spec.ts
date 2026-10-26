@@ -26,8 +26,15 @@ const signed = (body: string) => {
 function setup(over: Partial<Record<string, unknown>> = {}) {
   const lifecycle = {
     handleEvent: vi.fn(async () => ({ outcome: 'APPLIED', tenant_id: 't-1', activated_owner_user_id: 'u-owner' })),
-    account: vi.fn(async () => ({ subscription: null, allowance: { subscribed: false, allowance_key: 'sign.envelopes', state: 'NONE' }, billing_available: true })),
+    account: vi.fn(async () => ({
+      subscription: null,
+      allowance: { subscribed: false, allowance_key: 'sign.envelopes', state: 'NONE' },
+      billing_available: true,
+      tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' },
+    })),
     sendingOwner: vi.fn(async () => null),
+    // CCP-A6-R (C-8) — the tenant-facing held-activation state (null = nothing held).
+    tenantActivationState: vi.fn(async () => null),
     startCheckout: vi.fn(async () => ({ url: 'https://checkout.stripe.test/x' })),
     portal: vi.fn(async () => ({ url: 'https://billing.stripe.test/p' })),
     listSellablePlans: vi.fn(async () => []),
@@ -47,6 +54,29 @@ function setup(over: Partial<Record<string, unknown>> = {}) {
 }
 
 describe('EsignBillingController', () => {
+  it('A6R-SIGN-1 (C-8) a held activation reaches the tenant as the safe pending state only: no flag, reason or activation', async () => {
+    const pending = { state: 'PENDING', message: 'Subscription activation pending — contact support' };
+    const { controller } = setup({ tenantActivationState: vi.fn(async () => pending) });
+    const out = (await controller.account(auth(['sign:billing:manage']), 'r')) as Record<string, unknown>;
+    expect(out['pending_activation']).toEqual(pending);
+    expect(JSON.stringify(out)).not.toMatch(/governed_subscription_open|reconciliation|flag/i);
+  });
+
+  it('C5-SIGN-1 the tenant billing account read carries the designed disabled tax state (no setting enables it)', async () => {
+    const before = process.env['STRIPE_AUTOMATIC_TAX'];
+    process.env['STRIPE_AUTOMATIC_TAX'] = '1';
+    try {
+      const { controller } = setup();
+      for (const scopes of [['sign:billing:manage'], ['sign:envelope:read']]) {
+        const out = (await controller.account(auth(scopes), 'r')) as Record<string, unknown>;
+        expect(out['tax']).toEqual({ enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' });
+      }
+    } finally {
+      if (before === undefined) delete process.env['STRIPE_AUTOMATIC_TAX'];
+      else process.env['STRIPE_AUTOMATIC_TAX'] = before;
+    }
+  });
+
   const env = { ...process.env };
   beforeEach(() => {
     process.env['STRIPE_WEBHOOK_SECRET'] = SECRET;
@@ -74,7 +104,7 @@ describe('EsignBillingController', () => {
   it('a verified webhook is processed and activates the subscribing owner', async () => {
     const { controller, lifecycle, owners } = setup();
     expect(await controller.stripeWebhook(req(body), signed(body), 'r')).toEqual({ received: true, outcome: 'APPLIED' });
-    expect(lifecycle.handleEvent).toHaveBeenCalledWith(expect.objectContaining({ id: 'evt_1', type: 'checkout.session.completed', subscription_ref: 'sub_1' }));
+    expect(lifecycle.handleEvent).toHaveBeenCalledWith(expect.objectContaining({ id: 'evt_1', type: 'checkout.session.completed', subscription_ref: 'sub_1' }), 'sign');
     expect(owners.activate).toHaveBeenCalledWith('t-1', 'u-owner', 'r');
   });
 
@@ -90,6 +120,7 @@ describe('EsignBillingController', () => {
     const { controller, lifecycle, ctx } = setup();
     await controller.checkout(auth(['sign:billing:manage']), 'r', { plan_key: 'aramo-sign-business-v1' });
     expect(lifecycle.startCheckout).toHaveBeenCalledWith({
+      product_key: 'sign',
       tenant_id: 't-1',
       user_id: 'u-owner',
       user_email: 'owner@astre.test',
@@ -125,6 +156,7 @@ describe('EsignBillingController', () => {
     expect(await controller.account(auth(['sign:envelope:read']), 'r')).toMatchObject({ can_manage_billing: false, self_service_eligible: true });
     expect(await controller.account(auth(['sign:envelope:read', 'tenant:admin:settings']), 'r')).toMatchObject({ can_manage_billing: false });
     expect(await controller.account(auth(['sign:billing:manage']), 'r')).toMatchObject({ can_manage_billing: true });
+    expect(await controller.account(auth(['sign:billing:manage']), 'r')).toMatchObject({ pending_activation: null });
   });
 
   it('heals a missed owner grant on the subscribing owner’s own read only', async () => {
@@ -144,6 +176,8 @@ describe('EsignBillingController', () => {
     expect(billingHttpError(new BillingRefusedError('TERMS_NOT_ACCEPTED'), 'r')).toMatchObject({ code: 'VALIDATION_ERROR', statusCode: 400 });
     expect(billingHttpError(new BillingRefusedError('ALREADY_SUBSCRIBED'), 'r')).toMatchObject({ code: 'ESIGN_BILLING_CONFLICT', statusCode: 409, context: { details: { reason: 'ALREADY_SUBSCRIBED' } } });
     expect(billingHttpError(new BillingRefusedError('NO_BILLING_ACCOUNT'), 'r')).toMatchObject({ code: 'ESIGN_BILLING_CONFLICT', context: { details: { reason: 'NO_BILLING_ACCOUNT' } } });
+    // CCP-A6 (Conversion Rule C-4) — a new typed refusal; ALREADY_SUBSCRIBED keeps its meaning.
+    expect(billingHttpError(new BillingRefusedError('GOVERNED_SUBSCRIPTION_OPEN'), 'r')).toMatchObject({ code: 'ESIGN_BILLING_CONFLICT', statusCode: 409, context: { details: { reason: 'governed_subscription_open' } } });
     expect(billingHttpError(new Error('secret detail'), 'r')).toMatchObject({ code: 'INTERNAL_ERROR', message: 'Billing request failed' });
   });
 

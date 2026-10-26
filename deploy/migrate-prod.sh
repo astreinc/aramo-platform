@@ -85,10 +85,20 @@ UNTIL=""
 # Read a single value from the .env file WITHOUT shell-sourcing it, so a '$'
 # (or other shell metachar) in the value is taken verbatim — never expanded.
 # Strips one layer of surrounding single/double quotes. Last assignment wins.
+# A key with NO line in the file prints nothing and returns 0 (CCP-FIX1, D5-DEF-1):
+# grep's "no match" exit 1 used to fail the whole pipeline under `set -euo pipefail`
+# inside `X="$(read_env …)"`, killing the script before the caller's `${X:-default}`
+# could apply. Every caller now decides explicitly what an absent key means
+# (a documented default, or a FATAL before anything is applied).
 read_env() {
   local key="$1"
-  grep -E "^${key}=" "$ENV_FILE" 2>/dev/null | tail -n1 | cut -d= -f2- \
+  { grep -E "^${key}=" "$ENV_FILE" 2>/dev/null || true; } | tail -n1 | cut -d= -f2- \
     | sed -e 's/^"//' -e 's/"$//' -e "s/^'//" -e "s/'$//"
+}
+
+# 0 iff the .env has an assignment line for the key (commented-out lines do not count).
+env_has_key() {
+  grep -qE "^${1}=" "$ENV_FILE" 2>/dev/null
 }
 
 # Build DATABASE_URL exactly as docker-compose.prod.yml does for the api/auth
@@ -160,8 +170,9 @@ INTELLIGENCE_DB_NAME="aramo_intelligence"
 # The TI runner URL — host pinned to the 'postgres' service, NO password in the URL
 # (it travels as PGPASSWORD, so no URL-encoding concern). Mirrors the compose URL.
 build_intelligence_dburl() {
-  local user
-  user="$(read_env INTELLIGENCE_DB_USER)"; user="${user:-aramo_intelligence}"
+  local user="${TI_USER:-}"
+  [ -n "$user" ] || user="$(read_env INTELLIGENCE_DB_USER)"
+  user="${user:-aramo_intelligence}"
   printf 'postgresql://%s@postgres:5432/%s' "$user" "$INTELLIGENCE_DB_NAME"
 }
 
@@ -191,17 +202,45 @@ run_ti_container() { # script args...
     bash "$@"
 }
 
-migrate_intelligence() {
-  echo "[migrate] ── Talent Intelligence database (${INTELLIGENCE_DB_NAME}) — ATI-SEP-1 / ADR-0036 ──"
-  TI_USER="$(read_env INTELLIGENCE_DB_USER)"; TI_USER="${TI_USER:-aramo_intelligence}"
+# CCP-FIX1 (D5-DEF-1) — resolve and CHECK the Talent Intelligence settings BEFORE the
+# shared-database apply, so a missing setting stops the deploy with nothing applied
+# (never shared migrations applied and then the TI step abandoned half-way). Decisions:
+#   INTELLIGENCE_DB_USER absent or empty → the documented default 'aramo_intelligence'
+#     (the same default docker-compose.prod.yml and tools/ensure-intelligence-db.sh use;
+#     .env.prod.example ships the line commented out), announced explicitly.
+#   INTELLIGENCE_DB_USER not a valid role name [a-z_][a-z0-9_]* → FATAL (exit 2).
+#   INTELLIGENCE_DB_PASSWORD absent or empty → FATAL (exit 2): the TI container cannot
+#     start without it (compose `:?` guard), so nothing is applied.
+resolve_intelligence_env() {
+  TI_USER="$(read_env INTELLIGENCE_DB_USER)"
+  if [ -z "$TI_USER" ]; then
+    if env_has_key INTELLIGENCE_DB_USER; then
+      echo "[migrate] INTELLIGENCE_DB_USER is empty in ${ENV_FILE} — using the documented default 'aramo_intelligence' (as docker-compose.prod.yml does)."
+    else
+      echo "[migrate] INTELLIGENCE_DB_USER is not set in ${ENV_FILE} — using the documented default 'aramo_intelligence' (as docker-compose.prod.yml does)."
+    fi
+    TI_USER="aramo_intelligence"
+  fi
+  if ! printf '%s' "$TI_USER" | grep -qE '^[a-z_][a-z0-9_]*$'; then
+    echo "[migrate] FATAL: INTELLIGENCE_DB_USER '${TI_USER}' in ${ENV_FILE} is not a valid role name ([a-z_][a-z0-9_]*)." >&2
+    echo "[migrate] Nothing was applied (checked before the shared-database apply)." >&2
+    exit 2
+  fi
   TI_PASSWORD="$(read_env INTELLIGENCE_DB_PASSWORD)"
-  TI_DBURL="$(build_intelligence_dburl)"
   if [ -z "$TI_PASSWORD" ]; then
     echo "[migrate] FATAL: INTELLIGENCE_DB_PASSWORD is not set in ${ENV_FILE} — the talent-intelligence-service" >&2
     echo "[migrate] container cannot start without it (docker-compose.prod.yml guards it). Set a 16+ char" >&2
     echo "[migrate] URL-safe value [A-Za-z0-9._~-] (see .env.prod.example) and re-run." >&2
+    echo "[migrate] Nothing was applied (checked before the shared-database apply)." >&2
     exit 2
   fi
+  TI_DBURL="$(build_intelligence_dburl)"
+}
+
+migrate_intelligence() {
+  echo "[migrate] ── Talent Intelligence database (${INTELLIGENCE_DB_NAME}) — ATI-SEP-1 / ADR-0036 ──"
+  # Resolved by main() before the shared apply; resolved again here only when called alone.
+  [ -n "${TI_USER:-}" ] && [ -n "${TI_PASSWORD:-}" ] && [ -n "${TI_DBURL:-}" ] || resolve_intelligence_env
   echo "[migrate] TI: ensuring role ${TI_USER} + database ${INTELLIGENCE_DB_NAME} (idempotent; nothing dropped)…"
   run_ti_container tools/ensure-intelligence-db.sh
   echo "[migrate] TI pre-apply status:"
@@ -242,6 +281,8 @@ main() {
     echo "[migrate] FATAL: env file not found: $ENV_FILE" >&2; exit 2; }
 
   DBURL="$(build_dburl)"
+  # D5-DEF-1: every Talent Intelligence precondition is checked before anything is applied.
+  resolve_intelligence_env
 
   echo "[migrate] network=${NETWORK} repo=${ARAMO_DIR} image=${MIGRATE_IMAGE}"
   if [ -n "$UNTIL" ]; then

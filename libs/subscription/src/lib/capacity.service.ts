@@ -1,7 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { v7 as uuidv7 } from 'uuid';
 
+import { planVersionTerms } from './plan-version.js';
 import { PrismaService } from './prisma/prisma.service.js';
+import { assertMeteredKeyOf, openBaseSubscription, type ProductKey } from './product-registry.js';
 
 // Commercial Plans Amendment A1 — per-tenant capacity limits (not periodic):
 // storage bytes, template count. "Unlimited signing is not unlimited storage."
@@ -17,6 +19,11 @@ import { PrismaService } from './prisma/prisma.service.js';
 // NOT_SUBSCRIBED. A plan without a row for the capacity (the pre-catalog
 // operator plan) is not limited; an unlimited row is not limited. Usage is
 // always recorded.
+// CCP-A4 (MP-A2 N-11) — the product is explicit (a required ProductKey); only that
+// product's open BASE subscription decides the limit, and the capacity key must belong
+// to that product (sign.storage_bytes → sign).
+// CCP-A5 (MP-A2 N-18) — the limit comes from the subscription's PINNED plan version
+// (grandfathering; checksum-verified, fail closed).
 
 export type CapacityRefusal = 'NOT_SUBSCRIBED' | 'CAPACITY_EXCEEDED';
 
@@ -37,15 +44,16 @@ type Tx = Parameters<Parameters<PrismaService['$transaction']>[0]>[0];
 export class CapacityService {
   constructor(private readonly prisma: PrismaService) {}
 
-  private async limitOf(db: Tx | PrismaService, tenant_id: string, capacity_key: string): Promise<{ subscribed: boolean; limit: number | null }> {
+  private async limitOf(db: Tx | PrismaService, tenant_id: string, product_key: ProductKey, capacity_key: string): Promise<{ subscribed: boolean; limit: number | null }> {
+    assertMeteredKeyOf(product_key, capacity_key);
     const sub = await db.tenantSubscription.findFirst({
-      where: { tenant_id, ended_at: null },
-      include: { plan: { include: { capacities: { where: { capacity_key } } } } },
+      where: openBaseSubscription(tenant_id, product_key),
+      include: { plan_version: true },
     });
     if (sub === null) return { subscribed: false, limit: null };
-    const row = sub.plan.capacities[0];
+    const row = planVersionTerms(sub.plan_version).capacities.find((c) => c.capacity_key === capacity_key);
     if (row === undefined || row.unlimited || row.limit_quantity === null) return { subscribed: true, limit: null };
-    return { subscribed: true, limit: Number(row.limit_quantity) };
+    return { subscribed: true, limit: row.limit_quantity };
   }
 
   private async usedOf(db: Tx | PrismaService, tenant_id: string, capacity_key: string): Promise<number> {
@@ -53,12 +61,13 @@ export class CapacityService {
     return Number(agg._sum.quantity ?? 0n);
   }
 
-  async status(tenant_id: string, capacity_key: string): Promise<CapacityStatus & { subscribed: boolean }> {
-    const { subscribed, limit } = await this.limitOf(this.prisma, tenant_id, capacity_key);
+  async status(tenant_id: string, product_key: ProductKey, capacity_key: string): Promise<CapacityStatus & { subscribed: boolean }> {
+    const { subscribed, limit } = await this.limitOf(this.prisma, tenant_id, product_key, capacity_key);
     return { capacity_key, limit, unlimited: limit === null, used: await this.usedOf(this.prisma, tenant_id, capacity_key), subscribed };
   }
 
-  async reserve(input: { tenant_id: string; capacity_key: string; ref: string; quantity: number; enforce?: boolean; at?: Date }): Promise<CapacityReserveResult> {
+  async reserve(input: { tenant_id: string; product_key: ProductKey; capacity_key: string; ref: string; quantity: number; enforce?: boolean; at?: Date }): Promise<CapacityReserveResult> {
+    assertMeteredKeyOf(input.product_key, input.capacity_key);
     if (!Number.isSafeInteger(input.quantity) || input.quantity < 0) throw new Error('capacity quantity must be a non-negative integer');
     const enforce = input.enforce ?? true;
     const at = input.at ?? new Date();
@@ -66,7 +75,7 @@ export class CapacityService {
       await tx.$executeRaw`SELECT pg_advisory_xact_lock(hashtextextended(${`capacity:${input.tenant_id}:${input.capacity_key}`}, 0))`;
       const key = { tenant_id: input.tenant_id, capacity_key: input.capacity_key, ref: input.ref };
       const existing = await tx.capacityUsage.findUnique({ where: { tenant_id_capacity_key_ref: key } });
-      const { subscribed, limit } = await this.limitOf(tx, input.tenant_id, input.capacity_key);
+      const { subscribed, limit } = await this.limitOf(tx, input.tenant_id, input.product_key, input.capacity_key);
       const used = await this.usedOf(tx, input.tenant_id, input.capacity_key);
       const status = (u: number): CapacityStatus => ({ capacity_key: input.capacity_key, limit, unlimited: limit === null, used: u });
       if (existing !== null && existing.state === 'ACTIVE') return { ok: true, already: true, status: status(used) } as const;
@@ -81,7 +90,8 @@ export class CapacityService {
     });
   }
 
-  async release(input: { tenant_id: string; capacity_key: string; ref: string; at?: Date }): Promise<boolean> {
+  async release(input: { tenant_id: string; product_key: ProductKey; capacity_key: string; ref: string; at?: Date }): Promise<boolean> {
+    assertMeteredKeyOf(input.product_key, input.capacity_key);
     const n = await this.prisma.capacityUsage.updateMany({
       where: { tenant_id: input.tenant_id, capacity_key: input.capacity_key, ref: input.ref, state: 'ACTIVE' },
       data: { state: 'RELEASED', released_at: input.at ?? new Date() },

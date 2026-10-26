@@ -1,12 +1,13 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
+import { Client } from 'pg';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveEntitlementMigrations } from '@aramo/common';
 
 import type { Capability } from '../lib/capability.js';
 import { DEFAULT_TENANT_CAPABILITIES } from '../lib/capability.js';
@@ -18,15 +19,13 @@ import {
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 
 // T2-E1-HF2 — reconciliation integration (real Postgres 17). Applies the
-// entitlement init migration, provisions a minimal identity."Tenant" (the
+// entitlement migrations (CCP-A7: the full set, whole-file, from the shared
+// helper — the repository reads the A7 columns), provisions a minimal identity."Tenant" (the
 // cross-schema existence check reads it), and proves: idempotent additive grant
 // to the ACTUAL target id, no duplicates on rerun, partial repair, tenant
 // isolation, and fail-closed on a non-existent tenant.
 
-const MIGRATION_PATH = resolve(
-  __dirname,
-  '../../prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
-);
+const REPO_ROOT = resolve(__dirname, '../../../..');
 
 const TENANT_A = '11111111-1111-7111-8111-111111111111';
 const TENANT_B = '22222222-2222-7222-8222-222222222222';
@@ -41,7 +40,7 @@ function makeDeps(prisma: PrismaService): EntitlementReconcileDeps {
       return rows[0]?.present === true;
     },
     getCapabilities: (id) => repo.getCapabilities(id),
-    grantCapabilities: (a) => repo.grantCapabilities(a),
+    grantCapabilities: (a) => repo.grantCapabilities({ ...a, granted_source: 'PROVISIONING' }),
   };
 }
 
@@ -62,19 +61,13 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     beforeAll(async () => {
       container = await new PostgreSqlContainer(ARAMO_POSTGRES_TEST_IMAGE).start();
       const url = container.getConnectionUri();
+      // Apply every entitlement migration whole-file (CCP-A7 carries trigger bodies).
+      const ddl = new Client({ connectionString: url });
+      await ddl.connect();
+      for (const m of resolveEntitlementMigrations(REPO_ROOT)) await ddl.query(readFileSync(m, 'utf8'));
+      await ddl.end();
       const setup = new PrismaService(url);
       await setup.$connect();
-      // Apply the entitlement init migration (skip full-line comments so a ';'
-      // inside a comment can never split a statement).
-      const sql = readFileSync(MIGRATION_PATH, 'utf8')
-        .split('\n')
-        .filter((l) => !/^\s*--/.test(l))
-        .join('\n');
-      for (const stmt of sql.split(';')) {
-        const trimmed = stmt.trim();
-        if (trimmed.length === 0) continue;
-        await setup.$executeRawUnsafe(trimmed);
-      }
       // Minimal identity.Tenant for the cross-schema existence check.
       await setup.$executeRawUnsafe('CREATE SCHEMA IF NOT EXISTS identity');
       await setup.$executeRawUnsafe(
@@ -122,7 +115,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         required: DEFAULT_TENANT_CAPABILITIES,
       });
       expect(second.granted).toHaveLength(0);
-      // still exactly 3 — no duplicate rows (composite PK + skipDuplicates)
+      // still exactly 3 — no duplicate rows (composite PK + the CCP-A7 provenance upsert)
       expect(await capCount(prisma, TENANT_A)).toBe(3);
       const total = await prisma.$queryRaw<Array<{ n: bigint }>>`
         SELECT count(*)::int AS n FROM entitlement."TenantEntitlement" WHERE tenant_id = ${TENANT_A}::uuid`;
@@ -134,6 +127,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await repo.grantCapabilities({
         tenant_id: TENANT_A,
         capabilities: ['core'] as Capability[],
+        granted_source: 'PROVISIONING',
       });
       const r = await reconcileTenantEntitlements(deps, {
         tenantId: TENANT_A,

@@ -1798,6 +1798,18 @@ components:
         holds the owner's email domain (one organization per email domain;
         details.reason organization_domain_taken). Also returned when an operator
         revokes a shared-domain exception while another holder exists.
+        CCP-A3 adds CCP_NOT_BOOTSTRAPPED (HTTP 409; the request's approval chain cannot
+        be fulfilled by independent eligible humans), COMMERCIAL_APPROVAL_REFUSED (HTTP
+        409; details.refusal names one of the seven approval refusals),
+        COMMERCIAL_CHANGE_REQUEST_CONFLICT (HTTP 409; details.reason) and
+        COMMERCIAL_POLICY_UNAVAILABLE (HTTP 503; no valid ACTIVE commercial policy).
+        CCP-A9 adds PLATFORM_LAST_OWNER (HTTP 409; the write would leave the platform
+        without its last effective platform_owner; details.reason platform_last_owner).
+        CCP-D1 adds USAGE_ROLLUP_NOT_RECONCILED (HTTP 409; usage roll-ups are read-only
+        until their totals reconcile; details.status NOT_RUN or NOT_RECONCILED).
+        CCP-B2 adds COMMERCIAL_CATALOG_CONFLICT (HTTP 409; a catalog draft write refused:
+        details.reason not_draft, draft_exists, stale, plan_mismatch, contract_priced or
+        term_missing; a published version is never edited).
         Declaration order in this enum matches ERROR_CODES tuple
         order in libs/common/src/lib/errors/error-codes.ts.
       enum:
@@ -2038,6 +2050,13 @@ components:
         - RTR_STAGE_NOT_ELIGIBLE
         - TENANT_DOMAIN_UNAVAILABLE
         - DOMAIN_ALREADY_VERIFIED
+        - CCP_NOT_BOOTSTRAPPED
+        - COMMERCIAL_APPROVAL_REFUSED
+        - COMMERCIAL_CHANGE_REQUEST_CONFLICT
+        - COMMERCIAL_POLICY_UNAVAILABLE
+        - PLATFORM_LAST_OWNER
+        - USAGE_ROLLUP_NOT_RECONCILED
+        - COMMERCIAL_CATALOG_CONFLICT
 
     ErrorObject:
       type: object

@@ -1,0 +1,250 @@
+/* CCP-B1 — the Commercial screens (the Approvals inbox, the change-request drawer,
+ * the placeholders). Every value is copied from the pinned Commercial Control Plane
+ * v1.0.dc.html (CCP-UI v1.0) and expressed through the theme.css token layer
+ * (--pw-*); no hex literals. Prefix `pc-`. */
+
+/* ── page ── */
+.pc-page {
+  min-width: 0;
+}
+/* The bootstrap banner spans the content column directly under the top bar (the
+ * design draws it between the header and <main>): pull it over <main>'s
+ * 28px 32px padding and keep the 28px gap to the page header. */
+.pc-page > .pw-bootbanner {
+  margin: -28px -32px 28px;
+}
+.pc-head {
+  margin-bottom: 18px;
+}
+.pc-h1 {
+  margin: 0;
+  font-size: var(--pw-fs-24);
+  font-weight: 700;
+  letter-spacing: var(--pw-tracking-tight);
+}
+.pc-intro {
+  max-width: 720px;
+  margin: 6px 0 0;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-14);
+}
+.pc-note {
+  margin: 10px 0 0;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12-5);
+}
+
+/* ── inbox tabs ── */
+.pc-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 14px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--pw-line);
+}
+.pc-tab {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 40px;
+  margin-bottom: -1px;
+  padding: 0 12px;
+  border: none;
+  border-bottom: 2px solid transparent;
+  background: transparent;
+  color: var(--pw-ink);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-13-5);
+  font-weight: 500;
+  white-space: nowrap;
+  cursor: pointer;
+}
+.pc-tab--on {
+  border-bottom-color: var(--pw-midnight);
+  font-weight: 700;
+}
+.pc-tab:focus-visible {
+  outline: 2px solid var(--pw-focus);
+  outline-offset: 2px;
+}
+.pc-tab__count {
+  padding: 1px 7px;
+  border-radius: 9px;
+  background: var(--pw-rule);
+  color: var(--pw-muted);
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-11);
+  font-weight: 400;
+}
+
+/* ── card + table ── */
+.pc-card {
+  overflow: hidden;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-card);
+  background: var(--pw-surface);
+}
+.pc-card__alert {
+  margin: 14px 16px;
+}
+.pc-scroll {
+  overflow-x: auto;
+}
+.pc-table {
+  width: 100%;
+  min-width: 980px;
+  border-collapse: collapse;
+  font-size: var(--pw-fs-13);
+}
+.pc-table th {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--pw-rule);
+  background: var(--pw-surface-2);
+  color: var(--pw-faint);
+  font-size: var(--pw-fs-11);
+  font-weight: 600;
+  letter-spacing: var(--pw-tracking-caps);
+  text-align: left;
+  text-transform: uppercase;
+}
+.pc-table td {
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--pw-rule);
+  vertical-align: top;
+}
+.pc-row {
+  cursor: pointer;
+}
+.pc-row:hover {
+  background: var(--pw-row-hover);
+}
+.pc-row:focus-visible {
+  outline: 2px solid var(--pw-focus);
+  outline-offset: -2px;
+}
+.pc-row__id {
+  color: var(--pw-link);
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-12);
+  font-weight: 600;
+}
+.pc-row__type,
+.pc-row__tenant {
+  font-weight: 600;
+}
+.pc-row__type {
+  margin-top: 2px;
+}
+.pc-row__sub {
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12);
+}
+.pc-row__change {
+  max-width: 280px;
+}
+.pc-row__by {
+  margin-top: 2px;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12);
+}
+.pc-row__exp {
+  font-weight: 600;
+}
+.pc-nowrap {
+  white-space: nowrap;
+}
+.pc-mono12 {
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-12);
+}
+.pc-tone--ink {
+  color: var(--pw-ink);
+}
+.pc-tone--warn {
+  color: var(--pw-warn);
+}
+.pc-tone--danger {
+  color: var(--pw-danger);
+}
+
+/* ── drawer (handoff §5.2) ── */
+.pc-dr {
+  display: grid;
+  align-content: start;
+  gap: 18px;
+}
+.pc-dr-id {
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-13);
+  font-weight: 600;
+}
+.pc-dr-facts {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  gap: 6px 14px;
+  margin: 0;
+  font-size: var(--pw-fs-13);
+}
+.pc-dr-facts dt {
+  color: var(--pw-muted);
+}
+.pc-dr-facts dd {
+  margin: 0;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+.pc-dr-win {
+  font-weight: 600;
+}
+.pc-caps8 {
+  margin-bottom: 8px;
+}
+.pc-dr-foot {
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12-5);
+}
+/* The drawer footer's 36px buttons (design `btn`: 0 14px, 13px / 600). */
+.pc-btn36 {
+  height: 36px;
+  padding: 0 14px;
+  font-size: var(--pw-fs-13);
+  font-weight: 600;
+}
+
+/* ── placeholder (designed disabled state, R-13) ── */
+.pc-soon {
+  padding: 32px 20px;
+  border: 1px dashed var(--pw-crumb-sep);
+  border-radius: var(--pw-r-card);
+  background: var(--pw-surface);
+  text-align: center;
+}
+.pc-soon__body {
+  margin: 4px 0 0;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-13);
+}
+/* The drawer body takes focus programmatically after an action (not a tab stop). */
+.pc-dr:focus {
+  outline: none;
+}
+
+/* CCP-UI-V12 — inbox additions (Commercial Control Plane v1.2.dc.html, approvals rows). */
+.pc-row__chip {
+  margin-top: 4px;
+}
+.pc-row__tag {
+  padding: 1px 6px;
+  border-radius: var(--pw-r-xs);
+  background: var(--pw-role-badge-bg);
+  color: var(--pw-role-badge-fg);
+  font-size: var(--pw-fs-11);
+  font-weight: 600;
+}
+.pc-row__older {
+  color: var(--pw-warn);
+  font-size: var(--pw-fs-11-5);
+}
+.pc-dr-restricted {
+  color: var(--pw-muted);
+}

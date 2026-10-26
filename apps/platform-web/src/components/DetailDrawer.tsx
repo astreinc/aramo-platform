@@ -21,9 +21,15 @@ export interface DetailDrawerProps {
   readonly children: ReactNode;
   /** The action row pinned to the bottom. */
   readonly footer?: ReactNode;
+  /**
+   * CCP-B1: `ccp` is the CCP-UI v1.0 change-request drawer (handoff §5.2):
+   * min(640px, 96vw), the subtitle row (id + pill) above an 18px title, a 16px 20px
+   * body and the #FAFBFC footer. Default: the PLATFORM-UX-1 drawer, unchanged.
+   */
+  readonly variant?: 'default' | 'ccp';
 }
 
-export function DetailDrawer({ open, onOpenChange, title, subtitle, children, footer }: DetailDrawerProps) {
+export function DetailDrawer({ open, onOpenChange, title, subtitle, children, footer, variant = 'default' }: DetailDrawerProps) {
   useReturnFocus(open);
   return (
     <Dialog
@@ -33,11 +39,11 @@ export function DetailDrawer({ open, onOpenChange, title, subtitle, children, fo
       description={subtitle}
       footer={footer}
     >
-      <div className="pw-drawer">
+      <div className={variant === 'ccp' ? 'pw-drawer pw-drawer--ccp' : 'pw-drawer'}>
         {children}
         {/* After the content, so focus lands on the first field when the dialog opens. */}
         <DialogClose className="pw-drawer__close" aria-label="Close">
-          ×
+          {variant === 'ccp' ? '✕' : '×'}
         </DialogClose>
       </div>
     </Dialog>

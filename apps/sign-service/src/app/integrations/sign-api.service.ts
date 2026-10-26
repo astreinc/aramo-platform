@@ -5,7 +5,7 @@ import { AramoError } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
 import { DOCUMENT_STORAGE_PORT, type DocumentStoragePort, EnvelopeNotFoundError, EsignRepository } from '@aramo/sign';
 import { ESIGN_SCOPE } from '@aramo/identity';
-import { AllowanceService, ESIGN_ENVELOPE_ALLOWANCE } from '@aramo/subscription';
+import { AllowanceService, ESIGN_ENVELOPE_ALLOWANCE, SIGN_PRODUCT_KEY } from '@aramo/subscription';
 import { SafePdfPipeline, UnsafePdfError } from '@aramo/documents-rendering';
 import type { ProviderFieldInput } from '@aramo/documents-contracts';
 import { PDFDocument } from 'pdf-lib';
@@ -61,7 +61,7 @@ export class SignApiService {
   // D-12 — the Sign-owned availability contract (replaces direct subscription reads).
   async availability(auth: AuthContextType, integ?: SignIntegrationContext, requestId = '') {
     if (integ !== undefined) this.assertNotEventGrant(integ, requestId);
-    const status = await this.allowance.getStatus(auth.tenant_id, ESIGN_ENVELOPE_ALLOWANCE);
+    const status = await this.allowance.getStatus(auth.tenant_id, SIGN_PRODUCT_KEY, ESIGN_ENVELOPE_ALLOWANCE);
     if (!status.subscribed) return { available: false, reason: 'NOT_SUBSCRIBED' as const, allowance: null };
     const allowance = {
       limit: status.limit,

@@ -14,19 +14,24 @@
 //   - additive only: grant ONLY the missing members of the canonical bundle via
 //     deps.grantCapabilities; never delete; never touch RBAC/tenant/subscription.
 //   - idempotent: a second run after convergence grants nothing.
+//   - CCP-A7 resurrection guard (Charter D1 / G4): a capability under a governed revoke reads as
+//     not held, so it is "missing" here, but the grant never clears a revoke (the provenance
+//     upsert + DB trigger). It is reported as `withheld_revoked`, never as granted, and `final`
+//     excludes it — the seed-prod Gate 3 then fails closed instead of false-passing. Only a
+//     governed re-grant (a change request) restores it. Reconciliation never revokes (C-20).
 
 import type { Capability } from './capability.js';
 
 export interface EntitlementReconcileDeps {
   // True iff the tenant row exists in the identity store.
   tenantExists(tenantId: string): Promise<boolean>;
-  // Capabilities currently entitled to the tenant.
+  // Capabilities currently entitled to the tenant (ACTIVE rows only, CCP-A7).
   getCapabilities(tenantId: string): Promise<Set<Capability>>;
-  // Grant (additive, idempotent) the given capabilities to the tenant.
+  // Grant (additive, idempotent, never clears a governed revoke) the given capabilities.
   grantCapabilities(args: {
     tenant_id: string;
     capabilities: readonly Capability[];
-  }): Promise<void>;
+  }): Promise<unknown>;
 }
 
 export interface EntitlementReconcileResult {
@@ -34,6 +39,8 @@ export interface EntitlementReconcileResult {
   required: readonly Capability[];
   already_present: Capability[];
   granted: Capability[];
+  // CCP-A7 — missing because of a governed revoke, and deliberately NOT re-granted.
+  withheld_revoked: Capability[];
   final: Capability[];
 }
 
@@ -87,7 +94,8 @@ export async function reconcileTenantEntitlements(
     tenant_id: tenantId,
     required: input.required,
     already_present: alreadyPresent,
-    granted: missing,
+    granted: missing.filter((c) => after.has(c)),
+    withheld_revoked: missing.filter((c) => !after.has(c)),
     final: input.required.filter((c) => after.has(c)),
   };
 }

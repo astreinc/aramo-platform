@@ -1,0 +1,215 @@
+/* CCP-B2 — the commercial components (CCP handoff §5.10, §6): the chain preview strip and the
+ * commercial request dialog. Values from Commercial Control Plane v1.0.dc.html; every colour is a
+ * platform token (theme.css). Prefix `pw-chain` / `pw-crd`. */
+
+/* ─────────── ChainPreview ─────────── */
+.pw-chain {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-box);
+  background: var(--pw-surface-2);
+  font-size: var(--pw-fs-13);
+}
+.pw-chain__lead {
+  color: var(--pw-muted);
+}
+.pw-chain__steps {
+  color: var(--pw-ink-2);
+}
+.pw-chain__meta {
+  margin-left: auto;
+  color: var(--pw-muted);
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-11-5);
+}
+
+/* ─────────── CommercialRequestDialog — scoped to dialogs holding .pw-crd ─────────── */
+.tc-dialog__overlay:has(+ .tc-dialog__content .pw-crd),
+body:has(.pw-crd) .tc-dialog__overlay {
+  z-index: 95;
+  background: var(--pw-overlay);
+}
+.tc-dialog__content:has(.pw-crd) {
+  /* Centred without a transform (the design's grid overlay, place-items:center). */
+  inset: 0;
+  margin: auto;
+  height: fit-content;
+  transform: none;
+  z-index: 96;
+  display: flex;
+  flex-direction: column;
+  width: min(600px, 94vw);
+  max-width: none;
+  max-height: 88vh;
+  gap: 0;
+  padding: 0;
+  overflow: hidden;
+  border: none;
+  border-radius: var(--pw-r-dialog);
+  background: var(--pw-surface);
+  box-shadow: var(--pw-shadow-dialog-ccp);
+}
+.tc-dialog__content:has(.pw-crd) .tc-dialog__title {
+  margin: 0;
+  padding: 18px 22px 0;
+  color: var(--pw-ink);
+  font-size: var(--pw-fs-18);
+  font-weight: 700;
+  line-height: normal;
+  letter-spacing: normal;
+}
+.tc-dialog__content:has(.pw-crd) .tc-dialog__description {
+  margin: 0;
+  padding: 6px 22px 12px;
+  color: var(--pw-ink-2);
+  font-size: var(--pw-fs-13-5);
+  line-height: 1.5;
+}
+.tc-dialog__content:has(.pw-crd) .tc-dialog__body {
+  display: block;
+  min-height: 0;
+  padding: 4px 22px 16px;
+  overflow-y: auto;
+}
+.tc-dialog__content:has(.pw-crd) .tc-dialog__footer {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  margin: 0;
+  padding: 12px 22px;
+  border-top: 1px solid var(--pw-line);
+  background: var(--pw-surface-2);
+}
+.pw-crd {
+  display: grid;
+  gap: 14px;
+}
+.pw-crd__field {
+  display: block;
+}
+.pw-crd__label {
+  display: block;
+  margin-bottom: 5px;
+  font-size: var(--pw-fs-13);
+  font-weight: 600;
+}
+.pw-crd__input,
+.pw-crd__typed {
+  box-sizing: border-box;
+  width: 100%;
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--pw-line-2);
+  border-radius: var(--pw-r-md);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-13-5);
+  color: var(--pw-ink);
+  background: var(--pw-surface);
+}
+.pw-crd__typed {
+  border-color: var(--pw-terracotta);
+  font-family: var(--pw-mono);
+}
+.pw-crd__area {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 8px 10px;
+  border: 1px solid var(--pw-line-2);
+  border-radius: var(--pw-r-md);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-13-5);
+  color: var(--pw-ink);
+  background: var(--pw-surface);
+  resize: vertical;
+}
+.pw-crd__token {
+  padding: 0 5px;
+  border-radius: var(--pw-r-xs);
+  background: var(--pw-canvas);
+  font-family: var(--pw-mono);
+}
+.pw-crd__caps {
+  margin-bottom: 6px;
+  color: var(--pw-faint);
+  font-size: var(--pw-fs-11);
+  font-weight: 600;
+  letter-spacing: var(--pw-tracking-caps);
+  text-transform: uppercase;
+}
+.pw-crd__diff {
+  overflow: hidden;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-box);
+  font-size: var(--pw-fs-13);
+}
+.pw-crd__diff-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr) minmax(0, 1fr);
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--pw-rule);
+  background: var(--pw-surface);
+}
+.pw-crd__diff-row--changed {
+  background: var(--pw-ccp-diff-bg);
+}
+.pw-crd__diff-field,
+.pw-crd__diff-before {
+  color: var(--pw-muted);
+}
+.pw-crd__diff-row--changed .pw-crd__diff-before {
+  text-decoration: line-through;
+}
+.pw-crd__diff-row--changed .pw-crd__diff-after {
+  font-weight: 700;
+}
+.pw-crd__alert {
+  padding: 10px 14px;
+  border: 1px solid var(--pw-alert-error-line);
+  border-radius: var(--pw-r-box);
+  background: var(--pw-alert-error-bg);
+  color: var(--pw-alert-error-ink);
+  font-size: var(--pw-fs-13);
+}
+.pw-crd__btn {
+  height: 38px;
+  padding: 0 14px;
+  border: 1px solid var(--pw-line-2);
+  border-radius: var(--pw-r-md);
+  background: var(--pw-surface);
+  color: var(--pw-ink);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-13-5);
+  font-weight: 600;
+  cursor: pointer;
+}
+.pw-crd__btn--commit {
+  padding: 0 16px;
+  font-weight: 700;
+}
+.pw-crd__btn--terra {
+  border-color: var(--pw-terracotta);
+  background: var(--pw-terracotta);
+  color: var(--pw-midnight);
+}
+.pw-crd__btn--danger {
+  border-color: var(--pw-danger);
+  background: var(--pw-danger);
+  color: var(--pw-surface);
+}
+.pw-crd__btn--mid {
+  border-color: var(--pw-midnight);
+  background: var(--pw-midnight);
+  color: var(--pw-surface);
+}
+.pw-crd__btn:disabled {
+  cursor: not-allowed;
+}
+.pw-crd__btn--dim {
+  opacity: 0.45;
+}

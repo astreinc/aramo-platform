@@ -4,7 +4,7 @@ import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import { EntitlementRepository } from '@aramo/entitlement';
 import { TenantService } from '@aramo/identity';
-import { ESIGN_ENVELOPE_ALLOWANCE, SubscriptionLifecycleService } from '@aramo/subscription';
+import { ESIGN_ENVELOPE_ALLOWANCE, SIGN_PRODUCT_KEY, SubscriptionLifecycleService } from '@aramo/subscription';
 
 // Aramo Sign launch — the operator's READ-ONLY view of a tenant's Aramo Sign
 // account (support for the standalone product): product capabilities, the
@@ -36,7 +36,7 @@ export class PlatformSignController {
     if (tenant === null) throw new AramoError('NOT_FOUND', 'Tenant not found', 404, { requestId, details: { tenant_id } });
     const [capabilities, account, events] = await Promise.all([
       this.entitlements.getCapabilities(tenant_id),
-      this.lifecycle.account(tenant_id, ESIGN_ENVELOPE_ALLOWANCE),
+      this.lifecycle.account(tenant_id, SIGN_PRODUCT_KEY, ESIGN_ENVELOPE_ALLOWANCE),
       this.lifecycle.recentBillingEvents(tenant_id),
     ]);
     return {

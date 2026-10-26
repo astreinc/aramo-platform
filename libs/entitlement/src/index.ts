@@ -15,3 +15,17 @@ export {
   type EntitlementReconcileDeps,
   type EntitlementReconcileResult,
 } from './lib/reconcile-entitlements.js';
+// CCP-A6 — the in-transaction entitlement grant (raw cross-schema write on the caller's client).
+export { grantCapabilitiesInTx, UnknownCapabilityError } from './lib/grant-capabilities-in-tx.js';
+// CCP-A7 — provenance, the governed revoke (in-transaction) and the resurrection guard.
+export { revokeCapabilitiesInTx } from './lib/grant-capabilities-in-tx.js';
+export {
+  COMMERCIAL_GRANTED_SOURCES,
+  GRANTED_SOURCES,
+  isCommercialGrantSource,
+  isGrantedSource,
+  type EntitlementGrantOutcome,
+  type GovernedGrantSource,
+  type GrantedSource,
+  type UngovernedGrantSource,
+} from './lib/entitlement-provenance.js';

@@ -6,7 +6,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveEntitlementMigrations } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -59,10 +59,8 @@ type SignKey = CryptoKey | KeyObject;
 
 const ROOT = resolve(__dirname, '../../../..');
 
-const ENTITLEMENT_INIT = resolve(
-  ROOT,
-  'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
-);
+// CCP-A7 — the full entitlement set (the shared helper; the repository reads A7 columns).
+const ENTITLEMENT_MIGRATIONS = resolveEntitlementMigrations(ROOT);
 const REQUISITION_INIT = resolve(
   ROOT,
   'libs/requisition/prisma/migrations/20260602100000_init_requisition_model/migration.sql',
@@ -265,7 +263,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       setupClient = new Client({ connectionString: url });
       await setupClient.connect();
 
-      for (const p of [ENTITLEMENT_INIT, REQUISITION_INIT, REQUISITION_IMPORT_BACK_REF, REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_DROP_LEGACY_COMP, REQUISITION_RATE_TYPE_SUBK, REQUISITION_PUBLISH_SURFACE_MIGRATION, REQUISITION_LIFECYCLE_EVENT_MIGRATION, REQUISITION_VERSION_MIGRATION, REQUISITION_ONSITE_DAYS_MIGRATION, REQUISITION_NUMBER_MIGRATION, REQUISITION_LIFECYCLE_NULLABLE_MIGRATION, REQUISITION_USER_STATE_MIGRATION, REQUISITION_LIFECYCLE_APPEND_ONLY_MIGRATION, REQUISITION_S3_HOLD_DETAILS_MIGRATION, REQUISITION_LIFECYCLE_NEXT_STATUS_NULLABLE, resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'), REQUISITION_POSTAL_CODE_MIGRATION]) {
+      for (const p of [...ENTITLEMENT_MIGRATIONS, REQUISITION_INIT, REQUISITION_IMPORT_BACK_REF, REQUISITION_COMPENSATION_FIELDS, REQUISITION_JOB_MODULE_FIELDS, REQUISITION_DROP_LEGACY_COMP, REQUISITION_RATE_TYPE_SUBK, REQUISITION_PUBLISH_SURFACE_MIGRATION, REQUISITION_LIFECYCLE_EVENT_MIGRATION, REQUISITION_VERSION_MIGRATION, REQUISITION_ONSITE_DAYS_MIGRATION, REQUISITION_NUMBER_MIGRATION, REQUISITION_LIFECYCLE_NULLABLE_MIGRATION, REQUISITION_USER_STATE_MIGRATION, REQUISITION_LIFECYCLE_APPEND_ONLY_MIGRATION, REQUISITION_S3_HOLD_DETAILS_MIGRATION, REQUISITION_LIFECYCLE_NEXT_STATUS_NULLABLE, resolve(ROOT, 'libs/requisition/prisma/migrations/20260803120000_recruiting_status_supersession/migration.sql'), REQUISITION_POSTAL_CODE_MIGRATION]) {
         await setupClient.query(readFileSync(p, 'utf8'));
       }
 
@@ -295,8 +293,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Idempotent ats entitlement for TENANT_ATS (the bootstrap seed
       // already covers this; re-asserting makes the spec self-contained).
       await setupClient.query(
-        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
-         VALUES ($1::uuid, 'ats')
+        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+         VALUES ($1::uuid, 'ats', 'PROVISIONING')
          ON CONFLICT (tenant_id, capability) DO NOTHING`,
         [TENANT_ATS],
       );

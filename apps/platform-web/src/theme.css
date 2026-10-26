@@ -144,6 +144,33 @@
   --pw-tracking-label: 0.09em; /* rail group label */
   --pw-tracking-caps: 0.05em; /* table heads, Change label */
 
+  /* ── CCP-B1: CCP-UI v1.0 values not used by PLATFORM-UX-1
+     (Commercial Control Plane v1.0.dc.html; handoff §4, §5.2) ── */
+  --pw-verdict-ok-bg: #f1f8f4; /* "Your eligibility" OK box */
+  --pw-diff-before-bg: #f6d9d2; /* effect: struck before value */
+  --pw-diff-after-bg: #d3ebdd; /* effect: after value */
+  --pw-step-badge-idle-bg: #f0f2f4; /* approval-chain step badge, not reached */
+  --pw-shadow-drawer-ccp: -12px 0 32px rgba(15, 25, 40, 0.14); /* change-request drawer */
+  /* CCP-B2 — Commercial Control Plane v1.0.dc.html (CCP-UI v1.0) values not in the
+     PLATFORM-UX-1 file. */
+  --pw-fs-18: 18px; /* commercial request dialog title */
+  --pw-ccp-diff-bg: #fffbf2; /* a changed row in a draft diff */
+  --pw-ccp-empty-line: #c3cbd2; /* the dashed "No commercial plans yet" card */
+  --pw-shadow-dialog-ccp: 0 24px 64px rgba(15, 25, 40, 0.24);
+  /* CCP-B6 — the support-extension workflow's values not in the PLATFORM-UX-1 file (merge train
+     TD-MERGE-32: B6's title size, OK-box tint and dialog shadow are B1's / B2's --pw-fs-18,
+     --pw-verdict-ok-bg and --pw-shadow-dialog-ccp, same values). */
+  --pw-sx-tracking-tag: 0.06em; /* the EXCEPTION tag */
+  --pw-sx-stripe-bg: #e9edfb; /* "Managed in Stripe" source badge */
+  --pw-sx-stripe-fg: #011f8d;
+  --pw-sx-stripe-line: #c9d2f5;
+  --pw-sx-r-strip: 9px; /* the open-request strip */
+
+  /* CCP-UI-V12 — Commercial Control Plane v1.2.dc.html (Finance, Usage, Alerts) */
+  --pw-fs-26: 26px; /* stat tiles: MRR, ARR, the Exceptions count */
+  --pw-v12-withheld-line: #c3cbd2; /* WithheldAmount / NotEnabledState dashed line */
+  --pw-v12-bar: #0b1022; /* Revenue renewals-by-month bar */
+
   /* Shell geometry (handoff §3.1) */
   --pw-envbar-h: 30px;
   --pw-topbar-h: 56px;

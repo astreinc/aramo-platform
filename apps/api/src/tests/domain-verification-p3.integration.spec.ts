@@ -6,7 +6,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE, resolveIdentityMigrations } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveIdentityMigrations, resolveEntitlementMigrations } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -42,10 +42,8 @@ const __authzTestResolver = new ConfigurableTestResolver();
 type SignKey = CryptoKey | KeyObject;
 
 const ROOT = resolve(__dirname, '../../../..');
-const ENTITLEMENT_INIT = resolve(
-  ROOT,
-  'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
-);
+// CCP-A7 — the full entitlement set (the shared helper; the repository reads A7 columns).
+const ENTITLEMENT_MIGRATIONS = resolveEntitlementMigrations(ROOT);
 
 const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-domain-verification-p3-spec';
@@ -143,7 +141,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const url = container.getConnectionUri();
       db = new Client({ connectionString: url });
       await db.connect();
-      for (const p of [ENTITLEMENT_INIT, ...resolveIdentityMigrations(ROOT)]) {
+      for (const p of [...ENTITLEMENT_MIGRATIONS, ...resolveIdentityMigrations(ROOT)]) {
         await db.query(readFileSync(p, 'utf8'));
       }
       for (const [t, name, domain] of [
@@ -153,7 +151,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         [TENANT_D, 'Delta P3', DOMAIN_C],
       ] as const) {
         await db.query(
-          `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1::uuid, 'core') ON CONFLICT DO NOTHING`,
+          `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1::uuid, 'core', 'PROVISIONING') ON CONFLICT DO NOTHING`,
           [t],
         );
         await db.query(

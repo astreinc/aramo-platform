@@ -1,0 +1,3063 @@
+import { resolve } from 'node:path';
+
+import { MatchersV3, PactV4 } from '@pact-foundation/pact';
+import { describe, expect, it } from 'vitest';
+
+const { eachLike, fromProviderState, integer, like, regex, uuid } = MatchersV3;
+
+// CCP-A10 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.1 row A10; D11;
+// PLATFORM-UX-1 Amendment A1, A1-3) — the platform console's contract with the
+// platform-admin service for EVERY CCP route that exists, allowed AND refused.
+//
+// Consumer:  platform-web    (apps/platform-web — the Platform Admin console; the
+//                            fe-foundation apiClient names its consumer in
+//                            `X-Aramo-Consumer: platform` and rides the
+//                            consumer-isolated session cookie
+//                            `aramo_access_token_platform`).
+// Provider:  platform-admin  (apps/platform-admin).
+//
+// Per the established harness convention (sign-workspace-consumer, sign-web-consumer,
+// ats-web) the interactions are raw fetches matching the client: platform-web is an
+// app (relative paths, a browser cookie jar) and an app module is not import-invokable
+// from a pact project without crossing the nx project boundary.
+//
+// Principals: the session cookie value is a PLACEHOLDER naming the role
+// (`pact-<role>`). The provider verifier (pact/provider/src/verify-platform-admin.ts)
+// seeds one attested operator per role in the platform sentinel tenant and rewrites
+// the placeholder to a real RS256 token for that operator, so authority is resolved
+// server-side from real RBAC, exactly as in production. The tenant-tier principal
+// presents an ats-web session (`X-Aramo-Consumer: recruiter`,
+// `aramo_access_token_recruiter`).
+//
+// Generated ids (change requests) are injected by the provider states
+// (fromProviderState). Every mutating interaction gets its OWN fixture on its own
+// commercial tenant (change requests and approvals are append-only, and Q14 allows one
+// open request per tenant × product).
+//
+// Coverage — CCP routes (35):
+//   GET  /platform/commercial/audit-events                      (CCP-A2)
+//   POST /platform/commercial/change-requests                   (CCP-A3)
+//   GET  /platform/commercial/change-requests
+//   GET  /platform/commercial/change-requests/{id}
+//   POST /platform/commercial/change-requests/{id}/submit
+//   POST /platform/commercial/change-requests/{id}/withdraw
+//   POST /platform/commercial/change-requests/{id}/approvals
+//   POST /platform/commercial/change-requests/{id}/reject
+//   POST /platform/commercial/change-requests/{id}/apply        (CCP-A6; CCP-B2-backend catalog publish)
+//   GET  /platform/commercial/usage/reconciliation              (CCP-D1)
+//   GET  /platform/commercial/usage/periods                     (CCP-D1)
+//   GET  /platform/commercial/contracts                         (CCP-B4)
+//   GET  /platform/commercial/contracts/{id}                    (CCP-B4)
+//   GET  /platform/commercial/contracts/{id}/payments           (CCP-C8-PR; amounts to holders only)
+//   GET  /platform/commercial/billing-commands                  (CCP-C1)
+//   GET  /platform/commercial/billing-webhook-inbox             (CCP-C1)
+//   POST /platform/commercial/change-requests/{id}/convert      (CCP-C2)
+//   GET  /platform/commercial/change-requests/{id}/conversion   (CCP-C2)
+//   POST /platform/commercial/change-requests/{id}/billing-adjustment (CCP-C4)
+//   GET  /platform/commercial/change-requests/{id}/billing-adjustment (CCP-C4)
+//   POST /platform/commercial/change-requests/{id}/billing-adjustment/resolve (CCP-C4-R)
+//   GET  /platform/commercial/finance/refunds                   (CCP-C4-P)
+//   GET  /platform/commercial/tenants/{tenant_id}/billing-status (CCP-C3)
+//   GET  /platform/commercial/billing-portal-configuration      (CCP-C3)
+//   GET  /platform/commercial/finance/renewals                  (CCP-C6)
+//   GET  /platform/commercial/finance/outstanding-payments
+//   GET  /platform/commercial/finance/reconciliation-report
+//   GET  /platform/commercial/finance/revenue                   (CCP-D2; every amount withheld)
+//   POST /platform/commercial/support-extensions                 (CCP-A8)
+//   GET  /platform/commercial/support-extensions
+//   GET  /platform/commercial/alerts/billing                    (CCP-D3)
+//   GET  /platform/commercial/alerts/approvals                  (CCP-D3)
+//   GET  /platform/commercial/metrics/billing                   (CCP-D3)
+//   GET  /platform/commercial/metrics/approvals                 (CCP-D3)
+//   GET  /platform/commercial/subscriptions                     (CCP-B3)
+//   GET  /platform/commercial/tenants/{tenant_id}/commercial    (CCP-B3)
+// For each route: the allowed call, super_admin refused (403, holds no commercial
+// scope), and the tenant tier refused (403 tier tripwire). Plus the role-level
+// refusals: a role missing the route scope (audit feed), a role missing the requester
+// or step authority (create, submit, approve, reject), self-approval, and no session.
+// Non-CCP: GET /platform/me (allowed only; optional per the A10 row).
+// CCP-B1 adds the Approvals inbox's call shapes on the same routes: the full list
+// (`?limit=200`), the `eligible_for_me` list, and an approve without a comment.
+//
+// HOW LATER SLICES EXTEND THIS CONTRACT: see the "Extending" section of
+// doc/ccp/slices/CCP-A10-acceptance.md. In short — add a `describe` block per new CCP
+// route here (the allowed call + its role refusals), append the route to GATE_ROUTES
+// (which generates its super_admin and tenant-tier refusals), and add any new provider
+// state to verify-platform-admin.ts. The verifier's coverage gate fails if a route the
+// AppModule registers under /platform/commercial lacks an allowed, a super_admin or a
+// tenant-tier interaction.
+
+const provider = new PactV4({
+  consumer: 'platform-web',
+  provider: 'platform-admin',
+  dir: resolve(__dirname, '../../../pacts'),
+  logLevel: 'warn',
+});
+
+// ── fixtures (MUST match pact/provider/src/verify-platform-admin.ts) ──────────
+
+const OP = {
+  platform_owner: 'cca10000-0000-7000-8000-000000000001',
+  finance_admin: 'cca10000-0000-7000-8000-000000000002',
+  commercial_ops: 'cca10000-0000-7000-8000-000000000003',
+  catalog_manager: 'cca10000-0000-7000-8000-000000000004',
+  support_admin: 'cca10000-0000-7000-8000-000000000005',
+  read_only_auditor: 'cca10000-0000-7000-8000-000000000006',
+  super_admin: 'cca10000-0000-7000-8000-000000000007',
+} as const;
+type Role = keyof typeof OP;
+
+const PLATFORM_TENANT = '01900000-0000-7000-8000-000000000100';
+const POLICY_V1 = '019a0000-0000-7000-8000-0000000cc201';
+const SEEDED_AUDIT_EVENT = '019a0000-0000-7000-8000-0000000cc203';
+const CREATE_TENANT = 'cca10000-0000-7000-8000-0000000000c1';
+const REFUSED_CREATE_TENANT = 'cca10000-0000-7000-8000-0000000000c2';
+// Example id for provider-state-injected request ids (and for the gate refusals,
+// which are answered before any lookup).
+const EX_REQUEST_ID = 'cca10000-0000-7000-8000-0000000000e1';
+
+const AUDIT = '/platform/commercial/audit-events';
+const CR = '/platform/commercial/change-requests';
+const USAGE_REC = '/platform/commercial/usage/reconciliation';
+const USAGE_PERIODS = '/platform/commercial/usage/periods';
+// CCP-D1 — the usage tenant the provider seeds (MANUAL Sign subscription, two periods of ledger usage).
+const USAGE_TENANT = 'cca10000-0000-7000-8000-0000000000d1';
+const USAGE_SUBSCRIPTION = 'cca10000-0000-7000-8000-0000000000d2';
+const CONTRACTS = '/platform/commercial/contracts';
+const EX_CONTRACT_ID = 'cca10000-0000-7000-8000-0000000000b4';
+const COMMANDS = '/platform/commercial/billing-commands';
+const INBOX = '/platform/commercial/billing-webhook-inbox';
+// CCP-C3 — the read-through billing status. The provider seeds this tenant's Stripe-owned row and
+// answers provider reads through a fake read port (no Stripe in the verifier).
+const C3_TENANT = 'cca10000-0000-7000-8000-0000000000c3';
+const BILLING_STATUS = `/platform/commercial/tenants/${C3_TENANT}/billing-status`;
+const PORTAL_CONFIG = '/platform/commercial/billing-portal-configuration';
+const RENEWALS = '/platform/commercial/finance/renewals';
+const OUTSTANDING = '/platform/commercial/finance/outstanding-payments';
+const RECONCILIATION = '/platform/commercial/finance/reconciliation-report';
+// CCP-D2 — revenue reporting; amounts only with platform:billing:amount:read (CCP-R3), else FINANCE_SCOPE_REQUIRED.
+const REVENUE = '/platform/commercial/finance/revenue';
+const REFUND_REPORT = '/platform/commercial/finance/refunds';
+// CCP-C6 — the Finance fixture tenants seeded by the provider state 'finance records exist'.
+const FIN_RENEWAL_TENANT = 'cca10000-0000-7000-8000-0000000006a1';
+const FIN_OUTSTANDING_TENANT = 'cca10000-0000-7000-8000-0000000006a2';
+const FIN_HELD_TENANT = 'cca10000-0000-7000-8000-0000000006a3';
+const SE = '/platform/commercial/support-extensions';
+// CCP-A8 fixtures: one tenant + Stripe-owned PAST_DUE Sign row per mutating interaction (MUST match
+// the provider state params; the provider inserts exactly these ids).
+const SE_TENANT_APPLY = 'cca10000-0000-7000-8000-0000000008a1';
+const SE_SUB_APPLY = 'cca10000-0000-7000-8000-0000000008b1';
+const SE_TENANT_ESC = 'cca10000-0000-7000-8000-0000000008a2';
+const SE_SUB_ESC = 'cca10000-0000-7000-8000-0000000008b2';
+const SE_TENANT_LIST = 'cca10000-0000-7000-8000-0000000008a3';
+const SE_BODY = (tenant_id: string, subscription_id: string, requested_days: number, idempotency_key: string) => ({
+  tenant_id,
+  product_key: 'sign',
+  subscription_id,
+  requested_days,
+  reason: 'Support goodwill: billing contact on leave',
+  idempotency_key,
+});
+const ALERTS_BILLING = '/platform/commercial/alerts/billing';
+const ALERTS_APPROVALS = '/platform/commercial/alerts/approvals';
+const METRICS_BILLING = '/platform/commercial/metrics/billing';
+const METRICS_APPROVALS = '/platform/commercial/metrics/approvals';
+// CCP-B3 — the Subscriptions workbench and the tenant Commercial tab. The provider state 'a tenant
+// with a governed Sign subscription and a held activation exists' seeds exactly this tenant.
+const SUBSCRIPTIONS = '/platform/commercial/subscriptions';
+const B3_TENANT = 'cca10000-0000-7000-8000-0000000003b1';
+const B3_UNKNOWN_TENANT = 'cca10000-0000-7000-8000-0000000003bf';
+const TENANT_COMMERCIAL = (tenant_id: string) => `/platform/commercial/tenants/${tenant_id}/commercial`;
+
+const platformSession = (role: Role) => ({ 'X-Aramo-Consumer': 'platform', Cookie: `aramo_access_token_platform=pact-${role}` });
+const platformJson = (role: Role) => ({ ...platformSession(role), 'Content-Type': 'application/json' });
+const TENANT_TIER = { 'X-Aramo-Consumer': 'recruiter', Cookie: 'aramo_access_token_recruiter=pact-recruiter' };
+const TENANT_TIER_JSON = { ...TENANT_TIER, 'Content-Type': 'application/json' };
+const NO_SESSION = { 'X-Aramo-Consumer': 'platform' };
+
+const ISO = '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$';
+const iso = (example = '2026-10-25T10:00:00.000Z') => regex(ISO, example);
+const HEX64 = (example = 'a'.repeat(64)) => regex('^[0-9a-f]{64}$', example);
+
+const CREDIT_PAYLOAD = { amount_minor: 100, currency: 'USD' };
+// CCP-R3 (Aramo-CCP-A1-Amendment-A1-Finance-Amount-Scope-v1_0, LOCKED; FA-5): a caller without
+// platform:billing:amount:read (commercial_ops here) receives the CREDIT payload without the amount.
+const CREDIT_PAYLOAD_WITHHELD = { currency: 'USD', amount_withheld: 'FINANCE_SCOPE_REQUIRED' };
+const CREATE_BODY = {
+  action_type: 'CREDIT',
+  tenant_id: CREATE_TENANT,
+  product_key: 'sign',
+  payload: CREDIT_PAYLOAD,
+  reason: 'Goodwill credit for a service outage',
+  idempotency_key: 'pact-a10-create-credit-0001',
+};
+
+// The finance-only chain of a below-threshold USD credit (A3 §2: CREDIT below
+// credit_escalation_threshold_minor → finance_admin).
+const FINANCE_ONLY_CHAIN = {
+  rule: 'FINANCE_ONLY',
+  basis: like({}),
+  steps: eachLike({ step_index: integer(0), role_key: 'finance_admin', scope_keys: eachLike('platform:billing:approve') }),
+};
+
+// CommercialChangeRequestDto (platform-commercial-change-request.controller.ts requestDto).
+// CCP-R3-W (Architect W-3): `withheld` = read by commercial_ops, the requester, without
+// platform:billing:amount:read — its OWN reason stays; the rejection note is replaced by
+// `notes_withheld` (and the amount by `amount_withheld`, R3). `nonRequester` = read by a non-holder
+// who did not request it (support_admin): the reason is replaced by `reason_withheld` too.
+const W = 'FINANCE_SCOPE_REQUIRED';
+function requestBody(
+  state: string,
+  o: { submitted?: boolean; approved?: boolean; rejected?: boolean; withdrawn?: boolean; tenant?: string; withheld?: boolean; nonRequester?: boolean } = {},
+): Record<string, unknown> {
+  const nonHolder = o.withheld === true || o.nonRequester === true;
+  return {
+    id: uuid(EX_REQUEST_ID),
+    action_type: 'CREDIT',
+    kind: 'NORMAL',
+    state,
+    tenant_id: o.tenant === undefined ? uuid(CREATE_TENANT) : o.tenant,
+    product_key: 'sign',
+    payload: nonHolder ? CREDIT_PAYLOAD_WITHHELD : like(CREDIT_PAYLOAD),
+    payload_checksum: HEX64(),
+    required_chain: FINANCE_ONLY_CHAIN,
+    policy_version_id: POLICY_V1,
+    policy_checksum: HEX64(),
+    requested_by: OP.commercial_ops,
+    ...(o.nonRequester === true ? { reason_withheld: W } : { reason: like('Goodwill credit for a service outage') }),
+    created_at: iso(),
+    submitted_at: o.submitted === true ? iso() : null,
+    expires_at: o.submitted === true ? iso('2026-10-28T10:00:00.000Z') : null,
+    approved_at: o.approved === true ? iso() : null,
+    rejected_at: o.rejected === true ? iso() : null,
+    rejected_by: o.rejected === true ? OP.finance_admin : null,
+    ...(nonHolder ? { notes_withheld: W } : { rejection_reason: o.rejected === true ? like('Credit not justified') : null }),
+    withdrawn_at: o.withdrawn === true ? iso() : null,
+    expired_at: null,
+  };
+}
+
+// The Phase 5 error envelope (AramoExceptionFilter).
+function errorBody(code: string, details: Record<string, unknown>): Record<string, unknown> {
+  return { error: { code, message: like('refused'), request_id: like('req-1'), details } };
+}
+const missingScope = (scope: string) => errorBody('INSUFFICIENT_PERMISSIONS', { missing_scopes: [scope] });
+const TIER_REFUSED = errorBody('INSUFFICIENT_PERMISSIONS', { reason: 'tenant_token_on_platform_route' });
+const approvalRefused = (refusal: string) => errorBody('COMMERCIAL_APPROVAL_REFUSED', { refusal });
+
+async function call(url: string, method: string, headers: Record<string, string>, body?: unknown): Promise<{ status: number; body: Record<string, unknown> }> {
+  const res = await fetch(url, { method, headers, ...(body === undefined ? {} : { body: JSON.stringify(body) }) });
+  const text = await res.text();
+  return { status: res.status, body: (text.length > 0 ? JSON.parse(text) : {}) as Record<string, unknown> };
+}
+const errCode = (b: Record<string, unknown>) => (b['error'] as { code?: string } | undefined)?.code;
+
+// Route descriptors for the gate-refusal matrix (super_admin and tenant tier on every
+// CCP route). The gate answers before the body is read or the id is looked up, so a
+// fixed id and the create body suffice and no provider fixture is needed.
+interface GateRoute {
+  name: string;
+  method: 'GET' | 'POST';
+  path: string;
+  scope: string;
+  body?: Record<string, unknown>;
+}
+const GATE_ROUTES: readonly GateRoute[] = [
+  { name: 'GET audit-events', method: 'GET', path: AUDIT, scope: 'platform:commercial:audit:read' },
+  { name: 'POST change-requests', method: 'POST', path: CR, scope: 'platform:approval:read', body: CREATE_BODY },
+  { name: 'GET change-requests', method: 'GET', path: CR, scope: 'platform:approval:read' },
+  { name: 'GET change-requests/{id}', method: 'GET', path: `${CR}/${EX_REQUEST_ID}`, scope: 'platform:approval:read' },
+  { name: 'POST change-requests/{id}/submit', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/submit`, scope: 'platform:approval:read' },
+  { name: 'POST change-requests/{id}/withdraw', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/withdraw`, scope: 'platform:approval:read' },
+  { name: 'POST change-requests/{id}/approvals', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/approvals`, scope: 'platform:approval:read', body: { step_index: 0 } },
+  { name: 'POST change-requests/{id}/reject', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/reject`, scope: 'platform:approval:read', body: { reason: 'Credit not justified' } },
+  { name: 'POST change-requests/{id}/apply', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/apply`, scope: 'platform:approval:read' },
+  { name: 'GET usage/reconciliation', method: 'GET', path: USAGE_REC, scope: 'platform:subscription:read' },
+  { name: 'GET usage/periods', method: 'GET', path: USAGE_PERIODS, scope: 'platform:subscription:read' },
+  { name: 'GET contracts', method: 'GET', path: CONTRACTS, scope: 'platform:subscription:read' },
+  { name: 'GET contracts/{id}', method: 'GET', path: `${CONTRACTS}/${EX_CONTRACT_ID}`, scope: 'platform:subscription:read' },
+  { name: 'GET contracts/{id}/payments', method: 'GET', path: `${CONTRACTS}/${EX_CONTRACT_ID}/payments`, scope: 'platform:billing:read' },
+  { name: 'GET billing-commands', method: 'GET', path: COMMANDS, scope: 'platform:billing:read' },
+  { name: 'GET billing-webhook-inbox', method: 'GET', path: INBOX, scope: 'platform:billing:read' },
+  { name: 'POST change-requests/{id}/convert', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/convert`, scope: 'platform:approval:read' },
+  { name: 'GET change-requests/{id}/conversion', method: 'GET', path: `${CR}/${EX_REQUEST_ID}/conversion`, scope: 'platform:approval:read' },
+  { name: 'POST change-requests/{id}/billing-adjustment', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/billing-adjustment`, scope: 'platform:approval:read' },
+  { name: 'GET change-requests/{id}/billing-adjustment', method: 'GET', path: `${CR}/${EX_REQUEST_ID}/billing-adjustment`, scope: 'platform:approval:read' },
+  { name: 'POST change-requests/{id}/billing-adjustment/resolve', method: 'POST', path: `${CR}/${EX_REQUEST_ID}/billing-adjustment/resolve`, scope: 'platform:approval:read' },
+  { name: 'GET finance/refunds', method: 'GET', path: REFUND_REPORT, scope: 'platform:billing:read' },
+  { name: 'GET tenants/{tenant_id}/billing-status', method: 'GET', path: BILLING_STATUS, scope: 'platform:billing:read' },
+  { name: 'GET billing-portal-configuration', method: 'GET', path: PORTAL_CONFIG, scope: 'platform:billing:read' },
+  { name: 'GET finance/renewals', method: 'GET', path: RENEWALS, scope: 'platform:billing:read' },
+  { name: 'GET finance/outstanding-payments', method: 'GET', path: OUTSTANDING, scope: 'platform:billing:read' },
+  { name: 'GET finance/reconciliation-report', method: 'GET', path: RECONCILIATION, scope: 'platform:billing:read' },
+  { name: 'GET finance/revenue', method: 'GET', path: REVENUE, scope: 'platform:billing:read' },
+  { name: 'POST support-extensions', method: 'POST', path: SE, scope: 'platform:subscription:support', body: SE_BODY(SE_TENANT_APPLY, SE_SUB_APPLY, 7, 'pact-a8-gate-0001') },
+  { name: 'GET support-extensions', method: 'GET', path: SE, scope: 'platform:subscription:read' },
+  { name: 'GET alerts/billing', method: 'GET', path: ALERTS_BILLING, scope: 'platform:billing:read' },
+  { name: 'GET alerts/approvals', method: 'GET', path: ALERTS_APPROVALS, scope: 'platform:approval:read' },
+  { name: 'GET metrics/billing', method: 'GET', path: METRICS_BILLING, scope: 'platform:billing:read' },
+  { name: 'GET metrics/approvals', method: 'GET', path: METRICS_APPROVALS, scope: 'platform:approval:read' },
+  { name: 'GET subscriptions', method: 'GET', path: SUBSCRIPTIONS, scope: 'platform:subscription:read' },
+  { name: 'GET tenants/{tenant_id}/commercial', method: 'GET', path: TENANT_COMMERCIAL(B3_TENANT), scope: 'platform:subscription:read' },
+];
+
+// ── CCP-A2 — the commercial audit feed ────────────────────────────────────────
+
+describe('platform-web → GET /platform/commercial/audit-events (CCP-A2)', () => {
+  it('read_only_auditor reads the audit feed (200)', async () => {
+    // Filtered to the migration-seeded policy activation so the page is deterministic.
+    const path = `${AUDIT}?event_type=COMMERCIAL_POLICY_VERSION_ACTIVATED&limit=50`;
+    await provider
+      .addInteraction()
+      .given('the commercial policy activation is audited')
+      .uponReceiving('a commercial audit feed read by a read-only auditor')
+      .withRequest('GET', AUDIT, (b) => {
+        b.headers(platformSession('read_only_auditor')).query({ event_type: 'COMMERCIAL_POLICY_VERSION_ACTIVATED', limit: '50' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          events: eachLike({
+            id: uuid(SEEDED_AUDIT_EVENT),
+            created_at: iso(),
+            actor_id: null,
+            actor_type: 'system',
+            actor_role_keys: [],
+            event_type: 'COMMERCIAL_POLICY_VERSION_ACTIVATED',
+            is_exception: false,
+            tenant_id: null,
+            subject: like(`commercial_policy_version:${POLICY_V1}`),
+            change_request_id: null,
+            policy_version_id: uuid(POLICY_V1),
+            payload: like({ version_number: 1 }),
+            correlation_id: like('migration'),
+          }),
+          next_cursor: null,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${path}`, 'GET', platformSession('read_only_auditor'));
+        expect(res.status).toBe(200);
+        expect((res.body['events'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+
+  it('a role without platform:commercial:audit:read (commercial_ops) is refused (403)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a commercial audit feed read by a role missing the audit scope')
+      .withRequest('GET', AUDIT, (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:commercial:audit:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${AUDIT}`, 'GET', platformSession('commercial_ops'));
+        expect(res.status).toBe(403);
+        expect(errCode(res.body)).toBe('INSUFFICIENT_PERMISSIONS');
+      });
+  });
+
+  it('no session is refused (401)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a commercial audit feed read without a session')
+      .withRequest('GET', AUDIT, (b) => {
+        b.headers(NO_SESSION);
+      })
+      .willRespondWith(401, (b) => {
+        b.jsonBody(errorBody('AUTH_REQUIRED', {}));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${AUDIT}`, 'GET', NO_SESSION);
+        expect(res.status).toBe(401);
+      });
+  });
+});
+
+// ── CCP-A3 — change requests and approvals ────────────────────────────────────
+
+describe('platform-web → POST /platform/commercial/change-requests (CCP-A3)', () => {
+  it('commercial_ops creates a DRAFT credit request (201)', async () => {
+    await provider
+      .addInteraction()
+      .given('a commercial tenant without an open change request exists', { tenant_id: CREATE_TENANT })
+      .uponReceiving('a change request create by commercial_ops')
+      .withRequest('POST', CR, (b) => {
+        b.headers(platformJson('commercial_ops')).jsonBody(CREATE_BODY);
+      })
+      .willRespondWith(201, (b) => {
+        b.jsonBody({ request: requestBody('DRAFT', { tenant: CREATE_TENANT, withheld: true }), replayed: false });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}`, 'POST', platformJson('commercial_ops'), CREATE_BODY);
+        expect(res.status).toBe(201);
+        expect((res.body['request'] as { state: string }).state).toBe('DRAFT');
+      });
+  });
+
+  it('a role without the requester authority (finance_admin) is refused (403 requester_scope_missing)', async () => {
+    const body = { ...CREATE_BODY, tenant_id: REFUSED_CREATE_TENANT, idempotency_key: 'pact-a10-create-credit-0002' };
+    await provider
+      .addInteraction()
+      .given('a commercial tenant without an open change request exists', { tenant_id: REFUSED_CREATE_TENANT })
+      .uponReceiving('a change request create by a role without the requester scope')
+      .withRequest('POST', CR, (b) => {
+        b.headers(platformJson('finance_admin')).jsonBody(body);
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(errorBody('INSUFFICIENT_PERMISSIONS', { reason: 'requester_scope_missing' }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}`, 'POST', platformJson('finance_admin'), body);
+        expect(res.status).toBe(403);
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/change-requests (CCP-A3)', () => {
+  it('finance_admin lists the pending requests (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('a pending change request exists')
+      .uponReceiving('a pending change request list read by finance_admin')
+      .withRequest('GET', CR, (b) => {
+        b.headers(platformSession('finance_admin')).query({ state: 'PENDING_APPROVAL' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ requests: eachLike(requestBody('PENDING_APPROVAL', { submitted: true })), next_cursor: null });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}?state=PENDING_APPROVAL`, 'GET', platformSession('finance_admin'));
+        expect(res.status).toBe(200);
+        expect((res.body['requests'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+});
+
+// CCP-B1 — the Approvals inbox reads (apps/platform-web/src/commercial/commercial-api.ts
+// listChangeRequests): every request, one page of 200, and the caller's
+// `eligible_for_me` set. A full page mixes states, so the row template names only the
+// fields every state carries (nullable timestamps are contracted by the interactions
+// above, per state).
+// CCP-FIX1: + APPLY_EXPIRED (OpenAPI CommercialChangeRequestState; the FIX1 provider states leave such rows).
+const ANY_STATE = '^(DRAFT|PENDING_APPROVAL|APPROVED|APPLYING|APPLIED|APPLY_FAILED|REJECTED|EXPIRED|WITHDRAWN|APPLY_EXPIRED)$';
+const inboxRow = (state: ReturnType<typeof regex> | string) => ({
+  id: uuid(EX_REQUEST_ID),
+  action_type: regex('^[A-Z_]+$', 'CREDIT'),
+  kind: 'NORMAL',
+  state,
+  // TD-MERGE-1: a mixed page carries every action type (CREDIT, SUBSCRIPTION_OPEN from the A6
+  // states, the B2 catalog requests whose product_key is null, …), so the payload is contracted
+  // as an object only and product_key (nullable) is left to the per-action interactions.
+  payload: like({}),
+  // Merge train TD-MERGE-31: a mixed page also carries CCP-A8 bounded exceptions (rule
+  // BOUNDED_EXCEPTION, zero steps), so the rule set includes it and the steps array may be empty.
+  required_chain: {
+    rule: regex('^(FINANCE_ONLY|FINANCE_THEN_OWNER|DISTINCT_PLATFORM_OWNER|BOUNDED_EXCEPTION)$', 'FINANCE_ONLY'),
+    steps: eachLike({ step_index: integer(0), role_key: regex('^(finance_admin|platform_owner)$', 'finance_admin') }, 0),
+  },
+  policy_version_id: uuid(POLICY_V1),
+  requested_by: uuid(OP.commercial_ops),
+  reason: like('Goodwill credit for a service outage'),
+  created_at: iso(),
+});
+
+describe('platform-web → GET /platform/commercial/change-requests — the Approvals inbox reads (CCP-B1)', () => {
+  it('finance_admin reads every request, one page of 200 (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('a pending change request exists')
+      .uponReceiving('an inbox read of every change request by finance_admin')
+      .withRequest('GET', CR, (b) => {
+        b.headers(platformSession('finance_admin')).query({ limit: '200' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ requests: eachLike(inboxRow(regex(ANY_STATE, 'PENDING_APPROVAL'))), next_cursor: null });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}?limit=200`, 'GET', platformSession('finance_admin'));
+        expect(res.status).toBe(200);
+        expect((res.body['requests'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+
+  it('finance_admin reads the requests waiting on them (eligible_for_me, 200)', async () => {
+    await provider
+      .addInteraction()
+      .given('a pending change request exists')
+      .uponReceiving('an inbox read of the requests eligible for finance_admin')
+      .withRequest('GET', CR, (b) => {
+        b.headers(platformSession('finance_admin')).query({ eligible_for_me: 'true', limit: '200' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ requests: eachLike(inboxRow('PENDING_APPROVAL')), next_cursor: null });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}?eligible_for_me=true&limit=200`, 'GET', platformSession('finance_admin'));
+        expect(res.status).toBe(200);
+        expect((res.body['requests'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/change-requests/{id} (CCP-A3)', () => {
+  it('finance_admin reads a pending request with its own step verdict (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('a pending change request exists')
+      .uponReceiving('a pending change request detail read by finance_admin')
+      .withRequest('GET', fromProviderState(`${CR}/\${requestId}`, `${CR}/${EX_REQUEST_ID}`), (b) => {
+        b.headers(platformSession('finance_admin'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          request: requestBody('PENDING_APPROVAL', { submitted: true }),
+          approvals: [],
+          is_expired: false,
+          chain_satisfiable: true,
+          apply_actionable: false,
+          steps: eachLike({
+            step_index: integer(0),
+            role_key: 'finance_admin',
+            scope_keys: eachLike('platform:billing:approve'),
+            status: 'NEXT',
+            approval_id: null,
+            caller: { eligible: true, refusal: null },
+          }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}/${EX_REQUEST_ID}`, 'GET', platformSession('finance_admin'));
+        expect(res.status).toBe(200);
+        expect((res.body['request'] as { state: string }).state).toBe('PENDING_APPROVAL');
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/change-requests/{id} — Finance visibility (CCP-R3-W)', () => {
+  it('support_admin (no platform:billing:amount:read, not the requester) reads a pending credit: the reason and notes withheld, the amount withheld (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('a pending change request exists')
+      .uponReceiving('a pending credit detail read by support_admin')
+      .withRequest('GET', fromProviderState(`${CR}/\${requestId}`, `${CR}/${EX_REQUEST_ID}`), (b) => {
+        b.headers(platformSession('support_admin'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ request: requestBody('PENDING_APPROVAL', { submitted: true, nonRequester: true }), approvals: [], apply_actionable: false });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}/${EX_REQUEST_ID}`, 'GET', platformSession('support_admin'));
+        expect(res.status).toBe(200);
+        const req = res.body['request'] as Record<string, unknown>;
+        expect(req['reason_withheld']).toBe(W);
+        expect(req).not.toHaveProperty('reason');
+        expect(JSON.stringify(res.body)).not.toContain('Goodwill credit');
+      });
+  });
+
+  it('the requester (commercial_ops, no amount scope) reads its own pending credit: its own reason; the notes and amount withheld (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('a pending change request exists')
+      .uponReceiving('a pending credit detail read by its requester')
+      .withRequest('GET', fromProviderState(`${CR}/\${requestId}`, `${CR}/${EX_REQUEST_ID}`), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ request: requestBody('PENDING_APPROVAL', { submitted: true, withheld: true }), approvals: [], apply_actionable: false });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}/${EX_REQUEST_ID}`, 'GET', platformSession('commercial_ops'));
+        expect(res.status).toBe(200);
+        const req = res.body['request'] as Record<string, unknown>;
+        expect(req['notes_withheld']).toBe(W);
+        expect(req).not.toHaveProperty('rejection_reason');
+      });
+  });
+});
+
+describe('platform-web → POST /platform/commercial/change-requests/{id}/submit (CCP-A3)', () => {
+  it('the requester (commercial_ops) submits a draft (200 PENDING_APPROVAL)', async () => {
+    await provider
+      .addInteraction()
+      .given('a draft change request exists')
+      .uponReceiving('a change request submit by its requester')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/submit`, `${CR}/${EX_REQUEST_ID}/submit`), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ request: requestBody('PENDING_APPROVAL', { submitted: true, withheld: true }) });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}/${EX_REQUEST_ID}/submit`, 'POST', platformSession('commercial_ops'));
+        expect(res.status).toBe(200);
+      });
+  });
+
+  it('a role that is not the requester (finance_admin) is refused (403 not_requester)', async () => {
+    await provider
+      .addInteraction()
+      .given('a draft change request exists')
+      .uponReceiving('a change request submit by a role that is not the requester')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/submit`, `${CR}/${EX_REQUEST_ID}/submit`), (b) => {
+        b.headers(platformSession('finance_admin'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(errorBody('INSUFFICIENT_PERMISSIONS', { reason: 'not_requester' }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}/${EX_REQUEST_ID}/submit`, 'POST', platformSession('finance_admin'));
+        expect(res.status).toBe(403);
+      });
+  });
+});
+
+describe('platform-web → POST /platform/commercial/change-requests/{id}/withdraw (CCP-A3)', () => {
+  it('the requester (commercial_ops) withdraws a draft (200 WITHDRAWN)', async () => {
+    await provider
+      .addInteraction()
+      .given('a draft change request exists')
+      .uponReceiving('a change request withdraw by its requester')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/withdraw`, `${CR}/${EX_REQUEST_ID}/withdraw`), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ request: requestBody('WITHDRAWN', { withdrawn: true, withheld: true }) });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}/${EX_REQUEST_ID}/withdraw`, 'POST', platformSession('commercial_ops'));
+        expect(res.status).toBe(200);
+      });
+  });
+});
+
+describe('platform-web → POST /platform/commercial/change-requests/{id}/approvals (CCP-A3)', () => {
+  const approve = (requestId = EX_REQUEST_ID) => `${CR}/${requestId}/approvals`;
+  const APPROVE_BODY = { step_index: 0, comment: 'Within the credit policy' };
+
+  it('finance_admin approves step 0 of a finance-only chain (201 APPROVED)', async () => {
+    await provider
+      .addInteraction()
+      .given('a pending change request exists')
+      .uponReceiving('a change request approval by finance_admin')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/approvals`, approve()), (b) => {
+        b.headers(platformJson('finance_admin')).jsonBody(APPROVE_BODY);
+      })
+      .willRespondWith(201, (b) => {
+        b.jsonBody({
+          request: requestBody('APPROVED', { submitted: true, approved: true }),
+          approval: {
+            id: uuid('cca10000-0000-7000-8000-0000000000f1'),
+            step_index: 0,
+            approver_user_id: OP.finance_admin,
+            step_role_key: 'finance_admin',
+            step_scope_keys: eachLike('platform:billing:approve'),
+            approver_role_keys: ['finance_admin'],
+            comment: 'Within the credit policy',
+            created_at: iso(),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${approve()}`, 'POST', platformJson('finance_admin'), APPROVE_BODY);
+        expect(res.status).toBe(201);
+      });
+  });
+
+  it('finance_admin approves step 0 without a comment, as the console sends it (201 APPROVED, CCP-B1)', async () => {
+    await provider
+      .addInteraction()
+      .given('a pending change request exists')
+      .uponReceiving('a change request approval by finance_admin from the Approvals inbox')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/approvals`, approve()), (b) => {
+        b.headers(platformJson('finance_admin')).jsonBody({ step_index: 0 });
+      })
+      .willRespondWith(201, (b) => {
+        b.jsonBody({
+          request: requestBody('APPROVED', { submitted: true, approved: true }),
+          approval: {
+            id: uuid('cca10000-0000-7000-8000-0000000000f2'),
+            step_index: 0,
+            approver_user_id: OP.finance_admin,
+            step_role_key: 'finance_admin',
+            step_scope_keys: eachLike('platform:billing:approve'),
+            approver_role_keys: ['finance_admin'],
+            comment: null,
+            created_at: iso(),
+          },
+          apply: null,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${approve()}`, 'POST', platformJson('finance_admin'), { step_index: 0 });
+        expect(res.status).toBe(201);
+      });
+  });
+
+  it('the requester approving their own request is refused (409 SELF_APPROVAL)', async () => {
+    await provider
+      .addInteraction()
+      .given('a pending change request exists')
+      .uponReceiving('a change request approval by its own requester')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/approvals`, approve()), (b) => {
+        b.headers(platformJson('commercial_ops')).jsonBody({ step_index: 0 });
+      })
+      .willRespondWith(409, (b) => {
+        b.jsonBody(approvalRefused('SELF_APPROVAL'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${approve()}`, 'POST', platformJson('commercial_ops'), { step_index: 0 });
+        expect(res.status).toBe(409);
+      });
+  });
+
+  it('a role without the step authority (support_admin) is refused (409 STEP_SCOPE_MISSING)', async () => {
+    await provider
+      .addInteraction()
+      .given('a pending change request exists')
+      .uponReceiving('a change request approval by a role without the step authority')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/approvals`, approve()), (b) => {
+        b.headers(platformJson('support_admin')).jsonBody({ step_index: 0 });
+      })
+      .willRespondWith(409, (b) => {
+        b.jsonBody(approvalRefused('STEP_SCOPE_MISSING'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${approve()}`, 'POST', platformJson('support_admin'), { step_index: 0 });
+        expect(res.status).toBe(409);
+      });
+  });
+});
+
+describe('platform-web → POST /platform/commercial/change-requests/{id}/reject (CCP-A3)', () => {
+  const REJECT_BODY = { reason: 'Credit not justified' };
+
+  it('finance_admin rejects a pending request (200 REJECTED)', async () => {
+    await provider
+      .addInteraction()
+      .given('a pending change request exists')
+      .uponReceiving('a change request rejection by finance_admin')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/reject`, `${CR}/${EX_REQUEST_ID}/reject`), (b) => {
+        b.headers(platformJson('finance_admin')).jsonBody(REJECT_BODY);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ request: requestBody('REJECTED', { submitted: true, rejected: true }) });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}/${EX_REQUEST_ID}/reject`, 'POST', platformJson('finance_admin'), REJECT_BODY);
+        expect(res.status).toBe(200);
+      });
+  });
+
+  it('a role without the step authority (support_admin) is refused (409 STEP_SCOPE_MISSING)', async () => {
+    await provider
+      .addInteraction()
+      .given('a pending change request exists')
+      .uponReceiving('a change request rejection by a role without the step authority')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/reject`, `${CR}/${EX_REQUEST_ID}/reject`), (b) => {
+        b.headers(platformJson('support_admin')).jsonBody(REJECT_BODY);
+      })
+      .willRespondWith(409, (b) => {
+        b.jsonBody(approvalRefused('STEP_SCOPE_MISSING'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}/${EX_REQUEST_ID}/reject`, 'POST', platformJson('support_admin'), REJECT_BODY);
+        expect(res.status).toBe(409);
+      });
+  });
+});
+
+// ── CCP-A6 — the transactional apply ──────────────────────────────────────────
+
+describe('platform-web → POST /platform/commercial/change-requests/{id}/apply (CCP-A6)', () => {
+  const apply = (requestId = EX_REQUEST_ID) => `${CR}/${requestId}/apply`;
+  const applied = {
+    replayed: false,
+    request: {
+      id: uuid(EX_REQUEST_ID),
+      action_type: 'SUBSCRIPTION_OPEN',
+      kind: 'NORMAL',
+      state: 'APPLIED',
+      tenant_id: uuid('cca10000-0000-7000-8000-0000000000a6'),
+      product_key: 'sign',
+      payload: like({ plan_key: 'aramo-sign-included-v1' }),
+      requested_by: OP.commercial_ops,
+      approved_at: iso(),
+    },
+    application: {
+      id: uuid('cca10000-0000-7000-8000-0000000000a7'),
+      change_request_id: uuid(EX_REQUEST_ID),
+      action_type: 'SUBSCRIPTION_OPEN',
+      tenant_id: uuid('cca10000-0000-7000-8000-0000000000a6'),
+      product_key: 'sign',
+      subscription_id: uuid('cca10000-0000-7000-8000-0000000000a8'),
+      replaced_subscription_id: null,
+      from_plan_version_id: null,
+      to_plan_version_id: uuid('cca10000-0000-7000-8000-0000000000a9'),
+      capabilities: ['core', 'sign'],
+      capabilities_inserted: eachLike('sign'),
+      attempt: 1,
+      applied_by: OP.commercial_ops,
+      applied_at: iso(),
+    },
+  };
+
+  it('the requester authority (commercial_ops) applies an approved subscription open (200 APPLIED)', async () => {
+    await provider
+      .addInteraction()
+      .given('an approved subscription-open change request exists')
+      .uponReceiving('a change request apply by commercial_ops')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/apply`, apply()), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody(applied);
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${apply()}`, 'POST', platformSession('commercial_ops'));
+        expect(res.status).toBe(200);
+      });
+  });
+
+  it('the requester reads an approved request with apply_actionable true; an approver reads it false (CCP-A6-R TD-B2-3)', async () => {
+    for (const [role, actionable] of [['commercial_ops', true], ['finance_admin', false]] as const) {
+      await provider
+        .addInteraction()
+        .given('an approved subscription-open change request exists')
+        .uponReceiving(`an approved change request detail read by ${role}`)
+        .withRequest('GET', fromProviderState(`${CR}/\${requestId}`, `${CR}/${EX_REQUEST_ID}`), (b) => {
+          b.headers(platformSession(role));
+        })
+        .willRespondWith(200, (b) => {
+          b.jsonBody({ request: { id: uuid(EX_REQUEST_ID), action_type: 'SUBSCRIPTION_OPEN', state: 'APPROVED', requested_by: OP.commercial_ops }, apply_actionable: actionable });
+        })
+        .executeTest(async (mock) => {
+          const res = await call(`${mock.url}${CR}/${EX_REQUEST_ID}`, 'GET', platformSession(role));
+          expect(res.body['apply_actionable']).toBe(actionable);
+        });
+    }
+  });
+
+  it('a user who is not the original requester (finance_admin) is refused (403 not_requester; CCP-A6-R TD-A6-3)', async () => {
+    await provider
+      .addInteraction()
+      .given('an approved subscription-open change request exists')
+      .uponReceiving('a change request apply by a user who is not its requester')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/apply`, apply()), (b) => {
+        b.headers(platformSession('finance_admin'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(errorBody('INSUFFICIENT_PERMISSIONS', { reason: 'not_requester', explanation: like('Only the person who requested this change can apply it.') }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${apply()}`, 'POST', platformSession('finance_admin'));
+        expect(res.status).toBe(403);
+      });
+  });
+
+  it('an approval whose signer lost eligibility is refused at apply (409 apply_refused, NC-5)', async () => {
+    await provider
+      .addInteraction()
+      .given('an approved subscription-open change request whose approver lost eligibility exists')
+      .uponReceiving('a change request apply after its approver lost eligibility')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/apply`, apply()), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(409, (b) => {
+        b.jsonBody(errorBody('COMMERCIAL_CHANGE_REQUEST_CONFLICT', { reason: 'apply_refused', refusal: 'APPROVER_NO_LONGER_ELIGIBLE', explanation: like('An approver no longer holds the role.') }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${apply()}`, 'POST', platformSession('commercial_ops'));
+        expect(res.status).toBe(409);
+      });
+  });
+});
+
+// ── CCP-D1 — usage roll-ups (read-only until reconciled) ──────────────────────
+
+const usageCounts = (c: number, r: number) => ({ consumed: integer(c), consumed_send: integer(c), consumed_historical: integer(0), reserved: integer(r) });
+
+describe('platform-web → GET /platform/commercial/usage/reconciliation (CCP-D1)', () => {
+  it('read_only_auditor reads the reconciliation (200 RECONCILED)', async () => {
+    await provider
+      .addInteraction()
+      .given('usage roll-ups are reconciled')
+      .uponReceiving('a usage reconciliation read by a read-only auditor')
+      .withRequest('GET', USAGE_REC, (b) => {
+        b.headers(platformSession('read_only_auditor')).query({ product_key: 'sign' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          product_key: 'sign',
+          status: 'RECONCILED',
+          checked_at: iso(),
+          metrics: eachLike({
+            metric_key: 'sign.envelopes',
+            product_key: 'sign',
+            status: 'RECONCILED',
+            watermark: regex('^[0-9]+$', '801'),
+            last_run_id: uuid('01a1730b-0099-70ec-a374-cb6339bc34fb'),
+            buckets: { source: integer(2), rollup: integer(2), pending: integer(0), compared: integer(2), mismatched: 0 },
+            compared_totals: { allowance_usage: usageCounts(5, 1), rollup: usageCounts(5, 1) },
+            usage_event: { event_type: 'sign.envelope.sent', tenants: integer(1), mismatched_tenants: 0, allowance_usage_consumed_send: integer(5), usage_event_quantity: integer(5) },
+            mismatch_count: 0,
+            mismatches: [],
+          }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${USAGE_REC}?product_key=sign`, 'GET', platformSession('read_only_auditor'));
+        expect(res.status).toBe(200);
+        expect(res.body['status']).toBe('RECONCILED');
+      });
+  });
+
+  it('a role without platform:subscription:read (catalog_manager) is refused (403)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a usage reconciliation read by a role missing the subscription read scope')
+      .withRequest('GET', USAGE_REC, (b) => {
+        b.headers(platformSession('catalog_manager'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:subscription:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${USAGE_REC}`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(403);
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/usage/periods (CCP-D1)', () => {
+  it('finance_admin reads a tenant\'s consumption per billing period (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('usage roll-ups are reconciled')
+      .uponReceiving('a usage periods read by a finance admin')
+      .withRequest('GET', USAGE_PERIODS, (b) => {
+        b.headers(platformSession('finance_admin')).query({ product_key: 'sign', metric_key: 'sign.envelopes', tenant_id: USAGE_TENANT });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          product_key: 'sign',
+          reconciliation: { status: 'RECONCILED', checked_at: iso() },
+          truncated: false,
+          periods: eachLike({
+            tenant_id: USAGE_TENANT,
+            metric_key: 'sign.envelopes',
+            product_key: 'sign',
+            period_start: iso('2026-10-01T00:00:00.000Z'),
+            period_end: iso('2026-11-01T00:00:00.000Z'),
+            alignment: 'ALIGNED',
+            subscription_id: USAGE_SUBSCRIPTION,
+            plan_version_id: uuid('cca10000-0000-7000-8000-0000000000d3'),
+            included_quantity: integer(100),
+            unlimited: false,
+            counts: usageCounts(3, 1),
+            stale: false,
+            computed_at: iso(),
+          }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${USAGE_PERIODS}?product_key=sign&metric_key=sign.envelopes&tenant_id=${USAGE_TENANT}`, 'GET', platformSession('finance_admin'));
+        expect(res.status).toBe(200);
+        expect((res.body['periods'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+
+  it('analytics are refused while the roll-ups do not reconcile (409 USAGE_ROLLUP_NOT_RECONCILED)', async () => {
+    await provider
+      .addInteraction()
+      .given('usage roll-ups do not reconcile')
+      .uponReceiving('a usage periods read while the roll-ups do not reconcile')
+      .withRequest('GET', USAGE_PERIODS, (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(409, (b) => {
+        b.jsonBody(errorBody('USAGE_ROLLUP_NOT_RECONCILED', { status: 'NOT_RECONCILED', mismatch_count: integer(1), checked_at: iso() }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${USAGE_PERIODS}`, 'GET', platformSession('commercial_ops'));
+        expect(res.status).toBe(409);
+        expect(errCode(res.body)).toBe('USAGE_ROLLUP_NOT_RECONCILED');
+      });
+  });
+});
+
+// ── CCP-B2-backend — the catalog publish through the same apply route ─────────
+
+describe('platform-web → POST /platform/commercial/change-requests/{id}/apply (CCP-B2-backend catalog publish)', () => {
+  it('the requester (catalog_manager) applies an approved plan-version publish (200, catalog_application)', async () => {
+    const path = `${CR}/${EX_REQUEST_ID}/apply`;
+    await provider
+      .addInteraction()
+      .given('an approved plan-version publish change request exists')
+      .uponReceiving('a plan-version publish apply by catalog_manager')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/apply`, path), (b) => {
+        b.headers(platformSession('catalog_manager'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          replayed: false,
+          application: null,
+          request: { id: uuid(EX_REQUEST_ID), action_type: 'PLAN_VERSION_PUBLISH', state: 'APPLIED', tenant_id: null, product_key: null, requested_by: OP.catalog_manager },
+          catalog_application: {
+            id: uuid('cca10000-0000-7000-8000-0000000000b7'),
+            change_request_id: uuid(EX_REQUEST_ID),
+            action_type: 'PLAN_VERSION_PUBLISH',
+            plan_id: uuid('cca10000-0000-7000-8000-0000000000b8'),
+            plan_version_id: uuid('cca10000-0000-7000-8000-0000000000b9'),
+            retired_plan_version_id: uuid('cca10000-0000-7000-8000-0000000000ba'),
+            provider_price_ref: null,
+            attempt: 1,
+            applied_by: OP.catalog_manager,
+            applied_at: iso(),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${path}`, 'POST', platformSession('catalog_manager'));
+        expect(res.status).toBe(200);
+      });
+  });
+});
+
+// ── CCP-C1 — the Stripe command outbox and webhook inbox (read-only) ─────────
+
+describe('platform-web → GET /platform/commercial/billing-commands (CCP-C1)', () => {
+  it('finance_admin lists the failed Stripe commands (200; visible, pending-provider, never dropped)', async () => {
+    await provider
+      .addInteraction()
+      .given('a failed billing command exists')
+      .uponReceiving('a failed billing command list read by finance_admin')
+      .withRequest('GET', COMMANDS, (b) => {
+        b.headers(platformSession('finance_admin')).query({ state: 'FAILED', limit: '50' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          commands: eachLike({
+            id: uuid('cca10000-0000-7000-8000-0000000000f1'),
+            provider: 'STRIPE',
+            command_kind: 'SUBSCRIPTION_CANCEL',
+            change_request_id: uuid(EX_REQUEST_ID),
+            step: like('end_self_service'),
+            idempotency_key: regex('^aramo-ccp-[0-9a-f-]{36}-[a-z][a-z0-9_]*$', `aramo-ccp-${EX_REQUEST_ID}-end_self_service`),
+            tenant_id: uuid(CREATE_TENANT),
+            product_key: 'sign',
+            target_ref: like('sub_pact_c1'),
+            params: { mode: 'IMMEDIATE' },
+            state: 'FAILED',
+            pending_provider: true,
+            attempts: integer(1),
+            next_attempt_at: null,
+            failure: { code: like('PROVIDER_REFUSED'), detail: like('billing provider unavailable') },
+            last_detail: like('billing provider unavailable'),
+            provider_accepted_at: null,
+            confirmed_at: null,
+            confirmation_source: null,
+            confirmation_event_id: null,
+            failed_at: iso(),
+            created_by: uuid(OP.commercial_ops),
+            created_at: iso(),
+            updated_at: iso(),
+          }),
+          next_cursor: null,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${COMMANDS}?state=FAILED&limit=50`, 'GET', platformSession('finance_admin'));
+        expect(res.status).toBe(200);
+        expect((res.body['commands'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+
+  it('a role without platform:billing:read (catalog_manager) is refused (403)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a billing command list read by a role missing the billing read scope')
+      .withRequest('GET', COMMANDS, (b) => {
+        b.headers(platformSession('catalog_manager'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:billing:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${COMMANDS}`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(403);
+        expect(errCode(res.body)).toBe('INSUFFICIENT_PERMISSIONS');
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/billing-webhook-inbox (CCP-C1)', () => {
+  it('support_admin lists the failed webhook inbox events (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('a failed billing webhook event exists')
+      .uponReceiving('a failed webhook inbox read by support_admin')
+      .withRequest('GET', INBOX, (b) => {
+        b.headers(platformSession('support_admin')).query({ status: 'FAILED' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          events: eachLike({
+            id: uuid('cca10000-0000-7000-8000-0000000000f2'),
+            provider: 'STRIPE',
+            provider_event_id: like('evt_pact_c1'),
+            event_type: like('invoice.paid'),
+            event_created_at: iso(),
+            subscription_ref: like('sub_pact_c1'),
+            checkout_session_ref: null,
+            product_key: 'sign',
+            status: 'FAILED',
+            attempts: integer(1),
+            next_attempt_at: iso(),
+            outcome: null,
+            detail: null,
+            last_error: like('billing provider unavailable'),
+            received_at: iso(),
+            processed_at: null,
+          }),
+          next_cursor: null,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${INBOX}?status=FAILED`, 'GET', platformSession('support_admin'));
+        expect(res.status).toBe(200);
+        expect((res.body['events'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+
+  it('a role without platform:billing:read (catalog_manager) is refused (403)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a webhook inbox read by a role missing the billing read scope')
+      .withRequest('GET', INBOX, (b) => {
+        b.headers(platformSession('catalog_manager'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:billing:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${INBOX}`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(403);
+      });
+  });
+});
+
+// ── CCP-C2 — governed manual <-> self-service conversion ─────────────────────
+
+describe('platform-web → POST /platform/commercial/change-requests/{id}/convert (CCP-C2)', () => {
+  const convert = (requestId = EX_REQUEST_ID) => `${CR}/${requestId}/convert`;
+  const conversionRequest = (state: string) => ({
+    id: uuid(EX_REQUEST_ID),
+    action_type: 'CONVERSION',
+    kind: 'NORMAL',
+    state,
+    tenant_id: uuid('cca10000-0000-7000-8000-0000000000b6'),
+    product_key: 'sign',
+    payload: like({ direction: 'TO_SELF_SERVICE', plan_key: 'aramo-sign-standard-business-v1' }),
+    requested_by: OP.commercial_ops,
+    approved_at: iso(),
+  });
+
+  it('the requester (commercial_ops) applies an approved governed → self-service conversion (200: the checkout release, nothing changed at the provider)', async () => {
+    await provider
+      .addInteraction()
+      .given('an approved governed-to-self-service conversion exists')
+      .uponReceiving('a conversion apply by its requester')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/convert`, convert()), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          replayed: false,
+          request: conversionRequest('APPLIED'),
+          conversion: {
+            direction: 'TO_SELF_SERVICE',
+            status: 'RELEASED',
+            pending_provider: false,
+            release: {
+              id: uuid('cca10000-0000-7000-8000-0000000000b7'),
+              change_request_id: uuid(EX_REQUEST_ID),
+              governed_subscription_id: uuid('cca10000-0000-7000-8000-0000000000b8'),
+              plan_version_id: uuid('cca10000-0000-7000-8000-0000000000b9'),
+              held_subscription_ref: null,
+              state: 'RELEASED',
+              effective_state: 'RELEASED',
+              expires_at: iso('2026-10-26T10:00:00.000Z'),
+              intent_id: null,
+              consumed_at: null,
+              self_service_subscription_id: null,
+              converted_at: null,
+              expired_at: null,
+            },
+            commands: [],
+            application: { change_request_id: uuid(EX_REQUEST_ID), action_type: 'CONVERSION', attempt: 1, capabilities: [], applied_by: OP.commercial_ops },
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${convert()}`, 'POST', platformSession('commercial_ops'));
+        expect(res.status).toBe(200);
+      });
+  });
+
+  it('a role without the requester authority (finance_admin) is refused (403 requester_scope_missing)', async () => {
+    await provider
+      .addInteraction()
+      .given('an approved governed-to-self-service conversion exists')
+      .uponReceiving('a conversion apply by a role without the requester scope')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/convert`, convert()), (b) => {
+        b.headers(platformSession('finance_admin'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(errorBody('INSUFFICIENT_PERMISSIONS', { reason: 'requester_scope_missing', missing_scopes: ['platform:subscription:request'] }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${convert()}`, 'POST', platformSession('finance_admin'));
+        expect(res.status).toBe(403);
+      });
+  });
+});
+
+// CCP-FIX1 (O-D4-2) — the apply-deadline refusal is spelled ONE way on both apply routes (the
+// CCP-A6-R convention): 409 COMMERCIAL_CHANGE_REQUEST_CONFLICT, details.reason apply_expired, an
+// operator explanation, the request state; never details.refusal.
+describe('platform-web → the apply-deadline refusal on POST …/apply and POST …/convert (CCP-FIX1)', () => {
+  const EXPIRED = errorBody('COMMERCIAL_CHANGE_REQUEST_CONFLICT', { reason: 'apply_expired', explanation: like('The apply authority of this approved request has expired.'), state: 'APPLY_EXPIRED' });
+  it('an apply-expired subscription open is refused at …/apply (409 apply_expired)', async () => {
+    await provider
+      .addInteraction()
+      .given('an apply-expired subscription-open change request exists')
+      .uponReceiving('an apply of an apply-expired request by its requester')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/apply`, `${CR}/${EX_REQUEST_ID}/apply`), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(409, (b) => {
+        b.jsonBody(EXPIRED);
+      })
+      .executeTest(async (mock) => {
+        expect((await call(`${mock.url}${CR}/${EX_REQUEST_ID}/apply`, 'POST', platformSession('commercial_ops'))).status).toBe(409);
+      });
+  });
+  it('an apply-expired conversion is refused at …/convert with the same body (409 apply_expired)', async () => {
+    await provider
+      .addInteraction()
+      .given('an apply-expired governed-to-self-service conversion exists')
+      .uponReceiving('a conversion apply of an apply-expired request by its requester')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/convert`, `${CR}/${EX_REQUEST_ID}/convert`), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(409, (b) => {
+        b.jsonBody(EXPIRED);
+      })
+      .executeTest(async (mock) => {
+        expect((await call(`${mock.url}${CR}/${EX_REQUEST_ID}/convert`, 'POST', platformSession('commercial_ops'))).status).toBe(409);
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/change-requests/{id} — the conversion apply hint (CCP-B3 C-2)', () => {
+  it('the requester (commercial_ops) of an approved conversion reads apply_actionable true (the …/convert apply is requester-only)', async () => {
+    await provider
+      .addInteraction()
+      .given('an approved governed-to-self-service conversion exists')
+      .uponReceiving('an approved conversion detail read by its requester')
+      .withRequest('GET', fromProviderState(`${CR}/\${requestId}`, `${CR}/${EX_REQUEST_ID}`), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ request: { id: uuid(EX_REQUEST_ID), action_type: 'CONVERSION', state: 'APPROVED', requested_by: OP.commercial_ops }, apply_actionable: true });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}/${EX_REQUEST_ID}`, 'GET', platformSession('commercial_ops'));
+        expect(res.body['apply_actionable']).toBe(true);
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/change-requests/{id}/conversion (CCP-C2)', () => {
+  const read = (requestId = EX_REQUEST_ID) => `${CR}/${requestId}/conversion`;
+
+  it('read_only_auditor reads a self-service → governed conversion that is pending at the provider (200 pending_provider: true; never reported committed)', async () => {
+    await provider
+      .addInteraction()
+      .given('a self-service-to-governed conversion is pending at the provider')
+      .uponReceiving('a pending-provider conversion read by read_only_auditor')
+      .withRequest('GET', fromProviderState(`${CR}/\${requestId}/conversion`, read()), (b) => {
+        b.headers(platformSession('read_only_auditor'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          request: { id: uuid(EX_REQUEST_ID), action_type: 'CONVERSION', state: 'APPLYING', requested_by: OP.commercial_ops },
+          conversion: {
+            direction: 'TO_GOVERNED',
+            status: 'PENDING_PROVIDER',
+            pending_provider: true,
+            release: null,
+            commands: eachLike({
+              command_kind: 'SUBSCRIPTION_CANCEL',
+              change_request_id: uuid(EX_REQUEST_ID),
+              step: 'cancel_held_activation',
+              idempotency_key: regex('^aramo-ccp-[0-9a-f-]{36}-cancel_held_activation$', `aramo-ccp-${EX_REQUEST_ID}-cancel_held_activation`),
+              params: { mode: 'IMMEDIATE' },
+              state: 'PENDING',
+              pending_provider: true,
+              confirmed_at: null,
+            }),
+            application: null,
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${read()}`, 'GET', platformSession('read_only_auditor'));
+        expect(res.status).toBe(200);
+      });
+  });
+});
+
+// ── CCP-C4 — credits, discounts and refunds (Stripe test mode; NOT DELIVERED until the refund policy)
+
+describe('platform-web → POST /platform/commercial/change-requests/{id}/billing-adjustment (CCP-C4)', () => {
+  const adjust = (requestId = EX_REQUEST_ID) => `${CR}/${requestId}/billing-adjustment`;
+
+  it('the requester (commercial_ops) applies an approved credit (200 PENDING_PROVIDER: one durable command, nothing reported applied; no tenant-specific amount in the body)', async () => {
+    await provider
+      .addInteraction()
+      .given('an approved credit on a self-service tenant exists')
+      .uponReceiving('a billing-adjustment apply by its requester')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/billing-adjustment`, adjust()), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          replayed: false,
+          request: {
+            id: uuid(EX_REQUEST_ID),
+            action_type: 'CREDIT',
+            state: 'APPLYING',
+            payload: { currency: 'USD', amount_withheld: 'FINANCE_SCOPE_REQUIRED' },
+            required_chain: like({ rule: 'FINANCE_ONLY' }),
+            requested_by: OP.commercial_ops,
+          },
+          adjustment: {
+            operation: 'CREDIT_GRANT',
+            status: 'PENDING_PROVIDER',
+            pending_provider: true,
+            refund_execution_disabled: false,
+            record: null,
+            commands: eachLike({
+              command_kind: 'CREDIT_GRANT',
+              change_request_id: uuid(EX_REQUEST_ID),
+              step: 'credit_grant',
+              idempotency_key: regex('^aramo-ccp-[0-9a-f-]{36}-credit_grant$', `aramo-ccp-${EX_REQUEST_ID}-credit_grant`),
+              params: like({ currency: 'USD', amount_withheld: 'FINANCE_SCOPE_REQUIRED' }),
+              state: 'PENDING',
+              pending_provider: true,
+              confirmed_at: null,
+            }),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${adjust()}`, 'POST', platformSession('commercial_ops'));
+        expect(res.status).toBe(200);
+      });
+  });
+
+  it('a role without the requester authority (finance_admin) is refused (403 requester_scope_missing)', async () => {
+    await provider
+      .addInteraction()
+      .given('an approved credit on a self-service tenant exists')
+      .uponReceiving('a billing-adjustment apply by a role without the requester scope')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/billing-adjustment`, adjust()), (b) => {
+        b.headers(platformSession('finance_admin'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(errorBody('INSUFFICIENT_PERMISSIONS', { reason: 'requester_scope_missing', missing_scopes: ['platform:billing:request'] }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${adjust()}`, 'POST', platformSession('finance_admin'));
+        expect(res.status).toBe(403);
+      });
+  });
+
+  // CCP-DG (Charter Amendment A2 RX-5…RX-7): the dual gate. Gate 1 (the operational switch) is off in
+  // the provider by default; gate 2 (the approved refund policy) is refused under the seeded v1.
+  it('an approved refund is refused while refund execution is not released (409 apply_refused REFUND_EXECUTION_NOT_RELEASED; nothing sent to Stripe)', async () => {
+    await provider
+      .addInteraction()
+      .given('an approved refund exists')
+      .uponReceiving('a refund apply while refund execution is not released')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/billing-adjustment`, adjust()), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(409, (b) => {
+        b.jsonBody(errorBody('COMMERCIAL_CHANGE_REQUEST_CONFLICT', { reason: 'apply_refused', refusal: 'REFUND_EXECUTION_NOT_RELEASED', gate_1_released: false, explanation: like('Refunds are not available yet.') }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${adjust()}`, 'POST', platformSession('commercial_ops'));
+        expect(res.status).toBe(409);
+      });
+  });
+
+  it('an approved refund is refused by the commercial gate while execution is released (409 apply_refused REFUND_POLICY_NOT_APPROVED; nothing sent to Stripe)', async () => {
+    await provider
+      .addInteraction()
+      .given('an approved refund exists while refund execution is released without an approved refund policy')
+      .uponReceiving('a refund apply while the refund policy is not approved')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/billing-adjustment`, adjust()), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(409, (b) => {
+        b.jsonBody(errorBody('COMMERCIAL_CHANGE_REQUEST_CONFLICT', { reason: 'apply_refused', refusal: 'REFUND_POLICY_NOT_APPROVED', gate_1_released: true, explanation: like('Refunds are not available yet.') }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${adjust()}`, 'POST', platformSession('commercial_ops'));
+        expect(res.status).toBe(409);
+      });
+  });
+});
+
+describe('platform-web → POST /platform/commercial/change-requests/{id}/billing-adjustment/resolve (CCP-C4-R)', () => {
+  const resolvePath = (requestId = EX_REQUEST_ID) => `${CR}/${requestId}/billing-adjustment/resolve`;
+
+  it('the requester (commercial_ops) resolves a refund the provider proves was never executed (200 RESOLVED_NOT_EXECUTED: WITHDRAWN, the slot released; no amount in the body)', async () => {
+    await provider
+      .addInteraction()
+      .given('a refund that was never executed is being applied')
+      .uponReceiving('a refund resolution by its requester after the provider proves no refund exists')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/billing-adjustment/resolve`, resolvePath()), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          resolution: 'RESOLVED_NOT_EXECUTED',
+          outcomes: ['NOT_FOUND'],
+          request: { id: uuid(EX_REQUEST_ID), action_type: 'REFUND', state: 'WITHDRAWN', payload: like({ amount_withheld: 'FINANCE_SCOPE_REQUIRED' }), requested_by: OP.commercial_ops },
+          adjustment: { operation: 'REFUND_CREATE', status: 'RESOLVED_NOT_EXECUTED', record: null, commands: eachLike({ command_kind: 'REFUND_CREATE', step: 'refund_create' }) },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${resolvePath()}`, 'POST', platformSession('commercial_ops'));
+        expect(res.status).toBe(200);
+      });
+  });
+
+  it('the requester (commercial_ops) cannot resolve a refund whose outcome is not proven (409 apply_refused REFUND_OUTCOME_UNCERTAIN; the request and its slot are held)', async () => {
+    await provider
+      .addInteraction()
+      .given('a refund is being applied')
+      .uponReceiving('a refund resolution while its outcome is not proven')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/billing-adjustment/resolve`, resolvePath()), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(409, (b) => {
+        b.jsonBody(errorBody('COMMERCIAL_CHANGE_REQUEST_CONFLICT', { reason: 'apply_refused', refusal: 'REFUND_OUTCOME_UNCERTAIN', explanation: like('Whether this refund happened at Stripe is not proven yet.') }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${resolvePath()}`, 'POST', platformSession('commercial_ops'));
+        expect(res.status).toBe(409);
+      });
+  });
+
+  it('a role without the requester authority (finance_admin) is refused (403 requester_scope_missing)', async () => {
+    await provider
+      .addInteraction()
+      .given('a refund is being applied')
+      .uponReceiving('a refund resolution by a role without the requester scope')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/billing-adjustment/resolve`, resolvePath()), (b) => {
+        b.headers(platformSession('finance_admin'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(errorBody('INSUFFICIENT_PERMISSIONS', { reason: 'requester_scope_missing', missing_scopes: ['platform:billing:request'] }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${resolvePath()}`, 'POST', platformSession('finance_admin'));
+        expect(res.status).toBe(403);
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/finance/refunds (CCP-C4-P)', () => {
+  // TD-C4P-6 (merge train): the decision is CCP-R3's shared amountAccess, against the seeded grants.
+  // CCP-R3-W (W-3): `category` is the refund's requester-authored provenance — a non-holder who did
+  // not request it (support_admin) gets `evidence_withheld` instead.
+  const row = (amount: Record<string, unknown>, evidence: Record<string, unknown> = { category: like('R4_SERVICE_FAILURE') }) => ({
+    change_request_id: uuid(EX_REQUEST_ID),
+    refund_state: regex('^(requested|approved|pending|confirmed|failed|reconciled|closed)$', 'approved'),
+    reconciliation_status: regex('^(NOT_SENT|PENDING_PROVIDER|COMMAND_FAILED|CONFIRMED|RESOLVED_NOT_EXECUTED)$', 'NOT_SENT'),
+    ...evidence,
+    currency: like('USD'),
+    ...amount,
+  });
+  it('finance_admin (platform:billing:amount:read) reads the refund report (200; a projection of the records; the amount shown)', async () => {
+    await provider
+      .addInteraction()
+      .given('refund records exist')
+      .uponReceiving('a refund report read by finance_admin')
+      .withRequest('GET', REFUND_REPORT, (b) => {
+        b.headers(platformSession('finance_admin')).query({ limit: '50' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ refunds: eachLike(row({ amount_minor: integer(4321) })), next_cursor: null });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${REFUND_REPORT}?limit=50`, 'GET', platformSession('finance_admin'));
+        expect(res.status).toBe(200);
+        expect(JSON.stringify(res.body)).not.toContain('amount_withheld');
+      });
+  });
+
+  it('support_admin (no platform:billing:amount:read) reads the refund report (200; the amount withheld FINANCE_SCOPE_REQUIRED)', async () => {
+    await provider
+      .addInteraction()
+      .given('refund records exist')
+      .uponReceiving('a refund report read by support_admin')
+      .withRequest('GET', REFUND_REPORT, (b) => {
+        b.headers(platformSession('support_admin')).query({ limit: '50' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ refunds: eachLike(row({ amount_withheld: 'FINANCE_SCOPE_REQUIRED' }, { evidence_withheld: 'FINANCE_SCOPE_REQUIRED' })), next_cursor: null });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${REFUND_REPORT}?limit=50`, 'GET', platformSession('support_admin'));
+        expect(res.status).toBe(200);
+        expect(JSON.stringify(res.body)).not.toContain('amount_minor');
+        expect(JSON.stringify(res.body)).not.toContain('"category"');
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/change-requests/{id}/billing-adjustment (CCP-C4)', () => {
+  const read = (requestId = EX_REQUEST_ID) => `${CR}/${requestId}/billing-adjustment`;
+
+  it('read_only_auditor (a Finance amount scope holder, CCP-R3) reads a credit pending at the provider (200 pending_provider: true; never reported applied; the amount shown)', async () => {
+    await provider
+      .addInteraction()
+      .given('a credit is pending at the provider')
+      .uponReceiving('a pending-provider billing adjustment read by read_only_auditor')
+      .withRequest('GET', fromProviderState(`${CR}/\${requestId}/billing-adjustment`, read()), (b) => {
+        b.headers(platformSession('read_only_auditor'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          request: { id: uuid(EX_REQUEST_ID), action_type: 'CREDIT', state: 'APPLYING', payload: { currency: 'USD', amount_minor: integer(2500) }, requested_by: OP.commercial_ops },
+          adjustment: {
+            operation: 'CREDIT_GRANT',
+            status: 'PENDING_PROVIDER',
+            pending_provider: true,
+            refund_execution_disabled: false,
+            record: null,
+            commands: eachLike({ command_kind: 'CREDIT_GRANT', state: 'PENDING', pending_provider: true, params: like({ amount_minor: integer(2500) }) }),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${read()}`, 'GET', platformSession('read_only_auditor'));
+        expect(res.status).toBe(200);
+      });
+  });
+});
+
+// ── CCP-C3 — read-through invoice and payment status (read-only) ─────────────
+
+describe('platform-web → GET /platform/commercial/tenants/{tenant_id}/billing-status (CCP-C3)', () => {
+  it('finance_admin reads a tenant\'s invoice and payment status (200; provider status mirrored, money on a Finance screen)', async () => {
+    await provider
+      .addInteraction()
+      .given('a tenant with a Stripe-owned subscription and invoices exists', { tenant_id: C3_TENANT })
+      .uponReceiving('a tenant billing status read by finance_admin')
+      .withRequest('GET', BILLING_STATUS, (b) => {
+        b.headers(platformSession('finance_admin')).query({ product_key: 'sign', invoice_limit: '12' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          tenant_id: uuid(C3_TENANT),
+          product_key: 'sign',
+          availability: 'AVAILABLE',
+          provider: 'STRIPE',
+          mode: 'test',
+          subscription: {
+            id: uuid('cca10000-0000-7000-8000-0000000000d3'),
+            source: 'SELF_SERVICE',
+            status: like('PAST_DUE'),
+            open: true,
+            account_ref: like('acct_pact_c3'),
+            subscription_ref: like('sub_pact_c3'),
+          },
+          provider_subscription: {
+            provider_status: like('past_due'),
+            current_period_start: iso(),
+            current_period_end: iso(),
+            cancel_at_period_end: false,
+          },
+          invoices: eachLike({
+            provider: 'STRIPE',
+            invoice_ref: like('in_pact_c3'),
+            number: like('PACT-0001'),
+            subscription_ref: like('sub_pact_c3'),
+            provider_status: regex('^(draft|open|paid|uncollectible|void)$', 'open'),
+            payment_state: regex('^(DRAFT|DUE|OVERDUE|PAYMENT_FAILED|PAID|UNCOLLECTIBLE|VOID|UNKNOWN)$', 'OVERDUE'),
+            currency: like('usd'),
+            total_minor: integer(4900),
+            amount_due_minor: integer(4900),
+            amount_paid_minor: integer(0),
+            amount_remaining_minor: integer(4900),
+            created_at: iso(),
+            due_at: iso(),
+            period_start: iso(),
+            period_end: iso(),
+            attempt_count: integer(2),
+            next_attempt_at: null,
+            hosted_url: like('https://invoice.test/in_pact_c3'),
+            document_url: null,
+          }),
+          // CCP-R3 (CCP-A1 Amendment A1, FA-4): the derived booleans, for every billing reader.
+          payment_due: true,
+          payment_overdue: true,
+          // CCP-C5 — the designed disabled tax state (exact; no setting enables it).
+          tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' },
+          detail: null,
+          read_at: iso(),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${BILLING_STATUS}?product_key=sign&invoice_limit=12`, 'GET', platformSession('finance_admin'));
+        expect(res.status).toBe(200);
+        expect((res.body['invoices'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+
+  it('support_admin (platform:billing:read without platform:billing:amount:read) reads the due / overdue booleans only: no invoices, no amount, currency or link (CCP-R3, FA-4 / FA-5)', async () => {
+    await provider
+      .addInteraction()
+      .given('a tenant with a Stripe-owned subscription and invoices exists', { tenant_id: C3_TENANT })
+      .uponReceiving('a tenant billing status read by support_admin')
+      .withRequest('GET', BILLING_STATUS, (b) => {
+        b.headers(platformSession('support_admin')).query({ product_key: 'sign', invoice_limit: '1' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          tenant_id: uuid(C3_TENANT),
+          product_key: 'sign',
+          availability: 'AVAILABLE',
+          provider: 'STRIPE',
+          mode: 'test',
+          subscription: {
+            id: uuid('cca10000-0000-7000-8000-0000000000d3'),
+            source: 'SELF_SERVICE',
+            status: like('PAST_DUE'),
+            open: true,
+            account_ref: like('acct_pact_c3'),
+            subscription_ref: like('sub_pact_c3'),
+          },
+          provider_subscription: {
+            provider_status: like('past_due'),
+            current_period_start: iso(),
+            current_period_end: iso(),
+            cancel_at_period_end: false,
+          },
+          payment_due: true,
+          payment_overdue: true,
+          amount_withheld: 'FINANCE_SCOPE_REQUIRED',
+          tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' },
+          detail: null,
+          read_at: iso(),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${BILLING_STATUS}?product_key=sign&invoice_limit=1`, 'GET', platformSession('support_admin'));
+        expect(res.status).toBe(200);
+        expect(res.body['invoices']).toBeUndefined();
+        expect(JSON.stringify(res.body)).not.toMatch(/_minor|hosted_url|currency/);
+      });
+  });
+
+  it('a role without platform:billing:read (catalog_manager) is refused (403)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a tenant billing status read by a role missing the billing read scope')
+      .withRequest('GET', BILLING_STATUS, (b) => {
+        b.headers(platformSession('catalog_manager')).query({ product_key: 'sign' });
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:billing:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${BILLING_STATUS}?product_key=sign`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(403);
+        expect(errCode(res.body)).toBe('INSUFFICIENT_PERMISSIONS');
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/billing-portal-configuration (CCP-C3)', () => {
+  it('read_only_auditor reads the portal-configuration facts (200; ACTIVE is a provider fact, not the §10 verification)', async () => {
+    await provider
+      .addInteraction()
+      .given('a billing portal configuration is set')
+      .uponReceiving('a billing portal configuration read by read_only_auditor')
+      .withRequest('GET', PORTAL_CONFIG, (b) => {
+        b.headers(platformSession('read_only_auditor'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          provider: 'STRIPE',
+          availability: 'AVAILABLE',
+          mode: 'test',
+          configuration_ref: like('bpc_pact_c3'),
+          configuration_state: regex('^(NOT_CONFIGURED|NOT_FOUND|INACTIVE|ACTIVE)$', 'ACTIVE'),
+          configuration: {
+            active: true,
+            is_default: false,
+            live: false,
+            invoice_history_enabled: true,
+            payment_method_update_enabled: true,
+            subscription_cancel_enabled: true,
+            subscription_cancel_mode: like('at_period_end'),
+            subscription_update_enabled: false,
+          },
+          detail: null,
+          read_at: iso(),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${PORTAL_CONFIG}`, 'GET', platformSession('read_only_auditor'));
+        expect(res.status).toBe(200);
+      });
+  });
+
+  it('a role without platform:billing:read (catalog_manager) is refused (403)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a billing portal configuration read by a role missing the billing read scope')
+      .withRequest('GET', PORTAL_CONFIG, (b) => {
+        b.headers(platformSession('catalog_manager'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:billing:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${PORTAL_CONFIG}`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(403);
+      });
+  });
+});
+
+// ── CCP-C6 — the dedicated Finance read routes (money only here; A0-C6) ───────
+
+const USD_MONTH = { amount_minor: integer(2000), currency: 'USD', billing_interval: 'MONTH' };
+const PRICED = { list_price: USD_MONTH, unpriced_reason: null, price_source: 'PINNED_PLAN_VERSION', plan_version_id: uuid('cca10000-0000-7000-8000-0000000006b1') };
+
+function financeRefusal(path: string, label: string): void {
+  it(`a role without platform:billing:read (catalog_manager) is refused ${label} (403)`, async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving(`a finance ${label} read by a role missing the billing read scope`)
+      .withRequest('GET', path, (b) => {
+        b.headers(platformSession('catalog_manager'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:billing:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${path}`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(403);
+        expect(JSON.stringify(res.body)).not.toContain('amount_minor');
+      });
+  });
+}
+
+describe('platform-web → GET /platform/commercial/finance/renewals (CCP-C6)', () => {
+  it('finance_admin reads the renewals queue (200; the pinned version\'s USD list price)', async () => {
+    await provider
+      .addInteraction()
+      .given('finance records exist')
+      .uponReceiving('a renewals queue read by finance_admin')
+      .withRequest('GET', RENEWALS, (b) => {
+        b.headers(platformSession('finance_admin')).query({ tenant_id: FIN_RENEWAL_TENANT, within_days: '90' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          as_of: iso(),
+          within_days: 90,
+          currency: 'USD',
+          billing_provider_mode: like('unconfigured'),
+          tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' },
+          items: eachLike({
+            subscription_id: uuid('cca10000-0000-7000-8000-0000000006c1'),
+            tenant_id: FIN_RENEWAL_TENANT,
+            tenant_name: like('Pact Finance Renewal'),
+            product_key: 'sign',
+            source: 'MANUAL',
+            status: 'ACTIVE',
+            plan_key: 'aramo-sign-standard-business-v1',
+            plan_name: like('Standard Business'),
+            version_number: integer(1),
+            grandfathered: false,
+            renewal_kind: 'COMMITMENT_END',
+            renewal_at: iso('2026-11-15T10:00:00.000Z'),
+            days_until: integer(20),
+            lapsed: false,
+            commitment_months: integer(12),
+            cancel_at_period_end: false,
+            cancel_requested_within_commitment: false,
+            ...PRICED,
+          }),
+          counts: { items: integer(1), lapsed: integer(0), commitment_end: integer(1), period_end: integer(0) },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${RENEWALS}?tenant_id=${FIN_RENEWAL_TENANT}&within_days=90`, 'GET', platformSession('finance_admin'));
+        expect(res.status).toBe(200);
+        expect((res.body['items'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+
+  financeRefusal(RENEWALS, 'renewals');
+});
+
+describe('platform-web → GET /platform/commercial/finance/outstanding-payments (CCP-C6)', () => {
+  it('commercial_ops reads the outstanding payments (200; the amount owed is withheld — no platform:billing:amount:read, CCP-R3)', async () => {
+    await provider
+      .addInteraction()
+      .given('finance records exist')
+      .uponReceiving('an outstanding payments read by commercial_ops')
+      .withRequest('GET', OUTSTANDING, (b) => {
+        b.headers(platformSession('commercial_ops')).query({ tenant_id: FIN_OUTSTANDING_TENANT });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          as_of: iso(),
+          currency: 'USD',
+          billing_provider_mode: like('unconfigured'),
+          tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' },
+          items: eachLike({
+            subscription_id: uuid('cca10000-0000-7000-8000-0000000006c2'),
+            tenant_id: FIN_OUTSTANDING_TENANT,
+            tenant_name: like('Pact Finance Outstanding'),
+            product_key: 'sign',
+            source: 'SELF_SERVICE',
+            status: 'PAST_DUE',
+            plan_key: 'aramo-sign-standard-business-v1',
+            version_number: integer(1),
+            billing_subscription_ref: like('sub_pact_c6_outstanding'),
+            status_since: iso(),
+            grace_until: iso('2026-10-30T10:00:00.000Z'),
+            grace_state: 'IN_GRACE',
+            current_period_end: iso('2026-11-15T10:00:00.000Z'),
+            amount_withheld: 'FINANCE_SCOPE_REQUIRED',
+            amount_due_reason: 'INVOICE_READ_NOT_DELIVERED',
+            ...PRICED,
+          }),
+          counts: { items: integer(1), past_due: integer(1), incomplete: integer(0), in_grace: integer(1), grace_ended: integer(0), no_grace_date: integer(0) },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${OUTSTANDING}?tenant_id=${FIN_OUTSTANDING_TENANT}`, 'GET', platformSession('commercial_ops'));
+        expect(res.status).toBe(200);
+        expect((res.body['items'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+
+  financeRefusal(OUTSTANDING, 'outstanding payments');
+});
+
+describe('platform-web → GET /platform/commercial/finance/reconciliation-report (CCP-C6)', () => {
+  it('read_only_auditor reads the reconciliation report (200; the held activation listed, Conv. C-8)', async () => {
+    await provider
+      .addInteraction()
+      .given('finance records exist')
+      .uponReceiving('a billing reconciliation report read by read_only_auditor')
+      .withRequest('GET', RECONCILIATION, (b) => {
+        b.headers(platformSession('read_only_auditor')).query({ tenant_id: FIN_HELD_TENANT });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          as_of: iso(),
+          currency: 'USD',
+          billing_provider_mode: like('unconfigured'),
+          tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' },
+          status: 'EXCEPTIONS',
+          subscriptions: eachLike({
+            subscription_id: uuid('cca10000-0000-7000-8000-0000000006c3'),
+            tenant_id: FIN_HELD_TENANT,
+            tenant_name: like('Pact Finance Held'),
+            product_key: 'sign',
+            source: 'MANUAL',
+            status: 'ACTIVE',
+            plan_key: 'aramo-sign-included-v1',
+            version_number: integer(1),
+            version_status: 'PUBLISHED',
+            grandfathered: false,
+            billing_subscription_ref: null,
+            provider_price_ref: null,
+            entitlement: { expected: ['core', 'sign'], present: ['core', 'sign'], missing: [] },
+            open_flag_reasons: ['governed_subscription_open'],
+            unconfirmed_command_ids: [],
+            discrepancies: [],
+            list_price: null,
+            unpriced_reason: 'NO_LIST_PRICE',
+            price_source: 'PINNED_PLAN_VERSION',
+            plan_version_id: uuid('cca10000-0000-7000-8000-0000000006b2'),
+          }),
+          entitled_without_subscription: [],
+          held_activations: eachLike({
+            flag_id: uuid('cca10000-0000-7000-8000-0000000006d1'),
+            tenant_id: FIN_HELD_TENANT,
+            tenant_name: like('Pact Finance Held'),
+            product_key: 'sign',
+            provider: 'STRIPE',
+            subscription_ref: like('sub_pact_c6_held'),
+            detected_at: iso(),
+            intent_id: uuid('cca10000-0000-7000-8000-0000000006d2'),
+            intent_status: 'CREATED',
+            governed_subscription_id: uuid('cca10000-0000-7000-8000-0000000006c3'),
+            governed_plan_key: 'aramo-sign-included-v1',
+            held_plan_key: 'aramo-sign-standard-business-v1',
+            held_price: { list_price: USD_MONTH, unpriced_reason: null, price_source: 'CURRENT_PUBLISHED_PLAN_VERSION', plan_version_id: uuid('cca10000-0000-7000-8000-0000000006b1') },
+            unconfirmed_commands: [],
+            resolution: 'UNRESOLVED',
+          }),
+          other_open_flags: [],
+          unlinked_receipts: [],
+          counts: {
+            open_subscriptions: integer(1),
+            by_source: like({ MANUAL: 1 }),
+            by_status: like({ ACTIVE: 1 }),
+            subscriptions_with_discrepancy: integer(0),
+            discrepancies: {},
+            entitled_without_subscription: integer(0),
+            held_activations: integer(1),
+            other_open_flags: integer(0),
+            unlinked_receipts: integer(0),
+            unconfirmed_commands: integer(0),
+            failed_commands: integer(0),
+            failed_inbox_events: integer(0),
+            unprocessed_inbox_events: integer(0),
+            exceptions: integer(1),
+          },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${RECONCILIATION}?tenant_id=${FIN_HELD_TENANT}`, 'GET', platformSession('read_only_auditor'));
+        expect(res.status).toBe(200);
+        expect((res.body['held_activations'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+
+  financeRefusal(RECONCILIATION, 'reconciliation report');
+});
+
+// ── CCP-A8 — the support exception overlay ────────────────────────────────────
+
+const SE_EXTENSION = (tenant_id: string, subscription_id: string) => ({
+  id: uuid('cca10000-0000-7000-8000-0000000008c1'),
+  tenant_id: uuid(tenant_id),
+  product_key: 'sign',
+  subscription_id: uuid(subscription_id),
+  change_request_id: uuid(EX_REQUEST_ID),
+  is_exception: true,
+  days: integer(7),
+  grace_until_at_apply: iso(),
+  base_until: iso(),
+  extends_until: iso(),
+  policy_version_id: POLICY_V1,
+  applied_by: OP.support_admin,
+  applied_at: iso(),
+  removed_at: null,
+  removed_by: null,
+  remove_change_request_id: null,
+});
+
+describe('platform-web → GET /platform/commercial/finance/revenue (CCP-D2)', () => {
+  // CCP-R3 (Finance amount scope, LOCKED; FA-1 / FA-5): finance_admin holds platform:billing:read
+  // AND platform:billing:amount:read and receives MRR / ARR and each bucket's MRR; commercial_ops
+  // holds platform:billing:read only and receives the counts with amount_withheld:
+  // FINANCE_SCOPE_REQUIRED on every money-bearing object (the amount fields absent).
+  const WITHHELD = 'FINANCE_SCOPE_REQUIRED';
+  const bucket = (month: unknown, amounts: Record<string, unknown>) => ({
+    month,
+    commitment_end: integer(0),
+    period_end: integer(0),
+    events: integer(0),
+    priced_events: integer(0),
+    unpriced_events: integer(0),
+    ...amounts,
+  });
+  const report = (amounts: Record<string, unknown>, line: Record<string, unknown>, bucketAmounts: Record<string, unknown>) => ({
+    as_of: iso(),
+    currency: 'USD',
+    billing_interval: 'MONTH',
+    basis: 'OPEN_SUBSCRIPTIONS_X_PINNED_LIST_PRICE',
+    // Architect W-1: an illustrative list-price value, never recognized revenue.
+    recognized_revenue: false,
+    billing_provider_mode: like('unconfigured'),
+    tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' },
+    ...amounts,
+    by_product: eachLike({ product_key: 'sign', subscriptions: integer(2), ...line }),
+    counts: {
+      open_commercial_subscriptions: integer(3),
+      included: integer(2),
+      excluded: integer(1),
+      excluded_by_reason: {
+        STATUS_NOT_REVENUE_BEARING: integer(0),
+        PLAN_VERSION_INTEGRITY: integer(0),
+        CONTRACT_PRICED: integer(0),
+        NO_LIST_PRICE: integer(1),
+        NON_USD_CURRENCY: integer(0),
+        NON_MONTHLY_INTERVAL: integer(0),
+      },
+      not_commercial_by_source: like({}),
+    },
+    renewal_pipeline: {
+      months: 3,
+      from_month: regex('^\\d{4}-\\d{2}$', '2026-10'),
+      through_month: regex('^\\d{4}-\\d{2}$', '2026-12'),
+      lapsed: bucket('LAPSED', bucketAmounts),
+      by_month: eachLike(bucket(regex('^\\d{4}-\\d{2}$', '2026-10'), bucketAmounts), 3),
+    },
+  });
+  it('finance_admin (platform:billing:amount:read) reads the revenue report with MRR / ARR and the pipeline MRR (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('finance records exist')
+      .uponReceiving('a revenue report read by finance_admin')
+      .withRequest('GET', REVENUE, (b) => {
+        b.headers(platformSession('finance_admin')).query({ product_key: 'sign', months: '3' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody(report({ mrr_minor: integer(4900), arr_minor: integer(58800) }, { mrr_minor: integer(4900), arr_minor: integer(58800) }, { mrr_minor: integer(0) }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${REVENUE}?product_key=sign&months=3`, 'GET', platformSession('finance_admin'));
+        expect(res.status).toBe(200);
+        expect(typeof res.body['mrr_minor']).toBe('number');
+        expect(res.body['amount_withheld']).toBeUndefined();
+      });
+  });
+
+  it('commercial_ops (no platform:billing:amount:read) reads the revenue report: counts only, every amount withheld (200, CCP-R3)', async () => {
+    await provider
+      .addInteraction()
+      .given('finance records exist')
+      .uponReceiving('a revenue report read by commercial_ops')
+      .withRequest('GET', REVENUE, (b) => {
+        b.headers(platformSession('commercial_ops')).query({ product_key: 'sign', months: '3' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody(report({ amount_withheld: WITHHELD }, { amount_withheld: WITHHELD }, { amount_withheld: WITHHELD }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${REVENUE}?product_key=sign&months=3`, 'GET', platformSession('commercial_ops'));
+        expect(res.status).toBe(200);
+        expect(res.body['amount_withheld']).toBe(WITHHELD);
+        expect(JSON.stringify(res.body)).not.toMatch(/_minor|"mrr|"arr/);
+      });
+  });
+
+  financeRefusal(REVENUE, 'revenue');
+});
+
+describe('platform-web → POST /platform/commercial/support-extensions (CCP-A8)', () => {
+  it('support_admin requests an in-bound extension: applied at once as a bounded EXCEPTION (201 APPLIED, zero-step chain)', async () => {
+    const body = SE_BODY(SE_TENANT_APPLY, SE_SUB_APPLY, 7, 'pact-a8-apply-0001');
+    await provider
+      .addInteraction()
+      .given('a tenant with a past-due Stripe-owned Sign subscription exists', { tenant_id: SE_TENANT_APPLY, subscription_id: SE_SUB_APPLY })
+      .uponReceiving('an in-bound support extension by support_admin')
+      .withRequest('POST', SE, (b) => {
+        b.headers(platformJson('support_admin')).jsonBody(body);
+      })
+      .willRespondWith(201, (b) => {
+        b.jsonBody({
+          outcome: 'APPLIED',
+          replayed: false,
+          request: like({
+            id: uuid(EX_REQUEST_ID),
+            action_type: 'SUPPORT_EXTENSION',
+            kind: 'EXCEPTION',
+            state: 'APPLIED',
+            required_chain: { rule: 'BOUNDED_EXCEPTION', basis: like({}), steps: [] },
+          }),
+          extension: like(SE_EXTENSION(SE_TENANT_APPLY, SE_SUB_APPLY)),
+          application: like({ action_type: 'SUPPORT_EXTENSION', capabilities: [], attempt: 1 }),
+          decision: like({ eligible: true, within_bounds: true, breaches: [] }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${SE}`, 'POST', platformJson('support_admin'), body);
+        expect(res.status).toBe(201);
+        expect(res.body['outcome']).toBe('APPLIED');
+      });
+  });
+
+  it('support_admin requests an out-of-bound extension (20 days): escalated to Finance, nothing applied (201 ESCALATED)', async () => {
+    const body = SE_BODY(SE_TENANT_ESC, SE_SUB_ESC, 20, 'pact-a8-escalate-0001');
+    await provider
+      .addInteraction()
+      .given('a tenant with a past-due Stripe-owned Sign subscription exists', { tenant_id: SE_TENANT_ESC, subscription_id: SE_SUB_ESC })
+      .uponReceiving('an out-of-bound support extension by support_admin')
+      .withRequest('POST', SE, (b) => {
+        b.headers(platformJson('support_admin')).jsonBody(body);
+      })
+      .willRespondWith(201, (b) => {
+        b.jsonBody({
+          outcome: 'ESCALATED',
+          replayed: false,
+          request: like({ action_type: 'SUPPORT_EXTENSION', kind: 'NORMAL', state: 'PENDING_APPROVAL', required_chain: like({ rule: 'FINANCE_ONLY' }) }),
+          extension: null,
+          application: null,
+          decision: like({ eligible: true, within_bounds: false, breaches: ['LENGTH'] }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${SE}`, 'POST', platformJson('support_admin'), body);
+        expect(res.status).toBe(201);
+        expect(res.body['outcome']).toBe('ESCALATED');
+      });
+  });
+
+  it('a role without platform:subscription:support (finance_admin) is refused (403)', async () => {
+    const body = SE_BODY(SE_TENANT_APPLY, SE_SUB_APPLY, 7, 'pact-a8-refused-0001');
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a support extension by a role missing the support scope')
+      .withRequest('POST', SE, (b) => {
+        b.headers(platformJson('finance_admin')).jsonBody(body);
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:subscription:support'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${SE}`, 'POST', platformJson('finance_admin'), body);
+        expect(res.status).toBe(403);
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/support-extensions (CCP-A8)', () => {
+  it('read_only_auditor lists a tenant\'s overlays (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('a support extension has been applied', { tenant_id: SE_TENANT_LIST })
+      .uponReceiving('a support extension list read by a read-only auditor')
+      .withRequest('GET', SE, (b) => {
+        b.headers(platformSession('read_only_auditor')).query({ tenant_id: SE_TENANT_LIST });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ extensions: eachLike({ ...SE_EXTENSION(SE_TENANT_LIST, 'cca10000-0000-7000-8000-0000000008b3'), active: true }) });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${SE}?tenant_id=${SE_TENANT_LIST}`, 'GET', platformSession('read_only_auditor'));
+        expect(res.status).toBe(200);
+      });
+  });
+
+  it('a role without platform:subscription:read (catalog_manager) is refused (403)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a support extension list read by a role missing the subscription read scope')
+      .withRequest('GET', SE, (b) => {
+        b.headers(platformSession('catalog_manager')).query({ tenant_id: SE_TENANT_LIST });
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:subscription:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${SE}?tenant_id=${SE_TENANT_LIST}`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(403);
+      });
+  });
+});
+
+// ── CCP-B6 — the console's support-extension screen ──────────────────────────
+// The screen reads the list route once (the overlays with their recorded context, the open base
+// rows its POST names, the ACTIVE policy clause for the live preview), creates a removal as a
+// SUPPORT_EXTENSION change request with operation REMOVE (TD-A8-5), and applies an approved
+// escalation as its requester (TD-B2-3). Each mutating interaction has its own tenant.
+const SE_TENANT_SCREEN = 'cca10000-0000-7000-8000-0000000008a4';
+const SE_TENANT_REMOVE = 'cca10000-0000-7000-8000-0000000008a5';
+const SE_TENANT_ESC_APPLY = 'cca10000-0000-7000-8000-0000000008a6';
+const SE_EXTENSION_ID = 'cca10000-0000-7000-8000-0000000008c2';
+const SE_CLAUSE = {
+  support_extension_max_days: integer(14),
+  support_extension_frequency_window_days: integer(90),
+  support_extension_cumulative_max_days: integer(30),
+  support_extension_cumulative_window_days: integer(365),
+};
+
+describe('platform-web → the support-extension screen (CCP-B6)', () => {
+  it('support_admin reads the screen: overlays with their recorded context, the open base rows and the ACTIVE policy clause (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('a support extension has been applied', { tenant_id: SE_TENANT_SCREEN })
+      .uponReceiving('the support-extension screen read by support_admin')
+      .withRequest('GET', SE, (b) => {
+        b.headers(platformSession('support_admin')).query({ tenant_id: SE_TENANT_SCREEN, product_key: 'sign' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          extensions: eachLike({
+            ...SE_EXTENSION(SE_TENANT_SCREEN, 'cca10000-0000-7000-8000-0000000008b4'),
+            active: true,
+            context: {
+              policy_version_number: integer(1),
+              clause: like(SE_CLAUSE),
+              counters: like({ requested_days: integer(7), extensions_in_frequency_window: integer(0), cumulative_days_before: integer(0), cumulative_days_after: integer(7) }),
+              roles_at_apply: eachLike('support_admin'),
+            },
+          }),
+          subscriptions: eachLike({
+            id: uuid('cca10000-0000-7000-8000-0000000008b4'),
+            product_key: 'sign',
+            source: like('SELF_SERVICE'),
+            status: like('PAST_DUE'),
+            grace_until: iso(),
+            current_period_end: null,
+          }),
+          policy: { version_id: POLICY_V1, version_number: integer(1), clause: like(SE_CLAUSE), approval_expiry_hours: integer(72) },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${SE}?tenant_id=${SE_TENANT_SCREEN}&product_key=sign`, 'GET', platformSession('support_admin'));
+        expect(res.status).toBe(200);
+        expect(res.body['policy']).not.toBeNull();
+      });
+  });
+
+  it('support_admin requests the removal of an overlay: a SUPPORT_EXTENSION change request with operation REMOVE (201 DRAFT, Finance chain)', async () => {
+    const body = {
+      action_type: 'SUPPORT_EXTENSION',
+      tenant_id: SE_TENANT_REMOVE,
+      product_key: 'sign',
+      payload: { operation: 'REMOVE', support_extension_id: fromProviderState('${extensionId}', SE_EXTENSION_ID) },
+      reason: 'Granted in error',
+      idempotency_key: 'pact-b6-remove-0001',
+    };
+    await provider
+      .addInteraction()
+      .given('a support extension has been applied', { tenant_id: SE_TENANT_REMOVE })
+      .uponReceiving('a support extension removal request by support_admin')
+      .withRequest('POST', CR, (b) => {
+        b.headers(platformJson('support_admin')).jsonBody(body);
+      })
+      .willRespondWith(201, (b) => {
+        b.jsonBody({
+          request: like({
+            id: uuid(EX_REQUEST_ID),
+            action_type: 'SUPPORT_EXTENSION',
+            kind: 'NORMAL',
+            state: 'DRAFT',
+            payload: { operation: 'REMOVE', support_extension_id: uuid(SE_EXTENSION_ID) },
+            required_chain: like({ rule: 'FINANCE_ONLY' }),
+          }),
+          replayed: false,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}`, 'POST', platformJson('support_admin'), { ...body, payload: { operation: 'REMOVE', support_extension_id: SE_EXTENSION_ID } });
+        expect(res.status).toBe(201);
+      });
+  });
+
+  it('support_admin, the requester, applies an approved escalated extension (200 APPLIED)', async () => {
+    await provider
+      .addInteraction()
+      .given('an approved escalated support extension exists', { tenant_id: SE_TENANT_ESC_APPLY })
+      .uponReceiving('an approved escalated support extension applied by its requester')
+      .withRequest('POST', fromProviderState(`${CR}/\${requestId}/apply`, `${CR}/${EX_REQUEST_ID}/apply`), (b) => {
+        b.headers(platformSession('support_admin'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          request: like({ id: uuid(EX_REQUEST_ID), action_type: 'SUPPORT_EXTENSION', kind: 'NORMAL', state: 'APPLIED' }),
+          application: like({ action_type: 'SUPPORT_EXTENSION', capabilities: [], attempt: 1 }),
+          replayed: false,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CR}/${EX_REQUEST_ID}/apply`, 'POST', platformSession('support_admin'));
+        expect(res.status).toBe(200);
+      });
+  });
+});
+
+// ── CCP-D3 — the operational alert register and metrics (read-only) ─────────
+
+// CommercialAlertDto (platform-commercial-observability.controller.ts commercialAlertDto).
+function alertBody(alert_type: string, family: string, subject_kind: string, evidence: Record<string, unknown>): Record<string, unknown> {
+  return {
+    id: uuid('cca10000-0000-7000-8000-0000000000d3'),
+    alert_type,
+    family,
+    subject_kind,
+    subject_id: uuid('cca10000-0000-7000-8000-0000000000d4'),
+    tenant_id: uuid(CREATE_TENANT),
+    product_key: 'sign',
+    status: 'OPEN',
+    detail: like('condition observed'),
+    evidence: like(evidence),
+    threshold_minutes: null,
+    detection_count: integer(1),
+    first_detected_at: iso(),
+    last_detected_at: iso(),
+    resolved_at: null,
+    resolution_detail: null,
+  };
+}
+const THRESHOLDS = { pending_provider_stuck_minutes: integer(1440), approval_expiry_lead_minutes: integer(720) };
+const counts = (keys: readonly string[]) => Object.fromEntries(keys.map((k) => [k, integer(0)]));
+
+describe('platform-web → GET /platform/commercial/alerts/billing (CCP-D3)', () => {
+  it('finance_admin lists the open billing alerts (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('an open billing alert exists')
+      .uponReceiving('an open billing alert list read by finance_admin')
+      .withRequest('GET', ALERTS_BILLING, (b) => {
+        b.headers(platformSession('finance_admin')).query({ status: 'OPEN', alert_type: 'COMMAND_FAILED' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ alerts: eachLike(alertBody('COMMAND_FAILED', 'BILLING', 'billing_command', { state: 'FAILED' })), next_cursor: null });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${ALERTS_BILLING}?status=OPEN&alert_type=COMMAND_FAILED`, 'GET', platformSession('finance_admin'));
+        expect(res.status).toBe(200);
+        expect((res.body['alerts'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+
+  it('a role without platform:billing:read (catalog_manager) is refused (403)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a billing alert list read by a role missing the billing read scope')
+      .withRequest('GET', ALERTS_BILLING, (b) => {
+        b.headers(platformSession('catalog_manager'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:billing:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${ALERTS_BILLING}`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(403);
+        expect(errCode(res.body)).toBe('INSUFFICIENT_PERMISSIONS');
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/alerts/approvals (CCP-D3)', () => {
+  it('catalog_manager lists the open approval alerts (200; platform:approval:read)', async () => {
+    await provider
+      .addInteraction()
+      .given('an open approval alert exists')
+      .uponReceiving('an open approval alert list read by catalog_manager')
+      .withRequest('GET', ALERTS_APPROVALS, (b) => {
+        b.headers(platformSession('catalog_manager')).query({ status: 'OPEN' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ alerts: eachLike(alertBody('APPLY_FAILED', 'APPROVAL', 'change_request', { state: 'APPLY_FAILED' })), next_cursor: null });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${ALERTS_APPROVALS}?status=OPEN`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(200);
+        expect((res.body['alerts'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/metrics/billing (CCP-D3)', () => {
+  it('read_only_auditor reads the billing operations counts (200; counts by state only)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('the billing operations metrics read by read_only_auditor')
+      .withRequest('GET', METRICS_BILLING, (b) => {
+        b.headers(platformSession('read_only_auditor'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          as_of: iso(),
+          commands_by_state: counts(['PENDING', 'DISPATCHING', 'PENDING_PROVIDER', 'RETRY_WAIT', 'FAILED', 'CONFIRMED']),
+          commands_pending_provider_past_threshold: integer(0),
+          webhook_inbox_by_status: counts(['RECEIVED', 'PROCESSING', 'PROCESSED', 'FAILED']),
+          open_reconciliation_flags_by_reason: like({}),
+          open_alerts_by_type: counts(['COMMAND_PENDING_PROVIDER_STUCK', 'COMMAND_FAILED', 'HELD_ACTIVATION', 'WEBHOOK_INBOX_FAILED', 'USAGE_NOT_RECONCILED', 'ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION', 'PAYMENT_RECEIPT_UNLINKED']),
+          thresholds: THRESHOLDS,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${METRICS_BILLING}`, 'GET', platformSession('read_only_auditor'));
+        expect(res.status).toBe(200);
+        expect(res.body['commands_by_state']).toBeDefined();
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/metrics/approvals (CCP-D3)', () => {
+  it('support_admin reads the approval operations counts (200; counts by state only)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('the approval operations metrics read by support_admin')
+      .withRequest('GET', METRICS_APPROVALS, (b) => {
+        b.headers(platformSession('support_admin'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          as_of: iso(),
+          change_requests_by_state: counts(['DRAFT', 'PENDING_APPROVAL', 'APPROVED', 'APPLYING', 'APPLIED', 'APPLY_FAILED', 'REJECTED', 'EXPIRED', 'WITHDRAWN']),
+          pending_approval_nearing_expiry: integer(0),
+          pending_approval_past_expiry: integer(0),
+          open_alerts_by_type: counts(['APPLY_FAILED', 'APPROVAL_NEARING_EXPIRY', 'APPROVAL_PAST_EXPIRY', 'APPLY_DEADLINE_NEARING', 'APPLY_DEADLINE_PASSED']),
+          thresholds: THRESHOLDS,
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${METRICS_APPROVALS}`, 'GET', platformSession('support_admin'));
+        expect(res.status).toBe(200);
+        expect(res.body['change_requests_by_state']).toBeDefined();
+      });
+  });
+});
+
+// ── gate refusals on every CCP route: super_admin and the tenant tier ─────────
+
+// ── CCP-B4 — enterprise contract records (read-only) ──────────────────────────
+
+// CommercialContractSummaryDto (platform-commercial-contract.controller.ts summaryDto). The
+// provider state records the contract through the governed path (an applied
+// SUBSCRIPTION_OPEN carrying a `contract` block) on the included operator plan, which has
+// no commitment term.
+const CONTRACT_SUMMARY = {
+  id: uuid(EX_CONTRACT_ID),
+  contract_ref: regex('^[A-Z][A-Z0-9-]{2,39}$', 'CT-2026-021'),
+  tenant: { id: uuid('cca10000-0000-7000-8000-0000000000b5'), name: like('Pact Commercial 00b5'), slug: null },
+  product_key: 'sign',
+  status: 'ACTIVE',
+  subscription: {
+    id: uuid('cca10000-0000-7000-8000-0000000000b6'),
+    source: 'MANUAL',
+    status: 'ACTIVE',
+    ended_at: null,
+    commitment_start: null,
+    commitment_end: null,
+    plan: { key: 'aramo-sign-included-v1', name: like('Aramo Sign included') },
+    plan_version: { id: uuid('cca10000-0000-7000-8000-0000000000b7'), version_number: integer(1), status: 'PUBLISHED' },
+  },
+  provenance: 'CHANGE_REQUEST',
+  recorded_at: iso(),
+};
+const PERSON = { user_id: uuid(OP.commercial_ops), display_name: null, email: like(`${OP.commercial_ops}@ops.test`) };
+
+describe('platform-web → GET /platform/commercial/contracts (CCP-B4)', () => {
+  it('commercial_ops lists the contract records (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('an enterprise contract exists')
+      .uponReceiving('a contract list read by commercial_ops')
+      .withRequest('GET', CONTRACTS, (b) => {
+        b.headers(platformSession('commercial_ops')).query({ status: 'ACTIVE' });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ contracts: eachLike(CONTRACT_SUMMARY) });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CONTRACTS}?status=ACTIVE`, 'GET', platformSession('commercial_ops'));
+        expect(res.status).toBe(200);
+        expect((res.body['contracts'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+
+  it('a role without platform:subscription:read (catalog_manager) is refused (403)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a contract list read by a role missing the subscription read scope')
+      .withRequest('GET', CONTRACTS, (b) => {
+        b.headers(platformSession('catalog_manager'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:subscription:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CONTRACTS}`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(403);
+        expect(errCode(res.body)).toBe('INSUFFICIENT_PERMISSIONS');
+      });
+  });
+});
+
+// ── CCP-C8-PR — the contract payment status (PR-10, PR-11) ─────────────────────────────────────────
+
+describe('platform-web → GET /platform/commercial/contracts/{id}/payments (CCP-C8-PR)', () => {
+  it('finance_admin (an amount holder) reads the obligations with amounts, the payment terms and the records (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('a prepaid enterprise contract with its initial payment recorded exists')
+      .uponReceiving('a contract payment-status read by finance_admin')
+      .withRequest('GET', fromProviderState(`${CONTRACTS}/\${contractId}/payments`, `${CONTRACTS}/${EX_CONTRACT_ID}/payments`), (b) => {
+        b.headers(platformSession('finance_admin'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          contract_id: uuid(EX_CONTRACT_ID),
+          contract_ref: like('CT-PACT-0001'),
+          as_of: iso(),
+          as_of_date: regex('^\\d{4}-\\d{2}-\\d{2}$', '2026-10-25'),
+          payment_due: like(false),
+          payment_overdue: like(false),
+          payment_terms: { billing_mode: 'PREPAID', currency: 'USD', timezone: 'America/New_York', grace_days: null, effective_grace_days: 0, postpaid_approval: null },
+          obligations: eachLike({
+            obligation_ref: 'INITIAL',
+            due_date: regex('^\\d{4}-\\d{2}-\\d{2}$', '2026-11-01'),
+            status: 'PAID',
+            description: like('Year 1 prepaid fee'),
+            amount_minor: integer(1200000),
+            currency: 'USD',
+            effective_receipt_id: uuid('cca10000-0000-7000-8000-0000000008a1'),
+          }),
+          records: eachLike({
+            id: uuid('cca10000-0000-7000-8000-0000000008a1'),
+            change_request_id: uuid(EX_REQUEST_ID),
+            entry_kind: 'RECORD',
+            corrects_receipt_id: null,
+            obligation_ref: 'INITIAL',
+            external_invoice_ref: like('INV-PACT-0001'),
+            amount_minor: integer(1200000),
+            currency: 'USD',
+            received_on: regex('^\\d{4}-\\d{2}-\\d{2}$', '2026-10-20'),
+            payment_method: 'BANK_TRANSFER',
+            payment_reference: like('WIRE-PACT-0001'),
+            verification: like('Matched on the bank statement'),
+            evidence_documents: eachLike({ name: like('Remittance.pdf'), sha256: HEX64() }),
+            origin: 'MANUAL',
+            recorded_by: uuid(OP.commercial_ops),
+            recorded_at: iso(),
+            linked_at: iso(),
+            corrected_at: null,
+            corrected_by_change_request_id: null,
+            effective: true,
+          }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CONTRACTS}/${EX_CONTRACT_ID}/payments`, 'GET', platformSession('finance_admin'));
+        expect(res.status).toBe(200);
+        expect((res.body['obligations'] as Array<{ status: string }>)[0]?.status).toBe('PAID');
+      });
+  });
+
+  it('commercial_ops (billing read, no amount scope) gets the statuses and the two booleans only (200, amount_withheld)', async () => {
+    await provider
+      .addInteraction()
+      .given('a prepaid enterprise contract with its initial payment recorded exists')
+      .uponReceiving('a contract payment-status read by commercial_ops')
+      .withRequest('GET', fromProviderState(`${CONTRACTS}/\${contractId}/payments`, `${CONTRACTS}/${EX_CONTRACT_ID}/payments`), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          contract_id: uuid(EX_CONTRACT_ID),
+          contract_ref: like('CT-PACT-0001'),
+          as_of: iso(),
+          as_of_date: regex('^\\d{4}-\\d{2}-\\d{2}$', '2026-10-25'),
+          payment_due: like(false),
+          payment_overdue: like(false),
+          obligations: eachLike({ obligation_ref: 'INITIAL', due_date: regex('^\\d{4}-\\d{2}-\\d{2}$', '2026-11-01'), status: 'PAID' }),
+          amount_withheld: 'FINANCE_SCOPE_REQUIRED',
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CONTRACTS}/${EX_CONTRACT_ID}/payments`, 'GET', platformSession('commercial_ops'));
+        expect(res.status).toBe(200);
+        expect(res.body['records']).toBeUndefined();
+      });
+  });
+
+  it('catalog_manager (no billing read) is refused (403)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a contract payment-status read by catalog_manager')
+      .withRequest('GET', `${CONTRACTS}/${EX_CONTRACT_ID}/payments`, (b) => {
+        b.headers(platformSession('catalog_manager'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:billing:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CONTRACTS}/${EX_CONTRACT_ID}/payments`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(403);
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/contracts/{id} (CCP-B4)', () => {
+  it('finance_admin reads a contract with its terms, hashed documents and amendments (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('an enterprise contract exists')
+      .uponReceiving('a contract detail read by finance_admin')
+      .withRequest('GET', fromProviderState(`${CONTRACTS}/\${contractId}`, `${CONTRACTS}/${EX_CONTRACT_ID}`), (b) => {
+        b.headers(platformSession('finance_admin'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          ...CONTRACT_SUMMARY,
+          terms: eachLike('Invoiced monthly, net 30'),
+          recorded_terms: eachLike('Invoiced monthly, net 30'),
+          evidence_ref: like('Order form OF-8034'),
+          recorded_by: PERSON,
+          recorded_by_change_request_id: uuid(EX_REQUEST_ID),
+          documents: eachLike({
+            name: like('Order form OF-8034.pdf'),
+            sha256: HEX64(),
+            byte_size: integer(1024),
+            media_type: like('application/pdf'),
+            recorded_by: PERSON,
+            recorded_at: iso(),
+            amendment_sequence: null,
+          }),
+          amendments: [],
+          invoicing: { enabled: false, reason: 'enterprise_invoicing_choice_pending' },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CONTRACTS}/${EX_CONTRACT_ID}`, 'GET', platformSession('finance_admin'));
+        expect(res.status).toBe(200);
+        expect((res.body['invoicing'] as { enabled: boolean }).enabled).toBe(false);
+      });
+  });
+
+  it('commercial_ops (no platform:billing:amount:read) reads the contract: the free-text terms withheld (200; CCP-R3-W, Architect W-2)', async () => {
+    await provider
+      .addInteraction()
+      .given('an enterprise contract exists')
+      .uponReceiving('a contract detail read by commercial_ops')
+      .withRequest('GET', fromProviderState(`${CONTRACTS}/\${contractId}`, `${CONTRACTS}/${EX_CONTRACT_ID}`), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          ...CONTRACT_SUMMARY,
+          terms_withheld: 'FINANCE_SCOPE_REQUIRED',
+          evidence_ref: like('Order form OF-8034'),
+          recorded_by: PERSON,
+          recorded_by_change_request_id: uuid(EX_REQUEST_ID),
+          amendments: [],
+          invoicing: { enabled: false, reason: 'enterprise_invoicing_choice_pending' },
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CONTRACTS}/${EX_CONTRACT_ID}`, 'GET', platformSession('commercial_ops'));
+        expect(res.status).toBe(200);
+        expect(res.body).not.toHaveProperty('terms');
+        expect(res.body).not.toHaveProperty('recorded_terms');
+      });
+  });
+
+  it('an unknown contract is 404', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a contract detail read for an unknown id')
+      .withRequest('GET', `${CONTRACTS}/${EX_CONTRACT_ID}`, (b) => {
+        b.headers(platformSession('read_only_auditor'));
+      })
+      .willRespondWith(404, (b) => {
+        b.jsonBody(errorBody('NOT_FOUND', { contract_id: EX_CONTRACT_ID }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CONTRACTS}/${EX_CONTRACT_ID}`, 'GET', platformSession('read_only_auditor'));
+        expect(res.status).toBe(404);
+      });
+  });
+
+  it('a role without platform:subscription:read (catalog_manager) is refused (403)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a contract detail read by a role missing the subscription read scope')
+      .withRequest('GET', `${CONTRACTS}/${EX_CONTRACT_ID}`, (b) => {
+        b.headers(platformSession('catalog_manager'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:subscription:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${CONTRACTS}/${EX_CONTRACT_ID}`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(403);
+      });
+  });
+});
+
+// ── CCP-B3 — the Subscriptions workbench and the tenant Commercial tab (read-only, no money) ──
+
+// A workbench page mixes every tenant's latest row (open or ended, governed or Stripe-owned), so
+// the row template names only the fields every row carries (TD-B1-15): the nullable dates,
+// contract and current_period are contracted on the tenant overview below, where the fixture is
+// fixed.
+const WORKBENCH_ROW = {
+  subscription_id: uuid('cca10000-0000-7000-8000-0000000003b2'),
+  tenant: { id: uuid(B3_TENANT) },
+  product_key: 'sign',
+  plan: { id: uuid('cca10000-0000-7000-8000-0000000003b3'), key: like('aramo-sign-included-v1'), name: like('Aramo Sign Included'), sales_model: like('OPERATOR') },
+  plan_version: { id: uuid('cca10000-0000-7000-8000-0000000003b4'), version_number: integer(1), status: like('PUBLISHED') },
+  source: regex('^(MANUAL|SELF_SERVICE|FREE|DEVELOPMENT)$', 'MANUAL'),
+  status: like('ACTIVE'),
+  started_at: iso(),
+  period_anchor: iso(),
+  provider_linked: like(false),
+  open_flags: eachLike('governed_subscription_open', 0),
+  active_extensions: { count: integer(0), exception: like(false) },
+};
+const NO_ENTITLEMENT = (capability: string) => ({
+  capability,
+  state: 'NONE',
+  granted_source: null,
+  granted_at: null,
+  granted_by: null,
+  change_request_id: null,
+  revoked_at: null,
+  revoked_by: null,
+  revoke_change_request_id: null,
+});
+const UNREGISTERED_PRODUCT = (product_key: string) => ({ product_key, registered: false, entitlement: NO_ENTITLEMENT(product_key), subscription: null, flags: [], open_request: null });
+
+describe('platform-web → GET /platform/commercial/subscriptions (CCP-B3)', () => {
+  it('read_only_auditor reads the Subscriptions workbench (200; the latest base row per tenant × product, no money)', async () => {
+    await provider
+      .addInteraction()
+      .given('a tenant with a governed Sign subscription and a held activation exists')
+      .uponReceiving('a subscriptions workbench read by read_only_auditor')
+      .withRequest('GET', SUBSCRIPTIONS, (b) => {
+        b.headers(platformSession('read_only_auditor'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ as_of: iso(), rows: eachLike(WORKBENCH_ROW) });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${SUBSCRIPTIONS}`, 'GET', platformSession('read_only_auditor'));
+        expect(res.status).toBe(200);
+        expect((res.body['rows'] as unknown[]).length).toBeGreaterThan(0);
+      });
+  });
+});
+
+describe('platform-web → GET /platform/commercial/tenants/{tenant_id}/commercial (CCP-B3)', () => {
+  it('commercial_ops reads a tenant\'s Commercial tab (200; per product: entitlement + provenance, the base row, the held activation with its conversion, the open request)', async () => {
+    await provider
+      .addInteraction()
+      .given('a tenant with a governed Sign subscription and a held activation exists')
+      .uponReceiving('a tenant commercial overview read by commercial_ops')
+      .withRequest('GET', TENANT_COMMERCIAL(B3_TENANT), (b) => {
+        b.headers(platformSession('commercial_ops'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          as_of: iso(),
+          tenant: { id: B3_TENANT, name: like('Pact Commercial 03b1'), slug: null, kind: 'BUSINESS' },
+          // CCP-C5 — the designed disabled tax state.
+          tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' },
+          // The product order is fixed by the contract (sign, ats, portal, intelligence), so the
+          // array is contracted per element (TD-B3-BE-1): every nullable field is pinned to the
+          // fixture's value instead of being left out.
+          products: [
+            {
+              product_key: 'sign',
+              registered: true,
+              entitlement: {
+                capability: 'sign',
+                state: 'ACTIVE',
+                granted_source: 'PLAN',
+                granted_at: iso(),
+                granted_by: uuid(OP.commercial_ops),
+                change_request_id: uuid('cca10000-0000-7000-8000-0000000003b5'),
+                revoked_at: null,
+                revoked_by: null,
+                revoke_change_request_id: null,
+              },
+              subscription: {
+                subscription_id: uuid('cca10000-0000-7000-8000-0000000003b2'),
+                product_key: 'sign',
+                plan: { id: uuid('cca10000-0000-7000-8000-0000000003b3'), key: 'aramo-sign-included-v1', name: like('Aramo Sign Included'), sales_model: like('OPERATOR') },
+                plan_version: { id: uuid('cca10000-0000-7000-8000-0000000003b4'), version_number: integer(1), status: 'PUBLISHED' },
+                source: 'MANUAL',
+                status: 'ACTIVE',
+                started_at: iso(),
+                ended_at: null,
+                period_anchor: iso(),
+                current_period: { start: iso(), end: iso('2026-11-25T10:00:00.000Z') },
+                current_period_end: null,
+                grace_until: null,
+                commitment_end: null,
+                contract: { id: uuid('cca10000-0000-7000-8000-0000000003b6'), contract_ref: like('CT-PACT-0001') },
+                provider_linked: false,
+                open_flags: ['governed_subscription_open'],
+                active_extensions: { count: 0, exception: false },
+              },
+              flags: [
+                {
+                  id: uuid('cca10000-0000-7000-8000-0000000003b7'),
+                  reason: 'governed_subscription_open',
+                  provider: 'STRIPE',
+                  subscription_ref: 'sub_pact_b3_held',
+                  intent_id: uuid('cca10000-0000-7000-8000-0000000003b8'),
+                  detected_at: iso(),
+                  conversion: { change_request_id: uuid('cca10000-0000-7000-8000-0000000003b9'), state: 'PENDING_APPROVAL', direction: 'TO_GOVERNED' },
+                },
+              ],
+              open_request: {
+                id: uuid('cca10000-0000-7000-8000-0000000003b9'),
+                action_type: 'CONVERSION',
+                kind: 'NORMAL',
+                state: 'PENDING_APPROVAL',
+                requested_by: uuid(OP.commercial_ops),
+                created_at: iso(),
+              },
+            },
+            UNREGISTERED_PRODUCT('ats'),
+            UNREGISTERED_PRODUCT('portal'),
+            UNREGISTERED_PRODUCT('intelligence'),
+          ],
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${TENANT_COMMERCIAL(B3_TENANT)}`, 'GET', platformSession('commercial_ops'));
+        expect(res.status).toBe(200);
+        expect((res.body['products'] as unknown[]).length).toBe(4);
+      });
+  });
+
+  it('an unknown tenant is 404 NOT_FOUND', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a tenant commercial overview read for an unknown tenant')
+      .withRequest('GET', TENANT_COMMERCIAL(B3_UNKNOWN_TENANT), (b) => {
+        b.headers(platformSession('read_only_auditor'));
+      })
+      .willRespondWith(404, (b) => {
+        b.jsonBody(errorBody('NOT_FOUND', { tenant_id: B3_UNKNOWN_TENANT }));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${TENANT_COMMERCIAL(B3_UNKNOWN_TENANT)}`, 'GET', platformSession('read_only_auditor'));
+        expect(res.status).toBe(404);
+      });
+  });
+
+  it('a role without platform:subscription:read (catalog_manager) is refused (403)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a tenant commercial overview read by a role missing the subscription read scope')
+      .withRequest('GET', TENANT_COMMERCIAL(B3_TENANT), (b) => {
+        b.headers(platformSession('catalog_manager'));
+      })
+      .willRespondWith(403, (b) => {
+        b.jsonBody(missingScope('platform:subscription:read'));
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${TENANT_COMMERCIAL(B3_TENANT)}`, 'GET', platformSession('catalog_manager'));
+        expect(res.status).toBe(403);
+        expect(errCode(res.body)).toBe('INSUFFICIENT_PERMISSIONS');
+      });
+  });
+});
+
+describe('platform-web → every CCP route refuses super_admin (403, no commercial scope)', () => {
+  for (const r of GATE_ROUTES) {
+    it(`${r.name} → 403 missing ${r.scope}`, async () => {
+      const headers = r.body === undefined ? platformSession('super_admin') : platformJson('super_admin');
+      await provider
+        .addInteraction()
+        .given('platform operators are provisioned')
+        .uponReceiving(`${r.name} by super_admin`)
+        .withRequest(r.method, r.path, (b) => {
+          b.headers(headers);
+          if (r.body !== undefined) b.jsonBody(r.body);
+        })
+        .willRespondWith(403, (b) => {
+          b.jsonBody(missingScope(r.scope));
+        })
+        .executeTest(async (mock) => {
+          const res = await call(`${mock.url}${r.path}`, r.method, headers, r.body);
+          expect(res.status).toBe(403);
+          expect(errCode(res.body)).toBe('INSUFFICIENT_PERMISSIONS');
+        });
+    });
+  }
+});
+
+describe('platform-web → every CCP route refuses the tenant tier (403 tier tripwire)', () => {
+  for (const r of GATE_ROUTES) {
+    it(`${r.name} → 403 tenant_token_on_platform_route`, async () => {
+      const headers = r.body === undefined ? TENANT_TIER : TENANT_TIER_JSON;
+      await provider
+        .addInteraction()
+        .given('platform operators are provisioned')
+        .uponReceiving(`${r.name} with a tenant-tier session`)
+        .withRequest(r.method, r.path, (b) => {
+          b.headers(headers);
+          if (r.body !== undefined) b.jsonBody(r.body);
+        })
+        .willRespondWith(403, (b) => {
+          b.jsonBody(TIER_REFUSED);
+        })
+        .executeTest(async (mock) => {
+          const res = await call(`${mock.url}${r.path}`, r.method, headers, r.body);
+          expect(res.status).toBe(403);
+        });
+    });
+  }
+});
+
+// ── non-CCP (optional) ────────────────────────────────────────────────────────
+
+describe('platform-web → GET /platform/me', () => {
+  it('an operator reads their own identity (200)', async () => {
+    await provider
+      .addInteraction()
+      .given('platform operators are provisioned')
+      .uponReceiving('a caller identity read by platform_owner')
+      .withRequest('GET', '/platform/me', (b) => {
+        b.headers(platformSession('platform_owner'));
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          user_id: OP.platform_owner,
+          email: like(`${OP.platform_owner}@ops.test`),
+          display_name: null,
+          tenant_id: PLATFORM_TENANT,
+          tenant_name: like('Aramo Platform'),
+          role_keys: ['platform_owner'],
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}/platform/me`, 'GET', platformSession('platform_owner'));
+        expect(res.status).toBe(200);
+        expect(res.body['user_id']).toBe(OP.platform_owner);
+      });
+  });
+});
+
+// ── CCP-UI-V12 — the exact reads the CCP-UI v1.2 screens make (Finance › Renewals, Outstanding
+// payments, Billing reconciliation, Revenue; Usage › Consumption; Operations › Alerts). The slices'
+// own interactions above filter by tenant or type; the console reads the whole register, so these
+// interactions pin its query strings and the fields it renders (loose `like` values: the provider
+// state holds other rows too). No new route and no new field: W-2 / W-3 markers (R3-W) are not on
+// this base and are not contracted here (missing backend contract MBC-V12-4 / MBC-V12-5).
+describe('platform-web → CCP-UI v1.2 screen reads (CCP-UI-V12)', () => {
+  const read = async (label: string, given: string, role: Role, path: string, query: Record<string, string>, body: Record<string, unknown>, check: (b: Record<string, unknown>) => void): Promise<void> => {
+    const qs = new URLSearchParams(query).toString();
+    await provider
+      .addInteraction()
+      .given(given)
+      .uponReceiving(label)
+      .withRequest('GET', path, (b) => {
+        b.headers(platformSession(role));
+        if (qs) b.query(query);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody(body);
+      })
+      .executeTest(async (mock) => {
+        const res = await call(`${mock.url}${path}${qs ? `?${qs}` : ''}`, 'GET', platformSession(role));
+        expect(res.status).toBe(200);
+        check(res.body);
+      });
+  };
+  // Nullable per row (a contract-priced row has no list price): only the always-present key is pinned.
+  const price = { price_source: like('PINNED_PLAN_VERSION') };
+
+  it('V12-P-1 Renewals: the whole queue at the default 90-day horizon (finance_admin)', async () => {
+    await read('a v1.2 renewals screen read by finance_admin', 'finance records exist', 'finance_admin', RENEWALS, { within_days: '90' }, {
+      as_of: iso(),
+      within_days: 90,
+      tax: { enabled: false, reason: 'STRIPE_TAX_NOT_REGISTERED' },
+      items: eachLike({ subscription_id: like('s'), tenant_id: like('t'), tenant_name: like('Tenant'), product_key: like('sign'), source: like('MANUAL'), status: like('ACTIVE'), plan_name: like('Plan'), version_number: integer(1), renewal_kind: like('COMMITMENT_END'), renewal_at: iso(), days_until: integer(20), lapsed: like(false), ...price }),
+      counts: like({ items: 1 }),
+    }, (b) => expect(Array.isArray(b['items'])).toBe(true));
+  });
+
+  it('V12-P-2 Outstanding payments: the whole list, amounts withheld for commercial_ops', async () => {
+    await read('a v1.2 outstanding payments screen read by commercial_ops', 'finance records exist', 'commercial_ops', OUTSTANDING, {}, {
+      as_of: iso(),
+      items: eachLike({ subscription_id: like('s'), tenant_id: like('t'), tenant_name: like('Tenant'), source: like('SELF_SERVICE'), status: like('PAST_DUE'), plan_key: like('plan'), version_number: integer(1), grace_state: like('IN_GRACE'), amount_withheld: 'FINANCE_SCOPE_REQUIRED', amount_due_reason: like('INVOICE_READ_NOT_DELIVERED'), ...price }),
+    }, (b) => expect(JSON.stringify(b)).not.toContain('amount_due"'));
+  });
+
+  it('V12-P-3 Billing reconciliation: the whole report with the server exception count (read_only_auditor)', async () => {
+    await read('a v1.2 billing reconciliation screen read by read_only_auditor', 'finance records exist', 'read_only_auditor', RECONCILIATION, {}, {
+      as_of: iso(),
+      status: like('EXCEPTIONS'),
+      subscriptions: like([]),
+      entitled_without_subscription: like([]),
+      held_activations: like([]),
+      counts: like({ exceptions: 1 }),
+    }, (b) => expect(typeof (b['counts'] as Record<string, unknown>)['exceptions']).toBe('number'));
+  });
+
+  it('V12-P-4 Revenue: the six-month horizon, holder (finance_admin) and non-holder (commercial_ops)', async () => {
+    const bucket = { month: like('2026-11'), events: integer(1), priced_events: integer(1), unpriced_events: integer(0) };
+    await read('a v1.2 revenue screen read by finance_admin', 'finance records exist', 'finance_admin', REVENUE, { months: '6' }, {
+      mrr_minor: integer(0),
+      arr_minor: integer(0),
+      counts: like({ open_commercial_subscriptions: 1, included: 1, excluded_by_reason: {} }),
+      renewal_pipeline: { months: 6, from_month: like('2026-10'), through_month: like('2027-03'), lapsed: like({}), by_month: eachLike({ ...bucket, mrr_minor: integer(0) }) },
+    }, (b) => expect(typeof b['mrr_minor']).toBe('number'));
+    await read('a v1.2 revenue screen read by commercial_ops', 'finance records exist', 'commercial_ops', REVENUE, { months: '6' }, {
+      amount_withheld: 'FINANCE_SCOPE_REQUIRED',
+      counts: like({ open_commercial_subscriptions: 1, included: 1, excluded_by_reason: {} }),
+      renewal_pipeline: { months: 6, from_month: like('2026-10'), through_month: like('2027-03'), lapsed: like({}), by_month: eachLike({ ...bucket, amount_withheld: 'FINANCE_SCOPE_REQUIRED' }) },
+    }, (b) => expect(b['mrr_minor']).toBeUndefined());
+  });
+
+  it('V12-P-5 Consumption: the Sign envelopes periods of every tenant (finance_admin)', async () => {
+    await read('a v1.2 consumption screen periods read by finance_admin', 'usage roll-ups are reconciled', 'finance_admin', USAGE_PERIODS, { product_key: 'sign', metric_key: 'sign.envelopes', limit: '500' }, {
+      reconciliation: { status: 'RECONCILED', checked_at: iso() },
+      periods: eachLike({ tenant_id: like('t'), period_start: iso(), alignment: like('ALIGNED'), counts: { consumed: integer(1), consumed_send: integer(1), consumed_historical: integer(0), reserved: integer(0) } }),
+      truncated: like(false),
+    }, (b) => expect(Array.isArray(b['periods'])).toBe(true));
+  });
+
+  it('V12-P-6 Billing reconciliation §3: failed commands and the failed inbox, one page each', async () => {
+    await read('a v1.2 failed command page read by finance_admin', 'a failed billing command exists', 'finance_admin', COMMANDS, { state: 'FAILED', limit: '200' }, {
+      commands: eachLike({ id: like('c'), command_kind: like('SUBSCRIPTION_CANCEL'), params: like({}), state: 'FAILED', created_at: iso() }),
+      next_cursor: like(null),
+    }, (b) => expect(Array.isArray(b['commands'])).toBe(true));
+    await read('a v1.2 failed inbox page read by support_admin', 'a failed billing webhook event exists', 'support_admin', INBOX, { status: 'FAILED', limit: '200' }, {
+      events: eachLike({ id: like('e'), provider_event_id: like('evt'), event_type: like('invoice.payment_failed'), status: 'FAILED', attempts: integer(1), received_at: iso() }),
+      next_cursor: like(null),
+    }, (b) => expect(Array.isArray(b['events'])).toBe(true));
+  });
+
+  it('V12-P-7 Alerts: both families, one page each, unfiltered', async () => {
+    await read('a v1.2 alerts screen billing read by finance_admin', 'an open billing alert exists', 'finance_admin', ALERTS_BILLING, { limit: '200' }, {
+      alerts: eachLike({ id: like('a'), alert_type: like('COMMAND_FAILED'), subject_kind: like('billing_command'), subject_id: like('s'), status: like('OPEN'), detail: like('d'), evidence: like({}), first_detected_at: iso() }),
+      next_cursor: like(null),
+    }, (b) => expect(Array.isArray(b['alerts'])).toBe(true));
+    await read('a v1.2 alerts screen approvals read by finance_admin', 'an open approval alert exists', 'finance_admin', ALERTS_APPROVALS, { limit: '200' }, {
+      alerts: eachLike({ id: like('a'), alert_type: like('APPLY_FAILED'), subject_kind: like('change_request'), subject_id: like('s'), status: like('OPEN'), detail: like('d'), evidence: like({}), first_detected_at: iso() }),
+      next_cursor: like(null),
+    }, (b) => expect(Array.isArray(b['alerts'])).toBe(true));
+  });
+});

@@ -171,7 +171,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const p of MIGRATIONS) await db.query(readFileSync(p, 'utf8'));
       await ensureWriteFreezeTenant((s) => db.query(s), TENANT);
       for (const cap of ['ats', 'core']) {
-        await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1,$2) ON CONFLICT DO NOTHING`, [TENANT, cap]);
+        await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1,$2, 'PROVISIONING') ON CONFLICT DO NOTHING`, [TENANT, cap]);
       }
       await publishOverridePackage(url, TENANT);
 

@@ -341,7 +341,34 @@ export const billingApi = {
   checkout: (plan_key: string, accept_terms?: boolean) =>
     apiClient.post<{ url: string }>(`${BILLING}/checkout`, accept_terms === undefined ? { plan_key } : { plan_key, accept_terms }),
   portal: () => apiClient.post<{ url: string }>(`${BILLING}/portal`, {}),
+  // CCP-C7 — tenant self-service (backend only; no screen is pinned, so no UI calls these yet).
+  selfService: () => apiClient.get<SelfServiceBilling>(`${BILLING}/self-service`),
+  selfServiceCancel: () => apiClient.post<SelfServiceBillingAccepted>(`${BILLING}/self-service/cancel`, {}),
+  selfServiceUpgrade: (plan_key: string) => apiClient.post<SelfServiceBillingAccepted>(`${BILLING}/self-service/upgrade`, { plan_key }),
 };
+
+// CCP-C7 — GET /v1/sign/billing/self-service. While the Sign Terms of Service are not APPROVED every
+// action reads { available: false, reason: 'SELF_SERVICE_TERMS_NOT_APPROVED' } (the designed disabled state).
+export interface SelfServiceActionState {
+  available: boolean;
+  reason: string | null;
+}
+export interface SelfServiceBilling {
+  product_key: 'sign';
+  terms: { state: 'APPROVED' | 'NOT_APPROVED'; document_key: string; version: string | null; url: string | null };
+  subscription: { plan_key: string; status: string; current_period_end: string | null; cancel_at_period_end: boolean; commitment_end: string | null } | null;
+  pending_provider: boolean;
+  pending_changes: { action: 'CANCEL_AT_PERIOD_END'; state: 'PENDING_PROVIDER' | 'CONFIRMED'; requested_at: string; confirmed_at: string | null }[];
+  actions: { cancel: SelfServiceActionState; upgrade: SelfServiceActionState };
+  can_manage_billing: boolean;
+}
+export interface SelfServiceBillingAccepted {
+  request_id: string;
+  action: 'CANCEL_AT_PERIOD_END';
+  status: 'PENDING_PROVIDER' | 'CONFIRMED';
+  pending_provider: boolean;
+  replayed: boolean;
+}
 
 // Aramo Sign Personal (Free) — the current legal documents the signed-in user still
 // has to accept (/v1/sign/legal). Business accounts always get `pending: []`.
@@ -471,6 +498,8 @@ export function errorMessage(e: unknown, fallback = 'Something went wrong. Try a
     }
     if (e.code === 'ESIGN_BILLING_UNAVAILABLE') return 'Online billing isn’t available right now. Try again later, or contact Aramo support.';
     if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'ALREADY_SUBSCRIBED') return 'Your organization already has a subscription. Use Manage billing to change it.';
+    // CCP-A6 (Conversion Rule C-1) — a governed (Aramo-managed) subscription is changed only by Aramo.
+    if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'governed_subscription_open') return 'Your organization’s subscription is managed by Aramo. Contact Aramo to change it.';
     if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'PLAN_NOT_ELIGIBLE') return 'Standard Professional is for organizations with an Aramo ATS subscription.';
     // Sign Signup A1 §2.6 — checkout needs a complete US organization profile.
     if (e.code === 'ESIGN_BILLING_CONFLICT' && e.details?.['reason'] === 'organization_country_not_supported') return 'Aramo Sign is currently available to organizations registered in the United States.';

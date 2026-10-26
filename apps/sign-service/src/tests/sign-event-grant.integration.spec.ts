@@ -89,7 +89,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Addendum S6 — e
     }
     for (const t of [TENANT_A, TENANT_B]) {
       await db.query(`INSERT INTO identity."Tenant" (id, name, slug, kind, status, is_active, updated_at) VALUES ($1,$2,$2,'BUSINESS','ACTIVE',true, now())`, [t, `t-${t.slice(0, 8)}`]);
-      for (const c of ['core', 'ats', 'sign']) await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1, $2::entitlement."Capability")`, [t, c]);
+      for (const c of ['core', 'ats', 'sign']) await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1, $2::entitlement."Capability", 'PROVISIONING')`, [t, c]);
     }
     for (const k of ['DATABASE_URL', 'MAILER_PROVIDER', 'AUTH_AUDIENCE', 'AUTH_PUBLIC_KEY', 'REDIS_URL', 'SIGN_WEBHOOK_SECRET_KEY']) saved[k] = process.env[k];
     process.env['DATABASE_URL'] = url;

@@ -25,6 +25,7 @@ import {
   AramoExceptionFilter,
   CommonModule,
   RequestIdMiddleware,
+  ENTITLEMENT_PROVENANCE_MIGRATION,
   resolveIdentityMigrations,
 } from '@aramo/common';
 import { AuthModule, EFFECTIVE_AUTHORIZATION_RESOLVER, PLATFORM_TENANT_SENTINEL_ID } from '@aramo/auth';
@@ -385,7 +386,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       const identityStatements = IDENTITY_MIGRATION_SQL_PATHS.flatMap((sqlPath) =>
         splitDdl(readFileSync(sqlPath, 'utf8')),
       );
-      for (const stmt of [...identityStatements, ...ENTITLEMENT_DDL_STATEMENTS]) {
+      for (const stmt of [...identityStatements, ...ENTITLEMENT_DDL_STATEMENTS, ...splitDdl(readFileSync(resolve(__dirname, '../../../..', ENTITLEMENT_PROVENANCE_MIGRATION), 'utf8'))]) {
         const t = stmt.trim();
         if (t.length === 0) continue;
         await setup.$executeRawUnsafe(t);

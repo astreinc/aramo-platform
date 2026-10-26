@@ -1126,6 +1126,15 @@ const ENTITLEMENT_INTELLIGENCE_CAPABILITY_MIGRATION = resolve(
   ROOT,
   'libs/entitlement/prisma/migrations/20261024150000_add_intelligence_capability/migration.sql',
 );
+// CCP-A7 (PBD §5.1 row A7; Charter D1: "The migration SHALL be registered in
+// pact/provider/src/verify-api.ts") — TenantEntitlement provenance + governed revoke columns,
+// the TenantEntitlementEvent ledger and the resurrection guard. A returned-shape change for the
+// EntitlementRepository reads (revoked_at filter) and writes (granted_source): without it every
+// @RequireCapability guard read 500s against the verifier schema.
+const ENTITLEMENT_CCP_A7_REVOKE_PROVENANCE_MIGRATION = resolve(
+  ROOT,
+  'libs/entitlement/prisma/migrations/20261026000000_ccp_a7_entitlement_revoke_provenance/migration.sql',
+);
 // TIP-E2E INC-3 — the technical_screening schema (sessions, findings, publication
 // intents, events); the screening provider states query it.
 const TECHNICAL_SCREENING_INIT_MIGRATION = resolve(
@@ -2793,8 +2802,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     // surfaces call the stub.
     async function grantAtsWebIntelligence(c: Client): Promise<void> {
       await c.query(
-        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
-         VALUES ($1::uuid, 'intelligence') ON CONFLICT DO NOTHING`,
+        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+         VALUES ($1::uuid, 'intelligence', 'PROVISIONING') ON CONFLICT DO NOTHING`,
         [TENANT_ID],
       );
     }
@@ -3752,6 +3761,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         ENTITLEMENT_INIT_MIGRATION,
         // ATI-SEP-1 T9 — the `intelligence` capability enum value.
         ENTITLEMENT_INTELLIGENCE_CAPABILITY_MIGRATION,
+        // CCP-A7 — provenance, revoke, ledger, resurrection guard (after the enum additions).
+        ENTITLEMENT_CCP_A7_REVOKE_PROVENANCE_MIGRATION,
         INTEGRATION_INIT_MIGRATION,
         // L1-D3-A — lifecycle-authority + versioned mapping-set schema (in order).
         INTEGRATION_LIFECYCLE_AUTHORITY_MIGRATION,
@@ -3953,8 +3964,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // (11111111-...111), so an explicit row is required for the
       // portal-thin pact interactions to traverse EntitlementGuard.
       await setup.query(
-        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
-         VALUES ($1::uuid, 'portal') ON CONFLICT DO NOTHING`,
+        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+         VALUES ($1::uuid, 'portal', 'PROVISIONING') ON CONFLICT DO NOTHING`,
         [TENANT_ID],
       );
       // PC-4 — the 'ats' capability so TENANT_ID traverses EntitlementGuard
@@ -3962,16 +3973,16 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       // (mirrors the 'portal' seed above); the selection/submittal/examination
       // interactions don't use EntitlementGuard, so this is inert for them.
       await setup.query(
-        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
-         VALUES ($1::uuid, 'ats') ON CONFLICT DO NOTHING`,
+        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+         VALUES ($1::uuid, 'ats', 'PROVISIONING') ON CONFLICT DO NOTHING`,
         [TENANT_ID],
       );
       // PC-4b — the 'core' capability so TENANT_ID traverses EntitlementGuard
       // on the sourcing + advisory-resolution controllers'
       // @RequireCapability('core'). Additive; inert for prior interactions.
       await setup.query(
-        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
-         VALUES ($1::uuid, 'core') ON CONFLICT DO NOTHING`,
+        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+         VALUES ($1::uuid, 'core', 'PROVISIONING') ON CONFLICT DO NOTHING`,
         [TENANT_ID],
       );
       await setup.end();

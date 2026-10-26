@@ -6,7 +6,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveEntitlementMigrations } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -56,10 +56,7 @@ const mig = (p: string): string =>
 // PR-14 user_requisition_state table (last). Order mirrors the proven
 // ats-batch2 harness; the new state table depends only on Requisition (INIT).
 const MIGRATIONS = [
-  resolve(
-    ROOT,
-    'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
-  ),
+  ...resolveEntitlementMigrations(ROOT),
   mig('20260602100000_init_requisition_model'),
   mig('20260603140100_add_import_batch_id_to_requisition'),
   mig('20260605123400_add_compensation_fields_to_requisition'),
@@ -232,8 +229,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // fail-closed CLIENT-workflow create guard admits the setup creates.
       await ensureClientCompany((s) => setupClient.query(s), TENANT, COMPANY_ID);
       await setupClient.query(
-        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
-         VALUES ($1::uuid, 'ats')
+        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+         VALUES ($1::uuid, 'ats', 'PROVISIONING')
          ON CONFLICT (tenant_id, capability) DO NOTHING`,
         [TENANT],
       );

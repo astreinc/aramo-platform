@@ -7,7 +7,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveEntitlementMigrations } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -76,10 +76,8 @@ type SignKey = CryptoKey | KeyObject;
 
 const ROOT = resolve(__dirname, '../../../..');
 
-const ENTITLEMENT_INIT = resolve(
-  ROOT,
-  'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
-);
+// CCP-A7 — the full entitlement set (the shared helper; the repository reads A7 columns).
+const ENTITLEMENT_MIGRATIONS = resolveEntitlementMigrations(ROOT);
 const METERING_INIT = resolve(
   ROOT,
   'libs/metering/prisma/migrations/20260601150000_init_metering_model/migration.sql',
@@ -279,7 +277,7 @@ const CONSENT_REKEY_TO_TALENT_RECORD = resolve(
 // pipeline writer no longer mutates it.
 
 const MIGRATIONS = [
-  ENTITLEMENT_INIT,
+  ...ENTITLEMENT_MIGRATIONS,
   METERING_INIT,
   REQUISITION_INIT,
   REQUISITION_IMPORT_BACK_REF,
@@ -718,8 +716,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Entitle TENANT_ATS to `ats` so JwtAuthGuard → EntitlementGuard
       // permits the pipeline routes for this tenant.
       await setupClient.query(
-        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
-         VALUES ($1::uuid, 'ats')
+        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+         VALUES ($1::uuid, 'ats', 'PROVISIONING')
          ON CONFLICT (tenant_id, capability) DO NOTHING`,
         [TENANT_ATS],
       );

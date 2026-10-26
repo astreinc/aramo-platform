@@ -1507,6 +1507,66 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/billing/self-service": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * CCP-C7 — the organization's Aramo Sign self-service state.
+         * @description Requires sign:envelope:read or sign:billing:manage. Read only. The product's legal-terms state, its open self-service subscription, every self-service change still pending at the provider (pending_provider; Conversion Rule C-23) and, per action, whether it is available and the stable reason when it is not. The view and the actions run the same gates. While the Sign Terms of Service have no APPROVED version, every action reads available false with reason SELF_SERVICE_TERMS_NOT_APPROVED (the designed disabled state; PBD §10, NOT DELIVERED until approved legal terms).
+         */
+        get: operations["getSelfServiceBilling"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/billing/self-service/cancel": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * CCP-C7 — the owner's at-period-end cancel of the self-service subscription.
+         * @description Requires sign:billing:manage (tenant_owner only, ADR-0035 D-3) in a BUSINESS tenant. Refused 503 ESIGN_BILLING_UNAVAILABLE reason self_service_terms_not_approved while the Sign Terms of Service are not APPROVED. Otherwise it records the owner's request and a durable Stripe command (CCP-C1 outbox, idempotency key derived from the request) in one local transaction; the provider call happens later, outside it. 202: pending_provider is true until the applied provider state confirms the cancel. Refused 409 (details.reason) while a governed subscription is open, an activation is held, a conversion is in progress, a provider change is pending, the subscription already ends at the period end, or inside a commitment term (financial_treatment_undefined). A repeat returns the recorded request (replayed true).
+         */
+        post: operations["cancelSelfServiceSubscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/billing/self-service/upgrade": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * CCP-C7 — the owner's plan change of the self-service subscription (gated; not yet available).
+         * @description Requires sign:billing:manage (tenant_owner only) in a BUSINESS tenant. Refused 503 reason self_service_terms_not_approved while the Sign Terms of Service are not APPROVED; refused 400 plan_not_available for a plan that is not an eligible, active self-service plan other than the current one; otherwise refused 409 financial_treatment_undefined, because a provider price change has no approved proration or usage-transition treatment (decision request DR-C7-1). Nothing is written and no provider call is made. 202 is reserved for the ruled path.
+         */
+        post: operations["upgradeSelfServiceSubscription"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/billing/webhook/stripe": {
         parameters: {
             query?: never;
@@ -1783,7 +1843,22 @@ export interface components {
             }[];
             purchasable: boolean;
         };
+        /** @description CCP-C5 (PBD §5.2 row C5, §10) — tax is a designed disabled state until Stripe Tax registration. Always enabled=false with reason STRIPE_TAX_NOT_REGISTERED; no setting enables it, and no tax is calculated, collected or shown. */
+        TaxAvailability: {
+            /** @enum {boolean} */
+            enabled: false;
+            /** @enum {string} */
+            reason: "STRIPE_TAX_NOT_REGISTERED";
+        };
         BillingAccount: {
+            tax: components["schemas"]["TaxAvailability"];
+            /** @description CCP-A6-R (Conversion Rule C-8) — a self-service activation is held because the organization's subscription is managed by Aramo. A safe billing-support state only: it never reports an activation and exposes no internal reason. */
+            pending_activation?: {
+                /** @enum {string} */
+                state: "PENDING";
+                /** @enum {string} */
+                message: "Subscription activation pending — contact support";
+            } | null;
             subscription: {
                 plan_key: string;
                 plan_name: string;
@@ -1839,6 +1914,58 @@ export interface components {
             tenant_kind: "BUSINESS" | "PERSONAL";
             self_service_eligible: boolean;
             can_manage_billing: boolean;
+        };
+        SelfServiceActionState: {
+            available: boolean;
+            /** @enum {string|null} */
+            reason: "PRODUCT_NOT_SELF_SERVICE" | "SELF_SERVICE_TERMS_NOT_APPROVED" | "GOVERNED_SUBSCRIPTION_OPEN" | "ACTIVATION_PENDING" | "CONVERSION_IN_PROGRESS" | "NO_SELF_SERVICE_SUBSCRIPTION" | "PROVIDER_CHANGE_PENDING" | "ALREADY_CANCELING" | "PLAN_NOT_AVAILABLE" | "FINANCIAL_TREATMENT_UNDEFINED" | null;
+        };
+        /** @description CCP-C7 — the self-service state of one registered product (v1 registry, sign only). */
+        SelfServiceBilling: {
+            /** @enum {string} */
+            product_key: "sign";
+            terms: {
+                /** @enum {string} */
+                state: "APPROVED" | "NOT_APPROVED";
+                document_key: string;
+                version: string | null;
+                url: string | null;
+            };
+            subscription: {
+                plan_key: string;
+                status: string;
+                /** Format: date-time */
+                current_period_end: string | null;
+                cancel_at_period_end: boolean;
+                /** Format: date-time */
+                commitment_end: string | null;
+            } | null;
+            pending_provider: boolean;
+            pending_changes: {
+                /** @enum {string} */
+                action: "CANCEL_AT_PERIOD_END";
+                /** @enum {string} */
+                state: "PENDING_PROVIDER" | "CONFIRMED";
+                /** Format: date-time */
+                requested_at: string;
+                /** Format: date-time */
+                confirmed_at: string | null;
+            }[];
+            actions: {
+                cancel: components["schemas"]["SelfServiceActionState"];
+                upgrade: components["schemas"]["SelfServiceActionState"];
+            };
+            can_manage_billing: boolean;
+        };
+        SelfServiceBillingAccepted: {
+            /** Format: uuid */
+            request_id: string;
+            /** @enum {string} */
+            action: "CANCEL_AT_PERIOD_END";
+            /** @enum {string} */
+            status: "PENDING_PROVIDER" | "CONFIRMED";
+            pending_provider: boolean;
+            replayed: boolean;
         };
         BillingRedirect: {
             /** Format: uri */
@@ -2455,7 +2582,7 @@ export interface components {
                 "application/json": components["schemas"]["ErrorResponse"];
             };
         };
-        /** @description ESIGN_BILLING_CONFLICT — already subscribed, or no billing account yet (details.reason). */
+        /** @description ESIGN_BILLING_CONFLICT (details.reason) — already subscribed (ALREADY_SUBSCRIBED), no billing account yet (NO_BILLING_ACCOUNT), an incomplete or non-US organization profile, an unverified domain, a plan that needs ATS (PLAN_NOT_ELIGIBLE), or an open governed subscription managed by Aramo (governed_subscription_open; CCP-A6, Conversion Rule C-1 and C-4: a conversion is a governed change request, never a checkout). CCP-C7 self-service actions add (lower-case reasons): governed_subscription_open, activation_pending, conversion_in_progress, no_self_service_subscription, provider_change_pending, already_canceling and financial_treatment_undefined. */
         BillingConflict: {
             headers: {
                 [name: string]: unknown;
@@ -2464,7 +2591,7 @@ export interface components {
                 "application/json": components["schemas"]["ErrorResponse"];
             };
         };
-        /** @description ESIGN_BILLING_UNAVAILABLE — online billing is not configured or the provider is unreachable. */
+        /** @description ESIGN_BILLING_UNAVAILABLE — online billing is not configured or the provider is unreachable. CCP-C7 self-service actions also answer it with details.reason self_service_terms_not_approved (the designed disabled state while the Sign Terms of Service are not APPROVED) or product_not_self_service. */
         BillingUnavailable: {
             headers: {
                 [name: string]: unknown;
@@ -5035,6 +5162,84 @@ export interface operations {
                     "application/json": components["schemas"]["BillingRedirect"];
                 };
             };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            409: components["responses"]["BillingConflict"];
+            503: components["responses"]["BillingUnavailable"];
+        };
+    };
+    getSelfServiceBilling: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelfServiceBilling"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            503: components["responses"]["BillingUnavailable"];
+        };
+    };
+    cancelSelfServiceSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description Accepted; pending at the provider. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelfServiceBillingAccepted"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            409: components["responses"]["BillingConflict"];
+            503: components["responses"]["BillingUnavailable"];
+        };
+    };
+    upgradeSelfServiceSubscription: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    plan_key: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Reserved (not returned until DR-C7-1 is ruled). */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SelfServiceBillingAccepted"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
             401: components["responses"]["SenderUnauthorized"];
             403: components["responses"]["SenderForbidden"];
             409: components["responses"]["BillingConflict"];

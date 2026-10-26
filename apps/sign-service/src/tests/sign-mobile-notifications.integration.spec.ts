@@ -98,7 +98,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign mobile — n
     }
     for (const [id, name, kind] of [[TENANT_A, 'Northwind Staffing', 'BUSINESS'], [TENANT_B, 'Bob Personal', 'BUSINESS']] as const) {
       await db.query(`INSERT INTO identity."Tenant" (id, name, slug, kind, status, is_active, updated_at) VALUES ($1,$2,$3,$4,'ACTIVE',true, now())`, [id, name, `t-${id.slice(0, 8)}`, kind]);
-      for (const c of ['core', 'sign']) await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1, $2::entitlement."Capability")`, [id, c]);
+      for (const c of ['core', 'sign']) await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1, $2::entitlement."Capability", 'PROVISIONING')`, [id, c]);
     }
     for (const [id, email, tenant] of [[SAM, 'sam@northwind.test', TENANT_A], [BOB, 'bob@example.test', TENANT_B], [CAROL, 'carol@example.test', TENANT_B]] as const) {
       await db.query(`INSERT INTO identity."User" (id, email, display_name, tenant_id, updated_at) VALUES ($1,$2,$2,$3, now())`, [id, email, tenant]);

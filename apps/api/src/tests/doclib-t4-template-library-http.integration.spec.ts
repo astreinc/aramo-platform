@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import type { AddressInfo } from 'node:net';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE, resolveIdentityMigrations } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveIdentityMigrations, resolveEntitlementMigrations } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -34,7 +34,8 @@ const __authzTestResolver = new ConfigurableTestResolver();
 const ROOT = resolve(__dirname, '../../../..');
 const AUDIENCE = 'aramo-doclib-t4-http-spec';
 const ALG = 'RS256';
-const ENTITLEMENT_INIT = resolve(ROOT, 'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql');
+// CCP-A7 — the full entitlement set (the shared helper; the repository reads A7 columns).
+const ENTITLEMENT_MIGRATIONS = resolveEntitlementMigrations(ROOT);
 function documentsMigrations(): string[] {
   const dir = resolve(ROOT, 'libs/documents/prisma/migrations');
   return readdirSync(dir).filter((n) => /^\d/.test(n)).sort().map((n) => resolve(dir, n, 'migration.sql'));
@@ -107,11 +108,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // The identity schema first (the branding read selects the profile columns); no
       // platform sentinel row, so the T-3 conversion creates the Aramo RTR default.
       for (const p of resolveIdentityMigrations(ROOT)) await db.query(readFileSync(p, 'utf8'));
-      await db.query(readFileSync(ENTITLEMENT_INIT, 'utf8'));
+      for (const entitlementMigration of ENTITLEMENT_MIGRATIONS) await db.query(readFileSync(entitlementMigration, 'utf8'));
       for (const p of documentsMigrations()) await db.query(readFileSync(p, 'utf8'));
       for (const t of [TENANT_A, TENANT_B]) {
         await ensureWriteFreezeTenant((s) => db.query(s), t);
-        await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1::uuid,'core') ON CONFLICT DO NOTHING`, [t]);
+        await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1::uuid,'core', 'PROVISIONING') ON CONFLICT DO NOTHING`, [t]);
       }
       await db.query(
         `UPDATE identity."Tenant" SET display_name = 'Acme Branded Staffing', city = 'Springfield' WHERE id = $1`,

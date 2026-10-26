@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import type { AddressInfo } from 'node:net';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveEntitlementMigrations } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -34,7 +34,8 @@ const ISSUER = 'Aramo Core Auth';
 const AUDIENCE = 'aramo-communications-authz-spec';
 const ALG = 'RS256';
 
-const ENTITLEMENT_INIT = resolve(ROOT, 'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql');
+// CCP-A7 — the full entitlement set (the shared helper; the repository reads A7 columns).
+const ENTITLEMENT_MIGRATIONS = resolveEntitlementMigrations(ROOT);
 const COMMUNICATIONS_INIT = resolve(ROOT, 'libs/communications/prisma/migrations/20260825120000_init_communications/migration.sql');
 const COMMUNICATIONS_C2B = resolve(ROOT, 'libs/communications/prisma/migrations/20260905130000_comm_c2b_provider_identity_email_tenant/migration.sql');
 const COMMUNICATIONS_C2B_MEETING = resolve(ROOT, 'libs/communications/prisma/migrations/20260905140000_comm_c2b_meeting_channel/migration.sql');
@@ -50,7 +51,7 @@ const COMMUNICATIONS_RECONCILIATION = resolve(ROOT, 'libs/communications/prisma/
 const COMMUNICATIONS_S4_RESPONSE_CONFIRMED = resolve(ROOT, 'libs/communications/prisma/migrations/20261021100000_s4_disposition_response_confirmed/migration.sql');
 const COMMUNICATIONS_S4_SOURCE_INTERACTION = resolve(ROOT, 'libs/communications/prisma/migrations/20261021100100_s4_interaction_source_interaction_id/migration.sql');
 const INTEGRATION_INIT = resolve(ROOT, 'libs/integration/prisma/migrations/20260814170000_init_integration_connection/migration.sql');
-const MIGRATIONS = [ENTITLEMENT_INIT, COMMUNICATIONS_INIT, COMMUNICATIONS_C2B, COMMUNICATIONS_C2B_MEETING, COMMUNICATIONS_C4, COMMUNICATIONS_EMAIL_TEMPLATE, COMMUNICATIONS_TEMPLATE_PROVENANCE, COMMUNICATIONS_ATTESTED_RESPONSE, COMMUNICATIONS_SCHEDULING, COMMUNICATIONS_MUTATION_FENCE, COMMUNICATIONS_RECONCILIATION, COMMUNICATIONS_S4_RESPONSE_CONFIRMED, COMMUNICATIONS_S4_SOURCE_INTERACTION, INTEGRATION_INIT];
+const MIGRATIONS = [...ENTITLEMENT_MIGRATIONS, COMMUNICATIONS_INIT, COMMUNICATIONS_C2B, COMMUNICATIONS_C2B_MEETING, COMMUNICATIONS_C4, COMMUNICATIONS_EMAIL_TEMPLATE, COMMUNICATIONS_TEMPLATE_PROVENANCE, COMMUNICATIONS_ATTESTED_RESPONSE, COMMUNICATIONS_SCHEDULING, COMMUNICATIONS_MUTATION_FENCE, COMMUNICATIONS_RECONCILIATION, COMMUNICATIONS_S4_RESPONSE_CONFIRMED, COMMUNICATIONS_S4_SOURCE_INTERACTION, INTEGRATION_INIT];
 
 const TENANT_A = '01900000-0000-7000-8000-0000000000a1';
 const TENANT_B = '01900000-0000-7000-8000-0000000000b2';
@@ -130,7 +131,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await ensureWriteFreezeTenant((s) => db.query(s), TENANT_B);
       for (const t of [TENANT_A, TENANT_B]) {
         await db.query(
-          `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1::uuid, 'ats') ON CONFLICT (tenant_id, capability) DO NOTHING`,
+          `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1::uuid, 'ats', 'PROVISIONING') ON CONFLICT (tenant_id, capability) DO NOTHING`,
           [t],
         );
       }

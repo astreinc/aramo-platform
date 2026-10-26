@@ -13,6 +13,7 @@ import {
   type EventType,
 } from '../lib/audit/identity-audit.repository.js';
 import { IdentityRepository } from '../lib/identity.repository.js';
+import { PLATFORM_ROLE_KEYS } from '../lib/dto/role.dto.js';
 import { IdentityService } from '../lib/identity.service.js';
 import { PrismaService } from '../lib/prisma/prisma.service.js';
 import { RoleRepository } from '../lib/role.repository.js';
@@ -150,9 +151,14 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'auditor_with_financials',
         'back_office',
         'candidate',
+        'catalog_manager', // CCP A1
+        'commercial_ops', // CCP A1
         'delivery_manager',
         'finance',
+        'finance_admin', // CCP A1
         'lead_recruiter',
+        'platform_owner', // CCP A1
+        'read_only_auditor', // CCP A1
         'recruiter',
         'recruiting_manager',
         // PX-V1 PX-3 — Sign product roles (seeded Role rows; excluded from the
@@ -163,9 +169,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'sign_viewer',
         'sourcer',
         'super_admin',
+        'support_admin', // CCP A1
         'tenant_admin',
         'tenant_owner',
-      ]);
+      ]); // CCP A1 +6 roles / +15 scopes / +45 grants → 25 / 205 / 984: the role table 19 → 25 rows.
 
       const scopes = await prisma.scope.findMany({ orderBy: { key: 'asc' } });
       // HK-IDENT-SCOPES: +6 scopes (41 -> 47). AUTHZ-2: +3 platform:*
@@ -303,14 +310,31 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'placement:terminate',
         'placement:transition',
         'platform:admin:invite',
+        'platform:approval:read', // CCP A1
+        'platform:billing:amount:read', // CCP-A1 Amendment A1 (Finance amount scope)
+        'platform:billing:approve', // CCP A1
+        'platform:billing:read', // CCP A1
+        'platform:billing:request', // CCP A1
+        'platform:catalog:approve', // CCP A1
+        'platform:catalog:draft', // CCP A1
+        'platform:catalog:publish', // CCP A1
+        'platform:catalog:read', // CCP A1
+        'platform:commercial:audit:read', // CCP A1
         // DOC-TEMPLATE-LIB-1 T-2 — platform-tier document-template scopes.
         'platform:document_template:manage',
         'platform:document_template:read',
+        'platform:entitlement:approve', // CCP A1
+        'platform:entitlement:request', // CCP A1
         // ATI-SEP-1 A2 A-c (P1) — platform-owned matching calibration scopes.
         'platform:matching_policy:read',
         'platform:matching_policy:write',
+        'platform:payment:request', // CCP-A1 Amendment A2 (Payment request scope)
         'platform:skill:manage',
         'platform:skill:read',
+        'platform:subscription:approve', // CCP A1
+        'platform:subscription:read', // CCP A1
+        'platform:subscription:request', // CCP A1
+        'platform:subscription:support', // CCP A1
         'platform:tenant:lifecycle:manage',
         'platform:tenant:provision',
         'platform:tenant:read',
@@ -493,7 +517,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track7/T7-P3: +3 placement:permanent:terms:write grants (account_manager/tenant_admin/tenant_owner) -> 565.
       // Track8/T8-CONNECTOR-A: +4 integration:read/write grants (tenant_admin/tenant_owner ×2) -> 569.
       // L8-B1: +3 submittal-policy:write grants -> 572; +3 requisition:approve grants (account_manager/tenant_admin/tenant_owner) -> 575.
-      expect(roleScopes).toBe(939); // ATI-SEP-1 A2 A-c (P1) +2 grants (super_admin × platform:matching_policy:{read,write}, 0x314/0x315) → 939. // ATS-QA-1 A4 +3 pipeline:resume:set → 937. // ORG-UX-1 +5 document_template:author −2 tenant:admin:user-manage → 934. // Remediation v1.0 R3 +5 pipeline:re-add grants (lead_recruiter/recruiting_manager/ats_admin/tenant_owner, range 0x1740+, + tenant_admin derived via ROLES1_ATS_GRANT_SOURCES) → 926+5=931. // DOC-TEMPLATE-LIB-1 T-5: −3 (sign_admin × sign:template:{use,manage} + sign_sender × sign:template:use removed) → 929−3=926. // ROLES-1 PR-3: −13 (the retired sign_owner: 3 sender + 10 contract grants no longer seeded; its row stays, inactive) → 942−13=929. // DOC-TEMPLATE-LIB-1 T-4 (§6.3): −1 (ats_admin × document_template:manage retired) +2 (sign_admin, sign_sender × document_template:read) → 941−1+2=942. // ROLES-1 PR-2 (§3.2): −6 ats_admin org-wide scopes (D-2) +11 tenant_owner Sign owner set (billing incl., sign:template:* excluded) +148 tenant_admin (140 ats_admin + 10 Sign admin − 2 baseline already in its org set) → 788−6+11+148=941. // DOC-TEMPLATE-LIB-1 T-2 +2 grants (super_admin × platform:document_template:{read,manage}, 0x312/0x313) → 786+2=788. // Sign S-1 +23 Sign role-contract grants (0x1720+) → 763+23=786. // TIP-E2E INC-3 A1 +3 grants (screening:transcript:read × recruiter/lead_recruiter/recruiting_manager, range 0x1710+) → 760+3=763. // TIP-E2E INC-3 +12 grants (screening:{read,create,edit,confirm} × recruiter/lead_recruiter/recruiting_manager, RoleScope range 0x1700..0x170b) → 748+12=760. // IC-3 PR-7 +8 grants (org_admin × ORG_ADMIN_SCOPE_KEYS, range 0x1600+) → 740+8=748. // TIP-E2E INC-1a +6 grants (examination:create × tenant_owner/tenant_admin/account_manager/recruiting_manager/recruiter/lead_recruiter; super_admin is platform-tier and excluded) → 734+6=740. // M365-SCHED-1 A1 +12 communication:meeting:{read,edit,cancel} grants (× recruiter/AM/tenant_admin/tenant_owner) → 722+12=734. // CRM-1 (SavedList activation) +29 grants (saved-list:{read,create,edit} × 9 operational roles [27] + saved-list:delete × tenant_admin/tenant_owner [2], range 0x1370+) → 693+29=722. // R-SYNC union: D-EMAIL-TPL-1 (ET-4) +6 grants (communication:template:read×4 + :manage×2, EMAIL_TEMPLATE_SEED_BUNDLES relocated 0x1360+) + PX-V1 PX-3 +10 grants (sign:envelope:{create,send,read}×owner/admin/sender [9] + :read×viewer [1], ESIGN_SENDER_SEED_BUNDLES 0x1350+) → 677+10+6=693. // CSP PR-2: +6 grants (client-submittal-policy:{read,write} × tenant_admin/tenant_owner [4] + :override × tenant_admin/tenant_owner [2], ranges 0x1330+/0x1340+) → 671+6=677. DOC-3: +4 grants (document:execute × recruiter/AM/tenant_admin/tenant_owner, DOCUMENTS_DOC3_SEED_BUNDLES 0x1320+) → 667+4=671. // DOC-2: +12 grants (document_template:read×4 + document_template:manage×2 + document_requirement:read×4 + document_requirement:manage×2, dedicated DOCUMENTS_DOC2_SEED_BUNDLES @ 0x1310+); document_type:manage→document:manage rename grant-neutral → 655+12=667. // DOC-1a: +10 grants (document:read×4 + document:create×4 + document_type:manage→document:manage×2, dedicated DOCUMENTS_SEED_BUNDLES @ 0x1300+) → 645+10=655. // TI-1D-D: +4 grants (pipeline:resume:set × tenant_admin/tenant_owner/recruiter/account_manager; dedicated RESUME_SELECT_SEED_BUNDLES @ 0x1200+) → 641+4=645. SKILL-TAX-1F-A: +2 grants (super_admin × platform:skill:{read,manage}) → 639+2=641. talent:edit:contact: +2 grants (× tenant_admin/tenant_owner, range 0x1110+) → 637+2=639. WL-B2: +6 grants (address:lookup × tenant_admin/recruiter [ROLE_SCOPE_ASSIGNMENTS] + tenant_owner/account_manager/recruiting_manager/lead_recruiter [ADDRESS_LOOKUP_SEED_BUNDLES, range 0x1100+]) → 631+6=637. COMM PART A: +2 grants (engagement:policy:override × tenant_admin/tenant_owner, range 0xf40+) → 629+2=631. COMM-C2B: +8 grants (communication:email:send + communication:meeting:create × recruiter/AM/tenant_admin/tenant_owner, range 0xf30+) → 621+8=629. COMM-C3: +4 grants (engagement:policy:read + engagement:policy:write × tenant_admin/tenant_owner) → 617+4=621. L6-0: −6 grants (assignment:create + assignment:update × account_manager/tenant_admin/tenant_owner removed as grounded-dead ACTIVE_RESERVED) → 623−6=617. L4/P5: +8 grants (offer:read + offer:read:financial × recruiter/AM/tenant_admin/tenant_owner) → 615+8=623. L2-I (D1): +2 grants (integration:pipeline-mapping:write × tenant_admin/tenant_owner, range 0xf10+) → 613+2=615. L2-F: +12 client-selection grants (create/read/transition × recruiter/AM/tenant_admin/tenant_owner) → 593+12. HYG-1: 605 − 12 removed grants (pipeline:remove ×2, pipeline:add-activity ×7, submittal-policy:write ×3) → 593
+      expect(roleScopes).toBe(989); // CCP-A1-A2 +1 scope / +2 grants → 25 / 207 / 989 (platform:payment:request × 2 holders) → 987+2=989. // CCP-A1-A1 +1 scope / +3 grants → 25 / 206 / 987 (platform:billing:amount:read × 3 holders) → 984+3=987. // CCP A1 +6 roles / +15 scopes / +45 grants → 25 / 205 / 984 (39 commercial + 6 × platform:tenant:read) → 939+45=984. // ATI-SEP-1 A2 A-c (P1) +2 grants (super_admin × platform:matching_policy:{read,write}, 0x314/0x315) → 939. // ATS-QA-1 A4 +3 pipeline:resume:set → 937. // ORG-UX-1 +5 document_template:author −2 tenant:admin:user-manage → 934. // Remediation v1.0 R3 +5 pipeline:re-add grants (lead_recruiter/recruiting_manager/ats_admin/tenant_owner, range 0x1740+, + tenant_admin derived via ROLES1_ATS_GRANT_SOURCES) → 926+5=931. // DOC-TEMPLATE-LIB-1 T-5: −3 (sign_admin × sign:template:{use,manage} + sign_sender × sign:template:use removed) → 929−3=926. // ROLES-1 PR-3: −13 (the retired sign_owner: 3 sender + 10 contract grants no longer seeded; its row stays, inactive) → 942−13=929. // DOC-TEMPLATE-LIB-1 T-4 (§6.3): −1 (ats_admin × document_template:manage retired) +2 (sign_admin, sign_sender × document_template:read) → 941−1+2=942. // ROLES-1 PR-2 (§3.2): −6 ats_admin org-wide scopes (D-2) +11 tenant_owner Sign owner set (billing incl., sign:template:* excluded) +148 tenant_admin (140 ats_admin + 10 Sign admin − 2 baseline already in its org set) → 788−6+11+148=941. // DOC-TEMPLATE-LIB-1 T-2 +2 grants (super_admin × platform:document_template:{read,manage}, 0x312/0x313) → 786+2=788. // Sign S-1 +23 Sign role-contract grants (0x1720+) → 763+23=786. // TIP-E2E INC-3 A1 +3 grants (screening:transcript:read × recruiter/lead_recruiter/recruiting_manager, range 0x1710+) → 760+3=763. // TIP-E2E INC-3 +12 grants (screening:{read,create,edit,confirm} × recruiter/lead_recruiter/recruiting_manager, RoleScope range 0x1700..0x170b) → 748+12=760. // IC-3 PR-7 +8 grants (org_admin × ORG_ADMIN_SCOPE_KEYS, range 0x1600+) → 740+8=748. // TIP-E2E INC-1a +6 grants (examination:create × tenant_owner/tenant_admin/account_manager/recruiting_manager/recruiter/lead_recruiter; super_admin is platform-tier and excluded) → 734+6=740. // M365-SCHED-1 A1 +12 communication:meeting:{read,edit,cancel} grants (× recruiter/AM/tenant_admin/tenant_owner) → 722+12=734. // CRM-1 (SavedList activation) +29 grants (saved-list:{read,create,edit} × 9 operational roles [27] + saved-list:delete × tenant_admin/tenant_owner [2], range 0x1370+) → 693+29=722. // R-SYNC union: D-EMAIL-TPL-1 (ET-4) +6 grants (communication:template:read×4 + :manage×2, EMAIL_TEMPLATE_SEED_BUNDLES relocated 0x1360+) + PX-V1 PX-3 +10 grants (sign:envelope:{create,send,read}×owner/admin/sender [9] + :read×viewer [1], ESIGN_SENDER_SEED_BUNDLES 0x1350+) → 677+10+6=693. // CSP PR-2: +6 grants (client-submittal-policy:{read,write} × tenant_admin/tenant_owner [4] + :override × tenant_admin/tenant_owner [2], ranges 0x1330+/0x1340+) → 671+6=677. DOC-3: +4 grants (document:execute × recruiter/AM/tenant_admin/tenant_owner, DOCUMENTS_DOC3_SEED_BUNDLES 0x1320+) → 667+4=671. // DOC-2: +12 grants (document_template:read×4 + document_template:manage×2 + document_requirement:read×4 + document_requirement:manage×2, dedicated DOCUMENTS_DOC2_SEED_BUNDLES @ 0x1310+); document_type:manage→document:manage rename grant-neutral → 655+12=667. // DOC-1a: +10 grants (document:read×4 + document:create×4 + document_type:manage→document:manage×2, dedicated DOCUMENTS_SEED_BUNDLES @ 0x1300+) → 645+10=655. // TI-1D-D: +4 grants (pipeline:resume:set × tenant_admin/tenant_owner/recruiter/account_manager; dedicated RESUME_SELECT_SEED_BUNDLES @ 0x1200+) → 641+4=645. SKILL-TAX-1F-A: +2 grants (super_admin × platform:skill:{read,manage}) → 639+2=641. talent:edit:contact: +2 grants (× tenant_admin/tenant_owner, range 0x1110+) → 637+2=639. WL-B2: +6 grants (address:lookup × tenant_admin/recruiter [ROLE_SCOPE_ASSIGNMENTS] + tenant_owner/account_manager/recruiting_manager/lead_recruiter [ADDRESS_LOOKUP_SEED_BUNDLES, range 0x1100+]) → 631+6=637. COMM PART A: +2 grants (engagement:policy:override × tenant_admin/tenant_owner, range 0xf40+) → 629+2=631. COMM-C2B: +8 grants (communication:email:send + communication:meeting:create × recruiter/AM/tenant_admin/tenant_owner, range 0xf30+) → 621+8=629. COMM-C3: +4 grants (engagement:policy:read + engagement:policy:write × tenant_admin/tenant_owner) → 617+4=621. L6-0: −6 grants (assignment:create + assignment:update × account_manager/tenant_admin/tenant_owner removed as grounded-dead ACTIVE_RESERVED) → 623−6=617. L4/P5: +8 grants (offer:read + offer:read:financial × recruiter/AM/tenant_admin/tenant_owner) → 615+8=623. L2-I (D1): +2 grants (integration:pipeline-mapping:write × tenant_admin/tenant_owner, range 0xf10+) → 613+2=615. L2-F: +12 client-selection grants (create/read/transition × recruiter/AM/tenant_admin/tenant_owner) → 593+12. HYG-1: 605 − 12 removed grants (pipeline:remove ×2, pipeline:add-activity ×7, submittal-policy:write ×3) → 593
 
       const utmRole = await prisma.userTenantMembershipRole.findUnique({
         where: { id: SEED_IDS.membership_role_admin },
@@ -599,7 +623,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // Track 3 / E2: +7 pre_start_requirement (all non-platform). Re-derived
       // actual 96 (prior literal 85 was pre-existingly understated by 4 — F-2).
       // Track 3 / E2 v1.2.2: +1 pre_start_requirement:reopen (non-platform) → 97.
-      expect(tenantScopes.length).toBe(180); // ORG-UX-1 +1 document_template:author → 180. // Remediation v1.0 R3 +1 pipeline:re-add → 178+1=179. // DOC-TEMPLATE-LIB-1 T-5 −2 (sign:template:{use,manage}) → 180−2=178. // Sign S-1 +10 non-platform esign:* permission-contract scopes → 170+10=180. // TIP-E2E INC-3 A1 +1 screening:transcript:read → 169+1=170. // TIP-E2E INC-3 +4 non-platform screening:{read,create,edit,confirm} → 165+4=169. // TIP-E2E INC-1a +1 examination:create (non-platform tenant scope) → 164+1=165. // M365-SCHED-1 A1 +3 non-platform communication:meeting:{read,edit,cancel} → 161+3=164. // CRM-1 (SavedList activation) +4 saved-list:{read,create,edit,delete} (all non-platform tenant scopes) → 157+4=161. // R-SYNC union: D-EMAIL-TPL-1 (ET-4) +2 communication:template:{read,manage} + PX-V1 PX-3 +3 sign:envelope:{create,send,read} (all non-platform tenant-namespace scopes) → 152+3+2=157. // CSP PR-2: +3 client-submittal-policy:{read,write,override} (non-platform tenant scopes) → 149+3=152. DOC-3: +1 document:execute (non-platform tenant scope) → 148+1=149. // DOC-2: +4 non-platform tenant scopes (document_template:{read,manage}, document_requirement:{read,manage}); document_type:manage→document:manage rename count-neutral → 144+4=148. // DOC-1a: +3 document scopes (document:read, document:create, document_type:manage→document:manage — all non-platform tenant scopes) → 141+3=144. // TI-1D-D: +1 pipeline:resume:set (non-platform tenant scope) → 140+1=141. talent:edit:contact: +1 (non-platform tenant scope) → 139+1=140. WL-B2: +1 address:lookup (non-platform tenant scope) → 138+1=139. COMM PART A: +1 engagement:policy:override (non-platform tenant scope) → 137+1=138. COMM-C2B: +2 communication:email:send + communication:meeting:create (both non-platform) → 135+2=137. COMM-C3: +2 engagement:policy:read + engagement:policy:write (both non-platform tenant scopes) → 133+2=135. L5-P6: +1 pre_start_requirement:verify (non-platform tenant scope) → 133. L6-0: −2 assignment:create + assignment:update (both non-platform, grounded-dead) → 134−2=132. L4/P5: +2 offer:read + offer:read:financial (both non-platform) → 132+2=134. L2-I (D1): +1 integration:pipeline-mapping:write (non-platform) → 131+1=132. L2-F: +3 client-selection:create/read/transition (all non-platform) → 126+3. HYG-1: 128 − 3 removed tenant scopes (pipeline:remove, pipeline:add-activity, submittal-policy:write)
+      expect(tenantScopes.length).toBe(180); // CCP A1: unchanged (the 15 new scopes are all platform:*). // ORG-UX-1 +1 document_template:author → 180. // Remediation v1.0 R3 +1 pipeline:re-add → 178+1=179. // DOC-TEMPLATE-LIB-1 T-5 −2 (sign:template:{use,manage}) → 180−2=178. // Sign S-1 +10 non-platform esign:* permission-contract scopes → 170+10=180. // TIP-E2E INC-3 A1 +1 screening:transcript:read → 169+1=170. // TIP-E2E INC-3 +4 non-platform screening:{read,create,edit,confirm} → 165+4=169. // TIP-E2E INC-1a +1 examination:create (non-platform tenant scope) → 164+1=165. // M365-SCHED-1 A1 +3 non-platform communication:meeting:{read,edit,cancel} → 161+3=164. // CRM-1 (SavedList activation) +4 saved-list:{read,create,edit,delete} (all non-platform tenant scopes) → 157+4=161. // R-SYNC union: D-EMAIL-TPL-1 (ET-4) +2 communication:template:{read,manage} + PX-V1 PX-3 +3 sign:envelope:{create,send,read} (all non-platform tenant-namespace scopes) → 152+3+2=157. // CSP PR-2: +3 client-submittal-policy:{read,write,override} (non-platform tenant scopes) → 149+3=152. DOC-3: +1 document:execute (non-platform tenant scope) → 148+1=149. // DOC-2: +4 non-platform tenant scopes (document_template:{read,manage}, document_requirement:{read,manage}); document_type:manage→document:manage rename count-neutral → 144+4=148. // DOC-1a: +3 document scopes (document:read, document:create, document_type:manage→document:manage — all non-platform tenant scopes) → 141+3=144. // TI-1D-D: +1 pipeline:resume:set (non-platform tenant scope) → 140+1=141. talent:edit:contact: +1 (non-platform tenant scope) → 139+1=140. WL-B2: +1 address:lookup (non-platform tenant scope) → 138+1=139. COMM PART A: +1 engagement:policy:override (non-platform tenant scope) → 137+1=138. COMM-C2B: +2 communication:email:send + communication:meeting:create (both non-platform) → 135+2=137. COMM-C3: +2 engagement:policy:read + engagement:policy:write (both non-platform tenant scopes) → 133+2=135. L5-P6: +1 pre_start_requirement:verify (non-platform tenant scope) → 133. L6-0: −2 assignment:create + assignment:update (both non-platform, grounded-dead) → 134−2=132. L4/P5: +2 offer:read + offer:read:financial (both non-platform) → 132+2=134. L2-I (D1): +1 integration:pipeline-mapping:write (non-platform) → 131+1=132. L2-F: +3 client-selection:create/read/transition (all non-platform) → 126+3. HYG-1: 128 − 3 removed tenant scopes (pipeline:remove, pipeline:add-activity, submittal-policy:write)
       for (const s of tenantScopes) {
         expect(s.key.startsWith('platform:')).toBe(false);
       }
@@ -610,14 +634,31 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       });
       expect(platformScopes.map((s) => s.key).sort()).toEqual([
         'platform:admin:invite',
+        'platform:approval:read', // CCP A1
+        'platform:billing:amount:read', // CCP-A1 Amendment A1 (Finance amount scope)
+        'platform:billing:approve', // CCP A1
+        'platform:billing:read', // CCP A1
+        'platform:billing:request', // CCP A1
+        'platform:catalog:approve', // CCP A1
+        'platform:catalog:draft', // CCP A1
+        'platform:catalog:publish', // CCP A1
+        'platform:catalog:read', // CCP A1
+        'platform:commercial:audit:read', // CCP A1
         // DOC-TEMPLATE-LIB-1 T-2 — platform-tier document-template scopes.
         'platform:document_template:manage',
         'platform:document_template:read',
+        'platform:entitlement:approve', // CCP A1
+        'platform:entitlement:request', // CCP A1
         // ATI-SEP-1 A2 A-c (P1) — platform-owned matching calibration scopes.
         'platform:matching_policy:read',
         'platform:matching_policy:write',
+        'platform:payment:request', // CCP-A1 Amendment A2 (Payment request scope)
         'platform:skill:manage',
         'platform:skill:read',
+        'platform:subscription:approve', // CCP A1
+        'platform:subscription:read', // CCP A1
+        'platform:subscription:request', // CCP A1
+        'platform:subscription:support', // CCP A1
         'platform:tenant:lifecycle:manage',
         'platform:tenant:provision',
         'platform:tenant:read',
@@ -647,14 +688,29 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       ]);
 
       // No tenant role holds any platform:* scope (the DDR §13.1
-      // namespace-partition tripwire).
+      // namespace-partition tripwire). CCP A1 (§6.7.2): "tenant roles" are every role
+      // OUTSIDE PLATFORM_ROLE_KEYS (super_admin + the 6 CCP platform roles), not every
+      // role but super_admin.
       const tenantRoles = await prisma.role.findMany({
-        where: { key: { not: 'super_admin' } },
+        where: { key: { notIn: [...PLATFORM_ROLE_KEYS] } },
         include: { role_scopes: { include: { scope: true } } },
       });
+      expect(tenantRoles.length).toBeGreaterThan(0);
       for (const r of tenantRoles) {
         for (const rs of r.role_scopes) {
           expect(rs.scope.key.startsWith('platform:')).toBe(false);
+        }
+      }
+      // ...and, symmetrically, every PLATFORM_ROLE_KEYS role holds ONLY platform:* scopes.
+      const platformRoles = await prisma.role.findMany({
+        where: { key: { in: [...PLATFORM_ROLE_KEYS] } },
+        include: { role_scopes: { include: { scope: true } } },
+      });
+      expect(platformRoles.map((r) => r.key).sort()).toEqual([...PLATFORM_ROLE_KEYS].sort());
+      for (const r of platformRoles) {
+        expect(r.role_scopes.length).toBeGreaterThan(0);
+        for (const rs of r.role_scopes) {
+          expect(rs.scope.key.startsWith('platform:')).toBe(true);
         }
       }
     });
@@ -715,7 +771,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // PX-V1 PX-3 — exclude the E-Sign product roles (esign_*) as well: like
       // super_admin they are namespace-separate from the ATS staffing catalog.
       const tenantRoles = await prisma.role.findMany({
-        where: { key: { not: 'super_admin' }, NOT: { key: { startsWith: 'sign_' } } },
+        // CCP A1 (TD-A1-2): exclude the whole platform partition (PLATFORM_ROLE_KEYS), not
+        // only super_admin, so the 6 CCP platform roles do not count as tenant roles.
+        where: { key: { notIn: [...PLATFORM_ROLE_KEYS] }, NOT: { key: { startsWith: 'sign_' } } },
         select: { key: true },
       });
       // IC-3 PR-7 — +1 org_admin (product-neutral organization administrator) → 14 tenant roles.

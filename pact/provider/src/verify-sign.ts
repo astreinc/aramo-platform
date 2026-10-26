@@ -143,6 +143,17 @@ const SENDER_SCOPES: readonly (readonly [string, string])[] = [
 ];
 // The consumer's placeholder session cookie; the requestFilter swaps in a real token.
 const SENDER_COOKIE_NAME = 'aramo_access_token_sign';
+
+// CCP-A6 (Conversion Rule C-1, C-4) — the billing owner of a BUSINESS tenant holding an open
+// governed (MANUAL) Sign subscription. MUST match the placeholder in
+// pact/consumers/sign-workspace-consumer/src/sender-console.consumer.test.ts.
+const BILLING_OWNER_PLACEHOLDER = 'sign-workspace-pact-billing-owner';
+const GOV_TENANT_ID = 'e6a60000-0000-7000-8000-000000000001';
+const GOV_USER_ID = 'e6a60000-0000-7000-8000-000000000002';
+const GOV_MEMBERSHIP_ID = 'e6a60000-0000-7000-8000-000000000003';
+const GOV_ROLE_ID = 'e6a60000-0000-7000-8000-000000000004';
+const GOV_SCOPE_ID = 'e6a60000-0000-7000-8000-000000000011';
+const GOV_INTENT_ID = 'e6a60000-0000-7000-8000-000000000021';
 const AUTH_ISSUER = 'Aramo Core Auth'; // the issuer JwtAuthGuard pins
 const AUTH_AUDIENCE = 'aramo-pact-provider-esign-audience';
 // Per-fixture child ids derive from the envelope id's last two hex chars:
@@ -173,6 +184,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
     let port = 0;
     let savedEnv: Partial<Record<string, string | undefined>> = {};
     let senderJwt = '';
+    let billingOwnerJwt = '';
     let nativeJwt = '';
     let letterPdf: Uint8Array = new Uint8Array();
 
@@ -251,22 +263,93 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       );
       for (const capability of ['core', 'sign']) {
         await db.query(
-          `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
-           VALUES ($1, $2::entitlement."Capability")
+          `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+           VALUES ($1, $2::entitlement."Capability", 'PROVISIONING')
            ON CONFLICT (tenant_id, capability) DO NOTHING`,
           [SENDER_TENANT_ID, capability],
         );
       }
       // The governed DEVELOPMENT subscription on the seeded Aramo Sign included plan
       // (100 envelopes / month), so a console send passes the allowance gate.
+      // CCP-A4 (MP-A2 N-9, N-11) — explicit product context (no DB default exists) and the
+      // arbiter of the one-open-BASE-per-(tenant, product) index. CCP-A5 (N-18) — pinned to the
+      // plan's current (PUBLISHED) version, named explicitly (no DB default).
       await db.query(
-        `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, period_anchor, source, created_by)
-         SELECT gen_random_uuid(), $1::uuid, p.id, now(), 'DEVELOPMENT', 'pact-verify-sign'
-           FROM subscription."Plan" p WHERE p.key = 'aramo-sign-included-v1'
-         ON CONFLICT (tenant_id) WHERE ended_at IS NULL DO NOTHING`,
+        `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by)
+         SELECT gen_random_uuid(), $1::uuid, p.id,
+                (SELECT v.id FROM subscription."PlanVersion" v WHERE v.plan_id = p.id AND v.status = 'PUBLISHED'),
+                p.product_key, 'BASE', now(), 'DEVELOPMENT', 'pact-verify-sign'
+           FROM subscription."Plan" p WHERE p.key = 'aramo-sign-included-v1' AND p.product_key = 'sign'
+         ON CONFLICT (tenant_id, product_key) WHERE ended_at IS NULL AND composition_role = 'BASE' DO NOTHING`,
         [SENDER_TENANT_ID],
       );
     }
+
+    // CCP-A6 — the governed-subscription billing owner (real RBAC: a role granting
+    // sign:billing:manage; the tenant entitled core + sign) and an open MANUAL Sign subscription.
+    async function seedGovernedBillingOwner(): Promise<void> {
+      await db.query(
+        `INSERT INTO identity."Tenant" (id, name, slug, kind, status, is_active, updated_at)
+         VALUES ($1,'Pact Governed Co','pact-governed','BUSINESS','ACTIVE',true, now()) ON CONFLICT (id) DO NOTHING`,
+        [GOV_TENANT_ID],
+      );
+      await db.query(
+        `INSERT INTO identity."User" (id, email, display_name, tenant_id, updated_at)
+         VALUES ($1,'bo.owner@example.com','Bo Owner',$2, now()) ON CONFLICT (id) DO NOTHING`,
+        [GOV_USER_ID, GOV_TENANT_ID],
+      );
+      await db.query(`INSERT INTO identity."UserTenantMembership" (id, user_id, tenant_id, updated_at) VALUES ($1,$2,$3, now()) ON CONFLICT (id) DO NOTHING`, [
+        GOV_MEMBERSHIP_ID,
+        GOV_USER_ID,
+        GOV_TENANT_ID,
+      ]);
+      await db.query(`INSERT INTO identity."Role" (id, key, description, updated_at) VALUES ($1,'pact_sign_billing_owner','Pact Sign billing owner', now()) ON CONFLICT (key) DO NOTHING`, [GOV_ROLE_ID]);
+      await db.query(`INSERT INTO identity."Scope" (id, key) VALUES ($1,'sign:billing:manage') ON CONFLICT (key) DO NOTHING`, [GOV_SCOPE_ID]);
+      await db.query(
+        `INSERT INTO identity."RoleScope" (id, role_id, scope_id)
+         SELECT gen_random_uuid(), r.id, s.id FROM identity."Role" r, identity."Scope" s
+          WHERE r.key = 'pact_sign_billing_owner' AND s.key = 'sign:billing:manage'
+         ON CONFLICT (role_id, scope_id) DO NOTHING`,
+      );
+      await db.query(
+        `INSERT INTO identity."UserTenantMembershipRole" (id, membership_id, role_id)
+         SELECT gen_random_uuid(), $1, r.id FROM identity."Role" r WHERE r.key = 'pact_sign_billing_owner'
+         ON CONFLICT (membership_id, role_id) DO NOTHING`,
+        [GOV_MEMBERSHIP_ID],
+      );
+      await db.query(
+        `INSERT INTO identity."AuthorizationVersion" (id, tenant_id, principal_id, version, updated_at)
+         VALUES (gen_random_uuid(),$1,$2,1, now()) ON CONFLICT (tenant_id, principal_id) DO NOTHING`,
+        [GOV_TENANT_ID, GOV_USER_ID],
+      );
+      for (const capability of ['core', 'sign']) {
+        await db.query(
+          `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1, $2::entitlement."Capability", 'PROVISIONING') ON CONFLICT (tenant_id, capability) DO NOTHING`,
+          [GOV_TENANT_ID, capability],
+        );
+      }
+      // The governed (MANUAL, Aramo-managed) subscription; explicit product, composition and pin.
+      await db.query(
+        `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by)
+         SELECT gen_random_uuid(), $1::uuid, p.id,
+                (SELECT v.id FROM subscription."PlanVersion" v WHERE v.plan_id = p.id AND v.status = 'PUBLISHED'),
+                p.product_key, 'BASE', now(), 'MANUAL', 'pact-verify-sign'
+           FROM subscription."Plan" p WHERE p.key = 'aramo-sign-included-v1' AND p.product_key = 'sign'
+         ON CONFLICT (tenant_id, product_key) WHERE ended_at IS NULL AND composition_role = 'BASE' DO NOTHING`,
+        [GOV_TENANT_ID],
+      );
+    }
+    // Billing must be configured for checkout to reach the governed-subscription decision (no
+    // provider call is made: the refusal precedes every side effect). Scoped to the one state.
+    // STRIPE_API_BASE points at a closed local port: should any provider call ever be reached, it
+    // fails (503) instead of leaving the harness.
+    const BILLING_ENV = {
+      STRIPE_SECRET_KEY: 'sk_test_pact_verify_sign',
+      STRIPE_WEBHOOK_SECRET: 'whsec_pact_verify_sign',
+      STRIPE_API_BASE: 'http://127.0.0.1:9',
+      STRIPE_PLAN_PRICES: 'aramo-sign-standard-business-v1=price_pact_business',
+    } as const;
+    const billingEnvSaved: Partial<Record<string, string | undefined>> = {};
 
     // PX-1 — one sender-authored (OWNED-source) envelope fixture. NO deletes:
     // SignatureEvent is append-only; each interaction names its own envelope id.
@@ -586,12 +669,15 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         [ATS_TENANT_ID],
       );
       for (const capability of ['core', 'ats', 'sign']) {
-        await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1, $2::entitlement."Capability") ON CONFLICT (tenant_id, capability) DO NOTHING`, [ATS_TENANT_ID, capability]);
+        await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1, $2::entitlement."Capability", 'PROVISIONING') ON CONFLICT (tenant_id, capability) DO NOTHING`, [ATS_TENANT_ID, capability]);
       }
       await db.query(
-        `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, period_anchor, source, created_by)
-         SELECT gen_random_uuid(), $1::uuid, p.id, now(), 'DEVELOPMENT', 'pact-verify-sign' FROM subscription."Plan" p WHERE p.key = 'aramo-sign-included-v1'
-         ON CONFLICT (tenant_id) WHERE ended_at IS NULL DO NOTHING`,
+        `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by)
+         SELECT gen_random_uuid(), $1::uuid, p.id,
+                (SELECT v.id FROM subscription."PlanVersion" v WHERE v.plan_id = p.id AND v.status = 'PUBLISHED'),
+                p.product_key, 'BASE', now(), 'DEVELOPMENT', 'pact-verify-sign'
+           FROM subscription."Plan" p WHERE p.key = 'aramo-sign-included-v1' AND p.product_key = 'sign'
+         ON CONFLICT (tenant_id, product_key) WHERE ended_at IS NULL AND composition_role = 'BASE' DO NOTHING`,
         [ATS_TENANT_ID],
       );
       await db.query(
@@ -712,6 +798,14 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         .setIssuedAt(now)
         .setExpirationTime(now + 15 * 60)
         .sign(kp.privateKey);
+      billingOwnerJwt = await new SignJWT({ sub: GOV_USER_ID, actor_kind: 'user', consumer_type: 'sign', tenant_id: GOV_TENANT_ID, authz_version: 1 })
+        .setProtectedHeader({ alg: 'RS256', typ: 'JWT' })
+        .setIssuer(AUTH_ISSUER)
+        .setAudience(AUTH_AUDIENCE)
+        .setSubject(GOV_USER_ID)
+        .setIssuedAt(now)
+        .setExpirationTime(now + 15 * 60)
+        .sign(kp.privateKey);
       // Aramo Sign Mobile — the native access token (M-A1 §3.6 claims).
       nativeJwt = await new SignJWT({
         sub: SENDER_USER_ID,
@@ -767,7 +861,9 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // consumer's request) is forwarded untouched.
         requestFilter: (req, _res, next) => {
           const cookie = req.headers['cookie'];
-          if (typeof cookie === 'string' && cookie.includes(`${SENDER_COOKIE_NAME}=`)) {
+          if (typeof cookie === 'string' && cookie.includes(`${SENDER_COOKIE_NAME}=${BILLING_OWNER_PLACEHOLDER}`)) {
+            req.headers['cookie'] = `${SENDER_COOKIE_NAME}=${billingOwnerJwt}`;
+          } else if (typeof cookie === 'string' && cookie.includes(`${SENDER_COOKIE_NAME}=`)) {
             req.headers['cookie'] = `${SENDER_COOKIE_NAME}=${senderJwt}`;
           }
           // Aramo Sign Mobile — the sign-mobile placeholder bearer → a native token.
@@ -846,6 +942,45 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           },
           'a sender draft envelope is ready to send': async (params?: unknown) => {
             await seedSenderEnvelope({ envelopeId: envelopeParam(params), status: 'DRAFT', document: true, recipient: true, signatureField: true });
+            return undefined;
+          },
+          // CCP-A6 — Conversion Rule C-1 / C-4: checkout refused while a governed subscription is open.
+          'a business tenant holds a governed Aramo-managed Sign subscription': {
+            setup: async () => {
+              await seedGovernedBillingOwner();
+              for (const [k, v] of Object.entries(BILLING_ENV)) {
+                billingEnvSaved[k] = process.env[k];
+                process.env[k] = v;
+              }
+              return undefined;
+            },
+            teardown: async () => {
+              for (const k of Object.keys(BILLING_ENV)) {
+                const v = billingEnvSaved[k];
+                if (v === undefined) delete process.env[k];
+                else process.env[k] = v;
+              }
+              return undefined;
+            },
+          // TD-MERGE-11: a { setup, teardown } handler is valid at runtime (pact-js
+          // StateFuncWithSetup), but the Verifier options type intersects it with the bare function
+          // signature, so the object literal is cast; no behaviour change.
+          } as never,
+          // CCP-A6-R — Conversion Rule C-8: the tenant-facing pending state of a held activation.
+          'a business tenant with a governed subscription has a held self-service activation': async () => {
+            await seedGovernedBillingOwner();
+            await db.query(
+              `INSERT INTO subscription."CheckoutIntent" (id, tenant_id, user_id, plan_id, provider, provider_session_ref)
+               SELECT $1::uuid, $2::uuid, $3, p.id, 'STRIPE', 'cs_pact_held' FROM subscription."Plan" p WHERE p.key = 'aramo-sign-standard-business-v1'
+               ON CONFLICT (id) DO NOTHING`,
+              [GOV_INTENT_ID, GOV_TENANT_ID, GOV_USER_ID],
+            );
+            await db.query(
+              `INSERT INTO subscription."BillingReconciliationFlag" (id, tenant_id, provider, subscription_ref, intent_id, reason)
+               VALUES (gen_random_uuid(), $1::uuid, 'STRIPE', 'sub_pact_held', $2::uuid, 'governed_subscription_open')
+               ON CONFLICT ("provider", "subscription_ref", "reason") WHERE "resolved_at" IS NULL DO NOTHING`,
+              [GOV_TENANT_ID, GOV_INTENT_ID],
+            );
             return undefined;
           },
           'a sent sender envelope exists': async (params?: unknown) => {

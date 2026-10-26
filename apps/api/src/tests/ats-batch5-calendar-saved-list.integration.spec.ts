@@ -6,7 +6,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveEntitlementMigrations } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -59,10 +59,8 @@ type SignKey = CryptoKey | KeyObject;
 
 const ROOT = resolve(__dirname, '../../../..');
 
-const ENTITLEMENT_INIT = resolve(
-  ROOT,
-  'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
-);
+// CCP-A7 — the full entitlement set (the shared helper; the repository reads A7 columns).
+const ENTITLEMENT_MIGRATIONS = resolveEntitlementMigrations(ROOT);
 const CALENDAR_INIT = resolve(
   ROOT,
   'libs/calendar/prisma/migrations/20260602120000_init_calendar_model/migration.sql',
@@ -334,7 +332,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await setupClient.connect();
 
       for (const p of [
-        ENTITLEMENT_INIT,
+        ...ENTITLEMENT_MIGRATIONS,
         CALENDAR_INIT,
         SAVED_LIST_INIT,
         SAVED_LIST_LIST_KIND,
@@ -380,8 +378,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // both entitled so the rejection comes from the typed-polymorphism
       // owner check, not the entitlement gate).
       await setupClient.query(
-        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
-         VALUES ($1::uuid, 'ats'), ($2::uuid, 'ats')
+        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+         VALUES ($1::uuid, 'ats', 'PROVISIONING'), ($2::uuid, 'ats', 'PROVISIONING')
          ON CONFLICT (tenant_id, capability) DO NOTHING`,
         [TENANT_ATS, TENANT_OTHER],
       );

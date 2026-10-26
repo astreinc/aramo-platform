@@ -365,6 +365,13 @@ describe('ErrorCode catalog parity (TS tuple ↔ openapi/common.yaml)', () => {
       'TENANT_DOMAIN_UNAVAILABLE',
       // Domain-Enforcement P3 (P2b precedence).
       'DOMAIN_ALREADY_VERIFIED',
+      'CCP_NOT_BOOTSTRAPPED',
+      'COMMERCIAL_APPROVAL_REFUSED',
+      'COMMERCIAL_CHANGE_REQUEST_CONFLICT',
+      'COMMERCIAL_POLICY_UNAVAILABLE',
+      'PLATFORM_LAST_OWNER',
+      'USAGE_ROLLUP_NOT_RECONCILED',
+      'COMMERCIAL_CATALOG_CONFLICT',
     ]);
   });
 });

@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Optional } from '@nestjs/common';
 import { AramoError } from '@aramo/common';
 import { PLATFORM_TENANT_SENTINEL_ID } from '@aramo/auth';
 import {
@@ -21,6 +21,7 @@ import {
   extractEmailDomain,
   normalizeEmail,
 } from '@aramo/identity';
+import { COMMERCIAL_ROLE_CHANGE_ROLE_KEYS, CommercialOperatorRepository, PLATFORM_OWNER_ROLE_KEY } from '@aramo/subscription';
 
 import { CognitoAdminService } from './cognito/cognito-admin.service.js';
 import { TenantPolicyProvisioningService } from './tenant-policy-provisioning.service.js';
@@ -119,6 +120,11 @@ export class PlatformInvitationService {
     private readonly policyProvisioning: TenantPolicyProvisioningService,
     // Domain-Enforcement P3 (LOCKED) — the one-organization-per-domain pre-check.
     private readonly domainClaims: DomainClaimService,
+    // CCP-A9 — the live inviter roster read and the D9 attestation store. PlatformModule
+    // always provides it (SubscriptionModule). Optional only so slim test modules that never
+    // mint a commercial role keep compiling; without it a commercial-role invite is refused
+    // (fail closed), never minted unattested.
+    @Optional() private readonly operators?: CommercialOperatorRepository,
   ) {}
 
   async provisionTenantAndInviteOwner(args: {
@@ -394,9 +400,13 @@ export class PlatformInvitationService {
     // 3. Entitlement tx — soft-disable the tenant on failure (Lead
     // ruling 7).
     try {
+      // CCP-A7 (D4): the provisioning grant is non-commercial provenance, and never clears a
+      // governed revoke.
       await this.entitlementRepo.grantCapabilities({
         tenant_id,
         capabilities: desired,
+        granted_source: 'PROVISIONING',
+        granted_by: args.actor_user_id,
       });
     } catch (err) {
       this.logger.warn(
@@ -551,6 +561,23 @@ export class PlatformInvitationService {
             ? 'existing_user_without_membership'
             : 'existing_user_owned_by_other_tenant',
       });
+    }
+
+    if (ownership.kind === 'same_tenant' && args.pool === 'platform') {
+      // CCP-A9 (Inc-1 Closure Amendment A1 A1-1, A1-5) — the platform-admin invite is an
+      // ARRIVAL only. An existing platform member is refused whatever the role set: a role
+      // grant to an existing admin is a governed role-change request (A1-3(a)), never an
+      // invite variant (the former same-tenant role replacement here could also strip
+      // platform_owner).
+      throw new AramoError(
+        'INVITATION_ALREADY_EXISTS',
+        'The user is already a platform administrator; role changes go through a governed role-change request',
+        409,
+        {
+          requestId: args.request_id,
+          details: { reason: 'existing_platform_admin', existing_membership_id: ownership.membership.id },
+        },
+      );
     }
 
     if (ownership.kind === 'same_tenant') {
@@ -802,6 +829,10 @@ export class PlatformInvitationService {
   async invitePlatformAdmin(args: {
     email: string;
     display_name?: string | null;
+    // CCP-A9 — PLATFORM_ROLE_KEYS for the new arrival; absent = ['super_admin'] (pre-A9).
+    role_keys?: readonly string[];
+    // CCP-A9 (D9) — required when role_keys carries a CCP role.
+    human_ref_hash?: string | null;
     actor_user_id: string;
     request_id: string;
   }): Promise<InviteResult> {
@@ -820,15 +851,83 @@ export class PlatformInvitationService {
         },
       );
     }
-    return this.inviteUserIntoTenant({
+    // CCP-A9 (PBD §5.1 row A9) — the invite accepts PLATFORM_ROLE_KEYS for a NEW arrival.
+    const role_keys = args.role_keys === undefined || args.role_keys.length === 0 ? ['super_admin'] : [...args.role_keys];
+    const notPlatform = role_keys.filter((k) => !(PLATFORM_ROLE_KEYS as readonly string[]).includes(k));
+    if (notPlatform.length > 0) {
+      throw new AramoError('VALIDATION_ERROR', 'Only platform-tier roles can be granted to a platform administrator', 400, {
+        requestId: args.request_id,
+        details: { reason: 'role_not_platform_tier', role_keys: notPlatform },
+      });
+    }
+    // D9 (Charter §5.1: required for every holder of a commercial role) — a CCP role arrives
+    // with its one-account-per-human attestation, attested by the inviter, who must be an
+    // attested platform_owner (method PLATFORM_OWNER: a distinct platform_owner attests).
+    const commercial = role_keys.filter((k) => (COMMERCIAL_ROLE_CHANGE_ROLE_KEYS as readonly string[]).includes(k));
+    const human_ref_hash = args.human_ref_hash ?? null;
+    if (commercial.length === 0 && human_ref_hash !== null) {
+      throw new AramoError('VALIDATION_ERROR', 'human_ref_hash applies only to an invite carrying a commercial platform role', 400, {
+        requestId: args.request_id,
+        details: { reason: 'human_ref_not_applicable' },
+      });
+    }
+    if (commercial.length > 0) {
+      if (this.operators === undefined) {
+        throw new AramoError('INTERNAL_ERROR', 'The commercial operator store is not available', 500, {
+          requestId: args.request_id,
+          details: { reason: 'commercial_operator_store_unavailable' },
+        });
+      }
+      if (human_ref_hash === null) {
+        throw new AramoError('VALIDATION_ERROR', 'A commercial platform role needs the D9 human reference (human_ref_hash)', 400, {
+          requestId: args.request_id,
+          details: { reason: 'human_ref_required', role_keys: commercial },
+        });
+      }
+      const inviter = await this.operators.readOperatorNow(PLATFORM_TENANT_SENTINEL_ID, args.actor_user_id);
+      if (!inviter.attested || !inviter.role_keys.includes(PLATFORM_OWNER_ROLE_KEY)) {
+        throw new AramoError('INSUFFICIENT_PERMISSIONS', 'Only an attested platform_owner can invite a commercial platform role', 403, {
+          requestId: args.request_id,
+          details: { reason: 'attester_not_platform_owner' },
+        });
+      }
+      if (await this.operators.isHumanRefActive(human_ref_hash)) {
+        throw new AramoError('VALIDATION_ERROR', 'The human reference is already attested for another account (D9)', 400, {
+          requestId: args.request_id,
+          details: { reason: 'human_ref_in_use' },
+        });
+      }
+    }
+    const result = await this.inviteUserIntoTenant({
       tenant_id: PLATFORM_TENANT_SENTINEL_ID,
       email: args.email,
-      role_keys: ['super_admin'],
+      role_keys,
       display_name: args.display_name ?? null,
       actor_user_id: args.actor_user_id,
       pool: 'platform',
       request_id: args.request_id,
     });
+    if (commercial.length > 0 && human_ref_hash !== null && this.operators !== undefined) {
+      try {
+        await this.operators.recordAttestation({
+          user_id: result.user_id,
+          human_ref_hash,
+          method: 'PLATFORM_OWNER',
+          attested_by: args.actor_user_id,
+          attested_at: new Date(),
+          correlation_id: args.request_id,
+        });
+      } catch (err) {
+        // Lost a race on the human reference after the pre-check. The arrival exists without
+        // an attestation, so it counts as NOT_HUMAN for every approval (fail closed).
+        this.logger.error(`D9 attestation not recorded for ${result.user_id}: ${(err as Error).message}`);
+        throw new AramoError('VALIDATION_ERROR', 'The administrator was invited but the D9 attestation was not recorded', 400, {
+          requestId: args.request_id,
+          details: { reason: 'attestation_not_recorded', user_id: result.user_id },
+        });
+      }
+    }
+    return result;
   }
 
   // Lead ruling 7 compensation, hardened at IC-1 PR-1 Gate-5 (FIX_NOW-2):

@@ -1,0 +1,979 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com"><link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="">
+<link href="https://fonts.googleapis.com/css2?family=Hanken+Grotesk:wght@400;500;600;700&amp;family=IBM+Plex+Mono:wght@400;500;600&amp;display=swap" rel="stylesheet">
+<script src="./ccp-data.js"></script>
+<style>
+body{margin:0;background:#F4F6FA;color:#18212B;font-family:'Hanken Grotesk',system-ui,sans-serif;font-size:14px;-webkit-font-smoothing:antialiased;font-variant-numeric:tabular-nums}
+a{color:#022AC0;text-decoration:none}a:hover{color:#3355E0;text-decoration:underline}
+button,input,select,textarea{font-family:'Hanken Grotesk',system-ui,sans-serif}
+button:disabled{cursor:not-allowed}
+:focus-visible{outline:2px solid #022AC0;outline-offset:2px}
+::selection{background:#022AC022}
+@media (prefers-reduced-motion: reduce){*{transition:none !important}}
+</style>
+</helmet>
+<div style="min-height:100vh">
+<a href="#main" style="position:absolute;left:-9999px;top:0" style-focus="left:8px;top:8px;z-index:999;background:#fff;padding:8px 12px;border-radius:8px">Skip to content</a>
+<div role="banner" style="height:30px;background:#D97757;color:#0B1022;display:flex;align-items:center;gap:14px;padding:0 16px;font-size:12px;font-weight:600;position:sticky;top:0;z-index:70;white-space:nowrap;overflow:hidden">
+  <span style="display:inline-flex;align-items:center;gap:7px;font-family:'IBM Plex Mono',monospace;font-weight:600;letter-spacing:.08em"><span style="width:7px;height:7px;background:#0B1022;border-radius:1px;transform:rotate(45deg)"></span>PLATFORM ADMIN</span>
+  <span style="font-weight:500">admin.aramo.ai · commercial changes need approval from other people</span>
+  <span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;letter-spacing:.06em;border:1px dashed #0B1022;border-radius:4px;padding:1px 7px">PROTOTYPE — NOT AUTHORIZED FOR BUILD</span>
+  <span style="margin-left:auto;font-weight:500;overflow:hidden;text-overflow:ellipsis">Signed in as <b style="font-weight:700">{{ me.email }}</b> · Aramo Platform · {{ me.roleText }}</span>
+</div>
+<div style="display:flex;min-height:calc(100vh - 30px)">
+<nav aria-label="Platform admin" style="width:{{ railW }};flex:none;background:#0B1022;display:flex;flex-direction:column;padding:14px {{ railPad }};position:sticky;top:30px;height:calc(100vh - 30px);box-sizing:border-box;overflow-y:auto;overflow-x:hidden;transition:width .18s">
+  <div style="display:flex;align-items:center;gap:10px;padding:2px 2px 6px;justify-content:{{ railJustify }}">
+    <button onClick="{{ expandRail }}" title="Aramo" style="width:34px;height:34px;border:none;border-radius:9px;display:grid;place-items:center;flex:none;background:transparent;padding:0;cursor:pointer" style-hover="background:rgba(255,255,255,.1)"><svg width="25" height="25" viewBox="0 0 64 64"><g stroke="#FFFFFF" stroke-width="5" stroke-linecap="round"><line x1="43" y1="32" x2="56" y2="32"></line><line x1="32" y1="43" x2="32" y2="56"></line><line x1="24.2" y1="39.8" x2="15" y2="49"></line><line x1="21" y1="32" x2="8" y2="32"></line><line x1="24.2" y1="24.2" x2="15" y2="15"></line><line x1="32" y1="21" x2="32" y2="8"></line><line x1="39.8" y1="39.8" x2="49" y2="49"></line></g><line x1="39.8" y1="24.2" x2="54.5" y2="9.5" stroke="#D97757" stroke-width="6" stroke-linecap="round"></line><circle cx="32" cy="32" r="6" fill="#FFFFFF"></circle></svg></button>
+    <sc-if value="{{ expanded }}" hint-placeholder-val="{{ true }}">
+      <span style="color:#fff;font-weight:600;font-size:15.5px;letter-spacing:-.01em;white-space:nowrap">aramo<span style="color:#C9CACE;font-weight:400">.ai</span></span>
+      <button onClick="{{ toggleRail }}" title="Collapse sidebar (⌘\)" aria-label="Collapse sidebar" style="margin-left:auto;width:30px;height:30px;border:none;border-radius:6px;display:grid;place-items:center;color:#C9CACE;background:transparent;cursor:pointer;padding:0" style-hover="background:rgba(255,255,255,.12);color:#fff"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4.5" width="18" height="15" rx="2.5"></rect><line x1="9.5" y1="4.5" x2="9.5" y2="19.5"></line></svg></button>
+    </sc-if>
+  </div>
+  <div style="display:flex;justify-content:{{ railJustify }};padding:4px 4px 12px">
+    <span title="Platform admin console" style="display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 8px;border:1px solid #D97757;color:#F0B49E;border-radius:5px;font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:600;letter-spacing:.08em">{{ platformTag }}</span>
+  </div>
+  <sc-for list="{{ navGroups }}" as="g" hint-placeholder-count="5">
+    <div style="margin-bottom:6px">
+      <sc-if value="{{ expanded }}" hint-placeholder-val="{{ true }}"><div style="display:flex;align-items:center;gap:6px;color:#91939C;font-size:10.5px;font-weight:600;letter-spacing:.09em;text-transform:uppercase;padding:10px 12px 6px">{{ g.g }}<sc-if value="{{ g.isNew }}" hint-placeholder-val="{{ false }}"><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;letter-spacing:.06em;color:#F0B49E;border:1px solid #D97757;border-radius:3px;padding:0 4px">NEW</span></sc-if></div></sc-if>
+      <sc-if value="{{ collapsed }}" hint-placeholder-val="{{ false }}"><div style="height:1px;background:rgba(255,255,255,.12);margin:8px 8px"></div></sc-if>
+      <sc-for list="{{ g.items }}" as="n" hint-placeholder-count="2">
+        <a href="#" onClick="{{ n.onClick }}" aria-current="{{ n.cur }}" title="{{ n.title }}" style="display:flex;align-items:center;gap:12px;justify-content:{{ railJustify }};padding:9px {{ itemPad }};margin-bottom:2px;border-radius:9px;background:{{ n.bg }};color:{{ n.color }};font-size:14px;font-weight:{{ n.fw }};white-space:nowrap;text-decoration:none;position:relative" style-hover="background:rgba(255,255,255,.08);color:#fff;text-decoration:none">
+          <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" style="flex:none"><path d="{{ n.icon }}"></path></svg>
+          <sc-if value="{{ expanded }}" hint-placeholder-val="{{ true }}"><span style="overflow:hidden;text-overflow:ellipsis">{{ n.label }}</span></sc-if>
+          <sc-if value="{{ n.ext }}" hint-placeholder-val="{{ false }}"><span aria-hidden="true" style="margin-left:auto;font-size:11px;color:#91939C">↗</span></sc-if>
+          <sc-if value="{{ n.showBar }}" hint-placeholder-val="{{ false }}"><span style="position:absolute;left:-12px;top:9px;bottom:9px;width:3px;border-radius:0 3px 3px 0;background:#D97757"></span></sc-if>
+        </a>
+      </sc-for>
+    </div>
+  </sc-for>
+  <div style="margin-top:auto;padding-top:12px;border-top:1px solid rgba(255,255,255,.12);display:flex;align-items:center;gap:10px;justify-content:{{ railJustify }}">
+    <span style="width:30px;height:30px;border-radius:50%;background:#1A1E2F;border:1px solid #D97757;color:#fff;display:grid;place-items:center;font-size:11.5px;font-weight:600;flex:none">{{ me.initials }}</span>
+    <sc-if value="{{ expanded }}" hint-placeholder-val="{{ true }}"><span style="min-width:0"><span style="display:block;color:#fff;font-size:12.5px;font-weight:600;line-height:1.25">{{ me.name }}</span><span style="display:block;color:#C9CACE;font-size:11px;overflow:hidden;text-overflow:ellipsis">{{ me.roleText }}</span></span></sc-if>
+  </div>
+</nav>
+
+<div style="flex:1;min-width:0;display:flex;flex-direction:column">
+  <header style="height:56px;flex:none;background:#fff;border-bottom:1px solid #E5E9ED;display:flex;align-items:center;gap:12px;padding:0 24px;position:sticky;top:30px;z-index:50;box-sizing:border-box">
+    <nav aria-label="Breadcrumb" style="display:flex;align-items:center;gap:6px;min-width:0;font-size:13px;overflow:hidden;white-space:nowrap">
+      <sc-for list="{{ crumbs }}" as="c" hint-placeholder-count="2">
+        <sc-if value="{{ c.plain }}" hint-placeholder-val="{{ true }}"><span style="color:#5C6770;font-weight:500">{{ c.label }}</span><span style="color:#C3CBD2">/</span></sc-if>
+        <sc-if value="{{ c.link }}" hint-placeholder-val="{{ false }}"><a href="#" onClick="{{ c.onClick }}" style="color:#5C6770;font-weight:500">{{ c.label }}</a><span style="color:#C3CBD2">/</span></sc-if>
+        <sc-if value="{{ c.last }}" hint-placeholder-val="{{ false }}"><span aria-current="page" style="font-weight:600;color:#18212B;overflow:hidden;text-overflow:ellipsis">{{ c.label }}</span></sc-if>
+      </sc-for>
+    </nav>
+    <span style="margin-left:auto;display:inline-flex;align-items:center;height:24px;padding:0 9px;border-radius:5px;background:#D97757;color:#0B1022;font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:600;letter-spacing:.08em;flex:none">PLATFORM</span>
+    <button onClick="{{ pal.openIt }}" aria-label="Search (⌘K)" style="display:flex;align-items:center;gap:8px;width:min(300px,28vw);height:36px;background:#fff;border:1px solid #E5E9ED;border-radius:9px;padding:0 10px;color:#93A0A8;font-size:13px;cursor:pointer;flex:none" style-hover="border-color:#D5DBE1"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="11" cy="11" r="7"></circle><path d="M20 20l-3.5-3.5"></path></svg><span style="overflow:hidden;text-overflow:ellipsis;white-space:nowrap">Tenants, requests, pages</span><span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:10.5px;border:1px solid #D5DBE1;border-radius:4px;padding:1px 5px">⌘K</span></button>
+    <div style="position:relative;flex:none">
+      <button onClick="{{ toggleMenu }}" aria-haspopup="menu" aria-expanded="{{ menuOpen }}" aria-label="Account" style="display:flex;align-items:center;gap:6px;padding:3px;border:none;background:transparent;border-radius:20px;cursor:pointer" style-hover="background:#F4F6FA"><span style="width:30px;height:30px;border-radius:50%;background:#0B1022;color:#fff;display:grid;place-items:center;font-size:11px;font-weight:700">{{ me.initials }}</span><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#5C6770" stroke-width="2" stroke-linecap="round"><path d="M6 9l6 6 6-6"></path></svg></button>
+      <sc-if value="{{ menuOpen }}" hint-placeholder-val="{{ false }}">
+        <div role="menu" style="position:absolute;top:42px;right:0;width:330px;max-height:calc(100vh - 120px);overflow-y:auto;background:#fff;border:1px solid #E5E9ED;border-radius:12px;box-shadow:0 12px 32px rgba(15,25,40,.14);padding:6px;z-index:80">
+          <div style="display:flex;gap:11px;padding:11px 12px 12px">
+            <span style="width:36px;height:36px;border-radius:50%;background:#0B1022;color:#fff;display:grid;place-items:center;font-size:12.5px;font-weight:700;flex:none">{{ me.initials }}</span>
+            <span style="min-width:0"><span style="display:block;font-size:13px;font-weight:700">{{ me.name }}</span><span style="display:block;font-size:12px;color:#5C6770;font-family:'IBM Plex Mono',monospace;overflow:hidden;text-overflow:ellipsis">{{ me.email }}</span>
+            <span style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap"><sc-for list="{{ me.badges }}" as="b" hint-placeholder-count="1"><span style="border-radius:12px;padding:2px 8px;font-size:10px;font-weight:700;letter-spacing:.05em;background:#FBE7DF;color:#8A3A1F">{{ b }}</span></sc-for></span></span>
+          </div>
+          <div style="margin:0 6px 8px;border:1px dashed #C0410C;border-radius:9px;background:#FFF7F3;padding:8px">
+            <div style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:600;letter-spacing:.05em;color:#C0410C;margin:0 4px 6px">PROTOTYPE ONLY · SWITCH PERSONA</div>
+            <sc-for list="{{ personas }}" as="p" hint-placeholder-count="9">
+              <a href="#" role="menuitemradio" aria-checked="{{ p.on }}" onClick="{{ p.onClick }}" style="display:flex;align-items:center;gap:8px;padding:6px 6px;border-radius:7px;color:#18212B;font-size:12.5px;text-decoration:none;background:{{ p.bg }}" style-hover="background:#fff;text-decoration:none"><span style="width:14px;text-align:center;color:#0B1022;font-weight:700">{{ p.mark }}</span><span style="min-width:0"><span style="display:block;font-weight:600">{{ p.name }}</span><span style="display:block;font-size:11.5px;color:#5C6770">{{ p.sub }}</span></span></a>
+            </sc-for>
+          </div>
+          <div style="height:1px;background:#F0F2F4;margin:0 6px 6px"></div>
+          <a href="Platform%20Admin.dc.html#signin" role="menuitem" style="display:block;padding:9px 11px;border-radius:8px;color:#18212B;font-size:13px;font-weight:500;text-decoration:none" style-hover="background:#F4F6FA;text-decoration:none">Sign in with a different account</a>
+          <a href="Platform%20Admin.dc.html#signedout" role="menuitem" style="display:block;padding:9px 11px;border-radius:8px;color:#A8412F;font-size:13px;font-weight:600;text-decoration:none" style-hover="background:#F8E9E6;text-decoration:none">Sign out</a>
+        </div>
+      </sc-if>
+    </div>
+  </header>
+
+  <sc-if value="{{ boot.show }}" hint-placeholder-val="{{ false }}">
+    <div role="alert" style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 24px;background:#FAF0DC;border-bottom:1px solid #E7D3A8;color:#6B4609;font-size:13px">
+      <b style="font-weight:700">Commercial approvals unavailable: not enough distinct approvers for {{ boot.text }}.</b>
+      <span>Approvals on these chains return <span style="font-family:'IBM Plex Mono',monospace">409 CCP_NOT_BOOTSTRAPPED</span>.</span>
+      <a href="#" onClick="{{ boot.go }}" style="margin-left:auto;color:#6B4609;font-weight:700;text-decoration:underline">View chains</a>
+    </div>
+  </sc-if>
+
+  <main id="main" style="flex:1;padding:28px 32px 72px;box-sizing:border-box;width:100%;max-width:1400px">
+
+<sc-if value="{{ is.denied }}" hint-placeholder-val="{{ false }}">
+  <div style="max-width:620px;margin:40px auto 0;background:#fff;border:1px solid #E5E9ED;border-radius:13px;padding:32px">
+    <span style="display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:11px;font-size:12px;font-weight:600;color:#A8412F;background:#F7E7E3"><span style="width:6px;height:6px;border-radius:50%;background:currentColor"></span>No access</span>
+    <h1 style="font-size:22px;font-weight:700;letter-spacing:-.02em;margin:14px 0 6px">This account can't open {{ denied.what }}</h1>
+    <p style="font-size:14px;color:#3F4A55;margin:0 0 18px;line-height:1.55">{{ denied.why }}</p>
+    <div style="display:grid;grid-template-columns:130px minmax(0,1fr);gap:8px 14px;font-size:13px;padding:14px 16px;background:#FAFBFC;border:1px solid #E5E9ED;border-radius:10px;margin-bottom:18px">
+      <span style="color:#5C6770">Signed in as</span><span style="font-family:'IBM Plex Mono',monospace">{{ me.email }}</span>
+      <span style="color:#5C6770">Current role</span><span>{{ me.roleText }}</span>
+      <span style="color:#5C6770">Grants access</span><span style="display:flex;gap:6px;flex-wrap:wrap"><sc-for list="{{ denied.roles }}" as="r" hint-placeholder-count="6"><span style="font-size:12px;border:1px solid #D5DBE1;border-radius:6px;padding:1px 7px;background:#fff">{{ r }}</span></sc-for></span>
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <a href="Platform%20Admin.dc.html#signin" style="display:inline-flex;align-items:center;height:38px;padding:0 14px;border-radius:8px;background:#0B1022;color:#fff;font-size:13.5px;font-weight:600;text-decoration:none" style-hover="background:#1A1E2F;color:#fff;text-decoration:none">Sign in with a different account</a>
+      <button onClick="{{ denied.back }}" style="height:38px;padding:0 14px;border-radius:8px;border:1px solid #D5DBE1;background:#fff;color:#18212B;font-size:13.5px;font-weight:600;cursor:pointer" style-hover="background:#F4F6FA">{{ denied.backLabel }}</button>
+    </div>
+    <p style="font-size:12.5px;color:#93A0A8;margin:18px 0 0">Tenant operations are unchanged for this account. Commercial authority is held only by the commercial roles above.</p>
+  </div>
+</sc-if>
+
+<sc-if value="{{ is.approvals }}" hint-placeholder-val="{{ true }}">
+  <div style="margin-bottom:18px"><h1 style="font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0">Approvals</h1><p style="font-size:14px;color:#5C6770;max-width:720px;margin:6px 0 0">Every commercial change is a change request. It applies only after each step in its chain is signed by a different person, within the approval window set by the policy it was created under.</p></div>
+  <div role="tablist" aria-label="Inbox" style="display:flex;gap:4px;border-bottom:1px solid #E5E9ED;margin-bottom:14px;overflow-x:auto">
+    <sc-for list="{{ ap.tabs }}" as="t" hint-placeholder-count="4"><button role="tab" aria-selected="{{ t.on }}" onClick="{{ t.onClick }}" style="display:flex;align-items:center;gap:7px;height:40px;padding:0 12px;border:none;background:transparent;border-bottom:2px solid {{ t.bd }};margin-bottom:-1px;color:#18212B;font-size:13.5px;font-weight:{{ t.fw }};cursor:pointer;white-space:nowrap">{{ t.label }}<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#5C6770;background:#EEF1F4;border-radius:9px;padding:1px 7px">{{ t.count }}</span></button></sc-for>
+  </div>
+  <section style="background:#fff;border:1px solid #E5E9ED;border-radius:13px;overflow:hidden">
+    <sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}"><div style="padding:16px 20px;display:grid;gap:12px"><div style="height:14px;width:40%;background:#EEF1F4;border-radius:4px"></div><div style="height:14px;width:85%;background:#EEF1F4;border-radius:4px"></div><div style="height:14px;width:70%;background:#EEF1F4;border-radius:4px"></div><div style="height:14px;width:78%;background:#EEF1F4;border-radius:4px"></div></div></sc-if>
+    <sc-if value="{{ ap.hasRows }}" hint-placeholder-val="{{ true }}">
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:980px">
+      <thead><tr><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;border-bottom:1px solid #EEF1F4">Request</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;border-bottom:1px solid #EEF1F4">Tenant · product</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;border-bottom:1px solid #EEF1F4">Change</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;border-bottom:1px solid #EEF1F4">Chain</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;border-bottom:1px solid #EEF1F4">State</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;border-bottom:1px solid #EEF1F4">Expires</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;border-bottom:1px solid #EEF1F4">Policy</th></tr></thead>
+      <tbody><sc-for list="{{ ap.rows }}" as="r" hint-placeholder-count="5"><tr onClick="{{ r.onClick }}" tabindex="0" style="cursor:pointer" style-hover="background:#F7F9FC">
+        <td style="padding:12px 16px;border-bottom:1px solid #EEF1F4;vertical-align:top"><div style="font-family:'IBM Plex Mono',monospace;font-size:12px;color:#022AC0;font-weight:600">{{ r.id }}</div><div style="font-weight:600;margin-top:2px">{{ r.type }}</div></td>
+        <td style="padding:12px 16px;border-bottom:1px solid #EEF1F4;vertical-align:top"><div style="font-weight:600">{{ r.tenant }}</div><div style="font-size:12px;color:#5C6770">{{ r.product }}</div></td>
+        <td style="padding:12px 16px;border-bottom:1px solid #EEF1F4;vertical-align:top;max-width:280px">{{ r.summary }}<div style="font-size:12px;color:#5C6770;margin-top:2px">by {{ r.by }} · {{ r.when }}</div></td>
+        <td style="padding:12px 16px;border-bottom:1px solid #EEF1F4;vertical-align:top;white-space:nowrap"><span style="display:inline-flex;gap:5px;align-items:center;font-size:12.5px"><sc-for list="{{ r.chain }}" as="k" hint-placeholder-count="2"><span style="color:{{ k.fg }};font-weight:600">{{ k.label }} {{ k.mark }}</span><sc-if value="{{ k.sep }}" hint-placeholder-val="{{ false }}"><span style="color:#C3CBD2">›</span></sc-if></sc-for></span></td>
+        <td style="padding:12px 16px;border-bottom:1px solid #EEF1F4;vertical-align:top"><span style="display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:11px;font-size:12px;font-weight:600;white-space:nowrap;color:{{ r.p.fg }};background:{{ r.p.bg }}"><span style="width:6px;height:6px;border-radius:50%;background:currentColor"></span>{{ r.p.label }}</span></td>
+        <td style="padding:12px 16px;border-bottom:1px solid #EEF1F4;vertical-align:top;white-space:nowrap;font-weight:600;color:{{ r.expFg }}">{{ r.exp }}</td>
+        <td style="padding:12px 16px;border-bottom:1px solid #EEF1F4;vertical-align:top;white-space:nowrap"><span style="font-family:'IBM Plex Mono',monospace;font-size:12px">{{ r.policy }}</span><sc-if value="{{ r.policyOld }}" hint-placeholder-val="{{ false }}"><div style="font-size:11.5px;color:#946011">older version</div></sc-if></td>
+      </tr></sc-for></tbody>
+    </table></div>
+    </sc-if>
+    <sc-if value="{{ ap.empty }}" hint-placeholder-val="{{ false }}"><div style="padding:44px 20px;text-align:center"><b>{{ ap.emptyTitle }}</b><div style="font-size:13px;color:#5C6770;margin-top:4px">{{ ap.emptyBody }}</div></div></sc-if>
+  </section>
+</sc-if>
+
+<sc-if value="{{ is.subs }}" hint-placeholder-val="{{ false }}">
+  <div style="margin-bottom:18px"><h1 style="font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0">Subscriptions</h1><p style="font-size:14px;color:#5C6770;max-width:720px;margin:6px 0 0">Every open base subscription across tenants. MANUAL rows are governed contracts; SELF-SERVICE rows are owned by Stripe and read-only here.</p></div>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+    <div role="group" aria-label="Status" style="display:flex;gap:4px;flex-wrap:wrap;background:#fff;border:1px solid #E5E9ED;border-radius:10px;padding:3px"><sc-for list="{{ sb.status }}" as="f" hint-placeholder-count="6"><button aria-pressed="{{ f.on }}" onClick="{{ f.onClick }}" style="display:flex;align-items:center;gap:6px;height:30px;padding:0 10px;border:none;border-radius:7px;background:{{ f.bg }};color:{{ f.fg }};font-size:12.5px;font-weight:{{ f.fw }};cursor:pointer">{{ f.label }}<span style="font-family:'IBM Plex Mono',monospace;font-size:11px;color:#93A0A8">{{ f.count }}</span></button></sc-for></div>
+    <select aria-label="Product" value="{{ sb.prod }}" onChange="{{ sb.onProd }}" style="height:38px;border:1px solid #D5DBE1;border-radius:8px;padding:0 10px;font-size:13px;background:#fff"><sc-for list="{{ sb.prodOpts }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.l }}</option></sc-for></select>
+    <select aria-label="Source" value="{{ sb.src }}" onChange="{{ sb.onSrc }}" style="height:38px;border:1px solid #D5DBE1;border-radius:8px;padding:0 10px;font-size:13px;background:#fff"><option value="all">All sources</option><option value="MANUAL">Manual (contract)</option><option value="SELF_SERVICE">Self-service (Stripe)</option></select>
+    <select aria-label="Plan version" value="{{ sb.ver }}" onChange="{{ sb.onVer }}" style="height:38px;border:1px solid #D5DBE1;border-radius:8px;padding:0 10px;font-size:13px;background:#fff"><sc-for list="{{ sb.verOpts }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.l }}</option></sc-for></select>
+    <select aria-label="Commitment ending" value="{{ sb.commit }}" onChange="{{ sb.onCommit }}" style="height:38px;border:1px solid #D5DBE1;border-radius:8px;padding:0 10px;font-size:13px;background:#fff"><option value="any">Any commitment end</option><option value="30">Ending in 30 days</option><option value="60">Ending in 60 days</option><option value="90">Ending in 90 days</option></select>
+    <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" checked="{{ sb.flag }}" onChange="{{ sb.onFlag }}" style="width:16px;height:16px;accent-color:#0B1022"></input>Has reconciliation flag</label>
+    <span style="margin-left:auto;font-size:12.5px;color:#5C6770">{{ sb.countText }}</span>
+  </div>
+  <section style="background:#fff;border:1px solid #E5E9ED;border-radius:13px;overflow:hidden">
+    <sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}"><div style="padding:16px 20px;display:grid;gap:12px"><div style="height:14px;width:40%;background:#EEF1F4;border-radius:4px"></div><div style="height:14px;width:85%;background:#EEF1F4;border-radius:4px"></div><div style="height:14px;width:70%;background:#EEF1F4;border-radius:4px"></div></div></sc-if>
+    <sc-if value="{{ sb.hasRows }}" hint-placeholder-val="{{ true }}">
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:1040px">
+      <thead><tr><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;border-bottom:1px solid #EEF1F4">Tenant</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;border-bottom:1px solid #EEF1F4">Product · plan</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;border-bottom:1px solid #EEF1F4">Version</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;border-bottom:1px solid #EEF1F4">Source</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;border-bottom:1px solid #EEF1F4">Status</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;border-bottom:1px solid #EEF1F4">Period · grace</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;border-bottom:1px solid #EEF1F4">Commitment end</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;border-bottom:1px solid #EEF1F4">Flags</th></tr></thead>
+      <tbody><sc-for list="{{ sb.rows }}" as="r" hint-placeholder-count="6"><tr onClick="{{ r.onClick }}" tabindex="0" style="cursor:pointer" style-hover="background:#F7F9FC">
+        <td style="padding:12px 16px;border-bottom:1px solid #EEF1F4;vertical-align:top"><div style="font-weight:600">{{ r.tenant }}</div><div style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#5C6770">{{ r.slug }}</div></td>
+        <td style="padding:12px 16px;border-bottom:1px solid #EEF1F4;vertical-align:top">{{ r.product }}<div style="font-size:12.5px;color:#3F4A55;display:flex;gap:6px;align-items:center">{{ r.plan }}<span style="font-family:'IBM Plex Mono',monospace;font-size:9.5px;letter-spacing:.05em;color:#946011;border:1px solid #E7D3A8;border-radius:3px;padding:0 4px">SAMPLE</span></div></td>
+        <td style="padding:12px 16px;border-bottom:1px solid #EEF1F4;vertical-align:top;font-family:'IBM Plex Mono',monospace;font-size:12px">{{ r.ver }}</td>
+        <td style="padding:12px 16px;border-bottom:1px solid #EEF1F4;vertical-align:top;white-space:nowrap"><span style="font-size:12px;font-weight:600;border:1px solid {{ r.srcBd }};color:{{ r.srcFg }};background:{{ r.srcBg }};border-radius:6px;padding:2px 7px">{{ r.src }}</span></td>
+        <td style="padding:12px 16px;border-bottom:1px solid #EEF1F4;vertical-align:top"><span style="display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:11px;font-size:12px;font-weight:600;white-space:nowrap;color:{{ r.p.fg }};background:{{ r.p.bg }}"><span style="width:6px;height:6px;border-radius:50%;background:currentColor"></span>{{ r.p.label }}</span></td>
+        <td style="padding:12px 16px;border-bottom:1px solid #EEF1F4;vertical-align:top;white-space:nowrap">{{ r.period }}<div style="font-size:12px;color:{{ r.graceFg }}">{{ r.grace }}</div></td>
+        <td style="padding:12px 16px;border-bottom:1px solid #EEF1F4;vertical-align:top;white-space:nowrap">{{ r.commit }}<div style="font-size:12px;color:#5C6770">{{ r.commitRel }}</div></td>
+        <td style="padding:12px 16px;border-bottom:1px solid #EEF1F4;vertical-align:top"><div style="display:flex;gap:5px;flex-wrap:wrap"><sc-for list="{{ r.flags }}" as="f" hint-placeholder-count="0"><span style="font-size:11.5px;font-weight:600;border-radius:6px;padding:2px 7px;color:{{ f.fg }};background:{{ f.bg }}">{{ f.label }}</span></sc-for></div></td>
+      </tr></sc-for></tbody>
+    </table></div>
+    </sc-if>
+    <sc-if value="{{ sb.empty }}" hint-placeholder-val="{{ false }}"><div style="padding:44px 20px;text-align:center"><b>No subscriptions match these filters</b><div style="font-size:13px;color:#5C6770;margin-top:4px">Change or clear a filter to see more.</div><button onClick="{{ sb.clear }}" style="margin-top:12px;height:34px;padding:0 12px;border-radius:8px;border:1px solid #D5DBE1;background:#fff;font-size:13px;font-weight:600;cursor:pointer">Clear filters</button></div></sc-if>
+  </section>
+</sc-if>
+
+<sc-if value="{{ is.catalog }}" hint-placeholder-val="{{ false }}">
+  <div style="margin-bottom:18px"><h1 style="font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0">Catalog</h1><p style="font-size:14px;color:#5C6770;max-width:720px;margin:6px 0 0">Products, their plans and plan versions. A published version never changes: subscriptions pin it, and edits happen in a new draft that Finance and an Owner approve before it publishes.</p></div>
+  <sc-if value="{{ cat.viewOnly }}" hint-placeholder-val="{{ false }}"><div style="margin-bottom:14px;padding:10px 14px;background:#FAFBFC;border:1px solid #E5E9ED;border-radius:10px;font-size:13px;color:#3F4A55"><b>View only.</b> You can view the catalog. Drafting, publishing and retiring versions needs the <b>Catalog manager</b> role.</div></sc-if>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:16px">
+    <sc-for list="{{ cat.products }}" as="p" hint-placeholder-count="4"><button onClick="{{ p.onClick }}" aria-pressed="{{ p.on }}" style="text-align:left;background:#fff;border:1.5px solid {{ p.bd }};border-radius:13px;padding:14px 16px;cursor:pointer;color:#18212B"><div style="font-weight:700;font-size:15px">{{ p.name }}</div><div style="font-size:12.5px;color:#5C6770;margin-top:3px">{{ p.sub }}</div></button></sc-for>
+  </div>
+  <sc-if value="{{ cat.none }}" hint-placeholder-val="{{ false }}"><section style="background:#fff;border:1px dashed #C3CBD2;border-radius:13px;padding:36px 20px;text-align:center"><b>No commercial plans yet — pricing not set</b><p style="font-size:13px;color:#5C6770;margin:4px 0 0">{{ cat.noneName }} is granted as an entitlement only. Plans appear here once pricing is decided.</p></section></sc-if>
+  <sc-if value="{{ cat.isSign }}" hint-placeholder-val="{{ true }}">
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,420px),1fr));gap:16px;align-items:start">
+    <section style="background:#fff;border:1px solid #E5E9ED;border-radius:13px;overflow:hidden">
+      <div style="padding:14px 20px;border-bottom:1px solid #EEF1F4;display:flex;align-items:center;gap:8px"><h2 style="font-size:15px;font-weight:700;margin:0">Aramo Sign plans</h2><span style="font-family:'IBM Plex Mono',monospace;font-size:10px;letter-spacing:.05em;color:#946011;border:1px solid #E7D3A8;border-radius:3px;padding:0 5px">SAMPLE NAMES AND PRICES</span></div>
+      <sc-for list="{{ cat.plans }}" as="p" hint-placeholder-count="5"><button onClick="{{ p.onClick }}" aria-pressed="{{ p.on }}" style="display:grid;grid-template-columns:minmax(0,1fr) auto;gap:4px 12px;width:100%;text-align:left;padding:12px 20px;border:none;border-bottom:1px solid #EEF1F4;border-left:3px solid {{ p.bar }};background:{{ p.bg }};cursor:pointer;color:#18212B">
+        <span style="font-weight:700">{{ p.name }}</span><span style="font-size:13px;font-weight:600">{{ p.price }}</span>
+        <span style="font-size:12px;color:#5C6770">{{ p.vers }}</span><span style="font-size:12px;color:#5C6770;text-align:right">{{ p.counts }}</span>
+      </button></sc-for>
+    </section>
+    <section style="background:#fff;border:1px solid #E5E9ED;border-radius:13px;overflow:hidden">
+      <div style="padding:14px 20px;border-bottom:1px solid #EEF1F4"><h2 style="font-size:15px;font-weight:700;margin:0">Sign {{ cat.planName }} · versions</h2><p style="font-size:12.5px;color:#5C6770;margin:3px 0 0">{{ cat.grandText }}</p></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;padding:12px 20px;border-bottom:1px solid #EEF1F4">
+        <sc-for list="{{ cat.vers }}" as="v" hint-placeholder-count="3"><button onClick="{{ v.onClick }}" aria-pressed="{{ v.on }}" style="display:flex;align-items:center;gap:7px;height:32px;padding:0 10px;border:1.5px solid {{ v.bd }};border-radius:8px;background:#fff;cursor:pointer;font-size:12.5px"><span style="font-family:'IBM Plex Mono',monospace;font-weight:600">{{ v.v }}</span><span style="display:inline-flex;align-items:center;height:18px;padding:0 7px;border-radius:9px;font-size:11px;font-weight:600;color:{{ v.p.fg }};background:{{ v.p.bg }}">{{ v.p.label }}</span><span style="color:#5C6770">{{ v.n }}</span></button></sc-for>
+      </div>
+      <div style="padding:16px 20px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px"><b style="font-size:14px">{{ cat.ed.title }}</b><span style="display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:11px;font-size:12px;font-weight:600;color:{{ cat.ed.p.fg }};background:{{ cat.ed.p.bg }}"><span style="width:6px;height:6px;border-radius:50%;background:currentColor"></span>{{ cat.ed.p.label }}</span><span style="margin-left:auto;font-size:12px;color:#5C6770">{{ cat.ed.meta }}</span></div>
+        <sc-if value="{{ cat.ed.locked }}" hint-placeholder-val="{{ true }}"><div style="margin-bottom:12px;padding:9px 12px;border:1px solid #E5E9ED;background:#FAFBFC;border-radius:9px;font-size:12.5px;color:#3F4A55">🔒 {{ cat.ed.lockText }}</div></sc-if>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px">
+          <sc-for list="{{ cat.ed.fields }}" as="f" hint-placeholder-count="4"><label style="display:block"><span style="display:block;font-size:12.5px;font-weight:600;margin-bottom:5px">{{ f.label }}</span><input type="number" value="{{ f.val }}" onChange="{{ f.onChange }}" disabled="{{ f.ro }}" style="width:100%;box-sizing:border-box;height:38px;border:1px solid #D5DBE1;border-radius:8px;padding:0 10px;font-size:13.5px;background:{{ f.bg }};color:#18212B"></input></label></sc-for>
+          <sc-for list="{{ cat.ed.locks }}" as="f" hint-placeholder-count="2"><label title="v1 release limitation — the schema supports more" style="display:block"><span style="display:flex;align-items:center;gap:5px;font-size:12.5px;font-weight:600;margin-bottom:5px">{{ f.label }}<span style="font-size:11px;color:#946011">🔒 v1 limit</span></span><input value="{{ f.val }}" disabled="{{ true }}" title="v1 release limitation — the schema supports more" style="width:100%;box-sizing:border-box;height:38px;border:1px dashed #D5DBE1;border-radius:8px;padding:0 10px;font-size:13.5px;background:#F4F6FA;color:#5C6770"></input></label></sc-for>
+        </div>
+        <sc-if value="{{ cat.ed.hasDiff }}" hint-placeholder-val="{{ false }}">
+          <div style="margin-top:16px;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">Compared with {{ cat.ed.diffAgainst }}</div>
+          <div style="margin-top:6px;border:1px solid #E5E9ED;border-radius:10px;overflow:hidden;font-size:13px"><sc-for list="{{ cat.ed.diff }}" as="d" hint-placeholder-count="4"><div style="display:grid;grid-template-columns:28px minmax(0,1fr) minmax(0,1fr) minmax(0,1fr);gap:8px;padding:8px 12px;border-bottom:1px solid #EEF1F4;background:{{ d.bg }}"><span style="font-family:'IBM Plex Mono',monospace;color:{{ d.mfg }};font-weight:700">{{ d.m }}</span><span style="color:#5C6770">{{ d.f }}</span><span style="text-decoration:{{ d.strike }};color:#5C6770">{{ d.b }}</span><span style="font-weight:{{ d.fw }}">{{ d.a }}</span></div></sc-for></div>
+        </sc-if>
+        <div style="margin-top:14px;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">Tenants pinned to this version</div>
+        <div style="margin-top:6px;font-size:13px;color:#3F4A55">{{ cat.ed.pinned }}</div>
+        <sc-if value="{{ cat.ed.hasCr }}" hint-placeholder-val="{{ false }}"><div style="margin-top:12px;padding:9px 12px;border:1px solid #C9DAEE;background:#E6EFF8;color:#1E4E80;border-radius:9px;font-size:13px">Publish request <a href="#" onClick="{{ cat.ed.openCr }}" style="font-family:'IBM Plex Mono',monospace;font-weight:600;color:#1E4E80;text-decoration:underline">{{ cat.ed.cr }}</a> is {{ cat.ed.crState }}.</div></sc-if>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:16px">
+          <sc-for list="{{ cat.ed.actions }}" as="a" hint-placeholder-count="2"><button onClick="{{ a.onClick }}" disabled="{{ a.dis }}" title="{{ a.why }}" style="height:36px;padding:0 14px;border-radius:8px;border:1px solid {{ a.bd }};background:{{ a.bg }};color:{{ a.fg }};font-size:13px;font-weight:600;cursor:pointer;opacity:{{ a.op }}">{{ a.label }}</button></sc-for>
+        </div>
+      </div>
+    </section>
+  </div>
+  </sc-if>
+</sc-if>
+
+<sc-if value="{{ is.contracts }}" hint-placeholder-val="{{ false }}">
+  <div style="margin-bottom:18px"><h1 style="font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0">Contracts</h1><p style="font-size:14px;color:#5C6770;max-width:720px;margin:6px 0 0">Enterprise MANUAL subscriptions recorded with their evidence. This is a record of what was agreed, not a quoting tool; changes go through change requests.</p></div>
+  <sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}"><section style="background:#fff;border:1px solid #E5E9ED;border-radius:13px;padding:16px 20px;display:grid;gap:12px"><div style="height:14px;width:40%;background:#EEF1F4;border-radius:4px"></div><div style="height:14px;width:85%;background:#EEF1F4;border-radius:4px"></div></section></sc-if>
+  <sc-if value="{{ ct.empty }}" hint-placeholder-val="{{ false }}"><section style="background:#fff;border:1px solid #E5E9ED;border-radius:13px;padding:44px 20px;text-align:center"><b>No contracts recorded</b><div style="font-size:13px;color:#5C6770;margin-top:4px">MANUAL subscriptions appear here once a contract is recorded.</div></section></sc-if>
+  <sc-if value="{{ ct.has }}" hint-placeholder-val="{{ true }}">
+  <div style="display:grid;grid-template-columns:minmax(260px,340px) minmax(0,1fr);gap:16px;align-items:start">
+    <section style="background:#fff;border:1px solid #E5E9ED;border-radius:13px;overflow:hidden">
+      <sc-for list="{{ ct.rows }}" as="c" hint-placeholder-count="4"><button onClick="{{ c.onClick }}" aria-pressed="{{ c.on }}" style="display:block;width:100%;text-align:left;padding:12px 16px;border:none;border-bottom:1px solid #EEF1F4;border-left:3px solid {{ c.bar }};background:{{ c.bg }};cursor:pointer;color:#18212B">
+        <div style="display:flex;align-items:center;gap:8px"><span style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600">{{ c.id }}</span><span style="margin-left:auto;display:inline-flex;align-items:center;height:20px;padding:0 8px;border-radius:10px;font-size:11.5px;font-weight:600;color:{{ c.p.fg }};background:{{ c.p.bg }}">{{ c.p.label }}</span></div>
+        <div style="font-weight:600;margin-top:3px">{{ c.tenant }}</div><div style="font-size:12px;color:#5C6770">{{ c.sub }}</div>
+      </button></sc-for>
+    </section>
+    <section style="background:#fff;border:1px solid #E5E9ED;border-radius:13px;padding:20px;min-width:0">
+      <div style="display:flex;align-items:flex-start;gap:12px;flex-wrap:wrap">
+        <div><div style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#5C6770">{{ ct.d.id }}</div><h2 style="font-size:18px;font-weight:700;margin:2px 0 0">{{ ct.d.tenant }} · Sign {{ ct.d.plan }}</h2></div>
+        <sc-if value="{{ ct.d.migrated }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;font-weight:600;border:1px solid #D5DBE1;border-radius:6px;padding:2px 8px;color:#3F4A55">Migrated — provenance: migration</span></sc-if>
+        <div style="margin-left:auto;display:flex;gap:8px;flex-wrap:wrap"><sc-for list="{{ ct.d.actions }}" as="a" hint-placeholder-count="2"><button onClick="{{ a.onClick }}" disabled="{{ a.dis }}" title="{{ a.why }}" style="height:34px;padding:0 12px;border-radius:8px;border:1px solid {{ a.bd }};background:{{ a.bg }};color:{{ a.fg }};font-size:13px;font-weight:600;cursor:pointer;opacity:{{ a.op }}">{{ a.label }}</button></sc-for></div>
+      </div>
+      <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));gap:12px;margin:16px 0">
+        <sc-for list="{{ ct.d.facts }}" as="f" hint-placeholder-count="4"><div style="border:1px solid #E5E9ED;border-radius:10px;padding:10px 12px"><div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">{{ f.k }}</div><div style="font-weight:700;margin-top:3px">{{ f.v }}</div><div style="font-size:12px;color:#5C6770">{{ f.s }}</div></div></sc-for>
+      </div>
+      <h3 style="font-size:13px;font-weight:700;margin:0 0 6px">Negotiated terms</h3>
+      <ul style="margin:0 0 16px;padding-left:18px;font-size:13px;line-height:1.7;color:#3F4A55"><sc-for list="{{ ct.d.terms }}" as="t" hint-placeholder-count="3"><li>{{ t }}</li></sc-for></ul>
+      <h3 style="font-size:13px;font-weight:700;margin:0 0 6px">Documents</h3>
+      <div style="overflow-x:auto;border:1px solid #E5E9ED;border-radius:10px;margin-bottom:16px"><table style="width:100%;border-collapse:collapse;font-size:12.5px;min-width:560px"><thead><tr><th style="text-align:left;padding:8px 12px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">Document</th><th style="text-align:left;padding:8px 12px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">Hash</th><th style="text-align:left;padding:8px 12px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">Recorded</th></tr></thead><tbody><sc-for list="{{ ct.d.docs }}" as="d" hint-placeholder-count="2"><tr><td style="padding:8px 12px;border-top:1px solid #EEF1F4;font-weight:600">{{ d.name }}</td><td style="padding:8px 12px;border-top:1px solid #EEF1F4;font-family:'IBM Plex Mono',monospace;font-size:11.5px">{{ d.hash }}</td><td style="padding:8px 12px;border-top:1px solid #EEF1F4">{{ d.by }} · {{ d.at }}</td></tr></sc-for></tbody></table></div>
+      <h3 style="font-size:13px;font-weight:700;margin:0 0 8px">Amendments</h3>
+      <ol style="list-style:none;margin:0;padding:0"><sc-for list="{{ ct.d.amend }}" as="a" hint-placeholder-count="3"><li style="display:grid;grid-template-columns:14px minmax(0,1fr);gap:12px;padding-bottom:12px"><span style="width:10px;height:10px;border-radius:50%;background:#0B1022;margin-top:5px"></span><div><div style="display:flex;gap:10px;flex-wrap:wrap"><b>{{ a.title }}</b><span style="margin-left:auto;font-size:12px;color:#5C6770">{{ a.at }}</span></div><div style="font-size:13px;color:#3F4A55">{{ a.body }}</div><div style="font-size:12px;color:#93A0A8">{{ a.by }}</div></div></li></sc-for></ol>
+    </section>
+  </div>
+  </sc-if>
+</sc-if>
+
+<sc-if value="{{ is.policy }}" hint-placeholder-val="{{ false }}">
+  <div style="margin-bottom:18px"><h1 style="font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0">Commercial policy</h1><p style="font-size:14px;color:#5C6770;max-width:720px;margin:6px 0 0">Thresholds and windows that decide which approval chain a request gets. Exactly one version is active. Activating or rolling back a version is itself a change request, and existing requests keep the chain they were created with.</p></div>
+  <sc-if value="{{ po.viewOnly }}" hint-placeholder-val="{{ false }}"><div style="margin-bottom:14px;padding:10px 14px;background:#FAFBFC;border:1px solid #E5E9ED;border-radius:10px;font-size:13px;color:#3F4A55"><b>View only.</b> You can view policy versions. Drafting and requesting activation needs the <b>Platform owner</b> or <b>Finance admin</b> role.</div></sc-if>
+  <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,380px),1fr));gap:16px;align-items:start">
+    <section style="background:#fff;border:1px solid #E5E9ED;border-radius:13px;overflow:hidden">
+      <div style="padding:14px 20px;border-bottom:1px solid #EEF1F4"><h2 style="font-size:15px;font-weight:700;margin:0">Versions</h2></div>
+      <sc-for list="{{ po.vers }}" as="v" hint-placeholder-count="3"><button onClick="{{ v.onClick }}" aria-pressed="{{ v.on }}" style="display:grid;grid-template-columns:auto minmax(0,1fr) auto;gap:4px 12px;align-items:center;width:100%;text-align:left;padding:12px 20px;border:none;border-bottom:1px solid #EEF1F4;border-left:3px solid {{ v.bar }};background:{{ v.bg }};cursor:pointer;color:#18212B">
+        <span style="font-family:'IBM Plex Mono',monospace;font-weight:600">{{ v.v }}</span><span style="font-size:13px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">{{ v.note }}</span><span style="display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:11px;font-size:12px;font-weight:600;color:{{ v.p.fg }};background:{{ v.p.bg }}"><span style="width:6px;height:6px;border-radius:50%;background:currentColor"></span>{{ v.p.label }}</span>
+        <span></span><span style="font-size:12px;color:#5C6770">{{ v.meta }}</span><span></span>
+      </button></sc-for>
+    </section>
+    <section style="background:#fff;border:1px solid #E5E9ED;border-radius:13px;overflow:hidden">
+      <div style="padding:14px 20px;border-bottom:1px solid #EEF1F4;display:flex;align-items:center;gap:8px;flex-wrap:wrap"><h2 style="font-size:15px;font-weight:700;margin:0">Policy {{ po.d.v }}</h2><span style="display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:11px;font-size:12px;font-weight:600;color:{{ po.d.p.fg }};background:{{ po.d.p.bg }}"><span style="width:6px;height:6px;border-radius:50%;background:currentColor"></span>{{ po.d.p.label }}</span><span style="margin-left:auto;font-size:12px;color:#5C6770">{{ po.d.against }}</span></div>
+      <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:520px">
+        <thead><tr><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;width:28px"></th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">Setting</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">Active</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">This version</th></tr></thead>
+        <tbody><sc-for list="{{ po.d.rows }}" as="r" hint-placeholder-count="7"><tr style="background:{{ r.bg }}">
+          <td style="padding:10px 16px;border-top:1px solid #EEF1F4;font-family:'IBM Plex Mono',monospace;font-weight:700;color:#946011">{{ r.m }}</td>
+          <td style="padding:10px 16px;border-top:1px solid #EEF1F4"><div style="font-weight:600">{{ r.label }}</div><div style="font-size:12px;color:#5C6770">{{ r.help }}</div></td>
+          <td style="padding:10px 16px;border-top:1px solid #EEF1F4;white-space:nowrap;color:#5C6770">{{ r.a }}</td>
+          <td style="padding:10px 16px;border-top:1px solid #EEF1F4;white-space:nowrap;font-weight:{{ r.fw }}"><sc-if value="{{ r.edit }}" hint-placeholder-val="{{ false }}"><input type="number" value="{{ r.raw }}" onChange="{{ r.onChange }}" aria-label="{{ r.label }}" style="width:96px;height:32px;border:1px solid #D5DBE1;border-radius:7px;padding:0 8px;font-size:13px"></input></sc-if><sc-if value="{{ r.show }}" hint-placeholder-val="{{ true }}">{{ r.b }}</sc-if></td>
+        </tr></sc-for></tbody>
+      </table></div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;padding:14px 20px;border-top:1px solid #EEF1F4">
+        <sc-for list="{{ po.d.actions }}" as="a" hint-placeholder-count="1"><button onClick="{{ a.onClick }}" disabled="{{ a.dis }}" title="{{ a.why }}" style="height:36px;padding:0 14px;border-radius:8px;border:1px solid {{ a.bd }};background:{{ a.bg }};color:{{ a.fg }};font-size:13px;font-weight:600;cursor:pointer;opacity:{{ a.op }}">{{ a.label }}</button></sc-for>
+        <span style="font-size:12.5px;color:#5C6770;align-self:center">{{ po.d.hint }}</span>
+      </div>
+    </section>
+  </div>
+</sc-if>
+
+<sc-if value="{{ is.audit }}" hint-placeholder-val="{{ false }}">
+  <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:18px"><div style="flex:1;min-width:280px"><h1 style="font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0">Commercial audit</h1><p style="font-size:14px;color:#5C6770;max-width:720px;margin:6px 0 0">An append-only record of every commercial event. Entries can't be edited or deleted — corrections are new events.</p></div><button onClick="{{ au.exportCsv }}" style="height:38px;padding:0 14px;border-radius:8px;border:1px solid #D5DBE1;background:#fff;color:#18212B;font-size:13.5px;font-weight:600;cursor:pointer" style-hover="background:#F4F6FA">Export CSV ({{ au.count }})</button></div>
+  <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px">
+    <select aria-label="Actor" value="{{ au.actor }}" onChange="{{ au.onActor }}" style="height:38px;border:1px solid #D5DBE1;border-radius:8px;padding:0 10px;font-size:13px;background:#fff"><sc-for list="{{ au.actorOpts }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.l }}</option></sc-for></select>
+    <select aria-label="Tenant" value="{{ au.tenant }}" onChange="{{ au.onTenant }}" style="height:38px;border:1px solid #D5DBE1;border-radius:8px;padding:0 10px;font-size:13px;background:#fff"><sc-for list="{{ au.tenantOpts }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.l }}</option></sc-for></select>
+    <select aria-label="Product" value="{{ au.prod }}" onChange="{{ au.onProd }}" style="height:38px;border:1px solid #D5DBE1;border-radius:8px;padding:0 10px;font-size:13px;background:#fff"><sc-for list="{{ au.prodOpts }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.l }}</option></sc-for></select>
+    <select aria-label="Event type" value="{{ au.type }}" onChange="{{ au.onType }}" style="height:38px;border:1px solid #D5DBE1;border-radius:8px;padding:0 10px;font-size:13px;background:#fff"><sc-for list="{{ au.typeOpts }}" as="o" hint-placeholder-count="5"><option value="{{ o.v }}">{{ o.l }}</option></sc-for></select>
+    <input aria-label="Change request" placeholder="Change request, e.g. CR-1041" value="{{ au.cr }}" onChange="{{ au.onCr }}" style="height:38px;width:220px;border:1px solid #D5DBE1;border-radius:8px;padding:0 10px;font-size:13px;box-sizing:border-box"></input>
+    <label style="display:flex;align-items:center;gap:7px;font-size:13px;cursor:pointer"><input type="checkbox" checked="{{ au.exc }}" onChange="{{ au.onExc }}" style="width:16px;height:16px;accent-color:#0B1022"></input>Exceptions only</label>
+  </div>
+  <section style="background:#fff;border:1px solid #E5E9ED;border-radius:13px;overflow:hidden">
+    <sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}"><div style="padding:16px 20px;display:grid;gap:12px"><div style="height:14px;width:60%;background:#EEF1F4;border-radius:4px"></div><div style="height:14px;width:85%;background:#EEF1F4;border-radius:4px"></div><div style="height:14px;width:70%;background:#EEF1F4;border-radius:4px"></div></div></sc-if>
+    <sc-if value="{{ au.hasRows }}" hint-placeholder-val="{{ true }}">
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:1000px">
+      <thead><tr><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">Time</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">Event</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">Actor · roles at the time</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">Tenant · product</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">Request</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">Detail</th></tr></thead>
+      <tbody><sc-for list="{{ au.rows }}" as="r" hint-placeholder-count="8"><tr>
+        <td style="padding:11px 16px;border-bottom:1px solid #EEF1F4;vertical-align:top;white-space:nowrap"><div style="font-family:'IBM Plex Mono',monospace;font-size:11.5px">{{ r.at }}</div><div style="font-size:11.5px;color:#93A0A8;font-family:'IBM Plex Mono',monospace">{{ r.id }}</div></td>
+        <td style="padding:11px 16px;border-bottom:1px solid #EEF1F4;vertical-align:top"><div style="font-weight:600">{{ r.type }}</div><sc-if value="{{ r.exc }}" hint-placeholder-val="{{ false }}"><span style="display:inline-block;margin-top:3px;font-family:'IBM Plex Mono',monospace;font-size:10px;font-weight:600;letter-spacing:.05em;color:#8A3A1F;background:#FBE7DF;border-radius:3px;padding:1px 5px">EXCEPTION</span></sc-if></td>
+        <td style="padding:11px 16px;border-bottom:1px solid #EEF1F4;vertical-align:top">{{ r.actor }}<div style="font-size:12px;color:#5C6770">{{ r.roles }}</div></td>
+        <td style="padding:11px 16px;border-bottom:1px solid #EEF1F4;vertical-align:top">{{ r.tenant }}<div style="font-size:12px;color:#5C6770">{{ r.product }}</div></td>
+        <td style="padding:11px 16px;border-bottom:1px solid #EEF1F4;vertical-align:top;white-space:nowrap"><sc-if value="{{ r.hasCr }}" hint-placeholder-val="{{ false }}"><a href="#" onClick="{{ r.openCr }}" style="font-family:'IBM Plex Mono',monospace;font-size:12px;font-weight:600">{{ r.cr }}</a></sc-if></td>
+        <td style="padding:11px 16px;border-bottom:1px solid #EEF1F4;vertical-align:top;color:#3F4A55;max-width:340px">{{ r.detail }}</td>
+      </tr></sc-for></tbody>
+    </table></div>
+    </sc-if>
+    <sc-if value="{{ au.empty }}" hint-placeholder-val="{{ false }}"><div style="padding:44px 20px;text-align:center"><b>No events match these filters</b><div style="font-size:13px;color:#5C6770;margin-top:4px">The log itself is never empty or edited — try a wider filter.</div></div></sc-if>
+    <div style="padding:10px 16px;background:#FAFBFC;border-top:1px solid #EEF1F4;font-size:12px;color:#5C6770">Append-only · {{ au.total }} events · newest first</div>
+  </section>
+</sc-if>
+
+<sc-if value="{{ is.admins }}" hint-placeholder-val="{{ false }}">
+  <div style="margin-bottom:18px"><h1 style="font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0">Platform admins</h1><p style="font-size:14px;color:#5C6770;max-width:720px;margin:6px 0 0">Aramo staff and their commercial roles. Super admin runs tenant operations but holds no commercial authority. Role changes are change requests approved by a different Platform owner.</p></div>
+  <sc-if value="{{ adm.viewOnly }}" hint-placeholder-val="{{ false }}"><div style="margin-bottom:14px;padding:10px 14px;background:#FAFBFC;border:1px solid #E5E9ED;border-radius:10px;font-size:13px;color:#3F4A55"><b>View only.</b> You can view commercial roles. Requesting a role change needs the <b>Platform owner</b> role.</div></sc-if>
+  <section style="background:#fff;border:1px solid #E5E9ED;border-radius:13px;overflow:hidden;margin-bottom:16px">
+    <div style="padding:14px 20px;border-bottom:1px solid #EEF1F4"><h2 style="font-size:15px;font-weight:700;margin:0">Approval chains</h2><p style="font-size:12.5px;color:#5C6770;margin:3px 0 0">A chain is fulfillable when one person can make the request and different people hold each step's role.</p></div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr))">
+      <sc-for list="{{ adm.chains }}" as="c" hint-placeholder-count="5"><div style="padding:14px 20px;border-right:1px solid #EEF1F4;border-bottom:1px solid #EEF1F4"><div style="display:flex;align-items:center;gap:8px"><b style="font-size:13.5px">{{ c.label }}</b><span style="margin-left:auto;display:inline-flex;align-items:center;gap:5px;height:22px;padding:0 9px;border-radius:11px;font-size:12px;font-weight:600;color:{{ c.p.fg }};background:{{ c.p.bg }}">{{ c.mark }} {{ c.p.label }}</span></div><div style="font-size:12.5px;color:#3F4A55;margin-top:4px">{{ c.steps }}</div><div style="font-size:12px;color:#5C6770;margin-top:2px">{{ c.why }}</div></div></sc-for>
+    </div>
+  </section>
+  <section style="background:#fff;border:1px solid #E5E9ED;border-radius:13px;overflow:hidden">
+    <sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}"><div style="padding:16px 20px;display:grid;gap:12px"><div style="height:14px;width:60%;background:#EEF1F4;border-radius:4px"></div><div style="height:14px;width:80%;background:#EEF1F4;border-radius:4px"></div></div></sc-if>
+    <sc-if value="{{ adm.has }}" hint-placeholder-val="{{ true }}">
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:820px">
+      <thead><tr><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">Person</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">Commercial roles</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">Notes</th><th style="padding:10px 16px;background:#FAFBFC"></th></tr></thead>
+      <tbody><sc-for list="{{ adm.rows }}" as="r" hint-placeholder-count="6"><tr>
+        <td style="padding:12px 16px;border-bottom:1px solid #EEF1F4;vertical-align:top"><div style="display:flex;gap:10px;align-items:center"><span style="width:30px;height:30px;border-radius:50%;background:#0B1022;color:#fff;display:grid;place-items:center;font-size:11px;font-weight:700;flex:none">{{ r.initials }}</span><span><span style="display:block;font-weight:600">{{ r.name }}</span><span style="display:block;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#5C6770">{{ r.email }}</span></span></div></td>
+        <td style="padding:12px 16px;border-bottom:1px solid #EEF1F4;vertical-align:top"><div style="display:flex;gap:6px;flex-wrap:wrap"><sc-for list="{{ r.chips }}" as="c" hint-placeholder-count="1"><span style="font-size:12px;font-weight:600;border:1px solid {{ c.bd }};background:{{ c.bg }};color:{{ c.fg }};border-radius:6px;padding:2px 8px">{{ c.label }}</span></sc-for></div></td>
+        <td style="padding:12px 16px;border-bottom:1px solid #EEF1F4;vertical-align:top;font-size:12.5px;color:{{ r.noteFg }};max-width:300px">{{ r.note }}</td>
+        <td style="padding:12px 16px;border-bottom:1px solid #EEF1F4;vertical-align:top;text-align:right;white-space:nowrap"><sc-if value="{{ r.canReq }}" hint-placeholder-val="{{ false }}"><button onClick="{{ r.onReq }}" style="height:32px;padding:0 12px;border-radius:8px;border:1px solid #D5DBE1;background:#fff;font-size:12.5px;font-weight:600;cursor:pointer" style-hover="background:#F4F6FA">Request role change…</button></sc-if></td>
+      </tr></sc-for></tbody>
+    </table></div>
+    </sc-if>
+    <sc-if value="{{ adm.empty }}" hint-placeholder-val="{{ false }}"><div style="padding:44px 20px;text-align:center"><b>No platform admins hold commercial roles</b><div style="font-size:13px;color:#5C6770;margin-top:4px">Every commercial chain is unfulfillable until roles are granted.</div></div></sc-if>
+  </section>
+</sc-if>
+
+<sc-if value="{{ is.tenants }}" hint-placeholder-val="{{ false }}">
+  <div style="margin-bottom:18px"><h1 style="font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0">Tenants</h1><p style="font-size:14px;color:#5C6770;max-width:720px;margin:6px 0 0">Prototype subset with a commercial summary. Open a tenant for its Commercial tab; other tabs are unchanged in the console.</p></div>
+  <section style="background:#fff;border:1px solid #E5E9ED;border-radius:13px;overflow:hidden">
+    <div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:760px">
+      <thead><tr><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">Tenant</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">Status</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">Products</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">Sign subscription</th></tr></thead>
+      <tbody><sc-for list="{{ tl.rows }}" as="r" hint-placeholder-count="8"><tr onClick="{{ r.onClick }}" tabindex="0" style="cursor:pointer" style-hover="background:#F7F9FC">
+        <td style="padding:12px 16px;border-bottom:1px solid #EEF1F4"><div style="font-weight:600">{{ r.name }}</div><div style="font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#5C6770">{{ r.slug }}</div></td>
+        <td style="padding:12px 16px;border-bottom:1px solid #EEF1F4"><span style="display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:11px;font-size:12px;font-weight:600;color:#1F7A4D;background:#E3F1EA"><span style="width:6px;height:6px;border-radius:50%;background:currentColor"></span>Active</span></td>
+        <td style="padding:12px 16px;border-bottom:1px solid #EEF1F4">{{ r.products }}</td>
+        <td style="padding:12px 16px;border-bottom:1px solid #EEF1F4">{{ r.sign }}</td>
+      </tr></sc-for></tbody>
+    </table></div>
+  </section>
+</sc-if>
+
+<sc-if value="{{ is.tenant }}" hint-placeholder-val="{{ false }}">
+  <div style="display:flex;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:14px">
+    <div style="min-width:0;flex:1"><div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap"><h1 style="font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0">{{ td.name }}</h1><span style="display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:11px;font-size:12px;font-weight:600;color:#1F7A4D;background:#E3F1EA"><span style="width:6px;height:6px;border-radius:50%;background:currentColor"></span>Active</span><span style="font-size:12px;font-weight:600;border:1px solid #D5DBE1;border-radius:6px;padding:2px 7px">Business</span></div>
+    <div style="font-family:'IBM Plex Mono',monospace;font-size:12.5px;color:#5C6770;margin-top:4px">{{ td.slug }}.aramo.ai · {{ td.id }}</div></div>
+  </div>
+  <div role="tablist" aria-label="Tenant" style="display:flex;gap:4px;border-bottom:1px solid #E5E9ED;margin-bottom:16px;overflow-x:auto">
+    <sc-for list="{{ td.tabs }}" as="t" hint-placeholder-count="6"><button role="tab" aria-selected="{{ t.on }}" onClick="{{ t.onClick }}" style="display:flex;align-items:center;gap:6px;height:40px;padding:0 12px;border:none;background:transparent;border-bottom:2px solid {{ t.bd }};margin-bottom:-1px;color:#18212B;font-size:13.5px;font-weight:{{ t.fw }};cursor:pointer;white-space:nowrap">{{ t.label }}<sc-if value="{{ t.isNew }}" hint-placeholder-val="{{ false }}"><span style="font-family:'IBM Plex Mono',monospace;font-size:9px;color:#8A3A1F;background:#FBE7DF;border-radius:3px;padding:1px 4px">NEW</span></sc-if></button></sc-for>
+  </div>
+  <sc-if value="{{ td.other }}" hint-placeholder-val="{{ false }}"><section style="background:#fff;border:1px dashed #C3CBD2;border-radius:13px;padding:32px 20px;text-align:center"><b>{{ td.tabName }} is unchanged</b><p style="font-size:13px;color:#5C6770;margin:4px 0 12px">This prototype only adds the Commercial tab. The existing tab lives in the Platform Admin console.</p><a href="Platform%20Admin.dc.html#tenants" style="font-weight:600">Open Tenants in Platform Admin ↗</a></section></sc-if>
+  <sc-if value="{{ td.isCom }}" hint-placeholder-val="{{ true }}">
+    <sc-if value="{{ td.viewOnly }}" hint-placeholder-val="{{ false }}"><div style="margin-bottom:14px;padding:10px 14px;background:#FAFBFC;border:1px solid #E5E9ED;border-radius:10px;font-size:13px;color:#3F4A55"><b>View only.</b> {{ td.viewOnlyText }}</div></sc-if>
+    <div style="display:grid;gap:16px">
+    <sc-for list="{{ td.cards }}" as="c" hint-placeholder-count="4">
+      <section style="background:#fff;border:1px solid #E5E9ED;border-radius:13px;overflow:hidden">
+        <div style="padding:14px 20px;border-bottom:1px solid #EEF1F4;display:flex;align-items:center;gap:10px;flex-wrap:wrap">
+          <h2 style="font-size:15px;font-weight:700;margin:0">{{ c.name }}</h2>
+          <span style="display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:11px;font-size:12px;font-weight:600;color:{{ c.entP.fg }};background:{{ c.entP.bg }}"><span style="width:6px;height:6px;border-radius:50%;background:currentColor"></span>{{ c.entP.label }}</span>
+          <sc-if value="{{ c.hasSrc }}" hint-placeholder-val="{{ false }}"><span style="font-size:12px;font-weight:600;border:1px solid {{ c.srcBd }};color:{{ c.srcFg }};background:{{ c.srcBg }};border-radius:6px;padding:2px 8px">{{ c.src }}</span></sc-if>
+          <span style="margin-left:auto;font-size:12.5px;color:#5C6770">{{ c.prov }}</span>
+        </div>
+        <div style="padding:16px 20px">
+          <sc-if value="{{ c.noPlans }}" hint-placeholder-val="{{ false }}"><div style="font-size:13px;color:#5C6770;margin-bottom:12px">No commercial plans yet — pricing not set. This product is granted as an entitlement only.</div></sc-if>
+          <sc-if value="{{ c.noSub }}" hint-placeholder-val="{{ false }}"><div style="font-size:13px;color:#5C6770;margin-bottom:12px">No open base subscription.</div></sc-if>
+          <sc-if value="{{ c.hasSub }}" hint-placeholder-val="{{ true }}">
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px 20px;margin-bottom:14px">
+              <sc-for list="{{ c.facts }}" as="f" hint-placeholder-count="6"><div><div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">{{ f.k }}</div><div style="font-weight:600;margin-top:2px;color:{{ f.fg }}">{{ f.v }}</div><div style="font-size:12px;color:#5C6770">{{ f.s }}</div></div></sc-for>
+            </div>
+            <div style="margin-bottom:14px"><div style="display:flex;font-size:12.5px;margin-bottom:5px"><span style="font-weight:600">Allowance this period</span><span style="margin-left:auto;color:#5C6770">{{ c.usage }}</span></div><div style="height:6px;background:#EEF1F4;border-radius:3px;overflow:hidden"><div style="height:6px;width:{{ c.usePct }};background:{{ c.useBg }}"></div></div></div>
+          </sc-if>
+          <sc-if value="{{ c.recon }}" hint-placeholder-val="{{ false }}"><div role="alert" style="margin-bottom:14px;padding:12px 14px;border:1px solid #E7D3A8;background:#FAF0DC;border-radius:10px;font-size:13px;color:#6B4609"><b>Reconciliation flag · self-service checkout blocked.</b> {{ c.reconText }} The MANUAL subscription was not replaced.<div style="margin-top:6px;display:flex;gap:10px;flex-wrap:wrap;align-items:center"><span>{{ c.reconState }}</span><sc-if value="{{ c.reconCr }}" hint-placeholder-val="{{ false }}"><a href="#" onClick="{{ c.openRecon }}" style="font-family:'IBM Plex Mono',monospace;font-weight:600;color:#6B4609;text-decoration:underline">{{ c.reconCrId }}</a></sc-if><sc-if value="{{ c.reconCan }}" hint-placeholder-val="{{ false }}"><button onClick="{{ c.reqRecon }}" style="height:30px;padding:0 10px;border-radius:7px;border:1px solid #946011;background:#fff;color:#6B4609;font-size:12.5px;font-weight:600;cursor:pointer">Request reconciliation release…</button></sc-if></div></div></sc-if>
+          <sc-for list="{{ c.exts }}" as="x" hint-placeholder-count="0"><div style="margin-bottom:14px;border:1.5px solid #D97757;border-radius:10px;overflow:hidden"><div style="display:flex;align-items:center;gap:8px;padding:9px 14px;background:#FBE7DF;color:#8A3A1F;font-size:13px"><span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;font-weight:700;letter-spacing:.06em">EXCEPTION</span><b>+{{ x.days }} day support extension · applied with zero approvals</b><span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11.5px">{{ x.id }}</span></div><div style="display:grid;grid-template-columns:170px minmax(0,1fr);gap:6px 14px;padding:12px 14px;font-size:12.5px"><span style="color:#5C6770">Actor</span><span>{{ x.actor }} · {{ x.at }}</span><span style="color:#5C6770">Roles at the time</span><span>{{ x.roles }}</span><span style="color:#5C6770">Policy clause</span><span>{{ x.clause }}</span><span style="color:#5C6770">Uses in 90-day window</span><span>{{ x.uses }}</span><span style="color:#5C6770">Cumulative days</span><span>{{ x.cum }}</span><span style="color:#5C6770">Stripe billing</span><span>{{ x.overlay }}</span></div></div></sc-for>
+          <sc-if value="{{ c.self }}" hint-placeholder-val="{{ false }}"><div style="margin-bottom:14px;padding:10px 14px;border:1px solid #E5E9ED;background:#FAFBFC;border-radius:10px;font-size:12.5px;color:#3F4A55;display:flex;gap:12px;flex-wrap:wrap;align-items:center"><span><b>Managed in Stripe.</b> The tenant pays through self-service checkout. Aramo doesn't edit this subscription.</span><span style="display:flex;gap:12px;flex-wrap:wrap"><sc-for list="{{ c.links }}" as="l" hint-placeholder-count="4"><a href="#" onClick="{{ l.onClick }}" style="font-weight:600">{{ l.label }} ↗</a></sc-for></span></div></sc-if>
+          <sc-if value="{{ c.hasOpen }}" hint-placeholder-val="{{ false }}"><div style="margin-bottom:14px;padding:9px 12px;border:1px solid #C9DAEE;background:#E6EFF8;color:#1E4E80;border-radius:9px;font-size:13px">Open request <a href="#" onClick="{{ c.openCr }}" style="font-family:'IBM Plex Mono',monospace;font-weight:600;color:#1E4E80;text-decoration:underline">{{ c.openId }}</a> · {{ c.openText }}</div></sc-if>
+          <div style="display:flex;gap:8px;flex-wrap:wrap">
+            <sc-for list="{{ c.actions }}" as="a" hint-placeholder-count="5"><button onClick="{{ a.onClick }}" disabled="{{ a.dis }}" title="{{ a.why }}" style="height:34px;padding:0 12px;border-radius:8px;border:1px solid {{ a.bd }};background:#fff;color:{{ a.fg }};font-size:13px;font-weight:600;cursor:pointer;opacity:{{ a.op }}" style-hover="background:#F4F6FA">{{ a.label }}</button></sc-for>
+          </div>
+          <sc-if value="{{ c.hasReasons }}" hint-placeholder-val="{{ false }}"><ul style="margin:8px 0 0;padding:0;list-style:none;font-size:12px;color:#5C6770;display:grid;gap:2px"><sc-for list="{{ c.reasons }}" as="r" hint-placeholder-count="1"><li><b style="font-weight:600;color:#3F4A55">{{ r.a }}:</b> {{ r.w }}</li></sc-for></ul></sc-if>
+        </div>
+      </section>
+    </sc-for>
+    </div>
+  </sc-if>
+</sc-if>
+
+<sc-if value="{{ is.inventory }}" hint-placeholder-val="{{ false }}">
+  <div style="margin-bottom:18px"><h1 style="font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0">Screen inventory</h1><p style="font-size:14px;color:#5C6770;max-width:720px;margin:6px 0 0">Each screen and the domain rules it makes visible. Rule numbers follow the brief. Use the persona switcher in the account menu and the Tweaks for bootstrap, loading and empty states.</p></div>
+  <section style="background:#fff;border:1px solid #E5E9ED;border-radius:13px;overflow:hidden"><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:820px">
+    <thead><tr><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">Screen</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">Rules</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">Where to look</th></tr></thead>
+    <tbody>
+      <tr><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-weight:600">Approvals inbox</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-family:'IBM Plex Mono',monospace">1 · 2 · 3 · 7</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Tabs, chain progress (Finance ✓ › Owner ○), 72 h countdown, policy version per row; CR-1039 on an older version.</td></tr>
+      <tr><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-weight:600">Change request drawer</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-family:'IBM Plex Mono',monospace">1 · 2 · 3 · 6 · 7</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">State stepper, before/after diff, chain with signers, your verdict plus every admin's verdict (all 7 reasons across CR-1041/1043/1044/1039/1052 and the service persona), apply panel for both sides, Stripe "awaiting confirmation" (CR-1051), retry (CR-1046), 409 when not bootstrapped.</td></tr>
+      <tr><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-weight:600">Subscriptions workbench</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-family:'IBM Plex Mono',monospace">4 · 5 · 11</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Managed in Stripe badges, pinned versions, past-due in grace, suspended, reconciliation and exception flags, commitment ending filters.</td></tr>
+      <tr><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-weight:600">Catalog</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-family:'IBM Plex Mono',monospace">1 · 2 · 11</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Immutable published versions, new draft from a version, publish (Finance → Owner) and retire requests, grandfathered tenants, diff, v1 limits locked (USD, monthly).</td></tr>
+      <tr><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-weight:600">Contracts</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-family:'IBM Plex Mono',monospace">1 · 4</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Evidence-grade record: commitment, terms, hashed documents, amendments timeline, migrated provenance; amend and end are change requests.</td></tr>
+      <tr><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-weight:600">Policy</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-family:'IBM Plex Mono',monospace">1 · 2</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">One active version, draft editing, diff against active, activation and rollback as change requests.</td></tr>
+      <tr><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-weight:600">Audit</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-family:'IBM Plex Mono',monospace">9 · append-only</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Filters, exception flag, roles at the time, CSV export (itself audited). Every action in the prototype appends here.</td></tr>
+      <tr><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-weight:600">Platform admins</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-family:'IBM Plex Mono',monospace">1 · 2 · 7 · 8 · 10</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Role chips, role change requests, chain fulfillability, last-owner refusal (set Tweak → not bootstrapped), Super admin with no commercial roles.</td></tr>
+      <tr><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-weight:600">Tenant › Commercial</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-family:'IBM Plex Mono',monospace">1 · 4 · 5 · 6 · 9</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Per product: subscription, source, pinned version, grace or suspension, allowance, entitlement provenance, exception overlay (Oakridge), reconciliation flag (Meridian), revoked product (Brightline Portal), in-bounds vs escalated extension.</td></tr>
+      <tr><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-weight:600">Access denied · bootstrap banner</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-family:'IBM Plex Mono',monospace">7 · 10</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Switch to Maya Okafor (Super admin) on any Commercial page. Set the bootstrap Tweak to see the banner and 409s.</td></tr>
+    </tbody>
+  </table></div></section>
+</sc-if>
+
+<sc-if value="{{ is.questions }}" hint-placeholder-val="{{ false }}">
+  <div style="margin-bottom:18px"><h1 style="font-size:24px;font-weight:700;letter-spacing:-.02em;margin:0">Open questions</h1><p style="font-size:14px;color:#5C6770;max-width:720px;margin:6px 0 0">For the PO and Architect. The prototype takes the stated assumption for each.</p></div>
+  <section style="background:#fff;border:1px solid #E5E9ED;border-radius:13px;overflow:hidden"><div style="overflow-x:auto"><table style="width:100%;border-collapse:collapse;font-size:13px;min-width:760px">
+    <thead><tr><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">For</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">Question</th><th style="text-align:left;padding:10px 16px;background:#FAFBFC;font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8">Prototype assumes</th></tr></thead>
+    <tbody>
+      <tr><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-family:'IBM Plex Mono',monospace;font-size:12px">PO</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Which chain governs policy activation and rollback?</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Finance → Owner.</td></tr>
+      <tr><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-family:'IBM Plex Mono',monospace;font-size:12px">PO</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Do non-privileged role changes (e.g. granting Support admin) also need a distinct Platform owner?</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Yes, one chain for all role changes.</td></tr>
+      <tr><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-family:'IBM Plex Mono',monospace;font-size:12px">Architect</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Bootstrap rule: does the maker count toward "two distinct humans", or must each step have its own approver plus a separate maker?</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Maker plus a distinct approver per step.</td></tr>
+      <tr><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-family:'IBM Plex Mono',monospace;font-size:12px">Architect</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">When not bootstrapped, is creating a request also refused, or only approving?</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Creation allowed; approval returns 409 CCP_NOT_BOOTSTRAPPED.</td></tr>
+      <tr><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-family:'IBM Plex Mono',monospace;font-size:12px">Architect</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">If an approver loses a role after signing a step, is that signature voided?</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">No; only future eligibility changes.</td></tr>
+      <tr><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-family:'IBM Plex Mono',monospace;font-size:12px">PO</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Credits and discounts on self-service tenants: Stripe-side commands through maker-checker, or link-out only?</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Stripe-side commands (CR-1042) shown as "Sent to Stripe — awaiting confirmation".</td></tr>
+      <tr><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-family:'IBM Plex Mono',monospace;font-size:12px">PO</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Chain for an out-of-bounds support extension?</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Below-threshold chain (Finance only).</td></tr>
+      <tr><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-family:'IBM Plex Mono',monospace;font-size:12px">PO</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Is the 90-day extension window rolling from each use, or a calendar quarter?</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Rolling.</td></tr>
+      <tr><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-family:'IBM Plex Mono',monospace;font-size:12px">PO</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Moving tenants from a grandfathered version to a newer one: is that a bulk change request? Not designed.</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Out of scope; pinned until changed per tenant.</td></tr>
+      <tr><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-family:'IBM Plex Mono',monospace;font-size:12px">PO</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Can an expired or rejected request be cloned and resubmitted?</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Not shown; a new request is created.</td></tr>
+      <tr><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-family:'IBM Plex Mono',monospace;font-size:12px">PO</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Should commercial roles also get read access to tenants (needed to open Tenant › Commercial)?</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Yes, read-only tenant access.</td></tr>
+      <tr><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-family:'IBM Plex Mono',monospace;font-size:12px">Architect</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Policy numbering starts at v1 in the brief; the prototype adds a retired pilot v0 to show a request created under a previous version.</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">v0 pilot exists.</td></tr>
+      <tr><td style="padding:11px 16px;border-top:1px solid #EEF1F4;font-family:'IBM Plex Mono',monospace;font-size:12px">PO</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Dashboard commercial panel (open approvals, expiring commitments, past-due, reconciliation flags) — which phase?</td><td style="padding:11px 16px;border-top:1px solid #EEF1F4">Deferred; not built.</td></tr>
+    </tbody>
+  </table></div></section>
+</sc-if>
+
+  </main>
+</div>
+</div>
+
+<sc-if value="{{ cr.open }}" hint-placeholder-val="{{ false }}">
+  <div onClick="{{ cr.close }}" style="position:fixed;inset:0;background:rgba(15,25,40,.32);z-index:88"></div>
+  <aside role="dialog" aria-modal="true" aria-label="Change request" style="position:fixed;top:0;right:0;bottom:0;width:min(640px,96vw);background:#fff;z-index:89;display:flex;flex-direction:column;box-shadow:-12px 0 32px rgba(15,25,40,.14)">
+    <div style="padding:16px 20px;border-bottom:1px solid #E5E9ED;display:flex;align-items:flex-start;gap:12px">
+      <div style="min-width:0;flex:1"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap"><span style="font-family:'IBM Plex Mono',monospace;font-size:13px;font-weight:600">{{ cr.id }}</span><span style="display:inline-flex;align-items:center;gap:6px;height:22px;padding:0 9px;border-radius:11px;font-size:12px;font-weight:600;color:{{ cr.p.fg }};background:{{ cr.p.bg }}"><span style="width:6px;height:6px;border-radius:50%;background:currentColor"></span>{{ cr.p.label }}</span></div><h2 style="font-size:18px;font-weight:700;margin:4px 0 0">{{ cr.type }} · {{ cr.summary }}</h2></div>
+      <button onClick="{{ cr.close }}" aria-label="Close" style="width:32px;height:32px;border:none;background:transparent;border-radius:8px;cursor:pointer;font-size:18px;color:#5C6770" style-hover="background:#F4F6FA">✕</button>
+    </div>
+    <div style="flex:1;overflow-y:auto;padding:16px 20px;display:grid;gap:18px;align-content:start">
+      <div style="display:grid;grid-template-columns:130px minmax(0,1fr);gap:6px 14px;font-size:13px">
+        <span style="color:#5C6770">Tenant · product</span><span>{{ cr.tenant }}</span>
+        <span style="color:#5C6770">Requested by</span><span>{{ cr.by }}</span>
+        <span style="color:#5C6770">Created</span><span style="font-family:'IBM Plex Mono',monospace;font-size:12px">{{ cr.created }}</span>
+        <span style="color:#5C6770">Approval window</span><span style="color:{{ cr.expFg }};font-weight:600">{{ cr.exp }}</span>
+        <span style="color:#5C6770">Policy</span><span><span style="font-family:'IBM Plex Mono',monospace;font-size:12px">{{ cr.policy }}</span> · chain {{ cr.chainLabel }} (fixed at creation)</span>
+      </div>
+      <ol aria-label="Request state" style="list-style:none;margin:0;padding:0;display:flex;gap:6px;flex-wrap:wrap">
+        <sc-for list="{{ cr.stepper }}" as="s" hint-placeholder-count="5"><li style="display:flex;align-items:center;gap:6px;height:28px;padding:0 10px;border-radius:14px;border:1px solid {{ s.bd }};background:{{ s.bg }};color:{{ s.fg }};font-size:12px;font-weight:600;opacity:{{ s.op }}"><span>{{ s.mark }}</span>{{ s.label }}</li></sc-for>
+      </ol>
+      <sc-if value="{{ cr.hasErr }}" hint-placeholder-val="{{ false }}"><div role="alert" style="padding:10px 14px;border:1px solid #EBC6BE;background:#F8E9E6;border-radius:10px;color:#7A2E21;font-size:13px"><b>Approval refused.</b> {{ cr.errMsg }} <span style="font-family:'IBM Plex Mono',monospace;font-size:12px">(409 {{ cr.errCode }})</span></div></sc-if>
+      <sc-if value="{{ cr.hasNote }}" hint-placeholder-val="{{ false }}"><div style="padding:10px 14px;border:1px solid #E7D3A8;background:#FAF0DC;border-radius:10px;color:#6B4609;font-size:13px">{{ cr.note }}</div></sc-if>
+      <div><div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;margin-bottom:6px">Effect · before → after</div>
+        <div style="border:1px solid #E5E9ED;border-radius:10px;overflow:hidden;font-size:13px"><sc-for list="{{ cr.diff }}" as="d" hint-placeholder-count="3"><div style="display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) minmax(0,1fr);gap:10px;padding:9px 12px;border-bottom:1px solid #EEF1F4"><span style="color:#5C6770">{{ d.f }}</span><span style="text-decoration:line-through;color:#7A2E21;background:#F6D9D2;border-radius:4px;padding:0 5px;justify-self:start">{{ d.b }}</span><span style="color:#17603C;background:#D3EBDD;border-radius:4px;padding:0 5px;font-weight:600;justify-self:start">{{ d.a }}</span></div></sc-for></div>
+      </div>
+      <div style="display:grid;grid-template-columns:130px minmax(0,1fr);gap:6px 14px;font-size:13px"><span style="color:#5C6770">Reason</span><span>{{ cr.reason }}</span><span style="color:#5C6770">Evidence</span><span>{{ cr.evidence }}</span></div>
+      <div><div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;margin-bottom:6px">Approval chain</div>
+        <ol style="list-style:none;margin:0;padding:0;display:grid;gap:6px"><sc-for list="{{ cr.chain }}" as="k" hint-placeholder-count="2"><li style="display:flex;align-items:center;gap:10px;padding:9px 12px;border:1px solid #E5E9ED;border-radius:10px;font-size:13px"><span style="width:22px;height:22px;border-radius:50%;display:grid;place-items:center;font-size:12px;font-weight:700;color:{{ k.fg }};background:{{ k.bg }};flex:none">{{ k.mark }}</span><b style="font-weight:600">{{ k.role }}</b><span style="margin-left:auto;color:#5C6770;font-size:12.5px;text-align:right">{{ k.who }}</span></li></sc-for></ol>
+      </div>
+      <sc-if value="{{ cr.isPending }}" hint-placeholder-val="{{ false }}">
+        <div style="padding:12px 14px;border:1.5px solid {{ cr.v.bd }};background:{{ cr.v.bg }};border-radius:10px"><div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#5C6770">Your eligibility</div><div style="font-weight:700;margin-top:3px;color:{{ cr.v.fg }}">{{ cr.v.mark }} {{ cr.v.label }}</div><div style="font-size:12.5px;color:#3F4A55;margin-top:2px">{{ cr.v.why }}</div></div>
+        <div><div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;margin-bottom:6px">Who can sign the {{ cr.curStep }} step</div>
+          <div style="border:1px solid #E5E9ED;border-radius:10px;overflow:hidden"><sc-for list="{{ cr.others }}" as="o" hint-placeholder-count="6"><div style="display:flex;align-items:center;gap:10px;padding:8px 12px;border-bottom:1px solid #EEF1F4;font-size:12.5px"><span style="width:16px;color:{{ o.fg }};font-weight:700">{{ o.mark }}</span><span style="font-weight:600;min-width:120px">{{ o.name }}</span><span style="color:#5C6770">{{ o.roles }}</span><span style="margin-left:auto;color:{{ o.fg }};font-weight:600;text-align:right">{{ o.label }}</span></div></sc-for></div>
+        </div>
+      </sc-if>
+      <sc-if value="{{ cr.hasApply }}" hint-placeholder-val="{{ false }}"><div><div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;margin-bottom:6px">Apply · both sides must take effect</div>
+        <div style="border:1px solid #E5E9ED;border-radius:10px;overflow:hidden"><sc-for list="{{ cr.apply }}" as="a" hint-placeholder-count="2"><div style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-bottom:1px solid #EEF1F4;font-size:13px"><b style="font-weight:600">{{ a.side }}</b><span style="margin-left:auto;color:{{ a.fg }};font-weight:600">{{ a.label }}</span></div></sc-for></div>
+        <sc-if value="{{ cr.applyErr }}" hint-placeholder-val="{{ false }}"><div style="font-size:12.5px;color:#7A2E21;margin-top:6px">Failed with <span style="font-family:'IBM Plex Mono',monospace">{{ cr.applyErrCode }}</span>. The request stays Apply failed until a retry succeeds.</div></sc-if>
+      </div></sc-if>
+      <div><div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;margin-bottom:8px">Timeline</div>
+        <ol style="list-style:none;margin:0;padding:0"><sc-for list="{{ cr.tl }}" as="e" hint-placeholder-count="3"><li style="display:grid;grid-template-columns:14px minmax(0,1fr);gap:10px;padding-bottom:10px"><span style="width:9px;height:9px;border-radius:50%;background:{{ e.dot }};margin-top:5px"></span><div><div style="display:flex;gap:10px;flex-wrap:wrap;font-size:13px"><b style="font-weight:600">{{ e.label }}</b><span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#5C6770">{{ e.at }}</span></div><div style="font-size:12px;color:#5C6770">{{ e.by }}</div></div></li></sc-for></ol>
+      </div>
+    </div>
+    <div style="padding:12px 20px;border-top:1px solid #E5E9ED;background:#FAFBFC;display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+      <sc-for list="{{ cr.actions }}" as="a" hint-placeholder-count="2"><button onClick="{{ a.onClick }}" disabled="{{ a.dis }}" style="height:36px;padding:0 14px;border-radius:8px;border:{{ a.bd }};background:{{ a.bg }};color:{{ a.fg }};font-size:13px;font-weight:600;cursor:pointer;opacity:{{ a.op }}">{{ a.label }}</button></sc-for>
+      <span style="font-size:12.5px;color:#5C6770">{{ cr.footNote }}</span>
+    </div>
+  </aside>
+</sc-if>
+
+<sc-if value="{{ dl.open }}" hint-placeholder-val="{{ false }}">
+  <div style="position:fixed;inset:0;background:rgba(15,25,40,.45);z-index:95;display:grid;place-items:center;padding:16px">
+    <div role="dialog" aria-modal="true" aria-label="{{ dl.title }}" style="width:{{ dl.w }};max-height:88vh;background:#fff;border-radius:14px;display:flex;flex-direction:column;overflow:hidden;box-shadow:0 24px 64px rgba(15,25,40,.24)">
+      <div style="padding:18px 22px 12px"><h2 style="font-size:18px;font-weight:700;margin:0">{{ dl.title }}</h2><p style="font-size:13.5px;color:#3F4A55;margin:6px 0 0;line-height:1.5">{{ dl.sub }}</p></div>
+      <div style="padding:4px 22px 16px;overflow-y:auto;display:grid;gap:14px">
+        <sc-for list="{{ dl.fields }}" as="f" hint-placeholder-count="2">
+          <label style="display:block"><span style="display:block;font-size:13px;font-weight:600;margin-bottom:5px">{{ f.label }}</span>
+            <sc-if value="{{ f.isText }}" hint-placeholder-val="{{ false }}"><input value="{{ f.val }}" onChange="{{ f.onChange }}" placeholder="{{ f.ph }}" style="width:100%;box-sizing:border-box;height:38px;border:1px solid #D5DBE1;border-radius:8px;padding:0 10px;font-size:13.5px"></input></sc-if>
+            <sc-if value="{{ f.isNum }}" hint-placeholder-val="{{ false }}"><input type="number" value="{{ f.val }}" onChange="{{ f.onChange }}" min="{{ f.min }}" max="{{ f.max }}" style="width:160px;box-sizing:border-box;height:38px;border:1px solid #D5DBE1;border-radius:8px;padding:0 10px;font-size:13.5px"></input></sc-if>
+            <sc-if value="{{ f.isArea }}" hint-placeholder-val="{{ false }}"><textarea value="{{ f.val }}" onChange="{{ f.onChange }}" placeholder="{{ f.ph }}" rows="3" style="width:100%;box-sizing:border-box;border:1px solid #D5DBE1;border-radius:8px;padding:8px 10px;font-size:13.5px;resize:vertical"></textarea></sc-if>
+            <sc-if value="{{ f.isSel }}" hint-placeholder-val="{{ false }}"><select value="{{ f.val }}" onChange="{{ f.onChange }}" style="width:100%;height:38px;border:1px solid #D5DBE1;border-radius:8px;padding:0 10px;font-size:13.5px;background:#fff"><sc-for list="{{ f.opts }}" as="o" hint-placeholder-count="3"><option value="{{ o.v }}">{{ o.l }}</option></sc-for></select></sc-if>
+            <sc-if value="{{ f.isChecks }}" hint-placeholder-val="{{ false }}"><span style="display:flex;gap:6px;flex-wrap:wrap"><sc-for list="{{ f.opts }}" as="o" hint-placeholder-count="6"><button onClick="{{ o.onToggle }}" aria-pressed="{{ o.on }}" style="height:32px;padding:0 10px;border-radius:8px;border:1.5px solid {{ o.bd }};background:{{ o.bg }};color:#18212B;font-size:12.5px;font-weight:600;cursor:pointer">{{ o.mark }} {{ o.l }}</button></sc-for></span></sc-if>
+            <sc-if value="{{ f.hasHelp }}" hint-placeholder-val="{{ false }}"><span style="display:block;font-size:12px;color:#5C6770;margin-top:4px">{{ f.help }}</span></sc-if>
+          </label>
+        </sc-for>
+        <sc-if value="{{ dl.hasDiff }}" hint-placeholder-val="{{ false }}"><div><div style="font-size:11px;font-weight:600;letter-spacing:.05em;text-transform:uppercase;color:#93A0A8;margin-bottom:6px">Before → after</div><div style="border:1px solid #E5E9ED;border-radius:10px;overflow:hidden;font-size:13px"><sc-for list="{{ dl.diff }}" as="d" hint-placeholder-count="2"><div style="display:grid;grid-template-columns:minmax(0,1.1fr) minmax(0,1fr) minmax(0,1fr);gap:10px;padding:8px 12px;border-bottom:1px solid #EEF1F4;background:{{ d.bg }}"><span style="color:#5C6770">{{ d.m }} {{ d.f }}</span><span style="color:#5C6770;text-decoration:{{ d.strike }}">{{ d.b }}</span><span style="font-weight:{{ d.fw }}">{{ d.a }}</span></div></sc-for></div></div></sc-if>
+        <sc-if value="{{ dl.pv.show }}" hint-placeholder-val="{{ false }}"><div role="status" style="padding:12px 14px;border:1.5px solid {{ dl.pv.bd }};background:{{ dl.pv.bg }};border-radius:10px;color:{{ dl.pv.fg }};font-size:13px"><b>{{ dl.pv.title }}</b><ul style="margin:6px 0 0;padding-left:18px;line-height:1.6"><sc-for list="{{ dl.pv.lines }}" as="l" hint-placeholder-count="3"><li>{{ l }}</li></sc-for></ul></div></sc-if>
+        <sc-if value="{{ dl.hasChain }}" hint-placeholder-val="{{ false }}"><div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;font-size:13px;padding:10px 12px;border:1px solid #E5E9ED;border-radius:10px;background:#FAFBFC"><span style="color:#5C6770">Approval chain</span><b>{{ dl.chainLabel }}</b><span style="color:#3F4A55">{{ dl.chainSteps }}</span><span style="margin-left:auto;font-family:'IBM Plex Mono',monospace;font-size:11.5px;color:#5C6770">policy {{ dl.policy }} · {{ dl.ttl }} window</span></div></sc-if>
+        <sc-if value="{{ dl.typed.show }}" hint-placeholder-val="{{ false }}"><label style="display:block"><span style="display:block;font-size:13px;font-weight:600;margin-bottom:5px">Type <span style="font-family:'IBM Plex Mono',monospace;background:#F4F6FA;border-radius:4px;padding:0 5px">{{ dl.typed.token }}</span> to confirm</span><input value="{{ dl.typed.val }}" onChange="{{ dl.typed.onChange }}" autocomplete="off" style="width:100%;box-sizing:border-box;height:38px;border:1px solid #D97757;border-radius:8px;padding:0 10px;font-size:13.5px;font-family:'IBM Plex Mono',monospace"></input></label></sc-if>
+        <sc-if value="{{ dl.hasAlert }}" hint-placeholder-val="{{ false }}"><div role="alert" style="padding:10px 14px;border:1px solid #EBC6BE;background:#F8E9E6;border-radius:10px;color:#7A2E21;font-size:13px">{{ dl.alert }}</div></sc-if>
+      </div>
+      <div style="padding:12px 22px;border-top:1px solid #E5E9ED;background:#FAFBFC;display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap">
+        <button onClick="{{ dl.close }}" style="height:38px;padding:0 14px;border-radius:8px;border:1px solid #D5DBE1;background:#fff;color:#18212B;font-size:13.5px;font-weight:600;cursor:pointer">Cancel</button>
+        <sc-if value="{{ dl.canDraft }}" hint-placeholder-val="{{ false }}"><button onClick="{{ dl.saveDraft }}" disabled="{{ dl.draftDis }}" style="height:38px;padding:0 14px;border-radius:8px;border:1px solid #D5DBE1;background:#fff;color:#18212B;font-size:13.5px;font-weight:600;cursor:pointer;opacity:{{ dl.draftOp }}">Save as draft</button></sc-if>
+        <button onClick="{{ dl.commit }}" disabled="{{ dl.dis }}" style="height:38px;padding:0 16px;border-radius:8px;border:1px solid {{ dl.cbd }};background:{{ dl.cbg }};color:{{ dl.cfg }};font-size:13.5px;font-weight:700;cursor:pointer;opacity:{{ dl.op }}">{{ dl.commitLabel }}</button>
+      </div>
+    </div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ pal.open }}" hint-placeholder-val="{{ false }}">
+  <div onClick="{{ pal.close }}" style="position:fixed;inset:0;background:rgba(15,25,40,.45);z-index:96"></div>
+  <div role="dialog" aria-modal="true" aria-label="Search" style="position:fixed;top:12vh;left:50%;transform:translateX(-50%);width:min(620px,96vw);background:#fff;border-radius:14px;z-index:97;overflow:hidden;box-shadow:0 24px 64px rgba(15,25,40,.24)">
+    <input autofocus="{{ true }}" value="{{ pal.q }}" onChange="{{ pal.onQ }}" onKeyDown="{{ pal.onKey }}" placeholder="Search tenants, change requests, pages" style="width:100%;box-sizing:border-box;height:52px;border:none;border-bottom:1px solid #E5E9ED;padding:0 18px;font-size:15px;outline:none"></input>
+    <div style="max-height:50vh;overflow-y:auto;padding:6px"><sc-for list="{{ pal.items }}" as="i" hint-placeholder-count="5"><a href="#" onClick="{{ i.onClick }}" style="display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:8px;color:#18212B;text-decoration:none;font-size:13.5px" style-hover="background:#F4F6FA;text-decoration:none"><span style="font-family:'IBM Plex Mono',monospace;font-size:10.5px;color:#5C6770;width:62px">{{ i.kind }}</span><span style="font-weight:600">{{ i.label }}</span><span style="margin-left:auto;font-size:12px;color:#5C6770">{{ i.sub }}</span></a></sc-for>
+    <sc-if value="{{ pal.none }}" hint-placeholder-val="{{ false }}"><div style="padding:20px;text-align:center;color:#5C6770;font-size:13px">No matches</div></sc-if></div>
+  </div>
+</sc-if>
+
+<sc-if value="{{ toast.show }}" hint-placeholder-val="{{ false }}"><div role="status" style="position:fixed;bottom:24px;left:50%;transform:translateX(-50%);background:#18212B;color:#fff;font-size:13.5px;font-weight:500;padding:11px 16px;border-radius:10px;z-index:99;box-shadow:0 8px 24px rgba(15,25,40,.2);max-width:min(560px,92vw)">{{ toast.msg }}</div></sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;persona&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;daniel&quot;,&quot;priya&quot;,&quot;tomas&quot;,&quot;lena&quot;,&quot;kwame&quot;,&quot;ines&quot;,&quot;arjun&quot;,&quot;maya&quot;,&quot;svc&quot;],&quot;default&quot;:&quot;daniel&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Prototype&quot;},&quot;bootstrap&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;ready&quot;,&quot;notBootstrapped&quot;],&quot;default&quot;:&quot;ready&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Prototype&quot;},&quot;demoState&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;normal&quot;,&quot;loading&quot;,&quot;empty&quot;],&quot;default&quot;:&quot;normal&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Prototype&quot;},&quot;startRoute&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;options&quot;:[&quot;approvals&quot;,&quot;subs&quot;,&quot;catalog&quot;,&quot;contracts&quot;,&quot;policy&quot;,&quot;audit&quot;,&quot;admins&quot;,&quot;tenant&quot;,&quot;inventory&quot;],&quot;default&quot;:&quot;approvals&quot;,&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Prototype&quot;}}">
+const C = new Proxy({}, { get: (_, k) => (window.CCP || {})[k] });
+const IC = {
+  dash:'M3 3h7v9H3zM14 3h7v5h-7zM14 12h7v9h-7zM3 16h7v5H3z', ten:'M4 21V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v16M16 9h2a2 2 0 0 1 2 2v10M2 21h20M8 7h4M8 11h4M8 15h4',
+  shield:'M12 3l8 3v6c0 5-3.5 8-8 9-4.5-1-8-4-8-9V6z', mail:'M3 6h18v12H3zM3 7l9 6 9-6', layers:'M12 3l9 5-9 5-9-5zM3 13l9 5 9-5',
+  inbox:'M3 13h5l2 3h4l2-3h5M5 5h14l2 8v6H3v-6z', spark:'M12 3v4M12 17v4M3 12h4M17 12h4M6 6l2.5 2.5M15.5 15.5L18 18M6 18l2.5-2.5M15.5 8.5L18 6',
+  sliders:'M4 6h10M18 6h2M4 12h4M12 12h8M4 18h12M14 4v4M8 10v4M16 16v4', doc:'M7 3h7l5 5v13H7zM14 3v5h5M10 13h6M10 17h6',
+  braces:'M8 4c-2 0-2 2-2 4s-1 4-3 4c2 0 3 2 3 4s0 4 2 4M16 4c2 0 2 2 2 4s1 4 3 4c-2 0-3 2-3 4s0 4-2 4', key:'M15 7a4 4 0 1 1-3.9 4.9L4 19v2h3v-2h2v-2h2l1.1-1.1A4 4 0 0 1 15 7z',
+  check:'M9 12l2 2 4-4M4 4h16v16H4z', repeat:'M17 2l4 4-4 4M3 11V9a3 3 0 0 1 3-3h15M7 22l-4-4 4-4M21 13v2a3 3 0 0 1-3 3H3',
+  tag:'M3 3h8l10 10-8 8L3 11zM7.5 7.5h.01', contract:'M14 3H6v18h12V7zM14 3v4h4M9 17c1.5-2 2.5-2 3 0s1.5 1 3-1',
+  scale:'M12 3v18M5 7h14M5 7l-3 7a3 3 0 0 0 6 0zM19 7l-3 7a3 3 0 0 0 6 0zM8 21h8', audit:'M8 4h11v14a3 3 0 0 1-3 3H6a3 3 0 0 1-3-3v-2h11v2a3 3 0 0 0 3 3M8 4a3 3 0 0 0-3 3v9M11 8h5M11 12h5',
+  list:'M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01', help:'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3M12 17h.01',
+};
+const NAV = [
+  ['Operations', [['x:dashboard','Dashboard','ops',IC.dash],['tenants','Tenants','tenant',IC.ten]]],
+  ['Sign Personal', [['x:personal','Review queue','ops',IC.shield],['x:invites','Pilot invites','ops',IC.mail]]],
+  ['Skills', [['x:skills','Registry','ops',IC.layers],['x:skillQueue','Review queue','ops',IC.inbox],['x:proposals','Proposals','ops',IC.spark]]],
+  ['Matching', [['x:matching','Matching policy','ops',IC.sliders]]],
+  ['Documents', [['x:templates','Document templates','ops',IC.doc],['x:variables','Template variables','ops',IC.braces]]],
+  ['Commercial', [['approvals','Approvals','ccp',IC.check],['subs','Subscriptions','ccp',IC.repeat],['catalog','Catalog','ccp',IC.tag],['contracts','Contracts','ccp',IC.contract],['policy','Policy','ccp',IC.scale],['audit','Audit','ccp',IC.audit]]],
+  ['Platform', [['admins','Platform admins','admins',IC.key]]],
+  ['Prototype', [['inventory','Screen inventory',null,IC.list],['questions','Open questions',null,IC.help]]],
+];
+const RG = { approvals:'ccp', subs:'ccp', catalog:'ccp', contracts:'ccp', policy:'ccp', audit:'ccp', admins:'admins', tenants:'tenant', tenant:'tenant', inventory:null, questions:null };
+const CRUMB = { approvals:['Commercial','Approvals'], subs:['Commercial','Subscriptions'], catalog:['Commercial','Catalog'], contracts:['Commercial','Contracts'], policy:['Commercial','Policy'], audit:['Commercial','Audit'], admins:['Platform','Platform admins'], tenants:['Operations','Tenants'], inventory:['Prototype','Screen inventory'], questions:['Prototype','Open questions'] };
+const clone = x => JSON.parse(JSON.stringify(x));
+const BTN = { mid:['#0B1022','#0B1022','#fff'], terra:['#D97757','#D97757','#0B1022'], danger:['#A8412F','#A8412F','#fff'], sec:['#D5DBE1','#fff','#18212B'] };
+const btn = (label, onClick, tone, dis, why) => { const t = BTN[tone || 'sec']; return { label, onClick, dis: !!dis, why: why || '', op: dis ? .45 : 1, bd: t[0], bg: t[1], fg: t[2] }; };
+const AP = { done:['✓ Applied','#1F7A4D'], failed:['✕ Failed','#A8412F'], sent:['… Sent to Stripe — awaiting confirmation','#2C6FB3'], applying:['… Applying','#2C6FB3'], na:['— No change on this side','#5C6770'], unchanged:['— Unchanged','#5C6770'], pending:['○ Waiting for the other side','#5C6770'] };
+
+class Component extends DCLogic {
+  state = window.CCP ? this.initState() : {};
+  initState() { return { route:null, tenantId:'t_meridian', ttab:'commercial', persona:null, menu:false, pal:false, q:'', collapsed:false,
+    inbox:'me', crOpen:null, crErr:null, crs: clone(C.CR0), tenants: clone(C.T0), roles:{}, pol: clone(C.POL0), plans: clone(C.P0),
+    audit: C.buildAudit(clone(C.CR0)), f:{ prod:'all', src:'all', st:'all', ver:'all', flag:false, commit:'any' },
+    cat:{ prod:'sign', plan:'team', ver:3 }, ct:'CT-2024-007', pv:2, a:{ actor:'all', tenant:'all', prod:'all', type:'all', exc:false, cr:'' }, dlg:null, toast:null }; }
+  clock = Date.UTC(2026, 9, 24, 14, 0); seq = 1053; evSeq = 4800;
+
+  componentDidMount() {
+    if (!this.state.crs) { const w = () => window.CCP ? this.setState(this.initState(), () => this.readHash()) : setTimeout(w, 30); w(); }
+    try { if (localStorage.getItem('aramo.platform.rail') === '1') this.setState({ collapsed: true }); } catch (e) {}
+    this.readHash();
+    this.onHash = () => this.readHash(); window.addEventListener('hashchange', this.onHash);
+    this.onKey = e => {
+      const k = e.key.toLowerCase();
+      if ((e.metaKey || e.ctrlKey) && k === 'k') { e.preventDefault(); this.setState({ pal: true, q:'' }); }
+      if ((e.metaKey || e.ctrlKey) && e.key === '\\') { e.preventDefault(); this.toggleRail(); }
+      if (e.key === 'Escape') this.setState({ pal:false, menu:false, dlg:null, crOpen:null });
+    };
+    window.addEventListener('keydown', this.onKey);
+  }
+  componentWillUnmount() { window.removeEventListener('hashchange', this.onHash); window.removeEventListener('keydown', this.onKey); }
+  readHash() {
+    const h = (window.location.hash || '').slice(1); if (!h) return;
+    const [r, id] = h.split('/');
+    if (r === 'tenant' && id) this.setState({ route:'tenant', tenantId:id, ttab:'commercial' });
+    else if (r === 'cr' && id) this.setState({ route:'approvals', inbox:'pending', crOpen:id });
+    else if (RG[r] !== undefined) this.setState({ route:r });
+  }
+  route() { return this.state.route || this.props.startRoute || 'approvals'; }
+  go(route, extra) { this.setState(Object.assign({ route, menu:false, pal:false, crOpen:null }, extra || {})); try { history.replaceState(null, '', '#' + (route === 'tenant' ? 'tenant/' + ((extra && extra.tenantId) || this.state.tenantId) : route)); } catch (e) {} }
+  toggleRail() { const c = !this.state.collapsed; this.setState({ collapsed:c }); try { localStorage.setItem('aramo.platform.rail', c ? '1' : '0'); } catch (e) {} }
+  tick() { this.clock += 6e4; return this.clock; }
+  toast(msg) { clearTimeout(this.tt); this.setState({ toast: msg }); this.tt = setTimeout(() => this.setState({ toast:null }), 4200); }
+  pid() { return this.state.persona || this.props.persona || 'daniel'; }
+  rolesOf(id) { return this.state.roles[id] || (C.PEOPLE[id] ? C.PEOPLE[id].roles : []); }
+  me() { const id = this.pid(); return Object.assign({}, C.PEOPLE[id], { id, roles: this.rolesOf(id) }); }
+  roster() { return C.ROSTER[this.props.bootstrap] || C.ROSTER.ready; }
+  canMake(type, me) { me = me || this.me(); return me.human && (C.MAKERS[type] || []).some(r => me.roles.includes(r)); }
+  needs(type) { return (C.MAKERS[type] || []).map(r => C.ROLE[r]).join(' or '); }
+  activePol() { return this.state.pol.find(p => p.status === 'ACTIVE'); }
+  tenant(id) { return this.state.tenants.find(t => t.id === id); }
+  plan(id) { return this.state.plans.find(p => p.id === id); }
+  name(id) { return id && C.PEOPLE[id] ? C.PEOPLE[id].name : (id || '—'); }
+  log(e) { this.setState(s => ({ audit: [Object.assign({ id:'ev_' + (++this.evSeq) }, e, { roles: e.roles || this.rolesOf(e.actor) })].concat(s.audit) })); }
+
+  chainOk(key) {
+    const ch = C.CHAINS[key], humans = this.roster().map(id => Object.assign({ id }, C.PEOPLE[id], { roles: this.rolesOf(id) })).filter(p => p.human);
+    const rec = (i, used) => i === ch.steps.length ? humans.some(m => !used.includes(m.id) && m.roles.some(r => ch.makers.includes(r)))
+      : humans.some(p => !used.includes(p.id) && p.roles.includes(ch.steps[i]) && rec(i + 1, used.concat(p.id)));
+    return rec(0, []);
+  }
+  elig(cr, p) {
+    if (cr.state !== 'PENDING_APPROVAL') return { code:'NOT_PENDING', label:'Not pending', why:'This request is ' + C.CRS[cr.state][0].toLowerCase() + '.' };
+    if (cr.expires <= C.NOW) return { code:'EXPIRED', label:'Expired', why:'The approval window closed ' + C.rel(cr.expires) + '.' };
+    if (!p.human) return { code:'NOT_HUMAN', label:'Not a human actor', why:'Service accounts can’t sign approval steps.' };
+    if (cr.by === p.id) return { code:'SELF', label:'You requested this', why:'The person who made a request can’t approve it.' };
+    if (cr.steps.some(s => s.by === p.id)) return { code:'DUP', label:'You already approved a step', why:'One person can sign only one step, even when they hold two roles.' };
+    const i = cr.steps.findIndex(s => !s.by), st = cr.steps[i], roles = this.rolesOf(p.id);
+    if (!roles.includes(st.r)) {
+      if (cr.steps.slice(i + 1).some(s => roles.includes(s.r))) return { code:'ORDER', label:'Out of order', why:'The ' + C.STEP[st.r] + ' step must be signed first.' };
+      const rm = C.PEOPLE[p.id] && C.PEOPLE[p.id].removed && C.PEOPLE[p.id].removed[st.r];
+      return { code:'SCOPE', label:'Missing the scope for this step', why: rm ? 'The ' + C.ROLE[st.r] + ' role was removed ' + C.fD(rm) + ', before approving.' : 'The ' + C.STEP[st.r] + ' step needs the ' + C.ROLE[st.r] + ' role.' };
+    }
+    return { code:'OK', label:'You can sign the ' + C.STEP[st.r] + ' step', why:'Approving records your name and current roles in the audit log.' };
+  }
+  patchCr(id, fn) { const crs = this.state.crs.map(c => c.id === id ? fn(clone(c)) || c : c); this.setState({ crs }); return crs.find(c => c.id === id); }
+  approve(id) {
+    const me = this.me(), cr = this.state.crs.find(c => c.id === id);
+    if (this.elig(cr, me).code !== 'OK') return;
+    if (!this.chainOk(cr.chain)) {
+      this.setState({ crErr:{ code:'CCP_NOT_BOOTSTRAPPED', msg:'The ' + C.CHAINS[cr.chain].label + ' chain doesn’t have enough distinct eligible approvers yet.' } });
+      this.log({ at:this.tick(), actor:me.id, type:'APPROVAL_REFUSED', cr:id, tenant:cr.tenant, product:cr.product, detail:'409 CCP_NOT_BOOTSTRAPPED' }); return;
+    }
+    const t = this.tick();
+    const c2 = this.patchCr(id, c => { const st = c.steps.find(s => !s.by); st.by = me.id; st.at = t; return c; });
+    this.log({ at:t, actor:me.id, type:'STEP_SIGNED', cr:id, tenant:cr.tenant, product:cr.product, detail: C.STEP[c2.steps.filter(s => s.by).slice(-1)[0].r] + ' step signed' });
+    if (c2.steps.every(s => s.by)) this.startApply(c2); else this.toast(C.STEP[c2.steps.find(s => s.by === me.id).r] + ' step signed. Waiting on the next approver.');
+  }
+  startApply(cr) {
+    const t = this.tick(), sd = C.SIDES[cr.type];
+    if (cr.stripe) {
+      this.patchCr(cr.id, c => Object.assign(c, { state:'APPLYING', apply:{ sub:'sent', ent: sd && sd[1] ? 'pending' : 'unchanged' }, endAt:t }));
+      this.log({ at:t, actor:'system', type:'STRIPE_SENT', cr:cr.id, tenant:cr.tenant, product:cr.product, detail:'Command sent to Stripe; awaiting webhook' });
+      this.toast(cr.id + ' approved · Sent to Stripe — awaiting confirmation.'); return;
+    }
+    this.patchCr(cr.id, c => Object.assign(c, { state:'APPLYING', apply: sd ? { sub: sd[0] ? 'applying' : 'na', ent: sd[1] ? 'applying' : 'na' } : null }));
+    setTimeout(() => this.finishApply(cr.id), 900);
+  }
+  finishApply(id, confirm) {
+    const t = this.tick(), cr = this.state.crs.find(c => c.id === id), sd = C.SIDES[cr.type];
+    const apply = cr.apply ? { sub: cr.apply.sub === 'na' || cr.apply.sub === 'unchanged' ? cr.apply.sub : 'done', ent: cr.apply.ent === 'na' || cr.apply.ent === 'unchanged' ? cr.apply.ent : 'done' } : null;
+    this.patchCr(id, c => Object.assign(c, { state:'APPLIED', apply, endAt:t, endBy:'system', endReason: confirm ? 'Stripe confirmed by webhook' : 'Both sides took effect' }));
+    this.applyFx(cr);
+    if (confirm) this.log({ at:t, actor:'system', type:'STRIPE_CONFIRMED', cr:id, tenant:cr.tenant, product:cr.product, detail:'Webhook received' });
+    this.log({ at:t, actor:'system', type:'CR_APPLIED', cr:id, tenant:cr.tenant, product:cr.product, detail: cr.summary });
+    this.toast(id + ' applied.');
+  }
+  applyFx(cr) {
+    const fx = cr.fx; if (!fx) return;
+    const s = this.state, T = clone(s.tenants), tt = fx.t && T.find(x => x.id === fx.t), at = this.clock;
+    if (fx.k === 'plan') Object.assign(tt.products[fx.p].sub, { plan:fx.plan, ver:fx.ver, allow: this.plan(fx.plan).vers.find(v => v.v === fx.ver).env });
+    if (fx.k === 'grant') tt.products[fx.p].ent = { state:'ACTIVE', prov:'CHANGE_REQUEST', ref:cr.id, at };
+    if (fx.k === 'revoke') Object.assign(tt.products[fx.p].ent, { state:'REVOKED', revokedAt:at, revokeRef:cr.id });
+    if (fx.k === 'cancel') { const x = tt.products[fx.p]; x.sub.status = 'ENDED'; x.sub.ended = x.sub.ended || at; Object.assign(x.ent, { state:'REVOKED', revokedAt:at, revokeRef:cr.id }); }
+    if (fx.k === 'recon') tt.recon = null;
+    if (fx.k === 'ext') { const used = this.extUse(tt); tt.ext.push({ id:'EXT-' + cr.id.slice(3), days:fx.days, at, by:cr.by, roles:this.rolesOf(cr.by), clause:'Approved through ' + cr.id + ' (outside Policy v' + cr.policy + ' §4.2)', policy:cr.policy, cumBefore:used.cum, cumAfter:used.cum + fx.days, viaCr:cr.id }); }
+    const up = { tenants:T };
+    if (fx.k === 'publish' || fx.k === 'retire') { const P = clone(s.plans); const pl = P.find(p => p.id === fx.plan); pl.vers.find(v => v.v === fx.ver).status = fx.k === 'publish' ? 'PUBLISHED' : 'RETIRED'; if (fx.k === 'publish') pl.vers.find(v => v.v === fx.ver).pub = at; up.plans = P; }
+    if (fx.k === 'policy') up.pol = s.pol.map(p => p.v === fx.v ? Object.assign({}, p, { status:'ACTIVE', activated:at }) : p.status === 'ACTIVE' ? Object.assign({}, p, { status:'RETIRED', retired:at }) : p);
+    if (fx.k === 'roles') up.roles = Object.assign({}, s.roles, { [fx.who]: fx.roles });
+    this.setState(up);
+  }
+  extUse(t) { const w = this.activePol().vals.extWin * C.D; const inW = t.ext.filter(x => C.NOW - C.ms(x.at) < w); return { uses: inW.length, cum: inW.reduce((a, x) => a + x.days, 0) }; }
+  newCr(o, draft) {
+    const me = this.me(), t = this.tick(), pol = this.activePol(), id = 'CR-' + (++this.seq);
+    const cr = Object.assign({ steps: C.CHAINS[o.chain].steps.map(r => ({ r })), diff:[], apply:null, extra:[] }, o, { id, policy:pol.v, by:me.id, created:t, expires: t + pol.vals.ttl * C.H, state: draft ? 'DRAFT' : 'PENDING_APPROVAL' });
+    this.setState(s => ({ crs:[cr].concat(s.crs), dlg:null, crOpen: draft ? null : id, crErr:null }));
+    this.log({ at:t, actor:me.id, type: draft ? 'CR_DRAFTED' : 'CR_SUBMITTED', cr:id, tenant:o.tenant, product:o.product, detail:o.summary });
+    this.toast(draft ? id + ' saved as a draft.' : id + ' submitted · ' + C.CHAINS[o.chain].steps.map(r => C.STEP[r]).join(' → '));
+    return id;
+  }
+  endCr(id, state, reason) { const me = this.me(), t = this.tick(), cr = this.state.crs.find(c => c.id === id); this.patchCr(id, c => Object.assign(c, { state, endAt:t, endBy:me.id, endReason:reason })); this.log({ at:t, actor:me.id, type:'CR_' + state, cr:id, tenant:cr.tenant, product:cr.product, detail:reason }); this.toast(id + ' ' + C.CRS[state][0].toLowerCase() + '.'); }
+  openDlg(spec) { this.setState({ dlg: Object.assign({ vals:{}, typedVal:'' }, spec, { vals: Object.assign({}, spec.init || {}) }), menu:false }); }
+  setVal(k, v) { this.setState(s => ({ dlg: Object.assign({}, s.dlg, { vals: Object.assign({}, s.dlg.vals, { [k]: v }) }) })); }
+  ev() { return [{ k:'reason', label:'Reason', type:'area', ph:'Why this change is needed' }, { k:'evidence', label:'Evidence', type:'text', ph:'Document, ticket or call notes reference' }]; }
+  needRE(v) { return !(v.reason || '').trim() ? 'x' : !(v.evidence || '').trim() ? 'x' : ''; }
+
+  dlgPlan(t, p) {
+    const sub = t.products[p].sub, pol = this.activePol(), cur = this.plan(sub.plan);
+    const latest = pl => pl.vers.filter(v => v.status === 'PUBLISHED').slice(-1)[0];
+    const opts = this.state.plans.filter(pl => !pl.contractOnly).map(pl => [pl.id, 'Sign ' + pl.name + ' v' + latest(pl).v + ' · ' + C.money(latest(pl).price) + ' / month (SAMPLE)']);
+    const curV = cur.vers.find(v => v.v === sub.ver);
+    const calc = v => { const pl = this.plan(v.plan || sub.plan), lv = latest(pl), d = +v.disc || 0; return { pl, lv, d, price: lv.price * (1 - d / 100) }; };
+    this.openDlg({ title:'Request plan change · ' + t.name, sub:'Plans pin a version. The new plan applies at its latest published version once every approval step is signed.', init:{ plan:sub.plan, disc:0 }, canDraft:true,
+      fields:[{ k:'plan', label:'New plan', type:'sel', options:opts }, { k:'disc', label:'Discount (%)', type:'num', min:0, max:100, help:'Above ' + pol.vals.disc + '% needs Finance → Owner (policy v' + pol.v + ').' }].concat(this.ev()),
+      chain: v => (+v.disc || 0) > pol.vals.disc ? 'ABOVE' : 'BELOW',
+      diff: v => { const c = calc(v); return [['Plan','Sign ' + cur.name, 'Sign ' + c.pl.name], ['Plan version','v' + sub.ver, 'v' + c.lv.v], ['Price', curV.price == null ? 'Negotiated' : C.money(curV.price) + ' / month', C.money(c.price) + ' / month'], ['Discount','None', c.d ? c.d + '%' : 'None'], ['Allowance', sub.allow.toLocaleString('en-US') + ' envelopes', c.lv.env.toLocaleString('en-US') + ' envelopes']]; },
+      valid: v => (v.plan === sub.plan && !(+v.disc)) ? 'x' : this.needRE(v),
+      commit:'Submit for approval', tone:'terra',
+      onCommit: (v, draft) => { const c = calc(v); const ch = (+v.disc || 0) > pol.vals.disc ? 'ABOVE' : 'BELOW'; this.newCr({ type:'PLAN_CHANGE', tenant:t.id, product:p, summary:'Sign ' + cur.name + ' v' + sub.ver + ' → Sign ' + c.pl.name + ' v' + c.lv.v + (c.d ? ' with a ' + c.d + '% discount' : ''), chain:ch, reason:v.reason, evidence:v.evidence, diff: this.state.dlg.diff(v), fx:{ k:'plan', t:t.id, p, plan:c.pl.id, ver:c.lv.v } }, draft); } });
+  }
+  dlgSimple(kind, t, p) {
+    const x = t.products[p], prod = C.PROD[p];
+    const S = {
+      CANCEL:{ title:'Request cancel · ' + prod, sub:'Ends the MANUAL subscription and revokes the ' + prod + ' entitlement once approved. Both sides must apply before the request shows Applied.', chain:'ABOVE', typed:t.name, tone:'danger', summary:'Cancel ' + prod, diff:[['Subscription','Active','Ended'],[prod + ' entitlement','Active','Revoked']], fx:{ k:'cancel', t:t.id, p } },
+      GRANT:{ title:'Grant product · ' + prod, sub:'Grants the ' + prod + ' entitlement. Provenance is recorded as this change request.', chain:'BELOW', tone:'terra', summary:'Grant ' + prod, diff:[[prod + ' entitlement', x.ent.state === 'REVOKED' ? 'Revoked' : 'Not granted', 'Active']], fx:{ k:'grant', t:t.id, p } },
+      REVOKE:{ title:'Revoke product · ' + prod, sub:'People in ' + t.name + ' lose access to ' + prod + ' once approved. Data is kept.', chain:'BELOW', typed:t.name, tone:'danger', summary:'Revoke ' + prod, diff:[[prod + ' entitlement','Active','Revoked']], fx:{ k:'revoke', t:t.id, p } },
+      RECON:{ title:'Request reconciliation release · ' + t.name, sub:'Cancels the blocked self-service checkout in Stripe and keeps the MANUAL contract subscription. Stripe confirms by webhook.', chain:'BELOW', tone:'terra', summary:'Release reconciliation flag', stripe:true, diff:[['Self-service checkout subscription','Blocked (incomplete)','Cancelled in Stripe'],['MANUAL subscription','Active','Active (unchanged)'],['Reconciliation flag','Open','Released']], fx:{ k:'recon', t:t.id } },
+    }[kind];
+    this.openDlg({ title:S.title, sub:S.sub, fields:this.ev(), typed:S.typed, tone:S.tone, canDraft:true, chain:() => S.chain, diff:() => S.diff, valid: v => this.needRE(v), commit:'Submit for approval',
+      onCommit: (v, draft) => this.newCr({ type:kind, tenant:t.id, product:p, summary:S.summary, chain:S.chain, stripe:S.stripe, reason:v.reason, evidence:v.evidence, diff:S.diff, fx:S.fx }, draft) });
+  }
+  dlgExt(t, p) {
+    const pol = this.activePol().vals, me = this.me(), sub = t.products[p].sub;
+    const ev = v => { const d = +v.days || 0, u = this.extUse(t); const why = d > pol.extDays ? 'More than ' + pol.extDays + ' days in one extension.' : u.uses >= 1 ? 'A previous extension was used ' + C.rel(t.ext.slice(-1)[0].at) + ', inside the ' + pol.extWin + '-day window.' : u.cum + d > pol.extCum ? 'Cumulative days would exceed ' + pol.extCum + '.' : ''; return { d, u, why, ok: d >= 1 && !why }; };
+    this.openDlg({ title:'Request support extension · ' + t.name, sub: sub.source === 'SELF_SERVICE' ? 'Extends access as an overlay. Stripe billing dates and invoices don’t change.' : 'Extends the current period as an overlay on the MANUAL subscription.', init:{ days:7 },
+      fields:[{ k:'days', label:'Extension (days)', type:'num', min:1, max:60, help:'Policy v' + this.activePol().v + ' §4.2: up to ' + pol.extDays + ' days, once per tenant per ' + pol.extWin + ' days, ' + pol.extCum + ' days cumulative.' }, { k:'reason', label:'Reason', type:'area', ph:'Why the tenant needs more time' }],
+      preview: v => { const e = ev(v); if (!e.d) return null; return e.ok ? { tone:'ok', title:'Within bounds — applies now as an exception, with zero approvals', lines:['Actor: ' + me.name + ' · roles: ' + me.roles.map(r => C.ROLE[r]).join(', '), 'Policy clause: v' + this.activePol().v + ' §4.2', 'Uses in the ' + pol.extWin + '-day window: ' + e.u.uses + ' → ' + (e.u.uses + 1), 'Cumulative days: ' + e.u.cum + ' → ' + (e.u.cum + e.d) + ' (cap ' + pol.extCum + ')', 'Recorded in audit with the exception flag'] } : { tone:'warn', title:'Out of bounds — escalates to approval (Finance)', lines:[e.why, 'The request goes to Pending approval and applies only after it is signed.'] }; },
+      chain: v => ev(v).ok ? null : 'BELOW',
+      commitFn: v => ev(v).ok ? 'Apply extension (exception)' : 'Submit for approval', tone:'terra',
+      valid: v => !(+v.days >= 1) || !(v.reason || '').trim() ? 'x' : '',
+      onCommit: v => { const e = ev(v);
+        if (e.ok) { const at = this.tick(); const T = clone(this.state.tenants), tt = T.find(x => x.id === t.id); const id = 'EXT-' + (43 + tt.ext.length + T.reduce((a, x) => a + x.ext.length, 0)).toString().padStart(4, '0');
+          tt.ext.push({ id, days:e.d, at, by:me.id, roles:me.roles.slice(), clause:'Policy v' + this.activePol().v + ' §4.2 — up to ' + pol.extDays + ' days per use, once per tenant per ' + pol.extWin + ' days, ' + pol.extCum + ' days cumulative', policy:this.activePol().v, cumBefore:e.u.cum, cumAfter:e.u.cum + e.d });
+          this.setState({ tenants:T, dlg:null });
+          this.log({ at, actor:me.id, type:'EXTENSION_EXCEPTION', exc:true, tenant:t.id, product:p, detail:'+' + e.d + ' days · Policy v' + this.activePol().v + ' §4.2 · use ' + (e.u.uses + 1) + ' in ' + pol.extWin + ' days · cumulative ' + e.u.cum + ' → ' + (e.u.cum + e.d) + ' days' });
+          this.toast('Extension applied as an exception — zero approvals, flagged in audit.'); }
+        else this.newCr({ type:'EXTENSION', tenant:t.id, product:p, summary:'+' + e.d + ' day support extension (escalated)', chain:'BELOW', reason:v.reason, evidence:'Escalated: ' + e.why, note:'Escalated: ' + e.why, diff:[['Support extension', e.u.cum + ' days used in window', '+' + e.d + ' days'],['Cumulative in window', e.u.cum + ' days', (e.u.cum + e.d) + ' days'],['Stripe billing dates','Unchanged','Unchanged (overlay)']], fx:{ k:'ext', t:t.id, days:e.d } }); } });
+  }
+  dlgReject(cr) { this.openDlg({ title:'Reject ' + cr.id, sub:'Rejecting ends the request. The requester can make a new one.', fields:[{ k:'reason', label:'Reason (required)', type:'area', ph:'Shown to the requester and recorded in audit' }], tone:'danger', commit:'Reject request', valid: v => (v.reason || '').trim() ? '' : 'x', onCommit: v => { this.setState({ dlg:null }); this.endCr(cr.id, 'REJECTED', v.reason.trim()); } }); }
+  dlgCatalog(kind, pl, ver) {
+    const pub = pl.vers.filter(v => v.status === 'PUBLISHED' && v.v !== ver.v).slice(-1)[0];
+    const pinned = this.state.tenants.filter(t => t.products.sign.sub && t.products.sign.sub.plan === pl.id && t.products.sign.sub.ver === ver.v).length;
+    const diff = kind === 'publish' && pub ? [['Price', C.money(pub.price), C.money(ver.price)], ['Envelopes per month', pub.env.toLocaleString('en-US'), ver.env.toLocaleString('en-US')], ['Seats', '' + pub.seats, '' + ver.seats], ['Storage', pub.gb + ' GB', ver.gb + ' GB']] : [['Sign ' + pl.name + ' v' + ver.v, 'Published', 'Retired']];
+    this.openDlg({ title:(kind === 'publish' ? 'Request publish · ' : 'Request retire · ') + 'Sign ' + pl.name + ' v' + ver.v, sub: kind === 'publish' ? 'Once published, v' + ver.v + ' can’t be edited. Existing subscriptions stay on their pinned version; new subscriptions use v' + ver.v + '.' : 'Retired versions take no new subscriptions. ' + pinned + ' tenant(s) stay pinned to it (grandfathered).', fields:this.ev(), typed: kind === 'retire' ? pl.name + ' v' + ver.v : null, tone: kind === 'retire' ? 'danger' : 'terra', chain:() => 'CATALOG', diff:() => diff, valid: v => this.needRE(v), commit:'Submit for approval',
+      onCommit: v => { const id = this.newCr({ type: kind === 'publish' ? 'CATALOG_PUBLISH' : 'CATALOG_RETIRE', tenant:null, product:'sign', summary:(kind === 'publish' ? 'Publish' : 'Retire') + ' Sign ' + pl.name + ' v' + ver.v, chain:'CATALOG', reason:v.reason, evidence:v.evidence, diff, fx:{ k:kind, plan:pl.id, ver:ver.v } }); if (kind === 'publish') this.setState(s => ({ plans: s.plans.map(x => x.id !== pl.id ? x : Object.assign({}, x, { vers: x.vers.map(y => y.v === ver.v ? Object.assign({}, y, { cr:id }) : y) })) })); } });
+  }
+  dlgPolicy(pv, rollback) {
+    const act = this.activePol(), diff = C.PFIELDS.filter(f => act.vals[f[0]] !== pv.vals[f[0]]).map(f => [f[1], f[2](act.vals[f[0]]), f[2](pv.vals[f[0]])]);
+    this.openDlg({ title:(rollback ? 'Request rollback to policy v' : 'Request activation · policy v') + pv.v, sub:'v' + pv.v + ' becomes the active policy once approved; v' + act.v + ' is retired. Requests already open keep the chain they were created with.', fields:this.ev(), tone:'terra', chain:() => 'POLICY', diff:() => diff.length ? diff : [['All settings','Same as v' + act.v,'No change']], valid: v => this.needRE(v), commit:'Submit for approval',
+      onCommit: v => this.newCr({ type:'POLICY_ACTIVATE', tenant:null, product:null, summary:(rollback ? 'Roll back to' : 'Activate') + ' policy v' + pv.v, chain:'POLICY', reason:v.reason, evidence:v.evidence, diff, fx:{ k:'policy', v:pv.v } }) });
+  }
+  dlgRole(id) {
+    const cur = this.rolesOf(id), owners = this.roster().filter(x => this.rolesOf(x).includes('platform_owner'));
+    this.openDlg({ title:'Request role change · ' + this.name(id), sub:'Role changes take effect after a different Platform owner approves. Granting Platform owner or Finance admin is privileged.', init:{ roles:cur.slice() },
+      fields:[{ k:'roles', label:'Commercial roles', type:'checks', options:Object.keys(C.ROLE).map(r => [r, C.ROLE[r]]) }].concat(this.ev()), tone:'terra', chain:() => 'PRIV',
+      diff: v => [[this.name(id), cur.map(r => C.ROLE[r]).join(', ') || 'No commercial roles', (v.roles || []).map(r => C.ROLE[r]).join(', ') || 'No commercial roles']],
+      alert: v => cur.includes('platform_owner') && !(v.roles || []).includes('platform_owner') && owners.length <= 1 ? 'Refused: ' + this.name(id) + ' is the last Platform owner. Grant Platform owner to another person first, then remove it here.' : '',
+      valid: v => (JSON.stringify((v.roles || []).slice().sort()) === JSON.stringify(cur.slice().sort())) ? 'x' : this.needRE(v), commit:'Submit for approval',
+      onCommit: v => this.newCr({ type:'ROLE_CHANGE', tenant:null, product:null, summary:'Change roles for ' + this.name(id), chain:'PRIV', reason:v.reason, evidence:v.evidence, diff:this.state.dlg.diff(v), fx:{ k:'roles', who:id, roles:v.roles } }) });
+  }
+  dlgContract(kind, c) {
+    const t = this.tenant(c.tenant), end = kind === 'end';
+    this.openDlg({ title:(end ? 'End contract · ' : 'Record amendment · ') + c.id, sub: end ? 'Ends the MANUAL subscription and revokes the Sign entitlement for ' + t.name + ' once approved.' : 'Amendments are recorded with evidence and apply after approval.', fields:(end ? [] : [{ k:'what', label:'Amendment', type:'text', ph:'e.g. Allowance raised to 30,000 envelopes per month' }]).concat(this.ev()), typed: end ? c.id : null, tone: end ? 'danger' : 'terra', chain:() => 'ABOVE',
+      diff: v => end ? [['Contract ' + c.id,'Active','Ended'],['Sign entitlement','Active','Revoked']] : [['Terms','Current terms', v.what || '—']], valid: v => (!end && !(v.what || '').trim()) ? 'x' : this.needRE(v), commit:'Submit for approval',
+      onCommit: v => this.newCr({ type: end ? 'CONTRACT_END' : 'CONTRACT_AMEND', tenant:c.tenant, product:'sign', summary: end ? 'End contract ' + c.id : v.what, chain:'ABOVE', reason:v.reason, evidence:v.evidence, diff:this.state.dlg.diff(v), fx: end ? { k:'cancel', t:c.tenant, p:'sign' } : null }) });
+  }
+
+  renderVals() {
+    if (!this.state.crs) return { is:{}, me:{ badges:[] }, navGroups:[], crumbs:[], personas:[], boot:{}, cr:{}, dl:{}, pal:{}, toast:{}, expanded:true };
+    const s = this.state, me = this.me(), P = this.props, R = this.route();
+    const ccp = me.roles.length > 0, tenantOk = !!me.sa || ccp, adminsOk = !!me.sa || me.roles.includes('platform_owner') || me.roles.includes('read_only_auditor');
+    const gate = g => g == null ? true : g === 'ops' ? !!me.sa : g === 'tenant' ? tenantOk : g === 'ccp' ? ccp : g === 'admins' ? adminsOk : false;
+    const demo = P.demoState || 'normal', loading = demo === 'loading', empty = demo === 'empty';
+    const collapsed = s.collapsed, cur = R === 'tenant' ? 'tenants' : R, denied = !gate(RG[R]);
+    const V = { loading, collapsed, expanded: !collapsed, railW: collapsed ? '64px' : '236px', railPad: collapsed ? '8px' : '12px', railJustify: collapsed ? 'center' : 'flex-start', itemPad: collapsed ? '0' : '12px', platformTag: collapsed ? 'P' : 'PLATFORM',
+      toggleRail: () => this.toggleRail(), expandRail: () => collapsed && this.toggleRail(), menuOpen: s.menu, toggleMenu: () => this.setState({ menu: !s.menu }) };
+    const roleText = me.sa ? 'Super admin' : me.roles.map(r => C.ROLE[r]).join(' + ') + (me.human ? '' : ' · service account');
+    V.me = Object.assign({}, me, { roleText, badges: (me.sa ? ['SUPER ADMIN'] : me.roles.map(r => C.ROLE[r].toUpperCase())).concat(me.human ? [] : ['SERVICE ACCOUNT']) });
+    V.personas = C.PERSONAS.map(id => { const p = C.PEOPLE[id], on = id === me.id, rs = this.rolesOf(id); return { name: p.name, sub: p.sa ? 'Super admin · no commercial roles' : rs.map(r => C.ROLE[r]).join(' + ') + (id === 'arjun' ? ' (one person)' : '') + (p.human ? '' : ' · service account'), on, mark: on ? '●' : '', bg: on ? '#fff' : 'transparent', onClick: e => { e.preventDefault(); this.setState({ persona:id, menu:false, crErr:null }); this.toast('Viewing as ' + p.name + '.'); } }; });
+    V.navGroups = NAV.map(([g, items]) => ({ g, isNew: g === 'Commercial', items: items.filter(i => gate(i[2])).map(([k, label, , icon]) => { const on = k === cur, ext = k.indexOf('x:') === 0; return { label, icon, title: ext ? label + ' (opens Platform Admin)' : label, ext: ext && !collapsed, cur: on ? 'page' : undefined, bg: on ? 'rgba(255,255,255,.12)' : 'transparent', color: on ? '#fff' : '#C9CACE', fw: on ? 700 : 500, showBar: on, onClick: e => { e.preventDefault(); if (ext) window.location.href = 'Platform%20Admin.dc.html#' + k.slice(2); else this.go(k); } }; }) })).filter(g => g.items.length);
+    const t0 = this.tenant(s.tenantId);
+    const cr0 = R === 'tenant' ? ['Operations', 'Tenants', t0 ? t0.name : 'Tenant'] : CRUMB[R] || ['Commercial'];
+    V.crumbs = cr0.map((l, i) => ({ label:l, last: i === cr0.length - 1, plain: i < cr0.length - 1 && !(R === 'tenant' && i === 1), link: R === 'tenant' && i === 1, onClick: e => { e.preventDefault(); this.go('tenants'); } }));
+    const bad = Object.keys(C.CHAINS).filter(k => !this.chainOk(k));
+    V.boot = { show: ccp && bad.length > 0, text: bad.map(k => C.CHAINS[k].label + ' (' + C.CHAINS[k].steps.map(r => C.STEP[r]).join(' → ') + ')').join(', '), go: e => { e.preventDefault(); this.go('admins'); } };
+    V.is = { denied }; Object.keys(RG).forEach(k => { V.is[k] = !denied && R === k; });
+    V.denied = { what: (CRUMB[R] || ['Commercial'])[0] === 'Commercial' ? 'Commercial ' + (CRUMB[R] || ['', ''])[1].toLowerCase() : (CRUMB[R] || ['', 'this page'])[1], why: me.sa ? 'Super admin holds no commercial authority. Commercial screens are open only to people with a commercial role.' : 'Your roles don’t include access to this page.', roles: Object.values(C.ROLE), backLabel: tenantOk ? 'Back to tenants' : 'Back', back: () => this.go(tenantOk ? 'tenants' : 'inventory') };
+    const T = (id) => this.tenant(id);
+    const pend = c => c.state === 'PENDING_APPROVAL';
+
+    // approvals
+    const rowOf = c => { const t = T(c.tenant), hl = Math.round((c.expires - C.NOW) / C.H);
+      return { id:c.id, type:C.TYPE[c.type], tenant: t ? t.name : 'Platform', product: c.product ? C.PROD[c.product] : '—', summary:c.summary, by:this.name(c.by), when:C.rel(c.created),
+        chain: c.steps.map((st, i) => ({ label:C.STEP[st.r], mark: st.by ? '✓' : '○', fg: st.by ? '#1F7A4D' : '#5C6770', sep: i < c.steps.length - 1 })), p: C.pill.apply(null, C.CRS[c.state]),
+        exp: pend(c) ? Math.max(0, hl) + ' h left' : c.state === 'DRAFT' ? 'Not submitted' : c.state === 'EXPIRED' ? 'Expired ' + C.rel(c.expires) : '—', expFg: pend(c) && hl < 12 ? '#946011' : c.state === 'EXPIRED' ? '#A8412F' : '#18212B',
+        policy:'v' + c.policy, policyOld: c.policy !== this.activePol().v && (pend(c) || c.state === 'DRAFT'), onClick: () => this.setState({ crOpen:c.id, crErr:null }) }; };
+    const TABS = [['me','Waiting on me', c => pend(c) && this.elig(c, me).code === 'OK'], ['pending','All pending', pend], ['mine','Requested by me', c => c.by === me.id], ['history','History', c => !pend(c) && c.state !== 'DRAFT']];
+    const crs = empty ? [] : s.crs, tab = TABS.find(x => x[0] === s.inbox) || TABS[0], rows = loading ? [] : crs.filter(tab[2]).sort((a, b) => (pend(a) && pend(b) ? a.expires - b.expires : b.created - a.created));
+    const EM = { me:['Nothing waiting on you','Requests appear here when you can sign their current step.'], pending:['No pending requests','New change requests appear here until every step is signed.'], mine:['You haven’t made any requests','Requests you create from tenants, the catalog, policy or roles appear here.'], history:['No history yet','Applied, rejected, expired and withdrawn requests appear here.'] };
+    V.ap = { tabs: TABS.map(([k, l, f]) => ({ label:l, count: loading ? '–' : crs.filter(f).length, on: k === tab[0], bd: k === tab[0] ? '#0B1022' : 'transparent', fw: k === tab[0] ? 700 : 500, onClick: () => this.setState({ inbox:k }) })), rows: rows.map(rowOf), hasRows: rows.length > 0, empty: !loading && !rows.length, emptyTitle: EM[tab[0]][0], emptyBody: EM[tab[0]][1] };
+
+    // drawer
+    const c = s.crOpen && s.crs.find(x => x.id === s.crOpen);
+    if (c) {
+      const t = T(c.tenant), v = this.elig(c, me), MAIN = ['DRAFT','PENDING_APPROVAL','APPROVED','APPLYING','APPLIED'];
+      const reach = { DRAFT:0, PENDING_APPROVAL:1, APPROVED:2, APPLYING:3, APPLIED:4, APPLY_FAILED:3, REJECTED:1, EXPIRED:1, WITHDRAWN:1 }[c.state], term = ['REJECTED','EXPIRED','WITHDRAWN','APPLY_FAILED'].indexOf(c.state) >= 0;
+      const stepper = MAIN.map((k, i) => { const done = i < reach || (k === 'APPLIED' && c.state === 'APPLIED'), fail = term && i === reach, now = !term && i === reach && !done;
+        return { label: k === 'APPLYING' && c.stripe && c.state === 'APPLYING' ? 'Sent to Stripe — awaiting confirmation' : C.CRS[k][0], mark: done ? '✓' : fail ? '✕' : now ? '●' : '○', fg: done ? '#17603C' : fail ? '#7A2E21' : now ? '#1E4E80' : '#5C6770', bg: done ? '#E3F1EA' : fail ? '#F8E9E6' : now ? '#E6EFF8' : '#fff', bd: done ? '#BFDCCB' : fail ? '#EBC6BE' : now ? '#C9DAEE' : '#E5E9ED', op: term && i > reach ? .45 : 1 }; });
+      if (term) stepper.push({ label:C.CRS[c.state][0], mark:'■', fg:'#7A2E21', bg:'#F8E9E6', bd:'#EBC6BE', op:1 });
+      const ci = c.steps.findIndex(x => !x.by);
+      const tl = [{ label: c.state === 'DRAFT' ? 'Draft saved' : 'Submitted for approval', at:C.fT(c.created), by:this.name(c.by) + ' · ' + this.rolesOf(c.by).map(r => C.ROLE[r]).join(', '), dot:'#2C6FB3' }]
+        .concat(c.steps.filter(x => x.by).map(x => ({ label:C.STEP[x.r] + ' step signed', at:C.fT(x.at), by:this.name(x.by) + ' · as ' + C.ROLE[x.r], dot:'#1F7A4D', t:x.at })))
+        .concat(c.endAt ? [{ label: c.state === 'APPLYING' ? 'Sent to Stripe' : c.state === 'APPLY_FAILED' ? 'Apply failed' : C.CRS[c.state][0], at:C.fT(c.endAt), by:(c.endBy ? this.name(c.endBy) : '') + (c.endReason ? ' · ' + c.endReason : ''), dot: c.state === 'APPLIED' ? '#1F7A4D' : c.state === 'APPLY_FAILED' ? '#A8412F' : '#66717B' }] : []).reverse();
+      const acts = [];
+      if (pend(c)) { acts.push(Object.assign(btn('Approve', () => this.approve(c.id), 'terra', v.code !== 'OK'), { bd:'1px solid #D97757' })); acts.push(Object.assign(btn('Reject…', () => this.dlgReject(c), 'sec', v.code !== 'OK'), { bd:'1px solid #D5DBE1' })); }
+      if (c.state === 'DRAFT' && c.by === me.id) acts.push(Object.assign(btn('Submit for approval', () => { const t2 = this.tick(), pol = this.activePol(); this.patchCr(c.id, x => Object.assign(x, { state:'PENDING_APPROVAL', created:t2, expires:t2 + pol.vals.ttl * C.H, policy:pol.v })); this.log({ at:t2, actor:me.id, type:'CR_SUBMITTED', cr:c.id, tenant:c.tenant, product:c.product, detail:c.summary }); this.toast(c.id + ' submitted for approval.'); }, 'terra'), { bd:'1px solid #D97757' }));
+      if ((pend(c) || c.state === 'DRAFT') && c.by === me.id) acts.push(Object.assign(btn('Withdraw', () => this.endCr(c.id, 'WITHDRAWN', 'Withdrawn by the requester'), 'sec'), { bd:'1px solid #D5DBE1' }));
+      if (c.state === 'APPLY_FAILED') { const ok = this.canMake(c.type, me) || me.roles.includes('platform_owner'); acts.push(Object.assign(btn('Retry apply', () => { const t2 = this.tick(); this.patchCr(c.id, x => Object.assign(x, { state:'APPLYING', apply:{ sub: x.apply.sub, ent:'applying' } })); this.log({ at:t2, actor:me.id, type:'APPLY_RETRIED', cr:c.id, tenant:c.tenant, product:c.product, detail:'Retry after ' + (c.apply.err || 'failure') }); setTimeout(() => this.finishApply(c.id), 900); }, 'mid', !ok), { bd:'1px solid #0B1022' })); }
+      if (c.state === 'APPLYING' && c.stripe) acts.push({ label:'Prototype: simulate Stripe webhook', onClick: () => this.finishApply(c.id, true), dis:false, op:1, bd:'1px dashed #C0410C', bg:'#FFF7F3', fg:'#C0410C' });
+      const sd = C.SIDES[c.type];
+      V.cr = { open:true, close: () => this.setState({ crOpen:null, crErr:null }), id:c.id, type:C.TYPE[c.type], summary:c.summary, p: C.pill.apply(null, C.CRS[c.state]),
+        tenant: (t ? t.name : 'Platform-wide') + (c.product ? ' · ' + C.PROD[c.product] : ''), by: this.name(c.by) + ' · ' + this.rolesOf(c.by).map(r => C.ROLE[r]).join(', '), created: C.fT(c.created),
+        exp: pend(c) ? 'Expires ' + C.fT(c.expires) + ' · ' + Math.max(0, Math.round((c.expires - C.NOW) / C.H)) + ' h left' : c.state === 'EXPIRED' ? 'Expired ' + C.fT(c.expires) : c.state === 'DRAFT' ? 'Starts when submitted' : 'Closed', expFg: c.state === 'EXPIRED' ? '#A8412F' : '#18212B',
+        policy:'v' + c.policy + (c.policy !== this.activePol().v ? ' (active is v' + this.activePol().v + ')' : ''), chainLabel: C.CHAINS[c.chain].label + ': ' + C.CHAINS[c.chain].steps.map(r => C.STEP[r]).join(' → '), stepper,
+        hasErr: !!s.crErr, errMsg: s.crErr && s.crErr.msg, errCode: s.crErr && s.crErr.code, hasNote: !!c.note, note: c.note,
+        diff: c.diff.map(d => ({ f:d[0], b:d[1], a:d[2] })), reason: c.reason || '—', evidence: c.evidence || '—',
+        chain: c.steps.map((x, i) => ({ role: C.STEP[x.r] + ' · ' + C.ROLE[x.r], who: x.by ? 'Signed by ' + this.name(x.by) + ' · ' + C.fT(x.at) : !pend(c) ? 'Not signed' : i === ci ? 'Waiting' : 'Not started', mark: x.by ? '✓' : i + 1, fg: x.by ? '#17603C' : i === ci && pend(c) ? '#1E4E80' : '#5C6770', bg: x.by ? '#E3F1EA' : i === ci && pend(c) ? '#E6EFF8' : '#F0F2F4' })),
+        isPending: pend(c), curStep: ci >= 0 ? C.STEP[c.steps[ci].r] : '',
+        v: v.code === 'OK' ? { label:v.label, why:v.why, mark:'✓', fg:'#17603C', bg:'#F1F8F4', bd:'#BFDCCB' } : { label:'You can’t approve: ' + v.label, why:v.why, mark:'—', fg:'#3F4A55', bg:'#FAFBFC', bd:'#E5E9ED' },
+        others: this.roster().concat(['svc']).filter(id => id !== me.id).map(id => { const o = Object.assign({ id }, C.PEOPLE[id]), e = this.elig(c, o); return { name:o.name, roles: o.sa ? 'Super admin' : this.rolesOf(id).map(r => C.ROLE[r]).join(', '), label: e.code === 'OK' ? 'Can sign' : e.label, mark: e.code === 'OK' ? '✓' : '·', fg: e.code === 'OK' ? '#17603C' : '#5C6770' }; }),
+        hasApply: !!(c.apply && sd), apply: c.apply && sd ? [['Subscription', c.apply.sub], ['Entitlement', c.apply.ent]].map(([side, k]) => ({ side, label: AP[k][0], fg: AP[k][1] })) : [], applyErr: !!(c.apply && c.apply.err && c.state === 'APPLY_FAILED'), applyErrCode: c.apply && c.apply.err,
+        tl, actions: acts, footNote: pend(c) && v.code !== 'OK' ? v.label + '.' : '' };
+    } else V.cr = { open:false };
+
+    // subscriptions
+    const subRows = [];
+    s.tenants.forEach(t => Object.keys(t.products).forEach(p => { const x = t.products[p]; if (x.sub) subRows.push({ t, p, sub:x.sub }); }));
+    const f = s.f, setF = (k, v) => this.setState({ f: Object.assign({}, f, { [k]: v }) });
+    const stOf = r => r.sub.status === 'PAST_DUE' && r.sub.grace ? ['PAST_DUE','GRACE'] : [r.sub.status];
+    const passes = (r, skipSt) => (f.prod === 'all' || r.p === f.prod) && (f.src === 'all' || r.sub.source === f.src) && (f.ver === 'all' || r.sub.plan + ':' + r.sub.ver === f.ver) && (!f.flag || !!r.t.recon) && (f.commit === 'any' || (r.sub.commitEnd && C.ms(r.sub.commitEnd) >= C.NOW && C.ms(r.sub.commitEnd) - C.NOW <= +f.commit * C.D)) && (skipSt || f.st === 'all' || stOf(r).indexOf(f.st) >= 0);
+    const base = empty ? [] : subRows, filtered = loading ? [] : base.filter(r => passes(r));
+    V.sb = { status: [['all','All'],['ACTIVE','Active'],['PAST_DUE','Past due'],['GRACE','In grace'],['SUSPENDED','Suspended'],['ENDED','Ended']].map(([k, l]) => { const on = f.st === k; return { label:l, count: base.filter(r => passes(r, true) && (k === 'all' || stOf(r).indexOf(k) >= 0)).length, on, bg: on ? '#0B1022' : 'transparent', fg: on ? '#fff' : '#18212B', fw: on ? 700 : 500, onClick: () => setF('st', k) }; }),
+      prod:f.prod, src:f.src, ver:f.ver, commit:f.commit, flag:f.flag, onProd: e => setF('prod', e.target.value), onSrc: e => setF('src', e.target.value), onVer: e => setF('ver', e.target.value), onCommit: e => setF('commit', e.target.value), onFlag: e => setF('flag', e.target.checked),
+      prodOpts: [{ v:'all', l:'All products' }].concat(Object.keys(C.PROD).map(k => ({ v:k, l:C.PROD[k] }))),
+      verOpts: [{ v:'all', l:'All plan versions' }].concat([].concat.apply([], s.plans.map(pl => pl.vers.filter(x => x.status !== 'DRAFT').map(x => ({ v: pl.id + ':' + x.v, l: 'Sign ' + pl.name + ' v' + x.v }))))),
+      countText: filtered.length + ' of ' + base.length, hasRows: filtered.length > 0, empty: !loading && !filtered.length, clear: () => this.setState({ f:{ prod:'all', src:'all', st:'all', ver:'all', flag:false, commit:'any' } }),
+      rows: filtered.map(r => { const pl = this.plan(r.sub.plan), self = r.sub.source === 'SELF_SERVICE', st = r.sub.status, days = r.sub.commitEnd ? Math.round((C.ms(r.sub.commitEnd) - C.NOW) / C.D) : null;
+        const flags = []; if (r.t.recon) flags.push({ label:'Reconciliation flag', fg:'#6B4609', bg:'#FAF0DC' }); if (r.t.ext.length) flags.push({ label:'Extension · exception', fg:'#8A3A1F', bg:'#FBE7DF' });
+        return { tenant:r.t.name, slug:r.t.slug, product:C.PROD[r.p], plan:'Sign ' + pl.name, ver:'v' + r.sub.ver + (pl.vers.find(x => x.v === r.sub.ver).status === 'RETIRED' ? ' · grandfathered' : ''), src: self ? 'Managed in Stripe' : 'MANUAL · ' + r.sub.contract, srcBd: self ? '#C9D2F5' : '#D5DBE1', srcBg: self ? '#E9EDFB' : '#fff', srcFg: self ? '#011F8D' : '#3F4A55',
+          p: C.pill(st === 'PAST_DUE' && r.sub.grace ? 'Past due · in grace' : C.SUBST[st][0], C.SUBST[st][1]), period: C.fD(r.sub.ps) + ' – ' + C.fD(r.sub.pe),
+          grace: st === 'PAST_DUE' && r.sub.grace ? 'Grace ends ' + C.fD(r.sub.grace) + ' (' + C.rel(r.sub.grace) + ')' : st === 'SUSPENDED' ? 'Suspended ' + C.fD(r.sub.susp) + ' after grace' : st === 'ENDED' ? 'Ended ' + C.fD(r.sub.ended) : '', graceFg: st === 'ACTIVE' ? '#5C6770' : '#946011',
+          commit: r.sub.commitEnd ? C.fD(r.sub.commitEnd) : '—', commitRel: days == null ? (self ? 'No commitment' : '') : days < 0 ? 'Ended' : 'in ' + days + ' days', flags, onClick: () => this.go('tenant', { tenantId:r.t.id, ttab:'commercial' }) }; }) };
+
+    // catalog
+    const isCat = me.roles.includes('catalog_manager') && me.human, cat = s.cat, pinCount = (pl, v) => s.tenants.filter(t => t.products.sign.sub && t.products.sign.sub.plan === pl && t.products.sign.sub.ver === v);
+    const VS = { PUBLISHED:['Published','ok'], DRAFT:['Draft','neutral'], RETIRED:['Retired','muted'] };
+    const plan = this.plan(cat.plan) || s.plans[0], ver = plan.vers.find(x => x.v === cat.ver) || plan.vers[plan.vers.length - 1];
+    const lastPub = plan.vers.filter(x => x.status === 'PUBLISHED' && x.v !== ver.v).slice(-1)[0];
+    const setVer = (k, val) => this.setState(st => ({ plans: st.plans.map(x => x.id !== plan.id ? x : Object.assign({}, x, { vers: x.vers.map(y => y.v === ver.v ? Object.assign({}, y, { [k]: +val }) : y) })) }));
+    const pendCr = ver.cr && s.crs.find(x => x.id === ver.cr);
+    const catActs = [];
+    if (ver.status === 'DRAFT') catActs.push(btn('Request publish…', () => this.dlgCatalog('publish', plan, ver), 'terra', !isCat || (pendCr && ['PENDING_APPROVAL','APPLYING'].indexOf(pendCr.state) >= 0), !isCat ? 'Needs the Catalog manager role.' : 'A publish request is already open.'));
+    if (ver.status !== 'DRAFT' && !plan.vers.some(x => x.status === 'DRAFT')) catActs.push(btn('Create new draft from v' + ver.v, () => { const nv = Math.max.apply(null, plan.vers.map(x => x.v)) + 1; this.setState(st => ({ plans: st.plans.map(x => x.id !== plan.id ? x : Object.assign({}, x, { vers: x.vers.concat([Object.assign({}, ver, { v:nv, status:'DRAFT', pub:null, ret:null, cr:null })]) })), cat: Object.assign({}, cat, { ver:nv }) })); this.log({ at:this.tick(), actor:me.id, type:'CATALOG_DRAFTED', product:'sign', detail:'Sign ' + plan.name + ' v' + nv + ' drafted from v' + ver.v }); this.toast('Draft v' + nv + ' created. Published v' + ver.v + ' is unchanged.'); }, 'sec', !isCat, 'Needs the Catalog manager role.'));
+    if (ver.status === 'PUBLISHED' && !plan.contractOnly) catActs.push(btn('Request retire…', () => this.dlgCatalog('retire', plan, ver), 'sec', !isCat, 'Needs the Catalog manager role.'));
+    const diffRow = (f2, b, a) => { const ch = b !== a; return { f:f2, b, a, m: ch ? '~' : '', mfg:'#946011', bg: ch ? '#FFFBF2' : '#fff', strike: ch ? 'line-through' : 'none', fw: ch ? 700 : 400 }; };
+    const prodCards = Object.keys(C.PROD).map(k => { const on = cat.prod === k; return { name:C.PROD[k], sub: k === 'sign' ? s.plans.length + ' plans · SAMPLE' : 'No commercial plans yet — pricing not set', on, bd: on ? '#0B1022' : '#E5E9ED', onClick: () => this.setState({ cat: Object.assign({}, cat, { prod:k }) }) }; });
+    V.cat = { viewOnly: !isCat, products: prodCards, isSign: cat.prod === 'sign', none: cat.prod !== 'sign', noneName: C.PROD[cat.prod],
+      plans: s.plans.map(pl => { const on = pl.id === plan.id, lp = pl.vers.filter(x => x.status === 'PUBLISHED').slice(-1)[0]; return { name:'Sign ' + pl.name, price: lp.price == null ? 'Contract only' : C.money(lp.price) + ' / mo', vers: pl.vers.map(x => 'v' + x.v + ' ' + VS[x.status][0].toLowerCase()).join(' · '), counts: pl.vers.filter(x => x.status !== 'DRAFT').map(x => pinCount(pl.id, x.v).length + ' on v' + x.v).join(', '), on, bar: on ? '#0B1022' : 'transparent', bg: on ? '#F7F9FC' : '#fff', onClick: () => this.setState({ cat: Object.assign({}, cat, { plan:pl.id, ver: pl.vers[pl.vers.length - 1].v }) }) }; }),
+      planName: plan.name, grandText: plan.vers.filter(x => x.status !== 'DRAFT').map(x => pinCount(plan.id, x.v).length + ' tenant(s) on v' + x.v).join(' · ') + '. Subscriptions keep their pinned version.',
+      vers: plan.vers.map(x => ({ v:'v' + x.v, p: C.pill.apply(null, VS[x.status]), n: x.status === 'DRAFT' ? '' : pinCount(plan.id, x.v).length + ' pinned', on: x.v === ver.v, bd: x.v === ver.v ? '#0B1022' : '#E5E9ED', onClick: () => this.setState({ cat: Object.assign({}, cat, { ver:x.v }) }) })),
+      ed: { title:'Sign ' + plan.name + ' v' + ver.v, p: C.pill.apply(null, VS[ver.status]), meta: ver.status === 'DRAFT' ? 'Editable draft' : ver.status === 'RETIRED' ? 'Retired ' + C.fD(ver.ret) : 'Published ' + C.fD(ver.pub),
+        locked: ver.status !== 'DRAFT' || !isCat, lockText: ver.status === 'DRAFT' ? 'View only — editing a draft needs the Catalog manager role.' : 'Published versions are immutable. To change pricing or allowances, create a new draft.',
+        fields: [['price','Price per month (USD)'],['env','Envelopes per month'],['seats','Seats'],['gb','Storage (GB)']].map(([k, l]) => ({ label:l, val: ver[k] == null ? '' : ver[k], ro: ver.status !== 'DRAFT' || !isCat || (k === 'price' && plan.contractOnly), bg: ver.status === 'DRAFT' && isCat ? '#fff' : '#F4F6FA', onChange: e => setVer(k, e.target.value) })),
+        locks: [{ label:'Currency', val:'USD' }, { label:'Billing interval', val:'Monthly' }],
+        hasDiff: ver.status === 'DRAFT' && !!lastPub, diffAgainst: lastPub ? 'published v' + lastPub.v : '', diff: lastPub ? [diffRow('Price', C.money(lastPub.price), C.money(ver.price)), diffRow('Envelopes', lastPub.env.toLocaleString('en-US'), ver.env.toLocaleString('en-US')), diffRow('Seats', '' + lastPub.seats, '' + ver.seats), diffRow('Storage', lastPub.gb + ' GB', ver.gb + ' GB')] : [],
+        pinned: ver.status === 'DRAFT' ? 'None — drafts take no subscriptions.' : (pinCount(plan.id, ver.v).map(t => t.name).join(', ') || 'No tenants') + (ver.status === 'RETIRED' ? ' (grandfathered; no new subscriptions)' : ''),
+        hasCr: !!pendCr, cr: ver.cr, crState: pendCr ? C.CRS[pendCr.state][0].toLowerCase() : '', openCr: e => { e.preventDefault(); this.setState({ crOpen:ver.cr, crErr:null }); }, actions: catActs } };
+
+    // contracts
+    const isOps = this.canMake('CONTRACT_AMEND', me), cts = empty ? [] : C.C0, ctSel = cts.find(x => x.id === s.ct) || cts[0];
+    V.ct = { has: !loading && cts.length > 0, empty: !loading && !cts.length,
+      rows: cts.map(x => { const t = T(x.tenant), on = ctSel && x.id === ctSel.id; return { id:x.id, tenant:t.name, sub: x.months + ' months · ends ' + C.fD(x.end), p: x.status === 'ACTIVE' ? C.pill('Active','ok') : C.pill('Ended','muted'), on, bar: on ? '#0B1022' : 'transparent', bg: on ? '#F7F9FC' : '#fff', onClick: () => this.setState({ ct:x.id }) }; }),
+      d: ctSel ? { id:ctSel.id, tenant:T(ctSel.tenant).name, plan:this.plan(ctSel.plan).name, migrated: !!ctSel.migrated,
+        facts: [{ k:'Commitment', v: ctSel.months + ' months', s: C.fD(ctSel.start) + ' – ' + C.fD(ctSel.end) }, { k:'Ends', v: C.fD(ctSel.end), s: C.ms(ctSel.end) > C.NOW ? 'in ' + Math.round((C.ms(ctSel.end) - C.NOW) / C.D) + ' days' : 'Ended' }, { k:'Source', v:'MANUAL', s:'Governed contract' }, { k:'Provenance', v: ctSel.migrated ? 'Migration' : 'Recorded', s: ctSel.migrated ? 'Backfilled from legacy billing' : 'Entered by Commercial ops' }],
+        terms: ctSel.terms, docs: ctSel.docs.map(d => ({ name:d[0], hash:d[1], by:this.name(d[2]), at:C.fD(d[3]) })), amend: ctSel.amend.slice().reverse().map(a => ({ at:C.fD(a[0]), title:a[1], body:a[2], by:this.name(a[3]) })),
+        actions: ctSel.status === 'ACTIVE' ? [btn('Record amendment…', () => this.dlgContract('amend', ctSel), 'sec', !isOps, 'Needs the Commercial ops role.'), btn('End contract…', () => this.dlgContract('end', ctSel), 'danger', !isOps, 'Needs the Commercial ops role.')] : [] } : { facts:[], terms:[], docs:[], amend:[], actions:[] } };
+
+    // policy
+    const canPol = this.canMake('POLICY_ACTIVATE', me), act = this.activePol(), pv = s.pol.find(x => x.v === s.pv) || act;
+    const PS = { ACTIVE:['Active','ok'], DRAFT:['Draft','neutral'], RETIRED:['Retired','muted'] };
+    const openPolCr = s.crs.find(x => x.type === 'POLICY_ACTIVATE' && ['PENDING_APPROVAL','APPLYING'].indexOf(x.state) >= 0);
+    const polActs = pv.status === 'DRAFT' ? [btn('Request activation…', () => this.dlgPolicy(pv), 'terra', !canPol || !!openPolCr, !canPol ? 'Needs the Platform owner or Finance admin role.' : 'An activation request is already open.')] : pv.status === 'RETIRED' ? [btn('Request rollback to v' + pv.v + '…', () => this.dlgPolicy(pv, true), 'sec', !canPol || !!openPolCr, 'Needs the Platform owner or Finance admin role.')] : s.pol.some(x => x.status === 'DRAFT') ? [] : [btn('Create draft from v' + pv.v, () => { const nv = Math.max.apply(null, s.pol.map(x => x.v)) + 1; this.setState(st => ({ pol:[Object.assign({}, pv, { v:nv, status:'DRAFT', note:'Draft from v' + pv.v, created:this.tick(), activated:null, retired:null, by:me.id, vals:Object.assign({}, pv.vals) })].concat(st.pol), pv:nv })); }, 'sec', !canPol, 'Needs the Platform owner or Finance admin role.')];
+    V.po = { viewOnly: !canPol, vers: s.pol.map(x => ({ v:'v' + x.v, note:x.note, p: C.pill.apply(null, PS[x.status]), meta: 'Created ' + C.fD(x.created) + ' by ' + this.name(x.by) + (x.activated ? ' · activated ' + C.fD(x.activated) : '') + (x.retired ? ' · retired ' + C.fD(x.retired) : ''), on: x.v === pv.v, bar: x.v === pv.v ? '#0B1022' : 'transparent', bg: x.v === pv.v ? '#F7F9FC' : '#fff', onClick: () => this.setState({ pv:x.v }) })),
+      d: { v:'v' + pv.v, p: C.pill.apply(null, PS[pv.status]), against: pv.status === 'ACTIVE' ? 'This is the active version' : 'Compared with active v' + act.v,
+        rows: C.PFIELDS.map(([k, l, fmt, help, mn, mx]) => { const ch = pv.vals[k] !== act.vals[k], ed = pv.status === 'DRAFT' && canPol; return { label:l, help, a: fmt(act.vals[k]), b: fmt(pv.vals[k]), raw: pv.vals[k], m: ch ? '~' : '', bg: ch ? '#FFFBF2' : '#fff', fw: ch ? 700 : 400, edit: ed, show: !ed, onChange: e => { const n = Math.max(mn, Math.min(mx, +e.target.value || 0)); this.setState(st => ({ pol: st.pol.map(x => x.v === pv.v ? Object.assign({}, x, { vals: Object.assign({}, x.vals, { [k]: n }) }) : x) })); } }; }),
+        actions: polActs, hint: openPolCr ? 'Open request ' + openPolCr.id + ' · ' + C.CRS[openPolCr.state][0].toLowerCase() : pv.status === 'DRAFT' ? C.PFIELDS.filter(x => pv.vals[x[0]] !== act.vals[x[0]]).length + ' setting(s) differ from v' + act.v : '' } };
+
+    // audit
+    const A = s.a, setA = (k, v2) => this.setState({ a: Object.assign({}, A, { [k]: v2 }) }), all = empty ? [] : s.audit;
+    const aRows = loading ? [] : all.filter(e => (A.actor === 'all' || e.actor === A.actor) && (A.tenant === 'all' || e.tenant === A.tenant) && (A.prod === 'all' || e.product === A.prod) && (A.type === 'all' || e.type === A.type) && (!A.exc || e.exc) && (!A.cr.trim() || (e.cr || '').toLowerCase().indexOf(A.cr.trim().toLowerCase()) >= 0));
+    const uniq = arr => arr.filter((x, i) => x && arr.indexOf(x) === i);
+    V.au = { actor:A.actor, tenant:A.tenant, prod:A.prod, type:A.type, exc:A.exc, cr:A.cr, onActor: e => setA('actor', e.target.value), onTenant: e => setA('tenant', e.target.value), onProd: e => setA('prod', e.target.value), onType: e => setA('type', e.target.value), onExc: e => setA('exc', e.target.checked), onCr: e => setA('cr', e.target.value),
+      actorOpts: [{ v:'all', l:'All actors' }].concat(uniq(s.audit.map(e => e.actor)).map(a => ({ v:a, l:this.name(a) }))), tenantOpts: [{ v:'all', l:'All tenants' }].concat(s.tenants.map(t => ({ v:t.id, l:t.name }))), prodOpts: [{ v:'all', l:'All products' }].concat(Object.keys(C.PROD).map(k => ({ v:k, l:C.PROD[k] }))),
+      typeOpts: [{ v:'all', l:'All event types' }].concat(uniq(s.audit.map(e => e.type)).map(k => ({ v:k, l:C.EVT[k] || k }))),
+      rows: aRows.map(e => { const t = T(e.tenant); return { id:e.id, at:C.fT(e.at), type:C.EVT[e.type] || e.type, exc:!!e.exc, actor:this.name(e.actor), roles: (e.roles || this.rolesOf(e.actor)).map(r => C.ROLE[r]).join(', ') || (C.PEOPLE[e.actor] && !C.PEOPLE[e.actor].human ? 'System' : '—'), tenant: t ? t.name : '—', product: e.product ? C.PROD[e.product] : '', hasCr: !!e.cr, cr:e.cr, openCr: x => { x.preventDefault(); this.setState({ crOpen:e.cr, crErr:null }); }, detail:e.detail }; }),
+      hasRows: aRows.length > 0, empty: !loading && !aRows.length, count: aRows.length, total: all.length,
+      exportCsv: () => { const q = v2 => '"' + String(v2 == null ? '' : v2).replace(/"/g, '""') + '"'; const csv = ['id,time_utc,event,actor,roles,tenant,product,change_request,exception,detail'].concat(aRows.map(e => [e.id, C.fT(e.at), C.EVT[e.type] || e.type, this.name(e.actor), (e.roles || []).join(' '), e.tenant || '', e.product || '', e.cr || '', e.exc ? 'yes' : '', e.detail].map(q).join(','))).join('\n'); const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([csv], { type:'text/csv' })); a.download = 'commercial-audit.csv'; a.click(); this.log({ at:this.tick(), actor:me.id, type:'AUDIT_EXPORTED', detail: aRows.length + ' events exported as CSV' }); this.toast('Exported ' + aRows.length + ' events. The export is itself recorded.'); } };
+
+    // admins
+    const isOwner = me.roles.includes('platform_owner') && me.human, roster = empty ? [] : this.roster(), owners = roster.filter(id => this.rolesOf(id).includes('platform_owner'));
+    V.adm = { viewOnly: !isOwner, has: !loading && roster.length > 0, empty: !loading && !roster.length,
+      chains: Object.keys(C.CHAINS).map(k => { const ok = this.chainOk(k); return { label:C.CHAINS[k].label, steps: 'Maker: ' + C.CHAINS[k].makers.map(r => C.ROLE[r]).join(' or ') + ' → ' + C.CHAINS[k].steps.map(r => C.STEP[r]).join(' → '), mark: ok ? '✓' : '✕', p: ok ? C.pill('Fulfillable','ok') : C.pill('Not fulfillable','warn'), why: ok ? 'Enough distinct people hold these roles.' : 'Needs more distinct people with ' + C.CHAINS[k].steps.map(r => C.ROLE[r]).join(' and ') + '.' }; }),
+      rows: roster.map(id => { const p = C.PEOPLE[id], rs = this.rolesOf(id), last = rs.includes('platform_owner') && owners.length === 1;
+        const chips = p.sa ? [{ label:'Super admin · no commercial roles', bd:'#E5E9ED', bg:'#F4F6FA', fg:'#5C6770' }] : rs.map(r => ({ label:C.ROLE[r], bd: r === 'platform_owner' || r === 'finance_admin' ? '#D97757' : '#D5DBE1', bg: r === 'platform_owner' || r === 'finance_admin' ? '#FBE7DF' : '#fff', fg: r === 'platform_owner' || r === 'finance_admin' ? '#8A3A1F' : '#3F4A55' }));
+        const pendRole = s.crs.find(x => x.type === 'ROLE_CHANGE' && x.fx && x.fx.who === id && x.state === 'PENDING_APPROVAL');
+        const note = last ? 'Last Platform owner — removing this role is refused.' : rs.length > 1 ? 'Holds two roles. Can still sign only one step per request.' : p.removed ? 'Finance admin removed ' + C.fD(p.removed.finance_admin) + '.' : pendRole ? 'Pending ' + pendRole.id + ': ' + pendRole.summary : '';
+        return { name:p.name, email:p.email, initials:p.initials, chips, note, noteFg: last ? '#946011' : '#5C6770', canReq: isOwner && !p.sa, onReq: () => this.dlgRole(id) }; }) };
+
+    // tenants
+    V.tl = { rows: s.tenants.map(t => { const sg = t.products.sign.sub; return { name:t.name, slug:t.slug, products: Object.keys(t.products).filter(k => t.products[k].ent.state === 'ACTIVE').map(k => C.PROD[k]).join(' · ') || '—', sign: sg ? 'Sign ' + this.plan(sg.plan).name + ' v' + sg.ver + ' · ' + (sg.source === 'SELF_SERVICE' ? 'Stripe' : 'MANUAL') + ' · ' + C.SUBST[sg.status][0] : '—', onClick: () => this.go('tenant', { tenantId:t.id, ttab: ccp ? 'commercial' : 'overview' }) }; }) };
+    const t = t0 || s.tenants[0], TT = [['overview','Overview'],['lifecycle','Lifecycle'],['sign','Sign'],['commercial','Commercial'],['domain','Domain'],['people','People']].filter(x => x[0] !== 'commercial' || ccp);
+    const ttab = TT.find(x => x[0] === s.ttab) ? s.ttab : 'overview';
+    const ENT = { ACTIVE:['Entitlement active','ok'], REVOKED:['Revoked','muted'], NONE:['Not granted','neutral'] };
+    const PROV = { PROVISIONING:'Granted by provisioning', CHANGE_REQUEST:'Granted by change request', MIGRATION:'Migrated — provenance: migration' };
+    const openCrFor = p => s.crs.find(x => x.tenant === t.id && x.product === p && ['DRAFT','PENDING_APPROVAL','APPLYING','APPLY_FAILED'].indexOf(x.state) >= 0);
+    V.td = { name:t.name, slug:t.slug, id:t.id, isCom: ttab === 'commercial', other: ttab !== 'commercial', tabName: (TT.find(x => x[0] === ttab) || ['', ''])[1],
+      tabs: TT.map(([k, l]) => ({ label:l, isNew: k === 'commercial', on: k === ttab, bd: k === ttab ? '#0B1022' : 'transparent', fw: k === ttab ? 700 : 500, onClick: () => this.setState({ ttab:k }) })),
+      viewOnly: ccp && !['commercial_ops','support_admin'].some(r => me.roles.includes(r)) || !me.human, viewOnlyText: 'You can view this tenant’s commercial state. Requests need the Commercial ops role; support extensions need Support admin.',
+      cards: Object.keys(C.PROD).map(p => { const x = t.products[p], sub = x.sub, ent = x.ent, self = sub && sub.source === 'SELF_SERVICE', pl = sub && this.plan(sub.plan), hasPlans = p === 'sign', oc = openCrFor(p);
+        const act = (label, type, why, fn, tone) => { const roleOk = this.canMake(type, me); return { label, why: why || (roleOk ? '' : 'Needs the ' + this.needs(type) + ' role.'), domain: !!why, dis: !!why || !roleOk || !!oc, op: (!!why || !roleOk || !!oc) ? .45 : 1, bd: tone === 'danger' ? '#EBC6BE' : '#D5DBE1', fg: tone === 'danger' ? '#A8412F' : '#18212B', onClick: fn }; };
+        const ended = sub && sub.status === 'ENDED';
+        const actions = [
+          act('Request plan change…', 'PLAN_CHANGE', !hasPlans ? 'No commercial plans yet.' : !sub || ended ? 'No open subscription.' : self ? 'Managed in Stripe. The tenant changes plans in Stripe checkout.' : pl.contractOnly ? 'Enterprise is contract-priced; record a contract amendment instead.' : '', () => this.dlgPlan(t, p)),
+          act('Request cancel…', 'CANCEL', !sub || ended ? 'No open subscription.' : self ? 'Managed in Stripe. Cancellation happens in Stripe.' : '', () => this.dlgSimple('CANCEL', t, p), 'danger'),
+          act('Grant product…', 'GRANT', ent.state === 'ACTIVE' ? '' : '', () => this.dlgSimple('GRANT', t, p)),
+          act('Revoke product…', 'REVOKE', '', () => this.dlgSimple('REVOKE', t, p), 'danger'),
+          act('Request support extension…', 'EXTENSION', !sub || ended ? 'No open subscription.' : '', () => this.dlgExt(t, p)),
+        ].filter((a, i) => !(i === 2 && ent.state === 'ACTIVE') && !(i === 3 && ent.state !== 'ACTIVE'));
+        const u = sub ? Math.min(100, Math.round(sub.used / sub.allow * 100)) : 0;
+        const facts = sub ? [{ k:'Plan', v:'Sign ' + pl.name + ' (SAMPLE)', s: pl.contractOnly ? 'Contract-priced' : '' }, { k:'Plan version', v:'v' + sub.ver + ' · pinned', s: pl.vers.find(y => y.v === sub.ver).status === 'RETIRED' ? 'Retired — grandfathered' : '' }, { k:'Status', v: sub.status === 'PAST_DUE' && sub.grace ? 'Past due · in grace' : C.SUBST[sub.status][0], fg: C.TONE[C.SUBST[sub.status][1]][0], s: sub.status === 'PAST_DUE' ? 'Grace ends ' + C.fD(sub.grace) + ' (' + C.rel(sub.grace) + ')' : sub.status === 'SUSPENDED' ? 'Suspended ' + C.fD(sub.susp) + ' after grace' : ended ? 'Ended ' + C.fD(sub.ended) : '' }, { k:'Current period', v: C.fD(sub.ps) + ' – ' + C.fD(sub.pe), s:'' }, { k:'Commitment end', v: sub.commitEnd ? C.fD(sub.commitEnd) : 'None', s: sub.contract ? 'Contract ' + sub.contract : 'Self-service, no commitment' }].map(q => Object.assign({ fg:'#18212B' }, q)) : [];
+        const extUse = this.extUse(t);
+        return { name:C.PROD[p], entP: C.pill.apply(null, ENT[ent.state]), hasSrc: !!sub, src: self ? 'Managed in Stripe' : sub ? 'MANUAL · contract' : '', srcBd: self ? '#C9D2F5' : '#D5DBE1', srcBg: self ? '#E9EDFB' : '#fff', srcFg: self ? '#011F8D' : '#3F4A55',
+          prov: ent.state === 'NONE' ? '' : ent.state === 'REVOKED' ? 'Revoked ' + C.fD(ent.revokedAt) + (ent.revokeRef ? ' · ' + ent.revokeRef : '') + ' · was ' + PROV[ent.prov].toLowerCase() : PROV[ent.prov] + (ent.ref && ent.prov === 'CHANGE_REQUEST' ? ' ' + ent.ref : '') + ' · ' + C.fD(ent.at),
+          noPlans: !hasPlans, noSub: hasPlans && !sub, hasSub: !!sub, facts, usage: sub ? sub.used.toLocaleString('en-US') + ' of ' + sub.allow.toLocaleString('en-US') + ' envelopes' : '', usePct: u + '%', useBg: u >= 90 ? '#946011' : '#0B1022',
+          recon: p === 'sign' && !!t.recon, reconText: t.recon ? t.recon.detail : '', reconCr: !!(t.recon && t.recon.cr), reconCrId: t.recon && t.recon.cr, reconState: t.recon && t.recon.cr ? (() => { const rc = s.crs.find(y => y.id === t.recon.cr); return rc && rc.state === 'APPLYING' ? 'Release sent to Stripe — awaiting confirmation:' : 'Release request:'; })() : 'Needs a Commercial ops release request.', reconCan: !!(t.recon && !t.recon.cr) && this.canMake('RECON', me), openRecon: e => { e.preventDefault(); this.setState({ crOpen:t.recon.cr, crErr:null }); }, reqRecon: () => this.dlgSimple('RECON', t, 'sign'),
+          exts: p === 'sign' ? t.ext.map(e => ({ id:e.id, days:e.days, actor:this.name(e.by), at:C.fT(e.at), roles: e.roles.map(r => C.ROLE[r]).join(', '), clause:e.clause, uses: extUse.uses + ' of 1 in the last ' + this.activePol().vals.extWin + ' days', cum: e.cumBefore + ' → ' + e.cumAfter + ' days (cap ' + this.activePol().vals.extCum + ')', overlay: self ? 'Overlay only — Stripe period and invoices unchanged' : 'Overlay on the MANUAL period' })) : [],
+          self: !!self, links: ['Invoices','Payment methods','Proration','Cancellation'].map(l => ({ label:l, onClick: e => { e.preventDefault(); this.toast('Opens ' + t.name + ' · ' + l.toLowerCase() + ' in the Stripe dashboard.'); } })),
+          hasOpen: !!oc, openId: oc && oc.id, openText: oc ? C.TYPE[oc.type] + ' · ' + C.CRS[oc.state][0].toLowerCase() + '. Other requests on this product wait until it closes.' : '', openCr: e => { e.preventDefault(); this.setState({ crOpen:oc.id, crErr:null }); },
+          actions, reasons: actions.filter(a => a.domain).map(a => ({ a:a.label.replace('…', ''), w:a.why })), hasReasons: actions.some(a => a.domain) }; }) };
+
+    // dialog
+    const d = s.dlg;
+    if (d) {
+      const v = d.vals, chainK = d.chain ? d.chain(v) : null, err = d.valid ? d.valid(v) : '', al = d.alert ? d.alert(v) : '', typedOk = !d.typed || (d.typedVal || '') === d.typed, dis = !!err || !!al || !typedOk;
+      const pv0 = d.preview ? d.preview(v) : null, PT = { ok:['#BFDCCB','#F1F8F4','#17603C'], warn:['#E7D3A8','#FAF0DC','#6B4609'] }, tone = BTN[d.tone || 'mid'], pol = this.activePol();
+      V.dl = { open:true, title:d.title, sub:d.sub, w:'min(600px,94vw)', close: () => this.setState({ dlg:null }),
+        fields: d.fields.map(fl => ({ label:fl.label, ph:fl.ph || '', val: v[fl.k] == null ? '' : v[fl.k], min:fl.min, max:fl.max, help:fl.help || '', hasHelp: !!fl.help, isText: fl.type === 'text', isNum: fl.type === 'num', isArea: fl.type === 'area', isSel: fl.type === 'sel', isChecks: fl.type === 'checks', onChange: e => this.setVal(fl.k, e.target.value),
+          opts: (fl.options || []).map(([ov, ol]) => { const on = fl.type === 'checks' && (v[fl.k] || []).indexOf(ov) >= 0; return { v:ov, l:ol, on, mark: on ? '✓' : '+', bd: on ? '#0B1022' : '#D5DBE1', bg: on ? '#F4F6FA' : '#fff', onToggle: e => { e.preventDefault(); const cur2 = v[fl.k] || []; this.setVal(fl.k, on ? cur2.filter(x => x !== ov) : cur2.concat(ov)); } }; }) })),
+        hasDiff: !!d.diff, diff: d.diff ? d.diff(v).map(([f2, b, a]) => { const ch = b !== a; return { f:f2, b, a, m: ch ? '~' : '', bg: ch ? '#FFFBF2' : '#fff', strike: ch ? 'line-through' : 'none', fw: ch ? 700 : 400 }; }) : [],
+        pv: pv0 ? { show:true, title:pv0.title, lines:pv0.lines, bd:PT[pv0.tone][0], bg:PT[pv0.tone][1], fg:PT[pv0.tone][2] } : { show:false, lines:[] },
+        hasChain: !!chainK, chainLabel: chainK ? C.CHAINS[chainK].label : '', chainSteps: chainK ? C.CHAINS[chainK].steps.map(r => C.STEP[r]).join(' → ') + (this.chainOk(chainK) ? '' : ' · not fulfillable yet') : '', policy:'v' + pol.v, ttl: pol.vals.ttl + ' h',
+        typed: { show: !!d.typed, token: d.typed, val: d.typedVal || '', onChange: e => this.setState({ dlg: Object.assign({}, d, { typedVal: e.target.value }) }) },
+        hasAlert: !!al, alert: al, canDraft: !!d.canDraft, draftDis: !!err || !!al, draftOp: (!!err || !!al) ? .45 : 1, saveDraft: () => d.onCommit(v, true),
+        commitLabel: d.commitFn ? d.commitFn(v) : d.commit || 'Confirm', dis, op: dis ? .45 : 1, cbd: tone[0], cbg: tone[1], cfg: tone[2], commit: () => { if (!dis) d.onCommit(v, false); } };
+    } else V.dl = { open:false };
+
+    // palette
+    const q = (s.q || '').toLowerCase().trim();
+    const items = [].concat(V.navGroups.reduce((a, g) => a.concat(g.items.map(i => ({ kind:'PAGE', label:i.label, sub:g.g, onClick:i.onClick }))), []),
+      tenantOk ? s.tenants.map(tn => ({ kind:'TENANT', label:tn.name, sub:tn.slug, onClick: e => { e.preventDefault(); this.go('tenant', { tenantId:tn.id, ttab: ccp ? 'commercial' : 'overview' }); } })) : [],
+      ccp ? s.crs.map(x => ({ kind:'REQUEST', label:x.id + ' · ' + C.TYPE[x.type], sub:C.CRS[x.state][0], onClick: e => { e.preventDefault(); this.setState({ pal:false, route:'approvals', inbox:'pending', crOpen:x.id, crErr:null }); } })) : []).filter(i => !q || (i.label + ' ' + i.sub).toLowerCase().indexOf(q) >= 0).slice(0, 12);
+    V.pal = { open: s.pal, q: s.q, items, none: !items.length, openIt: () => this.setState({ pal:true, q:'' }), close: () => this.setState({ pal:false }), onQ: e => this.setState({ q: e.target.value }), onKey: e => { if (e.key === 'Enter' && items[0]) items[0].onClick({ preventDefault(){} }); } };
+    V.toast = { show: !!s.toast, msg: s.toast };
+    return V;
+  }
+}
+</script>
+</body>
+</html>

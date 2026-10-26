@@ -46,6 +46,70 @@ writing every unmasked screen-state is pixel-exact under `threshold 0.2`
 | DV-29 | Pending-withdrawal bar: no reason after "Takes effect …" | Data gap: the template DTO carries no withdrawal reason (known F-9 divergence) | studio-withdrawal-pending |
 | DV-30 | `:read` Studio panels describe the PUBLISHED version (outline, variable usage, checks, readiness pill) and the preview page header has no organization sample; the design file's describe the draft | Directive R-13 (`:read` sees the published version only; no sample render for `:read`) | studio-viewonly |
 | DV-31 | Unhighlighted preview: each sample value is its own span (shared SafeDoc), so the line's text is shaped per run (sub-pixel glyph differences, no layout shift) where the design file renders one text run | R-11 (SafeDoc is the only renderer; byte-compatible exports) | studio-preview-plain |
+| DV-B4-1 | CCP-B4 Contracts: the amendments timeline is masked to the bottom of the detail column | Record model: a migrated contract's recording IS its migration and amendments are titled "Amendment n"; the prototype's sample history (a legacy "Contract recorded" before the migration, free-form titles such as "Portal added") is prototype data (CCP-UI v1.0 `ccp-data.js` C0). The ended-contract state (`ccp-contracts-ended`) compares the timeline unmasked | ccp-contracts-ops, ccp-contracts-view-only |
+| DV-B4-2 | CCP-B4 dialogs: the approval-chain strip reads "Below threshold · Finance · chain fixed by the active policy" | The server resolves SUBSCRIPTION_CHANGE / _END to the Finance-only chain (PO ruling TD-A3-2); the design draws Finance → Owner for contract amend / end (TD-B4-2, needs PO confirmation). The policy version is not readable by any B4 route | ccp-contracts-amend-dialog, ccp-contracts-end-dialog |
+| DV-B4-3 | CCP-B4 End contract: the sub line and the second Before → after row say the MANUAL subscription ends and the entitlement is NOT revoked | A6 `SUBSCRIPTION_END` does not revoke (governed revoke is CCP-A7; TD-A6-8), so the design's "revokes the Sign entitlement" would be untrue (TD-B4-5) | ccp-contracts-end-dialog |
+
+CCP-B4 page states are compared on the FULL viewport since the merge train (TD-MERGE-19: CCP-B1's shell is present; B1's DV-C1 rail and DV-C2 ⌘K masks apply, as in the B1 states); dialog states stay cropped to the dialog box. Images: `__screenshots__/ccp-contracts-*-{1440,900}.png`, captured from the pinned CCP-UI v1.0 file by `ccp-contracts.spec.ts` with `PW_CAPTURE_REFERENCE=1`.
+
+## CCP-B1 — Commercial screens (Commercial Control Plane v1.0.dc.html, CCP-UI v1.0)
+
+The CCP states (`states-ccp.ts`) compare the build against the pinned CCP design
+file (`doc/design-reference/ccp/CCP-UI-v1_0/Commercial Control Plane v1.0.dc.html`,
+`MANIFEST.sha256` 5/5 OK; pinned in `doc/ccp/slices/CCP-B1-pre-execution.md`),
+loaded by `support/proto-ccp.ts openCcpProto`. Prototype-only elements are stripped
+before render (handoff "Don't build"): the "PROTOTYPE — NOT AUTHORIZED FOR BUILD"
+chip, the Prototype rail group, the ↗ link-out marks and the rail NEW tag, and the
+retired pilot policy v0 with every request created under it. The build runs on
+`fixtures/commercial.ts` at the prototype's clock (2026-10-24 14:00 UTC). The
+element-level state `ccp-rail-group` compares the Commercial group alone.
+
+| ID | Divergence | Cause | Screen-states |
+|---|---|---|---|
+| DV-C1 | The rail: the build keeps the Dashboard item for commercial roles and draws the console's own rail glyphs, so every item below Operations shifts (the Commercial group itself is compared element-level: `ccp-rail-group`, unmasked) | Pre-execution C-2: the Dashboard item keeps its `platform:tenant:read` gate (the six roles hold it); hiding it is the handoff §2 "assumption", for the PO. Glyphs: the console shell's (as DV-20) | every ccp-* frame state |
+| DV-C2 | The ⌘K trigger keeps the console placeholder ("Tenants, skills, templates") | ⌘K request results are not in the B1 brief (pre-execution C-8) | ccp-approvals, ccp-approvals-pending, ccp-approvals-empty, ccp-approvals-history-empty, ccp-approvals-loading, ccp-approvals-bootstrap, ccp-denied-super-admin |
+| DV-C3 | Inbox table (masked whole: the auto layout sizes every column, head included, from the rows) and the request reference: the A3 DTO carries a UUID (shown short in the table, full in the drawer, which moves the state pill), the requester's id, the policy version id and payload-derived summaries, not the prototype's sample rows | Real values win (A3 `CommercialChangeRequestDto`); data gaps R-13 | ccp-approvals, ccp-approvals-pending, ccp-approvals-bootstrap, ccp-drawer, ccp-dialog-reject |
+| DV-C4 | Drawer facts "Requested by" (no name or roles: ids only) and "Policy" (no version number: the version id, plus the window length) | Data gap: the A3 routes carry user ids and `policy_version_id` only (R-13) | ccp-drawer, ccp-dialog-reject |
+| DV-C5 | Drawer from the effect down: the request carries the after side only (before = "—"), no evidence field, no per-admin roster ("Who can sign" shows its designed empty line), no apply panel (A6 not delivered); every section below the effect shifts | Data gaps (R-13); pre-execution C-7, C-8 | ccp-drawer, ccp-dialog-reject |
+| DV-C6 | Access denied: the card keeps R-5's **Missing** row and **Sign out**, and offers **Back to dashboard** (the design: no Missing row, no Sign out, "Back to tenants") | PLATFORM-UX-1 R-5, bound by Amendment A1-4, outranks the design file (handoff order of authority) | ccp-denied-super-admin |
+| DV-C7 | The reject dialog is the platform ConfirmDialog with the from → to Change box (the lead's brief), so it is taller and centres lower than the design's plain dialog; the dialog box is masked whole, its copy and controls are asserted by the unit and keyboard suites. The Approve confirmation has no design counterpart (the design approves on click) and has no visual state | Lead brief (approve and reject on ConfirmDialog with from → to + consequence); pre-execution C-5 | ccp-dialog-reject |
+| DV-C8 | Bootstrap banner: no "View chains" link (its target is B5's Platform admins page); the chains come from the loaded pending requests' `chain_satisfiable` and from 409 responses, so the fixture adds the pending policy activation the design's banner names (All pending 7 vs 6, the count badge masked) | The A3 routes expose no roster-wide chain fulfillability (R-13); B5 owns the page | ccp-approvals-bootstrap |
+
+Not compared (no design counterpart, unit- and keyboard-tested): the Approve
+confirmation dialog; the five placeholder pages (Subscriptions, Catalog, Contracts,
+Policy, Audit), whose designed disabled state replaces screens later slices build;
+the commercial-role access-denied variant ("Your roles don't include access to
+this page.").
+
+DV-03 note (CCP-B1): `identity.tsx` now labels the six commercial role keys with the
+handoff §3 labels, so the auditor persona's role reads "Read-only auditor", as the
+design does. The DV-03 masks are kept (harmless) until the lead re-baselines.
+
+## CCP-B6 — Support extensions (Commercial Control Plane v1.0.dc.html, CCP-UI v1.0)
+
+The B6 states (`states-ccp-support.ts`) compare the build against the pinned CCP design
+file (`doc/design-reference/ccp/CCP-UI-v1_0/`, `MANIFEST.sha256` 5/5 OK; pinned in
+`doc/ccp/slices/CCP-B6-pre-execution.md`), loaded by `support/proto-ccp.ts openCcpProto`
+(adopted byte-identical from CCP-B1). B1 owns the shell and the rail, which are not in
+B6's base, so every B6 state is ELEMENT-level: the support extension dialog (in bounds
+and escalated), the exception overlay card and the view-only note. An element state's
+design-file mask regions are stored relative to the element and re-anchored on the build
+element (`capture-reference.spec.ts`, `parity.spec.ts`; no change for frame states). The
+build runs on `fixtures/ccp-support.ts` at the prototype's clock (2026-10-24 14:00 UTC).
+
+| ID | Divergence | Cause | Screen-states |
+|---|---|---|---|
+| DV-B6-1 | The workflow is a routed view (`/commercial/support-extensions?tenant=`) built from the pinned Tenant › Commercial elements, not the Commercial tab itself; the page frame (header, tenant select, earlier-extensions table) has no design counterpart and is not compared | Lead brief: B3 owns the tab and B1 the shell; pre-execution C-1 | (frame not compared) |
+| DV-B6-2 | The clause help line and the preview's "Policy clause" line drop "§4.2" ("Policy v1: up to 14 days, …"); the overlay's clause names policy v1, not the retired pilot v0 | The commercial policy document has no section numbers (A2 format 1); v0 is "Don't build" | ccp-sx-dialog-in-bounds, ccp-sx-dialog-escalates, ccp-sx-overlay |
+| DV-B6-3 | The overlay reference is the A8 overlay row id, shown `EXT-<first 8 hex>`, not the prototype's `EXT-0042` | Real values win (A8 `SupportExtension.id` is a UUID) | ccp-sx-overlay |
+
+Not compared (no design counterpart; unit-, keyboard- and axe-tested): the removal dialog
+(TD-B6-4), the Apply button on the open-request strip (TD-B2-3), the escalation notice, the
+"Choose a tenant" empty state and the earlier-extensions table.
+
+| ID | State | Allowance | Measured | Evidence |
+|---|---|---|---|---|
+| AA-B6-1 | `ccp-sx-dialog-escalates` | 320 px | 293 (900), 293 (1440) | diff = the two field captions' glyphs, 1px apart; every box (dialog top 194.078, captions 83.250 / 177.250, inputs, preview) measured identical in both DOMs |
 
 ## States asserted on copy, not pixels
 
@@ -96,3 +160,116 @@ A state whose text rasterises differently on every run carries a per-state
 | ID | State | Allowance | Measured | Evidence |
 |---|---|---|---|---|
 | AA-01 | `studio-withdraw-dialog` | 160 px | 116 (900), 134 (1440) | diff = dialog title, field labels and live line glyph edges; boxes and positions identical |
+| AA-B2-01 | `ccp-catalog-publish-dialog`, `ccp-catalog-retire-dialog` (CCP-B2) | 300 px | 202 / 131 (publish-dialog 1440, two runs); 0 (retire-dialog, both viewports, `PW_STRICT=1`) | diff = dialog title, field labels, diff-row and chain-strip glyph edges; boxes and positions identical |
+
+## CCP-B2 — Catalog (`states-ccp-catalog.ts`) against the CCP-UI v1.0 release
+
+Reference: `doc/design-reference/ccp/CCP-UI-v1_0/Commercial Control Plane v1.0.dc.html`
+(byte copy of the pinned release; `e2e/support/proto-ccp.ts` re-verifies every served file against
+its `MANIFEST.sha256`; merge train TD-MERGE-5 folded the byte-identical B2 copy and opener into
+B1's). Seven screen-states × 1440 / 900 = 14 comparisons: draft (catalog
+manager), view only (platform owner), published, retired (grandfathered), no plans (ATS), the
+publish dialog and the retire dialog. Under `PW_STRICT=1` (0 px) 9 of 14 are pixel-exact; the rest
+differ by 2–202 glyph-edge pixels.
+
+| ID | Divergence | Cause | Screen-states |
+|---|---|---|---|
+| DV-B2-01 | The rail (with the Commercial group), the breadcrumb ("Commercial / Catalog"), the environment bar's CCP context line ("commercial changes need approval from other people"), the ⌘K placeholder ("Tenants, requests, pages"), and at 900px the identity text the longer context line truncates | **Pending CCP-B1** (built in parallel): the shell, rail, crumbs and ⌘K belong to B1's Commercial rail group; B2 does not edit the shell. **The lead removes these masks at the B1 + B2 merge and re-captures** | **CLOSED at the merge train (TD-MERGE-19):** the B1 shell is present; the breadcrumb, the environment bar's CCP context line and the 900px identity text are now compared full-page. Only B1's own DV-C1 (rail) and DV-C2 (⌘K placeholder) masks remain, as in the B1 states; references re-captured from the pinned file. |
+| DV-B2-02 | No "SAMPLE NAMES AND PRICES" tag on the plans card and no "· SAMPLE" on the Aramo Sign product card | The build shows the real catalog; "SAMPLE" marks the prototype's mock prices (handoff "Mock data only in the prototype"). Lead to confirm | every ccp-catalog state |
+| DV-B2-03 | Seats: an empty disabled field (tooltip "Not part of the Aramo Sign plan model…") and "—" → "—" in the diff, where the design shows seat counts | Data gap (R-13): the Sign plan model has no seat term (only `sign.envelopes`, `sign.forms`, `sign.templates`, `sign.storage_bytes`); no term is invented | draft, view only, published, retired, publish dialog, retire dialog |
+| DV-B2-04 | The open-request line names the change request by its short UUID ("cca1000…") where the design shows "CR-1044"; the id's width moves the rest of the line, so the line's text is masked (the box is not) | Real ids are UUIDs (CCP-A3); the human request number is not in the contract | draft, view only |
+| DV-R3-1 | The published version's action reads "Retire this version…" and the retire dialog's title "Retire this version · Sign Team v2" (the design: "Request retire…" / "Request retire · …"); the longer text is masked, widened 48px to the right | CCP-R3 (Architect disposition 2026-10-25, TD-B2-1): PLAN_RETIRE retires one specified plan version, never the whole plan, and the UI must say so. References re-captured for these two states only (`PW_STATE`), from the pinned file; no PLATFORM-UX-1 baseline touched | published, retire dialog |
+| DV-B2-05 (fixture note, no mask) | The fixture reproduces the prototype's data, including two PUBLISHED versions of Starter and of Team at once | The A5 store admits one PUBLISHED version per plan (publishing retires the previous one), so the API never returns that state; the renderer is data-driven and the unit specs cover the real states | draft, view only, published, publish dialog, retire dialog |
+
+Not pixel-compared: the catalog's loading skeleton (the CCP file draws no catalog loading state;
+the build uses the PLATFORM-UX-1 `SkeletonPanel`, handoff §10 item 11 — covered by the unit spec)
+and the in-shell access-denied state for super_admin (since the merge train it is CCP-B1's commercial
+card, compared in B1's states and asserted by the B2-W-ROLE unit test).
+
+## CCP-B5 — governance screens vs the CCP-UI v1.0 design file (ccp-b5-parity.spec.ts)
+
+Reference: `doc/design-reference/ccp/CCP-UI-v1_0/Commercial Control Plane v1.0.dc.html` (pinned, `doc/ccp/slices/CCP-B5-pre-execution.md` §5), prototype-only elements stripped (`support/proto-ccp.ts`). 9 states × 1440 / 900.
+
+| ID | Region | Cause |
+|---|---|---|
+| DV-B5-01 | Comparison clip = the slice-owned content (right of the rail, below the top bar) or the dialog box; dialog states allow 60 px for the rounded corners, which blend with the page behind (B1's chrome and bootstrap banner) | The rail, environment bar, top bar, breadcrumb and bootstrap banner are CCP-B1's (parallel slice); B1's parity record covers them. Unclip at the program merge. Merge train (TD-MERGE-19): a full-page trial with B1's DV-C1 / DV-C2 shell masks passed for the three policy states but not for Audit (53 px on the Export CSV glyph, every attempt) or Platform admins (the environment bar's CCP context line is not shown on /admins in the build; 571 / 1301 / 1412 px), so the content crop is KEPT for every B5 state. |
+| DV-B5-02 | Policy table: the two threshold help lines | PO ruling A2-B / TD-A2-2: at or above the threshold escalates. The design says "above … at or below". Same words, reordered. |
+| DV-B5-05 | Roster notes: "Finance admin removed {date}"; the pending request's id and summary; the Notes column head | No role-removal history is read (R-13); a request id is a uuid shown as `CR-XXXXXXXX` and its summary is built from the payload; the auto table layout sizes the column from these texts. |
+| DV-B5-06 | Audit: the filter row from the first select, and the event table | The rows are the real event stream (create and submit are two events; backend codes; uuids; details read from structured payloads). The selects size to option labels from that stream, and the auto table layout sizes every column from the rows. Compared: the page head and the "Export CSV (16)" count. |
+
+Not a mask: DV-B5-04 — the chain panel renders the maker roles the API returns. The fixture carries the design's maker sets; the API's real sets (above threshold: Commercial ops only; policy change: Finance admin only, TD-A3-5) are proven by `libs/subscription` B5-U-7.
+
+## CCP-B3 — Subscriptions workbench and Tenant › Commercial (`states-ccp-subscriptions.ts`) against the CCP-UI v1.0 release
+
+Reference = the pinned `Commercial Control Plane v1.0.dc.html` (`MANIFEST.sha256` 5/5 OK; pinned in
+`doc/ccp/slices/CCP-B3-pre-execution.md` §5) via `support/proto-ccp.ts openCcpProto`; build = the app
+on `fixtures/ccp-subscriptions.ts` (a port of `ccp-data.js` T0 into the CCP-B3 read shapes) at the
+prototype's clock. The three workbench states compare the full frame with B1's shell masks
+(DV-C1, DV-C2). The Tenant › Commercial states compare ONE element (a product card, a card header,
+the view-only note, a dialog box): the tenant page header and tab strip are PLATFORM-UX-1's (other
+tab labels; the prototype's NEW tag is prototype-only).
+
+| ID | Divergence | Cause | Screen-states |
+|---|---|---|---|
+| DV-B3-1 | No "SAMPLE" marker on plan names (the Plan fact, the plan select's options); the workbench table is masked whole because the auto table layout sizes every column from the cells (the prototype's plan cell carries the tag), so every column moves. The row content is asserted by `SubscriptionsView.spec.tsx` | The build shows real catalog data (as DV-B2-02; DV-B2-02 approved by the Architect/PO, `doc/ccp/decisions.md` DV-B2-02) | ccp-subs-workbench, ccp-tc-sign-held, ccp-tc-sign-stripe, ccp-tc-sign-ended, ccp-tc-dialog-plan |
+| DV-B3-2 | A change request is named `CR-<first 8 hex>` (a UUID; the B5 convention), not "CR-1051"; the open-request line names the real action type ("Subscription conversion", "Account credit") and, for a conversion awaiting Stripe, "sent to Stripe — awaiting confirmation" | Real values win (CCP-A3 ids; B1 action labels TD-B1-11; C1 / Conv. C-23) | ccp-tc-sign-held, ccp-tc-sign-stripe, ccp-tc-portal-revoked |
+| DV-B3-3 | The held-activation detail names no plan ("A self-service checkout would have ended the governed MANUAL subscription on contract …"); the release dialog's first row reads "Held (not activated)", not "Blocked (incomplete)" | The hold record carries the provider subscription, not the plan (R-13); a held provider subscription may be live and charging (Conv. C-8), so "incomplete" would be untrue | ccp-tc-sign-held, ccp-tc-dialog-recon |
+| DV-B3-4 | The Stripe-owned card: the link-outs and the actions row. Only "Invoices ↗" can link (the provider-hosted invoice page from the C3 read when AVAILABLE; C3 is NOT DELIVERED, so it shows unlinked); "Payment methods", "Proration", "Cancellation" are unlinked text (no operator link target is ruled). The row gains "Request conversion to MANUAL…" (the governed C2 path) | TD-C3-1; PBD B3 row prerequisites "C2 for conversion actions"; TD-B3-4 | ccp-tc-sign-stripe |
+| DV-B3-5 | The plan change dialog's Discount (%) is the designed disabled field with its own help line | SUBSCRIPTION_CHANGE has no discount term and DISCOUNT has no governed apply (R-13; TD-B3-5) | ccp-tc-dialog-plan |
+| DV-B3-6 | Cancel: the consequence line and the entitlement row say the entitlement is NOT revoked; the chain strip reads "Below threshold · Finance" | A6 SUBSCRIPTION_END does not revoke (TD-A6-8, as DV-B4-3); the server resolves SUBSCRIPTION_END to the Finance-only chain (TD-A3-2, as DV-B4-2) | ccp-tc-dialog-cancel |
+| DV-B3-7 | An ended row's allowance bar shows the designed empty state ("No current allowance period", empty track) | An ended subscription has no sending account to count against (R-13) | ccp-tc-sign-ended |
+| DV-B3-8 | The Portal card is compared at its header only: its body lists one more domain reason ("Grant product: No governed request covers this product yet."), so the card is taller | Request product keys are `sign` only (CCP-A3; A7 TD-A7-6): no governed grant for Portal | ccp-tc-portal-revoked |
+| DV-B3-9 | While the read is in flight the segment counts show "–" and the result count is empty | The build has no rows yet; the design counts its in-memory rows (R-13) | ccp-subs-loading |
+
+Fixture notes (no mask): the workbench rows come in the prototype's order (the server orders by
+tenant name; the design names no sort); Fernhill's and Quarry Lane's `current_period` reproduce
+the prototype's past (unpaid) period; Meridian's release CR-1051 is a CONVERSION in APPLYING with
+its Stripe command unconfirmed.
+
+| ID | State | Allowance | Measured | Evidence |
+|---|---|---|---|---|
+| AA-B3-1 | `ccp-tc-dialog-recon` | 140 px | 131 (1440), 79 (900) | diff = the dialog's rounded-corner edge rows, which blend the page behind (the PLATFORM-UX-1 tenant header, not compared); no box differs |
+| AA-B3-2 | `ccp-tc-portal-revoked` | 810 px | 804 (1440), 405 (900) | diff = the top and bottom edge rows of the DV-B3-2 mask only: the element-relative mask is re-anchored on a header whose box sits on another sub-pixel row; nothing else differs |
+
+Not compared (no design counterpart; unit-, keyboard- and axe-tested): the conversion dialog
+"Request conversion to MANUAL…", the grant dialog (no prototype tenant reaches it through a
+governed path), the Apply / Retry apply button on the open-request strip (TD-B2-3), the
+"Save as draft" result notice, the apply-refusal alert (DR-C2-1).
+
+## CCP-UI-V12 — Finance, Usage, Alerts and the v1.0 amendments (`states-ccp-v12.ts`) against the CCP-UI v1.2 release
+
+Reference: `doc/design-reference/ccp/CCP-UI-v1_2/` (manifest 5/5, prototype `e3dad017…`), opened by
+`support/proto-ccp.ts` with `release: 'v1_2'`. Holder = Priya Shah (finance_admin, amount-read);
+non-holder = Tomás Silva (commercial_ops). B1's shell masks DV-C1 (rail) and DV-C2 (⌘K text) apply
+to every full-frame state; DV-C6 (B1) to the access-denied card. Full record:
+`doc/ccp/slices/CCP-UI-V12-acceptance.md`.
+
+| ID | Divergence | Cause | States |
+|---|---|---|---|
+| DV-V12-W1 | Renewals shows the published list price to a non-holder (the v1.2 file shows WithheldAmount); the narrower chip resizes the auto table, so the table is masked for the non-holder | Architect ruling W-1 (2026-10-25) | v12-renewals-nonholder |
+| DV-V12-REV-1 | Revenue never labels the list-price figures MRR / ARR / revenue: "Illustrative list-price value (monthly / annualized)", "Monthly value × 12", the reworded intro and view-only note, the visible note "Derived from published list prices; not recognized revenue."; the two-line labels make the tile row taller (tiles masked to the bottom; the months card compared element-level); the Renewals intro points to "list-price values" | Lead correction (W-1 vs D2, 2026-10-25) | v12-revenue*, v12-renewals* |
+| DV-V12-9 | No "Design only" banner on Revenue | D2 is delivered (the banner is prototype copy) | v12-revenue* |
+| DV-V12-13 | The Withheld tile names the exclusion reasons with counts ("2 contract-priced"), not tenant names | D2 returns no per-tenant row (by design) | v12-revenue, v12-revenue-nonholder |
+| DV-V12-T | Table rows of Outstanding payments, Billing reconciliation, Consumption and Alerts: UUID references (`EXT-CC7E0000`, `CB300000`), the server's own detail text, the held plan line, no alignment reason; the auto layout sizes every column from the rows, so each table is masked to the bottom | R-13 (data the reads carry) | v12-outstanding*, v12-recon, v12-recon-nonholder, v12-usage, v12-usage-pending, v12-alerts, v12-alerts-resolved |
+| DV-V12-15 | The Exceptions tile is the server's `counts.exceptions` (5 for the fixture; stuck commands are listed but not counted) where the design sums its rows (7) | C6 counts exceptions (failed commands and failed inbox events only) | v12-recon* |
+| DV-V12-6 | The usage banner line ends at the last-run time (no run mode); the withdraw dialog has no Reason field | The D1 reconciliation read carries no run mode (MBC-V12-6); the ACC-1 withdraw route takes no body (MBC-V12-1) | v12-usage*, v12-withdraw-dialog |
+| DV-V12-8 / DV-V12-11 | No Roll-up runs card; the refused card names the real code `409 USAGE_ROLLUP_NOT_RECONCILED` (the design says `USAGE_NOT_RECONCILED`) | No route lists the roll-up runs (MBC-V12-7); the code is the server's | v12-usage-refused (masked to the bottom from the refused card) |
+| DV-V12-10 | Alerts footer: "Alerts never grade, rate or order tenants or people." | The design's two words fail `scripts/verify-vocabulary.sh` (PLATFORM-UX-1 R-18) | v12-alerts-empty (the populated states mask it inside DV-V12-T) |
+| DV-V12-12 | The Open / Resolved / All counts are the server register's | The design counts its sample (and its pilot v0 rows) | v12-alerts, v12-alerts-resolved |
+
+Re-pointed v1.0 states (their references are now the v1.2 file; the four images are the only
+modified existing baselines; no PLATFORM-UX-1 baseline is touched):
+`ccp-rail-group` (AM-1: Support extensions after Policy, `cal` glyph; the v1.0 DV-MERGE-1 hide is
+retired) and `ccp-policy-activation-dialog` (AM-7 copy; v1.2 draft diff). `ccp-policy-draft`,
+`ccp-policy-active` and `ccp-policy-viewonly` also compare against v1.2 now (their images are
+byte-identical). New element states: `ccp-rail-finance`, `ccp-rail-usage`, `v12-drawer-stepper-*`,
+`v12-drawer-footer-*`, `v12-withdraw-dialog` (its Before → after box), `v12-revenue-months*`,
+`v12-tc-payment-*` (the Sign card facts grid; B3's DV-B3-1 Plan mask).
+
+`v12-alerts-resolved` keeps the prototype's pilot v0 rows (`keepPilotV0`): its Resolved view names
+CR-1055 / CR-1047, which the v0 filter removes, and the rows are masked.
+
+| ID | State | Allowance | Measured | Evidence |
+|---|---|---|---|---|
+| AA-V12-1 | `v12-renewals` | 100 px | 80 (1440) | 1-px glyph edges in the Plan · version, End date and List price columns (sub-pixel column offsets of the auto layout); every run; no box differs |
+| AA-V12-2 | `v12-alerts`, `v12-alerts-resolved` | 40 px | 27 (1440) | glyph edges in the segmented filter next to the masked count spans |

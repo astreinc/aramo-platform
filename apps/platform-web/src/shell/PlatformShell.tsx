@@ -125,6 +125,9 @@ function ShellFrame({ session, environment, paletteSources, children }: ShellFra
   // not Platform Admin.dc.html: its environment line is the Studio's and its top
   // bar is the Studio file's content-box header (56px + the 1px rule).
   const isLibrary = /^\/document-templates\/?$/.test(pathname);
+  // CCP-B1 — the Commercial screens carry their own environment line (Commercial
+  // Control Plane v1.0.dc.html).
+  const isCommercial = /^\/commercial(\/|$)/.test(pathname);
 
   // ⌘K / Ctrl+K opens the palette (⌘\ is AppShell's rail toggle).
   useEffect(() => {
@@ -223,7 +226,7 @@ function ShellFrame({ session, environment, paletteSources, children }: ShellFra
         email={identity.email}
         tenant={identity.tenant}
         role={identity.role}
-        context={environment ?? (isStudio || isLibrary ? 'studio' : 'console')}
+        context={environment ?? (isStudio || isLibrary ? 'studio' : isCommercial ? 'commercial' : 'console')}
       />
       <AppShell rail={rail} topBar={isStudio ? undefined : topBar}>
         {children}

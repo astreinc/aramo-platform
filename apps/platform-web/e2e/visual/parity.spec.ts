@@ -43,19 +43,23 @@ for (const s of STATES) {
         masks.map((m) => m.toBottom === true),
         masks.map((m) => m.textBox === true),
       );
-      const protoRects = await loadRects(resolve(SHOTS, `${s.name}-${vp.name}.masks.json`));
+      const saved = await loadRects(resolve(SHOTS, `${s.name}-${vp.name}.masks.json`));
+      // CCP-B6: an element-level state's design-file regions are element-relative (capture-reference).
+      const origin = s.element ? await s.element.build(page).boundingBox() : null;
+      const protoRects = origin ? saved.map((r) => ({ ...r, x: r.x + origin.x, y: r.y + origin.y })) : saved;
       await paint(page, [...protoRects, ...buildRects]);
-      await expect(page).toHaveScreenshot(
-        `${s.name}-${vp.name}.png`,
-        process.env['PW_STRICT']
-          ? {
-              maxDiffPixels: 0,
-              ...(process.env['PW_THRESHOLD'] ? { threshold: Number(process.env['PW_THRESHOLD']) } : {}),
-            }
-          : s.aaAllowance !== undefined
-            ? { maxDiffPixels: s.aaAllowance }
-            : {},
-      );
+      const name = `${s.name}-${vp.name}.png`;
+      const opts = process.env['PW_STRICT']
+        ? {
+            maxDiffPixels: 0,
+            ...(process.env['PW_THRESHOLD'] ? { threshold: Number(process.env['PW_THRESHOLD']) } : {}),
+          }
+        : s.aaAllowance !== undefined
+          ? { maxDiffPixels: s.aaAllowance }
+          : {};
+      // CCP-B1: an element-level state compares that element only.
+      if (s.element) await expect(s.element.build(page)).toHaveScreenshot(name, opts);
+      else await expect(page).toHaveScreenshot(name, opts);
     });
   }
 }

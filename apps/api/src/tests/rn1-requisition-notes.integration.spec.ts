@@ -6,7 +6,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveEntitlementMigrations } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -36,10 +36,8 @@ import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 type SignKey = CryptoKey | KeyObject;
 const ROOT = resolve(__dirname, '../../../..');
 
-const ENTITLEMENT_INIT = resolve(
-  ROOT,
-  'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
-);
+// CCP-A7 — the full entitlement set (the shared helper; the repository reads A7 columns).
+const ENTITLEMENT_MIGRATIONS = resolveEntitlementMigrations(ROOT);
 const ACTIVITY_INIT = resolve(
   ROOT,
   'libs/activity/prisma/migrations/20260602140000_init_activity_model/migration.sql',
@@ -78,7 +76,7 @@ const CI_PROCESSING_RUN = resolve(
 // extension migration runs — exercising the backfill on real pre-existing data
 // in the SAME container (AC-1), no second container.
 const MIGRATIONS_PRE_EXTENSION = [
-  ENTITLEMENT_INIT,
+  ...ENTITLEMENT_MIGRATIONS,
   ACTIVITY_INIT,
   ACTIVITY_REDACTION,
 ];
@@ -212,8 +210,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       for (const p of MIGRATIONS_POST_EXTENSION) await db.query(readFileSync(p, 'utf8'));
       await ensureWriteFreezeTenant((s) => db.query(s), TENANT);
       await db.query(
-        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
-         VALUES ($1::uuid, 'ats') ON CONFLICT (tenant_id, capability) DO NOTHING`,
+        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+         VALUES ($1::uuid, 'ats', 'PROVISIONING') ON CONFLICT (tenant_id, capability) DO NOTHING`,
         [TENANT],
       );
 

@@ -126,7 +126,8 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   ESIGN_SEND_UNAVAILABLE: 409,
   // Aramo Sign launch — self-service billing: provider not configured/reachable
   // (503), and a billing action that conflicts with the tenant's state (409,
-  // details.reason ALREADY_SUBSCRIBED | NO_BILLING_ACCOUNT).
+  // details.reason ALREADY_SUBSCRIBED | NO_BILLING_ACCOUNT | governed_subscription_open
+  // (CCP-A6: an open governed subscription; Conversion Rule C-1, C-4)).
   ESIGN_BILLING_UNAVAILABLE: 503,
   ESIGN_BILLING_CONFLICT: 409,
   // Commercial Plans Amendment A1 — the plan's storage allocation is full
@@ -346,6 +347,17 @@ export const ERROR_CODE_TO_HTTP_STATUS: Readonly<Record<ErrorCode, number>> = {
   TENANT_DOMAIN_UNAVAILABLE: 409,
   // Domain-Enforcement P3 — re-issue / delegation refused while VERIFIED.
   DOMAIN_ALREADY_VERIFIED: 409,
+  // CCP-A3 — commercial change request + approval.
+  CCP_NOT_BOOTSTRAPPED: 409,
+  COMMERCIAL_APPROVAL_REFUSED: 409,
+  COMMERCIAL_CHANGE_REQUEST_CONFLICT: 409,
+  COMMERCIAL_POLICY_UNAVAILABLE: 503,
+  // CCP-A9 — last-effective-platform_owner invariant.
+  PLATFORM_LAST_OWNER: 409,
+  // CCP-D1 — usage analytics refused until the roll-ups reconcile.
+  USAGE_ROLLUP_NOT_RECONCILED: 409,
+  // CCP-B2 — catalog draft writes (a published version is never edited).
+  COMMERCIAL_CATALOG_CONFLICT: 409,
 };
 
 // Base error class. Thrown anywhere in the app where a structured response

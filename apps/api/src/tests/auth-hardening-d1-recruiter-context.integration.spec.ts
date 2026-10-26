@@ -6,7 +6,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveEntitlementMigrations } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -170,10 +170,8 @@ const IDENTITY_USER_TENANT_IMMUTABLE = resolve(
 );
 // IC-4 PR-9 — Tenant.kind (additive, defaulted); the client SELECTs it on every Tenant read.
 const IDENTITY_IC4_TENANT_KIND = resolve(ROOT, 'libs/identity/prisma/migrations/20261015000002_ic4_tenant_kind/migration.sql');
-const ENTITLEMENT_INIT = resolve(
-  ROOT,
-  'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
-);
+// CCP-A7 — the full entitlement set (the shared helper; the repository reads A7 columns).
+const ENTITLEMENT_MIGRATIONS = resolveEntitlementMigrations(ROOT);
 const COMPANY_INIT = resolve(
   ROOT,
   'libs/company/prisma/migrations/20260601160000_init_company_model/migration.sql',
@@ -699,7 +697,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         IDENTITY_USER_TENANT_CARDINALITY,
         IDENTITY_USER_TENANT_IMMUTABLE,
         IDENTITY_IC4_TENANT_KIND,
-        ENTITLEMENT_INIT,
+        ...ENTITLEMENT_MIGRATIONS,
         COMPANY_INIT,
         COMPANY_FIELD_EXPANSION,
         COMPANY_ADDRESS_PLACE_REF,
@@ -741,8 +739,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // provably the RolesGuard SCOPE gate, not the EntitlementGuard gate.
       for (const capability of ['ats', 'core']) {
         await db.query(
-          `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
-           VALUES ($1::uuid, $2)
+          `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+           VALUES ($1::uuid, $2, 'PROVISIONING')
            ON CONFLICT (tenant_id, capability) DO NOTHING`,
           [TENANT_ATS, capability],
         );

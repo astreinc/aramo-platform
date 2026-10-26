@@ -1,0 +1,273 @@
+{
+  "captured_on": "b0e59aa6 (baseline code, pre-A4 schema)",
+  "observation": {
+    "0190a4a6-0000-7000-8000-000000000001": {
+      "recruiter_view": {
+        "provider": "aramo_sign",
+        "available": true,
+        "reason": null,
+        "allowance": {
+          "limit": 100,
+          "unlimited": false,
+          "used": 0,
+          "remaining": 100,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "policy_view": {
+        "provider": "aramo_sign",
+        "available": true,
+        "reason": null,
+        "allowance": {
+          "limit": 100,
+          "unlimited": false,
+          "used": 0,
+          "remaining": 100,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "rtr_send": {
+        "ok": "aramo_sign"
+      },
+      "offer_send": {
+        "ok": "aramo_sign"
+      }
+    },
+    "0190a4a6-0000-7000-8000-000000000002": {
+      "recruiter_view": {
+        "provider": "aramo_sign",
+        "available": true,
+        "reason": null,
+        "allowance": {
+          "limit": 100,
+          "unlimited": false,
+          "used": 80,
+          "remaining": 20,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "WARNING"
+        }
+      },
+      "policy_view": {
+        "provider": "aramo_sign",
+        "available": true,
+        "reason": null,
+        "allowance": {
+          "limit": 100,
+          "unlimited": false,
+          "used": 80,
+          "remaining": 20,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "WARNING"
+        }
+      },
+      "rtr_send": {
+        "ok": "aramo_sign"
+      },
+      "offer_send": {
+        "ok": "aramo_sign"
+      }
+    },
+    "0190a4a6-0000-7000-8000-000000000003": {
+      "recruiter_view": {
+        "provider": "aramo_sign",
+        "available": true,
+        "reason": null,
+        "allowance": {
+          "limit": 100,
+          "unlimited": false,
+          "used": 99,
+          "remaining": 1,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "WARNING"
+        }
+      },
+      "policy_view": {
+        "provider": "aramo_sign",
+        "available": true,
+        "reason": null,
+        "allowance": {
+          "limit": 100,
+          "unlimited": false,
+          "used": 99,
+          "remaining": 1,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "WARNING"
+        }
+      },
+      "rtr_send": {
+        "ok": "aramo_sign"
+      },
+      "offer_send": {
+        "ok": "aramo_sign"
+      }
+    },
+    "0190a4a6-0000-7000-8000-000000000004": {
+      "recruiter_view": {
+        "provider": "aramo_sign",
+        "available": false,
+        "reason": "LIMIT_REACHED",
+        "allowance": {
+          "limit": 100,
+          "unlimited": false,
+          "used": 100,
+          "remaining": 0,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "EXHAUSTED"
+        }
+      },
+      "policy_view": {
+        "provider": "aramo_sign",
+        "available": false,
+        "reason": "LIMIT_REACHED",
+        "allowance": {
+          "limit": 100,
+          "unlimited": false,
+          "used": 100,
+          "remaining": 0,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "EXHAUSTED"
+        }
+      },
+      "rtr_send": {
+        "error": "ESIGN_SEND_UNAVAILABLE",
+        "status": 409,
+        "details": {
+          "reason": "LIMIT_REACHED",
+          "provider": "aramo_sign",
+          "allowance": {
+            "limit": 100,
+            "unlimited": false,
+            "used": 100,
+            "remaining": 0,
+            "period_start": "2026-10-01T00:00:00.000Z",
+            "period_end": "2026-11-01T00:00:00.000Z",
+            "threshold": "EXHAUSTED"
+          }
+        }
+      },
+      "offer_send": {
+        "error": "ESIGN_SEND_UNAVAILABLE",
+        "status": 409,
+        "details": {
+          "reason": "LIMIT_REACHED",
+          "provider": "aramo_sign",
+          "allowance": {
+            "limit": 100,
+            "unlimited": false,
+            "used": 100,
+            "remaining": 0,
+            "period_start": "2026-10-01T00:00:00.000Z",
+            "period_end": "2026-11-01T00:00:00.000Z",
+            "threshold": "EXHAUSTED"
+          }
+        }
+      }
+    },
+    "0190a4a6-0000-7000-8000-000000000005": {
+      "recruiter_view": {
+        "provider": "aramo_sign",
+        "available": true,
+        "reason": null,
+        "allowance": {
+          "limit": null,
+          "unlimited": true,
+          "used": 40,
+          "remaining": null,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "policy_view": {
+        "provider": "aramo_sign",
+        "available": true,
+        "reason": null,
+        "allowance": {
+          "limit": null,
+          "unlimited": true,
+          "used": 40,
+          "remaining": null,
+          "period_start": "2026-10-01T00:00:00.000Z",
+          "period_end": "2026-11-01T00:00:00.000Z",
+          "threshold": "OK"
+        }
+      },
+      "rtr_send": {
+        "ok": "aramo_sign"
+      },
+      "offer_send": {
+        "ok": "aramo_sign"
+      }
+    },
+    "0190a4a6-0000-7000-8000-000000000006": {
+      "recruiter_view": {
+        "provider": "aramo_sign",
+        "available": false,
+        "reason": "NOT_SUBSCRIBED",
+        "allowance": null
+      },
+      "policy_view": {
+        "provider": "aramo_sign",
+        "available": false,
+        "reason": "NOT_SUBSCRIBED",
+        "allowance": null
+      },
+      "rtr_send": {
+        "error": "ESIGN_SEND_UNAVAILABLE",
+        "status": 409,
+        "details": {
+          "reason": "NOT_SUBSCRIBED",
+          "provider": "aramo_sign"
+        }
+      },
+      "offer_send": {
+        "error": "ESIGN_SEND_UNAVAILABLE",
+        "status": 409,
+        "details": {
+          "reason": "NOT_SUBSCRIBED",
+          "provider": "aramo_sign"
+        }
+      }
+    },
+    "0190a4a6-0000-7000-8000-000000000007": {
+      "recruiter_view": {
+        "provider": "aramo_sign",
+        "available": false,
+        "reason": "NOT_SUBSCRIBED",
+        "allowance": null
+      },
+      "policy_view": {
+        "provider": "aramo_sign",
+        "available": false,
+        "reason": "NOT_SUBSCRIBED",
+        "allowance": null
+      },
+      "rtr_send": {
+        "error": "ESIGN_SEND_UNAVAILABLE",
+        "status": 409,
+        "details": {
+          "reason": "NOT_SUBSCRIBED",
+          "provider": "aramo_sign"
+        }
+      },
+      "offer_send": {
+        "error": "ESIGN_SEND_UNAVAILABLE",
+        "status": 409,
+        "details": {
+          "reason": "NOT_SUBSCRIBED",
+          "provider": "aramo_sign"
+        }
+      }
+    }
+  }
+}

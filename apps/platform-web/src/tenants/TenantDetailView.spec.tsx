@@ -82,6 +82,9 @@ describe('tab rules', () => {
   it('hides Domain without lifecycle:manage', () => {
     expect(visibleTabs(true)).toEqual(['overview', 'lifecycle', 'sign', 'domain', 'people']);
     expect(visibleTabs(false)).toEqual(['overview', 'lifecycle', 'sign', 'people']);
+    // CCP-B3: Commercial after Sign, only with platform:subscription:read.
+    expect(visibleTabs(false, true)).toEqual(['overview', 'lifecycle', 'sign', 'commercial', 'people']);
+    expect(visibleTabs(true, true)).toEqual(['overview', 'lifecycle', 'sign', 'commercial', 'domain', 'people']);
   });
   it('falls back to Overview for an unknown or hidden tab', () => {
     expect(resolveTab('lifecycle', visibleTabs(true))).toBe('lifecycle');

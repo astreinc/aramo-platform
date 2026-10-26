@@ -22,6 +22,22 @@ import { MatchingPolicyView } from './matching/MatchingPolicyView';
 import { PersonalReviewView } from './personal/PersonalReviewView';
 import { PersonalInviteView } from './personal/PersonalInviteView';
 import { PlatformAdminsView } from './admins/PlatformAdminsView';
+import { COMMERCIAL_PERMISSIONS as CP } from './components/permissions';
+import { ApprovalsInboxView } from './commercial/ApprovalsInboxView';
+import { CommercialAccessDenied } from './commercial/CommercialAccessDenied';
+import { SubscriptionsView } from './commercial/subscriptions/SubscriptionsView';
+import { CatalogView } from './commercial/catalog/CatalogView';
+import { PolicyView } from './commercial-governance/PolicyView';
+import { AuditExplorerView } from './commercial-governance/AuditExplorerView';
+import { ContractsView } from './contracts/ContractsView';
+import { CONTRACT_READ_SCOPE } from './contracts/contracts-api';
+import { SupportExtensionsView } from './commercial/support-extensions/SupportExtensionsView';
+import { RenewalsView } from './commercial/finance/RenewalsView';
+import { OutstandingPaymentsView } from './commercial/finance/OutstandingPaymentsView';
+import { BillingReconciliationView } from './commercial/finance/BillingReconciliationView';
+import { RevenueView } from './commercial/finance/RevenueView';
+import { ConsumptionView } from './commercial/usage/ConsumptionView';
+import { AlertsView } from './commercial/alerts/AlertsView';
 
 // The platform console app. RouteGuard handles only loading, unauthenticated
 // (→ sign-in) and the TENANT_ACCESS_DENIED wrong-account redirect — it no longer
@@ -86,6 +102,14 @@ export function PlatformConsole({ session }: { readonly session: Session }) {
   const gate = (scope: string, page: string, element: ReactElement): ReactElement =>
     hasScope(session, scope) ? element : <PlatformAccessDenied session={session} scope={scope} page={page} />;
 
+  // CCP-B1 — a Commercial route's gate: the screen, or the in-shell Commercial
+  // access-denied state naming the six commercial roles (CCP-UI v1.0 handoff §2;
+  // super_admin holds no commercial scope, so every Commercial deep link lands here).
+  // CCP-UI-V12 (AM-1, AM-2): a Finance, Usage or Operations page names itself on the card, and a
+  // scope-gated page names the scope it needs and its five holder roles.
+  const commercialGate = (scope: string, page: string, element: ReactElement, group?: 'Finance' | 'Usage' | 'Operations'): ReactElement =>
+    hasScope(session, scope) ? element : <CommercialAccessDenied session={session} scope={scope} page={page} group={group} />;
+
   return (
     <PlatformShell session={session}>
       <Routes>
@@ -149,7 +173,51 @@ export function PlatformConsole({ session }: { readonly session: Session }) {
         />
         {/* PLATFORM-UX-1 (directive R-12) — Platform admins at /admins (never under
             /platform/, which nginx proxies to the backend). */}
-        <Route path="/admins" element={gate(P.adminInvite, 'Platform admins', <PlatformAdminsView />)} />
+        {/* CCP-B5 (handoff §5.8) — Platform admins also opens for the commercial roles
+            (their commercial-roles view); super_admin keeps the invite view. */}
+        <Route
+          path="/admins"
+          element={
+            hasScope(session, P.adminInvite) || hasScope(session, CP.approvalRead) ? (
+              <PlatformAdminsView session={session} />
+            ) : (
+              <PlatformAccessDenied session={session} scope={P.adminInvite} page="Platform admins" />
+            )
+          }
+        />
+        {/* ── CCP-B1 — the Commercial group (handoff §2, directive R-12: never under
+            /platform/). Approvals is B1's, Catalog B2's, Policy and Audit B5's, Contracts B4's, Subscriptions B3's. */}
+        <Route path="/commercial" element={<Navigate to="/commercial/approvals" replace />} />
+        <Route
+          path="/commercial/approvals"
+          element={commercialGate(CP.approvalRead, 'approvals', <ApprovalsInboxView session={session} />)}
+        />
+        {/* CCP-B3 (PBD §5.3 row B3) — the Subscriptions workbench (handoff §5.3), read-only; a row
+            opens Tenant › Commercial, where every action is a change request (replaces B1's placeholder). */}
+        <Route path="/commercial/subscriptions" element={commercialGate(CP.subscriptionRead, 'subscriptions', <SubscriptionsView />)} />
+        {/* CCP-B2 (PBD §5.3 row B2) — the product and plan catalog; draft actions gate on
+            platform:catalog:draft inside the view (merge train: replaces B1's placeholder). */}
+        <Route path="/commercial/catalog" element={commercialGate(CP.catalogRead, 'catalog', <CatalogView session={session} />)} />
+        {/* CCP-B4 — Commercial › Contracts (handoff §5.5), gated on platform:subscription:read
+            (CCP A1 §4.1; catalog_manager and super_admin get the Commercial card, TD-B4-3). */}
+        <Route path="/commercial/contracts" element={commercialGate(CONTRACT_READ_SCOPE, 'contracts', <ContractsView session={session} />)} />
+        {/* CCP-B5 (handoff §5.6, §5.7; B5-P) — Commercial › Policy and Commercial › Audit, behind
+            the Commercial access-denied card (merge train: replaces B1's placeholders). */}
+        <Route path="/commercial/policy" element={commercialGate(CP.approvalRead, 'policy', <PolicyView />)} />
+        <Route path="/commercial/audit" element={commercialGate(CP.commercialAuditRead, 'audit', <AuditExplorerView />)} />
+        {/* CCP-B6 — Commercial › Support extensions (extensions and escalations), gated on the list
+            route's scope platform:subscription:read, behind B1's commercial card (merge train TD-MERGE-32). */}
+        <Route path="/commercial/support-extensions" element={commercialGate(CP.subscriptionRead, 'support extensions', <SupportExtensionsView session={session} />)} />
+        {/* CCP-UI-V12 (CCP-UI v1.1 §12.1, §13; v1.2 §17) — Finance, Usage and Operations › Alerts,
+            behind B1's commercial card with their read scope (AM-1, AM-2). Every screen is a read. */}
+        <Route path="/commercial/finance" element={<Navigate to="/commercial/finance/renewals" replace />} />
+        <Route path="/commercial/finance/renewals" element={commercialGate(CP.billingRead, 'renewals', <RenewalsView />, 'Finance')} />
+        <Route path="/commercial/finance/outstanding-payments" element={commercialGate(CP.billingRead, 'outstanding payments', <OutstandingPaymentsView session={session} />, 'Finance')} />
+        <Route path="/commercial/finance/reconciliation" element={commercialGate(CP.billingRead, 'billing reconciliation', <BillingReconciliationView />, 'Finance')} />
+        <Route path="/commercial/finance/revenue" element={commercialGate(CP.billingRead, 'revenue', <RevenueView session={session} />, 'Finance')} />
+        <Route path="/commercial/usage" element={commercialGate(CP.subscriptionRead, 'consumption', <ConsumptionView />, 'Usage')} />
+        <Route path="/commercial/alerts" element={commercialGate(CP.billingRead, 'alerts', <AlertsView />, 'Operations')} />
+        {/* ── end CCP-B1 */}
         <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </PlatformShell>

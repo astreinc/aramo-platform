@@ -142,7 +142,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await db.connect();
       for (const p of MIGRATIONS) await db.query(readFileSync(p, 'utf8'));
       await ensureWriteFreezeTenant((s) => db.query(s), TENANT);
-      await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1,'ats') ON CONFLICT DO NOTHING`, [TENANT]);
+      await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1,'ats', 'PROVISIONING') ON CONFLICT DO NOTHING`, [TENANT]);
       storePrisma = new PolicyStorePrismaService(url);
       await storePrisma.$connect();
       store = new PolicyStore(storePrisma);
@@ -415,7 +415,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     it('§D17b — a transition decision made under v4.0.0 still names it after v6.0.0 is published (re-read from the DB)', async () => {
       const T = '01900000-0000-7000-8000-0000000000d9';
       await ensureWriteFreezeTenant((s) => db.query(s), T);
-      await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability) VALUES ($1,'ats') ON CONFLICT DO NOTHING`, [T]);
+      await db.query(`INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source) VALUES ($1,'ats', 'PROVISIONING') ON CONFLICT DO NOTHING`, [T]);
       // Publish a v4.0.0 window first, make a CLOSE decision under it.
       await store.publish({ tenant_id: T, definition: { ...REQUISITION_LIFECYCLE_PACKAGE, version: '4.0.0' }, published_by: SYSTEM, effective_from: new Date('2026-01-01T00:00:00Z') });
       // L1-B — write-visibility parity: this DB-inserted req has no assignment,

@@ -5,6 +5,7 @@
 //   ARAMO_ENV=local ARAMO_SUBSCRIPTION_TENANT_ID=<uuid> npm run prisma:seed-dev-subscription
 import { openDevelopmentSubscription } from '../src/lib/development-subscription.js';
 import { PrismaService } from '../src/lib/prisma/prisma.service.js';
+import { SIGN_PRODUCT_KEY } from '../src/lib/product-registry.js';
 
 async function main(): Promise<void> {
   const url = process.env['DATABASE_URL'];
@@ -16,7 +17,7 @@ async function main(): Promise<void> {
   const prisma = new PrismaService(url);
   await prisma.$connect();
   try {
-    const res = await openDevelopmentSubscription(prisma, { tenant_id: tenant, created_by: 'seed-development-subscription' });
+    const res = await openDevelopmentSubscription(prisma, { tenant_id: tenant, product_key: SIGN_PRODUCT_KEY, created_by: 'seed-development-subscription' });
     console.log(`[subscription-seed] tenant ${tenant}: ${res.created ? 'opened' : 'already has'} subscription ${res.subscription_id}.`);
   } finally {
     await prisma.onModuleDestroy();

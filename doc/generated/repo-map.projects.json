@@ -1,5 +1,5 @@
 {
-  "aliasTotals": { "apps": 0, "libs": 0, "total": 84 },
+  "aliasTotals": { "apps": 0, "libs": 0, "total": 85 },
   "aliases": {
     "@aramo/activity": "./libs/activity/src/index.ts",
     "@aramo/ai-draft": "./libs/ai-draft/src/index.ts",
@@ -56,6 +56,7 @@
     "@aramo/pipeline": "./libs/pipeline/src/index.ts",
     "@aramo/placement": "./libs/placement/src/index.ts",
     "@aramo/placement-pipeline-bridge": "./libs/placement-pipeline-bridge/src/index.ts",
+    "@aramo/platform-admin": "./apps/platform-admin/src/app/app.module.ts",
     "@aramo/policy-engine": "./libs/policy-engine/src/index.ts",
     "@aramo/policy-store": "./libs/policy-store/src/index.ts",
     "@aramo/portal": "./libs/portal/src/index.ts",
@@ -388,7 +389,10 @@
       "CrossSchemaConsistencyRepository",
       "DEFAULT_APP_TIME_ZONE",
       "E164NormalizationError",
+      "ENTITLEMENT_MIGRATIONS",
+      "ENTITLEMENT_PROVENANCE_MIGRATION",
       "ERROR_CODES",
+      "FIXTURE_GRANTED_SOURCES",
       "IDENTITY_ADMISSION_POLICIES",
       "IDENTITY_MIGRATIONS",
       "LOCAL_REVISION_SENTINEL",
@@ -424,11 +428,14 @@
       "normalizeToE164",
       "resolveAppTimeZone",
       "resolveAuthStorageMigrations",
+      "resolveEntitlementMigrations",
       "resolveIdentityMigrations",
       "resolveReleaseRevision",
       "resolveSkillsTaxonomyMigrations",
       "rethrowTransactionConflict",
-      "secretsManagerClientConfig"
+      "secretsManagerClientConfig",
+      "seedTenantEntitlements",
+      "tenantEntitlementFixtureSql"
     ],
     "@aramo/communications": [
       "CALL_STATE_TRANSITIONS",
@@ -831,15 +838,22 @@
     ],
     "@aramo/entitlement": [
       "CAPABILITY_VALUES",
+      "COMMERCIAL_GRANTED_SOURCES",
       "DEFAULT_TENANT_CAPABILITIES",
       "EntitlementGuard",
       "EntitlementModule",
       "EntitlementRepository",
+      "GRANTED_SOURCES",
       "REQUIRED_CAPABILITIES_KEY",
       "RequireCapability",
+      "UnknownCapabilityError",
+      "grantCapabilitiesInTx",
       "isCapability",
+      "isCommercialGrantSource",
+      "isGrantedSource",
       "reconcileTenantEntitlements",
-      "resolveReconcileTarget"
+      "resolveReconcileTarget",
+      "revokeCapabilitiesInTx"
     ],
     "@aramo/events": ["EventsModule", "OUTBOX_PUBLISHER_PORT", "buildEventEnvelope"],
     "@aramo/evidence": ["EvidenceModule", "EvidenceRepository", "PrismaService"],
@@ -1861,6 +1875,7 @@
       "PlacementPipelineBridgePrismaService",
       "PlacementPipelineInboxRepository"
     ],
+    "@aramo/platform-admin": ["AppModule"],
     "@aramo/policy-engine": [
       "DECISION_PRECEDENCE",
       "EFFECT_KINDS",
@@ -2201,56 +2216,426 @@
       "pipelineLinkVerdict"
     ],
     "@aramo/subscription": [
+      "A6_APPLICABLE_ACTIONS",
+      "ADJUSTMENT_PARAM_KEYS",
+      "ADJUSTMENT_STEP",
+      "APPLY_EXPIRABLE_ACTIONS",
+      "APPLY_EXPLANATIONS",
+      "APPLY_SERVICE_ACTIONS",
+      "APPROVAL_REFUSALS",
+      "ARR_MONTHS",
       "AllowanceService",
       "AramoSignIncludedPlanKey",
       "AramoSignStandardBusinessPlanKey",
       "AramoSignStandardProfessionalPlanKey",
+      "B2_CATALOG_APPLY_ACTIONS",
+      "BASE_COMPOSITION",
+      "BILLING_COMMAND_ACTIONS",
+      "BILLING_COMMAND_KINDS",
+      "BILLING_COMMAND_KINDS_BY_ACTION",
+      "BILLING_COMMAND_MAX_ATTEMPTS",
+      "BILLING_COMMAND_STATES",
+      "BILLING_COMMAND_TRANSITIONS",
+      "BILLING_COMMAND_UNCONFIRMED_STATES",
       "BILLING_COUNTRY_NOT_SUPPORTED",
+      "BILLING_MODES",
+      "BILLING_PRICE_PROVIDER",
+      "BILLING_PROVIDER_ADJUSTMENT_PORT",
+      "BILLING_PROVIDER_COMMAND_PORT",
       "BILLING_PROVIDER_PORT",
+      "BILLING_PROVIDER_READ_PORT",
+      "BILLING_READ_SCOPE",
+      "BILLING_STATUS_AVAILABILITY",
+      "BILLING_STATUS_DEFAULT_INVOICE_LIMIT",
+      "BILLING_STATUS_MAX_INVOICE_LIMIT",
+      "BILLING_WEBHOOK_INBOX_STATUSES",
+      "BOOTSTRAP_CLI_FLAGS",
+      "BOOTSTRAP_PLATFORM_TENANT_ID",
+      "BOOTSTRAP_TARGET_EMAIL",
+      "BillingAdjustmentFailure",
+      "BillingAdjustmentRefusedError",
+      "BillingCommandError",
+      "BillingCommandService",
+      "BillingFinanceReportService",
       "BillingProviderUnavailableError",
       "BillingRefusedError",
+      "BillingRevenueReportService",
+      "BillingStatusQueryError",
+      "BillingStatusReadService",
+      "BillingWebhookInboxQueryError",
+      "BillingWebhookInboxService",
       "BillingWebhookSignatureError",
+      "C16_QUERY_A",
+      "C4_ADJUSTMENT_COMMAND_KINDS",
+      "C4_BILLING_ADJUSTMENT_ACTIONS",
+      "CATALOG_ACTION_TYPES",
+      "CATALOG_DRAFT_SCOPE",
+      "CATALOG_ENVELOPE_ALLOWANCE_KEY",
+      "CATALOG_STORAGE_CAPACITY_KEY",
+      "CATALOG_V1_BILLING_INTERVAL",
+      "CATALOG_V1_CURRENCY",
+      "CCP_ALERT_APPROVAL_EXPIRY_LEAD_MINUTES_DEFAULT",
+      "CCP_ALERT_PENDING_PROVIDER_STUCK_MINUTES_DEFAULT",
+      "CCP_ALERT_RAISED_EVENT",
+      "CCP_ALERT_RESOLVED_EVENT",
+      "CCP_ALERT_SCAN_EVENT",
+      "CCP_ALERT_THRESHOLD_MAX_MINUTES",
+      "COMMERCIAL_A3_TRANSITIONS",
+      "COMMERCIAL_A6_APPLY_TRANSITIONS",
+      "COMMERCIAL_A8_EXCEPTION_TRANSITIONS",
+      "COMMERCIAL_A9_ROLE_APPLY_TRANSITIONS",
+      "COMMERCIAL_ACC1_POLICY_WITHDRAW_TRANSITIONS",
+      "COMMERCIAL_ACTIONS",
+      "COMMERCIAL_ACTION_TYPES",
+      "COMMERCIAL_ALERT_DEFINITIONS",
+      "COMMERCIAL_ALERT_FAMILIES",
+      "COMMERCIAL_ALERT_SCAN_LOCK",
+      "COMMERCIAL_ALERT_SOURCE_CAP",
+      "COMMERCIAL_ALERT_STATUSES",
+      "COMMERCIAL_ALERT_TYPES",
+      "COMMERCIAL_APPLY_FAULT_HOOK",
+      "COMMERCIAL_AUDIT_DEFAULT_LIMIT",
+      "COMMERCIAL_AUDIT_EVENT_TYPE_PATTERN",
+      "COMMERCIAL_AUDIT_EXPORT_COLUMNS",
+      "COMMERCIAL_AUDIT_EXPORT_MAX_ROWS",
+      "COMMERCIAL_AUDIT_MAX_LIMIT",
+      "COMMERCIAL_B5R_POLICY_APPLY_TRANSITIONS",
+      "COMMERCIAL_C2_CONVERSION_TRANSITIONS",
+      "COMMERCIAL_C4_ADJUSTMENT_TRANSITIONS",
+      "COMMERCIAL_CATALOG_APPLY_FAULT_HOOK",
+      "COMMERCIAL_CHAIN_PANEL",
+      "COMMERCIAL_CHANGE_REQUEST_KINDS",
+      "COMMERCIAL_CHANGE_REQUEST_STATES",
+      "COMMERCIAL_CLOCK",
+      "COMMERCIAL_OPEN_STATES",
+      "COMMERCIAL_PAYMENT_CLOCK",
+      "COMMERCIAL_POLICY_APPLY_FAULT_HOOK",
+      "COMMERCIAL_POLICY_FORMAT_VERSION",
+      "COMMERCIAL_POLICY_KEYS",
+      "COMMERCIAL_REQUEST_PRODUCT_KEYS",
+      "COMMERCIAL_ROLE_CHANGE_ACTIONS",
+      "COMMERCIAL_ROLE_CHANGE_ROLE_KEYS",
+      "COMMERCIAL_TERMINAL_STATES",
+      "COMMERCIAL_TRANSITIONS",
+      "COMMITMENT_TERM_DETAIL",
+      "CONTRACT_LIST_DEFAULT_LIMIT",
+      "CONTRACT_LIST_MAX_LIMIT",
+      "CONTRACT_MAX_DOCUMENTS",
+      "CONTRACT_MAX_TERMS",
+      "CONTRACT_PAYLOAD_KEYS",
+      "CONTRACT_REF_PATTERN",
+      "CONTRACT_TERMS_KEYS",
+      "CONVERSION_DIRECTIONS",
+      "CONVERSION_RELEASE_STATES",
+      "CONVERSION_RELEASE_TRANSITIONS",
       "CapacityService",
+      "CatalogCreateDraftInput",
+      "CatalogDraftEditError",
+      "CatalogUpdateDraftInput",
+      "CommercialAlertQueryError",
+      "CommercialAlertService",
+      "CommercialApplyFailedError",
+      "CommercialApplyRefusedError",
+      "CommercialApplyService",
+      "CommercialApprovalRefusedError",
+      "CommercialAuditCursorError",
+      "CommercialAuditExportService",
+      "CommercialAuditExportTooLargeError",
+      "CommercialAuditRepository",
+      "CommercialBillingAdjustmentLedger",
+      "CommercialBillingAdjustmentService",
+      "CommercialCatalogApplyService",
+      "CommercialCatalogError",
+      "CommercialCatalogPlanView",
+      "CommercialCatalogService",
+      "CommercialChangeRequestCursorError",
+      "CommercialChangeRequestError",
+      "CommercialChangeRequestIntegrityError",
+      "CommercialChangeRequestService",
+      "CommercialConversionLedger",
+      "CommercialConversionService",
+      "CommercialNotBootstrappedError",
+      "CommercialOperatorRepository",
+      "CommercialOperatorRosterService",
+      "CommercialPayloadError",
+      "CommercialPolicyApplyService",
+      "CommercialPolicyGovernanceService",
+      "CommercialPolicyInputError",
+      "CommercialPolicyRepository",
+      "CommercialPolicyUnavailableError",
+      "CommercialRefundReportService",
+      "CommercialSubscriptionReadService",
+      "ContractPaymentReadService",
+      "ContractRepository",
+      "ConversionApplyFailedError",
+      "D9_STATEMENT_VERSION",
       "DAY_WINDOW_MS",
       "DOMAIN_NOT_AUTHORITATIVE",
       "ESIGN_ENVELOPE_ALLOWANCE",
       "ESIGN_ENVELOPE_SENT_EVENT",
       "FEATURE_AVAILABILITY",
+      "FINANCE_AMOUNT_SCOPE",
+      "FINANCE_AMOUNT_WITHHELD",
+      "FINANCE_CURRENCY",
+      "FINANCE_SOURCES",
+      "FINANCIAL_EVIDENCE_KEYS",
+      "FINANCIAL_NOTE_KEYS",
+      "FINANCIAL_REQUEST_ACTION_TYPES",
       "FREE_SUBSCRIPTION_SOURCE",
       "FreePersonalPlanKey",
       "FreePersonalSubscriptionService",
+      "GOVERNED_SUBSCRIPTION_OPEN",
+      "INBOX_MAX_AUTOMATIC_ATTEMPTS",
+      "INITIAL_OBLIGATION_REF",
+      "INVOICE_AMOUNT_FIELDS",
+      "INVOICE_AMOUNT_LINK_FIELDS",
+      "INVOICE_PAYMENT_STATES",
+      "INVOICE_READ_NOT_DELIVERED",
       "LEGAL_DOCUMENTS",
       "LEGAL_DOCUMENT_REGISTRY",
       "LEGAL_DOCUMENT_TITLES",
       "LegalAcceptanceService",
+      "MONETARY_ACTION_TYPES",
+      "OBLIGATION_PAYMENT_STATUSES",
       "ORGANIZATION_BILLING_PROFILE_PORT",
+      "OUTSTANDING_STATUSES",
+      "OVERVIEW_PRODUCT_KEYS",
       "PAST_DUE_GRACE_DAYS_DEFAULT",
+      "PAYMENT_CORRECTIONS",
+      "PAYMENT_DUE_STATES",
+      "PAYMENT_METHODS",
+      "PAYMENT_OVERDUE_STATES",
+      "PAYMENT_PAYLOAD_CODES",
+      "PAYMENT_RECORD_OPERATIONS",
+      "PAYMENT_RECORD_SCOPE",
+      "PAYMENT_REFUSAL_CODES",
       "PERSONAL_LEGAL_DOCUMENT_KEYS",
+      "PIN_REASON_CHANGE_REQUEST",
+      "PIN_REASON_PROVIDER_PLAN_CHANGE",
       "PLAN_ELIGIBILITY_PORT",
+      "PLAN_VERSION_CONTENT_FORMAT",
+      "PLAN_VERSION_ID_REQUIRED",
+      "PLAN_VERSION_STATUSES",
+      "PLATFORM_LAST_OWNER_DB_MARKER",
+      "PLATFORM_OWNER_BOOTSTRAP_EVENT",
+      "PLATFORM_OWNER_ROLE_KEY",
+      "POLICY_APPLY_FAILURE_CODES",
+      "POLICY_AUTHOR_ROLES",
+      "POLICY_EDITABLE_KEYS",
+      "POLICY_EDIT_RANGES",
+      "POLICY_LOCK_SQL",
+      "POLICY_TARGET_CHECKSUM_KEY",
+      "PORTAL_CONFIGURATION_STATES",
+      "PRICE_CHANGE_UNDEFINED_DETAIL",
+      "PRODUCT_CAPABILITIES",
+      "PRODUCT_KEYS",
+      "PROVIDER_TEXT_KEYS",
+      "PaymentRecordRefusedError",
+      "PlanVersionContentError",
+      "PlanVersionDraftExistsError",
+      "PlanVersionRepository",
+      "PlanVersionStateError",
+      "PlatformOwnerBootstrapRefusedError",
+      "PolicyActivationRefusedError",
+      "ProductContextError",
+      "REFUND_CATEGORIES",
+      "REFUND_DISPATCH_REFUSED_EVENT",
+      "REFUND_EXECUTION_FLAG",
+      "REFUND_EXECUTION_NOT_RELEASED",
+      "REFUND_OUTSTANDING_STATES",
+      "REFUND_PAYLOAD_CODES",
+      "REFUND_POLICY_NOT_APPROVED",
+      "REFUND_POLICY_REF",
+      "REFUND_REMAINDER_REFUSALS",
+      "REFUND_REPORT_STATES",
+      "RENEWAL_HORIZON_DEFAULT_DAYS",
+      "RENEWAL_HORIZON_MAX_DAYS",
+      "RESIDUAL_AUTHORITY_SQL",
+      "REVENUE_BASIS",
+      "REVENUE_BEARING_STATUSES",
+      "REVENUE_BILLING_INTERVAL",
+      "REVENUE_EXCLUSION_REASONS",
+      "REVENUE_PIPELINE_DEFAULT_MONTHS",
+      "REVENUE_PIPELINE_MAX_MONTHS",
+      "RefundRemainderGate",
+      "RefundRemainderRefusedError",
+      "RefundReportQueryError",
+      "RoleChangeApplyError",
+      "SELF_SERVICE_ACTIONS",
+      "SELF_SERVICE_CANCEL_STEP",
+      "SELF_SERVICE_PRODUCTS",
+      "SELF_SERVICE_PRODUCT_REGISTRY",
+      "SIGN_PRODUCT_KEY",
       "STORAGE_CAPACITY_KEY",
       "STRIPE_API_VERSION",
+      "STRIPE_READ_ADAPTER_METHODS",
+      "SUBSCRIPTION_CANCEL_MODES",
+      "SUPPORT_EXTENSION_INELIGIBLE",
+      "SUPPORT_EXTENSION_INELIGIBLE_EVENT",
+      "SUPPORT_EXTENSION_SCOPE",
+      "SelfServiceBillingService",
+      "SelfServiceRefusedError",
       "StripeBillingProvider",
+      "StripeBillingReadAdapter",
       "SubscriptionLifecycleService",
       "SubscriptionModule",
       "SubscriptionPrismaService",
+      "SupportExtensionService",
+      "TAX_NOT_ENABLED_REASON",
+      "TENANT_ACTIVATION_PENDING_MESSAGE",
+      "TENANT_AMOUNT_KEYS",
+      "USAGE_METRICS",
+      "USAGE_METRIC_SOURCES",
+      "USAGE_PERIODS_DEFAULT_LIMIT",
+      "USAGE_PERIODS_MAX_LIMIT",
+      "USAGE_RECONCILIATION_MISMATCH_LIMIT",
+      "USAGE_ROLLUP_LOCK_KEY",
+      "UsageRollupService",
+      "accountingPeriodOf",
+      "activatePolicyVersionInTx",
+      "actorSatisfiesStep",
+      "addCalendarDays",
       "addMonthsClamped",
+      "adjustmentOperationOf",
+      "applyCatalogDraftEdits",
+      "approvalExpiresAt",
       "approvedLegalDocument",
+      "assertChainStillSatisfiableAtApply",
       "assertNotProduction",
+      "assertProductKey",
+      "assessRefundAmount",
+      "billingCommandIdempotencyKey",
       "billingCountrySupported",
+      "billingLockKey",
       "billingPeriodAt",
+      "boundedExceptionChain",
+      "buildAuditCsv",
+      "calendarDateIn",
+      "canTransition",
+      "canTransitionBillingCommand",
+      "canTransitionFor",
+      "canonicalJson",
+      "catalogTermsOf",
+      "chainFulfillability",
+      "changeCarriesContract",
+      "checkApprovalEligibility",
+      "checkChainSatisfiable",
+      "checkProviderPriceParity",
+      "checkSupportExtension",
+      "checkoutCutoverReport",
+      "classifyRevenueRow",
+      "commercialAlertThresholds",
+      "commercialAlertTypesOf",
+      "commercialPolicyChecksum",
+      "computeRevenue",
+      "conversionPayloadErrors",
+      "creditEscalation",
+      "csvField",
+      "currentPublishedVersion",
+      "daysUntil",
+      "decideRefundExecution",
+      "decideSupportExtension",
+      "diffAlerts",
+      "discountCouponRef",
+      "discountEscalates",
+      "effectivePlatformOwners",
+      "effectiveProviderPrice",
+      "effectiveReleaseState",
+      "enabledRefundPolicyIdentity",
+      "entitlementGapSubject",
+      "entitlementGaps",
+      "evaluateRefundExecution",
+      "evidenceVisible",
+      "explanationOf",
+      "financeAmountAccess",
+      "formatCheckoutCutoverReport",
+      "formatReconciliationReport",
+      "formatRevenueReport",
+      "graceStateAt",
       "inAppContextRef",
+      "invoicePaymentState",
+      "isA6Applicable",
+      "isAdjustmentCommandKind",
+      "isApplyExpirable",
+      "isApplyServiceAction",
+      "isApprovalExpired",
+      "isBillingAdjustmentAction",
+      "isCalendarDate",
+      "isCatalogApplicable",
+      "isContractPriced",
       "isFeatureAvailable",
+      "isFinancialCommandKind",
+      "isFinancialRequestAction",
+      "isGovernedSubscription",
+      "isIanaTimeZone",
+      "isPlatformLastOwnerViolation",
+      "isProductKey",
+      "isWithinPastDueGrace",
       "legalRef",
       "mapProviderStatus",
+      "monthKey",
+      "obligationPaymentStatus",
       "openDevelopmentSubscription",
+      "overlayCovers",
+      "parseActiveCommercialPolicy",
+      "parseBootstrapArgs",
+      "parseCommercialPolicyContent",
       "parsePlanPrices",
+      "parsePlanVersionContent",
+      "parseRequiredChain",
+      "pastDueGraceUntil",
+      "payloadChecksum",
+      "paymentFlags",
+      "paymentRecordPayloadErrors",
+      "paymentStatusFlags",
+      "paymentTermsErrors",
       "personalSignupMode",
+      "planVersionChecksum",
+      "planVersionContentFromRows",
+      "planVersionTerms",
+      "policyRangeErrors",
       "postTerminationExportDays",
+      "priceFigure",
+      "productOfMeteredKey",
+      "projectApprovalNotes",
+      "projectChangeRequestFinance",
+      "readPlatformSubject",
+      "refundBindingOf",
+      "refundExecutionEnabled",
+      "refundPolicyGate",
+      "refundPolicyRefBindingError",
+      "refundReportState",
+      "refundReservations",
+      "refundableRemainder",
+      "resolvePaymentRecordChain",
+      "resolvePriceToVersion",
+      "resolveRequiredChain",
+      "runPlatformOwnerBootstrap",
+      "selfServiceCommandIdempotencyKey",
+      "stripeCheckoutSessionState",
+      "stripeEventCheckoutSessionRef",
       "stripeEventSubscriptionRef",
       "stripeSubscriptionState",
+      "subjectUserOf",
       "subscriptionSends",
+      "supportExtensionWindow",
+      "takeBillingLock",
+      "taxAvailability",
       "thresholdOf",
-      "verifyStripeSignature"
+      "unlinkedReceipts",
+      "usageMetricOf",
+      "usageMetricsOf",
+      "validateContractBlocks",
+      "validatePayload",
+      "verifyStripeSignature",
+      "withholdAuditPayloadAmounts",
+      "withholdChangeRequestAmounts",
+      "withholdContractTerms",
+      "withholdContractTermsDeep",
+      "withholdEvidence",
+      "withholdMonetaryAmounts",
+      "withholdProviderText",
+      "withholdTenantAmounts"
     ],
     "@aramo/talent-embedding": [
       "TALENT_EMBEDDING_REPOSITORY_PORT",
@@ -2627,6 +3012,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/authz-d4b-visibility-matrix.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ccp-a1-platform-governance-authorization.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -3286,6 +3677,162 @@
       { "project": "pipeline", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a1-platform-role-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a2-commercial-audit-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a6-commercial-apply-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a8-support-extension-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a8-support-extension-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a9-role-change-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a9-role-change-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b2-commercial-catalog-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b2-commercial-catalog-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b3-subscriptions-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b4-commercial-contract-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b5-governance-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b5-governance-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c1-billing-operations-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c2-conversion-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c3-billing-status-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c4-billing-adjustment-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c6-finance-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c8pr-contract-payments-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d1-usage-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d1-usage-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d2-revenue-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d3-observability-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-r3w-finance-visibility-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -3365,6 +3912,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/billing.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/ccp-a4-ats-sign-consumption.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/ccp-c7-self-service.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -3806,6 +4365,12 @@
       { "project": "activity", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ccp-a1-platform-governance-authorization.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/create-submittal.unit.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -3891,6 +4456,156 @@
       { "project": "pipeline", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a1-platform-role-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a2-commercial-audit-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a6-commercial-apply-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a8-support-extension-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a8-support-extension-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a9-role-change-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b2-commercial-catalog-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b2-commercial-catalog-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b3-subscriptions-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b4-commercial-contract-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b5-governance-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b5-governance-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c1-billing-operations-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c2-conversion-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c3-billing-status-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c4-billing-adjustment-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c6-finance-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c8pr-contract-payments-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d1-usage-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d1-usage-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d2-revenue-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d3-observability-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-r3w-finance-visibility-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -3922,6 +4637,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/sign-signup.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/support/ccp-d4-harness.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -4283,6 +5004,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ats-entitlement.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/ats-qa-1-resume-selection.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -4350,6 +5077,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/cb-d2-r-reconciliation-drain.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ccp-a1-platform-governance-authorization.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ccp-a4-ats-sign-availability.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -5272,6 +6011,11 @@
         "status": "unscoped"
       },
       {
+        "from": "pact/provider/src/verify-platform-admin.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      },
+      {
         "from": "pact/provider/src/verify.ts",
         "project": "aramo-pact-provider",
         "status": "unscoped"
@@ -5300,6 +6044,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/auth-service/src/tests/auth.site-axis.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/ccp-a7-revoke-refresh.integration.spec.ts",
         "project": "auth-service",
         "status": "excluded"
       },
@@ -5632,6 +6382,12 @@
       { "project": "documents", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/entitlement/src/tests/ccp-a7-revoke-provenance.integration.spec.ts",
+        "project": "entitlement",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/entitlement/src/tests/entitlement-reconcile.integration.spec.ts",
         "project": "entitlement",
         "status": "excluded"
@@ -5727,6 +6483,30 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/auth-signin-1-idp-policy.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/ccp-a1-commercial-role-catalog-migration.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/ccp-a1a1-finance-amount-scope-migration.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/ccp-a1a2-payment-request-scope-migration.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/ccp-a9-platform-last-owner.spec.ts",
         "project": "identity",
         "status": "excluded"
       },
@@ -6162,6 +6942,162 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a1-platform-role-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a2-commercial-audit-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a6-commercial-apply-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a8-support-extension-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a8-support-extension-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a9-role-change-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a9-role-change-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b2-commercial-catalog-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b2-commercial-catalog-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b3-subscriptions-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b4-commercial-contract-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b5-governance-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b5-governance-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c1-billing-operations-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c2-conversion-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c3-billing-status-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c4-billing-adjustment-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c6-finance-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c8pr-contract-payments-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d1-usage-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d1-usage-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d2-revenue-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d3-observability-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-r3w-finance-visibility-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -6193,6 +7129,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/sign-signup.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/support/ccp-d4-harness.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -6573,6 +7515,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/ccp-a4-ats-sign-consumption.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/ccp-c7-self-service.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/esign-provider-errors.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -6793,6 +7747,228 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-a11-astre-backfill.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-a4-product-dimension.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-a4-sign-equality.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-a5-plan-version.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-a6-apply.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-a6-hold.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-a6r-apply-deadline.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-a7-entitlement-revoke.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-a8-support-extension.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-a9-bootstrap-role-change.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-a9fix-requester-attestation.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-acc1-policy-withdraw.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-b2-catalog-apply.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-b3-subscription-read.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-b4-contracts.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-b5-governance.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-b5r-apply-expiry.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-c1-command-inbox.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-c2-conversion.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-c3-billing-status.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-c4-billing-adjustments.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-c6-finance-report.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-c7-self-service.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-c8pr-payment-record.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-command-guard-union.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-d1-usage-rollups.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-d2-revenue-report.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-d3-operational-alerts.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-dg-refund-gate.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-fix1-apply-deadline-alerts.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-fix1-policy-apply-deadline.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-fix1-script-runner.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-full-compensation-chain.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-guard-union.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-merge-train-compensation.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-r3-acceptance.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/commercial-audit-policy.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/commercial-catalog-a1-upgrade.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
@@ -6805,6 +7981,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/commercial-change-request.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/fixtures/ccp-a11-production-like.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/personal-free.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
@@ -6812,6 +8000,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/subscription-lifecycle.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/support/ccp-a3-database.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -7229,6 +8423,12 @@
     "@aramo/documents": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ccp-a1-platform-governance-authorization.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -7380,6 +8580,12 @@
       { "project": "api", "status": "production" }
     ],
     "@aramo/documents-contracts": [
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ccp-a4-ats-sign-availability.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/doc6-offer-document.integration.spec.ts",
@@ -7579,6 +8785,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ccp-a4-ats-sign-availability.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/create-submittal.unit.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -7615,6 +8827,12 @@
       },
       { "project": "api", "status": "production" },
       { "project": "attachment", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/ccp-a7-revoke-refresh.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
       { "project": "calendar", "status": "production" },
       { "project": "client-selection", "status": "production" },
       {
@@ -7644,6 +8862,12 @@
       { "project": "integration", "status": "production" },
       { "project": "intelligence-integration", "status": "production" },
       { "project": "pipeline", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a1-platform-role-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
@@ -7705,6 +8929,13 @@
       },
       { "project": "sign-service", "status": "production" },
       { "project": "submittal", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-a11-astre-backfill.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      { "project": "subscription", "status": "production" },
       { "project": "talent-record", "status": "production" },
       { "project": "task", "status": "production" }
     ],
@@ -8528,7 +9759,73 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/commercial-governance/governance.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/commercial/ApprovalsInboxView.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/commercial/catalog/CatalogView.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/commercial/ccp-v12-drawer.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/commercial/commercial-visibility.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/commercial/finance/finance-v12.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/commercial/subscriptions/SubscriptionsView.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/commercial/subscriptions/TenantCommercialPanel.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "apps/platform-web/src/commercial/subscriptions/subscriptions-model.spec.ts",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/commercial/support-extensions/SupportExtensionsView.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/platform-web/src/components/interactive-components.spec.tsx",
+        "project": "aramo-platform-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/platform-web/src/contracts/ContractsView.spec.tsx",
         "project": "aramo-platform-web",
         "status": "excluded"
       },
@@ -8788,6 +10085,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ccp-a1-platform-governance-authorization.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/doclib-t4-tenant-branding.unit.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -8877,6 +10180,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/ccp-a7-revoke-refresh.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/auth-service/src/tests/host-auth-profile.resolver-seed-parity.spec.ts",
         "project": "auth-service",
         "status": "excluded"
@@ -8957,6 +10266,162 @@
       { "project": "company", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a1-platform-role-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a2-commercial-audit-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a6-commercial-apply-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a8-support-extension-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a8-support-extension-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a9-role-change-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a9-role-change-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b2-commercial-catalog-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b2-commercial-catalog-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b3-subscriptions-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b4-commercial-contract-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b5-governance-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b5-governance-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c1-billing-operations-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c2-conversion-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c3-billing-status-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c4-billing-adjustment-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c6-finance-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c8pr-contract-payments-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d1-usage-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d1-usage-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d2-revenue-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d3-observability-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-r3w-finance-visibility-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -9014,6 +10479,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/billing.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/ccp-c1-billing-commands.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/ccp-c7-self-service.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -10101,6 +11578,13 @@
       },
       { "project": "api", "status": "production" }
     ],
+    "@aramo/platform-admin": [
+      {
+        "from": "pact/provider/src/verify-platform-admin.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      }
+    ],
     "@aramo/policy-engine": [
       {
         "excludedBy": "src/tests/**/*",
@@ -10721,6 +12205,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a1-platform-role-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -10735,6 +12225,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/aramo-sign-allowance.gate.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/ccp-a4-ats-sign-consumption.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -10888,6 +12384,12 @@
     "@aramo/signature-routing": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ccp-a4-ats-sign-availability.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/esignature-integration.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -10910,6 +12412,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/canonical-reconcile-activation.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ccp-a1-platform-governance-authorization.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -11039,6 +12547,12 @@
     "@aramo/subscription": [
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/ccp-a4-ats-sign-availability.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/external-signature-providers.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -11050,6 +12564,185 @@
         "status": "excluded"
       },
       { "project": "api", "status": "production" },
+      {
+        "from": "pact/provider/src/verify-platform-admin.ts",
+        "project": "aramo-pact-provider",
+        "status": "unscoped"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a1-platform-role-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a2-commercial-audit-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a3-commercial-change-request-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a6-commercial-apply-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a8-support-extension-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a8-support-extension-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a9-role-change-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-a9-role-change-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b2-commercial-catalog-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b2-commercial-catalog-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b3-subscriptions-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b4-commercial-contract-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b5-governance-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-b5-governance-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c1-billing-operations-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c2-conversion-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c3-billing-status-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c4-billing-adjustment-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c6-finance-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c8pr-contract-payments-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d1-usage-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d1-usage-routes.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d2-revenue-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d3-alert-scanner-worker.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d3-observability-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d4-negative-controls.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-d4-tenant-isolation.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-r3w-finance-visibility-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
@@ -11068,6 +12761,12 @@
         "project": "platform-admin",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/support/ccp-d4-harness.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
       { "project": "platform-admin", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
@@ -11078,6 +12777,24 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/billing.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/ccp-a4-ats-sign-consumption.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/ccp-c1-billing-commands.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/ccp-c7-self-service.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -12058,6 +13775,13 @@
       "name": "platform-governance-consumer-pact",
       "root": "pact/consumers/platform-governance-consumer",
       "sourceRoot": "pact/consumers/platform-governance-consumer/src",
+      "tags": ["pact-consumer"],
+      "targets": ["lint", "pact-test", "test"]
+    },
+    {
+      "name": "platform-web-consumer-pact",
+      "root": "pact/consumers/platform-web-consumer",
+      "sourceRoot": "pact/consumers/platform-web-consumer/src",
       "tags": ["pact-consumer"],
       "targets": ["lint", "pact-test", "test"]
     },

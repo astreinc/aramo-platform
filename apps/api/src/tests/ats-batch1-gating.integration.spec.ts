@@ -6,7 +6,7 @@ import {
   PostgreSqlContainer,
   type StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveEntitlementMigrations } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe, type INestApplication } from '@nestjs/common';
 import cookieParser from 'cookie-parser';
@@ -68,10 +68,8 @@ const ROOT = resolve(__dirname, '../../../..');
 //   - entitlement (TenantEntitlement is the EntitlementGuard's read).
 //   - company (the schema-under-test).
 //   - contact (the schema-under-test).
-const ENTITLEMENT_INIT = resolve(
-  ROOT,
-  'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
-);
+// CCP-A7 — the full entitlement set (the shared helper; the repository reads A7 columns).
+const ENTITLEMENT_MIGRATIONS = resolveEntitlementMigrations(ROOT);
 const COMPANY_INIT = resolve(
   ROOT,
   'libs/company/prisma/migrations/20260601160000_init_company_model/migration.sql',
@@ -202,7 +200,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // DDL when sent in one shot). Mirrors the portal-refusal spec's
       // boot-time migration loop.
       for (const p of [
-        ENTITLEMENT_INIT,
+        ...ENTITLEMENT_MIGRATIONS,
         COMPANY_INIT,
         COMPANY_FIELD_EXPANSION,
         COMPANY_ADDRESS_PLACE_REF,
@@ -227,8 +225,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       // UUID, but we re-assert it idempotently so the spec is self-
       // contained against any future change to the migration's seed set.
       await setupClient.query(
-        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability)
-         VALUES ($1::uuid, 'ats')
+        `INSERT INTO entitlement."TenantEntitlement" (tenant_id, capability, granted_source)
+         VALUES ($1::uuid, 'ats', 'PROVISIONING')
          ON CONFLICT (tenant_id, capability) DO NOTHING`,
         [TENANT_ATS],
       );

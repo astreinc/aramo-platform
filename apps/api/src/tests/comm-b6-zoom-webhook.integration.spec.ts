@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 import type { AddressInfo } from 'node:net';
 
 import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testcontainers/postgresql';
-import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
+import { ARAMO_POSTGRES_TEST_IMAGE, resolveEntitlementMigrations } from '@aramo/common';
 import { Test, type TestingModule } from '@nestjs/testing';
 import { type INestApplication } from '@nestjs/common';
 import express from 'express';
@@ -30,7 +30,7 @@ import { ensureWriteFreezeTenant } from './write-freeze-tenant.js';
 const ROOT = resolve(__dirname, '../../../..');
 const M = (p: string): string => resolve(ROOT, p);
 const MIGRATIONS = [
-  'libs/entitlement/prisma/migrations/20260601120000_init_entitlement_model/migration.sql',
+  ...resolveEntitlementMigrations(ROOT),
   'libs/communications/prisma/migrations/20260825120000_init_communications/migration.sql',
   'libs/communications/prisma/migrations/20260905130000_comm_c2b_provider_identity_email_tenant/migration.sql',
   'libs/communications/prisma/migrations/20260905140000_comm_c2b_meeting_channel/migration.sql',
