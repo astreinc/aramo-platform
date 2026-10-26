@@ -2,12 +2,15 @@
 -- Compensating the union re-asserts the CHECK the last-sorting slice migration wrote: CCP-R3
 -- (20261028050000), the 8 CCP-D3 triples + ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION, verbatim. Refused (RAISE,
 -- nothing changed) while an APPLY_DEADLINE_NEARING / APPLY_DEADLINE_PASSED row exists (alert rows are never
--- deleted). Production execution needs separate PO authorization (A0-C15).
+-- deleted), or (CCP-C8-PR) a PAYMENT_RECEIPT_UNLINKED row exists. Production execution needs separate PO authorization (A0-C15).
 -- splitDdl-safe: no semicolons in comment lines.
 DO $$
 BEGIN
   IF EXISTS (SELECT 1 FROM "subscription"."CommercialOperationalAlert" WHERE "alert_type" IN ('APPLY_DEADLINE_NEARING', 'APPLY_DEADLINE_PASSED')) THEN
     RAISE EXCEPTION 'CCP alert-type-union compensation refused: an apply-deadline alert row exists';
+  END IF;
+  IF EXISTS (SELECT 1 FROM "subscription"."CommercialOperationalAlert" WHERE "alert_type" = 'PAYMENT_RECEIPT_UNLINKED') THEN
+    RAISE EXCEPTION 'CCP alert-type-union compensation refused: a CCP-C8-PR PAYMENT_RECEIPT_UNLINKED alert row exists';
   END IF;
 END
 $$;

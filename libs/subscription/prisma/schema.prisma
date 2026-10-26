@@ -769,7 +769,78 @@ model Contract {
   recorded_by_change_request_id String   @unique @db.Uuid
   recorded_by                   String   @db.Uuid
   recorded_at                   DateTime @db.Timestamptz(3)
+  // CCP-C8-PR (PAYMENT_RECORD amendment PR-1; migration 20261030010000) — the structured payment
+  // terms, ADDED (never a rename of `terms`). All-or-nothing; required for a CHANGE_REQUEST contract
+  // (insert trigger). PREPAID | POSTPAID.
+  billing_mode                  String?
+  payment_currency              String?
+  // IANA zone; every due-date comparison uses it (PR-10).
+  payment_timezone              String?
+  // NULL = absent = 0 grace days (no default invented).
+  grace_days                    Int?
+  // POSTPAID only: the explicit marker with its evidence.
+  postpaid_approval             Json?
 
+  @@schema("subscription")
+}
+
+// CCP-C8-PR (PR-1; MP-A2 N-3) — one contractual payment obligation. NOT NULL FK to its Contract
+// (which keeps its NOT NULL FK to the TenantSubscription it governs). Append-only; written only in the
+// A6 apply of a SUBSCRIPTION_OPEN / _CHANGE. Carries no state: its payment status is derived (PR-10).
+model ContractPaymentObligation {
+  id                            String   @id @db.Uuid
+  contract_id                   String   @db.Uuid
+  obligation_ref                String
+  due_date                      DateTime @db.Date
+  amount_minor                  BigInt
+  currency                      String
+  description                   String
+  recorded_by_change_request_id String   @db.Uuid
+  recorded_at                   DateTime @db.Timestamptz(3)
+
+  @@unique([contract_id, obligation_ref])
+  @@schema("subscription")
+}
+
+// CCP-C8-PR (§4.1) — the append-only commercial receipt attestation: "Finance verified that payment X
+// was received against obligation Y". Never a ledger entry, a balance or a subscription state. NOT
+// NULL FK to its governing PAYMENT_RECORD request; nullable FKs to Contract / obligation until linked
+// (§4.3, inside the SUBSCRIPTION_OPEN apply). Only the link and the PR-9 correction mark are ever set.
+model CommercialPaymentReceipt {
+  id                             String    @id @db.Uuid
+  change_request_id              String    @unique @db.Uuid
+  tenant_id                      String    @db.Uuid
+  product_key                    String
+  // RECORD | CORRECTION
+  entry_kind                     String
+  corrects_receipt_id            String?   @unique @db.Uuid
+  contract_id                    String?   @db.Uuid
+  obligation_id                  String?   @db.Uuid
+  linked_at                      DateTime? @db.Timestamptz(3)
+  linked_by_change_request_id    String?   @db.Uuid
+  provisional_contract_ref       String?
+  provisional_obligation_ref     String?
+  provisional_amount_minor       BigInt?
+  provisional_currency           String?
+  external_invoice_ref           String
+  amount_minor                   BigInt
+  currency                       String
+  received_on                    DateTime  @db.Date
+  // BANK_TRANSFER | CHEQUE | CARD_EXTERNAL | OTHER
+  payment_method                 String
+  payment_reference              String
+  verification                   String?
+  evidence_documents             Json
+  // MANUAL (ACCT reserved, PR-13)
+  origin                         String
+  external_evidence_ref          String?
+  corrected_at                   DateTime? @db.Timestamptz(3)
+  corrected_by_change_request_id String?   @db.Uuid
+  recorded_by                    String    @db.Uuid
+  recorded_at                    DateTime  @db.Timestamptz(3)
+
+  @@index([contract_id])
+  @@index([tenant_id, product_key])
   @@schema("subscription")
 }
 

@@ -183,6 +183,8 @@ export class PlatformCommercialFinanceController {
       })),
       held_activations: r.held_activations.map(heldDto),
       other_open_flags: r.other_open_flags.map((f) => ({ ...f, detected_at: f.detected_at.toISOString() })),
+      // CCP-C8-PR (PAYMENT_RECORD §4.3 step 5) — unlinked prepaid INITIAL receipts (no amount).
+      unlinked_receipts: r.unlinked_receipts.map((u) => ({ ...u, recorded_at: u.recorded_at.toISOString() })),
       counts: { ...r.counts, by_source: { ...r.counts.by_source }, by_status: { ...r.counts.by_status }, discrepancies: { ...r.counts.discrepancies } },
     };
   }

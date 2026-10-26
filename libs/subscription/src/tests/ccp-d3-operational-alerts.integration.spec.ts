@@ -431,7 +431,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D3 operationa
     expect(b.open_reconciliation_flags_by_reason['governed_subscription_open'] ?? 0).toBe(await sqlCount(`SELECT count(*)::int n FROM subscription."BillingReconciliationFlag" WHERE resolved_at IS NULL AND reason = 'governed_subscription_open'`));
     expect(b.open_alerts_by_type['COMMAND_FAILED']).toBe(await sqlCount(`SELECT count(*)::int n FROM subscription."CommercialOperationalAlert" WHERE status = 'OPEN' AND alert_type = 'COMMAND_FAILED'`));
     // CCP-R3 (TD-A7-5) adds ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION to the billing family; CCP-FIX1 the two apply-deadline types.
-    expect(Object.keys(b.open_alerts_by_type).sort()).toEqual(['COMMAND_FAILED', 'COMMAND_PENDING_PROVIDER_STUCK', 'ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION', 'HELD_ACTIVATION', 'USAGE_NOT_RECONCILED', 'WEBHOOK_INBOX_FAILED']);
+    // CCP-C8-PR adds PAYMENT_RECEIPT_UNLINKED (an unlinked prepaid INITIAL receipt, §4.3 step 5).
+    expect(Object.keys(b.open_alerts_by_type).sort()).toEqual(['COMMAND_FAILED', 'COMMAND_PENDING_PROVIDER_STUCK', 'ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION', 'HELD_ACTIVATION', 'PAYMENT_RECEIPT_UNLINKED', 'USAGE_NOT_RECONCILED', 'WEBHOOK_INBOX_FAILED']);
     expect(Object.keys(a.open_alerts_by_type).sort()).toEqual(['APPLY_DEADLINE_NEARING', 'APPLY_DEADLINE_PASSED', 'APPLY_FAILED', 'APPROVAL_NEARING_EXPIRY', 'APPROVAL_PAST_EXPIRY']);
     expect(a.change_requests_by_state['APPLIED']).toBe(await sqlCount(`SELECT count(*)::int n FROM subscription."CommercialChangeRequest" WHERE state = 'APPLIED'`));
     expect(Object.values(a.change_requests_by_state).reduce((x, y) => x + y, 0)).toBe(await sqlCount(`SELECT count(*)::int n FROM subscription."CommercialChangeRequest"`));

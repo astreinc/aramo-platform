@@ -123,6 +123,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-D2 revenue re
       contract_ref: 'D2-CT-0001',
       terms: ['Sign at a negotiated monthly price', 'Invoiced monthly, net 45'],
       documents: [{ name: 'Order form D2.pdf', sha256: createHash('sha256').update('d2-order-form').digest('hex') }],
+      payment_terms: { billing_mode: 'POSTPAID', postpaid_approval: { statement: 'Postpaid per the signed order form', evidence_ref: 'Order form postpaid clause' }, currency: 'USD', timezone: 'America/New_York', obligations: [] },
     });
     // N — raw MANUAL Enterprise (CONTACT_SALES, no list price) → CONTRACT_PRICED.
     T['N'] = await newTenant(pg);

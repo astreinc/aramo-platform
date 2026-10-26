@@ -98,6 +98,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B4 enterprise
     terms: ['Sign Enterprise at a negotiated monthly price', 'Allowance of 25,000 envelopes per month', 'Invoiced monthly, net 45'],
     documents: [DOC_MSA, DOC_OF],
     evidence_ref: 'Order form OF-7781',
+    // CCP-C8-PR (PR-1): a contract record carries its payment terms.
+    payment_terms: { billing_mode: 'POSTPAID', postpaid_approval: { statement: 'Postpaid per the signed order form', evidence_ref: 'Order form postpaid clause' }, currency: 'USD', timezone: 'America/New_York', obligations: [] },
     ...extra,
   });
   /** A tenant with a contract recorded with its governed open (SUBSCRIPTION_OPEN + contract). */
@@ -145,6 +147,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B4 enterprise
     const cols = (await pg.query(`SELECT table_name, column_name FROM information_schema.columns WHERE table_schema = 'subscription' AND table_name IN ('Contract', 'ContractAmendment') ORDER BY table_name, ordinal_position`)).rows.map((r) => `${r.table_name}.${r.column_name}`);
     expect(cols).toEqual([
       'Contract.id', 'Contract.contract_ref', 'Contract.tenant_subscription_id', 'Contract.terms', 'Contract.evidence_documents', 'Contract.evidence_ref', 'Contract.provenance', 'Contract.recorded_by_change_request_id', 'Contract.recorded_by', 'Contract.recorded_at',
+      // CCP-C8-PR (expectation change; PAYMENT_RECORD amendment PR-1, ADD-not-rename): the structured payment
+      // terms. None names a plan, version, allowance, state or usage (asserted by the pattern below).
+      'Contract.billing_mode', 'Contract.payment_currency', 'Contract.payment_timezone', 'Contract.grace_days', 'Contract.postpaid_approval',
       'ContractAmendment.id', 'ContractAmendment.contract_id', 'ContractAmendment.sequence', 'ContractAmendment.kind', 'ContractAmendment.summary', 'ContractAmendment.terms', 'ContractAmendment.evidence_documents', 'ContractAmendment.evidence_ref', 'ContractAmendment.change_request_id', 'ContractAmendment.recorded_by', 'ContractAmendment.recorded_at',
     ]);
     for (const c of cols) expect(c).not.toMatch(/plan|version|product|allowance|commitment|quota|limit|tenant_id|capabilit/);
@@ -174,6 +179,12 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B4 enterprise
       // linked to an open row, to EXCLUDE it from list-price MRR (reason CONTRACT_PRICED). It never
       // reads a plan, allowance or status from the contract; those still come from the subscription.
       'libs/subscription/src/lib/billing/billing-revenue-report.service.ts',
+      // CCP-C8-PR (PAYMENT_RECORD amendment §4.3, PR-10): the payment-terms validator the contract block
+      // calls, and the receipt / obligation module that writes obligations with their FK to the contract,
+      // links the INITIAL receipt and derives payment status. Neither reads a plan, allowance or status
+      // from the contract; the subscription stays the authority (N-3(c)).
+      'libs/subscription/src/lib/commercial/commercial-payment-terms.ts',
+      'libs/subscription/src/lib/commercial/commercial-payment-record.ts',
     ]);
     const hits: string[] = [];
     const walk = (dir: string): void => {
@@ -197,8 +208,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-B4 enterprise
     );
     expect(stateCols.rows).toEqual([]);
     // No FK from any usage table to the contract tables, and none from them to a usage table.
+    // CCP-C8-PR (expectation change): the payment obligation and the receipt attestation reference their
+    // Contract (N-3(b)); neither is a usage table (no usage, balance or state column).
     const usageFks = await pg.query(
-      `SELECT conname FROM pg_constraint WHERE contype = 'f' AND (confrelid::regclass::text IN ('subscription."Contract"', 'subscription."ContractAmendment"') AND conrelid::regclass::text NOT IN ('subscription."ContractAmendment"'))`,
+      `SELECT conname FROM pg_constraint WHERE contype = 'f' AND (confrelid::regclass::text IN ('subscription."Contract"', 'subscription."ContractAmendment"') AND conrelid::regclass::text NOT IN ('subscription."ContractAmendment"', 'subscription."ContractPaymentObligation"', 'subscription."CommercialPaymentReceipt"'))`,
     );
     expect(usageFks.rows).toEqual([]);
     const { t, sub, contract_id } = await contracted();

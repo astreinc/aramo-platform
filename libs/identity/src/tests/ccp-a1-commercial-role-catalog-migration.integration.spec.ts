@@ -52,6 +52,10 @@ const SCOPE_IDS = COMMERCIAL.map((k) => SEED_IDS.scopes[k as keyof typeof SEED_I
 // leave its rows out, and the rewound pre-A1 state re-applies it after A1 (production order).
 const AMOUNT_SCOPE_ID = SEED_IDS.scopes['platform:billing:amount:read'];
 const A1A1_MIGRATION = 'libs/identity/prisma/migrations/20261028060000_ccp_a1a1_finance_amount_scope/migration.sql';
+// CCP-C8-PR: likewise the CCP-A1 Amendment A2 (platform:payment:request, 0x336, 2 grants), proven by
+// ccp-a1a2-payment-request-scope-migration.integration.spec.ts and re-applied after A1-A1.
+const PAYMENT_SCOPE_ID = SEED_IDS.scopes['platform:payment:request'];
+const A1A2_MIGRATION = 'libs/identity/prisma/migrations/20261028070000_ccp_a1a2_payment_request_scope/migration.sql';
 
 // The two splitter shapes used by identity migration consumers (ic1-migration spec): the
 // regex form and the quote-aware scanner. The file must be ONE statement under both.
@@ -113,7 +117,7 @@ describe('CCP A1 — commercial role catalog migration (real PG)', () => {
     const parts = await Promise.all([
       run(`SELECT id, key, description, is_active FROM identity."Role" WHERE id = ANY($1::uuid[]) ORDER BY id`, [ROLE_IDS]),
       run(`SELECT id, key, description FROM identity."Scope" WHERE id = ANY($1::uuid[]) ORDER BY id`, [SCOPE_IDS]),
-      run(`SELECT id, role_id, scope_id FROM identity."RoleScope" WHERE role_id = ANY($1::uuid[]) AND scope_id <> $2::uuid ORDER BY id`, [ROLE_IDS, AMOUNT_SCOPE_ID]),
+      run(`SELECT id, role_id, scope_id FROM identity."RoleScope" WHERE role_id = ANY($1::uuid[]) AND scope_id <> $2::uuid AND scope_id <> $3::uuid ORDER BY id`, [ROLE_IDS, AMOUNT_SCOPE_ID, PAYMENT_SCOPE_ID]),
     ]);
     return JSON.stringify(parts.map((p) => p.rows));
   }
@@ -130,14 +134,14 @@ describe('CCP A1 — commercial role catalog migration (real PG)', () => {
     const r = await run(
       `SELECT (SELECT count(*) FROM identity."Role" WHERE id = ANY($1::uuid[]))::int AS r,
               (SELECT count(*) FROM identity."Scope" WHERE id = ANY($2::uuid[]))::int AS s,
-              (SELECT count(*) FROM identity."RoleScope" WHERE role_id = ANY($1::uuid[]) AND scope_id <> $3::uuid)::int AS g`,
-      [ROLE_IDS, SCOPE_IDS, AMOUNT_SCOPE_ID],
+              (SELECT count(*) FROM identity."RoleScope" WHERE role_id = ANY($1::uuid[]) AND scope_id <> $3::uuid AND scope_id <> $4::uuid)::int AS g`,
+      [ROLE_IDS, SCOPE_IDS, AMOUNT_SCOPE_ID, PAYMENT_SCOPE_ID],
     );
     return [r.rows[0].r, r.rows[0].s, r.rows[0].g];
   }
   async function rewind(): Promise<void> {
-    await run(`DELETE FROM identity."RoleScope" WHERE role_id = ANY($1::uuid[]) OR scope_id = ANY($2::uuid[]) OR scope_id = $3::uuid`, [ROLE_IDS, SCOPE_IDS, AMOUNT_SCOPE_ID]);
-    await run(`DELETE FROM identity."Scope" WHERE id = $1::uuid`, [AMOUNT_SCOPE_ID]);
+    await run(`DELETE FROM identity."RoleScope" WHERE role_id = ANY($1::uuid[]) OR scope_id = ANY($2::uuid[]) OR scope_id = $3::uuid OR scope_id = $4::uuid`, [ROLE_IDS, SCOPE_IDS, AMOUNT_SCOPE_ID, PAYMENT_SCOPE_ID]);
+    await run(`DELETE FROM identity."Scope" WHERE id = $1::uuid OR id = $2::uuid`, [AMOUNT_SCOPE_ID, PAYMENT_SCOPE_ID]);
     await run(`DELETE FROM identity."Scope" WHERE id = ANY($1::uuid[])`, [SCOPE_IDS]);
     await run(`DELETE FROM identity."Role" WHERE id = ANY($1::uuid[])`, [ROLE_IDS]);
   }
@@ -182,6 +186,8 @@ describe('CCP A1 — commercial role catalog migration (real PG)', () => {
       'libs/identity/prisma/migrations/20261025180000_ccp_a9_platform_last_owner_invariant/migration.sql',
       // CCP-R3: the CCP-A1 Amendment A1 Finance amount scope.
       'libs/identity/prisma/migrations/20261028060000_ccp_a1a1_finance_amount_scope/migration.sql',
+      // CCP-C8-PR: the CCP-A1 Amendment A2 payment request scope.
+      'libs/identity/prisma/migrations/20261028070000_ccp_a1a2_payment_request_scope/migration.sql',
     ]);
     for (const dep of [
       'libs/identity/prisma/migrations/20261022150000_ats_qa_1_resume_select_grants/migration.sql',
@@ -238,6 +244,7 @@ describe('CCP A1 — commercial role catalog migration (real PG)', () => {
     expect(lastNotice(/ccp_a1: roles inserted: 6, scopes inserted: 15, grants inserted: 45/)).toBe(true);
     // Production order: the CCP-A1 Amendment A1 migration follows (no member holds a CCP role here, so it bumps nobody).
     await run(readFileSync(resolve(ROOT, A1A1_MIGRATION), 'utf8'));
+    await run(readFileSync(resolve(ROOT, A1A2_MIGRATION), 'utf8'));
     expect((await run(`SELECT tenant_id, principal_id, version FROM identity."AuthorizationVersion" ORDER BY 1, 2`)).rows).toEqual(versionsBefore);
     // Descriptions byte-identical to the seed constants.
     for (const k of CCP_ROLES) {

@@ -21,10 +21,13 @@ const errorsOf = (fn: () => unknown): string[] => {
   return [];
 };
 
+// CCP-C8-PR (PR-1): a contract record carries its payment terms.
+const PT = { billing_mode: 'POSTPAID', postpaid_approval: { statement: 'Postpaid per the signed order form', evidence_ref: 'OF-8034' }, currency: 'USD', timezone: 'America/New_York', obligations: [] };
+
 describe('CCP-B4 contract payload blocks', () => {
   it('B4-U-1 the A6 payloads stay valid without a contract block, and accept a well-formed one', () => {
     expect(errorsOf(() => validatePayload('SUBSCRIPTION_OPEN', open({})))).toEqual([]);
-    expect(errorsOf(() => validatePayload('SUBSCRIPTION_OPEN', open({ contract: { contract_ref: 'CT-2026-021', terms: ['Net 30'], documents: [DOC], evidence_ref: 'OF-8034' } })))).toEqual([]);
+    expect(errorsOf(() => validatePayload('SUBSCRIPTION_OPEN', open({ contract: { contract_ref: 'CT-2026-021', terms: ['Net 30'], documents: [DOC], evidence_ref: 'OF-8034', payment_terms: PT } })))).toEqual([]);
     expect(errorsOf(() => validatePayload('SUBSCRIPTION_CHANGE', change({ contract_amendment: { contract_id: C, summary: 'Portal added', documents: [] } })))).toEqual([]);
     expect(errorsOf(() => validatePayload('SUBSCRIPTION_END', { subscription_id: S, contract_end: { contract_id: C, documents: [DOC] } }))).toEqual([]);
   });
@@ -33,7 +36,7 @@ describe('CCP-B4 contract payload blocks', () => {
     expect(errorsOf(() => validatePayload('SUBSCRIPTION_CHANGE', change({ contract: { contract_ref: 'CT-1', terms: ['a'], documents: [] }, contract_amendment: { contract_id: C, summary: 's', documents: [] } })))).toContain(
       'a change carries either contract or contract_amendment, not both',
     );
-    expect(errorsOf(() => validatePayload('SUBSCRIPTION_END', { subscription_id: S, contract: { contract_ref: 'CT-1', terms: ['a'], documents: [] } }))).toEqual(['contract is not a field of this action']);
+    expect(errorsOf(() => validatePayload('SUBSCRIPTION_END', { subscription_id: S, contract: { contract_ref: 'CT-1', terms: ['a'], documents: [], payment_terms: PT } }))).toEqual(['contract is not a field of this action']);
     expect(errorsOf(() => validatePayload('SUBSCRIPTION_OPEN', open({ contract_amendment: { contract_id: C, summary: 's', documents: [] } })))).toEqual(['contract_amendment is not a field of this action']);
     expect(errorsOf(() => validatePayload('SUBSCRIPTION_CHANGE', change({ contract_amendment: { contract_id: 'x', summary: '', documents: [], status: 'ENDED' } })))).toEqual([
       'contract_amendment.status is not a field of this block',
@@ -42,7 +45,7 @@ describe('CCP-B4 contract payload blocks', () => {
     ]);
     // No state, plan or usage can ride a contract block (N-3(c), (d)).
     for (const k of ['status', 'plan_key', 'allowance', 'used', 'ended_at']) {
-      expect(errorsOf(() => validatePayload('SUBSCRIPTION_OPEN', open({ contract: { contract_ref: 'CT-2026-1', terms: ['a'], documents: [], [k]: 1 } })))).toEqual([`contract.${k} is not a field of this block`]);
+      expect(errorsOf(() => validatePayload('SUBSCRIPTION_OPEN', open({ contract: { contract_ref: 'CT-2026-1', terms: ['a'], documents: [], payment_terms: PT, [k]: 1 } })))).toEqual([`contract.${k} is not a field of this block`]);
     }
   });
 

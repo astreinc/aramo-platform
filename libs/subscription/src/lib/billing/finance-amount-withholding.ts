@@ -64,7 +64,9 @@ export function withholdTenantAmounts(obj: Record<string, unknown>, access: bool
  * redaction below covers it on merge. DISCOUNT carries `discount_bps`: a percentage is NOT a tenant
  * amount (D-R3-7), so a DISCOUNT payload keeps it; any amount key it might carry is still withheld.
  */
-export const MONETARY_ACTION_TYPES: readonly string[] = ['CREDIT', 'DISCOUNT', 'REFUND'];
+// CCP-C8-PR (PAYMENT_RECORD amendment PR-11; W-3 financial action types): PAYMENT_RECORD carries the
+// received amount and the expected INITIAL amount (`amount_minor`, `expected_amount_minor`).
+export const MONETARY_ACTION_TYPES: readonly string[] = ['CREDIT', 'DISCOUNT', 'REFUND', 'PAYMENT_RECORD'];
 /** Policy thresholds and catalog prices are not tenant amounts (FA-3) even inside a monetary payload. */
 const NON_TENANT_AMOUNT_KEYS: readonly string[] = ['credit_escalation_threshold_minor', 'discount_escalation_threshold_bps', 'list_price_minor', 'reference_price_minor'];
 const isMonetaryKey = (k: string): boolean => !NON_TENANT_AMOUNT_KEYS.includes(k) && (TENANT_AMOUNT_KEYS.includes(k) || k.endsWith('_minor') || /^amount(_|$)/.test(k));

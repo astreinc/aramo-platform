@@ -5,6 +5,7 @@ import { canonicalJson } from './commercial-policy.js';
 import { creditEscalation, discountEscalates } from './commercial-policy-boundaries.js';
 import { CONTRACT_PAYLOAD_KEYS, validateContractBlocks } from './commercial-contract.js';
 import { conversionPayloadErrors } from './commercial-conversion.js';
+import { paymentRecordPayloadErrors } from './commercial-payment-terms.js';
 
 // CCP-A3 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.1 row A3; Charter §5.1 D6, D8,
 // D9, §6.4; Recon Report §1 C2 and §2) — the PURE half of the change-request model: the
@@ -45,6 +46,10 @@ export const COMMERCIAL_ACTION_TYPES = [
   // the A3 set had no type for them (a refund is not an account credit). Apply is the designed
   // disabled state until the refund policy (legal) is verified (PBD §10; REFUND_POLICY_NOT_APPROVED).
   'REFUND',
+  // CCP-C8-PR (Aramo-CCP-Program-Build-Directive-Amendment-A2-Payment-Record-v1_0-LOCKED §2, catalog row 16;
+  // the closed set grows from 15 to 16) — record, with evidence, an enterprise payment received outside
+  // Aramo against one obligation (RECORD), or correct an earlier record (CORRECT, PR-9).
+  'PAYMENT_RECORD',
 ] as const;
 export type CommercialActionType = (typeof COMMERCIAL_ACTION_TYPES)[number];
 
@@ -85,6 +90,8 @@ export const COMMERCIAL_ACTIONS: Readonly<Record<CommercialActionType, Commercia
   CREDIT: { domain: 'billing', tenant_scoped: true, requester_scope: 'platform:billing:request', requester_role: null },
   DISCOUNT: { domain: 'billing', tenant_scoped: true, requester_scope: 'platform:billing:request', requester_role: null },
   REFUND: { domain: 'billing', tenant_scoped: true, requester_scope: 'platform:billing:request', requester_role: null }, // CCP-C4
+  // CCP-C8-PR (PR-2; CCP-A1 Amendment A2 PS-6): commercial_ops or finance_admin through platform:payment:request.
+  PAYMENT_RECORD: { domain: 'billing', tenant_scoped: true, requester_scope: 'platform:payment:request', requester_role: null },
   PLAN_VERSION_PUBLISH: { domain: 'catalog', tenant_scoped: false, requester_scope: 'platform:catalog:draft', requester_role: null },
   PLAN_RETIRE: { domain: 'catalog', tenant_scoped: false, requester_scope: 'platform:catalog:draft', requester_role: null },
   POLICY_ACTIVATE: { domain: 'governance', tenant_scoped: false, requester_scope: null, requester_role: 'finance_admin' }, // TD-A3-5
@@ -245,6 +252,17 @@ export const COMMERCIAL_C4_ADJUSTMENT_TRANSITIONS: Readonly<Partial<Record<Comme
 };
 
 /**
+ * CCP-C8-PR (PR-4) — PAYMENT_RECORD is applied by the A6 engine (a new branch of
+ * CommercialApplyService): APPROVED | APPLY_FAILED → APPLYING → APPLIED | APPLY_FAILED in one local
+ * transaction (DB guard, union block "CCP-C8-PR"; its APPLY_EXPIRED pairs are the AD-4 branch).
+ */
+export const COMMERCIAL_C8PR_PAYMENT_RECORD_TRANSITIONS: Readonly<Partial<Record<CommercialChangeRequestState, readonly CommercialChangeRequestState[]>>> = {
+  APPROVED: ['APPLYING'],
+  APPLY_FAILED: ['APPLYING'],
+  APPLYING: ['APPLIED', 'APPLY_FAILED'],
+};
+
+/**
  * CCP-A8 — a bounded EXCEPTION SUPPORT_EXTENSION (DDR v1.2 §3.2(5)) makes ONLY these two moves,
  * in its creating transaction; it never enters the approval states (DB guard, migration
  * 20261026010000). An escalated or removal SUPPORT_EXTENSION (kind NORMAL) takes the A3 base
@@ -288,6 +306,7 @@ export const APPLY_EXPIRABLE_ACTIONS: readonly CommercialActionType[] = [
   'PLAN_VERSION_PUBLISH', 'PLAN_RETIRE', // CCP-B2-backend (A6-R)
   'POLICY_ACTIVATE', 'ROLE_GRANT', 'ROLE_REVOKE', 'ENTITLEMENT_REVOKE', 'CONVERSION', 'SUPPORT_EXTENSION', // CCP-B5-R
   'CREDIT', 'DISCOUNT', 'REFUND', // CCP-C4 (AD-4: every applyable type)
+  'PAYMENT_RECORD', // CCP-C8-PR (PR-4: the apply deadline applies unchanged, K-1)
 ];
 export function isApplyExpirable(action_type: string, kind = 'NORMAL'): boolean {
   if (!(APPLY_EXPIRABLE_ACTIONS as readonly string[]).includes(action_type)) return false;
@@ -295,7 +314,7 @@ export function isApplyExpirable(action_type: string, kind = 'NORMAL'): boolean 
 }
 
 /** The action types CommercialApplyService applies: the four A6 actions, CCP-A7's ENTITLEMENT_REVOKE and CCP-A8's SUPPORT_EXTENSION (merge train TD-MERGE-30). */
-export const APPLY_SERVICE_ACTIONS = [...A6_APPLICABLE_ACTIONS, ...A7_APPLICABLE_ACTIONS, 'SUPPORT_EXTENSION'] as const;
+export const APPLY_SERVICE_ACTIONS = [...A6_APPLICABLE_ACTIONS, ...A7_APPLICABLE_ACTIONS, 'SUPPORT_EXTENSION', 'PAYMENT_RECORD'] as const; // + CCP-C8-PR (PR-4)
 export type ApplyServiceAction = (typeof APPLY_SERVICE_ACTIONS)[number];
 export function isApplyServiceAction(action_type: string): action_type is ApplyServiceAction {
   return (APPLY_SERVICE_ACTIONS as readonly string[]).includes(action_type);
@@ -339,6 +358,8 @@ export function canTransitionFor(
   // CCP-C4: the billing adjustments (CREDIT, DISCOUNT, REFUND) — the C2 apply pairs (their
   // APPLY_EXPIRED pairs: the AD-4 branch above).
   if (isBillingAdjustmentAction(action_type)) return (COMMERCIAL_C4_ADJUSTMENT_TRANSITIONS[from] ?? []).includes(to);
+  // CCP-C8-PR (PR-4): PAYMENT_RECORD — the A6 apply pairs (its APPLY_EXPIRED pairs: the AD-4 branch above).
+  if (action_type === 'PAYMENT_RECORD') return (COMMERCIAL_C8PR_PAYMENT_RECORD_TRANSITIONS[from] ?? []).includes(to);
   // CCP-A8: an escalated or removal SUPPORT_EXTENSION (NORMAL) takes the A6 apply pairs (its
   // APPLY_EXPIRED pairs are the AD-4 branch above, CCP-B5-R).
   if (action_type === 'SUPPORT_EXTENSION' && kind === 'NORMAL') return (COMMERCIAL_A7_REVOKE_TRANSITIONS[from] ?? []).includes(to);
@@ -388,7 +409,8 @@ function stepScopes(domain: CommercialDomain, role: CommercialChainStep['role_ke
   }
 }
 
-function chainOf(rule: CommercialChainRule, domain: CommercialDomain, basis: Record<string, unknown>): CommercialRequiredChain {
+/** The chain of a rule (role-bound steps, D6). Exported for CCP-C8-PR's create-time PR-3 resolution. */
+export function chainOf(rule: CommercialChainRule, domain: CommercialDomain, basis: Record<string, unknown>): CommercialRequiredChain {
   const roles: Array<CommercialChainStep['role_key']> =
     rule === 'FINANCE_THEN_OWNER' ? ['finance_admin', 'platform_owner'] : rule === 'FINANCE_ONLY' ? ['finance_admin'] : ['platform_owner'];
   return {
@@ -441,6 +463,13 @@ export function resolveRequiredChain(
     }
     case 'REFUND':
       return chainOf('FINANCE_THEN_OWNER', def.domain, { ruling: 'TD-C4-2 refund (no policy threshold; escalated chain)' });
+    case 'PAYMENT_RECORD':
+      // CCP-C8-PR PR-3: CORRECT → Finance → Owner (any requester). RECORD → Finance; the requester-dependent
+      // part (a finance_admin requester's Platform Owner exception) is resolved ONCE at creation, inside the
+      // create transaction, by resolvePaymentRecordChain (commercial-payment-record.ts). No monetary threshold.
+      return payload['operation'] === 'CORRECT'
+        ? chainOf('FINANCE_THEN_OWNER', def.domain, { ruling: 'PR-3 payment correction (Finance then Owner)' })
+        : chainOf('FINANCE_ONLY', def.domain, { ruling: 'PR-3 payment record (Finance)' });
     case 'PLAN_VERSION_PUBLISH':
     case 'PLAN_RETIRE':
       return chainOf('FINANCE_THEN_OWNER', def.domain, { ruling: 'D6 catalog publish' });
@@ -695,6 +724,11 @@ export function validatePayload(action_type: CommercialActionType, payload: unkn
     // (commercial-conversion.ts). Validated at create and again at apply.
     case 'CONVERSION':
       errors.push(...conversionPayloadErrors(p));
+      break;
+    // CCP-C8-PR — the PAYMENT_RECORD payload (PR-5, PR-9): a closed key set per operation
+    // (commercial-payment-terms.ts). Validated at create and again at apply.
+    case 'PAYMENT_RECORD':
+      errors.push(...paymentRecordPayloadErrors(p));
       break;
     default:
       break;

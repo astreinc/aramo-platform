@@ -46,6 +46,8 @@ import { CommercialPolicyRepository } from './commercial-policy.repository.js';
 import { CommercialOperatorRepository, D9_STATEMENT_VERSION, type LiveOperator } from './commercial-operator.repository.js';
 import { POLICY_LOCK_SQL } from './commercial-policy-activation.js';
 import { RefundRemainderGate, RefundRemainderRefusedError, refundBindingOf } from './refund-remainder.gate.js';
+import { type PaymentRecordPayload, type PaymentTermsBlock } from './commercial-payment-terms.js';
+import { PaymentRecordRefusedError, initialReceiptFor, resolvePaymentRecordChain, resolvePaymentRecordInTx } from './commercial-payment-record.js';
 import {
   PLATFORM_OWNER_ROLE_KEY,
   RoleChangeApplyError,
@@ -132,7 +134,10 @@ export type CommercialChangeRequestErrorCode =
   // record | the activation committed (the request is, or was reconciled to, APPLIED).
   | 'APPLY_IN_PROGRESS'
   | 'APPLY_UNRESOLVED'
-  | 'ALREADY_APPLIED';
+  | 'ALREADY_APPLIED'
+  // CCP-C8-PR (PAYMENT_RECORD amendment PR-5…PR-9, §4.2, K-1) — a payment refusal at creation
+  // (details.refusal: one of PAYMENT_REFUSAL_CODES); audited by one COMMERCIAL_PAYMENT_REFUSED event.
+  | 'PAYMENT_REFUSED';
 
 export class CommercialChangeRequestError extends Error {
   constructor(
@@ -379,7 +384,7 @@ export class CommercialChangeRequestService {
       input.action_type === 'REFUND' ? await this.readRefundPicture(String((payload as Record<string, unknown>)['provider_invoice_ref'])) : null;
 
     const policy = await this.policies.getActivePolicy();
-    const chain = resolveRequiredChain(input.action_type, payload, policy.content);
+    let chain = resolveRequiredChain(input.action_type, payload, policy.content);
     const now = this.now();
     const id = uuidv7();
     try {
@@ -417,6 +422,39 @@ export class CommercialChangeRequestService {
             throw new CommercialChangeRequestError('REQUESTER_ROLE_MISSING', `requesting ${input.action_type} requires the ${def.requester_role} role`, { required_role: def.requester_role });
           }
           await this.validateGovernanceTarget(tx, input.action_type, payload, ctx);
+        }
+        // CCP-C8-PR — PAYMENT_RECORD: the PR-3 chain resolved ONCE here (live roles + roster) and the
+        // PR-5…PR-9 / §4.2 checks under the billing lock. A SUBSCRIPTION_OPEN recording a PREPAID contract
+        // needs its applied INITIAL receipt first (K-1; re-checked and linked at apply, PR-7).
+        const refusal = await this.paymentChecks(tx, input.action_type, tenant_id, product_key, payload);
+        if (refusal !== null) {
+          await this.audit.append(
+            {
+              actor: { id: actor.user_id, type: 'user', role_keys: requester.role_keys },
+              event_type: 'COMMERCIAL_PAYMENT_REFUSED',
+              tenant_id,
+              subject: `payment_record:${tenant_id}:${product_key}`,
+              policy_version_id: policy.version_id,
+              payload: {
+                action_type: input.action_type,
+                refusal: refusal.code,
+                detail: refusal.detail,
+                // PR-8: an unsupported amount fails closed with a typed decision request.
+                ...(refusal.code === 'PAYMENT_AMOUNT_UNSUPPORTED' ? { decision_request: { type: 'PAYMENT_AMOUNT_UNSUPPORTED', reason: refusal.detail['reason'] ?? null, rule: 'PR-8 exact single-receipt settlement only' } } : {}),
+              },
+              correlation_id: ctx.correlation_id,
+            },
+            tx,
+          );
+          return { refused: refusal } as const;
+        }
+        if (input.action_type === 'PAYMENT_RECORD') {
+          const roster = await this.operators.readRoster(tx, ctx.platform_tenant_id, { lock: true });
+          const resolved = resolvePaymentRecordChain(payload, { user_id: actor.user_id, role_keys: requester.role_keys }, roster, now);
+          if (resolved === null) {
+            throw new CommercialChangeRequestError('REQUESTER_AUTHORITY_UNDEFINED', 'PAYMENT_RECORD is requested by a commercial_ops or finance_admin (PR-2)', { action_type: input.action_type, reason: 'payment_requester_role' });
+          }
+          chain = resolved;
         }
         const row = await tx.commercialChangeRequest.create({
           data: {
@@ -462,6 +500,10 @@ export class CommercialChangeRequestService {
         );
         return row as CommercialChangeRequestRow;
       });
+      if ('refused' in request) {
+        const r = request.refused;
+        throw new CommercialChangeRequestError('PAYMENT_REFUSED', `payment refused: ${r.code}`, { refusal: r.code, ...r.detail });
+      }
       return { request, replayed: false };
     } catch (e) {
       if (isUniqueViolation(e, 'idempotency_key')) {
@@ -471,6 +513,31 @@ export class CommercialChangeRequestService {
       if (isUniqueViolation(e, 'one_open_per_tenant_product') || isUniqueViolation(e, 'tenant_id')) {
         throw new CommercialChangeRequestError('OPEN_REQUEST_EXISTS', 'an open change request already exists for this tenant and product', {});
       }
+      throw e;
+    }
+  }
+
+  /**
+   * CCP-C8-PR — the create-time payment checks, inside the create transaction (Q14 slot held), under
+   * the tenant's billing lock. Returns the refusal (audited by the caller, nothing created) or null.
+   */
+  private async paymentChecks(
+    tx: Tx,
+    action_type: CommercialActionType,
+    tenant_id: string | null,
+    product_key: string | null,
+    payload: Record<string, unknown>,
+  ): Promise<PaymentRecordRefusedError | null> {
+    const contract = payload['contract'] as { contract_ref?: string; payment_terms?: PaymentTermsBlock } | undefined;
+    const prepaidOpen = action_type === 'SUBSCRIPTION_OPEN' && contract?.payment_terms?.billing_mode === 'PREPAID';
+    if (action_type !== 'PAYMENT_RECORD' && !prepaidOpen) return null;
+    await takeBillingLock(tx, tenant_id as string);
+    try {
+      if (action_type === 'PAYMENT_RECORD') await resolvePaymentRecordInTx(tx, tenant_id as string, product_key as string, payload as unknown as PaymentRecordPayload);
+      else await initialReceiptFor(tx, tenant_id as string, product_key as string, contract?.contract_ref as string, contract?.payment_terms as PaymentTermsBlock, false);
+      return null;
+    } catch (e) {
+      if (e instanceof PaymentRecordRefusedError) return e;
       throw e;
     }
   }
@@ -1261,7 +1328,8 @@ export function applyActionable(actor: CommercialActor, req: Pick<CommercialChan
   // CCP-B3 (pre-execution C-2; TD-B3) — the CCP-C2 conversion apply (`…/convert`) is requester-only
   // under the same rule, so the hint covers CONVERSION too.
   // CCP-C4 — the billing adjustments (`…/billing-adjustment`) are requester-only under the same rule.
-  if (!isA6Applicable(req.action_type) && !isCatalogApplicable(req.action_type) && !isA7Applicable(req.action_type) && req.action_type !== 'SUPPORT_EXTENSION' && req.action_type !== 'CONVERSION' && !isBillingAdjustmentAction(req.action_type)) return false;
+  // CCP-C8-PR (PR-2, PR-4) — PAYMENT_RECORD is applied by the same route (requester-only).
+  if (!isA6Applicable(req.action_type) && !isCatalogApplicable(req.action_type) && !isA7Applicable(req.action_type) && req.action_type !== 'SUPPORT_EXTENSION' && req.action_type !== 'CONVERSION' && !isBillingAdjustmentAction(req.action_type) && req.action_type !== 'PAYMENT_RECORD') return false;
   const scope = COMMERCIAL_ACTIONS[req.action_type as CommercialActionType].requester_scope;
   return scope !== null && actor.scopes.includes(scope);
 }

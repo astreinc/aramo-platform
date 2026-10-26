@@ -54,7 +54,7 @@ describe('CCP-R3 item 1 — Finance amount field authorization (CCP-A1 Amendment
   });
 
   it('R3-FA-7 (TD-C4-7) the ONE change-request / audit redaction is keyed on the monetary action types CREDIT, DISCOUNT and REFUND: every amount-like key is withheld (REFUND\'s, though REFUND is not in this base); policy thresholds stay; DISCOUNT bps stay (a percentage is not a tenant amount, D-R3-7); holders get a deep copy', () => {
-    expect(MONETARY_ACTION_TYPES).toEqual(['CREDIT', 'DISCOUNT', 'REFUND']);
+    expect(MONETARY_ACTION_TYPES).toEqual(['CREDIT', 'DISCOUNT', 'REFUND', 'PAYMENT_RECORD']); // CCP-C8-PR adds PAYMENT_RECORD (PR-11)
     expect(withholdChangeRequestAmounts('CREDIT', { amount_minor: 35000, currency: 'USD' }, false)).toEqual({ currency: 'USD', amount_withheld: 'FINANCE_SCOPE_REQUIRED' });
     expect(withholdChangeRequestAmounts('CREDIT', { amount_minor: 35000, currency: 'USD', credit_escalation_threshold_minor: 50000, escalates: false }, false)).toEqual({ currency: 'USD', credit_escalation_threshold_minor: 50000, escalates: false, amount_withheld: 'FINANCE_SCOPE_REQUIRED' });
     expect(withholdChangeRequestAmounts('REFUND', { refund_amount_minor: 1200, amount: 12, invoice_ref: 'in_1', currency: 'USD' }, false)).toEqual({ invoice_ref: 'in_1', currency: 'USD', amount_withheld: 'FINANCE_SCOPE_REQUIRED' });

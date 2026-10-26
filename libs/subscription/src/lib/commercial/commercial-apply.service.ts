@@ -39,6 +39,17 @@ import { ContractApplyConflict, type ContractEffect, amendContractInTx, contract
 import { approvalExpiresAt } from './commercial-policy-boundaries.js';
 import type { CommercialPolicyContent } from './commercial-policy.js';
 import { supportExtensionWindow } from './support-extension.js';
+import { type PaymentRecordPayload, initialObligationOf } from './commercial-payment-terms.js';
+import {
+  type PaymentReceiptRow,
+  PaymentRecordRefusedError,
+  amendmentObligationsToAdd,
+  applyPaymentRecordInTx,
+  assertContractRefFreeOfReceipts,
+  initialReceiptFor,
+  linkInitialReceiptInTx,
+  recordObligationsInTx,
+} from './commercial-payment-record.js';
 
 export { ApplyFailure, CommercialApplyFailedError } from './commercial-apply-records.js';
 
@@ -91,12 +102,30 @@ export { ApplyFailure, CommercialApplyFailedError } from './commercial-apply-rec
 // v1.2 §3.2(5)) runs `applyBoundedExceptionInTx` from SupportExtensionService inside ITS
 // transaction, which already holds the billing lock: DRAFT → APPLYING, then the SAME core
 // (`completeInTx`: domain, application row, audit with is_exception = true, APPLIED).
+//
+// CCP-C8-PR (PAYMENT_RECORD amendment PR-4, PR-7, §4.3) — PAYMENT_RECORD is the sixth applied action:
+// the domain step writes the receipt (or the PR-9 correction) and nothing else; the application row,
+// audit and APPLIED follow. A SUBSCRIPTION_OPEN recording a PREPAID contract runs the §4.3 sequence in
+// THIS transaction, in order: lock the INITIAL receipt FOR UPDATE → verify it → the subscription → the
+// contract (FK to it) → the obligations (FK to the contract) → link the receipt (+ COMMERCIAL_PAYMENT_
+// RECEIPT_LINKED) → the entitlements → the application row → APPLIED. Any failure rolls all of it back
+// (the receipt stays unlinked and reusable); APPLY_FAILED is recorded separately. POSTPAID has no
+// payment precondition (its obligations are recorded from activation).
 
 type Tx = Parameters<Parameters<PrismaService['$transaction']>[0]>[0];
 
 /** Test seam (fault injection): called at each named point inside the apply transaction. */
 export const COMMERCIAL_APPLY_FAULT_HOOK = Symbol('COMMERCIAL_APPLY_FAULT_HOOK');
-export type CommercialApplyFaultPoint = 'after_subscription_write' | 'after_entitlement_write' | 'before_applied';
+export type CommercialApplyFaultPoint =
+  | 'after_subscription_write'
+  | 'after_entitlement_write'
+  | 'before_applied'
+  // CCP-C8-PR (§4.3 failure recovery) — the PREPAID SUBSCRIPTION_OPEN steps.
+  | 'c8pr_after_receipt_verified'
+  | 'c8pr_after_subscription_insert'
+  | 'c8pr_after_contract_insert'
+  | 'c8pr_after_obligations_insert'
+  | 'c8pr_after_receipt_link';
 export type CommercialApplyFaultHook = (point: CommercialApplyFaultPoint, ctx: { change_request_id: string }) => void | Promise<void>;
 
 /** Why an apply attempt failed (the request moves to APPLY_FAILED; retryable). */
@@ -129,6 +158,15 @@ export type CommercialApplyFailureCode =
   | 'CONTRACT_MISMATCH' // the named contract does not govern the row (or a contract-linked END names none)
   | 'EXTENSION_NOT_FOUND'
   | 'EXTENSION_ALREADY_REMOVED'
+  // CCP-C8-PR (PR-6 … PR-9, §4.2, §5) — PAYMENT_RECORD and the PREPAID activation gate.
+  | 'PAYMENT_ALREADY_RECORDED'
+  | 'PAYMENT_REFERENCE_DUPLICATE'
+  | 'PAYMENT_NOT_RECORDED'
+  | 'PAYMENT_OBLIGATION_MISMATCH'
+  | 'PAYMENT_AMOUNT_UNSUPPORTED'
+  | 'PAYMENT_RECORD_NOT_GOVERNED'
+  | 'PAYMENT_CORRECTION_TARGET_INVALID'
+  | 'PAYMENT_TERMS_CHANGE_UNDEFINED'
   | 'UNEXPECTED'; // any other error (fault, DB error): rolled back, recorded, retryable
 
 export interface CommercialChangeApplicationRow {
@@ -377,9 +415,13 @@ export class CommercialApplyService {
     const id = req.id;
 
     const payload = this.payloadOf(req);
+    // CCP-C8-PR §4.3 steps 1–2 — a PREPAID SUBSCRIPTION_OPEN locks and verifies its INITIAL receipt first.
+    const receipt = await this.prepaidInitialReceipt(tx, req, payload, tenant_id, product_key);
+    if (receipt !== null) await this.fault?.('c8pr_after_receipt_verified', { change_request_id: id });
     const effect = await this.applyDomain(tx, req, req.action_type as ApplyServiceAction, payload, tenant_id, product_key, now, actor);
+    if (receipt !== null) await this.fault?.('c8pr_after_subscription_insert', { change_request_id: id });
     // CCP-B4 — the contract record, amendment or end evidence, in the same transaction.
-    effect.events.push(...(await this.applyContract(tx, req, req.action_type as ApplyServiceAction, payload, effect, now)));
+    effect.events.push(...(await this.applyContract(tx, req, req.action_type as ApplyServiceAction, payload, effect, now, receipt)));
     await this.fault?.('after_subscription_write', { change_request_id: id });
     // CCP-A7 — a governed grant records its commercial provenance and re-grants a revoked row.
     const inserted = await grantCapabilitiesInTx(tx, {
@@ -495,6 +537,16 @@ export class CommercialApplyService {
     switch (action) {
       case 'SUPPORT_EXTENSION':
         return this.supportExtensionEffect(tx, req, p, tenant_id, product_key, now, actor);
+      case 'PAYMENT_RECORD': {
+        // CCP-C8-PR (PR-4) — the receipt (or correction); re-resolved here, so a stale request fails closed.
+        try {
+          const e = await applyPaymentRecordInTx(tx, req, p as unknown as PaymentRecordPayload, tenant_id, product_key, now);
+          return { subscription_id: e.subscription_id, replaced_subscription_id: null, from_plan_version_id: null, to_plan_version_id: null, capabilities: [], revoke: [], events: e.events };
+        } catch (err) {
+          if (err instanceof PaymentRecordRefusedError) throw new ApplyFailure(err.code, err.detail);
+          throw err;
+        }
+      }
       case 'SUBSCRIPTION_OPEN': {
         const { plan, version } = await this.pinnedVersion(tx, tenant_id, product_key, p);
         const open = await tx.tenantSubscription.findFirst({ where: openBaseSubscription(tenant_id, product_key) });
@@ -658,7 +710,16 @@ export class CommercialApplyService {
    * (after the subscription write, so the insert guards see the row in its applied state). A
    * conflict is an APPLY_FAILED (the whole transaction rolls back; retryable).
    */
-  private async applyContract(tx: Tx, req: CommercialChangeRequestRow, action: ApplyServiceAction, p: Record<string, unknown>, effect: DomainEffect, now: Date): Promise<ContractEffect[]> {
+  private async applyContract(
+    tx: Tx,
+    req: CommercialChangeRequestRow,
+    action: ApplyServiceAction,
+    p: Record<string, unknown>,
+    effect: DomainEffect,
+    now: Date,
+    receipt: PaymentReceiptRow | null = null,
+  ): Promise<ContractEffect[]> {
+    if (action === 'PAYMENT_RECORD' || action === 'SUPPORT_EXTENSION') return [];
     if (effect.subscription_id === null) return [];
     const ctx = { change_request_id: req.id, change_request_kind: req.kind, requested_by: req.requested_by, now };
     try {
@@ -673,8 +734,30 @@ export class CommercialApplyService {
             if (governed !== null) throw new ContractApplyConflict('CONTRACT_MISMATCH', { replaced_subscription_id: effect.replaced_subscription_id, contract_id: governed.id, reason: 'replaces_contract_subscription' });
           }
           const out: ContractEffect[] = [];
-          if (p['contract'] !== undefined) out.push(await recordContractInTx(tx, effect.subscription_id, p['contract'] as ContractRecordBlock, ctx));
-          if (p['contract_amendment'] !== undefined) out.push(await amendContractInTx(tx, effect.subscription_id, p['contract_amendment'] as ContractAmendmentBlock, ctx));
+          if (p['contract'] !== undefined) {
+            const block = p['contract'] as ContractRecordBlock;
+            // §4.2 — the ref is not held by another unlinked receipt (this open's own receipt excepted).
+            await assertContractRefFreeOfReceipts(tx, block.contract_ref, receipt?.id ?? null);
+            const recorded = await recordContractInTx(tx, effect.subscription_id, block, ctx);
+            out.push(recorded);
+            await this.fault?.('c8pr_after_contract_insert', { change_request_id: req.id });
+            // CCP-C8-PR §4.3 step 5 — every PR-1 obligation (FK to the contract).
+            const ids = await recordObligationsInTx(tx, recorded.contract_id as string, block.payment_terms.obligations, block.payment_terms.currency, req.id, now);
+            if (receipt !== null) await this.fault?.('c8pr_after_obligations_insert', { change_request_id: req.id });
+            // §4.3 step 6 — link the receipt to the contract and its INITIAL obligation.
+            if (receipt !== null) {
+              out.push(await linkInitialReceiptInTx(tx, receipt, { id: recorded.contract_id as string, contract_ref: block.contract_ref }, ids.get('INITIAL') as string, req.id, now));
+              await this.fault?.('c8pr_after_receipt_link', { change_request_id: req.id });
+            }
+          }
+          if (p['contract_amendment'] !== undefined) {
+            const block = p['contract_amendment'] as ContractAmendmentBlock;
+            // PR-1 (v1): a payment-terms amendment only ADDS obligations; any other change fails closed.
+            const add = block.payment_terms === undefined ? [] : await amendmentObligationsToAdd(tx, block.contract_id, block.payment_terms);
+            const amended = await amendContractInTx(tx, effect.subscription_id, block, ctx);
+            out.push(amended);
+            if (add.length > 0) await recordObligationsInTx(tx, amended.contract_id as string, add, (block.payment_terms as { currency: string }).currency, req.id, now);
+          }
           return out;
         }
         case 'SUBSCRIPTION_END': {
@@ -686,6 +769,25 @@ export class CommercialApplyService {
       }
     } catch (e) {
       if (e instanceof ContractApplyConflict) throw new ApplyFailure(e.code, e.detail);
+      if (e instanceof PaymentRecordRefusedError) throw new ApplyFailure(e.code, e.detail);
+      throw e;
+    }
+  }
+
+  /**
+   * CCP-C8-PR PR-7 / §4.3 steps 1–2 — for a SUBSCRIPTION_OPEN recording a PREPAID contract: the matching
+   * applied, uncorrected, unlinked INITIAL receipt, locked FOR UPDATE, else PAYMENT_NOT_RECORDED /
+   * PAYMENT_OBLIGATION_MISMATCH (APPLY_FAILED, retryable before the deadline). Null for every other apply
+   * (a POSTPAID contract has no payment precondition).
+   */
+  private async prepaidInitialReceipt(tx: Tx, req: CommercialChangeRequestRow, p: Record<string, unknown>, tenant_id: string, product_key: ProductKey): Promise<PaymentReceiptRow | null> {
+    if (req.action_type !== 'SUBSCRIPTION_OPEN' || p['contract'] === undefined) return null;
+    const block = p['contract'] as ContractRecordBlock;
+    if (initialObligationOf(block.payment_terms) === null) return null;
+    try {
+      return await initialReceiptFor(tx, tenant_id, product_key, block.contract_ref, block.payment_terms, true);
+    } catch (e) {
+      if (e instanceof PaymentRecordRefusedError) throw new ApplyFailure(e.code, e.detail);
       throw e;
     }
   }

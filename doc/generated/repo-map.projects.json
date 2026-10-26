@@ -2238,6 +2238,7 @@
       "BILLING_COMMAND_TRANSITIONS",
       "BILLING_COMMAND_UNCONFIRMED_STATES",
       "BILLING_COUNTRY_NOT_SUPPORTED",
+      "BILLING_MODES",
       "BILLING_PRICE_PROVIDER",
       "BILLING_PROVIDER_ADJUSTMENT_PORT",
       "BILLING_PROVIDER_COMMAND_PORT",
@@ -2307,6 +2308,7 @@
       "COMMERCIAL_CHANGE_REQUEST_STATES",
       "COMMERCIAL_CLOCK",
       "COMMERCIAL_OPEN_STATES",
+      "COMMERCIAL_PAYMENT_CLOCK",
       "COMMERCIAL_POLICY_APPLY_FAULT_HOOK",
       "COMMERCIAL_POLICY_FORMAT_VERSION",
       "COMMERCIAL_POLICY_KEYS",
@@ -2362,6 +2364,7 @@
       "CommercialPolicyUnavailableError",
       "CommercialRefundReportService",
       "CommercialSubscriptionReadService",
+      "ContractPaymentReadService",
       "ContractRepository",
       "ConversionApplyFailedError",
       "D9_STATEMENT_VERSION",
@@ -2379,6 +2382,7 @@
       "FreePersonalSubscriptionService",
       "GOVERNED_SUBSCRIPTION_OPEN",
       "INBOX_MAX_AUTOMATIC_ATTEMPTS",
+      "INITIAL_OBLIGATION_REF",
       "INVOICE_AMOUNT_FIELDS",
       "INVOICE_AMOUNT_LINK_FIELDS",
       "INVOICE_PAYMENT_STATES",
@@ -2388,12 +2392,19 @@
       "LEGAL_DOCUMENT_TITLES",
       "LegalAcceptanceService",
       "MONETARY_ACTION_TYPES",
+      "OBLIGATION_PAYMENT_STATUSES",
       "ORGANIZATION_BILLING_PROFILE_PORT",
       "OUTSTANDING_STATUSES",
       "OVERVIEW_PRODUCT_KEYS",
       "PAST_DUE_GRACE_DAYS_DEFAULT",
+      "PAYMENT_CORRECTIONS",
       "PAYMENT_DUE_STATES",
+      "PAYMENT_METHODS",
       "PAYMENT_OVERDUE_STATES",
+      "PAYMENT_PAYLOAD_CODES",
+      "PAYMENT_RECORD_OPERATIONS",
+      "PAYMENT_RECORD_SCOPE",
+      "PAYMENT_REFUSAL_CODES",
       "PERSONAL_LEGAL_DOCUMENT_KEYS",
       "PIN_REASON_CHANGE_REQUEST",
       "PIN_REASON_PROVIDER_PLAN_CHANGE",
@@ -2414,6 +2425,7 @@
       "PRICE_CHANGE_UNDEFINED_DETAIL",
       "PRODUCT_CAPABILITIES",
       "PRODUCT_KEYS",
+      "PaymentRecordRefusedError",
       "PlanVersionContentError",
       "PlanVersionDraftExistsError",
       "PlanVersionRepository",
@@ -2475,6 +2487,7 @@
       "accountingPeriodOf",
       "activatePolicyVersionInTx",
       "actorSatisfiesStep",
+      "addCalendarDays",
       "addMonthsClamped",
       "adjustmentOperationOf",
       "applyCatalogDraftEdits",
@@ -2490,6 +2503,7 @@
       "billingPeriodAt",
       "boundedExceptionChain",
       "buildAuditCsv",
+      "calendarDateIn",
       "canTransition",
       "canTransitionBillingCommand",
       "canTransitionFor",
@@ -2535,16 +2549,19 @@
       "isApplyServiceAction",
       "isApprovalExpired",
       "isBillingAdjustmentAction",
+      "isCalendarDate",
       "isCatalogApplicable",
       "isContractPriced",
       "isFeatureAvailable",
       "isGovernedSubscription",
+      "isIanaTimeZone",
       "isPlatformLastOwnerViolation",
       "isProductKey",
       "isWithinPastDueGrace",
       "legalRef",
       "mapProviderStatus",
       "monthKey",
+      "obligationPaymentStatus",
       "openDevelopmentSubscription",
       "overlayCovers",
       "parseActiveCommercialPolicy",
@@ -2556,6 +2573,9 @@
       "pastDueGraceUntil",
       "payloadChecksum",
       "paymentFlags",
+      "paymentRecordPayloadErrors",
+      "paymentStatusFlags",
+      "paymentTermsErrors",
       "personalSignupMode",
       "planVersionChecksum",
       "planVersionContentFromRows",
@@ -2570,6 +2590,7 @@
       "refundReportState",
       "refundReservations",
       "refundableRemainder",
+      "resolvePaymentRecordChain",
       "resolvePriceToVersion",
       "resolveRequiredChain",
       "runPlatformOwnerBootstrap",
@@ -2584,6 +2605,7 @@
       "takeBillingLock",
       "taxAvailability",
       "thresholdOf",
+      "unlinkedReceipts",
       "usageMetricOf",
       "usageMetricsOf",
       "validateContractBlocks",
@@ -3754,6 +3776,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c8pr-contract-payments-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-d1-usage-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -4510,6 +4538,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-c6-finance-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c8pr-contract-payments-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -6433,6 +6467,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/ccp-a1a2-payment-request-scope-migration.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/ccp-a9-platform-last-owner.spec.ts",
         "project": "identity",
         "status": "excluded"
@@ -6984,6 +7024,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-c6-finance-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c8pr-contract-payments-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -7789,6 +7835,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/subscription/src/tests/ccp-c7-self-service.integration.spec.ts",
+        "project": "subscription",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/subscription/src/tests/ccp-c8pr-payment-record.integration.spec.ts",
         "project": "subscription",
         "status": "excluded"
       },
@@ -10271,6 +10323,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c8pr-contract-payments-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-d1-usage-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -12559,6 +12617,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/ccp-c6-finance-authorization.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/ccp-c8pr-contract-payments-authorization.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },

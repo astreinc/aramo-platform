@@ -8,6 +8,7 @@ import { BILLING_PROVIDER_PORT, type BillingProviderPort } from './billing-provi
 import { RESIDUAL_AUTHORITY_SQL, entitlementGaps, type ResidualAuthorityKind } from './entitlement-subscription-gap.js';
 import { GOVERNED_SUBSCRIPTION_OPEN } from './governed-subscription.js';
 import { taxAvailability, type TaxAvailability } from './tax-availability.js';
+import { type UnlinkedReceipt, unlinkedReceipts } from '../commercial/commercial-payment-record.js';
 
 // CCP-C6 (Aramo-CCP-Program-Build-Directive-v1_0-LOCKED §5.2 row C6; Conversion Rule C-8;
 // PLATFORM-UX-1 Amendment A1-4a) — the READ-ONLY Finance reports: the renewals queue, outstanding
@@ -197,6 +198,11 @@ export interface ReconciliationReport {
   readonly entitled_without_subscription: EntitledWithoutSubscription[];
   readonly held_activations: HeldActivation[];
   readonly other_open_flags: OtherOpenFlag[];
+  /**
+   * CCP-C8-PR (PAYMENT_RECORD §4.3 step 5) — applied, uncorrected prepaid INITIAL receipts not linked to a
+   * contract (the deal has not opened). Never expired; neutralized only by a governed CORRECT. No amount.
+   */
+  readonly unlinked_receipts: UnlinkedReceipt[];
   readonly counts: {
     readonly open_subscriptions: number;
     readonly by_source: Record<string, number>;
@@ -206,6 +212,8 @@ export interface ReconciliationReport {
     readonly entitled_without_subscription: number;
     readonly held_activations: number;
     readonly other_open_flags: number;
+    /** CCP-C8-PR — unlinked prepaid INITIAL receipts (counted as exceptions). */
+    readonly unlinked_receipts: number;
     readonly unconfirmed_commands: number;
     readonly failed_commands: number;
     readonly failed_inbox_events: number;
@@ -488,7 +496,9 @@ export class BillingFinanceReportService {
       );
       // CCP-R3 (TD-A7-5) — residual authority of a tenant × product with no open row (the D3 rule).
       const residual = await tx.$queryRawUnsafe<Array<{ tenant_id: string; product_key: string; kind: ResidualAuthorityKind; until: Date }>>(RESIDUAL_AUTHORITY_SQL, as_of);
-      return { subs, entitlements, flags, commands, residual, inbox: inbox[0] ?? { failed: 0, unprocessed: 0 } };
+      // CCP-C8-PR — the unlinked receipts (absent table on a partial chain: none).
+      const unlinked = (await unlinkedReceipts(tx, { tenant_id: opts.tenant_id, product_key: opts.product_key })) ?? [];
+      return { subs, entitlements, flags, commands, residual, unlinked, inbox: inbox[0] ?? { failed: 0, unprocessed: 0 } };
     });
 
     const capsOf = new Map<string, Set<string>>();
@@ -583,7 +593,7 @@ export class BillingFinanceReportService {
 
     const withDiscrepancy = subscriptions.filter((s) => s.discrepancies.length > 0).length;
     const failed_commands = data.commands.filter((c) => c.state === 'FAILED').length;
-    const exceptions = withDiscrepancy + entitled_without_subscription.length + held_activations.length + other_open_flags.length + failed_commands + data.inbox.failed;
+    const exceptions = withDiscrepancy + entitled_without_subscription.length + held_activations.length + other_open_flags.length + failed_commands + data.inbox.failed + data.unlinked.length;
     return {
       as_of,
       currency: FINANCE_CURRENCY,
@@ -594,6 +604,7 @@ export class BillingFinanceReportService {
       entitled_without_subscription,
       held_activations,
       other_open_flags,
+      unlinked_receipts: data.unlinked,
       counts: {
         open_subscriptions: subscriptions.length,
         by_source: count(subscriptions, (s) => s.source),
@@ -603,6 +614,7 @@ export class BillingFinanceReportService {
         entitled_without_subscription: entitled_without_subscription.length,
         held_activations: held_activations.length,
         other_open_flags: other_open_flags.length,
+        unlinked_receipts: data.unlinked.length,
         unconfirmed_commands: data.commands.length,
         failed_commands,
         failed_inbox_events: data.inbox.failed,
@@ -638,6 +650,8 @@ export function formatReconciliationReport(r: ReconciliationReport): string[] {
   }
   out.push(`[reconciliation] other open flags: ${c.other_open_flags}`);
   for (const f of r.other_open_flags) out.push(`[reconciliation]   flag=${f.flag_id} tenant=${f.tenant_id} reason=${f.reason} provider_sub=${f.subscription_ref}`);
+  out.push(`[reconciliation] unlinked payment receipts (PAYMENT_RECORD §4.3): ${c.unlinked_receipts}`);
+  for (const u of r.unlinked_receipts) out.push(`[reconciliation]   receipt=${u.receipt_id} tenant=${u.tenant_id} ${u.product_key} contract_ref=${u.provisional_contract_ref} recorded_at=${u.recorded_at.toISOString()}`);
   out.push(`[reconciliation] commands: unconfirmed=${c.unconfirmed_commands} failed=${c.failed_commands}; inbox: failed=${c.failed_inbox_events} unprocessed=${c.unprocessed_inbox_events}`);
   return out;
 }

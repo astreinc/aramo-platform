@@ -43,6 +43,12 @@ export interface ContractRow {
   recorded_by_change_request_id: string;
   recorded_by: string;
   recorded_at: Date;
+  // CCP-C8-PR (PR-1) — the structured payment terms (null on a contract recorded before C8-PR).
+  billing_mode?: string | null;
+  payment_currency?: string | null;
+  payment_timezone?: string | null;
+  grace_days?: number | null;
+  postpaid_approval?: unknown;
 }
 
 export interface ContractAmendmentRow {
@@ -78,9 +84,11 @@ export interface ContractWriteContext {
 }
 
 export interface ContractEffect {
-  event_type: 'COMMERCIAL_CONTRACT_RECORDED' | 'COMMERCIAL_CONTRACT_AMENDED' | 'COMMERCIAL_CONTRACT_ENDED';
+  event_type: 'COMMERCIAL_CONTRACT_RECORDED' | 'COMMERCIAL_CONTRACT_AMENDED' | 'COMMERCIAL_CONTRACT_ENDED' | 'COMMERCIAL_PAYMENT_RECEIPT_LINKED';
   subject: string;
   payload: Record<string, unknown>;
+  /** CCP-C8-PR — the contract written or amended (the obligations attach to it). */
+  contract_id?: string;
 }
 
 /** The contract governing a subscription row, if any (read inside the apply transaction). */
@@ -107,6 +115,16 @@ export async function recordContractInTx(tx: unknown, subscription_id: string, b
         recorded_by_change_request_id: ctx.change_request_id,
         recorded_by: ctx.requested_by,
         recorded_at: ctx.now,
+        // CCP-C8-PR (PR-1): the payment terms, immutable with the row (a Json? column takes no plain null).
+        ...(block.payment_terms === undefined
+          ? {}
+          : {
+              billing_mode: block.payment_terms.billing_mode,
+              payment_currency: block.payment_terms.currency,
+              payment_timezone: block.payment_terms.timezone,
+              grace_days: block.payment_terms.grace_days ?? null,
+              ...(block.payment_terms.postpaid_approval === undefined ? {} : { postpaid_approval: block.payment_terms.postpaid_approval }),
+            }),
       },
     });
   } catch (e) {
@@ -119,7 +137,15 @@ export async function recordContractInTx(tx: unknown, subscription_id: string, b
   return {
     event_type: 'COMMERCIAL_CONTRACT_RECORDED',
     subject: `contract:${id}`,
-    payload: { contract_id: id, contract_ref: block.contract_ref, subscription_id, terms_count: block.terms.length, document_sha256: docs.map((d) => d.sha256) },
+    payload: {
+      contract_id: id,
+      contract_ref: block.contract_ref,
+      subscription_id,
+      terms_count: block.terms.length,
+      document_sha256: docs.map((d) => d.sha256),
+      ...(block.payment_terms === undefined ? {} : { billing_mode: block.payment_terms.billing_mode, obligations_count: block.payment_terms.obligations.length, grace_days: block.payment_terms.grace_days ?? null, timezone: block.payment_terms.timezone }),
+    },
+    contract_id: id,
   };
 }
 
@@ -154,7 +180,8 @@ export async function amendContractInTx(tx: unknown, subscription_id: string, bl
   return {
     event_type: 'COMMERCIAL_CONTRACT_AMENDED',
     subject: `contract:${contract.id}`,
-    payload: { contract_id: contract.id, contract_ref: contract.contract_ref, sequence, terms_changed: block.terms !== undefined, document_sha256: docs.map((d) => d.sha256) },
+    payload: { contract_id: contract.id, contract_ref: contract.contract_ref, sequence, terms_changed: block.terms !== undefined, payment_terms_changed: block.payment_terms !== undefined, document_sha256: docs.map((d) => d.sha256) },
+    contract_id: contract.id,
   };
 }
 

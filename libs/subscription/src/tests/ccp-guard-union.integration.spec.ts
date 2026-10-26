@@ -171,7 +171,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('TD-MERGE-GUARD-1 
     for (const r of left) expect(await svc.expireApplyIfDue(null as never, r, new Date(), ctx), `${r.action_type}/${r.kind}/${r.state}`).toBe(false);
     // Every type the guard admits → APPLY_EXPIRED for is evaluated (it reads the snapshotted policy: here the null client throws).
     const evaluated = COMMERCIAL_ACTION_TYPES.filter((a) => isApplyExpirable(a));
-    expect([...evaluated].sort()).toEqual(['CONVERSION', 'CREDIT', 'DISCOUNT', 'ENTITLEMENT_GRANT', 'ENTITLEMENT_REVOKE', 'PLAN_RETIRE', 'PLAN_VERSION_PUBLISH', 'POLICY_ACTIVATE', 'REFUND', 'ROLE_GRANT', 'ROLE_REVOKE', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'SUBSCRIPTION_OPEN', 'SUPPORT_EXTENSION']);
+    expect([...evaluated].sort()).toEqual(['CONVERSION', 'CREDIT', 'DISCOUNT', 'ENTITLEMENT_GRANT', 'ENTITLEMENT_REVOKE', 'PAYMENT_RECORD', 'PLAN_RETIRE', 'PLAN_VERSION_PUBLISH', 'POLICY_ACTIVATE', 'REFUND', 'ROLE_GRANT', 'ROLE_REVOKE', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'SUBSCRIPTION_OPEN', 'SUPPORT_EXTENSION']);
     for (const a of evaluated) await expect(svc.expireApplyIfDue(null as never, req(a), new Date(), ctx), a).rejects.toThrow();
     // The predicate is the guard's: for every action x kind, APPROVED -> APPLY_EXPIRED is admitted by the live guard iff isApplyExpirable.
     for (const a of COMMERCIAL_ACTION_TYPES) for (const k of COMMERCIAL_CHANGE_REQUEST_KINDS) expect(await probe(a, k, 'APPROVED', 'APPLY_EXPIRED'), `${a}/${k}`).toBe(isApplyExpirable(a, k));

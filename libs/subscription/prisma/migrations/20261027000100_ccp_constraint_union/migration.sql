@@ -15,7 +15,8 @@
 --
 -- Merged so far: A6 base, A7 ENTITLEMENT_REVOKE, A8 SUPPORT_EXTENSION, C2 CONVERSION; CCP-C4 (the
 -- block at the end of this file: the change-request action list + REFUND and the C1 command kinds +
--- the five billing-adjustment kinds).
+-- the five billing-adjustment kinds); CCP-C8-PR (the last block: PAYMENT_RECORD in both action CHECKs and
+-- the application subscription CHECK, which only A7 wrote before).
 -- Design approval is not production migration authority (ruling A0-C15).
 
 ALTER TABLE "subscription"."CommercialChangeApplication"
@@ -51,3 +52,40 @@ ALTER TABLE "subscription"."BillingProviderCommand"
         'SUBSCRIPTION_CANCEL', 'CHECKOUT_SESSION_EXPIRE',                                   -- C1
         'CREDIT_GRANT', 'CREDIT_REVERSE', 'DISCOUNT_APPLY', 'DISCOUNT_REMOVE', 'REFUND_CREATE')); -- CCP-C4
 -- ==== END CCP-C4 ====
+
+-- ==== BEGIN CCP-C8-PR (20261030010000_ccp_c8pr_payment_record; Aramo-CCP-Program-Build-Directive-Amendment-A2-Payment-Record-v1_0-LOCKED §2, PR-4) ====
+-- Self-contained: it re-asserts the CHECKs below in full, after the blocks above.
+-- (a) The commercial action catalog grows from 15 to 16 (catalog row 16, PAYMENT_RECORD): the CCP-C4 list
+--     above + PAYMENT_RECORD.
+ALTER TABLE "subscription"."CommercialChangeRequest"
+    DROP CONSTRAINT "CommercialChangeRequest_action_type_check",
+    ADD CONSTRAINT "CommercialChangeRequest_action_type_check" CHECK ("action_type" IN (
+        'SUBSCRIPTION_OPEN', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END',
+        'ENTITLEMENT_GRANT', 'ENTITLEMENT_REVOKE',
+        'PLAN_VERSION_PUBLISH', 'PLAN_RETIRE',
+        'POLICY_ACTIVATE',
+        'SUPPORT_EXTENSION',
+        'ROLE_GRANT', 'ROLE_REVOKE',
+        'CREDIT', 'DISCOUNT',
+        'CONVERSION',
+        'REFUND',                                                                           -- CCP-C4
+        'PAYMENT_RECORD'));                                                                 -- CCP-C8-PR
+-- (b) PR-4: the PAYMENT_RECORD apply writes a CommercialChangeApplication row: the union list above +
+--     PAYMENT_RECORD.
+ALTER TABLE "subscription"."CommercialChangeApplication"
+    DROP CONSTRAINT "CommercialChangeApplication_action_type_check",
+    ADD CONSTRAINT "CommercialChangeApplication_action_type_check" CHECK ("action_type" IN (
+        'SUBSCRIPTION_OPEN', 'SUBSCRIPTION_CHANGE', 'SUBSCRIPTION_END', 'ENTITLEMENT_GRANT', -- A6
+        'ENTITLEMENT_REVOKE',                                                               -- A7
+        'SUPPORT_EXTENSION',                                                                -- A8
+        'CONVERSION',                                                                       -- C2
+        'PAYMENT_RECORD'));                                                                 -- CCP-C8-PR
+-- (c) "CommercialChangeApplication_subscription_check" (CCP-A7 20261026000100, the only slice that writes
+--     it): A7's rule, plus PAYMENT_RECORD, whose application names the contract's subscription when the
+--     receipt is linked and none for a prepaid INITIAL recorded before its contract exists (§4.2).
+ALTER TABLE "subscription"."CommercialChangeApplication"
+    DROP CONSTRAINT "CommercialChangeApplication_subscription_check",
+    ADD CONSTRAINT "CommercialChangeApplication_subscription_check" CHECK (
+        "action_type" = 'PAYMENT_RECORD'
+        OR ("action_type" IN ('ENTITLEMENT_GRANT', 'ENTITLEMENT_REVOKE')) = ("subscription_id" IS NULL));
+-- ==== END CCP-C8-PR ====

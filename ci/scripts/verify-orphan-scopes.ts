@@ -125,6 +125,9 @@ export const CLASSIFICATIONS: Record<string, Classification> = {
   // is omitted (amount_withheld FINANCE_SCOPE_REQUIRED) unless the caller also holds it. No route
   // serves amounts only, so no @RequireScopes names it.
   'platform:billing:amount:read': { cls: 'SERVICE_ENFORCED', reason: 'field authorization of tenant-specific monetary fields — financeAmountAccess(auth.scopes) in the platform-admin C3 billing-status, C6 finance, A3 change-request, A2 audit and B5 audit-export mappers (apps/platform-admin/src/app/platform/finance-amount-access.ts; libs/subscription finance-amount-withholding.ts)' },
+  // CCP-A1 Amendment A2 (Payment request scope, LOCKED 2026-10-25; PS-1, PS-6) — requester scope of
+  // the PAYMENT_RECORD action only; read live by the change-request service at create time.
+  'platform:payment:request': { cls: 'SERVICE_ENFORCED', reason: 'requester scope for PAYMENT_RECORD change requests — CommercialChangeRequestService.create reads COMMERCIAL_ACTIONS.PAYMENT_RECORD.requester_scope (libs/subscription/src/lib/commercial/commercial-change-request.ts; CCP-C8-PR, CCP-A1 Amendment A2 PS-6)' },
   'platform:billing:approve': { cls: 'SERVICE_ENFORCED', reason: 'approval-step scope of billing chains (credit, discount) — checkApprovalEligibility reads it LIVE in the approve transaction (libs/subscription/src/lib/commercial/commercial-approval-eligibility.ts; CCP A3)' },
   // --- EXIT_HYG (owning-lane ruling required) ---
   'consent:read': { cls: 'EXIT_HYG', reason: 'live internal ConsentController surface; keep-or-gate is a Consent/Portal-lane ruling (Dead-Residue Ledger)' },

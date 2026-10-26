@@ -8,11 +8,13 @@
 --   20261028050000_ccp_r3_entitlement_alert    DROP + ADD: the 8 CCP-D3 types + ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION = 9
 -- Applied in order, R3's re-assertion silently dropped FIX1's two apply-deadline types, so the scanner
 -- could not raise them. This file MUST sort after 20261028050000; it re-asserts the union of both, 11
--- (alert_type, family, subject_kind) triples, in the order of COMMERCIAL_ALERT_DEFINITIONS
+-- (alert_type, family, subject_kind) triples (12 with the CCP-C8-PR block), in the order of COMMERCIAL_ALERT_DEFINITIONS
 -- (libs/subscription/src/lib/observability/commercial-alert.ts; asserted by ccp-d3-alerts.spec.ts D3-U-1):
 --   [union block: CCP-D3]    the 8 original triples
 --   [union block: CCP-R3]    ENTITLEMENT_WITHOUT_ACTIVE_SUBSCRIPTION (BILLING, product_entitlement)
 --   [union block: CCP-FIX1]  APPLY_DEADLINE_NEARING, APPLY_DEADLINE_PASSED (APPROVAL, change_request)
+--   [union block: CCP-C8-PR] PAYMENT_RECEIPT_UNLINKED (BILLING, payment_receipt): an applied, uncorrected prepaid
+--                            INITIAL receipt not yet linked to a contract (PAYMENT_RECORD §4.3 step 5; 12 triples)
 -- Every existing row satisfies it. No other object changes. Apply whole-file. Design approval is not
 -- production migration authority (ruling A0-C15). Compensation: src/tests/fixtures/ccp-alert-type-union-compensating.sql.
 
@@ -29,4 +31,8 @@ ALTER TABLE "subscription"."CommercialOperationalAlert" ADD CONSTRAINT "Commerci
      OR ("alert_type" = 'APPROVAL_NEARING_EXPIRY' AND "family" = 'APPROVAL' AND "subject_kind" = 'change_request')
      OR ("alert_type" = 'APPROVAL_PAST_EXPIRY' AND "family" = 'APPROVAL' AND "subject_kind" = 'change_request')
      OR ("alert_type" = 'APPLY_DEADLINE_NEARING' AND "family" = 'APPROVAL' AND "subject_kind" = 'change_request')
-     OR ("alert_type" = 'APPLY_DEADLINE_PASSED' AND "family" = 'APPROVAL' AND "subject_kind" = 'change_request'));
+     OR ("alert_type" = 'APPLY_DEADLINE_PASSED' AND "family" = 'APPROVAL' AND "subject_kind" = 'change_request')
+     -- ==== BEGIN CCP-C8-PR (20261030010000_ccp_c8pr_payment_record) ====
+     OR ("alert_type" = 'PAYMENT_RECEIPT_UNLINKED' AND "family" = 'BILLING' AND "subject_kind" = 'payment_receipt')
+     -- ==== END CCP-C8-PR ====
+    );

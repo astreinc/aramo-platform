@@ -494,6 +494,44 @@ export {
   type ContractStatus,
   type ContractSummaryView,
 } from './lib/commercial/commercial-contract.repository.js';
+// CCP-C8-PR (Aramo-CCP-Program-Build-Directive-Amendment-A2-Payment-Record-v1_0-LOCKED) — PAYMENT_RECORD:
+// contract payment terms (PR-1), the receipt attestation and its PREPAID activation gate (PR-7, §4.3), and
+// the derived payment status (PR-10).
+export {
+  BILLING_MODES,
+  INITIAL_OBLIGATION_REF,
+  OBLIGATION_PAYMENT_STATUSES,
+  PAYMENT_CORRECTIONS,
+  PAYMENT_METHODS,
+  PAYMENT_PAYLOAD_CODES,
+  PAYMENT_RECORD_OPERATIONS,
+  addCalendarDays,
+  calendarDateIn,
+  isCalendarDate,
+  isIanaTimeZone,
+  obligationPaymentStatus,
+  paymentRecordPayloadErrors,
+  paymentStatusFlags,
+  paymentTermsErrors,
+  type BillingMode,
+  type ObligationPaymentStatus,
+  type PaymentRecordPayload,
+  type PaymentTermsBlock,
+} from './lib/commercial/commercial-payment-terms.js';
+export {
+  COMMERCIAL_PAYMENT_CLOCK,
+  ContractPaymentReadService,
+  PAYMENT_RECORD_SCOPE,
+  PAYMENT_REFUSAL_CODES,
+  PaymentRecordRefusedError,
+  resolvePaymentRecordChain,
+  unlinkedReceipts,
+  type ContractPaymentsView,
+  type ObligationPaymentView,
+  type PaymentReceiptView,
+  type PaymentRefusalCode,
+  type UnlinkedReceipt,
+} from './lib/commercial/commercial-payment-record.js';
 export { GOVERNED_SUBSCRIPTION_OPEN, billingLockKey, isGovernedSubscription, takeBillingLock } from './lib/billing/governed-subscription.js';
 // CCP-C2 (PBD §5.2 row C2; Conversion Rule C-11…C-15, C-29) — governed manual ↔ self-service conversion.
 export {

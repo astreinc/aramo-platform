@@ -255,6 +255,11 @@ export function toAramoError(err: unknown, requestId: string): unknown {
         return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, { requestId, details: { reason: 'apply_unresolved', ...d } });
       case 'ALREADY_APPLIED':
         return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, { requestId, details: { reason: 'already_applied', ...d } });
+      // CCP-C8-PR (PAYMENT_RECORD amendment PR-5…PR-9, §4.2, K-1) — details.refusal: PAYMENT_ALREADY_RECORDED |
+      // PAYMENT_REFERENCE_DUPLICATE | PAYMENT_NOT_RECORDED | PAYMENT_OBLIGATION_MISMATCH | PAYMENT_AMOUNT_UNSUPPORTED |
+      // PAYMENT_RECORD_NOT_GOVERNED | CONTRACT_REF_TAKEN | PAYMENT_CORRECTION_TARGET_INVALID; audited.
+      case 'PAYMENT_REFUSED':
+        return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, { requestId, details: { reason: 'payment_refused', ...d } });
     }
   }
   return err;
@@ -272,7 +277,7 @@ export function requestDto(r: CommercialChangeRequestRow, amount_access: boolean
     tenant_id: r.tenant_id,
     product_key: r.product_key,
     // CCP-R3 (CCP-A1 Amendment A1, FA-1 / FA-5; TD-C4-7): a monetary action's (CREDIT, DISCOUNT,
-    // REFUND) tenant-specific amount is sent only to
+    // REFUND, PAYMENT_RECORD) tenant-specific amount is sent only to
     // a caller holding platform:billing:read AND platform:billing:amount:read; otherwise it is
     // omitted from the payload and the chain basis (`amount_withheld: "FINANCE_SCOPE_REQUIRED"`).
     // payload_checksum stays the stored row's checksum (over the full payload).
