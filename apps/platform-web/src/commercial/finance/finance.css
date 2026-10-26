@@ -1,0 +1,398 @@
+/* CCP-UI-V12 — Finance, Usage and Alerts (Commercial Control Plane v1.2.dc.html; CCP-UI v1.1
+ * handoff §13). Every value copied from the pinned file through the theme.css token layer (--pw-*);
+ * no hex literals. Builds on commercial.css (pc-page, pc-card, pc-table, pc-scroll). Prefix `pf-`. */
+
+/* ── page header (design: flex, gap 16, wrap, margin-bottom 18; a tile on the right) ── */
+.pf-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+.pf-head__main {
+  flex: 1;
+  min-width: 280px;
+}
+
+/* ── notes and banners ── */
+.pf-note {
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-box);
+  background: var(--pw-surface-2);
+  color: var(--pw-ink-2);
+  font-size: var(--pw-fs-13);
+}
+.pf-info {
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border: 1px solid var(--pw-alert-info-line);
+  border-radius: var(--pw-r-box);
+  background: var(--pw-alert-info-bg);
+  color: var(--pw-alert-info-ink);
+  font-size: var(--pw-fs-13);
+}
+
+/* ── toolbar (horizon, lapsed, period, segmented) ── */
+.pf-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+.pf-select {
+  height: 38px;
+  padding: 0 10px;
+  border: 1px solid var(--pw-line-2);
+  border-radius: var(--pw-r-md);
+  background: var(--pw-surface);
+  color: var(--pw-ink);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-13);
+}
+.pf-select:focus-visible {
+  outline: 2px solid var(--pw-focus);
+  outline-offset: 2px;
+}
+.pf-check {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: var(--pw-fs-13);
+  cursor: pointer;
+}
+.pf-check__box {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--pw-midnight);
+}
+.pf-count {
+  margin-left: auto;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12-5);
+}
+.pf-metric {
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12-5);
+}
+
+/* ── segmented filter (Alerts: Open · Resolved · All) ── */
+.pf-seg {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 3px;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-box);
+  background: var(--pw-surface);
+}
+.pf-seg__btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: 30px;
+  padding: 0 10px;
+  border: none;
+  border-radius: var(--pw-r-btn-sm);
+  background: transparent;
+  color: var(--pw-ink);
+  font-family: var(--pw-font);
+  font-size: var(--pw-fs-12-5);
+  font-weight: 500;
+  cursor: pointer;
+}
+.pf-seg__btn--on {
+  background: var(--pw-midnight);
+  color: var(--pw-surface);
+  font-weight: 700;
+}
+.pf-seg__btn:focus-visible {
+  outline: 2px solid var(--pw-focus);
+  outline-offset: 2px;
+}
+.pf-seg__count {
+  color: var(--pw-faint);
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-11);
+}
+
+/* ── tables (design: 13px, the head nowrap, a per-table min-width) ── */
+.pf-table th {
+  white-space: nowrap;
+}
+.pf-table--560 {
+  min-width: 560px;
+}
+.pf-table--900 {
+  min-width: 900px;
+}
+.pf-table--980 {
+  min-width: 980px;
+}
+.pf-table--1000 {
+  min-width: 1000px;
+}
+.pf-table--1040 {
+  min-width: 1040px;
+}
+.pf-table--1080 {
+  min-width: 1080px;
+}
+.pf-tenant {
+  color: var(--pw-ink);
+  font-weight: 600;
+}
+.pf-slug {
+  color: var(--pw-muted);
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-11-5);
+}
+.pf-sub {
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12);
+}
+.pf-sub--warn {
+  color: var(--pw-warn);
+  text-align: right;
+}
+.pf-nowrap {
+  white-space: nowrap;
+}
+.pf-strong {
+  font-weight: 600;
+}
+.pf-price {
+  color: var(--pw-ink);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pf-amount {
+  font-weight: 700;
+}
+.pf-mono {
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-12);
+  font-weight: 600;
+}
+.pf-mono--link {
+  white-space: nowrap;
+}
+.pf-muted {
+  color: var(--pw-muted);
+}
+.pf-muted--sm {
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12-5);
+}
+.pf-due {
+  margin-top: 5px;
+}
+.pf-src {
+  padding: 2px 7px;
+  border: 1px solid var(--pw-line-2);
+  border-radius: var(--pw-r-sm);
+  background: var(--pw-surface);
+  color: var(--pw-ink-2);
+  font-size: var(--pw-fs-12);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pf-src--stripe {
+  border-color: var(--pw-sx-stripe-line);
+  background: var(--pw-sx-stripe-bg);
+  color: var(--pw-sx-stripe-fg);
+}
+.pf-tag {
+  padding: 2px 7px;
+  border-radius: var(--pw-r-tag);
+  background: var(--pw-alert-warn-bg);
+  color: var(--pw-alert-warn-ink);
+  font-size: var(--pw-fs-12);
+  font-weight: 700;
+  white-space: nowrap;
+}
+.pf-why {
+  max-width: 300px;
+  margin-top: 5px;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12);
+}
+.pf-stamp {
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-11-5);
+  white-space: nowrap;
+}
+.pf-mono12 {
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-12);
+}
+.pf-ink2 {
+  color: var(--pw-ink-2);
+}
+.pf-cmdstate {
+  color: var(--pw-alert-info-ink);
+  font-weight: 600;
+}
+.pf-note-sm {
+  max-width: 220px;
+  margin-top: 4px;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12);
+}
+.pf-amt-line {
+  margin-top: 2px;
+  font-size: var(--pw-fs-12);
+  font-weight: 600;
+}
+.pf-link-sm {
+  font-size: var(--pw-fs-12-5);
+  font-weight: 600;
+  white-space: nowrap;
+}
+
+/* ── cards with a head (sections) ── */
+.pf-stack {
+  display: grid;
+  gap: 16px;
+}
+.pf-card-head {
+  padding: 14px 20px;
+  border-bottom: 1px solid var(--pw-rule);
+}
+.pf-card-head h2 {
+  margin: 0;
+  font-size: var(--pw-fs-15);
+  font-weight: 700;
+}
+.pf-card-head p {
+  margin: 3px 0 0;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12-5);
+}
+.pf-sublabel {
+  padding: 12px 20px 4px;
+  color: var(--pw-ink-2);
+  font-size: var(--pw-fs-12);
+  font-weight: 700;
+}
+.pf-sublabel--next {
+  padding-top: 16px;
+}
+.pf-card--gap {
+  margin-bottom: 16px;
+}
+
+/* ── empty states ── */
+.pf-empty {
+  padding: 32px 20px;
+  text-align: center;
+}
+.pf-empty__body {
+  margin-top: 4px;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-13);
+}
+
+/* ── revenue tiles + renewals by month ── */
+.pf-tiles {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 12px;
+  margin-bottom: 16px;
+}
+.pf-tile {
+  padding: 14px 16px;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-card);
+  background: var(--pw-surface);
+}
+.pf-tile__label {
+  color: var(--pw-faint);
+  font-size: var(--pw-fs-11);
+  font-weight: 600;
+  letter-spacing: var(--pw-tracking-caps);
+  text-transform: uppercase;
+}
+.pf-tile__n {
+  margin-top: 4px;
+  font-size: var(--pw-fs-26);
+  font-weight: 700;
+}
+.pf-tile__sub {
+  margin-top: 2px;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12);
+}
+.pf-months {
+  padding: 8px 20px 14px;
+}
+.pf-month {
+  display: grid;
+  grid-template-columns: 110px minmax(0, 1fr) 110px 130px 90px;
+  align-items: center;
+  gap: 12px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--pw-rule);
+  font-size: var(--pw-fs-13);
+}
+.pf-month__label {
+  font-weight: 600;
+}
+.pf-month__track {
+  height: 8px;
+  overflow: hidden;
+  border-radius: var(--pw-r-xs);
+  background: var(--pw-rule);
+}
+.pf-month__bar {
+  display: block;
+  height: 8px;
+  background: var(--pw-v12-bar);
+}
+.pf-month__n {
+  color: var(--pw-ink-2);
+}
+.pf-month__v {
+  font-weight: 600;
+  text-align: right;
+}
+.pf-month__w {
+  color: var(--pw-warn);
+  font-size: var(--pw-fs-12);
+  text-align: right;
+}
+
+/* ── usage: the refused card ── */
+.pf-refused {
+  padding: 40px 24px;
+  text-align: center;
+}
+.pf-refused b {
+  font-size: var(--pw-fs-15);
+}
+.pf-refused p {
+  max-width: 520px;
+  margin: 6px auto 0;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-13);
+}
+.pf-refused a {
+  display: inline-block;
+  margin-top: 12px;
+  font-weight: 600;
+}
+.pf-code {
+  font-family: var(--pw-mono);
+}
+
+/* ── alerts footer ── */
+.pf-foot {
+  padding: 10px 16px;
+  border-top: 1px solid var(--pw-rule);
+  background: var(--pw-surface-2);
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12);
+}

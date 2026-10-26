@@ -141,6 +141,8 @@ export interface BillingInvoiceLink {
   /** FA-4: derived booleans every platform:billing:read holder receives. */
   payment_due: boolean;
   payment_overdue: boolean;
+  /** CCP-C5 — the designed disabled tax state (`{ enabled: false, reason: STRIPE_TAX_NOT_REGISTERED }`). */
+  tax?: { enabled: boolean; reason?: string } | null;
 }
 
 /** The action types the tab creates (CCP-A3 closed set). */
@@ -182,7 +184,7 @@ export const subscriptionsApi = {
 
   /** CCP-C3 (NOT DELIVERED): only the newest invoice's provider-hosted page is used; amounts are ignored. */
   async invoiceLink(tenantId: string): Promise<BillingInvoiceLink> {
-    const out = await apiClient.get<{ availability: string; invoices?: { hosted_url: string | null }[]; amount_withheld?: string; payment_due?: boolean; payment_overdue?: boolean }>(
+    const out = await apiClient.get<{ availability: string; invoices?: { hosted_url: string | null }[]; amount_withheld?: string; payment_due?: boolean; payment_overdue?: boolean; tax?: { enabled: boolean; reason?: string } }>(
       `${BASE}/tenants/${encodeURIComponent(tenantId)}/billing-status?product_key=${SIGN_PRODUCT}&invoice_limit=1`,
     );
     return {
@@ -191,6 +193,7 @@ export const subscriptionsApi = {
       amount_withheld: typeof out.amount_withheld === 'string',
       payment_due: out.payment_due === true,
       payment_overdue: out.payment_overdue === true,
+      tax: out.tax ?? null,
     };
   },
 

@@ -71,8 +71,12 @@ describe('CCP-C6 — the dashboard renders no money (A0-C6)', () => {
 // exists yet (it needs design release CCP-UI v1.1), so no console source reads it, and the dashboard
 // contract and view carry no revenue metric.
 describe('CCP-D2 — no revenue metric reaches the dashboard', () => {
-  it('D2-DASH-1 no console source calls the revenue route (no Finance revenue screen is built)', () => {
-    expect(sources(SRC).filter((f) => readFileSync(f, 'utf8').includes('/finance/revenue'))).toEqual([]);
+  // CCP-UI-V12: the Finance › Revenue screen now exists; it is the ONLY reader of the revenue route
+  // (the rail item and the route path name the console page, not the API).
+  it('D2-DASH-1 only the Finance › Revenue screen reads the revenue route', () => {
+    const readers = sources(SRC).filter((f) => /financeApi\.revenue\(|\/revenue\?months/.test(readFileSync(f, 'utf8')));
+    expect(readers.filter((f) => !/[\\/]commercial[\\/]finance[\\/]/.test(f))).toEqual([]);
+    expect(readers.length).toBeGreaterThan(0);
   });
 
   it('D2-DASH-2 the dashboard view, its contract and its API call carry no revenue metric', () => {

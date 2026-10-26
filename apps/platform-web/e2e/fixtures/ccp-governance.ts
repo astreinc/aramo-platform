@@ -60,7 +60,8 @@ function policyList(persona: CcpPersona) {
         id: V2,
         version_number: 2,
         status: 'DRAFT',
-        content: { ...V1_CONTENT, credit_escalation_threshold_minor: 30_000, approval_expiry_hours: 48 },
+        // CCP-UI-V12 (v1.2 ccp-data.js POL0 v2): the draft also sets a 72 h apply window (D-1).
+        content: { ...V1_CONTENT, credit_escalation_threshold_minor: 30_000, approval_expiry_hours: 48, apply_expiry_hours: 72 },
         content_checksum: 'b'.repeat(64),
         note: 'Tighten the credit threshold and approval window after the Q3 review.',
         created_by: uid('priya'),

@@ -178,24 +178,27 @@ export const CCP_STATES: readonly ScreenState[] = [
     masks: [...SHELL, DENIED_TAIL],
   },
   {
-    // The Commercial group alone (element-level): six items, labels and glyphs.
+    // The Commercial group alone (element-level). CCP-UI-V12 (AM-1): compared with the v1.2 file,
+    // whose Commercial group carries Support extensions after Policy (the v1.0 comparison's
+    // DV-MERGE-1 hide is retired); the reference is re-captured from CCP-UI v1.2.
     name: 'ccp-rail-group',
-    proto: { file: 'ccp', ccp: { persona: 'priya' }, hash: 'approvals' },
-    // DV-MERGE-1 (merge train TD-MERGE-32): the CCP-B6 "Support extensions" item is not in the
-    // CCP-UI v1.0 rail; it is taken out of the layout for this six-item comparison only (its
-    // presence and gating are asserted by commercial-visibility.spec.tsx).
-    build: {
-      path: '/commercial/approvals',
-      mock: ccpMock({ persona: 'ccpFinance' }),
-      act: async (p: Page) => {
-        await p.locator('.pw-rail-group a[href="/commercial/support-extensions"]').evaluate((el) => {
-          (el as HTMLElement).style.display = 'none';
-        });
-      },
-    },
+    proto: { file: 'ccp', ccp: { persona: 'priya', release: 'v1_2' }, hash: 'approvals' },
+    build: { path: '/commercial/approvals', mock: ccpMock({ persona: 'ccpFinance' }) },
     element: {
       proto: (p) => p.locator('nav[aria-label="Platform admin"] > div').filter({ hasText: /^\s*Commercial/ }),
       build: (p) => p.locator('.pw-rail-group').filter({ hasText: /^\s*Commercial/ }),
     },
   },
+  // CCP-UI-V12 (AM-1) — the Finance and Usage groups, element-level against CCP-UI v1.2.
+  ...(['Finance', 'Usage'] as const).map(
+    (g): ScreenState => ({
+      name: `ccp-rail-${g.toLowerCase()}`,
+      proto: { file: 'ccp', ccp: { persona: 'priya', release: 'v1_2' }, hash: 'approvals' },
+      build: { path: '/commercial/approvals', mock: ccpMock({ persona: 'ccpFinance' }) },
+      element: {
+        proto: (p) => p.locator('nav[aria-label="Platform admin"] > div').filter({ hasText: new RegExp(`^\\s*${g}`) }),
+        build: (p) => p.locator('.pw-rail-group').filter({ hasText: new RegExp(`^\\s*${g}`) }),
+      },
+    }),
+  ),
 ];

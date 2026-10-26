@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useMemo, useState, type KeyboardEvent } from 'react';
 import { useSearchParams } from 'react-router-dom';
-import { Button, type Session } from '@aramo/fe-foundation';
+import { Button, hasScope, type Session } from '@aramo/fe-foundation';
 
-import { BootstrapBanner, ChainProgress, EmptyState, Pill, SkeletonPanel, shortId } from '../components';
+import { BootstrapBanner, COMMERCIAL_PERMISSIONS, ChainProgress, EmptyState, Pill, SkeletonPanel, WithheldAmount, shortId } from '../components';
 import { useIdentity } from '../identity/identity';
 import { platformApi } from '../platform-api';
 
@@ -15,6 +15,8 @@ import {
   actionLabel,
   chainMarks,
   expiresCell,
+  isEscalatedExtension,
+  isPending,
   personLabel,
   productLabel,
   relativeShort,
@@ -22,12 +24,14 @@ import {
   sortRows,
   statePill,
   summaryOf,
+  summaryWithheld,
   tabRows,
   unfulfillableChains,
   type InboxTab,
   type Me,
 } from './commercial-model';
 import { ChangeRequestDrawer } from './ChangeRequestDrawer';
+import { deadlineOf, policyOf, useDeadlineSources, type DeadlineSources } from './deadline';
 import './commercial.css';
 
 // CCP-B1 — the Approvals inbox (CCP-UI v1.0 handoff §5.1, `/commercial/approvals`).
@@ -82,6 +86,9 @@ export function ApprovalsInboxView({ session, now = () => new Date() }: Approval
   const [error, setError] = useState<string | null>(null);
   const [tab, setTab] = useState<InboxTab>('me');
   const [refused, setRefused] = useState<ChangeRequest[]>([]);
+  // CCP-UI-V12 (AM-4, D-1, D-2): the request's policy version number and apply deadline, and the
+  // configured near-expiry lead.
+  const sources = useDeadlineSources();
 
   const load = useCallback(async (): Promise<void> => {
     setError(null);
@@ -177,6 +184,7 @@ export function ApprovalsInboxView({ session, now = () => new Date() }: Approval
                     detail={details.get(r.id)}
                     tenant={r.tenant_id === null ? 'Platform' : (tenantName(r.tenant_id) ?? shortId(r.tenant_id))}
                     now={clock}
+                    sources={sources}
                     onOpen={() => open(r.id)}
                   />
                 ))}
@@ -203,8 +211,13 @@ export function ApprovalsInboxView({ session, now = () => new Date() }: Approval
           now={now}
           tenantName={tenantName}
           initial={details.get(openId) ?? null}
+          sources={sources}
+          amountHolder={hasScope(session, COMMERCIAL_PERMISSIONS.billingAmountRead)}
           onClose={() => open(null)}
-          onChanged={() => void load()}
+          onChanged={() => {
+            void load();
+            sources.reload();
+          }}
           onBootstrapRefused={(req) => setRefused((cur) => (cur.some((x) => x.id === req.id) ? cur : [...cur, req]))}
         />
       ) : null}
@@ -218,6 +231,7 @@ function InboxRow({
   detail,
   tenant,
   now,
+  sources,
   onOpen,
 }: {
   readonly r: ChangeRequest;
@@ -225,10 +239,13 @@ function InboxRow({
   readonly detail: ChangeRequestDetail | undefined;
   readonly tenant: string;
   readonly now: Date;
+  readonly sources: DeadlineSources;
   readonly onOpen: () => void;
 }) {
   const pill = statePill(r.state);
-  const exp = expiresCell(r, now);
+  const exp = expiresCell(r, now, deadlineOf(r, sources));
+  const pol = policyOf(r.policy_version_id, sources.policies);
+  const older = pol !== null && !pol.active && (isPending(r) || r.state === 'DRAFT');
   const onKey = (e: KeyboardEvent<HTMLTableRowElement>): void => {
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
@@ -249,22 +266,33 @@ function InboxRow({
       </td>
       <td className="pc-row__change">
         {summaryOf(r, me)}
+        {summaryWithheld(r) ? (
+          <div className="pc-row__chip">
+            <WithheldAmount reason="FINANCE_SCOPE_REQUIRED" size="cell" />
+          </div>
+        ) : null}
         <div className="pc-row__by">
           by {personLabel(r.requested_by, me)} · {relativeShort(r.created_at, now)}
         </div>
       </td>
       <td className="pc-nowrap">
         <ChainProgress steps={chainMarks(r, detail)} />
+        {isEscalatedExtension(r) ? (
+          <div className="pc-row__chip">
+            <span className="pc-row__tag">Outside policy bounds</span>
+          </div>
+        ) : null}
       </td>
       <td>
         <Pill tone={pill.tone}>{pill.label}</Pill>
       </td>
       <td className={`pc-nowrap pc-row__exp pc-tone--${exp.tone}`}>{exp.text}</td>
       <td className="pc-nowrap">
-        {/* The version NUMBER is not on the request (R-13): the version id, short. */}
+        {/* CCP-UI-V12: the version number from the policy versions read (the short id until it loads). */}
         <span className="pc-mono12" title={`Policy version ${r.policy_version_id}`}>
-          {shortId(r.policy_version_id)}
+          {pol !== null ? `v${pol.number}` : shortId(r.policy_version_id)}
         </span>
+        {older ? <div className="pc-row__older">older version</div> : null}
       </td>
     </tr>
   );

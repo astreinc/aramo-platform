@@ -38,6 +38,9 @@ export interface ContractsViewProps {
   readonly now?: () => number;
 }
 
+/** CCP-UI-V12 (W-2): the Contract terms block for a caller without Finance amount access. */
+export const CONTRACT_TERMS_RESTRICTED = 'Contract terms restricted — Finance access required';
+
 export function ContractsView({ session, now = Date.now }: ContractsViewProps) {
   const toast = useOptionalToast();
   const canRequest = hasScope(session, CONTRACT_REQUEST_SCOPE);
@@ -192,11 +195,18 @@ function ContractDetailPanel({ c, now, canRequest, onAmend, onEnd }: { c: Contra
         ))}
       </div>
       <h3 className="ccp-h3">Negotiated terms</h3>
-      <ul className="ccp-terms">
-        {c.terms.map((t, i) => (
-          <li key={i}>{t}</li>
-        ))}
-      </ul>
+      {/* W-2: the server's redaction field decides; the console never holds terms to hide. */}
+      {c.terms_withheld !== undefined || c.terms === undefined ? (
+        <p className="ccp-terms-restricted" data-testid="contract-terms-restricted">
+          {CONTRACT_TERMS_RESTRICTED}
+        </p>
+      ) : (
+        <ul className="ccp-terms">
+          {c.terms.map((t, i) => (
+            <li key={i}>{t}</li>
+          ))}
+        </ul>
+      )}
       <h3 className="ccp-h3">Documents</h3>
       <div className="ccp-docs">
         <table>

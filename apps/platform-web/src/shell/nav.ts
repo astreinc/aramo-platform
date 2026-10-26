@@ -22,7 +22,15 @@ export type NavIconKey =
   | 'tag'
   | 'contract'
   | 'scale'
-  | 'audit';
+  | 'audit'
+  // CCP-UI-V12 — Commercial Control Plane v1.2.dc.html IC (AM-1: Alerts, Support extensions, Finance, Usage).
+  | 'bell'
+  | 'cal'
+  | 'renew'
+  | 'due'
+  | 'rec'
+  | 'bars'
+  | 'pulse';
 
 export type NavKey =
   | 'dashboard'
@@ -43,7 +51,14 @@ export type NavKey =
   | 'contracts'
   | 'policy'
   | 'audit'
-  | 'supportExtensions';
+  | 'supportExtensions'
+  // CCP-UI-V12 (AM-1) — Operations › Alerts, the Finance and Usage groups.
+  | 'alerts'
+  | 'renewals'
+  | 'outstanding'
+  | 'billingReconciliation'
+  | 'revenue'
+  | 'usage';
 
 export interface NavItem {
   readonly key: NavKey;
@@ -67,6 +82,8 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     items: [
       { key: 'dashboard', label: 'Dashboard', to: '/', scope: P.tenantRead, icon: 'dash' },
       { key: 'tenants', label: 'Tenants', to: '/tenants', scope: P.tenantRead, icon: 'tenants' },
+      // CCP-UI-V12 (CCP-UI v1.1 AM-1; Q-V11-3) — Operations › Alerts, for platform:billing:read holders.
+      { key: 'alerts', label: 'Alerts', to: '/commercial/alerts', scope: CP.billingRead, icon: 'bell' },
     ],
   },
   {
@@ -107,10 +124,26 @@ export const NAV_GROUPS: readonly NavGroup[] = [
       { key: 'catalog', label: 'Catalog', to: '/commercial/catalog', scope: CP.catalogRead, icon: 'tag' },
       { key: 'contracts', label: 'Contracts', to: '/commercial/contracts', scope: CP.subscriptionRead, icon: 'contract' },
       { key: 'policy', label: 'Policy', to: '/commercial/policy', scope: CP.approvalRead, icon: 'scale' },
+      // CCP-B6 (merge train TD-MERGE-32): the support-extension workflow. CCP-UI-V12 (AM-1): after
+      // Policy, with the v1.2 calendar glyph; its route keeps the list read's platform:subscription:read
+      // (held by exactly the design's five billing roles).
+      { key: 'supportExtensions', label: 'Support extensions', to: '/commercial/support-extensions', scope: CP.subscriptionRead, icon: 'cal' },
       { key: 'audit', label: 'Audit', to: '/commercial/audit', scope: CP.commercialAuditRead, icon: 'audit' },
-      // CCP-B6 (merge train TD-MERGE-32): the support-extension workflow; not in the CCP-UI v1.0 rail.
-      { key: 'supportExtensions', label: 'Support extensions', to: '/commercial/support-extensions', scope: CP.subscriptionRead, icon: 'shield' },
     ],
+  },
+  // CCP-UI-V12 (CCP-UI v1.1 AM-1) — the Finance and Usage groups, between Commercial and Platform.
+  {
+    label: 'Finance',
+    items: [
+      { key: 'renewals', label: 'Renewals', to: '/commercial/finance/renewals', scope: CP.billingRead, icon: 'renew' },
+      { key: 'outstanding', label: 'Outstanding payments', to: '/commercial/finance/outstanding-payments', scope: CP.billingRead, icon: 'due' },
+      { key: 'billingReconciliation', label: 'Billing reconciliation', to: '/commercial/finance/reconciliation', scope: CP.billingRead, icon: 'rec' },
+      { key: 'revenue', label: 'Revenue', to: '/commercial/finance/revenue', scope: CP.billingRead, icon: 'bars' },
+    ],
+  },
+  {
+    label: 'Usage',
+    items: [{ key: 'usage', label: 'Consumption', to: '/commercial/usage', scope: CP.subscriptionRead, icon: 'pulse' }],
   },
   // ── end CCP-B1
   {
@@ -153,6 +186,13 @@ export function navKeyFor(pathname: string): NavKey | null {
   if (p.startsWith('/commercial/policy')) return 'policy';
   if (p.startsWith('/commercial/audit')) return 'audit';
   if (p.startsWith('/commercial/support-extensions')) return 'supportExtensions';
+  // CCP-UI-V12 (AM-1).
+  if (p.startsWith('/commercial/alerts')) return 'alerts';
+  if (p.startsWith('/commercial/finance/renewals')) return 'renewals';
+  if (p.startsWith('/commercial/finance/outstanding-payments')) return 'outstanding';
+  if (p.startsWith('/commercial/finance/reconciliation')) return 'billingReconciliation';
+  if (p.startsWith('/commercial/finance/revenue')) return 'revenue';
+  if (p.startsWith('/commercial/usage')) return 'usage';
   return null;
 }
 

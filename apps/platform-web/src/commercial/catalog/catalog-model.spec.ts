@@ -67,6 +67,13 @@ describe('CCP-B2 catalog model', () => {
     ]);
   });
 
+  it('V12-AM10 Request publish… stays disabled while the publish request is APPROVED (awaiting apply) or APPLY_FAILED', () => {
+    for (const state of ['APPROVED', 'APPLY_FAILED', 'PENDING_APPROVAL']) {
+      const open = { ...draft, open_requests: [{ id: 'cr', action_type: 'PLAN_VERSION_PUBLISH' as const, state, expires_at: null }] };
+      expect(versionActions(TEAM, open, true).find((a) => a.kind === 'publish')).toMatchObject({ disabled: true, why: 'A publish request is already open.' });
+    }
+  });
+
   it('actions: a DRAFT offers only Request publish…; a published version offers a new draft (when none exists) and Retire this version… — never an edit', () => {
     expect(versionActions(TEAM, draft, true).map((a) => [a.label, a.disabled])).toEqual([['Request publish…', false]]);
     expect(versionActions(TEAM, published, true).map((a) => a.label)).toEqual(['Retire this version…']);

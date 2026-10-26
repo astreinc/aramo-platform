@@ -113,6 +113,24 @@ describe('ContractsView', () => {
     expect(screen.queryByText(/invoice now|send invoice/i)).toBeNull();
   });
 
+  it('V12-W2-1 (R3-W): terms_withheld in place of terms → "Contract terms restricted — Finance access required"; the amendment summary stays', async () => {
+    const { terms: _t, recorded_terms: _r, ...rest } = DETAIL;
+    vi.spyOn(contractsApi, 'list').mockResolvedValue({ contracts: [SUMMARY] });
+    vi.spyOn(contractsApi, 'get').mockResolvedValue({ ...rest, terms_withheld: 'FINANCE_SCOPE_REQUIRED', amendments: DETAIL.amendments.map(({ terms: _x, ...a }) => ({ ...a, terms_withheld: 'FINANCE_SCOPE_REQUIRED' as const })) });
+    renderView(OPS);
+    expect(await screen.findByTestId('contract-terms-restricted')).toHaveTextContent('Contract terms restricted — Finance access required');
+    expect(screen.queryByText('Invoiced monthly, net 45')).toBeNull();
+    expect(screen.getByText('Allowance raised from 20,000 to 25,000 envelopes per month.')).toBeInTheDocument();
+  });
+
+  it('V12-W2-2 a holder sees the terms as recorded', async () => {
+    vi.spyOn(contractsApi, 'list').mockResolvedValue({ contracts: [SUMMARY] });
+    vi.spyOn(contractsApi, 'get').mockResolvedValue(DETAIL);
+    renderView(OPS);
+    expect(await screen.findByText('Invoiced monthly, net 45')).toBeInTheDocument();
+    expect(screen.queryByTestId('contract-terms-restricted')).toBeNull();
+  });
+
   it('a role without platform:subscription:request sees both actions disabled with the reason', async () => {
     vi.spyOn(contractsApi, 'list').mockResolvedValue({ contracts: [SUMMARY] });
     vi.spyOn(contractsApi, 'get').mockResolvedValue(DETAIL);

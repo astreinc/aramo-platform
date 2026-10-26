@@ -53,7 +53,8 @@ export interface ContractAmendment {
   sequence: number;
   kind: 'AMENDMENT' | 'END';
   summary: string;
-  terms: string[] | null;
+  terms?: string[] | null;
+  terms_withheld?: 'FINANCE_SCOPE_REQUIRED';
   document_count: number;
   evidence_ref: string | null;
   change_request_id: string;
@@ -62,8 +63,14 @@ export interface ContractAmendment {
 }
 
 export interface ContractDetail extends ContractSummary {
-  terms: string[];
-  recorded_terms: string[];
+  /**
+   * CCP-R3-W (`wip/ccp-r3w`; W-2): for a caller without platform:billing:amount:read, `terms` and
+   * `recorded_terms` are omitted and `terms_withheld` is set; every amendment then carries
+   * `terms_withheld` and no `terms` (its `summary` stays visible).
+   */
+  terms?: string[];
+  terms_withheld?: 'FINANCE_SCOPE_REQUIRED';
+  recorded_terms?: string[];
   evidence_ref: string | null;
   recorded_by: ContractPerson;
   recorded_by_change_request_id: string;

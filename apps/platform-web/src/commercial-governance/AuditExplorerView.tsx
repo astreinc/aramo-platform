@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Checkbox, Input, Select, useOptionalToast } from '@aramo/fe-foundation';
 
-import { SkeletonPanel } from '../components';
+import { SkeletonPanel, WithheldAmount } from '../components';
 import { platformApi } from '../platform-api';
 
 import { governanceApi, type AuditEvent, type AuditFilters } from './governance-api';
@@ -310,7 +310,15 @@ export function AuditExplorerView() {
                           </Link>
                         ) : null}
                       </td>
-                      <td className="pw-aud-detail">{eventDetail(e, nameOf)}</td>
+                      <td className="pw-aud-detail">
+                        {eventDetail(e, nameOf)}
+                        {/* CCP-UI-V12 (v1.2 §17.2): an amount R3 withheld from this caller's audit read. */}
+                        {typeof e.payload['amount_withheld'] === 'string' ? (
+                          <div className="pw-aud-chip">
+                            <WithheldAmount reason="FINANCE_SCOPE_REQUIRED" size="cell" />
+                          </div>
+                        ) : null}
+                      </td>
                     </tr>
                   );
                 })}

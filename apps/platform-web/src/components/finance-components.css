@@ -1,0 +1,100 @@
+/* CCP-UI-V12 — the v1.1 / v1.2 Finance components (Commercial Control Plane v1.2.dc.html; handoff
+ * §13.10, §17.4). Values through the theme.css token layer; no hex literals. Prefix `pw-`. */
+
+/* WithheldAmount (§17.4): "Withheld" + lock, muted, dashed. */
+.pw-withheld {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  border: 1px dashed var(--pw-v12-withheld-line);
+  background: var(--pw-canvas);
+  color: var(--pw-muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pw-withheld--cell {
+  padding: 1px 7px;
+  border-radius: var(--pw-r-sm);
+  font-size: var(--pw-fs-12);
+}
+.pw-withheld--stat {
+  gap: 7px;
+  margin-top: 6px;
+  padding: 4px 10px;
+  border-radius: var(--pw-r-md);
+  font-size: var(--pw-fs-17);
+  font-weight: 700;
+}
+
+/* NotEnabledState (§13.8): the dashed C5 box. */
+.pw-notenabled {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 10px;
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border: 1px dashed var(--pw-v12-withheld-line);
+  border-radius: var(--pw-r-box);
+  background: var(--pw-surface-2);
+  color: var(--pw-ink-2);
+  font-size: var(--pw-fs-13);
+}
+
+/* ExceptionCountTile (§13.3). */
+.pw-exctile {
+  /* The design's min-width is content-box (120px + padding + border). */
+  box-sizing: content-box;
+  min-width: 120px;
+  padding: 10px 16px;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-box);
+  background: var(--pw-surface);
+  text-align: right;
+}
+.pw-exctile__label {
+  color: var(--pw-faint);
+  font-size: var(--pw-fs-11);
+  font-weight: 600;
+  letter-spacing: var(--pw-tracking-caps);
+  text-transform: uppercase;
+}
+.pw-exctile__n {
+  font-size: var(--pw-fs-26);
+  font-weight: 700;
+}
+
+/* WithheldPrice (§13.10): plain text, no chip. */
+.pw-wprice__v {
+  color: var(--pw-muted);
+  font-weight: 600;
+  white-space: nowrap;
+}
+.pw-wprice__sub {
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12);
+}
+
+/* UsageReconBanner (§13.4). */
+.pw-urb {
+  margin-bottom: 14px;
+  padding: 10px 14px;
+  border: 1px solid;
+  border-radius: var(--pw-r-box);
+  font-size: var(--pw-fs-13);
+}
+.pw-urb--ok {
+  border-color: var(--pw-alert-success-line);
+  background: var(--pw-alert-success-bg);
+  color: var(--pw-alert-success-ink);
+}
+.pw-urb--info {
+  border-color: var(--pw-alert-info-line);
+  background: var(--pw-alert-info-bg);
+  color: var(--pw-alert-info-ink);
+}
+.pw-urb--warn {
+  border-color: var(--pw-alert-warn-line);
+  background: var(--pw-alert-warn-bg);
+  color: var(--pw-alert-warn-ink);
+}
