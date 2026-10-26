@@ -23,7 +23,7 @@ import {
 import { DOCUMENT_RENDERING_PORT, PdfLibDocumentRenderingAdapter } from '@aramo/documents-rendering';
 import { MailerModule } from '@aramo/mailer';
 import { ObjectStorageModule } from '@aramo/object-storage';
-import { ORGANIZATION_BILLING_PROFILE_PORT, PLAN_ELIGIBILITY_PORT, StaticUpcomingLegalChangeSource, SubscriptionModule, UPCOMING_LEGAL_CHANGE_SOURCE } from '@aramo/subscription';
+import { ORGANIZATION_BILLING_PROFILE_PORT, PLAN_ELIGIBILITY_PORT, RegistryUpcomingLegalChangeSource, SubscriptionModule, UPCOMING_LEGAL_CHANGE_SOURCE } from '@aramo/subscription';
 import { AuthModule } from '@aramo/auth';
 import { AuthorizationModule } from '@aramo/authorization';
 import { EntitlementModule } from '@aramo/entitlement';
@@ -203,10 +203,10 @@ import { SignRetentionWorker } from './retention/sign-retention.worker.js';
     // (v1/sign/legal; consulted by the Personal send gate).
     PersonalLegalStatusService,
     // Privacy Notice 1.1 E-6 — the in-service notice of an upcoming legal version (v1/sign/legal/notices).
-    // The upcoming-change source defaults to the governed (empty) UPCOMING_LEGAL_CHANGES list; the
-    // future-effective legal-version resolver (E-5) is meant to bind this token instead.
+    // The upcoming-change source is the E-5 registry resolver (versions in state 'upcoming'),
+    // merged with the governed UPCOMING_LEGAL_CHANGES list — one source of truth.
     LegalChangeBannerService,
-    { provide: UPCOMING_LEGAL_CHANGE_SOURCE, useFactory: () => new StaticUpcomingLegalChangeSource() },
+    { provide: UPCOMING_LEGAL_CHANGE_SOURCE, useFactory: () => new RegistryUpcomingLegalChangeSource() },
     // Aramo Sign Personal (Free) — Settings → Close account (v1/sign/account).
     SignAccountService,
     // Aramo Sign Mobile (M-A3 §4, §9) — saved signatures (v1/sign/me/signature, /initials)

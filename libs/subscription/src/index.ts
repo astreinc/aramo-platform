@@ -345,6 +345,7 @@ export {
 } from './lib/legal/legal-change-notice.service.js';
 export {
   StaticUpcomingLegalChangeSource,
+  RegistryUpcomingLegalChangeSource,
   UPCOMING_LEGAL_CHANGES,
   UPCOMING_LEGAL_CHANGE_SOURCE,
   upcomingLegalNotices,

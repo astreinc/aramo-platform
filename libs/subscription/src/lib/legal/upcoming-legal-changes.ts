@@ -1,5 +1,5 @@
 import { calendarDaysUntil, describeLegalChange, legalChangeAudience, parseCalendarDate } from './legal-change-notice.template.js';
-import { LEGAL_DOCUMENTS, type LegalDocumentKey, type LegalDocumentVersion } from './legal-documents.js';
+import { LEGAL_DOCUMENTS, legalVersionStatus, systemLegalClock, type LegalClock, type LegalDocumentKey, type LegalDocumentVersion } from './legal-documents.js';
 
 // Privacy Notice 1.1 remediation E-6 — the in-service notice (the Sign workspace banner) of an
 // upcoming legal-document version with a future effective date.
@@ -36,6 +36,32 @@ export class StaticUpcomingLegalChangeSource implements UpcomingLegalChangeSourc
 
   announced(): readonly UpcomingLegalChange[] {
     return this.list;
+  }
+}
+
+/**
+ * E-5 binding: the registry's "published and upcoming" versions (APPROVED, public URL,
+ * effective_from in the future — legalVersionStatus === 'upcoming') announced as changes, merged
+ * with the governed static list (registry entry wins on the same key + version). One source of
+ * truth: scheduling a version in the registry is what makes the banner appear.
+ */
+export class RegistryUpcomingLegalChangeSource implements UpcomingLegalChangeSource {
+  constructor(
+    private readonly registry: readonly LegalDocumentVersion[] = LEGAL_DOCUMENTS,
+    private readonly clock: LegalClock = systemLegalClock,
+    private readonly extra: readonly UpcomingLegalChange[] = UPCOMING_LEGAL_CHANGES,
+  ) {}
+
+  announced(): readonly UpcomingLegalChange[] {
+    const now = this.clock();
+    const out = new Map<string, UpcomingLegalChange>();
+    for (const c of this.extra) out.set(`${c.key}@${c.version}`, c);
+    for (const d of this.registry) {
+      const st = legalVersionStatus(d, this.registry, now);
+      if (st.state !== 'upcoming' || st.effective_from === null) continue;
+      out.set(`${d.key}@${d.version}`, { key: d.key, version: d.version, effective_date: st.effective_from.toISOString().slice(0, 10) });
+    }
+    return [...out.values()];
   }
 }
 

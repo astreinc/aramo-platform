@@ -179,7 +179,7 @@ describe('in-service notice — upcoming changes', () => {
   it('follows the registry it is given (a newer approved version moves the "current" link)', () => {
     const reg: LegalDocumentVersion[] = [
       ...LEGAL_DOCUMENTS,
-      { key: 'aramo.privacy_notice', version: '1.1', status: 'APPROVED', path: 'x', sha256: 'a'.repeat(64), url: 'https://sign.aramo.ai/legal/privacy/1.1' },
+      { key: 'aramo.privacy_notice', version: '1.1', status: 'APPROVED', path: 'x', sha256: 'a'.repeat(64), url: 'https://sign.aramo.ai/legal/privacy/1.1', effective_from: '2026-10-22T00:00:00Z' },
     ];
     const s = src([{ key: 'aramo.privacy_notice', version: '1.2', effective_date: '2027-01-31' }]);
     expect(upcomingLegalNotices(s, 'BUSINESS', NOW, reg)[0]?.current_version).toBe('1.1');
