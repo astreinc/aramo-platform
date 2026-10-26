@@ -767,7 +767,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('CCP-C2 governed m
     expect(await dbError(`UPDATE subscription."CommercialConversionRelease" SET state = 'CONVERTED', converted_at = now(), consumed_at = now(), self_service_subscription_id = $2, intent_id = gen_random_uuid() WHERE id = $1`, [rel.id, gov])).toMatch(/refused|still open|violates/);
     const intent = await rawIntent(t);
     expect(await dbError(`UPDATE subscription."CommercialConversionRelease" SET state = 'CONSUMED', intent_id = $2, consumed_at = expires_at WHERE id = $1`, [rel.id, intent])).toContain('CommercialConversionRelease_consumed_check');
-    expect(await dbError(`UPDATE subscription."CommercialConversionRelease" SET state = 'EXPIRED', expired_at = now() WHERE id = $1`, [rel.id])).toContain('CommercialConversionRelease_expired_check');
+    // expired_at before expires_at is refused. Pinned to the row's own expires_at, not the
+    // database clock: the fixture's clock is fixed (T0) while now() is real time, so
+    // `expired_at = now()` stopped violating the check once real time passed T0 + 24 h.
+    expect(await dbError(`UPDATE subscription."CommercialConversionRelease" SET state = 'EXPIRED', expired_at = expires_at - interval '1 minute' WHERE id = $1`, [rel.id])).toContain('CommercialConversionRelease_expired_check');
     expect(
       await dbError(
         `INSERT INTO subscription."CommercialConversionRelease" (id, change_request_id, tenant_id, product_key, governed_subscription_id, plan_id, plan_version_id, state, expires_at, created_by, created_at, updated_at)
