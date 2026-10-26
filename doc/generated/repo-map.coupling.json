@@ -12702,6 +12702,11 @@
     {
       "from": "doc/ccp/decisions.md",
       "status": "unscoped",
+      "to": "doc/ccp/known-baseline-exceptions.md"
+    },
+    {
+      "from": "doc/ccp/decisions.md",
+      "status": "unscoped",
       "to": "doc/ccp/slices/CCP-A6-acceptance.md"
     },
     {
@@ -15617,6 +15622,11 @@
     {
       "from": "doc/ccp/slices/CCP-B5-acceptance.md",
       "status": "unscoped",
+      "to": "apps/platform-admin/src/tests/ccp-b5-governance-routes.integration.spec.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B5-acceptance.md",
+      "status": "unscoped",
       "to": "apps/platform-web/e2e/support/proto-ccp.ts"
     },
     {
@@ -15642,12 +15652,22 @@
     {
       "from": "doc/ccp/slices/CCP-B5-acceptance.md",
       "status": "unscoped",
+      "to": "libs/subscription/prisma/migrations/20261027000000_ccp_guard_union/migration.sql"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B5-acceptance.md",
+      "status": "unscoped",
       "to": "libs/subscription/prisma/migrations/20261027000200_ccp_b5r_policy_activate_apply/migration.sql"
     },
     {
       "from": "doc/ccp/slices/CCP-B5-acceptance.md",
       "status": "unscoped",
       "to": "libs/subscription/src/index.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B5-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/lib/commercial/commercial-apply-records.ts"
     },
     {
       "from": "doc/ccp/slices/CCP-B5-acceptance.md",
@@ -15663,6 +15683,11 @@
       "from": "doc/ccp/slices/CCP-B5-acceptance.md",
       "status": "unscoped",
       "to": "libs/subscription/src/lib/commercial/commercial-policy-governance.service.ts"
+    },
+    {
+      "from": "doc/ccp/slices/CCP-B5-acceptance.md",
+      "status": "unscoped",
+      "to": "libs/subscription/src/tests/ccp-acc1-policy-withdraw.integration.spec.ts"
     },
     {
       "from": "doc/ccp/slices/CCP-B5-acceptance.md",
@@ -32270,6 +32295,18 @@
       "from": "libs/subscription/src/tests/ccp-a9-bootstrap-role-change.integration.spec.ts",
       "status": "excluded",
       "to": "doc/ccp/slices/CCP-A9-acceptance.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-acc1-policy-withdraw.integration.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/decisions.md"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/subscription/src/tests/ccp-acc1-policy-withdraw.integration.spec.ts",
+      "status": "excluded",
+      "to": "doc/ccp/slices/CCP-B5-acceptance.md"
     },
     {
       "excludedBy": "src/tests/**/*",

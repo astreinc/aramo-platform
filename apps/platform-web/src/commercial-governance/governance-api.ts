@@ -37,7 +37,7 @@ export interface PolicyVersion {
   activated_at: string | null;
   retired_at: string | null;
   /** The open activation request targeting this version; `apply_actionable` = the caller may apply it now (CCP-B5-R). */
-  open_request: { id: string; state: string; apply_actionable: boolean } | null;
+  open_request: { id: string; state: string; apply_actionable: boolean; withdraw_actionable?: boolean } | null;
   /** CCP-B5-R — the most recent activation request targeting this version, in any state. */
   latest_request: { id: string; state: string; applied_at: string | null } | null;
 }
@@ -184,6 +184,10 @@ export const governanceApi = {
   /** CCP-B5-R — the requester applies an approved (or failed) activation request. */
   applyChange(id: string): Promise<{ request: { id: string; state: string; applied_at: string | null } }> {
     return apiClient.post(`${CR}/${id}/apply`);
+  },
+  /** CCP-ACC-1 — the requester withdraws an APPLY_FAILED activation request (reconciled server-side). */
+  withdrawChange(id: string): Promise<{ request: { id: string; state: string } }> {
+    return apiClient.post(`${CR}/${id}/withdraw`);
   },
   /** A governed change request (created as DRAFT), then submitted for approval. */
   async requestChange(body: {

@@ -33,6 +33,8 @@
 -- APPLYING only with a provider command" trigger is in the C4 slice migration.
 -- CCP-C4-R (this file only): REFUND APPLYING -> WITHDRAWN, the governed resolution of a refund proven
 -- not executed (Architect C4 disposition, TD-C4-12), with its checks.
+-- CCP-ACC-1 (TD-ACC-1 Option B, Architect final ruling 2026-10-25; this file only): POLICY_ACTIVATE
+-- APPLY_FAILED -> WITHDRAWN (the requester's withdrawal after reconciliation), withdrawn_at required.
 -- Carries a dollar-quoted body: apply whole-file. Design approval is not production migration
 -- authority (ruling A0-C15).
 
@@ -169,6 +171,13 @@ BEGIN
              -- A REFUND proven not executed is resolved by its requester: APPLYING -> WITHDRAWN.
              OR (NEW."action_type" = 'REFUND' AND OLD."state" = 'APPLYING' AND NEW."state" = 'WITHDRAWN')
              -- ==== END CCP-C4-R refund resolution: transition ====
+             -- [union block: CCP-ACC-1, 20261027000000 (this file)]
+             -- ==== BEGIN CCP-ACC-1 ====
+             -- TD-ACC-1 Option B: a failed, unapplied POLICY_ACTIVATE may be withdrawn (terminal).
+             -- No other action type gains APPLY_FAILED -> WITHDRAWN.
+             OR (NEW."action_type" = 'POLICY_ACTIVATE'
+                 AND OLD."state" = 'APPLY_FAILED' AND NEW."state" = 'WITHDRAWN')
+             -- ==== END CCP-ACC-1 ====
         ) THEN
             RAISE EXCEPTION 'CommercialChangeRequest state % -> % is not allowed', OLD."state", NEW."state";
         END IF;
@@ -511,6 +520,10 @@ BEGIN
             IF ver_status IS DISTINCT FROM (CASE NEW."action_type" WHEN 'PLAN_VERSION_PUBLISH' THEN 'PUBLISHED' ELSE 'RETIRED' END) THEN
                 RAISE EXCEPTION 'CommercialChangeRequest APPLIED: the plan version is % after %', coalesce(ver_status, 'missing'), NEW."action_type";
             END IF;
+        END IF;
+        -- [union block: CCP-ACC-1 POLICY_ACTIVATE withdrawal record, 20261027000000 (this file)]
+        IF NEW."action_type" = 'POLICY_ACTIVATE' AND OLD."state" = 'APPLY_FAILED' AND NEW."state" = 'WITHDRAWN' AND NEW."withdrawn_at" IS NULL THEN
+            RAISE EXCEPTION 'CommercialChangeRequest WITHDRAWN from APPLY_FAILED needs withdrawn_at';
         END IF;
         -- [union block: CCP-B5-R POLICY_ACTIVATE APPLIED check, 20261027000000 (this file)]
         IF NEW."state" = 'APPLIED' AND NEW."action_type" = 'POLICY_ACTIVATE' THEN

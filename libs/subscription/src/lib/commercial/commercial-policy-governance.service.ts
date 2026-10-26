@@ -30,6 +30,11 @@ import { CommercialPolicyRepository, type CommercialPolicyVersionRow } from './c
 // (shared with the POLICY_ACTIVATE create and apply), so a draft cannot change between a
 // request's snapshot and its apply without the apply refusing (TARGET_CHANGED).
 //
+// CCP-ACC-1: `withdraw_actionable` — the caller requested this APPLY_FAILED activation (a UI hint;
+// the withdrawal re-checks authority and reconciles in its own transaction).
+const withdrawActionable = (actor: CommercialActor, o: { state: string; requested_by: string }): boolean =>
+  actor.actor_kind === 'user' && actor.user_id === o.requested_by && o.state === 'APPLY_FAILED';
+
 // Rules: exactly one DRAFT at a time; a DRAFT targeted by an OPEN POLICY_ACTIVATE (CCP-B5-R:
 // COMMERCIAL_OPEN_STATES — DRAFT, PENDING_APPROVAL, APPROVED, APPLYING, APPLY_FAILED) is locked; only DRAFT content changes (the A2 trigger is the DB authority).
 // Edits are bounded by the handoff §5.6 allowed ranges on top of the strict A2 parser.
@@ -66,7 +71,7 @@ export interface PolicyVersionView {
    * The open POLICY_ACTIVATE request targeting this version (COMMERCIAL_OPEN_STATES), with the
    * caller's apply hint (CCP-B5-R: requester-only, APPROVED / APPLY_FAILED).
    */
-  open_request: { id: string; state: string; apply_actionable: boolean } | null;
+  open_request: { id: string; state: string; apply_actionable: boolean; withdraw_actionable: boolean } | null;
   /** CCP-B5-R — the most recent POLICY_ACTIVATE request targeting this version, in any state. */
   latest_request: { id: string; state: string; applied_at: Date | null } | null;
 }
@@ -123,7 +128,7 @@ export class CommercialPolicyGovernanceService {
       return {
         row,
         content,
-        open_request: o === undefined ? null : { id: o.id, state: o.state, apply_actionable: applyActionable(actor, o) },
+        open_request: o === undefined ? null : { id: o.id, state: o.state, apply_actionable: applyActionable(actor, o), withdraw_actionable: withdrawActionable(actor, o) },
         latest_request: l === undefined ? null : { id: l.id, state: l.state, applied_at: l.applied_at },
       };
     });

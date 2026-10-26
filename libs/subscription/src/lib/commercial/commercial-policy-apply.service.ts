@@ -4,12 +4,14 @@ import { PrismaService } from '../prisma/prisma.service.js';
 
 import {
   ApplyFailure,
+  CommercialApplyFailedError,
   applyDeadlineGate,
   applyExpiredNow,
   auditApplyRefusal,
   explanationOf,
   isApplyRefusal,
   recordApplyFailure,
+  recordApplyFailureInTx,
 } from './commercial-apply-records.js';
 import { CommercialAuditRepository } from './commercial-audit.repository.js';
 import { COMMERCIAL_ACTIONS } from './commercial-change-request.js';
@@ -23,7 +25,7 @@ import {
   CommercialChangeRequestService,
 } from './commercial-change-request.service.js';
 import { CommercialOperatorRepository } from './commercial-operator.repository.js';
-import { PolicyActivationRefusedError, activatePolicyVersionInTx } from './commercial-policy-activation.js';
+import { POLICY_LOCK_SQL, PolicyActivationRefusedError, activatePolicyVersionInTx } from './commercial-policy-activation.js';
 
 // CCP-B5-R (TD-B5-1, Architect APPROVED 2026-10-25) — the governed apply of an APPROVED (or
 // APPLY_FAILED, retry) POLICY_ACTIVATE on the CCP-A6 apply infrastructure. Reached through the same
@@ -43,8 +45,13 @@ import { PolicyActivationRefusedError, activatePolicyVersionInTx } from './comme
 //            signature refusal, INTEGRITY, APPLY_EXPIRED: nothing changes; ONE APPLY_REFUSED row
 //            (an expiry committed by this attempt is recorded by its one APPLY_EXPIRED event).
 //   failure  the NC-5 snapshot no longer holds (POLICY_ACTIVE_CHANGED, POLICY_TARGET_*) or the
-//            write faulted: the transaction rolls back in full; a separate transaction records
-//            APPLY_FAILED (attempt counted) with ONE APPLY_FAILED row. Retryable.
+//            write faulted: the attempt is rolled back to a SAVEPOINT taken before APPLYING and
+//            APPLY_FAILED (attempt counted, ONE APPLY_FAILED row) is recorded IN THE SAME
+//            transaction (CCP-ACC-1, closing TD-ACC1-3): the policy lock and the row lock are held
+//            from the attempt until its failure record commits, so a withdrawal never lands
+//            between them. Retryable. Only a failure of the transaction itself (its COMMIT, or a
+//            database fault before the savepoint) falls back to a separate failure transaction,
+//            which takes the same locks and always writes the failure row.
 
 type Tx = Parameters<Parameters<PrismaService['$transaction']>[0]>[0];
 
@@ -55,7 +62,7 @@ export interface CommercialPolicyApplyResult {
 
 /** Test seam (fault injection) for the policy activation apply. */
 export const COMMERCIAL_POLICY_APPLY_FAULT_HOOK = Symbol('COMMERCIAL_POLICY_APPLY_FAULT_HOOK');
-export type CommercialPolicyApplyFaultHook = (point: 'after_policy_write' | 'before_applied', ctx: { change_request_id: string }) => void | Promise<void>;
+export type CommercialPolicyApplyFaultHook = (point: 'after_policy_write' | 'before_applied' | 'before_failure_record', ctx: { change_request_id: string }) => void | Promise<void>;
 
 /** The stable APPLY_FAILED code of each NC-5 snapshot refusal (distinct from the subscription TARGET_* codes). */
 export const POLICY_APPLY_FAILURE_CODES: Readonly<Record<string, string>> = {
@@ -68,6 +75,14 @@ export const POLICY_APPLY_FAILURE_CODES: Readonly<Record<string, string>> = {
 };
 
 const SUBJECT = (id: string): string => `commercial_change_request:${id}`;
+const SAVEPOINT = 'ccp_policy_apply_attempt';
+
+/** The stable failure of a faulted attempt (an NC-5 snapshot refusal keeps its own code). */
+function toFailure(e: unknown): ApplyFailure {
+  if (e instanceof ApplyFailure) return e;
+  if (e instanceof PolicyActivationRefusedError) return new ApplyFailure(POLICY_APPLY_FAILURE_CODES[e.reason] ?? 'UNEXPECTED', { snapshot_refusal: e.reason, ...e.detail });
+  return new ApplyFailure('UNEXPECTED', { error: String((e as Error)?.message ?? e).slice(0, 300) });
+}
 const TX_OPTIONS = { timeout: 15_000, maxWait: 10_000 } as const;
 const REQUESTER_ROLE = COMMERCIAL_ACTIONS.POLICY_ACTIVATE.requester_role as string;
 
@@ -99,9 +114,14 @@ export class CommercialPolicyApplyService {
     }
     const id = head.id;
     let expiredNow = false;
+    let failed: CommercialApplyFailedError | null = null;
     let out: CommercialPolicyApplyResult | null = null;
     try {
       out = await this.prisma.$transaction(async (tx): Promise<CommercialPolicyApplyResult | null> => {
+        // CCP-ACC-1 — one lock order for every policy write (policy lock, then the request row), shared
+        // with the create, the draft edit, the lazy expiry and the withdrawal: a retry, a withdrawal and
+        // a new activation request serialize and never deadlock.
+        await tx.$executeRawUnsafe(POLICY_LOCK_SQL);
         await tx.$executeRawUnsafe(`SELECT 1 FROM subscription."CommercialChangeRequest" WHERE id = $1::uuid FOR UPDATE`, id);
         const req = (await tx.commercialChangeRequest.findUniqueOrThrow({ where: { id } })) as CommercialChangeRequestRow;
         if (req.state === 'APPLIED') return { request: req, replayed: true };
@@ -124,22 +144,30 @@ export class CommercialPolicyApplyService {
         }
         const now = this.now();
         const attempt = req.apply_attempts + 1;
-        await tx.commercialChangeRequest.update({ where: { id }, data: { state: 'APPLYING', apply_attempts: attempt, updated_at: now } });
-        return this.completeInTx(tx, actor, req, attempt, live.role_keys, now, ctx);
+        // CCP-ACC-1 (TD-ACC1-3 closed) — the attempt runs under a savepoint; its failure is recorded
+        // in THIS transaction, under the locks taken above, before anything else can see the row.
+        await tx.$executeRawUnsafe(`SAVEPOINT ${SAVEPOINT}`);
+        try {
+          await tx.commercialChangeRequest.update({ where: { id }, data: { state: 'APPLYING', apply_attempts: attempt, updated_at: now } });
+          return await this.completeInTx(tx, actor, req, attempt, live.role_keys, now, ctx);
+        } catch (e) {
+          await tx.$executeRawUnsafe(`ROLLBACK TO SAVEPOINT ${SAVEPOINT}`);
+          await this.fault?.('before_failure_record', { change_request_id: id });
+          failed = await recordApplyFailureInTx(tx, this, actor, id, toFailure(e), ctx);
+          return null;
+        }
       }, TX_OPTIONS);
     } catch (e) {
       if (isApplyRefusal(e)) {
         await auditApplyRefusal(this, actor, head, e, ctx);
         throw e;
       }
-      const failure =
-        e instanceof ApplyFailure
-          ? e
-          : e instanceof PolicyActivationRefusedError
-            ? new ApplyFailure(POLICY_APPLY_FAILURE_CODES[e.reason] ?? 'UNEXPECTED', { snapshot_refusal: e.reason, ...e.detail })
-            : new ApplyFailure('UNEXPECTED', { error: String((e as Error)?.message ?? e).slice(0, 300) });
-      throw await recordApplyFailure(this, actor, id, null, failure, ctx);
+      // The transaction itself failed (its COMMIT, or a database fault before the savepoint):
+      // record the failure under the same locks; the row is written even if a withdrawal or an
+      // expiry closed the request meanwhile (the evidence is never lost).
+      throw await recordApplyFailure(this, actor, id, null, toFailure(e), ctx, { policy_lock: true, evidence_when_unchanged: true });
     }
+    if (failed !== null) throw failed;
     if (expiredNow || out === null) throw applyExpiredNow(head);
     return out;
   }

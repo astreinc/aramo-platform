@@ -97,7 +97,8 @@ describe('CCP-A9 narrow apply transitions (TD-A9-1)', () => {
       // CCP-C4-R: a REFUND also has the governed resolution APPLYING -> WITHDRAWN (TD-C4-12).
       const resolution = action === 'REFUND' ? ['APPLYING->WITHDRAWN'] : [];
       expect(extra.sort(), action).toEqual(
-        role ? ['APPLYING->APPLIED', ...EXPIRY, 'APPROVED->APPLYING'].sort() : applySet ? [...A6_SET, ...EXPIRY, ...resolution].sort() : [],
+        // CCP-ACC-1: POLICY_ACTIVATE alone adds APPLY_FAILED → WITHDRAWN (TD-ACC-1 Option B).
+        role ? ['APPLYING->APPLIED', ...EXPIRY, 'APPROVED->APPLYING'].sort() : applySet ? [...A6_SET, ...EXPIRY, ...resolution, ...(action === 'POLICY_ACTIVATE' ? ['APPLY_FAILED->WITHDRAWN'] : [])].sort() : [],
       );
       if (!applySet) for (const f of states) expect(canTransitionFor(action, f, 'APPLY_FAILED'), `${action} ${f}`).toBe(false);
       // AD-4: never from APPLYING, for any action.
@@ -110,6 +111,22 @@ describe('CCP-A9 narrow apply transitions (TD-A9-1)', () => {
     // kind EXCEPTION on any other action adds nothing beyond its NORMAL table.
     for (const action of Object.keys(COMMERCIAL_ACTIONS).filter((a) => a !== 'SUPPORT_EXTENSION')) {
       for (const f of states) for (const t of states) expect(canTransitionFor(action, f, t, 'EXCEPTION'), `${action} ${f}->${t}`).toBe(canTransitionFor(action, f, t));
+    }
+  });
+});
+
+describe('CCP-ACC-1 withdrawal of a failed policy activation (TD-ACC-1 Option B)', () => {
+  it('ACC-U-1 only POLICY_ACTIVATE admits APPLY_FAILED → WITHDRAWN (any kind); WITHDRAWN stays terminal; no action withdraws from APPROVED; only a REFUND (C4-R resolution) from APPLYING', () => {
+    for (const action of Object.keys(COMMERCIAL_ACTIONS)) {
+      for (const kind of ['NORMAL', 'EXCEPTION', 'MIGRATION']) {
+        const k = action === 'SUPPORT_EXTENSION' && kind !== 'NORMAL' ? false : action === 'POLICY_ACTIVATE';
+        expect(canTransitionFor(action, 'APPLY_FAILED', 'WITHDRAWN', kind), `${action}/${kind}`).toBe(k);
+        expect(canTransitionFor(action, 'APPROVED', 'WITHDRAWN', kind), `${action}/${kind}`).toBe(false);
+        // Merge train (ACC-1 × C4-R): REFUND alone has APPLYING → WITHDRAWN, the governed resolution of a
+        // refund proven not executed (Architect C4 disposition, TD-C4-12); every other action never.
+        expect(canTransitionFor(action, 'APPLYING', 'WITHDRAWN', kind), `${action}/${kind}`).toBe(action === 'REFUND');
+        for (const t of COMMERCIAL_CHANGE_REQUEST_STATES) expect(canTransitionFor(action, 'WITHDRAWN', t, kind), `${action} WITHDRAWN->${t}`).toBe(false);
+      }
     }
   });
 });

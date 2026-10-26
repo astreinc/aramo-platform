@@ -15,7 +15,7 @@ import { takeBillingLock } from '../billing/governed-subscription.js';
 import { PrismaService } from '../prisma/prisma.service.js';
 import { BASE_COMPOSITION, assertProductKey, openBaseSubscription, type ProductKey } from '../product-registry.js';
 
-import { CommercialApplyFailedError } from './commercial-apply-records.js';
+import { CommercialApplyFailedError, recordApplyFailure } from './commercial-apply-records.js';
 import { CommercialAuditRepository } from './commercial-audit.repository.js';
 import { CommercialApplyRefusedError } from './commercial-approval-eligibility.js';
 import {
@@ -448,36 +448,16 @@ export class CommercialBillingAdjustmentService {
       );
   }
 
+  /**
+   * Merge train (TD-C4R-5 (2), C4 × ACC-1): the ONE shared APPLY_FAILED record. CCP-ACC-1 split it into
+   * recordApplyFailureInTx (the record inside a caller's transaction) and this wrapper (its own
+   * transaction, billing lock then request lock, the same order as before). C4's private copy of the
+   * same steps (APPROVED | APPLY_FAILED → APPLYING (attempt + 1) → APPLY_FAILED, one audit row,
+   * UNRECORDED when it cannot be written) is replaced by it; the audit row now also carries the
+   * shared `explanation`.
+   */
   private async recordFailure(actor: CommercialActor, id: string, tenant_id: string, failure: BillingAdjustmentFailure, ctx: CommercialCallContext): Promise<Error> {
-    try {
-      return await this.prisma.$transaction(async (tx) => {
-        await takeBillingLock(tx, tenant_id);
-        await tx.$executeRawUnsafe(`SELECT 1 FROM subscription."CommercialChangeRequest" WHERE id = $1::uuid FOR UPDATE`, id);
-        const req = (await tx.commercialChangeRequest.findUniqueOrThrow({ where: { id } })) as CommercialChangeRequestRow;
-        if (req.state !== 'APPROVED' && req.state !== 'APPLY_FAILED') return new CommercialApplyFailedError(failure.code, req.apply_attempts, failure.detail, req.state);
-        const now = this.now();
-        const attempt = req.apply_attempts + 1;
-        await tx.commercialChangeRequest.update({ where: { id }, data: { state: 'APPLYING', apply_attempts: attempt, updated_at: now } });
-        await tx.commercialChangeRequest.update({ where: { id }, data: { state: 'APPLY_FAILED', updated_at: now } });
-        const role_keys = (await this.operators.readOperator(tx, ctx.platform_tenant_id, actor.user_id)).role_keys;
-        await this.audit.append(
-          {
-            actor: { id: actor.user_id, type: 'user', role_keys },
-            event_type: 'COMMERCIAL_CHANGE_REQUEST_APPLY_FAILED',
-            tenant_id,
-            subject: SUBJECT(id),
-            change_request_id: id,
-            policy_version_id: req.policy_version_id,
-            payload: { action_type: req.action_type, attempt, failure: failure.code, detail: failure.detail },
-            correlation_id: ctx.correlation_id,
-          },
-          tx,
-        );
-        return new CommercialApplyFailedError(failure.code, attempt, failure.detail, 'APPLY_FAILED');
-      }, TX_OPTIONS);
-    } catch {
-      return new CommercialApplyFailedError(failure.code, 0, failure.detail, 'UNRECORDED');
-    }
+    return recordApplyFailure({ prisma: this.prisma, audit: this.audit, operators: this.operators, now: this.now }, actor, id, tenant_id, failure, ctx);
   }
 
   private async auditRefusal(

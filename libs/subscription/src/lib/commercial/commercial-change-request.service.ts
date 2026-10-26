@@ -126,7 +126,13 @@ export type CommercialChangeRequestErrorCode =
   // CCP-R3 (TD-A8-3 refined) — a support extension that is not eligible (refused, not escalated).
   | 'SUPPORT_EXTENSION_INELIGIBLE'
   // CCP-C4-P (Amendment A1 RF-3…RF-5) — the refund is not refundable now (details.refusal).
-  | 'REFUND_NOT_REFUNDABLE';
+  | 'REFUND_NOT_REFUNDABLE'
+  // CCP-ACC-1 (TD-ACC-1 Option B) — the withdrawal of an APPLY_FAILED POLICY_ACTIVATE refused:
+  // an apply is executing (its locks are held) | the last attempt is not resolved by its failure
+  // record | the activation committed (the request is, or was reconciled to, APPLIED).
+  | 'APPLY_IN_PROGRESS'
+  | 'APPLY_UNRESOLVED'
+  | 'ALREADY_APPLIED';
 
 export class CommercialChangeRequestError extends Error {
   constructor(
@@ -264,6 +270,14 @@ export class CommercialChangeRequestCursorError extends Error {
 
 const SUBJECT = (id: string): string => `commercial_change_request:${id}`;
 const ELIGIBLE_FOR_ME_SCAN = 500;
+/** CCP-ACC-1 — how long a withdrawal waits on the apply's locks before refusing APPLY_IN_PROGRESS. */
+export const WITHDRAW_LOCK_TIMEOUT_MS = 3_000;
+
+function isLockTimeout(e: unknown): boolean {
+  const err = e as { code?: string; meta?: { code?: string }; message?: string };
+  const blob = `${err?.code ?? ''} ${err?.meta?.code ?? ''} ${String(err?.message ?? '')}`;
+  return blob.includes('55P03') || /lock timeout|canceling statement due to lock timeout/i.test(blob);
+}
 
 /** CCP-A9: the typed reason of a refused role-change apply. */
 function classifyApplyRefusal(e: unknown): { reason: string; detail: Record<string, unknown> } {
@@ -508,6 +522,13 @@ export class CommercialChangeRequestService {
   }
 
   async withdraw(actor: CommercialActor, id: string, ctx: CommercialCallContext): Promise<CommercialChangeRequestRow> {
+    // CCP-ACC-1 — an APPLY_FAILED (or already withdrawn-from-failed) POLICY_ACTIVATE takes the
+    // reconciling path; every other request keeps the A3 rule (DRAFT / PENDING_APPROVAL only).
+    const head = (await this.prisma.commercialChangeRequest.findUnique({ where: { id }, select: { action_type: true, state: true } })) as { action_type: string; state: string } | null;
+    if (head !== null && head.action_type === 'POLICY_ACTIVATE' && (head.state === 'APPLY_FAILED' || head.state === 'APPLYING' || head.state === 'APPLIED' || head.state === 'WITHDRAWN' || head.state === 'APPROVED')) {
+      const r = await this.withdrawFailedActivation(actor, id, ctx);
+      if (r !== null) return r;
+    }
     const out = await this.tx(async (tx) => {
       const req = await this.lock(tx, id);
       this.requireRequester(actor, req);
@@ -522,6 +543,95 @@ export class CommercialChangeRequestService {
     });
     if (out.expired) throw new CommercialChangeRequestError('STATE_INVALID', 'the request has expired', { state: 'EXPIRED' });
     return out.row as CommercialChangeRequestRow;
+  }
+
+  // ---- CCP-ACC-1: withdrawal of a failed policy activation ---------------------------------
+
+  /**
+   * TD-ACC-1 Option B (Architect final ruling 2026-10-25). The ORIGINAL requester — a person who
+   * still holds finance_admin with a live D9 attestation — may withdraw an APPLY_FAILED
+   * POLICY_ACTIVATE once reconciliation, under the SAME locks the apply takes (the policy advisory
+   * lock, then the request row; lock_timeout bounded), proves that nothing can still commit:
+   *   - a lock still held by an executing apply → APPLY_IN_PROGRESS (refused, nothing written);
+   *   - the request is APPLYING (never committed by the deferred trigger; defensive) → APPLY_IN_PROGRESS;
+   *   - the activation committed (APPLIED, or APPLY_FAILED with this request's activation evidence on
+   *     the ACTIVE target) → reconciled to APPLIED, never withdrawn → ALREADY_APPLIED;
+   *   - activation evidence without an ACTIVE target, or no failure record for the last attempt →
+   *     APPLY_UNRESOLVED (fail closed);
+   *   - otherwise APPLY_FAILED → WITHDRAWN (terminal) with withdrawn_at and ONE
+   *     COMMERCIAL_CHANGE_REQUEST_WITHDRAWN event; the policy slot is released by that commit.
+   * The apply deadline is evaluated first, unchanged (AD-2: a v1 snapshot has none; withdrawal never
+   * extends it). A repeated withdrawal of a withdrawn-from-failed request is a replay (no event).
+   * Signatures, payload, checksum and the failure events are never touched.
+   * Returns null when the request is not on this path (an APPROVED request: the A3 rule refuses it).
+   */
+  private async withdrawFailedActivation(actor: CommercialActor, id: string, ctx: CommercialCallContext): Promise<CommercialChangeRequestRow | null> {
+    if (actor.actor_kind !== 'user') throw new CommercialChangeRequestError('NOT_HUMAN', 'only a person can withdraw a commercial change request');
+    let after: { kind: 'expired' | 'reconciled'; row: CommercialChangeRequestRow } | null = null;
+    let row: CommercialChangeRequestRow | null;
+    try {
+      row = await this.tx(async (tx) => {
+        await tx.$executeRawUnsafe(`SET LOCAL lock_timeout = '${WITHDRAW_LOCK_TIMEOUT_MS}ms'`);
+        await tx.$executeRawUnsafe(POLICY_LOCK_SQL);
+        const req = await this.lock(tx, id);
+        if (req.action_type !== 'POLICY_ACTIVATE') return null;
+        this.requireRequester(actor, req);
+        if (req.state === 'APPROVED') return null;
+        if (req.state === 'WITHDRAWN') {
+          const prior = await tx.commercialAuditEvent.findFirst({ where: { change_request_id: id, event_type: 'COMMERCIAL_CHANGE_REQUEST_WITHDRAWN' }, select: { payload: true } });
+          if ((prior?.payload as { from_state?: unknown } | undefined)?.from_state === 'APPLY_FAILED') return req; // replay
+          return null;
+        }
+        // The requester's CURRENT authority (TD-A6-3): finance_admin + D9, read live in this transaction.
+        const live = await this.operators.readOperator(tx, ctx.platform_tenant_id, actor.user_id, true);
+        if (!live.attested || !live.role_keys.includes('finance_admin')) {
+          throw new CommercialChangeRequestError('REQUESTER_NO_LONGER_AUTHORIZED', 'the requester no longer holds the authority to withdraw this activation request', { required_role: 'finance_admin', attested: live.attested, live_role_keys: live.role_keys });
+        }
+        if (req.state === 'APPLIED') throw new CommercialChangeRequestError('ALREADY_APPLIED', 'the activation committed; the request is APPLIED and cannot be withdrawn', { state: 'APPLIED' });
+        if (req.state === 'APPLYING') throw new CommercialChangeRequestError('APPLY_IN_PROGRESS', 'an apply of this request is in progress', { state: 'APPLYING' });
+        // Charter Amendment A1 (AD-2, AD-4) — the deadline is evaluated, never extended.
+        if (await this.expireApplyIfDue(tx, req, this.now(), ctx)) {
+          after = { kind: 'expired', row: (await tx.commercialChangeRequest.findUniqueOrThrow({ where: { id } })) as CommercialChangeRequestRow };
+          return after.row;
+        }
+        const target = String((req.payload as Record<string, unknown>)['policy_version_id'] ?? '');
+        const evidence = await tx.$queryRawUnsafe<Array<{ n: number }>>(
+          `SELECT count(*)::int AS n FROM subscription."CommercialPolicyAuditEvent" WHERE event_type = 'COMMERCIAL_POLICY_VERSION_ACTIVATED' AND subject_id = $1 AND event_payload->>'change_request_id' = $2`,
+          target,
+          id,
+        );
+        const committed = (evidence[0]?.n ?? 0) > 0;
+        if (committed) {
+          const status = (await tx.$queryRawUnsafe<Array<{ status: string }>>(`SELECT status FROM subscription."CommercialPolicyVersion" WHERE id = $1::uuid`, target))[0]?.status;
+          if (status !== 'ACTIVE') throw new CommercialChangeRequestError('APPLY_UNRESOLVED', 'this request activated its target, which is no longer ACTIVE; it is not withdrawn', { policy_version_id: target, status: status ?? null });
+          // Committed, response failed: reconcile to APPLIED (never withdrawn).
+          const now = this.now();
+          await tx.commercialChangeRequest.update({ where: { id }, data: { state: 'APPLYING', apply_attempts: req.apply_attempts + 1, updated_at: now } });
+          const done = (await tx.commercialChangeRequest.update({ where: { id }, data: { state: 'APPLIED', applied_at: now, updated_at: now } })) as CommercialChangeRequestRow;
+          await this.appendEvent(tx, actor, req, 'COMMERCIAL_CHANGE_REQUEST_APPLIED', { outcome: 'APPLIED', reconciled: true, reason: 'activation_committed', policy_version_id: target }, ctx, live.role_keys);
+          after = { kind: 'reconciled', row: done };
+          return done;
+        }
+        // The last attempt must be resolved by its failure record (one APPLY_FAILED event for it).
+        const failures = await tx.$queryRawUnsafe<Array<{ n: number }>>(
+          `SELECT count(*)::int AS n FROM subscription."CommercialAuditEvent" WHERE change_request_id = $1::uuid AND event_type = 'COMMERCIAL_CHANGE_REQUEST_APPLY_FAILED' AND (payload->>'attempt')::int = $2`,
+          id,
+          req.apply_attempts,
+        );
+        if ((failures[0]?.n ?? 0) !== 1) throw new CommercialChangeRequestError('APPLY_UNRESOLVED', 'the last apply attempt has no failure record; the request is not withdrawn', { apply_attempts: req.apply_attempts });
+        const now = this.now();
+        const done = (await tx.commercialChangeRequest.update({ where: { id }, data: { state: 'WITHDRAWN', withdrawn_at: now, updated_at: now } })) as CommercialChangeRequestRow;
+        await this.appendEvent(tx, actor, req, 'COMMERCIAL_CHANGE_REQUEST_WITHDRAWN', { from_state: 'APPLY_FAILED', apply_attempts: req.apply_attempts, policy_version_id: target }, ctx, live.role_keys);
+        return done;
+      });
+    } catch (e) {
+      if (isLockTimeout(e)) throw new CommercialChangeRequestError('APPLY_IN_PROGRESS', 'an apply or another change of this activation is in progress; try again', { reason: 'lock_held' });
+      throw e;
+    }
+    const a = after as { kind: 'expired' | 'reconciled'; row: CommercialChangeRequestRow } | null;
+    if (a?.kind === 'expired') throw new CommercialChangeRequestError('APPLY_EXPIRED', 'the apply authority of this request has expired; it is APPLY_EXPIRED', { state: 'APPLY_EXPIRED', expired_by_this_attempt: true });
+    if (a?.kind === 'reconciled') throw new CommercialChangeRequestError('ALREADY_APPLIED', 'the activation had committed; the request was reconciled to APPLIED and is not withdrawn', { state: 'APPLIED', reconciled: true });
+    return row;
   }
 
   // ---- approve / reject -----------------------------------------------------------------

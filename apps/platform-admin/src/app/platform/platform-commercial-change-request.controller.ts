@@ -41,7 +41,8 @@ import { amountAccess } from './finance-amount-access.js';
 //                 actions need the live requester ROLE plus a D9 attestation — POLICY_ACTIVATE
 //                 a finance_admin, ROLE_GRANT / ROLE_REVOKE a platform_owner (the governed
 //                 role-change endpoint, pre-execution C-3)
-//   submit/withdraw  the requester only
+//   submit/withdraw  the requester only (CCP-ACC-1: withdraw also takes an APPLY_FAILED
+//                 POLICY_ACTIVATE, after reconciliation; TD-ACC-1 Option B)
 //   approve/reject   live eligibility in the transaction: the seven refusals; approve also
 //                 runs the chain-satisfiability gate (409 CCP_NOT_BOOTSTRAPPED)
 // Every act writes CommercialAuditEvent rows (CCP-A2 stream). CCP-A9: an approval that
@@ -243,6 +244,17 @@ export function toAramoError(err: unknown, requestId: string): unknown {
       // REFUND_PAYMENT_DISPUTED | REFUND_REMAINDER_UNVERIFIABLE | REFUND_PAYMENT_MISMATCH | REFUND_CURRENCY_MISMATCH.
       case 'REFUND_NOT_REFUNDABLE':
         return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, { requestId, details: { reason: 'refund_not_refundable', ...d } });
+      // CCP-ACC-1 — the withdrawal of an APPLY_FAILED POLICY_ACTIVATE (TD-ACC-1 Option B).
+      case 'REQUESTER_NO_LONGER_AUTHORIZED':
+        return new AramoError('INSUFFICIENT_PERMISSIONS', err.message, 403, { requestId, details: { reason: 'requester_no_longer_authorized', ...d } });
+      case 'APPLY_EXPIRED':
+        return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, { requestId, details: { reason: 'apply_expired', ...d } });
+      case 'APPLY_IN_PROGRESS':
+        return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, { requestId, details: { reason: 'apply_in_progress', ...d } });
+      case 'APPLY_UNRESOLVED':
+        return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, { requestId, details: { reason: 'apply_unresolved', ...d } });
+      case 'ALREADY_APPLIED':
+        return new AramoError('COMMERCIAL_CHANGE_REQUEST_CONFLICT', err.message, 409, { requestId, details: { reason: 'already_applied', ...d } });
     }
   }
   return err;

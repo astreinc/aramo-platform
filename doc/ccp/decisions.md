@@ -400,3 +400,16 @@ For an actor without `platform:billing:amount:read`, the whole free-text `Contra
   - **C5 × C4 / C4-P.** C5-G-3's prototype enumeration found C4's `executeAdjustment`, `readAdjustmentEffect` and C4-P's `readPaymentPicture`. All three are now exercised on every operation in C5-G-4: recorded requests 14 → 36, refund / coupon / dispute / refund-list requests asserted present, none carrying a tax token. C7's cancel uses the existing `cancelSubscription`. 15 / 15.
   - **TD-C4-21:** both e2e lint errors fixed (trivial, behaviour-neutral). Recorded with baseline evidence in `doc/ccp/known-baseline-exceptions.md`, together with the 2 Template Studio visual failures (not re-captured).
   - **Supertest port binding:** the new C4 route spec now binds a port too (TD-MERGE-41).
+- **TD-MERGE-44 (ACC-1b, `c37b28aa`):** `wip/ccp-acc1b` merged.
+  - **Conflicts, both sides kept:**
+    - the change-request controller error map (R3 + C4-P cases + ACC-1's `REQUESTER_NO_LONGER_AUTHORIZED` / `APPLY_EXPIRED` / `APPLY_IN_PROGRESS` / `APPLY_UNRESOLVED` / `ALREADY_APPLIED`; no duplicate case);
+    - the service error-code union;
+    - `20261027000000_ccp_guard_union`: header notes, and the transition list with the labelled CCP-C4, CCP-C4-R and CCP-ACC-1 blocks side by side; ACC-1's withdrawal-record check block merged clean;
+    - `ccp-a9-role-change.spec.ts` (C4-R's REFUND resolution + ACC-1's POLICY_ACTIVATE withdrawal in the mirror-table expectation).
+  - **ACC-U-1 × C4-R.** ACC-U-1 asserted "no action withdraws from APPLYING", which predates C4-R. REFUND APPLYING → WITHDRAWN is C4-R's governed resolution (Architect C4 disposition, TD-C4-12), so the assertion now exempts REFUND only. Every other action still never withdraws from APPLYING. 14 / 14.
+  - **TD-C4R-5 (2): one APPLY_FAILED helper.** ACC-1 split `commercial-apply-records.ts` into `recordApplyFailureInTx` (inside the caller's transaction, after its savepoint) + `recordApplyFailure` (own transaction: billing lock, request lock, then the in-transaction record). C4 carried a private copy of the same steps (`CommercialBillingAdjustmentService.recordFailure`). It now delegates to `recordApplyFailure`, keeping both behaviours:
+    - C4: billing lock + request lock, APPROVED / APPLY_FAILED → APPLYING (+1) → APPLY_FAILED, one audit row, UNRECORDED if unwritable;
+    - ACC-1: the in-transaction record and `evidence_when_unchanged`.
+    - The C4 audit row now also carries the shared `explanation`.
+  - **TD-C4R-5 (4) / TD-C4R-1:** ACC-1's savepoint is confined to the policy apply. The Stripe read/write fence (command state, attempts, `updated_at`) in `billing-command.service.ts` is untouched, and C4R-1…7 and C4-RACE / C4-TX pass on the integrated branch.
+  - **Specs the Lead named, on the integrated branch:** ACC-1 (`ccp-acc1-policy-withdraw`), B5-R, B5 governance, and GUARD-UNION-1…4 (probes cover the ACC-1 pair and REFUND) all pass inside the suite counts below. The platform-admin provider passes 2 / 2. The platform-governance consumer, verified by verify-api, passes 1 / 1.

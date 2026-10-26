@@ -24,6 +24,12 @@ const REASON_COPY: Readonly<Record<string, string>> = {
   subject_not_platform_member: 'This person isn’t an active platform admin.',
   export_too_large: 'Too many events to export at once. Narrow the filters.',
   not_human: 'Only a person with an attested account can make this request.',
+  // CCP-ACC-1 — withdrawing a failed activation.
+  apply_in_progress: 'An apply of this request is still running. Try again in a moment.',
+  already_applied: 'The activation took effect, so the request is marked applied and can’t be withdrawn.',
+  apply_unresolved: 'The last apply attempt isn’t fully recorded yet, so the request can’t be withdrawn safely.',
+  requester_no_longer_authorized: 'You no longer hold the Finance admin role, so you can’t withdraw this request.',
+  apply_expired: 'The request’s apply deadline passed; it has expired.',
 };
 
 export function governanceErrorText(e: unknown): string {
