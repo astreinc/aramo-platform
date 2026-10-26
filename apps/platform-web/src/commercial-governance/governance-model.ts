@@ -5,6 +5,7 @@ import type {
   PolicyContent,
   PolicyEditableKey,
   PolicyVersion,
+  Roster,
   RosterOperator,
 } from './governance-api';
 
@@ -298,6 +299,11 @@ export function personName(
 ): string {
   if (o === undefined) return fallback;
   return o.display_name?.trim() || o.email || o.user_id;
+}
+/** The signed-in user is an attested platform_owner (fail closed: no roster → false). */
+export function isAttestedOwner(roster: Roster | null | undefined, sub: string): boolean {
+  const me = roster?.operators.find((o) => o.user_id === sub);
+  return me !== undefined && me.attested && me.commercial_role_keys.includes('platform_owner');
 }
 export function initialsOf(name: string): string {
   const base = name.includes('@') ? name.slice(0, name.indexOf('@')) : name;

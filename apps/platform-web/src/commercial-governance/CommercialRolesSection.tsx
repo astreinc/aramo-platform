@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
 import { Button, useOptionalToast } from '@aramo/fe-foundation';
 import type { Session } from '@aramo/fe-foundation';
 
@@ -13,6 +13,7 @@ import {
   chainLine,
   chainWhy,
   initialsOf,
+  isAttestedOwner,
   personName,
   planRoleChange,
   roleLabel,
@@ -36,7 +37,19 @@ interface ActivePolicyRef {
   readonly ttl: string;
 }
 
-export function CommercialRolesSection({ session }: { readonly session: Session }) {
+export function CommercialRolesSection({
+  session,
+  reloadKey = 0,
+  onRoster,
+}: {
+  readonly session: Session;
+  /** CCP-INV-UI-1 R-7: a change re-reads the roster (after a commercial-role invite). */
+  readonly reloadKey?: number;
+  /** CCP-INV-UI-1 R-3: the loaded roster, so the invite card can tell an attested owner. */
+  readonly onRoster?: (roster: Roster) => void;
+}) {
+  const onRosterRef = useRef(onRoster);
+  onRosterRef.current = onRoster;
   const toast = useOptionalToast();
   const [roster, setRoster] = useState<Roster | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -45,8 +58,10 @@ export function CommercialRolesSection({ session }: { readonly session: Session 
 
   const load = useCallback(async (): Promise<void> => {
     try {
-      setRoster(await governanceApi.listOperators());
+      const r = await governanceApi.listOperators();
+      setRoster(r);
       setError(null);
+      onRosterRef.current?.(r);
     } catch (e) {
       setError(governanceErrorText(e));
     }
@@ -69,9 +84,11 @@ export function CommercialRolesSection({ session }: { readonly session: Session 
     );
   }, [load]);
 
-  const me = roster?.operators.find((o) => o.user_id === session.sub);
-  const isOwner =
-    me !== undefined && me.attested && me.commercial_role_keys.includes('platform_owner');
+  useEffect(() => {
+    if (reloadKey > 0) void load();
+  }, [reloadKey, load]);
+
+  const isOwner = isAttestedOwner(roster, session.sub);
   const people = (roster?.operators ?? []).filter(
     (o) => o.commercial_role_keys.length > 0 || o.role_keys.includes('super_admin'),
   );
