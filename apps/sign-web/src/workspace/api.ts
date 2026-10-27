@@ -35,7 +35,8 @@ export interface SenderContext {
     templates?: boolean;
   };
   // DOC-TEMPLATE-LIB-1 T-5 — plan capabilities by launch availability (absent = not available).
-  features?: { templates?: boolean };
+  // Aramo-Sign-Unified-Product-Amendment-M-A5 §3.7 — in_person_signing (hosted signing; mobile only this release).
+  features?: { templates?: boolean; in_person_signing?: boolean };
   can_send: boolean;
   // Aramo Sign Personal (Free) — true only while Personal sending is switched on for this
   // deployment; whether THIS account may send is still `can_send` (backend-decided).
@@ -95,12 +96,24 @@ export interface EnvelopeDocument {
   field_count: number;
 }
 
+// Aramo-Sign-Unified-Product-Amendment-M-A5 §1 / §2 — recipient kinds and copy timing.
+export type RecipientKind = 'SIGNER' | 'IN_PERSON_SIGNER' | 'RECEIVES_COPY';
+export type CopyDelivery = 'ON_SEND' | 'ON_COMPLETION' | 'BOTH';
+// M-A5 §1.4 — at most this many copy recipients per envelope (besides MAX_SIGNERS signers).
+export const MAX_COPY_RECIPIENTS = 10;
+
 export interface Recipient {
   id: string;
   name: string;
-  email: string;
+  // M-A5 §3.5 — null only for an in-person signer without an email (added from the app).
+  email: string | null;
   status: RecipientStatus;
   signing_order: number;
+  // M-A5 — absent from an older server: read as SIGNER.
+  recipient_kind?: RecipientKind;
+  copy_delivery?: CopyDelivery | null;
+  // M-A5 §4.1 — this recipient is assigned to the signed-in user (Assign to me).
+  assigned_to_me?: boolean;
   viewed_at: string | null;
   signed_at: string | null;
   declined_at: string | null;
@@ -438,7 +451,10 @@ export const senderApi = {
     apiClient.patch<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/documents/${enc(docId)}`, { title }),
   reorderDocuments: (id: string, order: string[]) => apiClient.put<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/documents/order`, { order }),
   removeDocument: (id: string, docId: string) => apiClient.delete<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/documents/${enc(docId)}`),
-  recipients: (id: string, recipients: { id?: string; name: string; email: string }[]) =>
+  recipients: (
+    id: string,
+    recipients: { id?: string; name: string; email: string | null; recipient_kind?: RecipientKind; copy_delivery?: CopyDelivery | null; assign_to_me?: boolean }[],
+  ) =>
     apiClient.put<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/recipients`, { recipients }),
   fields: (id: string, fields: EnvelopeField[]) =>
     apiClient.put<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/fields`, {
@@ -625,4 +641,9 @@ export function sendRefusalMessage(e: unknown, personal: boolean): string {
     return `You’ve used all ${typeof limit === 'number' ? `${limit} ` : ''}envelopes this month on your Free personal account${end ? `; it renews on ${end}` : ''}.`;
   }
   return errorMessage(e);
+}
+
+// M-A5 §1 — a copy recipient never signs (no fields, no turn, never blocks sending).
+export function isCopyRecipient(r: { recipient_kind?: RecipientKind }): boolean {
+  return r.recipient_kind === 'RECEIVES_COPY';
 }

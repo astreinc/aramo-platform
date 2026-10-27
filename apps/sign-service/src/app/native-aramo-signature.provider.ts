@@ -16,6 +16,7 @@ import {
   SIGNING_NOTIFICATION_PORT,
   type SigningNotificationPort,
   signBaseUrl,
+  signingRecipients,
 } from '@aramo/sign';
 
 import { AramoSignAllowanceGate } from './aramo-sign-allowance.gate.js';
@@ -46,7 +47,9 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
     return {
       envelope_id: full.id,
       status: full.status,
-      signers: full.signers.map((s) => ({ signer_id: s.id, email: s.email, status: s.status })),
+      // M-A5 §1 — the provider summary lists signing recipients (a copy recipient is
+      // not a signer); an in-person signer may have no email (§3.5).
+      signers: signingRecipients(full.signers).map((s) => ({ signer_id: s.id, email: s.email ?? '', status: s.status })),
     };
   }
 
@@ -100,10 +103,16 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
   // parameter is the port's typed actor, unused inside sign-service.)
   async sendEnvelope(tenant_id: string, envelope_id: string, actor_ref?: string, _actor?: SignatureActor, opts: { expected_revision?: number } = {}): Promise<EnvelopeSummary> {
     const env = await this.repo.getEnvelope(tenant_id, envelope_id);
-    const { sessions } = await this.allowance.guardSend(tenant_id, envelope_id, () =>
+    const { sessions, copies } = await this.allowance.guardSend(tenant_id, envelope_id, () =>
       this.service.send(tenant_id, envelope_id, actor_ref ?? env.created_by, opts),
     );
     await this.dispatchSigningRequests(tenant_id, envelope_id, sessions);
+    // M-A5 §2.2 — ON_SEND copies go out after the charge, like signer emails.
+    try {
+      await this.notifications?.copiesIssued(tenant_id, envelope_id, copies);
+    } catch (err) {
+      this.logger.warn(`RECIPIENT_COPY dispatch failed — envelope ${envelope_id}: ${(err as Error).message}`);
+    }
     return this.summarize(tenant_id, envelope_id);
   }
 
@@ -121,7 +130,7 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
     const origin = base;
     for (const session of sessions) {
       const signer = signersById.get(session.signer_id);
-      if (signer === undefined) continue;
+      if (signer === undefined || signer.email === null) continue;
       const signing_url = `${origin}/s/${session.raw_token}`;
       try {
         const result = await this.notifier.notify({
@@ -218,7 +227,7 @@ export class NativeAramoSignatureProvider implements SignatureProviderPort {
     const origin = signBaseUrl() ?? '';
     for (const session of sessions) {
       const signer = signersById.get(session.signer_id);
-      if (signer === undefined) continue;
+      if (signer === undefined || signer.email === null) continue;
       if (this.notifier === undefined || origin === '') {
         // SIGNATURE_REMINDER evidence is still recorded as a PENDING delivery so
         // the reminder is auditable even when no delivery origin is configured.

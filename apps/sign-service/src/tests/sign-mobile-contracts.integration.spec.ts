@@ -299,4 +299,134 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign Mobile envel
       expect(after.body.error.details.reason).toBe('session_revoked');
     });
   });
+  // Aramo-Sign-Unified-Product-Amendment-M-A5 §1–§5, §7 over HTTP: recipient kinds on
+  // PUT recipients, readiness, the ON_SEND copy route (source only), hosted and
+  // self-sign sessions, inbox-claim refusal of HOSTED / SELF tokens, cross-tenant refusal.
+  describe('M-A5 — recipient kinds, copies, hosted and self-signing', () => {
+    let envelopeId = '';
+    let annSigner = '';
+    let ccSigner = '';
+    let inPerson = '';
+    let documentId = '';
+    let hostedToken = '';
+    let selfToken = '';
+    const CC_EMAIL = `casey.${randomUUID().slice(0, 8)}@client.test`;
+
+    it('PUT recipients takes kinds, copy timing and Assign to me (verified email only); readiness excludes the copy', async () => {
+      const created = await http().post('/v1/sign/sender/envelopes').set(await H(ANN)).send({ subject: 'Kinds over HTTP' });
+      envelopeId = created.body.id;
+      const up = await http().post(`/v1/sign/sender/envelopes/${envelopeId}/documents`).set(await H(ANN)).send({ filename: 'k.pdf', content_base64: pdfBase64 });
+      expect(up.status).toBe(201);
+      documentId = up.body.id;
+      const put = (recipients: unknown[]) => http().put(`/v1/sign/sender/envelopes/${envelopeId}/recipients`).set(H2).send({ recipients });
+      const H2 = await H(ANN);
+      // Assign to me only with the caller's own verified email; copy timing required for a copy.
+      const mismatch = await put([{ name: 'Not Ann', email: 'someone@x.test', assign_to_me: true }]);
+      expect(mismatch.status).toBe(403);
+      expect(mismatch.body.error.details.reason).toBe('assign_to_me_email_mismatch');
+      expect((await put([{ name: 'Casey', email: CC_EMAIL, recipient_kind: 'RECEIVES_COPY' }])).body.error.details.reason).toBe('copy_delivery_required');
+      expect((await put([{ name: 'X', email: 'x@x.test', copy_delivery: 'ON_SEND' }])).body.error.details.reason).toBe('copy_delivery_not_allowed');
+      expect((await put([{ name: 'X', email: 'x@x.test', recipient_kind: 'OBSERVER' }])).body.error.details.reason).toBe('invalid_recipient_kind');
+      expect((await put([{ name: 'No email', recipient_kind: 'SIGNER' }])).status).toBe(400);
+      expect((await put([{ name: 'A', email: 'dup@x.test' }, { name: 'B', email: 'DUP@x.test', recipient_kind: 'RECEIVES_COPY', copy_delivery: 'ON_SEND' }])).status).toBe(400);
+      const eleven = Array.from({ length: 11 }, (_, i) => ({ name: `C${i}`, email: `c${i}@x.test`, recipient_kind: 'RECEIVES_COPY', copy_delivery: 'ON_SEND' }));
+      expect((await put([{ name: 'Ann', email: 'ann@mobile.test' }, ...eleven])).body.error.details.reason).toBe('too_many_copy_recipients');
+      const ok = await put([
+        { name: 'Ann', email: 'ANN@mobile.test', assign_to_me: true },
+        { name: 'Casey', email: CC_EMAIL, recipient_kind: 'RECEIVES_COPY', copy_delivery: 'ON_SEND' },
+        { name: 'Walk-in', recipient_kind: 'IN_PERSON_SIGNER' },
+      ]);
+      expect(ok.status).toBe(200);
+      expect(ok.body.recipients.map((r: Record<string, unknown>) => [r['recipient_kind'], r['copy_delivery'], r['assigned_to_me'], r['email']])).toEqual([
+        ['SIGNER', null, true, 'ANN@mobile.test'],
+        ['RECEIVES_COPY', 'ON_SEND', false, CC_EMAIL],
+        ['IN_PERSON_SIGNER', null, false, null],
+      ]);
+      expect(JSON.stringify(ok.body.recipients)).not.toContain(ANN); // the bound user id is never returned
+      expect(JSON.stringify(ok.body)).not.toContain('bound_user_id');
+      [annSigner, ccSigner, inPerson] = ok.body.recipients.map((r: { id: string }) => r.id);
+      // A copy recipient can have no field.
+      const field = (signer_id: string, y: number) => ({ envelope_document_id: documentId, signer_id, field_type: 'SIGNATURE', page_number: 0, x: 72, y, width: 120, height: 30 });
+      const ccField = await http().put(`/v1/sign/sender/envelopes/${envelopeId}/fields`).set(await H(ANN)).send({ fields: [field(ccSigner, 100)] });
+      expect(ccField.status).toBe(400);
+      expect(ccField.body.error.details.reason).toBe('copy_recipient_has_fields');
+      expect((await http().put(`/v1/sign/sender/envelopes/${envelopeId}/fields`).set(await H(ANN)).send({ fields: [field(annSigner, 100), field(inPerson, 200)] })).status).toBe(200);
+      const sent = await http().post(`/v1/sign/sender/envelopes/${envelopeId}/send`).set(await H(ANN)).send({});
+      expect(sent.status).toBe(200);
+      expect(sent.body.status).toBe('SENT');
+      // Only the SIGNER was emailed a link; the copy recipient got a COPY_VIEW grant + ledger event.
+      const sessions = (await db.query(`SELECT signer_id, origin FROM "sign"."SigningSession" WHERE envelope_id=$1`, [envelopeId])).rows;
+      expect(sessions).toEqual([{ signer_id: annSigner, origin: 'LINK' }]);
+      expect((await db.query(`SELECT signer_id, access_kind FROM "sign"."ExecutedAccessGrant" WHERE envelope_id=$1`, [envelopeId])).rows).toEqual([{ signer_id: ccSigner, access_kind: 'COPY_VIEW' }]);
+      expect((await db.query(`SELECT count(*)::int n FROM "sign"."SignatureEvent" WHERE envelope_id=$1 AND event_type='COPY_DELIVERY_ISSUED' AND signer_id=$2`, [envelopeId, ccSigner])).rows[0].n).toBe(1);
+      expect((await db.query(`SELECT status FROM "sign"."NotificationDelivery" WHERE envelope_id=$1 AND notification_kind='RECIPIENT_COPY'`, [envelopeId])).rows).toEqual([{ status: 'SENT' }]);
+      const d = await http().get(`/v1/sign/sender/envelopes/${envelopeId}`).set(await H(ANN));
+      expect(d.body.recipients.map((r: { can_remind: boolean }) => r.can_remind)).toEqual([true, false, false]);
+    });
+
+    it('POST /v1/sign/signing/copy returns the source documents only — no recipient or signer data; never the executed copy', async () => {
+      const token = `copy_${randomUUID().replace(/-/g, '')}`;
+      await db.query(`INSERT INTO "sign"."ExecutedAccessGrant" (id, tenant_id, envelope_id, signer_id, token_hash, expires_at, access_kind) VALUES (gen_random_uuid(),$1,$2,$3,$4, now() + interval '1 day','COPY_VIEW')`, [TENANT, envelopeId, ccSigner, hashSigningToken(token)]);
+      const res = await http().post('/v1/sign/signing/copy').send({ token });
+      expect(res.status).toBe(200);
+      expect(Object.keys(res.body).sort()).toEqual(['documents', 'sent_at', 'subject']);
+      expect(res.body.documents).toHaveLength(1);
+      expect(Object.keys(res.body.documents[0]).sort()).toEqual(['content_type', 'source_base64', 'title']);
+      expect(res.body.documents[0].source_base64).toBe(pdfBase64);
+      const text = JSON.stringify(res.body);
+      for (const leak of ['ann@mobile.test', 'ANN@mobile.test', CC_EMAIL, 'Walk-in', annSigner, ccSigner, TENANT, envelopeId]) expect(text).not.toContain(leak);
+      expect((await http().post('/v1/sign/signing/executed').send({ token })).status).toBe(401);
+      expect((await http().post('/v1/sign/signing/copy').send({ token: `${token}x` })).status).toBe(401);
+    });
+
+    it('hosted session: AP route, IN_PERSON_SIGNER only; the token signs through the guest routes with the attested name; other tenants and members are refused', async () => {
+      const url = `/v1/sign/sender/envelopes/${envelopeId}/hosted-sessions`;
+      const notInPerson = await http().post(url).set(await H(ANN)).send({ signer_id: annSigner });
+      expect(notInPerson.status).toBe(409);
+      expect(notInPerson.body.error.details.reason).toBe('not_in_person_signer');
+      expect((await http().post(url).set(await H(ANN)).send({ signer_id: randomUUID() })).body.error.details.reason).toBe('signer_not_found');
+      expect((await http().post(url).set(await H(ANN)).send({})).status).toBe(400);
+      expect((await http().post(url).set(await H(OLA, OTHER_TENANT)).send({ signer_id: inPerson })).status).toBe(404);
+      expect((await http().post(url).set(await H(BEN)).send({ signer_id: inPerson })).status).toBe(404);
+      expect((await http().post(url).send({ signer_id: inPerson })).status).toBe(401);
+      const hosted = await http().post(url).set(await H(ANN)).send({ signer_id: inPerson });
+      expect(hosted.status).toBe(201);
+      expect(hosted.body).toMatchObject({ session_origin: 'HOSTED', signer_id: inPerson });
+      expect(Date.parse(hosted.body.expires_at) - Date.now()).toBeLessThanOrEqual(30 * 60 * 1000 + 1000);
+      hostedToken = hosted.body.token;
+      const text = (await http().post('/v1/sign/signing/disclosure-text').send({ token: hostedToken })).body;
+      const noName = await http().post('/v1/sign/signing/disclosure').send({ token: hostedToken, disclosure_version: text.disclosure_version, disclosure_text_hash: text.text_sha256 });
+      expect(noName.status).toBe(400);
+      expect(noName.body.error.details.reason).toBe('attested_name_required');
+      const withName = await http().post('/v1/sign/signing/disclosure').send({ token: hostedToken, disclosure_version: text.disclosure_version, disclosure_text_hash: text.text_sha256, attested_name: 'Walk-in Person' });
+      expect(withName.status).toBe(200);
+      const ev = (await db.query(`SELECT actor_type, actor_ref FROM "sign"."SignatureEvent" WHERE envelope_id=$1 AND event_type='HOSTED_SESSION_STARTED'`, [envelopeId])).rows;
+      expect(ev).toEqual([{ actor_type: 'SERVICE', actor_ref: ANN }]);
+    });
+
+    it('self-sign session: only the recipient assigned to the caller; HOSTED and SELF tokens can never be claimed into an inbox', async () => {
+      const url = `/v1/sign/sender/envelopes/${envelopeId}/self-sign-session`;
+      expect((await http().post(url).set(await H(BEN)).send({})).status).toBe(404);
+      expect((await http().post(url).set(await H(OLA, OTHER_TENANT)).send({})).status).toBe(404);
+      const self = await http().post(url).set(await H(ANN)).send({});
+      expect(self.status).toBe(201);
+      expect(self.body).toMatchObject({ session_origin: 'SELF', signer_id: annSigner });
+      selfToken = self.body.token;
+      expect((await db.query(`SELECT origin, authenticated_user_id FROM "sign"."SigningSession" WHERE token_hash=$1`, [hashSigningToken(selfToken)])).rows).toEqual([{ origin: 'SELF', authenticated_user_id: ANN }]);
+      for (const token of [hostedToken, selfToken]) {
+        const claim = await http().post('/v1/sign/inbox/claim').set(await H(ANN)).send({ token });
+        expect(claim.status).toBe(401);
+        expect(claim.body.error.details.reason).toBe('session_origin_not_claimable');
+      }
+      // The verified email is re-checked: once the account email no longer matches, no session.
+      await db.query(`UPDATE identity."User" SET email='ann.moved@mobile.test' WHERE id=$1`, [ANN]);
+      try {
+        const moved = await http().post(url).set(await H(ANN)).send({});
+        expect(moved.status).toBe(403);
+        expect(moved.body.error.details.reason).toBe('email_not_verified');
+      } finally {
+        await db.query(`UPDATE identity."User" SET email='ann@mobile.test' WHERE id=$1`, [ANN]);
+      }
+    });
+  });
 });

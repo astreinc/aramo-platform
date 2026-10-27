@@ -52,9 +52,18 @@ export class RecipientInboxService {
     if (session === null || session.status === 'REVOKED' || session.status === 'EXPIRED' || session.expires_at.getTime() < Date.now()) {
       throw new AramoError('SIGNING_SESSION_INVALID', 'This signing link is not valid any more', 401, { requestId });
     }
+    // M-A5 §5 — only an emailed link (origin LINK, or a legacy NULL session) can be
+    // claimed. A hosted, self-sign or inbox session is refused.
+    const origin = session.origin ?? null;
+    if (origin !== null && origin !== 'LINK') {
+      throw new AramoError('SIGNING_SESSION_INVALID', 'This signing link cannot be added to an inbox', 401, {
+        requestId,
+        details: { reason: 'session_origin_not_claimable' },
+      });
+    }
     const user = await this.identity.findUserById(auth.sub);
     const mine = user?.email?.trim().toLowerCase();
-    if (mine === undefined || mine === '' || mine !== session.signer_email.trim().toLowerCase()) {
+    if (mine === undefined || mine === '' || session.signer_email === null || mine !== session.signer_email.trim().toLowerCase()) {
       throw new AramoError('INSUFFICIENT_PERMISSIONS', 'This document was sent to a different email address', 403, {
         requestId,
         details: { reason: 'recipient_mismatch' },

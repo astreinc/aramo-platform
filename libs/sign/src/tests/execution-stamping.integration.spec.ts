@@ -191,4 +191,37 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-V1 F2 executio
       expect(certificate).toContain(`Signature ID: ${ids[i]}`);
     }
   });
+  // Aramo-Sign-Unified-Product-Amendment-M-A5 §3.6 / §1.2 — the certificate prints the
+  // in-person line for a hosted signature (host named from the directory), shows an
+  // in-person signer without an email, and does not list a copy recipient.
+  it('M-A5: hosted signer gets the in-person line; a copy recipient is not listed as a signer', async () => {
+    const HOST = randomUUID();
+    const env = await repo.createEnvelope({ tenant_id: TENANT, subject: 'In person', execution_mode: 'SINGLE_SIGNATURE', created_by: ACTOR });
+    const doc = await repo.addDocument({ tenant_id: TENANT, envelope_id: env.id, document_ref: randomUUID(), document_revision_ref: randomUUID(), title: 'ip.pdf', source_sha256: 'seed', ordinal: 1 });
+    const signerId = randomUUID();
+    await prisma.signer.create({ data: { id: signerId, tenant_id: TENANT, envelope_id: env.id, email: null, name: 'Walk-in Signer', signing_order: 1, status: 'SIGNED', signed_at: new Date(), recipient_kind: 'IN_PERSON_SIGNER' } });
+    await prisma.signer.create({ data: { id: randomUUID(), tenant_id: TENANT, envelope_id: env.id, email: 'copy.only@x.com', name: 'Copy Only', signing_order: 2, status: 'PENDING', recipient_kind: 'RECEIVES_COPY', copy_delivery: 'ON_COMPLETION' } });
+    const field = await repo.addField({ tenant_id: TENANT, envelope_document_id: doc.id, signer_id: signerId, field_type: 'SIGNATURE', page_number: 0, x: 72, y: 120, width: 200, height: 40, required: true });
+    await prisma.signatureField.update({ where: { id: field.id }, data: { value: 'Walk-in Signer', signature_method: 'TYPED', filled_at: new Date() } });
+    await prisma.signingSession.create({
+      data: { id: randomUUID(), tenant_id: TENANT, envelope_id: env.id, signer_id: signerId, token_hash: randomUUID(), status: 'COMPLETED', expires_at: new Date(Date.now() + 60_000), origin: 'HOSTED', host_user_id: HOST },
+    });
+    const real = new PdfLibDocumentRenderingAdapter();
+    const generated: string[] = [];
+    const capturing: DocumentRenderingPort = {
+      prepareFromSource: (src, placements, opts) => real.prepareFromSource(src, placements, opts),
+      renderGenerated: (model) => {
+        generated.push(JSON.stringify(model));
+        return real.renderGenerated(model);
+      },
+    };
+    const directory = { findSender: async (_t: string, id: string) => (id === HOST ? { email: 'host@x.com', name: 'Hana Host' } : null) };
+    const execution = new ExecutionService(prisma, repo, capturing, { getSourcePdf: async () => sourcePdf }, undefined, undefined, undefined, directory);
+    await execution.produce(TENANT, env.id);
+    const certificate = generated.join('');
+    expect(certificate).toContain('Walk-in Signer <no email>');
+    expect(certificate).toContain('Signed in person. Hosted by Hana Host. Signer identity was not independently verified.');
+    expect(certificate).not.toContain('Copy Only');
+    expect(certificate).not.toContain('copy.only');
+  });
 });

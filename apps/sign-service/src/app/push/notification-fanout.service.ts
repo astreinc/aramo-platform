@@ -3,6 +3,9 @@ import {
   backoffMs,
   pushAllowedByPreferences,
   SignNotificationRepository,
+  currentTurnOf,
+  isLinkSigner,
+  signingRecipients,
   type FanoutEnvelope,
   type NotificationDraft,
   type NotificationOwner,
@@ -163,9 +166,11 @@ export class NotificationFanoutService {
     return drafts;
   }
 
+  // M-A5 §1.3 — signing recipients only (a copy recipient never signs).
   private isLastSignature(env: FanoutEnvelope, signer_id: string): boolean {
-    const signed = env.signers.filter((s) => s.signed_at !== null);
-    if (signed.length !== env.signers.length) return false;
+    const signing = signingRecipients(env.signers);
+    const signed = signing.filter((s) => s.signed_at !== null);
+    if (signed.length === 0 || signed.length !== signing.length) return false;
     const last = signed.reduce((a, b) => ((b.signed_at as Date).getTime() > (a.signed_at as Date).getTime() ? b : a));
     return last.id === signer_id;
   }
@@ -176,7 +181,7 @@ export class NotificationFanoutService {
     if (this.identity === undefined) return false;
     const sender = await this.identity.findUserById(env.created_by).catch(() => null);
     const email = sender?.email?.trim().toLowerCase();
-    return email !== undefined && email !== '' && email === signer.email.trim().toLowerCase();
+    return email !== undefined && email !== '' && signer.email !== null && email === signer.email.trim().toLowerCase();
   }
 
   // ── Recipient side ──
@@ -187,8 +192,10 @@ export class NotificationFanoutService {
     if (env.status !== 'SENT' && env.status !== 'IN_PROGRESS') return [];
     const current = env.signers.find((s) => s.id === row.signer_id);
     if (current === undefined) return [];
-    const next = env.signers.find((s) => s.signing_order > current.signing_order && PENDING_SIGNER.has(s.status));
-    if (next === undefined) return [];
+    // M-A5 §1.3 — the shared current-turn rule; an in-person signer is not notified
+    // (the host starts their session), a copy recipient never takes a turn.
+    const next = currentTurnOf(env.signers);
+    if (next === null || next.signing_order <= current.signing_order || !PENDING_SIGNER.has(next.status) || !isLinkSigner(next)) return [];
     return this.claimedDrafts(row, env, 'SIGNATURE_NEEDED', [next.id]);
   }
 
@@ -200,8 +207,10 @@ export class NotificationFanoutService {
     } else {
       // At send (and for a reminder that did not name its signers): every signer who
       // may sign now — all of them in PARALLEL, the first open one in SEQUENTIAL.
-      const open = env.signers.filter((s) => PENDING_SIGNER.has(s.status));
-      targets = (env.routing_mode === 'SEQUENTIAL' ? open.slice(0, 1) : open).map((s) => s.id);
+      // M-A5 §1.3 — signing recipients only, by the shared current-turn rule.
+      const open = signingRecipients(env.signers).filter((s) => PENDING_SIGNER.has(s.status));
+      const now = env.routing_mode === 'SEQUENTIAL' ? open.slice(0, 1) : open;
+      targets = now.filter(isLinkSigner).map((s) => s.id);
     }
     return this.claimedDrafts(row, env, type, targets);
   }

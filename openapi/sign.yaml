@@ -471,6 +471,52 @@ paths:
                   certificate_base64: { type: [string, 'null'] }
         '401':
           $ref: '#/components/responses/Unauthorized'
+  /v1/sign/signing/copy:
+    post:
+      operationId: getRecipientCopy
+      security: []
+      summary: A copy recipient's view of the documents sent for signature (ON_SEND copy).
+      description: >-
+        Aramo-Sign-Unified-Product-Amendment-M-A5 §2.2 — authorized by the COPY_VIEW access token from the RECIPIENT_COPY
+        email (not a signing session). Returns the SOURCE documents only, base64: values are stamped only at completion,
+        so they carry no signer data. No recipient list, signer data, tenant id or internal id is returned. Refused (401)
+        for an unknown or expired token, an executed-copy token, and a draft, voided, declined or expired envelope. Only
+        the token's hash is stored; tenant is resolved server-side; each use is counted.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token]
+              properties:
+                token: { type: string }
+      responses:
+        '200':
+          description: The source documents.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [subject, sent_at, documents]
+                additionalProperties: false
+                properties:
+                  subject: { type: string }
+                  sent_at: { type: [string, 'null'], format: date-time }
+                  documents:
+                    type: array
+                    items:
+                      type: object
+                      required: [title, content_type, source_base64]
+                      additionalProperties: false
+                      properties:
+                        title: { type: string }
+                        content_type: { type: string }
+                        source_base64: { type: string, description: 'The source PDF, base64.' }
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
   # Sign Mobile B-12 — the signer operations the guest transport (web and the Aramo
   # Sign app) calls; tenant context comes from the capability token only.
   /v1/sign/signing/disclosure:
@@ -495,6 +541,14 @@ paths:
                 token: { type: string }
                 disclosure_version: { type: string }
                 disclosure_text_hash: { type: string, pattern: '^[0-9a-f]{64}$' }
+                attested_name:
+                  type: string
+                  minLength: 1
+                  maxLength: 200
+                  description: >-
+                    Aramo-Sign-Unified-Product-Amendment-M-A5 §3.4 — required in a hosted (in-person) session: the name the
+                    signer confirms (400 attested_name_required without it). Ignored for other sessions. Kept with the
+                    acceptance; the ledger records only its sha256.
       responses:
         '200':
           description: The disclosure was accepted.
@@ -1147,7 +1201,8 @@ paths:
       operationId: replaceSenderRecipients
       summary: Replace the recipients of a DRAFT envelope.
       description: >
-        Keeps listed existing ids, creates new recipients, deletes the rest with their fields. List position is the signing order (used when the envelope signs in order). 1 to 10 recipients with distinct emails. DRAFT only. Requires sign:envelope:create.
+        Keeps listed existing ids, creates new recipients, deletes the rest with their fields. List position is the signing order (used when the envelope signs in order). Up to 10 signing recipients and 10 copy recipients, with distinct emails across all kinds. DRAFT only. Requires sign:envelope:create.
+        Aramo-Sign-Unified-Product-Amendment-M-A5 §1 / §2 / §4 — each item may carry recipient_kind (omitted = SIGNER), copy_delivery (required iff RECEIVES_COPY; 400 copy_delivery_required / copy_delivery_not_allowed) and assign_to_me (the server binds the caller only when this recipient's email is the caller's verified account email: 403 assign_to_me_email_mismatch; SIGNER only: 400 assign_to_me_not_signer). Email is optional for an IN_PERSON_SIGNER only. 400 too_many_signers / too_many_copy_recipients / invalid_recipient_kind.
         Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
       tags: [sender]
       security:
@@ -1166,10 +1221,10 @@ paths:
               properties:
                 recipients:
                   type: array
-                  maxItems: 10
+                  maxItems: 20
                   items:
                     type: object
-                    required: [name, email]
+                    required: [name]
                     properties:
                       id:
                         type: string
@@ -1177,8 +1232,19 @@ paths:
                       name:
                         type: string
                       email:
-                        type: string
-                        format: email
+                        type: [string, 'null']
+                        description: Required unless recipient_kind is IN_PERSON_SIGNER.
+                      recipient_kind:
+                        $ref: '#/components/schemas/SenderRecipientKind'
+                      copy_delivery:
+                        oneOf:
+                          - $ref: '#/components/schemas/SenderCopyDelivery'
+                          - type: 'null'
+                      assign_to_me:
+                        type: boolean
+                        description: >-
+                          M-A5 §4.1 — Assign to me. The server sets the binding to the caller (never client-supplied) when the
+                          recipient email equals the caller's verified account email. Omitted or false clears it.
       responses:
         '200':
           description: OK.
@@ -1354,6 +1420,96 @@ paths:
           $ref: '#/components/responses/IdempotencyKeyReuse'
         '429':
           $ref: '#/components/responses/ReminderLimited'
+  /v1/sign/sender/envelopes/{id}/hosted-sessions:
+    post:
+      operationId: startHostedSigningSession
+      summary: Start a hosted (in-person) signing session.
+      description: >
+        Aramo-Sign-Unified-Product-Amendment-M-A5 §3 — for an IN_PERSON_SIGNER of a SENT / IN_PROGRESS envelope whose turn it is.
+        Requires sign:envelope:send, the right to change the envelope (owner, or sign:envelope:manage:all) and the
+        sign.in_person_signing capability (403 ESIGN_FEATURE_NOT_AVAILABLE). Revokes the signer's other live sessions, mints a
+        30-minute HOSTED session (never past the envelope's expiry) and appends HOSTED_SESSION_STARTED (actor SERVICE, the host).
+        The token is returned only in this response; the signer then uses the guest signing routes with it, and a hosted
+        session's disclosure needs attested_name. Refusals carry details.reason - 404 signer_not_found; 409
+        not_in_person_signer / envelope_not_signable / signer_ineligible / not_your_turn.
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [signer_id]
+              properties:
+                signer_id:
+                  type: string
+                  format: uuid
+      responses:
+        '201':
+          description: The hosted session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderIssuedSigningSession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+  /v1/sign/sender/envelopes/{id}/self-sign-session:
+    post:
+      operationId: startSelfSignSession
+      summary: Start a self-sign session for the recipient assigned to the caller.
+      description: >
+        Aramo-Sign-Unified-Product-Amendment-M-A5 §4 — "Sign a document". Requires sign:envelope:send and the right to change
+        the envelope; the recipient must be bound to the caller by Assign to me (sign:envelope:manage:all never substitutes:
+        403 not_bound_to_you) and the caller's verified account email must still equal the recipient email (403
+        email_not_verified). The envelope must be signable and (in order) it must be that recipient's turn (409
+        envelope_not_signable / signer_ineligible / not_your_turn). Mints a 30-minute SELF session and appends
+        SELF_SIGN_SESSION_ISSUED; the emailed link stays valid. signer_id is optional (the first recipient bound to the caller).
+      tags: [sender]
+      security:
+        - senderSession: []
+        - senderBearer: []
+      parameters:
+        - $ref: '#/components/parameters/EnvelopeId'
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                signer_id:
+                  type: string
+                  format: uuid
+      responses:
+        '201':
+          description: The self-sign session.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SenderIssuedSigningSession'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/SenderUnauthorized'
+        '403':
+          $ref: '#/components/responses/SenderForbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
   /v1/sign/sender/envelopes/{id}/void:
     post:
       operationId: voidSenderEnvelope
@@ -4144,6 +4300,9 @@ components:
           properties:
             templates:
               type: boolean
+            in_person_signing:
+              type: boolean
+              description: Aramo-Sign-Unified-Product-Amendment-M-A5 §3.7 — the sign.in_person_signing capability (hosted signing) is available.
         can_send:
           type: boolean
         personal_sending_enabled:
@@ -4336,7 +4495,7 @@ components:
           type: array
           items:
             type: object
-            required: [id, name, email, status]
+            required: [id, name, email, status, recipient_kind]
             properties:
               id:
                 type: string
@@ -4344,9 +4503,12 @@ components:
               name:
                 type: string
               email:
-                type: string
+                type: [string, 'null']
+                description: Null only for an in-person signer without an email (M-A5 §3.5).
               status:
                 $ref: '#/components/schemas/SenderRecipientStatus'
+              recipient_kind:
+                $ref: '#/components/schemas/SenderRecipientKind'
     SenderEnvelopeCounts:
       type: object
       description: >-
@@ -4369,6 +4531,35 @@ components:
     SenderRecipientStatus:
       type: string
       enum: [PENDING, VIEWED, SIGNED, DECLINED]
+    SenderRecipientKind:
+      type: string
+      enum: [SIGNER, IN_PERSON_SIGNER, RECEIVES_COPY]
+      description: >-
+        Aramo-Sign-Unified-Product-Amendment-M-A5 §1 — SIGNER signs through an emailed link; IN_PERSON_SIGNER signs on the
+        host's device (hosted session); RECEIVES_COPY never signs (no fields, no session, no turn, never reminded, never blocks
+        completion).
+    SenderCopyDelivery:
+      type: string
+      enum: [ON_SEND, ON_COMPLETION, BOTH]
+      description: M-A5 §2.1 — when a copy recipient receives their copy.
+    SenderIssuedSigningSession:
+      type: object
+      description: >-
+        M-A5 §3.2 / §4.2 — a hosted or self-sign session. The token is a signing capability for the guest signing routes
+        (/v1/sign/signing/*); it is returned only to the authenticated caller and must never be logged or shared.
+      required: [session_origin, signer_id, token, expires_at]
+      properties:
+        session_origin:
+          type: string
+          enum: [HOSTED, SELF]
+        signer_id:
+          type: string
+          format: uuid
+        token:
+          type: string
+        expires_at:
+          type: string
+          format: date-time
     SenderPageSize:
       type: object
       description: >-
@@ -4417,7 +4608,7 @@ components:
             $ref: '#/components/schemas/SenderPageSize'
     SenderEnvelopeRecipient:
       type: object
-      required: [id, name, email, status, signing_order, viewed_at, signed_at, declined_at, decline_reason, can_remind, reminder_available_at]
+      required: [id, name, email, status, signing_order, recipient_kind, copy_delivery, assigned_to_me, viewed_at, signed_at, declined_at, decline_reason, can_remind, reminder_available_at]
       properties:
         id:
           type: string
@@ -4425,7 +4616,18 @@ components:
         name:
           type: string
         email:
-          type: string
+          type: [string, 'null']
+          description: Null only for an in-person signer without an email (M-A5 §3.5).
+        recipient_kind:
+          $ref: '#/components/schemas/SenderRecipientKind'
+        copy_delivery:
+          oneOf:
+            - $ref: '#/components/schemas/SenderCopyDelivery'
+            - type: 'null'
+          description: M-A5 §2.1 — set only for RECEIVES_COPY.
+        assigned_to_me:
+          type: boolean
+          description: M-A5 §4.1 — this recipient is bound to the caller (Assign to me). The bound user id itself is never returned.
         status:
           $ref: '#/components/schemas/SenderRecipientStatus'
         signing_order:
@@ -4445,7 +4647,7 @@ components:
           type: [string, 'null']
         can_remind:
           type: boolean
-          description: An unsigned signer who may sign now (in an open envelope).
+          description: An unsigned signer who may sign now (in an open envelope). Never a copy recipient or an in-person signer (M-A5).
         reminder_available_at:
           type: [string, 'null']
           format: date-time

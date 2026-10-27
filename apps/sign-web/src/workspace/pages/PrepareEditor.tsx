@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 
-import { errorMessage, fetchSourcePdf, senderApi, type EnvelopeDetail, type EnvelopeField, type FieldType } from '../api';
+import { errorMessage, fetchSourcePdf, isCopyRecipient, senderApi, type EnvelopeDetail, type EnvelopeField, type FieldType } from '../api';
 import { clampBox, toPdf, toTopLeft, type PdfPageInfo } from '../geometry';
 import { loadPdf, type LoadedPdf } from '../pdf';
 import { Bare, Btn, COLORS, Check, ErrorBox, Icon, Loading, Sel } from '../ui';
@@ -59,13 +59,16 @@ const newKey = () => `f${Date.now().toString(36)}${(seq += 1)}`;
 
 export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDetail; onChange: (d: EnvelopeDetail) => void; back: string; next: string }) {
   const nav = useNavigate();
+  // Aramo-Sign-Unified-Product-Amendment-M-A5 §1.5 — fields belong to signers only; a
+  // recipient who receives a copy has none.
+  const signers = env.recipients.filter((r) => !isCopyRecipient(r));
   const [docs, setDocs] = useState<DocPdf[] | null>(null);
   const [loadError, setLoadError] = useState('');
   const [fields, setFields] = useState<EdField[]>([]);
   const [ready, setReady] = useState(false);
   const [sel, setSel] = useState<string | null>(null);
   const [tool, setTool] = useState<FieldType | null>(null);
-  const [rec, setRec] = useState<string | null>(env.recipients[0]?.id ?? null);
+  const [rec, setRec] = useState<string | null>(signers[0]?.id ?? null);
   const [zoom, setZoom] = useState(1);
   const [undo, setUndo] = useState<EdField[][]>([]);
   const [save, setSave] = useState<'idle' | 'saving' | 'saved' | 'error'>('idle');
@@ -173,7 +176,7 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
   const place = (docId: string, page: number, cx: number, cy: number) => {
     if (tool === null) return;
     const info = pageInfo(docId, page);
-    const signer = rec ?? env.recipients[0]?.id;
+    const signer = rec ?? signers[0]?.id;
     if (info === undefined || signer === undefined) return;
     const t = TYPES[tool];
     const box = clampBox({ x: cx - t.w / 2, y: cy - t.h / 2, width: t.w, height: t.h }, info);
@@ -216,7 +219,7 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
     return () => window.removeEventListener('keydown', onKey);
   });
 
-  if (env.documents.length === 0 || env.recipients.length === 0) {
+  if (env.documents.length === 0 || signers.length === 0) {
     return (
       <>
         <div className="sg-card sg-empty" data-testid="prepare-missing">
@@ -239,7 +242,7 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
         <div className="sg-editor__side">
           <div className="sg-panel">
             <div className="sg-panel__t">Placing for</div>
-            {env.recipients.map((r) => {
+            {signers.map((r) => {
               const n = fields.filter((f) => f.signerId === r.id).length;
               return (
                 <Bare key={r.id} className={r.id === rec ? 'sg-recsel sg-recsel--on' : 'sg-recsel'} aria-pressed={r.id === rec} onClick={() => setRec(r.id)}>
@@ -403,7 +406,7 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
                 <label className="sg-field">
                   <span className="sg-label">Recipient</span>
                   <Sel value={selected.signerId} onChange={(e) => update(selected.key, (x) => ({ ...x, signerId: e.target.value }))}>
-                    {env.recipients.map((r) => (
+                    {signers.map((r) => (
                       <option key={r.id} value={r.id}>
                         {r.name}
                       </option>

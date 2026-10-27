@@ -182,7 +182,38 @@ export {
   IdempotencyRequestInProgressError,
   type ReminderLimitReason,
   type InboxSigningRefusal,
+  SessionIssueRefusedError,
+  AttestedNameRequiredError,
+  type SessionIssueRefusal,
 } from './lib/domain/envelope-contract-errors.js';
+// Aramo-Sign-Unified-Product-Amendment-M-A5 — recipient kinds and the shared
+// signing-recipient / current-turn rule.
+export {
+  RECIPIENT_KINDS,
+  SIGNING_RECIPIENT_KINDS,
+  COPY_DELIVERIES,
+  MAX_COPY_RECIPIENTS,
+  HOSTED_SESSION_TTL_MS,
+  SELF_SIGN_SESSION_TTL_MS,
+  COPY_DELIVERY_ISSUED_EVENT,
+  HOSTED_SESSION_STARTED_EVENT,
+  SELF_SIGN_SESSION_ISSUED_EVENT,
+  SIGNING_RECIPIENT_WHERE,
+  recipientKindOf,
+  isSigningRecipient,
+  isCopyRecipient,
+  isLinkSigner,
+  signingRecipients,
+  copyRecipients,
+  allSigningRecipientsSigned,
+  currentTurnOf,
+  currentTurnSignerId,
+  mayActNow,
+  invitedAtSend,
+  type RecipientKind,
+  type CopyDelivery,
+  type SessionOrigin,
+} from './lib/domain/recipients.js';
 export {
   SIGN_REMINDER_LIMITS,
   applyReminderLimits,

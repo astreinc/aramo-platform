@@ -195,7 +195,7 @@ export function EnvelopeDetail() {
                 <Avatar name={r.name} color={COLORS[i % COLORS.length]} />
                 <div className="sg-row__main">
                   <div>
-                    <strong>{r.name}</strong> <span className="sg-muted">· {r.email}</span>
+                    <strong>{r.name}</strong> <span className="sg-muted">· {r.email ?? 'No email'}</span>
                   </div>
                   <div className="sg-row__s">
                     {ordered ? `Signs ${i + 1} of ${env.recipients.length} · ` : ''}
@@ -245,7 +245,7 @@ export function EnvelopeDetail() {
                 {env.recipients.map((r) => (
                   <div key={r.id} className="sg-settings-row" style={{ alignItems: 'flex-start' }}>
                     <div style={{ flex: 1 }}>
-                      <strong>{r.name}</strong> <span className="sg-muted">{maskEmail(r.email)}</span>
+                      <strong>{r.name}</strong> <span className="sg-muted">{r.email === null ? 'No email' : maskEmail(r.email)}</span>
                       <div className="sg-muted" style={{ fontSize: 12.5 }}>
                         Signed {fmtDate(r.signed_at, true)} · Secure link
                       </div>

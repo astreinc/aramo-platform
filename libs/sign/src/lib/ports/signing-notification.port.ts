@@ -13,7 +13,9 @@ export type SigningNotificationKind =
   | 'SIGNATURE_EXPIRED'
   | 'SIGNATURE_VOIDED'
   // Multi-Signer M-3b — the sender's progress notice: a signer has signed (not the last).
-  | 'SIGNER_SIGNED';
+  | 'SIGNER_SIGNED'
+  // M-A5 §2.2 — a copy recipient's ON_SEND copy (a link to the source documents).
+  | 'RECIPIENT_COPY';
 
 // Who the notification is for: a signer (recipient) or the envelope's sender.
 export type SigningNotificationAudience = 'SIGNER' | 'SENDER';
@@ -42,6 +44,12 @@ export interface SigningNotification {
   signer_count?: number;
   // SIGNER_SIGNED in a SEQUENTIAL envelope — who is invited next.
   next_signer_name?: string;
+  // M-A5 §2 — COPY: the recipient receives a copy (never signs); the mailer uses
+  // copy wording. Absent = a signer.
+  recipient_role?: 'COPY';
+  // M-A5 §2.2 — RECIPIENT_COPY: the link to the source documents (contains a raw
+  // access token) — NEVER logged.
+  copy_url?: string;
   // Sign Mobile M-A3 §3 — SIGNATURE_REQUEST: the sender's plain-text message
   // (sanitized at write; the renderer escapes it like every dynamic value).
   sender_message?: string;

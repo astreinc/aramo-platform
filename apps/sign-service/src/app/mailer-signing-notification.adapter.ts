@@ -53,7 +53,22 @@ export function renderSigningNotification(n: SigningNotification, opts: { report
 function renderBase(n: SigningNotification): Rendered {
   const doc = n.envelope_subject;
   const sender = (n.audience ?? 'SIGNER') === 'SENDER';
+  // M-A5 §2 — a copy recipient never signs: copy wording.
+  const copy = !sender && n.recipient_role === 'COPY';
   switch (n.kind) {
+    case 'RECIPIENT_COPY': {
+      const url = safeUrl(n.copy_url);
+      return {
+        subject: `For your records: ${doc}`,
+        lines: [
+          `You've been sent a copy of "${doc}". You don't need to sign it.`,
+          ...(n.sender_message ? [`Message from the sender: ${n.sender_message}`] : []),
+          'You can view the documents that were sent for signature from the button below.',
+        ],
+        action: url ? { label: 'View documents', url } : undefined,
+        footnote: url ? 'This link is personal to you and expires after 30 days.' : undefined,
+      };
+    }
     case 'SIGNATURE_REQUEST': {
       const url = safeUrl(n.signing_url);
       return {
@@ -87,6 +102,14 @@ function renderBase(n: SigningNotification): Rendered {
         };
       }
       const url = safeUrl(n.download_url);
+      if (copy) {
+        return {
+          subject: `Completed: ${doc}`,
+          lines: [`Everyone has signed "${doc}". You were sent a copy for your records.`, url ? 'Download the signed copy and its certificate of completion below.' : 'The sender has the signed copy.'],
+          action: url ? { label: 'Download signed copy', url } : undefined,
+          footnote: url ? 'This download link is personal to you and expires after 30 days.' : undefined,
+        };
+      }
       return {
         subject: `Completed: ${doc}`,
         lines: [`Everyone has signed "${doc}".`, url ? 'Download your signed copy and its certificate of completion below.' : 'The sender has the signed copy.'],
@@ -105,13 +128,17 @@ function renderBase(n: SigningNotification): Rendered {
       }
       return {
         subject: `No longer needed: ${doc}`,
-        lines: [`Another signer declined "${doc}", so it can no longer be signed.`, "You don't need to do anything."],
+        lines: [copy ? `A signer declined "${doc}", so it will not be completed.` : `Another signer declined "${doc}", so it can no longer be signed.`, "You don't need to do anything."],
       };
     }
     case 'SIGNATURE_VOIDED':
       return {
         subject: `Withdrawn: ${doc}`,
-        lines: [`The sender withdrew the request to sign "${doc}".`, ...(n.reason ? [`Reason given — ${n.reason}`] : []), "Your signing link no longer works. You don't need to do anything."],
+        lines: [
+          copy ? `The sender withdrew "${doc}", which you were sent a copy of.` : `The sender withdrew the request to sign "${doc}".`,
+          ...(n.reason ? [`Reason given — ${n.reason}`] : []),
+          copy ? "You don't need to do anything." : "Your signing link no longer works. You don't need to do anything.",
+        ],
       };
     case 'SIGNER_SIGNED': {
       const url = safeUrl(n.console_url);
@@ -137,7 +164,9 @@ function renderBase(n: SigningNotification): Rendered {
       }
       return {
         subject: `Expired: ${doc}`,
-        lines: [`The signing window for "${doc}" has closed.`, 'If you still need to sign, ask the sender to send it again.'],
+        lines: copy
+          ? [`The signing window for "${doc}" has closed before everyone signed.`, "You don't need to do anything."]
+          : [`The signing window for "${doc}" has closed.`, 'If you still need to sign, ask the sender to send it again.'],
       };
     }
   }

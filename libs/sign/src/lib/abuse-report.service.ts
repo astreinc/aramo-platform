@@ -150,6 +150,8 @@ export class AbuseReportService {
     });
     if (session === null) return null;
     if (session.created_at.getTime() < at.getTime() - cfg.linkMaxAgeDays * 86_400_000) return null;
+    // M-A5 §3.5 — an in-person signer without an email was never emailed a link.
+    if (session.signer.email === null) return null;
     return { tenant_id: session.tenant_id, envelope_id: session.envelope_id, signer_id: session.signer_id, signer_email: session.signer.email };
   }
 

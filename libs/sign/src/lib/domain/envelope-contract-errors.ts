@@ -62,3 +62,31 @@ export class IdempotencyRequestInProgressError extends Error {
     this.name = 'IdempotencyRequestInProgressError';
   }
 }
+
+// Aramo-Sign-Unified-Product-Amendment-M-A5 §3 / §4 — a hosted or self-sign session
+// could not be issued. Mapped by sign-service to an AramoError with this reason
+// (404 signer_not_found, 403 not_bound_to_you / email_not_verified, 409 otherwise).
+export type SessionIssueRefusal =
+  | 'signer_not_found'
+  | 'envelope_not_signable'
+  | 'not_in_person_signer'
+  | 'not_bound_to_you'
+  | 'email_not_verified'
+  | 'signer_ineligible'
+  | 'not_your_turn';
+
+export class SessionIssueRefusedError extends Error {
+  constructor(public readonly reason: SessionIssueRefusal) {
+    super(`signing session not issued: ${reason}`);
+    this.name = 'SessionIssueRefusedError';
+  }
+}
+
+// M-A5 §3.4 — a HOSTED session's disclosure acceptance must carry the name the
+// signer confirmed. Mapped to 400 attested_name_required.
+export class AttestedNameRequiredError extends Error {
+  constructor() {
+    super('attested_name is required to accept the disclosure in a hosted session');
+    this.name = 'AttestedNameRequiredError';
+  }
+}

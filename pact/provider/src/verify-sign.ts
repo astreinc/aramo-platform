@@ -126,6 +126,18 @@ const X_SIGNER_ID = '7a000000-0000-7000-8000-0000000000f2';
 const X_ENV_DOC_ID = '7a000000-0000-7000-8000-0000000000f6';
 const X_GRANT_ID = '7a000000-0000-7000-8000-0000000000f7';
 const TOKEN_EXECUTED = 'sign-web-pact-token-executed';
+// Aramo-Sign-Unified-Product-Amendment-M-A5 — the ON_SEND copy link (COPY_VIEW grant)
+// and a hosted session's disclosure with the attested name. MUST match
+// pact/consumers/sign-web-consumer/src/signer-session.consumer.test.ts.
+const CP_ENVELOPE_ID = '7a000000-0000-7000-8000-000000000101';
+const CP_SIGNER_ID = '7a000000-0000-7000-8000-000000000102';
+const CP_ENV_DOC_ID = '7a000000-0000-7000-8000-000000000106';
+const TOKEN_COPY = 'sign-web-pact-token-copy';
+const H_ENVELOPE_ID = '7a000000-0000-7000-8000-000000000111';
+const H_SIGNER_ID = '7a000000-0000-7000-8000-000000000112';
+const H_SESSION_ID = '7a000000-0000-7000-8000-000000000113';
+const H_ENV_DOC_ID = '7a000000-0000-7000-8000-000000000116';
+const TOKEN_HOSTED_DISCLOSURE = 'sign-web-pact-token-hosted-disclosure';
 
 // PX-1 — esign-web sender-console fixtures. MUST match
 // pact/consumers/sign-workspace-consumer/src/sender-console.consumer.test.ts. The
@@ -621,6 +633,33 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       );
     }
 
+    // M-A5 §2.2 — a SENT envelope (OWNED source) with an ON_SEND copy recipient holding
+    // a COPY_VIEW grant (only the token hash is stored). Fresh ids; idempotent.
+    async function seedCopyGrant(): Promise<void> {
+      const key = `esign/source/${TENANT_ID}/${CP_ENVELOPE_ID}/pact-copy`;
+      ownedSources.set(key, letterPdf);
+      await db.query(
+        `INSERT INTO "sign"."SignatureEnvelope" (id, tenant_id, subject, status, execution_mode, created_by, sent_at)
+         VALUES ($1,$2,'Offer Letter','SENT','SINGLE_SIGNATURE',$3, now()) ON CONFLICT (id) DO NOTHING`,
+        [CP_ENVELOPE_ID, TENANT_ID, CREATED_BY],
+      );
+      await db.query(
+        `INSERT INTO "sign"."EnvelopeDocument" (id, tenant_id, envelope_id, source_mode, source_object_key, content_type, byte_size, title, source_sha256, ordinal)
+         VALUES ($1,$2,$3,'OWNED',$4,'application/pdf',$5,'offer.pdf',$6,1) ON CONFLICT (id) DO NOTHING`,
+        [CP_ENV_DOC_ID, TENANT_ID, CP_ENVELOPE_ID, key, letterPdf.byteLength, createHash('sha256').update(letterPdf).digest('hex')],
+      );
+      await db.query(
+        `INSERT INTO "sign"."Signer" (id, tenant_id, envelope_id, email, name, signing_order, status, recipient_kind, copy_delivery)
+         VALUES ($1,$2,$3,'casey@example.com','Casey Copy',2,'PENDING','RECEIVES_COPY','ON_SEND') ON CONFLICT (id) DO NOTHING`,
+        [CP_SIGNER_ID, TENANT_ID, CP_ENVELOPE_ID],
+      );
+      await db.query(
+        `INSERT INTO "sign"."ExecutedAccessGrant" (id, tenant_id, envelope_id, signer_id, token_hash, expires_at, access_kind)
+         VALUES (gen_random_uuid(),$1,$2,$3,$4, now() + interval '30 days','COPY_VIEW') ON CONFLICT (token_hash) DO NOTHING`,
+        [TENANT_ID, CP_ENVELOPE_ID, CP_SIGNER_ID, hashToken(TOKEN_COPY)],
+      );
+    }
+
     // DOC-4C (R1 seam B) — seed a distinct COMPLETED envelope with an executed
     // document + execution certificate so the executed-artifact pull resolves. NO
     // delete (fresh id; SignatureEvent append-only).
@@ -906,6 +945,16 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           },
           'a signer has a signed-copy access link for a completed envelope': async () => {
             await seedSignedCopyGrant();
+          },
+          // M-A5 §2.2 — the ON_SEND copy link.
+          'a copy recipient has a copy link for a sent envelope': async () => {
+            await seedCopyGrant();
+          },
+          // M-A5 §3.4 — a HOSTED session (in-person signer) awaiting the disclosure.
+          'a hosted signer session is ready to accept disclosure': async () => {
+            await seedSignerFixture({ envelopeId: H_ENVELOPE_ID, envDocId: H_ENV_DOC_ID, signerId: H_SIGNER_ID, sessionId: H_SESSION_ID, token: TOKEN_HOSTED_DISCLOSURE });
+            await db.query(`UPDATE "sign"."Signer" SET recipient_kind='IN_PERSON_SIGNER' WHERE id=$1`, [H_SIGNER_ID]);
+            await db.query(`UPDATE "sign"."SigningSession" SET origin='HOSTED', host_user_id=$2, expires_at = now() + interval '30 minutes' WHERE id=$1`, [H_SESSION_ID, CREATED_BY]);
           },
           'a signer session is ready to accept disclosure': async () => {
             await seedSignerFixture({ envelopeId: D_ENVELOPE_ID, envDocId: D_ENV_DOC_ID, signerId: D_SIGNER_ID, sessionId: D_SESSION_ID, token: TOKEN_DISCLOSURE });

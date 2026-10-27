@@ -117,7 +117,7 @@ describe('mergeAgreements + filters', () => {
     expect(secondaryLine(mergeAgreements([sent('COMPLETED')], null)[0]!)).toBe('All signed');
     expect(secondaryLine(mergeAgreements([sent('EXPIRED')], null)[0]!)).toBe('Link expired');
     const declined = sent('DECLINED', {
-      recipients: [{ id: 'x', name: 'Jo Doe', email: 'j@x', status: 'DECLINED' }],
+      recipients: [{ id: 'x', name: 'Jo Doe', email: 'j@x', status: 'DECLINED', recipient_kind: 'SIGNER' }],
     });
     expect(secondaryLine(mergeAgreements([declined], null)[0]!)).toBe('by Jo Doe');
     expect(secondaryLine(mergeAgreements([], inbox({ waiting: [needs] }))[0]!)).toBe(

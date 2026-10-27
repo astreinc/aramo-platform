@@ -57,6 +57,8 @@ const { like, uuid, integer, eachLike, regex } = MatchersV3;
 //  16. PATCH /v1/sign/sender/envelopes/{id} (stale If-Match) 412 revision_mismatch
 //  17. POST  /v1/sign/sender/contacts                       201 SenderContact
 // Privacy Notice 1.1 remediation E-6 — the in-service notice of an upcoming legal version:
+// Aramo-Sign-Unified-Product-Amendment-M-A5 §1 / §2 / §7:
+//  19. PUT   /v1/sign/sender/envelopes/{id}/recipients (a signer + a copy recipient with its timing)
 //  18. GET   /v1/sign/legal/notices                         200 { notices: [] } (nothing announced:
 //      the shipped upcoming-change list is empty; legalApi.notices of apps/sign-web/src/workspace/api.ts)
 
@@ -318,6 +320,46 @@ describe('esign-web → PUT /v1/sign/sender/envelopes/{id}/recipients', () => {
         expect(res.status).toBe(200);
         const body = (await res.json()) as { recipients: unknown[] };
         expect(body.recipients.length).toBe(1);
+      });
+  });
+});
+
+// Aramo-Sign-Unified-Product-Amendment-M-A5 §1 / §2 — recipient kinds: a copy
+// recipient (with its copy timing) beside a signer; omitted kind = SIGNER.
+describe('esign-web → PUT recipients with a copy recipient (M-A5)', () => {
+  it('replaces the draft recipients with a signer and a recipient who receives a copy', async () => {
+    const recipients = {
+      recipients: [
+        { name: 'Jane Doe', email: 'jane@example.com', recipient_kind: 'SIGNER', copy_delivery: null },
+        { name: 'Casey Copy', email: 'casey@example.com', recipient_kind: 'RECEIVES_COPY', copy_delivery: 'ON_COMPLETION' },
+      ],
+    };
+    await provider
+      .addInteraction()
+      .given('a sender draft envelope exists', { envelope_id: RECIPIENTS_ENVELOPE_ID })
+      .uponReceiving('a recipients replace with a copy recipient from the Aramo Sign console')
+      .withRequest('PUT', `${BASE}/envelopes/${RECIPIENTS_ENVELOPE_ID}/recipients`, (b) => {
+        b.headers(JSON_HEADERS).jsonBody(recipients);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          id: RECIPIENTS_ENVELOPE_ID,
+          status: 'DRAFT',
+          recipients: [
+            { id: uuid('e5000000-0000-7000-8000-0000000000d4'), name: 'Jane Doe', email: 'jane@example.com', status: 'PENDING', signing_order: 1, recipient_kind: 'SIGNER', copy_delivery: null, assigned_to_me: false, can_remind: false },
+            { id: uuid('e5000000-0000-7000-8000-0000000000d5'), name: 'Casey Copy', email: 'casey@example.com', status: 'PENDING', signing_order: 2, recipient_kind: 'RECEIVES_COPY', copy_delivery: 'ON_COMPLETION', assigned_to_me: false, can_remind: false },
+          ],
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}${BASE}/envelopes/${RECIPIENTS_ENVELOPE_ID}/recipients`, {
+          method: 'PUT',
+          headers: JSON_HEADERS,
+          body: JSON.stringify(recipients),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { recipients: { recipient_kind: string }[] };
+        expect(body.recipients.map((r) => r.recipient_kind)).toEqual(['SIGNER', 'RECEIVES_COPY']);
       });
   });
 });

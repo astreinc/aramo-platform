@@ -53,7 +53,15 @@ export interface SenderRecipientInput {
   // Existing signer id to keep (and update), or absent for a new recipient.
   id?: string;
   name: string;
-  email: string;
+  // M-A5 §3.5 — null only for an IN_PERSON_SIGNER.
+  email: string | null;
+  // M-A5 §1 — omitted ⇒ SIGNER (the column default; every existing caller).
+  recipient_kind?: 'SIGNER' | 'IN_PERSON_SIGNER' | 'RECEIVES_COPY';
+  // M-A5 §2.1 — required iff RECEIVES_COPY.
+  copy_delivery?: 'ON_SEND' | 'ON_COMPLETION' | 'BOTH' | null;
+  // M-A5 §4.1 — set by the service to the caller's user id (Assign to me); never
+  // taken from the request body.
+  bound_user_id?: string | null;
 }
 
 export interface SenderFieldInput {
@@ -118,7 +126,7 @@ export class EsignSenderRepository {
       orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       take: filter.limit,
       include: {
-        signers: { orderBy: { signing_order: 'asc' }, select: { id: true, name: true, email: true, status: true } },
+        signers: { orderBy: { signing_order: 'asc' }, select: { id: true, name: true, email: true, status: true, recipient_kind: true } },
         documents: { select: { id: true } },
       },
     });
@@ -235,8 +243,9 @@ export class EsignSenderRepository {
   // Sign Mobile M-A3 §5 — `created_by` keeps the list to the caller's own
   // envelopes unless they may read the whole organization (the visibility rule).
   async listPastRecipients(tenant_id: string, limit: number, created_by?: string) {
+    // M-A5 §3.5 — an in-person signer without an email is never a contact.
     return this.prisma.signer.findMany({
-      where: { tenant_id, envelope: { ...SENDER_AUTHORED, deleted_at: null, ...(created_by !== undefined ? { created_by } : {}) } },
+      where: { tenant_id, email: { not: null }, envelope: { ...SENDER_AUTHORED, deleted_at: null, ...(created_by !== undefined ? { created_by } : {}) } },
       orderBy: [{ envelope: { created_at: 'desc' } }],
       take: limit * 4,
       select: { name: true, email: true, envelope: { select: { id: true, created_at: true } } },
@@ -549,7 +558,7 @@ export class EsignSenderRepository {
       }
       for (const [i, r] of input.recipients.entries()) {
         if (r.id !== undefined) {
-          await tx.signer.update({ where: { id: r.id }, data: { name: r.name, email: r.email, signing_order: i + 1 } });
+          await tx.signer.update({ where: { id: r.id }, data: { name: r.name, email: r.email, signing_order: i + 1, ...recipientKindData(r) } });
         } else {
           await tx.signer.create({
             data: {
@@ -561,6 +570,7 @@ export class EsignSenderRepository {
               signing_order: i + 1,
               signer_role: null,
               status: 'PENDING',
+              ...recipientKindData(r),
             },
           });
         }
@@ -607,3 +617,14 @@ export class EsignSenderRepository {
 }
 
 export type { Db as SenderWorkspaceDb };
+
+// M-A5 §1 / §2 / §4 — the recipient-kind columns a PUT recipients item writes (a
+// full replacement: an omitted kind is SIGNER, an omitted binding is cleared).
+function recipientKindData(r: SenderRecipientInput): { recipient_kind: string; copy_delivery: string | null; bound_user_id: string | null } {
+  const kind = r.recipient_kind ?? 'SIGNER';
+  return {
+    recipient_kind: kind,
+    copy_delivery: kind === 'RECEIVES_COPY' ? (r.copy_delivery ?? null) : null,
+    bound_user_id: kind === 'RECEIVES_COPY' ? null : (r.bound_user_id ?? null),
+  };
+}
