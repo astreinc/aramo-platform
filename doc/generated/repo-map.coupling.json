@@ -10453,6 +10453,11 @@
       "to": "libs/identity/prisma/seed.ts"
     },
     {
+      "from": "apps/platform-web/src/document-templates/studio-theme.css",
+      "status": "unscoped",
+      "to": "libs/document-templates-web/src/studio/studio.css"
+    },
+    {
       "from": "apps/platform-web/src/tenants/tenant-roles.ts",
       "status": "production",
       "to": "scripts/verify-vocabulary.sh"

@@ -681,6 +681,7 @@
     ],
     "@aramo/document-templates-web": [
       "CheckIcon",
+      "DEFAULT_STUDIO_CONTENT_CODEC",
       "DOC_TEMPLATE_AUTHOR_SCOPE",
       "DOC_TEMPLATE_MANAGE_SCOPE",
       "DOC_TEMPLATE_READ_SCOPE",
@@ -688,9 +689,11 @@
       "DocIconSmall",
       "DocTemplateRoutesProvider",
       "EyeIcon",
+      "LETTERHEAD_STUDIO_CONTENT_CODEC",
       "Letterhead",
       "LockIcon",
       "ORG_DOC_TEMPLATE_ROUTES",
+      "PLATFORM_STUDIO_COPY",
       "PlusIcon",
       "PreviewModal",
       "PreviewPaper",
@@ -699,8 +702,11 @@
       "RTR_HTML_SCHEMA_V1",
       "RtrDraftEditor",
       "RtrTemplateDetail",
+      "STUDIO_HTML_CONTENT_VERSION",
+      "STUDIO_LETTERHEAD_HTML",
       "SafeDoc",
       "SampleValues",
+      "TemplateStudio",
       "activateTemplateVersion",
       "adoptTemplate",
       "appendStudioVariable",
@@ -721,6 +727,7 @@
       "getTemplateVersion",
       "htmlOf",
       "isCanonicalStudioHtml",
+      "isStudioLetterheadBlock",
       "isStudioValueEmpty",
       "listDocumentTemplates",
       "listTemplateSelections",
@@ -737,7 +744,12 @@
       "studioActiveMarks",
       "studioBlocksFromHtml",
       "studioBlocksToHtml",
+      "studioContentBlocks",
+      "studioDocFromHtml",
+      "studioDocHasLetterhead",
+      "studioDocToHtml",
       "studioInsertAtRange",
+      "studioLetterheadState",
       "studioPasteNodes",
       "studioPlainText",
       "studioPreviewParts",
@@ -3492,6 +3504,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-studio-1-b12-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tenant-write-freeze.interceptor.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -5989,6 +6007,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-studio-1-b12-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tenant-llm-controller.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -8460,12 +8484,6 @@
     "@aramo/document-templates-web": [
       { "project": "aramo-ats-web", "status": "production" },
       { "project": "aramo-home-web", "status": "production" },
-      {
-        "excludedBy": "src/**/*.spec.ts",
-        "from": "apps/platform-web/src/document-templates/studio/studio-units.spec.ts",
-        "project": "aramo-platform-web",
-        "status": "excluded"
-      },
       { "project": "aramo-platform-web", "status": "production" },
       {
         "excludedBy": "src/**/*.spec.tsx",
@@ -8629,6 +8647,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tb1-requisition-talent-board.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-studio-1-b12-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -9646,6 +9670,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/settings/sections/ComplianceSection.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/settings/sections/DocumentTemplatesRedirect.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
       },
