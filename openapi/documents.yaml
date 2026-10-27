@@ -1686,6 +1686,14 @@ components:
                 sha256: { type: string }
                 mime: { type: string, enum: [image/png, image/jpeg] }
             - type: 'null'
+        signing:
+          description: >
+            Amendment M-A6 §3.2 — the template's signing roles (validated and kept on PATCH; frozen and fingerprinted
+            with the version). Omitted on PATCH ⇒ the draft's existing roles are kept; null ⇒ removed. Absent ⇒ the
+            single signature block, exactly as before.
+          oneOf:
+            - $ref: '#/components/schemas/SignTemplateSigning'
+            - type: 'null'
     TemplateLogoCaptureResponse:
       type: object
       required: [asset_id, sha256, mime]
@@ -2156,10 +2164,44 @@ components:
         value:
           type: [string, 'null']
           description: The tenant-profile value of an ORGANIZATION variable; null for SENDER.
+    SignTemplateRole:
+      type: object
+      additionalProperties: false
+      description: Amendment M-A6 §3.2 — one signing role of a template version. SIGNER roles sign (one signature block each); CC roles receive a copy.
+      required: [role_key, label, kind, order]
+      properties:
+        role_key: { type: string, pattern: '^[a-z][a-z0-9_]{0,39}$' }
+        label: { type: string, maxLength: 60 }
+        kind:
+          type: string
+          enum: [SIGNER, CC]
+        order: { type: integer, minimum: 1 }
+    SignTemplateSigning:
+      type: object
+      additionalProperties: false
+      description: Amendment M-A6 §3.2 — the rtr-html-v1 field_schema.signing member (frozen and fingerprinted with the version).
+      required: [roles, routing_mode]
+      properties:
+        roles:
+          type: array
+          minItems: 1
+          maxItems: 20
+          items:
+            $ref: '#/components/schemas/SignTemplateRole'
+        routing_mode:
+          type: string
+          enum: [PARALLEL, SEQUENTIAL]
+        default_subject: { type: string, maxLength: 200 }
+        default_message: { type: string, maxLength: 1000 }
     SignTemplateSummary:
       type: object
       additionalProperties: false
-      required: [template_id, name, description, document_type, owner_scope, resolution, version_id, version_number, updated_at, variables]
+      description: >
+        Amendment M-A6 §3.1 (ADR-0034 D6 amended for Sign listing) — one of EVERY ACTIVE template the tenant may use
+        (its own TENANT templates and the Aramo defaults it adopted); the user chooses. is_default marks the template the
+        automatic per-type resolution picks (unchanged for ATS and every flow that never asks the user).
+      required:
+        [template_id, name, description, document_type, owner_scope, resolution, is_default, version_id, version_number, updated_at, variables, category, signer_role_count, cc_role_count, document_count, routing_mode, signing]
       properties:
         template_id: { type: string, format: uuid }
         name: { type: string }
@@ -2177,7 +2219,9 @@ components:
           enum: [PLATFORM, TENANT]
         resolution:
           type: string
-          enum: [CLIENT_SELECTION, TENANT_SELECTION, PLATFORM_DEFAULT, WITHDRAWAL_FALLBACK]
+          enum: [CLIENT_SELECTION, TENANT_SELECTION, PLATFORM_DEFAULT, WITHDRAWAL_FALLBACK, AVAILABLE]
+          description: The automatic-resolution step that picks this template, or AVAILABLE (usable, not the automatic choice).
+        is_default: { type: boolean }
         version_id: { type: string, format: uuid }
         version_number: { type: integer }
         updated_at: { type: string, format: date-time }
@@ -2185,6 +2229,22 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SignTemplateVariable'
+        category:
+          type: string
+          description: M-A6 §3.7 — the document type's name.
+        signer_role_count:
+          type: integer
+          description: SIGNER roles (1 for a template without signing roles — the single signature block).
+        cc_role_count: { type: integer }
+        document_count: { type: integer }
+        routing_mode:
+          type: string
+          enum: [PARALLEL, SEQUENTIAL]
+        signing:
+          description: The template's signing roles; null for a template without them.
+          oneOf:
+            - $ref: '#/components/schemas/SignTemplateSigning'
+            - type: 'null'
     SignTemplateListResponse:
       type: object
       additionalProperties: false
@@ -2213,7 +2273,7 @@ components:
     SignTemplatePreviewResponse:
       type: object
       additionalProperties: false
-      required: [template_id, version_id, version_number, title, blocks, html, letterhead, variables]
+      required: [template_id, version_id, version_number, title, blocks, html, letterhead, variables, signing]
       properties:
         template_id: { type: string, format: uuid }
         version_id: { type: string, format: uuid }
@@ -2242,6 +2302,10 @@ components:
           type: array
           items:
             $ref: '#/components/schemas/SignTemplateVariable'
+        signing:
+          oneOf:
+            - $ref: '#/components/schemas/SignTemplateSigning'
+            - type: 'null'
     SignTemplateRenderRequest:
       type: object
       additionalProperties: false
@@ -2255,11 +2319,16 @@ components:
     SignTemplateSignatureField:
       type: object
       additionalProperties: false
+      description: >
+        A renderer-drawn placement. Without signing roles — SIGNATURE and SIGN_DATE of the single block, no role_key.
+        With roles (M-A6 §3.3) — SIGNATURE, SIGNER_NAME (printed name, filled by Sign) and SIGN_DATE per SIGNER role,
+        each with its role_key.
       required: [field_type, page_number, x, y, width, height]
       properties:
+        role_key: { type: string }
         field_type:
           type: string
-          enum: [SIGNATURE, SIGN_DATE]
+          enum: [SIGNATURE, SIGNER_NAME, SIGN_DATE]
         page_number: { type: integer, description: 0-based }
         x: { type: number }
         y: { type: number }
@@ -2268,7 +2337,7 @@ components:
     SignTemplateRenderResponse:
       type: object
       additionalProperties: false
-      required: [document_id, document_revision_ref, source_sha256, byte_size, title, template_id, template_version_id, version_number, signature_fields, field_definitions]
+      required: [document_id, document_revision_ref, source_sha256, byte_size, title, template_id, template_version_id, version_number, signature_fields, field_definitions, signing]
       properties:
         document_id: { type: string, format: uuid }
         document_revision_ref: { type: string, format: uuid }
@@ -2298,3 +2367,7 @@ components:
               y: { type: [number, 'null'] }
               width: { type: [number, 'null'] }
               height: { type: [number, 'null'] }
+        signing:
+          oneOf:
+            - $ref: '#/components/schemas/SignTemplateSigning'
+            - type: 'null'

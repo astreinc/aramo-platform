@@ -85,6 +85,31 @@ export interface SenderFieldInput {
   name_mode?: string | null;
 }
 
+// Amendment M-A6 §3.5 — one template role bound to a recipient. recipient_kind and
+// copy_delivery are the M-A5 §1–§2 columns (owned by migration
+// 20261028100000_sign_recipient_kinds); a SIGNER row leaves both to their defaults.
+export interface TemplateRecipientInput {
+  role_key: string;
+  name: string;
+  email: string;
+  signing_order: number;
+  recipient_kind: 'SIGNER' | 'RECEIVES_COPY';
+  copy_delivery?: 'ON_SEND' | 'ON_COMPLETION' | 'BOTH';
+}
+
+// A template field placed for a role (assigned to that role's signer at bind time).
+export interface TemplateFieldInput {
+  envelope_document_id: string;
+  role_key: string;
+  field_type: string;
+  page_number: number;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  required: boolean;
+}
+
 // Sign Mobile D-W6-2 — one page of a source PDF, in points (MediaBox).
 export interface DocumentPageSize {
   width: number;
@@ -269,13 +294,114 @@ export class EsignSenderRepository {
 
   // ── DRAFT authoring writes ─────────────────────────────────────────────────
 
-  async createDraft(input: { tenant_id: string; subject: string; created_by: string }) {
+  async createDraft(input: { tenant_id: string; subject: string; created_by: string; template_ref?: string; template_version_ref?: string }) {
     return this.repo.createEnvelope({
       tenant_id: input.tenant_id,
       subject: input.subject,
       execution_mode: 'SINGLE_SIGNATURE',
       created_by: input.created_by,
       source_application: 'aramo-sign',
+      // M-A6 §3.6 — a from-template draft records the template + exact version (written once).
+      ...(input.template_ref !== undefined && input.template_version_ref !== undefined
+        ? { template_ref: input.template_ref, template_version_ref: input.template_version_ref }
+        : {}),
+    });
+  }
+
+  // Amendment M-A5 §1–§2 — whether this database carries the recipient-kind columns
+  // (Signer.recipient_kind / copy_delivery, migration 20261028100000_sign_recipient_kinds,
+  // owned by the recipient-kinds slice). Template CC roles bind only when it does; the
+  // answer is cached once true.
+  private recipientKinds: boolean | null = null;
+  async recipientKindsAvailable(): Promise<boolean> {
+    if (this.recipientKinds === true) return true;
+    const rows = await this.prisma.$queryRaw<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM information_schema.columns
+      WHERE table_schema = 'sign' AND table_name = 'Signer' AND column_name IN ('recipient_kind', 'copy_delivery')`;
+    const ok = (rows[0]?.n ?? 0) === 2;
+    if (ok) this.recipientKinds = true;
+    return ok;
+  }
+
+  // Amendment M-A6 §3.5 — bind a from-template draft in ONE transaction: the routing
+  // mode, the message, one recipient per template role (Signer.signer_role = role_key,
+  // signing_order = role order) and the template's fields assigned to their role's
+  // signer. This is the INTERNAL path: the template's field types are written as the
+  // template defines them (the engine's DB CHECK still applies), never limited by the
+  // public authoring whitelist. Copy recipients (template CC roles) carry the M-A5
+  // recipient_kind / copy_delivery columns and never get fields. Replaces any recipients
+  // and fields the draft has (a fresh draft has none).
+  async bindTemplateDraft(input: {
+    tenant_id: string;
+    envelope_id: string;
+    routing_mode: 'PARALLEL' | 'SEQUENTIAL';
+    message: string | null;
+    recipients: readonly TemplateRecipientInput[];
+    fields: readonly TemplateFieldInput[];
+  }) {
+    return this.prisma.$transaction(async (tx) => {
+      await this.assertDraft(tx, input.tenant_id, input.envelope_id);
+      const docs = await tx.envelopeDocument.findMany({ where: { tenant_id: input.tenant_id, envelope_id: input.envelope_id }, select: { id: true } });
+      const docIds = new Set(docs.map((d) => d.id));
+      if (docIds.size > 0) await tx.signatureField.deleteMany({ where: { tenant_id: input.tenant_id, envelope_document_id: { in: [...docIds] } } });
+      await tx.signer.deleteMany({ where: { tenant_id: input.tenant_id, envelope_id: input.envelope_id } });
+      const signing = input.recipients.filter((r) => r.recipient_kind === 'SIGNER');
+      await tx.signatureEnvelope.update({
+        where: { id: input.envelope_id },
+        data: {
+          routing_mode: input.routing_mode,
+          message: input.message,
+          execution_mode: signing.length > 1 ? 'MULTI_SIGNATURE' : 'SINGLE_SIGNATURE',
+        },
+      });
+      const byRole = new Map<string, string>();
+      for (const r of input.recipients) {
+        const id = randomUUID();
+        if (r.recipient_kind === 'RECEIVES_COPY') {
+          // M-A5 §1/§2 columns (added by 20261028100000_sign_recipient_kinds). Raw SQL so this
+          // slice compiles without them in its generated client; the caller checks
+          // recipientKindsAvailable() first.
+          await tx.$executeRaw`
+            INSERT INTO "sign"."Signer" ("id", "tenant_id", "envelope_id", "email", "name", "signing_order", "signer_role", "status", "recipient_kind", "copy_delivery")
+            VALUES (${id}::uuid, ${input.tenant_id}::uuid, ${input.envelope_id}::uuid, ${r.email}, ${r.name}, ${r.signing_order}, ${r.role_key}, 'PENDING', 'RECEIVES_COPY', ${r.copy_delivery ?? 'ON_COMPLETION'})`;
+        } else {
+          await tx.signer.create({
+            data: {
+              id,
+              tenant_id: input.tenant_id,
+              envelope_id: input.envelope_id,
+              name: r.name,
+              email: r.email,
+              signing_order: r.signing_order,
+              signer_role: r.role_key,
+              status: 'PENDING',
+            },
+          });
+        }
+        byRole.set(r.role_key, id);
+      }
+      for (const f of input.fields) {
+        if (!docIds.has(f.envelope_document_id)) throw new EnvelopeNotFoundError(`document ${f.envelope_document_id}`);
+        const signer_id = byRole.get(f.role_key);
+        const recipient = input.recipients.find((r) => r.role_key === f.role_key);
+        if (signer_id === undefined || recipient?.recipient_kind !== 'SIGNER') throw new EnvelopeNotFoundError(`role ${f.role_key}`);
+        await tx.signatureField.create({
+          data: {
+            id: randomUUID(),
+            tenant_id: input.tenant_id,
+            envelope_document_id: f.envelope_document_id,
+            signer_id,
+            field_type: f.field_type,
+            page_number: f.page_number,
+            x: f.x,
+            y: f.y,
+            width: f.width,
+            height: f.height,
+            required: f.required,
+          },
+        });
+      }
+      return tx.signer.findMany({ where: { tenant_id: input.tenant_id, envelope_id: input.envelope_id }, orderBy: { signing_order: 'asc' } });
     });
   }
 

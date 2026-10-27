@@ -713,8 +713,11 @@
       "STUDIO_LETTERHEAD_HTML",
       "SafeDoc",
       "SampleValues",
+      "SignatureBlocksPreview",
+      "StudioRolesPanel",
       "TemplateStudio",
       "activateTemplateVersion",
+      "addRole",
       "adoptTemplate",
       "appendStudioVariable",
       "bindingMapFrom",
@@ -754,8 +757,10 @@
       "removeStudioVariable",
       "renderStudioBlockDom",
       "resolveUserNames",
+      "roleKeyFor",
       "serializeStudioBlockDom",
       "setTemplateSelection",
+      "signerRolesOf",
       "studioActiveMarks",
       "studioBlocksFromHtml",
       "studioBlocksToHtml",
@@ -769,6 +774,7 @@
       "studioPlainText",
       "studioPreviewParts",
       "studioReadableText",
+      "studioSigningOf",
       "studioToggleMark",
       "studioValueFromText",
       "studioVariableKeys",
@@ -838,6 +844,7 @@
       "RenderFailedError",
       "SafePdfPipeline",
       "UnsafePdfError",
+      "layoutRoleSignatureBlock",
       "layoutRuns",
       "layoutSignatureBlock",
       "manifestProjection",
@@ -6476,6 +6483,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/m-a6-field-definition-immutability.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/documents/src/tests/offer-start-prestart-doctype-seed.integration.spec.ts",
         "project": "documents",
         "status": "excluded"
@@ -7664,6 +7677,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/m-a6-from-template-roles.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/personal-free.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -8822,6 +8841,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/envelope-field-mapper.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/m-a6-from-template-roles.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -10681,6 +10706,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/m-a6-from-template-roles.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/organization-billing-profile.adapter.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -12458,6 +12489,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/launch-lifecycle.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/m-a6-from-template-roles.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

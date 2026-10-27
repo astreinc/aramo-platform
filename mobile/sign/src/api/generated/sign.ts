@@ -792,7 +792,7 @@ export interface paths {
         };
         /**
          * Document templates the organization can start an envelope from (DOC-TEMPLATE-LIB-1 T-5).
-         * @description Requires document_template:read (Sign Sender, Sign Admin, Tenant Admin, Tenant Owner). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while the sign.templates plan capability is not available. Templates are Documents-owned: sign-service reads them through the Documents API (signed service-to-service); for each document type the organization's active choice (client → organization → Aramo default) is listed with its variables — ORGANIZATION (from the organization profile) or SENDER (filled in when the envelope is created).
+         * @description Requires document_template:read (Sign Sender, Sign Admin, Tenant Admin, Tenant Owner). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while the sign.templates plan capability is not available. Templates are Documents-owned: sign-service reads them through the Documents API (signed service-to-service). Amendment M-A6 §3.1 (ADR-0034 D6 amended for Sign listing): EVERY ACTIVE template the organization may use (its own templates and the Aramo defaults it adopted) is listed and the user chooses; is_default marks the automatic per-type choice. Each item carries its variables — ORGANIZATION (from the organization profile) or SENDER (filled in when the envelope is created) — its signing roles and list metadata.
          */
         get: operations["listSenderTemplates"];
         put?: never;
@@ -834,7 +834,7 @@ export interface paths {
         put?: never;
         /**
          * Create a DRAFT envelope from a document template (DOC-TEMPLATE-LIB-1 T-5).
-         * @description Requires sign:envelope:create and document_template:read; refused for a PERSONAL tenant and while sign.templates is not available. Documents (apps/api) renders the template with the organization's branding and the sender's values into a frozen revision pinned to the exact template version; the draft's document references it (CORE_REF). With `signer`, that first signer is added and the template's signature area is placed for them. Idempotent on idempotency_key for the render.
+         * @description Requires sign:envelope:create and document_template:read; refused for a PERSONAL tenant and while sign.templates is not available. Documents (apps/api) renders the template with the organization's branding and the sender's values into a frozen revision pinned to the exact template version; the draft's document references it (CORE_REF) and records the template + version (template provenance, M-A6 §3.6). With `signer`, that first signer is added and the template's signature area is placed for them. Amendment M-A6 §3.5 — with `recipients` (mutually exclusive with `signer`; only for a template with signing roles) each SIGNER role is bound to exactly one recipient (signing order = role order) and its signature blocks are placed for them; `cc` binds CC roles as copy recipients (delivery at completion); emails are distinct across all of them; `routing_mode`, `message` and `subject` default to the template's. Every refusal (details.reason: signer_and_recipients, recipients_required, template_has_roles, template_has_no_roles, unknown_role, role_not_signer, role_not_cc, role_bound_twice, role_unbound, duplicate_email, routing_mode_invalid, too_many_signers, too_many_copy_recipients, copy_recipients_unavailable) happens before the render. Idempotent on idempotency_key for the render.
          */
         post: operations["createSenderEnvelopeFromTemplate"];
         delete?: never;
@@ -2169,16 +2169,83 @@ export interface components {
             /** @description ORG-UX-1 §6 — Organization → Users & product access (the single role-assignment surface), or null. */
             organization_roles_url?: string | null;
         };
+        /** @description Amendment M-A6 §3.2 — a template signing role. SIGNER roles sign; CC roles receive a copy. */
+        SenderTemplateRole: {
+            role_key: string;
+            label: string;
+            /** @enum {string} */
+            kind: "SIGNER" | "CC";
+            order: number;
+        };
+        SenderTemplateSigning: {
+            roles: components["schemas"]["SenderTemplateRole"][];
+            /** @enum {string} */
+            routing_mode: "PARALLEL" | "SEQUENTIAL";
+            default_subject?: string;
+            default_message?: string;
+        };
+        SenderTemplateRoleBinding: {
+            role_key: string;
+            name: string;
+            email: string;
+        };
+        SenderTemplateSignatureField: {
+            /** @enum {string} */
+            field_type: "SIGNATURE" | "SIGNER_NAME" | "SIGN_DATE";
+            /** @description The SIGNER role of the block (templates with signing roles only). */
+            role_key?: string;
+            page_number: number;
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+        };
+        SenderTemplateVariable: {
+            key: string;
+            label: string;
+            group: string;
+            /** @enum {string} */
+            source: "ORGANIZATION" | "SENDER";
+            value: string | null;
+        };
         SenderTemplateList: {
             items: {
                 /** Format: uuid */
                 template_id: string;
                 name: string;
+                description: string | null;
+                document_type: {
+                    /** Format: uuid */
+                    id: string;
+                    key: string;
+                    name: string;
+                };
                 /** @enum {string} */
                 owner_scope: "PLATFORM" | "TENANT";
+                /** @enum {string} */
+                resolution: "CLIENT_SELECTION" | "TENANT_SELECTION" | "PLATFORM_DEFAULT" | "WITHDRAWAL_FALLBACK" | "AVAILABLE";
+                /** @description The template the automatic per-type resolution picks (M-A6 §3.1). */
+                is_default: boolean;
+                /** Format: uuid */
+                version_id: string;
                 version_number: number;
+                /** Format: date-time */
+                updated_at: string;
+                variables: components["schemas"]["SenderTemplateVariable"][];
+                /** @description The document type's name (M-A6 §3.7). */
+                category: string;
+                signer_role_count: number;
+                cc_role_count: number;
+                document_count: number;
+                /** @enum {string} */
+                routing_mode: "PARALLEL" | "SEQUENTIAL";
+                signing: components["schemas"]["SenderTemplateSigning"] | null;
             }[];
-            unavailable: Record<string, never>[];
+            unavailable: {
+                /** Format: uuid */
+                document_type_id: string;
+                reason: string;
+            }[];
         };
         SignTokenRequest: {
             /** @enum {string} */
@@ -2358,6 +2425,8 @@ export interface components {
              * @description Sign Mobile M-A3 §7 — when a reminder to this signer is next allowed; null when allowed now or not remindable.
              */
             reminder_available_at: string | null;
+            /** @description Amendment M-A6 §3.5 — the template role this recipient was bound to (an envelope started from a template with roles); null otherwise. */
+            role_key?: string | null;
         };
         SenderExecutedDocuments: {
             /** Format: uuid */
@@ -4458,23 +4527,52 @@ export interface operations {
                         name: string;
                         email: string;
                     };
+                    /** @description M-A6 §3.5 — one recipient per SIGNER role of the template (mutually exclusive with signer). */
+                    recipients?: components["schemas"]["SenderTemplateRoleBinding"][];
+                    /** @description M-A6 §3.5 / M-A5 — copy recipients for CC roles of the template (delivery at completion). */
+                    cc?: components["schemas"]["SenderTemplateRoleBinding"][];
+                    /** @enum {string} */
+                    routing_mode?: "PARALLEL" | "SEQUENTIAL";
+                    message?: string | null;
                 };
             };
         };
         responses: {
-            /** @description The draft envelope (detail), the pinned template version and the template's signature areas. */
+            /** @description The draft envelope (detail), the pinned template version, the template's signature areas and its signing roles. */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": {
+                        envelope: Record<string, never>;
+                        template: {
+                            /** Format: uuid */
+                            template_id: string;
+                            /** Format: uuid */
+                            version_id: string;
+                            version_number: number;
+                        };
+                        suggested_fields: components["schemas"]["SenderTemplateSignatureField"][];
+                        field_definitions: Record<string, never>[];
+                        signing: components["schemas"]["SenderTemplateSigning"] | null;
+                    };
                 };
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["SenderUnauthorized"];
             403: components["responses"]["SenderForbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description Copy recipients are not available yet (details.reason copy_recipients_unavailable), or a template value the Documents API refused. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     issueSignAccessToken: {

@@ -1,15 +1,16 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { Link, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 
-import { errorMessage, senderApi, type SenderTemplate, type TemplatePreview } from '../api';
-import { Btn, Empty, ErrorBox, Field, Loading, TextIn, fmtDate } from '../ui';
+import { errorMessage, senderApi, type RoutingMode, type SenderTemplate, type TemplatePreview, type TemplateRole } from '../api';
+import { Area, Btn, Empty, ErrorBox, Field, Loading, Sel, TextIn, fmtDate } from '../ui';
 import { useWorkspace } from '../workspace';
 
 // DOC-TEMPLATE-LIB-1 T-5 — Implementation Directive v1.0 (LOCKED) §7.3–7.4 (ADR-0034 D6,
 // D7, D11, D12). Templates are Documents-owned and managed in Org Home; Aramo Sign keeps
-// only the "use" side: list the organization's templates (its active choice per document
-// type — client → organization → Aramo default), preview them with the organization's
-// branding, and start an envelope from one. Variables the organization profile does not
+// only the "use" side: list the organization's templates (Amendment M-A6 §3.1: every
+// template the organization may use; the user chooses), preview them with the
+// organization's branding, and start an envelope from one. M-A6 §3.5 — a template with
+// signing roles asks for one person per signing role (and optional copy recipients). Variables the organization profile does not
 // supply become fields the sender fills in. Every authority stays server-side (plan
 // capability, document_template:read, sign:envelope:create); this page only reflects it.
 //
@@ -103,8 +104,7 @@ function TemplateList() {
         </div>
       </div>
       <p className="sg-muted" style={{ marginTop: 0 }}>
-        Your organization’s document templates. Each document type uses your organization’s active choice — its own template or the Aramo default — with your
-        organization’s branding.
+        Your organization’s document templates, with your organization’s branding. Choose the one you need.
       </p>
       {error !== '' ? <ErrorBox>{error}</ErrorBox> : null}
       {items === null && error === '' ? <Loading /> : null}
@@ -126,9 +126,19 @@ function TemplateList() {
                 <div className="sg-row__main">
                   <div className="sg-row__t">{t.name}</div>
                   <div className="sg-row__s">
-                    {t.document_type.name} · {t.owner_scope === 'PLATFORM' ? 'Aramo default' : 'Your organization'} · v{t.version_number} · Updated{' '}
+                    {t.category ?? t.document_type.name} · {t.owner_scope === 'PLATFORM' ? 'Aramo default' : 'Your organization'} · v{t.version_number} · Updated{' '}
                     {fmtDate(t.updated_at)}
                   </div>
+                  <div className="sg-row__s" data-testid={`template-meta-${t.template_id}`}>
+                    {templateMeta(t)}
+                    {t.is_default === true ? (
+                      <>
+                        {' '}
+                        <span className="sg-tag sg-tag--grey">Default for {t.document_type.name}</span>
+                      </>
+                    ) : null}
+                  </div>
+                  {t.description !== null && t.description.trim() !== '' ? <div className="sg-row__s sg-faint">{t.description}</div> : null}
                 </div>
                 <Btn size="sm" onClick={() => setPreviewing(previewing === t.template_id ? null : t.template_id)} aria-expanded={previewing === t.template_id}>
                   {previewing === t.template_id ? 'Hide preview' : 'Preview'}
@@ -191,6 +201,16 @@ function PreviewPanel({ template, values }: { template: SenderTemplate; values: 
   );
 }
 
+// M-A6 §3.7 — "2 signers · 1 copy · signs in order".
+function templateMeta(t: SenderTemplate): string {
+  const signers = t.signer_role_count ?? 1;
+  const copies = t.cc_role_count ?? 0;
+  const parts = [`${signers} ${signers === 1 ? 'signer' : 'signers'}`];
+  if (copies > 0) parts.push(`${copies} ${copies === 1 ? 'copy' : 'copies'}`);
+  if (signers > 1) parts.push((t.routing_mode ?? 'PARALLEL') === 'SEQUENTIAL' ? 'signs in order' : 'signs in any order');
+  return parts.join(' · ');
+}
+
 function newKey(): string {
   const c = globalThis.crypto as Crypto | undefined;
   if (c !== undefined && typeof c.randomUUID === 'function') return c.randomUUID();
@@ -210,6 +230,10 @@ function UseTemplate() {
   const [subject, setSubject] = useState('');
   const [signerName, setSignerName] = useState('');
   const [signerEmail, setSignerEmail] = useState('');
+  // M-A6 §3.5 — one person per template role (role_key → name / email).
+  const [people, setPeople] = useState<Record<string, { name: string; email: string }>>({});
+  const [routing, setRouting] = useState<RoutingMode | null>(null);
+  const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const [showPreview, setShowPreview] = useState(false);
@@ -245,6 +269,34 @@ function UseTemplate() {
 
   const missing = senderVars.filter((v) => (values[v.key] ?? '').trim() === '').map((v) => v.label);
   const signerPartial = (signerName.trim() === '') !== (signerEmail.trim() === '');
+  // M-A6 §3.5 — role binding: every signing role needs a person; a copy role is optional
+  // (both or neither); emails are distinct across everyone.
+  const roles: TemplateRole[] = (template.signing?.roles ?? []).slice().sort((a, b) => a.order - b.order);
+  const hasRoles = roles.length > 0;
+  const personOf = (k: string) => people[k] ?? { name: '', email: '' };
+  const unboundSigners = roles.filter((r) => r.kind === 'SIGNER' && (personOf(r.role_key).name.trim() === '' || personOf(r.role_key).email.trim() === '')).map((r) => r.label);
+  const partialCopies = roles.filter((r) => r.kind === 'CC' && (personOf(r.role_key).name.trim() === '') !== (personOf(r.role_key).email.trim() === '')).map((r) => r.label);
+  const duplicateEmail = (() => {
+    const seen = new Set<string>();
+    for (const r of roles) {
+      const e = personOf(r.role_key).email.trim().toLowerCase();
+      if (e === '') continue;
+      if (seen.has(e)) return personOf(r.role_key).email.trim();
+      seen.add(e);
+    }
+    return null;
+  })();
+  const roleProblem = !hasRoles
+    ? null
+    : unboundSigners.length > 0
+      ? `Add a person for: ${unboundSigners.join(', ')}`
+      : partialCopies.length > 0
+        ? `Give a name and email for ${partialCopies.join(', ')}, or neither`
+        : duplicateEmail !== null
+          ? `${duplicateEmail} is used twice. Each person needs their own email address.`
+          : null;
+  const routingValue: RoutingMode = routing ?? template.signing?.routing_mode ?? 'PARALLEL';
+  const messageValue = message ?? template.signing?.default_message ?? '';
 
   const create = async () => {
     setError('');
@@ -257,7 +309,20 @@ function UseTemplate() {
         values: filled,
         idempotency_key: idempotencyKey.current,
         ...(subject.trim() !== '' ? { subject: subject.trim() } : {}),
-        ...(signerName.trim() !== '' && signerEmail.trim() !== '' ? { signer: { name: signerName.trim(), email: signerEmail.trim() } } : {}),
+        ...(hasRoles
+          ? {
+              recipients: roles
+                .filter((r) => r.kind === 'SIGNER')
+                .map((r) => ({ role_key: r.role_key, name: personOf(r.role_key).name.trim(), email: personOf(r.role_key).email.trim() })),
+              cc: roles
+                .filter((r) => r.kind === 'CC' && personOf(r.role_key).email.trim() !== '')
+                .map((r) => ({ role_key: r.role_key, name: personOf(r.role_key).name.trim(), email: personOf(r.role_key).email.trim() })),
+              routing_mode: routingValue,
+              message: messageValue.trim() === '' ? null : messageValue.trim(),
+            }
+          : signerName.trim() !== '' && signerEmail.trim() !== ''
+            ? { signer: { name: signerName.trim(), email: signerEmail.trim() } }
+            : {}),
       });
       refreshCounts();
       nav(`${base}/envelopes/${out.envelope.id}/edit?step=2`);
@@ -295,19 +360,71 @@ function UseTemplate() {
               </Field>
             ))}
             <Field label="Email subject (optional)" htmlFor="tpl-subject">
-              <TextIn id="tpl-subject" value={subject} maxLength={200} placeholder={template.name} onChange={(e) => setSubject(e.target.value)} />
+              <TextIn id="tpl-subject" value={subject} maxLength={200} placeholder={template.signing?.default_subject ?? template.name} onChange={(e) => setSubject(e.target.value)} />
             </Field>
-            <div className="sg-grid sg-grid--2">
-              <Field label="First signer’s name (optional)" htmlFor="tpl-signer-name">
-                <TextIn id="tpl-signer-name" value={signerName} onChange={(e) => setSignerName(e.target.value)} />
-              </Field>
-              <Field label="First signer’s email (optional)" htmlFor="tpl-signer-email">
-                <TextIn id="tpl-signer-email" type="email" value={signerEmail} onChange={(e) => setSignerEmail(e.target.value)} />
-              </Field>
-            </div>
-            <div className="sg-help">The first signer gets the template’s signature area. You can add more signers and fields in the next steps.</div>
+            {hasRoles ? null : (
+              <>
+                <div className="sg-grid sg-grid--2">
+                  <Field label="First signer’s name (optional)" htmlFor="tpl-signer-name">
+                    <TextIn id="tpl-signer-name" value={signerName} onChange={(e) => setSignerName(e.target.value)} />
+                  </Field>
+                  <Field label="First signer’s email (optional)" htmlFor="tpl-signer-email">
+                    <TextIn id="tpl-signer-email" type="email" value={signerEmail} onChange={(e) => setSignerEmail(e.target.value)} />
+                  </Field>
+                </div>
+                <div className="sg-help">The first signer gets the template’s signature area. You can add more signers and fields in the next steps.</div>
+              </>
+            )}
           </div>
         </section>
+        {hasRoles ? (
+          <section className="sg-card" data-testid="template-roles">
+            <div className="sg-card__head">Who signs</div>
+            <div className="sg-card__body sg-grid" style={{ gap: 12 }}>
+              {roles.map((r) => (
+                <div key={r.role_key} className="sg-grid" style={{ gap: 6 }} data-testid={`template-role-${r.role_key}`}>
+                  <div className="sg-label">
+                    {r.label}{' '}
+                    <span className="sg-tag sg-tag--grey">{r.kind === 'SIGNER' ? 'Signs' : 'Receives a copy when signing is complete'}</span>
+                  </div>
+                  <div className="sg-grid sg-grid--2">
+                    <Field label={r.kind === 'SIGNER' ? 'Name' : 'Name (optional)'} htmlFor={`role-name-${r.role_key}`}>
+                      <TextIn
+                        id={`role-name-${r.role_key}`}
+                        data-testid={`role-name-${r.role_key}`}
+                        value={personOf(r.role_key).name}
+                        maxLength={200}
+                        onChange={(e) => setPeople((p) => ({ ...p, [r.role_key]: { ...personOf(r.role_key), name: e.target.value } }))}
+                      />
+                    </Field>
+                    <Field label={r.kind === 'SIGNER' ? 'Email' : 'Email (optional)'} htmlFor={`role-email-${r.role_key}`}>
+                      <TextIn
+                        id={`role-email-${r.role_key}`}
+                        data-testid={`role-email-${r.role_key}`}
+                        type="email"
+                        value={personOf(r.role_key).email}
+                        maxLength={254}
+                        onChange={(e) => setPeople((p) => ({ ...p, [r.role_key]: { ...personOf(r.role_key), email: e.target.value } }))}
+                      />
+                    </Field>
+                  </div>
+                </div>
+              ))}
+              {roles.filter((r) => r.kind === 'SIGNER').length > 1 ? (
+                <Field label="Signing order" htmlFor="tpl-routing">
+                  <Sel id="tpl-routing" data-testid="template-routing" value={routingValue} onChange={(e) => setRouting(e.target.value as RoutingMode)}>
+                    <option value="PARALLEL">Sign in any order</option>
+                    <option value="SEQUENTIAL">Sign in the order above</option>
+                  </Sel>
+                </Field>
+              ) : null}
+              <Field label="Message to recipients (optional)" htmlFor="tpl-message">
+                <Area id="tpl-message" data-testid="template-message" rows={3} maxLength={1000} value={messageValue} onChange={(e) => setMessage(e.target.value)} />
+              </Field>
+              <div className="sg-help">Each person signs in their own signature block. You can review the fields in the next steps.</div>
+            </div>
+          </section>
+        ) : null}
         <section className="sg-card">
           <div className="sg-card__head">From your organization</div>
           {orgVars.length === 0 ? <div className="sg-empty">Nothing from your organization profile is used.</div> : null}
@@ -341,8 +458,16 @@ function UseTemplate() {
         <Btn
           variant="primary"
           data-testid="create-from-template"
-          disabled={busy || missing.length > 0 || signerPartial}
-          title={missing.length > 0 ? `Fill in: ${missing.join(', ')}` : signerPartial ? 'Give the signer’s name and email, or neither' : undefined}
+          disabled={busy || missing.length > 0 || (!hasRoles && signerPartial) || roleProblem !== null}
+          title={
+            missing.length > 0
+              ? `Fill in: ${missing.join(', ')}`
+              : roleProblem !== null
+                ? roleProblem
+                : !hasRoles && signerPartial
+                  ? 'Give the signer’s name and email, or neither'
+                  : undefined
+          }
           onClick={() => void create()}
         >
           {busy ? 'Creating…' : 'Create envelope'}

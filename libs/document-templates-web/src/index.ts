@@ -163,6 +163,15 @@ export {
 } from './studio/organization-source';
 export { LETTERHEAD_SAVE_BLOCKED } from './studio/TemplateStudio';
 export type { StudioSection, StudioLetterheadApi } from './studio/data-source';
+// Amendment M-A6 §3.2 / §3.8 — template signing roles (Roles tab, per-role signature blocks).
+export {
+  studioSigningOf,
+  type StudioSigning,
+  type StudioSigningRole,
+  type StudioSigningRoleKind,
+  type StudioRoutingMode,
+} from './studio/data-source';
+export { StudioRolesPanel, SignatureBlocksPreview, addRole, roleKeyFor, signerRolesOf } from './studio/StudioRolesPanel';
 // TEMPLATE-STUDIO-1 S-2 (directive §4) — the Org gallery's read-only source (an Aramo default,
 // current version only, Preview with the tenant's branding).
 export {

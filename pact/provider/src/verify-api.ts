@@ -561,6 +561,13 @@ const DOCUMENTS_ORG_UX_1_MIGRATION = resolve(
   ROOT,
   'libs/documents/prisma/migrations/20261022130000_org_ux_1_template_adoption_and_legacy_selection/migration.sql',
 );
+// M-A6 (LOCKED) §3.4/§4 — the TemplateFieldDefinition immutability trigger (refuses
+// insert/update/delete unless the parent TemplateVersion is DRAFT). Registered per the
+// amendment; after ORG-UX-1 (it only needs the DOC-2 tables).
+const DOCUMENTS_M_A6_FIELD_DEFINITION_IMMUTABILITY_MIGRATION = resolve(
+  ROOT,
+  'libs/documents/prisma/migrations/20261028110000_doc_template_field_definition_immutability/migration.sql',
+);
 // R2 (DEF-12) — the signature-routing store (SignatureRequestRoute) the Sign lifecycle receiver
 // reads to resolve an ended envelope's Document; without it the receiver cannot answer.
 const SIGNATURE_ROUTING_INIT_MIGRATION = resolve(
@@ -3677,6 +3684,7 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         // R2 (DEF-12) — DECLINED status + the signature-routing store.
         DOCUMENTS_R2_DECLINED_MIGRATION,
         DOCUMENTS_ORG_UX_1_MIGRATION,
+        DOCUMENTS_M_A6_FIELD_DEFINITION_IMMUTABILITY_MIGRATION,
         SIGNATURE_ROUTING_INIT_MIGRATION,
         SIGNATURE_ROUTING_OAUTH_STATE_MIGRATION,
         TALENT_EVIDENCE_INIT_MIGRATION,
@@ -5187,6 +5195,62 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
              ON CONFLICT ("tenant_id","document_type_id","client_id") DO UPDATE SET "template_id" = EXCLUDED."template_id", "legacy_platform" = true`,
             [TENANT_ID, RTR_TYPE, TPL, ACTOR],
           );
+        });
+      },
+      // Amendment M-A6 §3 — a TENANT rtr-html-v1 template with signing roles (2 SIGNER + 1 CC)
+      // under its OWN tenant (so the lists of the default-template state never include it).
+      // No selection: it is usable but not the automatic per-type choice (resolution AVAILABLE).
+      'a tenant template with signing roles is usable for the tenant': async () => {
+        await withClient(async (c) => {
+          const ROLES_TENANT = '11111111-1111-7111-8111-1111111111a6';
+          const TPL = 'd0c4c000-0000-7000-8000-0000000000a1';
+          const VER = 'd0c4c000-0000-7000-8000-0000000000a2';
+          const RTR_TYPE = 'd0c50005-0000-7000-8000-000000000001';
+          const ACTOR = 'd0c4c000-0000-7000-8000-0000000000ac';
+          await c.query(`ALTER TABLE identity."Tenant" ADD COLUMN IF NOT EXISTS status text NOT NULL DEFAULT 'PROVISIONED'`);
+          await c.query(
+            `INSERT INTO identity."Tenant" (id, name, status, is_active, updated_at) VALUES ($1::uuid, 'pact-m-a6-roles', 'ACTIVE', true, now()) ON CONFLICT (id) DO NOTHING`,
+            [ROLES_TENANT],
+          );
+          await c.query(
+            `INSERT INTO documents."DocumentType" ("id","tenant_id","key","name","description","scope","execution_mode_default","retention_class","system_defined","active")
+             VALUES ($1::uuid,NULL,'RIGHT_TO_REPRESENT','Right to Represent','Talent authorization (pact seed).','SYSTEM','SINGLE_SIGNATURE','CONTRACT_RECORD',true,true)
+             ON CONFLICT ("id") DO NOTHING`,
+            [RTR_TYPE],
+          );
+          await c.query(`DELETE FROM documents."IdempotencyKey" WHERE "tenant_id" = $1::uuid`, [ROLES_TENANT]);
+          await c.query(
+            `INSERT INTO documents."DocumentTemplate" ("id","tenant_id","owner_scope","document_type_id","client_id","name","description","template_kind","status","current_version_id","created_by","updated_at")
+             VALUES ($1::uuid,$2::uuid,'TENANT',$3::uuid,NULL,'Mutual Agreement','Two-party agreement (pact seed).','GENERATED','ACTIVE',NULL,$4::uuid,now())
+             ON CONFLICT ("id") DO NOTHING`,
+            [TPL, ROLES_TENANT, RTR_TYPE, ACTOR],
+          );
+          await c.query(
+            `INSERT INTO documents."TemplateVersion" ("id","tenant_id","template_id","version_number","status","render_schema_version","field_schema","created_by","activated_at")
+             VALUES ($1::uuid,$2::uuid,$3::uuid,1,'ACTIVE','rtr-html-v1',$4::jsonb,$5::uuid,now())
+             ON CONFLICT ("id") DO NOTHING`,
+            [
+              VER,
+              ROLES_TENANT,
+              TPL,
+              JSON.stringify({
+                render_schema_version: 'rtr-html-v1',
+                title: 'Mutual Agreement',
+                html: '<p>Agreement for <span data-field="requisition.title"></span>.</p>',
+                logo: null,
+                signing: {
+                  roles: [
+                    { role_key: 'client', label: 'Client', kind: 'SIGNER', order: 1 },
+                    { role_key: 'agency', label: 'Agency', kind: 'SIGNER', order: 2 },
+                    { role_key: 'hr_copy', label: 'HR copy', kind: 'CC', order: 3 },
+                  ],
+                  routing_mode: 'SEQUENTIAL',
+                },
+              }),
+              ACTOR,
+            ],
+          );
+          await c.query(`UPDATE documents."DocumentTemplate" SET "current_version_id" = $2::uuid WHERE "id" = $1::uuid AND "current_version_id" IS NULL`, [TPL, VER]);
         });
       },
       // E-Sign OC v2 (B8) — generic lifecycle webhook. Self-contained/no-op: the

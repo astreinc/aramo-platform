@@ -8,6 +8,7 @@ import { studioPlainText, studioPreviewParts } from '../studio-codec';
 import type { StudioSamplePreview } from './data-source';
 import { EmptyState } from './primitives';
 import { fitZoom, paginate, zoomIn, zoomOut } from './pagination';
+import { SignatureBlocksPreview } from './StudioRolesPanel';
 
 // PLATFORM-UX-1 F-9 (handoff §10.7 Preview) — the paginated A4 preview. The draft
 // preview is the server's sample render (POST …/versions/:id/preview); every page is
@@ -48,6 +49,11 @@ export interface StudioPreviewProps {
    * `zoom` exactly, as before.
    */
   readonly fitToWidth?: boolean;
+  /**
+   * Amendment M-A6 §3.8 — the template's SIGNER roles: the last page ends with one
+   * signature block per role, as Aramo Sign renders it. Empty / absent ⇒ unchanged.
+   */
+  readonly signatureRoles?: ReadonlyArray<{ readonly role_key: string; readonly label: string }>;
 }
 
 /** Horizontal padding of the `.pws-pv` region (24px each side, studio.css). */
@@ -168,6 +174,7 @@ export function StudioPreview(props: StudioPreviewProps) {
                 {i === 0 ? <h1 className="pws-pvpage__h1">{source.title}</h1> : null}
                 <div className="pws-pvpage__body">
                   <SafeDoc html={pg.map((k) => parts[k]?.html ?? '').join('')} map={props.map} mode={source.mode} letterhead={null} />
+                  {i === pages.length - 1 && (props.signatureRoles?.length ?? 0) > 0 ? <SignatureBlocksPreview roles={props.signatureRoles ?? []} /> : null}
                 </div>
                 <div className="pws-pvpage__foot">
                   <span className="pws-mono">

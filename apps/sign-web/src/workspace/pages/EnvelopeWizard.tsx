@@ -291,6 +291,8 @@ interface DraftRecipient {
   kind: RecipientKind;
   copy: CopyDelivery;
   assign: boolean;
+  // Amendment M-A6 §3.5 — the template role this recipient fills (from-template), if any.
+  role_key?: string | null;
 }
 
 // M-A5 §6.2 — the web Role select. In person is offered only once web hosting exists
@@ -307,6 +309,12 @@ function roleLabel(kind: RecipientKind | undefined): string {
   return 'Needs to sign';
 }
 
+// "client_signer" → "Client signer" (the role key the server bound; display only).
+function templateRoleLabel(roleKey: string): string {
+  const t = roleKey.replace(/_+/g, ' ').trim();
+  return t.length === 0 ? roleKey : t.charAt(0).toUpperCase() + t.slice(1);
+}
+
 function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; onChange: (d: EnvelopeDetail) => void; back: string; next: string }) {
   const { ctx } = useWorkspace();
   const nav = useNavigate();
@@ -318,6 +326,7 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
     kind: r.recipient_kind ?? 'SIGNER',
     copy: r.copy_delivery ?? 'ON_COMPLETION',
     assign: r.assigned_to_me === true,
+    role_key: r.role_key ?? null,
   });
   const [list, setList] = useState<DraftRecipient[]>(() => env.recipients.map(toDraft));
   const [contacts, setContacts] = useState<ContactRow[]>([]);
@@ -514,6 +523,11 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                   <span style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                    {r.role_key != null ? (
+                      <span className="sg-tag sg-tag--grey" data-testid="template-role" title="The template role this recipient was added for">
+                        {templateRoleLabel(r.role_key)}
+                      </span>
+                    ) : null}
                     {ordered && r.kind !== 'RECEIVES_COPY' ? (
                       <span className="sg-tag sg-tag--dark" data-testid="signing-position">
                         Signs {i + 1}

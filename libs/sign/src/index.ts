@@ -9,6 +9,8 @@ export {
   type SenderEnvelopeListFilter,
   type SenderRecipientInput,
   type SenderFieldInput,
+  type TemplateRecipientInput,
+  type TemplateFieldInput,
   type SenderDocumentRow,
   type DocumentPageSize,
   DELETED_DRAFT_SUBJECT,

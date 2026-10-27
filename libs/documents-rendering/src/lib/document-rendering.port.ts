@@ -26,6 +26,12 @@ export interface RenderModel {
   // PRINTED NAME · DATE SIGNED. Not template content (admins cannot remove it); the
   // domain supplies the bound printed name. Absent ⇒ no block (offer letter, legacy).
   signature_block?: SignatureBlockModel;
+  // Amendment M-A6 (LOCKED) §3.3 — multi-role templates: when present the renderer draws
+  // ONE block per SIGNER role, in this order (SIGNATURE · PRINTED NAME · DATE SIGNED under
+  // the role's label) INSTEAD of `signature_block`. The printed name is NOT drawn: it is a
+  // SIGNER_NAME placement Sign fills. Every placement carries the block's role_key. Absent
+  // ⇒ the single block above, byte-identical to before.
+  signature_blocks?: SignatureRoleBlockModel[];
   // Amendment A1 §2.3 (rtr-html-v1) — RICH content: when present the renderer draws these
   // structured blocks (headings, paragraphs with bold/italic/underline runs, bulleted and
   // numbered lists) INSTEAD of `blocks`. The domain converts its allowlisted content into
@@ -68,6 +74,13 @@ export interface SignatureBlockModel {
   printed_name: string;
 }
 
+// M-A6 §3.3 — one SIGNER role's block. `label` is the role label printed above the block
+// (validated printable Latin-1 at authoring, so the standard fonts can draw it).
+export interface SignatureRoleBlockModel {
+  role_key: string;
+  label: string;
+}
+
 // Where the renderer drew each signature-block field (PDF user space: 0-based page,
 // bottom-left origin, points) — the geometry an e-sign envelope needs to place
 // SIGNATURE / SIGNER_NAME / SIGN_DATE fields over the frozen artifact.
@@ -78,6 +91,9 @@ export interface SignatureFieldPlacement {
   y: number;
   width: number;
   height: number;
+  // M-A6 §3.3 — the SIGNER role this placement belongs to (multi-role blocks only;
+  // absent for the single fixed block).
+  role_key?: string;
 }
 
 // A resolved field placement for the UPLOADED_PDF overlay path.
@@ -131,7 +147,7 @@ export interface RenderedOutput {
   sha256: string;
   page_count: number;
   provenance: RenderProvenance;
-  // B2 — present iff the model carried a signature_block.
+  // B2 — present iff the model carried a signature_block (or, M-A6, signature_blocks).
   signature_fields?: SignatureFieldPlacement[];
 }
 

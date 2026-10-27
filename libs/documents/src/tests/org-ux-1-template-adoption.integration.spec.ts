@@ -79,14 +79,17 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
       await db.query(
         `INSERT INTO "documents"."TemplateVersion"
            (id, tenant_id, template_id, version_number, status, render_schema_version, field_schema, created_by, activated_at)
-         VALUES ($1,NULL,$2,1,'ACTIVE','v1',$3::jsonb,$4,now())`,
+         VALUES ($1,NULL,$2,1,'DRAFT','v1',$3::jsonb,$4,NULL)`,
         [versionId, templateId, JSON.stringify({ blocks: [{ type: 'TEXT', text: opts?.body ?? 'Aramo wording v1' }] }), ACTOR],
       );
+      // M-A6 §3.4 — field definitions are written while the version is DRAFT (the
+      // 20261028110000 trigger refuses them on an ACTIVE version), then it is activated.
       await db.query(
         `INSERT INTO "documents"."TemplateFieldDefinition" (id, template_version_id, field_key, field_type, binding_key, required, ordinal)
          VALUES ($1,$2,'talent_signature','SIGNATURE',NULL,true,1)`,
         [randomUUID(), versionId],
       );
+      await db.query(`UPDATE "documents"."TemplateVersion" SET status = 'ACTIVE', activated_at = now() WHERE id = $1`, [versionId]);
       await db.query(`UPDATE "documents"."DocumentTemplate" SET current_version_id = $1 WHERE id = $2`, [versionId, templateId]);
       return { templateId, versionId };
     }

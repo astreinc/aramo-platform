@@ -120,6 +120,8 @@ export interface Recipient {
   decline_reason: string | null;
   // Multi-Signer — an unsigned signer who may sign now (any order, or their turn).
   can_remind?: boolean;
+  // Amendment M-A6 §3.5 — the template role this recipient was bound to; null otherwise.
+  role_key?: string | null;
 }
 
 // M-A6 §2.1 — the types a sender authors (the server's FIELD_TYPES).
@@ -239,6 +241,21 @@ export interface TemplateVariable {
   value: string | null;
 }
 
+// Amendment M-A6 §3.2 — a template's signing roles: SIGNER roles sign (one signature block
+// each), CC roles receive a copy.
+export interface TemplateRole {
+  role_key: string;
+  label: string;
+  kind: 'SIGNER' | 'CC';
+  order: number;
+}
+export interface TemplateSigning {
+  roles: TemplateRole[];
+  routing_mode: RoutingMode;
+  default_subject?: string;
+  default_message?: string;
+}
+
 export interface SenderTemplate {
   template_id: string;
   name: string;
@@ -246,10 +263,26 @@ export interface SenderTemplate {
   document_type: { id: string; key: string; name: string };
   owner_scope: 'PLATFORM' | 'TENANT';
   resolution: string;
+  // M-A6 §3.1 — the template the organization's automatic choice picks for its type.
+  is_default?: boolean;
   version_id: string;
   version_number: number;
   updated_at: string;
   variables: TemplateVariable[];
+  // M-A6 §3.7 — list metadata.
+  category?: string;
+  signer_role_count?: number;
+  cc_role_count?: number;
+  document_count?: number;
+  routing_mode?: RoutingMode;
+  signing?: TemplateSigning | null;
+}
+
+// M-A6 §3.5 — one template role bound to a person.
+export interface TemplateRoleBinding {
+  role_key: string;
+  name: string;
+  email: string;
 }
 
 export interface TemplatePreview {
@@ -266,7 +299,8 @@ export interface TemplatePreview {
 export interface FromTemplateResult {
   envelope: EnvelopeDetail;
   template: { template_id: string; version_id: string; version_number: number };
-  suggested_fields: { field_type: 'SIGNATURE' | 'SIGN_DATE'; page_number: number; x: number; y: number; width: number; height: number }[];
+  suggested_fields: { field_type: 'SIGNATURE' | 'SIGNER_NAME' | 'SIGN_DATE'; page_number: number; x: number; y: number; width: number; height: number; role_key?: string }[];
+  signing?: TemplateSigning | null;
 }
 
 // Aramo Sign launch — self-service billing (/v1/sign/billing/*). The backend is
@@ -499,6 +533,11 @@ export const senderApi = {
     subject?: string;
     idempotency_key?: string;
     signer?: { name: string; email: string };
+    // M-A6 §3.5 — role binding (mutually exclusive with signer).
+    recipients?: TemplateRoleBinding[];
+    cc?: TemplateRoleBinding[];
+    routing_mode?: RoutingMode;
+    message?: string | null;
   }) => apiClient.post<FromTemplateResult>(`${BASE}/envelopes/from-template`, body),
 };
 

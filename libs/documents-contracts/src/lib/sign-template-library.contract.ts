@@ -35,18 +35,51 @@ export interface SignTemplateVariable {
   readonly value: string | null;
 }
 
+// Amendment M-A6 (LOCKED) §3.2 — a template version's signing roles (rtr-html-v1
+// field_schema.signing). SIGNER roles sign (one signature block each); CC roles receive a
+// copy (M-A5 recipient kinds). `order` is the signing order (SEQUENTIAL routing).
+export type SignTemplateRoleKind = 'SIGNER' | 'CC';
+export type SignTemplateRoutingMode = 'PARALLEL' | 'SEQUENTIAL';
+
+export interface SignTemplateRole {
+  readonly role_key: string;
+  readonly label: string;
+  readonly kind: SignTemplateRoleKind;
+  readonly order: number;
+}
+
+export interface SignTemplateSigning {
+  readonly roles: readonly SignTemplateRole[];
+  readonly routing_mode: SignTemplateRoutingMode;
+  readonly default_subject?: string;
+  readonly default_message?: string;
+}
+
 export interface SignTemplateSummary {
   readonly template_id: string;
   readonly name: string;
   readonly description: string | null;
   readonly document_type: { readonly id: string; readonly key: string; readonly name: string };
   readonly owner_scope: 'PLATFORM' | 'TENANT';
-  // CLIENT_SELECTION | TENANT_SELECTION | PLATFORM_DEFAULT | WITHDRAWAL_FALLBACK
+  // CLIENT_SELECTION | TENANT_SELECTION | PLATFORM_DEFAULT | WITHDRAWAL_FALLBACK — the step
+  // of the automatic per-type resolution that selects this template — or AVAILABLE (M-A6
+  // §3.1): usable, but not the template the automatic resolution picks.
   readonly resolution: string;
+  // M-A6 §3.1 — true for the template the automatic per-type resolution picks (the one ATS
+  // and other flows that never ask the user would use).
+  readonly is_default: boolean;
   readonly version_id: string;
   readonly version_number: number;
   readonly updated_at: string;
   readonly variables: readonly SignTemplateVariable[];
+  // M-A6 §3.7 — list metadata.
+  readonly category: string; // = document_type.name
+  readonly signer_role_count: number; // 1 for a template without `signing` (the talent block)
+  readonly cc_role_count: number;
+  readonly document_count: number;
+  readonly routing_mode: SignTemplateRoutingMode;
+  // The template's roles; null for a template without `signing` (the single talent block).
+  readonly signing: SignTemplateSigning | null;
 }
 
 export interface SignTemplateListResponse {
@@ -70,6 +103,8 @@ export interface SignTemplatePreviewResponse {
   readonly html: string | null;
   readonly letterhead: { readonly organization_name: string | null; readonly logo_available: boolean };
   readonly variables: readonly SignTemplateVariable[];
+  // M-A6 §3.2 — the version's roles (null without `signing`).
+  readonly signing: SignTemplateSigning | null;
 }
 
 export interface SignTemplateRenderRequest {
@@ -82,14 +117,18 @@ export interface SignTemplateRenderRequest {
 }
 
 // A signature-area placement the renderer drew on the frozen revision (PDF-native frame:
-// page_number 0-based, points, origin bottom-left).
+// page_number 0-based, points, origin bottom-left). M-A6 §3.3 — for a template with
+// `signing` there is one block per SIGNER role: SIGNATURE, SIGNER_NAME (the printed name
+// Sign fills) and SIGN_DATE, each carrying its role_key. Without `signing`: SIGNATURE and
+// SIGN_DATE of the single block, no role_key (unchanged).
 export interface SignTemplateSignatureField {
-  readonly field_type: 'SIGNATURE' | 'SIGN_DATE';
+  readonly field_type: 'SIGNATURE' | 'SIGNER_NAME' | 'SIGN_DATE';
   readonly page_number: number;
   readonly x: number;
   readonly y: number;
   readonly width: number;
   readonly height: number;
+  readonly role_key?: string;
 }
 
 export interface SignTemplateFieldDefinition {
@@ -116,6 +155,8 @@ export interface SignTemplateRenderResponse {
   readonly version_number: number;
   readonly signature_fields: readonly SignTemplateSignatureField[];
   readonly field_definitions: readonly SignTemplateFieldDefinition[];
+  // M-A6 §3.2 — the pinned version's roles (null without `signing`).
+  readonly signing: SignTemplateSigning | null;
 }
 
 // Deterministic digest of a JSON body: sha256 (hex) over a key-sorted canonical JSON

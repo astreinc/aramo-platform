@@ -237,6 +237,102 @@ describe('Sign workspace App', () => {
     expect((calls[0]?.body as Record<string, unknown>)['values']).not.toHaveProperty('organization.name');
   });
 
+  // Amendment M-A6 §3.5 / §3.7 — a template with signing roles: list metadata, one person
+  // per signing role (copy roles optional), routing + message from the template, sent as
+  // recipients / cc (never the single signer).
+  it('Templates — list metadata of a multi-role template (signers, copies, routing)', async () => {
+    const base = stubFetch(ctx({ features: { templates: true }, permissions: { read: true, create: true, send: true, templates: true } }));
+    const tpl = {
+      template_id: 'tpl-2', name: 'Mutual Agreement', description: 'Two-party agreement',
+      document_type: { id: 'dt', key: 'RIGHT_TO_REPRESENT', name: 'Right to Represent' },
+      owner_scope: 'TENANT', resolution: 'AVAILABLE', is_default: false, version_id: 'v1', version_number: 1, updated_at: '2026-10-21T00:00:00Z',
+      variables: [{ key: 'requisition.title', label: 'Requisition title', group: 'Requisition', source: 'SENDER', value: null }],
+      category: 'Right to Represent', signer_role_count: 2, cc_role_count: 1, document_count: 1, routing_mode: 'SEQUENTIAL',
+      signing: {
+        roles: [
+          { role_key: 'client', label: 'Client', kind: 'SIGNER', order: 1 },
+          { role_key: 'agency', label: 'Agency', kind: 'SIGNER', order: 2 },
+          { role_key: 'hr_copy', label: 'HR copy', kind: 'CC', order: 3 },
+        ],
+        routing_mode: 'SEQUENTIAL',
+        default_message: 'Please sign',
+      },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const u = String(input);
+        if (u.endsWith('/v1/sign/sender/templates')) return json({ items: [tpl], unavailable: [] });
+        return base(input, init);
+      }),
+    );
+    renderAt('/sign/templates');
+    expect(await screen.findByTestId('template-meta-tpl-2')).toHaveTextContent('2 signers · 1 copy · signs in order');
+  });
+
+  it('Use template — multi-role binding: every signing role needs a person; distinct emails; recipients + cc are sent', async () => {
+    const base = stubFetch(ctx({ features: { templates: true }, permissions: { read: true, create: true, send: true, templates: true } }));
+    const calls: Array<{ url: string; body: unknown }> = [];
+    const tpl = {
+      template_id: 'tpl-2', name: 'Mutual Agreement', description: null,
+      document_type: { id: 'dt', key: 'RIGHT_TO_REPRESENT', name: 'Right to Represent' },
+      owner_scope: 'TENANT', resolution: 'AVAILABLE', is_default: false, version_id: 'v1', version_number: 1, updated_at: '2026-10-21T00:00:00Z',
+      variables: [],
+      category: 'Right to Represent', signer_role_count: 2, cc_role_count: 1, document_count: 1, routing_mode: 'SEQUENTIAL',
+      signing: {
+        roles: [
+          { role_key: 'client', label: 'Client', kind: 'SIGNER', order: 1 },
+          { role_key: 'agency', label: 'Agency', kind: 'SIGNER', order: 2 },
+          { role_key: 'hr_copy', label: 'HR copy', kind: 'CC', order: 3 },
+        ],
+        routing_mode: 'SEQUENTIAL',
+        default_message: 'Please sign',
+      },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const u = String(input);
+        if (u.endsWith('/v1/sign/sender/templates')) return json({ items: [tpl], unavailable: [] });
+        if (u.endsWith('/v1/sign/sender/envelopes/from-template')) {
+          calls.push({ url: u, body: JSON.parse(String(init?.body ?? '{}')) });
+          return json({ envelope: { id: 'env-10' }, template: { template_id: 'tpl-2', version_id: 'v1', version_number: 1 }, suggested_fields: [], signing: tpl.signing }, 201);
+        }
+        return base(input, init);
+      }),
+    );
+    renderAt('/sign/templates/tpl-2/use');
+    await screen.findByTestId('template-roles');
+    expect(screen.queryByLabelText('First signer’s name (optional)')).toBeNull();
+    const create = screen.getByTestId('create-from-template');
+    expect(create).toBeDisabled();
+    fireEvent.change(screen.getByTestId('role-name-client'), { target: { value: 'Casey Client' } });
+    fireEvent.change(screen.getByTestId('role-email-client'), { target: { value: 'casey@client.test' } });
+    fireEvent.change(screen.getByTestId('role-name-agency'), { target: { value: 'Avery Agency' } });
+    fireEvent.change(screen.getByTestId('role-email-agency'), { target: { value: 'CASEY@client.test' } });
+    expect(create).toBeDisabled();
+    fireEvent.change(screen.getByTestId('role-email-agency'), { target: { value: 'avery@agency.test' } });
+    expect(create).not.toBeDisabled();
+    fireEvent.change(screen.getByTestId('role-name-hr_copy'), { target: { value: 'HR' } });
+    expect(create).toBeDisabled();
+    fireEvent.change(screen.getByTestId('role-email-hr_copy'), { target: { value: 'hr@client.test' } });
+    expect(screen.getByTestId('template-routing')).toHaveValue('SEQUENTIAL');
+    expect(screen.getByTestId('template-message')).toHaveValue('Please sign');
+    fireEvent.click(create);
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]?.body).toMatchObject({
+      template_id: 'tpl-2',
+      recipients: [
+        { role_key: 'client', name: 'Casey Client', email: 'casey@client.test' },
+        { role_key: 'agency', name: 'Avery Agency', email: 'avery@agency.test' },
+      ],
+      cc: [{ role_key: 'hr_copy', name: 'HR', email: 'hr@client.test' }],
+      routing_mode: 'SEQUENTIAL',
+      message: 'Please sign',
+    });
+    expect(calls[0]?.body).not.toHaveProperty('signer');
+  });
+
   it('Templates — available but no document_template:read: no access message', async () => {
     vi.stubGlobal('fetch', stubFetch(ctx({ features: { templates: true }, permissions: { read: true, create: true, send: true, templates: false } })));
     renderAt('/sign/templates');
