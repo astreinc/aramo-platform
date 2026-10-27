@@ -689,9 +689,15 @@
       "DocIconSmall",
       "DocTemplateRoutesProvider",
       "EyeIcon",
+      "LETTERHEAD_SAVE_BLOCKED",
       "LETTERHEAD_STUDIO_CONTENT_CODEC",
       "Letterhead",
       "LockIcon",
+      "ORGANIZATION_APPROVE_CONSEQUENCE",
+      "ORGANIZATION_SCOPE_CARD",
+      "ORGANIZATION_STUDIO_API",
+      "ORGANIZATION_STUDIO_SECTIONS",
+      "ORGANIZATION_VARIABLES_NOTE",
       "ORG_DOC_TEMPLATE_ROUTES",
       "PLATFORM_STUDIO_COPY",
       "PlusIcon",
@@ -733,6 +739,9 @@
       "listTemplateSelections",
       "listTemplateVersions",
       "makeStudioChip",
+      "organizationReadinessLabel",
+      "organizationStudioCopy",
+      "organizationStudioDataSource",
       "previewContentFrom",
       "previewTemplateDefault",
       "previewTemplateVersion",
@@ -1698,17 +1707,22 @@
       "OrgCheck",
       "OrgModal",
       "OrgPageHeader",
+      "OrgStudioHost",
+      "OrgTemplateStudio",
       "RolesMatrixView",
       "SHARED_SETUP_HEADING",
       "canApproveTemplates",
       "canAuthorTemplates",
       "fetchMe",
+      "isOrgStudioPath",
       "orgSectionByKey",
       "orgSectionForPath",
       "orgSectionLabel",
       "orgSectionsFor",
+      "orgStudioErrorMessage",
       "useMe",
       "useOrgAccess",
+      "useOrgStudioAccount",
       "useSetupChecklist"
     ],
     "@aramo/outbox-publisher": [
@@ -8491,6 +8505,12 @@
         "project": "org-admin-web",
         "status": "excluded"
       },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/document-templates/OrgTemplateStudio.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
       { "project": "org-admin-web", "status": "production" }
     ],
     "@aramo/documents": [
@@ -10083,6 +10103,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "libs/org-admin-web/src/document-templates/DocumentTemplates.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/document-templates/OrgTemplateStudio.spec.tsx",
         "project": "org-admin-web",
         "status": "excluded"
       },

@@ -31710,6 +31710,11 @@
       "to": "libs/org-admin-web/tsconfig.lib.json"
     },
     {
+      "from": "libs/org-admin-web/src/document-templates/studio-theme.css",
+      "status": "unscoped",
+      "to": "libs/document-templates-web/src/studio/studio.css"
+    },
+    {
       "from": "libs/org-admin-web/src/users/types.ts",
       "status": "production",
       "to": "libs/identity/src/lib/identity.repository.ts"
