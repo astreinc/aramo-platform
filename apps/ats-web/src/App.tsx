@@ -56,7 +56,7 @@ import {
   IntegrationsSection,
   PortalSection,
 } from './settings/sections/SeamSections';
-import { DocumentTemplatesMovedSection } from './settings/sections/DocumentTemplatesMovedSection';
+import { DocumentTemplatesRedirect } from './settings/sections/DocumentTemplatesRedirect';
 import { SubmittalWizard } from './submittals/SubmittalWizard';
 import { SubmittalWorkspaceView } from './submittal-workspace/SubmittalWorkspaceView';
 import { MyTasksView } from './task/MyTasksView';
@@ -695,14 +695,14 @@ export function App() {
                                   (Settings → Recruiting). Non-enforcing until a
                                   policy is published; edit/publish self-gate on
                                   engagement:policy:write. */}
-                              {/* DOC-TEMPLATE-LIB-1 T-4 (§8.4) — the ATS document-
-                                  templates section is retired: template administration
-                                  lives in Org Home (/org/document-templates). The old
-                                  paths (incl. the RTR detail / draft deep links) show
-                                  one "Manage templates in Org Home" link. */}
+                              {/* TEMPLATE-STUDIO-1 S-4 (§1.8) — ATS Settings has no
+                                  Document templates page (DOC-TEMPLATE-LIB-1 T-4 retired
+                                  it). The rail links to App Home /org/document-templates
+                                  (Organization · shared); the old paths (incl. the RTR
+                                  detail / draft deep links) redirect there. */}
                               <Route
                                 path="settings/document-templates/*"
-                                element={<DocumentTemplatesMovedSection />}
+                                element={<DocumentTemplatesRedirect />}
                               />
                               <Route
                                 path="settings/engagement-policy"

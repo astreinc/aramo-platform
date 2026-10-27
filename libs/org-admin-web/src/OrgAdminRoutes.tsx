@@ -62,7 +62,7 @@ export function OrgAdminRoutes({ session }: OrgAdminRoutesProps) {
           <Route path="sites" element={adminOnly(<SitesPage />)} />
           <Route path="domain" element={adminOnly(<DomainPage />)} />
           <Route path="settings" element={adminOnly(<SettingsPage />)} />
-          <Route path="document-templates/*" element={<DocumentTemplatesRoutes session={session} />} />
+          <Route path="document-templates/*" element={<DocumentTemplatesRoutes session={session} organizationHref={admin ? '/org/overview' : null} admin={admin} />} />
           <Route path="audit" element={adminOnly(<AuditPage />)} />
           {/* D-ORG paths folded into the section set. */}
           <Route path="security" element={<Navigate to="/org/domain" replace />} />

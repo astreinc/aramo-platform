@@ -12,18 +12,21 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 
 import { OrgAdminRoutes } from '../OrgAdminRoutes';
 
-import { AramoDefaultPreview } from './AramoDefaultPreview';
+import { AramoDefaultStudio, actionFor } from './AramoDefaultStudio';
 import { CreateOwnTemplate } from './CreateOwnTemplate';
 import { fetchTemplateNotices, noticeMessage, parseNotices } from './notices-api';
 import { LEGACY_BANNER_TEXT, OurTemplatesPage } from './OurTemplatesPage';
 import { RESPONSIBILITY_SENTENCE, TemplateGalleryPage } from './TemplateGalleryPage';
-import { categoryCounts, GALLERY_ENTRIES } from './templates-view';
+import { buildGalleryCards, categoryCounts } from './templates-view';
 
 // ORG-UX-1 (Directive v1.0 LOCKED §4.1, §5, §8.8; handoff rev. Oct 21 §6.8/§6.9) — Our
 // templates (table, legacy "Aramo starting point" banner, footnote to the gallery), the
 // Template gallery (category chips + counts, horizontal cards, Adopt for supported types
 // and authors only, "In Our templates", "Not configurable yet"), create your own (no copy),
-// the branded default preview, the withdrawal banner, and the org_access-driven routing.
+// the withdrawal banner, and the org_access-driven routing. TEMPLATE-STUDIO-1 S-2 (directive
+// §4): the gallery is built from the backend library (published Aramo defaults only; no
+// static cards); a card opens the Aramo default in the shared Studio, read only, in Preview;
+// Adopt is the Studio's header action (authors / managers only) → the new tenant template.
 
 const RTR = 'd0c50005-0000-7000-8000-000000000001';
 function makeSession(scopes: readonly string[]): Session {
@@ -100,7 +103,6 @@ function renderGallery(props: Partial<Parameters<typeof TemplateGalleryPage>[0]>
   const fns = {
     session: AUTHOR,
     libraryFn: vi.fn().mockResolvedValue(NO_OWN),
-    adoptFn: vi.fn().mockResolvedValue({ template: { id: 'adopted-1' }, version: { id: 'v1' } }),
     ...props,
   };
   render(
@@ -150,95 +152,223 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe('Template gallery (§6.9 revised)', () => {
+// Library fixtures beyond RTR: an Aramo default of a future publishable type, a tenant item
+// of another type, a default whose type is not template-driven, and an unmapped type.
+const OFFER = 'dt-offer';
+const NDA = 'dt-nda';
+const ODD = 'dt-odd';
+const WIDE: TemplateLibraryView = {
+  items: [
+    DEFAULT,
+    item({ id: 'def-offer', owner_scope: 'PLATFORM', document_type_id: OFFER, name: 'Aramo Offer letter', description: null }),
+    item({ id: 'def-nda', owner_scope: 'PLATFORM', document_type_id: NDA, name: 'Aramo Client NDA', configurable: false }),
+    item({ id: 'def-odd', owner_scope: 'PLATFORM', document_type_id: ODD, name: 'Aramo Other', description: 'Custom copy.' }),
+    item({ id: 'own-offer', document_type_id: OFFER, name: 'Our offer' }),
+  ],
+  document_types: [
+    { id: RTR, key: 'RIGHT_TO_REPRESENT', name: 'Right to Represent', configurable: true },
+    { id: OFFER, key: 'OFFER_LETTER', name: 'Offer Letter', configurable: true },
+    { id: NDA, key: 'CLIENT_NDA', name: 'Client NDA', configurable: false },
+    { id: ODD, key: 'SOMETHING_NEW', name: 'Something new', configurable: true },
+  ],
+};
+
+describe('Template gallery — backend-driven (TEMPLATE-STUDIO-1 S-2)', () => {
   it('header carries the intro and the responsibility sentence', async () => {
     renderGallery();
     expect(screen.getByRole('heading', { level: 1, name: 'Template gallery' })).toBeInTheDocument();
     expect(screen.getByText(/Ready-made starting points\. Adopting one creates a draft in Our templates/)).toBeInTheDocument();
     expect(screen.getByText(new RegExp(RESPONSIBILITY_SENTENCE.replace(/\./g, "\\.")))).toBeInTheDocument();
-    await screen.findByTestId('gallery-adopt');
+    await screen.findByTestId('gallery-preview');
   });
 
-  it('category chips: All · Recruiting · Hiring · Legal · Pre-start with counts; filtering is client-side', async () => {
-    renderGallery();
-    const bar = screen.getByRole('toolbar', { name: 'Filter by category' });
-    const chips = within(bar).getAllByRole('button');
-    expect(chips.map((c) => c.textContent)).toEqual(['All5', 'Recruiting1', 'Hiring1', 'Legal1', 'Pre-start2']);
-    expect(chips[0]).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getAllByRole('article')).toHaveLength(5);
-    fireEvent.click(screen.getByTestId('gallery-chip-Pre-start'));
-    expect(screen.getByTestId('gallery-chip-Pre-start')).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByTestId('gallery-chip-All')).toHaveAttribute('aria-pressed', 'false');
-    expect(screen.getAllByRole('article').map((a) => a.getAttribute('aria-label'))).toEqual(['Background check authorization', 'I-9 Employment eligibility']);
-    fireEvent.click(screen.getByTestId('gallery-chip-All'));
-    expect(screen.getAllByRole('article')).toHaveLength(5);
-    expect(categoryCounts(GALLERY_ENTRIES)).toEqual({ All: 5, Recruiting: 1, Hiring: 1, Legal: 1, 'Pre-start': 2 });
-  });
-
-  it('cards: exact copy, decorative preview hidden, unsupported types show "Not configurable yet"', async () => {
-    renderGallery();
-    const rtr = await screen.findByRole('article', { name: 'Right to Represent' });
-    expect(within(rtr).getByRole('heading', { level: 3, name: 'Right to Represent' })).toBeInTheDocument();
+  it('one card per published Aramo default from the library; tenant templates are not cards; no static cards', async () => {
+    renderGallery({ libraryFn: vi.fn().mockResolvedValue(LIBRARY) });
+    const rtr = await screen.findByRole('article', { name: 'Aramo Right to Represent' });
+    expect(screen.getAllByRole('article')).toHaveLength(1);
+    expect(within(rtr).getByRole('heading', { level: 3, name: 'Aramo Right to Represent' })).toBeInTheDocument();
+    // description null → the document-type fallback copy; category from the type key.
     expect(rtr).toHaveTextContent('Authorizes your firm to submit the talent to one client for one requisition, with the agreed pay rate.');
+    expect(rtr).toHaveTextContent('Recruiting');
     expect(rtr.querySelector('[aria-hidden="true"]')).not.toBeNull();
-    for (const name of ['Offer letter', 'Client NDA', 'Background check authorization', 'I-9 Employment eligibility']) {
-      const card = screen.getByRole('article', { name });
-      expect(within(card).getByTestId('gallery-not-configurable')).toHaveTextContent('Not configurable yet');
-      expect(within(card).queryByRole('button')).toBeNull();
+    for (const name of ['Our RTR', 'Draft RTR', 'Offer letter', 'Client NDA', 'Background check authorization', 'I-9 Employment eligibility']) {
+      expect(screen.queryByRole('article', { name })).toBeNull();
     }
+    expect(screen.queryByText('Not configurable yet')).toBeNull();
   });
 
-  it('a supported type not yet adopted: Adopt (author) + Preview; Adopt confirms with the responsibility sentence, adopts and opens the draft', async () => {
-    const fns = renderGallery();
-    const rtr = await screen.findByRole('article', { name: 'Right to Represent' });
-    expect(within(rtr).queryByText('In Our templates')).toBeNull();
-    fireEvent.click(within(rtr).getByTestId('gallery-adopt'));
-    const modal = await screen.findByTestId('gallery-adopt-modal');
-    expect(modal).toHaveTextContent(RESPONSIBILITY_SENTENCE);
-    expect(modal).toHaveTextContent('Nothing is used until it’s approved.');
-    fireEvent.click(within(modal).getByTestId('gallery-adopt-confirm'));
-    await waitFor(() => expect(fns.adoptFn).toHaveBeenCalledWith('def-rtr'));
-    expect(await screen.findByTestId('where')).toHaveTextContent('/org/document-templates/adopted-1/draft');
+  it('buildGalleryCards: PLATFORM + template-driven only; description falls back by type; unmapped → Other; in-ours vs adoptable', () => {
+    const cards = buildGalleryCards(WIDE);
+    expect(cards.map((c) => [c.id, c.name, c.category, c.state.kind])).toEqual([
+      ['def-rtr', 'Aramo Right to Represent', 'Recruiting', 'adoptable'],
+      ['def-offer', 'Aramo Offer letter', 'Hiring', 'in-ours'],
+      ['def-odd', 'Aramo Other', 'Other', 'adoptable'],
+    ]);
+    expect(cards[1]?.state).toEqual({ kind: 'in-ours', ourTemplateId: 'own-offer' });
+    expect(cards[1]?.description).toBe('Confirms the role, start date, pay and terms offered to a talent before they start.');
+    expect(cards[2]?.description).toBe('Custom copy.');
+    expect(categoryCounts(cards)).toEqual({ All: 3, Recruiting: 1, Hiring: 1, Legal: 0, 'Pre-start': 0, Other: 1 });
+    expect(buildGalleryCards({ items: [OWN, OWN_DRAFT], document_types: LIBRARY.document_types })).toEqual([]);
   });
 
-  it('an adopt refusal stays in the dialog as an alert', async () => {
-    const adoptFn = vi.fn().mockRejectedValue(new Error('nope'));
-    renderGallery({ adoptFn });
-    fireEvent.click(await screen.findByTestId('gallery-adopt'));
-    fireEvent.click(await screen.findByTestId('gallery-adopt-confirm'));
-    expect(await within(screen.getByTestId('gallery-adopt-modal')).findByRole('alert')).toBeInTheDocument();
+  it('category chips come from the actual cards (empty categories hidden); filtering is client-side', async () => {
+    renderGallery({ libraryFn: vi.fn().mockResolvedValue(WIDE) });
+    await screen.findByRole('article', { name: 'Aramo Right to Represent' });
+    const bar = screen.getByRole('toolbar', { name: 'Filter by category' });
+    expect(within(bar).getAllByRole('button').map((c) => c.textContent)).toEqual(['All3', 'Recruiting1', 'Hiring1', 'Other1']);
+    expect(screen.getByTestId('gallery-chip-All')).toHaveAttribute('aria-pressed', 'true');
+    fireEvent.click(screen.getByTestId('gallery-chip-Hiring'));
+    expect(screen.getAllByRole('article').map((a) => a.getAttribute('aria-label'))).toEqual(['Aramo Offer letter']);
+    fireEvent.click(screen.getByTestId('gallery-chip-All'));
+    expect(screen.getAllByRole('article')).toHaveLength(3);
   });
 
-  it('Preview opens the branded read-only preview of the Aramo default', async () => {
+  it('adoptable: Preview opens the Aramo default in the Studio; no Adopt on the card', async () => {
     renderGallery();
-    fireEvent.click(await screen.findByTestId('gallery-preview'));
+    const rtr = await screen.findByRole('article', { name: 'Aramo Right to Represent' });
+    expect(within(rtr).queryByTestId('gallery-in-ours')).toBeNull();
+    expect(within(rtr).queryByRole('button', { name: /Adopt/ })).toBeNull();
+    fireEvent.click(within(rtr).getByTestId('gallery-preview'));
     expect(screen.getByTestId('where')).toHaveTextContent('/org/document-templates/aramo/def-rtr');
   });
 
-  it('a session without author or manage previews but is never offered Adopt', async () => {
-    renderGallery({ session: READER });
-    expect(await screen.findByTestId('gallery-preview')).toBeInTheDocument();
-    expect(screen.queryByTestId('gallery-adopt')).toBeNull();
+  it('a click anywhere on the card opens the Studio', async () => {
+    renderGallery();
+    fireEvent.click(await screen.findByRole('heading', { level: 3, name: 'Aramo Right to Represent' }));
+    expect(screen.getByTestId('where')).toHaveTextContent('/org/document-templates/aramo/def-rtr');
   });
 
-  it('a manage holder (owner/admin) is offered Adopt too', async () => {
-    renderGallery({ session: ADMIN });
-    expect(await screen.findByTestId('gallery-adopt')).toBeInTheDocument();
-  });
-
-  it('when the organization already has a template of the type: "In Our templates" + Preview, no Adopt', async () => {
+  it('in Our templates: an "In Our templates" link to the organization’s template + Preview', async () => {
     renderGallery({ libraryFn: vi.fn().mockResolvedValue(LIBRARY) });
-    const rtr = await screen.findByRole('article', { name: 'Right to Represent' });
-    expect(await within(rtr).findByTestId('gallery-in-ours')).toHaveTextContent('In Our templates');
+    const rtr = await screen.findByRole('article', { name: 'Aramo Right to Represent' });
+    const link = await within(rtr).findByTestId('gallery-in-ours');
+    expect(link).toHaveTextContent('In Our templates');
     expect(within(rtr).getByTestId('gallery-preview')).toBeInTheDocument();
-    expect(within(rtr).queryByTestId('gallery-adopt')).toBeNull();
+    fireEvent.click(link);
+    expect(screen.getByTestId('where')).toHaveTextContent('/org/document-templates/own-rtr');
+  });
+
+  it('no published defaults: an empty state, no chips', async () => {
+    renderGallery({ libraryFn: vi.fn().mockResolvedValue({ items: [OWN], document_types: LIBRARY.document_types }) });
+    expect(await screen.findByTestId('gallery-empty')).toHaveTextContent('No Aramo templates are published yet.');
+    expect(screen.queryByRole('toolbar')).toBeNull();
+    expect(screen.queryByRole('article')).toBeNull();
+  });
+
+  it('a library read failure shows an alert with Try again', async () => {
+    const libraryFn = vi.fn().mockRejectedValueOnce(new Error('down')).mockResolvedValue(NO_OWN);
+    renderGallery({ libraryFn });
+    expect(await screen.findByRole('alert')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Try again' }));
+    expect(await screen.findByRole('article', { name: 'Aramo Right to Represent' })).toBeInTheDocument();
   });
 
   it('no use-the-default-directly affordance remains', async () => {
     renderGallery({ session: ADMIN });
-    await screen.findByTestId('gallery-adopt');
+    await screen.findByTestId('gallery-preview');
     expect(screen.queryByText(/Aramo default \(recommended\)|Template in use|switch back/i)).toBeNull();
     expect(screen.queryByRole('combobox')).toBeNull();
+  });
+});
+
+describe('Aramo default in the Studio — read only + Adopt (TEMPLATE-STUDIO-1 S-2)', () => {
+  const PREVIEW: TemplateDefaultPreview = {
+    title: 'Right to Represent',
+    blocks: [],
+    html: '<p>Represented by <span data-sample="organization.name">Acme Staffing</span></p>',
+    sample_values: [{ key: 'organization.name', label: 'Organization name', value: 'Acme Staffing' }],
+    template_id: 'def-rtr',
+    version_id: 'v3',
+    version_number: 3,
+    updated_at: '2026-10-15T10:00:00.000Z',
+    letterhead: { organization_name: 'Acme Staffing', logo_available: true },
+  };
+
+  function renderStudio(over: Partial<Parameters<typeof AramoDefaultStudio>[0]> = {}) {
+    stubMe();
+    Object.defineProperty(window, 'innerWidth', { configurable: true, writable: true, value: 1440 });
+    const fns = {
+      session: AUTHOR,
+      templateId: 'def-rtr',
+      libraryFn: vi.fn().mockResolvedValue(NO_OWN),
+      previewFn: vi.fn().mockResolvedValue(PREVIEW),
+      adoptFn: vi.fn().mockResolvedValue({ template: { id: 'adopted-1' }, version: { id: 'v1' } }),
+      ...over,
+    };
+    render(
+      <ToastProvider>
+        <MemoryRouter initialEntries={['/org/document-templates/aramo/def-rtr']}>
+          <Routes>
+            <Route path="/org/document-templates/aramo/:templateId" element={<AramoDefaultStudio {...fns} />} />
+            <Route path="*" element={<Where />} />
+          </Routes>
+        </MemoryRouter>
+      </ToastProvider>,
+    );
+    return fns;
+  }
+
+  it('opens read only in Preview with the organization’s branding; no edit, approve, Versions, Compare or Checks', async () => {
+    const fns = renderStudio();
+    const pages = await screen.findByRole('region', { name: 'Preview pages' });
+    await waitFor(() => expect(pages).toHaveTextContent('Represented by Acme Staffing'));
+    expect(fns.previewFn).toHaveBeenCalledWith('def-rtr');
+    // Acceptance §11 item 3: never editable, so no Edit | Preview toggle, readiness pill or Checks tab.
+    expect(screen.queryByRole('group', { name: 'Mode' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^(Edit|Preview)$/ })).toBeNull();
+    expect(screen.queryByTitle('Publishing checks')).toBeNull();
+    expect(screen.queryByRole('tab', { name: /Checks/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: /Save|Approve|Publish|Compare|Discard/ })).toBeNull();
+    expect(screen.queryByRole('tab', { name: 'Versions' })).toBeNull();
+  });
+
+  it('an author adopts: the confirmation carries the responsibility sentence → POST /adopt → toast → the new template', async () => {
+    const fns = renderStudio();
+    fireEvent.click(await screen.findByTestId('studio-adopt'));
+    const modal = await screen.findByTestId('gallery-adopt-modal');
+    expect(modal).toHaveTextContent('Adopt Aramo Right to Represent?');
+    expect(modal).toHaveTextContent(RESPONSIBILITY_SENTENCE);
+    expect(modal).toHaveTextContent('Nothing is used until it’s approved.');
+    fireEvent.click(within(modal).getByTestId('gallery-adopt-confirm'));
+    await waitFor(() => expect(fns.adoptFn).toHaveBeenCalledWith('def-rtr'));
+    expect(await screen.findByTestId('where')).toHaveTextContent('/org/document-templates/adopted-1');
+    expect(screen.getByTestId('where').textContent).toBe('/org/document-templates/adopted-1');
+    expect(screen.getByText('Aramo Right to Represent added to Our templates as a draft. Nothing is used until it’s approved.')).toBeInTheDocument();
+  });
+
+  it('an adopt refusal stays in the dialog as an alert', async () => {
+    renderStudio({ adoptFn: vi.fn().mockRejectedValue(new Error('nope')) });
+    fireEvent.click(await screen.findByTestId('studio-adopt'));
+    fireEvent.click(await screen.findByTestId('gallery-adopt-confirm'));
+    expect(await within(screen.getByTestId('gallery-adopt-modal')).findByRole('alert')).toBeInTheDocument();
+  });
+
+  it('a manage holder (owner/admin) is offered Adopt too', async () => {
+    renderStudio({ session: ADMIN });
+    expect(await screen.findByTestId('studio-adopt')).toBeInTheDocument();
+  });
+
+  it('a read-only session previews but is never offered Adopt', async () => {
+    renderStudio({ session: READER });
+    const pages = await screen.findByRole('region', { name: 'Preview pages' });
+    await waitFor(() => expect(pages).toHaveTextContent('Acme Staffing'));
+    expect(screen.queryByTestId('studio-adopt')).toBeNull();
+    expect(screen.queryByTestId('studio-in-ours')).toBeNull();
+  });
+
+  it('when the organization already has a template of the type: "In Our templates" link, no Adopt', async () => {
+    renderStudio({ libraryFn: vi.fn().mockResolvedValue(LIBRARY) });
+    const link = await screen.findByTestId('studio-in-ours');
+    expect(link).toHaveAttribute('href', '/org/document-templates/own-rtr');
+    expect(screen.queryByTestId('studio-adopt')).toBeNull();
+  });
+
+  it('actionFor: adopt / in-ours / none', () => {
+    expect(actionFor(null, 'def-rtr', true)).toEqual({ kind: 'none' });
+    expect(actionFor(NO_OWN, 'def-rtr', true)).toEqual({ kind: 'adopt', name: 'Aramo Right to Represent' });
+    expect(actionFor(NO_OWN, 'def-rtr', false)).toEqual({ kind: 'none' });
+    expect(actionFor(LIBRARY, 'def-rtr', true)).toEqual({ kind: 'in-ours', ourTemplateId: 'own-rtr' });
+    expect(actionFor(LIBRARY, 'own-rtr', true)).toEqual({ kind: 'none' });
   });
 });
 
@@ -307,8 +437,51 @@ describe('Our templates (§6.8)', () => {
   });
 });
 
+describe('Our templates — Create new version (TEMPLATE-STUDIO-1 §1.4, §3.4)', () => {
+  it('an approved template with no draft offers it; a draft-only template does not; click → POST /:id/draft → the Studio', async () => {
+    const createDraftFn = vi.fn().mockResolvedValue(vers('nv3', 'own-rtr', 3, 'DRAFT', null));
+    renderOurs({ createDraftFn });
+    const row = await screen.findByTestId('our-template-own-rtr');
+    const create = within(row).getByRole('button', { name: 'Create new version v3 of Our RTR' });
+    expect(create).toHaveTextContent('Create new version');
+    expect(within(screen.getByTestId('our-template-own-draft')).queryByRole('button', { name: /Create new version/ })).toBeNull();
+    fireEvent.click(create);
+    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('/org/document-templates/own-rtr'));
+    expect(createDraftFn).toHaveBeenCalledWith('own-rtr');
+  });
+
+  it('an author is offered it too', async () => {
+    renderOurs({ session: AUTHOR });
+    const row = await screen.findByTestId('our-template-own-rtr');
+    expect(within(row).getByRole('button', { name: 'Create new version v3 of Our RTR' })).toBeInTheDocument();
+  });
+
+  it('read-only sessions never see it', async () => {
+    renderOurs({ session: READER });
+    await screen.findByTestId('our-template-own-rtr');
+    expect(screen.queryByRole('button', { name: /Create new version/ })).toBeNull();
+  });
+
+  it('an approved template that already has an open draft: no action (Manage opens the draft)', async () => {
+    const versionsFn = vi.fn().mockResolvedValue([vers('v', 'own-rtr', 2, 'ACTIVE', '2026-10-09T10:00:00.000Z'), vers('d3', 'own-rtr', 3, 'DRAFT', null)]);
+    renderOurs({ libraryFn: vi.fn().mockResolvedValue({ ...LIBRARY, items: [OWN] }), versionsFn });
+    const row = await screen.findByTestId('our-template-own-rtr');
+    expect(within(row).queryByRole('button', { name: /Create new version/ })).toBeNull();
+    expect(within(row).getByRole('link', { name: 'Manage Our RTR' })).toBeInTheDocument();
+  });
+
+  it('a refusal stays on the row as an alert', async () => {
+    const createDraftFn = vi.fn().mockRejectedValue(new Error('A draft is already open.'));
+    renderOurs({ createDraftFn });
+    const row = await screen.findByTestId('our-template-own-rtr');
+    fireEvent.click(within(row).getByRole('button', { name: /Create new version/ }));
+    expect(await within(row).findByRole('alert')).toBeInTheDocument();
+    expect(screen.queryByTestId('where')).toBeNull();
+  });
+});
+
 describe('Org Home document templates — create your own (no copy)', () => {
-  it('creates a blank template for a configurable type and opens its draft; there is no start-from-default option', async () => {
+  it('creates a blank template for a configurable type and opens it in the Studio (TEMPLATE-STUDIO-1 S-1); there is no start-from-default option', async () => {
     const createFn = vi.fn().mockResolvedValue({ template: { id: 'new-1' }, draft: { id: 'v1' } });
     render(
       <ToastProvider>
@@ -326,7 +499,7 @@ describe('Org Home document templates — create your own (no copy)', () => {
     fireEvent.change(screen.getByTestId('dt-create-name'), { target: { value: '  Our own RTR ' } });
     fireEvent.click(screen.getByTestId('dt-create-submit'));
     await waitFor(() => expect(createFn).toHaveBeenCalledWith({ document_type_id: RTR, name: 'Our own RTR' }));
-    expect(await screen.findByTestId('where')).toHaveTextContent('/org/document-templates/new-1/draft');
+    expect(await screen.findByTestId('where')).toHaveTextContent(/^\/org\/document-templates\/new-1$/);
   });
 
   it('read-only sessions cannot create', () => {
@@ -336,30 +509,6 @@ describe('Org Home document templates — create your own (no copy)', () => {
       </MemoryRouter>,
     );
     expect(screen.getByTestId('dt-create-noaccess')).toBeInTheDocument();
-  });
-});
-
-describe('Org Home document templates — Aramo default preview', () => {
-  it('renders the current version with the organization’s letterhead and values', async () => {
-    const preview: TemplateDefaultPreview = {
-      title: 'Right to Represent',
-      blocks: [],
-      html: '<p>Represented by <span data-sample="organization.name">Acme Staffing</span></p>',
-      sample_values: [{ key: 'organization.name', label: 'Organization name', value: 'Acme Staffing' }],
-      template_id: 'def-rtr',
-      version_id: 'v3',
-      version_number: 3,
-      updated_at: '2026-10-15T10:00:00.000Z',
-      letterhead: { organization_name: 'Acme Staffing', logo_available: true },
-    };
-    render(
-      <MemoryRouter>
-        <AramoDefaultPreview templateId="def-rtr" previewFn={vi.fn().mockResolvedValue(preview)} />
-      </MemoryRouter>,
-    );
-    expect(await screen.findByTestId('dt-default-letterhead')).toHaveTextContent('Acme Staffing');
-    expect(screen.getByTestId('dt-default-paper')).toHaveTextContent('Represented by Acme Staffing');
-    expect(screen.getByTestId('dt-default-logo-note')).toHaveTextContent('logo from the profile is added');
   });
 });
 

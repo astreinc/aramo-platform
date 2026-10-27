@@ -21,7 +21,7 @@ import {
   type PlatformTemplate,
 } from './document-templates-api';
 import { templateErrorMessage } from './template-errors';
-import './studio/studio.css';
+import './library.css';
 
 // PLATFORM-UX-1 F-9 (handoff §10.1; directive R-10, R-12) — the template library at
 // /document-templates: page header + "Create default template" (:manage), the product
@@ -110,7 +110,7 @@ export function DocumentTemplatesListView({ session }: { readonly session: Sessi
             { value: 'SIGN', label: 'SIGN' },
           ]}
         />
-        <Input unstyled className="pws-in pws-in--38 pws-lib__q" value={q} placeholder="Search templates" aria-label="Search templates" onChange={(e) => setQ(e.target.value)} />
+        <Input unstyled className="pwl-in pwl-in--38 pws-lib__q" value={q} placeholder="Search templates" aria-label="Search templates" onChange={(e) => setQ(e.target.value)} />
         <span className="pws-lib__count" role="status">
           {templates === null ? '' : `${rows.length} templates`}
         </span>
@@ -165,14 +165,14 @@ export function DocumentTemplatesListView({ session }: { readonly session: Sessi
                         <td>
                           <b className="pws-lib__name">{t.name}</b>
                           <div className="pws-lib__sub">
-                            {typeName(t.document_type_id)} · <span className="pws-mono">{t.id}</span>
+                            {typeName(t.document_type_id)} · <span className="pwl-mono">{t.id}</span>
                           </div>
                         </td>
                         <td>
                           <Pill tone={cur.tone}>{cur.label}</Pill>
                           {wd !== null ? (
                             <div className="pws-lib__wd">
-                              <span className="pws-pill20">
+                              <span className="pwl-pill20">
                                 <Pill tone={wd.tone} dot={false}>
                                   {wd.label}
                                 </Pill>
@@ -182,9 +182,9 @@ export function DocumentTemplatesListView({ session }: { readonly session: Sessi
                         </td>
                         <td className={`pws-lib__draft${t.draft_version_id !== null ? ' pws-lib__draft--open' : ''}`}>{t.draft_version_id !== null ? 'Open draft' : 'No draft'}</td>
                         <td>
-                          <span className="pws-tags">
+                          <span className="pwl-tags">
                             {t.products.map((p) => (
-                              <span key={p} className="pws-tag">
+                              <span key={p} className="pwl-tag">
                                 {p}
                               </span>
                             ))}
@@ -325,14 +325,14 @@ export function CreateTemplateDialog({ open, onOpenChange, templates, types, onC
           ...types.map((t) => ({ value: t.id, label: t.configurable ? t.name : `${t.name} — not configurable here`, disabled: !t.configurable })),
         ]}
       />
-      <div className="pws-countfield">
+      <div className="pwl-countfield">
         <FieldText label="Name" required value={name} onChange={(v) => setName(v.slice(0, NAME_MAX))} maxLength={NAME_MAX} />
         <span className="pw-field__count" aria-live="polite">
           {name.length} / {NAME_MAX}
         </span>
       </div>
       <FieldTextArea label="Description (optional)" value={desc} onChange={setDesc} max={DESC_MAX} />
-      <div className="pws-countfield">
+      <div className="pwl-countfield">
         <TagInput label="Product tags" tags={tags} onChange={setTags} />
         <span className="pw-field__helper">Enter to add. Uppercase, up to 16.</span>
       </div>

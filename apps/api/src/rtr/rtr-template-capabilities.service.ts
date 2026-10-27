@@ -69,6 +69,11 @@ interface CatalogBinding {
   readonly label: string;
   readonly group: string;
   readonly sample: string;
+  // TEMPLATE-STUDIO-1 B-2 — the catalog row's own metadata (descriptor only; the preview
+  // keeps using `sample`, the safe '' fallback).
+  readonly data_type: string;
+  readonly sample_value: string | null;
+  readonly active: boolean;
 }
 
 // The resolver order (RTR_BINDING_KEYS) is the menu order — identical to the former
@@ -106,7 +111,17 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
     const allowed: CatalogBinding[] = [];
     const unresolvable = new Set<string>();
     for (const r of rows) {
-      if (hasAtsResolver(r)) allowed.push({ key: r.key, label: r.label, group: r.group_label, sample: r.sample_value ?? '' });
+      if (hasAtsResolver(r)) {
+        allowed.push({
+          key: r.key,
+          label: r.label,
+          group: r.group_label,
+          sample: r.sample_value ?? '',
+          data_type: r.data_type,
+          sample_value: r.sample_value,
+          active: r.active,
+        });
+      }
       else unresolvable.add(r.key);
     }
     allowed.sort((a, b) => resolverIndex(a.key) - resolverIndex(b.key));
@@ -116,7 +131,10 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
   async listAllowedBindings(documentTypeId: string): Promise<readonly TemplateBindingDescriptor[]> {
     if (!this.isConfigurable(documentTypeId)) return [];
     const { allowed } = await this.atsCatalog();
-    return allowed.map((d) => ({ key: d.key, label: d.label, group: d.group }));
+    // TEMPLATE-STUDIO-1 B-2 — additive data_type / sample_value / active. The offered set is
+    // unchanged: only ACTIVE catalog rows with a resolver are bindable, so `active` is the
+    // row's own flag (true for every offered binding today) — no inactive key is added.
+    return allowed.map((d) => ({ key: d.key, label: d.label, group: d.group, data_type: d.data_type, sample_value: d.sample_value, active: d.active }));
   }
 
   async validateDraftContent(input: { document_type_id: string; field_schema: unknown; render_schema_version: string; requestId: string }): Promise<void> {

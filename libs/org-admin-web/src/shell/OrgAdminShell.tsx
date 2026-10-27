@@ -12,6 +12,7 @@ import {
   type ReturnContext,
 } from '@aramo/fe-foundation';
 
+import { isOrgStudioPath } from '../sections';
 import '../ui/org-ui.css';
 
 // ORG-UX-1 (Directive v1.0 LOCKED §1, §3, §7.2; handoff §2/§6) — the Organization page
@@ -39,6 +40,19 @@ export function OrgAdminShell({ products = null }: { readonly products?: Product
       setBack(readRememberedReturnContext({ signOrigin }));
     }
   }, [location.search, signOrigin]);
+
+  // TEMPLATE-STUDIO-1 S-1 — the Template Studio routes render full width (mirroring the
+  // platform's pw-shell--studio): no page padding and no return marker above the Studio,
+  // which draws its own header (breadcrumb back to Our templates / the gallery).
+  if (isOrgStudioPath(location.pathname)) {
+    return (
+      <div className="ox-page ox-page--studio" data-testid="org-page">
+        <SettingsHeadlessProvider>
+          <Outlet />
+        </SettingsHeadlessProvider>
+      </div>
+    );
+  }
 
   return (
     <div className="ox-page" data-testid="org-page">

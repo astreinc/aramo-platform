@@ -108,10 +108,28 @@ export function orgSectionByKey(key: OrgSectionKey): OrgSection {
   return s;
 }
 
+const TEMPLATES_BASE = '/org/document-templates';
+const NOT_A_TEMPLATE_ID = new Set(['gallery', 'new', 'aramo']);
+
+/**
+ * TEMPLATE-STUDIO-1 S-1/S-2 — the Template Studio routes (the Org shell's full-width mode):
+ * /org/document-templates/:templateId (a tenant template) and
+ * /org/document-templates/aramo/:templateId (the read-only preview of an Aramo default).
+ */
+export function isOrgStudioPath(pathname: string): boolean {
+  const p = pathname.replace(/\/+$/, '');
+  if (!p.startsWith(`${TEMPLATES_BASE}/`)) return false;
+  const rest = p.slice(TEMPLATES_BASE.length + 1).split('/');
+  if (rest.length === 1) return rest[0] !== undefined && rest[0] !== '' && !NOT_A_TEMPLATE_ID.has(rest[0]);
+  return rest.length === 2 && rest[0] === 'aramo' && rest[1] !== '';
+}
+
 /** The section a pathname belongs to (longest path match), or null. */
 export function orgSectionForPath(pathname: string): OrgSection | null {
   const p = pathname.replace(/\/+$/, '');
   if (p === '/org') return orgSectionByKey('overview');
+  // An Aramo default opened from the gallery belongs to the Template gallery.
+  if (p.startsWith(`${TEMPLATES_BASE}/aramo/`)) return orgSectionByKey('gallery');
   let best: OrgSection | null = null;
   for (const s of ORG_SECTIONS) {
     if (p === s.path || p.startsWith(`${s.path}/`)) {

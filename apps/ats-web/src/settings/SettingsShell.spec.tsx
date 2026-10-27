@@ -94,12 +94,17 @@ describe('Settings shell + rail', () => {
       'Talent experience',
       'Communication',
       'Recruiting',
-      'Documents & data',
+      'Data',
       'Connect',
       'Account',
     ]) {
       expect(within(nav).getByText(heading)).toBeInTheDocument();
     }
+    // TEMPLATE-STUDIO-1 S-4 — "Documents & data" is renamed DATA and holds only
+    // Import data · Data & compliance · Custom fields.
+    expect(within(nav).queryByText('Documents & data')).toBeNull();
+    const data = SETTINGS_NAV.find((g) => g.heading === 'Data');
+    expect(data?.items.map((i) => i.key)).toEqual(['import', 'compliance', 'fields']);
     // Every section key has a rail link.
     const keys = SETTINGS_NAV.flatMap((g) => g.items.map((i) => i.key));
     for (const key of keys) {
@@ -120,6 +125,16 @@ describe('Settings shell + rail', () => {
     expect(org.tagName).toBe('A');
     expect(org.getAttribute('href')).toBe(ssoEntryHref(`/org/profile?from=ats&return=${encodeURIComponent('/ats/admin/settings/recruiting')}`, 'org'));
     expect(org).toHaveTextContent('App Home');
+    // TEMPLATE-STUDIO-1 S-4 — Document templates sits under Organization · shared,
+    // tagged APP HOME exactly like Manage organization, opening App Home
+    // /org/document-templates with the exact current ATS page as the return context.
+    const shared = SETTINGS_NAV.find((g) => g.heading === 'Organization · shared');
+    expect(shared?.items.map((i) => i.key)).toEqual(['organization', 'document-templates']);
+    const docs = screen.getByTestId('settings-nav-document-templates');
+    expect(docs.tagName).toBe('A');
+    expect(docs.getAttribute('href')).toBe(ssoEntryHref(`/org/document-templates?from=ats&return=${encodeURIComponent('/ats/admin/settings/recruiting')}`, 'org'));
+    expect(docs).toHaveTextContent('Document templates');
+    expect(docs.querySelector('.set-navbtn__badge--app')).toHaveTextContent('App Home');
   });
 
   it('marks the active section with aria-current', () => {

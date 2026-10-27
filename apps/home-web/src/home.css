@@ -625,3 +625,12 @@ a.home-crumb__root:focus-visible {
     align-items: flex-start;
   }
 }
+
+/* TEMPLATE-STUDIO-1 S-1 (directive §3.2) — the Organization Template Studio route: the
+   Studio sizes itself to the viewport and draws its own header, so the content column is
+   full-bleed (mirrors platform-web's .pw-shell--studio). */
+.home-shell--studio .rc-content {
+  max-width: none;
+  padding: 0;
+  overflow: hidden;
+}

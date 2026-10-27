@@ -63,10 +63,32 @@ describe('RtrTemplateCapabilities (T1 port)', () => {
       'organization.country',
     ]);
     expect(b.every((x) => x.label.length > 0 && x.group.length > 0)).toBe(true);
-    expect(b.find((x) => x.key === 'talent.desired_pay_rate')).toEqual({ key: 'talent.desired_pay_rate', label: 'Desired pay rate', group: 'Talent' });
+    expect(b.find((x) => x.key === 'talent.desired_pay_rate')).toMatchObject({ key: 'talent.desired_pay_rate', label: 'Desired pay rate', group: 'Talent' });
     expect(b.some((x) => x.key.startsWith('agreed_pay_rate') || /agreed/i.test(x.label))).toBe(false);
-    expect(b.find((x) => x.key === 'requisition.description')).toEqual({ key: 'requisition.description', label: 'Job description', group: 'Requisition' });
+    expect(b.find((x) => x.key === 'requisition.description')).toMatchObject({ key: 'requisition.description', label: 'Job description', group: 'Requisition' });
     expect(await caps.listAllowedBindings(OTHER)).toEqual([]);
+  });
+
+  // TEMPLATE-STUDIO-1 B-2 (§6) — each offered binding carries the catalog row's data_type,
+  // sample_value and active (additive), so the Studio Variables cards show type, "e.g." and
+  // the active state. The offered set is unchanged (active rows with a resolver only).
+  it('listAllowedBindings: carries data_type, sample_value and active from the catalog row (B-2)', async () => {
+    const rows = seededRtrCatalogRows();
+    const b = await caps.listAllowedBindings(RTR);
+    expect(b).toHaveLength(rows.length);
+    for (const x of b) {
+      const row = rows.find((r) => r.key === x.key);
+      expect(x).toEqual({ key: row?.key, label: row?.label, group: row?.group_label, data_type: row?.data_type, sample_value: row?.sample_value, active: true });
+    }
+    expect(b.find((x) => x.key === 'requisition.description')?.data_type).toBe('MULTILINE_TEXT');
+    expect(b.find((x) => x.key === 'talent.desired_pay_rate')).toMatchObject({ data_type: 'TEXT', active: true });
+    // An inactive row is still never offered (no new binding appears; agreed_pay_rate.* stays out).
+    const withInactive = new RtrTemplateCapabilities(
+      fakeCatalog(rows.map((r) => (r.key === 'client.name' ? { ...r, active: false } : r))),
+    );
+    const keys = (await withInactive.listAllowedBindings(RTR)).map((x) => x.key);
+    expect(keys).not.toContain('client.name');
+    expect(keys.some((k) => k.startsWith('agreed_pay_rate'))).toBe(false);
   });
 
   it('validateDraftContent: valid passes; non-configurable type is a no-op', async () => {
@@ -107,7 +129,9 @@ describe('RtrTemplateCapabilities (T1 port)', () => {
 describe('DOC-TEMPLATE-LIB-1 T-2 — catalog-driven allowed bindings', () => {
   it('the seeded catalog yields exactly the former code catalog (keys, order, labels, groups, samples)', async () => {
     const b = await caps.listAllowedBindings(RTR);
-    expect(b).toEqual(RTR_BINDING_CATALOG.map((d) => ({ key: d.key, label: d.label, group: d.group })));
+    // TEMPLATE-STUDIO-1 B-2 adds data_type / sample_value / active; key/label/group/order unchanged.
+    expect(b.map((x) => ({ key: x.key, label: x.label, group: x.group }))).toEqual(RTR_BINDING_CATALOG.map((d) => ({ key: d.key, label: d.label, group: d.group })));
+    expect(b.map((x) => x.sample_value)).toEqual(RTR_BINDING_CATALOG.map((d) => d.sample));
     const p = await caps.renderSamplePreview(input([{ type: 'TEXT', text: 'x' }]));
     expect(p.sample_values).toEqual(RTR_BINDING_CATALOG.map((d) => ({ key: d.key, label: d.label, value: d.sample })));
   });

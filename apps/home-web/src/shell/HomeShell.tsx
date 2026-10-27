@@ -17,6 +17,7 @@ import {
 import {
   ORGANIZATION_HEADING,
   SHARED_SETUP_HEADING,
+  isOrgStudioPath,
   orgSectionForPath,
   orgSectionsFor,
   useMe,
@@ -144,6 +145,20 @@ export function HomeShell({ children, fetchProducts }: HomeShellProps) {
     </TopBar>
   );
 
+  // TEMPLATE-STUDIO-1 S-1 (directive §3.2) — the Template Studio routes are full width
+  // (mirroring the platform's pw-shell--studio): the shared Organization nav stays, the top
+  // bar gives way to the Studio's own header (breadcrumb, actions, account menu) and the
+  // content column loses its padding. The nav's below-1280px collapse is the Studio page's
+  // useCompactRailPage (libs/org-admin-web).
+  if (isOrgStudioPath(pathname)) {
+    return (
+      <div className="home-shell--studio" data-testid="home-shell-studio">
+        <AramoAppShell rail={rail} topBar={null}>
+          {children}
+        </AramoAppShell>
+      </div>
+    );
+  }
   return (
     <AramoAppShell rail={rail} topBar={topBar}>
       {children}

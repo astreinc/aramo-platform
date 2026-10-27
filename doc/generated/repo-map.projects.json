@@ -681,6 +681,7 @@
     ],
     "@aramo/document-templates-web": [
       "CheckIcon",
+      "DEFAULT_STUDIO_CONTENT_CODEC",
       "DOC_TEMPLATE_AUTHOR_SCOPE",
       "DOC_TEMPLATE_MANAGE_SCOPE",
       "DOC_TEMPLATE_READ_SCOPE",
@@ -688,9 +689,18 @@
       "DocIconSmall",
       "DocTemplateRoutesProvider",
       "EyeIcon",
+      "GALLERY_STUDIO_READ_ONLY",
+      "LETTERHEAD_SAVE_BLOCKED",
+      "LETTERHEAD_STUDIO_CONTENT_CODEC",
       "Letterhead",
       "LockIcon",
+      "ORGANIZATION_APPROVE_CONSEQUENCE",
+      "ORGANIZATION_SCOPE_CARD",
+      "ORGANIZATION_STUDIO_API",
+      "ORGANIZATION_STUDIO_SECTIONS",
+      "ORGANIZATION_VARIABLES_NOTE",
       "ORG_DOC_TEMPLATE_ROUTES",
+      "PLATFORM_STUDIO_COPY",
       "PlusIcon",
       "PreviewModal",
       "PreviewPaper",
@@ -699,8 +709,11 @@
       "RTR_HTML_SCHEMA_V1",
       "RtrDraftEditor",
       "RtrTemplateDetail",
+      "STUDIO_HTML_CONTENT_VERSION",
+      "STUDIO_LETTERHEAD_HTML",
       "SafeDoc",
       "SampleValues",
+      "TemplateStudio",
       "activateTemplateVersion",
       "adoptTemplate",
       "appendStudioVariable",
@@ -711,21 +724,30 @@
       "clearTemplateSelection",
       "contentFromVersion",
       "convertStudioValue",
+      "createDraftFromActive",
       "createOwnTemplate",
       "createStudioCodec",
       "emptyBindingMap",
       "fetchTemplateCatalog",
       "fetchTemplateLibrary",
       "fmtDate",
+      "galleryContentFromSample",
+      "galleryDefaultOf",
+      "galleryStudioCopy",
+      "galleryStudioDataSource",
       "getDocumentTemplate",
       "getTemplateVersion",
       "htmlOf",
       "isCanonicalStudioHtml",
+      "isStudioLetterheadBlock",
       "isStudioValueEmpty",
       "listDocumentTemplates",
       "listTemplateSelections",
       "listTemplateVersions",
       "makeStudioChip",
+      "organizationReadinessLabel",
+      "organizationStudioCopy",
+      "organizationStudioDataSource",
       "previewContentFrom",
       "previewTemplateDefault",
       "previewTemplateVersion",
@@ -737,10 +759,16 @@
       "studioActiveMarks",
       "studioBlocksFromHtml",
       "studioBlocksToHtml",
+      "studioContentBlocks",
+      "studioDocFromHtml",
+      "studioDocHasLetterhead",
+      "studioDocToHtml",
       "studioInsertAtRange",
+      "studioLetterheadState",
       "studioPasteNodes",
       "studioPlainText",
       "studioPreviewParts",
+      "studioReadableText",
       "studioToggleMark",
       "studioValueFromText",
       "studioVariableKeys",
@@ -1686,17 +1714,22 @@
       "OrgCheck",
       "OrgModal",
       "OrgPageHeader",
+      "OrgStudioHost",
+      "OrgTemplateStudio",
       "RolesMatrixView",
       "SHARED_SETUP_HEADING",
       "canApproveTemplates",
       "canAuthorTemplates",
       "fetchMe",
+      "isOrgStudioPath",
       "orgSectionByKey",
       "orgSectionForPath",
       "orgSectionLabel",
       "orgSectionsFor",
+      "orgStudioErrorMessage",
       "useMe",
       "useOrgAccess",
+      "useOrgStudioAccount",
       "useSetupChecklist"
     ],
     "@aramo/outbox-publisher": [
@@ -3487,6 +3520,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/technical-screening/screening-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-studio-1-b12-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -5989,6 +6028,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-studio-1-b12-http.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tenant-llm-controller.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -8460,16 +8505,16 @@
     "@aramo/document-templates-web": [
       { "project": "aramo-ats-web", "status": "production" },
       { "project": "aramo-home-web", "status": "production" },
-      {
-        "excludedBy": "src/**/*.spec.ts",
-        "from": "apps/platform-web/src/document-templates/studio/studio-units.spec.ts",
-        "project": "aramo-platform-web",
-        "status": "excluded"
-      },
       { "project": "aramo-platform-web", "status": "production" },
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "libs/org-admin-web/src/document-templates/DocumentTemplates.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/document-templates/OrgTemplateStudio.spec.tsx",
         "project": "org-admin-web",
         "status": "excluded"
       },
@@ -8629,6 +8674,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/tb1-requisition-talent-board.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/template-studio-1-b12-http.integration.spec.ts",
         "project": "api",
         "status": "excluded"
       },
@@ -9651,6 +9702,12 @@
       },
       {
         "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/ats-web/src/settings/sections/DocumentTemplatesRedirect.spec.tsx",
+        "project": "aramo-ats-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/ats-web/src/shell/RecruiterShell.spec.tsx",
         "project": "aramo-ats-web",
         "status": "excluded"
@@ -10053,6 +10110,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "libs/org-admin-web/src/document-templates/DocumentTemplates.spec.tsx",
+        "project": "org-admin-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "libs/org-admin-web/src/document-templates/OrgTemplateStudio.spec.tsx",
         "project": "org-admin-web",
         "status": "excluded"
       },
@@ -13402,7 +13465,7 @@
       "root": "apps/home-web",
       "sourceRoot": "apps/home-web/src",
       "tags": [],
-      "targets": ["build", "lint", "preview", "serve", "test"]
+      "targets": ["build", "e2e-visual", "lint", "preview", "serve", "test"]
     },
     {
       "name": "aramo-pact-provider",

@@ -42,7 +42,9 @@
 .dt-thead .dt-th-action { text-align: right; }
 .dt-row { align-items: center; padding: 13px 18px; border-top: 1px solid #f2f4f6; }
 .dt-row--muted { background: #fcfcfd; }
-.dt-doc { display: flex; align-items: center; gap: 11px; min-width: 0; }
+/* TEMPLATE-STUDIO-1 S-3 — the list-row `.dt-doc` flex rule (icon + name cell of the
+   retired DOC-TEMPLATE-ADMIN-RTR-1 list table) was removed: no row uses it any more, and it
+   collided with SafeDoc's `.dt-doc` root, rendering documents as narrow flex columns. */
 .dt-ic {
   width: 32px; height: 32px; border-radius: 8px;
   display: grid; place-items: center; flex: none;

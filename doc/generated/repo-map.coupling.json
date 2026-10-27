@@ -10066,9 +10066,24 @@
       "to": "libs/identity/src/tests/tenant-lifecycle.spec.ts"
     },
     {
+      "from": "apps/home-web/e2e/visual/org-studio-fixtures.ts",
+      "status": "unscoped",
+      "to": "apps/api/src/rtr/rtr-template-content.ts"
+    },
+    {
       "from": "apps/home-web/playwright.topology.config.ts",
       "status": "unscoped",
       "to": "doc/runbooks/RELEASE-app-home-org.md"
+    },
+    {
+      "from": "apps/home-web/playwright.visual.config.ts",
+      "status": "unscoped",
+      "to": "apps/home-web/vite.config.ts"
+    },
+    {
+      "from": "apps/home-web/playwright.visual.config.ts",
+      "status": "unscoped",
+      "to": "apps/platform-web/playwright.config.ts"
     },
     {
       "from": "apps/home-web/project.json",
@@ -10451,6 +10466,11 @@
       "from": "apps/platform-web/src/components/permissions.ts",
       "status": "production",
       "to": "libs/identity/prisma/seed.ts"
+    },
+    {
+      "from": "apps/platform-web/src/document-templates/studio-theme.css",
+      "status": "unscoped",
+      "to": "libs/document-templates-web/src/studio/studio.css"
     },
     {
       "from": "apps/platform-web/src/tenants/tenant-roles.ts",
@@ -31703,6 +31723,11 @@
       "from": "libs/org-admin-web/project.json",
       "status": "unscoped",
       "to": "libs/org-admin-web/tsconfig.lib.json"
+    },
+    {
+      "from": "libs/org-admin-web/src/document-templates/studio-theme.css",
+      "status": "unscoped",
+      "to": "libs/document-templates-web/src/studio/studio.css"
     },
     {
       "from": "libs/org-admin-web/src/users/types.ts",

@@ -149,3 +149,24 @@ describe('HomeShell — top bar', () => {
     expect(await screen.findByText(badge, { exact: true })).toBeInTheDocument();
   });
 });
+
+describe('HomeShell — Template Studio full-width mode (TEMPLATE-STUDIO-1 S-1)', () => {
+  it('a tenant template in the Studio: the shared nav stays with Our templates active, no top bar', async () => {
+    renderShell('admin', '/org/document-templates/tpl-1');
+    expect(await within(nav()).findByTestId('org-nav-templates')).toHaveAttribute('aria-current', 'page');
+    expect(screen.getByTestId('home-shell-studio')).toBeInTheDocument();
+    expect(screen.queryByTestId('home-crumb')).toBeNull();
+  });
+
+  it('an Aramo default opened from the gallery: Template gallery active, no top bar', async () => {
+    renderShell('templates', '/org/document-templates/aramo/def-1');
+    expect(await within(nav()).findByTestId('org-nav-gallery')).toHaveAttribute('aria-current', 'page');
+    expect(screen.queryByTestId('home-crumb')).toBeNull();
+  });
+
+  it('Our templates and the gallery keep the normal frame', async () => {
+    renderShell('admin', '/org/document-templates/gallery');
+    expect(await screen.findByTestId('home-crumb')).toBeInTheDocument();
+    expect(screen.queryByTestId('home-shell-studio')).toBeNull();
+  });
+});

@@ -96,6 +96,11 @@ export interface TemplateBinding {
   readonly key: string;
   readonly label: string;
   readonly group: string;
+  // TEMPLATE-STUDIO-1 B-2 — additive catalog metadata (type, "e.g." sample, active state).
+  // Optional: older servers / fixtures omit them.
+  readonly data_type?: string;
+  readonly sample_value?: string | null;
+  readonly active?: boolean;
 }
 
 // §17 — a fixed-sample preview: the draft content with every binding substituted by
@@ -176,6 +181,15 @@ export async function deleteDraftVersion(versionId: string): Promise<void> {
 // the starting point (§8) and refuses (409 TEMPLATE_DRAFT_ALREADY_EXISTS) if one is open.
 export async function createDraftFromActive(templateId: string): Promise<TemplateVersionView> {
   return apiClient.post<TemplateVersionView>(`${BASE}/${encodeURIComponent(templateId)}/draft`, {});
+}
+
+// TEMPLATE-STUDIO-1 S-1 — open a DRAFT with the given content (POST /:id/versions;
+// document_template:author). Used when the template has no ACTIVE version to copy from.
+export async function createTemplateVersion(
+  templateId: string,
+  input: { render_schema_version: string; field_schema: unknown },
+): Promise<TemplateVersionView> {
+  return apiClient.post<TemplateVersionView>(`${BASE}/${encodeURIComponent(templateId)}/versions`, input);
 }
 
 // Save DRAFT content (DRAFT-only; re-arms the §18 preview gate server-side).

@@ -26,7 +26,8 @@
 .ox-tpl__type { display: block; font-size: 12px; color: var(--ox-faint); }
 .ox-tpl__ver { font-size: 12.5px; }
 .ox-tpl__when { font-size: 12.5px; color: var(--ox-muted); }
-.ox-tpl__act { text-align: right; }
+.ox-tpl__act { display: flex; flex-wrap: wrap; justify-content: flex-end; align-items: center; gap: 8px; text-align: right; }
+.ox-tpl__acterr { flex-basis: 100%; font-size: 12px; }
 .ox-tpl__manage { padding: 6px 14px; font-size: 13px; text-decoration: none; }
 .ox-tpl__foot { margin: 0; font-size: 12.5px; color: var(--ox-faint); }
 .ox-tpl__foot .ox-link { font-size: 12.5px; }
@@ -79,3 +80,8 @@
 }
 .ox-gal__spacer { margin-left: auto; }
 .ox-gal__inours { font-size: 12px; font-weight: 600; color: var(--ox-green); white-space: nowrap; }
+/* TEMPLATE-STUDIO-1 S-2 — a card opens the Aramo default in the Studio; "In Our templates" links. */
+.ox-gal__card--open { cursor: pointer; }
+a.ox-gal__inours { text-decoration: none; }
+a.ox-gal__inours:hover { text-decoration: underline; }
+.ox-gal__empty { margin: 0; font-size: 13px; color: var(--ox-muted); }

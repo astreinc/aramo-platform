@@ -107,7 +107,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
 
     it('the SEEDED catalog yields exactly the former code catalog (8 keys incl. A2 desired_pay_rate; labels, groups, order, samples)', async () => {
       const b = await caps.listAllowedBindings(RTR);
-      expect(b).toEqual(RTR_BINDING_CATALOG.map((d) => ({ key: d.key, label: d.label, group: d.group })));
+      // TEMPLATE-STUDIO-1 B-2 adds data_type / sample_value / active (additive); key/label/group/order unchanged.
+      expect(b.map((x) => ({ key: x.key, label: x.label, group: x.group }))).toEqual(RTR_BINDING_CATALOG.map((d) => ({ key: d.key, label: d.label, group: d.group })));
+      expect(b.every((x) => x.active === true && typeof x.data_type === 'string')).toBe(true);
       expect(b.map((x) => x.key)).toContain('talent.desired_pay_rate');
       const p = await caps.renderSamplePreview({
         document_type_id: RTR,

@@ -61,6 +61,7 @@ export {
   setTemplateSelection,
   clearTemplateSelection,
   createOwnTemplate,
+  createDraftFromActive,
   type DocumentTemplateView,
   type TemplateVersionView,
   type TemplateSamplePreview,
@@ -79,8 +80,21 @@ export {
 export {
   studioBlocksFromHtml,
   studioBlocksToHtml,
+  // TEMPLATE-STUDIO-1 B-1 — the letterhead-preserving document codec (additive).
+  STUDIO_LETTERHEAD_KIND,
+  STUDIO_LETTERHEAD_HTML,
+  isStudioLetterheadBlock,
+  studioDocFromHtml,
+  studioDocToHtml,
+  studioContentBlocks,
+  studioDocHasLetterhead,
+  studioLetterheadState,
+  type StudioLetterheadBlock,
+  type StudioDocBlock,
+  type StudioLetterheadState,
   isCanonicalStudioHtml,
   studioPlainText,
+  studioReadableText,
   studioVariableKeys,
   isStudioValueEmpty,
   removeStudioVariable,
@@ -104,3 +118,58 @@ export {
   type StudioChipInfo,
   type StudioChipResolver,
 } from './studio-codec';
+// TEMPLATE-STUDIO-1 S-0 (directive §2) — the ONE shared Template Studio (moved from
+// apps/platform-web), its data-source adapter, the content codecs and the platform copy
+// table (additive: no existing export changes).
+export { TemplateStudio, type TemplateStudioProps, type StudioAccountSlot, type StudioHostActionState } from './studio/TemplateStudio';
+export {
+  DEFAULT_STUDIO_CONTENT_CODEC,
+  LETTERHEAD_STUDIO_CONTENT_CODEC,
+  STUDIO_HTML_CONTENT_VERSION,
+  type TemplateStudioDataSource,
+  type TemplateStudioContext,
+  type TemplateStudioCopy,
+  type StudioCapabilities,
+  type StudioContentCodec,
+  type StudioContentBody,
+  type StudioCatalogData,
+  type StudioCatalogVariable,
+  type StudioAllowedBinding,
+  type StudioSamplePreview,
+  type StudioTemplate,
+  type StudioTemplateInfo,
+  type StudioVersion,
+  type StudioVersionStatus,
+  type StudioPropertiesPatch,
+  type StudioCrumb,
+} from './studio/data-source';
+export { PLATFORM_STUDIO_COPY } from './studio/studio-copy';
+// TEMPLATE-STUDIO-1 S-1 (directive §3) — the organization context: the tenant template
+// data source, its copy table and the static Sections set (additive).
+export {
+  organizationStudioCopy,
+  organizationReadinessLabel,
+  ORGANIZATION_APPROVE_CONSEQUENCE,
+  ORGANIZATION_SCOPE_CARD,
+  ORGANIZATION_VARIABLES_NOTE,
+  type OrganizationStudioCopyOptions,
+} from './studio/studio-copy';
+export {
+  organizationStudioDataSource,
+  ORGANIZATION_STUDIO_SECTIONS,
+  ORGANIZATION_STUDIO_API,
+  type OrganizationStudioApi,
+  type OrganizationStudioSourceOptions,
+} from './studio/organization-source';
+export { LETTERHEAD_SAVE_BLOCKED } from './studio/TemplateStudio';
+export type { StudioSection, StudioLetterheadApi } from './studio/data-source';
+// TEMPLATE-STUDIO-1 S-2 (directive §4) — the Org gallery's read-only source (an Aramo default,
+// current version only, Preview with the tenant's branding).
+export {
+  GALLERY_STUDIO_READ_ONLY,
+  galleryContentFromSample,
+  galleryDefaultOf,
+  galleryStudioCopy,
+  galleryStudioDataSource,
+  type GallerySourceOptions,
+} from './studio/gallery-source';

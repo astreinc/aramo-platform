@@ -1,0 +1,226 @@
+/* PLATFORM-UX-1 F-9 — the template library (handoff §10.1), platform-web's page at
+ * /document-templates. Split from the Template Studio's stylesheet when the Studio moved
+ * to libs/document-templates-web (TEMPLATE-STUDIO-1 S-0); the small shared controls the
+ * page used from the Studio are its own pwl-* classes now. Values unchanged
+ * (Template Studio.dc.html), through the theme.css token layer (--pw-*). */
+
+.pws-lib :focus-visible {
+  outline: 2px solid var(--pw-focus);
+  outline-offset: 2px;
+}
+
+.pwl-mono {
+  font-family: var(--pw-mono);
+}
+
+/* The design's 20px pills are flex items of their row: the wrapper is a flex
+   box so the pill's line is exactly 20px (an inline pill makes it 20.5px). */
+.pwl-pill20 {
+  display: inline-flex;
+}
+.pwl-pill20 .rc-pill {
+  height: 20px;
+  padding: 0 8px;
+  font-size: var(--pw-fs-11-5);
+}
+
+.pwl-in {
+  box-sizing: border-box;
+  width: 100%;
+  border: 1px solid var(--pw-line-2);
+  border-radius: var(--pw-r-md);
+  outline: none;
+  background: var(--pw-surface);
+  color: var(--pw-ink);
+  font-family: var(--pw-font);
+}
+.pwl-in:focus {
+  border-color: var(--pw-focus);
+  box-shadow: var(--pw-focus-ring);
+}
+.pwl-in--38 {
+  height: 38px;
+  padding: 0 12px;
+  font-size: var(--pw-fs-14);
+}
+.pwl-in:disabled {
+  background: var(--pw-surface-2);
+  color: var(--pw-muted);
+}
+
+.pwl-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+.pwl-tag {
+  padding: 2px 6px;
+  border: 1px solid var(--pw-line-2);
+  border-radius: var(--pw-r-xs);
+  font-family: var(--pw-mono);
+  font-size: var(--pw-fs-11);
+}
+
+.pwl-countfield {
+  display: grid;
+  gap: 6px;
+}
+.pwl-countfield .pw-field__count {
+  text-align: right;
+}
+
+/* ─────────── library (handoff §10.1) ─────────── */
+
+.pws-lib {
+  font-family: var(--pw-font);
+}
+.pws-lib__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 16px;
+  max-width: 1280px;
+  margin-bottom: 18px;
+}
+.pws-lib__h1 {
+  margin: 0;
+  font-size: var(--pw-fs-24);
+  font-weight: 700;
+  letter-spacing: var(--pw-tracking-tight);
+}
+.pws-lib__intro {
+  max-width: 720px;
+  margin: 6px 0 0;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-14);
+}
+.pws-lib__note {
+  margin-bottom: 12px;
+}
+.pws-lib__filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  max-width: 1280px;
+  margin-bottom: 12px;
+}
+.pws-lib__q {
+  /* A UA input in the design: content-box, so 240px plus padding and border. */
+  box-sizing: content-box;
+  width: 240px;
+}
+.pws-lib__count {
+  margin-left: auto;
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12-5);
+}
+.pws-lib__err {
+  max-width: 1280px;
+  margin-bottom: 12px;
+}
+.pws-lib__card {
+  max-width: 1280px;
+  overflow: hidden;
+  border: 1px solid var(--pw-line);
+  border-radius: var(--pw-r-card);
+  background: var(--pw-surface);
+}
+.pws-lib__scroll {
+  overflow-x: auto;
+}
+.pws-lib__table {
+  width: 100%;
+  min-width: 900px;
+  border-collapse: collapse;
+}
+.pws-lib__table th {
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--pw-line);
+  background: var(--pw-surface-2);
+  color: var(--pw-faint);
+  font-size: var(--pw-fs-11);
+  font-weight: 600;
+  letter-spacing: var(--pw-tracking-caps);
+  text-align: left;
+  text-transform: uppercase;
+}
+.pws-lib__table td {
+  padding: 13px 16px;
+  border-bottom: 1px solid var(--pw-rule);
+  /* The design's cells keep the UA's middle alignment. */
+  vertical-align: middle;
+}
+.pws-lib__row {
+  cursor: pointer;
+}
+.pws-lib__row:hover {
+  background: var(--pw-row-hover);
+}
+.pws-lib__name {
+  font-size: var(--pw-fs-14);
+}
+.pws-lib__sub {
+  color: var(--pw-muted);
+  font-size: var(--pw-fs-12);
+}
+.pws-lib__wd {
+  margin-top: 4px;
+}
+/* The design's 20px pill sits alone on its line, so the line is exactly 20px
+   (a middle-aligned pill makes it 20.5px). */
+.pws-lib__wd .pw-pill {
+  vertical-align: top;
+}
+.pws-lib__draft {
+  color: var(--pw-faint);
+  font-size: var(--pw-fs-13);
+  font-weight: 600;
+}
+.pws-lib__draft--open {
+  color: var(--pw-info);
+}
+.pws-lib__upd {
+  font-size: var(--pw-fs-13);
+  white-space: nowrap;
+}
+.pws-lib__open {
+  text-align: right;
+}
+.pws-lib__openlink {
+  color: var(--pw-link);
+  font-size: var(--pw-fs-13);
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+}
+.pws-lib__openlink:hover {
+  color: var(--pw-link-hover);
+  text-decoration: underline;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pws-lib * {
+    transition: none !important;
+  }
+}
+
+/* Dialogs opened from the library (Template Studio.dc.html): the title carries no
+   tracking (Platform Admin.dc.html's dialogs use -.01em)… */
+body:has(.pws-lib) .tc-dialog__content:has(.pw-cd) .tc-dialog__title {
+  letter-spacing: normal;
+}
+/* …a field's helper comes before its counter (the console puts the counter first)… */
+body:has(.pws-lib) .pw-cd .pw-field__count {
+  order: 1;
+}
+/* …and the Change box's arrow is body text (14px), not the console's 16px. */
+body:has(.pws-lib) .pw-cd__arrow {
+  font-size: var(--pw-fs-14);
+}
+
+/* The library's empty state (Template Studio.dc.html): a bold (700) title. */
+.pws-lib__card .pw-empty__title {
+  font-weight: 700;
+}
