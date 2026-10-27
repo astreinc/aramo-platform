@@ -724,6 +724,7 @@
       "clearTemplateSelection",
       "contentFromVersion",
       "convertStudioValue",
+      "createDraftFromActive",
       "createOwnTemplate",
       "createStudioCodec",
       "emptyBindingMap",
