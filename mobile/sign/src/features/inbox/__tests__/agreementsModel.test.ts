@@ -3,6 +3,8 @@ import type { LocalDraft } from '../../../state/draftStore';
 import {
   countFor,
   filterAgreements,
+  FILTER_LABEL,
+  FILTERS,
   mergeAgreements,
   needsSignatureSummary,
   pillFor,
@@ -50,6 +52,14 @@ describe('mergeAgreements + filters', () => {
     for (const f of ['needs_me', 'waiting', 'drafts', 'done'] as const)
       for (const r of filterAgreements(rows, f)) covered.add(r.status);
     for (const s of ENVELOPE_STATUSES) expect(covered.has(s)).toBe(true);
+  });
+
+  it('All lists every row; Completed is the label for the end-status filter (M-A4 §3.1)', () => {
+    expect(filterAgreements(rows, 'all')).toHaveLength(rows.length);
+    expect(countFor(rows, 'all')).toBe(rows.length);
+    expect(FILTERS).toEqual(['all', 'needs_me', 'waiting', 'drafts', 'done']);
+    expect(FILTER_LABEL.done).toBe('Completed');
+    expect(FILTER_LABEL.waiting).toBe('Waiting for others');
   });
 
   it('Needs me = received items the server says can be signed now', () => {

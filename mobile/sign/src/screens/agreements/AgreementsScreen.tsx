@@ -1,10 +1,10 @@
-// Agreements tab (handoff §4.2, §4.10; directive §5, §7 C-3, C-12). One list for what the
+// Agreements tab under the shared top bar (M-A4 §1.2; handoff §4.2, §4.10; directive §5, §7 C-3, C-12). One list for what the
 // user sent (GET /v1/sign/sender/envelopes) and what they received and claimed
 // (GET /v1/sign/inbox), plus local drafts, filtered Needs me / Waiting / Drafts / Done.
 // Cached data shows offline ("Offline · showing saved data").
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
 import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   Pressable,
@@ -15,10 +15,10 @@ import {
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import Svg, { Path } from 'react-native-svg';
 
 import { Banner, OfflineBanner } from '../../components/Banner';
 import { Card } from '../../components/Card';
+import { TopBar } from '../../components/TopBar';
 import {
   countFor,
   EMPTY_STATE,
@@ -49,36 +49,10 @@ import {
   useSenderEnvelopes,
 } from '../../features/inbox/queries';
 import { EmptyState, Segments } from '../../features/inbox/ui';
+import { consumeSearchFocus } from '../../features/shell/searchFocus';
+import { useFloatingBarSpace } from '../../navigation/FloatingTabBar';
 import type { AgreementsFilter, MainTabParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
-
-function initials(name: string | null | undefined): string {
-  const parts = (name ?? '').split(/\s+/).filter(Boolean);
-  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '·';
-}
-
-function Avatar({
-  name,
-  onPress,
-}: {
-  readonly name: string | null | undefined;
-  readonly onPress: () => void;
-}) {
-  const t = useTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel="Account"
-      hitSlop={6}
-      style={[styles.avatar, { backgroundColor: t.color.tint }]}
-    >
-      <Text style={{ color: t.color.onTint, fontWeight: '600', fontSize: 14 }}>
-        {initials(name)}
-      </Text>
-    </Pressable>
-  );
-}
 
 export function AgreementsScreen() {
   const t = useTheme();
@@ -95,6 +69,8 @@ export function AgreementsScreen() {
   const [filter, setFilter] = useState<AgreementsFilter>(route.params?.filter ?? 'needs_me');
   const [query, setQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const searchRef = useRef<TextInput>(null);
+  const barSpace = useFloatingBarSpace();
   // A navigation to Agreements with a filter (e.g. "Saved to Drafts") selects it.
   const [seenFilter, setSeenFilter] = useState(route.params?.filter);
   if (route.params?.filter !== seenFilter) {
@@ -107,6 +83,8 @@ export function AgreementsScreen() {
   useFocusEffect(
     useCallback(() => {
       void refetchLocal();
+      // The top bar's search pill on Home asked for the search field (searchFocus.ts).
+      if (consumeSearchFocus()) setTimeout(() => searchRef.current?.focus(), 0);
     }, [refetchLocal]),
   );
 
@@ -118,7 +96,6 @@ export function AgreementsScreen() {
   const needs = needsSignatureSummary(rows);
   const allowance = allowanceModel(billing.data ?? null);
   const banner = limitBanner(allowance);
-  const canSend = ctx.data?.can_send === true;
   const loading = (sent.isPending || inbox.isPending) && rows.length === 0;
   const failed = (sent.isError || inbox.isError) && rows.length === 0;
 
@@ -163,15 +140,14 @@ export function AgreementsScreen() {
         );
         return;
       }
-      await forgetLocalDrafts(services.drafts, bytes, { envelopeId: row.envelopeId }).catch(() => 0);
+      await forgetLocalDrafts(services.drafts, bytes, { envelopeId: row.envelopeId }).catch(
+        () => 0,
+      );
     } else return;
     toast.show('Draft deleted');
     void qc.invalidateQueries({ queryKey: signKeys.senderList });
     void local.refetch();
   }
-
-  const newEnvelope = () => navigation.navigate('SendFlow', undefined);
-  const openAccount = () => navigation.navigate('Main', { screen: 'Account' });
 
   const segments = FILTERS.map((k) => ({
     key: k,
@@ -187,56 +163,7 @@ export function AgreementsScreen() {
 
   const header = (
     <View style={{ gap: 12, paddingBottom: 8 }}>
-      {ios ? (
-        <>
-          <View style={styles.iosTopRow}>
-            {canSend ? (
-              <Pressable
-                testID="agreements-new"
-                onPress={newEnvelope}
-                accessibilityRole="button"
-                accessibilityLabel="New envelope"
-                hitSlop={6}
-                style={[styles.plus, { backgroundColor: t.color.white }]}
-              >
-                <Svg
-                  width={20}
-                  height={20}
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke={t.color.accent}
-                  strokeWidth={2.2}
-                  strokeLinecap="round"
-                >
-                  <Path d="M12 5v14M5 12h14" />
-                </Svg>
-              </Pressable>
-            ) : null}
-            <Avatar name={ctx.data?.user.display_name} onPress={openAccount} />
-          </View>
-          <Text
-            accessibilityRole="header"
-            style={[styles.pad, { color: t.color.text, ...t.type.largeTitle }]}
-          >
-            Agreements
-          </Text>
-        </>
-      ) : (
-        <View style={styles.androidBar}>
-          <Text
-            accessibilityRole="header"
-            style={{
-              flex: 1,
-              color: t.color.text,
-              fontFamily: t.font.family,
-              ...t.type.largeTitle,
-            }}
-          >
-            Agreements
-          </Text>
-          <Avatar name={ctx.data?.user.display_name} onPress={openAccount} />
-        </View>
-      )}
+      <TopBar search={{ value: query, onChangeText: setQuery }} searchInputRef={searchRef} />
       {allowance ? (
         <View
           style={[styles.pad, styles.chip]}
@@ -260,26 +187,6 @@ export function AgreementsScreen() {
           <Banner title={banner.title} body={banner.body} />
         </View>
       ) : null}
-      <View style={styles.pad}>
-        <TextInput
-          testID="agreements-search"
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search agreements"
-          placeholderTextColor={t.color.textSecondary}
-          accessibilityLabel="Search agreements"
-          returnKeyType="search"
-          clearButtonMode="while-editing"
-          style={
-            ios
-              ? [styles.searchIos, { backgroundColor: t.color.fill, color: t.color.text }]
-              : [
-                  styles.searchAndroid,
-                  { backgroundColor: '#EEEDF4', color: t.color.text, fontFamily: t.font.family },
-                ]
-          }
-        />
-      </View>
       {needs.count > 0 && filter !== 'needs_me' && needs.newest ? (
         <View style={styles.pad}>
           <View
@@ -386,47 +293,17 @@ export function AgreementsScreen() {
             tintColor={t.color.accent}
           />
         }
-        contentContainerStyle={{ paddingBottom: ios ? 24 : 120 }}
+        contentContainerStyle={{ paddingBottom: barSpace }}
         keyboardShouldPersistTaps="handled"
       />
-      {!ios && canSend ? (
-        <Pressable
-          testID="agreements-fab"
-          onPress={newEnvelope}
-          accessibilityRole="button"
-          accessibilityLabel="New envelope"
-          style={[styles.fab, { backgroundColor: t.color.tint, bottom: 16 }]}
-        >
-          <Text style={{ color: t.color.onTint, fontSize: 15, fontWeight: '500' }}>+ New</Text>
-        </Pressable>
-      ) : null}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   pad: { marginHorizontal: 16 },
-  iosTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-  },
-  plus: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
-  avatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  androidBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 64 },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dot: { width: 8, height: 8, borderRadius: 4 },
-  searchIos: { height: 36, borderRadius: 10, paddingHorizontal: 12, fontSize: 17 },
-  searchAndroid: { height: 56, borderRadius: 28, paddingHorizontal: 20, fontSize: 16 },
   needsCard: { borderRadius: 16, padding: 16, gap: 6 },
   needsButton: {
     marginTop: 8,
@@ -437,14 +314,4 @@ const styles = StyleSheet.create({
   rowCard: { marginHorizontal: 16, borderRadius: 0 },
   first: { borderTopLeftRadius: 12, borderTopRightRadius: 12, marginTop: 8 },
   last: { borderBottomLeftRadius: 12, borderBottomRightRadius: 12 },
-  fab: {
-    position: 'absolute',
-    right: 16,
-    height: 56,
-    borderRadius: 16,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 3,
-  },
 });
