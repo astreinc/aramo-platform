@@ -18,6 +18,13 @@ export interface TemplateBindingDescriptor {
   readonly key: string;
   readonly label: string;
   readonly group: string;
+  // TEMPLATE-STUDIO-1 B-2 (§6) — additive catalog metadata from the governed
+  // TemplateVariable row, so the Studio Variables cards show the type, "e.g. {sample}" and
+  // the active state (as the platform variable catalog already exposes). Optional on the
+  // port so a non-catalog implementation stays valid; the RTR implementation sets all three.
+  readonly data_type?: string;
+  readonly sample_value?: string | null;
+  readonly active?: boolean;
 }
 
 // A fixed-sample preview (§17): the version's content with every binding substituted by

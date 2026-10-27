@@ -79,6 +79,18 @@ export {
 export {
   studioBlocksFromHtml,
   studioBlocksToHtml,
+  // TEMPLATE-STUDIO-1 B-1 — the letterhead-preserving document codec (additive).
+  STUDIO_LETTERHEAD_KIND,
+  STUDIO_LETTERHEAD_HTML,
+  isStudioLetterheadBlock,
+  studioDocFromHtml,
+  studioDocToHtml,
+  studioContentBlocks,
+  studioDocHasLetterhead,
+  studioLetterheadState,
+  type StudioLetterheadBlock,
+  type StudioDocBlock,
+  type StudioLetterheadState,
   isCanonicalStudioHtml,
   studioPlainText,
   studioVariableKeys,

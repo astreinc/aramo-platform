@@ -343,6 +343,14 @@ describe('A1 — templates controller (html content + tenant logo)', () => {
     expect(none.tenant_logo).toEqual({ available: false, tenant_name: null });
   });
 
+  // TEMPLATE-STUDIO-1 B-2 (§6) — the catalog metadata the port supplies (data_type,
+  // sample_value, active) reaches the tenant response unchanged (additive fields).
+  it('allowed-bindings passes the B-2 catalog metadata (data_type, sample_value, active) through', async () => {
+    const binding = { key: 'talent.full_name', label: 'Talent full name', group: 'Talent', data_type: 'TEXT', sample_value: 'Amina Diallo', active: true };
+    const res = await ctl(repo(), caps({ listAllowedBindings: () => [binding] }), logoPort()).allowedBindings(AUTH, 'tpl-1', 'r');
+    expect(res.bindings).toEqual([binding]);
+  });
+
   it('POST logo: captures once, creates a LOGO TemplateAsset, attaches it to the DRAFT content, returns {asset_id, sha256, mime}', async () => {
     const r = repo();
     const c = caps();

@@ -13,6 +13,7 @@
 
 import { HTML_CODEC, insertAtRange, type BlockCodec } from './dt-block-editor';
 import {
+  LOGO_HTML,
   activeMarks,
   blocksToHtml,
   canonicalInner,
@@ -58,17 +59,101 @@ export function variableToken(key: string): string {
 // ── Model ⇄ stored rtr-html-v1 ──────────────────────────────────────────
 
 /**
- * Stored html → Studio blocks. The html is sanitised to canonical rtr-html-v1 first (never
- * trusted as markup). A tenant-logo div is not Studio content (platform defaults carry no
- * tenant asset) and is dropped.
+ * Stored html → Studio content blocks. The html is sanitised to canonical rtr-html-v1 first
+ * (never trusted as markup). The tenant-logo letterhead is NOT an editable content block,
+ * so this content-only view leaves it out — a host that edits TENANT content must use
+ * `studioDocFromHtml` / `studioDocToHtml` (TEMPLATE-STUDIO-1 B-1), which keep it.
  */
 export function studioBlocksFromHtml(html: string, newId: () => string): StudioBlock[] {
   return htmlToBlocks(html).blocks.map((b) => ({ id: newId(), kind: b.kind, value: b.value }));
 }
 
-/** Studio blocks → stored rtr-html-v1 html (no ids, no logo). */
+/** Studio content blocks → stored rtr-html-v1 html (no ids, no letterhead; see studioDocToHtml). */
 export function studioBlocksToHtml(blocks: readonly Pick<StudioBlock, 'kind' | 'value'>[]): string {
   return blocksToHtml(false, blocks.map((b) => ({ kind: b.kind, value: b.value })));
+}
+
+// ── Letterhead logo (TEMPLATE-STUDIO-1 B-1; DOC-TEMPLATE-ADMIN-RTR-1 A1) ─────────────────
+//
+// A1 allows exactly one tenant asset in content: `<div data-asset="tenant.logo"></div>`, at
+// most once and only as the FIRST child. The version's `logo` reference is SERVER-OWNED (set
+// by POST /versions/:id/logo, cleared by DELETE /versions/:id/logo — both place / strip the
+// node themselves) and preview/activation fail closed with `logo_asset_mismatch` whenever
+// node and reference disagree. The Studio doc model therefore carries the node as one
+// NON-EDITABLE letterhead block: decode keeps it, encode writes it back byte-for-byte as
+// the first child (exactly once, wherever the block sits), and nothing can place it
+// elsewhere. Platform defaults never carry a logo, so their decode/encode is unchanged.
+//
+// Removal semantics (server stays authoritative): the letterhead is removed ONLY through
+// DELETE /versions/:id/logo (reference + node together), after which the host reloads the
+// draft. Dropping the block from content while the version still holds a reference is not
+// a supported edit: `studioLetterheadState` reports it ('node_missing') so the host can
+// block the save, and if such content is saved anyway the server refuses its preview and
+// activation (`logo_asset_mismatch`). No server change is needed.
+
+export const STUDIO_LETTERHEAD_KIND = 'letterhead-logo' as const;
+/** The stored form of the letterhead block (A1): exactly this, as the first child. */
+export const STUDIO_LETTERHEAD_HTML = LOGO_HTML;
+
+/** The non-editable letterhead block (the tenant logo). It carries no value. */
+export interface StudioLetterheadBlock {
+  readonly id: string;
+  readonly kind: typeof STUDIO_LETTERHEAD_KIND;
+  readonly value: '';
+}
+/** One block of a Studio document: editable content, or the tenant letterhead. */
+export type StudioDocBlock = StudioBlock | StudioLetterheadBlock;
+
+export function isStudioLetterheadBlock(b: Pick<StudioDocBlock, 'kind'>): b is StudioLetterheadBlock {
+  return b.kind === STUDIO_LETTERHEAD_KIND;
+}
+
+/**
+ * Stored html → Studio document: the letterhead block first (when the stored html has the
+ * A1 logo node as its first child), then the content blocks exactly as studioBlocksFromHtml
+ * returns them. For content without a logo (every platform default) the result equals
+ * studioBlocksFromHtml.
+ */
+export function studioDocFromHtml(html: string, newId: () => string): StudioDocBlock[] {
+  const { logo, blocks } = htmlToBlocks(html);
+  const content: StudioDocBlock[] = blocks.map((b) => ({ id: newId(), kind: b.kind, value: b.value }));
+  return logo ? [{ id: newId(), kind: STUDIO_LETTERHEAD_KIND, value: '' }, ...content] : content;
+}
+
+/**
+ * Studio document → stored rtr-html-v1 html. A letterhead block (anywhere, any number of
+ * times) encodes as ONE `<div data-asset="tenant.logo"></div>` FIRST child (A1); without
+ * one the output equals studioBlocksToHtml.
+ */
+export function studioDocToHtml(blocks: readonly Pick<StudioDocBlock, 'kind' | 'value'>[]): string {
+  const content = blocks.filter((b): b is Pick<StudioBlock, 'kind' | 'value'> => !isStudioLetterheadBlock(b));
+  return blocksToHtml(studioDocHasLetterhead(blocks), content.map((b) => ({ kind: b.kind, value: b.value })));
+}
+
+/** The editable content blocks of a Studio document (the letterhead left out). */
+export function studioContentBlocks<B extends Pick<StudioDocBlock, 'kind'>>(blocks: readonly B[]): Exclude<B, StudioLetterheadBlock>[] {
+  return blocks.filter((b) => !isStudioLetterheadBlock(b)) as Exclude<B, StudioLetterheadBlock>[];
+}
+
+export function studioDocHasLetterhead(blocks: readonly Pick<StudioDocBlock, 'kind'>[]): boolean {
+  return blocks.some((b) => isStudioLetterheadBlock(b));
+}
+
+/**
+ * Letterhead node vs the version's server-owned logo reference — the same rule the server
+ * applies at preview/activation (`logo_asset_mismatch`):
+ *   ok            — both present or both absent;
+ *   node_missing  — the version has a logo but the document has no letterhead block (remove
+ *                   it through DELETE /versions/:id/logo, never by editing content);
+ *   asset_missing — a letterhead block without a captured logo (capture it through
+ *                   POST /versions/:id/logo).
+ */
+export type StudioLetterheadState = 'ok' | 'node_missing' | 'asset_missing';
+export function studioLetterheadState(blocks: readonly Pick<StudioDocBlock, 'kind'>[], logo: { readonly asset_id: string } | null | undefined): StudioLetterheadState {
+  const node = studioDocHasLetterhead(blocks);
+  const ref = logo !== null && logo !== undefined;
+  if (node === ref) return 'ok';
+  return ref ? 'node_missing' : 'asset_missing';
 }
 
 /** True when the html is already canonical rtr-html-v1 (re-sanitising changes nothing). */

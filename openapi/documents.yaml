@@ -1875,6 +1875,16 @@ components:
                 type: string
               group:
                 type: string
+              data_type:
+                type: string
+                enum: [TEXT, MULTILINE_TEXT, DATE, NUMBER, CURRENCY]
+                description: TEMPLATE-STUDIO-1 B-2 — the catalog variable's data type (additive).
+              sample_value:
+                type: [string, 'null']
+                description: TEMPLATE-STUDIO-1 B-2 — the catalog variable's safe sample value, shown as "e.g." (additive).
+              active:
+                type: boolean
+                description: TEMPLATE-STUDIO-1 B-2 — the catalog variable's active flag (additive). Only active catalog rows are offered, so every listed binding is active today.
         tenant_logo:
           type: object
           description: A1 §2.4 — whether the Tenant profile has a logo the editor can add, and the organisation name the letterhead shows beside it (display name, else legal name, else workspace name).

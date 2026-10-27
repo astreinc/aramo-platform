@@ -96,6 +96,11 @@ export interface TemplateBinding {
   readonly key: string;
   readonly label: string;
   readonly group: string;
+  // TEMPLATE-STUDIO-1 B-2 — additive catalog metadata (type, "e.g." sample, active state).
+  // Optional: older servers / fixtures omit them.
+  readonly data_type?: string;
+  readonly sample_value?: string | null;
+  readonly active?: boolean;
 }
 
 // §17 — a fixed-sample preview: the draft content with every binding substituted by

@@ -1,6 +1,8 @@
 import { describe, expect, it } from 'vitest';
 
 import {
+  STUDIO_LETTERHEAD_HTML,
+  STUDIO_LETTERHEAD_KIND,
   appendStudioVariable,
   convertStudioValue,
   createStudioCodec,
@@ -10,12 +12,18 @@ import {
   serializeStudioBlockDom,
   studioBlocksFromHtml,
   studioBlocksToHtml,
+  studioContentBlocks,
+  studioDocFromHtml,
+  studioDocHasLetterhead,
+  studioDocToHtml,
+  studioLetterheadState,
   studioPasteNodes,
   studioPlainText,
   studioPreviewParts,
   studioValueFromText,
   studioVariableKeys,
   type StudioChipResolver,
+  type StudioDocBlock,
 } from './studio-codec';
 
 // PLATFORM-UX-1 F-9 (directive R-11) — the Studio codec round-trips exactly through the
@@ -137,5 +145,68 @@ describe('studio codec — helpers', () => {
     expect(parts.map((p) => p.kind)).toEqual(['h2', 'p', 'ul']);
     expect(parts[1]?.html).toBe('<p>Dear <span data-sample="talent.first_name">Amina</span></p>');
     expect(parts[1]?.text).toBe('Dear Amina');
+  });
+});
+
+// TEMPLATE-STUDIO-1 B-1 (§3.5, §6; DOC-TEMPLATE-ADMIN-RTR-1 A1) — a tenant draft keeps its
+// letterhead logo through Studio decode → encode. This exact string is also what the gated
+// HTTP spec (apps/api template-studio-1-b12-http.integration.spec.ts) PATCHes, previews and
+// activates on a logo-bearing tenant draft.
+const TENANT_LOGO_HTML =
+  '<div data-asset="tenant.logo"></div><h2>Right to represent</h2><p>We represent <span data-field="talent.full_name"></span> for <span data-field="requisition.title"></span>.</p>';
+
+describe('studio codec — letterhead logo (TEMPLATE-STUDIO-1 B-1)', () => {
+  it('decodes the A1 logo node as ONE non-editable letterhead block, first', () => {
+    const doc = studioDocFromHtml(TENANT_LOGO_HTML, newId);
+    expect(doc.map((b) => b.kind)).toEqual([STUDIO_LETTERHEAD_KIND, 'h2', 'p']);
+    expect(doc[0]?.value).toBe('');
+    expect(studioDocHasLetterhead(doc)).toBe(true);
+    expect(studioContentBlocks(doc).map((b) => b.kind)).toEqual(['h2', 'p']);
+  });
+
+  it('round-trips byte-for-byte: decode → encode returns the stored html (logo first, exactly once)', () => {
+    const doc = studioDocFromHtml(TENANT_LOGO_HTML, newId);
+    const html = studioDocToHtml(doc);
+    expect(html).toBe(TENANT_LOGO_HTML);
+    expect(html.startsWith(STUDIO_LETTERHEAD_HTML)).toBe(true);
+    expect(isCanonicalStudioHtml(html)).toBe(true);
+    // An edit to a content block keeps the letterhead.
+    const edited = doc.map((b) => (b.kind === 'h2' ? { ...b, value: 'Right to represent (2026)' } : b));
+    expect(studioDocToHtml(edited)).toBe(TENANT_LOGO_HTML.replace('Right to represent<', 'Right to represent (2026)<'));
+  });
+
+  it('cannot place the logo anywhere but first, or twice (A1): encode normalises', () => {
+    const doc = studioDocFromHtml(TENANT_LOGO_HTML, newId);
+    const [logo, ...rest] = doc as [StudioDocBlock, ...StudioDocBlock[]];
+    expect(studioDocToHtml([...rest, logo])).toBe(TENANT_LOGO_HTML);
+    expect(studioDocToHtml([logo, ...rest, logo])).toBe(TENANT_LOGO_HTML);
+    // A logo node that is not the first child is not A1 content: sanitised away on decode.
+    expect(studioDocHasLetterhead(studioDocFromHtml('<p>x</p><div data-asset="tenant.logo"></div>', newId))).toBe(false);
+  });
+
+  it('platform content (no logo) is unchanged: same blocks and same html as the content-only codec', () => {
+    const html = studioBlocksToHtml(DESIGN);
+    const doc = studioDocFromHtml(html, newId);
+    expect(doc.map((b) => ({ kind: b.kind, value: b.value }))).toEqual(DESIGN);
+    expect(studioDocHasLetterhead(doc)).toBe(false);
+    expect(studioDocToHtml(doc)).toBe(html);
+    expect(studioDocToHtml(doc)).toBe(studioBlocksToHtml(studioBlocksFromHtml(html, newId)));
+  });
+
+  it('the content-only codec keeps its existing behaviour (letterhead left out)', () => {
+    const blocks = studioBlocksFromHtml(TENANT_LOGO_HTML, newId);
+    expect(blocks.map((b) => b.kind)).toEqual(['h2', 'p']);
+    expect(studioBlocksToHtml(blocks)).toBe(TENANT_LOGO_HTML.slice(STUDIO_LETTERHEAD_HTML.length));
+  });
+
+  it('letterhead state mirrors the server logo_asset_mismatch rule', () => {
+    const withLogo = studioDocFromHtml(TENANT_LOGO_HTML, newId);
+    const without = studioContentBlocks(withLogo);
+    const ref = { asset_id: 'asset-1' };
+    expect(studioLetterheadState(withLogo, ref)).toBe('ok');
+    expect(studioLetterheadState(without, null)).toBe('ok');
+    expect(studioLetterheadState(without, ref)).toBe('node_missing');
+    expect(studioLetterheadState(withLogo, null)).toBe('asset_missing');
+    expect(studioLetterheadState(withLogo, undefined)).toBe('asset_missing');
   });
 });
