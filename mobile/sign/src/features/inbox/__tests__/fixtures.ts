@@ -39,8 +39,8 @@ export function sent(status: EnvelopeStatus, over: Partial<SenderListItem> = {})
     document_count: 1,
     source_application: 'aramo-sign',
     recipients: [
-      { id: uuid(), name: 'Alex Morgan', email: 'alex@example.com', status: 'SIGNED' },
-      { id: uuid(), name: 'Sam Lee', email: 'sam@example.com', status: 'PENDING' },
+      { id: uuid(), name: 'Alex Morgan', email: 'alex@example.com', status: 'SIGNED', recipient_kind: 'SIGNER' },
+      { id: uuid(), name: 'Sam Lee', email: 'sam@example.com', status: 'PENDING', recipient_kind: 'SIGNER' },
     ],
     ...over,
   };
@@ -93,6 +93,9 @@ export function detail(over: Partial<SenderEnvelopeDetail> = {}): SenderEnvelope
         email: 'alex@example.com',
         status: 'PENDING',
         signing_order: 1,
+        recipient_kind: 'SIGNER',
+        copy_delivery: null,
+        assigned_to_me: false,
         viewed_at: null,
         signed_at: null,
         declined_at: null,

@@ -280,7 +280,8 @@ export function secondaryLine(row: AgreementRow): string {
     }
   }
   const e = row.item;
-  const signers = e.recipients;
+  // Copy recipients (M-A5 RECEIVES_COPY) never sign: they are not counted or named here.
+  const signers = e.recipients.filter((r) => r.recipient_kind !== 'RECEIVES_COPY');
   const signed = signers.filter((s) => s.status === 'SIGNED').length;
   switch (e.status) {
     case 'DRAFT':

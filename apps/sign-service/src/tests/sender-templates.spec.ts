@@ -185,12 +185,13 @@ describe('sender context — templates permission + feature availability', () =>
   const identity = { findUserById: async () => ({ email: 'u@x.test', display_name: 'U' }), findMembership: async () => null, findRoleKeysForMembership: async () => [] };
   it('NOT_AVAILABLE (default) → features.templates false; permission follows document_template:read', async () => {
     const v = await new SenderContextService(tenants as never, identity as never).context(auth(SENDER_SCOPES), 'r');
-    expect(v.features).toEqual({ templates: false });
+    // M-A5 §3.7 — sign.in_person_signing is AVAILABLE in the production registry.
+    expect(v.features).toEqual({ templates: false, in_person_signing: true });
     expect(v.permissions.templates).toBe(true);
   });
   it('AVAILABLE → features.templates true; no document_template:read → permission false', async () => {
     const v = await new SenderContextService(tenants as never, identity as never, new SignFeatureGate(AVAILABLE)).context(auth(['sign:envelope:read']), 'r');
-    expect(v.features).toEqual({ templates: true });
+    expect(v.features).toMatchObject({ templates: true });
     expect(v.permissions.templates).toBe(false);
   });
 });

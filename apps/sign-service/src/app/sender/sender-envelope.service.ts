@@ -22,11 +22,23 @@ import {
   envelopeReminderAvailableAt,
   idempotencyRequestHash,
   nextReminderAt,
+  COPY_DELIVERIES,
+  EsignService,
+  MAX_COPY_RECIPIENTS,
+  RECIPIENT_KINDS,
+  currentTurnOf,
+  isCopyRecipient,
+  isLinkSigner,
+  recipientKindOf,
+  signingRecipients,
+  type CopyDelivery,
+  type RecipientKind,
 } from '@aramo/sign';
 import { SafePdfPipeline, UnsafePdfError } from '@aramo/documents-rendering';
 import { PDFDocument } from 'pdf-lib';
 
 import { AramoSignStorageGate } from '../billing/aramo-sign-storage.gate.js';
+import { SIGN_IN_PERSON_SIGNING_FEATURE, SignFeatureGate } from '../sign-feature.gate.js';
 import { NativeAramoSignatureProvider } from '../native-aramo-signature.provider.js';
 import { PersonalSendGate } from '../personal/personal-send.gate.js';
 
@@ -103,6 +115,10 @@ export class SenderEnvelopeService {
     @Optional() private readonly idempotency?: SignIdempotencyRepository,
     // Sign Mobile M-A3 §5 — the caller's private contacts.
     @Optional() private readonly contactStore?: SignContactRepository,
+    // M-A5 §3 / §4 — hosted and self-sign sessions (the engine).
+    @Optional() private readonly engine?: EsignService,
+    // M-A5 §3.7 — the sign.in_person_signing launch availability.
+    @Optional() private readonly features?: SignFeatureGate,
   ) {}
 
   // Sign Mobile M-A3 §7/§8 — run `fn` at most once per (tenant, actor, operation,
@@ -249,7 +265,7 @@ export class SenderEnvelopeService {
         last_activity_at: iso(last.get(e.id) ?? e.updated_at),
         document_count: e.documents.length,
         source_application: e.source_application,
-        recipients: e.signers.map((s) => ({ id: s.id, name: s.name, email: s.email, status: s.status })),
+        recipients: e.signers.map((s) => ({ id: s.id, name: s.name, email: s.email, status: s.status, recipient_kind: recipientKindOf(s) })),
       })),
       counts,
     };
@@ -271,9 +287,11 @@ export class SenderEnvelopeService {
     }
     const sender = await this.identity.findUserById(env.created_by);
     const open = env.status === 'SENT' || env.status === 'IN_PROGRESS';
-    const nextSignerId = open && env.routing_mode === 'SEQUENTIAL' ? (env.signers.find((s) => s.status !== 'SIGNED')?.id ?? null) : null;
-    const canRemind = (s: { id: string; status: string }): boolean =>
-      open && (s.status === 'PENDING' || s.status === 'VIEWED') && (env.routing_mode !== 'SEQUENTIAL' || s.id === nextSignerId);
+    // M-A5 §1.3 — the shared current-turn rule (a copy recipient never takes a turn).
+    const nextSignerId = open && env.routing_mode === 'SEQUENTIAL' ? (currentTurnOf(env.signers)?.id ?? null) : null;
+    // M-A5 §1.2 / §3 — only a SIGNER holds an emailed link, so only a SIGNER is reminded.
+    const canRemind = (s: { id: string; status: string; recipient_kind?: string | null }): boolean =>
+      open && isLinkSigner(s) && (s.status === 'PENDING' || s.status === 'VIEWED') && (env.routing_mode !== 'SEQUENTIAL' || s.id === nextSignerId);
     // Sign Mobile M-A3 §7 — when each remindable signer may next be reminded (the
     // later of their 60-minute cooldown and the envelope's rolling 24-hour limit).
     const now = new Date();
@@ -339,6 +357,11 @@ export class SenderEnvelopeService {
         email: s.email,
         status: s.status,
         signing_order: s.signing_order,
+        // M-A5 §1 / §2 / §4 — the kind, copy timing, and whether the caller assigned
+        // this recipient to themselves (the bound user id itself is never returned).
+        recipient_kind: recipientKindOf(s),
+        copy_delivery: isCopyRecipient(s) ? s.copy_delivery : null,
+        assigned_to_me: s.bound_user_id !== null && s.bound_user_id === auth.sub,
         viewed_at: iso(s.viewed_at),
         signed_at: iso(s.signed_at),
         declined_at: iso(s.declined_at),
@@ -456,6 +479,7 @@ export class SenderEnvelopeService {
     const rows = await this.repo.listPastRecipients(auth.tenant_id, 200, createdBy);
     const byEmail = new Map<string, { name: string; email: string; envelope_count: number; last_used_at: string }>();
     for (const r of rows) {
+      if (r.email === null) continue; // M-A5 §3.5 — an in-person signer without an email
       const k = r.email.toLowerCase();
       const cur = byEmail.get(k);
       if (cur === undefined) {
@@ -745,22 +769,67 @@ export class SenderEnvelopeService {
     const expected = expectedRevision(auth, ifMatch, envelope_id, requestId);
     await this.assertMayChange(auth, envelope_id, requestId);
     if (!Array.isArray(body?.recipients)) throw bad(requestId, 'recipients must be an array');
-    if (body.recipients.length > MAX_SIGNERS) {
+    // M-A5 §1.4 — at most MAX_SIGNERS signing recipients and MAX_COPY_RECIPIENTS copies.
+    if (body.recipients.length > MAX_SIGNERS + MAX_COPY_RECIPIENTS) {
       throw bad(requestId, `An envelope can have at most ${MAX_SIGNERS} signers`, { reason: 'too_many_signers', max: MAX_SIGNERS });
     }
     const seen = new Set<string>();
-    const recipients = body.recipients.map((r: unknown, i: number) => {
+    let verifiedEmail: string | null | undefined;
+    const recipients: Array<{ id?: string; name: string; email: string | null; recipient_kind: RecipientKind; copy_delivery: CopyDelivery | null; bound_user_id: string | null }> = [];
+    for (const [i, r] of (body.recipients as unknown[]).entries()) {
       const o = (r ?? {}) as Record<string, unknown>;
       const name = typeof o['name'] === 'string' ? o['name'].trim() : '';
-      const email = typeof o['email'] === 'string' ? o['email'].trim() : '';
+      // M-A5 §1.7 — no recipient_kind ⇒ SIGNER (every existing client).
+      const kindRaw = o['recipient_kind'] ?? 'SIGNER';
+      if (typeof kindRaw !== 'string' || !(RECIPIENT_KINDS as readonly string[]).includes(kindRaw)) {
+        throw bad(requestId, `recipient ${i + 1}: recipient_kind must be SIGNER, IN_PERSON_SIGNER or RECEIVES_COPY`, { index: i, field: 'recipient_kind', reason: 'invalid_recipient_kind' });
+      }
+      const kind = kindRaw as RecipientKind;
+      // M-A5 §2.1 — copy_delivery is required iff RECEIVES_COPY.
+      const cdRaw = o['copy_delivery'] ?? null;
+      if (kind === 'RECEIVES_COPY' && (typeof cdRaw !== 'string' || !(COPY_DELIVERIES as readonly string[]).includes(cdRaw))) {
+        throw bad(requestId, `recipient ${i + 1}: choose when the copy is sent (ON_SEND, ON_COMPLETION or BOTH)`, { index: i, field: 'copy_delivery', reason: 'copy_delivery_required' });
+      }
+      if (kind !== 'RECEIVES_COPY' && cdRaw !== null) {
+        throw bad(requestId, `recipient ${i + 1}: copy_delivery applies only to a recipient who receives a copy`, { index: i, field: 'copy_delivery', reason: 'copy_delivery_not_allowed' });
+      }
+      const emailRaw = typeof o['email'] === 'string' ? o['email'].trim() : '';
+      // M-A5 §3.5 — email is optional for an in-person signer only.
+      const email = emailRaw.length === 0 && kind === 'IN_PERSON_SIGNER' ? null : emailRaw;
       if (name.length === 0 || name.length > MAX_TITLE) throw bad(requestId, `recipient ${i + 1} needs a name`, { index: i, field: 'name' });
-      if (!EMAIL_RE.test(email) || email.length > 254) throw bad(requestId, `recipient ${i + 1} needs a valid email`, { index: i, field: 'email' });
-      const k = email.toLowerCase();
-      if (seen.has(k)) throw bad(requestId, `recipient ${i + 1} repeats an email already on this envelope`, { index: i, field: 'email' });
-      seen.add(k);
+      if (email !== null && (!EMAIL_RE.test(email) || email.length > 254)) throw bad(requestId, `recipient ${i + 1} needs a valid email`, { index: i, field: 'email' });
+      // M-A5 §1.4 / §3.5 — emails are distinct across all kinds; a missing email is never a duplicate.
+      if (email !== null) {
+        const k = email.toLowerCase();
+        if (seen.has(k)) throw bad(requestId, `recipient ${i + 1} repeats an email already on this envelope`, { index: i, field: 'email' });
+        seen.add(k);
+      }
+      // M-A5 §4.1 — Assign to me: the server binds the caller, only when this
+      // recipient's email is the caller's verified account email. Never client-supplied.
+      const assign = o['assign_to_me'];
+      if (assign !== undefined && typeof assign !== 'boolean') throw bad(requestId, `recipient ${i + 1}: assign_to_me must be true or false`, { index: i, field: 'assign_to_me' });
+      let bound: string | null = null;
+      if (assign === true) {
+        if (kind !== 'SIGNER') throw bad(requestId, `recipient ${i + 1}: only a signer can be assigned to you`, { index: i, field: 'assign_to_me', reason: 'assign_to_me_not_signer' });
+        if (verifiedEmail === undefined) verifiedEmail = await this.verifiedAccountEmail(auth);
+        if (verifiedEmail === null || email === null || email.toLowerCase() !== verifiedEmail) {
+          throw new AramoError('INSUFFICIENT_PERMISSIONS', 'You can assign a recipient to yourself only with your own verified account email', 403, {
+            requestId,
+            details: { index: i, field: 'assign_to_me', reason: 'assign_to_me_email_mismatch' },
+          });
+        }
+        bound = auth.sub;
+      }
       const id = typeof o['id'] === 'string' && o['id'].length > 0 ? o['id'] : undefined;
-      return { ...(id !== undefined ? { id } : {}), name, email };
-    });
+      recipients.push({ ...(id !== undefined ? { id } : {}), name, email, recipient_kind: kind, copy_delivery: kind === 'RECEIVES_COPY' ? (cdRaw as CopyDelivery) : null, bound_user_id: bound });
+    }
+    const signingCount = recipients.filter((r) => r.recipient_kind !== 'RECEIVES_COPY').length;
+    if (signingCount > MAX_SIGNERS) {
+      throw bad(requestId, `An envelope can have at most ${MAX_SIGNERS} signers`, { reason: 'too_many_signers', max: MAX_SIGNERS });
+    }
+    if (recipients.length - signingCount > MAX_COPY_RECIPIENTS) {
+      throw bad(requestId, `An envelope can have at most ${MAX_COPY_RECIPIENTS} copy recipients`, { reason: 'too_many_copy_recipients', max: MAX_COPY_RECIPIENTS });
+    }
     await this.repo.replaceDraftRecipients({ tenant_id: auth.tenant_id, envelope_id, recipients, ...(expected !== undefined ? { expected_revision: expected } : {}) });
     return this.detail(auth, envelope_id, requestId);
   }
@@ -771,6 +840,7 @@ export class SenderEnvelopeService {
     await this.assertMayChange(auth, envelope_id, requestId);
     if (!Array.isArray(body?.fields)) throw bad(requestId, 'fields must be an array');
     if (body.fields.length > MAX_FIELDS) throw bad(requestId, `at most ${MAX_FIELDS} fields`);
+    const copyIds = new Set((await this.repo.getEnvelopeDetail(auth.tenant_id, envelope_id)).signers.filter(isCopyRecipient).map((s) => s.id));
     const fields = body.fields.map((f: unknown, i: number) => {
       const o = (f ?? {}) as Record<string, unknown>;
       const num = (k: string): number => {
@@ -783,6 +853,8 @@ export class SenderEnvelopeService {
         throw bad(requestId, `field ${i + 1}: field type not available in this version`, { index: i, reason: 'v1_field_type', allowed: FIELD_TYPES });
       }
       if (typeof o['envelope_document_id'] !== 'string' || typeof o['signer_id'] !== 'string') throw bad(requestId, `field ${i + 1}: document and recipient are required`, { index: i });
+      // M-A5 §1.5 — a copy recipient has no fields.
+      if (copyIds.has(o['signer_id'] as string)) throw bad(requestId, `field ${i + 1}: a recipient who receives a copy has no fields`, { index: i, field: 'signer_id', reason: 'copy_recipient_has_fields' });
       const page_number = num('page_number');
       if (!Number.isInteger(page_number) || page_number < 0) throw bad(requestId, `field ${i + 1}: page_number must be 0 or more`, { index: i });
       const x = num('x');
@@ -825,12 +897,17 @@ export class SenderEnvelopeService {
   // ── Lifecycle ──────────────────────────────────────────────────────────────
 
   // Readiness the send step enforces (also returned to the UI): ≥1 document,
-  // ≥1 recipient, and every recipient has at least one SIGNATURE field.
+  // ≥1 signing recipient, every signing recipient has at least one SIGNATURE field,
+  // and (M-A5 §1.5) a recipient who receives a copy has no fields.
   readiness(d: Pick<Awaited<ReturnType<SenderEnvelopeService['detail']>>, 'documents' | 'recipients' | 'fields'>): { ok: boolean; problems: string[] } {
     const problems: string[] = [];
     if (d.documents.length === 0) problems.push('Add at least one document');
-    if (d.recipients.length === 0) problems.push('Add at least one recipient');
+    if (signingRecipients(d.recipients).length === 0) problems.push('Add at least one recipient who signs');
     for (const r of d.recipients) {
+      if (isCopyRecipient(r)) {
+        if (d.fields.some((f) => f.signer_id === r.id)) problems.push(`${r.name} receives a copy and cannot have fields`);
+        continue;
+      }
       if (!d.fields.some((f) => f.signer_id === r.id && f.field_type === 'SIGNATURE')) problems.push(`${r.name} needs a signature field`);
     }
     return { ok: problems.length === 0, problems };
@@ -875,13 +952,13 @@ export class SenderEnvelopeService {
     const rev = await this.repo.updateDraft({
       tenant_id: auth.tenant_id,
       envelope_id,
-      execution_mode: d.recipients.length > 1 ? 'MULTI_SIGNATURE' : 'SINGLE_SIGNATURE',
+      execution_mode: signingRecipients(d.recipients).length > 1 ? 'MULTI_SIGNATURE' : 'SINGLE_SIGNATURE',
       ...(expected !== undefined ? { expected_revision: expected } : {}),
     });
     if (expected !== undefined) expected = rev;
     await this.provider.sendEnvelope(auth.tenant_id, envelope_id, auth.sub, undefined, expected !== undefined ? { expected_revision: expected } : {});
     // M-A3 §5 — the sender's saved contacts for these recipients were just used.
-    await this.contactStore?.touchUsed(auth.tenant_id, auth.sub, d.recipients.map((r) => r.email)).catch(() => undefined);
+    await this.contactStore?.touchUsed(auth.tenant_id, auth.sub, d.recipients.flatMap((r) => (r.email === null ? [] : [r.email]))).catch(() => undefined);
     return this.detail(auth, envelope_id, requestId);
   }
 
@@ -914,6 +991,49 @@ export class SenderEnvelopeService {
     if (TERMINAL.has(d.status)) throw new AramoError('ENVELOPE_ILLEGAL_TRANSITION', `envelope is ${d.status}`, 409, { requestId });
     await this.provider.voidEnvelope(auth.tenant_id, envelope_id, reason, auth.sub, expected !== undefined ? { expected_revision: expected } : {});
     return this.detail(auth, envelope_id, requestId);
+  }
+
+  // ── M-A5 §3 — hosted (in-person) signing ───────────────────────────────────
+  // The authenticated host (sign:envelope:send, may change the envelope) starts a
+  // 30-minute HOSTED session for an IN_PERSON_SIGNER whose turn it is. The token is
+  // returned ONLY in this response, to the host's authenticated client; the signer
+  // then uses the guest signing transport (no workspace credentials).
+  async hostedSession(auth: AuthContextType, envelope_id: string, body: { signer_id?: unknown }, requestId: string) {
+    await this.context.assertCanAuthor(auth, requestId);
+    (this.features ?? new SignFeatureGate()).assertAvailable(SIGN_IN_PERSON_SIGNING_FEATURE, requestId);
+    await this.assertMayChange(auth, envelope_id, requestId);
+    const signer_id = body?.signer_id;
+    if (typeof signer_id !== 'string' || signer_id.length === 0) throw bad(requestId, 'signer_id is required', { field: 'signer_id' });
+    const s = await this.engineOrUnavailable(requestId).issueHostedSession(auth.tenant_id, envelope_id, signer_id, auth.sub);
+    return { session_origin: 'HOSTED' as const, signer_id: s.signer_id, token: s.raw_token, expires_at: s.expires_at.toISOString() };
+  }
+
+  // ── M-A5 §4 — self-signing ("Sign a document") ─────────────────────────────
+  // Requires the recipient bound to the caller (Assign to me) — sign:envelope:manage:all
+  // never substitutes — and re-checks the caller's verified account email.
+  async selfSignSession(auth: AuthContextType, envelope_id: string, body: { signer_id?: unknown }, requestId: string) {
+    await this.context.assertCanAuthor(auth, requestId);
+    await this.assertMayChange(auth, envelope_id, requestId);
+    const signer_id = body?.signer_id;
+    if (signer_id !== undefined && (typeof signer_id !== 'string' || signer_id.length === 0)) throw bad(requestId, 'signer_id must be a string', { field: 'signer_id' });
+    const email = await this.verifiedAccountEmail(auth);
+    const s = await this.engineOrUnavailable(requestId).issueSelfSignSession(auth.tenant_id, envelope_id, auth.sub, email, signer_id as string | undefined);
+    return { session_origin: 'SELF' as const, signer_id: s.signer_id, token: s.raw_token, expires_at: s.expires_at.toISOString() };
+  }
+
+  private engineOrUnavailable(requestId: string): EsignService {
+    if (this.engine === undefined) throw new AramoError('ESIGN_FEATURE_NOT_AVAILABLE', 'Signing sessions are not available', 503, { requestId, details: { reason: 'signing_engine_unavailable' } });
+    return this.engine;
+  }
+
+  // M-A5 §4.1 — the caller's verified account email: the email of their active
+  // Aramo account (established by the identity provider at sign-in — the same
+  // source the inbox claim matches, M-A2). Lower-cased; null when there is none.
+  private async verifiedAccountEmail(auth: AuthContextType): Promise<string | null> {
+    const user = await this.identity.findUserById(auth.sub).catch(() => null);
+    if (user === null || !user.is_active || user.deactivated_at !== null) return null;
+    const email = user.email?.trim().toLowerCase() ?? '';
+    return email.length > 0 ? email : null;
   }
 
   // ── helpers ────────────────────────────────────────────────────────────────

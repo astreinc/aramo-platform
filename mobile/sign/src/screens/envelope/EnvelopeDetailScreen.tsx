@@ -269,7 +269,7 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
 
   function recipientRow(r: DetailRecipient, i: number) {
     const line = recipientStateLine(r, shortDate);
-    const you = ctx.data?.user.email && r.email.toLowerCase() === ctx.data.user.email.toLowerCase();
+    const you = ctx.data?.user.email && r.email !== null && r.email.toLowerCase() === ctx.data.user.email.toLowerCase();
     const isCurrent = detail?.routing_mode === 'SEQUENTIAL' && detail.next_signer_id === r.id;
     return (
       <View

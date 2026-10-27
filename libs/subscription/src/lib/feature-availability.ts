@@ -15,6 +15,9 @@ export const FEATURE_AVAILABILITY: Readonly<Record<string, FeatureAvailability>>
   // Shared organization workspace: several users with Sign roles see and act on
   // the organization's envelopes (PX-1 business workspace, role-based access).
   'sign.team_collaboration': 'AVAILABLE',
+  // Aramo-Sign-Unified-Product-Amendment-M-A5 §3.7 — hosted (in-person) signing.
+  // Available wherever Sign sending is available unless the PO restricts it.
+  'sign.in_person_signing': 'AVAILABLE',
   // Not built: the console shows templates as a future capability (PX-V1 §15);
   // there is no forms feature; no AI summary exists for Sign.
   'sign.templates': 'NOT_AVAILABLE',

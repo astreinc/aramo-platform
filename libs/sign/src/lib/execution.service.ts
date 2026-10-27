@@ -21,6 +21,8 @@ import {
 } from './ports/execution-producer.port.js';
 import { ENVELOPE_NOTIFICATION_SERVICE, type EnvelopeNotificationService } from './envelope-notification.service.js';
 import { STORAGE_ACCOUNTING_PORT, type StorageAccountingPort } from './ports/storage-accounting.port.js';
+import { SENDER_DIRECTORY_PORT, type SenderDirectoryPort } from './ports/sender-directory.port.js';
+import { signingRecipients } from './domain/recipients.js';
 
 // DOC-4 (R-4-3) — executed-document production. On COMPLETED, stamp each filled
 // SignatureField onto the frozen source PDF (typed text for TYPED/text fields;
@@ -33,7 +35,9 @@ function sha256Hex(bytes: Uint8Array): string {
 
 // Mask a contact identifier for the certificate (§341 — no unnecessary full
 // email/phone). j***@example.com / ***-**-1234.
-function maskEmail(email: string): string {
+function maskEmail(email: string | null): string {
+  // M-A5 §3.5 — an in-person signer may have no email.
+  if (email === null) return 'no email';
   const at = email.indexOf('@');
   if (at <= 0) return '***';
   return `${email[0]}***${email.slice(at)}`;
@@ -63,7 +67,25 @@ export class ExecutionService implements ExecutionProducerPort {
     // A1 — storage measurement of kept artifacts (never refuses). Last, so the
     // existing positional constructions stay valid.
     @Optional() @Inject(STORAGE_ACCOUNTING_PORT) private readonly storageAccounting?: StorageAccountingPort,
+    // M-A5 §3.6 — the host's display name for the certificate's in-person line.
+    @Optional() @Inject(SENDER_DIRECTORY_PORT) private readonly users?: SenderDirectoryPort,
   ) {}
+
+  // M-A5 §3.6 — for each signer who signed in a HOSTED session, the host's display
+  // name (the session that completed carries host_user_id).
+  private async hostedBy(tenant_id: string, envelope_id: string): Promise<Map<string, string>> {
+    const hosted = await this.prisma.signingSession.findMany({
+      where: { tenant_id, envelope_id, origin: 'HOSTED', status: 'COMPLETED' },
+      select: { signer_id: true, host_user_id: true },
+    });
+    const out = new Map<string, string>();
+    for (const h of hosted) {
+      if (h.host_user_id === null) continue;
+      const host = await this.users?.findSender(tenant_id, h.host_user_id).catch(() => null);
+      out.set(h.signer_id, host?.name ?? 'the sender');
+    }
+    return out;
+  }
 
   async produce(tenant_id: string, envelope_id: string): Promise<ExecutedProductionResult[]> {
     const full = await this.repo.getEnvelopeFull(tenant_id, envelope_id);
@@ -171,6 +193,7 @@ export class ExecutionService implements ExecutionProducerPort {
 
     // DOC-4 (R-4-6) — human-readable execution certificate (one per envelope).
     const chainHash = (await this.repo.terminalEventHash(tenant_id, envelope_id)) ?? '';
+    const hostedBy = await this.hostedBy(tenant_id, envelope_id);
     const blocks: RenderBlock[] = [
       { type: 'HEADING', text: `Envelope ${envelope_id}` },
       { type: 'TEXT', text: `Subject: ${full.subject}` },
@@ -181,12 +204,16 @@ export class ExecutionService implements ExecutionProducerPort {
         text: `Doc ${r.envelope_document_id} — source ${r.source_sha256.slice(0, 16)}… executed ${r.executed_sha256.slice(0, 16)}…`,
       })),
       { type: 'HEADING', text: 'Signers' },
-      ...full.signers.flatMap((s): RenderBlock[] => [
+      // M-A5 §1.2 — copy recipients are not signers and are not listed here.
+      ...signingRecipients(full.signers).flatMap((s): RenderBlock[] => [
         {
           type: 'TEXT',
           text: `${s.name} <${maskEmail(s.email)}> — ${s.status}${s.signed_at ? ` signed ${s.signed_at.toISOString()}` : ''}`,
         },
         ...(signatureIds.has(s.id) ? [{ type: 'TEXT', text: `Signature ID: ${signatureIds.get(s.id) ?? ''}` } as RenderBlock] : []),
+        ...(hostedBy.has(s.id)
+          ? [{ type: 'TEXT', text: `Signed in person. Hosted by ${hostedBy.get(s.id) ?? ''}. Signer identity was not independently verified.` } as RenderBlock]
+          : []),
       ]),
       { type: 'HEADING', text: 'Evidence' },
       { type: 'TEXT', text: `Event-chain hash: ${chainHash}` },

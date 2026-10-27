@@ -7,6 +7,7 @@ import { generateSigningToken } from './signing-token.js';
 import { EsignRepository } from './esign.repository.js';
 import { LIVE_SESSION_STATUSES } from './domain/envelope-lifecycle.js';
 import { InboxSigningRefusedError } from './domain/envelope-contract-errors.js';
+import { currentTurnSignerId, isLinkSigner } from './domain/recipients.js';
 
 // Sign Unified Product S-7 (Aramo-Sign-Unified-Product-Permission-Contract-
 // Platform-API-Directive-v1_0-LOCKED §4.6, mandatory refinement B) — persistence
@@ -50,12 +51,13 @@ export class RecipientInboxRepository {
   }
 
   // The live session (if any) behind a raw signing token, with its recipient.
-  async sessionForToken(token_hash: string): Promise<{ id: string; tenant_id: string; envelope_id: string; signer_id: string; status: string; expires_at: Date; signer_email: string } | null> {
+  // M-A5 §5 — `origin` lets the claim refuse HOSTED / SELF (and INBOX) sessions.
+  async sessionForToken(token_hash: string): Promise<{ id: string; tenant_id: string; envelope_id: string; signer_id: string; status: string; expires_at: Date; signer_email: string | null; origin: string | null } | null> {
     const s = await this.prisma.signingSession.findUnique({
       where: { token_hash },
-      select: { id: true, tenant_id: true, envelope_id: true, signer_id: true, status: true, expires_at: true, signer: { select: { email: true } } },
+      select: { id: true, tenant_id: true, envelope_id: true, signer_id: true, status: true, expires_at: true, origin: true, signer: { select: { email: true } } },
     });
-    return s === null ? null : { id: s.id, tenant_id: s.tenant_id, envelope_id: s.envelope_id, signer_id: s.signer_id, status: s.status, expires_at: s.expires_at, signer_email: s.signer.email };
+    return s === null ? null : { id: s.id, tenant_id: s.tenant_id, envelope_id: s.envelope_id, signer_id: s.signer_id, status: s.status, expires_at: s.expires_at, signer_email: s.signer.email, origin: s.origin };
   }
 
   // Sign Mobile M-A2 §2.2 — a (re-)claim records the emailed session it was made
@@ -135,12 +137,19 @@ export class RecipientInboxRepository {
         throw new InboxSigningRefusedError('envelope_not_signable');
       }
       const signer = await tx.signer.findFirst({ where: { id: binding.signer_id, envelope_id: binding.envelope_id, tenant_id } });
-      if (signer === null || (signer.status !== 'PENDING' && signer.status !== 'VIEWED') || signer.email.trim().toLowerCase() !== binding.email.trim().toLowerCase()) {
+      if (
+        signer === null ||
+        !isLinkSigner(signer) ||
+        signer.email === null ||
+        (signer.status !== 'PENDING' && signer.status !== 'VIEWED') ||
+        signer.email.trim().toLowerCase() !== binding.email.trim().toLowerCase()
+      ) {
         throw new InboxSigningRefusedError('signer_ineligible');
       }
       if (env.routing_mode === 'SEQUENTIAL') {
-        const next = await tx.signer.findFirst({ where: { tenant_id, envelope_id: binding.envelope_id, status: { not: 'SIGNED' } }, orderBy: { signing_order: 'asc' }, select: { id: true } });
-        if (next?.id !== signer.id) throw new InboxSigningRefusedError('not_your_turn');
+        // M-A5 §1.3 — the shared current-turn rule (copy recipients never take a turn).
+        const next = await currentTurnSignerId(tx as never, tenant_id, binding.envelope_id);
+        if (next !== signer.id) throw new InboxSigningRefusedError('not_your_turn');
       }
       const linkExpiry = await this.claimedLinkExpiry(tx, binding, now);
       const bound = Math.min(now.getTime() + RECIPIENT_SESSION_TTL_MS, linkExpiry.getTime(), env.expires_at?.getTime() ?? Number.POSITIVE_INFINITY);
@@ -148,7 +157,7 @@ export class RecipientInboxRepository {
       const session_id = randomUUID();
       const expires_at = new Date(bound);
       await tx.signingSession.create({
-        data: { id: session_id, tenant_id, envelope_id: binding.envelope_id, signer_id: signer.id, token_hash: minted.hash, status: 'ISSUED', expires_at },
+        data: { id: session_id, tenant_id, envelope_id: binding.envelope_id, signer_id: signer.id, token_hash: minted.hash, status: 'ISSUED', expires_at, origin: 'INBOX' },
       });
       await this.esign.appendEvent(tx, {
         tenant_id,
@@ -178,8 +187,9 @@ export class RecipientInboxRepository {
       if (!LIVE_SESSION_STATUSES.includes(s.status)) throw new InboxSigningRefusedError('session_revoked');
       return s.expires_at;
     }
+    // M-A5 §5 — only an emailed (LINK or legacy) session qualifies.
     const live = await tx.signingSession.findMany({
-      where: { signer_id: binding.signer_id, status: { in: [...LIVE_SESSION_STATUSES] }, expires_at: { gt: now } },
+      where: { signer_id: binding.signer_id, status: { in: [...LIVE_SESSION_STATUSES] }, expires_at: { gt: now }, OR: [{ origin: null }, { origin: 'LINK' }] },
       select: { created_at: true, expires_at: true },
     });
     const emailed = live.filter((s) => s.expires_at.getTime() - s.created_at.getTime() > RECIPIENT_SESSION_TTL_MS);
@@ -190,7 +200,7 @@ export class RecipientInboxRepository {
   async issueRecipientCopyAccess(tenant_id: string, envelope_id: string, signer_id: string): Promise<string> {
     const minted = generateSigningToken();
     await this.prisma.executedAccessGrant.create({
-      data: { id: randomUUID(), tenant_id, envelope_id, signer_id, token_hash: minted.hash, expires_at: new Date(Date.now() + RECIPIENT_COPY_TTL_MS) },
+      data: { id: randomUUID(), tenant_id, envelope_id, signer_id, token_hash: minted.hash, expires_at: new Date(Date.now() + RECIPIENT_COPY_TTL_MS), access_kind: 'EXECUTED' },
     });
     return minted.raw;
   }

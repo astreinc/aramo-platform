@@ -2,7 +2,21 @@ import { useCallback, useEffect, useRef, useState, type DragEvent } from 'react'
 import { Link, Navigate, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { Input } from '@aramo/fe-foundation';
 
-import { errorMessage, fileToBase64, isAllowanceLimit, MAX_SIGNERS, senderApi, sendRefusalMessage, type ContactRow, type EnvelopeDetail, type RoutingMode } from '../api';
+import {
+  errorMessage,
+  fileToBase64,
+  isAllowanceLimit,
+  isCopyRecipient,
+  MAX_COPY_RECIPIENTS,
+  MAX_SIGNERS,
+  senderApi,
+  sendRefusalMessage,
+  type ContactRow,
+  type CopyDelivery,
+  type EnvelopeDetail,
+  type RecipientKind,
+  type RoutingMode,
+} from '../api';
 import { Area, Avatar, Btn, COLORS, ErrorBox, Field, Icon, LinkBtn, Loading, RecipientPill, Sel, TextIn, fmtBytes } from '../ui';
 import { useWorkspace } from '../workspace';
 
@@ -272,12 +286,40 @@ interface DraftRecipient {
   id?: string;
   name: string;
   email: string;
+  // Aramo-Sign-Unified-Product-Amendment-M-A5 §1 / §2 / §4 — the role, the copy timing
+  // and Assign to me (the server binds only the caller's verified account email).
+  kind: RecipientKind;
+  copy: CopyDelivery;
+  assign: boolean;
+}
+
+// M-A5 §6.2 — the web Role select. In person is offered only once web hosting exists
+// (not in this release); an in-person signer added from the app is kept as it is.
+const COPY_TIMING_LABEL: Record<CopyDelivery, string> = {
+  ON_SEND: 'When sent',
+  ON_COMPLETION: 'When completed',
+  BOTH: 'When sent and when completed',
+};
+
+function roleLabel(kind: RecipientKind | undefined): string {
+  if (kind === 'RECEIVES_COPY') return 'Receives a copy';
+  if (kind === 'IN_PERSON_SIGNER') return 'Signs in person';
+  return 'Needs to sign';
 }
 
 function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; onChange: (d: EnvelopeDetail) => void; back: string; next: string }) {
   const { ctx } = useWorkspace();
   const nav = useNavigate();
-  const [list, setList] = useState<DraftRecipient[]>(() => env.recipients.map((r) => ({ key: r.id, id: r.id, name: r.name, email: r.email })));
+  const toDraft = (r: EnvelopeDetail['recipients'][number]): DraftRecipient => ({
+    key: r.id,
+    id: r.id,
+    name: r.name,
+    email: r.email ?? '',
+    kind: r.recipient_kind ?? 'SIGNER',
+    copy: r.copy_delivery ?? 'ON_COMPLETION',
+    assign: r.assigned_to_me === true,
+  });
+  const [list, setList] = useState<DraftRecipient[]>(() => env.recipients.map(toDraft));
   const [contacts, setContacts] = useState<ContactRow[]>([]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -291,7 +333,15 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
   }, []);
 
   const keyGen = useRef(0);
-  const add = (name = '', email = '') => setList((l) => [...l, { key: `new-${(keyGen.current += 1)}`, name, email }]);
+  const add = (name = '', email = '', assign = false) =>
+    setList((l) => {
+      // Past MAX_SIGNERS signers, a new person is added as a copy recipient.
+      const signers = l.filter((r) => r.kind !== 'RECEIVES_COPY').length;
+      const kind: RecipientKind = signers >= MAX_SIGNERS ? 'RECEIVES_COPY' : 'SIGNER';
+      return [...l, { key: `new-${(keyGen.current += 1)}`, name, email, kind, copy: 'ON_COMPLETION', assign: assign && kind === 'SIGNER' }];
+    });
+  const myEmail = ctx.user.email?.trim().toLowerCase() ?? '';
+  const isMine = (email: string) => myEmail !== '' && email.trim().toLowerCase() === myEmail;
   const upd = (key: string, patch: Partial<DraftRecipient>) => setList((l) => l.map((r) => (r.key === key ? { ...r, ...patch } : r)));
   const move = (key: string, by: -1 | 1) =>
     setList((l) => {
@@ -304,7 +354,18 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
     });
   const listDirty =
     list.length !== env.recipients.length ||
-    list.some((r, i) => r.id !== env.recipients[i]?.id || r.name !== env.recipients[i]?.name || r.email !== env.recipients[i]?.email);
+    list.some((r, i) => {
+      const was = env.recipients[i] === undefined ? undefined : toDraft(env.recipients[i]!);
+      return (
+        was === undefined ||
+        r.id !== was.id ||
+        r.name !== was.name ||
+        r.email !== was.email ||
+        r.kind !== was.kind ||
+        (r.kind === 'RECEIVES_COPY' && r.copy !== was.copy) ||
+        (r.assign && isMine(r.email)) !== was.assign
+      );
+    });
   const routingDirty = routing !== (env.routing_mode ?? 'PARALLEL');
   const duplicate = (() => {
     const seen = new Set<string>();
@@ -334,7 +395,15 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
       if (listDirty) {
         d = await senderApi.recipients(
           env.id,
-          list.map((r) => ({ ...(r.id !== undefined ? { id: r.id } : {}), name: r.name.trim(), email: r.email.trim() })),
+          list.map((r) => ({
+            ...(r.id !== undefined ? { id: r.id } : {}),
+            name: r.name.trim(),
+            email: r.kind === 'IN_PERSON_SIGNER' && r.email.trim() === '' ? null : r.email.trim(),
+            recipient_kind: r.kind,
+            copy_delivery: r.kind === 'RECEIVES_COPY' ? r.copy : null,
+            // M-A5 §4.1 — only offered for the signed-in user's own email; the server re-checks it.
+            ...(r.kind === 'SIGNER' && r.assign && isMine(r.email) ? { assign_to_me: true } : {}),
+          })),
         );
       }
       onChange(d);
@@ -351,8 +420,11 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
     return `${f.filter((x) => x.required).length} required · ${f.filter((x) => !x.required).length} optional`;
   };
   const inList = (email: string) => list.some((r) => r.email.trim().toLowerCase() === email.toLowerCase());
-  // Multi-Signer M-2 — up to MAX_SIGNERS signers per envelope.
-  const full = list.length >= MAX_SIGNERS;
+  // Multi-Signer M-2 — up to MAX_SIGNERS signers per envelope; M-A5 §1.4 — and up to
+  // MAX_COPY_RECIPIENTS copy recipients.
+  const signerCount = list.filter((r) => r.kind !== 'RECEIVES_COPY').length;
+  const copyCount = list.length - signerCount;
+  const full = signerCount >= MAX_SIGNERS && copyCount >= MAX_COPY_RECIPIENTS;
   const ordered = routing === 'SEQUENTIAL';
 
   return (
@@ -391,17 +463,42 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
                     <TextIn id={`re-${r.key}`} type="email" value={r.email} onChange={(e) => upd(r.key, { email: e.target.value })} />
                   </Field>
                   <Field label="Role" htmlFor={`rr-${r.key}`}>
-                    <Sel id={`rr-${r.key}`} value="signer" onChange={() => undefined}>
-                      <option value="signer">Needs to sign</option>
-                      <option value="cc" disabled>
-                        Receives a copy (proposed)
+                    <Sel
+                      id={`rr-${r.key}`}
+                      value={r.kind}
+                      onChange={(e) => upd(r.key, { kind: e.target.value as RecipientKind, ...(e.target.value === 'RECEIVES_COPY' ? { assign: false } : {}) })}
+                      data-testid="recipient-role"
+                    >
+                      <option value="SIGNER" disabled={r.kind !== 'SIGNER' && signerCount >= MAX_SIGNERS}>
+                        Needs to sign
                       </option>
+                      <option value="RECEIVES_COPY" disabled={r.kind !== 'RECEIVES_COPY' && copyCount >= MAX_COPY_RECIPIENTS}>
+                        Receives a copy
+                      </option>
+                      {r.kind === 'IN_PERSON_SIGNER' ? <option value="IN_PERSON_SIGNER">Signs in person (Aramo Sign app)</option> : null}
                     </Sel>
                   </Field>
                 </div>
+                {r.kind === 'RECEIVES_COPY' ? (
+                  <Field label="Send the copy" htmlFor={`rc-${r.key}`}>
+                    <Sel id={`rc-${r.key}`} value={r.copy} onChange={(e) => upd(r.key, { copy: e.target.value as CopyDelivery })} data-testid="copy-timing">
+                      {(Object.keys(COPY_TIMING_LABEL) as CopyDelivery[]).map((k) => (
+                        <option key={k} value={k}>
+                          {COPY_TIMING_LABEL[k]}
+                        </option>
+                      ))}
+                    </Sel>
+                  </Field>
+                ) : null}
+                {r.kind === 'SIGNER' && isMine(r.email) ? (
+                  <label style={{ display: 'flex', gap: 6, alignItems: 'center', fontSize: 13 }}>
+                    <Input unstyled type="checkbox" checked={r.assign} onChange={(e) => upd(r.key, { assign: e.target.checked })} data-testid="assign-to-me" />
+                    Assign to me (I’ll sign this myself)
+                  </label>
+                ) : null}
                 <div className="sg-grid" style={{ gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 2fr)' }}>
                   <Field label="Verification" htmlFor={`rv-${r.key}`}>
-                    <Sel id={`rv-${r.key}`} value="LINK" onChange={() => undefined}>
+                    <Sel id={`rv-${r.key}`} value="LINK" disabled={r.kind === 'RECEIVES_COPY'} onChange={() => undefined}>
                       <option value="LINK">Secure link</option>
                       <option value="OTP" disabled>
                         Link + passcode (proposal)
@@ -417,7 +514,7 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                   <span style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
-                    {ordered ? (
+                    {ordered && r.kind !== 'RECEIVES_COPY' ? (
                       <span className="sg-tag sg-tag--dark" data-testid="signing-position">
                         Signs {i + 1}
                         {i === 0 ? 'st' : i === 1 ? 'nd' : i === 2 ? 'rd' : 'th'}
@@ -438,7 +535,7 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
                     </LinkBtn>
                   </span>
                   <span className="sg-faint" style={{ fontSize: 12.5 }}>
-                    {fieldCounts(r.id)}
+                    {r.kind === 'RECEIVES_COPY' ? 'Receives a copy · no fields' : fieldCounts(r.id)}
                   </span>
                 </div>
               </div>
@@ -449,14 +546,19 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
               + Add recipient
             </Btn>
             {ctx.user.email !== null && !inList(ctx.user.email) ? (
-              <Btn onClick={() => add(ctx.user.display_name ?? '', ctx.user.email ?? '')} disabled={full}>
+              <Btn onClick={() => add(ctx.user.display_name ?? '', ctx.user.email ?? '', true)} disabled={signerCount >= MAX_SIGNERS}>
                 + Add me as counter-signer
               </Btn>
             ) : null}
-            {full ? <span className="sg-tag sg-tag--grey">Up to {MAX_SIGNERS} signers</span> : null}
+            {full ? (
+              <span className="sg-tag sg-tag--grey">
+                Up to {MAX_SIGNERS} signers and {MAX_COPY_RECIPIENTS} copies
+              </span>
+            ) : null}
           </div>
           <p className="sg-muted" style={{ fontSize: 12.5 }}>
-            Add up to {MAX_SIGNERS} signers. Each signer gets their own secure link and signs only the fields assigned to them.
+            Add up to {MAX_SIGNERS} signers and {MAX_COPY_RECIPIENTS} people who receive a copy. Each signer gets their own secure link and signs only the
+            fields assigned to them. A person who receives a copy never signs and has no fields.
           </p>
           {error !== '' ? <ErrorBox>{error}</ErrorBox> : null}
         </div>
@@ -566,10 +668,14 @@ function ReviewStep({ env, back, onSent }: { env: EnvelopeDetail; back: string; 
                 <div key={r.id} className="sg-row">
                   <span className="sg-swatch" style={{ background: COLORS[i % COLORS.length] }} />
                   <div className="sg-row__main">
-                    <strong>{r.name}</strong> <span className="sg-muted">· Needs to sign · Secure link</span>
+                    <strong>{r.name}</strong>{' '}
+                    <span className="sg-muted">
+                      · {roleLabel(r.recipient_kind)}
+                      {isCopyRecipient(r) ? ` · ${COPY_TIMING_LABEL[r.copy_delivery ?? 'ON_COMPLETION']}` : r.recipient_kind === 'IN_PERSON_SIGNER' ? '' : ' · Secure link'}
+                    </span>
                   </div>
                   <span className="sg-muted" style={{ fontSize: 12.5 }}>
-                    {f.filter((x) => x.required).length} required · {f.filter((x) => !x.required).length} optional
+                    {isCopyRecipient(r) ? 'No fields' : `${f.filter((x) => x.required).length} required · ${f.filter((x) => !x.required).length} optional`}
                   </span>
                 </div>
               );
@@ -658,7 +764,16 @@ export function EnvelopeSent() {
             <Avatar name={r.name} small />
             <div className="sg-row__main">
               <div className="sg-row__t">{r.name}</div>
-              <div className="sg-row__s">{r.email} · Secure link sent by email</div>
+              <div className="sg-row__s">
+                {r.email ?? 'No email'} ·{' '}
+                {isCopyRecipient(r)
+                  ? r.copy_delivery === 'ON_COMPLETION'
+                    ? 'Gets a copy when everyone has signed'
+                    : 'Copy sent by email'
+                  : r.recipient_kind === 'IN_PERSON_SIGNER'
+                    ? 'Signs in person in the Aramo Sign app'
+                    : 'Secure link sent by email'}
+              </div>
             </div>
             <RecipientPill status={r.status} />
           </div>

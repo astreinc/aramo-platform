@@ -1,4 +1,4 @@
-import { randomUUID } from 'node:crypto';
+import { createHash, randomUUID } from 'node:crypto';
 
 import { Inject, Injectable, Optional } from '@nestjs/common';
 
@@ -28,6 +28,24 @@ import {
   type SignedEvidenceManifest,
 } from './ports/evidence-manifest-signer.port.js';
 import { applyReminderLimits, reminderHistory, type ReminderLimits } from './reminder-limits.js';
+import { AttestedNameRequiredError, SessionIssueRefusedError } from './domain/envelope-contract-errors.js';
+import {
+  COPY_DELIVERY_ISSUED_EVENT,
+  HOSTED_SESSION_STARTED_EVENT,
+  HOSTED_SESSION_TTL_MS,
+  SELF_SIGN_SESSION_ISSUED_EVENT,
+  SELF_SIGN_SESSION_TTL_MS,
+  SIGNING_RECIPIENT_WHERE,
+  allSigningRecipientsSigned,
+  copyRecipients,
+  currentTurnSignerId,
+  invitedAtSend,
+  isLinkSigner,
+  recipientKindOf,
+  signingRecipients,
+  type SessionOrigin,
+} from './domain/recipients.js';
+import { executedAccessExpiresAt } from './envelope-notification.service.js';
 
 // Aramo Sign launch — how long a sent envelope stays signable before the expiry
 // sweep moves it to EXPIRED (SIGN_ENVELOPE_TTL_DAYS, default 30). Individual
@@ -61,6 +79,22 @@ export interface SessionContext {
   tenant_id: string;
   envelope_id: string;
   signer_id: string;
+}
+
+// M-A5 §2.2 — an ON_SEND copy link minted at send (raw token returned ONCE, for
+// the RECIPIENT_COPY email; only its sha256 is stored).
+export interface IssuedCopyAccess {
+  signer_id: string;
+  raw_token: string;
+}
+
+// M-A5 §3.2 / §4.2 — a hosted or self-sign session, returned ONLY to the
+// authenticated caller who asked for it.
+export interface IssuedHostedSession {
+  session_id: string;
+  signer_id: string;
+  raw_token: string;
+  expires_at: Date;
 }
 
 // PX-V1 F3 — the signer-scoped document view (fields + doc metadata) returned to
@@ -130,9 +164,10 @@ export class EsignService {
   // under the envelope row lock in the send transaction. M-A3 §3 — the sender
   // message is recorded in the ENVELOPE_SENT ledger payload as sender-supplied text
   // (never in the evidence manifest fields or the certificate).
-  async send(tenant_id: string, envelope_id: string, actor_ref: string, opts: { expected_revision?: number } = {}): Promise<{ envelope: unknown; sessions: IssuedSession[] }> {
+  async send(tenant_id: string, envelope_id: string, actor_ref: string, opts: { expected_revision?: number } = {}): Promise<{ envelope: unknown; sessions: IssuedSession[]; copies: IssuedCopyAccess[] }> {
     const full = await this.repo.getEnvelopeFull(tenant_id, envelope_id);
-    if (full.signers.length === 0) throw new SigningSessionInvalidError('envelope has no signers');
+    // M-A5 §1.4 — at least one signing recipient (a copy recipient never signs).
+    if (signingRecipients(full.signers).length === 0) throw new SigningSessionInvalidError('envelope has no signers');
     if (full.documents.length === 0) throw new SigningSessionInvalidError('envelope has no documents');
 
     const now = new Date();
@@ -154,7 +189,9 @@ export class EsignService {
       // Multi-Signer §3/§4 — PARALLEL: every signer gets a live link now. SEQUENTIAL:
       // only the first signer (lowest signing_order); each next signer is invited when
       // the previous one completes (completeSigner records a durable intent).
-      const invited = full.routing_mode === 'SEQUENTIAL' ? full.signers.slice(0, 1) : full.signers;
+      // M-A5 §1/§3 — copy recipients are never invited; an in-person signer is started
+      // by the host (hosted session), never emailed a link.
+      const invited = invitedAtSend(full.routing_mode, full.signers);
       for (const signer of invited) {
         const minted = generateSigningToken();
         const sessionId = randomUUID();
@@ -167,11 +204,32 @@ export class EsignService {
             token_hash: minted.hash,
             status: 'ISSUED',
             expires_at: signingSessionExpiresAt(now),
+            origin: 'LINK',
           },
         });
         sessions.push({ session_id: sessionId, signer_id: signer.id, raw_token: minted.raw });
       }
-      return { envelope, sessions };
+      // M-A5 §2.2 / §2.4 — ON_SEND / BOTH copy recipients: a COPY_VIEW grant (the
+      // source documents only) and a COPY_DELIVERY_ISSUED ledger event, in the send
+      // transaction. The email goes out after commit.
+      const copies: IssuedCopyAccess[] = [];
+      for (const cc of copyRecipients(full.signers, 'SEND')) {
+        const minted = generateSigningToken();
+        await tx.executedAccessGrant.create({
+          data: { id: randomUUID(), tenant_id, envelope_id, signer_id: cc.id, token_hash: minted.hash, expires_at: executedAccessExpiresAt(now), access_kind: 'COPY_VIEW' },
+        });
+        await this.repo.appendEvent(tx, {
+          tenant_id,
+          envelope_id,
+          signer_id: cc.id,
+          event_type: COPY_DELIVERY_ISSUED_EVENT,
+          actor_type: 'SERVICE',
+          actor_ref,
+          payload: { copy_delivery: cc.copy_delivery, access_kind: 'COPY_VIEW' },
+        });
+        copies.push({ signer_id: cc.id, raw_token: minted.raw });
+      }
+      return { envelope, sessions, copies };
     });
   }
 
@@ -244,26 +302,24 @@ export class EsignService {
 
   // ES-1 — inside a locked transaction: the session still carries signing
   // authority (not COMPLETED / REVOKED / EXPIRED, not past its TTL).
-  private async assertLiveSession(tx: LockingTx, ctx: SessionContext): Promise<void> {
+  // M-A5 §3/§4 — returns where the session came from (hosted / self evidence).
+  private async assertLiveSession(tx: LockingTx, ctx: SessionContext): Promise<{ origin: string | null; host_user_id: string | null; authenticated_user_id: string | null }> {
     const session = await tx.signingSession.findFirst({
       where: { id: ctx.session_id, tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id, signer_id: ctx.signer_id },
-      select: { status: true, expires_at: true },
+      select: { status: true, expires_at: true, origin: true, host_user_id: true, authenticated_user_id: true },
     });
     if (session === null) throw new SigningSessionInvalidError('unknown session');
     if (!LIVE_SESSION_STATUSES.includes(session.status) || session.expires_at.getTime() < Date.now()) {
       throw new SigningSessionExpiredError(ctx.session_id);
     }
+    return { origin: session.origin, host_user_id: session.host_user_id, authenticated_user_id: session.authenticated_user_id };
   }
 
   // Multi-Signer §4 — the signer allowed to act in a SEQUENTIAL envelope: the lowest
-  // signing_order among signers who have not SIGNED (null when everyone has).
+  // signing_order among SIGNING recipients who have not SIGNED (null when everyone
+  // has). M-A5 §1.3 — the shared rule (copy recipients never take a turn).
   private async currentSequentialSigner(client: Pick<LockingTx, 'signer'>, tenant_id: string, envelope_id: string): Promise<string | null> {
-    const next = await client.signer.findFirst({
-      where: { tenant_id, envelope_id, status: { not: 'SIGNED' } },
-      orderBy: { signing_order: 'asc' },
-      select: { id: true },
-    });
-    return next?.id ?? null;
+    return currentTurnSignerId(client as never, tenant_id, envelope_id);
   }
 
   // Multi-Signer §4 — enforced by the ENGINE on every signer action (exchange, view,
@@ -280,7 +336,9 @@ export class EsignService {
 
   // ── Accept the e-sign disclosure (R16). Versioned frozen text + hash. ES-1:
   // under the envelope row lock, with a live session. ──
-  async acceptDisclosure(ctx: SessionContext, input: { disclosure_version: string; disclosure_text_hash: string; ip_address?: string; user_agent?: string }): Promise<void> {
+  // M-A5 §3.4 — in a HOSTED session the signer confirms their name (attested_name,
+  // 1..200 characters): kept on the acceptance row; the ledger carries its sha256.
+  async acceptDisclosure(ctx: SessionContext, input: { disclosure_version: string; disclosure_text_hash: string; ip_address?: string; user_agent?: string; attested_name?: string }): Promise<void> {
     // A-7 — only a server-held disclosure version, with its exact text hash.
     const held = findDisclosure(input.disclosure_version);
     if (held === undefined || held.text_sha256 !== input.disclosure_text_hash) {
@@ -288,8 +346,10 @@ export class EsignService {
     }
     await this.prisma.$transaction(async (tx) => {
       await this.repo.lockSignableEnvelope(tx, ctx.tenant_id, ctx.envelope_id);
-      await this.assertLiveSession(tx, ctx);
+      const live = await this.assertLiveSession(tx, ctx);
       await this.assertEligible(tx, ctx);
+      const attested = live.origin === 'HOSTED' ? normalizeAttestedName(input.attested_name) : null;
+      if (live.origin === 'HOSTED' && attested === null) throw new AttestedNameRequiredError();
       await tx.signerDisclosureAcceptance.create({
         data: {
           id: randomUUID(),
@@ -300,6 +360,7 @@ export class EsignService {
           ip_address: input.ip_address ?? null,
           user_agent: input.user_agent ?? null,
           session_id: ctx.session_id,
+          attested_name: attested,
         },
       });
       await this.repo.appendEvent(tx, {
@@ -309,7 +370,10 @@ export class EsignService {
         event_type: 'DISCLOSURE_ACCEPTED',
         actor_type: 'SIGNER',
         actor_ref: ctx.signer_id,
-        payload: { disclosure_version: input.disclosure_version },
+        payload: {
+          disclosure_version: input.disclosure_version,
+          ...(attested !== null ? { session_origin: 'HOSTED', attested_name_sha256: createHash('sha256').update(attested).digest('hex') } : {}),
+        },
         ip_address: input.ip_address,
         user_agent: input.user_agent,
       });
@@ -408,7 +472,7 @@ export class EsignService {
     let nextSignerId: string | undefined;
     const completed = await this.prisma.$transaction(async (tx) => {
       const envelopeStatus = await this.repo.lockSignableEnvelope(tx, ctx.tenant_id, ctx.envelope_id);
-      await this.assertLiveSession(tx, ctx);
+      const live = await this.assertLiveSession(tx, ctx);
       await this.assertEligible(tx, ctx);
       if (!(await this.hasAcceptedDisclosure(ctx.tenant_id, ctx.signer_id, tx))) throw new DisclosureNotAcceptedError(ctx.signer_id);
       const required = await tx.signatureField.findMany({ where: { tenant_id: ctx.tenant_id, signer_id: ctx.signer_id, required: true } });
@@ -423,10 +487,15 @@ export class EsignService {
         event_type: 'SIGNER_SIGNED',
         actor_type: 'SIGNER',
         actor_ref: ctx.signer_id,
+        // M-A5 §3.6 / §4.3 — a hosted or self-signed act names its origin and the
+        // authenticated user in the HASHED payload (signer_id is not hashed).
+        ...(live.origin === 'HOSTED' ? { payload: { session_origin: 'HOSTED', host_user_id: live.host_user_id } } : {}),
+        ...(live.origin === 'SELF' ? { payload: { session_origin: 'SELF', authenticated_user_id: live.authenticated_user_id } } : {}),
       });
 
-      const signers = await tx.signer.findMany({ where: { tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id }, select: { status: true } });
-      if (!signers.every((s) => s.status === 'SIGNED')) {
+      // M-A5 §1.2 — only signing recipients block completion (never a copy).
+      const signers = await tx.signer.findMany({ where: { tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id }, select: { status: true, recipient_kind: true } });
+      if (!allSigningRecipientsSigned(signers)) {
         // Multi-Signer §4 — SEQUENTIAL: record the next signer's invitation as a
         // durable intent IN THIS TRANSACTION (it commits with the completion or not at
         // all). SigningInvitationService issues the link and sends the email after
@@ -434,7 +503,9 @@ export class EsignService {
         const env = await tx.signatureEnvelope.findFirstOrThrow({ where: { id: ctx.envelope_id, tenant_id: ctx.tenant_id }, select: { routing_mode: true } });
         if (env.routing_mode === 'SEQUENTIAL') {
           const nextId = await this.currentSequentialSigner(tx, ctx.tenant_id, ctx.envelope_id);
-          if (nextId !== null) {
+          const next = nextId === null ? null : await tx.signer.findFirst({ where: { id: nextId, tenant_id: ctx.tenant_id }, select: { recipient_kind: true } });
+          // M-A5 §3 — an in-person signer is started by the host, never emailed a link.
+          if (nextId !== null && next !== null && isLinkSigner(next)) {
             const open = await tx.notificationDelivery.count({
               where: { tenant_id: ctx.tenant_id, envelope_id: ctx.envelope_id, signer_id: nextId, notification_kind: 'SIGNATURE_REQUEST', status: { in: ['PENDING', 'DISPATCHING'] } },
             });
@@ -554,7 +625,8 @@ export class EsignService {
   // window; each use is counted. Tenant comes from the grant, never the client. ──
   async resolveExecutedAccess(rawToken: string): Promise<{ tenant_id: string; envelope_id: string; signer_id: string }> {
     const grant = await this.prisma.executedAccessGrant.findUnique({ where: { token_hash: hashSigningToken(rawToken) } });
-    if (grant === null) throw new SigningSessionInvalidError('unknown token');
+    // M-A5 §2.2 — a COPY_VIEW grant never opens the executed copy.
+    if (grant === null || grant.access_kind !== 'EXECUTED') throw new SigningSessionInvalidError('unknown token');
     if (grant.expires_at.getTime() < Date.now()) throw new SigningSessionExpiredError(grant.id);
     const env = await this.repo.getEnvelope(grant.tenant_id, grant.envelope_id);
     if (env.status !== 'COMPLETED') throw new SigningSessionInvalidError('envelope not completed');
@@ -565,12 +637,144 @@ export class EsignService {
     return { tenant_id: grant.tenant_id, envelope_id: grant.envelope_id, signer_id: grant.signer_id };
   }
 
+  // ── M-A5 §2.2 — resolve an ON_SEND copy link (COPY_VIEW grant). Opens the SOURCE
+  // documents of a sent envelope only (values are stamped only at completion, so a
+  // source carries no signer data). Refused for a draft, a deleted, voided, declined
+  // or expired envelope. Each use is counted. Tenant comes from the grant. ──
+  async resolveCopyAccess(rawToken: string): Promise<{ tenant_id: string; envelope_id: string; signer_id: string }> {
+    const grant = await this.prisma.executedAccessGrant.findUnique({ where: { token_hash: hashSigningToken(rawToken) } });
+    if (grant === null || grant.access_kind !== 'COPY_VIEW') throw new SigningSessionInvalidError('unknown token');
+    if (grant.expires_at.getTime() < Date.now()) throw new SigningSessionExpiredError(grant.id);
+    const env = await this.repo.getEnvelope(grant.tenant_id, grant.envelope_id);
+    if (env.deleted_at !== null || !['SENT', 'IN_PROGRESS', 'COMPLETED'].includes(env.status)) throw new SigningSessionInvalidError('envelope not available');
+    await this.prisma.executedAccessGrant.update({
+      where: { id: grant.id },
+      data: { last_accessed_at: new Date(), access_count: { increment: 1 } },
+    });
+    return { tenant_id: grant.tenant_id, envelope_id: grant.envelope_id, signer_id: grant.signer_id };
+  }
+
+  // ── M-A5 §3 — hosted (in-person) signing. The authenticated host (the caller has
+  // already passed sign:envelope:send, assertMayChange and the sign.in_person_signing
+  // feature gate) starts a session for an IN_PERSON_SIGNER of a signable envelope
+  // whose turn it is. Under the envelope row lock: that signer's other live sessions
+  // are revoked, one HOSTED session is minted (30 minutes, never past the envelope's
+  // expiry) and HOSTED_SESSION_STARTED is appended (actor SERVICE, actor_ref = host).
+  // The raw token is returned ONLY to the host's authenticated client. ──
+  async issueHostedSession(tenant_id: string, envelope_id: string, signer_id: string, host_user_id: string, now: Date = new Date()): Promise<IssuedHostedSession> {
+    return this.prisma.$transaction(async (tx) => {
+      const { signer, expiresAt } = await this.lockForSessionIssue(tx, tenant_id, envelope_id, signer_id, now, HOSTED_SESSION_TTL_MS);
+      if (recipientKindOf(signer) !== 'IN_PERSON_SIGNER') throw new SessionIssueRefusedError('not_in_person_signer');
+      await tx.signingSession.updateMany({
+        where: { tenant_id, envelope_id, signer_id, status: { in: [...LIVE_SESSION_STATUSES] } },
+        data: { status: 'REVOKED', revoked_at: now },
+      });
+      const minted = await this.mintSession(tx, { tenant_id, envelope_id, signer_id, expires_at: expiresAt, origin: 'HOSTED', host_user_id });
+      await this.repo.appendEvent(tx, {
+        tenant_id,
+        envelope_id,
+        signer_id,
+        event_type: HOSTED_SESSION_STARTED_EVENT,
+        actor_type: 'SERVICE',
+        actor_ref: host_user_id,
+        payload: { session_id: minted.session_id, signer_id, session_origin: 'HOSTED' },
+      });
+      return minted;
+    });
+  }
+
+  // ── M-A5 §4 — self-signing. The caller (sign:envelope:send, may change the
+  // envelope) signs as the recipient bound to them by Assign to me. Never on an email
+  // match alone: bound_user_id must equal the caller (sign:envelope:manage:all never
+  // substitutes) AND the recipient email must still equal the caller's verified
+  // account email (re-checked here). One SELF session (30 minutes, never past the
+  // envelope's expiry) is minted under the envelope row lock and
+  // SELF_SIGN_SESSION_ISSUED is appended. The emailed link stays valid. ──
+  async issueSelfSignSession(
+    tenant_id: string,
+    envelope_id: string,
+    user_id: string,
+    verified_email: string | null,
+    signer_id?: string,
+    now: Date = new Date(),
+  ): Promise<IssuedHostedSession> {
+    return this.prisma.$transaction(async (tx) => {
+      await this.repo.lockEnvelope(tx, tenant_id, envelope_id);
+      const bound = await tx.signer.findMany({
+        where: { tenant_id, envelope_id, bound_user_id: user_id, ...SIGNING_RECIPIENT_WHERE, ...(signer_id !== undefined ? { id: signer_id } : {}) },
+        orderBy: { signing_order: 'asc' },
+        select: { id: true },
+      });
+      const target = bound[0];
+      if (target === undefined) throw new SessionIssueRefusedError('not_bound_to_you');
+      const { signer, expiresAt } = await this.lockForSessionIssue(tx, tenant_id, envelope_id, target.id, now, SELF_SIGN_SESSION_TTL_MS);
+      const mine = verified_email?.trim().toLowerCase() ?? '';
+      if (mine === '' || signer.email === null || signer.email.trim().toLowerCase() !== mine) throw new SessionIssueRefusedError('email_not_verified');
+      const minted = await this.mintSession(tx, { tenant_id, envelope_id, signer_id: signer.id, expires_at: expiresAt, origin: 'SELF', authenticated_user_id: user_id });
+      await this.repo.appendEvent(tx, {
+        tenant_id,
+        envelope_id,
+        signer_id: signer.id,
+        event_type: SELF_SIGN_SESSION_ISSUED_EVENT,
+        actor_type: 'SERVICE',
+        actor_ref: user_id,
+        payload: { session_id: minted.session_id, signer_id: signer.id, session_origin: 'SELF' },
+      });
+      return minted;
+    });
+  }
+
+  // The checks a hosted or self-sign session shares, under the envelope row lock:
+  // a signable, unexpired envelope; a signing recipient of it who has not finished;
+  // and (SEQUENTIAL) their turn. Returns the signer and the bounded session expiry.
+  private async lockForSessionIssue(tx: LockingTx, tenant_id: string, envelope_id: string, signer_id: string, now: Date, ttlMs: number) {
+    const status = await this.repo.lockEnvelope(tx, tenant_id, envelope_id);
+    const env = await tx.signatureEnvelope.findFirst({ where: { id: envelope_id, tenant_id }, select: { routing_mode: true, expires_at: true } });
+    if (env === null) throw new SessionIssueRefusedError('signer_not_found');
+    const signer = await tx.signer.findFirst({ where: { id: signer_id, tenant_id, envelope_id }, select: { id: true, email: true, status: true, recipient_kind: true } });
+    if (signer === null) throw new SessionIssueRefusedError('signer_not_found');
+    if ((status !== 'SENT' && status !== 'IN_PROGRESS') || (env.expires_at !== null && env.expires_at.getTime() <= now.getTime())) {
+      throw new SessionIssueRefusedError('envelope_not_signable');
+    }
+    if (recipientKindOf(signer) === 'RECEIVES_COPY' || (signer.status !== 'PENDING' && signer.status !== 'VIEWED')) throw new SessionIssueRefusedError('signer_ineligible');
+    if (env.routing_mode === 'SEQUENTIAL' && (await this.currentSequentialSigner(tx, tenant_id, envelope_id)) !== signer_id) {
+      throw new SessionIssueRefusedError('not_your_turn');
+    }
+    const expiresAt = new Date(Math.min(now.getTime() + ttlMs, env.expires_at?.getTime() ?? Number.POSITIVE_INFINITY));
+    return { signer, expiresAt };
+  }
+
+  private async mintSession(
+    tx: LockingTx,
+    input: { tenant_id: string; envelope_id: string; signer_id: string; expires_at: Date; origin: SessionOrigin; host_user_id?: string; authenticated_user_id?: string },
+  ): Promise<IssuedHostedSession> {
+    const minted = generateSigningToken();
+    const session_id = randomUUID();
+    await tx.signingSession.create({
+      data: {
+        id: session_id,
+        tenant_id: input.tenant_id,
+        envelope_id: input.envelope_id,
+        signer_id: input.signer_id,
+        token_hash: minted.hash,
+        status: 'ISSUED',
+        expires_at: input.expires_at,
+        origin: input.origin,
+        host_user_id: input.host_user_id ?? null,
+        authenticated_user_id: input.authenticated_user_id ?? null,
+      },
+    });
+    return { session_id, signer_id: input.signer_id, raw_token: minted.raw, expires_at: input.expires_at };
+  }
+
   // ── Evidence metadata (R19). DOC-3 provides hashes + event-chain hash +
   // (software) signature; KMS signer + executed bytes/certificate are DOC-4. ──
   async evidenceManifest(tenant_id: string, envelope_id: string): Promise<SignedEvidenceManifest> {
     const full = await this.repo.getEnvelopeFull(tenant_id, envelope_id);
     const chainHash = (await this.repo.terminalEventHash(tenant_id, envelope_id)) ?? '';
-    const disclosures = await this.prisma.signerDisclosureAcceptance.findMany({ where: { tenant_id, signer_id: { in: full.signers.map((s) => s.id) } } });
+    // M-A5 §1.2 — a copy recipient is never a signer of the evidence.
+    const signing = signingRecipients(full.signers);
+    const disclosures = await this.prisma.signerDisclosureAcceptance.findMany({ where: { tenant_id, signer_id: { in: signing.map((s) => s.id) } } });
     const disclosureHash = disclosures.length > 0 ? disclosures.map((d) => d.disclosure_text_hash).sort().join('|') : null;
     // DOC-4 — the executed-document hash, if executed bytes have been produced.
     const executed = await this.prisma.executedDocument.findFirst({
@@ -585,7 +789,7 @@ export class EsignService {
       disclosure_hash: disclosureHash,
       execution_manifest_hash: chainHash,
       consent_version: disclosures[0]?.disclosure_version ?? null,
-      signers: full.signers.map((s) => s.id),
+      signers: signing.map((s) => s.id),
       completed_at: full.completed_at ? full.completed_at.toISOString() : null,
       service_version: SERVICE_VERSION,
     };
@@ -640,8 +844,10 @@ export class EsignService {
       if (status !== 'SENT' && status !== 'IN_PROGRESS') {
         throw new ReminderNotAllowedError(`envelope status ${status} is not remindable`);
       }
+      // M-A5 §1.2 — copy recipients are never reminded; an in-person signer holds no
+      // emailed link (the host starts their session), so only SIGNERs are reminded.
       const incomplete = await tx.signer.findMany({
-        where: { tenant_id, envelope_id, status: { in: ['PENDING', 'VIEWED'] } },
+        where: { tenant_id, envelope_id, status: { in: ['PENDING', 'VIEWED'] }, ...SIGNING_RECIPIENT_WHERE },
         orderBy: { signing_order: 'asc' },
       });
       if (incomplete.length === 0) {
@@ -650,7 +856,7 @@ export class EsignService {
       // Multi-Signer §4 — in a SEQUENTIAL envelope only the signer whose turn it is
       // holds a link, so only they can be reminded.
       const env = await tx.signatureEnvelope.findFirstOrThrow({ where: { id: envelope_id, tenant_id }, select: { routing_mode: true } });
-      const eligible = env.routing_mode === 'SEQUENTIAL' ? incomplete.slice(0, 1) : incomplete;
+      const eligible = (env.routing_mode === 'SEQUENTIAL' ? incomplete.slice(0, 1) : incomplete).filter(isLinkSigner);
       let targets = signer_id === undefined ? eligible : eligible.filter((s) => s.id === signer_id);
       if (targets.length === 0) {
         throw new ReminderNotAllowedError(
@@ -686,6 +892,7 @@ export class EsignService {
             token_hash: tok.hash,
             status: 'ISSUED',
             expires_at: signingSessionExpiresAt(now),
+            origin: 'LINK',
           },
         });
         minted.push({ session_id: sessionId, signer_id: signer.id, raw_token: tok.raw });
@@ -704,4 +911,11 @@ export class EsignService {
     });
     return { sessions };
   }
+}
+
+// M-A5 §3.4 — the name a hosted signer confirmed: trimmed, 1..200 characters.
+function normalizeAttestedName(raw: unknown): string | null {
+  if (typeof raw !== 'string') return null;
+  const name = raw.trim().replace(/\s+/g, ' ');
+  return name.length > 0 && name.length <= 200 ? name : null;
 }

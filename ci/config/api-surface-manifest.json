@@ -221,6 +221,11 @@
     },
     {
       "method": "POST",
+      "path": "/v1/sign/signing/copy",
+      "class": "PZ"
+    },
+    {
+      "method": "POST",
       "path": "/v1/sign/billing/webhook/stripe",
       "class": "XP"
     }

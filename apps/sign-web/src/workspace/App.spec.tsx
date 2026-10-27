@@ -254,6 +254,81 @@ describe('send readiness (mirrors the server)', () => {
   it('needs a document and a signer', () => {
     expect(readinessOf({ documents: [], recipients: [], fields: [] } as unknown as EnvelopeDetail).items.map((i) => i.t)).toEqual(['Add at least one document', 'Add at least one signer']);
   });
+  // Aramo-Sign-Unified-Product-Amendment-M-A5 §1.5 / §6.2 — the mirror excludes copy recipients.
+  it('a copy recipient is not a signer, needs no field, and must have none', () => {
+    const withCopy = { ...base, recipients: [{ id: 's1', name: 'Alex' }, { id: 'c1', name: 'Casey', recipient_kind: 'RECEIVES_COPY', copy_delivery: 'ON_SEND' }] } as unknown as EnvelopeDetail;
+    expect(readinessOf(withCopy)).toMatchObject({ ok: true });
+    expect(readinessOf(withCopy).items[1]?.t).toBe('1 signer(s)');
+    const onlyCopy = { ...base, recipients: [{ id: 'c1', name: 'Casey', recipient_kind: 'RECEIVES_COPY' }], fields: [] } as unknown as EnvelopeDetail;
+    expect(readinessOf(onlyCopy).items.map((i) => i.t)).toContain('Add at least one signer');
+    const copyWithField = { ...withCopy, fields: [...base.fields, { signer_id: 'c1', field_type: 'TEXT' }] } as unknown as EnvelopeDetail;
+    expect(readinessOf(copyWithField).items.at(-1)).toEqual({ ok: false, t: 'Casey receives a copy and cannot have fields' });
+  });
+});
+
+// M-A5 §6.2 — the web Role select: Receives a copy (with timing) and Assign to me. In
+// person is not offered on the web this release.
+describe('envelope wizard — recipient roles (M-A5)', () => {
+  beforeEach(() => configureAuthConsumer('sign'));
+  afterEach(() => vi.unstubAllGlobals());
+
+  const DRAFT = {
+    id: 'e9',
+    subject: 'Roles',
+    status: 'DRAFT',
+    created_at: '2026-10-01T00:00:00Z',
+    sent_at: null,
+    completed_at: null,
+    declined_at: null,
+    voided_at: null,
+    expires_at: null,
+    signing_window_days: 7,
+    sender: { id: 'u1', name: 'Priya Nair' },
+    editable: true,
+    routing_mode: 'PARALLEL',
+    next_signer_id: null,
+    documents: [],
+    recipients: [
+      { id: 'r1', name: 'Priya Nair', email: 'priya@northwind.test', status: 'PENDING', signing_order: 1, recipient_kind: 'SIGNER', copy_delivery: null, assigned_to_me: false },
+      { id: 'r2', name: 'Casey', email: 'casey@x.test', status: 'PENDING', signing_order: 2, recipient_kind: 'SIGNER', copy_delivery: null, assigned_to_me: false },
+    ],
+    fields: [],
+  };
+
+  it('saves Receives a copy with its timing and Assign to me for the signed-in user only', async () => {
+    const puts: unknown[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes('/auth/sign/session')) return json(SESSION);
+        if (url.endsWith('/v1/sign/sender/context')) return json(ctx());
+        if (url.endsWith('/v1/sign/sender/envelopes/e9/recipients') && init?.method === 'PUT') {
+          puts.push(JSON.parse(String(init.body)));
+          return json(DRAFT);
+        }
+        if (url.endsWith('/v1/sign/sender/envelopes/e9')) return json(DRAFT);
+        return json({ items: [] });
+      }),
+    );
+    renderAt('/sign/envelopes/e9/edit?step=2');
+    const roles = await screen.findAllByTestId('recipient-role');
+    expect(roles).toHaveLength(2);
+    expect(screen.queryByRole('option', { name: /in person/i })).not.toBeInTheDocument();
+    // Only the signed-in user's own row offers Assign to me.
+    expect(screen.getAllByTestId('assign-to-me')).toHaveLength(1);
+    fireEvent.click(screen.getByTestId('assign-to-me'));
+    fireEvent.change(roles[1]!, { target: { value: 'RECEIVES_COPY' } });
+    fireEvent.change(await screen.findByTestId('copy-timing'), { target: { value: 'BOTH' } });
+    fireEvent.click(screen.getByTestId('recipients-continue'));
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]).toEqual({
+      recipients: [
+        { id: 'r1', name: 'Priya Nair', email: 'priya@northwind.test', recipient_kind: 'SIGNER', copy_delivery: null, assign_to_me: true },
+        { id: 'r2', name: 'Casey', email: 'casey@x.test', recipient_kind: 'RECEIVES_COPY', copy_delivery: 'BOTH' },
+      ],
+    });
+  });
 });
 
 describe('editor geometry (top-left editor ⇄ bottom-left PDF)', () => {

@@ -7,6 +7,7 @@ import { EsignRepository } from './esign.repository.js';
 import { signBaseUrl } from './sign-base-url.js';
 import { generateSigningToken, signingSessionExpiresAt } from './signing-token.js';
 import { SIGNING_NOTIFICATION_PORT, type SigningNotificationPort } from './ports/signing-notification.port.js';
+import { currentTurnSignerId, isLinkSigner } from './domain/recipients.js';
 
 // Aramo-Sign-Multi-Signer-Amendment-v1_0-LOCKED §4 — delivery of the next signer's
 // invitation in a SEQUENTIAL envelope.
@@ -91,17 +92,17 @@ export class SigningInvitationService {
       if (intent.signer_id === null) return { kind: 'cancel', reason: 'no signer' } as const;
       const signer = await tx.signer.findFirst({
         where: { id: intent.signer_id, tenant_id: intent.tenant_id, envelope_id: intent.envelope_id },
-        select: { id: true, name: true, email: true, status: true },
+        select: { id: true, name: true, email: true, status: true, recipient_kind: true },
       });
       if (signer === null || (signer.status !== 'PENDING' && signer.status !== 'VIEWED')) return { kind: 'cancel', reason: 'signer no longer awaiting' } as const;
+      // M-A5 §1/§3 — only a SIGNER is emailed a signing link (a copy recipient never
+      // signs; an in-person signer is started by the host).
+      if (!isLinkSigner(signer) || signer.email === null) return { kind: 'cancel', reason: 'recipient is not invited by email' } as const;
       const env = await tx.signatureEnvelope.findFirstOrThrow({ where: { id: intent.envelope_id, tenant_id: intent.tenant_id }, select: { routing_mode: true, subject: true, message: true } });
       if (env.routing_mode === 'SEQUENTIAL') {
-        const current = await tx.signer.findFirst({
-          where: { tenant_id: intent.tenant_id, envelope_id: intent.envelope_id, status: { not: 'SIGNED' } },
-          orderBy: { signing_order: 'asc' },
-          select: { id: true },
-        });
-        if (current?.id !== signer.id) return { kind: 'cancel', reason: 'not this signer’s turn' } as const;
+        // M-A5 §1.3 — the shared current-turn rule.
+        const current = await currentTurnSignerId(tx as never, intent.tenant_id, intent.envelope_id);
+        if (current !== signer.id) return { kind: 'cancel', reason: 'not this signer’s turn' } as const;
       }
       await tx.signingSession.updateMany({
         where: { tenant_id: intent.tenant_id, envelope_id: intent.envelope_id, signer_id: signer.id, status: { in: ['ISSUED', 'EXCHANGED', 'ACTIVE'] } },
@@ -117,9 +118,10 @@ export class SigningInvitationService {
           token_hash: tok.hash,
           status: 'ISSUED',
           expires_at: signingSessionExpiresAt(now),
+          origin: 'LINK',
         },
       });
-      return { kind: 'issued', raw: tok.raw, signer, subject: env.subject, message: env.message } as const;
+      return { kind: 'issued', raw: tok.raw, signer: { ...signer, email: signer.email }, subject: env.subject, message: env.message } as const;
     });
     if (issued.kind === 'cancel') {
       await this.prisma.notificationDelivery.update({ where: { id: intent.id }, data: { status: 'CANCELLED', last_error: issued.reason.slice(0, 500) } });

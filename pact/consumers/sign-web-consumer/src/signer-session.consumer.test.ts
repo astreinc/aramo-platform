@@ -32,6 +32,9 @@ const { like, uuid } = MatchersV3;
 //   4. POST /v1/sign/signing/complete              200 { envelope_status }
 //   5. POST /v1/sign/signing/disclosure-text       200 { disclosure_version, text, text_sha256 }  (Aramo Sign launch, A-7)
 //   6. POST /v1/sign/signing/executed              200 { subject, completed_at, documents[], certificate_base64 }  (signer's signed copy)
+// Aramo-Sign-Unified-Product-Amendment-M-A5 §7:
+//   7. POST /v1/sign/signing/copy                  200 { subject, sent_at, documents[] }  (ON_SEND copy: source only)
+//   8. POST /v1/sign/signing/disclosure            200 { accepted: true }  (hosted session, with attested_name)
 
 const provider = new PactV4({
   consumer: 'sign-web',
@@ -47,6 +50,8 @@ const TOKEN_FILL = 'sign-web-pact-token-fill';
 const TOKEN_COMPLETE = 'sign-web-pact-token-complete';
 const TOKEN_DISCLOSURE_TEXT = 'sign-web-pact-token-disclosure-text';
 const TOKEN_EXECUTED = 'sign-web-pact-token-executed';
+const TOKEN_COPY = 'sign-web-pact-token-copy';
+const TOKEN_HOSTED_DISCLOSURE = 'sign-web-pact-token-hosted-disclosure';
 // A-7 — the server-held v1 disclosure. Acceptance must echo its exact version + hash.
 const DISCLOSURE_V1_TEXT = 'By continuing you consent to sign this document electronically.';
 const DISCLOSURE_V1_SHA256 = createHash('sha256').update(DISCLOSURE_V1_TEXT, 'utf8').digest('hex');
@@ -214,6 +219,63 @@ describe('sign-web → POST /v1/sign/signing/executed', () => {
         expect(res.status).toBe(200);
         const body = (await res.json()) as { documents: unknown[] };
         expect(body.documents.length).toBe(1);
+      });
+  });
+});
+
+// M-A5 §2.2 — a copy recipient's ON_SEND copy: the SOURCE documents only, with no
+// recipient list and no signer data.
+describe('sign-web → POST /v1/sign/signing/copy', () => {
+  it('returns the source documents for a valid copy link', async () => {
+    await provider
+      .addInteraction()
+      .given('a copy recipient has a copy link for a sent envelope')
+      .uponReceiving('a copy view from the Sign Web client')
+      .withRequest('POST', '/v1/sign/signing/copy', (b) => {
+        b.headers({ 'Content-Type': 'application/json' }).jsonBody({ token: TOKEN_COPY });
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          subject: like('Offer Letter'),
+          sent_at: like('2026-10-28T12:00:00.000Z'),
+          documents: [{ title: like('offer.pdf'), content_type: like('application/pdf'), source_base64: like('JVBERi0xLjQ=') }],
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/signing/copy`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token: TOKEN_COPY }),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as Record<string, unknown>;
+        expect(Object.keys(body).sort()).toEqual(['documents', 'sent_at', 'subject']);
+      });
+  });
+});
+
+// M-A5 §3.4 — in a hosted (in-person) session the disclosure carries the name the
+// signer confirms.
+describe('sign-web → POST /v1/sign/signing/disclosure (hosted)', () => {
+  it('records a hosted signer disclosure acceptance with the attested name', async () => {
+    const body = { token: TOKEN_HOSTED_DISCLOSURE, disclosure_version: 'v1', disclosure_text_hash: DISCLOSURE_V1_SHA256, attested_name: 'Pat Walk-in' };
+    await provider
+      .addInteraction()
+      .given('a hosted signer session is ready to accept disclosure')
+      .uponReceiving('a hosted disclosure acceptance with the attested name')
+      .withRequest('POST', '/v1/sign/signing/disclosure', (b) => {
+        b.headers({ 'Content-Type': 'application/json' }).jsonBody(body);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ accepted: like(true) });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/signing/disclosure`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body),
+        });
+        expect(res.status).toBe(200);
       });
   });
 });

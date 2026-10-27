@@ -132,18 +132,44 @@ describe('mergeAgreements + filters', () => {
     expect(
       line(
         sent('COMPLETED', {
-          recipients: [{ id: 'x', name: 'Jo Doe', email: 'j@x', status: 'SIGNED' }],
+          recipients: [
+            { id: 'x', name: 'Jo Doe', email: 'j@x', status: 'SIGNED', recipient_kind: 'SIGNER' },
+          ],
         }),
       ),
     ).toBe('Completed by Jo Doe');
     expect(
       line(
         sent('DECLINED', {
-          recipients: [{ id: 'x', name: 'Jo Doe', email: 'j@x', status: 'DECLINED' }],
+          recipients: [
+            { id: 'x', name: 'Jo Doe', email: 'j@x', status: 'DECLINED', recipient_kind: 'SIGNER' },
+          ],
         }),
       ),
     ).toBe('Declined by Jo Doe');
     expect(line(sent('DECLINED'))).toBe('Declined by a signer');
+  });
+
+  it('copy recipients are never counted or named as signers (M-A5)', () => {
+    const line = (e: ReturnType<typeof sent>) => secondaryLine(mergeAgreements([e], null)[0]!);
+    const cc = {
+      id: 'c',
+      name: 'Procurement',
+      email: 'p@x',
+      status: 'PENDING' as const,
+      recipient_kind: 'RECEIVES_COPY' as const,
+    };
+    const signer = {
+      id: 's',
+      name: 'Jo Doe',
+      email: 'j@x',
+      status: 'SIGNED' as const,
+      recipient_kind: 'SIGNER' as const,
+    };
+    expect(line(sent('COMPLETED', { recipients: [signer, cc] }))).toBe('Completed by Jo Doe');
+    expect(line(sent('IN_PROGRESS', { recipients: [{ ...signer, status: 'PENDING' }, cc] }))).toBe(
+      'Waiting for others · 0 of 1 signed',
+    );
   });
 
   it('received status lines never name or count other recipients (A8/A9, C-6)', () => {

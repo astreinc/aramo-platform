@@ -263,6 +263,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/signing/copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A copy recipient's view of the documents sent for signature (ON_SEND copy).
+         * @description Aramo-Sign-Unified-Product-Amendment-M-A5 §2.2 — authorized by the COPY_VIEW access token from the RECIPIENT_COPY email (not a signing session). Returns the SOURCE documents only, base64: values are stamped only at completion, so they carry no signer data. No recipient list, signer data, tenant id or internal id is returned. Refused (401) for an unknown or expired token, an executed-copy token, and a draft, voided, declined or expired envelope. Only the token's hash is stored; tenant is resolved server-side; each use is counted.
+         */
+        post: operations["getRecipientCopy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/signing/disclosure": {
         parameters: {
             query?: never;
@@ -549,7 +569,7 @@ export interface paths {
         get?: never;
         /**
          * Replace the recipients of a DRAFT envelope.
-         * @description Keeps listed existing ids, creates new recipients, deletes the rest with their fields. List position is the signing order (used when the envelope signs in order). 1 to 10 recipients with distinct emails. DRAFT only. Requires sign:envelope:create. Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
+         * @description Keeps listed existing ids, creates new recipients, deletes the rest with their fields. List position is the signing order (used when the envelope signs in order). Up to 10 signing recipients and 10 copy recipients, with distinct emails across all kinds. DRAFT only. Requires sign:envelope:create. Aramo-Sign-Unified-Product-Amendment-M-A5 §1 / §2 / §4 — each item may carry recipient_kind (omitted = SIGNER), copy_delivery (required iff RECEIVES_COPY; 400 copy_delivery_required / copy_delivery_not_allowed) and assign_to_me (the server binds the caller only when this recipient's email is the caller's verified account email: 403 assign_to_me_email_mismatch; SIGNER only: 400 assign_to_me_not_signer). Email is optional for an IN_PERSON_SIGNER only. 400 too_many_signers / too_many_copy_recipients / invalid_recipient_kind. Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
          */
         put: operations["replaceSenderRecipients"];
         post?: never;
@@ -613,6 +633,46 @@ export interface paths {
          * @description Same envelope; prior links are revoked and a fresh link is emailed. With signer_id, only that signer; without, every unsigned signer who may sign now (when signing in order, only the signer whose turn it is). Requires sign:envelope:send. Sign Mobile M-A3 §7 — at least 60 minutes between reminders to the same signer and at most 5 reminders per envelope in any rolling 24 hours, web and mobile alike, enforced atomically under the envelope row lock (429 reminder_cooldown | reminder_daily_limit, with retry_after_seconds and retry_at). Without signer_id, signers still in their cooldown are skipped. With an Idempotency-Key a replay returns the first response and does not count again.
          */
         post: operations["remindSenderEnvelope"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/envelopes/{id}/hosted-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a hosted (in-person) signing session.
+         * @description Aramo-Sign-Unified-Product-Amendment-M-A5 §3 — for an IN_PERSON_SIGNER of a SENT / IN_PROGRESS envelope whose turn it is. Requires sign:envelope:send, the right to change the envelope (owner, or sign:envelope:manage:all) and the sign.in_person_signing capability (403 ESIGN_FEATURE_NOT_AVAILABLE). Revokes the signer's other live sessions, mints a 30-minute HOSTED session (never past the envelope's expiry) and appends HOSTED_SESSION_STARTED (actor SERVICE, the host). The token is returned only in this response; the signer then uses the guest signing routes with it, and a hosted session's disclosure needs attested_name. Refusals carry details.reason - 404 signer_not_found; 409 not_in_person_signer / envelope_not_signable / signer_ineligible / not_your_turn.
+         */
+        post: operations["startHostedSigningSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/envelopes/{id}/self-sign-session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a self-sign session for the recipient assigned to the caller.
+         * @description Aramo-Sign-Unified-Product-Amendment-M-A5 §4 — "Sign a document". Requires sign:envelope:send and the right to change the envelope; the recipient must be bound to the caller by Assign to me (sign:envelope:manage:all never substitutes: 403 not_bound_to_you) and the caller's verified account email must still equal the recipient email (403 email_not_verified). The envelope must be signable and (in order) it must be that recipient's turn (409 envelope_not_signable / signer_ineligible / not_your_turn). Mints a 30-minute SELF session and appends SELF_SIGN_SESSION_ISSUED; the emailed link stays valid. signer_id is optional (the first recipient bound to the caller).
+         */
+        post: operations["startSelfSignSession"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2096,6 +2156,8 @@ export interface components {
             /** @description DOC-TEMPLATE-LIB-1 T-5 — plan capabilities by launch availability. templates = the sign.templates capability is available; while false every template route answers ESIGN_FEATURE_NOT_AVAILABLE (403). */
             features?: {
                 templates?: boolean;
+                /** @description Aramo-Sign-Unified-Product-Amendment-M-A5 §3.7 — the sign.in_person_signing capability (hosted signing) is available. */
+                in_person_signing?: boolean;
             };
             can_send: boolean;
             /** @description True only for a bound (ACTIVE) PERSONAL tenant while Personal sending is switched on (SIGN_PERSONAL_SIGNUP_MODE not off). */
@@ -2207,8 +2269,10 @@ export interface components {
                 /** Format: uuid */
                 id: string;
                 name: string;
-                email: string;
+                /** @description Null only for an in-person signer without an email (M-A5 §3.5). */
+                email: string | null;
                 status: components["schemas"]["SenderRecipientStatus"];
+                recipient_kind: components["schemas"]["SenderRecipientKind"];
             }[];
         };
         /** @description Envelopes the caller may see, by status, over every tab (the same visibility as the list). A status with no envelope is absent (read it as 0). */
@@ -2227,6 +2291,26 @@ export interface components {
         SenderEnvelopeStatus: "DRAFT" | "SENT" | "IN_PROGRESS" | "COMPLETED" | "DECLINED" | "VOIDED" | "EXPIRED";
         /** @enum {string} */
         SenderRecipientStatus: "PENDING" | "VIEWED" | "SIGNED" | "DECLINED";
+        /**
+         * @description Aramo-Sign-Unified-Product-Amendment-M-A5 §1 — SIGNER signs through an emailed link; IN_PERSON_SIGNER signs on the host's device (hosted session); RECEIVES_COPY never signs (no fields, no session, no turn, never reminded, never blocks completion).
+         * @enum {string}
+         */
+        SenderRecipientKind: "SIGNER" | "IN_PERSON_SIGNER" | "RECEIVES_COPY";
+        /**
+         * @description M-A5 §2.1 — when a copy recipient receives their copy.
+         * @enum {string}
+         */
+        SenderCopyDelivery: "ON_SEND" | "ON_COMPLETION" | "BOTH";
+        /** @description M-A5 §3.2 / §4.2 — a hosted or self-sign session. The token is a signing capability for the guest signing routes (/v1/sign/signing/*); it is returned only to the authenticated caller and must never be logged or shared. */
+        SenderIssuedSigningSession: {
+            /** @enum {string} */
+            session_origin: "HOSTED" | "SELF";
+            /** Format: uuid */
+            signer_id: string;
+            token: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
         /** @description One page of a source PDF in PDF points - the page's MediaBox, the frame field geometry is placed and validated in (origin bottom-left). Pages are 0-based by position (pages[page_number]). */
         SenderPageSize: {
             width: number;
@@ -2250,7 +2334,13 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
-            email: string;
+            /** @description Null only for an in-person signer without an email (M-A5 §3.5). */
+            email: string | null;
+            recipient_kind: components["schemas"]["SenderRecipientKind"];
+            /** @description M-A5 §2.1 — set only for RECEIVES_COPY. */
+            copy_delivery: components["schemas"]["SenderCopyDelivery"] | null;
+            /** @description M-A5 §4.1 — this recipient is bound to the caller (Assign to me). The bound user id itself is never returned. */
+            assigned_to_me: boolean;
             status: components["schemas"]["SenderRecipientStatus"];
             /** @description The position in the signing order (used when the envelope signs in order). */
             signing_order: number;
@@ -2261,7 +2351,7 @@ export interface components {
             /** Format: date-time */
             declined_at: string | null;
             decline_reason: string | null;
-            /** @description An unsigned signer who may sign now (in an open envelope). */
+            /** @description An unsigned signer who may sign now (in an open envelope). Never a copy recipient or an in-person signer (M-A5). */
             can_remind: boolean;
             /**
              * Format: date-time
@@ -3145,6 +3235,44 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    getRecipientCopy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The source documents. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        subject: string;
+                        /** Format: date-time */
+                        sent_at: string | null;
+                        documents: {
+                            title: string;
+                            content_type: string;
+                            /** @description The source PDF, base64. */
+                            source_base64: string;
+                        }[];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
     acceptSignerDisclosure: {
         parameters: {
             query?: never;
@@ -3158,6 +3286,8 @@ export interface operations {
                     token: string;
                     disclosure_version: string;
                     disclosure_text_hash: string;
+                    /** @description Aramo-Sign-Unified-Product-Amendment-M-A5 §3.4 — required in a hosted (in-person) session: the name the signer confirms (400 attested_name_required without it). Ignored for other sessions. Kept with the acceptance; the ledger records only its sha256. */
+                    attested_name?: string;
                 };
             };
         };
@@ -3776,8 +3906,12 @@ export interface operations {
                         /** Format: uuid */
                         id?: string;
                         name: string;
-                        /** Format: email */
-                        email: string;
+                        /** @description Required unless recipient_kind is IN_PERSON_SIGNER. */
+                        email?: string | null;
+                        recipient_kind?: components["schemas"]["SenderRecipientKind"];
+                        copy_delivery?: components["schemas"]["SenderCopyDelivery"] | null;
+                        /** @description M-A5 §4.1 — Assign to me. The server sets the binding to the caller (never client-supplied) when the recipient email equals the caller's verified account email. Omitted or false clears it. */
+                        assign_to_me?: boolean;
                     }[];
                 };
             };
@@ -3921,6 +4055,76 @@ export interface operations {
             409: components["responses"]["Conflict"];
             422: components["responses"]["IdempotencyKeyReuse"];
             429: components["responses"]["ReminderLimited"];
+        };
+    };
+    startHostedSigningSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    signer_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The hosted session. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderIssuedSigningSession"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    startSelfSignSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    signer_id?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The self-sign session. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderIssuedSigningSession"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     voidSenderEnvelope: {
