@@ -2967,8 +2967,6 @@
     "apps/sign-web/src/workspace/pages/EnvelopeDetail.tsx",
     "apps/sign-web/src/workspace/pages/EnvelopeList.tsx",
     "apps/sign-web/src/workspace/pages/EnvelopeWizard.tsx",
-    "apps/sign-web/src/workspace/pages/EnvelopeWizard.tsx",
-    "apps/sign-web/src/workspace/pages/EnvelopeWizard.tsx",
     "apps/sign-web/src/workspace/pages/Inbox.tsx",
     "apps/sign-web/src/workspace/pages/PersonalAllowance.spec.tsx",
     "apps/sign-web/src/workspace/pages/PersonalAllowance.tsx",
