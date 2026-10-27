@@ -58,6 +58,7 @@ dependency, move `before` to (today − 14 days) in the same change.
 | react-native-pdf + react-native-blob-util | 7.0.5 + 0.25.1 | PDF renderer (see below). blob-util `1.0.0` is deprecated upstream as an RC. |
 | @config-plugins/react-native-pdf · react-native-blob-util | 14.0.2 · 14.0.2 | official Expo config plugins (prebuild wiring) |
 | react-native-document-scanner-plugin | 2.0.4 | document scanner (see below) |
+| expo-image-picker | 57.0.20 (2026-09-24) | Photos source (M-A4 §5.2, A12): system photo picker, images composed into one PDF on the device. SDK 57 matrix (`~57.0.20`). Pulls in `expo-image-loader`. |
 | react-native-view-shot | 5.1.0 | rasterizes drawn signatures to PNG (C-19). SDK 57 matrix. |
 | @tanstack/react-query · react-query-persist-client | 5.104.1 | query cache + persistence |
 | openapi-typescript | 7.13.0 | type generation. Its `typescript ^5` peer is overridden to the app's TS 6. |

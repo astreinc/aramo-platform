@@ -6615,6 +6615,7 @@
     "mobile/sign/src/components/Toast.tsx",
     "mobile/sign/src/components/index.ts",
     "mobile/sign/src/config/env.ts",
+    "mobile/sign/src/config/features.ts",
     "mobile/sign/src/features/account/__tests__/account.test.ts",
     "mobile/sign/src/features/account/devices.ts",
     "mobile/sign/src/features/account/legal.ts",

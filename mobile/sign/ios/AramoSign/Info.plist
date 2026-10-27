@@ -47,6 +47,8 @@
     <string>Aramo Sign uses the camera to scan documents you choose to send.</string>
     <key>NSFaceIDUsageDescription</key>
     <string>Aramo Sign uses Face ID to confirm it’s you before you finish signing.</string>
+    <key>NSPhotoLibraryUsageDescription</key>
+    <string>Aramo Sign uses your photos only when you choose some to turn into a PDF to send.</string>
     <key>RCTMetroPort</key>
     <string>$(RCT_METRO_PORT)</string>
     <key>UILaunchStoryboardName</key>

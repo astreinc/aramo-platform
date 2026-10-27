@@ -1,7 +1,9 @@
 // Scan-to-PDF (directive §5; handoff §4.6 "The result is one PDF"). The native
 // scanner (VisionKit / ML Kit) returns one JPEG per page; this composes them into a
 // single PDF with each JPEG embedded as-is (DCTDecode, no re-encoding). Pure: bytes in,
-// bytes out, so it is unit-tested and runs on Hermes.
+// bytes out, so it is unit-tested and runs on Hermes. The Photos source (M-A4 §5.2, A12)
+// uses the same path; a photo's EXIF orientation is honoured by the page transform, since
+// a PDF viewer ignores EXIF.
 import type { PageSize } from '../editor/geometry';
 import { utf8Encode } from '../../util/bytes';
 
@@ -47,6 +49,88 @@ export function readJpegInfo(b: Uint8Array): JpegInfo {
     i += 2 + len;
   }
   throw new Error('JPEG has no frame header');
+}
+
+/** EXIF orientation (1-8) from a JPEG's APP1 segment; 1 when absent or unreadable. */
+export function readJpegOrientation(b: Uint8Array): number {
+  if (b[0] !== 0xff || b[1] !== 0xd8) return 1;
+  let i = 2;
+  while (i + 4 < b.length && b[i] === 0xff) {
+    const marker = b[i + 1]!;
+    if (marker === 0xda || marker === 0xd9) break; // image data: no more metadata
+    const len = (b[i + 2]! << 8) | b[i + 3]!;
+    if (len < 2) break;
+    const start = i + 4;
+    const isExif =
+      marker === 0xe1 &&
+      b[start] === 0x45 && // E
+      b[start + 1] === 0x78 && // x
+      b[start + 2] === 0x69 && // i
+      b[start + 3] === 0x66 && // f
+      b[start + 4] === 0 &&
+      b[start + 5] === 0;
+    if (isExif) {
+      const tiff = start + 6;
+      const end = Math.min(i + 2 + len, b.length);
+      const little = b[tiff] === 0x49 && b[tiff + 1] === 0x49;
+      if (!little && !(b[tiff] === 0x4d && b[tiff + 1] === 0x4d)) return 1;
+      const u16 = (o: number) => (little ? b[o]! | (b[o + 1]! << 8) : (b[o]! << 8) | b[o + 1]!);
+      const u32 = (o: number) =>
+        little
+          ? (b[o]! | (b[o + 1]! << 8) | (b[o + 2]! << 16) | (b[o + 3]! << 24)) >>> 0
+          : ((b[o]! << 24) | (b[o + 1]! << 16) | (b[o + 2]! << 8) | b[o + 3]!) >>> 0;
+      if (tiff + 8 > end) return 1;
+      const ifd = tiff + u32(tiff + 4);
+      if (ifd + 2 > end) return 1;
+      const count = u16(ifd);
+      for (let k = 0; k < count; k += 1) {
+        const entry = ifd + 2 + k * 12;
+        if (entry + 12 > end) break;
+        if (u16(entry) === 0x0112) {
+          const v = u16(entry + 8);
+          return v >= 1 && v <= 8 ? v : 1;
+        }
+      }
+      return 1;
+    }
+    i += 2 + len;
+  }
+  return 1;
+}
+
+/** True when the orientation turns the stored image a quarter turn (5-8). */
+function swapsAxes(orientation: number): boolean {
+  return orientation >= 5 && orientation <= 8;
+}
+
+type Pt = readonly [number, number];
+/**
+ * Where the stored image's top-left, top-right and bottom-left corners appear on the
+ * page (unit square, y up), per EXIF orientation ("row 0 / column 0" positions).
+ */
+const CORNERS: Record<number, readonly [Pt, Pt, Pt]> = {
+  1: [[0, 1], [1, 1], [0, 0]],
+  2: [[1, 1], [0, 1], [1, 0]],
+  3: [[1, 0], [0, 0], [1, 1]],
+  4: [[0, 0], [1, 0], [0, 1]],
+  5: [[0, 1], [0, 0], [1, 1]],
+  6: [[1, 1], [1, 0], [0, 1]],
+  7: [[1, 0], [1, 1], [0, 0]],
+  8: [[0, 0], [0, 1], [1, 0]],
+};
+
+/** The `cm` matrix that draws the image (unit square) upright on a W x H page. */
+export function imageMatrix(orientation: number, w: number, h: number): readonly number[] {
+  const [tl, tr, bl] = CORNERS[orientation] ?? CORNERS[1]!;
+  const r = (n: number) => Math.round(n * 100) / 100 + 0; // + 0 turns -0 into 0
+  return [
+    r((tr[0] - tl[0]) * w),
+    r((tr[1] - tl[1]) * h),
+    r((tl[0] - bl[0]) * w),
+    r((tl[1] - bl[1]) * h),
+    r(bl[0] * w),
+    r(bl[1] * h),
+  ];
 }
 
 /** The page size a scanned image of `w`×`h` pixels gets, in PDF points. */
@@ -100,7 +184,10 @@ export function composeScanPdf(jpegs: readonly Uint8Array[]): ComposedPdf {
 
   jpegs.forEach((jpeg, i) => {
     const info = readJpegInfo(jpeg);
-    const size = pageSizeForImage(info.width, info.height);
+    const orientation = readJpegOrientation(jpeg);
+    const size = swapsAxes(orientation)
+      ? pageSizeForImage(info.height, info.width)
+      : pageSizeForImage(info.width, info.height);
     pages.push(size);
     const pageNum = pageNums[i]!;
     const imgNum = pageNum + 1;
@@ -117,7 +204,7 @@ export function composeScanPdf(jpegs: readonly Uint8Array[]): ComposedPdf {
     );
     push(jpeg);
     text('\nendstream\nendobj\n');
-    const content = `q ${size.width} 0 0 ${size.height} 0 0 cm /Im0 Do Q`;
+    const content = `q ${imageMatrix(orientation, size.width, size.height).join(' ')} cm /Im0 Do Q`;
     begin(contentNum);
     text(`<< /Length ${content.length} >>\nstream\n${content}\nendstream\nendobj\n`);
   });
