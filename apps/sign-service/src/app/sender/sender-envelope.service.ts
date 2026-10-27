@@ -347,6 +347,8 @@ export class SenderEnvelopeService {
         can_remind: canRemind(s),
         // Sign Mobile M-A3 §7 — null when a reminder may be sent now (or never applies).
         reminder_available_at: reminderAvailableAt(s),
+        // Amendment M-A6 §3.5 — the template role this recipient was bound to (from-template), else null.
+        role_key: s.signer_role ?? null,
       })),
       fields: env.documents.flatMap((d) =>
         d.fields.map((f) => ({

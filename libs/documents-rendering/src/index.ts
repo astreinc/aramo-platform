@@ -16,10 +16,12 @@ export {
   type RichListItem,
   type LetterheadModel,
   type SignatureFieldPlacement,
+  type SignatureRoleBlockModel,
 } from './lib/document-rendering.port.js';
 export {
   PdfLibDocumentRenderingAdapter,
   layoutRuns,
+  layoutRoleSignatureBlock,
   layoutSignatureBlock,
   manifestProjection,
   wrapTextToWidth,

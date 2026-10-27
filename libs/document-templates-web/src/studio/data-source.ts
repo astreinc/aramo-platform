@@ -106,10 +106,40 @@ export interface StudioSamplePreview {
   readonly org?: string;
 }
 
+/**
+ * Amendment M-A6 (LOCKED) §3.2 — a template's signing roles (rtr-html-v1
+ * `field_schema.signing`). SIGNER roles sign (one signature block each in Aramo Sign); CC
+ * roles receive a copy. Frozen and fingerprinted with the version; the server validates.
+ */
+export type StudioSigningRoleKind = 'SIGNER' | 'CC';
+export type StudioRoutingMode = 'PARALLEL' | 'SEQUENTIAL';
+export interface StudioSigningRole {
+  readonly role_key: string;
+  readonly label: string;
+  readonly kind: StudioSigningRoleKind;
+  readonly order: number;
+}
+export interface StudioSigning {
+  readonly roles: readonly StudioSigningRole[];
+  readonly routing_mode: StudioRoutingMode;
+  readonly default_subject?: string;
+  readonly default_message?: string;
+}
+
 /** The body of a draft create / save. */
 export interface StudioContentBody {
   readonly render_schema_version: string;
-  readonly field_schema: { readonly render_schema_version: string; readonly title: string; readonly html: string };
+  readonly field_schema: {
+    readonly render_schema_version: string;
+    readonly title: string;
+    readonly html: string;
+    /**
+     * M-A6 §3.2 — sent only when the Studio changed the roles: an object sets them, null
+     * removes them. Omitted ⇒ the server keeps the draft's roles, so a body without it is
+     * byte-identical to before (PLATFORM-UX-1 R-11).
+     */
+    readonly signing?: StudioSigning | null;
+  };
 }
 
 export interface StudioPropertiesPatch {
@@ -297,6 +327,27 @@ export type WithdrawalState = 'NONE' | 'PENDING' | 'IN_EFFECT';
 export function withdrawalStateOf(t: Pick<StudioTemplateInfo, 'withdraw_effective_at'>, now: Date = new Date()): WithdrawalState {
   if (t.withdraw_effective_at === null) return 'NONE';
   return new Date(t.withdraw_effective_at).getTime() <= now.getTime() ? 'IN_EFFECT' : 'PENDING';
+}
+
+/** M-A6 §3.2 — the signing roles stored in a field_schema (null when absent or malformed). */
+export function studioSigningOf(field_schema: unknown): StudioSigning | null {
+  const sg = (field_schema as { signing?: unknown } | null)?.signing;
+  if (sg === null || typeof sg !== 'object' || Array.isArray(sg)) return null;
+  const o = sg as { roles?: unknown; routing_mode?: unknown; default_subject?: unknown; default_message?: unknown };
+  if (!Array.isArray(o.roles) || (o.routing_mode !== 'PARALLEL' && o.routing_mode !== 'SEQUENTIAL')) return null;
+  const roles: StudioSigningRole[] = [];
+  for (const r of o.roles as Array<Record<string, unknown>>) {
+    if (r === null || typeof r !== 'object') return null;
+    if (typeof r['role_key'] !== 'string' || typeof r['label'] !== 'string' || typeof r['order'] !== 'number') return null;
+    if (r['kind'] !== 'SIGNER' && r['kind'] !== 'CC') return null;
+    roles.push({ role_key: r['role_key'], label: r['label'], kind: r['kind'], order: r['order'] });
+  }
+  return {
+    roles: roles.sort((a, b) => a.order - b.order),
+    routing_mode: o.routing_mode,
+    ...(typeof o.default_subject === 'string' ? { default_subject: o.default_subject } : {}),
+    ...(typeof o.default_message === 'string' ? { default_message: o.default_message } : {}),
+  };
 }
 
 /** The editable html content of a version (null when it is another content version). */

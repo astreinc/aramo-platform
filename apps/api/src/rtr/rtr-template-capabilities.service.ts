@@ -25,6 +25,7 @@ import {
   htmlWithSamples,
   parseHtmlContent,
   parseLogoRef,
+  parseSigningConfig,
   sanitizeRtrHtml,
   serialize,
   type HtmlNode,
@@ -231,6 +232,22 @@ export class RtrTemplateCapabilities implements TemplateCapabilitiesPort {
       html: res.html,
       logo: existingLogo,
     };
+    // Amendment M-A6 §3.2 — the signing roles are KEPT and validated (never stripped).
+    // Absent ⇒ the draft's existing signing carries over (an editor that does not know
+    // about roles never drops them); null ⇒ removed; anything else must validate.
+    const rawSigning = Object.prototype.hasOwnProperty.call(o, 'signing')
+      ? o['signing']
+      : (input.existing_field_schema as Record<string, unknown> | null)?.['signing'];
+    if (rawSigning !== undefined && rawSigning !== null) {
+      const sg = parseSigningConfig(rawSigning);
+      if ('issue' in sg) {
+        throw new AramoError('VALIDATION_ERROR', `RTR template content rejected: ${sg.issue}`, 422, {
+          requestId: input.requestId,
+          details: { reason: sg.issue, ...(sg.index !== undefined ? { index: sg.index } : {}) },
+        });
+      }
+      content.signing = sg.signing;
+    }
     return content;
   }
 

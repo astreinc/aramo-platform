@@ -6,6 +6,7 @@ import {
   SafePdfPipeline,
   RenderFailedError,
   UnsafePdfError,
+  layoutRoleSignatureBlock,
   layoutRuns,
   layoutSignatureBlock,
   manifestProjection,
@@ -184,6 +185,89 @@ describe('PdfLibDocumentRenderingAdapter (GENERATED path — fixed signature blo
     const b = await adapter.renderGenerated(SIGNED);
     expect(a.sha256).toBe(b.sha256);
     expect(a.signature_fields).toEqual(b.signature_fields);
+  });
+});
+
+// Amendment M-A6 (LOCKED) §3.3 — multi-role templates: one block per SIGNER role
+// (SIGNATURE · PRINTED NAME as a SIGNER_NAME placement · DATE SIGNED), placements carry the
+// role_key; the single fixed block is byte-identical to before.
+describe('PdfLibDocumentRenderingAdapter (GENERATED path — per-role signature blocks, M-A6)', () => {
+  const ROLES: RenderModel = {
+    ...MODEL,
+    signature_blocks: [
+      { role_key: 'client', label: 'Client' },
+      { role_key: 'agency', label: 'Agency representative' },
+    ],
+  };
+
+  it('the single fixed block is unchanged (same bytes as baseline cb5d6e98)', async () => {
+    const out = await adapter.renderGenerated({ ...MODEL, signature_block: { printed_name: 'Ravi Shankar' } });
+    expect(out.sha256).toBe('f4e5579d16593515d098c73e44b340f73f79dc7b0de2c5559e8d8791faa341df');
+    expect((out.signature_fields ?? []).every((f) => f.role_key === undefined)).toBe(true);
+  });
+
+  it('draws one block per SIGNER role, in order, each with SIGNATURE / SIGNER_NAME / SIGN_DATE carrying its role_key', async () => {
+    const out = await adapter.renderGenerated(ROLES);
+    const f = out.signature_fields ?? [];
+    expect(f.map((x) => `${x.role_key}:${x.field_type}`)).toEqual([
+      'client:SIGNATURE',
+      'client:SIGNER_NAME',
+      'client:SIGN_DATE',
+      'agency:SIGNATURE',
+      'agency:SIGNER_NAME',
+      'agency:SIGN_DATE',
+    ]);
+    for (const x of f) {
+      expect(x.x).toBeGreaterThanOrEqual(54);
+      expect(x.x + x.width).toBeLessThanOrEqual(612 - 54 + 0.001);
+      expect(x.y).toBeGreaterThanOrEqual(54);
+    }
+    // The second block sits entirely below the first (same page here).
+    const client = f.filter((x) => x.role_key === 'client');
+    const agency = f.filter((x) => x.role_key === 'agency');
+    const lowestClient = Math.min(...client.map((x) => x.y));
+    const highestAgency = Math.max(...agency.map((x) => x.y + x.height));
+    expect(highestAgency).toBeLessThan(lowestClient);
+  });
+
+  it('replaces the single block when both are present, and changes the bytes', async () => {
+    const both = await adapter.renderGenerated({ ...ROLES, signature_block: { printed_name: 'Ravi Shankar' } });
+    expect((both.signature_fields ?? []).every((x) => x.role_key !== undefined)).toBe(true);
+    const single = await adapter.renderGenerated({ ...MODEL, signature_block: { printed_name: 'Ravi Shankar' } });
+    expect(both.sha256).not.toBe(single.sha256);
+  });
+
+  it('a block is never split: ten roles flow onto a second page, each block whole on one page', async () => {
+    const ten: RenderModel = {
+      ...MODEL,
+      signature_blocks: Array.from({ length: 10 }, (_v, i) => ({ role_key: `role_${i + 1}`, label: `Signer ${i + 1}` })),
+    };
+    const out = await adapter.renderGenerated(ten);
+    expect(out.page_count).toBeGreaterThan(1);
+    const byRole = new Map<string, Set<number>>();
+    for (const x of out.signature_fields ?? []) {
+      const set = byRole.get(x.role_key as string) ?? new Set<number>();
+      set.add(x.page_number);
+      byRole.set(x.role_key as string, set);
+    }
+    expect(byRole.size).toBe(10);
+    for (const pages of byRole.values()) expect(pages.size).toBe(1);
+  });
+
+  it('is hash-stable', async () => {
+    const a = await adapter.renderGenerated(ROLES);
+    const b = await adapter.renderGenerated(ROLES);
+    expect(a.sha256).toBe(b.sha256);
+    expect(a.signature_fields).toEqual(b.signature_fields);
+  });
+
+  it('layout: a block that does not fit starts a new page; an over-long label is cut to one line', () => {
+    const measure = (s: string) => s.length * 5;
+    expect(layoutRoleSignatureBlock(80, { role_key: 'a', label: 'A' }, measure).new_page).toBe(true);
+    const l = layoutRoleSignatureBlock(700, { role_key: 'a', label: 'Word '.repeat(60).trim() }, measure);
+    expect(l.new_page).toBe(false);
+    expect(measure(l.label_text)).toBeLessThanOrEqual(612 - 108);
+    expect(l.fields.map((x) => x.role_key)).toEqual(['a', 'a', 'a']);
   });
 });
 

@@ -1550,7 +1550,7 @@ paths:
       operationId: listSenderTemplates
       summary: Document templates the organization can start an envelope from (DOC-TEMPLATE-LIB-1 T-5).
       description: >
-        Requires document_template:read (Sign Sender, Sign Admin, Tenant Admin, Tenant Owner). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while the sign.templates plan capability is not available. Templates are Documents-owned: sign-service reads them through the Documents API (signed service-to-service); for each document type the organization's active choice (client → organization → Aramo default) is listed with its variables — ORGANIZATION (from the organization profile) or SENDER (filled in when the envelope is created).
+        Requires document_template:read (Sign Sender, Sign Admin, Tenant Admin, Tenant Owner). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while the sign.templates plan capability is not available. Templates are Documents-owned: sign-service reads them through the Documents API (signed service-to-service). Amendment M-A6 §3.1 (ADR-0034 D6 amended for Sign listing): EVERY ACTIVE template the organization may use (its own templates and the Aramo defaults it adopted) is listed and the user chooses; is_default marks the automatic per-type choice. Each item carries its variables — ORGANIZATION (from the organization profile) or SENDER (filled in when the envelope is created) — its signing roles and list metadata.
       tags: [sender]
       security:
         - senderSession: []
@@ -1614,7 +1614,7 @@ paths:
       operationId: createSenderEnvelopeFromTemplate
       summary: Create a DRAFT envelope from a document template (DOC-TEMPLATE-LIB-1 T-5).
       description: >
-        Requires sign:envelope:create and document_template:read; refused for a PERSONAL tenant and while sign.templates is not available. Documents (apps/api) renders the template with the organization's branding and the sender's values into a frozen revision pinned to the exact template version; the draft's document references it (CORE_REF). With `signer`, that first signer is added and the template's signature area is placed for them. Idempotent on idempotency_key for the render.
+        Requires sign:envelope:create and document_template:read; refused for a PERSONAL tenant and while sign.templates is not available. Documents (apps/api) renders the template with the organization's branding and the sender's values into a frozen revision pinned to the exact template version; the draft's document references it (CORE_REF) and records the template + version (template provenance, M-A6 §3.6). With `signer`, that first signer is added and the template's signature area is placed for them. Amendment M-A6 §3.5 — with `recipients` (mutually exclusive with `signer`; only for a template with signing roles) each SIGNER role is bound to exactly one recipient (signing order = role order) and its signature blocks are placed for them; `cc` binds CC roles as copy recipients (delivery at completion); emails are distinct across all of them; `routing_mode`, `message` and `subject` default to the template's. Every refusal (details.reason: signer_and_recipients, recipients_required, template_has_roles, template_has_no_roles, unknown_role, role_not_signer, role_not_cc, role_bound_twice, role_unbound, duplicate_email, routing_mode_invalid, too_many_signers, too_many_copy_recipients, copy_recipients_unavailable) happens before the render. Idempotent on idempotency_key for the render.
       tags: [sender]
       security:
         - senderSession: []
@@ -1648,13 +1648,59 @@ paths:
                       type: string
                     email:
                       type: string
+                recipients:
+                  type: array
+                  maxItems: 10
+                  description: M-A6 §3.5 — one recipient per SIGNER role of the template (mutually exclusive with signer).
+                  items:
+                    $ref: '#/components/schemas/SenderTemplateRoleBinding'
+                cc:
+                  type: array
+                  maxItems: 10
+                  description: M-A6 §3.5 / M-A5 — copy recipients for CC roles of the template (delivery at completion).
+                  items:
+                    $ref: '#/components/schemas/SenderTemplateRoleBinding'
+                routing_mode:
+                  type: string
+                  enum: [PARALLEL, SEQUENTIAL]
+                message:
+                  type: [string, 'null']
+                  maxLength: 1000
       responses:
         '201':
-          description: The draft envelope (detail), the pinned template version and the template's signature areas.
+          description: The draft envelope (detail), the pinned template version, the template's signature areas and its signing roles.
           content:
             application/json:
               schema:
                 type: object
+                required: [envelope, template, suggested_fields, field_definitions, signing]
+                properties:
+                  envelope:
+                    type: object
+                  template:
+                    type: object
+                    required: [template_id, version_id, version_number]
+                    properties:
+                      template_id:
+                        type: string
+                        format: uuid
+                      version_id:
+                        type: string
+                        format: uuid
+                      version_number:
+                        type: integer
+                  suggested_fields:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SenderTemplateSignatureField'
+                  field_definitions:
+                    type: array
+                    items:
+                      type: object
+                  signing:
+                    oneOf:
+                      - $ref: '#/components/schemas/SenderTemplateSigning'
+                      - type: 'null'
         '400':
           $ref: '#/components/responses/BadRequest'
         '401':
@@ -1663,6 +1709,14 @@ paths:
           $ref: '#/components/responses/SenderForbidden'
         '404':
           $ref: '#/components/responses/NotFound'
+        '409':
+          $ref: '#/components/responses/Conflict'
+        '422':
+          description: Copy recipients are not available yet (details.reason copy_recipients_unavailable), or a template value the Documents API refused.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorResponse'
   /v1/sign/oauth/token:
     post:
       operationId: issueSignAccessToken
@@ -4161,6 +4215,84 @@ components:
         organization_roles_url:
           type: [string, 'null']
           description: ORG-UX-1 §6 — Organization → Users & product access (the single role-assignment surface), or null.
+    SenderTemplateRole:
+      type: object
+      description: Amendment M-A6 §3.2 — a template signing role. SIGNER roles sign; CC roles receive a copy.
+      required: [role_key, label, kind, order]
+      properties:
+        role_key:
+          type: string
+        label:
+          type: string
+        kind:
+          type: string
+          enum: [SIGNER, CC]
+        order:
+          type: integer
+          minimum: 1
+    SenderTemplateSigning:
+      type: object
+      required: [roles, routing_mode]
+      properties:
+        roles:
+          type: array
+          items:
+            $ref: '#/components/schemas/SenderTemplateRole'
+        routing_mode:
+          type: string
+          enum: [PARALLEL, SEQUENTIAL]
+        default_subject:
+          type: string
+        default_message:
+          type: string
+    SenderTemplateRoleBinding:
+      type: object
+      required: [role_key, name, email]
+      properties:
+        role_key:
+          type: string
+          maxLength: 40
+        name:
+          type: string
+          maxLength: 200
+        email:
+          type: string
+          maxLength: 254
+    SenderTemplateSignatureField:
+      type: object
+      required: [field_type, page_number, x, y, width, height]
+      properties:
+        field_type:
+          type: string
+          enum: [SIGNATURE, SIGNER_NAME, SIGN_DATE]
+        role_key:
+          type: string
+          description: The SIGNER role of the block (templates with signing roles only).
+        page_number:
+          type: integer
+        x:
+          type: number
+        y:
+          type: number
+        width:
+          type: number
+        height:
+          type: number
+    SenderTemplateVariable:
+      type: object
+      required: [key, label, group, source, value]
+      properties:
+        key:
+          type: string
+        label:
+          type: string
+        group:
+          type: string
+        source:
+          type: string
+          enum: [ORGANIZATION, SENDER]
+        value:
+          type: [string, 'null']
     SenderTemplateList:
       type: object
       required: [items, unavailable]
@@ -4169,22 +4301,75 @@ components:
           type: array
           items:
             type: object
-            required: [template_id, name, document_type, owner_scope, version_id, version_number, variables]
+            required:
+              [template_id, name, description, document_type, owner_scope, resolution, is_default, version_id, version_number, updated_at, variables, category, signer_role_count, cc_role_count, document_count, routing_mode, signing]
             properties:
               template_id:
                 type: string
                 format: uuid
               name:
                 type: string
+              description:
+                type: [string, 'null']
+              document_type:
+                type: object
+                required: [id, key, name]
+                properties:
+                  id:
+                    type: string
+                    format: uuid
+                  key:
+                    type: string
+                  name:
+                    type: string
               owner_scope:
                 type: string
                 enum: [PLATFORM, TENANT]
+              resolution:
+                type: string
+                enum: [CLIENT_SELECTION, TENANT_SELECTION, PLATFORM_DEFAULT, WITHDRAWAL_FALLBACK, AVAILABLE]
+              is_default:
+                type: boolean
+                description: The template the automatic per-type resolution picks (M-A6 §3.1).
+              version_id:
+                type: string
+                format: uuid
               version_number:
                 type: integer
+              updated_at:
+                type: string
+                format: date-time
+              variables:
+                type: array
+                items:
+                  $ref: '#/components/schemas/SenderTemplateVariable'
+              category:
+                type: string
+                description: The document type's name (M-A6 §3.7).
+              signer_role_count:
+                type: integer
+              cc_role_count:
+                type: integer
+              document_count:
+                type: integer
+              routing_mode:
+                type: string
+                enum: [PARALLEL, SEQUENTIAL]
+              signing:
+                oneOf:
+                  - $ref: '#/components/schemas/SenderTemplateSigning'
+                  - type: 'null'
         unavailable:
           type: array
           items:
             type: object
+            required: [document_type_id, reason]
+            properties:
+              document_type_id:
+                type: string
+                format: uuid
+              reason:
+                type: string
     SignTokenRequest:
       type: object
       required: [grant_type]
@@ -4450,6 +4635,9 @@ components:
           type: [string, 'null']
           format: date-time
           description: Sign Mobile M-A3 §7 — when a reminder to this signer is next allowed; null when allowed now or not remindable.
+        role_key:
+          type: [string, 'null']
+          description: Amendment M-A6 §3.5 — the template role this recipient was bound to (an envelope started from a template with roles); null otherwise.
     SenderExecutedDocuments:
       type: object
       required: [envelope_id, documents, certificate]

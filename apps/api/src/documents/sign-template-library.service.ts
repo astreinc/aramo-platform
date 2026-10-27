@@ -16,6 +16,7 @@ import {
   type SignTemplatePreviewResponse,
   type SignTemplateRenderResponse,
   type SignTemplateSignatureField,
+  type SignTemplateSigning,
   type SignTemplateSummary,
   type SignTemplateVariable,
 } from '@aramo/documents-contracts';
@@ -23,7 +24,7 @@ import { type LetterheadModel } from '@aramo/documents-rendering';
 import { type TenantRepository } from '@aramo/identity';
 
 import { RIGHT_TO_REPRESENT_TYPE_ID } from '../rtr/rtr-constants.js';
-import { isHtmlContent } from '../rtr/rtr-html-content.js';
+import { isHtmlContent, parseSigningConfig, signerRoles, type RtrTemplateContent } from '../rtr/rtr-html-content.js';
 import { type RtrTemplateBindingService } from '../rtr/rtr-template-binding.service.js';
 import { captureTenantLetterhead, loadLetterhead } from '../rtr/rtr-template-letterhead.js';
 import { type ResolvedRtrTemplate, type RtrTemplateResolverService } from '../rtr/rtr-template-resolver.service.js';
@@ -34,11 +35,15 @@ import { type ResolvedRtrTemplate, type RtrTemplateResolverService } from '../rt
 // (DocumentsEsignTemplatesController); sign-service never touches the documents schema —
 // the Document + frozen DocumentRevision are written HERE, by apps/api.
 //
-//   list    — per configurable document type, the template the tenant's explicit choice
-//             resolves to (client → tenant → Aramo default; ADR-0034 D6: product flows use
-//             the most specific choice and never ask the user). Product tags are recorded,
-//             not enforced (D9), so nothing is filtered by product.
-//   preview — the resolved template's current version with the tenant's branding values
+//   list    — Amendment M-A6 (LOCKED) §3.1 amends ADR-0034 D6 for Sign listing ONLY:
+//             per Sign-usable document type, EVERY ACTIVE template the tenant may use
+//             (its own TENANT templates + the Aramo defaults it adopted), and the user
+//             chooses. The template the automatic per-type resolution picks (client →
+//             tenant → grandfathered default) is flagged is_default; that resolution —
+//             used by ATS and every flow that never asks the user — is unchanged.
+//             sign.templates gating is unchanged (sign-service). Product tags are
+//             recorded, not enforced (D9).
+//   preview — a usable template's current version with the tenant's branding values
 //             and the sender's values; samples for the rest. Writes nothing.
 //   render  — binds the tenant-profile values + the sender's values (Sign has no ATS
 //             context: every talent / requisition / client / recruiter value is sender-
@@ -93,17 +98,20 @@ export class SignTemplateLibraryService {
     const items: SignTemplateSummary[] = [];
     const unavailable: { document_type_id: string; reason: string }[] = [];
     for (const type of await this.renderableTypes()) {
-      let resolved: ResolvedRtrTemplate;
+      // The automatic per-type choice (unchanged) — only to flag is_default / resolution.
+      let auto: ResolvedRtrTemplate | null = null;
+      let autoError: string | null = null;
       try {
-        resolved = await this.d.resolver.resolveActive({ tenant_id: input.tenant_id, client_id: input.client_id, requestId: input.requestId });
+        auto = await this.d.resolver.resolveActive({ tenant_id: input.tenant_id, client_id: input.client_id, requestId: input.requestId });
       } catch (e) {
         if (!(e instanceof AramoError)) throw e;
-        // Never configured for this type: simply nothing to offer.
-        if (e.code === 'RTR_TEMPLATE_NOT_CONFIGURED') continue;
-        unavailable.push({ document_type_id: type.id, reason: e.code });
-        continue;
+        if (e.code !== 'RTR_TEMPLATE_NOT_CONFIGURED') autoError = e.code;
       }
-      items.push(await this.summary(input.tenant_id, type, resolved, input.requestId));
+      const usable = await this.usableTemplates(input.tenant_id, type, input.client_id, auto, input.requestId);
+      for (const resolved of usable) items.push(await this.summary(input.tenant_id, type, resolved, auto, input.requestId));
+      // Nothing usable for the type and its configuration needs a choice / is broken:
+      // reported, never silently swapped (ADR-0034 D10).
+      if (usable.length === 0 && autoError !== null) unavailable.push({ document_type_id: type.id, reason: autoError });
     }
     return { items, unavailable };
   }
@@ -146,6 +154,7 @@ export class SignTemplateLibraryService {
         logo_available: (brand?.logo_url ?? '').trim().length > 0,
       },
       variables,
+      signing: signingOf(resolved.content),
     };
   }
 
@@ -237,7 +246,9 @@ export class SignTemplateLibraryService {
           tenant_id: input.tenant_id,
           document_type_id: type.id,
           title,
-          execution_mode: 'SINGLE_SIGNATURE',
+          // M-A6 §3.4 — no longer hardcoded: a template with more than one SIGNER role is
+          // a MULTI_SIGNATURE document; everything else stays SINGLE_SIGNATURE.
+          execution_mode: signerCount(resolved.content) > 1 ? 'MULTI_SIGNATURE' : 'SINGLE_SIGNATURE',
           source_kind: 'TEMPLATE_GENERATED',
           created_by: input.created_by,
           request_id: requestId,
@@ -269,23 +280,79 @@ export class SignTemplateLibraryService {
     tenant_id: string,
     type: { id: string; key: string; name: string },
     resolved: ResolvedRtrTemplate,
+    auto: ResolvedRtrTemplate | null,
     requestId: string,
   ): Promise<SignTemplateSummary> {
     const t = await this.d.templates.findTemplateByIdOwnerAware(tenant_id, resolved.template_id);
     const v = await this.d.templates.findVersionByIdOwnerAware(tenant_id, resolved.template_version_id);
     const updated = v?.activated_at ?? t?.updated_at ?? new Date(0);
+    const signing = signingOf(resolved.content);
+    const is_default = auto !== null && auto.template_id === resolved.template_id;
     return {
       template_id: resolved.template_id,
       name: resolved.template_name,
       description: t?.description ?? null,
       document_type: type,
       owner_scope: resolved.owner_scope,
-      resolution: resolved.source,
+      resolution: is_default ? resolved.source : 'AVAILABLE',
+      is_default,
       version_id: resolved.template_version_id,
       version_number: resolved.version_number,
       updated_at: updated.toISOString(),
       variables: await this.variables(tenant_id, type.id, resolved, requestId),
+      category: type.name,
+      signer_role_count: signing === null ? 1 : signing.roles.filter((r) => r.kind === 'SIGNER').length,
+      cc_role_count: signing === null ? 0 : signing.roles.filter((r) => r.kind === 'CC').length,
+      // A template renders exactly one document.
+      document_count: 1,
+      routing_mode: signing?.routing_mode ?? 'PARALLEL',
+      signing,
     };
+  }
+
+  // M-A6 §3.1 — every ACTIVE template of the type the tenant may use, each pinned to its
+  // current ACTIVE version and parsed like the automatic resolution. The auto-resolved one
+  // keeps its resolution source; the rest are AVAILABLE. A template whose current version
+  // is unusable is left out (logged) — it can be neither previewed nor rendered.
+  private async usableTemplates(
+    tenant_id: string,
+    type: { id: string },
+    client_id: string | null,
+    auto: ResolvedRtrTemplate | null,
+    requestId: string,
+  ): Promise<ResolvedRtrTemplate[]> {
+    const rows = await this.d.templates.listUsableTemplatesForTenant(tenant_id, type.id, client_id, new Date());
+    const out: ResolvedRtrTemplate[] = [];
+    for (const t of rows) {
+      if (auto !== null && auto.template_id === t.id) {
+        out.push(auto);
+        continue;
+      }
+      if (t.current_version_id === null) continue;
+      const version = await this.d.templates.findVersionByIdOwnerAware(tenant_id, t.current_version_id);
+      if (version === null || version.template_id !== t.id || version.status !== 'ACTIVE') {
+        this.logger.warn(`sign template ${t.id} skipped: current version not usable`);
+        continue;
+      }
+      try {
+        out.push(
+          this.d.resolver.pinned({
+            template: t,
+            version,
+            owner_scope: t.owner_scope === 'PLATFORM' ? 'PLATFORM' : 'TENANT',
+            source: t.owner_scope === 'PLATFORM' ? 'PLATFORM_DEFAULT' : 'TENANT_SELECTION',
+            requestId,
+          }),
+        );
+      } catch (e) {
+        if (!(e instanceof AramoError)) throw e;
+        this.logger.warn(`sign template ${t.id} skipped: ${e.code}`);
+      }
+    }
+    // Defensive: the automatic choice is always offered (it is drawn from the same rows,
+    // so this only matters if the two ever diverge).
+    if (auto !== null && !out.some((r) => r.template_id === auto.template_id)) out.unshift(auto);
+    return out;
   }
 
   private async renderableTypes(): Promise<Array<{ id: string; key: string; name: string }>> {
@@ -302,9 +369,10 @@ export class SignTemplateLibraryService {
     }
   }
 
-  // The template must be the one the tenant's choice resolves to NOW (same resolution the
-  // list used). Anything else — another tenant's template, a non-selected template, a
-  // withdrawn default — reads as not found; nothing is rendered from it.
+  // The template must be one the list offers NOW (M-A6 §3.1: every ACTIVE template the
+  // tenant may use). Anything else — another tenant's template, a draft or retired one, an
+  // Aramo default the tenant never adopted, a withdrawn default — reads as not found;
+  // nothing is rendered from it.
   private async resolveTemplate(
     tenant_id: string,
     template_id: string,
@@ -321,8 +389,15 @@ export class SignTemplateLibraryService {
     if (t === null) throw notFound('unknown_template');
     const type = (await this.renderableTypes()).find((x) => x.id === t.document_type_id);
     if (type === undefined) throw notFound('document_type_not_renderable');
-    const resolved = await this.d.resolver.resolveActive({ tenant_id, client_id, requestId });
-    if (resolved.template_id !== template_id) throw notFound('not_the_selected_template');
+    // M-A6 §3.1 — the user chooses among the templates the list offers (same rules).
+    let auto: ResolvedRtrTemplate | null = null;
+    try {
+      auto = await this.d.resolver.resolveActive({ tenant_id, client_id, requestId });
+    } catch (e) {
+      if (!(e instanceof AramoError)) throw e;
+    }
+    const resolved = (await this.usableTemplates(tenant_id, type, client_id, auto, requestId)).find((r) => r.template_id === template_id);
+    if (resolved === undefined) throw notFound('not_a_usable_template');
     return { resolved, type };
   }
 
@@ -388,6 +463,7 @@ export class SignTemplateLibraryService {
     const version = await this.d.templates.findVersionByIdOwnerAware(tenant_id, rev.template_version_id);
     if (version === null) throw new AramoError('TEMPLATE_VERSION_NOT_FOUND', 'pinned template version not found', 404, { requestId });
     const defs = await this.d.templates.listFieldDefinitionsOwnerAware(tenant_id, version.id);
+    const signing = signingOf(version.field_schema);
     return {
       document_id,
       document_revision_ref: rev.id,
@@ -397,7 +473,7 @@ export class SignTemplateLibraryService {
       template_id: version.template_id,
       template_version_id: version.id,
       version_number: version.version_number,
-      signature_fields: signatureFields(rev.render_manifest),
+      signature_fields: signatureFields(rev.render_manifest, signing !== null),
       field_definitions: defs.map(
         (f): SignTemplateFieldDefinition => ({
           field_key: f.field_key,
@@ -411,6 +487,7 @@ export class SignTemplateLibraryService {
           height: f.height,
         }),
       ),
+      signing,
     };
   }
 
@@ -423,16 +500,38 @@ export class SignTemplateLibraryService {
 }
 
 // The renderer-drawn signature block (frozen in render_manifest.signature_fields).
-export function signatureFields(manifest: unknown): SignTemplateSignatureField[] {
+// Without roles: SIGNATURE + SIGN_DATE of the single block (the talent's printed name is
+// drawn text), exactly as before. M-A6 §3.3 — with roles: every placement of every role
+// block, SIGNER_NAME included, each carrying its role_key.
+export function signatureFields(manifest: unknown, withRoles = false): SignTemplateSignatureField[] {
   const raw = (manifest as { signature_fields?: unknown } | null)?.signature_fields;
   if (!Array.isArray(raw)) return [];
   const out: SignTemplateSignatureField[] = [];
   for (const f of raw as Array<Record<string, unknown>>) {
     const type = f['field_type'];
-    if (type !== 'SIGNATURE' && type !== 'SIGN_DATE') continue;
+    if (type !== 'SIGNATURE' && type !== 'SIGN_DATE' && !(withRoles && type === 'SIGNER_NAME')) continue;
     const [page, x, y, width, height] = [f['page_number'], f['x'], f['y'], f['width'], f['height']];
     if (typeof page !== 'number' || typeof x !== 'number' || typeof y !== 'number' || typeof width !== 'number' || typeof height !== 'number') continue;
-    out.push({ field_type: type, page_number: page, x, y, width, height });
+    const role_key = f['role_key'];
+    if (withRoles) {
+      if (typeof role_key !== 'string') continue;
+      out.push({ field_type: type, page_number: page, x, y, width, height, role_key });
+    } else {
+      out.push({ field_type: type, page_number: page, x, y, width, height });
+    }
   }
   return out;
+}
+
+// M-A6 §3.2 — the signing roles of a content version (null without `signing`), from either
+// the parsed content or a raw stored field_schema (re-validated; invalid ⇒ null).
+function signingOf(content: RtrTemplateContent | unknown): SignTemplateSigning | null {
+  const raw = (content as { render_schema_version?: unknown; signing?: unknown } | null) ?? null;
+  if (raw === null || raw.render_schema_version !== 'rtr-html-v1' || raw.signing === undefined) return null;
+  const parsed = parseSigningConfig(raw.signing);
+  return 'issue' in parsed ? null : parsed.signing;
+}
+
+function signerCount(content: RtrTemplateContent): number {
+  return isHtmlContent(content) ? signerRoles(content).length : 1;
 }

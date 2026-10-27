@@ -18,6 +18,7 @@ import {
   DEFAULT_STUDIO_CONTENT_CODEC,
   STUDIO_HTML_CONTENT_VERSION as HTML_CONTENT_VERSION,
   studioHtmlContentOf as htmlContentOf,
+  studioSigningOf,
   withdrawalStateOf,
   type StudioContentCodec,
   type StudioSamplePreview as SamplePreview,
@@ -35,6 +36,7 @@ import { StudioCanvas, type CanvasHandle } from './StudioCanvas';
 import { StudioInspector, type PropertiesPatch, type RightTab } from './StudioInspector';
 import { StudioLeftPanel, type LeftTab, type SectionCardModel, type VersionRowModel } from './StudioLeftPanel';
 import { StudioPreview, orgNameOf, type PreviewSource } from './StudioPreview';
+import { signerRolesOf } from './StudioRolesPanel';
 import { StudioTopBar, type SaveState, type StudioMode } from './StudioTopBar';
 import { CancelWithdrawalDialog, DiscardDialog, PublishDialog, RestoreDialog, ShortcutsSheet, WithdrawDialog } from './studio-dialogs';
 import { useStudioDoc } from './use-studio-doc';
@@ -84,7 +86,10 @@ function contentDoc(v: TemplateVersion | null, content: StudioContentCodec): Stu
   const c = v !== null ? htmlContentOf(v) : null;
   if (c === null) return null;
   const { blocks, letterhead } = content.decode(c.html, newBlockId);
-  return letterhead !== null ? { title: c.title, blocks, letterhead } : { title: c.title, blocks };
+  // M-A6 §3.2 — the stored signing roles ride beside the blocks (absent ⇒ no key at all).
+  const signing = v !== null ? studioSigningOf(v.field_schema) : null;
+  const base: StudioDoc = letterhead !== null ? { title: c.title, blocks, letterhead } : { title: c.title, blocks };
+  return signing !== null ? { ...base, signing } : base;
 }
 function diffBlocksOf(blocks: StudioDoc['blocks']): DiffBlock[] {
   return blocks.map((b) => ({ kind: b.kind, text: studioPlainText(b.value) }));
@@ -350,7 +355,14 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
           return Promise.resolve(false);
         }
       }
-      const field_schema = { render_schema_version: HTML_CONTENT_VERSION, title: d.title.trim(), html: content.encode(d.blocks, d.letterhead ?? null) };
+      // M-A6 §3.2 — `signing` only when the content has roles (or the Studio removed them:
+      // null); otherwise the body is byte-identical to before (R-11).
+      const field_schema = {
+        render_schema_version: HTML_CONTENT_VERSION,
+        title: d.title.trim(),
+        html: content.encode(d.blocks, d.letterhead ?? null),
+        ...(d.signing !== undefined ? { signing: d.signing } : {}),
+      };
       setSaving(true);
       const p = (async () => {
         try {
@@ -973,6 +985,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
                 blockHeights={canManage ? blockHeights : null}
                 letterhead={previewLetterhead}
                 fitToWidth={context === 'organization'}
+                signatureRoles={signerRolesOf(canManage ? doc.signing : currentDoc?.signing)}
               />
             </section>
           ) : (
@@ -1036,6 +1049,11 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
               setCancelWdOpen(true);
             }}
             overlay={rightOverlay}
+            signing={editable ? doc.signing : (canManage ? doc.signing : currentDoc?.signing)}
+            onSigning={(next) => {
+              if (!editable) return;
+              change((d) => ({ ...d, signing: next }));
+            }}
           />
         ) : null}
       </div>

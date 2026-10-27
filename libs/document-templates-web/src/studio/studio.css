@@ -2437,3 +2437,101 @@ body:has(.pws-root) .ts-cd__arrow {
   font-size: var(--ts-fs-12-5);
   line-height: 1.45;
 }
+
+/* Amendment M-A6 §3.8 — the Roles tab (signing roles and routing). */
+.pws-roles {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.pws-roles__h {
+  margin: 0;
+  font-size: var(--ts-fs-14);
+  font-weight: 600;
+  color: var(--ts-ink);
+}
+.pws-roles__note {
+  margin: 0;
+  color: var(--ts-muted);
+  font-size: var(--ts-fs-12-5);
+  line-height: 1.45;
+}
+.pws-roles__list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.pws-roles__row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr);
+  gap: 6px;
+  align-items: center;
+}
+.pws-roles__row > .pws-roles__kind,
+.pws-roles__row > .pws-roles__acts {
+  grid-column: 2;
+}
+.pws-roles__n {
+  color: var(--ts-faint);
+  font-family: var(--ts-mono);
+  font-size: var(--ts-fs-11-5);
+}
+.pws-roles__acts {
+  display: flex;
+  gap: 4px;
+}
+.pws-roles__ro {
+  color: var(--ts-ink-2);
+  font-size: var(--ts-fs-12-5);
+}
+.pws-roles__adds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.pws-roles__field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  color: var(--ts-ink-2);
+  font-size: var(--ts-fs-12-5);
+}
+.pws-roles__msg {
+  min-height: 64px;
+  resize: vertical;
+}
+.pws-roles__clear {
+  align-self: flex-start;
+}
+
+/* Amendment M-A6 §3.8 — the per-role signature blocks at the end of the preview. */
+.pws-sigblocks {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 28px;
+}
+.pws-sigblock__role {
+  margin-bottom: 30px;
+  font-size: var(--ts-fs-12-5);
+  font-weight: 600;
+  color: var(--ts-ink);
+}
+.pws-sigblock__cols {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 18px;
+}
+.pws-sigblock__rule {
+  border-top: 1px solid var(--ts-ink);
+}
+.pws-sigblock__l {
+  margin-top: 4px;
+  color: var(--ts-muted);
+  font-size: var(--ts-fs-11-5);
+  font-weight: 600;
+  text-transform: uppercase;
+}

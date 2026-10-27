@@ -55,6 +55,11 @@ model SignatureEnvelope {
   // scrubbed tombstone; documents, recipients, fields and stored objects are gone.
   // CHECK: set only while DRAFT, and never cleared or moved out of DRAFT after.
   deleted_at    DateTime? @db.Timestamptz
+  // Amendment M-A6 §3.6 — template provenance (migration 20261028100300): the Documents
+  // template + exact version an envelope started from-template was rendered from. Opaque
+  // UUIDs, no FK; set together, written once (CHECK + trigger).
+  template_ref         String? @db.Uuid
+  template_version_ref String? @db.Uuid
 
   documents EnvelopeDocument[]
   signers   Signer[]

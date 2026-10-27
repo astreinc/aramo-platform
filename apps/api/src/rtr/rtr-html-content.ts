@@ -30,6 +30,98 @@ export interface RtrTemplateContentHtmlV1 {
   title: string;
   html: string;
   logo?: RtrHtmlLogoRef | null;
+  // Amendment M-A6 (LOCKED) §3.2 — the template's signing roles. Optional: content without
+  // it behaves exactly as before (the single talent block) and serialises byte-identically.
+  // Frozen and fingerprinted with the rest of field_schema.
+  signing?: RtrSigningConfig;
+}
+
+// ── Signing roles (Amendment M-A6 §3.2) ────────────────────────────────────────────
+export const SIGNING_ROLE_KINDS = ['SIGNER', 'CC'] as const;
+export type SigningRoleKind = (typeof SIGNING_ROLE_KINDS)[number];
+export const SIGNING_ROUTING_MODES = ['PARALLEL', 'SEQUENTIAL'] as const;
+export type SigningRoutingMode = (typeof SIGNING_ROUTING_MODES)[number];
+// Sign limits (M-A5 §1.4): at most 10 signing and 10 copy recipients per envelope.
+export const MAX_SIGNER_ROLES = 10;
+export const MAX_CC_ROLES = 10;
+export const MAX_ROLE_LABEL = 60;
+export const MAX_DEFAULT_SUBJECT = 200;
+export const MAX_DEFAULT_MESSAGE = 1000;
+const ROLE_KEY_RE = /^[a-z][a-z0-9_]{0,39}$/;
+// Printable Latin-1 only: the renderer draws role labels with the standard PDF fonts.
+const ROLE_LABEL_RE = /^[\x20-\x7e\u00a0-\u00ff]+$/;
+// eslint-disable-next-line no-control-regex
+const CONTROL_RE = /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/;
+
+export interface RtrSigningRole {
+  role_key: string;
+  label: string;
+  kind: SigningRoleKind;
+  order: number;
+}
+
+export interface RtrSigningConfig {
+  roles: RtrSigningRole[];
+  routing_mode: SigningRoutingMode;
+  default_subject?: string;
+  default_message?: string;
+}
+
+// Validate + canonicalise a `signing` member: roles sorted by order, fixed key order,
+// trimmed text, absent defaults omitted. Rules: 1..10 SIGNER roles, 0..10 CC roles,
+// role_key unique (lower snake case), order a distinct integer >= 1, label 1..60
+// printable characters, routing_mode PARALLEL | SEQUENTIAL. Returns the first issue.
+export function parseSigningConfig(raw: unknown): { signing: RtrSigningConfig } | { issue: string; index?: number } {
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return { issue: 'signing_not_object' };
+  const o = raw as Record<string, unknown>;
+  for (const k of Object.keys(o)) {
+    if (!['roles', 'routing_mode', 'default_subject', 'default_message'].includes(k)) return { issue: 'signing_unknown_member' };
+  }
+  if (!Array.isArray(o.roles) || o.roles.length === 0) return { issue: 'signing_roles_required' };
+  if (o.roles.length > MAX_SIGNER_ROLES + MAX_CC_ROLES) return { issue: 'signing_too_many_roles' };
+  const roles: RtrSigningRole[] = [];
+  const keys = new Set<string>();
+  const orders = new Set<number>();
+  for (const [index, r] of o.roles.entries()) {
+    if (typeof r !== 'object' || r === null || Array.isArray(r)) return { issue: 'signing_role_invalid', index };
+    const rr = r as Record<string, unknown>;
+    for (const k of Object.keys(rr)) {
+      if (!['role_key', 'label', 'kind', 'order'].includes(k)) return { issue: 'signing_role_unknown_member', index };
+    }
+    if (typeof rr.role_key !== 'string' || !ROLE_KEY_RE.test(rr.role_key)) return { issue: 'signing_role_key_invalid', index };
+    if (keys.has(rr.role_key)) return { issue: 'signing_role_key_duplicate', index };
+    const label = typeof rr.label === 'string' ? rr.label.trim() : '';
+    if (label.length === 0 || label.length > MAX_ROLE_LABEL || !ROLE_LABEL_RE.test(label)) return { issue: 'signing_role_label_invalid', index };
+    if (rr.kind !== 'SIGNER' && rr.kind !== 'CC') return { issue: 'signing_role_kind_invalid', index };
+    if (typeof rr.order !== 'number' || !Number.isInteger(rr.order) || rr.order < 1 || rr.order > 1000) return { issue: 'signing_role_order_invalid', index };
+    if (orders.has(rr.order)) return { issue: 'signing_role_order_duplicate', index };
+    keys.add(rr.role_key);
+    orders.add(rr.order);
+    roles.push({ role_key: rr.role_key, label, kind: rr.kind, order: rr.order });
+  }
+  const signers = roles.filter((r) => r.kind === 'SIGNER').length;
+  if (signers === 0) return { issue: 'signing_signer_role_required' };
+  if (signers > MAX_SIGNER_ROLES) return { issue: 'signing_too_many_signer_roles' };
+  if (roles.length - signers > MAX_CC_ROLES) return { issue: 'signing_too_many_cc_roles' };
+  if (o.routing_mode !== 'PARALLEL' && o.routing_mode !== 'SEQUENTIAL') return { issue: 'signing_routing_mode_invalid' };
+  const out: RtrSigningConfig = { roles: [...roles].sort((a, b) => a.order - b.order), routing_mode: o.routing_mode };
+  for (const [key, max] of [
+    ['default_subject', MAX_DEFAULT_SUBJECT],
+    ['default_message', MAX_DEFAULT_MESSAGE],
+  ] as const) {
+    const v = o[key];
+    if (v === undefined || v === null) continue;
+    if (typeof v !== 'string' || CONTROL_RE.test(v)) return { issue: `signing_${key}_invalid` };
+    const t = v.trim();
+    if (t.length > max) return { issue: `signing_${key}_too_long` };
+    if (t.length > 0) out[key] = t;
+  }
+  return { signing: out };
+}
+
+// The SIGNER roles of a content version in signing order (empty without `signing`).
+export function signerRoles(content: { signing?: RtrSigningConfig }): RtrSigningRole[] {
+  return (content.signing?.roles ?? []).filter((r) => r.kind === 'SIGNER');
 }
 
 export type RtrTemplateContent = RtrTemplateContentV1 | RtrTemplateContentHtmlV1;
@@ -337,6 +429,12 @@ export function parseHtmlContent(fieldSchema: unknown): RtrTemplateContentHtmlV1
   if (o.render_schema_version !== RTR_HTML_SCHEMA_V1) return null;
   if (typeof o.title !== 'string' || typeof o.html !== 'string') return null;
   const logo = parseLogoRef(o.logo);
+  // M-A6 §3.2 — `signing` is kept and validated; an invalid one fails the parse closed.
+  if (o.signing !== undefined) {
+    const sg = parseSigningConfig(o.signing);
+    if ('issue' in sg) return null;
+    return { render_schema_version: RTR_HTML_SCHEMA_V1, title: o.title, html: o.html, logo, signing: sg.signing };
+  }
   return { render_schema_version: RTR_HTML_SCHEMA_V1, title: o.title, html: o.html, logo };
 }
 

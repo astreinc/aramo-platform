@@ -272,12 +272,20 @@ interface DraftRecipient {
   id?: string;
   name: string;
   email: string;
+  // Amendment M-A6 §3.5 — the template role this recipient fills (from-template), if any.
+  role_key?: string | null;
+}
+
+// "client_signer" → "Client signer" (the role key the server bound; display only).
+function roleLabel(roleKey: string): string {
+  const t = roleKey.replace(/_+/g, ' ').trim();
+  return t.length === 0 ? roleKey : t.charAt(0).toUpperCase() + t.slice(1);
 }
 
 function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; onChange: (d: EnvelopeDetail) => void; back: string; next: string }) {
   const { ctx } = useWorkspace();
   const nav = useNavigate();
-  const [list, setList] = useState<DraftRecipient[]>(() => env.recipients.map((r) => ({ key: r.id, id: r.id, name: r.name, email: r.email })));
+  const [list, setList] = useState<DraftRecipient[]>(() => env.recipients.map((r) => ({ key: r.id, id: r.id, name: r.name, email: r.email, role_key: r.role_key ?? null })));
   const [contacts, setContacts] = useState<ContactRow[]>([]);
   const [error, setError] = useState('');
   const [saving, setSaving] = useState(false);
@@ -417,6 +425,11 @@ function RecipientsStep({ env, onChange, back, next }: { env: EnvelopeDetail; on
                 </div>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 12 }}>
                   <span style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+                    {r.role_key != null ? (
+                      <span className="sg-tag sg-tag--grey" data-testid="template-role" title="The template role this recipient was added for">
+                        {roleLabel(r.role_key)}
+                      </span>
+                    ) : null}
                     {ordered ? (
                       <span className="sg-tag sg-tag--dark" data-testid="signing-position">
                         Signs {i + 1}

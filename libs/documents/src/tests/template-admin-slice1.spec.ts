@@ -57,7 +57,8 @@ describe('PATCH /v1/document-templates/versions/:versionId — internal_notes (B
 describe('TemplatesRepository.updateDraftVersion — internal_notes (B1)', () => {
   function repoWith(version: { status: string; field_schema?: unknown }) {
     const update = vi.fn(async (a: unknown) => a);
-    const prisma = { templateVersion: { findFirst: vi.fn(async () => ({ id: 'v-1', ...version })), update } };
+    // M-A6 §3.4 — the fingerprint now also reads the version's field definitions (none here).
+    const prisma = { templateVersion: { findFirst: vi.fn(async () => ({ id: 'v-1', ...version })), update }, templateFieldDefinition: { findMany: vi.fn(async () => []) } };
     return { repo: new TemplatesRepository(prisma as never), update };
   }
 

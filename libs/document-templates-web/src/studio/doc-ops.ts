@@ -8,6 +8,8 @@ import {
   type StudioLetterheadBlock,
 } from '../studio-codec';
 
+import type { StudioSigning } from './data-source';
+
 // PLATFORM-UX-1 F-9 (handoff §10.4) — pure block-list operations of the Studio canvas:
 // insert, move (drag and drop, ⌥↑/⌥↓, block menu), turn into, duplicate, delete,
 // variable append / removal. Every op returns a NEW list (the undo history keeps the old).
@@ -20,6 +22,12 @@ export interface StudioDoc {
    * every save re-encodes it (the data source's content codec). Absent on the platform.
    */
   readonly letterhead?: StudioLetterheadBlock | null;
+  /**
+   * Amendment M-A6 §3.2 — the signing roles. undefined = the content has none and the
+   * Studio never set any (the save body omits it: byte-identical to before); an object =
+   * the roles (loaded or edited); null = removed in the Studio (the save body sends null).
+   */
+  readonly signing?: StudioSigning | null;
 }
 
 let seq = 0;
