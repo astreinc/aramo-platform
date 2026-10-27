@@ -1,10 +1,18 @@
 import { useId, useState } from 'react';
-import { Button, Input, hasScope, useOptionalToast, type Session } from '@aramo/fe-foundation';
+import { Button, Input, Select, hasScope, useOptionalToast, type Session } from '@aramo/fe-foundation';
 
 import { ConfirmDialog, TypedConfirm, typedConfirmMatches } from '../components';
 import { CommercialRolesSection } from '../commercial-governance/CommercialRolesSection';
+import { COMMERCIAL_ROLES, isAttestedOwner, roleLabel } from '../commercial-governance/governance-model';
 
-import { STAFF_EMAIL_HINT, adminInviteErrorText, adminsApi, isStaffEmail } from './admins-api';
+import {
+  HUMAN_REF_HINT,
+  STAFF_EMAIL_HINT,
+  adminInviteErrorText,
+  adminsApi,
+  isHumanRefHash,
+  isStaffEmail,
+} from './admins-api';
 import './admins.css';
 
 // PLATFORM-UX-1 F-8 (handoff §9 Platform admins; directive R-8, R-12, R-13) —
@@ -19,10 +27,23 @@ import './admins.css';
 // roster, with governed role-change requests — through GET /platform/commercial/operators.
 // super_admin holds no commercial scope (INV-1), so its page is unchanged; an operator who
 // is both (the bootstrap operator) sees the commercial roles and the invite card.
+//
+// CCP-INV-UI-1 (LOCKED 2026-10-26): an attested platform_owner may invite a NEW member straight
+// into one platform role, a commercial one included, with that person's D9 identity reference
+// hash — the server already accepts it (CCP-A9). Anyone else (super_admin included) gets the
+// unchanged super_admin-only dialog; while the roster is loading or failed, the picker is hidden.
 
 export function PlatformAdminsView({ session }: { readonly session?: Session } = {}) {
   if (session !== undefined && hasScope(session, 'platform:approval:read')) {
-    return (
+    return <CommercialPlatformAdminsView session={session} />;
+  }
+  return <LegacyPlatformAdminsView />;
+}
+
+function CommercialPlatformAdminsView({ session }: { readonly session: Session }) {
+  const [owner, setOwner] = useState(false);
+  const [reloadKey, setReloadKey] = useState(0);
+  return (
       <div className="pw-gov" data-testid="platform-admins">
         <div className="pw-gov-head">
           <h1 className="pw-gov-title">Platform admins</h1>
@@ -32,16 +53,23 @@ export function PlatformAdminsView({ session }: { readonly session?: Session } =
             owner.
           </p>
         </div>
-        <CommercialRolesSection session={session} />
+        <CommercialRolesSection
+          session={session}
+          reloadKey={reloadKey}
+          onRoster={(r) => setOwner(isAttestedOwner(r, session.sub))}
+        />
         {hasScope(session, 'platform:admin:invite') ? (
           <div className="pw-ad-grid pw-gov-gap-top">
-            <InviteAdminCard />
+            <InviteAdminCard
+              commercialRoles={owner}
+              onInvited={(role) => {
+                if (role !== SUPER_ADMIN) setReloadKey((k) => k + 1);
+              }}
+            />
           </div>
         ) : null}
       </div>
-    );
-  }
-  return <LegacyPlatformAdminsView />;
+  );
 }
 
 /** The PLATFORM-UX-1 page (super_admin), unchanged. */
@@ -65,7 +93,30 @@ function LegacyPlatformAdminsView() {
   );
 }
 
-function InviteAdminCard() {
+const SUPER_ADMIN = 'super_admin';
+
+/** R-5: what each invitable role may do (super_admin keeps the PLATFORM-UX-1 sentence). */
+const ROLE_CONSEQUENCE: Readonly<Record<string, string>> = {
+  super_admin:
+    'This person joins the Aramo Platform tenant as Super admin, with all 10 platform permissions: they can provision, suspend and close any tenant.',
+  platform_owner:
+    'This person joins as Platform owner: full commercial authority. They approve catalog publishing, policy and role changes, and can invite commercial roles.',
+  finance_admin:
+    'This person joins as Finance admin: they approve subscription, billing and policy requests, and see Finance amounts.',
+  commercial_ops: 'This person joins as Commercial ops: they request subscription changes and record payments.',
+  catalog_manager: 'This person joins as Catalog manager: they draft plan versions and request publishing.',
+  support_admin: 'This person joins as Support admin: they request bounded support extensions.',
+  read_only_auditor: 'This person joins as Read-only auditor: they read commercial records and the audit trail.',
+};
+
+function InviteAdminCard({
+  commercialRoles = false,
+  onInvited,
+}: {
+  /** R-3: true only for an attested platform_owner (the roster says so). */
+  readonly commercialRoles?: boolean;
+  readonly onInvited?: (role: string) => void;
+} = {}) {
   const toast = useOptionalToast();
   const emailId = useId();
   const nameId = useId();
@@ -91,10 +142,17 @@ function InviteAdminCard() {
             Invite platform admin
           </h2>
         </div>
-        <p className="pw-ad-card__sub">
-          The invitee joins the Aramo Platform tenant as <b>Super admin</b> — the highest privilege
-          on the platform.
-        </p>
+        {commercialRoles ? (
+          <p className="pw-ad-card__sub">
+            As Platform owner you choose the role in the review step: <b>Super admin</b> or a
+            commercial role.
+          </p>
+        ) : (
+          <p className="pw-ad-card__sub">
+            The invitee joins the Aramo Platform tenant as <b>Super admin</b> — the highest privilege
+            on the platform.
+          </p>
+        )}
         {done !== null ? (
           <div role="status" className="pw-alert pw-alert--success pw-ad-done">
             Invitation sent to <span className="pw-mono">{done}</span>.
@@ -142,13 +200,19 @@ function InviteAdminCard() {
         <InviteAdminDialog
           email={reviewing}
           displayName={name.trim()}
+          commercialRoles={commercialRoles}
           onClose={() => setReviewing(null)}
-          onSent={(sent) => {
+          onSent={(sent, role) => {
             setReviewing(null);
             setEmail('');
             setName('');
             setDone(sent);
-            toast.show(`Platform admin invitation sent to ${sent}.`);
+            toast.show(
+              role === SUPER_ADMIN
+                ? `Platform admin invitation sent to ${sent}.`
+                : `${roleLabel(role)} invitation sent to ${sent}.`,
+            );
+            onInvited?.(role);
           }}
         />
       ) : null}
@@ -159,17 +223,28 @@ function InviteAdminCard() {
 export function InviteAdminDialog({
   email,
   displayName,
+  commercialRoles = false,
   onClose,
   onSent,
 }: {
   readonly email: string;
   readonly displayName: string;
+  /** R-3: show the role picker (attested platform_owner only). */
+  readonly commercialRoles?: boolean;
   readonly onClose: () => void;
-  readonly onSent: (email: string) => void;
+  readonly onSent: (email: string, role: string) => void;
 }) {
+  const roleId = useId();
+  const hashId = useId();
   const [typed, setTyped] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [picked, setPicked] = useState<string>(SUPER_ADMIN);
+  const [hash, setHash] = useState('');
+  const role = commercialRoles ? picked : SUPER_ADMIN;
+  const commercial = role !== SUPER_ADMIN;
+  const hashValue = hash.trim();
+  const hashOk = !commercial || isHumanRefHash(hashValue);
   const matches = typedConfirmMatches(typed, email);
 
   const commit = async (): Promise<void> => {
@@ -179,8 +254,9 @@ export function InviteAdminDialog({
       await adminsApi.invitePlatformAdmin({
         email,
         ...(displayName !== '' ? { display_name: displayName } : {}),
+        ...(commercial ? { role_keys: [role], human_ref_hash: hashValue } : {}),
       });
-      onSent(email);
+      onSent(email, role);
     } catch (e) {
       setError(adminInviteErrorText(e));
       setBusy(false);
@@ -194,14 +270,64 @@ export function InviteAdminDialog({
         if (!o) onClose();
       }}
       title="Invite platform admin"
-      consequence="This person joins the Aramo Platform tenant as Super admin, with all 10 platform permissions: they can provision, suspend and close any tenant."
+      consequence={
+        commercial
+          ? `${ROLE_CONSEQUENCE[role] ?? roleLabel(role)} You are recorded as the person who attests their identity.`
+          : ROLE_CONSEQUENCE[SUPER_ADMIN]
+      }
       error={error}
       commitLabel="Send admin invitation"
       tone="privileged"
-      canCommit={matches}
+      canCommit={matches && hashOk}
       busy={busy}
       onCommit={() => void commit()}
     >
+      {commercialRoles ? (
+        <div className="pw-field">
+          <label className="pw-field__label" htmlFor={roleId}>
+            Role
+          </label>
+          <Select
+            id={roleId}
+            unstyled
+            className="pw-select"
+            value={picked}
+            onChange={(e) => {
+              setPicked(e.target.value);
+              setError(null);
+            }}
+          >
+            <option value={SUPER_ADMIN}>{roleLabel(SUPER_ADMIN)}</option>
+            {COMMERCIAL_ROLES.map((r) => (
+              <option key={r} value={r}>
+                {roleLabel(r)}
+              </option>
+            ))}
+          </Select>
+        </div>
+      ) : null}
+      {commercial ? (
+        <div className="pw-field">
+          <label className="pw-field__label" htmlFor={hashId}>
+            Identity reference hash
+          </label>
+          <Input
+            id={hashId}
+            unstyled
+            className="pw-input pw-mono"
+            value={hash}
+            autoComplete="off"
+            spellCheck={false}
+            aria-invalid={(hashValue !== '' && !hashOk) || undefined}
+            aria-describedby={`${hashId}-hint`}
+            onChange={(e) => setHash(e.target.value)}
+          />
+          <span id={`${hashId}-hint`} className="pw-field__helper" aria-live="polite">
+            {hashValue !== '' && !hashOk ? '64 lowercase hex characters (SHA-256). ' : ''}
+            {HUMAN_REF_HINT}
+          </span>
+        </div>
+      ) : null}
       <div className="pw-field">
         <TypedConfirm
           label="Type the email to confirm"

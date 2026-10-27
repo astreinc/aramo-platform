@@ -2522,6 +2522,7 @@
     "apps/platform-web/src/App.tsx",
     "apps/platform-web/src/LoginPage.spec.tsx",
     "apps/platform-web/src/LoginPage.tsx",
+    "apps/platform-web/src/admins/PlatformAdminsView.commercial-invite.spec.tsx",
     "apps/platform-web/src/admins/PlatformAdminsView.spec.tsx",
     "apps/platform-web/src/admins/PlatformAdminsView.tsx",
     "apps/platform-web/src/admins/admins-api.ts",
