@@ -2,7 +2,14 @@
 // title up to 2 lines, an optional accessory line (pill + secondary text), trailing
 // text, and the iOS chevron. Separator per platform tokens.
 import type { ReactNode } from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  type AccessibilityActionEvent,
+  type AccessibilityActionInfo,
+} from 'react-native';
 import Svg, { Path } from 'react-native-svg';
 
 import { useTheme } from '../theme';
@@ -16,6 +23,9 @@ export interface ListRowProps {
   readonly onPress?: () => void;
   readonly showSeparator?: boolean;
   readonly accessibilityLabel?: string;
+  /** VoiceOver / TalkBack custom actions (e.g. the row's swipe actions). */
+  readonly accessibilityActions?: readonly AccessibilityActionInfo[];
+  readonly onAccessibilityAction?: (event: AccessibilityActionEvent) => void;
 }
 
 export function RowTile({
@@ -62,6 +72,8 @@ export function ListRow({
   onPress,
   showSeparator = true,
   accessibilityLabel,
+  accessibilityActions,
+  onAccessibilityAction,
 }: ListRowProps) {
   const t = useTheme();
   return (
@@ -70,6 +82,8 @@ export function ListRow({
       disabled={!onPress}
       accessibilityRole={onPress ? 'button' : undefined}
       accessibilityLabel={accessibilityLabel}
+      accessibilityActions={accessibilityActions}
+      onAccessibilityAction={onAccessibilityAction}
       android_ripple={t.platform === 'android' ? { color: t.color.fill } : undefined}
       style={({ pressed }) => [
         styles.row,
