@@ -75,7 +75,7 @@ const RENDERED_ROLES: SignTemplateRenderResponse = {
 };
 const LISTED = { template_id: TEMPLATE, signing: SIGNING };
 
-function harness(opts: { registry?: Record<string, 'AVAILABLE' | 'NOT_AVAILABLE'>; kind?: string; roles?: boolean; copyColumns?: boolean } = {}) {
+function harness(opts: { registry?: Record<string, 'AVAILABLE' | 'NOT_AVAILABLE'>; kind?: string; roles?: boolean } = {}) {
   const documents: DocumentTemplatesPort = {
     list: vi.fn(async () => ({ items: opts.roles === true ? [LISTED as never] : [{ template_id: TEMPLATE, signing: null } as never], unavailable: [] })),
     preview: vi.fn(async () => ({}) as never),
@@ -88,7 +88,6 @@ function harness(opts: { registry?: Record<string, 'AVAILABLE' | 'NOT_AVAILABLE'
   const repo = {
     createDraft: vi.fn(async () => ({ id: 'env-1', status: 'DRAFT', subject: 'Right to Represent' })),
     addDraftCoreRefDocument: vi.fn(async () => ({ id: 'edoc-1', title: 'Right to Represent', ordinal: 0 })),
-    recipientKindsAvailable: vi.fn(async () => opts.copyColumns !== false),
     bindTemplateDraft: vi.fn(async () => []),
   };
   const envelopes = {
@@ -354,8 +353,8 @@ describe('from-template — multi-role binding (M-A6 §3.5)', () => {
   });
 
   it('refuses every binding error BEFORE the render (no Document is created)', async () => {
-    const reason = async (body: Record<string, unknown>, opts: { copyColumns?: boolean } = {}): Promise<unknown> => {
-      const h = harness({ registry: AVAILABLE, roles: true, ...opts });
+    const reason = async (body: Record<string, unknown>): Promise<unknown> => {
+      const h = harness({ registry: AVAILABLE, roles: true });
       try {
         await h.svc.createEnvelope(a, { template_id: TEMPLATE, ...body }, 'r');
         return 'NO_ERROR';
@@ -374,7 +373,6 @@ describe('from-template — multi-role binding (M-A6 §3.5)', () => {
     expect(await reason({ recipients, cc: [{ role_key: 'hr_copy', name: 'HR', email: 'CLIENT@x.test' }] })).toBe('duplicate_email');
     expect(await reason({ recipients, routing_mode: 'RANDOM' })).toBe('routing_mode_invalid');
     expect(await reason({ recipients: [{ role_key: 'client', name: 'C', email: 'bad' }] })).toBe('email_invalid');
-    expect(await reason({ recipients, cc }, { copyColumns: false })).toBe('copy_recipients_unavailable');
     expect(await reason({ template_id: TEMPLATE, routing_mode: 'PARALLEL' })).toBe('recipients_required');
     expect(await reason({ signer: { name: 'Solo', email: 'solo@x.test' } })).toBe('template_has_roles');
   });

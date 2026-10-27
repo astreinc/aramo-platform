@@ -277,9 +277,6 @@ export class SenderTemplatesService {
     }
     const signing = item.signing ?? null;
     const bound = this.bindRoles(signing, recipients, cc, requestId);
-    if (bound.some((r) => r.recipient_kind === 'RECEIVES_COPY') && !(await this.repo.recipientKindsAvailable())) {
-      throw new AramoError('VALIDATION_ERROR', 'Copy recipients are not available yet', 422, { requestId, details: { field: 'cc', reason: 'copy_recipients_unavailable' } });
-    }
 
     const rendered = await this.documents.render({
       tenant_id: auth.tenant_id,

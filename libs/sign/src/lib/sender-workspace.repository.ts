@@ -7,6 +7,7 @@ import { EsignRepository } from './esign.repository.js';
 import { EnvelopeIllegalTransitionError, EnvelopeNotFoundError, SenderFieldPassthroughRefusedError } from './domain/errors.js';
 import { EnvelopeRevisionMismatchError } from './domain/envelope-contract-errors.js';
 import { SIGN_REMINDER_LIMITS, reminderHistory, type ReminderHistoryEntry } from './reminder-limits.js';
+import { isCopyRecipient, isSigningRecipient, recipientKindOf, signingRecipients } from './domain/recipients.js';
 
 // PX-V1 PX-1 — the authenticated SENDER workspace reads + DRAFT authoring writes.
 //
@@ -87,7 +88,7 @@ export interface SenderFieldInput {
 
 // Amendment M-A6 §3.5 — one template role bound to a recipient. recipient_kind and
 // copy_delivery are the M-A5 §1–§2 columns (owned by migration
-// 20261028100000_sign_recipient_kinds); a SIGNER row leaves both to their defaults.
+// 20261028100000_sign_recipient_kinds); a SIGNER row has no copy_delivery.
 export interface TemplateRecipientInput {
   role_key: string;
   name: string;
@@ -308,21 +309,6 @@ export class EsignSenderRepository {
     });
   }
 
-  // Amendment M-A5 §1–§2 — whether this database carries the recipient-kind columns
-  // (Signer.recipient_kind / copy_delivery, migration 20261028100000_sign_recipient_kinds,
-  // owned by the recipient-kinds slice). Template CC roles bind only when it does; the
-  // answer is cached once true.
-  private recipientKinds: boolean | null = null;
-  async recipientKindsAvailable(): Promise<boolean> {
-    if (this.recipientKinds === true) return true;
-    const rows = await this.prisma.$queryRaw<{ n: number }[]>`
-      SELECT count(*)::int AS n FROM information_schema.columns
-      WHERE table_schema = 'sign' AND table_name = 'Signer' AND column_name IN ('recipient_kind', 'copy_delivery')`;
-    const ok = (rows[0]?.n ?? 0) === 2;
-    if (ok) this.recipientKinds = true;
-    return ok;
-  }
-
   // Amendment M-A6 §3.5 — bind a from-template draft in ONE transaction: the routing
   // mode, the message, one recipient per template role (Signer.signer_role = role_key,
   // signing_order = role order) and the template's fields assigned to their role's
@@ -345,7 +331,8 @@ export class EsignSenderRepository {
       const docIds = new Set(docs.map((d) => d.id));
       if (docIds.size > 0) await tx.signatureField.deleteMany({ where: { tenant_id: input.tenant_id, envelope_document_id: { in: [...docIds] } } });
       await tx.signer.deleteMany({ where: { tenant_id: input.tenant_id, envelope_id: input.envelope_id } });
-      const signing = input.recipients.filter((r) => r.recipient_kind === 'SIGNER');
+      // M-A5 §1.3 — the shared helper decides who signs (copies never count).
+      const signing = signingRecipients(input.recipients);
       await tx.signatureEnvelope.update({
         where: { id: input.envelope_id },
         data: {
@@ -357,34 +344,31 @@ export class EsignSenderRepository {
       const byRole = new Map<string, string>();
       for (const r of input.recipients) {
         const id = randomUUID();
-        if (r.recipient_kind === 'RECEIVES_COPY') {
-          // M-A5 §1/§2 columns (added by 20261028100000_sign_recipient_kinds). Raw SQL so this
-          // slice compiles without them in its generated client; the caller checks
-          // recipientKindsAvailable() first.
-          await tx.$executeRaw`
-            INSERT INTO "sign"."Signer" ("id", "tenant_id", "envelope_id", "email", "name", "signing_order", "signer_role", "status", "recipient_kind", "copy_delivery")
-            VALUES (${id}::uuid, ${input.tenant_id}::uuid, ${input.envelope_id}::uuid, ${r.email}, ${r.name}, ${r.signing_order}, ${r.role_key}, 'PENDING', 'RECEIVES_COPY', ${r.copy_delivery ?? 'ON_COMPLETION'})`;
-        } else {
-          await tx.signer.create({
-            data: {
-              id,
-              tenant_id: input.tenant_id,
-              envelope_id: input.envelope_id,
-              name: r.name,
-              email: r.email,
-              signing_order: r.signing_order,
-              signer_role: r.role_key,
-              status: 'PENDING',
-            },
-          });
-        }
+        const copy = isCopyRecipient(r);
+        await tx.signer.create({
+          data: {
+            id,
+            tenant_id: input.tenant_id,
+            envelope_id: input.envelope_id,
+            name: r.name,
+            email: r.email,
+            signing_order: r.signing_order,
+            signer_role: r.role_key,
+            status: 'PENDING',
+            // M-A5 §1/§2 — a template CC role is a RECEIVES_COPY recipient with its delivery
+            // timing; a template SIGNER role is a SIGNER (the column default).
+            recipient_kind: recipientKindOf(r),
+            copy_delivery: copy ? (r.copy_delivery ?? 'ON_COMPLETION') : null,
+          },
+        });
         byRole.set(r.role_key, id);
       }
       for (const f of input.fields) {
         if (!docIds.has(f.envelope_document_id)) throw new EnvelopeNotFoundError(`document ${f.envelope_document_id}`);
         const signer_id = byRole.get(f.role_key);
         const recipient = input.recipients.find((r) => r.role_key === f.role_key);
-        if (signer_id === undefined || recipient?.recipient_kind !== 'SIGNER') throw new EnvelopeNotFoundError(`role ${f.role_key}`);
+        // M-A5 §1.2 — a copy recipient never gets a field.
+        if (signer_id === undefined || recipient === undefined || !isSigningRecipient(recipient)) throw new EnvelopeNotFoundError(`role ${f.role_key}`);
         await tx.signatureField.create({
           data: {
             id: randomUUID(),
@@ -398,6 +382,9 @@ export class EsignSenderRepository {
             width: f.width,
             height: f.height,
             required: f.required,
+            // M-A6 §3.3 / §2.2 — the role's printed name is filled by Sign from the
+            // signer's profile (SIGNER_PROFILE, the default name mode).
+            name_mode: f.field_type === 'SIGNER_NAME' ? 'SIGNER_PROFILE' : null,
           },
         });
       }
