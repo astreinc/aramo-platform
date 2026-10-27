@@ -20,13 +20,15 @@ import { Sheet } from '../../components/Sheet';
 import { useTheme } from '../../theme';
 import { EmptyState } from '../inbox/ui';
 import { TemplateRows } from '../templates/TemplateRows';
-import { TemplateValuesForm } from '../templates/TemplateValuesForm';
+import { landingStep } from '../templates/roleBindingModel';
+import { TemplateUseForm } from '../templates/TemplateUseForm';
 import { useTemplatesView } from '../templates/useTemplates';
 import { pickPhotosToPdf } from './photos';
 import type { SendFlowController } from './sendFlowController';
 import { pickPdf, scanToPdf, type SourceResult } from './sources';
 import { createFromTemplate, type SenderTemplate } from './templates';
 import { ErrorText } from './ui';
+import type { SendStep } from '../../state/draftStore';
 
 export const FILES_NOTE = 'A PDF from this phone, OneDrive or Google Drive';
 export const SOURCE_UNAVAILABLE = 'That source isn’t available on this phone.';
@@ -156,8 +158,8 @@ export function AddDocumentsSheet({
   readonly error: string | null;
   /** sign.templates available + permitted (backend), and the draft can still start from one. */
   readonly templatesEnabled: boolean;
-  /** A document (or a template draft) was added. */
-  readonly onAdded: () => void;
+  /** A document (or a template draft) was added; `step` is where a template draft opens. */
+  readonly onAdded: (step?: SendStep) => void;
 }) {
   const t = useTheme();
   const { workspace } = useServices();
@@ -230,20 +232,24 @@ export function AddDocumentsSheet({
           <Button title="Back" variant="text" onPress={() => setMode({ kind: 'sources' })} />
         </>
       ) : (
-        <TemplateValuesForm
+        <TemplateUseForm
           key={mode.template.id}
           template={mode.template}
           cancelTitle="Back"
           onCancel={() => setMode({ kind: 'templates' })}
-          onCreate={async (values, idempotencyKey) => {
+          onRolesChanged={templates.refetch}
+          onCreate={async (values, idempotencyKey, binding) => {
             const v = await createFromTemplate(workspace, {
               templateId: mode.template.id,
               values,
               idempotencyKey,
+              ...(binding ? { binding } : {}),
             });
-            await controller.adoptTemplateEnvelope(v);
+            // Role-bound: Review when the server bound everything, else Recipients.
+            const step = binding ? landingStep(v.env) : 'recipients';
+            await controller.adoptTemplateEnvelope(v, step);
             close();
-            onAdded();
+            onAdded(step);
           }}
         />
       )}

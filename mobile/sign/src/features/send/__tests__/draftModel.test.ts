@@ -1,8 +1,9 @@
 // M-A6 §2 — the draft model carries Name and Checkbox configuration both ways, and a
 // field type the editor does not author is preserved untouched (never dropped on load,
 // so the replace-all fields PUT does not delete it).
-import { parseEnvelope, payloadFromServer } from '../draftModel';
-import { fieldsToWire } from '../syncDraft';
+import { isCopyRecipient, parseEnvelope, payloadFromServer } from '../draftModel';
+import type { SenderApi } from '../senderApi';
+import { fieldsToWire, syncDraft } from '../syncDraft';
 
 const PAGE = { width: 612, height: 792 };
 
@@ -137,6 +138,50 @@ describe('draft model — Name and Checkbox (M-A6 §2)', () => {
     const { payload: p } = payloadFromServer(e, '"e1.3"', new Map([['d1', [PAGE]]]));
     expect(fieldsToWire(p)).toEqual([
       expect.objectContaining({ id: 'f-text', signer_id: null, x: 10.123, y: 20.456, width: null, height: null, required: false }),
+    ]);
+  });
+});
+
+describe('copy recipients bound from a template CC role (M-A6 §3.5, M-A5)', () => {
+  const env = parseEnvelope({
+    id: 'e1',
+    revision: 3,
+    documents: [{ id: 'd1', title: 'Agreement' }],
+    recipients: [
+      { id: 'r2', name: 'Hana', email: 'hana@example.com', signing_order: 2, recipient_kind: 'RECEIVES_COPY', copy_delivery: 'ON_COMPLETION' },
+      { id: 'r1', name: 'Dana', email: 'dana@example.com', signing_order: 1, recipient_kind: 'SIGNER', copy_delivery: null },
+    ],
+    fields: [],
+  });
+
+  it('keeps the server kind on the draft, signers stay unmarked', () => {
+    const { payload } = payloadFromServer(env, '"e1.3"', new Map());
+    expect(payload.recipients.map((r) => [r.email, r.kind, r.copyDelivery])).toEqual([
+      ['dana@example.com', undefined, undefined],
+      ['hana@example.com', 'RECEIVES_COPY', 'ON_COMPLETION'],
+    ]);
+    expect(isCopyRecipient(payload.recipients[1]!)).toBe(true);
+    expect(isCopyRecipient(payload.recipients[0]!)).toBe(false);
+  });
+
+  it('re-sends the kind on a recipients write, so a copy recipient never becomes a signer', async () => {
+    const { payload } = payloadFromServer(env, '"e1.3"', new Map());
+    const put = jest.fn(async () => ({ env, etag: '"e1.4"' }));
+    const api = { putRecipients: put } as unknown as SenderApi;
+    await syncDraft(
+      { api, bytes: {} as never },
+      {
+        localId: 'l1',
+        envelopeId: 'e1',
+        baseRevision: 3,
+        step: 'recipients',
+        updatedAt: '2026-10-27T00:00:00Z',
+        payload: { ...payload, dirty: { meta: false, recipients: true, fields: false } },
+      },
+    ).catch(() => undefined);
+    expect(put).toHaveBeenCalledWith('e1', '"e1.3"', [
+      { id: 'r1', name: 'Dana', email: 'dana@example.com' },
+      { id: 'r2', name: 'Hana', email: 'hana@example.com', recipient_kind: 'RECEIVES_COPY', copy_delivery: 'ON_COMPLETION' },
     ]);
   });
 });

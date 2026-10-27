@@ -4,7 +4,7 @@
 // revision_mismatch on a stale one. Idempotency (M-A3 §8): document upload carries one
 // Idempotency-Key per document, reused on every retry.
 import { ApiError, isApiError } from '../../api/errors';
-import type { paths } from '../../api/generated/sign';
+import type { components, paths } from '../../api/generated/sign';
 import type { HttpResponse } from '../../api/http';
 import { etagFor, type WorkspaceClient } from '../../api/workspaceClient';
 import type { PageSize } from '../editor/geometry';
@@ -93,7 +93,13 @@ export interface SenderApi {
   putRecipients(
     id: string,
     ifMatch: string,
-    recipients: readonly { id?: string; name: string; email: string }[],
+    recipients: readonly {
+      id?: string;
+      name: string;
+      email: string;
+      recipient_kind?: components['schemas']['SenderRecipientKind'];
+      copy_delivery?: components['schemas']['SenderCopyDelivery'] | null;
+    }[],
   ): Promise<Versioned>;
   putFields(id: string, ifMatch: string, fields: readonly FieldWire[]): Promise<Versioned>;
   send(id: string, ifMatch: string, subject: string): Promise<Versioned>;

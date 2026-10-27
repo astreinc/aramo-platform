@@ -13,7 +13,7 @@ export const FEATURES = {
   /** Name and Checkbox authoring tools (A6). */
   extraFieldTypes: true,
   /** Role binding when using a multi-role template (A4). */
-  multiRoleTemplates: false,
+  multiRoleTemplates: true,
 } as const;
 
 export type FeatureKey = keyof typeof FEATURES;

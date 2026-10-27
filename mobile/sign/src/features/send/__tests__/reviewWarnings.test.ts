@@ -120,3 +120,17 @@ describe('Before you send', () => {
     expect(w.map((x) => x.kind)).toEqual(['no_signature_field']);
   });
 });
+
+describe('copy recipients bound from a template CC role (M-A6 §3.5, M-A5)', () => {
+  it('never asks a copy recipient for a signature field, nor counts it as a signer', () => {
+    const copy = { ...sam, kind: 'RECEIVES_COPY' as const, copyDelivery: 'ON_COMPLETION' as const };
+    const ok = reviewWarnings(
+      { documents: [doc], recipients: [dana, copy], fields: [field('r1', 'SIGNATURE')] },
+      null,
+      null,
+    );
+    expect(ok).toEqual([]);
+    const only = reviewWarnings({ documents: [doc], recipients: [copy], fields: [] }, null, null);
+    expect(only.map((w) => w.text)).toEqual(['Add at least one signer.']);
+  });
+});

@@ -237,6 +237,8 @@ export async function syncDraft(deps: SyncDeps, input: SendDraft): Promise<SyncR
         ...(r.serverId ? { id: r.serverId } : {}),
         name: r.name,
         email: r.email,
+        // A server-set kind (a template CC role) is re-sent unchanged (M-A5).
+        ...(r.kind ? { recipient_kind: r.kind, copy_delivery: r.copyDelivery ?? null } : {}),
       })),
     );
     const sent = v.env.recipients;

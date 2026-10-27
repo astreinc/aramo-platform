@@ -7,6 +7,9 @@
 //   - **Assign to me** (M-A4 §6.1; handoff §2A step 2) adds the signed-in user as a
 //     signer, refusing a duplicate with the same email check every recipient goes through
 //     (SendFlowController.addRecipient).
+//   - A copy recipient bound from a template CC role (M-A6 §3.5, M-A5 RECEIVES_COPY) is
+//     shown as "Gets a copy": it never signs, takes no order and is not reordered. The
+//     app never adds one itself (no copy chip until its UI ships).
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -14,7 +17,7 @@ import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { ContactsSheet } from '../../features/contacts/ContactsSheet';
 import { Segments } from '../../features/inbox/ui';
-import { MAX_RECIPIENTS, type RoutingMode } from '../../features/send/draftModel';
+import { MAX_RECIPIENTS, isCopyRecipient, type RoutingMode } from '../../features/send/draftModel';
 import type { SendFlowController, SendFlowState } from '../../features/send/sendFlowController';
 import { StepTitle } from '../../features/send/ui';
 import { recipientColor, useTheme } from '../../theme';
@@ -62,7 +65,10 @@ export function RecipientsStep({
   const mode = p?.routingMode ?? 'PARALLEL';
   const added = useMemo(() => new Set(recipients.map((r) => r.email.toLowerCase())), [recipients]);
   const sequential = mode === 'SEQUENTIAL';
-  const full = recipients.length >= MAX_RECIPIENTS;
+  const signerCount = recipients.filter((r) => !isCopyRecipient(r)).length;
+  const full = signerCount >= MAX_RECIPIENTS;
+  // Copy recipients follow the signers (server order), so a signer never moves below one.
+  const lastSigner = signerCount - 1;
 
   return (
     <View style={styles.body}>
@@ -72,10 +78,12 @@ export function RecipientsStep({
       ) : null}
       {recipients.map((r, i) => {
         const color = recipientColor(i);
+        const copy = isCopyRecipient(r);
+        const ordered = sequential && !copy;
         return (
           <Card key={r.key}>
             <View style={styles.card} testID={`recipient-${i}`}>
-              {sequential ? (
+              {ordered ? (
                 <Text style={[styles.order, { color: t.color.textSecondary }]} accessibilityLabel={`Signs ${i + 1}`}>
                   {i + 1}
                 </Text>
@@ -86,10 +94,10 @@ export function RecipientsStep({
                   {r.name}
                 </Text>
                 <Text numberOfLines={1} style={{ color: t.color.textSecondary, fontSize: 14, fontFamily: t.font.family }}>
-                  {r.email}
+                  {copy ? `${r.email} · Gets a copy` : r.email}
                 </Text>
               </View>
-              {sequential ? (
+              {ordered ? (
                 <>
                   <Pressable
                     accessibilityRole="button"
@@ -103,11 +111,11 @@ export function RecipientsStep({
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={`Move ${r.name} down`}
-                    disabled={i === recipients.length - 1}
+                    disabled={i === lastSigner}
                     onPress={() => controller.moveRecipient(r.key, 1)}
                     style={[
                       styles.icon,
-                      { minWidth: t.size.minTouch, minHeight: t.size.minTouch, opacity: i === recipients.length - 1 ? 0.3 : 1 },
+                      { minWidth: t.size.minTouch, minHeight: t.size.minTouch, opacity: i === lastSigner ? 0.3 : 1 },
                     ]}
                   >
                     <Text style={{ color: t.color.accent, fontSize: 18 }}>↓</Text>

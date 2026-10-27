@@ -12,7 +12,7 @@ import { Button } from '../../components/Button';
 import { Card } from '../../components/Card';
 import { BANNER, useTheme } from '../../theme';
 import type { LimitBanner } from '../../features/inbox/allowance';
-import { MESSAGE_MAX, effectiveSubject } from '../../features/send/draftModel';
+import { MESSAGE_MAX, effectiveSubject, isCopyRecipient } from '../../features/send/draftModel';
 import { reviewWarnings } from '../../features/send/reviewWarnings';
 import type { SendFlowController, SendFlowState } from '../../features/send/sendFlowController';
 import { ErrorText, StepTitle, TextField } from '../../features/send/ui';
@@ -92,6 +92,8 @@ export function ReviewStep({
           value={
             p.recipients
               .map((r, i) => {
+                // A copy recipient (template CC role, M-A5) never signs.
+                if (isCopyRecipient(r)) return `${r.name} · Gets a copy`;
                 const n = fieldCount(r.key);
                 const who = p.routingMode === 'SEQUENTIAL' ? `${i + 1}. ${r.name}` : r.name;
                 return `${who} · ${n} ${n === 1 ? 'field' : 'fields'}`;

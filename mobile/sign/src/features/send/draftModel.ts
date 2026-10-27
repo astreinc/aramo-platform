@@ -13,6 +13,11 @@ export const MESSAGE_MAX = 1000;
 export const SUBJECT_MAX = 200;
 
 export type RoutingMode = 'PARALLEL' | 'SEQUENTIAL';
+/** M-A5 recipient kinds and copy delivery, as the server returns them. */
+export type RecipientKind = 'SIGNER' | 'IN_PERSON_SIGNER' | 'RECEIVES_COPY';
+export type CopyDelivery = 'ON_SEND' | 'ON_COMPLETION' | 'BOTH';
+const RECIPIENT_KINDS: readonly string[] = ['SIGNER', 'IN_PERSON_SIGNER', 'RECEIVES_COPY'];
+const COPY_DELIVERIES: readonly string[] = ['ON_SEND', 'ON_COMPLETION', 'BOTH'];
 
 export interface DraftDocument {
   /** Stable client key. */
@@ -37,6 +42,20 @@ export interface DraftRecipient {
   readonly serverId: string | null;
   readonly name: string;
   readonly email: string;
+  /**
+   * The server's recipient kind when it is not a plain signer (M-A5; a copy recipient
+   * bound from a template CC role, M-A6 §3.5). Kept exactly as the server returned it and
+   * re-sent on a recipients write, so editing the draft never turns a copy recipient into
+   * a signer. Absent = SIGNER (every recipient the app adds itself signs, C-11).
+   */
+  readonly kind?: RecipientKind;
+  /** The server's copy delivery for a copy recipient (re-sent with it). */
+  readonly copyDelivery?: CopyDelivery | null;
+}
+
+/** A copy recipient (M-A5 RECEIVES_COPY): never signs, so it gets no fields. */
+export function isCopyRecipient(r: Pick<DraftRecipient, 'kind'>): boolean {
+  return r.kind === 'RECEIVES_COPY';
 }
 
 /** What still has to reach the server. */
@@ -139,6 +158,9 @@ export interface ServerRecipient {
   readonly email: string;
   readonly status: string;
   readonly signingOrder: number | null;
+  /** M-A5 recipient_kind (SIGNER when the server omits it). */
+  readonly kind: RecipientKind;
+  readonly copyDelivery: CopyDelivery | null;
 }
 export interface ServerField {
   /** The stored field id (sent back with a preserved engine-type field, M-A6 §2). */
@@ -209,6 +231,8 @@ export function parseEnvelope(raw: unknown): ServerEnvelope {
         email: str(r['email']),
         status: str(r['status']),
         signingOrder: num(r['signing_order']),
+        kind: (RECIPIENT_KINDS.includes(str(r['recipient_kind'])) ? r['recipient_kind'] : 'SIGNER') as RecipientKind,
+        copyDelivery: COPY_DELIVERIES.includes(str(r['copy_delivery'])) ? (r['copy_delivery'] as CopyDelivery) : null,
       }))
       .sort((a, b) => (a.signingOrder ?? 0) - (b.signingOrder ?? 0)),
     fields: arr('fields').map((f) => ({
@@ -269,6 +293,7 @@ export function payloadFromServer(
     serverId: r.id,
     name: r.name,
     email: r.email,
+    ...(r.kind !== 'SIGNER' ? { kind: r.kind, copyDelivery: r.copyDelivery } : {}),
   }));
   let fieldsPending = false;
   const fields: EditorField[] = [];

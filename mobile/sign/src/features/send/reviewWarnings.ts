@@ -5,7 +5,7 @@
 import type { ApiError } from '../../api/errors';
 import { refusalMessage } from '../../api/refusalMessages';
 import type { LimitBanner } from '../inbox/allowance';
-import type { SendDraftPayload } from './draftModel';
+import { isCopyRecipient, type SendDraftPayload } from './draftModel';
 
 export type WarningKind = 'no_document' | 'no_signer' | 'no_signature_field' | 'limit' | 'refusal';
 
@@ -43,8 +43,10 @@ export function reviewWarnings(
 ): ReviewWarning[] {
   const out: ReviewWarning[] = [];
   if (p.documents.length === 0) out.push({ kind: 'no_document', text: 'Add a document.' });
-  if (p.recipients.length === 0) out.push({ kind: 'no_signer', text: 'Add at least one signer.' });
-  for (const r of p.recipients) {
+  // A copy recipient (template CC role, M-A5) never signs: it needs no field.
+  const signers = p.recipients.filter((r) => !isCopyRecipient(r));
+  if (signers.length === 0) out.push({ kind: 'no_signer', text: 'Add at least one signer.' });
+  for (const r of signers) {
     if (!p.fields.some((f) => f.recipientKey === r.key && f.type === 'SIGNATURE')) {
       out.push({
         kind: 'no_signature_field',

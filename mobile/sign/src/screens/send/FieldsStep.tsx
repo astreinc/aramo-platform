@@ -4,6 +4,7 @@ import { StyleSheet, Text, View } from 'react-native';
 
 import { FieldEditor } from '../../features/editor/FieldEditor';
 import type { EditorField } from '../../features/editor/editorReducer';
+import { isCopyRecipient } from '../../features/send/draftModel';
 import type { SendFlowController, SendFlowState } from '../../features/send/sendFlowController';
 import { useTheme } from '../../theme';
 
@@ -19,9 +20,11 @@ export function FieldsStep({
   const docKeys = (p?.documents ?? []).map((d) => `${d.key}:${d.title}`).join('|');
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const documents = useMemo(() => (p?.documents ?? []).map((d) => ({ key: d.key, title: d.title })), [docKeys]);
-  const recipientKeys = (p?.recipients ?? []).map((r) => `${r.key}:${r.name}`).join('|');
+  // Copy recipients (a template CC role, M-A5) never sign, so they get no fields.
+  const signing = (p?.recipients ?? []).filter((r) => !isCopyRecipient(r));
+  const recipientKeys = signing.map((r) => `${r.key}:${r.name}`).join('|');
   const recipients = useMemo(
-    () => (p?.recipients ?? []).map((r) => ({ key: r.key, name: r.name })),
+    () => signing.map((r) => ({ key: r.key, name: r.name })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [recipientKeys],
   );

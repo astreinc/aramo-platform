@@ -17,6 +17,7 @@ import type { LimitBanner } from '../../features/inbox/allowance';
 import { AddDocumentsSheet } from '../../features/send/AddDocumentsSheet';
 import type { SendFlowController, SendFlowState } from '../../features/send/sendFlowController';
 import { ErrorText, StepTitle } from '../../features/send/ui';
+import type { SendStep } from '../../state/draftStore';
 import { useTheme } from '../../theme';
 
 export function DocumentsStep({
@@ -31,7 +32,7 @@ export function DocumentsStep({
   readonly limit: LimitBanner | null;
   /** The backend's sign.templates availability + permission (never derived here). */
   readonly templatesEnabled: boolean;
-  readonly onPicked: () => void;
+  readonly onPicked: (step?: SendStep) => void;
 }) {
   const t = useTheme();
   const docs = state.draft?.payload.documents ?? [];

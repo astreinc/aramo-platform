@@ -181,7 +181,7 @@ export function SendFlowScreen({ navigation, route }: Props) {
         state={state}
         limit={limit}
         templatesEnabled={templatesAvailable(context.data)}
-        onPicked={() => goTo('recipients')}
+        onPicked={(step) => goTo(step ?? 'recipients')}
       />
     ) : state.step === 'recipients' ? (
       <RecipientsStep controller={controller} state={state} me={me} online={online} />

@@ -25,6 +25,7 @@ import {
   effectiveSubject,
   emptyPayload,
   furthestStep,
+  isCopyRecipient,
   isDirty,
   payloadFromServer,
   type DirtyFlags,
@@ -384,12 +385,12 @@ export class SendFlowController {
   }
 
   /** A draft created from a template (templates.ts) becomes this flow's envelope. */
-  async adoptTemplateEnvelope(v: Versioned): Promise<void> {
+  async adoptTemplateEnvelope(v: Versioned, step: SendStep = 'recipients'): Promise<void> {
     const d = this.state.draft;
     if (!d || d.envelopeId !== null || d.payload.documents.length > 0) return;
-    const draft = await this.draftFromServer(v, d.localId);
+    const draft = { ...(await this.draftFromServer(v, d.localId)), step };
     await this.persist(draft);
-    this.set({ draft, server: v.env, step: 'recipients', generation: this.state.generation + 1 });
+    this.set({ draft, server: v.env, step, generation: this.state.generation + 1 });
   }
 
   // ── step 2: recipients ──────────────────────────────────────────────────────
@@ -401,7 +402,7 @@ export class SendFlowController {
   }): 'added' | 'duplicate' | 'full' {
     const p = this.payload;
     const email = input.email.trim();
-    if (p.recipients.length >= MAX_RECIPIENTS) return 'full';
+    if (p.recipients.filter((r) => !isCopyRecipient(r)).length >= MAX_RECIPIENTS) return 'full';
     if (p.recipients.some((r) => r.email.toLowerCase() === email.toLowerCase())) return 'duplicate';
     const r: DraftRecipient = {
       key: this.deps.newId(),
@@ -409,7 +410,14 @@ export class SendFlowController {
       name: input.name.trim() || email,
       email,
     };
-    this.update((q) => ({ ...q, recipients: [...q.recipients, r] }), { recipients: true });
+    // A new signer goes after the signers and before any copy recipient (M-A5: copy
+    // recipients follow the signing order).
+    this.update((q) => {
+      const at = q.recipients.findIndex((x) => isCopyRecipient(x));
+      const list = [...q.recipients];
+      list.splice(at < 0 ? list.length : at, 0, r);
+      return { ...q, recipients: list };
+    }, { recipients: true });
     return 'added';
   }
 
