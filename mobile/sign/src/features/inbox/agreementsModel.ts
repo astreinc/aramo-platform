@@ -7,7 +7,9 @@
 //   Waiting  — every other open envelope: sent ones in SENT / IN_PROGRESS, and received
 //              ones still open where the user has finished their part
 //   Drafts   — the user's DRAFT envelopes (server drafts + local drafts not yet synced)
-//   Done     — the end states COMPLETED · DECLINED · VOIDED · EXPIRED (sent and received)
+//   Done     — the end states COMPLETED · DECLINED · VOIDED · EXPIRED (sent and received),
+//              labelled "Completed" (M-A4 §3.1)
+//   All      — every row
 //
 // All 7 statuses render (SENT included). Sorting is latest activity first; search
 // matches the subject.
@@ -50,16 +52,24 @@ export type AgreementRow =
       readonly activityAt: string;
     };
 
-export const FILTERS: readonly AgreementsFilter[] = ['needs_me', 'waiting', 'drafts', 'done'];
+export const FILTERS: readonly AgreementsFilter[] = [
+  'all',
+  'needs_me',
+  'waiting',
+  'drafts',
+  'done',
+];
 
 export const FILTER_LABEL: Record<AgreementsFilter, string> = {
+  all: 'All',
   needs_me: 'Needs me',
-  waiting: 'Waiting',
+  waiting: 'Waiting for others',
   drafts: 'Drafts',
-  done: 'Done',
+  done: 'Completed',
 };
 
 export const EMPTY_STATE: Record<AgreementsFilter | 'search', { title: string; body: string }> = {
+  all: { title: 'Nothing here', body: 'Envelopes you send or receive show up here.' },
   needs_me: {
     title: 'You’re all caught up',
     body: 'Nothing needs your signature right now.',
@@ -151,6 +161,8 @@ export function needsMe(row: AgreementRow): boolean {
 
 export function matchesFilter(row: AgreementRow, filter: AgreementsFilter): boolean {
   switch (filter) {
+    case 'all':
+      return true;
     case 'needs_me':
       return needsMe(row);
     case 'waiting':

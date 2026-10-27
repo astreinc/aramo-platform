@@ -1,13 +1,15 @@
-// Account tab (handoff §4.9 minus the account switcher — directive §7 C-10: one signed-in
+// Account (a root-stack screen opened from the side menu with a "‹ Home" back link;
+// `section: 'settings'` scrolls to the Signing settings — M-A4 §1.4-§1.5; handoff §4.9 minus the account switcher — directive §7 C-10: one signed-in
 // identity at a time; "Sign out to use another account"). Profile, account type,
 // Personal plan and usage, default signature and initials, biometric confirmation, push
 // preferences (incl. "Show subject on lock screen", default off), devices / sessions,
 // legal re-acceptance, Personal account close, About, Sign out.
+import { useRoute, type RouteProp } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Application from 'expo-application';
 import * as Notifications from 'expo-notifications';
 import * as WebBrowser from 'expo-web-browser';
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { Linking, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -67,6 +69,8 @@ import {
   type AdoptTarget,
 } from '../../features/signing/adopt';
 import { AdoptSignatureSheet } from '../../features/signing/AdoptSignatureSheet';
+import { HomeBackLink } from '../../features/shell/HomeBackLink';
+import type { RootStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
 
 const accountKeys = {
@@ -86,6 +90,15 @@ export function AccountScreen() {
   const toast = useToast();
   const qc = useQueryClient();
   const { workspace, kv, signOut } = useServices();
+  const route = useRoute<RouteProp<RootStackParamList, 'Account'>>();
+  const scrollRef = useRef<ScrollView>(null);
+  // Side menu "Settings": scroll to the settings once their position is known.
+  const wantsSettings = useRef(route.params?.section === 'settings');
+  function settingsLaidOut(y: number): void {
+    if (!wantsSettings.current) return;
+    wantsSettings.current = false;
+    scrollRef.current?.scrollTo({ y: Math.max(0, y - 8), animated: false });
+  }
   const online = useOnline();
   const ctx = useSenderContext();
   const billing = useBillingAccount();
@@ -221,7 +234,11 @@ export function AccountScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: t.color.screen }}>
-      <ScrollView contentContainerStyle={{ paddingTop: insets.top + 8, paddingBottom: 40 }}>
+      <ScrollView
+        ref={scrollRef}
+        contentContainerStyle={{ paddingTop: insets.top + 8, paddingBottom: 40 }}
+      >
+        <HomeBackLink />
         <Text
           accessibilityRole="header"
           style={[
@@ -345,7 +362,9 @@ export function AccountScreen() {
           </View>
         ) : null}
 
-        <SectionTitle>Signing</SectionTitle>
+        <View testID="account-settings" onLayout={(e) => settingsLaidOut(e.nativeEvent.layout.y)}>
+          <SectionTitle>Signing</SectionTitle>
+        </View>
         <Card style={styles.card0}>
           <SettingRow
             testID="default-signature"
