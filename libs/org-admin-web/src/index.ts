@@ -14,6 +14,7 @@ export {
   orgSectionsFor,
   orgSectionByKey,
   orgSectionForPath,
+  isOrgStudioPath,
   type OrgSection,
   type OrgSectionKey,
   type OrgAccessTier,
@@ -28,3 +29,8 @@ export { fetchMe, useMe, ME_PATH, type Me } from './me-api';
 export { RolesMatrixView } from './roles/RolesMatrixView';
 export { AuditLogView } from './audit/AuditLogView';
 export type { RoleCatalogView } from './roles/roles-catalog-api';
+// TEMPLATE-STUDIO-1 S-1 — the Organization host of the shared Template Studio (token map
+// studio-theme.css, compact nav, account slot, error formatter) and the tenant-template
+// Studio route, reusable by every Org Studio route (S-2: the Aramo-default preview).
+export { OrgStudioHost, orgStudioErrorMessage, useOrgStudioAccount } from './document-templates/OrgStudioHost';
+export { OrgTemplateStudio, type OrgTemplateStudioProps } from './document-templates/OrgTemplateStudio';

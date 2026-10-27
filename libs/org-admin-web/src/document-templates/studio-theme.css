@@ -1,0 +1,51 @@
+/* TEMPLATE-STUDIO-1 S-1 (directive §2 Theming) — the Organization host maps the shared
+ * Template Studio's --ts-* tokens (libs/document-templates-web/src/studio/studio.css) onto
+ * the Organization token layer (ui/org-ui.css --ox-*). Tokens without an Organization
+ * equivalent keep the Studio's defaults (the same design values). Applied on the Studio's
+ * root and on <body> while an Organization Studio is mounted, so portalled dialogs read
+ * the same values. The lib's defaults are :where() (zero specificity); these win. */
+
+.ox-studio .pws-root,
+body:has(.ox-studio .pws-root) {
+  --ts-brand: var(--ox-blue);
+  --ts-brand-ink: var(--ox-blue-ink);
+  --ts-brand-bg: var(--ox-blue-tint);
+  --ts-brand-line: var(--ox-blue-line);
+  --ts-canvas: var(--ox-bg);
+  --ts-surface: var(--ox-card);
+  --ts-line: var(--ox-line);
+  --ts-line-2: var(--ox-input-line);
+  --ts-rule: var(--ox-grey-tint);
+  --ts-ink: var(--ox-ink);
+  --ts-ink-2: var(--ox-ink-2);
+  --ts-muted: var(--ox-muted);
+  --ts-faint: var(--ox-faint);
+  --ts-link: var(--ox-blue);
+  --ts-focus: var(--ox-blue);
+  --ts-ok: var(--ox-green);
+  --ts-ok-bg: var(--ox-green-tint);
+  --ts-warn: var(--ox-amber);
+  --ts-warn-bg: var(--ox-amber-tint);
+  --ts-danger: var(--ox-red);
+  --ts-danger-bg: var(--ox-red-tint);
+  --ts-neutral-bg: var(--ox-grey-tint);
+  --ts-sel-bg: var(--ox-blue-wash);
+  /* Handoff §2: the primary action (Approve & activate vN…) is Aramo blue, hover #3355E0,
+     white text — the Organization context draws no terracotta. */
+  --ts-terracotta: var(--ox-blue);
+  --ts-terra-hover: #3355e0;
+  --ts-terracotta-hover: var(--ox-blue-wash);
+  --ts-role-badge-fg: var(--ox-red);
+}
+
+.ox-studio .pws-btn34--terra,
+body:has(.ox-studio .pws-root) .ts-btn--privileged {
+  color: #ffffff;
+}
+
+/* The Studio host fills the content column (the Org shell's full-width mode). */
+.ox-studio {
+  min-width: 0;
+  height: 100vh;
+  overflow: hidden;
+}

@@ -37,6 +37,8 @@ export interface ReadinessInput {
   readonly previewedRev: number | null;
   /** null = the context has no withdrawal (the check is left out). */
   readonly withdrawal: WithdrawalState | null;
+  /** TEMPLATE-STUDIO-1 S-1 — the context's unknown-variable detail (default: the platform's). */
+  readonly unknownDetail?: string;
 }
 
 export interface Readiness {
@@ -79,7 +81,7 @@ export function deriveReadiness(input: ReadinessInput): Readiness {
       label: `Unknown variable {{${k}}}`,
       ok: false,
       severity: 'fail',
-      detail: 'Not in Template variables. Remove it, or add it on the Template variables page first.',
+      detail: input.unknownDetail ?? 'Not in Template variables. Remove it, or add it on the Template variables page first.',
       fixKey: k,
     })),
     ...inactive.map<CheckItem>((k) => ({

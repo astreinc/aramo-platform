@@ -308,7 +308,7 @@ describe('Our templates (§6.8)', () => {
 });
 
 describe('Org Home document templates — create your own (no copy)', () => {
-  it('creates a blank template for a configurable type and opens its draft; there is no start-from-default option', async () => {
+  it('creates a blank template for a configurable type and opens it in the Studio (TEMPLATE-STUDIO-1 S-1); there is no start-from-default option', async () => {
     const createFn = vi.fn().mockResolvedValue({ template: { id: 'new-1' }, draft: { id: 'v1' } });
     render(
       <ToastProvider>
@@ -326,7 +326,7 @@ describe('Org Home document templates — create your own (no copy)', () => {
     fireEvent.change(screen.getByTestId('dt-create-name'), { target: { value: '  Our own RTR ' } });
     fireEvent.click(screen.getByTestId('dt-create-submit'));
     await waitFor(() => expect(createFn).toHaveBeenCalledWith({ document_type_id: RTR, name: 'Our own RTR' }));
-    expect(await screen.findByTestId('where')).toHaveTextContent('/org/document-templates/new-1/draft');
+    expect(await screen.findByTestId('where')).toHaveTextContent(/^\/org\/document-templates\/new-1$/);
   });
 
   it('read-only sessions cannot create', () => {

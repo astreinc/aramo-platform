@@ -41,6 +41,9 @@
   .ox-page { padding: 18px 16px 32px; }
 }
 
+/* TEMPLATE-STUDIO-1 S-1 — the Template Studio routes: full width, no page padding. */
+.ox-page.ox-page--studio { padding: 0; }
+
 /* Return marker — above the page title. */
 .ox-back { display: inline-block; margin-bottom: 10px; color: var(--ox-blue); font-weight: 600; font-size: 13.5px; text-decoration: none; }
 .ox-back:hover { text-decoration: underline; }

@@ -8,6 +8,7 @@ import {
   useState,
   type KeyboardEvent,
   type MouseEvent as ReactMouseEvent,
+  type ReactNode,
 } from 'react';
 import { Button, Input, Select } from '@aramo/fe-foundation';
 
@@ -102,6 +103,8 @@ export interface StudioCanvasProps {
   readonly onToggleRight: () => void;
   readonly toast: (message: string) => void;
   readonly drag: StudioDrag;
+  /** TEMPLATE-STUDIO-1 S-1 — the non-editable letterhead slot at the top of the page (organization). */
+  readonly letterhead?: ReactNode;
 }
 
 function rectOf(el: Element | null): DOMRect | null {
@@ -583,6 +586,7 @@ export const StudioCanvas = forwardRef<CanvasHandle, StudioCanvasProps>(function
 
       <div ref={scrollRef} className="pws-doc__scroll" onDragOver={(e) => drag.overCanvas(e)} onDrop={(e) => drag.drop(e, null)}>
         <div className="pws-page">
+          {props.letterhead}
           <label className="pws-page__title">
             <span className="pws-page__title-l">Document title</span>
             <Input

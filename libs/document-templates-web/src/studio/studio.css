@@ -2291,3 +2291,109 @@ body:has(.pws-root) .ts-cd__arrow {
 .pws-top .pws-seg__item:disabled {
   opacity: 1;
 }
+
+/* ─────────── TEMPLATE-STUDIO-1 S-1/S-2 — organization-context pieces ───────────
+ * Rendered only when the data source supplies them (sections, letterhead, scope card,
+ * variables note); the platform context never draws these classes. */
+
+/* Sections tab (directive §7.2): static cards, Insert only. */
+.pws-secs__intro {
+  margin: 4px 4px 10px;
+  color: var(--ts-muted);
+  font-size: var(--ts-fs-12);
+  line-height: 1.45;
+}
+.pws-sec {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 2px 8px;
+  margin-bottom: 6px;
+  padding: 9px 10px;
+  border: 1px solid var(--ts-rule);
+  border-radius: var(--ts-r-item);
+  background: var(--ts-surface);
+}
+.pws-sec:hover {
+  border-color: var(--ts-brand-line);
+  background: var(--ts-sel-bg);
+}
+.pws-sec__name {
+  min-width: 0;
+  font-size: var(--ts-fs-13);
+  font-weight: 600;
+}
+.pws-sec__ins {
+  grid-row: span 2;
+  align-self: start;
+}
+.pws-sec__ins:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.pws-sec__desc {
+  grid-column: 1;
+  color: var(--ts-muted);
+  font-size: var(--ts-fs-12);
+  line-height: 1.4;
+}
+.pws-sec__meta {
+  grid-column: 1 / -1;
+  color: var(--ts-faint);
+  font-size: var(--ts-fs-11-5);
+}
+
+/* The letterhead block (A1): non-editable, top of the page, removable only. */
+.pws-lh {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 0 0 18px;
+}
+.pws-lh--warn,
+.pws-lh--add {
+  padding: 8px 10px;
+  border: 1px dashed var(--ts-line-2);
+  border-radius: var(--ts-r-md);
+  background: var(--ts-surface-2);
+}
+.pws-lh__body {
+  flex: 1;
+  min-width: 0;
+}
+.pws-lh__body .dt-letterhead {
+  margin: 0;
+}
+.pws-lh--warn {
+  border-color: var(--ts-alert-warn-line);
+  background: var(--ts-alert-warn-bg);
+  color: var(--ts-alert-warn-ink);
+  font-size: var(--ts-fs-12-5);
+}
+.pws-lh--add {
+  justify-content: space-between;
+  color: var(--ts-muted);
+  font-size: var(--ts-fs-12-5);
+}
+.pws-lh__acts {
+  display: inline-flex;
+  flex: none;
+  gap: 6px;
+}
+
+/* Variables footnote + the Properties Scope card. */
+.pws-vars__note {
+  margin: 10px 2px 0;
+  color: var(--ts-faint);
+  font-size: var(--ts-fs-11-5);
+  line-height: 1.45;
+}
+.pws-scope {
+  margin-top: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--ts-line);
+  border-radius: var(--ts-r-md);
+  background: var(--ts-surface-2);
+  color: var(--ts-ink-2);
+  font-size: var(--ts-fs-12-5);
+  line-height: 1.45;
+}

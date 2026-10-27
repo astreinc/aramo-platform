@@ -23,7 +23,7 @@ import {
 // A new template owned by this organization, for a document type that can be configured,
 // starting from a BLANK draft. There is deliberately no "start from an Aramo default"
 // option: the organization's own template is its own work (no copy, no link, no
-// "new Aramo version" prompts). The draft opens in the editor; approving it (after a
+// "new Aramo version" prompts). The draft opens in the Template Studio; approving it (after a
 // preview) makes it the template in use for its document type.
 // ORG-UX-1 §4.1 — creating is authoring (document_template:author or :manage); approving
 // stays manage-only.
@@ -80,7 +80,7 @@ export function CreateOwnTemplate({
     setError('');
     try {
       const { template } = await createFn({ document_type_id: typeId, name: trimmed });
-      navigate(routes.draft(template.id));
+      navigate(routes.detail(template.id));
     } catch (err) {
       setError(safeErrorMessage(err, 'Could not create the template.'));
       setSaving(false);
@@ -112,11 +112,11 @@ export function CreateOwnTemplate({
             data-testid="dt-create-name"
           />
         </FormField>
-        <p className="org-muted">The template starts blank. Insert fields from the Aramo field list in the editor.</p>
+        <p className="org-muted">The template starts blank. Insert fields from the Aramo field list in the Template Studio.</p>
         <div className="org-dt-form__actions">
           <Button unstyled className="dt-btn dt-btn--outline" type="button" onClick={() => navigate(routes.list)}>Cancel</Button>
           <Button type="submit" disabled={saving || trimmed.length === 0 || typeId === ''} data-testid="dt-create-submit">
-            Create and open the editor
+            Create and open the Studio
           </Button>
         </div>
       </form>

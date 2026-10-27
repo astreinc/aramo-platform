@@ -2,9 +2,17 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { useLocation } from 'react-router-dom';
 import { Button } from '@aramo/fe-foundation';
 
-import { SafeDoc } from '../dt-html-render';
+import { Letterhead, SafeDoc, type LetterheadInfo } from '../dt-html-render';
 import { bindingMapFrom } from '../dt-ui';
-import { createStudioCodec, studioPlainText } from '../studio-codec';
+import {
+  STUDIO_LETTERHEAD_KIND,
+  createStudioCodec,
+  studioBlocksFromHtml,
+  studioLetterheadState,
+  studioPlainText,
+  studioVariableKeys,
+  type StudioLetterheadState,
+} from '../studio-codec';
 
 import {
   DEFAULT_STUDIO_CONTENT_CODEC,
@@ -25,10 +33,10 @@ import { appendVariable, cloneBlocks, insertBlocks, makeBlock, moveBlock, newBlo
 import { deriveReadiness } from './readiness';
 import { StudioCanvas, type CanvasHandle } from './StudioCanvas';
 import { StudioInspector, type PropertiesPatch, type RightTab } from './StudioInspector';
-import { StudioLeftPanel, type LeftTab, type VersionRowModel } from './StudioLeftPanel';
+import { StudioLeftPanel, type LeftTab, type SectionCardModel, type VersionRowModel } from './StudioLeftPanel';
 import { StudioPreview, orgNameOf, type PreviewSource } from './StudioPreview';
 import { StudioTopBar, type SaveState, type StudioMode } from './StudioTopBar';
-import { CancelWithdrawalDialog, PublishDialog, RestoreDialog, ShortcutsSheet, WithdrawDialog } from './studio-dialogs';
+import { CancelWithdrawalDialog, DiscardDialog, PublishDialog, RestoreDialog, ShortcutsSheet, WithdrawDialog } from './studio-dialogs';
 import { useStudioDoc } from './use-studio-doc';
 import { useStudioDrag, type DragPayload, type DropPos } from './use-studio-drag';
 import { VersionDiff, type DiffSide } from './VersionDiff';
@@ -99,15 +107,27 @@ export interface TemplateStudioProps {
   readonly onEntityName?: (name: string | null) => void;
   /** The host's refusal → message formatter. Default: the error's message. */
   readonly formatError?: (e: unknown, fallback: string) => string;
+  /** TEMPLATE-STUDIO-1 S-2 — host actions in the top bar (the gallery preview's Adopt). */
+  readonly actions?: ReactNode;
 }
 
-export function TemplateStudio({ context, dataSource: ds, templateId, renderAccount, onEntityName, formatError = defaultErrorMessage }: TemplateStudioProps) {
+/** TEMPLATE-STUDIO-1 S-1 (A1) — why a save is held back while letterhead node and logo disagree. */
+export const LETTERHEAD_SAVE_BLOCKED: Readonly<Record<Exclude<StudioLetterheadState, 'ok'>, string>> = {
+  node_missing:
+    'Can’t save yet: the tenant logo was taken out of this content, but the draft still holds it. Put the logo back, or remove it from the letterhead.',
+  asset_missing:
+    'Can’t save yet: this content has a letterhead logo that isn’t captured for this draft. Add the tenant logo, or take the letterhead out.',
+};
+
+export function TemplateStudio({ context, dataSource: ds, templateId, renderAccount, onEntityName, formatError = defaultErrorMessage, actions }: TemplateStudioProps) {
   // canManage = may edit the draft (the platform's :manage); approval is its own capability.
   const { canEdit: canManage, canApprove } = ds.capabilities;
   const copy = ds.copy;
   const content = ds.content ?? DEFAULT_STUDIO_CONTENT_CODEC;
   const templateErrorMessage = formatError;
   const hasWithdrawal = ds.withdraw !== undefined;
+  const showVersions = ds.capabilities.versions !== false;
+  const lhApi = ds.letterhead;
   const versionPill = (v: TemplateVersion) => (v.status === 'ACTIVE' ? copy.versionActive : copy.versionRetired);
   const location = useLocation();
   const [detail, setDetail] = useState<TemplateDetail | null>(null);
@@ -153,6 +173,12 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
   const [publishOpen, setPublishOpen] = useState(false);
   const [withdrawOpen, setWithdrawOpen] = useState(false);
   const [cancelWdOpen, setCancelWdOpen] = useState(false);
+  const [discardOpen, setDiscardOpen] = useState(false);
+  const [tenantLogo, setTenantLogo] = useState<{ readonly available: boolean; readonly tenant_name: string } | null>(null);
+  // S-2 — the read-only Preview's server render of the current version (previewCurrent).
+  const [readerPreview, setReaderPreview] = useState<SamplePreview | null>(null);
+  const [readerError, setReaderError] = useState<string | null>(null);
+  const [readerLoading, setReaderLoading] = useState(false);
   const [restoreOpen, setRestoreOpen] = useState(false);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [compare, setCompare] = useState<{ left: string; right: string; changesOnly: boolean } | null>(null);
@@ -205,6 +231,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
         const [d, cat] = await Promise.all([ds.load(templateId), ds.catalog(templateId)]);
         if (!live) return;
         setCatalog(buildCatalog(cat.variables, cat.bindings));
+        setTenantLogo(cat.tenantLogo ?? null);
         setDocTypeName(cat.documentTypes?.find((t) => t.id === d.document_type_id)?.name ?? d.document_type_id);
         setDetail(d);
         initDoc(d);
@@ -260,8 +287,9 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
         savedRev,
         previewedRev,
         withdrawal: hasWithdrawal ? withdrawal : null,
+        unknownDetail: copy.unknownVariableDetail,
       }),
-    [doc, catalog, dirty, savedRev, previewedRev, withdrawal, hasWithdrawal],
+    [doc, catalog, dirty, savedRev, previewedRev, withdrawal, hasWithdrawal, copy.unknownVariableDetail],
   );
   const editable = canManage && mode === 'edit';
   const wide = width >= WIDE_BP;
@@ -271,6 +299,14 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
   const published = detail !== null && detail.status === 'ACTIVE' && detail.current_version !== null;
   const canWithdraw = ds.capabilities.canWithdraw && ds.withdraw !== undefined && withdrawal === 'NONE' && published;
   const canCancelWithdrawal = ds.capabilities.canWithdraw && ds.cancelWithdrawal !== undefined && withdrawal === 'PENDING';
+  const canDiscard = canManage && ds.discardDraft !== undefined && draft !== null;
+  // S-1 (A1) — the server-owned logo reference the letterhead node must agree with: the
+  // open draft's, or (no draft yet) the active version's, which POST …/:id/draft copies.
+  const logoRef = draft !== null ? (draft.logo ?? null) : (current?.logo ?? null);
+  const logoVersionId = draft?.id ?? current?.id ?? null;
+  const lhState: StudioLetterheadState = lhApi !== undefined ? studioLetterheadState(doc.letterhead ? [doc.letterhead] : [], logoRef) : 'ok';
+  const lhRef = useRef({ logoRef, enabled: lhApi !== undefined });
+  lhRef.current = { logoRef, enabled: lhApi !== undefined };
 
   // ── save (⌘S · autosave) ──────────────────────────────────────────────
   const latest = useRef({ doc, editRev });
@@ -278,12 +314,19 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
   const inflight = useRef<Promise<boolean> | null>(null);
 
   const saveDraft = useCallback(
-    (auto: boolean): Promise<boolean> => {
+    (auto: boolean, skipLetterheadCheck = false): Promise<boolean> => {
       if (!canManage) return Promise.resolve(false);
       if (inflight.current !== null) return inflight.current;
       const { doc: d, editRev: rev } = latest.current;
       const dv = draftRef.current;
       if (rev === savedEditRevRef.current && dv !== null) return Promise.resolve(true);
+      if (lhRef.current.enabled && !skipLetterheadCheck) {
+        const st = studioLetterheadState(d.letterhead ? [d.letterhead] : [], lhRef.current.logoRef);
+        if (st !== 'ok') {
+          setBanner(LETTERHEAD_SAVE_BLOCKED[st]);
+          return Promise.resolve(false);
+        }
+      }
       const field_schema = { render_schema_version: HTML_CONTENT_VERSION, title: d.title.trim(), html: content.encode(d.blocks, d.letterhead ?? null) };
       setSaving(true);
       const p = (async () => {
@@ -498,10 +541,100 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
     }
   };
 
+  // ── discard draft (organization) ─────────────────────────────────────
+  const reloadDraft = async (): Promise<void> => {
+    const d = await ds.load(templateId);
+    setDetail(d);
+    initDoc(d);
+    setPreview(null);
+    setSavedAt(null);
+  };
+  const doDiscard = (): void => {
+    void runAction(async () => {
+      const dv = draftRef.current;
+      if (dv === null || ds.discardDraft === undefined) throw new Error('no draft');
+      await ds.discardDraft(dv.id);
+      setDiscardOpen(false);
+      setMode('edit');
+      setViewVersionId(null);
+      await reloadDraft();
+      toast(`Draft v${dv.version_number} discarded.`);
+    }, 'Could not discard the draft.');
+  };
+
+  // ── letterhead logo (organization, A1) ────────────────────────────────
+  // Capture / remove always act on the DRAFT through the server (which places or strips
+  // the node itself): save first (creating the draft if needed), call, then reload.
+  const logoAction = async (kind: 'capture' | 'remove'): Promise<void> => {
+    if (lhApi === undefined) return;
+    if (latest.current.editRev !== savedEditRevRef.current || draftRef.current === null) {
+      const ok = await saveDraft(true, true);
+      if (!ok) return;
+    }
+    const id = draftRef.current?.id;
+    if (id === undefined) return;
+    try {
+      if (kind === 'capture') await lhApi.capture(id);
+      else await lhApi.remove(id);
+      await reloadDraft();
+      toast(kind === 'capture' ? 'Tenant logo added to the letterhead.' : 'Logo removed from the letterhead.');
+    } catch (e) {
+      setBanner(templateErrorMessage(e, kind === 'capture' ? 'Could not add the tenant logo.' : 'Could not remove the logo.'));
+    }
+  };
+
+  // ── sections (organization, directive §7.2) ───────────────────────────
+  const insertSection = (key: string): void => {
+    const sec = ds.sections?.find((x) => x.key === key);
+    if (sec === undefined || !editable) return;
+    const add = studioBlocksFromHtml(sec.html, newBlockId);
+    change((d) => ({ ...d, blocks: insertBlocks(d.blocks, add, selectedId) }));
+    toast(`Inserted ${sec.name}.`);
+  };
+
   const leave = async (go: () => void): Promise<void> => {
     if (canManage && latest.current.editRev !== savedEditRevRef.current) await saveDraft(true);
     go();
   };
+
+  // ── sections (organization, directive §7.2): the static set's cards ───
+  const sectionCards: SectionCardModel[] | undefined = useMemo(
+    () =>
+      ds.sections?.map((sec) => {
+        const keys = Array.from(new Set(studioBlocksFromHtml(sec.html, newBlockId).flatMap((b) => studioVariableKeys(b.value))));
+        return {
+          key: sec.key,
+          name: sec.name,
+          description: sec.description,
+          variables: keys.length,
+          insertable: keys.every((k) => chipInfo(catalog, k).state === 'known'),
+        };
+      }),
+    [ds.sections, catalog],
+  );
+
+  // ── read-only Preview of the current version (S-2: previewCurrent) ────
+  const loaded = detail !== null;
+  useEffect(() => {
+    if (canManage || !loaded || ds.previewCurrent === undefined) return undefined;
+    let live = true;
+    setReaderLoading(true);
+    ds.previewCurrent(templateId).then(
+      (p) => {
+        if (!live) return;
+        setReaderPreview(p);
+        setReaderLoading(false);
+      },
+      (e: unknown) => {
+        if (!live) return;
+        setReaderError(templateErrorMessage(e, 'Preview failed.'));
+        setReaderLoading(false);
+      },
+    );
+    return () => {
+      live = false;
+    };
+  }, [canManage, loaded, ds, templateId, templateErrorMessage]);
 
   // ── versions + compare ────────────────────────────────────────────────
   const pastVersions = useMemo(
@@ -568,13 +701,43 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
   const headings = doc.blocks.filter((b) => b.kind === 'h2').length;
 
   const readerSource: PreviewSource | null = (() => {
+    if (readerPreview !== null) {
+      return {
+        title: readerPreview.title,
+        html: readerPreview.html ?? '',
+        mode: 'sample',
+        version: `v${current?.version_number ?? ''}`,
+        org: readerPreview.org ?? orgNameOf(readerPreview),
+      };
+    }
+    if (ds.previewCurrent !== undefined) return null;
     const c = current !== null ? htmlContentOf(current) : null;
     return c !== null ? { title: c.title, html: c.html, mode: 'content', version: `v${current?.version_number ?? ''}`, org: '' } : null;
   })();
   const draftSource: PreviewSource | null =
     preview !== null
-      ? { title: preview.title, html: preview.html ?? '', mode: 'sample', version: `Draft · v${draft?.version_number ?? nextVersion}`, org: orgNameOf(preview) }
+      ? { title: preview.title, html: preview.html ?? '', mode: 'sample', version: `Draft · v${draft?.version_number ?? nextVersion}`, org: preview.org ?? orgNameOf(preview) }
       : null;
+  const tenantName = tenantLogo?.tenant_name ?? '';
+  const shownPreview = canManage ? preview : readerPreview;
+  const previewVersionId = canManage ? (draft?.id ?? null) : (current?.id ?? null);
+  const previewLetterhead: LetterheadInfo | null =
+    lhApi !== undefined && shownPreview?.logo != null && previewVersionId !== null
+      ? { src: lhApi.logoUrl(previewVersionId, shownPreview.logo.asset_id), tenantName }
+      : null;
+  const letterheadSlot: ReactNode =
+    lhApi === undefined || !editable ? undefined : (
+      <LetterheadSlot
+        state={lhState}
+        present={doc.letterhead != null}
+        info={{ src: logoRef !== null && logoVersionId !== null ? lhApi.logoUrl(logoVersionId, logoRef.asset_id) : null, tenantName }}
+        logoAvailable={tenantLogo?.available !== false}
+        onCapture={() => void logoAction('capture')}
+        onRemove={() => void logoAction('remove')}
+        onPutBack={() => change((d) => ({ ...d, letterhead: { id: newBlockId(), kind: STUDIO_LETTERHEAD_KIND, value: '' } }))}
+        onTakeOut={() => change((d) => ({ ...d, letterhead: null }))}
+      />
+    );
 
   return (
     <div className="pws-root" data-context={context}>
@@ -592,6 +755,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
         wide={wide}
         onOpenChecks={openChecks}
         onCompare={() => openCompare()}
+        showCompare={showVersions}
         onSave={() => void saveDraft(false)}
         dirty={dirty}
         nextVersion={nextVersion}
@@ -617,6 +781,15 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
         onToggleAutosave={() => setAutosave((a) => !a)}
         onShortcuts={() => setShortcutsOpen(true)}
         account={renderAccount?.({ notice: dirty ? "You have unsaved changes. They're saved before you sign out." : undefined, beforeLeave: leave })}
+        onDiscard={
+          canDiscard
+            ? () => {
+                setActionError(null);
+                setDiscardOpen(true);
+              }
+            : undefined
+        }
+        actions={actions}
       />
 
       {withdrawal === 'PENDING' ? (
@@ -675,6 +848,9 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
             }}
             onCompare={(key) => openCompare(key)}
             overlay={leftOverlay}
+            sections={sectionCards}
+            onInsertSection={insertSection}
+            showVersions={showVersions}
           />
         ) : null}
 
@@ -728,8 +904,8 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
             <section aria-label="Preview" className="pws-doc">
               <StudioPreview
                 source={canManage ? draftSource : readerSource}
-                loading={canManage && pvLoading}
-                error={canManage ? pvError : null}
+                loading={canManage ? pvLoading : readerLoading}
+                error={canManage ? pvError : readerError}
                 emptyLabel={canManage ? 'Add content to the draft, then preview it.' : 'This template has no published version yet.'}
                 templateId={detail.id}
                 map={map}
@@ -738,6 +914,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
                 zoom={zoom}
                 onZoom={setZoom}
                 blockHeights={canManage ? blockHeights : null}
+                letterhead={previewLetterhead}
               />
             </section>
           ) : (
@@ -760,6 +937,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
               onToggleRight={() => setRightOpen((o) => !o)}
               toast={toast}
               drag={drag}
+              letterhead={letterheadSlot}
             />
           )}
         </div>
@@ -778,6 +956,8 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
             withdrawalEnabled={hasWithdrawal}
             manageVariables={copy.manageVariables}
             checksNote={copy.checksNote}
+            variablesNote={copy.variablesNote}
+            scopeCard={copy.scopeCard}
             onInsert={(key) => canvasRef.current?.insertVariable(key)}
             drag={drag}
             onFix={removeVar}
@@ -813,7 +993,11 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
         error={actionError}
         onPublish={doPublish}
         copy={copy.approveDialog}
+        warningsText={copy.approveWarnings}
       />
+      {draft !== null && ds.discardDraft !== undefined ? (
+        <DiscardDialog open={discardOpen} onOpenChange={setDiscardOpen} version={draft.version_number} busy={actionBusy} error={actionError} onConfirm={doDiscard} />
+      ) : null}
       <WithdrawDialog open={withdrawOpen} onOpenChange={setWithdrawOpen} name={detail.name} busy={actionBusy} error={actionError} onWithdraw={doWithdraw} />
       <CancelWithdrawalDialog open={cancelWdOpen} onOpenChange={setCancelWdOpen} busy={actionBusy} error={actionError} onConfirm={doCancelWithdrawal} />
       {viewVersion !== null ? (
@@ -828,7 +1012,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
             change(() => ({ ...src, blocks: cloneBlocks(src.blocks) }));
             setViewVersionId(null);
             setMode('edit');
-            toast(`Draft replaced with v${viewVersion.version_number}. Save and preview before publishing.`);
+            toast(copy.restoreToast !== undefined ? copy.restoreToast(viewVersion.version_number) : `Draft replaced with v${viewVersion.version_number}. Save and preview before publishing.`);
           }}
         />
       ) : null}
@@ -853,6 +1037,77 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
           {toastMsg}
         </div>
       ) : null}
+    </div>
+  );
+}
+
+/** TEMPLATE-STUDIO-1 S-1 (A1) — the letterhead slot at the top of the page (organization). */
+function LetterheadSlot(p: {
+  readonly state: StudioLetterheadState;
+  readonly present: boolean;
+  readonly info: LetterheadInfo;
+  readonly logoAvailable: boolean;
+  readonly onCapture: () => void;
+  readonly onRemove: () => void;
+  readonly onPutBack: () => void;
+  readonly onTakeOut: () => void;
+}) {
+  if (p.state === 'node_missing') {
+    return (
+      <div className="pws-lh pws-lh--warn" role="alert" data-testid="studio-letterhead-warn">
+        <span className="pws-lh__body">The tenant logo was taken out of this content, but the draft still holds it.</span>
+        <span className="pws-lh__acts">
+          <Button unstyled className="pws-btn26" onClick={p.onPutBack}>
+            Put the logo back
+          </Button>
+          <Button unstyled className="pws-btn26" onClick={p.onRemove}>
+            Remove logo
+          </Button>
+        </span>
+      </div>
+    );
+  }
+  if (p.state === 'asset_missing') {
+    return (
+      <div className="pws-lh pws-lh--warn" role="alert" data-testid="studio-letterhead-warn">
+        <span className="pws-lh__body">This content has a letterhead logo that isn’t captured for this draft.</span>
+        <span className="pws-lh__acts">
+          <Button unstyled className="pws-btn26" disabled={!p.logoAvailable} onClick={p.onCapture}>
+            Add tenant logo
+          </Button>
+          <Button unstyled className="pws-btn26" onClick={p.onTakeOut}>
+            Take out letterhead
+          </Button>
+        </span>
+      </div>
+    );
+  }
+  if (p.present) {
+    return (
+      <div className="pws-lh" data-testid="studio-letterhead">
+        <span className="pws-lh__body">
+          <Letterhead info={p.info} variant="editor" />
+        </span>
+        <span className="pws-lh__acts">
+          <Button unstyled className="pws-btn26" onClick={p.onRemove}>
+            Remove logo
+          </Button>
+        </span>
+      </div>
+    );
+  }
+  return (
+    <div className="pws-lh pws-lh--add" data-testid="studio-letterhead-add">
+      <span>No letterhead logo.</span>
+      <Button
+        unstyled
+        className="pws-btn26"
+        disabled={!p.logoAvailable}
+        title={p.logoAvailable ? 'Place the organization profile logo at the top of the document' : 'Add a logo to your organization profile first'}
+        onClick={p.onCapture}
+      >
+        + Tenant logo
+      </Button>
     </div>
   );
 }

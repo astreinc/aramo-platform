@@ -8,6 +8,9 @@ import type { StudioDrag } from './use-studio-drag';
 
 // PLATFORM-UX-1 F-9 (handoff §10.5) — the left panel: Outline · Sections · Versions.
 // Sections is the designed EMPTY state (directive R-13: no section-library storage).
+// TEMPLATE-STUDIO-1 S-1 (directive §7.2) — the organization context lists its static
+// section set instead (Insert only; no usage counts, no shared store). S-2 — the tenant
+// preview of an Aramo default has no Versions tab (ADR-0034 D3).
 
 export type LeftTab = 'outline' | 'sections' | 'versions';
 
@@ -34,6 +37,20 @@ export interface StudioLeftPanelProps {
   readonly onView: (key: string) => void;
   readonly onCompare: (key: string) => void;
   readonly overlay: boolean;
+  /** TEMPLATE-STUDIO-1 — the static section set (absent: the empty state). */
+  readonly sections?: readonly SectionCardModel[];
+  readonly onInsertSection?: (key: string) => void;
+  /** Show the Versions tab (default true). */
+  readonly showVersions?: boolean;
+}
+
+export interface SectionCardModel {
+  readonly key: string;
+  readonly name: string;
+  readonly description: string;
+  readonly variables: number;
+  /** Every variable it uses is bindable for this template. */
+  readonly insertable: boolean;
 }
 
 const TABS: ReadonlyArray<[LeftTab, string]> = [
@@ -55,7 +72,7 @@ export function StudioLeftPanel(props: StudioLeftPanelProps) {
     <aside aria-label="Template structure" className={`pws-left${props.overlay ? ' pws-left--overlay' : ''}`}>
       <div className="pws-panel-tabs">
         <div role="tablist" aria-label="Structure" className="pws-seg pws-seg--fill">
-          {TABS.map(([k, l]) => (
+          {TABS.filter(([k]) => k !== 'versions' || props.showVersions !== false).map(([k, l]) => (
             <Button key={k} unstyled role="tab" aria-selected={tab === k} className={`pws-seg__item${tab === k ? ' pws-seg__item--on' : ''}`} onClick={() => props.onTab(k)}>
               {l}
             </Button>
@@ -96,10 +113,34 @@ export function StudioLeftPanel(props: StudioLeftPanelProps) {
             <div className="pws-outline__foot">Drag rows to reorder blocks.</div>
           </>
         ) : null}
-        {tab === 'sections' ? (
+        {tab === 'sections' && props.sections === undefined ? (
           <EmptyState title="No sections yet" body="Reusable sections appear here once a shared section library is available. Inserted content becomes part of this draft." />
         ) : null}
-        {tab === 'versions' ? (
+        {tab === 'sections' && props.sections !== undefined ? (
+          <div className="pws-secs">
+            <p className="pws-secs__intro">Click Insert to add a section after the selected block. Inserted content becomes part of this draft.</p>
+            {props.sections.map((s) => (
+              <div key={s.key} className="pws-sec" data-testid={`studio-section-${s.key}`}>
+                <span className="pws-sec__name">{s.name}</span>
+                {props.editable ? (
+                  <Button
+                    unstyled
+                    className="pws-btn26 pws-sec__ins"
+                    disabled={!s.insertable}
+                    title={s.insertable ? 'Insert after the selected block' : 'Uses a variable this document type can’t bind'}
+                    aria-label={`Insert ${s.name}`}
+                    onClick={() => props.onInsertSection?.(s.key)}
+                  >
+                    Insert
+                  </Button>
+                ) : null}
+                <span className="pws-sec__desc">{s.description}</span>
+                <span className="pws-sec__meta">{`${s.variables} ${s.variables === 1 ? 'variable' : 'variables'}`}</span>
+              </div>
+            ))}
+          </div>
+        ) : null}
+        {tab === 'versions' && props.showVersions !== false ? (
           <>
             {props.versions.map((v) => (
               <div key={v.key} className={`pws-vrow${v.on ? ' pws-vrow--on' : ''}`}>

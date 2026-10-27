@@ -183,6 +183,15 @@ export async function createDraftFromActive(templateId: string): Promise<Templat
   return apiClient.post<TemplateVersionView>(`${BASE}/${encodeURIComponent(templateId)}/draft`, {});
 }
 
+// TEMPLATE-STUDIO-1 S-1 — open a DRAFT with the given content (POST /:id/versions;
+// document_template:author). Used when the template has no ACTIVE version to copy from.
+export async function createTemplateVersion(
+  templateId: string,
+  input: { render_schema_version: string; field_schema: unknown },
+): Promise<TemplateVersionView> {
+  return apiClient.post<TemplateVersionView>(`${BASE}/${encodeURIComponent(templateId)}/versions`, input);
+}
+
 // Save DRAFT content (DRAFT-only; re-arms the §18 preview gate server-side).
 export async function updateDraftVersion(
   versionId: string,

@@ -142,3 +142,22 @@ export {
   type StudioCrumb,
 } from './studio/data-source';
 export { PLATFORM_STUDIO_COPY } from './studio/studio-copy';
+// TEMPLATE-STUDIO-1 S-1 (directive §3) — the organization context: the tenant template
+// data source, its copy table and the static Sections set (additive).
+export {
+  organizationStudioCopy,
+  organizationReadinessLabel,
+  ORGANIZATION_APPROVE_CONSEQUENCE,
+  ORGANIZATION_SCOPE_CARD,
+  ORGANIZATION_VARIABLES_NOTE,
+  type OrganizationStudioCopyOptions,
+} from './studio/studio-copy';
+export {
+  organizationStudioDataSource,
+  ORGANIZATION_STUDIO_SECTIONS,
+  ORGANIZATION_STUDIO_API,
+  type OrganizationStudioApi,
+  type OrganizationStudioSourceOptions,
+} from './studio/organization-source';
+export { LETTERHEAD_SAVE_BLOCKED } from './studio/TemplateStudio';
+export type { StudioSection, StudioLetterheadApi } from './studio/data-source';

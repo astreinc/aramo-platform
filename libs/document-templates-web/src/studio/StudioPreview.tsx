@@ -1,6 +1,6 @@
 import { Button, Checkbox } from '@aramo/fe-foundation';
 
-import { SafeDoc } from '../dt-html-render';
+import { Letterhead, SafeDoc, type LetterheadInfo } from '../dt-html-render';
 import type { BindingMap } from '../dt-ui';
 import { studioPlainText, studioPreviewParts } from '../studio-codec';
 
@@ -37,6 +37,8 @@ export interface StudioPreviewProps {
   readonly onZoom: (z: number) => void;
   /** The editor's block heights, measured as Preview opened (null: estimate from text). */
   readonly blockHeights?: readonly number[] | null;
+  /** TEMPLATE-STUDIO-1 S-1 — the letterhead logo drawn at the top of page 1 (organization; the render carries a logo). */
+  readonly letterhead?: LetterheadInfo | null;
 }
 
 /** The organization line of the page header: the preview's legal-name sample, if any. */
@@ -112,6 +114,7 @@ export function StudioPreview(props: StudioPreviewProps) {
                   <span className="pws-pvpage__org">{source.org}</span>
                   <span>{source.title}</span>
                 </div>
+                {i === 0 && props.letterhead != null ? <Letterhead info={props.letterhead} variant="rendered" testId="studio-preview-letterhead" /> : null}
                 {i === 0 ? <h1 className="pws-pvpage__h1">{source.title}</h1> : null}
                 <div className="pws-pvpage__body">
                   <SafeDoc html={pg.map((k) => parts[k]?.html ?? '').join('')} map={props.map} mode={source.mode} letterhead={null} />

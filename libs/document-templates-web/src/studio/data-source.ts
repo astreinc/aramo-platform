@@ -40,6 +40,11 @@ export interface StudioVersion {
   readonly created_at: string;
   readonly content_fingerprint: string | null;
   readonly previewed_fingerprint: string | null;
+  /**
+   * TEMPLATE-STUDIO-1 S-1 — the version's server-owned letterhead logo reference (A1;
+   * organization only). Absent on the platform.
+   */
+  readonly logo?: { readonly asset_id: string; readonly mime?: string } | null;
 }
 
 /** The template's own fields (no versions). */
@@ -86,6 +91,8 @@ export interface StudioCatalogData {
   readonly bindings: readonly StudioAllowedBinding[];
   /** Document type names (the Properties "Document type" fact). */
   readonly documentTypes?: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+  /** TEMPLATE-STUDIO-1 S-1 — whether the organization profile has a logo to capture (A1). */
+  readonly tenantLogo?: { readonly available: boolean; readonly tenant_name: string } | null;
 }
 
 /** The server's sample render of a draft (POST …/versions/:id/preview). */
@@ -93,6 +100,10 @@ export interface StudioSamplePreview {
   readonly title: string;
   readonly html?: string;
   readonly sample_values?: ReadonlyArray<{ readonly key: string; readonly label: string; readonly value: string }>;
+  /** TEMPLATE-STUDIO-1 S-1 — the letterhead logo the render carries (organization only). */
+  readonly logo?: { readonly asset_id: string } | null;
+  /** TEMPLATE-STUDIO-1 S-2 — the page-header organization line, when the server names it. */
+  readonly org?: string;
 }
 
 /** The body of a draft create / save. */
@@ -118,6 +129,11 @@ export interface StudioCapabilities {
   readonly productTags: boolean;
   /** Show the description property. */
   readonly description: boolean;
+  /**
+   * TEMPLATE-STUDIO-1 S-2 — show the Versions tab and Compare (default true). The tenant
+   * read-only preview of an Aramo default hides them (ADR-0034 D3: current version only).
+   */
+  readonly versions?: boolean;
 }
 
 /** The content codec: stored html ↔ the editable blocks (+ the tenant letterhead, A1). */
@@ -147,6 +163,30 @@ export const LETTERHEAD_STUDIO_CONTENT_CODEC: StudioContentCodec = {
   encode: (blocks, letterhead) => studioDocToHtml(letterhead !== null ? [letterhead, ...blocks] : blocks),
 };
 
+/**
+ * TEMPLATE-STUDIO-1 S-1 (directive §7.2) — a static section of the Sections tab: content
+ * built only from existing catalog variables. Insert adds its blocks to the draft.
+ */
+export interface StudioSection {
+  readonly key: string;
+  readonly name: string;
+  readonly description: string;
+  /** Stored rtr-html-v1 html of the section's blocks. */
+  readonly html: string;
+}
+
+/**
+ * TEMPLATE-STUDIO-1 S-1 (A1) — the tenant letterhead logo: captured from the organization
+ * profile onto the DRAFT (POST …/versions/:id/logo) and removed only through
+ * DELETE …/versions/:id/logo (the server places / strips the node). Organization only.
+ */
+export interface StudioLetterheadApi {
+  capture(versionId: string): Promise<unknown>;
+  remove(versionId: string): Promise<void>;
+  /** The logo image of a version (GET …/versions/:id/logo/content). */
+  logoUrl(versionId: string, assetId: string | null): string;
+}
+
 export interface StudioCrumb {
   readonly label: string;
   /** A link (the last linked crumb is also the narrow-width "←" target). */
@@ -159,8 +199,8 @@ export interface TemplateStudioCopy {
   readonly crumbs: readonly StudioCrumb[];
   /** The narrow-width back link ("←"). */
   readonly back: { readonly to: string; readonly label: string };
-  /** The top-bar approve button ("Publish v4…"). */
-  readonly approveButton: (next: number) => ReactNode;
+  /** The top-bar approve button ("Publish v4…"; `wide` = ≥1200px). */
+  readonly approveButton: (next: number, wide: boolean) => ReactNode;
   /** Its title while checks fail. */
   readonly approveHint: string;
   /** The readiness pill label (wide = ≥1200px). */
@@ -184,6 +224,17 @@ export interface TemplateStudioCopy {
   readonly viewOnly: ReactNode;
   /** The Variables tab's catalog link (omit to hide it). */
   readonly manageVariables?: { readonly to: string; readonly label: string };
+  // ── TEMPLATE-STUDIO-1 S-1 (organization) — optional; the platform keeps its built-in copy.
+  /** The Variables tab footnote. */
+  readonly variablesNote?: string;
+  /** The Properties tab's Scope card. */
+  readonly scopeCard?: ReactNode;
+  /** The publish dialog's inactive-variable warning ("…will be approved as is"). */
+  readonly approveWarnings?: (n: number) => string;
+  /** The toast after "Restore into draft". */
+  readonly restoreToast?: (n: number) => string;
+  /** The Checks detail of an unknown variable. */
+  readonly unknownVariableDetail?: string;
 }
 
 export interface TemplateStudioDataSource {
@@ -199,6 +250,16 @@ export interface TemplateStudioDataSource {
   updateProperties?(templateId: string, patch: StudioPropertiesPatch): Promise<StudioTemplateInfo>;
   withdraw?(templateId: string, body: { notice_days: number; reason: string | null }): Promise<StudioTemplateInfo>;
   cancelWithdrawal?(templateId: string): Promise<unknown>;
+  /**
+   * TEMPLATE-STUDIO-1 S-2 — the read-only Preview's server render of the CURRENT version
+   * (the tenant's branded preview of an Aramo default). Without it a read-only viewer sees
+   * the current version's stored content.
+   */
+  previewCurrent?(templateId: string): Promise<StudioSamplePreview>;
+  /** TEMPLATE-STUDIO-1 S-1 — the tenant letterhead logo (organization only). */
+  readonly letterhead?: StudioLetterheadApi;
+  /** TEMPLATE-STUDIO-1 S-1 — the Sections tab's static set (omit: the empty state, R-13). */
+  readonly sections?: readonly StudioSection[];
   readonly capabilities: StudioCapabilities;
   readonly copy: TemplateStudioCopy;
   /** Default: DEFAULT_STUDIO_CONTENT_CODEC. */

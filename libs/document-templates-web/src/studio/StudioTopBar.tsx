@@ -44,6 +44,13 @@ export interface StudioTopBarProps {
   readonly onShortcuts: () => void;
   /** The host's account menu (platform: AccountMenu). */
   readonly account?: ReactNode;
+  // ── TEMPLATE-STUDIO-1 S-1/S-2 (optional; absent on the platform) ──
+  /** Show Compare (default true; hidden in the tenant preview of an Aramo default). */
+  readonly showCompare?: boolean;
+  /** Discard the open draft (organization): a ⋯ menu item. */
+  readonly onDiscard?: () => void;
+  /** Host actions before the ⋯ menu (the gallery preview's Adopt). */
+  readonly actions?: ReactNode;
 }
 
 export function StudioTopBar(p: StudioTopBarProps) {
@@ -138,9 +145,11 @@ export function StudioTopBar(p: StudioTopBarProps) {
           ) : null}
           {p.copy.readinessLabel(r, p.wide)}
         </Button>
-        <Button unstyled className="pws-btn34" title="Compare versions" aria-label={p.wide ? undefined : 'Compare versions'} onClick={p.onCompare}>
-          {p.wide ? 'Compare' : '⇄'}
-        </Button>
+        {p.showCompare !== false ? (
+          <Button unstyled className="pws-btn34" title="Compare versions" aria-label={p.wide ? undefined : 'Compare versions'} onClick={p.onCompare}>
+            {p.wide ? 'Compare' : '⇄'}
+          </Button>
+        ) : null}
         {p.canEdit ? (
           <Button unstyled className="pws-btn34" title="Save draft (⌘S)" disabled={!p.dirty} onClick={p.onSave}>
             {p.wide ? 'Save draft' : 'Save'}
@@ -154,9 +163,10 @@ export function StudioTopBar(p: StudioTopBarProps) {
             aria-disabled={!r.ready}
             onClick={p.onPublish}
           >
-            {p.copy.approveButton(p.nextVersion)}
+            {p.copy.approveButton(p.nextVersion, p.wide)}
           </Button>
         ) : null}
+        {p.actions}
         <div className="pws-more" ref={wrap}>
           <Button ref={trigger} unstyled className="pws-more__btn" aria-label="More actions" aria-haspopup="menu" aria-expanded={more} onClick={() => setMore((m) => !m)}>
             ⋯
@@ -171,6 +181,11 @@ export function StudioTopBar(p: StudioTopBarProps) {
               {p.canCancelWithdrawal ? (
                 <Button unstyled role="menuitem" className="pws-more__item pws-more__item--strong" onClick={run(p.onCancelWithdrawal)}>
                   Cancel withdrawal…
+                </Button>
+              ) : null}
+              {p.onDiscard !== undefined ? (
+                <Button unstyled role="menuitem" className="pws-more__item pws-more__item--wd" onClick={run(p.onDiscard)}>
+                  Discard draft…
                 </Button>
               ) : null}
               {p.canEdit ? (

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Input, TextArea } from '@aramo/fe-foundation';
 
@@ -36,6 +36,9 @@ export interface StudioInspectorProps {
   /** The Variables tab's catalog link. */
   readonly manageVariables?: { readonly to: string; readonly label: string };
   readonly checksNote: string;
+  /** TEMPLATE-STUDIO-1 S-1 — the Variables footnote and the Properties Scope card (organization). */
+  readonly variablesNote?: string;
+  readonly scopeCard?: ReactNode;
   readonly onInsert: (key: string) => void;
   readonly drag: StudioDrag;
   readonly onFix: (key: string) => void;
@@ -117,7 +120,7 @@ export function StudioInspector(props: StudioInspectorProps) {
   );
 }
 
-function VariablesTab({ catalog, readiness, editable, onInsert, drag, manageVariables }: StudioInspectorProps) {
+function VariablesTab({ catalog, readiness, editable, onInsert, drag, manageVariables, variablesNote }: StudioInspectorProps) {
   const [q, setQ] = useState('');
   const [group, setGroup] = useState<string>('ALL');
   const unknown = Array.from(readiness.used.keys()).filter((k) => chipInfo(catalog, k).state === 'unknown');
@@ -199,6 +202,7 @@ function VariablesTab({ catalog, readiness, editable, onInsert, drag, manageVari
           {manageVariables.label}
         </Link>
       ) : null}
+      {variablesNote !== undefined ? <p className="pws-vars__note">{variablesNote}</p> : null}
     </>
   );
 }
@@ -304,6 +308,11 @@ function PropertiesTab(props: StudioInspectorProps) {
         <dt>Updated</dt>
         <dd>{formatDate(template.updated_at)}</dd>
       </dl>
+      {props.scopeCard !== undefined ? (
+        <div className="pws-scope" data-testid="studio-scope">
+          {props.scopeCard}
+        </div>
+      ) : null}
       {props.withdrawalEnabled ? (
         <div className="pws-wdbox">
           <div className="pws-wdbox__head">

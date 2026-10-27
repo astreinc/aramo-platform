@@ -25,6 +25,8 @@ export interface PublishDialogProps {
   readonly onPublish: () => void;
   /** The context's approve copy (TEMPLATE-STUDIO-1 S-0). */
   readonly copy: TemplateStudioCopy['approveDialog'];
+  /** TEMPLATE-STUDIO-1 S-1 — the context's inactive-variable warning line. */
+  readonly warningsText?: (n: number) => string;
 }
 
 export function publishConsequence(next: number, current: number | null): string {
@@ -64,7 +66,13 @@ export function PublishDialog(p: PublishDialogProps) {
       </div>
       {p.warnings > 0 ? (
         <div className="ts-alert ts-alert--warn pws-dlg-warn">
-          {p.warnings} warning{p.warnings > 1 ? 's' : ''} (inactive variables) will publish as is.
+          {p.warningsText !== undefined ? (
+            p.warningsText(p.warnings)
+          ) : (
+            <>
+              {p.warnings} warning{p.warnings > 1 ? 's' : ''} (inactive variables) will publish as is.
+            </>
+          )}
         </div>
       ) : null}
     </ConfirmDialog>
@@ -156,6 +164,23 @@ export function RestoreDialog(p: SimpleConfirmProps & { readonly version: number
       title={`Restore v${p.version} into the draft`}
       consequence={`Replaces the current draft content with v${p.version}. Published versions are not changed. You can still compare or undo by restoring another version.`}
       commitLabel="Replace draft"
+      onCommit={p.onConfirm}
+    />
+  );
+}
+
+/** TEMPLATE-STUDIO-1 S-1 — discard the open draft (organization; DELETE …/versions/:id). */
+export function DiscardDialog(p: SimpleConfirmProps & { readonly version: number }) {
+  return (
+    <ConfirmDialog
+      open={p.open}
+      onOpenChange={p.onOpenChange}
+      title={`Discard draft v${p.version}?`}
+      consequence="The draft and any unsaved changes are deleted. The active version is not changed and stays in use."
+      tone="privileged"
+      commitLabel="Discard draft"
+      busy={p.busy}
+      error={p.error}
       onCommit={p.onConfirm}
     />
   );
