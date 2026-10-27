@@ -7,7 +7,13 @@ import { memoryFiles, memoryKv, nodeAesGcm } from '../../../testing/fakes';
 import { createDocumentBytesStore } from '../../../features/send/documentBytes';
 import type { SenderApi } from '../../../features/send/senderApi';
 import { SendFlowController } from '../../../features/send/sendFlowController';
-import { RecipientsStep, routingFootnote } from '../RecipientsStep';
+import {
+  ALREADY_RECIPIENT,
+  RECIPIENTS_FULL,
+  RecipientsStep,
+  assignToMe,
+  routingFootnote,
+} from '../RecipientsStep';
 import { sentToast } from '../../../features/send/sendCopy';
 
 // The contacts sheet talks to the server; it is covered by its own tests.
@@ -26,9 +32,17 @@ function controller() {
   });
 }
 
-function Harness({ c }: { readonly c: SendFlowController }) {
+const ME = { name: 'Priya Nair', email: 'priya@northwind.example' };
+
+function Harness({
+  c,
+  me = null,
+}: {
+  readonly c: SendFlowController;
+  readonly me?: { readonly name: string; readonly email: string } | null;
+}) {
   const state = useSyncExternalStore(c.subscribe, () => c.snapshot);
-  return <RecipientsStep controller={c} state={state} me={null} online />;
+  return <RecipientsStep controller={c} state={state} me={me} online />;
 }
 
 describe('Recipients step (handoff §4.6, directive §7 C-1 / C-11)', () => {
@@ -72,5 +86,43 @@ describe('Recipients step (handoff §4.6, directive §7 C-1 / C-11)', () => {
   it('confirms the send with the signer count', () => {
     expect(sentToast(1)).toBe('Sent to 1 signer');
     expect(sentToast(3)).toBe('Sent to 3 signers');
+  });
+});
+
+describe('Assign to me (M-A4 §6.1)', () => {
+  it('adds the signed-in user as a signer', async () => {
+    const c = controller();
+    await c.open();
+    render(<Harness c={c} me={ME} />);
+    fireEvent.press(screen.getByTestId('assign-to-me'));
+    expect(c.snapshot.draft!.payload.recipients.map((r) => [r.name, r.email])).toEqual([
+      ['Priya Nair', 'priya@northwind.example'],
+    ]);
+    expect(screen.getByText('Priya Nair')).toBeTruthy();
+  });
+
+  it('refuses a duplicate with the same email check as other recipients (case-insensitive)', async () => {
+    const c = controller();
+    await c.open();
+    c.addRecipient({ name: 'Priya', email: 'PRIYA@northwind.example' });
+    render(<Harness c={c} me={ME} />);
+    fireEvent.press(screen.getByTestId('assign-to-me'));
+    expect(c.snapshot.draft!.payload.recipients).toHaveLength(1);
+    expect(screen.getByText(ALREADY_RECIPIENT)).toBeTruthy();
+  });
+
+  it('refuses when the envelope is full', async () => {
+    const c = controller();
+    await c.open();
+    for (let i = 0; i < 10; i += 1) c.addRecipient({ name: `P${i}`, email: `p${i}@example.com` });
+    expect(assignToMe(c, ME)).toBe(RECIPIENTS_FULL);
+    expect(c.snapshot.draft!.payload.recipients).toHaveLength(10);
+  });
+
+  it('is not shown without a signed-in user email', async () => {
+    const c = controller();
+    await c.open();
+    render(<Harness c={c} />);
+    expect(screen.queryByTestId('assign-to-me')).toBeNull();
   });
 });

@@ -3,7 +3,10 @@
 //     recipient auth);
 //   - routing PARALLEL or SEQUENTIAL (Multi-Signer, C-1), with reorder for sequential
 //     (list position is the signing order);
-//   - × removes the recipient and their fields; Add recipient opens the contacts sheet.
+//   - × removes the recipient and their fields; Add recipient opens the contacts sheet;
+//   - **Assign to me** (M-A4 §6.1; handoff §2A step 2) adds the signed-in user as a
+//     signer, refusing a duplicate with the same email check every recipient goes through
+//     (SendFlowController.addRecipient).
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 
@@ -28,6 +31,18 @@ export function routingFootnote(mode: RoutingMode): string {
     : 'Everyone signs at the same time.';
 }
 
+export const ALREADY_RECIPIENT = 'You’re already a recipient.';
+export const RECIPIENTS_FULL = `An envelope can have up to ${MAX_RECIPIENTS} signers.`;
+
+/** Add the signed-in user. Returns the message to show, or null when added. */
+export function assignToMe(
+  controller: Pick<SendFlowController, 'addRecipient'>,
+  me: { readonly name: string; readonly email: string },
+): string | null {
+  const out = controller.addRecipient({ name: me.name, email: me.email });
+  return out === 'duplicate' ? ALREADY_RECIPIENT : out === 'full' ? RECIPIENTS_FULL : null;
+}
+
 export function RecipientsStep({
   controller,
   state,
@@ -41,6 +56,7 @@ export function RecipientsStep({
 }) {
   const t = useTheme();
   const [sheet, setSheet] = useState(false);
+  const [notice, setNotice] = useState<string | null>(null);
   const p = state.draft?.payload;
   const recipients = useMemo(() => p?.recipients ?? [], [p?.recipients]);
   const mode = p?.routingMode ?? 'PARALLEL';
@@ -118,6 +134,25 @@ export function RecipientsStep({
         accessibilityHint={full ? 'An envelope can have up to 10 signers' : undefined}
         onPress={() => setSheet(true)}
       />
+      {me ? (
+        <Button
+          title="Assign to me"
+          variant="text"
+          accessibilityHint="Adds you as a signer"
+          style={styles.assign}
+          testID="assign-to-me"
+          onPress={() => setNotice(assignToMe(controller, me))}
+        />
+      ) : null}
+      {notice ? (
+        <Text
+          accessibilityRole="alert"
+          accessibilityLiveRegion="polite"
+          style={[styles.foot, { color: t.color.textSecondary, fontFamily: t.font.family }]}
+        >
+          {notice}
+        </Text>
+      ) : null}
       <Text style={[styles.foot, { color: t.color.textSecondary, fontFamily: t.font.family }]}>
         {full ? `Up to ${MAX_RECIPIENTS} signers. ` : ''}
         {routingFootnote(mode)}
@@ -141,5 +176,6 @@ const styles = StyleSheet.create({
   dot: { width: 12, height: 12, borderRadius: 6 },
   text: { flex: 1, minWidth: 0, gap: 2 },
   icon: { alignItems: 'center', justifyContent: 'center' },
+  assign: { alignSelf: 'flex-end' },
   foot: { fontSize: 13, lineHeight: 18, marginHorizontal: 4 },
 });

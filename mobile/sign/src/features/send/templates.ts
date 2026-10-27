@@ -20,6 +20,10 @@ export interface SenderTemplate {
   readonly id: string;
   readonly name: string;
   readonly documentType: string;
+  /** The template's description, when the backend returns one. */
+  readonly description: string | null;
+  /** The resolved template version, when the backend returns it. */
+  readonly versionNumber: number | null;
   /** The values the sender fills in. */
   readonly senderVariables: readonly TemplateVariable[];
 }
@@ -34,30 +38,65 @@ export function templatesAvailable(context: unknown): boolean {
   return rec(c['features'])['templates'] === true && rec(c['permissions'])['templates'] === true;
 }
 
-/** Templates the organization can start from, or null when the feature is not available. */
-export async function listTemplates(workspace: WorkspaceClient): Promise<SenderTemplate[] | null> {
+function parseTemplate(raw: unknown): SenderTemplate {
+  const t = rec(raw);
+  const vars = Array.isArray(t['variables']) ? (t['variables'] as unknown[]).map(rec) : [];
+  const description = typeof t['description'] === 'string' ? t['description'].trim() : '';
+  const version = t['version_number'];
+  return {
+    id: String(t['template_id'] ?? ''),
+    name: String(t['name'] ?? 'Template'),
+    documentType: String(rec(t['document_type'])['name'] ?? ''),
+    description: description || null,
+    versionNumber: typeof version === 'number' && Number.isFinite(version) ? version : null,
+    senderVariables: vars
+      .filter((v) => v['source'] === 'SENDER')
+      .map((v) => ({
+        key: String(v['key'] ?? ''),
+        label: String(v['label'] ?? v['key'] ?? ''),
+        source: 'SENDER' as const,
+      })),
+  };
+}
+
+/**
+ * The template library as the backend answers it (M-A4 §6.4):
+ *   - `ok`: the templates, plus the document types it reports as unavailable right now
+ *     (their reason codes, never swapped for another template);
+ *   - `unavailable`: the route refused (403/404), with the server's reason.
+ */
+export type TemplateLibrary =
+  | {
+      readonly kind: 'ok';
+      readonly items: readonly SenderTemplate[];
+      readonly unavailable: readonly { readonly documentTypeId: string; readonly reason: string }[];
+    }
+  | { readonly kind: 'unavailable'; readonly reason: string; readonly code: string };
+
+export async function loadTemplateLibrary(workspace: WorkspaceClient): Promise<TemplateLibrary> {
   try {
     const out = await workspace.call('/v1/sign/sender/templates', 'get', {});
-    return out.items.map((raw) => {
-      const t = rec(raw);
-      const vars = Array.isArray(t['variables']) ? (t['variables'] as unknown[]).map(rec) : [];
-      return {
-        id: String(t['template_id'] ?? ''),
-        name: String(t['name'] ?? 'Template'),
-        documentType: String(rec(t['document_type'])['name'] ?? ''),
-        senderVariables: vars
-          .filter((v) => v['source'] === 'SENDER')
-          .map((v) => ({
-            key: String(v['key'] ?? ''),
-            label: String(v['label'] ?? v['key'] ?? ''),
-            source: 'SENDER' as const,
-          })),
-      };
-    });
+    const unavailable = Array.isArray(out.unavailable) ? (out.unavailable as unknown[]) : [];
+    return {
+      kind: 'ok',
+      items: out.items.map(parseTemplate),
+      unavailable: unavailable.map(rec).map((u) => ({
+        documentTypeId: String(u['document_type_id'] ?? ''),
+        reason: String(u['reason'] ?? ''),
+      })),
+    };
   } catch (e) {
-    if (isApiError(e) && (e.status === 403 || e.status === 404)) return null;
+    if (isApiError(e) && (e.status === 403 || e.status === 404)) {
+      return { kind: 'unavailable', reason: e.reason, code: e.code };
+    }
     throw e;
   }
+}
+
+/** Templates the organization can start from, or null when the feature is not available. */
+export async function listTemplates(workspace: WorkspaceClient): Promise<SenderTemplate[] | null> {
+  const lib = await loadTemplateLibrary(workspace);
+  return lib.kind === 'ok' ? [...lib.items] : null;
 }
 
 /** Create a DRAFT from a template (idempotent on `idempotencyKey` for the render). */
