@@ -56,20 +56,24 @@ export interface UploadedDocument {
  * fills a field (the server refuses one, `sender_value_refused`).
  */
 export interface FieldWire {
+  /** Only on a preserved engine-type field: the stored id it is identical to. */
+  readonly id?: string;
   readonly envelope_document_id: string;
-  readonly signer_id: string;
+  /** null only on a preserved, unassigned engine field. */
+  readonly signer_id: string | null;
   /** An authoring type, or an engine type preserved untouched from the server copy. */
   readonly field_type: string;
   readonly page_number: number;
   readonly x: number;
   readonly y: number;
-  readonly width: number;
-  readonly height: number;
+  /** null only on a preserved engine field stored without a size. */
+  readonly width: number | null;
+  readonly height: number | null;
   readonly required: boolean;
-  readonly name_mode?: 'SIGNER_PROFILE' | 'SIGNER_ENTERED';
+  readonly name_mode?: 'SIGNER_PROFILE' | 'SIGNER_ENTERED' | string | null;
   readonly label?: string | null;
   readonly group_key?: string | null;
-  readonly group_rule?: 'SELECT_ONE' | 'SELECT_ANY' | null;
+  readonly group_rule?: 'SELECT_ONE' | 'SELECT_ANY' | string | null;
   readonly min_selected?: number | null;
 }
 

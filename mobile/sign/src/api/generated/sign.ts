@@ -569,7 +569,7 @@ export interface paths {
         get?: never;
         /**
          * Replace the positioned fields of a DRAFT envelope.
-         * @description Each field box must lie inside its real source page. PDF-native geometry. DRAFT only. Requires sign:envelope:create. M-A6 §2 — field types SIGNATURE, INITIALS, SIGN_DATE, TEXT, SIGNER_NAME and CHECKBOX (400 v1_field_type otherwise). A sender never supplies a value (400 sender_value_refused). name_mode applies to SIGNER_NAME only and label, group_key, group_rule and min_selected to CHECKBOX only (400 field_config_not_applicable); other 400 reasons: name_mode_invalid, checkbox_label_invalid, checkbox_group_invalid, checkbox_group_required, checkbox_group_inconsistent, checkbox_group_min_exceeds_size. Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
+         * @description Each field box must lie inside its real source page. PDF-native geometry. DRAFT only. Requires sign:envelope:create. M-A6 §2 — field types SIGNATURE, INITIALS, SIGN_DATE, TEXT, SIGNER_NAME and CHECKBOX (400 v1_field_type otherwise), except that an engine-only field returned by the detail may be sent back unchanged with its id (SenderFieldPassthrough). A sender never supplies a value (400 sender_value_refused). name_mode applies to SIGNER_NAME only and label, group_key, group_rule and min_selected to CHECKBOX only (400 field_config_not_applicable); other 400 reasons: name_mode_invalid, checkbox_label_invalid, checkbox_group_invalid, checkbox_group_required, checkbox_group_inconsistent, checkbox_group_min_exceeds_size. Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
          */
         put: operations["replaceSenderFields"];
         post?: never;
@@ -2384,7 +2384,56 @@ export interface components {
             expires_at?: string | null;
             documents: components["schemas"]["SenderEnvelopeDocument"][];
             recipients: components["schemas"]["SenderEnvelopeRecipient"][];
-            fields: components["schemas"]["SenderFieldInput"][];
+            fields: components["schemas"]["SenderEnvelopeField"][];
+        };
+        /** @description A stored field of the envelope, as the sender detail returns it. Any of the seven engine types (fields from the service-to-service, Sign API and template paths keep theirs). PDF-native geometry - page_number 0-based, points, origin bottom-left. M-A6 §2 configuration is null where it does not apply. Other recipients' values are never returned. */
+        SenderEnvelopeField: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            envelope_document_id: string;
+            /** Format: uuid */
+            signer_id: string | null;
+            /** @enum {string} */
+            field_type: "SIGNATURE" | "INITIALS" | "SIGN_DATE" | "SIGNER_NAME" | "TEXT" | "CHECKBOX" | "ACKNOWLEDGEMENT";
+            page_number: number;
+            x: number;
+            y: number;
+            width: number | null;
+            height: number | null;
+            required: boolean;
+            filled: boolean;
+            /** @enum {string|null} */
+            name_mode?: "SIGNER_PROFILE" | "SIGNER_ENTERED" | null;
+            label?: string | null;
+            group_key?: string | null;
+            /** @enum {string|null} */
+            group_rule?: "SELECT_ONE" | "SELECT_ANY" | null;
+            min_selected?: number | null;
+        };
+        /** @description M-A6 §2 — an engine-only field (a type a sender cannot author, e.g. ACKNOWLEDGEMENT) sent back unchanged on the replace-all PUT. Kept as stored only when `id` names an existing field of the envelope and every other property is identical to the stored row (exactly as the detail returned it); otherwise refused with 400 v1_field_type. Omitting it removes it. */
+        SenderFieldPassthrough: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            envelope_document_id: string;
+            /** Format: uuid */
+            signer_id: string | null;
+            /** @enum {string} */
+            field_type: "SIGNATURE" | "INITIALS" | "SIGN_DATE" | "SIGNER_NAME" | "TEXT" | "CHECKBOX" | "ACKNOWLEDGEMENT";
+            page_number: number;
+            x: number;
+            y: number;
+            width: number | null;
+            height: number | null;
+            required?: boolean;
+            /** @enum {string|null} */
+            name_mode?: "SIGNER_PROFILE" | "SIGNER_ENTERED" | null;
+            label?: string | null;
+            group_key?: string | null;
+            /** @enum {string|null} */
+            group_rule?: "SELECT_ONE" | "SELECT_ANY" | null;
+            min_selected?: number | null;
         };
         /** @description PDF-native geometry - page_number 0-based, points, origin bottom-left, (x, y) the box lower-left corner. */
         SenderFieldInput: {
@@ -3852,7 +3901,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    fields: components["schemas"]["SenderFieldInput"][];
+                    fields: (components["schemas"]["SenderFieldInput"] | components["schemas"]["SenderFieldPassthrough"])[];
                 };
             };
         };

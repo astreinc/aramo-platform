@@ -55,7 +55,7 @@ describe('draft model — Name and Checkbox (M-A6 §2)', () => {
       group_rule: 'SELECT_ANY',
       min_selected: 2,
     },
-    { ...geo, field_type: 'ACKNOWLEDGEMENT', x: 300, y: 300, required: true },
+    { ...geo, id: 'f-ack', field_type: 'ACKNOWLEDGEMENT', x: 300, y: 300, required: true },
   ]);
   const { payload } = payloadFromServer(env, '"e1.3"', new Map([['d1', [PAGE]]]));
 
@@ -92,7 +92,10 @@ describe('draft model — Name and Checkbox (M-A6 §2)', () => {
       min_selected: 2,
       y: 200,
     });
+    // M-A6 §2 — a preserved field goes back with its stored id and every stored value
+    // exactly (the server keeps it only when identical to the stored row).
     expect(wire[3]).toEqual({
+      id: 'f-ack',
       envelope_document_id: 'd1',
       signer_id: 's1',
       field_type: 'ACKNOWLEDGEMENT',
@@ -102,11 +105,16 @@ describe('draft model — Name and Checkbox (M-A6 §2)', () => {
       width: 18,
       height: 18,
       required: true,
+      name_mode: null,
+      label: null,
+      group_key: null,
+      group_rule: null,
+      min_selected: null,
     });
     for (const f of wire) expect(f).not.toHaveProperty('value');
-    // Config never rides on a type it does not apply to.
-    expect(wire[3]).not.toHaveProperty('name_mode');
+    // Config never rides on an authored type it does not apply to.
     expect(wire[0]).not.toHaveProperty('label');
+    expect(wire[0]).not.toHaveProperty('id');
   });
 
   it('a Name field defaults to the signer profile on the wire; a preserved field of a removed recipient is not re-sent', () => {
@@ -122,5 +130,13 @@ describe('draft model — Name and Checkbox (M-A6 §2)', () => {
       recipients: [{ ...payload.recipients[0]!, serverId: 's9' }],
     });
     expect(gone).toEqual([]);
+  });
+
+  it('an unassigned engine field stored without a size is preserved with null signer and size', () => {
+    const e = detail([{ id: 'f-text', envelope_document_id: 'd1', signer_id: null, field_type: 'ACKNOWLEDGEMENT', page_number: 0, x: 10.123, y: 20.456, width: null, height: null, required: false }]);
+    const { payload: p } = payloadFromServer(e, '"e1.3"', new Map([['d1', [PAGE]]]));
+    expect(fieldsToWire(p)).toEqual([
+      expect.objectContaining({ id: 'f-text', signer_id: null, x: 10.123, y: 20.456, width: null, height: null, required: false }),
+    ]);
   });
 });

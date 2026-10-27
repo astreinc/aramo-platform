@@ -5,6 +5,7 @@ import { JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { REQUIRED_SCOPES_KEY, RolesGuard } from '@aramo/authorization';
 import { EntitlementGuard, REQUIRED_CAPABILITIES_KEY } from '@aramo/entitlement';
 import { EsignSenderConsumerGuard } from '@aramo/identity';
+import { SenderFieldPassthroughRefusedError } from '@aramo/sign';
 import { PDFDocument } from 'pdf-lib';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -230,6 +231,20 @@ describe('SenderEnvelopeService — authoring validation fails closed', () => {
       for (const [f, reason] of cases) {
         await expect(svc.replaceFields(AUTH, 'e1', { fields: [f] }, 'r')).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason } } });
       }
+    });
+
+    it('an engine-only type with an id is handed to the repository as an exact pass-through; the repository refusal maps to v1_field_type', async () => {
+      const { svc, repo } = await setup();
+      const ack = { id: 'f-ack', envelope_document_id: 'd1', signer_id: null, field_type: 'ACKNOWLEDGEMENT', page_number: 0, x: 10.123, y: 20.456, width: null, height: null, required: false };
+      await svc.replaceFields(AUTH, 'e1', { fields: [ack] }, 'r');
+      expect(stored(repo)[0]).toEqual({
+        passthrough_id: 'f-ack', envelope_document_id: 'd1', signer_id: null, field_type: 'ACKNOWLEDGEMENT', page_number: 0, x: 10.123, y: 20.456, width: null, height: null, required: false,
+        label: null, group_key: null, group_rule: null, min_selected: null, name_mode: null,
+      });
+      await expect(svc.replaceFields(AUTH, 'e1', { fields: [{ ...ack, value: 'true' }] }, 'r')).rejects.toMatchObject({ context: { details: { reason: 'sender_value_refused' } } });
+      await expect(svc.replaceFields(AUTH, 'e1', { fields: [{ ...ack, field_type: 'STAMP' }] }, 'r')).rejects.toMatchObject({ context: { details: { reason: 'v1_field_type' } } });
+      repo.replaceDraftFields.mockRejectedValueOnce(new SenderFieldPassthroughRefusedError(0));
+      await expect(svc.replaceFields(AUTH, 'e1', { fields: [ack] }, 'r')).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason: 'v1_field_type', index: 0 } } });
     });
 
     it('stores a label and group (rule defaults to SELECT_ANY) and refuses inconsistent groups', async () => {

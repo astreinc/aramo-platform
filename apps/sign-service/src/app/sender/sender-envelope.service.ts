@@ -27,6 +27,7 @@ import {
   type CheckboxGroupRule,
   type SenderFieldInput,
   type SignerNameMode,
+  SenderFieldPassthroughRefusedError,
 } from '@aramo/sign';
 import { SafePdfPipeline, UnsafePdfError } from '@aramo/documents-rendering';
 import { PDFDocument } from 'pdf-lib';
@@ -62,6 +63,8 @@ const GROUP_RULES = new Set<string>(CHECKBOX_GROUP_RULES);
 const MAX_LABEL = 200;
 const MAX_GROUP_KEY = 64;
 const CHECKBOX_CONFIG = ['label', 'group_key', 'group_rule', 'min_selected'] as const;
+// The seven engine field types (the S2S and Sign API paths accept all of them).
+const ENGINE_FIELD_TYPES = new Set<string>(['SIGNATURE', 'INITIALS', 'SIGN_DATE', 'SIGNER_NAME', 'TEXT', 'CHECKBOX', 'ACKNOWLEDGEMENT']);
 export const MAX_SIGNERS = 10;
 export const ROUTING_MODES = ['PARALLEL', 'SEQUENTIAL'] as const;
 const TERMINAL = new Set(['COMPLETED', 'DECLINED', 'VOIDED', 'EXPIRED']);
@@ -789,7 +792,7 @@ export class SenderEnvelopeService {
     await this.assertMayChange(auth, envelope_id, requestId);
     if (!Array.isArray(body?.fields)) throw bad(requestId, 'fields must be an array');
     if (body.fields.length > MAX_FIELDS) throw bad(requestId, `at most ${MAX_FIELDS} fields`);
-    const fields = body.fields.map((f: unknown, i: number) => {
+    const fields = body.fields.map((f: unknown, i: number): SenderFieldInput => {
       const o = (f ?? {}) as Record<string, unknown>;
       const num = (k: string): number => {
         const v = o[k];
@@ -798,6 +801,12 @@ export class SenderEnvelopeService {
       };
       const field_type = o['field_type'];
       if (typeof field_type !== 'string' || !FIELD_TYPE_SET.has(field_type)) {
+        // M-A6 §2 (coordinator ruling) — an engine-only type passes through only
+        // unchanged: it names an existing field (id) and the repository keeps it
+        // when it is identical to the stored row (refused otherwise).
+        if (typeof field_type === 'string' && ENGINE_FIELD_TYPES.has(field_type) && typeof o['id'] === 'string' && o['id'].length > 0) {
+          return passthroughField(o, field_type, i, requestId);
+        }
         throw bad(requestId, `field ${i + 1}: field type not available in this version`, { index: i, reason: 'v1_field_type', allowed: FIELD_TYPES });
       }
       if (typeof o['envelope_document_id'] !== 'string' || typeof o['signer_id'] !== 'string') throw bad(requestId, `field ${i + 1}: document and recipient are required`, { index: i });
@@ -831,15 +840,22 @@ export class SenderEnvelopeService {
       const pdf = await PDFDocument.load(bytes);
       const pages = pdf.getPages();
       for (const [i, f] of fields.entries()) {
-        if (f.envelope_document_id !== docId) continue;
+        if (f.envelope_document_id !== docId || f.passthrough_id !== undefined) continue;
         const page = pages[f.page_number];
         if (page === undefined) throw bad(requestId, `field ${i + 1}: page ${f.page_number + 1} does not exist`, { index: i });
-        if (f.x + f.width > page.getWidth() + 0.5 || f.y + f.height > page.getHeight() + 0.5) {
+        if (f.x + (f.width ?? 0) > page.getWidth() + 0.5 || f.y + (f.height ?? 0) > page.getHeight() + 0.5) {
           throw bad(requestId, `field ${i + 1}: lies outside page ${f.page_number + 1}`, { index: i });
         }
       }
     }
-    await this.repo.replaceDraftFields({ tenant_id: auth.tenant_id, envelope_id, fields, ...(expected !== undefined ? { expected_revision: expected } : {}) });
+    try {
+      await this.repo.replaceDraftFields({ tenant_id: auth.tenant_id, envelope_id, fields, ...(expected !== undefined ? { expected_revision: expected } : {}) });
+    } catch (e) {
+      if (e instanceof SenderFieldPassthroughRefusedError) {
+        throw bad(requestId, e.message, { index: e.index, reason: 'v1_field_type', allowed: FIELD_TYPES });
+      }
+      throw e;
+    }
     return this.detail(auth, envelope_id, requestId);
   }
 
@@ -1028,6 +1044,49 @@ function fieldConfig(o: Record<string, unknown>, field_type: string, i: number, 
     min_selected = m;
   }
   return { label, group_key, group_rule: rule as CheckboxGroupRule, min_selected };
+}
+
+// M-A6 §2 (coordinator ruling) — an engine-only field sent back on the replace-all
+// PUT. Its values are taken exactly as sent (no rounding; signer and size may be
+// null, as stored rows from the S2S / Sign API / template paths may have them); the
+// repository compares them with the stored row named by `id` and keeps that row
+// only when every one is identical. A sender value is still refused.
+function passthroughField(o: Record<string, unknown>, field_type: string, i: number, requestId: string): SenderFieldInput {
+  const refuse = (): AramoError => bad(requestId, `field ${i + 1}: field type not available in this version`, { index: i, reason: 'v1_field_type', allowed: FIELD_TYPES });
+  if (o['value'] !== undefined && o['value'] !== null) throw bad(requestId, `field ${i + 1}: a sender cannot fill a field value`, { index: i, field: 'value', reason: 'sender_value_refused' });
+  const numOrNull = (k: string): number | null => {
+    const v = o[k];
+    if (v === null || v === undefined) return null;
+    if (typeof v !== 'number' || !Number.isFinite(v)) throw refuse();
+    return v;
+  };
+  const strOrNull = (k: string): string | null => {
+    const v = o[k];
+    if (v === null || v === undefined) return null;
+    if (typeof v !== 'string') throw refuse();
+    return v;
+  };
+  const page_number = o['page_number'];
+  const x = o['x'];
+  const y = o['y'];
+  if (typeof o['envelope_document_id'] !== 'string' || typeof page_number !== 'number' || typeof x !== 'number' || typeof y !== 'number') throw refuse();
+  return {
+    passthrough_id: o['id'] as string,
+    envelope_document_id: o['envelope_document_id'],
+    signer_id: strOrNull('signer_id'),
+    field_type,
+    page_number,
+    x,
+    y,
+    width: numOrNull('width'),
+    height: numOrNull('height'),
+    required: o['required'] !== false,
+    label: strOrNull('label'),
+    group_key: strOrNull('group_key'),
+    group_rule: strOrNull('group_rule'),
+    min_selected: numOrNull('min_selected'),
+    name_mode: strOrNull('name_mode'),
+  };
 }
 
 // M-A6 §2.3 — every box of a check-box group belongs to one recipient and shares

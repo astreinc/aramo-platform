@@ -106,9 +106,12 @@ export function fieldsToWire(p: SendDraftPayload): FieldWire[] {
   // Engine-type fields from the server copy go back exactly as they came (their
   // recipient must still exist: the server drops the fields of removed recipients).
   const signers = new Set(p.recipients.map((r) => r.serverId).filter((x): x is string => !!x));
+  // M-A6 §2 — a preserved field carries its stored id and every stored value exactly
+  // (the server keeps it only when it is identical to the stored row).
   const preserved: FieldWire[] = (p.preservedFields ?? [])
-    .filter((f) => signers.has(f.signer_id))
+    .filter((f) => f.signer_id === null || signers.has(f.signer_id))
     .map((f) => ({
+      id: f.id,
       envelope_document_id: f.envelope_document_id,
       signer_id: f.signer_id,
       field_type: f.field_type,
@@ -118,6 +121,11 @@ export function fieldsToWire(p: SendDraftPayload): FieldWire[] {
       width: f.width,
       height: f.height,
       required: f.required,
+      name_mode: f.name_mode,
+      label: f.label,
+      group_key: f.group_key,
+      group_rule: f.group_rule,
+      min_selected: f.min_selected,
     }));
   return [...authored, ...preserved];
 }

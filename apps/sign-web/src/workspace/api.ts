@@ -109,6 +109,9 @@ export interface Recipient {
   can_remind?: boolean;
 }
 
+// M-A6 §2.1 — the types a sender authors (the server's FIELD_TYPES).
+export const SENDER_FIELD_TYPES: ReadonlySet<string> = new Set(['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT', 'SIGNER_NAME', 'CHECKBOX']);
+
 export interface EnvelopeField {
   id?: string;
   envelope_document_id: string;
@@ -449,7 +452,10 @@ export const senderApi = {
   fields: (id: string, fields: EnvelopeField[]) =>
     apiClient.put<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/fields`, {
       // M-A6 §2 — the type's configuration travels with the field; a value never does.
-      fields: fields.map(({ envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required, name_mode, label, group_key, group_rule, min_selected }) => ({
+      fields: fields.map(({ id, envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required, name_mode, label, group_key, group_rule, min_selected }) => ({
+        // An engine-only type goes back with its stored id, unchanged (the server
+        // keeps it only when identical to the stored row).
+        ...(id != null && !SENDER_FIELD_TYPES.has(field_type) ? { id } : {}),
         envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required,
         ...(name_mode != null ? { name_mode } : {}),
         ...(label != null ? { label } : {}),

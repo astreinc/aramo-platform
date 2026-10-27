@@ -2141,6 +2141,7 @@
       "SIGN_IDEMPOTENCY_TTL_MS",
       "SIGN_REMINDER_LIMITS",
       "STORAGE_ACCOUNTING_PORT",
+      "SenderFieldPassthroughRefusedError",
       "SignContactDuplicateError",
       "SignContactRepository",
       "SignIdempotencyRepository",
@@ -12409,6 +12410,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/esign-provider-errors.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/esign-sender.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

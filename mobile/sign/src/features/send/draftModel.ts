@@ -141,14 +141,18 @@ export interface ServerRecipient {
   readonly signingOrder: number | null;
 }
 export interface ServerField {
+  /** The stored field id (sent back with a preserved engine-type field, M-A6 §2). */
+  readonly id: string;
   readonly envelope_document_id: string;
-  readonly signer_id: string;
+  /** null for an unassigned engine field (S2S / Sign API). */
+  readonly signer_id: string | null;
   readonly field_type: string;
   readonly page_number: number;
   readonly x: number;
   readonly y: number;
-  readonly width: number;
-  readonly height: number;
+  /** null when the stored engine field has no size. */
+  readonly width: number | null;
+  readonly height: number | null;
   readonly required: boolean;
   /** M-A6 §2 — configuration (null where it does not apply). */
   readonly name_mode: string | null;
@@ -208,14 +212,15 @@ export function parseEnvelope(raw: unknown): ServerEnvelope {
       }))
       .sort((a, b) => (a.signingOrder ?? 0) - (b.signingOrder ?? 0)),
     fields: arr('fields').map((f) => ({
+      id: str(f['id']),
       envelope_document_id: str(f['envelope_document_id']),
-      signer_id: str(f['signer_id']),
+      signer_id: typeof f['signer_id'] === 'string' ? (f['signer_id'] as string) : null,
       field_type: str(f['field_type']),
       page_number: num(f['page_number']) ?? 0,
       x: num(f['x']) ?? 0,
       y: num(f['y']) ?? 0,
-      width: num(f['width']) ?? 0,
-      height: num(f['height']) ?? 0,
+      width: num(f['width']),
+      height: num(f['height']),
       required: f['required'] !== false,
       name_mode: typeof f['name_mode'] === 'string' ? (f['name_mode'] as string) : null,
       label: typeof f['label'] === 'string' ? (f['label'] as string) : null,
@@ -280,12 +285,12 @@ export function payloadFromServer(
       fieldsPending = true;
       return;
     }
-    const box = wireToEditor(f, page);
+    const box = wireToEditor({ x: f.x, y: f.y, width: f.width ?? 0, height: f.height ?? 0 }, page);
     fields.push({
       key: `srv-${i}`,
       docKey: keyOf(f.envelope_document_id),
       page: f.page_number,
-      recipientKey: keyOf(f.signer_id),
+      recipientKey: keyOf(f.signer_id ?? ''),
       type: f.field_type,
       x: box.x,
       y: box.y,

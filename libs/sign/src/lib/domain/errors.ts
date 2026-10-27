@@ -79,6 +79,17 @@ export class SignatureFieldIncompleteError extends Error {
   }
 }
 
+// M-A6 §2 (coordinator ruling) — an engine-only field type (one a sender cannot
+// author, e.g. ACKNOWLEDGEMENT) sent on the replace-all field PUT is kept only when
+// it names an existing field of the envelope and is identical to the stored row.
+// `index` is the position of the offending item in the request.
+export class SenderFieldPassthroughRefusedError extends Error {
+  constructor(public readonly index: number) {
+    super(`field ${index + 1}: field type not available in this version`);
+    this.name = 'SenderFieldPassthroughRefusedError';
+  }
+}
+
 // M-A6 §2.2/§2.3 — a signer's fill value refused (VALIDATION_ERROR 400 at the
 // HTTP boundary). Stable reasons: signer_profile_name_server_filled (a
 // SIGNER_PROFILE name is filled by the server, never by a client) and

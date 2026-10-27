@@ -119,6 +119,7 @@ export {
   DisclosureNotAcceptedError,
   SignatureFieldIncompleteError,
   SignatureFieldValueRefusedError,
+  SenderFieldPassthroughRefusedError,
   EsignIdempotencyConflictError,
   EnvelopeAmbiguousError,
   ReminderNotAllowedError,

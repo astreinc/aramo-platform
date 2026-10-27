@@ -48,7 +48,14 @@ interface EdField extends FieldConfig {
   w: number;
   h: number;
   required: boolean;
+  // M-A6 §2 — a stored field of a type the sender cannot author (e.g.
+  // ACKNOWLEDGEMENT, from the S2S / Sign API / template paths): kept locked and
+  // sent back exactly as stored, with its id, so the server keeps it.
+  orig?: EnvelopeField;
 }
+
+// A locked engine-only field: it can be deleted but never moved or changed.
+const isLocked = (f: EdField): boolean => f.orig !== undefined && !V1_TYPES.has(f.type);
 
 interface DocPdf {
   docId: string;
@@ -98,7 +105,7 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
           const page = byDoc.get(f.envelope_document_id)?.[f.page_number];
           if (page === undefined) return [];
           const tl = toTopLeft({ x: f.x, y: f.y, width: f.width, height: f.height }, page.height);
-          return [{ key: f.id ?? newKey(), docId: f.envelope_document_id, page: f.page_number, signerId: f.signer_id, type: f.field_type, x: tl.x, y: tl.y, w: tl.width, h: tl.height, required: f.required, ...configFromWire(f) }];
+          return [{ key: f.id ?? newKey(), docId: f.envelope_document_id, page: f.page_number, signerId: f.signer_id, type: f.field_type, x: tl.x, y: tl.y, w: tl.width, h: tl.height, required: f.required, ...configFromWire(f), ...(V1_TYPES.has(f.field_type) ? {} : { orig: f }) }];
         }),
       );
       setReady(true);
@@ -133,6 +140,7 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
     setSave('saving');
     const t = setTimeout(() => {
       const wire: EnvelopeField[] = fields.flatMap((f) => {
+        if (isLocked(f) && f.orig !== undefined) return [f.orig];
         const page = pageInfo(f.docId, f.page);
         if (page === undefined) return [];
         const b = toPdf({ x: f.x, y: f.y, width: f.w, height: f.h }, page.height);
@@ -193,12 +201,16 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
   };
 
   const update = (key: string, fn: (f: EdField) => EdField, record = true) => {
-    const next = fields.map((f) => (f.key === key ? fn(f) : f));
+    const next = fields.map((f) => (f.key === key && !isLocked(f) ? fn(f) : f));
     if (record) commit(next);
     else setFields(next);
   };
   // M-A6 §2 — inspector changes keep a check-box group consistent.
-  const configure = (key: string, patch: ConfigPatch) => commit(applyConfig(fields, key, patch));
+  const configure = (key: string, patch: ConfigPatch) => {
+    const target = fields.find((f) => f.key === key);
+    if (target === undefined || isLocked(target)) return;
+    commit(applyConfig(fields, key, patch));
+  };
   const remove = (key: string) => {
     commit(fields.filter((f) => f.key !== key));
     setSel(null);
@@ -404,6 +416,12 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
                     Page {selected.page + 1} · {Math.round(selected.w)} × {Math.round(selected.h)} pt
                   </div>
                 </div>
+                {isLocked(selected) ? (
+                  <div className="sg-muted" style={{ fontSize: 13 }} data-testid="field-locked">
+                    This field type can’t be edited here. It is kept as it is; you can delete it.
+                  </div>
+                ) : null}
+                {isLocked(selected) ? null : (<>
                 <label className="sg-field">
                   <span className="sg-label">Recipient</span>
                   <Sel value={selected.signerId} onChange={(e) => update(selected.key, (x) => ({ ...x, signerId: e.target.value }))}>
@@ -466,6 +484,7 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
                     ) : null}
                   </>
                 ) : null}
+                </>)}
                 <Btn variant="danger" size="sm" onClick={() => remove(selected.key)}>
                   Delete field
                 </Btn>
