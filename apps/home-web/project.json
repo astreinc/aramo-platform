@@ -36,6 +36,16 @@
       "options": {
         "lintFilePatterns": ["apps/home-web/src/**/*.{ts,tsx}"]
       }
+    },
+    "e2e-visual": {
+      "executor": "nx:run-commands",
+      "options": {
+        "cwd": "apps/home-web",
+        "command": "playwright test --config playwright.visual.config.ts"
+      },
+      "metadata": {
+        "description": "TEMPLATE-STUDIO-1 Org Template Studio + Template gallery visual baselines (1440 + 900), mocked tenant API. Not in CI (same as aramo-platform-web:e2e-visual, lead decision)."
+      }
     }
   }
 }
