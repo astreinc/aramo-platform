@@ -376,6 +376,10 @@ describe('TemplateStudio (:read)', () => {
     expect(screen.queryByRole('button', { name: /Publish/ })).toBeNull();
     expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled();
     expect(screen.queryByRole('textbox', { name: 'Heading' })).toBeNull();
+    // TEMPLATE-STUDIO-1 (acceptance §11 item 3): only the gallery source hides these.
+    expect(screen.getByRole('group', { name: 'Mode' })).toBeInTheDocument();
+    expect(screen.getByTitle('Publishing checks')).toBeInTheDocument();
+    expect(within(screen.getByRole('complementary', { name: 'Inspector' })).getByRole('tab', { name: /Checks/ })).toBeInTheDocument();
     expect(preview).not.toHaveBeenCalled();
   });
 });

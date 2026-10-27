@@ -81,9 +81,9 @@ describe('galleryStudioDataSource (read-only Aramo default)', () => {
     expect(previewFn).toHaveBeenCalledWith('def-rtr');
   });
 
-  it('read only: no edit / approve / withdraw / tags, Versions hidden; every write refuses', async () => {
+  it('read only: no edit / approve / withdraw / tags; Versions, mode toggle and checks hidden; every write refuses', async () => {
     const { ds } = source();
-    expect(ds.capabilities).toEqual({ canEdit: false, canApprove: false, canWithdraw: false, productTags: false, description: true, versions: false });
+    expect(ds.capabilities).toEqual({ canEdit: false, canApprove: false, canWithdraw: false, productTags: false, description: true, versions: false, modeToggle: false, checks: false });
     expect(ds.discardDraft).toBeUndefined();
     expect(ds.updateProperties).toBeUndefined();
     expect(ds.withdraw).toBeUndefined();
@@ -111,8 +111,6 @@ describe('TemplateStudio with the gallery source', () => {
     renderStudio();
     const pages = await screen.findByRole('region', { name: 'Preview pages' });
     await waitFor(() => expect(pages).toHaveTextContent('Represented by Acme Staffing for Amina Diallo.'));
-    expect(screen.getByRole('button', { name: 'Preview' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled();
     expect(screen.queryByRole('button', { name: /Save/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /Approve|Publish/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /Compare/ })).toBeNull();
@@ -123,6 +121,29 @@ describe('TemplateStudio with the gallery source', () => {
     // The read-only bar and the gallery crumb.
     expect(screen.getByText(/Aramo default\./)).toBeInTheDocument();
     expect(screen.getByRole('link', { name: 'Template gallery' })).toHaveAttribute('href', '/org/document-templates/gallery');
+  });
+
+  it('acceptance §11 item 3: no Edit | Preview toggle, readiness pill or Checks tab (never editable)', async () => {
+    renderStudio();
+    await screen.findByRole('region', { name: 'Preview pages' });
+    expect(screen.queryByRole('group', { name: 'Mode' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Edit' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Preview' })).toBeNull();
+    expect(screen.queryByTitle('Publishing checks')).toBeNull();
+    expect(screen.queryByText(/before approval|ready to approve/i)).toBeNull();
+    const inspector = screen.getByRole('complementary', { name: 'Inspector' });
+    expect(within(inspector).queryByRole('tab', { name: /Checks/ })).toBeNull();
+    expect(within(inspector).getByRole('tab', { name: 'Variables' })).toBeInTheDocument();
+    expect(within(inspector).getByRole('tab', { name: 'Properties' })).toBeInTheDocument();
+  });
+
+  it('a variable card without Insert takes the wrapping read-only layout (label and key never overlap)', async () => {
+    renderStudio();
+    await screen.findByRole('region', { name: 'Preview pages' });
+    const key = await screen.findByText('talent.full_name', { selector: '.pws-vcard__key' });
+    const card = key.closest('.pws-vcard');
+    expect(card).toHaveClass('pws-vcard--ro');
+    expect(within(card as HTMLElement).queryByRole('button', { name: /Insert/ })).toBeNull();
   });
 
   it('a preview refusal shows in the Preview', async () => {

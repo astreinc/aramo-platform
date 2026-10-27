@@ -131,6 +131,10 @@ describe('Org Studio — role states (ORG-UX-1 §4.1; directive §1.6)', () => {
     expect(within(crumbs).getByRole('link', { name: 'Our templates' })).toHaveAttribute('href', '/org/document-templates');
     expect(within(crumbs).getByText('Our RTR')).toHaveAttribute('aria-current', 'page');
     expect(screen.getByRole('button', { name: /1 issue before approval/ })).toBeInTheDocument();
+    // TEMPLATE-STUDIO-1 (acceptance §11 item 3): only the gallery source hides these.
+    expect(screen.getByRole('group', { name: 'Mode' })).toBeInTheDocument();
+    expect(screen.getByTitle('Publishing checks')).toBeInTheDocument();
+    expect(within(screen.getByRole('complementary', { name: 'Inspector' })).getByRole('tab', { name: /Checks/ })).toBeInTheDocument();
   });
 
   it('author: edits drafts, never sees Approve', async () => {
@@ -150,6 +154,10 @@ describe('Org Studio — role states (ORG-UX-1 §4.1; directive §1.6)', () => {
     expect(screen.queryByRole('button', { name: 'Save draft' })).toBeNull();
     expect(screen.queryByRole('button', { name: /Approve/ })).toBeNull();
     expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled();
+    // TEMPLATE-STUDIO-1 (acceptance §11 item 3): only the gallery source hides these.
+    expect(screen.getByRole('group', { name: 'Mode' })).toBeInTheDocument();
+    expect(screen.getByTitle('Publishing checks')).toBeInTheDocument();
+    expect(within(screen.getByRole('complementary', { name: 'Inspector' })).getByRole('tab', { name: /Checks/ })).toBeInTheDocument();
   });
 });
 

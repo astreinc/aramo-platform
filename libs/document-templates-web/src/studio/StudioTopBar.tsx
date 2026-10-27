@@ -47,6 +47,10 @@ export interface StudioTopBarProps {
   // ── TEMPLATE-STUDIO-1 S-1/S-2 (optional; absent on the platform) ──
   /** Show Compare (default true; hidden in the tenant preview of an Aramo default). */
   readonly showCompare?: boolean;
+  /** Show the Edit | Preview mode toggle (default true; hidden for an Aramo default). */
+  readonly showModeToggle?: boolean;
+  /** Show the readiness pill (default true; hidden for an Aramo default). */
+  readonly showReadiness?: boolean;
   /** Discard the open draft (organization): a ⋯ menu item. */
   readonly onDiscard?: () => void;
   /** Host actions before the ⋯ menu (the gallery preview's Adopt). */
@@ -121,30 +125,34 @@ export function StudioTopBar(p: StudioTopBarProps) {
         </span>
       ) : null}
       <div className="pws-top__right">
-        <div role="group" aria-label="Mode" className="pws-seg">
-          <Button
-            unstyled
-            aria-pressed={p.mode !== 'preview'}
-            disabled={!p.canEdit}
-            className={`pws-seg__item${p.mode !== 'preview' ? ' pws-seg__item--on' : ''}`}
-            onClick={() => p.onMode('edit')}
-          >
-            Edit
+        {p.showModeToggle !== false ? (
+          <div role="group" aria-label="Mode" className="pws-seg">
+            <Button
+              unstyled
+              aria-pressed={p.mode !== 'preview'}
+              disabled={!p.canEdit}
+              className={`pws-seg__item${p.mode !== 'preview' ? ' pws-seg__item--on' : ''}`}
+              onClick={() => p.onMode('edit')}
+            >
+              Edit
+            </Button>
+            <Button unstyled aria-pressed={p.mode === 'preview'} className={`pws-seg__item${p.mode === 'preview' ? ' pws-seg__item--on' : ''}`} onClick={() => p.onMode('preview')}>
+              Preview
+            </Button>
+          </div>
+        ) : null}
+        {p.showReadiness !== false ? (
+          <Button unstyled className={`pws-ready${r.ready ? ' pws-ready--ok' : ''}`} title="Publishing checks" onClick={p.onOpenChecks}>
+            {p.wide ? (
+              <span className="pws-ready__segs" aria-hidden="true">
+                {r.items.map((i) => (
+                  <span key={i.id} className={`pws-ready__seg pws-ready__seg--${i.ok ? 'ok' : i.severity}`} />
+                ))}
+              </span>
+            ) : null}
+            {p.copy.readinessLabel(r, p.wide)}
           </Button>
-          <Button unstyled aria-pressed={p.mode === 'preview'} className={`pws-seg__item${p.mode === 'preview' ? ' pws-seg__item--on' : ''}`} onClick={() => p.onMode('preview')}>
-            Preview
-          </Button>
-        </div>
-        <Button unstyled className={`pws-ready${r.ready ? ' pws-ready--ok' : ''}`} title="Publishing checks" onClick={p.onOpenChecks}>
-          {p.wide ? (
-            <span className="pws-ready__segs" aria-hidden="true">
-              {r.items.map((i) => (
-                <span key={i.id} className={`pws-ready__seg pws-ready__seg--${i.ok ? 'ok' : i.severity}`} />
-              ))}
-            </span>
-          ) : null}
-          {p.copy.readinessLabel(r, p.wide)}
-        </Button>
+        ) : null}
         {p.showCompare !== false ? (
           <Button unstyled className="pws-btn34" title="Compare versions" aria-label={p.wide ? undefined : 'Compare versions'} onClick={p.onCompare}>
             {p.wide ? 'Compare' : '⇄'}

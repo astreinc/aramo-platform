@@ -308,13 +308,16 @@ describe('Aramo default in the Studio — read only + Adopt (TEMPLATE-STUDIO-1 S
     return fns;
   }
 
-  it('opens read only in Preview with the organization’s branding; no edit, approve, Versions or Compare', async () => {
+  it('opens read only in Preview with the organization’s branding; no edit, approve, Versions, Compare or Checks', async () => {
     const fns = renderStudio();
     const pages = await screen.findByRole('region', { name: 'Preview pages' });
     await waitFor(() => expect(pages).toHaveTextContent('Represented by Acme Staffing'));
     expect(fns.previewFn).toHaveBeenCalledWith('def-rtr');
-    expect(screen.getByRole('button', { name: 'Preview' })).toHaveAttribute('aria-pressed', 'true');
-    expect(screen.getByRole('button', { name: 'Edit' })).toBeDisabled();
+    // Acceptance §11 item 3: never editable, so no Edit | Preview toggle, readiness pill or Checks tab.
+    expect(screen.queryByRole('group', { name: 'Mode' })).toBeNull();
+    expect(screen.queryByRole('button', { name: /^(Edit|Preview)$/ })).toBeNull();
+    expect(screen.queryByTitle('Publishing checks')).toBeNull();
+    expect(screen.queryByRole('tab', { name: /Checks/ })).toBeNull();
     expect(screen.queryByRole('button', { name: /Save|Approve|Publish|Compare|Discard/ })).toBeNull();
     expect(screen.queryByRole('tab', { name: 'Versions' })).toBeNull();
   });

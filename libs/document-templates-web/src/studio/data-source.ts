@@ -134,6 +134,18 @@ export interface StudioCapabilities {
    * read-only preview of an Aramo default hides them (ADR-0034 D3: current version only).
    */
   readonly versions?: boolean;
+  /**
+   * TEMPLATE-STUDIO-1 (acceptance §11 item 3) — show the Edit | Preview mode toggle
+   * (default true). The tenant read-only preview of an Aramo default can never be edited,
+   * so it hides the toggle; a read-only view of an editable template keeps it.
+   */
+  readonly modeToggle?: boolean;
+  /**
+   * TEMPLATE-STUDIO-1 (acceptance §11 item 3) — show the publishing checks: the readiness
+   * pill and the Checks tab (default true). Hidden in the tenant read-only preview of an
+   * Aramo default, where there is no draft to approve.
+   */
+  readonly checks?: boolean;
 }
 
 /** The content codec: stored html ↔ the editable blocks (+ the tenant letterhead, A1). */

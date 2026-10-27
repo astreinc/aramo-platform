@@ -36,6 +36,8 @@ export interface StudioInspectorProps {
   /** The Variables tab's catalog link. */
   readonly manageVariables?: { readonly to: string; readonly label: string };
   readonly checksNote: string;
+  /** Show the Checks tab (default true; hidden in the read-only preview of an Aramo default). */
+  readonly showChecks?: boolean;
   /** TEMPLATE-STUDIO-1 S-1 — the Variables footnote and the Properties Scope card (organization). */
   readonly variablesNote?: string;
   readonly scopeCard?: ReactNode;
@@ -72,7 +74,9 @@ export function StudioInspector(props: StudioInspectorProps) {
               ['properties', 'Properties'],
               ['checks', 'Checks'],
             ] as const
-          ).map(([k, l]) => (
+          )
+            .filter(([k]) => k !== 'checks' || props.showChecks !== false)
+            .map(([k, l]) => (
             <Button key={k} unstyled role="tab" aria-selected={tab === k} className={`pws-seg__item${tab === k ? ' pws-seg__item--on' : ''}`} onClick={() => props.onTab(k)}>
               {l}
               {k === 'checks' && badge > 0 ? (
@@ -87,7 +91,7 @@ export function StudioInspector(props: StudioInspectorProps) {
       <div className="pws-right__body" role="tabpanel">
         {tab === 'variables' ? <VariablesTab {...props} /> : null}
         {tab === 'properties' ? <PropertiesTab {...props} /> : null}
-        {tab === 'checks' ? (
+        {tab === 'checks' && props.showChecks !== false ? (
           <>
             <div className="pws-checks__line">{checksLine(readiness)}</div>
             <ol className="pws-checks">
@@ -158,7 +162,7 @@ function VariablesTab({ catalog, readiness, editable, onInsert, drag, manageVari
             return (
               <div
                 key={v.key}
-                className="pws-vcard"
+                className={`pws-vcard${canIns ? '' : ' pws-vcard--ro'}`}
                 draggable={canIns}
                 onDragStart={(e) => drag.start(e, { kind: 'var', key: v.key })}
                 onDragEnd={drag.end}

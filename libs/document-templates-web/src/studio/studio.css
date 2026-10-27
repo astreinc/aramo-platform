@@ -1555,6 +1555,25 @@ a.pws-top__crumb:hover {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+/* TEMPLATE-STUDIO-1 (acceptance §11 item 3) — a card without Insert (read-only, Preview):
+   the label and the key share the first row while they fit; a long pair wraps the key to
+   its own line instead of overlapping the label. */
+.pws-vcard--ro {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+}
+.pws-vcard--ro .pws-vcard__label {
+  flex: 1 1 auto;
+}
+.pws-vcard--ro .pws-vcard__key {
+  min-width: 0;
+  max-width: 100%;
+  margin-left: auto;
+}
+.pws-vcard--ro .pws-vcard__meta {
+  flex-basis: 100%;
+}
 .pws-vcard__meta {
   display: flex;
   flex-wrap: wrap;
@@ -1794,6 +1813,13 @@ a.pws-top__crumb:hover {
   display: grid;
   justify-content: center;
   gap: 24px;
+}
+/* TEMPLATE-STUDIO-1 (acceptance §11 item 3) — an A4 page wider than the centre column
+   (the Org shell's nav plus both panels at 1440) is never clipped on the left: it aligns
+   to the start and the region scrolls sideways. A page that fits stays centred. The
+   platform keeps the design file's centring (its visual references encode it). */
+.pws-root:not([data-context='platform']) .pws-pv__pages {
+  justify-content: safe center;
 }
 .pws-pvpage {
   display: flex;

@@ -147,6 +147,8 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
   const templateErrorMessage = formatError;
   const hasWithdrawal = ds.withdraw !== undefined;
   const showVersions = ds.capabilities.versions !== false;
+  const showModeToggle = ds.capabilities.modeToggle !== false;
+  const showChecks = ds.capabilities.checks !== false;
   const lhApi = ds.letterhead;
   const versionPill = (v: TemplateVersion) => (v.status === 'ACTIVE' ? copy.versionActive : copy.versionRetired);
   const location = useLocation();
@@ -501,6 +503,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
 
   // ── actions ───────────────────────────────────────────────────────────
   const openChecks = (): void => {
+    if (!showChecks) return;
     setRightOpen(true);
     setRightTab('checks');
   };
@@ -795,6 +798,8 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
         onOpenChecks={openChecks}
         onCompare={() => openCompare()}
         showCompare={showVersions}
+        showModeToggle={showModeToggle}
+        showReadiness={showChecks}
         onSave={() => void saveDraft(false)}
         dirty={dirty}
         nextVersion={nextVersion}
@@ -1006,6 +1011,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
             withdrawalEnabled={hasWithdrawal}
             manageVariables={copy.manageVariables}
             checksNote={copy.checksNote}
+            showChecks={showChecks}
             variablesNote={copy.variablesNote}
             scopeCard={copy.scopeCard}
             onInsert={(key) => canvasRef.current?.insertVariable(key)}
