@@ -182,6 +182,8 @@ test.describe('unified multi-product experience on the integrated nginx bundle',
     await stubBackends(page, jar, seen);
     await page.goto('/ats/admin/settings/recruiting');
     await expect(page.getByTestId('settings-nav-organization')).toHaveAttribute('href', /\/org\/profile\?from=ats&return=%2Fats%2Fadmin%2Fsettings%2Frecruiting/);
+    // TEMPLATE-STUDIO-1 S-4 — Document templates under Organization · shared (APP HOME).
+    await expect(page.getByTestId('settings-nav-document-templates')).toHaveAttribute('href', /\/org\/document-templates\?from=ats&return=%2Fats%2Fadmin%2Fsettings%2Frecruiting/);
     await shot(page, '10-ats-settings-1920');
     await page.goto('/');
     await expect(page.getByTestId('home-tiles')).toBeVisible();

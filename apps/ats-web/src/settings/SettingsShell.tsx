@@ -33,7 +33,7 @@ import {
 //
 // D-ORG-3 (Organization Administration carve): this rail now holds ONLY what
 // the ATS product owns (teams, talent experience, email templates, recruiting,
-// document templates, import/compliance/custom fields, integrations). The
+// import/compliance/custom fields, integrations). The
 // organization-owned sections (profile, sites, domain, users, roles, security,
 // billing, audit) moved to the App Home at /org/* (libs/org-admin-web) and the
 // first rail group links out to them.
@@ -74,8 +74,8 @@ interface NavGroup {
 
 // Unified multi-product UX (accepted Settings & navigation change log A1, frozen
 // Settings prototype 2026-10-18) — group order: ORGANIZATION · SHARED (one link
-// out to Organization administration, tagged APP HOME), ATS TEAMS & ACCESS, then
-// the ATS-owned groups. Nothing organization-owned is duplicated here.
+// out to Organization administration and one to the organization's Document
+// templates, both tagged APP HOME), ATS TEAMS & ACCESS, then the ATS-owned groups. Nothing organization-owned is duplicated here.
 const SOON = { text: 'Soon', soon: true } as const;
 const NEW = { text: 'New', soon: false } as const;
 const APP_HOME = { text: 'App Home', soon: false, app: true } as const;
@@ -91,6 +91,19 @@ export const SETTINGS_NAV: readonly NavGroup[] = [
         // Resolved at render with the current page as the return context.
         to: '/org/profile',
         match: '/org',
+        status: 'live',
+        external: true,
+        badge: APP_HOME,
+      },
+      {
+        // TEMPLATE-STUDIO-1 S-4 (§1.8; Conforming Amendment #5) — organization-wide
+        // document templates live in App Home (/org/document-templates), shared by
+        // every Aramo product; linked out with the current page as the return context.
+        key: 'document-templates',
+        label: 'Document templates',
+        icon: <IconFile />,
+        to: '/org/document-templates',
+        match: '/org/document-templates',
         status: 'live',
         external: true,
         badge: APP_HOME,
@@ -150,10 +163,10 @@ export const SETTINGS_NAV: readonly NavGroup[] = [
     ],
   },
   {
-    heading: 'Documents & data',
+    // TEMPLATE-STUDIO-1 S-4 — "Documents & data" renamed DATA; Document templates
+    // moved to Organization · shared (the old route redirects to App Home).
+    heading: 'Data',
     items: [
-      // DOC-TEMPLATE-LIB-1 T-4 — managed in Org Home now; this page links there.
-      { key: 'document-templates', label: 'Document templates', icon: <IconFile />, to: '/admin/settings/document-templates', match: '/admin/settings/document-templates', status: 'live', badge: APP_HOME },
       { key: 'import', label: 'Import data', icon: <IconUpload />, to: '/admin/settings/import', match: '/admin/settings/import', status: 'live', badge: NEW },
       { key: 'compliance', label: 'Data & compliance', icon: <IconShieldCheck />, to: '/admin/settings/compliance', match: '/admin/settings/compliance', status: 'live' },
       { key: 'fields', label: 'Custom fields', icon: <IconSliders />, to: '/admin/settings/fields', match: '/admin/settings/fields', status: 'soon', badge: SOON },
