@@ -163,6 +163,15 @@ export function isCanonicalStudioHtml(html: string): boolean {
 
 /** Plain text of a block value, chips as `{{key}}`, line breaks and items as spaces. */
 export function studioPlainText(value: string): string {
+  return studioReadableText(value, (key) => ` ${variableToken(key)} `);
+}
+
+/**
+ * TEMPLATE-STUDIO-1 (handoff §3 Outline) — human-readable text of a block value: each chip
+ * renders through `chip(key)` (the Outline passes the catalog label), line breaks and list
+ * items as spaces. PRESENTATION ONLY — reads the value, never rewrites it.
+ */
+export function studioReadableText(value: string, chip: (key: string) => string): string {
   let out = '';
   const walk = (n: Node): void => {
     if (n.nodeType === Node.TEXT_NODE) {
@@ -173,7 +182,7 @@ export function studioPlainText(value: string): string {
     const e = n as Element;
     const key = e.getAttribute('data-field');
     if (key !== null) {
-      out += ` ${variableToken(key)} `;
+      out += chip(key);
       return;
     }
     if (e.tagName === 'BR') {

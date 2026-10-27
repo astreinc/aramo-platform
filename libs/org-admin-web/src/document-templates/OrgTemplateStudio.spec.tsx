@@ -137,6 +137,19 @@ describe('Org Studio — role states (ORG-UX-1 §4.1; directive §1.6)', () => {
     expect(within(screen.getByRole('complementary', { name: 'Inspector' })).getByRole('tab', { name: /Checks/ })).toBeInTheDocument();
   });
 
+  it('the Outline reads the allowed-bindings labels, never {{keys}}; saving keeps the stored HTML byte-identical', async () => {
+    const api = makeApi([DRAFT, V2, V1]);
+    renderStudio(MANAGER, api);
+    const name = await screen.findByDisplayValue('Right to Represent');
+    const rows = Array.from(document.querySelectorAll('.pws-orow__l')).map((e) => e.textContent ?? '');
+    expect(rows.join(' | ')).not.toContain('{{');
+    expect(rows.some((r) => r.includes('Talent full name'))).toBe(true);
+    fireEvent.change(name, { target: { value: 'Right to Represent (rev)' } });
+    fireEvent.click(screen.getByRole('button', { name: 'Save draft' }));
+    await waitFor(() => expect(api.updateDraft).toHaveBeenCalledTimes(1));
+    expect(JSON.stringify(api.updateDraft.mock.calls[0])).toContain(JSON.stringify(BODY).slice(1, -1));
+  });
+
   it('author: edits drafts, never sees Approve', async () => {
     renderStudio(AUTHOR, makeApi([DRAFT, V2, V1]), null);
     await screen.findByDisplayValue('Right to Represent');

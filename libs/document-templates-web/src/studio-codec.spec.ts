@@ -19,6 +19,7 @@ import {
   studioLetterheadState,
   studioPasteNodes,
   studioPlainText,
+  studioReadableText,
   studioPreviewParts,
   studioValueFromText,
   studioVariableKeys,
@@ -114,6 +115,10 @@ describe('studio codec — helpers', () => {
   it('plain text shows chips as {{key}} (outline, checks, diff)', () => {
     expect(studioPlainText('Dear <span data-field="talent.first_name"></span>,<br><b>x</b>')).toBe('Dear {{talent.first_name}} , x');
     expect(studioPlainText('<li>One</li><li>Two</li>')).toBe('One Two');
+  });
+
+  it('readable text renders chips through the supplied resolver (outline labels)', () => {
+    expect(studioReadableText('Dear <span data-field="talent.first_name"></span>,<br>x', (k) => ` <${k}> `)).toBe('Dear <talent.first_name> , x');
   });
 
   it('lists variable keys with repeats', () => {

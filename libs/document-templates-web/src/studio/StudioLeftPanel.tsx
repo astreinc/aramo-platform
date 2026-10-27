@@ -1,10 +1,11 @@
 import { Button } from '@aramo/fe-foundation';
 
-import { studioPlainText, type StudioBlock } from '../studio-codec';
+import { studioReadableText, type StudioBlock } from '../studio-codec';
 
 import { EmptyState, Pill, type PillSpec } from './primitives';
 import { KIND_LABEL } from './StudioBlockEditable';
 import type { StudioDrag } from './use-studio-drag';
+import type { VariableCatalog } from './variables';
 
 // PLATFORM-UX-1 F-9 (handoff §10.5) — the left panel: Outline · Sections · Versions.
 // Sections is the designed EMPTY state (directive R-13: no section-library storage).
@@ -27,6 +28,8 @@ export interface StudioLeftPanelProps {
   readonly tab: LeftTab;
   readonly onTab: (t: LeftTab) => void;
   readonly blocks: readonly StudioBlock[];
+  /** The Studio's loaded variable catalog — Outline rows show variable labels. */
+  readonly catalog: Pick<VariableCatalog, 'byKey'>;
   readonly headings: number;
   readonly variables: number;
   readonly selectedId: string | null;
@@ -59,10 +62,27 @@ const TABS: ReadonlyArray<[LeftTab, string]> = [
   ['versions', 'Versions'],
 ];
 
-function outlineLabel(b: StudioBlock): string {
-  const t = studioPlainText(b.value);
+const OUTLINE_MAX = 46;
+
+/**
+ * TEMPLATE-STUDIO-1 (handoff §3 "Labels are readable text") — an Outline row's label.
+ * Variables read as their catalog label (the Studio's already-loaded governed catalog:
+ * platform template-variables, org allowed-bindings, gallery preview samples — never a
+ * second label map); image variables get "▣ "; a key the catalog does not carry reads as
+ * the bare key (no braces). Stray spaces before `, . )` (and the chip padding after `(`)
+ * are removed; long labels truncate at 46 characters with "…"; an empty block reads
+ * "Empty <kind>" ("Empty paragraph"). PRESENTATION ONLY — the block value is never touched.
+ */
+export function outlineLabel(b: StudioBlock, catalog: Pick<VariableCatalog, 'byKey'>): string {
+  const t = studioReadableText(b.value, (key) => {
+    const v = catalog.byKey.get(key);
+    if (v === undefined) return ` ${key} `;
+    return ` ${v.type === 'image' ? '▣ ' : ''}${v.label} `;
+  })
+    .replace(/\s+([,.)])/g, '$1')
+    .replace(/\(\s+/g, '(');
   if (t === '') return `Empty ${KIND_LABEL[b.kind].toLowerCase()}`;
-  return t.length > 46 ? `${t.slice(0, 46)}…` : t;
+  return t.length > OUTLINE_MAX ? `${t.slice(0, OUTLINE_MAX)}…` : t;
 }
 
 export function StudioLeftPanel(props: StudioLeftPanelProps) {
@@ -103,7 +123,7 @@ export function StudioLeftPanel(props: StudioLeftPanelProps) {
                     onClick={() => props.onGo(b.id)}
                   >
                     <span className="pws-orow__n">{i + 1}</span>
-                    <span className="pws-orow__l">{outlineLabel(b)}</span>
+                    <span className="pws-orow__l">{outlineLabel(b, props.catalog)}</span>
                   </Button>
                   {d !== null && d.id === b.id && d.pos === 'after' ? <div className="pws-orow__drop pws-orow__drop--after" aria-hidden="true" /> : null}
                 </div>

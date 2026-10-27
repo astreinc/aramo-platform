@@ -7,6 +7,7 @@ import { appendVariable, deleteBlock, duplicateBlock, insertBlocks, moveBlock, r
 import { estimateBlockHeight, paginate, zoomIn, zoomOut } from './pagination';
 import { checksLine, deriveReadiness, isPreviewed, readinessLabel, type ReadinessInput } from './readiness';
 import { effectiveLine, noticeDaysValid, publishConsequence } from './studio-dialogs';
+import { outlineLabel } from './StudioLeftPanel';
 import { buildCatalog, chipInfo } from './variables';
 
 // PLATFORM-UX-1 F-9 — the Studio's pure logic: the diff algorithm (handoff §10.7), readiness
@@ -228,5 +229,43 @@ describe('withdraw + publish copy', () => {
       'v4 becomes the platform default for every tenant that uses this template. Documents already sent are not changed. v3 is marked Replaced and stays viewable.',
     );
     expect(publishConsequence(1, null)).toBe('v1 becomes the platform default for every tenant that uses this template. Documents already sent are not changed.');
+  });
+});
+
+describe('outline labels (TEMPLATE-STUDIO-1, handoff §3 — presentation only)', () => {
+  const cat = buildCatalog(
+    [
+      { key: 'talent.full_name', label: 'Full name', group_label: 'Talent', data_type: 'TEXT', sample_value: 'Amina Diallo', active: true },
+      { key: 'company.logo', label: 'Company logo', group_label: 'Company', data_type: 'IMAGE', sample_value: null, active: true },
+      { key: 'client.name', label: 'Client name', group_label: 'Client', data_type: 'TEXT', sample_value: 'Northwind', active: false },
+    ],
+    [{ key: 'talent.full_name', label: 'Full name', group: 'Talent' }],
+  );
+  const chip = (k: string) => `<span data-field="${k}"></span>`;
+
+  it('shows the catalog label, never the {{key}}, and drops stray spaces before , . )', () => {
+    const v = `I, ${chip('talent.full_name')}, authorize (${chip('client.name')}).`;
+    expect(outlineLabel(b('1', 'p', v), cat)).toBe('I, Full name, authorize (Client name).');
+  });
+
+  it('prefixes image variables with ▣ and reads an unknown key without braces', () => {
+    expect(outlineLabel(b('1', 'p', chip('company.logo')), cat)).toBe('▣ Company logo');
+    expect(outlineLabel(b('1', 'p', `Hi ${chip('offer.ghost')}.`), cat)).toBe('Hi offer.ghost.');
+  });
+
+  it('truncates at 46 characters with … and names an empty block by its kind', () => {
+    const long = `${'x'.repeat(40)} ${chip('talent.full_name')} tail`;
+    const out = outlineLabel(b('1', 'p', long), cat);
+    expect(out).toBe(`${'x'.repeat(40)} Full …`);
+    expect(out.length).toBe(47);
+    expect(outlineLabel(b('1', 'p', ''), cat)).toBe('Empty paragraph');
+    expect(outlineLabel(b('1', 'h2', ''), cat)).toBe('Empty heading');
+  });
+
+  it('never rewrites the block value', () => {
+    const v = `Dear ${chip('talent.full_name')} ,<br><b>x</b>`;
+    const block = b('1', 'p', v);
+    outlineLabel(block, cat);
+    expect(block.value).toBe(v);
   });
 });

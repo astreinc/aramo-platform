@@ -882,6 +882,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
             tab={leftTab}
             onTab={setLeftTab}
             blocks={doc.blocks}
+            catalog={catalog}
             headings={headings}
             variables={readiness.used.size}
             selectedId={selectedId}

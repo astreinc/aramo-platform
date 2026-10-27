@@ -146,6 +146,13 @@ describe('TemplateStudio with the gallery source', () => {
     expect(within(card as HTMLElement).queryByRole('button', { name: /Insert/ })).toBeNull();
   });
 
+  it('the Outline reads the preview sample labels, never {{keys}} (handoff §3)', async () => {
+    renderStudio();
+    await screen.findByRole('region', { name: 'Preview pages' });
+    const rows = Array.from(document.querySelectorAll('.pws-orow__l')).map((e) => e.textContent);
+    expect(rows).toEqual(['Authorization', 'Represented by Organization name for Full name…']);
+  });
+
   it('a preview refusal shows in the Preview', async () => {
     renderStudio(vi.fn().mockRejectedValue(new Error('Preview unavailable')));
     expect(await screen.findByRole('alert')).toHaveTextContent('Preview unavailable');

@@ -94,6 +94,7 @@ export {
   type StudioLetterheadState,
   isCanonicalStudioHtml,
   studioPlainText,
+  studioReadableText,
   studioVariableKeys,
   isStudioValueEmpty,
   removeStudioVariable,

@@ -165,6 +165,25 @@ describe('TemplateStudio (manage)', () => {
     expect(await screen.findByText('v3 published. Tenants now get this version.')).toBeInTheDocument();
   });
 
+  it('the Outline reads variables by catalog label; the saved HTML is byte-identical (presentation only)', async () => {
+    const body = '<h2>Offer for <span data-field="talent.full_name"></span></h2><p>Dear <span data-field="talent.first_name"></span>, welcome (<span data-field="offer.ghost"></span>).</p><p></p>';
+    mockApi(detail(version('d3', 3, 'DRAFT', body)));
+    const update = vi.spyOn(documentTemplatesApi, 'updateDraft').mockResolvedValue(version('d3', 3, 'DRAFT', body));
+    renderStudio(MANAGE);
+    await screen.findByRole('textbox', { name: 'Heading' });
+    const rows = Array.from(document.querySelectorAll('.pws-orow__l')).map((e) => e.textContent);
+    expect(rows).toEqual(['Offer for Full name', 'Dear First name, welcome (offer.ghost).', 'Empty paragraph']);
+    expect(document.querySelector('.pws-left')?.textContent ?? '').not.toContain('{{');
+    // The canvas chips still show the stored token; saving writes the stored HTML unchanged.
+    expect(document.querySelector('.pws-chip')?.textContent).toBe('{{talent.full_name}}');
+    const title = screen.getByDisplayValue('Offer of employment');
+    fireEvent.change(title, { target: { value: 'Offer of employment (rev)' } });
+    fireEvent.keyDown(document, { key: 's', metaKey: true });
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    const saved = update.mock.calls[0]?.[1] as { field_schema: { html: string } };
+    expect(saved.field_schema.html).toBe(body);
+  });
+
   it('removing an unknown variable from Checks clears the required failure', async () => {
     mockApi(detail(version('d3', 3, 'DRAFT', '<p>Hi <span data-field="offer.ghost"></span></p>')));
     renderStudio(MANAGE);
