@@ -768,6 +768,7 @@
       "studioPasteNodes",
       "studioPlainText",
       "studioPreviewParts",
+      "studioReadableText",
       "studioToggleMark",
       "studioValueFromText",
       "studioVariableKeys",
@@ -13464,7 +13465,7 @@
       "root": "apps/home-web",
       "sourceRoot": "apps/home-web/src",
       "tags": [],
-      "targets": ["build", "lint", "preview", "serve", "test"]
+      "targets": ["build", "e2e-visual", "lint", "preview", "serve", "test"]
     },
     {
       "name": "aramo-pact-provider",

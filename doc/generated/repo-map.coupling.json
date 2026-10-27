@@ -10066,9 +10066,24 @@
       "to": "libs/identity/src/tests/tenant-lifecycle.spec.ts"
     },
     {
+      "from": "apps/home-web/e2e/visual/org-studio-fixtures.ts",
+      "status": "unscoped",
+      "to": "apps/api/src/rtr/rtr-template-content.ts"
+    },
+    {
       "from": "apps/home-web/playwright.topology.config.ts",
       "status": "unscoped",
       "to": "doc/runbooks/RELEASE-app-home-org.md"
+    },
+    {
+      "from": "apps/home-web/playwright.visual.config.ts",
+      "status": "unscoped",
+      "to": "apps/home-web/vite.config.ts"
+    },
+    {
+      "from": "apps/home-web/playwright.visual.config.ts",
+      "status": "unscoped",
+      "to": "apps/platform-web/playwright.config.ts"
     },
     {
       "from": "apps/home-web/project.json",
