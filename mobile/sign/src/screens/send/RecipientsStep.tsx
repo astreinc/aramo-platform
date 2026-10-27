@@ -30,6 +30,7 @@ import {
 } from '../../features/send/draftModel';
 import {
   COPY_TIMING,
+  copyTimingLabel,
   copyRecipients,
   isInPerson,
   kindOf,
@@ -262,6 +263,12 @@ export function RecipientsStep({
               {emailLine ? (
                 <Text numberOfLines={1} style={{ color: t.color.textSecondary, fontSize: 14, fontFamily: t.font.family }}>
                   {emailLine}
+                </Text>
+              ) : null}
+              {copy && kinds.length === 0 ? (
+                // Without the role chips (e.g. a template-bound CC) the timing is still shown.
+                <Text numberOfLines={1} style={{ color: t.color.textSecondary, fontSize: 13, fontFamily: t.font.family }}>
+                  {`Copy timing: ${copyTimingLabel(r.copyDelivery).toLowerCase()}`}
                 </Text>
               ) : null}
             </View>

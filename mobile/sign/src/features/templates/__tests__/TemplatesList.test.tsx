@@ -3,7 +3,7 @@
 // template WITH signing roles (M-A6 §3.5) is bound role by role first.
 import { ApiError } from '../../../api/errors';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 
 import type { AppServices } from '../../../app/services';
 import { ServicesProvider } from '../../../app/ServicesContext';
@@ -53,6 +53,13 @@ const ROLE_CONTEXT = {
   user: { email: 'priya@northwind.test', display_name: 'Priya Nair' },
 };
 
+// Deterministic under a loaded runner: every async wait gets the same generous bound
+// (the library default of 1 s can lapse on a busy CI worker), and every assertion
+// after a mutation waits for it instead of assuming one act() flush settles React
+// Query's scheduled notifications.
+const WAIT = { timeout: 10_000 } as const;
+jest.setTimeout(30_000);
+
 let qc: QueryClient;
 afterEach(() => qc?.clear());
 
@@ -91,7 +98,7 @@ describe('Templates screen', () => {
   it('lists returned templates with their metadata and opens step 2 after Use', async () => {
     const call = jest.fn();
     renderList({ features: { templates: true }, permissions: { templates: true } }, call);
-    expect(await screen.findByText('Right to represent')).toBeTruthy();
+    expect(await screen.findByText('Right to represent', undefined, WAIT)).toBeTruthy();
     expect(screen.getByText('RTR · Version 4')).toBeTruthy();
     expect(screen.queryByText('Who fills each role?')).toBeNull();
     await act(async () => {
@@ -103,13 +110,13 @@ describe('Templates screen', () => {
     await act(async () => {
       fireEvent.press(screen.getByText('Use template'));
     });
-    expect(mockNavigate).toHaveBeenCalledWith('SendFlow', { envelopeId: 'env-1', step: 'recipients' });
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('SendFlow', { envelopeId: 'env-1', step: 'recipients' }), WAIT);
   });
 
   it('shows the reason when templates are not available, without calling the route', async () => {
     const call = jest.fn();
     renderList({ features: { templates: false }, permissions: { templates: true } }, call);
-    expect(await screen.findByText(FEATURE_UNAVAILABLE)).toBeTruthy();
+    expect(await screen.findByText(FEATURE_UNAVAILABLE, undefined, WAIT)).toBeTruthy();
     expect(call.mock.calls.map((c) => c[0])).toEqual(['/v1/sign/sender/context']);
   });
 
@@ -132,7 +139,7 @@ describe('Templates screen', () => {
         };
       },
     });
-    expect(await screen.findByText('Consulting · 1 signer · 1 document · 1 copy')).toBeTruthy();
+    expect(await screen.findByText('Consulting · 1 signer · 1 document · 1 copy', undefined, WAIT)).toBeTruthy();
     expect(screen.getByText('Two-party consulting agreement.')).toBeTruthy();
     await act(async () => {
       fireEvent.press(screen.getByTestId('template-0'));
@@ -145,7 +152,7 @@ describe('Templates screen', () => {
     await act(async () => {
       fireEvent.press(screen.getByTestId('role-use'));
     });
-    expect(screen.getByText('Choose a person for Consultant.')).toBeTruthy();
+    expect(await screen.findByText('Choose a person for Consultant.', undefined, WAIT)).toBeTruthy();
     expect(sent).toHaveLength(0);
     // Assign to me is offered for the SIGNER role only.
     expect(screen.queryByTestId('role-1-me')).toBeNull();
@@ -153,7 +160,7 @@ describe('Templates screen', () => {
     await act(async () => {
       fireEvent.press(screen.getByTestId('role-use'));
     });
-    expect(sent).toHaveLength(1);
+    await waitFor(() => expect(sent).toHaveLength(1), WAIT);
     expect(sent[0]).toMatchObject({
       template_id: ROLE_TEMPLATE.template_id,
       recipients: [{ role_key: 'consultant', name: 'Priya Nair', email: 'priya@northwind.test' }],
@@ -162,7 +169,7 @@ describe('Templates screen', () => {
     });
     expect(sent[0]).not.toHaveProperty('signer');
     expect(sent[0]).not.toHaveProperty('cc');
-    expect(mockNavigate).toHaveBeenCalledWith('SendFlow', { envelopeId: 'env-2', step: 'review' });
+    await waitFor(() => expect(mockNavigate).toHaveBeenCalledWith('SendFlow', { envelopeId: 'env-2', step: 'review' }), WAIT);
   });
 
   it('shows the server reason and reloads the list when the roles changed', async () => {
@@ -173,7 +180,7 @@ describe('Templates screen', () => {
         throw new ApiError({ status: 409, code: 'TEMPLATE_VERSION_NOT_ACTIVE', reason: 'template_roles_changed' });
       },
     });
-    await screen.findByText('Consulting agreement');
+    await screen.findByText('Consulting agreement', undefined, WAIT);
     await act(async () => {
       fireEvent.press(screen.getByTestId('template-0'));
     });
@@ -183,8 +190,8 @@ describe('Templates screen', () => {
     await act(async () => {
       fireEvent.press(screen.getByTestId('role-use'));
     });
-    expect(await screen.findByText(/This template changed while you were filling it in/)).toBeTruthy();
-    expect(listCalls()).toBeGreaterThan(before);
+    expect(await screen.findByText(/This template changed while you were filling it in/, undefined, WAIT)).toBeTruthy();
+    await waitFor(() => expect(listCalls()).toBeGreaterThan(before), WAIT);
     expect(mockNavigate).not.toHaveBeenCalled();
   });
 });

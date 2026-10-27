@@ -250,7 +250,13 @@ export function parseEnvelope(raw: unknown): ServerEnvelope {
         copyDelivery: asCopyDelivery(r['copy_delivery']),
         assignedToMe: r['assigned_to_me'] === true,
       }))
-      .sort((a, b) => (a.signingOrder ?? 0) - (b.signingOrder ?? 0)),
+      // Signing recipients in signing order, then copy recipients (M-A5 §1.6: a copy
+      // recipient takes no part in the order and may come back without one).
+      .sort(
+        (a, b) =>
+          Number(a.kind === 'RECEIVES_COPY') - Number(b.kind === 'RECEIVES_COPY') ||
+          (a.signingOrder ?? 0) - (b.signingOrder ?? 0),
+      ),
     fields: arr('fields').map((f) => ({
       id: str(f['id']),
       envelope_document_id: str(f['envelope_document_id']),

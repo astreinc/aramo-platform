@@ -15,6 +15,9 @@ import {
   routingFootnote,
 } from '../RecipientsStep';
 import { sentToast } from '../../../features/send/sendCopy';
+import { parseEnvelope } from '../../../features/send/draftModel';
+import { signingRecipients, type RecipientWire } from '../../../features/send/recipientRoles';
+import { syncDraft } from '../../../features/send/syncDraft';
 
 // The contacts sheet talks to the server; it is covered by its own tests.
 jest.mock('../../../features/contacts/ContactsSheet', () => ({ ContactsSheet: () => null }));
@@ -197,5 +200,71 @@ describe('Role chips Signs · In person · Copy (M-A5 §1, §2; prototype step 2
     render(<Harness c={c} roles inPerson />);
     fireEvent.press(screen.getByTestId(`role-${key}-RECEIVES_COPY`));
     expect(screen.getByText('Add an email address for this person, or choose In person.')).toBeTruthy();
+  });
+});
+
+describe('From a template with a CC role (M-A6 §3.5 bound through M-A5 recipient kinds)', () => {
+  // What POST …/from-template returns for a template with one SIGNER role and one CC role.
+  const bound = {
+    env: parseEnvelope({
+      id: 'e-tpl',
+      status: 'DRAFT',
+      editable: true,
+      revision: 1,
+      documents: [],
+      recipients: [
+        { id: 's1', name: 'Dana Lee', email: 'dana@example.com', status: 'PENDING', signing_order: 1, recipient_kind: 'SIGNER', copy_delivery: null, assigned_to_me: true },
+        { id: 'c1', name: 'Hana Ito', email: 'hana@example.com', status: 'PENDING', signing_order: null, recipient_kind: 'RECEIVES_COPY', copy_delivery: 'BOTH' },
+      ],
+      fields: [],
+    }),
+    etag: '"e-tpl.1"',
+  };
+
+  it('shows the CC in the "Receives a copy" group with its timing, never as a signer, and re-sync keeps its kind', async () => {
+    const c = controller();
+    await c.open();
+    await act(async () => c.adoptTemplateEnvelope(bound));
+    render(<Harness c={c} roles inPerson />);
+
+    // The copy group holds the CC; the signer list does not.
+    expect(screen.getByText('Receives a copy')).toBeTruthy();
+    expect(screen.getByTestId('recipient-1')).toHaveTextContent(/Hana Ito/);
+    expect(screen.getByTestId('recipient-0')).toHaveTextContent(/Dana Lee/);
+    expect(screen.getByTestId('recipient-0')).not.toHaveTextContent(/Hana Ito/);
+    const hana = c.snapshot.draft!.payload.recipients.find((r) => r.name === 'Hana Ito')!;
+    expect(screen.getByTestId(`timing-${hana.key}-BOTH`).props.accessibilityState).toEqual({ selected: true });
+    expect(signingRecipients(c.snapshot.draft!.payload.recipients).map((r) => r.name)).toEqual(['Dana Lee']);
+
+    // An edit (a second signer) marks the recipients dirty; the re-sync PUT keeps the
+    // CC as RECEIVES_COPY with its timing and re-sends Assign to me.
+    act(() => {
+      c.addRecipient({ name: 'Sam Roy', email: 'sam@example.com' });
+    });
+    const put = jest.fn(async (_id: string, _m: string, list: readonly RecipientWire[]) => ({
+      env: parseEnvelope({
+        ...{ id: 'e-tpl', status: 'DRAFT', editable: true, revision: 2, documents: [], fields: [] },
+        recipients: list.map((r, i) => ({ id: r.id ?? `n${i}`, name: r.name, email: r.email ?? '', signing_order: i + 1, recipient_kind: r.recipient_kind, copy_delivery: r.copy_delivery ?? null })),
+      }),
+      etag: '"e-tpl.2"',
+    }));
+    await syncDraft({ api: { putRecipients: put } as unknown as SenderApi, bytes: {} as never }, c.snapshot.draft!).catch(
+      () => undefined,
+    );
+    expect(put.mock.calls[0]![2]).toEqual([
+      { id: 's1', name: 'Dana Lee', email: 'dana@example.com', recipient_kind: 'SIGNER', assign_to_me: true },
+      { name: 'Sam Roy', email: 'sam@example.com', recipient_kind: 'SIGNER' },
+      { id: 'c1', name: 'Hana Ito', email: 'hana@example.com', recipient_kind: 'RECEIVES_COPY', copy_delivery: 'BOTH' },
+    ]);
+  });
+
+  it('without the role chips the CC still sits in the copy group with its timing as text', async () => {
+    const c = controller();
+    await c.open();
+    await act(async () => c.adoptTemplateEnvelope(bound));
+    render(<Harness c={c} />);
+    expect(screen.getByText('Receives a copy')).toBeTruthy();
+    expect(screen.getByTestId('recipient-1')).toHaveTextContent(/Hana Ito/);
+    expect(screen.getByText('Copy timing: both')).toBeTruthy();
   });
 });
