@@ -3,6 +3,7 @@
 // (GET /v1/sign/inbox), plus local drafts, filtered Needs me / Waiting / Drafts / Done.
 // Cached data shows offline ("Offline · showing saved data").
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
+import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
 import {
   FlatList,
@@ -29,9 +30,17 @@ import {
   shortDate,
   type AgreementRow,
 } from '../../features/inbox/agreementsModel';
+import { useServices } from '../../app/ServicesContext';
+import { useToast } from '../../components/Toast';
+import { refusalMessage } from '../../api/refusalMessages';
 import { AgreementRowItem } from '../../features/inbox/AgreementRowItem';
+import { deleteDraftById } from '../../features/inbox/envelopeActions';
+import { SwipeToDelete } from '../../features/inbox/SwipeToDelete';
+import { createDocumentBytesStore } from '../../features/send/documentBytes';
+import { forgetLocalDrafts } from '../../features/send/localDrafts';
 import { allowanceChipText, allowanceModel, limitBanner } from '../../features/inbox/allowance';
 import {
+  signKeys,
   useBillingAccount,
   useInbox,
   useLocalDrafts,
@@ -130,6 +139,35 @@ export function AgreementsScreen() {
     else if (row.kind === 'received')
       navigation.navigate('ReceivedEnvelope', { inboxItemId: row.inboxItemId });
     else navigation.navigate('SendFlow', { localDraftId: row.localDraftId });
+  }
+
+  // Swipe left to delete a draft (D-W6-3). A server draft is deleted with its current
+  // ETag; an on-device draft is only forgotten locally. Either way the on-device copy
+  // and its document bytes go too.
+  const services = useServices();
+  const qc = useQueryClient();
+  const toast = useToast();
+  const deletable = (row: AgreementRow) =>
+    row.kind === 'local-draft' || (row.kind === 'sent' && row.status === 'DRAFT');
+  async function deleteRow(row: AgreementRow): Promise<void> {
+    const bytes = createDocumentBytesStore(services.store);
+    if (row.kind === 'local-draft') {
+      await forgetLocalDrafts(services.drafts, bytes, { localDraftId: row.localDraftId });
+    } else if (row.kind === 'sent') {
+      const r = await deleteDraftById(services.workspace, row.envelopeId);
+      if (r.kind !== 'deleted') {
+        toast.show(
+          r.kind === 'stale'
+            ? refusalMessage({ reason: 'revision_mismatch', code: 'revision_mismatch' })
+            : r.message,
+        );
+        return;
+      }
+      await forgetLocalDrafts(services.drafts, bytes, { envelopeId: row.envelopeId }).catch(() => 0);
+    } else return;
+    toast.show('Draft deleted');
+    void qc.invalidateQueries({ queryKey: signKeys.senderList });
+    void local.refetch();
   }
 
   const newEnvelope = () => navigation.navigate('SendFlow', undefined);
@@ -332,7 +370,13 @@ export function AgreementsScreen() {
               index === visible.length - 1 ? styles.last : null,
             ]}
           >
-            <AgreementRowItem row={item} onPress={open} last={index === visible.length - 1} />
+            <SwipeToDelete
+              enabled={deletable(item) && (item.kind === 'local-draft' || online)}
+              label={item.subject}
+              onDelete={() => void deleteRow(item)}
+            >
+              <AgreementRowItem row={item} onPress={open} last={index === visible.length - 1} />
+            </SwipeToDelete>
           </Card>
         )}
         refreshControl={

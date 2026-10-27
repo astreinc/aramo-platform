@@ -480,7 +480,14 @@ export class SendFlowController {
         {
           api: this.deps.api,
           bytes: this.deps.bytes,
-          onProgress: (x) => this.persist(x),
+          // Keep the in-memory draft in step with every saved stage, not only the
+          // store: a sync that fails part-way (after the envelope was created) must
+          // leave the envelope id and its ETag here, so a retry continues that same
+          // envelope instead of creating another one.
+          onProgress: (x) => {
+            this.set({ draft: x });
+            return this.persist(x);
+          },
           ...(this.deps.sleep ? { sleep: this.deps.sleep } : {}),
           ...(this.deps.now ? { now: this.deps.now } : {}),
         },

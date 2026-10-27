@@ -16,7 +16,9 @@ const PDF = new Uint8Array(
   ),
 );
 
-function setup(opts: { online?: boolean; dropFirstUploadResponse?: boolean } = {}) {
+function setup(
+  opts: { online?: boolean; dropFirstUploadResponse?: boolean; refuseFirstUploads?: number } = {},
+) {
   const kv = memoryKv();
   const files = memoryFiles();
   const store = createEncryptedStore({ kv, cipher: nodeAesGcm, files });
@@ -158,6 +160,25 @@ describe('Send flow: concurrency (M-A3 §6)', () => {
     expect(await c.send()).toBeNull();
     expect(t.server.envelope!.status).toBe('DRAFT');
     expect(c.snapshot.notice).toBe(CHANGED_ELSEWHERE);
+  });
+});
+
+describe('Send flow: a sync that fails part-way', () => {
+  it('a retry continues the envelope it already created, never a second one', async () => {
+    // Every upload attempt of the first sync fails (3 tries), after the create succeeded.
+    const t = setup({ refuseFirstUploads: 3 });
+    const c = t.make();
+    await prepared(c);
+    expect(await c.sync()).toBe(false);
+    expect(c.snapshot.draft!.envelopeId).toBe(t.server.ENV_ID);
+    expect(c.snapshot.draft!.payload.recipients).toHaveLength(1);
+
+    expect(await c.sync()).toBe(true);
+    const creates = t.server.calls.filter(
+      (r) => r.method === 'POST' && r.url.endsWith('/v1/sign/sender/envelopes'),
+    );
+    expect(creates).toHaveLength(1);
+    expect(c.snapshot.draft!.payload.documents[0]!.serverId).toBeTruthy();
   });
 });
 

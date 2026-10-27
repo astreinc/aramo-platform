@@ -9,6 +9,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
+  Alert,
   RefreshControl,
   ScrollView,
   StyleSheet,
@@ -25,6 +26,8 @@ import { Card } from '../../components/Card';
 import { ListRow, RowTile } from '../../components/ListRow';
 import { StatusPill } from '../../components/StatusPill';
 import { useToast } from '../../components/Toast';
+import { createDocumentBytesStore } from '../../features/send/documentBytes';
+import { forgetLocalDrafts } from '../../features/send/localDrafts';
 import { dateTime, shortDate } from '../../features/inbox/agreementsModel';
 import {
   actionsFor,
@@ -38,6 +41,7 @@ import {
   remindLabel,
   reminderRefusalCopy,
   VOID_REASON_MIN,
+  deleteDraftEnvelope,
   voidEnvelope,
 } from '../../features/inbox/envelopeActions';
 import {
@@ -107,7 +111,9 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
   const t = useTheme();
   const toast = useToast();
   const qc = useQueryClient();
-  const { workspace } = useServices();
+  const services = useServices();
+  const { workspace } = services;
+  const [deleteBusy, setDeleteBusy] = useState(false);
   const online = useOnline();
   const ctx = useSenderContext();
   const q = useEnvelopeDetail(envelopeId);
@@ -216,6 +222,34 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
       toast.show(refusalMessage({ reason: 'revision_mismatch', code: 'revision_mismatch' }));
       await q.refetch();
     } else setVoidError(r.message);
+  }
+
+  // Delete draft (D-W6-3): confirm, delete with the last-read ETag, then drop the
+  // on-device copy. A 412 refreshes (never resubmits) like Void.
+  function confirmDelete(): void {
+    Alert.alert('Delete this draft?', 'Its documents, recipients and fields are removed. This can’t be undone.', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: () => void doDelete() },
+    ]);
+  }
+
+  async function doDelete(): Promise<void> {
+    if (!data) return;
+    setDeleteBusy(true);
+    const r = await deleteDraftEnvelope(workspace, data);
+    setDeleteBusy(false);
+    if (r.kind === 'deleted') {
+      await forgetLocalDrafts(services.drafts, createDocumentBytesStore(services.store), {
+        envelopeId,
+      }).catch(() => 0);
+      toast.show('Draft deleted');
+      void qc.invalidateQueries({ queryKey: signKeys.senderList });
+      void qc.invalidateQueries({ queryKey: signKeys.localDrafts });
+      navigation.goBack();
+    } else if (r.kind === 'stale') {
+      toast.show(refusalMessage({ reason: 'revision_mismatch', code: 'revision_mismatch' }));
+      await q.refetch();
+    } else toast.show(r.message);
   }
 
   const toneColor = (tone: string) =>
@@ -356,6 +390,16 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
             testID="action-continue"
             title="Continue editing"
             onPress={() => navigation.navigate('SendFlow', { envelopeId })}
+          />
+        ) : null}
+        {actions.deleteDraft ? (
+          <Button
+            testID="action-delete-draft"
+            variant="destructive"
+            title="Delete draft"
+            busy={deleteBusy}
+            disabled={!online}
+            onPress={confirmDelete}
           />
         ) : null}
         {actions.viewCertificate ? (

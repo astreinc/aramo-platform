@@ -19,8 +19,11 @@ export interface FakeEnvelope {
   fields: Record<string, unknown>[];
 }
 
-export function fakeSenderServer(opts: { dropFirstUploadResponse?: boolean } = {}) {
+export function fakeSenderServer(
+  opts: { dropFirstUploadResponse?: boolean; refuseFirstUploads?: number } = {},
+) {
   let env: FakeEnvelope | null = null;
+  let refusedUploads = 0;
   let seq = 0;
   const uploads = new Map<string, unknown>();
   let dropped = false;
@@ -76,6 +79,10 @@ export function fakeSenderServer(opts: { dropFirstUploadResponse?: boolean } = {
       const key = r.headers['Idempotency-Key'];
       if (key && uploads.has(key)) return { status: 201, body: uploads.get(key) };
       if (pre) return pre;
+      if (refusedUploads < (opts.refuseFirstUploads ?? 0)) {
+        refusedUploads += 1;
+        return refuse(503, 'service_unavailable');
+      }
       const doc = {
         id: `doc-${++seq}`,
         title: String(r.body?.['title']),
