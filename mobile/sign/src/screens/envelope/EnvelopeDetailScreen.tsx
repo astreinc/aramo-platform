@@ -55,6 +55,8 @@ import {
 } from '../../features/inbox/queries';
 import { OPEN_STATUSES, type DetailRecipient, type LedgerEvent } from '../../features/inbox/types';
 import { EmptyState, ProgressBar, ReasonSheet, Segments } from '../../features/inbox/ui';
+import { sentShareTarget } from '../../features/share/shareCompleted';
+import { useShare } from '../../features/share/useShare';
 import type { EnvelopeDetailTab, RootStackParamList } from '../../navigation/types';
 import { recipientColor, useTheme } from '../../theme';
 
@@ -127,6 +129,7 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
   const [voidBusy, setVoidBusy] = useState(false);
   const [voidError, setVoidError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const sharer = useShare();
 
   // A later navigation here with another tab (e.g. a notification) selects it.
   const [seenTab, setSeenTab] = useState(initialTab);
@@ -166,6 +169,7 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
   }
 
   const actions = actionsFor(detail, ctx.data);
+  const shareTarget = sentShareTarget(detail.id, detail.subject, detail.status);
   const progress = progressOf(detail);
   const remindable = remindableSigners(detail);
   const coolingUntil = remindable.length === 0 ? nextReminderAt(detail) : null;
@@ -400,6 +404,16 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
             busy={deleteBusy}
             disabled={!online}
             onPress={confirmDelete}
+          />
+        ) : null}
+        {shareTarget ? (
+          <Button
+            testID="action-share"
+            title="Share signed PDF"
+            variant="secondary"
+            busy={sharer.busy}
+            disabled={!online}
+            onPress={() => sharer.share(shareTarget)}
           />
         ) : null}
         {actions.viewCertificate ? (

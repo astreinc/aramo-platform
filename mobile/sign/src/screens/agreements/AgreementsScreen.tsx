@@ -1,9 +1,10 @@
-// Agreements tab (handoff §4.2, §4.10; directive §5, §7 C-3, C-12). One list for what the
-// user sent (GET /v1/sign/sender/envelopes) and what they received and claimed
-// (GET /v1/sign/inbox), plus local drafts, filtered Needs me / Waiting / Drafts / Done.
+// Agreements tab (handoff §2A, §4.2, §4.10; M-A4 §3; directive §5, §7 C-3, C-12). One
+// list for what the user sent (GET /v1/sign/sender/envelopes) and what they received and
+// claimed (GET /v1/sign/inbox), plus local drafts: status chips All · Needs me · Waiting
+// for others · Drafts · Completed, a "{filter} · {range}" header row with the Filter
+// sheet (last activity, filtered on the device), and rows with swipe actions by state.
 // Cached data shows offline ("Offline · showing saved data").
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
-import { useQueryClient } from '@tanstack/react-query';
 import { useCallback, useMemo, useState } from 'react';
 import {
   FlatList,
@@ -20,27 +21,27 @@ import Svg, { Path } from 'react-native-svg';
 import { Banner, OfflineBanner } from '../../components/Banner';
 import { Card } from '../../components/Card';
 import {
+  asListFilter,
+  asListRange,
   countFor,
+  DEFAULT_RANGE,
   EMPTY_STATE,
   filterAgreements,
-  FILTER_LABEL,
-  FILTERS,
+  listHeading,
   mergeAgreements,
   needsSignatureSummary,
   shortDate,
   type AgreementRow,
+  type ListFilter,
+  type ListRange,
 } from '../../features/inbox/agreementsModel';
-import { useServices } from '../../app/ServicesContext';
-import { useToast } from '../../components/Toast';
-import { refusalMessage } from '../../api/refusalMessages';
 import { AgreementRowItem } from '../../features/inbox/AgreementRowItem';
-import { deleteDraftById } from '../../features/inbox/envelopeActions';
-import { SwipeToDelete } from '../../features/inbox/SwipeToDelete';
-import { createDocumentBytesStore } from '../../features/send/documentBytes';
-import { forgetLocalDrafts } from '../../features/send/localDrafts';
+import { FilterSheet } from '../../features/inbox/FilterSheet';
+import { StatusChips } from '../../features/inbox/StatusChips';
+import { SwipeActions } from '../../features/inbox/SwipeActions';
+import { useRowActions } from '../../features/inbox/useRowActions';
 import { allowanceChipText, allowanceModel, limitBanner } from '../../features/inbox/allowance';
 import {
-  signKeys,
   useBillingAccount,
   useInbox,
   useLocalDrafts,
@@ -48,8 +49,8 @@ import {
   useSenderContext,
   useSenderEnvelopes,
 } from '../../features/inbox/queries';
-import { EmptyState, Segments } from '../../features/inbox/ui';
-import type { AgreementsFilter, MainTabParamList } from '../../navigation/types';
+import { EmptyState } from '../../features/inbox/ui';
+import type { MainTabParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
 
 function initials(name: string | null | undefined): string {
@@ -92,15 +93,23 @@ export function AgreementsScreen() {
   const billing = useBillingAccount();
   const ctx = useSenderContext();
   const local = useLocalDrafts();
-  const [filter, setFilter] = useState<AgreementsFilter>(route.params?.filter ?? 'needs_me');
+  // The route's filter / range (navigation types) map onto the list's own types here.
+  const params = route.params as { filter?: unknown; range?: unknown } | undefined;
+  const paramFilter = asListFilter(params?.filter);
+  const paramRange = asListRange(params?.range);
+  const [filter, setFilter] = useState<ListFilter>(paramFilter ?? 'all');
+  const [range, setRange] = useState<ListRange>(paramRange ?? DEFAULT_RANGE);
+  const [filterOpen, setFilterOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   // A navigation to Agreements with a filter (e.g. "Saved to Drafts") selects it.
-  const [seenFilter, setSeenFilter] = useState(route.params?.filter);
-  if (route.params?.filter !== seenFilter) {
-    setSeenFilter(route.params?.filter);
-    if (route.params?.filter) setFilter(route.params.filter);
+  const [seen, setSeen] = useState({ filter: paramFilter, range: paramRange });
+  if (paramFilter !== seen.filter || paramRange !== seen.range) {
+    setSeen({ filter: paramFilter, range: paramRange });
+    if (paramFilter) setFilter(paramFilter);
+    if (paramRange) setRange(paramRange);
   }
+  const rowActions = useRowActions();
 
   // Local drafts change outside the query cache (Send flow): re-read on focus.
   const refetchLocal = local.refetch;
@@ -114,7 +123,10 @@ export function AgreementsScreen() {
     () => mergeAgreements(sent.data?.items ?? [], inbox.data ?? null, local.data ?? []),
     [sent.data, inbox.data, local.data],
   );
-  const visible = useMemo(() => filterAgreements(rows, filter, query), [rows, filter, query]);
+  const visible = useMemo(
+    () => filterAgreements(rows, filter, query, range),
+    [rows, filter, query, range],
+  );
   const needs = needsSignatureSummary(rows);
   const allowance = allowanceModel(billing.data ?? null);
   const banner = limitBanner(allowance);
@@ -141,42 +153,8 @@ export function AgreementsScreen() {
     else navigation.navigate('SendFlow', { localDraftId: row.localDraftId });
   }
 
-  // Swipe left to delete a draft (D-W6-3). A server draft is deleted with its current
-  // ETag; an on-device draft is only forgotten locally. Either way the on-device copy
-  // and its document bytes go too.
-  const services = useServices();
-  const qc = useQueryClient();
-  const toast = useToast();
-  const deletable = (row: AgreementRow) =>
-    row.kind === 'local-draft' || (row.kind === 'sent' && row.status === 'DRAFT');
-  async function deleteRow(row: AgreementRow): Promise<void> {
-    const bytes = createDocumentBytesStore(services.store);
-    if (row.kind === 'local-draft') {
-      await forgetLocalDrafts(services.drafts, bytes, { localDraftId: row.localDraftId });
-    } else if (row.kind === 'sent') {
-      const r = await deleteDraftById(services.workspace, row.envelopeId);
-      if (r.kind !== 'deleted') {
-        toast.show(
-          r.kind === 'stale'
-            ? refusalMessage({ reason: 'revision_mismatch', code: 'revision_mismatch' })
-            : r.message,
-        );
-        return;
-      }
-      await forgetLocalDrafts(services.drafts, bytes, { envelopeId: row.envelopeId }).catch(() => 0);
-    } else return;
-    toast.show('Draft deleted');
-    void qc.invalidateQueries({ queryKey: signKeys.senderList });
-    void local.refetch();
-  }
-
   const newEnvelope = () => navigation.navigate('SendFlow', undefined);
   const openAccount = () => navigation.navigate('Main', { screen: 'Account' });
-
-  const segments = FILTERS.map((k) => ({
-    key: k,
-    label: k === 'needs_me' ? `${FILTER_LABEL[k]} ${countFor(rows, k)}` : FILTER_LABEL[k],
-  }));
 
   const dotColor =
     allowance?.dot === 'month_reached'
@@ -343,7 +321,52 @@ export function AgreementsScreen() {
           </View>
         </View>
       ) : null}
-      <Segments items={segments} value={filter} onChange={setFilter} testIDPrefix="filter" />
+      <StatusChips value={filter} onChange={setFilter} needsCount={countFor(rows, 'needs_me')} />
+      <View
+        style={[
+          styles.headerRow,
+          {
+            borderColor: t.color.separator,
+            borderTopWidth: t.size.separatorWidth,
+            borderBottomWidth: t.size.separatorWidth,
+          },
+        ]}
+      >
+        <View style={{ width: 44 }} />
+        <Text
+          testID="agreements-heading"
+          numberOfLines={1}
+          style={{
+            flex: 1,
+            textAlign: 'center',
+            color: t.color.text,
+            fontSize: 15,
+            fontWeight: '600',
+            fontFamily: t.font.family,
+          }}
+        >
+          {listHeading(filter, range)}
+        </Text>
+        <Pressable
+          testID="agreements-filter"
+          onPress={() => setFilterOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Filter agreements"
+          style={[styles.filterButton, { minWidth: t.size.minTouch, minHeight: t.size.minTouch }]}
+        >
+          <Svg
+            width={22}
+            height={22}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke={t.color.text}
+            strokeWidth={2}
+            strokeLinecap="round"
+          >
+            <Path d="M4 6h16M7 12h10M10 18h4" />
+          </Svg>
+        </Pressable>
+      </View>
     </View>
   );
 
@@ -351,6 +374,8 @@ export function AgreementsScreen() {
     <EmptyState title="Couldn’t load agreements" body="Pull down to try again." />
   ) : query.trim() ? (
     <EmptyState {...EMPTY_STATE.search} />
+  ) : filterAgreements(rows, filter).length > 0 ? (
+    <EmptyState {...EMPTY_STATE.range} />
   ) : (
     <EmptyState {...EMPTY_STATE[filter]} />
   );
@@ -370,13 +395,20 @@ export function AgreementsScreen() {
               index === visible.length - 1 ? styles.last : null,
             ]}
           >
-            <SwipeToDelete
-              enabled={deletable(item) && (item.kind === 'local-draft' || online)}
-              label={item.subject}
-              onDelete={() => void deleteRow(item)}
+            <SwipeActions
+              actions={rowActions.actionsFor(item)}
+              subject={item.subject}
+              onAction={(k) => rowActions.run(item, k)}
+              onOpen={rowActions.onRowOpen}
             >
-              <AgreementRowItem row={item} onPress={open} last={index === visible.length - 1} />
-            </SwipeToDelete>
+              <AgreementRowItem
+                row={item}
+                onPress={open}
+                last={index === visible.length - 1}
+                actions={rowActions.actionsFor(item)}
+                onAction={rowActions.run}
+              />
+            </SwipeActions>
           </Card>
         )}
         refreshControl={
@@ -389,6 +421,15 @@ export function AgreementsScreen() {
         contentContainerStyle={{ paddingBottom: ios ? 24 : 120 }}
         keyboardShouldPersistTaps="handled"
       />
+      <FilterSheet
+        visible={filterOpen}
+        filter={filter}
+        range={range}
+        onFilter={setFilter}
+        onRange={setRange}
+        onClose={() => setFilterOpen(false)}
+      />
+      {rowActions.sheets}
       {!ios && canSend ? (
         <Pressable
           testID="agreements-fab"
@@ -434,6 +475,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 16,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 46,
+    paddingHorizontal: 8,
+  },
+  filterButton: { alignItems: 'center', justifyContent: 'center', borderRadius: 22 },
   rowCard: { marginHorizontal: 16, borderRadius: 0 },
   first: { borderTopLeftRadius: 12, borderTopRightRadius: 12, marginTop: 8 },
   last: { borderBottomLeftRadius: 12, borderBottomRightRadius: 12 },
