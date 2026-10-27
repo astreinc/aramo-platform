@@ -2,7 +2,7 @@
 // server's reason, and the library read from GET /v1/sign/sender/templates.
 import { createWorkspaceClient } from '../../../api/workspaceClient';
 import { recordingFetch } from '../../../testing/fakes';
-import { loadTemplateLibrary, listTemplates, type SenderTemplate } from '../../send/templates';
+import { loadTemplateLibrary, listTemplates, parseSigning, type SenderTemplate } from '../../send/templates';
 import {
   FEATURE_UNAVAILABLE,
   NO_TEMPLATE_PERMISSION,
@@ -65,10 +65,60 @@ describe('template library (GET /v1/sign/sender/templates)', () => {
           description: 'Standard RTR for contract roles.',
           versionNumber: 3,
           senderVariables: [{ key: 'talent.full_name', label: 'Talent name', source: 'SENDER' }],
+          category: null,
+          signerRoleCount: null,
+          ccRoleCount: null,
+          documentCount: null,
+          routingMode: null,
+          signing: null,
         },
       ],
       unavailable: [{ documentTypeId: 'dt2', reason: 'TEMPLATE_SELECTION_REQUIRED' }],
     });
+  });
+
+  it('parses the M-A6 list metadata and the signing roles in role order', async () => {
+    const w = workspace(() => ({
+      status: 200,
+      body: {
+        items: [
+          {
+            ...ITEM,
+            category: 'Consulting',
+            signer_role_count: 2,
+            cc_role_count: 1,
+            document_count: 1,
+            routing_mode: 'SEQUENTIAL',
+            signing: {
+              routing_mode: 'SEQUENTIAL',
+              default_message: 'Please sign.',
+              roles: [
+                { role_key: 'client', label: 'Client', kind: 'SIGNER', order: 2 },
+                { role_key: 'hr', label: 'HR', kind: 'CC', order: 3 },
+                { role_key: 'consultant', label: 'Consultant', kind: 'SIGNER', order: 1 },
+              ],
+            },
+          },
+        ],
+        unavailable: [],
+      },
+    }));
+    const lib = await loadTemplateLibrary(w.workspace);
+    if (lib.kind !== 'ok') throw new Error('expected ok');
+    const t = lib.items[0]!;
+    expect(t).toMatchObject({ category: 'Consulting', signerRoleCount: 2, ccRoleCount: 1, documentCount: 1, routingMode: 'SEQUENTIAL' });
+    expect(t.signing).toEqual({
+      routingMode: 'SEQUENTIAL',
+      defaultSubject: null,
+      defaultMessage: 'Please sign.',
+      roles: [
+        { roleKey: 'consultant', label: 'Consultant', kind: 'SIGNER', order: 1 },
+        { roleKey: 'client', label: 'Client', kind: 'SIGNER', order: 2 },
+        { roleKey: 'hr', label: 'HR', kind: 'CC', order: 3 },
+      ],
+    });
+    expect(parseSigning({ roles: [], routing_mode: 'PARALLEL' })).toBeNull();
+    expect(parseSigning(null)).toBeNull();
   });
 
   it('reports a refusal with the server reason instead of throwing', async () => {
@@ -90,11 +140,28 @@ describe('templates view', () => {
     description: null,
     versionNumber: 2,
     senderVariables: [],
+    category: null,
+    signerRoleCount: null,
+    ccRoleCount: null,
+    documentCount: null,
+    routingMode: null,
+    signing: null,
   };
 
-  it('shows the document type and version, nothing invented', () => {
+  it('shows the document type and version without M-A6 metadata, nothing invented', () => {
     expect(templateMeta(t)).toBe('Offer · Version 2');
     expect(templateMeta({ ...t, documentType: '', versionNumber: null })).toBeNull();
+  });
+
+  it('formats the prototype row metadata from the returned counts (M-A6 §3.7)', () => {
+    const m = { ...t, category: 'Consulting', signerRoleCount: 2, documentCount: 1, ccRoleCount: 0 };
+    expect(templateMeta(m)).toBe('Consulting · 2 signers · 1 document');
+    expect(templateMeta({ ...m, ccRoleCount: 1 })).toBe('Consulting · 2 signers · 1 document · 1 copy');
+    expect(templateMeta({ ...m, signerRoleCount: 1, documentCount: 3, ccRoleCount: 2 })).toBe(
+      'Consulting · 1 signer · 3 documents · 2 copies',
+    );
+    // A count the server did not return is left out; the category falls back to the type.
+    expect(templateMeta({ ...t, signerRoleCount: 1 })).toBe('Offer · 1 signer');
   });
 
   it('follows the context: plan capability first, then permission', () => {
@@ -138,7 +205,7 @@ describe('templates view', () => {
     ).toBe('2 more templates can’t be used until an admin chooses them on the web.');
   });
 
-  it('never renders role binding (multi-role templates are not built yet)', () => {
+  it('shows only returned values in the row (no role names on the row)', () => {
     const list = templatesView({
       context: OK_CONTEXT,
       contextLoading: false,
@@ -146,6 +213,7 @@ describe('templates view', () => {
       error: null,
       library: { kind: 'ok', items: [t], unavailable: [] },
     });
-    expect(JSON.stringify(list)).not.toMatch(/role/i);
+    if (list.kind !== 'list') throw new Error('expected list');
+    expect(list.rows[0]!.accessibilityLabel).toBe('Offer letter. Offer · Version 2');
   });
 });

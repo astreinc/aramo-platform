@@ -1,14 +1,14 @@
 // Templates screen model (M-A4 §6.4; handoff §2A "Templates"). Pure: it turns what the
 // backend returned (the sender context's availability flags and the template library)
-// into what the screen shows. Only returned metadata is shown (name, document type,
-// version, description); nothing is derived on the device, and an unavailable state
+// into what the screen shows. Only returned metadata is shown (name, category, role and
+// document counts, description); nothing is derived on the device, and an unavailable state
 // always carries the server's reason.
 import { isApiError } from '../../api/errors';
 import { refusalMessage } from '../../api/refusalMessages';
 import type { SenderTemplate, TemplateLibrary } from '../send/templates';
 
 export const TEMPLATES_INTRO =
-  'Approved by your organization. Pick one to start an envelope with its documents and fields ready.';
+  'Approved by your organization. Pick one to start an envelope with its documents, roles and fields ready.';
 export const TEMPLATES_FOOTNOTE =
   'Create and edit templates on the web, in Organization → Our templates.';
 
@@ -20,7 +20,7 @@ export const NO_TEMPLATES = 'Your organization has no templates yet.';
 export interface TemplateRowModel {
   readonly template: SenderTemplate;
   readonly title: string;
-  /** "{document type} · Version {n}", from returned values only. */
+  /** "{category} · {n} signers · {n} documents[ · {n} copies]", from returned values only. */
   readonly meta: string | null;
   readonly description: string | null;
   readonly accessibilityLabel: string;
@@ -76,10 +76,22 @@ export function unavailableNote(
     : `${what} can’t be used right now. An admin can check ${n === 1 ? 'it' : 'them'} on the web.`;
 }
 
+const plural = (n: number, one: string, many: string) => `${n} ${n === 1 ? one : many}`;
+
+/**
+ * The row's metadata line (prototype Templates row; M-A6 §3.7):
+ * "{category} · {n} signers · {n} documents", plus " · {n} copies" when the template has
+ * CC roles. Every part is a value the backend returned; a part it did not return is left
+ * out. A server without the M-A6 list metadata keeps "{document type} · Version {n}".
+ */
 export function templateMeta(t: SenderTemplate): string | null {
+  const counts = t.signerRoleCount !== null || t.documentCount !== null;
   const parts = [
-    t.documentType || null,
-    t.versionNumber !== null ? `Version ${t.versionNumber}` : null,
+    t.category ?? (t.documentType || null),
+    t.signerRoleCount !== null ? plural(t.signerRoleCount, 'signer', 'signers') : null,
+    t.documentCount !== null ? plural(t.documentCount, 'document', 'documents') : null,
+    t.ccRoleCount !== null && t.ccRoleCount > 0 ? plural(t.ccRoleCount, 'copy', 'copies') : null,
+    !counts && t.versionNumber !== null ? `Version ${t.versionNumber}` : null,
   ].filter((x): x is string => !!x);
   return parts.length ? parts.join(' · ') : null;
 }

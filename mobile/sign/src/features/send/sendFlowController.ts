@@ -410,12 +410,12 @@ export class SendFlowController {
   }
 
   /** A draft created from a template (templates.ts) becomes this flow's envelope. */
-  async adoptTemplateEnvelope(v: Versioned): Promise<void> {
+  async adoptTemplateEnvelope(v: Versioned, step: SendStep = 'recipients'): Promise<void> {
     const d = this.state.draft;
     if (!d || d.envelopeId !== null || d.payload.documents.length > 0) return;
-    const draft = await this.draftFromServer(v, d.localId);
+    const draft = { ...(await this.draftFromServer(v, d.localId)), step };
     await this.persist(draft);
-    this.set({ draft, server: v.env, step: 'recipients', generation: this.state.generation + 1 });
+    this.set({ draft, server: v.env, step, generation: this.state.generation + 1 });
   }
 
   // ── step 2: recipients ──────────────────────────────────────────────────────
@@ -444,6 +444,7 @@ export class SendFlowController {
       copyDelivery: kind === 'RECEIVES_COPY' ? 'ON_COMPLETION' : null,
       ...(opts.assignToMe && kind === 'SIGNER' ? { assignToMe: true } : {}),
     };
+    // The wire order (signers, then copies) is applied on save (recipientRoles.wireOrder).
     this.update((q) => ({ ...q, recipients: [...q.recipients, r] }), { recipients: true });
     return 'added';
   }
