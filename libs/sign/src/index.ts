@@ -59,6 +59,23 @@ export {
 } from './lib/ports/execution-producer.port.js';
 export { ExecutionService } from './lib/execution.service.js';
 export {
+  SIGNER_ATTESTED_NAME_PORT,
+  type SignerAttestedNamePort,
+  type SignerAttestedNameQuery,
+} from './lib/ports/signer-attested-name.port.js';
+// M-A6 §2.2 × M-A5 §3.4 — default binding: HOSTED attested name from the disclosure acceptance.
+export { PrismaSignerAttestedNameAdapter } from './lib/prisma-signer-attested-name.adapter.js';
+export {
+  CHECKBOX_GROUP_RULES,
+  SIGNER_NAME_MODES,
+  evaluateSignerFieldRules,
+  isServerFilledName,
+  type CheckboxGroupRule,
+  type SignerNameMode,
+  type FieldRuleRow,
+  type FieldRuleViolation,
+} from './lib/domain/field-rules.js';
+export {
   EVENT_PUBLISHER_PORT,
   LocalEventPublisher,
   type EventPublisherPort,
@@ -103,6 +120,8 @@ export {
   SigningSessionExpiredError,
   DisclosureNotAcceptedError,
   SignatureFieldIncompleteError,
+  SignatureFieldValueRefusedError,
+  SenderFieldPassthroughRefusedError,
   EsignIdempotencyConflictError,
   EnvelopeAmbiguousError,
   ReminderNotAllowedError,

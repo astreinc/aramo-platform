@@ -16,6 +16,7 @@ import {
   EnvelopeIllegalTransitionError,
   ReminderNotAllowedError,
   SignatureFieldIncompleteError,
+  SignatureFieldValueRefusedError,
   SignerNotFoundError,
   SignerNotYetEligibleError,
   SigningSessionExpiredError,
@@ -46,6 +47,8 @@ import {
   type SessionOrigin,
 } from './domain/recipients.js';
 import { executedAccessExpiresAt } from './envelope-notification.service.js';
+import { SIGNER_ATTESTED_NAME_PORT, type SignerAttestedNamePort } from './ports/signer-attested-name.port.js';
+import { CHECK_FIELD_TYPES, evaluateSignerFieldRules, isServerFilledName } from './domain/field-rules.js';
 
 // Aramo Sign launch — how long a sent envelope stays signable before the expiry
 // sweep moves it to EXPIRED (SIGN_ENVELOPE_TTL_DAYS, default 30). Individual
@@ -112,8 +115,19 @@ export interface SignerFieldView {
   // PX-2 — true once this signer has filled the field (restores progress on reload).
   filled: boolean;
   // PX-2 — the signer's own entered value (typed text, date, or a drawn-signature
-  // data URL); null for unfilled or unassigned fields.
+  // data URL); null for unfilled or unassigned fields. M-A6 §2.4 — for a
+  // server-filled SIGNER_NAME (name_mode SIGNER_PROFILE) it is the name the
+  // server fills, and `filled` is true.
   value: string | null;
+  // M-A6 §2.4 — the field configuration. null where it does not apply.
+  label: string | null;
+  group_key: string | null;
+  group_rule: string | null;
+  min_selected: number | null;
+  name_mode: string | null;
+  // M-A6 §2.2 — true when the server fills the value (a SIGNER_PROFILE name):
+  // the signer page shows it read-only and never sends a value for it.
+  server_filled: boolean;
 }
 
 export interface SignerDocumentMeta {
@@ -150,7 +164,23 @@ export class EsignService {
     // DOC-4 — OPTIONAL: when unbound (DOC-3 domain tests) completion has no
     // executed-bytes side-effect, preserving DOC-3 behavior.
     @Optional() @Inject(EXECUTION_PRODUCER_PORT) private readonly executionProducer?: ExecutionProducerPort,
+    // M-A6 §2.2 — the HOSTED signer's attested name (M-A5 §3.4). Unbound ⇒
+    // SIGNER_PROFILE names fill from Signer.name.
+    @Optional() @Inject(SIGNER_ATTESTED_NAME_PORT) private readonly attestedNames?: SignerAttestedNamePort,
   ) {}
+
+  // M-A6 §2.2 — the name the server fills into a SIGNER_PROFILE name field: the
+  // attested name of a HOSTED session when the attested-name port answers with
+  // one, otherwise the signer's name as the sender entered it (Signer.name).
+  async profileNameFor(ctx: SessionContext, signerName: string): Promise<string> {
+    const attested = await this.attestedNames?.attestedName({
+      tenant_id: ctx.tenant_id,
+      envelope_id: ctx.envelope_id,
+      signer_id: ctx.signer_id,
+      session_id: ctx.session_id,
+    });
+    return attested !== undefined && attested !== null && attested.trim().length > 0 ? attested.trim() : signerName;
+  }
 
   private async requireStatus(tenant_id: string, envelope_id: string, expected: string): Promise<void> {
     const env = await this.repo.getEnvelope(tenant_id, envelope_id);
@@ -396,6 +426,12 @@ export class EsignService {
       if (!(await this.hasAcceptedDisclosure(ctx.tenant_id, ctx.signer_id, tx))) throw new DisclosureNotAcceptedError(ctx.signer_id);
       const field = await tx.signatureField.findFirst({ where: { tenant_id: ctx.tenant_id, id: fieldId, signer_id: ctx.signer_id } });
       if (field === null) throw new SignerNotFoundError(ctx.signer_id);
+      // M-A6 §2.2 — a SIGNER_PROFILE name is the server's to fill; any client
+      // value is refused. §2.3 — check boxes take 'true' or 'false' (unchecking).
+      if (isServerFilledName(field)) throw new SignatureFieldValueRefusedError(fieldId, 'signer_profile_name_server_filled');
+      if (CHECK_FIELD_TYPES.has(field.field_type) && input.value !== 'true' && input.value !== 'false') {
+        throw new SignatureFieldValueRefusedError(fieldId, 'checkbox_value_invalid');
+      }
       await tx.signatureField.update({
         where: { id: fieldId },
         data: { value: input.value, signature_method: input.signature_method ?? null, filled_at: new Date() },
@@ -411,10 +447,16 @@ export class EsignService {
     if (!(await this.hasAcceptedDisclosure(ctx.tenant_id, ctx.signer_id))) throw new DisclosureNotAcceptedError(ctx.signer_id);
     const full = await this.repo.getEnvelopeFull(ctx.tenant_id, ctx.envelope_id);
     const documents = full.documents.map((d) => ({ document_id: d.id, title: d.title, ordinal: d.ordinal }));
+    // M-A6 §2.4 — the server-filled name, resolved only when a field needs it.
+    const me = full.signers.find((s) => s.id === ctx.signer_id);
+    const needsName = full.documents.some((d) => d.fields.some((f) => f.signer_id === ctx.signer_id && isServerFilledName(f)));
+    const profileName = needsName ? await this.profileNameFor(ctx, me?.name ?? '') : null;
     const fields = full.documents.flatMap((d) =>
       d.fields
         .filter((f) => f.signer_id === ctx.signer_id || f.signer_id === null)
-        .map((f) => ({
+        .map((f): SignerFieldView => {
+          const serverFilled = f.signer_id === ctx.signer_id && isServerFilledName(f);
+          return {
           field_id: f.id,
           document_id: d.id,
           field_type: f.field_type,
@@ -427,9 +469,16 @@ export class EsignService {
           // PX-2 — restores the signer's own progress after a reload. The value is
           // returned ONLY for this session's own fields (capability token + accepted
           // disclosure), so the page shows the signer's actual entries in place.
-          filled: f.filled_at !== null,
-          value: f.signer_id === ctx.signer_id ? (f.value ?? null) : null,
-        })),
+          filled: serverFilled || f.filled_at !== null,
+          value: serverFilled ? profileName : f.signer_id === ctx.signer_id ? (f.value ?? null) : null,
+          label: f.label ?? null,
+          group_key: f.group_key ?? null,
+          group_rule: f.group_rule ?? null,
+          min_selected: f.min_selected ?? null,
+          name_mode: f.name_mode ?? null,
+          server_filled: serverFilled,
+          };
+        }),
     );
     fields.sort((a, b) => a.page_number - b.page_number || a.y - b.y || a.x - b.x);
     return { documents, fields, message: full.message ?? null };
@@ -475,8 +524,22 @@ export class EsignService {
       const live = await this.assertLiveSession(tx, ctx);
       await this.assertEligible(tx, ctx);
       if (!(await this.hasAcceptedDisclosure(ctx.tenant_id, ctx.signer_id, tx))) throw new DisclosureNotAcceptedError(ctx.signer_id);
-      const required = await tx.signatureField.findMany({ where: { tenant_id: ctx.tenant_id, signer_id: ctx.signer_id, required: true } });
-      if (required.some((f) => f.filled_at === null)) throw new SignatureFieldIncompleteError(ctx.signer_id);
+      // M-A6 §2.3 — required fields filled, required check boxes checked, and the
+      // check-box group rules (SELECT_ONE, min_selected) hold.
+      const mine = await tx.signatureField.findMany({ where: { tenant_id: ctx.tenant_id, signer_id: ctx.signer_id } });
+      const violation = evaluateSignerFieldRules(mine);
+      if (violation !== null) throw new SignatureFieldIncompleteError(ctx.signer_id, violation.reason, violation.group_key);
+      // M-A6 §2.2 — the server fills every SIGNER_PROFILE name of this signer, in
+      // the completing transaction (the value the executed PDF then prints).
+      const names = mine.filter(isServerFilledName);
+      if (names.length > 0) {
+        const signer = await tx.signer.findFirstOrThrow({ where: { id: ctx.signer_id, tenant_id: ctx.tenant_id }, select: { name: true } });
+        const name = await this.profileNameFor(ctx, signer.name);
+        const now = new Date();
+        for (const f of names) {
+          await tx.signatureField.update({ where: { id: f.id }, data: { value: name, signature_method: null, filled_at: now } });
+        }
+      }
 
       await tx.signer.update({ where: { id: ctx.signer_id }, data: { status: 'SIGNED', signed_at: new Date() } });
       await tx.signingSession.update({ where: { id: ctx.session_id }, data: { status: 'COMPLETED', completed_at: new Date() } });

@@ -4,7 +4,7 @@ import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { EsignRepository } from './esign.repository.js';
-import { EnvelopeIllegalTransitionError, EnvelopeNotFoundError } from './domain/errors.js';
+import { EnvelopeIllegalTransitionError, EnvelopeNotFoundError, SenderFieldPassthroughRefusedError } from './domain/errors.js';
 import { EnvelopeRevisionMismatchError } from './domain/envelope-contract-errors.js';
 import { SIGN_REMINDER_LIMITS, reminderHistory, type ReminderHistoryEntry } from './reminder-limits.js';
 
@@ -66,14 +66,23 @@ export interface SenderRecipientInput {
 
 export interface SenderFieldInput {
   envelope_document_id: string;
-  signer_id: string;
+  signer_id: string | null;
   field_type: string;
   page_number: number;
   x: number;
   y: number;
-  width: number;
-  height: number;
+  width: number | null;
+  height: number | null;
   required: boolean;
+  // M-A6 §2 (coordinator ruling) — an engine-only field passed back unchanged: the
+  // id of the stored field it must be identical to. The stored row is kept as is.
+  passthrough_id?: string;
+  // M-A6 §2 — Name and Checkbox configuration (absent ⇒ NULL).
+  label?: string | null;
+  group_key?: string | null;
+  group_rule?: string | null;
+  min_selected?: number | null;
+  name_mode?: string | null;
 }
 
 // Sign Mobile D-W6-2 — one page of a source PDF, in points (MediaBox).
@@ -589,12 +598,24 @@ export class EsignSenderRepository {
       const signerIds = new Set(signers.map((s) => s.id));
       for (const f of input.fields) {
         if (!docIds.has(f.envelope_document_id)) throw new EnvelopeNotFoundError(`document ${f.envelope_document_id}`);
-        if (!signerIds.has(f.signer_id)) throw new EnvelopeNotFoundError(`signer ${f.signer_id}`);
+        if (f.passthrough_id === undefined && (f.signer_id === null || !signerIds.has(f.signer_id))) throw new EnvelopeNotFoundError(`signer ${f.signer_id ?? 'none'}`);
+      }
+      // M-A6 §2 (coordinator ruling) — an engine-only field passes through only when
+      // it is byte-identical to its stored row on this envelope; that row is kept.
+      const keep: string[] = [];
+      for (const [index, f] of input.fields.entries()) {
+        if (f.passthrough_id === undefined) continue;
+        const stored = docIds.size === 0 ? null : await tx.signatureField.findFirst({
+          where: { id: f.passthrough_id, tenant_id: input.tenant_id, envelope_document_id: { in: [...docIds] } },
+        });
+        if (stored === null || keep.includes(stored.id) || !sameField(stored, f)) throw new SenderFieldPassthroughRefusedError(index);
+        keep.push(stored.id);
       }
       if (docIds.size > 0) {
-        await tx.signatureField.deleteMany({ where: { tenant_id: input.tenant_id, envelope_document_id: { in: [...docIds] } } });
+        await tx.signatureField.deleteMany({ where: { tenant_id: input.tenant_id, envelope_document_id: { in: [...docIds] }, ...(keep.length > 0 ? { id: { notIn: keep } } : {}) } });
       }
       for (const f of input.fields) {
+        if (f.passthrough_id !== undefined) continue;
         await tx.signatureField.create({
           data: {
             id: randomUUID(),
@@ -608,12 +629,39 @@ export class EsignSenderRepository {
             width: f.width,
             height: f.height,
             required: f.required,
+            label: f.label ?? null,
+            group_key: f.group_key ?? null,
+            group_rule: f.group_rule ?? null,
+            min_selected: f.min_selected ?? null,
+            name_mode: f.name_mode ?? null,
           },
         });
       }
       return input.fields.length;
     });
   }
+}
+
+// M-A6 §2 (coordinator ruling) — identical type, recipient, document, page,
+// geometry, required setting and configuration.
+function sameField(
+  stored: { field_type: string; signer_id: string | null; envelope_document_id: string; page_number: number; x: number; y: number; width: number | null; height: number | null; required: boolean; label: string | null; group_key: string | null; group_rule: string | null; min_selected: number | null; name_mode: string | null },
+  f: SenderFieldInput,
+): boolean {
+  return stored.field_type === f.field_type
+    && stored.signer_id === f.signer_id
+    && stored.envelope_document_id === f.envelope_document_id
+    && stored.page_number === f.page_number
+    && stored.x === f.x
+    && stored.y === f.y
+    && stored.width === f.width
+    && stored.height === f.height
+    && stored.required === f.required
+    && stored.label === (f.label ?? null)
+    && stored.group_key === (f.group_key ?? null)
+    && stored.group_rule === (f.group_rule ?? null)
+    && stored.min_selected === (f.min_selected ?? null)
+    && stored.name_mode === (f.name_mode ?? null);
 }
 
 export type { Db as SenderWorkspaceDb };

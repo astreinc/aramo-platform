@@ -756,7 +756,15 @@ export function SigningFlow(props: SigningFlowProps) {
         onAdopt={onAdopted}
         onClose={() => setAdoptFor(null)}
       />
-      <Sheet visible={textFor !== null} onClose={() => setTextFor(null)} title="Enter text">
+      <Sheet
+        visible={textFor !== null}
+        onClose={() => setTextFor(null)}
+        title={
+          state.fields.find((f) => f.field_id === textFor?.fieldId)?.field_type === 'SIGNER_NAME'
+            ? 'Enter your name'
+            : 'Enter text'
+        }
+      >
         <TextInput
           testID="text-field-input"
           value={textDraft}

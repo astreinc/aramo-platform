@@ -486,7 +486,10 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
         if (p.x < 0 || p.y < 0 || p.x > width || p.y > height) {
           throw new RenderFailedError(`placement ${p.field_key} out of page bounds`);
         }
-        if (p.kind === 'IMAGE') {
+        if (p.kind === 'MARK') {
+          if (p.checked === undefined) throw new RenderFailedError(`mark placement ${p.field_key} missing checked`);
+          drawMark(page, p, p.checked);
+        } else if (p.kind === 'IMAGE') {
           // DOC-4 B1 — DRAWN/UPLOADED signature image. Embed is deterministic
           // (identical bytes → identical embedded object), preserving hash-stability.
           if (p.image_bytes === undefined || p.image_format === undefined) {
@@ -542,6 +545,7 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
           image_sha256: p.image_bytes ? sha256Hex(p.image_bytes) : undefined,
           font: p.font,
           stamp: p.stamp,
+          checked: p.checked,
         }))),
         source_artifact_sha256,
         output_sha256,
@@ -557,6 +561,20 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
 // PX-2 — the field box of a signature placement (PDF points, bottom-left origin).
 function stampBox(p: PreparedField): { x: number; y: number; w: number; h: number } {
   return { x: p.x, y: p.y, w: p.width ?? 220, h: p.height ?? 48 };
+}
+
+// M-A6 §1 — a vector check box: a square border, plus a vector check stroke when
+// checked. Pure vector drawing (no font, no glyph), so a checkbox value is never
+// printed as text on the executed PDF. The square sits at the field box's
+// lower-left corner, sized to the box's shorter side.
+function drawMark(page: PDFPage, p: PreparedField, checked: boolean): void {
+  const side = Math.max(6, Math.min(p.width ?? 12, p.height ?? 12));
+  const ink = rgb(0, 0, 0);
+  page.drawRectangle({ x: p.x, y: p.y, width: side, height: side, borderColor: ink, borderWidth: Math.max(0.6, side * 0.07) });
+  if (!checked) return;
+  // SVG path in a y-down frame anchored at the square's top-left corner.
+  const path = `M ${side * 0.2} ${side * 0.52} L ${side * 0.42} ${side * 0.74} L ${side * 0.8} ${side * 0.24}`;
+  page.drawSvgPath(path, { x: p.x, y: p.y + side, borderColor: ink, borderWidth: Math.max(1, side * 0.12) });
 }
 
 // PX-2 — DocuSign-style signature frame: a rounded left bracket whose top and

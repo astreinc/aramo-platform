@@ -9,9 +9,12 @@ import {
   advance,
   attemptFinish,
   canFinish,
+  displayOf,
   fieldAnnouncement,
   fillsToSubmit,
   initialState,
+  isFilled,
+  nextEmptyRequired,
   primaryAction,
   requiredDone,
   requiredRemaining,
@@ -79,8 +82,12 @@ describe('signing state machine', () => {
     s = adopt(r.state, 'INITIALS', { dataUrl: PNG, method: 'TYPED' }, 'f2');
     s = tapField(s, 'f3', ctx).state;
     expect(s.values['f3']?.value).toBe('2026-10-24');
-    s = tapField(s, 'f4', ctx).state;
-    expect(s.values['f4']?.value).toBe('Jo Signer');
+    // M-A6 §2.2 — a signer-typed name opens the text sheet, never prefilled from the
+    // signed-in account's name.
+    r = tapField(s, 'f4', ctx);
+    expect(r.effect).toEqual({ kind: 'text', fieldId: 'f4', initial: '' });
+    s = setText(r.state, 'f4', 'Jo Q. Signer');
+    expect(s.values['f4']?.value).toBe('Jo Q. Signer');
     r = tapField(s, 'f5', ctx);
     expect(r.effect).toEqual({ kind: 'text', fieldId: 'f5', initial: '' });
     s = setText(r.state, 'f5', ' Acme Corp ');
@@ -111,8 +118,13 @@ describe('signing state machine', () => {
   });
 
   it('tapping a filled field clears it locally; saving empty text clears too', () => {
-    let s = tapField(initialState(ALL), 'f6', ctx).state;
-    expect(s.values['f6']).toBeDefined();
+    let s = tapField(initialState(ALL), 'f3', ctx).state;
+    expect(s.values['f3']).toBeDefined();
+    s = tapField(s, 'f3', ctx).state;
+    expect(s.values['f3']).toBeUndefined();
+    // A never-stored check box unchecks back to empty (nothing to send).
+    s = tapField(s, 'f6', ctx).state;
+    expect(s.values['f6']?.value).toBe('true');
     s = tapField(s, 'f6', ctx).state;
     expect(s.values['f6']).toBeUndefined();
     s = setText(s, 'f5', 'x');
@@ -157,6 +169,108 @@ describe('signing state machine', () => {
     expect(requiredDone(s)).toBe(1);
     const t = tapField(s, 'f2', ctx).state;
     expect(fillsToSubmit(t)).toEqual([{ fieldId: 'f2', value: 'true' }]);
+  });
+});
+
+describe('Name and Checkbox (M-A6 §2)', () => {
+  const box = (id: string, over: Partial<SigningField> = {}) =>
+    field(id, 'CHECKBOX', { required: false, width: 18, height: 18, ...over });
+
+  it('a SIGNER_PROFILE name is the server’s: read-only, already done, never sent', () => {
+    const s = initialState([
+      field('f1', 'SIGNER_NAME', {
+        name_mode: 'SIGNER_PROFILE',
+        server_filled: true,
+        filled: true,
+        value: 'Jordan Profile',
+      }),
+      field('f2', 'TEXT'),
+    ]);
+    expect(requiredRemaining(s)).toBe(1);
+    const r = tapField(s, 'f1', ctx);
+    expect(r.effect).toEqual({ kind: 'none' });
+    expect(r.state.values['f1']?.value).toBe('Jordan Profile');
+    expect(displayOf(s.fields[0]!, s.values['f1'])).toEqual({
+      kind: 'text',
+      text: 'Jordan Profile',
+    });
+    expect(fieldAnnouncement(s, s.fields[0]!, 'Jo')).toBe('Name, for Jo, required, filled for you');
+    const t = setText(tapField(s, 'f2', ctx).state, 'f2', 'x');
+    expect(fillsToSubmit(t)).toEqual([{ fieldId: 'f2', value: 'x' }]);
+    // Even a stale local value for a profile name is never submitted.
+    const forced = { ...t, values: { ...t.values, f1: { value: 'Mallory' } } };
+    expect(fillsToSubmit(forced).map((f) => f.fieldId)).toEqual(['f2']);
+  });
+
+  it('a legacy name (name_mode null) is typed by the signer', () => {
+    const s = initialState([field('f1', 'SIGNER_NAME', { name_mode: null })]);
+    expect(tapField(s, 'f1', ctx).effect).toEqual({ kind: 'text', fieldId: 'f1', initial: '' });
+  });
+
+  it('a server-held check box unchecks as an explicit false, which is sent', () => {
+    let s = initialState([box('f1', { filled: true, value: 'true' })]);
+    expect(isFilled(s, 'f1')).toBe(true);
+    s = tapField(s, 'f1', ctx).state;
+    expect(s.values['f1']).toEqual({ value: 'false' });
+    expect(isFilled(s, 'f1')).toBe(false);
+    expect(displayOf(s.fields[0]!, s.values['f1'])).toBeNull();
+    expect(fillsToSubmit(s)).toEqual([{ fieldId: 'f1', value: 'false' }]);
+    expect(fieldAnnouncement(s, s.fields[0]!, 'Jo')).toBe(
+      'Checkbox, for Jo, optional, not checked',
+    );
+  });
+
+  it('a required ungrouped box must be checked; a stored false does not count', () => {
+    const s = initialState([box('f1', { required: true, filled: true, value: 'false' })]);
+    expect(canFinish(s)).toBe(false);
+    expect(canFinish(tapField(s, 'f1', ctx).state)).toBe(true);
+  });
+
+  it('SELECT_ONE: checking one unchecks the others; a required group needs exactly one', () => {
+    const one = { group_key: 'g', group_rule: 'SELECT_ONE', required: true };
+    let s = initialState([box('f1', one), box('f2', one), box('f3', one)]);
+    expect(requiredRemaining(s)).toBe(1);
+    expect(nextEmptyRequired(s)?.field_id).toBe('f1');
+    s = tapField(s, 'f1', ctx).state;
+    expect(canFinish(s)).toBe(true);
+    s = tapField(s, 'f2', ctx).state;
+    expect(s.values['f1']).toBeUndefined();
+    expect(s.values['f2']?.value).toBe('true');
+    expect(canFinish(s)).toBe(true);
+    // Two checked (e.g. both restored from the server) blocks Finish.
+    const restored = initialState([
+      box('f1', { ...one, required: false, filled: true, value: 'true' }),
+      box('f2', { ...one, required: false, filled: true, value: 'true' }),
+    ]);
+    expect(canFinish(restored)).toBe(false);
+    const fixed = tapField(restored, 'f2', ctx).state;
+    expect(fixed.values['f2']).toEqual({ value: 'false' });
+    expect(canFinish(fixed)).toBe(true);
+  });
+
+  it('SELECT_ANY: a required group needs min_selected boxes (default 1); an optional one needs none', () => {
+    const any = { group_key: 'g', group_rule: 'SELECT_ANY', required: true, min_selected: 2 };
+    let s = initialState([box('f1', any), box('f2', any), box('f3', any)]);
+    expect(requiredRemaining(s)).toBe(1);
+    s = tapField(s, 'f1', ctx).state;
+    expect(canFinish(s)).toBe(false);
+    s = tapField(s, 'f3', ctx).state;
+    expect(canFinish(s)).toBe(true);
+    expect(requiredDone(s)).toBe(1);
+    const dflt = initialState([
+      box('f1', { ...any, min_selected: null }),
+      box('f2', { ...any, min_selected: null }),
+    ]);
+    expect(canFinish(tapField(dflt, 'f2', ctx).state)).toBe(true);
+    const optional = initialState([box('f1', { group_key: 'h', group_rule: 'SELECT_ANY' })]);
+    expect(canFinish(optional)).toBe(true);
+  });
+
+  it('shows the label on an empty box', () => {
+    const s = initialState([box('f1', { label: 'I agree' })]);
+    expect(fieldAnnouncement(s, s.fields[0]!, 'Jo')).toBe(
+      'Checkbox "I agree", for Jo, optional, not checked',
+    );
   });
 });
 

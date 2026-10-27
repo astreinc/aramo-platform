@@ -31,8 +31,17 @@ export interface SignField {
   required: boolean;
   // PX-2 — true once this signer has filled the field (restores progress on reload).
   filled?: boolean;
-  // PX-2 — the signer's own entered value, returned to restore the page.
+  // PX-2 — the signer's own entered value, returned to restore the page. M-A6 —
+  // for a server-filled name, the name the server fills.
   value?: string | null;
+  // M-A6 §2 — the field configuration (null where it does not apply).
+  label?: string | null;
+  group_key?: string | null;
+  group_rule?: 'SELECT_ONE' | 'SELECT_ANY' | null;
+  min_selected?: number | null;
+  name_mode?: 'SIGNER_PROFILE' | 'SIGNER_ENTERED' | null;
+  // M-A6 §2.2 — true for a SIGNER_PROFILE name: shown read-only, never filled here.
+  server_filled?: boolean;
 }
 
 export interface SignDocumentMeta {
@@ -51,6 +60,8 @@ export class SignApiError extends Error {
   constructor(
     readonly code: string,
     readonly status: number,
+    // The server's stable details.reason, when it gave one.
+    readonly reason?: string,
   ) {
     super(code);
     this.name = 'SignApiError';
@@ -73,8 +84,9 @@ async function post<T>(path: string, body: unknown): Promise<T> {
     throw new SignApiError('NETWORK', 0);
   }
   if (!res.ok) {
-    const detail = (await res.json().catch(() => ({}))) as { error?: { code?: string } };
-    throw new SignApiError(detail.error?.code ?? `HTTP_${res.status}`, res.status);
+    const detail = (await res.json().catch(() => ({}))) as { error?: { code?: string; details?: { reason?: unknown } } };
+    const reason = detail.error?.details?.reason;
+    throw new SignApiError(detail.error?.code ?? `HTTP_${res.status}`, res.status, typeof reason === 'string' ? reason : undefined);
   }
   return (await res.json()) as T;
 }

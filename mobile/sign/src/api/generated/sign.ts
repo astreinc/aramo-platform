@@ -314,7 +314,7 @@ export interface paths {
         put?: never;
         /**
          * Fill one of the signer's own fields.
-         * @description Token-authorized and disclosure-gated, under the envelope row lock with a live session; only this signer's field can be filled, and the value replaces any earlier one until the signer completes. value is the typed text, the date, or the signature / initials image as a PNG or JPEG data URL; signature_method records how a SIGNATURE or INITIALS value was made. A saved signature (/v1/sign/me/signature) is a convenience only: the value is always sent here and copied into the signing record.
+         * @description Token-authorized and disclosure-gated, under the envelope row lock with a live session; only this signer's field can be filled, and the value replaces any earlier one until the signer completes. value is the typed text, the date, or the signature / initials image as a PNG or JPEG data URL; signature_method records how a SIGNATURE or INITIALS value was made. A saved signature (/v1/sign/me/signature) is a convenience only: the value is always sent here and copied into the signing record. M-A6 §2 — a CHECKBOX or ACKNOWLEDGEMENT value is 'true' (checked) or 'false' (unchecked; unchecking is allowed), anything else is refused with 400 reason checkbox_value_invalid. A SIGNER_NAME field with name_mode SIGNER_PROFILE is filled by the server and any value sent for it is refused with 400 reason signer_profile_name_server_filled.
          */
         post: operations["fillSignerField"];
         delete?: never;
@@ -334,7 +334,7 @@ export interface paths {
         put?: never;
         /**
          * Finish signing for this signer.
-         * @description Token-authorized and disclosure-gated. Every required field of this signer must be filled (409 SIGNATURE_FIELD_INCOMPLETE otherwise). When this was the last signer the envelope is executed and envelope_status is COMPLETED; otherwise it is IN_PROGRESS and, when signing in order, the next signer is invited.
+         * @description Token-authorized and disclosure-gated. Every required field of this signer must be filled (409 SIGNATURE_FIELD_INCOMPLETE otherwise). M-A6 §2.3 — a required check box must be checked; a SELECT_ONE group needs exactly one box checked when required (never more than one); a required group needs at least min_selected boxes checked (default 1). The failing rule is details.reason: required_field_unfilled, checkbox_required_unchecked, checkbox_group_select_one or checkbox_group_min_selected (with details.group_key for a group). The server fills every SIGNER_PROFILE name field of the signer when they complete. When this was the last signer the envelope is executed and envelope_status is COMPLETED; otherwise it is IN_PROGRESS and, when signing in order, the next signer is invited.
          */
         post: operations["completeSigner"];
         delete?: never;
@@ -589,7 +589,7 @@ export interface paths {
         get?: never;
         /**
          * Replace the positioned fields of a DRAFT envelope.
-         * @description Each field box must lie inside its real source page. PDF-native geometry. DRAFT only. Requires sign:envelope:create. Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
+         * @description Each field box must lie inside its real source page. PDF-native geometry. DRAFT only. Requires sign:envelope:create. M-A6 §2 — field types SIGNATURE, INITIALS, SIGN_DATE, TEXT, SIGNER_NAME and CHECKBOX (400 v1_field_type otherwise), except that an engine-only field returned by the detail may be sent back unchanged with its id (SenderFieldPassthrough). A sender never supplies a value (400 sender_value_refused). name_mode applies to SIGNER_NAME only and label, group_key, group_rule and min_selected to CHECKBOX only (400 field_config_not_applicable); other 400 reasons: name_mode_invalid, checkbox_label_invalid, checkbox_group_invalid, checkbox_group_required, checkbox_group_inconsistent, checkbox_group_min_exceeds_size. Aramo-Sign-Unified-Product-Amendment-M-A5 §1.5 — a recipient who receives a copy has no fields (400 copy_recipient_has_fields). Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
          */
         put: operations["replaceSenderFields"];
         post?: never;
@@ -2474,7 +2474,56 @@ export interface components {
             expires_at?: string | null;
             documents: components["schemas"]["SenderEnvelopeDocument"][];
             recipients: components["schemas"]["SenderEnvelopeRecipient"][];
-            fields: components["schemas"]["SenderFieldInput"][];
+            fields: components["schemas"]["SenderEnvelopeField"][];
+        };
+        /** @description A stored field of the envelope, as the sender detail returns it. Any of the seven engine types (fields from the service-to-service, Sign API and template paths keep theirs). PDF-native geometry - page_number 0-based, points, origin bottom-left. M-A6 §2 configuration is null where it does not apply. Other recipients' values are never returned. */
+        SenderEnvelopeField: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            envelope_document_id: string;
+            /** Format: uuid */
+            signer_id: string | null;
+            /** @enum {string} */
+            field_type: "SIGNATURE" | "INITIALS" | "SIGN_DATE" | "SIGNER_NAME" | "TEXT" | "CHECKBOX" | "ACKNOWLEDGEMENT";
+            page_number: number;
+            x: number;
+            y: number;
+            width: number | null;
+            height: number | null;
+            required: boolean;
+            filled: boolean;
+            /** @enum {string|null} */
+            name_mode?: "SIGNER_PROFILE" | "SIGNER_ENTERED" | null;
+            label?: string | null;
+            group_key?: string | null;
+            /** @enum {string|null} */
+            group_rule?: "SELECT_ONE" | "SELECT_ANY" | null;
+            min_selected?: number | null;
+        };
+        /** @description M-A6 §2 — an engine-only field (a type a sender cannot author, e.g. ACKNOWLEDGEMENT) sent back unchanged on the replace-all PUT. Kept as stored only when `id` names an existing field of the envelope and every other property is identical to the stored row (exactly as the detail returned it); otherwise refused with 400 v1_field_type. Omitting it removes it. */
+        SenderFieldPassthrough: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            envelope_document_id: string;
+            /** Format: uuid */
+            signer_id: string | null;
+            /** @enum {string} */
+            field_type: "SIGNATURE" | "INITIALS" | "SIGN_DATE" | "SIGNER_NAME" | "TEXT" | "CHECKBOX" | "ACKNOWLEDGEMENT";
+            page_number: number;
+            x: number;
+            y: number;
+            width: number | null;
+            height: number | null;
+            required?: boolean;
+            /** @enum {string|null} */
+            name_mode?: "SIGNER_PROFILE" | "SIGNER_ENTERED" | null;
+            label?: string | null;
+            group_key?: string | null;
+            /** @enum {string|null} */
+            group_rule?: "SELECT_ONE" | "SELECT_ANY" | null;
+            min_selected?: number | null;
         };
         /** @description PDF-native geometry - page_number 0-based, points, origin bottom-left, (x, y) the box lower-left corner. */
         SenderFieldInput: {
@@ -2482,14 +2531,33 @@ export interface components {
             envelope_document_id: string;
             /** Format: uuid */
             signer_id: string;
-            /** @enum {string} */
-            field_type: "SIGNATURE" | "INITIALS" | "SIGN_DATE" | "SIGNER_NAME" | "TEXT" | "CHECKBOX" | "ACKNOWLEDGEMENT";
+            /**
+             * @description M-A6 §2.1 — the sender authoring types. ACKNOWLEDGEMENT is engine-only (the service-to-service and Sign API paths keep all seven engine types).
+             * @enum {string}
+             */
+            field_type: "SIGNATURE" | "INITIALS" | "SIGN_DATE" | "TEXT" | "SIGNER_NAME" | "CHECKBOX";
             page_number: number;
             x: number;
             y: number;
             width: number;
             height: number;
             required?: boolean;
+            /**
+             * @description M-A6 §2.2 — SIGNER_NAME only (default SIGNER_PROFILE: the server fills the signer's name; SIGNER_ENTERED: the signer types it). The sender never supplies a value.
+             * @enum {string|null}
+             */
+            name_mode?: "SIGNER_PROFILE" | "SIGNER_ENTERED" | null;
+            /** @description M-A6 §2.3 — CHECKBOX only; the caption printed in the certificate. */
+            label?: string | null;
+            /** @description M-A6 §2.3 — CHECKBOX only; boxes sharing a key form a group, which belongs to one recipient and shares one rule, minimum and required setting. */
+            group_key?: string | null;
+            /**
+             * @description M-A6 §2.3 — with group_key only (default SELECT_ANY).
+             * @enum {string|null}
+             */
+            group_rule?: "SELECT_ONE" | "SELECT_ANY" | null;
+            /** @description M-A6 §2.3 — with group_key only; the boxes a required group needs checked (default 1; 1 for SELECT_ONE). */
+            min_selected?: number | null;
         };
         SenderUploadedDocument: {
             /** Format: uuid */
@@ -3101,8 +3169,23 @@ export interface operations {
                             required?: boolean;
                             /** @description True once this signer has filled the field (lets the signer page restore progress). */
                             filled?: boolean;
-                            /** @description The signer's own entered value for their field (typed text, date, or drawn-signature data URL); null otherwise. */
+                            /** @description The signer's own entered value for their field (typed text, date, or drawn-signature data URL); null otherwise. M-A6 §2.4 — for a server-filled name (server_filled true) it is the name the server fills. Other signers' values are never returned. */
                             value?: string | null;
+                            /** @description M-A6 §2.3 — the check box caption (CHECKBOX only). */
+                            label?: string | null;
+                            /** @description M-A6 §2.3 — boxes sharing a key form a group (CHECKBOX only). */
+                            group_key?: string | null;
+                            /** @enum {string|null} */
+                            group_rule?: "SELECT_ONE" | "SELECT_ANY" | null;
+                            /** @description M-A6 §2.3 — the boxes a required group needs checked (null means 1). */
+                            min_selected?: number | null;
+                            /**
+                             * @description M-A6 §2.2 — SIGNER_NAME only; null for engine name fields, which the signer types.
+                             * @enum {string|null}
+                             */
+                            name_mode?: "SIGNER_PROFILE" | "SIGNER_ENTERED" | null;
+                            /** @description M-A6 §2.2 — true for a SIGNER_PROFILE name; shown read-only, never filled by the client. */
+                            server_filled?: boolean;
                         }[];
                         /** @description Sign Mobile M-A3 §3 — the sender's plain-text message (sender-supplied; not part of the signed document). Render as text, never markup. */
                         message?: string | null;
@@ -3952,7 +4035,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    fields: components["schemas"]["SenderFieldInput"][];
+                    fields: (components["schemas"]["SenderFieldInput"] | components["schemas"]["SenderFieldPassthrough"])[];
                 };
             };
         };

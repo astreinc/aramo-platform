@@ -53,6 +53,25 @@ function parseImageDataUrl(value: string): { bytes: Uint8Array; format: 'PNG' | 
   return { bytes: new Uint8Array(Buffer.from(b64, 'base64')), format };
 }
 
+// M-A6 §1 — field types stamped as a vector check box (MARK).
+const MARK_FIELD_TYPES: ReadonlySet<string> = new Set(['CHECKBOX', 'ACKNOWLEDGEMENT']);
+
+// M-A6 §2.5 — one certificate line per check box of a signer: its label (or a
+// positional fallback) and its state.
+function checkboxLines(
+  fields: ReadonlyArray<{ signer_id: string | null; field_type: string; label?: string | null; page_number: number; value: string | null; filled_at: Date | null }>,
+  signer_id: string,
+): string[] {
+  return fields
+    .filter((f) => f.signer_id === signer_id && MARK_FIELD_TYPES.has(f.field_type))
+    .map((f) => {
+      const name = f.label !== undefined && f.label !== null && f.label.length > 0
+        ? `${f.field_type === 'ACKNOWLEDGEMENT' ? 'Acknowledgement' : 'Checkbox'} "${f.label}"`
+        : f.field_type === 'ACKNOWLEDGEMENT' ? `Acknowledgement (page ${f.page_number + 1})` : `Checkbox (page ${f.page_number + 1})`;
+      return `${name}: ${f.filled_at !== null && f.value === 'true' ? 'checked' : 'not checked'}`;
+    });
+}
+
 @Injectable()
 export class ExecutionService implements ExecutionProducerPort {
   constructor(
@@ -117,11 +136,27 @@ export class ExecutionService implements ExecutionProducerPort {
       });
       const source_sha256 = sha256Hex(sourcePdf);
 
+      // M-A6 §1 — check boxes (CHECKBOX, ACKNOWLEDGEMENT) are drawn whether or not
+      // they were touched: an unchecked or never-checked box prints as an empty box.
       const fields = await this.prisma.signatureField.findMany({
-        where: { tenant_id, envelope_document_id: doc.id, filled_at: { not: null } },
+        where: { tenant_id, envelope_document_id: doc.id, OR: [{ filled_at: { not: null } }, { field_type: { in: [...MARK_FIELD_TYPES] } }] },
       });
       const placements: PreparedField[] = [];
       for (const f of fields) {
+        if (MARK_FIELD_TYPES.has(f.field_type)) {
+          // M-A6 §1 — a vector check box, never the stored value as text.
+          placements.push({
+            field_key: f.id,
+            page_number: f.page_number,
+            x: f.x,
+            y: f.y,
+            kind: 'MARK',
+            checked: f.filled_at !== null && f.value === 'true',
+            ...(f.width !== null ? { width: f.width } : {}),
+            ...(f.height !== null ? { height: f.height } : {}),
+          });
+          continue;
+        }
         if (f.value === null) continue;
         const isImage = f.signature_method === 'DRAWN' || f.signature_method === 'UPLOADED';
         if (isImage) {
@@ -194,6 +229,7 @@ export class ExecutionService implements ExecutionProducerPort {
     // DOC-4 (R-4-6) — human-readable execution certificate (one per envelope).
     const chainHash = (await this.repo.terminalEventHash(tenant_id, envelope_id)) ?? '';
     const hostedBy = await this.hostedBy(tenant_id, envelope_id);
+    const boxes = full.documents.flatMap((d) => (d as { fields?: typeof d.fields }).fields ?? []);
     const blocks: RenderBlock[] = [
       { type: 'HEADING', text: `Envelope ${envelope_id}` },
       { type: 'TEXT', text: `Subject: ${full.subject}` },
@@ -214,6 +250,8 @@ export class ExecutionService implements ExecutionProducerPort {
         ...(hostedBy.has(s.id)
           ? [{ type: 'TEXT', text: `Signed in person. Hosted by ${hostedBy.get(s.id) ?? ''}. Signer identity was not independently verified.` } as RenderBlock]
           : []),
+        // M-A6 §2.5 — the signer's check boxes, by label, with their states.
+        ...checkboxLines(boxes, s.id).map((text): RenderBlock => ({ type: 'TEXT', text })),
       ]),
       { type: 'HEADING', text: 'Evidence' },
       { type: 'TEXT', text: `Event-chain hash: ${chainHash}` },

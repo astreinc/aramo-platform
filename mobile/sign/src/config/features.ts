@@ -11,7 +11,7 @@ export const FEATURES = {
   /** In-person / hosted signing session (A2). */
   hostedSigning: false,
   /** Name and Checkbox authoring tools (A6). */
-  extraFieldTypes: false,
+  extraFieldTypes: true,
   /** Role binding when using a multi-role template (A4). */
   multiRoleTemplates: false,
 } as const;

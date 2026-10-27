@@ -3,9 +3,11 @@
 //            100 / 150 / 200 %. Wraps at large text sizes.
 //   Canvas:  real PDF pages (PdfPageView) scrolling both ways; a picked tool outlines
 //            the pages; tap to place (centred on the tap, inside the page).
-//   Panel:   no selection -> hint + the 4 tools (C-13) + "Place at center";
+//   Panel:   no selection -> hint + the tools (C-13's four, plus Name and Checkbox
+//            when FEATURES.extraFieldTypes, M-A6 §2) + "Place at center";
 //            selection -> "{Type} · {Signer}", Done, Assign, Required/Optional,
-//            move and resize controls (accessible placement, handoff §7), Delete.
+//            Settings (Name and Checkbox), move and resize controls (accessible
+//            placement, handoff §7), Delete.
 import { useCallback, useEffect, useReducer, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -13,6 +15,7 @@ import {
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
   useWindowDimensions,
   type LayoutChangeEvent,
@@ -21,17 +24,20 @@ import {
 } from 'react-native';
 
 import { Button } from '../../components/Button';
+import { Sheet } from '../../components/Sheet';
 import { recipientColor, useTheme } from '../../theme';
 import { randomId } from '../../util/ids';
 import {
   editorReducer,
   fieldAccessibilityLabel,
   fieldCounts,
+  groupMembers,
   initialEditorState,
+  nextGroupKey,
   type EditorAction,
   type EditorField,
 } from './editorReducer';
-import { AUTHORING_FIELD_TYPES, FIELD_TYPE_SPECS, type AuthoringFieldType } from './fieldTypes';
+import { FIELD_TYPE_SPECS, MAX_LABEL, toolFieldTypes, type AuthoringFieldType } from './fieldTypes';
 import { scaleFor, screenToEditorPoint, type PageSize } from './geometry';
 import { FieldBox } from './FieldBox';
 import { PdfPageView } from './PdfPageView';
@@ -356,7 +362,9 @@ export function FieldEditor({
       >
         {selected ? (
           <SelectionPanel
+            key={selected.key}
             field={selected}
+            fields={state.fields}
             recipients={recipients}
             color={colorOf(selected.recipientKey)}
             signerName={nameOf(selected.recipientKey)}
@@ -369,7 +377,7 @@ export function FieldEditor({
               {hint}
             </Text>
             <View style={styles.tools}>
-              {AUTHORING_FIELD_TYPES.map((type) => (
+              {toolFieldTypes().map((type) => (
                 <ToolButton
                   key={type}
                   type={type}
@@ -440,6 +448,7 @@ function ToolButton({
 
 function SelectionPanel({
   field,
+  fields,
   recipients,
   color,
   signerName,
@@ -447,6 +456,7 @@ function SelectionPanel({
   dispatch,
 }: {
   readonly field: EditorField;
+  readonly fields: readonly EditorField[];
   readonly recipients: readonly EditorRecipient[];
   readonly color: string;
   readonly signerName: string;
@@ -462,6 +472,8 @@ function SelectionPanel({
   const grow = (dw: number, dh: number) =>
     pageSize && dispatch({ type: 'grow', key: field.key, dw, dh, pageSize });
   const n = NUDGE_POINTS;
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const configurable = field.type === 'SIGNER_NAME' || field.type === 'CHECKBOX';
   return (
     <View style={styles.panelBody}>
       <View style={styles.selHeader}>
@@ -496,6 +508,27 @@ function SelectionPanel({
           onPress={() => dispatch({ type: 'toggleRequired', key: field.key })}
         />
       </View>
+      {configurable ? (
+        <Button
+          variant="secondary"
+          title={field.type === 'SIGNER_NAME' ? 'Name settings' : 'Checkbox settings'}
+          onPress={() => setSettingsOpen(true)}
+        />
+      ) : null}
+      {configurable ? (
+        <Sheet
+          visible={settingsOpen}
+          onClose={() => setSettingsOpen(false)}
+          title={field.type === 'SIGNER_NAME' ? 'Name' : 'Checkbox'}
+        >
+          {field.type === 'SIGNER_NAME' ? (
+            <NameSettings field={field} dispatch={dispatch} />
+          ) : (
+            <CheckboxSettings field={field} fields={fields} dispatch={dispatch} />
+          )}
+          <Button title="Done" onPress={() => setSettingsOpen(false)} />
+        </Sheet>
+      ) : null}
       <View style={styles.row} accessibilityLabel="Move">
         <Button
           style={styles.grow}
@@ -541,7 +574,192 @@ function SelectionPanel({
   );
 }
 
+function Choice({
+  title,
+  selected,
+  onPress,
+  testID,
+}: {
+  readonly title: string;
+  readonly selected: boolean;
+  readonly onPress: () => void;
+  readonly testID?: string;
+}) {
+  const t = useTheme();
+  return (
+    <Pressable
+      testID={testID}
+      onPress={onPress}
+      accessibilityRole="radio"
+      accessibilityState={{ selected }}
+      style={[
+        styles.tool,
+        {
+          minHeight: t.size.minTouch,
+          borderColor: selected ? t.color.accent : t.color.separator,
+          borderWidth: selected ? 1.5 : 1,
+          backgroundColor: selected ? t.color.tint : t.color.surface,
+        },
+      ]}
+    >
+      <Text
+        style={{
+          color: selected ? t.color.onTint : t.color.text,
+          fontFamily: t.font.family,
+          fontSize: 15,
+        }}
+      >
+        {title}
+      </Text>
+    </Pressable>
+  );
+}
+
+/** M-A6 §2.2 — the sender picks who supplies the name; never the value itself. */
+function NameSettings({
+  field,
+  dispatch,
+}: {
+  readonly field: EditorField;
+  readonly dispatch: (a: EditorAction) => void;
+}) {
+  const t = useTheme();
+  const mode = field.nameMode ?? 'SIGNER_PROFILE';
+  return (
+    <View style={styles.panelBody} accessibilityRole="radiogroup">
+      <Choice
+        testID="name-mode-profile"
+        title="Signer’s name on the envelope"
+        selected={mode === 'SIGNER_PROFILE'}
+        onPress={() => dispatch({ type: 'setNameMode', key: field.key, mode: 'SIGNER_PROFILE' })}
+      />
+      <Choice
+        testID="name-mode-entered"
+        title="Signer types their name"
+        selected={mode === 'SIGNER_ENTERED'}
+        onPress={() => dispatch({ type: 'setNameMode', key: field.key, mode: 'SIGNER_ENTERED' })}
+      />
+      <Text style={{ color: t.color.textSecondary, fontFamily: t.font.family, fontSize: 14 }}>
+        {mode === 'SIGNER_PROFILE'
+          ? 'Aramo Sign fills in the recipient’s name. Nobody can change it.'
+          : 'The signer enters their name when they sign.'}
+      </Text>
+    </View>
+  );
+}
+
+/** M-A6 §2.3 — caption, group, group rule and minimum. */
+function CheckboxSettings({
+  field,
+  fields,
+  dispatch,
+}: {
+  readonly field: EditorField;
+  readonly fields: readonly EditorField[];
+  readonly dispatch: (a: EditorAction) => void;
+}) {
+  const t = useTheme();
+  const [label, setLabel] = useState(field.label ?? '');
+  const groups = [
+    ...new Set(
+      fields
+        .filter(
+          (f) =>
+            f.type === 'CHECKBOX' &&
+            f.recipientKey === field.recipientKey &&
+            typeof f.groupKey === 'string',
+        )
+        .map((f) => f.groupKey as string),
+    ),
+  ];
+  const size = groupMembers(fields, field.groupKey).length;
+  const min = field.minSelected ?? 1;
+  const secondary = { color: t.color.textSecondary, fontFamily: t.font.family, fontSize: 14 };
+  return (
+    <View style={styles.panelBody}>
+      <Text style={secondary}>Label</Text>
+      <TextInput
+        testID="checkbox-label"
+        value={label}
+        onChangeText={setLabel}
+        onEndEditing={() => dispatch({ type: 'setLabel', key: field.key, label })}
+        onSubmitEditing={() => dispatch({ type: 'setLabel', key: field.key, label })}
+        accessibilityLabel="Checkbox label"
+        maxLength={MAX_LABEL}
+        style={[
+          styles.input,
+          { borderColor: t.color.separator, color: t.color.text, backgroundColor: t.color.surface },
+        ]}
+      />
+      <Text style={secondary}>Group</Text>
+      <View style={styles.tools} accessibilityRole="radiogroup">
+        <Choice
+          title="No group"
+          selected={!field.groupKey}
+          onPress={() => dispatch({ type: 'setGroup', key: field.key, groupKey: null })}
+        />
+        {groups.map((g, i) => (
+          <Choice
+            key={g}
+            title={`Group ${i + 1}`}
+            selected={field.groupKey === g}
+            onPress={() => dispatch({ type: 'setGroup', key: field.key, groupKey: g })}
+          />
+        ))}
+        <Choice
+          testID="checkbox-new-group"
+          title="New group"
+          selected={false}
+          onPress={() =>
+            dispatch({ type: 'setGroup', key: field.key, groupKey: nextGroupKey(fields) })
+          }
+        />
+      </View>
+      {field.groupKey ? (
+        <>
+          <View style={styles.tools} accessibilityRole="radiogroup">
+            <Choice
+              title="Select one"
+              selected={field.groupRule === 'SELECT_ONE'}
+              onPress={() => dispatch({ type: 'setGroupRule', key: field.key, rule: 'SELECT_ONE' })}
+            />
+            <Choice
+              title="Select any"
+              selected={field.groupRule !== 'SELECT_ONE'}
+              onPress={() => dispatch({ type: 'setGroupRule', key: field.key, rule: 'SELECT_ANY' })}
+            />
+          </View>
+          {field.groupRule !== 'SELECT_ONE' ? (
+            <View style={styles.selHeader}>
+              <Button
+                title="−"
+                variant="text"
+                accessibilityLabel="Fewer required"
+                disabled={min <= 1}
+                onPress={() => dispatch({ type: 'setMinSelected', key: field.key, min: min - 1 })}
+              />
+              <Text
+                style={[secondary, styles.grow]}
+              >{`At least ${min} of ${size} checked when required`}</Text>
+              <Button
+                title="+"
+                variant="text"
+                accessibilityLabel="More required"
+                disabled={min >= size}
+                onPress={() => dispatch({ type: 'setMinSelected', key: field.key, min: min + 1 })}
+              />
+            </View>
+          ) : (
+            <Text style={secondary}>The signer checks exactly one box in this group.</Text>
+          )}
+        </>
+      ) : null}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
+  input: { borderWidth: 1, borderRadius: 10, paddingHorizontal: 12, minHeight: 44, fontSize: 16 },
   fill: { flex: 1 },
   toolbar: {
     paddingHorizontal: 12,

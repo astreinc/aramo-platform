@@ -4,6 +4,7 @@
 // revision_mismatch on a stale one. Idempotency (M-A3 §8): document upload carries one
 // Idempotency-Key per document, reused on every retry.
 import { ApiError, isApiError } from '../../api/errors';
+import type { paths } from '../../api/generated/sign';
 import type { HttpResponse } from '../../api/http';
 import { etagFor, type WorkspaceClient } from '../../api/workspaceClient';
 import type { PageSize } from '../editor/geometry';
@@ -49,17 +50,35 @@ export interface UploadedDocument {
   readonly pages: PageSize[];
 }
 
+/**
+ * One item of PUT …/fields. M-A6 §2: name_mode on SIGNER_NAME only; label and the
+ * group settings on CHECKBOX only. There is deliberately no `value`: a sender never
+ * fills a field (the server refuses one, `sender_value_refused`).
+ */
 export interface FieldWire {
+  /** Only on a preserved engine-type field: the stored id it is identical to. */
+  readonly id?: string;
   readonly envelope_document_id: string;
-  readonly signer_id: string;
-  readonly field_type: 'SIGNATURE' | 'INITIALS' | 'SIGN_DATE' | 'TEXT';
+  /** null only on a preserved, unassigned engine field. */
+  readonly signer_id: string | null;
+  /** An authoring type, or an engine type preserved untouched from the server copy. */
+  readonly field_type: string;
   readonly page_number: number;
   readonly x: number;
   readonly y: number;
-  readonly width: number;
-  readonly height: number;
+  /** null only on a preserved engine field stored without a size. */
+  readonly width: number | null;
+  readonly height: number | null;
   readonly required: boolean;
+  readonly name_mode?: 'SIGNER_PROFILE' | 'SIGNER_ENTERED' | string | null;
+  readonly label?: string | null;
+  readonly group_key?: string | null;
+  readonly group_rule?: 'SELECT_ONE' | 'SELECT_ANY' | string | null;
+  readonly min_selected?: number | null;
 }
+
+type SenderFieldsBody =
+  paths['/v1/sign/sender/envelopes/{id}/fields']['put']['requestBody']['content']['application/json']['fields'];
 
 export interface SenderApi {
   detail(id: string): Promise<Versioned>;
@@ -142,7 +161,9 @@ export function createSenderApi(workspace: WorkspaceClient): SenderApi {
       return versioned(
         await workspace.callWithMeta('/v1/sign/sender/envelopes/{id}/fields', 'put', {
           path: { id },
-          body: { fields: [...fields] },
+          // Preserved engine-type fields keep their server type, which the generated
+          // sender enum (the six authoring types) does not list.
+          body: { fields: [...fields] as SenderFieldsBody },
           ifMatch,
         }),
       );

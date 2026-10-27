@@ -1,12 +1,20 @@
+import { FEATURES } from '../../../config/features';
 import {
   UNDO_DEPTH,
   editorReducer,
   fieldAccessibilityLabel,
+  groupMembers,
   initialEditorState,
+  nextGroupKey,
   type EditorAction,
   type EditorState,
 } from '../editorReducer';
-import { AUTHORING_FIELD_TYPES, FIELD_TYPE_SPECS, isAuthoringFieldType } from '../fieldTypes';
+import {
+  AUTHORING_FIELD_TYPES,
+  FIELD_TYPE_SPECS,
+  isAuthoringFieldType,
+  toolFieldTypes,
+} from '../fieldTypes';
 
 const PAGE = { width: 612, height: 792 };
 const run = (s: EditorState, ...actions: EditorAction[]) => actions.reduce(editorReducer, s);
@@ -19,29 +27,40 @@ function placed(tool: (typeof AUTHORING_FIELD_TYPES)[number] = 'SIGNATURE', key 
   );
 }
 
-describe('the four authoring field types (C-13)', () => {
-  it('is exactly SIGNATURE, INITIALS, SIGN_DATE and TEXT', () => {
+describe('the authoring field types (C-13 + M-A6 §2.1)', () => {
+  it('is the four base tools plus Name and Checkbox; ACKNOWLEDGEMENT stays engine-only', () => {
     expect([...AUTHORING_FIELD_TYPES].sort()).toEqual([
+      'CHECKBOX',
       'INITIALS',
       'SIGNATURE',
+      'SIGNER_NAME',
       'SIGN_DATE',
       'TEXT',
     ]);
-    expect(Object.keys(FIELD_TYPE_SPECS).sort()).toEqual([
-      'INITIALS',
-      'SIGNATURE',
-      'SIGN_DATE',
-      'TEXT',
-    ]);
-    for (const other of ['SIGNER_NAME', 'CHECKBOX', 'ACKNOWLEDGEMENT', 'NAME']) {
+    expect(Object.keys(FIELD_TYPE_SPECS).sort()).toEqual([...AUTHORING_FIELD_TYPES].sort());
+    for (const other of ['ACKNOWLEDGEMENT', 'NAME', 'STAMP']) {
       expect(isAuthoringFieldType(other)).toBe(false);
     }
   });
 
-  it('refuses to pick or load any other type', () => {
+  it('shows Name and Checkbox only behind FEATURES.extraFieldTypes (on in this build)', () => {
+    expect(FEATURES.extraFieldTypes).toBe(true);
+    expect(toolFieldTypes(false)).toEqual(['SIGNATURE', 'INITIALS', 'SIGN_DATE', 'TEXT']);
+    expect(toolFieldTypes(true)).toEqual([
+      'SIGNATURE',
+      'INITIALS',
+      'SIGN_DATE',
+      'TEXT',
+      'SIGNER_NAME',
+      'CHECKBOX',
+    ]);
+    expect(toolFieldTypes()).toEqual(toolFieldTypes(true));
+  });
+
+  it('refuses to pick or load an engine-only type', () => {
     const s = editorReducer(initialEditorState([], 'r1'), {
       type: 'pickTool',
-      tool: 'CHECKBOX' as never,
+      tool: 'ACKNOWLEDGEMENT' as never,
     });
     expect(s.tool).toBeNull();
     const loaded = editorReducer(initialEditorState(), {
@@ -53,7 +72,7 @@ describe('the four authoring field types (C-13)', () => {
           docKey: 'd1',
           page: 0,
           recipientKey: 'r1',
-          type: 'CHECKBOX' as never,
+          type: 'ACKNOWLEDGEMENT' as never,
           x: 0,
           y: 0,
           width: 16,
@@ -65,16 +84,137 @@ describe('the four authoring field types (C-13)', () => {
           docKey: 'd1',
           page: 0,
           recipientKey: 'r1',
-          type: 'TEXT',
+          type: 'CHECKBOX',
           x: 0,
           y: 0,
-          width: 50,
-          height: 20,
+          width: 18,
+          height: 18,
           required: false,
         },
       ],
     });
     expect(loaded.fields.map((f) => f.key)).toEqual(['b']);
+  });
+});
+
+describe('Name and Checkbox configuration (M-A6 §2)', () => {
+  const box = (key: string, y: number, recipientKey = 'r1') => ({
+    key,
+    docKey: 'd1',
+    page: 0,
+    recipientKey,
+    type: 'CHECKBOX' as const,
+    x: 10,
+    y,
+    width: 18,
+    height: 18,
+    required: false,
+    label: null,
+    groupKey: null,
+    groupRule: null,
+    minSelected: null,
+  });
+
+  it('a new Name field defaults to the signer profile; the mode can change', () => {
+    const s = placed('SIGNER_NAME');
+    expect(s.fields[0]).toMatchObject({
+      type: 'SIGNER_NAME',
+      nameMode: 'SIGNER_PROFILE',
+      required: true,
+    });
+    const t = editorReducer(s, { type: 'setNameMode', key: 'f1', mode: 'SIGNER_ENTERED' });
+    expect(t.fields[0]!.nameMode).toBe('SIGNER_ENTERED');
+    expect(t.undo).toHaveLength(s.undo.length + 1);
+    // Name mode never applies to another type.
+    const sig = placed('SIGNATURE');
+    expect(editorReducer(sig, { type: 'setNameMode', key: 'f1', mode: 'SIGNER_ENTERED' })).toBe(
+      sig,
+    );
+  });
+
+  it('a new Checkbox starts optional with no label or group; the label is trimmed and capped', () => {
+    const s = placed('CHECKBOX');
+    expect(s.fields[0]).toMatchObject({
+      type: 'CHECKBOX',
+      required: false,
+      label: null,
+      groupKey: null,
+    });
+    const labelled = editorReducer(s, { type: 'setLabel', key: 'f1', label: '  I agree  ' });
+    expect(labelled.fields[0]!.label).toBe('I agree');
+    expect(
+      editorReducer(labelled, { type: 'setLabel', key: 'f1', label: '   ' }).fields[0]!.label,
+    ).toBeNull();
+    const long = editorReducer(s, { type: 'setLabel', key: 'f1', label: 'x'.repeat(250) });
+    expect(long.fields[0]!.label).toHaveLength(200);
+  });
+
+  it('groups: joining adopts the rule, minimum and required setting; one recipient per group', () => {
+    let s = initialEditorState(
+      [box('a', 10), box('b', 40), box('c', 70), box('z', 100, 'r2')],
+      'r1',
+    );
+    const g = nextGroupKey(s.fields);
+    expect(g).toBe('group-1');
+    s = run(
+      s,
+      { type: 'setGroup', key: 'a', groupKey: g },
+      { type: 'setGroupRule', key: 'a', rule: 'SELECT_ONE' },
+      { type: 'toggleRequired', key: 'a' },
+      { type: 'setGroup', key: 'b', groupKey: g },
+    );
+    expect(s.fields.find((f) => f.key === 'b')).toMatchObject({
+      groupKey: g,
+      groupRule: 'SELECT_ONE',
+      required: true,
+    });
+    expect(nextGroupKey(s.fields)).toBe('group-2');
+    // Another recipient's box cannot join.
+    expect(editorReducer(s, { type: 'setGroup', key: 'z', groupKey: g })).toBe(s);
+    // Required and the rule apply to the whole group.
+    s = editorReducer(s, { type: 'toggleRequired', key: 'b' });
+    expect(groupMembers(s.fields, g).map((f) => f.required)).toEqual([false, false]);
+    s = editorReducer(s, { type: 'setGroupRule', key: 'b', rule: 'SELECT_ANY' });
+    expect(groupMembers(s.fields, g).map((f) => f.groupRule)).toEqual(['SELECT_ANY', 'SELECT_ANY']);
+  });
+
+  it('min_selected: SELECT_ANY only, clamped to the group size, reset by SELECT_ONE and on leave', () => {
+    let s = run(
+      initialEditorState([box('a', 10), box('b', 40), box('c', 70)], 'r1'),
+      { type: 'setGroup', key: 'a', groupKey: 'g' },
+      { type: 'setGroup', key: 'b', groupKey: 'g' },
+      { type: 'setGroup', key: 'c', groupKey: 'g' },
+      { type: 'setMinSelected', key: 'a', min: 5 },
+    );
+    expect(groupMembers(s.fields, 'g').map((f) => f.minSelected)).toEqual([3, 3, 3]);
+    s = editorReducer(s, { type: 'setGroup', key: 'c', groupKey: null });
+    expect(s.fields.find((f) => f.key === 'c')).toMatchObject({
+      groupKey: null,
+      groupRule: null,
+      minSelected: null,
+    });
+    expect(groupMembers(s.fields, 'g').map((f) => f.minSelected)).toEqual([2, 2]);
+    s = editorReducer(s, { type: 'delete', key: 'b' });
+    expect(groupMembers(s.fields, 'g').map((f) => f.minSelected)).toEqual([1]);
+    s = run(
+      s,
+      { type: 'setGroup', key: 'c', groupKey: 'g' },
+      { type: 'setMinSelected', key: 'a', min: 2 },
+    );
+    expect(groupMembers(s.fields, 'g').map((f) => f.minSelected)).toEqual([2, 2]);
+    s = editorReducer(s, { type: 'setGroupRule', key: 'a', rule: 'SELECT_ONE' });
+    expect(groupMembers(s.fields, 'g').map((f) => f.minSelected)).toEqual([null, null]);
+    expect(editorReducer(s, { type: 'setMinSelected', key: 'a', min: 2 })).toBe(s);
+  });
+
+  it('reassigning a grouped box moves its whole group', () => {
+    const s = run(
+      initialEditorState([box('a', 10), box('b', 40)], 'r1'),
+      { type: 'setGroup', key: 'a', groupKey: 'g' },
+      { type: 'setGroup', key: 'b', groupKey: 'g' },
+      { type: 'reassign', key: 'a', recipientKeys: ['r1', 'r2'] },
+    );
+    expect(s.fields.map((f) => f.recipientKey)).toEqual(['r2', 'r2']);
   });
 });
 
@@ -99,9 +239,9 @@ describe('editor reducer', () => {
     ]);
   });
 
-  it('starts every type except Text as required', () => {
+  it('starts every type except Text and Checkbox as required', () => {
     for (const tool of AUTHORING_FIELD_TYPES) {
-      expect(placed(tool).fields[0]!.required).toBe(tool !== 'TEXT');
+      expect(placed(tool).fields[0]!.required).toBe(tool !== 'TEXT' && tool !== 'CHECKBOX');
     }
   });
 

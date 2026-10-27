@@ -138,6 +138,21 @@ const H_SIGNER_ID = '7a000000-0000-7000-8000-000000000112';
 const H_SESSION_ID = '7a000000-0000-7000-8000-000000000113';
 const H_ENV_DOC_ID = '7a000000-0000-7000-8000-000000000116';
 const TOKEN_HOSTED_DISCLOSURE = 'sign-web-pact-token-hosted-disclosure';
+// M-A6 §2 — a check box to uncheck, and a document view with a profile name and a
+// check box. MUST match the sign-web consumer.
+const U_ENVELOPE_ID = '7a000000-0000-7000-8000-000000000a01';
+const U_SIGNER_ID = '7a000000-0000-7000-8000-000000000a02';
+const U_SESSION_ID = '7a000000-0000-7000-8000-000000000a03';
+const U_FIELD_ID = '7a000000-0000-7000-8000-000000000a04';
+const U_ENV_DOC_ID = '7a000000-0000-7000-8000-000000000a06';
+const TOKEN_UNCHECK = 'sign-web-pact-token-uncheck';
+const V_ENVELOPE_ID = '7a000000-0000-7000-8000-000000000b01';
+const V_SIGNER_ID = '7a000000-0000-7000-8000-000000000b02';
+const V_SESSION_ID = '7a000000-0000-7000-8000-000000000b03';
+const V_NAME_FIELD_ID = '7a000000-0000-7000-8000-000000000b04';
+const V_ENV_DOC_ID = '7a000000-0000-7000-8000-000000000b06';
+const V_BOX_FIELD_ID = '7a000000-0000-7000-8000-000000000b07';
+const TOKEN_VIEW = 'sign-web-pact-token-view';
 
 // PX-1 — esign-web sender-console fixtures. MUST match
 // pact/consumers/sign-workspace-consumer/src/sender-console.consumer.test.ts. The
@@ -553,6 +568,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       field?: boolean;
       fieldId?: string;
       secondSignerId?: string;
+      // M-A6 §2 — configured fields (Name / Checkbox) for this signer.
+      configured?: Array<{ id: string; field_type: string; y: number; label?: string; name_mode?: string }>;
     }): Promise<void> {
       await db.query(
         `INSERT INTO "sign"."SignatureEnvelope" (id, tenant_id, subject, status, execution_mode, created_by)
@@ -598,6 +615,13 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           `INSERT INTO "sign"."SignatureField" (id, tenant_id, envelope_document_id, signer_id, field_type, page_number, x, y, required)
            VALUES ($1,$2,$3,$4,'SIGNATURE',1,10,10,true)`,
           [f.fieldId, TENANT_ID, f.envDocId, f.signerId],
+        );
+      }
+      for (const c of f.configured ?? []) {
+        await db.query(
+          `INSERT INTO "sign"."SignatureField" (id, tenant_id, envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required, label, name_mode)
+           VALUES ($1,$2,$3,$4,$5,0,72,$6,200,14,true,$7,$8)`,
+          [c.id, TENANT_ID, f.envDocId, f.signerId, c.field_type, c.y, c.label ?? null, c.name_mode ?? null],
         );
       }
     }
@@ -961,6 +985,22 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           },
           'a signer session has accepted disclosure with a fillable field': async () => {
             await seedSignerFixture({ envelopeId: F_ENVELOPE_ID, envDocId: F_ENV_DOC_ID, signerId: F_SIGNER_ID, sessionId: F_SESSION_ID, token: TOKEN_FILL, disclosure: true, field: true, fieldId: FILL_FIELD_ID });
+          },
+          // M-A6 §2 — Name and Checkbox fields on the signer transport.
+          'a signer session has accepted disclosure with a check box': async () => {
+            await seedSignerFixture({
+              envelopeId: U_ENVELOPE_ID, envDocId: U_ENV_DOC_ID, signerId: U_SIGNER_ID, sessionId: U_SESSION_ID, token: TOKEN_UNCHECK, disclosure: true,
+              configured: [{ id: U_FIELD_ID, field_type: 'CHECKBOX', y: 40, label: 'Send me updates' }],
+            });
+          },
+          'a signer session has accepted disclosure with a profile name and a check box': async () => {
+            await seedSignerFixture({
+              envelopeId: V_ENVELOPE_ID, envDocId: V_ENV_DOC_ID, signerId: V_SIGNER_ID, sessionId: V_SESSION_ID, token: TOKEN_VIEW, disclosure: true,
+              configured: [
+                { id: V_NAME_FIELD_ID, field_type: 'SIGNER_NAME', y: 10, name_mode: 'SIGNER_PROFILE' },
+                { id: V_BOX_FIELD_ID, field_type: 'CHECKBOX', y: 40, label: 'I agree to the terms' },
+              ],
+            });
           },
           'a signer session is ready to complete with another pending signer': async () => {
             await seedSignerFixture({ envelopeId: C_ENVELOPE_ID, envDocId: C_ENV_DOC_ID, signerId: C_SIGNER_ID, sessionId: C_SESSION_ID, token: TOKEN_COMPLETE, disclosure: true, secondSignerId: C_SIGNER2_ID });

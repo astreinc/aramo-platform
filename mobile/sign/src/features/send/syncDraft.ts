@@ -7,6 +7,7 @@
 // re-run upload replays under its Idempotency-Key instead of duplicating the document.
 import { isApiError } from '../../api/errors';
 import { parseEtag } from '../../api/workspaceClient';
+import type { EditorField } from '../editor/editorReducer';
 import { editorToWire } from '../editor/geometry';
 import type { DocumentBytesStore } from './documentBytes';
 import {
@@ -82,7 +83,7 @@ function revisionOf(etag: string | null): number | null {
 
 /** The wire fields for the payload. Every document and recipient must be on the server. */
 export function fieldsToWire(p: SendDraftPayload): FieldWire[] {
-  return p.fields.map((f) => {
+  const authored: FieldWire[] = p.fields.map((f) => {
     const doc = p.documents.find((d) => d.key === f.docKey);
     const r = p.recipients.find((x) => x.key === f.recipientKey);
     const page = doc?.pages?.[f.page];
@@ -99,8 +100,47 @@ export function fieldsToWire(p: SendDraftPayload): FieldWire[] {
       width: b.width,
       height: b.height,
       required: f.required,
+      ...configWire(f),
     };
   });
+  // Engine-type fields from the server copy go back exactly as they came (their
+  // recipient must still exist: the server drops the fields of removed recipients).
+  const signers = new Set(p.recipients.map((r) => r.serverId).filter((x): x is string => !!x));
+  // M-A6 §2 — a preserved field carries its stored id and every stored value exactly
+  // (the server keeps it only when it is identical to the stored row).
+  const preserved: FieldWire[] = (p.preservedFields ?? [])
+    .filter((f) => f.signer_id === null || signers.has(f.signer_id))
+    .map((f) => ({
+      id: f.id,
+      envelope_document_id: f.envelope_document_id,
+      signer_id: f.signer_id,
+      field_type: f.field_type,
+      page_number: f.page_number,
+      x: f.x,
+      y: f.y,
+      width: f.width,
+      height: f.height,
+      required: f.required,
+      name_mode: f.name_mode,
+      label: f.label,
+      group_key: f.group_key,
+      group_rule: f.group_rule,
+      min_selected: f.min_selected,
+    }));
+  return [...authored, ...preserved];
+}
+
+/** M-A6 §2 — the configuration a field type carries on the wire (never a value). */
+function configWire(f: EditorField): Partial<FieldWire> {
+  if (f.type === 'SIGNER_NAME') return { name_mode: f.nameMode ?? 'SIGNER_PROFILE' };
+  if (f.type !== 'CHECKBOX') return {};
+  const grouped = typeof f.groupKey === 'string' && f.groupKey.length > 0;
+  return {
+    label: f.label ?? null,
+    group_key: grouped ? f.groupKey : null,
+    group_rule: grouped ? (f.groupRule ?? 'SELECT_ANY') : null,
+    min_selected: grouped && f.groupRule !== 'SELECT_ONE' ? (f.minSelected ?? null) : null,
+  };
 }
 
 export async function syncDraft(deps: SyncDeps, input: SendDraft): Promise<SyncResult> {
