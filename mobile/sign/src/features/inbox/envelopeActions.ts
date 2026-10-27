@@ -4,12 +4,13 @@
 //   Remind, Void       — SENT / IN_PROGRESS envelopes the user may manage
 //                        (own, or manage_all) that were created in Aramo Sign
 //   Continue editing   — the server's `editable` (own Aramo Sign DRAFT)
+//   Delete draft       — the same `editable` DRAFT (D-W6-3; a sent envelope is voided)
 //   View certificate   — COMPLETED
 import { isApiError, type ApiError } from '../../api/errors';
 import { refusalMessage } from '../../api/refusalMessages';
 import { newIdempotencyKey, type WorkspaceClient } from '../../api/workspaceClient';
 import { dateTime } from './agreementsModel';
-import type { DetailWithEtag } from './queries';
+import { fetchDetail, type DetailWithEtag } from './queries';
 import {
   OPEN_STATUSES,
   SIGN_APPLICATION,
@@ -20,6 +21,7 @@ import {
 
 export interface ActionSet {
   readonly continueEditing: boolean;
+  readonly deleteDraft: boolean;
   readonly viewCertificate: boolean;
   readonly remind: boolean;
   readonly void: boolean;
@@ -44,6 +46,7 @@ export function actionsFor(
   const manage = open && fromSign && mayManage(detail, ctx);
   return {
     continueEditing: detail.status === 'DRAFT' && detail.editable === true,
+    deleteDraft: detail.status === 'DRAFT' && detail.editable === true,
     viewCertificate: detail.status === 'COMPLETED',
     remind: manage,
     void: manage,
@@ -209,4 +212,68 @@ export function recipientStateLine(
     default:
       return { text: 'Waiting to sign', tone: 'secondary' };
   }
+}
+
+export type DeleteDraftOutcome =
+  | { readonly kind: 'deleted' }
+  | { readonly kind: 'stale' }
+  | { readonly kind: 'refused'; readonly message: string };
+
+const NOT_DELETABLE = 'Only a draft you created in Aramo Sign can be deleted. Void a sent envelope instead.';
+
+function refusal(e: unknown): DeleteDraftOutcome {
+  return {
+    kind: 'refused',
+    message: isApiError(e)
+      ? refusalMessage(e)
+      : refusalMessage({ reason: 'unknown', code: 'unknown' }),
+  };
+}
+
+/**
+ * Delete a DRAFT with the last-read ETag (D-W6-3: DELETE /v1/sign/sender/envelopes/{id},
+ * If-Match required for a native token). A 412 means it changed: the caller refreshes.
+ */
+export async function deleteDraftEnvelope(
+  workspace: WorkspaceClient,
+  current: DetailWithEtag,
+): Promise<DeleteDraftOutcome> {
+  if (current.detail.status !== 'DRAFT' || current.detail.editable !== true)
+    return { kind: 'refused', message: NOT_DELETABLE };
+  try {
+    await workspace.call('/v1/sign/sender/envelopes/{id}', 'delete', {
+      path: { id: current.detail.id },
+      ifMatch: current.etag ?? {
+        id: current.detail.id,
+        revision: current.detail.revision ?? 1,
+      },
+    });
+    return { kind: 'deleted' };
+  } catch (e) {
+    if (isApiError(e) && (e.status === 412 || e.is('revision_mismatch', 'precondition_required')))
+      return { kind: 'stale' };
+    return refusal(e);
+  }
+}
+
+/**
+ * Delete a draft from the list, where no ETag is held: read the envelope, then delete
+ * with its ETag. The sender asked to delete this draft, so a change made in between
+ * (412) is read once more and retried once; a second 412 is reported.
+ */
+export async function deleteDraftById(
+  workspace: WorkspaceClient,
+  envelopeId: string,
+): Promise<DeleteDraftOutcome> {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    let current: DetailWithEtag;
+    try {
+      current = await fetchDetail(workspace, envelopeId);
+    } catch (e) {
+      return refusal(e);
+    }
+    const r = await deleteDraftEnvelope(workspace, current);
+    if (r.kind !== 'stale') return r;
+  }
+  return { kind: 'stale' };
 }

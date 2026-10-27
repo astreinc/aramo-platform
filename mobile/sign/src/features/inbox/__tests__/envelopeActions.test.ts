@@ -7,6 +7,8 @@ import {
   remindableSigners,
   remindLabel,
   reminderRefusalCopy,
+  deleteDraftById,
+  deleteDraftEnvelope,
   voidEnvelope,
   voidReasonValid,
 } from '../envelopeActions';
@@ -22,6 +24,7 @@ describe('action visibility by state', () => {
     expect(a.remind).toBe(open);
     expect(a.void).toBe(open);
     expect(a.continueEditing).toBe(status === 'DRAFT');
+    expect(a.deleteDraft).toBe(status === 'DRAFT');
     expect(a.viewCertificate).toBe(status === 'COMPLETED');
   });
 
@@ -169,3 +172,57 @@ describe('void', () => {
     expect(net.calls).toHaveLength(1);
   });
 });
+
+describe('delete draft (D-W6-3)', () => {
+  const ID = 'e5000000-0000-4000-8000-0000000000a1';
+  const draft = (over = {}) => detail({ status: 'DRAFT', editable: true, revision: 4, ...over });
+  const stale = {
+    status: 412,
+    body: { error: { code: 'PRECONDITION_FAILED', details: { reason: 'revision_mismatch', current_revision: 5 } } },
+  };
+
+  it('DELETEs the draft with the last-read ETag', async () => {
+    const { net, workspace } = workspaceWith(() => ({ status: 204, body: null }));
+    const r = await deleteDraftEnvelope(workspace, { detail: draft(), etag: `"${ID}.4"` });
+    expect(r.kind).toBe('deleted');
+    expect(net.calls[0]!.method).toBe('DELETE');
+    expect(net.calls[0]!.url).toMatch(new RegExp(`/v1/sign/sender/envelopes/${ID}$`));
+    expect(net.calls[0]!.headers['If-Match']).toBe(`"${ID}.4"`);
+  });
+
+  it('never calls the server for a sent envelope or one not editable here', async () => {
+    const { net, workspace } = workspaceWith(() => ({ status: 204, body: null }));
+    expect((await deleteDraftEnvelope(workspace, { detail: detail({ status: 'SENT' }), etag: null })).kind).toBe('refused');
+    expect((await deleteDraftEnvelope(workspace, { detail: draft({ editable: false }), etag: null })).kind).toBe('refused');
+    expect(net.calls).toHaveLength(0);
+  });
+
+  it('412 is "stale" from the detail screen (refresh, never resubmit)', async () => {
+    const { net, workspace } = workspaceWith(() => stale);
+    const r = await deleteDraftEnvelope(workspace, { detail: draft(), etag: '"x.3"' });
+    expect(r.kind).toBe('stale');
+    expect(net.calls).toHaveLength(1);
+  });
+
+  it('from the list: reads the ETag, deletes, and re-reads once after a 412', async () => {
+    let deletes = 0;
+    const { net, workspace } = workspaceWith((req) => {
+      if (req.method === 'GET') return { status: 200, body: draft(), headers: { ETag: `"${ID}.${4 + deletes}"` } };
+      deletes += 1;
+      return deletes === 1 ? stale : { status: 204, body: null };
+    });
+    const r = await deleteDraftById(workspace, ID);
+    expect(r.kind).toBe('deleted');
+    expect(net.calls.map((c) => c.method)).toEqual(['GET', 'DELETE', 'GET', 'DELETE']);
+    expect(net.calls[3]!.headers['If-Match']).toBe(`"${ID}.5"`);
+  });
+
+  it('from the list: a second 412 is reported, not retried again', async () => {
+    const { net, workspace } = workspaceWith((req) =>
+      req.method === 'GET' ? { status: 200, body: draft(), headers: { ETag: `"${ID}.4"` } } : stale,
+    );
+    expect((await deleteDraftById(workspace, ID)).kind).toBe('stale');
+    expect(net.calls.filter((c) => c.method === 'DELETE')).toHaveLength(2);
+  });
+});
+

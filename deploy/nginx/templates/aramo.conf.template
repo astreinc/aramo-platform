@@ -321,9 +321,15 @@ server {
     proxy_pass http://sign-service:3003;
   }
   # Workspace — the authenticated sender zone.
+  # gzip off: compressing a response makes nginx rewrite its strong ETag
+  # "{envelope_id}.{revision}" into the weak W/"..." form, and sign-service
+  # (correctly, M-A3 §6: the ETag is the strong validator) refuses a weak If-Match
+  # with 412 revision_mismatch. The native app echoes the ETag it receives, so every
+  # draft write after a gzipped read failed. These JSON responses are small.
   location /v1/sign/sender/ {
     limit_req zone=sign_workspace burst=100 nodelay;
     client_max_body_size 40m;
+    gzip off;
     proxy_pass http://sign-service:3003;
   }
   # Workspace — self-service billing (plans, account, checkout, portal) and the

@@ -41,6 +41,8 @@
 //       passes the three SIGN_* vars defaulted empty.
 //   (s) the render step's behaviour, executed under sh: unset / malformed input ⇒ valid
 //       associate-nothing JSON; valid input ⇒ exactly the three M-A2 §3.1 paths.
+//   (t) `/v1/sign/sender/` sets `gzip off`: nginx turns a compressed response's strong
+//       ETag into a weak W/"..." one, which sign-service refuses as If-Match (M-A3 §6).
 //
 // Negative tests: `--self-test` (also run before every default run) mutates the real
 // repo text once per rule above and requires that rule to fire. Set
@@ -258,6 +260,12 @@ function checkRepo(inputs: Inputs = readRepoInputs()): Issue[] {
     if (!new RegExp(`limit_req\\s+zone=${zone}\\s+burst=\\d+\\s+nodelay;`).test(loc)) {
       issues.push({ where: TEMPLATE, reason: `(n) ${path} must be rate-limited (limit_req zone=${zone} burst=<n> nodelay)` });
     }
+  }
+  // (t) the sender API keeps its strong ETag "{envelope_id}.{revision}" end to end
+  // (M-A3 §6): nginx weakens the ETag of any response it compresses, and a weak
+  // If-Match is refused with 412, which broke every native draft write.
+  if (!/^\s*gzip\s+off;/m.test(exactLocationBody(sign.body, '/v1/sign/sender/') ?? '')) {
+    issues.push({ where: TEMPLATE, reason: '(t) /v1/sign/sender/ must set gzip off (a compressed response gets a weak ETag)' });
   }
   if (!/limit_req_zone\s+\$binary_remote_addr\s+zone=sign_guest:/.test(template) || !/limit_req_zone\s+\$binary_remote_addr\s+zone=sign_signup:/.test(template)) {
     issues.push({ where: TEMPLATE, reason: '(k) the sign_guest and sign_signup limit_req_zone definitions are missing' });
@@ -675,6 +683,8 @@ function mutations(): Mutation[] {
   out.push({ name: 'render step not installed', tag: '(r) the runtime image must COPY', apply: (i) => ({ ...i, dockerfile: swap(i.dockerfile, `COPY ${RENDER_SCRIPT} ${ENTRYPOINT_STEP}`, '# copy removed', 'dockerfile copy') }) });
   out.push({ name: 'render step not executable', tag: '(r) /docker-entrypoint.d/40-aramo-app-links.sh must be executable', apply: (i) => ({ ...i, dockerfile: swap(i.dockerfile, `chmod 0755 ${ENTRYPOINT_STEP}`, `chmod 0644 ${ENTRYPOINT_STEP}`, 'chmod') }) });
   out.push({ name: 'envsubst filter widened', tag: '(r) NGINX_ENVSUBST_FILTER', apply: (i) => ({ ...i, dockerfile: swap(i.dockerfile, 'ENV NGINX_ENVSUBST_FILTER=^NGINX_', 'ENV NGINX_ENVSUBST_FILTER=^(NGINX|SIGN)_', 'filter') }) });
+  // (t) — the sender API compressed again.
+  out.push(T('sender API gzipped', '(t) /v1/sign/sender/ must set gzip off', (t) => swapInLocation(t, '/v1/sign/sender/', 'gzip off;', '#gzip_on_again', 'sender gzip')));
   out.push(T('template references SIGN_*', '(r) the conf template must not reference', (t) => swap(t, 'default_type application/json;', 'default_type application/json; # ${SIGN_IOS_APP_ID}', 'template var')));
   for (const v of APP_LINK_ENV) {
     out.push({ name: `compose drops ${v}`, tag: `(r) nginx environment must pass \`${v}=`, apply: (i) => ({ ...i, compose: swap(i.compose, `- ${v}=\${${v}:-}`, `- ${v}_GONE=\${${v}:-}`, v) }) });
