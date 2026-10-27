@@ -181,6 +181,8 @@ export {
   CursorDecodeError,
 } from './lib/util/identity-audit-cursor.js';
 export type { IdentityAuditCursorPayload } from './lib/util/identity-audit-cursor.js';
+// COG-ATTR-1 — the AdminCreateUser attribute set the pool requires (both admin-create paths).
+export { cognitoCreateUserAttributes, type CognitoAttribute } from './lib/util/cognito-attributes.js';
 // Domain-Enforcement P1 — the email-domain primitives. Exported so the
 // platform-admin invitation service can run the SAME reject-personal gate
 // (deriveAllowedDomainOrThrow) as a pre-check BEFORE Cognito AdminCreateUser

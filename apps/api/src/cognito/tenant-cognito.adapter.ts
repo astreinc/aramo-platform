@@ -7,7 +7,7 @@ import {
   CognitoIdentityProviderClient,
   UserNotFoundException,
 } from '@aws-sdk/client-cognito-identity-provider';
-import type { TenantCognitoPort } from '@aramo/identity';
+import { cognitoCreateUserAttributes, type TenantCognitoPort } from '@aramo/identity';
 
 // Settings S3a — TenantCognitoAdapter (live AWS-SDK implementation of
 // the TENANT_COGNITO_PORT declared in libs/identity).
@@ -63,13 +63,8 @@ export class TenantCognitoAdapter implements TenantCognitoPort {
     display_name?: string | null;
   }): Promise<{ cognito_sub: string }> {
     const UserPoolId = this.userPoolId();
-    const userAttributes: Array<{ Name: string; Value: string }> = [
-      { Name: 'email', Value: args.email },
-      { Name: 'email_verified', Value: 'true' },
-    ];
-    if (args.display_name !== undefined && args.display_name !== null) {
-      userAttributes.push({ Name: 'name', Value: args.display_name });
-    }
+    // COG-ATTR-1: the pool requires name / given_name / family_name / profile.
+    const userAttributes = cognitoCreateUserAttributes({ email: args.email, display_name: args.display_name });
     const out = await this.client.send(
       new AdminCreateUserCommand({
         UserPoolId,

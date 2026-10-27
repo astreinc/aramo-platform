@@ -45,3 +45,36 @@ describe('TenantCognitoAdapter.adminEnableUser (IC-3 PR-7)', () => {
     await expect(adapterWith(vi.fn()).adminEnableUser({ email: 'u@acme.io' })).rejects.toThrow('AUTH_COGNITO_TENANT_USER_POOL_ID');
   });
 });
+
+// COG-ATTR-1 (LOCKED 2026-10-27) — the tenant create sends the attribute set the pool requires.
+describe('TenantCognitoAdapter.adminCreateUser (COG-ATTR-1)', () => {
+  const saved = process.env['AUTH_COGNITO_TENANT_USER_POOL_ID'];
+  beforeEach(() => {
+    process.env['AUTH_COGNITO_TENANT_USER_POOL_ID'] = 'us-east-1_test';
+  });
+  afterEach(() => {
+    if (saved === undefined) delete process.env['AUTH_COGNITO_TENANT_USER_POOL_ID'];
+    else process.env['AUTH_COGNITO_TENANT_USER_POOL_ID'] = saved;
+  });
+
+  it('COG-API-1 sends email, name, given_name, family_name and profile with EMAIL delivery', async () => {
+    const send = vi.fn().mockResolvedValue({ User: { Attributes: [{ Name: 'sub', Value: 'sub-9' }] } });
+    const adapter = new TenantCognitoAdapter();
+    (adapter as unknown as { client: { send: ReturnType<typeof vi.fn> } }).client = { send };
+    await expect(adapter.adminCreateUser({ email: 'owner@acme.io', display_name: 'Ada Lovelace' })).resolves.toEqual({ cognito_sub: 'sub-9' });
+    const cmd = send.mock.calls[0]![0] as { input: Record<string, unknown> };
+    expect(cmd.input).toEqual({
+      UserPoolId: 'us-east-1_test',
+      Username: 'owner@acme.io',
+      UserAttributes: [
+        { Name: 'email', Value: 'owner@acme.io' },
+        { Name: 'email_verified', Value: 'true' },
+        { Name: 'name', Value: 'Ada Lovelace' },
+        { Name: 'given_name', Value: 'Ada' },
+        { Name: 'family_name', Value: 'Lovelace' },
+        { Name: 'profile', Value: 'owner@acme.io' },
+      ],
+      DesiredDeliveryMediums: ['EMAIL'],
+    });
+  });
+});

@@ -6,6 +6,7 @@ import {
   CognitoIdentityProviderClient,
   UserNotFoundException,
 } from '@aws-sdk/client-cognito-identity-provider';
+import { cognitoCreateUserAttributes } from '@aramo/identity';
 
 // CognitoAdminService — wraps the AWS SDK Cognito-IDP admin operations
 // (Lead ruling 1: Pattern A — Cognito-first AdminCreateUser; Aramo
@@ -82,13 +83,8 @@ export class CognitoAdminService {
     suppress?: boolean;
   }): Promise<AdminCreateUserResult> {
     const UserPoolId = this.userPoolIdForPool(args.pool);
-    const userAttributes: Array<{ Name: string; Value: string }> = [
-      { Name: 'email', Value: args.email },
-      { Name: 'email_verified', Value: 'true' },
-    ];
-    if (args.display_name !== undefined && args.display_name !== null) {
-      userAttributes.push({ Name: 'name', Value: args.display_name });
-    }
+    // COG-ATTR-1: the pool requires name / given_name / family_name / profile.
+    const userAttributes = cognitoCreateUserAttributes({ email: args.email, display_name: args.display_name });
     const out = await this.client.send(
       new AdminCreateUserCommand({
         UserPoolId,
