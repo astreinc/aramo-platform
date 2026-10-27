@@ -4,8 +4,9 @@ import { useNavigate } from 'react-router-dom';
 import { errorMessage, fetchSourcePdf, senderApi, type EnvelopeDetail, type EnvelopeField, type FieldType } from '../api';
 import { clampBox, toPdf, toTopLeft, type PdfPageInfo } from '../geometry';
 import { loadPdf, type LoadedPdf } from '../pdf';
-import { Bare, Btn, COLORS, Check, ErrorBox, Icon, Loading, Sel } from '../ui';
+import { Bare, Btn, COLORS, Check, ErrorBox, Icon, Loading, Sel, TextIn } from '../ui';
 
+import { DEFAULT_CONFIG, applyConfig, configFromWire, configToWire, groupSize, type ConfigPatch, type FieldConfig } from './field-config';
 import { readinessOf } from './readiness';
 
 // Step 3 · Prepare fields (prototype three-pane editor) over the REAL rendered
@@ -26,16 +27,17 @@ export const TYPES: Record<FieldType, { label: string; glyph: string; w: number;
   SIGNATURE: { label: 'Signature', glyph: '✍', w: 220, h: 48 },
   INITIALS: { label: 'Initials', glyph: 'AB', w: 60, h: 30 },
   SIGN_DATE: { label: 'Sign date', glyph: '📅', w: 150, h: 22 },
-  SIGNER_NAME: { label: 'Signer name', glyph: 'Aa', w: 220, h: 22 },
+  SIGNER_NAME: { label: 'Name', glyph: 'Aa', w: 200, h: 22 },
   TEXT: { label: 'Text', glyph: 'T', w: 220, h: 22 },
-  CHECKBOX: { label: 'Checkbox', glyph: '☑', w: 16, h: 16 },
+  CHECKBOX: { label: 'Checkbox', glyph: '☑', w: 14, h: 14 },
   ACKNOWLEDGEMENT: { label: 'Acknowledgement', glyph: '✓', w: 400, h: 26 },
 };
 const TYPE_KEYS = Object.keys(TYPES) as FieldType[];
-// PX-V1 §15 — V1 field types; the rest are shown but not placeable ("Not in V1").
-export const V1_TYPES: ReadonlySet<FieldType> = new Set<FieldType>(['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT']);
+// PX-V1 §15 — the sender authoring types; the rest are shown but not placeable.
+// M-A6 §2.1 — Name and Checkbox are authorable; Acknowledgement stays engine-only.
+export const V1_TYPES: ReadonlySet<FieldType> = new Set<FieldType>(['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT', 'SIGNER_NAME', 'CHECKBOX']);
 
-interface EdField {
+interface EdField extends FieldConfig {
   key: string;
   docId: string;
   page: number; // 0-based
@@ -96,7 +98,7 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
           const page = byDoc.get(f.envelope_document_id)?.[f.page_number];
           if (page === undefined) return [];
           const tl = toTopLeft({ x: f.x, y: f.y, width: f.width, height: f.height }, page.height);
-          return [{ key: f.id ?? newKey(), docId: f.envelope_document_id, page: f.page_number, signerId: f.signer_id, type: f.field_type, x: tl.x, y: tl.y, w: tl.width, h: tl.height, required: f.required }];
+          return [{ key: f.id ?? newKey(), docId: f.envelope_document_id, page: f.page_number, signerId: f.signer_id, type: f.field_type, x: tl.x, y: tl.y, w: tl.width, h: tl.height, required: f.required, ...configFromWire(f) }];
         }),
       );
       setReady(true);
@@ -134,7 +136,7 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
         const page = pageInfo(f.docId, f.page);
         if (page === undefined) return [];
         const b = toPdf({ x: f.x, y: f.y, width: f.w, height: f.h }, page.height);
-        return [{ envelope_document_id: f.docId, signer_id: f.signerId, field_type: f.type, page_number: f.page, x: b.x, y: b.y, width: b.width, height: b.height, required: f.required }];
+        return [{ envelope_document_id: f.docId, signer_id: f.signerId, field_type: f.type, page_number: f.page, x: b.x, y: b.y, width: b.width, height: b.height, required: f.required, ...configToWire(f.type, f) }];
       });
       senderApi
         .fields(env.id, wire)
@@ -177,7 +179,7 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
     if (info === undefined || signer === undefined) return;
     const t = TYPES[tool];
     const box = clampBox({ x: cx - t.w / 2, y: cy - t.h / 2, width: t.w, height: t.h }, info);
-    const f: EdField = { key: newKey(), docId, page, signerId: signer, type: tool, x: box.x, y: box.y, w: box.width, h: box.height, required: true };
+    const f: EdField = { key: newKey(), docId, page, signerId: signer, type: tool, x: box.x, y: box.y, w: box.width, h: box.height, required: true, ...DEFAULT_CONFIG };
     commit([...fields, f]);
     setSel(f.key);
     setTool(null);
@@ -195,6 +197,8 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
     if (record) commit(next);
     else setFields(next);
   };
+  // M-A6 §2 — inspector changes keep a check-box group consistent.
+  const configure = (key: string, patch: ConfigPatch) => commit(applyConfig(fields, key, patch));
   const remove = (key: string) => {
     commit(fields.filter((f) => f.key !== key));
     setSel(null);
@@ -411,9 +415,57 @@ export function PrepareEditor({ env, onChange, back, next }: { env: EnvelopeDeta
                   </Sel>
                 </label>
                 <label className="sg-check">
-                  <Check checked={selected.required} onChange={(e) => update(selected.key, (x) => ({ ...x, required: e.target.checked }))} />
+                  <Check checked={selected.required} onChange={(e) => configure(selected.key, { required: e.target.checked })} />
                   Required
                 </label>
+                {selected.type === 'SIGNER_NAME' ? (
+                  <label className="sg-field">
+                    <span className="sg-label">Name comes from</span>
+                    <Sel value={selected.nameMode} onChange={(e) => configure(selected.key, { nameMode: e.target.value === 'SIGNER_ENTERED' ? 'SIGNER_ENTERED' : 'SIGNER_PROFILE' })} data-testid="name-mode">
+                      <option value="SIGNER_PROFILE">Signer profile (filled by Aramo Sign)</option>
+                      <option value="SIGNER_ENTERED">Signer types it</option>
+                    </Sel>
+                  </label>
+                ) : null}
+                {selected.type === 'CHECKBOX' ? (
+                  <>
+                    <label className="sg-field">
+                      <span className="sg-label">Label</span>
+                      <TextIn value={selected.label} maxLength={200} onChange={(e) => configure(selected.key, { label: e.target.value })} data-testid="checkbox-label" />
+                    </label>
+                    <label className="sg-field">
+                      <span className="sg-label">Group</span>
+                      <TextIn value={selected.groupKey} maxLength={64} placeholder="No group" onChange={(e) => configure(selected.key, { groupKey: e.target.value })} data-testid="checkbox-group" />
+                    </label>
+                    {selected.groupKey.trim().length > 0 ? (
+                      <>
+                        <label className="sg-field">
+                          <span className="sg-label">Rule</span>
+                          <Sel value={selected.groupRule} onChange={(e) => configure(selected.key, { groupRule: e.target.value === 'SELECT_ONE' ? 'SELECT_ONE' : 'SELECT_ANY' })} data-testid="checkbox-rule">
+                            <option value="SELECT_ANY">Select any</option>
+                            <option value="SELECT_ONE">Select one</option>
+                          </Sel>
+                        </label>
+                        {selected.groupRule === 'SELECT_ANY' ? (
+                          <label className="sg-field">
+                            <span className="sg-label">Minimum checked (when required)</span>
+                            <TextIn
+                              type="number"
+                              min={1}
+                              max={groupSize(fields, selected)}
+                              value={selected.minSelected ?? 1}
+                              onChange={(e) => {
+                                const n = Math.floor(Number(e.target.value));
+                                if (Number.isFinite(n) && n >= 1) configure(selected.key, { minSelected: Math.min(n, groupSize(fields, selected)) });
+                              }}
+                              data-testid="checkbox-min"
+                            />
+                          </label>
+                        ) : null}
+                      </>
+                    ) : null}
+                  </>
+                ) : null}
                 <Btn variant="danger" size="sm" onClick={() => remove(selected.key)}>
                   Delete field
                 </Btn>

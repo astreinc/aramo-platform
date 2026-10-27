@@ -56,6 +56,13 @@ export interface SendDraftPayload {
   readonly recipients: readonly DraftRecipient[];
   /** EDITOR frame (top-left, PDF points), keyed to document and recipient keys. */
   readonly fields: readonly EditorField[];
+  /**
+   * Fields of the server copy whose type the editor does not author (an engine type
+   * such as ACKNOWLEDGEMENT). Kept exactly as the server returned them (wire frame,
+   * server ids) and re-sent with every replace-all PUT, so editing a draft never
+   * deletes them. Absent in drafts stored before this existed.
+   */
+  readonly preservedFields?: readonly ServerField[];
   /** The ETag of the last server response this draft is based on. */
   readonly etag: string | null;
   readonly dirty: DirtyFlags;
@@ -143,6 +150,12 @@ export interface ServerField {
   readonly width: number;
   readonly height: number;
   readonly required: boolean;
+  /** M-A6 §2 — configuration (null where it does not apply). */
+  readonly name_mode: string | null;
+  readonly label: string | null;
+  readonly group_key: string | null;
+  readonly group_rule: string | null;
+  readonly min_selected: number | null;
 }
 export interface ServerEnvelope {
   readonly id: string;
@@ -204,7 +217,26 @@ export function parseEnvelope(raw: unknown): ServerEnvelope {
       width: num(f['width']) ?? 0,
       height: num(f['height']) ?? 0,
       required: f['required'] !== false,
+      name_mode: typeof f['name_mode'] === 'string' ? (f['name_mode'] as string) : null,
+      label: typeof f['label'] === 'string' ? (f['label'] as string) : null,
+      group_key: typeof f['group_key'] === 'string' ? (f['group_key'] as string) : null,
+      group_rule: typeof f['group_rule'] === 'string' ? (f['group_rule'] as string) : null,
+      min_selected: num(f['min_selected']),
     })),
+  };
+}
+
+/** The editor's configuration for a server field of an authoring type. */
+function configOf(f: ServerField): Partial<EditorField> {
+  if (f.field_type === 'SIGNER_NAME')
+    return { nameMode: f.name_mode === 'SIGNER_ENTERED' ? 'SIGNER_ENTERED' : 'SIGNER_PROFILE' };
+  if (f.field_type !== 'CHECKBOX') return {};
+  const rule = f.group_rule === 'SELECT_ONE' || f.group_rule === 'SELECT_ANY' ? f.group_rule : null;
+  return {
+    label: f.label,
+    groupKey: f.group_key,
+    groupRule: f.group_key !== null ? (rule ?? 'SELECT_ANY') : null,
+    minSelected: f.group_key !== null ? f.min_selected : null,
   };
 }
 
@@ -235,8 +267,14 @@ export function payloadFromServer(
   }));
   let fieldsPending = false;
   const fields: EditorField[] = [];
+  const preservedFields: ServerField[] = [];
   env.fields.forEach((f, i) => {
-    if (!isAuthoringFieldType(f.field_type)) return;
+    // A type the editor does not author is kept untouched, never dropped: the fields
+    // PUT replaces every field, so dropping it here would delete it on the next sync.
+    if (!isAuthoringFieldType(f.field_type)) {
+      preservedFields.push(f);
+      return;
+    }
     const page = pagesByDoc.get(f.envelope_document_id)?.[f.page_number];
     if (!page) {
       fieldsPending = true;
@@ -254,6 +292,7 @@ export function payloadFromServer(
       width: box.width,
       height: box.height,
       required: f.required,
+      ...configOf(f),
     });
   });
   const generated = defaultSubject({ documents, recipients });
@@ -266,6 +305,7 @@ export function payloadFromServer(
       documents,
       recipients,
       fields,
+      ...(preservedFields.length > 0 ? { preservedFields } : {}),
       etag,
       dirty: CLEAN,
     },

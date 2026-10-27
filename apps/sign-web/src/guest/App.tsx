@@ -3,6 +3,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Btn, CheckIn, TextBox, TextIn } from './controls.js';
 import { PdfDocument, type FieldDisplay } from './pdf-view.js';
 import { SignApiError, signApi, type SignField, type SignerDisclosure, type SignerDocumentView } from './sign-api.js';
+import { FILLED_MARK, completionProblem, incompleteMessage, isBox, isChecked, isServerName, requirements, selectOneSiblings } from './field-rules.js';
 
 // The external signer app (sign.aramo.ai/s/:token) — what a recipient sees after
 // clicking "Review & sign" in an invitation email (e.g. a talent signing a Right
@@ -54,6 +55,13 @@ const ACTION_LABEL: Record<string, string> = {
   ACKNOWLEDGEMENT: 'Acknowledge',
 };
 
+// M-A6 — a check box shows its caption; a server-filled name says where it is from.
+function fieldLabel(f: SignField): string {
+  if (f.field_type === 'CHECKBOX' && typeof f.label === 'string' && f.label.length > 0) return f.label;
+  if (isServerName(f)) return 'Your name';
+  return FIELD_LABEL[f.field_type] ?? f.field_type;
+}
+
 function tokenFromLocation(): string {
   const m = /\/s\/([^/?#]+)/.exec(window.location.pathname);
   if (m !== null && m[1] !== undefined) return decodeURIComponent(m[1]);
@@ -91,8 +99,6 @@ interface Adopted {
   readonly display: string;
 }
 
-// A field filled in an earlier visit (value not returned by the server).
-const FILLED_MARK = '\u2713';
 
 // A drawn signature is saved CROPPED to its ink (plus a small margin) so it fills
 // the field box the sender sized, on the page and in the signed PDF. The pad is
@@ -506,22 +512,33 @@ export function App(): JSX.Element {
   };
 
   const fields = useMemo(() => view?.fields ?? [], [view]);
-  const required = fields.filter((f) => f.required);
-  const doneRequired = required.filter((f) => filled[f.field_id] !== undefined).length;
+  // M-A6 §2.3 — required fields, required boxes and group rules, as the server
+  // checks them at completion. A server-filled name is never the signer's to do.
+  const reqs = useMemo(() => requirements(fields, filled), [fields, filled]);
+  const required = reqs;
+  const doneRequired = reqs.filter((r) => r.done).length;
+  const problem = completionProblem(fields, filled);
   const progress = `${doneRequired} of ${required.length} required fields filled`;
-  const nextField = fields.find((f) => f.required && filled[f.field_id] === undefined) ?? fields.find((f) => filled[f.field_id] === undefined) ?? null;
+  const pending = (f: SignField): boolean => !isServerName(f) && (isBox(f) ? !isChecked(filled[f.field_id]) : filled[f.field_id] === undefined);
+  const unmet = new Set(reqs.filter((r) => !r.done).map((r) => r.key));
+  const nextField =
+    fields.find((f) => pending(f) && (unmet.has(f.field_id) || (typeof f.group_key === 'string' && unmet.has(`group:${f.group_key}`)))) ??
+    fields.find((f) => pending(f) && !isBox(f)) ??
+    null;
   const title = view?.documents.slice().sort((a, b) => a.ordinal - b.ordinal)[0]?.title;
 
-  const fill = async (f: SignField, value: string, method?: string) => {
+  const fill = async (f: SignField, value: string, method?: string): Promise<boolean> => {
     setBusy(true);
     setNotice(null);
     try {
       await signApi.fillField(token, f.field_id, value, method);
       setFilled((m) => ({ ...m, [f.field_id]: value }));
+      return true;
     } catch (e) {
       const s = screenForError(e);
       if (s === 'error' || s === 'network') setNotice("That didn't save. Check your connection and try again — your other entries are kept.");
       else setScreen(s);
+      return false;
     } finally {
       setBusy(false);
     }
@@ -535,6 +552,8 @@ export function App(): JSX.Element {
     if (f.document_id !== activeDoc) setActiveDoc(f.document_id);
     const t = f.field_type;
     const done = filled[f.field_id] !== undefined;
+    // M-A6 §2.2 — the server fills this name; the page never sends one.
+    if (isServerName(f)) return;
     if (t === 'SIGNATURE' || t === 'INITIALS') {
       const a = adopted[t];
       if (a && !done) void fill(f, a.value, a.method);
@@ -542,10 +561,27 @@ export function App(): JSX.Element {
     } else if (t === 'SIGN_DATE') {
       if (!done) void fill(f, today());
     } else if (t === 'CHECKBOX' || t === 'ACKNOWLEDGEMENT') {
-      if (!done) void fill(f, 'true');
+      void toggle(f);
     } else setTextFor(f);
   };
-  const editable = (f: SignField): boolean => f.field_type !== 'SIGN_DATE' && f.field_type !== 'CHECKBOX' && f.field_type !== 'ACKNOWLEDGEMENT';
+  // M-A6 §2.3 — a box toggles: checking sends 'true', unchecking 'false'. In a
+  // SELECT_ONE group, checking one box unchecks the others.
+  const toggle = async (f: SignField) => {
+    if (isChecked(filled[f.field_id])) {
+      await fill(f, 'false');
+      return;
+    }
+    for (const o of selectOneSiblings(fields, f)) {
+      if (isChecked(filled[o.field_id]) && !(await fill(o, 'false'))) return;
+    }
+    await fill(f, 'true');
+  };
+  const editable = (f: SignField): boolean => f.field_type !== 'SIGN_DATE' && !isBox(f) && !isServerName(f);
+  const statusOf = (f: SignField): string => {
+    if (isServerName(f)) return 'From the signing request';
+    if (isBox(f)) return isChecked(filled[f.field_id]) ? 'Checked' : 'Not checked';
+    return filled[f.field_id] !== undefined ? 'Filled' : f.required ? 'Required' : 'Optional · skipped';
+  };
   // The typed text already in a field (never a drawn image or a restored mark).
   const typedIn = (f: SignField | null): string => {
     const v = f === null ? undefined : filled[f.field_id];
@@ -562,7 +598,7 @@ export function App(): JSX.Element {
     } catch (e) {
       if (e instanceof SignApiError && e.code === 'SIGNATURE_FIELD_INCOMPLETE') {
         setScreen('workspace');
-        setNotice('Some required fields still need your input.');
+        setNotice(incompleteMessage(e.reason));
       } else {
         const s = screenForError(e);
         if (s === 'error' || s === 'network') setFinishError(true);
@@ -591,8 +627,9 @@ export function App(): JSX.Element {
   const displayOf = (f: SignField): FieldDisplay | null => {
     const v = filled[f.field_id];
     if (v === undefined) return null;
+    if (isBox(f)) return isChecked(v) ? { kind: 'mark', value: FILLED_MARK } : null;
     if (v.startsWith('data:image/')) return { kind: 'image', value: v };
-    if (f.field_type === 'CHECKBOX' || f.field_type === 'ACKNOWLEDGEMENT' || v === FILLED_MARK) return { kind: 'mark', value: FILLED_MARK };
+    if (v === FILLED_MARK) return { kind: 'mark', value: FILLED_MARK };
     return { kind: 'text', value: v };
   };
 
@@ -730,7 +767,7 @@ export function App(): JSX.Element {
   const docs = (view?.documents ?? []).slice().sort((a, b) => a.ordinal - b.ordinal);
   const doc = docs.find((d) => d.document_id === activeDoc) ?? docs[0];
   const url = doc ? docUrls[doc.document_id] : undefined;
-  const allDone = required.length === doneRequired;
+  const allDone = problem === null;
 
   return (
     <>
@@ -743,14 +780,17 @@ export function App(): JSX.Element {
               {fields.map((f) => (
                 <li key={f.field_id}>
                   <span>
-                    {FIELD_LABEL[f.field_type] ?? f.field_type} · page {f.page_number + 1}
+                    {fieldLabel(f)} · page {f.page_number + 1}
                   </span>
-                  <span className={filled[f.field_id] !== undefined ? 'sg-ok' : 'sg-muted'}>
-                    {filled[f.field_id] !== undefined ? 'Filled' : f.required ? 'Required' : 'Optional · skipped'}
-                  </span>
+                  <span className={!pending(f) ? 'sg-ok' : 'sg-muted'}>{statusOf(f)}</span>
                 </li>
               ))}
             </ul>
+            {problem !== null ? (
+              <p className="sg-error" role="alert" data-testid="sg-problem">
+                {problem}
+              </p>
+            ) : null}
             {finishError ? (
               <p className="sg-error" role="alert">
                 Finishing didn&apos;t go through. Your entries are kept — try again.
@@ -784,7 +824,7 @@ export function App(): JSX.Element {
                 fields={fields.filter((f) => f.document_id === doc.document_id)}
                 display={displayOf}
                 activeField={activeField}
-                label={(f) => FIELD_LABEL[f.field_type] ?? f.field_type}
+                label={fieldLabel}
                 actionLabel={(f) => ACTION_LABEL[f.field_type] ?? 'Complete'}
                 onField={(f) => {
                   if (!busy) act(f);
@@ -812,11 +852,47 @@ export function App(): JSX.Element {
             ) : null}
             <ul>
               {fields.map((f) => {
-                const done = filled[f.field_id] !== undefined;
+                const done = !pending(f);
+                if (isServerName(f)) {
+                  return (
+                    <li key={f.field_id} className="sg-field sg-field--done" data-testid="sg-server-name">
+                      <span className="sg-field__text">
+                        <span className="sg-field__name">Your name</span>
+                        <span className="sg-field__meta">
+                          {f.value ?? ''} · from the signing request
+                        </span>
+                      </span>
+                    </li>
+                  );
+                }
+                if (isBox(f)) {
+                  const on = isChecked(filled[f.field_id]);
+                  return (
+                    <li key={f.field_id} className={`sg-field${on ? ' sg-field--done' : ''}${activeField === f.field_id ? ' sg-field--active' : ''}`}>
+                      <span className="sg-field__text">
+                        <span className="sg-field__name">{fieldLabel(f)}</span>
+                        <span className="sg-field__meta">
+                          page {f.page_number + 1}
+                          {f.group_rule === 'SELECT_ONE' ? ' · choose one' : typeof f.group_key === 'string' && f.group_key.length > 0 ? ' · choose any' : ''}
+                          {f.required ? ' · required' : ' · optional'}
+                        </span>
+                      </span>
+                      <Btn
+                        variant={on ? 'quiet' : f.required ? 'primary' : 'secondary'}
+                        disabled={busy}
+                        aria-pressed={on}
+                        onClick={() => act(f)}
+                        aria-label={`${on ? 'Uncheck' : 'Check'}: ${fieldLabel(f)}, page ${f.page_number + 1}`}
+                      >
+                        {on ? 'Uncheck' : 'Check'}
+                      </Btn>
+                    </li>
+                  );
+                }
                 return (
                   <li key={f.field_id} className={`sg-field${done ? ' sg-field--done' : ''}${activeField === f.field_id ? ' sg-field--active' : ''}`}>
                     <span className="sg-field__text">
-                      <span className="sg-field__name">{FIELD_LABEL[f.field_type] ?? f.field_type}</span>
+                      <span className="sg-field__name">{fieldLabel(f)}</span>
                       <span className="sg-field__meta">
                         {docs.length > 1 ? `${docs.find((d) => d.document_id === f.document_id)?.title ?? ''} · ` : ''}page {f.page_number + 1}
                         {f.required ? ' · required' : ' · optional'}
@@ -848,6 +924,10 @@ export function App(): JSX.Element {
             <span className="sg-small">{progress}</span>
             {allDone ? (
               <Btn onClick={() => setScreen('review')}>Review &amp; finish</Btn>
+            ) : nextField === null && problem !== null ? (
+              <span className="sg-small sg-error" role="status" data-testid="sg-problem">
+                {problem}
+              </span>
             ) : (
               <Btn disabled={busy || nextField === null} onClick={() => nextField && act(nextField)}>
                 {doneRequired === 0 ? 'Start' : 'Next field'}
@@ -873,7 +953,7 @@ export function App(): JSX.Element {
       {textFor ? (
         <TextDialog
           title={FIELD_LABEL[textFor.field_type] ?? 'Text'}
-          initial={typedIn(textFor) !== '' ? typedIn(textFor) : textFor.field_type === 'SIGNER_NAME' ? suggestedName : ''}
+          initial={typedIn(textFor) !== '' ? typedIn(textFor) : textFor.field_type === 'SIGNER_NAME' && !isServerName(textFor) ? suggestedName : ''}
           onClose={() => setTextFor(null)}
           onSave={(v) => {
             const f = textFor;

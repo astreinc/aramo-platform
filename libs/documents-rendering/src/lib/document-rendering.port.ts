@@ -91,7 +91,12 @@ export interface PreparedField {
   page_number: number; // 0-based
   x: number;
   y: number;
-  kind?: 'TEXT' | 'IMAGE'; // default TEXT
+  // M-A6 §1 — MARK draws a vector check box (no font glyph): a box, plus a
+  // vector check when `checked`. Used for CHECKBOX and ACKNOWLEDGEMENT fields so
+  // their stored values never print as text.
+  kind?: 'TEXT' | 'IMAGE' | 'MARK'; // default TEXT
+  // MARK placement — required when kind === 'MARK'
+  checked?: boolean;
   // TEXT placement
   value?: string;
   size?: number;

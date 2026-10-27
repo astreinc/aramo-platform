@@ -121,6 +121,12 @@ export interface EnvelopeField {
   height: number;
   required: boolean;
   filled?: boolean;
+  // M-A6 §2 — Name and Checkbox configuration (null where it does not apply).
+  name_mode?: 'SIGNER_PROFILE' | 'SIGNER_ENTERED' | null;
+  label?: string | null;
+  group_key?: string | null;
+  group_rule?: 'SELECT_ONE' | 'SELECT_ANY' | null;
+  min_selected?: number | null;
 }
 
 export type RoutingMode = 'PARALLEL' | 'SEQUENTIAL';
@@ -442,8 +448,14 @@ export const senderApi = {
     apiClient.put<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/recipients`, { recipients }),
   fields: (id: string, fields: EnvelopeField[]) =>
     apiClient.put<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/fields`, {
-      fields: fields.map(({ envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required }) => ({
+      // M-A6 §2 — the type's configuration travels with the field; a value never does.
+      fields: fields.map(({ envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required, name_mode, label, group_key, group_rule, min_selected }) => ({
         envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required,
+        ...(name_mode != null ? { name_mode } : {}),
+        ...(label != null ? { label } : {}),
+        ...(group_key != null ? { group_key } : {}),
+        ...(group_rule != null ? { group_rule } : {}),
+        ...(min_selected != null ? { min_selected } : {}),
       })),
     }),
   send: (id: string, subject?: string) => apiClient.post<EnvelopeDetail>(`${BASE}/envelopes/${enc(id)}/send`, subject !== undefined ? { subject } : {}),

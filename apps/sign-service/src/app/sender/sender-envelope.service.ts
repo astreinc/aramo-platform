@@ -22,6 +22,11 @@ import {
   envelopeReminderAvailableAt,
   idempotencyRequestHash,
   nextReminderAt,
+  CHECKBOX_GROUP_RULES,
+  SIGNER_NAME_MODES,
+  type CheckboxGroupRule,
+  type SenderFieldInput,
+  type SignerNameMode,
 } from '@aramo/sign';
 import { SafePdfPipeline, UnsafePdfError } from '@aramo/documents-rendering';
 import { PDFDocument } from 'pdf-lib';
@@ -48,8 +53,15 @@ import { SIGNING_LINK_VALID_DAYS, expectedRevision, sanitizeMessage } from './en
 // engine field types (SIGNER_NAME, CHECKBOX, ACKNOWLEDGEMENT) stay out of scope.
 // Aramo-Sign-Multi-Signer-Amendment-v1_0-LOCKED — up to MAX_SIGNERS signers per
 // envelope, signing in parallel or in order (ROUTING_MODES).
-export const FIELD_TYPES = ['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT'] as const;
+// M-A6 §2.1 — SIGNER_NAME and CHECKBOX are added to the sender authoring types;
+// ACKNOWLEDGEMENT stays engine-only (the S2S and Sign API keep all seven).
+export const FIELD_TYPES = ['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT', 'SIGNER_NAME', 'CHECKBOX'] as const;
 const FIELD_TYPE_SET = new Set<string>(FIELD_TYPES);
+const NAME_MODES = new Set<string>(SIGNER_NAME_MODES);
+const GROUP_RULES = new Set<string>(CHECKBOX_GROUP_RULES);
+const MAX_LABEL = 200;
+const MAX_GROUP_KEY = 64;
+const CHECKBOX_CONFIG = ['label', 'group_key', 'group_rule', 'min_selected'] as const;
 export const MAX_SIGNERS = 10;
 export const ROUTING_MODES = ['PARALLEL', 'SEQUENTIAL'] as const;
 const TERMINAL = new Set(['COMPLETED', 'DECLINED', 'VOIDED', 'EXPIRED']);
@@ -361,6 +373,12 @@ export class SenderEnvelopeService {
           height: f.height,
           required: f.required,
           filled: f.filled_at !== null,
+          // M-A6 §2 — the field configuration (null where it does not apply).
+          label: f.label,
+          group_key: f.group_key,
+          group_rule: f.group_rule,
+          min_selected: f.min_selected,
+          name_mode: f.name_mode,
         })),
       ),
     };
@@ -790,7 +808,9 @@ export class SenderEnvelopeService {
       const width = num('width');
       const height = num('height');
       if (x < 0 || y < 0 || width <= 0 || height <= 0) throw bad(requestId, `field ${i + 1}: position and size must be positive`, { index: i });
+      const config = fieldConfig(o, field_type, i, requestId);
       return {
+        ...config,
         envelope_document_id: o['envelope_document_id'] as string,
         signer_id: o['signer_id'] as string,
         field_type,
@@ -802,6 +822,7 @@ export class SenderEnvelopeService {
         required: o['required'] !== false,
       };
     });
+    checkboxGroups(fields, requestId);
     // Server-side geometry validation against the ACTUAL source pages: the page
     // must exist and the field box must lie inside it.
     const docIds = [...new Set(fields.map((f) => f.envelope_document_id))];
@@ -960,6 +981,79 @@ function eventDetail(payload: unknown): Record<string, string> | null {
 // M-A3 §8 — a Word document (OOXML zip or legacy OLE compound file) is refused with
 // a stable reason before the PDF pipeline.
 // Sign Mobile D-W6-2 — each page's size in points. pdf-lib's getWidth/getHeight
+// M-A6 §2 — the Name and Checkbox configuration of one authored field. The sender
+// never supplies a value (§2.2). SIGNER_NAME takes name_mode (default
+// SIGNER_PROFILE); CHECKBOX takes label and the group settings; no other type
+// takes any of them. Every refusal carries a stable details.reason.
+type FieldConfig = Pick<SenderFieldInput, 'label' | 'group_key' | 'group_rule' | 'min_selected' | 'name_mode'>;
+function fieldConfig(o: Record<string, unknown>, field_type: string, i: number, requestId: string): FieldConfig {
+  const refuse = (field: string, reason: string, message: string): AramoError => bad(requestId, `field ${i + 1}: ${message}`, { index: i, field, reason });
+  const present = (k: string): boolean => o[k] !== undefined && o[k] !== null;
+  if (present('value')) throw refuse('value', 'sender_value_refused', 'a sender cannot fill a field value');
+  if (field_type !== 'SIGNER_NAME' && present('name_mode')) throw refuse('name_mode', 'field_config_not_applicable', 'name_mode applies to name fields only');
+  if (field_type !== 'CHECKBOX') {
+    for (const k of CHECKBOX_CONFIG) if (present(k)) throw refuse(k, 'field_config_not_applicable', `${k} applies to check boxes only`);
+  }
+  if (field_type === 'SIGNER_NAME') {
+    const mode = o['name_mode'] ?? 'SIGNER_PROFILE';
+    if (typeof mode !== 'string' || !NAME_MODES.has(mode)) throw refuse('name_mode', 'name_mode_invalid', 'name_mode must be SIGNER_PROFILE or SIGNER_ENTERED');
+    return { name_mode: mode as SignerNameMode };
+  }
+  if (field_type !== 'CHECKBOX') return {};
+  let label: string | null = null;
+  if (present('label')) {
+    if (typeof o['label'] !== 'string') throw refuse('label', 'checkbox_label_invalid', 'label must be text');
+    const t = o['label'].trim();
+    if (t.length > MAX_LABEL) throw refuse('label', 'checkbox_label_invalid', `label must be at most ${MAX_LABEL} characters`);
+    label = t.length > 0 ? t : null;
+  }
+  let group_key: string | null = null;
+  if (present('group_key')) {
+    if (typeof o['group_key'] !== 'string') throw refuse('group_key', 'checkbox_group_invalid', 'group_key must be text');
+    const t = o['group_key'].trim();
+    if (t.length > MAX_GROUP_KEY) throw refuse('group_key', 'checkbox_group_invalid', `group_key must be at most ${MAX_GROUP_KEY} characters`);
+    group_key = t.length > 0 ? t : null;
+  }
+  if (group_key === null) {
+    if (present('group_rule') || present('min_selected')) throw refuse(present('group_rule') ? 'group_rule' : 'min_selected', 'checkbox_group_required', 'group_rule and min_selected need a group_key');
+    return { label, group_key: null, group_rule: null, min_selected: null };
+  }
+  const rule = o['group_rule'] ?? 'SELECT_ANY';
+  if (typeof rule !== 'string' || !GROUP_RULES.has(rule)) throw refuse('group_rule', 'checkbox_group_invalid', 'group_rule must be SELECT_ONE or SELECT_ANY');
+  let min_selected: number | null = null;
+  if (present('min_selected')) {
+    const m = o['min_selected'];
+    if (typeof m !== 'number' || !Number.isInteger(m) || m < 1) throw refuse('min_selected', 'checkbox_group_invalid', 'min_selected must be a whole number of at least 1');
+    if (rule === 'SELECT_ONE' && m !== 1) throw refuse('min_selected', 'checkbox_group_invalid', 'a select-one group has min_selected 1');
+    min_selected = m;
+  }
+  return { label, group_key, group_rule: rule as CheckboxGroupRule, min_selected };
+}
+
+// M-A6 §2.3 — every box of a check-box group belongs to one recipient and shares
+// the group's rule, minimum and required setting; a minimum cannot exceed the
+// group's size.
+function checkboxGroups(fields: ReadonlyArray<SenderFieldInput>, requestId: string): void {
+  const groups = new Map<string, SenderFieldInput[]>();
+  for (const f of fields) {
+    if (f.group_key === undefined || f.group_key === null) continue;
+    const g = groups.get(f.group_key) ?? [];
+    g.push(f);
+    groups.set(f.group_key, g);
+  }
+  for (const [group_key, boxes] of groups) {
+    const [first] = boxes;
+    if (first === undefined) continue;
+    const consistent = boxes.every((b) => b.signer_id === first.signer_id && b.group_rule === first.group_rule && (b.min_selected ?? null) === (first.min_selected ?? null) && b.required === first.required);
+    if (!consistent) {
+      throw bad(requestId, `check-box group ${group_key}: every box needs the same recipient, rule, minimum and required setting`, { group_key, reason: 'checkbox_group_inconsistent' });
+    }
+    if ((first.min_selected ?? 1) > boxes.length) {
+      throw bad(requestId, `check-box group ${group_key}: min_selected is more than the boxes in the group`, { group_key, reason: 'checkbox_group_min_exceeds_size' });
+    }
+  }
+}
+
 // read the MediaBox, exactly what replaceFields validates field boxes against.
 async function measurePages(bytes: Uint8Array): Promise<DocumentPageSize[]> {
   const pdf = await PDFDocument.load(bytes);

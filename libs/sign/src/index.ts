@@ -59,6 +59,21 @@ export {
 } from './lib/ports/execution-producer.port.js';
 export { ExecutionService } from './lib/execution.service.js';
 export {
+  SIGNER_ATTESTED_NAME_PORT,
+  type SignerAttestedNamePort,
+  type SignerAttestedNameQuery,
+} from './lib/ports/signer-attested-name.port.js';
+export {
+  CHECKBOX_GROUP_RULES,
+  SIGNER_NAME_MODES,
+  evaluateSignerFieldRules,
+  isServerFilledName,
+  type CheckboxGroupRule,
+  type SignerNameMode,
+  type FieldRuleRow,
+  type FieldRuleViolation,
+} from './lib/domain/field-rules.js';
+export {
   EVENT_PUBLISHER_PORT,
   LocalEventPublisher,
   type EventPublisherPort,
@@ -103,6 +118,7 @@ export {
   SigningSessionExpiredError,
   DisclosureNotAcceptedError,
   SignatureFieldIncompleteError,
+  SignatureFieldValueRefusedError,
   EsignIdempotencyConflictError,
   EnvelopeAmbiguousError,
   ReminderNotAllowedError,

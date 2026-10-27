@@ -36,6 +36,7 @@ const { like, uuid, integer, boolean, eachLike, regex } = MatchersV3;
 //  11. POST   /v1/sign/sender/envelopes/{id}/remind     429 reminder_cooldown (retry_after)
 //  12. GET    /v1/sign/inbox                            200 { waiting, completed, other }
 //  13. DELETE /v1/sign/sender/envelopes/{id} (If-Match) 204
+//  14. PUT    /v1/sign/sender/envelopes/{id}/fields (If-Match) 200 — M-A6 Name + Checkbox configuration
 
 const provider = new PactV4({
   consumer: 'sign-mobile',
@@ -55,6 +56,11 @@ const DELETE_ENVELOPE_ID = 'e6000000-0000-7000-8000-0000000000c1';
 const REMIND_ENVELOPE_ID = 'e6000000-0000-7000-8000-0000000000d1';
 const REMIND_SIGNER_ID = 'e6000000-0000-7000-8000-0000000000d3';
 const INBOX_BINDING_ID = 'e6000000-0000-7000-8000-0000000000e9';
+// M-A6 §2 — a draft with a document and a recipient for the Name/Checkbox fields
+// replace (envelope, document, recipient and ledger event: revision 4).
+const FIELDS_ENVELOPE_ID = 'e6000000-0000-7000-8000-000000000101';
+const FIELDS_REVISION = 4;
+const childOf = (envelopeId: string, n: number): string => `${envelopeId.slice(0, -1)}${String(n)}`;
 // A seeded DRAFT (envelope row + one ledger event, separate transactions) is at
 // revision 2 (M-A3 §6: one raise per writing transaction).
 const DRAFT_REVISION = 2;
@@ -405,6 +411,49 @@ describe('sign-mobile → GET /v1/sign/inbox (Sign Unified Product S-7)', () => 
         expect(res.status).toBe(200);
         const body = (await res.json()) as { waiting: unknown[] };
         expect(body.waiting.length).toBeGreaterThan(0);
+      });
+  });
+});
+
+// M-A6 §2 — the native editor's Name and Checkbox tools: configuration only, never a value.
+describe('sign-mobile → PUT /v1/sign/sender/envelopes/{id}/fields (M-A6 Name and Checkbox)', () => {
+  it('replaces the draft fields with a profile name and a labelled check box', async () => {
+    const ifMatch = `"${FIELDS_ENVELOPE_ID}.${FIELDS_REVISION}"`;
+    const base = { envelope_document_id: childOf(FIELDS_ENVELOPE_ID, 2), signer_id: childOf(FIELDS_ENVELOPE_ID, 3), page_number: 0, x: 72, required: true };
+    const body = {
+      fields: [
+        { ...base, field_type: 'SIGNER_NAME', y: 100, width: 200, height: 22, name_mode: 'SIGNER_PROFILE' },
+        { ...base, field_type: 'CHECKBOX', y: 140, width: 14, height: 14, label: 'I agree to the terms' },
+      ],
+    };
+    await provider
+      .addInteraction()
+      .given('a sender draft envelope with a document and a recipient exists', { envelope_id: FIELDS_ENVELOPE_ID })
+      .uponReceiving('a native Name and Checkbox fields replace with If-Match')
+      .withRequest('PUT', `/v1/sign/sender/envelopes/${FIELDS_ENVELOPE_ID}/fields`, (b) => {
+        b.headers({ ...JSON_AUTH, 'If-Match': ifMatch }).jsonBody(body);
+      })
+      .willRespondWith(200, (b) => {
+        b.headers({ ETag: etagOf(FIELDS_ENVELOPE_ID, FIELDS_REVISION + 1) }).jsonBody({
+          id: FIELDS_ENVELOPE_ID,
+          status: 'DRAFT',
+          revision: integer(FIELDS_REVISION + 1),
+          fields: eachLike({
+            id: uuid(childOf(FIELDS_ENVELOPE_ID, 4)),
+            field_type: regex('^(SIGNER_NAME|CHECKBOX)$', 'SIGNER_NAME'),
+            required: true,
+          }, 2),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/sender/envelopes/${FIELDS_ENVELOPE_ID}/fields`, {
+          method: 'PUT',
+          headers: { ...JSON_AUTH, 'If-Match': ifMatch },
+          body: JSON.stringify(body),
+        });
+        expect(res.status).toBe(200);
+        const out = (await res.json()) as { fields: unknown[] };
+        expect(out.fields).toHaveLength(2);
       });
   });
 });

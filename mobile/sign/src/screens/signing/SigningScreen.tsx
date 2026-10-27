@@ -123,6 +123,9 @@ export function SigningScreen({ route, navigation }: Props) {
       session={start.session}
       senderName={item?.from ?? null}
       subject={item?.subject ?? null}
+      // Announcements and the adopt sheet's default only: a Name field is never
+      // filled from the signed-in account (M-A6 §2.2) — the server fills a profile
+      // name, and the signer types any other.
       signerName={ctx.data?.user.display_name ?? ''}
       signedIn
       onViewCertificate={() => void viewCertificate()}

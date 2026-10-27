@@ -125,6 +125,12 @@ export function PdfDocument({
                     ) : (
                       <FitText className={f.field_type === 'SIGNATURE' || f.field_type === 'INITIALS' ? 'sg-onpage__sig' : 'sg-onpage__val'} text={shown.value} />
                     )}
+                    {f.field_type === 'CHECKBOX' && typeof f.label === 'string' && f.label.length > 0 ? (
+                      // M-A6 §2.3 — the box's caption, beside the box.
+                      <span className="sg-onpage__caption" aria-hidden="true">
+                        {f.label}
+                      </span>
+                    ) : null}
                   </div>
                 );
               })}

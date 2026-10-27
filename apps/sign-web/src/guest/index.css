@@ -127,6 +127,7 @@ p { line-height: 1.5; margin: 0 0 12px; }
 .sg-onpage__sig { font-family: 'Aramo Signature', 'Segoe Script', 'Brush Script MT', cursive; color: #14306b; white-space: nowrap; line-height: 1.1; max-width: 100%; overflow: hidden; }
 .sg-onpage__val { font-size: 13px; color: #14181f; white-space: nowrap; }
 .sg-onpage__img { width: 100%; height: 100%; object-fit: contain; object-position: left center; }
+.sg-onpage__caption { position: absolute; left: calc(100% + 6px); top: 50%; transform: translateY(-50%); font-size: 12px; color: #14181f; white-space: nowrap; pointer-events: none; }
 /* The on-screen counterpart of the executed-PDF stamp: a rounded bracket with
    "Signed by:" on its top arm. */
 .sg-onpage--stamp { justify-content: flex-start; padding-left: 9px; border: 0; border-radius: 0; }

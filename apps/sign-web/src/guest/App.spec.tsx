@@ -210,6 +210,66 @@ describe('signer app', () => {
   });
 });
 
+// M-A6 §2 — Name and Checkbox fields on the signer page.
+const BOXES_VIEW = {
+  documents: [{ document_id: 'doc-1', title: 'Consent form', ordinal: 1 }],
+  fields: [
+    { field_id: 'f-name', document_id: 'doc-1', field_type: 'SIGNER_NAME', page_number: 0, x: 1, y: 1, width: 200, height: 22, required: true, filled: true, value: 'Ravi Shankar', name_mode: 'SIGNER_PROFILE', server_filled: true },
+    { field_id: 'f-agree', document_id: 'doc-1', field_type: 'CHECKBOX', page_number: 0, x: 1, y: 30, width: 14, height: 14, required: true, filled: false, value: null, label: 'I agree to the terms' },
+    { field_id: 'f-yes', document_id: 'doc-1', field_type: 'CHECKBOX', page_number: 0, x: 1, y: 60, width: 14, height: 14, required: true, filled: false, value: null, label: 'Yes', group_key: 'answer', group_rule: 'SELECT_ONE' },
+    { field_id: 'f-no', document_id: 'doc-1', field_type: 'CHECKBOX', page_number: 0, x: 1, y: 90, width: 14, height: 14, required: true, filled: false, value: null, label: 'No', group_key: 'answer', group_rule: 'SELECT_ONE' },
+  ],
+};
+
+describe('signer app — Name and Checkbox fields (M-A6 §2)', () => {
+  const fillsOf = (calls: { path: string; body: Record<string, unknown> }[]) =>
+    calls.filter((c) => c.path.startsWith('fields/')).map((c) => [c.path.replace('fields/', '').replace('/fill', ''), c.body['value']]);
+
+  it('checks and unchecks a box (true then false), shows its label and the server-filled name read-only', async () => {
+    const calls = transport({ document: () => json(BOXES_VIEW) });
+    await toWorkspace();
+    expect(screen.getByTestId('sg-server-name')).toHaveTextContent('Ravi Shankar');
+    expect(screen.getByText('I agree to the terms')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Check: I agree to the terms, page 1' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Uncheck: I agree to the terms, page 1' }));
+    await screen.findByRole('button', { name: 'Check: I agree to the terms, page 1' });
+    expect(fillsOf(calls)).toEqual([['f-agree', 'true'], ['f-agree', 'false']]);
+    // The server-filled name is never sent by the page.
+    expect(calls.some((c) => c.path === 'fields/f-name/fill')).toBe(false);
+  });
+
+  it('SELECT_ONE: checking one box unchecks the other; Finish waits for the rules', async () => {
+    const calls = transport({ document: () => json(BOXES_VIEW) });
+    await toWorkspace();
+    expect(screen.queryByRole('button', { name: 'Review & finish' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Check: Yes, page 1' }));
+    await screen.findByRole('button', { name: 'Uncheck: Yes, page 1' });
+    fireEvent.click(screen.getByRole('button', { name: 'Check: No, page 1' }));
+    await screen.findByRole('button', { name: 'Uncheck: No, page 1' });
+    expect(screen.getByRole('button', { name: 'Check: Yes, page 1' })).toBeInTheDocument();
+    expect(fillsOf(calls)).toEqual([['f-yes', 'true'], ['f-yes', 'false'], ['f-no', 'true']]);
+    // The required box is still unchecked: no Finish yet.
+    expect(screen.queryByRole('button', { name: 'Review & finish' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Check: I agree to the terms, page 1' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Review & finish' }));
+    expect(screen.queryByTestId('sg-problem')).toBeNull();
+    fireEvent.click(await screen.findByRole('button', { name: 'Finish signing' }));
+    expect(await screen.findByText(/You've signed Consent form/)).toBeInTheDocument();
+    expect(calls.some((c) => c.path === 'fields/f-name/fill')).toBe(false);
+  });
+
+  it('a server completion refusal shows its reason', async () => {
+    transport({
+      document: () => json({ ...BOXES_VIEW, fields: BOXES_VIEW.fields.filter((f) => f.field_id === 'f-name') }),
+      complete: () => json({ error: { code: 'SIGNATURE_FIELD_INCOMPLETE', details: { reason: 'checkbox_group_select_one' } } }, 409),
+    });
+    await toWorkspace();
+    fireEvent.click(screen.getByRole('button', { name: 'Review & finish' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'Finish signing' }));
+    expect(await screen.findByRole('alert')).toHaveTextContent('Choose exactly one option');
+  });
+});
+
 describe('PX-2 field geometry', () => {
   it('maps a PDF bottom-left box to top-left page percentages', () => {
     const box = fieldBox({ field_type: 'SIGNATURE', x: 72, y: 144, width: 220, height: 48 }, { width: 612, height: 792 });

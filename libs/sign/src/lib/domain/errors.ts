@@ -8,6 +8,7 @@
 //   SigningSessionExpiredError       -> SIGNING_SESSION_EXPIRED (401)
 //   DisclosureNotAcceptedError       -> DISCLOSURE_NOT_ACCEPTED (409)
 //   SignatureFieldIncompleteError    -> SIGNATURE_FIELD_INCOMPLETE (409)
+//   SignatureFieldValueRefusedError  -> VALIDATION_ERROR (400)
 //   EsignIdempotencyConflictError    -> IDEMPOTENCY_KEY_CONFLICT (409)
 // Kept lib-local so libs/sign stays HTTP/registry-agnostic (ATS-neutral).
 
@@ -63,10 +64,31 @@ export class DisclosureNotAcceptedError extends Error {
   }
 }
 
+// M-A6 §2.3 — `reason` (stable) names the completion rule that failed:
+// required_field_unfilled | checkbox_required_unchecked |
+// checkbox_group_select_one | checkbox_group_min_selected. `group_key` names the
+// failing check-box group, when there is one.
 export class SignatureFieldIncompleteError extends Error {
-  constructor(public readonly signerId: string) {
+  constructor(
+    public readonly signerId: string,
+    public readonly reason = 'required_field_unfilled',
+    public readonly group_key?: string,
+  ) {
     super(`Signer ${signerId} has unfilled required signature fields`);
     this.name = 'SignatureFieldIncompleteError';
+  }
+}
+
+// M-A6 §2.2/§2.3 — a signer's fill value refused (VALIDATION_ERROR 400 at the
+// HTTP boundary). Stable reasons: signer_profile_name_server_filled (a
+// SIGNER_PROFILE name is filled by the server, never by a client) and
+// checkbox_value_invalid (check boxes take 'true' or 'false' only).
+export class SignatureFieldValueRefusedError extends Error {
+  constructor(public readonly fieldId: string, public readonly reason: string) {
+    super(reason === 'signer_profile_name_server_filled'
+      ? 'This name is filled from the signer profile and cannot be entered'
+      : 'A check box value must be true or false');
+    this.name = 'SignatureFieldValueRefusedError';
   }
 }
 

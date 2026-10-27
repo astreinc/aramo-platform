@@ -6,7 +6,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testconta
 import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { PDFDocument } from 'pdf-lib';
+import { PDFArray, PDFDocument, PDFRawStream, PDFRef, decodePDFRawStream } from 'pdf-lib';
 import {
   PdfLibDocumentRenderingAdapter,
   type DocumentRenderingPort,
@@ -190,5 +190,75 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-V1 F2 executio
       expect(certificate).toContain(`Party ${i + 1}`);
       expect(certificate).toContain(`Signature ID: ${ids[i]}`);
     }
+  });
+  // M-A6 §1 — CHECKBOX / ACKNOWLEDGEMENT values are stamped as a vector check box
+  // (MARK), never as the text "true"; checked, unchecked ('false') and untouched
+  // boxes all draw a box. §2.5 — the certificate lists each box's label and state.
+  it('stamps check boxes as vector MARKs (no "true" text) and lists their labels and states in the certificate', async () => {
+    const env = await repo.createEnvelope({ tenant_id: TENANT, subject: 'Boxes', execution_mode: 'SINGLE_SIGNATURE', created_by: ACTOR });
+    const doc = await repo.addDocument({
+      tenant_id: TENANT, envelope_id: env.id, document_ref: randomUUID(), document_revision_ref: randomUUID(),
+      title: 'boxes.pdf', source_sha256: 'seed', ordinal: 1,
+    });
+    const signer = await repo.addSigner({ tenant_id: TENANT, envelope_id: env.id, email: 'cb@x.com', name: 'Casey', signing_order: 1 });
+    const box = async (field_type: string, y: number, label: string | null, value: string | null) => {
+      const f = await repo.addField({ tenant_id: TENANT, envelope_document_id: doc.id, signer_id: signer.id, field_type, page_number: 0, x: 72, y, width: 14, height: 14, required: false });
+      await prisma.signatureField.update({ where: { id: f.id }, data: { label, ...(value !== null ? { value, filled_at: new Date() } : {}) } });
+      return f.id;
+    };
+    const checked = await box('CHECKBOX', 100, 'I agree to the terms', 'true');
+    const unchecked = await box('CHECKBOX', 130, 'Send me updates', 'false');
+    const untouched = await box('CHECKBOX', 160, null, null);
+    const ack = await box('ACKNOWLEDGEMENT', 190, null, 'true');
+
+    const real = new PdfLibDocumentRenderingAdapter();
+    const captured: PreparedField[][] = [];
+    const generated: string[] = [];
+    const outputs: Uint8Array[] = [];
+    const capturing: DocumentRenderingPort = {
+      prepareFromSource: async (src, placements, opts): Promise<RenderedOutput> => {
+        captured.push(placements);
+        const out = await real.prepareFromSource(src, placements, opts);
+        outputs.push(out.bytes);
+        return out;
+      },
+      renderGenerated: (model) => {
+        generated.push(JSON.stringify(model));
+        return real.renderGenerated(model);
+      },
+    };
+    const execution = new ExecutionService(prisma, repo, capturing, { getSourcePdf: async () => sourcePdf });
+    await execution.produce(TENANT, env.id);
+
+    const placements = captured[0] ?? [];
+    expect(placements).toHaveLength(4);
+    const byId = new Map(placements.map((p) => [p.field_key, p]));
+    expect(byId.get(checked)).toMatchObject({ kind: 'MARK', checked: true, x: 72, y: 100, width: 14, height: 14 });
+    expect(byId.get(unchecked)).toMatchObject({ kind: 'MARK', checked: false });
+    expect(byId.get(untouched)).toMatchObject({ kind: 'MARK', checked: false });
+    expect(byId.get(ack)).toMatchObject({ kind: 'MARK', checked: true });
+    for (const p of placements) expect(p.value).toBeUndefined();
+
+    // The executed PDF's page content carries no text operator at all (the source
+    // page is blank): no "true", no glyphs — only the vector boxes and checks.
+    const executed = await PDFDocument.load(outputs[0]!);
+    const contents = executed.getPage(0).node.Contents();
+    let ops = '';
+    if (contents instanceof PDFArray) {
+      for (let i = 0; i < contents.size(); i += 1) {
+        const stream = executed.context.lookup(contents.get(i) as PDFRef);
+        if (stream instanceof PDFRawStream) ops += Buffer.from(decodePDFRawStream(stream).decode()).toString('latin1');
+      }
+    }
+    expect(ops.length).toBeGreaterThan(0);
+    expect(ops).not.toMatch(/Tj|TJ|BT/);
+    expect(ops.toUpperCase()).not.toContain(Buffer.from('true', 'latin1').toString('hex').toUpperCase());
+    expect(ops.split('\n').filter((l) => l === 'S')).toHaveLength(6); // 4 boxes + 2 checks
+
+    const certificate = generated.join('');
+    expect(certificate).toContain('Checkbox \\"I agree to the terms\\": checked');
+    expect(certificate).toContain('Checkbox \\"Send me updates\\": not checked');
+    expect(certificate).toContain('Checkbox (page 1): not checked');
+    expect(certificate).toContain('Acknowledgement (page 1): checked');
   });
 });

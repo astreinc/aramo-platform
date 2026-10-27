@@ -21,6 +21,7 @@ import {
   SignerNotYetEligibleError,
   SigningInvitationService,
   SignatureFieldIncompleteError,
+  SignatureFieldValueRefusedError,
   SignerNotFoundError,
   SigningSessionExpiredError,
   SigningSessionInvalidError,
@@ -57,7 +58,12 @@ export function toHttp(e: unknown, requestId: string): AramoError {
   if (e instanceof SigningSessionExpiredError) return new AramoError('SIGNING_SESSION_EXPIRED', e.message, 401, { requestId });
   if (e instanceof SigningSessionInvalidError) return new AramoError('SIGNING_SESSION_INVALID', e.message, 401, { requestId });
   if (e instanceof DisclosureNotAcceptedError) return new AramoError('DISCLOSURE_NOT_ACCEPTED', e.message, 409, { requestId });
-  if (e instanceof SignatureFieldIncompleteError) return new AramoError('SIGNATURE_FIELD_INCOMPLETE', e.message, 409, { requestId });
+  // M-A6 §2.3 — details.reason names the completion rule that failed.
+  if (e instanceof SignatureFieldIncompleteError) {
+    return new AramoError('SIGNATURE_FIELD_INCOMPLETE', e.message, 409, { requestId, details: { reason: e.reason, ...(e.group_key !== undefined ? { group_key: e.group_key } : {}) } });
+  }
+  // M-A6 §2.2/§2.3 — a refused fill value (server-filled name; check-box value).
+  if (e instanceof SignatureFieldValueRefusedError) return new AramoError('VALIDATION_ERROR', e.message, 400, { requestId, details: { reason: e.reason, field_id: e.fieldId } });
   if (e instanceof EnvelopeAmbiguousError) return new AramoError('ESIGN_ENVELOPE_AMBIGUOUS', e.message, 409, { requestId });
   if (e instanceof ReminderNotAllowedError) return new AramoError('ESIGN_REMINDER_NOT_ALLOWED', e.message, 409, { requestId });
   // Multi-Signer §4 — a SEQUENTIAL signer acting before every earlier signer has signed.

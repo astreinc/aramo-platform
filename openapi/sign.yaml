@@ -350,7 +350,30 @@ paths:
                           description: True once this signer has filled the field (lets the signer page restore progress).
                         value:
                           type: [string, 'null']
-                          description: The signer's own entered value for their field (typed text, date, or drawn-signature data URL); null otherwise.
+                          description: >-
+                            The signer's own entered value for their field (typed text, date, or drawn-signature data URL);
+                            null otherwise. M-A6 §2.4 — for a server-filled name (server_filled true) it is the name the
+                            server fills. Other signers' values are never returned.
+                        label:
+                          type: [string, 'null']
+                          description: M-A6 §2.3 — the check box caption (CHECKBOX only).
+                        group_key:
+                          type: [string, 'null']
+                          description: M-A6 §2.3 — boxes sharing a key form a group (CHECKBOX only).
+                        group_rule:
+                          type: [string, 'null']
+                          enum: [SELECT_ONE, SELECT_ANY, null]
+                        min_selected:
+                          type: [integer, 'null']
+                          minimum: 1
+                          description: M-A6 §2.3 — the boxes a required group needs checked (null means 1).
+                        name_mode:
+                          type: [string, 'null']
+                          enum: [SIGNER_PROFILE, SIGNER_ENTERED, null]
+                          description: M-A6 §2.2 — SIGNER_NAME only; null for engine name fields, which the signer types.
+                        server_filled:
+                          type: boolean
+                          description: M-A6 §2.2 — true for a SIGNER_PROFILE name; shown read-only, never filled by the client.
                   message:
                     type: [string, 'null']
                     maxLength: 1000
@@ -529,6 +552,10 @@ paths:
         the signature / initials image as a PNG or JPEG data URL; signature_method
         records how a SIGNATURE or INITIALS value was made. A saved signature (/v1/sign/me/signature)
         is a convenience only: the value is always sent here and copied into the signing record.
+        M-A6 §2 — a CHECKBOX or ACKNOWLEDGEMENT value is 'true' (checked) or 'false' (unchecked;
+        unchecking is allowed), anything else is refused with 400 reason checkbox_value_invalid.
+        A SIGNER_NAME field with name_mode SIGNER_PROFILE is filled by the server and any value
+        sent for it is refused with 400 reason signer_profile_name_server_filled.
       parameters:
         - name: fieldId
           in: path
@@ -584,7 +611,13 @@ paths:
       summary: Finish signing for this signer.
       description: >-
         Token-authorized and disclosure-gated. Every required field of this signer must
-        be filled (409 SIGNATURE_FIELD_INCOMPLETE otherwise). When this was the last
+        be filled (409 SIGNATURE_FIELD_INCOMPLETE otherwise). M-A6 §2.3 — a required check
+        box must be checked; a SELECT_ONE group needs exactly one box checked when required
+        (never more than one); a required group needs at least min_selected boxes checked
+        (default 1). The failing rule is details.reason: required_field_unfilled,
+        checkbox_required_unchecked, checkbox_group_select_one or checkbox_group_min_selected
+        (with details.group_key for a group). The server fills every SIGNER_PROFILE name field
+        of the signer when they complete. When this was the last
         signer the envelope is executed and envelope_status is COMPLETED; otherwise it
         is IN_PROGRESS and, when signing in order, the next signer is invited.
       requestBody:
@@ -1209,6 +1242,11 @@ paths:
       summary: Replace the positioned fields of a DRAFT envelope.
       description: >
         Each field box must lie inside its real source page. PDF-native geometry. DRAFT only. Requires sign:envelope:create.
+        M-A6 §2 — field types SIGNATURE, INITIALS, SIGN_DATE, TEXT, SIGNER_NAME and CHECKBOX (400 v1_field_type otherwise).
+        A sender never supplies a value (400 sender_value_refused). name_mode applies to SIGNER_NAME only and label,
+        group_key, group_rule and min_selected to CHECKBOX only (400 field_config_not_applicable); other 400 reasons:
+        name_mode_invalid, checkbox_label_invalid, checkbox_group_invalid, checkbox_group_required,
+        checkbox_group_inconsistent, checkbox_group_min_exceeds_size.
         Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
       tags: [sender]
       security:
@@ -4657,7 +4695,10 @@ components:
           format: uuid
         field_type:
           type: string
-          enum: [SIGNATURE, INITIALS, SIGN_DATE, SIGNER_NAME, TEXT, CHECKBOX, ACKNOWLEDGEMENT]
+          description: >-
+            M-A6 §2.1 — the sender authoring types. ACKNOWLEDGEMENT is engine-only (the
+            service-to-service and Sign API paths keep all seven engine types).
+          enum: [SIGNATURE, INITIALS, SIGN_DATE, TEXT, SIGNER_NAME, CHECKBOX]
         page_number:
           type: integer
           minimum: 0
@@ -4675,6 +4716,30 @@ components:
           exclusiveMinimum: 0
         required:
           type: boolean
+        name_mode:
+          type: [string, 'null']
+          enum: [SIGNER_PROFILE, SIGNER_ENTERED, null]
+          description: >-
+            M-A6 §2.2 — SIGNER_NAME only (default SIGNER_PROFILE: the server fills the signer's
+            name; SIGNER_ENTERED: the signer types it). The sender never supplies a value.
+        label:
+          type: [string, 'null']
+          maxLength: 200
+          description: M-A6 §2.3 — CHECKBOX only; the caption printed in the certificate.
+        group_key:
+          type: [string, 'null']
+          maxLength: 64
+          description: >-
+            M-A6 §2.3 — CHECKBOX only; boxes sharing a key form a group, which belongs to one
+            recipient and shares one rule, minimum and required setting.
+        group_rule:
+          type: [string, 'null']
+          enum: [SELECT_ONE, SELECT_ANY, null]
+          description: M-A6 §2.3 — with group_key only (default SELECT_ANY).
+        min_selected:
+          type: [integer, 'null']
+          minimum: 1
+          description: M-A6 §2.3 — with group_key only; the boxes a required group needs checked (default 1; 1 for SELECT_ONE).
     SenderUploadedDocument:
       type: object
       required: [id, envelope_id, title, ordinal, byte_size, page_count, pages, revision]

@@ -2,7 +2,14 @@
 // Pure: every action is deterministic (ids come in the action), so it is unit-tested
 // without a renderer. Boxes are in the EDITOR frame (PDF points, top-left origin);
 // geometry.ts converts to and from the wire and the screen.
-import { FIELD_TYPE_SPECS, isAuthoringFieldType, type AuthoringFieldType } from './fieldTypes';
+import {
+  FIELD_TYPE_SPECS,
+  MAX_LABEL,
+  isAuthoringFieldType,
+  type AuthoringFieldType,
+  type GroupRule,
+  type NameMode,
+} from './fieldTypes';
 import {
   centeredBox,
   clampBox,
@@ -26,6 +33,13 @@ export interface EditorField extends Box {
   readonly recipientKey: string;
   readonly type: AuthoringFieldType;
   readonly required: boolean;
+  /** M-A6 §2.2 — SIGNER_NAME only (default SIGNER_PROFILE). */
+  readonly nameMode?: NameMode;
+  /** M-A6 §2.3 — CHECKBOX only. */
+  readonly label?: string | null;
+  readonly groupKey?: string | null;
+  readonly groupRule?: GroupRule | null;
+  readonly minSelected?: number | null;
 }
 
 export interface EditorState {
@@ -96,6 +110,19 @@ export type EditorAction =
   /** "Assign to {next signer}": cycles through the recipients in order. */
   | { readonly type: 'reassign'; readonly key: string; readonly recipientKeys: readonly string[] }
   | { readonly type: 'toggleRequired'; readonly key: string }
+  /** M-A6 §2.2 — who supplies a Name field's value. */
+  | { readonly type: 'setNameMode'; readonly key: string; readonly mode: NameMode }
+  /** M-A6 §2.3 — a check box's caption (empty clears it). */
+  | { readonly type: 'setLabel'; readonly key: string; readonly label: string }
+  /**
+   * M-A6 §2.3 — put a check box in a group (null leaves it). Joining an existing group
+   * adopts its rule, minimum and required setting; a group belongs to one recipient.
+   */
+  | { readonly type: 'setGroup'; readonly key: string; readonly groupKey: string | null }
+  /** Applies to every box of the group; SELECT_ONE resets the minimum. */
+  | { readonly type: 'setGroupRule'; readonly key: string; readonly rule: GroupRule }
+  /** Applies to every box of the group; clamped to 1 … group size. */
+  | { readonly type: 'setMinSelected'; readonly key: string; readonly min: number }
   | { readonly type: 'delete'; readonly key: string }
   | { readonly type: 'undo' }
   /** Recipients changed elsewhere: drop the fields of removed recipients. */
@@ -143,7 +170,52 @@ function newField(
     width: box.width,
     height: box.height,
     required: FIELD_TYPE_SPECS[tool].requiredByDefault,
+    ...(tool === 'SIGNER_NAME' ? { nameMode: 'SIGNER_PROFILE' as const } : {}),
+    ...(tool === 'CHECKBOX'
+      ? { label: null, groupKey: null, groupRule: null, minSelected: null }
+      : {}),
   };
+}
+
+/** The boxes of `groupKey` (none when null). */
+export function groupMembers(
+  fields: readonly EditorField[],
+  groupKey: string | null | undefined,
+): EditorField[] {
+  if (groupKey === null || groupKey === undefined) return [];
+  return fields.filter((f) => f.type === 'CHECKBOX' && f.groupKey === groupKey);
+}
+
+/** A group key not yet used in `fields` ("group-1", "group-2", …). */
+export function nextGroupKey(fields: readonly EditorField[]): string {
+  const used = new Set(fields.map((f) => f.groupKey).filter((k): k is string => !!k));
+  let n = 1;
+  while (used.has(`group-${n}`)) n += 1;
+  return `group-${n}`;
+}
+
+/** Apply `fn` to the field `key` and, when it is a grouped check box, its whole group. */
+function mapGroup(
+  fields: readonly EditorField[],
+  key: string,
+  fn: (f: EditorField) => EditorField,
+): readonly EditorField[] {
+  const f = fields.find((x) => x.key === key);
+  if (!f) return fields;
+  const members = new Set(groupMembers(fields, f.groupKey).map((m) => m.key));
+  members.add(key);
+  return fields.map((x) => (members.has(x.key) ? fn(x) : x));
+}
+
+/** After a box leaves a group, the group's minimum never exceeds its size. */
+function clampGroupMin(fields: readonly EditorField[], groupKey: string | null | undefined) {
+  const members = groupMembers(fields, groupKey);
+  const min = members[0]?.minSelected;
+  if (min === null || min === undefined || min <= members.length) return fields;
+  const clamped = Math.max(1, members.length);
+  return fields.map((f) =>
+    f.type === 'CHECKBOX' && f.groupKey === groupKey ? { ...f, minSelected: clamped } : f,
+  );
 }
 
 export function editorReducer(s: EditorState, a: EditorAction): EditorState {
@@ -215,26 +287,102 @@ export function editorReducer(s: EditorState, a: EditorAction): EditorState {
       const i = a.recipientKeys.indexOf(f.recipientKey);
       const next = a.recipientKeys[(i + 1) % a.recipientKeys.length];
       if (next === undefined) return s;
+      // A check-box group belongs to one recipient: the whole group moves.
       return commit(
         s,
-        mapField(s.fields, a.key, (x) => ({ ...x, recipientKey: next })),
+        mapGroup(s.fields, a.key, (x) => ({ ...x, recipientKey: next })),
       );
     }
-    case 'toggleRequired':
-      if (!s.fields.some((f) => f.key === a.key)) return s;
+    case 'toggleRequired': {
+      const f = s.fields.find((x) => x.key === a.key);
+      if (!f) return s;
+      const required = !f.required;
       return commit(
         s,
-        mapField(s.fields, a.key, (f) => ({ ...f, required: !f.required })),
+        mapGroup(s.fields, a.key, (x) => ({ ...x, required })),
       );
-    case 'delete':
-      if (!s.fields.some((f) => f.key === a.key)) return s;
+    }
+    case 'setNameMode': {
+      const f = s.fields.find((x) => x.key === a.key);
+      if (!f || f.type !== 'SIGNER_NAME' || f.nameMode === a.mode) return s;
+      return commit(
+        s,
+        mapField(s.fields, a.key, (x) => ({ ...x, nameMode: a.mode })),
+      );
+    }
+    case 'setLabel': {
+      const f = s.fields.find((x) => x.key === a.key);
+      if (!f || f.type !== 'CHECKBOX') return s;
+      const label = a.label.trim().slice(0, MAX_LABEL);
+      const next = label.length > 0 ? label : null;
+      if ((f.label ?? null) === next) return s;
+      return commit(
+        s,
+        mapField(s.fields, a.key, (x) => ({ ...x, label: next })),
+      );
+    }
+    case 'setGroup': {
+      const f = s.fields.find((x) => x.key === a.key);
+      if (!f || f.type !== 'CHECKBOX' || (f.groupKey ?? null) === a.groupKey) return s;
+      if (a.groupKey === null) {
+        const left = mapField(s.fields, a.key, (x) => ({
+          ...x,
+          groupKey: null,
+          groupRule: null,
+          minSelected: null,
+        }));
+        return commit(s, clampGroupMin(left, f.groupKey));
+      }
+      const others = groupMembers(s.fields, a.groupKey).filter((m) => m.key !== a.key);
+      const lead = others[0];
+      if (lead && lead.recipientKey !== f.recipientKey) return s;
+      const joined = mapField(s.fields, a.key, (x) => ({
+        ...x,
+        groupKey: a.groupKey,
+        groupRule: lead?.groupRule ?? 'SELECT_ANY',
+        minSelected: lead ? (lead.minSelected ?? null) : null,
+        required: lead ? lead.required : x.required,
+      }));
+      return commit(s, clampGroupMin(joined, f.groupKey));
+    }
+    case 'setGroupRule': {
+      const f = s.fields.find((x) => x.key === a.key);
+      if (!f || f.type !== 'CHECKBOX' || !f.groupKey || f.groupRule === a.rule) return s;
+      return commit(
+        s,
+        mapGroup(s.fields, a.key, (x) => ({
+          ...x,
+          groupRule: a.rule,
+          minSelected: a.rule === 'SELECT_ONE' ? null : (x.minSelected ?? null),
+        })),
+      );
+    }
+    case 'setMinSelected': {
+      const f = s.fields.find((x) => x.key === a.key);
+      if (!f || f.type !== 'CHECKBOX' || !f.groupKey || f.groupRule === 'SELECT_ONE') return s;
+      const size = groupMembers(s.fields, f.groupKey).length;
+      const min = Math.max(1, Math.min(size, Math.round(a.min)));
+      const value = min === 1 ? null : min;
+      if ((f.minSelected ?? null) === value) return s;
+      return commit(
+        s,
+        mapGroup(s.fields, a.key, (x) => ({ ...x, minSelected: value })),
+      );
+    }
+    case 'delete': {
+      const f = s.fields.find((x) => x.key === a.key);
+      if (!f) return s;
       return {
         ...commit(
           s,
-          s.fields.filter((f) => f.key !== a.key),
+          clampGroupMin(
+            s.fields.filter((x) => x.key !== a.key),
+            f.groupKey,
+          ),
         ),
         selected: s.selected === a.key ? null : s.selected,
       };
+    }
     case 'undo': {
       const prev = s.undo[s.undo.length - 1];
       if (prev === undefined) return s;
@@ -261,7 +409,8 @@ export function editorReducer(s: EditorState, a: EditorAction): EditorState {
 
 /** "{Type}, for {signer}, {required|optional}, {empty}" (handoff §7). */
 export function fieldAccessibilityLabel(f: EditorField, signerName: string): string {
-  return `${FIELD_TYPE_SPECS[f.type].label}, for ${signerName}, ${f.required ? 'required' : 'optional'}, empty`;
+  const label = f.type === 'CHECKBOX' && f.label ? ` "${f.label}"` : '';
+  return `${FIELD_TYPE_SPECS[f.type].label}${label}, for ${signerName}, ${f.required ? 'required' : 'optional'}, empty`;
 }
 
 /** Field count per recipient key, for the signer chips. */

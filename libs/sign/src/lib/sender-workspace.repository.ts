@@ -66,6 +66,12 @@ export interface SenderFieldInput {
   width: number;
   height: number;
   required: boolean;
+  // M-A6 §2 — Name and Checkbox configuration (absent ⇒ NULL).
+  label?: string | null;
+  group_key?: string | null;
+  group_rule?: string | null;
+  min_selected?: number | null;
+  name_mode?: string | null;
 }
 
 // Sign Mobile D-W6-2 — one page of a source PDF, in points (MediaBox).
@@ -598,6 +604,11 @@ export class EsignSenderRepository {
             width: f.width,
             height: f.height,
             required: f.required,
+            label: f.label ?? null,
+            group_key: f.group_key ?? null,
+            group_rule: f.group_rule ?? null,
+            min_selected: f.min_selected ?? null,
+            name_mode: f.name_mode ?? null,
           },
         });
       }

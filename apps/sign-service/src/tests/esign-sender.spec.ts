@@ -170,12 +170,89 @@ describe('SenderEnvelopeService — authoring validation fails closed', () => {
     pdf.addPage([612, 792]);
     sources.getSourcePdf.mockResolvedValue(await pdf.save());
     const base = { envelope_document_id: 'd1', signer_id: 's1', field_type: 'SIGNATURE', page_number: 0, x: 72, y: 72, width: 200, height: 40 };
-    for (const bad of [{ field_type: 'STAMP' }, { field_type: 'CHECKBOX' }, { field_type: 'SIGNER_NAME' }, { page_number: -1 }, { width: 0 }, { x: 500 }, { page_number: 1 }]) {
+    // M-A6 §2.1 — ACKNOWLEDGEMENT stays engine-only; SIGNER_NAME and CHECKBOX are authorable.
+    for (const bad of [{ field_type: 'STAMP' }, { field_type: 'ACKNOWLEDGEMENT' }, { page_number: -1 }, { width: 0 }, { x: 500 }, { page_number: 1 }]) {
       await expect(svc.replaceFields(AUTH, 'e1', { fields: [{ ...base, ...bad }] }, 'r')).rejects.toMatchObject({ code: 'VALIDATION_ERROR' });
     }
+    await expect(svc.replaceFields(AUTH, 'e1', { fields: [{ ...base, field_type: 'ACKNOWLEDGEMENT' }] }, 'r')).rejects.toMatchObject({
+      context: { details: { reason: 'v1_field_type', allowed: ['SIGNATURE', 'SIGN_DATE', 'INITIALS', 'TEXT', 'SIGNER_NAME', 'CHECKBOX'] } },
+    });
     expect(repo.replaceDraftFields).not.toHaveBeenCalled();
     await svc.replaceFields(AUTH, 'e1', { fields: [base] }, 'r');
     expect(repo.replaceDraftFields).toHaveBeenCalledTimes(1);
+    await svc.replaceFields(AUTH, 'e1', { fields: [{ ...base, field_type: 'CHECKBOX', width: 14, height: 14 }, { ...base, field_type: 'SIGNER_NAME' }] }, 'r');
+    expect(repo.replaceDraftFields).toHaveBeenCalledTimes(2);
+  });
+
+  // M-A6 §2.2/§2.3 — Name and Checkbox configuration on PUT fields.
+  describe('Name and Checkbox configuration (M-A6 §2)', () => {
+    const setup = async () => {
+      const ctx = envelopeService();
+      const pdf = await PDFDocument.create();
+      pdf.addPage([612, 792]);
+      ctx.sources.getSourcePdf.mockResolvedValue(await pdf.save());
+      return ctx;
+    };
+    const box = { envelope_document_id: 'd1', signer_id: 's1', field_type: 'CHECKBOX', page_number: 0, x: 72, y: 72, width: 14, height: 14 };
+    const name = { ...box, field_type: 'SIGNER_NAME', width: 200, height: 24 };
+    const stored = (repo: { replaceDraftFields: { mock: { calls: unknown[][] } } }) =>
+      (repo.replaceDraftFields.mock.calls.at(-1)?.[0] as { fields: Array<Record<string, unknown>> }).fields;
+
+    it('SIGNER_NAME defaults to SIGNER_PROFILE and accepts SIGNER_ENTERED', async () => {
+      const { svc, repo } = await setup();
+      await svc.replaceFields(AUTH, 'e1', { fields: [name, { ...name, y: 200, name_mode: 'SIGNER_ENTERED' }] }, 'r');
+      expect(stored(repo).map((f) => f['name_mode'])).toEqual(['SIGNER_PROFILE', 'SIGNER_ENTERED']);
+    });
+
+    it('a sender value is refused for every type, including a name', async () => {
+      const { svc, repo } = await setup();
+      for (const f of [{ ...name, value: 'Mallory' }, { ...box, value: 'true' }]) {
+        await expect(svc.replaceFields(AUTH, 'e1', { fields: [f] }, 'r')).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason: 'sender_value_refused', field: 'value' } } });
+      }
+      expect(repo.replaceDraftFields).not.toHaveBeenCalled();
+    });
+
+    it('refuses an unknown name_mode and configuration on the wrong type', async () => {
+      const { svc } = await setup();
+      const cases: Array<[Record<string, unknown>, string]> = [
+        [{ ...name, name_mode: 'SENDER' }, 'name_mode_invalid'],
+        [{ ...box, name_mode: 'SIGNER_PROFILE' }, 'field_config_not_applicable'],
+        [{ ...name, label: 'Agree' }, 'field_config_not_applicable'],
+        [{ ...box, field_type: 'TEXT', width: 100, group_key: 'g' }, 'field_config_not_applicable'],
+        [{ ...box, group_rule: 'SELECT_ONE' }, 'checkbox_group_required'],
+        [{ ...box, min_selected: 2 }, 'checkbox_group_required'],
+        [{ ...box, group_key: 'g', group_rule: 'SOME' }, 'checkbox_group_invalid'],
+        [{ ...box, group_key: 'g', group_rule: 'SELECT_ONE', min_selected: 2 }, 'checkbox_group_invalid'],
+        [{ ...box, group_key: 'g', min_selected: 0 }, 'checkbox_group_invalid'],
+        [{ ...box, label: 'x'.repeat(201) }, 'checkbox_label_invalid'],
+        [{ ...box, group_key: 'g'.repeat(65) }, 'checkbox_group_invalid'],
+      ];
+      for (const [f, reason] of cases) {
+        await expect(svc.replaceFields(AUTH, 'e1', { fields: [f] }, 'r')).rejects.toMatchObject({ code: 'VALIDATION_ERROR', context: { details: { reason } } });
+      }
+    });
+
+    it('stores a label and group (rule defaults to SELECT_ANY) and refuses inconsistent groups', async () => {
+      const { svc, repo } = await setup();
+      await svc.replaceFields(AUTH, 'e1', { fields: [{ ...box, label: '  I agree  ' }, { ...box, y: 100, group_key: 'opt' }, { ...box, y: 120, group_key: 'opt' }] }, 'r');
+      expect(stored(repo)).toMatchObject([
+        { label: 'I agree', group_key: null, group_rule: null, min_selected: null },
+        { label: null, group_key: 'opt', group_rule: 'SELECT_ANY', min_selected: null },
+        { group_key: 'opt', group_rule: 'SELECT_ANY' },
+      ]);
+      const inconsistent: Array<Array<Record<string, unknown>>> = [
+        [{ ...box, group_key: 'g' }, { ...box, y: 100, group_key: 'g', signer_id: 's2' }],
+        [{ ...box, group_key: 'g', group_rule: 'SELECT_ONE' }, { ...box, y: 100, group_key: 'g' }],
+        [{ ...box, group_key: 'g' }, { ...box, y: 100, group_key: 'g', required: false }],
+        [{ ...box, group_key: 'g', min_selected: 2 }, { ...box, y: 100, group_key: 'g' }],
+      ];
+      for (const fields of inconsistent) {
+        await expect(svc.replaceFields(AUTH, 'e1', { fields }, 'r')).rejects.toMatchObject({ context: { details: { reason: 'checkbox_group_inconsistent', group_key: 'g' } } });
+      }
+      await expect(svc.replaceFields(AUTH, 'e1', { fields: [{ ...box, group_key: 'g', min_selected: 3 }, { ...box, y: 100, group_key: 'g', min_selected: 3 }] }, 'r')).rejects.toMatchObject({
+        context: { details: { reason: 'checkbox_group_min_exceeds_size' } },
+      });
+    });
   });
 
   it('void requires a reason; readiness lists each missing signature field', async () => {

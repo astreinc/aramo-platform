@@ -2087,6 +2087,7 @@
       "ABUSE_REPORT_OUTCOMES",
       "ABUSE_REPORT_REASONS",
       "AbuseReportService",
+      "CHECKBOX_GROUP_RULES",
       "CURRENT_DISCLOSURE_VERSION",
       "DEFAULT_ABUSE_REPORT_CONFIG",
       "DEFAULT_SIGN_BASE_URL",
@@ -2130,6 +2131,8 @@
       "ReminderLimitError",
       "ReminderNotAllowedError",
       "SENDER_DIRECTORY_PORT",
+      "SIGNER_ATTESTED_NAME_PORT",
+      "SIGNER_NAME_MODES",
       "SIGNING_INVITATION_MAX_ATTEMPTS",
       "SIGNING_NOTIFICATION_PORT",
       "SIGNING_SESSION_TTL_MS",
@@ -2145,6 +2148,7 @@
       "SignSavedSignatureRepository",
       "SignWebhookRepository",
       "SignatureFieldIncompleteError",
+      "SignatureFieldValueRefusedError",
       "SignerNotFoundError",
       "SignerNotYetEligibleError",
       "SigningInvitationService",
@@ -2163,11 +2167,13 @@
       "emailDomainOf",
       "envelopeExpiresAt",
       "envelopeReminderAvailableAt",
+      "evaluateSignerFieldRules",
       "findDisclosure",
       "generateSigningToken",
       "hashSigningToken",
       "idempotencyRequestHash",
       "isAbuseReportReason",
+      "isServerFilledName",
       "listDisclosures",
       "nextReminderAt",
       "reminderHistory",
@@ -7591,6 +7597,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/signer-field-rules.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/aramo-sign-allowance.gate.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -10078,6 +10090,12 @@
       {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/pages/PersonalAllowance.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "apps/sign-web/src/workspace/pages/field-config.spec.ts",
         "project": "aramo-sign-web",
         "status": "excluded"
       },
