@@ -161,3 +161,13 @@ export {
 } from './studio/organization-source';
 export { LETTERHEAD_SAVE_BLOCKED } from './studio/TemplateStudio';
 export type { StudioSection, StudioLetterheadApi } from './studio/data-source';
+// TEMPLATE-STUDIO-1 S-2 (directive §4) — the Org gallery's read-only source (an Aramo default,
+// current version only, Preview with the tenant's branding).
+export {
+  GALLERY_STUDIO_READ_ONLY,
+  galleryContentFromSample,
+  galleryDefaultOf,
+  galleryStudioCopy,
+  galleryStudioDataSource,
+  type GallerySourceOptions,
+} from './studio/gallery-source';

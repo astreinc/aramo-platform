@@ -13,76 +13,83 @@ import type {
 /** The seeded Right-to-Represent document type key (the only template-driven type today). */
 export const RTR_TYPE_KEY = 'RIGHT_TO_REPRESENT';
 
-export type GalleryCategory = 'Recruiting' | 'Hiring' | 'Legal' | 'Pre-start';
-export const GALLERY_CATEGORIES: readonly GalleryCategory[] = ['Recruiting', 'Hiring', 'Legal', 'Pre-start'];
+// TEMPLATE-STUDIO-1 S-2 (directive §4.1; conforming amendment #2) — the gallery is
+// BACKEND-DRIVEN: one card per published Aramo default in GET /v1/document-templates/library
+// (owner_scope PLATFORM; current versions only, withdrawn defaults excluded by the server).
+// The static GALLERY_ENTRIES list and its "Not configurable yet" cards are retired. Only the
+// category and a fallback description stay front-end, keyed by the document-type key (G13 data
+// copy: the backend document-type catalog carries neither). Keys for types that are not
+// publishable yet are listed so they categorise automatically once they are.
 
-export interface GalleryEntry {
+export type GalleryCategory = 'Recruiting' | 'Hiring' | 'Legal' | 'Pre-start' | 'Other';
+/** Chip order; a chip shows only when at least one card is in it (empty categories are hidden). */
+export const GALLERY_CATEGORIES: readonly GalleryCategory[] = ['Recruiting', 'Hiring', 'Legal', 'Pre-start', 'Other'];
+
+export const DOCUMENT_TYPE_CATEGORY: Readonly<Record<string, GalleryCategory>> = {
+  RIGHT_TO_REPRESENT: 'Recruiting',
+  OFFER_LETTER: 'Hiring',
+  CLIENT_NDA: 'Legal',
+  BACKGROUND_AUTHORIZATION: 'Pre-start',
+  I9: 'Pre-start',
+};
+
+// Handoff §6.9 "Contents (exact copy)" — used when a default carries no description.
+export const DOCUMENT_TYPE_DESCRIPTION: Readonly<Record<string, string>> = {
+  RIGHT_TO_REPRESENT: 'Authorizes your firm to submit the talent to one client for one requisition, with the agreed pay rate.',
+  OFFER_LETTER: 'Confirms the role, start date, pay and terms offered to a talent before they start.',
+  CLIENT_NDA: 'Mutual confidentiality agreement with a client before you share talent or requisition details.',
+  BACKGROUND_AUTHORIZATION: 'The talent’s consent for a background screening provider to run checks before placement.',
+  I9: 'Employment eligibility verification collected from the talent before the start date.',
+};
+
+export type GalleryState =
+  /** The organization has no template of this document type: preview, then Adopt. */
+  | { readonly kind: 'adoptable' }
+  /** The organization already has a template of this type: link to it. */
+  | { readonly kind: 'in-ours'; readonly ourTemplateId: string };
+
+export interface GalleryCard {
+  /** The Aramo default's library id (opens /aramo/:id). */
+  readonly id: string;
   readonly name: string;
-  readonly category: GalleryCategory;
   readonly description: string;
-  /** The document type key a backend library default maps to (template-driven types only). */
-  readonly typeKey: string | null;
+  readonly category: GalleryCategory;
+  readonly state: GalleryState;
 }
 
-// Handoff §6.9 "Contents (exact copy)". The backend document-type catalog carries no
-// category or description, so this copy is used (data gap G13). Only RTR is template-driven
-// (the RTR-first ruling); the other four are static "Not configurable yet" cards.
-export const GALLERY_ENTRIES: readonly GalleryEntry[] = [
-  {
-    name: 'Right to Represent',
-    category: 'Recruiting',
-    description: 'Authorizes your firm to submit the talent to one client for one requisition, with the agreed pay rate.',
-    typeKey: RTR_TYPE_KEY,
-  },
-  {
-    name: 'Offer letter',
-    category: 'Hiring',
-    description: 'Confirms the role, start date, pay and terms offered to a talent before they start.',
-    typeKey: null,
-  },
-  {
-    name: 'Client NDA',
-    category: 'Legal',
-    description: 'Mutual confidentiality agreement with a client before you share talent or requisition details.',
-    typeKey: null,
-  },
-  {
-    name: 'Background check authorization',
-    category: 'Pre-start',
-    description: 'The talent’s consent for a background screening provider to run checks before placement.',
-    typeKey: null,
-  },
-  {
-    name: 'I-9 Employment eligibility',
-    category: 'Pre-start',
-    description: 'Employment eligibility verification collected from the talent before the start date.',
-    typeKey: null,
-  },
-];
-
-export type GalleryAvailability =
-  /** Template-driven, an Aramo default exists, and the organization has none of this type. */
-  | { readonly kind: 'adoptable'; readonly libraryId: string }
-  /** Template-driven and the organization already has a template of this type. */
-  | { readonly kind: 'in-ours'; readonly libraryId: string | null }
-  /** Not template-driven (or no Aramo default is published for it). */
-  | { readonly kind: 'unsupported' };
-
-export function galleryAvailability(entry: GalleryEntry, library: TemplateLibraryView | null): GalleryAvailability {
-  if (entry.typeKey === null || library === null) return { kind: 'unsupported' };
-  const type = library.document_types.find((t) => t.key === entry.typeKey);
-  if (type === undefined || !type.configurable) return { kind: 'unsupported' };
-  const platform = library.items.find((i) => i.owner_scope === 'PLATFORM' && i.document_type_id === type.id && i.configurable) ?? null;
-  const ours = library.items.some((i) => i.owner_scope === 'TENANT' && i.document_type_id === type.id);
-  if (ours) return { kind: 'in-ours', libraryId: platform?.id ?? null };
-  if (platform === null) return { kind: 'unsupported' };
-  return { kind: 'adoptable', libraryId: platform.id };
+/** The organization's own template of a document type (tenant-wide first), if any. */
+export function ourTemplateOfType(library: TemplateLibraryView, documentTypeId: string): TemplateLibraryItem | null {
+  const own = library.items.filter((i) => i.owner_scope === 'TENANT' && i.document_type_id === documentTypeId);
+  return own.find((i) => i.client_id === null) ?? own[0] ?? null;
 }
 
-/** Chip counts (All + each category), from the static entries. */
-export function categoryCounts(entries: readonly GalleryEntry[]): Readonly<Record<'All' | GalleryCategory, number>> {
-  const counts: Record<'All' | GalleryCategory, number> = { All: entries.length, Recruiting: 0, Hiring: 0, Legal: 0, 'Pre-start': 0 };
-  for (const e of entries) counts[e.category] += 1;
+/**
+ * One card per published Aramo default (PLATFORM item) of a template-driven document type.
+ * The server lists only current, published, not-withdrawn defaults; `configurable` keeps
+ * the adoptable-types rule (template-driven types only; RTR today).
+ */
+export function buildGalleryCards(library: TemplateLibraryView): GalleryCard[] {
+  const typeKey = new Map(library.document_types.map((t) => [t.id, t.key]));
+  return library.items
+    .filter((i) => i.owner_scope === 'PLATFORM' && i.configurable)
+    .map((i) => {
+      const key = typeKey.get(i.document_type_id) ?? '';
+      const ours = ourTemplateOfType(library, i.document_type_id);
+      const description = i.description !== null && i.description.trim() !== '' ? i.description : (DOCUMENT_TYPE_DESCRIPTION[key] ?? '');
+      return {
+        id: i.id,
+        name: i.name,
+        description,
+        category: DOCUMENT_TYPE_CATEGORY[key] ?? 'Other',
+        state: ours !== null ? { kind: 'in-ours', ourTemplateId: ours.id } : { kind: 'adoptable' },
+      };
+    });
+}
+
+/** Chip counts (All + each category) from the actual cards. */
+export function categoryCounts(cards: readonly Pick<GalleryCard, 'category'>[]): Readonly<Record<'All' | GalleryCategory, number>> {
+  const counts: Record<'All' | GalleryCategory, number> = { All: cards.length, Recruiting: 0, Hiring: 0, Legal: 0, 'Pre-start': 0, Other: 0 };
+  for (const c of cards) counts[c.category] += 1;
   return counts;
 }
 
