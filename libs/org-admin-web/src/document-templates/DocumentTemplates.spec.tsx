@@ -434,6 +434,49 @@ describe('Our templates (§6.8)', () => {
   });
 });
 
+describe('Our templates — Create new version (TEMPLATE-STUDIO-1 §1.4, §3.4)', () => {
+  it('an approved template with no draft offers it; a draft-only template does not; click → POST /:id/draft → the Studio', async () => {
+    const createDraftFn = vi.fn().mockResolvedValue(vers('nv3', 'own-rtr', 3, 'DRAFT', null));
+    renderOurs({ createDraftFn });
+    const row = await screen.findByTestId('our-template-own-rtr');
+    const create = within(row).getByRole('button', { name: 'Create new version v3 of Our RTR' });
+    expect(create).toHaveTextContent('Create new version');
+    expect(within(screen.getByTestId('our-template-own-draft')).queryByRole('button', { name: /Create new version/ })).toBeNull();
+    fireEvent.click(create);
+    await waitFor(() => expect(screen.getByTestId('where')).toHaveTextContent('/org/document-templates/own-rtr'));
+    expect(createDraftFn).toHaveBeenCalledWith('own-rtr');
+  });
+
+  it('an author is offered it too', async () => {
+    renderOurs({ session: AUTHOR });
+    const row = await screen.findByTestId('our-template-own-rtr');
+    expect(within(row).getByRole('button', { name: 'Create new version v3 of Our RTR' })).toBeInTheDocument();
+  });
+
+  it('read-only sessions never see it', async () => {
+    renderOurs({ session: READER });
+    await screen.findByTestId('our-template-own-rtr');
+    expect(screen.queryByRole('button', { name: /Create new version/ })).toBeNull();
+  });
+
+  it('an approved template that already has an open draft: no action (Manage opens the draft)', async () => {
+    const versionsFn = vi.fn().mockResolvedValue([vers('v', 'own-rtr', 2, 'ACTIVE', '2026-10-09T10:00:00.000Z'), vers('d3', 'own-rtr', 3, 'DRAFT', null)]);
+    renderOurs({ libraryFn: vi.fn().mockResolvedValue({ ...LIBRARY, items: [OWN] }), versionsFn });
+    const row = await screen.findByTestId('our-template-own-rtr');
+    expect(within(row).queryByRole('button', { name: /Create new version/ })).toBeNull();
+    expect(within(row).getByRole('link', { name: 'Manage Our RTR' })).toBeInTheDocument();
+  });
+
+  it('a refusal stays on the row as an alert', async () => {
+    const createDraftFn = vi.fn().mockRejectedValue(new Error('A draft is already open.'));
+    renderOurs({ createDraftFn });
+    const row = await screen.findByTestId('our-template-own-rtr');
+    fireEvent.click(within(row).getByRole('button', { name: /Create new version/ }));
+    expect(await within(row).findByRole('alert')).toBeInTheDocument();
+    expect(screen.queryByTestId('where')).toBeNull();
+  });
+});
+
 describe('Org Home document templates — create your own (no copy)', () => {
   it('creates a blank template for a configurable type and opens it in the Studio (TEMPLATE-STUDIO-1 S-1); there is no start-from-default option', async () => {
     const createFn = vi.fn().mockResolvedValue({ template: { id: 'new-1' }, draft: { id: 'v1' } });

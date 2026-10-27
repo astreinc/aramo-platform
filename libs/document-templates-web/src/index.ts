@@ -61,6 +61,7 @@ export {
   setTemplateSelection,
   clearTemplateSelection,
   createOwnTemplate,
+  createDraftFromActive,
   type DocumentTemplateView,
   type TemplateVersionView,
   type TemplateSamplePreview,
@@ -119,7 +120,7 @@ export {
 // TEMPLATE-STUDIO-1 S-0 (directive §2) — the ONE shared Template Studio (moved from
 // apps/platform-web), its data-source adapter, the content codecs and the platform copy
 // table (additive: no existing export changes).
-export { TemplateStudio, type TemplateStudioProps, type StudioAccountSlot } from './studio/TemplateStudio';
+export { TemplateStudio, type TemplateStudioProps, type StudioAccountSlot, type StudioHostActionState } from './studio/TemplateStudio';
 export {
   DEFAULT_STUDIO_CONTENT_CODEC,
   LETTERHEAD_STUDIO_CONTENT_CODEC,

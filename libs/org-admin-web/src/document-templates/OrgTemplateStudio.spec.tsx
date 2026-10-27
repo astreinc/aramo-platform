@@ -353,3 +353,45 @@ describe('Org template routes (Conforming Amendment #3)', () => {
     expect(orgSectionForPath('/org/document-templates/aramo/def-1')?.key).toBe('gallery');
   });
 });
+
+describe('Org Studio — explicit Create new version (directive §1.4, §3.4)', () => {
+  it('an approved template with no draft: the header offers "Create new version v3" → POST /:id/draft, then the draft opens in Edit', async () => {
+    const api = makeApi([V2, V1]);
+    renderStudio(AUTHOR, api, null);
+    await screen.findByDisplayValue('Right to Represent');
+    const create = screen.getByTestId('studio-create-version');
+    expect(create).toHaveTextContent('Create new version v3');
+    fireEvent.click(create);
+    await waitFor(() => expect(api.createDraftFromActive).toHaveBeenCalledWith('tpl-1'));
+    await waitFor(() => expect(api.updateDraft).toHaveBeenCalledWith('d3', expect.objectContaining({ render_schema_version: 'rtr-html-v1' })));
+    expect(api.createVersion).not.toHaveBeenCalled();
+    expect(await screen.findByText('Draft v3 created. Nothing changes until it’s approved.')).toBeInTheDocument();
+    await waitFor(() => expect(screen.queryByTestId('studio-create-version')).toBeNull());
+    expect(screen.getByRole('button', { name: 'Save draft' })).toBeInTheDocument();
+  });
+
+  it('a manage holder is offered it too', async () => {
+    renderStudio(MANAGER, makeApi([V2, V1]));
+    await screen.findByDisplayValue('Right to Represent');
+    expect(screen.getByTestId('studio-create-version')).toHaveTextContent('Create new version v3');
+  });
+
+  it('an open draft: no action (the Studio already opens the draft)', async () => {
+    renderStudio(MANAGER, makeApi([DRAFT, V2, V1]));
+    await screen.findByDisplayValue('Right to Represent');
+    expect(screen.queryByTestId('studio-create-version')).toBeNull();
+  });
+
+  it('never approved (no ACTIVE version): no action', async () => {
+    renderStudio(AUTHOR, makeApi([version('d1', 1, 'DRAFT', BODY)], template({ status: 'DRAFT', current_version_id: null })), null);
+    await screen.findByDisplayValue('Right to Represent');
+    expect(screen.queryByTestId('studio-create-version')).toBeNull();
+  });
+
+  it('read-only: never offered', async () => {
+    renderStudio(READER, makeApi([V2, V1]));
+    expect(await screen.findByText(/You're seeing the active version/)).toBeInTheDocument();
+    expect(screen.queryByTestId('studio-create-version')).toBeNull();
+    expect(screen.queryByText(/Create new version/)).toBeNull();
+  });
+});

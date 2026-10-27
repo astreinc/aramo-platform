@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useState } from 'react';
-import { Link } from 'react-router-dom';
-import { safeErrorMessage, type Session } from '@aramo/fe-foundation';
+import { Link, useNavigate } from 'react-router-dom';
+import { safeErrorMessage, useToast, type Session } from '@aramo/fe-foundation';
 import {
   canApproveTemplates,
+  canAuthorTemplates,
+  createDraftFromActive,
   fetchTemplateLibrary,
   fmtDate,
   listTemplateSelections,
@@ -26,8 +28,11 @@ import './templates.css';
 // shows the "Aramo starting point" banner; Aramo withdrawal notices (T-6) stay as banners.
 // No selection control: approving a draft makes it the template in use (§5.2), and a
 // selection can no longer point at an Aramo default.
+// TEMPLATE-STUDIO-1 (directive §1.4, §3.4) — a row with an approved version and no open
+// draft also offers "Create new version" (author or manage; never read-only): POST /:id/draft
+// (copies the ACTIVE version and its logo reference) → the Studio opens on the new draft.
 
-export const OUR_TEMPLATES_COLUMNS = 'minmax(240px,1.8fr) minmax(140px,1fr) 70px 96px minmax(170px,1fr) 90px';
+export const OUR_TEMPLATES_COLUMNS = 'minmax(240px,1.8fr) minmax(140px,1fr) 70px 96px minmax(170px,1fr) 250px';
 export const LEGACY_BANNER_TEXT = 'You’re using an Aramo starting point. Adopt and approve your own version.';
 
 const GALLERY_PATH = '/org/document-templates/gallery';
@@ -44,6 +49,7 @@ interface Props {
   readonly versionsFn?: typeof listTemplateVersions;
   readonly namesFn?: typeof resolveUserNames;
   readonly noticesFn?: typeof fetchTemplateNotices;
+  readonly createDraftFn?: typeof createDraftFromActive;
 }
 
 const PILL: Readonly<Record<TemplateStatus, { label: string; cls: string }>> = {
@@ -59,8 +65,13 @@ export function OurTemplatesPage({
   versionsFn = listTemplateVersions,
   namesFn = resolveUserNames,
   noticesFn = fetchTemplateNotices,
+  createDraftFn = createDraftFromActive,
 }: Props) {
   const routes = useDocTemplateRoutes();
+  const navigate = useNavigate();
+  const toast = useToast();
+  const [creating, setCreating] = useState<string | null>(null);
+  const [createError, setCreateError] = useState<{ id: string; message: string } | null>(null);
   const [load, setLoad] = useState<LoadState>({ status: 'loading' });
   const [notices, setNotices] = useState<readonly TemplateWithdrawalNotice[]>([]);
 
@@ -94,6 +105,20 @@ export function OurTemplatesPage({
   }, [refetch, noticesFn]);
 
   const canApprove = canApproveTemplates(session);
+  const canAuthor = canAuthorTemplates(session);
+
+  async function createNewVersion(row: OurTemplateRow) {
+    setCreating(row.id);
+    setCreateError(null);
+    try {
+      const draft = await createDraftFn(row.id);
+      toast.show(`Draft v${draft.version_number} created. Nothing changes until it’s approved.`);
+      navigate(routes.detail(row.id));
+    } catch (err) {
+      setCreateError({ id: row.id, message: safeErrorMessage(err, 'Could not create a new version.') });
+      setCreating(null);
+    }
+  }
 
   return (
     <div className="ox-tpl" data-testid="our-templates">
@@ -180,9 +205,26 @@ export function OurTemplatesPage({
                       {r.lastApproved === null ? '—' : `${fmtDate(r.lastApproved.at)}${by !== undefined && by !== '' ? ` · ${by}` : ''}`}
                     </span>
                     <span role="cell" className="ox-tpl__act">
+                      {canAuthor && r.newVersion !== null ? (
+                        <button
+                          type="button"
+                          className="ox-btn ox-btn--secondary ox-tpl__manage"
+                          onClick={() => void createNewVersion(r)}
+                          disabled={creating !== null}
+                          aria-label={`Create new version v${r.newVersion} of ${r.name}`}
+                          data-testid={`our-template-new-version-${r.id}`}
+                        >
+                          Create new version
+                        </button>
+                      ) : null}
                       <Link className="ox-btn ox-btn--secondary ox-tpl__manage" to={routes.detail(r.id)} aria-label={`Manage ${r.name}`}>
                         Manage
                       </Link>
+                      {createError?.id === r.id ? (
+                        <span className="ox-error ox-tpl__acterr" role="alert">
+                          {createError.message}
+                        </span>
+                      ) : null}
                     </span>
                   </div>
                 );

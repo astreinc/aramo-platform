@@ -107,8 +107,28 @@ export interface TemplateStudioProps {
   readonly onEntityName?: (name: string | null) => void;
   /** The host's refusal → message formatter. Default: the error's message. */
   readonly formatError?: (e: unknown, fallback: string) => string;
-  /** TEMPLATE-STUDIO-1 S-2 — host actions in the top bar (the gallery preview's Adopt). */
-  readonly actions?: ReactNode;
+  /**
+   * TEMPLATE-STUDIO-1 S-2 — host actions in the top bar (the gallery preview's Adopt). A
+   * function receives the Studio's version state (the Org Studio's "Create new version").
+   */
+  readonly actions?: ReactNode | ((state: StudioHostActionState) => ReactNode);
+}
+
+/**
+ * TEMPLATE-STUDIO-1 (directive §1.4, §3.4) — what a host's top-bar action can read and do:
+ * the open draft and the approved version, and `createDraft` — opens the draft from the
+ * editor's content through the data source's createDraft (organization: POST /:id/draft,
+ * which copies the ACTIVE version and its logo reference) and switches to Edit.
+ */
+export interface StudioHostActionState {
+  readonly canEdit: boolean;
+  readonly draft: { readonly version_number: number } | null;
+  readonly current: { readonly version_number: number } | null;
+  /** The draft's number, else the next version number. */
+  readonly nextVersion: number;
+  /** A save or draft creation is in flight. */
+  readonly busy: boolean;
+  readonly createDraft: () => Promise<boolean>;
 }
 
 /** TEMPLATE-STUDIO-1 S-1 (A1) — why a save is held back while letterhead node and logo disagree. */
@@ -407,6 +427,25 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
       setPvLoading(false);
     }
   }, [canManage, saveDraft, ds, templateErrorMessage]);
+
+  // TEMPLATE-STUDIO-1 (§3.4) — a host's explicit "Create new version": the draft opens from
+  // the editor's content (unsaved edits included) and the Studio switches to Edit.
+  const createDraftNow = useCallback(async (): Promise<boolean> => {
+    if (!canManage) return false;
+    if (draftRef.current !== null) {
+      setMode('edit');
+      setViewVersionId(null);
+      return true;
+    }
+    const ok = await saveDraft(true);
+    const v = draftRef.current as TemplateVersion | null;
+    if (ok && v !== null) {
+      setMode('edit');
+      setViewVersionId(null);
+      toast(`Draft v${v.version_number} created. Nothing changes until it’s approved.`);
+    }
+    return ok;
+  }, [canManage, saveDraft, toast]);
 
   const switchMode = (m: 'edit' | 'preview'): void => {
     if (m === 'preview') void enterPreview();
@@ -789,7 +828,18 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
               }
             : undefined
         }
-        actions={actions}
+        actions={
+          typeof actions === 'function'
+            ? actions({
+                canEdit: canManage,
+                draft: draft !== null ? { version_number: draft.version_number } : null,
+                current: publishedNumber !== null ? { version_number: publishedNumber } : null,
+                nextVersion,
+                busy: saving,
+                createDraft: createDraftNow,
+              })
+            : actions
+        }
       />
 
       {withdrawal === 'PENDING' ? (

@@ -1,7 +1,8 @@
-import { useMemo } from 'react';
-import { type Session } from '@aramo/fe-foundation';
+import { useMemo, type ReactNode } from 'react';
+import { Button, type Session } from '@aramo/fe-foundation';
 import {
   TemplateStudio,
+  type StudioHostActionState,
   organizationStudioDataSource,
   useDocTemplateRoutes,
   type OrganizationStudioApi,
@@ -15,6 +16,22 @@ import { OrgStudioHost, orgStudioErrorMessage, useOrgStudioAccount } from './Org
 // scopes (ORG-UX-1 §4.1): read-only · edit (document_template:author) · edit + Approve &
 // activate (document_template:manage — tenant_owner / tenant_admin). Replaces the former
 // detail screen and the draft editor (RtrTemplateDetail / RtrDraftEditor) on these routes.
+//
+// Directive §1.4 / §3.4 — the explicit "Create new version v{n+1}" header action (author or
+// manage; never read-only): shown on an approved template with no open draft; it opens the
+// draft through the data source's createDraft (POST /:id/draft copies the ACTIVE version and
+// its logo reference) and switches to Edit. Once a draft exists the Studio already opens on
+// it, so no "Continue draft" action is shown here.
+
+/** The header action for an approved template with no draft (null otherwise). */
+export function createVersionAction(s: StudioHostActionState): ReactNode {
+  if (!s.canEdit || s.draft !== null || s.current === null) return null;
+  return (
+    <Button unstyled className="pws-btn34" disabled={s.busy} onClick={() => void s.createDraft()} data-testid="studio-create-version">
+      Create new version v{s.nextVersion}
+    </Button>
+  );
+}
 
 export interface OrgTemplateStudioProps {
   readonly session: Session;
@@ -43,6 +60,7 @@ export function OrgTemplateStudio({ session, templateId, organizationHref, admin
         templateId={templateId}
         renderAccount={renderAccount}
         formatError={orgStudioErrorMessage}
+        actions={createVersionAction}
       />
     </OrgStudioHost>
   );

@@ -106,6 +106,12 @@ export interface OurTemplateRow {
   readonly version: string;
   readonly status: TemplateStatus;
   readonly lastApproved: { readonly at: string; readonly by: string | null } | null;
+  /**
+   * TEMPLATE-STUDIO-1 (directive §1.4, §3.4) — the "Create new version" number: set when the
+   * template has an ACTIVE (approved) version and no open draft (null otherwise, including
+   * when the versions could not be read).
+   */
+  readonly newVersion: number | null;
 }
 
 const PRODUCT_LABEL: Readonly<Record<string, string>> = { ATS: 'ATS', SIGN: 'Sign' };
@@ -139,6 +145,8 @@ export function buildOurTemplateRows(
         version: n === null ? '—' : `v${n}`,
         status: t.status,
         lastApproved: current?.activated_at != null ? { at: current.activated_at, by: current.activated_by } : null,
+        newVersion:
+          current?.status === 'ACTIVE' && latest !== null && !versions.some((v) => v.status === 'DRAFT') ? latest.version_number + 1 : null,
       };
     });
 }
