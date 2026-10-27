@@ -94,9 +94,7 @@ export function HomeBody() {
   }
 
   function openAgreements(filter: AgreementsTarget): void {
-    // The shared contract's AgreementsFilter gains 'all' with the navigation shell; the
-    // cast keeps this file compiling against either version of navigation/types.ts.
-    navigation.navigate('Main', { screen: 'Agreements', params: { filter } } as never);
+    navigation.navigate('Main', { screen: 'Agreements', params: { filter } });
   }
 
   // The same destinations Agreements opens for a row.
