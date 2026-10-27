@@ -17,7 +17,12 @@ const PDF = new Uint8Array(
 );
 
 function setup(
-  opts: { online?: boolean; dropFirstUploadResponse?: boolean; refuseFirstUploads?: number } = {},
+  opts: {
+    online?: boolean;
+    dropFirstUploadResponse?: boolean;
+    refuseFirstUploads?: number;
+    accountEmail?: string;
+  } = {},
 ) {
   const kv = memoryKv();
   const files = memoryFiles();
@@ -80,7 +85,7 @@ describe('Send flow: concurrency (M-A3 §6)', () => {
     const c = t.make();
     await prepared(c);
     const sent = await c.send();
-    expect(sent).toEqual({ envelopeId: t.server.ENV_ID, signers: 1 });
+    expect(sent).toEqual({ envelopeId: t.server.ENV_ID, signers: 1, assignedSignerId: null });
     expect(t.server.envelope!.status).toBe('SENT');
 
     const w = writes(t.server.calls);
@@ -129,6 +134,9 @@ describe('Send flow: concurrency (M-A3 §6)', () => {
           email: 'web@example.com',
           status: 'PENDING',
           signing_order: 0,
+          recipient_kind: 'SIGNER',
+          copy_delivery: null,
+          assigned_to_me: false,
         },
       ];
       e.fields = [];
@@ -250,7 +258,11 @@ describe('Send flow: offline drafts (directive §9)', () => {
     ]);
 
     // Back online: it syncs and sends, uploading the document kept on the device.
-    expect(await recovered.send()).toEqual({ envelopeId: t.server.ENV_ID, signers: 1 });
+    expect(await recovered.send()).toEqual({
+      envelopeId: t.server.ENV_ID,
+      signers: 1,
+      assignedSignerId: null,
+    });
     expect(t.server.envelope!.documents).toHaveLength(1);
     await expect(createDraftStore(store).load(localId)).resolves.toBeNull();
   });
@@ -280,17 +292,26 @@ describe('Send flow: offline drafts (directive §9)', () => {
   });
 });
 
-describe('Recipients: every recipient signs (C-11)', () => {
-  it('has no copy-only role and caps at 10', async () => {
+describe('Recipients: limits (M-A5 §1.4)', () => {
+  it('adds signers by default and caps the signers at 10', async () => {
     const t = setup();
     const c = t.make();
     await c.open();
     for (let i = 0; i < 10; i += 1)
       expect(c.addRecipient({ name: `P${i}`, email: `p${i}@example.com` })).toBe('added');
-    expect(c.addRecipient({ name: 'Eleven', email: 'p10@example.com' })).toBe('full');
+    expect(c.addRecipient({ name: 'Eleven', email: 'p10@example.com' })).toBe('signers_full');
     const r = c.snapshot.draft!.payload.recipients[0]!;
-    expect(Object.keys(r).sort()).toEqual(['email', 'key', 'name', 'serverId']);
-    expect(c.addRecipient({ name: 'Dup', email: 'P1@EXAMPLE.com' })).toBe('full');
+    expect(r).toMatchObject({ kind: 'SIGNER', copyDelivery: null });
+    expect(r.assignToMe).toBeUndefined();
+    expect(c.addRecipient({ name: 'Dup', email: 'P1@EXAMPLE.com' })).toBe('signers_full');
+    // Copy recipients have their own limit of 10.
+    for (let i = 0; i < 10; i += 1)
+      expect(c.addRecipient({ name: `C${i}`, email: `c${i}@example.com` }, 'RECEIVES_COPY')).toBe(
+        'added',
+      );
+    expect(c.addRecipient({ name: 'C10', email: 'c10@example.com' }, 'RECEIVES_COPY')).toBe(
+      'copies_full',
+    );
   });
 
   it('reorders for sequential routing and refuses duplicates', async () => {
@@ -304,5 +325,181 @@ describe('Recipients: every recipient signs (C-11)', () => {
     c.moveRecipient(c.snapshot.draft!.payload.recipients[1]!.key, -1);
     expect(c.snapshot.draft!.payload.recipients.map((r) => r.name)).toEqual(['B', 'A']);
     expect(c.snapshot.draft!.payload.routingMode).toBe('SEQUENTIAL');
+  });
+});
+
+describe('Recipient kinds, copy timing and Assign to me on the wire (M-A5 §1, §2, §4.1)', () => {
+  const recipientPuts = (calls: readonly RecordedRequest[]) =>
+    calls.filter((r) => r.method === 'PUT' && r.url.endsWith('/recipients'));
+
+  async function withRoles(c: SendFlowController) {
+    await c.open();
+    await c.addDocument({ title: 'Offer letter', filename: 'Offer letter.pdf', bytes: PDF });
+    expect(c.addRecipient({ name: 'Copy Person', email: 'cc@example.com' }, 'RECEIVES_COPY')).toBe(
+      'added',
+    );
+    expect(c.addRecipient({ name: 'Walk In', email: '' }, 'IN_PERSON_SIGNER')).toBe('added');
+    expect(
+      c.addRecipient({ name: 'Priya Nair', email: 'priya@northwind.example' }, 'SIGNER', {
+        assignToMe: true,
+      }),
+    ).toBe('added');
+  }
+
+  it('sends signing recipients in order, then copies with timing; in-person email is null', async () => {
+    const t = setup();
+    const c = t.make();
+    await withRoles(c);
+    const cc = c.snapshot.draft!.payload.recipients[0]!;
+    c.setCopyDelivery(cc.key, 'BOTH');
+    expect(await c.sync()).toBe(true);
+    const body = recipientPuts(t.server.calls)[0]!.body!['recipients'];
+    expect(body).toEqual([
+      { name: 'Walk In', email: null, recipient_kind: 'IN_PERSON_SIGNER' },
+      {
+        name: 'Priya Nair',
+        email: 'priya@northwind.example',
+        recipient_kind: 'SIGNER',
+        assign_to_me: true,
+      },
+      {
+        name: 'Copy Person',
+        email: 'cc@example.com',
+        recipient_kind: 'RECEIVES_COPY',
+        copy_delivery: 'BOTH',
+      },
+    ]);
+    // Server ids map back by recipient, not by list position.
+    const p = c.snapshot.draft!.payload;
+    const byName = new Map(p.recipients.map((r) => [r.name, r.serverId]));
+    const server = t.server.envelope!.recipients;
+    for (const s of server) expect(byName.get(s.name)).toBe(s.id);
+  });
+
+  it('re-sends assign_to_me on every recipients write (the PUT replaces the list)', async () => {
+    const t = setup();
+    const c = t.make();
+    await withRoles(c);
+    expect(await c.sync()).toBe(true);
+    c.addRecipient({ name: 'Sam Roy', email: 'sam@example.com' });
+    expect(await c.sync()).toBe(true);
+    const puts = recipientPuts(t.server.calls);
+    expect(puts).toHaveLength(2);
+    const me = (puts[1]!.body!['recipients'] as Record<string, unknown>[]).find(
+      (r) => r['email'] === 'priya@northwind.example',
+    );
+    expect(me).toMatchObject({ assign_to_me: true });
+    expect(t.server.envelope!.recipients.find((r) => r.assigned_to_me)?.name).toBe('Priya Nair');
+  });
+
+  it('keeps Assign to me from a reopened server draft', async () => {
+    const t = setup();
+    const c = t.make();
+    await withRoles(c);
+    expect(await c.sync()).toBe(true);
+    const again = t.make();
+    await again.open({ envelopeId: t.server.ENV_ID });
+    const me = again.snapshot.draft!.payload.recipients.find((r) => r.name === 'Priya Nair')!;
+    expect(me.assignToMe).toBe(true);
+    const cc = again.snapshot.draft!.payload.recipients.find((r) => r.name === 'Copy Person')!;
+    expect(cc).toMatchObject({ kind: 'RECEIVES_COPY', copyDelivery: 'ON_COMPLETION' });
+    again.addRecipient({ name: 'Sam Roy', email: 'sam@example.com' });
+    expect(await again.sync()).toBe(true);
+    const last = recipientPuts(t.server.calls).at(-1)!.body!['recipients'] as Record<
+      string,
+      unknown
+    >[];
+    expect(last.find((r) => r['name'] === 'Priya Nair')).toMatchObject({ assign_to_me: true });
+  });
+
+  it('moving a signer to Copy drops their fields and picks the default timing', async () => {
+    const t = setup();
+    const c = t.make();
+    await prepared(c);
+    const dana = c.snapshot.draft!.payload.recipients[0]!;
+    expect(c.setRecipientKind(dana.key, 'RECEIVES_COPY')).toBeNull();
+    const p = c.snapshot.draft!.payload;
+    expect(p.recipients[0]).toMatchObject({ kind: 'RECEIVES_COPY', copyDelivery: 'ON_COMPLETION' });
+    expect(p.fields).toHaveLength(0);
+    expect(p.dirty).toMatchObject({ recipients: true, fields: true });
+    // And back: the timing is cleared.
+    expect(c.setRecipientKind(dana.key, 'SIGNER')).toBeNull();
+    expect(c.snapshot.draft!.payload.recipients[0]).toMatchObject({
+      kind: 'SIGNER',
+      copyDelivery: null,
+    });
+  });
+
+  it('an in-person signer without an email cannot become a signer or copy', async () => {
+    const t = setup();
+    const c = t.make();
+    await c.open();
+    c.addRecipient({ name: 'Walk In', email: '' }, 'IN_PERSON_SIGNER');
+    const r = c.snapshot.draft!.payload.recipients[0]!;
+    expect(c.setRecipientKind(r.key, 'SIGNER')).toMatch(/email/i);
+    expect(c.setRecipientKind(r.key, 'RECEIVES_COPY')).toMatch(/email/i);
+    expect(c.snapshot.draft!.payload.recipients[0]!.kind).toBe('IN_PERSON_SIGNER');
+    // Email stays required for the other kinds, and a name-only in-person signer never duplicates.
+    expect(c.addRecipient({ name: 'Nobody', email: '' })).toBe('email_required');
+    expect(c.addRecipient({ name: 'Bad', email: 'not-an-email' })).toBe('invalid');
+    expect(c.addRecipient({ name: 'Walk In 2', email: '' }, 'IN_PERSON_SIGNER')).toBe('added');
+  });
+
+  it('moves among signers only: copy recipients are never part of the order', async () => {
+    const t = setup();
+    const c = t.make();
+    await c.open();
+    c.addRecipient({ name: 'A', email: 'a@example.com' });
+    c.addRecipient({ name: 'CC', email: 'cc@example.com' }, 'RECEIVES_COPY');
+    c.addRecipient({ name: 'B', email: 'b@example.com' });
+    c.setRouting('SEQUENTIAL');
+    const b = c.snapshot.draft!.payload.recipients.find((r) => r.name === 'B')!;
+    c.moveRecipient(b.key, -1);
+    expect(c.snapshot.draft!.payload.recipients.map((r) => r.name)).toEqual(['B', 'CC', 'A']);
+  });
+
+  it('send counts signing recipients only and reports the one assigned to the user', async () => {
+    const t = setup();
+    const c = t.make();
+    await withRoles(c);
+    const p = c.snapshot.draft!.payload;
+    const signers = p.recipients.filter((r) => r.kind !== 'RECEIVES_COPY');
+    c.setFields(
+      signers.map((r, i) => ({
+        key: `f${i}`,
+        docKey: p.documents[0]!.key,
+        page: 0,
+        recipientKey: r.key,
+        type: 'SIGNATURE' as const,
+        x: 72,
+        y: 642 - i * 60,
+        width: 230,
+        height: 50,
+        required: true,
+      })),
+    );
+    const sent = await c.send();
+    const meId = t.server.envelope!.recipients.find((r) => r.assigned_to_me)!.id;
+    expect(sent).toEqual({ envelopeId: t.server.ENV_ID, signers: 2, assignedSignerId: meId });
+  });
+
+  it('maps the server’s role refusals to their reasons', async () => {
+    const t = setup({ accountEmail: 'someone.else@example.com' });
+    const c = t.make();
+    await withRoles(c);
+    expect(await c.sync()).toBe(false);
+    expect(c.snapshot.error).toBe(
+      'You can assign a recipient to yourself only with your own verified account email.',
+    );
+  });
+
+  it('"Sign a document" remembers its intent with the local draft', async () => {
+    const t = setup();
+    const c = t.make();
+    await c.open({ intent: 'self' });
+    expect(c.snapshot.draft!.payload.selfSign).toBe(true);
+    const other = t.make();
+    await other.open({ intent: 'request' });
+    expect(other.snapshot.draft!.payload.selfSign).toBeUndefined();
   });
 });

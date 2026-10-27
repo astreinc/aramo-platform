@@ -4,7 +4,8 @@
 //   - New contact: a typed name and email, saved with POST and added as a signer.
 //     Offline, the person is added to this envelope only (saving needs the server).
 //   - Manage contacts: edit (PATCH) and delete (DELETE) saved contacts.
-// Every recipient signs (C-11): there is no copy-only choice here.
+// Picked people join as signers (as copy recipients once the signers are full and the
+// role chips are on, M-A5); their role is changed with the chips on step 2.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo, useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';

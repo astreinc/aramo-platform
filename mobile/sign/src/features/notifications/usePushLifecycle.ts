@@ -13,12 +13,15 @@ import { useEffect, useRef } from 'react';
 
 import { useServices, useSession } from '../../app/ServicesContext';
 import { navigationRef } from '../../navigation/navigationRef';
+import { isHostedLocked } from '../hosted/hostedLock';
 import { registerForPush, type PushRegistration } from '../../notifications/pushRegistration';
 import type { NotificationTarget } from './notificationModel';
 import { routeForPushData } from './pushRouting';
 import { notificationKeys } from './queries';
 
 export function openTarget(target: NotificationTarget): void {
+  // Hosted (in-person) mode is locked (M-A5 §3.3): a tapped push opens nothing over it.
+  if (isHostedLocked()) return;
   const go = () => {
     if (target.name === 'EnvelopeDetail') navigationRef.navigate('EnvelopeDetail', target.params);
     else navigationRef.navigate('ReceivedEnvelope', target.params);

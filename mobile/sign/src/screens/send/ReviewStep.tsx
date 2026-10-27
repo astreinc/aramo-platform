@@ -13,6 +13,12 @@ import { Card } from '../../components/Card';
 import { BANNER, useTheme } from '../../theme';
 import type { LimitBanner } from '../../features/inbox/allowance';
 import { MESSAGE_MAX, effectiveSubject } from '../../features/send/draftModel';
+import {
+  copyRecipients,
+  copyTimingLabel,
+  isInPerson,
+  signingRecipients,
+} from '../../features/send/recipientRoles';
 import { reviewWarnings } from '../../features/send/reviewWarnings';
 import type { SendFlowController, SendFlowState } from '../../features/send/sendFlowController';
 import { ErrorText, StepTitle, TextField } from '../../features/send/ui';
@@ -90,15 +96,23 @@ export function ReviewStep({
         <SummaryRow
           label={p.routingMode === 'SEQUENTIAL' ? 'Recipients (sign in this order)' : 'Recipients'}
           value={
-            p.recipients
+            signingRecipients(p.recipients)
               .map((r, i) => {
                 const n = fieldCount(r.key);
                 const who = p.routingMode === 'SEQUENTIAL' ? `${i + 1}. ${r.name}` : r.name;
-                return `${who} · ${n} ${n === 1 ? 'field' : 'fields'}`;
+                return `${who}${isInPerson(r) ? ' · in person' : ''} · ${n} ${n === 1 ? 'field' : 'fields'}`;
               })
               .join('\n') || 'None'
           }
         />
+        {copyRecipients(p.recipients).length > 0 ? (
+          <SummaryRow
+            label="Receives a copy"
+            value={copyRecipients(p.recipients)
+              .map((r) => `${r.name} · ${copyTimingLabel(r.copyDelivery).toLowerCase()}`)
+              .join('\n')}
+          />
+        ) : null}
         <SummaryRow label="Signing link" value={`Signing link valid for ${days} days`} />
         <SummaryRow
           label="Envelope expiry"

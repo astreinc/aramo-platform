@@ -120,3 +120,68 @@ describe('Before you send', () => {
     expect(w.map((x) => x.kind)).toEqual(['no_signature_field']);
   });
 });
+
+describe('Before you send: recipient kinds (M-A5 §1.5, §2.1)', () => {
+  const cc = {
+    key: 'r3',
+    serverId: null,
+    name: 'Copy Person',
+    email: 'cc@example.com',
+    kind: 'RECEIVES_COPY' as const,
+    copyDelivery: 'ON_COMPLETION' as const,
+  };
+  const walkIn = {
+    key: 'r4',
+    serverId: null,
+    name: 'Walk In',
+    email: '',
+    kind: 'IN_PERSON_SIGNER' as const,
+  };
+
+  it('never asks a copy recipient for a signature field', () => {
+    expect(
+      reviewWarnings(
+        { documents: [doc], recipients: [dana, cc], fields: [field('r1', 'SIGNATURE')] },
+        null,
+        null,
+      ),
+    ).toEqual([]);
+  });
+
+  it('flags a copy recipient that has fields', () => {
+    const w = reviewWarnings(
+      {
+        documents: [doc],
+        recipients: [dana, cc],
+        fields: [field('r1', 'SIGNATURE'), field('r3', 'TEXT')],
+      },
+      null,
+      null,
+    );
+    expect(w.map((x) => x.kind)).toEqual(['copy_with_fields']);
+    expect(w[0]!.text).toMatch(/^Copy Person receives a copy and can’t have fields/);
+  });
+
+  it('needs at least one signing recipient: copies alone are not enough', () => {
+    const w = reviewWarnings({ documents: [doc], recipients: [cc], fields: [] }, null, null);
+    expect(w.map((x) => x.kind)).toEqual(['no_signer']);
+  });
+
+  it('flags a copy recipient without a timing', () => {
+    const w = reviewWarnings(
+      {
+        documents: [doc],
+        recipients: [dana, { ...cc, copyDelivery: null }],
+        fields: [field('r1', 'SIGNATURE')],
+      },
+      null,
+      null,
+    );
+    expect(w).toEqual([{ kind: 'copy_timing', text: 'Choose when Copy Person receives a copy.' }]);
+  });
+
+  it('asks an in-person signer for a signature field like any signer', () => {
+    const w = reviewWarnings({ documents: [doc], recipients: [walkIn], fields: [] }, null, null);
+    expect(w).toEqual([{ kind: 'no_signature_field', text: 'Walk In has no signature field.' }]);
+  });
+});

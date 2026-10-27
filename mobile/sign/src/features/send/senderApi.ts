@@ -9,6 +9,7 @@ import type { HttpResponse } from '../../api/http';
 import { etagFor, type WorkspaceClient } from '../../api/workspaceClient';
 import type { PageSize } from '../editor/geometry';
 import { parseEnvelope, type RoutingMode, type ServerEnvelope } from './draftModel';
+import type { RecipientWire } from './recipientRoles';
 
 export interface Versioned {
   readonly env: ServerEnvelope;
@@ -93,10 +94,24 @@ export interface SenderApi {
   putRecipients(
     id: string,
     ifMatch: string,
-    recipients: readonly { id?: string; name: string; email: string }[],
+    recipients: readonly RecipientWire[],
   ): Promise<Versioned>;
   putFields(id: string, ifMatch: string, fields: readonly FieldWire[]): Promise<Versioned>;
   send(id: string, ifMatch: string, subject: string): Promise<Versioned>;
+  /**
+   * M-A5 §4.2 "Sign a document": a SELF session for the recipient assigned to the
+   * caller. The token is a signing capability: the caller stashes it in the in-memory
+   * vault at once (links/guestTokenVault.ts) and never logs, stores or routes it.
+   */
+  selfSignSession(id: string, signerId?: string): Promise<IssuedSigningSession>;
+  /** M-A5 §3.2: a HOSTED session for an in-person signer whose turn it is. Same token rules. */
+  hostedSession(id: string, signerId: string): Promise<IssuedSigningSession>;
+}
+
+export interface IssuedSigningSession {
+  readonly token: string;
+  readonly signerId: string;
+  readonly expiresAt: string;
 }
 
 export function createSenderApi(workspace: WorkspaceClient): SenderApi {
@@ -176,6 +191,20 @@ export function createSenderApi(workspace: WorkspaceClient): SenderApi {
           ifMatch,
         }),
       );
+    },
+    async selfSignSession(id, signerId) {
+      const out = await workspace.call('/v1/sign/sender/envelopes/{id}/self-sign-session', 'post', {
+        path: { id },
+        body: signerId ? { signer_id: signerId } : {},
+      });
+      return { token: out.token, signerId: out.signer_id, expiresAt: out.expires_at };
+    },
+    async hostedSession(id, signerId) {
+      const out = await workspace.call('/v1/sign/sender/envelopes/{id}/hosted-sessions', 'post', {
+        path: { id },
+        body: { signer_id: signerId },
+      });
+      return { token: out.token, signerId: out.signer_id, expiresAt: out.expires_at };
     },
   };
 }

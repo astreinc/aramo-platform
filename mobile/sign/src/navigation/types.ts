@@ -53,8 +53,22 @@ export type RootStackParamList = {
   SendFlow:
     | { localDraftId?: string; envelopeId?: string; step?: SendStep; intent?: SendFlowIntent }
     | undefined;
-  /** Signing from an emailed /s/ or /d/ link; available signed in OR signed out. */
-  GuestSigning: { handle: string; mode: 'sign' | 'download' };
+  /**
+   * Signing from an emailed /s/ or /d/ link; available signed in OR signed out.
+   * `origin: 'self'` = "Sign a document" (M-A5 §4): the handle holds a SELF session
+   * token (never claimable into the inbox, §5), and Done opens the sent envelope.
+   */
+  GuestSigning: {
+    handle: string;
+    mode: 'sign' | 'download';
+    origin?: 'link' | 'self';
+    envelopeId?: string;
+  };
+  /**
+   * Locked hosted (in-person) signing (M-A5 §3.3). `handle` is an opaque vault handle
+   * for the HOSTED session token (never the token); `expiresAt` is the session's end.
+   */
+  HostedSigning: { handle: string; signerName: string; envelopeId: string; expiresAt: string };
 };
 
 declare global {
