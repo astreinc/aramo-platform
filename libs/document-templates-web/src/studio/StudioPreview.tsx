@@ -1,3 +1,4 @@
+import { useLayoutEffect, useRef, useState, type RefObject } from 'react';
 import { Button, Checkbox } from '@aramo/fe-foundation';
 
 import { Letterhead, SafeDoc, type LetterheadInfo } from '../dt-html-render';
@@ -6,7 +7,7 @@ import { studioPlainText, studioPreviewParts } from '../studio-codec';
 
 import type { StudioSamplePreview } from './data-source';
 import { EmptyState } from './primitives';
-import { paginate, zoomIn, zoomOut } from './pagination';
+import { fitZoom, paginate, zoomIn, zoomOut } from './pagination';
 
 // PLATFORM-UX-1 F-9 (handoff §10.7 Preview) — the paginated A4 preview. The draft
 // preview is the server's sample render (POST …/versions/:id/preview); every page is
@@ -39,6 +40,33 @@ export interface StudioPreviewProps {
   readonly blockHeights?: readonly number[] | null;
   /** TEMPLATE-STUDIO-1 S-1 — the letterhead logo drawn at the top of page 1 (organization; the render carries a logo). */
   readonly letterhead?: LetterheadInfo | null;
+  /**
+   * TEMPLATE-STUDIO-1 (scope ruling 2026-10-27 item 1) — organization context: while the
+   * preview column is narrower than an A4 page, draw the pages at the zoom that fits the
+   * column ("Fit"), so the page is never clipped. − / + leave Fit and step from the zoom on
+   * screen; the Fit button returns to it. Absent / false (platform): the zoom is
+   * `zoom` exactly, as before.
+   */
+  readonly fitToWidth?: boolean;
+}
+
+/** Horizontal padding of the `.pws-pv` region (24px each side, studio.css). */
+const PV_PAD_X = 48;
+
+/** The preview column's content width, tracked while `on` (0 until measured). */
+function useAvailableWidth(ref: RefObject<HTMLDivElement | null>, on: boolean): number {
+  const [w, setW] = useState(0);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!on || el === null) return undefined;
+    const measure = (): void => setW(Math.max(0, el.clientWidth - PV_PAD_X));
+    measure();
+    if (typeof ResizeObserver === 'undefined') return undefined;
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [ref, on]);
+  return w;
 }
 
 /** The organization line of the page header: the preview's legal-name sample, if any. */
@@ -58,6 +86,16 @@ export function StudioPreview(props: StudioPreviewProps) {
     props.blockHeights,
   );
   const count = source !== null ? pages.length : 0;
+  const fitOn = props.fitToWidth === true;
+  const regionRef = useRef<HTMLDivElement | null>(null);
+  const avail = useAvailableWidth(regionRef, fitOn);
+  const [fit, setFit] = useState(true);
+  const fitting = fitOn && fit;
+  const zoom = fitting ? fitZoom(avail) : props.zoom;
+  const step = (z: number): void => {
+    setFit(false);
+    props.onZoom(z);
+  };
   return (
     <>
       <div className="pws-pvbar">
@@ -78,19 +116,31 @@ export function StudioPreview(props: StudioPreviewProps) {
           {`${count} ${count === 1 ? 'page' : 'pages'}`} · A4
         </span>
         <span className="pws-pvbar__zoom">
-          <Button unstyled className="pws-zbtn" aria-label="Zoom out" onClick={() => props.onZoom(zoomOut(props.zoom))}>
+          {fitOn ? (
+            <Button
+              unstyled
+              className={`pws-zbtn pws-zbtn--fit${fitting ? ' pws-zbtn--on' : ''}`}
+              aria-label="Fit to width"
+              aria-pressed={fitting}
+              title="Fit the page to the preview width"
+              onClick={() => setFit(true)}
+            >
+              Fit
+            </Button>
+          ) : null}
+          <Button unstyled className="pws-zbtn" aria-label="Zoom out" onClick={() => step(zoomOut(zoom))}>
             −
           </Button>
           <span className="pws-pvbar__z" aria-live="polite">
-            {`${props.zoom}%`}
+            {`${zoom}%`}
           </span>
-          <Button unstyled className="pws-zbtn" aria-label="Zoom in" onClick={() => props.onZoom(zoomIn(props.zoom))}>
+          <Button unstyled className="pws-zbtn" aria-label="Zoom in" onClick={() => step(zoomIn(zoom))}>
             +
           </Button>
         </span>
       </div>
       {/* Keyboard-scrollable (WCAG 2.1.1): the pages scroll in this region. */}
-      <div className="pws-pv" tabIndex={0} role="region" aria-label="Preview pages">
+      <div ref={regionRef} className="pws-pv" tabIndex={0} role="region" aria-label="Preview pages">
         {props.error !== null ? (
           <div role="alert" className="ts-alert ts-alert--error pws-pv__err">
             {props.error}
@@ -107,7 +157,7 @@ export function StudioPreview(props: StudioPreviewProps) {
             </div>
           ) : null
         ) : (
-          <div className={`pws-pv__pages${props.highlight ? ' pws-pv__pages--hl' : ''}`} style={{ zoom: props.zoom / 100 }}>
+          <div className={`pws-pv__pages${props.highlight ? ' pws-pv__pages--hl' : ''}`} style={{ zoom: zoom / 100 }}>
             {pages.map((pg, i) => (
               <article key={i} aria-label={`Page ${i + 1}`} className="pws-pvpage">
                 <div className="pws-pvpage__head">

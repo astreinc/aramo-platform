@@ -149,6 +149,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
   const showVersions = ds.capabilities.versions !== false;
   const showModeToggle = ds.capabilities.modeToggle !== false;
   const showChecks = ds.capabilities.checks !== false;
+  const showUsage = ds.capabilities.usageCounts !== false;
   const lhApi = ds.letterhead;
   const versionPill = (v: TemplateVersion) => (v.status === 'ACTIVE' ? copy.versionActive : copy.versionRetired);
   const location = useLocation();
@@ -971,6 +972,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
                 onZoom={setZoom}
                 blockHeights={canManage ? blockHeights : null}
                 letterhead={previewLetterhead}
+                fitToWidth={context === 'organization'}
               />
             </section>
           ) : (
@@ -1013,6 +1015,7 @@ export function TemplateStudio({ context, dataSource: ds, templateId, renderAcco
             manageVariables={copy.manageVariables}
             checksNote={copy.checksNote}
             showChecks={showChecks}
+            showUsage={showUsage}
             variablesNote={copy.variablesNote}
             scopeCard={copy.scopeCard}
             onInsert={(key) => canvasRef.current?.insertVariable(key)}

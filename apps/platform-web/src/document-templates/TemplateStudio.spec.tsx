@@ -152,6 +152,9 @@ describe('TemplateStudio (manage)', () => {
     expect(update.mock.invocationCallOrder[0] ?? 0).toBeLessThan(preview.mock.invocationCallOrder[0] ?? 0);
     expect(within(screen.getByRole('article', { name: 'Page 1' })).getByText('Amina')).toBeInTheDocument();
     expect(screen.getByText('1 page · A4')).toBeInTheDocument();
+    // TEMPLATE-STUDIO-1 — fit-to-width is organization-only; the platform zoom is unchanged.
+    expect(screen.queryByRole('button', { name: 'Fit to width' })).toBeNull();
+    expect(screen.getByText('100%')).toBeInTheDocument();
 
     const pub = screen.getByRole('button', { name: 'Publish v3…' });
     expect(pub).toHaveAttribute('aria-disabled', 'false');

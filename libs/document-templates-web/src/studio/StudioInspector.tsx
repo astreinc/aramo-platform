@@ -38,6 +38,8 @@ export interface StudioInspectorProps {
   readonly checksNote: string;
   /** Show the Checks tab (default true; hidden in the read-only preview of an Aramo default). */
   readonly showChecks?: boolean;
+  /** Show the Variables cards' "N× in draft" counts (default true; hidden for an Aramo default). */
+  readonly showUsage?: boolean;
   /** TEMPLATE-STUDIO-1 S-1 — the Variables footnote and the Properties Scope card (organization). */
   readonly variablesNote?: string;
   readonly scopeCard?: ReactNode;
@@ -124,7 +126,7 @@ export function StudioInspector(props: StudioInspectorProps) {
   );
 }
 
-function VariablesTab({ catalog, readiness, editable, onInsert, drag, manageVariables, variablesNote }: StudioInspectorProps) {
+function VariablesTab({ catalog, readiness, editable, onInsert, drag, manageVariables, variablesNote, showUsage }: StudioInspectorProps) {
   const [q, setQ] = useState('');
   const [group, setGroup] = useState<string>('ALL');
   const unknown = Array.from(readiness.used.keys()).filter((k) => chipInfo(catalog, k).state === 'unknown');
@@ -157,7 +159,7 @@ function VariablesTab({ catalog, readiness, editable, onInsert, drag, manageVari
         <div key={gr.g} className="pws-vars__group">
           <div className="pws-vars__gl">{gr.g}</div>
           {gr.items.map((v) => {
-            const used = readiness.used.get(v.key) ?? 0;
+            const used = showUsage === false ? 0 : (readiness.used.get(v.key) ?? 0);
             const canIns = editable && v.insertable;
             return (
               <div

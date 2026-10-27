@@ -23,7 +23,8 @@ import { organizationStudioCopy } from './studio-copy';
 // Versions and Compare are hidden (capabilities.versions false): tenants see only the
 // current version of a default (D3). So are the Edit | Preview toggle, the readiness pill
 // and the Checks tab (capabilities.modeToggle / checks false): a default is never edited
-// here. The server stays authoritative.
+// here; nor the Variables cards' "N× in draft" counts (capabilities.usageCounts false).
+// The server stays authoritative.
 
 export const GALLERY_STUDIO_READ_ONLY = 'An Aramo default is read only. Adopt it to make your own draft.';
 
@@ -136,7 +137,7 @@ export function galleryStudioDataSource({ library, previewFn = previewTemplateDe
     preview: refuse,
     approve: refuse,
     previewCurrent: (templateId) => previewOf(templateId),
-    capabilities: { canEdit: false, canApprove: false, canWithdraw: false, productTags: false, description: true, versions: false, modeToggle: false, checks: false },
+    capabilities: { canEdit: false, canApprove: false, canWithdraw: false, productTags: false, description: true, versions: false, modeToggle: false, checks: false, usageCounts: false },
     copy: galleryStudioCopy({ organizationHref, listHref, galleryTo }),
   };
 }

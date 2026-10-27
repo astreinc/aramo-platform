@@ -1556,8 +1556,9 @@ a.pws-top__crumb:hover {
   white-space: nowrap;
 }
 /* TEMPLATE-STUDIO-1 (acceptance §11 item 3) — a card without Insert (read-only, Preview):
-   the label and the key share the first row while they fit; a long pair wraps the key to
-   its own line instead of overlapping the label. */
+   the label and the key share the first row while they fit (the growing label pushes the
+   key to the right); a long pair wraps the key to its own line, left-aligned under the
+   label (scope ruling 2026-10-27 item 3), instead of overlapping the label. */
 .pws-vcard--ro {
   display: flex;
   flex-wrap: wrap;
@@ -1569,7 +1570,6 @@ a.pws-top__crumb:hover {
 .pws-vcard--ro .pws-vcard__key {
   min-width: 0;
   max-width: 100%;
-  margin-left: auto;
 }
 .pws-vcard--ro .pws-vcard__meta {
   flex-basis: 100%;
@@ -1787,6 +1787,20 @@ a.pws-top__crumb:hover {
   background: var(--ts-surface);
   color: var(--ts-ink);
   cursor: pointer;
+}
+/* TEMPLATE-STUDIO-1 (scope ruling 2026-10-27 item 1) — the organization preview's Fit
+   toggle (fit-to-width zoom); pressed while the pages are drawn at the fit zoom. */
+.pws-zbtn--fit {
+  width: auto;
+  padding: 0 8px;
+  font-family: var(--ts-font);
+  font-size: var(--ts-fs-11-5);
+  font-weight: 600;
+}
+.pws-zbtn--on {
+  border-color: var(--ts-brand-line);
+  background: var(--ts-brand-bg);
+  color: var(--ts-brand-ink);
 }
 .pws-pv {
   flex: 1;

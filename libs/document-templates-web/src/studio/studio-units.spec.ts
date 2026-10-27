@@ -4,7 +4,7 @@ import type { StudioBlock } from '../studio-codec';
 
 import { blockDiff, diffStats, lcs, tokens, wordDiff } from './diff';
 import { appendVariable, deleteBlock, duplicateBlock, insertBlocks, moveBlock, removeVariableEverywhere, setBlockKind, shiftBlock } from './doc-ops';
-import { estimateBlockHeight, paginate, zoomIn, zoomOut } from './pagination';
+import { estimateBlockHeight, fitZoom, paginate, zoomIn, zoomOut } from './pagination';
 import { checksLine, deriveReadiness, isPreviewed, readinessLabel, type ReadinessInput } from './readiness';
 import { effectiveLine, noticeDaysValid, publishConsequence } from './studio-dialogs';
 import { outlineLabel } from './StudioLeftPanel';
@@ -267,5 +267,15 @@ describe('outline labels (TEMPLATE-STUDIO-1, handoff §3 — presentation only)'
     const block = b('1', 'p', v);
     outlineLabel(block, cat);
     expect(block.value).toBe(v);
+  });
+});
+
+describe('fit-to-width zoom (TEMPLATE-STUDIO-1 scope ruling item 1)', () => {
+  it('fits one A4 page (794px) into the column, never above 100% or below 40%', () => {
+    expect(fitZoom(0)).toBe(100);
+    expect(fitZoom(900)).toBe(100);
+    expect(fitZoom(794)).toBe(100);
+    expect(fitZoom(600)).toBe(75);
+    expect(fitZoom(100)).toBe(40);
   });
 });

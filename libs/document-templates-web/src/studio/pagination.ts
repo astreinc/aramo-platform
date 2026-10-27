@@ -50,3 +50,18 @@ export function zoomIn(z: number): number {
 export function zoomOut(z: number): number {
   return Math.max(ZOOM_MIN, z - ZOOM_STEP);
 }
+
+/** The A4 page width the preview draws (px at 100%). */
+export const PAGE_WIDTH_PX = 794;
+/** The narrowest fit the preview offers (below it the region scrolls sideways). */
+export const FIT_ZOOM_MIN = 40;
+
+/**
+ * TEMPLATE-STUDIO-1 (scope ruling 2026-10-27 item 1) — the zoom (%) at which one A4 page
+ * fits `available` px of the preview column: never above 100 (a page that fits is drawn
+ * at its real size), never below FIT_ZOOM_MIN. 100 when the width is unknown (0).
+ */
+export function fitZoom(available: number): number {
+  if (!(available > 0)) return 100;
+  return Math.max(FIT_ZOOM_MIN, Math.min(100, Math.floor((available / PAGE_WIDTH_PX) * 100)));
+}

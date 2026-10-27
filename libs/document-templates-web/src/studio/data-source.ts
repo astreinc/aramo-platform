@@ -146,6 +146,12 @@ export interface StudioCapabilities {
    * Aramo default, where there is no draft to approve.
    */
   readonly checks?: boolean;
+  /**
+   * TEMPLATE-STUDIO-1 (scope ruling 2026-10-27 item 2) — show the "N× in draft" usage
+   * counts on the Variables cards (default true). Hidden in the tenant read-only preview
+   * of an Aramo default: there is no draft, so the count is meaningless there.
+   */
+  readonly usageCounts?: boolean;
 }
 
 /** The content codec: stored html ↔ the editable blocks (+ the tenant letterhead, A1). */

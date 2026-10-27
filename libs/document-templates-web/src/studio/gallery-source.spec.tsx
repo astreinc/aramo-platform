@@ -1,4 +1,4 @@
-import { render, screen, waitFor, within } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { MemoryRouter } from 'react-router-dom';
 import { describe, expect, it, vi } from 'vitest';
 
@@ -83,7 +83,7 @@ describe('galleryStudioDataSource (read-only Aramo default)', () => {
 
   it('read only: no edit / approve / withdraw / tags; Versions, mode toggle and checks hidden; every write refuses', async () => {
     const { ds } = source();
-    expect(ds.capabilities).toEqual({ canEdit: false, canApprove: false, canWithdraw: false, productTags: false, description: true, versions: false, modeToggle: false, checks: false });
+    expect(ds.capabilities).toEqual({ canEdit: false, canApprove: false, canWithdraw: false, productTags: false, description: true, versions: false, modeToggle: false, checks: false, usageCounts: false });
     expect(ds.discardDraft).toBeUndefined();
     expect(ds.updateProperties).toBeUndefined();
     expect(ds.withdraw).toBeUndefined();
@@ -151,6 +151,29 @@ describe('TemplateStudio with the gallery source', () => {
     await screen.findByRole('region', { name: 'Preview pages' });
     const rows = Array.from(document.querySelectorAll('.pws-orow__l')).map((e) => e.textContent);
     expect(rows).toEqual(['Authorization', 'Represented by Organization name for Full name…']);
+  });
+
+  it('no "N× in draft" usage counts on the read-only cards (there is no draft)', async () => {
+    renderStudio();
+    await screen.findByRole('region', { name: 'Preview pages' });
+    await screen.findByText('talent.full_name', { selector: '.pws-vcard__key' });
+    expect(document.querySelector('.pws-vcard__used')).toBeNull();
+    expect(screen.queryByText(/× in draft/)).toBeNull();
+  });
+
+  it('organization preview offers Fit (on by default); − / + leave it and step from the zoom on screen', async () => {
+    renderStudio();
+    await screen.findByRole('region', { name: 'Preview pages' });
+    const fit = screen.getByRole('button', { name: 'Fit to width' });
+    expect(fit).toHaveAttribute('aria-pressed', 'true');
+    // jsdom has no layout (width 0): the fit zoom is 100%.
+    expect(screen.getByText('100%')).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Zoom out' }));
+    expect(fit).toHaveAttribute('aria-pressed', 'false');
+    expect(screen.getByText('90%')).toBeInTheDocument();
+    fireEvent.click(fit);
+    expect(fit).toHaveAttribute('aria-pressed', 'true');
+    expect(screen.getByText('100%')).toBeInTheDocument();
   });
 
   it('a preview refusal shows in the Preview', async () => {
