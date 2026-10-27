@@ -405,3 +405,89 @@ describe('TemplateStudio (:read)', () => {
     expect(preview).not.toHaveBeenCalled();
   });
 });
+
+// Amendment M-A6 (LOCKED) §3.2 / §3.8 — the Roles tab (signing roles and routing) and the
+// per-role signature blocks; a template without roles saves exactly as before (R-11).
+describe('TemplateStudio — Roles and routing (M-A6)', () => {
+  const SIGNING = {
+    roles: [
+      { role_key: 'client', label: 'Client', kind: 'SIGNER' as const, order: 1 },
+      { role_key: 'agency', label: 'Agency', kind: 'SIGNER' as const, order: 2 },
+      { role_key: 'hr_copy', label: 'HR copy', kind: 'CC' as const, order: 3 },
+    ],
+    routing_mode: 'SEQUENTIAL' as const,
+  };
+  const withRoles = (id: string) => version(id, 3, 'DRAFT', DRAFT_BODY, { field_schema: { ...html('Offer of employment', DRAFT_BODY), signing: SIGNING } });
+  const rolesTab = () => within(screen.getByRole('complementary', { name: 'Inspector' })).getByRole('tab', { name: 'Roles' });
+
+  it('a draft without roles saves a body with no signing member (byte-identical to before)', async () => {
+    mockApi(detail(version('d3', 3, 'DRAFT', DRAFT_BODY)));
+    const update = vi.spyOn(documentTemplatesApi, 'updateDraft').mockResolvedValue(version('d3', 3, 'DRAFT', DRAFT_BODY));
+    renderStudio(MANAGE);
+    fireEvent.change(await screen.findByDisplayValue('Offer of employment'), { target: { value: 'Offer v3' } });
+    fireEvent.keyDown(document, { key: 's', metaKey: true });
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    const body = update.mock.calls[0]?.[1] as { field_schema: Record<string, unknown> };
+    expect(Object.keys(body.field_schema)).toEqual(['render_schema_version', 'title', 'html']);
+    fireEvent.click(rolesTab());
+    expect(screen.getByTestId('studio-roles-none')).toBeInTheDocument();
+  });
+
+  it('shows the stored roles; renaming one saves the roles with the content', async () => {
+    mockApi(detail(withRoles('d3')));
+    const update = vi.spyOn(documentTemplatesApi, 'updateDraft').mockResolvedValue(withRoles('d3'));
+    renderStudio(MANAGE);
+    await screen.findByDisplayValue('Offer of employment');
+    fireEvent.click(rolesTab());
+    expect(screen.getByTestId('studio-role-client')).toBeInTheDocument();
+    expect(screen.getByTestId('studio-role-hr_copy')).toBeInTheDocument();
+    expect(screen.getByLabelText('Signing order')).toHaveValue('SEQUENTIAL');
+    fireEvent.change(screen.getByLabelText('Role 1 name'), { target: { value: 'Client company' } });
+    fireEvent.keyDown(document, { key: 's', metaKey: true });
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    const body = update.mock.calls[0]?.[1] as { field_schema: { signing: typeof SIGNING } };
+    expect(body.field_schema.signing.roles.map((r) => `${r.order}:${r.role_key}:${r.label}:${r.kind}`)).toEqual([
+      '1:client:Client company:SIGNER',
+      '2:agency:Agency:SIGNER',
+      '3:hr_copy:HR copy:CC',
+    ]);
+    expect(body.field_schema.signing.routing_mode).toBe('SEQUENTIAL');
+  });
+
+  it('adding roles to a template without them, then removing them, sends null', async () => {
+    mockApi(detail(version('d3', 3, 'DRAFT', DRAFT_BODY)));
+    const update = vi.spyOn(documentTemplatesApi, 'updateDraft').mockResolvedValue(version('d3', 3, 'DRAFT', DRAFT_BODY));
+    renderStudio(MANAGE);
+    await screen.findByDisplayValue('Offer of employment');
+    fireEvent.click(rolesTab());
+    fireEvent.click(screen.getByTestId('studio-roles-add-first'));
+    fireEvent.click(screen.getByTestId('studio-roles-add-cc'));
+    fireEvent.keyDown(document, { key: 's', metaKey: true });
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(1));
+    const added = update.mock.calls[0]?.[1] as { field_schema: { signing: typeof SIGNING } };
+    expect(added.field_schema.signing).toEqual({
+      routing_mode: 'PARALLEL',
+      roles: [
+        { role_key: 'signer_1', label: 'Signer 1', kind: 'SIGNER', order: 1 },
+        { role_key: 'copy_1', label: 'Copy 1', kind: 'CC', order: 2 },
+      ],
+    });
+    fireEvent.click(screen.getByTestId('studio-roles-remove'));
+    fireEvent.keyDown(document, { key: 's', metaKey: true });
+    await waitFor(() => expect(update).toHaveBeenCalledTimes(2));
+    expect((update.mock.calls[1]?.[1] as { field_schema: { signing: unknown } }).field_schema.signing).toBeNull();
+  });
+
+  it('the preview ends with one signature block per signing role (copy roles draw none)', async () => {
+    mockApi(detail(withRoles('d3')));
+    vi.spyOn(documentTemplatesApi, 'updateDraft').mockResolvedValue(withRoles('d3'));
+    vi.spyOn(documentTemplatesApi, 'preview').mockResolvedValue({ title: 'Offer of employment', blocks: [], html: '<p>Body</p>', sample_values: [] });
+    renderStudio(MANAGE);
+    await screen.findByDisplayValue('Offer of employment');
+    fireEvent.click(screen.getByRole('button', { name: 'Preview' }));
+    await screen.findByRole('article', { name: 'Page 1' });
+    expect(screen.getByTestId('studio-sigblock-client')).toHaveTextContent('Client');
+    expect(screen.getByTestId('studio-sigblock-agency')).toHaveTextContent('Date signed');
+    expect(screen.queryByTestId('studio-sigblock-hr_copy')).toBeNull();
+  });
+});

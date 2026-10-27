@@ -11,6 +11,7 @@ import {
   EsignService,
 } from '@aramo/sign';
 import {
+  AttestedNameRequiredError,
   DisclosureNotAcceptedError,
   DisclosureVersionInvalidError,
   EnvelopeAlreadyExecutedError,
@@ -21,6 +22,7 @@ import {
   SignerNotYetEligibleError,
   SigningInvitationService,
   SignatureFieldIncompleteError,
+  SignatureFieldValueRefusedError,
   SignerNotFoundError,
   SigningSessionExpiredError,
   SigningSessionInvalidError,
@@ -57,13 +59,20 @@ export function toHttp(e: unknown, requestId: string): AramoError {
   if (e instanceof SigningSessionExpiredError) return new AramoError('SIGNING_SESSION_EXPIRED', e.message, 401, { requestId });
   if (e instanceof SigningSessionInvalidError) return new AramoError('SIGNING_SESSION_INVALID', e.message, 401, { requestId });
   if (e instanceof DisclosureNotAcceptedError) return new AramoError('DISCLOSURE_NOT_ACCEPTED', e.message, 409, { requestId });
-  if (e instanceof SignatureFieldIncompleteError) return new AramoError('SIGNATURE_FIELD_INCOMPLETE', e.message, 409, { requestId });
+  // M-A6 §2.3 — details.reason names the completion rule that failed.
+  if (e instanceof SignatureFieldIncompleteError) {
+    return new AramoError('SIGNATURE_FIELD_INCOMPLETE', e.message, 409, { requestId, details: { reason: e.reason, ...(e.group_key !== undefined ? { group_key: e.group_key } : {}) } });
+  }
+  // M-A6 §2.2/§2.3 — a refused fill value (server-filled name; check-box value).
+  if (e instanceof SignatureFieldValueRefusedError) return new AramoError('VALIDATION_ERROR', e.message, 400, { requestId, details: { reason: e.reason, field_id: e.fieldId } });
   if (e instanceof EnvelopeAmbiguousError) return new AramoError('ESIGN_ENVELOPE_AMBIGUOUS', e.message, 409, { requestId });
   if (e instanceof ReminderNotAllowedError) return new AramoError('ESIGN_REMINDER_NOT_ALLOWED', e.message, 409, { requestId });
   // Multi-Signer §4 — a SEQUENTIAL signer acting before every earlier signer has signed.
   if (e instanceof SignerNotYetEligibleError) return new AramoError('SIGNER_NOT_YET_ELIGIBLE', e.message, 409, { requestId });
   // Aramo Sign launch (A-7) — unknown disclosure version or mismatching text hash.
   if (e instanceof DisclosureVersionInvalidError) return new AramoError('VALIDATION_ERROR', e.message, 400, { requestId });
+  // M-A5 §3.4 — a hosted session's disclosure needs the signer's confirmed name.
+  if (e instanceof AttestedNameRequiredError) return new AramoError('VALIDATION_ERROR', e.message, 400, { requestId, details: { reason: 'attested_name_required', field: 'attested_name' } });
   return e instanceof AramoError ? e : new AramoError('INTERNAL_ERROR', e instanceof Error ? e.message : String(e), 500, { requestId });
 }
 
@@ -252,6 +261,35 @@ export class EsignSignerController {
     }
   }
 
+  // Aramo-Sign-Unified-Product-Amendment-M-A5 §2.2 — an ON_SEND copy recipient's
+  // view. Authorized by the COPY_VIEW access token from the RECIPIENT_COPY email
+  // (not a signing session). Returns the SOURCE documents only — values are stamped
+  // only at completion, so they carry no signer data — and NO recipient list, signer
+  // data, tenant id or internal ids. Tenant resolved server-side from the grant.
+  @Post('copy')
+  @HttpCode(HttpStatus.OK)
+  async copy(@Body() body: { token: string }, @RequestId() requestId: string) {
+    validate(typeof body?.token === 'string' && body.token.length > 0, 'token is required', requestId);
+    try {
+      const grant = await this.service.resolveCopyAccess(body.token);
+      const full = await this.repo.getEnvelopeFull(grant.tenant_id, grant.envelope_id);
+      const documents = [];
+      for (const d of full.documents) {
+        const bytes = await this.sourceProvider.getSourcePdf({
+          tenant_id: grant.tenant_id,
+          source_mode: d.source_mode === 'OWNED' ? 'OWNED' : 'CORE_REF',
+          document_ref: d.document_ref,
+          document_revision_ref: d.document_revision_ref,
+          source_object_key: d.source_object_key,
+        });
+        documents.push({ title: d.title, content_type: d.content_type ?? 'application/pdf', source_base64: Buffer.from(bytes).toString('base64') });
+      }
+      return { subject: full.subject, sent_at: full.sent_at ? full.sent_at.toISOString() : null, documents };
+    } catch (e) {
+      throw toHttp(e, requestId);
+    }
+  }
+
   // PX-V1 F3 — the signer document VIEW: positioned fields + document metadata for
   // the Sign Web viewer. Token-authorized (tenant resolved server-side),
   // disclosure-gated. Returns NO tenant_id and NO source bytes.
@@ -301,7 +339,7 @@ export class EsignSignerController {
   @Post('disclosure')
   @HttpCode(HttpStatus.OK)
   async disclosure(
-    @Body() body: { token: string; disclosure_version: string; disclosure_text_hash: string },
+    @Body() body: { token: string; disclosure_version: string; disclosure_text_hash: string; attested_name?: string },
     @Req() req: Request,
     @RequestId() requestId: string,
     @Headers('user-agent') userAgent?: string,
@@ -309,6 +347,7 @@ export class EsignSignerController {
     validate(typeof body?.token === 'string', 'token is required', requestId);
     validate(typeof body?.disclosure_version === 'string', 'disclosure_version is required', requestId);
     validate(typeof body?.disclosure_text_hash === 'string', 'disclosure_text_hash is required', requestId);
+    validate(body?.attested_name === undefined || typeof body.attested_name === 'string', 'attested_name must be a string', requestId);
     try {
       const ctx = await this.service.resolveSession(body.token);
       await this.service.acceptDisclosure(ctx, {
@@ -316,6 +355,8 @@ export class EsignSignerController {
         disclosure_text_hash: body.disclosure_text_hash,
         ip_address: req.ip,
         user_agent: userAgent,
+        // M-A5 §3.4 — required for a HOSTED session (the signer confirms their name).
+        ...(typeof body.attested_name === 'string' ? { attested_name: body.attested_name } : {}),
       });
       return { accepted: true };
     } catch (e) {

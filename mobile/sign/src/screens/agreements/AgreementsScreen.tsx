@@ -1,10 +1,12 @@
-// Agreements tab (handoff §4.2, §4.10; directive §5, §7 C-3, C-12). One list for what the
-// user sent (GET /v1/sign/sender/envelopes) and what they received and claimed
-// (GET /v1/sign/inbox), plus local drafts, filtered Needs me / Waiting / Drafts / Done.
-// Cached data shows offline ("Offline · showing saved data").
+// Agreements tab under the shared top bar (handoff §2A, §4.2, §4.10; M-A4 §1.2, §3;
+// directive §5, §7 C-3, C-12). One list for what the user sent
+// (GET /v1/sign/sender/envelopes) and what they received and claimed (GET /v1/sign/inbox),
+// plus local drafts: status chips All · Needs me · Waiting for others · Drafts · Completed,
+// a "{filter} · {range}" header row with the Filter sheet (last activity, filtered on the
+// device), and rows with swipe actions by state. Cached data shows offline
+// ("Offline · showing saved data").
 import { useFocusEffect, useNavigation, useRoute, type RouteProp } from '@react-navigation/native';
-import { useQueryClient } from '@tanstack/react-query';
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useMemo, useRef, useState } from 'react';
 import {
   FlatList,
   Pressable,
@@ -19,28 +21,29 @@ import Svg, { Path } from 'react-native-svg';
 
 import { Banner, OfflineBanner } from '../../components/Banner';
 import { Card } from '../../components/Card';
+import { TopBar } from '../../components/TopBar';
 import {
+  asListFilter,
+  asListRange,
   countFor,
+  DEFAULT_RANGE,
   EMPTY_STATE,
   filterAgreements,
-  FILTER_LABEL,
-  FILTERS,
+  listHeading,
   mergeAgreements,
   needsSignatureSummary,
   shortDate,
   type AgreementRow,
+  type ListFilter,
+  type ListRange,
 } from '../../features/inbox/agreementsModel';
-import { useServices } from '../../app/ServicesContext';
-import { useToast } from '../../components/Toast';
-import { refusalMessage } from '../../api/refusalMessages';
 import { AgreementRowItem } from '../../features/inbox/AgreementRowItem';
-import { deleteDraftById } from '../../features/inbox/envelopeActions';
-import { SwipeToDelete } from '../../features/inbox/SwipeToDelete';
-import { createDocumentBytesStore } from '../../features/send/documentBytes';
-import { forgetLocalDrafts } from '../../features/send/localDrafts';
+import { FilterSheet } from '../../features/inbox/FilterSheet';
+import { StatusChips } from '../../features/inbox/StatusChips';
+import { SwipeActions } from '../../features/inbox/SwipeActions';
+import { useRowActions } from '../../features/inbox/useRowActions';
 import { allowanceChipText, allowanceModel, limitBanner } from '../../features/inbox/allowance';
 import {
-  signKeys,
   useBillingAccount,
   useInbox,
   useLocalDrafts,
@@ -48,37 +51,11 @@ import {
   useSenderContext,
   useSenderEnvelopes,
 } from '../../features/inbox/queries';
-import { EmptyState, Segments } from '../../features/inbox/ui';
-import type { AgreementsFilter, MainTabParamList } from '../../navigation/types';
+import { EmptyState } from '../../features/inbox/ui';
+import { consumeSearchFocus } from '../../features/shell/searchFocus';
+import { useFloatingBarSpace } from '../../navigation/FloatingTabBar';
+import type { MainTabParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
-
-function initials(name: string | null | undefined): string {
-  const parts = (name ?? '').split(/\s+/).filter(Boolean);
-  return ((parts[0]?.[0] ?? '') + (parts[1]?.[0] ?? '')).toUpperCase() || '·';
-}
-
-function Avatar({
-  name,
-  onPress,
-}: {
-  readonly name: string | null | undefined;
-  readonly onPress: () => void;
-}) {
-  const t = useTheme();
-  return (
-    <Pressable
-      onPress={onPress}
-      accessibilityRole="button"
-      accessibilityLabel="Account"
-      hitSlop={6}
-      style={[styles.avatar, { backgroundColor: t.color.tint }]}
-    >
-      <Text style={{ color: t.color.onTint, fontWeight: '600', fontSize: 14 }}>
-        {initials(name)}
-      </Text>
-    </Pressable>
-  );
-}
 
 export function AgreementsScreen() {
   const t = useTheme();
@@ -92,21 +69,32 @@ export function AgreementsScreen() {
   const billing = useBillingAccount();
   const ctx = useSenderContext();
   const local = useLocalDrafts();
-  const [filter, setFilter] = useState<AgreementsFilter>(route.params?.filter ?? 'needs_me');
+  // The route's filter / range (navigation types) map onto the list's own types here.
+  const paramFilter = asListFilter(route.params?.filter);
+  const paramRange = asListRange(route.params?.range);
+  const [filter, setFilter] = useState<ListFilter>(paramFilter ?? 'all');
+  const [range, setRange] = useState<ListRange>(paramRange ?? DEFAULT_RANGE);
+  const [filterOpen, setFilterOpen] = useState(false);
   const [query, setQuery] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const searchRef = useRef<TextInput>(null);
+  const barSpace = useFloatingBarSpace();
   // A navigation to Agreements with a filter (e.g. "Saved to Drafts") selects it.
-  const [seenFilter, setSeenFilter] = useState(route.params?.filter);
-  if (route.params?.filter !== seenFilter) {
-    setSeenFilter(route.params?.filter);
-    if (route.params?.filter) setFilter(route.params.filter);
+  const [seen, setSeen] = useState({ filter: paramFilter, range: paramRange });
+  if (paramFilter !== seen.filter || paramRange !== seen.range) {
+    setSeen({ filter: paramFilter, range: paramRange });
+    if (paramFilter) setFilter(paramFilter);
+    if (paramRange) setRange(paramRange);
   }
+  const rowActions = useRowActions();
 
   // Local drafts change outside the query cache (Send flow): re-read on focus.
   const refetchLocal = local.refetch;
   useFocusEffect(
     useCallback(() => {
       void refetchLocal();
+      // The top bar's search pill on Home asked for the search field (searchFocus.ts).
+      if (consumeSearchFocus()) setTimeout(() => searchRef.current?.focus(), 0);
     }, [refetchLocal]),
   );
 
@@ -114,11 +102,13 @@ export function AgreementsScreen() {
     () => mergeAgreements(sent.data?.items ?? [], inbox.data ?? null, local.data ?? []),
     [sent.data, inbox.data, local.data],
   );
-  const visible = useMemo(() => filterAgreements(rows, filter, query), [rows, filter, query]);
+  const visible = useMemo(
+    () => filterAgreements(rows, filter, query, range),
+    [rows, filter, query, range],
+  );
   const needs = needsSignatureSummary(rows);
   const allowance = allowanceModel(billing.data ?? null);
   const banner = limitBanner(allowance);
-  const canSend = ctx.data?.can_send === true;
   const loading = (sent.isPending || inbox.isPending) && rows.length === 0;
   const failed = (sent.isError || inbox.isError) && rows.length === 0;
 
@@ -141,43 +131,6 @@ export function AgreementsScreen() {
     else navigation.navigate('SendFlow', { localDraftId: row.localDraftId });
   }
 
-  // Swipe left to delete a draft (D-W6-3). A server draft is deleted with its current
-  // ETag; an on-device draft is only forgotten locally. Either way the on-device copy
-  // and its document bytes go too.
-  const services = useServices();
-  const qc = useQueryClient();
-  const toast = useToast();
-  const deletable = (row: AgreementRow) =>
-    row.kind === 'local-draft' || (row.kind === 'sent' && row.status === 'DRAFT');
-  async function deleteRow(row: AgreementRow): Promise<void> {
-    const bytes = createDocumentBytesStore(services.store);
-    if (row.kind === 'local-draft') {
-      await forgetLocalDrafts(services.drafts, bytes, { localDraftId: row.localDraftId });
-    } else if (row.kind === 'sent') {
-      const r = await deleteDraftById(services.workspace, row.envelopeId);
-      if (r.kind !== 'deleted') {
-        toast.show(
-          r.kind === 'stale'
-            ? refusalMessage({ reason: 'revision_mismatch', code: 'revision_mismatch' })
-            : r.message,
-        );
-        return;
-      }
-      await forgetLocalDrafts(services.drafts, bytes, { envelopeId: row.envelopeId }).catch(() => 0);
-    } else return;
-    toast.show('Draft deleted');
-    void qc.invalidateQueries({ queryKey: signKeys.senderList });
-    void local.refetch();
-  }
-
-  const newEnvelope = () => navigation.navigate('SendFlow', undefined);
-  const openAccount = () => navigation.navigate('Main', { screen: 'Account' });
-
-  const segments = FILTERS.map((k) => ({
-    key: k,
-    label: k === 'needs_me' ? `${FILTER_LABEL[k]} ${countFor(rows, k)}` : FILTER_LABEL[k],
-  }));
-
   const dotColor =
     allowance?.dot === 'month_reached'
       ? t.color.destructive
@@ -187,56 +140,7 @@ export function AgreementsScreen() {
 
   const header = (
     <View style={{ gap: 12, paddingBottom: 8 }}>
-      {ios ? (
-        <>
-          <View style={styles.iosTopRow}>
-            {canSend ? (
-              <Pressable
-                testID="agreements-new"
-                onPress={newEnvelope}
-                accessibilityRole="button"
-                accessibilityLabel="New envelope"
-                hitSlop={6}
-                style={[styles.plus, { backgroundColor: t.color.white }]}
-              >
-                <Svg
-                  width={20}
-                  height={20}
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke={t.color.accent}
-                  strokeWidth={2.2}
-                  strokeLinecap="round"
-                >
-                  <Path d="M12 5v14M5 12h14" />
-                </Svg>
-              </Pressable>
-            ) : null}
-            <Avatar name={ctx.data?.user.display_name} onPress={openAccount} />
-          </View>
-          <Text
-            accessibilityRole="header"
-            style={[styles.pad, { color: t.color.text, ...t.type.largeTitle }]}
-          >
-            Agreements
-          </Text>
-        </>
-      ) : (
-        <View style={styles.androidBar}>
-          <Text
-            accessibilityRole="header"
-            style={{
-              flex: 1,
-              color: t.color.text,
-              fontFamily: t.font.family,
-              ...t.type.largeTitle,
-            }}
-          >
-            Agreements
-          </Text>
-          <Avatar name={ctx.data?.user.display_name} onPress={openAccount} />
-        </View>
-      )}
+      <TopBar search={{ value: query, onChangeText: setQuery }} searchInputRef={searchRef} />
       {allowance ? (
         <View
           style={[styles.pad, styles.chip]}
@@ -260,26 +164,6 @@ export function AgreementsScreen() {
           <Banner title={banner.title} body={banner.body} />
         </View>
       ) : null}
-      <View style={styles.pad}>
-        <TextInput
-          testID="agreements-search"
-          value={query}
-          onChangeText={setQuery}
-          placeholder="Search agreements"
-          placeholderTextColor={t.color.textSecondary}
-          accessibilityLabel="Search agreements"
-          returnKeyType="search"
-          clearButtonMode="while-editing"
-          style={
-            ios
-              ? [styles.searchIos, { backgroundColor: t.color.fill, color: t.color.text }]
-              : [
-                  styles.searchAndroid,
-                  { backgroundColor: '#EEEDF4', color: t.color.text, fontFamily: t.font.family },
-                ]
-          }
-        />
-      </View>
       {needs.count > 0 && filter !== 'needs_me' && needs.newest ? (
         <View style={styles.pad}>
           <View
@@ -343,7 +227,52 @@ export function AgreementsScreen() {
           </View>
         </View>
       ) : null}
-      <Segments items={segments} value={filter} onChange={setFilter} testIDPrefix="filter" />
+      <StatusChips value={filter} onChange={setFilter} needsCount={countFor(rows, 'needs_me')} />
+      <View
+        style={[
+          styles.headerRow,
+          {
+            borderColor: t.color.separator,
+            borderTopWidth: t.size.separatorWidth,
+            borderBottomWidth: t.size.separatorWidth,
+          },
+        ]}
+      >
+        <View style={{ width: 44 }} />
+        <Text
+          testID="agreements-heading"
+          numberOfLines={1}
+          style={{
+            flex: 1,
+            textAlign: 'center',
+            color: t.color.text,
+            fontSize: 15,
+            fontWeight: '600',
+            fontFamily: t.font.family,
+          }}
+        >
+          {listHeading(filter, range)}
+        </Text>
+        <Pressable
+          testID="agreements-filter"
+          onPress={() => setFilterOpen(true)}
+          accessibilityRole="button"
+          accessibilityLabel="Filter agreements"
+          style={[styles.filterButton, { minWidth: t.size.minTouch, minHeight: t.size.minTouch }]}
+        >
+          <Svg
+            width={22}
+            height={22}
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke={t.color.text}
+            strokeWidth={2}
+            strokeLinecap="round"
+          >
+            <Path d="M4 6h16M7 12h10M10 18h4" />
+          </Svg>
+        </Pressable>
+      </View>
     </View>
   );
 
@@ -351,6 +280,8 @@ export function AgreementsScreen() {
     <EmptyState title="Couldn’t load agreements" body="Pull down to try again." />
   ) : query.trim() ? (
     <EmptyState {...EMPTY_STATE.search} />
+  ) : filterAgreements(rows, filter).length > 0 ? (
+    <EmptyState {...EMPTY_STATE.range} />
   ) : (
     <EmptyState {...EMPTY_STATE[filter]} />
   );
@@ -370,13 +301,20 @@ export function AgreementsScreen() {
               index === visible.length - 1 ? styles.last : null,
             ]}
           >
-            <SwipeToDelete
-              enabled={deletable(item) && (item.kind === 'local-draft' || online)}
-              label={item.subject}
-              onDelete={() => void deleteRow(item)}
+            <SwipeActions
+              actions={rowActions.actionsFor(item)}
+              subject={item.subject}
+              onAction={(k) => rowActions.run(item, k)}
+              onOpen={rowActions.onRowOpen}
             >
-              <AgreementRowItem row={item} onPress={open} last={index === visible.length - 1} />
-            </SwipeToDelete>
+              <AgreementRowItem
+                row={item}
+                onPress={open}
+                last={index === visible.length - 1}
+                actions={rowActions.actionsFor(item)}
+                onAction={rowActions.run}
+              />
+            </SwipeActions>
           </Card>
         )}
         refreshControl={
@@ -386,47 +324,26 @@ export function AgreementsScreen() {
             tintColor={t.color.accent}
           />
         }
-        contentContainerStyle={{ paddingBottom: ios ? 24 : 120 }}
+        contentContainerStyle={{ paddingBottom: barSpace }}
         keyboardShouldPersistTaps="handled"
       />
-      {!ios && canSend ? (
-        <Pressable
-          testID="agreements-fab"
-          onPress={newEnvelope}
-          accessibilityRole="button"
-          accessibilityLabel="New envelope"
-          style={[styles.fab, { backgroundColor: t.color.tint, bottom: 16 }]}
-        >
-          <Text style={{ color: t.color.onTint, fontSize: 15, fontWeight: '500' }}>+ New</Text>
-        </Pressable>
-      ) : null}
+      <FilterSheet
+        visible={filterOpen}
+        filter={filter}
+        range={range}
+        onFilter={setFilter}
+        onRange={setRange}
+        onClose={() => setFilterOpen(false)}
+      />
+      {rowActions.sheets}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   pad: { marginHorizontal: 16 },
-  iosTopRow: {
-    flexDirection: 'row',
-    justifyContent: 'flex-end',
-    alignItems: 'center',
-    gap: 10,
-    paddingHorizontal: 16,
-    paddingTop: 8,
-  },
-  plus: { width: 38, height: 38, borderRadius: 19, alignItems: 'center', justifyContent: 'center' },
-  avatar: {
-    width: 38,
-    height: 38,
-    borderRadius: 19,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  androidBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 64 },
   chip: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   dot: { width: 8, height: 8, borderRadius: 4 },
-  searchIos: { height: 36, borderRadius: 10, paddingHorizontal: 12, fontSize: 17 },
-  searchAndroid: { height: 56, borderRadius: 28, paddingHorizontal: 20, fontSize: 16 },
   needsCard: { borderRadius: 16, padding: 16, gap: 6 },
   needsButton: {
     marginTop: 8,
@@ -434,17 +351,14 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 16,
   },
+  headerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 46,
+    paddingHorizontal: 8,
+  },
+  filterButton: { alignItems: 'center', justifyContent: 'center', borderRadius: 22 },
   rowCard: { marginHorizontal: 16, borderRadius: 0 },
   first: { borderTopLeftRadius: 12, borderTopRightRadius: 12, marginTop: 8 },
   last: { borderBottomLeftRadius: 12, borderBottomRightRadius: 12 },
-  fab: {
-    position: 'absolute',
-    right: 16,
-    height: 56,
-    borderRadius: 16,
-    paddingHorizontal: 20,
-    alignItems: 'center',
-    justifyContent: 'center',
-    elevation: 3,
-  },
 });

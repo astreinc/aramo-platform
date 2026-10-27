@@ -82,6 +82,19 @@ const config: ExpoConfig = {
       'react-native-document-scanner-plugin',
       { cameraPermission: 'Aramo Sign uses the camera to scan documents you choose to send.' },
     ],
+    [
+      // Photos source (M-A4 §5.2, A12): the system photo picker (PHPicker / Android Photo
+      // Picker), so no library-wide or storage permission is requested on Android; the
+      // storage permissions above stay blocked. The iOS usage string declares photo-library
+      // access. Camera keeps the scanner's string; the microphone is never used.
+      'expo-image-picker',
+      {
+        photosPermission:
+          'Aramo Sign uses your photos only when you choose some to turn into a PDF to send.',
+        cameraPermission: 'Aramo Sign uses the camera to scan documents you choose to send.',
+        microphonePermission: false,
+      },
+    ],
     '@config-plugins/react-native-pdf',
     '@config-plugins/react-native-blob-util',
   ],

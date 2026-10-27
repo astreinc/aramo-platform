@@ -3,6 +3,11 @@
 // signing link and the envelope expiry as two separate facts, Recipients / Documents /
 // Activity, and the state-gated actions: Remind (Idempotency-Key, 429 retry time),
 // Void (reason + If-Match; 412 refreshes), View certificate, Continue editing.
+// M-A5 (sender view only): copy recipients are listed apart under "Receives a copy" with
+// their timing; in-person signers carry an "In person" badge; and an in-person signer
+// whose turn it is can be hosted on this device (Start in-person signing -> the locked
+// HostedSigning screen), when FEATURES.hostedSigning and the server's
+// features.in_person_signing allow it.
 import { useFocusEffect } from '@react-navigation/native';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { useQueryClient } from '@tanstack/react-query';
@@ -26,12 +31,18 @@ import { Card } from '../../components/Card';
 import { ListRow, RowTile } from '../../components/ListRow';
 import { StatusPill } from '../../components/StatusPill';
 import { useToast } from '../../components/Toast';
+import { FEATURES } from '../../config/features';
+import { startHosted } from '../../features/hosted/startHosted';
 import { createDocumentBytesStore } from '../../features/send/documentBytes';
+import { createSenderApi } from '../../features/send/senderApi';
 import { forgetLocalDrafts } from '../../features/send/localDrafts';
 import { dateTime, shortDate } from '../../features/inbox/agreementsModel';
 import {
   actionsFor,
+  copiesOf,
+  copyTimingLine,
   createReminder,
+  hostableSigners,
   headerLine,
   nextReminderAt,
   orderedRecipients,
@@ -55,6 +66,8 @@ import {
 } from '../../features/inbox/queries';
 import { OPEN_STATUSES, type DetailRecipient, type LedgerEvent } from '../../features/inbox/types';
 import { EmptyState, ProgressBar, ReasonSheet, Segments } from '../../features/inbox/ui';
+import { sentShareTarget } from '../../features/share/shareCompleted';
+import { useShare } from '../../features/share/useShare';
 import type { EnvelopeDetailTab, RootStackParamList } from '../../navigation/types';
 import { recipientColor, useTheme } from '../../theme';
 
@@ -84,6 +97,9 @@ const EVENT_LABEL: Record<string, string> = {
   ENVELOPE_VOIDED: 'Voided',
   ENVELOPE_EXPIRED: 'Expired',
   SIGNATURE_REMINDER_SENT: 'Reminder sent',
+  HOSTED_SESSION_STARTED: 'In-person signing started',
+  SELF_SIGN_SESSION_ISSUED: 'Signing started in the app',
+  COPY_DELIVERY_ISSUED: 'Copy sent',
 };
 
 export function eventLabel(e: LedgerEvent): string {
@@ -127,6 +143,9 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
   const [voidBusy, setVoidBusy] = useState(false);
   const [voidError, setVoidError] = useState<string | null>(null);
   const [refreshing, setRefreshing] = useState(false);
+  const [hostBusy, setHostBusy] = useState<string | null>(null);
+  const [hostNote, setHostNote] = useState<string | null>(null);
+  const sharer = useShare();
 
   // A later navigation here with another tab (e.g. a notification) selects it.
   const [seenTab, setSeenTab] = useState(initialTab);
@@ -166,10 +185,13 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
   }
 
   const actions = actionsFor(detail, ctx.data);
+  const shareTarget = sentShareTarget(detail.id, detail.subject, detail.status);
   const progress = progressOf(detail);
   const remindable = remindableSigners(detail);
   const coolingUntil = remindable.length === 0 ? nextReminderAt(detail) : null;
   const signers = orderedRecipients(detail);
+  const copies = copiesOf(detail);
+  const hostable = hostableSigners(detail, ctx.data, FEATURES.hostedSigning);
   const isOpen = OPEN_STATUSES.has(detail.status);
   const offlineReason = online ? null : OFFLINE_ACTION_REASON;
 
@@ -202,6 +224,25 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
     } finally {
       setRemindBusy(false);
     }
+  }
+
+  // Start a hosted session; the token goes to the vault, the route gets only a handle.
+  async function host(signerId: string, signerName: string): Promise<void> {
+    setHostBusy(signerId);
+    setHostNote(null);
+    const r = await startHosted(createSenderApi(workspace), envelopeId, signerId);
+    setHostBusy(null);
+    if (r.kind === 'refused') {
+      setHostNote(r.message);
+      void q.refetch();
+      return;
+    }
+    navigation.navigate('HostedSigning', {
+      handle: r.handle,
+      signerName,
+      envelopeId,
+      expiresAt: r.expiresAt,
+    });
   }
 
   async function doVoid(reason: string): Promise<void> {
@@ -265,8 +306,9 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
 
   function recipientRow(r: DetailRecipient, i: number) {
     const line = recipientStateLine(r, shortDate);
-    const you = ctx.data?.user.email && r.email.toLowerCase() === ctx.data.user.email.toLowerCase();
+    const you = ctx.data?.user.email && r.email !== null && r.email.toLowerCase() === ctx.data.user.email.toLowerCase();
     const isCurrent = detail?.routing_mode === 'SEQUENTIAL' && detail.next_signer_id === r.id;
+    const inPerson = r.recipient_kind === 'IN_PERSON_SIGNER';
     return (
       <View
         key={r.id}
@@ -278,7 +320,7 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
           },
         ]}
         accessible
-        accessibilityLabel={`${r.name}${you ? ', you' : ''}, ${r.email}, ${line.text}${isCurrent ? ', signing now' : ''}`}
+        accessibilityLabel={`${r.name}${you ? ', you' : ''}${inPerson ? ', in person' : ''}${r.email ? `, ${r.email}` : ''}, ${line.text}${isCurrent ? ', signing now' : ''}`}
       >
         <View style={[styles.avatar, { backgroundColor: recipientColor(i) }]}>
           <Text style={{ color: '#FFFFFF', fontWeight: '600', fontSize: 13 }}>
@@ -293,7 +335,14 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
             {r.name}
             {you ? ' (you)' : ''}
           </Text>
-          <Text style={{ color: t.color.textSecondary, fontSize: 13 }}>{r.email}</Text>
+          {inPerson ? (
+            <View style={[styles.badge, { backgroundColor: t.color.tint }]} testID={`in-person-${r.id}`}>
+              <Text style={{ color: t.color.onTint, fontSize: 12, fontWeight: '600' }}>In person</Text>
+            </View>
+          ) : null}
+          {r.email ? (
+            <Text style={{ color: t.color.textSecondary, fontSize: 13 }}>{r.email}</Text>
+          ) : null}
           <Text style={{ color: toneColor(line.tone), fontSize: 13 }}>
             {line.text}
             {isCurrent ? ' · signing now' : ''}
@@ -385,6 +434,22 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
           </Card>
         ) : null}
 
+        {hostable.map((r) => (
+          <Button
+            key={r.id}
+            testID={`action-host-${r.id}`}
+            title={hostable.length === 1 ? 'Start in-person signing' : `Start in-person signing · ${r.name}`}
+            accessibilityHint={`${r.name} signs on this device. You’ll confirm it’s you to leave.`}
+            busy={hostBusy === r.id}
+            disabled={!online || hostBusy !== null}
+            onPress={() => void host(r.id, r.name)}
+          />
+        ))}
+        {hostNote ? (
+          <Text accessibilityRole="alert" style={{ color: t.color.textSecondary, fontSize: 13 }} testID="host-note">
+            {hostNote}
+          </Text>
+        ) : null}
         {actions.continueEditing ? (
           <Button
             testID="action-continue"
@@ -400,6 +465,16 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
             busy={deleteBusy}
             disabled={!online}
             onPress={confirmDelete}
+          />
+        ) : null}
+        {shareTarget ? (
+          <Button
+            testID="action-share"
+            title="Share signed PDF"
+            variant="secondary"
+            busy={sharer.busy}
+            disabled={!online}
+            onPress={() => sharer.share(shareTarget)}
           />
         ) : null}
         {actions.viewCertificate ? (
@@ -423,6 +498,42 @@ export function EnvelopeDetailScreen({ route, navigation }: Props) {
               <EmptyState title="No recipients yet" body="Add who needs to sign." />
             )}
           </Card>
+        ) : null}
+        {tab === 'recipients' && copies.length > 0 ? (
+          <View style={{ gap: 8 }} testID="copy-group">
+            <Text accessibilityRole="header" style={{ color: t.color.textSecondary, fontSize: 13, fontWeight: '600' }}>
+              Receives a copy
+            </Text>
+            <Card>
+              {copies.map((r, i) => (
+                <View
+                  key={r.id}
+                  style={[
+                    styles.recipient,
+                    {
+                      borderBottomColor: t.color.separator,
+                      borderBottomWidth: i === copies.length - 1 ? 0 : t.size.separatorWidth,
+                    },
+                  ]}
+                  accessible
+                  accessibilityLabel={`${r.name}${r.email ? `, ${r.email}` : ''}, ${copyTimingLine(r)}`}
+                >
+                  <View style={[styles.avatar, { backgroundColor: t.color.textTertiary }]}>
+                    <Text style={{ color: '#FFFFFF', fontWeight: '600', fontSize: 13 }}>
+                      {initialsOf(r.name)}
+                    </Text>
+                  </View>
+                  <View style={{ flex: 1, gap: 2 }}>
+                    <Text style={{ color: t.color.text, fontSize: 16, fontWeight: '500' }}>{r.name}</Text>
+                    {r.email ? (
+                      <Text style={{ color: t.color.textSecondary, fontSize: 13 }}>{r.email}</Text>
+                    ) : null}
+                    <Text style={{ color: t.color.textSecondary, fontSize: 13 }}>{copyTimingLine(r)}</Text>
+                  </View>
+                </View>
+              ))}
+            </Card>
+          </View>
         ) : null}
 
         {tab === 'documents' ? (
@@ -565,4 +676,5 @@ const styles = StyleSheet.create({
   },
   event: { flexDirection: 'row', gap: 12, alignItems: 'flex-start', paddingVertical: 6 },
   eventDot: { width: 10, height: 10, borderRadius: 5, marginTop: 6 },
+  badge: { alignSelf: 'flex-start', borderRadius: 6, paddingHorizontal: 6, paddingVertical: 2 },
 });

@@ -4,9 +4,10 @@ import { Injectable } from '@nestjs/common';
 
 import { PrismaService } from './prisma/prisma.service.js';
 import { EsignRepository } from './esign.repository.js';
-import { EnvelopeIllegalTransitionError, EnvelopeNotFoundError } from './domain/errors.js';
+import { EnvelopeIllegalTransitionError, EnvelopeNotFoundError, SenderFieldPassthroughRefusedError } from './domain/errors.js';
 import { EnvelopeRevisionMismatchError } from './domain/envelope-contract-errors.js';
 import { SIGN_REMINDER_LIMITS, reminderHistory, type ReminderHistoryEntry } from './reminder-limits.js';
+import { isCopyRecipient, isSigningRecipient, recipientKindOf, signingRecipients } from './domain/recipients.js';
 
 // PX-V1 PX-1 — the authenticated SENDER workspace reads + DRAFT authoring writes.
 //
@@ -53,12 +54,54 @@ export interface SenderRecipientInput {
   // Existing signer id to keep (and update), or absent for a new recipient.
   id?: string;
   name: string;
-  email: string;
+  // M-A5 §3.5 — null only for an IN_PERSON_SIGNER.
+  email: string | null;
+  // M-A5 §1 — omitted ⇒ SIGNER (the column default; every existing caller).
+  recipient_kind?: 'SIGNER' | 'IN_PERSON_SIGNER' | 'RECEIVES_COPY';
+  // M-A5 §2.1 — required iff RECEIVES_COPY.
+  copy_delivery?: 'ON_SEND' | 'ON_COMPLETION' | 'BOTH' | null;
+  // M-A5 §4.1 — set by the service to the caller's user id (Assign to me); never
+  // taken from the request body.
+  bound_user_id?: string | null;
 }
 
 export interface SenderFieldInput {
   envelope_document_id: string;
-  signer_id: string;
+  signer_id: string | null;
+  field_type: string;
+  page_number: number;
+  x: number;
+  y: number;
+  width: number | null;
+  height: number | null;
+  required: boolean;
+  // M-A6 §2 (coordinator ruling) — an engine-only field passed back unchanged: the
+  // id of the stored field it must be identical to. The stored row is kept as is.
+  passthrough_id?: string;
+  // M-A6 §2 — Name and Checkbox configuration (absent ⇒ NULL).
+  label?: string | null;
+  group_key?: string | null;
+  group_rule?: string | null;
+  min_selected?: number | null;
+  name_mode?: string | null;
+}
+
+// Amendment M-A6 §3.5 — one template role bound to a recipient. recipient_kind and
+// copy_delivery are the M-A5 §1–§2 columns (owned by migration
+// 20261028100000_sign_recipient_kinds); a SIGNER row has no copy_delivery.
+export interface TemplateRecipientInput {
+  role_key: string;
+  name: string;
+  email: string;
+  signing_order: number;
+  recipient_kind: 'SIGNER' | 'RECEIVES_COPY';
+  copy_delivery?: 'ON_SEND' | 'ON_COMPLETION' | 'BOTH';
+}
+
+// A template field placed for a role (assigned to that role's signer at bind time).
+export interface TemplateFieldInput {
+  envelope_document_id: string;
+  role_key: string;
   field_type: string;
   page_number: number;
   x: number;
@@ -118,7 +161,7 @@ export class EsignSenderRepository {
       orderBy: [{ created_at: 'desc' }, { id: 'desc' }],
       take: filter.limit,
       include: {
-        signers: { orderBy: { signing_order: 'asc' }, select: { id: true, name: true, email: true, status: true } },
+        signers: { orderBy: { signing_order: 'asc' }, select: { id: true, name: true, email: true, status: true, recipient_kind: true } },
         documents: { select: { id: true } },
       },
     });
@@ -235,8 +278,9 @@ export class EsignSenderRepository {
   // Sign Mobile M-A3 §5 — `created_by` keeps the list to the caller's own
   // envelopes unless they may read the whole organization (the visibility rule).
   async listPastRecipients(tenant_id: string, limit: number, created_by?: string) {
+    // M-A5 §3.5 — an in-person signer without an email is never a contact.
     return this.prisma.signer.findMany({
-      where: { tenant_id, envelope: { ...SENDER_AUTHORED, deleted_at: null, ...(created_by !== undefined ? { created_by } : {}) } },
+      where: { tenant_id, email: { not: null }, envelope: { ...SENDER_AUTHORED, deleted_at: null, ...(created_by !== undefined ? { created_by } : {}) } },
       orderBy: [{ envelope: { created_at: 'desc' } }],
       take: limit * 4,
       select: { name: true, email: true, envelope: { select: { id: true, created_at: true } } },
@@ -251,13 +295,100 @@ export class EsignSenderRepository {
 
   // ── DRAFT authoring writes ─────────────────────────────────────────────────
 
-  async createDraft(input: { tenant_id: string; subject: string; created_by: string }) {
+  async createDraft(input: { tenant_id: string; subject: string; created_by: string; template_ref?: string; template_version_ref?: string }) {
     return this.repo.createEnvelope({
       tenant_id: input.tenant_id,
       subject: input.subject,
       execution_mode: 'SINGLE_SIGNATURE',
       created_by: input.created_by,
       source_application: 'aramo-sign',
+      // M-A6 §3.6 — a from-template draft records the template + exact version (written once).
+      ...(input.template_ref !== undefined && input.template_version_ref !== undefined
+        ? { template_ref: input.template_ref, template_version_ref: input.template_version_ref }
+        : {}),
+    });
+  }
+
+  // Amendment M-A6 §3.5 — bind a from-template draft in ONE transaction: the routing
+  // mode, the message, one recipient per template role (Signer.signer_role = role_key,
+  // signing_order = role order) and the template's fields assigned to their role's
+  // signer. This is the INTERNAL path: the template's field types are written as the
+  // template defines them (the engine's DB CHECK still applies), never limited by the
+  // public authoring whitelist. Copy recipients (template CC roles) carry the M-A5
+  // recipient_kind / copy_delivery columns and never get fields. Replaces any recipients
+  // and fields the draft has (a fresh draft has none).
+  async bindTemplateDraft(input: {
+    tenant_id: string;
+    envelope_id: string;
+    routing_mode: 'PARALLEL' | 'SEQUENTIAL';
+    message: string | null;
+    recipients: readonly TemplateRecipientInput[];
+    fields: readonly TemplateFieldInput[];
+  }) {
+    return this.prisma.$transaction(async (tx) => {
+      await this.assertDraft(tx, input.tenant_id, input.envelope_id);
+      const docs = await tx.envelopeDocument.findMany({ where: { tenant_id: input.tenant_id, envelope_id: input.envelope_id }, select: { id: true } });
+      const docIds = new Set(docs.map((d) => d.id));
+      if (docIds.size > 0) await tx.signatureField.deleteMany({ where: { tenant_id: input.tenant_id, envelope_document_id: { in: [...docIds] } } });
+      await tx.signer.deleteMany({ where: { tenant_id: input.tenant_id, envelope_id: input.envelope_id } });
+      // M-A5 §1.3 — the shared helper decides who signs (copies never count).
+      const signing = signingRecipients(input.recipients);
+      await tx.signatureEnvelope.update({
+        where: { id: input.envelope_id },
+        data: {
+          routing_mode: input.routing_mode,
+          message: input.message,
+          execution_mode: signing.length > 1 ? 'MULTI_SIGNATURE' : 'SINGLE_SIGNATURE',
+        },
+      });
+      const byRole = new Map<string, string>();
+      for (const r of input.recipients) {
+        const id = randomUUID();
+        const copy = isCopyRecipient(r);
+        await tx.signer.create({
+          data: {
+            id,
+            tenant_id: input.tenant_id,
+            envelope_id: input.envelope_id,
+            name: r.name,
+            email: r.email,
+            signing_order: r.signing_order,
+            signer_role: r.role_key,
+            status: 'PENDING',
+            // M-A5 §1/§2 — a template CC role is a RECEIVES_COPY recipient with its delivery
+            // timing; a template SIGNER role is a SIGNER (the column default).
+            recipient_kind: recipientKindOf(r),
+            copy_delivery: copy ? (r.copy_delivery ?? 'ON_COMPLETION') : null,
+          },
+        });
+        byRole.set(r.role_key, id);
+      }
+      for (const f of input.fields) {
+        if (!docIds.has(f.envelope_document_id)) throw new EnvelopeNotFoundError(`document ${f.envelope_document_id}`);
+        const signer_id = byRole.get(f.role_key);
+        const recipient = input.recipients.find((r) => r.role_key === f.role_key);
+        // M-A5 §1.2 — a copy recipient never gets a field.
+        if (signer_id === undefined || recipient === undefined || !isSigningRecipient(recipient)) throw new EnvelopeNotFoundError(`role ${f.role_key}`);
+        await tx.signatureField.create({
+          data: {
+            id: randomUUID(),
+            tenant_id: input.tenant_id,
+            envelope_document_id: f.envelope_document_id,
+            signer_id,
+            field_type: f.field_type,
+            page_number: f.page_number,
+            x: f.x,
+            y: f.y,
+            width: f.width,
+            height: f.height,
+            required: f.required,
+            // M-A6 §3.3 / §2.2 — the role's printed name is filled by Sign from the
+            // signer's profile (SIGNER_PROFILE, the default name mode).
+            name_mode: f.field_type === 'SIGNER_NAME' ? 'SIGNER_PROFILE' : null,
+          },
+        });
+      }
+      return tx.signer.findMany({ where: { tenant_id: input.tenant_id, envelope_id: input.envelope_id }, orderBy: { signing_order: 'asc' } });
     });
   }
 
@@ -549,7 +680,7 @@ export class EsignSenderRepository {
       }
       for (const [i, r] of input.recipients.entries()) {
         if (r.id !== undefined) {
-          await tx.signer.update({ where: { id: r.id }, data: { name: r.name, email: r.email, signing_order: i + 1 } });
+          await tx.signer.update({ where: { id: r.id }, data: { name: r.name, email: r.email, signing_order: i + 1, ...recipientKindData(r) } });
         } else {
           await tx.signer.create({
             data: {
@@ -561,6 +692,7 @@ export class EsignSenderRepository {
               signing_order: i + 1,
               signer_role: null,
               status: 'PENDING',
+              ...recipientKindData(r),
             },
           });
         }
@@ -579,12 +711,24 @@ export class EsignSenderRepository {
       const signerIds = new Set(signers.map((s) => s.id));
       for (const f of input.fields) {
         if (!docIds.has(f.envelope_document_id)) throw new EnvelopeNotFoundError(`document ${f.envelope_document_id}`);
-        if (!signerIds.has(f.signer_id)) throw new EnvelopeNotFoundError(`signer ${f.signer_id}`);
+        if (f.passthrough_id === undefined && (f.signer_id === null || !signerIds.has(f.signer_id))) throw new EnvelopeNotFoundError(`signer ${f.signer_id ?? 'none'}`);
+      }
+      // M-A6 §2 (coordinator ruling) — an engine-only field passes through only when
+      // it is byte-identical to its stored row on this envelope; that row is kept.
+      const keep: string[] = [];
+      for (const [index, f] of input.fields.entries()) {
+        if (f.passthrough_id === undefined) continue;
+        const stored = docIds.size === 0 ? null : await tx.signatureField.findFirst({
+          where: { id: f.passthrough_id, tenant_id: input.tenant_id, envelope_document_id: { in: [...docIds] } },
+        });
+        if (stored === null || keep.includes(stored.id) || !sameField(stored, f)) throw new SenderFieldPassthroughRefusedError(index);
+        keep.push(stored.id);
       }
       if (docIds.size > 0) {
-        await tx.signatureField.deleteMany({ where: { tenant_id: input.tenant_id, envelope_document_id: { in: [...docIds] } } });
+        await tx.signatureField.deleteMany({ where: { tenant_id: input.tenant_id, envelope_document_id: { in: [...docIds] }, ...(keep.length > 0 ? { id: { notIn: keep } } : {}) } });
       }
       for (const f of input.fields) {
+        if (f.passthrough_id !== undefined) continue;
         await tx.signatureField.create({
           data: {
             id: randomUUID(),
@@ -598,6 +742,11 @@ export class EsignSenderRepository {
             width: f.width,
             height: f.height,
             required: f.required,
+            label: f.label ?? null,
+            group_key: f.group_key ?? null,
+            group_rule: f.group_rule ?? null,
+            min_selected: f.min_selected ?? null,
+            name_mode: f.name_mode ?? null,
           },
         });
       }
@@ -606,4 +755,37 @@ export class EsignSenderRepository {
   }
 }
 
+// M-A6 §2 (coordinator ruling) — identical type, recipient, document, page,
+// geometry, required setting and configuration.
+function sameField(
+  stored: { field_type: string; signer_id: string | null; envelope_document_id: string; page_number: number; x: number; y: number; width: number | null; height: number | null; required: boolean; label: string | null; group_key: string | null; group_rule: string | null; min_selected: number | null; name_mode: string | null },
+  f: SenderFieldInput,
+): boolean {
+  return stored.field_type === f.field_type
+    && stored.signer_id === f.signer_id
+    && stored.envelope_document_id === f.envelope_document_id
+    && stored.page_number === f.page_number
+    && stored.x === f.x
+    && stored.y === f.y
+    && stored.width === f.width
+    && stored.height === f.height
+    && stored.required === f.required
+    && stored.label === (f.label ?? null)
+    && stored.group_key === (f.group_key ?? null)
+    && stored.group_rule === (f.group_rule ?? null)
+    && stored.min_selected === (f.min_selected ?? null)
+    && stored.name_mode === (f.name_mode ?? null);
+}
+
 export type { Db as SenderWorkspaceDb };
+
+// M-A5 §1 / §2 / §4 — the recipient-kind columns a PUT recipients item writes (a
+// full replacement: an omitted kind is SIGNER, an omitted binding is cleared).
+function recipientKindData(r: SenderRecipientInput): { recipient_kind: string; copy_delivery: string | null; bound_user_id: string | null } {
+  const kind = r.recipient_kind ?? 'SIGNER';
+  return {
+    recipient_kind: kind,
+    copy_delivery: kind === 'RECEIVES_COPY' ? (r.copy_delivery ?? null) : null,
+    bound_user_id: kind === 'RECEIVES_COPY' ? null : (r.bound_user_id ?? null),
+  };
+}

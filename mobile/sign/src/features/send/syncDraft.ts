@@ -7,6 +7,7 @@
 // re-run upload replays under its Idempotency-Key instead of duplicating the document.
 import { isApiError } from '../../api/errors';
 import { parseEtag } from '../../api/workspaceClient';
+import type { EditorField } from '../editor/editorReducer';
 import { editorToWire } from '../editor/geometry';
 import type { DocumentBytesStore } from './documentBytes';
 import {
@@ -17,6 +18,7 @@ import {
   type SendDraftPayload,
   type ServerEnvelope,
 } from './draftModel';
+import { emailKey, recipientsToWire, wireOrder } from './recipientRoles';
 import {
   revisionMismatch,
   type FieldWire,
@@ -82,7 +84,7 @@ function revisionOf(etag: string | null): number | null {
 
 /** The wire fields for the payload. Every document and recipient must be on the server. */
 export function fieldsToWire(p: SendDraftPayload): FieldWire[] {
-  return p.fields.map((f) => {
+  const authored: FieldWire[] = p.fields.map((f) => {
     const doc = p.documents.find((d) => d.key === f.docKey);
     const r = p.recipients.find((x) => x.key === f.recipientKey);
     const page = doc?.pages?.[f.page];
@@ -99,8 +101,47 @@ export function fieldsToWire(p: SendDraftPayload): FieldWire[] {
       width: b.width,
       height: b.height,
       required: f.required,
+      ...configWire(f),
     };
   });
+  // Engine-type fields from the server copy go back exactly as they came (their
+  // recipient must still exist: the server drops the fields of removed recipients).
+  const signers = new Set(p.recipients.map((r) => r.serverId).filter((x): x is string => !!x));
+  // M-A6 §2 — a preserved field carries its stored id and every stored value exactly
+  // (the server keeps it only when it is identical to the stored row).
+  const preserved: FieldWire[] = (p.preservedFields ?? [])
+    .filter((f) => f.signer_id === null || signers.has(f.signer_id))
+    .map((f) => ({
+      id: f.id,
+      envelope_document_id: f.envelope_document_id,
+      signer_id: f.signer_id,
+      field_type: f.field_type,
+      page_number: f.page_number,
+      x: f.x,
+      y: f.y,
+      width: f.width,
+      height: f.height,
+      required: f.required,
+      name_mode: f.name_mode,
+      label: f.label,
+      group_key: f.group_key,
+      group_rule: f.group_rule,
+      min_selected: f.min_selected,
+    }));
+  return [...authored, ...preserved];
+}
+
+/** M-A6 §2 — the configuration a field type carries on the wire (never a value). */
+function configWire(f: EditorField): Partial<FieldWire> {
+  if (f.type === 'SIGNER_NAME') return { name_mode: f.nameMode ?? 'SIGNER_PROFILE' };
+  if (f.type !== 'CHECKBOX') return {};
+  const grouped = typeof f.groupKey === 'string' && f.groupKey.length > 0;
+  return {
+    label: f.label ?? null,
+    group_key: grouped ? f.groupKey : null,
+    group_rule: grouped ? (f.groupRule ?? 'SELECT_ANY') : null,
+    min_selected: grouped && f.groupRule !== 'SELECT_ONE' ? (f.minSelected ?? null) : null,
+  };
 }
 
 export async function syncDraft(deps: SyncDeps, input: SendDraft): Promise<SyncResult> {
@@ -188,29 +229,27 @@ export async function syncDraft(deps: SyncDeps, input: SendDraft): Promise<SyncR
     await save({ etag: v.etag, dirty: { ...p.dirty, meta: false } });
   }
 
-  // 4. Recipients, in signing order (list position).
+  // 4. Recipients: the signing recipients in signing order (list position), then the
+  // copy recipients, which never take part in the order (M-A5 §1.6). The PUT replaces
+  // the list, so every item carries its kind, copy timing and Assign to me again.
   if (p.dirty.recipients) {
-    const v = await api.putRecipients(
-      envelopeId,
-      p.etag as string,
-      p.recipients.map((r) => ({
-        ...(r.serverId ? { id: r.serverId } : {}),
-        name: r.name,
-        email: r.email,
-      })),
-    );
+    const ordered = wireOrder(p.recipients);
+    const v = await api.putRecipients(envelopeId, p.etag as string, recipientsToWire(p.recipients));
     const sent = v.env.recipients;
-    if (
-      sent.length !== p.recipients.length ||
-      sent.some((s, i) => s.email.toLowerCase() !== p.recipients[i]!.email.toLowerCase())
-    ) {
+    const same = (s: (typeof sent)[number], r: (typeof ordered)[number]) => {
+      const a = emailKey(s.email);
+      const b = emailKey(r.email);
+      return a !== null || b !== null ? a === b : s.name.trim() === r.name.trim();
+    };
+    if (sent.length !== ordered.length || sent.some((s, i) => !same(s, ordered[i]!))) {
       throw new SendFlowError('recipients_out_of_sync');
     }
     server = v.env;
+    const idOf = new Map(ordered.map((r, i) => [r.key, sent[i]!.id]));
     // The server drops the fields of removed recipients, so the fields are re-sent.
     await save({
       etag: v.etag,
-      recipients: p.recipients.map((r, i) => ({ ...r, serverId: sent[i]!.id })),
+      recipients: p.recipients.map((r) => ({ ...r, serverId: idOf.get(r.key) ?? r.serverId })),
       dirty: { ...p.dirty, recipients: false, fields: true },
     });
   }

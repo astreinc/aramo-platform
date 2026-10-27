@@ -15,6 +15,8 @@ import { FEATURE_AVAILABILITY, isFeatureAvailable, type FeatureAvailability } fr
 
 export const SIGN_FEATURE_REGISTRY = 'SIGN_FEATURE_REGISTRY';
 export const SIGN_TEMPLATES_FEATURE = 'sign.templates';
+// Aramo-Sign-Unified-Product-Amendment-M-A5 §3.7 — hosted (in-person) signing.
+export const SIGN_IN_PERSON_SIGNING_FEATURE = 'sign.in_person_signing';
 
 @Injectable()
 export class SignFeatureGate {

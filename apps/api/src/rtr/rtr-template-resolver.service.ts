@@ -94,7 +94,21 @@ export class RtrTemplateResolverService {
     if (r.outcome === 'INVALID') {
       throw this.invalid(input.requestId, r.template_id, r.reason, r.details);
     }
-    const { template, version } = r;
+    return this.pinned({ template: r.template, version: r.version, owner_scope: r.owner_scope, source: r.source, requestId: input.requestId });
+  }
+
+  // Amendment M-A6 §3.1 — the same content-contract parse for a template the caller has
+  // already pinned (Sign lists and uses every ACTIVE template the tenant may use; the
+  // automatic per-type resolution above is unchanged). Fails closed exactly like
+  // resolveActive (RTR_TEMPLATE_CONFIGURATION_INVALID).
+  pinned(input: {
+    template: { id: string; name: string };
+    version: { id: string; version_number: number; render_schema_version: string; field_schema: unknown };
+    owner_scope: 'PLATFORM' | 'TENANT';
+    source: TemplateResolutionSource;
+    requestId: string;
+  }): ResolvedRtrTemplate {
+    const { template, version } = input;
 
     // Unrecognised content-contract version ⇒ fail closed (§8): never interpret.
     if (version.render_schema_version !== RTR_GENERATED_SCHEMA_V1 && version.render_schema_version !== RTR_HTML_SCHEMA_V1) {
@@ -118,8 +132,8 @@ export class RtrTemplateResolverService {
       version_number: version.version_number,
       render_schema_version: version.render_schema_version,
       content,
-      owner_scope: r.owner_scope,
-      source: r.source,
+      owner_scope: input.owner_scope,
+      source: input.source,
     };
   }
 

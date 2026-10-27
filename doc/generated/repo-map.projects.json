@@ -713,8 +713,11 @@
       "STUDIO_LETTERHEAD_HTML",
       "SafeDoc",
       "SampleValues",
+      "SignatureBlocksPreview",
+      "StudioRolesPanel",
       "TemplateStudio",
       "activateTemplateVersion",
+      "addRole",
       "adoptTemplate",
       "appendStudioVariable",
       "bindingMapFrom",
@@ -754,8 +757,10 @@
       "removeStudioVariable",
       "renderStudioBlockDom",
       "resolveUserNames",
+      "roleKeyFor",
       "serializeStudioBlockDom",
       "setTemplateSelection",
+      "signerRolesOf",
       "studioActiveMarks",
       "studioBlocksFromHtml",
       "studioBlocksToHtml",
@@ -769,6 +774,7 @@
       "studioPlainText",
       "studioPreviewParts",
       "studioReadableText",
+      "studioSigningOf",
       "studioToggleMark",
       "studioValueFromText",
       "studioVariableKeys",
@@ -838,6 +844,7 @@
       "RenderFailedError",
       "SafePdfPipeline",
       "UnsafePdfError",
+      "layoutRoleSignatureBlock",
       "layoutRuns",
       "layoutSignatureBlock",
       "manifestProjection",
@@ -2087,6 +2094,10 @@
       "ABUSE_REPORT_OUTCOMES",
       "ABUSE_REPORT_REASONS",
       "AbuseReportService",
+      "AttestedNameRequiredError",
+      "CHECKBOX_GROUP_RULES",
+      "COPY_DELIVERIES",
+      "COPY_DELIVERY_ISSUED_EVENT",
       "CURRENT_DISCLOSURE_VERSION",
       "DEFAULT_ABUSE_REPORT_CONFIG",
       "DEFAULT_SIGN_BASE_URL",
@@ -2116,28 +2127,41 @@
       "EsignSenderRepository",
       "EsignService",
       "ExecutionService",
+      "HOSTED_SESSION_STARTED_EVENT",
+      "HOSTED_SESSION_TTL_MS",
       "IdempotencyKeyReuseError",
       "IdempotencyRequestInProgressError",
       "InboxSigningRefusedError",
       "LocalEventPublisher",
+      "MAX_COPY_RECIPIENTS",
       "OutboxDeliveryService",
       "OutboxService",
       "PrismaService",
+      "PrismaSignerAttestedNameAdapter",
       "RECIPIENT_COPY_TTL_MS",
       "RECIPIENT_INBOX_SESSION_EVENT",
+      "RECIPIENT_KINDS",
       "RECIPIENT_SESSION_TTL_MS",
       "RecipientInboxRepository",
       "ReminderLimitError",
       "ReminderNotAllowedError",
+      "SELF_SIGN_SESSION_ISSUED_EVENT",
+      "SELF_SIGN_SESSION_TTL_MS",
       "SENDER_DIRECTORY_PORT",
+      "SIGNER_ATTESTED_NAME_PORT",
+      "SIGNER_NAME_MODES",
       "SIGNING_INVITATION_MAX_ATTEMPTS",
       "SIGNING_NOTIFICATION_PORT",
+      "SIGNING_RECIPIENT_KINDS",
+      "SIGNING_RECIPIENT_WHERE",
       "SIGNING_SESSION_TTL_MS",
       "SIGNING_TOKEN_BYTES",
       "SIGN_IDEMPOTENCY_KEY_MAX",
       "SIGN_IDEMPOTENCY_TTL_MS",
       "SIGN_REMINDER_LIMITS",
       "STORAGE_ACCOUNTING_PORT",
+      "SenderFieldPassthroughRefusedError",
+      "SessionIssueRefusedError",
       "SignContactDuplicateError",
       "SignContactRepository",
       "SignIdempotencyRepository",
@@ -2145,6 +2169,7 @@
       "SignSavedSignatureRepository",
       "SignWebhookRepository",
       "SignatureFieldIncompleteError",
+      "SignatureFieldValueRefusedError",
       "SignerNotFoundError",
       "SignerNotYetEligibleError",
       "SigningInvitationService",
@@ -2154,24 +2179,37 @@
       "WEBHOOK_DELIVERY_PORT",
       "abuseReportConfig",
       "abuseReporterKey",
+      "allSigningRecipientsSigned",
       "applyReminderLimits",
       "backoffMs",
       "canonicalSignEventType",
       "computeEventHash",
       "contactEmailKey",
+      "copyRecipients",
       "currentDisclosure",
+      "currentTurnOf",
+      "currentTurnSignerId",
       "emailDomainOf",
       "envelopeExpiresAt",
       "envelopeReminderAvailableAt",
+      "evaluateSignerFieldRules",
       "findDisclosure",
       "generateSigningToken",
       "hashSigningToken",
       "idempotencyRequestHash",
+      "invitedAtSend",
       "isAbuseReportReason",
+      "isCopyRecipient",
+      "isLinkSigner",
+      "isServerFilledName",
+      "isSigningRecipient",
       "listDisclosures",
+      "mayActNow",
       "nextReminderAt",
+      "recipientKindOf",
       "reminderHistory",
       "signBaseUrl",
+      "signingRecipients",
       "signingSessionExpiresAt",
       "toLifecycleEvent",
       "weighReport"
@@ -6445,6 +6483,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/documents/src/tests/m-a6-field-definition-immutability.integration.spec.ts",
+        "project": "documents",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/documents/src/tests/offer-start-prestart-doctype-seed.integration.spec.ts",
         "project": "documents",
         "status": "excluded"
@@ -7591,6 +7635,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/signer-field-rules.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/aramo-sign-allowance.gate.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -7622,6 +7672,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/esign-sender.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/m-a6-from-template-roles.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -8785,6 +8841,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/envelope-field-mapper.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/m-a6-from-template-roles.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -10082,6 +10144,12 @@
         "status": "excluded"
       },
       {
+        "excludedBy": "src/**/*.spec.ts",
+        "from": "apps/sign-web/src/workspace/pages/field-config.spec.ts",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
         "excludedBy": "src/**/*.spec.tsx",
         "from": "apps/sign-web/src/workspace/routes/LoginPage.spec.tsx",
         "project": "aramo-sign-web",
@@ -10633,6 +10701,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/launch-lifecycle.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/m-a6-from-template-roles.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -12396,6 +12470,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/esign-sender.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/esign-signer-source.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -12409,6 +12489,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/launch-lifecycle.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/m-a6-from-template-roles.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

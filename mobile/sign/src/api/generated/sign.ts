@@ -263,6 +263,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/signing/copy": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * A copy recipient's view of the documents sent for signature (ON_SEND copy).
+         * @description Aramo-Sign-Unified-Product-Amendment-M-A5 §2.2 — authorized by the COPY_VIEW access token from the RECIPIENT_COPY email (not a signing session). Returns the SOURCE documents only, base64: values are stamped only at completion, so they carry no signer data. No recipient list, signer data, tenant id or internal id is returned. Refused (401) for an unknown or expired token, an executed-copy token, and a draft, voided, declined or expired envelope. Only the token's hash is stored; tenant is resolved server-side; each use is counted.
+         */
+        post: operations["getRecipientCopy"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/signing/disclosure": {
         parameters: {
             query?: never;
@@ -294,7 +314,7 @@ export interface paths {
         put?: never;
         /**
          * Fill one of the signer's own fields.
-         * @description Token-authorized and disclosure-gated, under the envelope row lock with a live session; only this signer's field can be filled, and the value replaces any earlier one until the signer completes. value is the typed text, the date, or the signature / initials image as a PNG or JPEG data URL; signature_method records how a SIGNATURE or INITIALS value was made. A saved signature (/v1/sign/me/signature) is a convenience only: the value is always sent here and copied into the signing record.
+         * @description Token-authorized and disclosure-gated, under the envelope row lock with a live session; only this signer's field can be filled, and the value replaces any earlier one until the signer completes. value is the typed text, the date, or the signature / initials image as a PNG or JPEG data URL; signature_method records how a SIGNATURE or INITIALS value was made. A saved signature (/v1/sign/me/signature) is a convenience only: the value is always sent here and copied into the signing record. M-A6 §2 — a CHECKBOX or ACKNOWLEDGEMENT value is 'true' (checked) or 'false' (unchecked; unchecking is allowed), anything else is refused with 400 reason checkbox_value_invalid. A SIGNER_NAME field with name_mode SIGNER_PROFILE is filled by the server and any value sent for it is refused with 400 reason signer_profile_name_server_filled.
          */
         post: operations["fillSignerField"];
         delete?: never;
@@ -314,7 +334,7 @@ export interface paths {
         put?: never;
         /**
          * Finish signing for this signer.
-         * @description Token-authorized and disclosure-gated. Every required field of this signer must be filled (409 SIGNATURE_FIELD_INCOMPLETE otherwise). When this was the last signer the envelope is executed and envelope_status is COMPLETED; otherwise it is IN_PROGRESS and, when signing in order, the next signer is invited.
+         * @description Token-authorized and disclosure-gated. Every required field of this signer must be filled (409 SIGNATURE_FIELD_INCOMPLETE otherwise). M-A6 §2.3 — a required check box must be checked; a SELECT_ONE group needs exactly one box checked when required (never more than one); a required group needs at least min_selected boxes checked (default 1). The failing rule is details.reason: required_field_unfilled, checkbox_required_unchecked, checkbox_group_select_one or checkbox_group_min_selected (with details.group_key for a group). The server fills every SIGNER_PROFILE name field of the signer when they complete. When this was the last signer the envelope is executed and envelope_status is COMPLETED; otherwise it is IN_PROGRESS and, when signing in order, the next signer is invited.
          */
         post: operations["completeSigner"];
         delete?: never;
@@ -549,7 +569,7 @@ export interface paths {
         get?: never;
         /**
          * Replace the recipients of a DRAFT envelope.
-         * @description Keeps listed existing ids, creates new recipients, deletes the rest with their fields. List position is the signing order (used when the envelope signs in order). 1 to 10 recipients with distinct emails. DRAFT only. Requires sign:envelope:create. Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
+         * @description Keeps listed existing ids, creates new recipients, deletes the rest with their fields. List position is the signing order (used when the envelope signs in order). Up to 10 signing recipients and 10 copy recipients, with distinct emails across all kinds. DRAFT only. Requires sign:envelope:create. Aramo-Sign-Unified-Product-Amendment-M-A5 §1 / §2 / §4 — each item may carry recipient_kind (omitted = SIGNER), copy_delivery (required iff RECEIVES_COPY; 400 copy_delivery_required / copy_delivery_not_allowed) and assign_to_me (the server binds the caller only when this recipient's email is the caller's verified account email: 403 assign_to_me_email_mismatch; SIGNER only: 400 assign_to_me_not_signer). Email is optional for an IN_PERSON_SIGNER only. 400 too_many_signers / too_many_copy_recipients / invalid_recipient_kind. Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
          */
         put: operations["replaceSenderRecipients"];
         post?: never;
@@ -569,7 +589,7 @@ export interface paths {
         get?: never;
         /**
          * Replace the positioned fields of a DRAFT envelope.
-         * @description Each field box must lie inside its real source page. PDF-native geometry. DRAFT only. Requires sign:envelope:create. Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
+         * @description Each field box must lie inside its real source page. PDF-native geometry. DRAFT only. Requires sign:envelope:create. M-A6 §2 — field types SIGNATURE, INITIALS, SIGN_DATE, TEXT, SIGNER_NAME and CHECKBOX (400 v1_field_type otherwise), except that an engine-only field returned by the detail may be sent back unchanged with its id (SenderFieldPassthrough). A sender never supplies a value (400 sender_value_refused). name_mode applies to SIGNER_NAME only and label, group_key, group_rule and min_selected to CHECKBOX only (400 field_config_not_applicable); other 400 reasons: name_mode_invalid, checkbox_label_invalid, checkbox_group_invalid, checkbox_group_required, checkbox_group_inconsistent, checkbox_group_min_exceeds_size. Aramo-Sign-Unified-Product-Amendment-M-A5 §1.5 — a recipient who receives a copy has no fields (400 copy_recipient_has_fields). Sign Mobile M-A3 §6 — If-Match is required for native tokens (428 precondition_required) and enforced whenever sent (412 revision_mismatch).
          */
         put: operations["replaceSenderFields"];
         post?: never;
@@ -613,6 +633,46 @@ export interface paths {
          * @description Same envelope; prior links are revoked and a fresh link is emailed. With signer_id, only that signer; without, every unsigned signer who may sign now (when signing in order, only the signer whose turn it is). Requires sign:envelope:send. Sign Mobile M-A3 §7 — at least 60 minutes between reminders to the same signer and at most 5 reminders per envelope in any rolling 24 hours, web and mobile alike, enforced atomically under the envelope row lock (429 reminder_cooldown | reminder_daily_limit, with retry_after_seconds and retry_at). Without signer_id, signers still in their cooldown are skipped. With an Idempotency-Key a replay returns the first response and does not count again.
          */
         post: operations["remindSenderEnvelope"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/envelopes/{id}/hosted-sessions": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a hosted (in-person) signing session.
+         * @description Aramo-Sign-Unified-Product-Amendment-M-A5 §3 — for an IN_PERSON_SIGNER of a SENT / IN_PROGRESS envelope whose turn it is. Requires sign:envelope:send, the right to change the envelope (owner, or sign:envelope:manage:all) and the sign.in_person_signing capability (403 ESIGN_FEATURE_NOT_AVAILABLE). Revokes the signer's other live sessions, mints a 30-minute HOSTED session (never past the envelope's expiry) and appends HOSTED_SESSION_STARTED (actor SERVICE, the host). The token is returned only in this response; the signer then uses the guest signing routes with it, and a hosted session's disclosure needs attested_name. Refusals carry details.reason - 404 signer_not_found; 409 not_in_person_signer / envelope_not_signable / signer_ineligible / not_your_turn.
+         */
+        post: operations["startHostedSigningSession"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/sender/envelopes/{id}/self-sign-session": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a self-sign session for the recipient assigned to the caller.
+         * @description Aramo-Sign-Unified-Product-Amendment-M-A5 §4 — "Sign a document". Requires sign:envelope:send and the right to change the envelope; the recipient must be bound to the caller by Assign to me (sign:envelope:manage:all never substitutes: 403 not_bound_to_you) and the caller's verified account email must still equal the recipient email (403 email_not_verified). The envelope must be signable and (in order) it must be that recipient's turn (409 envelope_not_signable / signer_ineligible / not_your_turn). Mints a 30-minute SELF session and appends SELF_SIGN_SESSION_ISSUED; the emailed link stays valid. signer_id is optional (the first recipient bound to the caller).
+         */
+        post: operations["startSelfSignSession"];
         delete?: never;
         options?: never;
         head?: never;
@@ -732,7 +792,7 @@ export interface paths {
         };
         /**
          * Document templates the organization can start an envelope from (DOC-TEMPLATE-LIB-1 T-5).
-         * @description Requires document_template:read (Sign Sender, Sign Admin, Tenant Admin, Tenant Owner). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while the sign.templates plan capability is not available. Templates are Documents-owned: sign-service reads them through the Documents API (signed service-to-service); for each document type the organization's active choice (client → organization → Aramo default) is listed with its variables — ORGANIZATION (from the organization profile) or SENDER (filled in when the envelope is created).
+         * @description Requires document_template:read (Sign Sender, Sign Admin, Tenant Admin, Tenant Owner). Refused with ESIGN_FEATURE_NOT_AVAILABLE (403) while the sign.templates plan capability is not available. Templates are Documents-owned: sign-service reads them through the Documents API (signed service-to-service). Amendment M-A6 §3.1 (ADR-0034 D6 amended for Sign listing): EVERY ACTIVE template the organization may use (its own templates and the Aramo defaults it adopted) is listed and the user chooses; is_default marks the automatic per-type choice. Each item carries its variables — ORGANIZATION (from the organization profile) or SENDER (filled in when the envelope is created) — its signing roles and list metadata.
          */
         get: operations["listSenderTemplates"];
         put?: never;
@@ -774,7 +834,7 @@ export interface paths {
         put?: never;
         /**
          * Create a DRAFT envelope from a document template (DOC-TEMPLATE-LIB-1 T-5).
-         * @description Requires sign:envelope:create and document_template:read; refused for a PERSONAL tenant and while sign.templates is not available. Documents (apps/api) renders the template with the organization's branding and the sender's values into a frozen revision pinned to the exact template version; the draft's document references it (CORE_REF). With `signer`, that first signer is added and the template's signature area is placed for them. Idempotent on idempotency_key for the render.
+         * @description Requires sign:envelope:create and document_template:read; refused for a PERSONAL tenant and while sign.templates is not available. Documents (apps/api) renders the template with the organization's branding and the sender's values into a frozen revision pinned to the exact template version; the draft's document references it (CORE_REF) and records the template + version (template provenance, M-A6 §3.6). With `signer`, that first signer is added and the template's signature area is placed for them. Amendment M-A6 §3.5 — with `recipients` (mutually exclusive with `signer`; only for a template with signing roles) each SIGNER role is bound to exactly one recipient (signing order = role order) and its signature blocks are placed for them; `cc` binds CC roles as copy recipients (delivery at completion); emails are distinct across all of them; `routing_mode`, `message` and `subject` default to the template's. Every refusal (details.reason: signer_and_recipients, recipients_required, template_has_roles, template_has_no_roles, unknown_role, role_not_signer, role_not_cc, role_bound_twice, role_unbound, duplicate_email, routing_mode_invalid, too_many_signers, too_many_copy_recipients) happens before the render. Idempotent on idempotency_key for the render.
          */
         post: operations["createSenderEnvelopeFromTemplate"];
         delete?: never;
@@ -2096,6 +2156,8 @@ export interface components {
             /** @description DOC-TEMPLATE-LIB-1 T-5 — plan capabilities by launch availability. templates = the sign.templates capability is available; while false every template route answers ESIGN_FEATURE_NOT_AVAILABLE (403). */
             features?: {
                 templates?: boolean;
+                /** @description Aramo-Sign-Unified-Product-Amendment-M-A5 §3.7 — the sign.in_person_signing capability (hosted signing) is available. */
+                in_person_signing?: boolean;
             };
             can_send: boolean;
             /** @description True only for a bound (ACTIVE) PERSONAL tenant while Personal sending is switched on (SIGN_PERSONAL_SIGNUP_MODE not off). */
@@ -2107,16 +2169,83 @@ export interface components {
             /** @description ORG-UX-1 §6 — Organization → Users & product access (the single role-assignment surface), or null. */
             organization_roles_url?: string | null;
         };
+        /** @description Amendment M-A6 §3.2 — a template signing role. SIGNER roles sign; CC roles receive a copy. */
+        SenderTemplateRole: {
+            role_key: string;
+            label: string;
+            /** @enum {string} */
+            kind: "SIGNER" | "CC";
+            order: number;
+        };
+        SenderTemplateSigning: {
+            roles: components["schemas"]["SenderTemplateRole"][];
+            /** @enum {string} */
+            routing_mode: "PARALLEL" | "SEQUENTIAL";
+            default_subject?: string;
+            default_message?: string;
+        };
+        SenderTemplateRoleBinding: {
+            role_key: string;
+            name: string;
+            email: string;
+        };
+        SenderTemplateSignatureField: {
+            /** @enum {string} */
+            field_type: "SIGNATURE" | "SIGNER_NAME" | "SIGN_DATE";
+            /** @description The SIGNER role of the block (templates with signing roles only). */
+            role_key?: string;
+            page_number: number;
+            x: number;
+            y: number;
+            width: number;
+            height: number;
+        };
+        SenderTemplateVariable: {
+            key: string;
+            label: string;
+            group: string;
+            /** @enum {string} */
+            source: "ORGANIZATION" | "SENDER";
+            value: string | null;
+        };
         SenderTemplateList: {
             items: {
                 /** Format: uuid */
                 template_id: string;
                 name: string;
+                description: string | null;
+                document_type: {
+                    /** Format: uuid */
+                    id: string;
+                    key: string;
+                    name: string;
+                };
                 /** @enum {string} */
                 owner_scope: "PLATFORM" | "TENANT";
+                /** @enum {string} */
+                resolution: "CLIENT_SELECTION" | "TENANT_SELECTION" | "PLATFORM_DEFAULT" | "WITHDRAWAL_FALLBACK" | "AVAILABLE";
+                /** @description The template the automatic per-type resolution picks (M-A6 §3.1). */
+                is_default: boolean;
+                /** Format: uuid */
+                version_id: string;
                 version_number: number;
+                /** Format: date-time */
+                updated_at: string;
+                variables: components["schemas"]["SenderTemplateVariable"][];
+                /** @description The document type's name (M-A6 §3.7). */
+                category: string;
+                signer_role_count: number;
+                cc_role_count: number;
+                document_count: number;
+                /** @enum {string} */
+                routing_mode: "PARALLEL" | "SEQUENTIAL";
+                signing: components["schemas"]["SenderTemplateSigning"] | null;
             }[];
-            unavailable: Record<string, never>[];
+            unavailable: {
+                /** Format: uuid */
+                document_type_id: string;
+                reason: string;
+            }[];
         };
         SignTokenRequest: {
             /** @enum {string} */
@@ -2207,8 +2336,10 @@ export interface components {
                 /** Format: uuid */
                 id: string;
                 name: string;
-                email: string;
+                /** @description Null only for an in-person signer without an email (M-A5 §3.5). */
+                email: string | null;
                 status: components["schemas"]["SenderRecipientStatus"];
+                recipient_kind: components["schemas"]["SenderRecipientKind"];
             }[];
         };
         /** @description Envelopes the caller may see, by status, over every tab (the same visibility as the list). A status with no envelope is absent (read it as 0). */
@@ -2227,6 +2358,26 @@ export interface components {
         SenderEnvelopeStatus: "DRAFT" | "SENT" | "IN_PROGRESS" | "COMPLETED" | "DECLINED" | "VOIDED" | "EXPIRED";
         /** @enum {string} */
         SenderRecipientStatus: "PENDING" | "VIEWED" | "SIGNED" | "DECLINED";
+        /**
+         * @description Aramo-Sign-Unified-Product-Amendment-M-A5 §1 — SIGNER signs through an emailed link; IN_PERSON_SIGNER signs on the host's device (hosted session); RECEIVES_COPY never signs (no fields, no session, no turn, never reminded, never blocks completion).
+         * @enum {string}
+         */
+        SenderRecipientKind: "SIGNER" | "IN_PERSON_SIGNER" | "RECEIVES_COPY";
+        /**
+         * @description M-A5 §2.1 — when a copy recipient receives their copy.
+         * @enum {string}
+         */
+        SenderCopyDelivery: "ON_SEND" | "ON_COMPLETION" | "BOTH";
+        /** @description M-A5 §3.2 / §4.2 — a hosted or self-sign session. The token is a signing capability for the guest signing routes (/v1/sign/signing/*); it is returned only to the authenticated caller and must never be logged or shared. */
+        SenderIssuedSigningSession: {
+            /** @enum {string} */
+            session_origin: "HOSTED" | "SELF";
+            /** Format: uuid */
+            signer_id: string;
+            token: string;
+            /** Format: date-time */
+            expires_at: string;
+        };
         /** @description One page of a source PDF in PDF points - the page's MediaBox, the frame field geometry is placed and validated in (origin bottom-left). Pages are 0-based by position (pages[page_number]). */
         SenderPageSize: {
             width: number;
@@ -2250,7 +2401,13 @@ export interface components {
             /** Format: uuid */
             id: string;
             name: string;
-            email: string;
+            /** @description Null only for an in-person signer without an email (M-A5 §3.5). */
+            email: string | null;
+            recipient_kind: components["schemas"]["SenderRecipientKind"];
+            /** @description M-A5 §2.1 — set only for RECEIVES_COPY. */
+            copy_delivery: components["schemas"]["SenderCopyDelivery"] | null;
+            /** @description M-A5 §4.1 — this recipient is bound to the caller (Assign to me). The bound user id itself is never returned. */
+            assigned_to_me: boolean;
             status: components["schemas"]["SenderRecipientStatus"];
             /** @description The position in the signing order (used when the envelope signs in order). */
             signing_order: number;
@@ -2261,13 +2418,15 @@ export interface components {
             /** Format: date-time */
             declined_at: string | null;
             decline_reason: string | null;
-            /** @description An unsigned signer who may sign now (in an open envelope). */
+            /** @description An unsigned signer who may sign now (in an open envelope). Never a copy recipient or an in-person signer (M-A5). */
             can_remind: boolean;
             /**
              * Format: date-time
              * @description Sign Mobile M-A3 §7 — when a reminder to this signer is next allowed; null when allowed now or not remindable.
              */
             reminder_available_at: string | null;
+            /** @description Amendment M-A6 §3.5 — the template role this recipient was bound to (an envelope started from a template with roles); null otherwise. */
+            role_key?: string | null;
         };
         SenderExecutedDocuments: {
             /** Format: uuid */
@@ -2384,7 +2543,56 @@ export interface components {
             expires_at?: string | null;
             documents: components["schemas"]["SenderEnvelopeDocument"][];
             recipients: components["schemas"]["SenderEnvelopeRecipient"][];
-            fields: components["schemas"]["SenderFieldInput"][];
+            fields: components["schemas"]["SenderEnvelopeField"][];
+        };
+        /** @description A stored field of the envelope, as the sender detail returns it. Any of the seven engine types (fields from the service-to-service, Sign API and template paths keep theirs). PDF-native geometry - page_number 0-based, points, origin bottom-left. M-A6 §2 configuration is null where it does not apply. Other recipients' values are never returned. */
+        SenderEnvelopeField: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            envelope_document_id: string;
+            /** Format: uuid */
+            signer_id: string | null;
+            /** @enum {string} */
+            field_type: "SIGNATURE" | "INITIALS" | "SIGN_DATE" | "SIGNER_NAME" | "TEXT" | "CHECKBOX" | "ACKNOWLEDGEMENT";
+            page_number: number;
+            x: number;
+            y: number;
+            width: number | null;
+            height: number | null;
+            required: boolean;
+            filled: boolean;
+            /** @enum {string|null} */
+            name_mode?: "SIGNER_PROFILE" | "SIGNER_ENTERED" | null;
+            label?: string | null;
+            group_key?: string | null;
+            /** @enum {string|null} */
+            group_rule?: "SELECT_ONE" | "SELECT_ANY" | null;
+            min_selected?: number | null;
+        };
+        /** @description M-A6 §2 — an engine-only field (a type a sender cannot author, e.g. ACKNOWLEDGEMENT) sent back unchanged on the replace-all PUT. Kept as stored only when `id` names an existing field of the envelope and every other property is identical to the stored row (exactly as the detail returned it); otherwise refused with 400 v1_field_type. Omitting it removes it. */
+        SenderFieldPassthrough: {
+            /** Format: uuid */
+            id: string;
+            /** Format: uuid */
+            envelope_document_id: string;
+            /** Format: uuid */
+            signer_id: string | null;
+            /** @enum {string} */
+            field_type: "SIGNATURE" | "INITIALS" | "SIGN_DATE" | "SIGNER_NAME" | "TEXT" | "CHECKBOX" | "ACKNOWLEDGEMENT";
+            page_number: number;
+            x: number;
+            y: number;
+            width: number | null;
+            height: number | null;
+            required?: boolean;
+            /** @enum {string|null} */
+            name_mode?: "SIGNER_PROFILE" | "SIGNER_ENTERED" | null;
+            label?: string | null;
+            group_key?: string | null;
+            /** @enum {string|null} */
+            group_rule?: "SELECT_ONE" | "SELECT_ANY" | null;
+            min_selected?: number | null;
         };
         /** @description PDF-native geometry - page_number 0-based, points, origin bottom-left, (x, y) the box lower-left corner. */
         SenderFieldInput: {
@@ -2392,14 +2600,33 @@ export interface components {
             envelope_document_id: string;
             /** Format: uuid */
             signer_id: string;
-            /** @enum {string} */
-            field_type: "SIGNATURE" | "INITIALS" | "SIGN_DATE" | "SIGNER_NAME" | "TEXT" | "CHECKBOX" | "ACKNOWLEDGEMENT";
+            /**
+             * @description M-A6 §2.1 — the sender authoring types. ACKNOWLEDGEMENT is engine-only (the service-to-service and Sign API paths keep all seven engine types).
+             * @enum {string}
+             */
+            field_type: "SIGNATURE" | "INITIALS" | "SIGN_DATE" | "TEXT" | "SIGNER_NAME" | "CHECKBOX";
             page_number: number;
             x: number;
             y: number;
             width: number;
             height: number;
             required?: boolean;
+            /**
+             * @description M-A6 §2.2 — SIGNER_NAME only (default SIGNER_PROFILE: the server fills the signer's name; SIGNER_ENTERED: the signer types it). The sender never supplies a value.
+             * @enum {string|null}
+             */
+            name_mode?: "SIGNER_PROFILE" | "SIGNER_ENTERED" | null;
+            /** @description M-A6 §2.3 — CHECKBOX only; the caption printed in the certificate. */
+            label?: string | null;
+            /** @description M-A6 §2.3 — CHECKBOX only; boxes sharing a key form a group, which belongs to one recipient and shares one rule, minimum and required setting. */
+            group_key?: string | null;
+            /**
+             * @description M-A6 §2.3 — with group_key only (default SELECT_ANY).
+             * @enum {string|null}
+             */
+            group_rule?: "SELECT_ONE" | "SELECT_ANY" | null;
+            /** @description M-A6 §2.3 — with group_key only; the boxes a required group needs checked (default 1; 1 for SELECT_ONE). */
+            min_selected?: number | null;
         };
         SenderUploadedDocument: {
             /** Format: uuid */
@@ -3011,8 +3238,23 @@ export interface operations {
                             required?: boolean;
                             /** @description True once this signer has filled the field (lets the signer page restore progress). */
                             filled?: boolean;
-                            /** @description The signer's own entered value for their field (typed text, date, or drawn-signature data URL); null otherwise. */
+                            /** @description The signer's own entered value for their field (typed text, date, or drawn-signature data URL); null otherwise. M-A6 §2.4 — for a server-filled name (server_filled true) it is the name the server fills. Other signers' values are never returned. */
                             value?: string | null;
+                            /** @description M-A6 §2.3 — the check box caption (CHECKBOX only). */
+                            label?: string | null;
+                            /** @description M-A6 §2.3 — boxes sharing a key form a group (CHECKBOX only). */
+                            group_key?: string | null;
+                            /** @enum {string|null} */
+                            group_rule?: "SELECT_ONE" | "SELECT_ANY" | null;
+                            /** @description M-A6 §2.3 — the boxes a required group needs checked (null means 1). */
+                            min_selected?: number | null;
+                            /**
+                             * @description M-A6 §2.2 — SIGNER_NAME only; null for engine name fields, which the signer types.
+                             * @enum {string|null}
+                             */
+                            name_mode?: "SIGNER_PROFILE" | "SIGNER_ENTERED" | null;
+                            /** @description M-A6 §2.2 — true for a SIGNER_PROFILE name; shown read-only, never filled by the client. */
+                            server_filled?: boolean;
                         }[];
                         /** @description Sign Mobile M-A3 §3 — the sender's plain-text message (sender-supplied; not part of the signed document). Render as text, never markup. */
                         message?: string | null;
@@ -3145,6 +3387,44 @@ export interface operations {
             401: components["responses"]["Unauthorized"];
         };
     };
+    getRecipientCopy: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The source documents. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        subject: string;
+                        /** Format: date-time */
+                        sent_at: string | null;
+                        documents: {
+                            title: string;
+                            content_type: string;
+                            /** @description The source PDF, base64. */
+                            source_base64: string;
+                        }[];
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["Unauthorized"];
+        };
+    };
     acceptSignerDisclosure: {
         parameters: {
             query?: never;
@@ -3158,6 +3438,8 @@ export interface operations {
                     token: string;
                     disclosure_version: string;
                     disclosure_text_hash: string;
+                    /** @description Aramo-Sign-Unified-Product-Amendment-M-A5 §3.4 — required in a hosted (in-person) session: the name the signer confirms (400 attested_name_required without it). Ignored for other sessions. Kept with the acceptance; the ledger records only its sha256. */
+                    attested_name?: string;
                 };
             };
         };
@@ -3776,8 +4058,12 @@ export interface operations {
                         /** Format: uuid */
                         id?: string;
                         name: string;
-                        /** Format: email */
-                        email: string;
+                        /** @description Required unless recipient_kind is IN_PERSON_SIGNER. */
+                        email?: string | null;
+                        recipient_kind?: components["schemas"]["SenderRecipientKind"];
+                        copy_delivery?: components["schemas"]["SenderCopyDelivery"] | null;
+                        /** @description M-A5 §4.1 — Assign to me. The server sets the binding to the caller (never client-supplied) when the recipient email equals the caller's verified account email. Omitted or false clears it. */
+                        assign_to_me?: boolean;
                     }[];
                 };
             };
@@ -3818,7 +4104,7 @@ export interface operations {
         requestBody: {
             content: {
                 "application/json": {
-                    fields: components["schemas"]["SenderFieldInput"][];
+                    fields: (components["schemas"]["SenderFieldInput"] | components["schemas"]["SenderFieldPassthrough"])[];
                 };
             };
         };
@@ -3921,6 +4207,76 @@ export interface operations {
             409: components["responses"]["Conflict"];
             422: components["responses"]["IdempotencyKeyReuse"];
             429: components["responses"]["ReminderLimited"];
+        };
+    };
+    startHostedSigningSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    signer_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The hosted session. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderIssuedSigningSession"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+        };
+    };
+    startSelfSignSession: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** Format: uuid */
+                    signer_id?: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The self-sign session. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SenderIssuedSigningSession"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
         };
     };
     voidSenderEnvelope: {
@@ -4171,23 +4527,52 @@ export interface operations {
                         name: string;
                         email: string;
                     };
+                    /** @description M-A6 §3.5 — one recipient per SIGNER role of the template (mutually exclusive with signer). */
+                    recipients?: components["schemas"]["SenderTemplateRoleBinding"][];
+                    /** @description M-A6 §3.5 / M-A5 — copy recipients for CC roles of the template (delivery at completion). */
+                    cc?: components["schemas"]["SenderTemplateRoleBinding"][];
+                    /** @enum {string} */
+                    routing_mode?: "PARALLEL" | "SEQUENTIAL";
+                    message?: string | null;
                 };
             };
         };
         responses: {
-            /** @description The draft envelope (detail), the pinned template version and the template's signature areas. */
+            /** @description The draft envelope (detail), the pinned template version, the template's signature areas and its signing roles. */
             201: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": Record<string, never>;
+                    "application/json": {
+                        envelope: Record<string, never>;
+                        template: {
+                            /** Format: uuid */
+                            template_id: string;
+                            /** Format: uuid */
+                            version_id: string;
+                            version_number: number;
+                        };
+                        suggested_fields: components["schemas"]["SenderTemplateSignatureField"][];
+                        field_definitions: Record<string, never>[];
+                        signing: components["schemas"]["SenderTemplateSigning"] | null;
+                    };
                 };
             };
             400: components["responses"]["BadRequest"];
             401: components["responses"]["SenderUnauthorized"];
             403: components["responses"]["SenderForbidden"];
             404: components["responses"]["NotFound"];
+            409: components["responses"]["Conflict"];
+            /** @description A template value the Documents API refused. */
+            422: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
         };
     };
     issueSignAccessToken: {

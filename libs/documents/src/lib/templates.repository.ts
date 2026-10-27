@@ -24,8 +24,43 @@ function stableStringify(value: unknown): string {
   const obj = value as Record<string, unknown>;
   return `{${Object.keys(obj).sort().map((k) => `${JSON.stringify(k)}:${stableStringify(obj[k])}`).join(',')}}`;
 }
-function templateContentFingerprint(field_schema: unknown): string {
-  return createHash('sha256').update(stableStringify(field_schema ?? null)).digest('hex');
+// M-A6 (LOCKED) §3.4 — field definitions JOIN the fingerprint: adding, changing or
+// removing a TemplateFieldDefinition re-arms the preview gate like a content edit. A
+// version with NO field definitions hashes exactly as before (field_schema only), so
+// every existing rtr-generated-v1 / rtr-html-v1 fingerprint is unchanged.
+interface FingerprintField {
+  field_key: string;
+  field_type: string;
+  binding_key: string | null;
+  required: boolean;
+  page_number: number | null;
+  x: number | null;
+  y: number | null;
+  width: number | null;
+  height: number | null;
+  format_rule: string | null;
+  signer_role: string | null;
+  ordinal: number;
+}
+function templateContentFingerprint(field_schema: unknown, fields: readonly FingerprintField[] = []): string {
+  if (fields.length === 0) return createHash('sha256').update(stableStringify(field_schema ?? null)).digest('hex');
+  const field_definitions = [...fields]
+    .sort((a, b) => a.ordinal - b.ordinal || (a.field_key < b.field_key ? -1 : a.field_key > b.field_key ? 1 : 0))
+    .map((f) => ({
+      field_key: f.field_key,
+      field_type: f.field_type,
+      binding_key: f.binding_key,
+      required: f.required,
+      page_number: f.page_number,
+      x: f.x,
+      y: f.y,
+      width: f.width,
+      height: f.height,
+      format_rule: f.format_rule,
+      signer_role: f.signer_role,
+      ordinal: f.ordinal,
+    }));
+  return createHash('sha256').update(stableStringify({ field_schema: field_schema ?? null, field_definitions })).digest('hex');
 }
 
 // §41 race backstop — map a Postgres unique-violation on the one-DRAFT partial index
@@ -447,6 +482,14 @@ export class TemplatesRepository {
           },
         });
       }
+      // M-A6 §3.4 — the copied field definitions are part of the draft's fingerprint.
+      if (version.fields.length > 0) {
+        const withFields = await tx.templateVersion.update({
+          where: { id: draft.id },
+          data: { content_fingerprint: templateContentFingerprint(start.field_schema ?? null, version.fields) },
+        });
+        return { template, version: withFields };
+      }
       return { template, version: draft };
     });
   }
@@ -581,6 +624,7 @@ export class TemplatesRepository {
           ? {
               content_fingerprint: templateContentFingerprint(
                 input.field_schema !== undefined ? input.field_schema : (v.field_schema ?? null),
+                await this.fingerprintFields(input.version_id),
               ),
               previewed_fingerprint: null, // re-arm the preview gate on any content edit
             }
@@ -619,7 +663,8 @@ export class TemplatesRepository {
   private async recordPreviewFor(owner: TemplateOwner, version_id: string) {
     const v = await this.getVersionFor(owner, version_id);
     if (v.status !== 'DRAFT') throw new TemplateImmutableError(version_id);
-    const fp = v.content_fingerprint ?? templateContentFingerprint(v.field_schema ?? null);
+    // M-A6 §3.4 — the LIVE fingerprint (content + field definitions), never a stale stored one.
+    const fp = templateContentFingerprint(v.field_schema ?? null, await this.fingerprintFields(version_id));
     return this.prisma.templateVersion.update({
       where: { id: version_id },
       data: { content_fingerprint: fp, previewed_fingerprint: fp },
@@ -681,7 +726,9 @@ export class TemplatesRepository {
     if (v.status === 'ACTIVE') return v; // no-op
     if (v.status === 'RETIRED') throw new TemplateImmutableError(input.version_id);
     if (input.require_preview !== false) {
-      const currentFp = v.content_fingerprint ?? templateContentFingerprint(v.field_schema ?? null);
+      // M-A6 §3.4 — compared against the LIVE fingerprint (content + field definitions),
+      // so a field added after the preview re-arms the gate whoever wrote it.
+      const currentFp = templateContentFingerprint(v.field_schema ?? null, await this.fingerprintFields(input.version_id));
       if (v.previewed_fingerprint === null || v.previewed_fingerprint !== currentFp) {
         throw new TemplatePreviewRequiredError(input.version_id);
       }
@@ -1006,6 +1053,41 @@ export class TemplatesRepository {
   // known client, that client's templates first, then the tenant-wide ones. Within each
   // group most recently approved first (current version activated_at, then id). Rows
   // without a current version are excluded (the resolver pins current_version_id).
+  // Amendment M-A6 (LOCKED) §3.1 — ADR-0034 D6 amended for Sign listing only: every ACTIVE
+  // template the tenant may use for a document type — its own ACTIVE TENANT templates
+  // (tenant-wide, plus the client's when a client is named) and the Aramo (PLATFORM)
+  // defaults it adopted through a grandfathered selection (legacy_platform = true, the only
+  // way a PLATFORM template is usable after ORG-UX-1 §5.3), ACTIVE and not past
+  // withdraw_effective_at. Each row has a current version (the caller pins it). An explicit
+  // own-tenant ∪ PLATFORM union (ADR-0034 §4.1); the automatic resolution is untouched.
+  async listUsableTemplatesForTenant(tenant_id: string, document_type_id: string, client_id: string | null, now: Date) {
+    const clientScope = client_id === null ? [{ client_id: null }] : [{ client_id: null }, { client_id }];
+    const own = await this.prisma.documentTemplate.findMany({
+      where: { tenant_id, owner_scope: 'TENANT', document_type_id, status: 'ACTIVE', current_version_id: { not: null }, OR: clientScope },
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
+    });
+    const adopted = await this.prisma.tenantTemplateSelection.findMany({
+      where: { tenant_id, document_type_id, legacy_platform: true, OR: clientScope },
+      select: { template_id: true },
+    });
+    const platform =
+      adopted.length === 0
+        ? []
+        : await this.prisma.documentTemplate.findMany({
+            where: {
+              id: { in: [...new Set(adopted.map((a) => a.template_id))] },
+              owner_scope: 'PLATFORM',
+              tenant_id: null,
+              document_type_id,
+              status: 'ACTIVE',
+              current_version_id: { not: null },
+              OR: [{ withdraw_effective_at: null }, { withdraw_effective_at: { gt: now } }],
+            },
+            orderBy: [{ name: 'asc' }, { id: 'asc' }],
+          });
+    return [...own, ...platform];
+  }
+
   async listTenantFallbackTemplates(tenant_id: string, document_type_id: string, client_id: string | null) {
     const rows = await this.prisma.documentTemplate.findMany({
       where: {
@@ -1040,7 +1122,7 @@ export class TemplatesRepository {
     const v = await this.getVersion(input.tenant_id, input.template_version_id);
     // A field is content: it cannot be added once the version is ACTIVE.
     if (v.status !== 'DRAFT') throw new TemplateImmutableError(input.template_version_id);
-    return this.prisma.templateFieldDefinition.create({
+    const created = await this.prisma.templateFieldDefinition.create({
       data: {
         id: randomUUID(),
         template_version_id: input.template_version_id,
@@ -1058,6 +1140,19 @@ export class TemplatesRepository {
         ordinal: input.ordinal,
       },
     });
+    // M-A6 §3.4 — a field is content: it joins the fingerprint and re-arms the preview gate.
+    await this.prisma.templateVersion.update({
+      where: { id: input.template_version_id },
+      data: {
+        content_fingerprint: templateContentFingerprint(v.field_schema ?? null, await this.fingerprintFields(input.template_version_id)),
+        previewed_fingerprint: null,
+      },
+    });
+    return created;
+  }
+
+  private async fingerprintFields(template_version_id: string): Promise<FingerprintField[]> {
+    return this.prisma.templateFieldDefinition.findMany({ where: { template_version_id }, orderBy: { ordinal: 'asc' } });
   }
 
   async listFields(tenant_id: string, template_version_id: string) {

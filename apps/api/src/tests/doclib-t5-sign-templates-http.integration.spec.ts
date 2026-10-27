@@ -43,6 +43,18 @@ function documentsMigrations(): string[] {
 const SECRET = 'doclib-t5-s2s-secret';
 const TENANT_A = '01900000-0000-7000-8000-0000000000f5';
 const TENANT_B = '01900000-0000-7000-8000-0000000000f6';
+// Amendment M-A6 §3.1–§3.3 — a tenant with several ACTIVE templates (one with roles).
+const TENANT_C = '01900000-0000-7000-8000-0000000000f7';
+const SENDER_C = '00000000-0000-7000-8000-00000000f7c1';
+const ROLES_SIGNING = {
+  roles: [
+    { role_key: 'client', label: 'Client', kind: 'SIGNER', order: 1 },
+    { role_key: 'agency', label: 'Agency', kind: 'SIGNER', order: 2 },
+    { role_key: 'hr_copy', label: 'HR copy', kind: 'CC', order: 3 },
+  ],
+  routing_mode: 'SEQUENTIAL',
+  default_subject: 'Please sign the agreement',
+};
 const SENDER_A = '00000000-0000-7000-8000-00000000f5a1';
 const SENDER_B = '00000000-0000-7000-8000-00000000f6b1';
 const RTR = 'd0c50005-0000-7000-8000-000000000001';
@@ -64,6 +76,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-TEMPLATE-LIB-
   let brandedVersionId = '';
   let ownB = '';
   let ownBVersion = '';
+  let plainC = '';
+  let rolesC = '';
+  let rolesCVersion = '';
+  let draftC = '';
   const objects = new Map<string, Buffer>();
 
   const url = (p: string): string => `http://127.0.0.1:${port}${p}`;
@@ -98,7 +114,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-TEMPLATE-LIB-
     for (const p of resolveIdentityMigrations(ROOT)) await db.query(readFileSync(p, 'utf8'));
     for (const entitlementMigration of ENTITLEMENT_MIGRATIONS) await db.query(readFileSync(entitlementMigration, 'utf8'));
     for (const p of documentsMigrations()) await db.query(readFileSync(p, 'utf8'));
-    for (const t of [TENANT_A, TENANT_B]) await ensureWriteFreezeTenant((s) => db.query(s), t);
+    for (const t of [TENANT_A, TENANT_B, TENANT_C]) await ensureWriteFreezeTenant((s) => db.query(s), t);
     await db.query(`UPDATE identity."Tenant" SET display_name = 'Acme Branded Staffing', legal_name = 'Acme Staffing LLC', city = 'Springfield' WHERE id = $1`, [TENANT_A]);
 
     const def = await db.query(`SELECT id::text FROM documents."DocumentTemplate" WHERE owner_scope = 'PLATFORM' AND document_type_id = $1`, [RTR]);
@@ -145,6 +161,39 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-TEMPLATE-LIB-
     await db.query(
       `INSERT INTO documents."TenantTemplateSelection" (id, tenant_id, document_type_id, client_id, template_id, selected_by, selected_at) VALUES ($1, $2, $3, NULL, $4, $5, now())`,
       [randomUUID(), TENANT_B, RTR, ownB, SENDER_B],
+    );
+
+    // Tenant C (M-A6): a selected plain template, an ACTIVE template with signing roles,
+    // and a DRAFT template — the DRAFT is never offered.
+    async function tenantTemplate(name: string, status: 'ACTIVE' | 'DRAFT', fieldSchema: unknown, renderSchema: string): Promise<{ id: string; version: string }> {
+      const id = randomUUID();
+      const version = randomUUID();
+      await db.query(
+        `INSERT INTO documents."DocumentTemplate" (id, tenant_id, owner_scope, document_type_id, client_id, name, description, template_kind, status, current_version_id, created_by, updated_at)
+         VALUES ($1, $2, 'TENANT', $3, NULL, $4, $5, 'GENERATED', $6, NULL, $7, now())`,
+        [id, TENANT_C, RTR, name, `${name} description`, status, SENDER_C],
+      );
+      await db.query(
+        `INSERT INTO documents."TemplateVersion" (id, tenant_id, template_id, version_number, status, render_schema_version, field_schema, created_by, activated_at)
+         VALUES ($1, $2, $3, 1, $4, $5, $6::jsonb, $7, ${status === 'ACTIVE' ? 'now()' : 'NULL'})`,
+        [version, TENANT_C, id, status, renderSchema, JSON.stringify(fieldSchema), SENDER_C],
+      );
+      if (status === 'ACTIVE') await db.query(`UPDATE documents."DocumentTemplate" SET current_version_id = $2 WHERE id = $1`, [id, version]);
+      return { id, version };
+    }
+    plainC = (await tenantTemplate('Gamma RTR', 'ACTIVE', { render_schema_version: 'rtr-generated-v1', title: 'Gamma RTR', blocks: [{ type: 'TEXT', text: 'Gamma represents {{talent.full_name}}.' }] }, 'rtr-generated-v1')).id;
+    const roles = await tenantTemplate(
+      'Gamma Mutual Agreement',
+      'ACTIVE',
+      { render_schema_version: 'rtr-html-v1', title: 'Mutual Agreement', html: '<p>Agreement for <span data-field="requisition.title"></span>.</p>', logo: null, signing: ROLES_SIGNING },
+      'rtr-html-v1',
+    );
+    rolesC = roles.id;
+    rolesCVersion = roles.version;
+    draftC = (await tenantTemplate('Gamma Draft', 'DRAFT', { render_schema_version: 'rtr-generated-v1', title: 'Draft', blocks: [{ type: 'TEXT', text: 'Draft.' }] }, 'rtr-generated-v1')).id;
+    await db.query(
+      `INSERT INTO documents."TenantTemplateSelection" (id, tenant_id, document_type_id, client_id, template_id, selected_by, selected_at) VALUES ($1, $2, $3, NULL, $4, $5, now())`,
+      [randomUUID(), TENANT_C, RTR, plainC, SENDER_C],
     );
 
     savedEnv = { DATABASE_URL: process.env['DATABASE_URL'], ARAMO_ENV: process.env['ARAMO_ENV'], SIGN_WEBHOOK_SIGNING_SECRET: process.env['SIGN_WEBHOOK_SIGNING_SECRET'], SIGN_S2S_AUTH_MODE: process.env['SIGN_S2S_AUTH_MODE'] };
@@ -278,6 +327,78 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('DOC-TEMPLATE-LIB-
     expect(await docCount(TENANT_A)).toBe(1);
     // Tenant B never sees tenant A's Document.
     expect(await docCount(TENANT_B)).toBe(0);
+  });
+
+  // ── Amendment M-A6 §3.1–§3.3, §3.7 ─────────────────────────────────────────────
+  it('M-A6 list — every ACTIVE template the tenant may use; the automatic choice is flagged; DRAFTs and other tenants\' templates never appear', async () => {
+    const c = await list(TENANT_C);
+    expect(c.status).toBe(200);
+    const items = c.body['items'] as Array<Record<string, unknown>>;
+    expect(items.map((i) => i['template_id']).sort()).toEqual([plainC, rolesC].sort());
+    expect(items.some((i) => i['template_id'] === draftC || i['template_id'] === ownB || i['template_id'] === defaultId)).toBe(false);
+    const plain = items.find((i) => i['template_id'] === plainC) as Record<string, unknown>;
+    const roles = items.find((i) => i['template_id'] === rolesC) as Record<string, unknown>;
+    expect(plain).toMatchObject({ is_default: true, resolution: 'TENANT_SELECTION', signer_role_count: 1, cc_role_count: 0, document_count: 1, routing_mode: 'PARALLEL', signing: null });
+    expect(roles).toMatchObject({
+      is_default: false,
+      resolution: 'AVAILABLE',
+      description: 'Gamma Mutual Agreement description',
+      category: (roles['document_type'] as { name: string }).name,
+      signer_role_count: 2,
+      cc_role_count: 1,
+      document_count: 1,
+      routing_mode: 'SEQUENTIAL',
+      version_id: rolesCVersion,
+    });
+    expect((roles['signing'] as { roles: Array<{ role_key: string }> }).roles.map((r) => r.role_key)).toEqual(['client', 'agency', 'hr_copy']);
+    // The printed name is Sign-filled for a template with roles: no talent.full_name variable.
+    expect((roles['variables'] as Array<{ key: string }>).map((v) => v.key)).toEqual(['requisition.title']);
+    // Tenants A and B are unchanged (one template each).
+    expect(((await list(TENANT_A)).body['items'] as unknown[]).length).toBe(1);
+    expect(((await list(TENANT_B)).body['items'] as unknown[]).length).toBe(1);
+  });
+
+  it('M-A6 preview — a non-default usable template previews with its roles; another tenant cannot', async () => {
+    const res = await post('preview', TENANT_C, rolesC, { values: { 'requisition.title': 'Analyst' } });
+    expect(res.status).toBe(200);
+    expect((res.body['signing'] as { routing_mode: string }).routing_mode).toBe('SEQUENTIAL');
+    const plain = await post('preview', TENANT_C, plainC, { values: {} });
+    expect(plain.body['signing']).toBeNull();
+    expect((await post('preview', TENANT_A, rolesC, { values: {} })).status).toBe(404);
+    expect((await post('preview', TENANT_C, draftC, { values: {} })).status).toBe(404);
+  });
+
+  it('M-A6 render — one block per SIGNER role (SIGNATURE / SIGNER_NAME / SIGN_DATE with role_key), MULTI_SIGNATURE', async () => {
+    const before = await docCount(TENANT_C);
+    const res = await post('render', TENANT_C, rolesC, { values: { 'requisition.title': 'Analyst' }, created_by: SENDER_C, client_id: null }, { idempotency_key: 'roles-0001' });
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ template_id: rolesC, template_version_id: rolesCVersion });
+    const fields = res.body['signature_fields'] as Array<{ field_type: string; role_key?: string }>;
+    expect(fields.map((f) => `${f.role_key}:${f.field_type}`)).toEqual([
+      'client:SIGNATURE',
+      'client:SIGNER_NAME',
+      'client:SIGN_DATE',
+      'agency:SIGNATURE',
+      'agency:SIGNER_NAME',
+      'agency:SIGN_DATE',
+    ]);
+    expect((res.body['signing'] as { roles: unknown[] }).roles).toHaveLength(3);
+    const doc = await db.query(`SELECT execution_mode FROM documents."Document" WHERE id = $1`, [res.body['document_id']]);
+    expect(doc.rows[0].execution_mode).toBe('MULTI_SIGNATURE');
+    expect(await docCount(TENANT_C)).toBe(before + 1);
+    // Another tenant can never render it.
+    expect((await post('render', TENANT_A, rolesC, { values: { 'requisition.title': 'A' }, created_by: SENDER_A, client_id: null }, { idempotency_key: 'roles-x-0001' })).status).toBe(404);
+  });
+
+  it('M-A6 render — a template without roles keeps the single block (no role_key, SIGNATURE + SIGN_DATE), SINGLE_SIGNATURE', async () => {
+    const res = await post('render', TENANT_C, plainC, { values: { 'talent.full_name': 'Jordan Signer' }, created_by: SENDER_C, client_id: null }, { idempotency_key: 'plain-0001' });
+    expect(res.status).toBe(201);
+    const fields = res.body['signature_fields'] as Array<Record<string, unknown>>;
+    expect(fields.map((f) => f['field_type'])).toEqual(['SIGNATURE', 'SIGN_DATE']);
+    expect(fields.every((f) => !('role_key' in f))).toBe(true);
+    expect(res.body['signing']).toBeNull();
+    const doc = await db.query(`SELECT execution_mode FROM documents."Document" WHERE id = $1`, [res.body['document_id']]);
+    expect(doc.rows[0].execution_mode).toBe('SINGLE_SIGNATURE');
   });
 
   it('a missing signing secret fails closed (503)', async () => {

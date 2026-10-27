@@ -39,5 +39,9 @@ export {
   type SignTemplateRenderResponse,
   type SignTemplateSignatureField,
   type SignTemplateFieldDefinition,
+  type SignTemplateRole,
+  type SignTemplateRoleKind,
+  type SignTemplateRoutingMode,
+  type SignTemplateSigning,
   signTemplateBodyDigest,
 } from './lib/sign-template-library.contract.js';

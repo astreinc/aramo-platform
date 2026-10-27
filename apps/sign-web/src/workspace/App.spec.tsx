@@ -237,6 +237,102 @@ describe('Sign workspace App', () => {
     expect((calls[0]?.body as Record<string, unknown>)['values']).not.toHaveProperty('organization.name');
   });
 
+  // Amendment M-A6 §3.5 / §3.7 — a template with signing roles: list metadata, one person
+  // per signing role (copy roles optional), routing + message from the template, sent as
+  // recipients / cc (never the single signer).
+  it('Templates — list metadata of a multi-role template (signers, copies, routing)', async () => {
+    const base = stubFetch(ctx({ features: { templates: true }, permissions: { read: true, create: true, send: true, templates: true } }));
+    const tpl = {
+      template_id: 'tpl-2', name: 'Mutual Agreement', description: 'Two-party agreement',
+      document_type: { id: 'dt', key: 'RIGHT_TO_REPRESENT', name: 'Right to Represent' },
+      owner_scope: 'TENANT', resolution: 'AVAILABLE', is_default: false, version_id: 'v1', version_number: 1, updated_at: '2026-10-21T00:00:00Z',
+      variables: [{ key: 'requisition.title', label: 'Requisition title', group: 'Requisition', source: 'SENDER', value: null }],
+      category: 'Right to Represent', signer_role_count: 2, cc_role_count: 1, document_count: 1, routing_mode: 'SEQUENTIAL',
+      signing: {
+        roles: [
+          { role_key: 'client', label: 'Client', kind: 'SIGNER', order: 1 },
+          { role_key: 'agency', label: 'Agency', kind: 'SIGNER', order: 2 },
+          { role_key: 'hr_copy', label: 'HR copy', kind: 'CC', order: 3 },
+        ],
+        routing_mode: 'SEQUENTIAL',
+        default_message: 'Please sign',
+      },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const u = String(input);
+        if (u.endsWith('/v1/sign/sender/templates')) return json({ items: [tpl], unavailable: [] });
+        return base(input, init);
+      }),
+    );
+    renderAt('/sign/templates');
+    expect(await screen.findByTestId('template-meta-tpl-2')).toHaveTextContent('2 signers · 1 copy · signs in order');
+  });
+
+  it('Use template — multi-role binding: every signing role needs a person; distinct emails; recipients + cc are sent', async () => {
+    const base = stubFetch(ctx({ features: { templates: true }, permissions: { read: true, create: true, send: true, templates: true } }));
+    const calls: Array<{ url: string; body: unknown }> = [];
+    const tpl = {
+      template_id: 'tpl-2', name: 'Mutual Agreement', description: null,
+      document_type: { id: 'dt', key: 'RIGHT_TO_REPRESENT', name: 'Right to Represent' },
+      owner_scope: 'TENANT', resolution: 'AVAILABLE', is_default: false, version_id: 'v1', version_number: 1, updated_at: '2026-10-21T00:00:00Z',
+      variables: [],
+      category: 'Right to Represent', signer_role_count: 2, cc_role_count: 1, document_count: 1, routing_mode: 'SEQUENTIAL',
+      signing: {
+        roles: [
+          { role_key: 'client', label: 'Client', kind: 'SIGNER', order: 1 },
+          { role_key: 'agency', label: 'Agency', kind: 'SIGNER', order: 2 },
+          { role_key: 'hr_copy', label: 'HR copy', kind: 'CC', order: 3 },
+        ],
+        routing_mode: 'SEQUENTIAL',
+        default_message: 'Please sign',
+      },
+    };
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const u = String(input);
+        if (u.endsWith('/v1/sign/sender/templates')) return json({ items: [tpl], unavailable: [] });
+        if (u.endsWith('/v1/sign/sender/envelopes/from-template')) {
+          calls.push({ url: u, body: JSON.parse(String(init?.body ?? '{}')) });
+          return json({ envelope: { id: 'env-10' }, template: { template_id: 'tpl-2', version_id: 'v1', version_number: 1 }, suggested_fields: [], signing: tpl.signing }, 201);
+        }
+        return base(input, init);
+      }),
+    );
+    renderAt('/sign/templates/tpl-2/use');
+    await screen.findByTestId('template-roles');
+    expect(screen.queryByLabelText('First signer’s name (optional)')).toBeNull();
+    const create = screen.getByTestId('create-from-template');
+    expect(create).toBeDisabled();
+    fireEvent.change(screen.getByTestId('role-name-client'), { target: { value: 'Casey Client' } });
+    fireEvent.change(screen.getByTestId('role-email-client'), { target: { value: 'casey@client.test' } });
+    fireEvent.change(screen.getByTestId('role-name-agency'), { target: { value: 'Avery Agency' } });
+    fireEvent.change(screen.getByTestId('role-email-agency'), { target: { value: 'CASEY@client.test' } });
+    expect(create).toBeDisabled();
+    fireEvent.change(screen.getByTestId('role-email-agency'), { target: { value: 'avery@agency.test' } });
+    expect(create).not.toBeDisabled();
+    fireEvent.change(screen.getByTestId('role-name-hr_copy'), { target: { value: 'HR' } });
+    expect(create).toBeDisabled();
+    fireEvent.change(screen.getByTestId('role-email-hr_copy'), { target: { value: 'hr@client.test' } });
+    expect(screen.getByTestId('template-routing')).toHaveValue('SEQUENTIAL');
+    expect(screen.getByTestId('template-message')).toHaveValue('Please sign');
+    fireEvent.click(create);
+    await waitFor(() => expect(calls).toHaveLength(1));
+    expect(calls[0]?.body).toMatchObject({
+      template_id: 'tpl-2',
+      recipients: [
+        { role_key: 'client', name: 'Casey Client', email: 'casey@client.test' },
+        { role_key: 'agency', name: 'Avery Agency', email: 'avery@agency.test' },
+      ],
+      cc: [{ role_key: 'hr_copy', name: 'HR', email: 'hr@client.test' }],
+      routing_mode: 'SEQUENTIAL',
+      message: 'Please sign',
+    });
+    expect(calls[0]?.body).not.toHaveProperty('signer');
+  });
+
   it('Templates — available but no document_template:read: no access message', async () => {
     vi.stubGlobal('fetch', stubFetch(ctx({ features: { templates: true }, permissions: { read: true, create: true, send: true, templates: false } })));
     renderAt('/sign/templates');
@@ -253,6 +349,81 @@ describe('send readiness (mirrors the server)', () => {
   });
   it('needs a document and a signer', () => {
     expect(readinessOf({ documents: [], recipients: [], fields: [] } as unknown as EnvelopeDetail).items.map((i) => i.t)).toEqual(['Add at least one document', 'Add at least one signer']);
+  });
+  // Aramo-Sign-Unified-Product-Amendment-M-A5 §1.5 / §6.2 — the mirror excludes copy recipients.
+  it('a copy recipient is not a signer, needs no field, and must have none', () => {
+    const withCopy = { ...base, recipients: [{ id: 's1', name: 'Alex' }, { id: 'c1', name: 'Casey', recipient_kind: 'RECEIVES_COPY', copy_delivery: 'ON_SEND' }] } as unknown as EnvelopeDetail;
+    expect(readinessOf(withCopy)).toMatchObject({ ok: true });
+    expect(readinessOf(withCopy).items[1]?.t).toBe('1 signer(s)');
+    const onlyCopy = { ...base, recipients: [{ id: 'c1', name: 'Casey', recipient_kind: 'RECEIVES_COPY' }], fields: [] } as unknown as EnvelopeDetail;
+    expect(readinessOf(onlyCopy).items.map((i) => i.t)).toContain('Add at least one signer');
+    const copyWithField = { ...withCopy, fields: [...base.fields, { signer_id: 'c1', field_type: 'TEXT' }] } as unknown as EnvelopeDetail;
+    expect(readinessOf(copyWithField).items.at(-1)).toEqual({ ok: false, t: 'Casey receives a copy and cannot have fields' });
+  });
+});
+
+// M-A5 §6.2 — the web Role select: Receives a copy (with timing) and Assign to me. In
+// person is not offered on the web this release.
+describe('envelope wizard — recipient roles (M-A5)', () => {
+  beforeEach(() => configureAuthConsumer('sign'));
+  afterEach(() => vi.unstubAllGlobals());
+
+  const DRAFT = {
+    id: 'e9',
+    subject: 'Roles',
+    status: 'DRAFT',
+    created_at: '2026-10-01T00:00:00Z',
+    sent_at: null,
+    completed_at: null,
+    declined_at: null,
+    voided_at: null,
+    expires_at: null,
+    signing_window_days: 7,
+    sender: { id: 'u1', name: 'Priya Nair' },
+    editable: true,
+    routing_mode: 'PARALLEL',
+    next_signer_id: null,
+    documents: [],
+    recipients: [
+      { id: 'r1', name: 'Priya Nair', email: 'priya@northwind.test', status: 'PENDING', signing_order: 1, recipient_kind: 'SIGNER', copy_delivery: null, assigned_to_me: false },
+      { id: 'r2', name: 'Casey', email: 'casey@x.test', status: 'PENDING', signing_order: 2, recipient_kind: 'SIGNER', copy_delivery: null, assigned_to_me: false },
+    ],
+    fields: [],
+  };
+
+  it('saves Receives a copy with its timing and Assign to me for the signed-in user only', async () => {
+    const puts: unknown[] = [];
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
+        const url = String(input);
+        if (url.includes('/auth/sign/session')) return json(SESSION);
+        if (url.endsWith('/v1/sign/sender/context')) return json(ctx());
+        if (url.endsWith('/v1/sign/sender/envelopes/e9/recipients') && init?.method === 'PUT') {
+          puts.push(JSON.parse(String(init.body)));
+          return json(DRAFT);
+        }
+        if (url.endsWith('/v1/sign/sender/envelopes/e9')) return json(DRAFT);
+        return json({ items: [] });
+      }),
+    );
+    renderAt('/sign/envelopes/e9/edit?step=2');
+    const roles = await screen.findAllByTestId('recipient-role');
+    expect(roles).toHaveLength(2);
+    expect(screen.queryByRole('option', { name: /in person/i })).not.toBeInTheDocument();
+    // Only the signed-in user's own row offers Assign to me.
+    expect(screen.getAllByTestId('assign-to-me')).toHaveLength(1);
+    fireEvent.click(screen.getByTestId('assign-to-me'));
+    fireEvent.change(roles[1]!, { target: { value: 'RECEIVES_COPY' } });
+    fireEvent.change(await screen.findByTestId('copy-timing'), { target: { value: 'BOTH' } });
+    fireEvent.click(screen.getByTestId('recipients-continue'));
+    await waitFor(() => expect(puts).toHaveLength(1));
+    expect(puts[0]).toEqual({
+      recipients: [
+        { id: 'r1', name: 'Priya Nair', email: 'priya@northwind.test', recipient_kind: 'SIGNER', copy_delivery: null, assign_to_me: true },
+        { id: 'r2', name: 'Casey', email: 'casey@x.test', recipient_kind: 'RECEIVES_COPY', copy_delivery: 'BOTH' },
+      ],
+    });
   });
 });
 

@@ -9,6 +9,8 @@ export {
   type SenderEnvelopeListFilter,
   type SenderRecipientInput,
   type SenderFieldInput,
+  type TemplateRecipientInput,
+  type TemplateFieldInput,
   type SenderDocumentRow,
   type DocumentPageSize,
   DELETED_DRAFT_SUBJECT,
@@ -59,6 +61,23 @@ export {
 } from './lib/ports/execution-producer.port.js';
 export { ExecutionService } from './lib/execution.service.js';
 export {
+  SIGNER_ATTESTED_NAME_PORT,
+  type SignerAttestedNamePort,
+  type SignerAttestedNameQuery,
+} from './lib/ports/signer-attested-name.port.js';
+// M-A6 §2.2 × M-A5 §3.4 — default binding: HOSTED attested name from the disclosure acceptance.
+export { PrismaSignerAttestedNameAdapter } from './lib/prisma-signer-attested-name.adapter.js';
+export {
+  CHECKBOX_GROUP_RULES,
+  SIGNER_NAME_MODES,
+  evaluateSignerFieldRules,
+  isServerFilledName,
+  type CheckboxGroupRule,
+  type SignerNameMode,
+  type FieldRuleRow,
+  type FieldRuleViolation,
+} from './lib/domain/field-rules.js';
+export {
   EVENT_PUBLISHER_PORT,
   LocalEventPublisher,
   type EventPublisherPort,
@@ -103,6 +122,8 @@ export {
   SigningSessionExpiredError,
   DisclosureNotAcceptedError,
   SignatureFieldIncompleteError,
+  SignatureFieldValueRefusedError,
+  SenderFieldPassthroughRefusedError,
   EsignIdempotencyConflictError,
   EnvelopeAmbiguousError,
   ReminderNotAllowedError,
@@ -182,7 +203,38 @@ export {
   IdempotencyRequestInProgressError,
   type ReminderLimitReason,
   type InboxSigningRefusal,
+  SessionIssueRefusedError,
+  AttestedNameRequiredError,
+  type SessionIssueRefusal,
 } from './lib/domain/envelope-contract-errors.js';
+// Aramo-Sign-Unified-Product-Amendment-M-A5 — recipient kinds and the shared
+// signing-recipient / current-turn rule.
+export {
+  RECIPIENT_KINDS,
+  SIGNING_RECIPIENT_KINDS,
+  COPY_DELIVERIES,
+  MAX_COPY_RECIPIENTS,
+  HOSTED_SESSION_TTL_MS,
+  SELF_SIGN_SESSION_TTL_MS,
+  COPY_DELIVERY_ISSUED_EVENT,
+  HOSTED_SESSION_STARTED_EVENT,
+  SELF_SIGN_SESSION_ISSUED_EVENT,
+  SIGNING_RECIPIENT_WHERE,
+  recipientKindOf,
+  isSigningRecipient,
+  isCopyRecipient,
+  isLinkSigner,
+  signingRecipients,
+  copyRecipients,
+  allSigningRecipientsSigned,
+  currentTurnOf,
+  currentTurnSignerId,
+  mayActNow,
+  invitedAtSend,
+  type RecipientKind,
+  type CopyDelivery,
+  type SessionOrigin,
+} from './lib/domain/recipients.js';
 export {
   SIGN_REMINDER_LIMITS,
   applyReminderLimits,

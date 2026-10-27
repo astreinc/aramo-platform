@@ -7,6 +7,12 @@
 //     SIGNER_NAME, TEXT, CHECKBOX, ACKNOWLEDGEMENT.
 //   - Only the signer's own fields are returned by /v1/sign/signing/document, so only they
 //     render or can be tapped (other signers' values are never shown, C-2).
+//   - M-A6 §2: a check box toggles 'true' / 'false' (unchecking is sent as 'false'); a
+//     SELECT_ONE group keeps at most one box checked; Finish mirrors the server's
+//     completion rules (required box checked; a required group has min_selected boxes,
+//     exactly one for SELECT_ONE). A SIGNER_PROFILE name is filled by the server: it is
+//     shown read-only and never sent. Any other name is typed by the signer — it is
+//     never prefilled from the signed-in account.
 
 export const FIELD_TYPES = [
   'SIGNATURE',
@@ -32,6 +38,14 @@ export interface SigningField {
   readonly required: boolean;
   readonly filled?: boolean;
   readonly value?: string | null;
+  /** M-A6 §2.4 — field configuration (absent from older servers). */
+  readonly label?: string | null;
+  readonly group_key?: string | null;
+  readonly group_rule?: string | null;
+  readonly min_selected?: number | null;
+  readonly name_mode?: string | null;
+  /** M-A6 §2.2 — the server fills this field (a SIGNER_PROFILE name). */
+  readonly server_filled?: boolean;
 }
 
 export interface SigningDocument {
@@ -43,7 +57,7 @@ export interface SigningDocument {
 export type SignatureMethod = 'TYPED' | 'DRAWN';
 
 export interface FieldValue {
-  /** What the fill call sends: PNG data URL, ISO date, text, or 'true'. */
+  /** What the fill call sends: PNG data URL, ISO date, text, or 'true' / 'false'. */
   readonly value: string;
   readonly method?: SignatureMethod;
   /** Already stored server-side from an earlier visit (no need to resubmit unchanged). */
@@ -112,20 +126,84 @@ export function initialState(
   return { fields: ordered, values, currentId: null, adopted: {} };
 }
 
-export function isFilled(s: SigningState, id: string): boolean {
-  return s.values[id] !== undefined;
+const CHECK_TYPES: ReadonlySet<string> = new Set(['CHECKBOX', 'ACKNOWLEDGEMENT']);
+
+/** M-A6 §2.2 — a name the server fills (shown read-only, never sent). */
+export function isServerFilled(f: SigningField): boolean {
+  return (
+    f.server_filled === true || (f.field_type === 'SIGNER_NAME' && f.name_mode === 'SIGNER_PROFILE')
+  );
 }
 
+/** A check box that belongs to a group. */
+function groupOf(f: SigningField): string | null {
+  return f.field_type === 'CHECKBOX' && typeof f.group_key === 'string' && f.group_key
+    ? f.group_key
+    : null;
+}
+
+/** True when a check box holds 'true'. */
+export function isChecked(s: SigningState, id: string): boolean {
+  return s.values[id]?.value === 'true';
+}
+
+/** The field shows a value (an unchecked box shows as empty). */
+export function isFilled(s: SigningState, id: string): boolean {
+  const v = s.values[id];
+  if (v === undefined) return false;
+  const f = s.fields.find((x) => x.field_id === id);
+  return f !== undefined && CHECK_TYPES.has(f.field_type) ? v.value === 'true' : true;
+}
+
+/**
+ * The units Finish needs, mirroring the server's completion rules (M-A6 §2.3): each
+ * required ungrouped field the signer fills, and each required check-box group (a group
+ * is required when any of its boxes is). A server-filled name is never a unit.
+ */
+interface RequiredUnit {
+  readonly fields: readonly SigningField[];
+  readonly done: boolean;
+}
+
+function requiredUnits(s: SigningState): RequiredUnit[] {
+  const units: RequiredUnit[] = [];
+  const groups = new Map<string, SigningField[]>();
+  for (const f of s.fields) {
+    if (isServerFilled(f)) continue;
+    const g = groupOf(f);
+    if (g !== null) {
+      groups.set(g, [...(groups.get(g) ?? []), f]);
+      continue;
+    }
+    if (f.required) units.push({ fields: [f], done: isFilled(s, f.field_id) });
+  }
+  for (const boxes of groups.values()) {
+    const checked = boxes.filter((b) => isChecked(s, b.field_id)).length;
+    const one = boxes[0]?.group_rule === 'SELECT_ONE';
+    // SELECT_ONE never allows more than one checked box, required or not.
+    if (one && checked > 1) {
+      units.push({ fields: boxes, done: false });
+      continue;
+    }
+    if (!boxes.some((b) => b.required)) continue;
+    const min = one ? 1 : Math.max(1, ...boxes.map((b) => b.min_selected ?? 1));
+    units.push({ fields: boxes, done: checked >= min });
+  }
+  return units;
+}
+
+/** One representative field per required unit (a group counts once). */
 export function requiredFields(s: SigningState): SigningField[] {
-  return s.fields.filter((f) => f.required);
+  return requiredUnits(s).flatMap((u) => (u.fields[0] ? [u.fields[0]] : []));
 }
 
 export function requiredDone(s: SigningState): number {
-  return requiredFields(s).filter((f) => isFilled(s, f.field_id)).length;
+  return requiredUnits(s).filter((u) => u.done).length;
 }
 
 export function requiredRemaining(s: SigningState): number {
-  return requiredFields(s).length - requiredDone(s);
+  const units = requiredUnits(s);
+  return units.length - units.filter((u) => u.done).length;
 }
 
 export function canFinish(s: SigningState): boolean {
@@ -137,7 +215,12 @@ export function nextEmptyRequired(
   s: SigningState,
   afterId: string | null = null,
 ): SigningField | null {
-  const empty = (f: SigningField) => f.required && !isFilled(s, f.field_id);
+  const open = new Set(
+    requiredUnits(s)
+      .filter((u) => !u.done)
+      .flatMap((u) => u.fields.map((f) => f.field_id)),
+  );
+  const empty = (f: SigningField) => open.has(f.field_id) && !isChecked(s, f.field_id);
   const start = afterId ? s.fields.findIndex((f) => f.field_id === afterId) : -1;
   for (let i = 1; i <= s.fields.length; i += 1) {
     const f = s.fields[(start + i + s.fields.length) % s.fields.length];
@@ -176,9 +259,9 @@ export function displayOf(
   if (v.value.startsWith('data:image/')) return { kind: 'image', text: v.value };
   switch (f.field_type) {
     case 'CHECKBOX':
-      return { kind: 'mark', text: '✓' };
+      return v.value === 'true' ? { kind: 'mark', text: '✓' } : null;
     case 'ACKNOWLEDGEMENT':
-      return { kind: 'mark', text: ACK_TEXT };
+      return v.value === 'true' ? { kind: 'mark', text: ACK_TEXT } : null;
     case 'SIGN_DATE':
       return { kind: 'text', text: displayDate(v.value) };
     default:
@@ -189,14 +272,23 @@ export function displayOf(
 /** VoiceOver / TalkBack: "{Type}, for {signer}, {required|optional}, {empty|filled}" (§7). */
 export function fieldAnnouncement(s: SigningState, f: SigningField, signerName: string): string {
   const who = signerName.trim() ? signerName.trim() : 'you';
-  return `${fieldLabel(f.field_type)}, for ${who}, ${f.required ? 'required' : 'optional'}, ${
-    isFilled(s, f.field_id) ? 'filled' : 'empty'
-  }`;
+  const label = f.field_type === 'CHECKBOX' && f.label ? ` "${f.label}"` : '';
+  const state = CHECK_TYPES.has(f.field_type)
+    ? isChecked(s, f.field_id)
+      ? 'checked'
+      : 'not checked'
+    : isServerFilled(f)
+      ? 'filled for you'
+      : isFilled(s, f.field_id)
+        ? 'filled'
+        : 'empty';
+  return `${fieldLabel(f.field_type)}${label}, for ${who}, ${f.required ? 'required' : 'optional'}, ${state}`;
 }
 
 /** The empty-field caption (handoff §4.4 "The user's fields"). */
 export function emptyCaption(f: SigningField): string {
   if (f.field_type === 'ACKNOWLEDGEMENT') return 'Tap to acknowledge';
+  if (f.field_type === 'CHECKBOX' && f.label) return f.required ? f.label : `${f.label} · optional`;
   return f.required ? fieldLabel(f.field_type) : `${fieldLabel(f.field_type)} · optional`;
 }
 
@@ -226,14 +318,19 @@ export function tapField(
 ): { state: SigningState; effect: TapEffect } {
   const f = s.fields.find((x) => x.field_id === fieldId);
   if (!f) return { state: s, effect: { kind: 'none' } };
-  const filled = isFilled(s, fieldId);
   const focused = { ...s, currentId: fieldId };
-  if (f.field_type === 'TEXT') {
+  // M-A6 §2.2 — the server fills this name; the signer cannot change it.
+  if (isServerFilled(f)) return { state: focused, effect: { kind: 'none' } };
+  // M-A6 §2.3 — a check box toggles; unchecking is sent as 'false'.
+  if (CHECK_TYPES.has(f.field_type)) return { state: toggleCheck(s, f), effect: { kind: 'none' } };
+  // A name the signer types (never prefilled from the signed-in account).
+  if (f.field_type === 'TEXT' || f.field_type === 'SIGNER_NAME') {
     return {
       state: focused,
       effect: { kind: 'text', fieldId, initial: s.values[fieldId]?.value ?? '' },
     };
   }
+  const filled = isFilled(s, fieldId);
   if (filled) return { state: withValue(s, fieldId, null), effect: { kind: 'none' } };
   switch (f.field_type) {
     case 'SIGNATURE':
@@ -251,19 +348,40 @@ export function tapField(
         state: withValue(s, fieldId, { value: localIsoDate(ctx.today) }),
         effect: { kind: 'none' },
       };
-    case 'SIGNER_NAME':
-      if (ctx.signerName.trim())
-        return {
-          state: withValue(s, fieldId, { value: ctx.signerName.trim() }),
-          effect: { kind: 'none' },
-        };
-      return { state: focused, effect: { kind: 'text', fieldId, initial: '' } };
-    case 'CHECKBOX':
-    case 'ACKNOWLEDGEMENT':
-      return { state: withValue(s, fieldId, { value: 'true' }), effect: { kind: 'none' } };
     default:
       return { state: focused, effect: { kind: 'text', fieldId, initial: '' } };
   }
+}
+
+/**
+ * Check or uncheck a box. Checking a box of a SELECT_ONE group unchecks the others. A
+ * box the server never stored goes back to empty when unchecked; one the server holds is
+ * set to 'false' so the uncheck reaches the server.
+ */
+export function toggleCheck(s: SigningState, f: SigningField): SigningState {
+  const off = (id: string): FieldValue | null =>
+    s.values[id]?.fromServer || s.fields.find((x) => x.field_id === id)?.filled === true
+      ? { value: 'false' }
+      : null;
+  if (isChecked(s, f.field_id)) return withValue(s, f.field_id, off(f.field_id));
+  let next = s;
+  const g = groupOf(f);
+  if (g !== null && f.group_rule === 'SELECT_ONE') {
+    for (const other of s.fields) {
+      if (
+        other.field_id !== f.field_id &&
+        groupOf(other) === g &&
+        isChecked(next, other.field_id)
+      ) {
+        const values = { ...next.values };
+        const v = off(other.field_id);
+        if (v === null) delete values[other.field_id];
+        else values[other.field_id] = v;
+        next = { ...next, values };
+      }
+    }
+  }
+  return withValue(next, f.field_id, { value: 'true' });
 }
 
 /** Save from the text sheet; saving empty clears the field. */
@@ -305,7 +423,7 @@ export function fillsToSubmit(
   const out: { fieldId: string; value: string; method?: SignatureMethod }[] = [];
   for (const f of s.fields) {
     const v = s.values[f.field_id];
-    if (!v || v.fromServer) continue;
+    if (!v || v.fromServer || isServerFilled(f)) continue;
     out.push(
       v.method
         ? { fieldId: f.field_id, value: v.value, method: v.method }

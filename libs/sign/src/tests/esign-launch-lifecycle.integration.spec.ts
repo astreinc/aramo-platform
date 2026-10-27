@@ -295,4 +295,63 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Aramo Sign launch
       expect(grants.rows[0].n).toBe(0);
     });
   });
+
+  // Aramo-Sign-Unified-Product-Amendment-M-A5 §2.2–§2.5 — copy recipients: the ON_SEND
+  // email (RECIPIENT_COPY), the completion copy with copy wording (ON_COMPLETION / BOTH
+  // only), the end notices (ON_SEND / BOTH only), and an in-person signer without an
+  // email who receives nothing by email.
+  async function addCopies(envelopeId: string) {
+    const ids: Record<string, string> = {};
+    for (const [i, cd] of (['ON_SEND', 'ON_COMPLETION', 'BOTH'] as const).entries()) {
+      ids[cd] = randomUUID();
+      await prisma.signer.create({ data: { id: ids[cd]!, tenant_id: TENANT, envelope_id: envelopeId, email: `cc-${cd.toLowerCase()}@x.test`, name: `CC ${cd}`, signing_order: 10 + i, status: 'PENDING', recipient_kind: 'RECEIVES_COPY', copy_delivery: cd } });
+    }
+    return ids;
+  }
+
+  it('M-A5: copies at send and at completion go only to the right copy recipients, with copy wording; the ledger ends at ENVELOPE_COMPLETED', async () => {
+    const env = await repo.createEnvelope({ tenant_id: TENANT, subject: 'Copies', execution_mode: 'SINGLE_SIGNATURE', created_by: SENDER_USER });
+    const doc = await repo.addDocument({ tenant_id: TENANT, envelope_id: env.id, source_mode: 'OWNED', source_object_key: `k/${env.id}`, content_type: 'application/pdf', byte_size: 10, title: 'c.pdf', source_sha256: 'abc', ordinal: 1 });
+    const signer = await repo.addSigner({ tenant_id: TENANT, envelope_id: env.id, email: 'signer@x.test', name: 'Signer', signing_order: 1 });
+    const field = await repo.addField({ tenant_id: TENANT, envelope_document_id: doc.id, signer_id: signer.id, field_type: 'SIGNATURE', page_number: 0, x: 72, y: 100, required: true });
+    const cc = await addCopies(env.id);
+    const out = await service.send(TENANT, env.id, SENDER_USER);
+    expect(out.copies.map((c) => c.signer_id).sort()).toEqual([cc['ON_SEND'], cc['BOTH']].sort());
+    await notifications.copiesIssued(TENANT, env.id, out.copies);
+    const atSend = notifier.sent.filter((n) => n.kind === 'RECIPIENT_COPY');
+    expect(atSend.map((n) => n.to_email).sort()).toEqual(['cc-both@x.test', 'cc-on_send@x.test']);
+    expect(atSend.every((n) => n.recipient_role === 'COPY' && n.copy_url?.startsWith('https://sign.example.test/c/') === true)).toBe(true);
+    notifier.sent.length = 0;
+    const ctx = await service.exchangeToken(out.sessions[0]!.raw_token);
+    await service.acceptDisclosure(ctx, { disclosure_version: DISCLOSURE.version, disclosure_text_hash: DISCLOSURE.text_sha256 });
+    await service.fillField(ctx, field.id, { value: 'Signed', signature_method: 'TYPED' });
+    expect((await service.completeSigner(ctx)).envelope_status).toBe('COMPLETED');
+    const completed = notifier.sent.filter((n) => n.kind === 'SIGNATURE_COMPLETED' && (n.audience ?? 'SIGNER') === 'SIGNER');
+    expect(completed.map((n) => [n.to_email, n.recipient_role ?? 'SIGNER']).sort()).toEqual([
+      ['cc-both@x.test', 'COPY'],
+      ['cc-on_completion@x.test', 'COPY'],
+      ['signer@x.test', 'SIGNER'],
+    ]);
+    // Recorded as deliveries only — no ledger event after ENVELOPE_COMPLETED.
+    const kinds = (await deliveries(env.id)).filter((d) => d.notification_kind === 'SIGNATURE_COMPLETED' && d.signer_id !== null).map((d) => d.signer_id);
+    expect(kinds).toHaveLength(3);
+    const last = (await db.query(`SELECT event_type FROM "sign"."SignatureEvent" WHERE envelope_id=$1 ORDER BY occurred_at DESC, id DESC LIMIT 1`, [env.id])).rows[0];
+    expect(last.event_type).toBe('ENVELOPE_COMPLETED');
+  });
+
+  it('M-A5: a void notice reaches ON_SEND / BOTH copy recipients only; an in-person signer without an email gets no email', async () => {
+    const e = await sendEnvelope({ signers: 1, owned: true });
+    const cc = await addCopies(e.envelopeId);
+    await prisma.signer.create({ data: { id: randomUUID(), tenant_id: TENANT, envelope_id: e.envelopeId, email: null, name: 'Walk-in', signing_order: 20, status: 'PENDING', recipient_kind: 'IN_PERSON_SIGNER' } });
+    notifier.sent.length = 0;
+    await service.voidEnvelope(TENANT, e.envelopeId, SENDER_USER, 'withdrawn');
+    await notifications.envelopeVoided(TENANT, e.envelopeId, 'withdrawn');
+    const voided = notifier.sent.filter((n) => n.kind === 'SIGNATURE_VOIDED');
+    expect(voided.map((n) => [n.to_email, n.recipient_role ?? 'SIGNER']).sort()).toEqual([
+      ['cc-both@x.test', 'COPY'],
+      ['cc-on_send@x.test', 'COPY'],
+      ['s1@x.test', 'SIGNER'],
+    ]);
+    expect(cc['ON_COMPLETION']).toBeDefined();
+  });
 });

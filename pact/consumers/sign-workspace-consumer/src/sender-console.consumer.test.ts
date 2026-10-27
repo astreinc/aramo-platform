@@ -38,7 +38,8 @@ const { like, uuid, integer, eachLike, regex } = MatchersV3;
 //   3. POST /v1/sign/sender/envelopes                       201 { id, status, subject }
 //   4. POST /v1/sign/sender/envelopes/{id}/documents        201 UploadedDocument
 //   5. PUT  /v1/sign/sender/envelopes/{id}/recipients       200 EnvelopeDetail
-//   6. PUT  /v1/sign/sender/envelopes/{id}/fields           200 EnvelopeDetail
+//   6. PUT  /v1/sign/sender/envelopes/{id}/fields           200 EnvelopeDetail (also M-A6: CHECKBOX with
+//      label + SELECT_ONE group, and SIGNER_NAME with name_mode SIGNER_PROFILE)
 //   7. POST /v1/sign/sender/envelopes/{id}/send             200 EnvelopeDetail (SENT)
 //   8. POST /v1/sign/sender/envelopes/{id}/void             200 EnvelopeDetail (VOIDED)
 //   9. GET  /v1/sign/sender/envelopes (no session)          401 AUTH_REQUIRED
@@ -57,6 +58,8 @@ const { like, uuid, integer, eachLike, regex } = MatchersV3;
 //  16. PATCH /v1/sign/sender/envelopes/{id} (stale If-Match) 412 revision_mismatch
 //  17. POST  /v1/sign/sender/contacts                       201 SenderContact
 // Privacy Notice 1.1 remediation E-6 — the in-service notice of an upcoming legal version:
+// Aramo-Sign-Unified-Product-Amendment-M-A5 §1 / §2 / §7:
+//  19. PUT   /v1/sign/sender/envelopes/{id}/recipients (a signer + a copy recipient with its timing)
 //  18. GET   /v1/sign/legal/notices                         200 { notices: [] } (nothing announced:
 //      the shipped upcoming-change list is empty; legalApi.notices of apps/sign-web/src/workspace/api.ts)
 
@@ -95,6 +98,10 @@ const VOID_ENVELOPE_ID = 'e5000000-0000-7000-8000-0000000000f1';
 const ETAG_ENVELOPE_ID = 'e5000000-0000-7000-8000-000000000101';
 const MESSAGE_ENVELOPE_ID = 'e5000000-0000-7000-8000-000000000111';
 const STALE_ENVELOPE_ID = 'e5000000-0000-7000-8000-000000000121';
+// M-A6 §2 — Name and Checkbox authoring: one draft (document + recipient) each.
+const CHECKBOX_ENVELOPE_ID = 'e5000000-0000-7000-8000-000000000131';
+const NAME_ENVELOPE_ID = 'e5000000-0000-7000-8000-000000000141';
+const childOf = (envelopeId: string, n: number): string => `${envelopeId.slice(0, -1)}${String(n)}`;
 
 const ISO = '^\\d{4}-\\d{2}-\\d{2}T\\d{2}:\\d{2}:\\d{2}(\\.\\d+)?Z$';
 const iso = (example: string) => regex(ISO, example);
@@ -322,6 +329,46 @@ describe('esign-web → PUT /v1/sign/sender/envelopes/{id}/recipients', () => {
   });
 });
 
+// Aramo-Sign-Unified-Product-Amendment-M-A5 §1 / §2 — recipient kinds: a copy
+// recipient (with its copy timing) beside a signer; omitted kind = SIGNER.
+describe('esign-web → PUT recipients with a copy recipient (M-A5)', () => {
+  it('replaces the draft recipients with a signer and a recipient who receives a copy', async () => {
+    const recipients = {
+      recipients: [
+        { name: 'Jane Doe', email: 'jane@example.com', recipient_kind: 'SIGNER', copy_delivery: null },
+        { name: 'Casey Copy', email: 'casey@example.com', recipient_kind: 'RECEIVES_COPY', copy_delivery: 'ON_COMPLETION' },
+      ],
+    };
+    await provider
+      .addInteraction()
+      .given('a sender draft envelope exists', { envelope_id: RECIPIENTS_ENVELOPE_ID })
+      .uponReceiving('a recipients replace with a copy recipient from the Aramo Sign console')
+      .withRequest('PUT', `${BASE}/envelopes/${RECIPIENTS_ENVELOPE_ID}/recipients`, (b) => {
+        b.headers(JSON_HEADERS).jsonBody(recipients);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          id: RECIPIENTS_ENVELOPE_ID,
+          status: 'DRAFT',
+          recipients: [
+            { id: uuid('e5000000-0000-7000-8000-0000000000d4'), name: 'Jane Doe', email: 'jane@example.com', status: 'PENDING', signing_order: 1, recipient_kind: 'SIGNER', copy_delivery: null, assigned_to_me: false, can_remind: false },
+            { id: uuid('e5000000-0000-7000-8000-0000000000d5'), name: 'Casey Copy', email: 'casey@example.com', status: 'PENDING', signing_order: 2, recipient_kind: 'RECEIVES_COPY', copy_delivery: 'ON_COMPLETION', assigned_to_me: false, can_remind: false },
+          ],
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}${BASE}/envelopes/${RECIPIENTS_ENVELOPE_ID}/recipients`, {
+          method: 'PUT',
+          headers: JSON_HEADERS,
+          body: JSON.stringify(recipients),
+        });
+        expect(res.status).toBe(200);
+        const body = (await res.json()) as { recipients: { recipient_kind: string }[] };
+        expect(body.recipients.map((r) => r.recipient_kind)).toEqual(['SIGNER', 'RECEIVES_COPY']);
+      });
+  });
+});
+
 // Aramo-Sign-Multi-Signer-Amendment §5/§8 — several signers, and signing in order.
 describe('esign-web → multiple signers', () => {
   it('replaces the draft recipients with three signers (each with its own signing position)', async () => {
@@ -420,6 +467,105 @@ describe('esign-web → PUT /v1/sign/sender/envelopes/{id}/fields', () => {
         expect(res.status).toBe(200);
         const body = (await res.json()) as { fields: { field_type: string }[] };
         expect(body.fields[0]?.field_type).toBe('SIGNATURE');
+      });
+  });
+});
+
+// M-A6 §2 — the sender authors Name and Checkbox fields with their configuration
+// (never a value). The response echoes the stored configuration on each field.
+describe('esign-web → PUT /v1/sign/sender/envelopes/{id}/fields (M-A6 Name and Checkbox)', () => {
+  it('stores a check box with its label and group', async () => {
+    const box = (y: number) => ({
+      envelope_document_id: childOf(CHECKBOX_ENVELOPE_ID, 2),
+      signer_id: childOf(CHECKBOX_ENVELOPE_ID, 3),
+      field_type: 'CHECKBOX',
+      page_number: 0,
+      x: 72,
+      y,
+      width: 14,
+      height: 14,
+      required: true,
+      label: 'Option',
+      group_key: 'plan',
+      group_rule: 'SELECT_ONE',
+    });
+    const body = { fields: [box(100), box(130)] };
+    await provider
+      .addInteraction()
+      .given('a sender draft envelope with a document and a recipient exists', { envelope_id: CHECKBOX_ENVELOPE_ID })
+      .uponReceiving('a check box fields replace from the Aramo Sign console')
+      .withRequest('PUT', `${BASE}/envelopes/${CHECKBOX_ENVELOPE_ID}/fields`, (b) => {
+        b.headers(JSON_HEADERS).jsonBody(body);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          id: CHECKBOX_ENVELOPE_ID,
+          status: 'DRAFT',
+          fields: eachLike({
+            id: uuid(childOf(CHECKBOX_ENVELOPE_ID, 4)),
+            field_type: 'CHECKBOX',
+            required: true,
+            filled: false,
+            label: 'Option',
+            group_key: 'plan',
+            group_rule: 'SELECT_ONE',
+            min_selected: null,
+            name_mode: null,
+          }, 2),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}${BASE}/envelopes/${CHECKBOX_ENVELOPE_ID}/fields`, { method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify(body) });
+        expect(res.status).toBe(200);
+        const out = (await res.json()) as { fields: { group_rule: string }[] };
+        expect(out.fields[0]?.group_rule).toBe('SELECT_ONE');
+      });
+  });
+
+  it('stores a name field filled from the signer profile', async () => {
+    const body = {
+      fields: [
+        {
+          envelope_document_id: childOf(NAME_ENVELOPE_ID, 2),
+          signer_id: childOf(NAME_ENVELOPE_ID, 3),
+          field_type: 'SIGNER_NAME',
+          page_number: 0,
+          x: 72,
+          y: 100,
+          width: 200,
+          height: 22,
+          required: true,
+          name_mode: 'SIGNER_PROFILE',
+        },
+      ],
+    };
+    await provider
+      .addInteraction()
+      .given('a sender draft envelope with a document and a recipient exists', { envelope_id: NAME_ENVELOPE_ID })
+      .uponReceiving('a name field replace from the Aramo Sign console')
+      .withRequest('PUT', `${BASE}/envelopes/${NAME_ENVELOPE_ID}/fields`, (b) => {
+        b.headers(JSON_HEADERS).jsonBody(body);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({
+          id: NAME_ENVELOPE_ID,
+          status: 'DRAFT',
+          fields: eachLike({
+            id: uuid(childOf(NAME_ENVELOPE_ID, 4)),
+            field_type: 'SIGNER_NAME',
+            name_mode: 'SIGNER_PROFILE',
+            label: null,
+            group_key: null,
+            group_rule: null,
+            min_selected: null,
+          }),
+        });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}${BASE}/envelopes/${NAME_ENVELOPE_ID}/fields`, { method: 'PUT', headers: JSON_HEADERS, body: JSON.stringify(body) });
+        expect(res.status).toBe(200);
+        const out = (await res.json()) as { fields: { name_mode: string }[] };
+        expect(out.fields[0]?.name_mode).toBe('SIGNER_PROFILE');
       });
   });
 });

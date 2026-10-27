@@ -117,3 +117,22 @@ describe('EsignSignerController — launch routes', () => {
     expect(notifications.envelopeDeclined).toHaveBeenCalledWith('TENANT-SECRET', 'e1', 'sg1', 'no');
   });
 });
+
+// Aramo-Sign-Unified-Product-Amendment-M-A5 §2 — copy recipients get copy wording and
+// never a signing call to action.
+describe('MailerSigningNotificationAdapter — copy recipients (M-A5)', () => {
+  const base = { to_email: 'c@x.test', to_name: 'Casey', envelope_subject: 'NDA' };
+  it('RECIPIENT_COPY links to the documents and says no signature is needed', () => {
+    const r = renderSigningNotification({ ...base, kind: 'RECIPIENT_COPY', recipient_role: 'COPY', copy_url: 'https://sign.x/c/tok' });
+    expect(r.subject).toBe('For your records: NDA');
+    expect(r.action).toEqual({ label: 'View documents', url: 'https://sign.x/c/tok' });
+    expect(r.lines.join(' ')).toContain("You don't need to sign it.");
+    expect(renderSigningNotification({ ...base, kind: 'RECIPIENT_COPY', recipient_role: 'COPY', copy_url: 'javascript:alert(1)' }).action).toBeUndefined();
+  });
+  it('completion, void, decline and expiry use copy wording for a copy recipient', () => {
+    expect(renderSigningNotification({ ...base, kind: 'SIGNATURE_COMPLETED', recipient_role: 'COPY', download_url: 'https://sign.x/d/t' }).lines[0]).toContain('You were sent a copy for your records.');
+    expect(renderSigningNotification({ ...base, kind: 'SIGNATURE_VOIDED', recipient_role: 'COPY' }).lines.join(' ')).not.toContain('signing link');
+    expect(renderSigningNotification({ ...base, kind: 'SIGNATURE_DECLINED', recipient_role: 'COPY' }).lines[0]).toBe('A signer declined "NDA", so it will not be completed.');
+    expect(renderSigningNotification({ ...base, kind: 'SIGNATURE_EXPIRED', recipient_role: 'COPY' }).lines.join(' ')).not.toContain('ask the sender');
+  });
+});

@@ -273,6 +273,25 @@ export class EsignSenderController {
     });
   }
 
+  // Aramo-Sign-Unified-Product-Amendment-M-A5 §3.2 — start a hosted (in-person)
+  // signing session for an IN_PERSON_SIGNER whose turn it is (feature
+  // sign.in_person_signing). The raw token is returned only to this authenticated
+  // caller; it is never emailed or logged.
+  @Post('envelopes/:id/hosted-sessions')
+  @HttpCode(HttpStatus.CREATED)
+  @EsignSenderBoundary(ESIGN_SEND_SCOPE)
+  hostedSession(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string, @Body() body: { signer_id?: unknown }) {
+    return this.run(requestId, () => this.envelopes.hostedSession(auth, id, body ?? {}, requestId));
+  }
+
+  // M-A5 §4.2 — a self-sign session for the recipient bound to the caller (Assign to me).
+  @Post('envelopes/:id/self-sign-session')
+  @HttpCode(HttpStatus.CREATED)
+  @EsignSenderBoundary(ESIGN_SEND_SCOPE)
+  selfSignSession(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string, @Body() body: { signer_id?: unknown } = {}) {
+    return this.run(requestId, () => this.envelopes.selfSignSession(auth, id, body ?? {}, requestId));
+  }
+
   @Post('envelopes/:id/void')
   @HttpCode(HttpStatus.OK)
   @EsignSenderBoundary(ESIGN_SEND_SCOPE)

@@ -301,4 +301,77 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Sign Mobile sende
       expect(ben.body.user.identity_provider).toBeNull();
     });
   });
+
+  // M-A6 §2 (coordinator ruling) — an engine-only field (ACKNOWLEDGEMENT; one with a
+  // NULL signer and size stands for an S2S / template row) survives the replace-all fields
+  // PUT only when sent back unchanged with its id. A new or changed one is refused
+  // with v1_field_type; omitting it removes it as before.
+  describe('M-A6 §2 — engine-only fields on the replace-all fields PUT', () => {
+    async function draftWithEngineFields(): Promise<{ id: string; ackId: string; looseId: string; detail: Record<string, unknown>[] }> {
+      const d = await preparedDraft();
+      const signer = (await db.query(`SELECT id FROM "sign"."Signer" WHERE envelope_id = $1`, [d.id])).rows[0].id as string;
+      const ackId = randomUUID();
+      const looseId = randomUUID();
+      await db.query(
+        `INSERT INTO "sign"."SignatureField" (id, tenant_id, envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required)
+         VALUES ($1,$2,$3,$4,'ACKNOWLEDGEMENT',0,50.125,300.5,300,26,true), ($5,$2,$3,NULL,'ACKNOWLEDGEMENT',0,72.333,500,NULL,NULL,false)`,
+        [ackId, TENANT, d.docId, signer, looseId],
+      );
+      const detail = await http().get(`/v1/sign/sender/envelopes/${d.id}`).set(await H(ANN));
+      expect(detail.status).toBe(200);
+      return { id: d.id, ackId, looseId, detail: detail.body.fields as Record<string, unknown>[] };
+    }
+    const ids = async (envelopeId: string): Promise<string[]> =>
+      (await db.query(`SELECT f.id FROM "sign"."SignatureField" f JOIN "sign"."EnvelopeDocument" d ON d.id = f.envelope_document_id WHERE d.envelope_id = $1`, [envelopeId])).rows.map((r) => r.id as string);
+
+    it('an unchanged engine field sent back with its id is kept as is (same row, same values)', async () => {
+      const { id, ackId, looseId, detail } = await draftWithEngineFields();
+      expect(detail.map((f) => f['field_type']).sort()).toEqual(['ACKNOWLEDGEMENT', 'ACKNOWLEDGEMENT', 'SIGNATURE']);
+      const before = (await db.query(`SELECT * FROM "sign"."SignatureField" WHERE id = ANY($1)`, [[ackId, looseId]])).rows;
+      const res = await http().put(`/v1/sign/sender/envelopes/${id}/fields`).set(await H(ANN)).send({ fields: detail });
+      expect(res.status).toBe(200);
+      const after = (await db.query(`SELECT * FROM "sign"."SignatureField" WHERE id = ANY($1)`, [[ackId, looseId]])).rows;
+      expect(after).toEqual(before);
+      expect(await ids(id)).toHaveLength(3);
+      expect(res.body.fields.find((f: { id: string }) => f.id === looseId)).toMatchObject({ field_type: 'ACKNOWLEDGEMENT', signer_id: null, width: null, height: null });
+    });
+
+    it('a changed engine field (geometry, required or configuration) is refused with v1_field_type and nothing changes', async () => {
+      const { id, ackId, detail } = await draftWithEngineFields();
+      const before = await ids(id);
+      const changes: Record<string, unknown>[] = [{ x: 51 }, { y: 300.51 }, { required: false }, { label: 'Agree' }, { page_number: 1 }];
+      for (const change of changes) {
+        const fields = detail.map((f) => (f['id'] === ackId ? { ...f, ...change } : f));
+        const res = await http().put(`/v1/sign/sender/envelopes/${id}/fields`).set(await H(ANN)).send({ fields });
+        expect(res.status).toBe(400);
+        expect(res.body.error.details).toMatchObject({ reason: 'v1_field_type', index: detail.findIndex((f) => f['id'] === ackId) });
+      }
+      expect((await ids(id)).sort()).toEqual(before.sort());
+    });
+
+    it('a new engine field (no id, or an id that is not a stored field) is refused', async () => {
+      const { id, ackId, detail } = await draftWithEngineFields();
+      const ack = detail.find((f) => f['id'] === ackId)!;
+      const { id: _drop, ...noId } = ack;
+      for (const extra of [noId, { ...ack, id: randomUUID() }]) {
+        const res = await http().put(`/v1/sign/sender/envelopes/${id}/fields`).set(await H(ANN)).send({ fields: [...detail.filter((f) => f['id'] !== ackId), extra] });
+        expect(res.status).toBe(400);
+        expect(res.body.error.details.reason).toBe('v1_field_type');
+      }
+      // The same stored field sent twice is refused too.
+      const twice = await http().put(`/v1/sign/sender/envelopes/${id}/fields`).set(await H(ANN)).send({ fields: [...detail, ack] });
+      expect(twice.status).toBe(400);
+      expect(await ids(id)).toContain(ackId);
+    });
+
+    it('an engine field left out of the PUT is removed, as today', async () => {
+      const { id, ackId, looseId, detail } = await draftWithEngineFields();
+      const res = await http().put(`/v1/sign/sender/envelopes/${id}/fields`).set(await H(ANN)).send({ fields: detail.filter((f) => f['field_type'] !== 'ACKNOWLEDGEMENT') });
+      expect(res.status).toBe(200);
+      const left = await ids(id);
+      expect(left).toHaveLength(1);
+      expect(left).not.toContain(ackId);
+      expect(left).not.toContain(looseId);
+    });
+  });
 });

@@ -27,13 +27,23 @@ import {
   furthestStep,
   isDirty,
   payloadFromServer,
+  type CopyDelivery,
   type DirtyFlags,
   type DraftRecipient,
+  type RecipientKind,
   type RoutingMode,
   type SendDraft,
   type SendDraftPayload,
   type ServerEnvelope,
 } from './draftModel';
+import {
+  changeKind,
+  checkAdd,
+  ROLE_COPY,
+  signingRecipients,
+  validEmail,
+  type AddCheck,
+} from './recipientRoles';
 import { isRevisionMismatch, type SenderApi, type Versioned } from './senderApi';
 import { syncDraft, SendFlowError } from './syncDraft';
 
@@ -72,6 +82,20 @@ export interface OpenParams {
   readonly localDraftId?: string | undefined;
   readonly envelopeId?: string | undefined;
   readonly step?: SendStep | undefined;
+  /** 'self' = "Sign a document" (M-A4 §6.3): a new draft remembers it for after Send. */
+  readonly intent?: 'request' | 'self' | undefined;
+}
+
+/** The outcome of adding a recipient. */
+export type AddOutcome = 'added' | Exclude<AddCheck, 'ok'> | 'invalid';
+
+/** A successful Send. */
+export interface SentEnvelope {
+  readonly envelopeId: string;
+  /** Signing recipients (copy recipients never sign). */
+  readonly signers: number;
+  /** The server id of the signing recipient assigned to the user, if any. */
+  readonly assignedSignerId: string | null;
 }
 
 export interface DocumentAsset {
@@ -96,6 +120,8 @@ function messageFor(e: unknown): string {
     if (e.reason === 'unsafe_pdf') return 'This PDF can’t be used. Try another file.';
     if (e.reason === 'too_many_signers')
       return `An envelope can have at most ${MAX_RECIPIENTS} signers.`;
+    const role = (ROLE_COPY as Record<string, string>)[e.reason];
+    if (role) return role;
     if (e.reason === 'message_too_long')
       return `The message can be at most ${MESSAGE_MAX} characters.`;
     if (e.reason === 'session_expired') return 'Your session ended. Sign in again.';
@@ -229,7 +255,7 @@ export class SendFlowController {
         baseRevision: null,
         step: 'documents',
         updatedAt: this.now(),
-        payload: emptyPayload(),
+        payload: params.intent === 'self' ? { ...emptyPayload(), selfSign: true } : emptyPayload(),
       };
       // Nothing is written to disk until the sender adds something.
       this.set({ status: 'ready', draft, step: 'documents' });
@@ -384,33 +410,76 @@ export class SendFlowController {
   }
 
   /** A draft created from a template (templates.ts) becomes this flow's envelope. */
-  async adoptTemplateEnvelope(v: Versioned): Promise<void> {
+  async adoptTemplateEnvelope(v: Versioned, step: SendStep = 'recipients'): Promise<void> {
     const d = this.state.draft;
     if (!d || d.envelopeId !== null || d.payload.documents.length > 0) return;
-    const draft = await this.draftFromServer(v, d.localId);
+    const draft = { ...(await this.draftFromServer(v, d.localId)), step };
     await this.persist(draft);
-    this.set({ draft, server: v.env, step: 'recipients', generation: this.state.generation + 1 });
+    this.set({ draft, server: v.env, step, generation: this.state.generation + 1 });
   }
 
   // ── step 2: recipients ──────────────────────────────────────────────────────
 
-  /** Add a signer. Every recipient signs: there is no copy-only role (C-11). */
-  addRecipient(input: {
-    readonly name: string;
-    readonly email: string;
-  }): 'added' | 'duplicate' | 'full' {
+  /**
+   * Add a recipient (a signer unless `kind` says otherwise). The same checks every
+   * recipient goes through: limits per kind, distinct emails, email unless in person.
+   */
+  addRecipient(
+    input: { readonly name: string; readonly email: string },
+    kind: RecipientKind = 'SIGNER',
+    opts: { readonly assignToMe?: boolean } = {},
+  ): AddOutcome {
     const p = this.payload;
     const email = input.email.trim();
-    if (p.recipients.length >= MAX_RECIPIENTS) return 'full';
-    if (p.recipients.some((r) => r.email.toLowerCase() === email.toLowerCase())) return 'duplicate';
+    const name = input.name.trim();
+    if (email.length > 0 ? !validEmail(email) : name.length === 0) return 'invalid';
+    const check = checkAdd(p.recipients, kind, email);
+    if (check !== 'ok') return check;
     const r: DraftRecipient = {
       key: this.deps.newId(),
       serverId: null,
-      name: input.name.trim() || email,
+      name: name || email,
       email,
+      kind,
+      copyDelivery: kind === 'RECEIVES_COPY' ? 'ON_COMPLETION' : null,
+      ...(opts.assignToMe && kind === 'SIGNER' ? { assignToMe: true } : {}),
     };
+    // The wire order (signers, then copies) is applied on save (recipientRoles.wireOrder).
     this.update((q) => ({ ...q, recipients: [...q.recipients, r] }), { recipients: true });
     return 'added';
+  }
+
+  /**
+   * Signs · In person · Copy (M-A5 §1). Returns the refusal copy, or null when changed.
+   * Moving to Copy removes the recipient's fields (a copy recipient has none).
+   */
+  setRecipientKind(key: string, kind: RecipientKind): string | null {
+    const p = this.payload;
+    const out = changeKind(p.recipients, key, kind);
+    if (!out.ok) return ROLE_COPY[out.reason];
+    if (out.recipients.every((r, i) => r === p.recipients[i])) return null;
+    this.update(
+      (q) => ({
+        ...q,
+        recipients: out.recipients,
+        fields: out.dropsFields ? q.fields.filter((f) => f.recipientKey !== key) : q.fields,
+      }),
+      { recipients: true, ...(out.dropsFields ? { fields: true } : {}) },
+    );
+    return null;
+  }
+
+  /** When a copy recipient receives their copy (M-A5 §2.1). */
+  setCopyDelivery(key: string, delivery: CopyDelivery): void {
+    this.update(
+      (q) => ({
+        ...q,
+        recipients: q.recipients.map((r) =>
+          r.key === key && r.kind === 'RECEIVES_COPY' ? { ...r, copyDelivery: delivery } : r,
+        ),
+      }),
+      { recipients: true },
+    );
   }
 
   /** Remove a recipient and their fields (handoff §4.6). */
@@ -425,15 +494,21 @@ export class SendFlowController {
     );
   }
 
-  /** Reorder for SEQUENTIAL routing (list position is the signing order). */
+  /**
+   * Reorder for SEQUENTIAL routing (list position is the signing order). Moves among the
+   * signing recipients only: copy recipients never take part in the order (M-A5 §1.6).
+   */
   moveRecipient(key: string, delta: -1 | 1): void {
     this.update(
       (q) => {
-        const i = q.recipients.findIndex((r) => r.key === key);
-        const j = i + delta;
-        if (i < 0 || j < 0 || j >= q.recipients.length) return q;
+        const signing = signingRecipients(q.recipients);
+        const i = signing.findIndex((r) => r.key === key);
+        const other = signing[i + delta];
+        if (i < 0 || !other) return q;
+        const a = q.recipients.findIndex((r) => r.key === key);
+        const b = q.recipients.findIndex((r) => r.key === other.key);
         const next = [...q.recipients];
-        [next[i], next[j]] = [next[j]!, next[i]!];
+        [next[a], next[b]] = [next[b]!, next[a]!];
         return { ...q, recipients: next };
       },
       { recipients: true },
@@ -560,7 +635,7 @@ export class SendFlowController {
    * Send for signature (handoff §4.6): sync, then POST …/send with If-Match. Returns the
    * envelope id and signer count on success; a refusal is kept for Review.
    */
-  async send(): Promise<{ envelopeId: string; signers: number } | null> {
+  async send(): Promise<SentEnvelope | null> {
     if (!this.deps.isOnline()) {
       this.set({ error: 'You’re offline. Connect to send.' });
       return null;
@@ -574,7 +649,12 @@ export class SendFlowController {
       await this.flush();
       await this.deps.drafts.remove(d.localId);
       this.set({ server: v.env });
-      return { envelopeId: v.env.id, signers: v.env.recipients.length };
+      const signing = signingRecipients(v.env.recipients);
+      return {
+        envelopeId: v.env.id,
+        signers: signing.length,
+        assignedSignerId: signing.find((r) => r.assignedToMe)?.id ?? null,
+      };
     } catch (e) {
       if (isRevisionMismatch(e)) {
         await this.reloadAfterConflict();

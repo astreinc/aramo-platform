@@ -79,14 +79,21 @@ export async function openSigning(session: GuestSigningSession): Promise<Disclos
   };
 }
 
-/** Accept the exact disclosure version + hash shown, then load the signer's own view. */
+/**
+ * Accept the exact disclosure version + hash shown, then load the signer's own view. A
+ * hosted (in-person) session also sends the name the signer typed to confirm who they
+ * are (M-A5 §3.4: `attested_name`, required by the server for HOSTED sessions only).
+ */
 export async function acceptAndLoad(
   session: GuestSigningSession,
   d: Disclosure,
+  attestedName?: string,
 ): Promise<SignerView> {
+  const name = attestedName?.trim();
   await session.post('/v1/sign/signing/disclosure', {
     disclosure_version: d.disclosure_version,
     disclosure_text_hash: d.text_sha256,
+    ...(name ? { attested_name: name } : {}),
   });
   const v = await session.post('/v1/sign/signing/document', {});
   return {

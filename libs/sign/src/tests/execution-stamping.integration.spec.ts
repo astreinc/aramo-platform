@@ -6,7 +6,7 @@ import { PostgreSqlContainer, type StartedPostgreSqlContainer } from '@testconta
 import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import { Client } from 'pg';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
-import { PDFDocument } from 'pdf-lib';
+import { PDFArray, PDFDocument, PDFRawStream, PDFRef, decodePDFRawStream } from 'pdf-lib';
 import {
   PdfLibDocumentRenderingAdapter,
   type DocumentRenderingPort,
@@ -190,5 +190,108 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('PX-V1 F2 executio
       expect(certificate).toContain(`Party ${i + 1}`);
       expect(certificate).toContain(`Signature ID: ${ids[i]}`);
     }
+  });
+  // Aramo-Sign-Unified-Product-Amendment-M-A5 §3.6 / §1.2 — the certificate prints the
+  // in-person line for a hosted signature (host named from the directory), shows an
+  // in-person signer without an email, and does not list a copy recipient.
+  it('M-A5: hosted signer gets the in-person line; a copy recipient is not listed as a signer', async () => {
+    const HOST = randomUUID();
+    const env = await repo.createEnvelope({ tenant_id: TENANT, subject: 'In person', execution_mode: 'SINGLE_SIGNATURE', created_by: ACTOR });
+    const doc = await repo.addDocument({ tenant_id: TENANT, envelope_id: env.id, document_ref: randomUUID(), document_revision_ref: randomUUID(), title: 'ip.pdf', source_sha256: 'seed', ordinal: 1 });
+    const signerId = randomUUID();
+    await prisma.signer.create({ data: { id: signerId, tenant_id: TENANT, envelope_id: env.id, email: null, name: 'Walk-in Signer', signing_order: 1, status: 'SIGNED', signed_at: new Date(), recipient_kind: 'IN_PERSON_SIGNER' } });
+    await prisma.signer.create({ data: { id: randomUUID(), tenant_id: TENANT, envelope_id: env.id, email: 'copy.only@x.com', name: 'Copy Only', signing_order: 2, status: 'PENDING', recipient_kind: 'RECEIVES_COPY', copy_delivery: 'ON_COMPLETION' } });
+    const field = await repo.addField({ tenant_id: TENANT, envelope_document_id: doc.id, signer_id: signerId, field_type: 'SIGNATURE', page_number: 0, x: 72, y: 120, width: 200, height: 40, required: true });
+    await prisma.signatureField.update({ where: { id: field.id }, data: { value: 'Walk-in Signer', signature_method: 'TYPED', filled_at: new Date() } });
+    await prisma.signingSession.create({
+      data: { id: randomUUID(), tenant_id: TENANT, envelope_id: env.id, signer_id: signerId, token_hash: randomUUID(), status: 'COMPLETED', expires_at: new Date(Date.now() + 60_000), origin: 'HOSTED', host_user_id: HOST },
+    });
+    const real = new PdfLibDocumentRenderingAdapter();
+    const generated: string[] = [];
+    const capturing: DocumentRenderingPort = {
+      prepareFromSource: (src, placements, opts) => real.prepareFromSource(src, placements, opts),
+      renderGenerated: (model) => {
+        generated.push(JSON.stringify(model));
+        return real.renderGenerated(model);
+      },
+    };
+    const directory = { findSender: async (_t: string, id: string) => (id === HOST ? { email: 'host@x.com', name: 'Hana Host' } : null) };
+    const execution = new ExecutionService(prisma, repo, capturing, { getSourcePdf: async () => sourcePdf }, undefined, undefined, undefined, directory);
+    await execution.produce(TENANT, env.id);
+    const certificate = generated.join('');
+    expect(certificate).toContain('Walk-in Signer <no email>');
+    expect(certificate).toContain('Signed in person. Hosted by Hana Host. Signer identity was not independently verified.');
+    expect(certificate).not.toContain('Copy Only');
+    expect(certificate).not.toContain('copy.only');
+  });
+  // M-A6 §1 — CHECKBOX / ACKNOWLEDGEMENT values are stamped as a vector check box
+  // (MARK), never as the text "true"; checked, unchecked ('false') and untouched
+  // boxes all draw a box. §2.5 — the certificate lists each box's label and state.
+  it('stamps check boxes as vector MARKs (no "true" text) and lists their labels and states in the certificate', async () => {
+    const env = await repo.createEnvelope({ tenant_id: TENANT, subject: 'Boxes', execution_mode: 'SINGLE_SIGNATURE', created_by: ACTOR });
+    const doc = await repo.addDocument({
+      tenant_id: TENANT, envelope_id: env.id, document_ref: randomUUID(), document_revision_ref: randomUUID(),
+      title: 'boxes.pdf', source_sha256: 'seed', ordinal: 1,
+    });
+    const signer = await repo.addSigner({ tenant_id: TENANT, envelope_id: env.id, email: 'cb@x.com', name: 'Casey', signing_order: 1 });
+    const box = async (field_type: string, y: number, label: string | null, value: string | null) => {
+      const f = await repo.addField({ tenant_id: TENANT, envelope_document_id: doc.id, signer_id: signer.id, field_type, page_number: 0, x: 72, y, width: 14, height: 14, required: false });
+      await prisma.signatureField.update({ where: { id: f.id }, data: { label, ...(value !== null ? { value, filled_at: new Date() } : {}) } });
+      return f.id;
+    };
+    const checked = await box('CHECKBOX', 100, 'I agree to the terms', 'true');
+    const unchecked = await box('CHECKBOX', 130, 'Send me updates', 'false');
+    const untouched = await box('CHECKBOX', 160, null, null);
+    const ack = await box('ACKNOWLEDGEMENT', 190, null, 'true');
+
+    const real = new PdfLibDocumentRenderingAdapter();
+    const captured: PreparedField[][] = [];
+    const generated: string[] = [];
+    const outputs: Uint8Array[] = [];
+    const capturing: DocumentRenderingPort = {
+      prepareFromSource: async (src, placements, opts): Promise<RenderedOutput> => {
+        captured.push(placements);
+        const out = await real.prepareFromSource(src, placements, opts);
+        outputs.push(out.bytes);
+        return out;
+      },
+      renderGenerated: (model) => {
+        generated.push(JSON.stringify(model));
+        return real.renderGenerated(model);
+      },
+    };
+    const execution = new ExecutionService(prisma, repo, capturing, { getSourcePdf: async () => sourcePdf });
+    await execution.produce(TENANT, env.id);
+
+    const placements = captured[0] ?? [];
+    expect(placements).toHaveLength(4);
+    const byId = new Map(placements.map((p) => [p.field_key, p]));
+    expect(byId.get(checked)).toMatchObject({ kind: 'MARK', checked: true, x: 72, y: 100, width: 14, height: 14 });
+    expect(byId.get(unchecked)).toMatchObject({ kind: 'MARK', checked: false });
+    expect(byId.get(untouched)).toMatchObject({ kind: 'MARK', checked: false });
+    expect(byId.get(ack)).toMatchObject({ kind: 'MARK', checked: true });
+    for (const p of placements) expect(p.value).toBeUndefined();
+
+    // The executed PDF's page content carries no text operator at all (the source
+    // page is blank): no "true", no glyphs — only the vector boxes and checks.
+    const executed = await PDFDocument.load(outputs[0]!);
+    const contents = executed.getPage(0).node.Contents();
+    let ops = '';
+    if (contents instanceof PDFArray) {
+      for (let i = 0; i < contents.size(); i += 1) {
+        const stream = executed.context.lookup(contents.get(i) as PDFRef);
+        if (stream instanceof PDFRawStream) ops += Buffer.from(decodePDFRawStream(stream).decode()).toString('latin1');
+      }
+    }
+    expect(ops.length).toBeGreaterThan(0);
+    expect(ops).not.toMatch(/Tj|TJ|BT/);
+    expect(ops.toUpperCase()).not.toContain(Buffer.from('true', 'latin1').toString('hex').toUpperCase());
+    expect(ops.split('\n').filter((l) => l === 'S')).toHaveLength(6); // 4 boxes + 2 checks
+
+    const certificate = generated.join('');
+    expect(certificate).toContain('Checkbox \\"I agree to the terms\\": checked');
+    expect(certificate).toContain('Checkbox \\"Send me updates\\": not checked');
+    expect(certificate).toContain('Checkbox (page 1): not checked');
+    expect(certificate).toContain('Acknowledgement (page 1): checked');
   });
 });

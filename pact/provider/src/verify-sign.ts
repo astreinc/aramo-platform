@@ -126,6 +126,33 @@ const X_SIGNER_ID = '7a000000-0000-7000-8000-0000000000f2';
 const X_ENV_DOC_ID = '7a000000-0000-7000-8000-0000000000f6';
 const X_GRANT_ID = '7a000000-0000-7000-8000-0000000000f7';
 const TOKEN_EXECUTED = 'sign-web-pact-token-executed';
+// Aramo-Sign-Unified-Product-Amendment-M-A5 — the ON_SEND copy link (COPY_VIEW grant)
+// and a hosted session's disclosure with the attested name. MUST match
+// pact/consumers/sign-web-consumer/src/signer-session.consumer.test.ts.
+const CP_ENVELOPE_ID = '7a000000-0000-7000-8000-000000000101';
+const CP_SIGNER_ID = '7a000000-0000-7000-8000-000000000102';
+const CP_ENV_DOC_ID = '7a000000-0000-7000-8000-000000000106';
+const TOKEN_COPY = 'sign-web-pact-token-copy';
+const H_ENVELOPE_ID = '7a000000-0000-7000-8000-000000000111';
+const H_SIGNER_ID = '7a000000-0000-7000-8000-000000000112';
+const H_SESSION_ID = '7a000000-0000-7000-8000-000000000113';
+const H_ENV_DOC_ID = '7a000000-0000-7000-8000-000000000116';
+const TOKEN_HOSTED_DISCLOSURE = 'sign-web-pact-token-hosted-disclosure';
+// M-A6 §2 — a check box to uncheck, and a document view with a profile name and a
+// check box. MUST match the sign-web consumer.
+const U_ENVELOPE_ID = '7a000000-0000-7000-8000-000000000a01';
+const U_SIGNER_ID = '7a000000-0000-7000-8000-000000000a02';
+const U_SESSION_ID = '7a000000-0000-7000-8000-000000000a03';
+const U_FIELD_ID = '7a000000-0000-7000-8000-000000000a04';
+const U_ENV_DOC_ID = '7a000000-0000-7000-8000-000000000a06';
+const TOKEN_UNCHECK = 'sign-web-pact-token-uncheck';
+const V_ENVELOPE_ID = '7a000000-0000-7000-8000-000000000b01';
+const V_SIGNER_ID = '7a000000-0000-7000-8000-000000000b02';
+const V_SESSION_ID = '7a000000-0000-7000-8000-000000000b03';
+const V_NAME_FIELD_ID = '7a000000-0000-7000-8000-000000000b04';
+const V_ENV_DOC_ID = '7a000000-0000-7000-8000-000000000b06';
+const V_BOX_FIELD_ID = '7a000000-0000-7000-8000-000000000b07';
+const TOKEN_VIEW = 'sign-web-pact-token-view';
 
 // PX-1 — esign-web sender-console fixtures. MUST match
 // pact/consumers/sign-workspace-consumer/src/sender-console.consumer.test.ts. The
@@ -541,6 +568,8 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
       field?: boolean;
       fieldId?: string;
       secondSignerId?: string;
+      // M-A6 §2 — configured fields (Name / Checkbox) for this signer.
+      configured?: Array<{ id: string; field_type: string; y: number; label?: string; name_mode?: string }>;
     }): Promise<void> {
       await db.query(
         `INSERT INTO "sign"."SignatureEnvelope" (id, tenant_id, subject, status, execution_mode, created_by)
@@ -588,6 +617,13 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           [f.fieldId, TENANT_ID, f.envDocId, f.signerId],
         );
       }
+      for (const c of f.configured ?? []) {
+        await db.query(
+          `INSERT INTO "sign"."SignatureField" (id, tenant_id, envelope_document_id, signer_id, field_type, page_number, x, y, width, height, required, label, name_mode)
+           VALUES ($1,$2,$3,$4,$5,0,72,$6,200,14,true,$7,$8)`,
+          [c.id, TENANT_ID, f.envDocId, f.signerId, c.field_type, c.y, c.label ?? null, c.name_mode ?? null],
+        );
+      }
     }
 
     // Aramo Sign launch — a distinct COMPLETED envelope with an executed document,
@@ -618,6 +654,33 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         `INSERT INTO "sign"."ExecutedAccessGrant" (id, tenant_id, envelope_id, signer_id, token_hash, expires_at)
          VALUES ($1,$2,$3,$4,$5, now() + interval '30 days')`,
         [X_GRANT_ID, TENANT_ID, X_ENVELOPE_ID, X_SIGNER_ID, hashToken(TOKEN_EXECUTED)],
+      );
+    }
+
+    // M-A5 §2.2 — a SENT envelope (OWNED source) with an ON_SEND copy recipient holding
+    // a COPY_VIEW grant (only the token hash is stored). Fresh ids; idempotent.
+    async function seedCopyGrant(): Promise<void> {
+      const key = `esign/source/${TENANT_ID}/${CP_ENVELOPE_ID}/pact-copy`;
+      ownedSources.set(key, letterPdf);
+      await db.query(
+        `INSERT INTO "sign"."SignatureEnvelope" (id, tenant_id, subject, status, execution_mode, created_by, sent_at)
+         VALUES ($1,$2,'Offer Letter','SENT','SINGLE_SIGNATURE',$3, now()) ON CONFLICT (id) DO NOTHING`,
+        [CP_ENVELOPE_ID, TENANT_ID, CREATED_BY],
+      );
+      await db.query(
+        `INSERT INTO "sign"."EnvelopeDocument" (id, tenant_id, envelope_id, source_mode, source_object_key, content_type, byte_size, title, source_sha256, ordinal)
+         VALUES ($1,$2,$3,'OWNED',$4,'application/pdf',$5,'offer.pdf',$6,1) ON CONFLICT (id) DO NOTHING`,
+        [CP_ENV_DOC_ID, TENANT_ID, CP_ENVELOPE_ID, key, letterPdf.byteLength, createHash('sha256').update(letterPdf).digest('hex')],
+      );
+      await db.query(
+        `INSERT INTO "sign"."Signer" (id, tenant_id, envelope_id, email, name, signing_order, status, recipient_kind, copy_delivery)
+         VALUES ($1,$2,$3,'casey@example.com','Casey Copy',2,'PENDING','RECEIVES_COPY','ON_SEND') ON CONFLICT (id) DO NOTHING`,
+        [CP_SIGNER_ID, TENANT_ID, CP_ENVELOPE_ID],
+      );
+      await db.query(
+        `INSERT INTO "sign"."ExecutedAccessGrant" (id, tenant_id, envelope_id, signer_id, token_hash, expires_at, access_kind)
+         VALUES (gen_random_uuid(),$1,$2,$3,$4, now() + interval '30 days','COPY_VIEW') ON CONFLICT (token_hash) DO NOTHING`,
+        [TENANT_ID, CP_ENVELOPE_ID, CP_SIGNER_ID, hashToken(TOKEN_COPY)],
       );
     }
 
@@ -907,11 +970,37 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'a signer has a signed-copy access link for a completed envelope': async () => {
             await seedSignedCopyGrant();
           },
+          // M-A5 §2.2 — the ON_SEND copy link.
+          'a copy recipient has a copy link for a sent envelope': async () => {
+            await seedCopyGrant();
+          },
+          // M-A5 §3.4 — a HOSTED session (in-person signer) awaiting the disclosure.
+          'a hosted signer session is ready to accept disclosure': async () => {
+            await seedSignerFixture({ envelopeId: H_ENVELOPE_ID, envDocId: H_ENV_DOC_ID, signerId: H_SIGNER_ID, sessionId: H_SESSION_ID, token: TOKEN_HOSTED_DISCLOSURE });
+            await db.query(`UPDATE "sign"."Signer" SET recipient_kind='IN_PERSON_SIGNER' WHERE id=$1`, [H_SIGNER_ID]);
+            await db.query(`UPDATE "sign"."SigningSession" SET origin='HOSTED', host_user_id=$2, expires_at = now() + interval '30 minutes' WHERE id=$1`, [H_SESSION_ID, CREATED_BY]);
+          },
           'a signer session is ready to accept disclosure': async () => {
             await seedSignerFixture({ envelopeId: D_ENVELOPE_ID, envDocId: D_ENV_DOC_ID, signerId: D_SIGNER_ID, sessionId: D_SESSION_ID, token: TOKEN_DISCLOSURE });
           },
           'a signer session has accepted disclosure with a fillable field': async () => {
             await seedSignerFixture({ envelopeId: F_ENVELOPE_ID, envDocId: F_ENV_DOC_ID, signerId: F_SIGNER_ID, sessionId: F_SESSION_ID, token: TOKEN_FILL, disclosure: true, field: true, fieldId: FILL_FIELD_ID });
+          },
+          // M-A6 §2 — Name and Checkbox fields on the signer transport.
+          'a signer session has accepted disclosure with a check box': async () => {
+            await seedSignerFixture({
+              envelopeId: U_ENVELOPE_ID, envDocId: U_ENV_DOC_ID, signerId: U_SIGNER_ID, sessionId: U_SESSION_ID, token: TOKEN_UNCHECK, disclosure: true,
+              configured: [{ id: U_FIELD_ID, field_type: 'CHECKBOX', y: 40, label: 'Send me updates' }],
+            });
+          },
+          'a signer session has accepted disclosure with a profile name and a check box': async () => {
+            await seedSignerFixture({
+              envelopeId: V_ENVELOPE_ID, envDocId: V_ENV_DOC_ID, signerId: V_SIGNER_ID, sessionId: V_SESSION_ID, token: TOKEN_VIEW, disclosure: true,
+              configured: [
+                { id: V_NAME_FIELD_ID, field_type: 'SIGNER_NAME', y: 10, name_mode: 'SIGNER_PROFILE' },
+                { id: V_BOX_FIELD_ID, field_type: 'CHECKBOX', y: 40, label: 'I agree to the terms' },
+              ],
+            });
           },
           'a signer session is ready to complete with another pending signer': async () => {
             await seedSignerFixture({ envelopeId: C_ENVELOPE_ID, envDocId: C_ENV_DOC_ID, signerId: C_SIGNER_ID, sessionId: C_SESSION_ID, token: TOKEN_COMPLETE, disclosure: true, secondSignerId: C_SIGNER2_ID });

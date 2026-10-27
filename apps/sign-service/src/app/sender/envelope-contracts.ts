@@ -6,6 +6,7 @@ import {
   IdempotencyRequestInProgressError,
   InboxSigningRefusedError,
   ReminderLimitError,
+  SessionIssueRefusedError,
   SIGN_IDEMPOTENCY_KEY_MAX,
 } from '@aramo/sign';
 
@@ -116,6 +117,9 @@ export function senderHttp(e: unknown, requestId: string): AramoError {
   if (e instanceof IdempotencyRequestInProgressError) {
     return new AramoError('IDEMPOTENCY_KEY_CONFLICT', e.message, 409, { requestId, details: { reason: 'idempotency_request_in_progress' } });
   }
+  if (e instanceof SessionIssueRefusedError) {
+    return sessionIssueHttp(e, requestId);
+  }
   if (e instanceof InboxSigningRefusedError) {
     return new AramoError('ENVELOPE_ILLEGAL_TRANSITION', inboxRefusalMessage(e.reason), 409, { requestId, details: { reason: e.reason } });
   }
@@ -135,5 +139,26 @@ function inboxRefusalMessage(reason: InboxSigningRefusedError['reason']): string
     case 'session_revoked':
     case 'link_expired':
       return 'This link was replaced or has expired. Open the newest email, or sign in to your inbox.';
+  }
+}
+
+// Aramo-Sign-Unified-Product-Amendment-M-A5 §3 / §4 — hosted and self-sign refusals,
+// each with a stable details.reason.
+function sessionIssueHttp(e: SessionIssueRefusedError, requestId: string): AramoError {
+  switch (e.reason) {
+    case 'signer_not_found':
+      return new AramoError('SIGNER_NOT_FOUND', 'That recipient is not on this envelope', 404, { requestId, details: { reason: e.reason } });
+    case 'not_bound_to_you':
+      return new AramoError('INSUFFICIENT_PERMISSIONS', 'This envelope has no recipient assigned to you', 403, { requestId, details: { reason: e.reason } });
+    case 'email_not_verified':
+      return new AramoError('INSUFFICIENT_PERMISSIONS', 'Your verified account email no longer matches this recipient', 403, { requestId, details: { reason: e.reason } });
+    case 'not_in_person_signer':
+      return new AramoError('ENVELOPE_ILLEGAL_TRANSITION', 'Only an in-person signer can sign on your device', 409, { requestId, details: { reason: e.reason } });
+    case 'envelope_not_signable':
+      return new AramoError('ENVELOPE_ILLEGAL_TRANSITION', 'This document can no longer be signed', 409, { requestId, details: { reason: e.reason } });
+    case 'signer_ineligible':
+      return new AramoError('ENVELOPE_ILLEGAL_TRANSITION', 'This recipient can no longer sign', 409, { requestId, details: { reason: e.reason } });
+    case 'not_your_turn':
+      return new AramoError('SIGNER_NOT_YET_ELIGIBLE', 'Someone before this recipient has to sign first', 409, { requestId, details: { reason: e.reason } });
   }
 }

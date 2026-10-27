@@ -55,6 +55,11 @@ model SignatureEnvelope {
   // scrubbed tombstone; documents, recipients, fields and stored objects are gone.
   // CHECK: set only while DRAFT, and never cleared or moved out of DRAFT after.
   deleted_at    DateTime? @db.Timestamptz
+  // Amendment M-A6 §3.6 — template provenance (migration 20261028100300): the Documents
+  // template + exact version an envelope started from-template was rendered from. Opaque
+  // UUIDs, no FK; set together, written once (CHECK + trigger).
+  template_ref         String? @db.Uuid
+  template_version_ref String? @db.Uuid
 
   documents EnvelopeDocument[]
   signers   Signer[]
@@ -108,11 +113,19 @@ model Signer {
   id            String    @id @db.Uuid
   tenant_id     String    @db.Uuid
   envelope_id   String    @db.Uuid
-  email         String
+  // M-A5 §3.5 — nullable ONLY for an IN_PERSON_SIGNER (CHECK Signer_email_required_check).
+  email         String?
   name          String
   signing_order Int
   signer_role   String?
   status        String // CHECK: PENDING|VIEWED|SIGNED|DECLINED
+  // M-A5 §1 — SIGNER (default) | IN_PERSON_SIGNER | RECEIVES_COPY. CHECK. Distinct from
+  // signer_role (the template role label). RECEIVES_COPY never signs.
+  recipient_kind String   @default("SIGNER")
+  // M-A5 §2.1 — ON_SEND | ON_COMPLETION | BOTH; required iff RECEIVES_COPY (CHECK).
+  copy_delivery  String?
+  // M-A5 §4.1 — Assign to me: set by the server to the caller's user id, never client-supplied.
+  bound_user_id  String?  @db.Uuid
   viewed_at     DateTime? @db.Timestamptz
   signed_at     DateTime? @db.Timestamptz
   declined_at   DateTime? @db.Timestamptz
@@ -147,6 +160,13 @@ model SignatureField {
   required             Boolean   @default(true)
   value                String?
   filled_at            DateTime? @db.Timestamptz
+  // M-A6 §2 — Name and Checkbox configuration (type-scoped CHECKs; NULL for every
+  // other type and for engine fields created through the S2S / Sign API paths).
+  label                String? // CHECKBOX only
+  group_key            String? // CHECKBOX only
+  group_rule           String? // CHECK: SELECT_ONE|SELECT_ANY, present iff group_key
+  min_selected         Int? // CHECKBOX groups only; >= 1; 1 for SELECT_ONE
+  name_mode            String? // CHECK: SIGNER_PROFILE|SIGNER_ENTERED, SIGNER_NAME only
 
   envelope_document EnvelopeDocument @relation(fields: [envelope_document_id], references: [id], onDelete: Cascade)
   signer            Signer?          @relation(fields: [signer_id], references: [id], onDelete: SetNull)
@@ -173,6 +193,12 @@ model SigningSession {
   completed_at      DateTime? @db.Timestamptz
   revoked_at        DateTime? @db.Timestamptz
   failed_auth_count Int       @default(0)
+  // M-A5 §5 — LINK | INBOX | HOSTED | SELF; NULL = a legacy session (never backfilled).
+  origin                String?
+  // M-A5 §3.2 — the authenticated host of a HOSTED session (CHECK: HOSTED only).
+  host_user_id          String? @db.Uuid
+  // M-A5 §4.2 — the authenticated signer of a SELF session (CHECK: SELF only).
+  authenticated_user_id String? @db.Uuid
 
   envelope SignatureEnvelope @relation(fields: [envelope_id], references: [id], onDelete: Cascade)
   signer   Signer            @relation(fields: [signer_id], references: [id], onDelete: Cascade)
@@ -196,6 +222,8 @@ model SignerDisclosureAcceptance {
   ip_address           String?
   user_agent           String?
   session_id           String   @db.Uuid
+  // M-A5 §3.4 — the name the signer confirmed in a HOSTED session (the ledger keeps its sha256).
+  attested_name        String?
 
   signer Signer @relation(fields: [signer_id], references: [id], onDelete: Cascade)
 
@@ -235,7 +263,7 @@ model NotificationDelivery {
   tenant_id         String    @db.Uuid
   envelope_id       String    @db.Uuid
   signer_id         String?   @db.Uuid
-  notification_kind String // CHECK: SIGNATURE_REQUEST|SIGNATURE_REMINDER|SIGNATURE_COMPLETED|SIGNATURE_DECLINED|SIGNATURE_EXPIRED|SIGNATURE_VOIDED|SIGNER_SIGNED
+  notification_kind String // CHECK: SIGNATURE_REQUEST|SIGNATURE_REMINDER|SIGNATURE_COMPLETED|SIGNATURE_DECLINED|SIGNATURE_EXPIRED|SIGNATURE_VOIDED|SIGNER_SIGNED|RECIPIENT_COPY
   status            String // CHECK: PENDING|DISPATCHING|SENT|FAILED|CANCELLED
   // Multi-Signer §4 — when a dispatcher claimed this invitation intent (stale claims are reclaimable).
   claimed_at        DateTime? @db.Timestamptz
@@ -338,6 +366,8 @@ model ExecutedAccessGrant {
   created_at       DateTime  @default(now()) @db.Timestamptz
   last_accessed_at DateTime? @db.Timestamptz
   access_count     Int       @default(0)
+  // M-A5 §2.2 — EXECUTED (the signed copy) | COPY_VIEW (the source documents, ON_SEND copy). CHECK.
+  access_kind      String    @default("EXECUTED")
 
   envelope SignatureEnvelope @relation(fields: [envelope_id], references: [id], onDelete: Cascade)
 

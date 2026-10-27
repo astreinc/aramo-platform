@@ -1,4 +1,5 @@
-// Notifications tab (handoff §4.7; directive §8; M-A3 §1): the server feed in Today /
+// Notifications (a root-stack screen opened from the side menu, with a "‹ Home" back
+// link, M-A4 §1.5; handoff §4.7; directive §8; M-A3 §1): the server feed in Today /
 // Earlier, unread dots, Mark all read, tap → mark read + open. Sender items open the
 // envelope detail on Activity; recipient items (inbox_item_id) open the received view.
 import { useNavigation } from '@react-navigation/native';
@@ -29,6 +30,7 @@ import {
   type FeedItem,
 } from '../../features/notifications/notificationModel';
 import { useFeed, useMarkRead, useUnreadCount } from '../../features/notifications/queries';
+import { HomeBackLink } from '../../features/shell/HomeBackLink';
 import { useTheme } from '../../theme';
 
 const ICON_PATH: Record<FeedIcon, string> = {
@@ -134,7 +136,10 @@ export function NotificationsScreen() {
           <View style={{ gap: 8, paddingBottom: 4 }}>
             {ios ? (
               <>
-                <View style={styles.iosTop}>{markAll}</View>
+                <View style={styles.iosTop}>
+                  <HomeBackLink />
+                  {markAll}
+                </View>
                 <Text
                   accessibilityRole="header"
                   style={[styles.pad, { color: t.color.text, ...t.type.largeTitle }]}
@@ -143,20 +148,23 @@ export function NotificationsScreen() {
                 </Text>
               </>
             ) : (
-              <View style={styles.androidBar}>
-                <Text
-                  accessibilityRole="header"
-                  style={{
-                    flex: 1,
-                    color: t.color.text,
-                    fontFamily: t.font.family,
-                    ...t.type.largeTitle,
-                  }}
-                >
-                  Notifications
-                </Text>
-                {markAll}
-              </View>
+              <>
+                <HomeBackLink />
+                <View style={styles.androidBar}>
+                  <Text
+                    accessibilityRole="header"
+                    style={{
+                      flex: 1,
+                      color: t.color.text,
+                      fontFamily: t.font.family,
+                      ...t.type.largeTitle,
+                    }}
+                  >
+                    Notifications
+                  </Text>
+                  {markAll}
+                </View>
+              </>
             )}
             {!online ? (
               <View style={styles.pad}>
@@ -257,8 +265,9 @@ const styles = StyleSheet.create({
   pad: { marginHorizontal: 16 },
   iosTop: {
     flexDirection: 'row',
-    justifyContent: 'flex-end',
-    paddingHorizontal: 16,
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingRight: 16,
     paddingTop: 4,
   },
   androidBar: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, minHeight: 64 },

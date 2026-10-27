@@ -1,8 +1,17 @@
 // Agreements filter merge (handoff §4.2; directive §7 C-12).
 import type { LocalDraft } from '../../../state/draftStore';
 import {
+  asListFilter,
+  asListRange,
   countFor,
+  DEFAULT_RANGE,
+  FILTER_LABEL,
+  FILTERS,
   filterAgreements,
+  inRange,
+  listHeading,
+  statusIcon,
+  type ListRange,
   mergeAgreements,
   needsSignatureSummary,
   pillFor,
@@ -87,7 +96,7 @@ describe('mergeAgreements + filters', () => {
     ];
     const r = filterAgreements(mergeAgreements(allSent, null, local), 'drafts');
     expect(r.map((x) => x.subject)).toEqual(['On this phone', 'Sent DRAFT']);
-    expect(secondaryLine(r[0]!)).toContain('Not sent');
+    expect(secondaryLine(r[0]!)).toContain('not sent');
   });
 
   it('Done = COMPLETED · DECLINED · VOIDED · EXPIRED, sent and received', () => {
@@ -111,18 +120,134 @@ describe('mergeAgreements + filters', () => {
     expect(mergeAgreements([a, b], null).map((x) => x.subject)).toEqual(['new', 'old']);
   });
 
-  it('secondary lines follow the handoff', () => {
-    expect(secondaryLine(mergeAgreements([sent('IN_PROGRESS')], null)[0]!)).toBe('1 of 2 signed');
-    expect(secondaryLine(mergeAgreements([sent('DRAFT')], null)[0]!)).toBe('Not sent');
-    expect(secondaryLine(mergeAgreements([sent('COMPLETED')], null)[0]!)).toBe('All signed');
-    expect(secondaryLine(mergeAgreements([sent('EXPIRED')], null)[0]!)).toBe('Link expired');
-    const declined = sent('DECLINED', {
-      recipients: [{ id: 'x', name: 'Jo Doe', email: 'j@x', status: 'DECLINED' }],
-    });
-    expect(secondaryLine(mergeAgreements([declined], null)[0]!)).toBe('by Jo Doe');
-    expect(secondaryLine(mergeAgreements([], inbox({ waiting: [needs] }))[0]!)).toBe(
-      'Needs your signature',
+  it('sent status lines follow handoff §2A / M-A4 §3.4', () => {
+    const line = (e: ReturnType<typeof sent>) => secondaryLine(mergeAgreements([e], null)[0]!);
+    expect(line(sent('IN_PROGRESS'))).toBe('Waiting for others · 1 of 2 signed');
+    expect(line(sent('SENT'))).toBe('Waiting for others · 1 of 2 signed');
+    expect(line(sent('DRAFT'))).toBe('Draft · not sent');
+    expect(line(sent('VOIDED'))).toBe('Voided');
+    expect(line(sent('EXPIRED'))).toBe('Expired');
+    // Multi-signer: the list has no per-signer signed_at, so no "last signer" (Gap).
+    expect(line(sent('COMPLETED'))).toBe('Completed');
+    expect(
+      line(
+        sent('COMPLETED', {
+          recipients: [
+            { id: 'x', name: 'Jo Doe', email: 'j@x', status: 'SIGNED', recipient_kind: 'SIGNER' },
+          ],
+        }),
+      ),
+    ).toBe('Completed by Jo Doe');
+    expect(
+      line(
+        sent('DECLINED', {
+          recipients: [
+            { id: 'x', name: 'Jo Doe', email: 'j@x', status: 'DECLINED', recipient_kind: 'SIGNER' },
+          ],
+        }),
+      ),
+    ).toBe('Declined by Jo Doe');
+    expect(line(sent('DECLINED'))).toBe('Declined by a signer');
+  });
+
+  it('copy recipients are never counted or named as signers (M-A5)', () => {
+    const line = (e: ReturnType<typeof sent>) => secondaryLine(mergeAgreements([e], null)[0]!);
+    const cc = {
+      id: 'c',
+      name: 'Procurement',
+      email: 'p@x',
+      status: 'PENDING' as const,
+      recipient_kind: 'RECEIVES_COPY' as const,
+    };
+    const signer = {
+      id: 's',
+      name: 'Jo Doe',
+      email: 'j@x',
+      status: 'SIGNED' as const,
+      recipient_kind: 'SIGNER' as const,
+    };
+    expect(line(sent('COMPLETED', { recipients: [signer, cc] }))).toBe('Completed by Jo Doe');
+    expect(line(sent('IN_PROGRESS', { recipients: [{ ...signer, status: 'PENDING' }, cc] }))).toBe(
+      'Waiting for others · 0 of 1 signed',
     );
+  });
+
+  it('received status lines never name or count other recipients (A8/A9, C-6)', () => {
+    const line = (i: ReturnType<typeof received>) =>
+      secondaryLine(mergeAgreements([], inbox({ other: [i] }))[0]!);
+    expect(line(needs)).toBe('Needs your signature · from Northwind Staffing');
+    expect(line(received({ can_sign: true, from: null }))).toBe('Needs your signature');
+    expect(line(signedWaiting)).toBe('You signed · waiting for others');
+    expect(line(recvDone)).toBe('Completed');
+    expect(line(recvVoided)).toBe('Voided');
+    expect(
+      line(received({ envelope_status: 'DECLINED', my_status: 'DECLINED', can_sign: false })),
+    ).toBe('You declined');
+    expect(
+      line(received({ envelope_status: 'DECLINED', my_status: 'SIGNED', can_sign: false })),
+    ).toBe('Declined');
+    expect(line(received({ envelope_status: 'EXPIRED', can_sign: false }))).toBe('Expired');
+    for (const s of ENVELOPE_STATUSES) {
+      for (const my of ['PENDING', 'VIEWED', 'SIGNED', 'DECLINED'] as const) {
+        const l = line(received({ envelope_status: s, my_status: my, can_sign: false }));
+        expect(l).not.toMatch(/\d+ of \d+|by /);
+      }
+    }
+  });
+
+  it('status icons by state', () => {
+    const icon = (e: ReturnType<typeof sent>) => statusIcon(mergeAgreements([e], null)[0]!);
+    expect(statusIcon(mergeAgreements([], inbox({ waiting: [needs] }))[0]!)).toBe('needs');
+    expect(icon(sent('SENT'))).toBe('waiting');
+    expect(icon(sent('IN_PROGRESS'))).toBe('waiting');
+    expect(icon(sent('DRAFT'))).toBe('draft');
+    expect(icon(sent('COMPLETED'))).toBe('completed');
+    expect(icon(sent('DECLINED'))).toBe('stopped');
+    expect(icon(sent('VOIDED'))).toBe('stopped');
+    expect(icon(sent('EXPIRED'))).toBe('expired');
+  });
+
+  it('All = every row; Completed (done) covers the 4 end states of the 7', () => {
+    expect(filterAgreements(rows, 'all')).toHaveLength(rows.length);
+    expect(FILTERS).toEqual(['all', 'needs_me', 'waiting', 'drafts', 'done']);
+    expect(FILTER_LABEL.done).toBe('Completed');
+    expect(FILTER_LABEL.waiting).toBe('Waiting for others');
+  });
+
+  it('last-activity range filters on the device by activityAt', () => {
+    const now = Date.parse('2026-10-27T12:00:00.000Z');
+    const at = (days: number) => new Date(now - days * 86_400_000).toISOString();
+    const when = (iso: string) => ({ last_activity_at: iso, sent_at: iso, created_at: iso });
+    const list = mergeAgreements(
+      [
+        sent('IN_PROGRESS', { subject: 'd10', ...when(at(10)) }),
+        sent('IN_PROGRESS', { subject: 'd100', ...when(at(100)) }),
+        sent('IN_PROGRESS', { subject: 'd300', ...when(at(300)) }),
+        sent('IN_PROGRESS', { subject: 'd500', ...when(at(500)) }),
+      ],
+      null,
+    );
+    const subj = (r: ListRange) => filterAgreements(list, 'all', '', r, now).map((x) => x.subject);
+    expect(subj('30d')).toEqual(['d10']);
+    expect(subj('6m')).toEqual(['d10', 'd100']);
+    expect(subj('12m')).toEqual(['d10', 'd100', 'd300']);
+    expect(subj('all')).toEqual(['d10', 'd100', 'd300', 'd500']);
+    expect(inRange(list[0]!, '30d', now)).toBe(true);
+    // default range keeps the old call shape unfiltered by time
+    expect(filterAgreements(list, 'all')).toHaveLength(4);
+    expect(DEFAULT_RANGE).toBe('6m');
+  });
+
+  it('header line "{filter} · {range}" and route value mapping', () => {
+    expect(listHeading('all', '6m')).toBe('All agreements · Last 6 months');
+    expect(listHeading('done', 'all')).toBe('Completed · All time');
+    expect(listHeading('waiting', '30d')).toBe('Waiting for others · Last 30 days');
+    expect(asListFilter('drafts')).toBe('drafts');
+    expect(asListFilter('all')).toBe('all');
+    expect(asListFilter('bogus')).toBeUndefined();
+    expect(asListFilter(undefined)).toBeUndefined();
+    expect(asListRange('12m')).toBe('12m');
+    expect(asListRange(30)).toBeUndefined();
   });
 
   it('the needs-signature card summarizes received items needing me', () => {

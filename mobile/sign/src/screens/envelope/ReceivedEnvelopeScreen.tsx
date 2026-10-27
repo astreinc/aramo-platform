@@ -26,6 +26,8 @@ import { OFFLINE_ACTION_REASON, signKeys, useInbox, useOnline } from '../../feat
 import type { InboxItem } from '../../features/inbox/types';
 import { EmptyState } from '../../features/inbox/ui';
 import { stashGuestToken } from '../../links/guestTokenVault';
+import { receivedShareTarget } from '../../features/share/shareCompleted';
+import { useShare } from '../../features/share/useShare';
 import type { RootStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
 
@@ -45,6 +47,9 @@ export interface ReceivedEnvelopeViewProps {
   readonly onSignedCopy: () => void;
   readonly onRemove: () => void;
   readonly busy?: boolean;
+  /** Share the signed PDF (COMPLETED + can_download only, M-A4 §3.7). */
+  readonly onShare?: () => void;
+  readonly shareBusy?: boolean;
 }
 
 /** Presentational: every value shown comes from the inbox item itself. */
@@ -55,6 +60,8 @@ export function ReceivedEnvelopeView({
   onSignedCopy,
   onRemove,
   busy,
+  onShare,
+  shareBusy,
 }: ReceivedEnvelopeViewProps) {
   const t = useTheme();
   const facts: [string, string][] = [];
@@ -116,6 +123,16 @@ export function ReceivedEnvelopeView({
           onPress={onSignedCopy}
         />
       ) : null}
+      {onShare && receivedShareTarget(item) ? (
+        <Button
+          testID="received-share"
+          title="Share signed PDF"
+          variant="secondary"
+          disabled={!online}
+          busy={shareBusy}
+          onPress={onShare}
+        />
+      ) : null}
       {!online ? (
         <Text style={{ color: t.color.textSecondary, fontSize: 13 }}>{OFFLINE_ACTION_REASON}</Text>
       ) : null}
@@ -134,6 +151,7 @@ export function ReceivedEnvelopeScreen({ route, navigation }: Props) {
   const inbox = useInbox();
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
+  const sharer = useShare();
   const item = findInboxItem(inbox.data, inboxItemId);
 
   async function signedCopy(): Promise<void> {
@@ -193,6 +211,8 @@ export function ReceivedEnvelopeScreen({ route, navigation }: Props) {
         onSign={() => navigation.navigate('Signing', { envelopeId: inboxItemId })}
         onSignedCopy={() => void signedCopy()}
         onRemove={() => void remove()}
+        onShare={() => sharer.share(receivedShareTarget(item))}
+        shareBusy={sharer.busy}
       />
     </ScrollView>
   );

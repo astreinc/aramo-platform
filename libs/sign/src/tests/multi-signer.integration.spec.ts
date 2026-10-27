@@ -18,6 +18,8 @@ import { type ExecutionProducerPort } from '../lib/ports/execution-producer.port
 import { type SigningNotification, type SigningNotificationPort } from '../lib/ports/signing-notification.port.js';
 import { generateSigningToken, signingSessionExpiresAt } from '../lib/signing-token.js';
 import { ReminderNotAllowedError, SignerNotYetEligibleError } from '../lib/domain/errors.js';
+import { AttestedNameRequiredError, SessionIssueRefusedError } from '../lib/domain/envelope-contract-errors.js';
+import { hashSigningToken } from '../lib/signing-token.js';
 
 // Aramo-Sign-Multi-Signer-Amendment-v1_0-LOCKED (§3, §4, §6, §8) on real Postgres 17:
 // parallel and sequential signing enforced by the ENGINE, the durable next-signer
@@ -343,6 +345,192 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Multi-signer — 
         recipients: [{ name: 'New', email: 'n@x.test' }, { id: c!.id, name: 'C', email: 'c@x.test' }, { id: a!.id, name: 'A', email: 'a@x.test' }, { id: b!.id, name: 'B', email: 'b@x.test' }],
       });
       expect(after.map((s) => [s.email, s.signing_order])).toEqual([['n@x.test', 1], ['c@x.test', 2], ['a@x.test', 3], ['b@x.test', 4]]);
+    });
+  });
+  // Aramo-Sign-Unified-Product-Amendment-M-A5 §1–§5 — recipient kinds, copies,
+  // hosted (in-person) and self-signing, enforced by the ENGINE.
+  describe('M-A5 — recipient kinds, hosted and self-signing', () => {
+    const HOST = randomUUID();
+    const SELF = randomUUID();
+    type Kind = 'SIGNER' | 'IN_PERSON_SIGNER' | 'RECEIVES_COPY';
+    interface R { kind: Kind; copy?: 'ON_SEND' | 'ON_COMPLETION' | 'BOTH'; email?: string | null; bound?: string }
+    interface Built { envelopeId: string; ids: string[]; fields: Record<string, string>; tokens: Record<string, string | undefined>; copies: Record<string, string> }
+
+    async function build(list: R[], routing: 'PARALLEL' | 'SEQUENTIAL' = 'SEQUENTIAL', send = true): Promise<Built> {
+      const env = await repo.createEnvelope({ tenant_id: TENANT, subject: 'Kinds', execution_mode: 'MULTI_SIGNATURE', created_by: ACTOR, routing_mode: routing });
+      const doc = await repo.addDocument({ tenant_id: TENANT, envelope_id: env.id, document_ref: randomUUID(), document_revision_ref: randomUUID(), title: 'k.pdf', source_sha256: 'abc', ordinal: 1 });
+      const ids: string[] = [];
+      const fields: Record<string, string> = {};
+      for (const [i, r] of list.entries()) {
+        const id = randomUUID();
+        const email = r.email === undefined ? `k${i}-${env.id.slice(0, 8)}@x.com` : r.email;
+        await prisma.signer.create({
+          data: { id, tenant_id: TENANT, envelope_id: env.id, email, name: `R${i}`, signing_order: i + 1, status: 'PENDING', recipient_kind: r.kind, copy_delivery: r.copy ?? null, bound_user_id: r.bound ?? null },
+        });
+        ids.push(id);
+        if (r.kind !== 'RECEIVES_COPY') {
+          const f = await repo.addField({ tenant_id: TENANT, envelope_document_id: doc.id, signer_id: id, field_type: 'SIGNATURE', page_number: 0, x: 72, y: 100 + i * 30, required: true });
+          fields[id] = f.id;
+        }
+      }
+      const tokens: Record<string, string | undefined> = {};
+      const copies: Record<string, string> = {};
+      if (send) {
+        const out = await service.send(TENANT, env.id, ACTOR);
+        for (const id of ids) tokens[id] = out.sessions.find((x) => x.signer_id === id)?.raw_token;
+        for (const c of out.copies) copies[c.signer_id] = c.raw_token;
+      }
+      return { envelopeId: env.id, ids, fields, tokens, copies };
+    }
+
+    async function signWith(token: string, fieldId: string, attested?: string) {
+      const ctx = await service.resolveSession(token);
+      await service.acceptDisclosure(ctx, { disclosure_version: DISCLOSURE.version, disclosure_text_hash: DISCLOSURE.text_sha256, ...(attested !== undefined ? { attested_name: attested } : {}) });
+      await service.fillField(ctx, fieldId, { value: 'Signed', signature_method: 'TYPED' });
+      return service.completeSigner(ctx);
+    }
+    const events = (envelopeId: string) =>
+      q<{ event_type: string; actor_type: string; actor_ref: string | null; signer_id: string | null; payload: Record<string, unknown> | null }>(
+        `SELECT event_type, actor_type, actor_ref, signer_id, payload FROM "sign"."SignatureEvent" WHERE envelope_id=$1 ORDER BY occurred_at, id`,
+        [envelopeId],
+      );
+
+    it('a copy recipient never takes a SEQUENTIAL turn, never gets a session, is never reminded and never blocks completion', async () => {
+      const b = await build([{ kind: 'SIGNER' }, { kind: 'RECEIVES_COPY', copy: 'ON_COMPLETION' }, { kind: 'SIGNER' }]);
+      const [first, cc, last] = b.ids as [string, string, string];
+      expect(b.tokens[first]).toBeDefined();
+      expect(b.tokens[cc]).toBeUndefined();
+      expect(await liveSessions(b.envelopeId, cc)).toBe(0);
+      const r1 = await signWith(b.tokens[first]!, b.fields[first]!);
+      // The turn skips the copy recipient straight to the last signer.
+      expect(r1).toEqual({ envelope_status: 'IN_PROGRESS', next_signer_id: last });
+      expect((await intents(b.envelopeId)).map((i) => i.signer_id)).toEqual([last]);
+      await expect(service.remindSigner(TENANT, b.envelopeId, ACTOR, cc)).rejects.toBeInstanceOf(ReminderNotAllowedError);
+      await invitations.dispatch({ envelope_id: b.envelopeId });
+      const r2 = await signWith(notifier.tokenFor(`k2-${b.envelopeId.slice(0, 8)}@x.com`), b.fields[last]!);
+      expect(r2.envelope_status).toBe('COMPLETED');
+      expect(producer.produced(b.envelopeId)).toBe(1);
+      expect(await liveSessions(b.envelopeId, cc)).toBe(0);
+      // The evidence manifest lists the signing recipients only.
+      expect((await service.evidenceManifest(TENANT, b.envelopeId)).manifest.signers).toEqual([first, last]);
+    });
+
+    it('ON_SEND copy: a COPY_VIEW grant + COPY_DELIVERY_ISSUED at send; the link opens the source while signing is open and never the executed copy', async () => {
+      const b = await build([{ kind: 'SIGNER' }, { kind: 'RECEIVES_COPY', copy: 'ON_SEND' }, { kind: 'RECEIVES_COPY', copy: 'ON_COMPLETION' }], 'PARALLEL');
+      const [, onSend, onDone] = b.ids as [string, string, string];
+      expect(Object.keys(b.copies)).toEqual([onSend]);
+      const grants = await q<{ signer_id: string; access_kind: string }>(`SELECT signer_id, access_kind FROM "sign"."ExecutedAccessGrant" WHERE envelope_id=$1`, [b.envelopeId]);
+      expect(grants).toEqual([{ signer_id: onSend, access_kind: 'COPY_VIEW' }]);
+      const issued = (await events(b.envelopeId)).filter((e) => e.event_type === 'COPY_DELIVERY_ISSUED');
+      expect(issued).toEqual([expect.objectContaining({ signer_id: onSend, actor_type: 'SERVICE', actor_ref: ACTOR, payload: { copy_delivery: 'ON_SEND', access_kind: 'COPY_VIEW' } })]);
+      expect(await service.resolveCopyAccess(b.copies[onSend]!)).toEqual({ tenant_id: TENANT, envelope_id: b.envelopeId, signer_id: onSend });
+      // A COPY_VIEW token never opens the executed copy, and an unknown token is refused.
+      await expect(service.resolveExecutedAccess(b.copies[onSend]!)).rejects.toThrow(/unknown token/);
+      await expect(service.resolveCopyAccess(generateSigningToken().raw)).rejects.toThrow(/unknown token/);
+      expect(onDone).toBeDefined();
+      // A voided envelope's copy link no longer opens.
+      await service.voidEnvelope(TENANT, b.envelopeId, ACTOR, 'withdrawn');
+      await expect(service.resolveCopyAccess(b.copies[onSend]!)).rejects.toThrow(/not available/);
+    });
+
+    it('no ledger event follows ENVELOPE_COMPLETED when copies exist (the chain hash stays final)', async () => {
+      const b = await build([{ kind: 'SIGNER' }, { kind: 'RECEIVES_COPY', copy: 'BOTH' }], 'PARALLEL');
+      await signWith(b.tokens[b.ids[0]!]!, b.fields[b.ids[0]!]!);
+      const evs = await events(b.envelopeId);
+      expect(evs[evs.length - 1]!.event_type).toBe('ENVELOPE_COMPLETED');
+    });
+
+    it('hosted session: only an IN_PERSON_SIGNER whose turn it is; 30-minute HOSTED session, other live sessions revoked, host evidence hashed', async () => {
+      const b = await build([{ kind: 'SIGNER' }, { kind: 'IN_PERSON_SIGNER', email: null }, { kind: 'RECEIVES_COPY', copy: 'ON_COMPLETION' }]);
+      const [first, inPerson, cc] = b.ids as [string, string, string];
+      // A SIGNER is never hosted; a copy recipient is ineligible; the in-person signer must wait for their turn.
+      await expect(service.issueHostedSession(TENANT, b.envelopeId, first, HOST)).rejects.toMatchObject({ reason: 'not_in_person_signer' });
+      await expect(service.issueHostedSession(TENANT, b.envelopeId, cc, HOST)).rejects.toMatchObject({ reason: 'signer_ineligible' });
+      await expect(service.issueHostedSession(TENANT, b.envelopeId, inPerson, HOST)).rejects.toMatchObject({ reason: 'not_your_turn' });
+      await expect(service.issueHostedSession(randomUUID(), b.envelopeId, inPerson, HOST)).rejects.toBeInstanceOf(Error);
+      // The in-person signer is never emailed: no invitation intent when their turn comes.
+      const r1 = await signWith(b.tokens[first]!, b.fields[first]!);
+      expect(r1).toEqual({ envelope_status: 'IN_PROGRESS' });
+      expect(await intents(b.envelopeId)).toEqual([]);
+      const leaked = await forgeSession(b.envelopeId, inPerson);
+      const before = Date.now();
+      const hosted = await service.issueHostedSession(TENANT, b.envelopeId, inPerson, HOST);
+      expect(hosted.expires_at.getTime() - before).toBeLessThanOrEqual(30 * 60 * 1000 + 1000);
+      expect(hosted.expires_at.getTime() - before).toBeGreaterThan(29 * 60 * 1000);
+      await expect(service.resolveSession(leaked)).rejects.toThrow();
+      const row = (await q<{ origin: string; host_user_id: string; authenticated_user_id: string | null }>(`SELECT origin, host_user_id, authenticated_user_id FROM "sign"."SigningSession" WHERE token_hash=$1`, [hashSigningToken(hosted.raw_token)]))[0]!;
+      expect(row).toEqual({ origin: 'HOSTED', host_user_id: HOST, authenticated_user_id: null });
+      const started = (await events(b.envelopeId)).find((e) => e.event_type === 'HOSTED_SESSION_STARTED');
+      expect(started).toMatchObject({ actor_type: 'SERVICE', actor_ref: HOST, signer_id: inPerson });
+      // The disclosure needs the attested name in a hosted session.
+      const ctx = await service.resolveSession(hosted.raw_token);
+      await expect(service.acceptDisclosure(ctx, { disclosure_version: DISCLOSURE.version, disclosure_text_hash: DISCLOSURE.text_sha256 })).rejects.toBeInstanceOf(AttestedNameRequiredError);
+      const done = await signWith(hosted.raw_token, b.fields[inPerson]!, '  Pat   In-Person ');
+      expect(done.envelope_status).toBe('COMPLETED');
+      expect((await q<{ attested_name: string }>(`SELECT attested_name FROM "sign"."SignerDisclosureAcceptance" WHERE signer_id=$1`, [inPerson]))[0]!.attested_name).toBe('Pat In-Person');
+      const evs = await events(b.envelopeId);
+      expect(evs.find((e) => e.event_type === 'SIGNER_SIGNED' && e.signer_id === inPerson)!.payload).toEqual({ session_origin: 'HOSTED', host_user_id: HOST });
+      expect(evs.find((e) => e.event_type === 'DISCLOSURE_ACCEPTED' && e.signer_id === inPerson)!.payload).toMatchObject({ session_origin: 'HOSTED', attested_name_sha256: expect.stringMatching(/^[0-9a-f]{64}$/) });
+      // A completed envelope can no longer be hosted.
+      await expect(service.issueHostedSession(TENANT, b.envelopeId, inPerson, HOST)).rejects.toMatchObject({ reason: 'envelope_not_signable' });
+    });
+
+    it('self-sign: only the recipient bound to the caller, with the verified email re-checked; SELF evidence on SIGNER_SIGNED', async () => {
+      const email = `self-${randomUUID().slice(0, 8)}@x.com`;
+      const b = await build([{ kind: 'SIGNER', email, bound: SELF }, { kind: 'SIGNER' }], 'PARALLEL');
+      const [mine, other] = b.ids as [string, string];
+      await expect(service.issueSelfSignSession(TENANT, b.envelopeId, randomUUID(), email)).rejects.toMatchObject({ reason: 'not_bound_to_you' });
+      await expect(service.issueSelfSignSession(TENANT, b.envelopeId, SELF, email, other)).rejects.toMatchObject({ reason: 'not_bound_to_you' });
+      await expect(service.issueSelfSignSession(TENANT, b.envelopeId, SELF, 'someone-else@x.com')).rejects.toMatchObject({ reason: 'email_not_verified' });
+      await expect(service.issueSelfSignSession(TENANT, b.envelopeId, SELF, null)).rejects.toMatchObject({ reason: 'email_not_verified' });
+      const self = await service.issueSelfSignSession(TENANT, b.envelopeId, SELF, email.toUpperCase());
+      expect(self.signer_id).toBe(mine);
+      expect(self.expires_at.getTime() - Date.now()).toBeLessThanOrEqual(30 * 60 * 1000 + 1000);
+      // The emailed link stays valid (a self-sign session revokes nothing).
+      expect(await liveSessions(b.envelopeId, mine)).toBe(2);
+      const row = (await q<{ origin: string; authenticated_user_id: string }>(`SELECT origin, authenticated_user_id FROM "sign"."SigningSession" WHERE token_hash=$1`, [hashSigningToken(self.raw_token)]))[0]!;
+      expect(row).toEqual({ origin: 'SELF', authenticated_user_id: SELF });
+      await signWith(self.raw_token, b.fields[mine]!);
+      const evs = await events(b.envelopeId);
+      expect(evs.find((e) => e.event_type === 'SELF_SIGN_SESSION_ISSUED')).toMatchObject({ actor_type: 'SERVICE', actor_ref: SELF, signer_id: mine });
+      expect(evs.find((e) => e.event_type === 'SIGNER_SIGNED' && e.signer_id === mine)!.payload).toEqual({ session_origin: 'SELF', authenticated_user_id: SELF });
+      // Already signed: no second self-sign session.
+      await expect(service.issueSelfSignSession(TENANT, b.envelopeId, SELF, email)).rejects.toMatchObject({ reason: 'signer_ineligible' });
+      expect(SessionIssueRefusedError).toBeDefined();
+    });
+
+    it('new sessions carry their origin (LINK at send and remind); legacy rows stay NULL', async () => {
+      const b = await build([{ kind: 'SIGNER' }], 'PARALLEL');
+      expect((await q<{ origin: string }>(`SELECT origin FROM "sign"."SigningSession" WHERE envelope_id=$1`, [b.envelopeId])).map((r) => r.origin)).toEqual(['LINK']);
+      await service.remindSigner(TENANT, b.envelopeId, ACTOR);
+      expect((await q<{ origin: string }>(`SELECT origin FROM "sign"."SigningSession" WHERE envelope_id=$1 AND status='ISSUED'`, [b.envelopeId])).map((r) => r.origin)).toEqual(['LINK']);
+      const legacy = await forgeSession(b.envelopeId, b.ids[0]!);
+      expect((await q<{ origin: string | null }>(`SELECT origin FROM "sign"."SigningSession" WHERE token_hash=$1`, [hashSigningToken(legacy)]))[0]!.origin).toBeNull();
+    });
+
+    it('backward compatible: a signer created without a kind is a SIGNER; the database enforces the kind rules', async () => {
+      const env = await repo.createEnvelope({ tenant_id: TENANT, subject: 'Compat', execution_mode: 'SINGLE_SIGNATURE', created_by: ACTOR });
+      const s = await repo.addSigner({ tenant_id: TENANT, envelope_id: env.id, email: 'c@x.com', name: 'C', signing_order: 1 });
+      expect((await q<{ recipient_kind: string; copy_delivery: string | null }>(`SELECT recipient_kind, copy_delivery FROM "sign"."Signer" WHERE id=$1`, [s.id]))[0]).toEqual({ recipient_kind: 'SIGNER', copy_delivery: null });
+      const ins = (kind: string, email: string | null, copy: string | null, order: number) =>
+        db.query(`INSERT INTO "sign"."Signer" (id, tenant_id, envelope_id, email, name, signing_order, status, recipient_kind, copy_delivery) VALUES ($1,$2,$3,$4,'X',$5,'PENDING',$6,$7)`, [randomUUID(), TENANT, env.id, email, order, kind, copy]);
+      await expect(ins('SIGNER', null, null, 2)).rejects.toThrow(/Signer_email_required_check/);
+      await expect(ins('RECEIVES_COPY', 'cc@x.com', null, 3)).rejects.toThrow(/Signer_copy_delivery_check/);
+      await expect(ins('SIGNER', 'z@x.com', 'ON_SEND', 4)).rejects.toThrow(/Signer_copy_delivery_check/);
+      await expect(ins('WATCHER', 'w@x.com', null, 5)).rejects.toThrow(/Signer_recipient_kind_check/);
+      await ins('IN_PERSON_SIGNER', null, null, 6);
+      await expect(db.query(`UPDATE "sign"."SigningSession" SET origin='HOSTED' WHERE envelope_id=$1`, [env.id])).resolves.toBeDefined(); // no rows
+      await expect(
+        db.query(`INSERT INTO "sign"."SigningSession" (id, tenant_id, envelope_id, signer_id, token_hash, status, expires_at, origin) VALUES ($1,$2,$3,$4,$5,'ISSUED', now(), 'HOSTED')`, [randomUUID(), TENANT, env.id, s.id, randomUUID()]),
+      ).rejects.toThrow(/SigningSession_host_user_check/);
+      // A legacy (NULL origin) row can never name a host or an authenticated user.
+      await expect(
+        db.query(`INSERT INTO "sign"."SigningSession" (id, tenant_id, envelope_id, signer_id, token_hash, status, expires_at, host_user_id) VALUES ($1,$2,$3,$4,$5,'ISSUED', now(), $6)`, [randomUUID(), TENANT, env.id, s.id, randomUUID(), HOST]),
+      ).rejects.toThrow(/SigningSession_host_user_check/);
+      await expect(
+        db.query(`INSERT INTO "sign"."SigningSession" (id, tenant_id, envelope_id, signer_id, token_hash, status, expires_at, authenticated_user_id) VALUES ($1,$2,$3,$4,$5,'ISSUED', now(), $6)`, [randomUUID(), TENANT, env.id, s.id, randomUUID(), SELF]),
+      ).rejects.toThrow(/SigningSession_authenticated_user_check/);
+      await expect(ins('RECEIVES_COPY', 'cc2@x.com', 'SOMETIME', 7)).rejects.toThrow(/Signer_copy_delivery_check/);
     });
   });
 });

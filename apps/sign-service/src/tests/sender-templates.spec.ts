@@ -46,13 +46,40 @@ const RENDERED: SignTemplateRenderResponse = {
     { field_type: 'SIGN_DATE', page_number: 0, x: 300, y: 120, width: 120, height: 20 },
   ],
   field_definitions: [],
+  signing: null,
 };
 
-function harness(opts: { registry?: Record<string, 'AVAILABLE' | 'NOT_AVAILABLE'>; kind?: string } = {}) {
+// Amendment M-A6 §3.2 — a template with two SIGNER roles and one CC role.
+const SIGNING: NonNullable<SignTemplateRenderResponse['signing']> = {
+  roles: [
+    { role_key: 'client', label: 'Client', kind: 'SIGNER', order: 1 },
+    { role_key: 'agency', label: 'Agency', kind: 'SIGNER', order: 2 },
+    { role_key: 'hr_copy', label: 'HR copy', kind: 'CC', order: 3 },
+  ],
+  routing_mode: 'SEQUENTIAL',
+  default_subject: 'Please sign the agreement',
+  default_message: 'Template message',
+};
+const ROLE_FIELDS = (['client', 'agency'] as const).flatMap((role_key, i) =>
+  (['SIGNATURE', 'SIGNER_NAME', 'SIGN_DATE'] as const).map((field_type, j) => ({ field_type, page_number: 0, x: 60 + j * 170, y: 300 - i * 90, width: 160, height: 20, role_key })),
+);
+const RENDERED_ROLES: SignTemplateRenderResponse = {
+  ...RENDERED,
+  signature_fields: ROLE_FIELDS,
+  field_definitions: [
+    { field_key: 'agency_initials', field_type: 'INITIALS', signer_role: 'agency', required: true, page_number: 0, x: 500, y: 40, width: 40, height: 20 },
+    { field_key: 'unplaced', field_type: 'TEXT', signer_role: 'client', required: false, page_number: null, x: null, y: null, width: null, height: null },
+    { field_key: 'cc_field', field_type: 'TEXT', signer_role: 'hr_copy', required: false, page_number: 0, x: 1, y: 1, width: 10, height: 10 },
+  ],
+  signing: SIGNING,
+};
+const LISTED = { template_id: TEMPLATE, signing: SIGNING };
+
+function harness(opts: { registry?: Record<string, 'AVAILABLE' | 'NOT_AVAILABLE'>; kind?: string; roles?: boolean } = {}) {
   const documents: DocumentTemplatesPort = {
-    list: vi.fn(async () => ({ items: [], unavailable: [] })),
+    list: vi.fn(async () => ({ items: opts.roles === true ? [LISTED as never] : [{ template_id: TEMPLATE, signing: null } as never], unavailable: [] })),
     preview: vi.fn(async () => ({}) as never),
-    render: vi.fn(async () => RENDERED),
+    render: vi.fn(async () => (opts.roles === true ? RENDERED_ROLES : RENDERED)),
   };
   const gate = new SignFeatureGate(opts.registry);
   const context = { assertCanAuthor: vi.fn(async () => {
@@ -61,6 +88,7 @@ function harness(opts: { registry?: Record<string, 'AVAILABLE' | 'NOT_AVAILABLE'
   const repo = {
     createDraft: vi.fn(async () => ({ id: 'env-1', status: 'DRAFT', subject: 'Right to Represent' })),
     addDraftCoreRefDocument: vi.fn(async () => ({ id: 'edoc-1', title: 'Right to Represent', ordinal: 0 })),
+    bindTemplateDraft: vi.fn(async () => []),
   };
   const envelopes = {
     replaceRecipients: vi.fn(async () => ({ recipients: [{ id: 'signer-1' }] })),
@@ -146,7 +174,14 @@ describe('plan capability sign.templates — AVAILABLE (test registry)', () => {
       body: { values: { 'talent.full_name': 'Jordan Signer' }, created_by: USER, client_id: null },
       requestId: 'r',
     });
-    expect(h.repo.createDraft).toHaveBeenCalledWith({ tenant_id: TENANT, subject: 'Right to Represent', created_by: USER });
+    // M-A6 §3.6 — template provenance is recorded on every from-template draft.
+    expect(h.repo.createDraft).toHaveBeenCalledWith({
+      tenant_id: TENANT,
+      subject: 'Right to Represent',
+      created_by: USER,
+      template_ref: TEMPLATE,
+      template_version_ref: RENDERED.template_version_id,
+    });
     expect(h.repo.addDraftCoreRefDocument).toHaveBeenCalledWith({
       tenant_id: TENANT,
       envelope_id: 'env-1',
@@ -170,7 +205,13 @@ describe('plan capability sign.templates — AVAILABLE (test registry)', () => {
     await h.svc.createEnvelope(auth(SENDER_SCOPES), { template_id: TEMPLATE, subject: 'Custom subject' }, 'r');
     const call = (h.documents.render as ReturnType<typeof vi.fn>).mock.calls[0]?.[0] as { idempotency_key: string };
     expect(call.idempotency_key).toMatch(/^[0-9a-f-]{36}$/);
-    expect(h.repo.createDraft).toHaveBeenCalledWith({ tenant_id: TENANT, subject: 'Custom subject', created_by: USER });
+    expect(h.repo.createDraft).toHaveBeenCalledWith({
+      tenant_id: TENANT,
+      subject: 'Custom subject',
+      created_by: USER,
+      template_ref: TEMPLATE,
+      template_version_ref: RENDERED.template_version_id,
+    });
     expect(h.envelopes.replaceRecipients).not.toHaveBeenCalled();
     expect(h.envelopes.replaceFields).not.toHaveBeenCalled();
   });
@@ -185,12 +226,13 @@ describe('sender context — templates permission + feature availability', () =>
   const identity = { findUserById: async () => ({ email: 'u@x.test', display_name: 'U' }), findMembership: async () => null, findRoleKeysForMembership: async () => [] };
   it('NOT_AVAILABLE (default) → features.templates false; permission follows document_template:read', async () => {
     const v = await new SenderContextService(tenants as never, identity as never).context(auth(SENDER_SCOPES), 'r');
-    expect(v.features).toEqual({ templates: false });
+    // M-A5 §3.7 — sign.in_person_signing is AVAILABLE in the production registry.
+    expect(v.features).toEqual({ templates: false, in_person_signing: true });
     expect(v.permissions.templates).toBe(true);
   });
   it('AVAILABLE → features.templates true; no document_template:read → permission false', async () => {
     const v = await new SenderContextService(tenants as never, identity as never, new SignFeatureGate(AVAILABLE)).context(auth(['sign:envelope:read']), 'r');
-    expect(v.features).toEqual({ templates: true });
+    expect(v.features).toMatchObject({ templates: true });
     expect(v.permissions.templates).toBe(false);
   });
 });
@@ -251,5 +293,108 @@ describe('DocumentTemplatesHttpAdapter — the signed Documents channel', () => 
   it('a refusal of sign-service itself (401/403) never reaches the browser as a session error', async () => {
     fetchMock.mockResolvedValueOnce(new Response(JSON.stringify({ error: { code: 'AUTH_REQUIRED', message: 'x' } }), { status: 401 }));
     await expect(new DocumentTemplatesHttpAdapter().list({ tenant_id: TENANT, requestId: 'r' })).rejects.toMatchObject({ code: 'INTERNAL_ERROR', statusCode: 502 });
+  });
+});
+
+// Amendment M-A6 §3.5 — from-template with role binding.
+describe('from-template — multi-role binding (M-A6 §3.5)', () => {
+  const a = auth(SENDER_SCOPES);
+  const recipients = [
+    { role_key: 'agency', name: 'Agency Rep', email: 'agency@x.test' },
+    { role_key: 'client', name: 'Client Signer', email: 'client@x.test' },
+  ];
+  const cc = [{ role_key: 'hr_copy', name: 'HR', email: 'hr@x.test' }];
+
+  it('binds each SIGNER role once in role order, CC roles as copy recipients (ON_COMPLETION), fields through the internal path, provenance + template defaults', async () => {
+    const h = harness({ registry: AVAILABLE, roles: true });
+    const out = await h.svc.createEnvelope(a, { template_id: TEMPLATE, values: { 'requisition.title': 'Analyst' }, recipients, cc }, 'r');
+    expect(h.repo.createDraft).toHaveBeenCalledWith({
+      tenant_id: TENANT,
+      subject: 'Please sign the agreement',
+      created_by: USER,
+      template_ref: TEMPLATE,
+      template_version_ref: RENDERED.template_version_id,
+    });
+    const bind = (h.repo.bindTemplateDraft.mock.calls[0] as unknown[])[0] as {
+      routing_mode: string;
+      message: string | null;
+      recipients: Array<Record<string, unknown>>;
+      fields: Array<Record<string, unknown>>;
+    };
+    expect(bind.routing_mode).toBe('SEQUENTIAL');
+    expect(bind.message).toBe('Template message');
+    expect(bind.recipients).toEqual([
+      { role_key: 'client', name: 'Client Signer', email: 'client@x.test', signing_order: 1, recipient_kind: 'SIGNER' },
+      { role_key: 'agency', name: 'Agency Rep', email: 'agency@x.test', signing_order: 2, recipient_kind: 'SIGNER' },
+      { role_key: 'hr_copy', name: 'HR', email: 'hr@x.test', signing_order: 3, recipient_kind: 'RECEIVES_COPY', copy_delivery: 'ON_COMPLETION' },
+    ]);
+    // 6 role-block placements (SIGNER_NAME included — not limited by the public whitelist)
+    // + the placed INITIALS definition; the unplaced and the CC-role definitions are skipped.
+    expect(bind.fields.map((f) => `${f['role_key']}:${f['field_type']}`)).toEqual([
+      'client:SIGNATURE',
+      'client:SIGNER_NAME',
+      'client:SIGN_DATE',
+      'agency:SIGNATURE',
+      'agency:SIGNER_NAME',
+      'agency:SIGN_DATE',
+      'agency:INITIALS',
+    ]);
+    expect(h.envelopes.replaceRecipients).not.toHaveBeenCalled();
+    expect(h.envelopes.replaceFields).not.toHaveBeenCalled();
+    expect(out.signing).toEqual(SIGNING);
+  });
+
+  it('the request overrides the template routing mode, message and subject', async () => {
+    const h = harness({ registry: AVAILABLE, roles: true });
+    await h.svc.createEnvelope(a, { template_id: TEMPLATE, recipients, routing_mode: 'PARALLEL', message: '  Hello  ', subject: 'Own subject' }, 'r');
+    const bind = (h.repo.bindTemplateDraft.mock.calls[0] as unknown[])[0] as { routing_mode: string; message: string | null };
+    expect(bind).toMatchObject({ routing_mode: 'PARALLEL', message: 'Hello' });
+    expect((h.repo.createDraft.mock.calls[0] as unknown[])[0]).toMatchObject({ subject: 'Own subject' });
+  });
+
+  it('refuses every binding error BEFORE the render (no Document is created)', async () => {
+    const reason = async (body: Record<string, unknown>): Promise<unknown> => {
+      const h = harness({ registry: AVAILABLE, roles: true });
+      try {
+        await h.svc.createEnvelope(a, { template_id: TEMPLATE, ...body }, 'r');
+        return 'NO_ERROR';
+      } catch (e) {
+        expect(h.documents.render).not.toHaveBeenCalled();
+        expect(h.repo.createDraft).not.toHaveBeenCalled();
+        return (e as { context?: { details?: { reason?: unknown } } }).context?.details?.reason;
+      }
+    };
+    expect(await reason({ recipients, signer: { name: 'A', email: 'a@x.test' } })).toBe('signer_and_recipients');
+    expect(await reason({ recipients: [recipients[0]] })).toBe('role_unbound');
+    expect(await reason({ recipients: [...recipients, { role_key: 'client', name: 'Again', email: 'again@x.test' }] })).toBe('role_bound_twice');
+    expect(await reason({ recipients: [...recipients, { role_key: 'nobody', name: 'N', email: 'n@x.test' }] })).toBe('unknown_role');
+    expect(await reason({ recipients: [recipients[0], { role_key: 'hr_copy', name: 'HR', email: 'hr@x.test' }] })).toBe('role_not_signer');
+    expect(await reason({ recipients, cc: [{ role_key: 'client', name: 'C', email: 'c2@x.test' }] })).toBe('role_not_cc');
+    expect(await reason({ recipients, cc: [{ role_key: 'hr_copy', name: 'HR', email: 'CLIENT@x.test' }] })).toBe('duplicate_email');
+    expect(await reason({ recipients, routing_mode: 'RANDOM' })).toBe('routing_mode_invalid');
+    expect(await reason({ recipients: [{ role_key: 'client', name: 'C', email: 'bad' }] })).toBe('email_invalid');
+    expect(await reason({ template_id: TEMPLATE, routing_mode: 'PARALLEL' })).toBe('recipients_required');
+    expect(await reason({ signer: { name: 'Solo', email: 'solo@x.test' } })).toBe('template_has_roles');
+  });
+
+  it('a template without roles refuses recipients (use signer); an unknown or foreign template is not found', async () => {
+    const plain = harness({ registry: AVAILABLE });
+    await expect(plain.svc.createEnvelope(a, { template_id: TEMPLATE, recipients }, 'r')).rejects.toMatchObject({ context: { details: { reason: 'template_has_no_roles' } } });
+    const other = harness({ registry: AVAILABLE, roles: true });
+    await expect(other.svc.createEnvelope(a, { template_id: '77777777-7777-7777-8777-777777777777', recipients }, 'r')).rejects.toMatchObject({
+      code: 'TEMPLATE_NOT_FOUND',
+      statusCode: 404,
+    });
+    expect(other.documents.render).not.toHaveBeenCalled();
+  });
+
+  it('a version whose roles changed between choice and render is refused, never re-bound', async () => {
+    const h = harness({ registry: AVAILABLE, roles: true });
+    (h.documents.render as ReturnType<typeof vi.fn>).mockResolvedValueOnce({ ...RENDERED_ROLES, signing: { ...SIGNING, roles: SIGNING.roles.slice(0, 1) } });
+    await expect(h.svc.createEnvelope(a, { template_id: TEMPLATE, recipients }, 'r')).rejects.toMatchObject({
+      code: 'TEMPLATE_VERSION_NOT_ACTIVE',
+      context: { details: { reason: 'template_roles_changed' } },
+    });
+    expect(h.repo.createDraft).not.toHaveBeenCalled();
   });
 });

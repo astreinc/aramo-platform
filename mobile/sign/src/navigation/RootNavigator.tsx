@@ -1,5 +1,6 @@
 // Auth-gated root stack (handoff §2). Signed out: Sign in + guest signing. Signed in:
-// tabs + detail/signing/viewer/send. Guest signing is reachable in both states.
+// tabs (Home · Agreements) + the side-menu screens (Notifications, Account, Templates) +
+// detail/signing/viewer/send. Guest signing is reachable in both states.
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, View } from 'react-native';
@@ -7,13 +8,17 @@ import { ActivityIndicator, View } from 'react-native';
 import { useServices, useSession } from '../app/ServicesContext';
 import { biometricCapability, biometricUnlockPref } from '../auth/biometric';
 import { setPendingTarget } from '../links/pendingTarget';
+import { AccountScreen } from '../screens/account/AccountScreen';
 import { DocumentViewerScreen } from '../screens/documents/DocumentViewerScreen';
 import { EnvelopeDetailScreen } from '../screens/envelope/EnvelopeDetailScreen';
+import { HostedSigningScreen } from '../screens/hosted/HostedSigningScreen';
 import { ReceivedEnvelopeScreen } from '../screens/envelope/ReceivedEnvelopeScreen';
+import { NotificationsScreen } from '../screens/notifications/NotificationsScreen';
 import { SendFlowScreen } from '../screens/send/SendFlowScreen';
 import { SignInScreen } from '../screens/signIn/SignInScreen';
 import { GuestSigningScreen } from '../screens/signing/GuestSigningScreen';
 import { SigningScreen } from '../screens/signing/SigningScreen';
+import { TemplatesScreen } from '../screens/templates/TemplatesScreen';
 import { UnlockScreen } from '../screens/unlock/UnlockScreen';
 import { useTheme } from '../theme';
 import { MainTabs } from './MainTabs';
@@ -119,6 +124,18 @@ export function RootNavigator() {
       ) : (
         <>
           <Stack.Screen name="Main" component={MainTabs} options={{ headerShown: false }} />
+          {/* Side-menu screens: each draws its own "‹ Home" back link (M-A4 §1.5). */}
+          <Stack.Screen
+            name="Notifications"
+            component={NotificationsScreen}
+            options={{ headerShown: false }}
+          />
+          <Stack.Screen name="Account" component={AccountScreen} options={{ headerShown: false }} />
+          <Stack.Screen
+            name="Templates"
+            component={TemplatesScreen}
+            options={{ headerShown: false }}
+          />
           <Stack.Screen
             name="EnvelopeDetail"
             component={EnvelopeDetailScreen}
@@ -143,6 +160,17 @@ export function RootNavigator() {
             name="SendFlow"
             component={SendFlowScreen}
             options={{ presentation: 'fullScreenModal', title: 'New envelope' }}
+          />
+          {/* Locked hosted (in-person) signing: covers tabs and side menu (M-A5 §3.3). */}
+          <Stack.Screen
+            name="HostedSigning"
+            component={HostedSigningScreen}
+            options={{
+              presentation: 'fullScreenModal',
+              title: 'Signing in person',
+              gestureEnabled: false,
+              headerBackVisible: false,
+            }}
           />
         </>
       )}

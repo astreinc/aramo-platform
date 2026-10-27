@@ -58,6 +58,7 @@ import { BlockBox, HTML_CODEC, insertAtRange, makeFieldChip, TEXT_TOKEN_CODEC, t
 import { activeMarks, blocksToHtml, htmlToBlocks, toggleMark, type BlockKind } from './dt-html';
 import { Letterhead, type LetterheadInfo } from './dt-html-render';
 import { useDocTemplateRoutes } from './dt-routes';
+import { studioSigningOf } from './studio/data-source';
 import {
   contentFromVersion,
   htmlOf,
@@ -720,7 +721,19 @@ export function RtrDraftEditor({
   const activeBlock = draft.blocks.find((b) => b.id === activeId) ?? null;
   const rich = codec.rich;
   const tenantLogo = load.tenantLogo;
-  const settingsFacts = [...SETTINGS_FACTS_BASE, rich ? ALLOWED_HTML : ALLOWED_V1];
+  // Amendment M-A6 §3.8 — a template with signing roles: Send RTR keeps the one fixed talent
+  // block; Aramo Sign draws one block per signing role.
+  const draftSignerLabels = (studioSigningOf(load.versions.find((v) => v.id === draft.versionId)?.field_schema)?.roles ?? [])
+    .filter((r) => r.kind === 'SIGNER')
+    .map((r) => r.label);
+  const settingsFacts = [
+    ...SETTINGS_FACTS_BASE.map((f) =>
+      f.l === 'SIGNATURE PLACEMENT' && draftSignerLabels.length > 0
+        ? { l: f.l, v: 'End of document', s: `Send RTR: talent signature · printed name · date signed. Aramo Sign: one block per signing role (${draftSignerLabels.join(' · ')})` }
+        : f,
+    ),
+    rich ? ALLOWED_HTML : ALLOWED_V1,
+  ];
   const jdValue = jdLabel != null ? codec.fieldBlock(JOB_DESCRIPTION_KEY, jdLabel) : null;
 
   const activeN = load.active?.version_number ?? null;

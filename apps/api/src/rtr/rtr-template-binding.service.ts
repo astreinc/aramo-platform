@@ -12,6 +12,7 @@ import {
   htmlWithSamples,
   isHtmlContent,
   sanitizeRtrHtml,
+  signerRoles,
   toRichBlocks,
   type RtrTemplateContent,
 } from './rtr-html-content.js';
@@ -75,7 +76,17 @@ export class RtrTemplateBindingService {
     tenant_id: string;
     values: ReadonlyMap<string, string>;
     requestId: string;
-  }): Promise<RenderModel & { signature_block: { printed_name: string }; bound_html?: string }> {
+  }): Promise<RenderModel & { bound_html?: string }> {
+    // Amendment M-A6 §3.3 — Sign path: a template with SIGNER roles renders one block per
+    // role (the printed name is a SIGNER_NAME placement Sign fills), so talent.full_name
+    // is not bound for it. Without `signing` this is exactly the single talent block.
+    const roles = isHtmlContent(input.content) ? signerRoles(input.content) : [];
+    if (roles.length > 0 && isHtmlContent(input.content)) {
+      const model = await this.bindHtml(input, input.content, async (used) => this.supplied(used, input.values, input.requestId), false);
+      const { signature_block: _single, ...rest } = model;
+      void _single;
+      return { ...rest, signature_blocks: roles.map((r) => ({ role_key: r.role_key, label: r.label })) };
+    }
     return this.bindContent(input, async (used) => {
       const out = new Map<string, string>();
       for (const key of used) {
@@ -85,6 +96,16 @@ export class RtrTemplateBindingService {
       }
       return out;
     });
+  }
+
+  private supplied(used: ReadonlySet<RtrBindingKey>, values: ReadonlyMap<string, string>, requestId: string): Map<string, string> {
+    const out = new Map<string, string>();
+    for (const key of used) {
+      const v = (values.get(key) ?? '').trim();
+      if (v.length === 0) throw this.missing(key, requestId);
+      out.set(key, v);
+    }
+    return out;
   }
 
   // DOC-TEMPLATE-LIB-1 T-5 — every catalog key a content version uses (title + body tokens,
@@ -109,7 +130,8 @@ export class RtrTemplateBindingService {
         }
         used.add(key);
       }
-      used.add('talent.full_name');
+      // M-A6 §3.3 — with SIGNER roles the printed name is Sign-filled, not a template value.
+      if (signerRoles(content).length === 0) used.add('talent.full_name');
       return [...used];
     }
     const used = this.collectTokens([content.title, ...content.blocks.map((b) => b.text)], requestId);
@@ -182,6 +204,7 @@ export class RtrTemplateBindingService {
     input: { letterhead?: LetterheadModel; template_version_id: string; tenant_id: string; requestId: string },
     content: Extract<RtrTemplateContent, { render_schema_version: 'rtr-html-v1' }>,
     resolve: (used: Set<RtrBindingKey>) => Promise<Map<string, string>>,
+    talentBlock = true,
   ): Promise<RenderModel & { signature_block: { printed_name: string }; bound_html: string }> {
     const res = sanitizeRtrHtml(content.html);
     if ('issue' in res) {
@@ -200,7 +223,7 @@ export class RtrTemplateBindingService {
       }
       used.add(key);
     }
-    used.add('talent.full_name');
+    if (talentBlock) used.add('talent.full_name');
     const values = await resolve(used);
     // A1 §2.4 — the organisation name beside the letterhead logo: the tenant's branding
     // label (display_name), else its legal name, else the workspace name.

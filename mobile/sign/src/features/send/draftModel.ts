@@ -8,7 +8,10 @@ import { isAuthoringFieldType } from '../editor/fieldTypes';
 import { wireToEditor, type PageSize } from '../editor/geometry';
 import type { LocalDraft, SendStep } from '../../state/draftStore';
 
+/** Signing recipients (SIGNER + IN_PERSON_SIGNER), MAX_SIGNERS on the server. */
 export const MAX_RECIPIENTS = 10;
+/** M-A5 §1.4 — at most 10 RECEIVES_COPY recipients, on top of the signers. */
+export const MAX_COPY_RECIPIENTS = 10;
 export const MESSAGE_MAX = 1000;
 export const SUBJECT_MAX = 200;
 
@@ -31,12 +34,27 @@ export interface DraftDocument {
   readonly pendingUpload: { readonly idempotencyKey: string } | null;
 }
 
+/** M-A5 §1 — what a recipient does. Never overloads the template role label. */
+export type RecipientKind = 'SIGNER' | 'IN_PERSON_SIGNER' | 'RECEIVES_COPY';
+/** M-A5 §2.1 — when a copy recipient receives their copy. */
+export type CopyDelivery = 'ON_SEND' | 'ON_COMPLETION' | 'BOTH';
+
 export interface DraftRecipient {
   readonly key: string;
   /** The server signer id once the recipients were saved. */
   readonly serverId: string | null;
   readonly name: string;
+  /** '' only for an in-person signer without an email (M-A5 §3.5). */
   readonly email: string;
+  /** Absent on drafts saved before M-A5: read as SIGNER (recipientRoles.kindOf). */
+  readonly kind?: RecipientKind;
+  /** Set only for RECEIVES_COPY (M-A5 §2.1). */
+  readonly copyDelivery?: CopyDelivery | null;
+  /**
+   * Assign to me (M-A5 §4.1): the server binds the caller to this recipient. The PUT
+   * replaces the whole list, so the flag is re-sent on every recipients write.
+   */
+  readonly assignToMe?: boolean;
 }
 
 /** What still has to reach the server. */
@@ -56,9 +74,21 @@ export interface SendDraftPayload {
   readonly recipients: readonly DraftRecipient[];
   /** EDITOR frame (top-left, PDF points), keyed to document and recipient keys. */
   readonly fields: readonly EditorField[];
+  /**
+   * Fields of the server copy whose type the editor does not author (an engine type
+   * such as ACKNOWLEDGEMENT). Kept exactly as the server returned them (wire frame,
+   * server ids) and re-sent with every replace-all PUT, so editing a draft never
+   * deletes them. Absent in drafts stored before this existed.
+   */
+  readonly preservedFields?: readonly ServerField[];
   /** The ETag of the last server response this draft is based on. */
   readonly etag: string | null;
   readonly dirty: DirtyFlags;
+  /**
+   * "Sign a document" (M-A4 §6.3, M-A5 §4): after Send, open the self-sign session for
+   * the recipient assigned to the user. Kept with the local draft only.
+   */
+  readonly selfSign?: boolean;
 }
 
 export type SendDraft = LocalDraft<SendDraftPayload>;
@@ -82,7 +112,7 @@ export function emptyPayload(): SendDraftPayload {
 /** "{first document} — {first signer}" (handoff §4.6 Review). */
 export function defaultSubject(p: Pick<SendDraftPayload, 'documents' | 'recipients'>): string {
   const doc = p.documents[0]?.title ?? '';
-  const who = p.recipients[0]?.name ?? '';
+  const who = (p.recipients.find((r) => r.kind !== 'RECEIVES_COPY') ?? p.recipients[0])?.name ?? '';
   return (doc && who ? `${doc} — ${who}` : doc || who).slice(0, SUBJECT_MAX);
 }
 
@@ -129,20 +159,35 @@ export interface ServerDocument {
 export interface ServerRecipient {
   readonly id: string;
   readonly name: string;
+  /** '' when the server has none (an in-person signer, M-A5 §3.5). */
   readonly email: string;
   readonly status: string;
   readonly signingOrder: number | null;
+  readonly kind: RecipientKind;
+  readonly copyDelivery: CopyDelivery | null;
+  /** The server's `assigned_to_me` (the bound user id itself is never returned). */
+  readonly assignedToMe: boolean;
 }
 export interface ServerField {
+  /** The stored field id (sent back with a preserved engine-type field, M-A6 §2). */
+  readonly id: string;
   readonly envelope_document_id: string;
-  readonly signer_id: string;
+  /** null for an unassigned engine field (S2S / Sign API). */
+  readonly signer_id: string | null;
   readonly field_type: string;
   readonly page_number: number;
   readonly x: number;
   readonly y: number;
-  readonly width: number;
-  readonly height: number;
+  /** null when the stored engine field has no size. */
+  readonly width: number | null;
+  readonly height: number | null;
   readonly required: boolean;
+  /** M-A6 §2 — configuration (null where it does not apply). */
+  readonly name_mode: string | null;
+  readonly label: string | null;
+  readonly group_key: string | null;
+  readonly group_rule: string | null;
+  readonly min_selected: number | null;
 }
 export interface ServerEnvelope {
   readonly id: string;
@@ -164,6 +209,15 @@ function rec(v: unknown): Record<string, unknown> {
 }
 const str = (v: unknown, d = ''): string => (typeof v === 'string' ? v : d);
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
+
+const KINDS: readonly RecipientKind[] = ['SIGNER', 'IN_PERSON_SIGNER', 'RECEIVES_COPY'];
+const DELIVERIES: readonly CopyDelivery[] = ['ON_SEND', 'ON_COMPLETION', 'BOTH'];
+function asKind(v: unknown): RecipientKind {
+  return KINDS.includes(v as RecipientKind) ? (v as RecipientKind) : 'SIGNER';
+}
+function asCopyDelivery(v: unknown): CopyDelivery | null {
+  return DELIVERIES.includes(v as CopyDelivery) ? (v as CopyDelivery) : null;
+}
 
 /** Read the sender detail defensively (its document and recipient items are untyped in OpenAPI). */
 export function parseEnvelope(raw: unknown): ServerEnvelope {
@@ -192,19 +246,48 @@ export function parseEnvelope(raw: unknown): ServerEnvelope {
         email: str(r['email']),
         status: str(r['status']),
         signingOrder: num(r['signing_order']),
+        kind: asKind(r['recipient_kind']),
+        copyDelivery: asCopyDelivery(r['copy_delivery']),
+        assignedToMe: r['assigned_to_me'] === true,
       }))
-      .sort((a, b) => (a.signingOrder ?? 0) - (b.signingOrder ?? 0)),
+      // Signing recipients in signing order, then copy recipients (M-A5 §1.6: a copy
+      // recipient takes no part in the order and may come back without one).
+      .sort(
+        (a, b) =>
+          Number(a.kind === 'RECEIVES_COPY') - Number(b.kind === 'RECEIVES_COPY') ||
+          (a.signingOrder ?? 0) - (b.signingOrder ?? 0),
+      ),
     fields: arr('fields').map((f) => ({
+      id: str(f['id']),
       envelope_document_id: str(f['envelope_document_id']),
-      signer_id: str(f['signer_id']),
+      signer_id: typeof f['signer_id'] === 'string' ? (f['signer_id'] as string) : null,
       field_type: str(f['field_type']),
       page_number: num(f['page_number']) ?? 0,
       x: num(f['x']) ?? 0,
       y: num(f['y']) ?? 0,
-      width: num(f['width']) ?? 0,
-      height: num(f['height']) ?? 0,
+      width: num(f['width']),
+      height: num(f['height']),
       required: f['required'] !== false,
+      name_mode: typeof f['name_mode'] === 'string' ? (f['name_mode'] as string) : null,
+      label: typeof f['label'] === 'string' ? (f['label'] as string) : null,
+      group_key: typeof f['group_key'] === 'string' ? (f['group_key'] as string) : null,
+      group_rule: typeof f['group_rule'] === 'string' ? (f['group_rule'] as string) : null,
+      min_selected: num(f['min_selected']),
     })),
+  };
+}
+
+/** The editor's configuration for a server field of an authoring type. */
+function configOf(f: ServerField): Partial<EditorField> {
+  if (f.field_type === 'SIGNER_NAME')
+    return { nameMode: f.name_mode === 'SIGNER_ENTERED' ? 'SIGNER_ENTERED' : 'SIGNER_PROFILE' };
+  if (f.field_type !== 'CHECKBOX') return {};
+  const rule = f.group_rule === 'SELECT_ONE' || f.group_rule === 'SELECT_ANY' ? f.group_rule : null;
+  return {
+    label: f.label,
+    groupKey: f.group_key,
+    groupRule: f.group_key !== null ? (rule ?? 'SELECT_ANY') : null,
+    minSelected: f.group_key !== null ? f.min_selected : null,
   };
 }
 
@@ -232,28 +315,38 @@ export function payloadFromServer(
     serverId: r.id,
     name: r.name,
     email: r.email,
+    kind: r.kind,
+    copyDelivery: r.kind === 'RECEIVES_COPY' ? r.copyDelivery : null,
+    assignToMe: r.assignedToMe,
   }));
   let fieldsPending = false;
   const fields: EditorField[] = [];
+  const preservedFields: ServerField[] = [];
   env.fields.forEach((f, i) => {
-    if (!isAuthoringFieldType(f.field_type)) return;
+    // A type the editor does not author is kept untouched, never dropped: the fields
+    // PUT replaces every field, so dropping it here would delete it on the next sync.
+    if (!isAuthoringFieldType(f.field_type)) {
+      preservedFields.push(f);
+      return;
+    }
     const page = pagesByDoc.get(f.envelope_document_id)?.[f.page_number];
     if (!page) {
       fieldsPending = true;
       return;
     }
-    const box = wireToEditor(f, page);
+    const box = wireToEditor({ x: f.x, y: f.y, width: f.width ?? 0, height: f.height ?? 0 }, page);
     fields.push({
       key: `srv-${i}`,
       docKey: keyOf(f.envelope_document_id),
       page: f.page_number,
-      recipientKey: keyOf(f.signer_id),
+      recipientKey: keyOf(f.signer_id ?? ''),
       type: f.field_type,
       x: box.x,
       y: box.y,
       width: box.width,
       height: box.height,
       required: f.required,
+      ...configOf(f),
     });
   });
   const generated = defaultSubject({ documents, recipients });
@@ -266,6 +359,7 @@ export function payloadFromServer(
       documents,
       recipients,
       fields,
+      ...(preservedFields.length > 0 ? { preservedFields } : {}),
       etag,
       dirty: CLEAN,
     },

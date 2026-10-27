@@ -2,16 +2,18 @@ import { useEffect, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Input, TextArea } from '@aramo/fe-foundation';
 
-import type { StudioPropertiesPatch, StudioTemplateInfo, WithdrawalState } from './data-source';
+import type { StudioPropertiesPatch, StudioSigning, StudioTemplateInfo, WithdrawalState } from './data-source';
 import { formatDate } from './format-date';
 import { Pill, TagInput, type PillSpec } from './primitives';
 import { checksLine, type Readiness } from './readiness';
+import { StudioRolesPanel } from './StudioRolesPanel';
 import type { StudioDrag } from './use-studio-drag';
 import { chipInfo, matchesQuery, type VariableCatalog } from './variables';
 
 // PLATFORM-UX-1 F-9 (handoff §10.6) — the inspector: Variables · Properties · Checks.
+// Amendment M-A6 §3.8 — plus Roles (the signing roles and routing of the template).
 
-export type RightTab = 'variables' | 'properties' | 'checks';
+export type RightTab = 'variables' | 'properties' | 'roles' | 'checks';
 
 const NAME_MAX = 120;
 const DESC_MAX = 500;
@@ -55,6 +57,9 @@ export interface StudioInspectorProps {
   readonly onWithdraw: () => void;
   readonly onCancelWithdrawal: () => void;
   readonly overlay: boolean;
+  /** M-A6 §3.8 — the draft's signing roles (Roles tab; omitted ⇒ the tab is hidden). */
+  readonly signing?: StudioSigning | null;
+  readonly onSigning?: (next: StudioSigning | null) => void;
 }
 
 export function withdrawalPill(state: WithdrawalState): PillSpec {
@@ -74,10 +79,12 @@ export function StudioInspector(props: StudioInspectorProps) {
             [
               ['variables', 'Variables'],
               ['properties', 'Properties'],
+              ['roles', 'Roles'],
               ['checks', 'Checks'],
             ] as const
           )
             .filter(([k]) => k !== 'checks' || props.showChecks !== false)
+            .filter(([k]) => k !== 'roles' || props.onSigning !== undefined)
             .map(([k, l]) => (
             <Button key={k} unstyled role="tab" aria-selected={tab === k} className={`pws-seg__item${tab === k ? ' pws-seg__item--on' : ''}`} onClick={() => props.onTab(k)}>
               {l}
@@ -93,6 +100,7 @@ export function StudioInspector(props: StudioInspectorProps) {
       <div className="pws-right__body" role="tabpanel">
         {tab === 'variables' ? <VariablesTab {...props} /> : null}
         {tab === 'properties' ? <PropertiesTab {...props} /> : null}
+        {tab === 'roles' && props.onSigning !== undefined ? <StudioRolesPanel signing={props.signing} editable={props.editable} onChange={props.onSigning} /> : null}
         {tab === 'checks' && props.showChecks !== false ? (
           <>
             <div className="pws-checks__line">{checksLine(readiness)}</div>

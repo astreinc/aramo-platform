@@ -15,6 +15,7 @@ import {
   type RichRun,
   type SignatureBlockModel,
   type SignatureFieldPlacement,
+  type SignatureRoleBlockModel,
 } from './document-rendering.port.js';
 import { RenderFailedError } from './errors.js';
 import { SIGNATURE_SCRIPT_FONT_BASE64 } from './fonts/signature-script.font.js';
@@ -152,6 +153,65 @@ export function layoutSignatureBlock(
       { field_type: 'SIGN_DATE', x: x2, y: ruleY + 2, width: colWidth, height: SIG_DATE_FIELD_HEIGHT },
     ],
     next_y: ruleY - SIG_LABEL_GAP - SIG_LABEL_SIZE,
+  };
+}
+
+// ── Per-role signature blocks (Amendment M-A6 §3.3) ─────────────────────────────
+// The SAME three columns as the fixed block, under a bold role-label line. The printed
+// name column is left empty (a SIGNER_NAME placement Sign fills at signing). Blocks are
+// stacked with a gap; each block is kept whole on one page.
+const ROLE_LABEL_SIZE = 9;
+const ROLE_LABEL_GAP = 6; // role label baseline → top of the signature area
+const ROLE_BLOCK_GAP = 10; // between consecutive role blocks
+export const ROLE_SIGNATURE_BLOCK_HEIGHT = SIGNATURE_BLOCK_HEIGHT + ROLE_LABEL_SIZE + ROLE_LABEL_GAP;
+
+export interface RoleSignatureBlockLayout {
+  new_page: boolean;
+  role_key: string;
+  label_text: string;
+  label_y: number;
+  rule_y: number;
+  column_label_y: number;
+  columns: ReadonlyArray<{ x: number; width: number; label: string }>;
+  fields: ReadonlyArray<Omit<SignatureFieldPlacement, 'page_number'>>;
+  next_y: number;
+}
+
+export function layoutRoleSignatureBlock(
+  cursorY: number,
+  block: SignatureRoleBlockModel,
+  measureLabel: (s: string) => number,
+): RoleSignatureBlockLayout {
+  const newPage = cursorY - ROLE_SIGNATURE_BLOCK_HEIGHT < BOTTOM_MARGIN;
+  const top = newPage ? TOP_Y : cursorY;
+  const colWidth = (CONTENT_WIDTH - 2 * SIG_COLUMN_GAP) / 3;
+  const colX = [0, 1, 2].map((i) => MARGIN_X + i * (colWidth + SIG_COLUMN_GAP));
+  const labelY = top - SIG_TOP_GAP;
+  const ruleY = labelY - ROLE_LABEL_GAP - SIG_AREA_HEIGHT;
+  // The role label is one line: an over-long label is cut (deterministically) to the width.
+  const lines = wrapTextToWidth(block.label, measureLabel, CONTENT_WIDTH).filter((l) => l.length > 0);
+  const label_text = lines[0] ?? block.role_key;
+  const x0 = colX[0] as number;
+  const x1 = colX[1] as number;
+  const x2 = colX[2] as number;
+  return {
+    new_page: newPage,
+    role_key: block.role_key,
+    label_text,
+    label_y: labelY,
+    rule_y: ruleY,
+    column_label_y: ruleY - SIG_LABEL_GAP,
+    columns: [
+      { x: x0, width: colWidth, label: 'SIGNATURE' },
+      { x: x1, width: colWidth, label: 'PRINTED NAME' },
+      { x: x2, width: colWidth, label: 'DATE SIGNED' },
+    ],
+    fields: [
+      { field_type: 'SIGNATURE', x: x0, y: ruleY + 2, width: colWidth, height: SIG_AREA_HEIGHT - 4, role_key: block.role_key },
+      { field_type: 'SIGNER_NAME', x: x1, y: ruleY + 2, width: colWidth, height: SIG_DATE_FIELD_HEIGHT, role_key: block.role_key },
+      { field_type: 'SIGN_DATE', x: x2, y: ruleY + 2, width: colWidth, height: SIG_DATE_FIELD_HEIGHT, role_key: block.role_key },
+    ],
+    next_y: ruleY - SIG_LABEL_GAP - SIG_LABEL_SIZE - ROLE_BLOCK_GAP,
   };
 }
 
@@ -390,7 +450,16 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
       }
 
       let signature_fields: SignatureFieldPlacement[] | undefined;
-      if (model.signature_block !== undefined) {
+      if (model.signature_blocks !== undefined && model.signature_blocks.length > 0) {
+        // M-A6 §3.3 — one block per SIGNER role (replaces the single fixed block).
+        signature_fields = [];
+        for (const role of model.signature_blocks) {
+          const appended = this.appendRoleSignatureBlock(doc, page, cursorY, role, bold);
+          page = appended.page;
+          cursorY = appended.cursorY;
+          signature_fields.push(...appended.fields);
+        }
+      } else if (model.signature_block !== undefined) {
         const appended = this.appendSignatureBlock(doc, page, cursorY, model.signature_block, font, bold);
         page = appended.page;
         cursorY = appended.cursorY;
@@ -417,6 +486,29 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
       if (e instanceof RenderFailedError) throw e;
       throw new RenderFailedError(e instanceof Error ? e.message : String(e));
     }
+  }
+
+  // M-A6 §3.3 — append one SIGNER role's block at the cursor (new page when it does not
+  // fit; never split). Placements carry the role_key.
+  appendRoleSignatureBlock(
+    doc: PDFDocument,
+    page: PDFPage,
+    cursorY: number,
+    block: SignatureRoleBlockModel,
+    bold: PDFFont,
+  ): { page: PDFPage; cursorY: number; fields: SignatureFieldPlacement[] } {
+    const layout = layoutRoleSignatureBlock(cursorY, block, (s) => bold.widthOfTextAtSize(s, ROLE_LABEL_SIZE));
+    let target = page;
+    if (layout.new_page) target = doc.addPage([PAGE_WIDTH, PAGE_HEIGHT]);
+    const pageIndex = doc.getPages().indexOf(target);
+    const ink = rgb(0, 0, 0);
+    const muted = rgb(0.35, 0.35, 0.35);
+    target.drawText(layout.label_text, { x: MARGIN_X, y: layout.label_y, size: ROLE_LABEL_SIZE, font: bold, color: ink });
+    for (const col of layout.columns) {
+      target.drawLine({ start: { x: col.x, y: layout.rule_y }, end: { x: col.x + col.width, y: layout.rule_y }, thickness: 0.75, color: ink });
+      target.drawText(col.label, { x: col.x, y: layout.column_label_y, size: SIG_LABEL_SIZE, font: bold, color: muted });
+    }
+    return { page: target, cursorY: layout.next_y, fields: layout.fields.map((f) => ({ ...f, page_number: pageIndex })) };
   }
 
   // B2 / A1 §2.3 — append the fixed signature block at the cursor (new page when it does
@@ -486,7 +578,10 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
         if (p.x < 0 || p.y < 0 || p.x > width || p.y > height) {
           throw new RenderFailedError(`placement ${p.field_key} out of page bounds`);
         }
-        if (p.kind === 'IMAGE') {
+        if (p.kind === 'MARK') {
+          if (p.checked === undefined) throw new RenderFailedError(`mark placement ${p.field_key} missing checked`);
+          drawMark(page, p, p.checked);
+        } else if (p.kind === 'IMAGE') {
           // DOC-4 B1 — DRAWN/UPLOADED signature image. Embed is deterministic
           // (identical bytes → identical embedded object), preserving hash-stability.
           if (p.image_bytes === undefined || p.image_format === undefined) {
@@ -542,6 +637,7 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
           image_sha256: p.image_bytes ? sha256Hex(p.image_bytes) : undefined,
           font: p.font,
           stamp: p.stamp,
+          checked: p.checked,
         }))),
         source_artifact_sha256,
         output_sha256,
@@ -557,6 +653,20 @@ export class PdfLibDocumentRenderingAdapter implements DocumentRenderingPort {
 // PX-2 — the field box of a signature placement (PDF points, bottom-left origin).
 function stampBox(p: PreparedField): { x: number; y: number; w: number; h: number } {
   return { x: p.x, y: p.y, w: p.width ?? 220, h: p.height ?? 48 };
+}
+
+// M-A6 §1 — a vector check box: a square border, plus a vector check stroke when
+// checked. Pure vector drawing (no font, no glyph), so a checkbox value is never
+// printed as text on the executed PDF. The square sits at the field box's
+// lower-left corner, sized to the box's shorter side.
+function drawMark(page: PDFPage, p: PreparedField, checked: boolean): void {
+  const side = Math.max(6, Math.min(p.width ?? 12, p.height ?? 12));
+  const ink = rgb(0, 0, 0);
+  page.drawRectangle({ x: p.x, y: p.y, width: side, height: side, borderColor: ink, borderWidth: Math.max(0.6, side * 0.07) });
+  if (!checked) return;
+  // SVG path in a y-down frame anchored at the square's top-left corner.
+  const path = `M ${side * 0.2} ${side * 0.52} L ${side * 0.42} ${side * 0.74} L ${side * 0.8} ${side * 0.24}`;
+  page.drawSvgPath(path, { x: p.x, y: p.y + side, borderColor: ink, borderWidth: Math.max(1, side * 0.12) });
 }
 
 // PX-2 — DocuSign-style signature frame: a rounded left bracket whose top and

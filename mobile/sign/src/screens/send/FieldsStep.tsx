@@ -1,9 +1,11 @@
-// Step 3 "Fields": the full editor over the real PDF pages (handoff §4.6).
+// Step 3 "Fields": the full editor over the real PDF pages (handoff §4.6). Only signing
+// recipients can be assigned fields: a copy recipient has none (M-A5 §1.5).
 import { useCallback, useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 
 import { FieldEditor } from '../../features/editor/FieldEditor';
 import type { EditorField } from '../../features/editor/editorReducer';
+import { signingRecipients } from '../../features/send/recipientRoles';
 import type { SendFlowController, SendFlowState } from '../../features/send/sendFlowController';
 import { useTheme } from '../../theme';
 
@@ -19,9 +21,10 @@ export function FieldsStep({
   const docKeys = (p?.documents ?? []).map((d) => `${d.key}:${d.title}`).join('|');
   // eslint-disable-next-line react-hooks/exhaustive-deps
   const documents = useMemo(() => (p?.documents ?? []).map((d) => ({ key: d.key, title: d.title })), [docKeys]);
-  const recipientKeys = (p?.recipients ?? []).map((r) => `${r.key}:${r.name}`).join('|');
+  const signing = signingRecipients(p?.recipients ?? []);
+  const recipientKeys = signing.map((r) => `${r.key}:${r.name}`).join('|');
   const recipients = useMemo(
-    () => (p?.recipients ?? []).map((r) => ({ key: r.key, name: r.name })),
+    () => signing.map((r) => ({ key: r.key, name: r.name })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [recipientKeys],
   );
