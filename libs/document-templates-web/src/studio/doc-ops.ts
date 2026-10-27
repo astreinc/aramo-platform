@@ -5,7 +5,8 @@ import {
   studioValueFromText,
   type StudioBlock,
   type StudioBlockKind,
-} from '@aramo/document-templates-web';
+  type StudioLetterheadBlock,
+} from '../studio-codec';
 
 // PLATFORM-UX-1 F-9 (handoff §10.4) — pure block-list operations of the Studio canvas:
 // insert, move (drag and drop, ⌥↑/⌥↓, block menu), turn into, duplicate, delete,
@@ -14,6 +15,11 @@ import {
 export interface StudioDoc {
   readonly title: string;
   readonly blocks: readonly StudioBlock[];
+  /**
+   * TEMPLATE-STUDIO-1 — the tenant letterhead (A1), carried beside the editable blocks so
+   * every save re-encodes it (the data source's content codec). Absent on the platform.
+   */
+  readonly letterhead?: StudioLetterheadBlock | null;
 }
 
 let seq = 0;

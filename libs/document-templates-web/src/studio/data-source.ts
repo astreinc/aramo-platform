@@ -1,0 +1,229 @@
+import type { ReactNode } from 'react';
+
+import { RTR_HTML_SCHEMA_V1 } from '../document-templates-api';
+import { studioBlocksFromHtml, studioBlocksToHtml, studioDocFromHtml, studioDocToHtml, isStudioLetterheadBlock, type StudioBlock, type StudioLetterheadBlock } from '../studio-codec';
+
+import type { PillSpec } from './primitives';
+import type { Readiness } from './readiness';
+
+// TEMPLATE-STUDIO-1 S-0 (directive §2) — the Template Studio's data-source adapter. The
+// ONE shared Studio (libs/document-templates-web) renders for Platform Admin and for
+// Organization; everything context-specific comes through this interface:
+//   • the reads and writes (each host wraps its own API client):
+//       platform      /platform/document-templates*      (apps/platform-web)
+//       organization  /v1/document-templates*            (S-1)
+//         load      = GET /:id  +  GET /:id/versions
+//         catalog   = the variable catalog + GET /:id/allowed-bindings
+//         createDraft = POST /:id/versions | POST /:id/draft
+//         saveDraft = PATCH /versions/:id
+//         discardDraft = DELETE /versions/:id
+//         preview   = POST /versions/:id/preview
+//         approve   = POST /versions/:id/activate (platform: …/publish)
+//   • the caller's capabilities (read-only · edit · edit-and-approve; withdrawal, tags);
+//   • the copy that differs (Publish vs Approve & activate, crumbs, consequence text);
+//   • optionally the content codec (the tenant letterhead block, A1).
+// The server stays authoritative for every rule; capabilities only hide controls.
+
+/** The editable content contract (rtr-html-v1). */
+export const STUDIO_HTML_CONTENT_VERSION = RTR_HTML_SCHEMA_V1;
+
+export type StudioVersionStatus = 'DRAFT' | 'ACTIVE' | 'RETIRED';
+
+/** One version of a template, as the Studio reads it. */
+export interface StudioVersion {
+  readonly id: string;
+  readonly version_number: number;
+  readonly status: StudioVersionStatus;
+  readonly render_schema_version: string;
+  readonly field_schema: unknown;
+  readonly activated_at: string | null;
+  readonly created_at: string;
+  readonly content_fingerprint: string | null;
+  readonly previewed_fingerprint: string | null;
+}
+
+/** The template's own fields (no versions). */
+export interface StudioTemplateInfo {
+  readonly id: string;
+  readonly name: string;
+  readonly description: string | null;
+  /** 'ACTIVE' once a version is live. */
+  readonly status: string;
+  readonly document_type_id: string;
+  /** Product tags (platform only; tenants carry none). */
+  readonly products: readonly string[];
+  readonly current_version: { readonly id: string; readonly version_number: number } | null;
+  /** A published withdrawal's effective time (platform only; null otherwise). */
+  readonly withdraw_effective_at: string | null;
+  readonly created_at: string;
+  readonly updated_at: string;
+}
+
+/** The template plus every version (load). */
+export interface StudioTemplate extends StudioTemplateInfo {
+  readonly versions: readonly StudioVersion[];
+}
+
+/** A catalog variable (GET …/template-variables or the tenant catalog). */
+export interface StudioCatalogVariable {
+  readonly key: string;
+  readonly label: string;
+  readonly group_label: string;
+  readonly data_type: string;
+  readonly sample_value: string | null;
+  readonly active: boolean;
+}
+
+/** A key this template's document type can bind (GET …/:id/allowed-bindings). */
+export interface StudioAllowedBinding {
+  readonly key: string;
+  readonly label: string;
+  readonly group: string;
+}
+
+export interface StudioCatalogData {
+  readonly variables: readonly StudioCatalogVariable[];
+  readonly bindings: readonly StudioAllowedBinding[];
+  /** Document type names (the Properties "Document type" fact). */
+  readonly documentTypes?: ReadonlyArray<{ readonly id: string; readonly name: string }>;
+}
+
+/** The server's sample render of a draft (POST …/versions/:id/preview). */
+export interface StudioSamplePreview {
+  readonly title: string;
+  readonly html?: string;
+  readonly sample_values?: ReadonlyArray<{ readonly key: string; readonly label: string; readonly value: string }>;
+}
+
+/** The body of a draft create / save. */
+export interface StudioContentBody {
+  readonly render_schema_version: string;
+  readonly field_schema: { readonly render_schema_version: string; readonly title: string; readonly html: string };
+}
+
+export interface StudioPropertiesPatch {
+  readonly name?: string;
+  readonly description?: string | null;
+  readonly products?: string[];
+}
+
+export interface StudioCapabilities {
+  /** Edit the draft (save, preview, restore). False = read-only (published version, Preview only). */
+  readonly canEdit: boolean;
+  /** Approve the draft (platform: Publish vN; organization: Approve & activate vN). */
+  readonly canApprove: boolean;
+  /** Withdraw / cancel a withdrawal (needs `withdraw` / `cancelWithdrawal`). */
+  readonly canWithdraw: boolean;
+  /** Show the product-tags property. */
+  readonly productTags: boolean;
+  /** Show the description property. */
+  readonly description: boolean;
+}
+
+/** The content codec: stored html ↔ the editable blocks (+ the tenant letterhead, A1). */
+export interface StudioContentCodec {
+  decode(html: string, newId: () => string): { blocks: StudioBlock[]; letterhead: StudioLetterheadBlock | null };
+  encode(blocks: readonly StudioBlock[], letterhead: StudioLetterheadBlock | null): string;
+}
+
+/** The platform codec: content blocks only (studioBlocksFromHtml / studioBlocksToHtml). */
+export const DEFAULT_STUDIO_CONTENT_CODEC: StudioContentCodec = {
+  decode: (html, newId) => ({ blocks: studioBlocksFromHtml(html, newId), letterhead: null }),
+  encode: (blocks) => studioBlocksToHtml(blocks),
+};
+
+/**
+ * The letterhead-preserving codec (TEMPLATE-STUDIO-1 B-1, A1): the first-child
+ * `data-asset="tenant.logo"` node is carried through every save as the letterhead block
+ * (studioDocFromHtml / studioDocToHtml). Content without a logo encodes exactly as the
+ * default codec does.
+ */
+export const LETTERHEAD_STUDIO_CONTENT_CODEC: StudioContentCodec = {
+  decode: (html, newId) => {
+    const doc = studioDocFromHtml(html, newId);
+    const head = doc.find((b): b is StudioLetterheadBlock => isStudioLetterheadBlock(b)) ?? null;
+    return { blocks: doc.filter((b): b is StudioBlock => !isStudioLetterheadBlock(b)), letterhead: head };
+  },
+  encode: (blocks, letterhead) => studioDocToHtml(letterhead !== null ? [letterhead, ...blocks] : blocks),
+};
+
+export interface StudioCrumb {
+  readonly label: string;
+  /** A link (the last linked crumb is also the narrow-width "←" target). */
+  readonly to?: string;
+}
+
+/** The copy that differs between contexts. */
+export interface TemplateStudioCopy {
+  /** The breadcrumb before the template name. */
+  readonly crumbs: readonly StudioCrumb[];
+  /** The narrow-width back link ("←"). */
+  readonly back: { readonly to: string; readonly label: string };
+  /** The top-bar approve button ("Publish v4…"). */
+  readonly approveButton: (next: number) => ReactNode;
+  /** Its title while checks fail. */
+  readonly approveHint: string;
+  /** The readiness pill label (wide = ≥1200px). */
+  readonly readinessLabel: (r: Readiness, wide: boolean) => string;
+  /** The Checks tab footnote. */
+  readonly checksNote: string;
+  /** The approve dialog. */
+  readonly approveDialog: {
+    readonly title: (next: number, name: string) => string;
+    readonly commit: (next: number) => string;
+    readonly from: (current: number | null) => PillSpec;
+    readonly to: (next: number) => PillSpec;
+    readonly consequence: (next: number, current: number | null) => string;
+  };
+  readonly approveToast: (versionNumber: number) => string;
+  readonly approveFailed: string;
+  /** The version pills (current / earlier). */
+  readonly versionActive: PillSpec;
+  readonly versionRetired: PillSpec;
+  /** The read-only bar under the header. */
+  readonly viewOnly: ReactNode;
+  /** The Variables tab's catalog link (omit to hide it). */
+  readonly manageVariables?: { readonly to: string; readonly label: string };
+}
+
+export interface TemplateStudioDataSource {
+  load(templateId: string): Promise<StudioTemplate>;
+  catalog(templateId: string): Promise<StudioCatalogData>;
+  createDraft(templateId: string, body: StudioContentBody): Promise<StudioVersion>;
+  saveDraft(versionId: string, body: StudioContentBody): Promise<StudioVersion>;
+  /** Discard the open draft (organization). */
+  discardDraft?(versionId: string): Promise<void>;
+  preview(versionId: string): Promise<StudioSamplePreview>;
+  /** Platform: publish · organization: activate. */
+  approve(versionId: string): Promise<StudioVersion>;
+  updateProperties?(templateId: string, patch: StudioPropertiesPatch): Promise<StudioTemplateInfo>;
+  withdraw?(templateId: string, body: { notice_days: number; reason: string | null }): Promise<StudioTemplateInfo>;
+  cancelWithdrawal?(templateId: string): Promise<unknown>;
+  readonly capabilities: StudioCapabilities;
+  readonly copy: TemplateStudioCopy;
+  /** Default: DEFAULT_STUDIO_CONTENT_CODEC. */
+  readonly content?: StudioContentCodec;
+}
+
+export type TemplateStudioContext = 'platform' | 'organization';
+
+// ── withdrawal (platform defaults, DOC-TEMPLATE-LIB-1 T-6 §9) ─────────────────
+
+export const DEFAULT_WITHDRAW_NOTICE_DAYS = 7;
+export const MAX_WITHDRAW_NOTICE_DAYS = 365;
+
+export type WithdrawalState = 'NONE' | 'PENDING' | 'IN_EFFECT';
+
+/** The withdrawal state of a template at `now` (display only; the server is authoritative). */
+export function withdrawalStateOf(t: Pick<StudioTemplateInfo, 'withdraw_effective_at'>, now: Date = new Date()): WithdrawalState {
+  if (t.withdraw_effective_at === null) return 'NONE';
+  return new Date(t.withdraw_effective_at).getTime() <= now.getTime() ? 'IN_EFFECT' : 'PENDING';
+}
+
+/** The editable html content of a version (null when it is another content version). */
+export function studioHtmlContentOf(v: Pick<StudioVersion, 'render_schema_version' | 'field_schema'>): { title: string; html: string } | null {
+  if (v.render_schema_version !== STUDIO_HTML_CONTENT_VERSION) return null;
+  const fs = v.field_schema as { title?: unknown; html?: unknown } | null;
+  if (fs === null || typeof fs !== 'object' || typeof fs.title !== 'string' || typeof fs.html !== 'string') return null;
+  return { title: fs.title, html: fs.html };
+}

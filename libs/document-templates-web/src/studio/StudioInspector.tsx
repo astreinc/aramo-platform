@@ -2,11 +2,9 @@ import { useEffect, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { Button, Input, TextArea } from '@aramo/fe-foundation';
 
-import { Pill, type PillSpec } from '../../components/Pill';
-import { TagInput } from '../../components/TagInput';
-import { formatDate } from '../../components/format-date';
-import type { PlatformTemplate, WithdrawalState } from '../document-templates-api';
-
+import type { StudioPropertiesPatch, StudioTemplateInfo, WithdrawalState } from './data-source';
+import { formatDate } from './format-date';
+import { Pill, TagInput, type PillSpec } from './primitives';
 import { checksLine, type Readiness } from './readiness';
 import type { StudioDrag } from './use-studio-drag';
 import { chipInfo, matchesQuery, type VariableCatalog } from './variables';
@@ -18,11 +16,7 @@ export type RightTab = 'variables' | 'properties' | 'checks';
 const NAME_MAX = 120;
 const DESC_MAX = 500;
 
-export interface PropertiesPatch {
-  readonly name?: string;
-  readonly description?: string | null;
-  readonly products?: string[];
-}
+export type PropertiesPatch = StudioPropertiesPatch;
 
 export interface StudioInspectorProps {
   readonly tab: RightTab;
@@ -30,11 +24,22 @@ export interface StudioInspectorProps {
   readonly catalog: VariableCatalog;
   readonly readiness: Readiness;
   readonly editable: boolean;
-  readonly canManage: boolean;
+  /** Edit the draft (the Checks "Remove from draft" fix). */
+  readonly canEdit: boolean;
+  /** Edit the properties (needs the data source's updateProperties). */
+  readonly canEditProps: boolean;
+  /** Show the product tags / description properties. */
+  readonly showProductTags: boolean;
+  readonly showDescription: boolean;
+  /** Withdrawal is part of this context (the Withdrawal box). */
+  readonly withdrawalEnabled: boolean;
+  /** The Variables tab's catalog link. */
+  readonly manageVariables?: { readonly to: string; readonly label: string };
+  readonly checksNote: string;
   readonly onInsert: (key: string) => void;
   readonly drag: StudioDrag;
   readonly onFix: (key: string) => void;
-  readonly template: PlatformTemplate;
+  readonly template: StudioTemplateInfo;
   readonly docTypeName: string;
   readonly withdrawal: WithdrawalState;
   readonly onSaveProps: (patch: PropertiesPatch) => Promise<string | null>;
@@ -94,7 +99,7 @@ export function StudioInspector(props: StudioInspectorProps) {
                       <span className="pws-sr">{i.ok ? 'Passed: ' : i.severity === 'warn' ? 'Warning: ' : 'Failing: '}</span>
                       <span className="pws-check__l">{i.label}</span>
                       {!i.ok ? <span className="pws-check__d">{i.detail}</span> : null}
-                      {i.fixKey !== undefined && props.canManage ? (
+                      {i.fixKey !== undefined && props.canEdit ? (
                         <Button unstyled className="pws-btn26 pws-check__fix" onClick={() => props.onFix(i.fixKey as string)}>
                           Remove from draft
                         </Button>
@@ -104,7 +109,7 @@ export function StudioInspector(props: StudioInspectorProps) {
                 );
               })}
             </ol>
-            <p className="pws-checks__note">Publish unlocks when every required check passes. Saving the draft again resets the preview check.</p>
+            <p className="pws-checks__note">{props.checksNote}</p>
           </>
         ) : null}
       </div>
@@ -112,7 +117,7 @@ export function StudioInspector(props: StudioInspectorProps) {
   );
 }
 
-function VariablesTab({ catalog, readiness, editable, onInsert, drag }: StudioInspectorProps) {
+function VariablesTab({ catalog, readiness, editable, onInsert, drag, manageVariables }: StudioInspectorProps) {
   const [q, setQ] = useState('');
   const [group, setGroup] = useState<string>('ALL');
   const unknown = Array.from(readiness.used.keys()).filter((k) => chipInfo(catalog, k).state === 'unknown');
@@ -189,15 +194,17 @@ function VariablesTab({ catalog, readiness, editable, onInsert, drag }: StudioIn
         </div>
       ))}
       {list.length === 0 ? <div className="pws-vars__none">No variables match.</div> : null}
-      <Link to="/template-variables" className="pws-vars__manage">
-        Manage template variables ↗
-      </Link>
+      {manageVariables !== undefined ? (
+        <Link to={manageVariables.to} className="pws-vars__manage">
+          {manageVariables.label}
+        </Link>
+      ) : null}
     </>
   );
 }
 
 function PropertiesTab(props: StudioInspectorProps) {
-  const { template, canManage, withdrawal } = props;
+  const { template, canEditProps: canManage, withdrawal } = props;
   const [name, setName] = useState(template.name);
   const [desc, setDesc] = useState(template.description ?? '');
   const [error, setError] = useState<string | null>(null);
@@ -243,26 +250,28 @@ function PropertiesTab(props: StudioInspectorProps) {
           {name.length} / {NAME_MAX}
         </span>
       </label>
-      <label className="pws-props__field">
-        <span className="pws-props__l">Description</span>
-        <TextArea
-          unstyled
-          className="pws-in pws-in--area"
-          rows={3}
-          value={desc}
-          disabled={!canManage}
-          onChange={(e) => setDesc(e.target.value.slice(0, DESC_MAX))}
-          onBlur={() => {
-            const v = desc.trim();
-            if (v === (template.description ?? '')) return;
-            void save({ description: v === '' ? null : v });
-          }}
-        />
-        <span className="pws-props__count">
-          {desc.length} / {DESC_MAX}
-        </span>
-      </label>
-      {canManage ? (
+      {props.showDescription ? (
+        <label className="pws-props__field">
+          <span className="pws-props__l">Description</span>
+          <TextArea
+            unstyled
+            className="pws-in pws-in--area"
+            rows={3}
+            value={desc}
+            disabled={!canManage}
+            onChange={(e) => setDesc(e.target.value.slice(0, DESC_MAX))}
+            onBlur={() => {
+              const v = desc.trim();
+              if (v === (template.description ?? '')) return;
+              void save({ description: v === '' ? null : v });
+            }}
+          />
+          <span className="pws-props__count">
+            {desc.length} / {DESC_MAX}
+          </span>
+        </label>
+      ) : null}
+      {!props.showProductTags ? null : canManage ? (
         <TagInput label="Product tags" tags={template.products} onChange={(products) => void save({ products })} />
       ) : (
         <div className="pws-props__field">
@@ -277,7 +286,7 @@ function PropertiesTab(props: StudioInspectorProps) {
         </div>
       )}
       {error !== null ? (
-        <div role="alert" className="pw-alert pw-alert--error">
+        <div role="alert" className="ts-alert ts-alert--error">
           {error}
         </div>
       ) : null}
@@ -295,31 +304,33 @@ function PropertiesTab(props: StudioInspectorProps) {
         <dt>Updated</dt>
         <dd>{formatDate(template.updated_at)}</dd>
       </dl>
-      <div className="pws-wdbox">
-        <div className="pws-wdbox__head">
-          <b>Withdrawal</b>
-          <span className="pws-pill20">
-            <Pill tone={wd.tone} dot={false}>
-              {wd.label}
-            </Pill>
-          </span>
-        </div>
-        <div className="pws-wdbox__line">{wdLine}</div>
-        {props.canWithdraw || props.canCancelWithdrawal ? (
-          <div className="pws-wdbox__acts">
-            {props.canWithdraw ? (
-              <Button unstyled className="pws-btn30 pws-btn30--terra" onClick={props.onWithdraw}>
-                Withdraw…
-              </Button>
-            ) : null}
-            {props.canCancelWithdrawal ? (
-              <Button unstyled className="pws-btn30" onClick={props.onCancelWithdrawal}>
-                Cancel withdrawal…
-              </Button>
-            ) : null}
+      {props.withdrawalEnabled ? (
+        <div className="pws-wdbox">
+          <div className="pws-wdbox__head">
+            <b>Withdrawal</b>
+            <span className="pws-pill20">
+              <Pill tone={wd.tone} dot={false}>
+                {wd.label}
+              </Pill>
+            </span>
           </div>
-        ) : null}
-      </div>
+          <div className="pws-wdbox__line">{wdLine}</div>
+          {props.canWithdraw || props.canCancelWithdrawal ? (
+            <div className="pws-wdbox__acts">
+              {props.canWithdraw ? (
+                <Button unstyled className="pws-btn30 pws-btn30--terra" onClick={props.onWithdraw}>
+                  Withdraw…
+                </Button>
+              ) : null}
+              {props.canCancelWithdrawal ? (
+                <Button unstyled className="pws-btn30" onClick={props.onCancelWithdrawal}>
+                  Cancel withdrawal…
+                </Button>
+              ) : null}
+            </div>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -1,6 +1,6 @@
-import type { StudioChipInfo } from '@aramo/document-templates-web';
+import type { StudioChipInfo } from '../studio-codec';
 
-import type { AllowedBinding, TemplateVariable } from '../document-templates-api';
+import type { StudioAllowedBinding, StudioCatalogVariable } from './data-source';
 
 // PLATFORM-UX-1 F-9 (handoff §10.4 chip states, §10.6 Variables) — the Studio's view of
 // the variable catalog (GET /platform/template-variables) and of the keys this
@@ -31,7 +31,7 @@ export function typeLabel(dataType: string): string {
   return dataType.replace(/_/g, ' ').toLowerCase();
 }
 
-export function buildCatalog(variables: readonly TemplateVariable[], bindings: readonly AllowedBinding[]): VariableCatalog {
+export function buildCatalog(variables: readonly StudioCatalogVariable[], bindings: readonly StudioAllowedBinding[]): VariableCatalog {
   const allowed = new Set(bindings.map((b) => b.key));
   const list: StudioVariable[] = variables.map((v) => ({
     key: v.key,

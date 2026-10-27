@@ -1,32 +1,25 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useLocation } from 'react-router-dom';
-import { Button, hasScope, logout, redirectToLogin, type Session } from '@aramo/fe-foundation';
-import {
-  SafeDoc,
-  bindingMapFrom,
-  createStudioCodec,
-  studioBlocksFromHtml,
-  studioBlocksToHtml,
-  studioPlainText,
-} from '@aramo/document-templates-web';
+import { Button } from '@aramo/fe-foundation';
 
-import { Pill } from '../../components/Pill';
-import { SkeletonPanel } from '../../components/Skeleton';
-import { formatDate, formatDateRelative } from '../../components/format-date';
-import { useIdentity } from '../../identity/identity';
-import { useEntityCrumb } from '../../shell/crumbs';
+import { SafeDoc } from '../dt-html-render';
+import { bindingMapFrom } from '../dt-ui';
+import { createStudioCodec, studioPlainText } from '../studio-codec';
+
 import {
-  DOC_TEMPLATE_MANAGE_SCOPE,
-  HTML_CONTENT_VERSION,
-  documentTemplatesApi,
-  htmlContentOf,
+  DEFAULT_STUDIO_CONTENT_CODEC,
+  STUDIO_HTML_CONTENT_VERSION as HTML_CONTENT_VERSION,
+  studioHtmlContentOf as htmlContentOf,
   withdrawalStateOf,
-  type PlatformTemplateDetail,
-  type SamplePreview,
-  type TemplateVersion,
-} from '../document-templates-api';
-import { templateErrorMessage } from '../template-errors';
-
+  type StudioContentCodec,
+  type StudioSamplePreview as SamplePreview,
+  type StudioTemplate as TemplateDetail,
+  type StudioVersion as TemplateVersion,
+  type TemplateStudioContext,
+  type TemplateStudioDataSource,
+} from './data-source';
+import { formatDate, formatDateRelative } from './format-date';
+import { Pill, SkeletonPanel } from './primitives';
 import { blockDiff, diffStats, type DiffBlock } from './diff';
 import { appendVariable, cloneBlocks, insertBlocks, makeBlock, moveBlock, newBlockId, removeVariableEverywhere, type StudioDoc } from './doc-ops';
 import { deriveReadiness } from './readiness';
@@ -42,13 +35,16 @@ import { VersionDiff, type DiffSide } from './VersionDiff';
 import { EMPTY_CATALOG, buildCatalog, chipInfo, type VariableCatalog } from './variables';
 import './studio.css';
 
-// PLATFORM-UX-1 F-9 (handoff §10; directive R-10–R-13) — the Template Studio at
-// /document-templates/:id (it REPLACES the old detail view, R-12). Left panel 272 /
+// PLATFORM-UX-1 F-9 (handoff §10; directive R-10–R-13) — the Template Studio (platform:
+// /document-templates/:id, R-12). TEMPLATE-STUDIO-1 S-0: ONE shared component for Platform
+// Admin and Organization — every read, write, capability and context-specific line of copy
+// comes through the `dataSource` adapter (./data-source); the host injects its account
+// menu, its breadcrumb setter and its error formatter. Left panel 272 /
 // canvas 1fr / inspector 328; the left panel becomes an overlay below 1280px and the
 // inspector below 1100px. Workflow (§10.7): save draft (⌘S, 3s debounced autosave),
 // preview (saves first; the existing preview endpoint), derived readiness checks,
 // publish vN, versions (view, compare, restore), withdraw / cancel withdrawal,
-// properties. `:read` operators see the published version in Preview only (R-13).
+// properties. Read-only viewers see the published version in Preview only (R-13).
 
 const AUTOSAVE_MS = 3000;
 const TOAST_MS = 3500;
@@ -65,34 +61,56 @@ function clockNow(): string {
   return [d.getHours(), d.getMinutes(), d.getSeconds()].map((n) => String(n).padStart(2, '0')).join(':');
 }
 
-function draftOf(d: PlatformTemplateDetail | null): TemplateVersion | null {
+function defaultErrorMessage(e: unknown, fallback: string): string {
+  return e instanceof Error && e.message !== '' ? e.message : fallback;
+}
+
+function draftOf(d: TemplateDetail | null): TemplateVersion | null {
   return d?.versions.find((v) => v.status === 'DRAFT') ?? null;
 }
-function currentOf(d: PlatformTemplateDetail | null): TemplateVersion | null {
+function currentOf(d: TemplateDetail | null): TemplateVersion | null {
   if (d === null || d.current_version === null) return null;
   return d.versions.find((v) => v.id === d.current_version?.id) ?? null;
 }
-function contentDoc(v: TemplateVersion | null): StudioDoc | null {
+function contentDoc(v: TemplateVersion | null, content: StudioContentCodec): StudioDoc | null {
   const c = v !== null ? htmlContentOf(v) : null;
-  return c !== null ? { title: c.title, blocks: studioBlocksFromHtml(c.html, newBlockId) } : null;
+  if (c === null) return null;
+  const { blocks, letterhead } = content.decode(c.html, newBlockId);
+  return letterhead !== null ? { title: c.title, blocks, letterhead } : { title: c.title, blocks };
 }
 function diffBlocksOf(blocks: StudioDoc['blocks']): DiffBlock[] {
   return blocks.map((b) => ({ kind: b.kind, text: studioPlainText(b.value) }));
 }
-function versionPill(v: TemplateVersion) {
-  return v.status === 'ACTIVE' ? ({ label: 'Published', tone: 'ok' } as const) : ({ label: 'Replaced', tone: 'muted' } as const);
+/** What the host's account slot receives (TEMPLATE-STUDIO-1 S-0). */
+export interface StudioAccountSlot {
+  /** Shown in the menu while there are unsaved changes. */
+  readonly notice: string | undefined;
+  /** Saves unsaved changes, then runs `go` (switch account, sign out). */
+  readonly beforeLeave: (go: () => void) => Promise<void>;
 }
 
 export interface TemplateStudioProps {
-  readonly session: Session;
+  readonly context: TemplateStudioContext;
+  readonly dataSource: TemplateStudioDataSource;
   readonly templateId: string;
+  /** The host's account menu (top bar, right). */
+  readonly renderAccount?: (slot: StudioAccountSlot) => ReactNode;
+  /** The host's breadcrumb setter: the template name once loaded, null on unmount. */
+  readonly onEntityName?: (name: string | null) => void;
+  /** The host's refusal → message formatter. Default: the error's message. */
+  readonly formatError?: (e: unknown, fallback: string) => string;
 }
 
-export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
-  const canManage = hasScope(session, DOC_TEMPLATE_MANAGE_SCOPE);
-  const identity = useIdentity();
+export function TemplateStudio({ context, dataSource: ds, templateId, renderAccount, onEntityName, formatError = defaultErrorMessage }: TemplateStudioProps) {
+  // canManage = may edit the draft (the platform's :manage); approval is its own capability.
+  const { canEdit: canManage, canApprove } = ds.capabilities;
+  const copy = ds.copy;
+  const content = ds.content ?? DEFAULT_STUDIO_CONTENT_CODEC;
+  const templateErrorMessage = formatError;
+  const hasWithdrawal = ds.withdraw !== undefined;
+  const versionPill = (v: TemplateVersion) => (v.status === 'ACTIVE' ? copy.versionActive : copy.versionRetired);
   const location = useLocation();
-  const [detail, setDetail] = useState<PlatformTemplateDetail | null>(null);
+  const [detail, setDetail] = useState<TemplateDetail | null>(null);
   const [docTypeName, setDocTypeName] = useState('');
   const [catalog, setCatalog] = useState<VariableCatalog>(EMPTY_CATALOG);
   const [loadError, setLoadError] = useState<string | null>(null);
@@ -151,16 +169,22 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
   }, []);
   useEffect(() => () => window.clearTimeout(toastTimer.current), []);
 
-  useEntityCrumb(detail?.name);
+  const entityName = detail?.name ?? null;
+  useEffect(() => {
+    onEntityName?.(entityName);
+    return () => onEntityName?.(null);
+  }, [entityName, onEntityName]);
 
   // ── load ──────────────────────────────────────────────────────────────
   const { reset } = docState;
   const initDoc = useCallback(
-    (d: PlatformTemplateDetail) => {
+    (d: TemplateDetail) => {
       const dv = draftOf(d);
       const cur = currentOf(d);
-      const fromDraft = dv !== null ? contentDoc(dv) : null;
-      const base: StudioDoc = canManage ? fromDraft ?? contentDoc(cur) ?? { title: d.name, blocks: [] } : contentDoc(cur) ?? { title: d.name, blocks: [] };
+      const fromDraft = dv !== null ? contentDoc(dv, content) : null;
+      const base: StudioDoc = canManage
+        ? (fromDraft ?? contentDoc(cur, content) ?? { title: d.name, blocks: [] })
+        : (contentDoc(cur, content) ?? { title: d.name, blocks: [] });
       reset(base);
       savedEditRevRef.current = 0;
       setSavedEditRev(0);
@@ -171,22 +195,17 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
       setPreviewedRev(dv !== null && dv.previewed_fingerprint !== null && dv.previewed_fingerprint === dv.content_fingerprint ? 0 : null);
       if (dv !== null && fromDraft === null && canManage) setBanner('This draft uses an earlier content format. Saving it here converts it to the Studio format.');
     },
-    [canManage, reset],
+    [canManage, reset, content],
   );
 
   useEffect(() => {
     let live = true;
     void (async () => {
       try {
-        const [d, b, vars, types] = await Promise.all([
-          documentTemplatesApi.getTemplate(templateId),
-          documentTemplatesApi.allowedBindings(templateId),
-          documentTemplatesApi.listVariables().catch(() => ({ variables: [] })),
-          documentTemplatesApi.listDocumentTypes().catch(() => ({ document_types: [] })),
-        ]);
+        const [d, cat] = await Promise.all([ds.load(templateId), ds.catalog(templateId)]);
         if (!live) return;
-        setCatalog(buildCatalog(vars.variables, b.bindings));
-        setDocTypeName(types.document_types.find((t) => t.id === d.document_type_id)?.name ?? d.document_type_id);
+        setCatalog(buildCatalog(cat.variables, cat.bindings));
+        setDocTypeName(cat.documentTypes?.find((t) => t.id === d.document_type_id)?.name ?? d.document_type_id);
         setDetail(d);
         initDoc(d);
       } catch (e) {
@@ -196,17 +215,17 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
     return () => {
       live = false;
     };
-  }, [templateId, initDoc]);
+  }, [ds, templateId, initDoc, templateErrorMessage]);
 
-  const refreshDetail = useCallback(async (): Promise<PlatformTemplateDetail | null> => {
+  const refreshDetail = useCallback(async (): Promise<TemplateDetail | null> => {
     try {
-      const d = await documentTemplatesApi.getTemplate(templateId);
+      const d = await ds.load(templateId);
       setDetail(d);
       return d;
     } catch {
       return null;
     }
-  }, [templateId]);
+  }, [ds, templateId]);
 
   // ── responsive panels (handoff §10.2) ─────────────────────────────────
   useEffect(() => {
@@ -228,6 +247,7 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
   const dirty = editRev !== savedEditRev;
   const withdrawal = detail !== null ? withdrawalStateOf(detail) : 'NONE';
   const current = currentOf(detail);
+  const currentDoc = useMemo(() => contentDoc(current, content), [current, content]);
   const codec = useMemo(() => createStudioCodec((k) => chipInfo(catalog, k)), [catalog]);
   const map = useMemo(() => bindingMapFrom(catalog.list.map((v) => ({ key: v.key, label: v.label }))), [catalog]);
   const readiness = useMemo(
@@ -239,9 +259,9 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
         dirty,
         savedRev,
         previewedRev,
-        withdrawal,
+        withdrawal: hasWithdrawal ? withdrawal : null,
       }),
-    [doc, catalog, dirty, savedRev, previewedRev, withdrawal],
+    [doc, catalog, dirty, savedRev, previewedRev, withdrawal, hasWithdrawal],
   );
   const editable = canManage && mode === 'edit';
   const wide = width >= WIDE_BP;
@@ -249,8 +269,8 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
     draft?.version_number ?? (detail !== null && detail.versions.length > 0 ? Math.max(...detail.versions.map((v) => v.version_number)) + 1 : 1);
   const publishedNumber = detail?.current_version?.version_number ?? null;
   const published = detail !== null && detail.status === 'ACTIVE' && detail.current_version !== null;
-  const canWithdraw = canManage && withdrawal === 'NONE' && published;
-  const canCancelWithdrawal = canManage && withdrawal === 'PENDING';
+  const canWithdraw = ds.capabilities.canWithdraw && ds.withdraw !== undefined && withdrawal === 'NONE' && published;
+  const canCancelWithdrawal = ds.capabilities.canWithdraw && ds.cancelWithdrawal !== undefined && withdrawal === 'PENDING';
 
   // ── save (⌘S · autosave) ──────────────────────────────────────────────
   const latest = useRef({ doc, editRev });
@@ -264,14 +284,14 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
       const { doc: d, editRev: rev } = latest.current;
       const dv = draftRef.current;
       if (rev === savedEditRevRef.current && dv !== null) return Promise.resolve(true);
-      const field_schema = { render_schema_version: HTML_CONTENT_VERSION, title: d.title.trim(), html: studioBlocksToHtml(d.blocks) };
+      const field_schema = { render_schema_version: HTML_CONTENT_VERSION, title: d.title.trim(), html: content.encode(d.blocks, d.letterhead ?? null) };
       setSaving(true);
       const p = (async () => {
         try {
           const v =
             dv !== null
-              ? await documentTemplatesApi.updateDraft(dv.id, { render_schema_version: HTML_CONTENT_VERSION, field_schema })
-              : await documentTemplatesApi.createDraft(templateId, { render_schema_version: HTML_CONTENT_VERSION, field_schema });
+              ? await ds.saveDraft(dv.id, { render_schema_version: HTML_CONTENT_VERSION, field_schema })
+              : await ds.createDraft(templateId, { render_schema_version: HTML_CONTENT_VERSION, field_schema });
           draftRef.current = v;
           setDraft(v);
           savedEditRevRef.current = rev;
@@ -293,7 +313,7 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
       inflight.current = p;
       return p;
     },
-    [canManage, templateId, toast],
+    [canManage, templateId, toast, ds, content, templateErrorMessage],
   );
 
   useEffect(() => {
@@ -334,7 +354,7 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
       return;
     }
     try {
-      const res = await documentTemplatesApi.preview(id);
+      const res = await ds.preview(id);
       setPreview(res);
       setPreviewedRev(savedRevRef.current);
     } catch (e) {
@@ -343,7 +363,7 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
     } finally {
       setPvLoading(false);
     }
-  }, [canManage, saveDraft]);
+  }, [canManage, saveDraft, ds, templateErrorMessage]);
 
   const switchMode = (m: 'edit' | 'preview'): void => {
     if (m === 'preview') void enterPreview();
@@ -411,7 +431,7 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
     toast(`Removed {{${key}}} from the draft.`);
   };
   const copyPublished = (): void => {
-    const src = contentDoc(current);
+    const src = currentDoc;
     if (src === null) return;
     change((d) => ({ ...d, blocks: cloneBlocks(src.blocks) }));
     toast(`Copied v${publishedNumber ?? ''} into the draft.`);
@@ -435,7 +455,7 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
     void runAction(async () => {
       const dv = draftRef.current;
       if (dv === null) throw new Error('no draft');
-      const v = await documentTemplatesApi.publish(dv.id);
+      const v = await ds.approve(dv.id);
       setPublishOpen(false);
       draftRef.current = null;
       setDraft(null);
@@ -443,13 +463,14 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
       setPreview(null);
       setMode('edit');
       await refreshDetail();
-      toast(`v${v.version_number} published. Tenants now get this version.`);
-    }, 'Publish failed.');
+      toast(copy.approveToast(v.version_number));
+    }, copy.approveFailed);
   };
 
   const doWithdraw = (days: number, reason: string): void => {
     void runAction(async () => {
-      const t = await documentTemplatesApi.withdraw(templateId, { notice_days: days, reason });
+      if (ds.withdraw === undefined) throw new Error('withdrawal unavailable');
+      const t = await ds.withdraw(templateId, { notice_days: days, reason });
       setWithdrawOpen(false);
       await refreshDetail();
       toast(days === 0 ? 'Template withdrawn.' : `Withdrawal scheduled for ${formatDate(t.withdraw_effective_at)}.`);
@@ -458,7 +479,8 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
 
   const doCancelWithdrawal = (): void => {
     void runAction(async () => {
-      await documentTemplatesApi.cancelWithdrawal(templateId);
+      if (ds.cancelWithdrawal === undefined) throw new Error('withdrawal unavailable');
+      await ds.cancelWithdrawal(templateId);
       setCancelWdOpen(false);
       await refreshDetail();
       toast('Withdrawal cancelled.');
@@ -467,7 +489,8 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
 
   const saveProps = async (patch: PropertiesPatch): Promise<string | null> => {
     try {
-      const t = await documentTemplatesApi.updateTemplate(templateId, patch);
+      if (ds.updateProperties === undefined) return null;
+      const t = await ds.updateProperties(templateId, patch);
       setDetail((d) => (d !== null ? { ...d, ...t, versions: d.versions } : d));
       return null;
     } catch (e) {
@@ -486,7 +509,7 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
     [detail],
   );
   const viewVersion = pastVersions.find((v) => v.id === viewVersionId) ?? null;
-  const viewDoc = contentDoc(viewVersion);
+  const viewDoc = contentDoc(viewVersion, content);
   const versionRows: VersionRowModel[] = [
     {
       key: 'draft',
@@ -499,7 +522,7 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
       key: v.id,
       n: `v${v.version_number}`,
       pill: versionPill(v),
-      sub: `${formatDate(v.activated_at ?? v.created_at)} · ${contentDoc(v)?.blocks.length ?? 0} blocks`,
+      sub: `${formatDate(v.activated_at ?? v.created_at)} · ${contentDoc(v, content)?.blocks.length ?? 0} blocks`,
       on: mode === 'version' && viewVersionId === v.id,
     })),
   ];
@@ -509,7 +532,7 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
       key: v.id,
       label: `v${v.version_number}`,
       sub: `${versionPill(v).label} · ${formatDate(v.activated_at ?? v.created_at)}`,
-      blocks: diffBlocksOf(contentDoc(v)?.blocks ?? []),
+      blocks: diffBlocksOf(contentDoc(v, content)?.blocks ?? []),
     })),
   ];
   const openCompare = (left?: string): void => {
@@ -517,13 +540,13 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
     setCompare({ left: l === 'draft' && current !== null ? current.id : l, right: 'draft', changesOnly: false });
   };
   const publishStats = publishOpen
-    ? diffStats(blockDiff(diffBlocksOf(contentDoc(current)?.blocks ?? []), diffBlocksOf(doc.blocks)))
+    ? diffStats(blockDiff(diffBlocksOf(currentDoc?.blocks ?? []), diffBlocksOf(doc.blocks)))
     : { added: 0, changed: 0, removed: 0, unchanged: 0 };
 
   if (loadError !== null) {
     return (
-      <div className="pws-root pws-root--msg">
-        <div role="alert" className="pw-alert pw-alert--error">
+      <div className="pws-root pws-root--msg" data-context={context}>
+        <div role="alert" className="ts-alert ts-alert--error">
           {loadError}
         </div>
       </div>
@@ -531,7 +554,7 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
   }
   if (detail === null) {
     return (
-      <div className="pws-root pws-root--msg">
+      <div className="pws-root pws-root--msg" data-context={context}>
         <SkeletonPanel label="Loading the template…" lines={['40%', '100%', '90%', '70%']} />
       </div>
     );
@@ -554,11 +577,13 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
       : null;
 
   return (
-    <div className="pws-root">
+    <div className="pws-root" data-context={context}>
       <StudioTopBar
         name={detail.name}
         versionTag={publishedNumber !== null ? `v${publishedNumber}` : 'Not published'}
-        canManage={canManage}
+        canEdit={canManage}
+        canApprove={canApprove}
+        copy={copy}
         saveState={saveState}
         saveLabel={saveLabel}
         mode={mode}
@@ -591,9 +616,7 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
         autosave={autosave}
         onToggleAutosave={() => setAutosave((a) => !a)}
         onShortcuts={() => setShortcutsOpen(true)}
-        identity={identity}
-        onSwitchAccount={() => void leave(() => redirectToLogin({ selectAccount: true }))}
-        onSignOut={() => void leave(() => void logout())}
+        account={renderAccount?.({ notice: dirty ? "You have unsaved changes. They're saved before you sign out." : undefined, beforeLeave: leave })}
       />
 
       {withdrawal === 'PENDING' ? (
@@ -614,9 +637,7 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
         </div>
       ) : null}
       {!canManage ? (
-        <div className="pws-bar pws-bar--ro">
-          <b>View only.</b> You&apos;re seeing the published version. Editing and draft preview need the <b>Manage templates</b> permission.
-        </div>
+        <div className="pws-bar pws-bar--ro">{copy.viewOnly}</div>
       ) : null}
       {banner !== null ? (
         <div role="alert" className="pws-bar pws-bar--err">
@@ -750,7 +771,13 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
             catalog={catalog}
             readiness={readiness}
             editable={editable}
-            canManage={canManage}
+            canEdit={canManage}
+            canEditProps={canManage && ds.updateProperties !== undefined}
+            showProductTags={ds.capabilities.productTags}
+            showDescription={ds.capabilities.description}
+            withdrawalEnabled={hasWithdrawal}
+            manageVariables={copy.manageVariables}
+            checksNote={copy.checksNote}
             onInsert={(key) => canvasRef.current?.insertVariable(key)}
             drag={drag}
             onFix={removeVar}
@@ -785,6 +812,7 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
         busy={actionBusy}
         error={actionError}
         onPublish={doPublish}
+        copy={copy.approveDialog}
       />
       <WithdrawDialog open={withdrawOpen} onOpenChange={setWithdrawOpen} name={detail.name} busy={actionBusy} error={actionError} onWithdraw={doWithdraw} />
       <CancelWithdrawalDialog open={cancelWdOpen} onOpenChange={setCancelWdOpen} busy={actionBusy} error={actionError} onConfirm={doCancelWithdrawal} />
@@ -794,10 +822,10 @@ export function TemplateStudio({ session, templateId }: TemplateStudioProps) {
           onOpenChange={setRestoreOpen}
           version={viewVersion.version_number}
           onConfirm={() => {
-            const src = contentDoc(viewVersion);
+            const src = contentDoc(viewVersion, content);
             setRestoreOpen(false);
             if (src === null) return;
-            change(() => ({ title: src.title, blocks: cloneBlocks(src.blocks) }));
+            change(() => ({ ...src, blocks: cloneBlocks(src.blocks) }));
             setViewVersionId(null);
             setMode('edit');
             toast(`Draft replaced with v${viewVersion.version_number}. Save and preview before publishing.`);

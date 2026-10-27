@@ -1,5 +1,6 @@
 import { memo, useLayoutEffect, useRef, type ClipboardEvent, type DragEvent, type KeyboardEvent } from 'react';
-import { studioInsertAtRange, type StudioBlock, type StudioCodec as BlockCodec } from '@aramo/document-templates-web';
+
+import { studioInsertAtRange, type StudioBlock, type StudioCodec as BlockCodec } from '../studio-codec';
 
 // PLATFORM-UX-1 F-9 (directive R-11) — ONE editable region per block, through the
 // in-house codec. The DOM is the browser's while typing (the caret never jumps); React

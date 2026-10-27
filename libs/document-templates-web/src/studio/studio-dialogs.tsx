@@ -1,16 +1,13 @@
 import { useEffect, useState } from 'react';
 import { Dialog } from '@aramo/fe-foundation';
 
-import { ConfirmDialog } from '../../components/ConfirmDialog';
-import { FieldText, FieldTextArea } from '../../components/ConfirmFields';
-import { formatDate } from '../../components/format-date';
-import { useReturnFocus } from '../../components/use-return-focus';
-import { DEFAULT_WITHDRAW_NOTICE_DAYS, MAX_WITHDRAW_NOTICE_DAYS } from '../document-templates-api';
-
+import { DEFAULT_WITHDRAW_NOTICE_DAYS, MAX_WITHDRAW_NOTICE_DAYS, type TemplateStudioCopy } from './data-source';
+import { formatDate } from './format-date';
+import { ConfirmDialog, FieldText, FieldTextArea, useReturnFocus } from './primitives';
 import type { DiffStats } from './diff';
 
-// PLATFORM-UX-1 F-9 (handoff §10.7) — the Studio's confirm dialogs, on the platform
-// ConfirmDialog (from → to Change box, consequence, fields, error; focus trap, Esc,
+// PLATFORM-UX-1 F-9 (handoff §10.7) — the Studio's confirm dialogs, on the Studio's
+// ConfirmDialog (primitives.tsx) (from → to Change box, consequence, fields, error; focus trap, Esc,
 // focus return): Publish vN, Withdraw, Cancel withdrawal, Restore into draft — and the
 // keyboard shortcuts sheet (§10.8).
 
@@ -26,6 +23,8 @@ export interface PublishDialogProps {
   readonly busy: boolean;
   readonly error: string | null;
   readonly onPublish: () => void;
+  /** The context's approve copy (TEMPLATE-STUDIO-1 S-0). */
+  readonly copy: TemplateStudioCopy['approveDialog'];
 }
 
 export function publishConsequence(next: number, current: number | null): string {
@@ -45,12 +44,12 @@ export function PublishDialog(p: PublishDialogProps) {
     <ConfirmDialog
       open={p.open}
       onOpenChange={p.onOpenChange}
-      title={`Publish v${p.next} of ${p.name}`}
-      from={p.current !== null ? { label: `v${p.current} published`, tone: 'ok' } : { label: 'Not published', tone: 'neutral' }}
-      to={{ label: `v${p.next} published`, tone: 'ok' }}
-      consequence={publishConsequence(p.next, p.current)}
+      title={p.copy.title(p.next, p.name)}
+      from={p.copy.from(p.current)}
+      to={p.copy.to(p.next)}
+      consequence={p.copy.consequence(p.next, p.current)}
       tone="privileged"
-      commitLabel={`Publish v${p.next}`}
+      commitLabel={p.copy.commit(p.next)}
       busy={p.busy}
       error={p.error}
       onCommit={p.onPublish}
@@ -64,7 +63,7 @@ export function PublishDialog(p: PublishDialogProps) {
         ))}
       </div>
       {p.warnings > 0 ? (
-        <div className="pw-alert pw-alert--warn pws-dlg-warn">
+        <div className="ts-alert ts-alert--warn pws-dlg-warn">
           {p.warnings} warning{p.warnings > 1 ? 's' : ''} (inactive variables) will publish as is.
         </div>
       ) : null}

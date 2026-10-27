@@ -1,18 +1,16 @@
-import { useEffect, useRef, useState } from 'react';
+import { Fragment, useEffect, useRef, useState, type ReactNode } from 'react';
 import { Link } from 'react-router-dom';
 import { Button } from '@aramo/fe-foundation';
 
-import type { OperatorIdentity } from '../../identity/identity';
-import { AccountMenu } from '../../shell/AccountMenu';
-
+import type { TemplateStudioCopy } from './data-source';
 import type { Readiness } from './readiness';
-import { readinessLabel } from './readiness';
 
 // PLATFORM-UX-1 F-9 (handoff §10.3) — the Studio top bar (56px): breadcrumb ending in the
 // template name ("← name" below 1200px), the mono version tag, the save status, the
 // Edit | Preview mode, the readiness pill (8 mini segments ≥1200px; opens Checks),
 // Compare, Save draft, Publish vN… (terracotta; 50% while not ready — clicking then opens
-// Checks), the ⋯ menu and the account menu (which saves unsaved changes before leaving).
+// Checks), the ⋯ menu and the host's account slot (TEMPLATE-STUDIO-1 S-0: the host renders
+// its account menu; the Studio saves unsaved changes before the host leaves).
 
 export type SaveState = 'saved' | 'unsaved' | 'saving';
 export type StudioMode = 'edit' | 'preview' | 'version';
@@ -20,7 +18,11 @@ export type StudioMode = 'edit' | 'preview' | 'version';
 export interface StudioTopBarProps {
   readonly name: string;
   readonly versionTag: string;
-  readonly canManage: boolean;
+  /** Edit the draft: the save status, Save draft and the autosave toggle. */
+  readonly canEdit: boolean;
+  /** Approve the draft: the approve button. */
+  readonly canApprove: boolean;
+  readonly copy: TemplateStudioCopy;
   readonly saveState: SaveState;
   readonly saveLabel: string;
   readonly mode: StudioMode;
@@ -40,9 +42,8 @@ export interface StudioTopBarProps {
   readonly autosave: boolean;
   readonly onToggleAutosave: () => void;
   readonly onShortcuts: () => void;
-  readonly identity: OperatorIdentity;
-  readonly onSwitchAccount: () => void;
-  readonly onSignOut: () => void;
+  /** The host's account menu (platform: AccountMenu). */
+  readonly account?: ReactNode;
 }
 
 export function StudioTopBar(p: StudioTopBarProps) {
@@ -81,19 +82,23 @@ export function StudioTopBar(p: StudioTopBarProps) {
       <nav aria-label="Breadcrumb" className="pws-top__crumbs">
         {p.wide ? (
           <>
-            <span className="pws-top__crumb">Documents</span>
-            <span className="pws-top__sep" aria-hidden="true">
-              /
-            </span>
-            <Link to="/document-templates" className="pws-top__crumb">
-              Document templates
-            </Link>
-            <span className="pws-top__sep" aria-hidden="true">
-              /
-            </span>
+            {p.copy.crumbs.map((c) => (
+              <Fragment key={c.label}>
+                {c.to !== undefined ? (
+                  <Link to={c.to} className="pws-top__crumb">
+                    {c.label}
+                  </Link>
+                ) : (
+                  <span className="pws-top__crumb">{c.label}</span>
+                )}
+                <span className="pws-top__sep" aria-hidden="true">
+                  /
+                </span>
+              </Fragment>
+            ))}
           </>
         ) : (
-          <Link to="/document-templates" className="pws-top__crumb" aria-label="Back to templates">
+          <Link to={p.copy.back.to} className="pws-top__crumb" aria-label={p.copy.back.label}>
             ←
           </Link>
         )}
@@ -102,7 +107,7 @@ export function StudioTopBar(p: StudioTopBarProps) {
         </span>
       </nav>
       <span className="pws-top__ver">{p.versionTag}</span>
-      {p.canManage ? (
+      {p.canEdit ? (
         <span role="status" className="pws-top__save">
           <span className={`pws-top__dot pws-top__dot--${p.saveState}`} aria-hidden="true" />
           {p.saveLabel}
@@ -113,7 +118,7 @@ export function StudioTopBar(p: StudioTopBarProps) {
           <Button
             unstyled
             aria-pressed={p.mode !== 'preview'}
-            disabled={!p.canManage}
+            disabled={!p.canEdit}
             className={`pws-seg__item${p.mode !== 'preview' ? ' pws-seg__item--on' : ''}`}
             onClick={() => p.onMode('edit')}
           >
@@ -131,26 +136,26 @@ export function StudioTopBar(p: StudioTopBarProps) {
               ))}
             </span>
           ) : null}
-          {readinessLabel(r, p.wide)}
+          {p.copy.readinessLabel(r, p.wide)}
         </Button>
         <Button unstyled className="pws-btn34" title="Compare versions" aria-label={p.wide ? undefined : 'Compare versions'} onClick={p.onCompare}>
           {p.wide ? 'Compare' : '⇄'}
         </Button>
-        {p.canManage ? (
-          <>
-            <Button unstyled className="pws-btn34" title="Save draft (⌘S)" disabled={!p.dirty} onClick={p.onSave}>
-              {p.wide ? 'Save draft' : 'Save'}
-            </Button>
-            <Button
-              unstyled
-              className={`pws-btn34 pws-btn34--terra${r.ready ? '' : ' pws-btn34--dim'}`}
-              title="Publish requires every check to pass"
-              aria-disabled={!r.ready}
-              onClick={p.onPublish}
-            >
-              Publish {`v${p.nextVersion}`}…
-            </Button>
-          </>
+        {p.canEdit ? (
+          <Button unstyled className="pws-btn34" title="Save draft (⌘S)" disabled={!p.dirty} onClick={p.onSave}>
+            {p.wide ? 'Save draft' : 'Save'}
+          </Button>
+        ) : null}
+        {p.canApprove ? (
+          <Button
+            unstyled
+            className={`pws-btn34 pws-btn34--terra${r.ready ? '' : ' pws-btn34--dim'}`}
+            title={p.copy.approveHint}
+            aria-disabled={!r.ready}
+            onClick={p.onPublish}
+          >
+            {p.copy.approveButton(p.nextVersion)}
+          </Button>
         ) : null}
         <div className="pws-more" ref={wrap}>
           <Button ref={trigger} unstyled className="pws-more__btn" aria-label="More actions" aria-haspopup="menu" aria-expanded={more} onClick={() => setMore((m) => !m)}>
@@ -168,7 +173,7 @@ export function StudioTopBar(p: StudioTopBarProps) {
                   Cancel withdrawal…
                 </Button>
               ) : null}
-              {p.canManage ? (
+              {p.canEdit ? (
                 <Button unstyled role="menuitem" className="pws-more__item" onClick={run(p.onToggleAutosave)}>
                   <span className="pws-more__grow">Autosave drafts</span>
                   <b>{p.autosave ? 'On' : 'Off'}</b>
@@ -184,12 +189,7 @@ export function StudioTopBar(p: StudioTopBarProps) {
             </div>
           ) : null}
         </div>
-        <AccountMenu
-          identity={p.identity}
-          onSwitchAccount={p.onSwitchAccount}
-          onSignOut={p.onSignOut}
-          notice={p.dirty ? "You have unsaved changes. They're saved before you sign out." : undefined}
-        />
+        {p.account}
       </div>
     </header>
   );

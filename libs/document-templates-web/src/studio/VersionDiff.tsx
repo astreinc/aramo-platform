@@ -1,8 +1,7 @@
 import { useMemo } from 'react';
 import { Button, Checkbox, Dialog, DialogClose, Select } from '@aramo/fe-foundation';
 
-import { useReturnFocus } from '../../components/use-return-focus';
-
+import { useReturnFocus } from './primitives';
 import { blockDiff, diffStats, type DiffBlock, type DiffSeg, type RowKind } from './diff';
 
 // PLATFORM-UX-1 F-9 (handoff §10.7 Compare) — the NEW VersionDiff: a min(1180px,96vw) ×

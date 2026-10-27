@@ -116,3 +116,29 @@ export {
   type StudioChipInfo,
   type StudioChipResolver,
 } from './studio-codec';
+// TEMPLATE-STUDIO-1 S-0 (directive §2) — the ONE shared Template Studio (moved from
+// apps/platform-web), its data-source adapter, the content codecs and the platform copy
+// table (additive: no existing export changes).
+export { TemplateStudio, type TemplateStudioProps, type StudioAccountSlot } from './studio/TemplateStudio';
+export {
+  DEFAULT_STUDIO_CONTENT_CODEC,
+  LETTERHEAD_STUDIO_CONTENT_CODEC,
+  STUDIO_HTML_CONTENT_VERSION,
+  type TemplateStudioDataSource,
+  type TemplateStudioContext,
+  type TemplateStudioCopy,
+  type StudioCapabilities,
+  type StudioContentCodec,
+  type StudioContentBody,
+  type StudioCatalogData,
+  type StudioCatalogVariable,
+  type StudioAllowedBinding,
+  type StudioSamplePreview,
+  type StudioTemplate,
+  type StudioTemplateInfo,
+  type StudioVersion,
+  type StudioVersionStatus,
+  type StudioPropertiesPatch,
+  type StudioCrumb,
+} from './studio/data-source';
+export { PLATFORM_STUDIO_COPY } from './studio/studio-copy';

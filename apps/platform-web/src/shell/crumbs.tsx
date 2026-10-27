@@ -31,6 +31,15 @@ export function useCrumbEntity(): string | null {
  * Sets the last breadcrumb to `label` (e.g. the tenant name) while the calling
  * page is mounted. Pass null/undefined while the name is still loading.
  */
+/**
+ * The entity-crumb setter itself (TEMPLATE-STUDIO-1 S-0), for a shared component that
+ * reports its entity name through a callback (the lib Template Studio's onEntityName)
+ * instead of calling useEntityCrumb. Stable across renders.
+ */
+export function useSetEntityCrumb(): (label: string | null) => void {
+  return useContext(CrumbContext).setEntity;
+}
+
 export function useEntityCrumb(label: string | null | undefined): void {
   const { setEntity } = useContext(CrumbContext);
   useEffect(() => {

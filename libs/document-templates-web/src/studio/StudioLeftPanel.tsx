@@ -1,9 +1,8 @@
 import { Button } from '@aramo/fe-foundation';
-import { studioPlainText, type StudioBlock } from '@aramo/document-templates-web';
 
-import { EmptyState } from '../../components/EmptyState';
-import { Pill, type PillSpec } from '../../components/Pill';
+import { studioPlainText, type StudioBlock } from '../studio-codec';
 
+import { EmptyState, Pill, type PillSpec } from './primitives';
 import { KIND_LABEL } from './StudioBlockEditable';
 import type { StudioDrag } from './use-studio-drag';
 

@@ -1,9 +1,11 @@
 import { Button, Checkbox } from '@aramo/fe-foundation';
-import { SafeDoc, studioPlainText, studioPreviewParts, type BindingMap } from '@aramo/document-templates-web';
 
-import { EmptyState } from '../../components/EmptyState';
-import type { SamplePreview } from '../document-templates-api';
+import { SafeDoc } from '../dt-html-render';
+import type { BindingMap } from '../dt-ui';
+import { studioPlainText, studioPreviewParts } from '../studio-codec';
 
+import type { StudioSamplePreview } from './data-source';
+import { EmptyState } from './primitives';
 import { paginate, zoomIn, zoomOut } from './pagination';
 
 // PLATFORM-UX-1 F-9 (handoff §10.7 Preview) — the paginated A4 preview. The draft
@@ -38,7 +40,7 @@ export interface StudioPreviewProps {
 }
 
 /** The organization line of the page header: the preview's legal-name sample, if any. */
-export function orgNameOf(p: SamplePreview): string {
+export function orgNameOf(p: StudioSamplePreview): string {
   const s = p.sample_values ?? [];
   const hit = s.find((x) => /(^|\.)legal_name$/.test(x.key)) ?? s.find((x) => /^(organization|recruiting_company)\.name$/.test(x.key));
   return hit?.value ?? '';
@@ -88,7 +90,7 @@ export function StudioPreview(props: StudioPreviewProps) {
       {/* Keyboard-scrollable (WCAG 2.1.1): the pages scroll in this region. */}
       <div className="pws-pv" tabIndex={0} role="region" aria-label="Preview pages">
         {props.error !== null ? (
-          <div role="alert" className="pw-alert pw-alert--error pws-pv__err">
+          <div role="alert" className="ts-alert ts-alert--error pws-pv__err">
             {props.error}
           </div>
         ) : null}

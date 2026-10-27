@@ -5,9 +5,9 @@ import {
   studioVariableKeys,
   type StudioBlock,
   type StudioChipState,
-} from '@aramo/document-templates-web';
+} from '../studio-codec';
 
-import type { WithdrawalState } from '../document-templates-api';
+import type { WithdrawalState } from './data-source';
 
 // PLATFORM-UX-1 F-9 (handoff §10.6 Checks, §10.7) — the publishing checks. DERIVED,
 // never stored: every render recomputes them from the draft, the save revision and the
@@ -35,7 +35,8 @@ export interface ReadinessInput {
   readonly dirty: boolean;
   readonly savedRev: number;
   readonly previewedRev: number | null;
-  readonly withdrawal: WithdrawalState;
+  /** null = the context has no withdrawal (the check is left out). */
+  readonly withdrawal: WithdrawalState | null;
 }
 
 export interface Readiness {
@@ -92,7 +93,9 @@ export function deriveReadiness(input: ReadinessInput): Readiness {
     { id: 'format', label: 'Only allowed formatting', ok: allowedOnly, severity: 'fail', detail: 'Paragraphs, H2, bold, italic, underline, lists, line breaks and variables.' },
     { id: 'saved', label: 'Draft saved', ok: saved, severity: 'fail', detail: 'Save the draft before previewing.' },
     { id: 'previewed', label: 'Previewed after the last save', ok: previewed, severity: 'fail', detail: 'Open Preview to check the saved draft with sample values.' },
-    { id: 'withdrawn', label: 'Template is not withdrawn', ok: input.withdrawal !== 'IN_EFFECT', severity: 'fail', detail: 'Withdrawn templates can’t be published.' },
+    ...(input.withdrawal !== null
+      ? [{ id: 'withdrawn', label: 'Template is not withdrawn', ok: input.withdrawal !== 'IN_EFFECT', severity: 'fail', detail: 'Withdrawn templates can’t be published.' } satisfies CheckItem]
+      : []),
   ];
   const fails = items.filter((i) => !i.ok && i.severity === 'fail').length;
   const warns = items.filter((i) => !i.ok && i.severity === 'warn').length;

@@ -1,0 +1,93 @@
+/* TEMPLATE-STUDIO-1 S-0 (directive §2) — platform-web maps the shared Template Studio's
+ * --ts-* tokens (libs/document-templates-web/src/studio/studio.css) onto the platform
+ * token layer (theme.css --pw-*), so the Studio renders exactly as the platform design.
+ * Same elements as the lib's defaults, with a higher specificity (the lib's are :where). */
+
+.pws-root,
+body:has(.pws-root) {
+  --ts-alert-error-bg: var(--pw-alert-error-bg);
+  --ts-alert-error-ink: var(--pw-alert-error-ink);
+  --ts-alert-error-line: var(--pw-alert-error-line);
+  --ts-alert-info-bg: var(--pw-alert-info-bg);
+  --ts-alert-info-ink: var(--pw-alert-info-ink);
+  --ts-alert-info-line: var(--pw-alert-info-line);
+  --ts-alert-success-bg: var(--pw-alert-success-bg);
+  --ts-alert-success-ink: var(--pw-alert-success-ink);
+  --ts-alert-success-line: var(--pw-alert-success-line);
+  --ts-alert-warn-bg: var(--pw-alert-warn-bg);
+  --ts-alert-warn-ink: var(--pw-alert-warn-ink);
+  --ts-alert-warn-line: var(--pw-alert-warn-line);
+  --ts-brand: var(--pw-brand);
+  --ts-brand-bg: var(--pw-brand-bg);
+  --ts-canvas: var(--pw-canvas);
+  --ts-crumb-sep: var(--pw-crumb-sep);
+  --ts-danger: var(--pw-danger);
+  --ts-danger-bg: var(--pw-danger-bg);
+  --ts-envbar-h: var(--pw-envbar-h);
+  --ts-faint: var(--pw-faint);
+  --ts-focus: var(--pw-focus);
+  --ts-focus-ondark: var(--pw-focus-ondark);
+  --ts-focus-ring: var(--pw-focus-ring);
+  --ts-font: var(--pw-font);
+  --ts-fs-10: var(--pw-fs-10);
+  --ts-fs-10-5: var(--pw-fs-10-5);
+  --ts-fs-11: var(--pw-fs-11);
+  --ts-fs-11-5: var(--pw-fs-11-5);
+  --ts-fs-12: var(--pw-fs-12);
+  --ts-fs-12-5: var(--pw-fs-12-5);
+  --ts-fs-13: var(--pw-fs-13);
+  --ts-fs-13-5: var(--pw-fs-13-5);
+  --ts-fs-14: var(--pw-fs-14);
+  --ts-fs-15: var(--pw-fs-15);
+  --ts-fs-16: var(--pw-fs-16);
+  --ts-fs-17: var(--pw-fs-17);
+  --ts-fs-22: var(--pw-fs-22);
+  --ts-fs-24: var(--pw-fs-24);
+  --ts-fs-ua-button: var(--pw-fs-ua-button);
+  --ts-info: var(--pw-info);
+  --ts-info-bg: var(--pw-info-bg);
+  --ts-ink: var(--pw-ink);
+  --ts-ink-2: var(--pw-ink-2);
+  --ts-line: var(--pw-line);
+  --ts-line-2: var(--pw-line-2);
+  --ts-link: var(--pw-link);
+  --ts-link-hover: var(--pw-link-hover);
+  --ts-midnight: var(--pw-midnight);
+  --ts-midnight-raised: var(--pw-midnight-raised);
+  --ts-mono: var(--pw-mono);
+  --ts-muted: var(--pw-muted);
+  --ts-muted-tone: var(--pw-muted-tone);
+  --ts-muted-tone-bg: var(--pw-muted-tone-bg);
+  --ts-neutral: var(--pw-neutral);
+  --ts-neutral-bg: var(--pw-neutral-bg);
+  --ts-ok: var(--pw-ok);
+  --ts-ok-bg: var(--pw-ok-bg);
+  --ts-overlay: var(--pw-overlay);
+  --ts-r-box: var(--pw-r-box);
+  --ts-r-btn-sm: var(--pw-r-btn-sm);
+  --ts-r-dialog: var(--pw-r-dialog);
+  --ts-r-item: var(--pw-r-item);
+  --ts-r-md: var(--pw-r-md);
+  --ts-r-menu: var(--pw-r-menu);
+  --ts-r-pill: var(--pw-r-pill);
+  --ts-r-sm: var(--pw-r-sm);
+  --ts-r-tag: var(--pw-r-tag);
+  --ts-r-xs: var(--pw-r-xs);
+  --ts-rail-w-collapsed: var(--pw-rail-w-collapsed);
+  --ts-role-badge-fg: var(--pw-role-badge-fg);
+  --ts-rule: var(--pw-rule);
+  --ts-rule-2: var(--pw-rule-2);
+  --ts-shadow-dialog: var(--pw-shadow-dialog);
+  --ts-shadow-menu: var(--pw-shadow-menu);
+  --ts-shadow-toast: var(--pw-shadow-toast);
+  --ts-surface: var(--pw-surface);
+  --ts-surface-2: var(--pw-surface-2);
+  --ts-surface-hover: var(--pw-surface-hover);
+  --ts-terracotta: var(--pw-terracotta);
+  --ts-terracotta-hover: var(--pw-terracotta-hover);
+  --ts-tracking-caps: var(--pw-tracking-caps);
+  --ts-tracking-mark: var(--pw-tracking-mark);
+  --ts-tracking-tight: var(--pw-tracking-tight);
+  --ts-warn: var(--pw-warn);
+  --ts-warn-bg: var(--pw-warn-bg);
+}

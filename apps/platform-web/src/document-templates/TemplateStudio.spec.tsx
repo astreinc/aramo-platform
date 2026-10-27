@@ -2,17 +2,19 @@ import { act, fireEvent, render, screen, waitFor, within } from '@testing-librar
 import { MemoryRouter } from 'react-router-dom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { IdentityProvider } from '../../identity/identity';
-import { platformSession } from '../../skills/test-session';
+import { IdentityProvider } from '../identity/identity';
+import { platformSession } from '../skills/test-session';
+
 import {
   documentTemplatesApi,
   type PlatformTemplateDetail,
   type TemplateVariable,
   type TemplateVersion,
-} from '../document-templates-api';
+} from './document-templates-api';
+import { PlatformTemplateStudio as TemplateStudio } from './DocumentTemplateDetailView';
 
-import { TemplateStudio } from './TemplateStudio';
-
+// TEMPLATE-STUDIO-1 S-0 — the shared lib Studio as platform-web hosts it (the platform data
+// source + wrapper), so these assertions are the platform regression gate. Unchanged:
 // PLATFORM-UX-1 F-9 — the Studio journey against the mocked platform API: publish gating
 // (derived checks), preview saves first, the Checks fix, "/" and "{{", withdraw, compare,
 // version restore, and the :read view.

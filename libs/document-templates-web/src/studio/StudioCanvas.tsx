@@ -10,6 +10,7 @@ import {
   type MouseEvent as ReactMouseEvent,
 } from 'react';
 import { Button, Input, Select } from '@aramo/fe-foundation';
+
 import {
   makeStudioChip,
   studioActiveMarks,
@@ -18,7 +19,7 @@ import {
   type StudioBlock,
   type StudioBlockKind,
   type StudioCodec,
-} from '@aramo/document-templates-web';
+} from '../studio-codec';
 
 import {
   appendVariable,

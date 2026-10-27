@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import type { StudioBlock } from '@aramo/document-templates-web';
+
+import type { StudioBlock } from '../studio-codec';
 
 import { blockDiff, diffStats, lcs, tokens, wordDiff } from './diff';
 import { appendVariable, deleteBlock, duplicateBlock, insertBlocks, moveBlock, removeVariableEverywhere, setBlockKind, shiftBlock } from './doc-ops';
@@ -65,8 +66,8 @@ describe('diff — LCS block diff + word diff (Template Studio.dc.html)', () => 
 describe('readiness — derived, never stored (handoff §10.6)', () => {
   const catalog = buildCatalog(
     [
-      { id: '1', key: 'talent.first_name', label: 'First name', group_label: 'Talent', data_type: 'TEXT', products: [], ats_binding_key: 'talent.first_name', sample_value: 'Amina', active: true, created_at: '', updated_at: '' },
-      { id: '2', key: 'offer.hours', label: 'Hours', group_label: 'Offer', data_type: 'NUMBER', products: [], ats_binding_key: null, sample_value: '40', active: false, created_at: '', updated_at: '' },
+      { key: 'talent.first_name', label: 'First name', group_label: 'Talent', data_type: 'TEXT', sample_value: 'Amina', active: true },
+      { key: 'offer.hours', label: 'Hours', group_label: 'Offer', data_type: 'NUMBER', sample_value: '40', active: false },
     ],
     [{ key: 'talent.first_name', label: 'First name', group: 'Talent' }],
   );
@@ -138,8 +139,8 @@ describe('readiness — derived, never stored (handoff §10.6)', () => {
 describe('variables — chip states', () => {
   const catalog = buildCatalog(
     [
-      { id: '1', key: 'a.b', label: 'A', group_label: 'G', data_type: 'MULTILINE_TEXT', products: [], ats_binding_key: 'a.b', sample_value: 's', active: true, created_at: '', updated_at: '' },
-      { id: '2', key: 'c.d', label: 'C', group_label: 'G', data_type: 'TEXT', products: [], ats_binding_key: null, sample_value: null, active: true, created_at: '', updated_at: '' },
+      { key: 'a.b', label: 'A', group_label: 'G', data_type: 'MULTILINE_TEXT', sample_value: 's', active: true },
+      { key: 'c.d', label: 'C', group_label: 'G', data_type: 'TEXT', sample_value: null, active: true },
     ],
     [{ key: 'a.b', label: 'A', group: 'G' }],
   );
