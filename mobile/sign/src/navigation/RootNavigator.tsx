@@ -11,6 +11,7 @@ import { setPendingTarget } from '../links/pendingTarget';
 import { AccountScreen } from '../screens/account/AccountScreen';
 import { DocumentViewerScreen } from '../screens/documents/DocumentViewerScreen';
 import { EnvelopeDetailScreen } from '../screens/envelope/EnvelopeDetailScreen';
+import { HostedSigningScreen } from '../screens/hosted/HostedSigningScreen';
 import { ReceivedEnvelopeScreen } from '../screens/envelope/ReceivedEnvelopeScreen';
 import { NotificationsScreen } from '../screens/notifications/NotificationsScreen';
 import { SendFlowScreen } from '../screens/send/SendFlowScreen';
@@ -159,6 +160,17 @@ export function RootNavigator() {
             name="SendFlow"
             component={SendFlowScreen}
             options={{ presentation: 'fullScreenModal', title: 'New envelope' }}
+          />
+          {/* Locked hosted (in-person) signing: covers tabs and side menu (M-A5 §3.3). */}
+          <Stack.Screen
+            name="HostedSigning"
+            component={HostedSigningScreen}
+            options={{
+              presentation: 'fullScreenModal',
+              title: 'Signing in person',
+              gestureEnabled: false,
+              headerBackVisible: false,
+            }}
           />
         </>
       )}

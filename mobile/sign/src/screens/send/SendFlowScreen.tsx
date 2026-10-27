@@ -4,9 +4,12 @@
 // (localDraftId) or "Continue editing" (envelopeId), opening at the furthest step with
 // data. Preparation is saved on the device as it happens (encrypted) and reaches the
 // server only on Save as draft, Review and Send, always with If-Match.
+// "Sign a document" (intent 'self', FEATURES.selfSign; M-A4 §6.3, M-A5 §4): the user is
+// pre-added as a signer with Assign to me; after Send, the app asks for a SELF session
+// and opens the signing flow on the guest transport with only a vault handle.
 import { useQueryClient } from '@tanstack/react-query';
 import type { NativeStackScreenProps } from '@react-navigation/native-stack';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { ActivityIndicator, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { Banner, OfflineBanner } from '../../components/Banner';
@@ -17,14 +20,18 @@ import { signKeys, useBillingAccount, useOnline, useSenderContext } from '../../
 import { hasContent } from '../../features/send/draftModel';
 import { SAVED_ON_DEVICE, SAVED_TO_DRAFTS, sentToast } from '../../features/send/sendCopy';
 import { templatesAvailable } from '../../features/send/templates';
+import { startSelfSign } from '../../features/send/selfSign';
+import { createSenderApi } from '../../features/send/senderApi';
 import { useSendFlow } from '../../features/send/useSendFlow';
+import { FEATURES } from '../../config/features';
+import { useServices } from '../../app/ServicesContext';
 import type { RootStackParamList } from '../../navigation/types';
 import type { SendStep } from '../../state/draftStore';
 import { useTheme } from '../../theme';
 import { CancelSheet } from './CancelSheet';
 import { DocumentsStep } from './DocumentsStep';
 import { FieldsStep } from './FieldsStep';
-import { RecipientsStep } from './RecipientsStep';
+import { assignToMe, RecipientsStep } from './RecipientsStep';
 import { ReviewStep } from './ReviewStep';
 import { Stepper } from './Stepper';
 
@@ -42,7 +49,12 @@ export function SendFlowScreen({ navigation, route }: Props) {
   const qc = useQueryClient();
   const online = useOnline();
   const params = route.params ?? {};
-  const { controller, state } = useSendFlow(params);
+  const services = useServices();
+  const selfIntent = FEATURES.selfSign && params.intent === 'self';
+  const { controller, state } = useSendFlow({
+    ...params,
+    intent: selfIntent ? 'self' : 'request',
+  });
   const context = useSenderContext();
   const billing = useBillingAccount();
   const [cancelOpen, setCancelOpen] = useState(false);
@@ -53,7 +65,22 @@ export function SendFlowScreen({ navigation, route }: Props) {
   const editing = Boolean(params.envelopeId || state.draft?.envelopeId);
   const limit = limitBanner(allowanceModel(billing.data));
   const user = context.data?.user;
-  const me = user?.email ? { name: user.display_name || user.email, email: user.email } : null;
+  const meName = user?.display_name || user?.email || '';
+  const meEmail = user?.email ?? '';
+  const me = useMemo(
+    () => (meEmail ? { name: meName, email: meEmail } : null),
+    [meName, meEmail],
+  );
+  const selfSign = FEATURES.selfSign && p?.selfSign === true;
+  const inPerson = FEATURES.hostedSigning && context.data?.features?.in_person_signing === true;
+
+  // "Sign a document": pre-add the user (once, while the new draft has no recipients).
+  const preAdded = useRef(false);
+  useEffect(() => {
+    if (preAdded.current || !selfSign || !me || !p || p.recipients.length > 0) return;
+    preAdded.current = true;
+    assignToMe(controller, me);
+  }, [selfSign, me, p, controller]);
 
   const refreshLists = useCallback(() => {
     void qc.invalidateQueries({ queryKey: signKeys.senderList });
@@ -121,12 +148,31 @@ export function SendFlowScreen({ navigation, route }: Props) {
     if (!out) return;
     void qc.invalidateQueries({ queryKey: signKeys.detail(out.envelopeId) });
     toast.show(sentToast(out.signers));
+    if (selfSign && out.assignedSignerId) {
+      const r = await startSelfSign(
+        createSenderApi(services.workspace),
+        out.envelopeId,
+        out.assignedSignerId,
+      );
+      if (r.kind === 'session') {
+        leave(() =>
+          navigation.replace('GuestSigning', {
+            handle: r.handle,
+            mode: 'sign',
+            origin: 'self',
+            envelopeId: out.envelopeId,
+          }),
+        );
+        return;
+      }
+      toast.show(r.message);
+    }
     leave(() => navigation.replace('EnvelopeDetail', { envelopeId: out.envelopeId }));
-  }, [controller, toast, leave, navigation, qc]);
+  }, [controller, toast, leave, navigation, qc, selfSign, services.workspace]);
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      title: editing ? 'Edit draft' : 'New envelope',
+      title: editing ? 'Edit draft' : selfSign ? 'Sign a document' : 'New envelope',
       headerLeft: () => <Button title="Cancel" variant="text" onPress={onCancel} />,
       headerRight: () =>
         nextStep ? (
@@ -139,7 +185,7 @@ export function SendFlowScreen({ navigation, route }: Props) {
           />
         ) : null,
     });
-  }, [navigation, editing, onCancel, nextStep, nextEnabled, goTo]);
+  }, [navigation, editing, selfSign, onCancel, nextStep, nextEnabled, goTo]);
 
   // Android back / swipe: the same question as Cancel.
   useEffect(
@@ -184,7 +230,13 @@ export function SendFlowScreen({ navigation, route }: Props) {
         onPicked={() => goTo('recipients')}
       />
     ) : state.step === 'recipients' ? (
-      <RecipientsStep controller={controller} state={state} me={me} online={online} />
+      <RecipientsStep
+        controller={controller}
+        state={state}
+        me={me}
+        online={online}
+        inPerson={inPerson}
+      />
     ) : state.step === 'review' ? (
       <ReviewStep
         controller={controller}

@@ -6,6 +6,7 @@ import * as WebBrowser from 'expo-web-browser';
 
 import { useSession } from '../app/ServicesContext';
 import { deliverCallback } from '../auth/callbackBus';
+import { isHostedLocked } from '../features/hosted/hostedLock';
 import { stashGuestToken } from '../links/guestTokenVault';
 import { setPendingTarget, takePendingTarget } from '../links/pendingTarget';
 import { requiresSession, routeLink, type LinkRoute } from '../links/routeLink';
@@ -35,6 +36,9 @@ export function DeepLinkRouter() {
     function handle(url: string | null): void {
       if (!url) return;
       const route = routeLink(url);
+      // Hosted (in-person) mode is locked (M-A5 §3.3): nothing opens over it. The
+      // sign-in callback still goes through (it never navigates by itself).
+      if (isHostedLocked() && route.kind !== 'auth-callback') return;
       switch (route.kind) {
         case 'guest': {
           const handle = stashGuestToken(route.token);

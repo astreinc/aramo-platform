@@ -8,7 +8,10 @@ import { isAuthoringFieldType } from '../editor/fieldTypes';
 import { wireToEditor, type PageSize } from '../editor/geometry';
 import type { LocalDraft, SendStep } from '../../state/draftStore';
 
+/** Signing recipients (SIGNER + IN_PERSON_SIGNER), MAX_SIGNERS on the server. */
 export const MAX_RECIPIENTS = 10;
+/** M-A5 §1.4 — at most 10 RECEIVES_COPY recipients, on top of the signers. */
+export const MAX_COPY_RECIPIENTS = 10;
 export const MESSAGE_MAX = 1000;
 export const SUBJECT_MAX = 200;
 
@@ -31,12 +34,27 @@ export interface DraftDocument {
   readonly pendingUpload: { readonly idempotencyKey: string } | null;
 }
 
+/** M-A5 §1 — what a recipient does. Never overloads the template role label. */
+export type RecipientKind = 'SIGNER' | 'IN_PERSON_SIGNER' | 'RECEIVES_COPY';
+/** M-A5 §2.1 — when a copy recipient receives their copy. */
+export type CopyDelivery = 'ON_SEND' | 'ON_COMPLETION' | 'BOTH';
+
 export interface DraftRecipient {
   readonly key: string;
   /** The server signer id once the recipients were saved. */
   readonly serverId: string | null;
   readonly name: string;
+  /** '' only for an in-person signer without an email (M-A5 §3.5). */
   readonly email: string;
+  /** Absent on drafts saved before M-A5: read as SIGNER (recipientRoles.kindOf). */
+  readonly kind?: RecipientKind;
+  /** Set only for RECEIVES_COPY (M-A5 §2.1). */
+  readonly copyDelivery?: CopyDelivery | null;
+  /**
+   * Assign to me (M-A5 §4.1): the server binds the caller to this recipient. The PUT
+   * replaces the whole list, so the flag is re-sent on every recipients write.
+   */
+  readonly assignToMe?: boolean;
 }
 
 /** What still has to reach the server. */
@@ -59,6 +77,11 @@ export interface SendDraftPayload {
   /** The ETag of the last server response this draft is based on. */
   readonly etag: string | null;
   readonly dirty: DirtyFlags;
+  /**
+   * "Sign a document" (M-A4 §6.3, M-A5 §4): after Send, open the self-sign session for
+   * the recipient assigned to the user. Kept with the local draft only.
+   */
+  readonly selfSign?: boolean;
 }
 
 export type SendDraft = LocalDraft<SendDraftPayload>;
@@ -82,7 +105,7 @@ export function emptyPayload(): SendDraftPayload {
 /** "{first document} — {first signer}" (handoff §4.6 Review). */
 export function defaultSubject(p: Pick<SendDraftPayload, 'documents' | 'recipients'>): string {
   const doc = p.documents[0]?.title ?? '';
-  const who = p.recipients[0]?.name ?? '';
+  const who = (p.recipients.find((r) => r.kind !== 'RECEIVES_COPY') ?? p.recipients[0])?.name ?? '';
   return (doc && who ? `${doc} — ${who}` : doc || who).slice(0, SUBJECT_MAX);
 }
 
@@ -129,9 +152,14 @@ export interface ServerDocument {
 export interface ServerRecipient {
   readonly id: string;
   readonly name: string;
+  /** '' when the server has none (an in-person signer, M-A5 §3.5). */
   readonly email: string;
   readonly status: string;
   readonly signingOrder: number | null;
+  readonly kind: RecipientKind;
+  readonly copyDelivery: CopyDelivery | null;
+  /** The server's `assigned_to_me` (the bound user id itself is never returned). */
+  readonly assignedToMe: boolean;
 }
 export interface ServerField {
   readonly envelope_document_id: string;
@@ -165,6 +193,15 @@ function rec(v: unknown): Record<string, unknown> {
 const str = (v: unknown, d = ''): string => (typeof v === 'string' ? v : d);
 const num = (v: unknown): number | null => (typeof v === 'number' && Number.isFinite(v) ? v : null);
 
+const KINDS: readonly RecipientKind[] = ['SIGNER', 'IN_PERSON_SIGNER', 'RECEIVES_COPY'];
+const DELIVERIES: readonly CopyDelivery[] = ['ON_SEND', 'ON_COMPLETION', 'BOTH'];
+function asKind(v: unknown): RecipientKind {
+  return KINDS.includes(v as RecipientKind) ? (v as RecipientKind) : 'SIGNER';
+}
+function asCopyDelivery(v: unknown): CopyDelivery | null {
+  return DELIVERIES.includes(v as CopyDelivery) ? (v as CopyDelivery) : null;
+}
+
 /** Read the sender detail defensively (its document and recipient items are untyped in OpenAPI). */
 export function parseEnvelope(raw: unknown): ServerEnvelope {
   const o = rec(raw);
@@ -192,6 +229,9 @@ export function parseEnvelope(raw: unknown): ServerEnvelope {
         email: str(r['email']),
         status: str(r['status']),
         signingOrder: num(r['signing_order']),
+        kind: asKind(r['recipient_kind']),
+        copyDelivery: asCopyDelivery(r['copy_delivery']),
+        assignedToMe: r['assigned_to_me'] === true,
       }))
       .sort((a, b) => (a.signingOrder ?? 0) - (b.signingOrder ?? 0)),
     fields: arr('fields').map((f) => ({
@@ -232,6 +272,9 @@ export function payloadFromServer(
     serverId: r.id,
     name: r.name,
     email: r.email,
+    kind: r.kind,
+    copyDelivery: r.kind === 'RECEIVES_COPY' ? r.copyDelivery : null,
+    assignToMe: r.assignedToMe,
   }));
   let fieldsPending = false;
   const fields: EditorField[] = [];

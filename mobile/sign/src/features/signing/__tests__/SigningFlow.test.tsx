@@ -116,4 +116,88 @@ describe('SigningFlow', () => {
     await waitFor(() => expect(screen.getByTestId('signing-waiting')).toBeTruthy());
     expect(screen.getByText('Waiting for an earlier signer')).toBeTruthy();
   });
+
+  it('hosted session: the signer types their name, sent as attested_name with the acceptance', async () => {
+    const net = recordingFetch((req) =>
+      req.url.endsWith('/disclosure-text')
+        ? {
+            status: 200,
+            body: {
+              disclosure_version: '1.0',
+              text: 'T',
+              text_sha256: 'b'.repeat(64),
+              message: null,
+            },
+          }
+        : req.url.endsWith('/document')
+          ? { status: 200, body: { documents: [], fields: [], message: null } }
+          : { status: 200, body: {} },
+    );
+    const session = createGuestSigningClient({ baseUrl: BASE, fetch: net.fetch }).open(
+      SIGNING_TOKEN,
+    );
+    render(
+      wrap(
+        <SigningFlow
+          session={session}
+          signerName="Walk In"
+          signedIn={false}
+          attestName
+          deviceConfirm={false}
+          onDone={jest.fn()}
+        />,
+      ),
+    );
+    await waitFor(() => expect(screen.getByTestId('attested-name')).toBeTruthy(), {
+      timeout: 15_000,
+    });
+    fireEvent.press(screen.getByTestId('consent-check'));
+    // Checked but no name yet: still disabled.
+    expect(screen.getByTestId('consent-continue').props.accessibilityState).toMatchObject({
+      disabled: true,
+    });
+    fireEvent.changeText(screen.getByTestId('attested-name'), '  Walk In  ');
+    expect(screen.getByTestId('consent-continue').props.accessibilityState).toMatchObject({
+      disabled: false,
+    });
+    fireEvent.press(screen.getByTestId('consent-continue'));
+    await waitFor(() =>
+      expect(net.calls.some((c) => c.url.endsWith('/v1/sign/signing/disclosure'))).toBe(true),
+    );
+    const accept = net.calls.find((c) => c.url.endsWith('/v1/sign/signing/disclosure'))!;
+    expect(accept.body).toMatchObject({ attested_name: 'Walk In', disclosure_version: '1.0' });
+  });
+
+  it('other sessions send no attested_name and show no name field', async () => {
+    const net = recordingFetch((req) =>
+      req.url.endsWith('/disclosure-text')
+        ? {
+            status: 200,
+            body: {
+              disclosure_version: '1.0',
+              text: 'T',
+              text_sha256: 'b'.repeat(64),
+              message: null,
+            },
+          }
+        : { status: 200, body: {} },
+    );
+    const session = createGuestSigningClient({ baseUrl: BASE, fetch: net.fetch }).open(
+      SIGNING_TOKEN,
+    );
+    render(
+      wrap(<SigningFlow session={session} signerName="" signedIn={false} onDone={jest.fn()} />),
+    );
+    await waitFor(() => expect(screen.getByTestId('consent-check')).toBeTruthy(), {
+      timeout: 15_000,
+    });
+    expect(screen.queryByTestId('attested-name')).toBeNull();
+    fireEvent.press(screen.getByTestId('consent-check'));
+    fireEvent.press(screen.getByTestId('consent-continue'));
+    await waitFor(() =>
+      expect(net.calls.some((c) => c.url.endsWith('/v1/sign/signing/disclosure'))).toBe(true),
+    );
+    const accept = net.calls.find((c) => c.url.endsWith('/v1/sign/signing/disclosure'))!;
+    expect(accept.body).not.toHaveProperty('attested_name');
+  });
 });

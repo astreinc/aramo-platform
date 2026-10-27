@@ -31,6 +31,7 @@ import { useTheme } from '../../theme';
 import { dateTime } from '../inbox/agreementsModel';
 import { useOnline } from '../inbox/queries';
 import { CheckRow, ProgressBar, ReasonSheet } from '../inbox/ui';
+import { TextField } from '../send/ui';
 import { loadSavedMarks, saveDefaultMark, type AdoptTarget, type SavedMarks } from './adopt';
 import { AdoptSignatureSheet, type AdoptResult } from './AdoptSignatureSheet';
 import { boxOnPage, PdfPages, type PageLayout } from './PdfPages';
@@ -95,7 +96,20 @@ export interface SigningFlowProps {
   readonly onHeaderFinish?: (
     h: { visible: boolean; enabled: boolean; onPress: () => void } | null,
   ) => void;
+  /**
+   * Hosted (in-person) session (M-A5 §3.4): the signer types their name to confirm who
+   * they are before accepting; it is sent as `attested_name` with the acceptance.
+   */
+  readonly attestName?: boolean;
+  /**
+   * The device's biometric confirmation before Finish (default on, per the user's
+   * preference). Off for a hosted session: the device belongs to the host, not the signer.
+   */
+  readonly deviceConfirm?: boolean;
 }
+
+/** The typed name must have at least this many characters (M-A5 §3.4). */
+export const ATTESTED_NAME_MIN = 2;
 
 type Action = { type: 'set'; state: SigningState };
 
@@ -116,6 +130,8 @@ export function SigningFlow(props: SigningFlowProps) {
     onViewCertificate,
     onDone,
     onHeaderFinish,
+    attestName = false,
+    deviceConfirm = true,
   } = props;
   const t = useTheme();
   const toast = useToast();
@@ -130,6 +146,7 @@ export function SigningFlow(props: SigningFlowProps) {
     session ? { kind: 'loading' } : { kind: 'ended', message: SIGNING_COPY.ended },
   );
   const [consented, setConsented] = useState(false);
+  const [attested, setAttested] = useState('');
   const [disclosureOpen, setDisclosureOpen] = useState(false);
   const [view, setView] = useState<SignerView | null>(null);
   const [sources, setSources] = useState<Record<string, string | null>>({});
@@ -207,7 +224,7 @@ export function SigningFlow(props: SigningFlowProps) {
     if (!session) return;
     setBusy(true);
     try {
-      const v = await acceptAndLoad(session, d);
+      const v = await acceptAndLoad(session, d, attestName ? attested : undefined);
       setView(v);
       commit(initialState(v.fields, v.documents));
       setPhase({ kind: 'fields' });
@@ -296,7 +313,7 @@ export function SigningFlow(props: SigningFlowProps) {
       setSubmitError(SIGNING_COPY.offline);
       return;
     }
-    const pref = await biometricConfirmPref.get(kv).catch(() => false);
+    const pref = deviceConfirm ? await biometricConfirmPref.get(kv).catch(() => false) : false;
     if (pref) {
       const cap = await biometricCapability().catch(() => null);
       if (cap?.available) {
@@ -322,7 +339,7 @@ export function SigningFlow(props: SigningFlowProps) {
     } finally {
       setBusy(false);
     }
-  }, [session, online, kv, toast, focusField, fail, commit]);
+  }, [session, online, kv, toast, focusField, fail, commit, deviceConfirm]);
 
   const fieldsPhase = phase.kind === 'fields';
   const finishEnabled = fieldsPhase && canFinish(state) && !busy;
@@ -508,6 +525,17 @@ export function SigningFlow(props: SigningFlowProps) {
               ) : null}
             </Card>
           ) : null}
+          {attestName ? (
+            <TextField
+              label="Type your full name to confirm it’s you"
+              value={attested}
+              onChangeText={setAttested}
+              autoCapitalize="words"
+              autoCorrect={false}
+              testID="attested-name"
+              accessibilityHint="Your name is kept with your agreement to sign electronically"
+            />
+          ) : null}
           <CheckRow
             testID="consent-check"
             checked={consented}
@@ -536,7 +564,9 @@ export function SigningFlow(props: SigningFlowProps) {
           <Button
             testID="consent-continue"
             title="Continue"
-            disabled={!consented || !online}
+            disabled={
+              !consented || !online || (attestName && attested.trim().length < ATTESTED_NAME_MIN)
+            }
             busy={busy}
             onPress={() => void accept(d)}
           />

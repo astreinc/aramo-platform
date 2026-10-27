@@ -53,6 +53,29 @@ export function actionsFor(
   };
 }
 
+/**
+ * In-person signers the user can host now (M-A5 §3.1): the server's
+ * `features.in_person_signing`, an open Aramo Sign envelope the user may change, an
+ * IN_PERSON_SIGNER who hasn't signed or declined, and — signing in order — whose turn
+ * it is (`next_signer_id`). The server re-checks all of it and refuses with its reason.
+ */
+export function hostableSigners(
+  detail: SenderEnvelopeDetail,
+  ctx: SenderContext | null | undefined,
+  enabled: boolean,
+): DetailRecipient[] {
+  if (!enabled || ctx?.features?.in_person_signing !== true) return [];
+  const fromSign = (detail.source_application ?? SIGN_APPLICATION) === SIGN_APPLICATION;
+  if (!OPEN_STATUSES.has(detail.status) || !fromSign || !mayManage(detail, ctx)) return [];
+  return detail.recipients.filter(
+    (r) =>
+      r.recipient_kind === 'IN_PERSON_SIGNER' &&
+      r.status !== 'SIGNED' &&
+      r.status !== 'DECLINED' &&
+      (detail.routing_mode !== 'SEQUENTIAL' || detail.next_signer_id === r.id),
+  );
+}
+
 /** Signers a reminder would reach now (server flags `can_remind` + no pending cooldown). */
 export function remindableSigners(
   detail: SenderEnvelopeDetail,
@@ -170,16 +193,17 @@ export function headerLine(
   return line;
 }
 
-/** "{n} of {m} signed" + the bar tone. */
+/** "{n} of {m} signed" + the bar tone. Copy recipients never sign and are not counted. */
 export function progressOf(detail: SenderEnvelopeDetail): {
   signed: number;
   total: number;
   tone: 'accent' | 'success' | 'destructive';
 } {
-  const signed = detail.recipients.filter((r) => r.status === 'SIGNED').length;
+  const signing = signingOf(detail);
+  const signed = signing.filter((r) => r.status === 'SIGNED').length;
   return {
     signed,
-    total: detail.recipients.length,
+    total: signing.length,
     tone:
       detail.status === 'COMPLETED'
         ? 'success'
@@ -189,10 +213,32 @@ export function progressOf(detail: SenderEnvelopeDetail): {
   };
 }
 
-/** Signers in their order; for SEQUENTIAL routing, who signs now. */
+/** The signing recipients (SIGNER + IN_PERSON_SIGNER); copy recipients never sign. */
+export function signingOf(detail: SenderEnvelopeDetail): DetailRecipient[] {
+  return detail.recipients.filter((r) => r.recipient_kind !== 'RECEIVES_COPY');
+}
+
+/** The copy recipients (M-A5 §2), shown apart under "Receives a copy". */
+export function copiesOf(detail: SenderEnvelopeDetail): DetailRecipient[] {
+  return detail.recipients.filter((r) => r.recipient_kind === 'RECEIVES_COPY');
+}
+
+/** Signing recipients in their order; for SEQUENTIAL routing, who signs now. */
 export function orderedRecipients(detail: SenderEnvelopeDetail): DetailRecipient[] {
-  if (detail.routing_mode !== 'SEQUENTIAL') return [...detail.recipients];
-  return [...detail.recipients].sort((a, b) => (a.signing_order ?? 0) - (b.signing_order ?? 0));
+  const signing = signingOf(detail);
+  if (detail.routing_mode !== 'SEQUENTIAL') return signing;
+  return signing.sort((a, b) => (a.signing_order ?? 0) - (b.signing_order ?? 0));
+}
+
+const COPY_TIMING_LINE: Record<string, string> = {
+  ON_SEND: 'Receives a copy when sent',
+  ON_COMPLETION: 'Receives a copy after completion',
+  BOTH: 'Receives a copy when sent and after completion',
+};
+
+/** The state line of a copy recipient (sender view only). */
+export function copyTimingLine(r: DetailRecipient): string {
+  return COPY_TIMING_LINE[r.copy_delivery ?? ''] ?? 'Receives a copy';
 }
 
 export function recipientStateLine(

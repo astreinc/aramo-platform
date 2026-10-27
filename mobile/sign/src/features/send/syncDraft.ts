@@ -17,6 +17,7 @@ import {
   type SendDraftPayload,
   type ServerEnvelope,
 } from './draftModel';
+import { emailKey, recipientsToWire, wireOrder } from './recipientRoles';
 import {
   revisionMismatch,
   type FieldWire,
@@ -188,29 +189,27 @@ export async function syncDraft(deps: SyncDeps, input: SendDraft): Promise<SyncR
     await save({ etag: v.etag, dirty: { ...p.dirty, meta: false } });
   }
 
-  // 4. Recipients, in signing order (list position).
+  // 4. Recipients: the signing recipients in signing order (list position), then the
+  // copy recipients, which never take part in the order (M-A5 §1.6). The PUT replaces
+  // the list, so every item carries its kind, copy timing and Assign to me again.
   if (p.dirty.recipients) {
-    const v = await api.putRecipients(
-      envelopeId,
-      p.etag as string,
-      p.recipients.map((r) => ({
-        ...(r.serverId ? { id: r.serverId } : {}),
-        name: r.name,
-        email: r.email,
-      })),
-    );
+    const ordered = wireOrder(p.recipients);
+    const v = await api.putRecipients(envelopeId, p.etag as string, recipientsToWire(p.recipients));
     const sent = v.env.recipients;
-    if (
-      sent.length !== p.recipients.length ||
-      sent.some((s, i) => s.email.toLowerCase() !== p.recipients[i]!.email.toLowerCase())
-    ) {
+    const same = (s: (typeof sent)[number], r: (typeof ordered)[number]) => {
+      const a = emailKey(s.email);
+      const b = emailKey(r.email);
+      return a !== null || b !== null ? a === b : s.name.trim() === r.name.trim();
+    };
+    if (sent.length !== ordered.length || sent.some((s, i) => !same(s, ordered[i]!))) {
       throw new SendFlowError('recipients_out_of_sync');
     }
     server = v.env;
+    const idOf = new Map(ordered.map((r, i) => [r.key, sent[i]!.id]));
     // The server drops the fields of removed recipients, so the fields are re-sent.
     await save({
       etag: v.etag,
-      recipients: p.recipients.map((r, i) => ({ ...r, serverId: sent[i]!.id })),
+      recipients: p.recipients.map((r) => ({ ...r, serverId: idOf.get(r.key) ?? r.serverId })),
       dirty: { ...p.dirty, recipients: false, fields: true },
     });
   }

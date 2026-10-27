@@ -103,10 +103,15 @@ export function GuestSigningScreen({ route, navigation }: Props) {
     });
   }, [navigation, route.params.mode]);
 
+  // "Sign a document" (M-A5 §4): a SELF session is never claimed into the inbox (§5).
+  const self = route.params.origin === 'self';
+  const sentEnvelope = self && signedIn ? route.params.envelopeId : undefined;
   const done = () =>
-    navigation.canGoBack()
-      ? navigation.goBack()
-      : navigation.navigate(signedIn ? 'Main' : 'SignIn');
+    sentEnvelope
+      ? navigation.replace('EnvelopeDetail', { envelopeId: sentEnvelope })
+      : navigation.canGoBack()
+        ? navigation.goBack()
+        : navigation.navigate(signedIn ? 'Main' : 'SignIn');
 
   if (route.params.mode === 'download') return <SignedCopy link={link} onDone={done} />;
   return (
@@ -114,7 +119,7 @@ export function GuestSigningScreen({ route, navigation }: Props) {
       session={link.session}
       signerName={signedIn ? (ctx.data?.user.display_name ?? '') : ''}
       signedIn={signedIn}
-      {...(signedIn ? { onClaim: link.claim } : {})}
+      {...(signedIn && !self ? { onClaim: link.claim } : {})}
       onDone={done}
       onHeaderFinish={setHeaderFinish}
     />

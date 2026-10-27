@@ -1,13 +1,23 @@
 // "Before you send" (handoff §4.6 Review; directive §5): the blocking warnings the
-// backend enforces at send — no document, no signer, a signer without a SIGNATURE field
-// (sender-envelope.service.ts readiness) — plus the Personal limit and any refusal the
-// backend returned for the last attempt, rendered by reason code.
+// backend enforces at send — no document, no signing recipient, a signing recipient
+// without a SIGNATURE field, a copy recipient WITH fields or without a timing (M-A5
+// §1.5, §2.1; sender-envelope.service.ts readiness) — plus the Personal limit and any
+// refusal the backend returned for the last attempt, rendered by reason code. Copy
+// recipients never sign, so they never need a signature field.
 import type { ApiError } from '../../api/errors';
 import { refusalMessage } from '../../api/refusalMessages';
 import type { LimitBanner } from '../inbox/allowance';
 import type { SendDraftPayload } from './draftModel';
+import { copyRecipients, signingRecipients } from './recipientRoles';
 
-export type WarningKind = 'no_document' | 'no_signer' | 'no_signature_field' | 'limit' | 'refusal';
+export type WarningKind =
+  | 'no_document'
+  | 'no_signer'
+  | 'no_signature_field'
+  | 'copy_with_fields'
+  | 'copy_timing'
+  | 'limit'
+  | 'refusal';
 
 export interface ReviewWarning {
   readonly kind: WarningKind;
@@ -43,13 +53,26 @@ export function reviewWarnings(
 ): ReviewWarning[] {
   const out: ReviewWarning[] = [];
   if (p.documents.length === 0) out.push({ kind: 'no_document', text: 'Add a document.' });
-  if (p.recipients.length === 0) out.push({ kind: 'no_signer', text: 'Add at least one signer.' });
-  for (const r of p.recipients) {
+  const signing = signingRecipients(p.recipients);
+  if (signing.length === 0) out.push({ kind: 'no_signer', text: 'Add at least one signer.' });
+  for (const r of signing) {
     if (!p.fields.some((f) => f.recipientKey === r.key && f.type === 'SIGNATURE')) {
       out.push({
         kind: 'no_signature_field',
         text: `${r.name || r.email} has no signature field.`,
       });
+    }
+  }
+  for (const r of copyRecipients(p.recipients)) {
+    const who = r.name || r.email;
+    if (p.fields.some((f) => f.recipientKey === r.key)) {
+      out.push({
+        kind: 'copy_with_fields',
+        text: `${who} receives a copy and can’t have fields. Open Fields to remove them.`,
+      });
+    }
+    if (!r.copyDelivery) {
+      out.push({ kind: 'copy_timing', text: `Choose when ${who} receives a copy.` });
     }
   }
   if (limit) out.push({ kind: 'limit', text: limit.body });
