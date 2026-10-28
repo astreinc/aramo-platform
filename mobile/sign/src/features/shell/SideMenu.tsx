@@ -1,6 +1,6 @@
 // Side menu (M-A4 §1.4; handoff §2A "Side menu"): a panel sliding in from the left over a
 // scrim. Profile card (name, email, organization from GET /v1/sign/sender/context), the
-// saved signature / initials (GET /v1/sign/me/signature) with a link to manage them,
+// saved signature (GET /v1/sign/me/signature; initials stay under Account) with a link to manage it,
 // Account · Templates (only while sign.templates is available) · Notifications (server
 // unread count) · Settings, and Log out pinned at the bottom. No account switcher (A7).
 //
@@ -57,7 +57,8 @@ function MarkImage({ mark, height }: { readonly mark: SavedMark; readonly height
     <Image
       source={{ uri: mark.image_data_url }}
       resizeMode="contain"
-      style={{ height, width: height * 4, maxWidth: '100%' }}
+      // Shrinks (ink stays proportional) so the preview never runs under "Change".
+      style={{ height, width: height * 4, flexShrink: 1, minWidth: 0 }}
       accessibilityIgnoresInvertColors
     />
   );
@@ -105,8 +106,8 @@ export function SideMenu({
   const profile = profileLines(ctx.data);
   const items = menuItems({ context: ctx.data, unread });
   const signature = saved.data?.signature ?? null;
-  const initials = saved.data?.initials ?? null;
-  const hasMark = signature !== null || initials !== null;
+  // The menu previews the signature only; initials are managed under Account.
+  const hasMark = signature !== null;
 
   function go(route: MenuItem['route']): void {
     onClose();
@@ -247,7 +248,6 @@ export function SideMenu({
             >
               <View style={styles.marks}>
                 {signature ? <MarkImage mark={signature} height={34} /> : null}
-                {initials ? <MarkImage mark={initials} height={26} /> : null}
                 {!hasMark ? (
                   <Text style={{ color: t.color.text, fontSize: 15, fontFamily: t.font.family }}>
                     Add your signature
@@ -347,7 +347,14 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingVertical: 8,
   },
-  marks: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  marks: {
+    flex: 1,
+    minWidth: 0,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    overflow: 'hidden',
+  },
   item: { flexDirection: 'row', alignItems: 'center', gap: 16, paddingHorizontal: 6 },
   itemLabel: { flex: 1, fontSize: 18, fontWeight: '500' },
   badge: {

@@ -3,9 +3,11 @@
 // grabber behaviour); Android renders the Material 3 modal bottom sheet look (28 top
 // radius, 32x4 grabber, scrim). For a sheet that needs detents, register it as a
 // native-stack route with `presentation: 'formSheet'` + `sheetAllowedDetents` instead
-// (see navigation/RootNavigator.tsx).
+// (see navigation/RootNavigator.tsx). Modal content is its own root, so it gets its own
+// GestureHandlerRootView for gesture-handler gestures inside the sheet.
 import type { ReactNode } from 'react';
 import { Modal, Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { useTheme } from '../theme';
@@ -15,9 +17,11 @@ export interface SheetProps {
   readonly onClose: () => void;
   readonly title?: string;
   readonly children: ReactNode;
+  /** false while the content handles drags itself (e.g. a signature pad). */
+  readonly scrollEnabled?: boolean;
 }
 
-export function Sheet({ visible, onClose, title, children }: SheetProps) {
+export function Sheet({ visible, onClose, title, children, scrollEnabled = true }: SheetProps) {
   const t = useTheme();
   const insets = useSafeAreaInsets();
   const grabber = (
@@ -49,13 +53,15 @@ export function Sheet({ visible, onClose, title, children }: SheetProps) {
         presentationStyle="pageSheet"
         animationType="slide"
       >
-        <View
+        <GestureHandlerRootView
           style={[styles.fill, { backgroundColor: t.color.sheet, paddingBottom: insets.bottom }]}
         >
           {grabber}
           {header}
-          <ScrollView contentContainerStyle={styles.content}>{children}</ScrollView>
-        </View>
+          <ScrollView contentContainerStyle={styles.content} scrollEnabled={scrollEnabled}>
+            {children}
+          </ScrollView>
+        </GestureHandlerRootView>
       </Modal>
     );
   }
@@ -67,27 +73,31 @@ export function Sheet({ visible, onClose, title, children }: SheetProps) {
       animationType="fade"
       statusBarTranslucent
     >
-      <Pressable
-        style={styles.scrim}
-        onPress={onClose}
-        accessibilityLabel="Close"
-        accessibilityRole="button"
-      />
-      <View
-        style={[
-          styles.androidSheet,
-          {
-            backgroundColor: t.color.sheet,
-            borderTopLeftRadius: t.size.sheetTopRadius,
-            borderTopRightRadius: t.size.sheetTopRadius,
-            paddingBottom: insets.bottom + 16,
-          },
-        ]}
-      >
-        {grabber}
-        {header}
-        <ScrollView contentContainerStyle={styles.content}>{children}</ScrollView>
-      </View>
+      <GestureHandlerRootView style={styles.fill}>
+        <Pressable
+          style={styles.scrim}
+          onPress={onClose}
+          accessibilityLabel="Close"
+          accessibilityRole="button"
+        />
+        <View
+          style={[
+            styles.androidSheet,
+            {
+              backgroundColor: t.color.sheet,
+              borderTopLeftRadius: t.size.sheetTopRadius,
+              borderTopRightRadius: t.size.sheetTopRadius,
+              paddingBottom: insets.bottom + 16,
+            },
+          ]}
+        >
+          {grabber}
+          {header}
+          <ScrollView contentContainerStyle={styles.content} scrollEnabled={scrollEnabled}>
+            {children}
+          </ScrollView>
+        </View>
+      </GestureHandlerRootView>
     </Modal>
   );
 }

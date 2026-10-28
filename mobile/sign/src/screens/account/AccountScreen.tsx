@@ -1,7 +1,7 @@
 // Account (a root-stack screen opened from the side menu with a "‹ Home" back link;
 // `section: 'settings'` scrolls to the Signing settings — M-A4 §1.4-§1.5; handoff §4.9 minus the account switcher — directive §7 C-10: one signed-in
 // identity at a time; "Sign out to use another account"). Profile, account type,
-// Personal plan and usage, default signature and initials, biometric confirmation, push
+// Personal plan and usage, default signature and initials, biometric confirmation and unlock, push
 // preferences (incl. "Show subject on lock screen", default off), devices / sessions,
 // legal re-acceptance, Personal account close, About, Sign out.
 import { useRoute, type RouteProp } from '@react-navigation/native';
@@ -19,6 +19,8 @@ import { useServices } from '../../app/ServicesContext';
 import {
   biometricCapability,
   biometricConfirmPref,
+  biometricUnlockPref,
+  confirmLocally,
   type BiometricCapability,
 } from '../../auth/biometric';
 import { Banner, OfflineBanner } from '../../components/Banner';
@@ -127,6 +129,7 @@ export function AccountScreen() {
 
   const [bio, setBio] = useState<BiometricCapability | null>(null);
   const [bioOn, setBioOn] = useState(true);
+  const [unlockOn, setUnlockOn] = useState(false);
   const [pushPermission, setPushPermission] = useState<
     'granted' | 'denied' | 'undetermined' | null
   >(null);
@@ -140,6 +143,7 @@ export function AccountScreen() {
   useEffect(() => {
     void biometricCapability().then(setBio, () => setBio(null));
     void biometricConfirmPref.get(kv).then(setBioOn, () => undefined);
+    void biometricUnlockPref.get(kv).then(setUnlockOn, () => undefined);
     void Notifications.getPermissionsAsync().then(
       (p) => setPushPermission(p.granted ? 'granted' : p.canAskAgain ? 'undetermined' : 'denied'),
       () => setPushPermission(null),
@@ -407,6 +411,27 @@ export function AccountScreen() {
               onValueChange={(v) => {
                 setBioOn(v);
                 void biometricConfirmPref.set(kv, v);
+              }}
+            />
+          ) : null}
+          {bio?.available ? (
+            <SettingRow
+              testID="biometric-unlock-toggle"
+              title={`Unlock with ${bio.label}`}
+              subtitle="Asked when you open the app and after 5 minutes away. Stays on this phone."
+              value={unlockOn}
+              onValueChange={(v) => {
+                // Turning it on or off takes a successful check, so whoever holds an
+                // unlocked phone can't switch it off.
+                void confirmLocally(
+                  v ? `Turn on unlock with ${bio.label}` : `Turn off unlock with ${bio.label}`,
+                )
+                  .catch(() => false)
+                  .then(async (ok) => {
+                    if (!ok) return;
+                    await biometricUnlockPref.set(kv, v);
+                    setUnlockOn(v);
+                  });
               }}
               last
             />
