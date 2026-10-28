@@ -84,7 +84,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('privacy requests 
     expect(await svc.proofCountSince('pat@example.com', new Date(now.getTime() - 1000))).toBe(1);
   });
 
-  it('removeSignAccess removes only the Sign roles; retireAccountHolder deactivates; otherAuthorization sees other memberships', async () => {
+  it('removeSignAccess removes only the Sign roles; retireAccountHolder deactivates; tombstoneRetiredUser frees the address and drops the links (M-A8 §3.3)', async () => {
     const tenant = randomUUID();
     await prisma.tenant.create({ data: { id: tenant, name: `Org ${tenant.slice(0, 6)}` } });
     const roles: Record<string, string> = {};
@@ -102,10 +102,28 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('privacy requests 
     const ctx = await subjects.context(user, tenant);
     expect(ctx).toMatchObject({ tenant_kind: 'BUSINESS', legal_hold: false, membership_active: true, is_owner: false });
     expect(await subjects.context(user, randomUUID())).toBeNull();
-    expect((await subjects.otherAuthorization(user, tenant)).retain).toBe(false);
     expect(await subjects.findAccountByEmail(`M-${user.slice(0, 6)}@ORG.test`)).toEqual({ user_id: user, tenant_id: tenant });
     expect(await subjects.retireAccountHolder(user, tenant)).toEqual({ memberships_deactivated: 1, users_deactivated: 1 });
     expect(await subjects.retireAccountHolder(user, tenant)).toEqual({ memberships_deactivated: 0, users_deactivated: 0 });
+    // M-A8 §3.3 — the tombstone: refused for another tenant; email replaced, links (and their
+    // recorded IdP) removed; idempotent; the original address can be used again.
+    const link = randomUUID();
+    await prisma.externalIdentity.create({ data: { id: link, provider: 'cognito', provider_subject: randomUUID(), user_id: user, email_snapshot: `m-${user.slice(0, 6)}@org.test` } });
+    await prisma.externalIdentityIdp.create({ data: { external_identity_id: link, idp: 'google' } });
+    await expect(subjects.tombstoneRetiredUser(user, randomUUID())).rejects.toThrow(/not_in_tenant/);
+    expect(await subjects.tombstoneRetiredUser(user, tenant)).toEqual({ email_tombstoned: 1, external_identities_removed: 1 });
+    expect(await subjects.tombstoneRetiredUser(user, tenant)).toEqual({ email_tombstoned: 0, external_identities_removed: 0 });
+    expect((await prisma.user.findUnique({ where: { id: user } }))?.email).toBe(`retired+${user}@invalid.aramo`);
+    expect(await prisma.externalIdentityIdp.count({ where: { external_identity_id: link } })).toBe(0);
+    await prisma.user.create({ data: { id: randomUUID(), email: `m-${user.slice(0, 6)}@org.test`, tenant_id: tenant } });
+  });
+
+  it('tombstoneRetiredUser refuses an active user (the caller deactivates first)', async () => {
+    const tenant = randomUUID();
+    await prisma.tenant.create({ data: { id: tenant, name: `Org ${tenant.slice(0, 6)}` } });
+    const user = randomUUID();
+    await prisma.user.create({ data: { id: user, email: `a-${user.slice(0, 6)}@org.test`, tenant_id: tenant } });
+    await expect(subjects.tombstoneRetiredUser(user, tenant)).rejects.toThrow(/still_active/);
   });
 
   it('DB guards: events append-only; requests never deleted', async () => {

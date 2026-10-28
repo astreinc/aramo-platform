@@ -1,10 +1,17 @@
 import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import {
+  IDENTITY_RETIREMENT_PORT,
+  IdentityDependencyInspector,
   PersonalRiskService,
   PrivacyRequestService,
   PrivacySubjectService,
   TenantService,
+  dependencyEvidence,
+  isRetiredEmailTombstone,
   privacyDeletionExecutionEnabled,
+  type IdentityDependencyReport,
+  type IdentityRetirementOutcome,
+  type IdentityRetirementPort,
   type PrivacyActor,
   type PrivacyRequestRecord,
   type PrivacySubjectContext,
@@ -20,8 +27,6 @@ import {
 } from '@aramo/sign';
 
 import { AramoSignStorageGate } from '../billing/aramo-sign-storage.gate.js';
-
-import { IDENTITY_RETIREMENT_PORT, type IdentityRetirementOutcome, type IdentityRetirementPort } from './identity-retirement.port.js';
 
 // Aramo-Sign-Mobile-Amendment-M-A7 §3.2 — executes an Aramo Sign DELETION request
 // that is in EXECUTING, exactly per the §3.2 table:
@@ -47,6 +52,21 @@ import { IDENTITY_RETIREMENT_PORT, type IdentityRetirementOutcome, type Identity
 // after a partial failure completes it; completion evidence is counts only.
 // The whole service refuses to run while SIGN_PRIVACY_DELETION_EXECUTION_ENABLED is
 // not 1 (staged execution — production enablement needs a separate authorization).
+//
+// Aramo-Sign-Mobile-Amendment-M-A8 §3 replaces the Personal identity rules above:
+//   - the identity-owned IdentityDependencyInspector (libs/identity) is computed at
+//     execution time; (f) legal hold (tenant or any DocumentArtifact) → back to queue;
+//   - no dependency ((a)–(e) clear) → FULL RETIREMENT (§3.3): sessions revoked, Sign
+//     data deleted (incl. the recipient-inbox bindings), tenant OFFBOARDING → CLOSED,
+//     membership + user deactivated, identity retired BY COGNITO SUB through the
+//     identity-owned port (no global sign-out), then User.email tombstoned and the
+//     ExternalIdentity rows removed. Signer rows and certificates are never rewritten;
+//   - dependencies → RETAIN (§3.4): Sign-specific data only, the Personal Sign tenant
+//     closed when (a) is clear, every other access preserved, no identity retirement,
+//     and an IDENTITY_RETIREMENT_REFERRED event with the dependency codes.
+// A retry after a failure at any step completes: every step is idempotent, a failed
+// identity retirement throws (the request stays EXECUTING), and a user already
+// tombstoned skips the identity steps.
 
 export const PRIVACY_DELETION_REASON = 'privacy_deletion';
 const SYSTEM: PrivacyActor = { actor_type: 'SYSTEM', actor_id: null };
@@ -95,6 +115,7 @@ export class SignPrivacyExecutionService {
     private readonly notifications: SignNotificationRepository,
     private readonly signatures: SignSavedSignatureRepository,
     private readonly contacts: SignContactRepository,
+    private readonly inspector: IdentityDependencyInspector,
     @Inject(IDENTITY_RETIREMENT_PORT) private readonly idp: IdentityRetirementPort,
     @Optional() @Inject(DOCUMENT_STORAGE_PORT) private readonly storage?: DocumentStoragePort,
     @Optional() private readonly storageGate?: AramoSignStorageGate,
@@ -119,15 +140,38 @@ export class SignPrivacyExecutionService {
     if (ctx.legal_hold) return { status: 'held', request: await this.backToQueue(req, 'LEGAL_HOLD', { reason: 'tenant_legal_hold' }) };
     try {
       const personalOwner = ctx.tenant_kind === 'PERSONAL' && ctx.role_keys.includes('tenant_owner');
-      const evidence = personalOwner ? await this.executePersonal(ctx, now) : await this.executeMember(ctx);
+      let evidence: Record<string, unknown>;
+      let outcome_code: string;
+      let outcome_text: string;
+      if (personalOwner) {
+        // M-A8 §3.2 — computed now, never cached.
+        const report = await this.inspector.inspect(ctx.user_id, ctx.tenant_id);
+        if (report.legal_hold) {
+          return {
+            status: 'held',
+            request: await this.backToQueue(req, 'LEGAL_HOLD', { reason: report.f_legal_hold.tenant ? 'tenant_legal_hold' : 'document_legal_hold', document_artifacts: report.f_legal_hold.document_artifacts }),
+          };
+        }
+        const alreadyRetired = !ctx.user_active && isRetiredEmailTombstone(ctx.user_id, ctx.email);
+        if (alreadyRetired || report.retire_identity) {
+          evidence = await this.executePersonalRetirement(ctx, report, alreadyRetired, now);
+          outcome_code = 'personal_account_deleted';
+          outcome_text = personalOutcomeText();
+        } else {
+          evidence = await this.executePersonalRetain(ctx, report, now);
+          await this.requests.recordEvent(req.id, 'IDENTITY_RETIREMENT_REFERRED', SYSTEM, { dependency_codes: report.dependencies }, now);
+          outcome_code = 'personal_sign_data_deleted_identity_referred';
+          outcome_text = personalRetainOutcomeText(evidence);
+        }
+      } else {
+        evidence = await this.executeMember(ctx);
+        outcome_code = 'member_sign_data_removed';
+        outcome_text = memberOutcomeText(evidence);
+      }
       const done = await this.requests.transition(req.id, 'COMPLETED', SYSTEM, {
         now,
         from: ['EXECUTING'],
-        patch: {
-          completion_evidence: evidence,
-          outcome_code: personalOwner ? 'personal_account_deleted' : 'member_sign_data_removed',
-          outcome_text: personalOwner ? personalOutcomeText(evidence) : memberOutcomeText(evidence),
-        },
+        patch: { completion_evidence: evidence, outcome_code, outcome_text },
         payload: { counts: evidence },
       });
       this.log.log(`privacy request ${req.reference} completed (${personalOwner ? 'personal' : 'member'})`);
@@ -140,13 +184,15 @@ export class SignPrivacyExecutionService {
     }
   }
 
-  // §3.2 Personal account column.
-  private async executePersonal(ctx: PrivacySubjectContext, now: Date): Promise<Record<string, unknown>> {
+  // M-A8 §3.3 / §3.4 — the Sign-specific part, common to both Personal paths: sessions,
+  // convenience data, recipient-inbox bindings, drafts / never-sent documents with their
+  // stored objects. Completed agreements and their evidence are kept (retention rules).
+  private async deletePersonalSignData(ctx: PrivacySubjectContext): Promise<Record<string, unknown>> {
     const owner = { tenant_id: ctx.tenant_id, user_id: ctx.user_id };
     const sessions = await this.sign.revokeSignSessions({ ...owner, reason: PRIVACY_DELETION_REASON });
     const convenience = await this.purgeConvenience(owner);
-    // Drafts / never-sent documents, incl. their stored objects (every draft of the
-    // Personal tenant: the owner is its only sender).
+    const recipient_bindings_deleted = await this.sign.removeRecipientBindings(owner);
+    // Every draft of the Personal tenant: the owner is its only sender.
     let drafts_deleted = 0;
     let draft_documents_deleted = 0;
     let stored_objects_deleted = 0;
@@ -160,40 +206,74 @@ export class SignPrivacyExecutionService {
         stored_objects_deleted += 1;
       }
     }
-    // The account: risk state closed (sending ends) and the tenant lifecycle CLOSED, so
-    // sign-in ends and the existing retention program applies.
-    const riskState = await this.risk.riskStateOf(ctx.tenant_id);
-    let risk_closed = false;
-    if (riskState !== null && riskState.state !== 'closed') {
-      await this.risk.close(ctx.tenant_id, ctx.user_id, PRIVACY_DELETION_REASON, now, { closed_by: 'privacy_deletion' });
-      risk_closed = true;
-    }
-    const tenant_closed = await this.closeTenant(ctx, now);
-    // Shared identity: retired only when nothing else uses it.
-    const other = await this.subjects.otherAuthorization(ctx.user_id, ctx.tenant_id);
-    let identity: { retained: boolean; memberships_deactivated: number; users_deactivated: number; idp: IdentityRetirementOutcome | 'retained' };
-    if (other.retain) {
-      identity = { retained: true, memberships_deactivated: 0, users_deactivated: 0, idp: 'retained' };
+    return { ...sessions, ...convenience, recipient_bindings_deleted, drafts_deleted, draft_documents_deleted, stored_objects_deleted };
+  }
+
+  /** Risk state closed (sending ends) and the tenant lifecycle CLOSED (sign-in ends). */
+  private async closePersonalAccount(ctx: PrivacySubjectContext, now: Date): Promise<{ risk_closed: boolean; tenant_closed: boolean }> {
+    const risk_closed = await this.closeRiskOnly(ctx, now);
+    return { risk_closed, tenant_closed: await this.closeTenant(ctx, now) };
+  }
+
+  // M-A8 §3.3 — no dependency: full retirement.
+  private async executePersonalRetirement(ctx: PrivacySubjectContext, report: IdentityDependencyReport, alreadyRetired: boolean, now: Date): Promise<Record<string, unknown>> {
+    const data = await this.deletePersonalSignData(ctx);
+    const closed = await this.closePersonalAccount(ctx, now);
+    const retired = await this.subjects.retireAccountHolder(ctx.user_id, ctx.tenant_id, now);
+    let idp: IdentityRetirementOutcome | 'no_cognito_subject' | 'already_retired';
+    let tomb = { email_tombstoned: 0, external_identities_removed: 0 };
+    if (alreadyRetired) {
+      idp = 'already_retired';
     } else {
-      const retired = await this.subjects.retireAccountHolder(ctx.user_id, ctx.tenant_id, now);
-      identity = { retained: false, ...retired, idp: await this.idp.retire({ email: ctx.email }) };
+      if (report.cognito_sub === null) {
+        idp = 'no_cognito_subject';
+      } else {
+        idp = await this.idp.retire({ cognito_sub: report.cognito_sub });
+        // Only a confirmed deletion (or a pool user already gone) may drop the link that
+        // names the subject; anything else stays EXECUTING and is retried.
+        if (idp !== 'deleted' && idp !== 'not_found') throw Object.assign(new Error('identity retirement incomplete'), { name: 'IdentityRetirementIncomplete' });
+      }
+      tomb = await this.subjects.tombstoneRetiredUser(ctx.user_id, ctx.tenant_id);
     }
     return {
       path: 'personal',
-      ...sessions,
-      ...convenience,
-      drafts_deleted,
-      draft_documents_deleted,
-      stored_objects_deleted,
-      risk_closed,
-      tenant_closed,
-      identity_retained: identity.retained,
-      identity_retained_because: identity.retained ? { other_memberships: other.other_memberships, other_products: other.other_products.length, shared_external_identities: other.shared_external_identities } : null,
-      memberships_deactivated: identity.memberships_deactivated,
-      users_deactivated: identity.users_deactivated,
-      idp_retirement: identity.idp,
+      ...data,
+      ...closed,
+      identity_retained: false,
+      memberships_deactivated: retired.memberships_deactivated,
+      users_deactivated: retired.users_deactivated,
+      idp_retirement: idp,
+      ...tomb,
+      dependencies: dependencyEvidence(report),
       retained: SIGN_RETAINED_CATEGORIES.map((c) => c.key),
     };
+  }
+
+  // M-A8 §3.4 — dependencies exist: Sign-specific data only; the Personal Sign tenant is
+  // closed only when (a) is clear; every other access is preserved; no identity retirement.
+  private async executePersonalRetain(ctx: PrivacySubjectContext, report: IdentityDependencyReport, now: Date): Promise<Record<string, unknown>> {
+    const data = await this.deletePersonalSignData(ctx);
+    const closed = report.may_close_tenant ? await this.closePersonalAccount(ctx, now) : { risk_closed: await this.closeRiskOnly(ctx, now), tenant_closed: false };
+    return {
+      path: 'personal',
+      ...data,
+      ...closed,
+      identity_retained: true,
+      identity_retained_because: report.dependencies,
+      memberships_deactivated: 0,
+      users_deactivated: 0,
+      idp_retirement: 'retained',
+      dependencies: dependencyEvidence(report),
+      retained: SIGN_RETAINED_CATEGORIES.map((c) => c.key),
+    };
+  }
+
+  /** Sending ends (Sign-specific) without closing a tenant that carries another product. */
+  private async closeRiskOnly(ctx: PrivacySubjectContext, now: Date): Promise<boolean> {
+    const riskState = await this.risk.riskStateOf(ctx.tenant_id);
+    if (riskState === null || riskState.state === 'closed') return false;
+    await this.risk.close(ctx.tenant_id, ctx.user_id, PRIVACY_DELETION_REASON, now, { closed_by: 'privacy_deletion' });
+    return true;
   }
 
   // §3.2 Business member column.
@@ -240,9 +320,13 @@ export class SignPrivacyExecutionService {
   }
 }
 
-function personalOutcomeText(e: Record<string, unknown>): string {
-  const idp = e['identity_retained'] === true ? 'Your sign-in identity is kept because it is still used by another Aramo account or product.' : 'Your sign-in to Aramo Sign has ended.';
-  return `Your Aramo Sign personal account is closed and its data deleted: sessions signed out, saved signatures, contacts, notifications and drafts removed. ${idp} Records we must keep are listed with this request.`;
+function personalOutcomeText(): string {
+  return 'Your Aramo Sign personal account is closed and its data deleted: sessions signed out, saved signatures, contacts, notifications, inbox items and drafts removed. Your Aramo sign-in has been retired. Your Google or Microsoft account itself is not affected. Records we must keep are listed with this request.';
+}
+
+function personalRetainOutcomeText(e: Record<string, unknown>): string {
+  const tenant = e['tenant_closed'] === true ? 'Your Aramo Sign personal account is closed and its Sign data deleted' : 'Your Aramo Sign data is deleted';
+  return `${tenant}: sessions signed out, saved signatures, contacts, notifications, inbox items and drafts removed. Your sign-in identity is kept because it is still used by another Aramo account, product or linked sign-in; our privacy team reviews it. Records we must keep are listed with this request.`;
 }
 
 function memberOutcomeText(e: Record<string, unknown>): string {

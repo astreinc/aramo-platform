@@ -1,27 +1,25 @@
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 
 import { bumpPrincipalVersion } from '../authorization-version.ops.js';
 import { ESIGN_ROLE_KEYS } from '../dto/esign-permissions.js';
 import { PrismaService } from '../prisma/prisma.service.js';
-import { TenantEntitlementReader } from '../tenant-entitlement-reader.service.js';
 import { TENANT_OWNER_ROLE_KEY } from '../util/tenant-lifecycle.js';
 
 import { normalizePrivacyEmail } from './privacy-request-crypto.js';
 
 // Aramo-Sign-Mobile-Amendment-M-A7 §3.2 — the identity side of a privacy request:
-// who the subject is, whether a shared identity still carries other product
-// authorization, and the two identity writes a deletion may make:
+// who the subject is, and the identity writes a deletion may make:
 //   - retireAccountHolder  the Personal account holder's membership and user are
-//                          deactivated (only when NO other membership or product
-//                          authorization remains — the shared-identity guard);
+//                          deactivated (only when the M-A8 §3.2
+//                          IdentityDependencyInspector found no dependency);
+//   - tombstoneRetiredUser M-A8 §3.3 — the retired user's email tombstoned and its
+//                          ExternalIdentity rows removed (after identity retirement);
 //   - removeSignAccess     a Business member's Sign-only roles are removed; the
 //                          organization-wide roles (which also carry other
 //                          products) are never touched.
 // Every write bumps the principal's authorization version in the same transaction,
-// so cached scopes are invalidated immediately. Nothing here deletes a row.
-
-/** Capabilities that do not count as "other product authorization" for a Sign request. */
-const SIGN_ONLY_CAPABILITIES: ReadonlySet<string> = new Set(['core', 'sign']);
+// so cached scopes are invalidated immediately. Only tombstoneRetiredUser deletes rows
+// (the retired user's ExternalIdentity links).
 
 export interface PrivacySubjectContext {
   user_id: string;
@@ -37,23 +35,18 @@ export interface PrivacySubjectContext {
   is_owner: boolean;
 }
 
-export interface PrivacyOtherAuthorization {
-  /** Active memberships of this user in OTHER tenants. */
-  other_memberships: number;
-  /** Product capabilities of the subject's tenant beyond core + sign (e.g. ats). */
-  other_products: string[];
-  /** Other users bound to the same external (Cognito / IdP) subject. */
-  shared_external_identities: number;
-  /** True when the shared identity must be kept. */
-  retain: boolean;
+/** M-A8 §3.3 — the `User.email` of a retired Personal account. */
+export function retiredEmailTombstone(user_id: string): string {
+  return `retired+${user_id}@invalid.aramo`;
+}
+
+export function isRetiredEmailTombstone(user_id: string, email: string): boolean {
+  return email === retiredEmailTombstone(user_id);
 }
 
 @Injectable()
 export class PrivacySubjectService {
-  constructor(
-    private readonly prisma: PrismaService,
-    @Optional() private readonly entitlements?: TenantEntitlementReader,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   /** The account (if any) whose sign-in email is `email` (case-insensitive). */
   async findAccountByEmail(email: string): Promise<{ user_id: string; tenant_id: string } | null> {
@@ -91,24 +84,25 @@ export class PrivacySubjectService {
     };
   }
 
-  /** §3.2 shared-identity guard: does anything other than this Sign account still use the identity? */
-  async otherAuthorization(user_id: string, tenant_id: string): Promise<PrivacyOtherAuthorization> {
-    const other_memberships = await this.prisma.userTenantMembership.count({ where: { user_id, tenant_id: { not: tenant_id }, is_active: true } });
-    const caps = this.entitlements !== undefined ? await this.entitlements.getCapabilities(tenant_id) : new Set<string>();
-    const other_products = [...caps].filter((c) => !SIGN_ONLY_CAPABILITIES.has(c)).sort();
-    const externals = await this.prisma.externalIdentity.findMany({ where: { user_id }, select: { provider: true, provider_subject: true } });
-    const shared_external_identities =
-      externals.length === 0
-        ? 0
-        : await this.prisma.externalIdentity.count({
-            where: { user_id: { not: user_id }, OR: externals.map((e) => ({ provider: e.provider, provider_subject: e.provider_subject })) },
-          });
-    return { other_memberships, other_products, shared_external_identities, retain: other_memberships > 0 || other_products.length > 0 || shared_external_identities > 0 };
-  }
-
-  /** The external (IdP) subjects bound to the user — for the IdP retirement step. */
-  async externalSubjects(user_id: string): Promise<Array<{ provider: string; provider_subject: string }>> {
-    return this.prisma.externalIdentity.findMany({ where: { user_id }, select: { provider: true, provider_subject: true } });
+  /**
+   * M-A8 §3.3 — the identity record of a retired Personal account (idempotent, one
+   * transaction): `User.email` becomes the tombstone `retired+<user_id>@invalid.aramo`
+   * and every ExternalIdentity row (ExternalIdentityIdp cascades) is removed, so the
+   * address can sign up again and nothing maps the old Cognito subject to the retired
+   * user. Signing evidence (Signer rows, certificates) is never rewritten here.
+   * Refuses an active user: the caller deactivates first.
+   */
+  async tombstoneRetiredUser(user_id: string, tenant_id: string): Promise<{ email_tombstoned: number; external_identities_removed: number }> {
+    return this.prisma.$transaction(async (tx) => {
+      const user = await tx.user.findUnique({ where: { id: user_id }, select: { tenant_id: true, is_active: true, email: true } });
+      if (user === null || user.tenant_id !== tenant_id) throw new Error('privacy_subject_not_in_tenant');
+      if (user.is_active) throw new Error('privacy_subject_still_active');
+      const tombstone = retiredEmailTombstone(user_id);
+      const e = user.email === tombstone ? 0 : (await tx.user.updateMany({ where: { id: user_id, tenant_id }, data: { email: tombstone } })).count;
+      const x = await tx.externalIdentity.deleteMany({ where: { user_id } });
+      if (e + x.count > 0) await bumpPrincipalVersion(tx, { tenant_id, principal_id: user_id });
+      return { email_tombstoned: e, external_identities_removed: x.count };
+    });
   }
 
   /** Deactivates the account holder's membership and user (idempotent). Caller applies the guard first. */
