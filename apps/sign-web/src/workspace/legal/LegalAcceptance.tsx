@@ -5,6 +5,7 @@ import { errorMessage, legalApi, type PendingLegalDocument } from '../api';
 import { Btn, Check, ErrorBox } from '../ui';
 
 import { footerLegalLinks } from './catalog';
+import { HELP_PATH } from './identity';
 
 // Aramo Sign Personal (Free) — re-acceptance in the workspace. When the backend
 // (GET /v1/sign/legal/status) lists current legal documents this user has not
@@ -90,6 +91,10 @@ export function LegalLinks({ personal }: { personal: boolean }) {
           {l.label}
         </a>
       ))}
+      {/* M-A7 §5.1 — the public help page (support and privacy contacts). */}
+      <a href={HELP_PATH} target="_blank" rel="noopener noreferrer">
+        Help
+      </a>
     </nav>
   );
 }

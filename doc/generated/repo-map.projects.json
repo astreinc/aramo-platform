@@ -1112,10 +1112,14 @@
       "PERSONAL_UNBOUND_LAPSE_DAYS",
       "PLATFORM_ROLE_KEYS",
       "PLATFORM_SCOPE_PREFIX",
+      "PRIVACY_OUTCOME_TEXT_MAX",
+      "PRIVACY_PROOF_TTL_MS",
       "PRODUCT_KEYS",
       "PersonalRiskService",
       "PersonalSignupRepository",
       "PrismaService",
+      "PrivacyRequestService",
+      "PrivacySubjectService",
       "ProductAvailabilityService",
       "RETIRED_ROLE_KEYS",
       "ROBOT_CHECK_PORT",
@@ -1164,6 +1168,7 @@
       "cognitoCreateUserAttributes",
       "decisionForPoints",
       "decodeCursor",
+      "decryptPrivacyEmail",
       "deriveAllowedDomainOrThrow",
       "deriveSlugOrThrow",
       "domainUnavailableError",
@@ -1188,6 +1193,7 @@
       "isInviteStatus",
       "isLegalTransition",
       "isPersonalOrDisposableDomain",
+      "isPlausibleEmail",
       "isTenantKind",
       "isTenantLastOwnerViolation",
       "isTenantStatus",
@@ -1198,12 +1204,15 @@
       "normalizeE164",
       "normalizeEmail",
       "normalizeIdp",
+      "normalizePrivacyEmail",
       "normalizeSlug",
       "normalizeUsPhone",
       "personalPilotCap",
       "personalRiskConfig",
       "personalSignupMode",
       "phoneRegion",
+      "privacyEmailHash",
+      "privacyEmailKeyAvailable",
       "ratePersonalSignup",
       "requiredCapabilityForConsumer",
       "restrictionInForce",
@@ -3942,6 +3951,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/dashboard.integration.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/m-a7-privacy-requests-operator.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
       },
@@ -6746,6 +6761,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/privacy-request.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/px3-esign-sender-authz.integration.spec.ts",
         "project": "identity",
         "status": "excluded"
@@ -7750,6 +7771,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-permission-contract.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-privacy-requests.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -10626,6 +10653,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/m-a7-privacy-requests-operator.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/personal-signup-attempt-purge-sweeper.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -10797,6 +10830,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-permission-contract.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-privacy-flag-off.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-privacy-requests.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -11291,6 +11336,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/personal-free.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-privacy-requests.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -12427,6 +12478,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/platform-admin/src/tests/m-a7-privacy-requests-operator.spec.ts",
+        "project": "platform-admin",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/platform-admin/src/tests/personal-signup.integration.spec.ts",
         "project": "platform-admin",
         "status": "excluded"
@@ -12585,6 +12642,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-mobile-sender-drafts.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-privacy-requests.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-report-routing.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

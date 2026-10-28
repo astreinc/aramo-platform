@@ -10,7 +10,7 @@ import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
 import type { AuthContextType } from '@aramo/auth';
 import { GEO_IP_PORT, PersonalRiskService, SMS_VERIFICATION_PORT } from '@aramo/identity';
 import { MAILER_PORT } from '@aramo/mailer';
-import { AbuseReportService, DOCUMENT_STORAGE_PORT, type DocumentStoragePort, type PutOwnedSourceInput } from '@aramo/sign';
+import { AbuseReportService, DOCUMENT_STORAGE_PORT, hashSigningToken, type DocumentStoragePort, type PutOwnedSourceInput } from '@aramo/sign';
 import { PDFDocument, StandardFonts } from 'pdf-lib';
 import { Client } from 'pg';
 import request from 'supertest';
@@ -19,7 +19,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vites
 import { AppModule } from '../app/app.module.js';
 import { EsignBillingController } from '../app/billing/esign-billing.controller.js';
 import { PersonalLegalStatusService } from '../app/legal/personal-legal-status.service.js';
-import { ReportBudget } from '../app/personal/sign-report.service.js';
+import { ReportBudget, SignReportService } from '../app/personal/sign-report.service.js';
 import { SenderContextService } from '../app/sender/sender-context.service.js';
 import { SenderEnvelopeService } from '../app/sender/sender-envelope.service.js';
 
@@ -30,10 +30,12 @@ import { SenderEnvelopeService } from '../app/sender/sender-envelope.service.js'
 //   allowance     → 2 a day (and 5 a month, subscription spec); one envelope once
 //   gate          → review / restricted / step-up without phone / abroad without phone
 //   young account → several recipients on a first send, links in the PDF, lure wording
-//   reports       → "Report this email" only in Personal signing emails; weighted
+//   reports       → "Report this email" in Personal signing emails; weighted
 //                   reports pause sending for 72 h (lapses unless confirmed); a
 //                   FALSE_REPORT lowers that reporter's weight; guest signing unaffected
-//   Business      → unchanged (no report link, no daily window, checkout path intact)
+//   Business      → no daily window, checkout path intact; since M-A7 §5.2 its
+//                   signing emails carry "Report this email" too, and a report is
+//                   recorded for operators (OPEN) without any automatic pause
 
 const ROOT = resolve(__dirname, '../../../..');
 const migrationsOf = (lib: string): string[] => {
@@ -476,7 +478,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
 
   // ── Business regression ───────────────────────────────────────────────────────
 
-  it('Business: sends as before — no report link, no day window, no Personal checks, reports not taken', async () => {
+  it('Business: no day window, no Personal checks; M-A7 §5.2 — the report link is in its emails and a report is queued for operators, never a pause', async () => {
     const b = await tenant('BUSINESS');
     await db.query(
       `INSERT INTO subscription."TenantSubscription" (id, tenant_id, plan_id, plan_version_id, product_key, composition_role, period_anchor, source, created_by) SELECT gen_random_uuid(), $1::uuid, p.id, (SELECT v.id FROM subscription."PlanVersion" v WHERE v.plan_id = p.id AND v.status = 'PUBLISHED'), p.product_key, 'BASE', now(), 'MANUAL', 'test' FROM subscription."Plan" p WHERE p.key = 'aramo-sign-included-v1'`,
@@ -490,12 +492,33 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     const sent = mails.slice(first).filter((m) => m.subject.startsWith('Please sign'));
     expect(sent).toHaveLength(6);
     for (const m of sent) {
-      expect(m.html).not.toContain('Report this email');
-      expect(m.text).not.toContain('/report#');
+      expect(m.html).toContain('Report this email');
+      expect(reportTokenFrom(m)).toBe(tokenFrom(m)); // the recipient's own signing token, in the fragment
     }
-    expect((await http().post('/v1/sign/report').send({ token: tokenFrom(sent[0]), reason: 'spam' })).status).toBe(404);
+    // Phishing reports from several recipients: well over the Personal threshold, yet no pause.
+    for (const m of sent.slice(0, 3)) {
+      expect((await http().post('/v1/sign/report').send({ token: reportTokenFrom(m), reason: 'phishing' })).status).toBe(202);
+    }
+    expect((await http().post('/v1/sign/report').send({ token: reportTokenFrom(sent[0]), reason: 'spam' })).status).toBe(409);
+    const queued = (await reports.listQueue({ outcome: 'OPEN' })).filter((r) => r.tenant_id === b.id);
+    expect(queued).toHaveLength(3);
+    expect(queued.every((r) => r.triggered_restriction === false)).toBe(true);
+    await expect(send(b.a, await draft(b.a, { subject: 'After reports', recipients: 1 }), '203.0.113.9')).resolves.toMatchObject({ status: 'SENT' });
+    // M-A7 §5.2 — the app's report (POST /v1/sign/inbox/:id/report) resolves the user's
+    // own claimed inbox item and lands in the same queue; another user's item is not found.
+    const sig = (await db.query(`SELECT ss.tenant_id, ss.envelope_id, ss.signer_id, s.email FROM sign."SigningSession" ss JOIN sign."Signer" s ON s.id = ss.signer_id WHERE ss.token_hash = $1`, [hashSigningToken(tokenFrom(sent[3]))])).rows[0];
+    const user = randomUUID();
+    const binding = randomUUID();
+    await db.query(
+      `INSERT INTO sign."SignRecipientBinding" (id, envelope_tenant_id, envelope_id, signer_id, user_id, user_tenant_id, email) VALUES ($1, $2, $3, $4, $5, $6, $7)`,
+      [binding, sig.tenant_id, sig.envelope_id, sig.signer_id, user, randomUUID(), sig.email],
+    );
+    expect(await reports.resolveInboxReportContext(randomUUID(), binding)).toBeNull();
+    await expect(module.get(SignReportService).submitFromInbox(user, binding, { reason: 'spam' }, 'r')).resolves.toEqual({ received: true });
+    await expect(module.get(SignReportService).submitFromInbox(user, binding, { reason: 'spam' }, 'r')).rejects.toMatchObject({ statusCode: 409 });
+    expect((await reports.listQueue({ outcome: 'OPEN' })).filter((r) => r.tenant_id === b.id)).toHaveLength(4);
     const account = await billing.account(b.a, 'r');
-    expect(account.allowance).toMatchObject({ subscribed: true, limit: 100, used: 3 });
+    expect(account.allowance).toMatchObject({ subscribed: true, limit: 100, used: 4 });
     expect('daily' in account.allowance).toBe(false);
     expect(await db.query(`SELECT count(*)::int AS n FROM identity."TenantRiskState" WHERE tenant_id = $1`, [b.id]).then((r) => r.rows[0].n)).toBe(0);
   });

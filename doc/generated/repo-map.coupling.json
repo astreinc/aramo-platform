@@ -10557,6 +10557,16 @@
       "to": "apps/sign-web/vite.config.ts"
     },
     {
+      "from": "apps/sign-web/src/workspace/legal/identity.ts",
+      "status": "production",
+      "to": "doc/legal/aramo/privacy-notice.md"
+    },
+    {
+      "from": "apps/sign-web/src/workspace/legal/identity.ts",
+      "status": "production",
+      "to": "mobile/sign/src/config/identity.ts"
+    },
+    {
       "excludedBy": "src/**/*.spec.tsx",
       "from": "apps/sign-web/src/workspace/legal/legal.spec.tsx",
       "status": "excluded",
@@ -11025,6 +11035,11 @@
     {
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
+      "to": "apps/platform-admin/src/app/platform/platform-privacy-requests.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
       "to": "apps/platform-admin/src/app/platform/platform-sign.controller.ts"
     },
     {
@@ -11091,6 +11106,16 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/sign-service/src/app/personal/sign-report.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/privacy/sign-privacy-public.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/privacy/sign-privacy-request.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -11626,20 +11651,62 @@
     },
     { "from": "deploy/RUNBOOK.md", "status": "unscoped", "to": "doc/runbooks/RELEASE-box.md" },
     {
-      "from": "deploy/backup/pg-backup.sh",
+      "from": "deploy/backup/aramo-backup-encrypt-existing.sh",
       "status": "unscoped",
-      "to": "deploy/backup/s3-backup-iam-policy.json"
+      "to": "deploy/backup/lib.sh"
     },
     {
-      "from": "deploy/backup/pg-backup.sh",
+      "from": "deploy/backup/aramo-backup-encrypt-existing.sh",
       "status": "unscoped",
-      "to": "deploy/backup/s3-backup-lifecycle.json"
+      "to": "doc/runbooks/RUNBOOK-backups-r15.md"
+    },
+    {
+      "from": "deploy/backup/aramo-backup-prune.sh",
+      "status": "unscoped",
+      "to": "deploy/backup/lib.sh"
+    },
+    { "from": "deploy/backup/aramo-backup.sh", "status": "unscoped", "to": "deploy/backup/lib.sh" },
+    {
+      "from": "deploy/backup/aramo-backup.sh",
+      "status": "unscoped",
+      "to": "doc/runbooks/RUNBOOK-backups-r15.md"
+    },
+    {
+      "from": "deploy/backup/aramo-backup.sh",
+      "status": "unscoped",
+      "to": "infrastructure-lightsail/r15-backups.tf"
+    },
+    {
+      "from": "deploy/backup/aramo-backup.sh",
+      "status": "unscoped",
+      "to": "tools/db-sync-intelligence.sh"
+    },
+    {
+      "from": "deploy/backup/aramo-backup.sh",
+      "status": "unscoped",
+      "to": "tools/db-sync-local.sh"
+    },
+    {
+      "from": "deploy/backup/aramo-deletion-replay.sh",
+      "status": "unscoped",
+      "to": "deploy/backup/lib.sh"
+    },
+    {
+      "from": "deploy/backup/aramo-restore-test.sh",
+      "status": "unscoped",
+      "to": "deploy/backup/lib.sh"
+    },
+    {
+      "from": "deploy/backup/lib.sh",
+      "status": "unscoped",
+      "to": "doc/runbooks/RUNBOOK-backups-r15.md"
     },
     {
       "from": "deploy/backup/pg-restore.sh",
       "status": "unscoped",
-      "to": "doc/runbooks/singlebox-ops.md"
+      "to": "deploy/backup/aramo-deletion-replay.sh"
     },
+    { "from": "deploy/backup/pg-restore.sh", "status": "unscoped", "to": "deploy/backup/lib.sh" },
     { "from": "deploy/build-images.test.sh", "status": "unscoped", "to": "deploy/build-images.sh" },
     { "from": "deploy/migrate-prod.sh", "status": "unscoped", "to": "deploy/migrate-prod.test.sh" },
     {
@@ -11708,6 +11775,11 @@
       "from": "deploy/singlebox-compose.test.sh",
       "status": "unscoped",
       "to": "deploy/systemd/singlebox-compose.sh"
+    },
+    {
+      "from": "deploy/systemd/aramo-pg-backup.service",
+      "status": "unscoped",
+      "to": "doc/runbooks/RUNBOOK-backups-r15.md"
     },
     {
       "from": "doc/00-ci-deliberate-failure-evidence.md",
@@ -19135,11 +19207,6 @@
     {
       "from": "doc/directives/D-REPOMAP-2-Directive-Amendment-v1_4-LOCKED.md",
       "status": "unscoped",
-      "to": "deploy/backup/pg-backup.sh"
-    },
-    {
-      "from": "doc/directives/D-REPOMAP-2-Directive-Amendment-v1_4-LOCKED.md",
-      "status": "unscoped",
       "to": "doc/02-claude-code-discipline.md"
     },
     {
@@ -24880,11 +24947,6 @@
     {
       "from": "doc/recon/as-built/D15-infra-deploy-quality-enforcement.md",
       "status": "unscoped",
-      "to": "deploy/backup/pg-backup.sh"
-    },
-    {
-      "from": "doc/recon/as-built/D15-infra-deploy-quality-enforcement.md",
-      "status": "unscoped",
       "to": "deploy/build-images.sh"
     },
     {
@@ -26700,11 +26762,6 @@
     {
       "from": "doc/recon/gaps/G1-gap-register.md",
       "status": "unscoped",
-      "to": "deploy/backup/pg-backup.sh"
-    },
-    {
-      "from": "doc/recon/gaps/G1-gap-register.md",
-      "status": "unscoped",
       "to": "deploy/build-images.sh"
     },
     {
@@ -28466,11 +28523,6 @@
     {
       "from": "doc/recon/gaps/_fragments/D15-infra-deploy-quality-enforcement.gaps.md",
       "status": "unscoped",
-      "to": "deploy/backup/pg-backup.sh"
-    },
-    {
-      "from": "doc/recon/gaps/_fragments/D15-infra-deploy-quality-enforcement.gaps.md",
-      "status": "unscoped",
       "to": "deploy/build-images.sh"
     },
     {
@@ -28548,6 +28600,11 @@
       "status": "unscoped",
       "to": "infrastructure/cognito-triggers/CUTOVER.md"
     },
+    {
+      "from": "doc/runbooks/RELEASE-box.md",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-backup.sh"
+    },
     { "from": "doc/runbooks/RELEASE-box.md", "status": "unscoped", "to": "deploy/build-images.sh" },
     { "from": "doc/runbooks/RELEASE-box.md", "status": "unscoped", "to": "deploy/migrate-prod.sh" },
     { "from": "doc/runbooks/RELEASE-box.md", "status": "unscoped", "to": "deploy/seed-prod.sh" },
@@ -28556,6 +28613,11 @@
       "from": "doc/runbooks/RELEASE-box.md",
       "status": "unscoped",
       "to": "doc/06-lead-review-checklist.md"
+    },
+    {
+      "from": "doc/runbooks/RELEASE-box.md",
+      "status": "unscoped",
+      "to": "doc/runbooks/RUNBOOK-backups-r15.md"
     },
     {
       "from": "doc/runbooks/RELEASE-box.md",
@@ -28643,6 +28705,11 @@
       "to": "infrastructure/cognito-triggers/CUTOVER.md"
     },
     {
+      "from": "doc/runbooks/RELEASE-sign-mobile.md",
+      "status": "unscoped",
+      "to": "mobile/sign/plugins/withReleaseSigning.js"
+    },
+    {
       "from": "doc/runbooks/RELEASE-sign-naming.md",
       "status": "unscoped",
       "to": "deploy/build-images.sh"
@@ -28726,6 +28793,31 @@
       "from": "doc/runbooks/RELEASE-sign-standalone-billing.md",
       "status": "unscoped",
       "to": "libs/subscription/src/lib/legal/legal-documents.ts"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-backups-r15.md",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-backup-encrypt-existing.sh"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-backups-r15.md",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-backup.sh"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-backups-r15.md",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-deletion-replay.sh"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-backups-r15.md",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-restore-test.sh"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-backups-r15.md",
+      "status": "unscoped",
+      "to": "infrastructure-lightsail/r15-backups.tf"
     },
     {
       "from": "doc/runbooks/RUNBOOK-ccp-break-glass.md",
@@ -29066,22 +29158,32 @@
     {
       "from": "doc/runbooks/singlebox-ops.md",
       "status": "unscoped",
-      "to": "deploy/backup/pg-backup.sh"
+      "to": "deploy/backup/aramo-backup-prune.sh"
+    },
+    {
+      "from": "doc/runbooks/singlebox-ops.md",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-backup.sh"
+    },
+    {
+      "from": "doc/runbooks/singlebox-ops.md",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-backup.test.sh"
+    },
+    {
+      "from": "doc/runbooks/singlebox-ops.md",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-deletion-replay.sh"
+    },
+    {
+      "from": "doc/runbooks/singlebox-ops.md",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-restore-test.sh"
     },
     {
       "from": "doc/runbooks/singlebox-ops.md",
       "status": "unscoped",
       "to": "deploy/backup/pg-restore.sh"
-    },
-    {
-      "from": "doc/runbooks/singlebox-ops.md",
-      "status": "unscoped",
-      "to": "deploy/backup/s3-backup-iam-policy.json"
-    },
-    {
-      "from": "doc/runbooks/singlebox-ops.md",
-      "status": "unscoped",
-      "to": "deploy/backup/s3-backup-lifecycle.json"
     },
     {
       "from": "doc/runbooks/singlebox-ops.md",
@@ -29107,7 +29209,17 @@
     {
       "from": "doc/runbooks/singlebox-ops.md",
       "status": "unscoped",
+      "to": "doc/runbooks/RUNBOOK-backups-r15.md"
+    },
+    {
+      "from": "doc/runbooks/singlebox-ops.md",
+      "status": "unscoped",
       "to": "doc/runbooks/core-talent-ledger-reconciliation.md"
+    },
+    {
+      "from": "doc/runbooks/singlebox-ops.md",
+      "status": "unscoped",
+      "to": "infrastructure-lightsail/r15-backups.tf"
     },
     {
       "from": "doc/runbooks/singlebox-ops.md",
@@ -29366,6 +29478,11 @@
       "to": "deploy/geoip/docker-compose.geoip.yml"
     },
     { "from": "docker-compose.prod.yml", "status": "unscoped", "to": "deploy/migrate-prod.sh" },
+    {
+      "from": "docker-compose.prod.yml",
+      "status": "unscoped",
+      "to": "deploy/nginx/templates/aramo.conf.template"
+    },
     {
       "from": "docker-compose.prod.yml",
       "status": "unscoped",
@@ -29728,6 +29845,11 @@
     {
       "from": "infrastructure-lightsail/README.md",
       "status": "unscoped",
+      "to": "doc/runbooks/RUNBOOK-backups-r15.md"
+    },
+    {
+      "from": "infrastructure-lightsail/README.md",
+      "status": "unscoped",
       "to": "doc/step4-singlebox-lightsail-tf.md"
     },
     {
@@ -29744,6 +29866,11 @@
       "from": "infrastructure-lightsail/outputs.tf",
       "status": "unscoped",
       "to": "doc/runbooks/frontdoor-pr0-apply.md"
+    },
+    {
+      "from": "infrastructure-lightsail/r15-backups.tf",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-backup.sh"
     },
     {
       "from": "infrastructure-lightsail/resume-bucket-cors.tf",
@@ -30346,6 +30473,11 @@
       "from": "libs/common/src/lib/testing/identity-migrations.ts",
       "status": "production",
       "to": "libs/identity/prisma/migrations/20261028070000_ccp_a1a2_payment_request_scope/migration.sql"
+    },
+    {
+      "from": "libs/common/src/lib/testing/identity-migrations.ts",
+      "status": "production",
+      "to": "libs/identity/prisma/migrations/20261030030000_privacy_requests/migration.sql"
     },
     {
       "from": "libs/common/src/lib/testing/skills-taxonomy-migrations.ts",
@@ -31241,6 +31373,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a1-commercial-role-catalog-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261030030000_privacy_requests/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/identity/src/tests/ccp-a1a1-finance-amount-scope-migration.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261025180000_ccp_a9_platform_last_owner_invariant/migration.sql"
@@ -31259,6 +31397,12 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a1a1-finance-amount-scope-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261030030000_privacy_requests/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "libs/identity/src/tests/ccp-a1a2-payment-request-scope-migration.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261028060000_ccp_a1a1_finance_amount_scope/migration.sql"
@@ -31268,6 +31412,12 @@
       "from": "libs/identity/src/tests/ccp-a1a2-payment-request-scope-migration.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261028070000_ccp_a1a2_payment_request_scope/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a1a2-payment-request-scope-migration.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261030030000_privacy_requests/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -31292,6 +31442,12 @@
       "from": "libs/identity/src/tests/ccp-a9-platform-last-owner.spec.ts",
       "status": "excluded",
       "to": "libs/identity/prisma/migrations/20261028070000_ccp_a1a2_payment_request_scope/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "libs/identity/src/tests/ccp-a9-platform-last-owner.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/prisma/migrations/20261030030000_privacy_requests/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -33911,6 +34067,16 @@
     },
     { "from": "mobile/sign/README.md", "status": "unscoped", "to": "openapi/auth.yaml" },
     { "from": "mobile/sign/README.md", "status": "unscoped", "to": "openapi/sign.yaml" },
+    {
+      "from": "mobile/sign/android/app/build.gradle",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-sign-mobile.md"
+    },
+    {
+      "from": "mobile/sign/plugins/withReleaseSigning.js",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-sign-mobile.md"
+    },
     { "from": "mobile/sign/project.json", "status": "unscoped", "to": "openapi/auth.yaml" },
     { "from": "mobile/sign/project.json", "status": "unscoped", "to": "openapi/common.yaml" },
     { "from": "mobile/sign/project.json", "status": "unscoped", "to": "openapi/sign.yaml" },
@@ -33959,6 +34125,36 @@
       "from": "mobile/sign/src/auth/nativeAuthApi.ts",
       "status": "unscoped",
       "to": "openapi/auth.yaml"
+    },
+    {
+      "from": "mobile/sign/src/config/__tests__/identity.test.ts",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/workspace/App.tsx"
+    },
+    {
+      "from": "mobile/sign/src/config/__tests__/identity.test.ts",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/workspace/legal/catalog.ts"
+    },
+    {
+      "from": "mobile/sign/src/config/__tests__/identity.test.ts",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/workspace/legal/identity.ts"
+    },
+    {
+      "from": "mobile/sign/src/config/__tests__/identity.test.ts",
+      "status": "unscoped",
+      "to": "doc/legal/aramo/privacy-notice.md"
+    },
+    {
+      "from": "mobile/sign/src/config/identity.ts",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/workspace/legal/identity.ts"
+    },
+    {
+      "from": "mobile/sign/src/config/identity.ts",
+      "status": "unscoped",
+      "to": "doc/legal/aramo/privacy-notice.md"
     },
     {
       "from": "mobile/sign/src/features/editor/__tests__/geometry.test.ts",
@@ -36994,7 +37190,7 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 102,
+    "files": 106,
     "huskyPresent": false
   },
   "scripts": [
@@ -37148,7 +37344,10 @@
       "references": [
         { "kind": "npm-run", "path": "ci/scripts/generate-repo-map.ts" },
         { "kind": "prose", "path": "ci/scripts/generate-repo-map.ts" },
-        { "kind": "prose", "path": "deploy/backup/pg-backup.sh" },
+        { "kind": "prose", "path": "deploy/backup/aramo-backup-encrypt-existing.sh" },
+        { "kind": "prose", "path": "deploy/backup/aramo-restore-test.sh" },
+        { "kind": "prose", "path": "deploy/backup/lib.sh" },
+        { "kind": "prose", "path": "deploy/nginx/README.md" },
         { "kind": "prose", "path": "tools/ensure-intelligence-db.sh" }
       ]
     },
@@ -37463,6 +37662,10 @@
         { "kind": "prose", "path": "ci/scripts/verify-frontdoor-conf.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-pipeline-write-authority.ts" },
         { "kind": "prose", "path": "ci/scripts/verify-postgres-test-image.ts" },
+        { "kind": "prose", "path": "deploy/backup/aramo-backup.sh" },
+        { "kind": "prose", "path": "deploy/backup/aramo-backup.test.sh" },
+        { "kind": "prose", "path": "deploy/backup/aramo-restore-test.sh" },
+        { "kind": "prose", "path": "deploy/backup/pg-restore.sh" },
         { "kind": "prose", "path": "deploy/build-images.test.sh" },
         { "kind": "prose", "path": "deploy/migrate-prod.sh" },
         { "kind": "prose", "path": "deploy/migrate-prod.test.sh" },

@@ -5,6 +5,7 @@ import { logout } from '@aramo/fe-foundation';
 import { accountApi, errorMessage, type AccountStatus } from '../api';
 import { Btn, ErrorBox, Field, TextIn } from '../ui';
 import { useWorkspace } from '../workspace';
+import { DELETE_ACCOUNT_PATH } from '../privacy/PrivacyRequestResult';
 
 // Aramo Sign Personal (Free) — "Close account" (PO decision 2026-10-22; the Personal
 // Terms: "You may close your account at any time from your account settings").
@@ -12,6 +13,8 @@ import { useWorkspace } from '../workspace';
 // open Personal account); Business accounts never see it. Typing CLOSE confirms;
 // after the close the user is signed out to /account-closed. The copy states only
 // implemented behavior (Lead 2026-10-22): no fixed-date deletion promise.
+// M-A7 §3.2 (R-4): closing alone is not deletion — the copy says so and points to the
+// deletion request (Settings → Delete account, /delete-account).
 
 export const ACCOUNT_CLOSED_PATH = '/account-closed';
 const PRIVACY_NOTICE = '/legal/privacy';
@@ -82,9 +85,10 @@ export function CloseAccountSection({
               .
             </li>
           </ul>
-          <p style={{ margin: '8px 0 0' }}>
-            You can ask us to delete your data at any time at <a href={`mailto:${PRIVACY_EMAIL}`}>{PRIVACY_EMAIL}</a>. Closing doesn’t sign you out on your
-            other devices; they show that the account is closed.
+          <p style={{ margin: '8px 0 0' }} data-testid="close-is-not-deletion">
+            <strong>Closing is not deletion.</strong> To delete your account and data, use “Delete account” above (or{' '}
+            <a href={DELETE_ACCOUNT_PATH}>sign.aramo.ai/delete-account</a>), or write to <a href={`mailto:${PRIVACY_EMAIL}`}>{PRIVACY_EMAIL}</a>. Closing doesn’t
+            sign you out on your other devices; they show that the account is closed.
           </p>
         </div>
         <Field label="Why are you leaving? (optional)" htmlFor="close-reason">
@@ -124,7 +128,8 @@ export function AccountClosedNotice({ signedIn = false }: { signedIn?: boolean }
           <a href={PRIVACY_NOTICE} target="_blank" rel="noopener noreferrer">
             Privacy Notice
           </a>
-          . To ask us to delete your data, email <a href={`mailto:${PRIVACY_EMAIL}`}>{PRIVACY_EMAIL}</a>.
+          . Closing is not deletion: to delete your data, request it at <a href={DELETE_ACCOUNT_PATH}>sign.aramo.ai/delete-account</a> or email{' '}
+          <a href={`mailto:${PRIVACY_EMAIL}`}>{PRIVACY_EMAIL}</a>.
         </div>
         <div style={{ marginTop: 16 }}>
           {signedIn ? <Btn onClick={() => void logout(() => window.location.assign(ACCOUNT_CLOSED_PATH))}>Sign out</Btn> : <a href="/login">Back to sign in</a>}

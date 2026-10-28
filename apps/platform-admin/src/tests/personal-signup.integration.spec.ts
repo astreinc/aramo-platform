@@ -160,8 +160,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
     decided_at: null,
     created_at: new Date('2026-10-21T00:00:00Z'),
   };
+  const queueTenant = { id: '' };
   const reportsStub = {
     listForTenant: vi.fn(async () => [REPORT]),
+    listQueue: vi.fn(async () => [{ ...REPORT, tenant_id: queueTenant.id }, { ...REPORT, id: uuidv7(), tenant_id: uuidv7() }]),
     decide: vi.fn(async (a: { report_id: string; outcome: string; reason: string }) =>
       a.report_id === REPORT.id ? { ...REPORT, outcome: a.outcome, outcome_reason: a.reason, decided_at: new Date('2026-10-21T01:00:00Z') } : null,
     ),
@@ -562,6 +564,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('platform-admin �
     expect(decided.status).toBe(200);
     expect(decided.body).toMatchObject({ id: REPORT.id, outcome: 'FALSE_REPORT', outcome_reason: 'sender verified', decided_at: '2026-10-21T01:00:00.000Z' });
     expect(reportsStub.decide).toHaveBeenLastCalledWith({ report_id: REPORT.id, outcome: 'FALSE_REPORT', actor: expect.any(String), reason: 'sender verified' });
+
+    // M-A7 §5.2 — the queue across every sender names each report's sender kind.
+    queueTenant.id = row!.tenant_id!;
+    const queue = await http().get('/platform/sign-abuse-reports?outcome=OPEN').set('Authorization', auth);
+    expect(queue.status).toBe(200);
+    expect(reportsStub.listQueue).toHaveBeenLastCalledWith({ outcome: 'OPEN', limit: 200 });
+    expect(queue.body.items[0]).toMatchObject({ id: REPORT.id, tenant_id: row!.tenant_id, sender_kind: 'PERSONAL', outcome: 'OPEN' });
+    expect(queue.body.items[0]).not.toHaveProperty('signer_id');
+    expect(queue.body.items[1]).toMatchObject({ sender_kind: null, sender_name: null });
+    expect((await http().get('/platform/sign-abuse-reports?outcome=MAYBE').set('Authorization', auth)).status).toBe(400);
   });
 
   it('step-up with SMS (log adapter): phone code verified → next terms → complete not held, phone assurance recorded', async () => {

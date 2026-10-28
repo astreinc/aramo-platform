@@ -12,8 +12,9 @@ import { legalPath } from '../legal/catalog';
 
 import { Alert, CardTitle, PrimaryBtn, SuIcon, type IconName, type Tone } from './signup-ui';
 
-// Aramo Sign Personal §6.4 — "Report this email". Every signing email from a
-// Personal sender links here with a token in the URL FRAGMENT (#token=…, never
+// Aramo Sign Personal §6.4 — "Report this email". Every signing request and
+// reminder email (every sender, M-A7 §5.2) and the guest signing page's Report
+// action link here with a token in the URL FRAGMENT (#token=…, never
 // sent in a request line or a server log). No sign-in: the recipient picks a
 // reason, may add a note, and the backend weighs the report (POST /v1/sign/report).
 // Layout per the v1 signup design ("Report this email" frame).
@@ -177,7 +178,7 @@ export function ReportPage() {
       <Tile tone="red" icon="flag" />
       <CardTitle
         title="Report this email"
-        sub="You opened this from a signing email. You don’t need an account to report it."
+        sub="You opened this from a signing email or signing page. You don’t need an account to report it."
       />
       <form className="su-stack" onSubmit={submit} noValidate>
         <div className="su-field">

@@ -1347,6 +1347,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/inbox/{id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report this envelope from the recipient inbox (the app's received-envelope view).
+         * @description Aramo-Sign-Mobile-Amendment-M-A7 §5.2 (R-11). Session (esign consumer) only; no Sign scope required; keyed by the signed-in user's own inbox item, so no signing token travels. The same report flow as "Report this email" (POST /v1/sign/report): one report per recipient per envelope (409 details.reason already_reported); a Business sender's report is recorded for Aramo operators and never pauses the sender; a Personal sender's report follows the Personal automatic pause rules. Bounded per user; over the budget the answer is the same 202 and nothing is recorded.
+         */
+        post: operations["reportFromInbox"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/inbox/{id}": {
         parameters: {
             query?: never;
@@ -1397,8 +1417,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Report a signing email from a Personal sender ("Report this email").
-         * @description Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED §6.4. Public (no session): the recipient's own signing token (carried in the report link's URL fragment) is the only authority. One report per recipient per envelope; taken only for envelopes from a PERSONAL sender. Each report is weighted (severity × independence × credibility); when the sender's weighted total reaches the configured threshold, new sends from that account pause for 72 hours (existing envelopes and guest signing are unaffected) and the account is queued for review; the pause lapses unless an operator confirms it. Bounded per client address (edge and service); over the service budget the answer is the same 202 and nothing is recorded.
+         * Report a signing email ("Report this email").
+         * @description Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED §6.4 and Aramo-Sign-Mobile-Amendment-M-A7 §5.2. Public (no session): the recipient's own signing token (carried in the report link's URL fragment) is the only authority. One report per recipient per envelope; taken for every sender (since M-A7 every signing request and reminder email carries the link). Each report is weighted (severity × independence × credibility). A BUSINESS sender's report is recorded for Aramo operators (GET /platform/sign-abuse-reports) and never pauses the sender. For a PERSONAL sender, when the weighted total reaches the configured threshold, new sends from that account pause for 72 hours (existing envelopes and guest signing are unaffected) and the account is queued for review; the pause lapses unless an operator confirms it. Bounded per client address (edge and service); over the service budget the answer is the same 202 and nothing is recorded.
          */
         post: operations["reportSigningEmail"];
         delete?: never;
@@ -1521,6 +1541,110 @@ export interface paths {
          * @description Aramo Sign Personal (Free) — Settings → Close account. The owner (tenant_owner) of a PERSONAL account closes it: sending stops immediately and for good; envelopes already sent stay open for their signers. The same close the operator performs, audited with the owner as the actor. Requires confirm = CLOSE (else details.reason = account_close_confirmation_required). Refused for a BUSINESS account (details.reason = business_account_close_via_organization) and for a caller who is not the owner (details.reason = not_account_owner). A PERSONAL account without a Personal risk state cannot be closed here (404, details.reason = personal_account_not_closable). Closing a closed account answers its closed state. Requires a Sign session of a tenant entitled to `sign`.
          */
         post: operations["closeSignAccount"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/me/privacy-requests": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * The signed-in user's privacy requests (newest first).
+         * @description Aramo-Sign-Mobile-Amendment-M-A7 §3. Every account type (Personal and Business). Only the caller's own requests in the session's organization. Requires a Sign session of a tenant entitled to `sign`.
+         */
+        get: operations["listMyPrivacyRequests"];
+        put?: never;
+        /**
+         * Request deletion (or access, export, correction) of the signed-in user's Aramo Sign data.
+         * @description Aramo-Sign-Mobile-Amendment-M-A7 §3. The session validates identity: the request is RECEIVED, IDENTITY_VALIDATED and inventoried (counts only), with a public reference and a 30-day due date. DELETION needs confirm = DELETE (details.reason = deletion_confirmation_required). For the owner of a PERSONAL account the account is closed now (sending stops; saved signatures, contacts, notifications and push devices are deleted); for a Business member the request is referred to the organization for the documents it owns, Aramo remaining responsible. Further deletion (sessions, drafts and their stored files, the account lifecycle, Sign access) runs only while staged execution is enabled; otherwise the request waits for the Aramo privacy team. One open request per type: a repeat answers the open request with 200.
+         */
+        post: operations["createMyPrivacyRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/me/privacy-requests/{reference}": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        /**
+         * One of the signed-in user's privacy requests, by its reference.
+         * @description Aramo-Sign-Mobile-Amendment-M-A7 §3.3. A reference of another user or organization answers 404 (details.reason = privacy_request_not_found).
+         */
+        get: operations["getMyPrivacyRequest"];
+        put?: never;
+        post?: never;
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/privacy-requests/start": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Start a privacy request on the web (no sign-in); a one-time link is emailed.
+         * @description Aramo-Sign-Mobile-Amendment-M-A7 §3.3 (https://sign.aramo.ai/delete-account). Public. The answer is the same 202 whether or not the email has an account (no enumeration), and over the per-address or per-email budget nothing is sent. The emailed link carries a one-time token in its URL fragment, valid for one hour. 503 (details.reason = privacy_requests_unavailable) when the service key is not configured.
+         */
+        post: operations["startPrivacyRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/privacy-requests/verify": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Prove ownership of the email with the one-time token; the request is created.
+         * @description Aramo-Sign-Mobile-Amendment-M-A7 §3.1. The token (from the link's URL fragment) travels only in this body. The request is RECEIVED, IDENTITY_VALIDATED (email ownership) and inventoried, and waits for the Aramo privacy team. Reusing the token within its hour answers the same request. An unknown, expired or used token answers 404 (details.reason = privacy_link_invalid).
+         */
+        post: operations["verifyPrivacyRequest"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/privacy-requests/status": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * The status of a privacy request by its reference and the requester's email.
+         * @description Aramo-Sign-Mobile-Amendment-M-A7 §3.3. Public. Both must match; anything else answers the same 404 (details.reason = privacy_request_not_found).
+         */
+        post: operations["getPrivacyRequestStatus"];
         delete?: never;
         options?: never;
         head?: never;
@@ -2112,6 +2236,39 @@ export interface components {
             closed: boolean;
             /** Format: date-time */
             closed_at: string | null;
+        };
+        /** @description Aramo-Sign-Mobile-Amendment-M-A7 §3.1 — a privacy request as its requester sees it. */
+        SignPrivacyRequest: {
+            /** @example PR-7K3M-9QX2-H4TD */
+            reference: string;
+            /** @enum {string} */
+            request_type: "DELETION" | "ACCESS" | "EXPORT" | "CORRECTION";
+            /** @enum {string} */
+            subject_kind: "ACCOUNT_HOLDER" | "BUSINESS_MEMBER" | "GUEST_SIGNER" | "FORMER_USER" | "AUTHORIZED_REPRESENTATIVE";
+            /** @enum {string} */
+            channel: "IN_APP" | "WEB" | "OPERATOR";
+            /** @enum {string} */
+            status: "RECEIVED" | "IDENTITY_VALIDATED" | "DATA_INVENTORY" | "REFERRED_TO_ORGANIZATION" | "EXECUTING" | "COMPLETED" | "DENIED_WITH_REASON" | "CANCELLED";
+            status_label: string;
+            referred_to_organization: boolean;
+            /** Format: date-time */
+            due_at: string;
+            /** Format: date-time */
+            created_at: string;
+            /** Format: date-time */
+            updated_at: string;
+            /** Format: date-time */
+            completed_at: string | null;
+            outcome_code: string | null;
+            outcome_text: string | null;
+            /** @description What is kept, and why (DELETION only). */
+            retained: {
+                key: string;
+                label: string;
+                why: string;
+            }[];
+            organization_decides: string | null;
+            privacy_contact: string;
         };
         SignAccountClosed: {
             /** @enum {string} */
@@ -5291,6 +5448,53 @@ export interface operations {
             };
         };
     };
+    reportFromInbox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @enum {string|null} */
+                    reason?: "phishing" | "impersonation" | "spam" | "unknown_sender" | "other" | null;
+                    note?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description The report was received. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {boolean} */
+                        received: true;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description This recipient already reported this envelope (details.reason = already_reported). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     removeFromInbox: {
         parameters: {
             query?: never;
@@ -5379,7 +5583,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
-            /** @description The report link cannot be used (unknown or expired token, or not a Personal sender's envelope). */
+            /** @description The report link cannot be used (unknown or expired token). */
             404: {
                 headers: {
                     [name: string]: unknown;
@@ -5559,6 +5763,203 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["SenderUnauthorized"];
             403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    listMyPrivacyRequests: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        items: components["schemas"]["SignPrivacyRequest"][];
+                    };
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    createMyPrivacyRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /**
+                     * @default DELETION
+                     * @enum {string}
+                     */
+                    request_type?: "DELETION" | "ACCESS" | "EXPORT" | "CORRECTION";
+                    /**
+                     * @description Required for DELETION.
+                     * @enum {string}
+                     */
+                    confirm?: "DELETE";
+                };
+            };
+        };
+        responses: {
+            /** @description An open request of this type already exists; it is returned. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignPrivacyRequest"];
+                };
+            };
+            /** @description The request was created. */
+            201: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignPrivacyRequest"];
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+        };
+    };
+    getMyPrivacyRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                reference: string;
+            };
+            cookie?: never;
+        };
+        requestBody?: never;
+        responses: {
+            /** @description OK. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignPrivacyRequest"];
+                };
+            };
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+        };
+    };
+    startPrivacyRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    /** Format: email */
+                    email: string;
+                    /**
+                     * @default DELETION
+                     * @enum {string}
+                     */
+                    request_type?: "DELETION" | "ACCESS" | "EXPORT" | "CORRECTION";
+                };
+            };
+        };
+        responses: {
+            /** @description Received (the same answer in every case). */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {boolean} */
+                        received: true;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            /** @description Online privacy requests are not available. */
+            503: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
+    verifyPrivacyRequest: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    token: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The request. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignPrivacyRequest"];
+                };
+            };
+            404: components["responses"]["NotFound"];
+        };
+    };
+    getPrivacyRequestStatus: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": {
+                    reference: string;
+                    /** Format: email */
+                    email: string;
+                };
+            };
+        };
+        responses: {
+            /** @description The request. */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["SignPrivacyRequest"];
+                };
+            };
             404: components["responses"]["NotFound"];
         };
     };

@@ -59,6 +59,20 @@ This is the credential the Directive-3 backup job uses (see the ops runbook).
 S3-side retention is a bucket **lifecycle rule** managed out-of-band, so the box
 credential stays `PutObject`-only.
 
+## R-15 encrypted backups (`r15-backups.tf`, M-A7 §2) — supersedes the section above
+
+`manage_r15_backups = true` creates the backup bucket `aramo-prod-db-backups-use1`: SSE-KMS with a
+dedicated rotating key and Bucket Key, versioning, public access fully blocked, ACLs disabled and a
+TLS-only policy. It also creates the lifecycle (`routine/` 30 days, `historic/` per
+`r15_historic_retention_days`, no rule on `legal-hold/`, where deletion is denied by bucket
+policy) and two IAM users with no access keys in state: `aramo-prod-backup-writer` (box;
+`PutObject` on `routine/` + `historic/`, prefix-scoped `ListBucket`, KMS via S3 only) and
+`aramo-prod-backup-restorer` (operator Mac; read only). Objects are already `age`-encrypted on the
+box, so AWS never holds a key that can read a backup. Off by default; **apply from the Mac only**.
+Generate keys out-of-band (`aws iam create-access-key --user-name …`). Procedure:
+`doc/runbooks/RUNBOOK-backups-r15.md`. The legacy `create_backup_iam_user` path above (bucket
+`astre-aramo-backups`, which was never created) is superseded; leave it off.
+
 ## SES mailer IAM — `ses:SendEmail` grant (PO-console apply)
 
 Email-S1 adds Aramo's transactional mailer (`@aramo/mailer`). The api authenticates

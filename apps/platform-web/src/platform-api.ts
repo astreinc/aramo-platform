@@ -230,6 +230,13 @@ export interface PersonalAbuseReport {
   created_at: string;
 }
 
+/** M-A7 §5.2 — one report in the operators' queue, with the sender it is about. */
+export interface SignAbuseQueueItem extends PersonalAbuseReport {
+  tenant_id: string;
+  sender_kind: string | null;
+  sender_name: string | null;
+}
+
 export interface PersonalInvite {
   code: string;
   email: string;
@@ -342,6 +349,11 @@ export const platformApi = {
 
   listPersonalReports(tenantId: string): Promise<{ items: PersonalAbuseReport[] }> {
     return apiClient.get(`/platform/tenants/${encodeURIComponent(tenantId)}/personal/reports`);
+  },
+
+  // M-A7 §5.2 — the abuse-report queue across every Aramo Sign sender.
+  listSignAbuseReports(outcome?: AbuseReportOutcome): Promise<{ items: SignAbuseQueueItem[] }> {
+    return apiClient.get(`/platform/sign-abuse-reports${outcome !== undefined ? `?outcome=${encodeURIComponent(outcome)}` : ''}`);
   },
 
   decidePersonalReport(reportId: string, body: { outcome: Exclude<AbuseReportOutcome, 'OPEN'>; reason: string }): Promise<PersonalAbuseReport> {

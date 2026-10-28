@@ -750,3 +750,95 @@ model PersonalSignupInvite {
   @@index([email])
   @@schema("identity")
 }
+
+// ── Privacy requests (Aramo-Sign-Mobile-Amendment-M-A7 §3, R-1..R-4, R-17) ──
+// The ONE platform privacy-request capability (TM-L12 rights-request path:
+// REQUEST → IDENTITY_VALIDATED → DATA_INVENTORY → EXPORT | CORRECT | DELETE →
+// AUDITED_COMPLETION). Aramo Sign is the first consumer (product = SIGN).
+// String statuses enforced in application code (repo convention) plus CHECKs.
+// PII is minimal: a web requester's email is kept only as a keyed hash (lookup)
+// and an AES-256-GCM ciphertext (so the privacy team can reply); in-app requests
+// reference the user by id only. Rows are never deleted (DB guard), and the
+// events table is append-only (DB guard).
+model PrivacyRequest {
+  id                       String    @id @db.Uuid
+  // The stable public request identifier shown to the requester (e.g. PR-7K3M-9QX2-H4TD).
+  reference                String    @unique
+  // CHECK: SIGN
+  product                  String    @default("SIGN")
+  // CHECK: DELETION | ACCESS | EXPORT | CORRECTION
+  request_type             String
+  // CHECK: ACCOUNT_HOLDER | BUSINESS_MEMBER | GUEST_SIGNER | FORMER_USER | AUTHORIZED_REPRESENTATIVE
+  subject_kind             String
+  // CHECK: IN_APP | WEB | OPERATOR
+  channel                  String
+  // CHECK: RECEIVED | IDENTITY_VALIDATED | DATA_INVENTORY | REFERRED_TO_ORGANIZATION |
+  //        EXECUTING | COMPLETED | DENIED_WITH_REASON | CANCELLED
+  status                   String    @default("RECEIVED")
+  subject_user_id          String?   @db.Uuid
+  subject_tenant_id        String?   @db.Uuid
+  // The organization a Business-owned part of the request was referred to.
+  referred_tenant_id       String?   @db.Uuid
+  contact_email_hash       String?
+  contact_email_ciphertext String?
+  due_at                   DateTime  @db.Timestamptz(6)
+  // The responsible Aramo operator (platform user id); null = the privacy team queue.
+  assigned_operator_id     String?   @db.Uuid
+  // Counts only (DATA_INVENTORY), never row contents.
+  inventory                Json?
+  // Counts only (AUDITED_COMPLETION).
+  completion_evidence      Json?
+  outcome_code             String?
+  outcome_text             String?
+  identity_validated_at    DateTime? @db.Timestamptz(6)
+  completed_at             DateTime? @db.Timestamptz(6)
+  created_at               DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime  @default(now()) @db.Timestamptz(6)
+
+  events PrivacyRequestEvent[]
+
+  @@index([status, due_at])
+  @@index([subject_user_id, created_at])
+  @@index([contact_email_hash])
+  @@schema("identity")
+}
+
+// Append-only history of a privacy request (UPDATE / DELETE refused by trigger).
+model PrivacyRequestEvent {
+  id          String   @id @db.Uuid
+  request_id  String   @db.Uuid
+  // e.g. CREATED, STATUS_CHANGED, ASSIGNED, REFERRAL_RECORDED, LEGAL_HOLD, EXECUTION_FAILED, NOTE
+  event_type  String
+  from_status String?
+  to_status   String?
+  // CHECK: SUBJECT | OPERATOR | SYSTEM
+  actor_type  String
+  actor_id    String?  @db.Uuid
+  // Counts, codes and short operator notes only.
+  payload     Json     @default("{}")
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  request PrivacyRequest @relation(fields: [request_id], references: [id])
+
+  @@index([request_id, created_at])
+  @@schema("identity")
+}
+
+// The one-time email-ownership proof of a public web request. Only the SHA-256 of
+// the token is stored; the token travels in the link's URL fragment and comes back
+// in a POST body. The email is held as the same keyed hash + ciphertext.
+model PrivacyRequestEmailProof {
+  id               String    @id @db.Uuid
+  token_hash       String    @unique
+  email_hash       String
+  email_ciphertext String
+  product          String    @default("SIGN")
+  request_type     String
+  expires_at       DateTime  @db.Timestamptz(6)
+  consumed_at      DateTime? @db.Timestamptz(6)
+  request_id       String?   @db.Uuid
+  created_at       DateTime  @default(now()) @db.Timestamptz(6)
+
+  @@index([email_hash, created_at])
+  @@schema("identity")
+}

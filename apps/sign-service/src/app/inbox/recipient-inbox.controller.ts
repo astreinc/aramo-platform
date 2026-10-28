@@ -4,6 +4,7 @@ import { AuthContext, type AuthContextType, JwtAuthGuard } from '@aramo/auth';
 import { EsignSenderConsumerGuard } from '@aramo/identity';
 
 import { toHttp } from '../esign-http.controller.js';
+import { SignReportService } from '../personal/sign-report.service.js';
 
 import { RecipientInboxService } from './recipient-inbox.service.js';
 
@@ -18,7 +19,11 @@ export function RecipientInboxBoundary(): MethodDecorator {
 @Controller('v1/sign/inbox')
 @UseFilters(AramoExceptionFilter)
 export class RecipientInboxController {
-  constructor(private readonly inbox: RecipientInboxService) {}
+  constructor(
+    private readonly inbox: RecipientInboxService,
+    // Amendment M-A7 §5.2 (R-11) — "Report" from the app's received-envelope view.
+    private readonly reports: SignReportService,
+  ) {}
 
   private async run<T>(requestId: string, fn: () => Promise<T>): Promise<T> {
     try {
@@ -53,6 +58,15 @@ export class RecipientInboxController {
   @RecipientInboxBoundary()
   signedCopy(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string) {
     return this.run(requestId, () => this.inbox.signedCopy(auth, id, requestId));
+  }
+
+  // Amendment M-A7 §5.2 (R-11) — the same report flow as the emailed "Report this
+  // email" link, keyed by the user's own inbox item (no signing token travels).
+  @Post(':id/report')
+  @HttpCode(HttpStatus.ACCEPTED)
+  @RecipientInboxBoundary()
+  report(@AuthContext() auth: AuthContextType, @RequestId() requestId: string, @Param('id') id: string, @Body() body: { reason?: unknown; note?: unknown }) {
+    return this.run(requestId, () => this.reports.submitFromInbox(auth.sub, id, body ?? {}, requestId));
   }
 
   @Delete(':id')

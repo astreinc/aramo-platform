@@ -433,3 +433,25 @@ export {
   type PersonalSignupStatus,
   type PersonalReviewItem,
 } from './lib/personal/personal-signup.repository.js';
+
+// Aramo-Sign-Mobile-Amendment-M-A7 §3 — the platform privacy-request capability
+// (TM-L12 rights-request path; Aramo Sign is the first consumer).
+export * from './lib/privacy/privacy-request.model.js';
+export {
+  PRIVACY_OUTCOME_TEXT_MAX,
+  PRIVACY_PROOF_TTL_MS,
+  PrivacyRequestService,
+  type PrivacyActor,
+  type PrivacyRequestEventRecord,
+  type PrivacyRequestRecord,
+  type PrivacyRequestView,
+  type PrivacyTransitionPatch,
+} from './lib/privacy/privacy-request.service.js';
+export { PrivacySubjectService, type PrivacyOtherAuthorization, type PrivacySubjectContext } from './lib/privacy/privacy-subject.service.js';
+export {
+  decryptPrivacyEmail,
+  isPlausibleEmail,
+  normalizePrivacyEmail,
+  privacyEmailHash,
+  privacyEmailKeyAvailable,
+} from './lib/privacy/privacy-request-crypto.js';

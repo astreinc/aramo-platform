@@ -2,16 +2,8 @@
 // rasterize to PNG on the device (C-19). Used by signing and by Account → Default
 // signature ("Save signature").
 import { useRef, useState, type RefObject } from 'react';
-import {
-  PanResponder,
-  Pressable,
-  StyleSheet,
-  Switch,
-  Text,
-  TextInput,
-  View,
-  type GestureResponderEvent,
-} from 'react-native';
+import { Pressable, StyleSheet, Switch, Text, TextInput, View } from 'react-native';
+import { Gesture, GestureDetector } from 'react-native-gesture-handler';
 import Svg, { Path } from 'react-native-svg';
 
 import { Button } from '../../components/Button';
@@ -85,28 +77,31 @@ export function AdoptSignatureSheet({
   const typedText = isInitials ? initialsOf(name) : name.trim();
   const savedMark = markFromSaved(saved ?? null);
 
-  // The stroke in progress lives in this closure (created once), not in a ref.
+  // The stroke in progress lives in this closure (created once), not in a ref. A native
+  // pan (not a JS PanResponder) so the stroke claims the finger on touch-down, before the
+  // iOS page sheet's drag or the sheet's ScrollView can take it and move the sheet.
   const [pan] = useState(() => {
     let points: { x: number; y: number }[] = [];
-    return PanResponder.create({
-      onStartShouldSetPanResponder: () => true,
-      onMoveShouldSetPanResponder: () => true,
-      onPanResponderTerminationRequest: () => false,
-      onPanResponderGrant: (e: GestureResponderEvent) => {
-        points = [{ x: e.nativeEvent.locationX, y: e.nativeEvent.locationY }];
+    const end = () => {
+      const d = pointsToPath(points);
+      points = [];
+      setLive('');
+      if (d) setStrokes((s) => [...s, d]);
+    };
+    return Gesture.Pan()
+      .withTestId('signature-pad')
+      .runOnJS(true)
+      .minDistance(0)
+      .maxPointers(1)
+      .onBegin((e) => {
+        points = [{ x: e.x, y: e.y }];
         setLive(pointsToPath(points));
-      },
-      onPanResponderMove: (e: GestureResponderEvent) => {
-        points.push({ x: e.nativeEvent.locationX, y: e.nativeEvent.locationY });
+      })
+      .onUpdate((e) => {
+        points.push({ x: e.x, y: e.y });
         setLive(pointsToPath(points));
-      },
-      onPanResponderRelease: () => {
-        const d = pointsToPath(points);
-        points = [];
-        setLive('');
-        if (d) setStrokes((s) => [...s, d]);
-      },
-    });
+      })
+      .onFinalize(end);
   });
 
   const ready = tab === 'type' ? typedText.length > 0 : strokes.length > 0;
@@ -139,7 +134,7 @@ export function AdoptSignatureSheet({
   }
 
   return (
-    <Sheet visible={visible} onClose={onClose} title={title}>
+    <Sheet visible={visible} onClose={onClose} title={title} scrollEnabled={tab === 'type'}>
       <View
         style={[styles.segment, { backgroundColor: t.color.fill, borderRadius: 9 }]}
         accessibilityRole="tablist"
@@ -241,28 +236,29 @@ export function AdoptSignatureSheet({
               Sign here with your finger
             </Text>
           ) : null}
-          <View
-            ref={drawRef}
-            collapsable={false}
-            style={StyleSheet.absoluteFill}
-            {...pan.panHandlers}
-            accessibilityLabel="Signature pad"
-            accessibilityHint="Draw your signature with one finger"
-          >
-            <Svg width="100%" height="100%">
-              {[...strokes, live].filter(Boolean).map((d, i) => (
-                <Path
-                  key={i}
-                  d={d}
-                  stroke={SIGNATURE_INK}
-                  strokeWidth={4}
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-              ))}
-            </Svg>
-          </View>
+          <GestureDetector gesture={pan}>
+            <View
+              ref={drawRef}
+              collapsable={false}
+              style={StyleSheet.absoluteFill}
+              accessibilityLabel="Signature pad"
+              accessibilityHint="Draw your signature with one finger"
+            >
+              <Svg width="100%" height="100%">
+                {[...strokes, live].filter(Boolean).map((d, i) => (
+                  <Path
+                    key={i}
+                    d={d}
+                    stroke={SIGNATURE_INK}
+                    strokeWidth={4}
+                    fill="none"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                ))}
+              </Svg>
+            </View>
+          </GestureDetector>
           <Pressable
             onPress={() => setStrokes([])}
             accessibilityRole="button"

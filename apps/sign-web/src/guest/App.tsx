@@ -62,6 +62,26 @@ function fieldLabel(f: SignField): string {
   return FIELD_LABEL[f.field_type] ?? f.field_type;
 }
 
+/**
+ * Amendment M-A7 §5.2 (R-11) — the guest page's Report action: the same
+ * "Report this email" page the email links to, with the signing token in the URL
+ * FRAGMENT only (never a query string or a path, so no request line or server
+ * log carries it). Null without a usable token.
+ */
+export function reportHrefForToken(token: string): string | null {
+  return /^[A-Za-z0-9_-]{16,256}$/.test(token) ? `/report#token=${encodeURIComponent(token)}` : null;
+}
+
+function ReportLink({ token, className }: { readonly token?: string; readonly className?: string }) {
+  const href = token === undefined ? null : reportHrefForToken(token);
+  if (href === null) return null;
+  return (
+    <a href={href} rel="noreferrer" className={className} data-testid="sg-report">
+      Report this document
+    </a>
+  );
+}
+
 function tokenFromLocation(): string {
   const m = /\/s\/([^/?#]+)/.exec(window.location.pathname);
   if (m !== null && m[1] !== undefined) return decodeURIComponent(m[1]);
@@ -148,10 +168,13 @@ export function Header({
   title,
   progress,
   onDecline,
+  reportToken,
 }: {
   readonly title?: string;
   readonly progress?: string;
   readonly onDecline?: () => void;
+  /** M-A7 §5.2 — the signing token, for the Report action in Help. */
+  readonly reportToken?: string;
 }) {
   const [help, setHelp] = useState(false);
   return (
@@ -178,6 +201,12 @@ export function Header({
         <div className="sg-help" role="note">
           Questions about this document? Reply to the email that brought you here, or contact the person who sent
           it. Your signing link is personal — don&apos;t forward it.
+          {reportToken !== undefined && reportHrefForToken(reportToken) !== null ? (
+            <>
+              {' '}
+              Don&apos;t know the sender, or think it&apos;s a scam? <ReportLink token={reportToken} className="sg-help__link" />.
+            </>
+          ) : null}
         </div>
       ) : null}
     </header>
@@ -637,28 +666,28 @@ export function App(): JSX.Element {
   if (screen === 'invalid')
     return (
       <>
-        <Header />
+        <Header reportToken={token} />
         <EndState tone="error" title="This signing link isn't valid" body="The link may be incomplete or mistyped. Open it again from your email, or ask the sender to send a new one." />
       </>
     );
   if (screen === 'expired')
     return (
       <>
-        <Header />
+        <Header reportToken={token} />
         <EndState tone="muted" title="This link is no longer active" body="It has expired or has already been used to sign. If you still need to sign, ask the sender to send you a new link." />
       </>
     );
   if (screen === 'ended')
     return (
       <>
-        <Header />
+        <Header reportToken={token} />
         <EndState tone="muted" title="This document is no longer available to sign" body="Signing has ended for this document — it may have been completed, declined or withdrawn by the sender." />
       </>
     );
   if (screen === 'notyet')
     return (
       <>
-        <Header />
+        <Header reportToken={token} />
         <EndState
           tone="muted"
           title="It's not your turn to sign yet"
@@ -669,14 +698,14 @@ export function App(): JSX.Element {
   if (screen === 'declined')
     return (
       <>
-        <Header />
+        <Header reportToken={token} />
         <EndState tone="muted" title="You declined to sign" body="Your decision and your reason have been recorded, and the sender can see them. You can close this page." />
       </>
     );
   if (screen === 'done')
     return (
       <>
-        <Header />
+        <Header reportToken={token} />
         <EndState
           tone="ok"
           title={title ? `You've signed ${title}` : "You've signed"}
@@ -687,7 +716,7 @@ export function App(): JSX.Element {
   if (screen === 'network')
     return (
       <>
-        <Header />
+        <Header reportToken={token} />
         <main className="sg-center">
           <div className="sg-card sg-card--error">
             <h1>We couldn&apos;t reach Aramo Sign</h1>
@@ -700,14 +729,14 @@ export function App(): JSX.Element {
   if (screen === 'error')
     return (
       <>
-        <Header />
+        <Header reportToken={token} />
         <EndState tone="error" title="Something went wrong" body="We couldn't open this document. Try the link from your email again later, or contact the sender." />
       </>
     );
   if (screen === 'loading')
     return (
       <>
-        <Header />
+        <Header reportToken={token} />
         <main className="sg-center" aria-busy="true">
           <p className="sg-muted">Opening your document…</p>
         </main>
@@ -717,7 +746,7 @@ export function App(): JSX.Element {
   if (screen === 'landing')
     return (
       <>
-        <Header />
+        <Header reportToken={token} />
         <main className="sg-center">
           <div className="sg-card" data-testid="sg-landing">
             <div className="sg-eyebrow">Document to sign</div>
@@ -729,6 +758,9 @@ export function App(): JSX.Element {
             <Btn variant="quiet" className="sg-btn--block" onClick={() => setDeclineOpen(true)}>
               Decline to sign
             </Btn>
+            <p className="sg-muted sg-small sg-report-line">
+              Don&apos;t know the sender? <ReportLink token={token} />
+            </p>
           </div>
         </main>
         {declineOpen ? <DeclineDialog onDecline={decline} onClose={() => setDeclineOpen(false)} /> : null}
@@ -738,7 +770,7 @@ export function App(): JSX.Element {
   if (screen === 'disclosure')
     return (
       <>
-        <Header />
+        <Header reportToken={token} />
         <main className="sg-center">
           <div className="sg-card sg-card--wide" data-testid="sg-disclosure">
             <h1>Before you sign electronically</h1>
@@ -771,7 +803,7 @@ export function App(): JSX.Element {
 
   return (
     <>
-      <Header title={title} progress={progress} onDecline={() => setDeclineOpen(true)} />
+      <Header title={title} progress={progress} onDecline={() => setDeclineOpen(true)} reportToken={token} />
       {screen === 'review' ? (
         <main className="sg-center">
           <div className="sg-card sg-card--wide" data-testid="sg-review">

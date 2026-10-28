@@ -1,16 +1,16 @@
 // Account (a root-stack screen opened from the side menu with a "‹ Home" back link;
 // `section: 'settings'` scrolls to the Signing settings — M-A4 §1.4-§1.5; handoff §4.9 minus the account switcher — directive §7 C-10: one signed-in
 // identity at a time; "Sign out to use another account"). Profile, account type,
-// Personal plan and usage, default signature and initials, biometric confirmation, push
+// Personal plan and usage, default signature and initials, biometric confirmation and unlock, push
 // preferences (incl. "Show subject on lock screen", default off), devices / sessions,
-// legal re-acceptance, Personal account close, About, Sign out.
+// legal re-acceptance, Delete account / Request deletion (M-A7 §3.3), About, Sign out.
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Application from 'expo-application';
 import * as Notifications from 'expo-notifications';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useRef, useState } from 'react';
-import { Linking, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { isApiError } from '../../api/errors';
@@ -19,6 +19,8 @@ import { useServices } from '../../app/ServicesContext';
 import {
   biometricCapability,
   biometricConfirmPref,
+  biometricUnlockPref,
+  confirmLocally,
   type BiometricCapability,
 } from '../../auth/biometric';
 import { Banner, OfflineBanner } from '../../components/Banner';
@@ -28,18 +30,17 @@ import { Card } from '../../components/Card';
 import { Sheet } from '../../components/Sheet';
 import { useToast } from '../../components/Toast';
 import { WEB_LINKS } from '../../config/env';
+import { ARAMO_SIGN_IDENTITY, PRIVACY_MAILTO, SUPPORT_MAILTO } from '../../config/identity';
 import {
   deviceLabel,
   listSessions,
   revokeSession,
   type NativeSession,
 } from '../../features/account/devices';
+import { DeleteAccountSection } from '../../features/account/DeleteAccountSection';
 import { signedInWithLabel } from '../../features/account/profile';
 import {
   acceptPending,
-  closeAccount,
-  closeConfirmed,
-  loadAccountStatus,
   loadLegalStatus,
 } from '../../features/account/legal';
 import {
@@ -77,7 +78,6 @@ const accountKeys = {
   saved: ['sign', 'me', 'signature'] as const,
   sessions: ['auth', 'native', 'sessions'] as const,
   legal: ['sign', 'legal', 'status'] as const,
-  accountStatus: ['sign', 'account', 'status'] as const,
 };
 
 function open(url: string): void {
@@ -119,27 +119,21 @@ export function AccountScreen() {
     queryFn: () => loadLegalStatus(workspace),
     enabled: personal,
   });
-  const accountStatus = useQuery({
-    queryKey: accountKeys.accountStatus,
-    queryFn: () => loadAccountStatus(workspace),
-    enabled: personal,
-  });
 
   const [bio, setBio] = useState<BiometricCapability | null>(null);
   const [bioOn, setBioOn] = useState(true);
+  const [unlockOn, setUnlockOn] = useState(false);
   const [pushPermission, setPushPermission] = useState<
     'granted' | 'denied' | 'undetermined' | null
   >(null);
   const [adoptTarget, setAdoptTarget] = useState<AdoptTarget | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [closeOpen, setCloseOpen] = useState(false);
-  const [closeText, setCloseText] = useState('');
-  const [closeError, setCloseError] = useState<string | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<NativeSession | null>(null);
 
   useEffect(() => {
     void biometricCapability().then(setBio, () => setBio(null));
     void biometricConfirmPref.get(kv).then(setBioOn, () => undefined);
+    void biometricUnlockPref.get(kv).then(setUnlockOn, () => undefined);
     void Notifications.getPermissionsAsync().then(
       (p) => setPushPermission(p.granted ? 'granted' : p.canAskAgain ? 'undetermined' : 'denied'),
       () => setPushPermission(null),
@@ -211,20 +205,6 @@ export function AccountScreen() {
     } catch (e) {
       toast.show(isApiError(e) ? refusalMessage(e) : 'Couldn’t record that. Try again.');
       void legal.refetch();
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function doClose(): Promise<void> {
-    setBusy('close');
-    setCloseError(null);
-    try {
-      await closeAccount(workspace);
-      setCloseOpen(false);
-      await signOut();
-    } catch (e) {
-      setCloseError(isApiError(e) ? refusalMessage(e) : 'Couldn’t close the account. Try again.');
     } finally {
       setBusy(null);
     }
@@ -333,7 +313,7 @@ export function AccountScreen() {
               <Button
                 title="Free plan terms"
                 variant="text"
-                onPress={() => open(WEB_LINKS.terms)}
+                onPress={() => open(WEB_LINKS.personalTerms)}
                 style={{ alignSelf: 'flex-start' }}
               />
             </Card>
@@ -408,6 +388,27 @@ export function AccountScreen() {
                 setBioOn(v);
                 void biometricConfirmPref.set(kv, v);
               }}
+            />
+          ) : null}
+          {bio?.available ? (
+            <SettingRow
+              testID="biometric-unlock-toggle"
+              title={`Unlock with ${bio.label}`}
+              subtitle="Asked when you open the app and after 5 minutes away. Stays on this phone."
+              value={unlockOn}
+              onValueChange={(v) => {
+                // Turning it on or off takes a successful check, so whoever holds an
+                // unlocked phone can't switch it off.
+                void confirmLocally(
+                  v ? `Turn on unlock with ${bio.label}` : `Turn off unlock with ${bio.label}`,
+                )
+                  .catch(() => false)
+                  .then(async (ok) => {
+                    if (!ok) return;
+                    await biometricUnlockPref.set(kv, v);
+                    setUnlockOn(v);
+                  });
+              }}
               last
             />
           ) : null}
@@ -471,6 +472,24 @@ export function AccountScreen() {
           <SettingRow title="Help" onPress={() => open(WEB_LINKS.help)} />
           <SettingRow title="Privacy" onPress={() => open(WEB_LINKS.privacy)} />
           <SettingRow title="Terms" onPress={() => open(WEB_LINKS.terms)} />
+          {/* M-A7 §5.1 (G-6) — the one identity block (config/identity.ts). */}
+          <SettingRow
+            testID="about-developer"
+            title="Developer"
+            subtitle={`${ARAMO_SIGN_IDENTITY.legalEntity}\n${ARAMO_SIGN_IDENTITY.postalAddress}`}
+          />
+          <SettingRow
+            testID="about-support"
+            title="Support"
+            subtitle={ARAMO_SIGN_IDENTITY.supportEmail}
+            onPress={() => void Linking.openURL(SUPPORT_MAILTO).catch(() => undefined)}
+          />
+          <SettingRow
+            testID="about-privacy-contact"
+            title="Privacy contact"
+            subtitle={ARAMO_SIGN_IDENTITY.privacyEmail}
+            onPress={() => void Linking.openURL(PRIVACY_MAILTO).catch(() => undefined)}
+          />
           <SettingRow
             title="Version"
             trailing={Application.nativeApplicationVersion ?? '1.0'}
@@ -478,16 +497,8 @@ export function AccountScreen() {
           />
         </Card>
 
-        {personal && accountStatus.data?.closable ? (
-          <View style={[styles.pad, { marginTop: 24 }]}>
-            <Button
-              title="Close account"
-              variant="destructive"
-              disabled={!online}
-              onPress={() => setCloseOpen(true)}
-            />
-          </View>
-        ) : null}
+        {/* M-A7 §3.3 — every account type; replaces the Personal close (closing alone is not deletion). */}
+        <DeleteAccountSection personal={personal} online={online} />
 
         <View style={[styles.pad, { marginTop: 24 }]}>
           <Button
@@ -535,41 +546,6 @@ export function AccountScreen() {
         <Button title="Cancel" variant="text" onPress={() => setRevokeTarget(null)} />
       </Sheet>
 
-      <Sheet visible={closeOpen} onClose={() => setCloseOpen(false)} title="Close your account?">
-        <Text style={{ color: t.color.textSecondary, fontSize: 15, lineHeight: 21 }}>
-          Sending stops for good. Envelopes you already sent stay open for their signers. Type CLOSE
-          to confirm.
-        </Text>
-        <TextInput
-          testID="close-confirm-input"
-          value={closeText}
-          onChangeText={setCloseText}
-          autoCapitalize="characters"
-          autoCorrect={false}
-          accessibilityLabel="Type CLOSE to confirm"
-          style={[
-            styles.input,
-            {
-              borderColor: t.color.separator,
-              color: t.color.text,
-              backgroundColor: t.color.surface,
-            },
-          ]}
-        />
-        {closeError ? (
-          <Text accessibilityRole="alert" style={{ color: t.color.destructive }}>
-            {closeError}
-          </Text>
-        ) : null}
-        <Button
-          title="Close account"
-          variant="destructive"
-          disabled={!closeConfirmed(closeText) || !online}
-          busy={busy === 'close'}
-          onPress={() => void doClose()}
-        />
-        <Button title="Cancel" variant="text" onPress={() => setCloseOpen(false)} />
-      </Sheet>
     </View>
   );
 }
@@ -587,5 +563,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 17, minHeight: 48 },
 });

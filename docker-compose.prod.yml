@@ -54,6 +54,16 @@
 # addressed as `aramo-singlebox_<volume>` (E16b).
 name: aramo-singlebox
 
+# Bounded container logs (M-A7 §1, R-16): docker's json-file driver keeps
+# everything forever by default. Every service rotates at 10 MB and keeps 5 files
+# (at most 50 MB per container); nginx's access log is redacted at the source
+# (deploy/nginx/templates/aramo.conf.template).
+x-aramo-logging: &aramo-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "5"
+
 services:
   # ── Front-Door Migration (ADR-0023) — nginx front door + certbot DNS-01 ───────
   # nginx is the single ingress on 80/443 (it replaced the retired front door at
@@ -61,6 +71,7 @@ services:
   # (renew loop; initial issuance is the cutover-runbook step). Backends are never
   # published to the host — nginx is the only public peer.
   nginx:
+    logging: *aramo-logging
     build:
       context: .
       dockerfile: deploy/nginx/Dockerfile
@@ -138,6 +149,7 @@ services:
   # mapped onto the AWS_* the plugin reads — kept SEPARATE from the box-wide AWS_*
   # app credentials.
   certbot:
+    logging: *aramo-logging
     image: certbot/dns-route53:v3.1.0
     container_name: aramo-prod-certbot
     restart: unless-stopped
@@ -156,6 +168,7 @@ services:
         while :; do certbot renew --non-interactive; sleep 12h & wait $${!}; done
 
   api:
+    logging: *aramo-logging
     # D1 image, UNCHANGED — referenced, not rebuilt. Override ARAMO_API_IMAGE
     # to point at the ECR tag (D2) on the box; defaults to the local D1 tag.
     image: ${ARAMO_API_IMAGE:-aramo/api:local}
@@ -319,6 +332,7 @@ services:
   # API and NOT the other background workers. This is where résumé extraction
   # executes — OFF the API request path — on the single box. No HTTP port.
   talent-intake-worker:
+    logging: *aramo-logging
     image: ${ARAMO_API_IMAGE:-aramo/api:local}
     container_name: aramo-prod-talent-intake-worker
     restart: unless-stopped
@@ -362,6 +376,7 @@ services:
         condition: service_healthy
 
   auth-service:
+    logging: *aramo-logging
     # D1 image, UNCHANGED — referenced, not rebuilt.
     image: ${ARAMO_AUTH_IMAGE:-aramo/auth-service:local}
     container_name: aramo-prod-auth
@@ -432,6 +447,7 @@ services:
         condition: service_healthy
 
   sign-service:
+    logging: *aramo-logging
     # DOC-3 — Native E-Sign Service Core backend. Container-internal only (never
     # port-published; externally unreachable while NGINX_SIGN_SERVER_NAME is unset).
     # ⚠ REQUIRED whenever nginx runs: the nginx image bakes the sign.aramo.ai block
@@ -563,6 +579,14 @@ services:
       - SIGN_RETENTION_WORKER_ENABLED
       - SIGN_RETENTION_QUEUE_CLEANUP_ENABLED
       - SIGN_RETENTION_INTERVAL_MS
+      # Aramo-Sign-Mobile-Amendment-M-A7 §3 — privacy requests. Staged deletion execution is
+      # OFF unless SIGN_PRIVACY_DELETION_EXECUTION_ENABLED=1 (production enablement needs a
+      # separate authorization). PRIVACY_REQUEST_EMAIL_KEY (32 bytes, base64) protects a web
+      # requester's email; unset = the public web request fails closed. The tenant pool id
+      # lets an enabled execution retire a Personal user's Cognito identity.
+      - SIGN_PRIVACY_DELETION_EXECUTION_ENABLED
+      - PRIVACY_REQUEST_EMAIL_KEY
+      - AUTH_COGNITO_TENANT_USER_POOL_ID
     volumes:
       - /opt/aramo/geoip:/geoip:ro
       - /opt/aramo/secrets:/opt/aramo/secrets:ro
@@ -571,6 +595,7 @@ services:
         condition: service_healthy
 
   talent-intelligence-service:
+    logging: *aramo-logging
     # ATI-SEP-1 T0 (ADR-0036) — Talent Intelligence, an independently subscribable
     # product with its OWN database (aramo_intelligence, role aramo_intelligence) on
     # the same postgres server. Container-internal ONLY: never port-published and
@@ -634,6 +659,7 @@ services:
         condition: service_healthy
 
   platform-admin:
+    logging: *aramo-logging
     # Inc-3 PR-3.3 — the platform-console backend as a real prod service.
     # Override ARAMO_PLATFORM_ADMIN_IMAGE to the GHCR tag on the box; defaults
     # to the local build tag. Container-internal only (never port-published; the
@@ -684,6 +710,9 @@ services:
       - SIGN_ADDRESS_PROVIDER
       - SIGN_ADDRESS_PROVIDER_KEY
       - ARAMO_SIGN_BASE_URL
+      # Aramo-Sign-Mobile-Amendment-M-A7 §3 — the privacy team's queue (same values as sign-service).
+      - SIGN_PRIVACY_DELETION_EXECUTION_ENABLED
+      - PRIVACY_REQUEST_EMAIL_KEY
       - SIGN_SENDER_WEB_BASE_URL
       - MAILER_PROVIDER
       - SES_FROM_ADDRESS
@@ -732,6 +761,7 @@ services:
         condition: service_healthy
 
   postgres:
+    logging: *aramo-logging
     # GS-2 P1 — desired image is pgvector-capable PG17. This is the REPOSITORY desired-state
     # declaration only. ⚠ OPS PREREQUISITE — NOT YET ATTESTED: the running prod DB container
     # must be recreated on this image (same PG17 major, same volume/data preserved) and prove
@@ -753,6 +783,7 @@ services:
       retries: 20
 
   redis:
+    logging: *aramo-logging
     image: redis:7
     container_name: aramo-prod-redis
     restart: unless-stopped

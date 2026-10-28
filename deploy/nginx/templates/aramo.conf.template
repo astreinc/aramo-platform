@@ -21,6 +21,30 @@
 # compose network (the retired front door's posture). DNS-01 only — no /.well-known/acme-challenge
 # location (certbot solves the challenge via Route53, not HTTP-01).
 
+# ── Access/error logging: credentials never reach the logs (M-A7 §1, R-16) ──
+# Guest signing and download links carry a bearer token in the PATH (/s/<token>,
+# /d/<token>), and the magic-link / OAuth callbacks carry one in the QUERY
+# (?token=, ?code=). The request itself reaches the upstream unchanged; only what
+# is written to the log is redacted. Every server block inherits this format:
+#   /s/<anything>, /d/<anything>  → /s/[redacted], /d/[redacted]
+#   any query string               → ?[redacted]
+#   Referer                        → scheme + host only
+# nginx error lines embed the request line, so the credential-bearing locations
+# below also raise their error_log level to crit (backends log their own errors).
+map $request_uri $aramo_log_uri {
+  ~^/(?<aramo_log_sd>[sd])/        "/${aramo_log_sd}/[redacted]";
+  ~^(?<aramo_log_path>[^?]*)\?     "${aramo_log_path}?[redacted]";
+  default                          $request_uri;
+}
+map $http_referer $aramo_log_referer {
+  ""                                      "-";
+  ~^(?<aramo_log_origin>https?://[^/?#]+)  $aramo_log_origin;
+  default                                 "[redacted]";
+}
+log_format aramo_redacted '$remote_addr [$time_local] "$request_method $aramo_log_uri $server_protocol" '
+                          '$status $body_bytes_sent "$aramo_log_referer" "$http_user_agent" $request_time';
+access_log /var/log/nginx/access.log aramo_redacted;
+
 # ── Tenant / wildcard host (tenant / wildcard host) ──────────────
 server {
   listen 443 ssl;
@@ -75,10 +99,17 @@ server {
 
   # API + auth surfaces → container-internal backends (paths reach the services
   # unchanged; proxy_pass carries no URI part).
+  # Microsoft OAuth callback: ?code= is a credential, so its error lines stay out
+  # of the log (M-A7 §1). Same upstream as /v1/.
+  location = /v1/integrations/microsoft/callback {
+    error_log /var/log/nginx/error.log crit;
+    proxy_pass http://api:3000;
+  }
   location /v1/ {
     proxy_pass http://api:3000;
   }
   location /auth/ {
+    error_log /var/log/nginx/error.log crit;  # callbacks carry ?code= / ?token= (M-A7 §1)
     proxy_pass http://auth-service:3001;
     # HF1-A: the auth callback response sets a large Set-Cookie session JWT.
     # nginx's default proxy response-header buffers (4k/8k) overflow -> nginx
@@ -132,6 +163,7 @@ server {
   proxy_set_header X-Forwarded-Proto $scheme;
 
   location /auth/ {
+    error_log /var/log/nginx/error.log crit;  # callbacks carry ?code= / ?token= (M-A7 §1)
     proxy_pass http://auth-service:3001;
     # HF1-A: the auth callback response sets a large Set-Cookie session JWT.
     # nginx's default proxy response-header buffers (4k/8k) overflow -> nginx
@@ -219,6 +251,7 @@ server {
     proxy_pass http://api:3000;
   }
   location /auth/ {
+    error_log /var/log/nginx/error.log crit;  # callbacks carry ?code= / ?token= (M-A7 §1)
     proxy_pass http://auth-service:3001;
     # HF1-A: the auth callback response sets a large Set-Cookie session JWT.
     # nginx's default proxy response-header buffers (4k/8k) overflow -> nginx
@@ -378,6 +411,14 @@ server {
     client_max_body_size 8k;
     proxy_pass http://sign-service:3003;
   }
+  # Public — privacy requests from https://sign.aramo.ai/delete-account
+  # (Aramo-Sign-Mobile-Amendment-M-A7 §3.3): start / verify / status, no session.
+  # The one-time token travels in the POST body only. Same edge budget as reports.
+  location /v1/sign/privacy-requests/ {
+    limit_req zone=sign_report burst=5 nodelay;
+    client_max_body_size 8k;
+    proxy_pass http://sign-service:3003;
+  }
   # Public entry — self-service signup (platform-admin owns the provisioning
   # saga). Session-less; dark unless SIGN_PUBLIC_SIGNUP_ENABLED=1.
   location /v1/signup/sign/ {
@@ -403,6 +444,7 @@ server {
     proxy_pass http://api:3000;
   }
   location /auth/ {
+    error_log /var/log/nginx/error.log crit;  # callbacks carry ?code= / ?token= (M-A7 §1)
     limit_req zone=sign_auth burst=40 nodelay;
     proxy_pass http://auth-service:3001;
     # HF1-A — the auth callback sets several cookies; widen the header buffers.
@@ -416,6 +458,7 @@ server {
   # own, tighter zone: these routes take authorization codes and refresh tokens.
   # Tokens travel in JSON bodies, never cookies; the buffers match /auth/ anyway.
   location /auth/native/ {
+    error_log /var/log/nginx/error.log crit;  # callbacks carry ?code= / ?token= (M-A7 §1)
     limit_req zone=sign_native_auth burst=20 nodelay;
     client_max_body_size 16k;
     proxy_pass http://auth-service:3001;
@@ -454,6 +497,7 @@ server {
   # Guest signing pages — the same SPA, a stricter policy: no third-party origin
   # at all (self-hosted fonts only) and never cached (the path carries a token).
   location ~ ^/(s|d)/ {
+    error_log /var/log/nginx/error.log crit;  # the path is a bearer token (M-A7 §1)
     root /srv/sign;
     # Serve the SPA shell IN this location (a file check, not an internal
     # redirect — /index.html as the last argument would re-enter `location /`

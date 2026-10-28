@@ -470,6 +470,35 @@ export const accountApi = {
     apiClient.post<{ state: 'closed'; closed_at: string }>('/v1/sign/account/close', reason !== undefined && reason.trim() !== '' ? { confirm: 'CLOSE', reason: reason.trim() } : { confirm: 'CLOSE' }),
 };
 
+// Aramo-Sign-Mobile-Amendment-M-A7 §3 — privacy requests (deletion, access, export,
+// correction). Signed in: the caller's own requests. Public (no session): the
+// /delete-account flow — start (always 202), verify (the token from the link's URL
+// fragment, in the body only) and status by reference + email.
+export type PrivacyRequestType = 'DELETION' | 'ACCESS' | 'EXPORT' | 'CORRECTION';
+export interface PrivacyRequestView {
+  reference: string;
+  request_type: PrivacyRequestType;
+  subject_kind: string;
+  channel: string;
+  status: string;
+  status_label: string;
+  referred_to_organization: boolean;
+  due_at: string;
+  created_at: string;
+  updated_at: string;
+  completed_at: string | null;
+  outcome_code: string | null;
+  outcome_text: string | null;
+  retained: { key: string; label: string; why: string }[];
+  organization_decides: string | null;
+  privacy_contact: string;
+}
+export const privacyApi = {
+  mine: () => apiClient.get<{ items: PrivacyRequestView[] }>('/v1/sign/me/privacy-requests'),
+  request: (request_type: PrivacyRequestType) =>
+    apiClient.post<PrivacyRequestView>('/v1/sign/me/privacy-requests', request_type === 'DELETION' ? { request_type, confirm: 'DELETE' } : { request_type }),
+};
+
 // ORG-UX-1 §6 — Sign member role administration is retired (Organization owns roles).
 
 export const senderApi = {
