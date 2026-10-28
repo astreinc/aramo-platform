@@ -58,7 +58,9 @@ describe('/delete-account (public)', () => {
     const fetch = vi.fn(async (input: RequestInfo | URL) => (String(input).endsWith('/v1/sign/privacy-requests/start') ? json({ received: true }, 202) : json({}, 401)));
     open(fetch);
     const form = await screen.findByTestId('delete-account-form');
-    expect(form).toHaveTextContent('Delete your Aramo Sign account');
+    // M-A8 §2.2 — the page is "Privacy and account requests" (the URL stays).
+    expect(form).toHaveTextContent('Privacy and account requests');
+    expect(form).not.toHaveTextContent('Delete your Aramo Sign account');
     expect(screen.getByTestId('delete-account-identity')).toHaveTextContent('Astre Consulting Services Inc');
     expect(screen.getByTestId('delete-account-explainer')).toHaveTextContent('your organization decides');
     fireEvent.change(screen.getByTestId('privacy-email'), { target: { value: 'pat@example.com' } });
@@ -119,12 +121,31 @@ describe('Settings → Delete account / privacy requests', () => {
     expect(await screen.findByTestId('settings-privacy-result')).toHaveTextContent('PR-7K3M-9QX2-H4TD');
   });
 
-  it('Business: explains the organization’s authority and Aramo’s fallback', async () => {
-    wrap(<PrivacyRequestsSection personal={false} loader={async () => ({ items: [] })} requester={vi.fn()} />);
-    const copy = await screen.findByTestId('privacy-business-copy');
-    expect(copy).toHaveTextContent('Your organization decides');
-    expect(copy).toHaveTextContent('Aramo stays responsible');
-    expect(screen.getByRole('button', { name: 'Request deletion' })).toBeDisabled();
+  it('Business (M-A8 §2): organization-managed — no self-service delete; Privacy requests for every right', async () => {
+    const requester = vi.fn(async (t: string) => ({ ...REQUEST, request_type: t as PrivacyRequestView['request_type'], subject_kind: 'BUSINESS_MEMBER' }));
+    wrap(<PrivacyRequestsSection personal={false} loader={async () => ({ items: [] })} requester={requester} />);
+    const card = await screen.findByTestId('settings-privacy-requests');
+    expect(within(card).getByTestId('privacy-business-managed')).toHaveTextContent(
+      'Your organization manages this account. Contact your organization administrator to manage product access.',
+    );
+    expect(card).toHaveTextContent('Privacy requests');
+    expect(card).toHaveTextContent('Aramo stays responsible');
+    expect(screen.queryByRole('button', { name: 'Delete my account' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Request deletion' })).toBeNull();
+    expect(card).not.toHaveTextContent('Delete account');
+    for (const t of ['ACCESS', 'EXPORT', 'CORRECTION', 'DELETION']) expect(within(card).getByTestId(`settings-privacy-type-${t}`)).toBeInTheDocument();
+
+    // ACCESS goes straight through.
+    fireEvent.click(within(card).getByTestId('settings-privacy-send'));
+    await waitFor(() => expect(requester).toHaveBeenCalledWith('ACCESS'));
+    expect(await screen.findByTestId('settings-privacy-result')).toHaveTextContent('PR-7K3M-9QX2-H4TD');
+
+    // DELETION of eligible personal information needs DELETE.
+    fireEvent.click(within(card).getByTestId('settings-privacy-type-DELETION'));
+    expect(within(card).getByTestId('settings-privacy-send')).toBeDisabled();
+    fireEvent.change(screen.getByLabelText('Type DELETE to confirm'), { target: { value: 'DELETE' } });
+    fireEvent.click(within(card).getByTestId('settings-privacy-send'));
+    await waitFor(() => expect(requester).toHaveBeenLastCalledWith('DELETION'));
   });
 
   it('an open deletion request is shown instead of a new one', async () => {

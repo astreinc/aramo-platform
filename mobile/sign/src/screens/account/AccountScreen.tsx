@@ -38,6 +38,8 @@ import {
   type NativeSession,
 } from '../../features/account/devices';
 import { DeleteAccountSection } from '../../features/account/DeleteAccountSection';
+import { isPersonalAccountOwner } from '../../features/account/privacy';
+import { PrivacyRequestsSection } from '../../features/account/PrivacyRequestsSection';
 import { signedInWithLabel } from '../../features/account/profile';
 import {
   acceptPending,
@@ -104,6 +106,8 @@ export function AccountScreen() {
   const billing = useBillingAccount();
   const personal =
     ctx.data?.tenant?.kind === 'PERSONAL' || billing.data?.tenant_kind === 'PERSONAL';
+  // M-A8 §2.1 — only the tenant_owner of a PERSONAL tenant may delete their own account.
+  const personalOwner = isPersonalAccountOwner(ctx.data, billing.data?.tenant_kind);
   const saved = useQuery({ queryKey: accountKeys.saved, queryFn: () => loadSavedMarks(workspace) });
   const prefs = useQuery({
     queryKey: notificationKeys.prefs,
@@ -497,8 +501,13 @@ export function AccountScreen() {
           />
         </Card>
 
-        {/* M-A7 §3.3 — every account type; replaces the Personal close (closing alone is not deletion). */}
-        <DeleteAccountSection personal={personal} online={online} />
+        {/* M-A8 §2 — Personal owners keep "Delete account"; Business users are organization-managed:
+            no self-service delete, a "Privacy requests" entry instead. */}
+        {ctx.data === undefined && billing.data === undefined ? null : personalOwner ? (
+          <DeleteAccountSection personal online={online} />
+        ) : (
+          <PrivacyRequestsSection online={online} />
+        )}
 
         <View style={[styles.pad, { marginTop: 24 }]}>
           <Button

@@ -96,6 +96,19 @@ describe('SenderContextService — workspace and Personal rule from the backend 
     expect(view).toMatchObject({ workspace: 'personal', can_send: false, organization_url: null, org_admin: false, organization_roles_url: null });
   });
 
+  // Aramo-Sign-Mobile-Amendment-M-A8 §2.1 — only the tenant_owner of a PERSONAL tenant is a
+  // Personal account owner; everyone else (incl. a Business tenant_owner) is a Business user.
+  it.each([
+    ['PERSONAL', ['tenant_owner'], true],
+    ['PERSONAL', ['sign_sender'], false],
+    ['BUSINESS', ['tenant_owner'], false],
+    ['BUSINESS', ['sign_sender', 'tenant_admin'], false],
+  ] as const)('%s with %j → personal_account_owner %s', async (kind, roles, owner) => {
+    const svc = contextService(kind);
+    (svc as unknown as { identity: { findRoleKeysForMembership: ReturnType<typeof vi.fn> } }).identity.findRoleKeysForMembership.mockResolvedValue([...roles]);
+    expect((await svc.context(AUTH, 'r')).personal_account_owner).toBe(owner);
+  });
+
   it('assertCanAuthor refuses a PERSONAL tenant with personal_sending_not_enabled', async () => {
     await expect(contextService('PERSONAL').assertCanAuthor(AUTH, 'r')).rejects.toMatchObject({
       code: 'INSUFFICIENT_PERMISSIONS',

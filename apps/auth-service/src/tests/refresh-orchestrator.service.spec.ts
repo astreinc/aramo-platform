@@ -414,7 +414,27 @@ describe('IC-2 PR-6 — refresh re-proves the consumer\'s product capability', (
     const base = () => ({ ...makeMocks().refreshTokens, findByHash: vi.fn().mockResolvedValue(esignDto()) } as unknown as RefreshTokenService);
     const denied = await makeSvc(makeMocks({ refreshTokens: base() })).handleRefresh({ consumer: 'sign', refreshCookie: 'p' });
     expect(denied).toEqual({ kind: 'token_invalid', reason: 'consumer_not_entitled' });
-    const ok = await makeSvc(makeMocks({ refreshTokens: base(), entitlements: { getCapabilities: async () => new Set(['core', 'sign']) } as unknown as TenantEntitlementReader })).handleRefresh({ consumer: 'sign', refreshCookie: 'p' });
+    // M-A8 §2.4 — a Sign refresh also needs Sign authority (a `sign:` scope) in the tenant.
+    const okMocks = makeMocks({ refreshTokens: base(), entitlements: { getCapabilities: async () => new Set(['core', 'sign']) } as unknown as TenantEntitlementReader });
+    (okMocks.role.getScopesByUserAndTenant as ReturnType<typeof vi.fn>).mockResolvedValue(['sign:envelope:read']);
+    const ok = await makeSvc(okMocks).handleRefresh({ consumer: 'sign', refreshCookie: 'p' });
     expect(ok.kind).toBe('success');
+  });
+});
+
+// Aramo-Sign-Mobile-Amendment-M-A8 §2.4 — Sign access removed by an administrator:
+// the next Sign refresh is refused and the presented token revoked.
+describe('M-A8 §2.4 — refresh after Sign access was removed', () => {
+  it('no Sign authority left → token_invalid sign_access_removed; token REVOKED; nothing re-minted', async () => {
+    const mocks = makeMocks({
+      refreshTokens: { ...makeMocks().refreshTokens, findByHash: vi.fn().mockResolvedValue(makeDto({ consumer_type: 'sign' })) } as unknown as RefreshTokenService,
+      entitlements: { getCapabilities: async () => new Set(['core', 'sign', 'ats']) } as unknown as TenantEntitlementReader,
+    });
+    (mocks.role.getScopesByUserAndTenant as ReturnType<typeof vi.fn>).mockResolvedValue(['talent:read']);
+    const r = await makeSvc(mocks).handleRefresh({ consumer: 'sign', refreshCookie: 'p' });
+    expect(r).toEqual({ kind: 'token_invalid', reason: 'sign_access_removed' });
+    expect(mocks.refreshTokens.revoke).toHaveBeenCalledWith({ id: TOKEN_ID });
+    expect(mocks.refreshTokens.rotate).not.toHaveBeenCalled();
+    expect(mocks.jwtIssuer.sign).not.toHaveBeenCalled();
   });
 });

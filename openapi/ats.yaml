@@ -10077,6 +10077,90 @@ paths:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
       security:
         - BearerAuth: []
+  # ── Aramo-Sign-Mobile-Amendment-M-A8 §2.3 — organization-administered Sign access removal ──
+  /v1/tenant/users/{user_id}/products/sign:
+    delete:
+      operationId: removeTenantUserSignAccess
+      summary: Remove a member's Aramo Sign access (tenant-admin tier).
+      description: |
+        Organization-administered deprovisioning of one product — never account
+        deletion. Removes ONLY the Sign product role keys (`sign_admin`,
+        `sign_sender`, `sign_viewer`) from the member's membership in the caller's
+        tenant; allowed when no role remains (the membership stays). In the same
+        transaction the member's Sign refresh tokens (`sign`, `sign_native`) and
+        Sign native device sessions in this tenant are revoked, the principal's
+        authorization version is bumped and the audit event
+        `identity.tenant_user.product_access_removed` (`product` = `sign`) is
+        written. The shared sign-in identity, ATS and other roles, the
+        membership, envelopes, agreements, certificates, signing history and
+        audit records are preserved; no identity-provider call is made.
+        Organization roles (`tenant_owner`, `tenant_admin`) are never touched.
+        Idempotent: a repeat removes and revokes nothing (`changed` false) and
+        writes no audit event. Requires scope `tenant:admin:user-manage`.
+      parameters:
+        - name: user_id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: Sign access removed (counts only; never a token or session id).
+          content:
+            application/json:
+              schema:
+                type: object
+                additionalProperties: false
+                required:
+                  - membership_id
+                  - product
+                  - removed_role_keys
+                  - after_role_keys
+                  - refresh_tokens_revoked
+                  - device_sessions_revoked
+                  - changed
+                properties:
+                  membership_id:
+                    type: string
+                    format: uuid
+                  product:
+                    type: string
+                    enum: [sign]
+                  removed_role_keys:
+                    type: array
+                    items:
+                      type: string
+                  after_role_keys:
+                    type: array
+                    items:
+                      type: string
+                  refresh_tokens_revoked:
+                    type: integer
+                    minimum: 0
+                  device_sessions_revoked:
+                    type: integer
+                    minimum: 0
+                  changed:
+                    type: boolean
+        '400':
+          description: |
+            `VALIDATION_ERROR` — the member holds an organization role
+            (`tenant_owner` or `tenant_admin`), which carries Sign authority of its
+            own and is never changed here (`details.reason`
+            `sign_access_via_organization_role`, `details.role_keys`).
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: 'common.yaml#/components/responses/Forbidden'
+        '404':
+          $ref: 'common.yaml#/components/responses/NotFound'
+      security:
+        - BearerAuth: []
   # Domain-Enforcement P2b (LOCKED) + P3 (LOCKED §4/§5) — tenant domain verification.
   # Served by apps/api; on the Aramo Sign host these two prefixes are the named nginx
   # exception (P3 §4) so Sign-only organizations reach them.

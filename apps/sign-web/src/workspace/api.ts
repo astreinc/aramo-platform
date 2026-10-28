@@ -47,6 +47,9 @@ export interface SenderContext {
   org_admin?: boolean;
   // ORG-UX-1 §6 — Organization → Users & product access (the single role surface).
   organization_roles_url?: string | null;
+  // Aramo-Sign-Mobile-Amendment-M-A8 §2.1 — true only for the tenant_owner of a PERSONAL
+  // tenant (may delete their own account); absent on an older backend.
+  personal_account_owner?: boolean;
 }
 
 export interface Summary {

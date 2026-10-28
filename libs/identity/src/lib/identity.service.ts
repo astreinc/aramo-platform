@@ -1198,6 +1198,17 @@ export class IdentityService {
     });
   }
 
+  // Aramo-Sign-Mobile-Amendment-M-A8 §2.3 — remove one product's role keys from a
+  // membership and revoke that product's sessions, in one repository transaction
+  // (see IdentityRepository.removeProductAccess). The caller (the tenant-user
+  // lifecycle service) has already resolved the membership in the caller's tenant
+  // and refused organization-role holders.
+  async removeProductAccess(
+    args: Parameters<IdentityRepository['removeProductAccess']>[0],
+  ): ReturnType<IdentityRepository['removeProductAccess']> {
+    return this.identityRepo.removeProductAccess(args);
+  }
+
   async resolveRoleIdsByKeys(role_keys: readonly string[]): Promise<string[]> {
     const map = await this.identityRepo.findRoleIdsByKeys(role_keys);
     const missing = role_keys.filter((k) => !map.has(k));

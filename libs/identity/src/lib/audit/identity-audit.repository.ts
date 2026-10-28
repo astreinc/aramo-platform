@@ -89,6 +89,12 @@ export const EVENT_TYPES = [
   'identity.tenant_user.invitation_resent',
   'identity.tenant_user.invitation_revoked',
   'identity.tenant_user.email_changed',
+  // Aramo-Sign-Mobile-Amendment-M-A8 §2.3 — an organization administrator removed one
+  // product's access (DELETE /v1/tenant/users/:user_id/products/sign): the product's
+  // role keys removed and its sessions revoked, in the same transaction as the audit row.
+  // subject_id = the user; payload { product, membership_id, removed/before/after
+  // role keys, refresh_tokens_revoked, device_sessions_revoked } (counts only).
+  'identity.tenant_user.product_access_removed',
   // Settings S3b — tenant-user role-assign. Emitted by
   // TenantUserManagementController.assignRoles (PATCH /v1/tenant/users/
   // :user_id/roles) AFTER the merged replaceMembershipRoles reconcile
@@ -257,6 +263,8 @@ export const TENANT_SCOPED_EVENT_TYPES: ReadonlySet<EventType> = new Set([
   'identity.tenant_user.invitation_resent',
   'identity.tenant_user.invitation_revoked',
   'identity.tenant_user.email_changed',
+  // M-A8 §2.3 — product access removal is per-tenant (the membership's tenant).
+  'identity.tenant_user.product_access_removed',
   // Settings S3b — tenant-user role-assign is per-tenant (the
   // membership's roles live in one tenant). Same subject_id +
   // tenant_id discipline as disable.

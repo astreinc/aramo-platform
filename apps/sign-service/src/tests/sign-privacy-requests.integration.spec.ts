@@ -32,8 +32,10 @@ import { SignPrivacyExecutionWorker } from '../app/privacy/sign-privacy-executio
 //     drafts (with their stored objects) deleted, tenant CLOSED, identity retired;
 //     completed agreements untouched; counts-only evidence;
 //   - shared-identity guard: another product on the account → identity retained;
-//   - Business member: referred; own data + Sign roles removed; the tenant, the
-//     organization's envelopes and other members untouched;
+//   - Business member (M-A8 §2.2): referred, NEVER executed by self-service even with
+//     the flag ON; ACCESS/EXPORT/CORRECTION still accepted; operator-approved
+//     execution removes own data only — the tenant, the organization's envelopes and
+//     other members untouched;
 //   - legal hold: nothing executed, back to the queue;
 //   - tenant isolation of the in-app status;
 //   - the public web flow: identical answers (no enumeration), single-use proof,
@@ -387,7 +389,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     expect((await row(res.body.reference))['completion_evidence']).toMatchObject({ identity_retained: true, identity_retained_because: ['A_OTHER_PRODUCT'], users_deactivated: 0, idp_retirement: 'retained', tenant_closed: false });
   });
 
-  it('flag ON — Business member: referred to the organization; own data and Sign roles removed; tenant, agreements and other members untouched', async () => {
+  it('flag ON — Business member (M-A8 §2.2): DELETION is referred to the organization and NEVER executed by self-service; only an operator approval runs the member part; tenant, agreements and other members untouched', async () => {
     process.env[FLAG] = '1';
     const b = await account('BUSINESS');
     await seedUserData(b.tenant, b.user);
@@ -397,15 +399,40 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
 
     const res = await create(b, { request_type: 'DELETION', confirm: 'DELETE' });
     expect(res.status).toBe(201);
-    expect(res.body).toMatchObject({ subject_kind: 'BUSINESS_MEMBER', status: 'COMPLETED', referred_to_organization: true, outcome_code: 'member_sign_data_removed' });
+    expect(res.body).toMatchObject({ subject_kind: 'BUSINESS_MEMBER', status: 'REFERRED_TO_ORGANIZATION', referred_to_organization: true });
     expect(res.body.organization_decides).toContain('Your organization decides');
     expect(res.body.retained.map((r: { key: string }) => r.key)).toContain('organization_documents');
-    expect((await events(res.body.reference)).map((e) => e.to_status)).toEqual(['RECEIVED', 'IDENTITY_VALIDATED', 'DATA_INVENTORY', 'REFERRED_TO_ORGANIZATION', 'EXECUTING', 'COMPLETED']);
+    const statuses = (await events(res.body.reference)).map((e) => e.to_status);
+    expect(statuses).toEqual(['RECEIVED', 'IDENTITY_VALIDATED', 'DATA_INVENTORY', 'REFERRED_TO_ORGANIZATION']);
+    expect(statuses).not.toContain('EXECUTING');
+    expect(JSON.stringify(await q(`SELECT payload FROM identity."PrivacyRequestEvent" e JOIN identity."PrivacyRequest" r ON r.id = e.request_id WHERE r.reference=$1`, [res.body.reference]))).not.toContain('authenticated_self_service');
     expect((await row(res.body.reference))['referred_tenant_id']).toBe(b.tenant);
 
+    // Nothing was executed: sessions, convenience data and Sign roles all intact.
+    expect(await liveSessions(b.user)).toBe(1);
+    expect(await convenienceCount(b.tenant, b.user)).toBe(6);
+    const signRoles = () => n(`SELECT count(*) AS n FROM identity."UserTenantMembershipRole" mr JOIN identity."UserTenantMembership" m ON m.id = mr.membership_id WHERE m.user_id=$1`, [b.user]);
+    expect(await signRoles()).toBe(1);
+    // The worker does not pick a referred request up on its own.
+    expect(await module.get(SignPrivacyExecutionWorker).tick()).toBe(0);
+    expect((await row(res.body.reference))['status']).toBe('REFERRED_TO_ORGANIZATION');
+
+    // The privacy channel stays open for every right (ACCESS, EXPORT, CORRECTION).
+    for (const t of ['ACCESS', 'EXPORT', 'CORRECTION']) {
+      const other = await create(b, { request_type: t });
+      expect(other.status).toBe(201);
+      expect(other.body).toMatchObject({ request_type: t, subject_kind: 'BUSINESS_MEMBER', status: 'DATA_INVENTORY' });
+    }
+
+    // Operator-approved execution (platform-admin → EXECUTING) still runs the member's
+    // own part through the worker, behind the flag (M-A8 §2.2, unchanged).
+    const requests = module.get(PrivacyRequestService);
+    const r = await requests.findByReference(res.body.reference);
+    await requests.transition(r!.id, 'EXECUTING', { actor_type: 'OPERATOR', actor_id: randomUUID() });
+    await module.get(SignPrivacyExecutionWorker).tick();
+    expect((await row(res.body.reference))['status']).toBe('COMPLETED');
     expect(await liveSessions(b.user)).toBe(0);
     expect(await convenienceCount(b.tenant, b.user)).toBe(0);
-    expect(await n(`SELECT count(*) AS n FROM identity."UserTenantMembershipRole" mr JOIN identity."UserTenantMembership" m ON m.id = mr.membership_id WHERE m.user_id=$1`, [b.user])).toBe(0);
     // Never: the tenant, the organization's envelopes (draft included), the identity, a colleague.
     expect(await tenantStatus(b.tenant)).toBe('ACTIVE');
     expect(await n(`SELECT count(*) AS n FROM "sign"."SignatureEnvelope" WHERE tenant_id=$1 AND deleted_at IS NULL`, [b.tenant])).toBe(2);
@@ -415,6 +442,19 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     expect(retired).not.toContain(`sub-${b.user}`);
     expect(await convenienceCount(b.tenant, colleague.user)).toBe(6);
     expect(await liveSessions(colleague.user)).toBe(1);
+  });
+
+  it('flag ON — a non-owner member of a PERSONAL tenant is a Business subject (M-A8 §2.1): DELETION referred, never executed', async () => {
+    process.env[FLAG] = '1';
+    const p = await account('PERSONAL');
+    const guest = await member(p.tenant, 'sign_sender');
+    await seedUserData(p.tenant, guest.user);
+    const res = await create({ tenant: p.tenant, user: guest.user }, { request_type: 'DELETION', confirm: 'DELETE' });
+    expect(res.status).toBe(201);
+    expect(res.body).toMatchObject({ subject_kind: 'BUSINESS_MEMBER', status: 'REFERRED_TO_ORGANIZATION' });
+    expect((await events(res.body.reference)).map((e) => e.to_status)).not.toContain('EXECUTING');
+    expect(await liveSessions(guest.user)).toBe(1);
+    expect(await tenantStatus(p.tenant)).toBe('ACTIVE');
   });
 
   it('flag ON — legal hold: nothing is executed or closed; the request waits with a LEGAL_HOLD event; an execution attempt returns it to the queue', async () => {

@@ -14,6 +14,10 @@ import { Alert, CardTitle, PrimaryBtn, SecondaryBtn, SuField, SuIcon, SuInput, t
 // FRAGMENT (#token=…, never in a request line or a server log), which this page
 // sends back in a POST body. The start answers the same whether or not an account
 // exists. Status is shown by request ID (+ the email) at any time.
+// Aramo-Sign-Mobile-Amendment-M-A8 §2.2 — the page is titled "Privacy and account
+// requests" (the URL stays): Personal account owners may delete their account; an
+// account from an organization is managed by that organization, and its deletion
+// request (eligible personal information) is referred and reviewed, never automatic.
 
 type View =
   | { kind: 'form' }
@@ -23,7 +27,11 @@ type View =
   | { kind: 'request'; request: PrivacyRequestView };
 
 export const PRIVACY_TYPES: readonly { key: PrivacyRequestType; label: string; sub: string }[] = [
-  { key: 'DELETION', label: 'Delete my account and data', sub: 'Close your Aramo Sign account and delete your personal data' },
+  {
+    key: 'DELETION',
+    label: 'Delete my account or personal information',
+    sub: 'Personal account: close it and delete your data. Account from an organization: delete eligible personal information',
+  },
   { key: 'ACCESS', label: 'See my data', sub: 'Find out what personal data Aramo Sign holds about you' },
   { key: 'EXPORT', label: 'Get a copy of my data', sub: 'Receive a copy of your data' },
   { key: 'CORRECTION', label: 'Correct my data', sub: 'Fix personal data that is wrong' },
@@ -87,8 +95,10 @@ function WhatHappens() {
         acceptances, security logs and abuse reports are kept as our retention rules require; we list them with your request.
       </p>
       <p style={{ margin: 0 }}>
-        <strong>Account from an organization:</strong> your organization decides about documents it sent or that you received in your role. We
-        remove your own Aramo Sign data and access, refer the rest to the organization, and remain responsible for your request.
+        <strong>Account from an organization:</strong> your organization manages your account and its product access; contact your organization
+        administrator to change access. A deletion request is referred to your organization and reviewed by the Aramo privacy team: eligible
+        personal information is deleted after review, your organization decides about documents it sent or that you received in your role, and
+        we remain responsible for your request.
       </p>
     </div>
   );
@@ -207,8 +217,8 @@ export function DeleteAccountPage() {
     <Frame testId="delete-account-form">
       <Tile tone="red" icon="shield" />
       <CardTitle
-        title="Delete your Aramo Sign account"
-        sub="Ask us to delete your Aramo Sign account and data, or to see, copy or correct your data. You don’t need the app or to sign in: we confirm your email address first."
+        title="Privacy and account requests"
+        sub="Ask us to see, copy, correct or delete your personal information, or to delete your Personal Aramo Sign account. You don’t need the app or to sign in: we confirm your email address first."
       />
       <form className="su-stack" onSubmit={submit} noValidate>
         <div className="su-field">
@@ -256,7 +266,10 @@ export function DeleteAccountPage() {
           {busy ? 'Sending…' : 'Email me a confirmation link'}
         </PrimaryBtn>
       </form>
-      <p className="su-hint">Signed in? You can also request deletion in the app (Account → Delete account) or in Settings.</p>
+      <p className="su-hint">
+        Signed in? Personal account owners can also delete their account in the app (Account → Delete account) or in Settings; an account from an
+        organization uses Privacy requests there.
+      </p>
       <WhatHappens />
       <StatusLookup onFound={(r) => setView({ kind: 'request', request: r })} />
       <AppIdentity />

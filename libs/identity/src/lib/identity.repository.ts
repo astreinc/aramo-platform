@@ -953,6 +953,96 @@ export class IdentityRepository {
       }),
     );
   }
+
+  // Aramo-Sign-Mobile-Amendment-M-A8 §2.3 — remove one product's access from a member,
+  // in ONE transaction:
+  //   - delete only the membership's role rows whose key is in `role_keys` (the
+  //     product's role keys; every other role and the membership stay);
+  //   - revoke the member's product refresh tokens (`refresh_consumers`) and native
+  //     device sessions (`native_consumer`) for THIS tenant — raw SQL against
+  //     auth_storage (the libs/sign privacy-repository pattern), so no nx edge to
+  //     @aramo/auth-storage is created; skipped when the schema is absent;
+  //   - bump principal_version (the compact token is immediately stale);
+  //   - write the audit row `identity.tenant_user.product_access_removed`.
+  // No-op (nothing removed, nothing revoked) = no bump and no audit row.
+  async removeProductAccess(args: {
+    membership_id: string;
+    tenant_id: string;
+    user_id: string;
+    product: 'sign';
+    role_keys: readonly string[];
+    refresh_consumers: readonly string[];
+    native_consumer: string;
+    actor_user_id: string;
+    request_id: string;
+  }): Promise<{
+    before_role_keys: string[];
+    removed_role_keys: string[];
+    after_role_keys: string[];
+    refresh_tokens_revoked: number;
+    device_sessions_revoked: number;
+    changed: boolean;
+  }> {
+    return this.prisma.$transaction(async (tx) => {
+      const rows = await tx.userTenantMembershipRole.findMany({
+        where: { membership_id: args.membership_id },
+        select: { id: true, role: { select: { key: true, is_active: true } } },
+      });
+      const before_role_keys = rows.filter((r) => r.role.is_active).map((r) => r.role.key).sort();
+      const doomed = rows.filter((r) => args.role_keys.includes(r.role.key));
+      if (doomed.length > 0) {
+        await tx.userTenantMembershipRole.deleteMany({
+          where: { membership_id: args.membership_id, id: { in: doomed.map((r) => r.id) } },
+        });
+      }
+      const removed_role_keys = [...new Set(doomed.filter((r) => r.role.is_active).map((r) => r.role.key))].sort();
+      const after_role_keys = before_role_keys.filter((k) => !args.role_keys.includes(k));
+
+      let refresh_tokens_revoked = 0;
+      let device_sessions_revoked = 0;
+      const present = await tx.$queryRaw<Array<{ present: boolean }>>`
+        SELECT to_regclass('auth_storage."NativeDeviceSession"') IS NOT NULL AND to_regclass('auth_storage."RefreshToken"') IS NOT NULL AS present`;
+      if (present[0]?.present === true) {
+        device_sessions_revoked = await tx.$executeRaw`
+          UPDATE auth_storage."NativeDeviceSession" SET revoked_at = now(), revoke_reason = ${`${args.product}_access_removed`}
+           WHERE user_id = ${args.user_id}::uuid AND tenant_id = ${args.tenant_id}::uuid AND consumer_type = ${args.native_consumer} AND revoked_at IS NULL`;
+        refresh_tokens_revoked = await tx.$executeRaw`
+          UPDATE auth_storage."RefreshToken" SET revoked_at = now(), updated_at = now()
+           WHERE user_id = ${args.user_id}::uuid AND tenant_id = ${args.tenant_id}::uuid AND consumer_type = ANY(${[...args.refresh_consumers]}::text[]) AND revoked_at IS NULL`;
+      }
+
+      const changed = doomed.length > 0 || refresh_tokens_revoked > 0 || device_sessions_revoked > 0;
+      if (changed) {
+        await bumpPrincipalVersion(tx, { tenant_id: args.tenant_id, principal_id: args.user_id });
+        await tx.identityAuditEvent.create({
+          data: {
+            id: uuidv7(),
+            tenant_id: args.tenant_id,
+            actor_id: args.actor_user_id,
+            actor_type: 'user',
+            event_type: 'identity.tenant_user.product_access_removed',
+            subject_id: args.user_id,
+            event_payload: {
+              product: args.product,
+              membership_id: args.membership_id,
+              removed_role_keys,
+              before_role_keys,
+              after_role_keys,
+              refresh_tokens_revoked,
+              device_sessions_revoked,
+            },
+          },
+        });
+      }
+      return { before_role_keys, removed_role_keys, after_role_keys, refresh_tokens_revoked, device_sessions_revoked, changed };
+    }).catch((err: unknown) =>
+      rethrowTenantLastOwner(err, {
+        request_id: args.request_id,
+        tenant_id: args.tenant_id,
+        operation: 'membership.product_access.remove',
+      }),
+    );
+  }
 }
 
 type UserRow = {

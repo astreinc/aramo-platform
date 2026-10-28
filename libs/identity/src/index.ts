@@ -217,10 +217,14 @@ export {
 } from './lib/tenant-user/role-bundle-validator.js';
 export {
   TenantUserLifecycleService,
+  // Aramo-Sign-Mobile-Amendment-M-A8 §2.3 — the Sign session consumers revoked with Sign access.
+  SIGN_REFRESH_TOKEN_CONSUMERS,
+  SIGN_NATIVE_SESSION_CONSUMER,
 } from './lib/tenant-user/tenant-user-lifecycle.service.js';
 export type {
   InviteResult,
   DisableResult,
+  RemoveProductAccessResult,
 } from './lib/tenant-user/tenant-user-lifecycle.service.js';
 // Invite-S2 (Pattern-2) — the public acceptance flow's lifecycle service,
 // consumed by apps/api's un-guarded PublicInvitationController.

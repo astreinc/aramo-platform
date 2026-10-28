@@ -152,7 +152,7 @@ describe('Personal Free — sending gate', () => {
   it('SenderContextService: mode off keeps the exact refusal; mode on lets a bound Personal tenant author and opens FREE', async () => {
     const tenants = { findById: vi.fn(async () => tenant()), findSlugById: vi.fn(async () => null), findOrganizationNameById: vi.fn(async () => null) };
     const { g, free } = gate({ mode: 'off' });
-    const svc = new SenderContextService(tenants as never, { findUserById: vi.fn(async () => null) } as never, undefined, g);
+    const svc = new SenderContextService(tenants as never, { findUserById: vi.fn(async () => null), findMembership: vi.fn(async () => null) } as never, undefined, g);
     await expect(svc.assertCanAuthor(AUTH, 'r')).rejects.toMatchObject({ message: 'Sending from a personal account is not enabled', context: { details: { reason: 'personal_sending_not_enabled' } } });
     expect(free.ensure).not.toHaveBeenCalled();
     process.env['SIGN_PERSONAL_SIGNUP_MODE'] = 'invite';

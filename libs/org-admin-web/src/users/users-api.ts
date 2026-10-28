@@ -137,6 +137,25 @@ export async function assignTenantUserRoles(args: {
   );
 }
 
+// Aramo-Sign-Mobile-Amendment-M-A8 §2.3 — DELETE /v1/tenant/users/:user_id/products/sign.
+// Removes only the member's Aramo Sign roles and signs them out of Aramo Sign; the
+// membership, other app roles and every envelope / agreement are kept.
+export interface RemoveSignAccessResponse {
+  readonly membership_id: string;
+  readonly product: 'sign';
+  readonly removed_role_keys: readonly string[];
+  readonly after_role_keys: readonly string[];
+  readonly refresh_tokens_revoked: number;
+  readonly device_sessions_revoked: number;
+  readonly changed: boolean;
+}
+
+export async function removeTenantUserSignAccess(userId: string): Promise<RemoveSignAccessResponse> {
+  return apiClient.delete<RemoveSignAccessResponse>(
+    `${USERS_PATH}/${encodeURIComponent(userId)}/products/sign`,
+  );
+}
+
 // Settings S4 — the courtesy probe of the financials toggle (ruling 4).
 //
 // Try GET /v1/tenant/settings. Two graceful outcomes:
