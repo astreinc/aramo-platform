@@ -131,41 +131,49 @@ true reboot survival.
 
 A scheduled `pg_dump` of the box Postgres → S3, **with a proven restore path**.
 
-> **Superseded by R-15 (M-A7 §2, 2026-10-28).** The original Directive-3 job (`pg-backup.sh`,
-> unencrypted `pg_dump -Fc`, a `PutObject`-only user on `astre-aramo-backups`) was run by hand (2 files in `/var/backups/aramo`) but never scheduled on the
-> box (no `/etc/aramo/backup.conf`, no timer) and the bucket was never created. It is replaced by the
-> encrypted tooling below. Full procedure: **`doc/runbooks/RUNBOOK-backups-r15.md`**.
+> **Superseded by M-A8 §1 (2026-10-28; was R-15 / M-A7 §2).** The original Directive-3 job
+> (`pg-backup.sh`, unencrypted `pg_dump -Fc`, a `PutObject`-only user on `astre-aramo-backups`) was run
+> by hand (2 files in `/var/backups/aramo`) but never scheduled and its bucket was never created. It is
+> replaced by the encrypted tooling below. Full procedure: **`doc/runbooks/RUNBOOK-backups.md`**.
 
 ### The backup job
 
-- **`deploy/backup/aramo-backup.sh`** — `pg_dump -Fc` of `aramo` + `aramo_intelligence` (and
-  roles, without password hashes) streamed through `age` to offline-held public recipients → `0600`
-  files in the `0700` root-only `/var/backups/aramo-r15/routine/<run_id>/` with `manifest.tsv` →
-  upload to `s3://aramo-prod-db-backups-use1/routine/<run_id>/` (SSE-KMS, 30-day lifecycle).
-- **`deploy/backup/aramo-backup-prune.sh`** — local 30-day retention (`routine/` only; never
-  `legal-hold/`, `historic/` or the pre-R-15 plaintext locations).
-- **`deploy/systemd/aramo-pg-backup.{service,timer}`** — daily at 03:30 UTC: backup, then prune.
-  Enable only after the PO enablement steps (RUNBOOK-backups-r15 §7).
-- **Terraform:** `infrastructure-lightsail/r15-backups.tf` (bucket, KMS key, lifecycle, policy, the
-  put + list writer user and the read-only restorer user). Applied from the Mac only.
+- **`deploy/backup/aramo-backup.sh`** — `pg_dump -Fc` of `aramo` + `aramo_intelligence` (and roles,
+  without password hashes) streamed through `age` to the PO's two offline-held public recipients →
+  `0600` files in the `0700` root-only `/var/backups/aramo-r15/routine/<run_id>/` with `manifest.tsv` →
+  single-PUT uploads to `s3://aramo-prod-db-backups-use1/routine/<run_id>/` naming SSE-KMS and the bucket
+  key, checksum-verified (30-day lifecycle) → `heartbeat/<run_id>.json` (OK/FAILED, counts only). Also
+  the pre-deploy backup: `--label pre-<sha>` (RELEASE-box.md STEP 2).
+- **`deploy/backup/aramo-backup-prune.sh`** — local 7-day retention (`routine/` and heartbeats only;
+  never `legal-hold/`, `historic/` or the pre-M-A8 plaintext locations).
+- **`deploy/systemd/aramo-pg-backup.{service,timer}`** — daily at 03:30 UTC: backup, then prune;
+  `OnFailure=aramo-pg-backup-failed.service` uploads a FAILED heartbeat. Enabled only at the M-A8 §4.2
+  checkpoint (RUNBOOK-backups §5).
+- **`deploy/backup/aramo-env-snapshot.sh`** — `age`-encrypted `.env` snapshot before any env change
+  (3 kept locally, each uploaded to `historic/env/`).
+- **Terraform:** its own root `infrastructure-backups/` (state key `backups/terraform.tfstate`): bucket
+  with Object Lock (no default retention), KMS key with an explicit policy, lifecycle, bucket policy,
+  writer + restorer users, daily freshness check (EventBridge → Lambda → SNS email). Applied from the
+  Mac only.
 
 ### ★ Restore test — REQUIRED, not optional
 
 A backup you haven't restored is a hope, not a backup. **`deploy/backup/aramo-restore-test.sh`**
-(run on the Mac, which holds the age identity) verifies the manifest hashes, restores every database
-into a throwaway `pgvector/pgvector:pg17` container with `--network none` and the erasure roles
-pre-created, and checks table + migration-ledger counts against the manifest. Run it after every
-storage change and at least monthly (RUNBOOK-backups-r15 §5).
+(run on the Mac, which holds the age identity, with the restorer profile) verifies the manifest hashes,
+restores every database into a throwaway `pgvector/pgvector:pg17` container (`--rm --network none`,
+erasure roles pre-created), checks table + migration-ledger counts, removes the container with its
+volumes and uploads a PASS/FAIL report to `restore-checks/`. Run it after every storage change and at
+least monthly (RUNBOOK-backups §7); the freshness check alerts after 35 days without a PASS.
 
-**Proven locally:** `bash deploy/backup/aramo-backup.test.sh` runs the end-to-end check (seed →
-encrypted backup → restore test → negatives → prune → historic encryption → replay gate; with
-`ARAMO_TEST_S3=1`, an S3 round trip against localstack).
+**Proven in CI:** the `backup-tooling` job runs `deploy/backup/aramo-backup.test.sh` (seed → encrypted
+backup → restore test → negatives → uploads to a fake S3 that enforces the bucket policy → heartbeats →
+`.env` snapshot → prune → historic encryption → deletion replay against a ledger fixture) and
+`deploy/backup/aramo-historic-disposition.test.sh`.
 
-**Real rollback:** `deploy/backup/pg-restore.sh` restores one dump (`*.dump.age` with
-`AGE_IDENTITY_FILE`, or a legacy `*.dump`) into a named container. A restored database whose backup
-predates completed deletions stays out of service until deletion replay passes
-(`deploy/backup/aramo-deletion-replay.sh`; it fails closed until the privacy-request records of
-M-A7 §3 exist).
+**Real rollback:** restore into a NEW standalone container with `deploy/backup/pg-restore.sh`
+(`*.dump.age` with `AGE_IDENTITY_FILE`), then `deploy/backup/aramo-deletion-replay.sh` must exit 0
+(empty or verified replay of privacy deletions executed after the backup) before that database serves
+traffic. The replay refuses the live container (RUNBOOK-backups §8).
 
 ---
 
