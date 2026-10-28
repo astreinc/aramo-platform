@@ -67,3 +67,20 @@ describe('ReceivedEnvelopeView', () => {
     expect(screen.getByTestId('received-copy')).toBeTruthy();
   });
 });
+
+// Amendment M-A7 §5.2 (R-11) — the received-envelope view offers a Report action.
+describe('ReceivedEnvelopeView — Report (M-A7 §5.2)', () => {
+  it('shows "Report this envelope" when wired; disabled offline', () => {
+    const onReport = jest.fn();
+    const { rerender } = render(
+      <ReceivedEnvelopeView item={received({})} online onSign={jest.fn()} onSignedCopy={jest.fn()} onRemove={jest.fn()} onReport={onReport} />,
+    );
+    fireEvent.press(screen.getByTestId('received-report'));
+    expect(onReport).toHaveBeenCalledTimes(1);
+    rerender(
+      <ReceivedEnvelopeView item={received({})} online={false} onSign={jest.fn()} onSignedCopy={jest.fn()} onRemove={jest.fn()} onReport={onReport} />,
+    );
+    fireEvent.press(screen.getByTestId('received-report'));
+    expect(onReport).toHaveBeenCalledTimes(1);
+  });
+});

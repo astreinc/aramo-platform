@@ -1,11 +1,12 @@
-import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, UseGuards } from '@nestjs/common';
-import { AbuseReportService, type AbuseReportView } from '@aramo/sign';
+import { Body, Controller, Get, HttpCode, HttpStatus, Param, ParseUUIDPipe, Post, Query, UseGuards } from '@nestjs/common';
+import { ABUSE_REPORT_OUTCOMES, AbuseReportService, type AbuseReportOutcome, type AbuseReportView } from '@aramo/sign';
 import { AramoError, RequestId } from '@aramo/common';
 import { AuthContext, JwtAuthGuard, type AuthContextType } from '@aramo/auth';
 import { RequireScopes, RolesGuard } from '@aramo/authorization';
 import {
   PersonalRiskService,
   PersonalSignupRepository,
+  TenantRepository,
   classifyEmailDomain,
   extractEmailDomain,
   normalizeEmail,
@@ -36,6 +37,8 @@ export class PlatformPersonalController {
     // §6.4 — abuse reports live in the sign schema; the operator reads them and
     // records outcomes (FALSE_REPORT lowers that reporter's future weight).
     private readonly reports: AbuseReportService,
+    // M-A7 §5.2 — names the sender of each queued report (Business or Personal).
+    private readonly tenants: TenantRepository,
   ) {}
 
   @Get('personal-review')
@@ -117,6 +120,31 @@ export class PlatformPersonalController {
     assertPlatform(auth, requestId);
     await this.mustExist(tenant_id, requestId);
     return { items: (await this.reports.listForTenant(tenant_id)).map(reportView) };
+  }
+
+  // Aramo-Sign-Mobile-Amendment-M-A7 §5.2 (R-11) — the operators' abuse-report
+  // queue across every sender. Reports on a Business sender's emails land here
+  // (they never pause the tenant); Personal reports appear too. Decide with
+  // POST /platform/personal-reports/:report_id/decide (any report id).
+  @Get('sign-abuse-reports')
+  @RequireScopes('platform:tenant:lifecycle:manage')
+  async abuseQueue(@Query('outcome') outcome: string | undefined, @AuthContext() auth: AuthContextType, @RequestId() requestId: string) {
+    assertPlatform(auth, requestId);
+    if (outcome !== undefined && !(ABUSE_REPORT_OUTCOMES as readonly string[]).includes(outcome)) {
+      throw new AramoError('VALIDATION_ERROR', `outcome must be one of ${ABUSE_REPORT_OUTCOMES.join(', ')}`, 400, { requestId, details: { field: 'outcome' } });
+    }
+    const rows = await this.reports.listQueue({ ...(outcome !== undefined ? { outcome: outcome as AbuseReportOutcome } : {}), limit: 200 });
+    const senders = new Map<string, { kind: string; name: string } | null>();
+    for (const id of new Set(rows.map((r) => r.tenant_id))) {
+      const t = await this.tenants.findById(id).catch(() => null);
+      senders.set(id, t === null ? null : { kind: t.kind, name: t.name });
+    }
+    return {
+      items: rows.map((r) => {
+        const sender = senders.get(r.tenant_id) ?? null;
+        return { ...reportView(r), tenant_id: r.tenant_id, sender_kind: sender?.kind ?? null, sender_name: sender?.name ?? null };
+      }),
+    };
   }
 
   @Post('personal-reports/:report_id/decide')

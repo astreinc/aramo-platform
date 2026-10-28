@@ -1,7 +1,7 @@
 import { act, cleanup, fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
-import { App } from './App.js';
+import { App, reportHrefForToken } from './App.js';
 import { fieldBox } from './field-geometry.js';
 
 // The page renderer (pdfjs) cannot load under jsdom; this stand-in renders each
@@ -279,5 +279,33 @@ describe('PX-2 field geometry', () => {
   });
   it('uses the type default size when width/height are absent', () => {
     expect(fieldBox({ field_type: 'SIGN_DATE', x: 0, y: 0, width: null, height: null }, { width: 612, height: 792 }).height).toBe(`${(22 / 792) * 100}%`);
+  });
+});
+
+// Amendment M-A7 §5.2 (R-11) — the guest page's Report action reaches the same
+// "Report this email" page, with the token in the URL fragment only.
+describe('M-A7 §5.2 — Report action on the guest signing page', () => {
+  const TOKEN = 'A1b2C3d4E5f6G7h8I9j0_-xyz';
+
+  it('the landing card and the Help panel link to /report#token=… (never a query string or a path)', async () => {
+    window.history.pushState({}, '', `/s/${TOKEN}`);
+    transport();
+    render(<App />);
+    await screen.findByTestId('sg-landing');
+    const links = screen.getAllByTestId('sg-report');
+    expect(links).toHaveLength(1);
+    expect(links[0]).toHaveAttribute('href', `/report#token=${TOKEN}`);
+    expect(links[0]).toHaveAttribute('rel', 'noreferrer');
+    fireEvent.click(screen.getByRole('button', { name: 'Help' }));
+    const all = screen.getAllByTestId('sg-report');
+    expect(all).toHaveLength(2);
+    for (const a of all) expect(a.getAttribute('href')).not.toMatch(/\?|\/report\//);
+  });
+
+  it('no usable token → no Report action', () => {
+    expect(reportHrefForToken('')).toBeNull();
+    expect(reportHrefForToken('short')).toBeNull();
+    expect(reportHrefForToken('bad/token/with/slashes')).toBeNull();
+    expect(reportHrefForToken(TOKEN)).toBe(`/report#token=${TOKEN}`);
   });
 });

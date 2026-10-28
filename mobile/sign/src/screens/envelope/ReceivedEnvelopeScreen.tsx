@@ -21,6 +21,7 @@ import { Card } from '../../components/Card';
 import { StatusPill } from '../../components/StatusPill';
 import { useToast } from '../../components/Toast';
 import { shortDate } from '../../features/inbox/agreementsModel';
+import { REPORT_COPY, reportInboxItem, type ReportReasonKey } from '../../features/inbox/inboxReport';
 import { findInboxItem, signedCopyToken } from '../../features/inbox/inboxSigning';
 import { OFFLINE_ACTION_REASON, signKeys, useInbox, useOnline } from '../../features/inbox/queries';
 import type { InboxItem } from '../../features/inbox/types';
@@ -30,6 +31,8 @@ import { receivedShareTarget } from '../../features/share/shareCompleted';
 import { useShare } from '../../features/share/useShare';
 import type { RootStackParamList } from '../../navigation/types';
 import { useTheme } from '../../theme';
+
+import { ReportSheet } from './ReportSheet';
 
 type Props = NativeStackScreenProps<RootStackParamList, 'ReceivedEnvelope'>;
 
@@ -50,6 +53,8 @@ export interface ReceivedEnvelopeViewProps {
   /** Share the signed PDF (COMPLETED + can_download only, M-A4 §3.7). */
   readonly onShare?: () => void;
   readonly shareBusy?: boolean;
+  /** M-A7 §5.2 — "Report this envelope" (every received envelope). */
+  readonly onReport?: () => void;
 }
 
 /** Presentational: every value shown comes from the inbox item itself. */
@@ -62,6 +67,7 @@ export function ReceivedEnvelopeView({
   busy,
   onShare,
   shareBusy,
+  onReport,
 }: ReceivedEnvelopeViewProps) {
   const t = useTheme();
   const facts: [string, string][] = [];
@@ -137,6 +143,16 @@ export function ReceivedEnvelopeView({
         <Text style={{ color: t.color.textSecondary, fontSize: 13 }}>{OFFLINE_ACTION_REASON}</Text>
       ) : null}
       <Button title="Remove from my inbox" variant="text" disabled={!online} onPress={onRemove} />
+      {onReport ? (
+        <Button
+          testID="received-report"
+          title="Report this envelope"
+          variant="text"
+          accessibilityHint="Tell Aramo about a suspicious or unwanted document"
+          disabled={!online}
+          onPress={onReport}
+        />
+      ) : null}
     </View>
   );
 }
@@ -152,7 +168,20 @@ export function ReceivedEnvelopeScreen({ route, navigation }: Props) {
   const [busy, setBusy] = useState(false);
   const [refreshing, setRefreshing] = useState(false);
   const sharer = useShare();
+  const [reportOpen, setReportOpen] = useState(false);
+  const [reporting, setReporting] = useState(false);
   const item = findInboxItem(inbox.data, inboxItemId);
+
+  async function report(reason: ReportReasonKey): Promise<void> {
+    setReporting(true);
+    try {
+      const outcome = await reportInboxItem(workspace, inboxItemId, reason);
+      toast.show(REPORT_COPY[outcome]);
+      if (outcome !== 'failed') setReportOpen(false);
+    } finally {
+      setReporting(false);
+    }
+  }
 
   async function signedCopy(): Promise<void> {
     setBusy(true);
@@ -213,6 +242,13 @@ export function ReceivedEnvelopeScreen({ route, navigation }: Props) {
         onRemove={() => void remove()}
         onShare={() => sharer.share(receivedShareTarget(item))}
         shareBusy={sharer.busy}
+        onReport={() => setReportOpen(true)}
+      />
+      <ReportSheet
+        visible={reportOpen}
+        busy={reporting}
+        onReport={(r) => void report(r)}
+        onClose={() => setReportOpen(false)}
       />
     </ScrollView>
   );

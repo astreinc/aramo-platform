@@ -28,6 +28,7 @@ import { Card } from '../../components/Card';
 import { Sheet } from '../../components/Sheet';
 import { useToast } from '../../components/Toast';
 import { WEB_LINKS } from '../../config/env';
+import { ARAMO_SIGN_IDENTITY, PRIVACY_MAILTO, SUPPORT_MAILTO } from '../../config/identity';
 import {
   deviceLabel,
   listSessions,
@@ -333,7 +334,7 @@ export function AccountScreen() {
               <Button
                 title="Free plan terms"
                 variant="text"
-                onPress={() => open(WEB_LINKS.terms)}
+                onPress={() => open(WEB_LINKS.personalTerms)}
                 style={{ alignSelf: 'flex-start' }}
               />
             </Card>
@@ -471,6 +472,24 @@ export function AccountScreen() {
           <SettingRow title="Help" onPress={() => open(WEB_LINKS.help)} />
           <SettingRow title="Privacy" onPress={() => open(WEB_LINKS.privacy)} />
           <SettingRow title="Terms" onPress={() => open(WEB_LINKS.terms)} />
+          {/* M-A7 §5.1 (G-6) — the one identity block (config/identity.ts). */}
+          <SettingRow
+            testID="about-developer"
+            title="Developer"
+            subtitle={`${ARAMO_SIGN_IDENTITY.legalEntity}\n${ARAMO_SIGN_IDENTITY.postalAddress}`}
+          />
+          <SettingRow
+            testID="about-support"
+            title="Support"
+            subtitle={ARAMO_SIGN_IDENTITY.supportEmail}
+            onPress={() => void Linking.openURL(SUPPORT_MAILTO).catch(() => undefined)}
+          />
+          <SettingRow
+            testID="about-privacy-contact"
+            title="Privacy contact"
+            subtitle={ARAMO_SIGN_IDENTITY.privacyEmail}
+            onPress={() => void Linking.openURL(PRIVACY_MAILTO).catch(() => undefined)}
+          />
           <SettingRow
             title="Version"
             trailing={Application.nativeApplicationVersion ?? '1.0'}
