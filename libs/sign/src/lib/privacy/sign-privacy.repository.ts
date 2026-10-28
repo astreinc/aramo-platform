@@ -14,6 +14,9 @@ import { PrismaService } from '../prisma/prisma.service.js';
 //   draftEnvelopeIds   the never-sent (DRAFT, not yet deleted) envelopes the user
 //                      created in the tenant — deleted with their stored objects by
 //                      the caller through the existing draft-delete path.
+//   removeRecipientBindings  M-A8 §3.3 — the user's recipient-inbox bindings (claims
+//                      of envelopes sent to them, in any sender tenant) are deleted.
+//                      The Signer rows and the evidence of those envelopes stay.
 //
 // The auth_storage tables live in the same database (written by auth-service); a
 // database without them (an isolated Sign test database) reports null counts.
@@ -110,5 +113,11 @@ export class SignPrivacyRepository {
       orderBy: { created_at: 'asc' },
     });
     return rows.map((r) => r.id);
+  }
+
+  /** M-A8 §3.3 — deletes the user's recipient-inbox bindings (Signer rows untouched). Idempotent; count only. */
+  async removeRecipientBindings(input: { tenant_id: string; user_id: string }): Promise<number> {
+    const r = await this.prisma.signRecipientBinding.deleteMany({ where: { user_id: input.user_id, user_tenant_id: input.tenant_id } });
+    return r.count;
   }
 }

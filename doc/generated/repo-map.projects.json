@@ -1040,6 +1040,7 @@
       "AuthorizationResolverModule",
       "AuthorizationVersionService",
       "BILLING_REGION_US",
+      "CognitoIdentityRetirement",
       "CursorDecodeError",
       "DEFAULT_PERSONAL_ALLOWED_COUNTRIES",
       "DEFAULT_PERSONAL_PILOT_CAP",
@@ -1069,10 +1070,13 @@
       "GEOIP_RECHECK_MS",
       "GEO_IP_PORT",
       "HOSTING_ASN_KEYWORDS",
+      "IDENTITY_DEPENDENCY_CODES",
+      "IDENTITY_RETIREMENT_PORT",
       "INVITE_STATUSES",
       "IdentityAuditRepository",
       "IdentityAuditService",
       "IdentityCoreModule",
+      "IdentityDependencyInspector",
       "IdentityEffectiveAuthorizationResolver",
       "IdentityModule",
       "IdentityProviderPolicyService",
@@ -1085,6 +1089,7 @@
       "ManagementEdgeRepository",
       "MaxmindGeoIpAdapter",
       "NodeDnsAdapter",
+      "NotConfiguredIdentityRetirement",
       "ORGANIZATION_COUNTRY_NOT_SUPPORTED",
       "ORGANIZATION_DETAILS_INVALID",
       "ORGANIZATION_PROFILE_INCOMPLETE",
@@ -1169,6 +1174,7 @@
       "decisionForPoints",
       "decodeCursor",
       "decryptPrivacyEmail",
+      "dependencyEvidence",
       "deriveAllowedDomainOrThrow",
       "deriveSlugOrThrow",
       "domainUnavailableError",
@@ -1186,6 +1192,7 @@
       "geoEvidenceOf",
       "hashPersonalInviteCode",
       "hashPersonalOtp",
+      "identityRetirementFromEnv",
       "initialRiskState",
       "isDomainVerificationStatus",
       "isEsignRoleKey",
@@ -1194,9 +1201,11 @@
       "isLegalTransition",
       "isPersonalOrDisposableDomain",
       "isPlausibleEmail",
+      "isRetiredEmailTombstone",
       "isTenantKind",
       "isTenantLastOwnerViolation",
       "isTenantStatus",
+      "linkedProviderCount",
       "looksRandom",
       "mayResendPersonalOtp",
       "mmdbVersion",
@@ -1217,6 +1226,7 @@
       "requiredCapabilityForConsumer",
       "restrictionInForce",
       "rethrowTenantLastOwner",
+      "retiredEmailTombstone",
       "robotCheckAdapterFromEnv",
       "safeGeoLookup",
       "sendLocation",
@@ -7704,6 +7714,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/m-a8-personal-deletion.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/personal-free.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -10745,6 +10761,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/m-a8-personal-deletion.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/organization-billing-profile.adapter.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -11330,6 +11352,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/launch-lifecycle.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/m-a8-personal-deletion.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -12552,6 +12580,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/m-a6-from-template-roles.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/m-a8-personal-deletion.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

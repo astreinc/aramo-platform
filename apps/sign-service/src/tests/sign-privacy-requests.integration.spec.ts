@@ -7,7 +7,7 @@ import { Test, type TestingModule } from '@nestjs/testing';
 import { ValidationPipe } from '@nestjs/common';
 import type { NestExpressApplication } from '@nestjs/platform-express';
 import { ARAMO_POSTGRES_TEST_IMAGE } from '@aramo/common';
-import { ESIGN_ROLE_PERMISSIONS, ESIGN_SCOPE, PrivacyRequestService } from '@aramo/identity';
+import { ESIGN_ROLE_PERMISSIONS, ESIGN_SCOPE, IDENTITY_RETIREMENT_PORT, PrivacyRequestService } from '@aramo/identity';
 import { MAILER_PORT, type SendEmailInput } from '@aramo/mailer';
 import { DOCUMENT_STORAGE_PORT } from '@aramo/sign';
 import cookieParser from 'cookie-parser';
@@ -17,7 +17,6 @@ import request from 'supertest';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 import { AppModule } from '../app/app.module.js';
-import { IDENTITY_RETIREMENT_PORT } from '../app/privacy/identity-retirement.port.js';
 import { PrivacyWebBudget } from '../app/privacy/sign-privacy-request.service.js';
 import { SignPrivacyExecutionWorker } from '../app/privacy/sign-privacy-execution.worker.js';
 
@@ -86,6 +85,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     await db.query(`INSERT INTO identity."UserTenantMembership" (id, user_id, tenant_id, updated_at) VALUES ($1,$2,$3, now())`, [m, user, tenant]);
     await db.query(`INSERT INTO identity."UserTenantMembershipRole" (id, membership_id, role_id) SELECT gen_random_uuid(), $1, r.id FROM identity."Role" r WHERE r.key = $2`, [m, role]);
     await db.query(`INSERT INTO identity."AuthorizationVersion" (id, tenant_id, principal_id, version, updated_at) VALUES (gen_random_uuid(),$1,$2,1, now())`, [tenant, user]);
+    // M-A8 — the Cognito subject link (retirement is by sub): sub = `sub-<user>`.
+    await db.query(`INSERT INTO identity."ExternalIdentity" (id, provider, provider_subject, user_id, email_snapshot, updated_at) VALUES (gen_random_uuid(),'cognito',$1,$2,$3, now())`, [`sub-${user}`, user, email]);
     return { user, email };
   }
 
@@ -230,7 +231,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
       .overrideProvider(MAILER_PORT)
       .useValue({ send: async (m: SendEmailInput) => (mails.push(m), { message_id: `m-${mails.length}` }) })
       .overrideProvider(IDENTITY_RETIREMENT_PORT)
-      .useValue({ retire: async (i: { email: string }) => (retired.push(i.email), 'deleted') })
+      // M-A8 §3.5 — the identity-owned port: (e) lookup answers clear; retire is by Cognito sub.
+      .useValue({
+        lookup: async () => ({ status: 'ok', subject_found: true, linked_providers: 0, other_users_same_email: 0 }),
+        retire: async (i: { cognito_sub: string }) => (retired.push(i.cognito_sub), 'deleted'),
+      })
       .overrideProvider(DOCUMENT_STORAGE_PORT)
       .useValue({
         putOwnedSource: async () => {
@@ -297,7 +302,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     expect(await n(`SELECT count(*) AS n FROM "sign"."SignatureEnvelope" WHERE id=$1 AND deleted_at IS NULL`, [env.draft])).toBe(1);
     expect(await tenantStatus(p.tenant)).toBe('ACTIVE');
     expect(await userActive(p.user)).toBe(true);
-    expect(retired).not.toContain(p.email);
+    expect(retired).not.toContain(`sub-${p.user}`);
 
     // One open request per type: a repeat answers it.
     const again = await create(p, { request_type: 'DELETION', confirm: 'DELETE' });
@@ -345,7 +350,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     expect(await riskState(p.tenant)).toBe('closed');
     expect(await tenantStatus(p.tenant)).toBe('CLOSED');
     expect(await userActive(p.user)).toBe(false);
-    expect(retired).toContain(p.email);
+    expect(retired).toContain(`sub-${p.user}`);
 
     const r = await row(res.body.reference);
     expect(r['completion_evidence']).toMatchObject({
@@ -375,8 +380,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     expect(res.body.status).toBe('COMPLETED');
     expect(await liveSessions(p.user)).toBe(0);
     expect(await userActive(p.user)).toBe(true);
-    expect(retired).not.toContain(p.email);
-    expect((await row(res.body.reference))['completion_evidence']).toMatchObject({ identity_retained: true, users_deactivated: 0, idp_retirement: 'retained' });
+    expect(retired).not.toContain(`sub-${p.user}`);
+    // M-A8 §3.4 — retain path: the identity is referred with the dependency code.
+    expect(res.body.outcome_code).toBe('personal_sign_data_deleted_identity_referred');
+    expect((await events(res.body.reference)).map((e) => e.event_type)).toContain('IDENTITY_RETIREMENT_REFERRED');
+    expect((await row(res.body.reference))['completion_evidence']).toMatchObject({ identity_retained: true, identity_retained_because: ['A_OTHER_PRODUCT'], users_deactivated: 0, idp_retirement: 'retained', tenant_closed: false });
   });
 
   it('flag ON — Business member: referred to the organization; own data and Sign roles removed; tenant, agreements and other members untouched', async () => {
@@ -404,7 +412,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('sign-service — 
     expect(await n(`SELECT count(*) AS n FROM "sign"."EnvelopeDocument" WHERE envelope_id=$1`, [env.draft])).toBe(1);
     expect(deletedObjects).not.toContain(env.key);
     expect(await userActive(b.user)).toBe(true);
-    expect(retired).not.toContain(b.email);
+    expect(retired).not.toContain(`sub-${b.user}`);
     expect(await convenienceCount(b.tenant, colleague.user)).toBe(6);
     expect(await liveSessions(colleague.user)).toBe(1);
   });

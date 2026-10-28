@@ -447,7 +447,25 @@ export {
   type PrivacyRequestView,
   type PrivacyTransitionPatch,
 } from './lib/privacy/privacy-request.service.js';
-export { PrivacySubjectService, type PrivacyOtherAuthorization, type PrivacySubjectContext } from './lib/privacy/privacy-subject.service.js';
+export { PrivacySubjectService, isRetiredEmailTombstone, retiredEmailTombstone, type PrivacySubjectContext } from './lib/privacy/privacy-subject.service.js';
+// Aramo-Sign-Mobile-Amendment-M-A8 §3.2 / §3.5 — dependency inspection + identity-owned retirement.
+export {
+  IDENTITY_DEPENDENCY_CODES,
+  IdentityDependencyInspector,
+  dependencyEvidence,
+  type IdentityDependencyCode,
+  type IdentityDependencyReport,
+} from './lib/privacy/identity-dependency-inspector.service.js';
+export {
+  CognitoIdentityRetirement,
+  IDENTITY_RETIREMENT_PORT,
+  NotConfiguredIdentityRetirement,
+  identityRetirementFromEnv,
+  linkedProviderCount,
+  type IdentityPoolLookup,
+  type IdentityRetirementOutcome,
+  type IdentityRetirementPort,
+} from './lib/privacy/identity-retirement.port.js';
 export {
   decryptPrivacyEmail,
   isPlausibleEmail,

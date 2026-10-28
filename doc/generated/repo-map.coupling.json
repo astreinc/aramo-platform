@@ -10552,6 +10552,12 @@
       "to": "doc/ccp/slices/CCP-C1-acceptance.md"
     },
     {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/sign-service/src/tests/m-a8-personal-deletion.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/src/tests/m-a8-identity-dependency-inspector.spec.ts"
+    },
+    {
       "from": "apps/sign-web/project.json",
       "status": "unscoped",
       "to": "apps/sign-web/vite.config.ts"

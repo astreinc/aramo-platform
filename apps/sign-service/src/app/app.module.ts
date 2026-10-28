@@ -99,7 +99,6 @@ import { SignPrivacyPublicController } from './privacy/sign-privacy-public.contr
 import { PrivacyWebBudget, SignPrivacyRequestService } from './privacy/sign-privacy-request.service.js';
 import { SignPrivacyExecutionService } from './privacy/sign-privacy-execution.service.js';
 import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.worker.js';
-import { IDENTITY_RETIREMENT_PORT, identityRetirementFromEnv } from './privacy/identity-retirement.port.js';
 
 // DOC-3/DOC-4 — apps/sign-service composition root. Composes the ATS-neutral
 // E-Sign domain (EsignModule.forRoot) and binds the full DOC-4 executed-document
@@ -246,7 +245,8 @@ import { IDENTITY_RETIREMENT_PORT, identityRetirementFromEnv } from './privacy/i
     SignPrivacyRequestService,
     SignPrivacyExecutionService,
     SignPrivacyExecutionWorker,
-    { provide: IDENTITY_RETIREMENT_PORT, useFactory: () => identityRetirementFromEnv(process.env) },
+    // M-A8 §3.5 — the identity retirement port and the dependency inspector are
+    // identity-owned (IdentityCoreModule); sign-service no longer binds a Cognito adapter.
   ],
 })
 export class AppModule implements NestModule {
