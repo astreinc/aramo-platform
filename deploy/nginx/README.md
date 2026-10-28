@@ -140,3 +140,15 @@ After changing a value, restart nginx (a reload does not re-run the step).
 render step under `sh`, and its built-in negative tests prove that each rule can
 fail. The boot smoke checks that both files are served with no `SIGN_*` env.
 Activation steps are in `doc/runbooks/RELEASE-sign-mobile.md`.
+
+## Logging: credentials are redacted (M-A7 §1, R-16)
+
+Guest signing and download links carry a bearer token in the path (`/s/<token>`,
+`/d/<token>`), and the magic-link and OAuth callbacks carry one in the query
+(`?token=`, `?code=`). The template's `aramo_redacted` access-log format (used by
+every server block) writes `/s/[redacted]`, `/d/[redacted]`, `?[redacted]` for any
+query string, and only the origin of the Referer. The request reaching the
+upstream is unchanged. The credential-bearing locations (`/auth/`, `/auth/native/`,
+`/s/`, `/d/`, the Microsoft callback) log errors at `crit` only, because nginx
+error lines embed the request line. Container logs rotate at 10 MB × 5 files
+(`x-aramo-logging` in `docker-compose.prod.yml`).
