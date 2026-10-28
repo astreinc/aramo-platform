@@ -115,6 +115,16 @@
       "status": "unscoped",
       "to": "ci/scripts/verify-frontdoor-conf.ts"
     },
+    {
+      "from": ".github/workflows/ci.yml",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-backup.test.sh"
+    },
+    {
+      "from": ".github/workflows/ci.yml",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-historic-disposition.test.sh"
+    },
     { "from": ".github/workflows/ci.yml", "status": "unscoped", "to": "deploy/migrate-prod.sh" },
     { "from": ".github/workflows/ci.yml", "status": "unscoped", "to": "scripts/audit-check.sh" },
     {
@@ -11656,25 +11666,25 @@
       "to": "deploy/backup/lib.sh"
     },
     {
-      "from": "deploy/backup/aramo-backup-encrypt-existing.sh",
+      "from": "deploy/backup/aramo-backup-heartbeat.sh",
       "status": "unscoped",
-      "to": "doc/runbooks/RUNBOOK-backups-r15.md"
+      "to": "deploy/backup/lib.sh"
     },
     {
       "from": "deploy/backup/aramo-backup-prune.sh",
       "status": "unscoped",
       "to": "deploy/backup/lib.sh"
     },
+    {
+      "from": "deploy/backup/aramo-backup-prune.sh",
+      "status": "unscoped",
+      "to": "infrastructure-backups/bucket.tf"
+    },
     { "from": "deploy/backup/aramo-backup.sh", "status": "unscoped", "to": "deploy/backup/lib.sh" },
     {
       "from": "deploy/backup/aramo-backup.sh",
       "status": "unscoped",
-      "to": "doc/runbooks/RUNBOOK-backups-r15.md"
-    },
-    {
-      "from": "deploy/backup/aramo-backup.sh",
-      "status": "unscoped",
-      "to": "infrastructure-lightsail/r15-backups.tf"
+      "to": "doc/runbooks/RUNBOOK-backups.md"
     },
     {
       "from": "deploy/backup/aramo-backup.sh",
@@ -11687,9 +11697,29 @@
       "to": "tools/db-sync-local.sh"
     },
     {
+      "from": "deploy/backup/aramo-backup.test.sh",
+      "status": "unscoped",
+      "to": "deploy/backup/testlib.sh"
+    },
+    {
       "from": "deploy/backup/aramo-deletion-replay.sh",
       "status": "unscoped",
       "to": "deploy/backup/lib.sh"
+    },
+    {
+      "from": "deploy/backup/aramo-env-snapshot.sh",
+      "status": "unscoped",
+      "to": "deploy/backup/lib.sh"
+    },
+    {
+      "from": "deploy/backup/aramo-historic-disposition.sh",
+      "status": "unscoped",
+      "to": "deploy/backup/lib.sh"
+    },
+    {
+      "from": "deploy/backup/aramo-historic-disposition.test.sh",
+      "status": "unscoped",
+      "to": "deploy/backup/testlib.sh"
     },
     {
       "from": "deploy/backup/aramo-restore-test.sh",
@@ -11699,7 +11729,7 @@
     {
       "from": "deploy/backup/lib.sh",
       "status": "unscoped",
-      "to": "doc/runbooks/RUNBOOK-backups-r15.md"
+      "to": "doc/runbooks/RUNBOOK-backups.md"
     },
     {
       "from": "deploy/backup/pg-restore.sh",
@@ -11779,7 +11809,7 @@
     {
       "from": "deploy/systemd/aramo-pg-backup.service",
       "status": "unscoped",
-      "to": "doc/runbooks/RUNBOOK-backups-r15.md"
+      "to": "doc/runbooks/RUNBOOK-backups.md"
     },
     {
       "from": "doc/00-ci-deliberate-failure-evidence.md",
@@ -28605,6 +28635,11 @@
       "status": "unscoped",
       "to": "deploy/backup/aramo-backup.sh"
     },
+    {
+      "from": "doc/runbooks/RELEASE-box.md",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-env-snapshot.sh"
+    },
     { "from": "doc/runbooks/RELEASE-box.md", "status": "unscoped", "to": "deploy/build-images.sh" },
     { "from": "doc/runbooks/RELEASE-box.md", "status": "unscoped", "to": "deploy/migrate-prod.sh" },
     { "from": "doc/runbooks/RELEASE-box.md", "status": "unscoped", "to": "deploy/seed-prod.sh" },
@@ -28617,7 +28652,7 @@
     {
       "from": "doc/runbooks/RELEASE-box.md",
       "status": "unscoped",
-      "to": "doc/runbooks/RUNBOOK-backups-r15.md"
+      "to": "doc/runbooks/RUNBOOK-backups.md"
     },
     {
       "from": "doc/runbooks/RELEASE-box.md",
@@ -28795,29 +28830,59 @@
       "to": "libs/subscription/src/lib/legal/legal-documents.ts"
     },
     {
-      "from": "doc/runbooks/RUNBOOK-backups-r15.md",
-      "status": "unscoped",
-      "to": "deploy/backup/aramo-backup-encrypt-existing.sh"
-    },
-    {
-      "from": "doc/runbooks/RUNBOOK-backups-r15.md",
+      "from": "doc/runbooks/RUNBOOK-backups.md",
       "status": "unscoped",
       "to": "deploy/backup/aramo-backup.sh"
     },
     {
-      "from": "doc/runbooks/RUNBOOK-backups-r15.md",
+      "from": "doc/runbooks/RUNBOOK-backups.md",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-backup.test.sh"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-backups.md",
       "status": "unscoped",
       "to": "deploy/backup/aramo-deletion-replay.sh"
     },
     {
-      "from": "doc/runbooks/RUNBOOK-backups-r15.md",
+      "from": "doc/runbooks/RUNBOOK-backups.md",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-env-snapshot.sh"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-backups.md",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-historic-disposition.sh"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-backups.md",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-historic-disposition.test.sh"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-backups.md",
       "status": "unscoped",
       "to": "deploy/backup/aramo-restore-test.sh"
     },
     {
-      "from": "doc/runbooks/RUNBOOK-backups-r15.md",
+      "from": "doc/runbooks/RUNBOOK-backups.md",
       "status": "unscoped",
-      "to": "infrastructure-lightsail/r15-backups.tf"
+      "to": "deploy/backup/pg-restore.sh"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-backups.md",
+      "status": "unscoped",
+      "to": "deploy/systemd/aramo-pg-backup-failed.service"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-backups.md",
+      "status": "unscoped",
+      "to": "deploy/systemd/aramo-pg-backup.service"
+    },
+    {
+      "from": "doc/runbooks/RUNBOOK-backups.md",
+      "status": "unscoped",
+      "to": "deploy/systemd/aramo-pg-backup.timer"
     },
     {
       "from": "doc/runbooks/RUNBOOK-ccp-break-glass.md",
@@ -29178,6 +29243,16 @@
     {
       "from": "doc/runbooks/singlebox-ops.md",
       "status": "unscoped",
+      "to": "deploy/backup/aramo-env-snapshot.sh"
+    },
+    {
+      "from": "doc/runbooks/singlebox-ops.md",
+      "status": "unscoped",
+      "to": "deploy/backup/aramo-historic-disposition.test.sh"
+    },
+    {
+      "from": "doc/runbooks/singlebox-ops.md",
+      "status": "unscoped",
       "to": "deploy/backup/aramo-restore-test.sh"
     },
     {
@@ -29209,17 +29284,12 @@
     {
       "from": "doc/runbooks/singlebox-ops.md",
       "status": "unscoped",
-      "to": "doc/runbooks/RUNBOOK-backups-r15.md"
+      "to": "doc/runbooks/RUNBOOK-backups.md"
     },
     {
       "from": "doc/runbooks/singlebox-ops.md",
       "status": "unscoped",
       "to": "doc/runbooks/core-talent-ledger-reconciliation.md"
-    },
-    {
-      "from": "doc/runbooks/singlebox-ops.md",
-      "status": "unscoped",
-      "to": "infrastructure-lightsail/r15-backups.tf"
     },
     {
       "from": "doc/runbooks/singlebox-ops.md",
@@ -29843,9 +29913,24 @@
     { "from": "eslint.config.mjs", "status": "unscoped", "to": "pact/provider/src/verify-api.ts" },
     { "from": "eslint.config.mjs", "status": "unscoped", "to": "scripts/verify-vocabulary.sh" },
     {
+      "from": "infrastructure-backups/backend.tf",
+      "status": "unscoped",
+      "to": "doc/runbooks/RUNBOOK-backups.md"
+    },
+    {
+      "from": "infrastructure-backups/iam.tf",
+      "status": "unscoped",
+      "to": "doc/runbooks/RUNBOOK-backups.md"
+    },
+    {
+      "from": "infrastructure-backups/lambda/freshness.py",
+      "status": "unscoped",
+      "to": "doc/runbooks/RUNBOOK-backups.md"
+    },
+    {
       "from": "infrastructure-lightsail/README.md",
       "status": "unscoped",
-      "to": "doc/runbooks/RUNBOOK-backups-r15.md"
+      "to": "doc/runbooks/RUNBOOK-backups.md"
     },
     {
       "from": "infrastructure-lightsail/README.md",
@@ -29868,14 +29953,14 @@
       "to": "doc/runbooks/frontdoor-pr0-apply.md"
     },
     {
-      "from": "infrastructure-lightsail/r15-backups.tf",
-      "status": "unscoped",
-      "to": "deploy/backup/aramo-backup.sh"
-    },
-    {
       "from": "infrastructure-lightsail/resume-bucket-cors.tf",
       "status": "unscoped",
       "to": "infrastructure/modules/s3-resume-bucket/main.tf"
+    },
+    {
+      "from": "infrastructure-lightsail/terraform.tfvars.example",
+      "status": "unscoped",
+      "to": "doc/runbooks/RUNBOOK-backups.md"
     },
     {
       "from": "infrastructure/README.md",
@@ -37190,7 +37275,7 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 106,
+    "files": 112,
     "huskyPresent": false
   },
   "scripts": [
@@ -37664,8 +37749,11 @@
         { "kind": "prose", "path": "ci/scripts/verify-postgres-test-image.ts" },
         { "kind": "prose", "path": "deploy/backup/aramo-backup.sh" },
         { "kind": "prose", "path": "deploy/backup/aramo-backup.test.sh" },
+        { "kind": "prose", "path": "deploy/backup/aramo-historic-disposition.sh" },
+        { "kind": "prose", "path": "deploy/backup/aramo-historic-disposition.test.sh" },
         { "kind": "prose", "path": "deploy/backup/aramo-restore-test.sh" },
         { "kind": "prose", "path": "deploy/backup/pg-restore.sh" },
+        { "kind": "prose", "path": "deploy/backup/testlib.sh" },
         { "kind": "prose", "path": "deploy/build-images.test.sh" },
         { "kind": "prose", "path": "deploy/migrate-prod.sh" },
         { "kind": "prose", "path": "deploy/migrate-prod.test.sh" },
