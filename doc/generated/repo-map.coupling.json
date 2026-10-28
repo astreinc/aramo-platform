@@ -10557,6 +10557,16 @@
       "to": "apps/sign-web/vite.config.ts"
     },
     {
+      "from": "apps/sign-web/src/workspace/legal/identity.ts",
+      "status": "production",
+      "to": "doc/legal/aramo/privacy-notice.md"
+    },
+    {
+      "from": "apps/sign-web/src/workspace/legal/identity.ts",
+      "status": "production",
+      "to": "mobile/sign/src/config/identity.ts"
+    },
+    {
       "excludedBy": "src/**/*.spec.tsx",
       "from": "apps/sign-web/src/workspace/legal/legal.spec.tsx",
       "status": "excluded",
@@ -34071,6 +34081,36 @@
       "from": "mobile/sign/src/auth/nativeAuthApi.ts",
       "status": "unscoped",
       "to": "openapi/auth.yaml"
+    },
+    {
+      "from": "mobile/sign/src/config/__tests__/identity.test.ts",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/workspace/App.tsx"
+    },
+    {
+      "from": "mobile/sign/src/config/__tests__/identity.test.ts",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/workspace/legal/catalog.ts"
+    },
+    {
+      "from": "mobile/sign/src/config/__tests__/identity.test.ts",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/workspace/legal/identity.ts"
+    },
+    {
+      "from": "mobile/sign/src/config/__tests__/identity.test.ts",
+      "status": "unscoped",
+      "to": "doc/legal/aramo/privacy-notice.md"
+    },
+    {
+      "from": "mobile/sign/src/config/identity.ts",
+      "status": "unscoped",
+      "to": "apps/sign-web/src/workspace/legal/identity.ts"
+    },
+    {
+      "from": "mobile/sign/src/config/identity.ts",
+      "status": "unscoped",
+      "to": "doc/legal/aramo/privacy-notice.md"
     },
     {
       "from": "mobile/sign/src/features/editor/__tests__/geometry.test.ts",

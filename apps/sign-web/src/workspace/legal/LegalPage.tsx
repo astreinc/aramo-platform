@@ -19,6 +19,7 @@ import {
   type LegalCatalogEntry,
   type SubprocessorList,
 } from './catalog';
+import { ARAMO_SIGN_IDENTITY, HELP_PATH, LEGAL_INDEX_PATH, TERMS_INDEX_PATH } from './identity';
 import { Markdown } from './markdown';
 import { LEGAL_TEXTS, type LegalText } from './texts';
 
@@ -50,7 +51,7 @@ export const LegalEnvContext = createContext<LegalEnv>({
 // HTML); an unknown document or version is a not-found page, never a fallback to
 // another version.
 
-function Shell({ title, children, testId }: { title: string; children: ReactNode; testId: string }) {
+export function Shell({ title, children, testId }: { title: string; children: ReactNode; testId: string }) {
   useEffect(() => {
     document.title = `${title} · Aramo Sign`;
   }, [title]);
@@ -87,6 +88,10 @@ function LegalFooter() {
       })}
       <a href={SUBPROCESSORS_PATH}>Subprocessors</a>
       <a href={THIRD_PARTY_NOTICES_PATH}>Third-party notices</a>
+      <a href={HELP_PATH}>Help</a>
+      <span className="sg-muted" data-testid="legal-footer-identity">
+        Aramo Sign is developed and operated by {ARAMO_SIGN_IDENTITY.legalEntity}
+      </span>
     </footer>
   );
 }
@@ -96,6 +101,70 @@ export function LegalNotFound() {
     <Shell title="Document not found" testId="legal-not-found">
       <h1 className="sg-h1">Document not found</h1>
       <p className="sg-lede">There is no published document at this address. The documents we publish are listed below.</p>
+    </Shell>
+  );
+}
+
+/** The documents in effect now, with a link to each (the order of the catalog). */
+function CurrentDocuments({ slugs, testId }: { slugs: readonly string[]; testId: string }) {
+  const { catalog, now } = useContext(LegalEnvContext);
+  const at = now();
+  const docs = slugs.map((s) => currentLegal(s, catalog, at)).filter((d): d is LegalCatalogEntry => d !== null);
+  return (
+    <ul data-testid={testId}>
+      {docs.map((d) => (
+        <li key={d.slug}>
+          <a href={legalPath(d.slug, d.version, catalog, at)}>{d.title}</a> (version {d.version})
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+// Aramo-Sign-Mobile-Amendment-M-A7 §5.1 (R-8) — /legal: every published document
+// in effect now, plus the subprocessor list and the third-party notices.
+export function LegalIndexPage() {
+  const { catalog } = useContext(LegalEnvContext);
+  const slugs = [...new Set(catalog.map((d) => d.slug))];
+  return (
+    <Shell title="Legal" testId="legal-index">
+      <h1 className="sg-h1">Aramo Sign legal documents</h1>
+      <div className="sg-legal__doc">
+        <p>The documents we publish, in the version in effect now. Each has a permanent link to that exact version.</p>
+        <CurrentDocuments slugs={slugs} testId="legal-index-documents" />
+        <p>
+          Also: <a href={SUBPROCESSORS_PATH}>subprocessors</a> and <a href={THIRD_PARTY_NOTICES_PATH}>third-party notices</a>. For
+          the terms that apply to you, see <a href={TERMS_INDEX_PATH}>Aramo Sign terms</a>.
+        </p>
+      </div>
+    </Shell>
+  );
+}
+
+// M-A7 §5.1 (R-8) — /legal/terms (the app's "Terms" link): the terms PUBLISHED
+// for use of Aramo Sign. Business organizations use Aramo Sign under their own
+// agreement with the operator; no Business terms text is published here (a draft
+// is never presented as approved).
+export function TermsIndexPage() {
+  return (
+    <Shell title="Terms" testId="legal-terms-index">
+      <h1 className="sg-h1">Aramo Sign terms</h1>
+      <div className="sg-legal__doc">
+        <h2>Personal accounts</h2>
+        <p>A Personal (free) account is used under these terms, together with the Acceptable Use Policy:</p>
+        <CurrentDocuments slugs={['personal-terms', 'acceptable-use']} testId="legal-terms-personal" />
+        <h2>Business accounts</h2>
+        <p data-testid="legal-terms-business">
+          An organization uses Aramo Sign under its agreement with {ARAMO_SIGN_IDENTITY.legalEntity}. Ask your organization’s
+          administrator for that agreement, or write to <a href={`mailto:${ARAMO_SIGN_IDENTITY.supportEmail}`}>{ARAMO_SIGN_IDENTITY.supportEmail}</a>. The
+          Acceptable Use Policy applies to every account.
+        </p>
+        <h2>Everyone, including people who sign</h2>
+        <CurrentDocuments slugs={['privacy', 'acceptable-use']} testId="legal-terms-all" />
+        <p>
+          All published documents: <a href={LEGAL_INDEX_PATH}>Legal</a>.
+        </p>
+      </div>
     </Shell>
   );
 }

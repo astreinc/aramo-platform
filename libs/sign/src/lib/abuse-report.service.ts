@@ -6,7 +6,10 @@ import { PrismaService } from './prisma/prisma.service.js';
 import { hashSigningToken } from './signing-token.js';
 
 // Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED §6.4 (correction D) — abuse
-// reports on signing emails from Personal senders.
+// reports on signing emails. Since Amendment M-A7 §5.2 (R-11) every sender's
+// request and reminder emails carry the link, so reports are recorded for Business
+// senders too: they go to the operators' queue (listQueue) and never pause a
+// Business tenant; only the Personal automatic pause reads the weighted total.
 //
 //   Reporting   one report per recipient per envelope, and only from the
 //               recipient's own signing link (the signing capability token).
@@ -110,6 +113,7 @@ export type RecordAbuseReportResult =
 
 export interface AbuseReportView {
   id: string;
+  tenant_id: string;
   envelope_id: string;
   signer_id: string;
   reason: string | null;
@@ -153,6 +157,22 @@ export class AbuseReportService {
     // M-A5 §3.5 — an in-person signer without an email was never emailed a link.
     if (session.signer.email === null) return null;
     return { tenant_id: session.tenant_id, envelope_id: session.envelope_id, signer_id: session.signer_id, signer_email: session.signer.email };
+  }
+
+  /**
+   * M-A7 §5.2 — the recipient behind a claimed inbox item (the signed-in user's
+   * own, unrevoked binding), so the app's received-envelope view reaches the same
+   * report flow without handling a signing token. Null when it is not theirs.
+   */
+  async resolveInboxReportContext(user_id: string, binding_id: string): Promise<AbuseReportContext | null> {
+    const b = await this.prisma.signRecipientBinding.findFirst({
+      where: { id: binding_id, user_id, revoked_at: null },
+      select: { envelope_tenant_id: true, envelope_id: true, signer_id: true, email: true, signer: { select: { email: true } } },
+    });
+    if (b === null) return null;
+    const signer_email = b.signer.email ?? b.email;
+    if (signer_email === '') return null;
+    return { tenant_id: b.envelope_tenant_id, envelope_id: b.envelope_id, signer_id: b.signer_id, signer_email };
   }
 
   /** The weighted total of the tenant's counted reports (OPEN / CONFIRMED) in the window. */
@@ -244,6 +264,19 @@ export class AbuseReportService {
     const rows = await this.prisma.abuseReport.findMany({ where: { tenant_id }, orderBy: { created_at: 'desc' }, take: Math.min(Math.max(limit, 1), 500) });
     return rows.map(toView);
   }
+
+  /**
+   * M-A7 §5.2 — the operators' queue across every sender (Business and Personal),
+   * newest first; `outcome` narrows it (OPEN = still to be reviewed).
+   */
+  async listQueue(opts: { outcome?: AbuseReportOutcome; limit?: number } = {}): Promise<AbuseReportView[]> {
+    const rows = await this.prisma.abuseReport.findMany({
+      where: opts.outcome === undefined ? {} : { outcome: opts.outcome },
+      orderBy: { created_at: 'desc' },
+      take: Math.min(Math.max(opts.limit ?? 100, 1), 500),
+    });
+    return rows.map(toView);
+  }
 }
 
 /** Pure weighting (unit-testable): severity × independence × credibility. */
@@ -264,6 +297,7 @@ export function weighReport(
 
 function toView(r: {
   id: string;
+  tenant_id: string;
   envelope_id: string;
   signer_id: string;
   reason: string | null;
@@ -282,6 +316,7 @@ function toView(r: {
 }): AbuseReportView {
   return {
     id: r.id,
+    tenant_id: r.tenant_id,
     envelope_id: r.envelope_id,
     signer_id: r.signer_id,
     reason: r.reason,

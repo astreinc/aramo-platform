@@ -1347,6 +1347,26 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/inbox/{id}/report": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Report this envelope from the recipient inbox (the app's received-envelope view).
+         * @description Aramo-Sign-Mobile-Amendment-M-A7 §5.2 (R-11). Session (esign consumer) only; no Sign scope required; keyed by the signed-in user's own inbox item, so no signing token travels. The same report flow as "Report this email" (POST /v1/sign/report): one report per recipient per envelope (409 details.reason already_reported); a Business sender's report is recorded for Aramo operators and never pauses the sender; a Personal sender's report follows the Personal automatic pause rules. Bounded per user; over the budget the answer is the same 202 and nothing is recorded.
+         */
+        post: operations["reportFromInbox"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
     "/v1/sign/inbox/{id}": {
         parameters: {
             query?: never;
@@ -1397,8 +1417,8 @@ export interface paths {
         get?: never;
         put?: never;
         /**
-         * Report a signing email from a Personal sender ("Report this email").
-         * @description Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED §6.4. Public (no session): the recipient's own signing token (carried in the report link's URL fragment) is the only authority. One report per recipient per envelope; taken only for envelopes from a PERSONAL sender. Each report is weighted (severity × independence × credibility); when the sender's weighted total reaches the configured threshold, new sends from that account pause for 72 hours (existing envelopes and guest signing are unaffected) and the account is queued for review; the pause lapses unless an operator confirms it. Bounded per client address (edge and service); over the service budget the answer is the same 202 and nothing is recorded.
+         * Report a signing email ("Report this email").
+         * @description Aramo-Sign-Personal-Free-Launch-Directive-v1_1-LOCKED §6.4 and Aramo-Sign-Mobile-Amendment-M-A7 §5.2. Public (no session): the recipient's own signing token (carried in the report link's URL fragment) is the only authority. One report per recipient per envelope; taken for every sender (since M-A7 every signing request and reminder email carries the link). Each report is weighted (severity × independence × credibility). A BUSINESS sender's report is recorded for Aramo operators (GET /platform/sign-abuse-reports) and never pauses the sender. For a PERSONAL sender, when the weighted total reaches the configured threshold, new sends from that account pause for 72 hours (existing envelopes and guest signing are unaffected) and the account is queued for review; the pause lapses unless an operator confirms it. Bounded per client address (edge and service); over the service budget the answer is the same 202 and nothing is recorded.
          */
         post: operations["reportSigningEmail"];
         delete?: never;
@@ -5291,6 +5311,53 @@ export interface operations {
             };
         };
     };
+    reportFromInbox: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path: {
+                /** @description The signature envelope id (UUID). */
+                id: components["parameters"]["EnvelopeId"];
+            };
+            cookie?: never;
+        };
+        requestBody?: {
+            content: {
+                "application/json": {
+                    /** @enum {string|null} */
+                    reason?: "phishing" | "impersonation" | "spam" | "unknown_sender" | "other" | null;
+                    note?: string | null;
+                };
+            };
+        };
+        responses: {
+            /** @description The report was received. */
+            202: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {boolean} */
+                        received: true;
+                    };
+                };
+            };
+            400: components["responses"]["BadRequest"];
+            401: components["responses"]["SenderUnauthorized"];
+            403: components["responses"]["SenderForbidden"];
+            404: components["responses"]["NotFound"];
+            /** @description This recipient already reported this envelope (details.reason = already_reported). */
+            409: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": components["schemas"]["ErrorResponse"];
+                };
+            };
+        };
+    };
     removeFromInbox: {
         parameters: {
             query?: never;
@@ -5379,7 +5446,7 @@ export interface operations {
                 };
             };
             400: components["responses"]["BadRequest"];
-            /** @description The report link cannot be used (unknown or expired token, or not a Personal sender's envelope). */
+            /** @description The report link cannot be used (unknown or expired token). */
             404: {
                 headers: {
                     [name: string]: unknown;

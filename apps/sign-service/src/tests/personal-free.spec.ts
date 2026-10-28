@@ -179,24 +179,25 @@ describe('Personal Free — "Report this email"', () => {
     expect(renderSigningNotification({ ...base, kind: 'SIGNATURE_REQUEST' }).report).toBeUndefined();
   });
 
-  it('the mailer adds the link for a PERSONAL sender only; a lookup failure sends the email without it', async () => {
+  it('M-A7 §5.2 — the mailer adds the link for Business and Personal senders alike (request + reminder); never on other kinds or without a signing link', async () => {
     const sent: { html: string; text: string }[] = [];
     const mailer = { send: vi.fn(async (m: { html: string; text: string }) => (sent.push(m), { message_id: 'm' })) };
-    const kinds: Record<string, string> = { p: 'PERSONAL', b: 'BUSINESS' };
-    const tenants = { findById: vi.fn(async (id: string) => (id === 'boom' ? Promise.reject(new Error('db')) : { kind: kinds[id] })) };
-    const adapter = new MailerSigningNotificationAdapter(mailer as never, tenants as never);
+    const adapter = new MailerSigningNotificationAdapter(mailer as never);
     const n = { kind: 'SIGNATURE_REQUEST' as const, to_email: 'x@y.test', to_name: 'X', envelope_subject: 'Lease', signing_url: `https://s.test/s/${TOKEN}` };
-    await adapter.notify({ ...n, tenant_id: 'p' });
-    await adapter.notify({ ...n, tenant_id: 'b' });
-    await adapter.notify({ ...n, tenant_id: 'boom' });
+    await adapter.notify({ ...n, tenant_id: 'personal-tenant' });
+    await adapter.notify({ ...n, tenant_id: 'business-tenant' });
+    await adapter.notify({ ...n, kind: 'SIGNATURE_REMINDER', tenant_id: 'business-tenant' });
     await adapter.notify(n);
-    expect(sent[0]!.html).toContain(`https://s.test/report#token=${TOKEN}`);
-    expect(sent[0]!.text).toContain('Report this email');
-    for (const m of sent.slice(1)) expect(m.html).not.toContain('Report this email');
-    // Without a tenant lookup bound, the email is exactly the pre-existing one.
-    const plain: { html: string }[] = [];
-    await new MailerSigningNotificationAdapter({ send: async (m: { html: string }) => (plain.push(m), { message_id: 'm' }) } as never).notify({ ...n, tenant_id: 'p' });
-    expect(plain[0]!.html).toBe(sent[1]!.html);
+    for (const m of sent) {
+      expect(m.html).toContain(`https://s.test/report#token=${TOKEN}`);
+      expect(m.text).toContain(`Report this email: https://s.test/report#token=${TOKEN}`);
+      // The token travels in the fragment only — never a query string or a /report path segment.
+      expect(m.html).not.toMatch(/report\?|\/report\/[A-Za-z0-9_-]{16}/);
+    }
+    sent.length = 0;
+    await adapter.notify({ kind: 'SIGNATURE_VOIDED', to_email: 'x@y.test', to_name: 'X', envelope_subject: 'Lease', tenant_id: 'business-tenant' });
+    await adapter.notify({ ...n, signing_url: undefined, tenant_id: 'business-tenant' });
+    for (const m of sent) expect(m.html).not.toContain('Report this email');
   });
 
   it('weighting: severity × independence × credibility', () => {

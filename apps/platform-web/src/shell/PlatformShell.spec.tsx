@@ -74,6 +74,7 @@ describe('PlatformShell — permission-filtered rail (handoff §2, §3.3)', () =
       'Tenants',
       'Review queue',
       'Pilot invites',
+      'Abuse reports',
       'Registry',
       'Review queue',
       'Proposals',
@@ -104,6 +105,8 @@ describe('PlatformShell — permission-filtered rail (handoff §2, §3.3)', () =
     const nav = railNav();
     expect(within(nav).getByRole('link', { name: 'Review queue' })).toHaveAttribute('href', '/personal-review');
     expect(within(nav).getByRole('link', { name: 'Pilot invites' })).toBeInTheDocument();
+    // M-A7 §5.2 — the abuse-report queue (every sender), same scope.
+    expect(within(nav).getByRole('link', { name: 'Abuse reports' })).toHaveAttribute('href', '/sign-abuse-reports');
     expect(within(nav).getByRole('link', { name: 'Platform admins' })).toBeInTheDocument();
     await screen.findByText('Maya Okafor');
   });

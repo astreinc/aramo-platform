@@ -135,3 +135,6 @@ p { line-height: 1.5; margin: 0 0 12px; }
 .sg-onpage--stamp::before { content: 'Signed by:'; position: absolute; top: -6px; left: 8px; padding: 0 2px; background: #fff; font-size: 7.5px; font-weight: 700; color: #20232b; font-family: 'Hanken Grotesk', system-ui, sans-serif; z-index: 1; }
 .sg-done-actions { display: inline-flex; align-items: center; gap: 8px; }
 .sg-onpage--stamp .sg-onpage__img { padding: 9px 4px 3px 2px; box-sizing: border-box; }
+/* M-A7 §5.2 — the Report action (Help panel and landing card). */
+.sg-help__link { color: #fff; text-decoration: underline; }
+.sg-report-line { margin: 4px 0 0; text-align: center; }

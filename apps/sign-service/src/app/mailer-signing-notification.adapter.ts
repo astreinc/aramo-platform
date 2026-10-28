@@ -1,5 +1,4 @@
-import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
-import { TenantRepository } from '@aramo/identity';
+import { Inject, Injectable } from '@nestjs/common';
 import { MAILER_PORT, type MailerPort } from '@aramo/mailer';
 import { type SigningNotification, type SigningNotificationPort, type SigningNotificationResult } from '@aramo/sign';
 
@@ -28,7 +27,7 @@ interface Rendered {
   lines: string[];
   action?: { label: string; url: string };
   footnote?: string;
-  // Personal Free v1.1 §6.4 — "Report this email" (Personal senders only).
+  // Personal Free v1.1 §6.4 / M-A7 §5.2 — "Report this email" (every sender).
   report?: { label: string; url: string };
 }
 
@@ -174,30 +173,17 @@ function renderBase(n: SigningNotification): Rendered {
 
 @Injectable()
 export class MailerSigningNotificationAdapter implements SigningNotificationPort {
-  private readonly log = new Logger(MailerSigningNotificationAdapter.name);
+  constructor(@Inject(MAILER_PORT) private readonly mailer: MailerPort) {}
 
-  constructor(
-    @Inject(MAILER_PORT) private readonly mailer: MailerPort,
-    // Personal Free v1.1 §6.4 — resolves whether the sender is a PERSONAL tenant.
-    // Optional: absent ⇒ no report link (the pre-existing email exactly).
-    @Optional() private readonly tenants?: TenantRepository,
-  ) {}
-
-  // Only a Personal sender's signing request / reminder carries "Report this email".
-  private async reportUrl(input: SigningNotification): Promise<string | null> {
-    if (!REPORTABLE.has(input.kind) || input.tenant_id === undefined || this.tenants === undefined) return null;
-    try {
-      const tenant = await this.tenants.findById(input.tenant_id);
-      return tenant?.kind === 'PERSONAL' ? reportUrlFromSigningUrl(input.signing_url) : null;
-    } catch (err) {
-      // Never block a signing email on the lookup; the email goes without the link.
-      this.log.warn(`report link lookup failed: ${(err as Error).message}`);
-      return null;
-    }
+  // Amendment M-A7 §5.2 (R-11) — every signing request and reminder carries
+  // "Report this email", for Business and Personal senders alike (as the Aramo
+  // Acceptable Use Policy §8.1 states). Until M-A7 only a Personal sender's did.
+  private reportUrl(input: SigningNotification): string | null {
+    return REPORTABLE.has(input.kind) ? reportUrlFromSigningUrl(input.signing_url) : null;
   }
 
   async notify(input: SigningNotification): Promise<SigningNotificationResult> {
-    const r = renderSigningNotification(input, { report_url: await this.reportUrl(input) });
+    const r = renderSigningNotification(input, { report_url: this.reportUrl(input) });
     const html = [
       `<p>Hello ${esc(input.to_name)},</p>`,
       ...r.lines.map((l) => `<p>${esc(l)}</p>`),

@@ -21,6 +21,7 @@ import { TemplateVariablesView } from './document-templates/TemplateVariablesVie
 import { MatchingPolicyView } from './matching/MatchingPolicyView';
 import { PersonalReviewView } from './personal/PersonalReviewView';
 import { PersonalInviteView } from './personal/PersonalInviteView';
+import { SignAbuseReportsView } from './personal/SignAbuseReportsView';
 import { PlatformAdminsView } from './admins/PlatformAdminsView';
 import { COMMERCIAL_PERMISSIONS as CP } from './components/permissions';
 import { ApprovalsInboxView } from './commercial/ApprovalsInboxView';
@@ -170,6 +171,11 @@ export function PlatformConsole({ session }: { readonly session: Session }) {
         <Route
           path="/personal-invites"
           element={gate(P.tenantLifecycleManage, 'Pilot invites', <PersonalInviteView />)}
+        />
+        {/* M-A7 §5.2 — the abuse-report queue across every Sign sender (same scope as the API). */}
+        <Route
+          path="/sign-abuse-reports"
+          element={gate(P.tenantLifecycleManage, 'Abuse reports', <SignAbuseReportsView />)}
         />
         {/* PLATFORM-UX-1 (directive R-12) — Platform admins at /admins (never under
             /platform/, which nginx proxies to the backend). */}

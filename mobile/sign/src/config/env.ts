@@ -64,9 +64,19 @@ export const env: AppEnv = resolveEnv(
   typeof __DEV__ !== 'undefined' ? __DEV__ : false,
 );
 
-/** Public web pages opened in the system browser (handoff §4.1 footer, §4.9 About). */
+/**
+ * Public web pages opened in the system browser (handoff §4.1 footer, §4.9 About).
+ * M-A7 §5.1 (R-8) — each is a real public page of sign-web (no sign-in):
+ *   terms          /legal/terms     the published terms that apply (Personal Terms and
+ *                                   the Acceptable Use Policy; Business = the
+ *                                   organization's agreement — never a draft)
+ *   personalTerms  /legal/personal-terms  the Personal (Free) Terms in effect
+ *   privacy        /legal/privacy   the Privacy Notice in effect
+ *   help           /help            help, report guidance and the identity block
+ */
 export const WEB_LINKS = {
   terms: `${PRODUCTION_API_BASE_URL}/legal/terms`,
+  personalTerms: `${PRODUCTION_API_BASE_URL}/legal/personal-terms`,
   privacy: `${PRODUCTION_API_BASE_URL}/legal/privacy`,
   help: `${PRODUCTION_API_BASE_URL}/help`,
 } as const;
