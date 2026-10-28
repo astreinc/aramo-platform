@@ -72,6 +72,10 @@ export interface SenderContextView {
   organization_roles_url: string | null;
   // The tenant host's App Home (account preferences live there), or null.
   app_home_url: string | null;
+  // Aramo-Sign-Mobile-Amendment-M-A8 §2.1 — true only for the tenant_owner of a PERSONAL
+  // tenant (read live from the active membership). Every other subject is a Business
+  // user: organization-managed, offered privacy requests but no self-service delete.
+  personal_account_owner: boolean;
 }
 
 @Injectable()
@@ -176,9 +180,12 @@ export class SenderContextService {
       templates: scopes.has(DOCUMENT_TEMPLATE_READ_SCOPE),
     };
     const tenantBase = tenantHostBase(slug);
-    const membership = business ? await this.identity.findMembership({ user_id: auth.sub, tenant_id: auth.tenant_id }) : null;
+    // M-A8 §2.1 — the membership's roles are read for both kinds: org_admin (BUSINESS)
+    // and personal_account_owner (PERSONAL tenant_owner).
+    const membership = await this.identity.findMembership({ user_id: auth.sub, tenant_id: auth.tenant_id });
     const roleKeys = membership !== null && membership.is_active ? await this.identity.findRoleKeysForMembership(membership.id) : [];
     const org_admin = business && roleKeys.some((k) => k === 'tenant_owner' || k === 'tenant_admin');
+    const personal_account_owner = !business && tenant.kind === 'PERSONAL' && roleKeys.includes('tenant_owner');
     return {
       user: { id: auth.sub, email: user?.email ?? null, display_name: user?.display_name ?? null, identity_provider: await this.identityProviderOf(auth.sub, auth.tenant_id) },
       tenant: { id: tenant.id, name: (await this.tenants.findOrganizationNameById(tenant.id)) ?? tenant.name, kind: tenant.kind },
@@ -194,6 +201,7 @@ export class SenderContextService {
       org_admin,
       organization_roles_url: business && tenantBase !== null ? `${tenantBase}/org/roles` : null,
       app_home_url: tenantBase !== null ? `${tenantBase}/` : null,
+      personal_account_owner,
     };
   }
 }
