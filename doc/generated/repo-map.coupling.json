@@ -28643,6 +28643,11 @@
       "to": "infrastructure/cognito-triggers/CUTOVER.md"
     },
     {
+      "from": "doc/runbooks/RELEASE-sign-mobile.md",
+      "status": "unscoped",
+      "to": "mobile/sign/plugins/withReleaseSigning.js"
+    },
+    {
       "from": "doc/runbooks/RELEASE-sign-naming.md",
       "status": "unscoped",
       "to": "deploy/build-images.sh"
@@ -33916,6 +33921,16 @@
     },
     { "from": "mobile/sign/README.md", "status": "unscoped", "to": "openapi/auth.yaml" },
     { "from": "mobile/sign/README.md", "status": "unscoped", "to": "openapi/sign.yaml" },
+    {
+      "from": "mobile/sign/android/app/build.gradle",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-sign-mobile.md"
+    },
+    {
+      "from": "mobile/sign/plugins/withReleaseSigning.js",
+      "status": "unscoped",
+      "to": "doc/runbooks/RELEASE-sign-mobile.md"
+    },
     { "from": "mobile/sign/project.json", "status": "unscoped", "to": "openapi/auth.yaml" },
     { "from": "mobile/sign/project.json", "status": "unscoped", "to": "openapi/common.yaml" },
     { "from": "mobile/sign/project.json", "status": "unscoped", "to": "openapi/sign.yaml" },

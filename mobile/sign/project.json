@@ -10,6 +10,11 @@
       "{projectRoot}/src/**/*",
       "{projectRoot}/*.{js,ts,json}",
       "{projectRoot}/package-lock.json",
+      "{projectRoot}/plugins/**/*",
+      "{projectRoot}/android/gradle.properties",
+      "{projectRoot}/android/app/build.gradle",
+      "{projectRoot}/android/app/proguard-rules.pro",
+      "{projectRoot}/android/app/src/main/AndroidManifest.xml",
       "!{projectRoot}/node_modules/**/*"
     ]
   },

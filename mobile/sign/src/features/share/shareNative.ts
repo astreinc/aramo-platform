@@ -4,10 +4,12 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 
+import { SHARE_TEMP_DIR } from '../../security/documentTempFiles';
 import { randomId } from '../../util/ids';
 import type { ShareFilePort, ShareSheetPort } from './shareCompleted';
 
-const SHARE_DIR = 'aramo-share';
+// Also wiped at app start and sign-out with the viewer temp files (security/documentTempFiles.ts).
+const SHARE_DIR = SHARE_TEMP_DIR;
 
 function shareRoot(): Directory {
   return new Directory(Paths.cache, SHARE_DIR);
