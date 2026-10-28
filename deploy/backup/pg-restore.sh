@@ -1,52 +1,72 @@
 #!/usr/bin/env bash
-# Aramo single-box — Postgres restore (Single-Box Directive 3 §B, the drill).
+# Aramo single-box — Postgres restore of ONE database dump (real restore / drill).
 #
-# Restores a pg-backup.sh dump (`pg_dump -Fc`) into a Postgres container. A
-# backup you haven't restored is a hope, not a backup — this is the proven
-# other half. The restore drill (see doc/runbooks/singlebox-ops.md) dumps the
-# live stack, restores into a CLEAN Postgres, and confirms the stack reads it.
+# For the routine proof that a backup restores, use aramo-restore-test.sh (a
+# throwaway, network-isolated container). THIS script restores into a named
+# target container — a real rollback — and so carries the M-A7 §2 gate:
+# restoring a backup older than recorded deletions requires deletion replay
+# (deploy/backup/aramo-deletion-replay.sh) BEFORE the database serves traffic.
 #
 # Usage:
-#   deploy/backup/pg-restore.sh <dump>            # dump = local path OR s3://… uri
-#   PG_CONTAINER=clean-pg deploy/backup/pg-restore.sh /var/backups/aramo/aramo-pg-…dump
+#   deploy/backup/pg-restore.sh <dump>          # local path or s3://… uri
+#     <dump> = *.dump.age  (aramo-backup.sh output; needs AGE_IDENTITY_FILE)
+#            | *.dump      (legacy unencrypted pg_dump -Fc)
 #
 # Config (env):
-#   PG_CONTAINER   target postgres container   (default aramo-prod-postgres)
-#   POSTGRES_USER  db user                     (default aramo)
-#   POSTGRES_DB    db name                     (default aramo)
-# Reading from s3:// also needs the AWS env (region + creds) with GetObject.
+#   PG_CONTAINER       target postgres container   (default aramo-prod-postgres)
+#   POSTGRES_USER      db user                     (default aramo)
+#   POSTGRES_DB        db name                     (default aramo)
+#   AGE_IDENTITY_FILE  age identity for *.age input (kept OFFLINE; bring it only
+#                      for the restore, never leave it on the box)
+# Reading from s3:// also needs the AWS env of the restore-reader principal.
 set -euo pipefail
+umask 077
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=deploy/backup/lib.sh disable=SC1091
+source "$DIR/lib.sh"
+BK_TAG="pg-restore"
 
 SRC="${1:-}"
-[ -n "$SRC" ] || { echo "usage: $0 <dump-file-or-s3-uri>" >&2; exit 2; }
+[ -n "$SRC" ] || bk_die "usage: $0 <dump-file-or-s3-uri>" 2
 
 PG_CONTAINER="${PG_CONTAINER:-aramo-prod-postgres}"
 POSTGRES_USER="${POSTGRES_USER:-aramo}"
 POSTGRES_DB="${POSTGRES_DB:-aramo}"
 
-cleanup=""
+work=""
+trap '[ -z "$work" ] || rm -rf -- "$work"' EXIT
 local_file="$SRC"
 if [[ "$SRC" == s3://* ]]; then
-  local_file="$(mktemp /tmp/aramo-restore-XXXXXX.dump)"
-  cleanup="$local_file"
-  echo "pg-restore: fetching ${SRC} → ${local_file}"
-  aws s3 cp "$SRC" "$local_file"
+  work="$(mktemp -d "${TMPDIR:-/tmp}/aramo-restore.XXXXXX")"
+  local_file="$work/$(basename "$SRC")"
+  export BK_AWS_MOUNT="$work"
+  bk_log "fetching ${SRC}"
+  bk_aws s3 cp --only-show-errors "$SRC" "$local_file"
 fi
-[ -f "$local_file" ] || { echo "pg-restore: dump not found: $local_file" >&2; exit 1; }
+[ -f "$local_file" ] || bk_die "dump not found: $local_file"
 
-echo "pg-restore: restoring ${local_file} → ${POSTGRES_DB} in ${PG_CONTAINER}"
-# --clean --if-exists makes the restore repeatable: it DROPs each object before
-# recreating (no-op on a truly empty target), so the same dump restores cleanly
-# into either a fresh DB or one being rolled back. --no-owner ignores the dump's
-# role grants (the box DB has a single owning role). Non-fatal NOTICEs (e.g.
-# "schema already exists") are expected; pg_restore exits non-zero only on real
-# errors with --exit-on-error, which we DON'T set so benign drop-misses on an
-# empty target don't abort the drill.
-if ! docker exec -i "$PG_CONTAINER" pg_restore \
-      -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
-      --clean --if-exists --no-owner < "$local_file"; then
-  echo "pg-restore: pg_restore reported errors (review above; benign on empty target)" >&2
-fi
+bk_log "restoring $(basename "$local_file") → ${POSTGRES_DB} in ${PG_CONTAINER}"
+# --clean --if-exists makes the restore repeatable (fresh OR rollback target).
+# --no-owner: the box DB has a single owning role. Benign drop-misses on an
+# empty target are reported but do not abort (no --exit-on-error here; the
+# throwaway restore test is the strict one).
+restore() {
+  docker exec -i "$PG_CONTAINER" pg_restore -U "$POSTGRES_USER" -d "$POSTGRES_DB" \
+    --clean --if-exists --no-owner
+}
+rc=0
+case "$local_file" in
+  *.age)
+    if [ -z "${AGE_IDENTITY_FILE:-}" ] || ! [ -r "$AGE_IDENTITY_FILE" ]; then
+      bk_die "encrypted dump: set AGE_IDENTITY_FILE to the offline age identity" 2
+    fi
+    age -d -i "$AGE_IDENTITY_FILE" "$local_file" | restore || rc=$?
+    ;;
+  *) restore <"$local_file" || rc=$? ;;
+esac
+[ "$rc" = "0" ] || bk_log "pg_restore reported errors (rc=${rc}; review above; benign on an empty target)"
 
-[ -n "$cleanup" ] && rm -f "$cleanup"
-echo "pg-restore: done"
+bk_log "done. GATE (M-A7 §2): if this backup predates any completed deletion, run"
+bk_log "  deploy/backup/aramo-deletion-replay.sh --db-container ${PG_CONTAINER} --backup-created-at <manifest created_at> --source <ledger>"
+bk_log "and do not return the database to service until it passes."

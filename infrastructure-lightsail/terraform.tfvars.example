@@ -22,7 +22,14 @@ ssh_source_cidr = "203.0.113.7/32"
 # app_fqdn          = "astre.aramo.ai"
 # dns_zone_name     = "aramo.ai"
 
-# --- Optional scoped S3-backup IAM (off by default) -------------------------
+# --- R-15 encrypted backups (M-A7 §2; off by default) — r15-backups.tf ------
+# manage_r15_backups          = true
+# r15_backup_bucket           = "aramo-prod-db-backups-use1"
+# r15_routine_retention_days  = 30
+# r15_historic_retention_days = 30      # PO decision
+# r15_object_lock_enabled     = false   # irreversible; decide BEFORE first apply
+
+# --- LEGACY scoped S3-backup IAM (superseded by R-15; leave off) -------------
 # Set true to provision the s3:PutObject-only backup user. The access KEY is
 # generated out-of-band (never in state) — see README §Backup IAM.
 # create_backup_iam_user = true
