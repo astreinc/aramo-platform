@@ -29369,6 +29369,11 @@
     {
       "from": "docker-compose.prod.yml",
       "status": "unscoped",
+      "to": "deploy/nginx/templates/aramo.conf.template"
+    },
+    {
+      "from": "docker-compose.prod.yml",
+      "status": "unscoped",
       "to": "doc/runbooks/pgvector-prod-enablement.md"
     },
     {
@@ -37149,6 +37154,7 @@
         { "kind": "npm-run", "path": "ci/scripts/generate-repo-map.ts" },
         { "kind": "prose", "path": "ci/scripts/generate-repo-map.ts" },
         { "kind": "prose", "path": "deploy/backup/pg-backup.sh" },
+        { "kind": "prose", "path": "deploy/nginx/README.md" },
         { "kind": "prose", "path": "tools/ensure-intelligence-db.sh" }
       ]
     },
