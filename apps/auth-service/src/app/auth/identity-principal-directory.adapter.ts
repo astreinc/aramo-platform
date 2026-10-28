@@ -23,7 +23,10 @@ import {
   type ResolveSessionResult,
 } from '@aramo/auth-core';
 
-type AuditEventType = Parameters<IdentityAuditService['writeGlobalEvent']>[0]['event_type'];
+// M-A8 §2.4 — the Sign permission namespace (ESIGN_SCOPE keys all start with it).
+const SIGN_SCOPE_PREFIX = 'sign:';
+
+type AuditEventType =Parameters<IdentityAuditService['writeGlobalEvent']>[0]['event_type'];
 
 // Auth-Decoupling PR-4 (ADR-0021 §2) — the Aramo-side adapter implementing auth's
 // PrincipalDirectory. It performs the FULL identity→session resolution the
@@ -354,6 +357,17 @@ export class IdentityPrincipalDirectoryAdapter implements PrincipalDirectory {
       user_id: input.principal_id,
       tenant_id: input.context_id,
     });
+    // Aramo-Sign-Mobile-Amendment-M-A8 §2.4 — defence in depth: a `sign` session
+    // (browser `sign` and native `sign_native` refresh both re-mint as consumer
+    // `sign`) is re-minted only while the principal still holds Sign authority in
+    // this tenant — a Sign product role (sign_admin / sign_sender / sign_viewer) or
+    // an organization role carrying the Sign permissions (tenant_owner /
+    // tenant_admin, ADR-0035 R1), i.e. at least one `sign:` scope, read live. After
+    // an administrator removed Sign access the refresh is refused; both refresh
+    // paths revoke the presented token on `denied`.
+    if (input.consumer === 'sign' && !scopes.some((s) => s.startsWith(SIGN_SCOPE_PREFIX))) {
+      return { kind: 'denied', reason: 'sign_access_removed' };
+    }
     // HF-AUTH-1 — re-resolve the current authorization revision for the compact
     // re-mint (refresh path).
     const authz_version = await this.authzVersions.getCurrentVersion({
