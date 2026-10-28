@@ -1,6 +1,8 @@
 // Adopt-signature PNG path (directive §6, §7 C-19; M-A3 §4): Type and Draw are both
 // rasterized to PNG; the default is saved through /v1/sign/me/signature | /me/initials.
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { State } from 'react-native-gesture-handler';
+import { fireGestureHandler, getByGestureTestId } from 'react-native-gesture-handler/jest-utils';
 
 import { workspaceWith } from '../../inbox/__tests__/fixtures';
 import { MAX_IMAGE_BYTES, pngDataUrl, saveDefaultMark, SCRIPT_FONT_KEY } from '../adopt';
@@ -89,6 +91,36 @@ describe('AdoptSignatureSheet', () => {
     });
     // Signed out: no "save as default" offer.
     expect(screen.queryByText(/Save as my default/)).toBeNull();
+  });
+
+  it('Draw: a native pan stroke enables adopting as DRAWN', async () => {
+    const capture = jest.fn(async () => pngDataUrl(PNG_B64));
+    const onAdopt = jest.fn();
+    render(
+      <AdoptSignatureSheet
+        visible
+        target="SIGNATURE"
+        mode="account"
+        defaultName="Jo"
+        canSaveDefault
+        onAdopt={onAdopt}
+        onClose={jest.fn()}
+        capture={capture}
+      />,
+    );
+    fireEvent.press(screen.getByTestId('adopt-tab-draw'));
+    act(() => {
+      fireGestureHandler(getByGestureTestId('signature-pad'), [
+        { state: State.BEGAN, x: 10, y: 20 },
+        { state: State.ACTIVE, x: 30, y: 25 },
+        { x: 60, y: 30 },
+        { state: State.END, x: 60, y: 30 },
+      ]);
+    });
+    expect(screen.queryByText('Sign here with your finger')).toBeNull();
+    fireEvent.press(screen.getByTestId('adopt-confirm'));
+    await waitFor(() => expect(onAdopt).toHaveBeenCalled());
+    expect(onAdopt.mock.calls[0][0].mark.method).toBe('DRAWN');
   });
 
   it('Account mode reads "Save signature" and always saves', async () => {

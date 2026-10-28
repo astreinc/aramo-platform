@@ -57,8 +57,16 @@ export const biometricConfirmPref = {
     kv.setItem(SECURE_KEYS.biometricConfirm, on ? '1' : '0'),
 };
 
-/** Optional app unlock gating the locally stored session — default OFF. */
+/** Optional app unlock gating the locally stored session — default OFF. Asked at launch
+ * and again when the app returns after at least RELOCK_AFTER_MS in the background. */
 export const biometricUnlockPref = {
   get: (kv: SecureKeyValue) => readFlag(kv, SECURE_KEYS.biometricUnlock, false),
   set: (kv: SecureKeyValue, on: boolean) => kv.setItem(SECURE_KEYS.biometricUnlock, on ? '1' : '0'),
 };
+
+/** Background time after which the app asks to unlock again (when unlock is on). */
+export const RELOCK_AFTER_MS = 5 * 60_000;
+
+export function shouldRelock(backgroundedAt: number | null, now: number): boolean {
+  return backgroundedAt !== null && now - backgroundedAt >= RELOCK_AFTER_MS;
+}

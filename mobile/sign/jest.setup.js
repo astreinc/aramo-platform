@@ -1,6 +1,8 @@
 /* global jest, Buffer */
 // Node implementations of the native modules the unit tests exercise.
 
+require('react-native-gesture-handler/jestSetup');
+
 jest.mock('expo-crypto', () => ({
   CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
   getRandomBytes: (n) => new Uint8Array(require('node:crypto').randomBytes(n)),

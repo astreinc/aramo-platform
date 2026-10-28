@@ -13,6 +13,8 @@ const config: ExpoConfig = {
   scheme: 'aramosign',
   version: '1.0.0',
   orientation: 'portrait',
+  // The aramo mark on the Sign accent; regenerate with scripts/draw-app-icon.swift.
+  icon: './assets/icon.png',
   platforms: ['ios', 'android'],
   ios: {
     bundleIdentifier: 'ai.aramo.sign',
