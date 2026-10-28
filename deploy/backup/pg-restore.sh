@@ -67,6 +67,7 @@ case "$local_file" in
 esac
 [ "$rc" = "0" ] || bk_log "pg_restore reported errors (rc=${rc}; review above; benign on an empty target)"
 
-bk_log "done. GATE (M-A7 §2): if this backup predates any completed deletion, run"
-bk_log "  deploy/backup/aramo-deletion-replay.sh --db-container ${PG_CONTAINER} --backup-created-at <manifest created_at> --source <ledger>"
-bk_log "and do not return the database to service until it passes."
+bk_log "done. GATE (M-A8 §1.3.2): before this database serves traffic, run"
+bk_log "  deploy/backup/aramo-deletion-replay.sh --backup-created-at <manifest created_at> \\"
+bk_log "    --source-container <current ledger container> --db-container ${PG_CONTAINER}"
+bk_log "and do not return the database to service until it exits 0 (empty or verified replay)."

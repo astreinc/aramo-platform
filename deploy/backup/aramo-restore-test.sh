@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Aramo — mandatory restore test for an encrypted backup run (M-A7 §2 / R-15).
+# Aramo — mandatory restore test for an encrypted backup run (M-A8 §1.3.1).
 #
 # Runs on the OPERATOR MAC (or another offline-key host), never on the box:
 # it needs the age IDENTITY (private key), which by design never exists on the
@@ -8,7 +8,7 @@
 #      restore-reader credential) into a private 0700 temp dir — encrypted
 #      files only;
 #   2. verify every artifact's size + sha256 against manifest.tsv;
-#   3. start a THROWAWAY `pgvector/pgvector:pg17` container with
+#   3. start a THROWAWAY `pgvector/pgvector:pg17` container with `--rm`
 #      `--network none` (no network at all; data enters over `docker exec -i`);
 #   4. pre-create the cluster roles the dumps reference: every role named by a
 #      CREATE ROLE in the run's encrypted globals artifact, or (historic runs,
@@ -18,7 +18,14 @@
 #      decrypted stream is never written to disk;
 #   6. compare base-table count and migration-ledger row count with the
 #      manifest's recorded values (when recorded), print a counts-only report;
-#   7. remove the container and the temp dir (trap), PASS => exit 0.
+#   7. remove the container WITH its anonymous volumes (the image declares a data
+#      volume that would otherwise keep the restored database; recon defect 7),
+#      then the temp dir (trap); PASS => exit 0;
+#   8. upload the counts-only PASS/FAIL report to
+#      s3://<bucket>/restore-checks/<UTCts>-<run_id>.<PASS|FAIL>.txt (SSE-KMS by
+#      BACKUP_KMS_KEY_ID, metadata result=PASS|FAIL) with the restorer credential.
+#      Default for s3:// sources; --report-s3 s3://<bucket> for a local run dir;
+#      --no-report-upload to skip. A run that dies early still uploads a FAIL report.
 #
 # Usage:
 #   AGE_IDENTITY_FILE=~/aramo-backup-identity.txt \
@@ -27,13 +34,15 @@
 #   … --expect-tables aramo=N --expect-ledger aramo=M   # explicit expectations
 #                                                       # (historic runs record none)
 #   … --report <file>                                   # write the counts-only report
+#   … --report-s3 s3://<bucket> | --no-report-upload    # restore-checks/ upload
 #
 # Env:
 #   AGE_IDENTITY_FILE    age identity file (REQUIRED; keep it offline)
 #   RESTORE_IMAGE        default pgvector/pgvector:pg17 (the production image)
 #   RESTORE_ROLES        extra roles to pre-create (default none; the globals artifact names the rest)
 #   RESTORE_SUPERUSER    default aramo (the production POSTGRES_USER; owns most objects)
-#   AWS_PROFILE / AWS_REGION / … for s3:// sources (the restore-reader principal)
+#   AWS_PROFILE / AWS_REGION / … for s3:// sources (the restorer principal)
+#   BACKUP_KMS_KEY_ID    the bucket's KMS key ARN (required for the report upload)
 set -euo pipefail
 umask 077
 
@@ -50,9 +59,44 @@ TABLE_COUNT_SQL="SELECT count(*) FROM information_schema.tables WHERE table_type
 
 CONTAINER=""
 WORK=""
+REPORT_BUCKET=""
+REPORT_UPLOADED=0
+RUN_ID="unknown"
+RUN_CLASS="unknown"
+
+# upload_report <file> <PASS|FAIL>: restore-checks/<UTCts>-<run_id>.<result>.txt
+upload_report() {
+  local file="$1" result="$2" key
+  [ -n "$REPORT_BUCKET" ] || return 0
+  [[ "$RUN_ID" =~ ^[A-Za-z0-9][A-Za-z0-9._-]{0,100}$ ]] || RUN_ID="unknown"
+  key="restore-checks/$(bk_now_compact)-${RUN_ID}.${result}.txt"
+  bk_s3_put "$file" "$REPORT_BUCKET" "$key" "result=${result},run-id=${RUN_ID},class=${RUN_CLASS}" >/dev/null
+  REPORT_UPLOADED=1
+  bk_log "report uploaded: s3://${REPORT_BUCKET}/${key}"
+}
+
+# remove the container and every anonymous volume it created
+remove_container() {
+  local c="$1" vols v
+  vols="$(docker inspect -f '{{range .Mounts}}{{if eq .Type "volume"}}{{.Name}} {{end}}{{end}}' "$c" 2>/dev/null || true)"
+  docker rm -f -v "$c" >/dev/null 2>&1 || true
+  for v in $vols; do
+    if docker volume inspect "$v" >/dev/null 2>&1; then
+      docker volume rm -f "$v" >/dev/null 2>&1 || bk_log "WARNING: could not remove volume ${v}"
+    fi
+  done
+}
+
 cleanup() {
-  if [ -n "$CONTAINER" ]; then docker rm -f "$CONTAINER" >/dev/null 2>&1 || true; fi
+  local rc=$?
+  if [ "$rc" != 0 ] && [ "$REPORT_UPLOADED" = 0 ] && [ -n "$REPORT_BUCKET" ] && [ -n "$WORK" ] && [ -d "$WORK" ]; then
+    printf 'restore-test run_id=%s class=%s image=%s at=%s\nerror=%s\noverall=FAIL\n' \
+      "$RUN_ID" "$RUN_CLASS" "$RESTORE_IMAGE" "$(bk_now_iso)" "${BK_LAST_ERROR:-exit ${rc}}" >"$WORK/fail-report.txt"
+    (upload_report "$WORK/fail-report.txt" FAIL) || bk_log "WARNING: FAIL report upload failed"
+  fi
+  if [ -n "$CONTAINER" ]; then remove_container "$CONTAINER"; fi
   if [ -n "$WORK" ]; then rm -rf -- "$WORK"; fi
+  return "$rc"
 }
 trap cleanup EXIT
 
@@ -74,13 +118,15 @@ expect_of() {
 }
 
 main() {
-  local src="" exp_tables="" exp_ledger="" report=""
+  local src="" exp_tables="" exp_ledger="" report="" report_s3="" report_upload=auto
   while [ $# -gt 0 ]; do
     case "$1" in
       --expect-tables) exp_tables="${exp_tables} ${2:?}"; shift 2 ;;
       --expect-ledger) exp_ledger="${exp_ledger} ${2:?}"; shift 2 ;;
       --report) report="${2:?}"; shift 2 ;;
-      -h | --help) sed -n '2,40p' "$0"; exit 0 ;;
+      --report-s3) report_s3="${2:?}"; shift 2 ;;
+      --no-report-upload) report_upload=no; shift ;;
+      -h | --help) sed -n '2,50p' "$0"; exit 0 ;;
       -*) bk_die "unknown argument: $1" 2 ;;
       *) [ -z "$src" ] || bk_die "one source only" 2; src="$1"; shift ;;
     esac
@@ -90,6 +136,15 @@ main() {
     bk_die "AGE_IDENTITY_FILE must point at the readable age identity (kept offline; never on the box)" 2
   fi
   bk_need docker age awk
+  if [ "$report_upload" != "no" ]; then
+    if [ -n "$report_s3" ]; then
+      REPORT_BUCKET="$(bk_s3_bucket "$report_s3")"
+    elif [[ "$src" == s3://* ]]; then
+      local b="${src#s3://}"
+      REPORT_BUCKET="${b%%/*}"
+    fi
+    if [ -n "$REPORT_BUCKET" ]; then bk_require_kms_key; fi
+  fi
 
   WORK="$(mktemp -d "${TMPDIR:-/tmp}/aramo-restore-test.XXXXXX")"
   chmod 700 "$WORK"
@@ -108,6 +163,8 @@ main() {
   local run_id class
   run_id="$(bk_manifest_get "$manifest" run_id)"
   class="$(bk_manifest_get "$manifest" class)"
+  RUN_ID="$run_id"
+  RUN_CLASS="$class"
 
   # 2. integrity against the manifest
   local file db format size sha tables ledger_table ledger_count n=0
@@ -124,7 +181,7 @@ main() {
   local pw
   pw="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
   CONTAINER="aramo-restore-test-$$-$(date +%s)"
-  docker run -d --name "$CONTAINER" --network none \
+  docker run -d --rm --name "$CONTAINER" --network none \
     -e POSTGRES_USER="$RESTORE_SUPERUSER" -e POSTGRES_PASSWORD="$pw" -e POSTGRES_DB=postgres \
     "$RESTORE_IMAGE" >/dev/null
   local i
@@ -221,6 +278,11 @@ main() {
   out="${out}"$'\n'"overall=${overall}"
   printf '%s\n' "$out"
   if [ -n "$report" ]; then printf '%s\n' "$out" >"$report"; fi
+  printf '%s\n' "$out" >"$WORK/report.txt"
+  # Remove the throwaway database (container + volumes) BEFORE reporting PASS.
+  remove_container "$CONTAINER"
+  CONTAINER=""
+  upload_report "$WORK/report.txt" "$overall"
   [ "$fail" = "0" ] || exit 1
 }
 

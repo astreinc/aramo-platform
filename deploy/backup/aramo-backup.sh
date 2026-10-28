@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
-# Aramo single-box — encrypted database backup (M-A7 §2 / R-15).
+# Aramo single-box — encrypted database backup (M-A8 §1.2; was M-A7 §2 / R-15).
 #
-# Replaces the raw `pg_dump … > /opt/aramo/*.sql` deploy step (RELEASE-box.md
-# STEP 2) and the daily timer job. For each database it streams
+# The daily timer job AND the pre-deploy backup (RELEASE-box.md STEP 2,
+# `--label pre-<sha>`). For each database it streams
 #
 #   docker exec <pg> pg_dump -Fc  ──►  age -R <recipients>  ──►  <db>.dump.age (0600)
 #
@@ -12,15 +12,18 @@
 #   $BACKUP_DIR/routine/<run_id>/<db>.dump.age
 #   $BACKUP_DIR/routine/<run_id>/globals.sql.age      (roles only, NO password hashes)
 #   $BACKUP_DIR/routine/<run_id>/manifest.tsv         (sha256/size/db/time/git SHA/counts)
+#   $BACKUP_DIR/heartbeat/<run_id>.json               (OK/FAILED + counts; no data)
 #
-# and, when BACKUP_S3_URI is set, is uploaded to <BACKUP_S3_URI>/routine/<run_id>/
-# (SSE-KMS bucket, 30-day lifecycle; infrastructure-lightsail/r15-backups.tf).
-# The manifest is uploaded LAST, so a manifest object means a complete set.
+# When BACKUP_S3_URI is set, every file is uploaded to <BACKUP_S3_URI>/routine/<run_id>/
+# with SSE-KMS by BACKUP_KMS_KEY_ID named explicitly (the bucket policy refuses
+# anything else), each upload checksum-verified. The manifest is uploaded LAST, so a
+# manifest object means a complete set; then heartbeat/<run_id>.json (status OK).
+# A failed run uploads a FAILED heartbeat (best effort; the systemd OnFailure= unit
+# aramo-pg-backup-failed.service does the same for timer runs).
 #
-# Encryption: age (X25519 + ChaCha20-Poly1305) to PUBLIC recipients only. The
-# matching identities (private keys) stay offline with the PO; the box can
-# write backups but can never read one back. Rationale + custody:
-# doc/runbooks/RUNBOOK-backups-r15.md.
+# Encryption: age (X25519 + ChaCha20-Poly1305) to PUBLIC recipients only (primary +
+# break-glass). The identities (private keys) stay offline with the PO; the box can
+# write backups but can never read one back. Custody: doc/runbooks/RUNBOOK-backups.md.
 #
 # Usage:
 #   sudo deploy/backup/aramo-backup.sh --label pre-<sha>      # deploy STEP 2
@@ -33,6 +36,7 @@
 #   BACKUP_DIR              0700 output root              (default /var/backups/aramo-r15)
 #   BACKUP_RECIPIENTS_FILE  age1… public recipients       (default /etc/aramo/backup-recipients.txt)
 #   BACKUP_S3_URI           s3://<bucket>                 (unset => local only)
+#   BACKUP_KMS_KEY_ID       the bucket's KMS key ARN      (required when uploading)
 #   ARAMO_DIR               repo checkout for git SHA     (default /opt/aramo)
 #   BACKUP_GIT_SHA          explicit SHA override         (default: git -C $ARAMO_DIR rev-parse HEAD)
 #   AWS_REGION / AWS_ACCESS_KEY_ID / AWS_SECRET_ACCESS_KEY  the put-only backup writer
@@ -76,18 +80,40 @@ ledger_of() {
   printf -- '-\t-\n'
 }
 
+# Failure heartbeat (best effort): set once the run is identified and uploads are on.
+HB_RUN_ID=""
+HB_LABEL=""
+HB_DONE=0
+on_exit() {
+  local rc=$?
+  if [ "$rc" != 0 ] && [ -n "$HB_RUN_ID" ] && [ "$HB_DONE" = 0 ]; then
+    HB_DONE=1
+    (bk_heartbeat FAILED "$HB_RUN_ID" "$HB_LABEL" 0 0 0 aramo-backup.sh) ||
+      bk_log "could not write the FAILED heartbeat (the OnFailure unit retries for timer runs)"
+  fi
+  return "$rc"
+}
+
 main() {
   local label="manual" upload=1
   while [ $# -gt 0 ]; do
     case "$1" in
       --label) label="${2:-}"; shift 2 ;;
       --no-upload) upload=0; shift ;;
-      -h | --help) sed -n '2,45p' "$0"; exit 0 ;;
+      -h | --help) sed -n '2,46p' "$0"; exit 0 ;;
       *) bk_die "unknown argument: $1" 2 ;;
     esac
   done
   bk_check_label "$label"
   bk_need docker age awk
+  [ -n "$BACKUP_S3_URI" ] || upload=0
+  if [ "$upload" = "1" ]; then
+    BUCKET="$(bk_s3_bucket "$BACKUP_S3_URI")"
+    bk_require_kms_key
+  else
+    # Local-only drill: the heartbeat stays local too.
+    BACKUP_S3_URI=""
+  fi
 
   bk_check_recipients "$BACKUP_RECIPIENTS_FILE"
   bk_private_dir "$BACKUP_DIR"
@@ -103,6 +129,9 @@ main() {
   run_dir="$BACKUP_DIR/routine/$run_id"
   [ ! -e "$run_dir" ] || bk_die "run directory already exists: ${run_dir}"
   bk_private_dir "$run_dir"
+  HB_RUN_ID="$run_id"
+  HB_LABEL="$label"
+  trap on_exit EXIT
   created_at="$(bk_now_iso)"
   server_version="$(pg_q postgres 'SHOW server_version')" || bk_die "cannot reach postgres in container ${PG_CONTAINER}"
   recipients_sha="$(bk_sha256 "$BACKUP_RECIPIENTS_FILE")"
@@ -169,19 +198,23 @@ main() {
   rm -f "$body"
   chmod 600 "$manifest"
 
-  if [ "$upload" = "1" ] && [ -n "$BACKUP_S3_URI" ]; then
-    [[ "$BACKUP_S3_URI" =~ ^s3://[a-z0-9][a-z0-9.-]{1,61}[a-z0-9]$ ]] ||
-      bk_die "BACKUP_S3_URI must be s3://<bucket> (prefixes are fixed by this script)"
-    local dest="${BACKUP_S3_URI}/routine/${run_id}" f
-    export BK_AWS_MOUNT="$run_dir"
+  local n_dbs n_art bytes
+  n_dbs="$(awk -F'\t' '$1=="artifact" && $3!="_globals"' "$manifest" | wc -l | tr -d ' ')"
+  n_art="$(awk -F'\t' '$1=="artifact"' "$manifest" | wc -l | tr -d ' ')"
+  bytes="$(awk -F'\t' '$1=="artifact"{s+=$5} END{printf "%d", s}' "$manifest")"
+
+  if [ "$upload" = "1" ]; then
+    local prefix="routine/${run_id}" f
     for f in "$run_dir"/*.age "$manifest"; do
-      bk_log "uploading $(basename "$f") → ${dest}/"
-      bk_aws s3 cp --only-show-errors "$f" "${dest}/$(basename "$f")"
+      bk_log "uploading $(basename "$f") → s3://${BUCKET}/${prefix}/ (SSE-KMS)"
+      bk_s3_put "$f" "$BUCKET" "${prefix}/$(basename "$f")" "run-id=${run_id}" >/dev/null
     done
     bk_log "uploaded run ${run_id} (bucket lifecycle owns S3 expiry; this credential cannot delete)"
   else
     bk_log "upload skipped (--no-upload or BACKUP_S3_URI unset) — local copy only"
   fi
+  HB_DONE=1
+  bk_heartbeat OK "$run_id" "$label" "$n_dbs" "$n_art" "$bytes" aramo-backup.sh
 
   bk_log "OK run_id=${run_id} dir=${run_dir}"
   awk -F'\t' '$1=="artifact" {printf "  %-28s db=%-20s bytes=%s tables=%s ledger=%s\n", $2, $3, $5, $7, $9}' "$manifest" >&2
