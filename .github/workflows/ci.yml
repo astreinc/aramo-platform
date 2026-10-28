@@ -750,6 +750,48 @@ jobs:
           fi
           echo "All affected integration roots passed (or none were affected)."
 
+  # M-A8 §5 — the encrypted-backup tooling end to end on a REAL PostgreSQL: a
+  # disposable pgvector/pgvector:pg17 container on this runner, age from the Ubuntu
+  # archive, and a FAKE `aws` on PATH that enforces the M-A8 bucket policy (no AWS,
+  # no credentials). Proves the SSE-KMS header on every upload, heartbeats, the
+  # restore test leaving no container/volume behind, deletion replay against a
+  # privacy-request ledger fixture and the historic disposition tool. Also unit-tests
+  # the freshness Lambda and fmt/validates the infrastructure-backups/ root (init
+  # -backend=false: no state, no AWS). Standalone and unconditional, like
+  # migration-runner:pg: a deploy/-only change is never nx-affected.
+  backup-tooling:
+    name: backup-tooling
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install age
+        run: |
+          sudo apt-get install -y -qq age || { sudo apt-get update -qq && sudo apt-get install -y -qq age; }
+          age --version
+      - name: Pre-pull pgvector/pgvector:pg17 (absorb Docker Hub transient 5xx)
+        run: |
+          for i in 1 2 3 4 5; do
+            if docker pull pgvector/pgvector:pg17; then break; fi
+            echo "::warning::docker pull pgvector/pgvector:pg17 attempt $i failed; backing off"
+            sleep $((i * 6))
+          done
+      - name: backup:e2e (deploy/backup/aramo-backup.test.sh)
+        run: bash deploy/backup/aramo-backup.test.sh
+      - name: backup:disposition (deploy/backup/aramo-historic-disposition.test.sh)
+        run: bash deploy/backup/aramo-historic-disposition.test.sh
+      - name: backup:freshness-lambda (unit)
+        run: python3 -m unittest discover -s infrastructure-backups/lambda -v
+      - uses: hashicorp/setup-terraform@v4
+        with:
+          terraform_version: '>= 1.6.0'
+      - name: backup:terraform fmt + validate (infrastructure-backups/)
+        working-directory: infrastructure-backups
+        run: |
+          terraform fmt -check -recursive .
+          terraform init -backend=false -input=false
+          terraform validate
+
   # ---------------------------------------------------------------------------
   # Terraform IaC gates — PATH-FILTERED to infrastructure/ on a PR (no-op when
   # unchanged, so the required check still reports success); full on other lanes.
@@ -918,6 +960,7 @@ jobs:
       - test-unit
       - tests-integration # stable fan-in over the affected/full integration matrix
       - migration-runner-pg # IC-1 — bounded migration apply (--until) proven on a real PostgreSQL
+      - backup-tooling # M-A8 §5 — encrypted backup tooling e2e + freshness Lambda + infrastructure-backups validate
       - lint-nx-boundaries
       - docker-build
       - terraform-fmt

@@ -1,0 +1,16 @@
+# Aramo single-box — FAILED heartbeat for the scheduled backup (M-A8 §1.2.2).
+# Started only through OnFailure= of aramo-pg-backup.service. It uploads
+# heartbeat/<UTCts>-failed-scheduled.json (status FAILED, counts only) with the
+# writer credential, so the daily freshness check reports the failure by email.
+# Never enable this unit directly.
+
+[Unit]
+Description=Aramo box Postgres backup FAILED heartbeat → S3
+Requires=docker.service
+After=docker.service
+
+[Service]
+Type=oneshot
+UMask=0077
+EnvironmentFile=-/etc/aramo/backup.conf
+ExecStart=/opt/aramo/deploy/backup/aramo-backup-heartbeat.sh --status FAILED --label scheduled --source aramo-pg-backup.service

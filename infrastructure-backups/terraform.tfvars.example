@@ -1,0 +1,3 @@
+# Copy to terraform.tfvars on the operator Mac (never commit the copy).
+# Everything except alert_email has the M-A8 default; nothing here is secret.
+alert_email = "ops@example.invalid" # PO confirms the real address at the apply checkpoint

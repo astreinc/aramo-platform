@@ -1,0 +1,3 @@
+# archive_file output (the Lambda zip is rebuilt from lambda/freshness.py at plan time)
+build/
+__pycache__/
