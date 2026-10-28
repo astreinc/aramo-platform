@@ -139,7 +139,8 @@ main() {
   done
 
   # Roles (attributes + memberships) WITHOUT password hashes: needed to restore
-  # ownership/grants (aramo_erasure_definer, aramo_erasure_operator, …).
+  # ownership/grants (the S2 erasure roles, aramo_intelligence, …); the restore
+  # test pre-creates every role this artifact names.
   out="$run_dir/globals.sql.age"
   if ! docker exec "$PG_CONTAINER" sh -c 'pg_dumpall -U "$POSTGRES_USER" --roles-only --no-role-passwords' |
     age -R "$BACKUP_RECIPIENTS_FILE" -o "${out}.partial"; then

@@ -11,7 +11,7 @@ import { PrivacyRequestService } from '../lib/privacy/privacy-request.service.js
 import { PrivacySubjectService } from '../lib/privacy/privacy-subject.service.js';
 
 // Aramo-Sign-Mobile-Amendment-M-A7 §3.1 — the platform privacy-request record on REAL
-// PostgreSQL 17 with the full identity migration set (incl. 20261028130000_privacy_requests):
+// PostgreSQL 17 with the full identity migration set (incl. 20261030030000_privacy_requests):
 // lifecycle legality + concurrency guard, every change evented, the one-time proof
 // (single use, expiry, repeat answers the same request), contact protection, the
 // Business member Sign-access removal (org-wide roles kept) and the DB guards.

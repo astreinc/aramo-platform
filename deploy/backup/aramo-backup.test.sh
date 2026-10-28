@@ -78,8 +78,8 @@ for _ in $(seq 1 60); do
   sleep 1
 done
 docker exec -i "$SRC" psql -X -q -v ON_ERROR_STOP=1 -U aramo -d aramo >/dev/null <<'SQL'
-CREATE ROLE aramo_erasure_definer NOLOGIN;
-CREATE ROLE aramo_erasure_operator NOLOGIN;
+CREATE ROLE aramo_bk_test_definer NOLOGIN;
+CREATE ROLE aramo_bk_test_operator NOLOGIN;
 CREATE ROLE aramo_intelligence LOGIN PASSWORD 'test-only';
 CREATE EXTENSION IF NOT EXISTS vector;
 CREATE TABLE public._local_migrations (name text PRIMARY KEY, checksum text NOT NULL, applied_at timestamptz NOT NULL DEFAULT now());
@@ -91,12 +91,12 @@ CREATE TABLE talent_record."TalentRecord" (id uuid PRIMARY KEY, display_name tex
 INSERT INTO talent_record."TalentRecord" VALUES ('00000000-0000-0000-0000-000000000001','Seed Person One','[1,2,3]');
 CREATE SCHEMA sign;
 CREATE TABLE sign."Envelope" (id uuid PRIMARY KEY, title text);
-GRANT USAGE ON SCHEMA consent TO aramo_erasure_definer;
-GRANT SELECT, INSERT ON consent."TalentErasureRun" TO aramo_erasure_definer;
+GRANT USAGE ON SCHEMA consent TO aramo_bk_test_definer;
+GRANT SELECT, INSERT ON consent."TalentErasureRun" TO aramo_bk_test_definer;
 CREATE FUNCTION consent.s2_probe() RETURNS int LANGUAGE sql SECURITY DEFINER AS 'SELECT 1';
-ALTER FUNCTION consent.s2_probe() OWNER TO aramo_erasure_definer;
+ALTER FUNCTION consent.s2_probe() OWNER TO aramo_bk_test_definer;
 REVOKE ALL ON FUNCTION consent.s2_probe() FROM PUBLIC;
-GRANT EXECUTE ON FUNCTION consent.s2_probe() TO aramo_erasure_operator;
+GRANT EXECUTE ON FUNCTION consent.s2_probe() TO aramo_bk_test_operator;
 CREATE DATABASE aramo_intelligence OWNER aramo_intelligence;
 SQL
 docker exec -i "$SRC" psql -X -q -v ON_ERROR_STOP=1 -U aramo -d aramo_intelligence >/dev/null <<'SQL'
@@ -139,7 +139,7 @@ check "manifest: aramo tables=4 ledger=4" awk -F'\t' '$1=="artifact" && $3=="ara
 check "manifest: aramo_intelligence tables=2 ledger=2" awk -F'\t' '$1=="artifact" && $3=="aramo_intelligence" && $7==2 && $8=="public._intelligence_migrations" && $9==2 {f=1} END{exit !f}' "$m"
 check "manifest sha256 matches file" test "$(awk -F'\t' '$3=="aramo"{print $6}' "$m")" = "$( (sha256sum "$run_dir/aramo.dump.age" 2>/dev/null || shasum -a 256 "$run_dir/aramo.dump.age") | awk '{print $1}')"
 check_not "globals carry no password hashes" sh -c "age -d -i '$T/identity.txt' '$run_dir/globals.sql.age' | grep -Eq 'SCRAM-SHA-256|md5[0-9a-f]{32}'"
-check "globals carry the erasure roles" sh -c "age -d -i '$T/identity.txt' '$run_dir/globals.sql.age' | grep -q 'CREATE ROLE aramo_erasure_definer'"
+check "globals carry the definer/operator roles" sh -c "age -d -i '$T/identity.txt' '$run_dir/globals.sql.age' | grep -q 'CREATE ROLE aramo_bk_test_definer'"
 
 echo "== backup negatives"
 cp "$T/recipients.txt" "$T/bad-recipients.txt"

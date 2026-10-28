@@ -10,8 +10,9 @@
 #   2. verify every artifact's size + sha256 against manifest.tsv;
 #   3. start a THROWAWAY `pgvector/pgvector:pg17` container with
 #      `--network none` (no network at all; data enters over `docker exec -i`);
-#   4. pre-create the cluster roles the dumps reference (RESTORE_ROLES —
-#      aramo_erasure_definer, aramo_erasure_operator, aramo_intelligence);
+#   4. pre-create the cluster roles the dumps reference: every role named by a
+#      CREATE ROLE in the run's encrypted globals artifact, or (historic runs,
+#      no globals) every owner/grantee in its plain-SQL dumps; plus RESTORE_ROLES;
 #   5. for each database artifact: `age -d | pg_restore --exit-on-error`
 #      (or `psql -v ON_ERROR_STOP=1` for an encrypted plain .sql) — the
 #      decrypted stream is never written to disk;
@@ -30,7 +31,7 @@
 # Env:
 #   AGE_IDENTITY_FILE    age identity file (REQUIRED; keep it offline)
 #   RESTORE_IMAGE        default pgvector/pgvector:pg17 (the production image)
-#   RESTORE_ROLES        default "aramo_erasure_definer aramo_erasure_operator aramo_intelligence"
+#   RESTORE_ROLES        extra roles to pre-create (default none; the globals artifact names the rest)
 #   RESTORE_SUPERUSER    default aramo (the production POSTGRES_USER; owns most objects)
 #   AWS_PROFILE / AWS_REGION / … for s3:// sources (the restore-reader principal)
 set -euo pipefail
@@ -42,7 +43,7 @@ source "$DIR/lib.sh"
 BK_TAG="aramo-restore-test"
 
 RESTORE_IMAGE="${RESTORE_IMAGE:-pgvector/pgvector:pg17}"
-RESTORE_ROLES="${RESTORE_ROLES:-aramo_erasure_definer aramo_erasure_operator aramo_intelligence}"
+RESTORE_ROLES="${RESTORE_ROLES:-}"
 RESTORE_SUPERUSER="${RESTORE_SUPERUSER:-aramo}"
 
 TABLE_COUNT_SQL="SELECT count(*) FROM information_schema.tables WHERE table_type='BASE TABLE' AND table_schema NOT IN ('pg_catalog','information_schema')"
@@ -139,13 +140,28 @@ main() {
     bk_die "restore container is not network-isolated"
   bk_log "throwaway ${RESTORE_IMAGE} up (network=none): $(rq postgres 'SHOW server_version')"
 
-  # 4. cluster roles referenced by ownership / grants in the dumps
-  local role
-  for role in $RESTORE_ROLES; do
+  # 4. cluster roles referenced by ownership / grants in the dumps: the role NAMES
+  #    from the globals artifact (attributes and memberships are not needed to restore).
+  local role roles="$RESTORE_ROLES" gfile
+  gfile="$(awk -F'\t' '$3=="_globals"{print $2; exit}' "$run/manifest.tsv")"
+  if [ -n "$gfile" ]; then
+    roles="$roles $(age -d -i "$AGE_IDENTITY_FILE" "$run/$gfile" |
+      sed -n 's/^CREATE ROLE \([a-z_][a-z0-9_]*\);$/\1/p' | { grep -vx "$RESTORE_SUPERUSER" || true; } | tr '\n' ' ')"
+  else
+    # A historic run has no globals artifact: take the roles its plain-SQL dumps
+    # reference as owners or grantees.
+    local pfile
+    while IFS= read -r pfile; do
+      roles="$roles $(age -d -i "$AGE_IDENTITY_FILE" "$run/$pfile" |
+        sed -n -e 's/.* OWNER TO \([a-z_][a-z0-9_]*\);$/\1/p' -e 's/^GRANT .* TO \([a-z_][a-z0-9_]*\);$/\1/p' |
+        { grep -vxE "$RESTORE_SUPERUSER|PUBLIC|public" || true; } | sort -u | tr '\n' ' ')"
+    done < <(awk -F'\t' '$4=="plain-sql+age"{print $2}' "$run/manifest.tsv")
+  fi
+  for role in $roles; do
     [[ "$role" =~ ^[a-z_][a-z0-9_]{0,62}$ ]] || bk_die "invalid role name: ${role}"
     rq postgres "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${role}') THEN CREATE ROLE ${role} NOLOGIN; END IF; END \$\$" >/dev/null
   done
-  bk_log "pre-created roles: ${RESTORE_ROLES}"
+  bk_log "pre-created roles: $(echo $roles | wc -w | tr -d ' ')"
 
   # 5–6. restore + counts
   local fail=0 got_t got_l exp_t exp_l lt out

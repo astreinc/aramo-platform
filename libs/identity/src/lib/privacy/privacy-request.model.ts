@@ -3,7 +3,7 @@ import { randomBytes } from 'node:crypto';
 // Aramo-Sign-Mobile-Amendment-M-A7 §3.1 — the ONE platform privacy-request
 // capability (the Sign instance of TM-L12's rights-request path). Pure model:
 // the vocabularies, the status lifecycle and the public reference format. The
-// database CHECKs (migration 20261028130000_privacy_requests) mirror these lists.
+// database CHECKs (migration 20261030030000_privacy_requests) mirror these lists.
 
 export const PRIVACY_REQUEST_TYPES = ['DELETION', 'ACCESS', 'EXPORT', 'CORRECTION'] as const;
 export type PrivacyRequestType = (typeof PRIVACY_REQUEST_TYPES)[number];

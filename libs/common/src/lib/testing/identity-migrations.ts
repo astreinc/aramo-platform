@@ -147,7 +147,7 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   // Aramo-Sign-Mobile-Amendment-M-A7 §3 — the platform privacy-request capability: PrivacyRequest,
   // PrivacyRequestEvent (append-only), PrivacyRequestEmailProof. New tables + guard triggers only;
   // no existing table or returned shape changes, so no pact verify-api registration.
-  'libs/identity/prisma/migrations/20261028130000_privacy_requests/migration.sql',
+  'libs/identity/prisma/migrations/20261030030000_privacy_requests/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each

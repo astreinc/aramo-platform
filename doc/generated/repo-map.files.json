@@ -4618,7 +4618,7 @@
     "libs/identity/prisma/migrations/20261025180000_ccp_a9_platform_last_owner_invariant/migration.sql",
     "libs/identity/prisma/migrations/20261028060000_ccp_a1a1_finance_amount_scope/migration.sql",
     "libs/identity/prisma/migrations/20261028070000_ccp_a1a2_payment_request_scope/migration.sql",
-    "libs/identity/prisma/migrations/20261028130000_privacy_requests/migration.sql",
+    "libs/identity/prisma/migrations/20261030030000_privacy_requests/migration.sql",
     "libs/identity/prisma/migrations/migration_lock.toml",
     "libs/identity/prisma/schema.prisma",
     "libs/identity/prisma/seed-astre.ts",

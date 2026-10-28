@@ -98,8 +98,8 @@ AGE_IDENTITY_FILE=~/path/aramo-backup-identity-primary.txt AWS_PROFILE=aramo-bac
 ```
 
 It verifies sha256 and size against the manifest, restores every database into a throwaway
-`pgvector/pgvector:pg17` container started with `--network none`, pre-creates the cluster roles
-`aramo_erasure_definer`, `aramo_erasure_operator` and `aramo_intelligence`, restores with
+`pgvector/pgvector:pg17` container started with `--network none`, pre-creates every cluster role named
+in the run's encrypted `globals.sql.age` (the S2 erasure roles, `aramo_intelligence`), restores with
 `pg_restore --exit-on-error`, and compares base-table and migration-ledger counts with the manifest.
 The report holds counts only. The decrypted stream is never written to disk; the container and temp
 dir are removed on exit.

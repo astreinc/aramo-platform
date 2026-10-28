@@ -23,7 +23,7 @@ import { SignPrivacyExecutionWorker } from '../app/privacy/sign-privacy-executio
 
 // Aramo-Sign-Mobile-Amendment-M-A7 §3 (R-1..R-4, R-17) — privacy requests and the
 // staged deletion execution, on real Postgres 17 with the real AppModule, every
-// module's real migrations (incl. identity 20261028130000_privacy_requests and the
+// module's real migrations (incl. identity 20261030030000_privacy_requests and the
 // auth_storage native sessions) and real RS256 sign-consumer tokens. External edges
 // are recorded fakes: the mailer (the one-time link), the IdP retirement and the
 // object store. Covered:

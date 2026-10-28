@@ -5354,6 +5354,10 @@ paths:
       operationId: getPrivacyRequest
       tags: [Platform Privacy]
       summary: 'One privacy request with its append-only history and the requester''s contact email.'
+      description: >
+        Aramo-Sign-Mobile-Amendment-M-A7 §3.3. Operator read of one privacy request: its current
+        state, its append-only event history and the requester's contact email. Unknown id answers
+        404.
       security:
         - BearerAuth: []
         - CookieAccessAuth: []
