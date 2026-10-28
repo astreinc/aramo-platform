@@ -131,89 +131,41 @@ true reboot survival.
 
 A scheduled `pg_dump` of the box Postgres → S3, **with a proven restore path**.
 
+> **Superseded by R-15 (M-A7 §2, 2026-10-28).** The original Directive-3 job (`pg-backup.sh`,
+> unencrypted `pg_dump -Fc`, a `PutObject`-only user on `astre-aramo-backups`) was run by hand (2 files in `/var/backups/aramo`) but never scheduled on the
+> box (no `/etc/aramo/backup.conf`, no timer) and the bucket was never created. It is replaced by the
+> encrypted tooling below. Full procedure: **`doc/runbooks/RUNBOOK-backups-r15.md`**.
+
 ### The backup job
 
-- **`deploy/backup/pg-backup.sh`** — `pg_dump -Fc` (custom format, all schemas)
-  of the prod Postgres container → local staging → **S3 PUT**.
-- **`deploy/systemd/aramo-pg-backup.{service,timer}`** — daily at 03:30 UTC,
-  `Persistent=true` (catches up a missed run after downtime).
+- **`deploy/backup/aramo-backup.sh`** — `pg_dump -Fc` of `aramo` + `aramo_intelligence` (and
+  roles, without password hashes) streamed through `age` to offline-held public recipients → `0600`
+  files in the `0700` root-only `/var/backups/aramo-r15/routine/<run_id>/` with `manifest.tsv` →
+  upload to `s3://aramo-prod-db-backups-use1/routine/<run_id>/` (SSE-KMS, 30-day lifecycle).
+- **`deploy/backup/aramo-backup-prune.sh`** — local 30-day retention (`routine/` only; never
+  `legal-hold/`, `historic/` or the pre-R-15 plaintext locations).
+- **`deploy/systemd/aramo-pg-backup.{service,timer}`** — daily at 03:30 UTC: backup, then prune.
+  Enable only after the PO enablement steps (RUNBOOK-backups-r15 §7).
+- **Terraform:** `infrastructure-lightsail/r15-backups.tf` (bucket, KMS key, lifecycle, policy, the
+  put + list writer user and the read-only restorer user). Applied from the Mac only.
 
-```bash
-# Config — the narrow S3 credential lives here, chmod 600, root-owned.
-sudo install -d -m 700 /etc/aramo
-sudo install -m 600 /dev/stdin /etc/aramo/backup.conf <<'EOF'
-BACKUP_S3_URI=s3://astre-aramo-backups/box/pg
-AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=AKIA…          # the s3:PutObject-ONLY user
-AWS_SECRET_ACCESS_KEY=…
-EOF
+### ★ Restore test — REQUIRED, not optional
 
-# Install the timer
-sudo cp deploy/systemd/aramo-pg-backup.{service,timer} /etc/systemd/system/
-sudo systemctl daemon-reload
-sudo systemctl enable --now aramo-pg-backup.timer
+A backup you haven't restored is a hope, not a backup. **`deploy/backup/aramo-restore-test.sh`**
+(run on the Mac, which holds the age identity) verifies the manifest hashes, restores every database
+into a throwaway `pgvector/pgvector:pg17` container with `--network none` and the erasure roles
+pre-created, and checks table + migration-ledger counts against the manifest. Run it after every
+storage change and at least monthly (RUNBOOK-backups-r15 §5).
 
-# Verify / run on demand
-systemctl list-timers aramo-pg-backup.timer
-sudo systemctl start aramo-pg-backup.service      # run one now
-journalctl -u aramo-pg-backup.service
-aws s3 ls s3://astre-aramo-backups/box/pg/        # confirm the object landed
-```
+**Proven locally:** `bash deploy/backup/aramo-backup.test.sh` runs the end-to-end check (seed →
+encrypted backup → restore test → negatives → prune → historic encryption → replay gate; with
+`ARAMO_TEST_S3=1`, an S3 round trip against localstack).
 
-**Retention.** Local staging keeps the last `BACKUP_LOCAL_KEEP` (default 7).
-**S3-side retention is a bucket lifecycle rule, not a script delete** — so the
-box credential stays `PutObject`-only (no `ListBucket`/`DeleteObject`):
-
-```bash
-aws s3api put-bucket-lifecycle-configuration \
-  --bucket astre-aramo-backups \
-  --lifecycle-configuration file://deploy/backup/s3-backup-lifecycle.json   # expire box/pg/ after 30d
-```
-
-The IAM user attached to the box: **`deploy/backup/s3-backup-iam-policy.json`**
-— `s3:PutObject` on `…/box/pg/*` and nothing else (the ONE legitimate AWS
-credential on the box; §E).
-
-### ★ Restore drill — REQUIRED, not optional
-
-A backup you haven't restored is a hope, not a backup. **`deploy/backup/pg-restore.sh`**
-restores a dump (local path or `s3://…`) into a target Postgres with
-`pg_restore --clean --if-exists --no-owner` (repeatable into a fresh OR
-rollback target).
-
-**Box rollback (real):**
-```bash
-# Stop writers, restore the latest dump into the prod Postgres, bring writers back.
-deploy/backup/pg-restore.sh s3://astre-aramo-backups/box/pg/aramo-pg-<ts>.dump
-# verify, then re-run the §G smoke
-```
-
-**Proven LOCALLY (this exact drill, end-to-end):**
-```bash
-# 1. A seeded "source" Postgres stands in for the box DB.
-docker run -d --name src -e POSTGRES_USER=aramo -e POSTGRES_PASSWORD=aramo \
-  -e POSTGRES_DB=aramo -p 5433:5432 postgres:17
-export DATABASE_URL='postgresql://aramo:aramo@localhost:5433/aramo?schema=public'
-npm run db:sync:local && npm run prisma:seed-astre
-
-# 2. Back it up (local-only mode — S3 PUT is the box-only step).
-PG_CONTAINER=src BACKUP_DIR=/tmp/drill deploy/backup/pg-backup.sh
-
-# 3. Bring the REAL prod stack up on a fresh (empty) Postgres volume.
-ARAMO_DIR=$PWD ARAMO_ENV_FILE=$PWD/.env deploy/systemd/singlebox-compose.sh up
-
-# 4. Restore the dump INTO the running prod stack's Postgres.
-PG_CONTAINER=aramo-prod-postgres deploy/backup/pg-restore.sh /tmp/drill/aramo-pg-<ts>.dump
-
-# 5. The stack now serves on the restored data.
-curl -sk -o /dev/null -w '%{http_code}\n' https://localhost/.well-known/jwks.json   # 200
-curl -sk -o /dev/null -w '%{http_code}\n' https://localhost/v1/tenant/settings      # 401
-curl -sk -o /dev/null -w '%{http_code}\n' https://localhost/                        # 200 (SPA)
-```
-Result (verified): empty prod DB → after restore `scopes=85 roles=14 grants=468`
-+ Astre + owner, and the stack serves (`jwks 200 / settings 401 / SPA 200`).
-The data is small (fresh start) but it's Astre's live system — backups are
-**non-negotiable from day one**.
+**Real rollback:** `deploy/backup/pg-restore.sh` restores one dump (`*.dump.age` with
+`AGE_IDENTITY_FILE`, or a legacy `*.dump`) into a named container. A restored database whose backup
+predates completed deletions stays out of service until deletion replay passes
+(`deploy/backup/aramo-deletion-replay.sh`; it fails closed until the privacy-request records of
+M-A7 §3 exist).
 
 ---
 
@@ -265,7 +217,8 @@ Locally there is no public cert — mount an mkcert pair at `NGINX_CERT_DIR` (sa
 - **`.env.prod`** is `chmod 600`, deploy-user-owned; **never committed, never in
   an image layer** (the D1 images take secrets at runtime via env, not baked).
 - The **only** AWS credential on the box is the **narrowly-scoped S3-backup** one
-  (§B) — `s3:PutObject` on the backup prefix, nothing broader.
+  (§B) — R-15: `s3:PutObject` on `routine/` + `historic/` and `s3:ListBucket` on those
+  prefixes (`aramo-prod-backup-writer`), nothing broader.
 - The **Anthropic key is env-fed** (PR #297) — no Secrets-Manager AWS credential
   needed for it.
 - **`MSGRAPH_OAUTH_STATE_KEY` is secret-grade box env material** (D-INT-1): it keys

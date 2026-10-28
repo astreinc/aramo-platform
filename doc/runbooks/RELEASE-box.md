@@ -130,25 +130,45 @@ git log --oneline -1
 report.** Do NOT proceed on the wrong code.
 
 ### STEP 2 — DB BACKUP (precondition for migrate)
-Before any migration, **take a fresh DB backup here — `migrate-prod.sh` does NOT take one.** The
-script has no self-dump; every `pre-migration-backup-*.sql` on the box was taken manually. Take it
-explicitly:
+Before any migration, **take a fresh DB backup here — `migrate-prod.sh` does NOT take one.**
+
+**R-15 (M-A7 §2, from the window after the PO completes enablement E-1…E-6 in
+`doc/runbooks/RUNBOOK-backups-r15.md`):** use the encrypted backup script. It dumps every database
+(`aramo`, `aramo_intelligence`) plus roles, encrypts with `age` before anything touches the disk,
+writes `0600` files in a `0700` root-only directory with a manifest, and uploads to the encrypted
+bucket:
+```
+cd /opt/aramo
+sudo deploy/backup/aramo-backup.sh --label "pre-${TARGET_SHA:0:8}"
+# stdout: the run directory; stderr: one line per database with bytes / tables / ledger rows
+```
+**GATE:** exit 0 and a non-zero byte count for every database. The script fails closed on a failed or
+empty dump, a missing database, an unsafe directory or a recipients file holding a private key.
+Record the printed `run_id` in the window report. Do **not** also take a raw `pg_dump`.
+
+**Interim (ONLY while R-15 enablement is incomplete):** the legacy plaintext dump, now written
+owner-only so no other account on the box can read it:
 ```
 # Dump by explicit role + db — DATABASE_URL is NOT in the postgres container's env, so
 # `pg_dump "$DATABASE_URL"` fails SILENTLY (falls back to role `root`) and writes a 0-byte
 # file. Use $POSTGRES_USER / $POSTGRES_DB (which ARE in the container env):
-docker exec aramo-prod-postgres sh -c 'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"' > /opt/aramo/pre-migration-backup-$(date +%Y%m%d-%H%M%S).sql
+sudo sh -c 'umask 077; docker exec aramo-prod-postgres sh -c '"'"'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"'"'"' > /opt/aramo-backups/pre-'"${TARGET_SHA:0:8}"'-backup-$(date +%Y%m%d-%H%M%S).sql'
 # VERIFY SIZE before STEP 3: a 0-byte / trivially-small file is NOT a backup. Confirm a
 # real dump (hundreds of KB+, a trailing "-- PostgreSQL database dump complete" marker).
-ls -l /opt/aramo/pre-migration-backup-*.sql | tail -1
-tail -1 /opt/aramo/pre-migration-backup-*.sql | tail -1   # → completion marker present
+sudo ls -l /opt/aramo-backups/pre-*-backup-*.sql | tail -1
+sudo tail -1 "$(sudo ls -1t /opt/aramo-backups/pre-*-backup-*.sql | head -1)"   # → completion marker
 ```
-**GATE:** a verified, complete pre-migration backup — **NON-ZERO size** with the completion
-marker (per the caveat above) — must exist before STEP 3. A failed migration with no backup
-is the one genuinely unrecoverable scenario. (Skip only if RUN_MIGRATE=no.)
+Interim dumps join the historic set governed by RUNBOOK-backups-r15.md §8 (inventoried, never
+deleted without PO approval).
+
+**GATE:** a verified, complete pre-migration backup must exist before STEP 3. A failed migration
+with no backup is the one genuinely unrecoverable scenario. (Skip only if RUN_MIGRATE=no.)
 > **Defect history:** the `pg_dump "$DATABASE_URL"` form silently produced a 0-byte file in
 > the 2026-09-02 window (DATABASE_URL absent from the container env → fell back to role
 > `root` → failed). Corrected to the `-U/-d` form above.
+> **R-15 history (G-1, 2026-10-28):** 55 plaintext dumps accumulated on the box (38 `.sql` in
+> `/opt/aramo-backups`, 1 `.dump` there, 13 in `/opt/aramo`, 3 in `/var/backups/aramo`), mostly mode
+> `0644`, with no expiry. Hence the encrypted script above.
 
 ### STEP 3 — MIGRATE (only if RUN_MIGRATE=yes)
 ```

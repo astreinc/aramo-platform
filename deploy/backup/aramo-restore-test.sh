@@ -1,0 +1,213 @@
+#!/usr/bin/env bash
+# Aramo — mandatory restore test for an encrypted backup run (M-A7 §2 / R-15).
+#
+# Runs on the OPERATOR MAC (or another offline-key host), never on the box:
+# it needs the age IDENTITY (private key), which by design never exists on the
+# box. Steps:
+#   1. fetch the run (local dir, or s3://<bucket>/<class>/<run_id> with the
+#      restore-reader credential) into a private 0700 temp dir — encrypted
+#      files only;
+#   2. verify every artifact's size + sha256 against manifest.tsv;
+#   3. start a THROWAWAY `pgvector/pgvector:pg17` container with
+#      `--network none` (no network at all; data enters over `docker exec -i`);
+#   4. pre-create the cluster roles the dumps reference (RESTORE_ROLES —
+#      aramo_erasure_definer, aramo_erasure_operator, aramo_intelligence);
+#   5. for each database artifact: `age -d | pg_restore --exit-on-error`
+#      (or `psql -v ON_ERROR_STOP=1` for an encrypted plain .sql) — the
+#      decrypted stream is never written to disk;
+#   6. compare base-table count and migration-ledger row count with the
+#      manifest's recorded values (when recorded), print a counts-only report;
+#   7. remove the container and the temp dir (trap), PASS => exit 0.
+#
+# Usage:
+#   AGE_IDENTITY_FILE=~/aramo-backup-identity.txt \
+#     deploy/backup/aramo-restore-test.sh s3://aramo-prod-db-backups-use1/routine/<run_id>
+#   AGE_IDENTITY_FILE=… deploy/backup/aramo-restore-test.sh /path/to/<run_id>
+#   … --expect-tables aramo=N --expect-ledger aramo=M   # explicit expectations
+#                                                       # (historic runs record none)
+#   … --report <file>                                   # write the counts-only report
+#
+# Env:
+#   AGE_IDENTITY_FILE    age identity file (REQUIRED; keep it offline)
+#   RESTORE_IMAGE        default pgvector/pgvector:pg17 (the production image)
+#   RESTORE_ROLES        default "aramo_erasure_definer aramo_erasure_operator aramo_intelligence"
+#   RESTORE_SUPERUSER    default aramo (the production POSTGRES_USER; owns most objects)
+#   AWS_PROFILE / AWS_REGION / … for s3:// sources (the restore-reader principal)
+set -euo pipefail
+umask 077
+
+DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=deploy/backup/lib.sh disable=SC1091
+source "$DIR/lib.sh"
+BK_TAG="aramo-restore-test"
+
+RESTORE_IMAGE="${RESTORE_IMAGE:-pgvector/pgvector:pg17}"
+RESTORE_ROLES="${RESTORE_ROLES:-aramo_erasure_definer aramo_erasure_operator aramo_intelligence}"
+RESTORE_SUPERUSER="${RESTORE_SUPERUSER:-aramo}"
+
+TABLE_COUNT_SQL="SELECT count(*) FROM information_schema.tables WHERE table_type='BASE TABLE' AND table_schema NOT IN ('pg_catalog','information_schema')"
+
+CONTAINER=""
+WORK=""
+cleanup() {
+  if [ -n "$CONTAINER" ]; then docker rm -f "$CONTAINER" >/dev/null 2>&1 || true; fi
+  if [ -n "$WORK" ]; then rm -rf -- "$WORK"; fi
+}
+trap cleanup EXIT
+
+rq() {
+  local db="$1" sql="$2"
+  docker exec "$CONTAINER" psql -X -At -v ON_ERROR_STOP=1 -U "$RESTORE_SUPERUSER" -d "$db" -c "$sql"
+}
+
+# expectation lookup in "db=N db2=M" lists
+expect_of() {
+  local list="$1" db="$2" kv
+  for kv in $list; do
+    if [ "${kv%%=*}" = "$db" ]; then
+      printf '%s\n' "${kv#*=}"
+      return 0
+    fi
+  done
+  printf -- '-\n'
+}
+
+main() {
+  local src="" exp_tables="" exp_ledger="" report=""
+  while [ $# -gt 0 ]; do
+    case "$1" in
+      --expect-tables) exp_tables="${exp_tables} ${2:?}"; shift 2 ;;
+      --expect-ledger) exp_ledger="${exp_ledger} ${2:?}"; shift 2 ;;
+      --report) report="${2:?}"; shift 2 ;;
+      -h | --help) sed -n '2,40p' "$0"; exit 0 ;;
+      -*) bk_die "unknown argument: $1" 2 ;;
+      *) [ -z "$src" ] || bk_die "one source only" 2; src="$1"; shift ;;
+    esac
+  done
+  [ -n "$src" ] || bk_die "usage: $0 <run-dir | s3://bucket/<class>/<run_id>> [--expect-tables db=N] [--expect-ledger db=N] [--report file]" 2
+  if [ -z "${AGE_IDENTITY_FILE:-}" ] || ! [ -r "$AGE_IDENTITY_FILE" ]; then
+    bk_die "AGE_IDENTITY_FILE must point at the readable age identity (kept offline; never on the box)" 2
+  fi
+  bk_need docker age awk
+
+  WORK="$(mktemp -d "${TMPDIR:-/tmp}/aramo-restore-test.XXXXXX")"
+  chmod 700 "$WORK"
+  local run="$WORK/run"
+  mkdir -m 700 "$run"
+  if [[ "$src" == s3://* ]]; then
+    export BK_AWS_MOUNT="$WORK"
+    bk_log "fetching ${src%/}/ (encrypted objects only)"
+    bk_aws s3 cp --only-show-errors --recursive "${src%/}/" "$run/"
+  else
+    [ -f "$src/manifest.tsv" ] || bk_die "no manifest.tsv in ${src}"
+    cp -p "$src"/manifest.tsv "$src"/*.age "$run/"
+  fi
+  local manifest="$run/manifest.tsv"
+  bk_manifest_check "$manifest"
+  local run_id class
+  run_id="$(bk_manifest_get "$manifest" run_id)"
+  class="$(bk_manifest_get "$manifest" class)"
+
+  # 2. integrity against the manifest
+  local file db format size sha tables ledger_table ledger_count n=0
+  while IFS=$'\t' read -r _ file db format size sha tables ledger_table ledger_count _ _; do
+    [ -f "$run/$file" ] || bk_die "artifact listed in manifest is missing: ${file}"
+    [ "$(bk_size "$run/$file")" = "$size" ] || bk_die "size mismatch: ${file}"
+    [ "$(bk_sha256 "$run/$file")" = "$sha" ] || bk_die "sha256 mismatch: ${file}"
+    n=$((n + 1))
+  done < <(awk -F'\t' '$1=="artifact"' "$manifest")
+  [ "$n" -ge 1 ] || bk_die "manifest lists no artifacts"
+  bk_log "integrity OK: ${n} artifact(s) match manifest (run ${run_id}, class ${class})"
+
+  # 3. throwaway, network-isolated postgres
+  local pw
+  pw="$(od -An -N16 -tx1 /dev/urandom | tr -d ' \n')"
+  CONTAINER="aramo-restore-test-$$-$(date +%s)"
+  docker run -d --name "$CONTAINER" --network none \
+    -e POSTGRES_USER="$RESTORE_SUPERUSER" -e POSTGRES_PASSWORD="$pw" -e POSTGRES_DB=postgres \
+    "$RESTORE_IMAGE" >/dev/null
+  local i
+  for i in $(seq 1 60); do
+    if docker exec "$CONTAINER" pg_isready -q -U "$RESTORE_SUPERUSER" -d postgres 2>/dev/null &&
+      rq postgres 'SELECT 1' >/dev/null 2>&1; then
+      break
+    fi
+    [ "$i" -lt 60 ] || bk_die "throwaway postgres did not become ready"
+    sleep 1
+  done
+  [ "$(docker inspect -f '{{.HostConfig.NetworkMode}}' "$CONTAINER")" = "none" ] ||
+    bk_die "restore container is not network-isolated"
+  bk_log "throwaway ${RESTORE_IMAGE} up (network=none): $(rq postgres 'SHOW server_version')"
+
+  # 4. cluster roles referenced by ownership / grants in the dumps
+  local role
+  for role in $RESTORE_ROLES; do
+    [[ "$role" =~ ^[a-z_][a-z0-9_]{0,62}$ ]] || bk_die "invalid role name: ${role}"
+    rq postgres "DO \$\$ BEGIN IF NOT EXISTS (SELECT 1 FROM pg_roles WHERE rolname='${role}') THEN CREATE ROLE ${role} NOLOGIN; END IF; END \$\$" >/dev/null
+  done
+  bk_log "pre-created roles: ${RESTORE_ROLES}"
+
+  # 5–6. restore + counts
+  local fail=0 got_t got_l exp_t exp_l lt out
+  out="$(
+    printf 'restore-test run_id=%s class=%s image=%s at=%s\n' "$run_id" "$class" "$RESTORE_IMAGE" "$(bk_now_iso)"
+    printf '%-20s %-22s %10s %10s %-32s %10s %10s %s\n' db format tables exp_tables ledger_table ledger exp_ledger verdict
+  )"
+  # fd 3: docker exec / age inside the loop must not consume the artifact list.
+  while IFS=$'\t' read -r _ file db format size sha tables ledger_table ledger_count _ _ <&3; do
+    [ "$db" != "_globals" ] || continue
+    [[ "$db" =~ ^[a-z_][a-z0-9_]{0,62}$ ]] || bk_die "invalid database name in manifest: ${db}"
+    if [ "$db" != "postgres" ]; then
+      rq postgres "CREATE DATABASE \"${db}\" OWNER \"${RESTORE_SUPERUSER}\"" >/dev/null
+    fi
+    bk_log "restoring ${file} → ${db}"
+    case "$format" in
+      pg_dump-custom+age)
+        age -d -i "$AGE_IDENTITY_FILE" "$run/$file" |
+          docker exec -i "$CONTAINER" pg_restore -U "$RESTORE_SUPERUSER" -d "$db" --exit-on-error ||
+          bk_die "pg_restore FAILED for ${db}"
+        ;;
+      plain-sql+age)
+        age -d -i "$AGE_IDENTITY_FILE" "$run/$file" |
+          docker exec -i "$CONTAINER" psql -X -q -v ON_ERROR_STOP=1 -U "$RESTORE_SUPERUSER" -d "$db" >/dev/null ||
+          bk_die "psql restore FAILED for ${db}"
+        ;;
+      *) bk_die "unsupported artifact format '${format}' for ${file}" ;;
+    esac
+
+    got_t="$(rq "$db" "$TABLE_COUNT_SQL")"
+    lt="$ledger_table"
+    if [ "$lt" = "-" ]; then
+      for lt in public._local_migrations public._intelligence_migrations -; do
+        [ "$lt" = "-" ] && break
+        [ "$(rq "$db" "SELECT to_regclass('${lt}') IS NOT NULL")" = "t" ] && break
+      done
+    fi
+    got_l="-"
+    if [ "$lt" != "-" ]; then got_l="$(rq "$db" "SELECT count(*) FROM ${lt}")"; fi
+
+    exp_t="$(expect_of "$exp_tables" "$db")"
+    [ "$exp_t" != "-" ] || exp_t="$tables"
+    exp_l="$(expect_of "$exp_ledger" "$db")"
+    [ "$exp_l" != "-" ] || exp_l="$ledger_count"
+
+    local verdict="PASS"
+    if [ "$exp_t" != "-" ] && [ "$exp_t" != "$got_t" ]; then verdict="FAIL(tables)"; fi
+    if [ "$exp_l" != "-" ] && [ "$exp_l" != "$got_l" ]; then verdict="FAIL(ledger)"; fi
+    if [ "$got_t" = "0" ]; then verdict="FAIL(empty)"; fi
+    if [ "$exp_t" = "-" ] && [ "$exp_l" = "-" ] && [ "$verdict" = "PASS" ]; then verdict="PASS(no-expectation-recorded)"; fi
+    [[ "$verdict" == PASS* ]] || fail=1
+    out="${out}"$'\n'"$(printf '%-20s %-22s %10s %10s %-32s %10s %10s %s' "$db" "$format" "$got_t" "$exp_t" "$lt" "$got_l" "$exp_l" "$verdict")"
+  done 3< <(awk -F'\t' '$1=="artifact"' "$manifest")
+
+  local overall="PASS"
+  [ "$fail" = "0" ] || overall="FAIL"
+  out="${out}"$'\n'"overall=${overall}"
+  printf '%s\n' "$out"
+  if [ -n "$report" ]; then printf '%s\n' "$out" >"$report"; fi
+  [ "$fail" = "0" ] || exit 1
+}
+
+if [ "${BASH_SOURCE[0]}" = "$0" ]; then
+  main "$@"
+fi

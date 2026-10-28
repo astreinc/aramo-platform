@@ -1,26 +1,30 @@
-# Aramo single-box — Postgres backup job (Single-Box Directive 3 §B).
-# Oneshot, fired by aramo-pg-backup.timer. Reads the S3 target + the narrow
-# S3-backup AWS credential from /etc/aramo/backup.conf (chmod 600, root-owned).
+# Aramo single-box — scheduled encrypted Postgres backup (M-A7 §2 / R-15).
+# Oneshot, fired by aramo-pg-backup.timer. NOT enabled on the box until the PO
+# completes the enablement steps in doc/runbooks/RUNBOOK-backups-r15.md
+# (age installed, public recipients file, bucket applied from the Mac, writer
+# credential in /etc/aramo/backup.conf).
 #
-# Install:
-#   sudo install -m 600 /dev/stdin /etc/aramo/backup.conf <<'EOF'
-#   BACKUP_S3_URI=s3://astre-aramo-backups/box/pg
+# /etc/aramo/backup.conf (root:root 0600):
+#   BACKUP_S3_URI=s3://aramo-prod-db-backups-use1
 #   AWS_REGION=us-east-1
-#   AWS_ACCESS_KEY_ID=AKIA…           # the s3:PutObject-only user (§B)
+#   AWS_ACCESS_KEY_ID=…        # aramo-prod-backup-writer (put + list only)
 #   AWS_SECRET_ACCESS_KEY=…
-#   EOF
+# /etc/aramo/backup-recipients.txt (root:root 0644): age1… PUBLIC recipients only.
+#
+# Install (PO-authorized):
 #   sudo cp deploy/systemd/aramo-pg-backup.{service,timer} /etc/systemd/system/
 #   sudo systemctl daemon-reload && sudo systemctl enable --now aramo-pg-backup.timer
-# Run once by hand:  sudo systemctl start aramo-pg-backup.service
-# Logs:              journalctl -u aramo-pg-backup.service
+# Logs: journalctl -u aramo-pg-backup.service
 
 [Unit]
-Description=Aramo box Postgres backup → S3
+Description=Aramo box Postgres backup (age-encrypted) → S3, then 30-day local prune
 Requires=docker.service
 After=docker.service aramo-singlebox.service
 
 [Service]
 Type=oneshot
+UMask=0077
 Environment=ARAMO_DIR=/opt/aramo
 EnvironmentFile=-/etc/aramo/backup.conf
-ExecStart=/opt/aramo/deploy/backup/pg-backup.sh
+ExecStart=/opt/aramo/deploy/backup/aramo-backup.sh --label scheduled
+ExecStartPost=/opt/aramo/deploy/backup/aramo-backup-prune.sh
