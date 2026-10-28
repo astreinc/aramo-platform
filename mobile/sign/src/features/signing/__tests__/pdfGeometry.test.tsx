@@ -1,6 +1,6 @@
 // Field overlays are placed from each page's own MediaBox (PDF points, bottom-left
 // origin) — never from react-native-pdf's on-screen size — and stay aligned under zoom.
-import { render, screen } from '@testing-library/react-native';
+import { act, render, screen } from '@testing-library/react-native';
 import { StyleSheet, View } from 'react-native';
 
 import { boxOnPage, pageLayoutFor, pageSizesFromBase64, PdfPages } from '../PdfPages';
@@ -78,6 +78,7 @@ describe('page geometry from the MediaBox', () => {
         renderOverlay={overlayAt(0)}
       />,
     );
+    await screen.findByTestId('pdf');
     const s = WIDTH / 595.28;
     const box = flat('overlay-0');
     expect(box.left).toBeCloseTo(100 * s, 6);
@@ -86,7 +87,7 @@ describe('page geometry from the MediaBox', () => {
     expect(box.height).toBeCloseTo(50 * s, 6);
   });
 
-  it('page 2 of a mixed-size document uses page 2’s size, not page 0’s', () => {
+  it('page 2 of a mixed-size document uses page 2’s size, not page 0’s', async () => {
     render(
       <PdfPages
         source={{ kind: 'base64', base64: pdfBase64([LETTER, A4_LANDSCAPE]) }}
@@ -95,7 +96,8 @@ describe('page geometry from the MediaBox', () => {
         renderOverlay={overlayAt(1)}
       />,
     );
-    expect(screen.getAllByTestId('pdf')).toHaveLength(2);
+    // The renderer mounts once the document's temp file is ready (M-A7 R-7).
+    expect(await screen.findAllByTestId('pdf')).toHaveLength(2);
     const s = WIDTH / 841.89;
     const box = flat('overlay-1');
     expect(box.left).toBeCloseTo(100 * s, 6);
@@ -107,7 +109,7 @@ describe('page geometry from the MediaBox', () => {
     );
   });
 
-  it('never guesses field positions when the geometry can’t be read', () => {
+  it('never guesses field positions when the geometry can’t be read', async () => {
     render(
       <PdfPages
         source={{ kind: 'base64', base64: 'bm90IGEgcGRm' }}
@@ -118,6 +120,7 @@ describe('page geometry from the MediaBox', () => {
     );
     expect(screen.getByTestId('pdf-geometry-unavailable')).toBeTruthy();
     expect(screen.queryByTestId('overlay-0')).toBeNull();
+    await act(async () => {}); // let the temp-file preparation settle
   });
 });
 

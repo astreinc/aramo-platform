@@ -215,6 +215,8 @@ Session behaviour:
   3. clear SecureStore;
   4. wipe the encrypted store and the query cache.
 
+  The document temp folder is wiped first (see "Documents on the device").
+
 On-device data is scoped to the signed-in user's `sub`, so a different user signing in
 wipes it.
 
@@ -225,8 +227,48 @@ wipes it.
 | access / refresh token, session meta, installation id, storage key, preferences | SecureStore (Keychain / Keystore), `AFTER_FIRST_UNLOCK_THIS_DEVICE_ONLY`. Keys: `SECURE_KEYS` in `auth/secureKeyValue.ts`. |
 | drafts, persisted query cache | AES-256-GCM ciphertext in `Documents/aramo-sign-store/`, slot name bound as AAD |
 | capability tokens | memory only |
+| a document being shown (PDF bytes the renderer needs as a file) | plaintext, app cache `aramo-docs/`, only while a viewer is open (below) |
+| share-sheet copies | plaintext, app cache `aramo-share/`, deleted when the sheet closes |
 
 Android `allowBackup` is `false`.
+
+### Documents on the device (Amendment M-A7 §4 R-7)
+
+No decrypted document stays on the device indefinitely.
+
+- **Where.** The native renderer (PDFKit / PdfiumAndroid) needs a file. A shown document
+  is written to `<app cache>/aramo-docs/<random>.pdf` (`src/security/documentTempFiles.ts`)
+  and passed as a `file://` source. react-native-pdf then renders it in place and writes
+  no copy of its own. Before this change it wrote every displayed PDF to
+  `<cache>/<sha1>.pdf` and never deleted it.
+- **When it is deleted:**
+  - when the viewer closes (unmount). Editor page views share one file per document,
+    deleted with the last page view;
+  - at sign-out (first step), and whenever a signed-in session ends (revocation,
+    expiry). Account close and the deletion request sign out, so they are covered;
+  - at every app start, which cleans up after a crash or kill mid-view. The start wipe
+    also removes `aramo-share/` and any `<sha1>.pdf` left by earlier builds.
+  - A failed download's partial file is deleted at once.
+- **Assessment (recorded for R-7):**
+  - *Encrypted temporary storage:* not used for the render file. Both renderers open a
+    plaintext file path, so an encrypted file would still need a decrypted copy. The
+    exposure is bounded by lifetime instead: open viewers only, plus the wipes above.
+    Drafts and the query cache stay AES-256-GCM encrypted.
+  - *Private app storage:* the cache directory is app-private (Android sandbox / iOS
+    container). No other app can read it and no storage permission is involved. The
+    files are never handed to another app, except through the share sheet, which the
+    user starts.
+  - *Backup exclusion:* `allowBackup=false`. Android never includes the cache directory
+    in Auto Backup or device-to-device transfer. The data-extraction rules
+    (`secure_store_data_extraction_rules`, Android 12+) include only shared preferences
+    and exclude SecureStore, for both cloud backup and device transfer. iOS excludes
+    `Caches` from iCloud and device backups.
+  - *Safe rendering:* documents are rendered natively from a local file with no network
+    access from the renderer. Downloads use the platform HTTP stack with system trust.
+    The renderer's trust-all-certificates path stays off (`trustAllCerts={false}`).
+  - *Residual risk:* while a viewer is open, a rooted or forensically imaged device can
+    read the file. The OS can also clear the cache under storage pressure, which the
+    viewer survives by showing a load error.
 
 ## Native projects (prebuild)
 
@@ -238,16 +280,21 @@ hand-edit the generated projects. What they configure:
 - iOS: `applinks:sign.aramo.ai` and `aps-environment` (development) entitlements.
 - Android: an `autoVerify` intent filter for `https://sign.aramo.ai` `/s/`, `/d/` and
   `/auth/native/callback`.
-- Camera and Face ID usage strings.
+- Camera (iOS scanner) and Face ID usage strings. Android declares no `CAMERA`: the ML Kit
+  scanner runs in Google Play services (M-A7 §4 R-5).
 - ATS arbitrary loads off. Cleartext is allowed only in the Android **debug** manifest
   (Metro).
-- No storage-wide Android permissions.
+- No storage-wide Android permissions. `READ_MEDIA_IMAGES` and `DETECT_SCREEN_CAPTURE`
+  (merged in by expo-screen-capture, used on iOS only) and `CAMERA` are blocked.
+- Release signing with the upload key from outside Git, or a failed build
+  (`plugins/withReleaseSigning.js`, M-A7 §4 R-6; runbook P-3a). R8 and resource
+  shrinking for release, with keep rules in `app.config.ts` (R-13).
 
 **Not generated here** (they need Xcode, CocoaPods or the Android SDK):
 - `ios/Pods` and `ios/Podfile.lock`: the first `pod install` (CI / a Mac with Xcode)
   creates the lock, which should then be committed;
 - any compiled build;
-- signing.
+- the upload key (never in Git; runbook P-3a).
 
 ## Known gaps and open items
 

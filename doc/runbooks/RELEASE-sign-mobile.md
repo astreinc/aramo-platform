@@ -102,6 +102,68 @@ Why this order:
 
 **Unblocks:** Android App Links (once P-6 is live) and Play-signed builds.
 
+### P-3a — Upload key and release signing (Amendment M-A7 §4 R-6)
+
+Production builds are signed by **Google Play App Signing**: Google holds the app-signing key. Aramo
+holds only the **upload key**, which signs what is uploaded to Play. Neither key is ever in Git.
+
+How the build uses it (`mobile/sign/plugins/withReleaseSigning.js`, generated into
+`android/app/build.gradle`):
+- `assembleRelease` / `bundleRelease` sign with the upload key read from four Gradle properties
+  or environment variables: `ARAMO_UPLOAD_STORE_FILE`, `ARAMO_UPLOAD_STORE_PASSWORD`,
+  `ARAMO_UPLOAD_KEY_ALIAS`, `ARAMO_UPLOAD_KEY_PASSWORD`.
+- If any is missing, the release build **fails** before any task runs. It never falls back to the
+  debug key.
+- CI builds release **unsigned** with `-Paramo.unsignedReleaseCheck=true` (no secrets in CI). That
+  APK cannot be installed or uploaded.
+- Debug builds keep the checked-in `debug.keystore`.
+
+Steps (PO, on the Mac; nothing below goes into the repository, a ticket or chat):
+
+1. **Generate the upload key** in a private folder outside any Git working tree, for example
+   `~/.aramo-signing/` (`chmod 700`):
+
+   ```sh
+   keytool -genkeypair -v -storetype PKCS12 \
+     -keystore ~/.aramo-signing/aramo-sign-upload.p12 \
+     -alias aramo-sign-upload -keyalg RSA -keysize 4096 -validity 10000 \
+     -dname "CN=Aramo Sign upload, O=Astre Consulting Services Inc., C=US"
+   ```
+
+   `keytool` prompts for the password; do not pass it on the command line. Use one strong password
+   for store and key. Keep the `.p12` and the password in the company password manager, plus one
+   offline backup. Losing it means an upload-key reset request to Google, not a lost app.
+2. **Point Gradle at it** in `~/.gradle/gradle.properties` (user-level, never the project file),
+   `chmod 600`:
+
+   ```properties
+   ARAMO_UPLOAD_STORE_FILE=/Users/<you>/.aramo-signing/aramo-sign-upload.p12
+   ARAMO_UPLOAD_KEY_ALIAS=aramo-sign-upload
+   ARAMO_UPLOAD_STORE_PASSWORD=<from the password manager>
+   ARAMO_UPLOAD_KEY_PASSWORD=<from the password manager>
+   ```
+
+   Or export the same names as environment variables for one shell.
+3. **Build the bundle**: `cd mobile/sign/android && ./gradlew :app:bundleRelease`. The output is
+   `app/build/outputs/bundle/release/app-release.aab`. R8 and resource shrinking are on (R-13).
+4. **Enrol in Play App Signing** (Play Console → the app → **Test and release → App integrity →
+   App signing**). Choose "Let Google manage and protect your app signing key" (the default for a
+   new app). Upload the `.aab` to an **internal testing** track; the first upload registers the
+   upload key's certificate as the upload key.
+5. **Read both SHA-256 fingerprints** from that page:
+   - **App signing key certificate** (Google's key, which signs what users install);
+   - **Upload key certificate** (yours). Cross-check it locally without printing secrets:
+     `keytool -list -v -keystore ~/.aramo-signing/aramo-sign-upload.p12 -alias aramo-sign-upload`
+     (prompts for the password) and compare the `SHA256:` line.
+6. **Set** `SIGN_ANDROID_CERT_SHA256S=<app-signing SHA-256>,<upload SHA-256>` (P-7, `AA:BB:…`
+   form, comma-separated). The app-signing fingerprint is what verifies App Links on installs from
+   Play; the upload fingerprint covers locally installed upload-signed builds. Never add the debug
+   fingerprint.
+7. **Verify a build** before any track: `apksigner verify --print-certs` on an APK extracted from
+   the bundle (or the release APK) shows the upload certificate, never `CN=Android Debug`.
+
+Store publication stays out of scope (P-11).
+
 ## P-4 — Firebase (FCM HTTP v1)
 
 1. Create a Firebase project linked to the Android app `ai.aramo.sign`. Record the **project id**.
