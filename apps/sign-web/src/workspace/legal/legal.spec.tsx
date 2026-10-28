@@ -28,6 +28,7 @@ import { LegalAcceptanceGate } from './LegalAcceptance';
 import { LegalEnvContext, type LegalEnv } from './LegalPage';
 import { Markdown, parseMarkdown } from './markdown';
 import { LEGAL_TEXTS } from './texts';
+import { ARAMO_SIGN_IDENTITY } from './identity';
 
 // Aramo Sign Personal (Free) — the published legal texts.
 // BUILD-TIME GUARD: the text bundled into sign-web (Vite ?raw) must hash to the
@@ -139,7 +140,7 @@ describe('/legal pages (public)', () => {
     expect(await screen.findByRole('heading', { level: 1, name: 'Aramo — Acceptable Use Policy' })).toBeInTheDocument();
   });
 
-  it.each(['/legal/privacy/9.9', '/legal/unknown', '/legal/unknown/1.0', '/legal', '/legal/privacy/1.0/extra'])('%s → not found', async (path) => {
+  it.each(['/legal/privacy/9.9', '/legal/unknown', '/legal/unknown/1.0', '/legal/privacy/1.0/extra'])('%s → not found', async (path) => {
     at(path);
     expect(await screen.findByTestId('legal-not-found')).toBeInTheDocument();
     expect(screen.queryByTestId('legal-document')).toBeNull();
@@ -411,5 +412,53 @@ describe('E-7 subprocessor list', () => {
     expect(screen.getByTestId('subprocessors-updated')).toHaveTextContent('Last updated 2026-10-27');
     expect(screen.queryByTestId('subprocessors-upcoming')).toBeNull();
     expect(screen.getAllByTestId('subprocessor-note').map((n) => n.textContent)).toEqual(['Used only when notifications are switched on.', 'Used only when notifications are switched on.']);
+  });
+});
+
+// Aramo-Sign-Mobile-Amendment-M-A7 §5.1 (R-8, G-6) — the app's Terms and Help
+// links open real public pages, and the identity block matches the Privacy Notice.
+describe('M-A7 §5.1 — public /legal, /legal/terms and /help', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('the identity block is the published Privacy Notice 1.0 §17 text, verbatim', () => {
+    const privacy = LEGAL_TEXTS['privacy@1.0']!.text;
+    const id = ARAMO_SIGN_IDENTITY;
+    expect(privacy).toContain(`Postal: ${id.legalEntity}, ${id.postalAddress}`);
+    expect(privacy).toContain(`Privacy requests: ${id.privacyEmail}`);
+    expect(privacy).toContain(`General support: ${id.supportEmail}`);
+  });
+
+  it('/legal lists every published document in effect (no sign-in)', async () => {
+    at('/legal');
+    const list = await screen.findByTestId('legal-index-documents');
+    for (const slug of ['personal-terms', 'privacy', 'acceptable-use']) {
+      const d = currentLegal(slug)!;
+      expect(within(list).getByRole('link', { name: d.title })).toHaveAttribute('href', `/legal/${slug}/${d.version}`);
+    }
+    expect(screen.queryByTestId('legal-not-found')).toBeNull();
+  });
+
+  it('/legal/terms (the app link) lists the published Personal Terms and AUP; Business terms are the organization agreement, never a draft', async () => {
+    at('/legal/terms');
+    const personal = await screen.findByTestId('legal-terms-personal');
+    expect(within(personal).getByRole('link', { name: 'Aramo Sign Personal Terms of Service' })).toHaveAttribute('href', '/legal/personal-terms/1.0');
+    expect(within(personal).getByRole('link', { name: 'Aramo Acceptable Use Policy' })).toHaveAttribute('href', '/legal/acceptable-use/1.0');
+    expect(screen.getByTestId('legal-terms-business')).toHaveTextContent(`An organization uses Aramo Sign under its agreement with ${ARAMO_SIGN_IDENTITY.legalEntity}`);
+    const page = screen.getByTestId('legal-terms-index');
+    // The draft Business Terms of Service is never linked or named as published.
+    expect(page.innerHTML).not.toMatch(/terms-of-service|0\.1\.1|sign\.terms_of_service/);
+    expect(screen.queryByTestId('legal-not-found')).toBeNull();
+  });
+
+  it('/help is public and shows help, the report route, and the identity block with working contacts', async () => {
+    at('/help');
+    await screen.findByTestId('help-page');
+    expect(screen.getByRole('heading', { level: 1, name: 'Aramo Sign help' })).toBeInTheDocument();
+    expect(screen.getByText(/Report this email/)).toBeInTheDocument();
+    expect(screen.getByTestId('help-identity-entity')).toHaveTextContent(ARAMO_SIGN_IDENTITY.legalEntity);
+    expect(screen.getByTestId('help-identity-address')).toHaveTextContent(ARAMO_SIGN_IDENTITY.postalAddress);
+    expect(screen.getByTestId('help-identity-support')).toHaveAttribute('href', 'mailto:support@aramo.ai');
+    expect(screen.getByTestId('help-identity-privacy')).toHaveAttribute('href', 'mailto:privacy@aramo.ai');
+    expect(screen.getByTestId('legal-footer-identity')).toHaveTextContent(ARAMO_SIGN_IDENTITY.legalEntity);
   });
 });

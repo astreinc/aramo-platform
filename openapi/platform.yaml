@@ -5193,6 +5193,54 @@ paths:
             application/json:
               schema:
                 $ref: 'common.yaml#/components/schemas/ErrorResponse'
+  /platform/sign-abuse-reports:
+    get:
+      operationId: listSignAbuseReportQueue
+      tags: [Platform Personal]
+      summary: The operators' abuse-report queue across every Aramo Sign sender (newest first).
+      description: |
+        Aramo-Sign-Mobile-Amendment-M-A7 §5.2 (R-11). Every signing request and reminder
+        email carries "Report this email", for Business and Personal senders alike. A
+        report on a Business sender's email is recorded here for an operator to review
+        and never pauses that tenant automatically; Personal reports appear too (their
+        automatic pause rules are unchanged). Decide a report with
+        `POST /platform/personal-reports/{report_id}/decide`. At most 200 items. The
+        reporter's address is never stored or returned (only its domain). Requires
+        scope `platform:tenant:lifecycle:manage`.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: outcome
+          in: query
+          required: false
+          description: Only reports with this outcome (OPEN = still to be reviewed).
+          schema:
+            type: string
+            enum: [OPEN, CONFIRMED, FALSE_REPORT, DISMISSED]
+      responses:
+        '200':
+          description: Reports.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SignAbuseReportQueueItem'
+        '400':
+          description: '`VALIDATION_ERROR` — an unknown outcome.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
   /platform/personal-reports/{report_id}/decide:
     post:
       operationId: decidePersonalAbuseReport
@@ -5736,6 +5784,18 @@ components:
         outcome_reason: { type: [string, 'null'] }
         decided_at: { type: [string, 'null'], format: date-time }
         created_at: { type: string, format: date-time }
+    SignAbuseReportQueueItem:
+      description: M-A7 §5.2 — one queued abuse report with its sender (the tenant whose email was reported).
+      allOf:
+        - $ref: '#/components/schemas/PersonalAbuseReport'
+        - type: object
+          required: [tenant_id, sender_kind, sender_name]
+          properties:
+            tenant_id: { type: string, format: uuid }
+            sender_kind:
+              type: [string, 'null']
+              description: The sender tenant's kind (BUSINESS or PERSONAL); null when the tenant is not found.
+            sender_name: { type: [string, 'null'] }
     SignSignupOrganization:
       type: object
       description: Sign Signup Amendment A1 (LOCKED) — the organization details collected after email confirmation (United States only).

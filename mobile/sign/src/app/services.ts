@@ -18,6 +18,8 @@ import { createTokenStore } from '../auth/tokenStore';
 import { env, type AppEnv } from '../config/env';
 import { clearGuestTokens } from '../links/guestTokenVault';
 import { unregisterPush } from '../notifications/pushRegistration';
+import { wireDocumentTempCleanup } from '../security/documentTempFiles';
+import { documentTempFiles } from '../security/documentTempFilesNative';
 import { createDraftStore, type DraftStore } from '../state/draftStore';
 import type { EncryptedStore } from '../state/encryptedStore';
 import { encryptedStore } from '../state/platformStorage';
@@ -67,6 +69,7 @@ export function createAppServices(): AppServices {
   wireOnlineManager();
 
   session.onBeforeSignOut(() => unregisterPush(workspace));
+  wireDocumentTempCleanup(session, documentTempFiles);
 
   async function scopeLocalDataToUser(): Promise<void> {
     const token = await session.getAccessToken();
@@ -107,6 +110,8 @@ export function createAppServices(): AppServices {
       await scopeLocalDataToUser();
     },
     async signOut() {
+      // First, so no failure below can leave a document behind.
+      documentTempFiles.wipe();
       await session.signOut();
       clearGuestTokens();
       queryClient.clear();

@@ -14,8 +14,9 @@
 #     `detect` job's diff against the queue base. workflow_dispatch always runs.
 #   • Every job is a no-op until mobile/sign/package.json exists.
 #   • No secrets, no signing credentials, no store upload, no hosted build service (D-2).
-#     The Android release APK is signed with the project's checked-in DEBUG keystore
-#     (Expo prebuild default), so it is not distributable. The iOS build is for the
+#     The Android release APK is built UNSIGNED (-Paramo.unsignedReleaseCheck=true), so it
+#     is not distributable; without that flag or the upload key a release build fails and
+#     never falls back to the debug key (Amendment M-A7 §4 R-6). The iOS build is for the
 #     Simulator with CODE_SIGNING_ALLOWED=NO.
 #   • NOT a member of ci.yml `deployment-gate`: the macOS runner is a PO-cost item (P-10)
 #     and branch protection must not depend on it. Make these required checks only by a
@@ -113,9 +114,30 @@ jobs:
         run: npm run lint
       - name: unit tests
         run: npm test -- --ci
-      - name: assembleDebug + assembleRelease (no signing credentials)
+      - name: assembleDebug + assembleRelease (no signing credentials; release unsigned, R8 on)
         working-directory: mobile/sign/android
-        run: ./gradlew assembleDebug assembleRelease --no-daemon --stacktrace
+        run: ./gradlew assembleDebug assembleRelease -Paramo.unsignedReleaseCheck=true --no-daemon --stacktrace
+      - name: release guards (M-A7 §4 R-5, R-6, R-13)
+        working-directory: mobile/sign/android
+        run: |
+          set -euo pipefail
+          # R-6: without the upload key (and without the unsigned-check flag) a release build fails.
+          if ./gradlew :app:assembleRelease --dry-run --no-daemon > "$RUNNER_TEMP/r6.log" 2>&1; then
+            echo "::error::a release build ran without the upload key"; exit 1
+          fi
+          grep -q "must be signed with the upload key" "$RUNNER_TEMP/r6.log"
+          test -f app/build/outputs/apk/release/app-release-unsigned.apk
+          # R-5: blocked permissions never reach the merged release manifest.
+          manifest=$(find app/build/intermediates/merged_manifests/release -name AndroidManifest.xml | head -n 1)
+          test -n "$manifest"
+          for p in CAMERA READ_MEDIA_IMAGES DETECT_SCREEN_CAPTURE READ_EXTERNAL_STORAGE WRITE_EXTERNAL_STORAGE RECORD_AUDIO SYSTEM_ALERT_WINDOW; do
+            if grep -q "\"android.permission.$p\"" "$manifest"; then
+              echo "::error::android.permission.$p is in the release manifest"; exit 1
+            fi
+          done
+          grep -o 'uses-permission[^>]*android:name="[^"]*"' "$manifest" | sed 's/.*android:name=//' | sort
+          # R-13: R8 ran for release.
+          test -s app/build/outputs/mapping/release/mapping.txt
       - name: Upload APKs
         uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:

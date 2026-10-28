@@ -8,10 +8,14 @@
 // onLoadComplete `size` is NOT used for geometry: it is an on-screen size (iOS row size;
 // Android page 0 only, scaled), so overlays placed from it land in the wrong place on
 // non-Letter pages and on any page whose size differs from page 0.
-import { useMemo, useState, type ReactNode } from 'react';
+//
+// The renderer gets a file:// URI in the app's own temp folder, deleted when this view
+// closes (M-A7 §4 R-7, security/useLocalPdf.ts); it never writes its own cache copy.
+import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
 import Pdf, { type Source } from 'react-native-pdf';
 
+import { useLocalPdf, type LocalPdfSource } from '../../security/useLocalPdf';
 import { useTheme } from '../../theme';
 import { base64Decode } from '../../util/bytes';
 import type { PageSize } from '../editor/geometry';
@@ -28,18 +32,7 @@ export interface PageLayout {
   readonly pageHeight: number;
 }
 
-export type PdfSource =
-  | { readonly kind: 'base64'; readonly base64: string }
-  | {
-      readonly kind: 'remote';
-      readonly uri: string;
-      readonly headers: Readonly<Record<string, string>>;
-    };
-
-function toSource(s: PdfSource): Source {
-  if (s.kind === 'base64') return { uri: `data:application/pdf;base64,${s.base64}`, cache: false };
-  return { uri: s.uri, headers: { ...s.headers }, cache: false };
-}
+export type PdfSource = LocalPdfSource;
 
 /** The displayed layout of a page of `size` PDF points fitted to `width` dp. */
 export function pageLayoutFor(size: PageSize, width: number): PageLayout {
@@ -100,7 +93,8 @@ function PdfPage({
   onLayoutY,
   onError,
 }: {
-  readonly source: Source;
+  /** Null while the document file is being prepared. */
+  readonly source: Source | null;
   readonly index: number;
   readonly width: number;
   readonly title: string;
@@ -131,24 +125,30 @@ function PdfPage({
         accessibilityRole="image"
         accessibilityLabel={`${title}, page ${index + 1}`}
       >
-        <Pdf
-          source={source}
-          page={index + 1}
-          singlePage
-          scrollEnabled={false}
-          enableDoubleTapZoom={false}
-          enableAnnotationRendering
-          fitPolicy={0}
-          trustAllCerts={false}
-          style={StyleSheet.absoluteFill}
-          renderActivityIndicator={() => <ActivityIndicator color={t.color.accent} />}
-          onLoadComplete={(n, _path, s) => {
-            if (!pointSize && s && s.width > 0 && s.height > 0)
-              setShown({ width: s.width, height: s.height });
-            onPages?.(n);
-          }}
-          onError={() => onError?.()}
-        />
+        {source ? (
+          <Pdf
+            source={source}
+            page={index + 1}
+            singlePage
+            scrollEnabled={false}
+            enableDoubleTapZoom={false}
+            enableAnnotationRendering
+            fitPolicy={0}
+            trustAllCerts={false}
+            style={StyleSheet.absoluteFill}
+            renderActivityIndicator={() => <ActivityIndicator color={t.color.accent} />}
+            onLoadComplete={(n, _path, s) => {
+              if (!pointSize && s && s.width > 0 && s.height > 0)
+                setShown({ width: s.width, height: s.height });
+              onPages?.(n);
+            }}
+            onError={() => onError?.()}
+          />
+        ) : (
+          <View style={styles.preparing}>
+            <ActivityIndicator color={t.color.accent} />
+          </View>
+        )}
       </View>
       {layout && renderOverlay ? (
         <View style={StyleSheet.absoluteFill} pointerEvents="box-none">
@@ -171,12 +171,19 @@ export function PdfPages({
   const t = useTheme();
   const [pages, setPages] = useState<number | null>(null);
   const [failed, setFailed] = useState(false);
-  const src = toSource(source);
+  const local = useLocalPdf(source);
+  const src: Source | null = local.status === 'ready' ? { uri: local.uri, cache: false } : null;
+  const prepareFailed = local.status === 'failed';
+  useEffect(() => {
+    if (prepareFailed) onError?.();
+    // Report once per failure, not on every new onError identity.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [prepareFailed]);
   const sizes = useMemo(
     () => (source.kind === 'base64' ? pageSizesFromBase64(source.base64) : null),
     [source],
   );
-  if (failed) {
+  if (failed || prepareFailed) {
     return (
       <View style={[styles.failed, { width }]}>
         <Text style={{ color: t.color.textSecondary, textAlign: 'center' }}>
@@ -224,4 +231,5 @@ const styles = StyleSheet.create({
   stack: { gap: 12 },
   page: { overflow: 'hidden', alignSelf: 'center' },
   failed: { padding: 24, alignSelf: 'center' },
+  preparing: { flex: 1, alignItems: 'center', justifyContent: 'center' },
 });

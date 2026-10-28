@@ -30,6 +30,10 @@ import type { SenderContext } from './api';
 const LegalDocumentPage = lazy(() => import('./legal/LegalPage').then((m) => ({ default: m.LegalDocumentPage })));
 const LegalNotFound = lazy(() => import('./legal/LegalPage').then((m) => ({ default: m.LegalNotFound })));
 const ThirdPartyNoticesPage = lazy(() => import('./legal/LegalPage').then((m) => ({ default: m.ThirdPartyNoticesPage })));
+// M-A7 §5.1 (R-8) — the public legal index, the terms index and the help page.
+const LegalIndexPage = lazy(() => import('./legal/LegalPage').then((m) => ({ default: m.LegalIndexPage })));
+const TermsIndexPage = lazy(() => import('./legal/LegalPage').then((m) => ({ default: m.TermsIndexPage })));
+const HelpPage = lazy(() => import('./legal/HelpPage').then((m) => ({ default: m.HelpPage })));
 const lazyPage = (node: ReactNode) => <Suspense fallback={<Loading />}>{node}</Suspense>;
 
 // The Aramo Sign WORKSPACE — the signed-in zone of the one Sign application on
@@ -42,6 +46,7 @@ const lazyPage = (node: ReactNode) => <Suspense fallback={<Loading />}>{node}</S
 //   /signup      public self-service BUSINESS signup (+ /signup/verify; dark)
 //   /signup/personal  public Personal (Free) signup; /report  "Report this email"
 //   /legal/:slug[/:version]  published legal texts; /legal/third-party-notices
+//   /legal  the published documents; /legal/terms  the terms that apply; /help (M-A7 §5.1)
 // The route prefix never authorizes: the backend decides tenant, kind, entitlement
 // and every action; a mismatched prefix is redirected to the backend's workspace.
 // Guest signing (/s/:token, /d/:token) is a separate zone that never loads this
@@ -60,10 +65,13 @@ export function App({ contextLoader }: { contextLoader?: () => Promise<SenderCon
         <Route path="/signup" element={<SignupPage />} />
         <Route path="/signup/verify" element={<SignupVerifyPage />} />
         {/* Aramo Sign Personal (Free) — public Personal signup (dark while the mode is off)
-            and "Report this email" from a Personal sender's signing email (no sign-in). */}
+            and "Report this email" from any signing email (no sign-in; M-A7 §5.2). */}
         <Route path="/signup/personal" element={<PersonalSignupPage />} />
         <Route path="/report" element={<ReportPage />} />
         {/* Published legal texts (public, no sign-in): latest and exact versions. */}
+        <Route path="/legal" element={lazyPage(<LegalIndexPage />)} />
+        <Route path="/legal/terms" element={lazyPage(<TermsIndexPage />)} />
+        <Route path="/help" element={lazyPage(<HelpPage />)} />
         <Route path="/legal/third-party-notices" element={lazyPage(<ThirdPartyNoticesPage />)} />
         <Route path="/legal/:slug" element={lazyPage(<LegalDocumentPage />)} />
         <Route path="/legal/:slug/:version" element={lazyPage(<LegalDocumentPage />)} />

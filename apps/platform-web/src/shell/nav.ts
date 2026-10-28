@@ -37,6 +37,7 @@ export type NavKey =
   | 'tenants'
   | 'personal'
   | 'invites'
+  | 'signAbuse'
   | 'skills'
   | 'skillQueue'
   | 'proposals'
@@ -91,6 +92,8 @@ export const NAV_GROUPS: readonly NavGroup[] = [
     items: [
       { key: 'personal', label: 'Review queue', to: '/personal-review', scope: P.tenantLifecycleManage, icon: 'shield' },
       { key: 'invites', label: 'Pilot invites', to: '/personal-invites', scope: P.tenantLifecycleManage, icon: 'mail' },
+      // M-A7 §5.2 — reports from every sender (Business and Personal).
+      { key: 'signAbuse', label: 'Abuse reports', to: '/sign-abuse-reports', scope: P.tenantLifecycleManage, icon: 'bell' },
     ],
   },
   {
@@ -171,6 +174,7 @@ export function navKeyFor(pathname: string): NavKey | null {
   if (p === '/tenants' || p.startsWith('/tenants/')) return 'tenants';
   if (p.startsWith('/personal-review')) return 'personal';
   if (p.startsWith('/personal-invites')) return 'invites';
+  if (p.startsWith('/sign-abuse-reports')) return 'signAbuse';
   if (p.startsWith('/skills/review-queue')) return 'skillQueue';
   if (p.startsWith('/skills/proposals')) return 'proposals';
   if (p === '/skills' || p.startsWith('/skills/')) return 'skills';

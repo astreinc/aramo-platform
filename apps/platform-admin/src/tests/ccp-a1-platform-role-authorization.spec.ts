@@ -96,6 +96,8 @@ const REFUSED: Route[] = [
   { id: 'lifecycle-4', method: 'post', path: `/platform/tenants/${T}/close`, scope: 'platform:tenant:lifecycle:manage' },
   { id: 'lifecycle-5', method: 'get', path: `/platform/tenants/${T}/domain`, scope: 'platform:tenant:lifecycle:manage' },
   { id: 'lifecycle-6', method: 'get', path: '/platform/personal-review', scope: 'platform:tenant:lifecycle:manage' },
+  // M-A7 §5.2 — the operators' abuse-report queue (every sender).
+  { id: 'lifecycle-7', method: 'get', path: '/platform/sign-abuse-reports', scope: 'platform:tenant:lifecycle:manage' },
   { id: 'admin-invite', method: 'post', path: '/platform/admins/invitations', scope: 'platform:admin:invite' },
 ];
 
@@ -135,13 +137,13 @@ describe('CCP A1 §4.2.1 — per-role platform-admin authorization (real JwtAuth
     lifecycle: { account: vi.fn(async () => ({ subscription: null, allowance: null, storage: null, billing_available: false })), recentBillingEvents: vi.fn(async () => []) },
     risk: { reviewClearsStepUp: vi.fn(() => false), phoneVerificationAvailable: vi.fn(() => false) },
     signups: { reviewQueue: vi.fn(async () => []) },
-    reports: {},
+    reports: { listQueue: vi.fn(async () => []) },
   };
   // The services behind every REFUSED route: none may ever be reached for a CCP role.
   const refusedRouteServices = [
     svc.invitations.provisionTenantAndInviteOwner, svc.invitations.inviteUserIntoTenant, svc.invitations.resendOwnerInvite,
     svc.invitations.invitePlatformAdmin, svc.tenantSvc.suspendTenant, svc.tenantSvc.reactivateTenant,
-    svc.tenantSvc.startOffboarding, svc.tenantSvc.closeTenant, svc.signups.reviewQueue,
+    svc.tenantSvc.startOffboarding, svc.tenantSvc.closeTenant, svc.signups.reviewQueue, svc.reports.listQueue,
   ];
 
   async function tokenFor(role: string): Promise<string> {

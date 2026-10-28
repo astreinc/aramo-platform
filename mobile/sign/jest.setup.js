@@ -1,6 +1,8 @@
 /* global jest, Buffer */
 // Node implementations of the native modules the unit tests exercise.
 
+require('react-native-gesture-handler/jestSetup');
+
 jest.mock('expo-crypto', () => ({
   CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
   getRandomBytes: (n) => new Uint8Array(require('node:crypto').randomBytes(n)),
@@ -30,3 +32,24 @@ jest.mock(
   'react-native-safe-area-context',
   () => require('react-native-safe-area-context/jest/mock').default,
 );
+
+// The document temp folder (M-A7 R-7) as an in-memory registry: component tests get a
+// file:// URI without touching expo-file-system. Its rules are tested in
+// src/security/__tests__/documentTempFiles.test.ts.
+jest.mock('./src/security/documentTempFilesNative', () => {
+  const { createDocumentTempFiles } = jest.requireActual('./src/security/documentTempFiles');
+  let n = 0;
+  const fs = {
+    writeBase64: (dir, name) => `file:///cache/${dir}/${name}`,
+    download: async (dir, name) => `file:///cache/${dir}/${name}`,
+    uriOf: (dir, name) => `file:///cache/${dir}/${name}`,
+    removeFile: () => undefined,
+    removeDir: () => undefined,
+    listCacheRoot: () => [],
+    removeCacheRootFile: () => undefined,
+  };
+  return {
+    cacheTempFs: fs,
+    documentTempFiles: createDocumentTempFiles(fs, () => `doc${++n}`),
+  };
+});
