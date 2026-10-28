@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   HttpStatus,
@@ -22,7 +23,10 @@ import type {
   TenantUserView,
 } from '../identity.repository.js';
 
-import { TenantUserLifecycleService } from './tenant-user-lifecycle.service.js';
+import {
+  TenantUserLifecycleService,
+  type RemoveProductAccessResult,
+} from './tenant-user-lifecycle.service.js';
 
 // Settings S3a — TenantUserManagementController.
 //
@@ -403,6 +407,39 @@ export class TenantUserManagementController {
     }
 
     return result;
+  }
+
+  // Aramo-Sign-Mobile-Amendment-M-A8 §2.3 — DELETE /v1/tenant/users/:user_id/products/sign.
+  //
+  // An organization administrator removes a member's Aramo Sign access: only the Sign
+  // role keys are removed (allowed when no role remains; the membership stays), and in
+  // the same transaction the member's Sign refresh tokens and native device sessions in
+  // this tenant are revoked, principal_version is bumped and the audit row
+  // identity.tenant_user.product_access_removed { product: 'sign' } is written (inside
+  // the repository transaction — not the two-call seam). No Cognito call.
+  //
+  // Response (200): { membership_id, product, removed_role_keys, after_role_keys,
+  //   refresh_tokens_revoked, device_sessions_revoked, changed } — counts only.
+  // Errors:
+  //   400 VALIDATION_ERROR (details.reason sign_access_via_organization_role — the
+  //       member holds tenant_owner / tenant_admin, which carry Sign authority and are
+  //       never touched here)
+  //   403 INSUFFICIENT_PERMISSIONS (no tenant:admin:user-manage)
+  //   404 NOT_FOUND (no membership for user_id in the caller's tenant — isolation)
+  @Delete(':user_id/products/sign')
+  @HttpCode(HttpStatus.OK)
+  @RequireScopes('tenant:admin:user-manage')
+  async removeSignAccess(
+    @AuthContext() authContext: AuthContextType,
+    @Param('user_id') userId: string,
+    @RequestId() requestId: string,
+  ): Promise<RemoveProductAccessResult> {
+    return this.lifecycle.removeSignAccess({
+      tenant_id: authContext.tenant_id,
+      user_id: userId,
+      actor_user_id: authContext.sub,
+      request_id: requestId,
+    });
   }
 
   // Invite-S3 (§4.1) — POST /v1/tenant/users/:user_id/enable.
