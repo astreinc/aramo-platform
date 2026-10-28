@@ -5,6 +5,7 @@ import type { RoleCatalogView } from '../roles/roles-catalog-api';
 import { OrgAvatar, OrgPageHeader } from '../ui/OrgPage';
 
 import { isOwner, personName, useDirectory } from './directory';
+import { RemoveSignAccess } from './RemoveSignAccess';
 import {
   buildRoleGroups,
   KEEP_ONE_ROLE_HINT,
@@ -26,6 +27,8 @@ import './org-people.css';
 // it. "Manage people" opens the row to add / remove holders; each change is the existing
 // whole-set PATCH /v1/tenant/users/:id/roles (current roles ± this role), audited by the
 // server. Disabled people are excluded. No create / rename / custom roles.
+// M-A8 §2.3 — "Remove Sign access" (RemoveSignAccess) removes only a member's Aramo Sign
+// roles and signs them out of Aramo Sign (DELETE /v1/tenant/users/:id/products/sign).
 
 type Filter = 'all' | RoleGroupKey;
 
@@ -281,6 +284,9 @@ export function RolesAccessPage({ session, products }: { readonly session?: Sess
             )}
           </div>
         </div>
+        {subs.sign && (filter === 'all' || filter === 'sign') && dir.status === 'ready' ? (
+          <RemoveSignAccess people={live} roleName={(k) => catalog.find((r) => r.key === k)?.display ?? k} onRemoved={dir.reload} />
+        ) : null}
         <div className="oxp-roles-foot">{"Roles come from each app and can't be renamed here. Custom roles aren't available yet."}</div>
       </div>
     </div>

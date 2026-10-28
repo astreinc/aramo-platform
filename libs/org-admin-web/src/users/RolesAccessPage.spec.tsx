@@ -5,6 +5,7 @@ import { describe, expect, it } from 'vitest';
 import { stubFetch, type StubCall } from '../tests/fetch-stub';
 
 import { ATS_ROLES_HREF, RolesAccessPage } from './RolesAccessPage';
+import { REMOVE_SIGN_KEEPS } from './RemoveSignAccess';
 import { apiError, ATS_ONLY, CATALOG, PRODUCTS, session, user } from './users.fixture';
 
 // ORG-UX-1 handoff §6.4 "Roles & access" / Directive §8.4, §13.2.
@@ -17,11 +18,12 @@ const ROSTER = [
   user('dan', { display_name: 'Dan Disabled', is_active: false, role_keys: ['recruiter'] }),
 ];
 
-function setup(opts: { sub?: string; products?: typeof PRODUCTS; patch?: { status?: number; body?: unknown } } = {}) {
+function setup(opts: { sub?: string; products?: typeof PRODUCTS; patch?: { status?: number; body?: unknown }; del?: { status?: number; body?: unknown } } = {}) {
   const calls: StubCall[] = stubFetch(({ url, method }) => {
     if (method === 'GET' && url.startsWith('/v1/tenant/users')) return { body: { items: ROSTER } };
     if (url.startsWith('/v1/tenant/roles-catalog')) return { body: { roles: CATALOG } };
     if (method === 'PATCH') return opts.patch ?? { body: { membership_id: 'm' } };
+    if (method === 'DELETE') return opts.del ?? { body: { membership_id: 'm', product: 'sign', removed_role_keys: [], after_role_keys: [], refresh_tokens_revoked: 1, device_sessions_revoked: 0, changed: true } };
     return undefined;
   });
   render(
@@ -117,5 +119,67 @@ describe('RolesAccessPage', () => {
     fireEvent.click(screen.getByTestId('manage-tenant_owner'));
     fireEvent.click(within(screen.getByTestId('open-tenant_owner')).getByText('Add to role'));
     expect(await within(screen.getByTestId('open-tenant_owner')).findByRole('alert')).toHaveTextContent('Your organization must keep at least one owner.');
+  });
+
+  // Aramo-Sign-Mobile-Amendment-M-A8 §2.3 — Remove Sign access.
+  describe('Remove Sign access', () => {
+    const deletes = (calls: StubCall[]) => calls.filter((c) => c.method === 'DELETE').map((c) => c.url);
+
+    it('offers only active people with a Sign role and no organization role; confirms with what is kept; removes through DELETE …/products/sign', async () => {
+      const calls = setup();
+      const section = await screen.findByTestId('remove-sign-access');
+      const select = await within(section).findByLabelText('Person to remove from Aramo Sign');
+      // Olive (owner) and Fay (organization admin) keep Sign through their organization role;
+      // Dan is disabled. Ann (ATS + Sign) and Sol (Sign only) are offered.
+      expect(within(select).getAllByRole('option').map((o) => o.textContent)).toEqual(['Ann Active · ann@acme.test', 'Sol Single · sol@acme.test']);
+      fireEvent.click(within(section).getByTestId('remove-sign-access-open'));
+      const modal = await screen.findByTestId('remove-sign-access-modal');
+      expect(within(modal).getByText('Remove Aramo Sign access for Ann Active?')).toBeInTheDocument();
+      expect(within(modal).getByText(REMOVE_SIGN_KEEPS)).toBeInTheDocument();
+      expect(modal).toHaveTextContent('(Sign Sender)');
+      expect(deletes(calls)).toEqual([]);
+      fireEvent.click(within(modal).getByTestId('remove-sign-access-confirm'));
+      await waitFor(() => expect(deletes(calls)).toEqual(['/v1/tenant/users/ann/products/sign']));
+      expect(await screen.findByText('Ann Active no longer has Aramo Sign access.')).toBeInTheDocument();
+      expect(patches(calls)).toHaveLength(0);
+    });
+
+    it('a Sign-only person can have Sign removed (no ≥1-role refusal on this path)', async () => {
+      const calls = setup();
+      const section = await screen.findByTestId('remove-sign-access');
+      fireEvent.change(await within(section).findByLabelText('Person to remove from Aramo Sign'), { target: { value: 'sol' } });
+      fireEvent.click(within(section).getByTestId('remove-sign-access-open'));
+      fireEvent.click(within(await screen.findByTestId('remove-sign-access-modal')).getByTestId('remove-sign-access-confirm'));
+      await waitFor(() => expect(deletes(calls)).toEqual(['/v1/tenant/users/sol/products/sign']));
+    });
+
+    it('Cancel writes nothing; a server refusal is shown in the dialog', async () => {
+      const calls = setup({ del: apiError(400, 'VALIDATION_ERROR', { reason: 'sign_access_via_organization_role' }) });
+      const section = await screen.findByTestId('remove-sign-access');
+      await within(section).findByLabelText('Person to remove from Aramo Sign');
+      fireEvent.click(within(section).getByTestId('remove-sign-access-open'));
+      fireEvent.click(within(await screen.findByTestId('remove-sign-access-modal')).getByText('Cancel'));
+      await waitFor(() => expect(screen.queryByTestId('remove-sign-access-modal')).toBeNull());
+      expect(deletes(calls)).toEqual([]);
+      fireEvent.click(within(section).getByTestId('remove-sign-access-open'));
+      const modal = await screen.findByTestId('remove-sign-access-modal');
+      fireEvent.click(within(modal).getByTestId('remove-sign-access-confirm'));
+      expect(await within(modal).findByRole('alert')).toHaveTextContent('This person has Aramo Sign through an organization role.');
+    });
+
+    it('is not shown when the organization has no Aramo Sign', async () => {
+      setup({ products: ATS_ONLY });
+      await screen.findByTestId('role-row-recruiter');
+      expect(screen.queryByTestId('remove-sign-access')).toBeNull();
+    });
+
+    it('is hidden on the ATS filter and shown on the Sign filter', async () => {
+      setup();
+      await screen.findByTestId('remove-sign-access');
+      fireEvent.click(screen.getByTestId('seg-ats'));
+      expect(screen.queryByTestId('remove-sign-access')).toBeNull();
+      fireEvent.click(screen.getByTestId('seg-sign'));
+      expect(screen.getByTestId('remove-sign-access')).toBeInTheDocument();
+    });
   });
 });
