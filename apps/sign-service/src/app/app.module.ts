@@ -16,6 +16,7 @@ import {
   SIGNING_NOTIFICATION_PORT,
   STORAGE_ACCOUNTING_PORT,
   SignNotificationRepository,
+  SignPrivacyRepository,
   SignRetentionRepository,
   SoftwareEvidenceManifestSigner,
   WEBHOOK_DELIVERY_PORT,
@@ -91,6 +92,14 @@ import { ConvenienceDataPurgeService } from './push/convenience-data-purge.servi
 // Privacy Notice 1.1 remediation (E-1 to E-4) — retention cleanup worker (default off).
 import { SignRetentionService } from './retention/sign-retention.service.js';
 import { SignRetentionWorker } from './retention/sign-retention.worker.js';
+// Aramo-Sign-Mobile-Amendment-M-A7 §3 — privacy requests (in-app, public web) and the
+// staged deletion execution (OFF unless SIGN_PRIVACY_DELETION_EXECUTION_ENABLED=1).
+import { SignPrivacyRequestController } from './privacy/sign-privacy-request.controller.js';
+import { SignPrivacyPublicController } from './privacy/sign-privacy-public.controller.js';
+import { PrivacyWebBudget, SignPrivacyRequestService } from './privacy/sign-privacy-request.service.js';
+import { SignPrivacyExecutionService } from './privacy/sign-privacy-execution.service.js';
+import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.worker.js';
+import { IDENTITY_RETIREMENT_PORT, identityRetirementFromEnv } from './privacy/identity-retirement.port.js';
 
 // DOC-3/DOC-4 — apps/sign-service composition root. Composes the ATS-neutral
 // E-Sign domain (EsignModule.forRoot) and binds the full DOC-4 executed-document
@@ -102,6 +111,8 @@ import { SignRetentionWorker } from './retention/sign-retention.worker.js';
 @Module({
   imports: [
     CommonModule,
+    // M-A7 §3 — the public privacy request emails its one-time ownership link.
+    MailerModule,
     // Multi-Provider directive §B — the plan/subscription allowance authority.
     // A1 — Standard Professional eligibility reads the live ATS entitlement.
     SubscriptionModule.forRoot({
@@ -173,7 +184,7 @@ import { SignRetentionWorker } from './retention/sign-retention.worker.js';
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
   // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController],
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,
@@ -229,6 +240,13 @@ import { SignRetentionWorker } from './retention/sign-retention.worker.js';
     SignRetentionRepository,
     SignRetentionService,
     SignRetentionWorker,
+    // Aramo-Sign-Mobile-Amendment-M-A7 §3 — privacy requests + staged deletion execution.
+    SignPrivacyRepository,
+    PrivacyWebBudget,
+    SignPrivacyRequestService,
+    SignPrivacyExecutionService,
+    SignPrivacyExecutionWorker,
+    { provide: IDENTITY_RETIREMENT_PORT, useFactory: () => identityRetirementFromEnv(process.env) },
   ],
 })
 export class AppModule implements NestModule {

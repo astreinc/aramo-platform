@@ -263,3 +263,5 @@ export { SignContactRepository, SignContactDuplicateError, contactEmailKey, type
 export { RECIPIENT_INBOX_SESSION_EVENT, type IssuedRecipientSession } from './lib/recipient-inbox.repository.js';
 // Privacy Notice 1.1 remediation (E-1 to E-4) — retention cleanup.
 export * from './lib/retention/sign-retention.repository.js';
+// Aramo-Sign-Mobile-Amendment-M-A7 §3.2 — privacy-request inventory and Sign-side execution reads/writes.
+export * from './lib/privacy/sign-privacy.repository.js';

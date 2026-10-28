@@ -22,6 +22,8 @@ import { OrganizationRegionService } from './organization-region.service.js';
 import { DomainClaimService } from './domain-claim/domain-claim.service.js';
 import { GEO_IP_PORT, MaxmindGeoIpAdapter } from './personal/geo-ip.port.js';
 import { PersonalRiskService } from './personal/personal-risk.service.js';
+import { PrivacyRequestService } from './privacy/privacy-request.service.js';
+import { PrivacySubjectService } from './privacy/privacy-subject.service.js';
 import { PersonalSignupRepository } from './personal/personal-signup.repository.js';
 import { ROBOT_CHECK_PORT, robotCheckAdapterFromEnv } from './personal/robot-check.port.js';
 import { SMS_VERIFICATION_PORT, smsVerificationAdapterFromEnv } from './personal/sms-verification.port.js';
@@ -101,6 +103,9 @@ import { ProductAvailabilityService } from './authorization/product-availability
     // adapters are chosen from env at bootstrap and open nothing until first use.
     PersonalRiskService,
     PersonalSignupRepository,
+    // Aramo-Sign-Mobile-Amendment-M-A7 §3 — the platform privacy-request capability.
+    PrivacyRequestService,
+    PrivacySubjectService,
     { provide: GEO_IP_PORT, useFactory: () => new MaxmindGeoIpAdapter() },
     { provide: SMS_VERIFICATION_PORT, useFactory: () => smsVerificationAdapterFromEnv() },
     { provide: ROBOT_CHECK_PORT, useFactory: () => robotCheckAdapterFromEnv() },
@@ -142,6 +147,8 @@ import { ProductAvailabilityService } from './authorization/product-availability
   exports: [
     SignupRequestRepository,
     PersonalRiskService,
+    PrivacyRequestService,
+    PrivacySubjectService,
     PersonalSignupRepository,
     GEO_IP_PORT,
     SMS_VERIFICATION_PORT,
