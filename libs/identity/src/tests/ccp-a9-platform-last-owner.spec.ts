@@ -35,8 +35,10 @@ describe('CCP-A9 platform last-owner invariant (identity)', () => {
     expect(sql).toContain(`pg_advisory_xact_lock(hashtext(''identity:platform_owner''))`);
   });
 
-  it('A9-ID-0 registration — right after the CCP-A1 catalog migration, followed only by the CCP-A1 Amendment A1 Finance amount scope and the Amendment A2 payment request scope; stamps in apply order', () => {
-    expect(IDENTITY_MIGRATIONS.slice(-4)).toEqual([
+  it('A9-ID-0 registration — right after the CCP-A1 catalog migration, followed by the CCP-A1 Amendment A1 Finance amount scope and the Amendment A2 payment request scope (then only later, unrelated migrations: M-A7 privacy requests); stamps in apply order', () => {
+    const at = IDENTITY_MIGRATIONS.indexOf('libs/identity/prisma/migrations/20261024120000_ccp_a1_commercial_role_catalog/migration.sql');
+    expect(IDENTITY_MIGRATIONS.slice(at + 4)).toEqual(['libs/identity/prisma/migrations/20261028130000_privacy_requests/migration.sql']);
+    expect(IDENTITY_MIGRATIONS.slice(at, at + 4)).toEqual([
       'libs/identity/prisma/migrations/20261024120000_ccp_a1_commercial_role_catalog/migration.sql',
       'libs/identity/prisma/migrations/20261025180000_ccp_a9_platform_last_owner_invariant/migration.sql',
       'libs/identity/prisma/migrations/20261028060000_ccp_a1a1_finance_amount_scope/migration.sql',

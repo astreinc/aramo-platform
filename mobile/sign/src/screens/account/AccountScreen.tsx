@@ -3,14 +3,14 @@
 // identity at a time; "Sign out to use another account"). Profile, account type,
 // Personal plan and usage, default signature and initials, biometric confirmation and unlock, push
 // preferences (incl. "Show subject on lock screen", default off), devices / sessions,
-// legal re-acceptance, Personal account close, About, Sign out.
+// legal re-acceptance, Delete account / Request deletion (M-A7 §3.3), About, Sign out.
 import { useRoute, type RouteProp } from '@react-navigation/native';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as Application from 'expo-application';
 import * as Notifications from 'expo-notifications';
 import * as WebBrowser from 'expo-web-browser';
 import { useEffect, useRef, useState } from 'react';
-import { Linking, ScrollView, StyleSheet, Text, TextInput, View } from 'react-native';
+import { Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { isApiError } from '../../api/errors';
@@ -37,12 +37,10 @@ import {
   revokeSession,
   type NativeSession,
 } from '../../features/account/devices';
+import { DeleteAccountSection } from '../../features/account/DeleteAccountSection';
 import { signedInWithLabel } from '../../features/account/profile';
 import {
   acceptPending,
-  closeAccount,
-  closeConfirmed,
-  loadAccountStatus,
   loadLegalStatus,
 } from '../../features/account/legal';
 import {
@@ -80,7 +78,6 @@ const accountKeys = {
   saved: ['sign', 'me', 'signature'] as const,
   sessions: ['auth', 'native', 'sessions'] as const,
   legal: ['sign', 'legal', 'status'] as const,
-  accountStatus: ['sign', 'account', 'status'] as const,
 };
 
 function open(url: string): void {
@@ -122,11 +119,6 @@ export function AccountScreen() {
     queryFn: () => loadLegalStatus(workspace),
     enabled: personal,
   });
-  const accountStatus = useQuery({
-    queryKey: accountKeys.accountStatus,
-    queryFn: () => loadAccountStatus(workspace),
-    enabled: personal,
-  });
 
   const [bio, setBio] = useState<BiometricCapability | null>(null);
   const [bioOn, setBioOn] = useState(true);
@@ -136,9 +128,6 @@ export function AccountScreen() {
   >(null);
   const [adoptTarget, setAdoptTarget] = useState<AdoptTarget | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
-  const [closeOpen, setCloseOpen] = useState(false);
-  const [closeText, setCloseText] = useState('');
-  const [closeError, setCloseError] = useState<string | null>(null);
   const [revokeTarget, setRevokeTarget] = useState<NativeSession | null>(null);
 
   useEffect(() => {
@@ -216,20 +205,6 @@ export function AccountScreen() {
     } catch (e) {
       toast.show(isApiError(e) ? refusalMessage(e) : 'Couldn’t record that. Try again.');
       void legal.refetch();
-    } finally {
-      setBusy(null);
-    }
-  }
-
-  async function doClose(): Promise<void> {
-    setBusy('close');
-    setCloseError(null);
-    try {
-      await closeAccount(workspace);
-      setCloseOpen(false);
-      await signOut();
-    } catch (e) {
-      setCloseError(isApiError(e) ? refusalMessage(e) : 'Couldn’t close the account. Try again.');
     } finally {
       setBusy(null);
     }
@@ -522,16 +497,8 @@ export function AccountScreen() {
           />
         </Card>
 
-        {personal && accountStatus.data?.closable ? (
-          <View style={[styles.pad, { marginTop: 24 }]}>
-            <Button
-              title="Close account"
-              variant="destructive"
-              disabled={!online}
-              onPress={() => setCloseOpen(true)}
-            />
-          </View>
-        ) : null}
+        {/* M-A7 §3.3 — every account type; replaces the Personal close (closing alone is not deletion). */}
+        <DeleteAccountSection personal={personal} online={online} />
 
         <View style={[styles.pad, { marginTop: 24 }]}>
           <Button
@@ -579,41 +546,6 @@ export function AccountScreen() {
         <Button title="Cancel" variant="text" onPress={() => setRevokeTarget(null)} />
       </Sheet>
 
-      <Sheet visible={closeOpen} onClose={() => setCloseOpen(false)} title="Close your account?">
-        <Text style={{ color: t.color.textSecondary, fontSize: 15, lineHeight: 21 }}>
-          Sending stops for good. Envelopes you already sent stay open for their signers. Type CLOSE
-          to confirm.
-        </Text>
-        <TextInput
-          testID="close-confirm-input"
-          value={closeText}
-          onChangeText={setCloseText}
-          autoCapitalize="characters"
-          autoCorrect={false}
-          accessibilityLabel="Type CLOSE to confirm"
-          style={[
-            styles.input,
-            {
-              borderColor: t.color.separator,
-              color: t.color.text,
-              backgroundColor: t.color.surface,
-            },
-          ]}
-        />
-        {closeError ? (
-          <Text accessibilityRole="alert" style={{ color: t.color.destructive }}>
-            {closeError}
-          </Text>
-        ) : null}
-        <Button
-          title="Close account"
-          variant="destructive"
-          disabled={!closeConfirmed(closeText) || !online}
-          busy={busy === 'close'}
-          onPress={() => void doClose()}
-        />
-        <Button title="Cancel" variant="text" onPress={() => setCloseOpen(false)} />
-      </Sheet>
     </View>
   );
 }
@@ -631,5 +563,4 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  input: { borderWidth: 1, borderRadius: 10, padding: 12, fontSize: 17, minHeight: 48 },
 });

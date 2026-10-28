@@ -84,6 +84,8 @@ const HEADER_LINES = [
 const SIGN_LIMITS = new Map<string, string>([
   ['/v1/sign/signing/', 'sign_guest'],
   ['/v1/sign/report', 'sign_report'],
+  // Aramo-Sign-Mobile-Amendment-M-A7 §3.3 — public privacy requests (/delete-account).
+  ['/v1/sign/privacy-requests/', 'sign_report'],
   ['/v1/signup/sign/', 'sign_signup'],
   ['/v1/domain-verification/delegate', 'domain_delegate'],
   ['/v1/sign/sender/', 'sign_workspace'],
@@ -228,6 +230,8 @@ function checkRepo(inputs: Inputs = readRepoInputs()): Issue[] {
     ['/v1/sign/inbox', 'sign-service:3003'],
     // Personal Free v1.1 §6.4 — "Report this email".
     ['/v1/sign/report', 'sign-service:3003'],
+    // Aramo-Sign-Mobile-Amendment-M-A7 §3.3 — public privacy requests (start / verify / status).
+    ['/v1/sign/privacy-requests/', 'sign-service:3003'],
     // Personal Free — legal re-acceptance in the workspace (status / accept).
     ['/v1/sign/legal/', 'sign-service:3003'],
     // Personal Free — the workspace account surface (status / close).

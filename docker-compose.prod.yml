@@ -579,6 +579,14 @@ services:
       - SIGN_RETENTION_WORKER_ENABLED
       - SIGN_RETENTION_QUEUE_CLEANUP_ENABLED
       - SIGN_RETENTION_INTERVAL_MS
+      # Aramo-Sign-Mobile-Amendment-M-A7 §3 — privacy requests. Staged deletion execution is
+      # OFF unless SIGN_PRIVACY_DELETION_EXECUTION_ENABLED=1 (production enablement needs a
+      # separate authorization). PRIVACY_REQUEST_EMAIL_KEY (32 bytes, base64) protects a web
+      # requester's email; unset = the public web request fails closed. The tenant pool id
+      # lets an enabled execution retire a Personal user's Cognito identity.
+      - SIGN_PRIVACY_DELETION_EXECUTION_ENABLED
+      - PRIVACY_REQUEST_EMAIL_KEY
+      - AUTH_COGNITO_TENANT_USER_POOL_ID
     volumes:
       - /opt/aramo/geoip:/geoip:ro
       - /opt/aramo/secrets:/opt/aramo/secrets:ro
@@ -702,6 +710,9 @@ services:
       - SIGN_ADDRESS_PROVIDER
       - SIGN_ADDRESS_PROVIDER_KEY
       - ARAMO_SIGN_BASE_URL
+      # Aramo-Sign-Mobile-Amendment-M-A7 §3 — the privacy team's queue (same values as sign-service).
+      - SIGN_PRIVACY_DELETION_EXECUTION_ENABLED
+      - PRIVACY_REQUEST_EMAIL_KEY
       - SIGN_SENDER_WEB_BASE_URL
       - MAILER_PROVIDER
       - SES_FROM_ADDRESS

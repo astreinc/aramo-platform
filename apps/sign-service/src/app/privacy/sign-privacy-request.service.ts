@@ -175,11 +175,12 @@ export class SignPrivacyRequestService {
   private async afterDeletionInventory(r: PrivacyRequestRecord, ctx: PrivacySubjectContext, personalOwner: boolean, now: Date): Promise<PrivacyRequestRecord> {
     let cur = r;
     if (personalOwner) {
-      // §3.2 "Close account becomes a step of the deletion request": the close the
-      // app performed before (sending stops, convenience data purged) runs now,
-      // whatever the execution flag; the rest waits for execution.
+      // §3.2 "Close account becomes a step of the deletion request": while execution
+      // is staged OFF, the close the app performed before (sending stops, convenience
+      // data purged) runs now and the rest waits for the privacy team. With execution
+      // ON the execution performs the close itself (and records its counts).
       const state = await this.risk.riskStateOf(ctx.tenant_id);
-      if (state !== null && state.state !== 'closed' && !ctx.legal_hold) {
+      if (!privacyDeletionExecutionEnabled() && state !== null && state.state !== 'closed' && !ctx.legal_hold) {
         await this.risk.close(ctx.tenant_id, ctx.user_id, 'owner_closed', now, { closed_by: 'owner', note: `privacy request ${cur.reference}` });
         await this.purge?.purgeForAccountClose({ tenant_id: ctx.tenant_id, user_id: ctx.user_id });
         await this.savedData?.purgeForAccountClose({ tenant_id: ctx.tenant_id, user_id: ctx.user_id });

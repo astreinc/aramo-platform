@@ -49,6 +49,9 @@ tags:
       Sign Personal (Free) Launch v1.1 (LOCKED) — the PUBLIC Personal signup on
       sign.aramo.ai under `/v1/signup/sign/personal/*`. Dark (404) unless
       SIGN_PERSONAL_SIGNUP_MODE is `invite` or `open` (ships `off`).
+  - name: Platform Privacy
+    description: |
+      The Aramo privacy team's privacy-request queue (Aramo-Sign-Mobile-Amendment-M-A7 §3).
   - name: Platform Personal
     description: |
       Sign Personal (Free) Launch v1.1 — the operator review queue, the audited
@@ -5241,6 +5244,613 @@ paths:
           $ref: 'common.yaml#/components/responses/Unauthorized'
         '403':
           $ref: '#/components/responses/PlatformForbidden'
+  /platform/privacy-requests:
+    get:
+      operationId: listPrivacyRequests
+      tags: [Platform Privacy]
+      summary: 'The Aramo privacy team''s queue of privacy requests (Aramo-Sign-Mobile-Amendment-M-A7 §3).'
+      description: |
+        Open requests by due date (30 days from receipt), or filtered. Counts-only inventory and
+        completion evidence; no email in the list. Requires scope `platform:tenant:lifecycle:manage`
+        and a platform session. `execution_enabled` reports SIGN_PRIVACY_DELETION_EXECUTION_ENABLED.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: status
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [RECEIVED, IDENTITY_VALIDATED, DATA_INVENTORY, REFERRED_TO_ORGANIZATION, EXECUTING, COMPLETED, DENIED_WITH_REASON, CANCELLED]
+        - name: request_type
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: [DELETION, ACCESS, EXPORT, CORRECTION]
+        - name: include_closed
+          in: query
+          required: false
+          schema:
+            type: string
+            enum: ['true', 'false']
+      responses:
+        '200':
+          description: Requests.
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [items, execution_enabled]
+                properties:
+                  items:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/PlatformPrivacyRequest'
+                  execution_enabled:
+                    type: boolean
+        '400':
+          description: '`VALIDATION_ERROR` — a malformed body or filter.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+    post:
+      operationId: recordPrivacyRequest
+      tags: [Platform Privacy]
+      summary: 'Record a privacy request received by the privacy team (operator channel).'
+      description: |
+        The operator checked the requester's identity or the authorized representative's proof
+        and records how in `verification_note` (append-only history). The email is stored only as
+        a keyed hash and ciphertext. The calling operator is assigned.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [request_type, subject_kind, email, verification_note]
+              properties:
+                request_type:
+                  type: string
+                  enum: [DELETION, ACCESS, EXPORT, CORRECTION]
+                subject_kind:
+                  type: string
+                  enum: [ACCOUNT_HOLDER, BUSINESS_MEMBER, GUEST_SIGNER, FORMER_USER, AUTHORIZED_REPRESENTATIVE]
+                email:
+                  type: string
+                  format: email
+                verification_note:
+                  type: string
+                  minLength: 3
+                  maxLength: 500
+      responses:
+        '201':
+          description: Recorded.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformPrivacyRequest'
+        '400':
+          description: '`VALIDATION_ERROR` — a malformed body or filter.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+  /platform/privacy-requests/{id}:
+    get:
+      operationId: getPrivacyRequest
+      tags: [Platform Privacy]
+      summary: 'One privacy request with its append-only history and the requester''s contact email.'
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The request.
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - $ref: '#/components/schemas/PlatformPrivacyRequest'
+                  - type: object
+                    required: [contact_email, events, execution_enabled]
+                    properties:
+                      contact_email:
+                        type: [string, 'null']
+                      execution_enabled:
+                        type: boolean
+                      events:
+                        type: array
+                        items:
+                          type: object
+                          additionalProperties: true
+        '400':
+          description: '`VALIDATION_ERROR` — a malformed body or filter.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          description: '`NOT_FOUND` — details.reason privacy_request_not_found.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '409':
+          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_execution_in_progress).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+  /platform/privacy-requests/{id}/assign:
+    post:
+      operationId: assignPrivacyRequest
+      tags: [Platform Privacy]
+      summary: 'Assign the responsible Aramo operator (default: the caller).'
+      description: Requires scope `platform:tenant:lifecycle:manage` and a platform session; recorded with the operator as actor.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: false
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                operator_id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: The request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformPrivacyRequest'
+        '400':
+          description: '`VALIDATION_ERROR` — a malformed body or filter.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          description: '`NOT_FOUND` — details.reason privacy_request_not_found.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '409':
+          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_execution_in_progress).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+  /platform/privacy-requests/{id}/validate:
+    post:
+      operationId: validatePrivacyRequestIdentity
+      tags: [Platform Privacy]
+      summary: 'RECEIVED → IDENTITY_VALIDATED (operator-checked identity).'
+      description: Requires scope `platform:tenant:lifecycle:manage` and a platform session; recorded with the operator as actor.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [note]
+              properties:
+                note:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+      responses:
+        '200':
+          description: The request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformPrivacyRequest'
+        '400':
+          description: '`VALIDATION_ERROR` — a malformed body or filter.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          description: '`NOT_FOUND` — details.reason privacy_request_not_found.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '409':
+          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_execution_in_progress).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+  /platform/privacy-requests/{id}/inventory:
+    post:
+      operationId: inventoryPrivacyRequest
+      tags: [Platform Privacy]
+      summary: 'IDENTITY_VALIDATED → DATA_INVENTORY: resolve the account by the contact email and record counts only.'
+      description: Requires scope `platform:tenant:lifecycle:manage` and a platform session; recorded with the operator as actor.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '200':
+          description: The request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformPrivacyRequest'
+        '400':
+          description: '`VALIDATION_ERROR` — a malformed body or filter.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          description: '`NOT_FOUND` — details.reason privacy_request_not_found.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '409':
+          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_execution_in_progress).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+  /platform/privacy-requests/{id}/refer:
+    post:
+      operationId: referPrivacyRequest
+      tags: [Platform Privacy]
+      summary: '→ REFERRED_TO_ORGANIZATION (Aramo remains the accountable fallback).'
+      description: Requires scope `platform:tenant:lifecycle:manage` and a platform session; recorded with the operator as actor.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [note]
+              properties:
+                note:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+                organization_tenant_id:
+                  type: string
+                  format: uuid
+      responses:
+        '200':
+          description: The request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformPrivacyRequest'
+        '400':
+          description: '`VALIDATION_ERROR` — a malformed body or filter.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          description: '`NOT_FOUND` — details.reason privacy_request_not_found.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '409':
+          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_execution_in_progress).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+  /platform/privacy-requests/{id}/execute:
+    post:
+      operationId: executePrivacyRequest
+      tags: [Platform Privacy]
+      summary: '→ EXECUTING: authorize the staged Aramo Sign deletion (DELETION only; refused while execution is disabled or under legal hold). sign-service executes it and completes the request with counts-only evidence.'
+      description: Requires scope `platform:tenant:lifecycle:manage` and a platform session; recorded with the operator as actor.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [note]
+              properties:
+                note:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+      responses:
+        '200':
+          description: The request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformPrivacyRequest'
+        '400':
+          description: '`VALIDATION_ERROR` — a malformed body or filter.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          description: '`NOT_FOUND` — details.reason privacy_request_not_found.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '409':
+          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_execution_in_progress).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+  /platform/privacy-requests/{id}/complete:
+    post:
+      operationId: completePrivacyRequest
+      tags: [Platform Privacy]
+      summary: '→ COMPLETED with the operator-handled outcome (access, export, correction, or a referral outcome).'
+      description: Requires scope `platform:tenant:lifecycle:manage` and a platform session; recorded with the operator as actor.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [note]
+              properties:
+                note:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+      responses:
+        '200':
+          description: The request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformPrivacyRequest'
+        '400':
+          description: '`VALIDATION_ERROR` — a malformed body or filter.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          description: '`NOT_FOUND` — details.reason privacy_request_not_found.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '409':
+          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_execution_in_progress).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+  /platform/privacy-requests/{id}/deny:
+    post:
+      operationId: denyPrivacyRequest
+      tags: [Platform Privacy]
+      summary: '→ DENIED_WITH_REASON.'
+      description: Requires scope `platform:tenant:lifecycle:manage` and a platform session; recorded with the operator as actor.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [note]
+              properties:
+                note:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+      responses:
+        '200':
+          description: The request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformPrivacyRequest'
+        '400':
+          description: '`VALIDATION_ERROR` — a malformed body or filter.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          description: '`NOT_FOUND` — details.reason privacy_request_not_found.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '409':
+          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_execution_in_progress).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+  /platform/privacy-requests/{id}/cancel:
+    post:
+      operationId: cancelPrivacyRequest
+      tags: [Platform Privacy]
+      summary: '→ CANCELLED.'
+      description: Requires scope `platform:tenant:lifecycle:manage` and a platform session; recorded with the operator as actor.
+      security:
+        - BearerAuth: []
+        - CookieAccessAuth: []
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [note]
+              properties:
+                note:
+                  type: string
+                  minLength: 1
+                  maxLength: 2000
+      responses:
+        '200':
+          description: The request.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/PlatformPrivacyRequest'
+        '400':
+          description: '`VALIDATION_ERROR` — a malformed body or filter.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '401':
+          $ref: 'common.yaml#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/PlatformForbidden'
+        '404':
+          description: '`NOT_FOUND` — details.reason privacy_request_not_found.'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
+        '409':
+          description: '`IDEMPOTENCY_KEY_CONFLICT` — the status does not allow this action (details.reason privacy_request_illegal_transition, privacy_request_concurrent_change, privacy_execution_disabled, privacy_legal_hold, privacy_not_executable, privacy_no_account_subject, privacy_subject_mismatch, privacy_execution_in_progress).'
+          content:
+            application/json:
+              schema:
+                $ref: 'common.yaml#/components/schemas/ErrorResponse'
   /platform/personal-reports/{report_id}/decide:
     post:
       operationId: decidePersonalAbuseReport
@@ -5769,6 +6379,70 @@ components:
             $ref: 'common.yaml#/components/schemas/ErrorResponse'
 
   schemas:
+    PlatformPrivacyRequest:
+      type: object
+      description: Aramo-Sign-Mobile-Amendment-M-A7 §3.1 — a privacy request in the operator queue (counts only).
+      required: [id, reference, product, request_type, subject_kind, channel, status, status_label, due_at, overdue, created_at, updated_at]
+      additionalProperties: true
+      properties:
+        id:
+          type: string
+          format: uuid
+        reference:
+          type: string
+        product:
+          type: string
+          enum: [SIGN]
+        request_type:
+          type: string
+          enum: [DELETION, ACCESS, EXPORT, CORRECTION]
+        subject_kind:
+          type: string
+          enum: [ACCOUNT_HOLDER, BUSINESS_MEMBER, GUEST_SIGNER, FORMER_USER, AUTHORIZED_REPRESENTATIVE]
+        channel:
+          type: string
+          enum: [IN_APP, WEB, OPERATOR]
+        status:
+          type: string
+          enum: [RECEIVED, IDENTITY_VALIDATED, DATA_INVENTORY, REFERRED_TO_ORGANIZATION, EXECUTING, COMPLETED, DENIED_WITH_REASON, CANCELLED]
+        status_label:
+          type: string
+        due_at:
+          type: string
+          format: date-time
+        overdue:
+          type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+        completed_at:
+          type: [string, 'null']
+          format: date-time
+        subject_user_id:
+          type: [string, 'null']
+          format: uuid
+        subject_tenant_id:
+          type: [string, 'null']
+          format: uuid
+        referred_tenant_id:
+          type: [string, 'null']
+          format: uuid
+        assigned_operator_id:
+          type: [string, 'null']
+          format: uuid
+        inventory:
+          type: [object, 'null']
+          additionalProperties: true
+        completion_evidence:
+          type: [object, 'null']
+          additionalProperties: true
+        outcome_code:
+          type: [string, 'null']
+        outcome_text:
+          type: [string, 'null']
     PersonalAbuseReport:
       type: object
       required: [id, envelope_id, reason, note, reporter_domain, weight, triggered_restriction, outcome, outcome_reason, decided_at, created_at]

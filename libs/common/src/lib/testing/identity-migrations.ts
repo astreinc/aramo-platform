@@ -144,6 +144,10 @@ export const IDENTITY_MIGRATIONS: readonly string[] = [
   // any principal whose effective set changed. One guarded, fail-closed DO block on fixed ids (a
   // no-op without a role catalog). No returned-shape change.
   'libs/identity/prisma/migrations/20261028070000_ccp_a1a2_payment_request_scope/migration.sql',
+  // Aramo-Sign-Mobile-Amendment-M-A7 §3 — the platform privacy-request capability: PrivacyRequest,
+  // PrivacyRequestEvent (append-only), PrivacyRequestEmailProof. New tables + guard triggers only;
+  // no existing table or returned shape changes, so no pact verify-api registration.
+  'libs/identity/prisma/migrations/20261028130000_privacy_requests/migration.sql',
 ];
 
 // Resolve the ordered identity migration .sql paths against a repo root. Each

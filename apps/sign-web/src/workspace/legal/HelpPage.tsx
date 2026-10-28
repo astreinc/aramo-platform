@@ -55,7 +55,8 @@ export function HelpPage() {
         <h2>Privacy</h2>
         <p>
           How we handle personal information is described in the <a href={legalPath('privacy', undefined, catalog, at)}>Aramo Privacy Notice</a>. To
-          ask for access to, a copy of, a correction to or the deletion of your information, write to{' '}
+          ask for access to, a copy of, a correction to or the deletion of your information, use{' '}
+          <a href="/delete-account" data-testid="help-delete-account">sign.aramo.ai/delete-account</a> (no sign-in needed) or write to{' '}
           <a href={`mailto:${id.privacyEmail}`}>{id.privacyEmail}</a>.
         </p>
 

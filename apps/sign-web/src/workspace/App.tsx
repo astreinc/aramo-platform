@@ -15,6 +15,7 @@ import { LoginPage } from './routes/LoginPage';
 import { SignupPage, SignupVerifyPage } from './routes/SignupPage';
 import { PersonalSignupPage } from './routes/PersonalSignupPage';
 import { ReportPage } from './routes/ReportPage';
+import { DeleteAccountPage } from './routes/DeleteAccountPage';
 import { DomainDelegatePage } from './routes/DomainDelegatePage';
 import { DomainCard } from './pages/DomainCard';
 import { AccountClosedPage, ClosedAccountGuard } from './pages/AccountClose';
@@ -45,6 +46,7 @@ const lazyPage = (node: ReactNode) => <Suspense fallback={<Loading />}>{node}</S
 //   /login       login landing (?error=<CODE>), /signed-out public landing
 //   /signup      public self-service BUSINESS signup (+ /signup/verify; dark)
 //   /signup/personal  public Personal (Free) signup; /report  "Report this email"
+//   /delete-account  public deletion / privacy requests (M-A7 §3.3)
 //   /legal/:slug[/:version]  published legal texts; /legal/third-party-notices
 //   /legal  the published documents; /legal/terms  the terms that apply; /help (M-A7 §5.1)
 // The route prefix never authorizes: the backend decides tenant, kind, entitlement
@@ -68,6 +70,8 @@ export function App({ contextLoader }: { contextLoader?: () => Promise<SenderCon
             and "Report this email" from any signing email (no sign-in; M-A7 §5.2). */}
         <Route path="/signup/personal" element={<PersonalSignupPage />} />
         <Route path="/report" element={<ReportPage />} />
+        {/* M-A7 §3.3 — the public deletion / privacy-request page (no app, no sign-in). */}
+        <Route path="/delete-account" element={<DeleteAccountPage />} />
         {/* Published legal texts (public, no sign-in): latest and exact versions. */}
         <Route path="/legal" element={lazyPage(<LegalIndexPage />)} />
         <Route path="/legal/terms" element={lazyPage(<TermsIndexPage />)} />

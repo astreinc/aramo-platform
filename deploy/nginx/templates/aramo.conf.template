@@ -411,6 +411,14 @@ server {
     client_max_body_size 8k;
     proxy_pass http://sign-service:3003;
   }
+  # Public — privacy requests from https://sign.aramo.ai/delete-account
+  # (Aramo-Sign-Mobile-Amendment-M-A7 §3.3): start / verify / status, no session.
+  # The one-time token travels in the POST body only. Same edge budget as reports.
+  location /v1/sign/privacy-requests/ {
+    limit_req zone=sign_report burst=5 nodelay;
+    client_max_body_size 8k;
+    proxy_pass http://sign-service:3003;
+  }
   # Public entry — self-service signup (platform-admin owns the provisioning
   # saga). Session-less; dark unless SIGN_PUBLIC_SIGNUP_ENABLED=1.
   location /v1/signup/sign/ {
