@@ -26,9 +26,3 @@ ssh_source_cidr = "203.0.113.7/32"
 # M-A8 §1.1.1 moved them to their own root and state key: infrastructure-backups/
 # (doc/runbooks/RUNBOOK-backups.md).
 
-# --- LEGACY scoped S3-backup IAM (superseded by infrastructure-backups/; leave off)
-# Set true to provision the s3:PutObject-only backup user. The access KEY is
-# generated out-of-band (never in state) — see README §Backup IAM.
-# create_backup_iam_user = true
-# backup_bucket          = "astre-aramo-backups"
-# backup_prefix          = "box/pg"

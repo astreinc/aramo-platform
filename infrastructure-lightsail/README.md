@@ -44,21 +44,6 @@ terraform apply        # creates REAL, billable resources (~$24/mo + IP while de
 
 Required vars (no defaults): `ssh_public_key`, `ssh_source_cidr`.
 
-## Backup IAM — generating the access key out-of-band (no secret in state)
-
-If `create_backup_iam_user = true`, Terraform creates the user + the narrow
-`s3:PutObject` policy **but not an access key** — an `aws_iam_access_key` would
-persist its secret in state. Generate the key out-of-band after apply:
-
-```bash
-aws iam create-access-key --user-name astre-aramo-backup-putter
-# put AccessKeyId / SecretAccessKey into /etc/aramo/backup.conf on the box (chmod 600)
-```
-
-This is the credential the Directive-3 backup job uses (see the ops runbook).
-S3-side retention is a bucket **lifecycle rule** managed out-of-band, so the box
-credential stays `PutObject`-only.
-
 ## Encrypted database backups — moved to `infrastructure-backups/` (M-A8 §1.1.1)
 
 The backup bucket `aramo-prod-db-backups-use1`, its KMS key, the writer/restorer IAM users and the
@@ -67,9 +52,7 @@ freshness check live in their **own Terraform root**, `infrastructure-backups/` 
 `r15-backups.tf` that used to sit here (all `count = 0`) was removed. Procedure:
 `doc/runbooks/RUNBOOK-backups.md`.
 
-The legacy `create_backup_iam_user` path above (bucket `astre-aramo-backups`, which was never
-created) is **still present**: M-A8 §1.1.1 removes it only after a `terraform plan` of this root, run
-from the Mac, shows its resources are not in state. Leave it off.
+The legacy `create_backup_iam_user` path (bucket `astre-aramo-backups`, never created) was removed after a `terraform plan` of this root from the Mac (2026-10-28) showed 0 backup resources in state (M-A8 §1.1.1).
 
 ## SES mailer IAM — `ses:SendEmail` grant (PO-console apply)
 

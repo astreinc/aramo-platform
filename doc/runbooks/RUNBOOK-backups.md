@@ -108,8 +108,8 @@ After the apply:
    `BACKUP_KMS_KEY_ID=$(terraform output -raw backup_kms_key_arn)` when running restore tests.
 
 The legacy `create_backup_iam_user` path in `infrastructure-lightsail/` (never-created bucket
-`astre-aramo-backups`) is still there: remove it only after a `terraform plan` of that root, run from the
-Mac, shows its resources are not in state (M-A8 §1.1.1).
+`astre-aramo-backups`) was removed on 2026-10-28, after a `terraform plan` of that root, run from the Mac,
+showed 0 backup resources in state (M-A8 §1.1.1).
 
 ## 5. Box enablement (checkpoint 4.2)
 

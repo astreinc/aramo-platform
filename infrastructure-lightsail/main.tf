@@ -155,40 +155,13 @@ resource "aws_route53_record" "esign_retired" {
   records = ["retired: Aramo Sign is at sign.aramo.ai"]
 }
 
-# --- Optional scoped S3-backup IAM (Directive §D) ---------------------------
-# User + narrow policy only. NO aws_iam_access_key here: an access key's secret
-# would be persisted in Terraform state. Generate the key out-of-band after
-# apply (README §Backup IAM). Gated off by default.
-resource "aws_iam_user" "backup" {
-  count = var.create_backup_iam_user ? 1 : 0
-  name  = var.backup_iam_user_name
-}
-
-resource "aws_iam_user_policy" "backup" {
-  count = var.create_backup_iam_user ? 1 : 0
-  name  = "s3-backup-putobject-only"
-  user  = aws_iam_user.backup[0].name
-
-  # s3:PutObject on <bucket>/<prefix>/* and nothing else — the one legitimate
-  # AWS action the box performs. No ListBucket / DeleteObject (retention is a
-  # bucket lifecycle rule managed out-of-band, per the ops runbook).
-  policy = jsonencode({
-    Version = "2012-10-17"
-    Statement = [
-      {
-        Sid      = "BackupPutOnly"
-        Effect   = "Allow"
-        Action   = "s3:PutObject"
-        Resource = "arn:aws:s3:::${var.backup_bucket}/${var.backup_prefix}/*"
-      }
-    ]
-  })
-}
+# Database backups: the dedicated root infrastructure-backups/ (Amendment M-A8 §1.1).
+# The legacy Directive-3 backup user path was removed (never applied: 0 resources in state).
 
 # --- Aramo API principal: Secrets Manager read/write (COMM-C2B) --------------
 # The API container authenticates as the pre-existing `aramo-api-prod` IAM user
 # (its static access key is provided out-of-band and must NEVER live in
-# Terraform state — same rule as the backup user above, so the user resource is
+# Terraform state — same rule as the backup principals in infrastructure-backups/, so the user resource is
 # intentionally NOT managed here). Terraform manages ONLY this inline policy,
 # attached to that user BY NAME, so the Secrets Manager grant lands on
 # `terraform apply` with no manual IAM step and no user import.
@@ -233,7 +206,7 @@ resource "aws_iam_user_policy" "api_secrets" {
 }
 
 # Front-door wildcard-TLS DNS-01 principal (ADR-0023 / PR-0c). Same
-# state-secret rule as the backup user: NO access keys in Terraform —
+# state-secret rule as the backup principals: NO access keys in Terraform —
 # generate out-of-band per doc/runbooks/frontdoor-pr0-apply.md.
 module "certbot_dns" {
   source = "../infrastructure/modules/iam-certbot-dns"
