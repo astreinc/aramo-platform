@@ -131,6 +131,16 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('SX-2 artifact cus
     const { execution } = wire(new FakeSignS3());
     await execution.produce(TENANT, envelope_id);
     const row = await prisma.executionCertificate.findFirstOrThrow({ where: { envelope_id } });
-    await expect(db.query(`UPDATE "sign"."ExecutionCertificate" SET custody_sha256 = NULL WHERE id = $1`, [row.id])).rejects.toThrow(/custody_complete_check/);
+    const clear = `UPDATE "sign"."ExecutionCertificate" SET custody_sha256 = NULL WHERE id = $1`;
+    // Layer 1 — the SX-1 write-once trigger refuses clearing a set custody column.
+    await expect(db.query(clear, [row.id])).rejects.toThrow(/write-once/);
+    // Layer 2 — with the trigger bypassed (privileged tampering), the CHECK still refuses.
+    await db.query('BEGIN');
+    try {
+      await db.query(`ALTER TABLE "sign"."ExecutionCertificate" DISABLE TRIGGER USER`);
+      await expect(db.query(clear, [row.id])).rejects.toThrow(/custody_complete_check/);
+    } finally {
+      await db.query('ROLLBACK');
+    }
   });
 });

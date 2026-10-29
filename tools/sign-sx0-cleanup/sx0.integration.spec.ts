@@ -47,9 +47,16 @@ const PG_IMAGE = 'pgvector/pgvector:pg17';
 const ROOT = resolve(__dirname, '../..');
 const T = 120_000;
 
+// SX-0 runs BEFORE the SX-1/SX-2 migrations (directive deployment order), so the
+// schema under test stops short of them — production's state at wipe time.
+const FIRST_POST_SX0_MIGRATION = '20261031100000';
+
 function signMigrations(): string[] {
   const dir = resolve(ROOT, 'libs/sign/prisma/migrations');
-  return readdirSync(dir).filter((n) => /^\d/.test(n)).sort().map((n) => resolve(dir, n, 'migration.sql'));
+  return readdirSync(dir)
+    .filter((n) => /^\d/.test(n) && n < FIRST_POST_SX0_MIGRATION)
+    .sort()
+    .map((n) => resolve(dir, n, 'migration.sql'));
 }
 
 async function refusal(p: Promise<unknown> | (() => unknown), code: string): Promise<void> {
