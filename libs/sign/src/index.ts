@@ -101,10 +101,16 @@ export {
 export {
   EVIDENCE_MANIFEST_SIGNER_PORT,
   SoftwareEvidenceManifestSigner,
+  KMS_SIGNATURE_ALGORITHM_PREFIX,
+  canonicalEvidenceManifestBytes,
+  isKmsEvidenceSigningAlgorithm,
+  kmsEvidenceAlgorithmHash,
+  verifyKmsEvidenceSignatureWithPublicKey,
   type EvidenceManifestSignerPort,
   type EvidenceManifest,
   type EvidenceArtifactHash,
   type EvidenceArtifactHashSource,
+  type KmsEvidenceSigningAlgorithm,
   type SignedEvidenceManifest,
 } from './lib/ports/evidence-manifest-signer.port.js';
 // SX-1 — insert-only executed artifacts + their independent ledger hash record.

@@ -1,4 +1,4 @@
-import { createHash } from 'node:crypto';
+import { constants as cryptoConstants, createHash, createPublicKey, verify as cryptoVerify } from 'node:crypto';
 
 import { Injectable } from '@nestjs/common';
 
@@ -78,5 +78,90 @@ export class SoftwareEvidenceManifestSigner implements EvidenceManifestSignerPor
 
   async verify(signed: SignedEvidenceManifest): Promise<boolean> {
     return signed.signature === this.digest(signed.manifest);
+  }
+}
+
+// SX-1 item 4 / LC-3 — a plain SHA-256 digest (above) is an INTEGRITY digest, not
+// a cryptographic signature. The production signer is the asymmetric AWS KMS
+// signer (apps/sign-service KmsEvidenceManifestSigner). The helpers below are the
+// key-free half of that scheme: anyone holding the KMS PUBLIC key (GetPublicKey,
+// DER SubjectPublicKeyInfo) can verify a signed manifest offline — tests and the
+// recovery-validation tooling use this without any KMS call.
+
+// Prefix the KMS signer writes into `signature_algorithm` (e.g. "KMS:ECDSA_SHA_256").
+export const KMS_SIGNATURE_ALGORITHM_PREFIX = 'KMS:';
+
+export type KmsEvidenceSigningAlgorithm =
+  | 'ECDSA_SHA_256'
+  | 'ECDSA_SHA_384'
+  | 'ECDSA_SHA_512'
+  | 'RSASSA_PSS_SHA_256'
+  | 'RSASSA_PSS_SHA_384'
+  | 'RSASSA_PSS_SHA_512'
+  | 'RSASSA_PKCS1_V1_5_SHA_256'
+  | 'RSASSA_PKCS1_V1_5_SHA_384'
+  | 'RSASSA_PKCS1_V1_5_SHA_512';
+
+const KMS_ALGORITHM_HASH: Record<KmsEvidenceSigningAlgorithm, 'sha256' | 'sha384' | 'sha512'> = {
+  ECDSA_SHA_256: 'sha256',
+  ECDSA_SHA_384: 'sha384',
+  ECDSA_SHA_512: 'sha512',
+  RSASSA_PSS_SHA_256: 'sha256',
+  RSASSA_PSS_SHA_384: 'sha384',
+  RSASSA_PSS_SHA_512: 'sha512',
+  RSASSA_PKCS1_V1_5_SHA_256: 'sha256',
+  RSASSA_PKCS1_V1_5_SHA_384: 'sha384',
+  RSASSA_PKCS1_V1_5_SHA_512: 'sha512',
+};
+
+export function isKmsEvidenceSigningAlgorithm(value: string): value is KmsEvidenceSigningAlgorithm {
+  return Object.prototype.hasOwnProperty.call(KMS_ALGORITHM_HASH, value);
+}
+
+// The hash a KMS signing algorithm signs over (KMS DIGEST mode needs the caller's
+// digest to use the algorithm's own hash).
+export function kmsEvidenceAlgorithmHash(algorithm: KmsEvidenceSigningAlgorithm): 'sha256' | 'sha384' | 'sha512' {
+  return KMS_ALGORITHM_HASH[algorithm];
+}
+
+// The exact bytes the evidence signature covers: the canonical manifest JSON.
+export function canonicalEvidenceManifestBytes(manifest: EvidenceManifest): Buffer {
+  return Buffer.from(JSON.stringify(manifest), 'utf8');
+}
+
+/**
+ * Verify a KMS-signed evidence manifest with the KMS key's PUBLIC key (DER
+ * SubjectPublicKeyInfo, as returned by KMS GetPublicKey). Fails closed: any
+ * non-KMS algorithm, unsupported algorithm, malformed key or bad signature
+ * returns false. KMS RSASSA-PSS uses a salt as long as the digest.
+ */
+export function verifyKmsEvidenceSignatureWithPublicKey(
+  signed: SignedEvidenceManifest,
+  publicKeySpkiDer: Uint8Array,
+): boolean {
+  if (!signed.signature_algorithm.startsWith(KMS_SIGNATURE_ALGORITHM_PREFIX)) return false;
+  const algorithm = signed.signature_algorithm.slice(KMS_SIGNATURE_ALGORITHM_PREFIX.length);
+  if (!isKmsEvidenceSigningAlgorithm(algorithm)) return false;
+  try {
+    const key = createPublicKey({ key: Buffer.from(publicKeySpkiDer), format: 'der', type: 'spki' });
+    const signature = Buffer.from(signed.signature, 'base64url');
+    const message = canonicalEvidenceManifestBytes(signed.manifest);
+    const hash = kmsEvidenceAlgorithmHash(algorithm);
+    if (algorithm.startsWith('ECDSA_')) {
+      if (key.asymmetricKeyType !== 'ec') return false;
+      return cryptoVerify(hash, message, { key, dsaEncoding: 'der' }, signature);
+    }
+    if (key.asymmetricKeyType !== 'rsa') return false;
+    if (algorithm.startsWith('RSASSA_PSS_')) {
+      return cryptoVerify(
+        hash,
+        message,
+        { key, padding: cryptoConstants.RSA_PKCS1_PSS_PADDING, saltLength: cryptoConstants.RSA_PSS_SALTLEN_DIGEST },
+        signature,
+      );
+    }
+    return cryptoVerify(hash, message, { key, padding: cryptoConstants.RSA_PKCS1_PADDING }, signature);
+  } catch {
+    return false;
   }
 }
