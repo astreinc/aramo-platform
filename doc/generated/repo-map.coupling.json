@@ -29964,6 +29964,11 @@
       "to": "infrastructure/modules/s3-resume-bucket/main.tf"
     },
     {
+      "from": "infrastructure-lightsail/sign-artifacts.tf",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/kms-evidence-manifest-signer.ts"
+    },
+    {
       "from": "infrastructure-lightsail/terraform.tfvars.example",
       "status": "unscoped",
       "to": "doc/runbooks/RUNBOOK-backups.md"
