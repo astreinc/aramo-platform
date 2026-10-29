@@ -35,6 +35,7 @@
     "prisma:seed-policy-lifecycle": "node deploy/jiti-tsconfig-runner.mjs apps/api/src/policy/seed-lifecycle.ts",
     "prisma:seed-entitlements": "node deploy/jiti-tsconfig-runner.mjs libs/entitlement/prisma/seed-entitlements.ts",
     "prisma:seed-dev-subscription": "node deploy/jiti-tsconfig-runner.mjs libs/subscription/prisma/seed-development-subscription.ts",
+    "sign:validate-artifact-custody": "node deploy/jiti-tsconfig-runner.mjs apps/sign-service/src/ops/validate-artifact-custody.ts",
     "billing:price-parity": "node deploy/jiti-tsconfig-runner.mjs libs/subscription/prisma/check-provider-price-parity.ts",
     "usage:rollup": "node deploy/jiti-tsconfig-runner.mjs libs/subscription/prisma/usage-rollup.ts",
     "ccp:bootstrap-platform-owner": "node deploy/jiti-tsconfig-runner.mjs libs/subscription/scripts/ccp-bootstrap-platform-owner.ts",

@@ -328,6 +328,12 @@ model ExecutedDocument {
   executed_bytes       Bytes
   produced_at          DateTime @default(now()) @db.Timestamptz
   written_back_at      DateTime? @db.Timestamptz
+  // SX-2 item 7 — custody in the dedicated Sign artifact bucket (set once, NULL to value).
+  custody_object_key   String?
+  custody_version_id   String?
+  custody_sha256       String?
+  custody_retain_until DateTime? @db.Timestamptz
+  custody_stored_at    DateTime? @db.Timestamptz
 
   @@unique([envelope_document_id])
   @@index([tenant_id])
@@ -347,6 +353,12 @@ model ExecutionCertificate {
   certificate_bytes Bytes
   produced_at     DateTime  @default(now()) @db.Timestamptz
   written_back_at DateTime? @db.Timestamptz
+  // SX-2 item 7 — custody in the dedicated Sign artifact bucket (set once, NULL to value).
+  custody_object_key   String?
+  custody_version_id   String?
+  custody_sha256       String?
+  custody_retain_until DateTime? @db.Timestamptz
+  custody_stored_at    DateTime? @db.Timestamptz
 
   @@unique([envelope_id])
   @@index([tenant_id])

@@ -23,6 +23,7 @@ import { ENVELOPE_NOTIFICATION_SERVICE, type EnvelopeNotificationService } from 
 import { STORAGE_ACCOUNTING_PORT, type StorageAccountingPort } from './ports/storage-accounting.port.js';
 import { SENDER_DIRECTORY_PORT, type SenderDirectoryPort } from './ports/sender-directory.port.js';
 import { signingRecipients } from './domain/recipients.js';
+import { EXECUTED_ARTIFACT_CUSTODY_PORT, type ExecutedArtifactCustodyPort } from './ports/executed-artifact-custody.port.js';
 
 // DOC-4 (R-4-3) — executed-document production. On COMPLETED, stamp each filled
 // SignatureField onto the frozen source PDF (typed text for TYPED/text fields;
@@ -88,6 +89,8 @@ export class ExecutionService implements ExecutionProducerPort {
     @Optional() @Inject(STORAGE_ACCOUNTING_PORT) private readonly storageAccounting?: StorageAccountingPort,
     // M-A5 §3.6 — the host's display name for the certificate's in-person line.
     @Optional() @Inject(SENDER_DIRECTORY_PORT) private readonly users?: SenderDirectoryPort,
+    // SX-2 item 7 — custody upload to the Sign artifact bucket (unbound/dark = no-op).
+    @Optional() @Inject(EXECUTED_ARTIFACT_CUSTODY_PORT) private readonly custody?: ExecutedArtifactCustodyPort,
   ) {}
 
   // M-A5 §3.6 — for each signer who signed in a HOSTED session, the host's display
@@ -276,6 +279,8 @@ export class ExecutionService implements ExecutionProducerPort {
     });
 
     await this.recordKept(tenant_id, `esign:certificate:${envelope_id}`, certificate.bytes.byteLength);
+    // SX-2 item 7 — post-commit custody upload; never fails completion (reconcile retries).
+    await this.custody?.recordCompletion(tenant_id, envelope_id).catch(() => undefined);
 
     // DOC-4 (R-4-7) — enqueue the transactional-outbox event (refs only, no
     // bytes/PII). A drain publishes it to the operational bus; apps/api's

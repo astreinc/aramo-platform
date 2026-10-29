@@ -34,4 +34,8 @@ export interface DocumentStoragePort {
   // deleted (never of a sent envelope). Idempotent. Optional so existing bindings
   // keep compiling; without it the bytes stay until storage lifecycle removes them.
   deleteOwnedSource?(source_object_key: string): Promise<void>;
+  // SX-2 — the key putOwnedSource will use for this object id, so a caller can key the
+  // storage ledger before the write and release it by the stored key later. Optional:
+  // callers fall back to the legacy `esign/source/` layout when unbound.
+  plannedSourceKey?(tenant_id: string, envelope_id: string, object_id: string): string;
 }

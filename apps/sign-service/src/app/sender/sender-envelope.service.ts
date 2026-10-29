@@ -699,7 +699,7 @@ export class SenderEnvelopeService {
     // A1 — the plan's storage allocation: reserve the bytes before writing the
     // object (the object id fixes the ledger reference), release on failure.
     const object_id = randomUUID();
-    const plannedKey = `esign/source/${auth.tenant_id}/${envelope_id}/${object_id}`;
+    const plannedKey = this.storage.plannedSourceKey?.(auth.tenant_id, envelope_id, object_id) ?? `esign/source/${auth.tenant_id}/${envelope_id}/${object_id}`;
     await this.storageGate.reserveUpload(auth.tenant_id, plannedKey, accepted.byteLength, requestId);
     let row: Awaited<ReturnType<EsignSenderRepository['addDraftDocument']>>;
     try {
