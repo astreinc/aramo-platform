@@ -25,3 +25,35 @@ output "certbot_user_name" {
   description = "Front-door wildcard-TLS DNS-01 IAM user name (ADR-0023 / PR-0c) — generate its access key out-of-band per doc/runbooks/frontdoor-pr0-apply.md; the secret never enters state."
   value       = module.certbot_dns.user_name
 }
+
+# --- Aramo Sign artifact custody (SX-2) -------------------------------------
+
+output "sign_artifacts_bucket" {
+  description = "The dedicated Sign artifact bucket name, for the sign-service env at the credential switch."
+  value       = aws_s3_bucket.sign_artifacts.id
+}
+
+output "sign_artifacts_kms_key_arn" {
+  description = "ARN of the Sign artifact bucket's SSE-KMS key."
+  value       = aws_kms_key.sign_artifacts.arn
+}
+
+output "sign_evidence_kms_key_alias" {
+  description = "SIGN_KMS_KEY_ID for sign-service (SX-2 / LC-3 evidence signing)."
+  value       = aws_kms_alias.sign_evidence_v2.name
+}
+
+output "sign_evidence_signing_algorithm" {
+  description = "SIGN_KMS_SIGNING_ALGORITHM sign-service must use with the ECC_NIST_P256 evidence key."
+  value       = "ECDSA_SHA_256"
+}
+
+output "sign_iam_user_name" {
+  description = "The sign-service IAM user. Create its access key out-of-band at the credential-switch checkpoint; the secret never enters state."
+  value       = aws_iam_user.sign.name
+}
+
+output "sign_audit_trail_arn" {
+  description = "ARN of the Sign audit CloudTrail trail."
+  value       = aws_cloudtrail.sign_audit.arn
+}

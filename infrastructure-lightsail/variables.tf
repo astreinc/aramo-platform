@@ -113,3 +113,66 @@ variable "secrets_env" {
   type        = string
   default     = "prod"
 }
+
+# --- Aramo Sign artifact custody (SX-2) and résumé bucket guard (SX-3) -------
+
+variable "break_glass_principal_arn" {
+  description = "The ONE principal exempt from the custody Denies on the Sign artifact bucket, its audit-log bucket and the résumé bucket (version deletion, governance bypass, versioning/Object Lock/lifecycle/policy changes), and the administrator of the two Sign KMS keys. Defaults to the current admin IAM user; Terraform applies to these buckets must run as this principal. Replace with a dedicated break-glass role when one exists."
+  type        = string
+  default     = "arn:aws:iam::472534873684:user/purush"
+
+  validation {
+    condition     = can(regex("^arn:aws:iam::[0-9]{12}:(user|role)/.+$", var.break_glass_principal_arn))
+    error_message = "break_glass_principal_arn must be an IAM user or role ARN."
+  }
+}
+
+variable "sign_artifacts_bucket_name" {
+  description = "The dedicated Sign executed-artifact bucket (SX-2 item 1)."
+  type        = string
+  default     = "aramo-prod-sign-artifacts-use1"
+}
+
+variable "sign_artifacts_kms_alias" {
+  description = "Alias of the Sign artifact bucket's dedicated SSE-KMS key."
+  type        = string
+  default     = "alias/aramo-prod-sign-artifacts"
+}
+
+variable "sign_evidence_kms_alias" {
+  description = "Alias of the asymmetric evidence-manifest signing key (LC-3). SIGN_KMS_KEY_ID for sign-service at the credential switch."
+  type        = string
+  default     = "alias/aramo-prod-sign-evidence"
+}
+
+variable "sign_iam_user_name" {
+  description = "IAM user used ONLY by sign-service (SX-2 item 6). Its access key is created out-of-band at the credential-switch checkpoint, never in Terraform state."
+  type        = string
+  default     = "aramo-sign-prod"
+}
+
+# LC-1: no guessed default. null = no Object Lock configuration rule on the bucket
+# (no default retention). A value is set only after its Legal/PO disposition.
+variable "sign_artifacts_default_retention_days" {
+  description = "Bucket-level DEFAULT Object Lock retention (GOVERNANCE mode) in days for the Sign artifact bucket. null (default) = no default retention (LC-1). Production activation needs a separate Legal/PO disposition; note a bucket default would also cover source objects (SX-2 item 5 expects per-object retention instead)."
+  type        = number
+  default     = null
+  nullable    = true
+
+  validation {
+    condition     = var.sign_artifacts_default_retention_days == null ? true : (var.sign_artifacts_default_retention_days >= 1 && floor(var.sign_artifacts_default_retention_days) == var.sign_artifacts_default_retention_days)
+    error_message = "sign_artifacts_default_retention_days, when set, must be a positive whole number of days."
+  }
+}
+
+variable "sign_audit_log_bucket_name" {
+  description = "The separate bucket the Sign audit trail delivers to (SX-2 item 3)."
+  type        = string
+  default     = "aramo-prod-sign-audit-logs-use1"
+}
+
+variable "sign_audit_trail_name" {
+  description = "CloudTrail trail name: management events + S3 WRITE data events for the Sign artifact bucket."
+  type        = string
+  default     = "aramo-prod-sign-audit"
+}

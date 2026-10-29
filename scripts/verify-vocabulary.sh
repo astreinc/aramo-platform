@@ -653,11 +653,20 @@ for entry in "${TIER2_TERMS_REGEX[@]}"; do
   # in exactly infrastructure-lightsail/doc4-sign.tf. Lines are dropped only when
   # that attribute is their ONLY occurrence of the term; every other line of the
   # file (and every Aramo-owned name) stays checked. NOT a file-level exclude.
+  # Aramo-Sign-Executed-Artifact-Custody-and-Isolation-Directive-v1_0-LOCKED SX-2 /
+  # LC-3 — the SAME field-scoped exemption, extended to exactly one more file:
+  # infrastructure-lightsail/sign-artifacts.tf (the SX-2 evidence-signing key).
   if [[ "$term" == "customer" ]]; then
     matches="$(printf '%s\n' "$matches" | while IFS= read -r line; do
       [[ -z "$line" ]] && continue
+      kms_spec_file=""
       if [[ "$line" == ./infrastructure-lightsail/doc4-sign.tf:* ]]; then
-        stripped="$(printf '%s' "${line#./infrastructure-lightsail/doc4-sign.tf:}" | sed 's/customer_master_key_spec//g')"
+        kms_spec_file="./infrastructure-lightsail/doc4-sign.tf"
+      elif [[ "$line" == ./infrastructure-lightsail/sign-artifacts.tf:* ]]; then
+        kms_spec_file="./infrastructure-lightsail/sign-artifacts.tf"
+      fi
+      if [[ -n "$kms_spec_file" ]]; then
+        stripped="$(printf '%s' "${line#"${kms_spec_file}":}" | sed 's/customer_master_key_spec//g')"
         if printf '%s' "$stripped" | grep -qi 'customer'; then printf '%s\n' "$line"; fi
       else
         printf '%s\n' "$line"

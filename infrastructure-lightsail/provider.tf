@@ -31,3 +31,11 @@ provider "aws" {
     }
   }
 }
+
+# SX-3 RM-6 (resume-bucket-import.tf): resources IMPORTED from out-of-band state
+# that carry no tags live. Same account and region, but no default_tags, so the
+# import does not add tags to the existing résumé KMS key or aramo-api-prod-policy.
+provider "aws" {
+  alias  = "untagged"
+  region = var.aws_region
+}
