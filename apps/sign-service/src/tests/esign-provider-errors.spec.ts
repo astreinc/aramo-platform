@@ -6,7 +6,7 @@ import { DOCUMENT_SOURCE_PROVIDER_PORT, EsignService, SignatureFieldIncompleteEr
 import request from 'supertest';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { EsignProviderController, toHttp } from '../app/esign-http.controller.js';
+import { EsignProviderController, internalProviderSeamEnabled, toHttp } from '../app/esign-http.controller.js';
 import { NativeAramoSignatureProvider } from '../app/native-aramo-signature.provider.js';
 
 // The internal envelopes zone returns the canonical error envelope, so an allowance
@@ -15,6 +15,9 @@ describe('EsignProviderController — typed refusals over HTTP', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
+    // The retired seam fails closed (Domain Isolation V1 §3 H-2); these refusals are tested
+    // with the explicit rollback switch on.
+    process.env['SIGN_INTERNAL_PROVIDER_SEAM_ENABLED'] = '1';
     const provider = {
       sendEnvelope: async () => {
         throw new AramoError('ESIGN_ALLOWANCE_EXHAUSTED', 'used up', 409, {
@@ -36,6 +39,7 @@ describe('EsignProviderController — typed refusals over HTTP', () => {
   });
 
   afterAll(async () => {
+    delete process.env['SIGN_INTERNAL_PROVIDER_SEAM_ENABLED'];
     await app?.close();
   });
 
@@ -59,5 +63,50 @@ describe('toHttp — Name and Checkbox refusals (M-A6 §2)', () => {
     expect(group).toMatchObject({ code: 'SIGNATURE_FIELD_INCOMPLETE', statusCode: 409, context: { details: { reason: 'checkbox_group_select_one', group_key: 'plan' } } });
     const legacy = toHttp(new SignatureFieldIncompleteError('s1'), 'r1');
     expect(legacy).toMatchObject({ code: 'SIGNATURE_FIELD_INCOMPLETE', context: { details: { reason: 'required_field_unfilled' } } });
+  });
+});
+
+// Aramo-Sign-Domain-Isolation-Reconciliation-V1 §3 H-2 — the unauthenticated seam is closed by default.
+describe('EsignProviderController — retired seam fails closed', () => {
+  let app: INestApplication;
+  const calls: string[] = [];
+
+  beforeAll(async () => {
+    delete process.env['SIGN_INTERNAL_PROVIDER_SEAM_ENABLED'];
+    const provider = {
+      createEnvelope: async () => (calls.push('create'), {}),
+      sendEnvelope: async () => (calls.push('send'), {}),
+      getEnvelope: async () => (calls.push('get'), {}),
+    };
+    const mod = await Test.createTestingModule({
+      controllers: [EsignProviderController],
+      providers: [
+        { provide: NativeAramoSignatureProvider, useValue: provider },
+        { provide: EsignService, useValue: {} },
+        { provide: DOCUMENT_SOURCE_PROVIDER_PORT, useValue: {} },
+      ],
+    }).compile();
+    app = mod.createNestApplication();
+    await app.init();
+  });
+
+  afterAll(async () => {
+    await app?.close();
+  });
+
+  it('is off unless the literal rollback switch is set', () => {
+    expect(internalProviderSeamEnabled({})).toBe(false);
+    expect(internalProviderSeamEnabled({ SIGN_INTERNAL_PROVIDER_SEAM_ENABLED: 'true' })).toBe(false);
+    expect(internalProviderSeamEnabled({ SIGN_INTERNAL_PROVIDER_SEAM_ENABLED: '1' })).toBe(true);
+  });
+
+  it('refuses every route as not found and never reaches the provider', async () => {
+    const tenant_id = '11111111-1111-7111-8111-111111111111';
+    const create = await request(app.getHttpServer()).post('/v1/sign/envelopes').send({ tenant_id, subject: 's', documents: [{}], signers: [{}] });
+    const send = await request(app.getHttpServer()).post('/v1/sign/envelopes/E1/send').send({ tenant_id });
+    const get = await request(app.getHttpServer()).get(`/v1/sign/envelopes/E1?tenant_id=${tenant_id}`);
+    const executed = await request(app.getHttpServer()).get(`/v1/sign/envelopes/E1/executed?tenant_id=${tenant_id}`);
+    expect([create.status, send.status, get.status, executed.status]).toEqual([404, 404, 404, 404]);
+    expect(calls).toEqual([]);
   });
 });

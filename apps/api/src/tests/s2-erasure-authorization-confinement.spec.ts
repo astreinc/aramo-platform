@@ -23,6 +23,9 @@ const S2_MIGRATIONS = [
   // migration restores the prior body — both redefine the same trigger function.
   'libs/documents/prisma/migrations/20261020130500_sign_naming_erasure_guard/migration.sql',
   'tools/sign-naming/reverse.sql',
+  // Aramo-Sign-Domain-Isolation-Reconciliation-V1 §2 R-1 — the same guard re-created without its
+  // read of the Sign schema (Sign answers through its talent-erasure contract).
+  'libs/documents/prisma/migrations/20261030040000_sign_isolation_document_event_guard/migration.sql',
 ];
 const S2_PROOF = 'apps/api/src/tests/s2-erasure-integrity.integration.spec.ts';
 const SERVICE = 'apps/api/src/talent-identity/talent-erasure.service.ts';

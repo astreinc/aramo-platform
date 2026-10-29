@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, HttpCode, HttpStatus, Inject, Logger, Optional, Param, Post, Query, Req, UseFilters } from '@nestjs/common';
+import { Body, type CanActivate, Controller, Get, Headers, HttpCode, HttpStatus, Inject, Injectable, Logger, Optional, Param, Post, Query, Req, UseFilters, UseGuards } from '@nestjs/common';
 import type { Request } from 'express';
 import { AramoError, AramoExceptionFilter, RequestId } from '@aramo/common';
 import {
@@ -83,7 +83,25 @@ function validate(cond: boolean, message: string, requestId: string): void {
 // The canonical error envelope ({ error: { code, message, details } }) so the ATS
 // adapter receives typed refusals (e.g. the Aramo Sign allowance) rather than a
 // bare 500.
+// Aramo-Sign-Domain-Isolation-Reconciliation-V1-Directive-v1_0-LOCKED §3 H-2 — the legacy
+// unauthenticated provider seam FAILS CLOSED. apps/api no longer has any path to it (the ATS
+// uses the authenticated Sign API), so every request is refused as not found unless an
+// operator explicitly re-enables it (SIGN_INTERNAL_PROVIDER_SEAM_ENABLED=1, default off;
+// tests and an emergency rollback only).
+export function internalProviderSeamEnabled(env: NodeJS.ProcessEnv = process.env): boolean {
+  return env['SIGN_INTERNAL_PROVIDER_SEAM_ENABLED'] === '1';
+}
+
+@Injectable()
+export class InternalProviderSeamGuard implements CanActivate {
+  canActivate(): boolean {
+    if (internalProviderSeamEnabled()) return true;
+    throw new AramoError('NOT_FOUND', 'Not found', 404, { requestId: '' });
+  }
+}
+
 @UseFilters(AramoExceptionFilter)
+@UseGuards(InternalProviderSeamGuard)
 @Controller('v1/sign/envelopes')
 export class EsignProviderController {
   constructor(private readonly provider: NativeAramoSignatureProvider) {}

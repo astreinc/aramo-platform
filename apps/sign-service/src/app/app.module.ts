@@ -17,6 +17,7 @@ import {
   STORAGE_ACCOUNTING_PORT,
   SignNotificationRepository,
   SignPrivacyRepository,
+  SignTalentErasureRepository,
   SignRetentionRepository,
   SoftwareEvidenceManifestSigner,
   WEBHOOK_DELIVERY_PORT,
@@ -59,6 +60,7 @@ import { RecipientInboxController } from './inbox/recipient-inbox.controller.js'
 import { RecipientInboxService } from './inbox/recipient-inbox.service.js';
 import { IntegrationAdminService } from './integrations/integration-admin.service.js';
 import { SignApiController, SignOAuthController } from './integrations/sign-api.controller.js';
+import { SignTalentErasureController, SignTalentErasureService } from './privacy/sign-talent-erasure.controller.js';
 import { SignApiGuard } from './integrations/sign-api.guard.js';
 import { SignApiService } from './integrations/sign-api.service.js';
 import { SignTokenService } from './integrations/sign-token.service.js';
@@ -183,7 +185,7 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
   // Sign Unified Product S-4 — the Sign token endpoint, the Sign API and the
   // workspace's installation administration.
   // DOC-TEMPLATE-LIB-1 T-5 — the sender's template routes (Documents API over the signed channel).
-  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController],
+  controllers: [EsignProviderController, EsignSignerController, EsignSenderController, EsignSenderTemplatesController, EsignBillingController, SignOAuthController, SignApiController, IntegrationAdminController, RecipientInboxController, SignReportController, SignLegalController, SignAccountController, SavedSignatureController, SignMeNotificationsController, SignPrivacyRequestController, SignPrivacyPublicController, SignTalentErasureController],
   providers: [
     NativeAramoSignatureProvider,
     AramoSignAllowanceGate,
@@ -241,6 +243,8 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
     SignRetentionWorker,
     // Aramo-Sign-Mobile-Amendment-M-A7 §3 — privacy requests + staged deletion execution.
     SignPrivacyRepository,
+    SignTalentErasureRepository,
+    SignTalentErasureService,
     PrivacyWebBudget,
     SignPrivacyRequestService,
     SignPrivacyExecutionService,

@@ -150,6 +150,8 @@ model TalentErasureRun {
   completed_at    DateTime? @db.Timestamptz(3)
   last_attempt_at DateTime? @db.Timestamptz(3)
   attempt_count   Int       @default(0)
+  // Domain Isolation V1 §4 D-3 — Aramo Sign confirmed its own erasure (the Sign contract).
+  sign_erased_at  DateTime? @db.Timestamptz(3)
 
   artifacts TalentErasureArtifact[]
 

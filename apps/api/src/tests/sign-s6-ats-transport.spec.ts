@@ -8,7 +8,7 @@ import type { DocumentsRepository, RenderService } from '@aramo/documents';
 
 import { GovernedDocumentSigningService } from '../document-signing/governed-document-signing.service.js';
 import type { SignatureRouter } from '../document-signing/signature-router.js';
-import { EsignServiceApiProvider, esignAtsTransport } from '../sign/esign-service-api.provider.js';
+import { EsignServiceApiProvider, assertSignAtsTransport } from '../sign/esign-service-api.provider.js';
 import { SignApiClient } from '../sign/sign-api.client.js';
 import { EsignExecutedArtifactsClient } from '../documents/esign-writeback.js';
 import { EsignEventsController } from '../integrations/sign/esign-events.controller.js';
@@ -49,11 +49,14 @@ describe('typed actor credential — never serialized or inspected', () => {
   });
 });
 
-describe('transport switch (default internal)', () => {
-  it('only the literal `api` selects the Sign API', () => {
-    expect(esignAtsTransport({})).toBe('internal');
-    expect(esignAtsTransport({ SIGN_ATS_TRANSPORT: 'API' })).toBe('internal');
-    expect(esignAtsTransport({ SIGN_ATS_TRANSPORT: 'api' })).toBe('api');
+// Aramo-Sign-Domain-Isolation-Reconciliation-V1 §3 H-2 — the internal transport is retired.
+describe('transport: the authenticated Sign API only', () => {
+  it('accepts an unset or `api` value and refuses anything else (no silent internal fallback)', () => {
+    expect(() => assertSignAtsTransport({})).not.toThrow();
+    expect(() => assertSignAtsTransport({ SIGN_ATS_TRANSPORT: '' })).not.toThrow();
+    expect(() => assertSignAtsTransport({ SIGN_ATS_TRANSPORT: 'api' })).not.toThrow();
+    expect(() => assertSignAtsTransport({ SIGN_ATS_TRANSPORT: 'internal' })).toThrow(/retired/);
+    expect(() => assertSignAtsTransport({ SIGN_ATS_TRANSPORT: 'API' })).toThrow(/retired/);
   });
 });
 
@@ -177,11 +180,12 @@ describe('completion write-back (no user): the event-bound grant', () => {
     await expect(new EsignExecutedArtifactsClient(new SignApiClient()).fetchExecuted('t1', 'OTHER', '77777777-7777-7777-8777-777777777777')).rejects.toThrow(/scope mismatch/);
   });
 
-  it('internal transport (default): the existing internal pull, unchanged', async () => {
+  it('without the delivered event the pull is refused and nothing is fetched (no internal fallback)', async () => {
+    delete process.env['SIGN_ATS_TRANSPORT'];
     const f = vi.fn(async () => tokenResponse({ envelope_id: 'E1', documents: [], certificate: null }));
     vi.stubGlobal('fetch', f);
-    await new EsignExecutedArtifactsClient(new SignApiClient()).fetchExecuted('t1', 'E1');
-    expect((f.mock.calls[0] as unknown as [string])[0]).toBe('http://esign.test/v1/sign/envelopes/E1/executed?tenant_id=t1');
+    await expect(new EsignExecutedArtifactsClient(new SignApiClient()).fetchExecuted('t1', 'E1')).rejects.toThrow(/completion event/);
+    expect(f).not.toHaveBeenCalled();
   });
 });
 

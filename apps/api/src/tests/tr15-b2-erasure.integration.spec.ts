@@ -10,6 +10,8 @@ import { Client } from 'pg';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
+import { fakeSignErasure } from './helpers/fake-sign-erasure.js';
+
 import {
   TalentErasureService,
   type PgExec,
@@ -71,8 +73,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
     let container: StartedPostgreSqlContainer;
     let db: Client;
     let pg: PgExec;
-    const erasure = new TalentErasureService();
-    const inventory = new TalentDataInventoryService();
+    const erasure = new TalentErasureService(fakeSignErasure());
+    const inventory = new TalentDataInventoryService(fakeSignErasure());
     const s3Recorded: string[] = [];
     const s3Delete: ErasureObjectStore = {
       purge: async (key) => {

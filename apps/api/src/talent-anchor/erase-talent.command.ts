@@ -11,6 +11,7 @@ import {
   type ErasureReport,
   type PgExec,
 } from '../talent-identity/talent-erasure.service.js';
+import { SignTalentErasureClient } from '../sign/sign-talent-erasure.client.js';
 
 // TR-15 B2 (DDR §5) — the `erase-talent` admin CLI. NO HTTP surface. Automates
 // doc/runbooks/talent-rtbf-erasure.md: resolve the whole human (husk chain +
@@ -69,7 +70,8 @@ async function main(): Promise<void> {
       return { rows: r.rows as T[], rowCount: r.rowCount };
     },
   };
-  const svc = new TalentErasureService();
+  // Domain Isolation V1 — Aramo Sign answers for (and erases) its own rows through its contract.
+  const svc = new TalentErasureService(new SignTalentErasureClient());
 
   try {
     if (flag === '--execute' || flag === '--resume') {

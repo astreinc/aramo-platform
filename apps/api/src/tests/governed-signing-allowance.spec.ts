@@ -5,7 +5,7 @@ import type { DocumentsRepository, RenderService } from '@aramo/documents';
 
 import { GovernedDocumentSigningService } from '../document-signing/governed-document-signing.service.js';
 import type { SignatureRouter } from '../document-signing/signature-router.js';
-import { EsignServiceHttpProvider } from '../sign/esign-service-http.provider.js';
+import { SignApiClient } from '../sign/sign-api.client.js';
 
 // Multi-Provider directive §B/§D/§E — governed sends route through the provider
 // router: availability is asserted before anything is created, the provider is
@@ -89,12 +89,14 @@ describe('GovernedDocumentSigningService.send — the signer signs on the frozen
   });
 });
 
-describe('EsignServiceHttpProvider — refusal details reach the caller', () => {
+// Domain Isolation V1 §3 H-2 — the authenticated Sign API is the only Aramo Sign transport.
+describe('SignApiClient — refusal details reach the caller', () => {
   it('keeps the error code, status and details (reason, limit, period end)', async () => {
     const body = { error: { code: 'ESIGN_ALLOWANCE_EXHAUSTED', message: 'used up', details: { reason: 'LIMIT_REACHED', limit: 100, used: 100, period_end: '2026-11-01T00:00:00.000Z' } } };
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(body), { status: 409 })));
     try {
-      const err = await new EsignServiceHttpProvider().sendEnvelope('t1', 'E1').catch((e: unknown) => e);
+      const grant = { access_token: 'sgt_test', expires_in: 300, tenant_id: 't1', installation_id: 'i1' };
+      const err = await new SignApiClient().call('POST', '/v1/sign/api/envelopes/E1/send', grant, {}).catch((e: unknown) => e);
       expect(err).toBeInstanceOf(AramoError);
       expect(err).toMatchObject({ code: 'ESIGN_ALLOWANCE_EXHAUSTED', statusCode: 409, context: { details: { reason: 'LIMIT_REACHED', limit: 100 } } });
     } finally {

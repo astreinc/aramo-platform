@@ -23,6 +23,8 @@ tags:
       public third-party activation is separately authorized.
   - name: integrations
     description: Installation administration in the Sign workspace (sign:integration:manage).
+  - name: privacy-s2s
+    description: Service-to-service privacy contracts (not publicly routed). The ATS erasure engine asks Sign to preflight and erase what Sign holds about a talent.
   - name: inbox
     description: >
       "Waiting for me" (Sign Unified Product S-7). A recipient right — any signed-in Sign user, with or without a Sign
@@ -4020,6 +4022,97 @@ paths:
           $ref: '#/components/responses/SenderUnauthorized'
         '403':
           $ref: '#/components/responses/SenderForbidden'
+  /v1/sign/s2s/talent-erasure/preflight:
+    post:
+      operationId: preflightTalentErasure
+      summary: Which Aramo Sign records block erasing an ATS talent (read-only).
+      description: >
+        Aramo-Sign-Domain-Isolation-Reconciliation-V1 §2 R-3. Service-to-service only (no public
+        route). The ATS erasure engine asks Sign what it holds about the talent instead of reading
+        the sign schema. Authenticated as the first-party aramo-ats Sign API client (HTTP Basic);
+        any other application is refused. Every holder returned blocks the erasure.
+      tags: [privacy-s2s]
+      security:
+        - atsClientBasic: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SignTalentErasureScope'
+      responses:
+        '200':
+          description: The blocking holders (empty when nothing blocks).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [holders, erasable]
+                properties:
+                  holders:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SignTalentErasureHolder'
+                  erasable:
+                    $ref: '#/components/schemas/SignTalentErasureCounts'
+        '400':
+          description: Invalid tenant or id lists.
+        '401':
+          description: Client authentication failed.
+        '403':
+          description: The client is not the first-party ATS application.
+  /v1/sign/s2s/talent-erasure/erase:
+    post:
+      operationId: eraseTalentFromSign
+      summary: Erase Sign's replay caches and delivered outbox events naming an ATS talent.
+      description: >
+        Aramo-Sign-Domain-Isolation-Reconciliation-V1 §2 R-3, §4 D-2. Service-to-service only.
+        Re-checks every holder under a tenant lock; when one exists nothing is deleted and the
+        holders are returned. Never touches an envelope, signer, signing event, executed document
+        or certificate. Idempotent: a repeat deletes nothing.
+      tags: [privacy-s2s]
+      security:
+        - atsClientBasic: []
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              allOf:
+                - $ref: '#/components/schemas/SignTalentErasureScope'
+                - type: object
+                  required: [run_id]
+                  properties:
+                    run_id:
+                      type: string
+                      format: uuid
+      responses:
+        '200':
+          description: Erased (with counts) or blocked (nothing deleted).
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [status, run_id]
+                properties:
+                  status:
+                    type: string
+                    enum: [erased, blocked]
+                  run_id:
+                    type: string
+                    format: uuid
+                  counts:
+                    $ref: '#/components/schemas/SignTalentErasureCounts'
+                  holders:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SignTalentErasureHolder'
+        '400':
+          description: Invalid tenant, run or id lists.
+        '401':
+          description: Client authentication failed.
+        '403':
+          description: The client is not the first-party ATS application.
 components:
   securitySchemes:
     senderSession:
@@ -4032,6 +4125,10 @@ components:
       scheme: bearer
       bearerFormat: JWT
       description: The shared auth-service access token for the esign consumer.
+    atsClientBasic:
+      type: http
+      scheme: basic
+      description: The first-party aramo-ats Sign API client credential (service-to-service only).
     signApiToken:
       type: http
       scheme: bearer
@@ -4209,6 +4306,48 @@ components:
           schema:
             $ref: '#/components/schemas/ErrorResponse'
   schemas:
+    SignTalentErasureScope:
+      type: object
+      required: [tenant_id, record_ids]
+      properties:
+        tenant_id:
+          type: string
+          format: uuid
+        record_ids:
+          type: array
+          maxItems: 1000
+          items:
+            type: string
+            format: uuid
+        document_refs:
+          type: array
+          maxItems: 1000
+          items:
+            type: string
+            format: uuid
+    SignTalentErasureCounts:
+      type: object
+      required: [idempotency_keys, api_idempotency_keys, outbox_events]
+      properties:
+        idempotency_keys:
+          type: integer
+        api_idempotency_keys:
+          type: integer
+        outbox_events:
+          type: integer
+    SignTalentErasureHolder:
+      type: object
+      required: [holder, classification, count, reason]
+      properties:
+        holder:
+          type: string
+        classification:
+          type: string
+          enum: [LEGAL_HOLD, PENDING_PO_LEGAL, PENDING_OUTBOX_DRAIN]
+        count:
+          type: integer
+        reason:
+          type: string
     BillingPlan:
       type: object
       description: A catalog plan (Commercial Plans Amendment A1). Prices are display values in minor units; the charge is the provider price. reference_price is present only when substantiated.

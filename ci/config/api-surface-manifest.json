@@ -107,6 +107,7 @@
     "apps/sign-service/src/app/me/notifications/sign-me-notifications.controller.ts": "AP",
     "apps/sign-service/src/app/privacy/sign-privacy-request.controller.ts": "AP",
     "apps/sign-service/src/app/privacy/sign-privacy-public.controller.ts": "PZ",
+    "apps/sign-service/src/app/privacy/sign-talent-erasure.controller.ts": "SS",
     "apps/platform-admin/src/app/platform/platform.controller.ts": "AP",
     "apps/platform-admin/src/app/platform/platform-sign.controller.ts": "AP",
     "apps/platform-admin/src/app/signup/sign-signup.controller.ts": "PZ",

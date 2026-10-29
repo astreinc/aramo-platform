@@ -940,6 +940,11 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
           'an ATS user grant is live': async () => {
             await seedAtsUserGrant();
           },
+          // Aramo-Sign-Domain-Isolation-Reconciliation-V1 — the Sign-owned talent-erasure contract
+          // authenticates the first-party aramo-ats client credential (no grant is minted).
+          'the ATS Sign client is registered': async () => {
+            await seedAtsApi();
+          },
           'a completion event was delivered to the ATS': async () => {
             await seedAtsCompletion();
           },

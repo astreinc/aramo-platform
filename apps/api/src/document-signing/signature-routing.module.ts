@@ -4,8 +4,7 @@ import { EntitlementModule } from '@aramo/entitlement';
 import { SignatureRoutingStoreModule, type SignatureProviderKey } from '@aramo/signature-routing';
 import { SubscriptionModule } from '@aramo/subscription';
 
-import { EsignServiceApiProvider, esignAtsTransport } from '../sign/esign-service-api.provider.js';
-import { EsignServiceHttpProvider } from '../sign/esign-service-http.provider.js';
+import { EsignServiceApiProvider, assertSignAtsTransport } from '../sign/esign-service-api.provider.js';
 import { SignApiClient } from '../sign/sign-api.client.js';
 import type { ExternalSignatureAdapter } from '../esignature-providers/external-signature-adapter.js';
 import { ExternalSignatureProvidersModule } from '../esignature-providers/external-signature-providers.module.js';
@@ -20,30 +19,26 @@ import { SignatureRoutingService } from './signature-routing.service.js';
 // (RTR, Offer, client-submittal policy authoring, the availability read).
 //
 // The registry lists the providers this build can actually reach. Aramo Sign is
-// the native sign-service over the existing HTTP seam; the DocuSign and Adobe
+// the native sign-service over the authenticated Sign API; the DocuSign and Adobe
 // Acrobat Sign adapters register here when they land (PR 4/5). A selected
 // provider missing from the registry reads PROVIDER_UNAVAILABLE.
 @Module({
   imports: [EntitlementModule, SubscriptionModule, SignatureRoutingStoreModule, ExternalSignatureProvidersModule],
   providers: [
-    EsignServiceHttpProvider,
-    // Addendum S6 — the authenticated Sign API transport. SIGN_ATS_TRANSPORT=api
-    // selects it; the default stays the internal transport until a validated
-    // activation (the internal path is kept for rollback).
+    // Addendum S6 — the authenticated Sign API transport, the only one (Domain
+    // Isolation V1 §3 H-2 retired the unauthenticated internal path).
     SignApiClient,
     EsignServiceApiProvider,
     {
       provide: SIGNATURE_PROVIDER_REGISTRY,
       useFactory: (
-        internal: EsignServiceHttpProvider,
         api: EsignServiceApiProvider,
         external: readonly ExternalSignatureAdapter[],
-      ): ReadonlyMap<SignatureProviderKey, SignatureProviderPort> =>
-        new Map<SignatureProviderKey, SignatureProviderPort>([
-          ['aramo_sign', esignAtsTransport() === 'api' ? api : internal],
-          ...external.map((a) => [a.provider, a] as const),
-        ]),
-      inject: [EsignServiceHttpProvider, EsignServiceApiProvider, EXTERNAL_SIGNATURE_ADAPTERS],
+      ): ReadonlyMap<SignatureProviderKey, SignatureProviderPort> => {
+        assertSignAtsTransport();
+        return new Map<SignatureProviderKey, SignatureProviderPort>([['aramo_sign', api], ...external.map((a) => [a.provider, a] as const)]);
+      },
+      inject: [EsignServiceApiProvider, EXTERNAL_SIGNATURE_ADAPTERS],
     },
     SignatureAvailabilityService,
     SignatureRoutingService,
