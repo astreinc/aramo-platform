@@ -2816,8 +2816,6 @@
     "apps/sign-service/src/app/account/sign-account.controller.ts",
     "apps/sign-service/src/app/account/sign-account.service.ts",
     "apps/sign-service/src/app/app.module.ts",
-    "apps/sign-service/src/app/app.module.ts",
-    "apps/sign-service/src/app/app.module.ts",
     "apps/sign-service/src/app/aramo-sign-allowance.gate.ts",
     "apps/sign-service/src/app/billing/aramo-sign-storage.gate.ts",
     "apps/sign-service/src/app/billing/ats-plan-eligibility.adapter.ts",

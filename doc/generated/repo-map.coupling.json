@@ -8069,6 +8069,24 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sign-domain-isolation-guard.spec.ts",
+      "status": "excluded",
+      "to": "tools/sign-sx0-cleanup/sx0.fixture.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sign-domain-isolation-guard.spec.ts",
+      "status": "excluded",
+      "to": "tools/sign-sx0-cleanup/sx0.integration.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sign-domain-isolation-guard.spec.ts",
+      "status": "excluded",
+      "to": "tools/sign-sx0-cleanup/sx0.lib.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/sign-domain-roles.integration.spec.ts",
       "status": "excluded",
       "to": "deploy/db-roles/aramo-domain-roles.sql"
