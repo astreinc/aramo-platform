@@ -18,7 +18,6 @@ import {
   SignNotificationRepository,
   SignPrivacyRepository,
   SignRetentionRepository,
-  SoftwareEvidenceManifestSigner,
   WEBHOOK_DELIVERY_PORT,
 } from '@aramo/sign';
 import { DOCUMENT_RENDERING_PORT, PdfLibDocumentRenderingAdapter } from '@aramo/documents-rendering';
@@ -34,7 +33,7 @@ import { EsignProviderController, EsignSignerController } from './esign-http.con
 import { NativeAramoSignatureProvider } from './native-aramo-signature.provider.js';
 import { AramoSignAllowanceGate } from './aramo-sign-allowance.gate.js';
 import { MailerSigningNotificationAdapter } from './mailer-signing-notification.adapter.js';
-import { kmsEvidenceSignerFromEnv } from './kms-evidence-manifest-signer.js';
+import { resolveEvidenceManifestSigner } from './kms-evidence-manifest-signer.js';
 import { DocumentSourceHttpAdapter } from './document-source-http.adapter.js';
 import { EnvelopeDocumentSourceResolver } from './envelope-document-source.resolver.js';
 import { EsignObjectStorageDocumentAdapter } from './esign-object-storage-document.adapter.js';
@@ -145,7 +144,9 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
       extraExports: [DOCUMENT_SOURCE_PROVIDER_PORT, SIGNING_NOTIFICATION_PORT, DOCUMENT_STORAGE_PORT, ENVELOPE_NOTIFICATION_SERVICE],
       evidenceSigner: {
         provide: EVIDENCE_MANIFEST_SIGNER_PORT,
-        useFactory: () => kmsEvidenceSignerFromEnv(process.env) ?? new SoftwareEvidenceManifestSigner(),
+        // SX-1 item 4 — production refuses to boot without an asymmetric KMS
+        // SIGN_VERIFY key (SIGN_KMS_KEY_ID); non-production keeps the software signer.
+        useFactory: () => resolveEvidenceManifestSigner(process.env),
       },
       extraProviders: [
         { provide: DOCUMENT_RENDERING_PORT, useClass: PdfLibDocumentRenderingAdapter },
