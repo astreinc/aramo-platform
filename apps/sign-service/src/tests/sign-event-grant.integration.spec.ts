@@ -30,6 +30,10 @@ const migrationsOf = (lib: string): string[] => {
   return readdirSync(dir).filter((n) => /^\d/.test(n)).sort().map((n) => resolve(dir, n, 'migration.sql'));
 };
 const digest = (raw: string): string => createHash('sha256').update(raw, 'utf8').digest('base64url');
+// SX-1 item 3 — the evidence manifest re-digests the stored artifact bytes, so the
+// seeded hashes are the real SHA-256 of the seeded bytes ('%PDF-1.4' and 'cert').
+const EXECUTED_SHA = createHash('sha256').update(Buffer.from('255044462d312e34', 'hex')).digest('hex');
+const CERTIFICATE_SHA = createHash('sha256').update(Buffer.from('63657274', 'hex')).digest('hex');
 
 const TENANT_A = randomUUID();
 const TENANT_B = randomUUID();
@@ -62,11 +66,11 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Addendum S6 — e
     );
     await db.query(
       `INSERT INTO "sign"."ExecutedDocument" (id, tenant_id, envelope_id, envelope_document_id, source_sha256, executed_sha256, byte_size, executed_bytes) VALUES (gen_random_uuid(),$1,$2,$3,$4,$5,8, decode('255044462d312e34','hex'))`,
-      [tenant, env, doc, 'a'.repeat(64), 'b'.repeat(64)],
+      [tenant, env, doc, 'a'.repeat(64), EXECUTED_SHA],
     );
     await db.query(
       `INSERT INTO "sign"."ExecutionCertificate" (id, tenant_id, envelope_id, certificate_sha256, byte_size, certificate_bytes) VALUES (gen_random_uuid(),$1,$2,$3,4, decode('63657274','hex'))`,
-      [tenant, env, 'c'.repeat(64)],
+      [tenant, env, CERTIFICATE_SHA],
     );
     return env;
   }
@@ -140,9 +144,9 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('Addendum S6 — e
     expect(g.body).toMatchObject({ tenant_id: TENANT_A, envelope_id: envA, scope: 'sign:envelope:read', expires_in: 300, mode: 'APPLICATION' });
     const ex = await http().get(`/v1/sign/api/envelopes/${envA}/executed`).set('Authorization', `Bearer ${g.body.access_token}`);
     expect(ex.status).toBe(200);
-    expect(ex.body.documents[0]).toMatchObject({ executed_sha256: 'b'.repeat(64) });
+    expect(ex.body.documents[0]).toMatchObject({ executed_sha256: EXECUTED_SHA });
     expect(typeof ex.body.documents[0].document_ref).toBe('string');
-    expect(ex.body.certificate).toMatchObject({ certificate_sha256: 'c'.repeat(64) });
+    expect(ex.body.certificate).toMatchObject({ certificate_sha256: CERTIFICATE_SHA });
     expect((await http().get(`/v1/sign/api/envelopes/${envA}/evidence`).set('Authorization', `Bearer ${g.body.access_token}`)).status).toBe(200);
     // Nothing else: no general read, availability, send.
     expect((await http().get(`/v1/sign/api/envelopes/${envA}`).set('Authorization', `Bearer ${g.body.access_token}`)).status).toBe(403);
