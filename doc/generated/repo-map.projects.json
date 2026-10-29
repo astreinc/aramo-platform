@@ -5936,6 +5936,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/api/src/tests/sign-domain-roles.integration.spec.ts",
+        "project": "api",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/api/src/tests/sign-s6-ats-transport.spec.ts",
         "project": "api",
         "status": "excluded"
@@ -7836,6 +7842,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-retention.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-talent-erasure.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -11761,6 +11773,12 @@
         "status": "excluded"
       },
       { "project": "reporting", "status": "production" },
+      {
+        "excludedBy": "src/sign-negative-control/**",
+        "from": "apps/sign-service/src/sign-negative-control/sign-imports-ats.fixture.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
       { "project": "visibility", "status": "production" }
     ],
     "@aramo/placement": [
@@ -14334,7 +14352,7 @@
       "name": "sign-service",
       "root": "apps/sign-service",
       "sourceRoot": "apps/sign-service/src",
-      "tags": [],
+      "tags": ["scope:sign"],
       "targets": ["build", "lint", "test"]
     },
     {

@@ -2,6 +2,8 @@ import { createHash, randomUUID } from 'node:crypto';
 
 import { TALENT_EVENT_ERASED, buildTalentEventRow } from '@aramo/talent-record';
 
+import type { SignErasurePort, SignErasureScope } from './sign-erasure.port.js';
+
 // TR-15 B2 (DDR §5 — erasure made real) — the delete-pass engine behind the
 // `erase-talent` CLI. NO HTTP surface. It automates doc/runbooks/talent-rtbf-
 // erasure.md: given a tenant + an ATS TalentRecord id, it resolves the WHOLE
@@ -58,6 +60,15 @@ import { TALENT_EVENT_ERASED, buildTalentEventRow } from '@aramo/talent-record';
 // talent_evidence."TalentEducationEntry" + "TalentCertificationEntry" (TR-7 B1
 // PII, never wired into repoint) — included so the erase reaches every holder
 // (DDR §5); HALT-noted at Gate-6.
+//
+// Aramo-Sign-Domain-Isolation-Reconciliation-V1-Directive-v1_0-LOCKED (§2 R-1/R-3, §4 D-3) —
+// the sign schema belongs to Aramo Sign, and this pass never reads or writes it. What Sign
+// holds about the talent is asked through SignErasurePort (the Sign-owned contract):
+// Sign's holders join the preflight (and are re-asked immediately before COMMIT), and
+// Sign erases its own rows AFTER the database pass, like the object-storage purge. A run
+// is COMPLETED only when every artifact is purged AND Sign has confirmed its erasure;
+// otherwise it stays STORAGE_PENDING and --resume retries. If Sign cannot be asked the
+// run BLOCKS (PENDING_EXTERNAL) — fail closed, never erase-by-default.
 
 // A minimal raw-SQL executor (pg.Client-shaped). Injected so the CLI points it
 // at DATABASE_URL and the acceptance spec points it at its testcontainer. It
@@ -96,6 +107,7 @@ export type HolderClassification =
   | 'LEGAL_HOLD' // a hold suspends erasure
   | 'BLOCKED_SHARED' // the row also belongs to another person
   | 'PENDING_OUTBOX_DRAIN' // an unpublished outbox event names the talent: retry once it is published
+  | 'PENDING_EXTERNAL' // the owning product (Aramo Sign) could not be asked: retry once it answers
   | 'PENDING_CLASSIFICATION'; // a holder outside every recorded class (S2 holder coverage): needs a ruling
 
 export interface ErasureBlocker {
@@ -164,7 +176,6 @@ const ORDINARY_OUTBOXES = [
   'client_selection."OutboxEvent"',
   'consent."OutboxEvent"',
   'documents."OutboxEvent"',
-  'sign."OutboxEvent"',
   'pipeline."OutboxEvent"',
   'selection."OutboxEvent"',
   'submittal."OutboxEvent"',
@@ -307,7 +318,6 @@ const INVENTORY: ErasureStep[] = [
   //      UNPUBLISHED one blocks in the preflight until it drains). ----
   { label: 'consent."IdempotencyKey"', keyspace: 'record', where: NAMES_A_RECORD('response_body') },
   { label: 'documents."IdempotencyKey"', keyspace: 'record', where: NAMES_A_RECORD('response_body') },
-  { label: 'sign."IdempotencyKey"', keyspace: 'record', where: NAMES_A_RECORD('response_body') },
   ...ORDINARY_OUTBOXES.map((label): ErasureStep => ({ label, keyspace: 'record', where: `published_at IS NOT NULL AND ${NAMES_A_RECORD('event_payload')}` })),
   // ---- GROUP B ATS-local sourcing (ATI-SEP-1 T10 WP4). The sourced arrivals LINKED to the
   //      erased records (talent_record_sourced_arrival: PROMOTED / ADVISORY_APPROVED — the
@@ -422,7 +432,6 @@ export const ERASURE_HOLDER_GUARDS: readonly HolderGuard[] = [
   { holder: 'placement."PermanentPlacement"', classification: 'PENDING_PO_LEGAL', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM placement."PermanentPlacement" WHERE talent_record_id = ANY($1::uuid[])`, reason: 'permanent placement (fee / guarantee record)', authority: PO_LEGAL },
   { holder: 'placement."PermanentPlacementRemedy"', classification: 'PENDING_PO_LEGAL', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM placement."PermanentPlacementRemedy" WHERE talent_record_id = ANY($1::uuid[])`, reason: 'guarantee remedy (financial record)', authority: PO_LEGAL },
   { holder: 'submittal_policy."SubmittalConsumption"', classification: 'PENDING_PO_LEGAL', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM submittal_policy."SubmittalConsumption" WHERE talent_record_id = ANY($1::uuid[])`, reason: 'submittal consumption (client commercial policy record)', authority: PO_LEGAL },
-  { holder: 'sign."EnvelopeDocument"', classification: 'PENDING_PO_LEGAL', keyspace: 'record', sql: `SELECT count(*)::int AS n FROM sign."EnvelopeDocument" WHERE document_ref IN (${TALENT_DOCUMENTS})`, reason: 'e-signature envelope over a talent document (executed-record retention; signer PII)', authority: PO_LEGAL },
   { holder: 'offer."OutboxEvent" / placement."OutboxEvent"', classification: 'PENDING_PO_LEGAL', keyspace: 'record', sql: `SELECT (SELECT count(*) FROM offer."OutboxEvent" WHERE ${NAMES_A_RECORD('event_payload')}) + (SELECT count(*) FROM placement."OutboxEvent" WHERE ${NAMES_A_RECORD('event_payload')})::int AS n`, reason: 'immutable commercial outbox event names the talent', authority: PO_LEGAL },
   // ---- an unpublished outbox event still has to reach its consumers: retry after it drains ----
   { holder: 'OutboxEvent (unpublished)', classification: 'PENDING_OUTBOX_DRAIN', keyspace: 'record', sql: `SELECT (${ORDINARY_OUTBOXES.map((o) => `(SELECT count(*) FROM ${o} WHERE published_at IS NULL AND ${NAMES_A_RECORD('event_payload')})`).join(' + ')})::int AS n`, reason: 'an unpublished outbox event names the talent — retry once the outbox has drained', authority: 'none (transient)' },
@@ -485,6 +494,8 @@ export interface ErasureReport {
   is_anonymized_flipped: boolean; // true ONLY when the run is COMPLETED
   total_rows: number; // rows deleted (or, in a dry-run, that would be)
   redacted_rows: number; // retained rows redacted or tombstoned (S2 LOCKED §3.2 / §3.3)
+  // Domain Isolation V1 — Aramo Sign's own erasure (through the Sign contract).
+  sign: { erased: boolean; idempotency_keys: number; api_idempotency_keys: number; outbox_events: number; error?: string };
 }
 
 export const RETAINED = [
@@ -502,9 +513,19 @@ interface RunRow {
   id: string;
   state: 'STORAGE_PENDING' | 'COMPLETED';
   record_ids: string[];
+  sign_erased_at: Date | null;
 }
 
+// The Sign blockers carry the same authorities the engine records for its own holders.
+const SIGN_AUTHORITY: Record<string, string> = {
+  LEGAL_HOLD: 'TM-L12',
+  PENDING_PO_LEGAL: PO_LEGAL,
+  PENDING_OUTBOX_DRAIN: 'none (transient)',
+};
+
 export class TalentErasureService {
+  constructor(private readonly sign: SignErasurePort) {}
+
   // Resolve the WHOLE human from one record id: the husk chain (records linked
   // by supersession, both directions) + the sourced arrivals linked to those
   // records + the object-storage keys. Read-only. `exists` = the anchor record is present.
@@ -558,8 +579,13 @@ export class TalentErasureService {
     return [...keys];
   }
 
-  // S2 F3 — the PREFLIGHT. Read-only; every present guard is a blocker.
+  // S2 F3 — the PREFLIGHT. Read-only; every present guard is a blocker, and so is every
+  // holder Aramo Sign reports through its contract (or Sign being unreachable).
   async preflight(pg: PgExec, tenantId: string, scope: ErasureScope): Promise<ErasureBlocker[]> {
+    return [...(await this.guardBlockers(pg, tenantId, scope)), ...(await this.askSign(pg, tenantId, scope)).blockers];
+  }
+
+  private async guardBlockers(pg: PgExec, tenantId: string, scope: ErasureScope): Promise<ErasureBlocker[]> {
     const blockers: ErasureBlocker[] = [];
     for (const g of ERASURE_HOLDER_GUARDS) {
       const param = g.keyspace === 'tenant' ? tenantId : scope.record_ids;
@@ -568,6 +594,51 @@ export class TalentErasureService {
       if (n > 0) blockers.push({ holder: g.holder, classification: g.classification, count: n, reason: g.reason, authority: g.authority });
     }
     return blockers;
+  }
+
+  // The talent's documents are a documents-domain fact; Sign answers whether an envelope covers one.
+  private async signScope(pg: PgExec, tenantId: string, scope: ErasureScope): Promise<SignErasureScope> {
+    const docs = await pg.query<{ id: string }>(
+      `SELECT DISTINCT document_id::text AS id FROM documents."DocumentAssociation" WHERE resource_type = 'TALENT' AND resource_id = ANY($1::uuid[])`,
+      [scope.record_ids],
+    );
+    return { tenant_id: tenantId, record_ids: scope.record_ids, document_refs: docs.rows.map((r) => r.id) };
+  }
+
+  // `asked` reuses a scope captured earlier (the pre-COMMIT recheck runs after the talent's
+  // document associations are deleted in this transaction).
+  private async askSign(
+    pg: PgExec,
+    tenantId: string,
+    scope: ErasureScope,
+    asked?: SignErasureScope,
+  ): Promise<{ blockers: ErasureBlocker[]; erasable: Awaited<ReturnType<SignErasurePort['preflight']>>['erasable'] | null }> {
+    try {
+      const out = await this.sign.preflight(asked ?? (await this.signScope(pg, tenantId, scope)));
+      return {
+        blockers: out.holders.map((h) => ({
+          holder: `Aramo Sign: ${h.holder}`,
+          classification: h.classification,
+          count: h.count,
+          reason: h.reason,
+          authority: SIGN_AUTHORITY[h.classification] ?? CLASSIFY,
+        })),
+        erasable: out.erasable,
+      };
+    } catch (err) {
+      return {
+        blockers: [
+          {
+            holder: 'Aramo Sign (talent-erasure contract)',
+            classification: 'PENDING_EXTERNAL',
+            count: 1,
+            reason: `Aramo Sign could not be asked: ${msg(err)}`,
+            authority: 'none (transient)',
+          },
+        ],
+        erasable: null,
+      };
+    }
   }
 
   // The id-arrays an INVENTORY WHERE binds: the record set (record / record-child),
@@ -580,7 +651,7 @@ export class TalentErasureService {
 
   private async findRun(pg: PgExec, tenantId: string, recordId: string): Promise<RunRow | null> {
     const rows = await pg.query<RunRow>(
-      `SELECT id, state, record_ids FROM consent."TalentErasureRun" WHERE tenant_id = $1::uuid AND record_id = $2::uuid`,
+      `SELECT id, state, record_ids, sign_erased_at FROM consent."TalentErasureRun" WHERE tenant_id = $1::uuid AND record_id = $2::uuid`,
       [tenantId, recordId],
     );
     return rows.rows[0] ?? null;
@@ -633,6 +704,7 @@ export class TalentErasureService {
       is_anonymized_flipped: false,
       total_rows: 0,
       redacted_rows: 0,
+      sign: { erased: false, idempotency_keys: 0, api_idempotency_keys: 0, outbox_events: 0 },
     };
   }
 
@@ -640,7 +712,18 @@ export class TalentErasureService {
     const scope = await this.resolveScope(pg, tenantId, recordId);
     const report = this.base(tenantId, recordId, 'dry-run', scope);
     report.outcome = 'DRY_RUN';
-    report.blockers = await this.preflight(pg, tenantId, scope);
+    const sign = await this.askSign(pg, tenantId, scope);
+    report.blockers = [...(await this.guardBlockers(pg, tenantId, scope)), ...sign.blockers];
+    if (sign.erasable !== null) {
+      // What Aramo Sign would erase for this talent (counted by Sign, never read here).
+      report.sign = { erased: false, ...sign.erasable };
+      report.steps.push(
+        { table: 'Aramo Sign: provider-seam replay cache', count: sign.erasable.idempotency_keys, status: 'counted' },
+        { table: 'Aramo Sign: API replay cache', count: sign.erasable.api_idempotency_keys, status: 'counted' },
+        { table: 'Aramo Sign: delivered outbox events', count: sign.erasable.outbox_events, status: 'counted' },
+      );
+      report.total_rows += sign.erasable.idempotency_keys + sign.erasable.api_idempotency_keys + sign.erasable.outbox_events;
+    }
     for (const r of REDACTIONS) {
       const rows = await pg.query<{ n: string }>(`SELECT count(*)::int AS n FROM ${r.label} WHERE ${r.where}`, [scope.record_ids]);
       const n = Number(rows.rows[0]?.n ?? 0);
@@ -724,7 +807,8 @@ export class TalentErasureService {
       // The authoritative preflight: under the locks, every committed holder is visible and
       // no new one can be written until this transaction ends. Blocked → roll back.
       failing = 'preflight';
-      const blockers = await this.preflight(pg, tenantId, scope);
+      const signScope = await this.signScope(pg, tenantId, scope);
+      const blockers = [...(await this.guardBlockers(pg, tenantId, scope)), ...(await this.askSign(pg, tenantId, scope, signScope)).blockers];
       if (blockers.length > 0) throw new ErasureBlockedError(blockers);
       // Re-collect the keys inside the transaction (the same snapshot the deletes see).
       const keys = await this.collectStorageKeys(pg, scope);
@@ -773,12 +857,12 @@ export class TalentErasureService {
         );
       }
       failing = 'erasure run record';
-      const complete = keys.length === 0;
-      // Leave DB_PASS_IN_PROGRESS (a deferred trigger rejects a COMMIT that does not).
+      // Leave DB_PASS_IN_PROGRESS (a deferred trigger rejects a COMMIT that does not). The run
+      // is never COMPLETED here: Aramo Sign's own erasure runs after the commit (Domain Isolation V1).
       await pg.query(
-        `UPDATE consent."TalentErasureRun" SET state = $2, artifact_count = $3, completed_at = ${complete ? 'now()' : 'NULL'}
+        `UPDATE consent."TalentErasureRun" SET state = 'STORAGE_PENDING', artifact_count = $2
           WHERE id = $1::uuid AND state = 'DB_PASS_IN_PROGRESS'`,
-        [runId, complete ? 'COMPLETED' : 'STORAGE_PENDING', keys.length],
+        [runId, keys.length],
       );
       for (const key of keys) {
         await pg.query(
@@ -787,9 +871,11 @@ export class TalentErasureService {
           [randomUUID(), tenantId, runId, key, sha256(key)],
         );
       }
-      if (complete) {
-        report.erasure_marker_appended = await this.appendMarker(pg, tenantId, recordId, this.markerPayload(runId, scope, report, 0));
-      }
+      // Domain Isolation V1 §4 D-3 — re-ask Sign immediately before COMMIT: an envelope created
+      // over a talent document since the preflight rolls the whole pass back.
+      failing = 'Aramo Sign recheck';
+      const recheck = await this.askSign(pg, tenantId, scope, signScope);
+      if (recheck.blockers.length > 0) throw new ErasureBlockedError(recheck.blockers);
       failing = 'commit';
       await pg.query('COMMIT');
     } catch (err) {
@@ -809,12 +895,7 @@ export class TalentErasureService {
       return report;
     }
     report.run_id = runId;
-    if (scope.s3_keys.length === 0) {
-      report.outcome = 'COMPLETED';
-      report.is_anonymized_flipped = true;
-      return report;
-    }
-    return this.storagePhase(pg, report, store);
+    return this.storagePhase(pg, report, store, null);
   }
 
   // S2 F5 — resume (or re-run) a recorded erasure run: purge every not-yet-purged
@@ -831,14 +912,39 @@ export class TalentErasureService {
     if (run.state === 'COMPLETED') {
       report.outcome = 'COMPLETED';
       report.storage = await this.storageStatus(pg, run.id);
+      report.sign.erased = true;
       report.is_anonymized_flipped = await this.markerExists(pg, tenantId, recordId);
       return report;
     }
-    return this.storagePhase(pg, report, store);
+    return this.storagePhase(pg, report, store, run.sign_erased_at);
   }
 
-  private async storagePhase(pg: PgExec, report: ErasureReport, store: ErasureObjectStore): Promise<ErasureReport> {
+  // Domain Isolation V1 — Aramo Sign erases its own rows naming the records. Recorded once
+  // confirmed; a refusal, a blocker or an unreachable Sign leaves the run pending (retryable).
+  private async signPhase(pg: PgExec, report: ErasureReport, signErasedAt: Date | null): Promise<void> {
+    if (signErasedAt !== null) {
+      report.sign.erased = true;
+      return;
+    }
     const runId = report.run_id as string;
+    try {
+      // The talent's documents are gone with the database pass; the envelope check ran in the
+      // preflight and again before COMMIT. Sign still re-checks its legal hold and outbox.
+      const out = await this.sign.erase({ tenant_id: report.tenant_id, record_ids: report.scope.record_ids, document_refs: [], run_id: runId });
+      if (out.status === 'blocked') {
+        report.sign.error = `Aramo Sign reported ${out.holders.map((h) => `${h.holder} (${h.classification})`).join(', ')}`;
+        return;
+      }
+      await pg.query(`UPDATE consent."TalentErasureRun" SET sign_erased_at = now() WHERE id = $1::uuid AND sign_erased_at IS NULL`, [runId]);
+      report.sign = { erased: true, ...out.counts };
+    } catch (err) {
+      report.sign.error = msg(err).slice(0, 500);
+    }
+  }
+
+  private async storagePhase(pg: PgExec, report: ErasureReport, store: ErasureObjectStore, signErasedAt: Date | null): Promise<ErasureReport> {
+    const runId = report.run_id as string;
+    await this.signPhase(pg, report, signErasedAt);
     const pending = await pg.query<{ id: string; storage_key: string }>(
       `SELECT id, storage_key FROM consent."TalentErasureArtifact" WHERE run_id = $1::uuid AND state <> 'PURGED' ORDER BY storage_key_sha256`,
       [runId],
@@ -874,6 +980,11 @@ export class TalentErasureService {
     if (report.storage.purged < report.storage.total) {
       report.outcome = 'STORAGE_PENDING';
       report.failure = `${report.storage.total - report.storage.purged} object-storage artifact(s) not yet verifiably purged — re-run with --resume`;
+      return report;
+    }
+    if (!report.sign.erased) {
+      report.outcome = 'STORAGE_PENDING';
+      report.failure = `Aramo Sign has not yet confirmed its erasure (${report.sign.error ?? 'not attempted'}) — re-run with --resume`;
       return report;
     }
     // Every artifact purged → complete the run and append the marker atomically.

@@ -7153,6 +7153,12 @@
       "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/s2-erasure-authorization-confinement.spec.ts",
       "status": "excluded",
+      "to": "libs/documents/prisma/migrations/20261030040000_sign_isolation_document_event_guard/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/s2-erasure-authorization-confinement.spec.ts",
+      "status": "excluded",
       "to": "libs/pipeline/prisma/migrations/20261016180300_s2_pipeline_history_erasure_redaction/migration.sql"
     },
     {
@@ -7994,6 +8000,90 @@
       "from": "apps/api/src/tests/settings-tenant-set.integration.spec.ts",
       "status": "excluded",
       "to": "libs/settings/src/tests/settings.integration.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sign-domain-isolation-guard.spec.ts",
+      "status": "excluded",
+      "to": "apps/api/src/tests/sign-domain-roles.integration.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sign-domain-isolation-guard.spec.ts",
+      "status": "excluded",
+      "to": "deploy/backup/aramo-backup.test.sh"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sign-domain-isolation-guard.spec.ts",
+      "status": "excluded",
+      "to": "libs/documents/prisma/migrations/20261016180200_s2_document_event_erasure_delete/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sign-domain-isolation-guard.spec.ts",
+      "status": "excluded",
+      "to": "libs/documents/prisma/migrations/20261020130500_sign_naming_erasure_guard/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sign-domain-isolation-guard.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/src/lib/privacy/identity-dependency-inspector.service.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sign-domain-isolation-guard.spec.ts",
+      "status": "excluded",
+      "to": "libs/identity/src/tests/m-a8-remove-sign-access.integration.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sign-domain-isolation-guard.spec.ts",
+      "status": "excluded",
+      "to": "mobile/sign/src/api/generated/sign.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sign-domain-isolation-guard.spec.ts",
+      "status": "excluded",
+      "to": "openapi/sign.yaml"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sign-domain-isolation-guard.spec.ts",
+      "status": "excluded",
+      "to": "pact/consumers/sign-consumer/src/esign.consumer.test.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sign-domain-isolation-guard.spec.ts",
+      "status": "excluded",
+      "to": "pact/provider/src/verify-sign.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sign-domain-isolation-guard.spec.ts",
+      "status": "excluded",
+      "to": "tools/sign-naming/reverse.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sign-domain-roles.integration.spec.ts",
+      "status": "excluded",
+      "to": "deploy/db-roles/aramo-domain-roles.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sign-domain-roles.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/documents/prisma/migrations/20261020130500_sign_naming_erasure_guard/migration.sql"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sign-domain-roles.integration.spec.ts",
+      "status": "excluded",
+      "to": "libs/documents/prisma/migrations/20261030040000_sign_isolation_document_event_guard/migration.sql"
     },
     {
       "excludedBy": "src/tests/**/*",
@@ -10550,6 +10640,12 @@
       "to": "apps/sign-service/tsconfig.app.json"
     },
     {
+      "excludedBy": "src/sign-negative-control/**",
+      "from": "apps/sign-service/src/sign-negative-control/sign-imports-ats.fixture.ts",
+      "status": "excluded",
+      "to": "apps/sign-service/tsconfig.app.json"
+    },
+    {
       "excludedBy": "src/tests/**/*",
       "from": "apps/sign-service/src/tests/ccp-a4-ats-sign-consumption.integration.spec.ts",
       "status": "excluded",
@@ -10566,6 +10662,18 @@
       "from": "apps/sign-service/src/tests/m-a8-personal-deletion.integration.spec.ts",
       "status": "excluded",
       "to": "libs/identity/src/tests/m-a8-identity-dependency-inspector.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/sign-service/src/tests/sign-negative-control.spec.ts",
+      "status": "excluded",
+      "to": "apps/sign-service/src/sign-negative-control/sign-imports-ats.fixture.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/sign-service/src/tests/sign-negative-control.spec.ts",
+      "status": "excluded",
+      "to": "apps/sign-service/tsconfig.app.json"
     },
     {
       "from": "apps/sign-web/project.json",
@@ -11132,6 +11240,11 @@
       "from": "ci/config/api-surface-manifest.json",
       "status": "unscoped",
       "to": "apps/sign-service/src/app/privacy/sign-privacy-request.controller.ts"
+    },
+    {
+      "from": "ci/config/api-surface-manifest.json",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/privacy/sign-talent-erasure.controller.ts"
     },
     {
       "from": "ci/config/api-surface-manifest.json",
@@ -23058,11 +23171,6 @@
     {
       "from": "doc/recon/as-built/D10-documents-esignature.md",
       "status": "unscoped",
-      "to": "apps/api/src/sign/esign-service-http.provider.ts"
-    },
-    {
-      "from": "doc/recon/as-built/D10-documents-esignature.md",
-      "status": "unscoped",
       "to": "apps/api/src/sign/sign-api.client.ts"
     },
     {
@@ -29701,6 +29809,11 @@
       "status": "unscoped",
       "to": "apps/portal-web/src/tests/portal-web-negative-control.spec.ts"
     },
+    {
+      "from": "eslint.config.mjs",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/tests/sign-negative-control.spec.ts"
+    },
     { "from": "eslint.config.mjs", "status": "unscoped", "to": "apps/sign-web/src/zones.spec.ts" },
     { "from": "eslint.config.mjs", "status": "unscoped", "to": "doc/02-claude-code-discipline.md" },
     { "from": "eslint.config.mjs", "status": "unscoped", "to": "doc/03-refusal-layer.md" },
@@ -34696,11 +34809,6 @@
     {
       "from": "pact/consumers/sign-consumer/src/esign.consumer.test.ts",
       "status": "unscoped",
-      "to": "apps/api/src/documents/esign-writeback.ts"
-    },
-    {
-      "from": "pact/consumers/sign-consumer/src/esign.consumer.test.ts",
-      "status": "unscoped",
       "to": "apps/sign-service/src/tests/sign-api.integration.spec.ts"
     },
     {
@@ -37281,7 +37389,7 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 112,
+    "files": 113,
     "huskyPresent": false
   },
   "scripts": [
@@ -37438,6 +37546,7 @@
         { "kind": "prose", "path": "deploy/backup/aramo-backup-encrypt-existing.sh" },
         { "kind": "prose", "path": "deploy/backup/aramo-restore-test.sh" },
         { "kind": "prose", "path": "deploy/backup/lib.sh" },
+        { "kind": "prose", "path": "deploy/db-roles/aramo-domain-roles.sql" },
         { "kind": "prose", "path": "deploy/nginx/README.md" },
         { "kind": "prose", "path": "tools/ensure-intelligence-db.sh" }
       ]

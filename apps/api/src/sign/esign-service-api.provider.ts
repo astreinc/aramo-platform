@@ -10,15 +10,22 @@ import type {
 
 import { SignApiClient } from './sign-api.client.js';
 
-// Addendum S6 — the Aramo Sign adapter over the AUTHENTICATED Sign API
-// (SIGN_ATS_TRANSPORT=api). Every user-initiated operation acts through the
-// recruiter's verified delegation; there is no caller-supplied tenant authority.
-// A user operation without an actor credential fails closed (it never falls back
-// to the unauthenticated internal path).
+// Addendum S6 — the Aramo Sign adapter over the AUTHENTICATED Sign API. Every
+// user-initiated operation acts through the recruiter's verified delegation; there
+// is no caller-supplied tenant authority. A user operation without an actor
+// credential fails closed.
+//
+// Aramo-Sign-Domain-Isolation-Reconciliation-V1-Directive-v1_0-LOCKED §3 H-2 — this is
+// the ONLY Aramo Sign transport: the unauthenticated internal path is retired.
+// SIGN_ATS_TRANSPORT may be unset or `api`; any other value refuses to boot rather
+// than silently selecting a transport that no longer exists.
 export const ESIGN_ATS_TRANSPORT_API = 'api';
 
-export function esignAtsTransport(env: NodeJS.ProcessEnv = process.env): 'internal' | 'api' {
-  return env['SIGN_ATS_TRANSPORT'] === ESIGN_ATS_TRANSPORT_API ? 'api' : 'internal';
+export function assertSignAtsTransport(env: NodeJS.ProcessEnv = process.env): void {
+  const v = env['SIGN_ATS_TRANSPORT'];
+  if (v !== undefined && v !== '' && v !== ESIGN_ATS_TRANSPORT_API) {
+    throw new Error(`SIGN_ATS_TRANSPORT=${v} is not supported: the internal Aramo Sign transport is retired (unset it or set it to "api")`);
+  }
 }
 
 function actorRequired(): AramoError {

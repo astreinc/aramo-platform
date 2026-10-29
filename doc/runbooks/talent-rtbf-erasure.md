@@ -71,6 +71,20 @@ runbook closes the full gap. See the register entry in
 > | `BLOCKED_SHARED` | Operator review of the named interaction or document (it also belongs to another talent); never partially erased. |
 > | `PENDING_OUTBOX_DRAIN` | Wait for the outbox publisher to publish the named event(s), then re-run (published events are erased). |
 > | `PENDING_CLASSIFICATION` | Escalate to the Architect / PO for a disposition of the named holder; no classification is made by the tool. |
+> | `PENDING_EXTERNAL` | Aramo Sign could not be asked (network, credential). Check `SIGN_SERVICE_URL` and the `SIGN_ATS_CLIENT_ID` / `SIGN_ATS_CLIENT_SECRET` credential, then re-run. |
+>
+> **Aramo Sign data (Aramo-Sign-Domain-Isolation-Reconciliation-V1).** The CLI never
+> reads or writes the `sign` schema. It asks Aramo Sign through the Sign-owned
+> talent-erasure contract (`/v1/sign/s2s/talent-erasure/*` on sign-service,
+> authenticated with the first-party aramo-ats Sign client credential the api
+> container already holds). Sign's holders (an envelope over a talent document, an
+> undelivered Sign event, a legal hold) join the preflight as `Aramo Sign: …`
+> blockers and are re-asked immediately before COMMIT. After the database pass Sign
+> erases its own replay caches and delivered events naming the talent. A run is
+> `COMPLETED` only once Sign has confirmed this (`consent."TalentErasureRun".sign_erased_at`)
+> and every artifact is purged. Otherwise it stays `STORAGE_PENDING` and `--resume`
+> retries the Sign step. Envelopes, signers, signing events, executed documents and
+> certificates are never touched.
 >
 > **Concurrency.** The pass serializes with application writes on the talent's
 > identity (advisory locks taken by write-guard triggers and by the pass); writes

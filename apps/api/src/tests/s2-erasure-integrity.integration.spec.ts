@@ -17,6 +17,9 @@ import {
   type PgExec,
 } from '../talent-identity/talent-erasure.service.js';
 
+import { fakeSignErasure } from './helpers/fake-sign-erasure.js';
+
+
 // S2 Talent Erasure Integrity (Architect rulings F1/F3/F5; TM-L12 auditable
 // completion; ARAMO-S2-Talent-Erasure-Integrity-Amendment-v1.0-LOCKED) — against
 // real Postgres 17 with every repo migration applied. Acceptance: Aramo never
@@ -61,7 +64,7 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('S2 — talent era
   let container: StartedPostgreSqlContainer;
   let db: Client;
   let pg: PgExec;
-  const erasure = new TalentErasureService();
+  const erasure = new TalentErasureService(fakeSignErasure());
 
   const count = async (table: string, where: string, params: unknown[] = []): Promise<number> =>
     Number((await db.query<{ n: string }>(`SELECT count(*)::int AS n FROM ${table} WHERE ${where}`, params)).rows[0]!.n);
@@ -749,7 +752,10 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')('S2 — talent era
         -- ATI-SEP-1 (ADR-0036 Decision 2): the intelligence schema is the Talent Intelligence
         -- service's OWN database (only co-located by this spec's migration glob); TI erases on
         -- the talent.erased event, never through this pass.
-        WHERE c.table_schema NOT IN ('pg_catalog', 'information_schema', 'intelligence')
+        -- Aramo-Sign-Domain-Isolation-Reconciliation-V1 §2 R-1: the sign schema is Aramo Sign's;
+        -- this pass never reads it — Sign answers for and erases its own rows through its
+        -- talent-erasure contract (proven in sign-service's talent-erasure integration spec).
+        WHERE c.table_schema NOT IN ('pg_catalog', 'information_schema', 'intelligence', 'sign')
           AND (c.column_name ~ 'talent' OR c.table_name IN ('OutboxEvent', 'IdempotencyKey')
             OR (c.table_schema, c.table_name, c.column_name) IN (
               ('activity', 'Activity', 'subject_id'), ('attachment', 'Attachment', 'owner_id'), ('communications', 'CommunicationAssociation', 'subject_id'),
