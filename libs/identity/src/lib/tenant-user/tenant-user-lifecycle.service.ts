@@ -9,6 +9,7 @@ import {
   normalizeEmail,
 } from '../util/email-domain.js';
 import { TENANT_OWNER_ROLE_KEY } from '../util/tenant-last-owner.js';
+import { ESIGN_ROLE_KEYS } from '../dto/esign-permissions.js';
 
 import {
   TENANT_COGNITO_PORT,
@@ -93,6 +94,26 @@ export interface AssignRolesResult {
   added_role_keys: string[];
   removed_role_keys: string[];
 }
+
+// Aramo-Sign-Mobile-Amendment-M-A8 §2.3 — the result of DELETE
+// /v1/tenant/users/:user_id/products/sign (counts only; never a token or session id).
+export interface RemoveProductAccessResult {
+  membership_id: string;
+  product: 'sign';
+  removed_role_keys: string[];
+  after_role_keys: string[];
+  refresh_tokens_revoked: number;
+  device_sessions_revoked: number;
+  changed: boolean;
+}
+
+// M-A8 §2.3 — the Sign session consumers revoked with Sign access: browser `sign` and
+// native `sign_native` refresh tokens; native device sessions carry consumer `sign`.
+export const SIGN_REFRESH_TOKEN_CONSUMERS: readonly string[] = ['sign', 'sign_native'];
+export const SIGN_NATIVE_SESSION_CONSUMER = 'sign';
+// The organization roles carry Sign authority of their own (ADR-0035 R1); removing
+// Sign access never touches them, so a holder keeps Sign through that role.
+const ORGANIZATION_ROLE_KEYS: readonly string[] = [TENANT_OWNER_ROLE_KEY, 'tenant_admin'];
 
 @Injectable()
 export class TenantUserLifecycleService {
@@ -530,6 +551,79 @@ export class TenantUserLifecycleService {
       after_role_keys,
       added_role_keys,
       removed_role_keys,
+    };
+  }
+
+  // Aramo-Sign-Mobile-Amendment-M-A8 §2.3 — REMOVE SIGN ACCESS (organization-
+  // administered deprovisioning of one product; never account deletion).
+  //
+  //   - Per-tenant isolation: the membership is looked up in the caller's tenant
+  //     only (404 otherwise), exactly as role assignment.
+  //   - Removes ONLY the Sign product role keys (sign_admin, sign_sender,
+  //     sign_viewer). Allowed even when no role remains: the membership stays.
+  //   - Never touches tenant_owner / tenant_admin: a holder of an organization role
+  //     keeps Sign authority through it (ADR-0035 R1), so the request is refused
+  //     (400 sign_access_via_organization_role) instead of silently doing nothing
+  //     useful; the owner and the last-owner invariant are therefore unaffected.
+  //   - In ONE transaction (repository): Sign refresh tokens + native device
+  //     sessions of (user, tenant) revoked, principal_version bumped, audit row
+  //     identity.tenant_user.product_access_removed { product: 'sign' }.
+  //   - Single-store: NO Cognito call (the shared identity, ATS and other roles,
+  //     the membership, envelopes, agreements and evidence are preserved).
+  //   - Idempotent: a repeat removes and revokes nothing and writes no audit row.
+  async removeSignAccess(args: {
+    tenant_id: string;
+    user_id: string;
+    actor_user_id: string;
+    request_id: string;
+  }): Promise<RemoveProductAccessResult> {
+    const membership = await this.identitySvc.findMembership({
+      user_id: args.user_id,
+      tenant_id: args.tenant_id,
+    });
+    if (membership === null) {
+      throw new AramoError(
+        'NOT_FOUND',
+        'membership not found for user in this tenant',
+        404,
+        {
+          requestId: args.request_id,
+          details: { user_id: args.user_id, tenant_id: args.tenant_id },
+        },
+      );
+    }
+    const current = await this.identitySvc.findRoleKeysForMembership(membership.id);
+    const orgRoles = current.filter((k) => ORGANIZATION_ROLE_KEYS.includes(k));
+    if (orgRoles.length > 0) {
+      throw new AramoError(
+        'VALIDATION_ERROR',
+        'This person has Aramo Sign through an organization role. Change the organization role instead.',
+        400,
+        {
+          requestId: args.request_id,
+          details: { reason: 'sign_access_via_organization_role', role_keys: orgRoles },
+        },
+      );
+    }
+    const result = await this.identitySvc.removeProductAccess({
+      membership_id: membership.id,
+      tenant_id: args.tenant_id,
+      user_id: args.user_id,
+      product: 'sign',
+      role_keys: ESIGN_ROLE_KEYS,
+      refresh_consumers: SIGN_REFRESH_TOKEN_CONSUMERS,
+      native_consumer: SIGN_NATIVE_SESSION_CONSUMER,
+      actor_user_id: args.actor_user_id,
+      request_id: args.request_id,
+    });
+    return {
+      membership_id: membership.id,
+      product: 'sign',
+      removed_role_keys: result.removed_role_keys,
+      after_role_keys: result.after_role_keys,
+      refresh_tokens_revoked: result.refresh_tokens_revoked,
+      device_sessions_revoked: result.device_sessions_revoked,
+      changed: result.changed,
     };
   }
 

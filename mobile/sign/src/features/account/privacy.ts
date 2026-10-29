@@ -66,3 +66,43 @@ export function deletionCopy(personal: boolean): { title: string; button: string
         ],
       };
 }
+
+// ── Aramo-Sign-Mobile-Amendment-M-A8 §2 — Business users are organization-managed ──
+// A Business user (anyone but the tenant_owner of a PERSONAL tenant) has no self-service
+// "Delete account"; the organization administrator manages product access. The privacy
+// channel stays: ACCESS, EXPORT, CORRECTION and DELETION of eligible personal
+// information (a DELETION is referred to the organization and the Aramo privacy team,
+// never executed by the app).
+
+export type PrivacyRequestType = 'ACCESS' | 'EXPORT' | 'CORRECTION' | 'DELETION';
+
+export const BUSINESS_MANAGED_COPY =
+  'Your organization manages this account. Contact your organization administrator to manage product access.';
+
+export const PRIVACY_REQUEST_OPTIONS: readonly { type: PrivacyRequestType; title: string; detail: string }[] = [
+  { type: 'ACCESS', title: 'See my personal information', detail: 'Ask which personal information Aramo Sign holds about you.' },
+  { type: 'EXPORT', title: 'Get a copy of my personal information', detail: 'Receive a copy of your Aramo Sign data.' },
+  { type: 'CORRECTION', title: 'Correct my personal information', detail: 'Ask us to correct information that is wrong.' },
+  {
+    type: 'DELETION',
+    title: 'Delete my eligible personal information',
+    detail:
+      'Your organization decides about documents it sent or that you received in your role; we refer your request to it and to the Aramo privacy team. Your account stays with your organization.',
+  },
+];
+
+/**
+ * M-A8 §2.1 — the Personal account owner (may delete their own account). The backend
+ * decides (`personal_account_owner`); an older backend without the field falls back to
+ * the tenant kind, the pre-M-A8 rule.
+ */
+export function isPersonalAccountOwner(ctx: { personal_account_owner?: boolean; tenant?: { kind?: string } } | undefined, tenantKind?: string | null): boolean {
+  if (ctx?.personal_account_owner !== undefined) return ctx.personal_account_owner;
+  return ctx?.tenant?.kind === 'PERSONAL' || tenantKind === 'PERSONAL';
+}
+
+export async function requestPrivacy(workspace: WorkspaceClient, type: PrivacyRequestType): Promise<PrivacyRequest> {
+  return workspace.call('/v1/sign/me/privacy-requests', 'post', {
+    body: type === 'DELETION' ? { request_type: 'DELETION', confirm: 'DELETE' } : { request_type: type },
+  });
+}

@@ -1,4 +1,4 @@
-# Aramo single-box — daily encrypted Postgres backup schedule (M-A7 §2 / R-15).
+# Aramo single-box — daily encrypted Postgres backup schedule (M-A8 §1.2.2).
 # Fires aramo-pg-backup.service once a day. Persistent=true catches up a missed
 # run if the box was off at the scheduled time (e.g. after a reboot).
 

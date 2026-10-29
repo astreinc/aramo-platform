@@ -1,9 +1,8 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { PrivacyRequestService } from '@aramo/identity';
+import { CognitoIdentityRetirement, NotConfiguredIdentityRetirement, identityRetirementFromEnv, type PrivacyRequestService } from '@aramo/identity';
 
 import { SignPrivacyExecutionService } from '../app/privacy/sign-privacy-execution.service.js';
 import { SignPrivacyExecutionWorker } from '../app/privacy/sign-privacy-execution.worker.js';
-import { CognitoIdentityRetirement, NotConfiguredIdentityRetirement, identityRetirementFromEnv } from '../app/privacy/identity-retirement.port.js';
 
 // Aramo-Sign-Mobile-Amendment-M-A7 §3.2 "Execution is staged" — with
 // SIGN_PRIVACY_DELETION_EXECUTION_ENABLED unset the worker never schedules, never
@@ -44,26 +43,28 @@ describe('privacy deletion execution — staged OFF by default (M-A7 §3.2)', ()
         {} as never,
         {} as never,
         {} as never,
+        {} as never,
       );
       expect(await svc.execute('r1')).toEqual({ status: 'skipped', reason: 'execution_disabled' });
       expect(findById).not.toHaveBeenCalled();
     }
   });
 
-  it('the IdP retirement is not configured without a tenant pool id', async () => {
+  it('the identity-owned retirement port is not configured without a tenant pool id (M-A8 §3.5)', async () => {
     expect(identityRetirementFromEnv({})).toBeInstanceOf(NotConfiguredIdentityRetirement);
     expect(await new NotConfiguredIdentityRetirement().retire()).toBe('not_configured');
     expect(identityRetirementFromEnv({ AUTH_COGNITO_TENANT_USER_POOL_ID: 'us-east-1_x' })).toBeInstanceOf(CognitoIdentityRetirement);
   });
 
-  it('the Cognito retirement signs out then deletes, and reports not_found / failed as codes', async () => {
+  it('the Cognito retirement resolves the user by sub and deletes it — no global sign-out (M-A8 §3.5)', async () => {
     const sent: string[] = [];
-    const ok = new CognitoIdentityRetirement('pool', { send: vi.fn(async (c: { constructor: { name: string } }) => void sent.push(c.constructor.name)) } as never);
-    expect(await ok.retire({ email: 'a@b.co' })).toBe('deleted');
-    expect(sent).toEqual(['AdminUserGlobalSignOutCommand', 'AdminDeleteUserCommand']);
-    const missing = new CognitoIdentityRetirement('pool', { send: vi.fn(async () => Promise.reject(Object.assign(new Error('x'), { name: 'UserNotFoundException' }))) } as never);
-    expect(await missing.retire({ email: 'a@b.co' })).toBe('not_found');
+    const send = vi.fn(async (c: { constructor: { name: string } }) => {
+      sent.push(c.constructor.name);
+      return c.constructor.name === 'ListUsersCommand' ? { Users: [{ Username: 'Google_1', Attributes: [{ Name: 'sub', Value: 's-1' }] }] } : {};
+    });
+    expect(await new CognitoIdentityRetirement('pool', { send } as never).retire({ cognito_sub: 's-1' })).toBe('deleted');
+    expect(sent).toEqual(['ListUsersCommand', 'AdminDeleteUserCommand']);
     const broken = new CognitoIdentityRetirement('pool', { send: vi.fn(async () => Promise.reject(new Error('denied'))) } as never);
-    expect(await broken.retire({ email: 'a@b.co' })).toBe('failed');
+    expect(await broken.retire({ cognito_sub: 's-1' })).toBe('failed');
   });
 });

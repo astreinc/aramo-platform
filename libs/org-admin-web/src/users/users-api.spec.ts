@@ -8,6 +8,7 @@ import {
   fetchTenantUsers,
   inviteTenantUser,
   probeFinancialsToggle,
+  removeTenantUserSignAccess,
 } from './users-api';
 
 function mockJson(status: number, body: unknown) {
@@ -141,6 +142,17 @@ describe('users-api — endpoint wiring', () => {
       '/v1/tenant/users/u1/roles',
     );
     expect(fetchSpy.mock.calls[0]?.[1]?.method).toBe('PATCH');
+  });
+
+  // Aramo-Sign-Mobile-Amendment-M-A8 §2.3.
+  it('DELETE /v1/tenant/users/:user_id/products/sign removes Sign access (no body)', async () => {
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValueOnce(
+      mockJson(200, { membership_id: 'm1', product: 'sign', removed_role_keys: ['sign_sender'], after_role_keys: ['recruiter'], refresh_tokens_revoked: 1, device_sessions_revoked: 1, changed: true }),
+    );
+    const res = await removeTenantUserSignAccess('u 1');
+    expect(fetchSpy.mock.calls[0]?.[0]).toBe('/v1/tenant/users/u%201/products/sign');
+    expect(fetchSpy.mock.calls[0]?.[1]?.method).toBe('DELETE');
+    expect(res.removed_role_keys).toEqual(['sign_sender']);
   });
 });
 

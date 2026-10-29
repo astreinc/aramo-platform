@@ -1,25 +1,30 @@
-# Aramo single-box — scheduled encrypted Postgres backup (M-A7 §2 / R-15).
-# Oneshot, fired by aramo-pg-backup.timer. NOT enabled on the box until the PO
-# completes the enablement steps in doc/runbooks/RUNBOOK-backups-r15.md
-# (age installed, public recipients file, bucket applied from the Mac, writer
-# credential in /etc/aramo/backup.conf).
+# Aramo single-box — scheduled encrypted Postgres backup (M-A8 §1.2).
+# Oneshot, fired by aramo-pg-backup.timer. Enabled on the box only at the M-A8 §4.2
+# box-enablement checkpoint (doc/runbooks/RUNBOOK-backups.md §5): age installed, the
+# public recipients file, the bucket applied from the Mac, the writer credential in
+# /etc/aramo/backup.conf.
 #
 # /etc/aramo/backup.conf (root:root 0600):
 #   BACKUP_S3_URI=s3://aramo-prod-db-backups-use1
+#   BACKUP_KMS_KEY_ID=arn:aws:kms:us-east-1:<acct>:key/<id>   # terraform output backup_kms_key_arn
 #   AWS_REGION=us-east-1
 #   AWS_ACCESS_KEY_ID=…        # aramo-prod-backup-writer (put + list only)
 #   AWS_SECRET_ACCESS_KEY=…
-# /etc/aramo/backup-recipients.txt (root:root 0644): age1… PUBLIC recipients only.
+# /etc/aramo/backup-recipients.txt (root:root 0644): the two age1… PUBLIC recipients.
+#
+# Any failure (backup or prune) triggers aramo-pg-backup-failed.service, which uploads
+# a FAILED heartbeat so the daily freshness check alerts.
 #
 # Install (PO-authorized):
-#   sudo cp deploy/systemd/aramo-pg-backup.{service,timer} /etc/systemd/system/
+#   sudo cp deploy/systemd/aramo-pg-backup{.service,.timer,-failed.service} /etc/systemd/system/
 #   sudo systemctl daemon-reload && sudo systemctl enable --now aramo-pg-backup.timer
-# Logs: journalctl -u aramo-pg-backup.service
+# Logs: journalctl -u aramo-pg-backup.service -u aramo-pg-backup-failed.service
 
 [Unit]
-Description=Aramo box Postgres backup (age-encrypted) → S3, then 30-day local prune
+Description=Aramo box Postgres backup (age-encrypted) → S3, then 7-day local prune
 Requires=docker.service
 After=docker.service aramo-singlebox.service
+OnFailure=aramo-pg-backup-failed.service
 
 [Service]
 Type=oneshot

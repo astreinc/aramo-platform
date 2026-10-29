@@ -22,16 +22,7 @@ ssh_source_cidr = "203.0.113.7/32"
 # app_fqdn          = "astre.aramo.ai"
 # dns_zone_name     = "aramo.ai"
 
-# --- R-15 encrypted backups (M-A7 §2; off by default) — r15-backups.tf ------
-# manage_r15_backups          = true
-# r15_backup_bucket           = "aramo-prod-db-backups-use1"
-# r15_routine_retention_days  = 30
-# r15_historic_retention_days = 30      # PO decision
-# r15_object_lock_enabled     = false   # irreversible; decide BEFORE first apply
+# --- Encrypted database backups: NOT in this root -----------------------------
+# M-A8 §1.1.1 moved them to their own root and state key: infrastructure-backups/
+# (doc/runbooks/RUNBOOK-backups.md).
 
-# --- LEGACY scoped S3-backup IAM (superseded by R-15; leave off) -------------
-# Set true to provision the s3:PutObject-only backup user. The access KEY is
-# generated out-of-band (never in state) — see README §Backup IAM.
-# create_backup_iam_user = true
-# backup_bucket          = "astre-aramo-backups"
-# backup_prefix          = "box/pg"

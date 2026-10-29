@@ -148,8 +148,10 @@ function PersonalSection() {
           <LinkBtn onClick={() => void logout()}>Sign out</LinkBtn>
         </div>
       </section>
-      {/* M-A7 §3.3 — deletion and privacy requests, for every account type. */}
-      <PrivacyRequestsSection personal={ctx.workspace === 'personal'} />
+      {/* M-A7 §3.3 + M-A8 §2 — privacy requests for every account type; "Delete my account" only
+          for the Personal account owner (backend-decided; an older backend without the flag
+          falls back to the workspace kind). Business users are organization-managed. */}
+      <PrivacyRequestsSection personal={ctx.personal_account_owner ?? ctx.workspace === 'personal'} />
       {/* Personal (Free) — the owner of an open Personal account may close it (backend-decided). */}
       {ctx.workspace === 'personal' ? <CloseAccountSection /> : null}
     </>

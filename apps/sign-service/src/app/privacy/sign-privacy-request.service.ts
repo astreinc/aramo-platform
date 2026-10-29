@@ -36,8 +36,12 @@ import { SIGN_BUSINESS_RETAINED_CATEGORY, SIGN_RETAINED_CATEGORIES, SignPrivacyE
 //                            "Close account" performed); with execution ENABLED the
 //                            request moves to EXECUTING and is executed now.
 //            Business member: REFERRED_TO_ORGANIZATION (the organization decides about
-//                            its documents; Aramo stays responsible); with execution
-//                            ENABLED Aramo then executes the member's own part.
+//                            its documents; Aramo stays responsible) and the Aramo
+//                            privacy-team queue. M-A8 §2.2: NEVER executed by self-
+//                            service, whatever the execution flag — only an operator
+//                            approval (platform-admin → EXECUTING) runs the member's
+//                            own part. "Business" = any subject that is not the
+//                            tenant_owner of a PERSONAL tenant (M-A8 §2.1).
 //            Other types (ACCESS, EXPORT, CORRECTION) wait for the privacy team.
 //   One open request per (user, type): a repeat answers the open one.
 //
@@ -197,6 +201,11 @@ export class SignPrivacyRequestService {
       await this.requests.recordEvent(cur.id, 'LEGAL_HOLD', SYSTEM, { reason: 'tenant_legal_hold' }, now);
       return cur;
     }
+    // Aramo-Sign-Mobile-Amendment-M-A8 §2.2 — the authenticated_self_service →
+    // EXECUTING step is removed for Business subjects: the request stays
+    // REFERRED_TO_ORGANIZATION in the privacy-team queue (operator-approved execution
+    // only, behind the execution flag).
+    if (!personalOwner) return cur;
     if (!privacyDeletionExecutionEnabled()) return cur;
     cur = await this.requests.transition(cur.id, 'EXECUTING', SYSTEM, { now, payload: { authorized_by: 'authenticated_self_service' } });
     try {

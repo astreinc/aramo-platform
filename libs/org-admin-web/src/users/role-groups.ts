@@ -28,6 +28,8 @@ export const LAST_OWNER_BLOCK = 'An organization needs at least one Tenant Owner
 /** Directive §4.4 — the 409 TENANT_LAST_OWNER mapping. */
 export const LAST_OWNER_409 = 'Your organization must keep at least one owner.';
 export const KEEP_ONE_ROLE_HINT = 'To remove all access, disable the user in Users & invitations.';
+/** M-A8 §2.3 — an organization role carries Aramo Sign of its own; Remove Sign access never changes it. */
+export const SIGN_VIA_ORG_ROLE_HINT = 'This person has Aramo Sign through an organization role. Change their organization role instead.';
 
 export function groupOfRole(role: Pick<RoleCatalogView, 'key' | 'tier'>): RoleGroupKey | null {
   if (NON_TENANT_TIERS.includes(role.tier)) return null;
@@ -102,6 +104,7 @@ export function roleWriteErrorMessage(err: unknown): string {
     if (reason === 'empty_role_keys') return 'Select at least one role.';
     if (reason === 'self_disable_forbidden') return 'You can’t disable yourself.';
     if (reason === 'invertible_role_union') return 'These roles can’t be combined. Choose roles that don’t overlap on compensation visibility.';
+    if (reason === 'sign_access_via_organization_role') return SIGN_VIA_ORG_ROLE_HINT;
     if (reason === 'financials_audit_not_enabled') return 'Enable "Financial-auditor grant" in Settings before assigning the Auditor with Financials role.';
     if (err.status === 404) return 'This user is not part of your organization.';
   }

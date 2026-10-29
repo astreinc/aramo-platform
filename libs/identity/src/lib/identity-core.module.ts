@@ -24,6 +24,8 @@ import { GEO_IP_PORT, MaxmindGeoIpAdapter } from './personal/geo-ip.port.js';
 import { PersonalRiskService } from './personal/personal-risk.service.js';
 import { PrivacyRequestService } from './privacy/privacy-request.service.js';
 import { PrivacySubjectService } from './privacy/privacy-subject.service.js';
+import { IdentityDependencyInspector } from './privacy/identity-dependency-inspector.service.js';
+import { IDENTITY_RETIREMENT_PORT, identityRetirementFromEnv } from './privacy/identity-retirement.port.js';
 import { PersonalSignupRepository } from './personal/personal-signup.repository.js';
 import { ROBOT_CHECK_PORT, robotCheckAdapterFromEnv } from './personal/robot-check.port.js';
 import { SMS_VERIFICATION_PORT, smsVerificationAdapterFromEnv } from './personal/sms-verification.port.js';
@@ -106,6 +108,10 @@ import { ProductAvailabilityService } from './authorization/product-availability
     // Aramo-Sign-Mobile-Amendment-M-A7 §3 — the platform privacy-request capability.
     PrivacyRequestService,
     PrivacySubjectService,
+    // M-A8 §3.2 / §3.5 — dependency inspection + the identity-owned retirement port (the
+    // one AWS adapter, chosen from AUTH_COGNITO_TENANT_USER_POOL_ID; opens nothing until use).
+    IdentityDependencyInspector,
+    { provide: IDENTITY_RETIREMENT_PORT, useFactory: () => identityRetirementFromEnv(process.env) },
     { provide: GEO_IP_PORT, useFactory: () => new MaxmindGeoIpAdapter() },
     { provide: SMS_VERIFICATION_PORT, useFactory: () => smsVerificationAdapterFromEnv() },
     { provide: ROBOT_CHECK_PORT, useFactory: () => robotCheckAdapterFromEnv() },
@@ -149,6 +155,8 @@ import { ProductAvailabilityService } from './authorization/product-availability
     PersonalRiskService,
     PrivacyRequestService,
     PrivacySubjectService,
+    IdentityDependencyInspector,
+    IDENTITY_RETIREMENT_PORT,
     PersonalSignupRepository,
     GEO_IP_PORT,
     SMS_VERIFICATION_PORT,

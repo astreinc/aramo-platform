@@ -39,6 +39,8 @@ export const EVENT_TYPE_OPTIONS: readonly EventTypeOption[] = [
   { value: 'identity.tenant_user.disabled', label: 'User disabled' },
   { value: 'identity.tenant_user.role_assigned', label: 'Role assigned' },
   { value: 'identity.tenant_user.role_removed', label: 'Role removed' },
+  // M-A8 §2.3 — Remove Sign access.
+  { value: 'identity.tenant_user.product_access_removed', label: 'Product access removed' },
   { value: 'identity.tenant_user.enabled', label: 'User enabled' },
   // ORG-UX-1 §8.3 (G9) — invitation lifecycle.
   { value: 'identity.tenant_user.invitation_resent', label: 'Invitation resent' },

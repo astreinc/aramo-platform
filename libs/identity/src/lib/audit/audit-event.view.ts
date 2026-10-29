@@ -58,6 +58,8 @@ export function categoryOf(eventType: EventType): AuditCategory {
     eventType.startsWith('identity.scope.') ||
     eventType === 'identity.tenant_user.role_assigned' ||
     eventType === 'identity.tenant_user.role_removed' ||
+    // M-A8 §2.3 — an administrator removed a member's product access.
+    eventType === 'identity.tenant_user.product_access_removed' ||
     // ROLES-1 PR-2 — the role-model reconciliation grants/removals.
     eventType === 'ROLES1_RECONCILE_GRANT' ||
     eventType === 'ROLES1_RECONCILE_REVOKE'
@@ -129,6 +131,9 @@ export function summarizeDetail(
         ? `${verb} roles`
         : `${verb} role(s): ${roles}`;
     }
+    // M-A8 §2.3 — the product only (never the token or session ids).
+    case 'identity.tenant_user.product_access_removed':
+      return str(payload['product']) === 'sign' ? 'Removed Aramo Sign access' : 'Removed product access';
     case 'identity.tenant_user.disabled': {
       const reason = str(payload['reason']);
       return reason === null ? 'Disabled tenant access' : `Disabled tenant access — ${reason}`;

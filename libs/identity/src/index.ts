@@ -217,10 +217,14 @@ export {
 } from './lib/tenant-user/role-bundle-validator.js';
 export {
   TenantUserLifecycleService,
+  // Aramo-Sign-Mobile-Amendment-M-A8 §2.3 — the Sign session consumers revoked with Sign access.
+  SIGN_REFRESH_TOKEN_CONSUMERS,
+  SIGN_NATIVE_SESSION_CONSUMER,
 } from './lib/tenant-user/tenant-user-lifecycle.service.js';
 export type {
   InviteResult,
   DisableResult,
+  RemoveProductAccessResult,
 } from './lib/tenant-user/tenant-user-lifecycle.service.js';
 // Invite-S2 (Pattern-2) — the public acceptance flow's lifecycle service,
 // consumed by apps/api's un-guarded PublicInvitationController.
@@ -447,7 +451,25 @@ export {
   type PrivacyRequestView,
   type PrivacyTransitionPatch,
 } from './lib/privacy/privacy-request.service.js';
-export { PrivacySubjectService, type PrivacyOtherAuthorization, type PrivacySubjectContext } from './lib/privacy/privacy-subject.service.js';
+export { PrivacySubjectService, isRetiredEmailTombstone, retiredEmailTombstone, type PrivacySubjectContext } from './lib/privacy/privacy-subject.service.js';
+// Aramo-Sign-Mobile-Amendment-M-A8 §3.2 / §3.5 — dependency inspection + identity-owned retirement.
+export {
+  IDENTITY_DEPENDENCY_CODES,
+  IdentityDependencyInspector,
+  dependencyEvidence,
+  type IdentityDependencyCode,
+  type IdentityDependencyReport,
+} from './lib/privacy/identity-dependency-inspector.service.js';
+export {
+  CognitoIdentityRetirement,
+  IDENTITY_RETIREMENT_PORT,
+  NotConfiguredIdentityRetirement,
+  identityRetirementFromEnv,
+  linkedProviderCount,
+  type IdentityPoolLookup,
+  type IdentityRetirementOutcome,
+  type IdentityRetirementPort,
+} from './lib/privacy/identity-retirement.port.js';
 export {
   decryptPrivacyEmail,
   isPlausibleEmail,

@@ -505,9 +505,38 @@ describe('IC-2 PR-6 — consumer→product capability gate (mint + refresh)', ()
   it('refresh: the capability is re-proven — a removed ats/esign entitlement denies consumer_not_entitled; missing consumer is unsupported', async () => {
     expect(await adapter(makeDeps({ capabilities: ['core'] })).resolveScopes({ ...REFRESH, consumer: 'recruiter' })).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
     expect(await adapter(makeDeps({ capabilities: ['core', 'ats'] })).resolveScopes({ ...REFRESH, consumer: 'sign' })).toEqual({ kind: 'denied', reason: 'consumer_not_entitled' });
-    expect((await adapter(makeDeps({ capabilities: ['core', 'sign'] })).resolveScopes({ ...REFRESH, consumer: 'sign' })).kind).toBe('resolved');
+    const signDeps = makeDeps({ capabilities: ['core', 'sign'] });
+    signDeps.getScopesByUserAndTenant.mockResolvedValue(['sign:envelope:read']);
+    expect((await adapter(signDeps).resolveScopes({ ...REFRESH, consumer: 'sign' })).kind).toBe('resolved');
     expect(await adapter(makeDeps()).resolveScopes(REFRESH)).toEqual({ kind: 'denied', reason: 'consumer_not_supported' });
     expect((await adapter(makeDeps({ capabilities: [] })).resolveScopes({ ...REFRESH, consumer: 'platform' })).kind).toBe('resolved');
+  });
+});
+
+// Aramo-Sign-Mobile-Amendment-M-A8 §2.4 — a `sign` refresh (browser and native both
+// re-mint as consumer `sign`) requires Sign authority in the tenant, read live.
+describe('M-A8 §2.4 — Sign refresh requires Sign authority in the tenant', () => {
+  const REFRESH = { principal_id: USER_ID, context_id: TENANT_ID };
+  const signRefresh = { ...REFRESH, consumer: 'sign' as const };
+  it('no `sign:` scope left (Sign roles removed by an administrator) → denied sign_access_removed', async () => {
+    const d = makeDeps({ capabilities: ['core', 'sign', 'ats'] });
+    d.getScopesByUserAndTenant.mockResolvedValue(['talent:read', 'requisition:read']);
+    expect(await adapter(d).resolveScopes(signRefresh)).toEqual({ kind: 'denied', reason: 'sign_access_removed' });
+  });
+  it('a Sign product role or an organization role carrying Sign permissions → resolved', async () => {
+    const d = makeDeps({ capabilities: ['core', 'sign'] });
+    d.getScopesByUserAndTenant.mockResolvedValue(['sign:envelope:read', 'sign:envelope:send']);
+    expect((await adapter(d).resolveScopes(signRefresh)).kind).toBe('resolved');
+  });
+  it('a site-scoped membership is checked on its site-scoped scopes', async () => {
+    const d = makeDeps({ capabilities: ['core', 'sign'], site: SITE_ID });
+    d.getScopesByUserTenantAndSite.mockResolvedValue(['talent:read']);
+    expect(await adapter(d).resolveScopes(signRefresh)).toEqual({ kind: 'denied', reason: 'sign_access_removed' });
+  });
+  it('other consumers are unaffected (an ATS refresh needs no `sign:` scope)', async () => {
+    const d = makeDeps({ capabilities: ['core', 'ats'] });
+    d.getScopesByUserAndTenant.mockResolvedValue(['talent:read']);
+    expect((await adapter(d).resolveScopes({ ...REFRESH, consumer: 'recruiter' })).kind).toBe('resolved');
   });
 });
 

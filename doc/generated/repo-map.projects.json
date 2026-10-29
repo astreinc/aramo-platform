@@ -1040,6 +1040,7 @@
       "AuthorizationResolverModule",
       "AuthorizationVersionService",
       "BILLING_REGION_US",
+      "CognitoIdentityRetirement",
       "CursorDecodeError",
       "DEFAULT_PERSONAL_ALLOWED_COUNTRIES",
       "DEFAULT_PERSONAL_PILOT_CAP",
@@ -1069,10 +1070,13 @@
       "GEOIP_RECHECK_MS",
       "GEO_IP_PORT",
       "HOSTING_ASN_KEYWORDS",
+      "IDENTITY_DEPENDENCY_CODES",
+      "IDENTITY_RETIREMENT_PORT",
       "INVITE_STATUSES",
       "IdentityAuditRepository",
       "IdentityAuditService",
       "IdentityCoreModule",
+      "IdentityDependencyInspector",
       "IdentityEffectiveAuthorizationResolver",
       "IdentityModule",
       "IdentityProviderPolicyService",
@@ -1085,6 +1089,7 @@
       "ManagementEdgeRepository",
       "MaxmindGeoIpAdapter",
       "NodeDnsAdapter",
+      "NotConfiguredIdentityRetirement",
       "ORGANIZATION_COUNTRY_NOT_SUPPORTED",
       "ORGANIZATION_DETAILS_INVALID",
       "ORGANIZATION_PROFILE_INCOMPLETE",
@@ -1133,6 +1138,7 @@
       "SEE_ALL_ROLE_KEYS",
       "SEND_LOCATION_YOUNG_ACCOUNT_DAYS",
       "SIGNUP_PROVISIONING_STALE_MS",
+      "SIGN_NATIVE_SESSION_CONSUMER",
       "SIGN_ORGANIZATION_ROLE_DISPLAY",
       "SIGN_ORGANIZATION_ROLE_KEYS",
       "SIGN_SESSION_DOCUMENT_TEMPLATE_SCOPE_KEYS",
@@ -1169,6 +1175,7 @@
       "decisionForPoints",
       "decodeCursor",
       "decryptPrivacyEmail",
+      "dependencyEvidence",
       "deriveAllowedDomainOrThrow",
       "deriveSlugOrThrow",
       "domainUnavailableError",
@@ -1186,6 +1193,7 @@
       "geoEvidenceOf",
       "hashPersonalInviteCode",
       "hashPersonalOtp",
+      "identityRetirementFromEnv",
       "initialRiskState",
       "isDomainVerificationStatus",
       "isEsignRoleKey",
@@ -1194,9 +1202,11 @@
       "isLegalTransition",
       "isPersonalOrDisposableDomain",
       "isPlausibleEmail",
+      "isRetiredEmailTombstone",
       "isTenantKind",
       "isTenantLastOwnerViolation",
       "isTenantStatus",
+      "linkedProviderCount",
       "looksRandom",
       "mayResendPersonalOtp",
       "mmdbVersion",
@@ -1217,6 +1227,7 @@
       "requiredCapabilityForConsumer",
       "restrictionInForce",
       "rethrowTenantLastOwner",
+      "retiredEmailTombstone",
       "robotCheckAdapterFromEnv",
       "safeGeoLookup",
       "sendLocation",
@@ -3765,6 +3776,18 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/m-a8-remove-sign-access.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/m-a8-remove-sign-access.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/platform-dashboard.service.spec.ts",
         "project": "identity",
         "status": "excluded"
@@ -4317,6 +4340,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/m-a8-sign-access-removed-refresh.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/auth-service/src/tests/native-auth-pages.module-order.spec.ts",
         "project": "auth-service",
         "status": "excluded"
@@ -4455,6 +4484,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/auth-service/src/tests/identity-audit-sink.adapter.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/m-a8-sign-access-removed-refresh.integration.spec.ts",
         "project": "auth-service",
         "status": "excluded"
       },
@@ -6190,6 +6225,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/m-a8-sign-access-removed-refresh.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/auth-service/src/tests/native-auth.integration.spec.ts",
         "project": "auth-service",
         "status": "excluded"
@@ -6744,6 +6785,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/invite-s3-actions.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/m-a8-remove-sign-access.integration.spec.ts",
         "project": "identity",
         "status": "excluded"
       },
@@ -7699,6 +7746,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/m-a6-from-template-roles.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/m-a8-personal-deletion.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -10171,6 +10224,12 @@
         "status": "excluded"
       },
       {
+        "excludedBy": "src/**/*.spec.tsx",
+        "from": "apps/sign-web/src/workspace/pages/PrivacyRequests.spec.tsx",
+        "project": "aramo-sign-web",
+        "status": "excluded"
+      },
+      {
         "excludedBy": "src/**/*.spec.ts",
         "from": "apps/sign-web/src/workspace/pages/field-config.spec.ts",
         "project": "aramo-sign-web",
@@ -10442,6 +10501,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/auth-service/src/tests/identity-principal-directory.adapter.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/m-a8-sign-access-removed-refresh.integration.spec.ts",
         "project": "auth-service",
         "status": "excluded"
       },
@@ -10740,6 +10805,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/m-a6-from-template-roles.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/m-a8-personal-deletion.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -11265,6 +11336,12 @@
       { "project": "api", "status": "production" },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/auth-service/src/tests/m-a8-sign-access-removed-refresh.integration.spec.ts",
+        "project": "auth-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/auth-service/src/tests/portal-login-adapters.spec.ts",
         "project": "auth-service",
         "status": "excluded"
@@ -11285,6 +11362,18 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/identity/src/tests/invite-s3-actions.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/m-a8-remove-sign-access.integration.spec.ts",
+        "project": "identity",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/identity/src/tests/m-a8-remove-sign-access.spec.ts",
         "project": "identity",
         "status": "excluded"
       },
@@ -11330,6 +11419,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/launch-lifecycle.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/m-a8-personal-deletion.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -12552,6 +12647,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/m-a6-from-template-roles.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/m-a8-personal-deletion.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

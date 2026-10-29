@@ -2449,6 +2449,8 @@ describe.skipIf(process.env['ARAMO_RUN_INTEGRATION'] !== '1')(
         'identity.tenant_user.enabled',
         'identity.tenant_user.invitation_resent',
         'identity.tenant_user.invitation_revoked',
+        // M-A8 §2.3 — Remove Sign access.
+        'identity.tenant_user.product_access_removed',
         'identity.tenant_user.role_assigned',
         'identity.tenant_user.role_removed',
         'identity.user_client_assignment.created',

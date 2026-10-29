@@ -303,10 +303,12 @@ describe.skipIf(process.env['ARAMO_RUN_PACT_PROVIDER'] !== '1')(
         })
         .overrideProvider(RoleService)
         .useValue({
-          getScopesByUserAndTenant: async () => ['auth:session:read'],
+          // M-A8 §2.4 — a sign / sign_native refresh needs Sign authority, so the
+          // pact principal (a Sign mobile user) holds one Sign scope.
+          getScopesByUserAndTenant: async () => ['auth:session:read', 'sign:envelope:read'],
           // HF-AUTH-1 — the server-side resolver resolves via the site-aware
-          // reader; return the same fixed session scope for the pact principal.
-          getScopesByUserTenantAndSite: async () => ['auth:session:read'],
+          // reader; return the same fixed session scopes for the pact principal.
+          getScopesByUserTenantAndSite: async () => ['auth:session:read', 'sign:envelope:read'],
           // M-A1 — the native mint/refresh paths stamp the site axis (tenant-wide here).
           findActiveMembershipSite: async () => null,
         })

@@ -9,7 +9,7 @@ import { ARAMO_SIGN_IDENTITY } from '../legal/identity';
 export const DELETE_ACCOUNT_PATH = '/delete-account';
 
 const TYPE_LABEL: Record<string, string> = {
-  DELETION: 'Delete my account and data',
+  DELETION: 'Delete my account or personal information',
   ACCESS: 'See my data',
   EXPORT: 'Get a copy of my data',
   CORRECTION: 'Correct my data',

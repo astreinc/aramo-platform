@@ -2325,6 +2325,8 @@ export interface components {
             org_admin?: boolean;
             /** @description ORG-UX-1 §6 — Organization → Users & product access (the single role-assignment surface), or null. */
             organization_roles_url?: string | null;
+            /** @description Aramo-Sign-Mobile-Amendment-M-A8 §2.1 — true only for the tenant_owner of a PERSONAL tenant, who may delete their own account. Every other subject is a Business user: the organization manages the account; privacy requests stay available. */
+            personal_account_owner?: boolean;
         };
         /** @description Amendment M-A6 §3.2 — a template signing role. SIGNER roles sign; CC roles receive a copy. */
         SenderTemplateRole: {

@@ -1,4 +1,4 @@
-# Aramo — Box Deploy Runbook v2.4
+# Aramo — Box Deploy Runbook v2.5
 
 **Status:** Canonical operational runbook — v2.2
 **Scope:** Planned-window deploys to the single prod box (`/opt/aramo`), build-on-box model
@@ -10,6 +10,14 @@ window.
 *[v2.1 INVERSION, per PO ruling: the repo-tracked file is now the source of truth — matching the six
 sibling runbooks already in `doc/runbooks/`. OneDrive is the mirror. This reverses v2.0's
 declaration.]*
+
+**Changelog v2.4 → v2.5**
+- **STEP 2 encrypted only (M-A8 §1.2.3–§1.2.4).** The pre-deploy backup is
+  `deploy/backup/aramo-backup.sh --label pre-<sha>` (age + SSE-KMS, heartbeat); the interim plaintext
+  `pg_dump > /opt/aramo-backups/pre-<sha>-backup-*.sql` path is removed, and a window without an
+  encrypted backup stops before STEP 3. `.env` edits are preceded by an encrypted snapshot
+  (`deploy/backup/aramo-env-snapshot.sh`), never a plaintext copy. ROLLBACK DB restores go into a new
+  standalone container and pass deletion reconciliation first. Procedure: `RUNBOOK-backups.md`.
 
 **Changelog v2.3 → v2.4**
 - **nginx ⊥ esign-service HARD STARTUP COUPLING (post-mortem, `e176db48`).** The nginx image's
@@ -132,43 +140,39 @@ report.** Do NOT proceed on the wrong code.
 ### STEP 2 — DB BACKUP (precondition for migrate)
 Before any migration, **take a fresh DB backup here — `migrate-prod.sh` does NOT take one.**
 
-**R-15 (M-A7 §2, from the window after the PO completes enablement E-1…E-6 in
-`doc/runbooks/RUNBOOK-backups-r15.md`):** use the encrypted backup script. It dumps every database
+**M-A8 §1.2.3 (encrypted only):** use the encrypted backup script. It dumps every database
 (`aramo`, `aramo_intelligence`) plus roles, encrypts with `age` before anything touches the disk,
-writes `0600` files in a `0700` root-only directory with a manifest, and uploads to the encrypted
-bucket:
+writes `0600` files in a `0700` root-only directory with a manifest, uploads to the encrypted bucket
+with SSE-KMS named explicitly, and writes a heartbeat (`doc/runbooks/RUNBOOK-backups.md` §6):
 ```
 cd /opt/aramo
-sudo deploy/backup/aramo-backup.sh --label "pre-${TARGET_SHA:0:8}"
+sudo sh -c 'set -a; . /etc/aramo/backup.conf; set +a; deploy/backup/aramo-backup.sh --label "pre-'"${TARGET_SHA:0:8}"'"'
 # stdout: the run directory; stderr: one line per database with bytes / tables / ledger rows
 ```
 **GATE:** exit 0 and a non-zero byte count for every database. The script fails closed on a failed or
-empty dump, a missing database, an unsafe directory or a recipients file holding a private key.
-Record the printed `run_id` in the window report. Do **not** also take a raw `pg_dump`.
+empty dump, a missing database, an unsafe directory, a recipients file holding a private key, a missing
+KMS key id or an upload whose checksum does not match. Record the printed `run_id` in the window report.
 
-**Interim (ONLY while R-15 enablement is incomplete):** the legacy plaintext dump, now written
-owner-only so no other account on the box can read it:
+**No plaintext dump.** The deploy procedure no longer writes `pre-<sha>-backup-*.sql` (or any raw
+`pg_dump` output) anywhere. If the encrypted backup cannot run (box enablement, M-A8 §4.2, not done
+yet, or the script fails), **STOP**: the window does not proceed to STEP 3 without an encrypted backup.
+
+**`.env` changes:** before editing `/opt/aramo/.env` in any window, take an encrypted snapshot, never a
+plaintext copy (`cp .env …` is retired):
 ```
-# Dump by explicit role + db — DATABASE_URL is NOT in the postgres container's env, so
-# `pg_dump "$DATABASE_URL"` fails SILENTLY (falls back to role `root`) and writes a 0-byte
-# file. Use $POSTGRES_USER / $POSTGRES_DB (which ARE in the container env):
-sudo sh -c 'umask 077; docker exec aramo-prod-postgres sh -c '"'"'pg_dump -U "$POSTGRES_USER" -d "$POSTGRES_DB"'"'"' > /opt/aramo-backups/pre-'"${TARGET_SHA:0:8}"'-backup-$(date +%Y%m%d-%H%M%S).sql'
-# VERIFY SIZE before STEP 3: a 0-byte / trivially-small file is NOT a backup. Confirm a
-# real dump (hundreds of KB+, a trailing "-- PostgreSQL database dump complete" marker).
-sudo ls -l /opt/aramo-backups/pre-*-backup-*.sql | tail -1
-sudo tail -1 "$(sudo ls -1t /opt/aramo-backups/pre-*-backup-*.sql | head -1)"   # → completion marker
+sudo sh -c 'set -a; . /etc/aramo/backup.conf; set +a; deploy/backup/aramo-env-snapshot.sh --label "pre-'"${TARGET_SHA:0:8}"'"'
+# → /var/backups/aramo-r15/env/env-pre-<sha>.age (0600; 3 newest kept) + s3://…/historic/env/
 ```
-Interim dumps join the historic set governed by RUNBOOK-backups-r15.md §8 (inventoried, never
-deleted without PO approval).
 
 **GATE:** a verified, complete pre-migration backup must exist before STEP 3. A failed migration
 with no backup is the one genuinely unrecoverable scenario. (Skip only if RUN_MIGRATE=no.)
 > **Defect history:** the `pg_dump "$DATABASE_URL"` form silently produced a 0-byte file in
 > the 2026-09-02 window (DATABASE_URL absent from the container env → fell back to role
-> `root` → failed). Corrected to the `-U/-d` form above.
-> **R-15 history (G-1, 2026-10-28):** 55 plaintext dumps accumulated on the box (38 `.sql` in
-> `/opt/aramo-backups`, 1 `.dump` there, 13 in `/opt/aramo`, 3 in `/var/backups/aramo`), mostly mode
-> `0644`, with no expiry. Hence the encrypted script above.
+> `root` → failed). The script uses `-U "$POSTGRES_USER"` inside the container, never `DATABASE_URL`.
+> **History (G-1 / M-A8 recon, 2026-10-28):** 58 plaintext dumps, 3 non-dump `.sql` files and 37
+> `.env` copies had accumulated on the box, 56 of the dumps group- or world-readable, with no expiry.
+> Hence the encrypted script above; the historic files each get one disposition under
+> RUNBOOK-backups.md §10.
 
 ### STEP 3 — MIGRATE (only if RUN_MIGRATE=yes)
 ```
@@ -294,8 +298,10 @@ endpoint, a routing change, a UI element). Prove the *change*, not just that the
    (`docker images aramo/*`). Recreate from the prior tag to restore service.
 3. **If prior images are gone** (e.g. GC'd after a `--no-cache` build): the fallback is
    `git checkout <previous known-good SHA>` + rebuild + recreate — slower, but restores service.
-4. **DB:** if a migration is implicated, the STEP-2 backup is the restore point. Restoring DB is a
-   deliberate, last-resort operation — surface options to the PO, do not auto-execute.
+4. **DB:** if a migration is implicated, the STEP-2 encrypted backup (`routine/<run_id>`) is the
+   restore point. Restoring DB is a deliberate, last-resort operation — surface options to the PO, do
+   not auto-execute. A restore goes into a new standalone container and passes deletion
+   reconciliation before it serves traffic (RUNBOOK-backups.md §8).
 5. **Astre was serving before STEP 6** — restoring the prior images/SHA restores it.
 6. **S2 write-guard triggers (S2 release onward):** these live in the DATABASE — an image
    rollback does NOT remove them. If normal talent writes fail with an `s2_guard_*` / trigger error,

@@ -96,32 +96,6 @@ variable "manage_dns" {
   default     = true
 }
 
-# --- Optional scoped S3-backup IAM (Directive §D) ---------------------------
-
-variable "create_backup_iam_user" {
-  description = "If true, provision the s3:PutObject-only IAM user the Directive-3 backup job uses. The ACCESS KEY is NOT created here (it would land in state, §D) — generate it out-of-band after apply (see README §Backup IAM). Default false: opt in deliberately."
-  type        = bool
-  default     = false
-}
-
-variable "backup_iam_user_name" {
-  description = "Name for the scoped backup IAM user."
-  type        = string
-  default     = "astre-aramo-backup-putter"
-}
-
-variable "backup_bucket" {
-  description = "The backup bucket (the box pg_dump target). Matches BACKUP_S3_URI in the ops runbook (s3://astre-aramo-backups/box/pg)."
-  type        = string
-  default     = "astre-aramo-backups"
-}
-
-variable "backup_prefix" {
-  description = "The key prefix under which dumps land. The IAM policy grants PutObject on <prefix>/* and nothing else."
-  type        = string
-  default     = "box/pg"
-}
-
 variable "manage_api_secrets_policy" {
   description = "If true, attach the Secrets Manager read/write inline policy to the pre-existing API IAM user (COMM-C2B connector app-credential + per-recruiter delegated token custody). The user itself and its access key are provisioned out-of-band (never in TF state)."
   type        = bool
