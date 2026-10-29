@@ -2134,6 +2134,9 @@
       "EVENT_PUBLISHER_PORT",
       "EVIDENCE_MANIFEST_SIGNER_PORT",
       "EXECUTED_ACCESS_TTL_DAYS_DEFAULT",
+      "EXECUTED_ARTIFACT_INTEGRITY_CONFLICT",
+      "EXECUTED_DOCUMENT_RECORDED",
+      "EXECUTION_CERTIFICATE_RECORDED",
       "EXECUTION_PRODUCER_PORT",
       "EnvelopeAlreadyExecutedError",
       "EnvelopeAmbiguousError",
@@ -2146,6 +2149,8 @@
       "EsignRepository",
       "EsignSenderRepository",
       "EsignService",
+      "ExecutedArtifactIntegrityConflictError",
+      "ExecutedArtifactLedgerMismatchError",
       "ExecutionService",
       "HOSTED_SESSION_STARTED_EVENT",
       "HOSTED_SESSION_TTL_MS",
@@ -7673,6 +7678,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/executed-artifact-integrity.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/sign/src/tests/execution-stamping.integration.spec.ts",
         "project": "sign",
         "status": "excluded"
@@ -8996,6 +9007,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "libs/sign/src/tests/esign-flow.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/executed-artifact-integrity.integration.spec.ts",
         "project": "sign",
         "status": "excluded"
       },

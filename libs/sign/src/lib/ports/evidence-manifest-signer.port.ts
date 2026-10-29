@@ -22,6 +22,25 @@ export interface EvidenceManifest {
   signers: string[];
   completed_at: string | null;
   service_version: string;
+  // Aramo-Sign-Executed-Artifact-Custody-and-Isolation-Directive-v1_0-LOCKED SX-1
+  // item 3 — EVERY executed document's hash and the certificate's, taken from the
+  // append-only ledger. `artifact_hash_source` says where they came from: LEDGER,
+  // LEGACY_UNLEDGERED_ROW (completed before SX-1, no ledger record, bytes
+  // re-digested), or NONE (nothing produced yet). Optional only so manifests built
+  // by other callers still type-check; EsignService always sets them.
+  executed_documents?: EvidenceArtifactHash[];
+  certificate?: EvidenceArtifactHash | null;
+  artifact_hash_source?: EvidenceArtifactHashSource;
+}
+
+export type EvidenceArtifactHashSource = 'LEDGER' | 'LEGACY_UNLEDGERED_ROW' | 'NONE';
+
+export interface EvidenceArtifactHash {
+  artifact_id: string;
+  envelope_document_id: string | null;
+  sha256: string;
+  byte_size: number;
+  source_sha256?: string;
 }
 
 export interface SignedEvidenceManifest {

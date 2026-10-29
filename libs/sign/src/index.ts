@@ -103,8 +103,20 @@ export {
   SoftwareEvidenceManifestSigner,
   type EvidenceManifestSignerPort,
   type EvidenceManifest,
+  type EvidenceArtifactHash,
+  type EvidenceArtifactHashSource,
   type SignedEvidenceManifest,
 } from './lib/ports/evidence-manifest-signer.port.js';
+// SX-1 — insert-only executed artifacts + their independent ledger hash record.
+export {
+  EXECUTED_DOCUMENT_RECORDED,
+  EXECUTION_CERTIFICATE_RECORDED,
+  EXECUTED_ARTIFACT_INTEGRITY_CONFLICT,
+  ExecutedArtifactIntegrityConflictError,
+  ExecutedArtifactLedgerMismatchError,
+  type ExecutedArtifactKind,
+  type ExecutedArtifactLedgerMismatchReason,
+} from './lib/domain/executed-artifact-integrity.js';
 export {
   generateSigningToken,
   hashSigningToken,
