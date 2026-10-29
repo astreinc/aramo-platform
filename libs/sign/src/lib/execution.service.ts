@@ -9,7 +9,7 @@ import {
 } from '@aramo/documents-rendering';
 
 import { PrismaService } from './prisma/prisma.service.js';
-import { EsignRepository } from './esign.repository.js';
+import { EsignRepository, type LockingTx } from './esign.repository.js';
 import { OutboxService } from './outbox.service.js';
 import {
   DOCUMENT_SOURCE_PROVIDER_PORT,
@@ -23,6 +23,15 @@ import { ENVELOPE_NOTIFICATION_SERVICE, type EnvelopeNotificationService } from 
 import { STORAGE_ACCOUNTING_PORT, type StorageAccountingPort } from './ports/storage-accounting.port.js';
 import { SENDER_DIRECTORY_PORT, type SenderDirectoryPort } from './ports/sender-directory.port.js';
 import { signingRecipients } from './domain/recipients.js';
+import {
+  EXECUTED_ARTIFACT_INTEGRITY_CONFLICT,
+  EXECUTED_DOCUMENT_RECORDED,
+  EXECUTION_CERTIFICATE_RECORDED,
+  ExecutedArtifactIntegrityConflictError,
+  type ExecutedArtifactKind,
+  type ExecutedArtifactRecordedPayload,
+} from './domain/executed-artifact-integrity.js';
+import { EXECUTED_ARTIFACT_CUSTODY_PORT, type ExecutedArtifactCustodyPort } from './ports/executed-artifact-custody.port.js';
 
 // DOC-4 (R-4-3) — executed-document production. On COMPLETED, stamp each filled
 // SignatureField onto the frozen source PDF (typed text for TYPED/text fields;
@@ -52,6 +61,16 @@ function parseImageDataUrl(value: string): { bytes: Uint8Array; format: 'PNG' | 
   const format = m[1] === 'png' ? 'PNG' : 'JPG';
   return { bytes: new Uint8Array(Buffer.from(b64, 'base64')), format };
 }
+
+function isUniqueViolation(e: unknown): boolean {
+  return typeof e === 'object' && e !== null && (e as { code?: unknown }).code === 'P2002';
+}
+
+// SX-1 — the certificate is rendered and inserted under the envelope row lock, so
+// allow more than Prisma's 5 s interactive-transaction default.
+const ARTIFACT_TX_OPTIONS = { timeout: 30_000, maxWait: 10_000 } as const;
+
+type ArtifactTx = LockingTx & Pick<PrismaService, 'executedDocument' | 'executionCertificate'>;
 
 // M-A6 §1 — field types stamped as a vector check box (MARK).
 const MARK_FIELD_TYPES: ReadonlySet<string> = new Set(['CHECKBOX', 'ACKNOWLEDGEMENT']);
@@ -88,6 +107,8 @@ export class ExecutionService implements ExecutionProducerPort {
     @Optional() @Inject(STORAGE_ACCOUNTING_PORT) private readonly storageAccounting?: StorageAccountingPort,
     // M-A5 §3.6 — the host's display name for the certificate's in-person line.
     @Optional() @Inject(SENDER_DIRECTORY_PORT) private readonly users?: SenderDirectoryPort,
+    // SX-2 item 7 — custody upload to the Sign artifact bucket (unbound/dark = no-op).
+    @Optional() @Inject(EXECUTED_ARTIFACT_CUSTODY_PORT) private readonly custody?: ExecutedArtifactCustodyPort,
   ) {}
 
   // M-A5 §3.6 — for each signer who signed in a HOSTED session, the host's display
@@ -127,6 +148,17 @@ export class ExecutionService implements ExecutionProducerPort {
     };
 
     for (const doc of full.documents) {
+      // SX-1 item 1 — an executed document is written once. A repeated produce for
+      // the same document returns the kept artifact without rendering again.
+      const prior = await this.prisma.executedDocument.findUnique({
+        where: { envelope_document_id: doc.id },
+        select: { source_sha256: true, executed_sha256: true, byte_size: true },
+      });
+      if (prior !== null) {
+        results.push({ envelope_document_id: doc.id, ...prior });
+        continue;
+      }
+
       const sourcePdf = await this.source.getSourcePdf({
         tenant_id,
         source_mode: doc.source_mode === 'OWNED' ? 'OWNED' : 'CORE_REF',
@@ -196,41 +228,24 @@ export class ExecutionService implements ExecutionProducerPort {
 
       const rendered = await this.rendering.prepareFromSource(sourcePdf, placements);
 
-      await this.prisma.executedDocument.upsert({
-        where: { envelope_document_id: doc.id },
-        create: {
-          id: randomUUID(),
-          tenant_id,
-          envelope_id,
-          envelope_document_id: doc.id,
-          source_sha256,
-          executed_sha256: rendered.sha256,
-          byte_size: rendered.bytes.byteLength,
-          executed_bytes: Buffer.from(rendered.bytes),
-        },
-        update: {
-          source_sha256,
-          executed_sha256: rendered.sha256,
-          byte_size: rendered.bytes.byteLength,
-          executed_bytes: Buffer.from(rendered.bytes),
-          produced_at: new Date(),
-        },
-      });
-
-      await this.recordKept(tenant_id, `esign:executed:${doc.id}`, rendered.bytes.byteLength);
-      results.push({
-        envelope_document_id: doc.id,
+      const kept = await this.insertExecutedDocument(tenant_id, envelope_id, doc.id, {
         source_sha256,
         executed_sha256: rendered.sha256,
-        byte_size: rendered.bytes.byteLength,
+        bytes: rendered.bytes,
       });
+      if (kept.inserted) await this.recordKept(tenant_id, `esign:executed:${doc.id}`, kept.result.byte_size);
+      results.push(kept.result);
     }
 
     // DOC-4 (R-4-6) — human-readable execution certificate (one per envelope).
-    const chainHash = (await this.repo.terminalEventHash(tenant_id, envelope_id)) ?? '';
+    // SX-1 item 1 — written once. A repeated produce finds the kept certificate and
+    // returns: no second render, outbox event or completion notification.
+    const priorCertificate = await this.prisma.executionCertificate.findUnique({ where: { envelope_id }, select: { id: true } });
+    if (priorCertificate !== null) return results;
+
     const hostedBy = await this.hostedBy(tenant_id, envelope_id);
     const boxes = full.documents.flatMap((d) => (d as { fields?: typeof d.fields }).fields ?? []);
-    const blocks: RenderBlock[] = [
+    const blocksFor = (chainHash: string): RenderBlock[] => [
       { type: 'HEADING', text: `Envelope ${envelope_id}` },
       { type: 'TEXT', text: `Subject: ${full.subject}` },
       { type: 'TEXT', text: `Completed at: ${full.completed_at ? full.completed_at.toISOString() : 'pending'}` },
@@ -256,42 +271,13 @@ export class ExecutionService implements ExecutionProducerPort {
       { type: 'HEADING', text: 'Evidence' },
       { type: 'TEXT', text: `Event-chain hash: ${chainHash}` },
     ];
-    const certificate = await this.rendering.renderGenerated({ render_schema_version: 'v1', title: 'Execution Certificate', blocks });
-    await this.prisma.executionCertificate.upsert({
-      where: { envelope_id },
-      create: {
-        id: randomUUID(),
-        tenant_id,
-        envelope_id,
-        certificate_sha256: certificate.sha256,
-        byte_size: certificate.bytes.byteLength,
-        certificate_bytes: Buffer.from(certificate.bytes),
-      },
-      update: {
-        certificate_sha256: certificate.sha256,
-        byte_size: certificate.bytes.byteLength,
-        certificate_bytes: Buffer.from(certificate.bytes),
-        produced_at: new Date(),
-      },
-    });
 
-    await this.recordKept(tenant_id, `esign:certificate:${envelope_id}`, certificate.bytes.byteLength);
+    const certificate = await this.insertCertificate(tenant_id, envelope_id, blocksFor, results);
+    if (!certificate.inserted) return results;
 
-    // DOC-4 (R-4-7) — enqueue the transactional-outbox event (refs only, no
-    // bytes/PII). A drain publishes it to the operational bus; apps/api's
-    // idempotent consumer pulls the bytes + evidence + certificate.
-    if (this.outbox !== undefined) {
-      await this.outbox.enqueue(this.prisma, {
-        event_type: 'sign.envelope.executed.v1',
-        envelope_id,
-        tenant_id,
-        correlation_id: randomUUID(),
-        artifact_refs: {
-          executed_document_ids: results.map((r) => r.envelope_document_id),
-          has_certificate: true,
-        },
-      });
-    }
+    await this.recordKept(tenant_id, `esign:certificate:${envelope_id}`, certificate.byte_size);
+    // SX-2 item 7 — post-commit custody upload; never fails completion (reconcile retries).
+    await this.custody?.recordCompletion(tenant_id, envelope_id).catch(() => undefined);
 
     // Completion notifications (best-effort; a delivery failure never corrupts the
     // executed record — every attempt is recorded in NotificationDelivery).
@@ -304,6 +290,179 @@ export class ExecutionService implements ExecutionProducerPort {
     }
 
     return results;
+  }
+
+  // SX-1 items 1 and 3 — insert one executed document, never overwrite. Under the
+  // envelope row lock (every artifact write for an envelope serializes on it):
+  //   no row          → insert + EXECUTED_DOCUMENT_RECORDED ledger event (atomic)
+  //   row, same hash  → idempotent success, nothing written
+  //   row, other hash → EXECUTED_ARTIFACT_INTEGRITY_CONFLICT ledger event, then the
+  //                     typed error; the row is left as it was
+  // A unique violation from a writer that did not take the lock resolves the same way.
+  private async insertExecutedDocument(
+    tenant_id: string,
+    envelope_id: string,
+    envelope_document_id: string,
+    attempted: { source_sha256: string; executed_sha256: string; bytes: Uint8Array },
+  ): Promise<{ inserted: boolean; result: ExecutedProductionResult }> {
+    type Outcome =
+      | { kind: 'inserted' | 'existing'; result: ExecutedProductionResult }
+      | { kind: 'conflict'; artifact_id: string; existing_sha256: string };
+    const byte_size = attempted.bytes.byteLength;
+    const resolveExisting = async (tx: ArtifactTx): Promise<Outcome | null> => {
+      const existing = await tx.executedDocument.findUnique({
+        where: { envelope_document_id },
+        select: { id: true, source_sha256: true, executed_sha256: true, byte_size: true },
+      });
+      if (existing === null) return null;
+      if (existing.executed_sha256 === attempted.executed_sha256) {
+        return { kind: 'existing', result: { envelope_document_id, source_sha256: existing.source_sha256, executed_sha256: existing.executed_sha256, byte_size: existing.byte_size } };
+      }
+      await this.recordConflict(tx, tenant_id, envelope_id, 'EXECUTED_DOCUMENT', existing.id, envelope_document_id, existing.executed_sha256, attempted.executed_sha256);
+      return { kind: 'conflict', artifact_id: existing.id, existing_sha256: existing.executed_sha256 };
+    };
+
+    const write = (): Promise<Outcome> =>
+      this.prisma.$transaction(async (tx) => {
+        await this.repo.lockEnvelope(tx, tenant_id, envelope_id);
+        const resolved = await resolveExisting(tx);
+        if (resolved !== null) return resolved;
+        const id = randomUUID();
+        await tx.executedDocument.create({
+          data: {
+            id,
+            tenant_id,
+            envelope_id,
+            envelope_document_id,
+            source_sha256: attempted.source_sha256,
+            executed_sha256: attempted.executed_sha256,
+            byte_size,
+            executed_bytes: Buffer.from(attempted.bytes),
+          },
+        });
+        const payload: ExecutedArtifactRecordedPayload = {
+          sha256: attempted.executed_sha256,
+          byte_size,
+          artifact_id: id,
+          artifact_kind: 'EXECUTED_DOCUMENT',
+          source_sha256: attempted.source_sha256,
+          envelope_document_id,
+        };
+        await this.repo.appendEvent(tx, { tenant_id, envelope_id, event_type: EXECUTED_DOCUMENT_RECORDED, actor_type: 'SYSTEM', payload });
+        return { kind: 'inserted', result: { envelope_document_id, source_sha256: attempted.source_sha256, executed_sha256: attempted.executed_sha256, byte_size } };
+      }, ARTIFACT_TX_OPTIONS);
+
+    let outcome: Outcome;
+    try {
+      outcome = await write();
+    } catch (e) {
+      if (!isUniqueViolation(e)) throw e;
+      outcome = await this.prisma.$transaction(async (tx) => {
+        await this.repo.lockEnvelope(tx, tenant_id, envelope_id);
+        const resolved = await resolveExisting(tx);
+        if (resolved === null) throw e;
+        return resolved;
+      }, ARTIFACT_TX_OPTIONS);
+    }
+    if (outcome.kind === 'conflict') {
+      throw new ExecutedArtifactIntegrityConflictError('EXECUTED_DOCUMENT', outcome.artifact_id, outcome.existing_sha256, attempted.executed_sha256);
+    }
+    return { inserted: outcome.kind === 'inserted', result: outcome.result };
+  }
+
+  // SX-1 items 1 and 3 — the certificate cites the ledger's event-chain hash, which
+  // grows, so it is rendered, inserted and recorded under the envelope row lock in
+  // one transaction (with the DOC-4 outbox event). A writer that finds a kept
+  // certificate under the lock does not render again. Only a unique violation from
+  // a writer outside the lock compares hashes: same → idempotent, different →
+  // EXECUTED_ARTIFACT_INTEGRITY_CONFLICT.
+  private async insertCertificate(
+    tenant_id: string,
+    envelope_id: string,
+    blocksFor: (chainHash: string) => RenderBlock[],
+    results: ExecutedProductionResult[],
+  ): Promise<{ inserted: boolean; byte_size: number }> {
+    // Set inside the transaction closure once the certificate is rendered.
+    const attemptedRef: { sha: string | null } = { sha: null };
+    try {
+      return await this.prisma.$transaction(async (tx) => {
+        await this.repo.lockEnvelope(tx, tenant_id, envelope_id);
+        const existing = await tx.executionCertificate.findUnique({ where: { envelope_id }, select: { byte_size: true } });
+        if (existing !== null) return { inserted: false, byte_size: existing.byte_size };
+        const terminal = await tx.signatureEvent.findFirst({
+          where: { tenant_id, envelope_id },
+          orderBy: [{ occurred_at: 'desc' }, { id: 'desc' }],
+          select: { event_hash: true },
+        });
+        const certificate = await this.rendering.renderGenerated({ render_schema_version: 'v1', title: 'Execution Certificate', blocks: blocksFor(terminal?.event_hash ?? '') });
+        attemptedRef.sha = certificate.sha256;
+        const id = randomUUID();
+        const byte_size = certificate.bytes.byteLength;
+        await tx.executionCertificate.create({
+          data: { id, tenant_id, envelope_id, certificate_sha256: certificate.sha256, byte_size, certificate_bytes: Buffer.from(certificate.bytes) },
+        });
+        const payload: ExecutedArtifactRecordedPayload = {
+          sha256: certificate.sha256,
+          byte_size,
+          artifact_id: id,
+          artifact_kind: 'EXECUTION_CERTIFICATE',
+          envelope_document_id: null,
+        };
+        await this.repo.appendEvent(tx, { tenant_id, envelope_id, event_type: EXECUTION_CERTIFICATE_RECORDED, actor_type: 'SYSTEM', payload });
+        // DOC-4 (R-4-7) — enqueue the transactional-outbox event (refs only, no
+        // bytes/PII) in the same transaction as the certificate. A drain publishes it
+        // to the operational bus; apps/api's idempotent consumer pulls the bytes +
+        // evidence + certificate.
+        if (this.outbox !== undefined) {
+          await this.outbox.enqueue(tx, {
+            event_type: 'sign.envelope.executed.v1',
+            envelope_id,
+            tenant_id,
+            correlation_id: randomUUID(),
+            artifact_refs: {
+              executed_document_ids: results.map((r) => r.envelope_document_id),
+              has_certificate: true,
+            },
+          });
+        }
+        return { inserted: true, byte_size };
+      }, ARTIFACT_TX_OPTIONS);
+    } catch (e) {
+      const attempted = attemptedRef.sha;
+      if (!isUniqueViolation(e) || attempted === null) throw e;
+      const conflict = await this.prisma.$transaction(async (tx) => {
+        await this.repo.lockEnvelope(tx, tenant_id, envelope_id);
+        const existing = await tx.executionCertificate.findUnique({ where: { envelope_id }, select: { id: true, certificate_sha256: true, byte_size: true } });
+        if (existing === null) throw e;
+        if (existing.certificate_sha256 === attempted) return null;
+        await this.recordConflict(tx, tenant_id, envelope_id, 'EXECUTION_CERTIFICATE', existing.id, null, existing.certificate_sha256, attempted);
+        return existing;
+      }, ARTIFACT_TX_OPTIONS);
+      if (conflict !== null) {
+        throw new ExecutedArtifactIntegrityConflictError('EXECUTION_CERTIFICATE', conflict.id, conflict.certificate_sha256, attempted);
+      }
+      return { inserted: false, byte_size: 0 };
+    }
+  }
+
+  // SX-1 item 1 — the append-only record of a refused second write.
+  private async recordConflict(
+    tx: ArtifactTx,
+    tenant_id: string,
+    envelope_id: string,
+    artifact_kind: ExecutedArtifactKind,
+    artifact_id: string,
+    envelope_document_id: string | null,
+    existing_sha256: string,
+    attempted_sha256: string,
+  ): Promise<void> {
+    await this.repo.appendEvent(tx, {
+      tenant_id,
+      envelope_id,
+      event_type: EXECUTED_ARTIFACT_INTEGRITY_CONFLICT,
+      actor_type: 'SYSTEM',
+      payload: { artifact_id, artifact_kind, existing_sha256, attempted_sha256, envelope_document_id },
+    });
   }
 
   private async recordKept(tenant_id: string, ref: string, bytes: number): Promise<void> {

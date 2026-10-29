@@ -5,6 +5,7 @@ import {
   DOCUMENT_STORAGE_PORT,
   EVENT_PUBLISHER_PORT,
   EVIDENCE_MANIFEST_SIGNER_PORT,
+  EXECUTED_ARTIFACT_CUSTODY_PORT,
   EXECUTION_PRODUCER_PORT,
   ENVELOPE_NOTIFICATION_SERVICE,
   EnvelopeNotificationService,
@@ -17,9 +18,9 @@ import {
   STORAGE_ACCOUNTING_PORT,
   SignNotificationRepository,
   SignPrivacyRepository,
+  SignArtifactCustodyRepository,
   SignTalentErasureRepository,
   SignRetentionRepository,
-  SoftwareEvidenceManifestSigner,
   WEBHOOK_DELIVERY_PORT,
 } from '@aramo/sign';
 import { DOCUMENT_RENDERING_PORT, PdfLibDocumentRenderingAdapter } from '@aramo/documents-rendering';
@@ -35,10 +36,15 @@ import { EsignProviderController, EsignSignerController } from './esign-http.con
 import { NativeAramoSignatureProvider } from './native-aramo-signature.provider.js';
 import { AramoSignAllowanceGate } from './aramo-sign-allowance.gate.js';
 import { MailerSigningNotificationAdapter } from './mailer-signing-notification.adapter.js';
-import { kmsEvidenceSignerFromEnv } from './kms-evidence-manifest-signer.js';
+import { resolveEvidenceManifestSigner } from './kms-evidence-manifest-signer.js';
 import { DocumentSourceHttpAdapter } from './document-source-http.adapter.js';
 import { EnvelopeDocumentSourceResolver } from './envelope-document-source.resolver.js';
 import { EsignObjectStorageDocumentAdapter } from './esign-object-storage-document.adapter.js';
+// Aramo-Sign-Executed-Artifact-Custody-and-Isolation-Directive-v1_0-LOCKED, SX-2 — the
+// dedicated Sign artifact bucket (dark unless SIGN_ARTIFACT_BUCKET is set).
+import { SignArtifactStore } from './custody/sign-artifact-store.js';
+import { ExecutedArtifactCustodyService } from './custody/executed-artifact-custody.service.js';
+import { SignArtifactReconcileWorker } from './custody/sign-artifact-reconcile.worker.js';
 import { eventPublisherFromEnv } from './sns-event-publisher.js';
 import { HttpWebhookEventPublisher } from './webhook-event-publisher.js';
 import { EsignDeliveryWorker } from './esign-delivery.worker.js';
@@ -147,14 +153,24 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
       extraExports: [DOCUMENT_SOURCE_PROVIDER_PORT, SIGNING_NOTIFICATION_PORT, DOCUMENT_STORAGE_PORT, ENVELOPE_NOTIFICATION_SERVICE],
       evidenceSigner: {
         provide: EVIDENCE_MANIFEST_SIGNER_PORT,
-        useFactory: () => kmsEvidenceSignerFromEnv(process.env) ?? new SoftwareEvidenceManifestSigner(),
+        // SX-1 item 4 — production refuses to boot without an asymmetric KMS
+        // SIGN_VERIFY key (SIGN_KMS_KEY_ID); non-production keeps the software signer.
+        useFactory: () => resolveEvidenceManifestSigner(process.env),
       },
       extraProviders: [
         { provide: DOCUMENT_RENDERING_PORT, useClass: PdfLibDocumentRenderingAdapter },
         // PX-V1 F1 — source resolution dispatches on source_mode: CORE_REF via the
         // HTTP adapter (legacy ATS pull), OWNED via E-Sign's own object storage.
         DocumentSourceHttpAdapter,
+        // SX-2 — the Sign artifact bucket. Built at boot from SIGN_ARTIFACT_*: an invalid
+        // setting (e.g. a non-integer SIGN_ARTIFACT_RETENTION_DAYS) refuses to boot;
+        // SIGN_ARTIFACT_BUCKET unset = dark (sources stay in the platform bucket).
+        { provide: SignArtifactStore, useFactory: () => SignArtifactStore.fromEnv(process.env) },
         { provide: DOCUMENT_STORAGE_PORT, useClass: EsignObjectStorageDocumentAdapter },
+        // SX-2 item 7 — completion custody (called by ExecutionService) + its reconcile job.
+        SignArtifactCustodyRepository,
+        { provide: EXECUTED_ARTIFACT_CUSTODY_PORT, useClass: ExecutedArtifactCustodyService },
+        SignArtifactReconcileWorker,
         { provide: DOCUMENT_SOURCE_PROVIDER_PORT, useClass: EnvelopeDocumentSourceResolver },
         { provide: SIGNING_NOTIFICATION_PORT, useClass: MailerSigningNotificationAdapter },
         { provide: EVENT_PUBLISHER_PORT, useFactory: () => eventPublisherFromEnv(process.env) },

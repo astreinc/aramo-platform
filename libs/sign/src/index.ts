@@ -61,6 +61,20 @@ export {
 } from './lib/ports/execution-producer.port.js';
 export { ExecutionService } from './lib/execution.service.js';
 export {
+  EXECUTED_ARTIFACT_CUSTODY_PORT,
+  EXECUTED_ARTIFACT_CUSTODY_EVENT_TYPE,
+  type ExecutedArtifactCustodyPort,
+} from './lib/ports/executed-artifact-custody.port.js';
+export {
+  SignArtifactCustodyRepository,
+  type CustodyArtifactKind,
+  type CustodyColumns,
+  type CustodyValidationRows,
+  type ExecutedArtifactSummary,
+  type PendingCertificateArtifact,
+  type PendingExecutedArtifact,
+} from './lib/artifact-custody.repository.js';
+export {
   SIGNER_ATTESTED_NAME_PORT,
   type SignerAttestedNamePort,
   type SignerAttestedNameQuery,
@@ -101,10 +115,28 @@ export {
 export {
   EVIDENCE_MANIFEST_SIGNER_PORT,
   SoftwareEvidenceManifestSigner,
+  KMS_SIGNATURE_ALGORITHM_PREFIX,
+  canonicalEvidenceManifestBytes,
+  isKmsEvidenceSigningAlgorithm,
+  kmsEvidenceAlgorithmHash,
+  verifyKmsEvidenceSignatureWithPublicKey,
   type EvidenceManifestSignerPort,
   type EvidenceManifest,
+  type EvidenceArtifactHash,
+  type EvidenceArtifactHashSource,
+  type KmsEvidenceSigningAlgorithm,
   type SignedEvidenceManifest,
 } from './lib/ports/evidence-manifest-signer.port.js';
+// SX-1 — insert-only executed artifacts + their independent ledger hash record.
+export {
+  EXECUTED_DOCUMENT_RECORDED,
+  EXECUTION_CERTIFICATE_RECORDED,
+  EXECUTED_ARTIFACT_INTEGRITY_CONFLICT,
+  ExecutedArtifactIntegrityConflictError,
+  ExecutedArtifactLedgerMismatchError,
+  type ExecutedArtifactKind,
+  type ExecutedArtifactLedgerMismatchReason,
+} from './lib/domain/executed-artifact-integrity.js';
 export {
   generateSigningToken,
   hashSigningToken,

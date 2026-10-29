@@ -49,6 +49,7 @@ import {
 import { executedAccessExpiresAt } from './envelope-notification.service.js';
 import { SIGNER_ATTESTED_NAME_PORT, type SignerAttestedNamePort } from './ports/signer-attested-name.port.js';
 import { CHECK_FIELD_TYPES, evaluateSignerFieldRules, isServerFilledName } from './domain/field-rules.js';
+import { ARTIFACT_LEDGER_EVENT_TYPES, resolveArtifactHashes, type ResolvedArtifactHashes } from './executed-artifact-ledger.js';
 
 // Aramo Sign launch — how long a sent envelope stays signable before the expiry
 // sweep moves it to EXPIRED (SIGN_ENVELOPE_TTL_DAYS, default 30). Individual
@@ -839,15 +840,16 @@ export class EsignService {
     const signing = signingRecipients(full.signers);
     const disclosures = await this.prisma.signerDisclosureAcceptance.findMany({ where: { tenant_id, signer_id: { in: signing.map((s) => s.id) } } });
     const disclosureHash = disclosures.length > 0 ? disclosures.map((d) => d.disclosure_text_hash).sort().join('|') : null;
-    // DOC-4 — the executed-document hash, if executed bytes have been produced.
-    const executed = await this.prisma.executedDocument.findFirst({
-      where: { tenant_id, envelope_id },
-      orderBy: { produced_at: 'desc' },
-    });
+    // SX-1 item 3 — every executed artifact's hash, from the append-only ledger;
+    // refused (ExecutedArtifactLedgerMismatchError) when ledger and row disagree.
+    const artifacts = await this.executedArtifactHashes(tenant_id, envelope_id, full.documents.map((d) => d.id));
+    // The single-document fields stay for existing readers: the first document by
+    // ordinal (formerly the most recently produced row).
+    const first = artifacts.executed_documents[0];
     const manifest: EvidenceManifest = {
       envelope_id,
-      source_sha256: executed?.source_sha256 ?? full.documents[0]?.source_sha256 ?? null,
-      executed_sha256: executed?.executed_sha256 ?? null,
+      source_sha256: first?.source_sha256 ?? full.documents[0]?.source_sha256 ?? null,
+      executed_sha256: first?.sha256 ?? null,
       event_chain_hash: chainHash,
       disclosure_hash: disclosureHash,
       execution_manifest_hash: chainHash,
@@ -855,8 +857,30 @@ export class EsignService {
       signers: signing.map((s) => s.id),
       completed_at: full.completed_at ? full.completed_at.toISOString() : null,
       service_version: SERVICE_VERSION,
+      executed_documents: artifacts.executed_documents,
+      certificate: artifacts.certificate,
+      artifact_hash_source: artifacts.source,
     };
     return this.evidenceSigner.sign(manifest, new Date().toISOString());
+  }
+
+  private async executedArtifactHashes(tenant_id: string, envelope_id: string, document_order: string[]): Promise<ResolvedArtifactHashes> {
+    const [documents, certificate, events] = await Promise.all([
+      this.prisma.executedDocument.findMany({
+        where: { tenant_id, envelope_id },
+        select: { id: true, envelope_document_id: true, source_sha256: true, executed_sha256: true, byte_size: true, executed_bytes: true },
+      }),
+      this.prisma.executionCertificate.findFirst({
+        where: { tenant_id, envelope_id },
+        select: { id: true, certificate_sha256: true, byte_size: true, certificate_bytes: true },
+      }),
+      this.prisma.signatureEvent.findMany({
+        where: { tenant_id, envelope_id, event_type: { in: [...ARTIFACT_LEDGER_EVENT_TYPES] } },
+        orderBy: [{ occurred_at: 'asc' }, { id: 'asc' }],
+        select: { event_type: true, payload: true },
+      }),
+    ]);
+    return resolveArtifactHashes({ envelope_id, document_order, documents, certificate, events });
   }
 
   // COMM-RECRUITER-W1 (W1-C1) — reverse-resolve the single NON-TERMINAL envelope

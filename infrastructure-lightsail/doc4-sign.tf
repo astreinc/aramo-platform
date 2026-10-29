@@ -20,6 +20,9 @@ resource "aws_kms_key" "sign_evidence" {
   customer_master_key_spec = "RSA_2048"
   enable_key_rotation      = false # rotation is N/A for asymmetric SIGN_VERIFY keys
   deletion_window_in_days  = 30
+  # SX-2 / LC-3 (Executed-Artifact Custody directive): reused as the evidence key;
+  # explicit key policy in sign-artifacts.tf (break-glass admin, aramo-sign-prod use).
+  policy = data.aws_iam_policy_document.sign_evidence_kms.json
 }
 
 resource "aws_kms_alias" "sign_evidence" {

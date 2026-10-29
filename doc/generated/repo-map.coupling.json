@@ -8069,6 +8069,24 @@
     },
     {
       "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sign-domain-isolation-guard.spec.ts",
+      "status": "excluded",
+      "to": "tools/sign-sx0-cleanup/sx0.fixture.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sign-domain-isolation-guard.spec.ts",
+      "status": "excluded",
+      "to": "tools/sign-sx0-cleanup/sx0.integration.spec.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
+      "from": "apps/api/src/tests/sign-domain-isolation-guard.spec.ts",
+      "status": "excluded",
+      "to": "tools/sign-sx0-cleanup/sx0.lib.ts"
+    },
+    {
+      "excludedBy": "src/tests/**/*",
       "from": "apps/api/src/tests/sign-domain-roles.integration.spec.ts",
       "status": "excluded",
       "to": "deploy/db-roles/aramo-domain-roles.sql"
@@ -30077,6 +30095,11 @@
       "to": "infrastructure/modules/s3-resume-bucket/main.tf"
     },
     {
+      "from": "infrastructure-lightsail/sign-artifacts.tf",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/app/kms-evidence-manifest-signer.ts"
+    },
+    {
       "from": "infrastructure-lightsail/terraform.tfvars.example",
       "status": "unscoped",
       "to": "doc/runbooks/RUNBOOK-backups.md"
@@ -34417,6 +34440,11 @@
     },
     { "from": "openapi/portal.yaml", "status": "unscoped", "to": "openapi/common.yaml" },
     { "from": "package.json", "status": "unscoped", "to": "apps/api/src/policy/seed-lifecycle.ts" },
+    {
+      "from": "package.json",
+      "status": "unscoped",
+      "to": "apps/sign-service/src/ops/validate-artifact-custody.ts"
+    },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/check-api-spec-location.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/check-integration-roots.ts" },
     { "from": "package.json", "status": "unscoped", "to": "ci/scripts/check-version-sync.ts" },
@@ -36948,6 +36976,26 @@
       "to": "tools/db-sync-local.sh"
     },
     {
+      "from": "tools/sign-sx0-cleanup/RUNBOOK.md",
+      "status": "unscoped",
+      "to": "tools/sign-sx0-cleanup/sx0.ts"
+    },
+    {
+      "from": "tools/sign-sx0-cleanup/RUNBOOK.md",
+      "status": "unscoped",
+      "to": "tools/vitest.config.ts"
+    },
+    {
+      "from": "tools/sign-sx0-cleanup/sx0.integration.spec.ts",
+      "status": "unscoped",
+      "to": "tools/vitest.config.ts"
+    },
+    {
+      "from": "tools/sign-sx0-cleanup/sx0.spec.ts",
+      "status": "unscoped",
+      "to": "tools/vitest.config.ts"
+    },
+    {
       "from": "tools/talent-intake-dev-consumer.cjs",
       "status": "unscoped",
       "to": "tools/local-stack.sh"
@@ -37389,7 +37437,7 @@
   ],
   "scanScope": {
     "dirs": [".github/workflows", ".husky", "ci/scripts", "deploy", "scripts", "tools"],
-    "files": 113,
+    "files": 119,
     "huskyPresent": false
   },
   "scripts": [
@@ -37838,6 +37886,7 @@
         { "kind": "prose", "path": "scripts/run-script-tests.sh" }
       ]
     },
+    { "name": "sign:validate-artifact-custody", "references": [] },
     {
       "name": "test",
       "references": [
@@ -37893,6 +37942,10 @@
         { "kind": "prose", "path": "tools/seed-e2e-data.lib.ts" },
         { "kind": "prose", "path": "tools/seed-e2e-data.spec.ts" },
         { "kind": "prose", "path": "tools/seed-e2e-data.ts" },
+        { "kind": "prose", "path": "tools/sign-sx0-cleanup/sx0.fixture.ts" },
+        { "kind": "prose", "path": "tools/sign-sx0-cleanup/sx0.integration.spec.ts" },
+        { "kind": "prose", "path": "tools/sign-sx0-cleanup/sx0.lib.ts" },
+        { "kind": "prose", "path": "tools/sign-sx0-cleanup/sx0.ts" },
         { "kind": "prose", "path": "tools/talent-intake-dev-consumer.cjs" },
         { "kind": "prose", "path": "tools/talent-intake-localstack-provision.cjs" }
       ]
@@ -37955,6 +38008,7 @@
     "prisma:seed-policy-lifecycle",
     "prisma:validate-auth-storage",
     "prisma:validate-identity",
+    "sign:validate-artifact-custody",
     "tests:integration",
     "usage:rollup"
   ]

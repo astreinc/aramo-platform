@@ -292,7 +292,7 @@ export class SignApiService {
           createdDocs.push({ id: row.id, ordinal: d.ordinal });
         } else {
           const object_id = randomUUID();
-          const key = `esign/source/${auth.tenant_id}/${env.id}/${object_id}`;
+          const key = this.storage.plannedSourceKey?.(auth.tenant_id, env.id, object_id) ?? `esign/source/${auth.tenant_id}/${env.id}/${object_id}`;
           await this.storageGate.reserveUpload(auth.tenant_id, key, d.bytes.byteLength, requestId);
           reserved.push(key);
           const stored = await this.storage.putOwnedSource({ tenant_id: auth.tenant_id, envelope_id: env.id, filename: d.filename, content_type: 'application/pdf', bytes: d.bytes, object_id });

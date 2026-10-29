@@ -25,6 +25,11 @@ const SQL_EXCEPTIONS: Record<string, string> = {
   'libs/documents/prisma/migrations/20261020130500_sign_naming_erasure_guard/migration.sql': 'historic, superseded',
   // Sign-owned operator tooling: the schema-rename rollback.
   'tools/sign-naming/reverse.sql': 'Sign rename rollback tooling',
+  // Sign-owned one-off operator tooling: the SX-0 standalone clean start
+  // (Aramo-Sign-Executed-Artifact-Custody-and-Isolation-Directive-v1_0-LOCKED SX-0, LC-2).
+  'tools/sign-sx0-cleanup/sx0.lib.ts': 'Sign SX-0 clean-start tooling',
+  'tools/sign-sx0-cleanup/sx0.fixture.ts': 'Sign SX-0 clean-start fixture',
+  'tools/sign-sx0-cleanup/sx0.integration.spec.ts': 'Sign SX-0 clean-start proof',
   // The sign-service Pact provider harness seeds Sign's own provider states.
   'pact/provider/src/verify-sign.ts': 'Sign provider verification harness',
   // Whole-database backup tooling (every schema, by design).

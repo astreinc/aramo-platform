@@ -2134,6 +2134,11 @@
       "EVENT_PUBLISHER_PORT",
       "EVIDENCE_MANIFEST_SIGNER_PORT",
       "EXECUTED_ACCESS_TTL_DAYS_DEFAULT",
+      "EXECUTED_ARTIFACT_CUSTODY_EVENT_TYPE",
+      "EXECUTED_ARTIFACT_CUSTODY_PORT",
+      "EXECUTED_ARTIFACT_INTEGRITY_CONFLICT",
+      "EXECUTED_DOCUMENT_RECORDED",
+      "EXECUTION_CERTIFICATE_RECORDED",
       "EXECUTION_PRODUCER_PORT",
       "EnvelopeAlreadyExecutedError",
       "EnvelopeAmbiguousError",
@@ -2146,12 +2151,15 @@
       "EsignRepository",
       "EsignSenderRepository",
       "EsignService",
+      "ExecutedArtifactIntegrityConflictError",
+      "ExecutedArtifactLedgerMismatchError",
       "ExecutionService",
       "HOSTED_SESSION_STARTED_EVENT",
       "HOSTED_SESSION_TTL_MS",
       "IdempotencyKeyReuseError",
       "IdempotencyRequestInProgressError",
       "InboxSigningRefusedError",
+      "KMS_SIGNATURE_ALGORITHM_PREFIX",
       "LocalEventPublisher",
       "MAX_COPY_RECIPIENTS",
       "OutboxDeliveryService",
@@ -2182,6 +2190,7 @@
       "STORAGE_ACCOUNTING_PORT",
       "SenderFieldPassthroughRefusedError",
       "SessionIssueRefusedError",
+      "SignArtifactCustodyRepository",
       "SignContactDuplicateError",
       "SignContactRepository",
       "SignIdempotencyRepository",
@@ -2202,6 +2211,7 @@
       "allSigningRecipientsSigned",
       "applyReminderLimits",
       "backoffMs",
+      "canonicalEvidenceManifestBytes",
       "canonicalSignEventType",
       "computeEventHash",
       "contactEmailKey",
@@ -2220,9 +2230,11 @@
       "invitedAtSend",
       "isAbuseReportReason",
       "isCopyRecipient",
+      "isKmsEvidenceSigningAlgorithm",
       "isLinkSigner",
       "isServerFilledName",
       "isSigningRecipient",
+      "kmsEvidenceAlgorithmHash",
       "listDisclosures",
       "mayActNow",
       "nextReminderAt",
@@ -2232,6 +2244,7 @@
       "signingRecipients",
       "signingSessionExpiresAt",
       "toLifecycleEvent",
+      "verifyKmsEvidenceSignatureWithPublicKey",
       "weighReport"
     ],
     "@aramo/sign-service": ["AppModule"],
@@ -7679,6 +7692,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/executed-artifact-integrity.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/sign/src/tests/execution-stamping.integration.spec.ts",
         "project": "sign",
         "status": "excluded"
@@ -7788,6 +7807,12 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-api.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-artifact-custody.integration.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },
@@ -9013,11 +9038,23 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "libs/sign/src/tests/executed-artifact-integrity.integration.spec.ts",
+        "project": "sign",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "libs/sign/src/tests/execution-stamping.integration.spec.ts",
         "project": "sign",
         "status": "excluded"
       },
       { "project": "sign", "status": "production" },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-artifact-custody.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
       { "project": "sign-service", "status": "production" }
     ],
     "@aramo/engagement": [
@@ -12652,6 +12689,12 @@
       },
       {
         "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/evidence-signer-boot-guard.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/kms-evidence-manifest-signer.spec.ts",
         "project": "sign-service",
         "status": "excluded"
@@ -12713,6 +12756,24 @@
       {
         "excludedBy": "src/tests/**/*",
         "from": "apps/sign-service/src/tests/sign-api.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-artifact-custody-boot.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-artifact-custody.integration.spec.ts",
+        "project": "sign-service",
+        "status": "excluded"
+      },
+      {
+        "excludedBy": "src/tests/**/*",
+        "from": "apps/sign-service/src/tests/sign-artifact-custody.spec.ts",
         "project": "sign-service",
         "status": "excluded"
       },

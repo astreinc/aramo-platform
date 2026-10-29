@@ -547,6 +547,19 @@ services:
       - AUTH_PUBLIC_KEY
       - S3_RESUME_BUCKET
       - S3_ENDPOINT
+      # Aramo-Sign-Executed-Artifact-Custody-and-Isolation-Directive-v1_0 SX-2 — the
+      # dedicated Sign artifact bucket, sign-service ONLY (recon gate R-2: no other service
+      # receives these). Unset SIGN_ARTIFACT_BUCKET ⇒ dark (sources stay in the platform
+      # bucket; no custody upload or reconcile). The key pair is the Sign-only IAM user
+      # (unset ⇒ SDK default chain). SIGN_ARTIFACT_RETENTION_DAYS has NO default (LC-1):
+      # unset ⇒ no Object Lock retention; a non-integer refuses boot. Mode is GOVERNANCE.
+      - SIGN_ARTIFACT_BUCKET
+      - SIGN_ARTIFACT_AWS_ACCESS_KEY_ID
+      - SIGN_ARTIFACT_AWS_SECRET_ACCESS_KEY
+      - SIGN_ARTIFACT_AWS_REGION
+      - SIGN_ARTIFACT_RETENTION_DAYS
+      - SIGN_ARTIFACT_S3_ENDPOINT
+      - SIGN_ARTIFACT_RECONCILE_INTERVAL_MS
       # Sign Personal (Free) Launch v1.1 — the Personal send gate. Mode off (the
       # default) keeps today's personal_sending_not_enabled refusal. The send-time
       # network country comes from the same offline GeoLite2 Country database as
