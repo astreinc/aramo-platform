@@ -297,3 +297,5 @@ export { RECIPIENT_INBOX_SESSION_EVENT, type IssuedRecipientSession } from './li
 export * from './lib/retention/sign-retention.repository.js';
 // Aramo-Sign-Mobile-Amendment-M-A7 §3.2 — privacy-request inventory and Sign-side execution reads/writes.
 export * from './lib/privacy/sign-privacy.repository.js';
+// Aramo-Sign-Domain-Isolation-Reconciliation-V1 §2 R-3 — the Sign-owned talent-erasure contract.
+export * from './lib/privacy/sign-talent-erasure.repository.js';

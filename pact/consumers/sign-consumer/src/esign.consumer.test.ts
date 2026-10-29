@@ -5,21 +5,12 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 const { like, uuid, integer } = MatchersV3;
 
-// DOC-3 — cross-service E-Sign provider contract.
+// aramo-core (apps/api) → sign-service contracts.
 //
-// Consumer:  aramo-core        (apps/api, via EsignServiceHttpProvider — the
-//                               SignatureProviderPort HTTP adapter)
-// Provider:  sign-service     (apps/sign-service)
-//
-// This is the TRANSPORT contract Documents (in apps/api) invokes to drive
-// signature execution — provider-neutral (libs/documents-contracts). apps/api
-// reaches E-Sign ONLY over HTTP through this seam; it never touches the esign
-// schema. RTR/Offer (DOC-5/6) consume this already-complete seam.
-//
-// Coverage: the request/response contract shape of the provider surface —
-//   1. POST /v1/sign/envelopes                    201 EnvelopeSummary (fresh)
-//   2. GET  /v1/sign/envelopes/{id}               200 EnvelopeSummary
-//   3. GET  /v1/sign/envelopes/{id}/evidence      200 EvidenceSummary
+// Aramo-Sign-Domain-Isolation-Reconciliation-V1-Directive-v1_0-LOCKED §3 H-2 — the legacy
+// unauthenticated provider seam (/v1/sign/envelopes, EsignServiceHttpProvider) is retired:
+// the ATS reaches Aramo Sign only through the authenticated Sign API (below) and the
+// Sign-owned talent-erasure contract (end of file). apps/api never touches the sign schema.
 
 const provider = new PactV4({
   consumer: 'aramo-core',
@@ -28,233 +19,7 @@ const provider = new PactV4({
   logLevel: 'warn',
 });
 
-const TENANT_ID = '11111111-1111-7111-8111-111111111111';
-const ENVELOPE_ID = '22222222-2222-7222-8222-222222222222';
-const SIGNER_ID = '33333333-3333-7333-8333-333333333333';
-const CREATED_BY = '44444444-4444-7444-8444-444444444444';
-const DOC_REF = '55555555-5555-7555-8555-555555555555';
-const REV_REF = '66666666-6666-7666-8666-666666666666';
 const SHA256 = 'a'.repeat(64);
-// COMM-RECRUITER-W1 (W1-C) — DEDICATED ids so the reverse-lookup/reminder fixtures
-// never collide with the shared DOC_REF/REV_REF/ENVELOPE_ID used by other states
-// (which would make the lookup ambiguous).
-const RTR_ENVELOPE_ID = '77777777-7777-7777-8777-777777777777';
-const RTR_DOC_REF = '88888888-8888-7888-8888-888888888888';
-const RTR_REV_REF = '99999999-9999-7999-8999-999999999999';
-
-describe('aramo-core → POST /v1/sign/envelopes', () => {
-  it('returns 201 EnvelopeSummary for a fresh envelope', async () => {
-    await provider
-      .addInteraction()
-      .given('no prior envelope for the request')
-      .uponReceiving('a create-envelope request from the Documents provider adapter')
-      .withRequest('POST', '/v1/sign/envelopes', (b) => {
-        b.headers({ 'Content-Type': 'application/json' }).jsonBody({
-          tenant_id: TENANT_ID,
-          subject: 'Offer Letter',
-          execution_mode: 'SINGLE_SIGNATURE',
-          created_by: CREATED_BY,
-          documents: [
-            {
-              document_ref: DOC_REF,
-              document_revision_ref: REV_REF,
-              title: 'offer.pdf',
-              source_sha256: SHA256,
-              ordinal: 1,
-            },
-          ],
-          signers: [{ email: 'jane@example.com', name: 'Jane Doe', signing_order: 1 }],
-        });
-      })
-      .willRespondWith(201, (b) => {
-        b.jsonBody({
-          envelope_id: uuid(ENVELOPE_ID),
-          status: like('DRAFT'),
-          signers: [{ signer_id: uuid(SIGNER_ID), email: like('jane@example.com'), status: like('PENDING') }],
-        });
-      })
-      .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/sign/envelopes`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            tenant_id: TENANT_ID,
-            subject: 'Offer Letter',
-            execution_mode: 'SINGLE_SIGNATURE',
-            created_by: CREATED_BY,
-            documents: [
-              { document_ref: DOC_REF, document_revision_ref: REV_REF, title: 'offer.pdf', source_sha256: SHA256, ordinal: 1 },
-            ],
-            signers: [{ email: 'jane@example.com', name: 'Jane Doe', signing_order: 1 }],
-          }),
-        });
-        expect(res.status).toBe(201);
-        const body = (await res.json()) as { envelope_id: string; status: string };
-        expect(body.status).toBe('DRAFT');
-      });
-  });
-});
-
-describe('aramo-core → GET /v1/sign/envelopes/{id}', () => {
-  it('returns 200 EnvelopeSummary for an existing envelope', async () => {
-    await provider
-      .addInteraction()
-      .given('a signature envelope exists')
-      .uponReceiving('a get-envelope request')
-      .withRequest('GET', `/v1/sign/envelopes/${ENVELOPE_ID}`, (b) => {
-        b.query({ tenant_id: TENANT_ID });
-      })
-      .willRespondWith(200, (b) => {
-        b.jsonBody({
-          envelope_id: uuid(ENVELOPE_ID),
-          status: like('DRAFT'),
-          signers: [{ signer_id: uuid(SIGNER_ID), email: like('jane@example.com'), status: like('PENDING') }],
-        });
-      })
-      .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/sign/envelopes/${ENVELOPE_ID}?tenant_id=${TENANT_ID}`);
-        expect(res.status).toBe(200);
-        const body = (await res.json()) as { envelope_id: string };
-        expect(body.envelope_id).toBe(ENVELOPE_ID);
-      });
-  });
-});
-
-describe('aramo-core → GET /v1/sign/envelopes/{id}/evidence', () => {
-  it('returns 200 EvidenceSummary with an event-chain hash + software signature', async () => {
-    await provider
-      .addInteraction()
-      .given('a signature envelope exists')
-      .uponReceiving('a get-evidence request')
-      .withRequest('GET', `/v1/sign/envelopes/${ENVELOPE_ID}/evidence`, (b) => {
-        b.query({ tenant_id: TENANT_ID });
-      })
-      .willRespondWith(200, (b) => {
-        b.jsonBody({
-          envelope_id: uuid(ENVELOPE_ID),
-          status: like('DRAFT'),
-          event_chain_hash: like('QmV2ZW50Q2hhaW5IYXNo'),
-          signature: like('c2lnbmF0dXJl'),
-          signature_algorithm: like('SHA256-SOFTWARE-DOC3'),
-          completed_at: null,
-        });
-      })
-      .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/sign/envelopes/${ENVELOPE_ID}/evidence?tenant_id=${TENANT_ID}`);
-        expect(res.status).toBe(200);
-        const body = (await res.json()) as { envelope_id: string; signature_algorithm: string };
-        expect(body.envelope_id).toBe(ENVELOPE_ID);
-      });
-  });
-});
-
-// DOC-4C (R1 seam B) — the executed-artifact PULL apps/api performs after
-// completion (EsignExecutedArtifactsClient, apps/api/src/documents/esign-writeback.ts
-// → GET /v1/sign/envelopes/:id/executed). A NEW INTERACTION on the SAME
-// aramo-core → sign-service relationship (not a new consumer identity).
-describe('aramo-core → GET /v1/sign/envelopes/{id}/executed', () => {
-  // A DISTINCT COMPLETED envelope (the 'a signature envelope exists' fixture is a
-  // DRAFT with no executed artifacts, and SignatureEvent is append-only so it
-  // cannot be re-seeded onto the same id).
-  const EXEC_ENVELOPE_ID = '88888888-8888-7888-8888-888888888888';
-  const EXEC_ENV_DOC_ID = '99999999-9999-7999-8999-999999999999';
-  it('returns 200 ExecutedArtifactsBundle (executed documents + certificate, base64)', async () => {
-    await provider
-      .addInteraction()
-      .given('an executed envelope exists')
-      .uponReceiving('an executed-artifact pull for the Documents write-back')
-      .withRequest('GET', `/v1/sign/envelopes/${EXEC_ENVELOPE_ID}/executed`, (b) => {
-        b.query({ tenant_id: TENANT_ID });
-      })
-      .willRespondWith(200, (b) => {
-        b.jsonBody({
-          envelope_id: uuid(EXEC_ENVELOPE_ID),
-          documents: [
-            {
-              envelope_document_id: uuid(EXEC_ENV_DOC_ID),
-              document_ref: uuid(DOC_REF),
-              document_revision_ref: uuid(REV_REF),
-              executed_sha256: like('b'.repeat(64)),
-              byte_size: like(12),
-              executed_base64: like('JVBERi0xLjQ='),
-            },
-          ],
-          certificate: {
-            certificate_sha256: like('c'.repeat(64)),
-            byte_size: like(10),
-            certificate_base64: like('Y2VydA=='),
-          },
-        });
-      })
-      .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/sign/envelopes/${EXEC_ENVELOPE_ID}/executed?tenant_id=${TENANT_ID}`);
-        expect(res.status).toBe(200);
-        const body = (await res.json()) as { envelope_id: string; documents: unknown[]; certificate: unknown };
-        expect(body.envelope_id).toBe(EXEC_ENVELOPE_ID);
-        expect(Array.isArray(body.documents)).toBe(true);
-        expect(body.certificate).not.toBeNull();
-      });
-  });
-});
-
-// COMM-RECRUITER-W1 (W1-C) — reverse envelope lookup + same-envelope reminder.
-describe('aramo-core → GET /v1/sign/envelopes/for-document', () => {
-  it('returns 200 { envelope } with the single non-terminal envelope for a document revision', async () => {
-    await provider
-      .addInteraction()
-      .given('a non-terminal signature envelope exists for the document revision')
-      .uponReceiving('a reverse envelope lookup for an exact document revision')
-      .withRequest('GET', '/v1/sign/envelopes/for-document', (b) => {
-        b.query({ tenant_id: TENANT_ID, document_ref: RTR_DOC_REF, document_revision_ref: RTR_REV_REF });
-      })
-      .willRespondWith(200, (b) => {
-        b.jsonBody({
-          envelope: {
-            envelope_id: uuid(RTR_ENVELOPE_ID),
-            status: like('SENT'),
-            signers: [{ signer_id: uuid(SIGNER_ID), email: like('jane@example.com'), status: like('PENDING') }],
-          },
-        });
-      })
-      .executeTest(async (mock) => {
-        const res = await fetch(
-          `${mock.url}/v1/sign/envelopes/for-document?tenant_id=${TENANT_ID}&document_ref=${RTR_DOC_REF}&document_revision_ref=${RTR_REV_REF}`,
-        );
-        expect(res.status).toBe(200);
-        const body = (await res.json()) as { envelope: { envelope_id: string } | null };
-        expect(body.envelope?.envelope_id).toBe(RTR_ENVELOPE_ID);
-      });
-  });
-});
-
-describe('aramo-core → POST /v1/sign/envelopes/{id}/remind', () => {
-  it('returns 200 EnvelopeSummary (status unchanged) for a same-envelope reminder', async () => {
-    await provider
-      .addInteraction()
-      .given('a sent signature envelope with an incomplete signer exists')
-      .uponReceiving('a same-envelope reminder request')
-      .withRequest('POST', `/v1/sign/envelopes/${RTR_ENVELOPE_ID}/remind`, (b) => {
-        b.jsonBody({ tenant_id: uuid(TENANT_ID) });
-      })
-      .willRespondWith(200, (b) => {
-        b.jsonBody({
-          envelope_id: uuid(RTR_ENVELOPE_ID),
-          status: like('SENT'),
-          signers: [{ signer_id: uuid(SIGNER_ID), email: like('jane@example.com'), status: like('PENDING') }],
-        });
-      })
-      .executeTest(async (mock) => {
-        const res = await fetch(`${mock.url}/v1/sign/envelopes/${RTR_ENVELOPE_ID}/remind`, {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ tenant_id: TENANT_ID }),
-        });
-        expect(res.status).toBe(200);
-        const body = (await res.json()) as { envelope_id: string };
-        expect(body.envelope_id).toBe(RTR_ENVELOPE_ID);
-      });
-  });
-});
 
 beforeAll(() => undefined);
 afterAll(() => undefined);
@@ -414,6 +179,62 @@ describe('aramo-core → Sign API (API transport)', () => {
       })
       .executeTest(async (mock) => {
         const res = await fetch(`${mock.url}/v1/sign/api/envelopes/${ATS_EXEC_ENVELOPE_ID}/executed`, { headers: { authorization: `Bearer ${ATS_EVENT_GRANT}` } });
+        expect(res.status).toBe(200);
+      });
+  });
+});
+
+// Aramo-Sign-Domain-Isolation-Reconciliation-V1-Directive-v1_0-LOCKED §2 R-3, §4 D-1/D-2 — the
+// Sign-owned talent-erasure contract the ATS erasure engine calls (apps/api
+// SignTalentErasureClient) instead of reading or writing the sign schema. Internal only;
+// authenticated as the first-party aramo-ats Sign API client (HTTP Basic).
+const ATS_BASIC = `Basic ${Buffer.from(`${ATS_CLIENT_ID}:${ATS_CLIENT_SECRET}`, 'utf8').toString('base64')}`;
+const ERASE_RECORD_ID = 'a7500000-0000-7000-8000-0000000000c1';
+const ERASE_RUN_ID = 'a7500000-0000-7000-8000-0000000000c2';
+// A document no provider fixture covers with an envelope (ATS_DOC_REF is under one).
+const ERASE_DOC_REF = 'a7500000-0000-7000-8000-0000000000c3';
+
+describe('aramo-core → Sign talent-erasure contract', () => {
+  it('asks Sign which of its records block erasing a talent', async () => {
+    const body = { tenant_id: ATS_TENANT_ID, record_ids: [ERASE_RECORD_ID], document_refs: [ERASE_DOC_REF] };
+    await provider
+      .addInteraction()
+      .given('the ATS Sign client is registered')
+      .uponReceiving('a talent-erasure preflight from the ATS erasure engine')
+      .withRequest('POST', '/v1/sign/s2s/talent-erasure/preflight', (b) => {
+        b.headers({ 'Content-Type': 'application/json', authorization: ATS_BASIC }).jsonBody(body);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ holders: [], erasable: { idempotency_keys: integer(0), api_idempotency_keys: integer(0), outbox_events: integer(0) } });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/s2s/talent-erasure/preflight`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', authorization: ATS_BASIC },
+          body: JSON.stringify(body),
+        });
+        expect(res.status).toBe(200);
+      });
+  });
+
+  it('asks Sign to erase its own rows naming the talent', async () => {
+    const body = { tenant_id: ATS_TENANT_ID, record_ids: [ERASE_RECORD_ID], document_refs: [], run_id: ERASE_RUN_ID };
+    await provider
+      .addInteraction()
+      .given('the ATS Sign client is registered')
+      .uponReceiving('a talent-erasure request from the ATS erasure engine')
+      .withRequest('POST', '/v1/sign/s2s/talent-erasure/erase', (b) => {
+        b.headers({ 'Content-Type': 'application/json', authorization: ATS_BASIC }).jsonBody(body);
+      })
+      .willRespondWith(200, (b) => {
+        b.jsonBody({ status: 'erased', run_id: ERASE_RUN_ID, counts: { idempotency_keys: integer(0), api_idempotency_keys: integer(0), outbox_events: integer(0) } });
+      })
+      .executeTest(async (mock) => {
+        const res = await fetch(`${mock.url}/v1/sign/s2s/talent-erasure/erase`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', authorization: ATS_BASIC },
+          body: JSON.stringify(body),
+        });
         expect(res.status).toBe(200);
       });
   });

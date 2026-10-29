@@ -1,3 +1,6 @@
+import { SignTalentErasureClient } from '../sign/sign-talent-erasure.client.js';
+
+import type { SignErasurePort } from './sign-erasure.port.js';
 import { TalentErasureService, type PgExec, type ErasureScope } from './talent-erasure.service.js';
 
 // TR-15 B2 (DDR §6 — D5, the DSAR assembly) — read-only per-talent data
@@ -29,8 +32,13 @@ export interface TalentDataInventory {
 }
 
 export class TalentDataInventoryService {
-  // Reuse the erasure engine's read-only scope resolution + per-holder counts.
-  private readonly erasure = new TalentErasureService();
+  // Reuse the erasure engine's read-only scope resolution + per-holder counts. Aramo Sign's
+  // holdings are counted by Sign through its contract (Domain Isolation V1).
+  private readonly erasure: TalentErasureService;
+
+  constructor(sign: SignErasurePort = new SignTalentErasureClient()) {
+    this.erasure = new TalentErasureService(sign);
+  }
 
   async assemble(pg: PgExec, tenantId: string, recordId: string): Promise<TalentDataInventory> {
     // dryRun is read-only: it resolves the scope and counts every holder.

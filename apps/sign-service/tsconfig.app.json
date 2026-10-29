@@ -25,5 +25,5 @@
     }
   },
   "include": ["src/**/*.ts"],
-  "exclude": ["src/tests/**/*", "**/*.spec.ts"]
+  "exclude": ["src/tests/**/*", "**/*.spec.ts", "src/sign-negative-control/**"]
 }

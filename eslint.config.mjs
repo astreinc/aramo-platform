@@ -73,7 +73,9 @@ const RAW_ELEMENT_RESTRICTED = Object.entries(RAW_ELEMENT_COMPONENT).map(([el, c
 // pact provider harness) unconstrained — the wall governs the tagged libs.
 // Proven to fire by libs/matching/src/tests/i15-negative-control.spec.ts (CIP⊥ATS),
 // apps/platform-admin/src/tests/platform-negative-control.spec.ts (PLATFORM⊥ATS),
-// apps/portal-web/src/tests/portal-web-negative-control.spec.ts (PORTAL⊥ATS), and
+// apps/portal-web/src/tests/portal-web-negative-control.spec.ts (PORTAL⊥ATS),
+// apps/sign-service/src/tests/sign-negative-control.spec.ts (SIGN⊥ATS: sign-service is
+// tagged scope:sign by Aramo-Sign-Domain-Isolation-Reconciliation-V1 §3 H-1), and
 // libs/intelligence-core/src/tests/intelligence-boundary-negative-control.spec.ts
 // (ATS⊥INTELLIGENCE, CIP⊥INTELLIGENCE, INTELLIGENCE⊥ATS/CIP — ATI-SEP-1 A7).
 const SCOPE_DEP_CONSTRAINTS = [
@@ -153,6 +155,11 @@ export default [
       // wall-fires spec (libs/intelligence-core/src/tests/intelligence-boundary-negative-control.spec.ts)
       // lints them explicitly with `eslint --no-ignore` to prove the rule rejects them.
       '**/intelligence-negative-control/**',
+      // Aramo-Sign-Domain-Isolation-Reconciliation-V1 §3 H-1 negative control: a committed,
+      // deliberate scope:sign → scope:ats import in apps/sign-service. The wall-fires spec
+      // (apps/sign-service/src/tests/sign-negative-control.spec.ts) lints it explicitly with
+      // `eslint --no-ignore` to prove the rule rejects it.
+      '**/sign-negative-control/**',
     ],
   },
   ...nx.configs['flat/base'],

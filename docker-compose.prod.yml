@@ -242,11 +242,13 @@ services:
       # completion write-back). Box value: http://sign-service:3003 (compose service
       # name + its PORT). Unset ⇒ the api defaults to its OWN localhost:3003 (dark).
       # Aramo Sign Unified Product — Addendum S6: the ATS as a client of the Sign API.
-      # SIGN_ATS_TRANSPORT=internal (default) keeps the internal path; `api` uses the
-      # authenticated Sign API (separately authorized activation). The client
-      # credential is the operator-issued first-party aramo-ats credential; the
-      # subscription secret verifies completion webhooks from the ATS subscription.
-      - SIGN_ATS_TRANSPORT=${SIGN_ATS_TRANSPORT:-internal}
+      # The authenticated Sign API is the ONLY transport (Aramo-Sign-Domain-Isolation-
+      # Reconciliation-V1 §3 H-2 retired the internal path): SIGN_ATS_TRANSPORT may only
+      # be `api` — any other value refuses to boot. The client credential is the
+      # operator-issued first-party aramo-ats credential (also used by the erase-talent
+      # CLI for the Sign talent-erasure contract); the subscription secret verifies
+      # completion webhooks from the ATS subscription.
+      - SIGN_ATS_TRANSPORT=${SIGN_ATS_TRANSPORT:-api}
       - SIGN_ATS_CLIENT_ID
       - SIGN_ATS_CLIENT_SECRET
       - SIGN_EVENTS_SUBSCRIPTION_SECRET

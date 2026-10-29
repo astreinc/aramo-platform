@@ -2015,10 +2015,68 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
+    "/v1/sign/s2s/talent-erasure/preflight": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Which Aramo Sign records block erasing an ATS talent (read-only).
+         * @description Aramo-Sign-Domain-Isolation-Reconciliation-V1 §2 R-3. Service-to-service only (no public route). The ATS erasure engine asks Sign what it holds about the talent instead of reading the sign schema. Authenticated as the first-party aramo-ats Sign API client (HTTP Basic); any other application is refused. Every holder returned blocks the erasure.
+         */
+        post: operations["preflightTalentErasure"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
+    "/v1/sign/s2s/talent-erasure/erase": {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        get?: never;
+        put?: never;
+        /**
+         * Erase Sign's replay caches and delivered outbox events naming an ATS talent.
+         * @description Aramo-Sign-Domain-Isolation-Reconciliation-V1 §2 R-3, §4 D-2. Service-to-service only. Re-checks every holder under a tenant lock; when one exists nothing is deleted and the holders are returned. Never touches an envelope, signer, signing event, executed document or certificate. Idempotent: a repeat deletes nothing.
+         */
+        post: operations["eraseTalentFromSign"];
+        delete?: never;
+        options?: never;
+        head?: never;
+        patch?: never;
+        trace?: never;
+    };
 }
 export type webhooks = Record<string, never>;
 export interface components {
     schemas: {
+        SignTalentErasureScope: {
+            /** Format: uuid */
+            tenant_id: string;
+            record_ids: string[];
+            document_refs?: string[];
+        };
+        SignTalentErasureCounts: {
+            idempotency_keys: number;
+            api_idempotency_keys: number;
+            outbox_events: number;
+        };
+        SignTalentErasureHolder: {
+            holder: string;
+            /** @enum {string} */
+            classification: "LEGAL_HOLD" | "PENDING_PO_LEGAL" | "PENDING_OUTBOX_DRAIN";
+            count: number;
+            reason: string;
+        };
         /** @description A catalog plan (Commercial Plans Amendment A1). Prices are display values in minor units; the charge is the provider price. reference_price is present only when substantiated. */
         BillingPlan: {
             key: string;
@@ -6621,6 +6679,109 @@ export interface operations {
             400: components["responses"]["BadRequest"];
             401: components["responses"]["SenderUnauthorized"];
             403: components["responses"]["SenderForbidden"];
+        };
+    };
+    preflightTalentErasure: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignTalentErasureScope"];
+            };
+        };
+        responses: {
+            /** @description The blocking holders (empty when nothing blocks). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        holders: components["schemas"]["SignTalentErasureHolder"][];
+                        erasable: components["schemas"]["SignTalentErasureCounts"];
+                    };
+                };
+            };
+            /** @description Invalid tenant or id lists. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Client authentication failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The client is not the first-party ATS application. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+        };
+    };
+    eraseTalentFromSign: {
+        parameters: {
+            query?: never;
+            header?: never;
+            path?: never;
+            cookie?: never;
+        };
+        requestBody: {
+            content: {
+                "application/json": components["schemas"]["SignTalentErasureScope"] & {
+                    /** Format: uuid */
+                    run_id: string;
+                };
+            };
+        };
+        responses: {
+            /** @description Erased (with counts) or blocked (nothing deleted). */
+            200: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content: {
+                    "application/json": {
+                        /** @enum {string} */
+                        status: "erased" | "blocked";
+                        /** Format: uuid */
+                        run_id: string;
+                        counts?: components["schemas"]["SignTalentErasureCounts"];
+                        holders?: components["schemas"]["SignTalentErasureHolder"][];
+                    };
+                };
+            };
+            /** @description Invalid tenant, run or id lists. */
+            400: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description Client authentication failed. */
+            401: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
+            /** @description The client is not the first-party ATS application. */
+            403: {
+                headers: {
+                    [name: string]: unknown;
+                };
+                content?: never;
+            };
         };
     };
 }

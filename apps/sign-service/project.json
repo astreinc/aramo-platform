@@ -3,7 +3,7 @@
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
   "sourceRoot": "apps/sign-service/src",
   "projectType": "application",
-  "tags": [],
+  "tags": ["scope:sign"],
   "targets": {
     "build": {
       "executor": "@nx/js:tsc",
