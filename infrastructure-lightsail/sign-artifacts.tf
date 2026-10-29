@@ -13,7 +13,9 @@
 #     TLS-only policy, an explicit Deny on version deletion, governance bypass and
 #     configuration changes for every principal except the break-glass principal,
 #     and NO lifecycle rules at all (no expiry of current or older versions).
-#   - an asymmetric KMS key that signs the evidence manifest (LC-3).
+#   - the key policy for the EXISTING DOC-4 evidence-signing key (doc4-sign.tf,
+#     aws_kms_key.sign_evidence, RSA_2048, alias/aramo-sign-evidence), which is
+#     reused for LC-3 / SX-1 item 4. No second evidence key is created.
 #   - the IAM user aramo-sign-prod (sign-service only) and its inline policy. NO
 #     access key here: a key created by Terraform would put the secret into state.
 #     The key is created at the credential-switch checkpoint, out-of-band.
@@ -129,7 +131,7 @@ data "aws_iam_policy_document" "sign_user" {
       "kms:GetPublicKey",
       "kms:DescribeKey",
     ]
-    resources = [aws_kms_key.sign_evidence_v2.arn]
+    resources = [aws_kms_key.sign_evidence.arn]
   }
 
   # Belt and braces next to the bucket policy: this principal can never remove a
@@ -215,11 +217,11 @@ resource "aws_kms_alias" "sign_artifacts" {
   target_key_id = aws_kms_key.sign_artifacts.key_id
 }
 
-# ── Evidence-manifest signing key (LC-3) ─────────────────────────────────────────
-# Asymmetric, SIGN_VERIFY, ECC_NIST_P256: the private key never leaves KMS. The
-# sign-service signer must run with SIGN_KMS_SIGNING_ALGORITHM=ECDSA_SHA_256 (its
-# code default is an RSA algorithm). Rotation does not apply to asymmetric keys.
-# Distinct from the older, never-applied DOC-4 key in doc4-sign.tf.
+# ── Evidence-manifest signing key policy (LC-3) ──────────────────────────────────
+# Attached to the existing DOC-4 key in doc4-sign.tf (RSA_2048, SIGN_VERIFY; the
+# sign-service signer uses RSASSA_PSS_SHA_256). Admin = break-glass principal;
+# only aramo-sign-prod may sign. No account-root statement, so IAM cannot delegate
+# use of the key to any other principal (aramo-api-prod included).
 data "aws_iam_policy_document" "sign_evidence_kms" {
   statement {
     sid    = "BreakGlassAdministersTheKey"
@@ -259,26 +261,6 @@ data "aws_iam_policy_document" "sign_evidence_kms" {
     ]
     resources = ["*"]
   }
-}
-
-resource "aws_kms_key" "sign_evidence_v2" {
-  description = "Aramo Sign evidence-manifest signing (asymmetric, sign/verify, SX-2 / LC-3)"
-  key_usage   = "SIGN_VERIFY"
-  # The AWS provider (~> 5.0) names this attribute itself; its spelling is the one
-  # field-scoped vocabulary exemption (scripts/verify-vocabulary.sh, §3.8 + SX-2).
-  customer_master_key_spec = "ECC_NIST_P256"
-  enable_key_rotation      = false # rotation is N/A for asymmetric SIGN_VERIFY keys
-  deletion_window_in_days  = 30
-  policy                   = data.aws_iam_policy_document.sign_evidence_kms.json
-
-  lifecycle {
-    prevent_destroy = true
-  }
-}
-
-resource "aws_kms_alias" "sign_evidence_v2" {
-  name          = var.sign_evidence_kms_alias
-  target_key_id = aws_kms_key.sign_evidence_v2.key_id
 }
 
 # ── The Sign artifact bucket (SX-2 items 1, 2, 5) ────────────────────────────────

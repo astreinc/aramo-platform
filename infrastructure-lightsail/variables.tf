@@ -139,12 +139,6 @@ variable "sign_artifacts_kms_alias" {
   default     = "alias/aramo-prod-sign-artifacts"
 }
 
-variable "sign_evidence_kms_alias" {
-  description = "Alias of the asymmetric evidence-manifest signing key (LC-3). SIGN_KMS_KEY_ID for sign-service at the credential switch."
-  type        = string
-  default     = "alias/aramo-prod-sign-evidence"
-}
-
 variable "sign_iam_user_name" {
   description = "IAM user used ONLY by sign-service (SX-2 item 6). Its access key is created out-of-band at the credential-switch checkpoint, never in Terraform state."
   type        = string

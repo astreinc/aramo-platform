@@ -38,14 +38,9 @@ output "sign_artifacts_kms_key_arn" {
   value       = aws_kms_key.sign_artifacts.arn
 }
 
-output "sign_evidence_kms_key_alias" {
-  description = "SIGN_KMS_KEY_ID for sign-service (SX-2 / LC-3 evidence signing)."
-  value       = aws_kms_alias.sign_evidence_v2.name
-}
-
 output "sign_evidence_signing_algorithm" {
-  description = "SIGN_KMS_SIGNING_ALGORITHM sign-service must use with the ECC_NIST_P256 evidence key."
-  value       = "ECDSA_SHA_256"
+  description = "SIGN_KMS_SIGNING_ALGORITHM for sign-service with the RSA_2048 evidence key (SIGN_KMS_KEY_ID = output sign_kms_key_id, doc4-sign.tf)."
+  value       = "RSASSA_PSS_SHA_256"
 }
 
 output "sign_iam_user_name" {

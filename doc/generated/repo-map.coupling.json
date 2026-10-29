@@ -29969,11 +29969,6 @@
       "to": "apps/sign-service/src/app/kms-evidence-manifest-signer.ts"
     },
     {
-      "from": "infrastructure-lightsail/sign-artifacts.tf",
-      "status": "unscoped",
-      "to": "scripts/verify-vocabulary.sh"
-    },
-    {
       "from": "infrastructure-lightsail/terraform.tfvars.example",
       "status": "unscoped",
       "to": "doc/runbooks/RUNBOOK-backups.md"
@@ -36370,11 +36365,6 @@
       "from": "scripts/verify-vocabulary.sh",
       "status": "unscoped",
       "to": "infrastructure-lightsail/outputs.tf"
-    },
-    {
-      "from": "scripts/verify-vocabulary.sh",
-      "status": "unscoped",
-      "to": "infrastructure-lightsail/sign-artifacts.tf"
     },
     {
       "from": "scripts/verify-vocabulary.sh",
