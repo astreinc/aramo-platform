@@ -10,7 +10,6 @@ import { Client } from 'pg';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { fakeSignErasure } from './helpers/fake-sign-erasure.js';
 
 import {
   TalentErasureService,
@@ -18,6 +17,8 @@ import {
   type ErasureObjectStore,
 } from '../talent-identity/talent-erasure.service.js';
 import { TalentDataInventoryService } from '../talent-identity/talent-data-inventory.service.js';
+
+import { fakeSignErasure } from './helpers/fake-sign-erasure.js';
 
 // TR-15 B2 (DDR §5/§6 / directive §5b-e) — the erase engine + the DSAR
 // assembly against real Postgres. NO Nest boot — both services take a raw

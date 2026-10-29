@@ -7,8 +7,6 @@ import { Client } from 'pg';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { fakeSignErasure } from './helpers/fake-sign-erasure.js';
-
 import {
   ERASURE_EXIT_CODES,
   ERASURE_HOLDER_GUARDS,
@@ -18,6 +16,9 @@ import {
   type ErasureObjectStore,
   type PgExec,
 } from '../talent-identity/talent-erasure.service.js';
+
+import { fakeSignErasure } from './helpers/fake-sign-erasure.js';
+
 
 // S2 Talent Erasure Integrity (Architect rulings F1/F3/F5; TM-L12 auditable
 // completion; ARAMO-S2-Talent-Erasure-Integrity-Amendment-v1.0-LOCKED) — against

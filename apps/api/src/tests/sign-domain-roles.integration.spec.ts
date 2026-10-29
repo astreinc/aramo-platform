@@ -7,8 +7,9 @@ import { Client } from 'pg';
 import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
-import { fakeSignErasure } from './helpers/fake-sign-erasure.js';
 import { TalentErasureService, type ErasureObjectStore, type PgExec } from '../talent-identity/talent-erasure.service.js';
+
+import { fakeSignErasure } from './helpers/fake-sign-erasure.js';
 
 // Aramo-Sign-Domain-Isolation-Reconciliation-V1-Directive-v1_0-LOCKED §2 R-2/R-5, §4 D-4 — the
 // Sign boundary enforced by PostgreSQL itself, not only by code. Against real Postgres 17 with

@@ -8,7 +8,6 @@ import { v7 as uuidv7 } from 'uuid';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 
 import { fakeSignErasure } from '../helpers/fake-sign-erasure.js';
-
 import { TalentErasureService, type ErasureObjectStore, type PgExec } from '../../talent-identity/talent-erasure.service.js';
 
 // TIP-E2E INC-3 A1-8 (ARAMO-TIP-E2E-INC-3-A1-v1.0-LOCKED Part H, §B.8) — erasure of
