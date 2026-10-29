@@ -61,6 +61,20 @@ export {
 } from './lib/ports/execution-producer.port.js';
 export { ExecutionService } from './lib/execution.service.js';
 export {
+  EXECUTED_ARTIFACT_CUSTODY_PORT,
+  EXECUTED_ARTIFACT_CUSTODY_EVENT_TYPE,
+  type ExecutedArtifactCustodyPort,
+} from './lib/ports/executed-artifact-custody.port.js';
+export {
+  SignArtifactCustodyRepository,
+  type CustodyArtifactKind,
+  type CustodyColumns,
+  type CustodyValidationRows,
+  type ExecutedArtifactSummary,
+  type PendingCertificateArtifact,
+  type PendingExecutedArtifact,
+} from './lib/artifact-custody.repository.js';
+export {
   SIGNER_ATTESTED_NAME_PORT,
   type SignerAttestedNamePort,
   type SignerAttestedNameQuery,

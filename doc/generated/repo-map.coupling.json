@@ -37734,6 +37734,7 @@
         { "kind": "prose", "path": "scripts/run-script-tests.sh" }
       ]
     },
+    { "name": "sign:validate-artifact-custody", "references": [] },
     {
       "name": "test",
       "references": [
@@ -37851,6 +37852,7 @@
     "prisma:seed-policy-lifecycle",
     "prisma:validate-auth-storage",
     "prisma:validate-identity",
+    "sign:validate-artifact-custody",
     "tests:integration",
     "usage:rollup"
   ]

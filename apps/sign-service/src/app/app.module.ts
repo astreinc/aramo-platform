@@ -5,6 +5,7 @@ import {
   DOCUMENT_STORAGE_PORT,
   EVENT_PUBLISHER_PORT,
   EVIDENCE_MANIFEST_SIGNER_PORT,
+  EXECUTED_ARTIFACT_CUSTODY_PORT,
   EXECUTION_PRODUCER_PORT,
   ENVELOPE_NOTIFICATION_SERVICE,
   EnvelopeNotificationService,
@@ -17,6 +18,7 @@ import {
   STORAGE_ACCOUNTING_PORT,
   SignNotificationRepository,
   SignPrivacyRepository,
+  SignArtifactCustodyRepository,
   SignRetentionRepository,
   WEBHOOK_DELIVERY_PORT,
 } from '@aramo/sign';
@@ -37,6 +39,11 @@ import { resolveEvidenceManifestSigner } from './kms-evidence-manifest-signer.js
 import { DocumentSourceHttpAdapter } from './document-source-http.adapter.js';
 import { EnvelopeDocumentSourceResolver } from './envelope-document-source.resolver.js';
 import { EsignObjectStorageDocumentAdapter } from './esign-object-storage-document.adapter.js';
+// Aramo-Sign-Executed-Artifact-Custody-and-Isolation-Directive-v1_0-LOCKED, SX-2 — the
+// dedicated Sign artifact bucket (dark unless SIGN_ARTIFACT_BUCKET is set).
+import { SignArtifactStore } from './custody/sign-artifact-store.js';
+import { ExecutedArtifactCustodyService } from './custody/executed-artifact-custody.service.js';
+import { SignArtifactReconcileWorker } from './custody/sign-artifact-reconcile.worker.js';
 import { eventPublisherFromEnv } from './sns-event-publisher.js';
 import { HttpWebhookEventPublisher } from './webhook-event-publisher.js';
 import { EsignDeliveryWorker } from './esign-delivery.worker.js';
@@ -153,7 +160,15 @@ import { SignPrivacyExecutionWorker } from './privacy/sign-privacy-execution.wor
         // PX-V1 F1 — source resolution dispatches on source_mode: CORE_REF via the
         // HTTP adapter (legacy ATS pull), OWNED via E-Sign's own object storage.
         DocumentSourceHttpAdapter,
+        // SX-2 — the Sign artifact bucket. Built at boot from SIGN_ARTIFACT_*: an invalid
+        // setting (e.g. a non-integer SIGN_ARTIFACT_RETENTION_DAYS) refuses to boot;
+        // SIGN_ARTIFACT_BUCKET unset = dark (sources stay in the platform bucket).
+        { provide: SignArtifactStore, useFactory: () => SignArtifactStore.fromEnv(process.env) },
         { provide: DOCUMENT_STORAGE_PORT, useClass: EsignObjectStorageDocumentAdapter },
+        // SX-2 item 7 — completion custody (called by ExecutionService) + its reconcile job.
+        SignArtifactCustodyRepository,
+        { provide: EXECUTED_ARTIFACT_CUSTODY_PORT, useClass: ExecutedArtifactCustodyService },
+        SignArtifactReconcileWorker,
         { provide: DOCUMENT_SOURCE_PROVIDER_PORT, useClass: EnvelopeDocumentSourceResolver },
         { provide: SIGNING_NOTIFICATION_PORT, useClass: MailerSigningNotificationAdapter },
         { provide: EVENT_PUBLISHER_PORT, useFactory: () => eventPublisherFromEnv(process.env) },
