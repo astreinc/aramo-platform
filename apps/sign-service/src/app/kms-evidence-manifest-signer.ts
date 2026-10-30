@@ -21,6 +21,8 @@ import {
   type SignedEvidenceManifest,
 } from '@aramo/sign';
 
+import { loadSignAwsCredentials, signAwsRegion } from './custody/sign-artifact-storage.config.js';
+
 // DOC-4 (R-4-5) + SX-1 item 4 / LC-3 — the AWS-KMS-backed EvidenceManifestSignerPort.
 // The private key NEVER leaves KMS (§262): signing is a KMS Sign over the manifest
 // digest with an ASYMMETRIC SIGN_VERIFY key. A plain SHA-256 digest is an
@@ -191,6 +193,23 @@ export async function verifyEvidenceManifestWithKmsPublicKey(
   return verifyKmsEvidenceSignatureWithPublicKey(signed, res.PublicKey);
 }
 
+/**
+ * The KMS client for evidence signing, bound EXPLICITLY to the Sign-only identity
+ * (SIGN_ARTIFACT_AWS_*, the same pair the artifact store uses). The evidence key's
+ * policy admits only that principal, and in sign-service the SDK default chain is
+ * the box-wide shared AWS_* key, so the default chain is never used here: without
+ * the Sign pair this refuses, and sign-service does not start with the KMS signer.
+ */
+export function signKmsClientFromEnv(env: NodeJS.ProcessEnv): KMSClient {
+  const credentials = loadSignAwsCredentials(env);
+  if (credentials === null) {
+    throw new KmsEvidenceKeyRefusedError(
+      `${SIGN_KMS_KEY_ID_ENV} requires the Sign-only credential (SIGN_ARTIFACT_AWS_ACCESS_KEY_ID and SIGN_ARTIFACT_AWS_SECRET_ACCESS_KEY); the shared AWS_* credential is never used for evidence signing`,
+    );
+  }
+  return new KMSClient({ region: signAwsRegion(env), credentials });
+}
+
 // Env-gated factory — builds the KMS signer ONLY when SIGN_KMS_KEY_ID is set.
 // An unknown SIGN_KMS_SIGNING_ALGORITHM is refused (never silently replaced).
 export function kmsEvidenceSignerFromEnv(env: NodeJS.ProcessEnv): KmsEvidenceManifestSigner | null {
@@ -204,8 +223,7 @@ export function kmsEvidenceSignerFromEnv(env: NodeJS.ProcessEnv): KmsEvidenceMan
     }
     signingAlgorithm = rawAlgorithm;
   }
-  const region = env['AWS_REGION'] ?? env['AWS_DEFAULT_REGION'];
-  const client = new KMSClient(region !== undefined ? { region } : {});
+  const client = signKmsClientFromEnv(env);
   return new KmsEvidenceManifestSigner(client, signingAlgorithm === undefined ? { keyId } : { keyId, signingAlgorithm });
 }
 
