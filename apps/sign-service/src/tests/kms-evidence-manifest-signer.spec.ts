@@ -20,6 +20,7 @@ import {
   KmsEvidenceManifestSigner,
   kmsEvidenceSignerFromEnv,
   resolveEvidenceManifestSigner,
+  signKmsClientFromEnv,
   verifyEvidenceManifestWithKmsPublicKey,
 } from '../app/kms-evidence-manifest-signer.js';
 
@@ -258,6 +259,63 @@ describe('resolveEvidenceManifestSigner — production boot guard (SX-1 item 4)'
   it('env factory: null without a key, a KMS signer with one', () => {
     expect(kmsEvidenceSignerFromEnv({})).toBeNull();
     expect(kmsEvidenceSignerFromEnv({ SIGN_KMS_KEY_ID: '' })).toBeNull();
-    expect(kmsEvidenceSignerFromEnv({ SIGN_KMS_KEY_ID: 'alias/aramo-sign-evidence', AWS_REGION: 'us-east-1' })).toBeInstanceOf(KmsEvidenceManifestSigner);
+    expect(kmsEvidenceSignerFromEnv({ SIGN_KMS_KEY_ID: 'alias/aramo-sign-evidence', AWS_REGION: 'us-east-1', ...SIGN_PAIR })).toBeInstanceOf(KmsEvidenceManifestSigner);
+  });
+});
+
+// CP-7 credential isolation: the evidence key admits only the Sign-only principal,
+// so the KMS client carries the SIGN_ARTIFACT_AWS_* pair explicitly and never the
+// box-wide AWS_* key (which in sign-service is the shared API credential).
+const SIGN_PAIR = { SIGN_ARTIFACT_AWS_ACCESS_KEY_ID: 'AKIASIGNONLY', SIGN_ARTIFACT_AWS_SECRET_ACCESS_KEY: 'sign-secret' };
+const SHARED_PAIR = { AWS_ACCESS_KEY_ID: 'AKIASHARED', AWS_SECRET_ACCESS_KEY: 'shared-secret' };
+
+describe('signKmsClientFromEnv — Sign-only credential binding (CP-7)', () => {
+  it('binds the Sign-only pair, not the shared AWS_* key, when both are present', async () => {
+    const client = signKmsClientFromEnv({ ...SHARED_PAIR, ...SIGN_PAIR, AWS_REGION: 'us-east-1' });
+    const creds = await client.config.credentials();
+    expect(creds.accessKeyId).toBe('AKIASIGNONLY');
+    expect(creds.secretAccessKey).toBe('sign-secret');
+    expect(await client.config.region()).toBe('us-east-1');
+  });
+
+  it('prefers SIGN_ARTIFACT_AWS_REGION for the Sign identity', async () => {
+    const client = signKmsClientFromEnv({ ...SIGN_PAIR, AWS_REGION: 'us-west-2', SIGN_ARTIFACT_AWS_REGION: 'us-east-1' });
+    expect(await client.config.region()).toBe('us-east-1');
+  });
+
+  it('never falls back to the shared AWS_* key or the default chain', () => {
+    expect(() => signKmsClientFromEnv({ ...SHARED_PAIR, AWS_REGION: 'us-east-1' })).toThrow(KmsEvidenceKeyRefusedError);
+    expect(() => signKmsClientFromEnv({})).toThrow(/Sign-only credential/);
+    expect(() => kmsEvidenceSignerFromEnv({ SIGN_KMS_KEY_ID: KEY_ARN, ...SHARED_PAIR })).toThrow(/shared AWS_\* credential is never used/);
+  });
+
+  it('refuses a half-set Sign pair', () => {
+    expect(() => signKmsClientFromEnv({ SIGN_ARTIFACT_AWS_ACCESS_KEY_ID: 'AKIASIGNONLY' })).toThrow(/set together/);
+    expect(() => signKmsClientFromEnv({ SIGN_ARTIFACT_AWS_SECRET_ACCESS_KEY: 'sign-secret', ...SHARED_PAIR })).toThrow(/set together/);
+  });
+
+  it('production refuses to start when the Sign-only credential is missing, even with the shared key set', async () => {
+    await expect(
+      resolveEvidenceManifestSigner({ NODE_ENV: 'production', SIGN_KMS_KEY_ID: KEY_ARN, ...SHARED_PAIR }),
+    ).rejects.toBeInstanceOf(KmsEvidenceKeyRefusedError);
+  });
+
+  it('production refuses to start when KMS denies the credential (fail closed)', async () => {
+    const denied = Object.assign(new Error('User is not authorized to perform: kms:DescribeKey'), { name: 'AccessDeniedException' });
+    const send = vi.fn().mockRejectedValue(denied);
+    const build = () => new KmsEvidenceManifestSigner({ send } as unknown as KMSClient, { keyId: KEY_ARN });
+    await expect(resolveEvidenceManifestSigner({ NODE_ENV: 'production', SIGN_KMS_KEY_ID: KEY_ARN, ...SIGN_PAIR }, build)).rejects.toThrow(/not authorized/);
+    expect(send.mock.calls[0]?.[0]).toBeInstanceOf(DescribeKeyCommand);
+  });
+
+  it('a denied Sign call is never turned into an unsigned manifest', async () => {
+    const kms = fakeKms('RSA_2048');
+    const real = kms.send.getMockImplementation();
+    kms.send.mockImplementation(async (cmd: unknown) => {
+      if (cmd instanceof SignCommand) throw Object.assign(new Error('not authorized to perform: kms:Sign'), { name: 'AccessDeniedException' });
+      return real?.(cmd);
+    });
+    const signer = new KmsEvidenceManifestSigner(kms.client, { keyId: KEY_ARN });
+    await expect(signer.sign(MANIFEST, '2026-10-30T00:00:00.000Z')).rejects.toThrow(/kms:Sign/);
   });
 });

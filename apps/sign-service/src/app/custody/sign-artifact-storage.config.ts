@@ -58,6 +58,31 @@ export function parseRetentionDays(raw: string | null): number | null {
   return days;
 }
 
+export interface SignAwsCredentials {
+  readonly accessKeyId: string;
+  readonly secretAccessKey: string;
+}
+
+/**
+ * The Sign-only AWS identity (aramo-sign-prod in production): the
+ * SIGN_ARTIFACT_AWS_* pair, both or neither. Null when unset. Shared by the
+ * artifact store and the KMS evidence signer, so the Sign principal is configured
+ * once and never confused with the box-wide AWS_* key.
+ */
+export function loadSignAwsCredentials(env: NodeJS.ProcessEnv): SignAwsCredentials | null {
+  const accessKeyId = value(env, 'SIGN_ARTIFACT_AWS_ACCESS_KEY_ID');
+  const secretAccessKey = value(env, 'SIGN_ARTIFACT_AWS_SECRET_ACCESS_KEY');
+  if ((accessKeyId === null) !== (secretAccessKey === null)) {
+    throw new SignArtifactConfigError('SIGN_ARTIFACT_AWS_ACCESS_KEY_ID and SIGN_ARTIFACT_AWS_SECRET_ACCESS_KEY must be set together');
+  }
+  return accessKeyId !== null && secretAccessKey !== null ? { accessKeyId, secretAccessKey } : null;
+}
+
+/** Region for the Sign-only identity: SIGN_ARTIFACT_AWS_REGION, then AWS_REGION, then us-east-1. */
+export function signAwsRegion(env: NodeJS.ProcessEnv): string {
+  return value(env, 'SIGN_ARTIFACT_AWS_REGION') ?? value(env, 'AWS_REGION') ?? 'us-east-1';
+}
+
 /**
  * Reads the Sign artifact storage settings. Returns null when the feature is dark
  * (SIGN_ARTIFACT_BUCKET unset). Throws SignArtifactConfigError on an invalid setting —
@@ -65,20 +90,16 @@ export function parseRetentionDays(raw: string | null): number | null {
  */
 export function loadSignArtifactStorageConfig(env: NodeJS.ProcessEnv): SignArtifactStorageConfig | null {
   const retentionDays = parseRetentionDays(value(env, 'SIGN_ARTIFACT_RETENTION_DAYS'));
-  const accessKeyId = value(env, 'SIGN_ARTIFACT_AWS_ACCESS_KEY_ID');
-  const secretAccessKey = value(env, 'SIGN_ARTIFACT_AWS_SECRET_ACCESS_KEY');
-  if ((accessKeyId === null) !== (secretAccessKey === null)) {
-    throw new SignArtifactConfigError('SIGN_ARTIFACT_AWS_ACCESS_KEY_ID and SIGN_ARTIFACT_AWS_SECRET_ACCESS_KEY must be set together');
-  }
+  const credentials = loadSignAwsCredentials(env);
   const bucket = value(env, 'SIGN_ARTIFACT_BUCKET');
   if (bucket === null) return null;
   const endpoint = value(env, 'SIGN_ARTIFACT_S3_ENDPOINT');
   return {
     bucket,
-    region: value(env, 'SIGN_ARTIFACT_AWS_REGION') ?? value(env, 'AWS_REGION') ?? 'us-east-1',
+    region: signAwsRegion(env),
     endpoint,
     forcePathStyle: endpoint !== null,
-    credentials: accessKeyId !== null && secretAccessKey !== null ? { accessKeyId, secretAccessKey } : null,
+    credentials,
     retentionDays,
   };
 }
