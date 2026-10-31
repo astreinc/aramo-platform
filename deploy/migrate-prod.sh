@@ -258,6 +258,24 @@ migrate_intelligence() {
   fi
 }
 
+# --- Per-domain role grants (Sign Domain Isolation LC-4, CP-10) -------------
+# The services connect as per-domain login roles (ATS_/AUTH_/SIGN_/PLATFORM_DB_*),
+# not as the owner. A table or schema a migration just created is granted to their
+# group roles only by re-running deploy/db-roles/aramo-domain-roles.sql (idempotent;
+# it also re-checks its own postcondition: no ATS privilege on any sign table, full
+# Sign privilege on every one). Runs as the owner (DBURL) after the shared-DB gate,
+# BEFORE containers are recreated, so new code never meets an ungranted table.
+apply_domain_roles() {
+  echo "[migrate] re-asserting per-domain role grants (deploy/db-roles/aramo-domain-roles.sql)…"
+  docker run --rm \
+    --network "$NETWORK" \
+    -v "$ARAMO_DIR":/repo -w /repo \
+    -e DATABASE_URL="$DBURL" \
+    "$MIGRATE_IMAGE" \
+    bash -c 'psql "${DATABASE_URL%%\?*}" -q -v ON_ERROR_STOP=1 -f deploy/db-roles/aramo-domain-roles.sql'
+  echo "[migrate] OK — per-domain role grants converged (postcondition passed)."
+}
+
 # --- main -----------------------------------------------------------------
 
 main() {
@@ -306,6 +324,7 @@ main() {
     if gate_passes "$status" 1; then
       echo "[migrate] OK — zero pending on-disk migrations at-or-before the stop point '${UNTIL}'."
       echo "[migrate] Deferred migrations after the stop point stay pending (see status above)."
+      apply_domain_roles
       migrate_intelligence
       echo "[migrate] Safe to build + recreate containers."
     else
@@ -317,6 +336,7 @@ main() {
 
   if gate_passes "$status"; then
     echo "[migrate] OK — zero pending on-disk migrations (shared Aramo DB)."
+    apply_domain_roles
     migrate_intelligence
     echo "[migrate] Safe to build + recreate containers."
   else

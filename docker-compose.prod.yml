@@ -42,9 +42,10 @@
 # interpolation. Bare-name entries under `environment:` are PASSED THROUGH by
 # name from the sourced shell env (verbatim — multi-line-PEM-safe). DATABASE_URL
 # / REDIS_URL are PINNED to the compose service names (the .env values point at
-# localhost, unreachable from inside the container network); the DB credentials
-# are interpolated from the same POSTGRES_* vars that configure the postgres
-# service, so they cannot drift. See .env.prod.example for the full env surface.
+# localhost, unreachable from inside the container network). Each service's DB
+# credentials are its own per-domain login (ATS_/AUTH_/SIGN_/PLATFORM_DB_*, Sign
+# Domain Isolation LC-4); POSTGRES_* configures the postgres service and stays the
+# migration/seed/backup owner only. See .env.prod.example for the full env surface.
 
 # Pin the compose PROJECT NAME (E17) — the FIRST top-level key. Without it, an
 # invocation with no `-p`/COMPOSE_PROJECT_NAME defaults the project to the
@@ -180,9 +181,10 @@ services:
       - ARAMO_SIGN_BASE_URL
       - PORT=3000
       - NODE_ENV=production
-      # host localhost → compose-network service names; creds from POSTGRES_*
-      # (same source as the postgres service → cannot drift).
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-aramo}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-aramo}?schema=public
+      # host localhost → compose-network service names.
+      # CP-10 Phase 4 (Sign Domain Isolation LC-4): own login role per domain, granted by
+      # deploy/db-roles/aramo-domain-roles.sql — never the POSTGRES_* owner/superuser.
+      - DATABASE_URL=postgresql://${ATS_DB_USER:?ATS_DB_USER must be set}:${ATS_DB_PASSWORD:?ATS_DB_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-aramo}?schema=public
       - REDIS_URL=redis://redis:6379
       # ATI-SEP-1 T0/T8 — the Talent Intelligence origin (compose-internal, no nginx route).
       # ALL TI vars are OPTIONAL (directive invariant: the ATS works with TI absent).
@@ -341,7 +343,9 @@ services:
     command: ["node", "dist/apps/api/src/talent-intake-worker.main.js"]
     environment:
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-aramo}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-aramo}?schema=public
+      # CP-10 Phase 4 (Sign Domain Isolation LC-4): own login role per domain, granted by
+      # deploy/db-roles/aramo-domain-roles.sql — never the POSTGRES_* owner/superuser.
+      - DATABASE_URL=postgresql://${ATS_DB_USER:?ATS_DB_USER must be set}:${ATS_DB_PASSWORD:?ATS_DB_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-aramo}?schema=public
       - REDIS_URL=redis://redis:6379
       # This worker IS the single-box drainer (DRAIN enabled by default; no AWS).
       - TALENT_INTAKE_TRANSPORT=${TALENT_INTAKE_TRANSPORT:-singlebox}
@@ -386,7 +390,9 @@ services:
     environment:
       - PORT=3001
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-aramo}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-aramo}?schema=public
+      # CP-10 Phase 4 (Sign Domain Isolation LC-4): own login role per domain, granted by
+      # deploy/db-roles/aramo-domain-roles.sql — never the POSTGRES_* owner/superuser.
+      - DATABASE_URL=postgresql://${AUTH_DB_USER:?AUTH_DB_USER must be set}:${AUTH_DB_PASSWORD:?AUTH_DB_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-aramo}?schema=public
       # pass-through by name from the sourced shell env (multi-line-safe):
       - AUTH_AUDIENCE
       - AUTH_PRIVATE_KEY
@@ -464,7 +470,9 @@ services:
       # PORT 3003 matches main.ts's default (api=3000, auth=3001, platform-admin=3002).
       - PORT=3003
       - NODE_ENV=production
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-aramo}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-aramo}?schema=public
+      # CP-10 Phase 4 (Sign Domain Isolation LC-4): own login role per domain, granted by
+      # deploy/db-roles/aramo-domain-roles.sql — never the POSTGRES_* owner/superuser.
+      - DATABASE_URL=postgresql://${SIGN_DB_USER:?SIGN_DB_USER must be set}:${SIGN_DB_PASSWORD:?SIGN_DB_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-aramo}?schema=public
       # E-Sign signer notifications ride the standing SES mailer path (SigningNotificationPort → MailerPort).
       - MAILER_PROVIDER
       - SES_FROM_ADDRESS
@@ -686,8 +694,9 @@ services:
       # PORT 3002 matches main.ts's default (api=3000, auth=3001).
       - PORT=3002
       - NODE_ENV=production
-      # Same source as postgres/api → cannot drift.
-      - DATABASE_URL=postgresql://${POSTGRES_USER:-aramo}:${POSTGRES_PASSWORD:?POSTGRES_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-aramo}?schema=public
+      # CP-10 Phase 4 (Sign Domain Isolation LC-4): own login role per domain, granted by
+      # deploy/db-roles/aramo-domain-roles.sql — never the POSTGRES_* owner/superuser.
+      - DATABASE_URL=postgresql://${PLATFORM_DB_USER:?PLATFORM_DB_USER must be set}:${PLATFORM_DB_PASSWORD:?PLATFORM_DB_PASSWORD must be set}@postgres:5432/${POSTGRES_DB:-aramo}?schema=public
       # Env delta vs api (Inc-3 PR-3.3): platform-admin's module graph consumes
       # a strict subset of api's env PLUS the platform Cognito pool. It does NOT
       # boot the cross-schema BullMQ worker (that lives in api's directly-imported
